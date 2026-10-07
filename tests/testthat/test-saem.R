@@ -50,7 +50,7 @@ test_that("a linFim covariance repaired by sqrtm keeps that label with its full 
   attr(.lin, "varCov") <- matrix(0.01, 1, 1, dimnames = list("add.sd", "add.sd"))
   local_mocked_bindings(calc.COV = function(x) .lin)
   .w <- capture_warnings(.saemCalcCov(.e))
-  expect_identical(.w, "covariance matrix non-positive definite, corrected by sqrtm(linFim %*% linFim)")
+  expect_identical(.w, "covariance not positive definite, corrected by sqrtm(linFim %*% linFim)")
   expect_identical(.e$covMethod, "|linFim|")
   .abs <- sqrtm(.lin %*% t(.lin))
   expect_equal(unname(.e$cov), unname(.abs))
@@ -100,7 +100,7 @@ test_that("an unusable information matrix is reported instead of silently leavin
   expect_identical(
     .w,
     c(
-      "SAEM covariance by linearization failed; using the SAEM information matrix",
+      "linearized FIM failed; using the SAEM information matrix",
       "\"Ha\" covariance is not finite; none installed"
     )
   )
@@ -123,7 +123,7 @@ test_that("an indefinite Ha theta block is repaired by sqrtm and labelled so", {
   .e <- .saemCovEnv(Ha = .bad, covMethod = "r,s")
   expect_warning(
     .saemCalcCov(.e),
-    "covariance matrix non-positive definite, corrected by sqrtm(Ha %*% Ha)",
+    "covariance not positive definite, corrected by sqrtm(Ha %*% Ha)",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "|Ha|")
@@ -197,7 +197,7 @@ test_that("the Ha theta block drops a non-mu-referenced theta and reports it", {
   )
   expect_warning(
     .saemCalcCov(.e),
-    "\"Ha\" covariance has no row for the non-mu-referenced theta(s) tka; they have no standard error",
+    "\"Ha\" covariance: no SE for non-mu-referenced theta(s) tka",
     fixed = TRUE
   )
   .ref <- solve(.saemHaKernel[1:2, 1:2])
