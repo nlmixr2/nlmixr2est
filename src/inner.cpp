@@ -5291,9 +5291,9 @@ static inline bool thetaReset0(bool forceReset = false, const std::vector<bool> 
     op_focei.warnedResetNoProgress = 1;
     if (haveNames) {
       std::string nm = as<std::string>(thetaNames[noProgress]);
-      warning(_("theta reset skipped: '%s' would return to its bound"), nm.c_str());
+      warning(_("reset of '%s' skipped: back at its bound"), nm.c_str());
     } else {
-      warning(_("theta reset skipped: theta %d would return to its bound"), noProgress + 1);
+      warning(_("reset of theta %d skipped: back at its bound"), noProgress + 1);
     }
   }
   if (!doAdjust && !forceReset) {
