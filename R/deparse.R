@@ -33,8 +33,9 @@
 #'
 #' Tolerances derived from `sigdig` then match and are not written out.  A
 #' control that does not keep `sigdig` (`saemControl()`) is taken to have been
-#' built with `sigdig = sigdigTable` when that rebuilds its `rxControl`; the
-#' default then carries the `"sigdig"` argument to write as an attribute.
+#' built with the `sigdig` its `sigdigTable` or `tol` implies when that rebuilds
+#' its `rxControl`; the default then carries the `"sigdig"` argument to write as
+#' an attribute.
 #' @param default the constructor's default control
 #' @param object the control being deparsed
 #' @param ctor name of the constructor
@@ -44,26 +45,32 @@
   if (!any(c("sigdig", "...") %in% names(formals(ctor)))) {
     return(default)
   }
+  .rebuild <- function(sig) tryCatch(do.call(ctor, list(sigdig = sig)), error = function(e) NULL)
   .sig <- object[["sigdig"]]
-  .kept <- !is.null(.sig)
-  if (!.kept) {
-    .sig <- object[["sigdigTable"]]
-    if (
-      is.null(.sig) || !isTRUE(object[["genRxControl"]]) || identical(object[["rxControl"]], default[["rxControl"]])
-    ) {
+  if (!is.null(.sig)) {
+    if (identical(.sig, default[["sigdig"]])) {
       return(default)
     }
-  } else if (identical(.sig, default[["sigdig"]])) {
+    .ret <- .rebuild(.sig)
+    return(if (is.null(.ret)) default else .ret)
+  }
+  if (!isTRUE(object[["genRxControl"]]) || identical(object[["rxControl"]], default[["rxControl"]])) {
     return(default)
   }
-  .ret <- tryCatch(do.call(ctor, list(sigdig = .sig)), error = function(e) NULL)
-  if (is.null(.ret) || (!.kept && !identical(.ret[["rxControl"]], object[["rxControl"]]))) {
-    return(default)
+  # not kept: sigdigTable and tol (10^-sigdig) are what sigdig sets by default
+  .tol <- object[["tol"]]
+  .cand <- c(object[["sigdigTable"]], if (is.numeric(.tol) && length(.tol) == 1L && .tol > 0) -log10(.tol))
+  for (.sig in unique(.cand[is.finite(.cand)])) {
+    if (abs(.sig - round(.sig)) < 1e-8) {
+      .sig <- round(.sig)
+    }
+    .ret <- .rebuild(.sig)
+    if (!is.null(.ret) && identical(.ret[["rxControl"]], object[["rxControl"]])) {
+      attr(.ret, "sigdig") <- paste0("sigdig = ", .deparseValue(.sig))
+      return(.ret)
+    }
   }
-  if (!.kept) {
-    attr(.ret, "sigdig") <- paste0("sigdig = ", .deparseValue(.sig))
-  }
-  .ret
+  default
 }
 
 .deparseShared <- function(x, value) {

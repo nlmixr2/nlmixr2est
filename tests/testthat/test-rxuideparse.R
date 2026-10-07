@@ -199,6 +199,7 @@ nmTest({
       foceiControl(lbfgsFactr = 1 / 3),
       saemControl(nu = c(2, 2, 2)),
       saemControl(nmc = 3L),
+      saemControl(sigdig = 6, sigdigTable = 3),
       impmapControl(ctol = 0.01),
       impControl(isample = 500L, sirSample = 30L),
       impmapControl(gammaRule = "floor", nConvWindow = 20L)
