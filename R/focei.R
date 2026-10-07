@@ -2029,9 +2029,14 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     .linCmtEtaVars,
     .linCmtExtraPred
   )
+  # a carried row replaces the naive line, so add back its lag() terms
+  .lagCarry <- NULL
   if (!is.null(.lag) && !is.null(.carryPairs)) {
-    # a carried row replaces the whole line, so its lag() path is dropped
-    warning("linCmt() sensitivity carry ignores lag() of a variable", call. = FALSE)
+    .lagCarry <- vapply(
+      .linCmtEtaVars,
+      function(p) .lag$txt(.lag$dfe(get("rx_pred_", envir = .s), p, lagOnly = TRUE), p),
+      character(1)
+    )
   }
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
@@ -2054,6 +2059,9 @@ rxUiGet.foceiHdEta <- function(x, ...) {
       .w <- which(.carryPairs$eta == .p)
       if (length(.w) == 1L) {
         .ret <- .rxFoceiLinCmtCarryEmit(.carryPairs, .w, .s, x["dfe"])
+        if (!is.null(.lagCarry) && !(.lagCarry[[.p]] %in% c("0", "0.0"))) {
+          .ret <- paste0(.ret, "+(", .lagCarry[[.p]], ")")
+        }
       }
     }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))

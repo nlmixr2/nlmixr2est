@@ -91,8 +91,9 @@
 #' @param exprs names of the symengine expressions that will be differentiated
 #' @param statePars the parameters with state sensitivities
 #' @return list with `lines` (the
-#'   sensitivity lhs, in model order), `dfe(e, p)`, the symengine total
-#'   derivative of `e` by `p`, and `txt(d, p)`, its rxode2 text
+#'   sensitivity lhs, in model order), `dfe(e, p, lagOnly)`, the symengine
+#'   total derivative of `e` by `p` (only its terms through the lagged
+#'   variables when `lagOnly`), and `txt(d, p)`, its rxode2 text
 #' @noRd
 .foceiLagSens <- function(s, stateVars, pars, exprs = "rx_pred_", statePars = pars) {
   .defs <- .foceiLagDefs(s)
@@ -146,10 +147,13 @@
     }
     e
   }
-  .chain <- function(e, p) {
-    .ret <- symengine::D(e, .sym(p))
-    for (.st in if (p %in% statePars) stateVars) {
-      .ret <- .ret + symengine::D(e, .sym(.st)) * .sym(paste0("rx__sens_", .st, "_BY_", p, "__"))
+  .chain <- function(e, p, lagOnly = FALSE) {
+    .ret <- symengine::S(0)
+    if (!lagOnly) {
+      .ret <- symengine::D(e, .sym(p))
+      for (.st in if (p %in% statePars) stateVars) {
+        .ret <- .ret + symengine::D(e, .sym(.st)) * .sym(paste0("rx__sens_", .st, "_BY_", p, "__"))
+      }
     }
     for (i in seq_along(.vars)) {
       .ret <- .ret + symengine::D(e, .sym(.vars[i])) * .sym(.lsens(i, p))
@@ -183,7 +187,7 @@
   }))
   list(
     lines = .lines,
-    dfe = function(e, p) .chain(.subsHist(.sym(e)), p),
+    dfe = function(e, p, lagOnly = FALSE) .chain(.subsHist(.sym(e)), p, lagOnly),
     txt = .unsub
   )
 }

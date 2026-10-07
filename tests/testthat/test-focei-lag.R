@@ -97,7 +97,7 @@ nmTest({
 
   # max |analytic - central difference| of rx__sens_<v>_BY_<par>___ per
   # parameter, from a solve of the model text `txt`
-  .lagFd <- function(mod, txt, par, idx, at = 0.2) {
+  .lagFd <- function(mod, txt, par, idx, at = 0.2, dat = .lagDat) {
     .ui <- rxode2::rxode2(mod)
     .m <- rxode2::rxode2(txt)
     .th <- .ui$iniDf$est[!is.na(.ui$iniDf$ntheta)]
@@ -107,7 +107,7 @@ nmTest({
       setNames(rep(at, .neta), paste0("ETA[", seq_len(.neta), "]"))
     )
     .sol <- function(p) {
-      as.data.frame(rxode2::rxSolve(.m, p, .lagDat, atol = 1e-12, rtol = 1e-12, addDosing = FALSE))
+      as.data.frame(rxode2::rxSolve(.m, p, dat, atol = 1e-12, rtol = 1e-12, addDosing = FALSE))
     }
     .s0 <- .sol(.p)
     .h <- 1e-5
@@ -194,6 +194,32 @@ nmTest({
     expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
     .histOde <- rxode2::model(.ui, d/dt(eff) <- ke * (lag(c0) - eff))
     expect_error(rxode2::rxode2(.histOde)$foceiEnv, "inside an ODE is not supported")
+  })
+
+  test_that("the linCmt() sensitivity carry keeps the lag() terms", {
+    .carryMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(2)
+        tv <- log(20)
+        eta.cl ~ 0.1
+        add.sd <- 0.5
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+        v <- exp(tv)
+        c0 <- exp(eta.cl) * wt
+        cp <- linCmt() + 0.01 * lag(c0)
+        cp ~ add(add.sd)
+      })
+    }
+    .s <- rxode2::rxode2(.carryMod)$foceiEnv
+    expect_false(is.null(.s$..linCmtCarryPairs))
+    # a time-varying covariate on a linCmt() parameter
+    .dat <- within(.lagDat, wt <- WT * (1 + 0.02 * TIME))
+    .fd <- .lagFd(.carryMod, .s$..inner, "ETA", 1L, dat = .dat)
+    expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
   })
 
   test_that("the prediction can be a lag() alone", {
