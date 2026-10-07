@@ -1858,6 +1858,7 @@ rxUiGet.foceiEtaS <- function(x, ..., theta = FALSE) {
       assign("..combThetaIdx", .idx$all, envir = .s)
     }
   }
+  .foceiLagIntoOde(.s)
   # see .foceiMatExpForcingOk(): mu-referenced/IRLS and non-interaction
   # (foce) fits fall back to the ODE flatten for a forcing (indLin()) matExp
   # model, same pattern as nlm's matExpForcing=FALSE.
@@ -1952,11 +1953,16 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
   }
   .nms <- character(nrow(.grd))
   .txt <- character(nrow(.grd))
+  .lag <- .s$..lagEta
   for (.n in seq_len(nrow(.grd))) {
-    .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
-    .basic <- eval(parse(text = .calc))
     .nms[.n] <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "dfe"], fixed = TRUE)
-    .txt[.n] <- rxode2::rxFromSE(.basic)
+    if (is.null(.lag)) {
+      .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
+      .basic <- eval(parse(text = .calc))
+    } else {
+      .basic <- .lag$dfe(get("rx_pred_f_", envir = .s), sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", .nms[.n]))
+    }
+    .txt[.n] <- .foceiLagTxt(.lag, .basic, .nms[.n])
   }
   paste0(.nms, "=", .txt)
 }
@@ -1977,6 +1983,8 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   } else {
     .malert("calculate d(f)/d(eta)")
   }
+  # history functions of a variable (#1176): chain the derivatives through them
+  .lag <- .foceiLagEtaSens(x, .s, .stateVars)
   # AR(1) exact eta-gradient: all symbolic work BEFORE the main apply (which
   # poisons later get()/[[ for AR endpoints).  Returns the per-eta correction
   # text (a plain vector) and stores ..arEtaSens on .s.
@@ -2017,7 +2025,12 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   )
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
-    .l <- eval(parse(text = .l))
+    if (is.null(.lag)) {
+      .l <- eval(parse(text = .l))
+    } else {
+      .l <- .lag$dfe(get("rx_pred_", envir = .s), sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", x["dfe"]))
+      assign(x["dfe"], .l, envir = .s)
+    }
     if (!is.null(.linCmtExtraPred)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       if (!is.null(.linCmtExtraPred[[.p]])) {
@@ -2025,7 +2038,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
         assign(x["dfe"], .l, envir = .s)
       }
     }
-    .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    .ret <- paste0(x["dfe"], "=", .foceiLagTxt(.lag, .l, x["dfe"]))
     if (!is.null(.carryPairs)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       .w <- which(.carryPairs$eta == .p)
@@ -2441,6 +2454,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
       .hi,
       .low,
       .lagDefs,
+      .s$..lagSens,
       .arEtaSens,
       .prd,
       .s$..HdEta,
@@ -2475,6 +2489,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
         .hi,
         .low,
         .lagDefs,
+        .s$..lagSens,
         .arEtaSens,
         .prd,
         .s$..HdEta,
@@ -2503,6 +2518,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     .hi,
     .low,
     .lagDefs,
+    .s$..lagSens,
     .arEtaSens,
     .prd,
     .s$..HdEta,
@@ -2612,14 +2628,19 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   on.exit({
     if (!.stopped) rxode2::rxProgressAbort()
   })
+  .lag <- .s$..lagEta
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
-    .l <- eval(parse(text = .l))
+    if (is.null(.lag)) {
+      .l <- eval(parse(text = .l))
+    } else {
+      .l <- .lag$dfe(get("rx_r_", envir = .s), sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", x["dfe"]))
+    }
     if (!is.null(.linCmtExtraR)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       if (!is.null(.linCmtExtraR[[.p]])) .l <- .l + .linCmtExtraR[[.p]]
     }
-    .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    .ret <- paste0(x["dfe"], "=", .foceiLagTxt(.lag, .l, x["dfe"]))
     if (!is.null(.carryR)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       .w <- which(.s$..linCmtCarryPairs$eta == .p)
