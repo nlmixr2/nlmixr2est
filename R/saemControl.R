@@ -653,6 +653,9 @@ saemControl <- function(
 }
 
 .saemDeparseExtra <- function(default, name, value) {
+  if (name == "DEBUG") {
+    return(paste0("trace=", deparse1(value)))
+  }
   if (name == "mcmc") {
     .ret <- character(0)
     if (!identical(default$mcmc$niter, value$niter)) {
@@ -680,5 +683,10 @@ saemControl <- function(
 
 #' @export
 rxUiDeparse.saemControl <- function(object, var) {
-  .deparseControl(object, var, saemControl(), c("genRxControl", "DEBUG"), fun = .saemDeparseExtra)
+  .ret <- .deparseControl(object, var, saemControl(), "genRxControl", fun = .saemDeparseExtra)
+  # an rxControl generated at a sigdig that could not be recovered
+  if (isTRUE(object$genRxControl) && !is.null(.ret[[3]]$rxControl)) {
+    .ret[[3]]$genRxControl <- TRUE
+  }
+  .ret
 }
