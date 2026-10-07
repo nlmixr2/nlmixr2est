@@ -62,28 +62,39 @@ nmTest({
     })
   }
 
-  test_that("the nlm family finite-differences the gradient of a lagged calculated variable (issue 1140)", {
-    skip_on_cran()
-    # c0 is a bare symbol to symengine, so its symbolic sensitivity is 0: the
-    # gradient comes from finite differences
+  # the analytic nlm gradient of a model at its initial estimates, and its
+  # central difference
+  .lagGradFd <- function(mod) {
     .x <- suppressMessages(nlmObjectiveSetup(
-      .lagMod,
+      mod,
       .lagDat,
       control = nlmControl(print = 0L),
       gradient = TRUE,
       scale = "natural"
     ))
-    .g <- nlmLikEvalC_(.x)$grad
-    .fd <- vapply(
-      seq_along(.x),
-      function(i) {
-        .e <- replace(numeric(length(.x)), i, 1e-5)
-        (nlmSolveR(.x + .e) - nlmSolveR(.x - .e)) / 2e-5
-      },
-      numeric(1)
+    on.exit(.nlmFreeEnv())
+    list(
+      grad = nlmLikEvalC_(.x)$grad,
+      fd = vapply(
+        seq_along(.x),
+        function(i) {
+          .e <- replace(numeric(length(.x)), i, 1e-5)
+          (nlmSolveR(.x + .e) - nlmSolveR(.x - .e)) / 2e-5
+        },
+        numeric(1)
+      )
     )
-    .nlmFreeEnv()
-    expect_equal(.g, .fd, tolerance = 1e-2)
+  }
+
+  test_that("the nlm family carries theta sensitivities through a lagged calculated variable (issue 1140)", {
+    skip_on_cran()
+    # c0 is a bare symbol to symengine, so its sensitivity is its own lhs and
+    # d(lag(c0))/d(theta) = lag(d(c0)/d(theta)); no theta is finite-differenced
+    .s <- suppressMessages(rxode2::rxode2(.lagMod)$nlmEnv)
+    expect_equal(.s$.eventTheta, rep(0L, 4))
+    expect_true(any(grepl("lag(rx_lsens_1_1_)", .s$..nlmS, fixed = TRUE)))
+    .r <- .lagGradFd(.lagMod)
+    expect_equal(.r$grad, .r$fd, tolerance = 5e-3)
     # the gradient methods reach the optimum least squares (nls) finds
     .nls <- .nlmixr(.lagMod, .lagDat, est = "nls", control = nlsControl(print = 0L, solveType = "fun"))
     .nlm <- .nlmixr(.lagMod, .lagDat, est = "nlm", control = nlmControl(print = 0L))
@@ -93,6 +104,29 @@ nmTest({
     # nls fits it with its own gradient too
     .nlsGrad <- .nlmixr(.lagMod, .lagDat, est = "nls", control = nlsControl(print = 0L))
     expect_equal(.nlsGrad$theta, .nls$theta, tolerance = 1e-4)
+  })
+
+  test_that("lagged sensitivities chain through diff() and into the ODEs (issue 1140)", {
+    skip_on_cran()
+    # c1 lags c0, and diff(c1) needs the sensitivity of c1
+    .diffMod <- .lagMod |>
+      rxode2::model(c1 <- 2 * c0 + lag(c0), append = c0) |>
+      rxode2::model(cp <- 0.5 * c0 + 0.5 * lag(c0) + 0.1 * diff(c1))
+    expect_equal(suppressMessages(rxode2::rxode2(.diffMod)$nlmEnv$.eventTheta), rep(0L, 4))
+    .r <- .lagGradFd(.diffMod)
+    expect_equal(.r$grad, .r$fd, tolerance = 5e-3)
+    # an ODE that uses c0 gets c0's definition for its sensitivities
+    .odeMod <- .lagMod |>
+      rxode2::model(d / dt(eff) <- c0 - eff, append = c0) |>
+      rxode2::model(cp <- eff + 0.5 * lag(c0))
+    expect_equal(suppressMessages(rxode2::rxode2(.odeMod)$nlmEnv$.eventTheta), rep(0L, 4))
+    .r <- .lagGradFd(.odeMod)
+    expect_equal(.r$grad, .r$fd, tolerance = 5e-3)
+    # an ODE with lag(c0) has no sensitivity ODE: the thetas are finite-differenced
+    .lagOdeMod <- .lagMod |>
+      rxode2::model(d / dt(eff) <- lag(c0) - eff, append = c0) |>
+      rxode2::model(cp <- eff + 0.5 * c0)
+    expect_equal(suppressMessages(rxode2::rxode2(.lagOdeMod)$nlmEnv$.eventTheta), rep(1L, 4))
   })
 
   test_that("the lagged definitions are matched by name (issue 1140)", {
@@ -105,9 +139,9 @@ nmTest({
   })
 
   test_that("the predictions of a lagged model depend on the thetas it uses (issue 1140)", {
-    # the derivatives through c0 are 0, so the build counts the thetas the
-    # predictions, ODEs and calculated variables use: THETA[1-3] enter the ODEs
-    # and c0, THETA[4] the error model
+    # used when a lagged variable is finite-differenced: the build counts the
+    # thetas the predictions, ODEs and calculated variables use: THETA[1-3]
+    # enter the ODEs and c0, THETA[4] the error model
     .s <- suppressMessages(rxode2::rxode2(.lagMod)$nlmEnv)
     expect_identical(.nlmFamilyThetaUsed(.s), rep(TRUE, 4))
     .s$..maxTheta <- 5L
