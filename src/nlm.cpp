@@ -888,16 +888,23 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
 // optimHessType: 1 = forward, 2 = central (shi21Hessian's own codes).  No hMax/hMin,
 // so a searched step is bounded by the shi21 defaults.
 //
-// A step is reused only while theta stays inside the span its search probed (4h
-// forward, 3h central); once theta moves past it the step is searched again,
-// starting from the old step (#1175).
+// A step is reused only while theta stays inside the box the searches probed
+// (each coordinate within 4h forward, 3h central, of where the step was searched);
+// once theta leaves it the step is searched again, starting from the old step (#1175).
 arma::mat nlmCalcHessian(arma::vec &gr0, arma::vec &theta) {
   if (nlmOp.thetahh == NULL) stop(_("incorrect solve type"));
   const double span = (nlmOp.optimHessType == shi21HessForward) ? 4.0 : 3.0;
   std::vector<char> searched(nlmOp.ntheta);
   for (unsigned int k = 0; k < nlmOp.ntheta; ++k) {
     double &h = nlmOp.thetahh[k];
-    if (h > 0 && arma::abs(theta - nlmOp.hessThetaAt.col(k)).max() > span*h) h = -h;
+    if (h > 0) {
+      for (unsigned int j = 0; j < nlmOp.ntheta; ++j) {
+        if (fabs(theta[j] - nlmOp.hessThetaAt(j, k)) > span*fabs(nlmOp.thetahh[j])) {
+          h = -h;
+          break;
+        }
+      }
+    }
     searched[k] = h <= 0;
   }
   arma::mat H = shi21Hessian(nlmSolveGrad1, theta, gr0, 0, nlmOp.optimHessType,

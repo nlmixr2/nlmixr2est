@@ -104,7 +104,7 @@ nmTest({
 
   test_that("a Hessian step is re-searched once theta leaves its search span (#1175)", {
     skip_on_cran()
-    # the gradient is quadratic, so a central difference is exact at any step
+    # different curvature along each coordinate, so the searched steps differ
     .mod <- function() {
       ini({
         a <- 0.3
@@ -113,7 +113,7 @@ nmTest({
       })
       model({
         v <- a + b * time
-        ll(bin) ~ DV * v + 0.5 * a^3 - 2 * (a - 0.5)^2 - a * b - 3 * (b + 1)^2 + b * c + 0.25 * a * c - 0.5 * c^2
+        ll(bin) ~ DV * v - log(1 + exp(v)) - exp(4 * a) - 0.1 * exp(0.5 * b) - 0.5 * c^2 + 0.01 * c^4
       })
     }
     .d <- data.frame(ID = 1L, TIME = seq(0.1, 10, length.out = 20), AMT = 0, EVID = 0L)
@@ -121,31 +121,26 @@ nmTest({
     for (.type in c("central", "forward")) {
       .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = .type)
       .withNlmProblem(.mod, .d, .ctl, function(x) {
-      .gr <- function(p) attr(nlmSolveGradR(p), "gradient")
-      .oracle <- function(p) {
-        vapply(
-          seq_along(p),
-          function(k) {
-            .e <- replace(numeric(length(p)), k, 1e-3)
-            (.gr(p + .e) - .gr(p - .e)) / 2e-3
-          },
-          numeric(length(p))
-        )
-      }
-      nlmSolveGradHess(x + 0)
-      .i0 <- .nlmHessStepInfo()
-      expect_equal(.i0$nSearch, 3L)
-      expect_true(all(.i0$step > 0))
-      # same theta, then a move inside every step's span (3h central, 4h
-      # forward): steps reused
-      nlmSolveGradHess(x + 0)
-      nlmSolveGradHess(x + c(2.9 * min(.i0$step), 0, 0))
-      expect_identical(.nlmHessStepInfo(), .i0, info = .type)
-      # a move past every span re-searches every step
-      .x1 <- x + c(10 * max(.i0$step), 0, 0)
-      .h1 <- attr(nlmSolveGradHess(.x1 + 0), "hessian")
-      expect_equal(.nlmHessStepInfo()$nSearch, 6L, info = .type)
-      if (.type == "central") expect_equal(.h1, .oracle(.x1), tolerance = 1e-6)
+        nlmSolveGradHess(x + 0)
+        .i0 <- .nlmHessStepInfo()
+        .h <- .i0$step
+        expect_equal(.i0$nSearch, 3L)
+        expect_true(all(.h > 0))
+        # the steps differ, so a gate mixing one coordinate's move with another's
+        # step would show below
+        expect_gt(max(.h) / min(.h), 1.2)
+        .span <- if (.type == "central") 3 else 4
+        # every coordinate inside its own step's span: steps reused
+        nlmSolveGradHess(x + 0)
+        nlmSolveGradHess(x + 0.97 * .span * .h)
+        expect_identical(.nlmHessStepInfo(), .i0, info = .type)
+        # only the smallest-step coordinate leaves its span: every step re-searched
+        .k <- which.min(.h)
+        nlmSolveGradHess(replace(x, .k, x[.k] + 1.03 * .span * .h[.k]))
+        expect_equal(.nlmHessStepInfo()$nSearch, 6L, info = .type)
+        # every coordinate past its span
+        nlmSolveGradHess(x + 1.1 * .span * .h)
+        expect_equal(.nlmHessStepInfo()$nSearch, 9L, info = .type)
       })
     }
   })
