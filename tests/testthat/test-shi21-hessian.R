@@ -118,8 +118,9 @@ nmTest({
     }
     .d <- data.frame(ID = 1L, TIME = seq(0.1, 10, length.out = 20), AMT = 0, EVID = 0L)
     .d$DV <- as.integer(seq_len(nrow(.d)) %% 2 == 0)
-    .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = "central")
-    .withNlmProblem(.mod, .d, .ctl, function(x) {
+    for (.type in c("central", "forward")) {
+      .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = .type)
+      .withNlmProblem(.mod, .d, .ctl, function(x) {
       .gr <- function(p) attr(nlmSolveGradR(p), "gradient")
       .oracle <- function(p) {
         vapply(
@@ -135,16 +136,18 @@ nmTest({
       .i0 <- .nlmHessStepInfo()
       expect_equal(.i0$nSearch, 3L)
       expect_true(all(.i0$step > 0))
-      # same theta, then a move inside every step's span: steps reused
+      # same theta, then a move inside every step's span (3h central, 4h
+      # forward): steps reused
       nlmSolveGradHess(x + 0)
-      nlmSolveGradHess(x + c(0.5 * min(.i0$step), 0, 0))
-      expect_identical(.nlmHessStepInfo(), .i0)
+      nlmSolveGradHess(x + c(2.9 * min(.i0$step), 0, 0))
+      expect_identical(.nlmHessStepInfo(), .i0, info = .type)
       # a move past every span re-searches every step
       .x1 <- x + c(10 * max(.i0$step), 0, 0)
       .h1 <- attr(nlmSolveGradHess(.x1 + 0), "hessian")
-      expect_equal(.nlmHessStepInfo()$nSearch, 6L)
-      expect_equal(.h1, .oracle(.x1), tolerance = 1e-6)
-    })
+      expect_equal(.nlmHessStepInfo()$nSearch, 6L, info = .type)
+      if (.type == "central") expect_equal(.h1, .oracle(.x1), tolerance = 1e-6)
+      })
+    }
   })
 
   test_that("nlm and nlminb re-search the Hessian steps as theta moves (#1175)", {
