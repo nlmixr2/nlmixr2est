@@ -321,9 +321,9 @@ nmTest({
     # the centre of the stencil is the objective evaluated the same way, so R must be the
     # analytic observed information.  The same finite differences move by up to 4% when
     # the step is made 4 times larger or the tolerances 100 times tighter; 5% is the bound.
-    # The centre used to be the final objective, whose ETAs another procedure optimized at
-    # the fit's own ODE tolerance: here every diagonal of R came out negative.
-    # at the initial estimates
+    # A centre taken from the final objective (ETAs optimized by another procedure, at the
+    # fit's ODE tolerance) makes every diagonal of R negative here, at the initial
+    # estimates
     .an0 <- .nlmixr(.quietOneCmt, theo_sd, "focei", .quietCtl(maxOuterIterations = 0L, covMethod = "analytic"))
     .r0 <- .nlmixr(.quietOneCmt, theo_sd, "focei", .quietCtl(maxOuterIterations = 0L, covMethod = "r", covFull = FALSE))
     .th <- c("tka", "tcl", "tv", "add.sd")
@@ -393,7 +393,8 @@ nmTest({
     skip_on_cran()
     # The probes run at the fit's tolerances times 1e-3 (ODE rtol 1e-7, atol 1e-9, inner
     # 1e-9 at sigdig 3).  At the fit's own (rtol 1e-3, inner 1e-5) the theta-only "r" SE of
-    # tka was 0.47 against an analytic 0.19, numerical noise; now every SE is within 4%.
+    # at the default tolerances every SE is within 4% of the analytic one (at the fit's own
+    # tolerances the probes difference numerical noise: tka 0.47 against 0.19)
     .an <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, covMethod = "analytic"))
     .r <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, covMethod = "r", covFull = FALSE))
     expect_identical(.r$covMethod, "r")
@@ -401,6 +402,42 @@ nmTest({
     # Omega is held at its value in a theta-only R: the theta block of the information
     .seCond <- sqrt(diag(solve(solve(.an$cov)[.th, .th])))
     expect_lt(max(abs(sqrt(diag(.r$cov))[.th] / .seCond - 1)), 0.05)
+  })
+
+  test_that("the covariance step tightens the inner problem of every inner optimizer", {
+    skip_on_cran()
+    # each inner optimizer reads its own convergence tolerances (n1qn1 epsilon,
+    # lbfgsb3c's pgtol/abstol/reltol/factr); the step tightens all of them, so the
+    # finite-difference R is the analytic information whichever one runs the legs
+    # (measured 0.7% for n1qn1 and 2.8% for lbfgsb3c, against 32% and 66% with the
+    # inner problems at the estimation's tolerances)
+    .th <- c("tka", "tcl", "tv", "add.sd")
+    for (.io in c("n1qn1", "lbfgsb3c")) {
+      .an <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, innerOpt = .io, covMethod = "analytic"))
+      .r <- .nlmixr(
+        .quietOneCmt,
+        theo_sd,
+        "focei",
+        foceiControl(print = 0, innerOpt = .io, covMethod = "r", covFull = FALSE)
+      )
+      expect_identical(.r$covMethod, "r", label = .io)
+      .rel <- sqrt(diag(.r$cov))[.th] / sqrt(diag(.an$cov))[.th] - 1
+      expect_lt(max(abs(.rel)), 0.05, label = .io)
+    }
+  })
+
+  test_that("the covariance probe tolerances of a high-sigdig fit stay solvable", {
+    skip_on_cran()
+    # sigdig = 10 asks for ODE and inner tolerances near 1e-11; 1e-3 of those is floored
+    # at 1e-14
+    .f <- .nlmixr(
+      .quietOneCmt,
+      theo_sd,
+      "focei",
+      foceiControl(print = 0, sigdig = 10, covMethod = "r", covFull = FALSE, maxOuterIterations = 2L)
+    )
+    expect_identical(.f$covMethod, "r")
+    expect_true(all(is.finite(sqrt(diag(.f$cov)))))
   })
 
   test_that("the covariance step runs at its probe tolerances and leaves estimation as it was", {

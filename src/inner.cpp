@@ -8507,15 +8507,19 @@ struct OdeFitTolGuard {
 // marginal objectives that differ in their last few digits, so the solves and the inner
 // problems behind them run tighter than the estimation's: each tolerance is the fit's
 // times covProbeTolFactor, capped at covProbeOdeTolMax (ODE atol/rtol) or
-// covProbeInnerTolMax (the trust-region inner tolerances).  At the default sigdig = 3
-// that is rtol 1e-7, atol 1e-9 and trustFterm = trustMterm 1e-9; a fit that tightens its
-// own tolerances tightens these with them.
+// covProbeInnerTolMax (the inner optimizer's convergence tolerances).  At the default
+// sigdig = 3 that is rtol 1e-7, atol 1e-9 and trustFterm = trustMterm 1e-9; a fit that
+// tightens its own tolerances tightens these with them, down to covProbeTolMin (the floor
+// of the analytic covariance's solves) unless the fit's own is already below it.  A
+// tolerance that is not a positive number is left as the fit has it.
 static const double covProbeTolFactor = 1e-3;
 static const double covProbeOdeTolMax = 1e-7;
 static const double covProbeInnerTolMax = 1e-9;
+static const double covProbeTolMin = 1e-14;
 
 static inline double covProbeTol(double fitTol, double tolMax) {
-  return std::min(fitTol * covProbeTolFactor, tolMax);
+  if (!R_FINITE(fitTol) || fitTol <= 0) return fitTol;
+  return std::max(std::min(fitTol, covProbeTolMin), std::min(fitTol * covProbeTolFactor, tolMax));
 }
 
 // A positive number the control holds under `name`, else NA (NULL, absent, or not one)
@@ -8562,24 +8566,37 @@ struct CovSolveTolGuard {
   }
 };
 
-// RAII: the trust-region inner tolerances (trustFterm, trustMterm) of the covariance
-// step's inner problems, restored on exit.  The internal control element covInnerTol
-// sets both; NULL derives each from the fit's (covProbeTol).  A fit without a
-// covariance step is untouched.
+// RAII: the inner optimizers' convergence tolerances during the covariance step, restored
+// on exit: trust's trustFterm/trustMterm, n1qn1's epsilon and lbfgsb3c's pgtol, abstol,
+// reltol and factr (a multiple of the machine epsilon, so tightened through the relative
+// tolerance it stands for).  Only the active optimizer reads its own, so all of them are
+// set.  The internal control element covInnerTol sets every one; NULL derives each from
+// the fit's (covProbeTol).  A fit without a covariance step is untouched.
 struct CovInnerTolGuard {
   bool active = false;
-  double savFterm = NA_REAL, savMterm = NA_REAL;
+  double savFterm = NA_REAL, savMterm = NA_REAL, savEpsilon = NA_REAL;
+  double savFactr = NA_REAL, savPgtol = NA_REAL, savAbstol = NA_REAL, savReltol = NA_REAL;
+  static double tighten(double fitTol, double tol) {
+    return R_FINITE(tol) ? tol : covProbeTol(fitTol, covProbeInnerTolMax);
+  }
   explicit CovInnerTolGuard(Environment e) {
     if (op_focei.covMethod == 0) return;
     savFterm = op_focei.trustFterm;
     savMterm = op_focei.trustMterm;
+    savEpsilon = op_focei.epsilon;
+    savFactr = op_focei.innerFactr;
+    savPgtol = op_focei.innerPgtol;
+    savAbstol = op_focei.innerAbstol;
+    savReltol = op_focei.innerReltol;
     double tol = covControlTol(e, "covInnerTol");
-    if (R_FINITE(tol)) {
-      op_focei.trustFterm = tol;
-      op_focei.trustMterm = tol;
-    } else {
-      op_focei.trustFterm = covProbeTol(savFterm, covProbeInnerTolMax);
-      op_focei.trustMterm = covProbeTol(savMterm, covProbeInnerTolMax);
+    op_focei.trustFterm = tighten(savFterm, tol);
+    op_focei.trustMterm = tighten(savMterm, tol);
+    op_focei.epsilon = tighten(savEpsilon, tol);
+    op_focei.innerPgtol = tighten(savPgtol, tol);
+    op_focei.innerAbstol = tighten(savAbstol, tol);
+    op_focei.innerReltol = tighten(savReltol, tol);
+    if (R_FINITE(savFactr) && savFactr > 0) {
+      op_focei.innerFactr = std::max(1.0, tighten(savFactr * DBL_EPSILON, tol) / DBL_EPSILON);
     }
     active = true;
   }
@@ -8587,6 +8604,11 @@ struct CovInnerTolGuard {
     if (active) {
       op_focei.trustFterm = savFterm;
       op_focei.trustMterm = savMterm;
+      op_focei.epsilon = savEpsilon;
+      op_focei.innerFactr = savFactr;
+      op_focei.innerPgtol = savPgtol;
+      op_focei.innerAbstol = savAbstol;
+      op_focei.innerReltol = savReltol;
     }
   }
 };
@@ -8636,9 +8658,13 @@ struct CovEtaStart {
   int nId = 0, savedMaxInner;
   bool raised = false;
   explicit CovEtaStart(Environment e) : savedMaxInner(op_focei.maxInnerIterations) {
-    _covEtaStart = this;
+    // a fit without a covariance step keeps its inner state as it is
+    if (op_focei.covMethod == 0) return;
     rx = getRxSolve_();
-    if (op_focei.neta <= 0 || rx == NULL || inds_focei == NULL || getRxNsub(rx) <= 0) return;
+    if (op_focei.neta <= 0 || rx == NULL || inds_focei == NULL || getRxNsub(rx) <= 0) {
+      _covEtaStart = this;
+      return;
+    }
     nId = foceiIndSetupN(rx);   // a mixture has one inner problem per subject and component
     entry.reserve((size_t)nId);
     for (int id = 0; id < nId; ++id) {
@@ -8656,12 +8682,24 @@ struct CovEtaStart {
       op_focei.maxInnerIterations = cap;
       raised = true;
     }
+    // set last, so a constructor that throws leaves no pointer to a dead object
+    _covEtaStart = this;
   }
   ~CovEtaStart() {
     _covEtaStartOn = false;
-    _covEtaStart = NULL;
+    if (_covEtaStart == this) _covEtaStart = NULL;
     if (raised) op_focei.maxInnerIterations = savedMaxInner;
-    // `entry` restores each subject's inner state as it is destroyed
+    if (entry.empty()) return;
+    // Restoring each subject's inner state puts fInd->setup and oldEta back, the state
+    // in which likInner0() answers from its cache, while ind->solve still holds the
+    // last probe's solution at another theta.  Force the next evaluation to solve (as
+    // after the outer gradient's guards).
+    entry.clear();
+    for (int id = 0; id < nId; ++id) {
+      inds_focei[id].setup = 0;
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+      if (ind != NULL) setIndSolve(ind, -1);
+    }
   }
   // f0: the objective at theta (the estimates) by the legs' procedure, from eta-hat
   double settle(double *theta) {
@@ -8673,15 +8711,25 @@ struct CovEtaStart {
         // the procedure foceiOuterFinal() takes a fit's final objective with (its eta
         // searches and resets included, and the eta step caches cleared).  A native fit
         // and a refit started from its ETAs then start their legs from the same eta-hat.
+        // The pass runs foceiOfv0()'s ODE-tolerance retries; their flags and counters
+        // describe the estimation (the "tolerances were temporarily increased" warning),
+        // so they are put back afterwards.
         struct FinalObjGuard {
-          int calcGrad;
-          FinalObjGuard() : calcGrad(op_focei.calcGrad) {
+          int calcGrad, objfRecalN, stickyRecalcN1, stickyTol, reducedTol;
+          FinalObjGuard() : calcGrad(op_focei.calcGrad), objfRecalN(op_focei.objfRecalN),
+                            stickyRecalcN1(op_focei.stickyRecalcN1),
+                            stickyTol(op_focei.stickyTol.load()),
+                            reducedTol(op_focei.reducedTol.load()) {
             op_focei.calcGrad = 0;
             _finalObfCalc = true;
           }
           ~FinalObjGuard() {
             _finalObfCalc = false;
             op_focei.calcGrad = calcGrad;
+            op_focei.objfRecalN = objfRecalN;
+            op_focei.stickyRecalcN1 = stickyRecalcN1;
+            op_focei.stickyTol.store(stickyTol);
+            op_focei.reducedTol.store(reducedTol);
           }
         } _finalObj;
         std::fill_n(op_focei.getahh, op_focei.gEtaGTransN, 0.0);
@@ -11513,7 +11561,16 @@ NumericMatrix foceiCalcCov(Environment e){
         // The centre value of the step search and the R stencil: the objective at the
         // estimates by the legs' own inner procedure and start (CovEtaStart), not the final
         // objective, whose ETAs were optimized by a different procedure.
-        op_focei.lastOfv = covEtaStartF0(theta.memptr());
+        double f0 = covEtaStartF0(theta.memptr());
+        // foceiOfv0() reports a failed evaluation as 5e100; as a stencil centre it
+        // would make every R diagonal about -1e100
+        if (!R_FINITE(f0) || f0 >= 5e100) {
+          warning(_("covariance step failed: the objective at the estimates could not be evaluated at the covariance tolerances"));
+          e["covMethod"] = CharacterVector::create("failed");
+          NumericMatrix ret;
+          return ret;
+        }
+        op_focei.lastOfv = f0;
         int gillKcov;
         double gillStepCov;
         double gillFtolCov;

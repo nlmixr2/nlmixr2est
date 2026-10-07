@@ -519,7 +519,8 @@
   `getVarCov(force = TRUE)`, the post-fit recomputes and the vae/emvi/fbvi
   covariance) now solves its probes, and the centre they are compared with,
   at tolerances derived from the fit's: each ODE tolerance times 1e-3, capped
-  at 1e-7, and the inner `trustFterm`/`trustMterm` times 1e-3, capped at 1e-9
+  at 1e-7, and the inner optimizer's tolerances (`trustFterm`/`trustMterm`,
+  n1qn1's `epsilon`, lbfgsb3c's `innerLbfgs*`) times 1e-3, capped at 1e-9
   (at the default `sigdig = 3`: `rtol = 1e-7`, `atol = 1e-9`, inner 1e-9).
   `covSolveTol = NULL` used to leave them at the estimation's tolerances
   (`rtol = 1e-3`, inner 1e-5), where the probes differenced numerical noise:

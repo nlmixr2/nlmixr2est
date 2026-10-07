@@ -317,9 +317,12 @@ solves behind \code{covMethod="analytic"}.  \code{NULL} (default) derives
 them from the fit's own tolerances: the finite-difference solves use
 \code{atol} and \code{rtol} each times 1e-3, capped at 1e-7 (at the default
 \code{sigdig = 3}, \code{rtol = 1e-7} and \code{atol = 1e-9}), and the
-analytic augmented solves use \code{min(1e-8, 10^-(sigdig + 6))}.  The
-inner problems of the finite-difference probes are tightened the same way:
-\code{trustFterm} and \code{trustMterm} each times 1e-3, capped at 1e-9.
+analytic augmented solves use \code{max(1e-14, min(1e-8, 10^-(sigdig + 6)))}.  The
+inner problems of the finite-difference probes are tightened the same way,
+whichever \code{innerOpt} runs them: \code{trustFterm} and
+\code{trustMterm}, \code{epsilon} (n1qn1), and the \code{innerLbfgs*}
+tolerances (lbfgsb3c) each times 1e-3, capped at 1e-9.  No derived
+tolerance goes below 1e-14 unless the fit's own already is.
 A number sets \code{atol = rtol = covSolveTol} for both kinds of solve.
 Estimation itself always runs at the fit's tolerances.}
 
