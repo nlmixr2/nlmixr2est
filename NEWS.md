@@ -231,6 +231,12 @@
   over the adaptive quadrature nodes, changing an `agq` objective, and a long
   enough vector past the end of the buffer, crashing the fit.
 
+- `shiErr` and `hessErr` must now be > 0 in `nlmControl()`,
+  `nlminbControl()`, `nlsControl()`, `optimControl()` and `trustControl()`;
+  0 was accepted and silently gave an all-zero finite-difference gradient for
+  event parameters.  A hand-built control with a non-positive value uses the
+  default (#1174).
+
 ### Covariance
 
 - The post-fit covariance of a model with inter-occasion variability is now
