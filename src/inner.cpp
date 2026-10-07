@@ -7599,8 +7599,8 @@ void numericGrad(double *theta, double *g){
     }
     if (op_focei.slow) {
       op_focei.cur=op_focei.totTick;
-      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-      RSprintf("\n");
+      op_focei.curTick = nmProgressEnd(op_focei.totTick, op_focei.curTick, op_focei.t0,
+                                       nmProgressInPlace());
     }
     op_focei.calcGrad=0;
     op_focei.curGill=2;
@@ -7647,8 +7647,8 @@ void numericGrad(double *theta, double *g){
     }
     if(op_focei.slow){
       op_focei.cur=op_focei.totTick;
-      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-      RSprintf("\n");
+      op_focei.curTick = nmProgressEnd(op_focei.totTick, op_focei.curTick, op_focei.t0,
+                                       nmProgressInPlace());
     }
     op_focei.didGill=1;
     if (op_focei.reducedTol2 && op_focei.repeatGillN < op_focei.repeatGillMax){
@@ -7854,8 +7854,8 @@ void numericGrad(double *theta, double *g){
     }
     if(op_focei.slow) {
       op_focei.cur=op_focei.totTick;
-      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-      RSprintf("\n");
+      op_focei.curTick = nmProgressEnd(op_focei.totTick, op_focei.curTick, op_focei.t0,
+                                       nmProgressInPlace());
     }
     op_focei.calcGrad=0;
   }
@@ -11383,6 +11383,7 @@ NumericMatrix foceiCalcCov(Environment e){
           op_focei.totTick += 2*op_focei.npars +2*(op_focei.npars*op_focei.npars);
         }
         op_focei.totTick += op_focei.npars;
+        bool covInPlace = nmProgressInPlace();
         op_focei.curTick = nmProgressStart(op_focei.totTick, op_focei.t0);
         // finish the bar on every exit, including the early failure returns
         struct CovProgressEnd {
@@ -11391,7 +11392,7 @@ NumericMatrix foceiCalcCov(Environment e){
             op_focei.curTick = nmProgressEnd(op_focei.totTick, op_focei.curTick,
                                              op_focei.t0, inPlace);
           }
-        } _covProgressEnd{nmProgressInPlace()};
+        } _covProgressEnd{covInPlace};
         double hf, hphif, err;
         unsigned int j, k;
         arma::vec theta(op_focei.npars);
