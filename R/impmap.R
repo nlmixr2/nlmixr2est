@@ -800,6 +800,10 @@ impmapControl <- function(
 
 #' @export
 rxUiDeparse.impmapControl <- function(object, var) {
+  # a fit resolves gammaMethod = "auto"; write what was asked for
+  if (!is.null(object$gammaMethodUser)) {
+    object$gammaMethod <- object$gammaMethodUser
+  }
   # defaults that follow other arguments are compared with what those give
   .derived <- list(
     sirSample = max(25L, as.integer(ceiling(max(object$isample) / 10))),

@@ -223,6 +223,11 @@ nmTest({
       quote(ctl <- npagControl(cycles = 3L, cores = 2L))
     )
     expect_equal(rxode2::rxUiDeparse(npbControl(points = 20L), "ctl"), quote(ctl <- npbControl(points = 20L)))
+    ## a fit resolves gammaMethod = "auto" and keeps the request
+    .x <- impControl()
+    .x$gammaMethod <- "global"
+    .x$gammaMethodUser <- "auto"
+    expect_equal(rxode2::rxUiDeparse(.x, "ctl"), quote(ctl <- impControl()))
     expect_equal(
       rxode2::rxUiDeparse(impControl(covMethod = "r,s"), "ctl"),
       quote(ctl <- impControl(covMethod = "r,s"))
