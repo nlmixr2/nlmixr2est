@@ -75,11 +75,6 @@
   (`singular gradient matrix at initial parameter estimates` with
   `algorithm = "default"`).
 
-- `est="nls"` with `nlsControl(solveType="fun")` fits a model that uses
-  `lag()` of a calculated variable.  It stopped with `The following
-  parameter(s) are required for solving`, because its model did not define
-  that variable.
-
 - `lbfgsb3cControl(maxit=)` was documented but dropped, so `est="lbfgsb3c"`
   always used lbfgsb3c's own limit of 1000 evaluations; it is now honored
   (default 10000).
