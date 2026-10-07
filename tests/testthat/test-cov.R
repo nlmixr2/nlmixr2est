@@ -143,9 +143,10 @@ test_that("covInnerTol survives a foceiControl() round trip", {
   .ctl$covInnerTol <- 1e-11
   expect_identical(getValidNlmixrCtl.focei(list(.ctl))$covInnerTol, 1e-11)
   expect_identical(foceiControl(covInnerTol = 1e-10)$covInnerTol, 1e-10)
-  expect_error(foceiControl(covInnerTol = 0), "covInnerTol")
-  expect_error(foceiControl(covInnerTol = -1e-9), "covInnerTol")
-  expect_error(foceiControl(covInnerTol = "a"), "covInnerTol")
+  .msg <- "'covInnerTol' must be a finite number > 0"
+  for (.bad in list(0, -1e-9, "a", Inf, c(1e-9, 1e-8))) {
+    expect_error(foceiControl(covInnerTol = .bad), .msg, fixed = TRUE)
+  }
   expect_error(foceiControl(covInnerTol = c(1e-9, 1e-9)), "covInnerTol")
 })
 
@@ -385,8 +386,8 @@ nmTest({
   # started from the fit's ETAs.  The full nlmixr2() refits (the recompute, vae/vi)
   # reproduce it exactly; setCov()'s lighter refit to within the inner problem's
   # tolerance (theta SEs within 1e-5 relative, Omega SEs within 2e-3 of the full
-  # shape).  They used to hold the ETAs fixed (and setCov() dropped the
-  # interaction), which made the theta SEs several times too small.
+  # shape).  Holding the ETAs fixed (or dropping the interaction) would make the
+  # theta SEs several times too small.
   .zeroOuterRef <- function(fit, covMethod, covFull = FALSE, interaction = TRUE) {
     suppressWarnings(nlmixr2(
       fit$finalUi,
@@ -466,8 +467,8 @@ nmTest({
   })
 
   test_that("setCov() differentiates the likelihood the fit used: interaction is kept", {
-    # with a proportional error the interaction changes the objective; setCov() used to
-    # differentiate the FOCE one (interaction = 0) of a FOCEI fit
+    # with a proportional error the interaction changes the objective, so setCov() of a
+    # FOCEI fit must differentiate the FOCEI one, not the FOCE one (interaction = 0)
     .ctl <- function(...) foceiControl(print = 0, calcTables = FALSE, covFull = FALSE, ...)
     .none <- suppressWarnings(nlmixr2(.ceOneCmt, nlmixr2data::theo_sd, est = "focei", control = .ctl(covMethod = "")))
     .focei <- suppressWarnings(nlmixr2(.ceOneCmt, nlmixr2data::theo_sd, est = "focei", control = .ctl(covMethod = "r")))
@@ -562,4 +563,33 @@ nmTest({
       expect_equal(unname(.pf[.th, "SE"]), unname(.seOf(.fit)[.th]), tolerance = 1e-12, label = .est)
     }
   })
+})
+
+test_that("a vae or vi FOCEi covariance that fails leaves the fit without one, with a warning", {
+  # the method's estimates are done by then, so neither a failed recompute nor a
+  # failed install may abort the fit
+  .e <- new.env(parent = emptyenv())
+  local_mocked_bindings(
+    .setCovEnv = function(fit) .e,
+    .foceiRecomputeCov = function(...) stop("no solve"),
+    .package = "nlmixr2est"
+  )
+  expect_warning(
+    .r <- .foceiInstallOwnEtaCov(.e, foceiControl()),
+    "the FOCEi covariance could not be computed (no solve); none installed",
+    fixed = TRUE
+  )
+  expect_false(.r)
+  local_mocked_bindings(
+    .foceiRecomputeCov = function(...) list(cov = diag(2), covMethod = "r", what = "r", extras = list()),
+    .covInstall = function(...) stop("no table"),
+    .package = "nlmixr2est"
+  )
+  expect_warning(
+    .r <- .foceiInstallOwnEtaCov(.e, foceiControl()),
+    "the FOCEi covariance could not be installed (no table); none installed",
+    fixed = TRUE
+  )
+  expect_false(.r)
+  expect_false(exists("cov", envir = .e, inherits = FALSE))
 })

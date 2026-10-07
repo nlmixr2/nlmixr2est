@@ -742,13 +742,34 @@
 #' @return invisibly `TRUE` if installed
 #' @noRd
 .foceiInstallOwnEtaCov <- function(fit, control) {
-  .env <- .setCovEnv(fit)
-  .r <- tryCatch(.foceiRecomputeCov(fit, "focei", control), error = function(e) list())
-  if (is.null(.r) || !is.environment(.env)) {
+  .env <- tryCatch(.setCovEnv(fit), error = function(e) NULL)
+  if (!is.environment(.env)) {
+    return(invisible(FALSE))
+  }
+  .r <- tryCatch(.foceiRecomputeCov(fit, "focei", control), error = function(e) e)
+  if (inherits(.r, "error")) {
+    warning(
+      sprintf("the FOCEi covariance could not be computed (%s); none installed", conditionMessage(.r)),
+      call. = FALSE
+    )
+    return(invisible(FALSE))
+  }
+  if (is.null(.r)) {
     return(invisible(FALSE))
   }
   .extras <- .r$extras[setdiff(names(.r$extras), .covOwnTables)]
-  .covInstall(.env, .r$cov, .r$covMethod, what = .r$what, extras = .extras, refresh = "all")
+  # the fit is complete; a failed install leaves it without a covariance, not without
+  # its estimates
+  tryCatch(
+    .covInstall(.env, .r$cov, .r$covMethod, what = .r$what, extras = .extras, refresh = "all"),
+    error = function(e) {
+      warning(
+        sprintf("the FOCEi covariance could not be installed (%s); none installed", conditionMessage(e)),
+        call. = FALSE
+      )
+      invisible(FALSE)
+    }
+  )
 }
 
 #' Parameter tables a fit that estimates its own ETAs keeps when its FOCEi
