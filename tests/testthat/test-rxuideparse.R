@@ -146,4 +146,70 @@ nmTest({
       quote(var <- tableControl(censMethod = "epred"))
     )
   })
+
+  test_that("a deparsed control evaluates back to the identical control", {
+    .ctors <- c(
+      "agqControl",
+      "bobyqaControl",
+      "emviControl",
+      "fbviControl",
+      "foceiControl",
+      "iagqControl",
+      "ilaplaceControl",
+      "laplaceControl",
+      "lbfgsb3cControl",
+      "magqControl",
+      "mlaplaceControl",
+      "n1qn1Control",
+      "newuoaControl",
+      "nlmControl",
+      "nlmeControl",
+      "nlminbControl",
+      "nlsControl",
+      "optimControl",
+      "saemControl",
+      "trustControl",
+      "uobyqaControl",
+      "vaeControl",
+      "impmapControl",
+      "impControl",
+      "npagControl",
+      "npbControl"
+    )
+    for (.c in .ctors) {
+      .f <- get(.c)
+      for (.a in list(list(), list(sigdig = 4), list(print = 0L), list(sigdig = 5, print = 0L))) {
+        .x <- suppressWarnings(do.call(.f, .a))
+        .e <- rxode2::rxUiDeparse(.x, "ctl")
+        expect_identical(eval(.e[[3]]), .x, info = paste(.c, deparse1(.e)))
+      }
+    }
+  })
+
+  test_that("sigdig and print deparse as themselves", {
+    expect_equal(
+      rxUiDeparse.foceiControl(foceiControl(sigdig = 4, print = 0L), "ctl"),
+      quote(ctl <- foceiControl(print = 0L, sigdig = 4))
+    )
+    expect_equal(
+      rxode2::rxUiDeparse(saemControl(sigdig = 4, nBurn = 5L, nEm = 5L), "ctl"),
+      quote(ctl <- saemControl(sigdig = 4, nBurn = 5L, nEm = 5L))
+    )
+    .x <- foceiControl(lbfgsFactr = 1 / 3)
+    expect_identical(eval(rxUiDeparse.foceiControl(.x, "ctl")[[3]]), .x)
+  })
+
+  test_that("the imp and np controls deparse through their own constructor", {
+    expect_equal(rxode2::rxUiDeparse(impmapControl(), "ctl"), quote(ctl <- impmapControl()))
+    expect_equal(rxode2::rxUiDeparse(impControl(isample = 500L), "ctl"), quote(ctl <- impControl(isample = 500L)))
+    expect_equal(
+      rxode2::rxUiDeparse(npagControl(cycles = 3L, cores = 2L), "ctl"),
+      quote(ctl <- npagControl(cycles = 3L, cores = 2L))
+    )
+    expect_equal(rxode2::rxUiDeparse(npbControl(points = 20L), "ctl"), quote(ctl <- npbControl(points = 20L)))
+    expect_equal(
+      rxode2::rxUiDeparse(impControl(covMethod = "r,s"), "ctl"),
+      quote(ctl <- impControl(covMethod = "r,s"))
+    )
+  })
 })

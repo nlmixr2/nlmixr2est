@@ -71,6 +71,16 @@
   `covMethod = ""` even when its `covType` is `"analytic"`, where it was
   written as `covMethod = "analytic"`.
 
+- `rxUiDeparse()` of an estimation control evaluates back to the identical
+  control.  A control with a non-default `sigdig` is written as `sigdig = `
+  rather than as every tolerance derived from it (some of them rounded, such
+  as `lbfgsFactr`); `print` is written for the focei family, where it was
+  dropped; and saem's integer `nBurn`/`nEm` stay integer.
+
+- `impControl()`, `impmapControl()`, `npagControl()` and `npbControl()` now
+  have an `rxUiDeparse()` method; a fit with one of these controls deparsed
+  its control as nothing.
+
 - `est="nls"` dropped the `past()` pre-history of a delay differential
   equation model, biasing its estimates; the history is now kept.
 

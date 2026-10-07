@@ -766,6 +766,52 @@ impmapControl <- function(
   .control
 }
 
+#' The constructor an `impmapControl` came from
+#' @param object `impmapControl` object
+#' @return `"npagControl"`, `"npbControl"`, `"impControl"` or `"impmapControl"`
+#' @noRd
+.impmapDeparseType <- function(object) {
+  .est <- if (is.character(object$est)) object$est else ""
+  if (grepl("npag$", .est)) {
+    "npagControl"
+  } else if (grepl("npb$", .est)) {
+    "npbControl"
+  } else if (identical(object$mapIter, 0L)) {
+    "impControl"
+  } else {
+    "impmapControl"
+  }
+}
+
+#' Arguments of the np constructors stored under another name or value
+#' @param name field name
+#' @param value field value
+#' @return the argument string, or `NA` for the default handling
+#' @noRd
+.impmapDeparseExtra <- function(name, value) {
+  if (name == "npCores") {
+    return(paste0("cores = ", if (is.na(value)) "NULL" else deparse1(value)))
+  }
+  if (name == "points" && length(value) == 1L && is.na(value)) {
+    return("points = NULL")
+  }
+  NA_character_
+}
+
+#' @export
+rxUiDeparse.impmapControl <- function(object, var) {
+  # sirSample left at its default follows isample
+  .sir <- if (identical(object$sirSample, max(25L, as.integer(ceiling(max(object$isample) / 10))))) "sirSample"
+  .rxUiDeparseFoceiControl(
+    object,
+    var,
+    type = .impmapDeparseType(object),
+    internal = c("impCov", "autoNonNormal", "gammaMethodUser", "npEndpointCmt", .impmapIdxMapNames, .sir),
+    covName = function(x) if (isTRUE(x$impCov)) "imp" else .foceiControlCovMethodName(x),
+    fun = .impmapDeparseExtra
+  )
+}
+
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.impmapControl <- function(control, env) assign("impmapControl", control, envir = env)

@@ -1,5 +1,75 @@
+#' Deparse a value so that evaluating it gives back the identical value
+#' @param value value to deparse
+#' @return deparsed string
+#' @noRd
+.deparseValue <- function(value) {
+  .d <- deparse1(value)
+  if (identical(tryCatch(eval(str2lang(.d)), error = function(e) NULL), value)) {
+    return(.d)
+  }
+  # the default 15 significant digits do not always read back the same double
+  deparse1(value, control = c("keepNA", "keepInteger", "niceNames", "showAttributes", "digits17"))
+}
+
+#' The `print = ` argument that rebuilds an `iterPrintControl()`
+#' @param value the control's `iterPrintControl`
+#' @return `print = <every>`, or `print = iterPrintControl(...)` when more than
+#'   `every` differs from this session's default
+#' @noRd
+.deparseIterPrint <- function(value) {
+  .def <- iterPrintControl()
+  .w <- names(.def)[!vapply(names(.def), function(n) identical(.def[[n]], value[[n]]), logical(1))]
+  if (identical(.w, "every")) {
+    return(paste0("print = ", deparse1(value$every)))
+  }
+  paste0(
+    "print = iterPrintControl(",
+    paste(paste0(.w, " = ", vapply(.w, function(n) deparse1(value[[n]]), character(1))), collapse = ", "),
+    ")"
+  )
+}
+
+#' The default a control is deparsed against, built at the control's `sigdig`
+#'
+#' Tolerances derived from `sigdig` then match and are not written out.  A
+#' control that does not keep `sigdig` (`saemControl()`) is taken to have been
+#' built with `sigdig = sigdigTable` when that rebuilds its `rxControl`; the
+#' default then carries the `"sigdig"` argument to write as an attribute.
+#' @param default the constructor's default control
+#' @param object the control being deparsed
+#' @param ctor name of the constructor
+#' @return the default control at the control's `sigdig`
+#' @noRd
+.deparseSigdigDefault <- function(default, object, ctor = class(default)[1]) {
+  if (!any(c("sigdig", "...") %in% names(formals(ctor)))) {
+    return(default)
+  }
+  .sig <- object[["sigdig"]]
+  .kept <- !is.null(.sig)
+  if (!.kept) {
+    .sig <- object[["sigdigTable"]]
+    if (
+      is.null(.sig) || !isTRUE(object[["genRxControl"]]) || identical(object[["rxControl"]], default[["rxControl"]])
+    ) {
+      return(default)
+    }
+  } else if (identical(.sig, default[["sigdig"]])) {
+    return(default)
+  }
+  .ret <- tryCatch(do.call(ctor, list(sigdig = .sig)), error = function(e) NULL)
+  if (is.null(.ret) || (!.kept && !identical(.ret[["rxControl"]], object[["rxControl"]]))) {
+    return(default)
+  }
+  if (!.kept) {
+    attr(.ret, "sigdig") <- paste0("sigdig = ", .deparseValue(.sig))
+  }
+  .ret
+}
+
 .deparseShared <- function(x, value) {
-  if (x == "rxControl") {
+  if (x == "iterPrintControl") {
+    .deparseIterPrint(value)
+  } else if (x == "rxControl") {
     .rx <- rxUiDeparse(value, "a")
     .rx <- .rx[[3]]
     paste0("rxControl = ", deparse1(.rx))
@@ -101,13 +171,14 @@
 #'   during deparsing. Default is NULL. This handles things that are
 #'   specific to an estimation control and is used by functions like
 #'   `rxUiDeparse.saemControl()`
+#' @param extra arguments written before the differing elements
 #' @return A language object representing the deparsed expression.
 #' @keywords internal
 #' @author Matthew L. Fidler
 #' @export
-.deparseFinal <- function(default, object, w, var, fun = NULL) {
+.deparseFinal <- function(default, object, w, var, fun = NULL, extra = character(0)) {
   .cls <- class(object)
-  if (length(w) == 0) {
+  if (length(w) == 0 && length(extra) == 0) {
     return(str2lang(paste0(var, " <- ", .cls, "()")))
   }
   .retD <- vapply(
@@ -123,12 +194,12 @@
           return(.val)
         }
       }
-      paste0(x, "=", deparse1(object[[x]]))
+      paste0(x, "=", .deparseValue(object[[x]]))
     },
     character(1),
     USE.NAMES = FALSE
   )
-  str2lang(paste(var, " <- ", .cls, "(", paste(.retD, collapse = ","), ")"))
+  str2lang(paste(var, " <- ", .cls, "(", paste(c(extra, .retD), collapse = ","), ")"))
 }
 
 #' Deparse a control as a call to its constructor
@@ -143,5 +214,10 @@
 #' @return the language object `var <- <constructor>(...)`
 #' @noRd
 .deparseControl <- function(object, var, default, internal = "genRxControl", fun = NULL) {
-  .deparseFinal(default, object, .deparseDifferent(default, object, internal), var, fun = fun)
+  .default <- .deparseSigdigDefault(default, object)
+  .w <- .deparseDifferent(.default, object, internal)
+  if (!identical(object[["sigdig"]], default[["sigdig"]])) {
+    .w <- sort(union(.w, which(names(.default) == "sigdig")))
+  }
+  .deparseFinal(.default, object, .w, var, fun = fun, extra = as.character(attr(.default, "sigdig")))
 }

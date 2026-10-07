@@ -2257,18 +2257,33 @@ foceiControl <- function(
   .covMethodFromSlot(.slot)
 }
 
-.rxUiDeparseFoceiControl <- function(object, var, type = "foceiControl") {
-  .ret <- eval(str2lang(paste0(type, "()")))
+.rxUiDeparseFoceiControl <- function(
+  object,
+  var,
+  type = "foceiControl",
+  internal = character(0),
+  covName = .foceiControlCovMethodName,
+  fun = NULL
+) {
+  .ret0 <- eval(str2lang(paste0(type, "()")))
+  .ret <- .deparseSigdigDefault(.ret0, object, type)
   .outerOpt <- character(0)
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default", call. = FALSE)
   } else if (!(object$outerOptTxt %in% c(.ret$outerOptTxt, "stats::optimize"))) {
     .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
-  .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
+  .w <- .deparseDifferent(.ret, object, c(.foceiControlInternal, internal))
+  if (!identical(object[["sigdig"]], .ret0[["sigdig"]])) {
+    .w <- union(.w, which(names(.ret) == "sigdig"))
+  }
+  # print is kept only as iterPrintControl, which is otherwise internal
+  if (!identical(object$iterPrintControl, .ret$iterPrintControl)) {
+    .w <- union(.w, which(names(.ret) == "iterPrintControl"))
+  }
   .covTok <- character(0)
-  if (!identical(.foceiControlCovMethodName(object), .foceiControlCovMethodName(.ret))) {
-    .covTok <- paste0("covMethod = ", deparse1(.foceiControlCovMethodName(object)))
+  if (!identical(covName(object), covName(.ret))) {
+    .covTok <- paste0("covMethod = ", deparse1(covName(object)))
   }
   if (length(.w) == 0 && length(.outerOpt) == 0 && length(.covTok) == 0) {
     return(str2lang(paste0(var, " <- ", type, "()")))
@@ -2292,6 +2307,12 @@ foceiControl <- function(
         if (!is.na(.val)) {
           return(.val)
         }
+        if (is.function(fun)) {
+          .val <- fun(x, object[[x]])
+          if (!is.na(.val)) {
+            return(.val)
+          }
+        }
         if (x == "innerOpt") {
           paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
         } else if (x == "warm") {
@@ -2309,7 +2330,7 @@ foceiControl <- function(
           .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
           paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
         } else {
-          paste0(x, " = ", deparse1(object[[x]]))
+          paste0(x, " = ", .deparseValue(object[[x]]))
         }
       },
       character(1)
