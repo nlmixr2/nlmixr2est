@@ -161,6 +161,41 @@ nmTest({
     }
   })
 
+  test_that("an ODE can use a lagged variable defined by if/else, not its lag()", {
+    .ui <- rxode2::rxode2(.lagMod3)
+    .ifOde <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        tke <- -1
+        eta.cl ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        ke <- exp(tke)
+        if (WT > 70) {
+          c0 <- central / v
+        } else {
+          c0 <- 2 * central / v
+        }
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        d/dt(eff) <- ke * (c0 - eff)
+        cp <- eff + lag(c0)
+        cp ~ add(add.sd)
+      })
+    }
+    .s <- rxode2::rxode2(.ifOde)$foceiEnv
+    .fd <- .lagFd(.ifOde, .s$..inner, "ETA", seq_len(.s$..maxEta))
+    expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
+    .histOde <- rxode2::model(.ui, d/dt(eff) <- ke * (lag(c0) - eff))
+    expect_error(rxode2::rxode2(.histOde)$foceiEnv, "inside an ODE is not supported")
+  })
+
   test_that("the prediction can be a lag() alone", {
     .lagOnly <- rxode2::rxode2(.lagMod)
     .lagOnly <- rxode2::model(.lagOnly, cp <- lag(c0))

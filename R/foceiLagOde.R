@@ -5,8 +5,8 @@
 #' Put the definitions of lagged variables into the ODEs that use them
 #'
 #' Run before the sensitivity ODEs are derived, so they do not treat a lagged
-#' variable as a constant.  A variable defined more than once, or through a
-#' history call, is left alone (see `.foceiLagInOde()`).
+#' variable as a constant.  A variable defined through a history call is left
+#' alone (see `.foceiLagInOde()`).
 #' @param s symengine environment, before `.sensEtaOrTheta()`
 #' @return `s`, invisibly
 #' @noRd
@@ -32,12 +32,16 @@
   # last definition first, so one that uses an earlier one is fully expanded
   for (v in rev(unique(.var))) {
     .w <- which(.var == v)
-    if (length(.w) != 1L || .foceiLagRefs(.rhs[.w], .var, hist = TRUE)) {
+    if (.foceiLagRefs(.rhs[.w], .var, hist = TRUE)) {
       next
     }
-    # rxToSE() is NSE: hand it a plain variable
-    .txt <- .rhs[.w]
-    .def <- symengine::S(rxode2::rxToSE(.txt))
+    # a pruned if/else defines it more than once, each from the one before
+    .def <- NULL
+    for (.txt in .rhs[.w]) {
+      # rxToSE() is NSE: hand it a plain variable
+      .new <- symengine::S(rxode2::rxToSE(.txt))
+      .def <- if (is.null(.def)) .new else symengine::subs(.new, symengine::S(v), .def)
+    }
     for (d in .ddt) {
       assign(d, symengine::subs(get(d, envir = s), symengine::S(v), .def), envir = s)
     }

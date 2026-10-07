@@ -203,7 +203,7 @@
     return(NULL)
   }
   if (.foceiLagInOde(s)) {
-    warning("a lagged variable in an ODE has no eta sensitivity", call. = FALSE)
+    stop("lag() of a variable inside an ODE is not supported", call. = FALSE)
   }
   .eta <- paste0("ETA_", seq_len(s$..maxEta), "_")
   # the combined eta+theta build (#958) carries theta columns too
