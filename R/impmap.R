@@ -1398,7 +1398,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
     matrix(integer(0), 0L, 2L)
   }
   if (nrow(.pairs) != .nOm) {
-    return("could not be mapped to the Omega variances and covariances")
+    return("could not be mapped to the Omega variances")
   }
   .j <- matrix(0, .n, .n)
   .j[cbind(seq_len(.nTh), seq_len(.nTh))] <- 1
@@ -1468,7 +1468,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   tryCatch(
     .impCovNatural(cov, thetaIdx, dOm, omega, env$thetaNames, env$etaNames, env$ui$iniDf),
     error = function(e) {
-      paste0("could not be mapped to the Omega variances and covariances (", conditionMessage(e), ")")
+      "could not be mapped to the Omega variances"
     }
   )
 }

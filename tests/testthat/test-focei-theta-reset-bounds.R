@@ -45,6 +45,9 @@ nmTest({
 
     # the reset machinery must have run (otherwise this is not testing #454)
     expect_gt(nReset, 0L)
+    # tcl's optimum (about 1) is past its bound, so the drift returns once the
+    # optimizer moves it inward; the reset that would put it back is skipped
+    expect_true(any(grepl("theta reset skipped: 'tcl' would return to its bound", fit$runInfo, fixed = TRUE)))
 
     idf <- fit$ui$iniDf
     th <- idf[!is.na(idf$ntheta), ]

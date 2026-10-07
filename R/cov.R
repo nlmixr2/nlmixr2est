@@ -428,9 +428,7 @@
   if (!identical(.w, label) && !nzchar(.covFdType(label)) && identical(.wb, .covUnrepaired(.wb))) {
     warning(
       sprintf(
-        "\"%s\" covariance not positive definite, corrected by sqrtm(%s %%*%% %s) and installed as \"%s\"",
-        .w,
-        .w,
+        "\"%s\" covariance not positive definite; installed as \"%s\" (sqrtm)",
         .w,
         label
       ),
