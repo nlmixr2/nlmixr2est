@@ -722,7 +722,7 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~ nlmixr2est::.nlmixrNlsFunValGrad(
     }
     .ret <- eval(.ret)
     .ret <- .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
-    .ret$sd <- sd(.ret$fvec)
+    .ret$sd <- .nlsSigma(.ret$fvec, length(.ret$par))
     # the normal log-likelihood at the maximum-likelihood residual variance
     # RSS / n, as logLik() of a stats::nls() fit
     .n <- length(.ret$fvec)
@@ -756,13 +756,28 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~ nlmixr2est::.nlmixrNlsFunValGrad(
   .ret
 }
 
+#' The residual standard deviation of an nls fit
+#'
+#' `sigma()` of `stats::nls()`, `sqrt(RSS / (n - p))`, the residual variance
+#' the covariance uses.  Without residual degrees of freedom it does not
+#' exist, and the maximum-likelihood `sqrt(RSS / n)` is used.
+#' @param resid the (weighted) residuals
+#' @param p the number of estimated parameters
+#' @return the residual standard deviation
+#' @noRd
+.nlsSigma <- function(resid, p) {
+  .n <- length(resid)
+  .df <- if (.n > p) .n - p else .n
+  sqrt(sum(resid^2) / .df)
+}
+
 .nlsGetTheta <- function(nls, ui) {
   .iniDf <- ui$iniDf
   .theta0 <- nls$par
   if (inherits(nls, "nls.lm")) {
     .sd <- nls$sd
   } else {
-    .sd <- sd(resid(nls))
+    .sd <- .nlsSigma(stats::residuals(nls), length(stats::coef(nls)))
   }
   setNames(
     vapply(

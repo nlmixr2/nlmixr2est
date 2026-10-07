@@ -676,6 +676,12 @@
 - `est = "nls"` declares the model covariates in its `params()`, as `nlm`
   does, so the solve's parameter layout is fixed.
 
+- The residual standard deviation an `est = "nls"` fit reports (`add.sd`,
+  `prop.sd`, ...) is now `sigma()` of the `nls` fit, `sqrt(RSS / (n - p))`,
+  the residual variance its covariance uses.  It was `sd()` of the residuals,
+  which also subtracted their mean and divided by `n - 1`.  The objective
+  stays `logLik()` of the fit, the -2 log-likelihood at `RSS / n`.
+
 - The internal, exported `.nlmixrNlsFun()` is removed: it solved a model
   that nothing set up any more.  `est = "nls"` calls `.nlmixrNlsFunValGrad()`,
   `.nlmixrNlsFunVal()` and `.nlmixrNlsFunGrad()`.

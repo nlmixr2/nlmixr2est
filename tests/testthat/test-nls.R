@@ -208,6 +208,8 @@ nmTest({
       # the standard errors of stats::nls() on the natural parameters
       expect_equal(unname(.fit$theta[c("Vm", "K")]), unname(coef(.ref)), tolerance = 1e-5, info = .alg)
       expect_equal(unname(sqrt(diag(.fit$cov))), unname(sqrt(diag(stats::vcov(.ref)))), tolerance = 1e-4, info = .alg)
+      # the residual SD is sigma() of the nls fit, sqrt(RSS / (n - p))
+      expect_equal(.fit$theta[["add.sd"]], stats::sigma(.ref), tolerance = 1e-5, info = .alg)
       # -2 log-likelihood at the ML residual variance RSS / n (the objective
       # leaves out n log(2 pi)), whichever algorithm
       expect_equal(
@@ -239,6 +241,8 @@ nmTest({
       .fit <- .nlmixr(.mm, .treated, est = "nls", control = nlsControl(print = 0L, algorithm = .alg))
       expect_identical(.fit$covMethod, "failed", info = .alg)
       expect_null(.fit$cov, info = .alg)
+      # with no n - p the residual SD falls back to sqrt(RSS / n)
+      expect_true(is.finite(.fit$theta[["add.sd"]]), info = .alg)
       expect_true(
         "nls has 0 residual degrees of freedom, no residual variance; covariance step failed" %in% .fit$runInfo,
         info = .alg
