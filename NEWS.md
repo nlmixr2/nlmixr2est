@@ -220,6 +220,10 @@
 
 ### Covariance
 
+- The covariance step's progress bar now always reaches 100% and ends its line
+  (#1171).  After an earlier bar had finished it stopped at a few percent, the
+  next message could print on the bar's line, and an `imp` fit's bar was
+  sometimes not shown at all.
 - The post-fit covariance of a model with inter-occasion variability is now
   computed: the recompute of the `mfocei`-style families (and of imp/np with
   a requested covariance) and `setCov(fit, "imp")` (or a deferred

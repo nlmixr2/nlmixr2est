@@ -15,6 +15,7 @@
 #include "inner.h"
 #include "nmMcmcRng.h"
 #include "nmSeqSeed.h"
+#include "nmProgress.h"
 #include <cfloat>
 #include <cstring>
 #include <cstdint>
@@ -7572,7 +7573,7 @@ void numericGrad(double *theta, double *g){
       RSprintf(_("calculate Shi21 Difference and optimize forward difference step size:\n"));
       op_focei.t0 = clock();
       op_focei.cur=0;
-      op_focei.curTick=0;
+      op_focei.curTick = nmProgressStart(op_focei.totTick, op_focei.t0);
     }
     arma::vec grFinal(1);
     arma::vec f0(1);
@@ -7618,6 +7619,7 @@ void numericGrad(double *theta, double *g){
       op_focei.cur = 0;
       op_focei.totTick = op_focei.npars * op_focei.gillK;
       op_focei.t0 = clock();
+      op_focei.curTick = nmProgressStart(op_focei.totTick, op_focei.t0);
       if (op_focei.repeatGillN != 0){
         RSprintf(_("repeat %d Gill diff/forward difference step size:\n"),
                  op_focei.repeatGillN);
@@ -7671,8 +7673,8 @@ void numericGrad(double *theta, double *g){
     if(op_focei.slow){
       op_focei.t0 = clock();
       op_focei.cur=0;
-      op_focei.curTick=0;
       op_focei.totTick = op_focei.npars * 2;
+      op_focei.curTick = nmProgressStart(op_focei.totTick, op_focei.t0);
     }
     op_focei.calcGrad=1;
     rx = getRxSolve_();
@@ -10842,7 +10844,9 @@ struct RHessObj : FdHessObj {
   SEXP envir, like;
   int n, cur = 0, curTick = 0, totTick;
   clock_t t0 = clock();
-  RHessObj(Function fn, SEXP envir, SEXP like, int n) : fn(fn), envir(envir), like(like), n(n), totTick(4*n + 2*n*(n-1)) {}
+  RHessObj(Function fn, SEXP envir, SEXP like, int n) : fn(fn), envir(envir), like(like), n(n), totTick(4*n + 2*n*(n-1)) {
+    nmProgressStart(totTick, t0);
+  }
   double f(double *x) {
     double ret = nlmixr2RObjAt(fn, envir, x, n, like);
     curTick = par_progress(++cur, totTick, curTick, 1, t0, 0);
@@ -11388,8 +11392,6 @@ NumericMatrix foceiCalcCov(Environment e){
       // wrong SEs on the mu-referenced/linear parameters).  Bail here and recompute
       // the covariance at the R level with muModel="none" (.foceiRecomputeMuCov).
       if (op_focei.muModel != 0) {
-        op_focei.cur = op_focei.totTick;
-        op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
         e["covMethod"] = CharacterVector::create("");
         NumericMatrix ret;
         return ret;
@@ -11497,6 +11499,15 @@ NumericMatrix foceiCalcCov(Environment e){
           op_focei.totTick += 2*op_focei.npars +2*(op_focei.npars*op_focei.npars);
         }
         op_focei.totTick += op_focei.npars;
+        op_focei.curTick = nmProgressStart(op_focei.totTick, op_focei.t0);
+        // finish the bar on every exit, including the early failure returns
+        struct CovProgressEnd {
+          bool inPlace;
+          ~CovProgressEnd() {
+            op_focei.curTick = nmProgressEnd(op_focei.totTick, op_focei.curTick,
+                                             op_focei.t0, inPlace);
+          }
+        } _covProgressEnd{nmProgressInPlace()};
         double hf, hphif, err;
         unsigned int j, k;
         arma::vec theta(op_focei.npars);
@@ -11798,8 +11809,6 @@ NumericMatrix foceiCalcCov(Environment e){
                   _("\n use 'getVarCov' to calculate anyway"));
           e["covMethod"] = "Boundary issue; Get SEs with `getVarCov()`: " + boundStr;
         }
-        op_focei.cur=op_focei.totTick;
-        op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
         NumericMatrix ret;
         return ret;
       }

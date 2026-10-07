@@ -27,6 +27,7 @@
 #include "logSumExp.h"
 #include "odeSwap.h" // odeSwapAnyNdiffSet()
 #include "utilc.h"   // RSprintf (covariance-step progress header)
+#include "nmProgress.h"
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -1195,6 +1196,7 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   bool covProg = impCovProgress();
   clock_t covT0 = clock();
   int covTot = 1 + 2 * np * np, covCur = 0, covTick = 0;
+  bool covInPlace = covProg && nmProgressInPlace();
   if (covProg) RSprintf("calculating covariance matrix\n");
   auto evalObj = [&](const arma::vec& par) -> double {
     for (int j = 0; j < np; ++j) setPar(j, par[j]);
@@ -1254,7 +1256,7 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
     par0[j] = (pl[j] < ntheta) ? impGetFullThetaVal(pl[j])
                                : impGetOmegaThetaVal(pl[j] - ntheta);
   arma::mat Hess = impFdHessian(par0, evalObj);
-  if (covProg) par_progress(covTot, covTot, covTick, 1, covT0, 1);   // close the bar
+  if (covProg) nmProgressEnd(covTot, covTick, covT0, covInPlace);
   // Restore the converged estimates.
   for (int j = 0; j < np; ++j) setPar(j, par0[j]);
   // every pseudo-subject, not just component 0: the perturbed solves above ran
