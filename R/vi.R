@@ -217,9 +217,7 @@
   ## variational posterior means as the FOCEi inner EBE start [nsub, neta]
   .eb <- res$mu
   colnames(.eb) <- .prep$etaNames
-  .ret$omega <- .omM
   .ret$ui <- .ui2
-  .ret$fullTheta <- stats::setNames(res$theta, names(.prep$th))
 
   ## covMethod="vi": for full-Bayes the SEs come from the population variational
   ## covariance (installed below, so skip the FOCEi cov step); for point-estimate
