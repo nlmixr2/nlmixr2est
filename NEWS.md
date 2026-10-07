@@ -662,6 +662,20 @@
   `.nlmFinalizeList()` raises the covariance step's report as a warning
   instead of returning it as `$covWarning`.
 
+- `trustControl(covMethod = "r")`, the default, now inverts a
+  finite-difference Hessian: `nlmixr2Hess()`'s, or the last outer
+  iteration's with `hessianMethod = "fd"`.  It inverted the last outer
+  iteration's Hessian, which with the default `hessianMethod = "sr1"` is a
+  quasi-Newton approximation; that covariance is now `covMethod = "trust"`
+  (labelled `"r (trust)"`).
+
+- An `nlm` fit of a `matExp()` model with `indLin()` forcing now warns that
+  its sensitivities use the ODE form, a work-around until the native
+  matrix-exponential sensitivities of such a model match.
+
+- `est = "nls"` declares the model covariates in its `params()`, as `nlm`
+  does, so the solve's parameter layout is fixed.
+
 - The internal, exported `.nlmixrNlsFun()` is removed: it solved a model
   that nothing set up any more.  `est = "nls"` calls `.nlmixrNlsFunValGrad()`,
   `.nlmixrNlsFunVal()` and `.nlmixrNlsFunGrad()`.
