@@ -362,6 +362,9 @@ nmTest({
     # so the objective function and fixed effects must agree.
     expect_equal(.fMat$objf, .fOde$objf, tolerance = 1e-3)
     expect_equal(unname(fixef(.fMat)), unname(fixef(.fOde)), tolerance = 1e-3)
+    # the ODE form is a work-around, and the fit says so
+    expect_true(any(grepl("indLin() forcing", .fMat$runInfo, fixed = TRUE)))
+    expect_false(any(grepl("indLin() forcing", .fOde$runInfo, fixed = TRUE)))
   })
 
   test_that("nlm-family covariance from a ll() model matches the Poisson GLM (#issue not doubled)", {

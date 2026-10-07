@@ -924,7 +924,13 @@ attr(rxUiGet.nlmThetaS, "rstudio") <- emptyenv()
 .nlmFamilyThetaS <- function(x, type) {
   .s <- .loadSymengine(.nlmFamilyPrune(x, type), promoteLinSens = TRUE)
   .nlmFamilyLagIntoOde(.s)
-  .sensEtaOrTheta(.s, theta = TRUE, rxui = x[[1]], matExpForcing = .nlmFamilySpec(type)$matExpForcing)
+  .matExpForcing <- .nlmFamilySpec(type)$matExpForcing
+  .mv <- rxode2::rxModelVars(.s)
+  if (!.matExpForcing && is.list(.mv$indLin) && length(.mv$indLin) == 4L && !is.null(.mv$indLin$f)) {
+    # a work-around until the native forcing sensitivities match (#860)
+    warning("matExp() with indLin() forcing: sensitivities use the ODE form", call. = FALSE)
+  }
+  .sensEtaOrTheta(.s, theta = TRUE, rxui = x[[1]], matExpForcing = .matExpForcing)
 }
 
 #' @export
