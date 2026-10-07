@@ -837,6 +837,8 @@ struct focei_options {
   // converged on -- every candidate was a failed attempt, so the selection had
   // nothing good to choose from (#1044).
   std::atomic<int> nInnerNoGood{0};
+  // eta Hessians whose nearPD repair had to change the diagonal
+  std::atomic<int> nNearPdDiag{0};
   // Inner solves where a failed attempt's candidate was dropped from the
   // selection because a succeeded one was available.  This is the count that
   // shows the rule is doing something, rather than that it merely exists.
@@ -3633,8 +3635,11 @@ bool calcEtaHessian(double *eta, int likId, int id,
   if (conditional && forOptimization && op_focei.innerOpt == 3) return H.is_finite();
   if (!H.is_sympd()) {
     arma::mat H2;
-    if (nmNearPDKeepDiag(H2, H)) {
+    int how = nmNearPDKeepDiag(H2, H);
+    if (how > 0) {
       H=H2;
+      // reported after the fit; this can run on any thread
+      if (how == 2) op_focei.nNearPdDiag.fetch_add(1, std::memory_order_relaxed);
     }
   }
   if (fInd->doChol) {
@@ -8793,6 +8798,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
+  op_focei.nNearPdDiag.store(0, std::memory_order_relaxed);
   op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   // Fallback 2 ("none") for a control list that predates/omits warm=: 0 ("save")
   // used to BE self-init because updateZm() was a no-op (#1043), so "none" is what
@@ -10108,6 +10114,7 @@ Environment foceiOuter(Environment e){
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
+  op_focei.nNearPdDiag.store(0, std::memory_order_relaxed);
   op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   op_focei.nDeclineNewton=0;
   op_focei.nDeclineE0=0;
@@ -14193,6 +14200,10 @@ Environment foceiFitCpp_(Environment e){
   }
   if (op_focei.nnOuterSkipped) {
     warning(_("outer network step skipped (mixture or numeric-difference solve)"));
+  }
+  if (op_focei.nNearPdDiag.load(std::memory_order_relaxed) > 0) {
+    warning(_("eta Hessian repair changed its diagonal %d times"),
+            op_focei.nNearPdDiag.load(std::memory_order_relaxed));
   }
   // The covariance step's searches, listed by parameter: foceiCalcCov() keeps
   // them by the index of its own parameter set (the thetas, by default), which

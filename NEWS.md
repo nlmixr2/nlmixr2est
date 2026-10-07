@@ -254,7 +254,10 @@
   matrix if any covariances are estimated`.  `VarCorr()` of such a fit is
   nlme's own, which prints no correlations for a blocked structure; `$omega`
   has them.  The columns of `$eta` and `$etaMat` follow the ui's eta order,
-  not nlme's.
+  not nlme's.  An omega declared as one full block is still a single
+  `pdSymm`, and a diagonal one a `pdDiag`.  A `fix()`ed omega element is now
+  an error: nlme cannot hold it, so it estimated the element and wrote the
+  estimate into a row marked fixed.
 
 - A fit whose omega estimate is not positive definite (a variance collapsed to
   0 or a correlation of 1, as a degenerate `saem`, `nlme`, `vae` or `vi` fit
@@ -262,7 +265,27 @@
   Both held the nearest positive-definite matrix the table step needs instead
   (on a saem fit with a correlation of 1, variances of 0.21 and 0.050 for an
   estimate of 0.081 and 0.019).  The repair is now a warning: `omega not positive
-  definite; tables use its nearest PD matrix`.
+  definite; tables use its nearest PD matrix`.  A posthoc fit
+  (`maxOuterIterations = 0`) whose `ini()` omega is only nearly singular, as a
+  rounded NONMEM import can be, reports it corrected instead: when the
+  modified Cholesky factorization adds no more than `cholAccept` to its
+  diagonal, the fit and its `ini()` hold that corrected omega, with the
+  warning `omega nearly singular; corrected within cholAccept`.
+
+- When an omega or an eta Hessian is not positive definite, the repair that
+  keeps its diagonal now falls back to one that does not when it cannot make
+  the matrix positive definite (a zero or negative diagonal).  `saem` used to
+  invert the singular omega anyway, and the FOCEi eta Hessian was left
+  unrepaired.  The fallback is noted in `$runInfo` (`omega repair changed its
+  variances`, `eta Hessian repair changed its diagonal <n> times`), and the
+  saem warning no longer starts with `SAEM:`.
+
+- `nlmixr2CreateOutputFromUi()` now keeps its contract for a method that
+  passes its estimates in `$omega` and `$fullTheta` without writing them into
+  the ui: the fit's `$omega`, `$theta` and ui carry those estimates (it
+  reported the ui's initial values), and `$iniDf0` is the model passed in
+  when it is called outside an `nlmixr2()` run (it was the original model of
+  whichever fit ran last).
 
 - A FOCEi-family fit with `outerOpt = "uobyqa"` or `"newuoa"` and a bounded
   theta now writes that theta's estimate into the fit's `ini()` on its own
@@ -328,7 +351,11 @@
   reported without that factor: on a simulated data set with additive 0.3
   and proportional 0.1, the `combined2` parameters gave residual standard
   deviations near 121 for nlme's 0.3 to 1.  The residual parameters, and
-  every refit that starts from them, now reproduce nlme's.
+  every refit that starts from them, now reproduce nlme's.  With
+  `addProp = "combined2"` nlme's `sigma` is now fixed at 1, as nlme
+  recommends for `varConstProp()` (sigma, the additive and the proportional
+  coefficients are not separately identifiable), so the additive and
+  proportional parameters are nlme's `const` and `prop` themselves.
 
 ### Parameter scaling
 

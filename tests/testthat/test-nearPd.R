@@ -57,4 +57,18 @@ nmTest({
     expect_equal(nmNearPD(pr, conv.tol = 1e-7), .npd(pr))
     expect_equal(nmNearPD(pr, conv.tol = 1e-7, doDykstra = FALSE), .npd(pr, doDykstra = FALSE))
   })
+
+  test_that("the keep-diagonal repair lets the diagonal go only when it has to", {
+    # an off-diagonal too large for its variances: fixed with the diagonal kept
+    .r <- nmNearPDKeepDiag_(matrix(c(0.1, 0.2, 0.2, 0.1), 2))
+    expect_identical(.r$how, 1L)
+    expect_equal(diag(.r$mat), c(0.1, 0.1))
+    expect_false(inherits(try(chol(.r$mat), silent = TRUE), "try-error"))
+    # a negative or zero variance cannot be kept: the diagonal moves
+    for (.v in c(-0.1, 0)) {
+      .r <- nmNearPDKeepDiag_(matrix(c(.v, 0.05, 0.05, 1), 2))
+      expect_identical(.r$how, 2L)
+      expect_false(inherits(try(chol(.r$mat), silent = TRUE), "try-error"))
+    }
+  })
 })

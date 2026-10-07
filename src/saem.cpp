@@ -2552,13 +2552,13 @@ public:
       if (ueRevisitIter >= 0 && kiter == (unsigned int)ueRevisitIter) {
         revisitUninformativeEtas();
       }
-      IGamma2_phi1=invSympdNearPd(Gamma2_phi1, "Gamma2_phi1 (Omega)");
+      IGamma2_phi1=invSympdNearPd(Gamma2_phi1, "omega");
       gamma2_phi1=Gamma2_phi1.diag();
       D1Gamma21=LCOV1*IGamma2_phi1;
       D2Gamma21=D1Gamma21*LCOV1.t();
       CGamma21=COV21%D2Gamma21;
 
-      IGamma2_phi0=invSympdNearPd(Gamma2_phi0, "Gamma2_phi0 (Omega)");
+      IGamma2_phi0=invSympdNearPd(Gamma2_phi0, "omega of the etas without a theta");
       gamma2_phi0=Gamma2_phi0.diag();
       D1Gamma20=LCOV0*IGamma2_phi0;
       D2Gamma20=D1Gamma20*LCOV0.t();
@@ -4746,16 +4746,21 @@ private:
   // downstream chol()/set_mcmcphi() see the corrected matrix), warn the user
   // once, and return the inverse of the corrected matrix.
   bool _nearPdWarned = false;
+  bool _nearPdDiagWarned = false;
   mat invSympdNearPd(mat &G, const char *what) {
     mat out;
     if (inv_sympd(out, G)) return out;
     mat pd;
-    if (nmNearPDKeepDiag(pd, G)) {
+    int how = nmNearPDKeepDiag(pd, G);
+    if (how > 0) {
       G = pd;
       if (!_nearPdWarned) {
-        Rcpp::warning(std::string("SAEM: ") + what +
-                      " was not positive definite; projected to the nearest positive-definite matrix (results may be affected)");
+        Rcpp::warning(std::string(what) + " not PD; used its nearest PD matrix");
         _nearPdWarned = true;
+      }
+      if (how == 2 && !_nearPdDiagWarned) {
+        Rcpp::warning(std::string(what) + " repair changed its variances");
+        _nearPdDiagWarned = true;
       }
       if (inv_sympd(out, G)) return out;
     }

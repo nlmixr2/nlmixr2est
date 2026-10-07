@@ -1029,6 +1029,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nmNearPDKeepDiag_
+List nmNearPDKeepDiag_(NumericMatrix x);
+RcppExport SEXP _nlmixr2est_nmNearPDKeepDiag_(SEXP xSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(nmNearPDKeepDiag_(x));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmFree
 RObject nlmFree();
 RcppExport SEXP _nlmixr2est_nlmFree() {
