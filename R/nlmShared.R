@@ -3,11 +3,11 @@
   checkmate::testNumber(x, finite = TRUE) && x > 0
 }
 
-# Assert a Shi (2021) epsilon (`shiErr`/`hessErr`) is strictly positive;
-# 0 makes the first step 0 and the ratio test divide by 0.
-.assertShiErr <- function(x, .var.name = checkmate::vname(x)) {
-  checkmate::assertNumber(x, finite = TRUE, .var.name = .var.name)
-  if (x <= 0) {
+# Assert a finite-difference epsilon (Shi 2021 `shiErr`/`hessErr`, Gill 1983
+# `hessEps`) is strictly positive; 0 makes the searched step 0.
+.assertPositiveEps <- function(x, .var.name = checkmate::vname(x), null.ok = FALSE) {
+  checkmate::assertNumber(x, finite = TRUE, null.ok = null.ok, .var.name = .var.name)
+  if (!is.null(x) && x <= 0) {
     stop("'", .var.name, "' must be > 0", call. = FALSE)
   }
   invisible(x)

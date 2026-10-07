@@ -192,7 +192,7 @@ optimControl <- function(
   checkmate::assertNumeric(fnscale, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(parscale, any.missing = FALSE)
   checkmate::assertNumeric(ndeps, lower = 0, any.missing = FALSE)
-  .assertShiErr(shiErr)
+  .assertPositiveEps(shiErr)
   checkmate::assertIntegerish(maxit, len = 1, any.missing = FALSE, lower = 1)
   # optim tolerances from sigdig, matching optim's closest FOCEi outer optimizer:
   # abstol/reltol like foceiControl reltol, factr like foceiControl lbfgsFactr

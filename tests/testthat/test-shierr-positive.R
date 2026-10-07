@@ -1,6 +1,6 @@
-# A zero Shi (2021) epsilon degenerated the finite-difference step search (#1174).
+# A zero finite-difference epsilon degenerated the step search (#1174).
 
-test_that("shiErr/hessErr must be strictly positive", {
+test_that("finite-difference epsilons must be strictly positive", {
   for (.e in list(0, -1e-6)) {
     expect_error(nlmControl(shiErr = .e), "'shiErr' must be > 0")
     expect_error(nlmControl(hessErr = .e), "'hessErr' must be > 0")
@@ -9,9 +9,13 @@ test_that("shiErr/hessErr must be strictly positive", {
     expect_error(nlsControl(shiErr = .e), "'shiErr' must be > 0")
     expect_error(optimControl(shiErr = .e), "'shiErr' must be > 0")
     expect_error(trustControl(hessErr = .e), "'hessErr' must be > 0")
+    expect_error(foceiControl(hessEps = .e), "'hessEps' must be > 0")
+    expect_error(foceiControl(hessEpsLlik = .e), "'hessEpsLlik' must be > 0")
+    expect_error(rsControl(hessEps = .e), "'hessEps' must be > 0")
   }
   expect_error(nlmControl(shiErr = NA_real_))
   expect_error(nlmControl(shiErr = c(1e-6, 1e-6)))
+  expect_null(rsControl()$hessEps)
   expect_equal(nlmControl(shiErr = 1e-6, hessErr = 2e-6)[c("shiErr", "hessErr")],
                list(shiErr = 1e-6, hessErr = 2e-6))
 })

@@ -232,10 +232,11 @@
   enough vector past the end of the buffer, crashing the fit.
 
 - `shiErr` and `hessErr` must now be > 0 in `nlmControl()`,
-  `nlminbControl()`, `nlsControl()`, `optimControl()` and `trustControl()`;
-  0 was accepted and silently gave an all-zero finite-difference gradient for
-  event parameters.  A hand-built control with a non-positive value uses the
-  default (#1174).
+  `nlminbControl()`, `nlsControl()`, `optimControl()` and `trustControl()`,
+  as must `hessEps`/`hessEpsLlik` in `foceiControl()` and `rsControl()`;
+  0 was accepted and gave a zero finite-difference step (an all-zero
+  gradient for event parameters).  A hand-built nlm control with a
+  non-positive value uses the default (#1174).
 
 ### Covariance
 
