@@ -1915,8 +1915,8 @@ public:
   List get_resInfo() {
     vec sig2(bres.size());
     std::copy(sigma2, sigma2+bres.size(), &sig2[0]);
-    // the vectors go in as themselves: create() wraps each once its result is
-    // protected, where a wrap() argument would sit unprotected meanwhile
+    // the vectors go in as themselves: create() wraps each into its protected
+    // result (the scan in test-gc-protect.R keeps wrap() out of create())
     return List::create(_["sigma2"]  = sig2,
 			_["ares"]    = ares,
 			_["bres"]    = bres,
