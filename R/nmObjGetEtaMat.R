@@ -28,14 +28,16 @@ nmObjGet.etaMat <- function(x, ...) {
   if (is.null(.ui$iov)) {
     .eta
   } else {
-    # $eta leaves the occasion etas out and $iov rescales them to the natural
-    # scale; etaObf has every eta of the expanded model, on the model's scale
-    .eo <- .ui$etaObf
-    if (is.data.frame(.eo)) {
-      .eo <- as.matrix(.nmDropNonEtaCols(.eo[, names(.eo) != "OBJI", drop = FALSE]))
-      if (ncol(.eo) > ncol(.eta) && all(colnames(.eta) %in% colnames(.eo))) {
-        return(.eo)
+    # $iov holds each occasion eta on the natural scale; a refit expands an
+    # uncorrelated level with unit-variance etas, so divide by its SD there
+    .om <- tryCatch(.ui$ui$omega, error = function(e) NULL)
+    .omegaMode <- identical(tryCatch(.ui$control$iovMethod, error = function(e) NULL), "omega")
+    .iovSd <- function(n, d) {
+      .m <- if (is.list(.om)) .om[[n]] else NULL
+      if (.omegaMode || !is.matrix(.m) || !(d %in% rownames(.m)) || any(.m[upper.tri(.m)] != 0)) {
+        return(1)
       }
+      sqrt(.m[d, d])
     }
     .n <- names(.ui$iov)
     as.matrix(do.call(
@@ -52,7 +54,7 @@ nmObjGet.etaMat <- function(x, ...) {
               .dt0 <- .dt[, c("ID", n, nr)]
               .df <- as.data.frame(data.table::dcast(.dt, formula = .frm, value.var = nr)[, -1])
               names(.df) <- paste0("rx.", nr, ".", names(.df))
-              .df
+              .df / .iovSd(n, nr)
             })
           )
         })

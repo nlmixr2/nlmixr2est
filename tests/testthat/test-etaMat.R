@@ -91,6 +91,16 @@ nmTest({
       etaMat = f$etaMat
     )
     expect_equal(.nlmixr(f$ui, .d, "focei", .ctl)$objf, f$objf, tolerance = 1e-8)
+    ## imp replaces etaObf with a FOCEi recompute, and SAEM's two-level etas are
+    ## natural-scale; $etaMat follows $eta and $iov for both
+    for (f in list(
+      .nlmixr(.iovMod, .d, "imp", impControl(print = 0L, nIter = 2L, covMethod = "")),
+      .nlmixr(.iovMod, .d, "saem", saemControl(print = 0L, nBurn = 10L, nEm = 10L, covMethod = ""))
+    )) {
+      .sd <- sqrt(f$ui$omega$occ[1, 1])
+      expect_equal(unname(f$etaMat[, 1:3]), unname(as.matrix(f$eta[, -1])))
+      expect_equal(as.vector(t(f$etaMat[, 4:5])) * .sd, f$iov$occ$iov.cl)
+    }
   })
 
   test_that(".foceiGradDirect() refits with an etaMat of etas only", {
