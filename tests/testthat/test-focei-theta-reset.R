@@ -147,4 +147,111 @@ nmTest({
     .expectWellFormed(.b$fit)
     .expectSameFit(.a$fit, .b$fit)
   })
+
+  # The drifting model's first reset fires at the initial estimates.  With the
+  # restart loop off it ends the fit, and .thetaReset keeps what it reset to.
+  test_that("a theta reset moves each eta's drift into the theta it refers to", {
+    skip_on_cran()
+    # the etas at the initial estimates (the inner problem of a posthoc fit)
+    .eta0 <- suppressMessages(suppressWarnings(nlmixr(
+      .driftingModel(),
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE)
+    )))$eta
+    .eta0 <- as.matrix(.eta0[, c("eta.ka", "eta.cl")])
+    withr::local_options(nlmixr2.retryFocei = FALSE)
+    rm(list = intersect(ls(.thetaReset), c("thetaIni", "omegaTheta", "etaMat", "nF")), envir = .thetaReset)
+    expect_error(
+      suppressMessages(suppressWarnings(nlmixr(
+        .driftingModel(),
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(
+          resetThetaP = 0.2,
+          resetThetaCheckPer = 1,
+          print = 0,
+          maxOuterIterations = 20L,
+          covMethod = "",
+          calcTables = FALSE
+        )
+      ))),
+      "theta reset"
+    )
+    expect_equal(.thetaReset$nF, 0)
+    # tv and add.sd have no eta: they stay at their initial estimates, as does
+    # omega (chol(omega^-1) with sqrt diagonals: omega^(-1/4))
+    expect_equal(.thetaReset$thetaIni[3:4], c(-1, 0.7))
+    expect_equal(.thetaReset$omegaTheta, c(0.6, 0.3)^-0.25)
+    # every subject keeps its ka and cl: each eta's drift is taken out of the
+    # eta and put into tka and tcl, its own theta
+    expect_equal(
+      sweep(.thetaReset$etaMat, 2, .thetaReset$thetaIni[1:2], "+"),
+      sweep(.eta0, 2, c(0.45, -3.2), "+"),
+      tolerance = 1e-6,
+      ignore_attr = TRUE
+    )
+    expect_true(all(abs(.thetaReset$thetaIni[1:2] - c(0.45, -3.2)) > 1))
+  })
+
+  test_that("the restart after a theta reset starts from the values it reset to", {
+    skip_on_cran()
+    rm(list = intersect(ls(.thetaReset), c("thetaIni", "omegaTheta", "etaMat", "nF")), envir = .thetaReset)
+    # the final reset fires after the optimization, so its restart continues
+    # the parameter history
+    .f <- suppressMessages(suppressWarnings(nlmixr(
+      .driftingModel(),
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(
+        resetThetaFinalP = 0.2,
+        print = 0,
+        maxOuterIterations = 20L,
+        covMethod = "",
+        calcTables = FALSE
+      )
+    )))
+    # the drift at the end of this optimization is far past the threshold
+    expect_false(is.null(.thetaReset$nF))
+    expect_gt(.thetaReset$nF, 0)
+    .un <- .f$parHistData[.f$parHistData$type == "Unscaled", ]
+    .first <- unlist(.un[.un$iter == .thetaReset$nF + 1, c("tka", "tcl", "tv", "add.sd", "o1", "o2")])
+    expect_equal(unname(.first), c(.thetaReset$thetaIni, .thetaReset$omegaTheta), tolerance = 1e-10)
+    expect_true(is.finite(.f$objf))
+  })
+
+  test_that("the restart after a theta reset scales the bounds once, as the first attempt did", {
+    skip_on_cran()
+    # An outer optimizer that records the bounds it is given and evaluates its
+    # start once.  The restart keeps the first attempt's scaling, so it must be
+    # given the same scaled bounds.
+    .acc <- new.env(parent = emptyenv())
+    .acc$calls <- list()
+    .opt <- function(par, fn, gr, lower, upper, control, ...) {
+      .acc$calls[[length(.acc$calls) + 1L]] <- list(par = par, lower = lower, upper = upper)
+      .v <- fn(par)
+      list(x = par, value = .v, convergence = 0L, message = "")
+    }
+    .f <- suppressMessages(suppressWarnings(nlmixr(
+      .driftingModel(),
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(
+        resetThetaFinalP = 0.2,
+        print = 0,
+        covMethod = "",
+        calcTables = FALSE,
+        outerOpt = .opt
+      )
+    )))
+    expect_gte(length(.acc$calls), 2L)
+    .first <- .acc$calls[[1]]
+    for (.c in .acc$calls[-1]) {
+      expect_identical(.c$lower, .first$lower)
+      expect_identical(.c$upper, .first$upper)
+    }
+    # the restart starts elsewhere: from the reset's values
+    expect_false(isTRUE(all.equal(.acc$calls[[2]]$par, .first$par)))
+    expect_true(is.finite(.f$objf))
+  })
 })
