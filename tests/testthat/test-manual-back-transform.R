@@ -245,4 +245,68 @@ nmTest({
     expect_equal(unname(.pf[["CI Lower"]][.i]), exp(.e - qn * .s))
     expect_equal(unname(.pf[["CI Upper"]][.i]), exp(.e + qn * .s))
   })
+
+  test_that("a refreshed covariance back-transforms each CI bound the way the table does", {
+    # the table applies a backTransform() function one value at a time, so the
+    # refresh does too: a function that only takes a scalar keeps its CI.  A
+    # row whose back-transform cannot be reproduced loses its CI with a warning
+    # rather than keeping the previous covariance's interval.
+    assign("btScalar", function(x) if (x > 0) exp(x) else x, envir = globalenv())
+    withr::defer(rm("btScalar", envir = globalenv()))
+    btMod <- function() {
+      ini({
+        tka <- 0.45
+        backTransform("btScalar")
+        tcl <- 1
+        tq <- 0.2
+        backTransform("btMissing")
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        cp <- ka * cl * tq
+        cp ~ add(add.sd)
+      })
+    }
+    .mkEnv <- function() {
+      .e <- new.env(parent = emptyenv())
+      .e$ui <- rxode2::rxode2(btMod)
+      .est <- c(tka = 0.45, tcl = 1, tq = 0.2, add.sd = 0.7)
+      .e$parFixedDf <- data.frame(
+        Estimate = .est,
+        SE = rep(0.1, 4),
+        `%RSE` = 10,
+        `Back-transformed` = c(exp(0.45), exp(1), 99, 0.7),
+        `CI Lower` = c(1, 2, 3, 0.5),
+        `CI Upper` = c(2, 3, 4, 0.9),
+        check.names = FALSE,
+        row.names = names(.est)
+      )
+      .e
+    }
+    .cov <- diag(c(0.2, 0.3, 0.4, 0.05)^2)
+    dimnames(.cov) <- list(c("tka", "tcl", "tq", "add.sd"), c("tka", "tcl", "tq", "add.sd"))
+    qn <- qnorm(0.975)
+    .e <- .mkEnv()
+    expect_warning(
+      .updateParFixedRefreshSeFromCov(.e, .cov),
+      "the confidence interval of 'tq' was dropped: its back-transform could not be reproduced",
+      fixed = TRUE
+    )
+    .pf <- .e$parFixedDf
+    expect_equal(unname(unlist(.pf["tka", c("CI Lower", "CI Upper")])), exp(0.45 + c(-1, 1) * qn * 0.2))
+    expect_equal(unname(unlist(.pf["tcl", c("CI Lower", "CI Upper")])), exp(1 + c(-1, 1) * qn * 0.3))
+    expect_equal(unname(unlist(.pf["tq", c("CI Lower", "CI Upper")])), c(NA_real_, NA_real_))
+    expect_equal(unname(unlist(.pf["add.sd", c("CI Lower", "CI Upper")])), 0.7 + c(-1, 1) * qn * 0.05)
+    expect_equal(unname(.pf[["SE"]]), c(0.2, 0.3, 0.4, 0.05))
+    # ciIdentity (the variational covariance's rule): only a row reported
+    # untransformed gets Estimate +/- z SE; the others keep their interval
+    .e <- .mkEnv()
+    expect_no_warning(.updateParFixedRefreshSeFromCov(.e, .cov, ciIdentity = TRUE))
+    .pf <- .e$parFixedDf
+    expect_equal(unname(unlist(.pf["add.sd", c("CI Lower", "CI Upper")])), 0.7 + c(-1, 1) * qn * 0.05)
+    expect_equal(unname(unlist(.pf["tka", c("CI Lower", "CI Upper")])), c(1, 2))
+    expect_equal(unname(unlist(.pf["tq", c("CI Lower", "CI Upper")])), c(3, 4))
+  })
 })

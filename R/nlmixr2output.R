@@ -363,11 +363,14 @@
   .bt <- unname(bt)
   .fun <- ui$iniDf$backTransform[ui$iniDf$name == name]
   if (length(.fun) == 1L && !is.na(.fun)) {
-    .fun <- tryCatch(
-      get(.fun, envir = nlmixr2global$nlmixrEvalEnv$envir, mode = "function"),
-      error = function(e) NULL
-    )
-    .y <- if (is.function(.fun)) tryCatch(unname(.fun(x)), error = function(e) NULL)
+    .env <- nlmixr2global$nlmixrEvalEnv$envir
+    if (!is.environment(.env)) {
+      .env <- globalenv()
+    }
+    .fun <- tryCatch(get(.fun, envir = .env, mode = "function"), error = function(e) NULL)
+    # one value per call, as the fit's table applies it: the function need not
+    # be vectorized
+    .y <- if (is.function(.fun)) tryCatch(vapply(x, .fun, numeric(1), USE.NAMES = FALSE), error = function(e) NULL)
     if (length(.y) == length(x) && isTRUE(all.equal(.y[1], .bt))) {
       return(.y)
     }
