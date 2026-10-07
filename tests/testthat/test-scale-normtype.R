@@ -169,4 +169,37 @@ nmTest({
       expect_equal(unname(.r$scaled), unname(.normWant[[.nt]](.r$par)), tolerance = 1e-8, label = .nt)
     }
   })
+
+  test_that("a derivative-based scaleC is band-guarded in R and in C++ (#994)", {
+    skip_on_cran()
+    # tcl's near-zero starting gradient sends |gradTo/gradient| far out of band
+    .bounded <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(.bounded)
+    .ctl <- nlmControl(print = 0, scaleType = "nlmixr2", calcTables = FALSE, iterlim = 1)
+    .ret <- new.env(parent = emptyenv())
+    .foceiPreProcessData(nlmixr2data::theo_sd, .ret, .ui, .ctl$rxControl)
+    .p <- setNames(.ui$nlmParIni, .ui$nlmParName)
+    on.exit(.nlmFreeEnv())
+    .env <- .nlmSetupEnv(.p, .ui, .ret$dataSav, .ui$nlmSensModel, .ctl)
+    # with scaleType="nlmixr2", du/dx is the scaleC the C++ side holds
+    .used <- unname(nlmUnscalePar(.env$par.ini + 1) - .p)
+    .raw <- nlmGetScaleC(.p, .ctl$gradTo)
+    expect_true(any(.raw < 0.1 | .raw > 10))
+    .want <- mapply(.guardScaleC, .raw, .ui$scaleCtheta, USE.NAMES = FALSE)
+    expect_equal(.env$scaleC, .want)
+    expect_equal(.used, .want, tolerance = 1e-8)
+  })
 })

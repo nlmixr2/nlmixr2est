@@ -276,7 +276,8 @@
     }
     return(.covMethodFromSlot(covMethod))
   }
-  if (identical(covMethod, "")) {
+  # compared by value: a named "" is still "no covariance"
+  if (is.character(covMethod) && length(covMethod) == 1L && !is.na(covMethod) && !nzchar(covMethod)) {
     return("")
   }
   choice

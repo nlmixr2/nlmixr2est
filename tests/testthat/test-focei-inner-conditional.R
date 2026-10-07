@@ -79,7 +79,7 @@ test_that("conditional curvature preserves the FOCEI marginal objective", {
 
 test_that("conditional curvature requires a compatible optimizer", {
   expect_error(foceiControl(innerHessian = "conditional"), "requires fast")
-  expect_error(foceiControl(fast = TRUE, innerOpt = "BFGS", innerHessian = "conditional"), "requires fast")
+  expect_error(foceiControl(fast = TRUE, innerOpt = "lbfgsb3c", innerHessian = "conditional"), "requires fast")
   expect_error(foceiControl(fast = TRUE, interaction = FALSE, innerHessian = "conditional"), "requires fast")
   # n1qn1 reaches the conditional curvature only through warmZm(), which runs only
   # when warm="calc" -- the combination below used to be accepted and silently ignored
