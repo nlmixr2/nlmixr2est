@@ -382,10 +382,12 @@ extern "C" SEXP _nlmixr2est_popResFinal(SEXP inList) {
     // Only resid in 1
     List l1 = l[0];
     if (l1.size() != 4) return R_NilValue;
-    List retC = List::create(l1[1],
-                             List::create(_["DV"] = l1[0]),
-                             l1[2]);
-    return(List::create(_["resid"]=dfCbindList(wrap(retC)),
+    // Each freshly allocated piece is held in an Rcpp object (protected) before the
+    // next allocation: List::create() allocates after evaluating its arguments.
+    List dvL = List::create(_["DV"] = l1[0]);
+    List retC = List::create(l1[1], dvL, l1[2]);
+    RObject resid = dfCbindList(wrap(retC));
+    return(List::create(_["resid"]=resid,
                         _["shrink"]=l1[3]));
   }
   List l1 = l[0];
@@ -403,11 +405,10 @@ extern "C" SEXP _nlmixr2est_popResFinal(SEXP inList) {
   } else {
     return R_NilValue;
   }
-  List retC = List::create(l4[1],
-                           List::create(_["DV"] = dv),
-                           l2[1],
-                           l4[2]);
-  return List::create(_["resid"]=dfCbindList(wrap(retC)),
+  List dvL = List::create(_["DV"] = dv);
+  List retC = List::create(l4[1], dvL, l2[1], l4[2]);
+  RObject resid = dfCbindList(wrap(retC));
+  return List::create(_["resid"]=resid,
                       _["shrink"]=l4[3]);
   END_RCPP
     }

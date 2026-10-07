@@ -143,3 +143,22 @@ nmTest({
     .residGcExpect(`_nlmixr2est_iresCalc`, .cap$ires)
   })
 })
+
+test_that("popResFinal keeps every column when a GC runs at every allocation", {
+  skip_on_cran()
+  # the two shapes the table step hands it: residuals only, and residuals with
+  # the ipred/npde list beside them
+  .res <- list(c(1, 2, 3), data.frame(a = 1:3, b = 4:6), data.frame(c = 7:9), list(shrink = 0.1))
+  .ipred <- list(c(1.5, 2.5, 3.5), data.frame(d = 10:12))
+  for (.in in list(list(.res, NULL), list(.res, .ipred), list(.ipred, .res))) {
+    .want <- .residGcCall("_nlmixr2est_popResFinal", list(.in), FALSE)
+    expect_named(.want, c("resid", "shrink"))
+    for (.i in 1:5) {
+      expect_identical(.residGcCall("_nlmixr2est_popResFinal", list(.in), TRUE), .want)
+    }
+  }
+  expect_identical(
+    names(.residGcCall("_nlmixr2est_popResFinal", list(list(.res, NULL)), FALSE)$resid),
+    c("a", "b", "DV", "c")
+  )
+})
