@@ -47,10 +47,12 @@
   effects at those values: `setOfv(fit, "foce")` on an additive-error
   `theo_md` model gave 482.5 for a fit whose objective was 458.3.
 
-- `est="nls"` fits a delay differential equation model with its `past()`
-  pre-history.  The nls models dropped the `past()` lines, so nls fitted a
-  model with a different history: its estimates were biased, and the
-  residuals it minimized did not match the fit's own table.
+- `est = "lbfgsb3c"` stopped early at the default `sigdig`: its `factr` was
+  `10^-sigdig / eps`, which tests one step's objective reduction, so a logistic
+  Emax fit ended ~1.6 OFV short of the optimum.  It is now
+  `10^(-sigdig-2) / eps`, matching `foceiControl(lbfgsFactr=)`.
+  `est = "optim"` with `method = "L-BFGS-B"` stopped short the same way and
+  now uses the same rule.
 
 - `est="nls"` started from parameters that are all zero (all-zero initial
   estimates with `nlsControl(scaleTo = 0)`) now solves the model for its first
@@ -87,6 +89,16 @@
   no covariance.  A control whose covariance step is off is written as
   `covMethod = ""` even when its `covType` is `"analytic"`, where it was
   written as `covMethod = "analytic"`.
+
+- `rxUiDeparse()` of an estimation control evaluates back to the identical
+  control.  A control with a non-default `sigdig` is written as `sigdig = `
+  rather than as every tolerance derived from it (some of them rounded, such
+  as `lbfgsFactr`); `print` is written for the focei family, where it was
+  dropped; and saem's integer `nBurn`/`nEm` stay integer.
+
+- `impControl()`, `impmapControl()`, `npagControl()` and `npbControl()` now
+  have an `rxUiDeparse()` method; a fit with one of these controls deparsed
+  its control as nothing.
 
 - `est="nls"` dropped the `past()` pre-history of a delay differential
   equation model, biasing its estimates; the history is now kept.
@@ -397,6 +409,11 @@
 
 ### Covariance
 
+- The post-fit covariance of a model with inter-occasion variability is now
+  computed: the recompute of the `mfocei`-style families (and of imp/np with
+  a requested covariance) and `setCov(fit, "imp")` (or a deferred
+  `covMethod = "imp"`) refit without the occasion ETAs, the refit stopped,
+  and no covariance was installed.
 - A covariance computed after the fit is now installed only when it is
   finite, symmetric and positive definite; otherwise the fit keeps the
   covariance it had and a warning names the method and the reason.  This
