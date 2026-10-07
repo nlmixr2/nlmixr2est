@@ -62,6 +62,9 @@ test_that("vpcSim() and augPred() work with lag() of a calculated variable (#117
   vp <- vpcSim(fit, n = 2, pred = TRUE)
   expect_false(any(is.na(vp$pred)))
 
+  fitNpde <- suppressWarnings(addNpde(fit))
+  expect_true("NPDE" %in% names(fitNpde))
+
   ap <- augPred(fit)
   expect_true(all(c("Individual", "Population") %in% levels(ap$ind)))
   expect_false(any(is.na(ap$values)))
