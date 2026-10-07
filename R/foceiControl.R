@@ -2271,7 +2271,11 @@ foceiControl <- function(
   .outerOpt <- character(0)
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default", call. = FALSE)
-  } else if (!(object$outerOptTxt %in% c(.ret$outerOptTxt, "stats::optimize"))) {
+  } else if (
+    !(object$outerOptTxt %in% c(.ret$outerOptTxt, "stats::optimize")) ||
+      # an optimizer that was asked for, even the default one
+      (!identical(object$outerOptDefault, .ret$outerOptDefault) && object$outerOptTxt != "stats::optimize")
+  ) {
     .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
   .w <- .deparseDifferent(.ret, object, c(.foceiControlInternal, internal))
