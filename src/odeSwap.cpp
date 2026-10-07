@@ -32,10 +32,9 @@ struct OdeModelReg {
   //   #define _CMT ((fabs(CMT)<=nPhys) ? CMT : CMT - nSens)
   // so a model normalizes the raw CMT with its OWN sensitivity-compartment
   // count.  Peers sharing one pooled event table therefore need the raw value
-  // rebased by the difference; nSens and the CMT parameter slot are recorded
-  // here so that can be done without going back to R.
+  // rebased by the difference; nSens is recorded here so that can be done
+  // without going back to R.
   int nSens = 0;      // length(rxModelVars(obj)$sens)
-  int cmtPar = -1;    // index of "CMT" in $params, or -1 if the model has none
   // rxModelVars(obj)$flags["ndiff"]: which linCmtB() structural-parameter
   // derivatives THIS model's calc_lhs actually calls linCmtB(which1=-2, ...)
   // for (a bitmask; 0 = none declared).  linCmtB() caches its Jacobian
@@ -134,7 +133,6 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
       }
     }
   }
-  m.cmtPar = -1;
   m.npars = 0;
   m.parNames.clear();
   if (mv.containsElementNamed("params")) {
@@ -143,7 +141,6 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
     m.parNames.resize((size_t)pars.size());
     for (int i = 0; i < pars.size(); ++i) {
       m.parNames[(size_t)i] = as<std::string>(pars[i]);
-      if (m.parNames[(size_t)i] == "CMT") m.cmtPar = i;
     }
   }
   // Record only WHETHER this model carries event ("jump") sensitivities.  The
@@ -340,7 +337,7 @@ void odeSwapClear(int slot) {
   OdeModelReg &m = _odeReg[slot];
   if (m.fns != NULL) rxClearFuns(m.fns);
   m.fns = NULL; m.name = NULL; m.neq = 0; m.nlhs = 0; m.loaded = false;
-  m.nSens = 0; m.cmtPar = -1; m.npars = 0; m.ndiff = 0; m.ndiffSet = false;
+  m.nSens = 0; m.npars = 0; m.ndiff = 0; m.ndiffSet = false;
   m.esDims = false; m.esNState = m.esNParam = m.esNParam2 = m.esNParam3 = m.esUseCalcJac = 0;
   m.lhsNames.clear();
   m.parNames.clear();

@@ -256,6 +256,33 @@
   if (.n == "r" && identical(covType, "analytic")) "analytic" else .n
 }
 
+#' A control's covMethod argument as one of its names
+#'
+#' An integer is a `foceiControl()` slot, as a round-tripped control carries it,
+#' and is decoded with `.covMethodFromSlot()`.  `""` (no covariance) is tested
+#' next, because `match.arg()` cannot match it.
+#' @param covMethod the argument as given
+#' @param choice `match.arg(covMethod)` in the calling control; it is a promise,
+#'   forced only when `covMethod` is a name other than `""`
+#' @return the name, or `""`
+#' @noRd
+.covMethodArg <- function(covMethod, choice) {
+  if (checkmate::testIntegerish(covMethod, len = 1, any.missing = FALSE)) {
+    if (!(covMethod %in% c(0L, .covMethodSlot))) {
+      stop(
+        "an integer 'covMethod' is a foceiControl() slot: 0 (none), 1 (\"r,s\"), 2 (\"r\") or 3 (\"s\")",
+        call. = FALSE
+      )
+    }
+    return(.covMethodFromSlot(covMethod))
+  }
+  # compared by value: a named "" is still "no covariance"
+  if (is.character(covMethod) && length(covMethod) == 1L && !is.na(covMethod) && !nzchar(covMethod)) {
+    return("")
+  }
+  choice
+}
+
 #' Check a covariance before it is installed or kept
 #'
 #' Symmetrizes first, then requires a finite, square matrix that is symmetric
@@ -470,39 +497,6 @@
     }
   } else if (.control$covMethod == 0L) {
     .control$covMethod <- 1L
-  }
-  ## covDerivMethod=c("central", "forward"),
-  if (!is.null(.lst$hessEps)) {
-    .control$hessEps <- .lst$hessEps
-    .lst$hessEps <- NULL
-  }
-  if (!is.null(.lst$gillKcov)) {
-    .control$gillKcov <- .lst$gillKcov
-    .lst$gillKcov <- NULL
-  }
-  if (!is.null(.lst$gillStepCov)) {
-    .control$gillStepCov <- .lst$gillStepCov
-    .lst$gillStepCov <- NULL
-  }
-  if (!is.null(.lst$gillFtolCov)) {
-    .control$gillFtolCov <- .lst$gillFtolCov
-    .lst$gillFtolCov <- NULL
-  }
-  if (!is.null(.lst$rmatNorm)) {
-    .control$rmatNorm <- .lst$rmatNorm
-    .lst$rmatNorm <- NULL
-  }
-  if (!is.null(.lst$smatNorm)) {
-    .control$smatNorm <- .lst$smatNorm
-    .lst$smatNorm <- NULL
-  }
-  if (!is.null(.lst$covGillF)) {
-    .control$covGillF <- .lst$covGillF
-    .lst$covGillF <- NULL
-  }
-  if (!is.null(.lst$covSmall)) {
-    .control$covSmall <- .lst$covSmall
-    .lst$covSmall <- NULL
   }
   .dat <- getData(obj)
   .ui <- obj$ui

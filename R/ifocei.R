@@ -4,7 +4,7 @@ nlmixr2Est.ifocei <- function(env, ...) {
   .ui <- env$ui
   .control <- env$control
   .foceiFamilyControl(env, ..., type = "ifoceiControl")
-  .ifoceiControlToFoceiControl(env)
+  .foceiFamilyControlToFoceiControl(env, "ifoceiControl")
   on.exit({
     if (exists("control", envir = .ui)) {
       rm("control", envir = .ui)

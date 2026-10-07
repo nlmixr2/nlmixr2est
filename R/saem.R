@@ -1337,11 +1337,10 @@
         .ini <- paste(.idf$name[is.na(.idf$err) & !is.na(.idf$ntheta) & !.idf$fix])
         .ini <- .ini[!(.ini %in% .ui$mixProbs)]
         env$cov <- .cov[.ini, .ini, drop = FALSE] # structural-theta block
-        if (.calcCov) {
-          env$covMethod <- if (.rep$sqrtm) "|linFim|" else "linFim"
-        } else if (.rep$sqrtm) {
-          env$covMethod <- "|fim|"
-        }
+        .m <- if (.calcCov) "linFim" else "fim"
+        env$covMethod <- if (.rep$sqrtm) paste0("|", .m, "|") else .m
+        # the shared finalization can relabel the fit, so record the label
+        assign(".saemCovMethod", env$covMethod, envir = env)
         # covFull: assemble the full theta + residual + Omega block-diagonal cov
         # (calc.COV attaches the variance block as "varCov").  The shared output
         # finalization expects a theta-dimensioned cov, so stash the full matrix and
@@ -1359,13 +1358,11 @@
           # Contract them (no-op when the fit did not take that path).
           .full <- .saemIovCollapseCov(.full, .uiIovEnv$iovTwoLevel)
           assign(".saemFullCov", .full, envir = env)
-          assign(".saemCovMethod", env$covMethod, envir = env)
         }
         if (.linFim && !.calcCov && !inherits(.covm, "try-error")) {
           warning("linearization of FIM could not be used to calculate covariance", call. = FALSE)
         }
         if (.rep$sqrtm) {
-          .m <- if (.calcCov) "linFim" else "fim"
           warning(
             sprintf("covariance matrix non-positive definite, corrected by sqrtm(%s %%*%% %s)", .m, .m),
             call. = FALSE
@@ -1769,7 +1766,11 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
       } else {
         tryCatch(rxode2::rxGetControl(.ui, "covMethod", "linFim"), error = function(e) "linFim")
       }
-      .rEnv$covMethod <- if (.cm %in% c("linFim", "fim", "sa")) .cm else "linFim"
+      .rEnv$covMethod <- if (.covIsName(.cm) && gsub("|", "", .cm, fixed = TRUE) %in% c("linFim", "fim", "sa")) {
+        .cm
+      } else {
+        "linFim"
+      }
     }
     # covMethod="analytic": now that the linFim fallback is installed and the fit
     # table is built, attempt the FOCEI analytic covariance at the converged

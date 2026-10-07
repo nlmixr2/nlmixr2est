@@ -71,4 +71,39 @@ nmTest({
     fitLB <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est = "lbfgsb")
     expect_equal(fitLB$optimControl$method, "L-BFGS-B")
   })
+
+  test_that("optim L-BFGS-B factr is two orders tighter than sigdig", {
+    expect_equal(optimControl(sigdig = 3)$factr, 1e-5 / .Machine$double.eps)
+    expect_equal(optimControl(sigdig = 3)$factr, foceiControl(sigdig = 3)$lbfgsFactr)
+    expect_equal(optimControl(sigdig = NULL)$factr, 1e7)
+    expect_equal(optimControl(factr = 1e9)$factr, 1e9)
+  })
+
+  test_that("optim L-BFGS-B reaches the n1qn1 optimum at the default sigdig", {
+    skip_on_cran()
+    set.seed(42)
+    dsn <- data.frame(i = 1:1000)
+    dsn$time <- exp(rnorm(1000))
+    dsn$DV <- rbinom(1000, 1, exp(-1 + dsn$time) / (1 + exp(-1 + dsn$time)))
+    mod <- function() {
+      ini({
+        E0 <- 0.5
+        Em <- 0.5
+        E50 <- 2
+        g <- fix(2)
+      })
+      model({
+        v <- E0 + Em * time^g / (E50^g + time^g)
+        ll(bin) ~ DV * v - log(1 + exp(v))
+      })
+    }
+    # 10^-sigdig factr stopped this fit ~1.6 OFV short
+    .fit <- suppressWarnings(suppressMessages(
+      nlmixr2(mod, dsn, est = "optim", optimControl(method = "L-BFGS-B", print = 0))
+    ))
+    .ref <- suppressWarnings(suppressMessages(
+      nlmixr2(mod, dsn, est = "n1qn1", n1qn1Control(print = 0))
+    ))
+    expect_equal(.fit$objf, .ref$objf, tolerance = 1e-4)
+  })
 })

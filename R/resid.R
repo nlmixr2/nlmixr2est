@@ -1318,8 +1318,4 @@ tableControl <- function(
 }
 
 #' @export
-rxUiDeparse.tableControl <- function(object, var) {
-  .default <- tableControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.tableControl <- function(object, var) .deparseControl(object, var, tableControl())
