@@ -654,8 +654,10 @@
 #' @param trustPolish logical; when `TRUE`, each converged `innerOpt="trust"`
 #'     solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
 #'     This makes the objective less dependent on the warm-start ETAs and can
-#'     help a fit that stops short of its minimum (#1152).  `FALSE` (default)
-#'     keeps the plain trust solve.
+#'     help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+#'     outer search then also restarts once from where it stops, which costs
+#'     about twice the outer evaluations.  `FALSE` (default) keeps the plain
+#'     trust solve and a single outer search.
 #'
 #' @param innerHessian Inner optimization curvature: `"focei"` (default) or
 #'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.

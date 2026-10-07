@@ -25,6 +25,14 @@
   It is off by default: across a 372-case FOCEi corpus it moved most fits
   toward their minimum for about 6% more time, but not every fit.
 
+- With `foceiControl(trustPolish = TRUE)` the `"bobyqa"` outer search now
+  restarts once from where it stops, for about twice the outer evaluations.
+  The objective noise that remains can still shrink bobyqa's trust region
+  early: from 10 starting estimates of `pheno_sd`, 2 fits stopped up to 0.05
+  OFV short, and the polished fit of the #1152 model stopped 0.018 short once
+  residual-error parameters kept their own scaling; with the restart every fit
+  reaches the minimum.
+
 - The table of a mixture fit now has a `mixest` column: each subject's fitted
   mixture component (as in `$mixNum`).
 
