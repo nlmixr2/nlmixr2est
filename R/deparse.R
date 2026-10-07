@@ -79,7 +79,23 @@
   } else if (x == "rxControl") {
     .rx <- rxUiDeparse(value, "a")
     .rx <- .rx[[3]]
-    paste0("rxControl = ", deparse1(.rx))
+    # rxode2 writes 15 significant digits; give a value that does not read back
+    # the same its full precision
+    .args <- vapply(
+      seq_along(.rx)[-1L],
+      function(i) {
+        .n <- names(.rx)[i]
+        .v <- value[[.n]]
+        .d <- if (is.numeric(.v) && !identical(tryCatch(eval(.rx[[i]]), error = function(e) NULL), .v)) {
+          .deparseValue(.v)
+        } else {
+          deparse1(.rx[[i]])
+        }
+        if (is.null(.n) || .n == "") .d else paste0(.n, " = ", .d)
+      },
+      character(1)
+    )
+    paste0("rxControl = ", deparse1(.rx[[1]]), "(", paste(.args, collapse = ", "), ")")
   } else if (x == "scaleType") {
     if (is.integer(value)) {
       paste0("scaleType =", deparse1(names(.scaleTypeIdx[which(value == .scaleTypeIdx)])))
@@ -223,6 +239,10 @@
 .deparseControl <- function(object, var, default, internal = "genRxControl", fun = NULL) {
   .default <- .deparseSigdigDefault(default, object)
   .w <- .deparseDifferent(.default, object, internal)
+  # an rxControl that was supplied, even one equal to the generated one
+  if (!identical(object[["genRxControl"]], .default[["genRxControl"]])) {
+    .w <- sort(union(.w, which(names(.default) == "rxControl")))
+  }
   if (!identical(object[["sigdig"]], default[["sigdig"]])) {
     .w <- sort(union(.w, which(names(.default) == "sigdig")))
   }

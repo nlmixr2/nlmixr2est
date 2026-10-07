@@ -2278,6 +2278,10 @@ foceiControl <- function(
   if (!identical(object[["sigdig"]], .ret0[["sigdig"]])) {
     .w <- union(.w, which(names(.ret) == "sigdig"))
   }
+  # an rxControl that was supplied, even one equal to the generated one
+  if (!identical(object[["genRxControl"]], .ret[["genRxControl"]])) {
+    .w <- union(.w, which(names(.ret) == "rxControl"))
+  }
   # print is kept only as iterPrintControl, which is otherwise internal
   if (!identical(object$iterPrintControl, .ret$iterPrintControl)) {
     .w <- union(.w, which(names(.ret) == "iterPrintControl"))
