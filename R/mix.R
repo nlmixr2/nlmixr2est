@@ -233,8 +233,9 @@
   .rows <- seq_len(nrow(x))
   .sub <- (.rows - 1L) %% length(bestMix) + 1L
   .cols <- match(grp, colnames(x))
-  .src <- match(attr(grp, "comp")[bestMix[.sub]], colnames(x))
-  .val <- as.matrix(x)[cbind(.rows, .src)]
+  .src <- match(attr(grp, "comp")[bestMix[.sub]], grp)
+  # only the group's columns, so a non-numeric ID cannot coerce the etas
+  .val <- as.matrix(x[, .cols, drop = FALSE])[cbind(.rows, .src)]
   .val[is.na(.src)] <- 0
   x[, .cols[1]] <- .val
   colnames(x)[.cols[1]] <- rootName

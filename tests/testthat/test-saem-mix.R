@@ -866,6 +866,10 @@ nmTest({
     .r <- .saemMixRootEta(.x, .grp, "eta.cl", c(2L, 3L, 1L))
     expect_identical(colnames(.r), c("eta.cl", "eta.v"))
     expect_equal(unname(.r[, "eta.cl"]), c(-0.1, 0, 0.3))
+    # a non-numeric ID leaves the etas numeric
+    .df <- data.frame(ID = factor(c("a", "b", "c")), .x)
+    .r <- .saemMixRootEta(.df, .grp, "eta.cl", c(2L, 3L, 1L))
+    expect_equal(.r$eta.cl, c(-0.1, 0, 0.3))
   })
 
   test_that("a split-eta saem mixture with an eta-free component fits", {
