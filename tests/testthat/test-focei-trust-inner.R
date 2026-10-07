@@ -2,7 +2,7 @@ nmTest({
   test_that("foceiControl(innerOpt=) trust mapping", {
     expect_equal(foceiControl()$innerOpt, 4L)
     expect_equal(foceiControl(innerOpt = "n1qn1")$innerOpt, 1L)
-    expect_equal(foceiControl(innerOpt = "BFGS")$innerOpt, 2L)
+    expect_equal(foceiControl(innerOpt = "lbfgsb3c")$innerOpt, 2L)
     expect_equal(foceiControl(innerOpt = "trust")$innerOpt, 3L)
     expect_equal(foceiControl(innerOpt = "auto")$innerOpt, 4L)
     expect_equal(foceiControl(innerOpt = 3L)$innerOpt, 3L)
@@ -108,7 +108,7 @@ nmTest({
     expect_equal(as.data.frame(.f1$eta), as.data.frame(.f2$eta), tolerance = 5e-2)
 
     # Positive evidence the trust path actually ran -- not a silent fallback to
-    # n1qn1, the failure mode #927's innerOpt="BFGS" had (numeric agreement alone
+    # n1qn1, the failure mode #927's innerOpt="BFGS" (now "lbfgsb3c") had (numeric agreement alone
     # would not catch that).
     expect_equal(.n1, 0L)
     expect_true(.n2 > 0L)
@@ -140,19 +140,13 @@ nmTest({
     expect_true(is.finite(.fit$objf))
   })
 
-  test_that("innerOpt='BFGS' actually falls back to n1qn1 (not just the R-level mapping)", {
+  test_that("innerOpt='lbfgsb3c' runs L-BFGS-B, not n1qn1 or trust", {
     skip_on_cran()
-    # #927: innerOpt="BFGS" is accepted but unimplemented in C++ (lbfgsb3C is not
-    # reentrant under this OpenMP loop, see src/inner.cpp). Run a real fit, not just
-    # check foceiControl()$innerOpt, so a future C++ change that actually wires
-    # innerOpt==2 into the trust/lbfgsb3C path gets caught here too.
-    .f1 <- .fitTrustCmp("n1qn1")
-    .fB <- .fitTrustCmp("BFGS")
-    .nB <- .nTrustInner()
-
-    expect_equal(.fB$objf, .f1$objf, tolerance = 1e-8)
-    expect_equal(as.data.frame(.fB$eta), as.data.frame(.f1$eta), tolerance = 1e-8)
-    expect_equal(.nB, 0L)
+    # #1160: innerOpt==2 used to fall back silently to n1qn1 (#927).
+    .fB <- .fitTrustCmp("lbfgsb3c")
+    expect_equal(.nTrustInner(), 0L)
+    expect_gt(.fB$env$nLbfgsInner[["calls"]], 0L)
+    expect_true(is.finite(.fB$objf))
   })
 
   test_that("innerOpt='auto' picks n1qn1 for a generalized likelihood and trust otherwise", {
@@ -327,6 +321,7 @@ nmTest({
         "solverFail",
         "newtonGate",
         "warmRetry",
+        "polish",
         "radiusRetry",
         "nudge",
         "omegaRestart",
@@ -492,7 +487,7 @@ nmTest({
   test_that("the trust retry cascade's stages are each reachable (#1044)", {
     skip_on_cran()
     .dat <- .gateData()
-    .gateFit <- function(d) {
+    .gateFit <- function(d, ...) {
       suppressWarnings(suppressMessages(
         nlmixr2(
           .gateMod(d),
@@ -504,7 +499,8 @@ nmTest({
             maxOuterIterations = 0L,
             maxInnerIterations = 5000L,
             calcTables = FALSE,
-            innerOpt = "trust"
+            innerOpt = "trust",
+            ...
           )
         )
       ))
@@ -526,9 +522,10 @@ nmTest({
     expect_gt(.c3[["failed"]], 0L)
     expect_true(is.finite(.g3$objf))
 
-    # Displaced further, the Newton step outgrows the radius often enough to
-    # exercise the escalation branch instead.
-    .c4 <- .gateFit(4)$env$nTrustInner
+    # A capped radius makes the Newton step outgrow it, exercising the
+    # escalation branch; the default radius stopped reaching it once a tiny
+    # residual variance was floored instead of replaced by 1 (#1132).
+    .c4 <- .gateFit(4, trustRinit = 0.02, trustRmax = 0.02)$env$nTrustInner
     expect_gt(.c4[["radiusRetry"]], 0L)
   })
 

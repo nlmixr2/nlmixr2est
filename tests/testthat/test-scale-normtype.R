@@ -23,18 +23,22 @@ nmTest({
     })
   }
 
-  # Sets up (and tears down) an nlm environment for .mod with the given
-  # normType, and returns the scaled starting parameter vector -- the same
+  # Loads an nlm problem for .mod under `ctl` and returns its starting
+  # parameters; the caller frees it with .nlmFreeEnv().
+  .loadMod <- function(ctl) {
+    .ui <- rxode2::rxode2(.mod)
+    .ret <- new.env(parent = emptyenv())
+    .foceiPreProcessData(nlmixr2data::theo_sd, .ret, .ui, ctl$rxControl)
+    .p <- setNames(.ui$nlmParIni, .ui$nlmParName)
+    .nlmSetupEnv(.p, .ui, .ret$dataSav, .ui$nlmSensModel, ctl)
+    .p
+  }
+
+  # The scaled starting parameter vector for the given normType -- the same
   # quantity trust/nlm/bobyqa/etc. actually optimize over.
   .scaledParFor <- function(normType) {
-    .ui <- rxode2::rxode2(.mod)
-    .dat <- nlmixr2data::theo_sd
-    .ctl <- nlmControl(print = 0, normType = normType, scaleType = "nlmixr2", calcTables = FALSE, iterlim = 1)
-    .ret <- new.env(parent = emptyenv())
-    .foceiPreProcessData(.dat, .ret, .ui, .ctl$rxControl)
-    .p <- setNames(.ui$nlmParIni, .ui$nlmParName)
     on.exit(.nlmFreeEnv())
-    .nlmSetupEnv(.p, .ui, .ret$dataSav, .ui$nlmSensModel, .ctl)
+    .p <- .loadMod(nlmControl(print = 0, normType = normType, scaleType = "nlmixr2", calcTables = FALSE, iterlim = 1))
     list(par = .p, scaled = nlmScalePar(.p))
   }
 
@@ -57,5 +61,51 @@ nmTest({
     .r <- .scaledParFor("len")
     .want <- .r$par / sqrt(sum(.r$par^2))
     expect_equal(unname(.r$scaled), unname(.want), tolerance = 1e-8)
+  })
+
+  test_that("scaleType='mult' scales and unscales only for a positive scaleTo", {
+    skip_on_cran()
+    # scaleTo <= 0 means no scaling; nlmControl() rejects a negative scaleTo,
+    # so it is set on the built control
+    .ctl <- nlmControl(print = 0, scaleType = "mult", calcTables = FALSE, iterlim = 1)
+    .ctl$scaleTo <- -1
+    on.exit(.nlmFreeEnv())
+    .p <- .loadMod(.ctl)
+    expect_identical(nlmScalePar(.p), unname(.p))
+    expect_identical(nlmUnscalePar(.p), .p)
+    expect_identical(.nlmAdjustCov(diag(4), .p), diag(4))
+  })
+
+  test_that("a derivative-based scaleC is band-guarded in R and in C++ (#994)", {
+    skip_on_cran()
+    # tcl's near-zero starting gradient sends |gradTo/gradient| far out of band
+    .bounded <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(.bounded)
+    .ctl <- nlmControl(print = 0, scaleType = "nlmixr2", calcTables = FALSE, iterlim = 1)
+    .ret <- new.env(parent = emptyenv())
+    .foceiPreProcessData(nlmixr2data::theo_sd, .ret, .ui, .ctl$rxControl)
+    .p <- setNames(.ui$nlmParIni, .ui$nlmParName)
+    on.exit(.nlmFreeEnv())
+    .env <- .nlmSetupEnv(.p, .ui, .ret$dataSav, .ui$nlmSensModel, .ctl)
+    # with scaleType="nlmixr2", du/dx is the scaleC the C++ side holds
+    .used <- unname(nlmUnscalePar(.env$par.ini + 1) - .p)
+    .raw <- nlmGetScaleC(.p, .ctl$gradTo)
+    expect_true(any(.raw < 0.1 | .raw > 10))
+    .want <- mapply(.guardScaleC, .raw, .ui$scaleCtheta, USE.NAMES = FALSE)
+    expect_equal(.env$scaleC, .want)
+    expect_equal(.used, .want, tolerance = 1e-8)
   })
 })

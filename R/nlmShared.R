@@ -127,46 +127,20 @@
       error = function(e) FALSE
     ))
   }
-  if (is.null(.ctl$scaleC) && .ctl$scaleType == 2L && .ctl$gradTo > 0) {
-    .tmp <- .Call(`_nlmixr2est_nlmGetScaleC`, par, .ctl$gradTo)
-    if (length(.tmp) == 0L) {
-      .ctl$scaleC <- ui$scaleCtheta
-      .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
-    } else {
-      # nlmGetScaleC()'s derivative-based scaleC[i] = |gradTo/gradient_i(par)|
-      # (src/nlm.cpp) has no guard analogous to FOCEi's own
-      # .foceiOptEnvSetupScaleC()/.guardScaleC(): a genuinely near-zero
-      # starting gradient for ANY parameter (e.g. a bounded/composed-
-      # exponential transform whose sensitivity happens to be tiny at the
-      # model's default starting values, issue #994 -- confirmed there via
-      # every individual observation's raw sensitivity being ~1e-8 to 1e-10,
-      # not a cancellation artifact) makes this formula blow up to whatever
-      # scaleCmax allows (a FAR looser safety net than FOCEi's own [0.1,10]
-      # band), permanently corrupting every later (scaled) gradient/Hessian
-      # entry for that one dimension -- guard each element the same way
-      # FOCEi does, falling back to the transform-aware ui$scaleCtheta
-      # (already the right value for a plain "exp"-family transform, unlike
-      # a generic |init| fallback) when out of band. nlmGetScaleC() also
-      # writes the UNGUARDED .tmp directly into the C++ scaleC buffer as a
-      # side effect (src/nlm.cpp), so the guarded value must be re-pushed via
-      # nlmSetScaleC() to actually take effect.
-      .sc0 <- ui$scaleCtheta
-      .tmp <- vapply(
-        seq_along(.tmp),
-        function(i) {
-          .guardScaleC(.tmp[i], .sc0[i])
-        },
-        numeric(1)
-      )
-      .ctl$scaleC <- .tmp
-      .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
-    }
-  } else if (is.null(.ctl$scaleC)) {
+  if (is.null(.ctl$scaleC)) {
     .ctl$scaleC <- ui$scaleCtheta
-    .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
-  } else if (!is.null(.ctl$scaleC)) {
-    .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
+    if (.ctl$scaleType == 2L && .ctl$gradTo > 0) {
+      # the derivative-based |gradTo/gradient_i(par)| blows up for a near-zero
+      # starting gradient (issue #994), so it gets FOCEi's band guard, falling
+      # back to the transform-aware ui$scaleCtheta
+      .gradScaleC <- .Call(`_nlmixr2est_nlmGetScaleC`, par, .ctl$gradTo)
+      if (length(.gradScaleC) > 0L) {
+        .ctl$scaleC <- mapply(.guardScaleC, .gradScaleC, .ctl$scaleC, USE.NAMES = FALSE)
+      }
+    }
   }
+  # also replaces the unguarded values nlmGetScaleC() leaves in the C++ buffer
+  .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
   .env$scaleC <- .ctl$scaleC
   .p <- .Call(`_nlmixr2est_nlmScalePar`, par)
   .env$par.ini <- .p
@@ -269,7 +243,8 @@
 #'
 #' A positive-definite Hessian is used as is.  One that is not is repaired as
 #' `sqrtm(R %*% R)` ("|r|") or, when that is not positive definite either, as
-#' the nearest positive-definite matrix ("r+").
+#' the nearest positive-definite matrix ("r+").  A numerically singular one is
+#' not repaired: both repairs would invert its rounding noise.
 #' @param hess Hessian of the -LL objective (the R matrix)
 #' @return list(r = the matrix to invert, `NULL` when none is usable; type =
 #'   "r", "|r|", "r+" or "failed"; warning = what was done, `NULL` for "r")
@@ -281,6 +256,10 @@
   }
   .r <- NULL
   if (!is.null(.g$cov)) {
+    .ev <- abs(.g$ev)
+    if (min(.ev) <= nrow(.g$cov) * .Machine$double.eps * max(.ev)) {
+      return(list(type = "failed", warning = "R matrix is singular; covariance step failed"))
+    }
     .r <- tryCatch(sqrtm(.g$cov %*% .g$cov), error = function(e) NULL)
     .type <- "|r|"
     if (!.covGuard(.r)$ok) {
