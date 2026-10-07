@@ -8,7 +8,7 @@ test_that(".simModelLaggedVars finds history-function arguments (#1173)", {
   expect_identical(.simModelLaggedVars(quote(a <- b)), character(0))
 })
 
-test_that("vpcSim() works with lag() of a calculated variable (#1173)", {
+test_that("vpcSim() and augPred() work with lag() of a calculated variable (#1173)", {
   skip_on_cran()
   mod <- function() {
     ini({
@@ -35,8 +35,11 @@ test_that("vpcSim() works with lag() of a calculated variable (#1173)", {
   # the lagged variable stays a real lhs; other calculated variables do not
   expect_true(any(grepl("c0 <- central/v", .txt, fixed = TRUE)))
   expect_true(any(grepl("ka ~ exp(tka)", .txt, fixed = TRUE)))
+  expect_identical(attr(.sim, "lagged"), "c0")
 
-  fit <- nlmixr2(mod, nlmixr2data::theo_sd,
+  fit <- nlmixr2(
+    mod,
+    nlmixr2data::theo_sd,
     est = "focei",
     control = foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = "")
   )
@@ -44,4 +47,12 @@ test_that("vpcSim() works with lag() of a calculated variable (#1173)", {
   expect_s3_class(v, "nlmixr2vpcSim")
   expect_equal(length(unique(v$sim.id)), 2L)
   expect_false(any(is.na(v$sim)))
+  # the lhs kept for lag() is not an extra output column
+  expect_false("c0" %in% names(v))
+  vp <- vpcSim(fit, n = 2, pred = TRUE)
+  expect_false(any(is.na(vp$pred)))
+
+  ap <- augPred(fit)
+  expect_true(all(c("Individual", "Population") %in% levels(ap$ind)))
+  expect_false(any(is.na(ap$values)))
 })

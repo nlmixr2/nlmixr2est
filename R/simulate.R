@@ -52,9 +52,12 @@
     return(character(0))
   }
   .ret <- unlist(lapply(as.list(x)[-1], .simModelLaggedVars))
-  if (is.name(x[[1]]) &&
-    as.character(x[[1]]) %in% c("lag", "lead", "first", "last", "diff") &&
-    length(x) >= 2L && is.name(x[[2]])) {
+  if (
+    is.name(x[[1]]) &&
+      as.character(x[[1]]) %in% c("lag", "lead", "first", "last", "diff") &&
+      length(x) >= 2L &&
+      is.name(x[[2]])
+  ) {
     .ret <- c(as.character(x[[2]]), .ret)
   }
   unique(as.character(.ret))
@@ -65,7 +68,8 @@
 #' @param obj nlmixr fit object
 #' @param hideIpred Hide the ipred (by default FALSE)
 #' @param tad Include `tad` calculation (by default FALSE)
-#' @return quoted simulation model (simply need to evaluate it)
+#' @return quoted simulation model (simply need to evaluate it); its
+#'   `"lagged"` attribute names the extra outputs kept for `lag()`
 #' @author Matthew L. Fidler
 #' @noRd
 .getSimModel <- function(obj, hideIpred = FALSE, tad = TRUE) {
@@ -111,6 +115,8 @@
   if (tad) {
     .ret <- .expandSimModelAddTad(.ret)
   }
+  # outputs only so `lag()` compiles; callers drop them from the solve
+  attr(.ret, "lagged") <- setdiff(.lagged, c("sim", "ipred", "ipredSim"))
   .ret
 }
 
