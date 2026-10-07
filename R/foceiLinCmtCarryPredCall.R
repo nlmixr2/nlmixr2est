@@ -9,11 +9,12 @@
 #' Every `linCmtB()` call inside a symengine expression (depth-first)
 #' @noRd
 .rxFoceiCarryFindLinCmtB <- function(expr) {
-  .calls <- list()
+  .acc <- new.env(parent = emptyenv())
+  .acc$calls <- list()
   .walk <- function(x) {
     .nm <- tryCatch(symengine::get_name(x), error = function(e) NULL)
     if (identical(.nm, "linCmtB")) {
-      .calls[[length(.calls) + 1L]] <<- x
+      .acc$calls[[length(.acc$calls) + 1L]] <- x
       return(invisible())
     }
     .a <- tryCatch(symengine::get_args(x), error = function(e) NULL)
@@ -26,7 +27,7 @@
     invisible()
   }
   .walk(expr)
-  .calls
+  .acc$calls
 }
 
 #' The structural `linCmtB()` value call of `rx_pred_`

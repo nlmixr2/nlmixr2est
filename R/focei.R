@@ -225,14 +225,15 @@ is.latex <- function() {
       )
   ]
   .ctl$trace <- 0
-  hessianCalls <- 0L
-  hessianFailed <- FALSE
+  .hessState <- new.env(parent = emptyenv())
+  .hessState$calls <- 0L
+  .hessState$failed <- FALSE
   hessian <- NULL
   if (isTRUE(control$fast) && is.function(control$hessian)) {
     hessian <- function(x) {
-      hessianCalls <<- hessianCalls + 1L
+      .hessState$calls <- .hessState$calls + 1L
       tryCatch(control$hessian(x), error = function(e) {
-        hessianFailed <<- TRUE
+        .hessState$failed <- TRUE
         stop(e)
       })
     }
@@ -249,14 +250,14 @@ is.latex <- function() {
     )
   }
   .ret <- tryCatch(run(hessian), error = function(e) {
-    if (!hessianFailed) {
+    if (!.hessState$failed) {
       stop(e)
     }
     warning("Outer Hessian unavailable; restarting gradient-only nlminb", call. = FALSE)
     run(NULL)
   })
-  .ret$hessianEvaluations <- hessianCalls
-  .ret$hessianFallback <- hessianFailed
+  .ret$hessianEvaluations <- .hessState$calls
+  .ret$hessianFallback <- .hessState$failed
   .ret$x <- .ret$par
   ## .ret$message   already there.
   ## .ret$convergence already there.

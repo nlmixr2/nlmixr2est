@@ -184,8 +184,9 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   # whole table step.  The retry SAYS SO -- mixest/mixnum and everything
   # mix() feeds read 0 without it, and that is the silently-wrong table this
   # whole path exists to stop producing.
-  .iCovOK <- !is.null(.iCov)
-  if (.iCovOK) {
+  .iCovState <- new.env(parent = emptyenv())
+  .iCovState$ok <- !is.null(.iCov)
+  if (.iCovState$ok) {
     # An rxode2 without nlmixr2/rxode2#1358 does not reject the iCov, it just
     # never reads a mixture out of a model whose mix() symengine expanded away.
     # Nothing errors, so say so here or the zeros are silent.
@@ -197,7 +198,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
         .predFlags[["mix"]] == 0L
     ) {
       warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
-      .iCovOK <- FALSE
+      .iCovState$ok <- FALSE
     }
   }
   while (recalc && length(odeMethods) > 0) {
@@ -210,7 +211,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     while (recalc && recalcN < fit$foceiControl$stickyRecalcN) {
       # Iterate up atol/rtol
       ## message("\t", .atol, " ", .rtol)
-      .res <- if (.iCovOK) {
+      .res <- if (.iCovState$ok) {
         tryCatch(
           .foceiSolveWithId(
             model,
@@ -239,7 +240,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
             # SET_VECTOR_ELT: older rxode2 overran its covariate list when an iCov
             # mixest came with any other covariate
             if (grepl("iCov|mixest|mixunif|time.varying|SET_VECTOR_ELT", conditionMessage(e), ignore.case = TRUE)) {
-              .iCovOK <<- FALSE
+              .iCovState$ok <- FALSE
               warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
               .foceiSolveWithId(
                 model,

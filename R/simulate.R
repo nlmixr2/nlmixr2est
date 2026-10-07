@@ -10,15 +10,15 @@
   .tmp <- .ret[[2]]
   .idx <- NULL
   .idxDvid <- NULL
-  .tmp <- lapply(seq(2, length(.tmp)), function(i) {
+  .tmp <- lapply(seq(2, length(.tmp)), function(i) .tmp[[i]])
+  for (i in seq_along(.tmp)) {
     if (identical(.tmp[[i]][[1]], quote(`cmt`))) {
-      .idx <<- i - 1
+      .idx <- i
     }
     if (identical(.tmp[[i]][[1]], quote(`dvid`))) {
-      .idxDvid <<- i - 1
+      .idxDvid <- i
     }
-    .tmp[[i]]
-  })
+  }
   if (is.null(.idx) && !is.null(.idxDvid)) {
     # use dvid() instead of cmt()
     .idx <- .idxDvid

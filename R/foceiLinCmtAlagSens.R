@@ -165,9 +165,10 @@
   # .lin is the linCmt() block order (depot first when oral), which is the
   # 0-based origin index the which2 packing takes.
   .qOf <- stats::setNames(seq_along(.lin) - 1L, .lin)
-  .extra <- stats::setNames(vector("list", length(etaVars)), etaVars)
+  .acc <- new.env(parent = emptyenv())
+  .acc$extra <- stats::setNames(vector("list", length(etaVars)), etaVars)
   .accum <- function(param, term) {
-    .extra[[param]] <<- if (is.null(.extra[[param]])) term else .extra[[param]] + term
+    .acc$extra[[param]] <- if (is.null(.acc$extra[[param]])) term else .acc$extra[[param]] + term
   }
   # d(pred)/d(alag_q) = the dose-time sensitivity of compartment q's own
   # doses; d(pred)/dF_q = A^(q)/F_q, the part of pred that came through q.
@@ -188,7 +189,7 @@
   }
   .addRows(.lagRows, -9, function(call, sym) call)
   .addRows(.fRows, -10, function(call, sym) call / sym)
-  .extra <- .extra[!vapply(.extra, is.null, logical(1))]
+  .extra <- .acc$extra[!vapply(.acc$extra, is.null, logical(1))]
   if (length(.extra) == 0L) {
     return(NULL)
   }
