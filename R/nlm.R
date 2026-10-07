@@ -704,6 +704,18 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
   .nlmFamilyRefs(.txt, .v)
 }
 
+#' Whether the lagged variables need finite differences
+#'
+#' An ODE that still uses one (`.nlmFamilyLagInOde()`), or one defined more
+#' than once: symengine inlines an lhs that reads it with its final value, so
+#' the predictions do not follow the order of the definitions.
+#' @param s symengine environment
+#' @return `TRUE` when the thetas are finite-differenced
+#' @noRd
+.nlmFamilyLagFd <- function(s) {
+  .nlmFamilyLagInOde(s) || anyDuplicated(sub("=.*$", "", .nlmFamilyLagDefs(s))) > 0L
+}
+
 #' Theta sensitivities through the lagged calculated variables
 #'
 #' A history function is linear, so `d(lag(v))/d(theta) = lag(d(v)/d(theta))`
@@ -712,9 +724,10 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
 #' a history call of it is chained through that sensitivity.
 #' @param s symengine environment holding the state sensitivities
 #' @param stateVars the model states
-#' @return `NULL` without lagged variables; else list with `lines` (the
-#'   sensitivity lhs lines, in model order) and `dfe(e, k)`, the rxode2 text of
-#'   the total derivative of the symengine expression `e` by `THETA[k]`
+#' @return `NULL` without lagged variables; else list with `defs` (the
+#'   definitions), `byDef` (the sensitivity lhs lines of each) and
+#'   `dfe(k, sign)`, the total derivative of `sign * rx_pred_` by `THETA[k]`
+#'   (`se`, and its rxode2 text `txt`)
 #' @noRd
 .nlmFamilyLagSens <- function(s, stateVars) {
   .defs <- .nlmFamilyLagDefs(s)
@@ -725,42 +738,50 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
   .defRhs <- sub("^[^=]*=", "", .defs)
   .vars <- unique(.defVar)
   .sym <- function(x) symengine::S(x)
-  .pred <- get("rx_pred_", envir = s)
+  .isHist <- function(e) {
+    is.call(e) &&
+      length(e) >= 2L &&
+      identical(length(as.character(e[[1]])), 1L) &&
+      as.character(e[[1]]) %in% c("lag", "diff") &&
+      is.name(e[[2]]) &&
+      as.character(e[[2]]) %in% .vars
+  }
   # history calls of a lagged variable, as rxode2 text
   .calls <- character(0)
   .walk <- function(e) {
-    if (is.call(e)) {
-      .fn <- as.character(e[[1]])
-      if (
-        length(.fn) == 1L &&
-          .fn %in% c("lag", "diff") &&
-          length(e) >= 2L &&
-          is.name(e[[2]]) &&
-          as.character(e[[2]]) %in% .vars
-      ) {
-        .calls <<- c(.calls, deparse1(e))
-      } else {
-        lapply(as.list(e)[-1], .walk)
-      }
+    if (.isHist(e)) {
+      .calls <<- c(.calls, deparse1(e))
+    } else if (is.call(e)) {
+      lapply(as.list(e)[-1], .walk)
     }
     invisible()
   }
-  lapply(c(rxode2::rxFromSE(.pred), .defRhs), function(x) .walk(str2lang(x)))
+  .pred <- get("rx_pred_", envir = s)
+  .predTxt <- rxode2::rxFromSE(.pred)
+  lapply(c(.predTxt, .defRhs), function(x) .walk(str2lang(x)))
   .calls <- unique(.calls)
-  .hist <- data.frame(
-    call = .calls,
-    fn = vapply(.calls, function(x) as.character(str2lang(x)[[1]]), character(1)),
-    var = match(vapply(.calls, function(x) as.character(str2lang(x)[[2]]), character(1)), .vars),
-    stringsAsFactors = FALSE
-  )
-  .histSE <- lapply(.hist$call, function(x) .sym(rxode2::rxToSE(x)))
-  .subsHist <- function(e) {
-    for (j in seq_along(.histSE)) {
-      e <- symengine::subs(e, .histSE[[j]], .sym(sprintf("rx_hist_%d_", j)))
-    }
-    e
-  }
   .lsens <- function(i, k) sprintf("rx_lsens_%d_%d_", i, k)
+  # the same history call of the variable's sensitivity (extra arguments kept)
+  .histSens <- function(j, k) {
+    .e <- str2lang(.calls[j])
+    .e[[2]] <- as.name(.lsens(match(as.character(.e[[2]]), .vars), k))
+    deparse1(.e)
+  }
+  # history calls -> rx_hist_<j>_ in rxode2 text, then to symengine; done on the
+  # text because symengine keeps lag(c0, 1) as lag(c0, 1.0)
+  .toSE <- function(txt) {
+    .rep <- function(e) {
+      if (.isHist(e)) {
+        as.name(sprintf("rx_hist_%d_", match(deparse1(e), .calls)))
+      } else if (is.call(e)) {
+        as.call(lapply(as.list(e), .rep))
+      } else {
+        e
+      }
+    }
+    .txt <- deparse1(.rep(str2lang(txt)))
+    .sym(rxode2::rxToSE(.txt))
+  }
   .chain <- function(e, k) {
     .ret <- symengine::D(e, .sym(sprintf("THETA_%d_", k)))
     for (.st in stateVars) {
@@ -769,41 +790,66 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
     for (i in seq_along(.vars)) {
       .ret <- .ret + symengine::D(e, .sym(.vars[i])) * .sym(.lsens(i, k))
     }
-    for (j in seq_along(.histSE)) {
+    for (j in seq_along(.calls)) {
       .ret <- .ret + symengine::D(e, .sym(sprintf("rx_hist_%d_", j))) * .sym(sprintf("rx_hsens_%d_%d_", j, k))
     }
     .ret
   }
   .unsub <- function(e, k) {
     .txt <- rxode2::rxFromSE(e)
-    for (j in seq_along(.histSE)) {
-      .txt <- gsub(sprintf("\\brx_hist_%d_\\b", j), .hist$call[j], .txt, perl = TRUE)
-      .txt <- gsub(
-        sprintf("\\brx_hsens_%d_%d_\\b", j, k),
-        sprintf("%s(%s)", .hist$fn[j], .lsens(.hist$var[j], k)),
-        .txt,
-        perl = TRUE
-      )
+    for (j in seq_along(.calls)) {
+      .txt <- gsub(sprintf("\\brx_hist_%d_\\b", j), .calls[j], .txt, perl = TRUE)
+      .txt <- gsub(sprintf("\\brx_hsens_%d_%d_\\b", j, k), .histSens(j, k), .txt, perl = TRUE)
     }
     .txt
   }
-  .rhsSE <- lapply(.defRhs, function(x) .subsHist(.sym(rxode2::rxToSE(x))))
-  .lines <- unlist(lapply(seq_along(.defRhs), function(d) {
-    vapply(
-      seq_len(s$..maxTheta),
-      function(k) {
-        paste0(.lsens(match(.defVar[d], .vars), k), "=", .unsub(.chain(.rhsSE[[d]], k), k))
-      },
-      character(1)
-    )
-  }))
+  .rhsSE <- lapply(.defRhs, .toSE)
+  .predSE <- .toSE(.predTxt)
   list(
-    lines = .lines,
-    dfe = function(e, k) {
-      .d <- .chain(.subsHist(e), k)
+    defs = .defs,
+    # the sensitivity lines of each definition, placed just ahead of it
+    byDef = lapply(seq_along(.defRhs), function(d) {
+      vapply(
+        seq_len(s$..maxTheta),
+        function(k) {
+          paste0(.lsens(match(.defVar[d], .vars), k), "=", .unsub(.chain(.rhsSE[[d]], k), k))
+        },
+        character(1)
+      )
+    }),
+    dfe = function(k, sign = 1) {
+      .d <- .chain(.predSE, k) * sign
       list(se = .d, txt = .unsub(.d, k))
     }
   )
+}
+
+#' Put each lagged-variable sensitivity line right before its definition
+#'
+#' There it reads the definition's inputs (including a variable the
+#' definition reassigns) as the definition does.
+#'
+#' @param lhs the model's lhs lines
+#' @param lagSens the `.nlmFamilyLagSens()` result (`NULL` for none)
+#' @return `lhs` with the sensitivity lines inserted
+#' @noRd
+.nlmFamilyLagSensInsert <- function(lhs, lagSens) {
+  if (is.null(lagSens)) {
+    return(lhs)
+  }
+  .ret <- character(0)
+  .d <- 1L
+  for (.l in lhs) {
+    if (.d <= length(lagSens$defs) && identical(.l, lagSens$defs[.d])) {
+      .ret <- c(.ret, lagSens$byDef[[.d]])
+      .d <- .d + 1L
+    }
+    .ret <- c(.ret, .l)
+  }
+  if (.d <= length(lagSens$defs)) {
+    stop("cannot place the lagged-variable sensitivities", call. = FALSE)
+  }
+  .ret
 }
 
 #' Which THETAs an nlm-family model uses
@@ -975,7 +1021,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .ret <- apply(.grd, 1, .nlmFamilyHdThetaLine, .s = .s, .carry = .carry, .predMinusDv = .predMinusDv, .zero = .zero)
   .s$..lagSens <- NULL
   if (length(.nlmFamilyLagDefs(.s)) > 0L) {
-    if (.nlmFamilyLagInOde(.s)) {
+    if (.nlmFamilyLagFd(.s)) {
       # the thetas are finite-differenced (.nlmFamilyEnv()), so judge by the
       # thetas the model uses
       .used <- .nlmFamilyThetaUsed(.s)
@@ -984,7 +1030,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     } else {
       # the derivatives above stop at a lagged variable: chain them through it
       .lag <- .nlmFamilyLagSens(.s, .stateVars)
-      .s$..lagSens <- .lag$lines
+      .s$..lagSens <- .lag
       .zero$any <- FALSE
       .zero$all <- TRUE
       .ret <- vapply(
@@ -992,7 +1038,8 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
         function(r) {
           .dfe <- .grd[r, "dfe"]
           .k <- as.integer(sub("^.*_BY_THETA_([0-9]+)___$", "\\1", .dfe))
-          .d <- .lag$dfe(get("rx_pred_", envir = .s), .k)
+          # rxExpandFEta_() differentiates -rx_pred_ when predMinusDv = FALSE
+          .d <- .lag$dfe(.k, if (.predMinusDv) 1 else -1)
           assign(.dfe, .d$se, envir = .s)
           .isZero <- identical(suppressWarnings(try(as.numeric(.d$se), silent = TRUE)), 0)
           .zero$any <- .zero$any || .isZero
@@ -1105,12 +1152,11 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
       .s$params,
       .s$..stateInfo["state"],
       interpLines,
-      .lhs,
+      # lagged-variable sensitivities follow their definitions, ahead of
+      # rx_pred_, whose sensitivity columns must follow it
+      .nlmFamilyLagSensInsert(.lhs, .s$..lagSens),
       .ddt,
       .sens,
-      # lagged-variable sensitivities: ahead of rx_pred_, whose sensitivity
-      # columns must follow it
-      .s$..lagSens,
       ## DDE non-constant delay() pre-history: base past(state,tau)<-expr + the
       ## per-sensitivity-compartment histories (analytic gradient/Jacobian).
       .s$..pastLines,
@@ -1206,9 +1252,9 @@ attr(rxUiGet.nlmEnv, "rstudio") <- emptyenv()
   ## is then taken by finite differences.  Under eventSens="jump" none are
   ## flagged: rxode2 injects the jump sensitivities analytically.
   .s$.eventTheta <- .nlmFamilyEventTheta(.s, !identical(rxode2::rxGetControl(x[[1]], "eventSens", "jump"), "jump"))
-  ## A lagged calculated variable in an ODE has no sensitivity the sensitivity
-  ## ODEs carry: finite-difference every theta
-  if (length(.nlmFamilyLagDefs(.s)) > 0L && .nlmFamilyLagInOde(.s)) {
+  ## A lagged calculated variable the analytic sensitivities cannot follow
+  ## (.nlmFamilyLagFd()): finite-difference every theta
+  if (length(.nlmFamilyLagDefs(.s)) > 0L && .nlmFamilyLagFd(.s)) {
     .s$.eventTheta[] <- 1L
   }
   .s

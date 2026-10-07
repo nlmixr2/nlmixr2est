@@ -129,6 +129,23 @@ nmTest({
     expect_equal(suppressMessages(rxode2::rxode2(.lagOdeMod)$nlmEnv$.eventTheta), rep(1L, 4))
   })
 
+  test_that("lag(v, 1) and a redefined lagged variable (issue 1140)", {
+    skip_on_cran()
+    # symengine keeps lag(c0, 1) as lag(c0, 1.0); it is still followed analytically
+    .lag1Mod <- .lagMod |>
+      rxode2::model(cp <- 0.5 * c0 + 0.5 * lag(c0, 1))
+    expect_equal(suppressMessages(rxode2::rxode2(.lag1Mod)$nlmEnv$.eventTheta), rep(0L, 4))
+    .r <- .lagGradFd(.lag1Mod)
+    expect_equal(.r$grad, .r$fd, tolerance = 5e-3)
+    # c1 reads the first c0, but symengine inlines it with the last one, so a
+    # lagged variable defined twice is finite-differenced
+    .redefMod <- .lagMod |>
+      rxode2::model(c1 <- 2 * c0 + lag(c0), append = c0) |>
+      rxode2::model(c0 <- c0 * exp(tka), append = c1) |>
+      rxode2::model(cp <- 0.3 * c1 + 0.5 * lag(c0) + c0)
+    expect_equal(suppressMessages(rxode2::rxode2(.redefMod)$nlmEnv$.eventTheta), rep(1L, 4))
+  })
+
   test_that("the lagged definitions are matched by name (issue 1140)", {
     .s <- new.env(parent = emptyenv())
     .s$..laggedVars <- "c.0"

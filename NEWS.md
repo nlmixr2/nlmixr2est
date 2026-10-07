@@ -630,7 +630,8 @@
   `trust`, `nls`) of a model that uses `lag()` or `diff()` of a calculated
   variable now carries the variable's sensitivities through
   (`d(lag(v))/d(theta) = lag(d(v)/d(theta))`), including into an ODE that
-  uses the variable; only an ODE with `lag()` itself is finite-differenced.
+  uses the variable; only an ODE with `lag()` itself, or a lagged variable
+  defined more than once, is finite-differenced.
   Such a variable is a bare symbol to symengine, so its analytic gradient was
   0 for every structural parameter: `nlm`, `nlminb`, `n1qn1`, `lbfgsb3c` and
   `optim` returned the initial structural estimates, and `nls` (with its
