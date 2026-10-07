@@ -59,6 +59,8 @@ nmTest({
       est = "focei",
       control = foceiControl(print = 0, maxOuterIterations = 0)
     ))
+    # testthat captures the fit's own messages, so mark where the next output lands
+    cat("nextOutput\n")
     .unwind()
     close(con)
     # readLines() would also split at the bar's carriage returns
@@ -70,6 +72,6 @@ nmTest({
     .bar <- lines[.i + 1L]
     .last <- utils::tail(strsplit(.bar, "\r", fixed = TRUE)[[1]], 1L)
     expect_match(.last, "100%", fixed = TRUE)
-    expect_false(grepl("Calculating", .bar, fixed = TRUE))
+    expect_false(grepl("nextOutput", .bar, fixed = TRUE))
   })
 })

@@ -7516,6 +7516,10 @@ static bool analyticOuterGrad(double *theta, double *g) {
   return false;
 }
 
+// The progress-bar style, read once per fit so the gradient (an optimizer
+// callback) evaluates no R.
+static bool _foceiProgInPlace = false;
+
 void numericGrad(double *theta, double *g){
   op_focei.mixDeriv=0;
   op_focei.reducedTol2=0;
@@ -7600,7 +7604,7 @@ void numericGrad(double *theta, double *g){
     if (op_focei.slow) {
       op_focei.cur=op_focei.totTick;
       op_focei.curTick = nmProgressEnd(op_focei.totTick, op_focei.curTick, op_focei.t0,
-                                       nmProgressInPlace());
+                                       _foceiProgInPlace);
     }
     op_focei.calcGrad=0;
     op_focei.curGill=2;
@@ -7648,7 +7652,7 @@ void numericGrad(double *theta, double *g){
     if(op_focei.slow){
       op_focei.cur=op_focei.totTick;
       op_focei.curTick = nmProgressEnd(op_focei.totTick, op_focei.curTick, op_focei.t0,
-                                       nmProgressInPlace());
+                                       _foceiProgInPlace);
     }
     op_focei.didGill=1;
     if (op_focei.reducedTol2 && op_focei.repeatGillN < op_focei.repeatGillMax){
@@ -7855,7 +7859,7 @@ void numericGrad(double *theta, double *g){
     if(op_focei.slow) {
       op_focei.cur=op_focei.totTick;
       op_focei.curTick = nmProgressEnd(op_focei.totTick, op_focei.curTick, op_focei.t0,
-                                       nmProgressInPlace());
+                                       _foceiProgInPlace);
     }
     op_focei.calcGrad=0;
   }
@@ -13646,6 +13650,7 @@ static void foceiFitSetupScale(const CharacterVector &thetaNames,
 //[[Rcpp::export]]
 Environment foceiFitCpp_(Environment e){
   focei_wall_clock::time_point wallT0 = focei_wall_clock::now();
+  _foceiProgInPlace = nmProgressInPlace();
   // The registry is a global that outlives a fit, so start every fit from empty:
   // otherwise a fit with no theta-sensitivity model of its own would size its
   // pool from the PREVIOUS fit's, which is exactly what resetting _impPoolModel
