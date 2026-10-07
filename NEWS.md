@@ -54,11 +54,6 @@
   (`singular gradient matrix at initial parameter estimates` with
   `algorithm = "default"`).
 
-- `est="nls"` with `nlsControl(solveType="fun")` fits a model that uses
-  `lag()` of a calculated variable.  It stopped with `The following
-  parameter(s) are required for solving`, because its model did not define
-  that variable.
-
 - `lbfgsb3cControl(maxit=)` was documented but dropped, so `est="lbfgsb3c"`
   always used lbfgsb3c's own limit of 1000 evaluations; it is now honored
   (default 10000).
@@ -205,8 +200,6 @@
   `setOfv(fit, "imp")` does, instead of stopping with `arguments imply
   differing number of rows`.  Both now read the fit's own control (`$control`);
   the imp objective read `$foceiControl`, which never holds `adjObf`.
-
-### Covariance and finite differences
 
 - The FOCEi-family outer optimizer now scales each parameter by its own
   scaling constant when a fixed theta (with `literalFix = FALSE`) or a
