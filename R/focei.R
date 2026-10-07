@@ -1913,11 +1913,17 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
   # S_n = d(rx_pred_f_)/d(eta_n) is lag()-free, so rxFromSE() it inline.
   .snNames <- character(nrow(.grd))
   .snText <- character(nrow(.grd))
+  .lag <- .s$..lagEta
   for (.n in seq_len(nrow(.grd))) {
-    .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
-    .snBasic <- eval(parse(text = .calc))
     .snNames[.n] <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "dfe"], fixed = TRUE)
-    .snText[.n] <- rxode2::rxFromSE(.snBasic)
+    if (is.null(.lag)) {
+      .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
+      .snBasic <- eval(parse(text = .calc))
+    } else {
+      # chained through lagged calculated variables (#1176)
+      .snBasic <- .lag$dfe(.s$rx_pred_f_, sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", .snNames[.n]))
+    }
+    .snText[.n] <- .foceiLagTxt(.lag, .snBasic, .snNames[.n])
   }
   assign("..arEtaSens", paste0(.snNames, "=", .snText), envir = .s)
   # phi contains lag0()/lag(), so its rxFromSE poisons later get()/[[ -- do it
@@ -2023,6 +2029,10 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     .linCmtEtaVars,
     .linCmtExtraPred
   )
+  if (!is.null(.lag) && !is.null(.carryPairs)) {
+    # a carried row replaces the whole line, so its lag() path is dropped
+    warning("linCmt() sensitivity carry ignores lag() of a variable", call. = FALSE)
+  }
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
     if (is.null(.lag)) {

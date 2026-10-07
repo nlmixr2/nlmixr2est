@@ -137,6 +137,46 @@ nmTest({
     }
   })
 
+  test_that("the prediction can be a lag() alone", {
+    .lagOnly <- rxode2::rxode2(.lagMod)
+    .lagOnly <- rxode2::model(.lagOnly, cp <- lag(c0))
+    .s <- rxode2::rxode2(.lagOnly)$foceiEnv
+    .fd <- .lagFd(.lagOnly, .s$..inner, "ETA", 1L)
+    expect_true(.fd$fd[.fd$v == "rx_pred_"] > 0.1)
+    expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
+  })
+
+  test_that("the AR(1) correction chains through lag()", {
+    .arMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.cl ~ 0.1
+        add.sd <- 0.7
+        ar1.cor <- 0.5
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        c0 <- central / v
+        cp <- 0.5 * c0 + 0.5 * lag(c0)
+        cp ~ add(add.sd) + ar(ar1.cor)
+      })
+    }
+    # the norm form rxUiGet.focei() builds
+    nlmixr2global$rxArNorm <- TRUE
+    on.exit(nlmixr2global$rxArNorm <- FALSE)
+    .s <- rxode2::rxode2(.arMod)$foceiEnv
+    nlmixr2global$rxArNorm <- FALSE
+    expect_true(length(.s$..arEtaSens) > 0L)
+    .fd <- .lagFd(.arMod, .s$..inner, "ETA", 1L)
+    expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
+  })
+
   test_that("impmap theta sensitivities chain through lag()", {
     .ts <- rxode2::rxode2(.lagMod2)$impmapThetaSens
     .fd <- .lagFd(.lagMod2, .ts$thetaSens, "THETA", .ts$thetaSensIdx)
@@ -160,5 +200,9 @@ nmTest({
       "lag\\(\\) of a calculated variable"
     )
     expect_equal(.fast$objf, .fit$objf, tolerance = 1e-6)
+    expect_message(
+      nlmixr2(.lagMod, nlmixr2data::theo_sd, est = "focei", control = foceiControl(print = 0, covMethod = "analytic")),
+      "lag\\(\\) of a calculated variable"
+    )
   })
 })
