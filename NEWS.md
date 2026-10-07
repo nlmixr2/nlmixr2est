@@ -344,6 +344,11 @@
 
 ### Covariance
 
+- The analytic covariance (`covMethod = "analytic"`, `setCov(fit, "analytic")`)
+  of a model with additive plus proportional error reported the two residual
+  SEs under each other's names when `ini()` declared the proportional one
+  first.  They are now named by parameter.
+
 - The post-fit covariance of a model with inter-occasion variability is now
   computed: the recompute of the `mfocei`-style families (and of imp/np with
   a requested covariance) and `setCov(fit, "imp")` (or a deferred
