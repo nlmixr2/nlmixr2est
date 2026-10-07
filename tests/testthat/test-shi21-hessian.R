@@ -165,7 +165,9 @@ nmTest({
       expect_gt(.nlmHessStepInfo()$nSearch, 2L)
     })
     .withNlmProblem(.mod, .d, .ctl, function(x) {
-      stats::nlminb(x + 0, function(p) nlminbFunC(p, 1L),
+      stats::nlminb(
+        x + 0,
+        function(p) nlminbFunC(p, 1L),
         gradient = function(p) nlminbFunC(p, 2L),
         hessian = function(p) nlminbFunC(p, 3L)
       )
