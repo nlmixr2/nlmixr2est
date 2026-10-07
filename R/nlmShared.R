@@ -297,6 +297,14 @@
   if (.c$pd && (nrow(.r) > 1L || .r[1, 1] > 0)) {
     return(list(r = hess, u = .c$U, type = "r"))
   }
+  # A numerically rank-deficient R is not repaired: "r+" and "|r|" would both
+  # invert its rounding noise (sqrtm() lifts rounding-level eigenvalues to about
+  # sqrt(eps), so |R| would even pass chol()).  A nearly singular R of full rank
+  # is still corrected as "r+".
+  .ev <- abs(.g$ev)
+  if (min(.ev) <= nrow(.r) * .Machine$double.eps * max(.ev)) {
+    return(list(type = "failed", warning = "R matrix is singular; covariance step failed"))
+  }
   .reason <- if (.g$ok) "is nearly singular" else .g$reason
   # E is scaled by the largest diagonal of R: a Hessian without a positive one
   # (the zero Hessian of a failed trust solve) has no scale to correct within

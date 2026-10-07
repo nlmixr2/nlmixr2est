@@ -1142,6 +1142,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmLbfgsb3cFit
+List nlmLbfgsb3cFit(arma::vec& theta, NumericVector lower, NumericVector upper, List control);
+RcppExport SEXP _nlmixr2est_nlmLbfgsb3cFit(SEXP thetaSEXP, SEXP lowerSEXP, SEXP upperSEXP, SEXP controlSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type lower(lowerSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type upper(upperSEXP);
+    Rcpp::traits::input_parameter< List >::type control(controlSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmLbfgsb3cFit(theta, lower, upper, control));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmTrustFit
 List nlmTrustFit(arma::vec& theta, List control);
 RcppExport SEXP _nlmixr2est_nlmTrustFit(SEXP thetaSEXP, SEXP controlSEXP) {

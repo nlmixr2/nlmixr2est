@@ -261,8 +261,8 @@ SEXP getDfSubsetVars(SEXP ipred, SEXP lhs) {
     SET_STRING_ELT(nm,i,STRING_ELT(ipredNames, keepVals[i]));
   }
   Rf_setAttrib(ret, R_NamesSymbol, nm);
-  SEXP cls = rxP(allocVector(STRSXP, 1));
-  SET_STRING_ELT(cls, 0, mkChar("data.frame"));
+  SEXP cls = rxP(Rf_allocVector(STRSXP, 1));
+  SET_STRING_ELT(cls, 0, Rf_mkChar("data.frame"));
   Rf_setAttrib(ret, R_ClassSymbol, cls);
   SEXP rn = rxP(Rf_allocVector(INTSXP, 2));
   int *rni =INTEGER(rn);
@@ -314,8 +314,8 @@ SEXP dfCbindList(SEXP lst) {
   rni[0] = NA_INTEGER;
   rni[1] = -Rf_length(VECTOR_ELT(ret, 0));
   Rf_setAttrib(ret, R_RowNamesSymbol, rn);
-  SEXP cls = rxP(allocVector(STRSXP, 1));
-  SET_STRING_ELT(cls, 0, mkChar("data.frame"));
+  SEXP cls = rxP(Rf_allocVector(STRSXP, 1));
+  SET_STRING_ELT(cls, 0, Rf_mkChar("data.frame"));
   Rf_setAttrib(ret, R_ClassSymbol, cls);
   rxUPAll();
   return ret;

@@ -452,6 +452,10 @@ solveGradNls <- function(theta, returnType) {
     .Call(`_nlmixr2est_solveGradNls`, theta, returnType)
 }
 
+nlmLbfgsb3cFit <- function(theta, lower, upper, control) {
+    .Call(`_nlmixr2est_nlmLbfgsb3cFit`, theta, lower, upper, control)
+}
+
 nlmTrustFit <- function(theta, control) {
     .Call(`_nlmixr2est_nlmTrustFit`, theta, control)
 }

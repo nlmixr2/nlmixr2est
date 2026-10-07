@@ -259,41 +259,51 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   return h;
 }
 
+// Column k of shi21Hessian() at the fixed step h; x[k] is put back exactly.
+static void shi21HessColumn(shi21fn_type grad, arma::vec &x, arma::vec &gr0, int id,
+                            int type, int k, double h, arma::vec &col) {
+  double xk = x[k];
+  x[k] += h;
+  arma::vec grPH = grad(x, id);
+  bool forwardFinite = grPH.is_finite();
+  if (type == shi21HessForward && forwardFinite) {
+    col = (grPH - gr0)/h;
+    x[k] = xk;
+    return;
+  }
+  x[k] -= 2*h;
+  arma::vec grMH = grad(x, id);
+  x[k] = xk;
+  bool backwardFinite = grMH.is_finite();
+  if (forwardFinite && backwardFinite) {
+    // only reached for central: forward returned above
+    col = (grPH - grMH)/(2.0*h);
+  } else if (forwardFinite) {
+    col = (grPH - gr0)/h;
+  } else if (backwardFinite) {
+    col = (gr0 - grMH)/h;
+  }
+}
+
 arma::mat shi21Hessian(shi21fn_type grad, arma::vec &x, arma::vec &gr0, int id,
                        int type, double *hh, double ef, int maxiter,
                        double hMax, const double *hMin) {
   arma::mat H(x.n_elem, x.n_elem, arma::fill::zeros);
   if (type != shi21HessForward && type != shi21HessCentral) return H;
-  arma::vec grPH(x.n_elem), grMH(x.n_elem);
+  arma::vec col(x.n_elem);
   for (int k = x.n_elem; k--;) {
     double h = hh[k];
     if (h <= 0) {
       double hMinK = (hMin == NULL) ? shi21hMinDefault : hMin[k];
       hh[k] = (type == shi21HessForward) ?
-        shi21Forward(grad, x, h, gr0, grPH, id, k, ef, 1.5, 6.0, maxiter, hMax, hMinK) :
-        shi21Central(grad, x, h, gr0, grPH, id, k, ef, 1.5, 4.5, 3.0, maxiter, hMax, hMinK);
-      H.col(k) = grPH;
+        shi21Forward(grad, x, h, gr0, col, id, k, ef, 1.5, 6.0, maxiter, hMax, hMinK) :
+        shi21Central(grad, x, h, gr0, col, id, k, ef, 1.5, 4.5, 3.0, maxiter, hMax, hMinK);
+      H.col(k) = col;
       continue;
     }
-    double xk = x[k];
-    x[k] += h;
-    grPH = grad(x, id);
-    bool forwardFinite = grPH.is_finite();
-    if (type == shi21HessForward && forwardFinite) {
-      H.col(k) = (grPH - gr0)/h;
-    } else {
-      x[k] -= 2*h;
-      grMH = grad(x, id);
-      bool backwardFinite = grMH.is_finite();
-      if (type == shi21HessCentral && forwardFinite && backwardFinite) {
-        H.col(k) = (grPH - grMH)/(2.0*h);
-      } else if (forwardFinite && !backwardFinite) {
-        H.col(k) = (grPH - gr0)/h;
-      } else if (!forwardFinite && backwardFinite) {
-        H.col(k) = (gr0 - grMH)/h;
-      }
-    }
-    x[k] = xk;
+    col.zeros();
+    shi21HessColumn(grad, x, gr0, id, type, k, h, col);
+    H.col(k) = col;
   }
   return 0.5*(H + H.t());
 }

@@ -37,6 +37,21 @@
 #' @inheritParams saemControl
 #' @inheritParams foceiControl
 #'
+#' @param covMethod Covariance of the population estimates.
+#'
+#'  "`vi`" (default) For a full-Bayes fit (`fbvi`, `pointEstimate = FALSE`)
+#'  the population variational covariance; a point-estimate fit (`emvi`) has
+#'  no population variational block and uses the FOCEI `"r,s"` covariance.
+#'
+#'  "`analytic`", "`r,s`", "`r`" and "`s`" run the FOCEI covariance step (see
+#'  [foceiControl()]) at the estimates, starting the individual estimates at
+#'  the variational posterior means.  When it gives no covariance, a
+#'  full-Bayes fit installs the population variational covariance instead,
+#'  with a message.  An integer `covMethod` is a `foceiControl()` slot: `0` is
+#'  no covariance, `1`, `2` and `3` are `"r,s"`, `"r"` and `"s"`.
+#'
+#'  "" Does not calculate the covariance step.
+#'
 #' @param seed Random seed for the variational optimization (reparameterization
 #'   sampling); default 42.  The Monte-Carlo gradient is stochastic, so a fixed
 #'   seed makes every fit reproducible.  Reparameterization noise is drawn from a
