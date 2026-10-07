@@ -857,4 +857,43 @@ nmTest({
     expect_true(length(unique(d$v)) > 1L)
     expect_false(isTRUE(all.equal(d$IPRED, d$PRED)))
   })
+
+  test_that(".saemMixRootEta takes each subject's eta from its own component", {
+    .x <- cbind(eta.cl1 = c(0.1, 0.2, 0.3), eta.cl2 = c(-0.1, -0.2, -0.3), eta.v = 1:3)
+    .grp <- c("eta.cl1", "eta.cl2")
+    # the third component has no eta
+    attr(.grp, "comp") <- c("eta.cl1", "eta.cl2", NA)
+    .r <- .saemMixRootEta(.x, .grp, "eta.cl", c(2L, 3L, 1L))
+    expect_identical(colnames(.r), c("eta.cl", "eta.v"))
+    expect_equal(unname(.r[, "eta.cl"]), c(-0.1, 0, 0.3))
+  })
+
+  test_that("a split-eta saem mixture with an eta-free component fits", {
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(1.5)
+        tcl2 <- log(3)
+        tcl3 <- log(5)
+        tv <- 3.45
+        p1 <- 0.3
+        p2 <- 0.3
+        add.sd <- 0.7
+        eta.ka ~ 0.6
+        eta.cl1 ~ 0.3
+        eta.cl2 ~ 0.3
+        eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2), p2, exp(tcl3))
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .f <- suppressWarnings(nlmixr2(.mod, theo_sd, "saem", saemControl(print = 0, nBurn = 30, nEm = 30, seed = 1)))
+    expect_true("eta.cl" %in% names(.f$ranef))
+    .mn <- .f$mixNum$mixnum[match(.f$ranef$ID, .f$mixNum$ID)]
+    expect_true(all(.f$ranef$eta.cl[.mn == 3L] == 0))
+  })
 })

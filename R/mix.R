@@ -217,12 +217,14 @@
 
 #' Replace a split-eta group's columns by its root eta
 #'
-#' Each subject's root eta is the eta of its best component.  The root takes
-#' the first member's column, so the columns keep the ui's eta order.
+#' Each subject's root eta is the eta of its best component (0 when that
+#' component has none).  The root takes the first member's column, so the
+#' columns keep the ui's eta order.
 #'
 #' @param x data frame or matrix of etas; its rows cycle through the subjects
 #'   (a mixture's `.etaMat` repeats them once per component)
-#' @param grp the group's eta names, in component order
+#' @param grp the group's eta names, in component order; its `"comp"`
+#'   attribute gives each component's eta (`NA` for none)
 #' @param rootName name of the root eta
 #' @param bestMix best component of each subject
 #' @return `x` with the `grp` columns replaced by `rootName`
@@ -231,7 +233,10 @@
   .rows <- seq_len(nrow(x))
   .sub <- (.rows - 1L) %% length(bestMix) + 1L
   .cols <- match(grp, colnames(x))
-  x[, .cols[1]] <- as.matrix(x[, .cols, drop = FALSE])[cbind(.rows, bestMix[.sub])]
+  .src <- match(attr(grp, "comp")[bestMix[.sub]], colnames(x))
+  .val <- as.matrix(x)[cbind(.rows, .src)]
+  .val[is.na(.src)] <- 0
+  x[, .cols[1]] <- .val
   colnames(x)[.cols[1]] <- rootName
   x[, -.cols[-1], drop = FALSE]
 }
@@ -308,8 +313,19 @@
   for (.mc in .mixCalls) {
     .args <- as.list(.mc)[-1]
     .comps <- .args[seq(1, length(.args), by = 2)]
-    .grpEtas <- unique(unlist(lapply(.comps, .extractEtas, etas = .allEtas)))
+    .compEtas <- lapply(.comps, .extractEtas, etas = .allEtas)
+    .grpEtas <- unique(unlist(.compEtas))
     if (length(.grpEtas) > 1L) {
+      # the eta each component uses, so a component without one is not
+      # matched to another component's eta
+      attr(.grpEtas, "comp") <- vapply(
+        .compEtas,
+        function(e) {
+          .e <- intersect(e, .grpEtas)
+          if (length(.e) == 0L) NA_character_ else .e[1]
+        },
+        character(1)
+      )
       .etaGroups <- c(.etaGroups, list(.grpEtas))
     }
   }

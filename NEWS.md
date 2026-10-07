@@ -278,7 +278,9 @@
   `setCov()` and refits used the wrong columns.  The merged eta's variance is
   now the components' variances weighted by their responsibilities; it also
   added the spread of the component means, which `tcl1` and `tcl2` already
-  carry (0.49 instead of 0.31 in a 30-subject example).
+  carry (0.49 instead of 0.31 in a 30-subject example).  A component
+  without an eta of the group (`mix(..., p2, exp(tcl3))`) no longer stops the
+  fit with `subscript out of bounds`; its subjects get a root eta of 0.
 
 - `VarCorr()` of a fit by any method but `nlme` now reports the omega
   correlations (one column per eta, the lower triangle); it reported only
