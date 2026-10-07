@@ -377,6 +377,28 @@ nmTest({
     expect_null(.f$cov)
   })
 
+  test_that("an all-zero R of several thetas is not corrected into a covariance", {
+    # the zero diagonal leaves cholSE0 nothing to scale its correction by for any
+    # theta, not only a single one
+    d <- data.frame(ID = rep(1:2, each = 3), TIME = rep(1:3, 2), DV = 5, Z = 0, W = 0)
+    flat2 <- function() {
+      ini({
+        ta <- fix(5)
+        tz <- 0.5
+        tw <- 0.3
+        add.sd <- fix(1)
+      })
+      model({
+        cp <- ta + tz * Z + tw * W
+        cp ~ add(add.sd)
+      })
+    }
+    .f <- .nlmixr(flat2, d, "focei", foceiControl(print = 0, maxOuterIterations = 0L))
+    expect_equal(unname(.f$env$R.0), matrix(0, 2, 2))
+    expect_equal(.f$covMethod, "failed")
+    expect_null(.f$cov)
+  })
+
   test_that("a non-positive-definite R or S is never installed as it is", {
     # one estimated parameter at a point where the objective is concave: R < 0,
     # which cholSE0 (like for every 1x1 matrix) called positive definite, so
