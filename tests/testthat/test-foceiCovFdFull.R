@@ -39,20 +39,23 @@ test_that(".foceiFdFullShapes() judges the sandwich by its pieces", {
   expect_false(.sh$s$ok)
 })
 
-test_that("an indefinite full R is not installed inside a positive-definite sandwich", {
+test_that("an indefinite full R falls back from the sandwich to the full S (#1152)", {
   .e <- .fdEnv("r,s", .fdRbad, .fdS)
   expect_warning(
     .ok <- .foceiInstallFdFullCov(.e),
-    "\"r,s (full)\" covariance needs a positive-definite R; kept \"r,s\"",
+    "full R matrix non-positive definite; using s (full)",
     fixed = TRUE
   )
-  expect_false(.ok)
-  expect_identical(.e$covMethod, "r,s")
-  expect_equal(.e$cov, matrix(0.25, 1, 1, dimnames = list("tka", "tka")))
-  expect_equal(.e$covR, matrix(0.2, 1, 1, dimnames = list("tka", "tka")))
-  # the usable shapes stay swappable: the native R and the full S
-  expect_identical(sort(names(.e$covList)), c("r", "s (full)"))
-  expect_equal(unname(.e$covList[["s (full)"]]), unname(solve(.fdS)))
+  expect_true(.ok)
+  expect_identical(.e$covMethod, "s (full)")
+  expect_equal(unname(.e$cov), unname(solve(.fdS)))
+  expect_equal(unname(.e$covS), unname(solve(.fdS)))
+  expect_false(exists("covR", envir = .e, inherits = FALSE))
+  expect_false(exists("covRS", envir = .e, inherits = FALSE))
+  # the native theta-only shapes stay swappable; the unusable full ones are not cached
+  expect_identical(sort(names(.e$covList)), c("r", "r,s"))
+  expect_equal(.e$covList[["r"]], matrix(0.2, 1, 1, dimnames = list("tka", "tka")))
+  expect_equal(.e$covList[["r,s"]], matrix(0.25, 1, 1, dimnames = list("tka", "tka")))
 })
 
 test_that("an indefinite full R stays out of covR and covList when another shape installs", {
@@ -61,7 +64,7 @@ test_that("an indefinite full R stays out of covR and covList when another shape
   expect_identical(.e$covMethod, "s (full)")
   expect_equal(unname(.e$cov), unname(solve(.fdS)))
   expect_equal(unname(.e$covS), unname(solve(.fdS)))
-  expect_equal(.e$covR, matrix(0.2, 1, 1, dimnames = list("tka", "tka")))
+  expect_false(exists("covR", envir = .e, inherits = FALSE))
   expect_false(exists("covRS", envir = .e, inherits = FALSE))
   # the native shapes are cached; of the full ones only the usable S is (and it is installed)
   expect_identical(sort(names(.e$covList)), c("r", "s"))

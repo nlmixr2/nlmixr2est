@@ -3,7 +3,7 @@ nmTest({
     expect_equal(
       rxUiDeparse.foceiControl(
         foceiControl(
-          innerOpt = "BFGS",
+          innerOpt = "lbfgsb3c",
           scaleType = "norm",
           normType = "std",
           derivMethod = "central",
@@ -18,7 +18,7 @@ nmTest({
       ),
       quote(ctl <- foceiControl(derivMethod = "central", covDerivMethod = "forward",
                                            covMethod = "s", diagXform = "identity", optimHessType = "forward",
-                                           innerOpt = "BFGS", scaleType = "norm", normType = "std",
+                                           innerOpt = "lbfgsb3c", scaleType = "norm", normType = "std",
                                            eventType = "forward", addProp = "combined1"))
     )
 
