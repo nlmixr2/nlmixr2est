@@ -133,6 +133,7 @@ RObject nlmFree() {
   if (nlmOp.thetahf != NULL) R_Free(nlmOp.thetahf);
   nlmOp.thetahf = NULL;
   nlmOp.thetahh = NULL;
+  nlmOp.hessThetaAt.reset();
   nlmOp.thetaSave = NULL;
   nlmOp.valSave = NULL;
   nlmOp.grSave = NULL;
@@ -1118,6 +1119,7 @@ List nlmLbfgsb3cFit(arma::vec &theta, NumericVector lower, NumericVector upper,
 //[[Rcpp::export]]
 List nlmTrustFit(arma::vec &theta, List control) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
+  if (nlmOp.thetahh == NULL) stop(_("incorrect solve type"));
   // hessianMethod= state is only valid within a single trust_solve_c() run
   // (see nlmOptions' comment) -- reset here, not just at model load.
   nlmOp.trustHessMethod = control.containsElementNamed("hessianMethod") ?
