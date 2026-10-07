@@ -1,4 +1,27 @@
 nmTest({
+  test_that("nls solves its first evaluation at an all-zero start", {
+    one.cmt0 <- function() {
+      ini({
+        tka <- 0
+        tcl <- 0
+        tv <- 0
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    # scaleTo = 0 leaves the start unshifted, so the first parameter vector is all zeros
+    .ctl <- nlsControl(print = 0L, scaleTo = 0)
+    fit0 <- .nlmixr(one.cmt0, theo_sd, est = "nls", control = .ctl)
+    fitE <- .nlmixr(ini(one.cmt0, tka = 1e-10, tcl = 1e-10, tv = 1e-10), theo_sd, est = "nls", control = .ctl)
+    expect_equal(fit0$objf, fitE$objf)
+    expect_equal(fit0$theta, fitE$theta, tolerance = 1e-6)
+  })
+
   test_that("nls supports interp", {
     one.cmt <- function() {
       ini({

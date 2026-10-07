@@ -11,6 +11,28 @@
 #include "armahead.h"
 #include "shi21.h"
 
+// The ratio test statistic of a step: the one ratio itself for a scalar function,
+// else the harmonic mean of the per-element ratios, corrected for the zero ones.
+static double shiRatio(const arma::vec &all) {
+  if (all.size() == 1) {
+    return all(0);
+  }
+  double sum = 0.0;
+  int nzero = 0;
+  int n = 0;
+  for (unsigned int j = all.size(); j--;) {
+    if  (all[j] == 0) {
+      nzero++;
+    } else {
+      sum += 1.0/all[j];
+      n++;
+    }
+  }
+  double correction = (double)(n-nzero)/((double)n);
+  if (correction <= 0) correction=1;
+  return (double)(n)/sum * correction;
+}
+
 double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
              arma::vec &f0, arma::vec &f1, double &l, double &u,
              bool &finiteF1, bool &finiteF4) {
@@ -29,28 +51,7 @@ double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   if (!finiteF4) {
     return -1.0;
   }
-  arma::vec all = abs(f4-4*f1+3*f0)/(8.0*ef);
-  if (all.size() == 1) {
-    return all(0);
-  }
-  // Return harmonic mean
-  arma::vec all0 = all;
-  all = 1.0/all;
-  double sum = 0.0;
-  int nzero = 0;
-  int n = 0;
-  for (unsigned int j = all.size(); j--;) {
-    if  (all0[j] == 0) {
-      nzero++;
-    } else {
-      sum += all[j];
-      n++;
-    }
-  }
-  double correction = (double)(n-nzero)/((double)n);
-  if (correction <= 0) correction=1;
-  double hm = (double)(n)/sum * correction;
-  return hm;
+  return shiRatio(abs(f4-4*f1+3*f0)/(8.0*ef));
 }
 
 double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
@@ -159,28 +160,7 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   if (!finiteFm3) {
     return -1.0;
   }
-  arma::vec all = abs(fp3-3*fp1+3*fm1-fm3)/(8.0*ef);
-  if (fm3.size() == 1) {
-    return all(0);
-  }
-  // Return harmonic mean
-  arma::vec all0 = all;
-  all = 1.0/all;
-  double sum = 0.0;
-  int nzero = 0;
-  int n = 0;
-  for (unsigned int j = all.size(); j--;) {
-    if  (all0[j] == 0) {
-      nzero++;
-    } else {
-      sum += all[j];
-      n++;
-    }
-  }
-  double correction = (double)(n-nzero)/((double)n);
-  if (correction <= 0) correction=1;
-  double hm = (double)(n)/sum * correction;
-  return hm;
+  return shiRatio(abs(fp3-3*fp1+3*fm1-fm3)/(8.0*ef));
 }
 
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,

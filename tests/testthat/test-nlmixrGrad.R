@@ -99,6 +99,27 @@ test_that("nlmixr2GradFun() gradients leave the point alone", {
   expect_equal(g1[2], 2, tolerance = 1e-3)
 })
 
+test_that("nlmixr2GradFun() prints wrapped rows, underlining the last continuation", {
+  withr::local_envvar(RSTUDIO = NA)
+  nmSuppressMsg() # a fit run under suppressMessages() leaves the C-level print silenced
+  gf <- nlmixr2GradFun(
+    function(x) sum((x - c(1, 2, 3))^2 * c(1, 10, 100)),
+    thetaNames = c("t1", "t2", "t3"),
+    useColor = TRUE,
+    printNcol = 2
+  )
+  expect_identical(
+    capture.output(invisible(gf$eval(c(0.5, 0.5, 0.5)))),
+    c(
+      "|-----+---------------+-----------+-----------|",
+      "|    #| Objective Fun |        t1 |        t2 |",
+      "\033[4m|.....................|        t3 |...........|\033[0m",
+      "|    1|     647.75000 |    0.5000 |    0.5000 |",
+      "|.....................|    0.5000 |...........|\033[0m"
+    )
+  )
+})
+
 test_that("the objective sees the caller's names and attributes", {
   f <- function(x) unname((x["a"] - 1)^2 + x["b"]^2)
   gf <- nlmixr2GradFun(f, print = 0)
