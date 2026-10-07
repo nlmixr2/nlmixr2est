@@ -5189,15 +5189,19 @@ static inline bool thetaReset0(bool forceReset = false, const std::vector<bool> 
   NumericVector appliedShift(op_focei.muRefN, 0.0);
   bool doAdjust = false;
   // fullTheta holds the thetas on their own scale; the bounds are kept by
-  // optimizer index on the optimizer's scale
+  // optimizer index, on the optimizer's scale only while boundsScaled
   std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta, thetaIni.begin());
   std::fill(thetaDown.begin(), thetaDown.end(), R_NegInf);
   std::fill(thetaUp.begin(), thetaUp.end(), R_PosInf);
   for (unsigned int k = op_focei.npars; k--;) {
     int j = op_focei.fixedTrans[k];
     if (j >= (int)op_focei.ntheta) continue;
-    if (R_FINITE(op_focei.lower[k])) thetaDown[j] = scaleUnscalePar(&op_focei, op_focei.lower, k);
-    if (R_FINITE(op_focei.upper[k])) thetaUp[j] = scaleUnscalePar(&op_focei, op_focei.upper, k);
+    if (R_FINITE(op_focei.lower[k])) {
+      thetaDown[j] = op_focei.boundsScaled ? scaleUnscalePar(&op_focei, op_focei.lower, k) : op_focei.lower[k];
+    }
+    if (R_FINITE(op_focei.upper[k])) {
+      thetaUp[j] = op_focei.boundsScaled ? scaleUnscalePar(&op_focei, op_focei.upper, k) : op_focei.upper[k];
+    }
   }
   double ref=0;
   int ij = 0;
