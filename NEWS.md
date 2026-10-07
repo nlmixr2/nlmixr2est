@@ -129,6 +129,9 @@
   information already holds) replaces that setting instead of failing with
   `formal argument matched by multiple actual arguments`.
 - `vpcSim(fit, n = 1)` no longer fails with `object '.sim2' not found`.
+- `vpcSim()` (and so `addNpde()`) and `augPred()` no longer fail with a
+  syntax error for a model that uses `lag()`, `lead()`, `first()`, `last()` or
+  `diff()` of a calculated variable (#1173).
 - The table of a fit whose `rxControl(method=)` is one of rxode2's newer ODE
   methods (`"cvode"`, `"lsode"`, `"bdf"`, `"dop5"`, ...) is calculated again.
   The post-fit solve turned the fit's integer method code back into a name

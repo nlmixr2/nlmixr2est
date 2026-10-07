@@ -40,6 +40,25 @@
   }))
   .ret
 }
+#' Variables used inside a history function of a model
+#'
+#' @param x quoted model
+#' @return character vector of the variables referenced inside `lag()`,
+#'   `lead()`, `first()`, `last()` or `diff()`
+#' @author Matthew L. Fidler
+#' @noRd
+.simModelLaggedVars <- function(x) {
+  if (!is.call(x)) {
+    return(character(0))
+  }
+  .ret <- unlist(lapply(as.list(x)[-1], .simModelLaggedVars))
+  if (is.name(x[[1]]) &&
+    as.character(x[[1]]) %in% c("lag", "lead", "first", "last", "diff") &&
+    length(x) >= 2L && is.name(x[[2]])) {
+    .ret <- c(as.character(x[[2]]), .ret)
+  }
+  unique(as.character(.ret))
+}
 #' Get the simulation model for VPC and NPDE
 #'
 #'
@@ -51,6 +70,8 @@
 #' @noRd
 .getSimModel <- function(obj, hideIpred = FALSE, tad = TRUE) {
   .lines <- rxode2::getBaseSimModel(obj)
+  # rxode2 only allows a history function of a real lhs, so these stay `<-`
+  .lagged <- .simModelLaggedVars(.lines)
   .f <- function(x) {
     if (is.atomic(x) || is.name(x) || is.pairlist(x)) {
       return(x)
@@ -70,7 +91,11 @@
           x[[2]] <- quote(`sim`)
           x[[1]] <- quote(`<-`)
         } else if (length(x[[2]]) == 1L) {
-          x[[1]] <- quote(`~`)
+          if (as.character(x[[2]]) %in% .lagged) {
+            x[[1]] <- quote(`<-`)
+          } else {
+            x[[1]] <- quote(`~`)
+          }
         } else {
           if (identical(x[[2]][[1]], quote(`/`))) {
             x[[1]] <- quote(`~`)
