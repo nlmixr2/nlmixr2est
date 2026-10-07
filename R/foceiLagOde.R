@@ -29,9 +29,10 @@
       logical(1)
     )
   ]
-  for (v in unique(.var)) {
+  # last definition first, so one that uses an earlier one is fully expanded
+  for (v in rev(unique(.var))) {
     .w <- which(.var == v)
-    if (length(.w) != 1L || .foceiLagRefs(.rhs[.w], .var)) {
+    if (length(.w) != 1L || .foceiLagRefs(.rhs[.w], .var, hist = TRUE)) {
       next
     }
     # rxToSE() is NSE: hand it a plain variable

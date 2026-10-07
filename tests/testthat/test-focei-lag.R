@@ -69,6 +69,30 @@ nmTest({
     })
   }
 
+  # an ODE using a lagged variable defined through another one
+  .lagMod4 <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.cl ~ 0.1
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      c0 <- central / v
+      c1 <- c0 * exp(eta.v)
+      d/dt(depot) <- -ka * depot
+      d/dt(central) <- ka * depot - cl / v * central
+      d/dt(eff) <- c1 - eff
+      cp <- eff + lag(c0) + lag(c1)
+      cp ~ add(add.sd)
+    })
+  }
+
   .lagDat <- nlmixr2data::theo_sd[nlmixr2data::theo_sd$ID == 1, ]
 
   # max |analytic - central difference| of rx__sens_<v>_BY_<par>___ per
@@ -128,7 +152,7 @@ nmTest({
   })
 
   test_that("inner eta sensitivities chain through lag()", {
-    for (.mod in list(.lagMod, .lagMod2, .lagMod3)) {
+    for (.mod in list(.lagMod, .lagMod2, .lagMod3, .lagMod4)) {
       .s <- rxode2::rxode2(.mod)$foceiEnv
       expect_true(length(.s$..lagSens) > 0L)
       .fd <- .lagFd(.mod, .s$..inner, "ETA", seq_len(.s$..maxEta))
