@@ -16,8 +16,7 @@ test_that("finite-difference epsilons must be strictly positive", {
   expect_error(nlmControl(shiErr = NA_real_))
   expect_error(nlmControl(shiErr = c(1e-6, 1e-6)))
   expect_null(rsControl()$hessEps)
-  expect_equal(nlmControl(shiErr = 1e-6, hessErr = 2e-6)[c("shiErr", "hessErr")],
-               list(shiErr = 1e-6, hessErr = 2e-6))
+  expect_equal(nlmControl(shiErr = 1e-6, hessErr = 2e-6)[c("shiErr", "hessErr")], list(shiErr = 1e-6, hessErr = 2e-6))
 })
 
 test_that("a hand-built control with shiErr = 0 falls back to the default", {
@@ -42,8 +41,7 @@ test_that("a hand-built control with shiErr = 0 falls back to the default", {
     })
   }
   .grad <- function(ctl) {
-    x <- nlmObjectiveSetup(mod, nlmixr2data::theo_sd, control = ctl,
-                           gradient = TRUE, scale = "natural")
+    x <- nlmObjectiveSetup(mod, nlmixr2data::theo_sd, control = ctl, gradient = TRUE, scale = "natural")
     on.exit(.nlmFreeEnv())
     nlmLikEvalC_(x)$grad
   }
