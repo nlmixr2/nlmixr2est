@@ -1981,7 +1981,14 @@ public:
     nb_fixResid = as<int>(x["nb_fixResid"]);
     resValue = as<vec>(x["resValue"]);
     resFixed = as<uvec>(x["resFixed"]);
-    resKeep = find(resFixed==0);
+    // the residuals par_hist records: the estimated ones, unless the config names
+    // them (the "sa" recompute at another fit's estimates holds every residual
+    // through resFixed and keeps the fit's own list, see .saemHoldCfg())
+    if (x.containsElementNamed("resKeep")) {
+      resKeep = as<uvec>(x["resKeep"]);
+    } else {
+      resKeep = find(resFixed==0);
+    }
     niter_phi0 = as<int>(x["niter_phi0"]);
     coef_phi0 = as<double>(x["coef_phi0"]);
     // ini-block bounds of the phi0 thetas (i0 column order) for the bounded

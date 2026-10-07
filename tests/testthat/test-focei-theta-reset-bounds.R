@@ -54,4 +54,52 @@ nmTest({
     # the tightly-bounded parameter in particular stays at/under its upper bound
     expect_lte(th$est[th$name == "tcl"], 0.2 + 1e-6)
   })
+
+  test_that("a theta pinned at its bound does not fire the theta reset again", {
+    skip_on_cran()
+    # The first reset moves tcl to its upper bound.  The restart's first
+    # evaluation finds eta.cl drifting again, but tcl cannot follow, so no
+    # reset fires there, even though eta.ka could take a tiny shift.  The outer
+    # optimizer evaluates only its starting point, so every reset after the
+    # first would come from that evaluation.
+    .pinnedReset <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- c(-2, -1, 0.2)
+        tv <- 3.45
+        add.sd <- 0.7
+        eta.ka ~ 0.6
+        eta.cl ~ 0.5
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .opt <- function(par, fn, gr, lower, upper, control, ...) {
+      .v <- fn(par)
+      list(x = par, value = .v, convergence = 0L, message = "")
+    }
+    .ctl <- foceiControl(
+      resetThetaP = 0.4,
+      resetThetaCheckPer = 1,
+      print = 0,
+      covMethod = "",
+      calcTables = FALSE,
+      outerOpt = .opt
+    )
+    .acc <- new.env(parent = emptyenv())
+    .acc$msg <- character(0)
+    .fit <- withCallingHandlers(
+      suppressWarnings(nlmixr(.pinnedReset, theo_sd, est = "focei", control = .ctl)),
+      message = function(m) {
+        .acc$msg <- c(.acc$msg, conditionMessage(m))
+        invokeRestart("muffleMessage")
+      }
+    )
+    expect_equal(sum(grepl("ETA drift", .acc$msg, fixed = TRUE)), 1L)
+    expect_equal(fixef(.fit)[["tcl"]], 0.2, tolerance = 1e-5)
+  })
 })

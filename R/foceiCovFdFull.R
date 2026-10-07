@@ -68,7 +68,8 @@
 
 #' Install the C++ FD-full covariance as `fit$cov` (and `fit$covR/covS/covRS`) when
 #' `covFull = TRUE`, routing on the requested covMethod: "r,s" -> the sandwich
-#' `Rinv %*% S %*% Rinv`, "s" -> `solve(S)`, "r" -> `Rinv`.  The native cov is
+#' `Rinv %*% S %*% Rinv`, "s" -> `solve(S)`, "r" -> `Rinv`; an "r,s" with an
+#' indefinite `Rinv` installs `solve(S)` with a warning.  The native cov is
 #' kept -- with a warning when the requested shape is not usable, silently when
 #' covMethod is not an FD method or the pieces were not computed.  Every usable
 #' shape, native or full, is cached for `setCov()`; an unusable one is neither
@@ -89,11 +90,19 @@
   .req <- tryCatch(rxode2::rxGetControl(.ret$ui, "covMethod", NA_integer_), error = function(e) NA_integer_)
   .req <- if (identical(.cty, "analytic")) "" else .covMethodFromSlot(.req)
   .type <- .covFdType(if (nzchar(.req)) .req else .env)
-  .S <- get0(".fdFullS", envir = .ret, inherits = FALSE)
-  if (!nzchar(.type) || (.type != "r" && is.null(.S))) {
+  if (!nzchar(.type)) {
     return(invisible(FALSE))
-  } # analytic / failed / "" / boundary, or no S computed -> keep native
+  } # analytic / failed / "" / boundary -> keep native
+  .S <- get0(".fdFullS", envir = .ret, inherits = FALSE)
   .full <- .foceiFdFullShapes(get(".fdFullCov", envir = .ret), .S)
+  if (.type != "r" && is.null(.S) && .full$r$ok) {
+    return(invisible(FALSE))
+  } # no S computed -> keep native
+  # an indefinite R is not a minimum; fall back to S like the native step does (#1152)
+  if (.type == "r,s" && !.full$r$ok && .full$s$ok) {
+    warning("full R matrix non-positive definite; using s (full)", call. = FALSE)
+    .type <- "s"
+  }
   # the native theta-only pieces, cached so setCov() can swap to that shape without
   # recomputing anything (they are already in hand)
   .nat <- stats::setNames(mget(c("covR", "covS", "covRS"), envir = .ret, ifnotfound = list(NULL)), c("r", "s", "r,s"))
@@ -117,7 +126,13 @@
       refresh = "none"
     )
     for (.n in names(.full)) {
-      if (.full[[.n]]$ok) assign(c(r = "covR", s = "covS", "r,s" = "covRS")[[.n]], .full[[.n]]$cov, envir = .ret)
+      .slot <- c(r = "covR", s = "covS", "r,s" = "covRS")[[.n]]
+      if (.full[[.n]]$ok) {
+        assign(.slot, .full[[.n]]$cov, envir = .ret)
+      } else if (.n != "s" && !.full$r$ok && exists(.slot, envir = .ret, inherits = FALSE)) {
+        # the native theta-only piece is cached below; do not leave it beside a full cov
+        rm(list = .slot, envir = .ret)
+      }
     }
   } else {
     .covRejectWarn(.ret, .covFullName(.type), .full[[.type]]$reason)
