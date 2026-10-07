@@ -115,14 +115,7 @@ nlmixr2NlmeControl <- function(
   method <- match.arg(method)
   addProp <- match.arg(addProp)
   eventSens <- match.arg(eventSens)
-  if (checkmate::testIntegerish(covMethod, len = 1, any.missing = FALSE)) {
-    # integer round-trip: 0L means no covariance ("nlme"/"" keep nlme's own)
-    covMethod <- if (identical(as.integer(covMethod), 0L)) "" else "analytic"
-  } else if (length(covMethod) == 1L && !nzchar(covMethod)) {
-    covMethod <- ""
-  } else {
-    covMethod <- match.arg(covMethod)
-  }
+  covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
 
   # 'print' is the common nlmixr control alias; nlme prints through 'verbose',
   # so map it (print=0 means quiet) and let an explicit 'verbose' stand when
@@ -218,11 +211,7 @@ nlmixr2NlmeControl <- function(
 }
 
 #' @export
-rxUiDeparse.nlmeControl <- function(object, var) {
-  .default <- nlmeControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.nlmeControl <- function(object, var) .deparseControl(object, var, nlmeControl())
 
 
 #' @rdname nlmixr2NlmeControl
@@ -521,24 +510,11 @@ nlmeControl <- nlmixr2NlmeControl
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.nlmeControl <- function(control, env) {
-  assign("nlmeControl", control, envir = env)
-}
+nmObjHandleControlObject.nlmeControl <- function(control, env) assign("nlmeControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.nlme <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("nlmeControl", .env, inherits = FALSE)) {
-    .control <- get("nlmeControl", .env, inherits = FALSE)
-    if (inherits(.control, "nlmeControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "nlmeControl")) return(.control)
-  }
-  stop("cannot find nlme related control object", call. = FALSE)
-}
+nmObjGetControl.nlme <- function(x, ...) .nmObjGetControlByClass(x, "nlmeControl")
 
 .nlmeControlToFoceiControl <- function(env, assign = TRUE, covMethod = 0L) {
   .nlmeControl <- env$nlmeControl

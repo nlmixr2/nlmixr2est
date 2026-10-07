@@ -292,12 +292,7 @@ emviControl <- function(
   viFamily <- match.arg(viFamily)
   optim <- match.arg(optim)
   likelihood <- match.arg(likelihood)
-  # match.arg cannot match ""; treat it (skip covariance) like foceiControl does
-  if (length(covMethod) == 1L && covMethod == "") {
-    covMethod <- ""
-  } else {
-    covMethod <- match.arg(covMethod)
-  }
+  covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
   addProp <- match.arg(addProp)
   eventSens <- match.arg(eventSens)
 
@@ -388,17 +383,13 @@ emviControl <- function(
 
 #' @export
 rxUiDeparse.emviControl <- function(object, var) {
-  .default <- emviControl()
   object$resume <- NULL # not deparsable (may be a whole fit)
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
+  .deparseControl(object, var, emviControl())
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.emviControl <- function(control, env) {
-  assign("emviControl", control, envir = env)
-}
+nmObjHandleControlObject.emviControl <- function(control, env) assign("emviControl", control, envir = env)
 
 #' Shared control lookup for the two variational methods.
 #' @noRd

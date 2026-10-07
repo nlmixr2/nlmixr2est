@@ -285,19 +285,9 @@ optimControl <- function(
     useColor = useColor,
     iterPrintControl = .xtra$iterPrintControl
   )
-  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
-    scaleType <- as.integer(scaleType)
-  } else {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
-  }
+  scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
-  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    normType <- as.integer(normType)
-  } else {
-    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
-  }
+  normType <- .ctlIdx(normType, .normTypeIdx, match.arg(normType))
   checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
   if (!is.null(scaleC)) {
@@ -365,11 +355,7 @@ optimControl <- function(
 }
 
 #' @export
-rxUiDeparse.optimControl <- function(object, var) {
-  .default <- optimControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.optimControl <- function(object, var) .deparseControl(object, var, optimControl())
 
 #' A surrogate function for optim to call for ode solving
 #'
@@ -410,43 +396,15 @@ rxUiDeparse.optimControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.optimControl <- function(control, env) {
-  assign("optimControl", control, envir = env)
-}
+nmObjHandleControlObject.optimControl <- function(control, env) assign("optimControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.optim <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("optimControl", .env, inherits = FALSE)) {
-    .control <- get("optimControl", .env, inherits = FALSE)
-    if (inherits(.control, "optimControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "optimControl")) return(.control)
-  }
-  stop("cannot find optim related control object", call. = FALSE)
-}
+nmObjGetControl.optim <- function(x, ...) .nmObjGetControlByClass(x, "optimControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.optim <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- optimControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("optimControl", .ctl)
-  }
-  if (!inherits(.ctl, "optimControl")) {
-    .minfo("invalid control for `est=\"optim\"`, using default")
-    .ctl <- optimControl()
-  } else {
-    .ctl <- do.call(optimControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.optim <- function(control) .getValidCtl(control, "optimControl", "optim")
 
 #' @export
 rxUiGet.optimParLower <- function(x, ...) {
@@ -563,60 +521,8 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 
-#' Get the full theta for nlm methods
-#'
-#' @param optim enhanced nlm return
-#' @param ui ui object
-#' @return named theta matrix
-#' @author Matthew L. Fidler
-#' @noRd
-.optimGetTheta <- function(nlm, ui) {
-  .iniDf <- ui$iniDf
-  setNames(
-    vapply(
-      seq_along(.iniDf$name),
-      function(i) {
-        if (.iniDf$fix[i]) {
-          .iniDf$est[i]
-        } else {
-          nlm$par[.iniDf$name[i]]
-        }
-      },
-      double(1),
-      USE.NAMES = FALSE
-    ),
-    .iniDf$name
-  )
-}
-
 .optimControlToFoceiControl <- function(env, assign = TRUE) {
-  .optimControl <- env$optimControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$optimControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .optimControl$sumProd,
-    optExpression = .optimControl$optExpression,
-    literalFix = .optimControl$literalFix,
-    literalFixRes = .optimControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .optimControl$calcTables,
-    addProp = .optimControl$addProp,
-    #skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .optimControl$compress,
-    ci = .optimControl$ci,
-    sigdigTable = .optimControl$sigdigTable,
-    indTolRelax = .optimControl$indTolRelax,
-    eventSens = .optimControl$eventSens,
-    sensMethod = .optimControl$sensMethod
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "optimControl", assign)
 }
 
 .optimFamilyFit <- function(env, ...) {
@@ -624,8 +530,8 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
     env,
     "optim",
     .optimFitModel,
-    .optimGetTheta,
-    objective = function(.fit) 2 * as.numeric(.fit$value),
+    "par",
+    objective = "value",
     controlToFocei = .optimControlToFoceiControl,
     returnFlag = "returnOptim",
     extra = function(.control) {

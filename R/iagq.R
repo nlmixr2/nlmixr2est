@@ -5,7 +5,7 @@ nlmixr2Est.iagq <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'iagq'", .var.name = .ui$modelName)
   .control <- env$control
   .foceiFamilyControl(env, ..., type = "iagqControl")
-  .iagqControlToFoceiControl(env)
+  .foceiFamilyControlToFoceiControl(env, "iagqControl")
   on.exit({
     if (exists("control", envir = .ui)) {
       rm("control", envir = .ui)
@@ -27,6 +27,4 @@ attr(nlmixr2Est.iagq, "mu") <- function(control) {
 }
 
 #' @export
-rxUiDeparse.iagqControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type = "iagqControl")
-}
+rxUiDeparse.iagqControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "iagqControl")

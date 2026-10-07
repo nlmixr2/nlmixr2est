@@ -154,19 +154,9 @@ newuoaControl <- function(
     useColor = useColor,
     iterPrintControl = .xtra$iterPrintControl
   )
-  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
-    scaleType <- as.integer(scaleType)
-  } else {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
-  }
+  scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
-  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    normType <- as.integer(normType)
-  } else {
-    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
-  }
+  normType <- .ctlIdx(normType, .normTypeIdx, match.arg(normType))
   checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
   if (!is.null(scaleC)) {
@@ -217,11 +207,7 @@ newuoaControl <- function(
 }
 
 #' @export
-rxUiDeparse.newuoaControl <- function(object, var) {
-  .default <- newuoaControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.newuoaControl <- function(object, var) .deparseControl(object, var, newuoaControl())
 
 #' Get the newuoa family control
 #'
@@ -236,71 +222,18 @@ rxUiDeparse.newuoaControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.newuoaControl <- function(control, env) {
-  assign("newuoaControl", control, envir = env)
-}
+nmObjHandleControlObject.newuoaControl <- function(control, env) assign("newuoaControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.newuoa <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("newuoaControl", .env, inherits = FALSE)) {
-    .control <- get("newuoaControl", .env, inherits = FALSE)
-    if (inherits(.control, "newuoaControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "newuoaControl")) return(.control)
-  }
-  stop("cannot find newuoa related control object", call. = FALSE)
-}
+nmObjGetControl.newuoa <- function(x, ...) .nmObjGetControlByClass(x, "newuoaControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.newuoa <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- newuoaControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("newuoaControl", .ctl)
-  }
-  if (!inherits(.ctl, "newuoaControl")) {
-    .minfo("invalid control for `est=\"newuoa\"`, using default")
-    .ctl <- newuoaControl()
-  } else {
-    .ctl <- do.call(newuoaControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.newuoa <- function(control) .getValidCtl(control, "newuoaControl", "newuoa")
 
 .newuoaControlToFoceiControl <- function(env, assign = TRUE) {
-  .newuoaControl <- env$newuoaControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$newuoaControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .newuoaControl$sumProd,
-    optExpression = .newuoaControl$optExpression,
-    literalFix = .newuoaControl$literalFix,
-    literalFixRes = .newuoaControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .newuoaControl$calcTables,
-    addProp = .newuoaControl$addProp,
-    #skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .newuoaControl$compress,
-    ci = .newuoaControl$ci,
-    sigdigTable = .newuoaControl$sigdigTable,
-    indTolRelax = .newuoaControl$indTolRelax,
-    eventSens = .newuoaControl$eventSens
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "newuoaControl", assign)
 }
 
 .newuoaFitModel <- function(ui, dataSav) {
@@ -340,39 +273,13 @@ getValidNlmixrCtl.newuoa <- function(control) {
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 
-#' Get the full theta for nlm methods
-#'
-#' @param optim enhanced nlm return
-#' @param ui ui object
-#' @return named theta matrix
-#' @author Matthew L. Fidler
-#' @noRd
-.newuoaGetTheta <- function(nlm, ui) {
-  .iniDf <- ui$iniDf
-  setNames(
-    vapply(
-      seq_along(.iniDf$name),
-      function(i) {
-        if (.iniDf$fix[i]) {
-          .iniDf$est[i]
-        } else {
-          nlm$par[.iniDf$name[i]]
-        }
-      },
-      double(1),
-      USE.NAMES = FALSE
-    ),
-    .iniDf$name
-  )
-}
-
 .newuoaFamilyFit <- function(env, ...) {
   .nlmFamilyFitGeneric(
     env,
     "newuoa",
     .newuoaFitModel,
-    .newuoaGetTheta,
-    objective = function(.fit) 2 * as.numeric(.fit$fval),
+    "par",
+    objective = "fval",
     controlToFocei = .newuoaControlToFoceiControl,
     returnFlag = "returnNewuoa"
   )

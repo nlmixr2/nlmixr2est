@@ -153,19 +153,9 @@ uobyqaControl <- function(
     useColor = useColor,
     iterPrintControl = .xtra$iterPrintControl
   )
-  if (checkmate::testIntegerish(scaleType, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
-    scaleType <- as.integer(scaleType)
-  } else {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
-  }
+  scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
-  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    normType <- as.integer(normType)
-  } else {
-    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
-  }
+  normType <- .ctlIdx(normType, .normTypeIdx, match.arg(normType))
   checkmate::assertNumeric(scaleCmax, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(scaleCmin, lower = 0, any.missing = FALSE, len = 1)
   if (!is.null(scaleC)) {
@@ -216,11 +206,7 @@ uobyqaControl <- function(
 }
 
 #' @export
-rxUiDeparse.uobyqaControl <- function(object, var) {
-  .default <- uobyqaControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.uobyqaControl <- function(object, var) .deparseControl(object, var, uobyqaControl())
 
 #' Get the uobyqa family control
 #'
@@ -235,71 +221,18 @@ rxUiDeparse.uobyqaControl <- function(object, var) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.uobyqaControl <- function(control, env) {
-  assign("uobyqaControl", control, envir = env)
-}
+nmObjHandleControlObject.uobyqaControl <- function(control, env) assign("uobyqaControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.uobyqa <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("uobyqaControl", .env, inherits = FALSE)) {
-    .control <- get("uobyqaControl", .env, inherits = FALSE)
-    if (inherits(.control, "uobyqaControl")) return(.control)
-  }
-  if (exists("control", .env, inherits = FALSE)) {
-    .control <- get("control", .env, inherits = FALSE)
-    if (inherits(.control, "uobyqaControl")) return(.control)
-  }
-  stop("cannot find uobyqa related control object", call. = FALSE)
-}
+nmObjGetControl.uobyqa <- function(x, ...) .nmObjGetControlByClass(x, "uobyqaControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.uobyqa <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) {
-    .ctl <- uobyqaControl()
-  }
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
-    .ctl <- do.call("uobyqaControl", .ctl)
-  }
-  if (!inherits(.ctl, "uobyqaControl")) {
-    .minfo("invalid control for `est=\"uobyqa\"`, using default")
-    .ctl <- uobyqaControl()
-  } else {
-    .ctl <- do.call(uobyqaControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.uobyqa <- function(control) .getValidCtl(control, "uobyqaControl", "uobyqa")
 
 .uobyqaControlToFoceiControl <- function(env, assign = TRUE) {
-  .uobyqaControl <- env$uobyqaControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(
-    rxControl = env$uobyqaControl$rxControl,
-    maxOuterIterations = 0L,
-    maxInnerIterations = 0L,
-    covMethod = 0L,
-    sumProd = .uobyqaControl$sumProd,
-    optExpression = .uobyqaControl$optExpression,
-    literalFix = .uobyqaControl$literalFix,
-    literalFixRes = .uobyqaControl$literalFixRes,
-    scaleTo = 0,
-    calcTables = .uobyqaControl$calcTables,
-    addProp = .uobyqaControl$addProp,
-    #skipCov=.ui$foceiSkipCov,
-    interaction = 0L,
-    compress = .uobyqaControl$compress,
-    ci = .uobyqaControl$ci,
-    sigdigTable = .uobyqaControl$sigdigTable,
-    indTolRelax = .uobyqaControl$indTolRelax,
-    eventSens = .uobyqaControl$eventSens
-  )
-  if (assign) {
-    env$control <- .foceiControl
-  }
-  .foceiControl
+  .nlmFamilyControlToFoceiControl(env, "uobyqaControl", assign)
 }
 
 .uobyqaFitModel <- function(ui, dataSav) {
@@ -339,39 +272,13 @@ getValidNlmixrCtl.uobyqa <- function(control) {
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 
-#' Get the full theta for nlm methods
-#'
-#' @param optim enhanced nlm return
-#' @param ui ui object
-#' @return named theta matrix
-#' @author Matthew L. Fidler
-#' @noRd
-.uobyqaGetTheta <- function(nlm, ui) {
-  .iniDf <- ui$iniDf
-  setNames(
-    vapply(
-      seq_along(.iniDf$name),
-      function(i) {
-        if (.iniDf$fix[i]) {
-          .iniDf$est[i]
-        } else {
-          nlm$par[.iniDf$name[i]]
-        }
-      },
-      double(1),
-      USE.NAMES = FALSE
-    ),
-    .iniDf$name
-  )
-}
-
 .uobyqaFamilyFit <- function(env, ...) {
   .nlmFamilyFitGeneric(
     env,
     "uobyqa",
     .uobyqaFitModel,
-    .uobyqaGetTheta,
-    objective = function(.fit) 2 * as.numeric(.fit$fval),
+    "par",
+    objective = "fval",
     controlToFocei = .uobyqaControlToFoceiControl,
     returnFlag = "returnUobyqa",
     # uobyqa manages its own cov/parHistData instead of .nlmFamilyAdjustOutput
