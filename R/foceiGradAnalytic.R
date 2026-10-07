@@ -123,6 +123,13 @@
         return(NULL)
       }
       .gMap <- as.integer(.gMap - 1L) # 0-based for C++
+      ## The augmented model emits its rx_rsig_ columns in sorted theta-number order
+      ## (am$sigTh, i.e. ini() order); the kernel's sigma slots follow ef$sgName (additive
+      ## first).  sigCol is the rsig column of each kernel sigma slot.
+      .sigCol <- match(ui$iniDf$ntheta[match(st$ef$sgName, ui$iniDf$name)], am$sigTh)
+      if (anyNA(.sigCol)) {
+        return(NULL)
+      }
       ## ntheta position of each structural theta -- the ll() perturbation of a non-mu
       ## theta moves th[thPos[p]], which is not the direction index.
       .thPos <- tryCatch(as.integer(ui$iniDf$ntheta[match(st$dir$thStruct, ui$iniDf$name)]), error = function(.) {
@@ -136,7 +143,7 @@
         nsg = as.integer(length(st$ef$sgName)),
         nom = as.integer(length(st$dOiEst)),
         dirTh = as.integer(st$dir$dirTh),
-        sigCol = seq_along(st$ef$sgName),
+        sigCol = as.integer(.sigCol),
         lamDir = as.integer(st$dir$lamDir),
         nLam = as.integer(length(st$dir$lamNames)),
         censOpt = as.integer(rxode2::rxGetControl(ui, "censOption", 0L)),
@@ -655,16 +662,15 @@
       # had in fact been computed.  gMap is the same kernel -> outer gather the C++ uses
       # (analyticOuterGradDirect), so reuse it rather than re-deriving the correspondence.
       .nmKer <- c(.st$dir$thStruct, .st$ef$sgName, .st$omNames)
-      .nm <- .nmKer
-      if (length(.nmKer) != length(.g)) {
-        .gp <- tryCatch(.foceiGradPooledSetup(.ui), error = function(e) NULL)
-        .map <- if (is.null(.gp)) NULL else .gp$gMap
-        if (is.null(.map) || length(.map) != length(.g) || any(.map < 0L) || any(.map >= length(.nmKer))) {
-          return(.g)
-        }
-        .nm <- .nmKer[.map + 1L]
+      # .g is in the outer optimizer's order, which differs from the kernel's even at the
+      # same length (a residual parameter declared before another in ini()), so it is always
+      # named through gMap
+      .gp <- tryCatch(.foceiGradPooledSetup(.ui), error = function(e) NULL)
+      .map <- if (is.null(.gp)) NULL else .gp$gMap
+      if (is.null(.map) || length(.map) != length(.g) || any(.map < 0L) || any(.map >= length(.nmKer))) {
+        return(.g)
       }
-      stats::setNames(.g, .nm)
+      stats::setNames(.g, .nmKer[.map + 1L])
     },
     error = function(e) NULL
   )
