@@ -28,7 +28,8 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
 //
 // hh[k] is coordinate k's step.  While it is <= 0, column k comes from a shi21Forward
 // or shi21Central search (ef, maxiter, hMax and hMin[k] tune it; a NULL hMin means
-// shi21hMinDefault), which stores the step it settles on in hh[k].  With a step,
+// shi21hMinDefault), which stores the step it settles on in hh[k].  A negative hh[k]
+// starts that search from -hh[k] instead of the default step.  With a step,
 // column k is a forward or central difference; when one leg is non-finite it is the
 // other one-sided difference, and when both are it stays 0.
 //

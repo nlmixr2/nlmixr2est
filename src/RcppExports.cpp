@@ -1141,6 +1141,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmHessStepInfo
+List nlmHessStepInfo();
+RcppExport SEXP _nlmixr2est_nlmHessStepInfo() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nlmHessStepInfo());
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmSolveGradHess
 RObject nlmSolveGradHess(arma::vec& theta);
 RcppExport SEXP _nlmixr2est_nlmSolveGradHess(SEXP thetaSEXP) {

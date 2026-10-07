@@ -144,6 +144,7 @@ SEXP _nlmixr2est_nlmSolveGradHess(SEXP);
 SEXP _nlmixr2est_nlmTrustFit(SEXP, SEXP);
 SEXP _nlmixr2est_nlmLbfgsb3cFit(SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_nTrustOuterGet(void);
+SEXP _nlmixr2est_nlmHessStepInfo(void);
 SEXP _nlmixr2est_nlmSolveGradR(SEXP);
 SEXP _nlmixr2est_nlmerSolveGrad(SEXP, SEXP);
 SEXP _nlmixr2est_nlmSolveR(SEXP);
@@ -293,6 +294,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_nlmTrustFit", (DL_FUNC) &_nlmixr2est_nlmTrustFit, 2},
   {"_nlmixr2est_nlmLbfgsb3cFit", (DL_FUNC) &_nlmixr2est_nlmLbfgsb3cFit, 4},
   {"_nlmixr2est_nTrustOuterGet", (DL_FUNC) &_nlmixr2est_nTrustOuterGet, 0},
+  {"_nlmixr2est_nlmHessStepInfo", (DL_FUNC) &_nlmixr2est_nlmHessStepInfo, 0},
   {"_nlmixr2est_nlmFree", (DL_FUNC) &_nlmixr2est_nlmFree, 0},
   {"_nlmixr2est_RcppExport_registerCCallable", (DL_FUNC) &_nlmixr2est_RcppExport_registerCCallable, 0},
   {"_nlmixr2est_rxode2hasLlik", (DL_FUNC) &_nlmixr2est_rxode2hasLlik, 0},

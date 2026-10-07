@@ -41,6 +41,9 @@ struct nlmOptions {
   unsigned int nobsTot = 0;
   double *thetahf=NULL; // Shi step size
   double *thetahh=NULL;
+  // column k: the theta thetahh[k] was searched at (#1175)
+  arma::mat hessThetaAt;
+  int nHessSearch=0; // per-coordinate Hessian step searches this fit
   double *initPar= NULL; // initial parameters
   double *thetaSave = NULL;
   double *valSave   = NULL;
@@ -214,6 +217,7 @@ RObject nlmSetup(Environment e) {
   nlmOp.optimHessType = control["optimHessType"];
   nlmOp.shi21maxHess = control["shi21maxHess"];
   nlmOp.hessErr = control["hessErr"];
+  nlmOp.nHessSearch = 0;
 
 
   // Size the pool for the largest registered model rather than assuming it is
@@ -293,6 +297,7 @@ RObject nlmSetup(Environment e) {
     nlmOp.hSave = nlmOp.grSave + ntheta;// [ntheta*ntheta]
     nlmOp.initPar = nlmOp.hSave + ntheta*ntheta; // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + ntheta; // [ntheta]
+    nlmOp.hessThetaAt.zeros(ntheta, ntheta);
 #undef ntheta
 #undef nsub
   }
@@ -882,9 +887,34 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
 
 // optimHessType: 1 = forward, 2 = central (shi21Hessian's own codes).  No hMax/hMin,
 // so a searched step is bounded by the shi21 defaults.
+//
+// A step is reused only while theta stays inside the span its search probed (4h
+// forward, 3h central); once theta moves past it the step is searched again,
+// starting from the old step (#1175).
 arma::mat nlmCalcHessian(arma::vec &gr0, arma::vec &theta) {
-  return shi21Hessian(nlmSolveGrad1, theta, gr0, 0, nlmOp.optimHessType,
-                      nlmOp.thetahh, nlmOp.hessErr, nlmOp.shi21maxHess);
+  const double span = (nlmOp.optimHessType == shi21HessForward) ? 4.0 : 3.0;
+  std::vector<char> searched(nlmOp.ntheta);
+  for (unsigned int k = 0; k < nlmOp.ntheta; ++k) {
+    double &h = nlmOp.thetahh[k];
+    if (h > 0 && arma::abs(theta - nlmOp.hessThetaAt.col(k)).max() > span*h) h = -h;
+    searched[k] = h <= 0;
+  }
+  arma::mat H = shi21Hessian(nlmSolveGrad1, theta, gr0, 0, nlmOp.optimHessType,
+                             nlmOp.thetahh, nlmOp.hessErr, nlmOp.shi21maxHess);
+  for (unsigned int k = 0; k < nlmOp.ntheta; ++k) {
+    if (!searched[k]) continue;
+    nlmOp.hessThetaAt.col(k) = theta;
+    nlmOp.nHessSearch++;
+  }
+  return H;
+}
+
+// The current Hessian steps and the number of step searches so far (tests).
+//[[Rcpp::export(".nlmHessStepInfo")]]
+List nlmHessStepInfo() {
+  if (!nlmOp.loaded || nlmOp.thetahh == NULL) stop("'nlm' Hessian problem not loaded");
+  return List::create(_["step"] = NumericVector(nlmOp.thetahh, nlmOp.thetahh + nlmOp.ntheta),
+                      _["nSearch"] = nlmOp.nHessSearch);
 }
 
 //[[Rcpp::export]]
@@ -935,16 +965,12 @@ extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
     }
     double ll = cs[0];
     arma::vec gr0 = cs(span(1, nlmOp.ntheta));
-    // nlmCalcHessian() searches each theta's FD step only while
-    // nlmOp.thetahh[k] is 0, then reuses it: nlm (solveType="hessian") and
-    // nlminb call it at every Hessian request and keep the steps from their
-    // first call for the whole fit.  trust calls this every outer iteration
-    // as theta moves, so a step size calibrated at iteration 1 can become
-    // stale (or, per this method's own benchmark history, simply unstable
-    // near a bounded/transformed parameter regardless of caching) once theta
-    // has moved away from where it was derived -- every FD Hessian it asks
-    // for (each call under "fd", the quasi-Newton seed otherwise) is
-    // searched afresh.
+    // nlmCalcHessian() reuses a theta's FD step until theta leaves the span
+    // its search probed, then re-searches it from the old step.  trust goes
+    // further: a step calibrated elsewhere can be unstable near a
+    // bounded/transformed parameter (per this method's own benchmark
+    // history), so every FD Hessian it asks for (each call under "fd", the
+    // quasi-Newton seed otherwise) is searched from scratch.
     //
     // The quasi-Newton methods update on every call: trust_solve_c() calls
     // this once per TRIAL point every outer iteration, whether or not that

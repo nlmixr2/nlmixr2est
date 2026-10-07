@@ -102,6 +102,79 @@ nmTest({
     expect_equal(.hess$forward[[2]], .hess$forward[[1]], tolerance = 1e-10)
   })
 
+  test_that("a Hessian step is re-searched once theta leaves its search span (#1175)", {
+    skip_on_cran()
+    # the gradient is quadratic, so a central difference is exact at any step
+    .mod <- function() {
+      ini({
+        a <- 0.3
+        b <- -0.2
+        c <- 0.7
+      })
+      model({
+        v <- a + b * time
+        ll(bin) ~ DV * v + 0.5 * a^3 - 2 * (a - 0.5)^2 - a * b - 3 * (b + 1)^2 + b * c + 0.25 * a * c - 0.5 * c^2
+      })
+    }
+    .d <- data.frame(ID = 1L, TIME = seq(0.1, 10, length.out = 20), AMT = 0, EVID = 0L)
+    .d$DV <- as.integer(seq_len(nrow(.d)) %% 2 == 0)
+    .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = "central")
+    .withNlmProblem(.mod, .d, .ctl, function(x) {
+      .gr <- function(p) attr(nlmSolveGradR(p), "gradient")
+      .oracle <- function(p) {
+        vapply(
+          seq_along(p),
+          function(k) {
+            .e <- replace(numeric(length(p)), k, 1e-3)
+            (.gr(p + .e) - .gr(p - .e)) / 2e-3
+          },
+          numeric(length(p))
+        )
+      }
+      nlmSolveGradHess(x + 0)
+      .i0 <- .nlmHessStepInfo()
+      expect_equal(.i0$nSearch, 3L)
+      expect_true(all(.i0$step > 0))
+      # same theta, then a move inside every step's span: steps reused
+      nlmSolveGradHess(x + 0)
+      nlmSolveGradHess(x + c(0.5 * min(.i0$step), 0, 0))
+      expect_identical(.nlmHessStepInfo(), .i0)
+      # a move past every span re-searches every step
+      .x1 <- x + c(10 * max(.i0$step), 0, 0)
+      .h1 <- attr(nlmSolveGradHess(.x1 + 0), "hessian")
+      expect_equal(.nlmHessStepInfo()$nSearch, 6L)
+      expect_equal(.h1, .oracle(.x1), tolerance = 1e-6)
+    })
+  })
+
+  test_that("nlm and nlminb re-search the Hessian steps as theta moves (#1175)", {
+    skip_on_cran()
+    .mod <- function() {
+      ini({
+        a <- 0.3
+        b <- -0.2
+      })
+      model({
+        v <- a + b * time
+        ll(bin) ~ DV * v - log(1 + exp(v))
+      })
+    }
+    .d <- data.frame(ID = 1L, TIME = seq(0.1, 10, length.out = 40), AMT = 0, EVID = 0L)
+    .d$DV <- as.integer(seq_len(nrow(.d)) %% 3 != 0 & seq_len(nrow(.d)) < 30)
+    .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = "central")
+    .withNlmProblem(.mod, .d, .ctl, function(x) {
+      stats::nlm(function(p) nlmSolveGradHess(p), x + 0, check.analyticals = FALSE)
+      expect_gt(.nlmHessStepInfo()$nSearch, 2L)
+    })
+    .withNlmProblem(.mod, .d, .ctl, function(x) {
+      stats::nlminb(x + 0, function(p) nlminbFunC(p, 1L),
+        gradient = function(p) nlminbFunC(p, 2L),
+        hessian = function(p) nlminbFunC(p, 3L)
+      )
+      expect_gt(.nlmHessStepInfo()$nSearch, 2L)
+    })
+  })
+
   test_that("a non-normal-endpoint FOCEi fit reports llikObs at its final ETAs", {
     skip_on_cran()
     # A dnorm() endpoint sets needOptimHess: the inner Hessian is a finite
