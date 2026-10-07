@@ -461,8 +461,13 @@ nlmeControl <- nlmixr2NlmeControl
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmeGetCov <- function(nlme) {
-  .se <- summary(nlme)$tTable[, "Std.Error"]
-  stats::cov2cor(nlme$varFix) * outer(.se, .se)
+  .tt <- summary(nlme)$tTable
+  .se <- .tt[, "Std.Error", drop = TRUE]
+  .ret <- stats::cov2cor(nlme$varFix) * outer(.se, .se)
+  # a single fixed effect gives an unnamed scalar SE, so name the rows from the
+  # table itself
+  dimnames(.ret) <- list(rownames(.tt), rownames(.tt))
+  .ret
 }
 
 #' Get the omega matrix from nlme

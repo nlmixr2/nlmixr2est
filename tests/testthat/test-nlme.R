@@ -376,6 +376,15 @@ nmTest({
     # the estimate, not the ini() block
     expect_true(abs(fit$omega["eta.cl", "eta.v"] - 0.001) > 1e-3)
     expect_equal(diag(fit$omega), diag(.est))
+    # the off-diagonal from nlme's correlation and standard deviations, not from the
+    # covariance matrix the fit is built from
+    .cor <- nlme::corMatrix(fit$nlme$modelStruct$reStruct[[1]])
+    .sd <- attr(.cor, "stdDev") * fit$nlme$sigma
+    expect_equal(
+      fit$omega["eta.cl", "eta.v"],
+      .cor["eta.cl", "eta.v"] * .sd[["eta.cl"]] * .sd[["eta.v"]],
+      tolerance = 1e-8
+    )
     # refits, setCov() and setOfv() start from the fit's ui
     expect_equal(fit$ui$omega, fit$omega)
     .vc <- VarCorr(fit)
@@ -415,7 +424,7 @@ nmTest({
     .se <- summary(fit$nlme)$tTable[.th, "Std.Error"]
     expect_equal(sqrt(diag(fit$cov)), .se)
     expect_equal(fit$parFixedDf[.th, "SE"], .se)
-    # and the correlations are nlme's; they used to be dropped
+    # and the correlations are nlme's, not zero
     expect_equal(stats::cov2cor(fit$cov), stats::cov2cor(vcov(fit$nlme)))
     expect_true(all(fit$cov[upper.tri(fit$cov)] != 0))
     # ML: vcov() is the same matrix before nlme's sigma adjustment
@@ -483,8 +492,8 @@ nmTest({
   })
 
   test_that(".nlmeGetOmega returns nlme's matrix in the ui's eta order (issue 1140)", {
-    # 4 etas: VarCorr()'s printed correlations used to be copied into the
-    # wrong cells from the 4th eta on
+    # 4 etas: the correlations of every eta pair, the 4th eta's included, land
+    # in their own cells
     .eta <- c("eta.a", "eta.b", "eta.c", "eta.d")
     .cor <- matrix(
       c(
@@ -517,5 +526,66 @@ nmTest({
     .fake <- list(modelStruct = list(reStruct = nlme::reStruct(list(ID = .pd))), sigma = 0.5)
     .ui <- list(omega = .m, muRefDataFrame = data.frame(theta = character(0), eta = character(0)))
     expect_equal(.nlmeGetOmega(.fake, .ui), .m)
+  })
+
+  test_that("nlme fits each declared omega block as its own pdSymm", {
+    # eta.d and eta.f have no covariance of their own (a 0 row), but both share
+    # one with eta.e, so the three are one block; eta.a/eta.b are a second block
+    blockMod <- function() {
+      ini({
+        t1 <- 1
+        t2 <- 1
+        t3 <- 1
+        t4 <- 1
+        t5 <- 1
+        t6 <- 1
+        eta.a + eta.b ~ c(1, 0.2, 1)
+        eta.c ~ 0.5
+        eta.d + eta.e + eta.f ~ c(1, 0.1, 1, 0, 0.1, 1)
+        add.sd <- 1
+      })
+      model({
+        y <- t1 * exp(eta.a) + t2 * exp(eta.b) + t3 * exp(eta.c) + t4 * exp(eta.d) + t5 * exp(eta.e) +
+          t6 * exp(eta.f)
+        y ~ add(add.sd)
+      })
+    }
+    .ui <- suppressWarnings(rxode2::rxode2(blockMod))
+    .idf <- .ui$iniDf
+    .etaName <- .idf$name[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2]
+    .etaName <- .etaName[order(.idf$neta1[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2])]
+    .blocks <- lapply(.nlmeOmegaBlocks(.idf), function(i) sort(.etaName[i]))
+    expect_setequal(
+      vapply(.blocks, paste, character(1), collapse = ","),
+      c("eta.a,eta.b", "eta.c", "eta.d,eta.e,eta.f")
+    )
+    .pd <- .ui$nlmePdOmega
+    expect_s3_class(.pd, "pdBlocked")
+    .cls <- vapply(.pd, function(b) class(b)[1], character(1))
+    .size <- vapply(.pd, function(b) nrow(as.matrix(b)), integer(1))
+    expect_identical(sort(paste(.cls, .size)), c("pdDiag 1", "pdSymm 2", "pdSymm 3"))
+  })
+
+  test_that("the nlme covariance of a single fixed effect is named and nlme's", {
+    oneTheta <- function() {
+      ini({
+        tv <- 3.45
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- 1.5
+        cl <- 2.7
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    fit <- .nlmixr(oneTheta, theo_sd, "nlme", control = nlmeControl(verbose = FALSE, returnObject = TRUE))
+    expect_identical(dimnames(fit$cov), list("tv", "tv"))
+    expect_equal(fit$cov[1, 1], summary(fit$nlme)$tTable["tv", "Std.Error"]^2)
+    expect_equal(unname(fit$parFixedDf["tv", "SE"]), summary(fit$nlme)$tTable["tv", "Std.Error"])
   })
 })

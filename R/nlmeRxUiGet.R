@@ -244,7 +244,7 @@ rxUiGet.nlmeGradDimnames <- function(x, ...) {
     return(nlme::pdDiag(value = .om, form = .form))
   }
   .dn <- dimnames(.om)
-  .om <- as.matrix(Matrix::nearPD(.om)$mat)
+  .om <- nmNearPD(.om)
   dimnames(.om) <- .dn
   nlme::pdSymm(value = .om, form = .form)
 }

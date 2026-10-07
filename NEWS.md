@@ -240,7 +240,8 @@
   matrix over every eta, with the warning `nlme will estimate a full omega
   matrix if any covariances are estimated`.  `VarCorr()` of such a fit is
   nlme's own, which prints no correlations for a blocked structure; `$omega`
-  has them.
+  has them.  The columns of `$eta` and `$etaMat` follow the ui's eta order,
+  not nlme's.
 
 - A fit whose omega estimate is not positive definite (a variance collapsed to
   0 or a correlation of 1, as a degenerate `saem`, `nlme`, `vae` or `vi` fit
