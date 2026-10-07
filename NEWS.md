@@ -282,6 +282,20 @@
   without an eta of the group (`mix(..., p2, exp(tcl3))`) no longer stops the
   fit with `subscript out of bounds`; its subjects get a root eta of 0.
 
+- A `saem` mixture whose components have etas of their own (split etas) no
+  longer freezes them at 0 for most subjects.  The up-front uninformative-eta
+  check probed each subject under one component, assigned by ID in turn, so
+  an eta used only by the other components was never sampled for that
+  subject.  Every subject is now probed under every component.  Sampling them
+  needed two changes to the default `mixSampleMethod = "parallel"`: a split
+  eta's variance is estimated from its own component's chain, weighted by the
+  responsibilities, and the responsibilities compare each component's density
+  of its own etas, including its normalizing constant.  On the two-population
+  test data (clearances 0.8 and 8, 40:20) the fit recovers 0.78 and 7.25 with
+  every subject classified correctly; it reported 2.2 and 8.0 with 18 of the
+  40 high-clearance subjects in the low component once the etas were sampled
+  without these changes.
+
 - `VarCorr()` of a fit by any method but `nlme` now reports the omega
   correlations (one column per eta, the lower triangle); it reported only
   the variances and standard deviations.  It no longer fails for a fit with

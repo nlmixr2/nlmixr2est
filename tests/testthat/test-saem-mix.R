@@ -655,6 +655,10 @@ nmTest({
     # separated, not both near one of the true values.
     expect_true(clBounded[1] < 2)
     expect_true(clBounded[2] > 4)
+    # every split eta is sampled for every subject, and the components are
+    # still told apart: near the true 0.8/8, at the true 40:20 split
+    expect_equal(clBounded, c(0.8, 8), tolerance = 0.15)
+    expect_equal(sort(c(fitBounded$theta[["p1"]], 1 - fitBounded$theta[["p1"]])), c(1, 2) / 3, tolerance = 0.05)
 
     # Truly mu-referenced (linear, unbounded): cl <- mix(tcl+eta, p1, tcl+eta)
     twoPopMuLinear <- function() {

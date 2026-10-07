@@ -722,4 +722,33 @@ nmTest({
     expect_false(is.null(.mix))
     expect_equal(.cap$val, .mix)
   })
+
+  test_that("a split eta is informative for every subject, whatever its component", {
+    .ui <- rxode2::rxode2(function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(1.5)
+        tcl2 <- log(3)
+        tcl3 <- log(5)
+        tv <- 3.45
+        p1 <- 0.3
+        p2 <- 0.3
+        add.sd <- 0.7
+        eta.ka ~ 0.6
+        eta.cl1 ~ 0.3
+        eta.cl2 ~ 0.3
+        eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2), p2, exp(tcl3))
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    })
+    .m <- suppressMessages(.uninformativeEtas(.ui, data = nlmixr2data::theo_sd, model = NULL))
+    # each subject used to be probed under one component only, which froze
+    # the other components' etas at 0 for the whole fit
+    expect_true(all(.m == 1))
+  })
 })

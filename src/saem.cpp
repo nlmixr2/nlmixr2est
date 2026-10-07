@@ -2079,8 +2079,10 @@ public:
     omegaPoolMean = x.containsElementNamed("omegaPoolMean") ? as<int>(x["omegaPoolMean"]) : 0;
     _buildLambdaCol1 = true;
     statphi11_mix.set_size(std::max(nMix, 1));
+    statphi12d_mix.set_size(std::max(nMix, 1));
     for (int _j = 0; _j < std::max(nMix, 1); _j++) {
       statphi11_mix(_j) = statphi11;
+      statphi12d_mix(_j) = statphi11 % statphi11;
     }
 
     nphi0 = as<int>(x["nphi0"]);
@@ -2586,8 +2588,10 @@ public:
       mat Statphi12 = zeros<mat>(nphi1, nphi1);
       mat Statphi02 = zeros<mat>(nphi0, nphi0);
       field<mat> Statphi11_mix(std::max(nMix, 1));
+      field<mat> Statphi12d_mix(std::max(nMix, 1));
       for (int _j = 0; _j < std::max(nMix, 1); _j++) {
         Statphi11_mix(_j) = zeros<mat>(N, nphi1);
+        Statphi12d_mix(_j) = zeros<mat>(N, nphi1);
       }
       double statr[MAXENDPNT];
       for (int b = 0; b < nendpnt; b++) {
@@ -2918,6 +2922,26 @@ public:
           // distance from the component mean) is what discriminates the true component.
           {
             vec joint_nll(N * nmc);
+            // With split ETAs the component's density covers only its own etas (the
+            // shared ones and its split ones; another component's split eta integrates
+            // out), with its normalizing constant, or a component whose variance grows
+            // pays nothing for it and takes over the subjects of the others.
+            uvec ownCols;
+            mat ownIG;
+            double ownLogDet = 0.0;
+            bool splitPrior = nphi1 > 0 && omegaShareSubpop.n_elem == (unsigned int)nphi1;
+            if (splitPrior) {
+              ownCols = find(omegaShareSubpop == 0 || omegaShareSubpop == (unsigned int)(jMix + 1));
+              if (ownCols.n_elem > 0) {
+                mat G = Gamma2_phi1.submat(ownCols, ownCols);
+                double sgn;
+                if (inv_sympd(ownIG, G)) {
+                  log_det(ownLogDet, sgn, G);
+                } else {
+                  splitPrior = false;
+                }
+              }
+            }
             for (int k = 0; k < nmc; k++) {
               // Observation loss for this MCMC sample (rows i + k*N for each subject)
               for (int i = 0; i < N; i++) {
@@ -2934,7 +2958,16 @@ public:
                 mat phi1_k     = block1.cols(i1);
                 mat prior1_k   = mphi1.mprior_phiM.rows(k * N, (k + 1) * N - 1);
                 mat dphi1_k    = phi1_k - prior1_k;
-                vec uphi1_k    = 0.5 * sum(dphi1_k % (dphi1_k * IGamma2_phi1), 1);
+                vec uphi1_k;
+                if (splitPrior) {
+                  uphi1_k = zeros<vec>(N);
+                  if (ownCols.n_elem > 0) {
+                    mat d = dphi1_k.cols(ownCols);
+                    uphi1_k = 0.5 * sum(d % (d * ownIG), 1) + 0.5 * ownLogDet;
+                  }
+                } else {
+                  uphi1_k = 0.5 * sum(dphi1_k % (dphi1_k * IGamma2_phi1), 1);
+                }
                 for (int i = 0; i < N; i++) joint_nll(i + k * N) += uphi1_k(i);
               }
               if (nphi0 > 0) {
@@ -3042,6 +3075,7 @@ public:
               // Unblended per-component accumulation (no mixWeights factor) so the theta
               // M-step for mixture-owned columns isn't diluted by the other component.
               Statphi11_mix(jMix).row(i) += phi1_ji;
+              Statphi12d_mix(jMix).row(i) += phi1_ji % phi1_ji;
 
               phi1_w += mixWeights(i, jMix) * phi1_ji;
               phi0_w += mixWeights(i, jMix) * phi0_ji;
@@ -3352,6 +3386,7 @@ public:
         // single trajectory, so statphi11 above is already clean and statphi11_mix is unused.
         for (int _j = 0; _j < nMix; _j++) {
           statphi11_mix(_j) = statphi11_mix(_j) + pas(kiter)*(Statphi11_mix(_j)/nmc - statphi11_mix(_j));
+          statphi12d_mix(_j) = statphi12d_mix(_j) + pas(kiter)*(Statphi12d_mix(_j)/nmc - statphi12d_mix(_j));
         }
       }
       statphi12=statphi12+pas(kiter)*(Statphi12/nmc-statphi12);
@@ -3506,6 +3541,30 @@ public:
           if (sumW <= 0.0) continue;
           vec dev = statphi11.col(c) - mprior_phi1.col(c);
           G1(c, c) = arma::sum(w % (dev % dev)) / sumW;
+        }
+      }
+
+      // "parallel": a split-ETA column's BSV from its own component's chain, weighted by
+      // responsibility.  The blended G1 above also takes the column from subjects of the
+      // other components, whose own chain moves this eta to fit them; that inflates the
+      // variance until the prior no longer tells the components apart.
+      if (nMix > 1 && mixSampleMethod == 0 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
+        for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
+          unsigned int subpop = omegaShareSubpop(c);
+          if (subpop < 1 || subpop > (unsigned int)nMix) continue;
+          bool diagOnly = true;
+          for (unsigned int cc = 0; cc < (unsigned int)nphi1; cc++) {
+            if (cc != c && covstruct1(c, cc) != 0) { diagOnly = false; break; }
+          }
+          if (!diagOnly) continue;
+          if (Gamma2_phi1fixed == 1 && any(Gamma2_phi1fixedIx == c * nphi1 + c)) continue;
+          vec w = mixWeights.col(subpop - 1);
+          double sumW = arma::sum(w);
+          if (sumW <= 0.0) continue;
+          vec mu = mprior_phi1.col(c);
+          vec m1 = statphi11_mix(subpop - 1).col(c);
+          vec m2 = statphi12d_mix(subpop - 1).col(c);
+          G1(c, c) = arma::sum(w % (m2 - 2.0 * m1 % mu + mu % mu)) / sumW;
         }
       }
 
@@ -4503,6 +4562,8 @@ private:
   // Per-component, unblended sufficient statistic (never mixed across components); used to fix
   // tcl1/tcl2-style split-ETA fixed effects via weighted regression (see omegaShareSubpop block).
   field<mat> statphi11_mix;
+  // the same per-component chains' second moments, for the split-ETA BSV
+  field<mat> statphi12d_mix;
   double statrese[MAXENDPNT];
   double sigma2[MAXENDPNT];
   vec ares, bres, cres, lres, lambda, low, hi;
