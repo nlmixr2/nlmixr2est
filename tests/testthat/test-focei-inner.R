@@ -422,4 +422,62 @@ nmTest({
       expect_gt(stats::sd(.fit$eta$eta.cl), 0.01)
     }
   })
+
+  test_that("a model whose only ETA reaches the prediction through lag() is fitted", {
+    skip_on_cran()
+    # every symbolic d(pred)/d(eta) is 0 here, which the inner Hessian build
+    # takes for "no prediction depends on a random effect" unless the lagged
+    # variable is recognized; the analytic covariance declines the model
+    lagOnly <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- 0.7
+        eta.cl ~ 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        c0 <- central / v
+        cp <- 0.5 * c0 + 0.5 * lag(c0)
+        cp ~ add(add.sd)
+      })
+    }
+    .acc <- new.env(parent = emptyenv())
+    .acc$msg <- character(0)
+    .fit <- withCallingHandlers(
+      suppressWarnings(nlmixr2(
+        lagOnly,
+        nlmixr2data::theo_sd,
+        "focei",
+        foceiControl(print = 0L, maxOuterIterations = 2L, covMethod = "analytic", calcTables = FALSE)
+      )),
+      message = function(m) {
+        .acc$msg <- c(.acc$msg, conditionMessage(m))
+        invokeRestart("muffleMessage")
+      }
+    )
+    expect_identical(.foceiLaggedCalcVars(.fit$finalUi), "c0")
+    expect_true(is.finite(.fit$objf))
+    expect_gt(stats::sd(.fit$eta$eta.cl), 0.1)
+    expect_true(any(grepl(
+      "lag() of a calculated variable is out of analytic-covariance scope",
+      .acc$msg,
+      fixed = TRUE
+    )))
+    expect_false(.covBaseName(.fit$covMethod) == "analytic")
+  })
+
+  test_that("lag() of an ODE state is refused, so only calculated variables need finite differences", {
+    # .foceiLaggedCalcVars() looks at calculated variables only; if rxode2 ever
+    # accepts lag() of a state, that state's sensitivities need the same check
+    .out <- utils::capture.output(
+      expect_error(rxode2::rxode2("d/dt(central) <- -central\ncp <- lag(central)"), "syntax errors")
+    )
+    expect_true(any(grepl("state 'central': 'lag'.* not legal", .out)))
+  })
 })
