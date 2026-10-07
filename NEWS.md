@@ -40,6 +40,11 @@
   
 ## Bug Fixes
 
+- `est = "nlm"` (`solveType = "hessian"`) and `est = "nlminb"` kept the
+  finite-difference Hessian steps searched at the first iterate for the whole
+  fit.  A step is now searched again, starting from the old one, once theta
+  moves past the span its search probed (#1175).
+
 - `$etaMat` of a fit with inter-occasion variability now holds the occasion
   ETAs as the model estimated them; it held them multiplied by the occasion
   standard deviation (the scale of `$iov`).  `setOfv()`, `addCwres()`,
