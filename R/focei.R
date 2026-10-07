@@ -2222,6 +2222,13 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     }
     return(.s)
   }
+  # no 2nd-order sensitivities through a lagged variable (#1176)
+  if (!is.null(.s$..lagEta)) {
+    if (.conditional) {
+      stop("Conditional inner Hessian does not support lag() of a variable", call. = FALSE)
+    }
+    return(.s)
+  }
   if (.conditional) {
     if (.foceiLLGradInScope(x[[1]])) {
       stop("Conditional inner Hessian requires Gaussian endpoints", call. = FALSE)
@@ -5018,6 +5025,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # re-attempting the symengine build on every outer-gradient call.
   if (isTRUE(.control$fast) && .foceiUsesLinCmt(.ui)) {
     .minfo("linCmt() model: the analytic 'fast' gradient does not apply -- using fast = FALSE")
+    .control <- .foceiDowngradeFast(.control)
+  }
+  if (isTRUE(.control$fast) && .foceiUsesLagVar(.ui)) {
+    .minfo("lag() of a calculated variable: the analytic 'fast' gradient does not apply -- using fast = FALSE")
     .control <- .foceiDowngradeFast(.control)
   }
   # matExp() models: the inner model now solves natively via rxode2's

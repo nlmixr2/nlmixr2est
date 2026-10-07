@@ -78,6 +78,15 @@
       assign(d, symengine::subs(get(d, envir = s), symengine::S(v), .def), envir = s)
     }
   }
+  # the ODE text too: the lagged variable is defined after the ODEs
+  for (d in .ddt) {
+    .pre <- paste0("d/dt(", sub("^rx__d_dt_(.*)__$", "\\1", d), ")=")
+    .w <- which(startsWith(s$..ddt, .pre))
+    if (length(.w) == 1L && .foceiLagRefs(s$..ddt[.w], .var)) {
+      .e <- get(d, envir = s)
+      s$..ddt[.w] <- paste0(.pre, rxode2::rxFromSE(.e))
+    }
+  }
   invisible(s)
 }
 
@@ -99,13 +108,19 @@
   .foceiLagRefs(.txt, unique(sub("=.*$", "", .defs)))
 }
 
-#' Whether a model's predictions use a history function of a variable
+#' Whether a model uses a history function of a calculated variable
 #'
-#' A dosing `lag(cmt) <-` is not a history function.
+#' A dosing `lag(cmt) <-` is not a history function, and a covariate's
+#' history needs no sensitivity.
 #' @param ui rxode2 UI
 #' @return logical
 #' @noRd
 .foceiUsesLagVar <- function(ui) {
+  .lhs <- tryCatch(rxode2::rxModelVars(ui)$lhs, error = function(e) character(0))
+  .lhs <- .lhs[!grepl("^rx_ar", .lhs)]
+  if (length(.lhs) == 0L) {
+    return(FALSE)
+  }
   .found <- FALSE
   .walk <- function(e) {
     if (.found || !is.call(e)) {
@@ -121,7 +136,7 @@
         as.character(.f) %in% .foceiHistFn &&
         length(e) >= 2L &&
         is.name(e[[2]]) &&
-        !grepl("^rx_ar", as.character(e[[2]]))
+        as.character(e[[2]]) %in% .lhs
     ) {
       .found <<- TRUE
       return(invisible())
@@ -143,11 +158,12 @@
 #' @param stateVars the model states
 #' @param pars the parameter symbols, e.g. `ETA_1_`
 #' @param exprs names of the symengine expressions that will be differentiated
+#' @param statePars the parameters with state sensitivities
 #' @return list with `lines` (the
 #'   sensitivity lhs, in model order), `dfe(e, p)`, the symengine total
 #'   derivative of `e` by `p`, and `txt(d, p)`, its rxode2 text
 #' @noRd
-.foceiLagSens <- function(s, stateVars, pars, exprs = "rx_pred_") {
+.foceiLagSens <- function(s, stateVars, pars, exprs = "rx_pred_", statePars = pars) {
   .defs <- .foceiLagDefs(s)
   .defVar <- sub("=.*$", "", .defs)
   .defRhs <- sub("^[^=]*=", "", .defs)
@@ -203,7 +219,7 @@
   }
   .chain <- function(e, p) {
     .ret <- symengine::D(e, .sym(p))
-    for (.st in stateVars) {
+    for (.st in if (p %in% statePars) stateVars) {
       .ret <- .ret + symengine::D(e, .sym(.st)) * .sym(paste0("rx__sens_", .st, "_BY_", p, "__"))
     }
     for (i in seq_along(.vars)) {
@@ -238,7 +254,7 @@
   }))
   list(
     lines = .lines,
-    dfe = function(e, p) .chain(.subsHist(e), p),
+    dfe = function(e, p) .chain(.subsHist(.sym(e)), p),
     txt = .unsub
   )
 }
@@ -260,11 +276,15 @@
   if (.foceiLagInOde(s)) {
     warning("a lagged variable in an ODE has no eta sensitivity", call. = FALSE)
   }
+  .eta <- paste0("ETA_", seq_len(s$..maxEta), "_")
+  # the combined eta+theta build (#958) carries theta columns too
+  .theta <- if (!is.null(s$..combThetaIdx)) paste0("THETA_", s$..combThetaIdx, "_")
   .lag <- .foceiLagSens(
     s,
     stateVars,
-    paste0("ETA_", seq_len(s$..maxEta), "_"),
-    c("rx_pred_", "rx_r_", "rx_pred_f_")
+    c(.eta, .theta),
+    c("rx_pred_", "rx_r_", "rx_pred_f_", "rx_lambda_"),
+    statePars = c(.eta, if (length(s$..combThetaStruct)) paste0("THETA_", s$..combThetaStruct, "_"))
   )
   s$..lagSens <- .lag$lines
   s$..lagEta <- .lag

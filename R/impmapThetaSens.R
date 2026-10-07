@@ -53,7 +53,12 @@
 }
 
 #' @noRd
-.impmapChainRule <- function(s, target, j, stateVars, structIdx) {
+.impmapChainRule <- function(s, target, j, stateVars, structIdx, lag = s$..lagEta) {
+  if (!is.null(lag)) {
+    # chained through the lagged variables (#1176)
+    .e <- get(target, envir = s)
+    return(lag$txt(lag$dfe(.e, paste0("THETA_", j, "_")), paste0("THETA_", j, "_")))
+  }
   .terms <- paste0("D(", target, ", THETA_", j, "_)")
   if (j %in% structIdx && length(stateVars) > 0L) {
     .terms <- c(.terms, paste0("rx__sens_", stateVars, "_BY_THETA_", j, "___*D(", target, ", ", stateVars, ")"))
@@ -88,9 +93,21 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   } else {
     character(0)
   }
+  .foceiLagIntoOde(.s)
   if (length(.thetaVars) > 0L) {
     rxode2::.rxJacobian(.s, c(.stateVars, .thetaVars))
     rxode2::.rxSens(.s, .thetaVars)
+  }
+  .lagLines <- character(0)
+  if (.foceiUsesLagVar(.ui)) {
+    .s$..lagEta <- .foceiLagSens(
+      .s,
+      .stateVars,
+      paste0("THETA_", .idx$all, "_"),
+      c("rx_pred_", "rx_r_", "rx_lambda_"),
+      statePars = .thetaVars
+    )
+    .lagLines <- c(.foceiLagDefs(.s), .s$..lagEta$lines)
   }
   .pred <- .s$`rx_pred_`
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.pred))
@@ -162,7 +179,7 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   if (is.null(.sens)) {
     .sens <- character(0)
   }
-  .s$..thetaSens <- paste(c(.ddt, .sens, .tbs, .prd, .rr, .dfOut, .dvOut, .dlOut, ""), collapse = "\n")
+  .s$..thetaSens <- paste(c(.ddt, .sens, .tbs, .lagLines, .prd, .rr, .dfOut, .dvOut, .dlOut, ""), collapse = "\n")
   .s$..thetaSensIdx <- .idx$all
   ## Return ONLY the lightweight result -- NEVER the symengine environment `.s`.
   ##
