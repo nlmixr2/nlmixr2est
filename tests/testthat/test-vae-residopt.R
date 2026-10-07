@@ -298,6 +298,8 @@ nmTest({
     }
     .foce <- .fitLik("foce")
     .focep <- .fitLik("focep")
-    expect_equal(.foce$theta[["prop.sd"]], .focep$theta[["prop.sd"]], tolerance = 0.15)
+    # vae seeds internally, so these are fixed values, not sampling scatter
+    expect_equal(.foce$theta[["prop.sd"]], 0.182027, tolerance = 1e-3)
+    expect_equal(.focep$theta[["prop.sd"]], 0.193162, tolerance = 1e-3)
   })
 })

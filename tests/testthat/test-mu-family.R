@@ -283,6 +283,6 @@ nmTest({
     )
     # what is left is the last regression step, taken after the last inner
     # optimization
-    expect_lt(abs(.f$objf - .p$objf), 1e-2)
+    expect_lt(abs(.f$objf - .p$objf), 5e-3)
   })
 })
