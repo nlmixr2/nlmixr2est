@@ -569,7 +569,12 @@ attr(rxUiGet.nlsParStartTheta, "rstudio") <- c(`THETA[1]` = 0.1)
 rxUiGet.nlsParams <- function(x, ...) {
   .ui <- x[[1]]
   .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
-  paste0("params(", paste(c(paste0("THETA[", seq_along(.ui$iniDf$name[.w]), "]"), "DV"), collapse = ", "), ")")
+  # the covariates too, as rxUiGet.nlmParams() declares them
+  .covs <- .ui$allCovs
+  if (is.null(.covs)) {
+    .covs <- character(0)
+  }
+  paste0("params(", paste(c(paste0("THETA[", seq_along(.ui$iniDf$name[.w]), "]"), "DV", .covs), collapse = ", "), ")")
 }
 attr(rxUiGet.nlsParams, "rstudio") <- "params(THETA[1], DV)"
 

@@ -26,6 +26,33 @@ nmTest({
     expect_identical(.f(0.1, 3), c(`THETA[1]` = 0.1, `THETA[2]` = 3))
   })
 
+  test_that("nls declares the model covariates in its params() (issue 1140)", {
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        cl.wt <- 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + cl.wt * log(WT / 70))
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(.mod)
+    expect_identical(.ui$nlsParams, "params(THETA[1], THETA[2], THETA[3], THETA[4], DV, WT)")
+    skip_on_cran()
+    # the covariate reaches the solve: nls and nlm agree on the estimates
+    .d <- nlmixr2data::theo_sd
+    .ctl <- nlsControl(print = 0L)
+    .fit <- .nlmixr(.mod, .d, est = "nls", control = .ctl)
+    .nlm <- .nlmixr(.mod, .d, est = "nlm", control = nlmControl(print = 0L))
+    expect_equal(unname(.fit$theta[1:4]), unname(.nlm$theta[1:4]), tolerance = 1e-3)
+  })
+
   test_that("nls solves its first evaluation at an all-zero start", {
     one.cmt0 <- function() {
       ini({
