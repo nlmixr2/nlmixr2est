@@ -22,7 +22,9 @@
 #'
 #' The rewrite gives each occasion parameter one unit-variance eta per
 #' occasion, `rx.<parameter>.<occasion>`, scaled by the parameter's standard
-#' deviation; `$iov` holds the scaled occasion deviations.
+#' deviation; `$iov` holds the scaled occasion deviations.  The rewrite refuses a
+#' correlated occasion block, so each parameter's own standard deviation is its
+#' whole scale.
 #'
 #' @param n occasion variable
 #' @param iov the fit's `$iov`

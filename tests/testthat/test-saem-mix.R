@@ -336,14 +336,18 @@ nmTest({
     expect_true(!"eta.cl1" %in% rownames(fit_saem_split$omega))
     expect_true("eta.cl" %in% names(fit_saem_split$ranef))
     expect_true(!"eta.cl1" %in% names(fit_saem_split$ranef))
-    # (issue 1140) each eta column holds that eta: the root eta.cl used to be
-    # appended after OBJI, so the fit dropped it as OBJI and shifted the names
-    # (eta.cl held eta.v, eta.v held the missing OBJI)
+    # each eta column holds that eta: the merged root eta.cl sits before OBJI,
+    # so no column is taken for OBJI and the names are not shifted
     .mix1 <- fit_saem_split$env$mixList$mix1
     expect_false(anyNA(fit_saem_split$ranef$eta.v))
     expect_equal(fit_saem_split$ranef$eta.v, .mix1$eta.v)
     expect_equal(fit_saem_split$ranef$eta.cl, .mix1$eta.cl)
     expect_equal(fit_saem_split$ui$iniDf$name[!is.na(fit_saem_split$ui$iniDf$neta1)], c("eta.cl", "eta.v"))
+    # the etas handed to setOfv(), setCov() and refits follow the same order
+    .em <- fit_saem_split$etaMat
+    expect_identical(colnames(.em), c("eta.cl", "eta.v"))
+    expect_equal(unname(.em[, "eta.v"]), fit_saem_split$ranef$eta.v)
+    expect_equal(unname(.em[, "eta.cl"]), fit_saem_split$ranef$eta.cl)
     # the root eta's variance is the components' variances weighted by their
     # responsibilities; the spread of tcl1/tcl2 is not added to it
     .ui0 <- rxode2::rxode2(twoPopSplit)

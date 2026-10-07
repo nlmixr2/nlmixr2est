@@ -115,4 +115,24 @@ nmTest({
     .foceiGradDirect(f)
     expect_equal(colnames(.acc$etaMat), c("eta.ka", "eta.cl", "eta.v"))
   })
+
+  test_that(".nmIovThetaEtas scales each occasion deviation by its parameter's sd", {
+    .iov <- list(
+      occ = data.frame(
+        ID = rep(1:2, each = 2),
+        occ = rep(1:2, 2),
+        iov.cl = c(0.2, -0.1, 0.4, 0),
+        iov.v = c(0.3, 0.1, -0.2, 0.5)
+      )
+    )
+    .om <- list(occ = diag(c(iov.cl = 0.25, iov.v = 0)))
+    dimnames(.om$occ) <- list(c("iov.cl", "iov.v"), c("iov.cl", "iov.v"))
+    .r <- .nmIovThetaEtas("occ", .iov, .om)
+    expect_identical(names(.r), c("rx.iov.cl.1", "rx.iov.cl.2", "rx.iov.v.1", "rx.iov.v.2"))
+    expect_equal(.r$rx.iov.cl.1, c(0.2, 0.4) / 0.5)
+    expect_equal(.r$rx.iov.cl.2, c(-0.1, 0) / 0.5)
+    # no occasion variance: every eta is 0, not a division by zero
+    expect_identical(.r$rx.iov.v.1, c(0, 0))
+    expect_identical(.r$rx.iov.v.2, c(0, 0))
+  })
 })

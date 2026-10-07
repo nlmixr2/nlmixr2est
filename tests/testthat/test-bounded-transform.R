@@ -186,6 +186,46 @@ nmTest({
     }
   })
 
+  test_that("uobyqa/newuoa write every bounded theta back on its natural scale, by name", {
+    # three bound kinds in different theta positions, none at a value whose
+    # internal scale equals its natural one
+    .mixedBounds <- function() {
+      ini({
+        tka <- 0.45
+        td1 <- c(0, 0.3, 1)
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        tlag <- c(0, 0.5)
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        f(depot) <- td1
+        alag(depot) <- tlag
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .want <- c(tka = 0.45, td1 = 0.3, tcl = log(2.7), tv = 3.45, tlag = 0.5)
+    for (.opt in c("uobyqa", "newuoa")) {
+      fit <- suppressMessages(suppressWarnings(
+        nlmixr(
+          .mixedBounds,
+          theo_sd,
+          est = "focei",
+          control = foceiControl(print = 0, maxOuterIterations = 0L, outerOpt = .opt, covMethod = "")
+        )
+      ))
+      .ini <- fit$ui$iniDf
+      .got <- setNames(.ini$est[match(names(.want), .ini$name)], names(.want))
+      expect_equal(.got, .want, tolerance = 1e-8, label = .opt)
+      expect_equal(fit$theta[names(.want)], .want, tolerance = 1e-8, label = .opt)
+    }
+  })
+
   test_that("FOCEI with boundedTransform = FALSE disables the transform", {
     fit <- suppressMessages(suppressWarnings(
       nlmixr(
