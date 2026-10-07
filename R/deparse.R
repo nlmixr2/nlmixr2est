@@ -34,8 +34,7 @@
 #' Tolerances derived from `sigdig` then match and are not written out.  A
 #' control that does not keep `sigdig` (`saemControl()`) is taken to have been
 #' built with the `sigdig` its `sigdigTable` or `tol` implies when that rebuilds
-#' its `rxControl`; the default then carries the `"sigdig"` argument to write as
-#' an attribute.
+#' its `rxControl`; the default then carries that `sigdig` as an attribute.
 #' @param default the constructor's default control
 #' @param object the control being deparsed
 #' @param ctor name of the constructor
@@ -66,7 +65,7 @@
     }
     .ret <- .rebuild(.sig)
     if (!is.null(.ret) && identical(.ret[["rxControl"]], object[["rxControl"]])) {
-      attr(.ret, "sigdig") <- paste0("sigdig = ", .deparseValue(.sig))
+      attr(.ret, "sigdig") <- .sig
       return(.ret)
     }
   }
@@ -194,14 +193,13 @@
 #'   during deparsing. Default is NULL. This handles things that are
 #'   specific to an estimation control and is used by functions like
 #'   `rxUiDeparse.saemControl()`
-#' @param extra arguments written before the differing elements
 #' @return A language object representing the deparsed expression.
 #' @keywords internal
 #' @author Matthew L. Fidler
 #' @export
-.deparseFinal <- function(default, object, w, var, fun = NULL, extra = character(0)) {
+.deparseFinal <- function(default, object, w, var, fun = NULL) {
   .cls <- class(object)
-  if (length(w) == 0 && length(extra) == 0) {
+  if (length(w) == 0) {
     return(str2lang(paste0(var, " <- ", .cls, "()")))
   }
   .retD <- vapply(
@@ -222,7 +220,7 @@
     character(1),
     USE.NAMES = FALSE
   )
-  str2lang(paste(var, " <- ", .cls, "(", paste(c(extra, .retD), collapse = ","), ")"))
+  str2lang(paste(var, " <- ", .cls, "(", paste(.retD, collapse = ","), ")"))
 }
 
 #' Deparse a control as a call to its constructor
@@ -246,5 +244,11 @@
   if (!identical(object[["sigdig"]], default[["sigdig"]])) {
     .w <- sort(union(.w, which(names(.default) == "sigdig")))
   }
-  .deparseFinal(.default, object, .w, var, fun = fun, extra = as.character(attr(.default, "sigdig")))
+  .ret <- .deparseFinal(.default, object, .w, var, fun = fun)
+  .sig <- attr(.default, "sigdig")
+  if (!is.null(.sig)) {
+    # sigdig recovered for a control that does not keep it goes first
+    .ret[[3]] <- as.call(c(as.list(.ret[[3]])[1], list(sigdig = .sig), as.list(.ret[[3]])[-1]))
+  }
+  .ret
 }
