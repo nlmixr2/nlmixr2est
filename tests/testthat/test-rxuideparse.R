@@ -195,8 +195,17 @@ nmTest({
       rxode2::rxUiDeparse(saemControl(sigdig = 4, nBurn = 5L, nEm = 5L), "ctl"),
       quote(ctl <- saemControl(sigdig = 4, nBurn = 5L, nEm = 5L))
     )
-    .x <- foceiControl(lbfgsFactr = 1 / 3)
-    expect_identical(eval(rxUiDeparse.foceiControl(.x, "ctl")[[3]]), .x)
+    for (.x in list(
+      foceiControl(lbfgsFactr = 1 / 3),
+      saemControl(nu = c(2, 2, 2)),
+      saemControl(nmc = 3L),
+      impmapControl(ctol = 0.01),
+      impControl(isample = 500L, sirSample = 30L),
+      impmapControl(gammaRule = "floor", nConvWindow = 20L)
+    )) {
+      .e <- rxode2::rxUiDeparse(.x, "ctl")
+      expect_identical(eval(.e[[3]]), .x, info = deparse1(.e))
+    }
   })
 
   test_that("the imp and np controls deparse through their own constructor", {

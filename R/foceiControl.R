@@ -2263,7 +2263,8 @@ foceiControl <- function(
   type = "foceiControl",
   internal = character(0),
   covName = .foceiControlCovMethodName,
-  fun = NULL
+  fun = NULL,
+  extra = character(0)
 ) {
   .ret0 <- eval(str2lang(paste0(type, "()")))
   .ret <- .deparseSigdigDefault(.ret0, object, type)
@@ -2285,7 +2286,7 @@ foceiControl <- function(
   if (!identical(covName(object), covName(.ret))) {
     .covTok <- paste0("covMethod = ", deparse1(covName(object)))
   }
-  if (length(.w) == 0 && length(.outerOpt) == 0 && length(.covTok) == 0) {
+  if (length(.w) == 0 && length(.outerOpt) == 0 && length(.covTok) == 0 && length(extra) == 0) {
     return(str2lang(paste0(var, " <- ", type, "()")))
   }
   .n <- names(.ret)[.w]
@@ -2335,7 +2336,8 @@ foceiControl <- function(
       },
       character(1)
     ),
-    .outerOpt
+    .outerOpt,
+    extra
   )
   str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse = ", "), ")"))
 }

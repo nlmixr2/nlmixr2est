@@ -800,15 +800,23 @@ impmapControl <- function(
 
 #' @export
 rxUiDeparse.impmapControl <- function(object, var) {
-  # sirSample left at its default follows isample
-  .sir <- if (identical(object$sirSample, max(25L, as.integer(ceiling(max(object$isample) / 10))))) "sirSample"
+  # defaults that follow other arguments are compared with what those give
+  .derived <- list(
+    sirSample = max(25L, as.integer(ceiling(max(object$isample) / 10))),
+    nConvWindow = if (identical(object$gammaRule, "target")) 20L else 10L,
+    ctol = NULL
+  )
+  .extra <- unlist(lapply(names(.derived), function(n) {
+    if (!identical(object[[n]], .derived[[n]])) paste0(n, " = ", .deparseValue(object[[n]]))
+  }))
   .rxUiDeparseFoceiControl(
     object,
     var,
     type = .impmapDeparseType(object),
-    internal = c("impCov", "autoNonNormal", "gammaMethodUser", "npEndpointCmt", .impmapIdxMapNames, .sir),
+    internal = c("impCov", "autoNonNormal", "gammaMethodUser", "npEndpointCmt", .impmapIdxMapNames, names(.derived)),
     covName = function(x) if (isTRUE(x$impCov)) "imp" else .foceiControlCovMethodName(x),
-    fun = .impmapDeparseExtra
+    fun = .impmapDeparseExtra,
+    extra = as.character(.extra)
   )
 }
 
