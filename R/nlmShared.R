@@ -16,7 +16,7 @@
 #'   THETA). See `ui$nlmSensModel` or `ui$nlmRxModel` for examples.
 #' @param control control structure; required: `rxControl`, `stickyRecalcN`,
 #'   `maxOdeRecalc`, `odeRecalcFactor`. Optional: `solveType`, `eventType`,
-#'   `shi21maxFD`, `shiErr`, `optimHessType`, `shi21maxHess`, `hessErr`,
+#'   `shi21maxFD`, `shiErr`, `optimHessType`, `shi21maxHess`, `shi21HessRefresh`, `hessErr`,
 #'   `useColor`, `printNcol`, `print`, `normType`, `scaleType`, `scaleCmin`,
 #'   `scaleCmax`, `scaleTo`, `scaleC`, `gradTo` (default 0 if missing).
 #' @param lower lower bounds, will be scaled if present
@@ -52,6 +52,9 @@
   }
   if (!any(names(.ctl) == "shi21maxFD")) {
     .ctl$shi21maxFD <- 20L
+  }
+  if (!any(names(.ctl) == "shi21HessRefresh")) {
+    .ctl$shi21HessRefresh <- FALSE
   }
   if (!any(names(.ctl) == "shi21maxHess")) {
     .ctl$shi21maxHess <- 20L

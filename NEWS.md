@@ -38,12 +38,13 @@
   `dunif()`, `dweibull()`, `dlogis()`), failing a fit whose sampler had already
   handled those priors correctly.
   
-## Bug Fixes
+- `nlmControl()` and `nlminbControl()` gained `optimHessType = "richardson"`,
+  a Richardson-extrapolated finite-difference Hessian (twice the gradient
+  solves of `"central"`), and `shi21HessRefresh = TRUE`, which re-searches a
+  Hessian step once theta leaves the span its search probed instead of keeping
+  the steps searched at the first iterate.  Both are off by default (#1175).
 
-- `est = "nlm"` (`solveType = "hessian"`) and `est = "nlminb"` kept the
-  finite-difference Hessian steps searched at the first iterate for the whole
-  fit.  A step is now searched again, starting from the old one, once theta
-  leaves the span its search probed along any coordinate (#1175).
+## Bug Fixes
 
 - FOCEi-family eta sensitivities (and the imp/impmap theta sensitivities)
   now chain through `lag()`/`diff()` of a calculated variable, so a model

@@ -41,6 +41,9 @@
 #' @param diff.g an estimated bound on the relative error in the
 #'   objective function value
 #'
+#' @param optimHessType Finite-difference type of the Hessian; see
+#'   `nlmControl()`.
+#'
 #' @inheritParams nlmControl
 #'
 #' @export
@@ -105,9 +108,10 @@ nlminbControl <- function(
   shiErr = (.Machine$double.eps)^(1 / 3),
   shi21maxFD = 20L,
 
-  optimHessType = c("central", "forward"),
+  optimHessType = c("central", "forward", "richardson"),
   hessErr = (.Machine$double.eps)^(1 / 3),
   shi21maxHess = 20L,
+  shi21HessRefresh = FALSE,
 
   useColor = NULL,
   printNcol = NULL, #
@@ -185,7 +189,7 @@ nlminbControl <- function(
     eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
   }
 
-  .optimHessTypeIdx <- c("central" = 2L, "forward" = 1L)
+  .optimHessTypeIdx <- c("central" = 2L, "forward" = 1L, "richardson" = 3L)
   if (checkmate::testIntegerish(optimHessType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
     optimHessType <- as.integer(optimHessType)
   } else {
@@ -197,6 +201,7 @@ nlminbControl <- function(
 
   checkmate::assertIntegerish(shi21maxFD, lower = 1, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(shi21maxHess, lower = 1, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(shi21HessRefresh, any.missing = FALSE, len = 1)
 
   checkmate::assertIntegerish(stickyRecalcN, any.missing = FALSE, lower = 0, len = 1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
@@ -281,6 +286,7 @@ nlminbControl <- function(
     optimHessType = optimHessType,
     hessErr = hessErr,
     shi21maxHess = as.integer(shi21maxHess),
+    shi21HessRefresh = shi21HessRefresh,
 
     iterPrintControl = .iterPrintControl,
     scaleType = scaleType,

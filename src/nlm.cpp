@@ -1,6 +1,7 @@
 // [[Rcpp::plugins(openmp)]]
 #define ARMA_WARN_LEVEL 1
 #define STRICT_R_HEADER
+#include <algorithm>
 #include "armahead.h"
 #include "utilc.h"
 #include "censEst.h"
@@ -44,6 +45,7 @@ struct nlmOptions {
   // column k: the theta thetahh[k] was searched at (#1175)
   arma::mat hessThetaAt;
   int nHessSearch=0; // per-coordinate Hessian step searches this fit
+  int nHessGrad=0; // gradient solves made by the Hessian this fit
   double *initPar= NULL; // initial parameters
   double *thetaSave = NULL;
   double *valSave   = NULL;
@@ -66,6 +68,7 @@ struct nlmOptions {
   double odeRecalcFactor;
   bool needFD=false;
   int optimHessType=3;
+  bool hessRefresh=false; // re-search a Hessian step once theta leaves its search box
   int shi21maxHess=1000;
   double shiErr;
   double hessErr;
@@ -218,7 +221,10 @@ RObject nlmSetup(Environment e) {
   nlmOp.optimHessType = control["optimHessType"];
   nlmOp.shi21maxHess = control["shi21maxHess"];
   nlmOp.hessErr = control["hessErr"];
+  nlmOp.hessRefresh = control.containsElementNamed("shi21HessRefresh") &&
+    as<bool>(control["shi21HessRefresh"]);
   nlmOp.nHessSearch = 0;
+  nlmOp.nHessGrad = 0;
 
 
   // Size the pool for the largest registered model rather than assuming it is
@@ -828,6 +834,7 @@ RObject nlmSolveGradR(arma::vec &theta) {
 }
 
 arma::vec nlmSolveGrad1(arma::vec &theta, int id) {
+  nlmOp.nHessGrad++;
   arma::mat ret0 = nlmSolveGrad(theta);
   ret0 = ret0.cols(1, nlmOp.ntheta);
   return (arma::sum(ret0, 0)).t();
@@ -886,20 +893,56 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
   return NumericVector::create();
 }
 
-// optimHessType: 1 = forward, 2 = central (shi21Hessian's own codes).  No hMax/hMin,
-// so a searched step is bounded by the shi21 defaults.
-//
-// A step is reused only while theta stays inside the box the searches probed
-// (each coordinate within 4h forward, 3h central, of where the step was searched);
-// once theta leaves it the step is searched again, starting from the old step (#1175).
+// optimHessType: 1 = forward, 2 = central (shi21Hessian's own codes), 3 = Richardson.
+// No hMax/hMin, so a searched step is bounded by the shi21 defaults.
+#define nlmHessRichardson 3
+
+// Richardson column k: central differences at h and h/2 with the h^2 term cancelled,
+// so no probe goes past the searched step.  A non-finite leg falls back to the
+// central difference of the finite pair, then to a one-sided difference.
+static void nlmHessRichardsonColumn(arma::vec &x, arma::vec &gr0, int k, double h,
+                                    arma::vec &col) {
+  double xk = x[k];
+  arma::vec g[4];
+  const double off[4] = {0.5*h, -0.5*h, h, -h};
+  bool fin[4];
+  for (int i = 0; i < 4; ++i) {
+    x[k] = xk + off[i];
+    g[i] = nlmSolveGrad1(x, 0);
+    fin[i] = g[i].is_finite();
+  }
+  x[k] = xk;
+  if (fin[0] && fin[1] && fin[2] && fin[3]) {
+    col = (4*(g[0] - g[1])/h - (g[2] - g[3])/(2*h))/3;
+  } else if (fin[0] && fin[1]) {
+    col = (g[0] - g[1])/h;
+  } else if (fin[2] && fin[3]) {
+    col = (g[2] - g[3])/(2*h);
+  } else if (fin[0]) {
+    col = (g[0] - gr0)/(0.5*h);
+  } else if (fin[1]) {
+    col = (gr0 - g[1])/(0.5*h);
+  } else {
+    col.zeros();
+  }
+}
+
+// A searched step is kept for the fit.  With shi21HessRefresh it is kept only while
+// theta stays inside the box the searches probed (each coordinate within 4h forward,
+// 3h central, of where the step was searched); once theta leaves it the step is
+// searched again, starting from the old step (#1175).  Richardson takes its steps
+// from the central search.
 arma::mat nlmCalcHessian(arma::vec &gr0, arma::vec &theta) {
   if (nlmOp.thetahh == NULL) stop(_("incorrect solve type"));
   if (theta.n_elem != nlmOp.ntheta) stop(_("'theta' does not match the loaded problem"));
-  const double span = (nlmOp.optimHessType == shi21HessForward) ? 4.0 : 3.0;
+  const bool richardson = nlmOp.optimHessType == nlmHessRichardson;
+  const int type = richardson ? shi21HessCentral : nlmOp.optimHessType;
+  const double span = (type == shi21HessForward) ? 4.0 : 3.0;
+  const bool gate = nlmOp.hessRefresh;
   std::vector<char> searched(nlmOp.ntheta);
   for (unsigned int k = 0; k < nlmOp.ntheta; ++k) {
     double &h = nlmOp.thetahh[k];
-    if (h > 0) {
+    if (h > 0 && gate) {
       for (unsigned int j = 0; j < nlmOp.ntheta; ++j) {
         if (fabs(theta[j] - nlmOp.hessThetaAt(j, k)) > span*fabs(nlmOp.thetahh[j])) {
           h = -h;
@@ -909,12 +952,24 @@ arma::mat nlmCalcHessian(arma::vec &gr0, arma::vec &theta) {
     }
     searched[k] = h <= 0;
   }
-  arma::mat H = shi21Hessian(nlmSolveGrad1, theta, gr0, 0, nlmOp.optimHessType,
-                             nlmOp.thetahh, nlmOp.hessErr, nlmOp.shi21maxHess);
+  arma::mat H;
+  if (!richardson || std::any_of(searched.begin(), searched.end(), [](char c) { return c; })) {
+    H = shi21Hessian(nlmSolveGrad1, theta, gr0, 0, type,
+                     nlmOp.thetahh, nlmOp.hessErr, nlmOp.shi21maxHess);
+  }
   for (unsigned int k = 0; k < nlmOp.ntheta; ++k) {
     if (!searched[k]) continue;
     nlmOp.hessThetaAt.col(k) = theta;
     nlmOp.nHessSearch++;
+  }
+  if (richardson) {
+    H.zeros(nlmOp.ntheta, nlmOp.ntheta);
+    arma::vec col(nlmOp.ntheta);
+    for (unsigned int k = 0; k < nlmOp.ntheta; ++k) {
+      nlmHessRichardsonColumn(theta, gr0, k, nlmOp.thetahh[k], col);
+      H.col(k) = col;
+    }
+    H = 0.5*(H + H.t());
   }
   return H;
 }
@@ -924,7 +979,8 @@ arma::mat nlmCalcHessian(arma::vec &gr0, arma::vec &theta) {
 List nlmHessStepInfo() {
   if (!nlmOp.loaded || nlmOp.thetahh == NULL) stop("'nlm' Hessian problem not loaded");
   return List::create(_["step"] = NumericVector(nlmOp.thetahh, nlmOp.thetahh + nlmOp.ntheta),
-                      _["nSearch"] = nlmOp.nHessSearch);
+                      _["nSearch"] = nlmOp.nHessSearch,
+                      _["nGrad"] = nlmOp.nHessGrad);
 }
 
 //[[Rcpp::export]]
@@ -975,12 +1031,12 @@ extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
     }
     double ll = cs[0];
     arma::vec gr0 = cs(span(1, nlmOp.ntheta));
-    // nlmCalcHessian() reuses a theta's FD step until theta leaves the span
-    // its search probed, then re-searches it from the old step.  trust goes
-    // further: a step calibrated elsewhere can be unstable near a
-    // bounded/transformed parameter (per this method's own benchmark
-    // history), so every FD Hessian it asks for (each call under "fd", the
-    // quasi-Newton seed otherwise) is searched from scratch.
+    // nlmCalcHessian() reuses a theta's FD step (until theta leaves the span
+    // its search probed, under shi21HessRefresh).  trust re-searches instead:
+    // a step calibrated elsewhere can be unstable near a bounded/transformed
+    // parameter (per this method's own benchmark history), so every FD
+    // Hessian it asks for (each call under "fd", the quasi-Newton seed
+    // otherwise) is searched from scratch.
     //
     // The quasi-Newton methods update on every call: trust_solve_c() calls
     // this once per TRIAL point every outer iteration, whether or not that

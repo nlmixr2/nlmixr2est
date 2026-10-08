@@ -102,7 +102,7 @@ nmTest({
     expect_equal(.hess$forward[[2]], .hess$forward[[1]], tolerance = 1e-10)
   })
 
-  test_that("a Hessian step is re-searched once theta leaves its search span (#1175)", {
+  test_that("shi21HessRefresh re-searches a step once theta leaves its search span (#1175)", {
     skip_on_cran()
     # different curvature along each coordinate, so the searched steps differ
     .mod <- function() {
@@ -119,7 +119,12 @@ nmTest({
     .d <- data.frame(ID = 1L, TIME = seq(0.1, 10, length.out = 20), AMT = 0, EVID = 0L)
     .d$DV <- as.integer(seq_len(nrow(.d)) %% 2 == 0)
     for (.type in c("central", "forward")) {
-      .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = .type)
+      .ctl <- nlmControl(
+        print = 0L,
+        solveType = "hessian",
+        optimHessType = .type,
+        shi21HessRefresh = TRUE
+      )
       .withNlmProblem(.mod, .d, .ctl, function(x) {
         nlmSolveGradHess(x + 0)
         .i0 <- .nlmHessStepInfo()
@@ -133,7 +138,7 @@ nmTest({
         # every coordinate inside its own step's span: steps reused
         nlmSolveGradHess(x + 0)
         nlmSolveGradHess(x + 0.97 * .span * .h)
-        expect_identical(.nlmHessStepInfo(), .i0, info = .type)
+        expect_identical(.nlmHessStepInfo()[c("step", "nSearch")], .i0[c("step", "nSearch")], info = .type)
         # only the smallest-step coordinate leaves its span: every step re-searched
         .k <- which.min(.h)
         nlmSolveGradHess(replace(x, .k, x[.k] + 1.03 * .span * .h[.k]))
@@ -163,7 +168,13 @@ nmTest({
     # two search iterations: a step that keeps growing ends one growth past where
     # its search started, so a warm re-search ends past the old step while a
     # cold one would land on it again
-    .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = "central", shi21maxHess = 2L)
+    .ctl <- nlmControl(
+      print = 0L,
+      solveType = "hessian",
+      optimHessType = "central",
+      shi21maxHess = 2L,
+      shi21HessRefresh = TRUE
+    )
     .withNlmProblem(.mod, .d, .ctl, function(x) {
       nlmSolveGradHess(x + 0)
       .h0 <- .nlmHessStepInfo()$step
@@ -174,7 +185,7 @@ nmTest({
     })
   })
 
-  test_that("nlm and nlminb re-search the Hessian steps as theta moves (#1175)", {
+  test_that("nlm and nlminb re-search the Hessian steps only under shi21HessRefresh (#1175)", {
     skip_on_cran()
     .mod <- function() {
       ini({
@@ -188,20 +199,74 @@ nmTest({
     }
     .d <- data.frame(ID = 1L, TIME = seq(0.1, 10, length.out = 40), AMT = 0, EVID = 0L)
     .d$DV <- as.integer(seq_len(nrow(.d)) %% 3 != 0 & seq_len(nrow(.d)) < 30)
-    .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = "central")
-    .withNlmProblem(.mod, .d, .ctl, function(x) {
-      stats::nlm(function(p) nlmSolveGradHess(p), x + 0, check.analyticals = FALSE)
-      expect_gt(.nlmHessStepInfo()$nSearch, 2L)
-    })
-    .withNlmProblem(.mod, .d, .ctl, function(x) {
-      stats::nlminb(
-        x + 0,
-        function(p) nlminbFunC(p, 1L),
-        gradient = function(p) nlminbFunC(p, 2L),
-        hessian = function(p) nlminbFunC(p, 3L)
+    for (.refresh in c(TRUE, FALSE)) {
+      .ctl <- nlmControl(
+        print = 0L,
+        solveType = "hessian",
+        optimHessType = "central",
+        shi21HessRefresh = .refresh
       )
-      expect_gt(.nlmHessStepInfo()$nSearch, 2L)
-    })
+      # without the refresh, the two steps are searched once, at the start
+      .check <- if (.refresh) {
+        function() expect_gt(.nlmHessStepInfo()$nSearch, 2L)
+      } else {
+        function() expect_equal(.nlmHessStepInfo()$nSearch, 2L)
+      }
+      .withNlmProblem(.mod, .d, .ctl, function(x) {
+        stats::nlm(function(p) nlmSolveGradHess(p), x + 0, check.analyticals = FALSE)
+        .check()
+      })
+      .withNlmProblem(.mod, .d, .ctl, function(x) {
+        stats::nlminb(
+          x + 0,
+          function(p) nlminbFunC(p, 1L),
+          gradient = function(p) nlminbFunC(p, 2L),
+          hessian = function(p) nlminbFunC(p, 3L)
+        )
+        .check()
+      })
+    }
+  })
+
+  test_that("optimHessType='richardson' extrapolates the central Hessian (#1175)", {
+    skip_on_cran()
+    skip_if_not_installed("numDeriv")
+    .mod <- function() {
+      ini({
+        tka <- log(0.5)
+        tcl <- log(5)
+        tv <- log(50)
+        add.sd <- 2
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        cp <- linCmt()
+        cp ~ add(add.sd)
+      })
+    }
+    .hess <- list()
+    .oracle <- NULL
+    for (.type in c("central", "richardson")) {
+      .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = .type)
+      .withNlmProblem(.mod, nlmixr2data::theo_sd, .ctl, function(x) {
+        .gr <- function(p) attr(nlmSolveGradR(p), "gradient")
+        .oracle <<- numDeriv::jacobian(.gr, x + 0)
+        .oracle <<- 0.5 * (.oracle + t(.oracle))
+        nlmSolveGradHess(x + 0)
+        .i0 <- .nlmHessStepInfo()
+        # the second call reuses the searched steps
+        .hess[[.type]] <<- attr(nlmSolveGradHess(x + 0), "hessian")
+        .i1 <- .nlmHessStepInfo()
+        expect_equal(.i1$nSearch, 4L)
+        # four gradient solves per coordinate for Richardson, two for central
+        expect_equal(.i1$nGrad - .i0$nGrad, if (.type == "central") 8L else 16L, info = .type)
+      })
+    }
+    .err <- vapply(.hess, function(h) max(abs(h - .oracle)) / max(abs(.oracle)), numeric(1))
+    expect_lt(.err[["richardson"]], 1e-6)
+    expect_lt(.err[["richardson"]], .err[["central"]] / 100)
   })
 
   test_that("a non-normal-endpoint FOCEi fit reports llikObs at its final ETAs", {

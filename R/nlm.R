@@ -22,6 +22,15 @@
 #' @param hessErr This represents the epsilon when optimizing the
 #'   Hessian step size using the Shi2021 method.
 #'
+#' @param optimHessType Finite-difference type of the Hessian (`solveType =
+#'   "hessian"`): `"central"`, `"forward"` or `"richardson"` (central differences
+#'   at `h` and `h/2` extrapolated to `h -> 0`; twice the gradient solves of
+#'   `"central"`, much smaller truncation error).
+#'
+#' @param shi21HessRefresh When `TRUE`, re-search a Hessian step (from the old
+#'   step) once theta leaves the span its Shi (2021) search probed; when `FALSE`
+#'   (default) the steps searched at the first iterate are kept for the fit.
+#'
 #' @param shi21maxHess Maximum number of times to optimize the best
 #'   step size for the hessian calculation
 #'
@@ -91,9 +100,10 @@ nlmControl <- function(
   eventType = c("central", "forward"),
   shiErr = (.Machine$double.eps)^(1 / 3),
   shi21maxFD = 20L,
-  optimHessType = c("central", "forward"),
+  optimHessType = c("central", "forward", "richardson"),
   hessErr = (.Machine$double.eps)^(1 / 3),
   shi21maxHess = 20L,
+  shi21HessRefresh = FALSE,
   censOption = c("gauss", "laplace"),
   eventSens = c("jump", "fd"),
   linCmtSensCarry = c("auto", "none"),
@@ -129,6 +139,7 @@ nlmControl <- function(
 
   checkmate::assertIntegerish(shi21maxFD, lower = 1, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(shi21maxHess, lower = 1, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(shi21HessRefresh, any.missing = FALSE, len = 1)
 
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
   checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)
@@ -216,7 +227,7 @@ nlmControl <- function(
     eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
   }
 
-  .optimHessTypeIdx <- c("central" = 2L, "forward" = 1L)
+  .optimHessTypeIdx <- c("central" = 2L, "forward" = 1L, "richardson" = 3L)
   if (checkmate::testIntegerish(optimHessType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
     optimHessType <- as.integer(optimHessType)
   } else {
@@ -283,6 +294,7 @@ nlmControl <- function(
     optimHessType = optimHessType,
     hessErr = hessErr,
     shi21maxHess = as.integer(shi21maxHess),
+    shi21HessRefresh = shi21HessRefresh,
     censOption = censOption,
     eventSens = eventSens,
     sensMethod = sensMethod,
