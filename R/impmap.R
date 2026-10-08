@@ -1476,7 +1476,9 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' Inverse of the sqrtm-repaired importance-sampling information
 #'
 #' `|info| = sqrtm(info %*% info)` keeps the eigenvectors and takes the absolute
-#' eigenvalues, as the FOCEi `"|r|"` repair does for R.
+#' eigenvalues, as the FOCEi `"|r|"` repair does for R.  It is inverted from
+#' the eigendecomposition so a numerically singular information is rejected on
+#' every LAPACK, not only where `solve()` happens to fail.
 #' @param info information matrix (estimation parameterization)
 #' @return the covariance, or `NULL` when there is none
 #' @noRd
@@ -1484,17 +1486,15 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   if (!is.matrix(info) || nrow(info) == 0L || !all(is.finite(info))) {
     return(NULL)
   }
-  # a singular information has no inverse to repair; sqrtm() only fails on it
-  # on some platforms
-  .ev <- abs(eigen(0.5 * (info + t(info)), symmetric = TRUE, only.values = TRUE)$values)
-  if (min(.ev) <= sqrt(.Machine$double.eps) * max(.ev)) {
+  .e <- tryCatch(eigen(0.5 * (info + t(info)), symmetric = TRUE), error = function(e) NULL)
+  if (is.null(.e) || !all(is.finite(.e$values))) {
     return(NULL)
   }
-  .s <- tryCatch(sqrtm(info %*% info), error = function(e) NULL)
-  if (!identical(dim(.s), dim(info)) || !all(is.finite(.s))) {
+  .a <- abs(.e$values)
+  if (min(.a) <= sqrt(.Machine$double.eps) * max(.a)) {
     return(NULL)
   }
-  tryCatch(solve(.s), error = function(e) NULL)
+  .e$vectors %*% (t(.e$vectors) / .a)
 }
 
 #' @rdname nlmixr2Est

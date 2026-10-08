@@ -280,18 +280,21 @@ nmTest({
       .b <- .scaleInfoFixed(TRUE, maxOuterIterations = 1L, outerOpt = "nlminb", model = .m)
       .i <- match(.fx, c("tka", "tcl", "tv", "add.sd"))
       # a literal add.sd changes the residual arithmetic in the last digits
-      # (steps 4e-6 apart, relatively); one parameter's step is another's
-      # by 8% or more
+      # (steps 4e-6 apart, relatively; the covariance step's, which re-optimize
+      # the ETAs, 2e-3); one parameter's step is another's by 8% or more
       .tol <- if (.fx == "tv") 1e-10 else 1e-4
+      .covTol <- if (.fx == "tv") 1e-10 else 1e-2
+      .search <- setdiff(.cols, c(.codes, "Covariance aEps", "Covariance rEps"))
       expect_equal(as.character(.a[["Initial Gradient"]][.i]), "Not Assessed", label = .fx)
       expect_equal(as.character(.a[["Covariance Gradient"]][.i]), "Not Assessed", label = .fx)
       expect_true(all(is.na(unlist(.a[.i, setdiff(.cols, .codes)]))), label = .fx)
       expect_equal(lapply(.a[-.i, .codes], as.character), lapply(.b[, .codes], as.character), label = .fx)
+      expect_equal(.a[-.i, .search], .b[, .search], ignore_attr = TRUE, tolerance = .tol, label = .fx)
       expect_equal(
-        .a[-.i, setdiff(.cols, .codes)],
-        .b[, setdiff(.cols, .codes)],
+        .a[-.i, c("Covariance aEps", "Covariance rEps")],
+        .b[, c("Covariance aEps", "Covariance rEps")],
         ignore_attr = TRUE,
-        tolerance = .tol,
+        tolerance = .covTol,
         label = .fx
       )
     }

@@ -3801,6 +3801,25 @@
   .out
 }
 
+#' The `interaction` of a fit's likelihood
+#'
+#' saem, nlme, vae, emvi and fbvi finalize their fits with an output pass that
+#' evaluates the FOCE objective at their own ETAs, so the control
+#' `fit$finalUi` carries says `interaction = 0` whatever likelihood the method
+#' uses.  The fit's FOCEi control (`fit$foceiControl`) has the method's own; in
+#' the FOCEI family the two are the same.
+#' @param fit nlmixr2 fit
+#' @param ui `fit$finalUi`, used when the fit has no FOCEi control
+#' @return 1L (FOCEI) or 0L (FOCE)
+#' @noRd
+.foceiFitInteraction <- function(fit, ui) {
+  .i <- tryCatch(fit$foceiControl$interaction, error = function(e) NULL)
+  if (!checkmate::testIntegerish(.i, len = 1L, any.missing = FALSE)) {
+    .i <- rxode2::rxGetControl(ui, "interaction", 1L)
+  }
+  as.integer(.i)
+}
+
 #' Compute the full analytic FOCEI covariance (theta + sigma + Omega) for a fitted
 #' object, or `NULL` when out of scope / the augmented solve fails.  The cached,
 #' env-installing entry point is [foceiCovAnalytic]; this is the raw compute.
@@ -3833,7 +3852,7 @@
   if (.foceiCholSECovActive(ui)) {
     return(.foceiAnalyticFallback(.foceiCholSECovReason))
   }
-  interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L)) # 1 FOCEI / 0 FOCE
+  interaction <- .foceiFitInteraction(fit, ui) # 1 FOCEI / 0 FOCE
   # FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R); FOCEI ignores it
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
   # AGQ needs interaction=1 -- see .foceiCalcRanalytic for why this gate is load-bearing.

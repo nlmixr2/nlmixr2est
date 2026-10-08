@@ -46,14 +46,23 @@ Fit object with covariance updated
 \description{
 Switches a completed fit's covariance to \code{method}.  A previously
 computed covariance is re-installed from the cache; otherwise it is
-recomputed at the converged estimates: \code{"r,s"}/\code{"r"}/\code{"s"} and
-\code{"analytic"} on a zero-iteration FOCEI model, and \code{"sa"} (SAEM
-Louis FIM) / \code{"imp"} (importance-sampling Monte-Carlo) via the decoupled
-recompute engine (the latter two require a mixed-effects fit).  When
-a covariance cannot be computed it is left unchanged (it is never silently
-downgraded to \code{"r,s"}).
+recomputed at the converged estimates: \code{"r,s"}/\code{"r"}/\code{"s"} by
+the finite-difference covariance step of the FOCEI family, \code{"analytic"}
+as the analytic observed information at the fit's estimates and ETAs, and
+\code{"sa"} (SAEM Louis FIM) / \code{"imp"} (importance-sampling Monte-Carlo)
+via the decoupled recompute engine (the latter two require a mixed-effects
+fit).  When a covariance cannot be computed it is left unchanged (it is never
+silently downgraded to \code{"r,s"}).
 }
 \details{
+The finite-difference covariances differentiate the fit's marginal
+likelihood, in the fit's own approximation (its \code{interaction}): at every
+finite-difference step the ETAs are optimized again, starting from the fit's
+ETAs.  So \code{setCov(fit, "r,s")} reproduces the \code{"r,s"} covariance a
+FOCEI-family fit computes during estimation, and on a fit of another method
+(saem, nlme, vae, emvi, fbvi) it is that covariance at the method's
+estimates.
+
 Every focei covariance comes in two shapes (see \code{covFull} in
 \code{\link{foceiControl}()}), and both are named: \code{"r,s"}, \code{"r"},
 \code{"s"} and \code{"analytic"} are the structural-theta block, while
