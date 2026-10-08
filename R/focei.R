@@ -119,6 +119,39 @@ is.latex <- function() {
   ret
 }
 
+#' Restart bobyqa once from where it stopped
+#'
+#' The inner ETA solve leaves noise in the outer objective, and bobyqa can
+#' shrink its trust region on that noise and exit normally while the
+#' objective is still falling (#1152).  A restart rebuilds the interpolation
+#' model at the full `rhobeg` from the stopping point.  The restart keeps to
+#' what is left of the evaluation budget, and its result is kept only when it
+#' is lower.
+#' @param fn objective
+#' @param lower,upper bounds
+#' @param ctl `minqa::bobyqa()` control
+#' @param ret the first search's `minqa::bobyqa()` result
+#' @return a `minqa::bobyqa()`-shaped list
+#' @noRd
+.bobyqaRestart <- function(fn, lower, upper, ctl, ret) {
+  if (!identical(as.integer(ret$ierr), 0L)) {
+    return(ret)
+  }
+  if (!is.null(ctl$maxfun)) {
+    ctl$maxfun <- ctl$maxfun - ret$feval
+    if (ctl$maxfun <= ctl$npt + 1) {
+      return(ret)
+    }
+  }
+  .ret2 <- minqa::bobyqa(ret$par, fn, control = ctl, lower = lower, upper = upper)
+  if (is.finite(.ret2$fval) && .ret2$fval < ret$fval) {
+    .ret2$feval <- .ret2$feval + ret$feval
+    return(.ret2)
+  }
+  ret$feval <- ret$feval + .ret2$feval
+  ret
+}
+
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) {
@@ -128,6 +161,9 @@ is.latex <- function() {
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
   .ret <- minqa::bobyqa(par, fn, control = .ctl, lower = lower, upper = upper)
   .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, .ret)
+  if (isTRUE(control$trustPolish)) {
+    .ret <- .bobyqaRestart(fn, lower, upper, .ctl, .ret)
+  }
   .ret$x <- .ret$par
   .ret$message <- .ret$msg
   .ret$convergence <- .ret$ierr
@@ -3980,7 +4016,7 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   if (.len > .lenC) {
     .scaleC <- c(.scaleC, rep(NA_real_, .len - .lenC))
   } else if (.len < .lenC) {
-    .scaleC <- .scaleC[seq_len(.lenC)]
+    .scaleC <- .scaleC[seq_len(.len)]
     warning(
       "'scaleC' control option has more options than estimated population parameters, please check",
       call. = FALSE
@@ -4139,8 +4175,9 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   }
   # Any estimated theta still without a scaleC is a linear (additive / unbounded)
   # parameter: derivative-based 1/|init|, guarded to scaleCband so an extreme init
-  # falls back to native |init| (matches the C++ scaleGetScaleC default).  Zero-init
-  # params (nudged off 0 elsewhere) fall back to unit scaling.
+  # falls back to native |init|.  Zero-init params (nudged off 0 elsewhere) fall
+  # back to unit scaling.  This is the only guard: FOCEi's C++ side uses every
+  # value given here as it is.
   .thetaIni <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
   for (.k in seq_len(nrow(.thetaIni))) {
     .nt <- .thetaIni$ntheta[.k]
@@ -4153,23 +4190,35 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   env$scaleC <- .scaleC
 }
 
+#' The FOCEi scaleC of the estimated thetas, in theta order
+#'
+#' @param ui rxode2 UI
+#' @param nls when `TRUE`, leave out the residual-error parameters, which are
+#'   not nls parameters
+#' @return one scaleC per estimated theta that is kept
+#' @noRd
+.uiScaleCtheta <- function(ui, nls = FALSE) {
+  .th <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
+  .th <- .th[order(.th$ntheta), , drop = FALSE]
+  .env <- new.env(parent = emptyenv())
+  .env$lower <- .th$lower
+  .foceiOptEnvSetupScaleC(ui, .env)
+  .keep <- !.th$fix
+  if (nls) {
+    .keep <- .keep & !(.th$err %in% c("add", "prop", "pow", "ar"))
+  }
+  .env$scaleC[.th$ntheta[.keep]]
+}
+
 #' @export
 rxUiGet.scaleCtheta <- function(x, ...) {
-  .ui <- x[[1]]
-  .env <- new.env(parent = emptyenv())
-  .env$lower <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "lower"]
-  .foceiOptEnvSetupScaleC(.ui, .env)
-  .env$scaleC[!.ui$iniDf$fix]
+  .uiScaleCtheta(x[[1]])
 }
 attr(rxUiGet.scaleCtheta, "rstudio") <- c(1.0, NA_real_)
 
 #' @export
 rxUiGet.scaleCnls <- function(x, ...) {
-  .ui <- x[[1]]
-  .env <- new.env(parent = emptyenv())
-  .env$lower <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "lower"]
-  .foceiOptEnvSetupScaleC(.ui, .env)
-  .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow", "ar"))]
+  .uiScaleCtheta(x[[1]], nls = TRUE)
 }
 attr(rxUiGet.scaleCnls, "rstudio") <- c(1.0, NA_real_)
 
@@ -4738,6 +4787,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   }
   .thetaReset$thetaNames <- .ret$thetaNames
+  .thetaReset$clampedAt <- NULL
   nResets <- 0L
   ## Per-fit constants for the all-C++ analytic outer gradient.  Computed ONCE here and
   ## read by C++ when the outer optimizer starts; after that every gradient evaluation
@@ -5513,6 +5563,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     # that are not sqrt(diag(fit$cov)), and a setCov() round trip then silently
     # changes them (nlmixr2extra#125).
     .fdFullInstalled <- .foceiInstallFdFullCov(.ret)
+    .foceiWarnConditionalCov(.ret, .control)
     # both installers replace $cov with a matrix on the mlogit estimation scale;
     # rotate the mixture block before .updateParFixed() derives SEs from it
     .mixInstallProbScaleCov(.ret)
@@ -5704,6 +5755,36 @@ attr(nlmixr2Est.focei, "covPresent") <- TRUE
 attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.focei, "iov") <- TRUE
 
+#' Warn that a fit's finite-difference covariance held its ETAs fixed
+#'
+#' With `maxInnerIterations = 0` a fit evaluates the ETAs it is given instead of
+#' optimizing them, and so do the legs of its finite-difference covariance:
+#' they differentiate the objective at those ETAs, a covariance conditional on
+#' them, where the covariance of the marginal likelihood re-optimizes the ETAs
+#' at every leg.  The refits that hold the ETAs only to report them ask for
+#' marginal legs (`covMaxInnerIterations`, `.setCovRefit()`) and are not warned
+#' about.
+#' @param env fit environment, after the covariance is installed
+#' @param control the control the fit ran with
+#' @return invisibly `NULL`
+#' @noRd
+.foceiWarnConditionalCov <- function(env, control) {
+  if (
+    !identical(as.integer(control$maxInnerIterations), 0L) ||
+      !is.null(control$covMaxInnerIterations) ||
+      is.null(env$etaObf) ||
+      !is.matrix(env$cov) ||
+      !nzchar(.covFdType(env$covMethod))
+  ) {
+    return(invisible())
+  }
+  warning(
+    sprintf("\"%s\" covariance is conditional on the ETAs; setCov() is marginal", env$covMethod),
+    call. = FALSE
+  )
+  invisible()
+}
+
 #' Add objective function line to the return object
 #'
 #' @param ret Return object
@@ -5748,7 +5829,13 @@ nlmixr2Est.output <- function(env, ...) {
   }
 
   .foceiFamilyControl(env, ...)
-  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  # The pass evaluates the FOCE objective at the ETAs it is given.  A covariance
+  # refit (setCov(), getVarCov()) differentiates the fit's own likelihood
+  # instead, so it keeps the control's interaction; it is the caller that asks
+  # for marginal covariance legs (covMaxInnerIterations, see .setCovRefit()).
+  if (is.null(rxode2::rxGetControl(.ui, "covMaxInnerIterations", NULL))) {
+    rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  }
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   rxode2::rxAssignControlValue(.ui, "maxInnerIterations", 0L)
   on.exit({
