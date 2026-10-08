@@ -5625,7 +5625,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       # Delete unneeded variables
       .saemCfg2 <- list()
       # res.mod is kept because calc.2LL()/calc.COV() need it to tell an ll()
-      # observation from a normally-distributed one
+      # observation from a normally-distributed one; omegaShareSubpop tells
+      # calc.2LL() which etas a mixture component owns
       for (.v in c(
         "i1",
         "i0",
@@ -5640,7 +5641,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         "opt",
         "inits",
         "Mcovariables",
-        "res.mod"
+        "res.mod",
+        "omegaShareSubpop"
       )) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }
