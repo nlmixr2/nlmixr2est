@@ -13,7 +13,7 @@
 }
 \value{
 The residuals of the loaded nls problem, with their Jacobian as
-the \code{"gradient"} attribute
+  the \code{"gradient"} attribute
 }
 \description{
 The right-hand side of the \code{stats::nls()} formula
