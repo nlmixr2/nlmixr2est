@@ -1015,6 +1015,9 @@
       if (.foceiUsesLinCmt(ui)) {
         return(.foceiAnalyticFallback("a linCmt() model"))
       }
+      if (.foceiUsesLagVar(ui)) {
+        return(.foceiAnalyticFallback("lag() of a calculated variable"))
+      }
       if (.foceiCholSECovActive(ui)) {
         return(.foceiAnalyticFallback(.foceiCholSECovReason))
       }
@@ -3823,6 +3826,9 @@
   # linCmt() has no symbolic state sensitivities for the augmented model
   if (.foceiUsesLinCmt(ui)) {
     return(.foceiAnalyticFallback("a linCmt() model"))
+  }
+  if (.foceiUsesLagVar(ui)) {
+    return(.foceiAnalyticFallback("lag() of a calculated variable"))
   }
   if (.foceiCholSECovActive(ui)) {
     return(.foceiAnalyticFallback(.foceiCholSECovReason))
