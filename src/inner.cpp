@@ -8797,6 +8797,7 @@ struct CovEtaStart {
       if (fInd->oldEta != NULL) std::fill_n(fInd->oldEta, ne, NA_REAL);
     }
   }
+
 private:
   CovEtaStart(const CovEtaStart &);
   CovEtaStart &operator=(const CovEtaStart &);
