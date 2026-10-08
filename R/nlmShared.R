@@ -1,3 +1,18 @@
+# Is `x` a usable Shi (2021) epsilon (a single finite value > 0)?
+.isPositiveErr <- function(x) {
+  checkmate::testNumber(x, finite = TRUE) && x > 0
+}
+
+# Assert a finite-difference epsilon (Shi 2021 `shiErr`/`hessErr`, Gill 1983
+# `hessEps`) is strictly positive; 0 makes the searched step 0.
+.assertPositiveEps <- function(x, .var.name = checkmate::vname(x), null.ok = FALSE) {
+  checkmate::assertNumber(x, finite = TRUE, null.ok = null.ok, .var.name = .var.name)
+  if (!is.null(x) && x <= 0) {
+    stop("'", .var.name, "' must be > 0", call. = FALSE)
+  }
+  invisible(x)
+}
+
 #' Setup a nonlinear system for optimization
 #'
 #' @param par A named vector of initial estimates to setup the
@@ -59,11 +74,11 @@
   if (!any(names(.ctl) == "shi21maxHess")) {
     .ctl$shi21maxHess <- 20L
   }
-  if (!any(names(.ctl) == "shiErr")) {
+  # a non-positive Shi (2021) epsilon degenerates the step search to a 0 step
+  if (!.isPositiveErr(.ctl$shiErr)) {
     .ctl$shiErr <- (.Machine$double.eps)^(1 / 3)
   }
-
-  if (!any(names(.ctl) == "hessErr")) {
+  if (!.isPositiveErr(.ctl$hessErr)) {
     .ctl$hessErr <- (.Machine$double.eps)^(1 / 3)
   }
   # nlmSetup (nlm.cpp) reads control$iterPrintControl; external callers that

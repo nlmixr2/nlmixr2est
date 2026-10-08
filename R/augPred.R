@@ -204,6 +204,10 @@ nlmixr2AugPredSolve <- function(
   .env$data <- fit$origData
   suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
   .rx <- .getSimModel(.env$ui, hideIpred = TRUE)
+  .drop <- setdiff(attr(.rx, "lagged"), c("DV", "CMT"))
+  if (length(.drop) == 0L) {
+    .drop <- NULL
+  }
   .rx <- eval(.rx)
   .sigma <- .si$sigma
   .omega <- .si$omega
@@ -226,14 +230,15 @@ nlmixr2AugPredSolve <- function(
     naInterpolation = .naInterpolation,
     tolFactor = .tolFactor,
     keep = c("DV", "CMT"),
+    drop = .drop,
     returnType = "data.frame"
   )
   # now do pred
   if (is.null(.omega)) {
-    names(.sim) <- sub("sim", "pred", names(.sim))
+    names(.sim) <- sub("^sim$", "pred", names(.sim))
     .stk <- stack(.sim[, c("pred", "DV")])
   } else {
-    names(.sim) <- sub("sim", "ipred", names(.sim))
+    names(.sim) <- sub("^sim$", "ipred", names(.sim))
     .params <- c(t(fit$theta), t(rep(0, dim(.omega)[1])), t(rep(0, dim(.sigma)[1])))
     .params <- setNames(.params, c(names(fit$theta), dimnames(.omega)[[2]], dimnames(.sigma)[[2]]))
     .sim2 <- rxode2::rxSolve(
@@ -243,6 +248,7 @@ nlmixr2AugPredSolve <- function(
       covsInterpolation = covsInterpolation,
       naInterpolation = .naInterpolation,
       tolFactor = .tolFactor,
+      drop = .drop,
       returnType = "data.frame"
     )
     .sim$pred <- .sim2$sim

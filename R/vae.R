@@ -405,7 +405,9 @@
 #'   the linearization and importance-sampling -2LL are always computed and
 #'   stored; this selects the default active one.
 #' @param covMethod Method for calculating the covariance at the VAE estimates,
-#'   run through the FOCEi covariance step; the same choices as
+#'   run through the FOCEi covariance step with the interaction of
+#'   \code{likelihood}; its finite-difference legs optimize the ETAs again,
+#'   starting from the encoder's.  The same choices as
 #'   \code{\link{foceiControl}()}: \code{"analytic"} (default), \code{"r,s"},
 #'   \code{"r"}, \code{"s"}, or \code{""} to skip.
 #' @param nIsSample Number of importance-sampling draws for the IS -2LL.

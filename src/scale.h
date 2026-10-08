@@ -37,13 +37,9 @@ struct scaling {
   double c2; // internal scaling constant
   double scaleCmin; // Cmin scaling constant
   double scaleCmax; // Cmax scaling constant
-  // scaleC settings, which focei_options (src/inner.cpp) declares under the same
-  // names: the NA default rule, and the band guard (foceiControl(scaleCband)),
-  // which applies to parameters i < nScaleCband (0 = off).
+  // the NA scaleC default rule, which focei_options (src/inner.cpp) declares
+  // under the same name
   int scaleCdefault = scaleCdefaultFloor;
-  int nScaleCband = 0;
-  double scaleRangeLow = 0.0;
-  double scaleRangeHigh = 0.0;
   // Iteration-print formatting, populated via scaleApplyIterPrintControl();
   // field names mirror iterPrintControl()'s R argument names.
   int useColor;
@@ -110,6 +106,65 @@ struct scaling {
 #define iterTypeSens 8
 };
 
+// The normalization of normType, scaled = (v - c1)/c2, from the npars initial
+// values v: rescale2 to (-1, 1), rescale to (0, 1), mean centred with range 1,
+// std to mean 0 and sd 1, len to unit length, constant none.  Values that are
+// all equal switch to len, and values that are all zero to constant, with a
+// warning; *normType is set to the rule used.  The scaling of the nlm family
+// (scaleSetup()) and of the FOCEi outer problem (foceiSetup_()) both use it.
+static inline void scaleNormalize(const double *v, int npars, int *normType,
+                                  double *c1, double *c2) {
+  if (*normType < normTypeRescale2 || *normType > normTypeConstant) {
+    stop("unrecognized normalization (normType=%d)", *normType);
+  }
+  *c1 = 0;
+  *c2 = 1;
+  if (npars <= 0) return;
+  double mn = R_PosInf, mx = R_NegInf, mean = 0, oN = 0, oM = 0, s = 0, len = 0;
+  for (int k = npars; k-- > 0;) {
+    mn = min2(v[k], mn);
+    mx = max2(v[k], mx);
+    oM = mean;
+    oN++;
+    mean += (v[k] - mean)/oN;
+    s += (v[k] - mean)*(v[k] - oM);
+    len += v[k]*v[k];
+  }
+  if (*normType <= normTypeStd && fabs(mx - mn) < DBL_EPSILON) {
+    if (len >= DBL_EPSILON) {
+      warning(_("all parameters are the same value, switch to length normType"));
+    }
+    *normType = normTypeLen;
+  }
+  if (*normType == normTypeLen && len < DBL_EPSILON) {
+    warning(_("all parameters are zero, cannot scale, run unscaled"));
+    *normType = normTypeConstant;
+  }
+  switch (*normType) {
+  case normTypeRescale2:
+    // OptdesX
+    // http://apmonitor.com/me575/uploads/Main/optimization_book.pdf
+    *c1 = (mx + mn)/2;
+    *c2 = (mx - mn)/2;
+    break;
+  case normTypeRescale: // min-max normalization
+    *c1 = mn;
+    *c2 = mx - mn;
+    break;
+  case normTypeMean:
+    *c1 = mean;
+    *c2 = mx - mn;
+    break;
+  case normTypeStd:
+    *c1 = mean;
+    *c2 = sqrt(s/(oN - 1));
+    break;
+  case normTypeLen:
+    *c2 = sqrt(len);
+    break;
+  }
+}
+
 // Sets scale/print fields not coming from the R-side xform sub-list; the six
 // transform pointers are NULL-initialized here and wired by scaleAttachXform
 // (or directly by callers with their own buffers, e.g. focei) after return.
@@ -155,7 +210,6 @@ static inline void scaleSetup(scaling *scale,
   scale->scaleCmax = scaleCmax;
   scale->scaleTo = scaleTo;
   scale->scaleCdefault = scaleCdefaultFloor;
-  scale->nScaleCband = 0;
 
   scale->vGrad.clear();
   scale->vPar.clear();
@@ -166,155 +220,10 @@ static inline void scaleSetup(scaling *scale,
 
   scale->cn = 0;
 
-  double mn = scale->initPar[scale->npars-1],
-    mx=scale->initPar[scale->npars-1],
-    mean=0, oN=0, oM=0,s=0;
-  double len=0;
-  // `for (unsigned int k = scale->npars; k-- > 0;)` visits k=npars-1 down to
-  // 0 inclusive (the previous `for (k = scale->npars-1; k--;)` form skipped
-  // k=npars-1: k-- as the condition tests the PRE-decrement value, so the
-  // first body execution already saw the post-decrement k, silently leaving
-  // scale->scaleC[npars-1] unreset and dropping the top parameter from the
-  // mean/std/len accumulators below -- issue #995).
-  switch (scale->normType){
-  case normTypeRescale2:
-    // OptdesX
-    // http://apmonitor.com/me575/uploads/Main/optimization_book.pdf
-    for (unsigned int k = scale->npars; k-- > 0;){
-      mn = min2(scale->initPar[k],mn);
-      mx = max2(scale->initPar[k],mx);
-      scale->scaleC[k] = NA_REAL;
-    }
-    if (fabs(mx-mn) < DBL_EPSILON) {
-      for (unsigned int k = scale->npars; k-- > 0;){
-        len += scale->initPar[k]*scale->initPar[k];
-      }
-      if (len < DBL_EPSILON){
-        warning(_("all parameters are zero, cannot scale, run unscaled"));
-        scale->c1 = 0;
-        scale->c2 = 1;
-        scale->normType = normTypeConstant;
-      } else {
-        warning(_("all parameters are the same value, switch to length normType"));
-        scale->c1 = 0;
-        scale->c2 = sqrt(len);
-        scale->normType = 5;
-      }
-    } else {
-      scale->c1 = (mx+mn)/2;
-      scale->c2 = (mx-mn)/2;
-    }
-    break;
-  case normTypeRescale: // Rescaling (min-max normalization)
-    for (unsigned int k = scale->npars; k-- > 0;){
-      mn = min2(scale->initPar[k],mn);
-      mx = max2(scale->initPar[k],mx);
-      scale->scaleC[k] = NA_REAL;
-    }
-    if (fabs(mx-mn) < DBL_EPSILON) {
-      for (unsigned int k = scale->npars; k-- > 0;){
-        len += scale->initPar[k]*scale->initPar[k];
-      }
-      if (len < DBL_EPSILON){
-        warning(_("all parameters are zero, cannot scale, run unscaled"));
-        scale->c1 = 0;
-        scale->c2 = 1;
-        scale->normType = normTypeConstant;
-      } else {
-        warning(_("all parameters are the same value, switch to length normType"));
-        scale->c1 = 0;
-        scale->c2 = sqrt(len);
-        scale->normType = 5;
-      }
-    } else {
-      scale->c1 = mn;
-      scale->c2 = (mx-mn);
-    }
-    break;
-  case normTypeMean: // Mean normalization
-    for (unsigned int k = scale->npars; k-- > 0;){
-      mn = min2(scale->initPar[k],mn);
-      mx = max2(scale->initPar[k],mx);
-      oN++;
-      mean += (scale->initPar[k]-mean)/oN;
-      scale->scaleC[k] = NA_REAL;
-    }
-    if (fabs(mx-mn) < DBL_EPSILON) {
-      for (unsigned int k = scale->npars; k-- > 0;){
-        len += scale->initPar[k]*scale->initPar[k];
-      }
-      if (len < DBL_EPSILON){
-        warning(_("all parameters are zero, cannot scale, run unscaled"));
-        scale->c1 = 0;
-        scale->c2 = 1;
-        scale->normType = normTypeConstant;
-      } else {
-        warning(_("all parameters are the same value, switch to length normType"));
-        scale->c1 = 0;
-        scale->c2 = sqrt(len);
-        scale->normType = 5;
-      }
-    } else {
-      scale->c1 = mean;
-      scale->c2 = (mx-mn);
-    }
-    break;
-  case normTypeStd: // Standardization
-    for (unsigned int k = scale->npars; k-- > 0;){
-      mn = min2(scale->initPar[k],mn);
-      mx = max2(scale->initPar[k],mx);
-      oM= mean;
-      oN++;
-      mean += (scale->initPar[k]-mean)/oN;
-      s += (scale->initPar[k]-mean)*(scale->initPar[k]-oM);
-      scale->scaleC[k] = NA_REAL;
-    }
-    if (fabs(mx-mn) < DBL_EPSILON) {
-      for (unsigned int k = scale->npars; k-- > 0;){
-        len += scale->initPar[k]*scale->initPar[k];
-      }
-      if (len < DBL_EPSILON){
-        warning(_("all parameters are zero, cannot scale, run unscaled"));
-        scale->c1 = 0;
-        scale->c2 = 1;
-        scale->normType = normTypeConstant;
-      } else {
-        warning(_("all parameters are the same value, switch to length normType"));
-        scale->c1 = 0;
-        scale->c2 = sqrt(len);
-        scale->normType = 5;
-      }
-    } else {
-      scale->c1 = mean;
-      scale->c2 = sqrt(s/(oN-1));
-    }
-    break;
-  case normTypeLen: // Normalize to length.
-    for (unsigned int k = scale->npars; k-- > 0;){
-      len += scale->initPar[k]*scale->initPar[k];
-      scale->scaleC[k] = NA_REAL;
-    }
-    if (len < DBL_EPSILON){
-      warning(_("all parameters are zero, cannot scale, run unscaled"));
-      scale->c1 = 0;
-      scale->c2 = 1;
-      scale->normType = normTypeConstant;
-    } else {
-      scale->c1 = 0;
-      scale->c2 = sqrt(len);
-    }
-    break;
-  case normTypeConstant:
-    // No Normalization
-    for (unsigned int k = scale->npars; k-- > 0;){
-      scale->scaleC[k] = NA_REAL;
-    }
-    scale->c1 = 0;
-    scale->c2 = 1;
-    break;
-  default:
-    stop("unrecognized normalization (normType=%d)", scale->normType);
+  for (int k = scale->npars; k-- > 0;) {
+    scale->scaleC[k] = NA_REAL;
   }
+  scaleNormalize(scale->initPar, scale->npars, &scale->normType, &scale->c1, &scale->c2);
 }
 
 // The functions below take a scaling or a focei_options (src/inner.cpp; the
@@ -328,9 +237,9 @@ static inline double scaleDefaultC(S *scale, double d) {
 }
 
 // The scaling constant of parameter i, clamped to [scaleCmin, scaleCmax].  An NA
-// entry is filled in place from xPar and scaleCdefault.  With the band guard on, a
-// positive entry outside [scaleRangeLow, scaleRangeHigh] is replaced in place by
-// the native magnitude |init| (NONMEM7 Appendix K, eq 15.2; 1 when init is 0).
+// entry is filled in place from xPar and scaleCdefault.  Any other entry is used
+// as given: R chose it (and guarded it to its band, .guardScaleC()), the user did
+// (foceiControl(scaleC=)), or the zero-gradient retry did (scaleC0).
 template <typename S>
 static inline double scaleGetScaleC(S *scale, int i){
   if (ISNA(scale->scaleC[i]) || isnan(scale->scaleC[i])) {
@@ -350,13 +259,6 @@ static inline double scaleGetScaleC(S *scale, int i){
       scale->scaleC[i] = scaleDefaultC(scale, aInit);
       break;
     }
-  }
-  // a 0 entry is unloaded, not a value to rescue: it is left to the clamp
-  if (i < scale->nScaleCband && scale->scaleC[i] > 0.0 &&
-      (scale->scaleC[i] < scale->scaleRangeLow ||
-       scale->scaleC[i] > scale->scaleRangeHigh)) {
-    double aInit = fabs(scale->initPar[i]);
-    scale->scaleC[i] = (aInit == 0.0) ? 1.0 : aInit;
   }
   return min2(max2(scale->scaleC[i], scale->scaleCmin), scale->scaleCmax);
 }
