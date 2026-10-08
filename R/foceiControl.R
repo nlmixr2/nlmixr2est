@@ -1601,7 +1601,7 @@ foceiControl <- function(
     foceEbeTol <- 1e-9
   }
   checkmate::assertNumeric(foceEbeTol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
-  checkmate::assertNumeric(hessEpsLlik, lower = 0, any.missing = FALSE, len = 1)
+  .assertPositiveEps(hessEpsLlik)
   checkmate::assertNumeric(centralDerivEps, lower = 0, any.missing = FALSE, len = 2)
 
   checkmate::assertIntegerish(lbfgsLmm, lower = 1L, any.missing = FALSE, len = 1)
