@@ -631,8 +631,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   # reference resolves in the compiled model
   .lagDefs <- character(0)
   if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
-    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
-    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
+    .lagDefs <- .s$..lhs[.foceiIsLagDef(.s$..lhs, .s$..laggedVars)]
   }
   # rx_pred_f_/rx_r_/rx_nu_ outputs for censoring support
   .fr <- if (.spec$censFR) .nlmGetFRLines(.s) else list()
