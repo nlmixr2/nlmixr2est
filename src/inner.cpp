@@ -11996,6 +11996,15 @@ NumericMatrix foceiCalcCov(Environment e){
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
           }
           op_focei.didGill+=1;
+          // the theta-only steps and the centre they were searched about
+          int np = (int)op_focei.npars;
+          e["covSteps"] = List::create(
+            _["theta"] = NumericVector(theta.begin(), theta.end()),
+            _["f0"] = op_focei.lastOfv,
+            _["aEps"] = NumericVector(op_focei.aEps, op_focei.aEps + np),
+            _["rEps"] = NumericVector(op_focei.rEps, op_focei.rEps + np),
+            _["aEpsC"] = NumericVector(op_focei.aEpsC, op_focei.aEpsC + np),
+            _["rEpsC"] = NumericVector(op_focei.rEpsC, op_focei.rEpsC + np));
         };
         // covType="analytic": try the analytic R first; it needs no step search
         bool analyticR = false;

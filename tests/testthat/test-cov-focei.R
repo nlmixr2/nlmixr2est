@@ -680,6 +680,10 @@ nmTest({
     expect_identical(.on$env$covEvals[["r"]], .off$env$covEvals[["r"]])
     .def <- .fit(TRUE)
     expect_identical(.def$env$covEvals[["s"]], 2L * nrow(.def$cov))
+    # the steps the theta-only stage searched, about the centre value they were taken at
+    expect_named(.on$env$covSteps, c("theta", "f0", "aEps", "rEps", "aEpsC", "rEpsC"))
+    expect_identical(lengths(.on$env$covSteps, use.names = FALSE), c(4L, 1L, 4L, 4L, 4L, 4L))
+    expect_true(all(.on$env$covSteps$rEpsC > 0))
   })
 
   test_that("the theta-only covariance is read from the full stage", {
