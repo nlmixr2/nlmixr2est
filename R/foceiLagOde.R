@@ -32,30 +32,52 @@
   # last definition first, so one that uses an earlier one is fully expanded
   for (v in rev(unique(.var))) {
     .w <- which(.var == v)
-    if (.foceiLagRefs(.rhs[.w], .var, hist = TRUE)) {
+    # a snapshot is expanded with the variable it holds a value of
+    if (grepl("^rx_lagv[0-9]+_", v) || .foceiLagRefs(.rhs[.w], .var, hist = TRUE)) {
       next
     }
-    # a pruned if/else defines it more than once, each from the one before
+    # a pruned if/else defines it more than once, each from the one before;
+    # newer rxode2 reads value i through the snapshot rx_lagv<i>_<v>
     .def <- NULL
+    .snap <- list()
     for (.txt in .rhs[.w]) {
       # rxToSE() is NSE: hand it a plain variable
       .new <- symengine::S(rxode2::rxToSE(.txt))
-      .def <- if (is.null(.def)) .new else symengine::subs(.new, symengine::S(v), .def)
+      if (!is.null(.def)) {
+        .new <- .foceiLagSubsSnap(symengine::subs(.new, symengine::S(v), .def), v, .snap)
+      }
+      .def <- .new
+      .snap[[length(.snap) + 1L]] <- .def
     }
     for (d in .ddt) {
-      assign(d, symengine::subs(get(d, envir = s), symengine::S(v), .def), envir = s)
+      .e <- symengine::subs(get(d, envir = s), symengine::S(v), .def)
+      assign(d, .foceiLagSubsSnap(.e, v, .snap), envir = s)
     }
   }
   # the ODE text too: the lagged variable is defined after the ODEs
   for (d in .ddt) {
     .pre <- paste0("d/dt(", sub("^rx__d_dt_(.*)__$", "\\1", d), ")=")
     .w <- which(startsWith(s$..ddt, .pre))
-    if (length(.w) == 1L && .foceiLagRefs(s$..ddt[.w], .var)) {
+    if (length(.w) == 1L && .foceiLagRefs(s$..ddt[.w], c(.var, .foceiLagSnapNames(s$..ddt[.w])))) {
       .e <- get(d, envir = s)
       s$..ddt[.w] <- paste0(.pre, rxode2::rxFromSE(.e))
     }
   }
   invisible(s)
+}
+
+#' Substitute the snapshots of a lagged variable's earlier values
+#'
+#' @param e symengine expression
+#' @param v lagged variable name
+#' @param snap list of `v`'s values, one per assignment so far
+#' @return `e` with each `rx_lagv<i>_<v>` replaced by `snap[[i]]`
+#' @noRd
+.foceiLagSubsSnap <- function(e, v, snap) {
+  for (.i in seq_along(snap)) {
+    e <- symengine::subs(e, symengine::S(paste0("rx_lagv", .i, "_", v)), snap[[.i]])
+  }
+  e
 }
 
 #' Whether an ODE still uses a lagged calculated variable
@@ -77,5 +99,15 @@
     },
     character(1)
   )
-  .foceiLagRefs(.txt, unique(sub("=.*$", "", .defs)))
+  .var <- unique(sub("=.*$", "", .defs))
+  .foceiLagRefs(.txt, c(.var, .foceiLagSnapNames(.txt)))
+}
+
+#' Snapshot names (`rx_lagv<i>_<v>`) used in rxode2 text
+#'
+#' @param txt rxode2 text
+#' @return character vector of the snapshot names
+#' @noRd
+.foceiLagSnapNames <- function(txt) {
+  unique(unlist(regmatches(txt, gregexpr("\\brx_lagv[0-9]+_[A-Za-z0-9_.]+", txt, perl = TRUE))))
 }

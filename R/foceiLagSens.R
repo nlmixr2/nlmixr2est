@@ -6,6 +6,23 @@
 
 .foceiHistFn <- c("lag", "lead", "diff", "first", "last", "lag0", "lead0", "diff0")
 
+#' Which lhs lines define a lagged calculated variable
+#'
+#' A variable assigned more than once is read through a snapshot
+#' `rx_lagv<i>_<v>` of each earlier value (rxode2 #1435), so its snapshot
+#' lines are definitions too.
+#' @param lhs `var=expr` lines
+#' @param vars lagged variable names
+#' @return logical, one per line
+#' @noRd
+.foceiLagIsDef <- function(lhs, vars) {
+  if (length(vars) == 0L) {
+    return(rep(FALSE, length(lhs)))
+  }
+  .lhs <- sub("^rx_lagv[0-9]+_", "", sub("=.*$", "", lhs))
+  .lhs %in% vars
+}
+
 #' The definitions of the lagged calculated variables
 #'
 #' The AR(1) residual's own lagged variables (`rx_ar*`) are excluded; the
@@ -19,7 +36,7 @@
     return(character(0))
   }
   .v <- .v[!grepl("^rx_ar", .v)]
-  s$..lhs[sub("=.*$", "", s$..lhs) %in% .v]
+  s$..lhs[.foceiLagIsDef(s$..lhs, .v)]
 }
 
 #' Whether rxode2 text uses any of the given variables

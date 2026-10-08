@@ -71,6 +71,11 @@
   gives a clear error.  The analytic `fast=TRUE` gradient and analytic
   covariance fall back to finite differences for these models (#1176).
 
+- FOCEi-family and nlm `lag()` sensitivities also read a lagged variable that
+  is assigned more than once (an `if`/`else` definition) through the
+  snapshots newer rxode2 versions write for its earlier values; an ODE that
+  used such a variable stopped with "required for solving: rx_lagv1_<var>".
+
 - `$etaMat` of a fit with inter-occasion variability now holds the occasion
   ETAs as the model estimated them; it held them multiplied by the occasion
   standard deviation (the scale of `$iov`).  `setOfv()`, `addCwres()`,
