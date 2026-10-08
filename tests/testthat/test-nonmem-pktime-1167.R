@@ -100,6 +100,22 @@ nmTest({
     expect_equal(.fit$IPRED, .pkTimeSolve(.fit, .d, TRUE), tolerance = 1e-4)
     expect_gt(max(abs(.fit$IPRED / .pkTimeSolve(.fit, .d, FALSE) - 1)), 0.01)
 
+    # augPred() and vpcSim() solve with the fit's nonmem setting too
+    .seen <- logical(0)
+    .orig <- rxode2::rxSolve
+    local_mocked_bindings(
+      rxSolve = function(...) {
+        .seen <<- c(.seen, isTRUE(list(...)$nonmem))
+        .orig(...)
+      },
+      .package = "rxode2"
+    )
+    expect_true(nrow(suppressWarnings(augPred(.fit))) > 0)
+    expect_true(length(.seen) > 0 && all(.seen))
+    .seen <- logical(0)
+    expect_true(nrow(suppressWarnings(vpcSim(.fit, n = 2))) > 0)
+    expect_true(length(.seen) > 0 && all(.seen))
+
     .fit0 <- .nlmixr(
       .pkTimeModel, .d, "focei",
       foceiControl(
