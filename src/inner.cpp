@@ -11944,6 +11944,95 @@ static bool foceiThetaFromStore(Environment e, const arma::vec &theta) {
   return true;
 }
 
+// The covariance choice from the R and S states (see foceiCalcCov), as it was made in C++:
+// the slot (0 failed, 1 "r,s", 2 "r", 3 "s") and which matrix (1 covRS, 2 covR, 3 S^-1).
+// Kept to check .covSelectFocei() against (NLMIXR2EST_COV_SELECT_CHECK).
+static int foceiCovSelectCpp(Environment e, int req, int rState, int sState,
+                             const std::string &rstr, const std::string &sstr,
+                             bool checkSandwich, int &which) {
+  int cur = req;
+  which = 0;
+  if ((req == 1 || req == 2) && rState != 1) cur = 3;
+  if (cur == 2) which = 2;
+  if (cur == 1 || cur == 3) {
+    if (sState == 2) {
+      if (cur == 1) { which = 2; cur = 2; } else { cur = 0; }
+    } else if (sState == 1) {
+      if (cur == 1) {
+        arma::mat covRS = as<arma::mat>(e["covRS"]);
+        bool covRSsmall = arma::any(abs(covRS.diag()) < op_focei.covSmall);
+        bool checkSandwich2 = !checkSandwich && covRSsmall;
+        which = 1;
+        if (checkSandwich || checkSandwich2) {
+          if (!checkSandwich2 && rstr == "r") {
+            which = 2; cur = 2;
+          } else if (!checkSandwich2 && sstr == "s") {
+            which = 3; cur = 3;
+          } else {
+            double covRSd = sum(covRS.diag());
+            arma::mat covR = as<arma::mat>(e["covR"]);
+            bool covRsmall = arma::any(abs(2.0*covR.diag()) < op_focei.covSmall);
+            double covRd = sum(2.0*covR.diag());
+            arma::mat covS = as<arma::mat>(e["covS"]);
+            bool covSsmall = arma::any(abs(4.0*covS.diag()) < op_focei.covSmall);
+            double covSd = sum(4.0*covS.diag());
+            if (covRSsmall && covSsmall && covRsmall) {
+              which = 1;
+            } else if (covRSsmall && covSsmall && !covRsmall) {
+              which = 2; cur = 2;
+            } else if (covRSsmall && !covSsmall && covRsmall) {
+              which = 3; cur = 3;
+            } else if (covRSd > covRd) {
+              if (covRd > covSd) { which = 3; cur = 3; } else { which = 2; cur = 2; }
+            } else if (covRSd > covSd) {
+              which = 3; cur = 3;
+            } else {
+              which = 1;
+            }
+          }
+        }
+      } else {
+        which = 3;
+      }
+    } else if (sState == 3) {
+      if (cur == 1) { which = 2; cur = 2; } else { cur = 0; }
+    }
+  }
+  if (cur != 0 && which != 0) {
+    arma::mat cov = as<arma::mat>(e[which == 1 ? "covRS" : (which == 2 ? "covR" : ".covSinv")]);
+    if (all(cov.diag() < 1e-7)) cur = 0;
+  }
+  return cur;
+}
+
+// Choose the covariance from the R and S matrices (.covSelectFocei() in R/covSelect.R):
+// installs e$cov and e$covMethod and gives the warnings; returns the slot, 0 when none.
+static int foceiCovSelect(Environment e, int req, int rState, int sState,
+                          const std::string &rstr, const std::string &sstr,
+                          bool checkSandwich, bool sHasZero) {
+  Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
+  Function sel = as<Function>(nlmixr2[".covSelectFocei"]);
+  List r = sel(e, req, rState, sState, rstr, sstr, checkSandwich, sHasZero, op_focei.covSmall);
+  int slot = as<int>(r["slot"]);
+  if (getenv("NLMIXR2EST_COV_SELECT_CHECK") != NULL) {
+    int which;
+    int cslot = foceiCovSelectCpp(e, req, rState, sState, rstr, sstr, checkSandwich, which);
+    bool same = cslot == slot;
+    if (same && slot != 0) {
+      NumericMatrix rc = as<NumericMatrix>(e["cov"]);
+      arma::mat cc = as<arma::mat>(e[which == 1 ? "covRS" : (which == 2 ? "covR" : ".covSinv")]);
+      arma::mat rcm = as<arma::mat>(rc);
+      same = rcm.n_rows == cc.n_rows && rcm.n_cols == cc.n_cols &&
+        std::equal(rcm.begin(), rcm.end(), cc.begin());
+    }
+    if (!same) {
+      stop("covariance selection check: R chose slot %d, C++ slot %d (req %d, R state %d, S state %d)",
+           slot, cslot, req, rState, sState);
+    }
+  }
+  return slot;
+}
+
 NumericMatrix foceiCalcCov(Environment e){
   std::string boundStr = "";
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
@@ -12196,10 +12285,16 @@ NumericMatrix foceiCalcCov(Environment e){
         if (!analyticR && !fullMerged && foceiThetaFromStore(e, theta)) gillDone = true;
         if ((!analyticR && !fullMerged) || !covReuseOn()) runGill();
 
+        // The R and S matrices the request needs (S also when R is not usable), then
+        // .covSelectFocei() chooses the covariance from them.  Each matrix's state: 0 not
+        // computed, 1 usable, 2 not positive definite, 3 its computation failed.
         bool isPd;
-        std::string rstr = "r";
-        bool checkSandwich = false;
-        if (op_focei.covMethod == 1 || op_focei.covMethod == 2) {
+        std::string rstr = "r", sstr = "s";
+        bool checkSandwich = false, sHasZero = false;
+        const int req = op_focei.covMethod;
+        int rState = 0, sState = 0;
+        bool needS = (req == 1 || req == 3);
+        if (req == 1 || req == 2) {
           // R matrix based covariance
           if (!e.exists("cholR") && !analyticR){
             {
@@ -12227,7 +12322,8 @@ NumericMatrix foceiCalcCov(Environment e){
             if (!isPd){
               warning(_("R matrix non-positive definite"));
               e["R"] = wrap(e["R.0"]);
-              op_focei.covMethod = 3;
+              rState = 2;
+              needS = true;
               op_focei.cur += op_focei.npars*2;
               op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
             } else {
@@ -12242,30 +12338,21 @@ NumericMatrix foceiCalcCov(Environment e){
               op_focei.cur++;
               op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, getRxCores(rx), op_focei.t0, 0);
               if (!e.exists("covR")){
-                // Issue #666: the R-matrix covariance is the inverse observed
-                // information Rinv = R^{-1} (R = 0.5*Hessian(-2LL) here).  This
-                // was 2*Rinv, which made every covMethod="r" SE sqrt(2) too
-                // large vs NONMEM $COV MATRIX=R and vs the (correct) sandwich
-                // "r,s".  covR feeds both the final "r" output and the
-                // sandwich-selection heuristic below, so it is fixed at source.
+                // the R-matrix covariance is the inverse observed information R^{-1}
+                // (R = 0.5*Hessian(-2LL) here), as NONMEM's $COV MATRIX=R (issue #666)
                 e["covR"] = wrap(Rinv);
               }
-              if (op_focei.covMethod == 2){
-                e["cov"] = as<NumericMatrix>(e["covR"]);
-              }
+              rState = 1;
             }
           } else {
             RSprintf("\rR matrix calculation failed; Switch to S-matrix covariance.\n");
-            op_focei.covMethod = 3;
+            rState = 3;
+            needS = true;
             op_focei.cur += op_focei.npars*2;
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
           }
         }
-        arma::mat cholS;
-        int origCov = op_focei.covMethod;
-        std::string sstr="s";
-        bool sHasZero = false;
-        if (op_focei.covMethod == 1 || op_focei.covMethod == 3) {
+        if (needS) {
           if (!e.exists("cholS")){
             runGill();
             CovStageScope _st(covStS);
@@ -12280,18 +12367,11 @@ NumericMatrix foceiCalcCov(Environment e){
             isPd = foceiCovUsable(e, "S", as<arma::mat>(e["S0"]), sstr, checkSandwich);
             if (!isPd){
               warning(_("S matrix non-positive definite"));
-              if (op_focei.covMethod == 1){
-                e["cov"] = as<NumericMatrix>(e["covR"]);
-                op_focei.covMethod = 2;
-              } else {
-                // nothing else to use: fail, rather than label it "s" with no cov
-                warning(_("cannot calculate covariance"));
-                op_focei.covMethod = 0;
-              }
+              sState = 2;
               op_focei.cur += op_focei.npars*2;
               op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
             } else {
-              cholS = as<arma::mat>(e["cholS"]);
+              arma::mat cholS = as<arma::mat>(e["cholS"]);
               arma::mat S;
               if (e.exists("S")){
                 S = as<arma::mat>(e["S"]);
@@ -12299,165 +12379,41 @@ NumericMatrix foceiCalcCov(Environment e){
                 S = trans(cholS) * cholS;
                 e["S"] = wrap(S);
               }
-              // Issue #666: the S-matrix (OPG/cross-product) covariance is
-              // Sinv = S^{-1}.  This was 4*Sinv, which made every covMethod="s"
-              // SE 2x too large.  Confirmed against the empirical sampling
-              // covariance of a known data-generating model: r, the sandwich,
-              // and S^{-1} all match the true Cov(theta_hat), while 4*S^{-1}
-              // is ~2x.  covS also feeds the selection heuristic below, so it
-              // is fixed at source alongside covR.
+              // the S-matrix (cross-product) covariance is S^{-1} (issue #666)
               arma::mat Sinv;
               foceiCholInv(cholS, Sinv, "S");
-              if (op_focei.covMethod == 1){
-                e["covRS"] = Rinv * S *Rinv;
-                arma::mat covRS = as<arma::mat>(e["covRS"]);
-                e["covS"]= Sinv;
-                bool covRSsmall = arma::any(abs(covRS.diag()) < op_focei.covSmall);
-                bool checkSandwich2 = !checkSandwich && covRSsmall;
-                if (checkSandwich || checkSandwich2){
-                  if (!checkSandwich2 && rstr == "r"){
-                    // Use covR
-                    e["cov"] = as<NumericMatrix>(e["covR"]);
-                    op_focei.covMethod=2;
-                  } else if (!checkSandwich2 && sstr == "s"){
-                    // use covS
-                    e["cov"] = as<NumericMatrix>(e["covS"]);
-                    op_focei.covMethod=3;
-                  } else {
-                    // Now check sandwich matrix against R and S methods.
-                    // issue #666 rescaled covR (2*Rinv->Rinv) and covS (4*Sinv->Sinv)
-                    // but left the sandwich covRS unchanged.  This selector's covSmall
-                    // diagonal floors and magnitude ordering were calibrated to the OLD
-                    // covR/covS scale, so compare in that scale (covR*2, covS*4) to keep
-                    // the estimator choice invariant to the rescale; the *installed*
-                    // covR/covS/covRS (below) stay on the corrected #666 scale.
-                    double covRSd= sum(covRS.diag());
-                    arma::mat covR = as<arma::mat>(e["covR"]);
-                    bool covRsmall = arma::any(abs(2.0*covR.diag()) < op_focei.covSmall);
-                    double covRd= sum(2.0*covR.diag());
-                    arma::mat covS = as<arma::mat>(e["covS"]);
-                    bool covSsmall = arma::any(abs(4.0*covS.diag()) < op_focei.covSmall);
-                    double  covSd= sum(4.0*covS.diag());
-                    if ((covRSsmall && covSsmall && covRsmall)){
-                      e["cov"] = covRS;
-                    } else if (covRSsmall && covSsmall && !covRsmall) {
-                      e["cov"] = covR;
-                      op_focei.covMethod=2;
-                    } else if (covRSsmall && !covSsmall && covRsmall) {
-                      e["cov"] = covS;
-                      op_focei.covMethod=3;
-                    } else if (covRSd > covRd){
-                      // SE(RS) > SE(R)
-                      if (covRd > covSd){
-                        // SE(R) > SE(S)
-                        e["cov"] = covS;
-                        op_focei.covMethod=3;
-                      } else {
-                        e["cov"] = covR;
-                        op_focei.covMethod=2;
-                      }
-                    } else if (covRSd > covSd){
-                      e["cov"] = covS;
-                      op_focei.covMethod=3;
-                    } else {
-                      e["cov"] = covRS;
-                    }
-                  }
-                } else {
-                  e["cov"] = covRS;
-                }
+              e[".covSinv"] = wrap(Sinv);
+              if (req == 1 && rState == 1) {
+                e["covRS"] = Rinv * S * Rinv;
+                e["covS"] = Sinv;
               } else {
                 op_focei.cur++;
                 op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-                e["cov"]= Sinv;   // issue #666: S-matrix covariance is S^{-1}, not 4*S^{-1}
               }
+              sState = 1;
             }
           } else {
-            if (op_focei.covMethod == 1){
-              RSprintf("\rS matrix calculation failed; Switch to R-matrix covariance.\n");
-              e["cov"] = wrap(e["covR"]);
-              op_focei.covMethod = 2;
-            } else {
-              op_focei.covMethod=0;
-              RSprintf("\rCould not calculate covariance matrix.\n");
-              warning(_("cannot calculate covariance"));
-              op_focei.cur++;
-              op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-            }
+            sState = 3;
           }
         }
         op_focei.cur=op_focei.totTick;
         op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-        if (e.exists("cov")){
-          arma::mat cov = as<arma::mat>(e["cov"]);
-          if (all(cov.diag() < 1e-7)){
-            warning(_("The variance of all elements are unreasonably small, <1e-7"));
-            op_focei.covMethod=0;
-            e.remove("cov");
-          }
-        }
-        if (op_focei.covMethod==0){
-          warning(_("covariance step failed"));
+        int slot = foceiCovSelect(e, req, rState, sState, rstr, sstr, checkSandwich, sHasZero);
+        if (e.exists(".covSinv")) e.remove(".covSinv");
+        if (slot == 0) {
           e["covMethod"] = CharacterVector::create("failed");
           NumericMatrix ret;
           return ret;
-        } else {
-          if (sHasZero) {
-            warning(_("S matrix had problems solving for some subject and parameters"));
-          }
-          bool doWarn=false;
-          if (op_focei.covMethod != 3){
-            // the R matrix is part of the covariance
-            if (rstr == "|r|"){
-              warning(_("R matrix non-positive definite but corrected by R = sqrtm(R%%*%%R)"));
-              doWarn=true;
-            } else if (rstr == "r+"){
-              warning(_("R matrix non-positive definite but corrected (because of cholAccept)"));
-              doWarn=true;
-            }
-          }
-          if (op_focei.covMethod == 1){
-            if (sstr == "|s|"){
-              warning(_("S matrix non-positive definite but corrected by S = sqrtm(S%%*%%S)"));
-              doWarn=true;
-            } else if (sstr == "s+"){
-              warning(_("S matrix non-positive definite but corrected (because of cholAccept)"));
-              doWarn=true;
-            }
-            if (doWarn){
-              warning(_("since sandwich matrix is corrected, you may compare to $covR or $covS if you wish"));
-            }
-            rstr =  rstr + "," + sstr;
-            e["covMethod"] = wrap(rstr);
-          } else if (op_focei.covMethod == 2){
-            e["covMethod"] = wrap(rstr);
-            if (origCov != 2){
-              if (checkSandwich){
-                warning(_("using R matrix to calculate covariance, can check sandwich or S matrix with $covRS and $covS"));
-              } else {
-                warning(_("using R matrix to calculate covariance"));
-              }
-            }
-          } else if (op_focei.covMethod == 3){
-            e["covMethod"] = wrap(sstr);
-            if (origCov != 2){
-              if (checkSandwich){
-                warning(_("using S matrix to calculate covariance, can check sandwich or R matrix with $covRS and $covR"));
-              } else {
-                warning(_("using S matrix to calculate covariance"));
-              }
-            }
-          }
-          if (e.exists("cov")) {
-            RObject covRO = e["cov"];
-            if (covRO.sexp_type() == REALSXP &&
-                Rf_isMatrix(covRO)) {
-              return as<NumericMatrix>(covRO);
-            }
-          }
-          NumericMatrix ret;
-          return ret;
         }
+        op_focei.covMethod = slot;
+        if (e.exists("cov")) {
+          RObject covRO = e["cov"];
+          if (covRO.sexp_type() == REALSXP && Rf_isMatrix(covRO)) {
+            return as<NumericMatrix>(covRO);
+          }
+        }
+        NumericMatrix ret;
+        return ret;
       } else {
         if (op_focei.covMethod && boundary){
           warning(_("parameter estimate near boundary; covariance not calculated:\n   ") + boundStr +
