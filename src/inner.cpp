@@ -2020,6 +2020,11 @@ static inline void fdRestoreVec(const std::vector<double> &src, double *dst) {
   if (!src.empty()) std::copy(src.begin(), src.end(), dst);
 }
 
+// TRUE from the start of restoreFitSolve_()'s rebuild until it succeeds: the global
+// solve is then whatever a failed or interrupted rxSolve_ left, so the covariance
+// step's guards do not write their saved state back into its subjects.
+static bool covFitSolveLost_ = false;
+
 // Everything innerOpt1() moves that must not leak out of a differencing call.
 //
 // EtaRestoreGuard covers par_ptr only, which is NOT where the inner optimizer keeps
@@ -2090,7 +2095,7 @@ struct FdInnerStateGuard {
     fInd->lik[0] = lik[0]; fInd->lik[1] = lik[1]; fInd->lik[2] = lik[2];
     fInd->setup = setup; fInd->uzm = uzm; fInd->mode = mode;
     fInd->stickyRecalcN2 = stickyRecalcN2;
-    {
+    if (!covFitSolveLost_) {
       rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(cid_));
       if (ind != NULL) setIndTolFactor(ind, tolFactor);
     }
@@ -8600,10 +8605,6 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex);
 // Stash foceiSetup_'s rxSolve_ setup args so foceiCalcR can re-run them and restore
 // the fit solve before the finite-difference Hessian.
 static SEXP covSolveArgs_ = R_NilValue;
-// TRUE from the start of restoreFitSolve_()'s rebuild until it succeeds: the global
-// solve is then whatever a failed or interrupted rxSolve_ left, so the covariance
-// step's guards do not write their saved tolerances back into it.
-static bool covFitSolveLost_ = false;
 static void storeCovSolveArgs_(SEXP obj, SEXP rxControl, SEXP params, SEXP data) {
   List L = List::create(obj, rxControl, params, data);
   if (covSolveArgs_ != R_NilValue) R_ReleaseObject(covSolveArgs_);
@@ -8927,6 +8928,7 @@ struct CovEtaStart {
     entry.clear();
     for (int id = 0; id < nId; ++id) {
       inds_focei[id].setup = 0;
+      if (covFitSolveLost_) continue;
       rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
       if (ind != NULL) setIndSolve(ind, -1);
     }
@@ -9606,6 +9608,8 @@ NumericVector foceiSetup_(const RObject &obj,
                      R_NilValue, // inits
                      1);//const int setupOnly = 0
     rx = getRxSolve_();
+    // a failed restore in an earlier fit's covariance step says nothing about this solve
+    covFitSolveLost_ = false;
     // per-subject outer-retry counters, now that nsub is known
     op_focei.outerStickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
     if (op_focei.neta == 0) foceiSetupNoEta_();
