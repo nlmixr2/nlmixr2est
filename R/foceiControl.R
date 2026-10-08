@@ -187,7 +187,11 @@
 #'     tolerances (lbfgsb3c) each times 1e-3, capped at 1e-9.  No derived
 #'     tolerance goes below 1e-14 unless the fit's own already is.
 #'     A number sets \code{atol = rtol = covSolveTol} for both kinds of solve.
-#'     Estimation itself always runs at the fit's tolerances.
+#'     Estimation itself always runs at the fit's tolerances.  When the
+#'     finite-difference standard errors look noisy (they change with small
+#'     changes to the steps or the estimates, or disagree with
+#'     \code{covMethod="analytic"}), a tighter value such as \code{1e-10} or
+#'     \code{1e-12} can help: every probe's solve error enters the differences.
 #'
 #' @param covFull shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 #'     full theta + residual sigma + Omega covariance (assembled analytically for
