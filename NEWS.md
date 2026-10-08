@@ -534,6 +534,7 @@
   coefficients are not separately identifiable), so the additive and
   proportional parameters are nlme's `const` and `prop` themselves.
 
+
 ### Parameter scaling
 
 - `ui$scaleCtheta` (and `ui$scaleCnls`) now give one scaling constant per
