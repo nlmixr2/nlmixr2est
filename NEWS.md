@@ -8,8 +8,9 @@
   separate theta-only step search, R stencil and S legs no longer run, and both
   shapes use the covariance step sizes (`gillKcov`, `gillStepCov`,
   `gillFtolCov`).  The S matrix is read from the points the R stencil already
-  evaluates, and `covMethod = "analytic"` runs no step search unless the analytic
-  R is declined.  On `theo_sd` and the warfarin model of the audit the default
+  evaluates; with `covFull = FALSE` this also holds for `smatNorm = FALSE`, whose
+  S steps are the R stencil's.  `covMethod = "analytic"` runs no step search
+  unless the analytic R is declined.  On `theo_sd` and the warfarin model of the audit the default
   covariance takes about a quarter fewer objective evaluations (242 to 178, 505
   to 368) and 30-45% less time, and the theta-only standard errors move closer to
   the analytic ones (theo_sd 2.9% to 0.3%, warfarin 28% to 6%).  The fit's

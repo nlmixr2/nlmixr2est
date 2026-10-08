@@ -7374,11 +7374,31 @@ static bool fdHessian(FdHessObj &obj, double *x, int n, double f0, double *h,
   return ok;
 }
 
-// The FOCEi objective at theta for the covariance step's R matrix.
+static bool foceiFdLikById(arma::vec &out);
+
+// Each subject's -2LL at the theta-only R stencil's points that move one coordinate k
+// from the estimates, keyed by (k, theta[k]); foceiS() reads its legs from here when
+// they are the same points.  Cleared before every covariance step.
+static std::map<std::pair<int, double>, arma::vec> _covThetaAxis;
+
+// The FOCEi objective at theta for the covariance step's R matrix.  With keep set, a
+// point that moves one coordinate from x0 also records each subject's -2LL there
+// (_covThetaAxis); every probe starts its ETAs from eta-hat (CovEtaStart), so the
+// values do not depend on when the point was evaluated.
 struct FoceiHessObj : FdHessObj {
+  std::vector<double> x0;
+  bool keep = false;
   double f(double *x) {
     updateTheta(x);
     double ret = foceiOfv0(x);
+    if (keep && R_FINITE(ret) && ret < 5e100) {
+      int k = -1, nd = 0;
+      for (int i = 0; i < (int)x0.size(); ++i) {
+        if (x[i] != x0[i]) { ++nd; k = i; }
+      }
+      arma::vec l;
+      if (nd == 1 && foceiFdLikById(l)) _covThetaAxis[std::make_pair(k, x[k])] = l;
+    }
     op_focei.cur++;
     op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
     return ret;
@@ -11374,6 +11394,9 @@ int foceiCalcR(Environment e, bool tryAnalytic = true){
     h[k] = std::fabs(theta[k])*op_focei.rEpsC[k] + op_focei.aEpsC[k];
   }
   FoceiHessObj obj;
+  // a mixture's S legs take each component's score separately (foceiS)
+  obj.keep = covReuseOn() && op_focei.mixIdxN == 0;
+  if (obj.keep) obj.x0.assign(theta.begin(), theta.end());
   arma::mat H;
   // R matrix = Hessian/2
   // https://github.com/cran/nmw/blob/59478fcc91f368bb3bbc23e55d8d1d5d53726a4b/R/CovStep.R
@@ -11570,13 +11593,37 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       }
     }
   }
-  // The pooled gradient, a subject's fallback score below.  After the base values
-  // above: its finite-difference legs move them.  A zero component is a value here, not
-  // the outer optimizer's reset request that numericGrad() flags it as, so zeroGrad is
-  // put back as it was: it drives the "zero gradient replaced with small number" report
-  // and the theta reset in the next innerOpt().
-  arma::vec gfull(npars);
-  {
+  auto sDelta = [&](int k) {
+    double d = doForward ? std::fabs(theta[k])*op_focei.rEps[k] + op_focei.aEps[k] :
+      std::fabs(theta[k])*op_focei.rEpsC[k] + op_focei.aEpsC[k];
+    if (smatNorm) d /= _safe_sqrt(1+std::fabs(min2(op_focei.initObjective, op_focei.lastOfv)));
+    return d;
+  };
+  // A central leg pair the R stencil already evaluated (_covThetaAxis) is read, not solved.
+  int nsubS = (int)getRxNsub(rx);
+  std::vector<const arma::vec*> axP(npars, nullptr), axM(npars, nullptr);
+  const bool canAxis = !doForward && op_focei.mixIdxN == 0;
+  bool allAxis = canAxis;
+  for (cpar = npars; canAxis && cpar--;) {
+    double d = sDelta(cpar);
+    auto ip = _covThetaAxis.find(std::make_pair(cpar, theta[cpar] + d));
+    auto im = _covThetaAxis.find(std::make_pair(cpar, theta[cpar] - d));
+    if (ip != _covThetaAxis.end() && im != _covThetaAxis.end() &&
+        (int)ip->second.n_elem == nsubS && (int)im->second.n_elem == nsubS) {
+      axP[cpar] = &ip->second;
+      axM[cpar] = &im->second;
+    } else {
+      allAxis = false;
+    }
+  }
+  // The pooled gradient, a subject's fallback score below; not needed when every leg is
+  // read.  After the base values above: its finite-difference legs move them.  A zero
+  // component is a value here, not the outer optimizer's reset request that
+  // numericGrad() flags it as, so zeroGrad is put back as it was: it drives the "zero
+  // gradient replaced with small number" report and the theta reset in the next
+  // innerOpt().
+  arma::vec gfull(npars, fill::zeros);
+  if (!allAxis) {
     ScopedRestore<bool> zeroGrad(op_focei.zeroGrad);
     numericGrad(theta, gfull.memptr());
   }
@@ -11586,20 +11633,14 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     // A mixture proportion's per-subject score is known in closed form, so the
     // finite difference is skipped entirely for those parameters.
     if (foceiSMixScore(cpar, mixR, mixP, nMixS)) continue;
-    double rEps = op_focei.rEps[cpar];
-    double rEpsC = op_focei.rEpsC[cpar];
-    if (smatNorm){
-      if (doForward){
-        delta = (std::fabs(theta[cpar])*rEps + op_focei.aEps[cpar])/_safe_sqrt(1+std::fabs(min2(op_focei.initObjective, op_focei.lastOfv)));
-      } else {
-        delta = (std::fabs(theta[cpar])*rEpsC + op_focei.aEpsC[cpar])/_safe_sqrt(1+std::fabs(min2(op_focei.initObjective, op_focei.lastOfv)));
+    delta = sDelta(cpar);
+    if (axP[cpar] != nullptr) {
+      for (gid = nsubS; gid--;) {
+        inds_focei[gid].thetaGrad[cpar] = ((*axP[cpar])[gid] - (*axM[cpar])[gid]) / (2*delta);
       }
-    } else {
-      if (doForward){
-        delta = std::fabs(theta[cpar])*rEps + op_focei.aEps[cpar];
-      } else {
-        delta = std::fabs(theta[cpar])*rEpsC + op_focei.aEpsC[cpar];
-      }
+      op_focei.cur++;
+      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+      continue;
     }
     if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
     cur = theta[cpar];
@@ -12322,8 +12363,6 @@ static double foceiFdGillStep(const FdFullCtx &c, int i, const std::vector<doubl
            -1, foceiFdGill83fn, 0, f0);
   return (gret == 1 && R_FINITE(hphif) && hphif > 0) ? hphif : NA_REAL;
 }
-
-static bool foceiFdLikById(arma::vec &out);
 
 // The full FD's objective for fdHessian; foceiCalcRFdFull's FdFullStateGuard
 // re-installs the base point.  With x0 set, a point that moves one coordinate k from
@@ -14951,7 +14990,9 @@ Environment foceiFitCpp_(Environment e){
     CovEtaStart _etaStart(e);
     std::fill_n(_covEvals, (int)covStN, 0);
     _fdFullDone = false;
+    _covThetaAxis.clear();
     foceiCalcCov(e);
+    _covThetaAxis.clear();
     // covType="fd" + covFull=TRUE: the full theta+sigma+Omega FD covariance (installed by
     // .foceiInstallFdFullCov).  Also runs when covType="analytic" DECLINED (analytic out of
     // scope leaves no .analyticCov and drops to the FD r,s sandwich) so that fallback still

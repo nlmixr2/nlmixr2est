@@ -661,6 +661,27 @@ nmTest({
     expect_gt(.anOff$env$covEvals[["gill"]], 0L)
   })
 
+  test_that("the theta-only S is read from the R stencil when its steps are R's", {
+    skip_on_cran()
+    # with smatNorm = FALSE the S legs are the R stencil's x +/- h points, so no S leg is
+    # solved and the covariance is the same, bit for bit; the default smatNorm = TRUE
+    # takes smaller S steps, which the stencil does not have
+    .fit <- function(reuse, ...) {
+      withr::local_envvar(NLMIXR2EST_COV_NO_REUSE = if (reuse) "" else "1")
+      .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covFull = FALSE, ...))
+    }
+    .on <- .fit(TRUE, smatNorm = FALSE)
+    .off <- .fit(FALSE, smatNorm = FALSE)
+    expect_identical(.on$covMethod, "r,s")
+    expect_identical(.on$cov, .off$cov)
+    expect_identical(.on$env$covS, .off$env$covS)
+    expect_identical(.on$env$covEvals[["s"]], 0L)
+    expect_identical(.off$env$covEvals[["s"]], 2L * nrow(.on$cov))
+    expect_identical(.on$env$covEvals[["r"]], .off$env$covEvals[["r"]])
+    .def <- .fit(TRUE)
+    expect_identical(.def$env$covEvals[["s"]], 2L * nrow(.def$cov))
+  })
+
   test_that("the theta-only covariance is read from the full stage", {
     skip_on_cran()
     # with covFull the full theta+sigma+Omega stencil also gives the theta-only R and S
