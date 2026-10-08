@@ -172,7 +172,9 @@ test_that(".impCovInstall() installs nothing when the information cannot be repa
   .info <- .impMockInfo(c(40, 25, 9, 4, 2, -0.5))
   .bad <- replace(.info, 1L, NA_real_)
   .zero <- .impMockInfo(c(40, 25, 9, 4, 2, 0))
-  for (.i in list(NULL, .bad, .zero)) {
+  # nearly singular: solve() inverts it on some LAPACKs (macOS) and not others
+  .tiny <- .impMockInfo(c(40, 25, 9, 4, 2, -1e-13))
+  for (.i in list(NULL, .bad, .zero, .tiny)) {
     .env <- .impMockEnv()
     expect_warning(
       .ok <- .impCovInstall(.env, solve(.info), 1:2, .dOm, .impMockOmega, .rx$theta, .i),
