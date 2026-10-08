@@ -197,31 +197,15 @@ nlmControl <- function(
   }
   checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
 
-  .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
-  if (checkmate::testIntegerish(solveType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    solveType <- as.integer(solveType)
-  } else {
-    solveType <- setNames(.solveTypeIdx[match.arg(solveType)], NULL)
-  }
+  solveType <- .nlmCtlCode(solveType, c("hessian" = 3L, "grad" = 2L, "fun" = 1L), "solveType")
   if (missing(covMethod) && any(solveType == 2:3)) {
     covMethod <- "nlm"
   } else {
-    covMethod <- match.arg(covMethod)
+    covMethod <- .nlmCtlCovMethod(covMethod, match.arg(covMethod))
   }
 
-  .eventTypeIdx <- c("central" = 2L, "forward" = 1L)
-  if (checkmate::testIntegerish(eventType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    eventType <- as.integer(eventType)
-  } else {
-    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
-  }
-
-  .optimHessTypeIdx <- c("central" = 2L, "forward" = 1L)
-  if (checkmate::testIntegerish(optimHessType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    optimHessType <- as.integer(optimHessType)
-  } else {
-    optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
-  }
+  eventType <- .nlmCtlCode(eventType, c("central" = 2L, "forward" = 1L), "eventType")
+  optimHessType <- .nlmCtlCode(optimHessType, c("central" = 2L, "forward" = 1L), "optimHessType")
   # censOption: FOCEI-family censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic
   # Gauss-Newton, default) or "laplace" (exact).  Accepted for a uniform interface but INERT for
   # NLM (its finite-difference Hessian already reflects censoring exactly); kept for alignment.
@@ -595,6 +579,89 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
   .eventTheta
 }
 
+#' Whether the lagged variables need finite differences
+#'
+#' An ODE that still uses one after `.foceiLagIntoOde()` (a history call in
+#' it), or one defined more than once: symengine inlines an lhs that reads it
+#' with its final value, so the predictions do not follow the order of the
+#' definitions (nlmixr2/rxode2#1435).
+#' @param s symengine environment
+#' @return `TRUE` when the thetas are finite-differenced
+#' @noRd
+.nlmFamilyLagFd <- function(s) {
+  .foceiLagInOde(s) || anyDuplicated(sub("=.*$", "", .foceiLagDefs(s))) > 0L
+}
+
+#' Theta sensitivities through the lagged calculated variables
+#'
+#' `.foceiLagSens()` for the thetas, with its lines split by definition.
+#' @param s symengine environment holding the state sensitivities
+#' @param stateVars the model states
+#' @return list with `defs` (the definitions), `byDef` (the sensitivity lines
+#'   of each) and `dfe(k, sign)`, the total derivative of `sign * rx_pred_` by
+#'   `THETA[k]` (`se`, and its rxode2 text `txt`)
+#' @noRd
+.nlmFamilyLagSens <- function(s, stateVars) {
+  .defs <- .foceiLagDefs(s)
+  .pars <- paste0("THETA_", seq_len(s$..maxTheta), "_")
+  .lag <- .foceiLagSens(s, stateVars, .pars)
+  .pred <- get("rx_pred_", envir = s)
+  list(
+    defs = .defs,
+    byDef = split(.lag$lines, rep(seq_along(.defs), each = length(.pars))),
+    dfe = function(k, sign = 1) {
+      .d <- .lag$dfe(.pred, .pars[k]) * sign
+      list(se = .d, txt = .lag$txt(.d, .pars[k]))
+    }
+  )
+}
+
+#' Put each lagged-variable sensitivity line right before its definition
+#'
+#' There it reads the definition's inputs (including a variable the
+#' definition reassigns) as the definition does.
+#'
+#' @param lhs the model's lhs lines
+#' @param lagSens the `.nlmFamilyLagSens()` result (`NULL` for none)
+#' @return `lhs` with the sensitivity lines inserted
+#' @noRd
+.nlmFamilyLagSensInsert <- function(lhs, lagSens) {
+  if (is.null(lagSens)) {
+    return(lhs)
+  }
+  .ret <- character(0)
+  .d <- 1L
+  for (.l in lhs) {
+    if (.d <= length(lagSens$defs) && identical(.l, lagSens$defs[.d])) {
+      .ret <- c(.ret, lagSens$byDef[[.d]])
+      .d <- .d + 1L
+    }
+    .ret <- c(.ret, .l)
+  }
+  if (.d <= length(lagSens$defs)) {
+    stop("cannot place the lagged-variable sensitivities", call. = FALSE)
+  }
+  .ret
+}
+
+#' Which THETAs an nlm-family model uses
+#'
+#' Used when a lagged calculated variable enters an ODE: the thetas are then
+#' finite-differenced, so a prediction depends on every theta the prediction,
+#' the ODEs or the calculated variables use.
+#' @param s symengine environment
+#' @return logical vector, one element per THETA
+#' @noRd
+.nlmFamilyThetaUsed <- function(s) {
+  .prd <- get("rx_pred_", envir = s)
+  .txt <- c(rxode2::rxFromSE(.prd), s$..ddt, s$..lhs)
+  vapply(
+    seq_len(s$..maxTheta),
+    function(k) any(grepl(paste0("THETA[", k, "]"), .txt, fixed = TRUE)),
+    logical(1)
+  )
+}
+
 #' @export
 rxUiGet.nlmRxModel <- function(x, ...) {
   .nlmFamilyRxModel(x, "nlm", ...)
@@ -629,11 +696,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   # variables referenced by lag()/history functions (eg the AR(1) residual) are
   # not part of rx_pred_ itself; include their definitions so the history
   # reference resolves in the compiled model
-  .lagDefs <- character(0)
-  if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
-    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
-    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
-  }
+  .lagDefs <- .foceiLagDefs(.s)
   # rx_pred_f_/rx_r_/rx_nu_ outputs for censoring support
   .fr <- if (.spec$censFR) .nlmGetFRLines(.s) else list()
   .ret <- paste(
@@ -698,7 +761,14 @@ attr(rxUiGet.nlmThetaS, "rstudio") <- emptyenv()
 #' @noRd
 .nlmFamilyThetaS <- function(x, type) {
   .s <- .loadSymengine(.nlmFamilyPrune(x, type), promoteLinSens = TRUE)
-  .sensEtaOrTheta(.s, theta = TRUE, rxui = x[[1]], matExpForcing = .nlmFamilySpec(type)$matExpForcing)
+  .foceiLagIntoOde(.s)
+  .matExpForcing <- .nlmFamilySpec(type)$matExpForcing
+  .mv <- rxode2::rxModelVars(.s)
+  if (!.matExpForcing && is.list(.mv$indLin) && length(.mv$indLin) == 4L && !is.null(.mv$indLin$f)) {
+    # a work-around until the native forcing sensitivities match (#860)
+    warning("matExp() with indLin() forcing: sensitivities use the ODE form", call. = FALSE)
+  }
+  .sensEtaOrTheta(.s, theta = TRUE, rxui = x[[1]], matExpForcing = .matExpForcing)
 }
 
 #' @export
@@ -741,6 +811,37 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .thetaVars <- paste0("THETA_", seq_len(.s$..maxTheta), "_")
   .carry <- .rxCarryThetaPairsForBuild(x, .s, .thetaVars)
   .ret <- apply(.grd, 1, .nlmFamilyHdThetaLine, .s = .s, .carry = .carry, .predMinusDv = .predMinusDv, .zero = .zero)
+  .s$..lagSens <- NULL
+  if (length(.foceiLagDefs(.s)) > 0L) {
+    if (.nlmFamilyLagFd(.s)) {
+      # the thetas are finite-differenced (.nlmFamilyEnv()), so judge by the
+      # thetas the model uses
+      .used <- .nlmFamilyThetaUsed(.s)
+      .zero$all <- !any(.used)
+      .zero$any <- !all(.used)
+    } else {
+      # the derivatives above stop at a lagged variable: chain them through it
+      .lag <- .nlmFamilyLagSens(.s, .stateVars)
+      .s$..lagSens <- .lag
+      .zero$any <- FALSE
+      .zero$all <- TRUE
+      .ret <- vapply(
+        seq_len(nrow(.grd)),
+        function(r) {
+          .dfe <- .grd[r, "dfe"]
+          .k <- as.integer(sub("^.*_BY_THETA_([0-9]+)___$", "\\1", .dfe))
+          # rxExpandFEta_() differentiates -rx_pred_ when predMinusDv = FALSE
+          .d <- .lag$dfe(.k, if (.predMinusDv) 1 else -1)
+          assign(.dfe, .d$se, envir = .s)
+          .isZero <- identical(suppressWarnings(try(as.numeric(.d$se), silent = TRUE)), 0)
+          .zero$any <- .zero$any || .isZero
+          .zero$all <- .zero$all && .isZero
+          paste0(.dfe, "=", .d$txt)
+        },
+        character(1)
+      )
+    }
+  }
   if (.zero$all) {
     stop("none of the predictions depend on 'THETA'", call. = FALSE)
   }
@@ -822,7 +923,8 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   if (is.null(.ddt)) {
     .ddt <- character(0)
   }
-  .lhs <- character(0)
+  # nls keeps only the definitions a history function needs
+  .lhs <- .foceiLagDefs(.s)
   if (.spec$lhs) {
     .lhs <- .s$..lhs
     if (is.null(.lhs)) {
@@ -842,7 +944,9 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
       .s$params,
       .s$..stateInfo["state"],
       interpLines,
-      .lhs,
+      # lagged-variable sensitivities follow their definitions, ahead of
+      # rx_pred_, whose sensitivity columns must follow it
+      .nlmFamilyLagSensInsert(.lhs, .s$..lagSens),
       .ddt,
       .sens,
       ## DDE non-constant delay() pre-history: base past(state,tau)<-expr + the
@@ -940,6 +1044,11 @@ attr(rxUiGet.nlmEnv, "rstudio") <- emptyenv()
   ## is then taken by finite differences.  Under eventSens="jump" none are
   ## flagged: rxode2 injects the jump sensitivities analytically.
   .s$.eventTheta <- .nlmFamilyEventTheta(.s, !identical(rxode2::rxGetControl(x[[1]], "eventSens", "jump"), "jump"))
+  ## A lagged calculated variable the analytic sensitivities cannot follow
+  ## (.nlmFamilyLagFd()): finite-difference every theta
+  if (length(.foceiLagDefs(.s)) > 0L && .nlmFamilyLagFd(.s)) {
+    .s$.eventTheta[] <- 1L
+  }
   .s
 }
 
@@ -1147,7 +1256,6 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
     objective = "minimum",
     controlToFocei = .nlmControlToFoceiControl,
     returnFlag = "returnNlm",
-    emitFitWarnings = TRUE,
     message = function(.fit) {
       if (.fit$code == 1) {
         "relative gradient is close to zero, current iterate is probably solution"

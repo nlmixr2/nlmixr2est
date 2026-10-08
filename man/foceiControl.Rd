@@ -817,8 +817,10 @@ coupling these parameters exist to remove. Has no effect unless
 \item{trustPolish}{logical; when `TRUE`, each converged `innerOpt="trust"`
 solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
 This makes the objective less dependent on the warm-start ETAs and can
-help a fit that stops short of its minimum (#1152).  `FALSE` (default)
-keeps the plain trust solve.}
+help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+outer search then also restarts once from where it stops, which costs
+about twice the outer evaluations.  `FALSE` (default) keeps the plain
+trust solve and a single outer search.}
 
 \item{innerLbfgsLmm}{number of BFGS updates retained by the
 `innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.

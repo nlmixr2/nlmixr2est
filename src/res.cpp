@@ -46,11 +46,27 @@ void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
   }
 }
 
+// The number of identifier columns (ID, time, ...) of a solved data frame: the
+// columns up to and including time.
 int getPredIndex(List &ipredL) {
   CharacterVector names= ipredL.attr("names");
   for (int i = 0; i < names.size(); ++i) {
     if (names[i] == "time") return (i+1);
   }
+  stop(_("'time' not found in the solved data.frame"));
+  return -1;
+}
+
+// The index of the column `name` of a solved data frame.  The prediction
+// (rx_pred_), its variance (rx_r_) and a simulation (sim) are found by name: the
+// variables lag() refers to are output ahead of rx_pred_, so it is not always
+// the column after time.
+int getDfColIndex(List &df, const char *name) {
+  CharacterVector names = df.attr("names");
+  for (int i = 0; i < names.size(); ++i) {
+    if (names[i] == name) return i;
+  }
+  stop(_("'%s' not found in the solved data.frame"), name);
   return -1;
 }
 
@@ -211,22 +227,21 @@ extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   int ncalc = Rf_length(ipredL[0]);
   List etasDf = as<List>(etasDfSEXP);
   int nid = Rf_length(etasDf[0]);
-  int npred = getPredIndex(ipredL);
-  if (npred == -1) {
-    stop(_("malformed dataframes, no time present in ipred data.frame"));
-  }
+  int nidCol = getPredIndex(ipredL);
+  int npred = getDfColIndex(ipredL, "rx_pred_");
+  int nr = getDfColIndex(ipredL, "rx_r_");
 
   arma::vec ipredt(REAL(ipredL[npred]), ncalc, false, true);
   arma::vec ipred(ipredt.size());
 
-  arma::vec predt(REAL(predL[npred]), ncalc, false, true);
+  arma::vec predt(REAL(predL[getDfColIndex(predL, "rx_pred_")]), ncalc, false, true);
   arma::vec pred(predt.size());
 
   arma::vec dv(REAL(dvIn), ncalc, false, true);
   arma::vec dvt(ncalc);
 
-  arma::vec rpv(REAL(predL[npred+1]), ncalc, false, true);
-  arma::vec riv(REAL(ipredL[npred+1]), ncalc, false, true);
+  arma::vec rpv(REAL(predL[getDfColIndex(predL, "rx_r_")]), ncalc, false, true);
+  arma::vec riv(REAL(ipredL[nr]), ncalc, false, true);
 
 
   arma::Col<int> cens;
@@ -365,7 +380,7 @@ extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   retC = dfCbindList(wrap(retC));
   List ret(4);
   ret[0] = wrap(dv);
-  ret[1] = getDfIdentifierCols(ipredL, npred, stateSXP, IDlabelSEXP);
+  ret[1] = getDfIdentifierCols(ipredL, nidCol, stateSXP, IDlabelSEXP);
   ret[2] = retC;
   ret[3] = etaLst;
   return wrap(ret);

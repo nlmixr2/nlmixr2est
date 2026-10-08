@@ -38,11 +38,12 @@ nmTest({
     # so the second call differences E0 at that step, outside the window.
     .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = "central", shi21maxHess = 1L)
     .withNlmProblem(.mod, .d, .ctl, function(x) {
-      nlmSolveGradHess(x)
-      # nlmSolveGradHess() works on R's own vector, which for nlminb is the
-      # optimizer's iterate: the Hessian has to leave it exactly as it was.
+      .nlmixrNlmFunC(x)
+      # The objective with solveType = "hessian" works on R's own vector, which
+      # for nlm and nlminb is the optimizer's iterate: the Hessian has to leave
+      # it exactly as it was.
       x0 <- x + 0
-      r <- nlmSolveGradHess(x)
+      r <- .nlmixrNlmFunC(x)
       expect_identical(x, x0)
       .h <- attr(r, "hessian")
       # E0's column has no usable difference; the others do
@@ -75,7 +76,7 @@ nmTest({
     for (.type in c("central", "forward")) {
       .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = .type)
       .withNlmProblem(.mod, .d, .ctl, function(x) {
-        .gr <- function(p) attr(nlmSolveGradR(p), "gradient")
+        .gr <- function(p) optimFunC(p, TRUE)
         .h <- 1e-3
         .oracle <<- vapply(
           seq_along(x),
@@ -86,7 +87,7 @@ nmTest({
           numeric(length(x))
         )
         # first call searches the steps, second reuses them
-        .hess[[.type]] <<- lapply(1:2, function(.i) attr(nlmSolveGradHess(x + 0), "hessian"))
+        .hess[[.type]] <<- lapply(1:2, function(.i) attr(.nlmixrNlmFunC(x + 0), "hessian"))
       })
     }
     # cross terms are nonzero, so a swapped column or row would show

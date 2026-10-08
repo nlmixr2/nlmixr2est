@@ -10542,8 +10542,8 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
   NumericVector rEpsC(args.size());
   IntegerVector retN(args.size());
   NumericVector fN(args.size());
-  // f at the base point, taken once at the first searched parameter (it was never
-  // set when `which` excluded the last one)
+  // f at the base point, taken once at the first searched parameter and reported
+  // on every row; NA when no parameter is searched
   double f0 = NA_REAL;
   bool haveF0 = false;
   for (int i = args.size(); i--;){
@@ -10553,7 +10553,6 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
         f0 = gillRfn(theta);
         haveF0 = true;
       }
-      fN[i] = f0;
       retN[i] = gill83(&hfN[i], &hphifN[i], &gillDfN[i], &gillDf2N[i], &gillErrN[i],
                        theta, i, gillRtol, gillK, gillStep,
                        gillFtol,
@@ -10566,6 +10565,7 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
       aEps[i] = rEps[i] = aEpsC[i] = rEpsC[i] = NA_REAL;
     }
   }
+  std::fill(fN.begin(), fN.end(), f0);
   List df(11);
   retN.attr("levels") = CharacterVector::create("Not Assessed","Good","High Grad Error",
                                                 "Constant Grad","Odd/Linear Grad",

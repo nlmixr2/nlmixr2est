@@ -10,6 +10,8 @@ void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
 
 int getPredIndex(List &ipredL);
 
+int getDfColIndex(List &df, const char *name);
+
 void getLimitFromInput(SEXP limitIn, int& ncalc, arma::vec& limit, int &hasLimit);
 
 List getDfIdentifierCols(List &ipred, int &npred, SEXP cmtNames, SEXP IDlabel);

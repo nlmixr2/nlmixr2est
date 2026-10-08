@@ -6,14 +6,38 @@ test_that("a positive-definite Hessian is inverted as is", {
   expect_identical(.r$type, "r")
   expect_identical(.r$r, .h)
   expect_null(.r$warning)
+  # the factor inverted is the Hessian's own: nothing added
+  expect_equal(crossprod(.r$u), .h, tolerance = 1e-14)
 })
 
-test_that("an indefinite Hessian is repaired as |r|, else as the nearest positive-definite matrix", {
+test_that("a positive-definite but nearly singular Hessian is repaired as \"r+\", with a warning (issue 1140)", {
+  # eigenvalues 2 - 1e-7 and 1e-7: positive definite, but Schnabel-Eskow's
+  # modified Cholesky adds to the diagonal (as FOCEi's cholSE0 does, "r+")
+  .h <- matrix(c(1, 1 - 1e-7, 1 - 1e-7, 1), 2)
+  expect_gt(min(eigen(.h, symmetric = TRUE, only.values = TRUE)$values), 0)
+  .r <- .nlmCovFromHessian(.h)
+  expect_identical(.r$type, "r+")
+  expect_identical(.r$warning, "R matrix is nearly singular; corrected as \"r+\"")
+  .e <- diag(crossprod(.r$u)) - diag(.h)
+  expect_true(all(.e > 0) && all(.e <= foceiControl()$cholAccept))
+})
+
+test_that("a Hessian that is not positive definite is repaired as FOCEi repairs R, under its labels (issue 1140)", {
+  # nearly positive definite: Schnabel-Eskow's modified Cholesky adds at most
+  # cholAccept (2.2e-5 here) to the diagonal, "r+" as in foceiCovUsable()
+  .h <- diag(c(2, 1, -1e-5))
+  .r <- .nlmCovFromHessian(.h)
+  expect_identical(.r$type, "r+")
+  expect_identical(.r$r, .h)
+  expect_identical(.r$warning, "R matrix is not positive definite; corrected as \"r+\"")
+  expect_true(all(diag(crossprod(.r$u)) - diag(.h) <= foceiControl()$cholAccept))
+  # otherwise sqrtm(R %*% R), "|r|"
   .h <- matrix(c(1, 2, 2, 1), 2) # eigenvalues 3, -1
   .r <- .nlmCovFromHessian(.h)
   expect_identical(.r$type, "|r|")
   expect_equal(.r$r, sqrtm(.h %*% .h))
   expect_equal(eigen(.r$r, symmetric = TRUE, only.values = TRUE)$values, c(3, 1))
+  expect_equal(crossprod(.r$u), .r$r, tolerance = 1e-12)
   expect_identical(.r$warning, "R matrix is not positive definite; corrected as \"|r|\"")
 })
 
@@ -46,6 +70,28 @@ test_that("a Hessian that cannot be repaired gives no covariance", {
   .r <- .nlmCovFromHessian(matrix(0, 2, 2))
   expect_identical(.r$type, "failed")
   expect_identical(.r$warning, "R matrix is singular; covariance step failed")
+})
+
+test_that("every nlm-family control takes covMethod = \"\" (issue 1140)", {
+  # "" skips the covariance step; match.arg() cannot match it
+  for (.f in c(
+    "nlmControl",
+    "nlminbControl",
+    "optimControl",
+    "bobyqaControl",
+    "newuoaControl",
+    "uobyqaControl",
+    "n1qn1Control",
+    "lbfgsb3cControl",
+    "trustControl"
+  )) {
+    expect_identical(get(.f)(covMethod = "")$covMethod, "", info = .f)
+    expect_identical(get(.f)(covMethod = "r")$covMethod, "r", info = .f)
+  }
+  expect_identical(nlmControl()$covMethod, "nlm")
+  expect_identical(nlmControl(solveType = "fun")$covMethod, "r")
+  expect_identical(bobyqaControl()$covMethod, "r")
+  expect_error(nlmControl(covMethod = "s"))
 })
 
 # sensMethod of the foceiControl an nlm-family control finalizes with
@@ -94,5 +140,43 @@ nmTest({
     expect_equal(unname(.fit$env$bobyqa$cov.scaled), unname(solve(sqrtm(.h %*% .h))), tolerance = 1e-8)
     expect_true("R matrix is not positive definite; corrected as \"|r|\"" %in% .fit$runInfo)
     expect_null(.fit$env$bobyqa$covWarning)
+  })
+
+  test_that("an nlm-family fit with covMethod = \"\" computes no covariance (issue 1140)", {
+    .fit <- .nlmixr(.pk, nlmixr2data::theo_sd, est = "n1qn1", control = n1qn1Control(print = 0L, covMethod = ""))
+    expect_null(.fit$cov)
+    expect_null(.fit$env$n1qn1$r)
+  })
+
+  test_that("the warnings of every nlm-family run reach $runInfo (issue 1140)", {
+    # censored observations are finite-differenced, which nlmWarnings()
+    # reports during the run
+    .d <- nlmixr2data::theo_sd
+    .d$CENS <- ifelse(.d$DV < 2 & .d$EVID == 0, 1L, 0L)
+    .d$DV[.d$CENS == 1] <- 2
+    for (.est in c("nlm", "nlminb", "n1qn1")) {
+      .fit <- .nlmixr(.pk, .d, est = .est, control = list(print = 0L))
+      expect_true(
+        "NaN symbolic gradients were resolved with finite differences" %in% .fit$runInfo,
+        info = .est
+      )
+    }
+  })
+
+  test_that("the covariance is mapped to the natural scale by the diagonal scaling Jacobian (issue 1140)", {
+    # scaleType = "mult" estimates x = u * scaleTo / init, so du/dx = init / scaleTo
+    # and the covariance of u is J Cov(x) J with J = diag(init / scaleTo).  A
+    # characterization test: J's zero off-diagonal is explicit, and Armadillo
+    # (>= 10.5) also zero-fills, so it cannot tell the two apart.
+    .x <- nlmObjectiveSetup(
+      .pk,
+      nlmixr2data::theo_sd,
+      control = nlmControl(print = 0L, scaleType = "mult", scaleTo = 2)
+    )
+    on.exit(.nlmFreeEnv())
+    .init <- c(0.45, 1, 3.45, 0.7)
+    .n <- c("tka", "tcl", "tv", "add.sd")
+    .cov <- matrix(c(4, 1, 0.5, 0.2, 1, 3, 0.1, 0.3, 0.5, 0.1, 2, 0.4, 0.2, 0.3, 0.4, 1), 4, dimnames = list(.n, .n))
+    expect_equal(.nlmAdjustCov(.cov, .x), .cov * tcrossprod(.init / 2), tolerance = 1e-14)
   })
 })
