@@ -21,7 +21,14 @@ nmTest({
       rxode2::et(c(1, 6, 12, 23, 30, 40, 47, 60, 72)) |>
       rxode2::et(id = 1:6)
     .p <- data.frame(id = 1:6, tcl = log(3), eta.cl = 0.1 * c(-2, -1, 0, 1, 2, 3), add.sd = 0)
-    .s <- suppressWarnings(rxode2::rxSolve(.pkTimeModel, .ev, params = .p, nonmem = TRUE, covsInterpolation = "nocb", returnType = "data.frame"))
+    .s <- suppressWarnings(rxode2::rxSolve(
+      .pkTimeModel,
+      .ev,
+      params = .p,
+      nonmem = TRUE,
+      covsInterpolation = "nocb",
+      returnType = "data.frame"
+    ))
     .d <- as.data.frame(.ev)
     .d$dv <- NA_real_
     .d$dv[.d$evid == 0] <- .s$cp * (1 + 0.01 * sin(seq_along(.s$cp)))
@@ -34,7 +41,14 @@ nmTest({
   # IPRED and the fit's ETAs, re-solved directly by rxode2
   .pkTimeSolve <- function(fit, data, nonmem) {
     .p <- data.frame(id = fit$eta$ID, tcl = unname(fit$theta["tcl"]), eta.cl = fit$eta$eta.cl, add.sd = 0)
-    suppressWarnings(rxode2::rxSolve(.pkTimeModel, data, params = .p, nonmem = nonmem, covsInterpolation = "nocb", returnType = "data.frame"))$cp
+    suppressWarnings(rxode2::rxSolve(
+      .pkTimeModel,
+      data,
+      params = .p,
+      nonmem = nonmem,
+      covsInterpolation = "nocb",
+      returnType = "data.frame"
+    ))$cp
   }
 
   test_that("rx_time_pk~t is moved from ..lhs0 to the generated-model prologue", {
@@ -89,10 +103,14 @@ nmTest({
     skip_if_not(.rxSHasPkTime(), "rxode2 without rxS(pkTime=)")
     .d <- .pkTimeData()
     .fit <- .nlmixr(
-      .pkTimeModel, .d, "focei",
+      .pkTimeModel,
+      .d,
+      "focei",
       foceiControl(
         rxControl = rxode2::rxControl(covsInterpolation = "nocb", nonmem = TRUE),
-        maxOuterIterations = 0L, covMethod = "", print = 0
+        maxOuterIterations = 0L,
+        covMethod = "",
+        print = 0
       )
     )
     expect_true(.residCovsInterpolation(.fit)$nonmem)
@@ -117,10 +135,14 @@ nmTest({
     expect_true(length(.seen) > 0 && all(.seen))
 
     .fit0 <- .nlmixr(
-      .pkTimeModel, .d, "focei",
+      .pkTimeModel,
+      .d,
+      "focei",
       foceiControl(
         rxControl = rxode2::rxControl(covsInterpolation = "nocb"),
-        maxOuterIterations = 0L, covMethod = "", print = 0
+        maxOuterIterations = 0L,
+        covMethod = "",
+        print = 0
       )
     )
     expect_null(.residCovsInterpolation(.fit0)$nonmem)
@@ -134,7 +156,10 @@ nmTest({
     .ctl <- function(...) {
       foceiControl(
         rxControl = rxode2::rxControl(covsInterpolation = "nocb", nonmem = TRUE),
-        maxOuterIterations = 0L, covMethod = "", print = 0, ...
+        maxOuterIterations = 0L,
+        covMethod = "",
+        print = 0,
+        ...
       )
     }
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.pkTimeModel))
@@ -167,7 +192,14 @@ nmTest({
     .ev <- rxode2::et(amt = 100, time = c(0, 24, 48)) |>
       rxode2::et(c(1, 6, 12, 23, 30, 40, 47, 60, 72)) |>
       rxode2::et(id = 1:3)
-    .s <- suppressWarnings(rxode2::rxSolve(.pop, .ev, params = c(tcl = log(3), add.sd = 0), nonmem = TRUE, covsInterpolation = "nocb", returnType = "data.frame"))
+    .s <- suppressWarnings(rxode2::rxSolve(
+      .pop,
+      .ev,
+      params = c(tcl = log(3), add.sd = 0),
+      nonmem = TRUE,
+      covsInterpolation = "nocb",
+      returnType = "data.frame"
+    ))
     .d <- as.data.frame(.ev)
     .d$dv <- NA_real_
     .d$dv[.d$evid == 0] <- .s$cp
@@ -178,7 +210,12 @@ nmTest({
     .pkTimeChk(.popUi$nlmRxModel$predOnly)
     .pkTimeChk(.popUi$nlmSensModel$thetaGrad)
     .pkTimeChk(.popUi$nlmSensModel$predOnly)
-    .fit <- .nlmixr(.pop, .d, "nlminb", nlminbControl(rxControl = rxode2::rxControl(covsInterpolation = "nocb", nonmem = TRUE)))
+    .fit <- .nlmixr(
+      .pop,
+      .d,
+      "nlminb",
+      nlminbControl(rxControl = rxode2::rxControl(covsInterpolation = "nocb", nonmem = TRUE))
+    )
     expect_equal(unname(.fit$theta["tcl"]), log(3), tolerance = 1e-3)
   })
 })
