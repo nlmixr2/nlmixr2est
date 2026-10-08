@@ -256,6 +256,13 @@
   differing number of rows`.  Both now read the fit's own control (`$control`);
   the imp objective read `$foceiControl`, which never holds `adjObf`.
 
+- `shiErr` and `hessErr` must now be > 0 in `nlmControl()`,
+  `nlminbControl()`, `nlsControl()`, `optimControl()` and `trustControl()`,
+  as must `hessEps`/`hessEpsLlik` in `foceiControl()` and `rsControl()`;
+  0 was accepted and gave a zero finite-difference step (an all-zero
+  gradient for event parameters).  A hand-built nlm control with a
+  non-positive value uses the default (#1174).
+
 ### Parameter scaling
 
 - `ui$scaleCtheta` (and `ui$scaleCnls`) now give one scaling constant per

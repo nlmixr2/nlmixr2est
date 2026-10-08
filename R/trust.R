@@ -222,7 +222,7 @@ trustControl <- function(
   if (is.null(hessErr)) {
     hessErr <- (.Machine$double.eps)^(1 / 3)
   }
-  checkmate::assertNumeric(hessErr, len = 1, any.missing = FALSE, lower = 0)
+  .assertPositiveEps(hessErr)
   checkmate::assertIntegerish(optimHessType, len = 1, any.missing = FALSE, lower = 1, upper = 2)
   checkmate::assertIntegerish(shi21maxHess, len = 1, any.missing = FALSE, lower = 1)
 
