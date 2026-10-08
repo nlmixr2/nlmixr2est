@@ -100,10 +100,10 @@
 #' @param returnTrust return the raw `nlmTrustFit()` output list instead of
 #'   the nlmixr2 fit.
 #' @param covMethod Method for calculating the covariance. `"r"` (the
-#'   default) reuses the LAST outer iteration's already-computed Hessian
-#'   (skipping `nlmixr2est`'s own post-fit finite-difference Hessian
-#'   recompute, since `trust` already has one in hand); `""` skips the
-#'   covariance step.
+#'   default) uses the finite-difference Hessian: the last outer iteration's
+#'   with `hessianMethod = "fd"`, otherwise `nlmixr2Hess()`'s.  `"trust"` uses
+#'   the last outer iteration's Hessian whatever `hessianMethod` built it (a
+#'   quasi-Newton one by default); `""` skips the covariance step.
 #' @return trust control structure
 #' @export
 #' @author Matthew L. Fidler
@@ -175,7 +175,7 @@ trustControl <- function(
   eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = FALSE,
-  covMethod = c("r", ""),
+  covMethod = c("r", "trust", ""),
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 3,
@@ -311,7 +311,7 @@ trustControl <- function(
     hessianMethod = hessianMethod,
 
     returnTrust = returnTrust,
-    covMethod = match.arg(covMethod),
+    covMethod = .nlmCtlCovMethod(covMethod, match.arg(covMethod)),
     optExpression = optExpression,
     literalFix = literalFix,
     literalFixRes = literalFixRes,
@@ -439,12 +439,20 @@ getValidNlmixrCtl.trust <- function(control) .getValidCtl(control, "trustControl
   .ret <- list(
     par = setNames(.tres$par, NULL),
     fval = .tres$value,
-    # a solver error leaves the Hessian zero-filled, not computed
-    hessian = matrix(if (isTRUE(.tres$error < 0)) NA_real_ else .tres$hessian, nrow = length(.p), ncol = length(.p)),
     convergence = if (isTRUE(.tres$converged)) 0L else 1L,
     iterations = .tres$iterations,
     message = if (isTRUE(.tres$converged)) "converged" else "did not fully converge"
   )
+  # trust's own Hessian is a finite-difference one only with hessianMethod =
+  # "fd"; without it "r" is nlmixr2Hess()'s (.nlmFinalizeList())
+  if (.ctl$covMethod == "trust" || .ctl$hessianMethod == 1L) {
+    # a solver error leaves the Hessian zero-filled, not computed
+    .ret$hessian <- matrix(
+      if (isTRUE(.tres$error < 0)) NA_real_ else .tres$hessian,
+      nrow = length(.p),
+      ncol = length(.p)
+    )
+  }
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 

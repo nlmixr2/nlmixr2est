@@ -1484,6 +1484,12 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   if (!is.matrix(info) || nrow(info) == 0L || !all(is.finite(info))) {
     return(NULL)
   }
+  # a singular information has no inverse to repair; sqrtm() only fails on it
+  # on some platforms
+  .ev <- abs(eigen(0.5 * (info + t(info)), symmetric = TRUE, only.values = TRUE)$values)
+  if (min(.ev) <= sqrt(.Machine$double.eps) * max(.ev)) {
+    return(NULL)
+  }
   .s <- tryCatch(sqrtm(info %*% info), error = function(e) NULL)
   if (!identical(dim(.s), dim(info)) || !all(is.finite(.s))) {
     return(NULL)

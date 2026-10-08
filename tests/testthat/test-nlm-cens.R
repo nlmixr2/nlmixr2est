@@ -238,6 +238,51 @@ nmTest({
     }
   })
 
+  # The gradient at the starting point of the nlm problem for `data`, twice (the
+  # step searches run in the first call, the second reuses the steps), and a
+  # central difference of the objective
+  .nlmCensGrad <- function(ui, data, cores) {
+    .ctl <- nlmControl(print = 0L, solveType = "grad", rxControl = rxode2::rxControl(cores = cores))
+    .ret <- new.env(parent = emptyenv())
+    .foceiPreProcessData(data, .ret, ui, .ctl$rxControl)
+    on.exit(.nlmFreeEnv())
+    .p <- setNames(ui$nlmParIni, ui$nlmParName)
+    .x <- .nlmSetupEnv(.p, ui, .ret$dataSav, ui$nlmSensModel, .ctl)$par.ini + 0
+    .fd <- vapply(
+      seq_along(.x),
+      function(i) {
+        .e <- replace(numeric(length(.x)), i, 1e-5)
+        (nlmSolveR(.x + .e) - nlmSolveR(.x - .e)) / 2e-5
+      },
+      numeric(1)
+    )
+    list(
+      g1 = attr(.nlmixrNlmFunC(.x), "gradient"),
+      g2 = attr(.nlmixrNlmFunC(.x), "gradient"),
+      fd = .fd
+    )
+  }
+
+  test_that("each subject finite-differences with its own step (issue 1140)", {
+    skip_on_cran()
+    # M3 below 0.5: every subject but the first has a censored observation, so
+    # those finite-difference every theta, with steps of their own, while the
+    # first needs none
+    .d <- .dat
+    .d$CENS <- ifelse(.d$DV < 0.5 & .d$EVID == 0, 1L, 0L)
+    .d$DV[.d$CENS == 1] <- 0.5
+    expect_identical(unname(tapply(.d$CENS, .d$ID, sum)[1]), 0L)
+    .ui <- rxode2::rxode2(one.cmt)
+    .g <- .nlmCensGrad(.ui, .d, 1L)
+    expect_equal(.g$g1, .g$fd, tolerance = 1e-2)
+    expect_equal(.g$g2, .g$fd, tolerance = 1e-2)
+    # the subjects' steps do not depend on how they are scheduled
+    expect_equal(.nlmCensGrad(.ui, .d, 2L)$g2, .g$g2, tolerance = 1e-12)
+    .nlminb <- .nlmixr(one.cmt, .d, est = "nlminb", control = nlminbControl(print = 0L))
+    .nlm <- .nlmixr(one.cmt, .d, est = "nlm", control = nlmControl(print = 0L))
+    expect_equal(.nlminb$objf, .nlm$objf, tolerance = 1e-4)
+  })
+
   test_that("nlm-family M3-censored propT() parameter estimates match focei (#976 follow-up)", {
     # #976 follow-up (antigravity review): .fixCensRNuLine() (R/focei.R,
     # shared by nlm-family and, gated, the t()/cauchy() FOCEi path from
