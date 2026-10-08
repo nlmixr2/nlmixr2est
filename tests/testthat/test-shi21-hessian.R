@@ -145,6 +145,35 @@ nmTest({
     }
   })
 
+  test_that("a re-searched Hessian step starts from the old step (#1175)", {
+    skip_on_cran()
+    .mod <- function() {
+      ini({
+        a <- 0.3
+        b <- -0.2
+        c <- 0.7
+      })
+      model({
+        v <- a + b * time
+        ll(bin) ~ DV * v - log(1 + exp(v)) - exp(4 * a) - 0.1 * exp(0.5 * b) - 0.5 * c^2 + 0.01 * c^4
+      })
+    }
+    .d <- data.frame(ID = 1L, TIME = seq(0.1, 10, length.out = 20), AMT = 0, EVID = 0L)
+    .d$DV <- as.integer(seq_len(nrow(.d)) %% 2 == 0)
+    # two search iterations: a step that keeps growing ends one growth past where
+    # its search started, so a warm re-search ends past the old step while a
+    # cold one would land on it again
+    .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = "central", shi21maxHess = 2L)
+    .withNlmProblem(.mod, .d, .ctl, function(x) {
+      nlmSolveGradHess(x + 0)
+      .h0 <- .nlmHessStepInfo()$step
+      nlmSolveGradHess(x + 1.1 * 3 * .h0)
+      .i1 <- .nlmHessStepInfo()
+      expect_equal(.i1$nSearch, 6L)
+      expect_true(all(.i1$step > .h0))
+    })
+  })
+
   test_that("nlm and nlminb re-search the Hessian steps as theta moves (#1175)", {
     skip_on_cran()
     .mod <- function() {
