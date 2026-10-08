@@ -337,7 +337,10 @@ nmTest({
     .rf <- .nlmixr(.quietOneCmt, theo_sd, "focei", .quietCtl(covMethod = "r"))
     expect_identical(.rf$covMethod, "r (full)")
     .nm <- rownames(.an$cov)
-    expect_lt(max(abs(sqrt(diag(.rf$cov))[.nm] / sqrt(diag(.an$cov)) - 1)), 0.05)
+    .rel <- sqrt(diag(.rf$cov))[.nm] / sqrt(diag(.an$cov)) - 1
+    for (.p in .nm) {
+      expect_lt(abs(.rel[[.p]]), 0.05, label = sprintf("%s SE relative error", .p))
+    }
   })
 
   test_that("a finite-difference covariance of ETAs held fixed says it is conditional on them", {
