@@ -71,11 +71,12 @@
   if (useEtaMat && !is.null(.a$etaMat)) {
     control$etaMat <- .a$etaMat
   }
-  # The engines hold the parameters at the converged estimates, but they still
-  # evaluate a hand-written likelihood away from them (at sampled etas, and SAEM at
-  # the Omega and residual of its first iteration), where rxode2's default safeLog
-  # hands back a large finite reward instead of a rejection (nlmixr2/nlmixr2est#850).
-  # Ask for the log-domain mode; a no-op while every value stays valid.
+  # This re-fit is pinned at the converged estimates but still takes a frozen EM / SA
+  # step, so it CAN move a theta.  For a hand-written likelihood that means it can step a
+  # scale out of its domain, where rxode2's default safeLog hands back a large finite
+  # reward instead of a rejection -- and the covariance would then be formed around a
+  # point the likelihood cannot evaluate (nlmixr2/nlmixr2est#850).  Ask for the
+  # log-domain mode here too; a no-op while every parameter stays valid.
   control$rxControl <- .npSafeLogDomain(control$rxControl, .a$ui)
   # the nested re-fit resets mu-referencing global state; save + restore
   .savedMuRef <- .muRefTrans$cur
@@ -106,11 +107,11 @@
 
 #' Recompute the SAEM Louis SA-FIM ("sa") at any fit's converged estimates.
 #'
-#' Runs a short SAEM started at the pinned (converged) theta/omega, with every
-#' population parameter held there (`saemHoldPar`, `.saemHoldCfg()`): the
-#' `nBurn`/`nEm` warm-up only equilibrates the MCMC chains, and the dedicated
-#' `nSaCov` phase accumulates the Louis observed information at the fit's own
-#' estimates.
+#' Runs a short SAEM at the pinned (converged) theta/omega -- a modest warm-up
+#' (`nBurn`/`nEm`) equilibrates the MCMC chains and the stochastic-approximation
+#' running sums (a cold `nBurn=0, nEm=0` start leaves those uninitialized and
+#' produces a non-finite FIM), then the dedicated `nSaCov` phase accumulates the
+#' Louis observed-information at the (essentially unchanged) converged point.
 #' @param fit completed nlmixr2 fit
 #' @param control `saControl()` options, or `NULL` for the defaults
 #' @return list(cov, covMethod, extras) or NULL
@@ -123,10 +124,10 @@
 #' Recompute the importance-sampling Monte-Carlo covariance ("imp") at any fit's
 #' converged estimates.
 #'
-#' Runs the imp kernel at the pinned converged estimates with `impFrozen`:
-#' `nIter` E-steps (`mapIter=0`) and no M-step, so the parameters stay where
-#' they are and the MAP pass + `impComputeCov` evaluate the Monte-Carlo
-#' observed information at the fit's own estimates.
+#' Runs the impmap kernel (already `maxOuterIterations=0`) with a single frozen
+#' EM step (`nIter=1, mapIter=0`) at the
+#' pinned converged estimates, so the MAP pass + `impComputeCov` evaluate the
+#' Monte-Carlo observed information essentially at the converged point.
 #' @param fit completed nlmixr2 fit
 #' @param control `impCovControl()` options, or `NULL` for the defaults
 #' @return list(cov, covMethod, extras) or NULL
@@ -152,8 +153,7 @@
       nSaCov = control$nSaCov,
       seed = control$seed,
       covMethod = "sa",
-      calcTables = FALSE,
-      saemHoldPar = TRUE
+      calcTables = FALSE
     ))
   }
   if (is.null(control)) {
@@ -168,8 +168,7 @@
     impSeed = control$impSeed,
     sirSample = .sir,
     covMethod = "imp",
-    calcTables = FALSE,
-    impFrozen = TRUE
+    calcTables = FALSE
   )
 }
 

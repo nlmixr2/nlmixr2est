@@ -144,26 +144,6 @@ test_that(".covSameName ignores decorations but not the scope", {
   expect_true(.covSameName("r,s (full)", "r+,s (full)"))
   expect_false(.covSameName("s", "s (full)"))
   expect_false(.covSameName("r", "s"))
-  # the |x| sqrtm repair of a non-FD covariance
-  expect_true(.covSameName("imp", "|imp|"))
-  expect_true(.covSameName("linFim", "|linFim|"))
-  expect_false(.covSameName("imp", "|linFim|"))
-  expect_false(.covSameName("sa", "|Ha|"))
-  expect_false(.covSameName("imp", NULL))
-})
-
-test_that(".covRepairWarn reports an |x| repair once, and only of a non-FD covariance", {
-  expect_warning(
-    .covRepairWarn("imp", "|imp|"),
-    "\"imp\" covariance not positive definite; installed as \"|imp|\" (sqrtm)",
-    fixed = TRUE
-  )
-  # a stashed repaired matrix was reported when it was computed
-  expect_no_warning(.covRepairWarn("|linFim| (full)", "|linFim|"))
-  expect_no_warning(.covRepairWarn("|imp|", "|imp|"))
-  # the FD decorations are reported by the native step
-  expect_no_warning(.covRepairWarn("s", "|s|"))
-  expect_no_warning(.covRepairWarn("imp", "imp"))
 })
 
 test_that("the FD-full install names the full shape and caches the others", {

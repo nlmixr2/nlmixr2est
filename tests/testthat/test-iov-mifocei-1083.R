@@ -137,13 +137,11 @@ test_that("an IOV mfocei fit gets its recomputed covariance", {
   .ctl <- list(print = 0L, maxOuterIterations = 0L, calcTables = FALSE)
   .fit <- suppressMessages(suppressWarnings(nlmixr2(one.cmt, theoIov, est = "mfocei", control = .ctl)))
   expect_true(is.matrix(.fit$cov))
-  # the base model at the fit's estimates and etas, which is the recompute; its
-  # finite-difference legs optimize the etas again (covMaxInnerIterations)
+  # the base model held at the fit's estimates and etas, which is the recompute
   .ctl <- foceiControl(
     print = 0L,
     maxOuterIterations = 0L,
     maxInnerIterations = 0L,
-    covMaxInnerIterations = 1000L,
     etaMat = .fit$etaMat,
     calcTables = FALSE
   )

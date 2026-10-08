@@ -253,16 +253,14 @@ multiplicatively otherwise.}
 \item{scaleCmin}{Minimum value of the scaleC to prevent underflow.}
 
 \item{scaleCband}{Length-2 increasing pair `c(low, high)` (default
-`c(0.1, 10)`).  The derivative-based scaling constant of a linear
-`theta` (`1/|init|`), or of a transformed one whose transform has no
-band of its own, is kept when it lands inside this band, and otherwise
-replaced by the parameter's native magnitude `|init|`, so a small
-initial estimate (a covariate coefficient, say) does not get a huge
-constant.  Transformed thetas are guarded to bands of their own
-transform, which catch `log()` at init `1`, `logit` at the interval
-midpoint and `factorial`/`gamma` at a digamma zero.  The constants of
-residual-error parameters and those given in `scaleC` are used as
-they are.}
+`c(0.1, 10)`).  Each `theta`'s derivative-based scaling constant
+(`1/|init|` for a linear parameter, or the transform-specific
+formula) is kept when it lands inside this band, and otherwise
+replaced by the parameter's native magnitude `|init|`.  This catches
+the singular cases -- `1/|init|` blowing up for a small covariate
+initial estimate, `log()` at init `1`, `logit` at the interval
+midpoint, `factorial`/`gamma` at a digamma zero -- while leaving the
+well-scaled common case (and its results) untouched.}
 
 \item{scaleC}{Scaling constant used with \code{scaleType="nlmixr2"};
 when not specified, chosen by parameter type to keep gradient sizes
@@ -311,20 +309,9 @@ are computed post-fit at the converged estimates by the decoupled
 recompute engine.}
 
 \item{covSolveTol}{absolute/relative ODE tolerance for the covariance solves --
-the perturbed solves behind the finite-difference methods (every probe and
-the stencil centre it is compared against) and the augmented-sensitivity
-solves behind \code{covMethod="analytic"}.  \code{NULL} (default) derives
-them from the fit's own tolerances: the finite-difference solves use
-\code{atol} and \code{rtol} each times 1e-3, capped at 1e-7 (at the default
-\code{sigdig = 3}, \code{rtol = 1e-7} and \code{atol = 1e-9}), and the
-analytic augmented solves use \code{max(1e-14, min(1e-8, 10^-(sigdig + 6)))}.  The
-inner problems of the finite-difference probes are tightened the same way,
-whichever \code{innerOpt} runs them: \code{trustFterm} and
-\code{trustMterm}, \code{epsilon} (n1qn1), and the \code{innerLbfgs*}
-tolerances (lbfgsb3c) each times 1e-3, capped at 1e-9.  No derived
-tolerance goes below 1e-14 unless the fit's own already is.
-A number sets \code{atol = rtol = covSolveTol} for both kinds of solve.
-Estimation itself always runs at the fit's tolerances.}
+the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
+perturbed solves behind the finite-difference methods.  \code{NULL} (default)
+derives a tight tolerance from \code{sigdig}; supply a number to override it.}
 
 \item{covFull}{shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 full theta + residual sigma + Omega covariance (assembled analytically for

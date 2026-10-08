@@ -81,9 +81,7 @@ rsControl <- function(
 #' Options for the SAEM stochastic-approximation covariance in setCov()
 #'
 #' Used by \code{setCov(fit, "sa")}, which runs a short SAEM at the fit's
-#' estimates before the covariance phase.  Every population parameter is held
-#' at the fit's estimates throughout (mixture proportions excepted), so the
-#' covariance is the one at those estimates.
+#' estimates before the covariance phase.
 #'
 #' @param nBurn,nEm warm-up iterations that equilibrate the MCMC chains before
 #'   the covariance phase
@@ -109,12 +107,9 @@ saControl <- function(nBurn = 100L, nEm = 100L, nSaCov = 500L, seed = 99L) {
 #' Options for the importance-sampling covariance in setCov()
 #'
 #' Used by \code{setCov(fit, "imp")}, which runs frozen importance-sampling EM
-#' iterations at the fit's estimates: E-steps only, so the parameters are never
-#' updated and the covariance is the one at those estimates.
+#' iterations at the fit's estimates.
 #'
-#' @param nIter frozen EM iterations: E-steps at the fit's estimates, with the
-#'   proposal adapting between them (\code{0} and \code{1} are both a single
-#'   E-step)
+#' @param nIter frozen EM iterations (\code{0} is an E-step-only evaluation)
 #' @inheritParams impmapControl
 #' @return \code{impCovControl} object
 #' @author Matt Fidler

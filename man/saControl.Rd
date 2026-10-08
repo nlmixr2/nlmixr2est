@@ -20,9 +20,7 @@ covariance}
 }
 \description{
 Used by \code{setCov(fit, "sa")}, which runs a short SAEM at the fit's
-estimates before the covariance phase.  Every population parameter is held
-at the fit's estimates throughout (mixture proportions excepted), so the
-covariance is the one at those estimates.
+estimates before the covariance phase.
 }
 \examples{
 saControl(nSaCov = 1000)

@@ -377,12 +377,12 @@
   rxode2::assertRxUi(ui2$fun)
 }
 
-#' Translate the vaeControl into the VAE fit's foceiControl: no outer/inner
-#' optimization (the VAE estimates and encoder etas are final), the VAE's chosen
-#' inner likelihood (focei -> interaction=1; foce/focep -> interaction=0, focep =
-#' FOCE+ with R at the live conditional eta), and the requested covMethod
-#' ("analytic", "r,s", "r", "s", ""), which `.foceiInstallOwnEtaCov()` computes
-#' at the VAE estimates once the output step has run.
+#' Translate the vaeControl into the foceiControl that drives the output step:
+#' no outer/inner optimization (the VAE estimates and encoder etas are final),
+#' the VAE's chosen inner likelihood (focei -> interaction=1; foce/focep ->
+#' interaction=0, focep = FOCE+ with R at the live conditional eta), and the
+#' covMethod passed through so the focei covariance step ("analytic", "r,s",
+#' "r", "s", "") runs directly on the frozen problem.
 #' @noRd
 .vaeControlToFoceiControl <- function(env, assign = TRUE) {
   .control <- env$vaeControl
@@ -406,12 +406,6 @@
   .fc
 }
 
-#' @export
-#' @rdname nmObjGetFoceiControl
-nmObjGetFoceiControl.vae <- function(x, ...) {
-  .vaeControlToFoceiControl(x[[1]], assign = FALSE)
-}
-
 #' Assemble the standard nlmixr2FitData from a trained VAE with
 #' nlmixr2CreateOutputFromUi (the nlme/nlm/nlmer output pattern), driving the
 #' FOCEi INNER problem at the VAE's fixed population estimates
@@ -420,9 +414,9 @@ nmObjGetFoceiControl.vae <- function(x, ...) {
 #' likelihood wholesale: multiple endpoints, multiple error structures,
 #' log-likelihood, M2/M3/M4 censoring, and MIXTURE hard-assignment (nSub*nMix
 #' per-component solves via setIndMixest -> mixNum/mixList) -- none of which is
-#' reimplemented here. The output step reports the FOCE objective at the encoder
-#' etas; the requested covariance is computed afterwards at the VAE estimates
-#' (.foceiInstallOwnEtaCov). The model is first updated with the selected covariate effects; the
+#' reimplemented here. The covariance is computed by the focei covariance step
+#' itself (covMethod passed through .vaeControlToFoceiControl) and returned on
+#' the fit. The model is first updated with the selected covariate effects; the
 #' ORIGINAL (pre-covariate) ui is stashed in $iniDf0 for the iniUi/iniDf0
 #' accessors.
 #' @noRd
@@ -498,10 +492,7 @@ nmObjGetFoceiControl.vae <- function(x, ...) {
     .ret$parHistData <- fit$parHist
   }
   nmObjHandleControlObject(.control, .ret) # stores $vaeControl for nmObjGetControl.vae
-  ## the output step evaluates the encoder etas only; the covariance it would
-  ## have computed there held them fixed (.foceiInstallOwnEtaCov, below)
-  .covControl <- .vaeControlToFoceiControl(.ret)
-  .ret$control$covMethod <- 0L
+  .vaeControlToFoceiControl(.ret)
   ## ---- foreign-method output contract -------------------------------------
   ## `.ret` is a fresh env, so it carries none of the state the output builder
   ## needs.  Supply it the way an out-of-tree method must (the reference is
@@ -530,9 +521,9 @@ nmObjGetFoceiControl.vae <- function(x, ...) {
     .om[!is.finite(.om)] <- 0
     .ret$omega <- .om
   }
-  ## 4/5. cov + objective are deliberately NOT set: the builder derives the
-  ##      objective from the inner pass at the VAE estimates, which is how the VAE
-  ##      reports its objective today, and the covariance comes after it.
+  ## 4/5. cov + objective are deliberately NOT set: the builder derives them from
+  ##      the FOCEi inner pass at the VAE estimates, which is how the VAE reports
+  ##      its objective today.  Setting them here would change every fit.
   ## 6. remaining metadata ($method/$extra/$est set above)
   if (!exists("message", envir = .ret, inherits = FALSE)) {
     .ret$message <- ""
@@ -559,6 +550,5 @@ nmObjGetFoceiControl.vae <- function(x, ...) {
   .e <- .fit$env
   .origUi <- if (!is.null(env$nlmixrPureInputUi)) env$nlmixrPureInputUi else .ui
   .e$iniDf0 <- rxode2::rxUiCompress(rxode2::rxUiDecompress(.origUi))
-  .foceiInstallOwnEtaCov(.fit, .covControl)
   .fit
 }

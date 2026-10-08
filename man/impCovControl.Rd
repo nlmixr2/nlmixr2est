@@ -7,9 +7,7 @@
 impCovControl(nIter = 1L, isample = 300L, impSeed = 42L)
 }
 \arguments{
-\item{nIter}{frozen EM iterations: E-steps at the fit's estimates, with the
-proposal adapting between them (\code{0} and \code{1} are both a single
-E-step)}
+\item{nIter}{frozen EM iterations (\code{0} is an E-step-only evaluation)}
 
 \item{isample}{Number of importance samples drawn per subject per iteration
   (NONMEM ISAMPLE).  Either a single count used for every subject, or a
@@ -31,8 +29,7 @@ streams; results are reproducible and independent of the thread count.}
 }
 \description{
 Used by \code{setCov(fit, "imp")}, which runs frozen importance-sampling EM
-iterations at the fit's estimates: E-steps only, so the parameters are never
-updated and the covariance is the one at those estimates.
+iterations at the fit's estimates.
 }
 \examples{
 impCovControl(isample = 1000)

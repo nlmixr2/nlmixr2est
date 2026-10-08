@@ -942,22 +942,12 @@ calc.COV <- function(fit0) {
   if (.covFull) {
     .idf <- .ui$iniDf
     .etaN <- tryCatch(.foceiEtaThetaMap(.ui)$etaNames, error = function(e) NULL)
-    # the pairs are eta indices (iniDf order); `omega` and DFi.i1 are in phi1
-    # column order, which need not be the order the etas were declared in
     .op <- tryCatch(.foceiOmegaPairs(omega, .idf), error = function(e) NULL)
-    .col <- .saemEtaPhi1Col(.ui, ncol(omega))
     if (
-      !is.null(.op) &&
-        !is.null(.etaN) &&
-        !is.null(.col) &&
-        nrow(.op) > 0L &&
-        ncol(omega) == length(.etaN) &&
-        max(.op) <= length(.etaN)
+      !is.null(.op) && !is.null(.etaN) && nrow(.op) > 0L && ncol(omega) == length(.etaN) && max(.op) <= length(.etaN)
     ) {
-      .omPairs <- matrix(.col[.op], ncol = 2L)
+      .omPairs <- .op
       .omNames <- .foceiOmegaCovNames(.op, .etaN)
-    } else if (ncol(omega) > 0L && (is.null(.op) || nrow(.op) > 0L)) {
-      .saemOmegaRowsWarn()
     }
     .ri <- .idf[!is.na(.idf$err) & !.idf$fix, , drop = FALSE]
     if (nrow(.ri) > 0L) {
