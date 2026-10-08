@@ -40,6 +40,8 @@ nmTest({
     expect_true(is.na(fit$objDf$OBJF[1]))
     suppressMessages(setOfv(fit, "foce"))
     expect_true(is.finite(fit$objDf["FOCE", "OBJF"]))
+    # the placeholder is replaced, not kept beside the calculated row
+    expect_equal(rownames(fit$objDf), "FOCE")
 
     .gq1 <- suppressMessages(calc.2LL(fit$saem, nnodes.gq = 3, nsd.gq = 1.6, fit$phiM))
     .gq2 <- suppressMessages(calc.2LL(fit$saem, nnodes.gq = 3, nsd.gq = 1.6, fit$phiM))
