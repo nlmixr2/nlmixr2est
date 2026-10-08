@@ -198,7 +198,7 @@
 #' @author Matthew L. Fidler
 #' @export
 .deparseFinal <- function(default, object, w, var, fun = NULL) {
-  .cls <- class(object)
+  .cls <- class(object)[1]
   if (length(w) == 0) {
     return(str2lang(paste0(var, " <- ", .cls, "()")))
   }

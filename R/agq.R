@@ -174,7 +174,12 @@ nmObjHandleControlObject.agqControl <- function(control, env) assign("agqControl
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.agq <- function(control) {
-  .getValidCtl(control, "agqControl", convert = c("foceiControl", "foceControl", "foControl", "foiControl"))
+  .getValidCtl(
+    control,
+    "agqControl",
+    convert = c("foceiControl", "foceControl", "foControl", "foiControl"),
+    convertFun = .foceiFamilyControlAs
+  )
 }
 
 #' @rdname nmObjGetControl

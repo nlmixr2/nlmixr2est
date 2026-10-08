@@ -1571,8 +1571,9 @@ foceiControl <- function(
   checkmate::assertIntegerish(gillK, lower = 0, len = 1, any.missing = FALSE)
   .covFdOptionsAssert(hessEps, gillKcov, gillStepCov, gillFtolCov, covGillF, covSmall, rmatNorm, smatNorm)
   checkmate::assertIntegerish(gillKcovLlik, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(gillStep, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(gillStepCovLlik, lower = 0, len = 1, any.missing = FALSE)
+  # the Gill search multiplies its step by these factors to grow it and divides to shrink it
+  checkmate::assertNumeric(gillStep, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(gillStepCovLlik, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(gillFtol, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillFtolCovLlik, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillRtol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
@@ -1701,11 +1702,13 @@ foceiControl <- function(
   # "sa"/"imp" are foreign to the focei kernel; skip the in-kernel cov step and
   # recompute them post-fit at the converged estimates (see .covRecompute).
   covMethodDeferred <- NA_character_
-  if (checkmate::testIntegerish(covMethod, len = 1, lower = 0L, upper = 3L, any.missing = FALSE)) {
-    covMethod <- as.integer(covMethod)
+  if (checkmate::testIntegerish(covMethod, len = 1, any.missing = FALSE)) {
+    covMethod <- .covMethodSlotArg(covMethod)
     .ct <- list(...)$covType
     if (!is.null(.ct)) covType <- match.arg(.ct, c("analytic", "fd"))
-  } else if (rxode2::rxIs(covMethod, "character")) {
+  } else if (!rxode2::rxIs(covMethod, "character")) {
+    stop("'covMethod' must be a covariance method name or a foceiControl() slot (0 to 3)", call. = FALSE)
+  } else {
     covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
     if (covMethod %in% c("sa", "imp")) {
       covMethodDeferred <- covMethod
@@ -2291,6 +2294,11 @@ foceiControl <- function(
 #' @return "sa", "imp", "analytic", "r,s", "r", "s", or "" for no covariance
 #' @noRd
 .foceiControlCovMethodName <- function(o) {
+  # an impmapControl() runs the importance-sampling covariance in its kernel
+  # (impCov) and keeps the "analytic" slot for the post-fit step
+  if (isTRUE(o$impCov)) {
+    return("imp")
+  }
   .deferred <- o$covMethodDeferred
   if (length(.deferred) == 1L && !is.na(.deferred)) {
     return(.deferred)

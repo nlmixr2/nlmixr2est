@@ -52,9 +52,10 @@
   if (length(.lhs) == 0L) {
     return(FALSE)
   }
-  .found <- FALSE
+  .acc <- new.env(parent = emptyenv())
+  .acc$found <- FALSE
   .walk <- function(e) {
-    if (.found || !is.call(e)) {
+    if (.acc$found || !is.call(e)) {
       return(invisible())
     }
     .f <- e[[1]]
@@ -69,7 +70,7 @@
         is.name(e[[2]]) &&
         as.character(e[[2]]) %in% .lhs
     ) {
-      .found <<- TRUE
+      .acc$found <- TRUE
       return(invisible())
     }
     lapply(as.list(e)[-1], .walk)
@@ -77,7 +78,7 @@
   }
   .lst <- tryCatch(ui$lstExpr, error = function(e) NULL)
   lapply(.lst, .walk)
-  .found
+  .acc$found
 }
 
 #' Sensitivities through the lagged variables
@@ -105,14 +106,15 @@
   .rhsSE <- lapply(.defRhs, function(x) .sym(rxode2::rxToSE(x)))
   # history calls of a lagged variable, taken from the symengine trees: a
   # text round trip does not keep them identical (`lag(c0, 1)` vs `1.0`)
-  .histSE <- list()
+  .acc <- new.env(parent = emptyenv())
+  .acc$histSE <- list()
   .walk <- function(e) {
     if (symengine::get_type(e) == "FunctionSymbol") {
       .a <- as.list(symengine::get_args(e))
       if (
         sub("\\(.*$", "", as.character(e)) %in% .foceiHistFn && length(.a) >= 1L && as.character(.a[[1]]) %in% .vars
       ) {
-        .histSE[[as.character(e)]] <<- e
+        .acc$histSE[[as.character(e)]] <- e
         return(invisible())
       }
     }
@@ -120,7 +122,7 @@
     invisible()
   }
   lapply(c(.exprs, .rhsSE), function(e) .walk(.sym(e)))
-  .histSE <- unname(.histSE)
+  .histSE <- unname(.acc$histSE)
   .calls <- vapply(
     .histSE,
     function(e) {

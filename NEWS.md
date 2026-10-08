@@ -328,6 +328,73 @@
   solves by the step: at `atol = rtol = 1e-3` a gradient of 33.8 came out
   11.6.
 
+- `foceiControl(covMethod=)` (and the controls built on it, such as
+  `foceControl()` and `impmapControl()`) is now an error for a number that is
+  not a covariance slot (`0` to `3`) and for anything that is neither a
+  method name nor a number (`NULL`, `NA`, `TRUE`, a vector).  It was stored
+  as given.
+
+- `est = "foce"`, `"focep"`, `"laplace"` and `"agq"` given a `foControl()` or
+  `foiControl()` now convert it; they stopped with `unused argument:
+  'posthoc'`.  These four methods now convert another method's control the
+  way the mu-referenced methods do, keeping only the settings its caller
+  changed, so that method's own settings no longer replace theirs: `est =
+  "agq"` given a `foceControl()` ran FOCE (`nAGQ = 0`, no interaction), and
+  `est = "laplace"` given an `agqControl()` ran a two-node quadrature.
+
+- `rxUiDeparse()` now writes `foceControl()`, `focepControl()`,
+  `foControl()`, `foiControl()`, `posthocControl()`, `mfoceiControl()`,
+  `ifoceiControl()`, `mfoceControl()`, `ifoceControl()`, `mfocepControl()`
+  and `ifocepControl()` as the call that rebuilds them, as it already did for
+  the other focei-family controls; it returned `NULL` for these.
+
+- `saemControl()` now checks `nSaCov` as `saControl()` does (a whole number
+  of at least 1) and requires a single `seed`.  A zero, negative or missing
+  `nSaCov` was accepted and skipped the covariance phase of
+  `covMethod = "sa"`, and a vector `seed` stopped the fit with
+  `'.Random.seed' has wrong length`.
+
+- `foceiControl(gillStep=)` and `foceiControl(gillStepCovLlik=)` must now be
+  at least 1, as `gillStepCov` already had to be, and all three must be
+  finite (`rsControl(gillStepCov=)` too); `nlmixr2Gill83(gillStep=)` makes
+  the same check.  The Gill step search grows its step by multiplying by
+  this factor and shrinks it by dividing, so a factor below 1 ran the search
+  backwards: on `exp(3 * x)` at `x = 1`, `nlmixr2Gill83(gillStep = 0.1)`
+  gave a derivative 1% off, against 0.01% with the default.
+
+- The FOCEi control of a saem fit (`fit$foceiControl`, which
+  `setOfv(fit, "focei")` and `addCwres()` refit with) now follows
+  `saemControl(literalFix=)` and keeps fixed residual parameters in the
+  model, as the saem fit itself did.  It substituted fixed thetas and fixed
+  residual parameters into the model even with `literalFix = FALSE`, the
+  saem default, so those refits used a model the fit had not.
+
+- `sqrtm()` of a matrix that is not finite is now an error.  It returned an
+  empty `0 x 0` matrix for most such matrices (a `NaN` or `Inf` off the
+  diagonal), reported "imaginary" components for a `NaN` diagonal, and gave an
+  infinite root for an infinite diagonal.
+
+- `setOfv(fit, "imp")` (and `"impmap"`) on a saem fit now switches the fit to
+  the importance-sampling objective.  It stopped with `unknown error` after
+  the objective, log-likelihood, AIC and BIC had already been switched,
+  leaving the objective type and the fit header naming the previous one.  An
+  objective a saem fit cannot describe now stops before anything changes.
+
+- The warnings of the steps that run after a fit is finalized -- the post-fit
+  covariance recompute of the mu-referenced (`mfocei`-style), imp, np and
+  nlme families and the deferred `covMethod = "sa"`/`"imp"` covariance -- are
+  now kept in the fit's `$runInfo` with the other warnings of the run.  They
+  were raised by `nlmixr2()` itself instead, and `$runInfo` did not have them.
+
+- Refitting a fit whose fixed thetas stay in the model (`literalFix = FALSE`,
+  the saem default) with `nlmixr2(fit, ...)`, and so `setOfv(fit, "focei")`
+  and `addCwres()` on such a saem fit, no longer stops with `arguments imply
+  differing number of rows: 0, 1`; neither does `setCov()` or
+  `getVarCov(force = TRUE)` after `augPred()` or `vpcSim()` on such a fit.
+  The simulation these run first substituted the fixed thetas into its model
+  and left the unsubstituted model recorded for the next estimation, whose
+  parameter table then looked for fixed thetas that were not substituted.
+
 ### Parameter scaling
 
 - `ui$scaleCtheta` (and `ui$scaleCnls`) now give one scaling constant per

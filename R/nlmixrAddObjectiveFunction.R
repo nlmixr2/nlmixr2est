@@ -16,6 +16,7 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type, etaObf = NULL)
   .inRow <- assertNlmixrObjDataFrameRow(objDf, allowNa = FALSE)
   .cur <- fit$objDf
   .rownames <- row.names(.cur)
+  .saved <- mget(c("objDf", "etaObf"), envir = fit$env, inherits = FALSE, ifnotfound = list(NULL))
   if (!is.null(etaObf)) {
     assign("etaObf", etaObf, envir = fit$env)
   }
@@ -38,7 +39,7 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type, etaObf = NULL)
       .tmp <- cbind(.inRow[[1]], data.frame("Condition#(Cov)" = .cn, "Condition#(Cor)" = .cnr, check.names = FALSE))
       row.names(.tmp) <- type
       assign("objDf", .tmp, envir = fit$env)
-      setOfv(fit, type)
+      .nlmixrSetOfvOrRestore(fit, type, .saved)
     } else {
       if (any(.rownames == type)) {
         stop("objective function '", type, "' already present", call. = FALSE)
@@ -49,7 +50,7 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type, etaObf = NULL)
       .tmp[["Condition#(Cor)"]] <- .cnr
       row.names(.tmp) <- c(type, .rownames)
       assign("objDf", .tmp, envir = fit$env)
-      setOfv(fit, type)
+      .nlmixrSetOfvOrRestore(fit, type, .saved)
     }
   } else {
     if (any(.rownames == type)) {
@@ -75,6 +76,34 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type, etaObf = NULL)
     .cur[["Condition#(Cor)"]] <- .cnr
     row.names(.cur) <- c(.rownames, type)
     assign("objDf", .cur, envir = fit$env)
-    setOfv(fit, type)
+    .nlmixrSetOfvOrRestore(fit, type, .saved)
   }
+}
+
+#' Switch a fit to an objective it was just given, or undo the addition
+#'
+#' `setOfv()` stops for an objective it cannot switch to (a saem fit and a
+#' type it cannot describe); the new `objDf` row and `etaObf` are then put
+#' back as they were, so the fit is unchanged and the call can be repeated.
+#'
+#' @param fit nlmixr2 fit
+#' @param type objective function type
+#' @param saved named list of the fit environment's `objDf` and `etaObf` before
+#'   the addition (`NULL` for one that did not exist)
+#' @return invisibly, what `setOfv()` returns
+#' @noRd
+.nlmixrSetOfvOrRestore <- function(fit, type, saved) {
+  tryCatch(
+    invisible(setOfv(fit, type)),
+    error = function(e) {
+      for (.n in names(saved)) {
+        if (is.null(saved[[.n]])) {
+          if (exists(.n, envir = fit$env, inherits = FALSE)) rm(list = .n, envir = fit$env)
+        } else {
+          assign(.n, saved[[.n]], envir = fit$env)
+        }
+      }
+      stop(e)
+    }
+  )
 }

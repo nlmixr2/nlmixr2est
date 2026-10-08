@@ -246,6 +246,21 @@ getValidNlmixrCtl.default <- function(control) {
 #' @noRd
 .sigdigScale <- function(default, sigdig) default * 10^(4 - sigdig)
 
+#' Set one tolerance field of an `rxControl`, unless the user supplied it
+#'
+#' @param rxControl an `rxode2::rxControl()` object
+#' @param field name of the tolerance field
+#' @param value the tolerance; recycled to the length of the existing field
+#' @param skip field names the user set explicitly, which are left untouched
+#' @return `rxControl`, with `field` replaced unless it is in `skip`
+#' @noRd
+.rxControlSetTol <- function(rxControl, field, value, skip) {
+  if (!(field %in% skip)) {
+    rxControl[[field]] <- rep_len(value, length(rxControl[[field]]))
+  }
+  rxControl
+}
+
 #' Scale ODE solver tolerances from the optimization `sigdig`
 #'
 #' The optimization `sigdig` sets the optimizer tolerances directly (`10^-sigdig`,
@@ -280,20 +295,17 @@ getValidNlmixrCtl.default <- function(control) {
   # them, so a looser sens tolerance degrades analytic gradient/covariance
   # accuracy (and leaves the optimizer's gradient less accurate than its
   # objective).  Steady-state solves stay one order looser than the main solve.
-  .set <- function(field, value) {
-    if (!(field %in% skip)) rxControl[[field]] <<- rep_len(value, length(rxControl[[field]]))
-  }
-  .set("rtol", .rtol)
-  .set("atol", .atol)
-  .set("rtolSens", .rtol)
-  .set("atolSens", .atol)
-  .set("ssRtol", 10 * .rtol)
-  .set("ssAtol", 10 * .atol)
+  rxControl <- .rxControlSetTol(rxControl, "rtol", .rtol, skip)
+  rxControl <- .rxControlSetTol(rxControl, "atol", .atol, skip)
+  rxControl <- .rxControlSetTol(rxControl, "rtolSens", .rtol, skip)
+  rxControl <- .rxControlSetTol(rxControl, "atolSens", .atol, skip)
+  rxControl <- .rxControlSetTol(rxControl, "ssRtol", 10 * .rtol, skip)
+  rxControl <- .rxControlSetTol(rxControl, "ssAtol", 10 * .atol, skip)
   if (!is.null(rxControl$ssRtolSens)) {
-    .set("ssRtolSens", 10 * .rtol)
+    rxControl <- .rxControlSetTol(rxControl, "ssRtolSens", 10 * .rtol, skip)
   }
   if (!is.null(rxControl$ssAtolSens)) {
-    .set("ssAtolSens", 10 * .atol)
+    rxControl <- .rxControlSetTol(rxControl, "ssAtolSens", 10 * .atol, skip)
   }
   rxControl
 }

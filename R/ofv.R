@@ -124,6 +124,9 @@ setOfv <- function(x, type) {
     return(.setOfvAdd(x, type))
   }
   .env <- x$env
+  # a saem fit names its objective in the fit header; a type it cannot name
+  # stops here, before anything is switched
+  .extra <- if (!is.null(x$saem)) .saemExtraText(type)
   .objf <- .objDf[.w, "OBJF"]
   .lik <- .objDf[.w, "Log-likelihood"]
   attr(.lik, "df") <- attr(get("logLik", .env), "df")
@@ -137,8 +140,8 @@ setOfv <- function(x, type) {
   assign("logLik", .lik, .env)
   assign("AIC", .aic, .env)
   assign("BIC", .bic, .env)
-  if (!is.null(x$saem)) {
-    .setSaemExtra(.env, type)
+  if (!is.null(.extra)) {
+    .env$extra <- .extra
   }
   .env$ofvType <- type
   invisible(x)
