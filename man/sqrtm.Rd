@@ -11,7 +11,7 @@ sqrtm(m)
 }
 \value{
 A square root general square matrix of m.  A matrix that is not
-finite is an error.
+  finite is an error.
 }
 \description{
 Return the square root of general square matrix A
