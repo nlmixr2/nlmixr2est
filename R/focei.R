@@ -119,6 +119,39 @@ is.latex <- function() {
   ret
 }
 
+#' Restart bobyqa once from where it stopped
+#'
+#' The inner ETA solve leaves noise in the outer objective, and bobyqa can
+#' shrink its trust region on that noise and exit normally while the
+#' objective is still falling (#1152).  A restart rebuilds the interpolation
+#' model at the full `rhobeg` from the stopping point.  The restart keeps to
+#' what is left of the evaluation budget, and its result is kept only when it
+#' is lower.
+#' @param fn objective
+#' @param lower,upper bounds
+#' @param ctl `minqa::bobyqa()` control
+#' @param ret the first search's `minqa::bobyqa()` result
+#' @return a `minqa::bobyqa()`-shaped list
+#' @noRd
+.bobyqaRestart <- function(fn, lower, upper, ctl, ret) {
+  if (!identical(as.integer(ret$ierr), 0L)) {
+    return(ret)
+  }
+  if (!is.null(ctl$maxfun)) {
+    ctl$maxfun <- ctl$maxfun - ret$feval
+    if (ctl$maxfun <= ctl$npt + 1) {
+      return(ret)
+    }
+  }
+  .ret2 <- minqa::bobyqa(ret$par, fn, control = ctl, lower = lower, upper = upper)
+  if (is.finite(.ret2$fval) && .ret2$fval < ret$fval) {
+    .ret2$feval <- .ret2$feval + ret$feval
+    return(.ret2)
+  }
+  ret$feval <- ret$feval + .ret2$feval
+  ret
+}
+
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) {
@@ -128,6 +161,9 @@ is.latex <- function() {
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
   .ret <- minqa::bobyqa(par, fn, control = .ctl, lower = lower, upper = upper)
   .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, .ret)
+  if (isTRUE(control$trustPolish)) {
+    .ret <- .bobyqaRestart(fn, lower, upper, .ctl, .ret)
+  }
   .ret$x <- .ret$par
   .ret$message <- .ret$msg
   .ret$convergence <- .ret$ierr
@@ -1858,6 +1894,7 @@ rxUiGet.foceiEtaS <- function(x, ..., theta = FALSE) {
       assign("..combThetaIdx", .idx$all, envir = .s)
     }
   }
+  .foceiLagIntoOde(.s)
   # see .foceiMatExpForcingOk(): mu-referenced/IRLS and non-interaction
   # (foce) fits fall back to the ODE flatten for a forcing (indLin()) matExp
   # model, same pattern as nlm's matExpForcing=FALSE.
@@ -1912,11 +1949,17 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
   # S_n = d(rx_pred_f_)/d(eta_n) is lag()-free, so rxFromSE() it inline.
   .snNames <- character(nrow(.grd))
   .snText <- character(nrow(.grd))
+  .lag <- .s$..lagEta
   for (.n in seq_len(nrow(.grd))) {
-    .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
-    .snBasic <- eval(parse(text = .calc))
     .snNames[.n] <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "dfe"], fixed = TRUE)
-    .snText[.n] <- rxode2::rxFromSE(.snBasic)
+    if (is.null(.lag)) {
+      .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
+      .snBasic <- eval(parse(text = .calc))
+    } else {
+      # chained through lagged calculated variables (#1176)
+      .snBasic <- .lag$dfe(.s$rx_pred_f_, sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", .snNames[.n]))
+    }
+    .snText[.n] <- .foceiLagTxt(.lag, .snBasic, .snNames[.n])
   }
   assign("..arEtaSens", paste0(.snNames, "=", .snText), envir = .s)
   # phi contains lag0()/lag(), so its rxFromSE poisons later get()/[[ -- do it
@@ -1952,11 +1995,16 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
   }
   .nms <- character(nrow(.grd))
   .txt <- character(nrow(.grd))
+  .lag <- .s$..lagEta
   for (.n in seq_len(nrow(.grd))) {
-    .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
-    .basic <- eval(parse(text = .calc))
     .nms[.n] <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "dfe"], fixed = TRUE)
-    .txt[.n] <- rxode2::rxFromSE(.basic)
+    if (is.null(.lag)) {
+      .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
+      .basic <- eval(parse(text = .calc))
+    } else {
+      .basic <- .lag$dfe(get("rx_pred_f_", envir = .s), sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", .nms[.n]))
+    }
+    .txt[.n] <- .foceiLagTxt(.lag, .basic, .nms[.n])
   }
   paste0(.nms, "=", .txt)
 }
@@ -1977,6 +2025,8 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   } else {
     .malert("calculate d(f)/d(eta)")
   }
+  # history functions of a variable (#1176): chain the derivatives through them
+  .lag <- .foceiLagEtaSens(x, .s, .stateVars)
   # AR(1) exact eta-gradient: all symbolic work BEFORE the main apply (which
   # poisons later get()/[[ for AR endpoints).  Returns the per-eta correction
   # text (a plain vector) and stores ..arEtaSens on .s.
@@ -2015,9 +2065,23 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     .linCmtEtaVars,
     .linCmtExtraPred
   )
+  # a carried row replaces the naive line, so add back its lag() terms
+  .lagCarry <- NULL
+  if (!is.null(.lag) && !is.null(.carryPairs)) {
+    .lagCarry <- vapply(
+      .linCmtEtaVars,
+      function(p) .lag$txt(.lag$dfe(get("rx_pred_", envir = .s), p, lagOnly = TRUE), p),
+      character(1)
+    )
+  }
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
-    .l <- eval(parse(text = .l))
+    if (is.null(.lag)) {
+      .l <- eval(parse(text = .l))
+    } else {
+      .l <- .lag$dfe(get("rx_pred_", envir = .s), sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", x["dfe"]))
+      assign(x["dfe"], .l, envir = .s)
+    }
     if (!is.null(.linCmtExtraPred)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       if (!is.null(.linCmtExtraPred[[.p]])) {
@@ -2025,12 +2089,15 @@ rxUiGet.foceiHdEta <- function(x, ...) {
         assign(x["dfe"], .l, envir = .s)
       }
     }
-    .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    .ret <- paste0(x["dfe"], "=", .foceiLagTxt(.lag, .l, x["dfe"]))
     if (!is.null(.carryPairs)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       .w <- which(.carryPairs$eta == .p)
       if (length(.w) == 1L) {
         .ret <- .rxFoceiLinCmtCarryEmit(.carryPairs, .w, .s, x["dfe"])
+        if (!is.null(.lagCarry) && !(.lagCarry[[.p]] %in% c("0", "0.0"))) {
+          .ret <- paste0(.ret, "+(", .lagCarry[[.p]], ")")
+        }
       }
     }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
@@ -2206,6 +2273,13 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   if (!is.null(.s$..linCmtCarryPairs)) {
     if (.conditional) {
       stop("Conditional inner Hessian does not support this sensitivity carry", call. = FALSE)
+    }
+    return(.s)
+  }
+  # no 2nd-order sensitivities through a lagged variable (#1176)
+  if (!is.null(.s$..lagEta)) {
+    if (.conditional) {
+      stop("Conditional inner Hessian does not support lag() of a variable", call. = FALSE)
     }
     return(.s)
   }
@@ -2441,6 +2515,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
       .hi,
       .low,
       .lagDefs,
+      .s$..lagSens,
       .arEtaSens,
       .prd,
       .s$..HdEta,
@@ -2475,6 +2550,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
         .hi,
         .low,
         .lagDefs,
+        .s$..lagSens,
         .arEtaSens,
         .prd,
         .s$..HdEta,
@@ -2503,6 +2579,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     .hi,
     .low,
     .lagDefs,
+    .s$..lagSens,
     .arEtaSens,
     .prd,
     .s$..HdEta,
@@ -2612,32 +2689,40 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   on.exit({
     if (!.stopped) rxode2::rxProgressAbort()
   })
+  .lag <- .s$..lagEta
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
-    .l <- eval(parse(text = .l))
+    if (is.null(.lag)) {
+      .l <- eval(parse(text = .l))
+    } else {
+      .l <- .lag$dfe(get("rx_r_", envir = .s), sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", x["dfe"]))
+    }
     if (!is.null(.linCmtExtraR)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       if (!is.null(.linCmtExtraR[[.p]])) .l <- .l + .linCmtExtraR[[.p]]
     }
-    .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    .ret <- paste0(x["dfe"], "=", .foceiLagTxt(.lag, .l, x["dfe"]))
     if (!is.null(.carryR)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       .w <- which(.s$..linCmtCarryPairs$eta == .p)
-      # substitute only when the eta's ONLY route into rx_r_ is through the
-      # prediction (a direct eta dependence, pred held fixed, keeps the
-      # status quo row -- bias to false)
-      if (
+      .carried <- paste0(rxode2::rxFromSE(.carryR), ")*rx__sens_rx_pred__BY_", .p, "__")
+      if (length(.w) == 1L && !is.null(.lag)) {
+        # d(R)/d(pred) * the carried d(pred)/d(eta), plus the rest with pred
+        # held fixed, which a lagged variable can reach (#1176)
+        .rest <- symengine::subs(
+          .lag$dfe(.carrySubR, .p),
+          .carryPh,
+          get("rx_pred_", envir = .s)
+        )
+        .ret <- paste0(x["dfe"], "=(", .carried, "+(", .lag$txt(.rest, .p), ")")
+      } else if (
+        # substitute only when the eta's ONLY route into rx_r_ is through the
+        # prediction (a direct eta dependence, pred held fixed, keeps the
+        # status quo row -- bias to false)
         length(.w) == 1L &&
           paste(symengine::D(.carrySubR, symengine::S(.p))) %in% c("0", "0.0")
       ) {
-        .ret <- paste0(
-          x["dfe"],
-          "=(",
-          rxode2::rxFromSE(.carryR),
-          ")*rx__sens_rx_pred__BY_",
-          .p,
-          "__"
-        )
+        .ret <- paste0(x["dfe"], "=(", .carried)
       }
     }
     rxode2::rxTick()
@@ -4702,6 +4787,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   }
   .thetaReset$thetaNames <- .ret$thetaNames
+  .thetaReset$clampedAt <- NULL
   nResets <- 0L
   ## Per-fit constants for the all-C++ analytic outer gradient.  Computed ONCE here and
   ## read by C++ when the outer optimizer starts; after that every gradient evaluation
@@ -5010,6 +5096,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # re-attempting the symengine build on every outer-gradient call.
   if (isTRUE(.control$fast) && .foceiUsesLinCmt(.ui)) {
     .minfo("linCmt() model: the analytic 'fast' gradient does not apply -- using fast = FALSE")
+    .control <- .foceiDowngradeFast(.control)
+  }
+  if (isTRUE(.control$fast) && .foceiUsesLagVar(.ui)) {
+    .minfo("lag() of a calculated variable: the analytic 'fast' gradient does not apply -- using fast = FALSE")
     .control <- .foceiDowngradeFast(.control)
   }
   # matExp() models: the inner model now solves natively via rxode2's
@@ -5473,6 +5563,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     # that are not sqrt(diag(fit$cov)), and a setCov() round trip then silently
     # changes them (nlmixr2extra#125).
     .fdFullInstalled <- .foceiInstallFdFullCov(.ret)
+    .foceiWarnConditionalCov(.ret, .control)
     # both installers replace $cov with a matrix on the mlogit estimation scale;
     # rotate the mixture block before .updateParFixed() derives SEs from it
     .mixInstallProbScaleCov(.ret)
@@ -5664,6 +5755,36 @@ attr(nlmixr2Est.focei, "covPresent") <- TRUE
 attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.focei, "iov") <- TRUE
 
+#' Warn that a fit's finite-difference covariance held its ETAs fixed
+#'
+#' With `maxInnerIterations = 0` a fit evaluates the ETAs it is given instead of
+#' optimizing them, and so do the legs of its finite-difference covariance:
+#' they differentiate the objective at those ETAs, a covariance conditional on
+#' them, where the covariance of the marginal likelihood re-optimizes the ETAs
+#' at every leg.  The refits that hold the ETAs only to report them ask for
+#' marginal legs (`covMaxInnerIterations`, `.setCovRefit()`) and are not warned
+#' about.
+#' @param env fit environment, after the covariance is installed
+#' @param control the control the fit ran with
+#' @return invisibly `NULL`
+#' @noRd
+.foceiWarnConditionalCov <- function(env, control) {
+  if (
+    !identical(as.integer(control$maxInnerIterations), 0L) ||
+      !is.null(control$covMaxInnerIterations) ||
+      is.null(env$etaObf) ||
+      !is.matrix(env$cov) ||
+      !nzchar(.covFdType(env$covMethod))
+  ) {
+    return(invisible())
+  }
+  warning(
+    sprintf("\"%s\" covariance is conditional on the ETAs; setCov() is marginal", env$covMethod),
+    call. = FALSE
+  )
+  invisible()
+}
+
 #' Add objective function line to the return object
 #'
 #' @param ret Return object
@@ -5708,7 +5829,13 @@ nlmixr2Est.output <- function(env, ...) {
   }
 
   .foceiFamilyControl(env, ...)
-  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  # The pass evaluates the FOCE objective at the ETAs it is given.  A covariance
+  # refit (setCov(), getVarCov()) differentiates the fit's own likelihood
+  # instead, so it keeps the control's interaction; it is the caller that asks
+  # for marginal covariance legs (covMaxInnerIterations, see .setCovRefit()).
+  if (is.null(rxode2::rxGetControl(.ui, "covMaxInnerIterations", NULL))) {
+    rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  }
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   rxode2::rxAssignControlValue(.ui, "maxInnerIterations", 0L)
   on.exit({

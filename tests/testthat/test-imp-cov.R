@@ -45,7 +45,7 @@ test_that(".impCovNatural() maps chol(Omega^-1) rows to the Omega elements by th
   # a parameter count that does not match the estimated Omega elements is refused
   expect_identical(
     .impCovNatural(.v[1:5, 1:5], 1:2, .dOm[1:3], .om, c("tka", "tcl"), .eta, .ini),
-    "could not be mapped to the Omega variances and covariances"
+    "could not be mapped to the Omega variances"
   )
 })
 
@@ -65,7 +65,7 @@ test_that(".impCovNatural() maps a covariance with no estimated Omega element", 
   .ini1 <- replace(.iniFix, "fix", FALSE)
   expect_identical(
     .impCovNatural(.v, 1:2, list(), matrix(0.4), c("tka", "tcl"), "eta.ka", .ini1),
-    "could not be mapped to the Omega variances and covariances"
+    "could not be mapped to the Omega variances"
   )
 })
 
@@ -147,7 +147,7 @@ test_that(".impCovInstall() repairs an imp information that is not positive defi
   .env <- .impMockEnv()
   expect_warning(
     .ok <- .impCovInstall(.env, solve(.info), 1:2, .dOm, .impMockOmega, .rx$theta, .info),
-    "\"imp\" covariance not positive definite, corrected by sqrtm(imp %*% imp) and installed as \"|imp|\"",
+    "\"imp\" covariance not positive definite; installed as \"|imp|\" (sqrtm)",
     fixed = TRUE
   )
   expect_true(.ok)

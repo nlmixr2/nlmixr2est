@@ -549,7 +549,7 @@ nmTest({
       f <- .nlmixr(.m, theo_sd, est = "saem", control = ctl)
       expect_true(
         any(
-          f$runInfo == "saem covariance: the etas could not be matched to the SAEM Omega columns; Omega rows left out"
+          f$runInfo == "etas not matched to the SAEM Omega columns; Omega rows left out"
         ),
         info = .cm
       )
@@ -633,7 +633,7 @@ nmTest({
     expect_true(is.na(f$parFixedDf["tka", "SE"]))
     expect_true(is.finite(f$parFixedDf["tcl", "SE"]))
     expect_true(any(grepl(
-      "\"Ha\" covariance has no row for the non-mu-referenced theta(s) tka",
+      "no \"Ha\" SE for non-mu-referenced theta(s) tka",
       f$runInfo,
       fixed = TRUE
     )))

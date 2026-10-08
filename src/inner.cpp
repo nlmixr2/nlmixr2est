@@ -801,6 +801,7 @@ struct focei_options {
   int firstDirectGradSet = 0;
   int nFDGradFast = 0;      // # FD fallbacks while fast was requested
   int warnedAnalyticFallback = 0; // one-time FD-fallback warning latch
+  int warnedResetNoProgress = 0; // one-time "reset back to its bound" warning latch
   int warnedContribFallback = 0;  // one-time #1051 contributor FD-fallback latch
   double cholSEtol;
   double hessEps;
@@ -1822,7 +1823,15 @@ static inline void foceiPushFullTheta() {
   }
 }
 
+// True while the covariance step owns the start of every inner problem (CovEtaStart,
+// below): innerOpt1() then starts from the eta it finds, with no start search or reset.
+static bool _covEtaStartOn = false;
+static void covEtaStartPin();
+
 void updateTheta(double *theta){
+  // Covariance step: every move of theta starts each subject's inner problem afresh from
+  // the fit's ETAs (a no-op otherwise)
+  covEtaStartPin();
   // Theta is the acutal theta
   unsigned int j, k;
   // covFdDirect: the FD-full covariance has already written the natural-scale
@@ -4054,7 +4063,11 @@ static inline int innerOpt1(int id, int likId) {
   // Use eta
   // Convert Zm to Hessian, if applicable.
   mat etaMat(fop->neta, 1, fill::zeros);
-  if (op_focei.mceta == -2 || op_focei.mceta == -1) {
+  if (_covEtaStartOn) {
+    // A covariance leg: start where CovEtaStart put the eta (the fit's EBE, or the reset
+    // point of an innerOptId() retry).  The searches and resets below would start the legs
+    // of one difference from different points.
+  } else if (op_focei.mceta == -2 || op_focei.mceta == -1) {
     // Almquist Eq-48 warm-start: extrapolate the next starting eta from the last
     // analytic gradient's EBE sensitivity, eta^0 = eta*_s + (d eta*/d theta)
     // (theta_now - theta_grad) (scaled space).  Only when the analytic gradient
@@ -4142,7 +4155,7 @@ static inline int innerOpt1(int id, int likId) {
       op_focei.nMcetaZero.fetch_add(1, std::memory_order_relaxed);
     }
   }
-  if (!op_focei.calcGrad) {
+  if (!op_focei.calcGrad && !_covEtaStartOn) {
     if (op_focei.resetEtaSize <= 0) {
       if (op_focei.resetHessianAndEta){
         fInd->mode = 1;
@@ -5188,16 +5201,31 @@ static inline bool thetaReset0(bool forceReset = false, const std::vector<bool> 
   // matching eta re-centering must use the applied shift, not etaM (issue #454).
   NumericVector appliedShift(op_focei.muRefN, 0.0);
   bool doAdjust = false;
+  Function loadNamespace2("loadNamespace", R_BaseNamespace);
+  Environment nlmixr2b = loadNamespace2("nlmixr2est");
+  Environment thetaResetEnv = nlmixr2b[".thetaReset"];
+  // where an earlier reset of this fit clamped each theta to a bound (NA: not
+  // clamped); a reset that would clamp it there again makes no progress
+  NumericVector clampedAt(op_focei.ntheta, NA_REAL);
+  if (thetaResetEnv.exists("clampedAt") && TYPEOF(thetaResetEnv["clampedAt"]) == REALSXP) {
+    NumericVector ca = thetaResetEnv["clampedAt"];
+    if (ca.size() == (R_xlen_t)op_focei.ntheta) std::copy(ca.begin(), ca.end(), clampedAt.begin());
+  }
+  int noProgress = -1;
   // fullTheta holds the thetas on their own scale; the bounds are kept by
-  // optimizer index on the optimizer's scale
+  // optimizer index, on the optimizer's scale only while boundsScaled
   std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta, thetaIni.begin());
   std::fill(thetaDown.begin(), thetaDown.end(), R_NegInf);
   std::fill(thetaUp.begin(), thetaUp.end(), R_PosInf);
   for (unsigned int k = op_focei.npars; k--;) {
     int j = op_focei.fixedTrans[k];
     if (j >= (int)op_focei.ntheta) continue;
-    if (R_FINITE(op_focei.lower[k])) thetaDown[j] = scaleUnscalePar(&op_focei, op_focei.lower, k);
-    if (R_FINITE(op_focei.upper[k])) thetaUp[j] = scaleUnscalePar(&op_focei, op_focei.upper, k);
+    if (R_FINITE(op_focei.lower[k])) {
+      thetaDown[j] = op_focei.boundsScaled ? scaleUnscalePar(&op_focei, op_focei.lower, k) : op_focei.lower[k];
+    }
+    if (R_FINITE(op_focei.upper[k])) {
+      thetaUp[j] = op_focei.boundsScaled ? scaleUnscalePar(&op_focei, op_focei.upper, k) : op_focei.upper[k];
+    }
   }
   double ref=0;
   int ij = 0;
@@ -5225,10 +5253,19 @@ static inline bool thetaReset0(bool forceReset = false, const std::vector<bool> 
             clamped = true;
           }
           double shift = ref - thetaIni[ij];
-          if (!clamped || fabs(shift) > 1e-8 * (1.0 + fabs(thetaIni[ij]))) {
+          bool again = clamped && R_FINITE(clampedAt[ij]) &&
+            fabs(ref - clampedAt[ij]) <= 1e-8 * (1.0 + fabs(ref));
+          if (again) {
+            // An earlier reset already put it at this bound and the drift came
+            // back once the optimizer moved it inward: resetting again only
+            // repeats that reset, so let the optimizer go on.
+            adjustEta[ii] = false;
+            noProgress = ij;
+          } else if (!clamped || fabs(shift) > 1e-8 * (1.0 + fabs(thetaIni[ij]))) {
             appliedShift[ii] = shift;
             thetaIni[ij] = ref;
             adjustEta[ii] = true;
+            clampedAt[ij] = clamped ? ref : NA_REAL;
             if (trig == NULL || (ii < trig->size() && (*trig)[ii])) doAdjust = true;
           } else {
             // Already pinned at the bound: leave it be so a parameter that
@@ -5243,9 +5280,26 @@ static inline bool thetaReset0(bool forceReset = false, const std::vector<bool> 
       adjustEta[ii] = false;
     }
   }
+  CharacterVector thetaNames;
+  bool haveNames = false;
+  if (thetaResetEnv.exists("thetaNames") &&
+      TYPEOF(thetaResetEnv["thetaNames"]) == STRSXP) {
+    thetaNames = as<CharacterVector>(thetaResetEnv["thetaNames"]);
+    haveNames = (thetaNames.size() >= (R_xlen_t)op_focei.ntheta);
+  }
+  if (noProgress >= 0 && !op_focei.warnedResetNoProgress) {
+    op_focei.warnedResetNoProgress = 1;
+    if (haveNames) {
+      std::string nm = as<std::string>(thetaNames[noProgress]);
+      warning(_("reset of '%s' skipped: back at its bound"), nm.c_str());
+    } else {
+      warning(_("reset of theta %d skipped: back at its bound"), noProgress + 1);
+    }
+  }
   if (!doAdjust && !forceReset) {
     return false;
   }
+  thetaResetEnv["clampedAt"] = clampedAt;
 
   arma::mat etaMat(getRxNsubAndMix(rx), op_focei.neta);
 
@@ -5272,18 +5326,6 @@ static inline bool thetaReset0(bool forceReset = false, const std::vector<bool> 
   // begins out of range; if the bounds are themselves infeasible (lower >=
   // upper) stop with an informative error rather than continue silently.
   bool didClamp = false;
-  CharacterVector thetaNames;
-  bool haveNames = false;
-  {
-    Function loadNamespace2("loadNamespace", R_BaseNamespace);
-    Environment nlmixr2b = loadNamespace2("nlmixr2est");
-    Environment thetaResetEnv = nlmixr2b[".thetaReset"];
-    if (thetaResetEnv.exists("thetaNames") &&
-        TYPEOF(thetaResetEnv["thetaNames"]) == STRSXP) {
-      thetaNames = as<CharacterVector>(thetaResetEnv["thetaNames"]);
-      haveNames = (thetaNames.size() >= (R_xlen_t)op_focei.ntheta);
-    }
-  }
   for (int ii = (int)op_focei.ntheta; ii--;) {
     if (isFixedTheta(ii)) continue;
     if (thetaDown[ii] >= thetaUp[ii]) {
@@ -8491,32 +8533,113 @@ struct OdeFitTolGuard {
   ~OdeFitTolGuard() { if (active) rxSetSolveAtolRtol(savAtol, savRtol); }
 };
 
-// RAII: tighten the ODE solve tolerances to covSolveTol for the covariance-step
-// finite-difference solves, restoring the fit's tolerances on exit.  No-op unless the
-// user set foceiControl(covSolveTol=); the analytic R-matrix applies covSolveTol on its
-// own augmented solves (.foceiAnalyticSolveTol).
+// Tolerances of the covariance step's finite-difference probes.  Each probe differences
+// marginal objectives that differ in their last few digits, so the solves and the inner
+// problems behind them run tighter than the estimation's: each tolerance is the fit's
+// times covProbeTolFactor, capped at covProbeOdeTolMax (ODE atol/rtol) or
+// covProbeInnerTolMax (the inner optimizer's convergence tolerances).  At the default
+// sigdig = 3 that is rtol 1e-7, atol 1e-9 and trustFterm = trustMterm 1e-9; a fit that
+// tightens its own tolerances tightens these with them, down to covProbeTolMin (the floor
+// of the analytic covariance's solves) unless the fit's own is already below it.  A
+// tolerance that is not a positive number is left as the fit has it.
+static const double covProbeTolFactor = 1e-3;
+static const double covProbeOdeTolMax = 1e-7;
+static const double covProbeInnerTolMax = 1e-9;
+static const double covProbeTolMin = 1e-14;
+
+static inline double covProbeTol(double fitTol, double tolMax) {
+  if (!R_FINITE(fitTol) || fitTol <= 0) return fitTol;
+  return std::max(std::min(fitTol, covProbeTolMin), std::min(fitTol * covProbeTolFactor, tolMax));
+}
+
+// A positive number the control holds under `name`, else NA (NULL, absent, or not one)
+static double covControlTol(Environment e, const char* name) {
+  if (!e.exists("control")) return NA_REAL;
+  List ctl = as<List>(e["control"]);
+  if (!ctl.containsElementNamed(name)) return NA_REAL;
+  RObject v = ctl[name];
+  if (v.isNULL() || Rf_length(v) != 1) return NA_REAL;
+  double tol = as<double>(v);
+  return (R_FINITE(tol) && tol > 0) ? tol : NA_REAL;
+}
+
+// RAII: the ODE tolerances of the covariance step's solves (the finite-difference
+// probes, their stencil centre and the ETA warm-up of a refit), restored on exit.
+// foceiControl(covSolveTol=) sets atol and rtol to that number; NULL derives each from
+// the fit's (covProbeTol).  The analytic R-matrix applies its own tolerance to its
+// augmented solves (.foceiAnalyticSolveTol).  A fit without a covariance step is
+// untouched.
 struct CovSolveTolGuard {
   bool active = false;
   double savAtol = NA_REAL, savRtol = NA_REAL;
   CovSolveTolGuard(Environment e) {
-    if (!e.exists("control")) return;
-    List ctl = as<List>(e["control"]);
-    if (!ctl.containsElementNamed("covSolveTol")) return;
-    RObject cst = ctl["covSolveTol"];
-    if (cst.isNULL() || Rf_length(cst) < 1) return;
-    double tol = as<double>(cst);
-    if (!R_FINITE(tol) || tol <= 0) return;
+    if (op_focei.covMethod == 0) return;
     rxGetSolveAtolRtol(&savAtol, &savRtol);
     if (!R_FINITE(savAtol) || !R_FINITE(savRtol)) return;   // no live solve to retune
     // This guard wraps the WHOLE covariance step, so on a fit that never ran an analytic
     // gradient it is the first to touch the tolerances -- record the fit's before
-    // tightening, or vaeOuterSolve_ inside it captures covSolveTol as the fit's.
+    // tightening, or vaeOuterSolve_ inside it captures the probe tolerance as the fit's.
     foceiNoteFitTol(savAtol, savRtol);
-    rxSetSolveAtolRtol(tol, tol);
+    double tol = covControlTol(e, "covSolveTol");
+    if (R_FINITE(tol)) {
+      rxSetSolveAtolRtol(tol, tol);
+    } else {
+      double fitAtol = R_FINITE(op_focei.fitAtol) ? op_focei.fitAtol : savAtol;
+      double fitRtol = R_FINITE(op_focei.fitRtol) ? op_focei.fitRtol : savRtol;
+      rxSetSolveAtolRtol(covProbeTol(fitAtol, covProbeOdeTolMax),
+                         covProbeTol(fitRtol, covProbeOdeTolMax));
+    }
     active = true;
   }
   ~CovSolveTolGuard() {
     if (active) rxSetSolveAtolRtol(savAtol, savRtol);
+  }
+};
+
+// RAII: the inner optimizers' convergence tolerances during the covariance step, restored
+// on exit: trust's trustFterm/trustMterm, n1qn1's epsilon and lbfgsb3c's pgtol, abstol,
+// reltol and factr (a multiple of the machine epsilon, so tightened through the relative
+// tolerance it stands for).  Only the active optimizer reads its own, so all of them are
+// set.  The internal control element covInnerTol sets every one; NULL derives each from
+// the fit's (covProbeTol).  A fit without a covariance step is untouched.
+struct CovInnerTolGuard {
+  bool active = false;
+  double savFterm = NA_REAL, savMterm = NA_REAL, savEpsilon = NA_REAL;
+  double savFactr = NA_REAL, savPgtol = NA_REAL, savAbstol = NA_REAL, savReltol = NA_REAL;
+  static double tighten(double fitTol, double tol) {
+    return R_FINITE(tol) ? tol : covProbeTol(fitTol, covProbeInnerTolMax);
+  }
+  explicit CovInnerTolGuard(Environment e) {
+    if (op_focei.covMethod == 0) return;
+    savFterm = op_focei.trustFterm;
+    savMterm = op_focei.trustMterm;
+    savEpsilon = op_focei.epsilon;
+    savFactr = op_focei.innerFactr;
+    savPgtol = op_focei.innerPgtol;
+    savAbstol = op_focei.innerAbstol;
+    savReltol = op_focei.innerReltol;
+    double tol = covControlTol(e, "covInnerTol");
+    op_focei.trustFterm = tighten(savFterm, tol);
+    op_focei.trustMterm = tighten(savMterm, tol);
+    op_focei.epsilon = tighten(savEpsilon, tol);
+    op_focei.innerPgtol = tighten(savPgtol, tol);
+    op_focei.innerAbstol = tighten(savAbstol, tol);
+    op_focei.innerReltol = tighten(savReltol, tol);
+    if (R_FINITE(savFactr) && savFactr > 0) {
+      op_focei.innerFactr = std::max(1.0, tighten(savFactr * DBL_EPSILON, tol) / DBL_EPSILON);
+    }
+    active = true;
+  }
+  ~CovInnerTolGuard() {
+    if (active) {
+      op_focei.trustFterm = savFterm;
+      op_focei.trustMterm = savMterm;
+      op_focei.epsilon = savEpsilon;
+      op_focei.innerFactr = savFactr;
+      op_focei.innerPgtol = savPgtol;
+      op_focei.innerAbstol = savAbstol;
+      op_focei.innerReltol = savReltol;
+    }
   }
 };
 
@@ -8531,6 +8654,164 @@ CovLlikObsGuard::CovLlikObsGuard() {
 }
 CovLlikObsGuard::~CovLlikObsGuard() {
   if (op_focei.llikObsFull != NULL) std::copy(sav.begin(), sav.end(), op_focei.llikObsFull);
+}
+
+// Where every finite-difference leg of the covariance step starts its inner problems.
+//
+// Each leg -- the step search, the R stencil, the S legs and the full FD -- differences the
+// MARGINAL objective, so every probe re-optimizes each subject's ETAs at its own theta.  A
+// probe starts from the ETAs the fit converged to at the estimates (eta-hat): not from
+// eta = 0 and not from wherever the previous probe left them, which would make a
+// difference depend on the order the probes ran in.  The centre value f0 is taken the same
+// way (settle()), so the centre and a probe differ through theta alone.  An f0 whose ETAs
+// were converged less far than the probes' biases every 5-point diagonal by -2.5*delta/h^2.
+//
+// Lives for the covariance block of foceiFitCpp_ (the native step and the full FD):
+//   * the constructor saves every pseudo-subject's inner state and the destructor puts it
+//     back, so nothing a leg leaves behind reaches the fit;
+//   * settle(), called by foceiCalcCov at the estimates, takes eta-hat and arms the pin;
+//   * pin(), called by updateTheta(), puts eta-hat back before every probe.  innerOptId()'s
+//     retries within one probe do not move theta, so they keep their own restart points.
+// eta-hat is the fit's ETAs optimized again at the estimates at the covariance step's
+// tolerances, by the final-objective procedure (settle()).  A fit that evaluates its ETAs
+// without optimizing them (maxInnerIterations = 0) keeps them fixed in the legs too, as its
+// control says.  A refit that holds the ETAs only to report them asks for marginal legs
+// with the control element covMaxInnerIterations (.covInnerIterations(), R/cov.R): the
+// legs get that inner budget, and its supplied ETAs give eta-hat the same way.
+struct CovEtaStart;
+static CovEtaStart *_covEtaStart = NULL;
+struct CovEtaStart {
+  std::vector< std::unique_ptr<FdInnerStateGuard> > entry;
+  std::vector<double> eta, zm;
+  std::vector<int> mode;
+  std::vector<unsigned int> uzm;
+  int nId = 0, savedMaxInner;
+  bool raised = false;
+  explicit CovEtaStart(Environment e) : savedMaxInner(op_focei.maxInnerIterations) {
+    // a fit without a covariance step keeps its inner state as it is
+    if (op_focei.covMethod == 0) return;
+    rx = getRxSolve_();
+    if (op_focei.neta <= 0 || rx == NULL || inds_focei == NULL || getRxNsub(rx) <= 0) {
+      _covEtaStart = this;
+      return;
+    }
+    nId = foceiIndSetupN(rx);   // a mixture has one inner problem per subject and component
+    entry.reserve((size_t)nId);
+    for (int id = 0; id < nId; ++id) {
+      entry.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(id)));
+    }
+    int cap = 0;
+    if (e.exists("control")) {
+      List ctl = as<List>(e["control"]);
+      if (ctl.containsElementNamed("covMaxInnerIterations") &&
+          !Rf_isNull(ctl["covMaxInnerIterations"])) {
+        cap = as<int>(ctl["covMaxInnerIterations"]);
+      }
+    }
+    if (op_focei.maxInnerIterations <= 0 && cap > 0) {
+      op_focei.maxInnerIterations = cap;
+      raised = true;
+    }
+    // set last, so a constructor that throws leaves no pointer to a dead object
+    _covEtaStart = this;
+  }
+  ~CovEtaStart() {
+    _covEtaStartOn = false;
+    if (_covEtaStart == this) _covEtaStart = NULL;
+    if (raised) op_focei.maxInnerIterations = savedMaxInner;
+    if (entry.empty()) return;
+    // Restoring each subject's inner state puts fInd->setup and oldEta back, the state
+    // in which likInner0() answers from its cache, while ind->solve still holds the
+    // last probe's solution at another theta.  Force the next evaluation to solve (as
+    // after the outer gradient's guards).
+    entry.clear();
+    for (int id = 0; id < nId; ++id) {
+      inds_focei[id].setup = 0;
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+      if (ind != NULL) setIndSolve(ind, -1);
+    }
+  }
+  // f0: the objective at theta (the estimates) by the legs' procedure, from eta-hat
+  double settle(double *theta) {
+    if (nId > 0) {
+      if (op_focei.maxInnerIterations > 0) {
+        // eta-hat is the mode of the objective the legs evaluate, at the covariance step's
+        // tolerances (CovSolveTolGuard, CovInnerTolGuard): optimize the ETAs the fit
+        // reports (or, for a refit that held them, was given) again at the estimates, by
+        // the procedure foceiOuterFinal() takes a fit's final objective with (its eta
+        // searches and resets included, and the eta step caches cleared).  A native fit
+        // and a refit started from its ETAs then start their legs from the same eta-hat.
+        // The pass runs foceiOfv0()'s ODE-tolerance retries; their flags and counters
+        // describe the estimation (the "tolerances were temporarily increased" warning),
+        // so they are put back afterwards.
+        struct FinalObjGuard {
+          int calcGrad, objfRecalN, stickyRecalcN1, stickyTol, reducedTol;
+          FinalObjGuard() : calcGrad(op_focei.calcGrad), objfRecalN(op_focei.objfRecalN),
+                            stickyRecalcN1(op_focei.stickyRecalcN1),
+                            stickyTol(op_focei.stickyTol.load()),
+                            reducedTol(op_focei.reducedTol.load()) {
+            op_focei.calcGrad = 0;
+            _finalObfCalc = true;
+          }
+          ~FinalObjGuard() {
+            _finalObfCalc = false;
+            op_focei.calcGrad = calcGrad;
+            op_focei.objfRecalN = objfRecalN;
+            op_focei.stickyRecalcN1 = stickyRecalcN1;
+            op_focei.stickyTol.store(stickyTol);
+            op_focei.reducedTol.store(reducedTol);
+          }
+        } _finalObj;
+        std::fill_n(op_focei.getahh, op_focei.gEtaGTransN, 0.0);
+        std::fill_n(op_focei.getahf, op_focei.gEtaGTransN, 0.0);
+        std::fill_n(op_focei.getahr, op_focei.gEtaGTransN, 0.0);
+        updateTheta(theta);
+        foceiOfv0(theta);
+      }
+      int ne = op_focei.neta, nz = (int)op_focei.nzm;
+      eta.assign((size_t)nId * ne, 0.0);
+      zm.assign((size_t)nId * nz, 0.0);
+      mode.assign((size_t)nId, 1);
+      uzm.assign((size_t)nId, 1);
+      for (int id = 0; id < nId; ++id) {
+        focei_ind *fInd = &(inds_focei[id]);
+        std::copy(fInd->eta, fInd->eta + ne, &eta[(size_t)id * ne]);
+        if (nz > 0 && fInd->zm != NULL) std::copy(fInd->zm, fInd->zm + nz, &zm[(size_t)id * nz]);
+        mode[id] = fInd->mode;
+        uzm[id] = fInd->uzm;
+      }
+      _covEtaStartOn = true;
+    }
+    updateTheta(theta);
+    return foceiOfv0(theta);
+  }
+  void pin() {
+    int ne = op_focei.neta, nz = (int)op_focei.nzm;
+    for (int id = 0; id < nId; ++id) {
+      focei_ind *fInd = &(inds_focei[id]);
+      std::copy(&eta[(size_t)id * ne], &eta[(size_t)id * ne] + ne, fInd->eta);
+      if (nz > 0 && fInd->zm != NULL) std::copy(&zm[(size_t)id * nz], &zm[(size_t)id * nz] + nz, fInd->zm);
+      fInd->mode = mode[id];
+      fInd->uzm = uzm[id];
+      // theta moved, so likInner0() must not answer from the previous probe's cache
+      if (fInd->oldEta != NULL) std::fill_n(fInd->oldEta, ne, NA_REAL);
+    }
+  }
+
+private:
+  CovEtaStart(const CovEtaStart &);
+  CovEtaStart &operator=(const CovEtaStart &);
+};
+
+static void covEtaStartPin() {
+  if (_covEtaStartOn && _covEtaStart != NULL) _covEtaStart->pin();
+}
+
+// The centre value of the covariance step's stencils (see CovEtaStart::settle())
+static double covEtaStartF0(double *theta) {
+  if (_covEtaStart != NULL) return _covEtaStart->settle(theta);
+  updateTheta(theta);
+  return foceiOfv0(theta);
 }
 
 NumericVector foceiSetup_(const RObject &obj,
@@ -10108,6 +10389,7 @@ Environment foceiOuter(Environment e){
   op_focei.firstDirectGradSet=0;
   op_focei.nFDGradFast=0;
   op_focei.warnedAnalyticFallback=0;
+  op_focei.warnedResetNoProgress=0;
   op_focei.warnedContribFallback=0;
   if (op_focei.maxOuterIterations > 0){
     for (unsigned int k = op_focei.npars; k--;){
@@ -11254,8 +11536,6 @@ NumericMatrix foceiCalcCov(Environment e){
         fInd->doChol=!(op_focei.cholSECov);
         fInd->doFD = 0;
       }
-      op_focei.resetEtaSize = std::numeric_limits<double>::infinity(); // Dont reset ETAs
-      op_focei.resetEtaSize=0; // Always reset ETAs.
       if (!e.exists("fullTheta")) {
         stop("focei environment requires 'fullTheta'");
       }
@@ -11310,6 +11590,19 @@ NumericMatrix foceiCalcCov(Environment e){
           theta[k] = op_focei.fullTheta[j];
         }
         std::copy(&theta[0], &theta[0] + op_focei.npars, &op_focei.theta[0]);
+        // The centre value of the step search and the R stencil: the objective at the
+        // estimates by the legs' own inner procedure and start (CovEtaStart), not the final
+        // objective, whose ETAs were optimized by a different procedure.
+        double f0 = covEtaStartF0(theta.memptr());
+        // foceiOfv0() reports a failed evaluation as 5e100; as a stencil centre it
+        // would make every R diagonal about -1e100
+        if (!R_FINITE(f0) || f0 >= 5e100) {
+          warning(_("covariance failed: objective not evaluable at its tolerances"));
+          e["covMethod"] = CharacterVector::create("failed");
+          NumericMatrix ret;
+          return ret;
+        }
+        op_focei.lastOfv = f0;
         int gillKcov;
         double gillStepCov;
         double gillFtolCov;
@@ -14108,9 +14401,12 @@ Environment foceiFitCpp_(Environment e){
   e["gillRet"] = gillRet;
   wallT0 = focei_wall_clock::now();
   {
-    // covSolveTol tightens the finite-difference cov solves (R/S + full-cov FD)
+    // the covariance step's solves and inner problems run at the probe tolerances
     CovSolveTolGuard _covTolGuard(e);
+    CovInnerTolGuard _covInnerTolGuard(e);
     CovLlikObsGuard _llikObsGuard;
+    // every leg below starts its inner problems from the fit's ETAs
+    CovEtaStart _etaStart(e);
     foceiCalcCov(e);
     // covType="fd" + covFull=TRUE: the full theta+sigma+Omega FD covariance (installed by
     // .foceiInstallFdFullCov).  Also runs when covType="analytic" DECLINED (analytic out of

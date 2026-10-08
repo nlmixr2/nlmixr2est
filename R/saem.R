@@ -958,7 +958,7 @@
 #' @noRd
 .saemOmegaRowsWarn <- function() {
   warning(
-    "saem covariance: the etas could not be matched to the SAEM Omega columns; Omega rows left out",
+    "etas not matched to the SAEM Omega columns; Omega rows left out",
     call. = FALSE
   )
 }
@@ -1466,7 +1466,7 @@
   ## information matrix rather than aborting the whole fit.
   .covm <- try(calc.COV(.saem), silent = TRUE)
   if (inherits(.covm, "try-error")) {
-    warning("SAEM covariance by linearization failed; using the SAEM information matrix", call. = FALSE)
+    warning("linearized FIM failed; using the SAEM information matrix", call. = FALSE)
     return(NULL)
   }
   # .covm may have NA rows/columns for ill-identified parameters; validate only
@@ -1499,11 +1499,11 @@
   .lay <- .saemFimThetaLayout(env)
   .H <- env$saem$Ha
   if (is.null(.lay) || !is.matrix(.H) || nrow(.H) < length(.lay$tn)) {
-    return("could not be computed (the information rows cannot be matched to the thetas)")
+    return("has information rows not matching the thetas")
   }
   .keep <- which(!.lay$fx & !(.lay$tn %in% .lay$phi0))
   if (length(.keep) == 0L) {
-    return("could not be computed (no mu-referenced theta is estimated)")
+    return("has no estimated mu-referenced theta")
   }
   .h <- .H[.keep, .keep, drop = FALSE]
   .rep <- .saemCovRepair(.h)
@@ -1564,7 +1564,7 @@
   if (length(r$phi0) > 0L) {
     warning(
       sprintf(
-        "\"%s\" covariance has no row for the non-mu-referenced theta(s) %s; they have no standard error",
+        "no \"%s\" SE for non-mu-referenced theta(s) %s",
         r$label,
         paste(r$phi0, collapse = ", ")
       ),
@@ -1574,7 +1574,7 @@
   if (r$label %in% c("|linFim|", .saemHaThetaRepairedName)) {
     .m <- if (identical(r$label, "|linFim|")) "linFim" else "Ha"
     warning(
-      sprintf("covariance matrix non-positive definite, corrected by sqrtm(%s %%*%% %s)", .m, .m),
+      sprintf("covariance not positive definite; used sqrtm(%s %%*%% %s)", .m, .m),
       call. = FALSE
     )
   }
