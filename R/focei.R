@@ -2434,8 +2434,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # name (op_focei.predOffset) and offsets its reads.
   .lagDefs <- character(0)
   if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
-    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
-    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
+    .lagDefs <- .s$..lhs[grepl(.foceiLagDefPattern(.s$..laggedVars), .s$..lhs)]
   }
   # AR(1) exact eta-gradient: structural-prediction eta-sensitivities lag()-
   # referenced by the corrected HdEta lines; emit them (real lhs) ahead of
@@ -2916,7 +2915,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   .lagDefs <- character(0)
   .restLhs <- .lhs
   if (!.isMatExp && !is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L) {
-    .isLag <- grepl(paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")="), .lhs)
+    .isLag <- grepl(.foceiLagDefPattern(.s$..laggedVars), .lhs)
     .lagDefs <- .lhs[.isLag]
     .restLhs <- .lhs[!.isLag]
   }

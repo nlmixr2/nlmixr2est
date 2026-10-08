@@ -56,6 +56,10 @@
   uses such a variable now compiles, and `lag()` of a variable inside an ODE
   gives a clear error.  The analytic `fast=TRUE` gradient and analytic
   covariance fall back to finite differences for these models (#1176).
+  This includes a lagged variable assigned more than once (an `if`/`else`),
+  which rxode2 now reads through `rx_lagv<i>_<name>` snapshots; those were
+  dropped from the FOCEi models, so the fit failed with "required for
+  solving: rx_lagv1_..." and lost the eta sensitivity of the earlier branch.
 
 - `$etaMat` of a fit with inter-occasion variability now holds the occasion
   ETAs as the model estimated them; it held them multiplied by the occasion

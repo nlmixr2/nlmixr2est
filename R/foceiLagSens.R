@@ -19,7 +19,28 @@
     return(character(0))
   }
   .v <- .v[!grepl("^rx_ar", .v)]
-  s$..lhs[sub("=.*$", "", s$..lhs) %in% .v]
+  s$..lhs[.foceiLagBase(sub("=.*$", "", s$..lhs)) %in% .v]
+}
+
+#' The lagged variable an lhs defines
+#'
+#' rxode2 reads every assignment of a reassigned lagged variable `v` but the
+#' last through a snapshot `rx_lagv<i>_v` (rxode2#1435); that snapshot belongs
+#' to `v`.
+#' @param x lhs variable names
+#' @return `x` with any snapshot prefix removed
+#' @noRd
+.foceiLagBase <- function(x) {
+  sub("^rx_lagv[0-9]+_", "", x)
+}
+
+#' Regular expression matching the definition lines of lagged variables
+#'
+#' @param vars lagged variable names
+#' @return pattern matching `v=` and its snapshots' `rx_lagv<i>_v=`
+#' @noRd
+.foceiLagDefPattern <- function(vars) {
+  paste0("^(rx_lagv[0-9]+_)?(", paste0(vars, collapse = "|"), ")=")
 }
 
 #' Whether rxode2 text uses any of the given variables

@@ -29,21 +29,37 @@
       logical(1)
     )
   ]
+  .base <- .foceiLagBase(.var)
   # last definition first, so one that uses an earlier one is fully expanded
-  for (v in rev(unique(.var))) {
-    .w <- which(.var == v)
+  for (v in rev(unique(.base))) {
+    .w <- which(.base == v)
     if (.foceiLagRefs(.rhs[.w], .var, hist = TRUE)) {
       next
     }
     # a pruned if/else defines it more than once, each from the one before
+    # (read either as v or through a snapshot of it, rxode2#1435)
     .def <- NULL
-    for (.txt in .rhs[.w]) {
+    .snap <- list()
+    .expand <- function(e) {
+      if (!is.null(.def)) {
+        e <- symengine::subs(e, symengine::S(v), .def)
+      }
+      for (.n in names(.snap)) {
+        e <- symengine::subs(e, symengine::S(.n), .snap[[.n]])
+      }
+      e
+    }
+    for (k in .w) {
+      if (.var[k] != v) {
+        .snap[[.var[k]]] <- .def
+        next
+      }
       # rxToSE() is NSE: hand it a plain variable
-      .new <- symengine::S(rxode2::rxToSE(.txt))
-      .def <- if (is.null(.def)) .new else symengine::subs(.new, symengine::S(v), .def)
+      .txt <- .rhs[k]
+      .def <- .expand(symengine::S(rxode2::rxToSE(.txt)))
     }
     for (d in .ddt) {
-      assign(d, symengine::subs(get(d, envir = s), symengine::S(v), .def), envir = s)
+      assign(d, .expand(get(d, envir = s)), envir = s)
     }
   }
   # the ODE text too: the lagged variable is defined after the ODEs
