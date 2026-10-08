@@ -100,7 +100,8 @@ vpcSim <- function(
   .env$ui <- object$ui
   .env$data <- object$origData
   suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
-  .si$object <- eval(.getSimModel(.env$ui, hideIpred = FALSE))
+  .simModel <- .getSimModel(.env$ui, hideIpred = FALSE)
+  .si$object <- eval(.simModel)
   .w <- which(names(.si) == "rx")
   .si <- .si[-.w]
   .si$nsim <- n
@@ -114,6 +115,10 @@ vpcSim <- function(
   .si <- c(.si, .dots[!.named])
   .pt <- proc.time()
   .si$keep <- unique(c(keep, "nlmixrRowNums"))
+  .drop <- setdiff(attr(.simModel, "lagged"), .si$keep)
+  if (length(.drop) > 0L) {
+    .si$drop <- unique(c(.si$drop, .drop))
+  }
   .data <- .si$events
   .data$nlmixrRowNums <- seq_along(.data[, 1])
   if (normRelated) {

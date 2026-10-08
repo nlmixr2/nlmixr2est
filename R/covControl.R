@@ -68,7 +68,7 @@ rxUiDeparse.rsControl <- function(object, var) {
   smatNorm,
   null.ok = FALSE
 ) {
-  checkmate::assertNumeric(hessEps, lower = 0, len = 1, any.missing = FALSE, null.ok = null.ok)
+  .assertPositiveEps(hessEps, null.ok = null.ok)
   checkmate::assertIntegerish(gillKcov, lower = 0, len = 1, any.missing = FALSE, null.ok = null.ok)
   # the Gill search multiplies its step by gillStepCov to grow it and divides to shrink it
   checkmate::assertNumeric(gillStepCov, lower = 1, len = 1, any.missing = FALSE, finite = TRUE, null.ok = null.ok)
