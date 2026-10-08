@@ -107,6 +107,66 @@ test_that("foceiCovAnalytic() never installs an indefinite covariance, and says 
   expect_equal(.e$cov, .anBad[1:2, 1:2])
 })
 
+test_that("the analytic covariance names its residual-error rows whatever their ini() order", {
+  skip_on_cran()
+  # the fast add/prop assembly builds its sigma block additive first; a model that
+  # declares prop.sd before add.sd got the two SEs under each other's names
+  addFirst <- function() {
+    ini({
+      tka <- 0.4
+      tcl <- 1.02
+      tv <- 3.47
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.29
+      prop.sd <- 0.13
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd) + prop(prop.sd)
+    })
+  }
+  propFirst <- function() {
+    ini({
+      tka <- 0.4
+      tcl <- 1.02
+      tv <- 3.47
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      prop.sd <- 0.13
+      add.sd <- 0.29
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd) + prop(prop.sd)
+    })
+  }
+  .ui <- rxode2::rxode2(propFirst)
+  expect_identical(.ui$iniDf$name[!is.na(.ui$iniDf$ntheta)], c("tka", "tcl", "tv", "prop.sd", "add.sd"))
+  .ctl <- foceiControl(print = 0, maxOuterIterations = 0L, covMethod = "analytic", covFull = FALSE, calcTables = FALSE)
+  .a <- .nlmixr(addFirst, nlmixr2data::theo_sd, "focei", .ctl)
+  .p <- .nlmixr(propFirst, nlmixr2data::theo_sd, "focei", .ctl)
+  # both install an analytic covariance, under the same label
+  expect_match(.p$covMethod, "analytic", fixed = TRUE)
+  expect_identical(.p$covMethod, .a$covMethod)
+  .nm <- c("tka", "tcl", "tv", "add.sd", "prop.sd")
+  expect_equal(sqrt(diag(.p$cov))[.nm], sqrt(diag(.a$cov))[.nm], tolerance = 1e-6)
+  # the proportional coefficient is the better determined of the two here
+  expect_lt(sqrt(.p$cov["prop.sd", "prop.sd"]), sqrt(.p$cov["add.sd", "add.sd"]))
+})
+
 test_that(".foceiFitInteraction() takes the interaction of the fit's likelihood", {
   # saem, nlme, vae and vi fits: the FOCEi control has the method's likelihood, while the
   # control their finalUi keeps is the output step's (interaction = 0)
