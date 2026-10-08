@@ -368,11 +368,11 @@ nmTest({
     expect_equal(.lp("forward"), .lp("central"), tolerance = 0.02)
   })
 
-  test_that("an ETA reaching the prediction through lag() is finite-differenced", {
+  test_that("an ETA reaching the prediction through lag() gets its data gradient", {
     skip_on_cran()
-    # c0 is a bare symbol to symengine (lag() needs it as a real lhs), so the
-    # symbolic d(cp)/d(eta.cl) was 0: the inner gradient held only the prior
-    # term, and the inner problem pulled eta.cl to 0 whatever the data
+    # c0 is a bare symbol to symengine (lag() needs it as a real lhs); without the
+    # derivative chained through lag(c0) the inner gradient holds only the prior
+    # term and the inner problem pulls eta.cl to 0 whatever the data
     lagMod <- function() {
       ini({
         tka <- 0.45
@@ -425,9 +425,9 @@ nmTest({
 
   test_that("a model whose only ETA reaches the prediction through lag() is fitted", {
     skip_on_cran()
-    # every symbolic d(pred)/d(eta) is 0 here, which the inner Hessian build
-    # takes for "no prediction depends on a random effect" unless the lagged
-    # variable is recognized; the analytic covariance declines the model
+    # every d(pred)/d(eta) goes through lag(c0) here, which the inner Hessian build
+    # takes for "no prediction depends on a random effect" unless the derivative is
+    # chained through it; the analytic covariance declines the model
     lagOnly <- function() {
       ini({
         tka <- 0.45
@@ -461,7 +461,7 @@ nmTest({
         invokeRestart("muffleMessage")
       }
     )
-    expect_identical(.foceiLaggedCalcVars(.fit$finalUi), "c0")
+    expect_true(.foceiUsesLagVar(.fit$finalUi))
     expect_true(is.finite(.fit$objf))
     expect_gt(stats::sd(.fit$eta$eta.cl), 0.1)
     expect_true(any(grepl(
@@ -472,9 +472,9 @@ nmTest({
     expect_false(.covBaseName(.fit$covMethod) == "analytic")
   })
 
-  test_that("lag() of an ODE state is refused, so only calculated variables need finite differences", {
-    # .foceiLaggedCalcVars() looks at calculated variables only; if rxode2 ever
-    # accepts lag() of a state, that state's sensitivities need the same check
+  test_that("lag() of an ODE state is refused, so only calculated variables need the lag() chain", {
+    # .foceiUsesLagVar() looks at calculated variables only; if rxode2 ever accepts
+    # lag() of a state, that state's sensitivities need the same chain
     .out <- utils::capture.output(
       expect_error(rxode2::rxode2("d/dt(central) <- -central\ncp <- lag(central)"), "syntax errors")
     )

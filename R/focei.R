@@ -1905,6 +1905,7 @@ rxUiGet.foceiEtaS <- function(x, ..., theta = FALSE) {
       assign("..combThetaIdx", .idx$all, envir = .s)
     }
   }
+  .foceiLagIntoOde(.s)
   # see .foceiMatExpForcingOk(): mu-referenced/IRLS and non-interaction
   # (foce) fits fall back to the ODE flatten for a forcing (indLin()) matExp
   # model, same pattern as nlm's matExpForcing=FALSE.
@@ -1959,11 +1960,17 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
   # S_n = d(rx_pred_f_)/d(eta_n) is lag()-free, so rxFromSE() it inline.
   .snNames <- character(nrow(.grd))
   .snText <- character(nrow(.grd))
+  .lag <- .s$..lagEta
   for (.n in seq_len(nrow(.grd))) {
-    .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
-    .snBasic <- eval(parse(text = .calc))
     .snNames[.n] <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "dfe"], fixed = TRUE)
-    .snText[.n] <- rxode2::rxFromSE(.snBasic)
+    if (is.null(.lag)) {
+      .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
+      .snBasic <- eval(parse(text = .calc))
+    } else {
+      # chained through lagged calculated variables (#1176)
+      .snBasic <- .lag$dfe(.s$rx_pred_f_, sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", .snNames[.n]))
+    }
+    .snText[.n] <- .foceiLagTxt(.lag, .snBasic, .snNames[.n])
   }
   assign("..arEtaSens", paste0(.snNames, "=", .snText), envir = .s)
   # phi contains lag0()/lag(), so its rxFromSE poisons later get()/[[ -- do it
@@ -1999,11 +2006,16 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
   }
   .nms <- character(nrow(.grd))
   .txt <- character(nrow(.grd))
+  .lag <- .s$..lagEta
   for (.n in seq_len(nrow(.grd))) {
-    .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
-    .basic <- eval(parse(text = .calc))
     .nms[.n] <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "dfe"], fixed = TRUE)
-    .txt[.n] <- rxode2::rxFromSE(.basic)
+    if (is.null(.lag)) {
+      .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
+      .basic <- eval(parse(text = .calc))
+    } else {
+      .basic <- .lag$dfe(get("rx_pred_f_", envir = .s), sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", .nms[.n]))
+    }
+    .txt[.n] <- .foceiLagTxt(.lag, .basic, .nms[.n])
   }
   paste0(.nms, "=", .txt)
 }
@@ -2024,6 +2036,8 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   } else {
     .malert("calculate d(f)/d(eta)")
   }
+  # history functions of a variable (#1176): chain the derivatives through them
+  .lag <- .foceiLagEtaSens(x, .s, .stateVars)
   # AR(1) exact eta-gradient: all symbolic work BEFORE the main apply (which
   # poisons later get()/[[ for AR endpoints).  Returns the per-eta correction
   # text (a plain vector) and stores ..arEtaSens on .s.
@@ -2062,9 +2076,23 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     .linCmtEtaVars,
     .linCmtExtraPred
   )
+  # a carried row replaces the naive line, so add back its lag() terms
+  .lagCarry <- NULL
+  if (!is.null(.lag) && !is.null(.carryPairs)) {
+    .lagCarry <- vapply(
+      .linCmtEtaVars,
+      function(p) .lag$txt(.lag$dfe(get("rx_pred_", envir = .s), p, lagOnly = TRUE), p),
+      character(1)
+    )
+  }
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
-    .l <- eval(parse(text = .l))
+    if (is.null(.lag)) {
+      .l <- eval(parse(text = .l))
+    } else {
+      .l <- .lag$dfe(get("rx_pred_", envir = .s), sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", x["dfe"]))
+      assign(x["dfe"], .l, envir = .s)
+    }
     if (!is.null(.linCmtExtraPred)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       if (!is.null(.linCmtExtraPred[[.p]])) {
@@ -2072,12 +2100,15 @@ rxUiGet.foceiHdEta <- function(x, ...) {
         assign(x["dfe"], .l, envir = .s)
       }
     }
-    .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    .ret <- paste0(x["dfe"], "=", .foceiLagTxt(.lag, .l, x["dfe"]))
     if (!is.null(.carryPairs)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       .w <- which(.carryPairs$eta == .p)
       if (length(.w) == 1L) {
         .ret <- .rxFoceiLinCmtCarryEmit(.carryPairs, .w, .s, x["dfe"])
+        if (!is.null(.lagCarry) && !(.lagCarry[[.p]] %in% c("0", "0.0"))) {
+          .ret <- paste0(.ret, "+(", .lagCarry[[.p]], ")")
+        }
       }
     }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
@@ -2089,12 +2120,6 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     rxode2::rxTick()
     .ret
   })
-  # with a lagged calculated variable the zeros are expected: the ETAs are
-  # finite-differenced (.innerInternal())
-  if (length(.foceiLaggedCalcVars(x[[1]])) > 0L) {
-    .all.zero <- FALSE
-    .any.zero <- FALSE
-  }
   if (.all.zero) {
     rxode2::rxProgressStop()
     .progressStopped <- TRUE
@@ -2259,6 +2284,13 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   if (!is.null(.s$..linCmtCarryPairs)) {
     if (.conditional) {
       stop("Conditional inner Hessian does not support this sensitivity carry", call. = FALSE)
+    }
+    return(.s)
+  }
+  # no 2nd-order sensitivities through a lagged variable (#1176)
+  if (!is.null(.s$..lagEta)) {
+    if (.conditional) {
+      stop("Conditional inner Hessian does not support lag() of a variable", call. = FALSE)
     }
     return(.s)
   }
@@ -2494,6 +2526,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
       .hi,
       .low,
       .lagDefs,
+      .s$..lagSens,
       .arEtaSens,
       .prd,
       .s$..HdEta,
@@ -2528,6 +2561,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
         .hi,
         .low,
         .lagDefs,
+        .s$..lagSens,
         .arEtaSens,
         .prd,
         .s$..HdEta,
@@ -2556,6 +2590,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     .hi,
     .low,
     .lagDefs,
+    .s$..lagSens,
     .arEtaSens,
     .prd,
     .s$..HdEta,
@@ -2665,32 +2700,40 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   on.exit({
     if (!.stopped) rxode2::rxProgressAbort()
   })
+  .lag <- .s$..lagEta
   .ret <- apply(.grd, 1, function(x) {
     .l <- x["calc"]
-    .l <- eval(parse(text = .l))
+    if (is.null(.lag)) {
+      .l <- eval(parse(text = .l))
+    } else {
+      .l <- .lag$dfe(get("rx_r_", envir = .s), sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", x["dfe"]))
+    }
     if (!is.null(.linCmtExtraR)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       if (!is.null(.linCmtExtraR[[.p]])) .l <- .l + .linCmtExtraR[[.p]]
     }
-    .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    .ret <- paste0(x["dfe"], "=", .foceiLagTxt(.lag, .l, x["dfe"]))
     if (!is.null(.carryR)) {
       .p <- sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", x["dfe"])
       .w <- which(.s$..linCmtCarryPairs$eta == .p)
-      # substitute only when the eta's ONLY route into rx_r_ is through the
-      # prediction (a direct eta dependence, pred held fixed, keeps the
-      # status quo row -- bias to false)
-      if (
+      .carried <- paste0(rxode2::rxFromSE(.carryR), ")*rx__sens_rx_pred__BY_", .p, "__")
+      if (length(.w) == 1L && !is.null(.lag)) {
+        # d(R)/d(pred) * the carried d(pred)/d(eta), plus the rest with pred
+        # held fixed, which a lagged variable can reach (#1176)
+        .rest <- symengine::subs(
+          .lag$dfe(.carrySubR, .p),
+          .carryPh,
+          get("rx_pred_", envir = .s)
+        )
+        .ret <- paste0(x["dfe"], "=(", .carried, "+(", .lag$txt(.rest, .p), ")")
+      } else if (
+        # substitute only when the eta's ONLY route into rx_r_ is through the
+        # prediction (a direct eta dependence, pred held fixed, keeps the
+        # status quo row -- bias to false)
         length(.w) == 1L &&
           paste(symengine::D(.carrySubR, symengine::S(.p))) %in% c("0", "0.0")
       ) {
-        .ret <- paste0(
-          x["dfe"],
-          "=(",
-          rxode2::rxFromSE(.carryR),
-          ")*rx__sens_rx_pred__BY_",
-          .p,
-          "__"
-        )
+        .ret <- paste0(x["dfe"], "=(", .carried)
       }
     }
     rxode2::rxTick()
@@ -2942,58 +2985,6 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   }
 }
 
-#' Names a history function (lag(), lead(), diff(), ...) takes as its variable
-#'
-#' Only the right-hand side of an assignment is searched, so the dosing
-#' `lag(cmt) <-` is not one.
-#' @param e a model expression
-#' @return character vector of names
-#' @noRd
-.foceiHistFnArgs <- function(e) {
-  if (!is.call(e)) {
-    return(character(0))
-  }
-  .f <- e[[1]]
-  if (is.name(.f) && as.character(.f) %in% c("<-", "=", "~")) {
-    return(.foceiHistFnArgs(e[[3]]))
-  }
-  .ret <- character(0)
-  if (
-    is.name(.f) &&
-      as.character(.f) %in% c("lag", "lead", "diff", "first", "last", "lag0", "lead0", "diff0") &&
-      length(e) >= 2L &&
-      is.name(e[[2]])
-  ) {
-    .ret <- as.character(e[[2]])
-  }
-  for (.i in seq_along(e)[-1]) {
-    .ret <- c(.ret, .foceiHistFnArgs(e[[.i]]))
-  }
-  unique(.ret)
-}
-
-#' Calculated variables of the model a history function refers to
-#'
-#' A variable that `lag()` (`lead()`, `diff()`, ...) refers to has to stay a
-#' real lhs, so rxode2's symengine load binds it to a bare symbol: its symbolic
-#' eta and theta sensitivities are 0, and every derivative taken through it --
-#' the inner (ETA) gradient and Hessian, the analytic outer gradient, the
-#' analytic covariance -- misses its dependence.  The inner problem
-#' finite-differences the ETAs of such a model instead, and the analytic paths
-#' decline it.  The AR(1) residual's own lagged quantities are generated, not
-#' model variables, and have their exact correction (`.rxFoceiArEtaCorrect()`).
-#' @param ui rxode2 ui
-#' @return the variables, `character(0)` for none
-#' @noRd
-.foceiLaggedCalcVars <- function(ui) {
-  .lhs <- ui$mv0$lhs
-  if (length(.lhs) == 0L) {
-    return(character(0))
-  }
-  .args <- unique(unlist(lapply(ui$lstExpr, .foceiHistFnArgs)))
-  intersect(.args, .lhs)
-}
-
 .innerInternal <- function(ui, s) {
   ## Interpolation is carried into the generated models, splitBolus() is not:
   ## these models solve the pre-split $dataSav (see .foceiPreProcessData()).
@@ -3102,13 +3093,6 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   if (identical(.eventSens, "jump")) {
     .eventEta[] <- 0L
     .eventTheta[] <- 0L
-  }
-  ## A lagged calculated variable has no symbolic sensitivity: finite-difference
-  ## every ETA (and theta) through the prediction model, as for a dosing parameter
-  ## under eventSens = "fd"
-  if (length(.foceiLaggedCalcVars(ui)) > 0L) {
-    .eventEta[] <- 1L
-    .eventTheta[] <- 1L
   }
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
@@ -3455,9 +3439,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## sensitivity model in "fd" mode -- silently zeroing the dosing-parameter
   ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
   ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
-  ## Version 4: a model with lag() of a calculated variable finite-differences its
-  ## ETAs (eventEta) and has no augmented outer model; a v3 entry has neither.
-  .cacheFormat <- 4L
+  .cacheFormat <- 3L
   .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
@@ -5125,6 +5107,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # re-attempting the symengine build on every outer-gradient call.
   if (isTRUE(.control$fast) && .foceiUsesLinCmt(.ui)) {
     .minfo("linCmt() model: the analytic 'fast' gradient does not apply -- using fast = FALSE")
+    .control <- .foceiDowngradeFast(.control)
+  }
+  if (isTRUE(.control$fast) && .foceiUsesLagVar(.ui)) {
+    .minfo("lag() of a calculated variable: the analytic 'fast' gradient does not apply -- using fast = FALSE")
     .control <- .foceiDowngradeFast(.control)
   }
   # matExp() models: the inner model now solves natively via rxode2's

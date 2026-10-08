@@ -48,6 +48,15 @@
   
 ## Bug Fixes
 
+- FOCEi-family eta sensitivities (and the imp/impmap theta sensitivities)
+  now chain through `lag()`/`diff()` of a calculated variable, so a model
+  whose random effect reaches the prediction only that way no longer errors
+  with "none of the model predictions depend on a random effect", and one
+  where it also enters directly gets the full inner gradient.  An ODE that
+  uses such a variable now compiles, and `lag()` of a variable inside an ODE
+  gives a clear error.  The analytic `fast=TRUE` gradient and analytic
+  covariance fall back to finite differences for these models (#1176).
+
 - `$etaMat` of a fit with inter-occasion variability now holds the occasion
   ETAs as the model estimated them; it held them multiplied by the occasion
   standard deviation (the scale of `$iov`).  `setOfv()`, `addCwres()`,
@@ -308,19 +317,8 @@
   for.  The `iter` column still counts every objective evaluation, so it
   skips the probes.
 
-- FOCEi-family fits of a model with `lag()` (or `lead()`, `diff()`, ...) of a
-  calculated variable now finite-difference its ETAs through the prediction
-  model.  The symbolic sensitivities treat such a variable as a constant, so
-  an ETA reaching the prediction only through it had no data gradient: the
-  inner problem held it at 0 (`theo_sd` with `cl` in `c0 <- central/v` and
-  `cp` from `lag(c0)`: every `eta.cl` 0, omega 0.45, objective 192.2; now
-  184.9 with omega 0.063), `fast = TRUE` fits stopped with "required for
-  solving: c0", and a model whose only ETA entered that way was refused.  The
-  analytic outer gradient and `covMethod = "analytic"` now decline such
-  models.
-
-- An ETA finite-differenced through the prediction model (`eventSens = "fd"`,
-  a dosing parameter or the lagged variables above) is now differenced
+- An ETA finite-differenced through the prediction model (`eventSens = "fd"`
+  or a dosing parameter) is now differenced
   against the prediction model's own value at the ETA.  The base point came
   from the sensitivity model, a solve of another ODE system, so a forward
   difference (`eventType = "forward"`) divided the difference between the two

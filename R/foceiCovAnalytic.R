@@ -1015,8 +1015,7 @@
       if (.foceiUsesLinCmt(ui)) {
         return(.foceiAnalyticFallback("a linCmt() model"))
       }
-      # nor has a calculated variable a history function refers to
-      if (length(.foceiLaggedCalcVars(ui)) > 0L) {
+      if (.foceiUsesLagVar(ui)) {
         return(.foceiAnalyticFallback("lag() of a calculated variable"))
       }
       if (.foceiCholSECovActive(ui)) {
@@ -3828,8 +3827,7 @@
   if (.foceiUsesLinCmt(ui)) {
     return(.foceiAnalyticFallback("a linCmt() model"))
   }
-  # nor has a calculated variable a history function refers to
-  if (length(.foceiLaggedCalcVars(ui)) > 0L) {
+  if (.foceiUsesLagVar(ui)) {
     return(.foceiAnalyticFallback("lag() of a calculated variable"))
   }
   if (.foceiCholSECovActive(ui)) {
