@@ -927,6 +927,35 @@ static void nlmHessRichardsonColumn(arma::vec &x, arma::vec &gr0, int k, double 
   }
 }
 
+// Flag step k for a search (negative hh[k]) once theta leaves the box its last search
+// probed; returns which steps will be searched.
+static std::vector<char> nlmHessFlagSearch(arma::vec &theta, double span) {
+  std::vector<char> searched(nlmOp.ntheta);
+  for (unsigned int k = 0; k < nlmOp.ntheta; ++k) {
+    double &h = nlmOp.thetahh[k];
+    if (h > 0 && nlmOp.hessRefresh) {
+      for (unsigned int j = 0; j < nlmOp.ntheta; ++j) {
+        if (fabs(theta[j] - nlmOp.hessThetaAt(j, k)) > span*fabs(nlmOp.thetahh[j])) {
+          h = -h;
+          break;
+        }
+      }
+    }
+    searched[k] = h <= 0;
+  }
+  return searched;
+}
+
+static arma::mat nlmHessRichardsonMat(arma::vec &gr0, arma::vec &theta) {
+  arma::mat H(nlmOp.ntheta, nlmOp.ntheta);
+  arma::vec col(nlmOp.ntheta);
+  for (unsigned int k = 0; k < nlmOp.ntheta; ++k) {
+    nlmHessRichardsonColumn(theta, gr0, k, nlmOp.thetahh[k], col);
+    H.col(k) = col;
+  }
+  return 0.5*(H + H.t());
+}
+
 // A searched step is kept for the fit.  With shi21HessRefresh it is kept only while
 // theta stays inside the box the searches probed (each coordinate within 4h forward,
 // 3h central, of where the step was searched); once theta leaves it the step is
@@ -937,21 +966,7 @@ arma::mat nlmCalcHessian(arma::vec &gr0, arma::vec &theta) {
   if (theta.n_elem != nlmOp.ntheta) stop(_("'theta' does not match the loaded problem"));
   const bool richardson = nlmOp.optimHessType == nlmHessRichardson;
   const int type = richardson ? shi21HessCentral : nlmOp.optimHessType;
-  const double span = (type == shi21HessForward) ? 4.0 : 3.0;
-  const bool gate = nlmOp.hessRefresh;
-  std::vector<char> searched(nlmOp.ntheta);
-  for (unsigned int k = 0; k < nlmOp.ntheta; ++k) {
-    double &h = nlmOp.thetahh[k];
-    if (h > 0 && gate) {
-      for (unsigned int j = 0; j < nlmOp.ntheta; ++j) {
-        if (fabs(theta[j] - nlmOp.hessThetaAt(j, k)) > span*fabs(nlmOp.thetahh[j])) {
-          h = -h;
-          break;
-        }
-      }
-    }
-    searched[k] = h <= 0;
-  }
+  std::vector<char> searched = nlmHessFlagSearch(theta, (type == shi21HessForward) ? 4.0 : 3.0);
   arma::mat H;
   if (!richardson || std::any_of(searched.begin(), searched.end(), [](char c) { return c; })) {
     H = shi21Hessian(nlmSolveGrad1, theta, gr0, 0, type,
@@ -962,15 +977,7 @@ arma::mat nlmCalcHessian(arma::vec &gr0, arma::vec &theta) {
     nlmOp.hessThetaAt.col(k) = theta;
     nlmOp.nHessSearch++;
   }
-  if (richardson) {
-    H.zeros(nlmOp.ntheta, nlmOp.ntheta);
-    arma::vec col(nlmOp.ntheta);
-    for (unsigned int k = 0; k < nlmOp.ntheta; ++k) {
-      nlmHessRichardsonColumn(theta, gr0, k, nlmOp.thetahh[k], col);
-      H.col(k) = col;
-    }
-    H = 0.5*(H + H.t());
-  }
+  if (richardson) H = nlmHessRichardsonMat(gr0, theta);
   return H;
 }
 
