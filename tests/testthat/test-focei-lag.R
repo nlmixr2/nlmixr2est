@@ -196,6 +196,36 @@ nmTest({
     expect_error(rxode2::rxode2(.histOde)$foceiEnv, "inside an ODE is not supported")
   })
 
+  test_that("a lagged variable read before it is reassigned keeps its sensitivity", {
+    .reMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.cl ~ 0.1
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        c0 <- central / v
+        y <- 2 * c0
+        c0 <- c0 * exp(eta.cl)
+        cp <- y + lag(c0)
+        cp ~ add(add.sd)
+      })
+    }
+    .s <- rxode2::rxode2(.reMod)$foceiEnv
+    # rxode2 builds before rxode2#1435 read the final c0 in y
+    skip_if_not(grepl("rx_lagv1_c0=c0", .s$..inner, fixed = TRUE))
+    .fd <- .lagFd(.reMod, .s$..inner, "ETA", seq_len(.s$..maxEta))
+    expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
+  })
+
   test_that("the linCmt() sensitivity carry keeps the lag() terms", {
     .carryMod <- function() {
       ini({
