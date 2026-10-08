@@ -34,17 +34,20 @@ gradient estimates during the covariance step.}
 
 \item{covGillF}{Use the Gill calculated optimal Forward difference
 step size for the instead of the central difference step size
-during the central difference gradient calculation.}
+during the central difference gradient calculation of the
+theta-only stage (see \code{covFull}).}
 
 \item{covSmall}{Small number used to compare covariance estimates
 (sandwich vs R/S matrix) before rejecting one as too small to be
 the final covariance estimate.}
 
 \item{rmatNorm}{A parameter to normalize gradient step size by the
-parameter value during the calculation of the R matrix}
+parameter value during the calculation of the R matrix of the
+theta-only stage (see \code{covFull})}
 
 \item{smatNorm}{A parameter to normalize gradient step size by the
-parameter value during the calculation of the S matrix}
+parameter value during the calculation of the S matrix of the
+theta-only stage (see \code{covFull})}
 }
 \value{
 \code{rsControl} object

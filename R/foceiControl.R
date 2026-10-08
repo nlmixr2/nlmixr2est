@@ -202,7 +202,11 @@
 #'     \code{\link{setCov}()} swaps between them without recomputing either.
 #'     Both shapes come from one finite-difference computation over the full
 #'     parameter set (the structural-theta shape is its theta block), at the steps
-#'     \code{gillKcov}, \code{gillStepCov} and \code{gillFtolCov} choose.
+#'     \code{gillKcov}, \code{gillStepCov} and \code{gillFtolCov} choose, so
+#'     \code{rmatNorm}, \code{smatNorm} and \code{covGillF} do not apply; the
+#'     theta-only stage runs separately (with them) for a mixture, a mu-referenced
+#'     model, a generalized log-likelihood, \code{gillKcov = 0} or
+#'     \code{covDerivMethod = "forward"}.
 #'
 #' @param fdOutlierZ Cut of the Iglewicz-Hoaglin modified z-score that decides
 #'   whether a finite-differenced subject's slope is an outlier against the exact
@@ -912,14 +916,16 @@
 #'   log-likelihood estimation.
 #'
 #' @param rmatNorm A parameter to normalize gradient step size by the
-#'     parameter value during the calculation of the R matrix
+#'     parameter value during the calculation of the R matrix of the
+#'     theta-only stage (see \code{covFull})
 #'
 #' @param rmatNormLlik A parameter to normalize gradient step size by
 #'   the parameter value during the calculation of the R matrix if you
 #'   are using generalized log-likelihood Hessian matrix.
 #'
 #' @param smatNorm A parameter to normalize gradient step size by the
-#'     parameter value during the calculation of the S matrix
+#'     parameter value during the calculation of the S matrix of the
+#'     theta-only stage (see \code{covFull})
 #'
 #' @param smatNormLlik A parameter to normalize gradient step size by
 #'   the parameter value during the calculation of the S matrix if you
@@ -927,7 +933,8 @@
 #'
 #' @param covGillF Use the Gill calculated optimal Forward difference
 #'     step size for the instead of the central difference step size
-#'     during the central difference gradient calculation.
+#'     during the central difference gradient calculation of the
+#'     theta-only stage (see \code{covFull}).
 #'
 #' @param optGillF Use the Gill calculated optimal Forward difference
 #'     step size for the instead of the central difference step size

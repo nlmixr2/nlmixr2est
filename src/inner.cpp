@@ -11513,6 +11513,7 @@ static void foceiSInnerAll(int slot, std::vector<int> &res) {
   bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
   res.assign((size_t)nsub, 1);
   std::vector<int> ok((size_t)nsub, 0);
+  if (_covStage >= 0) _covEvals[_covStage]++;
   for (int m = 0; m < nMix; ++m) {
     std::fill(ok.begin(), ok.end(), 0);
     if (doParallel) sortIds(rx, 2);
@@ -11693,6 +11694,10 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   bool allAxis = canAxis;
   for (cpar = npars; canAxis && cpar--;) {
     double d = sDelta(cpar);
+    if (!R_FINITE(d)) {
+      allAxis = false;
+      continue;
+    }
     auto ip = _covThetaAxis.find(std::make_pair(cpar, theta[cpar] + d));
     auto im = _covThetaAxis.find(std::make_pair(cpar, theta[cpar] - d));
     if (ip != _covThetaAxis.end() && im != _covThetaAxis.end() &&
@@ -11741,6 +11746,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       int _cores = getOpCores(_op);
       bool _doParallel = (_cores > 1) && solveMethodThreadSafe(_op);
       std::vector<int> _opt1Res(_nsub, 0);
+      if (_covStage >= 0) _covEvals[_covStage]++;
       if (_doParallel) sortIds(rx, 2);
       _innerParallel.store(1, std::memory_order_release);
       nmForEachSubject(rx, _nsub, _cores, _doParallel, [&](int _gid) {
@@ -11783,6 +11789,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
         rx_solving_options *_op = getSolvingOptions(rx);
         int _cores = getOpCores(_op);
         bool _doParallel = (_cores > 1) && solveMethodThreadSafe(_op);
+        if (_covStage >= 0) _covEvals[_covStage]++;
         if (_doParallel) sortIds(rx, 2);
         _innerParallel.store(1, std::memory_order_release);
         nmForEachSubject(rx, _nsub, _cores, _doParallel, [&](int _gid) {
@@ -11873,6 +11880,9 @@ void setupAq0_(Environment e) {
 
 
 static bool foceiFdFullMerge(Environment e);
+// calcGrad as the covariance step found it (CovCalcGradGuard), for the full stage, which
+// runs with the fit's setting wherever it runs
+static int _covFitCalcGrad = 0;
 
 NumericMatrix foceiCalcCov(Environment e){
   std::string boundStr = "";
@@ -11890,7 +11900,10 @@ NumericMatrix foceiCalcCov(Environment e){
   // set-and-never-cleared shape as the Gill gradient in issue 1114.
   struct CovCalcGradGuard {
     int saved;
-    CovCalcGradGuard() : saved(op_focei.calcGrad) { op_focei.calcGrad = 1; }
+    CovCalcGradGuard() : saved(op_focei.calcGrad) {
+      _covFitCalcGrad = op_focei.calcGrad;
+      op_focei.calcGrad = 1;
+    }
     ~CovCalcGradGuard() { op_focei.calcGrad = saved; }
   } _covCalcGradGuard;
   try {
@@ -12431,7 +12444,9 @@ static double foceiFdObjAt(const FdFullCtx &c, const double *x) {
     Om(c.omA[q]-1, c.omB[q]-1) = x[c.nth+q]; Om(c.omB[q]-1, c.omA[q]-1) = x[c.nth+q];
   }
   if (!foceiFdSetOmega(Om)) return NA_REAL;
-  return foceiOfv0(&op_focei.theta[0]);
+  // foceiOfv0() reports a failed evaluation as 5e100, which must not enter a difference
+  double r = foceiOfv0(&op_focei.theta[0]);
+  return (R_FINITE(r) && r < 5e100) ? r : NA_REAL;
 }
 
 // gill83 callback (plain function pointer -> file-static context): the objective at the
@@ -12672,11 +12687,16 @@ static bool foceiFdFullCompute(Environment e, bool covKnobs, bool needS, FdFullR
   return ok;
 }
 
+// The full stage's natural covariance solve(R); false when R cannot be inverted.
+static bool foceiFdFullCovOf(const FdFullResult &res, arma::mat &cov) {
+  return arma::inv_sympd(cov, res.R) || arma::inv(cov, res.R);
+}
+
 // Install the full stage for .foceiInstallFdFullCov: the natural cov solve(R) as
 // e[".fdFullCov"] and S as e[".fdFullS"].
 static bool foceiFdFullStash(Environment e, const FdFullResult &res) {
   arma::mat cov;
-  if (!arma::inv_sympd(cov, res.R) && !arma::inv(cov, res.R)) return false;   // cov = Rinv
+  if (!foceiFdFullCovOf(res, cov)) return false;   // cov = Rinv
   NumericMatrix covR = wrap(cov);
   covR.attr("dimnames") = List::create(res.nm, res.nm);
   e[".fdFullCov"] = covR;                       // Rinv_full (feeds "r" and the sandwich)
@@ -12695,18 +12715,19 @@ static bool _fdFullDone = false;
 // Whether the theta-only R and S can be read from the full stage: a covariance on the
 // finite-difference route (the caller has tried an analytic R), every estimated theta among the full
 // stage's, and the theta-only stage's own construction not needed -- a mixture's
-// analytic responsibility scores and a non-normal endpoint's settings are its own.
+// analytic responsibility scores, a non-normal endpoint's settings and forward-difference
+// S legs (covDerivMethod = "forward") are its own.
 static bool foceiFdFullMergeable(Environment e) {
   return op_focei.covFull && op_focei.neta > 0 && op_focei.muModel == 0 &&
     op_focei.mixIdxN == 0 && !op_focei.needOptimHess && op_focei.gillKcov != 0 &&
+    op_focei.covDerivMethod != 0 &&                   // forward S differences are the theta stage's
     (op_focei.covMethod >= 1 && op_focei.covMethod <= 3);
 }
 
-// The theta-only R.0 and S0 as the theta block of the full stage's, in op_focei's
-// parameter order; false (nothing installed) when a theta is not among the full ones.
-static bool foceiFdFullInstallTheta(Environment e, const FdFullResult &res) {
+// The full stage's index of each of op_focei's thetas; false when one is not among them.
+static bool foceiFdFullThetaIdx(const FdFullResult &res, arma::uvec &idx) {
   int np = (int)op_focei.npars;
-  arma::uvec idx((unsigned int)np);
+  idx.set_size((unsigned int)np);
   for (int k = 0; k < np; ++k) {
     int j = op_focei.fixedTrans[k], found = -1;
     for (int i = 0; i < res.c.nth; ++i) {
@@ -12715,6 +12736,12 @@ static bool foceiFdFullInstallTheta(Environment e, const FdFullResult &res) {
     if (found < 0) return false;
     idx[(unsigned int)k] = (unsigned int)found;
   }
+  return true;
+}
+
+// The theta-only R.0 and S0 as the theta block of the full stage's, in op_focei's
+// parameter order (idx from foceiFdFullThetaIdx).
+static void foceiFdFullInstallTheta(Environment e, const FdFullResult &res, const arma::uvec &idx) {
   arma::mat R0 = res.R.submat(idx, idx);
   e["R.0"] = wrap(R0);
   foceiCovChol(e, R0, "R");
@@ -12724,19 +12751,33 @@ static bool foceiFdFullInstallTheta(Environment e, const FdFullResult &res) {
     e["Sper"] = 1.0;
     foceiCovChol(e, S0, "S");
   }
-  return true;
 }
 
 // Run the full stage inside foceiCalcCov when the theta-only R and S can be read from
 // it, at the covariance stage's step settings: one step search and one stencil per
 // covariance step instead of two.  Installs the theta-only R.0/S0 and the full stage's
 // .fdFullCov/.fdFullS; false (nothing installed) when it does not apply.
+// An error in the full stage (it moves Omega, which the theta-only stage does not) leaves
+// the theta-only route to run, as when the stages were separate.
 static bool foceiFdFullMerge(Environment e) {
   if (!covReuseOn() || !foceiFdFullMergeable(e)) return false;
   FdFullResult res;
-  if (!foceiFdFullCompute(e, true, foceiFdFullNeedS(e), res)) return false;
-  if (!foceiFdFullInstallTheta(e, res)) return false;
-  if (!foceiFdFullStash(e, res)) return false;
+  try {
+    ScopedRestore<int> calcGrad(op_focei.calcGrad);
+    op_focei.calcGrad = _covFitCalcGrad;
+    if (!foceiFdFullCompute(e, true, foceiFdFullNeedS(e), res)) return false;
+  } catch (Rcpp::internal::InterruptedException&) {
+    throw;
+  } catch (Rcpp::LongjumpException&) {
+    throw;
+  } catch (...) {
+    return false;
+  }
+  arma::uvec idx;
+  arma::mat cov;
+  if (!foceiFdFullThetaIdx(res, idx) || !foceiFdFullCovOf(res, cov)) return false;
+  foceiFdFullInstallTheta(e, res, idx);
+  foceiFdFullStash(e, res);
   _fdFullDone = true;
   return true;
 }

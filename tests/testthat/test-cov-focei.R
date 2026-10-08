@@ -676,10 +676,11 @@ nmTest({
     expect_identical(.on$cov, .off$cov)
     expect_identical(.on$env$covS, .off$env$covS)
     expect_identical(.on$env$covEvals[["s"]], 0L)
-    expect_identical(.off$env$covEvals[["s"]], 2L * nrow(.on$cov))
+    # solved: 2 central legs per theta and the 2 of each theta's fallback gradient
+    expect_identical(.off$env$covEvals[["s"]], 4L * nrow(.on$cov))
     expect_identical(.on$env$covEvals[["r"]], .off$env$covEvals[["r"]])
     .def <- .fit(TRUE)
-    expect_identical(.def$env$covEvals[["s"]], 2L * nrow(.def$cov))
+    expect_identical(.def$env$covEvals[["s"]], 4L * nrow(.def$cov))
     # the steps the theta-only stage searched, about the centre value they were taken at
     expect_named(.on$env$covSteps, c("theta", "f0", "aEps", "rEps", "aEpsC", "rEpsC"))
     expect_identical(lengths(.on$env$covSteps, use.names = FALSE), c(4L, 1L, 4L, 4L, 4L, 4L))
@@ -705,6 +706,9 @@ nmTest({
     # and it is the observed information: the theta-only "r" SEs are the analytic ones
     .r <- .f$env$covList[["r"]]
     expect_lt(max(abs(sqrt(diag(.r))[.nm] / sqrt(diag(.an$cov))[.nm] - 1)), 0.01)
+    # forward-difference S legs are the theta-only stage's own, so it runs separately
+    .fw <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covDerivMethod = "forward"))
+    expect_true(all(.fw$env$covEvals[c("gill", "r", "s", "fullR")] > 0L))
   })
 
   test_that("a fit's covariance is the one a refit at its estimates computes, bit for bit", {

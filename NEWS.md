@@ -7,7 +7,10 @@
   gives both shapes: the structural-theta covariance is its theta block, so the
   separate theta-only step search, R stencil and S legs no longer run, and both
   shapes use the covariance step sizes (`gillKcov`, `gillStepCov`,
-  `gillFtolCov`).  The S matrix is read from the points the R stencil already
+  `gillFtolCov`); `rmatNorm`, `smatNorm` and `covGillF` now apply only to a
+  theta-only stage that runs on its own (`covFull = FALSE`, mixtures,
+  mu-referenced models, a generalized log-likelihood, `gillKcov = 0` or
+  `covDerivMethod = "forward"`).  The S matrix is read from the points the R stencil already
   evaluates; with `covFull = FALSE` this also holds for `smatNorm = FALSE`, whose
   S steps are the R stencil's.  `covMethod = "analytic"` runs no step search
   unless the analytic R is declined.  On `theo_sd` and the warfarin model of the audit the default

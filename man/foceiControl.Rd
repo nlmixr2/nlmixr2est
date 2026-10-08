@@ -339,7 +339,11 @@ versus \code{"r,s"} -- and the other shape is cached, so
 \code{\link{setCov}()} swaps between them without recomputing either.
 Both shapes come from one finite-difference computation over the full
 parameter set (the structural-theta shape is its theta block), at the steps
-\code{gillKcov}, \code{gillStepCov} and \code{gillFtolCov} choose.}
+\code{gillKcov}, \code{gillStepCov} and \code{gillFtolCov} choose, so
+\code{rmatNorm}, \code{smatNorm} and \code{covGillF} do not apply; the
+theta-only stage runs separately (with them) for a mixture, a mu-referenced
+model, a generalized log-likelihood, \code{gillKcov = 0} or
+\code{covDerivMethod = "forward"}.}
 
 \item{fast}{When \code{TRUE}, compute the outer (population) gradient
 analytically from Almquist (2015) sensitivity equations instead of by
@@ -1005,14 +1009,16 @@ gradient estimates during the covariance step.}
 log-likelihood estimation.}
 
 \item{rmatNorm}{A parameter to normalize gradient step size by the
-parameter value during the calculation of the R matrix}
+parameter value during the calculation of the R matrix of the
+theta-only stage (see \code{covFull})}
 
 \item{rmatNormLlik}{A parameter to normalize gradient step size by
 the parameter value during the calculation of the R matrix if you
 are using generalized log-likelihood Hessian matrix.}
 
 \item{smatNorm}{A parameter to normalize gradient step size by the
-parameter value during the calculation of the S matrix}
+parameter value during the calculation of the S matrix of the
+theta-only stage (see \code{covFull})}
 
 \item{smatNormLlik}{A parameter to normalize gradient step size by
 the parameter value during the calculation of the S matrix if you
@@ -1020,7 +1026,8 @@ are using the generalized log-likelihood.}
 
 \item{covGillF}{Use the Gill calculated optimal Forward difference
 step size for the instead of the central difference step size
-during the central difference gradient calculation.}
+during the central difference gradient calculation of the
+theta-only stage (see \code{covFull}).}
 
 \item{optGillF}{Use the Gill calculated optimal Forward difference
 step size for the instead of the central difference step size
