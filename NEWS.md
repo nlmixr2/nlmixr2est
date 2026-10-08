@@ -151,6 +151,9 @@
   information already holds) replaces that setting instead of failing with
   `formal argument matched by multiple actual arguments`.
 - `vpcSim(fit, n = 1)` no longer fails with `object '.sim2' not found`.
+- `vpcSim()` (and so `addNpde()`) and `augPred()` no longer fail with a
+  syntax error for a model that uses `lag()` or `diff()` of a calculated
+  variable (#1173).
 - The table of a fit whose `rxControl(method=)` is one of rxode2's newer ODE
   methods (`"cvode"`, `"lsode"`, `"bdf"`, `"dop5"`, ...) is calculated again.
   The post-fit solve turned the fit's integer method code back into a name
@@ -253,6 +256,13 @@
   differing number of rows`.  Both now read the fit's own control (`$control`);
   the imp objective read `$foceiControl`, which never holds `adjObf`.
 
+- `shiErr` and `hessErr` must now be > 0 in `nlmControl()`,
+  `nlminbControl()`, `nlsControl()`, `optimControl()` and `trustControl()`,
+  as must `hessEps`/`hessEpsLlik` in `foceiControl()` and `rsControl()`;
+  0 was accepted and gave a zero finite-difference step (an all-zero
+  gradient for event parameters).  A hand-built nlm control with a
+  non-positive value uses the default (#1174).
+
 ### Parameter scaling
 
 - `ui$scaleCtheta` (and `ui$scaleCnls`) now give one scaling constant per
@@ -353,6 +363,10 @@
 
 ### Covariance
 
+- The covariance step's progress bar now always reaches 100% and ends its line
+  (#1171).  After an earlier bar had finished it stopped at a few percent, the
+  next message could print on the bar's line, and an `imp` fit's bar was
+  sometimes not shown at all.
 - The post-fit covariance of a model with inter-occasion variability is now
   computed: the recompute of the `mfocei`-style families (and of imp/np with
   a requested covariance) and `setCov(fit, "imp")` (or a deferred
