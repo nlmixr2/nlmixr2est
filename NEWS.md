@@ -660,6 +660,10 @@
 
 ### Covariance
 
+- The FOCEi covariance step no longer accepts an R or S matrix with a
+  non-finite entry as positive definite (the modified Cholesky factorization
+  reported one so); it is not usable, as in the nlm family.
+
 - A fit's covariance (`covMethod = "r,s"`, `"r"` and `"s"`, either shape) is
   now the one `setCov()` computes for it.  The covariance step starts every
   subject's inner problem as a fresh setup leaves it (estimation's warm

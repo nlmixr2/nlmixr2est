@@ -5,6 +5,10 @@ cholSE_ <- function(A, tol) {
     .Call(`_nlmixr2est_cholSE_`, A, tol)
 }
 
+covAccept_ <- function(A, cholSEtol, cholAccept, rankStrict) {
+    .Call(`_nlmixr2est_covAccept_`, A, cholSEtol, cholAccept, rankStrict)
+}
+
 cholSEpd_ <- function(A, tol) {
     .Call(`_nlmixr2est_cholSEpd_`, A, tol)
 }

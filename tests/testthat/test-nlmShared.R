@@ -180,3 +180,36 @@ nmTest({
     expect_equal(.nlmAdjustCov(.cov, .x), .cov * tcrossprod(.init / 2), tolerance = 1e-14)
   })
 })
+
+test_that("covAccept_() takes every branch of the covariance acceptance rule", {
+  # the one rule the FOCEi covariance step (rankStrict = FALSE) and the nlm family
+  # (rankStrict = TRUE) use: "" as it is, "+" within cholAccept, "|" for sqrtm(A %*% A)
+  .tol <- .Machine$double.eps^(1 / 3)
+  .cases <- list(
+    pd = list(diag(2), "", ""),
+    one = list(matrix(2), "", ""),
+    zero1 = list(matrix(0), "failed", "singular"),
+    neg1 = list(matrix(-1), "|", "|"),
+    nearPd = list(matrix(c(1, 1, 1, 1 - 1e-8), 2), "+", "+"),
+    indefinite = list(matrix(c(1, 0, 0, -1), 2), "|", "|"),
+    rank1 = list(matrix(c(1, 1, 1, 1), 2), "+", "singular"),
+    zero2 = list(matrix(0, 2, 2), "failed", "singular"),
+    nan = list(matrix(c(1, NaN, NaN, 1), 2), "failed", "failed"),
+    inf = list(matrix(c(Inf, 0, 0, 1), 2), "failed", "failed")
+  )
+  for (.n in names(.cases)) {
+    .c <- .cases[[.n]]
+    expect_identical(covAccept_(.c[[1]], .tol, 1e-3, FALSE)$type, .c[[2]], label = paste(.n, "loose"))
+    expect_identical(covAccept_(.c[[1]], .tol, 1e-3, TRUE)$type, .c[[3]], label = paste(.n, "strict"))
+  }
+  # "|" factors sqrtm(A %*% A) and returns it; "+" keeps A and factors A + diag(E)
+  .a <- covAccept_(matrix(c(1, 0, 0, -1), 2), .tol, 1e-3, TRUE)
+  expect_equal(.a$M, sqrtm(matrix(c(1, 0, 0, -1), 2) %*% matrix(c(1, 0, 0, -1), 2)))
+  expect_equal(crossprod(.a$U), .a$M)
+  .p <- covAccept_(matrix(c(1, 1, 1, 1 - 1e-8), 2), .tol, 1e-3, TRUE)
+  expect_identical(.p$M, matrix(c(1, 1, 1, 1 - 1e-8), 2))
+  # cholAccept bounds the "+" correction; past it the matrix is "|"
+  .small <- diag(c(1, -1e-6))
+  expect_identical(covAccept_(.small, .tol, 1e-3, TRUE)$type, "+")
+  expect_identical(covAccept_(.small, .tol, 1e-9, TRUE)$type, "|")
+})

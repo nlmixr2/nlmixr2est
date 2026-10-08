@@ -11355,43 +11355,24 @@ static void foceiCovChol(Environment e, const arma::mat &M, const std::string &X
   e["chol" + X] = wrap(ch);
 }
 
-// Whether the R (X = "R") or S ("S") matrix M0 can be used.  When cholSE0 found it
-// not positive definite it is repaired: cholSE0's modified factor if every added
-// diagonal is within cholAccept (label "r+"/"s+"), else chol(sqrtm(M0 %*% M0))
-// ("|r|"/"|s|", suggested by https://www.tandfonline.com/doi/pdf/10.1198/106186005X78800),
-// which replaces e["chol<X>"].  The "r+"/"s+" rung also needs a positive largest
-// diagonal, a finite E and a finite factor, so an all-zero matrix falls to the sqrtm
-// rung (which rejects it).  cholSE0 calls every 1x1 matrix positive definite, so a 1x1
-// M0 is checked by its value.
+// Whether the R (X = "R") or S ("S") matrix M0 can be used, by covAcceptRule() on
+// foceiCovChol()'s factorization: label "r+"/"s+" or "|r|"/"|s|" when repaired (the
+// latter replaces e["chol<X>"]).  A rank-deficient M0 may still be "r+" here.
 static bool foceiCovUsable(Environment e, const std::string &X, const arma::mat &M0,
                            std::string &lab, bool &checkSandwich) {
-  if (as<bool>(e[X + ".pd"]) && (M0.n_elem != 1 || M0(0, 0) > 0)) return true;
   std::string x(1, (char)std::tolower(X[0]));
-  // cholSE0 scales what it adds by the largest diagonal of M0, so a matrix with no
-  // positive diagonal (an all-zero R: the objective does not move with any parameter)
-  // gets nothing it could be corrected within -- zeros, NaNs from dividing by a zero
-  // pivot, or tol*I for a 1x1 -- and is not a small correction of anything.
+  arma::mat U = as<arma::mat>(e["chol" + X]);
   arma::vec E = as<arma::vec>(e[X + ".E"]);
-  if (M0.n_elem > 0 && M0.diag().max() > 0 && E.is_finite() &&
-      as<arma::mat>(e["chol" + X]).is_finite() &&
-      !arma::any(E > op_focei.cholAccept)) {
-    lab = x + "+";
-    checkSandwich = true;
-    return true;
-  }
-  // |M0| has eigenvalues |eig(M0)|; a numerically rank-deficient M0 (S from one
-  // subject) passes chol after sqrtmat, which lifts rounding-level ones to ~sqrt(eps)
-  arma::vec ev;
-  if (!arma::eig_sym(ev, arma::symmatu(M0))) return false;
-  ev = arma::abs(ev);
-  if (ev.min() <= ev.max() * M0.n_rows * arma::datum::eps) return false;
-  arma::cx_mat H1;
-  arma::mat ch;
-  if (!arma::sqrtmat(H1, M0*M0) || arma::any(arma::any(arma::imag(H1), 0)) ||
-      !arma::chol(ch, arma::real(H1))) return false;
-  e["chol" + X] = wrap(ch);
-  lab = "|" + x + "|";
+  int rc = covAcceptRule(M0, as<bool>(e[X + ".pd"]), E, U, op_focei.cholAccept, false);
+  if (rc == 1) return true;
+  if (rc <= 0) return false;
   checkSandwich = true;
+  if (rc == 2) {
+    lab = x + "+";
+  } else {
+    e["chol" + X] = wrap(U);
+    lab = "|" + x + "|";
+  }
   return true;
 }
 
