@@ -14,7 +14,9 @@
   covariance takes about a quarter fewer objective evaluations (242 to 178, 505
   to 368) and 30-45% less time, and the theta-only standard errors move closer to
   the analytic ones (theo_sd 2.9% to 0.3%, warfarin 28% to 6%).  The fit's
-  `env$covEvals` counts the evaluations of each stage.
+  `env$covEvals` counts the evaluations of each stage.  With `covFull = TRUE`
+  the covariance columns of `$scaleInfo` read "Not Assessed", since no
+  theta-only step search runs.
 
 - `foceiControl(innerOpt = "lbfgsb3c")` runs L-BFGS-B on the per-subject
   ETA problem, using `lbfgsb3c`'s thread-safe port (`lbfgsb3c >= 2024-3.6`).

@@ -247,15 +247,19 @@ nmTest({
   test_that("$scaleInfo reports each parameter's own covariance step search", {
     skip_on_cran()
     .cols <- c("Covariance Gradient", "Covariance aEps", "Covariance rEps")
-    # the covariance step at the initial estimates differences the thetas only
-    .a <- .scaleInfoFixed(FALSE, maxOuterIterations = 0L)
-    .b <- .scaleInfoFixed(TRUE, maxOuterIterations = 0L)
+    # the theta-only covariance step at the initial estimates (covFull = FALSE: the
+    # full stage would give the theta-only steps, and this search would not run)
+    .a <- .scaleInfoFixed(FALSE, maxOuterIterations = 0L, covFull = FALSE)
+    .b <- .scaleInfoFixed(TRUE, maxOuterIterations = 0L, covFull = FALSE)
     # the fixed tka has no search; every other theta's row is its own
     expect_equal(as.character(.a[["Covariance Gradient"]][1]), "Not Assessed")
     expect_true(all(is.na(unlist(.a[1, .cols[-1]]))))
     expect_true(all(as.character(.b[["Covariance Gradient"]][1:3]) != "Not Assessed"))
     expect_equal(as.character(.a[["Covariance Gradient"]][-1]), as.character(.b[["Covariance Gradient"]]))
     expect_equal(.a[-1, .cols[-1]], .b[, .cols[-1]], ignore_attr = TRUE, tolerance = 1e-10)
+    # with covFull = TRUE (the default) no theta-only search runs to report
+    .full <- .scaleInfoFixed(TRUE, maxOuterIterations = 0L)
+    expect_identical(unique(as.character(.full[["Covariance Gradient"]])), "Not Assessed")
   })
 
   test_that("$scaleInfo reports each search by parameter with a fixed theta in the middle or last", {
