@@ -533,6 +533,11 @@
   if (is.data.frame(obj$iniDf0)) {
     .env2$iniDf0 <- obj$iniDf0
   }
+  # the fit's covariance starting parameters, to the last bit (installed by the C++
+  # covariance step when they match the refit's estimates)
+  if (is.list(.env$covHandoff)) {
+    .env2$covHandoff <- .env$covHandoff
+  }
   for (.n in names(.lst)) {
     .control[[.n]] <- .lst[[.n]]
   }

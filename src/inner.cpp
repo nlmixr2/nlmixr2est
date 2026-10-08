@@ -2046,9 +2046,12 @@ static bool covFitSolveLost_ = false;
 struct FdInnerStateGuard {
   focei_ind *fInd;
   std::vector<double> eta, oldEta, zm, saveEta, etahf, etahr, etahh, llikObs;
+  // the trust inner optimizer's quasi-Newton memory
+  std::vector<double> etaHessQN, etaGradPrevQN, etaPrevQN;
   double lik[3];
   unsigned int setup, uzm;
   int mode, stickyRecalcN2;
+  int doEtaNudge, doChol, doFD, badSolve, nInnerF, nInnerG, etaHasPrevQN;
   double tolFactor;
   int cid_;
   FdInnerStateGuard(int cid) : cid_(cid) {
@@ -2067,6 +2070,12 @@ struct FdInnerStateGuard {
     fdSaveVec(etahr, fInd->etahr, ne);
     fdSaveVec(etahh, fInd->etahh, ne);
     fdSaveVec(zm, fInd->zm, op_focei.nzm);
+    fdSaveVec(etaHessQN, fInd->etaHessQN, ne*ne);
+    fdSaveVec(etaGradPrevQN, fInd->etaGradPrevQN, ne);
+    fdSaveVec(etaPrevQN, fInd->etaPrevQN, ne);
+    doEtaNudge = fInd->doEtaNudge; doChol = fInd->doChol; doFD = fInd->doFD;
+    badSolve = fInd->badSolve; nInnerF = fInd->nInnerF; nInnerG = fInd->nInnerG;
+    etaHasPrevQN = fInd->etaHasPrevQN;
     // Per-observation conditional log-likelihoods.  likInner0() overwrites these, and
     // they are handed to R as e["llikObs"], so a perturbed evaluation would otherwise
     // ship in the fit.
@@ -2096,6 +2105,12 @@ struct FdInnerStateGuard {
     fdRestoreVec(etahr, fInd->etahr);
     fdRestoreVec(etahh, fInd->etahh);
     fdRestoreVec(zm, fInd->zm);
+    fdRestoreVec(etaHessQN, fInd->etaHessQN);
+    fdRestoreVec(etaGradPrevQN, fInd->etaGradPrevQN);
+    fdRestoreVec(etaPrevQN, fInd->etaPrevQN);
+    fInd->doEtaNudge = doEtaNudge; fInd->doChol = doChol; fInd->doFD = doFD;
+    fInd->badSolve = badSolve; fInd->nInnerF = nInnerF; fInd->nInnerG = nInnerG;
+    fInd->etaHasPrevQN = etaHasPrevQN;
     fdRestoreVec(llikObs, fInd->llikObs);
     fInd->lik[0] = lik[0]; fInd->lik[1] = lik[1]; fInd->lik[2] = lik[2];
     fInd->setup = setup; fInd->uzm = uzm; fInd->mode = mode;
@@ -8935,6 +8950,73 @@ CovLlikObsGuard::~CovLlikObsGuard() {
 // control says.  A refit that holds the ETAs only to report them asks for marginal legs
 // with the control element covMaxInnerIterations (.covInnerIterations(), R/cov.R): the
 // legs get that inner budget, and its supplied ETAs give eta-hat the same way.
+// Every inner problem as a fresh setup leaves it: warm Hessian off, eta nudging on, no
+// quasi-Newton memory or step caches, the fit's ODE tolerance factor 1, and no restart
+// points (the next inner pass draws them from the Omega it runs at, the estimate here,
+// where estimation drew them from its starting Omega).  The covariance step starts here, so
+// its result does not depend on what estimation left; the caller (CovEtaStart, with its
+// FdInnerStateGuards, and CovTolFactorGuard) puts the fit's state back afterwards.
+static void covInnerFresh(int nId) {
+  int ne = op_focei.neta;
+  op_focei.etaRestartSamples.reset();
+  for (int id = 0; id < nId; ++id) {
+    focei_ind *fInd = &(inds_focei[id]);
+    fInd->mode = 1;
+    fInd->uzm = 1;
+    fInd->doEtaNudge = 1;
+    fInd->doChol = !(op_focei.cholSEOpt);
+    fInd->doFD = 0;
+    fInd->badSolve = 0;
+    fInd->stickyRecalcN2 = 0;
+    fInd->nInnerF = 0;
+    fInd->nInnerG = 0;
+    fInd->etaHasPrevQN = 0;
+    if (fInd->zm != NULL) std::fill_n(fInd->zm, op_focei.nzm, 0.0);
+    if (fInd->etaHessQN != NULL) std::fill_n(fInd->etaHessQN, ne*ne, 0.0);
+    if (fInd->etaGradPrevQN != NULL) std::fill_n(fInd->etaGradPrevQN, ne, 0.0);
+    if (fInd->etaPrevQN != NULL) std::fill_n(fInd->etaPrevQN, ne, 0.0);
+    if (fInd->etahf != NULL) std::fill_n(fInd->etahf, ne, 0.0);
+    if (fInd->etahr != NULL) std::fill_n(fInd->etahr, ne, 0.0);
+    if (fInd->etahh != NULL) std::fill_n(fInd->etahh, ne, 0.0);
+  }
+  int nsub = (int)getRxNsub(rx);
+  for (int i = 0; i < nsub; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
+    if (ind != NULL) setIndTolFactor(ind, 1.0);
+  }
+}
+
+// The covariance step's starting parameters (the hand-off from estimation): the
+// natural-scale theta and Omega parameters, recorded in e$covHandoff.  A refit at a fit's
+// estimates (setCov) carries the fit's record and installs it when it matches its own
+// estimates to the last few places, so both differentiate the objective at the same bits;
+// Omega parameters rebuilt from the reported matrix can differ in the last place.
+static void covHandoffInstall(Environment e) {
+  int nt = (int)op_focei.ntheta, no = (int)op_focei.omegan;
+  double *ft = op_focei.fullTheta;
+  if (e.exists("covHandoff")) {
+    List h = as<List>(e["covHandoff"]);
+    NumericVector th = h.containsElementNamed("theta") ? as<NumericVector>(h["theta"]) : NumericVector(0);
+    NumericVector om = h.containsElementNamed("omega") ? as<NumericVector>(h["omega"]) : NumericVector(0);
+    bool same = th.size() == nt && om.size() == no;
+    for (int k = 0; same && k < nt + no; ++k) {
+      double v = (k < nt) ? th[k] : om[k - nt];
+      same = std::fabs(v - ft[k]) <= 1e-12 * std::max(1.0, std::fabs(v));
+    }
+    if (same) {
+      std::copy(th.begin(), th.end(), ft);
+      std::copy(om.begin(), om.end(), ft + nt);
+      if (op_focei.neta > 0 && no > 0) {
+        foceiOmegaFromTheta(ft + nt);
+        _updateThetaOmegaTail.assign(ft + nt, ft + nt + no);
+      }
+      foceiPushFullTheta();
+    }
+  }
+  e["covHandoff"] = List::create(_["theta"] = NumericVector(ft, ft + nt),
+                                 _["omega"] = NumericVector(ft + nt, ft + nt + no));
+}
+
 struct CovEtaStart;
 static CovEtaStart *_covEtaStart = NULL;
 struct CovEtaStart {
@@ -8942,8 +9024,9 @@ struct CovEtaStart {
   std::vector<double> eta, zm;
   std::vector<int> mode;
   std::vector<unsigned int> uzm;
+  arma::cube restartSave;
   int nId = 0, savedMaxInner;
-  bool raised = false;
+  bool raised = false, restartSaved = false;
   explicit CovEtaStart(Environment e) : savedMaxInner(op_focei.maxInnerIterations) {
     // a fit without a covariance step keeps its inner state as it is
     if (op_focei.covMethod == 0) return;
@@ -8969,6 +9052,9 @@ struct CovEtaStart {
       op_focei.maxInnerIterations = cap;
       raised = true;
     }
+    restartSave = op_focei.etaRestartSamples;
+    restartSaved = true;
+    covInnerFresh(nId);
     // set last, so a constructor that throws leaves no pointer to a dead object
     _covEtaStart = this;
   }
@@ -8976,6 +9062,7 @@ struct CovEtaStart {
     _covEtaStartOn = false;
     if (_covEtaStart == this) _covEtaStart = NULL;
     if (raised) op_focei.maxInnerIterations = savedMaxInner;
+    if (restartSaved) op_focei.etaRestartSamples = restartSave;
     if (entry.empty()) return;
     // Restoring each subject's inner state puts fInd->setup and oldEta back, the state
     // in which likInner0() answers from its cache, while ind->solve still holds the
@@ -11902,6 +11989,9 @@ NumericMatrix foceiCalcCov(Environment e){
       // muModel is always 0 here: ordinary methods never set it, and mu-referenced
       // (lin/irls) families bail above and recompute the covariance on the full model.
       foceiSetupTheta_(op_focei.mvi, fullT2, skipCov, 0, false);
+      // after foceiSetupTheta_, which takes the Omega parameters from the symbolic
+      // inverse's own copy
+      covHandoffInstall(e);
       op_focei.scaleType=10;
       if (op_focei.covMethod && !boundary) {
         rx = getRxSolve_();

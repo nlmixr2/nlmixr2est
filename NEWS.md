@@ -651,6 +651,14 @@
 
 ### Covariance
 
+- A fit's covariance (`covMethod = "r,s"`, `"r"` and `"s"`, either shape) is now the
+  one `setCov()` computes for it.  The covariance step starts every subject's inner
+  problem as a fresh setup leaves it (estimation's warm Hessian, ETA nudge state and
+  quasi-Newton memory are not carried over) and draws its inner restart points from the
+  estimated Omega rather than the starting one, and `setCov()` installs the fit's
+  parameters to the last bit (`env$covHandoff`).  On the warfarin model of issue 1140
+  the theta-only `"r"` standard errors of a fit and of `setCov()` differed by up to 2x.
+
 - The covariance step's progress bar now always reaches 100% and ends its line
   (#1171).  After an earlier bar had finished it stopped at a few percent, the
   next message could print on the bar's line, and an `imp` fit's bar was

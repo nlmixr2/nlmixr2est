@@ -706,4 +706,35 @@ nmTest({
     .r <- .f$env$covList[["r"]]
     expect_lt(max(abs(sqrt(diag(.r))[.nm] / sqrt(diag(.an$cov))[.nm] - 1)), 0.01)
   })
+
+  test_that("a fit's covariance is the one a refit at its estimates computes, bit for bit", {
+    skip_on_cran()
+    # the covariance step starts from the hand-off (the fit's parameters and ETAs, with
+    # every inner problem as a fresh setup leaves it), not from what estimation left; a
+    # refit (setCov) carries the fit's parameters to the last bit in env$covHandoff
+    for (.full in c(FALSE, TRUE)) {
+      for (.m in c("r,s", "r", "s")) {
+        .f <- .nlmixr(
+          .quietOneCmt,
+          theo_sd,
+          "focei",
+          foceiControl(print = 0, calcTables = FALSE, covMethod = .m, covFull = .full)
+        )
+        .r <- suppressMessages(.setCovRefit(.f, covMethod = .m, covFull = .full))
+        expect_identical(.r$covMethod, .f$covMethod)
+        expect_identical(.r$cov, .f$cov)
+      }
+    }
+    expect_named(.f$env$covHandoff, c("theta", "omega"))
+    expect_length(.f$env$covHandoff$theta, 4L)
+    expect_length(.f$env$covHandoff$omega, 3L)
+    # a record that does not match the refit's estimates is not installed
+    .bad <- .f$env$covHandoff
+    .bad$theta <- .bad$theta * 1.01
+    .f$env$covHandoff <- .bad
+    .r2 <- suppressMessages(.setCovRefit(.f, covMethod = "s", covFull = TRUE))
+    expect_identical(.r2$covMethod, .f$covMethod)
+    expect_equal(.r2$cov, .f$cov, tolerance = 1e-6)
+    expect_false(identical(.r2$env$covHandoff$theta, .bad$theta))
+  })
 })
