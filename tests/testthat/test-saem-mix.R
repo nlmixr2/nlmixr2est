@@ -332,31 +332,33 @@ nmTest({
     )
     expect_true("p1" %in% names(fit_saem_split$theta))
     expect_true(!is.null(fit_saem_split$cov))
-    expect_true("eta.cl" %in% rownames(fit_saem_split$omega))
-    expect_true(!"eta.cl1" %in% rownames(fit_saem_split$omega))
-    expect_true("eta.cl" %in% names(fit_saem_split$ranef))
-    expect_true(!"eta.cl1" %in% names(fit_saem_split$ranef))
-    # each eta column holds that eta: the merged root eta.cl sits before OBJI,
-    # so no column is taken for OBJI and the names are not shifted
-    .mix1 <- fit_saem_split$env$mixList$mix1
-    expect_false(anyNA(fit_saem_split$ranef$eta.v))
-    expect_equal(fit_saem_split$ranef$eta.v, .mix1$eta.v)
-    expect_equal(fit_saem_split$ranef$eta.cl, .mix1$eta.cl)
-    expect_equal(fit_saem_split$ui$iniDf$name[!is.na(fit_saem_split$ui$iniDf$neta1)], c("eta.cl", "eta.v"))
-    # the etas handed to setOfv(), setCov() and refits follow the same order
-    .em <- fit_saem_split$etaMat
-    expect_identical(colnames(.em), c("eta.cl", "eta.v"))
-    expect_equal(unname(.em[, "eta.v"]), fit_saem_split$ranef$eta.v)
-    expect_equal(unname(.em[, "eta.cl"]), fit_saem_split$ranef$eta.cl)
-    # the root eta's variance is the components' variances weighted by their
-    # responsibilities; the spread of tcl1/tcl2 is not added to it
+    # the split etas are reported separately, each with its own variance
+    expect_identical(rownames(fit_saem_split$omega), c("eta.cl1", "eta.cl2", "eta.v"))
+    expect_equal(fit_saem_split$ui$iniDf$name[!is.na(fit_saem_split$ui$iniDf$neta1)], c("eta.cl1", "eta.cl2", "eta.v"))
     .ui0 <- rxode2::rxode2(twoPopSplit)
     .tr <- setNames(.ui0$saemOmegaTrans, dimnames(.ui0$omega)[[1]])
     .s0 <- fit_saem_split$env$saem0
-    .w <- colSums(.s0$mixWeights)
-    .g <- diag(.s0$Gamma2_phi1)[.tr[c("eta.cl1", "eta.cl2")]]
-    expect_equal(fit_saem_split$omega["eta.cl", "eta.cl"], sum(.w * .g) / sum(.w))
-    expect_equal(fit_saem_split$omega["eta.v", "eta.v"], diag(.s0$Gamma2_phi1)[[.tr[["eta.v"]]]])
+    for (.e in c("eta.cl1", "eta.cl2", "eta.v")) {
+      expect_equal(fit_saem_split$omega[.e, .e], diag(.s0$Gamma2_phi1)[[.tr[[.e]]]])
+    }
+    # a component's own eta comes from its own chain, and is 0 for subjects of
+    # the other component, which never apply it
+    .mn <- fit_saem_split$mixNum$mixnum[match(fit_saem_split$ranef$ID, fit_saem_split$mixNum$ID)]
+    .r <- fit_saem_split$ranef
+    expect_true(all(.r$eta.cl1[.mn == 2L] == 0))
+    expect_true(all(.r$eta.cl2[.mn == 1L] == 0))
+    .etaMix <- .saemMixCompEtas(.s0, .ui0, c("eta.cl1", "eta.cl2", "eta.v"), 2L)
+    expect_equal(.r$eta.cl1[.mn == 1L], unname(.etaMix[[1]][.mn == 1L, "eta.cl1"]))
+    expect_equal(.r$eta.cl2[.mn == 2L], unname(.etaMix[[2]][.mn == 2L, "eta.cl2"]))
+    .mix1 <- fit_saem_split$env$mixList$mix1
+    expect_equal(.mix1$eta.cl1, unname(.etaMix[[1]][, "eta.cl1"]))
+    expect_true(all(.mix1$eta.cl2 == 0))
+    expect_equal(.mix1$eta.v, .r$eta.v)
+    # the etas handed to setOfv(), setCov() and refits follow the same order
+    .em <- fit_saem_split$etaMat
+    expect_identical(colnames(.em), c("eta.cl1", "eta.cl2", "eta.v"))
+    expect_equal(unname(.em[, "eta.cl1"]), .r$eta.cl1)
+    expect_equal(unname(.em[, "eta.cl2"]), .r$eta.cl2)
 
     # Test SAEM mixture model with 3 split ETAs and covariance calculation
     threePopSplit <- function() {
@@ -394,12 +396,12 @@ nmTest({
     expect_true("p1" %in% names(fit_saem_split3$theta))
     expect_true("p2" %in% names(fit_saem_split3$theta))
     expect_true(!is.null(fit_saem_split3$cov))
-    expect_true("eta.cl" %in% rownames(fit_saem_split3$omega))
-    expect_true(!"eta.cl1" %in% rownames(fit_saem_split3$omega))
-    expect_true("eta.cl" %in% names(fit_saem_split3$ranef))
-    expect_true(!"eta.cl1" %in% names(fit_saem_split3$ranef))
+    expect_identical(rownames(fit_saem_split3$omega), c("eta.cl1", "eta.cl2", "eta.cl3", "eta.v"))
+    .mn <- fit_saem_split3$mixNum$mixnum[match(fit_saem_split3$ranef$ID, fit_saem_split3$mixNum$ID)]
+    for (.k in 1:3) {
+      expect_true(all(fit_saem_split3$ranef[[paste0("eta.cl", .k)]][.mn != .k] == 0))
+    }
     expect_equal(fit_saem_split3$ranef$eta.v, fit_saem_split3$env$mixList$mix1$eta.v)
-    expect_equal(fit_saem_split3$ranef$eta.cl, fit_saem_split3$env$mixList$mix1$eta.cl)
 
     # Test SAEM mixture model with split ETAs and bounded parameters
     # to verify that back-transformations are correctly applied (not NaN)
@@ -862,20 +864,6 @@ nmTest({
     expect_false(isTRUE(all.equal(d$IPRED, d$PRED)))
   })
 
-  test_that(".saemMixRootEta takes each subject's eta from its own component", {
-    .x <- cbind(eta.cl1 = c(0.1, 0.2, 0.3), eta.cl2 = c(-0.1, -0.2, -0.3), eta.v = 1:3)
-    .grp <- c("eta.cl1", "eta.cl2")
-    # the third component has no eta
-    attr(.grp, "comp") <- c("eta.cl1", "eta.cl2", NA)
-    .r <- .saemMixRootEta(.x, .grp, "eta.cl", c(2L, 3L, 1L))
-    expect_identical(colnames(.r), c("eta.cl", "eta.v"))
-    expect_equal(unname(.r[, "eta.cl"]), c(-0.1, 0, 0.3))
-    # a non-numeric ID leaves the etas numeric
-    .df <- data.frame(ID = factor(c("a", "b", "c")), .x)
-    .r <- .saemMixRootEta(.df, .grp, "eta.cl", c(2L, 3L, 1L))
-    expect_equal(.r$eta.cl, c(-0.1, 0, 0.3))
-  })
-
   test_that("a split-eta saem mixture with an eta-free component fits", {
     .mod <- function() {
       ini({
@@ -900,8 +888,8 @@ nmTest({
       })
     }
     .f <- suppressWarnings(nlmixr2(.mod, theo_sd, "saem", saemControl(print = 0, nBurn = 30, nEm = 30, seed = 1)))
-    expect_true("eta.cl" %in% names(.f$ranef))
     .mn <- .f$mixNum$mixnum[match(.f$ranef$ID, .f$mixNum$ID)]
-    expect_true(all(.f$ranef$eta.cl[.mn == 3L] == 0))
+    expect_true(all(.f$ranef$eta.cl1[.mn != 1L] == 0))
+    expect_true(all(.f$ranef$eta.cl2[.mn != 2L] == 0))
   })
 })

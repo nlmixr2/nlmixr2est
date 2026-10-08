@@ -421,16 +421,10 @@ nmTest({
     fit <- .nlmixr(one.compartment, theo_sd, "nlme", control = nlmeControl(verbose = FALSE, returnObject = TRUE))
     expect_identical(fit$covMethod, "nlme")
     .th <- c("tka", "tcl", "tv")
-    # the SEs are the ones summary() prints (ML: sigma adjusted to REML-like)
-    .se <- summary(fit$nlme)$tTable[.th, "Std.Error"]
-    expect_equal(sqrt(diag(fit$cov)), .se)
-    expect_equal(fit$parFixedDf[.th, "SE"], .se)
-    # and the correlations are nlme's, not zero
-    expect_equal(stats::cov2cor(fit$cov), stats::cov2cor(vcov(fit$nlme)))
+    # the covariance is nlme's varFix as is, correlations included
+    expect_equal(fit$cov, vcov(fit$nlme))
+    expect_equal(fit$parFixedDf[.th, "SE"], sqrt(diag(vcov(fit$nlme)))[.th])
     expect_true(all(fit$cov[upper.tri(fit$cov)] != 0))
-    # ML: vcov() is the same matrix before nlme's sigma adjustment
-    .dims <- fit$nlme$dims
-    expect_equal(fit$cov, vcov(fit$nlme) * .dims$N / (.dims$N - length(.th)))
   })
 
   test_that("the residual parameters reproduce nlme's residual sd for every error model (issue 1140)", {
@@ -638,7 +632,7 @@ nmTest({
     }
     fit <- .nlmixr(oneTheta, theo_sd, "nlme", control = nlmeControl(verbose = FALSE, returnObject = TRUE))
     expect_identical(dimnames(fit$cov), list("tv", "tv"))
-    expect_equal(fit$cov[1, 1], summary(fit$nlme)$tTable["tv", "Std.Error"]^2)
-    expect_equal(unname(fit$parFixedDf["tv", "SE"]), summary(fit$nlme)$tTable["tv", "Std.Error"])
+    expect_equal(fit$cov[1, 1], vcov(fit$nlme)[1, 1])
+    expect_equal(unname(fit$parFixedDf["tv", "SE"]), sqrt(vcov(fit$nlme)[1, 1]))
   })
 })

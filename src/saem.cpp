@@ -1898,7 +1898,6 @@ public:
     return Gamma2_phi1;
   }
 
-  // Reporting-only pooled BSV for split ETAs; falls back to the live matrix if no pooling was ever applied.
   mat get_Gamma2_phi1Report() {
     if (Gamma2_phi1Report.n_elem == Gamma2_phi1.n_elem) return Gamma2_phi1Report;
     return Gamma2_phi1;
@@ -1957,6 +1956,20 @@ public:
     ue = ue.cols(i1);
     eta = eta % ue;
     return eta;
+  }
+
+  // per-component posterior etas (same mask as get_eta()); empty without a mixture
+  List get_etaMix() {
+    List ret(mpost_phi_mix.n_elem);
+    if (mpost_phi_mix.n_elem == 0) return ret;
+    mat ue = current_saem_state->_saemUE.rows(0, N - 1);
+    ue = ue.cols(i1);
+    for (unsigned int j = 0; j < mpost_phi_mix.n_elem; j++) {
+      mat eta = mpost_phi_mix(j).cols(i1);
+      eta -= mprior_phi1;
+      ret[j] = wrap(eta % ue);
+    }
+    return ret;
   }
 
   void inits(List x) {
@@ -2073,7 +2086,6 @@ public:
     ind_cov1 = as<uvec>(x["ind_cov1"]);
     statphi11 = as<mat>(x["statphi11"]);
     statphi12 = as<mat>(x["statphi12"]);
-    omegaShare = x.containsElementNamed("omegaShare") ? as<uvec>(x["omegaShare"]) : uvec();
     omegaShareSubpop = x.containsElementNamed("omegaShareSubpop") ? as<uvec>(x["omegaShareSubpop"]) : uvec();
     omegaPool = x.containsElementNamed("omegaPool") ? as<uvec>(x["omegaPool"]) : uvec();
     omegaPoolMean = x.containsElementNamed("omegaPoolMean") ? as<int>(x["omegaPoolMean"]) : 0;
@@ -2259,6 +2271,8 @@ public:
     Hb = zeros<mat>(nb_param,nb_param);
     mpost_phi = zeros<mat>(N, nphi);
     cpost_phi = zeros<mat>(N, nphi);
+    mpost_phi_mix.set_size(nMix > 1 ? nMix : 0);
+    for (int j = 0; j < nMix && nMix > 1; j++) mpost_phi_mix(j) = zeros<mat>(N, nphi);
 
     //handle situation when nphi0=0
     mprior_phi0.set_size(N, nphi0);
@@ -3584,45 +3598,8 @@ public:
       // the SA floor above is per-element, so it can pull a pooled group apart
       // again; restore the constraint after it
       poolOmegaGroups(Gamma2_phi1);
-      // Split-ETA components sharing an omegaShare group are pooled into a single BSV term
-      // for *reporting only*, into Gamma2_phi1Report; the live Gamma2_phi1 feeding
-      // IGamma2_phi1/D1Gamma21 stays untouched so tcl1/tcl2 stay uncoupled.  The reported
-      // model keeps the components' own thetas inside mix() and gives them one eta, so its
-      // variance is the within-component one: the responsibility-weighted mean of the
-      // components' variances.  The spread of the component means is not added; the
-      // component thetas already carry it.
+      // what the fit reports; a fix()ed variance is restored into it below
       Gamma2_phi1Report = Gamma2_phi1;
-      if (nMix > 1 && omegaShare.n_elem == (unsigned int)nphi1) {
-        unsigned int max_group = 0;
-        for (unsigned int i = 0; i < omegaShare.n_elem; ++i) {
-          if (omegaShare(i) > max_group) max_group = omegaShare(i);
-        }
-        for (unsigned int g = 1; g <= max_group; ++g) {
-          double sum_weighted_var = 0.0;
-          double sum_weights = 0.0;
-          std::vector<unsigned int> indices;
-          for (unsigned int i = 0; i < omegaShare.n_elem; ++i) {
-            if (omegaShare(i) == g) {
-              double w = 1.0;
-              if (nMix > 1 && omegaShareSubpop.n_elem == omegaShare.n_elem) {
-                unsigned int subpop = omegaShareSubpop(i);
-                if (subpop >= 1 && subpop <= (unsigned int)nMix) {
-                  w = arma::sum(mixWeights.col(subpop - 1));
-                }
-              }
-              indices.push_back(i);
-              sum_weighted_var += w * Gamma2_phi1(i, i);
-              sum_weights += w;
-            }
-          }
-          if (indices.size() > 1 && sum_weights > 0.0) {
-            double mean_of_vars = sum_weighted_var / sum_weights;
-            for (unsigned int i : indices) {
-              Gamma2_phi1Report(i, i) = mean_of_vars;
-            }
-          }
-        }
-      }
       // "msaem" split-ETA columns: generic Gmin/minv floor (1e-20) isn't tight enough to stop
       // IGamma2_phi1 exploding and locking MCMC proposals to zero; floor at a fraction of ini() variance instead.
       if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
@@ -4339,6 +4316,15 @@ public:
       mpost_phi=mpost_phi+pash(kiter)*(sphi1/nmc-mpost_phi);
       cpost_phi=cpost_phi+pash(kiter)*(sphi2/nmc-cpost_phi);
       mpost_phi.cols(i0)=mprior_phi0;
+      // each component's own posterior mean: a component-owned eta is reported
+      // conditional on its component, not blended with chains that never apply it
+      if (nMix > 1 && phiM_mix.n_elem == (unsigned int)nMix) {
+        for (int j = 0; j < nMix; j++) {
+          mat sj = zeros<mat>(N, nphi);
+          for (int k = 0; k < nmc; k++) sj += phiM_mix(j).rows(k * N, (k + 1) * N - 1);
+          mpost_phi_mix(j) = mpost_phi_mix(j) + pash(kiter) * (sj / nmc - mpost_phi_mix(j));
+        }
+      }
 
       //FIXME: chg according to multiple endpnts; need to chg dim(par_hist)
       for (int b=0; b<nendpnt; ++b) {
@@ -4520,7 +4506,7 @@ private:
   uvec pc1;
   mat COV1, COV0, LCOV1, LCOV0, COV21, COV20, MCOV1, MCOV0;
   mat Gamma2_phi1, Gamma2_phi0, mprior_phi1, mprior_phi0;
-  mat Gamma2_phi1Report; // reporting-only pooled BSV for split ETAs sharing an omegaShare group; never fed back into estimation
+  mat Gamma2_phi1Report; // the reported omega: Gamma2_phi1 before the minv floor, with fix()ed cells restored
   // ---- MCMC mixing diagnostics -------------------------------------------
   // saem computed its acceptance rate and threw it away, so a chain that had
   // stopped moving looked exactly like one exploring properly.  One row per
@@ -4579,6 +4565,7 @@ private:
   vec L;
   mat Ha, Hb, DDa, DDb;
   mat mpost_phi, cpost_phi;
+  field<mat> mpost_phi_mix;
 
   vec resValue;
   uvec resFixed;
@@ -4677,7 +4664,6 @@ private:
   field<vec> fsave_mix;
   field<vec> limit_mix;
   field<vec> cens_mix;
-  uvec omegaShare;
   uvec omegaShareSubpop;
   // Two-level (IOV) models: phi1 columns sharing a non-zero group id are one
   // occasion parameter observed at different levels, so they estimate ONE
@@ -5924,6 +5910,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("Ha") = saem.get_Ha(),
     Named("sig2") = saem.get_sig2(),
     Named("eta") = saem.get_eta(),
+    Named("etaMix") = saem.get_etaMix(),
     Named("par_hist") = saem.get_par_hist(),
     // MCMC mixing diagnostics; see the members they come from
     Named("mcmcAccept") = saem.get_mcmcAccTrace(),

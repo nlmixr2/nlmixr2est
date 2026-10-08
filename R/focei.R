@@ -5548,7 +5548,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       }
       .thetas <- .ret$fixef
       .pars <- .Call(`_nlmixr2est_nlmixr2Parameters`, .thetas, .etas)
-      .ret$shrink <- .Call(`_nlmixr2est_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
+      .ret$shrink <- .mixOwnedEtaShrink(
+        .Call(`_nlmixr2est_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID)),
+        .ret
+      )
     }
     assign("est", est, envir = .ret)
     # The FO/FOI estimation path (fo=TRUE, maxOuterIterations>0) returns the fit

@@ -91,6 +91,89 @@
   NULL
 }
 
+#' The mixture component that owns each eta
+#'
+#' An eta used by exactly one component of the model's `mix()` calls, and
+#' nowhere outside them, applies only to subjects in that component.  An eta
+#' seen from several components, or outside a component, applies to every
+#' component and is shared.
+#'
+#' @param ui rxode2 ui
+#' @return named integer over the ui's etas: the owning component, 0 if shared
+#' @noRd
+#' @author Matthew L. Fidler
+.mixEtaOwner <- function(ui) {
+  .allEtas <- ui$iniDf[!is.na(ui$iniDf$neta1), ]
+  .allEtas <- .allEtas[.allEtas$neta1 == .allEtas$neta2, "name"]
+  .ret <- setNames(rep(0L, length(.allEtas)), .allEtas)
+  if (length(ui$mixProbs) == 0L) {
+    return(.ret)
+  }
+  .mixCalls <- do.call(c, lapply(ui$lstExpr, .findMixCalls))
+  if (length(.mixCalls) == 0L) {
+    return(.ret)
+  }
+  .outside <- unique(unlist(lapply(ui$lstExpr, .extractEtasOutsideMix, etas = .allEtas)))
+  .compsOf <- list()
+  for (.mc in .mixCalls) {
+    .args <- as.list(.mc)[-1]
+    .comps <- .args[seq(1, length(.args), by = 2)]
+    for (.j in seq_along(.comps)) {
+      for (.eta in .extractEtas(.comps[[.j]], etas = .allEtas)) {
+        .compsOf[[.eta]] <- unique(c(.compsOf[[.eta]], .j))
+      }
+    }
+  }
+  for (.eta in names(.compsOf)) {
+    if (length(.compsOf[[.eta]]) == 1L && !(.eta %in% .outside)) {
+      .ret[[.eta]] <- as.integer(.compsOf[[.eta]])
+    }
+  }
+  .ret
+}
+
+#' Shrinkage of component-owned etas over their own component's subjects
+#'
+#' A component-owned eta is 0 for subjects of the other components, so its
+#' shrinkage over every subject would count them as fully shrunk.
+#'
+#' @param shrink shrinkage data frame (columns named by eta)
+#' @param fit fit environment with `ui`, `ranef`, `fixef`, `omega`, `mixNum`
+#' @return `shrink`, with the owned etas' columns taken over their component
+#' @noRd
+#' @author Matthew L. Fidler
+.mixOwnedEtaShrink <- function(shrink, fit) {
+  .ui <- fit$ui
+  .mixNum <- fit$mixNum
+  if (!is.data.frame(shrink) || is.null(.ui) || !is.data.frame(.mixNum)) {
+    return(shrink)
+  }
+  .owner <- .mixEtaOwner(.ui)
+  .owner <- .owner[.owner > 0L & names(.owner) %in% names(shrink)]
+  if (length(.owner) == 0L) {
+    return(shrink)
+  }
+  .etas <- as.data.frame(fit$ranef)
+  .etas <- .etas[, !(names(.etas) %in% c("mixnum", "MIXEST")), drop = FALSE]
+  .omega <- fit$omega
+  if (!identical(names(.etas)[-1], colnames(.omega))) {
+    return(shrink)
+  }
+  .mn <- .mixNum$mixnum[match(.etas$ID, .mixNum$ID)]
+  for (.k in unique(.owner)) {
+    .cols <- names(.owner)[.owner == .k]
+    .sub <- which(.mn == .k)
+    if (length(.sub) < 2L) {
+      shrink[, .cols] <- NA_real_
+      next
+    }
+    .pars <- .Call(`_nlmixr2est_nlmixr2Parameters`, fit$fixef, .etas[.sub, , drop = FALSE])
+    .s <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, .pars$eta.lst, length(.sub))
+    shrink[, .cols] <- .s[, .cols]
+  }
+  shrink
+}
+
 #' Process mixture model information after a focei fit
 #'
 #' After the C++ focei fit, strips the MIXEST column from ranef, computes
@@ -215,31 +298,32 @@
   invisible(NULL)
 }
 
-#' Replace a split-eta group's columns by its root eta
+#' Each component's posterior etas from a saem fit
 #'
-#' Each subject's root eta is the eta of its best component (0 when that
-#' component has none).  The root takes the first member's column, so the
-#' columns keep the ui's eta order.
-#'
-#' @param x data frame or matrix of etas; its rows cycle through the subjects
-#'   (a mixture's `.etaMat` repeats them once per component)
-#' @param grp the group's eta names, in component order; its `"comp"`
-#'   attribute gives each component's eta (`NA` for none)
-#' @param rootName name of the root eta
-#' @param bestMix best component of each subject
-#' @return `x` with the `grp` columns replaced by `rootName`
+#' @param saem saem fit (its `etaMix`)
+#' @param ui rxode2 ui of the fit
+#' @param etaNames eta names to return, in order
+#' @param nMix number of components
+#' @return list of `nMix` subject-by-eta matrices, or `NULL` when the fit has none
 #' @noRd
-.saemMixRootEta <- function(x, grp, rootName, bestMix) {
-  .rows <- seq_len(nrow(x))
-  .sub <- (.rows - 1L) %% length(bestMix) + 1L
-  .cols <- match(grp, colnames(x))
-  .src <- match(attr(grp, "comp")[bestMix[.sub]], grp)
-  # only the group's columns, so a non-numeric ID cannot coerce the etas
-  .val <- as.matrix(x[, .cols, drop = FALSE])[cbind(.rows, .src)]
-  .val[is.na(.src)] <- 0
-  x[, .cols[1]] <- .val
-  colnames(x)[.cols[1]] <- rootName
-  x[, -.cols[-1], drop = FALSE]
+#' @author Matthew L. Fidler
+.saemMixCompEtas <- function(saem, ui, etaNames, nMix) {
+  .etaMix <- saem$etaMix
+  if (length(.etaMix) != nMix) {
+    return(NULL)
+  }
+  .df <- ui$iniDf
+  .eta <- .df[!is.na(.df$neta1), ]
+  .all <- .eta[.eta$neta1 == .eta$neta2, "name"]
+  .trans <- ui$saemOmegaTrans
+  if (!all(etaNames %in% .all)) {
+    return(NULL)
+  }
+  lapply(.etaMix, function(m) {
+    .m <- as.matrix(m)[, .trans, drop = FALSE]
+    colnames(.m) <- .all
+    .m[, etaNames, drop = FALSE]
+  })
 }
 
 #' Process mixture model information after a SAEM fit
@@ -306,86 +390,45 @@
   }
   env$mixProbabilities <- .mixProbabilities
 
-  .allEtas <- ui$iniDf[!is.na(ui$iniDf$neta1), ]
-  .allEtas <- .allEtas[.allEtas$neta1 == .allEtas$neta2, "name"]
-  .mixCalls <- do.call(c, lapply(ui$lstExpr, .findMixCalls))
-
-  .etaGroups <- list()
-  for (.mc in .mixCalls) {
-    .args <- as.list(.mc)[-1]
-    .comps <- .args[seq(1, length(.args), by = 2)]
-    .compEtas <- lapply(.comps, .extractEtas, etas = .allEtas)
-    .grpEtas <- unique(unlist(.compEtas))
-    if (length(.grpEtas) > 1L) {
-      # the eta each component uses, so a component without one is not
-      # matched to another component's eta
-      attr(.grpEtas, "comp") <- vapply(
-        .compEtas,
-        function(e) {
-          .e <- intersect(e, .grpEtas)
-          if (length(.e) == 0L) NA_character_ else .e[1]
-        },
-        character(1)
-      )
-      .etaGroups <- c(.etaGroups, list(.grpEtas))
+  # a component-owned eta is reported conditional on its own component, and is
+  # 0 for subjects of the other components, which never apply it
+  .owner <- .mixEtaOwner(ui)[.etaNames]
+  .owner[is.na(.owner)] <- 0L
+  .etaMix <- .saemMixCompEtas(.saem, ui, .etaNames, .nMix)
+  .compEtas <- lapply(seq_len(.nMix), function(k) {
+    .m <- as.matrix(.etaObf[, .etaNames, drop = FALSE])
+    .own <- which(.owner == k)
+    if (!is.null(.etaMix) && length(.own) > 0L) {
+      .m[, .own] <- .etaMix[[k]][, .own]
     }
-  }
-
-  .omega <- env$omega
-
-  if (length(.etaGroups) > 0L) {
-    for (.grp in .etaGroups) {
-      .rootName <- gsub("[0-9]+$", "", .grp[1])
-      # the members share one reported variance (saem's Gamma2_phi1Report), so
-      # the root eta takes the first member's row and column
-      .wIdx <- which(colnames(.omega) == .grp[1])
-      if (length(.wIdx) == 1L) {
-        colnames(.omega)[.wIdx] <- rownames(.omega)[.wIdx] <- .rootName
-      }
-      .toRemove <- .grp[-1]
-      .omega <- .omega[!(rownames(.omega) %in% .toRemove), !(colnames(.omega) %in% .toRemove), drop = FALSE]
-      .etaObf <- .saemMixRootEta(.etaObf, .grp, .rootName, .bestMix)
-      if (exists(".etaMatBase", envir = env, inherits = FALSE) && !is.null(env$.etaMatBase)) {
-        env$.etaMatBase <- .saemMixRootEta(env$.etaMatBase, .grp, .rootName, .bestMix)
-      }
-      if (exists(".etaMat", envir = env, inherits = FALSE) && !is.null(env$.etaMat)) {
-        env$.etaMat <- .saemMixRootEta(env$.etaMat, .grp, .rootName, .bestMix)
-      }
+    .m[, .owner > 0L & .owner != k] <- 0
+    .m
+  })
+  if (any(.owner > 0L)) {
+    .best <- as.matrix(.etaObf[, .etaNames, drop = FALSE])
+    for (.k in seq_len(.nMix)) {
+      .w <- which(.bestMix == .k)
+      .best[.w, ] <- .compEtas[[.k]][.w, , drop = FALSE]
     }
-    .funLines <- deparse(as.function(ui))
-    for (.grp in .etaGroups) {
-      .rootName <- gsub("[0-9]+$", "", .grp[1])
-      for (.comp in .grp) {
-        .funLines <- gsub(paste0("\\b", .comp, "\\b"), .rootName, .funLines)
-      }
-      .etaClLines <- grep(paste0("\\b", .rootName, "\\s*~"), .funLines)
-      if (length(.etaClLines) > 1) {
-        .funLines <- .funLines[-.etaClLines[-1]]
-      }
-    }
-    .funText <- paste(.funLines, collapse = "\n")
-    .funNew <- eval(parse(text = .funText))
-    .uiNew <- rxode2::rxode2(.funNew)
-    if (exists("boundedTransforms", envir = ui$meta)) {
-      assign("boundedTransforms", get("boundedTransforms", envir = ui$meta), envir = .uiNew$meta)
-    }
-    env$ui <- .uiNew
-    # the output pass maps eta columns by position, so they follow the new ui
-    .etaNames <- dimnames(.uiNew$omega)[[1]]
-    env$omega <- .omega[.etaNames, .etaNames, drop = FALSE]
-    .etaObf <- .etaObf[, c("ID", .etaNames, "OBJI"), drop = FALSE]
+    .etaObf[, .etaNames] <- .best
     env$etaObf <- .etaObf
     if (!is.null(env$.etaMatBase)) {
-      env$.etaMatBase <- env$.etaMatBase[, .etaNames, drop = FALSE]
+      .c <- intersect(colnames(env$.etaMatBase), .etaNames)
+      env$.etaMatBase[, .c] <- .best[, .c]
     }
-    if (!is.null(env$.etaMat)) {
-      env$.etaMat <- env$.etaMat[, .etaNames, drop = FALSE]
+    # .etaMat repeats the subjects once per component; each block takes that
+    # component's etas
+    if (!is.null(env$.etaMat) && nrow(env$.etaMat) == .nSub * .nMix) {
+      .c <- intersect(colnames(env$.etaMat), .etaNames)
+      for (.k in seq_len(.nMix)) {
+        env$.etaMat[(.k - 1L) * .nSub + seq_len(.nSub), .c] <- .compEtas[[.k]][, .c]
+      }
     }
   }
 
   # Create mixList: one data frame per mixture component
   .mixList <- lapply(seq_len(.nMix), function(k) {
-    .df <- as.data.frame(.etaObf[, .etaNames, drop = FALSE])
+    .df <- as.data.frame(.compEtas[[k]])
     .prob <- .mixWeights[, k]
     .ret <- cbind(data.frame(ID = .etaObf$ID), .df, data.frame(prob = .prob))
     names(.ret) <- c("ID", .etaNames, "prob")

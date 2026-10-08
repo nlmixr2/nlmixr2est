@@ -457,21 +457,18 @@ nlmeControl <- nlmixr2NlmeControl
 
 #' Get the covariance from nlme
 #'
-#' nlme's covariance of the fixed effects (`varFix`, what `vcov()` returns),
-#' scaled to the standard errors `summary()` prints: for an ML fit those use the
-#' residual sd converted to its REML-like value (`adjustSigma`).
+#' nlme's covariance of the fixed effects as is (`varFix`, what `vcov()`
+#' returns).
 #'
 #' @param nlme nlme object
 #' @return named covariance matrix of the fixed effects
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmeGetCov <- function(nlme) {
-  .tt <- summary(nlme)$tTable
-  .se <- .tt[, "Std.Error", drop = TRUE]
-  .ret <- stats::cov2cor(nlme$varFix) * outer(.se, .se)
-  # a single fixed effect gives an unnamed scalar SE, so name the rows from the
-  # table itself
-  dimnames(.ret) <- list(rownames(.tt), rownames(.tt))
+  .ret <- as.matrix(nlme$varFix)
+  # a single fixed effect can come back unnamed, so name it from the fixed effects
+  .n <- names(nlme::fixef(nlme))
+  dimnames(.ret) <- list(.n, .n)
   .ret
 }
 

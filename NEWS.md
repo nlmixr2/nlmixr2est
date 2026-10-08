@@ -294,16 +294,21 @@
   estimate (a `td1` in `[0, 1]` held at 0.5 read 0).  `$theta` was right.
 
 - A `saem` mixture whose components use different etas
-  (`mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))`) now reports each eta
-  under its own name.  The merged eta (`eta.cl`) was put after the objective
+  (`mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))`) now reports them
+  separately, as the other methods do, each with its own component's
+  variance.  It merged them into one eta (`eta.cl`), put after the objective
   column, so `$ranef`/`$eta` showed `eta.v`'s values as `eta.cl` and `NA` as
   `eta.v`, and the tables, the shrinkage and the etas handed to `setOfv()`,
-  `setCov()` and refits used the wrong columns.  The merged eta's variance is
-  now the components' variances weighted by their responsibilities; it also
-  added the spread of the component means, which `tcl1` and `tcl2` already
-  carry (0.49 instead of 0.31 in a 30-subject example).  A component
-  without an eta of the group (`mix(..., p2, exp(tcl3))`) no longer stops the
-  fit with `subscript out of bounds`; its subjects get a root eta of 0.
+  `setCov()` and refits used the wrong columns.  A component's own eta is now
+  its posterior mean under that component (it was blended with the other
+  components' chains, which never apply it) and is 0 for subjects of the
+  other components.  A component without an eta of its own
+  (`mix(..., p2, exp(tcl3))`) no longer stops the fit with `subscript out of
+  bounds`.
+
+- The shrinkage of an eta used by only one mixture component is now taken
+  over that component's subjects, for every estimation method.  The other
+  subjects' etas are 0, and counting them reported it as heavily shrunk.
 
 - A `saem` mixture whose components have etas of their own (split etas) no
   longer freezes them at 0 for most subjects.  The up-front uninformative-eta
@@ -652,8 +657,9 @@
   without `Llik` to its value as well.
 - The covariance of an `est = "nlme"` fit (`nlmeControl(covMethod = "nlme")`,
   the default) now holds nlme's correlations of the fixed effects
-  (`vcov(fit$nlme)`); it was diagonal.  It is scaled to the standard errors
-  `summary(fit$nlme)` prints, so those are unchanged.
+  (`vcov(fit$nlme)`, nlme's `varFix` as is); it was diagonal.  Its standard
+  errors are now `vcov()`'s; for an ML fit they are slightly smaller than the
+  ones `summary(fit$nlme)` prints, which adjust the residual sd.
 - The condition numbers, `$eigenCov` and `$fullCor` of a mixture fit now
   describe its covariance with the mixture proportions on the probability
   scale, the one installed as `$cov`; they were taken before those rows were
