@@ -682,6 +682,82 @@
   function; it kept the interval of the previous covariance beside the new
   standard error.  A `backTransform()` that names no function keeps the
   default back-transformation, as it does when the fit is built.
+- The finite-difference covariance of the FOCEi family (`covMethod = "r,s"`,
+  `"r"`, `"s"` and their `covFull` shapes) now differentiates the marginal
+  objective the same way in every leg: each leg optimizes the ETAs again,
+  starting from the ETAs the fit converged to.  The legs used to start from
+  wherever the previous leg had left them, and the full (`covFull = TRUE`)
+  stage restarted every probe at ETA = 0, so the result depended on the order
+  the legs ran in.  The centre of the R matrix's stencil is now evaluated the
+  same way as the legs.  It was the final objective, whose ETAs another
+  procedure had optimized (with `covSolveTol`, at another ODE tolerance too),
+  and that offset pulled every diagonal of R down: on `theo_sd` at the initial
+  estimates all of them were negative.  With tight covariance solves and inner
+  problem (`covSolveTol = 1e-9`, `trustFterm = trustMterm = 1e-8`) the
+  finite-difference R now matches the analytic observed information within
+  1% on `theo_sd`; the theta-only `"r"` standard error of `tka` was 0.11
+  there, against 0.19.  At the default tolerances (ODE `rtol = 1e-3`) the
+  finite-difference covariance of an ODE model like this one is dominated by
+  numerical noise, before and after this change, so its default standard
+  errors move by about as much as that noise.
+- `setCov(fit, "r,s")`, `"r"`, `"s"` (and their `" (full)"` shapes) and
+  `getVarCov(fit, force = TRUE)` now compute the covariance of the fit's
+  marginal likelihood, as the estimation-time covariance of the same name
+  does: every finite-difference leg optimizes the ETAs again, starting from
+  the fit's, with the fit's own `interaction`.  The result is the covariance
+  of a FOCEi fit with no outer iterations started from the fit's ETAs; on a
+  saem or nlme fit that likelihood is FOCEI.  They held the ETAs fixed and
+  used `interaction = 0` (FOCE), and on `theo_sd` the structural standard
+  errors came out 2 to 25 times too small (`setCov(fit, "r,s")` gave `tka`
+  0.0076 where the analytic covariance gives 0.19).
+- The post-fit covariance of the `mfocei`/`ifocei`-style families, and of
+  nlme, imp/impmap/qrpem and np fits that request `covMethod = "r,s"`, `"r"`
+  or `"s"`, now optimizes the ETAs again in every finite-difference leg.  It
+  held them at the fit's ETAs, and on `theo_sd` the structural standard
+  errors came out 4 to 12 times too small.  A requested `"analytic"`
+  covariance that is out of its scope (a `linCmt()` model, for example)
+  falls back to this finite-difference `"r,s"`, so the fallback is the
+  marginal covariance too; a warning names the covariance installed instead.
+- vae, emvi and fbvi now compute their FOCEi covariance (`covMethod = "r,s"`,
+  `"r"`, `"s"` or `"analytic"`, and emvi's default `"vi"`) after their output
+  step, at their estimates: the covariance of the marginal likelihood of their
+  `likelihood` (FOCEI by default), with the ETAs optimized again, from the
+  method's own, in every finite-difference leg.  It was computed in the output
+  step with the encoder or variational means held fixed and `interaction = 0`,
+  and on `theo_sd` the structural standard errors came out 3 to 9 times too
+  small.  The reported objective is unchanged (the output step's FOCE
+  objective at the method's ETAs).  `fit$foceiControl` of a vae, emvi or fbvi
+  fit now carries its likelihood.
+- `covMethod = "analytic"` on a saem fit, and `setCov(fit, "analytic")` on
+  saem, nlme, vae, emvi and fbvi fits, now assemble the observed information
+  with the `interaction` of the method's likelihood (FOCEI unless its
+  `likelihood` says otherwise).  They took `interaction = 0` from the control
+  of the output step that finalizes those fits, so the FOCE formulas were
+  used; with a proportional residual error the standard errors differ (the
+  `add.sd` standard error of a combined-error `theo_sd` saem fit was 46%
+  larger).
+- A FOCEi-family fit with `maxInnerIterations = 0` (for example
+  `posthocControl(maxInnerIterations = 0, etaMat = ...)`, or `fo`/`foi` with
+  `posthoc = FALSE`) still holds its ETAs fixed in its finite-difference
+  covariance, as asked, and now warns that this covariance is conditional on
+  those ETAs and that `setCov()` computes the covariance of the marginal
+  likelihood.
+- The finite-difference covariance of the FOCEi family (and `setCov()`,
+  `getVarCov(force = TRUE)`, the post-fit recomputes and the vae/emvi/fbvi
+  covariance) now solves its probes, and the centre they are compared with,
+  at tolerances derived from the fit's: each ODE tolerance times 1e-3, capped
+  at 1e-7, and the inner optimizer's tolerances (`trustFterm`/`trustMterm`,
+  n1qn1's `epsilon`, lbfgsb3c's `innerLbfgs*`) times 1e-3, capped at 1e-9
+  (at the default `sigdig = 3`: `rtol = 1e-7`, `atol = 1e-9`, inner 1e-9).
+  `covSolveTol = NULL` used to leave them at the estimation's tolerances
+  (`rtol = 1e-3`, inner 1e-5), where the probes differenced numerical noise:
+  on `theo_sd` the theta-only `"r"` standard error of `tka` was 0.47 against
+  an analytic 0.19 and is now 0.190; every structural standard error of the
+  theta-only `"r"` covariance (native, `setCov()` and the `mfocei` recompute)
+  is within 4% of the analytic one.  A number for `covSolveTol` still sets the
+  ODE tolerance.  Estimation is unchanged (the objective, estimates, ETAs and
+  tables are identical); the covariance step takes 2 to 3 times longer on
+  `theo_sd` and 5 to 8 times longer on the warfarin example model.
 
 
 # nlmixr2est 7.1.0

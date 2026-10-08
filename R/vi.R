@@ -219,30 +219,12 @@
   colnames(.eb) <- .prep$etaNames
   .ret$ui <- .ui2
 
-  ## covMethod="vi": for full-Bayes the SEs come from the population variational
-  ## covariance (installed below, so skip the FOCEi cov step); for point-estimate
-  ## there is no population variational block, so fall back to the FOCEi "r,s".
-  .covM <- if (identical(.control$covMethod, "vi")) {
-    (if (isTRUE(res$pointEstimate)) "r,s" else "")
-  } else {
-    .control$covMethod
-  }
-  .fc <- .foceiOwnEtaControl(
-    .control,
-    .eb,
-    covMethod = .covM,
-    likelihood = .control$likelihood,
-    scaleTo = 0,
-    literalFix = .control$literalFix,
-    literalFixRes = .control$literalFixRes,
-    stickyRecalcN = .control$stickyRecalcN,
-    maxOdeRecalc = .control$maxOdeRecalc,
-    odeRecalcFactor = .control$odeRecalcFactor,
-    indTolRelax = .control$indTolRelax,
-    fast = FALSE,
-    print = 0L
-  )
-  .ret$control <- .fc
+  ## the output step evaluates the variational means only; the FOCEi covariance
+  ## is computed after it (.foceiInstallOwnEtaCov, below)
+  .fc <- .adviFoceiControl(.control, .eb, isTRUE(res$pointEstimate))
+  .fcOut <- .fc
+  .fcOut$covMethod <- 0L
+  .ret$control <- .fcOut
   .ret$method <- .est
   .ret$extra <- ""
   .ret$est <- .est
@@ -265,11 +247,12 @@
   .fit <- nlmixr2CreateOutputFromUi(
     .ret$ui,
     data = .ret$origData,
-    control = .fc,
+    control = .fcOut,
     table = .ret$table,
     env = .ret,
     est = .est
   )
+  .foceiInstallOwnEtaCov(.fit, .fc)
   ## variational artifacts + warm-resume state on the fit env
   .e <- .fit$env
   .e$viElbo <- res$elbo
@@ -341,8 +324,8 @@
     ## covMethod="vi": install the population variational covariance as the
     ## fit's SE source (the theta block maps directly to parFixedDf's
     ## population/residual parameters).  For any other covMethod the FOCEi
-    ## covariance step (analytic/r,s/...) already ran on the full inner model;
-    ## only fall back to the variational covariance if that chain came up empty.
+    ## covariance (analytic/r,s/...) was computed above; only fall back to the
+    ## variational covariance if that came up empty.
     .cmDone <- tryCatch(as.character(.e$covMethod), error = function(e) "")
     if (identical(.control$covMethod, "vi")) {
       .adviInstallVarCov(.fit, res)
@@ -355,6 +338,53 @@
   }
   .e$viState <- .st
   .fit
+}
+
+#' The FOCEi control of a variational fit
+#'
+#' No outer or inner optimization (the variational estimates and means are
+#' final), the method's inner `likelihood`, and its covariance request:
+#' `covMethod = "vi"` is the population variational covariance for full Bayes
+#' (no FOCEi covariance) and the FOCEi `"r,s"` for a point estimate, which has
+#' no population variational block.
+#' @param control `emviControl()`/`fbviControl()`
+#' @param etaMat variational means (subjects x etas), or `NULL`
+#' @param pointEstimate `TRUE` for emvi, `FALSE` for fbvi
+#' @return `foceiControl()` object
+#' @noRd
+.adviFoceiControl <- function(control, etaMat, pointEstimate) {
+  .covM <- if (identical(control$covMethod, "vi")) {
+    (if (pointEstimate) "r,s" else "")
+  } else {
+    control$covMethod
+  }
+  .foceiOwnEtaControl(
+    control,
+    etaMat,
+    covMethod = .covM,
+    likelihood = control$likelihood,
+    scaleTo = 0,
+    literalFix = control$literalFix,
+    literalFixRes = control$literalFixRes,
+    stickyRecalcN = control$stickyRecalcN,
+    maxOdeRecalc = control$maxOdeRecalc,
+    odeRecalcFactor = control$odeRecalcFactor,
+    indTolRelax = control$indTolRelax,
+    fast = FALSE,
+    print = 0L
+  )
+}
+
+#' @export
+#' @rdname nmObjGetFoceiControl
+nmObjGetFoceiControl.emvi <- function(x, ...) {
+  .adviFoceiControl(x[[1]]$emviControl, NULL, TRUE)
+}
+
+#' @export
+#' @rdname nmObjGetFoceiControl
+nmObjGetFoceiControl.fbvi <- function(x, ...) {
+  .adviFoceiControl(x[[1]]$emviControl, NULL, FALSE)
 }
 
 #' Install the population variational covariance (Lpop Lpop^T) as the fit's

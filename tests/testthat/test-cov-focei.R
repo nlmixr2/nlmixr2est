@@ -285,4 +285,198 @@ nmTest({
     expect_true(!is.null(.f2$cov) || identical(.f2$covMethod, "failed"))
     expect_equal(.f2$covMethod, "failed")
   })
+
+  # theo_sd one-compartment ODE model, with the covariance solves (covSolveTol) and the
+  # inner problem (trustFterm/trustMterm) tight: the marginal objective is then smooth to
+  # ~1e-6 along a finite-difference step.  At the default tolerances (ODE rtol = 1e-3) its
+  # noise is ~1e-3, as large as what a step changes it by, and no finite-difference
+  # Hessian can be checked against anything.
+  .quietOneCmt <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  .quietCtl <- function(...) {
+    foceiControl(print = 0, covSolveTol = 1e-9, trustFterm = 1e-8, trustMterm = 1e-8, ...)
+  }
+
+  test_that("the finite-difference R matrix is the Hessian of the marginal objective", {
+    skip_on_cran()
+    # Every leg optimizes the ETAs again, starting from the ones the fit converged to, and
+    # the centre of the stencil is the objective evaluated the same way, so R must be the
+    # analytic observed information.  The same finite differences move by up to 4% when
+    # the step is made 4 times larger or the tolerances 100 times tighter; 5% is the bound.
+    # A centre taken from the final objective (ETAs optimized by another procedure, at the
+    # fit's ODE tolerance) makes every diagonal of R negative here, at the initial
+    # estimates
+    .an0 <- .nlmixr(.quietOneCmt, theo_sd, "focei", .quietCtl(maxOuterIterations = 0L, covMethod = "analytic"))
+    .r0 <- .nlmixr(.quietOneCmt, theo_sd, "focei", .quietCtl(maxOuterIterations = 0L, covMethod = "r", covFull = FALSE))
+    .th <- c("tka", "tcl", "tv", "add.sd")
+    # Omega is held at its value in R: the theta block of the information
+    .info <- solve(.an0$cov)[.th, .th]
+    expect_identical(.r0$covMethod, "r")
+    expect_lt(max(abs(diag(.r0$env$R.0) / diag(.info) - 1)), 0.05)
+    # the full (covFull) stage is the same derivative over theta, sigma and Omega; at the
+    # estimates, where it is positive definite
+    .an <- .nlmixr(.quietOneCmt, theo_sd, "focei", .quietCtl(covMethod = "analytic"))
+    .rf <- .nlmixr(.quietOneCmt, theo_sd, "focei", .quietCtl(covMethod = "r"))
+    expect_identical(.rf$covMethod, "r (full)")
+    .nm <- rownames(.an$cov)
+    .rel <- sqrt(diag(.rf$cov))[.nm] / sqrt(diag(.an$cov)) - 1
+    # om.eta.ka has no step search in the full shape; its SE is 1% off here and 12% on
+    # some CI platforms (issue #1140, A6), so it gets its own bound
+    for (.p in .nm) {
+      .bound <- if (.p == "om.eta.ka") 0.15 else 0.05
+      expect_lt(abs(.rel[[.p]]), .bound, label = sprintf("%s SE relative error", .p))
+    }
+  })
+
+  test_that("a finite-difference covariance of ETAs held fixed says it is conditional on them", {
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .eta <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(print = 0, covMethod = ""))$etaMat
+    .msg <- "covariance is conditional on the ETAs; setCov() is marginal"
+    # maxInnerIterations = 0 evaluates the given ETAs, in the fit and in its covariance
+    .fixed <- .nlmixr(
+      one.cmt,
+      theo_sd,
+      "posthoc",
+      posthocControl(
+        print = 0,
+        maxInnerIterations = 0L,
+        etaMat = .eta,
+        covMethod = "r",
+        covFull = FALSE
+      )
+    )
+    expect_identical(.covFdType(.fixed$covMethod), "r")
+    expect_true(any(grepl(.msg, .fixed$runInfo, fixed = TRUE)))
+    # optimizing them: the covariance of the marginal likelihood, nothing to say
+    .opt <- .nlmixr(
+      one.cmt,
+      theo_sd,
+      "posthoc",
+      posthocControl(
+        print = 0,
+        maxInnerIterations = 1000L,
+        etaMat = .eta,
+        covMethod = "r",
+        covFull = FALSE
+      )
+    )
+    expect_identical(.covFdType(.opt$covMethod), "r")
+    expect_false(any(grepl(.msg, .opt$runInfo, fixed = TRUE)))
+    # recomputing it (getVarCov(force = TRUE), as setCov()) gives the marginal one
+    .v <- suppressMessages(suppressWarnings(nlme::getVarCov(.fixed, force = TRUE)))
+    expect_equal(sqrt(diag(.v)), sqrt(diag(.opt$cov)), tolerance = 1e-6)
+  })
+
+  test_that("at the default tolerances the finite-difference R is the analytic information", {
+    skip_on_cran()
+    # The probes run at the fit's tolerances times 1e-3 (ODE rtol 1e-7, atol 1e-9, inner
+    # 1e-9 at sigdig 3), where every SE is within 4% of the analytic one; at the fit's own
+    # (rtol 1e-3, inner 1e-5) the probes difference numerical noise
+    .an <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, covMethod = "analytic"))
+    .r <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, covMethod = "r", covFull = FALSE))
+    expect_identical(.r$covMethod, "r")
+    .th <- c("tka", "tcl", "tv", "add.sd")
+    # Omega is held at its value in a theta-only R: the theta block of the information
+    .seCond <- sqrt(diag(solve(solve(.an$cov)[.th, .th])))
+    expect_lt(max(abs(sqrt(diag(.r$cov))[.th] / .seCond - 1)), 0.05)
+  })
+
+  test_that("the covariance step tightens the inner problem of every inner optimizer", {
+    skip_on_cran()
+    # each inner optimizer reads its own convergence tolerances (n1qn1 epsilon,
+    # lbfgsb3c's pgtol/abstol/reltol/factr); the step tightens all of them, so the
+    # finite-difference R is the analytic information whichever one runs the legs
+    # (measured 0.7% for n1qn1 and 2.8% for lbfgsb3c, against 32% and 66% with the
+    # inner problems at the estimation's tolerances)
+    .th <- c("tka", "tcl", "tv", "add.sd")
+    for (.io in c("n1qn1", "lbfgsb3c")) {
+      .an <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, innerOpt = .io, covMethod = "analytic"))
+      .r <- .nlmixr(
+        .quietOneCmt,
+        theo_sd,
+        "focei",
+        foceiControl(print = 0, innerOpt = .io, covMethod = "r", covFull = FALSE)
+      )
+      expect_identical(.r$covMethod, "r", label = .io)
+      .rel <- sqrt(diag(.r$cov))[.th] / sqrt(diag(.an$cov))[.th] - 1
+      expect_lt(max(abs(.rel)), 0.05, label = .io)
+    }
+  })
+
+  test_that("the covariance probe tolerances of a high-sigdig fit stay solvable", {
+    skip_on_cran()
+    # sigdig = 10 asks for ODE and inner tolerances near 1e-11; 1e-3 of those is floored
+    # at 1e-14
+    .f <- .nlmixr(
+      .quietOneCmt,
+      theo_sd,
+      "focei",
+      foceiControl(print = 0, sigdig = 10, covMethod = "r", covFull = FALSE, maxOuterIterations = 2L)
+    )
+    expect_identical(.f$covMethod, "r")
+    expect_true(all(is.finite(sqrt(diag(.f$cov)))))
+  })
+
+  test_that("the covariance step runs at its probe tolerances and leaves estimation as it was", {
+    skip_on_cran()
+    # Estimation, its objective, ETAs and tables are those of the fit's own tolerances:
+    # the covariance step that follows tightens its solves and inner problems only for
+    # itself.
+    .none <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, covMethod = ""))
+    .cov <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0))
+    expect_identical(.cov$objf, .none$objf)
+    expect_identical(.cov$theta, .none$theta)
+    expect_identical(.cov$omega, .none$omega)
+    expect_identical(.cov$etaMat, .none$etaMat)
+    expect_identical(as.data.frame(.cov)$IPRED, as.data.frame(.none)$IPRED)
+    expect_identical(as.data.frame(.cov)$CWRES, as.data.frame(.none)$CWRES)
+    # NULL covSolveTol is the fit's atol and rtol times 1e-3, capped at 1e-7: a fit at
+    # atol = rtol = 1e-4 gets 1e-7 for both, as covSolveTol = 1e-7 sets them
+    .ctl <- function(...) {
+      foceiControl(
+        print = 0,
+        maxOuterIterations = 0L,
+        covMethod = "r",
+        covFull = FALSE,
+        rxControl = rxode2::rxControl(atol = 1e-4, rtol = 1e-4),
+        ...
+      )
+    }
+    .rule <- .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl())
+    expect_identical(.rule$cov, .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl(covSolveTol = 1e-7))$cov)
+    # the inner tolerance is the fit's trustFterm/trustMterm (1e-5 at sigdig 3) times
+    # 1e-3, capped at 1e-9
+    expect_identical(.rule$cov, .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl(covInnerTol = 1e-9))$cov)
+    # and each setting is used: another value gives another matrix
+    expect_false(identical(.rule$cov, .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl(covSolveTol = 1e-6))$cov))
+    expect_false(identical(.rule$cov, .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl(covInnerTol = 1e-7))$cov))
+  })
 })

@@ -482,9 +482,31 @@
   return(.env$cov)
 }
 
+#' Inner-iteration budget of a refit's covariance legs
+#'
+#' A refit at a fit's estimates evaluates the fit's ETAs without optimizing them
+#' (`maxInnerIterations = 0`), so that it reports them; its finite-difference
+#' covariance legs still re-optimize the ETAs at every probe (the control
+#' element `covMaxInnerIterations`, read by the C++ covariance step).  They get
+#' the fit's own budget, or `foceiControl()`'s default when the fit has none
+#' (saem, nlme, vae and vi evaluate their ETAs).
+#' @param control the fit's `foceiControl()`
+#' @return integer budget
+#' @noRd
+.covInnerIterations <- function(control) {
+  .n <- control$maxInnerIterations
+  if (checkmate::testNumber(.n, lower = 1, finite = TRUE)) {
+    return(as.integer(.n))
+  }
+  as.integer(formals(foceiControl)$maxInnerIterations)
+}
+
 #' Refit at the converged estimates with a covariance request
 #'
 #' A zero-iteration `est = "none"` output pass; nothing is installed on `obj`.
+#' The refit evaluates the fit's ETAs, but its covariance differentiates the
+#' fit's marginal likelihood: every finite-difference leg re-optimizes the ETAs
+#' from the fit's (`.covInnerIterations()`), with the fit's `interaction`.
 #' @param obj nlmixr2 fit
 #' @param ... `foceiControl()` settings (see `.setCov()`)
 #' @return the refit
@@ -493,6 +515,7 @@
   .env <- .setCovEnv(obj)
   .control <- .env$foceiControl
   .lst <- list(...)
+  .control$covMaxInnerIterations <- .covInnerIterations(.control)
   .control$maxInnerIterations <- 0L
   .control$maxOuterIterations <- 0L
   .control$boundTol <- 0 # turn off boundary
@@ -595,7 +618,21 @@
   if (isTRUE(fit$control$impCov)) {
     return(NULL)
   }
-  .control <- tryCatch(fit$foceiControl, error = function(e) NULL)
+  .foceiRecomputeCov(fit, .baseEst, tryCatch(fit$foceiControl, error = function(e) NULL))
+}
+
+#' Recompute a fit's FOCEi covariance at its converged estimates
+#'
+#' The work behind `.foceiRecomputeMuCov()`, also used by the methods that
+#' estimate their own ETAs (`.foceiInstallOwnEtaCov()`).
+#' @param fit completed nlmixr2 fit (object or its env)
+#' @param baseEst FOCEI-family est the recompute runs
+#' @param control `foceiControl()` with the covariance request, or `NULL`
+#' @return as `.foceiRecomputeMuCov()`
+#' @noRd
+.foceiRecomputeCov <- function(fit, baseEst, control) {
+  .baseEst <- baseEst
+  .control <- control
   if (is.null(.control)) {
     return(NULL)
   }
@@ -615,13 +652,16 @@
   for (.mn in grep("^foceiMu", names(.control), value = TRUE)) {
     .control[[.mn]] <- NULL
   }
-  # The covariance must be evaluated AT the mu fit's converged point -- NOT re-optimized to
-  # a (possibly better) nearby point.  So freeze BOTH problems: maxOuterIterations=0 (final
-  # thetas) AND maxInnerIterations=0 (final etas held at etaMat).  Runs through the FULL
-  # nlmixr2() path (the leaner nlmixr2CreateOutputFromUi posthoc cov is not faithful); must
-  # run on the COMPLETED fit (post mu-finalization) or it corrupts the mu-covariate rewrite.
+  # The covariance is evaluated AT the fit's converged point: maxOuterIterations=0 keeps the
+  # final thetas, and maxInnerIterations=0 reports the final etas (etaMat) as they are.  Its
+  # finite-difference legs still differentiate the marginal likelihood, re-optimizing the
+  # etas from etaMat at every probe (covMaxInnerIterations, see .covInnerIterations()).
+  # Runs through the FULL nlmixr2() path (the leaner nlmixr2CreateOutputFromUi posthoc cov is
+  # not faithful); must run on the COMPLETED fit (post mu-finalization) or it corrupts the
+  # mu-covariate rewrite.
   .control$est <- .baseEst
   .control$maxOuterIterations <- 0L
+  .control$covMaxInnerIterations <- .covInnerIterations(.control)
   .control$maxInnerIterations <- 0L
   .control$boundTol <- 0
   .control$calcTables <- FALSE
@@ -686,6 +726,59 @@
   list(cov = .fit2$cov, covMethod = .fit2$covMethod, extras = .extras, what = .what)
 }
 
+#' Install the FOCEi covariance a method that estimates its own ETAs asked for
+#'
+#' vae, emvi and fbvi finalize their fits with an output pass that evaluates
+#' the FOCE objective at their ETAs.  The covariance they report is computed
+#' afterwards, at their estimates, by the post-fit recompute
+#' (`.foceiRecomputeCov()`): it differentiates the marginal likelihood of the
+#' method's `likelihood` (`control` carries its `interaction`), re-optimizing
+#' the ETAs from the method's at every finite-difference leg.  A recompute that
+#' fails, or gives a matrix `.covGuard()` rejects, installs nothing, with a
+#' warning.  The method's own parameter tables are kept (the refit's are built
+#' for a FOCEi fit of the same model and drop, for example, a fixed residual
+#' parameter of a vae fit with covariate selection) and their SEs refreshed
+#' from the installed matrix.
+#' @param fit completed fit (object or its env)
+#' @param control the method's `foceiControl()`, with the covariance request
+#' @return invisibly `TRUE` if installed
+#' @noRd
+.foceiInstallOwnEtaCov <- function(fit, control) {
+  .env <- tryCatch(.setCovEnv(fit), error = function(e) NULL)
+  if (!is.environment(.env)) {
+    return(invisible(FALSE))
+  }
+  .r <- tryCatch(.foceiRecomputeCov(fit, "focei", control), error = function(e) e)
+  if (inherits(.r, "error")) {
+    warning(
+      sprintf("FOCEi covariance not computed (%s)", conditionMessage(.r)),
+      call. = FALSE
+    )
+    return(invisible(FALSE))
+  }
+  if (is.null(.r)) {
+    return(invisible(FALSE))
+  }
+  .extras <- .r$extras[setdiff(names(.r$extras), .covOwnTables)]
+  # the fit is complete; a failed install leaves it without a covariance, not without
+  # its estimates
+  tryCatch(
+    .covInstall(.env, .r$cov, .r$covMethod, what = .r$what, extras = .extras, refresh = "all"),
+    error = function(e) {
+      warning(
+        sprintf("FOCEi covariance not installed (%s)", conditionMessage(e)),
+        call. = FALSE
+      )
+      invisible(FALSE)
+    }
+  )
+}
+
+#' Parameter tables a fit that estimates its own ETAs keeps when its FOCEi
+#' covariance is installed (`.foceiInstallOwnEtaCov()`)
+#' @noRd
+.covOwnTables <- c("popDf", "popDfSig", "parFixedDf", "parFixed", "se")
+
 #' Install the full-model mu covariance onto a completed mu/irls fit (post-fit).
 #'
 #' The refit's parameter tables and covariance diagnostics come with it; the
@@ -736,14 +829,23 @@
 #'
 #' Switches a completed fit's covariance to \code{method}.  A previously
 #' computed covariance is re-installed from the cache; otherwise it is
-#' recomputed at the converged estimates: \code{"r,s"}/\code{"r"}/\code{"s"} and
-#' \code{"analytic"} on a zero-iteration FOCEI model, and \code{"sa"} (SAEM
-#' Louis FIM) / \code{"imp"} (importance-sampling Monte-Carlo) via the decoupled
-#' recompute engine (the latter two require a mixed-effects fit).  When
-#' a covariance cannot be computed it is left unchanged (it is never silently
-#' downgraded to \code{"r,s"}).
+#' recomputed at the converged estimates: \code{"r,s"}/\code{"r"}/\code{"s"} by
+#' the finite-difference covariance step of the FOCEI family, \code{"analytic"}
+#' as the analytic observed information at the fit's estimates and ETAs, and
+#' \code{"sa"} (SAEM Louis FIM) / \code{"imp"} (importance-sampling Monte-Carlo)
+#' via the decoupled recompute engine (the latter two require a mixed-effects
+#' fit).  When a covariance cannot be computed it is left unchanged (it is never
+#' silently downgraded to \code{"r,s"}).
 #'
 #' @details
+#'
+#' The finite-difference covariances differentiate the fit's marginal
+#' likelihood, in the fit's own approximation (its \code{interaction}): at every
+#' finite-difference step the ETAs are optimized again, starting from the fit's
+#' ETAs.  So \code{setCov(fit, "r,s")} reproduces the \code{"r,s"} covariance a
+#' FOCEI-family fit computes during estimation, and on a fit of another method
+#' (saem, nlme, vae, emvi, fbvi) it is that covariance at the method's
+#' estimates.
 #'
 #' Every focei covariance comes in two shapes (see \code{covFull} in
 #' \code{\link{foceiControl}()}), and both are named: \code{"r,s"}, \code{"r"},

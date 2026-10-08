@@ -1498,11 +1498,11 @@
   .lay <- .saemFimThetaLayout(env)
   .H <- env$saem$Ha
   if (is.null(.lay) || !is.matrix(.H) || nrow(.H) < length(.lay$tn)) {
-    return("could not be computed (the information rows cannot be matched to the thetas)")
+    return("has information rows not matching the thetas")
   }
   .keep <- which(!.lay$fx & !(.lay$tn %in% .lay$phi0))
   if (length(.keep) == 0L) {
-    return("could not be computed (no mu-referenced theta is estimated)")
+    return("has no estimated mu-referenced theta")
   }
   .h <- .H[.keep, .keep, drop = FALSE]
   .rep <- .saemCovRepair(.h)
@@ -1563,7 +1563,7 @@
   if (length(r$phi0) > 0L) {
     warning(
       sprintf(
-        "\"%s\" covariance: no SE for non-mu-referenced theta(s) %s",
+        "no \"%s\" SE for non-mu-referenced theta(s) %s",
         r$label,
         paste(r$phi0, collapse = ", ")
       ),
@@ -1573,7 +1573,7 @@
   if (r$label %in% c("|linFim|", .saemHaThetaRepairedName)) {
     .m <- if (identical(r$label, "|linFim|")) "linFim" else "Ha"
     warning(
-      sprintf("covariance not positive definite, corrected by sqrtm(%s %%*%% %s)", .m, .m),
+      sprintf("covariance not positive definite; used sqrtm(%s %%*%% %s)", .m, .m),
       call. = FALSE
     )
   }
