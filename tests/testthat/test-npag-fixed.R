@@ -51,4 +51,22 @@ nmTest({
     # the fixed IOV variance is held at 0.05, not estimated from the support points
     expect_equal(unname(f$omega$occ["iov.ka", "iov.ka"]), 0.05, tolerance = 1e-8)
   })
+
+  test_that("est='npag' reports a variance it floors at 1e-6 (issue 1140)", {
+    .mod <- function() {
+      ini({ tka <- log(1.5); tv <- log(31.5); tke <- log(0.08); add.sd <- 0.7
+        eta.ka ~ fix(1e-8); eta.ke ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); v <- exp(tv); ke <- exp(tke + eta.ke)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - ke * center
+        cp <- center / v; cp ~ add(add.sd) })
+    }
+    f <- suppressWarnings(
+      nlmixr2(.mod, nlmixr2data::theo_sd, est = "npag", control = npagControl(points = 200L, cycles = 6L))
+    )
+    # the support covariance keeps the fixed 1e-8; the installed omega is floored
+    expect_equal(f$npagOmega[1, 1], 1e-8)
+    expect_equal(unname(f$omega["eta.ka", "eta.ka"]), 1e-6)
+    expect_true(any(f$runInfo == "omega variance floored at 1e-6: eta.ka"))
+  })
 })

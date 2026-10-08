@@ -423,7 +423,7 @@
   }
   parHist
 }
-#' Post estimation back transform the thetaDf
+#' Post estimation back transform the thetaDf (and a positional fullTheta)
 #'
 #' @param env environment to back-transform
 #' @return nothing, called for side-effects
@@ -435,6 +435,10 @@
   .thetaDf <- env$theta
   if (!is.null(.thetaDf) && is.data.frame(.thetaDf)) {
     .thetaNames <- if (exists("thetaNames", envir = env)) env$thetaNames else rownames(.thetaDf)
+    # foceiOuterFinal()'s fullTheta is unnamed, in theta order, on the internal
+    # scale; .nlmixr2FitUpdateParams() writes it into the restored ui by position
+    .fullTheta <- if (exists("fullTheta", envir = env, inherits = FALSE)) env$fullTheta else NULL
+    .byPos <- is.numeric(.fullTheta) && is.null(names(.fullTheta))
     for (.tr in transforms) {
       .w <- which(.thetaNames == .tr$internalName)
       if (length(.w) != 1L) {
@@ -449,6 +453,9 @@
         "upper_exp" = .tr$upper - exp(.val),
         .val
       )
+      if (.byPos && .w <= length(.fullTheta)) {
+        .fullTheta[.w] <- .thetaDf$theta[.w]
+      }
       # Restore original bounds
       .thetaDf$lower[.w] <- .tr$lower
       .thetaDf$upper[.w] <- .tr$upper
@@ -458,6 +465,9 @@
     rownames(.thetaDf) <- .thetaNames
     env$theta <- .thetaDf
     env$thetaNames <- .thetaNames
+    if (.byPos) {
+      env$fullTheta <- .fullTheta
+    }
   }
 }
 #' Bounded-transform Jacobian derivative at a natural-scale value
@@ -675,7 +685,8 @@
 #' but before the final parameter table is built (called from C++
 #' \code{foceiFinalizeTables} via \code{.preFinalParTableHooksRun}).
 #'
-#' Modifies \code{env$theta}, \code{env$thetaNames}, and \code{env$cov} to
+#' Modifies \code{env$theta}, \code{env$thetaNames}, an unnamed
+#' \code{env$fullTheta}, and \code{env$cov} to
 #' restore natural-scale parameter values, original parameter names, and
 #' Jacobian-corrected covariance matrix. Also restores the original ui on
 #' the fit object so downstream consumers see the user's model.

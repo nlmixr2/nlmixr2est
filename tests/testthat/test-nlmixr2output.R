@@ -97,6 +97,58 @@ nmTest({
       )
     expect_equal(fmt[["BSV(CV%)"]], c("", "59.1", "32.4", ""))
   })
+
+  test_that("VarCorr() reports the omega correlations of a non-nlme fit (issue 1140)", {
+    one.compartment.block <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl + eta.v ~ c(0.3, 0.05, 0.1)
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    fit <- .nlmixr(
+      one.compartment.block,
+      theo_sd,
+      "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 0, covMethod = "", calcTables = FALSE)
+    )
+    .vc <- VarCorr(fit)
+    .eta <- c("eta.ka", "eta.cl", "eta.v")
+    expect_equal(rownames(.vc), .eta)
+    expect_equal(names(.vc), c("Variance", "StdDev", "eta.ka", "eta.cl"))
+    expect_equal(.vc$Variance, unname(diag(fit$omega)))
+    expect_equal(.vc$StdDev, sqrt(unname(diag(fit$omega))))
+    .cor <- stats::cov2cor(fit$omega)
+    expect_equal(.vc$eta.cl, c(NA, NA, .cor[["eta.v", "eta.cl"]]))
+    expect_equal(.vc$eta.ka, c(NA, 0, 0))
+  })
+
+  test_that("VarCorr()'s omega table spans every level of an IOV omega (issue 1140)", {
+    .nm <- c("eta.cl", "eta.v")
+    .om <- list(
+      id = matrix(c(0.1, 0.02, 0.02, 0.2), 2, 2, dimnames = list(.nm, .nm)),
+      occ = matrix(0.05, 1, 1, dimnames = list("iov.cl", "iov.cl"))
+    )
+    .vc <- .varCorrOmega(.om)
+    expect_equal(rownames(.vc), c(.nm, "iov.cl"))
+    expect_equal(.vc$Variance, c(0.1, 0.2, 0.05))
+    expect_equal(.vc$StdDev, sqrt(c(0.1, 0.2, 0.05)))
+    expect_equal(.vc$eta.cl, c(NA, 0.02 / sqrt(0.02), 0))
+    expect_equal(.vc$eta.v, c(NA, NA, 0))
+    # a diagonal omega keeps the variance-only table
+    .d <- diag(c(0.1, 0.2))
+    dimnames(.d) <- list(.nm, .nm)
+    expect_equal(.varCorrOmega(.d), data.frame(Variance = c(0.1, 0.2), StdDev = sqrt(c(0.1, 0.2)), row.names = .nm))
+  })
 })
 
 test_that("formatMinWidth", {
@@ -429,4 +481,46 @@ test_that("formatMinWidth in parFixed", {
   # ...but a model with etas keeps them
   expect_true(any(startsWith(names(fit$parFixed), "BSV(")))
   expect_true("Shrink(SD)%" %in% names(fit$parFixed))
+})
+
+test_that("the output builder writes a method's estimates into the ui and keeps the original model", {
+  .ui <- rxode2::rxode2(function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      y <- ka + cl
+      y ~ add(add.sd)
+    })
+  })
+  .om <- matrix(c(0.2, 0.05, 0.05, 0.1), 2, 2, dimnames = list(c("eta.ka", "eta.cl"), c("eta.ka", "eta.cl")))
+  .old <- nlmixr2global$nlmixr2EstEnv$iniDf0
+  .depth <- nlmixr2global$nlmixr2EstEnv$estDepth
+  withr::defer({
+    nlmixr2global$nlmixr2EstEnv$iniDf0 <- .old
+    nlmixr2global$nlmixr2EstEnv$estDepth <- .depth
+  })
+  # called outside an nlmixr2() run: the ui passed in is the original model
+  nlmixr2global$nlmixr2EstEnv$estDepth <- 0L
+  nlmixr2global$nlmixr2EstEnv$iniDf0 <- data.frame(name = "stale")
+  .env <- new.env(parent = emptyenv())
+  .env$fullTheta <- c(tka = 0.5, tcl = 1.2, add.sd = 0.4)
+  .env$omega <- .om
+  .u <- .nlmixr2OutputContract(rxode2::rxUiDecompress(.ui), .env)
+  expect_equal(.u$omega, .om)
+  expect_equal(.u$theta[c("tka", "tcl", "add.sd")], .env$fullTheta)
+  expect_equal(.env$iniDf0$est, .ui$iniDf$est)
+  # a method that already updated its ui is left alone
+  .env2 <- new.env(parent = emptyenv())
+  .env2$iniDf0 <- data.frame(.ui$iniDf)
+  .env2$omega <- .om
+  .u2 <- .nlmixr2OutputContract(rxode2::rxUiDecompress(.ui), .env2)
+  expect_equal(.u2$omega, .ui$omega)
+  expect_equal(nlmixr2global$nlmixr2EstEnv$iniDf0, .env2$iniDf0)
 })

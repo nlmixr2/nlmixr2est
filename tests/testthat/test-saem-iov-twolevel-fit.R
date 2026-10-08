@@ -278,3 +278,35 @@ test_that("the FOCEi objective under IOV is minimized at the true Psi", {
   # and it is a real minimum, not a flat line
   expect_true(min(.obj) < min(.obj[.grid != 1e-2]) - 1)
 })
+
+test_that("a two-level or collapsed fit's $etaMat has the occasion etas a focei refit expands to (issue 1140)", {
+  skip_on_cran()
+  .d <- .twoLevelFitData()
+  for (.m in c("twoLevel", "collapsed")) {
+    .f <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem", control = .twoLevelCtl(iovMethod = .m)))
+    .em <- .f$etaMat
+    expect_equal(colnames(.em), c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
+    # the "theta" rewrite's occasion etas have unit variance; $iov holds them
+    # times the occasion standard deviation
+    .sd <- sqrt(.f$omega$occ[["iov.cl", "iov.cl"]])
+    .iov <- .f$iov$occ
+    expect_equal(unname(.em[, "rx.iov.cl.1"]), .iov$iov.cl[.iov$occ == 1] / .sd)
+    expect_equal(unname(.em[, "rx.iov.cl.2"]), .iov$iov.cl[.iov$occ == 2] / .sd)
+    expect_equal(unname(.em[, c("eta.ka", "eta.cl", "eta.v")]), unname(as.matrix(.f$eta[, -1])))
+    # held fixed in a focei refit, they give back saem's occasion deviations
+    .g <- suppressWarnings(suppressMessages(nlmixr2(
+      .f,
+      .d,
+      est = "focei",
+      control = foceiControl(
+        print = 0L,
+        maxOuterIterations = 0L,
+        maxInnerIterations = 0L,
+        covMethod = "",
+        calcTables = FALSE,
+        etaMat = .em
+      )
+    )))
+    expect_equal(.g$iov$occ$iov.cl, .iov$iov.cl, tolerance = 1e-6)
+  }
+})

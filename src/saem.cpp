@@ -1898,7 +1898,6 @@ public:
     return Gamma2_phi1;
   }
 
-  // Reporting-only pooled BSV for split ETAs; falls back to the live matrix if no pooling was ever applied.
   mat get_Gamma2_phi1Report() {
     if (Gamma2_phi1Report.n_elem == Gamma2_phi1.n_elem) return Gamma2_phi1Report;
     return Gamma2_phi1;
@@ -1959,6 +1958,20 @@ public:
     ue = ue.cols(i1);
     eta = eta % ue;
     return eta;
+  }
+
+  // per-component posterior etas (same mask as get_eta()); empty without a mixture
+  List get_etaMix() {
+    List ret(mpost_phi_mix.n_elem);
+    if (mpost_phi_mix.n_elem == 0) return ret;
+    mat ue = current_saem_state->_saemUE.rows(0, N - 1);
+    ue = ue.cols(i1);
+    for (unsigned int j = 0; j < mpost_phi_mix.n_elem; j++) {
+      mat eta = mpost_phi_mix(j).cols(i1);
+      eta -= mprior_phi1;
+      ret[j] = wrap(eta % ue);
+    }
+    return ret;
   }
 
   void inits(List x) {
@@ -2075,14 +2088,15 @@ public:
     ind_cov1 = as<uvec>(x["ind_cov1"]);
     statphi11 = as<mat>(x["statphi11"]);
     statphi12 = as<mat>(x["statphi12"]);
-    omegaShare = x.containsElementNamed("omegaShare") ? as<uvec>(x["omegaShare"]) : uvec();
     omegaShareSubpop = x.containsElementNamed("omegaShareSubpop") ? as<uvec>(x["omegaShareSubpop"]) : uvec();
     omegaPool = x.containsElementNamed("omegaPool") ? as<uvec>(x["omegaPool"]) : uvec();
     omegaPoolMean = x.containsElementNamed("omegaPoolMean") ? as<int>(x["omegaPoolMean"]) : 0;
     _buildLambdaCol1 = true;
     statphi11_mix.set_size(std::max(nMix, 1));
+    statphi12d_mix.set_size(std::max(nMix, 1));
     for (int _j = 0; _j < std::max(nMix, 1); _j++) {
       statphi11_mix(_j) = statphi11;
+      statphi12d_mix(_j) = statphi11 % statphi11;
     }
 
     nphi0 = as<int>(x["nphi0"]);
@@ -2259,6 +2273,8 @@ public:
     Hb = zeros<mat>(nb_param,nb_param);
     mpost_phi = zeros<mat>(N, nphi);
     cpost_phi = zeros<mat>(N, nphi);
+    mpost_phi_mix.set_size(nMix > 1 ? nMix : 0);
+    for (int j = 0; j < nMix && nMix > 1; j++) mpost_phi_mix(j) = zeros<mat>(N, nphi);
 
     //handle situation when nphi0=0
     mprior_phi0.set_size(N, nphi0);
@@ -2552,13 +2568,13 @@ public:
       if (ueRevisitIter >= 0 && kiter == (unsigned int)ueRevisitIter) {
         revisitUninformativeEtas();
       }
-      IGamma2_phi1=invSympdNearPd(Gamma2_phi1, "Gamma2_phi1 (Omega)");
+      IGamma2_phi1=invSympdNearPd(Gamma2_phi1, "omega");
       gamma2_phi1=Gamma2_phi1.diag();
       D1Gamma21=LCOV1*IGamma2_phi1;
       D2Gamma21=D1Gamma21*LCOV1.t();
       CGamma21=COV21%D2Gamma21;
 
-      IGamma2_phi0=invSympdNearPd(Gamma2_phi0, "Gamma2_phi0 (Omega)");
+      IGamma2_phi0=invSympdNearPd(Gamma2_phi0, "omega of the etas without a theta");
       gamma2_phi0=Gamma2_phi0.diag();
       D1Gamma20=LCOV0*IGamma2_phi0;
       D2Gamma20=D1Gamma20*LCOV0.t();
@@ -2588,8 +2604,10 @@ public:
       mat Statphi12 = zeros<mat>(nphi1, nphi1);
       mat Statphi02 = zeros<mat>(nphi0, nphi0);
       field<mat> Statphi11_mix(std::max(nMix, 1));
+      field<mat> Statphi12d_mix(std::max(nMix, 1));
       for (int _j = 0; _j < std::max(nMix, 1); _j++) {
         Statphi11_mix(_j) = zeros<mat>(N, nphi1);
+        Statphi12d_mix(_j) = zeros<mat>(N, nphi1);
       }
       double statr[MAXENDPNT];
       for (int b = 0; b < nendpnt; b++) {
@@ -2920,6 +2938,26 @@ public:
           // distance from the component mean) is what discriminates the true component.
           {
             vec joint_nll(N * nmc);
+            // With split ETAs the component's density covers only its own etas (the
+            // shared ones and its split ones; another component's split eta integrates
+            // out), with its normalizing constant, or a component whose variance grows
+            // pays nothing for it and takes over the subjects of the others.
+            uvec ownCols;
+            mat ownIG;
+            double ownLogDet = 0.0;
+            bool splitPrior = nphi1 > 0 && omegaShareSubpop.n_elem == (unsigned int)nphi1;
+            if (splitPrior) {
+              ownCols = find(omegaShareSubpop == 0 || omegaShareSubpop == (unsigned int)(jMix + 1));
+              if (ownCols.n_elem > 0) {
+                mat G = Gamma2_phi1.submat(ownCols, ownCols);
+                double sgn;
+                if (inv_sympd(ownIG, G)) {
+                  log_det(ownLogDet, sgn, G);
+                } else {
+                  splitPrior = false;
+                }
+              }
+            }
             for (int k = 0; k < nmc; k++) {
               // Observation loss for this MCMC sample (rows i + k*N for each subject)
               for (int i = 0; i < N; i++) {
@@ -2936,7 +2974,16 @@ public:
                 mat phi1_k     = block1.cols(i1);
                 mat prior1_k   = mphi1.mprior_phiM.rows(k * N, (k + 1) * N - 1);
                 mat dphi1_k    = phi1_k - prior1_k;
-                vec uphi1_k    = 0.5 * sum(dphi1_k % (dphi1_k * IGamma2_phi1), 1);
+                vec uphi1_k;
+                if (splitPrior) {
+                  uphi1_k = zeros<vec>(N);
+                  if (ownCols.n_elem > 0) {
+                    mat d = dphi1_k.cols(ownCols);
+                    uphi1_k = 0.5 * sum(d % (d * ownIG), 1) + 0.5 * ownLogDet;
+                  }
+                } else {
+                  uphi1_k = 0.5 * sum(dphi1_k % (dphi1_k * IGamma2_phi1), 1);
+                }
                 for (int i = 0; i < N; i++) joint_nll(i + k * N) += uphi1_k(i);
               }
               if (nphi0 > 0) {
@@ -3044,6 +3091,7 @@ public:
               // Unblended per-component accumulation (no mixWeights factor) so the theta
               // M-step for mixture-owned columns isn't diluted by the other component.
               Statphi11_mix(jMix).row(i) += phi1_ji;
+              Statphi12d_mix(jMix).row(i) += phi1_ji % phi1_ji;
 
               phi1_w += mixWeights(i, jMix) * phi1_ji;
               phi0_w += mixWeights(i, jMix) * phi0_ji;
@@ -3354,6 +3402,7 @@ public:
         // single trajectory, so statphi11 above is already clean and statphi11_mix is unused.
         for (int _j = 0; _j < nMix; _j++) {
           statphi11_mix(_j) = statphi11_mix(_j) + pas(kiter)*(Statphi11_mix(_j)/nmc - statphi11_mix(_j));
+          statphi12d_mix(_j) = statphi12d_mix(_j) + pas(kiter)*(Statphi12d_mix(_j)/nmc - statphi12d_mix(_j));
         }
       }
       statphi12=statphi12+pas(kiter)*(Statphi12/nmc-statphi12);
@@ -3511,6 +3560,30 @@ public:
         }
       }
 
+      // "parallel": a split-ETA column's BSV from its own component's chain, weighted by
+      // responsibility.  The blended G1 above also takes the column from subjects of the
+      // other components, whose own chain moves this eta to fit them; that inflates the
+      // variance until the prior no longer tells the components apart.
+      if (nMix > 1 && mixSampleMethod == 0 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
+        for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
+          unsigned int subpop = omegaShareSubpop(c);
+          if (subpop < 1 || subpop > (unsigned int)nMix) continue;
+          bool diagOnly = true;
+          for (unsigned int cc = 0; cc < (unsigned int)nphi1; cc++) {
+            if (cc != c && covstruct1(c, cc) != 0) { diagOnly = false; break; }
+          }
+          if (!diagOnly) continue;
+          if (Gamma2_phi1fixed == 1 && any(Gamma2_phi1fixedIx == c * nphi1 + c)) continue;
+          vec w = mixWeights.col(subpop - 1);
+          double sumW = arma::sum(w);
+          if (sumW <= 0.0) continue;
+          vec mu = mprior_phi1.col(c);
+          vec m1 = statphi11_mix(subpop - 1).col(c);
+          vec m2 = statphi12d_mix(subpop - 1).col(c);
+          G1(c, c) = arma::sum(w % (m2 - 2.0 * m1 % mu + mu % mu)) / sumW;
+        }
+      }
+
       // Two-level (IOV): the per-occasion columns of one occasion parameter
       // estimate a single Psi, so pool their moments.  Under the equality
       // constraint the maximizer of the complete-data likelihood is the plain
@@ -3527,63 +3600,8 @@ public:
       // the SA floor above is per-element, so it can pull a pooled group apart
       // again; restore the constraint after it
       poolOmegaGroups(Gamma2_phi1);
-      // Split-ETA components sharing an omegaShare group are pooled into a single BSV term
-      // (law of total variance) for *reporting only*, into Gamma2_phi1Report; the live
-      // Gamma2_phi1 feeding IGamma2_phi1/D1Gamma21 stays untouched so tcl1/tcl2 stay uncoupled.
+      // what the fit reports; a fix()ed variance is restored into it below
       Gamma2_phi1Report = Gamma2_phi1;
-      if (nMix > 1 && omegaShare.n_elem == (unsigned int)nphi1) {
-        unsigned int max_group = 0;
-        for (unsigned int i = 0; i < omegaShare.n_elem; ++i) {
-          if (omegaShare(i) > max_group) max_group = omegaShare(i);
-        }
-        for (unsigned int g = 1; g <= max_group; ++g) {
-          double sum_weighted_var = 0.0;
-          double sum_weights = 0.0;
-          int count = 0;
-          std::vector<double> weights;
-          std::vector<double> means;
-          std::vector<unsigned int> indices;
-          for (unsigned int i = 0; i < omegaShare.n_elem; ++i) {
-            if (omegaShare(i) == g) {
-              double w = 1.0;
-              if (nMix > 1 && omegaShareSubpop.n_elem == omegaShare.n_elem) {
-                unsigned int subpop = omegaShareSubpop(i);
-                if (subpop >= 1 && subpop <= (unsigned int)nMix) {
-                  w = arma::sum(mixWeights.col(subpop - 1));
-                }
-              }
-              weights.push_back(w);
-              double mu = 0.0;
-              if (mprior_phi1.n_rows > 0) {
-                mu = arma::mean(mprior_phi1.col(i));
-              }
-              means.push_back(mu);
-              indices.push_back(i);
-              sum_weighted_var += w * Gamma2_phi1(i, i);
-              sum_weights += w;
-              count++;
-            }
-          }
-          if (count > 1 && sum_weights > 0.0) {
-            double mean_of_vars = sum_weighted_var / sum_weights;
-            double mu_total = 0.0;
-            for (size_t k = 0; k < weights.size(); ++k) {
-              mu_total += weights[k] * means[k];
-            }
-            mu_total /= sum_weights;
-            double var_of_means = 0.0;
-            for (size_t k = 0; k < weights.size(); ++k) {
-              double diff = means[k] - mu_total;
-              var_of_means += weights[k] * diff * diff;
-            }
-            var_of_means /= sum_weights;
-            double total_var = mean_of_vars + var_of_means;
-            for (unsigned int i : indices) {
-              Gamma2_phi1Report(i, i) = total_var;
-            }
-          }
-        }
-      }
       // "msaem" split-ETA columns: generic Gmin/minv floor (1e-20) isn't tight enough to stop
       // IGamma2_phi1 exploding and locking MCMC proposals to zero; floor at a fraction of ini() variance instead.
       if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
@@ -4300,6 +4318,15 @@ public:
       mpost_phi=mpost_phi+pash(kiter)*(sphi1/nmc-mpost_phi);
       cpost_phi=cpost_phi+pash(kiter)*(sphi2/nmc-cpost_phi);
       mpost_phi.cols(i0)=mprior_phi0;
+      // each component's own posterior mean: a component-owned eta is reported
+      // conditional on its component, not blended with chains that never apply it
+      if (nMix > 1 && phiM_mix.n_elem == (unsigned int)nMix) {
+        for (int j = 0; j < nMix; j++) {
+          mat sj = zeros<mat>(N, nphi);
+          for (int k = 0; k < nmc; k++) sj += phiM_mix(j).rows(k * N, (k + 1) * N - 1);
+          mpost_phi_mix(j) = mpost_phi_mix(j) + pash(kiter) * (sj / nmc - mpost_phi_mix(j));
+        }
+      }
 
       //FIXME: chg according to multiple endpnts; need to chg dim(par_hist)
       for (int b=0; b<nendpnt; ++b) {
@@ -4481,7 +4508,7 @@ private:
   uvec pc1;
   mat COV1, COV0, LCOV1, LCOV0, COV21, COV20, MCOV1, MCOV0;
   mat Gamma2_phi1, Gamma2_phi0, mprior_phi1, mprior_phi0;
-  mat Gamma2_phi1Report; // reporting-only pooled BSV for split ETAs sharing an omegaShare group; never fed back into estimation
+  mat Gamma2_phi1Report; // the reported omega: Gamma2_phi1 before the minv floor, with fix()ed cells restored
   // ---- MCMC mixing diagnostics -------------------------------------------
   // saem computed its acceptance rate and threw it away, so a chain that had
   // stopped moving looked exactly like one exploring properly.  One row per
@@ -4523,6 +4550,8 @@ private:
   // Per-component, unblended sufficient statistic (never mixed across components); used to fix
   // tcl1/tcl2-style split-ETA fixed effects via weighted regression (see omegaShareSubpop block).
   field<mat> statphi11_mix;
+  // the same per-component chains' second moments, for the split-ETA BSV
+  field<mat> statphi12d_mix;
   double statrese[MAXENDPNT];
   double sigma2[MAXENDPNT];
   vec ares, bres, cres, lres, lambda, low, hi;
@@ -4538,6 +4567,7 @@ private:
   vec L;
   mat Ha, Hb, DDa, DDb;
   mat mpost_phi, cpost_phi;
+  field<mat> mpost_phi_mix;
 
   vec resValue;
   uvec resFixed;
@@ -4636,7 +4666,6 @@ private:
   field<vec> fsave_mix;
   field<vec> limit_mix;
   field<vec> cens_mix;
-  uvec omegaShare;
   uvec omegaShareSubpop;
   // Two-level (IOV) models: phi1 columns sharing a non-zero group id are one
   // occasion parameter observed at different levels, so they estimate ONE
@@ -4705,16 +4734,21 @@ private:
   // downstream chol()/set_mcmcphi() see the corrected matrix), warn the user
   // once, and return the inverse of the corrected matrix.
   bool _nearPdWarned = false;
+  bool _nearPdDiagWarned = false;
   mat invSympdNearPd(mat &G, const char *what) {
     mat out;
     if (inv_sympd(out, G)) return out;
     mat pd;
-    if (nmNearPD(pd, G)) {
+    int how = nmNearPDKeepDiag(pd, G);
+    if (how > 0) {
       G = pd;
       if (!_nearPdWarned) {
-        Rcpp::warning(std::string("SAEM: ") + what +
-                      " was not positive definite; projected to the nearest positive-definite matrix (results may be affected)");
+        Rcpp::warning(std::string(what) + " not PD; used its nearest PD matrix");
         _nearPdWarned = true;
+      }
+      if (how == 2 && !_nearPdDiagWarned) {
+        Rcpp::warning(std::string(what) + " repair changed its variances");
+        _nearPdDiagWarned = true;
       }
       if (inv_sympd(out, G)) return out;
     }
@@ -5878,6 +5912,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("Ha") = saem.get_Ha(),
     Named("sig2") = saem.get_sig2(),
     Named("eta") = saem.get_eta(),
+    Named("etaMix") = saem.get_etaMix(),
     Named("par_hist") = saem.get_par_hist(),
     // MCMC mixing diagnostics; see the members they come from
     Named("mcmcAccept") = saem.get_mcmcAccTrace(),

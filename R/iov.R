@@ -1121,6 +1121,11 @@ nlmixr2iovVarSd <- function(val) {
       })
       names(.iov) <- .n
       assign("iov", .iov, envir = ret$env)
+      # saem's own two-level handling estimated these deviations, not the
+      # rewrite's unit-variance etas (nmObjGet.etaMat())
+      if (!is.null(.uiIovEnv$iovTwoLevel)) {
+        assign("iovNative", "twoLevel", envir = ret$env)
+      }
 
       # Now fixed effects
       .fixef <- ret$env$fixef

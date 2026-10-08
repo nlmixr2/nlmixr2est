@@ -58,6 +58,6 @@ nmTest({
     expect_true(inherits(.f, "nlmixr2FitData"))
     # ... and the nearPD projection is actually exercised (mechanism-used check):
     # the one-time warning is recorded in the fit's runInfo.
-    expect_true(any(grepl("positive definite", .f$runInfo, ignore.case = TRUE)))
+    expect_true(any(grepl("not PD; used its nearest PD matrix", .f$runInfo, fixed = TRUE)))
   })
 })

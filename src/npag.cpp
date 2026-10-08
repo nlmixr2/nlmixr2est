@@ -761,7 +761,13 @@ arma::mat npFinalizeFit(Environment e, arma::mat& support,
   // installed Omega singular and the posthoc MAP's Omega^-1 fail.  Floor the
   // diagonal so the inverse is well-defined; the tiny variance still reads as "no
   // BSV" for that parameter.
-  for (int d = 0; d < neta; ++d) if (omInstall(d, d) < 1e-6) omInstall(d, d) = 1e-6;
+  std::vector<int> floored;
+  for (int d = 0; d < neta; ++d) {
+    if (omInstall(d, d) < 1e-6) {
+      omInstall(d, d) = 1e-6;
+      if (std::find(injEtaIdx.begin(), injEtaIdx.end(), d) == injEtaIdx.end()) floored.push_back(d);
+    }
+  }
   // mu-expanded etas carry a FIXED omega only so they are excluded from the free
   // omega objective (and, in mixtures, do not trip the multi-free-eta omega setup).
   // At finalization they are collapsed to a fixed effect: their support-mean is
@@ -771,6 +777,7 @@ arma::mat npFinalizeFit(Environment e, arma::mat& support,
     int j = injEtaIdx[x];
     if (j >= 0 && j < neta) { omInstall(j, j) = 1e-6; Omega(j, j) = 0.0; }
   }
+  impWarnOmegaFloor(e, floored);
   impSetOmega(omInstall, impDiagXform());
   // fold the fitted assay-error multiplier (gamma) into the variance-scale
   // residual coefficients: r was fit as gamma^2 * r(theta), which equals

@@ -217,9 +217,7 @@
   ## variational posterior means as the FOCEi inner EBE start [nsub, neta]
   .eb <- res$mu
   colnames(.eb) <- .prep$etaNames
-  .ret$omega <- .omM
   .ret$ui <- .ui2
-  .ret$fullTheta <- stats::setNames(res$theta, names(.prep$th))
 
   ## the output step evaluates the variational means only; the FOCEi covariance
   ## is computed after it (.foceiInstallOwnEtaCov, below)

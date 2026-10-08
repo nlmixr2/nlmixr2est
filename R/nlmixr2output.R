@@ -19,6 +19,17 @@
   if (name %in% ui$muRefCovariateDataFrame$covariateParameter) {
     return(value)
   }
+  .updateParFixedBackTransformDefault(ui, name, value)
+}
+
+#' The back-transform of a theta from its mu-referenced `curEval`
+#' (exp/expit/probitInv), the rule the C++ parameter table applies to every
+#' estimated theta (`.iterPrintXParFromUi()`)
+#'
+#' @inheritParams .updateParFixedBackTransformFixed
+#' @return `value` back-transformed
+#' @noRd
+.updateParFixedBackTransformDefault <- function(ui, name, value) {
   .m <- ui$muRefCurEval
   .w <- which(.m$parameter == name)
   if (length(.w) == 1L) {
@@ -333,6 +344,51 @@
   ret
 }
 
+#' The back-transform a parameter-table row was reported with, applied to `x`
+#'
+#' Tries the function a `backTransform()` in `ini()` names (looked up where
+#' `.updateParFixed()` looks it up), then the rule for a literally-fixed theta,
+#' then the `curEval` rule of the C++ table, then the identity; the first that
+#' maps the estimate to the row's back-transformed value is the row's.
+#'
+#' @param ui the fit's ui
+#' @param name row (theta) name
+#' @param x values to back-transform, the estimate first
+#' @param bt the row's back-transformed estimate
+#' @return `x` back-transformed, or `NULL` when no rule reproduces `bt`
+#' @noRd
+.updateParFixedBackTransformRow <- function(ui, name, x, bt) {
+  # the table's columns carry the row names, which all.equal() would compare
+  x <- unname(x)
+  .bt <- unname(bt)
+  .fun <- ui$iniDf$backTransform[ui$iniDf$name == name]
+  if (length(.fun) == 1L && !is.na(.fun)) {
+    .env <- nlmixr2global$nlmixrEvalEnv$envir
+    if (!is.environment(.env)) {
+      .env <- globalenv()
+    }
+    .fun <- tryCatch(get(.fun, envir = .env, mode = "function"), error = function(e) NULL)
+    # one value per call, as the fit's table applies it: the function need not
+    # be vectorized
+    .y <- if (is.function(.fun)) tryCatch(vapply(x, .fun, numeric(1), USE.NAMES = FALSE), error = function(e) NULL)
+    if (length(.y) == length(x) && isTRUE(all.equal(.y[1], .bt))) {
+      return(.y)
+    }
+  }
+  .y <- tryCatch(.updateParFixedBackTransformFixed(ui, name, x), error = function(e) x)
+  if (isTRUE(all.equal(.y[1], .bt))) {
+    return(.y)
+  }
+  .y <- tryCatch(.updateParFixedBackTransformDefault(ui, name, x), error = function(e) x)
+  if (isTRUE(all.equal(.y[1], .bt))) {
+    return(.y)
+  }
+  if (isTRUE(all.equal(x[1], .bt))) {
+    return(x)
+  }
+  NULL
+}
+
 #' Refresh a fit's parameter-table SEs from an installed covariance
 #'
 #' Updates the numeric `$parFixedDf` and regenerates the formatted `$parFixed`
@@ -388,18 +444,30 @@
       .pf[.n, "%RSE"] <- if (is.finite(.e) && .e != 0) abs(.s / .e) * 100 else NA_real_
     }
     if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf))) {
-      # recompute the CI when the default back-transform (identity/exp/expit/
-      # probitInv) reproduces the stored back-transformed value; rows with a
-      # manual backTransform keep their existing CI
-      .btf <- function(.v) {
-        if (ciIdentity) {
-          return(.v)
+      .x <- c(.e, .e - .qn * .s, .e + .qn * .s)
+      .bt <- .pf[.n, "Back-transformed"]
+      if (ciIdentity) {
+        # only rows reported untransformed get the identity interval; the
+        # others keep theirs
+        .y <- if (isTRUE(all.equal(unname(.bt), unname(.e)))) .x
+      } else {
+        .y <- .updateParFixedBackTransformRow(env$ui, .n, .x, .bt)
+        if (is.null(.y)) {
+          # an interval of the previous covariance is not kept beside the new SE
+          if (!is.na(.pf[.n, "CI Lower"])) {
+            warning(
+              "the confidence interval of '",
+              .n,
+              "' was dropped: its back-transform could not be reproduced",
+              call. = FALSE
+            )
+          }
+          .y <- rep(NA_real_, 3L)
         }
-        tryCatch(.updateParFixedBackTransformFixed(env$ui, .n, .v), error = function(e) .v)
       }
-      if (isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.btf(.e))))) {
-        .pf[.n, "CI Lower"] <- .btf(.e - .qn * .s)
-        .pf[.n, "CI Upper"] <- .btf(.e + .qn * .s)
+      if (!is.null(.y)) {
+        .pf[.n, "CI Lower"] <- .y[2]
+        .pf[.n, "CI Upper"] <- .y[3]
       }
     }
     .changed <- TRUE
@@ -656,19 +724,40 @@
 }
 
 
+#' Variances, standard deviations and correlations of a fit's omega
+#'
+#' @param omega omega matrix, or the per-level list of an IOV fit
+#' @return data.frame with `Variance` and `StdDev` per eta.  When the omega has
+#'   a covariance it also has one column per eta (but the last), named by the
+#'   eta, holding its correlation with the eta of each later row (the lower
+#'   triangle, as `nlme::VarCorr()` prints it); the other cells are `NA`.
+#' @noRd
+.varCorrOmega <- function(omega) {
+  if (is.list(omega)) {
+    omega <- lotri::lotriMat(omega)
+  }
+  .var <- diag(omega)
+  .ret <- data.frame(
+    Variance = .var,
+    StdDev = sqrt(.var),
+    row.names = dimnames(omega)[[1]]
+  )
+  .off <- omega
+  diag(.off) <- 0
+  if (any(.off != 0, na.rm = TRUE)) {
+    .cor <- suppressWarnings(stats::cov2cor(omega))
+    .cor[upper.tri(.cor, diag = TRUE)] <- NA_real_
+    .ret <- cbind(.ret, as.data.frame(.cor[, -ncol(.cor), drop = FALSE]))
+  }
+  .ret[!is.na(.ret[, 1]), , drop = FALSE]
+}
+
 #' @importFrom nlme VarCorr
 #' @export
 VarCorr.nlmixr2FitCore <- function(x, sigma = NULL, ...) {
   .ret <- x$nlme
   if (is.null(.ret)) {
-    .var <- diag(x$omega)
-    .ret <- data.frame(
-      Variance = .var,
-      StdDev = sqrt(.var),
-      row.names = names(.var)
-    )
-    .ret <- .ret[!is.na(.ret[, 1]), ]
-    .ret
+    .varCorrOmega(x$omega)
   } else {
     VarCorr(.ret, ...)
   }
@@ -902,7 +991,7 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   for (.n in names(.thetas)) {
     .iniDf$est[.iniDf$name == .n] <- .thetas[.n]
   }
-  # nlme estimates the full covariance matrix; expand omega initial estimates to match if needed.
+  # the omega rows are rebuilt from the estimated matrix
   .omega <- x$omega
   if (is.null(.omega)) {
     .ui <- rxode2::rxUiDecompress(.ui)

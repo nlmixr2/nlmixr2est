@@ -416,6 +416,124 @@
   gradient for event parameters).  A hand-built nlm control with a
   non-positive value uses the default (#1174).
 
+- `est = "nlme"` with a covariance in `ini()` now reports nlme's estimate of
+  omega in `$omega` and in the fit's `ini()`, and so to every step that starts
+  from the fit (`setCov()`, `setOfv()`, `addCwres()`, simulation, the
+  `covMethod = "analytic"`, `"r,s"`, `"sa"` and `"imp"` recomputes, refits);
+  it reported the initial omega.  nlme now estimates only the covariances
+  `ini()` declares (a `pdBlocked` structure): it estimated a full covariance
+  matrix over every eta, with the warning `nlme will estimate a full omega
+  matrix if any covariances are estimated`.  `VarCorr()` of such a fit is
+  nlme's own, which prints no correlations for a blocked structure; `$omega`
+  has them.  The columns of `$eta` and `$etaMat` follow the ui's eta order,
+  not nlme's.  An omega declared as one full block is still a single
+  `pdSymm`, and a diagonal one a `pdDiag`.  A `fix()`ed omega element is now
+  an error: nlme cannot hold it, so it estimated the element and wrote the
+  estimate into a row marked fixed.
+
+- A fit whose omega estimate is not positive definite (a variance collapsed to
+  0 or a correlation of 1, as a degenerate `saem`, `nlme`, `vae` or `vi` fit
+  can end with) now reports that estimate in `$omega` and in its `ini()`.
+  Both held the nearest positive-definite matrix the table step needs instead
+  (on a saem fit with a correlation of 1, variances of 0.21 and 0.050 for an
+  estimate of 0.081 and 0.019).  The repair is now a warning: `omega not positive
+  definite; tables use its nearest PD matrix`.  A posthoc fit
+  (`maxOuterIterations = 0`) whose `ini()` omega is only nearly singular, as a
+  rounded NONMEM import can be, reports it corrected instead: when the
+  modified Cholesky factorization adds no more than `cholAccept` to its
+  diagonal, the fit and its `ini()` hold that corrected omega, with the
+  warning `omega nearly singular; corrected within cholAccept`.
+
+- When an omega or an eta Hessian is not positive definite, the repair that
+  keeps its diagonal now falls back to one that does not when it cannot make
+  the matrix positive definite (a zero or negative diagonal).  `saem` used to
+  invert the singular omega anyway, and the FOCEi eta Hessian was left
+  unrepaired.  The fallback is noted in `$runInfo` (`omega repair changed its
+  variances`, `eta Hessian repair changed its diagonal <n> times`), and the
+  saem warning no longer starts with `SAEM:`.
+
+- `nlmixr2CreateOutputFromUi()` now keeps its contract for a method that
+  passes its estimates in `$omega` and `$fullTheta` without writing them into
+  the ui: the fit's `$omega`, `$theta` and ui carry those estimates (it
+  reported the ui's initial values), and `$iniDf0` is the model passed in
+  when it is called outside an `nlmixr2()` run (it was the original model of
+  whichever fit ran last).
+
+- A FOCEi-family fit with `outerOpt = "uobyqa"` or `"newuoa"` and a bounded
+  theta now writes that theta's estimate into the fit's `ini()` on its own
+  scale; it wrote the internal (logit or log) value, so `ini(fit)`,
+  `setCov()`, `setOfv()`, `addCwres()`, simulation and refits used it as the
+  estimate (a `td1` in `[0, 1]` held at 0.5 read 0).  `$theta` was right.
+
+- A `saem` mixture whose components use different etas
+  (`mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))`) now reports them
+  separately, as the other methods do, each with its own component's
+  variance.  It merged them into one eta (`eta.cl`), put after the objective
+  column, so `$ranef`/`$eta` showed `eta.v`'s values as `eta.cl` and `NA` as
+  `eta.v`, and the tables, the shrinkage and the etas handed to `setOfv()`,
+  `setCov()` and refits used the wrong columns.  A component's own eta is now
+  its posterior mean under that component (it was blended with the other
+  components' chains, which never apply it) and is 0 for subjects of the
+  other components.  A component without an eta of its own
+  (`mix(..., p2, exp(tcl3))`) no longer stops the fit with `subscript out of
+  bounds`.
+
+- The shrinkage of an eta used by only one mixture component is now taken
+  over that component's subjects, for every estimation method.  The other
+  subjects' etas are 0, and counting them reported it as heavily shrunk.
+
+- A `saem` mixture whose components have etas of their own (split etas) no
+  longer freezes them at 0 for most subjects.  The up-front uninformative-eta
+  check probed each subject under one component, assigned by ID in turn, so
+  an eta used only by the other components was never sampled for that
+  subject.  Every subject is now probed under every component.  Sampling them
+  needed two changes to the default `mixSampleMethod = "parallel"`: a split
+  eta's variance is estimated from its own component's chain, weighted by the
+  responsibilities, and the responsibilities compare each component's density
+  of its own etas, including its normalizing constant.  On the two-population
+  test data (clearances 0.8 and 8, 40:20) the fit recovers 0.78 and 7.25 with
+  every subject classified correctly; it reported 2.2 and 8.0 with 18 of the
+  40 high-clearance subjects in the low component once the etas were sampled
+  without these changes.
+
+- `VarCorr()` of a fit by any method but `nlme` now reports the omega
+  correlations (one column per eta, the lower triangle); it reported only
+  the variances and standard deviations.  It no longer fails for a fit with
+  inter-occasion variability (`'list' object cannot be coerced to type
+  'double'`): the occasion etas get rows of their own.
+
+- The importance-sampling (`imp`, `impmap`, `qrpem`) and nonparametric
+  (`npag`, `npb`) fits now warn when an omega variance below 1e-6 is raised
+  to 1e-6, the floor their omega inverse needs: `omega variance floored at 1e-6:
+  eta.ka`.  The floored value is what `$omega` and the
+  fit's `ini()` report, so a support dimension that collapsed, or a variance
+  fixed below 1e-6, changed with no message (`npagOmega` keeps the support's
+  own covariance).
+
+- `$eta`/`$ranef` of a mixture fit with inter-occasion variability now has
+  one `mixnum` column; it had `mixnum.x` and `mixnum.y`, which `$etaMat` then
+  passed on as etas.
+
+- `$etaMat` of a `saem` fit with `saemControl(iovMethod = "twoLevel")` or
+  `"collapsed"` now holds the occasion ETAs the way a FOCEi-family refit
+  expands them, with unit variance; it held the occasion deviations
+  themselves.  `setOfv()`, `addCwres()`, `setCov()` and fits started from
+  `etaMat = fit` evaluated the occasion effects 12 (`"twoLevel"`) and 18
+  (`"collapsed"`) times too small on `theo_md`.
+
+- `est = "nlme"` with a combined additive and proportional error now reports
+  the residual parameters of nlme's own error model.  nlme's residual
+  standard deviation is `sigma` times its variance function, and the
+  additive coefficient (both coefficients with `addProp = "combined2"`) was
+  reported without that factor: on a simulated data set with additive 0.3
+  and proportional 0.1, the `combined2` parameters gave residual standard
+  deviations near 121 for nlme's 0.3 to 1.  The residual parameters, and
+  every refit that starts from them, now reproduce nlme's.  With
+  `addProp = "combined2"` nlme's `sigma` is now fixed at 1, as nlme
+  recommends for `varConstProp()` (sigma, the additive and the proportional
+  coefficients are not separately identifiable), so the additive and
+  proportional parameters are nlme's `const` and `prop` themselves.
+
 ### Parameter scaling
 
 - `ui$scaleCtheta` (and `ui$scaleCnls`) now give one scaling constant per
@@ -751,6 +869,25 @@
   scale to correct such a matrix within, and a one-parameter fit installed
   `1/cholSEtol` (165140) as its variance.  It is now not usable, like any R
   the repairs cannot fix.
+
+- The covariance of an `est = "nlme"` fit (`nlmeControl(covMethod = "nlme")`,
+  the default) now holds nlme's correlations of the fixed effects
+  (`vcov(fit$nlme)`, nlme's `varFix` as is); it was diagonal.  Its standard
+  errors are now `vcov()`'s; for an ML fit they are slightly smaller than the
+  ones `summary(fit$nlme)` prints, which adjust the residual sd.
+- The condition numbers, `$eigenCov` and `$fullCor` of a mixture fit now
+  describe its covariance with the mixture proportions on the probability
+  scale, the one installed as `$cov`; they were taken before those rows were
+  rotated from the mlogit scale (23088 instead of 1332 on a two-component
+  model), or, for `saem`, before the proportions' block was appended (86
+  instead of 544 on a split-eta model).
+- When a covariance replaces another after the parameter table is built (the
+  full covariance with `covFull = TRUE`, `setCov()`, `foceiCovAnalytic()`,
+  the deferred and post-fit recomputes), the confidence interval of a
+  parameter with a `backTransform()` function is now recomputed with that
+  function; it kept the interval of the previous covariance beside the new
+  standard error.  A `backTransform()` that names no function keeps the
+  default back-transformation, as it does when the fit is built.
 - The finite-difference covariance of the FOCEi family (`covMethod = "r,s"`,
   `"r"`, `"s"` and their `covFull` shapes) now differentiates the marginal
   objective the same way in every leg: each leg optimizes the ETAs again,
