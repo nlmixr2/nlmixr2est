@@ -14693,10 +14693,10 @@ Environment foceiFitCpp_(Environment e){
   if (estPredSolve) {
     warning(_("numerical difficulties solving forward sensitivity inner problem, tried approximating with more inaccurate numeric differences"));
   } else if (op_focei.didPredSolve) {
-    warning(_("numerical difficulties solving forward sensitivity inner problem in the covariance step, tried approximating with more inaccurate numeric differences"));
+    warning(_("covariance step: inner sensitivities approximated by numeric differences"));
   }
   if (!estReducedTol && op_focei.reducedTol) {
-    warning(_("tolerances (atol/rtol) were increased for some difficult ODE solving during the covariance step"));
+    warning(_("covariance step: atol/rtol increased for some difficult ODE solves"));
   }
   if (!estOuterReducedTol && op_focei.outerReducedTol.load(std::memory_order_relaxed)) {
     warning(_("analytic covariance: tolerances increased for some subjects"));

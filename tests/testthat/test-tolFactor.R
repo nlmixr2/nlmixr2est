@@ -134,7 +134,7 @@ nmTest({
     # was reported as every subject's (316)
     expect_equal(.rs$env$tolFactor, .none$env$tolFactor)
     # and the loosening is the covariance step's, not the optimization's
-    expect_true(any(grepl("during the covariance step", .rs$runInfo, fixed = TRUE)))
+    expect_true(any(grepl("covariance step: atol/rtol increased", .rs$runInfo, fixed = TRUE)))
     expect_false(any(grepl("during the optimization", .rs$runInfo, fixed = TRUE)))
     # with the ETAs held, the pooled gradient the S matrix falls back on is
     # exactly 0 in tz; that is a value there, not a zero the optimizer had replaced
