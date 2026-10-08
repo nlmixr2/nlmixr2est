@@ -56,6 +56,9 @@
   uses such a variable now compiles, and `lag()` of a variable inside an ODE
   gives a clear error.  The analytic `fast=TRUE` gradient and analytic
   covariance fall back to finite differences for these models (#1176).
+  A lagged variable that is reassigned, including in both branches of an
+  `if`/`else`, also works with rxode2's `rx_lagv` snapshots of its earlier
+  values.
 
 - `$etaMat` of a fit with inter-occasion variability now holds the occasion
   ETAs as the model estimated them; it held them multiplied by the occasion

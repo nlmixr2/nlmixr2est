@@ -629,11 +629,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   # variables referenced by lag()/history functions (eg the AR(1) residual) are
   # not part of rx_pred_ itself; include their definitions so the history
   # reference resolves in the compiled model
-  .lagDefs <- character(0)
-  if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
-    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
-    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
-  }
+  .lagDefs <- .foceiLagLhs(.s)
   # rx_pred_f_/rx_r_/rx_nu_ outputs for censoring support
   .fr <- if (.spec$censFR) .nlmGetFRLines(.s) else list()
   .ret <- paste(

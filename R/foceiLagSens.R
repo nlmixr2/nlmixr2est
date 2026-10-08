@@ -6,20 +6,35 @@
 
 .foceiHistFn <- c("lag", "lead", "diff", "first", "last", "lag0", "lead0", "diff0")
 
-#' The definitions of the lagged calculated variables
+#' The lhs lines that define lagged calculated variables
 #'
-#' The AR(1) residual's own lagged variables (`rx_ar*`) are excluded; the
-#' AR(1) gradient correction handles those.
+#' rxode2 reads an earlier value of a reassigned lagged variable through a
+#' `rx_lagv<i>_<var>` snapshot, so those lines are kept too, in model order.
 #' @param s symengine environment
+#' @param ar when `FALSE`, drop the AR(1) residual's own lagged variables
+#'   (`rx_ar*`); the AR(1) gradient correction handles those
 #' @return the `var=expr` lines of `s$..lhs` that define them
 #' @noRd
-.foceiLagDefs <- function(s) {
+.foceiLagLhs <- function(s, ar = TRUE) {
   .v <- s$..laggedVars
+  if (!ar) {
+    .v <- .v[!grepl("^rx_ar", .v)]
+  }
   if (length(.v) == 0L || is.null(s$..lhs)) {
     return(character(0))
   }
-  .v <- .v[!grepl("^rx_ar", .v)]
-  s$..lhs[sub("=.*$", "", s$..lhs) %in% .v]
+  .n <- sub("=.*$", "", s$..lhs)
+  .snap <- grepl("^rx_lagv[0-9]+_", .n)
+  s$..lhs[.n %in% .v | (.snap & sub("^rx_lagv[0-9]+_", "", .n) %in% .v)]
+}
+
+#' The definitions of the lagged calculated variables
+#'
+#' @param s symengine environment
+#' @return `.foceiLagLhs()` without the AR(1) residual's variables
+#' @noRd
+.foceiLagDefs <- function(s) {
+  .foceiLagLhs(s, ar = FALSE)
 }
 
 #' Whether rxode2 text uses any of the given variables

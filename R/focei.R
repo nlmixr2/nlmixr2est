@@ -2419,11 +2419,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # reference the structural prediction, which precedes them).  These add output
   # columns, so rx_pred_ is no longer lhs[0]; the FOCEi C++ locates rx_pred_ by
   # name (op_focei.predOffset) and offsets its reads.
-  .lagDefs <- character(0)
-  if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
-    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
-    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
-  }
+  .lagDefs <- .foceiLagLhs(.s)
   # AR(1) exact eta-gradient: structural-prediction eta-sensitivities lag()-
   # referenced by the corrected HdEta lines; emit them (real lhs) ahead of
   # rx_pred_ so the FOCEi column block stays contiguous.
@@ -2903,7 +2899,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   .lagDefs <- character(0)
   .restLhs <- .lhs
   if (!.isMatExp && !is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L) {
-    .isLag <- grepl(paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")="), .lhs)
+    .isLag <- .lhs %in% .foceiLagLhs(.s)
     .lagDefs <- .lhs[.isLag]
     .restLhs <- .lhs[!.isLag]
   }

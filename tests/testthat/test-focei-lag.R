@@ -196,6 +196,33 @@ nmTest({
     expect_error(rxode2::rxode2(.histOde)$foceiEnv, "inside an ODE is not supported")
   })
 
+  test_that("a rx_lagv snapshot of a reassigned lagged variable is kept and expanded", {
+    .s <- new.env()
+    .s$..laggedVars <- "c0"
+    .s$..lhs <- c(
+      "ke=2",
+      "c0=central*(WT>70)",
+      "rx_lagv1_c0=c0",
+      "c0=(WT>70)*rx_lagv1_c0+2*central*(1-(WT>70))",
+      "cp=eff+lag(c0)"
+    )
+    expect_equal(.foceiLagLhs(.s), .s$..lhs[2:4])
+    .s$rx__d_dt_eff__ <- symengine::S("ke*(rx_lagv1_c0 + c0 - eff)")
+    .s$..ddt <- "d/dt(eff)=ke*(rx_lagv1_c0+c0-eff)"
+    .foceiLagIntoOde(.s)
+    .e <- .s$rx__d_dt_eff__
+    expect_false(.foceiLagRefs(rxode2::rxFromSE(.e), c("c0", "rx_lagv1_c0")))
+    .at <- function(wt) {
+      .v <- symengine::subs(.e, symengine::S("rxGt(WT, 70)"), symengine::S(as.integer(wt > 70)))
+      .v <- symengine::subs(.v, symengine::S("central"), symengine::S(3))
+      .v <- symengine::subs(.v, symengine::S("eff"), symengine::S(0))
+      as.numeric(symengine::subs(.v, symengine::S("ke"), symengine::S(1)))
+    }
+    # c0 is central or 2*central by branch; the snapshot is the first branch
+    expect_equal(.at(80), 3 + 3)
+    expect_equal(.at(60), 0 + 6)
+  })
+
   test_that("the linCmt() sensitivity carry keeps the lag() terms", {
     .carryMod <- function() {
       ini({
