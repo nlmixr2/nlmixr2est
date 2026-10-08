@@ -200,6 +200,20 @@ void dfSetStateLhsOps(List& in, List& opt) {
   }
 }
 
+// The five pieces of a table that dfSetStateLhsOps() and dfCbindList() take:
+// the residuals, the per-row etas, and the state, lhs and covariate columns of
+// the solved data.  getDfSubsetVars() returns an unprotected SEXP, so each
+// subset is held in an RObject before the next allocation: a subset left
+// unprotected while a later one (or the list) allocates can be collected,
+// which loses its columns or corrupts R's heap.
+List dfTableParts(SEXP resid, SEXP etas, SEXP stateFrom, SEXP lhsFrom,
+                  SEXP stateSXP, SEXP lhsSXP, SEXP covSXP) {
+  RObject state = getDfSubsetVars(stateFrom, stateSXP);
+  RObject lhs = getDfSubsetVars(lhsFrom, lhsSXP);
+  RObject cov = getDfSubsetVars(lhsFrom, covSXP);
+  return List::create(resid, etas, state, lhs, cov);
+}
+
 extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
                                     SEXP etasDfSEXP, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
                                     SEXP relevantLHSSEXP,  SEXP stateSXP, SEXP covSEXP, SEXP IDlabelSEXP,
@@ -360,10 +374,8 @@ extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   retDF.attr("class") = "data.frame";
   calcShrinkFinalize(omegaMat, nid, etaLst, iwres, evid, etaN2, 1);
 
-  List retC = List::create(retDF, etasDfFull,
-                           getDfSubsetVars(ipredL, stateSXP),
-                           getDfSubsetVars(ipredL, relevantLHSSEXP),
-                           getDfSubsetVars(ipredL, covSEXP));
+  List retC = dfTableParts(retDF, etasDfFull, ipredL, ipredL,
+                           stateSXP, relevantLHSSEXP, covSEXP);
   dfSetStateLhsOps(retC, opt);
   retC = dfCbindList(wrap(retC));
   List ret(4);
@@ -385,10 +397,12 @@ extern "C" SEXP _nlmixr2est_popResFinal(SEXP inList) {
     // Only resid in 1
     List l1 = l[0];
     if (l1.size() != 4) return R_NilValue;
-    List retC = List::create(l1[1],
-                             List::create(_["DV"] = l1[0]),
-                             l1[2]);
-    return(List::create(_["resid"]=dfCbindList(wrap(retC)),
+    // Each freshly allocated piece is held in an Rcpp object (protected) before the
+    // next allocation: List::create() allocates after evaluating its arguments.
+    List dvL = List::create(_["DV"] = l1[0]);
+    List retC = List::create(l1[1], dvL, l1[2]);
+    RObject resid = dfCbindList(wrap(retC));
+    return(List::create(_["resid"]=resid,
                         _["shrink"]=l1[3]));
   }
   List l1 = l[0];
@@ -406,11 +420,10 @@ extern "C" SEXP _nlmixr2est_popResFinal(SEXP inList) {
   } else {
     return R_NilValue;
   }
-  List retC = List::create(l4[1],
-                           List::create(_["DV"] = dv),
-                           l2[1],
-                           l4[2]);
-  return List::create(_["resid"]=dfCbindList(wrap(retC)),
+  List dvL = List::create(_["DV"] = dv);
+  List retC = List::create(l4[1], dvL, l2[1], l4[2]);
+  RObject resid = dfCbindList(wrap(retC));
+  return List::create(_["resid"]=resid,
                       _["shrink"]=l4[3]);
   END_RCPP
     }

@@ -48,6 +48,20 @@
   
 ## Bug Fixes
 
+- The table step of a fit ("Calculating residuals/tables") now protects the
+  state, `lhs` and covariate columns it adds to the table from R's garbage
+  collector.  A collection that landed in a window of a few allocations
+  dropped those columns from the table, or corrupted R's heap so that R could
+  crash later (for example with `malloc(): unsorted double linked list
+  corrupted`).  The window is small, so this was rare and intermittent.
+
+- `est = "imp"`, `"impmap"` and `"qrpem"` fits of a mixture model with
+  `auto = TRUE` (the default) now reallocate the importance samples by each
+  mixture component's own effective sample size.  The reallocation read the
+  per-subject effective sample sizes with the index of the expanded
+  (subject x component) list, past the end of them, so the sample counts of
+  every component after the first came from unrelated memory.
+
 - FOCEi-family eta sensitivities (and the imp/impmap theta sensitivities)
   now chain through `lag()`/`diff()` of a calculated variable, so a model
   whose random effect reaches the prediction only that way no longer errors
@@ -394,6 +408,13 @@
   The simulation these run first substituted the fixed thetas into its model
   and left the unsubstituted model recorded for the next estimation, whose
   parameter table then looked for fixed thetas that were not substituted.
+
+- `shiErr` and `hessErr` must now be > 0 in `nlmControl()`,
+  `nlminbControl()`, `nlsControl()`, `optimControl()` and `trustControl()`,
+  as must `hessEps`/`hessEpsLlik` in `foceiControl()` and `rsControl()`;
+  0 was accepted and gave a zero finite-difference step (an all-zero
+  gradient for event parameters).  A hand-built nlm control with a
+  non-positive value uses the default (#1174).
 
 ### Parameter scaling
 
