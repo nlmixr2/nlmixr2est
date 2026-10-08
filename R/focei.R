@@ -119,6 +119,39 @@ is.latex <- function() {
   ret
 }
 
+#' Restart bobyqa once from where it stopped
+#'
+#' The inner ETA solve leaves noise in the outer objective, and bobyqa can
+#' shrink its trust region on that noise and exit normally while the
+#' objective is still falling (#1152).  A restart rebuilds the interpolation
+#' model at the full `rhobeg` from the stopping point.  The restart keeps to
+#' what is left of the evaluation budget, and its result is kept only when it
+#' is lower.
+#' @param fn objective
+#' @param lower,upper bounds
+#' @param ctl `minqa::bobyqa()` control
+#' @param ret the first search's `minqa::bobyqa()` result
+#' @return a `minqa::bobyqa()`-shaped list
+#' @noRd
+.bobyqaRestart <- function(fn, lower, upper, ctl, ret) {
+  if (!identical(as.integer(ret$ierr), 0L)) {
+    return(ret)
+  }
+  if (!is.null(ctl$maxfun)) {
+    ctl$maxfun <- ctl$maxfun - ret$feval
+    if (ctl$maxfun <= ctl$npt + 1) {
+      return(ret)
+    }
+  }
+  .ret2 <- minqa::bobyqa(ret$par, fn, control = ctl, lower = lower, upper = upper)
+  if (is.finite(.ret2$fval) && .ret2$fval < ret$fval) {
+    .ret2$feval <- .ret2$feval + ret$feval
+    return(.ret2)
+  }
+  ret$feval <- ret$feval + .ret2$feval
+  ret
+}
+
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) {
@@ -128,6 +161,9 @@ is.latex <- function() {
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
   .ret <- minqa::bobyqa(par, fn, control = .ctl, lower = lower, upper = upper)
   .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, .ret)
+  if (isTRUE(control$trustPolish)) {
+    .ret <- .bobyqaRestart(fn, lower, upper, .ctl, .ret)
+  }
   .ret$x <- .ret$par
   .ret$message <- .ret$msg
   .ret$convergence <- .ret$ierr
@@ -4780,6 +4816,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   }
   .thetaReset$thetaNames <- .ret$thetaNames
+  .thetaReset$clampedAt <- NULL
   nResets <- 0L
   ## Per-fit constants for the all-C++ analytic outer gradient.  Computed ONCE here and
   ## read by C++ when the outer optimizer starts; after that every gradient evaluation
