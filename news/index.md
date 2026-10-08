@@ -202,6 +202,15 @@
 
 - `vpcSim(fit, n = 1)` no longer fails with `object '.sim2' not found`.
 
+- [`vpcSim()`](https://nlmixr2.github.io/nlmixr2est/reference/vpcSim.md)
+  (and so
+  [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md))
+  and [`augPred()`](https://rdrr.io/pkg/nlme/man/augPred.html) no longer
+  fail with a syntax error for a model that uses
+  [`lag()`](https://rdrr.io/r/stats/lag.html) or
+  [`diff()`](https://rdrr.io/r/base/diff.html) of a calculated variable
+  ([\#1173](https://github.com/nlmixr2/nlmixr2est/issues/1173)).
+
 - The table of a fit whose `rxControl(method=)` is one of rxode2’s newer
   ODE methods (`"cvode"`, `"lsode"`, `"bdf"`, `"dop5"`, …) is calculated
   again. The post-fit solve turned the fit’s integer method code back
@@ -324,6 +333,22 @@
   own control (`$control`); the imp objective read `$foceiControl`,
   which never holds `adjObf`.
 
+- `shiErr` and `hessErr` must now be \> 0 in
+  [`nlmControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.md),
+  [`nlminbControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.md),
+  [`nlsControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlsControl.md),
+  [`optimControl()`](https://nlmixr2.github.io/nlmixr2est/reference/optimControl.md)
+  and
+  [`trustControl()`](https://nlmixr2.github.io/nlmixr2est/reference/trustControl.md),
+  as must `hessEps`/`hessEpsLlik` in
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
+  and
+  [`rsControl()`](https://nlmixr2.github.io/nlmixr2est/reference/rsControl.md);
+  0 was accepted and gave a zero finite-difference step (an all-zero
+  gradient for event parameters). A hand-built nlm control with a
+  non-positive value uses the default
+  ([\#1174](https://github.com/nlmixr2/nlmixr2est/issues/1174)).
+
 #### Parameter scaling
 
 - `ui$scaleCtheta` (and `ui$scaleCnls`) now give one scaling constant
@@ -433,6 +458,12 @@
 
 #### Covariance
 
+- The covariance step’s progress bar now always reaches 100% and ends
+  its line
+  ([\#1171](https://github.com/nlmixr2/nlmixr2est/issues/1171)). After
+  an earlier bar had finished it stopped at a few percent, the next
+  message could print on the bar’s line, and an `imp` fit’s bar was
+  sometimes not shown at all.
 - The post-fit covariance of a model with inter-occasion variability is
   now computed: the recompute of the `mfocei`-style families (and of
   imp/np with a requested covariance) and `setCov(fit, "imp")` (or a

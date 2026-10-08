@@ -119,6 +119,9 @@ h <- foceiLikLoad(one.cmt, theo_sd, "focei")
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
+#>  
+#>  
+#>  
 
 eta <- matrix(0, h$nid, h$neta)
 
