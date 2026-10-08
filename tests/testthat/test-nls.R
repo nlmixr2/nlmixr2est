@@ -1,4 +1,58 @@
 nmTest({
+  test_that("ui$nlsParNameFun numbers the THETAs as the nls model does (issue 1140)", {
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- fix(1)
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(.mod)
+    # the nls model estimates tka and tv as THETA[1] and THETA[2]
+    expect_identical(
+      vapply(.uiGetNlsTheta(.ui), deparse1, character(1)),
+      c("tka <- THETA[1]", "tcl <- 1", "tv <- THETA[2]")
+    )
+    .f <- .ui$nlsParNameFun
+    expect_identical(names(formals(.f)), c("tka", "tv"))
+    # its arguments are those thetas, in that order
+    expect_identical(.f(0.1, 3), c(`THETA[1]` = 0.1, `THETA[2]` = 3))
+  })
+
+  test_that("nls declares the model covariates in its params() (issue 1140)", {
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        cl.wt <- 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + cl.wt * log(WT / 70))
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(.mod)
+    expect_identical(.ui$nlsParams, "params(THETA[1], THETA[2], THETA[3], THETA[4], DV, WT)")
+    skip_on_cran()
+    # the covariate reaches the solve: nls and nlm agree on the estimates
+    .d <- nlmixr2data::theo_sd
+    .ctl <- nlsControl(print = 0L)
+    .fit <- .nlmixr(.mod, .d, est = "nls", control = .ctl)
+    .nlm <- .nlmixr(.mod, .d, est = "nlm", control = nlmControl(print = 0L))
+    expect_equal(unname(.fit$theta[1:4]), unname(.nlm$theta[1:4]), tolerance = 1e-3)
+  })
+
   test_that("nls solves its first evaluation at an all-zero start", {
     one.cmt0 <- function() {
       ini({
@@ -128,6 +182,72 @@ nmTest({
     fit1 <- .nlmixr(f, Treated, est = "nls", control = nlsControl(algorithm = "default", print = 0L))
 
     expect_true(inherits(fit1, "nlmixr2.nls"))
+  })
+
+  test_that("the nls covariance is the least-squares one, sigma^2 (J'J)^-1 (issue 1140)", {
+    .treated <- Puromycin[Puromycin$state == "treated", ]
+    names(.treated) <- gsub("rate", "DV", gsub("conc", "time", names(.treated)))
+    .treated$ID <- 1
+    .mm <- function() {
+      ini({
+        Vm <- 200
+        K <- 0.1
+        add.sd <- 10
+      })
+      model({
+        pred <- (Vm * time) / (K + time)
+        pred ~ add(add.sd)
+      })
+    }
+    .ref <- stats::nls(DV ~ Vm * time / (K + time), data = .treated, start = list(Vm = 200, K = 0.1))
+    for (.alg in c("LM", "default")) {
+      .fit <- .nlmixr(.mm, .treated, est = "nls", control = nlsControl(print = 0L, algorithm = .alg))
+      # vcov() of the nls (or nls.lm) fit, on the parameters it estimated,
+      # sigma^2 (J'J)^-1 with sigma^2 = RSS / (n - p)
+      expect_equal(unname(.fit$nls$cov.scaled), unname(stats::vcov(.fit$nls)), tolerance = 1e-8, info = .alg)
+      # the standard errors of stats::nls() on the natural parameters
+      expect_equal(unname(.fit$theta[c("Vm", "K")]), unname(coef(.ref)), tolerance = 1e-5, info = .alg)
+      expect_equal(unname(sqrt(diag(.fit$cov))), unname(sqrt(diag(stats::vcov(.ref)))), tolerance = 1e-4, info = .alg)
+      # the residual SD is sigma() of the nls fit, sqrt(RSS / (n - p))
+      expect_equal(.fit$theta[["add.sd"]], stats::sigma(.ref), tolerance = 1e-5, info = .alg)
+      # -2 log-likelihood at the ML residual variance RSS / n (the objective
+      # leaves out n log(2 pi)), whichever algorithm
+      expect_equal(
+        .fit$objective + nrow(.treated) * log(2 * pi),
+        -2 * as.numeric(stats::logLik(.ref)),
+        tolerance = 1e-6,
+        info = .alg
+      )
+    }
+  })
+
+  test_that("nls has no covariance without residual degrees of freedom (issue 1140)", {
+    .treated <- Puromycin[Puromycin$state == "treated", ][c(1, 7), ]
+    names(.treated) <- gsub("rate", "DV", gsub("conc", "time", names(.treated)))
+    .treated$ID <- 1
+    .mm <- function() {
+      ini({
+        Vm <- 200
+        K <- 0.1
+        add.sd <- 10
+      })
+      model({
+        pred <- (Vm * time) / (K + time)
+        pred ~ add(add.sd)
+      })
+    }
+    # two observations, two parameters: sigma^2 = RSS / (n - p) does not exist
+    for (.alg in c("LM", "port")) {
+      .fit <- .nlmixr(.mm, .treated, est = "nls", control = nlsControl(print = 0L, algorithm = .alg))
+      expect_identical(.fit$covMethod, "failed", info = .alg)
+      expect_null(.fit$cov, info = .alg)
+      # with no n - p the residual SD falls back to sqrt(RSS / n)
+      expect_true(is.finite(.fit$theta[["add.sd"]]), info = .alg)
+      expect_true(
+        "nls has 0 residual degrees of freedom, no residual variance; covariance step failed" %in% .fit$runInfo,
+        info = .alg
+      )
+    }
   })
 
   test_that("nls fits a delay() model with its past() pre-history", {

@@ -285,10 +285,9 @@ central when \code{abs(delta(OFV)) <= derivSwitchTol}.}
 \item{derivSwitchTol}{The tolerance to switch forward to central
 differences.}
 
-\item{covDerivMethod}{the finite differences of the per-subject scores
-of the S matrix: \code{"central"} (the default) or
-\code{"forward"}.  The R matrix (Hessian) and the full covariance
-(\code{covFull}) always use central differences.}
+\item{covDerivMethod}{indicates the method for calculating the
+derivatives while calculating the covariance components
+(Hessian and S).}
 
 \item{covMethod}{Method for calculating the covariance.  \code{"r,s"} (the
 default) is the sandwich estimator (see below).  \code{"analytic"}
@@ -312,12 +311,20 @@ are computed post-fit at the converged estimates by the decoupled
 recompute engine.}
 
 \item{covSolveTol}{absolute/relative ODE tolerance for the covariance solves --
-the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
-perturbed solves behind the finite-difference methods.  With \code{NULL}
-(default) the finite-difference solves run at the fit's own ODE tolerances,
-and only the analytic solves use a tolerance derived from \code{sigdig}
-(\code{10^-(sigdig + 6)}, kept within 1e-14 to 1e-8; 1e-9 at the default
-\code{sigdig = 3}).  A number sets the tolerance of both.}
+the perturbed solves behind the finite-difference methods (every probe and
+the stencil centre it is compared against) and the augmented-sensitivity
+solves behind \code{covMethod="analytic"}.  \code{NULL} (default) derives
+them from the fit's own tolerances: the finite-difference solves use
+\code{atol} and \code{rtol} each times 1e-3, capped at 1e-7 (at the default
+\code{sigdig = 3}, \code{rtol = 1e-7} and \code{atol = 1e-9}), and the
+analytic augmented solves use \code{max(1e-14, min(1e-8, 10^-(sigdig + 6)))}.  The
+inner problems of the finite-difference probes are tightened the same way,
+whichever \code{innerOpt} runs them: \code{trustFterm} and
+\code{trustMterm}, \code{epsilon} (n1qn1), and the \code{innerLbfgs*}
+tolerances (lbfgsb3c) each times 1e-3, capped at 1e-9.  No derived
+tolerance goes below 1e-14 unless the fit's own already is.
+A number sets \code{atol = rtol = covSolveTol} for both kinds of solve.
+Estimation itself always runs at the fit's tolerances.}
 
 \item{covFull}{shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 full theta + residual sigma + Omega covariance (assembled analytically for

@@ -50,7 +50,7 @@ test_that("a linFim covariance repaired by sqrtm keeps that label with its full 
   attr(.lin, "varCov") <- matrix(0.01, 1, 1, dimnames = list("add.sd", "add.sd"))
   local_mocked_bindings(calc.COV = function(x) .lin)
   .w <- capture_warnings(.saemCalcCov(.e))
-  expect_identical(.w, "covariance not positive definite, corrected by sqrtm(linFim %*% linFim)")
+  expect_identical(.w, "covariance not positive definite; used sqrtm(linFim %*% linFim)")
   expect_identical(.e$covMethod, "|linFim|")
   .abs <- sqrtm(.lin %*% t(.lin))
   expect_equal(unname(.e$cov), unname(.abs))
@@ -123,7 +123,7 @@ test_that("an indefinite Ha theta block is repaired by sqrtm and labelled so", {
   .e <- .saemCovEnv(Ha = .bad, covMethod = "r,s")
   expect_warning(
     .saemCalcCov(.e),
-    "covariance not positive definite, corrected by sqrtm(Ha %*% Ha)",
+    "covariance not positive definite; used sqrtm(Ha %*% Ha)",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "|Ha|")
@@ -181,7 +181,7 @@ test_that("a Ha theta block with every theta fixed installs nothing and says so"
   )
   expect_identical(
     capture_warnings(.saemCalcCov(.e)),
-    "\"Ha\" covariance could not be computed (no mu-referenced theta is estimated); none installed"
+    "\"Ha\" covariance has no estimated mu-referenced theta; none installed"
   )
   expect_false(exists("cov", envir = .e, inherits = FALSE))
   expect_false(exists("covMethod", envir = .e, inherits = FALSE))
@@ -197,7 +197,7 @@ test_that("the Ha theta block drops a non-mu-referenced theta and reports it", {
   )
   expect_warning(
     .saemCalcCov(.e),
-    "\"Ha\" covariance: no SE for non-mu-referenced theta(s) tka",
+    "no \"Ha\" SE for non-mu-referenced theta(s) tka",
     fixed = TRUE
   )
   .ref <- solve(.saemHaKernel[1:2, 1:2])
@@ -219,10 +219,7 @@ test_that("a Ha theta block whose rows cannot be ordered is not installed", {
   )
   expect_warning(
     .saemCalcCov(.e),
-    paste0(
-      "\"Ha\" covariance could not be computed (the information rows cannot be ",
-      "matched to the thetas); none installed"
-    ),
+    "\"Ha\" covariance has information rows not matching the thetas; none installed",
     fixed = TRUE
   )
   expect_false(exists("cov", envir = .e, inherits = FALSE))

@@ -261,14 +261,16 @@ is.latex <- function() {
       )
   ]
   .ctl$trace <- 0
-  hessianCalls <- 0L
-  hessianFailed <- FALSE
+  # the outer Hessian's calls, and whether one failed
+  .state <- new.env(parent = emptyenv())
+  .state$calls <- 0L
+  .state$failed <- FALSE
   hessian <- NULL
   if (isTRUE(control$fast) && is.function(control$hessian)) {
     hessian <- function(x) {
-      hessianCalls <<- hessianCalls + 1L
+      .state$calls <- .state$calls + 1L
       tryCatch(control$hessian(x), error = function(e) {
-        hessianFailed <<- TRUE
+        .state$failed <- TRUE
         stop(e)
       })
     }
@@ -285,14 +287,14 @@ is.latex <- function() {
     )
   }
   .ret <- tryCatch(run(hessian), error = function(e) {
-    if (!hessianFailed) {
+    if (!.state$failed) {
       stop(e)
     }
     warning("Outer Hessian unavailable; restarting gradient-only nlminb", call. = FALSE)
     run(NULL)
   })
-  .ret$hessianEvaluations <- hessianCalls
-  .ret$hessianFallback <- hessianFailed
+  .ret$hessianEvaluations <- .state$calls
+  .ret$hessianFallback <- .state$failed
   .ret$x <- .ret$par
   ## .ret$message   already there.
   ## .ret$convergence already there.
@@ -5574,6 +5576,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     # that are not sqrt(diag(fit$cov)), and a setCov() round trip then silently
     # changes them (nlmixr2extra#125).
     .fdFullInstalled <- .foceiInstallFdFullCov(.ret)
+    .foceiWarnConditionalCov(.ret, .control)
     # both installers replace $cov with a matrix on the mlogit estimation scale;
     # rotate the mixture block before .updateParFixed() derives SEs from it
     .mixInstallProbScaleCov(.ret)
@@ -5765,6 +5768,36 @@ attr(nlmixr2Est.focei, "covPresent") <- TRUE
 attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.focei, "iov") <- TRUE
 
+#' Warn that a fit's finite-difference covariance held its ETAs fixed
+#'
+#' With `maxInnerIterations = 0` a fit evaluates the ETAs it is given instead of
+#' optimizing them, and so do the legs of its finite-difference covariance:
+#' they differentiate the objective at those ETAs, a covariance conditional on
+#' them, where the covariance of the marginal likelihood re-optimizes the ETAs
+#' at every leg.  The refits that hold the ETAs only to report them ask for
+#' marginal legs (`covMaxInnerIterations`, `.setCovRefit()`) and are not warned
+#' about.
+#' @param env fit environment, after the covariance is installed
+#' @param control the control the fit ran with
+#' @return invisibly `NULL`
+#' @noRd
+.foceiWarnConditionalCov <- function(env, control) {
+  if (
+    !identical(as.integer(control$maxInnerIterations), 0L) ||
+      !is.null(control$covMaxInnerIterations) ||
+      is.null(env$etaObf) ||
+      !is.matrix(env$cov) ||
+      !nzchar(.covFdType(env$covMethod))
+  ) {
+    return(invisible())
+  }
+  warning(
+    sprintf("\"%s\" covariance is conditional on the ETAs; setCov() is marginal", env$covMethod),
+    call. = FALSE
+  )
+  invisible()
+}
+
 #' Add objective function line to the return object
 #'
 #' @param ret Return object
@@ -5809,7 +5842,13 @@ nlmixr2Est.output <- function(env, ...) {
   }
 
   .foceiFamilyControl(env, ...)
-  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  # The pass evaluates the FOCE objective at the ETAs it is given.  A covariance
+  # refit (setCov(), getVarCov()) differentiates the fit's own likelihood
+  # instead, so it keeps the control's interaction; it is the caller that asks
+  # for marginal covariance legs (covMaxInnerIterations, see .setCovRefit()).
+  if (is.null(rxode2::rxGetControl(.ui, "covMaxInnerIterations", NULL))) {
+    rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  }
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   rxode2::rxAssignControlValue(.ui, "maxInnerIterations", 0L)
   on.exit({

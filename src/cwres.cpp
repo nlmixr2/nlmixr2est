@@ -43,12 +43,15 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   int ncalc = Rf_length(ipredL[0]);
   List etasDf = as<List>(etasDfSEXP);
   int nid = Rf_length(etasDf[0]);
-  int npred = getPredIndex(ipredL);
+  int nidCol = getPredIndex(ipredL);
+  // the eta sensitivities of rx_pred_ follow it, then rx_r_
+  int npred = getDfColIndex(ipredL, "rx_pred_");
+  int npredP = getDfColIndex(predL, "rx_pred_");
 
   arma::vec ipredt(REAL(ipredL[npred]), ncalc, false, true);
   arma::vec ipred(ipredt.size());
 
-  arma::vec predt(REAL(predL[npred]), ncalc, false, true);
+  arma::vec predt(REAL(predL[npredP]), ncalc, false, true);
   arma::vec pred(predt.size());
 
   arma::vec dv(REAL(dvIn), ncalc, false, true);
@@ -81,8 +84,8 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   arma::mat omegaMat = as<arma::mat>(omegaMatSEXP);
   unsigned int neta = omegaMat.n_rows;
 
-  arma::vec rpv(REAL(predL[npred+1+neta]), ncalc, false, true);
-  arma::vec riv(REAL(ipredL[npred+1+neta]), ncalc, false, true);
+  arma::vec rpv(REAL(predL[getDfColIndex(predL, "rx_r_")]), ncalc, false, true);
+  arma::vec riv(REAL(ipredL[getDfColIndex(ipredL, "rx_r_")]), ncalc, false, true);
 
   bool doSim = true;
   List opt = as<List>(cwresOpt);
@@ -120,7 +123,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   CharacterVector etaN1 = etasDf.names();
   CharacterVector etaN2(neta);
   for (unsigned int j = neta; j--;) {
-    fppm.col(j) = arma::vec(REAL(predL[j + 1 + npred]), ncalc, false, true);
+    fppm.col(j) = arma::vec(REAL(predL[j + 1 + npredP]), ncalc, false, true);
     fpim.col(j) = arma::vec(REAL(ipredL[j + 1 + npred]), ncalc, false, true);
     etas.col(j) = arma::vec(REAL(etasDf[j+1]), nid, false, true);
     etaN2[j] = etaN1[j+1];
@@ -294,7 +297,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   retC = dfCbindList(wrap(retC));
   List ret(4);
   ret[0] = wrap(dv);
-  ret[1] = getDfIdentifierCols(ebeL, npred, stateSXP, IDlabelSEXP);
+  ret[1] = getDfIdentifierCols(ebeL, nidCol, stateSXP, IDlabelSEXP);
   ret[2] = retC;
   ret[3] = etaLst;
   return wrap(ret);
