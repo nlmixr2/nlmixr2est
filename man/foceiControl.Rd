@@ -336,7 +336,10 @@ parameter set otherwise).  For the finite-difference methods it follows
 installs only the structural-theta block (the historical shape).  The
 installed shape is named by \code{fit$covMethod} -- \code{"r,s (full)"}
 versus \code{"r,s"} -- and the other shape is cached, so
-\code{\link{setCov}()} swaps between them without recomputing either.}
+\code{\link{setCov}()} swaps between them without recomputing either.
+Both shapes come from one finite-difference computation over the full
+parameter set (the structural-theta shape is its theta block), at the steps
+\code{gillKcov}, \code{gillStepCov} and \code{gillFtolCov} choose.}
 
 \item{fast}{When \code{TRUE}, compute the outer (population) gradient
 analytically from Almquist (2015) sensitivity equations instead of by

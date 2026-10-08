@@ -634,4 +634,51 @@ nmTest({
     expect_false(identical(.rule$cov, .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl(covSolveTol = 1e-6))$cov))
     expect_false(identical(.rule$cov, .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl(covInnerTol = 1e-7))$cov))
   })
+
+  test_that("the covariance step reuses its own evaluations and gives the same covariance", {
+    skip_on_cran()
+    # the full shape's S is read from the per-subject values at the x +/- h points its
+    # R stencil already evaluated, and an analytic R needs no step search; with reuse
+    # switched off (NLMIXR2EST_COV_NO_REUSE) every covariance is the same, bit for bit.
+    # gillKcov = 0 keeps the full stage separate from the theta-only one (no merge).
+    .fit <- function(reuse, ...) {
+      withr::local_envvar(NLMIXR2EST_COV_NO_REUSE = if (reuse) "" else "1")
+      .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, ...))
+    }
+    .on <- .fit(TRUE, gillKcov = 0L)
+    .off <- .fit(FALSE, gillKcov = 0L)
+    expect_identical(names(.on$env$covEvals), c("center", "gill", "r", "s", "fullCenter", "fullGill", "fullR", "fullS"))
+    expect_identical(.on$covMethod, .off$covMethod)
+    expect_identical(.on$cov, .off$cov)
+    expect_identical(.on$env$covList, .off$env$covList)
+    expect_identical(.on$env$covEvals[["fullS"]], 0L)
+    expect_identical(.off$env$covEvals[["fullS"]], 2L * nrow(.on$cov))
+    expect_identical(.on$env$covEvals[["fullR"]], .off$env$covEvals[["fullR"]])
+    .an <- .fit(TRUE, covMethod = "analytic")
+    .anOff <- .fit(FALSE, covMethod = "analytic")
+    expect_identical(.an$cov, .anOff$cov)
+    expect_identical(unname(.an$env$covEvals[c("gill", "r", "s", "fullGill", "fullR", "fullS")]), rep(0L, 6))
+    expect_gt(.anOff$env$covEvals[["gill"]], 0L)
+  })
+
+  test_that("the theta-only covariance is read from the full stage", {
+    skip_on_cran()
+    # with covFull the full theta+sigma+Omega stencil also gives the theta-only R and S
+    # (their theta blocks), so the theta-only step search, stencil and S legs do not run
+    .an <- .nlmixr(
+      .quietOneCmt,
+      theo_sd,
+      "focei",
+      foceiControl(print = 0, calcTables = FALSE, covMethod = "analytic", covFull = FALSE)
+    )
+    .f <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE))
+    expect_identical(unname(.f$env$covEvals[c("gill", "r", "s")]), rep(0L, 3))
+    expect_gt(.f$env$covEvals[["fullR"]], 0L)
+    .nm <- c("tka", "tcl", "tv", "add.sd")
+    .Rfull <- solve(.f$env$.fdFullCov)
+    expect_equal(unname(.f$env$R.0), unname(.Rfull[.nm, .nm]), tolerance = 1e-8)
+    # and it is the observed information: the theta-only "r" SEs are the analytic ones
+    .r <- .f$env$covList[["r"]]
+    expect_lt(max(abs(sqrt(diag(.r))[.nm] / sqrt(diag(.an$cov))[.nm] - 1)), 0.01)
+  })
 })

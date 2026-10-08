@@ -19,6 +19,8 @@
 #include <cfloat>
 #include <cstring>
 #include <cstdint>
+#include <cstdlib>
+#include <map>
 #include "odeSwap.h"
 #include "nmParallel.h"
 #include "imp.h"
@@ -6697,7 +6699,30 @@ int foceiCalcGradGet() {
   return op_focei.calcGrad;
 }
 
+// Whether the covariance step may reuse objective evaluations it already made (the
+// environment variable NLMIXR2EST_COV_NO_REUSE turns it off, so tests can show the
+// reuse gives the numbers a recomputation does).
+static bool covReuseOn() {
+  const char *v = std::getenv("NLMIXR2EST_COV_NO_REUSE");
+  return v == NULL || v[0] == '\0' || v[0] == '0';
+}
+
+// Objective evaluations of the covariance step, counted by stage (e$covEvals); a
+// diagnostic of what each stage costs.  _covStage is -1 outside the step.
+enum CovStage { covStCenter = 0, covStGill, covStR, covStS, covStFullCenter, covStFullGill,
+                covStFullR, covStFullS, covStN };
+static const char *covStageNames[covStN] = {"center", "gill", "r", "s", "fullCenter",
+                                             "fullGill", "fullR", "fullS"};
+static int _covStage = -1;
+static int _covEvals[covStN] = {0};
+struct CovStageScope {
+  int saved;
+  explicit CovStageScope(int s) : saved(_covStage) { _covStage = s; }
+  ~CovStageScope() { _covStage = saved; }
+};
+
 static inline double foceiOfv0(double *theta){
+  if (_covStage >= 0) _covEvals[_covStage]++;
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
     op_focei.stickyRecalcN1++;
     if (op_focei.indTolRelax) {
@@ -11277,55 +11302,68 @@ Rcpp::List shi21CentralWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx
   return Rcpp::List::create(_["h"] = h, _["gr"] = gr);
 }
 
-int foceiCalcR(Environment e){
+// Whether the control asks for the analytic covariance (covType = "analytic").
+static bool foceiCovTypeAnalytic(Environment e) {
+  if (!e.exists("control")) return false;
+  List _ctl = as<List>(e["control"]);
+  return _ctl.containsElementNamed("covType") && as<std::string>(_ctl["covType"]) == "analytic";
+}
+
+// covType="analytic": the exact analytic observed-information R-matrix while the
+// optimizer is live; `.foceiCalcRanalytic` returns the npars x npars R or NULL.
+// Returns 1 when R.0 is installed, 0 when the step must be abandoned (covMethod
+// is 0), and -1 when the analytic R is declined, with covMethod moved to the
+// finite-difference sandwich.
+static int foceiCalcRAnalytic(Environment e) {
   rx = getRxSolve_();
-  // covType="analytic": the exact analytic observed-information R-matrix while the
-  // optimizer is live; `.foceiCalcRanalytic` returns the npars x npars R or NULL to
-  // fall through to the finite-difference Hessian below.
-  {
-    List _ctl = as<List>(e["control"]);
-    std::string _covType = _ctl.containsElementNamed("covType") ?
-      as<std::string>(_ctl["covType"]) : "fd";
-    if (_covType == "analytic") {
-      Environment nlmixr2est = Environment::namespace_env("nlmixr2est");
-      Function af = as<Function>(nlmixr2est[".foceiCalcRanalytic"]);
-      RObject res = af(e);
-      if (!Rf_isNull(res)) {
-        arma::mat H0 = as<arma::mat>(res);
-        e["R.0"] = wrap(H0);
-        foceiCovChol(e, H0, "R");
-        // the augmented sensitivity solves replaced the fit's global solve; restore it
-        // so foceiFinalizeTables (llikObs, tolFactor) reads the fit, not the last
-        // subject.  If the restore fails the global solve is unusable -> abort the cov
-        // step (foceiCalcCov honors covMethod==0 as a clean skip) rather than let
-        // finalize read a dangling solve.
-        if (!restoreFitSolve_()) {
-          op_focei.covMethod = 0;
-          return 0;
-        }
-        return 1;
-      }
-      // analytic declined -> FD Hessian below.  Restore the freed global solve BEFORE
-      // the warning (options(warn=2) longjmps out); a failed restore -> failed cov,
-      // don't run FD against a freed solve.
-      if (e.exists(".analyticStarted") && as<bool>(e[".analyticStarted"])) {
-        if (!restoreFitSolve_()) {
-          op_focei.covMethod = 0;
-          return 0;
-        }
-      }
-      // tell the user (not silent).  RSprintf is the visible channel (like "Could not
-      // calculate covariance matrix"); the warning condition is for programmatic capture.
-      RSprintf("\rcovType=\"analytic\" not available for this model (out of scope, or "
-               "the augmented model would not build/solve); using the finite-difference "
-               "sandwich (\"r,s\") covariance.\n");
-      Rf_warning("covType=\"analytic\": the analytic covariance is not available for "
-                 "this model; used the finite-difference sandwich (\"r,s\") covariance instead.");
-      // analytic requested but unavailable -> fall back to the finite-difference SANDWICH
-      // ("r,s"), not the R-matrix alone ("r"): covMethod=2 was only the internal slot the
-      // "analytic" token maps to.  The S block in foceiCalcCov fires once this is 1.
-      if (op_focei.covMethod == 2) op_focei.covMethod = 1;
+  Environment nlmixr2est = Environment::namespace_env("nlmixr2est");
+  Function af = as<Function>(nlmixr2est[".foceiCalcRanalytic"]);
+  RObject res = af(e);
+  if (!Rf_isNull(res)) {
+    arma::mat H0 = as<arma::mat>(res);
+    e["R.0"] = wrap(H0);
+    foceiCovChol(e, H0, "R");
+    // the augmented sensitivity solves replaced the fit's global solve; restore it
+    // so foceiFinalizeTables (llikObs, tolFactor) reads the fit, not the last
+    // subject.  If the restore fails the global solve is unusable -> abort the cov
+    // step (foceiCalcCov honors covMethod==0 as a clean skip) rather than let
+    // finalize read a dangling solve.
+    if (!restoreFitSolve_()) {
+      op_focei.covMethod = 0;
+      return 0;
     }
+    return 1;
+  }
+  // analytic declined -> the caller takes the FD Hessian.  Restore the freed global solve BEFORE
+  // the warning (options(warn=2) longjmps out); a failed restore -> failed cov,
+  // don't run FD against a freed solve.
+  if (e.exists(".analyticStarted") && as<bool>(e[".analyticStarted"])) {
+    if (!restoreFitSolve_()) {
+      op_focei.covMethod = 0;
+      return 0;
+    }
+  }
+  // tell the user (not silent).  RSprintf is the visible channel (like "Could not
+  // calculate covariance matrix"); the warning condition is for programmatic capture.
+  RSprintf("\rcovType=\"analytic\" not available for this model (out of scope, or "
+           "the augmented model would not build/solve); using the finite-difference "
+           "sandwich (\"r,s\") covariance.\n");
+  Rf_warning("covType=\"analytic\": the analytic covariance is not available for "
+             "this model; used the finite-difference sandwich (\"r,s\") covariance instead.");
+  // analytic requested but unavailable -> fall back to the finite-difference SANDWICH
+  // ("r,s"), not the R-matrix alone ("r"): covMethod=2 was only the internal slot the
+  // "analytic" token maps to.  The S block in foceiCalcCov fires once this is 1.
+  if (op_focei.covMethod == 2) op_focei.covMethod = 1;
+  return -1;
+}
+
+// The R matrix: the analytic one when asked for (unless already tried), else the
+// central finite-difference Hessian of -2LL at the steps the step search chose.
+int foceiCalcR(Environment e, bool tryAnalytic = true){
+  rx = getRxSolve_();
+  if (tryAnalytic && foceiCovTypeAnalytic(e)) {
+    int rc = foceiCalcRAnalytic(e);
+    if (rc >= 0) return rc;
   }
   // Hessian of -2LL about the base point at the steps |theta|*rEpsC + aEpsC, always by
   // the central stencil (covDerivMethod chooses the S matrix's differences); the
@@ -11706,6 +11744,8 @@ void setupAq0_(Environment e) {
 }
 
 
+static bool foceiFdFullMerge(Environment e);
+
 NumericMatrix foceiCalcCov(Environment e){
   std::string boundStr = "";
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
@@ -11863,7 +11903,11 @@ NumericMatrix foceiCalcCov(Environment e){
         // The centre value of the step search and the R stencil: the objective at the
         // estimates by the legs' own inner procedure and start (CovEtaStart), not the final
         // objective, whose ETAs were optimized by a different procedure.
-        double f0 = covEtaStartF0(theta.memptr());
+        double f0;
+        {
+          CovStageScope _st(covStCenter);
+          f0 = covEtaStartF0(theta.memptr());
+        }
         // foceiOfv0() reports a failed evaluation as 5e100; as a stencil centre it
         // would make every R diagonal about -1e100
         if (!R_FINITE(f0) || f0 >= 5e100) {
@@ -11873,45 +11917,77 @@ NumericMatrix foceiCalcCov(Environment e){
           return ret;
         }
         op_focei.lastOfv = f0;
-        int gillKcov;
-        double gillStepCov;
-        double gillFtolCov;
-        double hessEps;
-        for (int cpar = (int)op_focei.npars; cpar--;){
-          if (op_focei.needOptimHess) {
-            err = op_focei.rmatNormLlik ? 1/(std::fabs(theta[cpar])+1) : 1;
-            gillKcov = op_focei.gillKcovLlik;
-            gillStepCov=op_focei.gillStepCovLlik;
-            gillFtolCov=op_focei.gillFtolCovLlik;
-            hessEps = op_focei.hessEpsLlik;
-          } else {
-            err = op_focei.rmatNorm ? 1/(std::fabs(theta[cpar])+1) : 1;
-            gillKcov = op_focei.gillKcov;
-            gillStepCov=op_focei.gillStepCov;
-            gillFtolCov=op_focei.gillFtolCov;
-            hessEps = op_focei.hessEps;
+        // The covariance-stage step search: run once, and only before something that uses
+        // its steps (the finite-difference R, the S matrix); an analytic R needs none.
+        bool gillDone = false;
+        auto runGill = [&]() {
+          if (gillDone) return;
+          gillDone = true;
+          int gillKcov;
+          double gillStepCov;
+          double gillFtolCov;
+          double hessEps;
+          for (int cpar = (int)op_focei.npars; cpar--;){
+            if (op_focei.needOptimHess) {
+              err = op_focei.rmatNormLlik ? 1/(std::fabs(theta[cpar])+1) : 1;
+              gillKcov = op_focei.gillKcovLlik;
+              gillStepCov=op_focei.gillStepCovLlik;
+              gillFtolCov=op_focei.gillFtolCovLlik;
+              hessEps = op_focei.hessEpsLlik;
+            } else {
+              err = op_focei.rmatNorm ? 1/(std::fabs(theta[cpar])+1) : 1;
+              gillKcov = op_focei.gillKcov;
+              gillStepCov=op_focei.gillStepCov;
+              gillFtolCov=op_focei.gillFtolCov;
+              hessEps = op_focei.hessEps;
+            }
+            if (gillKcov != 0){
+              CovStageScope _st(covStGill);
+              op_focei.gillRetC[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
+                                               &theta[0], cpar, hessEps, gillKcov, gillStepCov,
+                                               gillFtolCov, -1, gill83fnG, 1, op_focei.lastOfv);
+            } else {
+              hf = hphif = hessEps;
+            }
+            gill83Eps(hf, hphif, err, op_focei.covGillF, &op_focei.aEps[cpar], &op_focei.rEps[cpar],
+                      &op_focei.aEpsC[cpar], &op_focei.rEpsC[cpar]);
+            op_focei.cur++;
+            op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
           }
-          if (gillKcov != 0){
-            op_focei.gillRetC[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
-                                             &theta[0], cpar, hessEps, gillKcov, gillStepCov,
-                                             gillFtolCov, -1, gill83fnG, 1, op_focei.lastOfv);
-          } else {
-            hf = hphif = hessEps;
+          op_focei.didGill+=1;
+        };
+        // covType="analytic": try the analytic R first; it needs no step search
+        bool analyticR = false;
+        if ((op_focei.covMethod == 1 || op_focei.covMethod == 2) && !e.exists("cholR") &&
+            foceiCovTypeAnalytic(e)) {
+          int rc;
+          {
+            CovStageScope _st(covStR);
+            rc = foceiCalcRAnalytic(e);
           }
-          gill83Eps(hf, hphif, err, op_focei.covGillF, &op_focei.aEps[cpar], &op_focei.rEps[cpar],
-                    &op_focei.aEpsC[cpar], &op_focei.rEpsC[cpar]);
-          op_focei.cur++;
-          op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+          if (rc == 0) {
+            warning(_("covariance step failed"));
+            e["covMethod"] = CharacterVector::create("failed");
+            NumericMatrix ret;
+            return ret;
+          }
+          analyticR = (rc == 1);
         }
-        op_focei.didGill+=1;
+        // covFull: the full stage gives the theta-only R and S too (needs no theta-only
+        // step search, stencil or S legs), also when a declined analytic R falls back
+        bool fullMerged = !analyticR && foceiFdFullMerge(e);
+        if ((!analyticR && !fullMerged) || !covReuseOn()) runGill();
 
         bool isPd;
         std::string rstr = "r";
         bool checkSandwich = false;
         if (op_focei.covMethod == 1 || op_focei.covMethod == 2) {
           // R matrix based covariance
-          if (!e.exists("cholR")){
-            foceiCalcR(e);
+          if (!e.exists("cholR") && !analyticR){
+            {
+              CovStageScope _st(covStR);
+              foceiCalcR(e, false);
+            }
             // covType="analytic" signals an unrecoverable abort (the fit's global
             // solve could not be restored after the augmented sensitivity solves) by
             // zeroing covMethod.  Honor it as a clean cov-skip; do NOT fall through to
@@ -11973,6 +12049,8 @@ NumericMatrix foceiCalcCov(Environment e){
         bool sHasZero = false;
         if (op_focei.covMethod == 1 || op_focei.covMethod == 3) {
           if (!e.exists("cholS")){
+            runGill();
+            CovStageScope _st(covStS);
             foceiS(&theta[0], e, sHasZero);
           } else {
             op_focei.cur += op_focei.npars;
@@ -12228,22 +12306,50 @@ static void foceiFdGill83fn(double *fp, double *theta, int, int) {
 // for the theta gradient/Hessian steps (it grows the step until the 2nd-difference
 // condition error sits in [0.001, 0.1]).  Returns the accepted central step `hphif`, or
 // NA_REAL if gill83 fails (caller falls back to a step-doubling search).
-static double foceiFdGillStep(const FdFullCtx &c, int i, const std::vector<double> &x0, double f0) {
+// covKnobs takes the covariance-stage settings (hessEps, gillKcov, gillStepCov,
+// gillFtolCov), as the theta-only stage does, instead of the estimation's.
+static double foceiFdGillStep(const FdFullCtx &c, int i, const std::vector<double> &x0, double f0,
+                              bool covKnobs = false) {
   g_fdGillCtx = &c;
   std::vector<double> xg = x0;                       // gill83 perturbs then restores this
   double hf, hphif, df, df2, ef;
-  int gret = gill83(&hf, &hphif, &df, &df2, &ef, xg.data(), i,
-                    op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                    -1, foceiFdGill83fn, 0, f0);
+  int gret = covKnobs ?
+    gill83(&hf, &hphif, &df, &df2, &ef, xg.data(), i,
+           op_focei.hessEps, op_focei.gillKcov, op_focei.gillStepCov, op_focei.gillFtolCov,
+           -1, foceiFdGill83fn, 0, f0) :
+    gill83(&hf, &hphif, &df, &df2, &ef, xg.data(), i,
+           op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
+           -1, foceiFdGill83fn, 0, f0);
   return (gret == 1 && R_FINITE(hphif) && hphif > 0) ? hphif : NA_REAL;
 }
 
+static bool foceiFdLikById(arma::vec &out);
+
 // The full FD's objective for fdHessian; foceiCalcRFdFull's FdFullStateGuard
-// re-installs the base point.
+// re-installs the base point.  With x0 set, a point that moves one coordinate k from
+// x0 also keeps each subject's -2LL there, keyed by (k, x[k]): the S matrix's x +/- h
+// probes are among the R stencil's points and need not be solved again.  Every probe
+// re-optimizes the ETAs from eta-hat (CovEtaStart), so a point's values do not depend
+// on when it was evaluated.
 struct FdFullHessObj : FdHessObj {
   const FdFullCtx &c;
+  // a copy: fdHessian perturbs the caller's base vector in place
+  std::vector<double> x0;
+  bool keep = false;
+  std::map<std::pair<int, double>, arma::vec> axis;
   explicit FdFullHessObj(const FdFullCtx &c) : c(c) {}
-  double f(double *x) { return foceiFdObjAt(c, x); }
+  double f(double *x) {
+    double r = foceiFdObjAt(c, x);
+    if (keep && R_FINITE(r)) {
+      int k = -1, nd = 0;
+      for (int i = 0; i < (int)x0.size(); ++i) {
+        if (x[i] != x0[i]) { ++nd; k = i; }
+      }
+      arma::vec l;
+      if (nd == 1 && foceiFdLikById(l)) axis[std::make_pair(k, x[k])] = l;
+    }
+    return r;
+  }
 };
 
 // per-subject -2LL contributions after a foceiFdObjAt probe -- the quantity foceiS
@@ -12270,16 +12376,31 @@ static bool foceiFdLikById(arma::vec &out) {
 // R = 0.5*Hessian), so Rinv * S * Rinv reproduces the native sandwich scale over the full
 // theta+sigma+Omega parameter set.  Returns false on any non-finite probe or if the
 // per-subject contributions are unavailable (foceiFdLikById), keeping the native cov.
+// The per-subject -2LL at x, from `axis` when the stencil already evaluated it there.
+static bool foceiFdLikAt(const FdFullCtx &c, std::vector<double> &x, int j,
+                         const std::map<std::pair<int, double>, arma::vec> *axis,
+                         arma::vec &out) {
+  if (axis != nullptr) {
+    auto it = axis->find(std::make_pair(j, x[j]));
+    if (it != axis->end()) {
+      out = it->second;
+      return true;
+    }
+  }
+  return R_FINITE(foceiFdObjAt(c, x.data())) && foceiFdLikById(out);
+}
+
 static bool foceiFdSFull(const FdFullCtx &c, const std::vector<double> &x0,
-                         const std::vector<double> &h, arma::mat &S) {
+                         const std::vector<double> &h, arma::mat &S,
+                         const std::map<std::pair<int, double>, arma::vec> *axis = nullptr) {
   int np = c.nth + c.nom;
   arma::vec lp, lm;
   arma::mat G;
   for (int j = 0; j < np; ++j) {
     std::vector<double> xp = x0, xm = x0;
     xp[j] += h[j]; xm[j] -= h[j];
-    if (!R_FINITE(foceiFdObjAt(c, xp.data())) || !foceiFdLikById(lp)) return false;
-    if (!R_FINITE(foceiFdObjAt(c, xm.data())) || !foceiFdLikById(lm)) return false;
+    if (!foceiFdLikAt(c, xp, j, axis, lp)) return false;
+    if (!foceiFdLikAt(c, xm, j, axis, lm)) return false;
     if (G.n_rows == 0) G.zeros(lp.n_elem, np);
     if (lp.n_elem != G.n_rows || lm.n_elem != G.n_rows) return false;
     G.col(j) = (lp - lm) / (2.0 * h[j]);
@@ -12335,35 +12456,23 @@ struct FdFullStateGuard {
   }
 };
 
-// Orchestrator: assemble R = H/2 around the fit, restore live state, install the
-// natural cov solve(R) in e[".fdFullCov"] (installed as fit$cov by .foceiInstallFdFullCov).
-void foceiCalcRFdFull(Environment e) {
-  if (op_focei.neta <= 0) return;
-  FdFullCtx c; CharacterVector nm;
-  if (!foceiFdParams(e, c, nm)) return;
-  c.Om0 = as<arma::mat>(getOmega());
-  int np = c.nth + c.nom;
+// What the full theta+sigma+Omega stage computed: R = H/2 and, when asked for, the
+// cross-product S, over the parameters c (names nm) at the steps h.
+struct FdFullResult {
+  FdFullCtx c;
+  CharacterVector nm;
+  std::vector<double> h;
+  arma::mat R, S;
+  bool okS = false;
+};
 
-  std::vector<double> x0(np);
-  for (int i = 0; i < c.nth; ++i) x0[i] = op_focei.fullTheta[c.thPos[i]];
-  for (int q = 0; q < c.nom; ++q) x0[c.nth + q] = c.Om0(c.omA[q]-1, c.omB[q]-1);
-
-  FdFullStateGuard _restore;
-  // the Gill-optimal step per coordinate, then R = H/2 by the shared stencil; a
-  // coordinate whose search fails takes the step-doubling diagonal and its step
-  double f0 = foceiFdObjAt(c, x0.data());
-  bool ok = R_FINITE(f0);
-  std::vector<double> h(np, NA_REAL);
-  for (int i = 0; ok && i < np; ++i) h[i] = foceiFdGillStep(c, i, x0, f0);
-  FdFullHessObj obj(c);
-  arma::mat H;
-  ok = ok && fdHessian(obj, x0.data(), np, f0, h.data(), H, 0.5, true, true);
-  // Only the S-using shapes need the OPG cross-product ("r,s" sandwich or "s").  Which
-  // shape .foceiInstallFdFullCov installs is the one REQUESTED (the control's covMethod
-  // slot: 1 "r,s", 2 "r", 3 "s"; with covType = "analytic" it follows the native step),
-  // so S is needed when the request uses it even if the native step fell back to "r"
-  // (the requested "r,s (full)" needs S to be installed), as well as when the native
-  // step's final choice uses it.
+// Whether the full stage needs the OPG cross-product S: the "r,s" sandwich or "s".
+// Which shape .foceiInstallFdFullCov installs is the one REQUESTED (the control's
+// covMethod slot: 1 "r,s", 2 "r", 3 "s"; with covType = "analytic" it follows the
+// native step), so S is needed when the request uses it even if the native step fell
+// back to "r" (the requested "r,s (full)" needs S to be installed), as well as when the
+// native step's final choice uses it.
+static bool foceiFdFullNeedS(Environment e) {
   int req = 0;
   if (e.exists("control")) {
     List ctl = as<List>(e["control"]);
@@ -12378,21 +12487,129 @@ void foceiCalcRFdFull(Environment e) {
       }
     }
   }
-  bool needS = (op_focei.covMethod == 1 || op_focei.covMethod == 3 || req == 1 || req == 3);
-  arma::mat S;
-  bool okS = ok && needS && foceiFdSFull(c, x0, h, S);
-  if (!ok) return;
+  return op_focei.covMethod == 1 || op_focei.covMethod == 3 || req == 1 || req == 3;
+}
 
+// The full stage about the fit: a step search per coordinate (the estimation's settings,
+// or with covKnobs the covariance stage's), R = H/2 by the shared stencil (a coordinate
+// whose search fails takes the step-doubling diagonal and its step), and S from the
+// per-subject values at the stencil's own x +/- h points.  The live state is restored.
+static bool foceiFdFullCompute(Environment e, bool covKnobs, bool needS, FdFullResult &res) {
+  if (op_focei.neta <= 0) return false;
+  FdFullCtx &c = res.c;
+  if (!foceiFdParams(e, c, res.nm)) return false;
+  c.Om0 = as<arma::mat>(getOmega());
+  int np = c.nth + c.nom;
+
+  std::vector<double> x0(np);
+  for (int i = 0; i < c.nth; ++i) x0[i] = op_focei.fullTheta[c.thPos[i]];
+  for (int q = 0; q < c.nom; ++q) x0[c.nth + q] = c.Om0(c.omA[q]-1, c.omB[q]-1);
+
+  FdFullStateGuard _restore;
+  double f0;
+  {
+    CovStageScope _st(covStFullCenter);
+    f0 = foceiFdObjAt(c, x0.data());
+  }
+  bool ok = R_FINITE(f0);
+  std::vector<double> &h = res.h;
+  h.assign(np, NA_REAL);
+  {
+    CovStageScope _st(covStFullGill);
+    for (int i = 0; ok && i < np; ++i) h[i] = foceiFdGillStep(c, i, x0, f0, covKnobs);
+  }
+  FdFullHessObj obj(c);
+  if (covReuseOn()) {
+    obj.x0 = x0;
+    obj.keep = true;
+  }
+  {
+    CovStageScope _st(covStFullR);
+    ok = ok && fdHessian(obj, x0.data(), np, f0, h.data(), res.R, 0.5, true, true);
+  }
+  {
+    CovStageScope _st(covStFullS);
+    res.okS = ok && needS && foceiFdSFull(c, x0, h, res.S, obj.keep ? &obj.axis : nullptr);
+  }
+  return ok;
+}
+
+// Install the full stage for .foceiInstallFdFullCov: the natural cov solve(R) as
+// e[".fdFullCov"] and S as e[".fdFullS"].
+static bool foceiFdFullStash(Environment e, const FdFullResult &res) {
   arma::mat cov;
-  if (!arma::inv_sympd(cov, H) && !arma::inv(cov, H)) return;   // cov = Rinv
+  if (!arma::inv_sympd(cov, res.R) && !arma::inv(cov, res.R)) return false;   // cov = Rinv
   NumericMatrix covR = wrap(cov);
-  covR.attr("dimnames") = List::create(nm, nm);
+  covR.attr("dimnames") = List::create(res.nm, res.nm);
   e[".fdFullCov"] = covR;                       // Rinv_full (feeds "r" and the sandwich)
-  if (okS) {
-    NumericMatrix Sout = wrap(S);
-    Sout.attr("dimnames") = List::create(nm, nm);
+  if (res.okS) {
+    NumericMatrix Sout = wrap(res.S);
+    Sout.attr("dimnames") = List::create(res.nm, res.nm);
     e[".fdFullS"] = Sout;                        // Sfull (feeds "s" and the sandwich)
   }
+  return true;
+}
+
+// Whether the full stage ran inside foceiCalcCov (and gave the theta-only R and S), so
+// the separate full stage after it is not needed.
+static bool _fdFullDone = false;
+
+// Whether the theta-only R and S can be read from the full stage: a covariance on the
+// finite-difference route (the caller has tried an analytic R), every estimated theta among the full
+// stage's, and the theta-only stage's own construction not needed -- a mixture's
+// analytic responsibility scores and a non-normal endpoint's settings are its own.
+static bool foceiFdFullMergeable(Environment e) {
+  return op_focei.covFull && op_focei.neta > 0 && op_focei.muModel == 0 &&
+    op_focei.mixIdxN == 0 && !op_focei.needOptimHess && op_focei.gillKcov != 0 &&
+    (op_focei.covMethod >= 1 && op_focei.covMethod <= 3);
+}
+
+// The theta-only R.0 and S0 as the theta block of the full stage's, in op_focei's
+// parameter order; false (nothing installed) when a theta is not among the full ones.
+static bool foceiFdFullInstallTheta(Environment e, const FdFullResult &res) {
+  int np = (int)op_focei.npars;
+  arma::uvec idx((unsigned int)np);
+  for (int k = 0; k < np; ++k) {
+    int j = op_focei.fixedTrans[k], found = -1;
+    for (int i = 0; i < res.c.nth; ++i) {
+      if (res.c.thPos[i] == j) { found = i; break; }
+    }
+    if (found < 0) return false;
+    idx[(unsigned int)k] = (unsigned int)found;
+  }
+  arma::mat R0 = res.R.submat(idx, idx);
+  e["R.0"] = wrap(R0);
+  foceiCovChol(e, R0, "R");
+  if (res.okS) {
+    arma::mat S0 = res.S.submat(idx, idx);
+    e["S0"] = wrap(S0);
+    e["Sper"] = 1.0;
+    foceiCovChol(e, S0, "S");
+  }
+  return true;
+}
+
+// Run the full stage inside foceiCalcCov when the theta-only R and S can be read from
+// it, at the covariance stage's step settings: one step search and one stencil per
+// covariance step instead of two.  Installs the theta-only R.0/S0 and the full stage's
+// .fdFullCov/.fdFullS; false (nothing installed) when it does not apply.
+static bool foceiFdFullMerge(Environment e) {
+  if (!covReuseOn() || !foceiFdFullMergeable(e)) return false;
+  FdFullResult res;
+  if (!foceiFdFullCompute(e, true, foceiFdFullNeedS(e), res)) return false;
+  if (!foceiFdFullInstallTheta(e, res)) return false;
+  if (!foceiFdFullStash(e, res)) return false;
+  _fdFullDone = true;
+  return true;
+}
+
+// The separate full stage (covFull = TRUE), at the estimation's step settings, unless
+// foceiCalcCov already ran it.
+void foceiCalcRFdFull(Environment e) {
+  if (_fdFullDone) return;
+  FdFullResult res;
+  if (!foceiFdFullCompute(e, false, foceiFdFullNeedS(e), res)) return;
+  foceiFdFullStash(e, res);
 }
 
 void addLlikObs(Environment e) {
@@ -14732,6 +14949,8 @@ Environment foceiFitCpp_(Environment e){
     CovLlikObsGuard _llikObsGuard;
     // every leg below starts its inner problems from the fit's ETAs
     CovEtaStart _etaStart(e);
+    std::fill_n(_covEvals, (int)covStN, 0);
+    _fdFullDone = false;
     foceiCalcCov(e);
     // covType="fd" + covFull=TRUE: the full theta+sigma+Omega FD covariance (installed by
     // .foceiInstallFdFullCov).  Also runs when covType="analytic" DECLINED (analytic out of
@@ -14750,6 +14969,11 @@ Environment foceiFitCpp_(Environment e){
         catch (...) {}
       }
     }
+  }
+  {
+    IntegerVector covEvals(_covEvals, _covEvals + (int)covStN);
+    covEvals.attr("names") = CharacterVector(covStageNames, covStageNames + (int)covStN);
+    e["covEvals"] = covEvals;
   }
   if (estPredSolve) {
     warning(_("numerical difficulties solving forward sensitivity inner problem, tried approximating with more inaccurate numeric differences"));

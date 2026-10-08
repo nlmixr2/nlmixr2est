@@ -2,6 +2,19 @@
 
 ## New features
 
+- The FOCEi covariance step does less work (issue 1140).  With `covFull = TRUE`
+  (the default) one finite-difference computation over theta, sigma and Omega
+  gives both shapes: the structural-theta covariance is its theta block, so the
+  separate theta-only step search, R stencil and S legs no longer run, and both
+  shapes use the covariance step sizes (`gillKcov`, `gillStepCov`,
+  `gillFtolCov`).  The S matrix is read from the points the R stencil already
+  evaluates, and `covMethod = "analytic"` runs no step search unless the analytic
+  R is declined.  On `theo_sd` and the warfarin model of the audit the default
+  covariance takes about a quarter fewer objective evaluations (242 to 178, 505
+  to 368) and 30-45% less time, and the theta-only standard errors move closer to
+  the analytic ones (theo_sd 2.9% to 0.3%, warfarin 28% to 6%).  The fit's
+  `env$covEvals` counts the evaluations of each stage.
+
 - `foceiControl(innerOpt = "lbfgsb3c")` runs L-BFGS-B on the per-subject
   ETA problem, using `lbfgsb3c`'s thread-safe port (`lbfgsb3c >= 2024-3.6`).
   It replaces `innerOpt = "BFGS"`, which silently fell back to `"n1qn1"`

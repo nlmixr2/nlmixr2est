@@ -200,6 +200,9 @@
 #'     installed shape is named by \code{fit$covMethod} -- \code{"r,s (full)"}
 #'     versus \code{"r,s"} -- and the other shape is cached, so
 #'     \code{\link{setCov}()} swaps between them without recomputing either.
+#'     Both shapes come from one finite-difference computation over the full
+#'     parameter set (the structural-theta shape is its theta block), at the steps
+#'     \code{gillKcov}, \code{gillStepCov} and \code{gillFtolCov} choose.
 #'
 #' @param fdOutlierZ Cut of the Iglewicz-Hoaglin modified z-score that decides
 #'   whether a finite-differenced subject's slope is an outlier against the exact
