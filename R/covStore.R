@@ -73,7 +73,23 @@
     .inner <- control$covMaxInnerIterations
   }
   .settings$covEtaLegs <- if (checkmate::testNumber(.inner, lower = 1)) as.integer(.inner) else 0L
-  list(handoff = .h, settings = .settings)
+  # a saved fit reloaded under other versions computes with other numerics
+  .versions <- c(
+    nlmixr2est = as.character(utils::packageVersion("nlmixr2est")),
+    rxode2 = as.character(utils::packageVersion("rxode2"))
+  )
+  list(handoff = .h, settings = .settings, versions = .versions)
+}
+
+#' Whether a refit's settings are all ones the store's key covers
+#'
+#' A refit given anything else (`getVarCov(force = TRUE, ...)` can pass any control
+#' element) neither reads nor writes the store.
+#' @param args the refit's control arguments
+#' @return single logical
+#' @noRd
+.covStoreRefitOk <- function(args) {
+  all(names(args) %in% c("covMethod", "covFull", "covSmall", .covStoreKeyFields))
 }
 
 #' Index of the store entry for a key
@@ -109,9 +125,9 @@
 
 #' Add what a covariance step computed to the fit's store
 #'
-#' The full stage's R, steps and S (`.fdFullR`, `.fdFullH`, `.fdFullS`) and a separate
-#' theta-only stage's steps (`covSteps`), finite-difference R (`R.0`) and S (`S0`,
-#' `Sper`).  An entry already under the key keeps what the new step did not compute, when
+#' The full stage's R, steps, point and S (`.fdFullR`, `.fdFullH`, `.fdFullX0`,
+#' `.fdFullS`) and a separate theta-only stage's steps (`covSteps`), finite-difference R
+#' (`R.0`) and S (`S0`, `Sper`, `SHasZero`).  An entry already under the key keeps what the new step did not compute, when
 #' both were taken at the same steps.
 #' @param env fit environment whose store is updated
 #' @param key from `.covStoreKey()`
@@ -131,13 +147,20 @@
   .e <- if (.i > 0L) .store[[.i]] else list(key = key, full = NULL, theta = NULL)
   .R <- get0(".fdFullR", envir = src, inherits = FALSE)
   .h <- get0(".fdFullH", envir = src, inherits = FALSE)
-  if (is.matrix(.R) && is.numeric(.h)) {
+  .x0 <- get0(".fdFullX0", envir = src, inherits = FALSE)
+  if (is.matrix(.R) && is.numeric(.h) && is.numeric(.x0)) {
     .S <- get0(".fdFullS", envir = src, inherits = FALSE)
     .old <- .e$full
-    if (is.null(.S) && !is.null(.old) && identical(.old$R, .R) && identical(.old$h, .h)) {
+    if (
+      is.null(.S) &&
+        !is.null(.old) &&
+        identical(.old$R, .R) &&
+        identical(.old$h, .h) &&
+        identical(.old$x0, .x0)
+    ) {
       .S <- .old$S
     }
-    .e$full <- list(R = .R, h = .h, S = .S)
+    .e$full <- list(R = .R, h = .h, x0 = .x0, S = .S)
   }
   .steps <- get0("covSteps", envir = src, inherits = FALSE)
   if (is.list(.steps)) {
@@ -146,14 +169,16 @@
     .R0 <- if (fd) get0("R.0", envir = src, inherits = FALSE)
     .S0 <- get0("S0", envir = src, inherits = FALSE)
     .Sper <- get0("Sper", envir = src, inherits = FALSE)
+    .SHasZero <- get0("SHasZero", envir = src, inherits = FALSE)
     if (.same && is.null(.R0)) {
       .R0 <- .old$R0
     }
     if (.same && is.null(.S0)) {
       .S0 <- .old$S0
       .Sper <- .old$Sper
+      .SHasZero <- .old$SHasZero
     }
-    .e$theta <- list(steps = .steps, R0 = .R0, S0 = .S0, Sper = .Sper)
+    .e$theta <- list(steps = .steps, R0 = .R0, S0 = .S0, Sper = .Sper, SHasZero = .SHasZero)
   }
   if (is.null(.e$full) && is.null(.e$theta)) {
     return(invisible(FALSE))

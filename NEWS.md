@@ -24,9 +24,8 @@
 - `setCov()` reads what the fit's earlier covariance steps computed for the same
   estimates and settings (the fit's `env$covStore`: the finite-difference R, S
   and steps) and computes only what is missing, with the same result: after an
-  `"r"` covariance, `"r,s"` computes only S (on `theo_sd`, 16 objective
-  evaluations instead of 250 for the full shape), and `"r"` or `"s"` after
-  `"r,s"` computes nothing.  Every fit starts with an empty store.
+  `"r"` covariance, `"r,s"` computes only S, and `"r"` or `"s"` after `"r,s"`
+  computes nothing.  Every fit starts with an empty store.
 
 - `foceiControl(innerOpt = "lbfgsb3c")` runs L-BFGS-B on the per-subject
   ETA problem, using `lbfgsb3c`'s thread-safe port (`lbfgsb3c >= 2024-3.6`).
@@ -661,15 +660,14 @@
 
 ### Covariance
 
-- A fit's covariance (`covMethod = "r,s"`, `"r"` and `"s"`, either shape) is now the
-  one `setCov()` computes for it.  The covariance step starts every subject's inner
-  problem as a fresh setup leaves it (estimation's warm Hessian, ETA nudge state and
-  quasi-Newton memory are not carried over) and draws its inner restart points from the
-  estimated Omega rather than the starting one, scales the S step
-  (`smatNorm = TRUE`) by its own centre objective rather than the fit's
-  initial one, and `setCov()` installs the fit's parameters to the last bit
-  (`env$covHandoff`).  On the warfarin model of issue 1140
-  the theta-only `"r"` standard errors of a fit and of `setCov()` differed by up to 2x.
+- A fit's covariance (`covMethod = "r,s"`, `"r"` and `"s"`, either shape) is
+  now the one `setCov()` computes for it.  The covariance step starts every
+  subject's inner problem as a fresh setup leaves it (estimation's warm
+  Hessian, ETA nudge state and quasi-Newton memory are not carried over),
+  draws its inner restart points from the estimated Omega rather than the
+  starting one, and scales the S step (`smatNorm = TRUE`) by its own centre
+  objective rather than the fit's initial one; `setCov()` installs the fit's
+  parameters to the last bit (`env$covHandoff`).
 
 - The covariance step's progress bar now always reaches 100% and ends its line
   (#1171).  After an earlier bar had finished it stopped at a few percent, the

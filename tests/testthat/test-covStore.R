@@ -4,6 +4,7 @@ test_that(".covStoreKey() needs the hand-off and keeps every key field", {
   .env$covHandoff <- list(theta = c(1, 2), omega = 0.5)
   .k <- .covStoreKey(.env, list(hessEps = 1e-4, gillKcov = 10L, unrelated = 3))
   expect_identical(.k$handoff, .env$covHandoff)
+  expect_named(.k$versions, c("nlmixr2est", "rxode2"))
   expect_identical(names(.k$settings), c(.covStoreKeyFields, "covEtaLegs"))
   expect_identical(.k$settings$hessEps, 1e-4)
   expect_identical(.k$settings$gillKcov, 10L)
@@ -33,6 +34,7 @@ test_that(".covStoreRecord() merges what each covariance step computed under its
   .r <- new.env(parent = emptyenv())
   .r$.fdFullR <- .R
   .r$.fdFullH <- c(0.01, 0.02)
+  .r$.fdFullX0 <- c(1, 2)
   .r$covSteps <- .steps
   .r$R.0 <- matrix(2)
   expect_true(.covStoreRecord(.fit, .key, .r))
@@ -46,10 +48,12 @@ test_that(".covStoreRecord() merges what each covariance step computed under its
   .s <- new.env(parent = emptyenv())
   .s$.fdFullR <- .R
   .s$.fdFullH <- c(0.01, 0.02)
+  .s$.fdFullX0 <- c(1, 2)
   .s$.fdFullS <- diag(2)
   .s$covSteps <- .steps
   .s$S0 <- matrix(4)
   .s$Sper <- 1
+  .s$SHasZero <- TRUE
   expect_true(.covStoreRecord(.fit, .key, .s))
   expect_length(.fit$covStore, 1L)
   .e <- .covStoreGet(.fit, .key)
@@ -57,9 +61,24 @@ test_that(".covStoreRecord() merges what each covariance step computed under its
   expect_identical(.e$theta$R0, matrix(2))
   expect_identical(.e$theta$S0, matrix(4))
   expect_identical(.e$theta$Sper, 1)
-  # a later step without S keeps the stored S when its R and steps are the same
+  expect_true(.e$theta$SHasZero)
+  expect_identical(.e$full$x0, c(1, 2))
+  # a later step without S keeps the stored S when its R, steps and point are the same
   expect_true(.covStoreRecord(.fit, .key, .r))
   expect_identical(.covStoreGet(.fit, .key)$full$S, diag(2))
+  .moved <- new.env(parent = emptyenv())
+  for (.n in ls(.r, all.names = TRUE)) assign(.n, get(.n, envir = .r), envir = .moved)
+  .moved$.fdFullX0 <- c(1, 2.5)
+  expect_true(.covStoreRecord(.fit, .key, .moved))
+  expect_null(.covStoreGet(.fit, .key)$full$S)
+  expect_true(.covStoreRecord(.fit, .key, .s))
+  # a full stage without its point is not stored
+  .nox <- new.env(parent = emptyenv())
+  .nox$.fdFullR <- .R
+  .nox$.fdFullH <- c(0.01, 0.02)
+  .fitNox <- new.env(parent = emptyenv())
+  .fitNox$covHandoff <- .fit$covHandoff
+  expect_false(.covStoreRecord(.fitNox, .key, .nox))
   # an analytic theta-only R is not stored as a finite-difference one
   .fit2 <- new.env(parent = emptyenv())
   .fit2$covHandoff <- .fit$covHandoff
@@ -73,6 +92,13 @@ test_that(".covStoreRecord() merges what each covariance step computed under its
   expect_identical(.covStoreIndex(.fit$covStore, .key2), 2L)
   expect_identical(.covStoreIndex(.fit$covStore, NULL), 0L)
   expect_null(.covStoreGet(.fit, NULL))
+})
+
+test_that("a refit with settings outside the key does not use the store", {
+  expect_true(.covStoreRefitOk(list()))
+  expect_true(.covStoreRefitOk(list(covMethod = "r,s", covFull = TRUE, covSmall = 1e-5, hessEps = 1e-4)))
+  expect_false(.covStoreRefitOk(list(covMethod = "r", rxControl = list(atol = 1e-10))))
+  expect_false(.covStoreRefitOk(list(interaction = 0L)))
 })
 
 test_that("every fit starts with an empty covariance store and only setCov()'s inputs", {
@@ -176,5 +202,15 @@ nmTest({
     .k <- .storeRefit(.f, TRUE, covMethod = "r,s", covFull = TRUE, gillKcov = 5L)
     expect_gt(.k$env$covEvals[["fullR"]], 0L)
     expect_length(.f$env$covStore, 2L)
+    # a setting outside the key neither reads nor writes the store
+    .o <- .storeRefit(.f, TRUE, covMethod = "r,s", covFull = TRUE, epsilon = 1e-9)
+    expect_gt(.o$env$covEvals[["fullR"]], 0L)
+    expect_length(.f$env$covStore, 2L)
+    # an entry taken about another point is not read
+    .st <- .f$env$covStore
+    .st[[1]]$full$x0[1] <- .st[[1]]$full$x0[1] * (1 + 1e-9)
+    .f$env$covStore <- .st
+    .x <- .storeRefit(.f, TRUE, covMethod = "r", covFull = TRUE)
+    expect_gt(.x$env$covEvals[["fullR"]], 0L)
   })
 })

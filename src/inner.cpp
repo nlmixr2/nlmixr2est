@@ -2046,12 +2046,9 @@ static bool covFitSolveLost_ = false;
 struct FdInnerStateGuard {
   focei_ind *fInd;
   std::vector<double> eta, oldEta, zm, saveEta, etahf, etahr, etahh, llikObs;
-  // the trust inner optimizer's quasi-Newton memory
-  std::vector<double> etaHessQN, etaGradPrevQN, etaPrevQN;
   double lik[3];
   unsigned int setup, uzm;
   int mode, stickyRecalcN2;
-  int doEtaNudge, doChol, doFD, badSolve, nInnerF, nInnerG, etaHasPrevQN;
   double tolFactor;
   int cid_;
   FdInnerStateGuard(int cid) : cid_(cid) {
@@ -2070,12 +2067,6 @@ struct FdInnerStateGuard {
     fdSaveVec(etahr, fInd->etahr, ne);
     fdSaveVec(etahh, fInd->etahh, ne);
     fdSaveVec(zm, fInd->zm, op_focei.nzm);
-    fdSaveVec(etaHessQN, fInd->etaHessQN, ne*ne);
-    fdSaveVec(etaGradPrevQN, fInd->etaGradPrevQN, ne);
-    fdSaveVec(etaPrevQN, fInd->etaPrevQN, ne);
-    doEtaNudge = fInd->doEtaNudge; doChol = fInd->doChol; doFD = fInd->doFD;
-    badSolve = fInd->badSolve; nInnerF = fInd->nInnerF; nInnerG = fInd->nInnerG;
-    etaHasPrevQN = fInd->etaHasPrevQN;
     // Per-observation conditional log-likelihoods.  likInner0() overwrites these, and
     // they are handed to R as e["llikObs"], so a perturbed evaluation would otherwise
     // ship in the fit.
@@ -2105,12 +2096,6 @@ struct FdInnerStateGuard {
     fdRestoreVec(etahr, fInd->etahr);
     fdRestoreVec(etahh, fInd->etahh);
     fdRestoreVec(zm, fInd->zm);
-    fdRestoreVec(etaHessQN, fInd->etaHessQN);
-    fdRestoreVec(etaGradPrevQN, fInd->etaGradPrevQN);
-    fdRestoreVec(etaPrevQN, fInd->etaPrevQN);
-    fInd->doEtaNudge = doEtaNudge; fInd->doChol = doChol; fInd->doFD = doFD;
-    fInd->badSolve = badSolve; fInd->nInnerF = nInnerF; fInd->nInnerG = nInnerG;
-    fInd->etaHasPrevQN = etaHasPrevQN;
     fdRestoreVec(llikObs, fInd->llikObs);
     fInd->lik[0] = lik[0]; fInd->lik[1] = lik[1]; fInd->lik[2] = lik[2];
     fInd->setup = setup; fInd->uzm = uzm; fInd->mode = mode;
@@ -8950,12 +8935,29 @@ CovLlikObsGuard::~CovLlikObsGuard() {
 // control says.  A refit that holds the ETAs only to report them asks for marginal legs
 // with the control element covMaxInnerIterations (.covInnerIterations(), R/cov.R): the
 // legs get that inner budget, and its supplied ETAs give eta-hat the same way.
-// Every inner problem as a fresh setup leaves it: warm Hessian off, eta nudging on, no
-// quasi-Newton memory or step caches, the fit's ODE tolerance factor 1, and no restart
-// points (the next inner pass draws them from the Omega it runs at, the estimate here,
-// where estimation drew them from its starting Omega).  The covariance step starts here, so
-// its result does not depend on what estimation left; the caller (CovEtaStart, with its
-// FdInnerStateGuards, and CovTolFactorGuard) puts the fit's state back afterwards.
+// The per-subject inner fields covInnerFresh() resets that FdInnerStateGuard does not keep
+struct CovInnerExtra {
+  int doEtaNudge = 0, doChol = 0, doFD = 0, badSolve = 0, nInnerF = 0, nInnerG = 0, etaHasPrevQN = 0;
+  std::vector<double> etaHessQN, etaGradPrevQN, etaPrevQN;
+  void save(focei_ind *f, int ne) {
+    doEtaNudge = f->doEtaNudge; doChol = f->doChol; doFD = f->doFD; badSolve = f->badSolve;
+    nInnerF = f->nInnerF; nInnerG = f->nInnerG; etaHasPrevQN = f->etaHasPrevQN;
+    fdSaveVec(etaHessQN, f->etaHessQN, ne*ne);
+    fdSaveVec(etaGradPrevQN, f->etaGradPrevQN, ne);
+    fdSaveVec(etaPrevQN, f->etaPrevQN, ne);
+  }
+  void restore(focei_ind *f) const {
+    f->doEtaNudge = doEtaNudge; f->doChol = doChol; f->doFD = doFD; f->badSolve = badSolve;
+    f->nInnerF = nInnerF; f->nInnerG = nInnerG; f->etaHasPrevQN = etaHasPrevQN;
+    fdRestoreVec(etaHessQN, f->etaHessQN);
+    fdRestoreVec(etaGradPrevQN, f->etaGradPrevQN);
+    fdRestoreVec(etaPrevQN, f->etaPrevQN);
+  }
+};
+
+// Every inner problem as a fresh setup leaves it (warm Hessian off, eta nudging on, no
+// quasi-Newton memory, step caches or restart points, tolerance factor 1), so the
+// covariance step does not depend on what estimation left; CovEtaStart puts it back.
 static void covInnerFresh(int nId) {
   int ne = op_focei.neta;
   op_focei.etaRestartSamples.reset();
@@ -8986,11 +8988,9 @@ static void covInnerFresh(int nId) {
   }
 }
 
-// The covariance step's starting parameters (the hand-off from estimation): the
-// natural-scale theta and Omega parameters, recorded in e$covHandoff.  A refit at a fit's
-// estimates (setCov) carries the fit's record and installs it when it matches its own
-// estimates to the last few places, so both differentiate the objective at the same bits;
-// Omega parameters rebuilt from the reported matrix can differ in the last place.
+// Record the covariance step's natural theta and Omega parameters (e$covHandoff); a setCov()
+// refit installs its fit's record when it matches to the last few places, since Omega
+// rebuilt from the reported matrix can differ in the last place.
 static void covHandoffInstall(Environment e) {
   int nt = (int)op_focei.ntheta, no = (int)op_focei.omegan;
   double *ft = op_focei.fullTheta;
@@ -9025,6 +9025,8 @@ struct CovEtaStart {
   std::vector<int> mode;
   std::vector<unsigned int> uzm;
   arma::cube restartSave;
+  std::vector<CovInnerExtra> extraSave, extraPin;
+  std::vector<double> stepPin;
   int nId = 0, savedMaxInner;
   bool raised = false, restartSaved = false;
   explicit CovEtaStart(Environment e) : savedMaxInner(op_focei.maxInnerIterations) {
@@ -9054,6 +9056,8 @@ struct CovEtaStart {
     }
     restartSave = op_focei.etaRestartSamples;
     restartSaved = true;
+    extraSave.resize((size_t)nId);
+    for (int id = 0; id < nId; ++id) extraSave[(size_t)id].save(&inds_focei[id], op_focei.neta);
     covInnerFresh(nId);
     // set last, so a constructor that throws leaves no pointer to a dead object
     _covEtaStart = this;
@@ -9069,6 +9073,7 @@ struct CovEtaStart {
     // last probe's solution at another theta.  Force the next evaluation to solve (as
     // after the outer gradient's guards).
     entry.clear();
+    for (int id = 0; id < (int)extraSave.size(); ++id) extraSave[(size_t)id].restore(&inds_focei[id]);
     for (int id = 0; id < nId; ++id) {
       inds_focei[id].setup = 0;
       if (covFitSolveLost_) continue;
@@ -9125,6 +9130,17 @@ struct CovEtaStart {
         mode[id] = fInd->mode;
         uzm[id] = fInd->uzm;
       }
+      // the rest of each inner problem's state, so every probe starts from the same one
+      extraPin.resize((size_t)nId);
+      stepPin.assign((size_t)nId * 3 * ne, 0.0);
+      for (int id = 0; id < nId; ++id) {
+        focei_ind *fInd = &(inds_focei[id]);
+        extraPin[(size_t)id].save(fInd, ne);
+        double *sp = &stepPin[(size_t)id * 3 * ne];
+        if (fInd->etahf != NULL) std::copy(fInd->etahf, fInd->etahf + ne, sp);
+        if (fInd->etahr != NULL) std::copy(fInd->etahr, fInd->etahr + ne, sp + ne);
+        if (fInd->etahh != NULL) std::copy(fInd->etahh, fInd->etahh + ne, sp + 2*ne);
+      }
       _covEtaStartOn = true;
     }
     updateTheta(theta);
@@ -9138,6 +9154,13 @@ struct CovEtaStart {
       if (nz > 0 && fInd->zm != NULL) std::copy(&zm[(size_t)id * nz], &zm[(size_t)id * nz] + nz, fInd->zm);
       fInd->mode = mode[id];
       fInd->uzm = uzm[id];
+      if ((size_t)id < extraPin.size()) {
+        extraPin[(size_t)id].restore(fInd);
+        const double *sp = &stepPin[(size_t)id * 3 * ne];
+        if (fInd->etahf != NULL) std::copy(sp, sp + ne, fInd->etahf);
+        if (fInd->etahr != NULL) std::copy(sp + ne, sp + 2*ne, fInd->etahr);
+        if (fInd->etahh != NULL) std::copy(sp + 2*ne, sp + 3*ne, fInd->etahh);
+      }
       // theta moved, so likInner0() must not answer from the previous probe's cache
       if (fInd->oldEta != NULL) std::fill_n(fInd->oldEta, ne, NA_REAL);
     }
@@ -11886,10 +11909,8 @@ static bool foceiFdFullMerge(Environment e);
 // runs with the fit's setting wherever it runs
 static int _covFitCalcGrad = 0;
 
-// A stored separate theta-only stage for these estimates and settings (e$covThetaStore,
-// handed in by setCov()'s lookup in the fit's covariance store): the steps it searched,
-// when they were taken about this theta, and the R and S it computed, installed as
-// foceiCalcR() and foceiS() install theirs.  Returns whether the steps were installed.
+// Install a stored theta-only stage (e$covThetaStore, from setCov()'s lookup) as
+// foceiCalcR() and foceiS() install theirs, when its steps were taken about this theta.
 static bool foceiThetaFromStore(Environment e, const arma::vec &theta) {
   if (!covReuseOn() || !e.exists("covThetaStore")) return false;
   List st = as<List>(e["covThetaStore"]);
@@ -11907,6 +11928,18 @@ static bool foceiThetaFromStore(Environment e, const arma::vec &theta) {
   std::copy(rE.begin(), rE.end(), op_focei.rEps);
   std::copy(aC.begin(), aC.end(), op_focei.aEpsC);
   std::copy(rC.begin(), rC.end(), op_focei.rEpsC);
+  // the search's outcome, for $scaleInfo and its warning
+  if (sp.containsElementNamed("gillRetC")) {
+    IntegerVector gr = sp["gillRetC"];
+    NumericVector gd = sp["gillDf"], gd2 = sp["gillDf2"], ge = sp["gillErr"];
+    if (gr.size() == np && gd.size() == np && gd2.size() == np && ge.size() == np) {
+      std::copy(gr.begin(), gr.end(), op_focei.gillRetC);
+      std::copy(gd.begin(), gd.end(), op_focei.gillDf);
+      std::copy(gd2.begin(), gd2.end(), op_focei.gillDf2);
+      std::copy(ge.begin(), ge.end(), op_focei.gillErr);
+      op_focei.didGill += 1;
+    }
+  }
   e["covSteps"] = sp;
   if ((op_focei.covMethod == 1 || op_focei.covMethod == 2) && !e.exists("cholR") &&
       st.containsElementNamed("R0") && !Rf_isNull(st["R0"])) {
@@ -11923,6 +11956,7 @@ static bool foceiThetaFromStore(Environment e, const arma::vec &theta) {
     if ((int)S0.n_rows == np && (int)S0.n_cols == np) {
       e["S0"] = wrap(S0);
       e["Sper"] = sper;
+      e["SHasZero"] = st.containsElementNamed("SHasZero") && as<bool>(st["SHasZero"]);
       if (sper >= op_focei.smatPer) foceiCovChol(e, S0, "S");
     }
   }
@@ -12152,7 +12186,11 @@ NumericMatrix foceiCalcCov(Environment e){
             _["aEps"] = NumericVector(op_focei.aEps, op_focei.aEps + np),
             _["rEps"] = NumericVector(op_focei.rEps, op_focei.rEps + np),
             _["aEpsC"] = NumericVector(op_focei.aEpsC, op_focei.aEpsC + np),
-            _["rEpsC"] = NumericVector(op_focei.rEpsC, op_focei.rEpsC + np));
+            _["rEpsC"] = NumericVector(op_focei.rEpsC, op_focei.rEpsC + np),
+            _["gillRetC"] = IntegerVector(op_focei.gillRetC, op_focei.gillRetC + np),
+            _["gillDf"] = NumericVector(op_focei.gillDf, op_focei.gillDf + np),
+            _["gillDf2"] = NumericVector(op_focei.gillDf2, op_focei.gillDf2 + np),
+            _["gillErr"] = NumericVector(op_focei.gillErr, op_focei.gillErr + np));
         };
         // covType="analytic": try the analytic R first; it needs no step search
         bool analyticR = false;
@@ -12251,10 +12289,12 @@ NumericMatrix foceiCalcCov(Environment e){
             runGill();
             CovStageScope _st(covStS);
             foceiS(&theta[0], e, sHasZero);
+            e["SHasZero"] = sHasZero;
           } else {
             op_focei.cur += op_focei.npars;
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
           }
+          if (!sHasZero && e.exists("SHasZero")) sHasZero = as<bool>(e["SHasZero"]);
           if (e.exists("cholS")) {
             isPd = foceiCovUsable(e, "S", as<arma::mat>(e["S0"]), sstr, checkSandwich);
             if (!isPd){
@@ -12660,7 +12700,7 @@ struct FdFullStateGuard {
 struct FdFullResult {
   FdFullCtx c;
   CharacterVector nm;
-  std::vector<double> h;
+  std::vector<double> h, x0;
   arma::mat R, S;
   bool okS = false;
 };
@@ -12700,7 +12740,8 @@ static bool foceiFdFullCompute(Environment e, bool covKnobs, bool needS, FdFullR
   c.Om0 = as<arma::mat>(getOmega());
   int np = c.nth + c.nom;
 
-  std::vector<double> x0(np);
+  std::vector<double> &x0 = res.x0;
+  x0.resize(np);
   for (int i = 0; i < c.nth; ++i) x0[i] = op_focei.fullTheta[c.thPos[i]];
   for (int q = 0; q < c.nom; ++q) x0[c.nth + q] = c.Om0(c.omA[q]-1, c.omB[q]-1);
 
@@ -12738,27 +12779,34 @@ static bool foceiFdFullCovOf(const FdFullResult &res, arma::mat &cov) {
   return arma::inv_sympd(cov, res.R) || arma::inv(cov, res.R);
 }
 
-// A stored full stage for these estimates and settings (e$.fdFullStore, handed in by
-// setCov()'s lookup in the fit's covariance store: R, the steps h and, when it was
-// computed, S): read instead of computed.  S alone is computed when it is needed and was
-// not stored, at the stored steps.  False when there is none or it does not fit.
+// Read a stored full stage (e$.fdFullStore, from setCov()'s lookup) taken about this point;
+// S alone is computed, at the stored steps, when it is needed and was not stored.
 static bool foceiFdFullFromStore(Environment e, bool needS, FdFullResult &res) {
   if (!covReuseOn() || !e.exists(".fdFullStore") || op_focei.neta <= 0) return false;
   List st = as<List>(e[".fdFullStore"]);
-  if (!st.containsElementNamed("R") || !st.containsElementNamed("h")) return false;
+  if (!st.containsElementNamed("R") || !st.containsElementNamed("h") ||
+      !st.containsElementNamed("x0")) return false;
   FdFullCtx &c = res.c;
   if (!foceiFdParams(e, c, res.nm)) return false;
   int np = c.nth + c.nom;
   NumericMatrix Rs = as<NumericMatrix>(st["R"]);
-  NumericVector h = as<NumericVector>(st["h"]);
-  if (Rs.nrow() != np || Rs.ncol() != np || h.size() != np) return false;
+  NumericVector h = as<NumericVector>(st["h"]), x0s = as<NumericVector>(st["x0"]);
+  if (Rs.nrow() != np || Rs.ncol() != np || h.size() != np || x0s.size() != np) return false;
+  // taken about this point, to the last bit
+  c.Om0 = as<arma::mat>(getOmega());
+  std::vector<double> &x0 = res.x0;
+  x0.resize(np);
+  for (int i = 0; i < c.nth; ++i) x0[i] = op_focei.fullTheta[c.thPos[i]];
+  for (int q = 0; q < c.nom; ++q) x0[c.nth + q] = c.Om0(c.omA[q]-1, c.omB[q]-1);
+  for (int i = 0; i < np; ++i) {
+    if (x0[i] != x0s[i]) return false;
+  }
   RObject dn = Rs.attr("dimnames");
   if (Rf_isNull(dn)) return false;
   CharacterVector rn = as<List>(dn)[0];
   for (int i = 0; i < np; ++i) {
     if (rn[i] != res.nm[i]) return false;
   }
-  c.Om0 = as<arma::mat>(getOmega());
   res.R = as<arma::mat>(Rs);
   res.h.assign(h.begin(), h.end());
   res.okS = false;
@@ -12770,9 +12818,6 @@ static bool foceiFdFullFromStore(Environment e, bool needS, FdFullResult &res) {
     }
   }
   if (needS && !res.okS) {
-    std::vector<double> x0(np);
-    for (int i = 0; i < c.nth; ++i) x0[i] = op_focei.fullTheta[c.thPos[i]];
-    for (int q = 0; q < c.nom; ++q) x0[c.nth + q] = c.Om0(c.omA[q]-1, c.omB[q]-1);
     FdFullStateGuard _restore;
     CovStageScope _st(covStFullS);
     res.okS = foceiFdSFull(c, x0, res.h, res.S);
@@ -12793,6 +12838,7 @@ static bool foceiFdFullStash(Environment e, const FdFullResult &res) {
   Rout.attr("dimnames") = List::create(res.nm, res.nm);
   e[".fdFullR"] = Rout;
   e[".fdFullH"] = NumericVector(res.h.begin(), res.h.end());
+  e[".fdFullX0"] = NumericVector(res.x0.begin(), res.x0.end());
   if (res.okS) {
     NumericMatrix Sout = wrap(res.S);
     Sout.attr("dimnames") = List::create(res.nm, res.nm);
@@ -12857,6 +12903,10 @@ static bool foceiFdFullMerge(Environment e) {
   FdFullResult res;
   try {
     ScopedRestore<int> calcGrad(op_focei.calcGrad);
+    // the full stage's evaluations under the fit's calcGrad write these; the theta-only
+    // stage after it needs its own centre value
+    ScopedRestore<double> lastOfv(op_focei.lastOfv);
+    ScopedRestore<int> checkTheta(op_focei.checkTheta);
     op_focei.calcGrad = _covFitCalcGrad;
     bool needS = foceiFdFullNeedS(e);
     if (!foceiFdFullFromStore(e, needS, res) && !foceiFdFullCompute(e, true, needS, res)) return false;

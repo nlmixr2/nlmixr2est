@@ -566,7 +566,7 @@
   } else if (.control$covMethod == 0L) {
     .control$covMethod <- 1L
   }
-  .key <- .covStoreKey(.env, .control)
+  .key <- if (.covStoreRefitOk(.lst)) .covStoreKey(.env, .control)
   .stored <- .covStoreGet(.env, .key)
   if (!is.null(.stored)) {
     .inputs$.fdFullStore <- .stored$full

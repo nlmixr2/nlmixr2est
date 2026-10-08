@@ -682,8 +682,11 @@ nmTest({
     .def <- .fit(TRUE)
     expect_identical(.def$env$covEvals[["s"]], 4L * nrow(.def$cov))
     # the steps the theta-only stage searched, about the centre value they were taken at
-    expect_named(.on$env$covSteps, c("theta", "f0", "aEps", "rEps", "aEpsC", "rEpsC"))
-    expect_identical(lengths(.on$env$covSteps, use.names = FALSE), c(4L, 1L, 4L, 4L, 4L, 4L))
+    expect_named(
+      .on$env$covSteps,
+      c("theta", "f0", "aEps", "rEps", "aEpsC", "rEpsC", "gillRetC", "gillDf", "gillDf2", "gillErr")
+    )
+    expect_identical(lengths(.on$env$covSteps, use.names = FALSE), c(4L, 1L, rep(4L, 8)))
     expect_true(all(.on$env$covSteps$rEpsC > 0))
   })
 
