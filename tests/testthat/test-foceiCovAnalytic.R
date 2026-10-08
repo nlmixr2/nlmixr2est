@@ -106,3 +106,23 @@ test_that("foceiCovAnalytic() never installs an indefinite covariance, and says 
   expect_identical(.e$covMethod, "r,s (full)")
   expect_equal(.e$cov, .anBad[1:2, 1:2])
 })
+
+test_that(".foceiFitInteraction() takes the interaction of the fit's likelihood", {
+  # saem, nlme, vae and vi fits: the FOCEi control has the method's likelihood, while the
+  # control their finalUi keeps is the output step's (interaction = 0)
+  .ui <- new.env(parent = emptyenv())
+  .ui$control <- list(interaction = 0L)
+  expect_identical(.foceiFitInteraction(list(foceiControl = list(interaction = 1L)), .ui), 1L)
+  expect_identical(.foceiFitInteraction(list(foceiControl = list(interaction = 0L)), .ui), 0L)
+  # no usable FOCEi control: the ui's
+  expect_identical(.foceiFitInteraction(list(), .ui), 0L)
+  expect_identical(.foceiFitInteraction(list(foceiControl = list(interaction = NA_integer_)), .ui), 0L)
+  expect_identical(.foceiFitInteraction(list(foceiControl = list(interaction = 1:2)), .ui), 0L)
+  # a FOCEi control that cannot be built
+  .err <- new.env(parent = emptyenv())
+  makeActiveBinding("foceiControl", function() stop("no control"), .err)
+  expect_identical(.foceiFitInteraction(.err, .ui), 0L)
+  # and FOCEI when neither says
+  .ui$control <- list()
+  expect_identical(.foceiFitInteraction(list(), .ui), 1L)
+})

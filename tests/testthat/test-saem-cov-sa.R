@@ -463,6 +463,182 @@ nmTest({
     expect_equal(fFim$covMethod, "linFim")
   })
 
+  test_that("fim/sa/linFim Omega rows belong to the eta of their phi1 column", {
+    # The kernel's phi1 columns follow the thetas (ka, cl, v) whatever order the
+    # etas are declared in, so declaring them v, cl, ka fits the same model, bit
+    # for bit, and each om.<eta> row must be the same.
+    refM <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    swapM <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.v ~ 0.1; eta.cl ~ 0.3; eta.ka ~ 0.6 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    # a 3-cycle of the declaration order (the swap above is its own inverse,
+    # so it cannot tell a map from its inverse)
+    cycleM <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.cl ~ 0.3; eta.v ~ 0.1; eta.ka ~ 0.6 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    # A non-mu-referenced eta's pseudo-theta is the last phi1 column (and tcl,
+    # with no eta of its own, a phi0 theta), so declaring eta.v before eta.cl
+    # matches the kernel's order.  fim's row layout counts the pseudo-theta's
+    # phi1 column.
+    nonMuM <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl) * (1 + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    nonMuRefM <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.v ~ 0.1; eta.cl ~ 0.3 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl) * (1 + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    .eta <- c("eta.ka", "eta.cl", "eta.v")
+    for (.m in list(list(ref = refM, alt = list(swapM, cycleM)), list(ref = nonMuRefM, alt = list(nonMuM)))) {
+      for (.cm in c("fim", "linFim")) {
+        ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = .cm, calcTables = FALSE)
+        fR <- .nlmixr(.m$ref, theo_sd, est = "saem", control = ctl)
+        expect_identical(fR$covMethod, .cm)
+        .nm <- rownames(fR$cov)
+        expect_true(all(paste0("om.", .eta) %in% .nm))
+        if (identical(.m$ref, refM) && identical(.cm, "fim")) {
+          # the phi1 columns are ka, cl, v; with every theta estimated and
+          # mu-referenced nothing is dropped, so om.eta.v is the delta method on
+          # row 3 + 3 of solve(Ha): d(var)/d(log var) = var
+          .g <- fR$saem$Gamma2_phi1
+          expect_equal(
+            sqrt(fR$cov["om.eta.v", "om.eta.v"]),
+            .g[3, 3] * sqrt(solve(fR$saem$Ha)[6, 6]),
+            tolerance = 1e-10
+          )
+          expect_equal(fR$omega["eta.v", "eta.v"], .g[3, 3], tolerance = 1e-10)
+        }
+        for (.alt in .m$alt) {
+          fS <- .nlmixr(.alt, theo_sd, est = "saem", control = ctl)
+          expect_identical(fS$covMethod, .cm)
+          expect_equal(fS$omega[.eta, .eta], fR$omega[.eta, .eta])
+          expect_setequal(rownames(fS$cov), .nm)
+          expect_equal(fS$cov[.nm, .nm], fR$cov, info = .cm)
+        }
+      }
+    }
+  })
+
+  test_that("fim/sa/linFim warn when the Omega rows cannot be matched to their etas", {
+    # an eta-to-phi1-column map that is not one column per eta (a mixture that
+    # splits an eta, occasion etas) leaves the Omega rows out, with a warning
+    .m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    local_mocked_bindings(.saemEtaPhi1Col = function(ui, nphi1) NULL)
+    for (.cm in c("fim", "sa", "linFim")) {
+      ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = .cm, calcTables = FALSE)
+      f <- .nlmixr(.m, theo_sd, est = "saem", control = ctl)
+      expect_true(
+        any(
+          f$runInfo == "etas not matched to the SAEM Omega columns; Omega rows left out"
+        ),
+        info = .cm
+      )
+      expect_identical(f$covMethod, .cm)
+      expect_identical(rownames(f$cov), c("tka", "tcl", "tv", "add.sd"), info = .cm)
+    }
+  })
+
+  test_that("an sa/fim covariance that falls back to the linearized FIM says why", {
+    .m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "fim", calcTables = FALSE)
+    f <- .nlmixr(.m, theo_sd, est = "saem", control = ctl)
+    expect_identical(f$covMethod, "fim")
+    .H <- f$saem$Ha
+    expect_true(is.matrix(.saemFimToCovReason(.H, f$env)))
+    expect_identical(.saemFimToCovReason(-.H, f$env), "the covariance is not positive definite")
+    expect_identical(.saemFimToCovReason(replace(.H, 1L, NA), f$env), "no finite information matrix")
+    expect_identical(.saemFimToCovReason(.H[1:2, 1:2], f$env), "the information rows cannot be matched to the thetas")
+    .sing <- .H
+    .sing[, 2] <- .sing[, 1]
+    .sing[2, ] <- .sing[1, ]
+    expect_identical(.saemFimToCovReason(.sing, f$env), "the information matrix is singular")
+    expect_null(.saemFimToCov(-.H, f$env))
+    # the reason reaches the fallback message
+    local_mocked_bindings(.saemFimToCovReason = function(.H, env) "the covariance is not positive definite")
+    .acc <- new.env(parent = emptyenv())
+    .acc$m <- character(0)
+    f2 <- withCallingHandlers(
+      suppressWarnings(nlmixr(.m, theo_sd, est = "saem", control = ctl)),
+      message = function(m) {
+        .acc$m <- c(.acc$m, conditionMessage(m))
+        invokeRestart("muffleMessage")
+      }
+    )
+    expect_true(any(
+      .acc$m ==
+        "covMethod=\"fim\" could not be computed (the covariance is not positive definite); using the linearized FIM\n"
+    ))
+    expect_identical(f2$covMethod, "linFim")
+  })
+
+  test_that("covMethod='r,s' installs the inverse of Ha's theta block, by kernel row (#906)", {
+    # saemControl(covMethod = "r,s"/"r"/"s") inverts the theta block of the
+    # estimation-phase information Ha, laid out [phi1 mu][phi0 mu] with a row
+    # for a fixed theta too, so each theta takes its own kernel row (not the
+    # model-order, fixed-filtered position) and the matrix is labelled "Ha".
+    fixedM <- function() {
+      ini({ tka <- 0.45; tcl <- fix(1); tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    phi0M <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              linCmt() ~ add(add.sd) })
+    }
+    ctl <- saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L, covMethod = "r,s", calcTables = FALSE)
+    for (.mod in list(list(fn = fixedM, kept = c("tka", "tv")), list(fn = phi0M, kept = c("tcl", "tv")))) {
+      f <- .nlmixr(.mod$fn, theo_sd, est = "saem", control = ctl)
+      expect_identical(f$covMethod, "Ha")
+      .cfg <- attr(f$saem, "saem.cfg")
+      .raw <- f$ui$saemParamsToEstimate[c(.cfg$i1, .cfg$i0) + 1L] # Ha's structural rows
+      .rows <- match(.mod$kept, .raw)
+      .ref <- solve(f$saem$Ha[.rows, .rows])
+      dimnames(.ref) <- list(.mod$kept, .mod$kept)
+      expect_setequal(rownames(f$cov), .mod$kept)
+      for (.a in .mod$kept) {
+        for (.b in .mod$kept) {
+          expect_equal(f$cov[.a, .b], .ref[.a, .b], info = paste(.a, .b))
+        }
+      }
+    }
+    # the phi0 theta (tka) has no Ha row of its own: no standard error, and it says so
+    expect_true(is.na(f$parFixedDf["tka", "SE"]))
+    expect_true(is.finite(f$parFixedDf["tcl", "SE"]))
+    expect_true(any(grepl(
+      "no \"Ha\" SE for non-mu-referenced theta(s) tka",
+      f$runInfo,
+      fixed = TRUE
+    )))
+  })
+
   test_that("multi-endpoint fim/sa: one residual FIM slot per endpoint (#893)", {
     # Before the fix, src/saem.cpp had exactly ONE log-sigma2 slot no matter how
     # many endpoints the model declared, so a multi-endpoint fit's residual score
