@@ -90,7 +90,7 @@ f <- nlmixr2(one.cmt, theo_sd, "saem")
 #> ✔ done
 #> ℹ calculate uninformed etas
 #> ℹ done
-#> covMethod="sa" could not be computed; using the linearized FIM
+#> Calculating covariance matrix
 #> Calculating covariance matrix
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...

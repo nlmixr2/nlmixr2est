@@ -545,16 +545,22 @@ impmapControl(
 
   Covariance method. \`"imp"\` (default) computes the Monte-Carlo
   importance-sampling observed-information covariance for the estimated
-  thetas and Omega parameters (a finite-difference Hessian of the
-  importance-sampling objective over fixed common-random-number
-  samples), stashed as \`\$impCov\` / \`\$impSe\` and installed as the
-  fit covariance; the theta standard errors match the Hessian-based
-  FOCEI covariance, though the variance of a tightly-determined random
-  effect (an Omega diagonal) can be over-estimated because the fixed
-  samples barely span its prior variation. \`"analytic"\`, \`"r,s"\`,
-  \`"r"\`, \`"s"\` instead compute the FOCEI covariance post-fit at the
-  converged estimates (see \[foceiControl()\]); \`""\` skips the
-  covariance step.
+  thetas and Omega elements: a finite-difference Hessian of the
+  importance-sampling objective over fixed common-random-number samples,
+  taken in the parameterization the fit estimates Omega in (the entries
+  of \`chol(Omega^-1)\`) and mapped to the Omega variances and
+  covariances by the delta method. It is stashed as \`\$impCov\` /
+  \`\$impSe\` (\`\$impCovInternal\` in the estimation parameterization,
+  \`\$impCovJacobian\` the map) and installed as the fit covariance when
+  it is positive definite. Otherwise the information is repaired as the
+  FOCEI \`"\|r\|"\` covariance is, by \`sqrtm(info with a warning; when
+  that fails too, a warning says why and no covariance is installed. The
+  theta standard errors match the Hessian-based FOCEI covariance, though
+  the variance of a tightly-determined random effect (an Omega diagonal)
+  can be over-estimated because the fixed samples barely span its prior
+  variation. \`"analytic"\`, \`"r,s"\`, \`"r"\`, \`"s"\` instead compute
+  the FOCEI covariance post-fit at the converged estimates (see
+  \[foceiControl()\]); \`""\` skips the covariance step.
 
 - qr:
 
@@ -910,13 +916,16 @@ impmapControl()
 #>         upper = upper)
 #>     .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, 
 #>         .ret)
+#>     if (isTRUE(control$trustPolish)) {
+#>         .ret <- .bobyqaRestart(fn, lower, upper, .ctl, .ret)
+#>     }
 #>     .ret$x <- .ret$par
 #>     .ret$message <- .ret$msg
 #>     .ret$convergence <- .ret$ierr
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55929c23ae78>
+#> <bytecode: 0x5584788b1900>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

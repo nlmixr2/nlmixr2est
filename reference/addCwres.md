@@ -88,7 +88,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> The following objects are masked from ‘package:nlmixr2est’:
 #> 
 #>     boxCox, yeoJohnson
-#> covMethod="sa" could not be computed; using the linearized FIM
+#> Calculating covariance matrix
 #> Calculating covariance matrix
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
@@ -117,19 +117,19 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9181196 3.2182e-05 0.02600644      0.078     0.872 4.692       0.843
+#> elapsed 0.8241316 2.4056e-05 0.03600882      0.056     0.746 3.637       0.726
 #>         table compress     other
-#> elapsed 0.076    0.144 0.3858417
+#> elapsed 0.071     0.11 0.3178355
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.193 42.0       1.58 (1.08, 2.31)     70.0     -0.106 
+#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0     -0.106 
 #> tcl               1.01 0.0843 8.35       2.74 (2.33, 3.24)     27.2       4.20 
-#> tv         log V  3.45 0.0453 1.31       31.6 (28.9, 34.6)     13.3       9.01 
-#> add.sd           0.696 0.0500 7.18    0.696 (0.598, 0.794)                     
+#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.01 
+#> add.sd           0.696 0.0471 6.77    0.696 (0.604, 0.788)                     
 #>  
-#>   Covariance Type ($covMethod): linFim
+#>   Covariance Type ($covMethod): sa
 #>   Fixed parameter correlations in $cor
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
@@ -180,24 +180,24 @@ if (!inherits(f, "try-error")) {
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
 #> 
 #>         OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> FOCEi 116.79 373.3897 393.5693      -179.6949        397.0815         1.41818
+#> FOCEi 116.79 373.3897 393.5693      -179.6949        459.3324        1.454275
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9181196 3.2182e-05 0.02600644      0.078     0.872 4.692       0.843
+#> elapsed 0.8241316 2.4056e-05 0.03600882      0.056     0.746 3.637       0.726
 #>         table compress     other
-#> elapsed 0.076    0.144 0.3858417
+#> elapsed 0.071     0.11 0.3178355
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.193 42.0       1.58 (1.08, 2.31)     70.0     -0.106 
+#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0     -0.106 
 #> tcl               1.01 0.0843 8.35       2.74 (2.33, 3.24)     27.2       4.20 
-#> tv         log V  3.45 0.0453 1.31       31.6 (28.9, 34.6)     13.3       9.01 
-#> add.sd           0.696 0.0500 7.18    0.696 (0.598, 0.794)                     
+#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.01 
+#> add.sd           0.696 0.0471 6.77    0.696 (0.604, 0.788)                     
 #>  
-#>   Covariance Type ($covMethod): linFim
+#>   Covariance Type ($covMethod): sa
 #>   Fixed parameter correlations in $cor
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 

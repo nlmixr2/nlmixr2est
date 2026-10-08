@@ -288,13 +288,16 @@ mlaplaceControl()
 #>         upper = upper)
 #>     .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, 
 #>         .ret)
+#>     if (isTRUE(control$trustPolish)) {
+#>         .ret <- .bobyqaRestart(fn, lower, upper, .ctl, .ret)
+#>     }
 #>     .ret$x <- .ret$par
 #>     .ret$message <- .ret$msg
 #>     .ret$convergence <- .ret$ierr
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55929c23ae78>
+#> <bytecode: 0x5584788b1900>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

@@ -172,14 +172,19 @@ saemControl(
   (`a <- add.sd*exp(eta.sd); cp ~ add(a)`), which saem fits as
   `cp ~ add(a) + dnorm()`.
 
-  "`r,s`" Uses the sandwich matrix to calculate the covariance, that is:
-  \\R^-1 \times S \times R^-1\\
-
-  "`r`" Uses the Hessian matrix to calculate the covariance as \\2\times
-  R^-1\\
-
-  "`s`" Uses the crossproduct matrix to calculate the covariance as
-  \\4\times S^-1\\
+  "`r,s`", "`r`" and "`s`" compute no R or S matrix in `saem`: all three
+  invert the structural-theta block of the estimation-phase information
+  matrix (`fit$saem$Ha`, the matrix `fim` inverts in full). The result
+  covers the estimated mu-referenced thetas only, conditional on the
+  `Omega` and residual parameters; a theta without a random effect has
+  no row in it and gets no standard error. It is installed as
+  `fit$covMethod == "Ha"`, or `"|Ha|"` when the block was not positive
+  definite and was replaced by `sqrtm(Ha %*% Ha)`. For the
+  finite-difference R and S covariances at the SAEM estimates use
+  `setCov(fit, "r,s")`. An integer `covMethod` is a
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
+  slot: `0` is no covariance, `1`, `2` and `3` are `"r,s"`, `"r"` and
+  `"s"`.
 
   "" Does not calculate the covariance step.
 

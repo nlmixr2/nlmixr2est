@@ -657,7 +657,9 @@ vaeControl(
 - covMethod:
 
   Method for calculating the covariance at the VAE estimates, run
-  through the FOCEi covariance step; the same choices as
+  through the FOCEi covariance step with the interaction of
+  `likelihood`; its finite-difference legs optimize the ETAs again,
+  starting from the encoder's. The same choices as
   [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md):
   `"analytic"` (default), `"r,s"`, `"r"`, `"s"`, or `""` to skip.
 

@@ -74,7 +74,7 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> ✔ done
 #> ℹ calculate uninformed etas
 #> ℹ done
-#> covMethod="sa" could not be computed; using the linearized FIM
+#> Calculating covariance matrix
 #> Calculating covariance matrix
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
@@ -107,20 +107,20 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1016079 3.1242e-05 0.01800632      0.073     0.193 4.705       0.269
+#>              setup   optimize covariance preprocess configure saem postprocess
+#> elapsed 0.08265457 2.3624e-05 0.03200511       0.07     0.153 3.59       0.218
 #>         table compress     other time2 time1
-#> elapsed 0.057    0.145 0.1603545 1.002 1.002
+#> elapsed 0.046    0.118 0.1343167 1.002 1.002
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.193 42.0       1.58 (1.08, 2.31)     70.0     -0.106 
+#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0     -0.106 
 #> tcl               1.01 0.0843 8.35       2.74 (2.33, 3.24)     27.2       4.20 
-#> tv         log V  3.45 0.0453 1.31       31.6 (28.9, 34.6)     13.3       9.01 
-#> add.sd           0.696 0.0500 7.18    0.696 (0.598, 0.794)                     
+#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.01 
+#> add.sd           0.696 0.0471 6.77    0.696 (0.604, 0.788)                     
 #>  
-#>   Covariance Type ($covMethod): linFim
+#>   Covariance Type ($covMethod): sa
 #>   Fixed parameter correlations in $cor
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 

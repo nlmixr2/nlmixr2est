@@ -280,14 +280,16 @@ foceiControl(
 - scaleCband:
 
   Length-2 increasing pair \`c(low, high)\` (default \`c(0.1, 10)\`).
-  Each \`theta\`'s derivative-based scaling constant (\`1/\|init\|\` for
-  a linear parameter, or the transform-specific formula) is kept when it
-  lands inside this band, and otherwise replaced by the parameter's
-  native magnitude \`\|init\|\`. This catches the singular cases –
-  \`1/\|init\|\` blowing up for a small covariate initial estimate,
-  \`log()\` at init \`1\`, \`logit\` at the interval midpoint,
-  \`factorial\`/\`gamma\` at a digamma zero – while leaving the
-  well-scaled common case (and its results) untouched.
+  The derivative-based scaling constant of a linear \`theta\`
+  (\`1/\|init\|\`), or of a transformed one whose transform has no band
+  of its own, is kept when it lands inside this band, and otherwise
+  replaced by the parameter's native magnitude \`\|init\|\`, so a small
+  initial estimate (a covariate coefficient, say) does not get a huge
+  constant. Transformed thetas are guarded to bands of their own
+  transform, which catch \`log()\` at init \`1\`, \`logit\` at the
+  interval midpoint and \`factorial\`/\`gamma\` at a digamma zero. The
+  constants of residual-error parameters and those given in \`scaleC\`
+  are used as they are.
 
 - scaleC:
 
@@ -350,10 +352,20 @@ foceiControl(
 - covSolveTol:
 
   absolute/relative ODE tolerance for the covariance solves – the
-  augmented-sensitivity solves behind `covMethod="analytic"` and the
-  perturbed solves behind the finite-difference methods. `NULL`
-  (default) derives a tight tolerance from `sigdig`; supply a number to
-  override it.
+  perturbed solves behind the finite-difference methods (every probe and
+  the stencil centre it is compared against) and the
+  augmented-sensitivity solves behind `covMethod="analytic"`. `NULL`
+  (default) derives them from the fit's own tolerances: the
+  finite-difference solves use `atol` and `rtol` each times 1e-3, capped
+  at 1e-7 (at the default `sigdig = 3`, `rtol = 1e-7` and
+  `atol = 1e-9`), and the analytic augmented solves use
+  `max(1e-14, min(1e-8, 10^-(sigdig + 6)))`. The inner problems of the
+  finite-difference probes are tightened the same way, whichever
+  `innerOpt` runs them: `trustFterm` and `trustMterm`, `epsilon`
+  (n1qn1), and the `innerLbfgs*` tolerances (lbfgsb3c) each times 1e-3,
+  capped at 1e-9. No derived tolerance goes below 1e-14 unless the fit's
+  own already is. A number sets `atol = rtol = covSolveTol` for both
+  kinds of solve. Estimation itself always runs at the fit's tolerances.
 
 - covFull:
 

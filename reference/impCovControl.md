@@ -1,7 +1,8 @@
 # Options for the importance-sampling covariance in setCov()
 
 Used by `setCov(fit, "imp")`, which runs frozen importance-sampling EM
-iterations at the fit's estimates.
+iterations at the fit's estimates: E-steps only, so the parameters are
+never updated and the covariance is the one at those estimates.
 
 ## Usage
 
@@ -13,7 +14,8 @@ impCovControl(nIter = 1L, isample = 300L, impSeed = 42L)
 
 - nIter:
 
-  frozen EM iterations (`0` is an E-step-only evaluation)
+  frozen EM iterations: E-steps at the fit's estimates, with the
+  proposal adapting between them (`0` and `1` are both a single E-step)
 
 - isample:
 

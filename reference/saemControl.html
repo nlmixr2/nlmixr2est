@@ -196,9 +196,18 @@ typical fitting.</p></dd>
  straight to <code>linFim</code> with a message.  This includes a residual error with
  modeled components (<code>a &lt;- add.sd*exp(eta.sd); cp ~ add(a)</code>), which saem
  fits as <code>cp ~ add(a) + dnorm()</code>.</p>
-<p>"<code>r,s</code>" Uses the sandwich matrix to calculate the covariance, that is: \(R^-1 \times S \times R^-1\)</p>
-<p>"<code>r</code>" Uses the Hessian matrix to calculate the covariance as \(2\times R^-1\)</p>
-<p>"<code>s</code>" Uses the crossproduct matrix to calculate the covariance as \(4\times S^-1\)</p>
+<p>"<code>r,s</code>", "<code>r</code>" and "<code>s</code>" compute no R or S matrix in
+ <code>saem</code>: all three invert the structural-theta block of the
+ estimation-phase information matrix (<code>fit$saem$Ha</code>, the matrix
+ <code>fim</code> inverts in full).  The result covers the estimated mu-referenced
+ thetas only, conditional on the <code>Omega</code> and residual parameters; a
+ theta without a random effect has no row in it and gets no standard error.
+ It is installed as <code>fit$covMethod == "Ha"</code>, or
+ <code>"|Ha|"</code> when the block was not positive definite and was
+ replaced by <code>sqrtm(Ha %*% Ha)</code>.  For the finite-difference R and S
+ covariances at the SAEM estimates use <code>setCov(fit, "r,s")</code>.  An integer
+ <code>covMethod</code> is a <code><a href="foceiControl.html">foceiControl()</a></code> slot: <code>0</code> is no covariance,
+ <code>1</code>, <code>2</code> and <code>3</code> are <code>"r,s"</code>, <code>"r"</code> and <code>"s"</code>.</p>
 <p>"" Does not calculate the covariance step.</p></dd>
 
 

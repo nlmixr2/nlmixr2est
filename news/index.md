@@ -32,6 +32,15 @@
   off by default: across a 372-case FOCEi corpus it moved most fits
   toward their minimum for about 6% more time, but not every fit.
 
+- With `foceiControl(trustPolish = TRUE)` the `"bobyqa"` outer search
+  now restarts once from where it stops, for about twice the outer
+  evaluations. The objective noise that remains can still shrink
+  bobyqa’s trust region early: from 10 starting estimates of `pheno_sd`,
+  2 fits stopped up to 0.05 OFV short, and the polished fit of the
+  [\#1152](https://github.com/nlmixr2/nlmixr2est/issues/1152) model
+  stopped 0.018 short once residual-error parameters kept their own
+  scaling; with the restart every fit reaches the minimum.
+
 - The table of a mixture fit now has a `mixest` column: each subject’s
   fitted mixture component (as in `$mixNum`).
 
@@ -76,12 +85,10 @@
   those values: `setOfv(fit, "foce")` on an additive-error `theo_md`
   model gave 482.5 for a fit whose objective was 458.3.
 
-- `est = "lbfgsb3c"` stopped early at the default `sigdig`: its `factr`
-  was `10^-sigdig / eps`, which tests one step’s objective reduction, so
-  a logistic Emax fit ended ~1.6 OFV short of the optimum. It is now
-  `10^(-sigdig-2) / eps`, matching `foceiControl(lbfgsFactr=)`.
-  `est = "optim"` with `method = "L-BFGS-B"` stopped short the same way
-  and now uses the same rule.
+- `est="nls"` fits a delay differential equation model with its `past()`
+  pre-history. The nls models dropped the `past()` lines, so nls fitted
+  a model with a different history: its estimates were biased, and the
+  residuals it minimized did not match the fit’s own table.
 
 - `est="nls"` started from parameters that are all zero (all-zero
   initial estimates with `nlsControl(scaleTo = 0)`) now solves the model
@@ -90,6 +97,13 @@
   `incorrect number of dimensions`
   (`singular gradient matrix at initial parameter estimates` with
   `algorithm = "default"`).
+
+- `est = "lbfgsb3c"` stopped early at the default `sigdig`: its `factr`
+  was `10^-sigdig / eps`, which tests one step’s objective reduction, so
+  a logistic Emax fit ended ~1.6 OFV short of the optimum. It is now
+  `10^(-sigdig-2) / eps`, matching `foceiControl(lbfgsFactr=)`.
+  `est = "optim"` with `method = "L-BFGS-B"` stopped short the same way
+  and now uses the same rule.
 
 - `lbfgsb3cControl(maxit=)` was documented but dropped, so
   `est="lbfgsb3c"` always used lbfgsb3c’s own limit of 1000 evaluations;
@@ -289,13 +303,6 @@
   FOCE/FOCE+/FOCEI/AGQ fits, using the existing sensitivity pool. Fast
   `nlminb` fits used it automatically.
 
-- `setOfv(fit, "laplace<n>")` and `setOfv(fit, "gauss<n>_<sd>")` on a
-  saem fit whose environment holds no `adjObf` now take it from the
-  fit’s control, as `setOfv(fit, "imp")` does, instead of stopping with
-  `arguments imply differing number of rows`. Both now read the fit’s
-  own control (`$control`); the imp objective read `$foceiControl`,
-  which never holds `adjObf`.
-
 - The FOCEi-family outer optimizer now scales each parameter by its own
   scaling constant when a fixed theta (with `literalFix = FALSE`) or a
   regression-updated theta (`mfocei`, `ifocei` and the other
@@ -309,6 +316,120 @@
   They were written over the adaptive quadrature nodes, changing an
   `agq` objective, and a long enough vector past the end of the buffer,
   crashing the fit.
+
+- `setOfv(fit, "laplace<n>")` and `setOfv(fit, "gauss<n>_<sd>")` on a
+  saem fit whose environment holds no `adjObf` now take it from the
+  fit’s control, as `setOfv(fit, "imp")` does, instead of stopping with
+  `arguments imply differing number of rows`. Both now read the fit’s
+  own control (`$control`); the imp objective read `$foceiControl`,
+  which never holds `adjObf`.
+
+#### Parameter scaling
+
+- `ui$scaleCtheta` (and `ui$scaleCnls`) now give one scaling constant
+  per estimated theta. For a model with random effects the values were
+  followed by an `NA` for each of them, and a `foceiControl(scaleC=)`
+  longer than the thetas was returned whole.
+
+- The FOCEi family now scales each `theta` by the constant R chooses for
+  it (the one `ui$scaleCtheta` shows and the nlm family uses): a
+  transformed parameter’s constant inside that transform’s own band
+  (21.3 for `expit(tcl, 1, 100)` at `tcl = 3`), `0.5*|est|` for a
+  residual-error parameter, or the value given in
+  `foceiControl(scaleC=)`. FOCEi guarded every theta’s constant to
+  `scaleCband` a second time and replaced any of these outside the band
+  by `|init|` (a `prop.sd` of `0.1` was scaled by `0.1`, not `0.05`),
+  which also turned both zero-gradient retries with `scaleC0` into
+  `|init|`. Fits with such parameters take a different path: the
+  warfarin model with proportional and additive error now ends at an
+  objective of 223.25 instead of 223.58.
+
+- `foceiControl(normType = "mean")`, `"std"` and `"len"` now take the
+  mean, standard deviation and length over every FOCEi parameter; they
+  left out the last one (the last omega parameter), as the nlm family
+  did before [\#995](https://github.com/nlmixr2/nlmixr2est/issues/995).
+  FOCEi now uses the nlm family’s normalization, so initial estimates
+  that are all zero run without normalization instead of with a scale of
+  about `1e-8`.
+
+- `$scaleInfo` of a FOCEi-family fit lists each parameter’s own
+  first-gradient step search (“Initial Gradient” and the forward and
+  central steps) when a fixed theta (`literalFix = FALSE`) or a
+  regression-updated theta (`mfocei` and the other mu-referenced
+  variants) comes before it. Each row showed the search of the next
+  parameter the optimizer moves, and the last row none.
+
+- `$scaleInfo` lists the covariance step’s search of each parameter
+  (“Covariance Gradient” and its steps) in that parameter’s row. The
+  rows were read by the index of the covariance step’s own parameters,
+  so a fixed theta (`literalFix = FALSE`) before the others shifted
+  every later theta’s search up one row.
+
+- With `foceiControl(diagXform = "log")` or `"identity"` the FOCEi outer
+  problem scales the first omega parameter like the other diagonals
+  (`1/2`, or `1/(2|init|)`); it took the default of a linear theta,
+  `1/|init|`.
+
+- A FOCEi theta reset (`foceiControl(resetThetaP=)`,
+  `resetThetaFinalP=`, and the reset after a zero gradient) now restarts
+  the fit from the values it reset to, with each eta’s drift moved into
+  the theta that eta belongs to. The reset took the current thetas
+  through the parameter scaling a second time (with another parameter’s
+  constants), moved every eta’s drift into the first theta, and a
+  restart after the first evaluation went back to the initial estimates
+  and the etas from before the reset, with its bounds scaled twice. A
+  model whose etas drift at the initial estimates was driven to an
+  objective of 4.5e231 with `resetThetaP = 0.2`; it now reaches 160.8,
+  and a final reset (`resetThetaFinalP`) that stopped with “Starting
+  values violate bounds” now restarts.
+
+- A theta reset that would put a mu-referenced theta back at the bound
+  an earlier reset of the same fit clamped it to is skipped, with a
+  warning, and the optimization goes on. Once resets took effect, a
+  theta whose optimum lies past its bound was reset there each time the
+  outer optimizer probed it inward, until the fit stopped with “Maximum
+  number of theta resets (10) exceeded”.
+
+- A theta reset no longer fires when every eta whose drift triggers it
+  belongs to a theta already pinned at its bound. It went ahead whenever
+  another eta could take any shift, however small, so the restart’s
+  first evaluation fired it again at the same point until the restart
+  limit.
+
+- When a fixed theta (`literalFix = FALSE`) or a regression-updated
+  theta comes before others, each FOCEi parameter now gets its own bound
+  code for the L-BFGS-B outer optimizers (`outerOpt = "lbfgsb3c"`,
+  `"L-BFGS-B"`) and for the covariance step’s boundary check. A
+  parameter with an upper bound took its code from the parameter after
+  it, and the last one from an unrelated buffer: omega parameters lost
+  their lower bound, and a theta estimated on its lower bound got a
+  covariance (`"r,s (full)"`) instead of the boundary message.
+
+- The FOCEi outer gradient searches a zero derivative again with
+  `foceiControl(scaleC0=)` only for `scaleType = "nlmixr2"` (the only
+  scaling that uses the constant) and only at the parameter’s starting
+  value. At any other point the new constant moved the parameter under
+  the outer optimizer and the search differenced about the objective of
+  the old point; that happens for a repeated Gill search
+  (`repeatGillMax`), on the restart after a theta reset and with a
+  custom outer optimizer. When neither retry finds a slope, the
+  parameter keeps its own scaling constant; it kept `1/scaleC0` (`1e-5`
+  by default) for the rest of the fit, which left it all but unable to
+  move.
+
+- The covariance step of a FOCEi-family fit without outer iterations
+  (`maxOuterIterations = 0`, which includes the second pass of `fo` and
+  `foi`) checks the estimates against their own bounds. It took bounds
+  that were never put on the optimizer’s scale back from that scale, so
+  it missed an estimate on its bound (a `tcl` of 1.1 with a lower bound
+  of 1.0999 was compared with 2.77) and could flag one far from it.
+
+- [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
+  (and the FOCEi-family controls built on it) now requires `scaleCmin`,
+  `scaleCmax`, `scaleC` and `scaleC0` to be finite and above 0, with
+  `scaleCmin < scaleCmax`. `scaleCmin = 0` let a `scaleC` of 0 through,
+  which stopped the fit with `missing value where TRUE/FALSE needed`,
+  and `scaleCmax = Inf` let an infinite one through.
 
 #### Covariance
 
@@ -361,9 +482,85 @@
   `saemControl(covMethod = "linFim")` now warns when the linearization
   cannot be used and the SAEM information matrix is inverted instead,
   and when no covariance can be computed at all; both were silent. That
-  inverted information matrix is now labelled `"fim"`; it had no
+  inverted information matrix is now labelled `"Ha"`; it had no
   `covMethod`. `covMethod = "analytic"` falling back to `"linFim"` is
   now a warning, kept in `$runInfo`, rather than a message.
+- `saemControl(covMethod = "r,s")` (and `"r"`, `"s"`) computes no R or S
+  matrix: it inverts the theta block of SAEM’s estimation-phase
+  information `$saem$Ha`. That covariance is now installed as `"Ha"`
+  (`"|Ha|"` when
+  [`sqrtm()`](https://nlmixr2.github.io/nlmixr2est/reference/sqrtm.md)
+  repaired the block) instead of with no label, and its rows follow the
+  order the SAEM kernel lays them out in. With a
+  [`fix()`](https://rdrr.io/r/utils/fix.html)ed theta, or with a theta
+  without a random effect ahead of one with a random effect, the
+  standard errors went to the wrong parameters
+  ([\#906](https://github.com/nlmixr2/nlmixr2est/issues/906)): on
+  `theo_sd` with `tcl` fixed, `tv` got the standard error of `tcl`. A
+  theta without a random effect has no information of its own in that
+  block, so it now gets no standard error, with a warning, instead of a
+  near-zero one. The same matrix is what an unusable
+  `covMethod = "linFim"` falls back to; it carries the same label there
+  and no longer borrows the linearized FIM’s variance block. Every SAEM
+  covariance is now checked (finite, symmetric, positive definite on its
+  identified rows) before it is installed, and an integer `covMethod` is
+  read as a
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
+  slot, so `covMethod = 0L` computes no covariance (it inverted `Ha`).
+- The Omega rows of the SAEM covariances (`"sa"`, `"fim"`, `"linFim"`,
+  and the linearized variance block spliced into `"sa"`/`"fim"`) now
+  belong to the random effects they are named after. They were named in
+  the order the etas are declared in
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html), but
+  SAEM orders its variance parameters by the thetas the etas belong to,
+  so declaring `eta.v` before `eta.ka` reported the standard error of
+  the variance of `eta.ka` as that of `eta.v`. A model with a random
+  effect that is not mu-referenced (`cl <- exp(tcl) * (1 + eta.cl)`) is
+  such a model whatever the declaration order, and with it a theta
+  without a random effect made `"sa"`/`"fim"` fall back to `"linFim"`;
+  they are now computed. When the random effects cannot be matched one
+  to one to SAEM’s variance parameters, the Omega rows are left out with
+  a warning; they were left out silently.
+- When a SAEM `"sa"` or `"fim"` covariance falls back to `"linFim"`, the
+  message says why (for example
+  `the covariance is not positive definite` or
+  `the information matrix is singular`).
+- The per-observation log-likelihoods of an `imp`, `impmap` or `qrpem`
+  fit (`$llikObs`, the `nlmixrLlikObs` column) with the default
+  `covMethod = "imp"` are those at the estimates. They were those of the
+  last importance sample of the last finite-difference evaluation of the
+  covariance step: on `theo_sd` they differed from the same fit without
+  a covariance step by up to 7.6 (`impmap`) and 8.1 (`imp`)
+  log-likelihood units.
+- The `imp`/`impmap`/`qrpem` covariance (`covMethod = "imp"`, the
+  default) reports its Omega rows as the variances and covariances they
+  are named after (`om.<eta>`, `cov.<eta>.<eta>`). They held the
+  parameters the fit estimates Omega in (the entries of
+  `chol(Omega^-1)`, a square-root diagonal by default) and are now
+  mapped by the delta method: on `theo_sd` the `impmap` standard errors
+  of the Omega variances go from 0.153, 0.240, 0.393 (`eta.ka`,
+  `eta.cl`, `eta.v`) to 0.196, 0.036, 0.010, in line with the other
+  methods. `$impCov`/`$impSe` hold the mapped matrix, `$impCovInternal`
+  the one in the estimation parameterization and `$impCovJacobian` the
+  map. The matrix is installed as `"imp"` only when it is positive
+  definite: `est = "imp"` on `theo_sd` installed one with a negative
+  variance for the `tka` estimate (standard error `NaN`). An information
+  matrix that is not positive definite is now repaired as the FOCEi
+  `"|r|"` covariance is, by `sqrtm(info %*% info)`, and installed as
+  `"|imp|"` with a warning; when even that fails, a warning says why and
+  no covariance is installed.
+- `setCov(fit, "sa")`, `setCov(fit, "imp")`, a deferred
+  `covMethod = "sa"` or `"imp"` and the default `npag`/`npb` covariance
+  now compute the covariance at the fit’s estimates, as
+  [`saControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saControl.md)/[`impCovControl()`](https://nlmixr2.github.io/nlmixr2est/reference/impCovControl.md)
+  say. The SAEM run re-estimated every parameter during its
+  `nBurn`/`nEm` warm-up and the importance-sampling run took a full EM
+  step (`impCovControl(nIter = 1)`), so the covariance was that of
+  nearby estimates: on `theo_sd`, `tka` 0.466 became 0.463 (SAEM, 40
+  warm-up iterations) and 0.455 (three EM steps). The SAEM warm-up now
+  holds every population parameter (mixture proportions excepted) and
+  only equilibrates the chains; the importance-sampling iterations are
+  E-steps only.
 - The printed parameter table of a full-Bayes `fbvi`/`emvi` fit now
   shows the standard errors of the variational covariance (only
   `$parFixedDf` had them), its confidence interval uses the fit’s `ci`,
@@ -475,6 +672,92 @@
   (`hessEpsLlik`, `gillKcovLlik`, `gillStepCovLlik`, `gillFtolCovLlik`,
   `rmatNormLlik`, `smatNormLlik`) no longer sets the option of the same
   name without `Llik` to its value as well.
+- The finite-difference covariance of the FOCEi family
+  (`covMethod = "r,s"`, `"r"`, `"s"` and their `covFull` shapes) now
+  differentiates the marginal objective the same way in every leg: each
+  leg optimizes the ETAs again, starting from the ETAs the fit converged
+  to. The legs used to start from wherever the previous leg had left
+  them, and the full (`covFull = TRUE`) stage restarted every probe at
+  ETA = 0, so the result depended on the order the legs ran in. The
+  centre of the R matrix’s stencil is now evaluated the same way as the
+  legs. It was the final objective, whose ETAs another procedure had
+  optimized (with `covSolveTol`, at another ODE tolerance too), and that
+  offset pulled every diagonal of R down: on `theo_sd` at the initial
+  estimates all of them were negative. With tight covariance solves and
+  inner problem (`covSolveTol = 1e-9`, `trustFterm = trustMterm = 1e-8`)
+  the finite-difference R now matches the analytic observed information
+  within 1% on `theo_sd`; the theta-only `"r"` standard error of `tka`
+  was 0.11 there, against 0.19. At the default tolerances (ODE
+  `rtol = 1e-3`) the finite-difference covariance of an ODE model like
+  this one is dominated by numerical noise, before and after this
+  change, so its default standard errors move by about as much as that
+  noise.
+- `setCov(fit, "r,s")`, `"r"`, `"s"` (and their `" (full)"` shapes) and
+  `getVarCov(fit, force = TRUE)` now compute the covariance of the fit’s
+  marginal likelihood, as the estimation-time covariance of the same
+  name does: every finite-difference leg optimizes the ETAs again,
+  starting from the fit’s, with the fit’s own `interaction`. The result
+  is the covariance of a FOCEi fit with no outer iterations started from
+  the fit’s ETAs; on a saem or nlme fit that likelihood is FOCEI. They
+  held the ETAs fixed and used `interaction = 0` (FOCE), and on
+  `theo_sd` the structural standard errors came out 2 to 25 times too
+  small (`setCov(fit, "r,s")` gave `tka` 0.0076 where the analytic
+  covariance gives 0.19).
+- The post-fit covariance of the `mfocei`/`ifocei`-style families, and
+  of nlme, imp/impmap/qrpem and np fits that request
+  `covMethod = "r,s"`, `"r"` or `"s"`, now optimizes the ETAs again in
+  every finite-difference leg. It held them at the fit’s ETAs, and on
+  `theo_sd` the structural standard errors came out 4 to 12 times too
+  small. A requested `"analytic"` covariance that is out of its scope (a
+  `linCmt()` model, for example) falls back to this finite-difference
+  `"r,s"`, so the fallback is the marginal covariance too; a warning
+  names the covariance installed instead.
+- vae, emvi and fbvi now compute their FOCEi covariance
+  (`covMethod = "r,s"`, `"r"`, `"s"` or `"analytic"`, and emvi’s default
+  `"vi"`) after their output step, at their estimates: the covariance of
+  the marginal likelihood of their `likelihood` (FOCEI by default), with
+  the ETAs optimized again, from the method’s own, in every
+  finite-difference leg. It was computed in the output step with the
+  encoder or variational means held fixed and `interaction = 0`, and on
+  `theo_sd` the structural standard errors came out 3 to 9 times too
+  small. The reported objective is unchanged (the output step’s FOCE
+  objective at the method’s ETAs). `fit$foceiControl` of a vae, emvi or
+  fbvi fit now carries its likelihood.
+- `covMethod = "analytic"` on a saem fit, and `setCov(fit, "analytic")`
+  on saem, nlme, vae, emvi and fbvi fits, now assemble the observed
+  information with the `interaction` of the method’s likelihood (FOCEI
+  unless its `likelihood` says otherwise). They took `interaction = 0`
+  from the control of the output step that finalizes those fits, so the
+  FOCE formulas were used; with a proportional residual error the
+  standard errors differ (the `add.sd` standard error of a
+  combined-error `theo_sd` saem fit was 46% larger).
+- A FOCEi-family fit with `maxInnerIterations = 0` (for example
+  `posthocControl(maxInnerIterations = 0, etaMat = ...)`, or `fo`/`foi`
+  with `posthoc = FALSE`) still holds its ETAs fixed in its
+  finite-difference covariance, as asked, and now warns that this
+  covariance is conditional on those ETAs and that
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  computes the covariance of the marginal likelihood.
+- The finite-difference covariance of the FOCEi family (and
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md),
+  `getVarCov(force = TRUE)`, the post-fit recomputes and the
+  vae/emvi/fbvi covariance) now solves its probes, and the centre they
+  are compared with, at tolerances derived from the fit’s: each ODE
+  tolerance times 1e-3, capped at 1e-7, and the inner optimizer’s
+  tolerances (`trustFterm`/`trustMterm`, n1qn1’s `epsilon`, lbfgsb3c’s
+  `innerLbfgs*`) times 1e-3, capped at 1e-9 (at the default
+  `sigdig = 3`: `rtol = 1e-7`, `atol = 1e-9`, inner 1e-9).
+  `covSolveTol = NULL` used to leave them at the estimation’s tolerances
+  (`rtol = 1e-3`, inner 1e-5), where the probes differenced numerical
+  noise: on `theo_sd` the theta-only `"r"` standard error of `tka` was
+  0.47 against an analytic 0.19 and is now 0.190; every structural
+  standard error of the theta-only `"r"` covariance (native,
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  and the `mfocei` recompute) is within 4% of the analytic one. A number
+  for `covSolveTol` still sets the ODE tolerance. Estimation is
+  unchanged (the objective, estimates, ETAs and tables are identical);
+  the covariance step takes 2 to 3 times longer on `theo_sd` and 5 to 8
+  times longer on the warfarin example model.
 
 ## nlmixr2est 7.1.0
 

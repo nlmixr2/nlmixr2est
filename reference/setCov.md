@@ -2,12 +2,13 @@
 
 Switches a completed fit's covariance to `method`. A previously computed
 covariance is re-installed from the cache; otherwise it is recomputed at
-the converged estimates: `"r,s"`/`"r"`/`"s"` and `"analytic"` on a
-zero-iteration FOCEI model, and `"sa"` (SAEM Louis FIM) / `"imp"`
-(importance-sampling Monte-Carlo) via the decoupled recompute engine
-(the latter two require a mixed-effects fit). When a covariance cannot
-be computed it is left unchanged (it is never silently downgraded to
-`"r,s"`).
+the converged estimates: `"r,s"`/`"r"`/`"s"` by the finite-difference
+covariance step of the FOCEI family, `"analytic"` as the analytic
+observed information at the fit's estimates and ETAs, and `"sa"` (SAEM
+Louis FIM) / `"imp"` (importance-sampling Monte-Carlo) via the decoupled
+recompute engine (the latter two require a mixed-effects fit). When a
+covariance cannot be computed it is left unchanged (it is never silently
+downgraded to `"r,s"`).
 
 ## Usage
 
@@ -67,6 +68,14 @@ setCov(fit, method, control = impCovControl(), ...)
 Fit object with covariance updated
 
 ## Details
+
+The finite-difference covariances differentiate the fit's marginal
+likelihood, in the fit's own approximation (its `interaction`): at every
+finite-difference step the ETAs are optimized again, starting from the
+fit's ETAs. So `setCov(fit, "r,s")` reproduces the `"r,s"` covariance a
+FOCEI-family fit computes during estimation, and on a fit of another
+method (saem, nlme, vae, emvi, fbvi) it is that covariance at the
+method's estimates.
 
 Every focei covariance comes in two shapes (see `covFull` in
 [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)),

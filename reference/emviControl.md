@@ -289,60 +289,23 @@ emviControl(
 
 - covMethod:
 
-  Method for calculating covariance. In this discussion, R is the
-  Hessian matrix of the objective function. The S matrix is the sum of
-  each individual's gradient cross-product (evaluated at the individual
-  empirical Bayes estimates).
+  Covariance of the population estimates.
 
-  "`sa`" (default) Use the stochastic-approximation Fisher Information
-  Matrix. After estimation, a dedicated covariance phase (`nSaCov`
-  iterations) holds the parameters at the converged estimate and keeps
-  resimulating the individual parameters, Monte-Carlo averaging the
-  Louis observed-information integrand into a converged FIM decoupled
-  from the cooling schedule (the approach used by Monolix; Kuhn &
-  Lavielle 2005). Always includes every estimated population parameter
-  (theta, the `Omega` diagonal variances, and residual).
+  "`vi`" (default) For a full-Bayes fit (`fbvi`,
+  `pointEstimate = FALSE`) the population variational covariance; a
+  point-estimate fit (`emvi`) has no population variational block and
+  uses the FOCEI `"r,s"` covariance.
 
-  "`analytic`" Compute the FOCEI analytic observed-information
-  covariance at the converged SAEM estimates. When the model is out of
-  analytic-covariance scope (e.g. `linCmt()`, a non-normal likelihood,
-  or a non-SD IOV parameterization) or the result is not positive
-  definite, it falls back to the linearized Fisher information
-  (`linFim`) with a message.
-
-  "`linFim`" Use the Linearized Fisher Information Matrix to calculate
-  the covariance.
-
-  "`fim`" Use the Fisher Information Matrix accumulated during SAEM
-  estimation to calculate the covariance. Like `sa` it inverts the
-  observed information to a full theta + `Omega` diagonal + residual
-  covariance, but uses the (noisier) estimation-phase matrix rather than
-  a dedicated cov phase.
-
-  For both `fim` and `sa` the simulation-based Fisher information covers
-  the structural theta, the `Omega` diagonal variances, and additive
-  residual error. Off-diagonal `Omega` covariances and
-  proportional/combined residual error are not estimated reliably by the
-  simulation FIM (the complete-data correction is unstable when
-  between-subject variability dominates the residual), so those
-  variance-block standard errors are spliced in from the linearized FIM
-  (`linFim`).
-
-  Neither is used for a general log-likelihood endpoint (`ll()`), which
-  has no residual error to anchor the complete-data correction; such a
-  model goes straight to `linFim` with a message. This includes a
-  residual error with modeled components
-  (`a <- add.sd*exp(eta.sd); cp ~ add(a)`), which saem fits as
-  `cp ~ add(a) + dnorm()`.
-
-  "`r,s`" Uses the sandwich matrix to calculate the covariance, that is:
-  \\R^-1 \times S \times R^-1\\
-
-  "`r`" Uses the Hessian matrix to calculate the covariance as \\2\times
-  R^-1\\
-
-  "`s`" Uses the crossproduct matrix to calculate the covariance as
-  \\4\times S^-1\\
+  "`analytic`", "`r,s`", "`r`" and "`s`" run the FOCEI covariance step
+  (see
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md))
+  at the estimates, starting the individual estimates at the variational
+  posterior means. When it gives no covariance, a full-Bayes fit
+  installs the population variational covariance instead, with a
+  message. An integer `covMethod` is a
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
+  slot: `0` is no covariance, `1`, `2` and `3` are `"r,s"`, `"r"` and
+  `"s"`.
 
   "" Does not calculate the covariance step.
 
