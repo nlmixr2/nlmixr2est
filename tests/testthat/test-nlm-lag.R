@@ -92,7 +92,7 @@ nmTest({
     # d(lag(c0))/d(theta) = lag(d(c0)/d(theta)); no theta is finite-differenced
     .s <- suppressMessages(rxode2::rxode2(.lagMod)$nlmEnv)
     expect_equal(.s$.eventTheta, rep(0L, 4))
-    expect_true(any(grepl("lag(rx_lsens_1_1_)", .s$..nlmS, fixed = TRUE)))
+    expect_true(any(grepl("lag(rx_lsens_1_THETA_1_)", .s$..nlmS, fixed = TRUE)))
     .r <- .lagGradFd(.lagMod)
     expect_equal(.r$grad, .r$fd, tolerance = 5e-3)
     # the gradient methods reach the optimum least squares (nls) finds
@@ -150,9 +150,9 @@ nmTest({
     .s <- new.env(parent = emptyenv())
     .s$..laggedVars <- "c.0"
     .s$..lhs <- c("cx0=1", "c.0=2*central")
-    expect_identical(.nlmFamilyLagDefs(.s), "c.0=2*central")
+    expect_identical(.foceiLagDefs(.s), "c.0=2*central")
     .s <- suppressMessages(rxode2::rxode2(.lagMod)$nlmEnv)
-    expect_identical(.nlmFamilyLagDefs(.s), "c0=exp(-THETA[3])*central")
+    expect_identical(.foceiLagDefs(.s), "c0=exp(-THETA[3])*central")
   })
 
   test_that("the predictions of a lagged model depend on the thetas it uses (issue 1140)", {
