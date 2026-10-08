@@ -45,6 +45,15 @@
   fit.  A step is now searched again, starting from the old one, once theta
   leaves the span its search probed along any coordinate (#1175).
 
+- FOCEi-family eta sensitivities (and the imp/impmap theta sensitivities)
+  now chain through `lag()`/`diff()` of a calculated variable, so a model
+  whose random effect reaches the prediction only that way no longer errors
+  with "none of the model predictions depend on a random effect", and one
+  where it also enters directly gets the full inner gradient.  An ODE that
+  uses such a variable now compiles, and `lag()` of a variable inside an ODE
+  gives a clear error.  The analytic `fast=TRUE` gradient and analytic
+  covariance fall back to finite differences for these models (#1176).
+
 - `$etaMat` of a fit with inter-occasion variability now holds the occasion
   ETAs as the model estimated them; it held them multiplied by the occasion
   standard deviation (the scale of `$iov`).  `setOfv()`, `addCwres()`,
