@@ -11684,7 +11684,9 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   auto sDelta = [&](int k) {
     double d = doForward ? std::fabs(theta[k])*op_focei.rEps[k] + op_focei.aEps[k] :
       std::fabs(theta[k])*op_focei.rEpsC[k] + op_focei.aEpsC[k];
-    if (smatNorm) d /= _safe_sqrt(1+std::fabs(min2(op_focei.initObjective, op_focei.lastOfv)));
+    // the centre value (covEtaStartF0), not the fit's initial objective: a refit's
+    // initial objective is its value at the estimates, by another procedure
+    if (smatNorm) d /= _safe_sqrt(1+std::fabs(op_focei.lastOfv));
     return d;
   };
   // A central leg pair the R stencil already evaluated (_covThetaAxis) is read, not solved.
