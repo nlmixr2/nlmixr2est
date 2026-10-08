@@ -461,6 +461,9 @@
   if (.foceiUsesLinCmt(ui)) {
     return(NULL)
   } # linCmt(): no symbolic state sensitivities
+  if (.foceiUsesLagVar(ui)) {
+    return(NULL)
+  } # lag() of a variable: the augmented model does not chain through it
   if (!.analyticGradAllowsBoundedTr(ui, caller)) {
     return(NULL)
   }
@@ -736,6 +739,9 @@
   if (.foceiUsesLinCmt(ui)) {
     return(NULL)
   } # linCmt(): no symbolic state sensitivities
+  if (.foceiUsesLagVar(ui)) {
+    return(NULL)
+  } # lag() of a variable: the augmented model does not chain through it
   if (!.analyticGradAllowsBoundedTr(ui, caller)) {
     return(NULL)
   }
@@ -801,7 +807,7 @@
       } # Gaussian -> (f,R) path
       # linCmt() anywhere (not only as the endpoint): no 2nd-order sensitivities, and
       # rxode2 >= 5.1.8 drops those terms silently instead of failing the build (#1103).
-      if (.foceiUsesLinCmt(ui)) {
+      if (.foceiUsesLinCmt(ui) || .foceiUsesLagVar(ui)) {
         return(FALSE)
       }
       if (!.analyticGradAllowsBoundedTr(ui, caller)) {

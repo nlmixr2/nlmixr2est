@@ -175,7 +175,9 @@ will calculate tables. By default this is \code{TRUE}}
 
 \item{covMethod}{Method for calculating the covariance.  \code{"r"} (the
 default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"n1qn1"} uses
-the optimizer's own Hessian; \code{""} skips the covariance step.}
+the optimizer's own Hessian, the quasi-Newton approximation n1qn1 built
+along its path (\code{H}), not a finite-difference Hessian at the
+estimates; \code{""} skips the covariance step.}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective

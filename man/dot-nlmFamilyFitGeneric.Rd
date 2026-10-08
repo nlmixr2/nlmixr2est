@@ -13,7 +13,7 @@
   returnFlag,
   objective = NULL,
   message = function(fit) fit$message,
-  emitFitWarnings = FALSE,
+  emitFitWarnings = TRUE,
   extra = "",
   adjustOutput = TRUE,
   postSetup = NULL
@@ -43,8 +43,10 @@ the name of the fit's minimized -log-likelihood, which is doubled; when
 
 \item{message}{`function(fit)` returning the `$message` (default `fit$message`)}
 
-\item{emitFitWarnings}{when TRUE, re-emit the warnings collected from
-`fitModel` via `warning()` (nlm does this; the others do not)}
+\item{emitFitWarnings}{when TRUE (the default), re-emit the warnings
+collected from `fitModel` (the optimizer, the covariance step and
+`nlmWarnings()`) via `warning()`, so they reach the fit's `$runInfo`;
+`FALSE` drops them}
 
 \item{extra}{`$extra` print string, or a `function(control)` returning it}
 

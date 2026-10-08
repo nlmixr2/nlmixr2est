@@ -633,7 +633,7 @@ nmTest({
     expect_true(is.na(f$parFixedDf["tka", "SE"]))
     expect_true(is.finite(f$parFixedDf["tcl", "SE"]))
     expect_true(any(grepl(
-      "\"Ha\" covariance: no SE for non-mu-referenced theta(s) tka",
+      "no \"Ha\" SE for non-mu-referenced theta(s) tka",
       f$runInfo,
       fixed = TRUE
     )))
