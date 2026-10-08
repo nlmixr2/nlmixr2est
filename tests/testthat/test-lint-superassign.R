@@ -3,9 +3,9 @@
 # The parse data is inspected so strings and comments are not counted.
 test_that("no R source file uses superassignment", {
   .rDir <- testthat::test_path("..", "..", "R")
-  skip_if_not(dir.exists(.rDir), "package source tree not available")
+  # an installed package (covr, R CMD check) has an R/ directory without sources
   .files <- list.files(.rDir, pattern = "\\.[Rr]$", full.names = TRUE)
-  expect_gt(length(.files), 0L)
+  skip_if(length(.files) == 0L, "package source tree not available")
   .hits <- character(0)
   for (.f in .files) {
     .pd <- utils::getParseData(parse(.f, keep.source = TRUE))
