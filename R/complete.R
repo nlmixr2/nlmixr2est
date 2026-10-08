@@ -5,6 +5,7 @@
   cov = "Covariance of fixed effects",
   covList = "Other calculated covariances, swappable with setCov()",
   covOptions = "Options each covariance was computed with (see setCov())",
+  covStore = "Finite-difference R, S and steps of each covariance step, which setCov() reuses",
   covMethod = "Covariance Method for fixed effects",
   etaObf = "ETAs and their individual objective function contribution (if applicable)",
   mixList = "List of ETAs and posterior probabilities per mixture component (mixture models only)",
