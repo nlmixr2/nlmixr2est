@@ -5,6 +5,10 @@ cholSE_ <- function(A, tol) {
     .Call(`_nlmixr2est_cholSE_`, A, tol)
 }
 
+cholSEpd_ <- function(A, tol) {
+    .Call(`_nlmixr2est_cholSEpd_`, A, tol)
+}
+
 #' Expand Gradient for nlme
 #'
 #' @param state is the state to expand
@@ -445,16 +449,8 @@ nlmGetScaleC <- function(theta, to) {
     .Call(`_nlmixr2est_nlmGetScaleC`, theta, to)
 }
 
-nlmSolveGradR <- function(theta) {
-    .Call(`_nlmixr2est_nlmSolveGradR`, theta)
-}
-
 solveGradNls <- function(theta, returnType) {
     .Call(`_nlmixr2est_solveGradNls`, theta, returnType)
-}
-
-nlmSolveGradHess <- function(theta) {
-    .Call(`_nlmixr2est_nlmSolveGradHess`, theta)
 }
 
 nlmLbfgsb3cFit <- function(theta, lower, upper, control) {

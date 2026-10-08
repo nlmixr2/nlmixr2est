@@ -550,12 +550,15 @@
   numbers describe that covariance.
 - The nlm-family covariance (`bobyqa`, `uobyqa`, `newuoa`, `optim`, `nlminb`,
   `nlm`, `n1qn1`, `lbfgsb3c`, `trust`, `nls` with `"LM"`) now repairs a
-  Hessian that is not positive definite as intended, as `"|r|"`
-  (`sqrtm(R %*% R)`) or, failing that, `"r+"` (the nearest positive-definite
-  matrix), with a warning in `$runInfo`.  It used to invert every Hessian
-  after an unreported Schnabel-Eskow perturbation and label it `"r"`, which
-  gave several parameters of the derivative-free fits of `theo_sd` the same
-  standard error.  A non-finite or numerically singular Hessian (including the
+  Hessian that is not positive definite as the FOCEi covariance step repairs
+  its R matrix, under the same labels: `"r+"` (the Schnabel-Eskow modified
+  Cholesky factor, when every diagonal it adds is within `foceiControl()`'s
+  default `cholAccept`; this includes a positive-definite but nearly singular
+  Hessian) or, failing that, `"|r|"` (`sqrtm(R %*% R)`), with a warning in
+  `$runInfo`.  `"r"` means the Hessian was factored as it is.  It used to
+  invert every Hessian after an unreported Schnabel-Eskow perturbation and
+  label it `"r"`, which gave several parameters of the derivative-free fits
+  of `theo_sd` the same standard error.  A non-finite or numerically singular Hessian (including the
   zero one of a failed `trust` solve) gives `covMethod = "failed"` with a
   warning instead of a covariance; either repair of a singular one would
   invert its rounding noise.
@@ -703,6 +706,152 @@
   ODE tolerance.  Estimation is unchanged (the objective, estimates, ETAs and
   tables are identical); the covariance step takes 2 to 3 times longer on
   `theo_sd` and 5 to 8 times longer on the warfarin example model.
+
+### nlm family
+
+- The gradient of the nlm-family methods (`nlm`, `nlminb`, `optim`, `n1qn1`,
+  `lbfgsb3c`, `trust`, `nls`) finite-differences each subject with that
+  subject's own step where it needs one (censored observations, or the dosing
+  parameters under `eventSens = "fd"`).  Every subject used the first
+  subject's step, which is 0 when the first subject needs none: with
+  M3/M4-censored data in which only later subjects are censored every
+  gradient was NaN, `nlminb` stopped with `NA/NaN gradient evaluation` and
+  `nlm` returned its initial estimates.  The steps are also searched again
+  once the parameter scaling is set, instead of being kept from the trial
+  gradient that sets it.
+
+- The Shi (2021) finite-difference step search no longer returns a wrong
+  derivative or step after a probe whose objective is not finite.  When the
+  outer central probe (`x + 3h`) failed, the central difference at `h` was
+  divided by the shrunken step and came out 1.5 times too large; when the
+  outer forward probe (`x + 4h`) failed, the step grew 3.5 times (into the
+  region that failed) and the forward difference at `h` was divided by it;
+  and a forward difference taken after a failed backward probe was returned
+  with an earlier step.  This search gives the finite-difference gradient
+  columns of the nlm family and the FOCEi family's finite-difference
+  gradients and Hessians.
+
+- The finite-difference gradient columns of the nlm family now difference the
+  prediction model against its own value at the estimate.  The base point
+  came from the sensitivity model, a solve of a different ODE system, so a
+  forward difference (the default of `n1qn1`, `lbfgsb3c` and `trust`) also
+  divided the difference between the two solves by the step: 0.3% of the
+  gradient on `theo_sd`.
+
+- `nlmControl()`, `nlminbControl()`, `optimControl()` and `nlsControl()` now
+  reject an integer `eventType`, `optimHessType` or `solveType` that is not
+  one of their codes (`eventType`/`optimHessType`: 1 forward, 2 central;
+  `solveType`: 1 `"fun"`, 2 `"grad"`, 3 `"hessian"`, and no `"hessian"` for
+  `optim`).  The codes 3-6 were accepted: they left a finite-difference
+  gradient column uninitialized (`eventType`), a Hessian at zero
+  (`optimHessType`), or the objective undefined (`solveType`).  A
+  hand-built control with such a code now stops the nlm problem setup.
+
+- `nlminbControl(covMethod = "nlminb")` and `n1qn1Control(covMethod =
+  "n1qn1")` now use the optimizer's own Hessian, as documented, instead of
+  recomputing `nlmixr2Hess()` under another label: for `nlminb` the
+  finite-difference Hessian of the analytic gradient its Hessian function
+  computes, at the final estimates (on `theo_sd` it matches a central
+  difference of the gradient to 5e-5); for `n1qn1` the quasi-Newton matrix
+  `H` it built along its path, a secant approximation (its standard errors
+  were 0.83-0.99 of the finite-difference ones on the test models).  The
+  label stays `"r (nlminb)"`/`"r (n1qn1)"`, and a matrix that is not
+  positive definite is repaired with a warning as for `"r"`.
+  `nlminbControl()`'s default is now `"r"`, as documented; it was `"nlminb"`
+  with `solveType = "hessian"` or `"grad"`, which computed the same
+  `nlmixr2Hess()` covariance as `"r"`, so default fits are unchanged except
+  for the label (`"r"` instead of `"r (nlminb)"`).
+
+- A covariance labelled `"r+"` (or `"|r|"`) now comes from the same repair of
+  the R matrix whichever method computed it, nlm family or FOCEi family (see
+  the nlm-family covariance entry under Covariance).  The nlm family used
+  `"r+"` for the nearest positive-definite matrix (`nmNearPD()`), a repair
+  the FOCEi family does not make; it now fails where the FOCEi R matrix
+  repairs do.
+
+- Every nlm-family control (`nlmControl()`, `nlminbControl()`,
+  `optimControl()`, `bobyqaControl()`, `newuoaControl()`, `uobyqaControl()`,
+  `n1qn1Control()`, `lbfgsb3cControl()`, `trustControl()`) now accepts its
+  documented `covMethod = ""`, which skips the covariance step.  It stopped
+  with `'arg' should be one of ...`, because `match.arg()` cannot match `""`.
+
+- `nlmixr2Hess(par, fn, which = )` now returns the whole Hessian: a parameter
+  that `which` leaves out of the step search is differenced with the
+  interval the search would start from (what `gillK = 0` gives).  Its row and
+  column were `NA`, and when the first parameter was left out every
+  diagonal was taken about `f = 0` instead of `fn(par)` (2.5e8 instead of 6
+  for a quadratic).  `nlmixr2Gill83()` now reports the objective at `args`
+  in the `f` column of every row; it was 0 on the rows `which` left out.
+
+- The fit table of a model that uses `lag()` (or `lead()`, `diff()`, ...) of a
+  calculated variable now has the right `PRED`, `IPRED` and residuals (checked
+  for `nlm` and a zero-iteration `focei` fit).  The table read the prediction
+  from the column after `time`, which for such a model is the lagged variable
+  (it is output ahead of the prediction), and the residual variance from the
+  column after that: `IPRED` was the variable itself (for `cp <- 0.5 * c0 +
+  0.5 * lag(c0)`, `IPRED` was `c0`).  The table step now finds the prediction
+  and its variance by name, and stops naming a column it cannot find.
+
+- The nlm-family gradient (`nlm`, `nlminb`, `optim`, `n1qn1`, `lbfgsb3c`,
+  `trust`, `nls`) of a model that uses `lag()` or `diff()` of a calculated
+  variable now carries the variable's sensitivities through
+  (`d(lag(v))/d(theta) = lag(d(v)/d(theta))`), including into an ODE that
+  uses the variable; only an ODE with `lag()` itself, or a lagged variable
+  defined more than once, is finite-differenced.
+  Such a variable is a bare symbol to symengine, so its analytic gradient was
+  0 for every structural parameter: `nlm`, `nlminb`, `n1qn1`, `lbfgsb3c` and
+  `optim` returned the initial structural estimates, and `nls` (with its
+  default `solveType = "grad"`) stopped with `none of the predictions
+  depend on 'THETA'`.
+
+- The covariance of an `est = "nls"` fit is now the least-squares one,
+  `sigma^2 (J'J)^-1` (what `vcov()` of the underlying `nls` or `nls.lm`
+  fit gives).  It left out the residual variance `sigma^2`, so every
+  standard error was divided by the residual standard deviation: 0.635
+  instead of 6.95 for `Vm` of the `Puromycin` Michaelis-Menten model.  The
+  covariance is checked like the other nlm-family ones, and a fit with no
+  residual degrees of freedom (no more observations than parameters) gets
+  `covMethod = "failed"` with a warning.
+
+- The objective of an `est = "nls"` fit with the default `algorithm = "LM"`
+  is now the -2 log-likelihood at the maximum-likelihood residual variance,
+  as with the other algorithms (`logLik()` of the `nls` fit).  It took the
+  residuals as standard normal: 249.71 instead of 216.15 for the
+  one-compartment additive model of `theo_sd`.
+
+- The warnings of an `nlminb`, `optim`, `bobyqa`, `newuoa`, `uobyqa`,
+  `n1qn1`, `lbfgsb3c`, `trust` or `nls` run now reach the fit's `$runInfo`,
+  as those of `nlm` did: the optimizer's own, `trust`'s unverified stationary
+  point, and the solver reports (NaN gradients resolved by finite
+  differences, NaN solves replaced by 0, loosened ODE tolerances).  They
+  were dropped.  For packages that call `.nlmFamilyFitGeneric()`:
+  `emitFitWarnings` now defaults to `TRUE` (`FALSE` drops them as before), and
+  `.nlmFinalizeList()` raises the covariance step's report as a warning
+  instead of returning it as `$covWarning`.
+
+- `trustControl(covMethod = "r")`, the default, now inverts a
+  finite-difference Hessian: `nlmixr2Hess()`'s, or the last outer
+  iteration's with `hessianMethod = "fd"`.  It inverted the last outer
+  iteration's Hessian, which with the default `hessianMethod = "sr1"` is a
+  quasi-Newton approximation; that covariance is now `covMethod = "trust"`
+  (labelled `"r (trust)"`).
+
+- An `nlm` fit of a `matExp()` model with `indLin()` forcing now warns that
+  its sensitivities use the ODE form, a work-around until the native
+  matrix-exponential sensitivities of such a model match.
+
+- `est = "nls"` declares the model covariates in its `params()`, as `nlm`
+  does, so the solve's parameter layout is fixed.
+
+- The residual standard deviation an `est = "nls"` fit reports (`add.sd`,
+  `prop.sd`, ...) is now `sigma()` of the `nls` fit, `sqrt(RSS / (n - p))`,
+  the residual variance its covariance uses.  It was `sd()` of the residuals,
+  which also subtracted their mean and divided by `n - 1`.  The objective
+  stays `logLik()` of the fit, the -2 log-likelihood at `RSS / n`.
+
+- The internal, exported `.nlmixrNlsFun()` is removed: it solved a model
+  that nothing set up any more.  `est = "nls"` calls `.nlmixrNlsFunValGrad()`,
+  `.nlmixrNlsFunVal()` and `.nlmixrNlsFunGrad()`.
 
 
 # nlmixr2est 7.1.0

@@ -221,25 +221,15 @@ optimControl <- function(
   checkmate::assertNumeric(temp, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertIntegerish(tmax, len = 1, lower = 0, any.missing = FALSE)
 
-  .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
-  if (checkmate::testIntegerish(solveType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    solveType <- as.integer(solveType)
-  } else {
-    solveType <- setNames(.solveTypeIdx[match.arg(solveType)], NULL)
-  }
+  solveType <- .nlmCtlCode(solveType, c("grad" = 2L, "fun" = 1L), "solveType")
   method <- match.arg(method)
   if (missing(covMethod) && any(solveType == 2:3) && method %in% c("BFGS", "CG", "L-BFGS-B")) {
     covMethod <- "optim"
   } else {
-    covMethod <- match.arg(covMethod)
+    covMethod <- .nlmCtlCovMethod(covMethod, match.arg(covMethod))
   }
 
-  .eventTypeIdx <- c("central" = 2L, "forward" = 1L)
-  if (checkmate::testIntegerish(eventType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    eventType <- as.integer(eventType)
-  } else {
-    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
-  }
+  eventType <- .nlmCtlCode(eventType, c("central" = 2L, "forward" = 1L), "eventType")
 
   checkmate::assertIntegerish(stickyRecalcN, any.missing = FALSE, lower = 0, len = 1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)

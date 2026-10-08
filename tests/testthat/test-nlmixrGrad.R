@@ -120,6 +120,31 @@ test_that("nlmixr2GradFun() prints wrapped rows, underlining the last continuati
   )
 })
 
+test_that("nlmixr2Hess() differences the parameters `which` leaves out of the search (issue 1140)", {
+  # a quadratic: the 5-point stencil is exact at any step
+  f <- function(x) (x[1] - 1)^2 + 3 * (x[2] - 2)^2 + x[1] * x[2] + 5
+  h <- matrix(c(2, 1, 1, 6), 2)
+  p <- c(0.5, 1)
+  expect_equal(nlmixr2Hess(p, f), h, tolerance = 1e-6)
+  # a parameter left out of the search is still differenced, about f(p)
+  expect_equal(nlmixr2Hess(p, f, which = c(FALSE, TRUE)), h, tolerance = 1e-6)
+  expect_equal(nlmixr2Hess(p, f, which = c(TRUE, FALSE)), h, tolerance = 1e-6)
+  expect_equal(nlmixr2Hess(p, f, which = c(FALSE, FALSE)), h, tolerance = 1e-6)
+  # the base objective is reported on every row, the left-out ones too
+  expect_identical(nlmixr2Gill83(f, p, which = c(FALSE, TRUE))$f, rep(f(p), 2))
+  expect_identical(nlmixr2Gill83(f, p, which = c(FALSE, FALSE))$f, rep(NA_real_, 2))
+  # a left-out parameter is differenced with the interval gillK = 0 gives it
+  f2 <- function(x) exp(x[1]) + sin(x[2]) + x[1] * x[2]
+  expect_identical(
+    nlmixr2Hess(p, f2, which = c(FALSE, TRUE))[1, 1],
+    nlmixr2Hess(p, f2, gillK = 0L)[1, 1]
+  )
+  expect_identical(
+    nlmixr2Hess(p, f2, which = c(FALSE, TRUE))[2, 2],
+    nlmixr2Hess(p, f2)[2, 2]
+  )
+})
+
 test_that("the objective sees the caller's names and attributes", {
   f <- function(x) unname((x["a"] - 1)^2 + x["b"]^2)
   gf <- nlmixr2GradFun(f, print = 0)
