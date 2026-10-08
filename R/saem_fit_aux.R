@@ -238,9 +238,7 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
       lQ <- .logspaceAdd(lQ, log(.w[j]) + ltot)
       rxode2::rxTick()
     }
-    .lk[, .k] <- lQ + rowSums(log(b)) -
-      0.5 * (if (.nd > 0L) log(det(.omegaK)) else 0) -
-      0.5 * .nd * log(2 * pi)
+    .lk[, .k] <- lQ + rowSums(log(b)) - 0.5 * (if (.nd > 0L) log(det(.omegaK)) else 0) - 0.5 * .nd * log(2 * pi)
   }
   rxode2::rxProgressStop()
   if (is.null(.mix$prob)) {
@@ -262,7 +260,8 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   # An ll() row already carries its Jacobian in the log-density (.saemAddTbsJacobian);
   # adding powerL there would count it twice with the kernel's stale starting lambda.
   .g <- !.isLL
-  ll2 <- 2 * sum(.li) -
+  ll2 <- 2 *
+    sum(.li) -
     .nGauss * log(2 * pi) +
     2 * .Call(`_nlmixr2est_powerL`, ysave[.g], lambda[.g], as.integer(yj[.g]), as.double(low[.g]), as.double(hi[.g]))
   -ll2
