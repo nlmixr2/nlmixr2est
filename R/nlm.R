@@ -124,8 +124,8 @@ nlmControl <- function(
   boundedTransform = TRUE,
   ...
 ) {
-  checkmate::assertNumeric(shiErr, lower = 0, any.missing = FALSE, len = 1)
-  checkmate::assertNumeric(hessErr, lower = 0, any.missing = FALSE, len = 1)
+  .assertPositiveEps(shiErr)
+  .assertPositiveEps(hessErr)
 
   checkmate::assertIntegerish(shi21maxFD, lower = 1, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(shi21maxHess, lower = 1, any.missing = FALSE, len = 1)

@@ -132,7 +132,7 @@ nlsControl <- function(
   checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
   checkmate::assertNumeric(odeRecalcFactor, len = 1, lower = 1, any.missing = FALSE)
   checkmate::assertLogical(indTolRelax, any.missing = FALSE, len = 1)
-  checkmate::assertNumeric(shiErr, lower = 0, any.missing = FALSE, len = 1)
+  .assertPositiveEps(shiErr)
   checkmate::assertIntegerish(shi21maxFD, lower = 1, any.missing = FALSE, len = 1)
 
   .eventTypeIdx <- c("central" = 2L, "forward" = 1L)
