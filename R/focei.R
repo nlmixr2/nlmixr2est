@@ -4499,6 +4499,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   } else {
     .env <- new.env(parent = emptyenv())
   }
+  .covStoreFitStart(.env)
   .env$etaNames <- rxUiGet.foceiEtaNames(x, ...)
   .env$thetaFixed <- rxUiGet.foceiFixed(x, ...)
   rxode2::rxAssignControlValue(.x, "foceiMuRef", .x$foceiMuRefVector)

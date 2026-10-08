@@ -21,6 +21,13 @@
   the covariance columns of `$scaleInfo` read "Not Assessed", since no
   theta-only step search runs.
 
+- `setCov()` reads what the fit's earlier covariance steps computed for the same
+  estimates and settings (the fit's `env$covStore`: the finite-difference R, S
+  and steps) and computes only what is missing, with the same result: after an
+  `"r"` covariance, `"r,s"` computes only S (on `theo_sd`, 16 objective
+  evaluations instead of 250 for the full shape), and `"r"` or `"s"` after
+  `"r,s"` computes nothing.  Every fit starts with an empty store.
+
 - `foceiControl(innerOpt = "lbfgsb3c")` runs L-BFGS-B on the per-subject
   ETA problem, using `lbfgsb3c`'s thread-safe port (`lbfgsb3c >= 2024-3.6`).
   It replaces `innerOpt = "BFGS"`, which silently fell back to `"n1qn1"`

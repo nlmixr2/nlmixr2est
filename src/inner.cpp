@@ -11886,6 +11886,49 @@ static bool foceiFdFullMerge(Environment e);
 // runs with the fit's setting wherever it runs
 static int _covFitCalcGrad = 0;
 
+// A stored separate theta-only stage for these estimates and settings (e$covThetaStore,
+// handed in by setCov()'s lookup in the fit's covariance store): the steps it searched,
+// when they were taken about this theta, and the R and S it computed, installed as
+// foceiCalcR() and foceiS() install theirs.  Returns whether the steps were installed.
+static bool foceiThetaFromStore(Environment e, const arma::vec &theta) {
+  if (!covReuseOn() || !e.exists("covThetaStore")) return false;
+  List st = as<List>(e["covThetaStore"]);
+  int np = (int)op_focei.npars;
+  if (!st.containsElementNamed("steps") || Rf_isNull(st["steps"])) return false;
+  List sp = as<List>(st["steps"]);
+  NumericVector th = sp["theta"], aE = sp["aEps"], rE = sp["rEps"], aC = sp["aEpsC"], rC = sp["rEpsC"];
+  if (th.size() != np || aE.size() != np || rE.size() != np || aC.size() != np || rC.size() != np) {
+    return false;
+  }
+  for (int k = 0; k < np; ++k) {
+    if (th[k] != theta[k]) return false;
+  }
+  std::copy(aE.begin(), aE.end(), op_focei.aEps);
+  std::copy(rE.begin(), rE.end(), op_focei.rEps);
+  std::copy(aC.begin(), aC.end(), op_focei.aEpsC);
+  std::copy(rC.begin(), rC.end(), op_focei.rEpsC);
+  e["covSteps"] = sp;
+  if ((op_focei.covMethod == 1 || op_focei.covMethod == 2) && !e.exists("cholR") &&
+      st.containsElementNamed("R0") && !Rf_isNull(st["R0"])) {
+    arma::mat R0 = as<arma::mat>(st["R0"]);
+    if ((int)R0.n_rows == np && (int)R0.n_cols == np) {
+      e["R.0"] = wrap(R0);
+      foceiCovChol(e, R0, "R");
+    }
+  }
+  if ((op_focei.covMethod == 1 || op_focei.covMethod == 3) && !e.exists("cholS") &&
+      st.containsElementNamed("S0") && !Rf_isNull(st["S0"]) && st.containsElementNamed("Sper")) {
+    arma::mat S0 = as<arma::mat>(st["S0"]);
+    double sper = as<double>(st["Sper"]);
+    if ((int)S0.n_rows == np && (int)S0.n_cols == np) {
+      e["S0"] = wrap(S0);
+      e["Sper"] = sper;
+      if (sper >= op_focei.smatPer) foceiCovChol(e, S0, "S");
+    }
+  }
+  return true;
+}
+
 NumericMatrix foceiCalcCov(Environment e){
   std::string boundStr = "";
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
@@ -12131,6 +12174,7 @@ NumericMatrix foceiCalcCov(Environment e){
         // covFull: the full stage gives the theta-only R and S too (needs no theta-only
         // step search, stencil or S legs), also when a declined analytic R falls back
         bool fullMerged = !analyticR && foceiFdFullMerge(e);
+        if (!analyticR && !fullMerged && foceiThetaFromStore(e, theta)) gillDone = true;
         if ((!analyticR && !fullMerged) || !covReuseOn()) runGill();
 
         bool isPd;
@@ -12694,6 +12738,48 @@ static bool foceiFdFullCovOf(const FdFullResult &res, arma::mat &cov) {
   return arma::inv_sympd(cov, res.R) || arma::inv(cov, res.R);
 }
 
+// A stored full stage for these estimates and settings (e$.fdFullStore, handed in by
+// setCov()'s lookup in the fit's covariance store: R, the steps h and, when it was
+// computed, S): read instead of computed.  S alone is computed when it is needed and was
+// not stored, at the stored steps.  False when there is none or it does not fit.
+static bool foceiFdFullFromStore(Environment e, bool needS, FdFullResult &res) {
+  if (!covReuseOn() || !e.exists(".fdFullStore") || op_focei.neta <= 0) return false;
+  List st = as<List>(e[".fdFullStore"]);
+  if (!st.containsElementNamed("R") || !st.containsElementNamed("h")) return false;
+  FdFullCtx &c = res.c;
+  if (!foceiFdParams(e, c, res.nm)) return false;
+  int np = c.nth + c.nom;
+  NumericMatrix Rs = as<NumericMatrix>(st["R"]);
+  NumericVector h = as<NumericVector>(st["h"]);
+  if (Rs.nrow() != np || Rs.ncol() != np || h.size() != np) return false;
+  RObject dn = Rs.attr("dimnames");
+  if (Rf_isNull(dn)) return false;
+  CharacterVector rn = as<List>(dn)[0];
+  for (int i = 0; i < np; ++i) {
+    if (rn[i] != res.nm[i]) return false;
+  }
+  c.Om0 = as<arma::mat>(getOmega());
+  res.R = as<arma::mat>(Rs);
+  res.h.assign(h.begin(), h.end());
+  res.okS = false;
+  if (st.containsElementNamed("S") && !Rf_isNull(st["S"])) {
+    NumericMatrix Ss = as<NumericMatrix>(st["S"]);
+    if (Ss.nrow() == np && Ss.ncol() == np) {
+      res.S = as<arma::mat>(Ss);
+      res.okS = true;
+    }
+  }
+  if (needS && !res.okS) {
+    std::vector<double> x0(np);
+    for (int i = 0; i < c.nth; ++i) x0[i] = op_focei.fullTheta[c.thPos[i]];
+    for (int q = 0; q < c.nom; ++q) x0[c.nth + q] = c.Om0(c.omA[q]-1, c.omB[q]-1);
+    FdFullStateGuard _restore;
+    CovStageScope _st(covStFullS);
+    res.okS = foceiFdSFull(c, x0, res.h, res.S);
+  }
+  return true;
+}
+
 // Install the full stage for .foceiInstallFdFullCov: the natural cov solve(R) as
 // e[".fdFullCov"] and S as e[".fdFullS"].
 static bool foceiFdFullStash(Environment e, const FdFullResult &res) {
@@ -12702,6 +12788,11 @@ static bool foceiFdFullStash(Environment e, const FdFullResult &res) {
   NumericMatrix covR = wrap(cov);
   covR.attr("dimnames") = List::create(res.nm, res.nm);
   e[".fdFullCov"] = covR;                       // Rinv_full (feeds "r" and the sandwich)
+  // R and the steps themselves, for the fit's covariance store (.covStoreRecord)
+  NumericMatrix Rout = wrap(res.R);
+  Rout.attr("dimnames") = List::create(res.nm, res.nm);
+  e[".fdFullR"] = Rout;
+  e[".fdFullH"] = NumericVector(res.h.begin(), res.h.end());
   if (res.okS) {
     NumericMatrix Sout = wrap(res.S);
     Sout.attr("dimnames") = List::create(res.nm, res.nm);
@@ -12767,7 +12858,8 @@ static bool foceiFdFullMerge(Environment e) {
   try {
     ScopedRestore<int> calcGrad(op_focei.calcGrad);
     op_focei.calcGrad = _covFitCalcGrad;
-    if (!foceiFdFullCompute(e, true, foceiFdFullNeedS(e), res)) return false;
+    bool needS = foceiFdFullNeedS(e);
+    if (!foceiFdFullFromStore(e, needS, res) && !foceiFdFullCompute(e, true, needS, res)) return false;
   } catch (Rcpp::internal::InterruptedException&) {
     throw;
   } catch (Rcpp::LongjumpException&) {
@@ -12789,7 +12881,8 @@ static bool foceiFdFullMerge(Environment e) {
 void foceiCalcRFdFull(Environment e) {
   if (_fdFullDone) return;
   FdFullResult res;
-  if (!foceiFdFullCompute(e, false, foceiFdFullNeedS(e), res)) return;
+  bool needS = foceiFdFullNeedS(e);
+  if (!foceiFdFullFromStore(e, needS, res) && !foceiFdFullCompute(e, false, needS, res)) return;
   foceiFdFullStash(e, res);
 }
 

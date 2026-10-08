@@ -533,11 +533,11 @@
   if (is.data.frame(obj$iniDf0)) {
     .env2$iniDf0 <- obj$iniDf0
   }
-  # the fit's covariance starting parameters, to the last bit (installed by the C++
-  # covariance step when they match the refit's estimates)
-  if (is.list(.env$covHandoff)) {
-    .env2$covHandoff <- .env$covHandoff
-  }
+  # what the refit's covariance step starts from (.covStoreFitStart() unpacks it): the
+  # fit's covariance starting parameters, to the last bit (installed by the C++ covariance
+  # step when they match the refit's estimates), and below, what an earlier covariance
+  # step on this fit computed for these settings
+  .inputs <- list(covHandoff = if (is.list(.env$covHandoff)) .env$covHandoff)
   for (.n in names(.lst)) {
     .control[[.n]] <- .lst[[.n]]
   }
@@ -566,12 +566,19 @@
   } else if (.control$covMethod == 0L) {
     .control$covMethod <- 1L
   }
+  .key <- .covStoreKey(.env, .control)
+  .stored <- .covStoreGet(.env, .key)
+  if (!is.null(.stored)) {
+    .inputs$.fdFullStore <- .stored$full
+    .inputs$covThetaStore <- .stored$theta
+  }
+  .env2$.covRefitInputs <- .inputs
   .dat <- getData(obj)
   .ui <- obj$ui
   .mat <- obj$etaMat # as.matrix(nlme::random.effects(obj)[, -1])
   .control$skipCov <- obj$skipCov
   .control$etaMat <- .mat
-  nlmixr2CreateOutputFromUi(
+  .ret <- nlmixr2CreateOutputFromUi(
     .ui,
     data = .dat,
     control = .control,
@@ -579,6 +586,11 @@
     env = .env2,
     est = "none"
   )
+  .renv <- tryCatch(.ret$env, error = function(e) NULL)
+  if (is.environment(.renv)) {
+    try(.covStoreRecord(.env, .key, .renv, fd = !identical(.control$covType, "analytic")), silent = TRUE)
+  }
+  .ret
 }
 
 #' Base est whose full model the post-fit covariance recompute runs on

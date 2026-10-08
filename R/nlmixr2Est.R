@@ -489,5 +489,14 @@ nlmixr2Est0 <- function(env, ...) {
     ),
     silent = TRUE
   )
+  # and what its covariance step computed, for later setCov() requests
+  try(
+    {
+      .sEnv <- if (is.environment(ret)) ret else ret$env
+      .sCtl <- .sEnv$foceiControl
+      .covStoreRecord(.sEnv, .covStoreKey(.sEnv, .sCtl), .sEnv, fd = !identical(.sCtl$covType, "analytic"))
+    },
+    silent = TRUE
+  )
   invisible()
 }
