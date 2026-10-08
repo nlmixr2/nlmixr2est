@@ -70,5 +70,5 @@ bool chol_sym(mat &Hout, mat &Hin) {
 List nmNearPDKeepDiag_(NumericMatrix x) {
   arma::mat ret;
   int how = nmNearPDKeepDiag(ret, as<arma::mat>(x));
-  return List::create(_["mat"] = wrap(ret), _["how"] = how);
+  return List::create(_["mat"] = ret, _["how"] = how);
 }
