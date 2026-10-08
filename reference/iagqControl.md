@@ -318,7 +318,7 @@ iagqControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55cbe4302980>
+#> <bytecode: 0x55929c23ae78>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1032,6 +1032,9 @@ iagqControl()
 #> 
 #> $linCmtSensPhi
 #> [1] 2
+#> 
+#> $nonmem
+#> [1] FALSE
 #> 
 #> attr(,"class")
 #> [1] "rxControl"

@@ -640,6 +640,9 @@ fbviControl()
 #> $linCmtSensPhi
 #> [1] 2
 #> 
+#> $nonmem
+#> [1] FALSE
+#> 
 #> attr(,"class")
 #> [1] "rxControl"
 #> 
