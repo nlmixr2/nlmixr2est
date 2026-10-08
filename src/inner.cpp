@@ -15,6 +15,7 @@
 #include "inner.h"
 #include "nmMcmcRng.h"
 #include "nmSeqSeed.h"
+#include "nmProgress.h"
 #include <cfloat>
 #include <cstring>
 #include <cstdint>
@@ -7558,6 +7559,10 @@ static bool analyticOuterGrad(double *theta, double *g) {
   return false;
 }
 
+// The progress-bar style, read once per fit so the gradient (an optimizer
+// callback) evaluates no R.
+static bool _foceiProgInPlace = false;
+
 void numericGrad(double *theta, double *g){
   op_focei.mixDeriv=0;
   op_focei.reducedTol2=0;
@@ -7615,7 +7620,7 @@ void numericGrad(double *theta, double *g){
       RSprintf(_("calculate Shi21 Difference and optimize forward difference step size:\n"));
       op_focei.t0 = clock();
       op_focei.cur=0;
-      op_focei.curTick=0;
+      op_focei.curTick = nmProgressStart(op_focei.totTick, op_focei.t0);
     }
     arma::vec grFinal(1);
     arma::vec f0(1);
@@ -7641,8 +7646,8 @@ void numericGrad(double *theta, double *g){
     }
     if (op_focei.slow) {
       op_focei.cur=op_focei.totTick;
-      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-      RSprintf("\n");
+      op_focei.curTick = nmProgressEnd(op_focei.totTick, op_focei.curTick, op_focei.t0,
+                                       _foceiProgInPlace);
     }
     op_focei.calcGrad=0;
     op_focei.curGill=2;
@@ -7661,6 +7666,7 @@ void numericGrad(double *theta, double *g){
       op_focei.cur = 0;
       op_focei.totTick = op_focei.npars * op_focei.gillK;
       op_focei.t0 = clock();
+      op_focei.curTick = nmProgressStart(op_focei.totTick, op_focei.t0);
       if (op_focei.repeatGillN != 0){
         RSprintf(_("repeat %d Gill diff/forward difference step size:\n"),
                  op_focei.repeatGillN);
@@ -7707,8 +7713,8 @@ void numericGrad(double *theta, double *g){
     }
     if(op_focei.slow){
       op_focei.cur=op_focei.totTick;
-      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-      RSprintf("\n");
+      op_focei.curTick = nmProgressEnd(op_focei.totTick, op_focei.curTick, op_focei.t0,
+                                       _foceiProgInPlace);
     }
     op_focei.didGill=1;
     if (op_focei.reducedTol2 && op_focei.repeatGillN < op_focei.repeatGillMax){
@@ -7733,8 +7739,8 @@ void numericGrad(double *theta, double *g){
     if(op_focei.slow){
       op_focei.t0 = clock();
       op_focei.cur=0;
-      op_focei.curTick=0;
       op_focei.totTick = op_focei.npars * 2;
+      op_focei.curTick = nmProgressStart(op_focei.totTick, op_focei.t0);
     }
     op_focei.calcGrad=1;
     rx = getRxSolve_();
@@ -7914,8 +7920,8 @@ void numericGrad(double *theta, double *g){
     }
     if(op_focei.slow) {
       op_focei.cur=op_focei.totTick;
-      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-      RSprintf("\n");
+      op_focei.curTick = nmProgressEnd(op_focei.totTick, op_focei.curTick, op_focei.t0,
+                                       _foceiProgInPlace);
     }
     op_focei.calcGrad=0;
   }
@@ -10594,6 +10600,52 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
   df.attr("class") = cls;
   return df;
 }
+// Default theta names t1, t2, ... for an nlmixr2GradFun() objective
+static CharacterVector nlmixr2EvalDefaultNames(int n) {
+  CharacterVector tn(n);
+  for (int i = 0; i < n; i++){
+    tn[i] = "t" + std::to_string(i+1);
+  }
+  return tn;
+}
+
+// First evaluation: reset the recorded history and print the header
+static void nlmixr2EvalStart(Environment &gradInfo, int nEW, int n, int printN,
+                             int printNcol, bool useColor) {
+  vGrad.clear();
+  vPar.clear();
+  iterType.clear();
+  gradType.clear();
+  niter.clear();
+  niterGrad.clear();
+  if (printN == 0) return;
+  scalePrintLine(1, min2(n, printNcol));
+  if (!gradInfo.exists("thetaNames") ||
+      as<CharacterVector>(gradInfo["thetaNames"]).size() != nEW){
+    gradInfo["thetaNames"] = nlmixr2EvalDefaultNames(nEW);
+  }
+  CharacterVector thetaNames = gradInfo["thetaNames"];
+  RSprintf("|    #| Objective Fun |");
+  int i=0, finalize=0;
+  std::string tmpS;
+  for (i = 0; i < n; i++){
+    tmpS = thetaNames[i];
+    RSprintf("%#10s |", tmpS.c_str());
+    finalize |= scalePrintWrap(1, i, n, printNcol, useColor && printNcol + i >= n);
+  }
+  scalePrintRowEnd(finalize, i, printNcol, useColor);
+}
+
+// The parameter columns of one printed iteration row
+static void nlmixr2EvalPrintVals(const double *v, int n, int printNcol, bool useColor) {
+  int i, finalize=0;
+  for (i = 0; i < n; i++){
+    RSprintf("%#10.4g |", v[i]);
+    finalize |= scalePrintWrap(1, i, n, printNcol, useColor && printNcol + i > n);
+  }
+  scalePrintRowEnd(finalize, i, printNcol, useColor);
+}
+
 //' @rdname nlmixr2GradFun
 //' @export
 //[[Rcpp::export]]
@@ -10627,94 +10679,39 @@ double nlmixr2Eval_(NumericVector theta, std::string md5){
   bool useColor = as<bool>(gradInfo["useColor"]);
   int printNcol=as<int>(gradInfo["printNcol"]);
   int printN=as<int>(gradInfo["print"]);
-  int i, finalize=0, n=theta.size();
+  int n=theta.size();
   bool isRstudio=as<bool>(gradInfo["isRstudio"]);
-  if (cn == 1){
-    vGrad.clear();
-    vPar.clear();
-    iterType.clear();
-    gradType.clear();
-    niter.clear();
-    niterGrad.clear();
-    if (printN != 0){
-      scalePrintLine(1, min2(n, printNcol));
-      if (gradInfo.exists("thetaNames")){
-        CharacterVector tn;
-        tn = gradInfo["thetaNames"];
-        if (tn.size()!=lEW.size()){
-          CharacterVector tn2(lEW.size());
-          for (int i = 0; i < lEW.size(); i++){
-            tn2[i] = "t" + std::to_string(i+1);
-          }
-          gradInfo["thetaNames"]=tn2;
-        }
-      } else {
-        CharacterVector tn(lEW.size());
-        for (int i = 0; i < lEW.size(); i++){
-          tn[i] = "t" + std::to_string(i+1);
-        }
-        gradInfo["thetaNames"]=tn;
-      }
-      CharacterVector thetaNames = gradInfo["thetaNames"];
-      RSprintf("|    #| Objective Fun |");
-      int i=0, finalize=0;
-      std::string tmpS;
-      for (i = 0; i < n; i++){
-        tmpS = thetaNames[i];
-        RSprintf("%#10s |", tmpS.c_str());
-        finalize |= scalePrintWrap(1, i, n, printNcol, useColor && printNcol + i >= n);
-      }
-      scalePrintRowEnd(finalize, i, printNcol, useColor);
-    }
-  }
-  bool doUnscaled = false;
+  if (cn == 1) nlmixr2EvalStart(gradInfo, lEW.size(), n, printN, printNcol, useColor);
   std::string unscaledPar = md5 + ".uPar";
   NumericVector thetaU;
   niter.push_back(cn);
   // Scaled
   vPar.push_back(f0);
-  if (gradInfo.exists(unscaledPar)){
+  bool doUnscaled = gradInfo.exists(unscaledPar);
+  if (doUnscaled){
     thetaU=as<NumericVector>(gradInfo[unscaledPar]);
-    if (thetaU.size() != theta.size()){
-      iterType.push_back(6);
-    } else {
-      doUnscaled=true;
-      iterType.push_back(5);
-    }
-  } else {
-    // Actually unscaled
-    iterType.push_back(6);
+    doUnscaled = thetaU.size() == theta.size();
   }
-  for (i = 0; i < n; i++){
-    vPar.push_back(theta[i]);
-  }
-  if (printN != 0 && cn % printN == 0){
+  // 5: scaled with an unscaled row to follow; 6: actually unscaled
+  iterType.push_back(doUnscaled ? 5 : 6);
+  vPar.insert(vPar.end(), theta.begin(), theta.end());
+  bool doPrint = printN != 0 && cn % printN == 0;
+  if (doPrint){
     if (useColor && isRstudio)
       RSprintf("|\033[1m%5d\033[0m|%#14.8g |", cn, f0);
     else
       RSprintf("|%5d|%#14.8g |", cn, f0);
-    for (i = 0; i < n; i++){
-      RSprintf("%#10.4g |", theta[i]);
-      finalize |= scalePrintWrap(1, i, n, printNcol, useColor && printNcol + i > n);
-    }
-    scalePrintRowEnd(finalize, i, printNcol, useColor);
+    nlmixr2EvalPrintVals(theta.begin(), n, printNcol, useColor);
   }
   if (doUnscaled){
     iterType.push_back(6);
     niter.push_back(niter.back());
-    finalize=0;
     // No obj scaling currently
     vPar.push_back(f0);
-    for (i = 0; i < n; i++){
-      vPar.push_back(thetaU[i]);
-    }
-    if (printN != 0 && cn % printN == 0){
+    vPar.insert(vPar.end(), thetaU.begin(), thetaU.end());
+    if (doPrint){
       RSprintf("|    U|%#14.8g |", f0);
-      for (i = 0; i < n; i++){
-        RSprintf("%#10.4g |", thetaU[i]);
-        finalize |= scalePrintWrap(1, i, n, printNcol, useColor && printNcol + i > n);
-      }
-      scalePrintRowEnd(finalize, i, printNcol, useColor);
+      nlmixr2EvalPrintVals(thetaU.begin(), n, printNcol, useColor);
     }
   }
   return f0;
@@ -10925,7 +10922,9 @@ struct RHessObj : FdHessObj {
   SEXP envir, like;
   int n, cur = 0, curTick = 0, totTick;
   clock_t t0 = clock();
-  RHessObj(Function fn, SEXP envir, SEXP like, int n) : fn(fn), envir(envir), like(like), n(n), totTick(4*n + 2*n*(n-1)) {}
+  RHessObj(Function fn, SEXP envir, SEXP like, int n) : fn(fn), envir(envir), like(like), n(n), totTick(4*n + 2*n*(n-1)) {
+    nmProgressStart(totTick, t0);
+  }
   double f(double *x) {
     double ret = nlmixr2RObjAt(fn, envir, x, n, like);
     curTick = par_progress(++cur, totTick, curTick, 1, t0, 0);
@@ -11471,8 +11470,6 @@ NumericMatrix foceiCalcCov(Environment e){
       // wrong SEs on the mu-referenced/linear parameters).  Bail here and recompute
       // the covariance at the R level with muModel="none" (.foceiRecomputeMuCov).
       if (op_focei.muModel != 0) {
-        op_focei.cur = op_focei.totTick;
-        op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
         e["covMethod"] = CharacterVector::create("");
         NumericMatrix ret;
         return ret;
@@ -11582,6 +11579,16 @@ NumericMatrix foceiCalcCov(Environment e){
           op_focei.totTick += 2*op_focei.npars +2*(op_focei.npars*op_focei.npars);
         }
         op_focei.totTick += op_focei.npars;
+        bool covInPlace = nmProgressInPlace();
+        op_focei.curTick = nmProgressStart(op_focei.totTick, op_focei.t0);
+        // finish the bar on every exit, including the early failure returns
+        struct CovProgressEnd {
+          bool inPlace;
+          ~CovProgressEnd() {
+            op_focei.curTick = nmProgressEnd(op_focei.totTick, op_focei.curTick,
+                                             op_focei.t0, inPlace);
+          }
+        } _covProgressEnd{covInPlace};
         double hf, hphif, err;
         unsigned int j, k;
         arma::vec theta(op_focei.npars);
@@ -11896,8 +11903,6 @@ NumericMatrix foceiCalcCov(Environment e){
                   _("\n use 'getVarCov' to calculate anyway"));
           e["covMethod"] = "Boundary issue; Get SEs with `getVarCov()`: " + boundStr;
         }
-        op_focei.cur=op_focei.totTick;
-        op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
         NumericMatrix ret;
         return ret;
       }
@@ -13867,6 +13872,7 @@ static void foceiFitSetupScale(const CharacterVector &thetaNames,
 //[[Rcpp::export]]
 Environment foceiFitCpp_(Environment e){
   focei_wall_clock::time_point wallT0 = focei_wall_clock::now();
+  _foceiProgInPlace = nmProgressInPlace();
   // The registry is a global that outlives a fit, so start every fit from empty:
   // otherwise a fit with no theta-sensitivity model of its own would size its
   // pool from the PREVIOUS fit's, which is exactly what resetting _impPoolModel

@@ -3508,6 +3508,9 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 .foceiModelCacheInflate <- function(el) {
   if (inherits(el, "nlmixr2estFoceiNorm")) {
     .es <- el$eventSens
+    # rxode2() latches suppressMessages() into its C print flag, which would
+    # silence the rest of the fit's progress output; restore it for the caller
+    on.exit(rxode2::rxSuppressMsg(), add = TRUE)
     .mod <- suppressMessages(suppressWarnings(
       if (is.null(.es)) {
         rxode2::rxode2(el$norm)
