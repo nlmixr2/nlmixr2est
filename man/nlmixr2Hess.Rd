@@ -32,6 +32,10 @@ difference interval by \code{\link{nlmixr2Gill83}}
 \details{
 If you have an analytical gradient function, you should use
 `stats::optimHess`
+
+A parameter that `which` (passed on to \code{\link{nlmixr2Gill83}}) leaves
+out of the step search is differenced with the interval the search would
+start from, the one `gillK = 0` gives every parameter.
 }
 \examples{
  func0 <- function(x){ sum(sin(x))  }

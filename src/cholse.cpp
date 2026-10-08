@@ -176,3 +176,14 @@ NumericMatrix cholSE_(NumericMatrix A, double tol){
   cholSE0(Ao, E, as<arma::mat>(A), tol);
   return wrap(Ao);
 }
+
+// cholSE0's factor U (U'U = A + diag(E)), E and whether A was factored without
+// adding anything (pd), for callers that apply foceiCovUsable()'s rules in R.
+//[[Rcpp::export]]
+List cholSEpd_(NumericMatrix A, double tol) {
+  arma::mat Ao, E;
+  bool pd = cholSE0(Ao, E, as<arma::mat>(A), tol);
+  // the objects themselves: create() wraps each once its result is protected
+  return List::create(_["U"] = Ao, _["E"] = arma::vec(arma::vectorise(E)),
+                      _["pd"] = pd);
+}

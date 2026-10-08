@@ -9,7 +9,8 @@ BEGIN_RCPP
   List ipredL = as<List>(ipredDfLstSXP);
   int ncalc = Rf_length(ipredL[0]);
 
-  int npred = getPredIndex(ipredL);
+  int nidCol = getPredIndex(ipredL);
+  int npred = getDfColIndex(ipredL, "rx_pred_");
 
   arma::vec ipredt(REAL(ipredL[npred]), ncalc, false, true);
   arma::vec ipred(ipredt.size());
@@ -17,7 +18,7 @@ BEGIN_RCPP
   arma::vec dv(REAL(dvIn), ncalc, false, true);
   arma::vec dvt(ncalc);
 
-  arma::vec riv(REAL(ipredL[npred+1]), ncalc, false, true);
+  arma::vec riv(REAL(ipredL[getDfColIndex(ipredL, "rx_r_")]), ncalc, false, true);
 
 
   arma::Col<int> cens;
@@ -132,7 +133,7 @@ BEGIN_RCPP
   dfSetStateLhsOps(retC, opt);
   retC = dfCbindList(wrap(retC));
   List ret(3);
-  ret[0] = getDfIdentifierCols(ipredL, npred, stateSXP, IDlabelSEXP);
+  ret[0] = getDfIdentifierCols(ipredL, nidCol, stateSXP, IDlabelSEXP);
   ret[1] = List::create(_["DV"]=wrap(dv));
   ret[2] = retC;
   return dfCbindList(wrap(ret));

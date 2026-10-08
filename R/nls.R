@@ -135,12 +135,7 @@ nlsControl <- function(
   checkmate::assertNumeric(shiErr, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(shi21maxFD, lower = 1, any.missing = FALSE, len = 1)
 
-  .eventTypeIdx <- c("central" = 2L, "forward" = 1L)
-  if (checkmate::testIntegerish(eventType, len = 1, lower = 1, upper = 6, any.missing = FALSE)) {
-    eventType <- as.integer(eventType)
-  } else {
-    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
-  }
+  eventType <- .nlmCtlCode(eventType, c("central" = 2L, "forward" = 1L), "eventType")
 
   solveType <- match.arg(solveType)
 
@@ -321,30 +316,19 @@ nmObjGetControl.nls <- function(x, ...) .nmObjGetControlByClass(x, "nlsControl")
 getValidNlmixrCtl.nls <- function(control) .getValidCtl(control, "nlsControl", "nls")
 
 
-#' A surrogate function for nls to call for ode solving
+#' The residuals and their Jacobian for nls
+#'
+#' The right-hand side of the \code{stats::nls()} formula
+#' (\code{ui$nlsFormula}).
 #'
 #' @param DV dependent variable
-#' @param ... Other parameters fed to prediction function
-#' @return Predictions
+#' @param ... The estimated parameters (scaled)
+#' @return The residuals of the loaded nls problem, with their Jacobian as
+#'   the \code{"gradient"} attribute
 #' @details
 #' This is an internal function and should not be called directly.
 #' @author Matthew L. Fidler
 #' @keywords internal
-#' @export
-.nlmixrNlsFun <- function(DV, ...) {
-  do.call(
-    rxode2::rxSolve,
-    c(
-      list(
-        object = nlmixr2global$nlsEnv$model,
-        params = nlmixr2global$nlsEnv$parFun(...),
-        events = nlmixr2global$nlsEnv$data
-      ),
-      nlmixr2global$nlsEnv$rxControl
-    )
-  )$rx_pred_
-}
-#' @rdname dot-nlmixrNlsFun
 #' @export
 .nlmixrNlsFunValGrad <- function(DV, ...) {
   .Call(`_nlmixr2est_solveGradNls`, c(...), 1L)
@@ -585,7 +569,12 @@ attr(rxUiGet.nlsParStartTheta, "rstudio") <- c(`THETA[1]` = 0.1)
 rxUiGet.nlsParams <- function(x, ...) {
   .ui <- x[[1]]
   .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
-  paste0("params(", paste(c(paste0("THETA[", seq_along(.ui$iniDf$name[.w]), "]"), "DV"), collapse = ", "), ")")
+  # the covariates too, as rxUiGet.nlmParams() declares them
+  .covs <- .ui$allCovs
+  if (is.null(.covs)) {
+    .covs <- character(0)
+  }
+  paste0("params(", paste(c(paste0("THETA[", seq_along(.ui$iniDf$name[.w]), "]"), "DV", .covs), collapse = ", "), ")")
 }
 attr(rxUiGet.nlsParams, "rstudio") <- "params(THETA[1], DV)"
 
@@ -627,12 +616,10 @@ attr(rxUiGet.nlsParUpper, "rstudio") <- c(`ka` = 1000)
 
 #' @export
 rxUiGet.nlsParNameFun <- function(x, ...) {
-  .iniDf <- x[[1]]$iniDf
-  # every THETA, with the residual-error and fixed ones at their estimates
-  .values <- .iniDf$name
-  .w <- .iniDf$err %in% c("add", "prop", "pow") | .iniDf$fix
-  .values[.w] <- paste(.iniDf$est[.w])
-  .nlmFamilyParNameFun(.nlsFormulaArgs(x)[-1], .values)
+  # THETA[k] is the k-th estimated theta that is not a residual error, as in
+  # the nls model (.uiGetNlsTheta(), rxUiGet.nlsParams)
+  .args <- .nlsFormulaArgs(x)[-1]
+  .nlmFamilyParNameFun(.args, .args)
 }
 attr(rxUiGet.nlsParNameFun, "rstudio") <- function() {}
 
@@ -735,8 +722,11 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~ nlmixr2est::.nlmixrNlsFunValGrad(
     }
     .ret <- eval(.ret)
     .ret <- .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
-    .ret$sd <- sd(.ret$fvec)
-    .ret$logLik <- sum(stats::dnorm(.ret$fvec, log = TRUE))
+    .ret$sd <- .nlsSigma(.ret$fvec, length(.ret$par))
+    # the normal log-likelihood at the maximum-likelihood residual variance
+    # RSS / n, as logLik() of a stats::nls() fit
+    .n <- length(.ret$fvec)
+    .ret$logLik <- -.n / 2 * (log(2 * pi) + 1 - log(.n) + log(sum(.ret$fvec^2)))
   } else {
     nlmixr2global$nlsEnv$dataNls <- dataSav[dataSav$EVID == 0, ]
     .nls.control <- stats::nls.control(
@@ -766,13 +756,28 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~ nlmixr2est::.nlmixrNlsFunValGrad(
   .ret
 }
 
+#' The residual standard deviation of an nls fit
+#'
+#' `sigma()` of `stats::nls()`, `sqrt(RSS / (n - p))`, the residual variance
+#' the covariance uses.  Without residual degrees of freedom it does not
+#' exist, and the maximum-likelihood `sqrt(RSS / n)` is used.
+#' @param resid the (weighted) residuals
+#' @param p the number of estimated parameters
+#' @return the residual standard deviation
+#' @noRd
+.nlsSigma <- function(resid, p) {
+  .n <- length(resid)
+  .df <- if (.n > p) .n - p else .n
+  sqrt(sum(resid^2) / .df)
+}
+
 .nlsGetTheta <- function(nls, ui) {
   .iniDf <- ui$iniDf
   .theta0 <- nls$par
   if (inherits(nls, "nls.lm")) {
     .sd <- nls$sd
   } else {
-    .sd <- sd(resid(nls))
+    .sd <- .nlsSigma(stats::residuals(nls), length(stats::coef(nls)))
   }
   setNames(
     vapply(
@@ -815,12 +820,16 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~ nlmixr2est::.nlmixrNlsFunValGrad(
       paste0(" with ", crayon::bold$yellow(.control$algorithm), " algorithm")
     },
     postSetup = function(.ret, .ui, .fit) {
-      .ret$cov <- .ret$nls$cov
+      if (!is.null(.ret$nls$cov)) {
+        .ret$cov <- .ret$nls$cov
+      }
+      .ret$covMethod <- .ret$nls$covMethod
       if (inherits(.ret$nls, "nls.lm")) {
-        .ret$covMethod <- paste0(.ret$nls$covMethod, " (LM)")
+        if (.ret$covMethod != "failed") {
+          .ret$covMethod <- paste0(.ret$covMethod, " (LM)")
+        }
         .ret$objective <- -2 * .ret$nls$logLik
       } else {
-        .ret$covMethod <- "nls"
         .ret$objective <- -2 * as.numeric(stats::logLik(.ret$nls))
       }
       .ret
