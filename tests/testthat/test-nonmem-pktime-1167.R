@@ -129,6 +129,27 @@ nmTest({
     expect_false(isTRUE(all.equal(.fit$objf, .fit0$objf, tolerance = 1e-3)))
   })
 
+  test_that("the analytic outer gradient reads the PK time under nonmem=TRUE (#1167)", {
+    skip_if_not(.rxSHasPkTime(), "rxode2 without rxS(pkTime=)")
+    .ctl <- function(...) {
+      foceiControl(
+        rxControl = rxode2::rxControl(covsInterpolation = "nocb", nonmem = TRUE),
+        maxOuterIterations = 0L, covMethod = "", print = 0, ...
+      )
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.pkTimeModel))
+    rxode2::rxAssignControlValue(.ui, "fast", TRUE)
+    .pkTimeChk(.ui$foceiOuter$augMod)
+    .d <- .pkTimeData()
+    .fit <- .nlmixr(.pkTimeModel, .d, "focei", .ctl(fast = TRUE))
+    expect_gt(.fit$env$nAnalyticGradDirect, 0)
+    .g <- .foceiGradDirect(.fit)
+    .ofv <- function(val) .nlmixr(rxode2::ini(.pkTimeModel, tcl = val), .d, "focei", .ctl())$objf
+    .h <- 3e-3
+    .fd <- (.ofv(log(3) + .h) - .ofv(log(3) - .h)) / (2 * .h)
+    expect_equal(unname(.g["tcl"]), .fd, tolerance = 0.02)
+  })
+
   test_that("nlminb estimates under rxControl(nonmem=TRUE) (#1167)", {
     skip_if_not(.rxSHasPkTime(), "rxode2 without rxS(pkTime=)")
     .pop <- function() {
