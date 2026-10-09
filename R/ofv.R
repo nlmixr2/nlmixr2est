@@ -24,8 +24,7 @@
         .foceiControl$etaMat <- NULL
         .rn <- "FO"
       }
-      .inObjDf <- fit$objDf
-      if (any(rownames(.inObjDf) == .rn)) {
+      if (.ofvHasRow(fit, .rn)) {
         return(fit)
       }
       .foceiControl <- do.call(foceiControl, .foceiControl)
@@ -43,6 +42,18 @@
   )
 }
 
+#' Does the fit already report a calculated objective function of this type?
+#'
+#' @param fit nlmixr2 fit
+#' @param type objective function row name
+#' @return `TRUE` when the row exists and is not the uncalculated (NA) placeholder
+#' @noRd
+.ofvHasRow <- function(fit, type) {
+  .objDf <- fit$objDf
+  .w <- which(rownames(.objDf) == type)
+  length(.w) == 1L && !is.na(.objDf$OBJF[.w])
+}
+
 #' Add an importance-sampling objective by an E-step-only run at the fit's estimates
 #'
 #' @param fit nlmixr2 fit
@@ -52,7 +63,7 @@
 .setOfvImp <- function(fit, type = c("imp", "impmap")) {
   .type <- match.arg(type)
   .rn <- toupper(.type)
-  if (any(rownames(fit$objDf) == .rn)) {
+  if (.ofvHasRow(fit, .rn)) {
     return(invisible(fit))
   }
   nlmixrWithTiming(
@@ -120,7 +131,8 @@ setOfv <- function(x, type) {
   assertNlmixrFit(x)
   .objDf <- x$objDf
   .w <- which(tolower(row.names(.objDf)) == tolower(type))
-  if (length(.w) != 1) {
+  # an uncalculated (NA) row is a placeholder, so calculate it
+  if (length(.w) != 1 || is.na(.objDf$OBJF[.w])) {
     return(.setOfvAdd(x, type))
   }
   .env <- x$env

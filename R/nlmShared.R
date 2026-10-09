@@ -48,6 +48,7 @@
 #'
 #' @export
 .nlmSetupEnv <- function(par, ui, data, modelInfo, control, lower = NULL, upper = NULL) {
+  .shi21RatioCensor()
   .ctl <- control
   if (!any(names(.ctl) == "gradTo")) {
     .ctl$gradTo <- 0.0

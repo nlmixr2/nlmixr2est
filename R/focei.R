@@ -1421,7 +1421,7 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   }
   .e <- new.env(parent = env)
   for (.v in names(.rhs)) {
-    assign(.v, symengine::S(.v), envir = .e)
+    assign(.v, symengine::Symbol(.v), envir = .e)
   }
   .expand <- function(.i) {
     .se <- rxode2::.rxToSE(str2lang(.rhs[[.i]]))
@@ -5736,7 +5736,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       # Delete unneeded variables
       .saemCfg2 <- list()
       # res.mod is kept because calc.2LL()/calc.COV() need it to tell an ll()
-      # observation from a normally-distributed one
+      # observation from a normally-distributed one; omegaShareSubpop tells
+      # calc.2LL() which etas a mixture component owns
       for (.v in c(
         "i1",
         "i0",
@@ -5751,7 +5752,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         "opt",
         "inits",
         "Mcovariables",
-        "res.mod"
+        "res.mod",
+        "omegaShareSubpop"
       )) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }
