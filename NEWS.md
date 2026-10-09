@@ -2,6 +2,18 @@
 
 ## New features
 
+- nlmixr2est now tells the rxode2 event bus (`rxode2::rxEventListen()`)
+  about top-level work, so loggers such as nlmixr2log can record it:
+  `nlmixr2()` emits `fitComplete` (or `solveComplete` for simulations and
+  predictions); `addCwres()`, `addNpde()`, `addTable()`, `setOfv()` and
+  reading a deferred objective emit `fitUpdate`; `vpcSim()` and `augPred()`
+  emit `solveComplete`.  Internal refits and solves are silent.  Without an
+  rxode2 that has the bus nothing changes.
+
+- `nlmixrUpdateObject()` now returns whether it rebound the object, and
+  `addCwres()`, `addNpde()` and `addTable(updateObject = TRUE)` no longer
+  error when called on an expression such as `fits[[1]]`.
+
 - With an rxode2 that supports `rxControl(nonmem = TRUE)`, the estimation
   methods now honor it: `time` read in a statement that does not depend on a
   state (NONMEM's `$PK`) is the time of the record ending the interval, also

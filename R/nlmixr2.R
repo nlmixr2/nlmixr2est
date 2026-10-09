@@ -154,6 +154,18 @@ nlmixr2 <- function(
   # Add UDF environment for querying nlmixr2/rxode2 r-based user defined functions
   rxode2::.udfEnvSet(nlmixr2global$nlmixrEvalEnv$envir)
   force(est)
+  ## event bus (see rxEvents.R): entered right before dispatch so the
+  ## missing(object) return above never emits; `object` is already forced, so
+  ## a fit passed inline was logged on its own.  Registered after the timing
+  ## on.exit, so the emitted fit carries its final time.
+  .nlmixr2EventEnter()
+  .nlmixr2EventCallSave <- sys.call()
+  .nlmixr2EventObjNameSave <- .nlmixr2EventObjName(substitute(object))
+  on.exit(
+    .nlmixr2EventExitFit(returnValue(), object, .nlmixr2EventCallSave, .nlmixr2EventObjNameSave, est),
+    add = TRUE,
+    after = TRUE
+  )
   ## verbose?
   ## https://tidymodels.github.io/model-implementation-principles/general-conventions.html
   UseMethod("nlmixr2")
