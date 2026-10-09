@@ -4,6 +4,93 @@
 # is linear, so d(lag(v))/d(p) = lag(d(v)/d(p)): each lagged variable gets a
 # sensitivity lhs and every derivative is chained through it.
 
+.foceiHistFn <- c("lag", "lead", "diff", "first", "last", "lag0", "lead0", "diff0")
+
+#' The definitions of the lagged calculated variables
+#'
+#' The AR(1) residual's own lagged variables (`rx_ar*`) are excluded; the
+#' AR(1) gradient correction handles those.  rxode2's snapshots of a
+#' reassigned lagged variable (`rx_lagv<i>_<var>`) are included.
+#' @param s symengine environment
+#' @return the `var=expr` lines of `s$..lhs` that define them
+#' @noRd
+.foceiLagDefs <- function(s) {
+  .v <- s$..laggedVars
+  if (length(.v) == 0L || is.null(s$..lhs)) {
+    return(character(0))
+  }
+  .v <- .v[!grepl("^rx_ar", .v)]
+  .nm <- sub("^rx_lagv[0-9]+_", "", sub("=.*$", "", s$..lhs))
+  s$..lhs[.nm %in% .v]
+}
+
+#' Regex matching the lhs lines that define the given lagged variables
+#'
+#' @param vars lagged variable names
+#' @return pattern matching `var=` and its rxode2 snapshots `rx_lagv<i>_var=`
+#' @noRd
+.foceiLagDefPattern <- function(vars) {
+  paste0("^(rx_lagv[0-9]+_)?(", paste0(gsub(".", "\\.", vars, fixed = TRUE), collapse = "|"), ")=")
+}
+
+#' Whether rxode2 text uses any of the given variables
+#'
+#' @param txt rxode2 text
+#' @param vars variable names
+#' @param hist when `TRUE`, only count a use as a history function argument
+#' @return logical
+#' @noRd
+.foceiLagRefs <- function(txt, vars, hist = FALSE) {
+  .pre <- if (hist) paste0("\\b(", paste(.foceiHistFn, collapse = "|"), ")\\(\\s*") else "(?<![A-Za-z0-9_.])"
+  .post <- if (hist) "\\s*[,)]" else "(?![A-Za-z0-9_.])"
+  any(vapply(
+    vars,
+    function(v) any(grepl(paste0(.pre, gsub(".", "\\.", v, fixed = TRUE), .post), txt, perl = TRUE)),
+    logical(1)
+  ))
+}
+
+#' Whether a model uses a history function of a calculated variable
+#'
+#' A dosing `lag(cmt) <-` is not a history function, and a covariate's
+#' history needs no sensitivity.
+#' @param ui rxode2 UI
+#' @return logical
+#' @noRd
+.foceiUsesLagVar <- function(ui) {
+  .lhs <- tryCatch(rxode2::rxModelVars(ui)$lhs, error = function(e) character(0))
+  .lhs <- .lhs[!grepl("^rx_ar", .lhs)]
+  if (length(.lhs) == 0L) {
+    return(FALSE)
+  }
+  .found <- FALSE
+  .walk <- function(e) {
+    if (.found || !is.call(e)) {
+      return(invisible())
+    }
+    .f <- e[[1]]
+    if (is.name(.f) && as.character(.f) %in% c("<-", "=", "~")) {
+      .walk(e[[3]])
+      return(invisible())
+    }
+    if (
+      is.name(.f) &&
+        as.character(.f) %in% .foceiHistFn &&
+        length(e) >= 2L &&
+        is.name(e[[2]]) &&
+        as.character(e[[2]]) %in% .lhs
+    ) {
+      .found <<- TRUE
+      return(invisible())
+    }
+    lapply(as.list(e)[-1], .walk)
+    invisible()
+  }
+  .lst <- tryCatch(ui$lstExpr, error = function(e) NULL)
+  lapply(.lst, .walk)
+  .found
+}
+
 #' Sensitivities through the lagged variables
 #'
 #' Each lagged variable `v` gets the lhs `rx_lsens_<i>_<p>` = d(v)/d(p) for

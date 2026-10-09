@@ -1529,14 +1529,49 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   # mtime() is loaded as an ordinary assignment so derivatives can reach a
   # modeled time that moves with an estimated parameter (see .rxMtimeToAssign);
   # the declaration itself is restored by .rxMtimeAssign() below.
-  .ret <- rxode2::rxS(.rxMtimeToAssign(newmod), TRUE, promoteLinSens = promoteLinSens)
+  .ret <- if (.rxSHasPkTime()) {
+    rxode2::rxS(.rxMtimeToAssign(newmod), TRUE, promoteLinSens = promoteLinSens, pkTime = TRUE)
+  } else {
+    rxode2::rxS(.rxMtimeToAssign(newmod), TRUE, promoteLinSens = promoteLinSens)
+  }
   if (inherits(.ret$rx_r_, "numeric")) {
     assign("rx_r_", symengine::S(as.character(.ret$rx_r_)), envir = .ret)
   }
   # rxS() drops mtime() entirely (issue #919); keep it so the generated models
   # still stop the solver at the modeled times and still define the variable.
   .rxMtimeAssign(newmod, .ret)
+  .rxPkTimeToPrologue(.ret)
   .ret
+}
+
+#' Does the installed rxode2's `rxS()` support `pkTime=`?
+#'
+#' @return `TRUE` when `rxode2::rxS()` takes `pkTime` (rxode2#1429)
+#' @noRd
+.rxSHasPkTime <- function() {
+  "pkTime" %in% names(formals(rxode2::rxS))
+}
+
+#' Move `rx_time_pk~t` from `..lhs0` to the generated-model prologue
+#'
+#' With `pkTime=TRUE`, `rxS()` loads `time` in PK-type statements as
+#' `rx_time_pk` so `rxSolve(nonmem=TRUE)` reads the record time there
+#' (#1167).  Every generated model must define it, but most do not emit
+#' `..lhs0`; the `mtime()` lines are already re-emitted ahead of every
+#' generated model, so the definition rides with them.
+#'
+#' @param env symengine environment from `rxode2::rxS()`
+#' @return Nothing, called for the `..lhs0`/`..mtime` side effect
+#' @noRd
+.rxPkTimeToPrologue <- function(env) {
+  .lhs0 <- env$..lhs0
+  .w <- names(.lhs0) == "rx_time_pk"
+  if (!any(.w)) {
+    return(invisible(NULL))
+  }
+  assign("..lhs0", .lhs0[!.w], envir = env)
+  assign("..mtime", c(unname(.lhs0[.w]), env$..mtime), envir = env)
+  invisible(NULL)
 }
 
 #' @export
@@ -2419,7 +2454,10 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # reference the structural prediction, which precedes them).  These add output
   # columns, so rx_pred_ is no longer lhs[0]; the FOCEi C++ locates rx_pred_ by
   # name (op_focei.predOffset) and offsets its reads.
-  .lagDefs <- .foceiLagLhs(.s)
+  .lagDefs <- character(0)
+  if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
+    .lagDefs <- .s$..lhs[grepl(.foceiLagDefPattern(.s$..laggedVars), .s$..lhs)]
+  }
   # AR(1) exact eta-gradient: structural-prediction eta-sensitivities lag()-
   # referenced by the corrected HdEta lines; emit them (real lhs) ahead of
   # rx_pred_ so the FOCEi column block stays contiguous.
@@ -2899,7 +2937,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   .lagDefs <- character(0)
   .restLhs <- .lhs
   if (!.isMatExp && !is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L) {
-    .isLag <- .lhs %in% .foceiLagLhs(.s)
+    .isLag <- grepl(.foceiLagDefPattern(.s$..laggedVars), .lhs)
     .lagDefs <- .lhs[.isLag]
     .restLhs <- .lhs[!.isLag]
   }

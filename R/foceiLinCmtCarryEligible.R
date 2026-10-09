@@ -45,6 +45,9 @@
   tryCatch(vapply(symengine::free_symbols(expr), as.character, character(1)), error = function(e) character(0))
 }
 
+# time symbols; rxS(pkTime = TRUE) loads a PK-type `t` as rx_time_pk (#1167)
+.rxFoceiCarryTimeSyms <- c("t", "rx_time_pk")
+
 #' Is a symengine expression identically zero?
 #' @noRd
 .rxFoceiCarryIsZero <- function(expr) {
@@ -141,7 +144,7 @@
   }
   .free <- slotFree[[.inSlot]]
   # exactly one eta in that slot, no direct time dependence
-  if (sum(etaVars %in% .free) != 1L || "t" %in% .free) {
+  if (sum(etaVars %in% .free) != 1L || any(.rxFoceiCarryTimeSyms %in% .free)) {
     return(NULL)
   }
   .expr <- slotExpr[[.inSlot]]
@@ -169,7 +172,7 @@
     return("mult")
   }
   .dFree <- .rxFoceiCarryFreeSyms(d)
-  if (length(intersect(.dFree, c(allCovs, etaVars, "t"))) == 0L) {
+  if (length(intersect(.dFree, c(allCovs, etaVars, .rxFoceiCarryTimeSyms))) == 0L) {
     return("add")
   }
   NULL

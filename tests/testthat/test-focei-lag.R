@@ -196,31 +196,90 @@ nmTest({
     expect_error(rxode2::rxode2(.histOde)$foceiEnv, "inside an ODE is not supported")
   })
 
-  test_that("a rx_lagv snapshot of a reassigned lagged variable is kept and expanded", {
-    .s <- new.env()
-    .s$..laggedVars <- "c0"
-    .s$..lhs <- c(
-      "ke=2",
-      "c0=central*(WT>70)",
-      "rx_lagv1_c0=c0",
-      "c0=(WT>70)*rx_lagv1_c0+2*central*(1-(WT>70))",
-      "cp=eff+lag(c0)"
-    )
-    expect_equal(.foceiLagLhs(.s), .s$..lhs[2:4])
-    .s$rx__d_dt_eff__ <- symengine::S("ke*(rx_lagv1_c0 + c0 - eff)")
-    .s$..ddt <- "d/dt(eff)=ke*(rx_lagv1_c0+c0-eff)"
-    .foceiLagIntoOde(.s)
-    .e <- .s$rx__d_dt_eff__
-    expect_false(.foceiLagRefs(rxode2::rxFromSE(.e), c("c0", "rx_lagv1_c0")))
-    .at <- function(wt) {
-      .v <- symengine::subs(.e, symengine::S("rxGt(WT, 70)"), symengine::S(as.integer(wt > 70)))
-      .v <- symengine::subs(.v, symengine::S("central"), symengine::S(3))
-      .v <- symengine::subs(.v, symengine::S("eff"), symengine::S(0))
-      as.numeric(symengine::subs(.v, symengine::S("ke"), symengine::S(1)))
+  test_that("a lagged variable read before it is reassigned keeps its sensitivity", {
+    .reMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.cl ~ 0.1
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        c0 <- central / v
+        y <- 2 * c0
+        c0 <- c0 * exp(eta.cl)
+        cp <- y + lag(c0)
+        cp ~ add(add.sd)
+      })
     }
-    # c0 is central or 2*central by branch; the snapshot is the first branch
-    expect_equal(.at(80), 3 + 3)
-    expect_equal(.at(60), 0 + 6)
+    .s <- rxode2::rxode2(.reMod)$foceiEnv
+    # rxode2 builds before rxode2#1435 read the final c0 in y
+    skip_if_not(grepl("rx_lagv1_c0=c0", .s$..inner, fixed = TRUE))
+    .fd <- .lagFd(.reMod, .s$..inner, "ETA", seq_len(.s$..maxEta))
+    expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
+  })
+
+  test_that("an ODE between two assignments of a lagged variable reads the snapshot", {
+    # rxode2 builds before rxode2#1445 bind the final c0 in the ODE
+    skip_if_not(grepl(
+      "rx_lagv1_c0",
+      rxode2::rxS("c0=central/10\nd/dt(central)=-c0\nc0=3*c0\ncp=lag(c0)")$..ddt,
+      fixed = TRUE
+    ))
+    .odeMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        tke <- -1
+        eta.cl ~ 0.1
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        ke <- exp(tke)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        c0 <- central / v
+        d/dt(eff) <- ke * (c0 - eff)
+        c0 <- c0 * exp(eta.cl)
+        cp <- eff + lag(c0)
+        cp ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(.odeMod)
+    .s <- .ui$foceiEnv
+    .fd <- .lagFd(.odeMod, .s$..inner, "ETA", seq_len(.s$..maxEta))
+    expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
+    # the inner model predicts what rxSolve() gives for the original model
+    .th <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
+    .inner <- rxode2::rxSolve(
+      rxode2::rxode2(.s$..inner),
+      c(setNames(.th$est, paste0("THETA[", seq_along(.th$est), "]")), "ETA[1]" = 0.2, "ETA[2]" = 0.2),
+      .lagDat,
+      atol = 1e-12,
+      rtol = 1e-12,
+      addDosing = FALSE
+    )
+    .orig <- rxode2::rxSolve(
+      .ui$simulationModel,
+      c(setNames(.th$est, .th$name), eta.cl = 0.2, eta.v = 0.2),
+      .lagDat,
+      atol = 1e-12,
+      rtol = 1e-12,
+      addDosing = FALSE
+    )
+    expect_equal(.inner$rx_pred_, .orig$cp, tolerance = 1e-8)
   })
 
   test_that("the linCmt() sensitivity carry keeps the lag() terms", {
@@ -292,7 +351,8 @@ nmTest({
     .s <- rxode2::rxode2(.arMod)$foceiEnv
     nlmixr2global$rxArNorm <- FALSE
     expect_true(length(.s$..arEtaSens) > 0L)
-    .fd <- .lagFd(.arMod, .s$..inner, "ETA", 1L)
+    # the AR(1) correction reads rx_time_pk, defined in the model prologue (#1167)
+    .fd <- .lagFd(.arMod, .addMtimeLines(.s$..inner, .s), "ETA", 1L)
     expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
   })
 

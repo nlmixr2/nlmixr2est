@@ -51,7 +51,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' @author Matthew Fidler
 #' @noRd
 .foceiSolveWithId <- function(...) {
-  .ret <- rxode2::rxSolve(..., warnIdSort = FALSE)
+  .ret <- .rxSolveNonmem(..., warnIdSort = FALSE)
   if (names(.ret)[1] == "time") {
     ## For single subject ID is dropped.
     .ret <- data.frame(ID = 1L, .ret)
@@ -121,8 +121,25 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .rxControl <- fit$rxControl
   list(
     covsInterpolation = .rxControl$covsInterpolation,
-    naInterpolation = .rxControl$naInterpolation
+    naInterpolation = .rxControl$naInterpolation,
+    # PK-type statements read the record time (#1167); NULL unless set, since
+    # an rxode2 without rxControl(nonmem=) rejects the argument
+    nonmem = if (isTRUE(.rxControl$nonmem)) TRUE
   )
+}
+
+#' `rxode2::rxSolve()` that passes `nonmem = TRUE` only when it is set
+#'
+#' @param ... passed to `rxode2::rxSolve()`
+#' @param nonmem `TRUE` to solve with `rxControl(nonmem = TRUE)`; `NULL`
+#'   or `FALSE` leaves it out (older rxode2 does not know the argument)
+#' @return solved data
+#' @noRd
+.rxSolveNonmem <- function(..., nonmem = NULL) {
+  if (isTRUE(nonmem)) {
+    return(rxode2::rxSolve(..., nonmem = TRUE))
+  }
+  rxode2::rxSolve(...)
 }
 
 #' Solve for pred/ipred types of calculations (including residuals)
@@ -229,6 +246,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
             tolFactor = .tolFactor,
             covsInterpolation = .covsi$covsInterpolation,
             naInterpolation = .covsi$naInterpolation,
+            nonmem = .covsi$nonmem,
             iCov = .iCov,
             keep = keep,
             addDosing = addDosing,
@@ -258,6 +276,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                 tolFactor = .tolFactor,
                 covsInterpolation = .covsi$covsInterpolation,
                 naInterpolation = .covsi$naInterpolation,
+                nonmem = .covsi$nonmem,
                 iCov = NULL,
                 keep = keep,
                 addDosing = addDosing,
@@ -287,6 +306,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
           tolFactor = .tolFactor,
           covsInterpolation = .covsi$covsInterpolation,
           naInterpolation = .covsi$naInterpolation,
+          nonmem = .covsi$nonmem,
           iCov = NULL,
           keep = keep,
           addDosing = addDosing,
