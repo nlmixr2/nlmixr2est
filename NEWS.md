@@ -118,6 +118,11 @@
   fit with `solveType = "fun"` reported a repaired `|r|` covariance with
   standard errors about 6 times too small.
 
+- The importance-sampling covariance (`covMethod = "imp"`) now evaluates its
+  finite differences at the same covariance probe tolerances.  At the fit's own
+  tolerance an `impmap` fit on `theo_sd` reported a repaired `|imp|` covariance
+  with the `tka` standard error about 3 times too small.
+
 - `saemControl(nBurn = 0)` and `nEm = 0` no longer add two spurious
   iterations' gains to the step-size schedule, which shifted every later gain.
 

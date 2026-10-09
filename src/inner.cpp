@@ -8787,24 +8787,35 @@ static inline double covProbeTol(double fitTol, double tolMax) {
 }
 
 // The covariance probe tolerances (covProbeTol) on the live solve, for a covariance
-// computed outside the FOCEi covariance step (the nlm family's nlmixr2Hess()).
-// Returns the tolerances it replaced, for covProbeSolveTolRestore_(); NA when there
-// is no live solve to retune.
+// computed outside the FOCEi covariance step (the nlm family's nlmixr2Hess(), imp's
+// impComputeCov()).  sav receives the tolerances it replaced, NA when there is no live
+// solve to retune; covProbeSolveTolPop() puts them back.
+void covProbeSolveTolPush(double *sav) {
+  sav[0] = sav[1] = NA_REAL;
+  rxGetSolveAtolRtol(&sav[0], &sav[1]);
+  if (!R_FINITE(sav[0]) || !R_FINITE(sav[1])) {
+    sav[0] = sav[1] = NA_REAL;
+    return;
+  }
+  rxSetSolveAtolRtol(covProbeTol(sav[0], covProbeOdeTolMax), covProbeTol(sav[1], covProbeOdeTolMax));
+}
+
+void covProbeSolveTolPop(const double *sav) {
+  if (R_FINITE(sav[0]) && R_FINITE(sav[1])) rxSetSolveAtolRtol(sav[0], sav[1]);
+}
+
 //[[Rcpp::export]]
 NumericVector covProbeSolveTolSet_() {
-  double atol = NA_REAL, rtol = NA_REAL;
-  rxGetSolveAtolRtol(&atol, &rtol);
-  if (!R_FINITE(atol) || !R_FINITE(rtol)) {
-    return NumericVector::create(NA_REAL, NA_REAL);
-  }
-  rxSetSolveAtolRtol(covProbeTol(atol, covProbeOdeTolMax), covProbeTol(rtol, covProbeOdeTolMax));
-  return NumericVector::create(atol, rtol);
+  double sav[2];
+  covProbeSolveTolPush(sav);
+  return NumericVector::create(sav[0], sav[1]);
 }
 
 //[[Rcpp::export]]
 RObject covProbeSolveTolRestore_(NumericVector tol) {
-  if (tol.size() == 2 && R_FINITE(tol[0]) && R_FINITE(tol[1])) {
-    rxSetSolveAtolRtol(tol[0], tol[1]);
+  if (tol.size() == 2) {
+    double sav[2] = {tol[0], tol[1]};
+    covProbeSolveTolPop(sav);
   }
   return R_NilValue;
 }

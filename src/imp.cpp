@@ -1068,6 +1068,15 @@ static arma::mat impFdHessian(const arma::vec& par0,
   return hess;
 }
 
+// src/inner.cpp: the covariance probe tolerances on the live solve, and back
+void covProbeSolveTolPush(double *sav);
+void covProbeSolveTolPop(const double *sav);
+struct ImpCovSolveTolScope {
+  double sav[2];
+  ImpCovSolveTolScope() { covProbeSolveTolPush(sav); }
+  ~ImpCovSolveTolScope() { covProbeSolveTolPop(sav); }
+};
+
 static void impComputeCov(Environment e, const arma::vec& gammaVec,
                           const std::vector<impProp>& props, int covIter) {
   // The proposal Hessians below and every objective evaluation re-score each
@@ -2395,6 +2404,9 @@ void impOuter(Environment e) {
   // evaluate the covariance at a proposal the fit never actually used (and
   // disagree with the reported impDfInd / impGammaInd).
   if (impCovEnabled()) {
+    // the finite differences of the objective run at the covariance probe
+    // tolerances, as FOCEi's covariance step does
+    ImpCovSolveTolScope _tol;
     impComputeCov(e, gammaUsed, propsUsed, impQrRefreshEnabled() ? iterRun - 1 : 0);
   }
 
