@@ -130,6 +130,19 @@
   tolerance an `impmap` fit on `theo_sd` reported a repaired `|imp|` covariance
   with the `tka` standard error about 3 times too small.
 
+- `nlmControl(covMethod = "nlm")`, the default with `solveType = "hessian"` or
+  `"grad"`, now builds its Hessian from central differences of the analytic
+  gradient at the estimates, over `nlmixr2Gill83()` steps and at the
+  covariance probe tolerances.  It used `stats::nlm(hessian = TRUE)`'s, which
+  differences function values over a step of about 10%; on `theo_sd` its
+  standard errors were 9-15% off.  `solveType = "fun"` still uses nlm's own.
+
+- `trustControl(hessianMethod = "fd")` with the default `covMethod = "r"` now
+  takes its covariance from the same gradient-difference Hessian at the
+  estimates.  It used the last iteration's Hessian, whose steps are searched
+  afresh at every iteration, and on `theo_sd` reported the `add.sd` standard
+  error 16% high.
+
 - `saemControl(nBurn = 0)` and `nEm = 0` no longer add two spurious
   iterations' gains to the step-size schedule, which shifted every later gain.
 

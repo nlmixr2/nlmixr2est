@@ -293,6 +293,29 @@
   .nlmFreeEnv()
   .ret
 }
+
+#' The nlm-family Hessian from central differences of the analytic gradient
+#'
+#' Column `k` is the central difference of `.nlmixrNlminbGradC()` over the
+#' central step `nlmixr2Gill83()` finds for parameter `k` (the step source
+#' `nlmixr2Hess()` uses), at the covariance probe tolerances.  It needs a loaded
+#' problem with a gradient solve type (`solveType` `"grad"` or `"hessian"`).
+#' @param par scaled parameters at the estimates
+#' @return the symmetric Hessian of the objective
+#' @noRd
+.nlmGradHessian <- function(par) {
+  .tol <- .Call(`_nlmixr2est_covProbeSolveTolSet_`)
+  on.exit(.Call(`_nlmixr2est_covProbeSolveTolRestore_`, .tol))
+  .h <- nlmixr2Gill83(nlmixr2est::.nlmixrNlminbFunC, par)$aEpsC
+  .n <- length(par)
+  .hess <- matrix(0, .n, .n)
+  for (.k in seq_len(.n)) {
+    .e <- replace(numeric(.n), .k, .h[.k])
+    .hess[, .k] <- (nlmixr2est::.nlmixrNlminbGradC(par + .e) -
+      nlmixr2est::.nlmixrNlminbGradC(par - .e)) / (2 * .h[.k])
+  }
+  (.hess + t(.hess)) / 2
+}
 #' The information matrix an nlm-family covariance is inverted from
 #'
 #' The Hessian is factored and, when needed, repaired by the covariance step's one

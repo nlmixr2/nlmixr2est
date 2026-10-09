@@ -5,8 +5,10 @@
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #' @param covMethod "r" uses nlmixr2's `nlmixr2Hess()` for the hessian, or
-#'   "nlm" uses the hessian from `stats::nlm(.., hessian=TRUE)`; defaults to
-#'   "nlm" when using nlmixr2's hessian/gradient for solving.
+#'   "nlm" uses a Hessian built from nlmixr2's analytical gradient (central
+#'   differences over `nlmixr2Gill83()` steps) with `solveType` `"hessian"` or
+#'   `"grad"`, and `stats::nlm(.., hessian=TRUE)`'s with `"fun"`; defaults
+#'   to "nlm" when using nlmixr2's hessian/gradient for solving.
 #' @param returnNlm is a logical that allows a return of the `nlm`
 #'   object
 #' @param solveType controls whether `nlm` uses nlmixr2's analytical
@@ -1223,7 +1225,9 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
   if (is.null(.stepmax)) {
     .stepmax <- max(1000 * sqrt(sum((.p / .typsize)^2)), 1000)
   }
-  .hessian <- .ctl$covMethod == "nlm"
+  # with a gradient, "nlm" differences it at the estimates (.nlmGradHessian());
+  # without one, nlm's own finite-difference Hessian
+  .hessian <- .ctl$covMethod == "nlm" && .ctl$solveType == 1L
   if (.ctl$solveType == 1L) {
     .mi <- ui$nlmRxModel
   } else {
@@ -1249,6 +1253,9 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
     iterlim = .(.ctl$iterlim),
     check.analyticals = .(.ctl$check.analyticals)
   )))
+  if (.ctl$covMethod == "nlm" && .ctl$solveType != 1L) {
+    .ret$hessian <- .nlmGradHessian(.ret$estimate)
+  }
   .nlmFinalizeList(.env, .ret, par = "estimate", printLine = TRUE, hessianCov = TRUE)
 }
 .nlmControlToFoceiControl <- function(env, assign = TRUE) {

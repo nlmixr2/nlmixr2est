@@ -175,7 +175,7 @@ nmTest({
     expect_equal(dim(.raw$hessian), c(4L, 4L))
   })
 
-  test_that("est='trust' uses its own Hessian only when it is a finite-difference one or asked for (issue 1140)", {
+  test_that("est='trust' takes the covariance Hessian at the estimates unless asked for its own (issue 1140)", {
     skip_on_cran()
     .hessCalls <- 0L
     .hess <- nlmixr2Hess
@@ -199,7 +199,7 @@ nmTest({
     expect_identical(.hessCalls, 0L)
     expect_true(is.finite(.fT$objective))
     expect_true(.fT$covMethod %in% c("r (trust)", "r+ (trust)", "|r| (trust)"))
-    # "r" with hessianMethod = "fd": that Hessian is already a finite-difference one
+    # "r" with hessianMethod = "fd": central differences of the analytic gradient
     .fF <- .fitTrust(hessianMethod = "fd")
     expect_identical(.hessCalls, 0L)
     expect_true(.fF$covMethod %in% c("r", "r+", "|r|"))
@@ -207,6 +207,9 @@ nmTest({
     .fR <- .fitTrust()
     expect_identical(.hessCalls, 1L)
     expect_true(.fR$covMethod %in% c("r", "r+", "|r|"))
+    # the two agree; the last "fd" iteration's Hessian, whose steps are searched
+    # afresh at every iteration, put add.sd's SE 16% high
+    expect_equal(sqrt(diag(.fF$cov)), sqrt(diag(.fR$cov)), tolerance = 0.01)
   })
 
   test_that("est='trust' warns when the Newton decrement contradicts trust_solve_c()'s own converged flag", {

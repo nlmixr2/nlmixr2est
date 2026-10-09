@@ -245,8 +245,9 @@ will calculate tables. By default this is \code{TRUE}}
 \item{compress}{Should the object have compressed items}
 
 \item{covMethod}{Method for calculating the covariance. `"r"` (the
-default) uses the finite-difference Hessian: the last outer iteration's
-with `hessianMethod = "fd"`, otherwise `nlmixr2Hess()`'s.  `"trust"` uses
+default) uses a finite-difference Hessian at the estimates: with
+`hessianMethod = "fd"`, central differences of the analytical gradient
+over `nlmixr2Gill83()` steps, otherwise `nlmixr2Hess()`'s.  `"trust"` uses
 the last outer iteration's Hessian whatever `hessianMethod` built it (a
 quasi-Newton one by default); `""` skips the covariance step.}
 
