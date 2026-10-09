@@ -2,6 +2,12 @@
 
 ## New features
 
+- The imp covariance (`covMethod = "imp"`) no longer solves the model at the
+  finite-difference points that move only Omega parameters: its importance
+  samples are fixed in eta-space, so those points change only the eta prior, and
+  each sample's data part is reused from the evaluation at the estimates
+  (`fit$env$impCovReused` counts them).
+
 - `foceiControl(covFallback=)`, `saemControl(covFallback=)` and
   `emviControl(covFallback=)` say what each covariance method falls back to when
   it gives no usable covariance, as a named list (by default as before: for FOCEi

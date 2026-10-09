@@ -1197,6 +1197,17 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   std::vector<double> objBuf(nExp, 0.0);
   std::vector<char> objGood(nExp, 0);
   std::vector<double> mixLl((size_t)Nm);
+  arma::vec par0(np);
+  for (int j = 0; j < np; ++j)
+    par0[j] = (pl[j] < ntheta) ? impGetFullThetaVal(pl[j])
+                               : impGetOmegaThetaVal(pl[j] - ntheta);
+  // Each fixed sample's data part of the -log joint (impEvalJointLik() less its eta
+  // prior), kept from the evaluation at the estimates: a point that moves only Omega
+  // parameters changes only the prior, so it needs no solve.
+  const bool omReuse = impCovReuseOn() && Nm == 1 && !impIsFo();
+  std::vector<arma::vec> dataPart(nExp);
+  bool haveData = false;
+  int nReused = 0;
   // Progress bar over the finite-difference covariance evaluations, like the
   // focei covariance step.  evalObj is called f0 (1) + 2*np (diagonal) +
   // 2*np*(np-1) (off-diagonal) = 1 + 2*np*np times; tick once per call.
@@ -1207,13 +1218,21 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   if (covProg) RSprintf("calculating covariance matrix\n");
   auto evalObj = [&](const arma::vec& par) -> double {
     for (int j = 0; j < np; ++j) setPar(j, par[j]);
+    bool thetasAtCentre = true;
+    for (int j = 0; thetasAtCentre && j < np; ++j) {
+      if (pl[j] < ntheta && par[j] != par0[j]) thetasAtCentre = false;
+    }
+    const bool reuse = omReuse && haveData && thetasAtCentre;
+    const bool record = omReuse && !haveData;
+    if (reuse) ++nReused;
     // Re-read after setting: an Omega perturbation changes -0.5 log|Omega|.
     double negHalfLogDetOmega = impLogDetOmegaInv5();
     std::fill(objBuf.begin(), objBuf.end(), 0.0);
     std::fill(objGood.begin(), objGood.end(), 0);
     nmForEachSubject(rx, nExp, cores, doParCov, [&](int id) {
       if (ok[id]) {
-        impForceResolve(id);
+        if (!reuse) impForceResolve(id);
+        if (record) dataPart[id].set_size(isample);
         // This subject's converged proposal scale (all equal under "global").
         // Must use the SAME proposal FAMILY and parameters as the E-step or the
         // reweighted objective is not the one the fit converged on.
@@ -1222,7 +1241,14 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
         for (int k = 0; k < isample; ++k) {
           arma::vec eta = Ss[id].row(k).t();
           arma::vec d = eta - modes[id];
-          double qk = -impEvalJointLik(eta, id) +
+          double negLogJoint;
+          if (reuse) {
+            negLogJoint = dataPart[id][k] + impEtaPriorHalf(eta);
+          } else {
+            negLogJoint = impEvalJointLik(eta, id);
+            if (record) dataPart[id][k] = negLogJoint - impEtaPriorHalf(eta);
+          }
+          double qk = -negLogJoint +
             impPropLogKernelRecip(pr, arma::as_scalar(d.t() * Hs[id] * d), gammaVec[id], neta);
           if (R_finite(qk)) { q[k] = qk; ++nGood; } else q[k] = R_NegInf;
         }
@@ -1255,14 +1281,13 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
       }
     }
     if (covProg) covTick = par_progress(covCur++, covTot, covTick, 1, covT0, 0);
+    if (record) haveData = true;
     return obj;
   };
 
-  arma::vec par0(np);
-  for (int j = 0; j < np; ++j)
-    par0[j] = (pl[j] < ntheta) ? impGetFullThetaVal(pl[j])
-                               : impGetOmegaThetaVal(pl[j] - ntheta);
   arma::mat Hess = impFdHessian(par0, evalObj);
+  // objective evaluations that needed no solve
+  e["impCovReused"] = nReused;
   if (covProg) nmProgressEnd(covTot, covTick, covT0, covInPlace);
   // Restore the converged estimates.
   for (int j = 0; j < np; ++j) setPar(j, par0[j]);

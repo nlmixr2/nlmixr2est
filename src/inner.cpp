@@ -13604,6 +13604,21 @@ double impLogDetOmegaInv5() {
   return op_focei.logDetOmegaInv5;
 }
 
+// The eta prior likInner0() adds to a subject's -log joint, 0.5 * eta' Omega^-1 eta
+double impEtaPriorHalf(const arma::vec& eta) {
+  arma::mat etam(eta);
+  return 0.5 * arma::as_scalar(etam.t() * curOmegaInv() * etam);
+}
+
+// Whether the imp covariance may reuse its own evaluations (see covReuseOn())
+bool impCovReuseOn() {
+  return covReuseOn();
+}
+
+bool impIsFo() {
+  return op_focei.fo == 1;
+}
+
 int impNiter() {
   return op_focei.impNiter;
 }

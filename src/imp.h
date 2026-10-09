@@ -27,6 +27,9 @@ bool impPoolSizing();              // true when the pool is sized for the theta-
 
 // 0.5 * log|Omega^-1| = -0.5 * log|Omega| (importance-sampling objective normalizer).
 double impLogDetOmegaInv5();
+double impEtaPriorHalf(const arma::vec& eta);
+bool impCovReuseOn();
+bool impIsFo();
 
 // Maximum EM iterations (from the impmap control).
 int impNiter();
