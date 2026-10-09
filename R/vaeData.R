@@ -258,7 +258,8 @@
   ## duplicating the intercept and making the least-squares M-step singular.
   .raw <- .raw[vapply(.raw, function(nm) length(unique(.subjVal(nm))) > 1L, logical(1))]
 
-  .cols <- list()
+  .acc <- new.env(parent = emptyenv())
+  .acc$cols <- list()
   .rawVals <- list()
   .catDropped <- character(0)
   .logDrop <- character(0)
@@ -274,8 +275,8 @@
     ## a level containing "_" can collide with another covariate's column name
     ## (covariate WT level "A_B" vs covariate WT_A level "B"), and a duplicate
     ## name makes the second column unreachable through match()
-    name <- .vaeUniqueName(name, vapply(.cols, `[[`, character(1), "name"))
-    .cols[[length(.cols) + 1L]] <<-
+    name <- .vaeUniqueName(name, vapply(.acc$cols, `[[`, character(1), "name"))
+    .acc$cols[[length(.acc$cols) + 1L]] <-
       list(
         name = name,
         raw = raw,
@@ -421,6 +422,7 @@
     }
   }
 
+  .cols <- .acc$cols
   .nc <- length(.cols)
   .covNames <- vapply(.cols, `[[`, character(1), "name")
   .covMat <- matrix(0, N, .nc, dimnames = list(NULL, .covNames))
@@ -899,8 +901,9 @@ vaeCovariates <- function(
   ## condition.  It is a plain NAME, so without this it would look like an
   ## ordinary intermediate and its rhs would never seed the solve.
   .initNames <- paste0(.states, "_0")
-  .seed <- character(0)
-  .map <- list()
+  .acc <- new.env(parent = emptyenv())
+  .acc$seed <- character(0)
+  .acc$map <- list()
   .add <- function(.ex) {
     .rhs <- .syms(.ex[[3]])
     if (is.name(.ex[[2]])) {
@@ -908,7 +911,7 @@ vaeCovariates <- function(
       ## fixpoint does not depend on deparse quoting.
       .nm <- as.character(.ex[[2]])
       if (.nm %in% .initNames) {
-        .seed <<- c(.seed, .rhs)
+        .acc$seed <- c(.acc$seed, .rhs)
         return(invisible())
       }
       ## Every other name assignment -- including a `~` endpoint line -- becomes a
@@ -917,7 +920,7 @@ vaeCovariates <- function(
       ## hide the dependency.  Keeping the edge is at worst conservative (an error
       ## parameter reached this way stays in stage 1, and it is stage-2 eligible
       ## via the err rule anyway).
-      .map[[.nm]] <<- unique(c(.map[[.nm]], .rhs))
+      .acc$map[[.nm]] <- unique(c(.acc$map[[.nm]], .rhs))
       return(invisible())
     }
     .txt <- paste(deparse(.ex[[2]]), collapse = "")
@@ -928,7 +931,7 @@ vaeCovariates <- function(
     }
     ## solve-defining, or an lhs shape not recognized here: treat the rhs as
     ## reachable rather than guess (the safe direction: stage 1)
-    .seed <<- c(.seed, .rhs)
+    .acc$seed <- c(.acc$seed, .rhs)
     invisible()
   }
   ## Walk into control flow: rxode2 models may wrap assignments in `if`/`else`
@@ -943,7 +946,7 @@ vaeCovariates <- function(
       return(.add(.ex))
     }
     if (identical(.ex[[1]], as.name("if")) || identical(.ex[[1]], as.name("while"))) {
-      .seed <<- c(.seed, .syms(.ex[[2]]))
+      .acc$seed <- c(.acc$seed, .syms(.ex[[2]]))
       for (.k in seq_along(.ex)[-(1:2)]) {
         .walk(.ex[[.k]])
       }
@@ -957,10 +960,10 @@ vaeCovariates <- function(
   for (.ex in .lst) {
     .walk(.ex)
   }
-  .seen <- unique(.seed)
+  .seen <- unique(.acc$seed)
   .todo <- .seen
   while (length(.todo) > 0L) {
-    .nxt <- unique(unlist(.map[intersect(.todo, names(.map))], use.names = FALSE))
+    .nxt <- unique(unlist(.acc$map[intersect(.todo, names(.acc$map))], use.names = FALSE))
     .todo <- setdiff(.nxt, .seen)
     .seen <- c(.seen, .todo)
   }

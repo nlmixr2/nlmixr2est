@@ -148,7 +148,8 @@ shi21CentralWrap <- function(f, t, f0, idx, ef) {
 #'
 #' @param m Matrix to take the square root of.
 #'
-#' @return A square root general square matrix of m
+#' @return A square root general square matrix of m.  A matrix that is not
+#'   finite is an error.
 #'
 #' @export
 sqrtm <- function(m) {

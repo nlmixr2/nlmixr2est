@@ -6,21 +6,19 @@
 
 .foceiHistFn <- c("lag", "lead", "diff", "first", "last", "lag0", "lead0", "diff0")
 
-#' Which lhs lines define a lagged calculated variable
+#' Which `var=expr` lines define a lagged variable
 #'
-#' A variable assigned more than once is read through a snapshot
-#' `rx_lagv<i>_<v>` of each earlier value (rxode2 #1435), so its snapshot
-#' lines are definitions too.
+#' rxode2 reads a lagged variable assigned more than once through snapshot
+#' lines `rx_lagv<i>_<var>=<var>` (rxode2#1435); they belong with its
+#' definitions.
 #' @param lhs `var=expr` lines
 #' @param vars lagged variable names
 #' @return logical, one per line
 #' @noRd
-.foceiLagIsDef <- function(lhs, vars) {
-  if (length(vars) == 0L) {
-    return(rep(FALSE, length(lhs)))
-  }
-  .lhs <- sub("^rx_lagv[0-9]+_", "", sub("=.*$", "", lhs))
-  .lhs %in% vars
+.foceiIsLagDef <- function(lhs, vars) {
+  .n <- sub("=.*$", "", lhs)
+  .snap <- grepl("^rx_lagv[0-9]+_", .n)
+  (.n %in% vars & !.snap) | (.snap & sub("^rx_lagv[0-9]+_", "", .n) %in% vars)
 }
 
 #' The definitions of the lagged calculated variables
@@ -36,7 +34,7 @@
     return(character(0))
   }
   .v <- .v[!grepl("^rx_ar", .v)]
-  s$..lhs[.foceiLagIsDef(s$..lhs, .v)]
+  s$..lhs[.foceiIsLagDef(s$..lhs, .v)]
 }
 
 #' Whether rxode2 text uses any of the given variables
@@ -69,9 +67,10 @@
   if (length(.lhs) == 0L) {
     return(FALSE)
   }
-  .found <- FALSE
+  .acc <- new.env(parent = emptyenv())
+  .acc$found <- FALSE
   .walk <- function(e) {
-    if (.found || !is.call(e)) {
+    if (.acc$found || !is.call(e)) {
       return(invisible())
     }
     .f <- e[[1]]
@@ -86,7 +85,7 @@
         is.name(e[[2]]) &&
         as.character(e[[2]]) %in% .lhs
     ) {
-      .found <<- TRUE
+      .acc$found <- TRUE
       return(invisible())
     }
     lapply(as.list(e)[-1], .walk)
@@ -94,7 +93,7 @@
   }
   .lst <- tryCatch(ui$lstExpr, error = function(e) NULL)
   lapply(.lst, .walk)
-  .found
+  .acc$found
 }
 
 #' Sensitivities through the lagged variables
@@ -122,14 +121,15 @@
   .rhsSE <- lapply(.defRhs, function(x) .sym(rxode2::rxToSE(x)))
   # history calls of a lagged variable, taken from the symengine trees: a
   # text round trip does not keep them identical (`lag(c0, 1)` vs `1.0`)
-  .histSE <- list()
+  .acc <- new.env(parent = emptyenv())
+  .acc$histSE <- list()
   .walk <- function(e) {
     if (symengine::get_type(e) == "FunctionSymbol") {
       .a <- as.list(symengine::get_args(e))
       if (
         sub("\\(.*$", "", as.character(e)) %in% .foceiHistFn && length(.a) >= 1L && as.character(.a[[1]]) %in% .vars
       ) {
-        .histSE[[as.character(e)]] <<- e
+        .acc$histSE[[as.character(e)]] <- e
         return(invisible())
       }
     }
@@ -137,7 +137,7 @@
     invisible()
   }
   lapply(c(.exprs, .rhsSE), function(e) .walk(.sym(e)))
-  .histSE <- unname(.histSE)
+  .histSE <- unname(.acc$histSE)
   .calls <- vapply(
     .histSE,
     function(e) {

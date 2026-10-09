@@ -375,11 +375,12 @@ nmObjGetFoceiControl.ilaplace <- function(x, ...) {
   .foceiFamilyControlToFoceiControl(x[[1]], "ilaplaceControl", assign = FALSE)
 }
 
-#' focei-family controls that can be converted to one another
+#' focei-family controls that the mu-referenced methods convert
 #'
-#' Deliberately excludes `impmapControl`/`foControl`/`foiControl`: they carry fields
-#' (`isample`, `nIter`, `posthoc`, ...) that are not in `.foceiControlInternal`, so
-#' `foceiControl()` rejects them with "unused argument".
+#' Excludes `impmapControl`: its fields (`isample`, `nIter`, ...) are not in
+#' `.foceiControlInternal`, so `foceiControl()` rejects them with "unused
+#' argument".  `foControl`/`foiControl` are not converted either: a mu-referenced
+#' method replaces them by its default control.
 #' @noRd
 .foceiFamilyControlConvertible <-
   c(
@@ -421,6 +422,11 @@ nmObjGetFoceiControl.ilaplace <- function(x, ...) {
 #' Distinguish them by comparing against the SOURCE control's OWN defaults: a field
 #' the caller changed is carried over, a field still at its default belongs to the
 #' source method and is dropped so the target's value wins.
+#'
+#' The `posthoc` field of `foControl()`/`foiControl()` is an argument of those two
+#' constructors only, so it is dropped for any other target; `posthoc = FALSE`
+#' (no inner problem) is kept as `maxInnerIterations = 0`, as
+#' `.foceiFamilyControlToFoceiControl()` keeps it.
 #' @param ctl control object to convert
 #' @param target name of the target `*Control()` function
 #' @return a control of class `target`
@@ -428,6 +434,12 @@ nmObjGetFoceiControl.ilaplace <- function(x, ...) {
 .foceiFamilyControlAs <- function(ctl, target) {
   .cls <- class(ctl)[1]
   .ctl <- unclass(ctl)
+  if (!(target %in% c("foControl", "foiControl"))) {
+    if (isFALSE(.ctl$posthoc)) {
+      .ctl$maxInnerIterations <- 0L
+    }
+    .ctl$posthoc <- NULL
+  }
   if (identical(.cls, target)) {
     return(do.call(target, .ctl))
   }

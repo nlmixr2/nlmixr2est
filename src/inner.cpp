@@ -11416,12 +11416,25 @@ int foceiS(double *theta, Environment e, bool &hasZero){
 //'
 //' @param m Matrix to take the square root of.
 //'
-//' @return A square root general square matrix of m
+//' @return A square root general square matrix of m.  A matrix that is not
+//'   finite is an error.
 //'
 //' @export
 //[[Rcpp::export]]
 NumericMatrix sqrtm(NumericMatrix m){
-  arma::cx_mat ret = sqrtmat(as<arma::mat>(m));
+  arma::mat x = as<arma::mat>(m);
+  // Armadillo's sqrtmat() empties its result for a non-finite matrix (or turns
+  // the NaN into "imaginary" components) instead of failing
+  if (!x.is_finite()) {
+    stop("sqrtm() needs a finite matrix");
+  }
+  arma::cx_mat ret;
+  // a false status also flags the approximate root of a singular matrix, which
+  // is returned; only an empty result is a failure
+  const bool exact = arma::sqrtmat(ret, x);
+  if (!exact && ret.n_elem != x.n_elem) {
+    stop("sqrtm() could not compute the square root");
+  }
   mat im = arma::imag(ret);
   mat re = arma::real(ret);
   if (arma::any(arma::any(im,0))){

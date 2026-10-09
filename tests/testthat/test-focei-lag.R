@@ -301,11 +301,21 @@ nmTest({
       "lag\\(\\) of a calculated variable"
     )
   })
-})
 
-test_that("a reassigned lagged variable's snapshot lines count as its definitions", {
-  .lhs <- c("ka=exp(THETA[1])", "c0=central", "rx_lagv1_c0=c0", "c0=2*rx_lagv1_c0", "rx_lagv1_c1=c1")
-  expect_identical(.foceiLagIsDef(.lhs, "c0"), c(FALSE, TRUE, TRUE, TRUE, FALSE))
-  expect_identical(.foceiLagIsDef(.lhs, character(0)), rep(FALSE, 5))
-  expect_identical(.foceiLagSnapNames("d/dt(eff)=rx_lagv1_c0-rx_lagv12_a.b"), c("rx_lagv1_c0", "rx_lagv12_a.b"))
+  test_that("rxode2's rx_lagv snapshot lines are taken with the lagged definitions", {
+    .lhs <- c(
+      "c0=central/v",
+      "rx_lagv1_c0=c0",
+      "c0=2*rx_lagv1_c0",
+      "cp=eff+lag(c0)",
+      "rx_lagv1_cp=cp",
+      "c00=1",
+      "rx_lagvx_c0=1"
+    )
+    expect_identical(.foceiIsLagDef(.lhs, "c0"), c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE))
+    .s <- new.env()
+    .s$..laggedVars <- c("c0", "rx_ar1")
+    .s$..lhs <- c(.lhs, "rx_ar1=1", "rx_lagv1_rx_ar1=rx_ar1")
+    expect_identical(.foceiLagDefs(.s), .lhs[1:3])
+  })
 })
