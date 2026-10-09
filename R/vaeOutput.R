@@ -65,7 +65,8 @@
 #' @noRd
 .vaeInjectCov <- function(line, thName, etaName, termsTxt) {
   .repl <- str2lang(paste0(thName, " + ", termsTxt))
-  .done <- FALSE
+  .state <- new.env(parent = emptyenv())
+  .state$done <- FALSE
   .isAdd <- function(e) is.call(e) && is.name(e[[1L]]) && as.character(e[[1L]]) %in% c("+", "-")
   ## names reachable through a flattened +/- chain
   .addVars <- function(e) {
@@ -78,11 +79,11 @@
     character(0)
   }
   .sub <- function(x) {
-    if (.done) {
+    if (.state$done) {
       return(x)
     }
     if (is.name(x) && identical(as.character(x), thName)) {
-      .done <<- TRUE
+      .state$done <- TRUE
       return(.repl)
     }
     if (.isAdd(x)) {
@@ -93,7 +94,7 @@
     x
   }
   .rec <- function(e) {
-    if (.done || !is.call(e)) {
+    if (.state$done || !is.call(e)) {
       return(e)
     }
     if (.isAdd(e)) {
@@ -106,7 +107,7 @@
     e
   }
   .out <- .rec(line)
-  if (!.done) NULL else .out
+  if (!.state$done) NULL else .out
 }
 
 #' Which shape to write for a selected covariate column

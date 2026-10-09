@@ -177,7 +177,8 @@ structural-theta-only covariance is reported.  Ignored by
 \code{covMethod="sa"}, which is always full.}
 
 \item{nSaCov}{Number of iterations in the dedicated stochastic-approximation
-covariance phase used by \code{covMethod="sa"} (default \code{500}).  These
+covariance phase used by \code{covMethod="sa"}, a whole number of at least 1
+(default \code{500}).  These
 iterations run at the converged estimate (parameters frozen) and only
 resimulate the individual parameters to build the observed Fisher
 information; a larger value gives a less noisy covariance.  Ignored by other

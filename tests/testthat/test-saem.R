@@ -282,3 +282,25 @@ test_that("a full SAEM covariance that is not usable is reported and the theta b
   expect_equal(.e$cov, .saemFull[1:2, 1:2])
   expect_identical(.e$objDf[["Condition#(Cov)"]], 99)
 })
+
+test_that("the saem finalization control substitutes fixed parameters as the fit did", {
+  .finalControl <- function(ctl) {
+    .e <- new.env(parent = emptyenv())
+    .e$saemControl <- ctl
+    .e$.etaMat <- matrix(0, 2, 1)
+    .e$ui <- list(foceiSkipCov = NULL)
+    .saemControlToFoceiControl(.e, assign = FALSE)
+  }
+  for (.lf in c(TRUE, FALSE)) {
+    .fc <- .finalControl(saemControl(literalFix = .lf))
+    expect_identical(.fc$literalFix, .lf)
+    # saem never substitutes the fixed residual parameters
+    expect_false(.fc$literalFixRes)
+  }
+  # the default: saem keeps fixed thetas in the model
+  expect_false(.finalControl(saemControl())$literalFix)
+  # a control saved before saemControl() had literalFix
+  .old <- saemControl()
+  .old$literalFix <- NULL
+  expect_false(.finalControl(.old)$literalFix)
+})

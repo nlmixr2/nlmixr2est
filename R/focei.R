@@ -2047,8 +2047,10 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   on.exit({
     if (!.progressStopped) rxode2::rxProgressAbort()
   })
-  .any.zero <- FALSE
-  .all.zero <- TRUE
+  # whether any / every d(prediction)/d(ETA) is identically zero, set row by row
+  .zero <- new.env(parent = emptyenv())
+  .zero$any <- FALSE
+  .zero$all <- TRUE
   # linCmt() alag()/f() moving-boundary correction (#920): computed once, then
   # folded into each row's assigned value BELOW the zero-check so a model
   # whose ETA drives ONLY the lag/F (no structural p1/v1/ka/... dependency)
@@ -2104,14 +2106,14 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
     if (identical(.zErr, 0)) {
-      .any.zero <<- TRUE
-    } else if (.all.zero) {
-      .all.zero <<- FALSE
+      .zero$any <- TRUE
+    } else if (.zero$all) {
+      .zero$all <- FALSE
     }
     rxode2::rxTick()
     .ret
   })
-  if (.all.zero) {
+  if (.zero$all) {
     rxode2::rxProgressStop()
     .progressStopped <- TRUE
     stop(
@@ -2122,7 +2124,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
       call. = FALSE
     )
   }
-  if (.any.zero) {
+  if (.zero$any) {
     warning("some of the predictions do not depend on 'ETA'", call. = FALSE)
   }
   if (!is.null(.arCorr)) {
@@ -2423,8 +2425,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # name (op_focei.predOffset) and offsets its reads.
   .lagDefs <- character(0)
   if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
-    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
-    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
+    .lagDefs <- .s$..lhs[.foceiIsLagDef(.s$..lhs, .s$..laggedVars)]
   }
   # AR(1) exact eta-gradient: structural-prediction eta-sensitivities lag()-
   # referenced by the corrected HdEta lines; emit them (real lhs) ahead of
@@ -2905,7 +2906,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   .lagDefs <- character(0)
   .restLhs <- .lhs
   if (!.isMatExp && !is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L) {
-    .isLag <- grepl(paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")="), .lhs)
+    .isLag <- .foceiIsLagDef(.lhs, .s$..laggedVars)
     .lagDefs <- .lhs[.isLag]
     .restLhs <- .lhs[!.isLag]
   }
@@ -3508,6 +3509,9 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 .foceiModelCacheInflate <- function(el) {
   if (inherits(el, "nlmixr2estFoceiNorm")) {
     .es <- el$eventSens
+    # rxode2() latches suppressMessages() into its C print flag, which would
+    # silence the rest of the fit's progress output; restore it for the caller
+    on.exit(rxode2::rxSuppressMsg(), add = TRUE)
     .mod <- suppressMessages(suppressWarnings(
       if (is.null(.es)) {
         rxode2::rxode2(el$norm)
