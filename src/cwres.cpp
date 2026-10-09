@@ -290,9 +290,8 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   retDF.attr("row.names") = IntegerVector::create(NA_INTEGER,-ncalc);
   retDF.attr("class") = "data.frame";
   calcShrinkFinalize(omegaMat, nid, etaLst, iwresFinal, evid, etaN2, 1);
-  List retC = List::create(retDF, etasDfFull, getDfSubsetVars(ipredL, stateSXP),
-                           getDfSubsetVars(ebeL, relevantLHSSEXP),
-                           getDfSubsetVars(ebeL, covSXP));
+  List retC = dfTableParts(retDF, etasDfFull, ipredL, ebeL,
+                           stateSXP, relevantLHSSEXP, covSXP);
   dfSetStateLhsOps(retC, opt);
   retC = dfCbindList(wrap(retC));
   List ret(4);

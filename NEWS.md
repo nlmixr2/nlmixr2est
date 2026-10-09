@@ -48,6 +48,20 @@
   
 ## Bug Fixes
 
+- The table step of a fit ("Calculating residuals/tables") now protects the
+  state, `lhs` and covariate columns it adds to the table from R's garbage
+  collector.  A collection that landed in a window of a few allocations
+  dropped those columns from the table, or corrupted R's heap so that R could
+  crash later (for example with `malloc(): unsorted double linked list
+  corrupted`).  The window is small, so this was rare and intermittent.
+
+- `est = "imp"`, `"impmap"` and `"qrpem"` fits of a mixture model with
+  `auto = TRUE` (the default) now reallocate the importance samples by each
+  mixture component's own effective sample size.  The reallocation read the
+  per-subject effective sample sizes with the index of the expanded
+  (subject x component) list, past the end of them, so the sample counts of
+  every component after the first came from unrelated memory.
+
 - FOCEi-family eta sensitivities (and the imp/impmap theta sensitivities)
   now chain through `lag()`/`diff()` of a calculated variable, so a model
   whose random effect reaches the prediction only that way no longer errors
@@ -56,6 +70,8 @@
   uses such a variable now compiles, and `lag()` of a variable inside an ODE
   gives a clear error.  The analytic `fast=TRUE` gradient and analytic
   covariance fall back to finite differences for these models (#1176).
+  This also holds for a lagged variable that is assigned more than once,
+  which rxode2 now reads through a snapshot (rxode2#1435).
 
 - `$etaMat` of a fit with inter-occasion variability now holds the occasion
   ETAs as the model estimated them; it held them multiplied by the occasion

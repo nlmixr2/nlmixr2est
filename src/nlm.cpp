@@ -1118,7 +1118,7 @@ List nlmLbfgsb3cFit(arma::vec &theta, NumericVector lower, NumericVector upper,
     nlmLbfgsErr = nullptr;
     std::rethrow_exception(err);
   }
-  return List::create(_["par"] = wrap(x), _["grad"] = wrap(g),
+  return List::create(_["par"] = x, _["grad"] = g,
                       _["value"] = fncount > 0 ? fmin : NA_REAL,
                       _["counts"] = IntegerVector::create(fncount, grcount),
                       _["convergence"] = lbfgsbConvergence(fail),
@@ -1493,6 +1493,6 @@ List nlmLikEvalC_(NumericVector theta) {
   std::vector<double> g(ntheta, 0.0);
   int rc = nlmixr2NlmEval(&theta[0], ntheta, &value, g.data());
   if (rc < 0) stop("nlmixr2NlmEval failed with status %d", rc);
-  return List::create(_["value"] = value, _["grad"] = wrap(g),
+  return List::create(_["value"] = value, _["grad"] = g,
                       _["nBad"] = rc);
 }
