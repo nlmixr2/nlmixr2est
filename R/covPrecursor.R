@@ -1,6 +1,7 @@
 # Precursors of the finite-difference covariance (covPrecursor): what a fit already
 # holds about the curvature at the estimates.  Its diagonal seeds the full stage's
-# step searches.
+# step searches, and the verified shortcut (covShortcut) may skip measuring the
+# off-diagonals when its correlations explain the curvature along fixed directions.
 
 #' The precursor sources a covariance step can read
 #'
@@ -48,7 +49,7 @@
 #' @param env fit environment
 #' @param control the refit's `foceiControl`
 #' @param key the refit's covariance-store key, or `NULL`
-#' @return list(R, source), or `NULL` when no source is held
+#' @return list(R, source, shortcut), or `NULL` when no source is held
 #' @noRd
 .covPrecursorHint <- function(env, control, key) {
   .src <- control$covPrecursor
@@ -66,7 +67,7 @@
       analytic = .covPrecursorAnalytic(env, .nm)
     )
     if (is.matrix(.R)) {
-      return(list(R = .R, source = .s))
+      return(list(R = .R, source = .s, shortcut = isTRUE(control$covShortcut)))
     }
   }
   NULL
@@ -130,7 +131,7 @@
 
 #' Keep how a precursor served a covariance step
 #'
-#' `env$covPrecursorUsed[[label]]` is list(source) from the
+#' `env$covPrecursorUsed[[label]]` is list(source, shortcut, checks) from the
 #' refit's full stage (`.fdFullPrecursor`); a label computed without one has no entry.
 #' @param env fit environment
 #' @param label installed covariance label
@@ -156,5 +157,10 @@
   if (!is.list(rec) || !checkmate::testString(rec$source)) {
     return(NULL)
   }
-  paste0("from the \"", rec$source, "\" precursor (seeded steps)")
+  .sc <- if (checkmate::testString(rec$shortcut) && rec$shortcut != "off") {
+    paste0("; shortcut ", rec$shortcut)
+  } else {
+    ""
+  }
+  paste0("from the \"", rec$source, "\" precursor (seeded steps", .sc, ")")
 }

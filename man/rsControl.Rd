@@ -14,7 +14,8 @@ rsControl(
   rmatNorm = NULL,
   smatNorm = NULL,
   covFallback = NULL,
-  covPrecursor
+  covPrecursor,
+  covShortcut = NULL
 )
 }
 \arguments{
@@ -60,6 +61,9 @@ with a warning that names it.}
 \item{covPrecursor}{what the covariance may start from, as in
 \code{foceiControl(covPrecursor=)}.  Left out, the fit's value is kept;
 \code{NULL} uses none.}
+
+\item{covShortcut}{as in \code{foceiControl(covShortcut=)}; \code{NULL}
+(default) keeps the fit's value.}
 }
 \value{
 \code{rsControl} object

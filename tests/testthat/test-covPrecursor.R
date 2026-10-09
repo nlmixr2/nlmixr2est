@@ -31,6 +31,21 @@ test_that("covPrecursor deparses and round-trips", {
   expect_identical(.back$covPrecursor, character(0))
 })
 
+test_that("foceiControl() and rsControl() carry covShortcut", {
+  expect_true(foceiControl()$covShortcut)
+  expect_false(foceiControl(covShortcut = FALSE)$covShortcut)
+  expect_error(foceiControl(covShortcut = NA))
+  # rsControl(): NULL keeps the fit's value
+  expect_false("covShortcut" %in% names(rsControl()))
+  expect_false(rsControl(covShortcut = FALSE)$covShortcut)
+  expect_error(rsControl(covShortcut = "yes"))
+  .back <- eval(rxode2::rxUiDeparse(foceiControl(covShortcut = FALSE), "ctl")[[3]])
+  expect_false(.back$covShortcut)
+  .back <- eval(rxode2::rxUiDeparse(rsControl(covShortcut = TRUE), "ctl")[[3]])
+  expect_true(.back$covShortcut)
+  expect_true("covShortcut" %in% .covStoreKeyFields)
+})
+
 test_that("covPrecursor is in the covariance store's key", {
   expect_true("covPrecursor" %in% .covStoreKeyFields)
   expect_true(.covStoreRefitOk(list(covPrecursor = "fd")))
@@ -39,6 +54,15 @@ test_that("covPrecursor is in the covariance store's key", {
 test_that(".covPrecursorLine() describes how a precursor served", {
   expect_null(.covPrecursorLine(NULL))
   expect_identical(.covPrecursorLine(list(source = "fd")), "from the \"fd\" precursor (seeded steps)")
+  expect_identical(
+    .covPrecursorLine(list(source = "analytic", shortcut = "accepted")),
+    "from the \"analytic\" precursor (seeded steps; shortcut accepted)"
+  )
+  expect_identical(
+    .covPrecursorLine(list(source = "fd", shortcut = "fell back")),
+    "from the \"fd\" precursor (seeded steps; shortcut fell back)"
+  )
+  expect_identical(.covPrecursorLine(list(source = "fd", shortcut = "off")), "from the \"fd\" precursor (seeded steps)")
 })
 
 test_that(".covPrecursorFd() reads a full R stored for other settings at the same estimates", {

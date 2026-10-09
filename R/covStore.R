@@ -53,7 +53,8 @@
   "gillRtol",
   "covSolveTol",
   "covInnerTol",
-  "covPrecursor"
+  "covPrecursor",
+  "covShortcut"
 )
 
 #' Key of a covariance step in the fit's covariance store

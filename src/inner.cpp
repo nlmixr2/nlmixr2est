@@ -9,6 +9,8 @@
 #include "censEst.h"
 #include "nearPD.h"
 #include "shi21.h"
+#include "fdHess.h"
+#include "covShortcut.h"
 #include "trustHessianUpdate.h"
 #include "foceiGrad.h"
 #include "logSumExp.h"
@@ -21,6 +23,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <map>
+#include <functional>
 #include "odeSwap.h"
 #include "nmParallel.h"
 #include "imp.h"
@@ -7278,15 +7281,6 @@ static inline void gill83Eps(double hf, double hphif, double err, bool optGillF,
   *aEpsC = *rEpsC = (optGillF ? hf : hphif)*err;
 }
 
-// The objective a finite-difference Hessian differences: f(x) at the full
-// parameter vector x, and restore(x0), which re-installs the base point after
-// the last probe (nothing to do for an objective without state).
-struct FdHessObj {
-  virtual double f(double *x) = 0;
-  virtual void restore(double *x0) {}
-  virtual ~FdHessObj() {}
-};
-
 // 5-point central second difference along i about x (f0 = f(x)) at step h,
 // times fac; NA_REAL at the first non-finite probe when naStop.
 static double fdHessDiag(FdHessObj &obj, double *x, int i, double f0, double h,
@@ -7355,10 +7349,13 @@ static double fdHessDiagDoubling(FdHessObj &obj, double *x, int i, double f0, do
 // off-diagonals j < i.  naStop gives up (false) at the first non-finite probe.
 // fallback (the full FD): a coordinate whose step or 5-point diagonal is not
 // finite takes the step-doubling diagonal and its step instead, so all the
-// diagonals are settled first.  On every exit x is as it was and obj.restore(x)
-// has re-installed it.
+// diagonals are settled first, and afterDiag, when given, sees H with only its
+// diagonal filled: returning true means it has filled the off-diagonals itself (the
+// verified shortcut) and none are measured.  On every exit x is as it was and
+// obj.restore(x) has re-installed it.
 static bool fdHessian(FdHessObj &obj, double *x, int n, double f0, double *h,
-                      arma::mat &H, double fac, bool naStop, bool fallback) {
+                      arma::mat &H, double fac, bool naStop, bool fallback,
+                      const std::function<bool(arma::mat &)> *afterDiag = nullptr) {
   H.zeros(n, n);
   bool ok = true;
   for (int i = 0; fallback && ok && i < n; ++i) {
@@ -7366,6 +7363,10 @@ static bool fdHessian(FdHessObj &obj, double *x, int n, double f0, double *h,
     if (!R_FINITE(d)) d = fdHessDiagDoubling(obj, x, i, f0, fac, &h[i]);
     H(i, i) = d;
     ok = R_FINITE(d);
+  }
+  if (fallback && ok && afterDiag != nullptr && (*afterDiag)(H)) {
+    obj.restore(x);
+    return true;
   }
   naStop = naStop || fallback;
   for (int i = n; ok && i--;) {
@@ -12653,21 +12654,23 @@ struct FdFullStateGuard {
 
 // What the full theta+sigma+Omega stage computed: R = H/2 and, when asked for, the
 // cross-product S, over the parameters c (names nm) at the steps h.
-// With a hint (e[".fdFullHint"]), precursor names its source.
+// With a hint (e[".fdFullHint"]), precursor names its source; shortcut is "accepted",
+// "fell back" or "off" (covShortcut), and checks holds the shortcut's check directions.
 struct FdFullResult {
   FdFullCtx c;
   CharacterVector nm;
   std::vector<double> h, x0;
   arma::mat R, S;
   bool okS = false;
-  std::string precursor;
+  std::string precursor, shortcut;
+  arma::mat checks;
 };
 
 // The hint for the full stage, from e[".fdFullHint"] (set by setCov()'s refit when the
-// control's covPrecursor names a source the fit holds): list(R, source), R over the
-// stage's parameters nm.  False when there is none or it does not fit.
+// control's covPrecursor names a source the fit holds): list(R, source, shortcut), R
+// over the stage's parameters nm.  False when there is none or it does not fit.
 static bool foceiFdFullHint(Environment e, const CharacterVector &nm, arma::mat &R,
-                            std::string &source) {
+                            std::string &source, bool &shortcut) {
   if (!e.exists(".fdFullHint")) return false;
   RObject ho = e[".fdFullHint"];
   if (TYPEOF(ho) != VECSXP) return false;
@@ -12688,6 +12691,7 @@ static bool foceiFdFullHint(Environment e, const CharacterVector &nm, arma::mat 
   if (!R.is_finite()) return false;
   R = 0.5 * (R + R.t());
   source = as<std::string>(hl["source"]);
+  shortcut = hl.containsElementNamed("shortcut") && as<bool>(hl["shortcut"]);
   return true;
 }
 
@@ -12739,12 +12743,18 @@ static bool foceiFdFullCompute(Environment e, bool covKnobs, bool needS, FdFullR
   }
   bool ok = R_FINITE(f0);
   // A hint R0 seeds each step search with its diagonal (the objective's Hessian is 2 R0).
+  // With covShortcut, the full R it predicts from the measured diagonal D and its own
+  // correlations, D^1/2 rho0 D^1/2, is checked along fixed directions after the
+  // diagonal; when it explains them the off-diagonals are not measured.
   arma::mat Rh;
   std::string src;
+  bool shortcut = false;
   std::vector<double> d2(np, NA_REAL);
-  if (ok && foceiFdFullHint(e, res.nm, Rh, src)) {
+  if (ok && foceiFdFullHint(e, res.nm, Rh, src, shortcut)) {
     res.precursor = src;
     for (int i = 0; i < np; ++i) d2[i] = 2.0 * Rh(i, i);
+    shortcut = shortcut && Rh.diag().min() > 0;
+    res.shortcut = shortcut ? "fell back" : "off";
   }
   std::vector<double> &h = res.h;
   h.assign(np, NA_REAL);
@@ -12757,9 +12767,23 @@ static bool foceiFdFullCompute(Environment e, bool covKnobs, bool needS, FdFullR
     obj.x0 = x0;
     obj.keep = true;
   }
+  std::function<bool(arma::mat &)> check = [&](arma::mat &H) {
+    arma::vec sd = arma::sqrt(Rh.diag());
+    arma::mat rho = Rh / (sd * sd.t());
+    arma::vec dh = arma::sqrt(H.diag());
+    if (!dh.is_finite()) return false;
+    arma::mat Hp = rho % (dh * dh.t());
+    CovShortcutResult sc = covShortcutVerify(obj, x0.data(), np, f0, h.data(), Hp, 0.5);
+    res.checks = sc.checks;
+    if (sc.status != 1) return false;
+    res.shortcut = "accepted";
+    H = Hp;
+    return true;
+  };
   {
     CovStageScope _st(covStFullR);
-    ok = ok && fdHessian(obj, x0.data(), np, f0, h.data(), res.R, 0.5, true, true);
+    ok = ok && fdHessian(obj, x0.data(), np, f0, h.data(), res.R, 0.5, true, true,
+                         shortcut ? &check : nullptr);
   }
   {
     CovStageScope _st(covStFullS);
@@ -12838,7 +12862,14 @@ static bool foceiFdFullStash(Environment e, const FdFullResult &res) {
   e[".fdFullX0"] = NumericVector(res.x0.begin(), res.x0.end());
   // how a hint served, for the fit's record (.covPrecursorRecord)
   if (!res.precursor.empty()) {
-    e[".fdFullPrecursor"] = List::create(_["source"] = res.precursor);
+    List rec = List::create(_["source"] = res.precursor, _["shortcut"] = res.shortcut);
+    if (res.checks.n_rows) {
+      NumericMatrix ck = wrap(res.checks);
+      ck.attr("dimnames") = List::create(R_NilValue,
+                                         CharacterVector::create("measured", "predicted", "allowance"));
+      rec["checks"] = ck;
+    }
+    e[".fdFullPrecursor"] = rec;
   }
   if (res.okS) {
     NumericMatrix Sout = wrap(res.S);

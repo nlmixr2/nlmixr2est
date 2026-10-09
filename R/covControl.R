@@ -13,6 +13,8 @@
 #' @param covPrecursor what the covariance may start from, as in
 #'   \code{foceiControl(covPrecursor=)}.  Left out, the fit's value is kept;
 #'   \code{NULL} uses none.
+#' @param covShortcut as in \code{foceiControl(covShortcut=)}; \code{NULL}
+#'   (default) keeps the fit's value.
 #' @return \code{rsControl} object
 #' @author Matt Fidler
 #' @seealso \code{\link{setCov}()}
@@ -29,7 +31,8 @@ rsControl <- function(
   rmatNorm = NULL,
   smatNorm = NULL,
   covFallback = NULL,
-  covPrecursor
+  covPrecursor,
+  covShortcut = NULL
 ) {
   .covFdOptionsAssert(hessEps, gillKcov, gillStepCov, gillFtolCov, covGillF, covSmall, rmatNorm, smatNorm, TRUE)
   if (!is.null(covFallback)) {
@@ -37,6 +40,7 @@ rsControl <- function(
   }
   # NULL here means none (character(0)), so only a missing value keeps the fit's
   covPrecursor <- if (missing(covPrecursor)) NULL else .covPrecursorCheck(covPrecursor)
+  checkmate::assertFlag(covShortcut, null.ok = TRUE)
   .ret <- list(
     hessEps = hessEps,
     gillKcov = gillKcov,
@@ -47,7 +51,8 @@ rsControl <- function(
     rmatNorm = rmatNorm,
     smatNorm = smatNorm,
     covFallback = covFallback,
-    covPrecursor = covPrecursor
+    covPrecursor = covPrecursor,
+    covShortcut = covShortcut
   )
   if (!is.null(.ret$gillKcov)) {
     .ret$gillKcov <- as.integer(.ret$gillKcov)
@@ -187,7 +192,8 @@ rxUiDeparse.impCovControl <- function(object, var) {
   covSmall = "double",
   rmatNorm = "logical",
   smatNorm = "logical",
-  covPrecursor = "character"
+  covPrecursor = "character",
+  covShortcut = "logical"
 )
 
 #' The cache key of a covariance method's options
