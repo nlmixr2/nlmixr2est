@@ -123,17 +123,21 @@ nmTest({
     .old <- .shi21RatioCensor()
     on.exit(.shi21RatioCensor(.old))
     # .nlmSetupEnv() reads the option
-    .err <- vapply(c("legacy", "detected"), function(.type) {
-      withr::local_options(list(nlmixr2est.shi21RatioCensor = .type))
-      .withNlmProblem(.mod, .d, .ctl, function(x) {
-        .gr <- function(p) attr(nlmSolveGradR(p + 0), "gradient")
-        .oracle <- numDeriv::jacobian(.gr, x + 0)
-        .oracle <- (.oracle + t(.oracle)) / 2
-        .h <- attr(nlmSolveGradHess(x + 0), "hessian")
-        # cross terms can be exactly 0, so scale by the diagonal
-        max(abs(.h - .oracle) / sqrt(abs(outer(diag(.oracle), diag(.oracle)))))
-      })
-    }, numeric(1))
+    .err <- vapply(
+      c("legacy", "detected"),
+      function(.type) {
+        withr::local_options(list(nlmixr2est.shi21RatioCensor = .type))
+        .withNlmProblem(.mod, .d, .ctl, function(x) {
+          .gr <- function(p) attr(nlmSolveGradR(p + 0), "gradient")
+          .oracle <- numDeriv::jacobian(.gr, x + 0)
+          .oracle <- (.oracle + t(.oracle)) / 2
+          .h <- attr(nlmSolveGradHess(x + 0), "hessian")
+          # cross terms can be exactly 0, so scale by the diagonal
+          max(abs(.h - .oracle) / sqrt(abs(outer(diag(.oracle), diag(.oracle)))))
+        })
+      },
+      numeric(1)
+    )
     expect_gt(.err[["legacy"]], 1)
     expect_lt(.err[["detected"]], 1e-3)
 

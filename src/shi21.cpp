@@ -11,6 +11,7 @@
 //   2 "substitute" censored ratios set to the detection limit 1
 //   3 "lmomco"     detected harmonic mean times (N - N0)/N, N0 = censored count
 // lmomco::harmonic.mean() (TCEQ RG-194 / EPA DFLOW) is the source of option 3.
+// Options 2 and 3 still depend on how many components are censored.
 #define ARMA_WARN_LEVEL 1
 #define STRICT_R_HEADER
 #include "armahead.h"
@@ -29,46 +30,54 @@ int shi21RatioCensorSet(int type) {
   return old;
 }
 
-static double shiRatioType(const arma::vec &all, int type) {
-  if (all.size() == 1) {
-    return all(0);
-  }
+// Harmonic mean of the nonzero ratios with the legacy zero correction.
+static double shiRatioLegacy(const arma::vec &all) {
   double sum = 0.0;
   int nzero = 0;
   int n = 0;
-  if (type == 0) {
-    for (unsigned int j = all.size(); j--;) {
-      if  (all[j] == 0) {
-        nzero++;
-      } else {
-        sum += 1.0/all[j];
-        n++;
-      }
+  for (unsigned int j = all.size(); j--;) {
+    if  (all[j] == 0) {
+      nzero++;
+    } else {
+      sum += 1.0/all[j];
+      n++;
     }
-    double correction = (double)(n-nzero)/((double)n);
-    if (correction <= 0) correction=1;
-    return (double)(n)/sum * correction;
   }
-  double rmax = 0.0;
+  double correction = (double)(n-nzero)/((double)n);
+  if (correction <= 0) correction=1;
+  return (double)(n)/sum * correction;
+}
+
+// Sum of 1/r over the detected (r >= 1) ratios and their count; rmax is the
+// largest censored ratio.
+static int shiRatioDetected(const arma::vec &all, double &sum, double &rmax) {
+  int n = 0;
+  sum = 0.0;
+  rmax = 0.0;
   for (unsigned int j = all.size(); j--;) {
     if (all[j] >= 1.0) {
       sum += 1.0/all[j];
       n++;
-    } else {
-      nzero++;
-      if (all[j] > rmax) rmax = all[j];
-      if (type == 2) sum += 1.0;
+    } else if (all[j] > rmax) {
+      rmax = all[j];
     }
   }
+  return n;
+}
+
+static double shiRatioType(const arma::vec &all, int type) {
+  if (all.size() == 1) return all(0);
+  if (type == 0) return shiRatioLegacy(all);
+  double sum, rmax;
+  int n = shiRatioDetected(all, sum, rmax);
+  double nAll = (double)(all.size());
   switch (type) {
   case 1:
-    if (n == 0) return rmax;
-    return (double)(n)/sum;
+    return n == 0 ? rmax : (double)(n)/sum;
   case 2:
-    return (double)(all.size())/sum;
+    return nAll/(sum + nAll - (double)(n));
   default:
-    if (n == 0) return 0.0;
-    return (double)(n)/sum * (double)(n)/((double)(all.size()));
+    return n == 0 ? 0.0 : (double)(n)/sum * (double)(n)/nAll;
   }
 }
 
