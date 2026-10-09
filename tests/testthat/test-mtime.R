@@ -100,7 +100,8 @@ nmTest({
     # the loaded equation is the in-place one: the switch time is its expansion,
     # not an opaque name
     expect_equal(paste(.mt), paste(.ddt(FALSE)))
-    expect_match(paste(.mt), "rxLt(t, exp(ETA_1_ + THETA_4_))", fixed = TRUE)
+    # a PK-type statement reads rx_time_pk with rxS(pkTime = TRUE) (#1167)
+    expect_match(paste(.mt), "rxLt\\((t|rx_time_pk), exp\\(ETA_1_ \\+ THETA_4_\\)\\)")
     # ...so the eta reaches the branch and the derivative is not identically zero
     expect_false(paste(symengine::D(.mt, symengine::S("ETA_1_"))) == "0")
   })
