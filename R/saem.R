@@ -1337,11 +1337,18 @@
     .chain <- .chain[-1L]
     if (identical(.chain[1], "linFim")) rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
   }
+  .acc <- new.env(parent = emptyenv())
+  .acc$tried <- list()
   for (.i in seq_along(.chain)) {
     .next <- if (.i < length(.chain)) .chain[.i + 1L] else NA_character_
-    if (.saemCovRung(env, .chain[.i], .next)) {
-      return(invisible())
+    .done <- .saemCovRung(env, .chain[.i], .next)
+    .covTriedAdd(.acc, .chain[.i], if (.done) "used" else "not usable")
+    if (.done) {
+      break
     }
+  }
+  if (length(.acc$tried) > 0L) {
+    env$covTried <- do.call(rbind, .acc$tried)
   }
   invisible()
 }

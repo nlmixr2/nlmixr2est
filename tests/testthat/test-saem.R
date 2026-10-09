@@ -314,11 +314,13 @@ test_that("the SAEM covariance falls back only as covFallback lists", {
   expect_identical(.w, "linearized FIM failed; using no covariance")
   expect_null(.e$cov)
   expect_null(.e$covMethod)
+  expect_identical(.e$covTried, data.frame(method = "linFim", outcome = "not usable"))
   # with the default, the information matrix
   .e <- .saemCovEnv()
   .w <- capture_warnings(.saemCalcCov(.e))
   expect_identical(.w, "linearized FIM failed; using the SAEM information matrix")
   expect_identical(.e$covMethod, "Ha")
+  expect_identical(.e$covTried, data.frame(method = c("linFim", "Ha"), outcome = c("not usable", "used")))
   # "r,s" (the information matrix) has no fallback by default
   expect_null(saemControl()$covFallback[["r,s"]])
 })
