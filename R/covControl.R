@@ -10,6 +10,9 @@
 #'   \code{setCov()} installs the method asked for or stops with an error.  With
 #'   a list, a covariance from a method it lists for the request is installed,
 #'   with a warning that names it.
+#' @param covPrecursor what the covariance may start from, as in
+#'   \code{foceiControl(covPrecursor=)}.  Left out, the fit's value is kept;
+#'   \code{NULL} uses none.
 #' @return \code{rsControl} object
 #' @author Matt Fidler
 #' @seealso \code{\link{setCov}()}
@@ -25,12 +28,15 @@ rsControl <- function(
   covSmall = NULL,
   rmatNorm = NULL,
   smatNorm = NULL,
-  covFallback = NULL
+  covFallback = NULL,
+  covPrecursor
 ) {
   .covFdOptionsAssert(hessEps, gillKcov, gillStepCov, gillFtolCov, covGillF, covSmall, rmatNorm, smatNorm, TRUE)
   if (!is.null(covFallback)) {
     covFallback <- .covFallbackCheck(covFallback)
   }
+  # NULL here means none (character(0)), so only a missing value keeps the fit's
+  covPrecursor <- if (missing(covPrecursor)) NULL else .covPrecursorCheck(covPrecursor)
   .ret <- list(
     hessEps = hessEps,
     gillKcov = gillKcov,
@@ -40,7 +46,8 @@ rsControl <- function(
     covSmall = covSmall,
     rmatNorm = rmatNorm,
     smatNorm = smatNorm,
-    covFallback = covFallback
+    covFallback = covFallback,
+    covPrecursor = covPrecursor
   )
   if (!is.null(.ret$gillKcov)) {
     .ret$gillKcov <- as.integer(.ret$gillKcov)
@@ -179,7 +186,8 @@ rxUiDeparse.impCovControl <- function(object, var) {
   covGillF = "logical",
   covSmall = "double",
   rmatNorm = "logical",
-  smatNorm = "logical"
+  smatNorm = "logical",
+  covPrecursor = "character"
 )
 
 #' The cache key of a covariance method's options
@@ -232,7 +240,13 @@ setCovOptions.rsControl <- function(control, fit, ...) {
     if (is.null(.v)) {
       return(NULL)
     }
-    switch(.rsControlMode[[.n]], double = as.double(.v), integer = as.integer(.v), logical = as.logical(.v))
+    switch(
+      .rsControlMode[[.n]],
+      double = as.double(.v),
+      integer = as.integer(.v),
+      logical = as.logical(.v),
+      character = as.character(.v)
+    )
   })
   names(.ret) <- names(.rsControlMode)
   .ret

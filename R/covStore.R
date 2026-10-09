@@ -15,12 +15,13 @@
 #' @noRd
 .covStoreFitStart <- function(env) {
   env$covStore <- NULL
-  for (.n in c("covHandoff", ".fdFullStore", "covThetaStore")) {
+  .names <- c("covHandoff", ".fdFullStore", "covThetaStore", ".fdFullHint")
+  for (.n in c(.names, ".fdFullPrecursor")) {
     if (exists(.n, envir = env, inherits = FALSE)) rm(list = .n, envir = env)
   }
   .in <- get0(".covRefitInputs", envir = env, inherits = FALSE)
   if (is.list(.in)) {
-    for (.n in c("covHandoff", ".fdFullStore", "covThetaStore")) {
+    for (.n in .names) {
       if (!is.null(.in[[.n]])) assign(.n, .in[[.n]], envir = env)
     }
     rm(list = ".covRefitInputs", envir = env)
@@ -51,7 +52,8 @@
   "gillFtol",
   "gillRtol",
   "covSolveTol",
-  "covInnerTol"
+  "covInnerTol",
+  "covPrecursor"
 )
 
 #' Key of a covariance step in the fit's covariance store
@@ -160,7 +162,13 @@
     ) {
       .S <- .old$S
     }
-    .e$full <- list(R = .R, h = .h, x0 = .x0, S = .S)
+    .e$full <- list(
+      R = .R,
+      h = .h,
+      x0 = .x0,
+      S = .S,
+      precursor = get0(".fdFullPrecursor", envir = src, inherits = FALSE)
+    )
   }
   .steps <- get0("covSteps", envir = src, inherits = FALSE)
   if (is.list(.steps)) {

@@ -13,7 +13,8 @@ rsControl(
   covSmall = NULL,
   rmatNorm = NULL,
   smatNorm = NULL,
-  covFallback = NULL
+  covFallback = NULL,
+  covPrecursor
 )
 }
 \arguments{
@@ -55,6 +56,10 @@ theta-only stage (see \code{covFull})}
 \code{setCov()} installs the method asked for or stops with an error.  With
 a list, a covariance from a method it lists for the request is installed,
 with a warning that names it.}
+
+\item{covPrecursor}{what the covariance may start from, as in
+\code{foceiControl(covPrecursor=)}.  Left out, the fit's value is kept;
+\code{NULL} uses none.}
 }
 \value{
 \code{rsControl} object

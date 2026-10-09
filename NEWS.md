@@ -65,6 +65,17 @@
   `"r"` covariance, `"r,s"` computes only S, and `"r"` or `"s"` after `"r,s"`
   computes nothing.  Every fit starts with an empty store.
 
+- A `setCov()` finite-difference covariance of the full shape (`"r,s (full)"`,
+  `"r (full)"`, `"s (full)"`) can start from what the fit already holds:
+  `foceiControl(covPrecursor=)` and `rsControl(covPrecursor=)` name the sources,
+  `"fd"` (a full-stage R the fit computed under other settings) and `"analytic"`
+  (the analytic covariance it holds), in order of preference.  The precursor's
+  diagonal seeds each step search, which then usually takes its first step (21
+  instead of 25 evaluations on `theo_sd`, 33 instead of 39 on the warfarin
+  model); every step still passes the same acceptance test.  A fresh fit holds
+  no precursor, so its own covariance is unchanged.  `NULL` turns it off;
+  `fit$env$covPrecursorUsed` and the fit print say how one served.
+
 - With an rxode2 that supports `rxControl(nonmem = TRUE)`, the estimation
   methods now honor it: `time` read in a statement that does not depend on a
   state (NONMEM's `$PK`) is the time of the record ending the interval, also

@@ -206,6 +206,15 @@
 #'     of a doubtful sandwich (see \code{covSmall}) only picks a listed method.  The
 #'     methods tried and why each was not used are in \code{fit$env$covTried}.
 #'
+#' @param covPrecursor what a finite-difference covariance may start from, in
+#'     order of preference: \code{"fd"}, a full-stage R this fit computed under
+#'     other settings (\code{setCov()} with another \code{rsControl()}), and
+#'     \code{"analytic"}, the analytic covariance the fit holds.  The first one
+#'     the fit holds seeds the full stage's step searches with its diagonal;
+#'     every step still passes the same acceptance test.  A fresh fit holds
+#'     neither, so this matters for \code{setCov()}.  \code{NULL} uses none.  How
+#'     it served is in \code{fit$env$covPrecursorUsed} and the fit print.
+#'
 #' @param covFull shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 #'     full theta + residual sigma + Omega covariance (assembled analytically for
 #'     \code{covMethod="analytic"}, or by central finite differences over the same
@@ -1251,6 +1260,7 @@ foceiControl <- function(
   covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""), #
   covSolveTol = NULL, #
   covFallback = list("r,s" = c("r", "s"), r = "s", s = character(0), analytic = c("r,s", "r", "s")),
+  covPrecursor = c("fd", "analytic"),
   covFull = TRUE, #
   fast = FALSE, #
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"), #
@@ -1755,6 +1765,7 @@ foceiControl <- function(
     checkmate::assertNumeric(covSolveTol, len = 1, lower = 0, finite = TRUE, any.missing = FALSE)
   }
   covFallback <- .covFallbackCheck(covFallback, targets = c(.covFallbackTargets, "sa", "imp"))
+  covPrecursor <- .covPrecursorCheck(covPrecursor)
   checkmate::assertFlag(covFull)
   checkmate::assertFlag(fast)
   priorMethod <- match.arg(priorMethod)
@@ -2103,6 +2114,7 @@ foceiControl <- function(
     covMethodDeferred = covMethodDeferred,
     covSolveTol = covSolveTol,
     covFallback = covFallback,
+    covPrecursor = covPrecursor,
     covFull = covFull,
     fast = fast,
     priorMethod = priorMethod,

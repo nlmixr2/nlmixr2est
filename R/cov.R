@@ -572,6 +572,7 @@
     .inputs$.fdFullStore <- .stored$full
     .inputs$covThetaStore <- .stored$theta
   }
+  .inputs$.fdFullHint <- .covPrecursorHint(.env, .control, .key)
   .env2$.covRefitInputs <- .inputs
   .dat <- getData(obj)
   .ui <- obj$ui
@@ -589,6 +590,9 @@
   .renv <- tryCatch(.ret$env, error = function(e) NULL)
   if (is.environment(.renv)) {
     try(.covStoreRecord(.env, .key, .renv, fd = !identical(.control$covType, "analytic")), silent = TRUE)
+    if (checkmate::testString(.renv$covMethod)) {
+      .covPrecursorRecord(.env, .renv$covMethod, .renv)
+    }
   }
   .ret
 }

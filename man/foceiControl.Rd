@@ -30,6 +30,7 @@ foceiControl(
   covSolveTol = NULL,
   covFallback = list(`r,s` = c("r", "s"), r = "s", s = character(0), analytic = c("r,s",
     "r", "s")),
+  covPrecursor = c("fd", "analytic"),
   covFull = TRUE,
   fast = FALSE,
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"),
@@ -344,6 +345,15 @@ methods before them gave no covariance.  A list you give replaces the
 default: a method it does not name has no fallback.  The \code{"r,s"} check
 of a doubtful sandwich (see \code{covSmall}) only picks a listed method.  The
 methods tried and why each was not used are in \code{fit$env$covTried}.}
+
+\item{covPrecursor}{what a finite-difference covariance may start from, in
+order of preference: \code{"fd"}, a full-stage R this fit computed under
+other settings (\code{setCov()} with another \code{rsControl()}), and
+\code{"analytic"}, the analytic covariance the fit holds.  The first one
+the fit holds seeds the full stage's step searches with its diagonal;
+every step still passes the same acceptance test.  A fresh fit holds
+neither, so this matters for \code{setCov()}.  \code{NULL} uses none.  How
+it served is in \code{fit$env$covPrecursorUsed} and the fit print.}
 
 \item{covFull}{shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 full theta + residual sigma + Omega covariance (assembled analytically for

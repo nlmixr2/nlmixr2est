@@ -1927,7 +1927,8 @@ typedef void (*gill83fn_type)(double *fp, double *theta, int id, int foceiGill);
 void gill83fnF(double *fp, double *theta, int, int foceiGill);
 int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
            double *theta, int cpar, double epsR, int K, double gillStep,
-           double fTol, int cid, gill83fn_type gill83fn, int foceiGill, double gillF);
+           double fTol, int cid, gill83fn_type gill83fn, int foceiGill, double gillF,
+           double d2Seed = NA_REAL);
 
 gill83fn_type gill83fnG = &gill83fnF;
 
@@ -7031,6 +7032,11 @@ void gill83fnF(double *fp, double *theta, int, int foceiGill) {
 // cpar is the parameter we are considering
 // epsR is the relative error for the problem
 // K is the maximum number of iterations before giving up on searching for the best interval.
+// d2Seed, when a positive number, is an estimate of the second derivative along cpar: the
+// search starts from the step whose condition error Ch would be 0.05.  A search that
+// grows its step by gillStep = 2 from gillStep*hbar stops with Ch in (0.025, 0.1], so
+// the seed lands mid-range, inside the window [0.001, 0.1] by a factor of 2.  The
+// acceptance test is the same either way.
 // Returns 1 -- Success
 //         2 -- Large error; Derivative estimate error 50% or more of the derivative
 //         3 -- Function constant or nearly constant for this parameter
@@ -7039,7 +7045,7 @@ void gill83fnF(double *fp, double *theta, int, int foceiGill) {
 int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
            double *theta, int cpar, double epsR, int K, double gillStep,
            double fTol, int cid, gill83fn_type gill83fn, int foceiGill,
-           double gillF) {
+           double gillF, double d2Seed) {
   if (foceiGill == 1) op_focei.calcGrad=1;
   double f , x, hbar, h0, fp, fn=NA_REAL, phif, phib, phic, phicc = 0, phi, Chf, Chb,
     Ch, hs, hphi, hk, tmp, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phict=NA_REAL;
@@ -7052,6 +7058,8 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   // FD1: // Initialization
   hbar = 2*(1+std::fabs(x))*_safe_sqrt(epsA/(1+std::fabs(f)));
   h0 = gillStep*hbar;
+  // Ch = 4*epsA/(h^2*|f''|) = 0.05
+  if (R_FINITE(d2Seed) && d2Seed > 0 && epsA > 0) h0 = std::sqrt(80.0*epsA/d2Seed);
   if (K <= 0) {
     // no optimal interval is determined: report the one the search would start
     // from, not assessed (no derivative estimate)
@@ -12495,19 +12503,20 @@ static void foceiFdGill83fn(double *fp, double *theta, int, int) {
 // condition error sits in [0.001, 0.1]).  Returns the accepted central step `hphif`, or
 // NA_REAL if gill83 fails (caller falls back to a step-doubling search).
 // covKnobs takes the covariance-stage settings (hessEps, gillKcov, gillStepCov,
-// gillFtolCov), as the theta-only stage does, instead of the estimation's.
+// gillFtolCov), as the theta-only stage does, instead of the estimation's.  d2Seed, a
+// second-derivative estimate along i, seeds the search (gill83).
 static double foceiFdGillStep(const FdFullCtx &c, int i, const std::vector<double> &x0, double f0,
-                              bool covKnobs = false) {
+                              bool covKnobs = false, double d2Seed = NA_REAL) {
   g_fdGillCtx = &c;
   std::vector<double> xg = x0;                       // gill83 perturbs then restores this
   double hf, hphif, df, df2, ef;
   int gret = covKnobs ?
     gill83(&hf, &hphif, &df, &df2, &ef, xg.data(), i,
            op_focei.hessEps, op_focei.gillKcov, op_focei.gillStepCov, op_focei.gillFtolCov,
-           -1, foceiFdGill83fn, 0, f0) :
+           -1, foceiFdGill83fn, 0, f0, d2Seed) :
     gill83(&hf, &hphif, &df, &df2, &ef, xg.data(), i,
            op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-           -1, foceiFdGill83fn, 0, f0);
+           -1, foceiFdGill83fn, 0, f0, d2Seed);
   return (gret == 1 && R_FINITE(hphif) && hphif > 0) ? hphif : NA_REAL;
 }
 
@@ -12644,13 +12653,43 @@ struct FdFullStateGuard {
 
 // What the full theta+sigma+Omega stage computed: R = H/2 and, when asked for, the
 // cross-product S, over the parameters c (names nm) at the steps h.
+// With a hint (e[".fdFullHint"]), precursor names its source.
 struct FdFullResult {
   FdFullCtx c;
   CharacterVector nm;
   std::vector<double> h, x0;
   arma::mat R, S;
   bool okS = false;
+  std::string precursor;
 };
+
+// The hint for the full stage, from e[".fdFullHint"] (set by setCov()'s refit when the
+// control's covPrecursor names a source the fit holds): list(R, source), R over the
+// stage's parameters nm.  False when there is none or it does not fit.
+static bool foceiFdFullHint(Environment e, const CharacterVector &nm, arma::mat &R,
+                            std::string &source) {
+  if (!e.exists(".fdFullHint")) return false;
+  RObject ho = e[".fdFullHint"];
+  if (TYPEOF(ho) != VECSXP) return false;
+  List hl = as<List>(ho);
+  if (!hl.containsElementNamed("R") || !hl.containsElementNamed("source")) return false;
+  RObject ro = hl["R"];
+  if (!Rf_isMatrix(ro) || TYPEOF(ro) != REALSXP) return false;
+  NumericMatrix Rh = as<NumericMatrix>(ro);
+  int np = nm.size();
+  if (Rh.nrow() != np || Rh.ncol() != np) return false;
+  RObject dn = Rh.attr("dimnames");
+  if (Rf_isNull(dn)) return false;
+  CharacterVector rn = as<List>(dn)[0];
+  for (int i = 0; i < np; ++i) {
+    if (as<std::string>(rn[i]) != as<std::string>(nm[i])) return false;
+  }
+  R = as<arma::mat>(Rh);
+  if (!R.is_finite()) return false;
+  R = 0.5 * (R + R.t());
+  source = as<std::string>(hl["source"]);
+  return true;
+}
 
 // Whether the full stage needs the OPG cross-product S: the "r,s" sandwich or "s".
 // Which shape .foceiInstallFdFullCov installs is the one REQUESTED (the control's
@@ -12699,11 +12738,19 @@ static bool foceiFdFullCompute(Environment e, bool covKnobs, bool needS, FdFullR
     f0 = foceiFdObjAt(c, x0.data());
   }
   bool ok = R_FINITE(f0);
+  // A hint R0 seeds each step search with its diagonal (the objective's Hessian is 2 R0).
+  arma::mat Rh;
+  std::string src;
+  std::vector<double> d2(np, NA_REAL);
+  if (ok && foceiFdFullHint(e, res.nm, Rh, src)) {
+    res.precursor = src;
+    for (int i = 0; i < np; ++i) d2[i] = 2.0 * Rh(i, i);
+  }
   std::vector<double> &h = res.h;
   h.assign(np, NA_REAL);
   {
     CovStageScope _st(covStFullGill);
-    for (int i = 0; ok && i < np; ++i) h[i] = foceiFdGillStep(c, i, x0, f0, covKnobs);
+    for (int i = 0; ok && i < np; ++i) h[i] = foceiFdGillStep(c, i, x0, f0, covKnobs, d2[i]);
   }
   FdFullHessObj obj(c);
   if (covReuseOn()) {
@@ -12756,6 +12803,9 @@ static bool foceiFdFullFromStore(Environment e, bool needS, FdFullResult &res) {
   }
   res.R = as<arma::mat>(Rs);
   res.h.assign(h.begin(), h.end());
+  if (st.containsElementNamed("precursor") && !Rf_isNull(st["precursor"])) {
+    e[".fdFullPrecursor"] = st["precursor"];
+  }
   res.okS = false;
   if (st.containsElementNamed("S") && !Rf_isNull(st["S"])) {
     NumericMatrix Ss = as<NumericMatrix>(st["S"]);
@@ -12786,6 +12836,10 @@ static bool foceiFdFullStash(Environment e, const FdFullResult &res) {
   e[".fdFullR"] = Rout;
   e[".fdFullH"] = NumericVector(res.h.begin(), res.h.end());
   e[".fdFullX0"] = NumericVector(res.x0.begin(), res.x0.end());
+  // how a hint served, for the fit's record (.covPrecursorRecord)
+  if (!res.precursor.empty()) {
+    e[".fdFullPrecursor"] = List::create(_["source"] = res.precursor);
+  }
   if (res.okS) {
     NumericMatrix Sout = wrap(res.S);
     Sout.attr("dimnames") = List::create(res.nm, res.nm);
