@@ -361,6 +361,12 @@
   for.  The `iter` column still counts every objective evaluation, so it
   skips the probes.
 
+- The analytic FOCE outer gradient (`fast = TRUE`) now finite-differences a
+  subject whose frozen-variance ETAs it cannot find (a failed solve, or a mode
+  it does not reach) on its own, as FOCEi does a subject whose sensitivity
+  solve fails.  One such subject sent the whole gradient to finite
+  differences.
+
 - The damped-BFGS curvature of `outerOpt = "trust"` and `hessianMethod =
   "bfgs"` (`trustControl()`, `foceiControl()`) is now one C update.  The two
   had rounded differently (bitwise apart in 177 of 200 random updates); an
