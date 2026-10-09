@@ -222,3 +222,16 @@ test_that("covFallback round-trips through rxUiDeparse()", {
   expect_identical(eval(.d[[3]])$covFallback, list("r,s" = "s"))
   expect_false(grepl("covFallback", deparse1(rxode2::rxUiDeparse(foceiControl(), "ctl")), fixed = TRUE))
 })
+
+test_that("a control without covFallback gets its control function's default", {
+  expect_identical(.covFallbackOf(list()), foceiControl()$covFallback)
+  expect_identical(.covFallbackOf(list(), "saemControl"), saemControl()$covFallback)
+  # an empty list given by the user is no fallback, not the default
+  expect_identical(.covFallbackOf(list(covFallback = list())), list())
+  expect_identical(.covFallbackOf(list(covFallback = list(r = "s"))), list(r = "s"))
+  expect_identical(
+    saemControl()$covFallback,
+    list(sa = c("linFim", "Ha"), fim = c("linFim", "Ha"), analytic = c("linFim", "Ha"), linFim = "Ha")
+  )
+  expect_error(saemControl(covFallback = list(sa = "r")), "cannot fall back to \"r\"")
+})

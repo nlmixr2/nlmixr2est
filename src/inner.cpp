@@ -11418,9 +11418,10 @@ Rcpp::List shi21CentralWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx
 static std::vector<std::string> covFallbackFor(Environment e, const std::string &method) {
   std::vector<std::string> ret;
   if (!e.exists("control")) return ret;
-  List ctl = as<List>(e["control"]);
-  if (!ctl.containsElementNamed("covFallback") || Rf_isNull(ctl["covFallback"])) return ret;
-  List fb = as<List>(ctl["covFallback"]);
+  // a control saved before covFallback existed gets foceiControl()'s default
+  Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
+  Function of = as<Function>(nlmixr2[".covFallbackOf"]);
+  List fb = as<List>(of(e["control"]));
   if (!fb.containsElementNamed(method.c_str())) return ret;
   RObject v = fb[method];
   if (TYPEOF(v) != STRSXP) return ret;

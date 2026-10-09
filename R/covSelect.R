@@ -5,13 +5,31 @@
 .covFallbackMethods <- c("r,s", "r", "s", "analytic")
 .covFallbackTargets <- c("r,s", "r", "s")
 
-#' Check `foceiControl(covFallback=)`
+#' A control's covariance fallbacks
+#'
+#' A control saved before `covFallback=` existed has none recorded; it gets the default
+#' of the control function, the fallbacks it was computed with.
+#' @param control a control list
+#' @param type control function name, e.g. "foceiControl" or "saemControl"
+#' @return named list
+#' @noRd
+.covFallbackOf <- function(control, type = "foceiControl") {
+  .fb <- control[["covFallback"]]
+  if (is.list(.fb)) {
+    return(.fb)
+  }
+  eval(formals(get(type, envir = asNamespace("nlmixr2est")))$covFallback)
+}
+
+#' Check a control's `covFallback=`
 #'
 #' @param covFallback named list, one element per covariance method, each the
 #'   ordered methods it falls back to
+#' @param methods the methods that can have fallbacks
+#' @param targets the methods that can be fallbacks
 #' @return the list, each element a character vector
 #' @noRd
-.covFallbackCheck <- function(covFallback) {
+.covFallbackCheck <- function(covFallback, methods = .covFallbackMethods, targets = .covFallbackTargets) {
   if (is.null(covFallback)) {
     return(list())
   }
@@ -22,13 +40,13 @@
   if (any(!nzchar(.n)) || anyDuplicated(.n)) {
     stop("'covFallback' needs one uniquely named element per covariance method", call. = FALSE)
   }
-  .bad <- setdiff(.n, .covFallbackMethods)
+  .bad <- setdiff(.n, methods)
   if (length(.bad) > 0L) {
     stop(
       sprintf(
         "'covFallback' names a method without fallbacks: %s (allowed: %s)",
         paste(dQuote(.bad, FALSE), collapse = ", "),
-        paste(dQuote(.covFallbackMethods, FALSE), collapse = ", ")
+        paste(dQuote(methods, FALSE), collapse = ", ")
       ),
       call. = FALSE
     )
@@ -41,14 +59,14 @@
     if (!is.character(.v) || anyNA(.v) || anyDuplicated(.v)) {
       stop(sprintf("'covFallback$%s' must be distinct method names", .m), call. = FALSE)
     }
-    .bad <- setdiff(.v, setdiff(.covFallbackTargets, .m))
+    .bad <- setdiff(.v, setdiff(targets, .m))
     if (length(.bad) > 0L) {
       stop(
         sprintf(
           "'covFallback$%s' cannot fall back to %s (allowed: %s)",
           .m,
           paste(dQuote(.bad, FALSE), collapse = ", "),
-          paste(dQuote(setdiff(.covFallbackTargets, .m), FALSE), collapse = ", ")
+          paste(dQuote(setdiff(targets, .m), FALSE), collapse = ", ")
         ),
         call. = FALSE
       )

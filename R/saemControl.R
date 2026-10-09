@@ -97,6 +97,15 @@
 #'   estimates by the decoupled recompute engine (\code{setCov()} uses the same
 #'   path); \code{NA} otherwise.
 #'
+#' @param covFallback what each \code{covMethod} falls back to when it gives no
+#'     usable covariance: a named list, one element per method, each the ordered
+#'     methods to try instead (\code{"sa"}, \code{"fim"}, \code{"linFim"} or
+#'     \code{"Ha"}, the inverse of the information matrix's theta block).  The
+#'     default is the established behaviour: \code{"sa"}, \code{"fim"} and
+#'     \code{"analytic"} fall to \code{"linFim"} then \code{"Ha"}, and
+#'     \code{"linFim"} to \code{"Ha"}.  A list you give replaces the default: a
+#'     method it does not name has no fallback.
+#'
 #' @param covFull Boolean (default \code{TRUE}) indicating the covariance
 #'   should include every estimated population parameter -- the structural and
 #'   residual thetas plus the \code{Omega} variance/covariance elements -- named
@@ -387,6 +396,7 @@ saemControl <- function(
   trace = 0, # nolint
   covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
   covMethodDeferred = NA_character_,
+  covFallback = list(sa = c("linFim", "Ha"), fim = c("linFim", "Ha"), analytic = c("linFim", "Ha"), linFim = "Ha"),
   covFull = TRUE,
   nSaCov = 500L,
   calcTables = TRUE,
@@ -582,6 +592,11 @@ saemControl <- function(
     .covMethod <- ""
   }
 
+  covFallback <- .covFallbackCheck(
+    covFallback,
+    methods = c("sa", "fim", "analytic", "linFim", "r,s", "r", "s"),
+    targets = c("sa", "fim", "linFim", "Ha")
+  )
   checkmate::assertLogical(covFull, len = 1, any.missing = FALSE)
 
   # censOption: FOCEI-family censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic
@@ -624,6 +639,7 @@ saemControl <- function(
     ci = ci,
     covMethod = .covMethod,
     covMethodDeferred = covMethodDeferred,
+    covFallback = covFallback,
     covFull = covFull,
     nSaCov = as.integer(nSaCov),
     logLik = logLik,

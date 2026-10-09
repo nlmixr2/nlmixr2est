@@ -1323,30 +1323,70 @@
 #' @noRd
 .saemCalcCov <- function(env) {
   .ui <- env$ui
-  .cm <- rxode2::rxGetControl(.ui, "covMethod", "linFim")
-  if (identical(.cm, "analytic")) {
+  .req <- rxode2::rxGetControl(.ui, "covMethod", "linFim")
+  if (identical(.req, "")) {
+    return(invisible())
+  }
+  .fb <- .covFallbackOf(list(covFallback = rxode2::rxGetControl(.ui, "covFallback", NULL)), "saemControl")
+  .chain <- c(.req, .fb[[.req]])
+  if (identical(.req, "analytic")) {
     # the analytic observed-information covariance is computed post-fit
-    # (.saemInstallAnalyticCov, once the fit object exists); compute the
-    # linearized FIM now as the ready fallback and flag the analytic attempt
+    # (.saemInstallAnalyticCov, once the fit object exists); its fallbacks are computed
+    # now as the ready covariance
     assign(".saemCovAnalyticPending", TRUE, envir = env)
-    rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
-    .cm <- "linFim"
+    .chain <- .chain[-1L]
+    if (identical(.chain[1], "linFim")) rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
   }
-  if (.cm %in% c("sa", "fim") && .saemGeneralLik(.ui)) {
-    # The complete-data Louis FIM behind "sa"/"fim" subtracts the information lost
-    # to the latent eta as Var[score], estimated from a handful of MCMC chains.  A
-    # general log-likelihood endpoint carries no residual error to anchor that, and
-    # measured against an exact marginal likelihood the result is several-fold too
-    # small (0.41 and 0.14 of the true SEs on an exponential TTE model), where the
-    # linearized FIM lands at 0.93 and 0.82.  Go straight to it.
-    message(sprintf("covMethod=\"%s\" is not supported with a general likelihood; using the linearized FIM", .cm))
-    rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
-    .cm <- "linFim"
+  for (.i in seq_along(.chain)) {
+    .next <- if (.i < length(.chain)) .chain[.i + 1L] else NA_character_
+    if (.saemCovRung(env, .chain[.i], .next)) {
+      return(invisible())
+    }
   }
-  if (.cm %in% c("sa", "fim")) {
+  invisible()
+}
+
+#' What a SAEM covariance falls back to, for its messages
+#' @param nxt the next method, or `NA`
+#' @return description
+#' @noRd
+.saemCovNextText <- function(nxt) {
+  if (is.na(nxt)) {
+    return("no covariance")
+  }
+  switch(nxt, linFim = "the linearized FIM", Ha = "the SAEM information matrix", sprintf("covMethod=\"%s\"", nxt))
+}
+
+#' One SAEM covariance method of the walk in `.saemCalcCov()`
+#'
+#' "sa" and "fim" invert a SAEM observed-information matrix with linFim splices;
+#' "linFim" the linearized FIM; "Ha" (and the "r,s", "r" and "s" requests) the theta
+#' block of the SAEM information matrix.
+#' @param env fit environment
+#' @param m the method
+#' @param nxt the method it falls back to, `NA` for none
+#' @return whether the walk is done (a covariance installed, or none possible)
+#' @noRd
+.saemCovRung <- function(env, m, nxt) {
+  .ui <- env$ui
+  if (m %in% c("sa", "fim")) {
+    if (.saemGeneralLik(.ui)) {
+      # The complete-data Louis FIM behind "sa"/"fim" subtracts the information lost
+      # to the latent eta as Var[score], estimated from a handful of MCMC chains.  A
+      # general log-likelihood endpoint carries no residual error to anchor that, and
+      # measured against an exact marginal likelihood the result is several-fold too
+      # small, where the linearized FIM is close.
+      message(sprintf(
+        "covMethod=\"%s\" is not supported with a general likelihood; using %s",
+        m,
+        .saemCovNextText(nxt)
+      ))
+      if (identical(nxt, "linFim")) rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
+      return(FALSE)
+    }
     # Both invert a SAEM observed-information matrix (.saemFimToCov): "sa" uses the
     # converged fixed-theta FIM (saem$HaSa), "fim" the estimation-phase FIM (saem$Ha).
-    .H <- if (identical(.cm, "sa")) env$saem$HaSa else env$saem$Ha
+    .H <- if (identical(m, "sa")) env$saem$HaSa else env$saem$Ha
     .cov <- NULL
     .why <- "could not be computed"
     nlmixrWithTiming("covariance", {
@@ -1389,37 +1429,39 @@
       .keep <- !grepl("^om\\.|^cov\\.", .rn) & !(.rn %in% .ui$iniDf$name[!is.na(.ui$iniDf$err)])
       env$cov <- .cov[.rn[.keep], .rn[.keep], drop = FALSE]
       assign(".saemFullCov", .cov, envir = env)
-      assign(".saemCovMethod", .cm, envir = env)
-      env$covMethod <- .cm
-      return(invisible())
+      assign(".saemCovMethod", m, envir = env)
+      env$covMethod <- m
+      return(TRUE)
     }
-    message(sprintf("covMethod=\"%s\" %s; using the linearized FIM", .cm, .why))
-    rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
+    message(sprintf("covMethod=\"%s\" %s; using %s", m, .why, .saemCovNextText(nxt)))
+    if (identical(nxt, "linFim")) rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
+    return(FALSE)
   }
+  .done <- FALSE
   nlmixrWithTiming("covariance", {
-    .covMethod <- rxode2::rxGetControl(.ui, "covMethod", "linFim")
-    .linFim <- identical(.covMethod, "linFim")
     .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
-    if (identical(.covMethod, "")) {
-      # no covariance requested
-    } else if (.linFim && length(.tn) == 0) {
+    if (identical(m, "linFim") && length(.tn) == 0) {
       warning("no population parameters in the model, no covariance matrix calculated", call. = FALSE)
       env$cov <- NULL
       env$covMethod <- "none"
-    } else {
-      # "r,s"/"r"/"s" (saemControl() turns an integer slot into these) and an
-      # unusable linearized FIM take the inverse of Ha's theta block
-      .r <- if (.linFim) .saemLinFimCov(env, .tn) else NULL
-      if (is.null(.r)) {
-        .r <- .saemHaThetaCov(env)
+      .done <- TRUE
+    } else if (identical(m, "linFim")) {
+      .r <- .saemLinFimCov(env, .tn, nxt)
+      if (!is.null(.r)) {
+        .saemInstallThetaCov(env, .r)
+        .done <- TRUE
       }
+    } else {
+      .r <- .saemHaThetaCov(env)
       if (is.character(.r)) {
         .covRejectWarn(env, .saemHaThetaName, .r)
       } else {
         .saemInstallThetaCov(env, .r)
+        .done <- TRUE
       }
     }
   })
+  .done
 }
 
 # saemControl(covMethod = "r,s"/"r"/"s") computes no R or S matrix: it inverts
@@ -1457,7 +1499,7 @@
 #' @param tn the free parameters `calc.COV()` returns rows for
 #' @return list(cov, label, varCov = calc.COV's variance block), or `NULL`
 #' @noRd
-.saemLinFimCov <- function(env, tn) {
+.saemLinFimCov <- function(env, tn, nxt = "Ha") {
   .saem <- env$saem
   attr(.saem, "env") <- env
   ## the FIM linearization (calc.COV) can be ill-conditioned / non-symmetric
@@ -1465,7 +1507,7 @@
   ## information matrix rather than aborting the whole fit.
   .covm <- try(calc.COV(.saem), silent = TRUE)
   if (inherits(.covm, "try-error")) {
-    warning("linearized FIM failed; using the SAEM information matrix", call. = FALSE)
+    warning(sprintf("linearized FIM failed; using %s", .saemCovNextText(nxt)), call. = FALSE)
     return(NULL)
   }
   # .covm may have NA rows/columns for ill-identified parameters; validate only

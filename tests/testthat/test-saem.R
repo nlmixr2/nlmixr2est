@@ -304,3 +304,21 @@ test_that("the saem finalization control substitutes fixed parameters as the fit
   .old$literalFix <- NULL
   expect_false(.finalControl(.old)$literalFix)
 })
+
+test_that("the SAEM covariance falls back only as covFallback lists", {
+  # linFim fails; with no fallback listed there is no covariance
+  .e <- .saemCovEnv()
+  .e$ui$control$covFallback <- list(linFim = character(0))
+  local_mocked_bindings(calc.COV = function(x) stop("ill-conditioned"))
+  .w <- capture_warnings(.saemCalcCov(.e))
+  expect_identical(.w, "linearized FIM failed; using no covariance")
+  expect_null(.e$cov)
+  expect_null(.e$covMethod)
+  # with the default, the information matrix
+  .e <- .saemCovEnv()
+  .w <- capture_warnings(.saemCalcCov(.e))
+  expect_identical(.w, "linearized FIM failed; using the SAEM information matrix")
+  expect_identical(.e$covMethod, "Ha")
+  # "r,s" (the information matrix) has no fallback by default
+  expect_null(saemControl()$covFallback[["r,s"]])
+})
