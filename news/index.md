@@ -72,6 +72,20 @@
 
 ### Bug Fixes
 
+- The Shi (2021) finite-difference step search over a vector (the
+  nlm/nlminb Hessian, the FOCEi inner eta Hessian, theta sensitivities
+  and the analytic-covariance tensor) now leaves components with a ratio
+  below 1 out of its harmonic mean. Such a component has no
+  third-difference signal above the noise, often because it does not
+  depend on the stepped parameter at all, and it pinned the ratio near
+  0, so the step grew to `hMax`: on a binary `ll()` model the nlm
+  Hessian was off by a factor of 58 and nlminb stopped 18 OFV points
+  short. The old treatment, whose zero correction also mis-transcribed
+  `lmomco::harmonic.mean()`, is available with
+  `options(nlmixr2est.shi21RatioCensor = "legacy")`; `"substitute"` and
+  `"lmomco"` are also accepted
+  ([\#1188](https://github.com/nlmixr2/nlmixr2est/issues/1188)).
+
 - FOCEi-family eta sensitivities (and the imp/impmap theta
   sensitivities) now chain through
   [`lag()`](https://rdrr.io/r/stats/lag.html)/[`diff()`](https://rdrr.io/r/base/diff.html)

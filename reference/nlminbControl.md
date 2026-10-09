@@ -420,20 +420,20 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 8328
-#> → compress parHistData in nlmixr2 object, save 2600
+#> → compress parHistData in nlmixr2 object, save 2592
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -717.6377 1126.239 1140.963      -560.1197        128.9481        37.44159
+#> lPop -717.6377 1126.239 1140.963      -560.1197        128.9487        37.44164
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.07408451 0.1555477  7.161e-06      0.027       0.005 0.014    0.006
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1469128 0.2671124  7.474e-06      0.058       0.009 0.027    0.012
 #>              other
-#> elapsed 0.05636066
+#> elapsed 0.09096737
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -467,7 +467,7 @@ print(fit2)
 fit2$nlminb
 #> $par
 #>        E0        Em       E50 
-#> -1.069510  4.815707  2.124508 
+#> -1.069508  4.815711  2.124512 
 #> 
 #> $objective
 #> [1] 560.1197
@@ -490,25 +490,25 @@ fit2$nlminb
 #> 
 #> $par.scaled
 #>        E0        Em       E50 
-#> -1.784755  1.157853  1.249016 
+#> -1.784754  1.157856  1.249023 
 #> 
 #> $hessian
 #>            E0        Em        E50
-#> E0   761.9498 158.13777 -108.42847
-#> Em   158.1378  62.46868  -33.90539
-#> E50 -108.4285 -33.90539   22.06963
+#> E0   761.9499 158.13741 -108.42824
+#> Em   158.1374  62.46845  -33.90526
+#> E50 -108.4282 -33.90526   22.06955
 #> 
 #> $cov.scaled
 #>              E0          Em        E50
-#> E0  0.004496880 0.003656367 0.02771049
-#> Em  0.003656367 0.099310926 0.17053433
-#> E50 0.027710494 0.170534331 0.44344372
+#> E0  0.004496875 0.003656395 0.02771055
+#> Em  0.003656395 0.099311432 0.17053530
+#> E50 0.027710551 0.170535298 0.44344593
 #> 
 #> $r
 #>            E0        Em        E50
-#> E0   761.9498 158.13777 -108.42847
-#> Em   158.1378  62.46868  -33.90539
-#> E50 -108.4285 -33.90539   22.06963
+#> E0   761.9499 158.13741 -108.42824
+#> Em   158.1374  62.46845  -33.90526
+#> E50 -108.4282 -33.90526   22.06955
 #> 
 # }
 ```

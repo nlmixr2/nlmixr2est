@@ -469,20 +469,20 @@ If not specified (`NULL`), it defaults to `sigdig`.</p></dd>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 8328</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2600</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2592</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit2</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> log-likelihood </span><span style="color: #BBBB00; font-weight: bold;">nlminb</span><span style="font-weight: bold;"> ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -717.6377 1126.239 1140.963      -560.1197        128.9481        37.44159</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -717.6377 1126.239 1140.963      -560.1197        128.9487        37.44164</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.07408451 0.1555477  7.161e-06      0.027       0.005 0.014    0.006</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1469128 0.2671124  7.474e-06      0.058       0.009 0.027    0.012</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.05636066</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09096737</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -516,7 +516,7 @@ If not specified (`NULL`), it defaults to `sigdig`.</p></dd>
 <span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">nlminb</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $par</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>        E0        Em       E50 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -1.069510  4.815707  2.124508 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -1.069508  4.815711  2.124512 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $objective</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 560.1197</span>
@@ -539,25 +539,25 @@ If not specified (`NULL`), it defaults to `sigdig`.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $par.scaled</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>        E0        Em       E50 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -1.784755  1.157853  1.249016 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -1.784754  1.157856  1.249023 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $hessian</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>            E0        Em        E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0   761.9498 158.13777 -108.42847</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Em   158.1378  62.46868  -33.90539</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -108.4285 -33.90539   22.06963</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0   761.9499 158.13741 -108.42824</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Em   158.1374  62.46845  -33.90526</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -108.4282 -33.90526   22.06955</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $cov.scaled</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              E0          Em        E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0  0.004496880 0.003656367 0.02771049</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Em  0.003656367 0.099310926 0.17053433</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 0.027710494 0.170534331 0.44344372</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0  0.004496875 0.003656395 0.02771055</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Em  0.003656395 0.099311432 0.17053530</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 0.027710551 0.170535298 0.44344593</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $r</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>            E0        Em        E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0   761.9498 158.13777 -108.42847</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Em   158.1378  62.46868  -33.90539</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -108.4285 -33.90539   22.06963</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0   761.9499 158.13741 -108.42824</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Em   158.1374  62.46845  -33.90526</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -108.4282 -33.90526   22.06955</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>
