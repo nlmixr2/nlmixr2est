@@ -2,11 +2,13 @@
 
 ## New features
 
-- `foceiControl(covFallback=)` and `saemControl(covFallback=)` say what each
-  covariance method falls back to when it gives no usable covariance, as a named
-  list (by default as before: for FOCEi `"r,s"` to `"r"` then `"s"`, `"r"` to
-  `"s"`, `"analytic"` to `"r,s"`, `"r"` then `"s"`; for SAEM `"sa"`, `"fim"` and
-  `"analytic"` to `"linFim"` then `"Ha"`, `"linFim"` to `"Ha"`).  A list you give replaces the default, so a method it does not name
+- `foceiControl(covFallback=)`, `saemControl(covFallback=)` and
+  `emviControl(covFallback=)` say what each covariance method falls back to when
+  it gives no usable covariance, as a named list (by default as before: for FOCEi
+  `"r,s"` to `"r"` then `"s"`, `"r"` to `"s"`, `"analytic"` to `"r,s"`, `"r"`
+  then `"s"`; for SAEM `"sa"`, `"fim"` and `"analytic"` to `"linFim"` then
+  `"Ha"`, `"linFim"` to `"Ha"`; for emvi/fbvi each FOCEi chain then the
+  variational covariance `"vi"`).  A list you give replaces the default, so a method it does not name
   has no fallback.  The choice among the R, S and sandwich covariances is now
   made in R (`.covSelectFocei()`), and `fit$env$covTried` records each method
   tried and why it was not used.

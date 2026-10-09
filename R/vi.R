@@ -330,7 +330,8 @@
     if (identical(.control$covMethod, "vi")) {
       .adviInstallVarCov(.fit, res)
     } else if (
-      is.null(.e$cov) || !is.matrix(.e$cov) || length(.cmDone) != 1L || !nzchar(.cmDone) || identical(.cmDone, "failed")
+      "vi" %in% .covFallbackOf(.control, "emviControl")[[.control$covMethod]] &&
+        (is.null(.e$cov) || !is.matrix(.e$cov) || length(.cmDone) != 1L || !nzchar(.cmDone) || identical(.cmDone, "failed"))
     ) {
       message("covMethod=\"", .control$covMethod, "\" covariance was not available; using the variational covariance")
       .adviInstallVarCov(.fit, res)
@@ -358,10 +359,13 @@
   } else {
     control$covMethod
   }
+  # the FOCEI fallbacks; "vi" is installed after the FOCEI covariance (.adviFitModel)
+  .fb <- lapply(.covFallbackOf(control, "emviControl"), setdiff, y = "vi")
   .foceiOwnEtaControl(
     control,
     etaMat,
     covMethod = .covM,
+    covFallback = .fb,
     likelihood = control$likelihood,
     scaleTo = 0,
     literalFix = control$literalFix,
