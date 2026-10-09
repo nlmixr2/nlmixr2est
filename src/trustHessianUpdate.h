@@ -1,6 +1,7 @@
 #ifndef __TRUSTHESSIANUPDATE_H__
 #define __TRUSTHESSIANUPDATE_H__
 #if defined(__cplusplus)
+#include <stdexcept>
 #include "utilc.h"
 
 // Shared hessianMethod= codes for every RcppTrust-backed Hessian in this
@@ -45,7 +46,9 @@ static inline void trustHessianUpdate(int method, arma::mat &H,
     // the update positive-definite regardless.  Shared with the outer trust
     // region of FOCEi (R's .trustOuterBfgs()), bit for bit.
     const int n = (int)s.n_elem;
-    if ((int)y.n_elem != n || (int)H.n_rows != n || (int)H.n_cols != n) return;
+    if ((int)y.n_elem != n || (int)H.n_rows != n || (int)H.n_cols != n) {
+      throw std::logic_error("trustHessianUpdate: incompatible dimensions");
+    }
     arma::vec Hs(n), r(n);
     nmTrustBfgsUpdate(n, H.memptr(), s.memptr(), y.memptr(), Hs.memptr(), r.memptr());
     return;

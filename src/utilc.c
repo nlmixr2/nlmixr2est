@@ -327,6 +327,9 @@ SEXP dfCbindList(SEXP lst) {
 }
 
 // sum(x * y) as R computes it: in order, in long double
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((optimize("fp-contract=off")))
+#endif
 static double nmRsum(const double *x, const double *y, int n) {
   long double t = 0.0;
   for (int i = 0; i < n; ++i) {
@@ -348,6 +351,7 @@ int nmTrustBfgsUpdate(int n, double *H, const double *s, const double *y,
 #if defined(__clang__)
 #pragma STDC FP_CONTRACT OFF
 #endif
+  if (n < 1) return 0;
   // R's %*% takes another route through a non-finite operand, but then s'Hs
   // is not finite either and the update is skipped
   for (int i = 0; i < n; ++i) {
