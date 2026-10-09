@@ -149,6 +149,21 @@
   list(phiM = .last, sigma2 = .sigma2)
 }
 
+#' Recompute the importance-sampling Monte-Carlo covariance ("imp") at any fit's
+#' converged estimates.
+#'
+#' Runs the imp kernel at the pinned converged estimates with `impFrozen`:
+#' `nIter` E-steps (`mapIter=0`) and no M-step, so the parameters stay where
+#' they are and the MAP pass + `impComputeCov` evaluate the Monte-Carlo
+#' observed information at the fit's own estimates.
+#' @param fit completed nlmixr2 fit
+#' @param control `impCovControl()` options, or `NULL` for the defaults
+#' @return list(cov, covMethod, extras) or NULL
+#' @noRd
+.covRecomputeImp <- function(fit, control = NULL) {
+  .covRecomputeNative(fit, "imp", .covEngineControl("imp", control), useEtaMat = TRUE)
+}
+
 #' Engine control for a decoupled covariance recompute
 #' @param method "sa" or "imp"
 #' @param control `saControl()`/`impCovControl()` options, or `NULL` for the
