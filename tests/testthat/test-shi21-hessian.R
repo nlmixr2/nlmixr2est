@@ -135,6 +135,15 @@ nmTest({
     }, numeric(1))
     expect_gt(.err[["legacy"]], 1)
     expect_lt(.err[["detected"]], 1e-3)
+
+    # a fit reads the option: nlminb on the legacy Hessian stops well short
+    .fit <- function(type) {
+      withr::with_options(list(nlmixr2est.shi21RatioCensor = type), {
+        suppressMessages(nlmixr2(.mod, .d, est = "nlminb", control = nlminbControl(print = 0L)))$objf
+      })
+    }
+    .ofv <- vapply(c("legacy", "detected"), .fit, numeric(1))
+    expect_gt(.ofv[["legacy"]] - .ofv[["detected"]], 1)
   })
 
   test_that("a non-normal-endpoint FOCEi fit reports llikObs at its final ETAs", {
