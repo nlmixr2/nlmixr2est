@@ -1408,7 +1408,7 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   }
   .e <- new.env(parent = env)
   for (.v in names(.rhs)) {
-    assign(.v, symengine::S(.v), envir = .e)
+    assign(.v, symengine::Symbol(.v), envir = .e)
   }
   .expand <- function(.i) {
     .se <- rxode2::.rxToSE(str2lang(.rhs[[.i]]))
@@ -1529,14 +1529,49 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   # mtime() is loaded as an ordinary assignment so derivatives can reach a
   # modeled time that moves with an estimated parameter (see .rxMtimeToAssign);
   # the declaration itself is restored by .rxMtimeAssign() below.
-  .ret <- rxode2::rxS(.rxMtimeToAssign(newmod), TRUE, promoteLinSens = promoteLinSens)
+  .ret <- if (.rxSHasPkTime()) {
+    rxode2::rxS(.rxMtimeToAssign(newmod), TRUE, promoteLinSens = promoteLinSens, pkTime = TRUE)
+  } else {
+    rxode2::rxS(.rxMtimeToAssign(newmod), TRUE, promoteLinSens = promoteLinSens)
+  }
   if (inherits(.ret$rx_r_, "numeric")) {
     assign("rx_r_", symengine::S(as.character(.ret$rx_r_)), envir = .ret)
   }
   # rxS() drops mtime() entirely (issue #919); keep it so the generated models
   # still stop the solver at the modeled times and still define the variable.
   .rxMtimeAssign(newmod, .ret)
+  .rxPkTimeToPrologue(.ret)
   .ret
+}
+
+#' Does the installed rxode2's `rxS()` support `pkTime=`?
+#'
+#' @return `TRUE` when `rxode2::rxS()` takes `pkTime` (rxode2#1429)
+#' @noRd
+.rxSHasPkTime <- function() {
+  "pkTime" %in% names(formals(rxode2::rxS))
+}
+
+#' Move `rx_time_pk~t` from `..lhs0` to the generated-model prologue
+#'
+#' With `pkTime=TRUE`, `rxS()` loads `time` in PK-type statements as
+#' `rx_time_pk` so `rxSolve(nonmem=TRUE)` reads the record time there
+#' (#1167).  Every generated model must define it, but most do not emit
+#' `..lhs0`; the `mtime()` lines are already re-emitted ahead of every
+#' generated model, so the definition rides with them.
+#'
+#' @param env symengine environment from `rxode2::rxS()`
+#' @return Nothing, called for the `..lhs0`/`..mtime` side effect
+#' @noRd
+.rxPkTimeToPrologue <- function(env) {
+  .lhs0 <- env$..lhs0
+  .w <- names(.lhs0) == "rx_time_pk"
+  if (!any(.w)) {
+    return(invisible(NULL))
+  }
+  assign("..lhs0", .lhs0[!.w], envir = env)
+  assign("..mtime", c(unname(.lhs0[.w]), env$..mtime), envir = env)
+  invisible(NULL)
 }
 
 #' @export
@@ -5624,7 +5659,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       # Delete unneeded variables
       .saemCfg2 <- list()
       # res.mod is kept because calc.2LL()/calc.COV() need it to tell an ll()
-      # observation from a normally-distributed one
+      # observation from a normally-distributed one; omegaShareSubpop tells
+      # calc.2LL() which etas a mixture component owns
       for (.v in c(
         "i1",
         "i0",
@@ -5639,7 +5675,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         "opt",
         "inits",
         "Mcovariables",
-        "res.mod"
+        "res.mod",
+        "omegaShareSubpop"
       )) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }

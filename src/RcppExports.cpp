@@ -1524,6 +1524,29 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// shi21RatioCensorSet
+int shi21RatioCensorSet(int type);
+RcppExport SEXP _nlmixr2est_shi21RatioCensorSet(SEXP typeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type type(typeSEXP);
+    rcpp_result_gen = Rcpp::wrap(shi21RatioCensorSet(type));
+    return rcpp_result_gen;
+END_RCPP
+}
+// shi21RatioTest
+double shi21RatioTest(arma::vec all, int type);
+RcppExport SEXP _nlmixr2est_shi21RatioTest(SEXP allSEXP, SEXP typeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type all(allSEXP);
+    Rcpp::traits::input_parameter< int >::type type(typeSEXP);
+    rcpp_result_gen = Rcpp::wrap(shi21RatioTest(all, type));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmixr2Parameters
 List nlmixr2Parameters(NumericVector theta, DataFrame eta);
 RcppExport SEXP _nlmixr2est_nlmixr2Parameters(SEXP thetaSEXP, SEXP etaSEXP) {

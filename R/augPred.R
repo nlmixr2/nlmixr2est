@@ -198,6 +198,7 @@ nlmixr2AugPredSolve <- function(
   }
   covsInterpolation <- match.arg(covsInterpolation)
   .naInterpolation <- .residCovsInterpolation(fit)$naInterpolation
+  .nonmem <- .residCovsInterpolation(fit)$nonmem
   .si <- fit$simInfo
   .env <- new.env(parent = emptyenv())
   .env$ui <- fit$ui
@@ -221,13 +222,14 @@ nlmixr2AugPredSolve <- function(
   )
   .tolFactor <- fit$env$tolFactor
   # ipred
-  .sim <- rxode2::rxSolve(
+  .sim <- .rxSolveNonmem(
     object = .rx,
     .params,
     .events,
     keepInterpolation = "na",
     covsInterpolation = covsInterpolation,
     naInterpolation = .naInterpolation,
+    nonmem = .nonmem,
     tolFactor = .tolFactor,
     keep = c("DV", "CMT"),
     drop = .drop,
@@ -241,12 +243,13 @@ nlmixr2AugPredSolve <- function(
     names(.sim) <- sub("^sim$", "ipred", names(.sim))
     .params <- c(t(fit$theta), t(rep(0, dim(.omega)[1])), t(rep(0, dim(.sigma)[1])))
     .params <- setNames(.params, c(names(fit$theta), dimnames(.omega)[[2]], dimnames(.sigma)[[2]]))
-    .sim2 <- rxode2::rxSolve(
+    .sim2 <- .rxSolveNonmem(
       object = .rx,
       params = .params,
       events = .events,
       covsInterpolation = covsInterpolation,
       naInterpolation = .naInterpolation,
+      nonmem = .nonmem,
       tolFactor = .tolFactor,
       drop = .drop,
       returnType = "data.frame"
