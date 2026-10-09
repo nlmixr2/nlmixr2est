@@ -6,8 +6,8 @@
 // Components with r < 1 are non-detects: the third difference is within the 8*ef
 // noise bound, so r is left-censored at 1 (#1188).  shiRatioCensor picks how they
 // enter the harmonic mean:
-//   0 "current"    harmonic mean of the nonzero ratios, legacy zero correction
-//   1 "detected"   harmonic mean of the detected (r >= 1) ratios; max(r) if none
+//   0 "legacy"     harmonic mean of the nonzero ratios, legacy zero correction
+//   1 "detected"   (default) harmonic mean of the detected (r >= 1) ratios; max(r) if none
 //   2 "substitute" censored ratios set to the detection limit 1
 //   3 "lmomco"     detected harmonic mean times (N - N0)/N, N0 = censored count
 // lmomco::harmonic.mean() (TCEQ RG-194 / EPA DFLOW) is the source of option 3.
@@ -16,7 +16,7 @@
 #include "armahead.h"
 #include "shi21.h"
 
-static int shiRatioCensor_ = 0;
+static int shiRatioCensor_ = 1;
 
 // Selects the shiRatio() treatment of censored ratios; returns the previous one.
 //[[Rcpp::export]]

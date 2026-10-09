@@ -242,14 +242,14 @@ nlmixr2Est.default <- function(env, ...) {
 
 #' Set the shi21 step-search treatment of censored ratios
 #'
-#' Reads `getOption("nlmixr2est.shi21RatioCensor")`, one of `"current"`,
+#' Reads `getOption("nlmixr2est.shi21RatioCensor")`, one of `"legacy"`,
 #' `"detected"`, `"substitute"` or `"lmomco"` (#1188).
 #'
 #' @param type treatment name; defaults to the option
 #' @return the previous treatment name, invisibly
 #' @noRd
-.shi21RatioCensor <- function(type = getOption("nlmixr2est.shi21RatioCensor", "current")) {
-  .types <- c("current", "detected", "substitute", "lmomco")
+.shi21RatioCensor <- function(type = getOption("nlmixr2est.shi21RatioCensor", "detected")) {
+  .types <- c("legacy", "detected", "substitute", "lmomco")
   type <- match.arg(type, .types)
   invisible(.types[shi21RatioCensorSet(match(type, .types) - 1L) + 1L])
 }
