@@ -156,7 +156,9 @@
   .saved <- nlmixr2global$nlmixr2PriorGateBypass
   nlmixr2global$nlmixr2PriorGateBypass <- TRUE
   on.exit(assign("nlmixr2PriorGateBypass", .saved, envir = nlmixr2global))
-  force(expr)
+  ## every internal re-estimation goes through here: keep it silent on the
+  ## event bus (see rxEvents.R)
+  .nlmixr2EventScope(force(expr))
 }
 
 #' Refuse a prior that references an omega element
