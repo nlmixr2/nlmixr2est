@@ -5,13 +5,12 @@
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #' @param covMethod Method for calculating the covariance.  \code{"r"} uses
-#'   nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"nlminb"} uses the Hessian
-#'   nlminb's own Hessian function computes (a finite difference of the
-#'   analytic gradient), at the final estimates; it needs
+#'   nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"nlminb"} uses central
+#'   differences of the analytic gradient at the final estimates, as
+#'   \code{nlmControl(covMethod = "nlm")} does; it needs
 #'   \code{solveType = "hessian"} or \code{"grad"}.  The default is
-#'   \code{"nlminb"} with \code{solveType = "hessian"}, which has already
-#'   computed that Hessian, and \code{"r"} otherwise.  \code{""} skips the
-#'   covariance step.
+#'   \code{"nlminb"} with \code{solveType = "hessian"} and \code{"r"}
+#'   otherwise.  \code{""} skips the covariance step.
 #' @param returnNlminb logical; when TRUE this will return the nlminb
 #'   result instead of the nlmixr2 fit object
 #' @param eval.max Maximum number of evaluations of the objective
@@ -441,9 +440,7 @@ getValidNlmixrCtl.nlminb <- function(control) .getValidCtl(control, "nlminbContr
   }
   .ret <- eval(.ret)
   if (.ctl$covMethod == "nlminb") {
-    # nlminb's own Hessian at the estimates: the cached one when its last request
-    # was there, otherwise computed once there
-    .ret$hessian <- matrix(.nlmixrNlminbHessC(.ret$par + 0), length(.ret$par))
+    .ret$hessian <- .nlmGradHessian(.ret$par)
   }
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
