@@ -55,6 +55,10 @@
   
 ## Bug Fixes
 
+- An `mtime()` variable with a `.` in its name (such as nonmem2rx's
+  `rx.mtime.1.`) no longer fails with `SymEngine exception: Parse error`
+  (#1189).
+
 - FOCEi-family eta sensitivities (and the imp/impmap theta sensitivities)
   now chain through `lag()`/`diff()` of a calculated variable, so a model
   whose random effect reaches the prediction only that way no longer errors
