@@ -32,9 +32,10 @@ nlminbControl(
   eventType = c("central", "forward"),
   shiErr = (.Machine$double.eps)^(1/3),
   shi21maxFD = 20L,
-  optimHessType = c("central", "forward"),
+  optimHessType = c("central", "forward", "richardson"),
   hessErr = (.Machine$double.eps)^(1/3),
   shi21maxHess = 20L,
+  shi21HessRefresh = FALSE,
   useColor = NULL,
   printNcol = NULL,
   print = 1L,
@@ -149,15 +150,18 @@ step size for numeric differentiation using the Shi2021 method}
 of the forward difference step size when using dosing events (lag
 time, modeled duration/rate and bioavailability)}
 
-\item{optimHessType}{Hessian type for numeric-difference individual
-Hessians in generalized log-likelihood estimation: "central" (matches
-R's `optimHess()`, default) or "forward" (faster).}
+\item{optimHessType}{Finite-difference type of the Hessian; see
+`nlmControl()`.}
 
 \item{hessErr}{This represents the epsilon when optimizing the
 Hessian step size using the Shi2021 method.}
 
 \item{shi21maxHess}{Maximum number of times to optimize the best
 step size for the hessian calculation}
+
+\item{shi21HessRefresh}{When `TRUE`, re-search a Hessian step (from the old
+step) once theta leaves the span its Shi (2021) search probed; when `FALSE`
+(default) the steps searched at the first iterate are kept for the fit.}
 
 \item{useColor}{Logical (or `NULL`) emit ANSI bold/color escapes in the
 iteration print. `NULL` (default) defers to [crayon::has_color()].}

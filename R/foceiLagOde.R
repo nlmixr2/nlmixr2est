@@ -2,6 +2,51 @@
 # bare symbol, so its definition is substituted before the sensitivity ODEs
 # are derived.
 
+#' Replace rxode2's snapshots of a reassigned lagged variable by their values
+#'
+#' rxode2 reads an earlier value of a lagged variable assigned more than once
+#' (a pruned if/else) through a snapshot symbol `rx_lagv<i>_<v>`, defined by
+#' an `rx_lagv<i>_<v>=<v>` lhs.  symengine cannot differentiate through that
+#' symbol, so each snapshot is replaced by the value it holds.
+#' @param s symengine environment from `rxode2::rxS()`
+#' @return `s`, invisibly
+#' @noRd
+.foceiLagSnapResolve <- function(s) {
+  .lhs <- s$..lhs
+  .isSnap <- grepl("^rx_lagv[0-9]+_[^=]+=", .lhs)
+  if (!any(.isSnap)) {
+    return(invisible(s))
+  }
+  .subTxt <- function(x, nm, val) {
+    for (j in seq_along(nm)) {
+      x <- gsub(paste0("(?<![A-Za-z0-9_.])", nm[j], "(?![A-Za-z0-9_.])"), val[j], x, perl = TRUE)
+    }
+    x
+  }
+  .nm <- .val <- character(0)
+  for (i in which(.isSnap)) {
+    .v <- sub("^[^=]*=", "", .lhs[i])
+    .prev <- which(startsWith(.lhs[seq_len(i - 1L)], paste0(.v, "=")))
+    .nm <- c(.nm, sub("=.*$", "", .lhs[i]))
+    .val <- c(.val, paste0("(", .subTxt(sub("^[^=]*=", "", .lhs[max(.prev)]), .nm, .val), ")"))
+  }
+  .se <- lapply(.val, function(x) symengine::S(rxode2::rxToSE(x)))
+  rm(list = intersect(.nm, ls(s, all.names = TRUE)), envir = s)
+  for (n in ls(s, all.names = TRUE)) {
+    .e <- get(n, envir = s)
+    if (inherits(.e, "Basic")) {
+      for (j in seq_along(.nm)) {
+        .e <- symengine::subs(.e, symengine::S(.nm[j]), .se[[j]])
+      }
+      assign(n, .e, envir = s)
+    } else if (startsWith(n, "..") && is.character(.e) && any(grepl("rx_lagv", .e, fixed = TRUE))) {
+      assign(n, .subTxt(.e, .nm, .val), envir = s)
+    }
+  }
+  s$..lhs <- .subTxt(.lhs[!.isSnap], .nm, .val)
+  invisible(s)
+}
+
 #' Put the definitions of lagged variables into the ODEs that use them
 #'
 #' Run before the sensitivity ODEs are derived, so they do not treat a lagged

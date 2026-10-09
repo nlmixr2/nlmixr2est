@@ -24,7 +24,7 @@ THETA). See `ui$nlmSensModel` or `ui$nlmRxModel` for examples.}
 
 \item{control}{control structure; required: `rxControl`, `stickyRecalcN`,
 `maxOdeRecalc`, `odeRecalcFactor`. Optional: `solveType`, `eventType`,
-`shi21maxFD`, `shiErr`, `optimHessType`, `shi21maxHess`, `hessErr`,
+`shi21maxFD`, `shiErr`, `optimHessType`, `shi21maxHess`, `shi21HessRefresh`, `hessErr`,
 `useColor`, `printNcol`, `print`, `normType`, `scaleType`, `scaleCmin`,
 `scaleCmax`, `scaleTo`, `scaleC`, `gradTo` (default 0 if missing).}
 

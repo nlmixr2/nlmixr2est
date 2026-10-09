@@ -1536,6 +1536,7 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   # rxS() drops mtime() entirely (issue #919); keep it so the generated models
   # still stop the solver at the modeled times and still define the variable.
   .rxMtimeAssign(newmod, .ret)
+  .foceiLagSnapResolve(.ret)
   .ret
 }
 
