@@ -240,6 +240,20 @@ nlmixr2Est.default <- function(env, ...) {
 
 .tablePassthrough <- c("addDosing", "subsetNonmem", "cores", "keep", "drop")
 
+#' Set the shi21 step-search treatment of censored ratios
+#'
+#' Reads `getOption("nlmixr2est.shi21RatioCensor")`, one of `"current"`,
+#' `"detected"`, `"substitute"` or `"lmomco"` (#1188).
+#'
+#' @param type treatment name; defaults to the option
+#' @return the previous treatment name, invisibly
+#' @noRd
+.shi21RatioCensor <- function(type = getOption("nlmixr2est.shi21RatioCensor", "current")) {
+  .types <- c("current", "detected", "substitute", "lmomco")
+  type <- match.arg(type, .types)
+  invisible(.types[shi21RatioCensorSet(match(type, .types) - 1L) + 1L])
+}
+
 #' Call nlmixr2Est wrapped to collect the warnings
 #'
 #'
@@ -250,6 +264,7 @@ nlmixr2Est.default <- function(env, ...) {
 #' @noRd
 nlmixr2Est0 <- function(env, ...) {
   rxode2::rxUnloadAll()
+  .shi21RatioCensor()
   .ui <- rxode2::rxUiDecompress(get("ui", env))
   assign("ui", .ui, envir = env)
   if (!exists("missingTable", envir = env)) {

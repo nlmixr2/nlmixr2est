@@ -3,34 +3,85 @@
 //
 // https://arxiv.org/pdf/2110.06380.pdf
 
-// Harmonic mean correction see:
-// https://github.com/cran/lmomco/blob/8558903cdcdf6ce0640822a8f6ee7caf07ebd451/R/harmonic.mean.R
-// https://rdrr.io/cran/lmomco/man/harmonic.mean.html
+// Components with r < 1 are non-detects: the third difference is within the 8*ef
+// noise bound, so r is left-censored at 1 (#1188).  shiRatioCensor picks how they
+// enter the harmonic mean:
+//   0 "current"    harmonic mean of the nonzero ratios, legacy zero correction
+//   1 "detected"   harmonic mean of the detected (r >= 1) ratios; max(r) if none
+//   2 "substitute" censored ratios set to the detection limit 1
+//   3 "lmomco"     detected harmonic mean times (N - N0)/N, N0 = censored count
+// lmomco::harmonic.mean() (TCEQ RG-194 / EPA DFLOW) is the source of option 3.
 #define ARMA_WARN_LEVEL 1
 #define STRICT_R_HEADER
 #include "armahead.h"
 #include "shi21.h"
 
-// The ratio test statistic of a step: the one ratio itself for a scalar function,
-// else the harmonic mean of the per-element ratios, corrected for the zero ones.
-static double shiRatio(const arma::vec &all) {
+static int shiRatioCensor_ = 0;
+
+// Selects the shiRatio() treatment of censored ratios; returns the previous one.
+//[[Rcpp::export]]
+int shi21RatioCensorSet(int type) {
+  if (type < 0 || type > 3) {
+    Rcpp::stop("unknown shi21 ratio censor type");
+  }
+  int old = shiRatioCensor_;
+  shiRatioCensor_ = type;
+  return old;
+}
+
+static double shiRatioType(const arma::vec &all, int type) {
   if (all.size() == 1) {
     return all(0);
   }
   double sum = 0.0;
   int nzero = 0;
   int n = 0;
+  if (type == 0) {
+    for (unsigned int j = all.size(); j--;) {
+      if  (all[j] == 0) {
+        nzero++;
+      } else {
+        sum += 1.0/all[j];
+        n++;
+      }
+    }
+    double correction = (double)(n-nzero)/((double)n);
+    if (correction <= 0) correction=1;
+    return (double)(n)/sum * correction;
+  }
+  double rmax = 0.0;
   for (unsigned int j = all.size(); j--;) {
-    if  (all[j] == 0) {
-      nzero++;
-    } else {
+    if (all[j] >= 1.0) {
       sum += 1.0/all[j];
       n++;
+    } else {
+      nzero++;
+      if (all[j] > rmax) rmax = all[j];
+      if (type == 2) sum += 1.0;
     }
   }
-  double correction = (double)(n-nzero)/((double)n);
-  if (correction <= 0) correction=1;
-  return (double)(n)/sum * correction;
+  switch (type) {
+  case 1:
+    if (n == 0) return rmax;
+    return (double)(n)/sum;
+  case 2:
+    return (double)(all.size())/sum;
+  default:
+    if (n == 0) return 0.0;
+    return (double)(n)/sum * (double)(n)/((double)(all.size()));
+  }
+}
+
+// The ratio test statistic of a step: the one ratio itself for a scalar function,
+// else a harmonic mean of the per-element ratios (see shiRatioCensor_).
+static double shiRatio(const arma::vec &all) {
+  return shiRatioType(all, shiRatioCensor_);
+}
+
+// R-callable shiRatio() for unit tests.
+//[[Rcpp::export]]
+double shi21RatioTest(arma::vec all, int type) {
+  return shiRatioType(all, type);
 }
 
 double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
