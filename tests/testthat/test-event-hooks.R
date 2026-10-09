@@ -56,8 +56,7 @@ nmTest({
   test_that("a fit emits exactly one fitComplete and no solveComplete", {
     skip_if_not(.hasBus, "rxode2 has no event bus")
     .start()
-    fit <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "focei",
-                                    control = foceiControl(print = 0)))
+    fit <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "focei", control = foceiControl(print = 0)))
     expect_identical(.events(), "fitComplete")
     expect_identical(.rec$ev[[1]]$p$objName, "one.cmt")
     expect_true(inherits(.rec$ev[[1]]$p$fit, "nlmixr2FitCore"))
@@ -85,14 +84,17 @@ nmTest({
     suppressMessages(predict(fit, nlmixr2data::theo_sd))
     suppressMessages(predict(fit, nlmixr2data::theo_sd, level = "individual"))
     expect_identical(.events(), rep("solveComplete", 3))
-    for (.e in .rec$ev) expect_true(inherits(.e$p$object, "nlmixr2FitCore"))
-    for (.e in .rec$ev) expect_lt(nchar(paste(deparse(.e$p$call), collapse = "")), 200)
+    for (.e in .rec$ev) {
+      expect_true(inherits(.e$p$object, "nlmixr2FitCore"))
+    }
+    for (.e in .rec$ev) {
+      expect_lt(nchar(paste(deparse(.e$p$call), collapse = "")), 200)
+    }
   })
 
   test_that("updates emit one fitUpdate with the right inPlace; no-ops emit nothing", {
     skip_if_not(.hasBus, "rxode2 has no event bus")
-    fit <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "saem",
-                                    control = saemControl(print = 0)))
+    fit <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "saem", control = saemControl(print = 0)))
     expect_false("CWRES" %in% names(fit))
     .start()
     fit <- suppressMessages(addCwres(fit))
@@ -125,8 +127,7 @@ nmTest({
 
   test_that("reading a deferred saem objective emits one fitUpdate", {
     skip_if_not(.hasBus, "rxode2 has no event bus")
-    fit <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "saem",
-                                    control = saemControl(print = 0)))
+    fit <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "saem", control = saemControl(print = 0)))
     skip_if_not(is.na(get("objective", fit$env)), "objective not deferred")
     .start()
     suppressMessages(fit$objf)

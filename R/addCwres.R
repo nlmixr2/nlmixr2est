@@ -78,8 +78,7 @@ addCwres <- function(fit, focei = TRUE, updateObject = TRUE, envir = parent.fram
   .evOrig <- fit
   .evName <- .nlmixr2EventObjName(substitute(fit))
   .evRebound <- FALSE
-  on.exit(.nlmixr2EventExitUpdate(returnValue(), .evOrig, .evName, "cwres", .evRebound),
-          add = TRUE)
+  on.exit(.nlmixr2EventExitUpdate(returnValue(), .evOrig, .evName, "cwres", .evRebound), add = TRUE)
   if (is.null(fit$eta)) {
     stop("cannot add CWRES to a model without etas", call. = FALSE)
   } else if (any(names(fit) == "CWRES")) {

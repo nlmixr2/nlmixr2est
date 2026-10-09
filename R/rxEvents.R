@@ -20,14 +20,18 @@
 #' Enter the shared operation scope
 #' @noRd
 .nlmixr2EventEnter <- function() {
-  if (.nlmixr2EventBus()) .nlmixr2EventFun(".rxEventEnter")()
+  if (.nlmixr2EventBus()) {
+    .nlmixr2EventFun(".rxEventEnter")()
+  }
   invisible()
 }
 
 #' Leave the scope, emitting `event` when this was the outermost operation
 #' @noRd
 .nlmixr2EventExit <- function(event = NULL, ..., fun = NULL) {
-  if (.nlmixr2EventBus()) .nlmixr2EventFun(".rxEventExit")(event, ..., fun = fun)
+  if (.nlmixr2EventBus()) {
+    .nlmixr2EventFun(".rxEventExit")(event, ..., fun = fun)
+  }
   invisible()
 }
 
@@ -45,7 +49,9 @@
 #' Emit an event (delivered only outside every scope)
 #' @noRd
 .nlmixr2EventEmit <- function(event, ..., fun = NULL) {
-  if (.nlmixr2EventBus()) .nlmixr2EventFun("rxEventEmit")(event, ..., fun = fun)
+  if (.nlmixr2EventBus()) {
+    .nlmixr2EventFun("rxEventEmit")(event, ..., fun = fun)
+  }
   invisible()
 }
 
@@ -72,12 +78,24 @@
 #' @noRd
 .nlmixr2EventExitFit <- function(result, object, call, objName, est) {
   if (inherits(result, "nlmixr2FitCore")) {
-    .nlmixr2EventExit("fitComplete", fit = result, object = object, call = call,
-                      objName = objName, source = "fit", fun = "nlmixr2")
+    .nlmixr2EventExit(
+      "fitComplete",
+      fit = result,
+      object = object,
+      call = call,
+      objName = objName,
+      source = "fit",
+      fun = "nlmixr2"
+    )
   } else if (inherits(result, "rxSolve")) {
-    .nlmixr2EventExit("solveComplete", result = result, object = object, call = call,
-                      kind = if (is.character(est) && length(est) == 1L) est else "rxSolve",
-                      fun = "nlmixr2")
+    .nlmixr2EventExit(
+      "solveComplete",
+      result = result,
+      object = object,
+      call = call,
+      kind = if (is.character(est) && length(est) == 1L) est else "rxSolve",
+      fun = "nlmixr2"
+    )
   } else {
     .nlmixr2EventExit()
   }
@@ -95,15 +113,22 @@
 #' @param what What changed: "cwres", "npde", "table", "ofv".
 #' @param inPlace Whether the user's object now holds the result.
 #' @noRd
-.nlmixr2EventExitUpdate <- function(result, original, name, what, inPlace,
-                                    force = FALSE) {
-  if (!inherits(result, "nlmixr2FitCore") ||
-        (!force && identical(result, original))) {
+.nlmixr2EventExitUpdate <- function(result, original, name, what, inPlace, force = FALSE) {
+  if (
+    !inherits(result, "nlmixr2FitCore") ||
+      (!force && identical(result, original))
+  ) {
     return(.nlmixr2EventExit())
   }
-  .nlmixr2EventExit("fitUpdate", fit = result, original = original,
-                    name = if (isTRUE(inPlace)) name else NULL, what = what,
-                    inPlace = isTRUE(inPlace), fun = NULL)
+  .nlmixr2EventExit(
+    "fitUpdate",
+    fit = result,
+    original = original,
+    name = if (isTRUE(inPlace)) name else NULL,
+    what = what,
+    inPlace = isTRUE(inPlace),
+    fun = NULL
+  )
 }
 
 #' Leave a simulating function's scope and emit solveComplete for its result
@@ -112,21 +137,18 @@
   if (is.null(result)) {
     return(.nlmixr2EventExit())
   }
-  .nlmixr2EventExit("solveComplete", result = result, object = object, call = call,
-                    kind = kind, fun = kind)
+  .nlmixr2EventExit("solveComplete", result = result, object = object, call = call, kind = kind, fun = kind)
 }
 
 ## Fields whose access may compute a deferred objective function
-.nmObjObjectiveArgs <- c("logLik", "value", "obf", "ofv", "objf", "OBJF",
-                         "objective", "AIC", "BIC")
+.nmObjObjectiveArgs <- c("logLik", "value", "obf", "ofv", "objf", "OBJF", "objective", "AIC", "BIC")
 
 #' Leave `$`'s scope; emit fitUpdate when the objective was just computed
 #' @noRd
 .nlmixr2EventExitObjective <- function(fit, env, ofv0) {
   .ofv1 <- if (is.environment(env)) get0("objective", envir = env, inherits = FALSE) else NULL
   if (length(ofv0) == 1L && is.na(ofv0) && length(.ofv1) == 1L && !is.na(.ofv1)) {
-    .nlmixr2EventExit("fitUpdate", fit = fit, original = fit, name = NULL,
-                      what = "ofv", inPlace = TRUE, fun = NULL)
+    .nlmixr2EventExit("fitUpdate", fit = fit, original = fit, name = NULL, what = "ofv", inPlace = TRUE, fun = NULL)
   } else {
     .nlmixr2EventExit()
   }

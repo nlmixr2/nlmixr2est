@@ -1067,10 +1067,16 @@ addTable <- function(
   .evOrig <- object
   .evOrigEnv <- if (inherits(object, "nlmixr2FitCore")) object$env else NULL
   .evName <- .nlmixr2EventObjName(substitute(object))
-  on.exit(.nlmixr2EventExitUpdate(
-    returnValue(), .evOrig, .evName, "table",
-    inherits(returnValue(), "nlmixr2FitCore") && identical(returnValue()$env, .evOrigEnv)
-  ), add = TRUE)
+  on.exit(
+    .nlmixr2EventExitUpdate(
+      returnValue(),
+      .evOrig,
+      .evName,
+      "table",
+      inherits(returnValue(), "nlmixr2FitCore") && identical(returnValue()$env, .evOrigEnv)
+    ),
+    add = TRUE
+  )
   nlmixrWithTiming(
     "table",
     {
@@ -1185,8 +1191,7 @@ addTable <- function(
           .bound <- do.call(
             "c",
             lapply(ls(.parent, all.names = TRUE), function(.cur) {
-              if (!is.null(.objName) && identical(.cur, .objName) &&
-                    identical(.parent[[.cur]]$env, .fit$env)) {
+              if (!is.null(.objName) && identical(.cur, .objName) && identical(.parent[[.cur]]$env, .fit$env)) {
                 return(.cur)
               }
               return(NULL)

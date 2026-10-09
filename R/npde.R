@@ -53,8 +53,7 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   .evOrig <- object
   .evName <- .nlmixr2EventObjName(substitute(object))
   .evRebound <- FALSE
-  on.exit(.nlmixr2EventExitUpdate(returnValue(), .evOrig, .evName, "npde", .evRebound),
-          add = TRUE)
+  on.exit(.nlmixr2EventExitUpdate(returnValue(), .evOrig, .evName, "npde", .evRebound), add = TRUE)
   if (any(names(object) == "NPDE")) {
     warning("already contains NPDE", call. = FALSE)
     return(object)

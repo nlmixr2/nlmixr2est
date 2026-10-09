@@ -161,9 +161,11 @@ nlmixr2 <- function(
   .nlmixr2EventEnter()
   .nlmixr2EventCallSave <- sys.call()
   .nlmixr2EventObjNameSave <- .nlmixr2EventObjName(substitute(object))
-  on.exit(.nlmixr2EventExitFit(returnValue(), object, .nlmixr2EventCallSave,
-                               .nlmixr2EventObjNameSave, est),
-          add = TRUE, after = TRUE)
+  on.exit(
+    .nlmixr2EventExitFit(returnValue(), object, .nlmixr2EventCallSave, .nlmixr2EventObjNameSave, est),
+    add = TRUE,
+    after = TRUE
+  )
   ## verbose?
   ## https://tidymodels.github.io/model-implementation-principles/general-conventions.html
   UseMethod("nlmixr2")
