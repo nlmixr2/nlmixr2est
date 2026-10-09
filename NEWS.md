@@ -8,8 +8,10 @@
   `"r,s"` to `"r"` then `"s"`, `"r"` to `"s"`, `"analytic"` to `"r,s"`, `"r"`
   then `"s"`; for SAEM `"sa"`, `"fim"` and `"analytic"` to `"linFim"` then
   `"Ha"`, `"linFim"` to `"Ha"`; for emvi/fbvi each FOCEi chain then the
-  variational covariance `"vi"`).  `setCov()` falls back only as
-  `rsControl(covFallback=)` lists (by default not at all, as before).  A list you give replaces the default, so a method it does not name
+  variational covariance `"vi"`).  A FOCEi list may also name `"sa"` and
+  `"imp"`, which are computed after the fit when the methods before them gave no
+  covariance.  `setCov()` falls back only as `rsControl(covFallback=)` lists (by
+  default not at all, as before).  A list you give replaces the default, so a method it does not name
   has no fallback.  The choice among the R, S and sandwich covariances is now
   made in R (`.covSelectFocei()`), and `fit$env$covTried` records each method
   tried and why it was not used.

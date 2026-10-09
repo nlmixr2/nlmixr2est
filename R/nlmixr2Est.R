@@ -481,6 +481,9 @@ nlmixr2Est0 <- function(env, ...) {
       }
     }
   }
+  # a covariance from another computation, when the fit's own step gave none and its
+  # covFallback lists one
+  try(.covFallbackAfterFit(ret), silent = TRUE)
   # snapshot the options the estimation-time covariances used, so setCov()
   # still sees them if the fit's settings change later
   try(

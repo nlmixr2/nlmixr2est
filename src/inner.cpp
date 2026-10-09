@@ -11479,8 +11479,17 @@ static int foceiCalcRAnalytic(Environment e) {
   // sandwich "r,s" by default); none listed fails the step.  RSprintf is the visible
   // channel (like "Could not calculate covariance matrix"); the warning is for
   // programmatic capture.
+  // the first finite-difference method listed; "sa"/"imp" come after the fit
   std::vector<std::string> fb = covFallbackFor(e, "analytic");
-  int slot = fb.empty() ? 0 : covSlotOf(fb[0]);
+  int slot = 0;
+  std::string rung;
+  for (const std::string &m : fb) {
+    slot = covSlotOf(m);
+    if (slot != 0) {
+      rung = m;
+      break;
+    }
+  }
   if (slot == 0) {
     RSprintf("\rcovType=\"analytic\" not available for this model, and covFallback lists "
              "no fallback for it.\n");
@@ -11491,9 +11500,9 @@ static int foceiCalcRAnalytic(Environment e) {
   }
   RSprintf("\rcovType=\"analytic\" not available for this model (out of scope, or "
            "the augmented model would not build/solve); using the finite-difference "
-           "\"%s\" covariance.\n", fb[0].c_str());
+           "\"%s\" covariance.\n", rung.c_str());
   Rf_warning("covType=\"analytic\": the analytic covariance is not available for "
-             "this model; used the finite-difference \"%s\" covariance instead.", fb[0].c_str());
+             "this model; used the finite-difference \"%s\" covariance instead.", rung.c_str());
   op_focei.covMethod = slot;
   return -1;
 }
@@ -12253,7 +12262,12 @@ NumericMatrix foceiCalcCov(Environment e){
         std::vector<std::string> fallback;
         if (foceiCovTypeAnalytic(e)) {
           fallback = covFallbackFor(e, "analytic");
-          if (analyticDeclined && !fallback.empty()) fallback.erase(fallback.begin());
+          if (analyticDeclined) {
+            // what the declined analytic covariance has taken: up to its first FD method
+            auto it = std::find_if(fallback.begin(), fallback.end(),
+                                   [](const std::string &m) { return covSlotOf(m) != 0; });
+            fallback.erase(fallback.begin(), it == fallback.end() ? it : it + 1);
+          }
         } else {
           fallback = covFallbackFor(e, req == 1 ? "r,s" : (req == 2 ? "r" : "s"));
         }

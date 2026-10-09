@@ -274,3 +274,46 @@
   assign("covMethod", .label, envir = env)
   list(slot = .cur, label = .label)
 }
+
+#' Fall back, after the fit, to a covariance from another computation
+#'
+#' When a FOCEi-family fit's own covariance step gave none, the methods its
+#' `covFallback` lists for the request that the step does not compute ("sa", "imp")
+#' are recomputed at the estimates, in order, until one installs; each is added to
+#' `env$covTried`.
+#' @param fit the finalized fit
+#' @return invisibly whether one was installed
+#' @noRd
+.covFallbackAfterFit <- function(fit) {
+  .env <- tryCatch(fit$env, error = function(e) NULL)
+  if (!is.environment(.env)) {
+    return(invisible(FALSE))
+  }
+  .ctl <- tryCatch(.env$foceiControl, error = function(e) NULL)
+  if (!is.list(.ctl) || !checkmate::testIntegerish(.ctl$covMethod, len = 1L)) {
+    return(invisible(FALSE))
+  }
+  if (is.matrix(.env$cov) && !identical(.env$covMethod, "failed")) {
+    return(invisible(FALSE))
+  }
+  .req <- .covMethodFromSlot(as.integer(.ctl$covMethod), if (is.null(.ctl$covType)) "fd" else .ctl$covType)
+  if (!nzchar(.req)) {
+    return(invisible(FALSE))
+  }
+  .fb <- .covFallbackOf(.ctl)[[.req]]
+  .acc <- new.env(parent = emptyenv())
+  .acc$tried <- if (is.data.frame(.env$covTried)) list(.env$covTried) else list()
+  .ok <- FALSE
+  for (.m in .fb[!(.fb %in% .covFallbackTargets)]) {
+    .r <- tryCatch(.covRecompute(fit, .m), error = function(e) NULL)
+    .ok <- isTRUE(tryCatch(.covInstallResult(.env, .r, warn = TRUE, what = .m), error = function(e) FALSE))
+    .covTriedAdd(.acc, .m, if (.ok) "used" else "could not be computed")
+    if (.ok) {
+      break
+    }
+  }
+  if (length(.acc$tried) > 0L) {
+    assign("covTried", do.call(rbind, .acc$tried), envir = .env)
+  }
+  invisible(.ok)
+}

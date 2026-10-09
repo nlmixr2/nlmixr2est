@@ -235,3 +235,46 @@ test_that("a control without covFallback gets its control function's default", {
   )
   expect_error(saemControl(covFallback = list(sa = "r")), "cannot fall back to \"r\"")
 })
+
+test_that("after the fit, a failed covariance falls back to the listed sa/imp in order", {
+  .fit <- list(env = new.env(parent = emptyenv()))
+  .fit$env$foceiControl <- foceiControl(covMethod = "r,s", covFallback = list("r,s" = c("r", "s", "imp", "sa")))
+  .fit$env$covMethod <- "failed"
+  .fit$env$covTried <- data.frame(method = "r,s", outcome = "R not positive definite")
+  .calls <- new.env(parent = emptyenv())
+  .calls$m <- character(0)
+  local_mocked_bindings(
+    .covRecompute = function(fit, method, control = NULL) {
+      .calls$m <- c(.calls$m, method)
+      list(covMethod = method)
+    },
+    .covInstallResult = function(env, r, warn = FALSE, what = r$covMethod) {
+      if (identical(what, "imp")) {
+        return(FALSE)
+      }
+      env$covMethod <- what
+      TRUE
+    }
+  )
+  expect_true(.covFallbackAfterFit(.fit))
+  expect_identical(.calls$m, c("imp", "sa"))
+  expect_identical(.fit$env$covMethod, "sa")
+  expect_identical(
+    .fit$env$covTried,
+    data.frame(
+      method = c("r,s", "imp", "sa"),
+      outcome = c("R not positive definite", "could not be computed", "used")
+    )
+  )
+  # a fit whose own step gave a covariance, or no fallback after the fit: nothing
+  .calls$m <- character(0)
+  .fit$env$cov <- diag(2)
+  expect_false(.covFallbackAfterFit(.fit))
+  .fit2 <- list(env = new.env(parent = emptyenv()))
+  .fit2$env$foceiControl <- foceiControl(covMethod = "r,s")
+  .fit2$env$covMethod <- "failed"
+  expect_false(.covFallbackAfterFit(.fit2))
+  expect_identical(.calls$m, character(0))
+  expect_error(foceiControl(covFallback = list(r = "vi")), "cannot fall back to \"vi\"")
+  expect_identical(foceiControl(covFallback = list(r = c("s", "sa")))$covFallback, list(r = c("s", "sa")))
+})
