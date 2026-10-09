@@ -16,8 +16,10 @@
   `"r,s"` fit now keeps its `"r"` and `"s"` covariances in `fit$covList`, so
   `setCov()` switches to them without computing anything.  A list you give replaces the default, so a method it does not name
   has no fallback.  The choice among the R, S and sandwich covariances is now
-  made in R (`.covSelectFocei()`), and `fit$env$covTried` records each method
-  tried and why it was not used.
+  made in R (`.covSelectFocei()`), `fit$env$covTried` records each method tried
+  and why it was not used, and a fit that falls back or gets no covariance says
+  so in one warning (e.g. `"r,s" not usable (S not PD); installed "r"`) instead
+  of the earlier separate ones.
 
 - The FOCEi covariance step does less work (issue 1140).  With `covFull = TRUE`
   (the default) one finite-difference computation over theta, sigma and Omega

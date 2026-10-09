@@ -12298,7 +12298,6 @@ NumericMatrix foceiCalcCov(Environment e){
             op_focei.cur += op_focei.npars*2;
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
             if (!isPd){
-              warning(_("R matrix non-positive definite"));
               e["R"] = wrap(e["R.0"]);
               rState = 2;
               op_focei.cur += op_focei.npars*2;
@@ -12322,7 +12321,6 @@ NumericMatrix foceiCalcCov(Environment e){
               rState = 1;
             }
           } else {
-            if (sListed) RSprintf("\rR matrix calculation failed; Switch to S-matrix covariance.\n");
             rState = 3;
             op_focei.cur += op_focei.npars*2;
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
@@ -12344,7 +12342,6 @@ NumericMatrix foceiCalcCov(Environment e){
           if (e.exists("cholS")) {
             isPd = foceiCovUsable(e, "S", as<arma::mat>(e["S0"]), sstr, checkSandwich);
             if (!isPd){
-              warning(_("S matrix non-positive definite"));
               sState = 2;
               op_focei.cur += op_focei.npars*2;
               op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);

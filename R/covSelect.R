@@ -125,7 +125,27 @@
 #' @return description
 #' @noRd
 .covMatState <- function(st) {
-  c("not computed", "usable", "not positive definite", "could not be computed")[st + 1L]
+  c("not computed", "usable", "not PD", "failed")[st + 1L]
+}
+
+#' The one warning a covariance walk gives when it falls back or gives none
+#'
+#' @param request the requested method
+#' @param tried `covTried`: each method tried and its outcome ("used" or why not)
+#' @param installed label of the installed covariance, or `NULL` for none
+#' @return the warning text, or `NULL` when the request was used as it is
+#' @noRd
+.covTriedSummary <- function(request, tried, installed) {
+  .why <- tried$outcome[tried$outcome != "used"]
+  if (length(.why) == 0L) {
+    return(NULL)
+  }
+  sprintf(
+    "\"%s\" not usable (%s); %s",
+    request,
+    paste(unique(.why), collapse = "; "),
+    if (is.null(installed)) "no covariance" else sprintf("installed \"%s\"", installed)
+  )
 }
 
 #' Add a method and its outcome to the record of a covariance choice
@@ -169,24 +189,16 @@
     .covTriedAdd(.acc, .names[req], paste("R", .covMatState(rState)))
     .cur <- if ("s" %in% fallback) 3L else 0L
   }
-  .orig <- .cur
   if (.cur == 2L) {
     .which <- "covR"
   }
   if (.cur %in% c(1L, 3L)) {
     if (sState == 2L || sState == 3L) {
       .covTriedAdd(.acc, .names[.cur], paste("S", .covMatState(sState)))
-      if (sState == 3L && .cur == 1L && "r" %in% fallback) {
-        cat("\rS matrix calculation failed; Switch to R-matrix covariance.\n")
-      }
       if (.cur == 1L && "r" %in% fallback) {
         .which <- "covR"
         .cur <- 2L
       } else {
-        if (sState == 3L) {
-          cat("\rCould not calculate covariance matrix.\n")
-        }
-        warning("cannot calculate covariance", call. = FALSE)
         .cur <- 0L
       }
     } else if (sState == 1L) {
@@ -196,7 +208,7 @@
           .which <- "covRS"
         }
         if (.which != "covRS") {
-          .covTriedAdd(.acc, "r,s", "sandwich not used (covSmall check)")
+          .covTriedAdd(.acc, "r,s", "sandwich doubtful")
         }
         .cur <- c(covRS = 1L, covR = 2L, covS = 3L)[[.which]]
       } else {
@@ -207,8 +219,7 @@
   if (.cur != 0L && nzchar(.which)) {
     .cov <- get(.which, envir = env, inherits = FALSE)
     if (all(diag(.cov) < 1e-7)) {
-      warning("The variance of all elements are unreasonably small, <1e-7", call. = FALSE)
-      .covTriedAdd(.acc, .names[.cur], "all variances below 1e-7")
+      .covTriedAdd(.acc, .names[.cur], "all variances < 1e-7")
       .cur <- 0L
       if (exists("cov", envir = env, inherits = FALSE)) rm(list = "cov", envir = env)
     } else {
@@ -216,8 +227,11 @@
       .covTriedAdd(.acc, .names[.cur], "used")
     }
   }
-  assign("covTried", do.call(rbind, .acc$tried), envir = env)
+  .tried <- do.call(rbind, .acc$tried)
+  assign("covTried", .tried, envir = env)
   if (.cur == 0L) {
+    .w <- .covTriedSummary(.names[req], .tried, NULL)
+    if (!is.null(.w)) warning(.w, call. = FALSE)
     warning("covariance step failed", call. = FALSE)
     return(list(slot = 0L, label = "failed"))
   }
@@ -248,29 +262,11 @@
     .label <- paste0(rstr, ",", sstr)
   } else if (.cur == 2L) {
     .label <- rstr
-    if (.orig != 2L) {
-      warning(
-        if (checkSandwich) {
-          "using R matrix to calculate covariance, can check sandwich or S matrix with $covRS and $covS"
-        } else {
-          "using R matrix to calculate covariance"
-        },
-        call. = FALSE
-      )
-    }
   } else {
     .label <- sstr
-    if (.orig != 2L) {
-      warning(
-        if (checkSandwich) {
-          "using S matrix to calculate covariance, can check sandwich or R matrix with $covRS and $covR"
-        } else {
-          "using S matrix to calculate covariance"
-        },
-        call. = FALSE
-      )
-    }
   }
+  .w <- .covTriedSummary(.names[req], .tried, .label)
+  if (!is.null(.w)) warning(.w, call. = FALSE)
   assign("covMethod", .label, envir = env)
   list(slot = .cur, label = .label)
 }

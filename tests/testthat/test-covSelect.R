@@ -31,12 +31,9 @@ test_that(".covSelectFocei() installs the requested covariance when its matrices
   .e <- .covSelectEnv()
   expect_identical(.covSelectFocei(.e, 2L, 1L, 0L, "r", "s", FALSE, FALSE, 1e-5), list(slot = 2L, label = "r"))
   expect_identical(.e$cov, .e$covR)
-  # "s": the S inverse; a request for S alone still says it uses S
+  # "s": the S inverse, with nothing to say
   .e <- .covSelectEnv()
-  expect_warning(
-    .r <- .covSelectFocei(.e, 3L, 0L, 1L, "r", "s", FALSE, FALSE, 1e-5),
-    "using S matrix to calculate covariance"
-  )
+  expect_silent(.r <- .covSelectFocei(.e, 3L, 0L, 1L, "r", "s", FALSE, FALSE, 1e-5))
   expect_identical(.r, list(slot = 3L, label = "s"))
   expect_identical(.e$cov, .e$.covSinv)
 })
@@ -44,30 +41,43 @@ test_that(".covSelectFocei() installs the requested covariance when its matrices
 test_that(".covSelectFocei() falls back between R and S and labels what it used", {
   # R not usable: S
   .e <- .covSelectEnv()
-  expect_warning(.r <- .covSelectFocei(.e, 1L, 2L, 1L, "r", "s", FALSE, FALSE, 1e-5), "using S matrix")
+  expect_warning(
+    .r <- .covSelectFocei(.e, 1L, 2L, 1L, "r", "s", FALSE, FALSE, 1e-5),
+    "\"r,s\" not usable (R not PD); installed \"s\"",
+    fixed = TRUE
+  )
   expect_identical(.r$label, "s")
   expect_identical(.e$cov, .e$.covSinv)
   # "r" whose R is not usable: S
   .e <- .covSelectEnv()
-  expect_warning(.r <- .covSelectFocei(.e, 2L, 3L, 1L, "r", "s", FALSE, FALSE, 1e-5), "using S matrix")
+  expect_warning(
+    .r <- .covSelectFocei(.e, 2L, 3L, 1L, "r", "s", FALSE, FALSE, 1e-5),
+    "\"r\" not usable (R failed); installed \"s\"",
+    fixed = TRUE
+  )
   expect_identical(.r$slot, 3L)
   # S not positive definite: R
   .e <- .covSelectEnv()
-  expect_warning(.r <- .covSelectFocei(.e, 1L, 1L, 2L, "r", "s", FALSE, FALSE, 1e-5), "using R matrix")
+  expect_warning(
+    .r <- .covSelectFocei(.e, 1L, 1L, 2L, "r", "s", FALSE, FALSE, 1e-5),
+    "\"r,s\" not usable (S not PD); installed \"r\"",
+    fixed = TRUE
+  )
   expect_identical(.r, list(slot = 2L, label = "r"))
   expect_identical(.e$cov, .e$covR)
   # S not computed: R, with the console note
   .e <- .covSelectEnv()
-  expect_output(
-    expect_warning(.r <- .covSelectFocei(.e, 1L, 1L, 3L, "r", "s", FALSE, FALSE, 1e-5), "using R matrix"),
-    "S matrix calculation failed; Switch to R-matrix covariance"
+  expect_warning(
+    .r <- .covSelectFocei(.e, 1L, 1L, 3L, "r", "s", FALSE, FALSE, 1e-5),
+    "\"r,s\" not usable (S failed); installed \"r\"",
+    fixed = TRUE
   )
   expect_identical(.r$slot, 2L)
   # neither usable: none
   .e <- .covSelectEnv()
   .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 2L, 2L, "r", "s", FALSE, FALSE, 1e-5))
   expect_identical(.r$value, list(slot = 0L, label = "failed"))
-  expect_identical(.r$warnings, c("cannot calculate covariance", "covariance step failed"))
+  expect_identical(.r$warnings, c("\"r,s\" not usable (R not PD; S not PD); no covariance", "covariance step failed"))
   expect_false(exists("cov", envir = .e, inherits = FALSE))
 })
 
@@ -77,7 +87,7 @@ test_that(".covSelectFocei() checks a doubtful sandwich against R and S", {
   .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 1L, 1L, "r+", "s", TRUE, FALSE, 1e-5))
   expect_identical(.r$value, list(slot = 3L, label = "s"))
   expect_identical(.e$cov, .e$covS)
-  expect_identical(.r$warnings, "using S matrix to calculate covariance, can check sandwich or R matrix with $covRS and $covR")
+  expect_identical(.r$warnings, "\"r,s\" not usable (sandwich doubtful); installed \"s\"")
   # a repaired S: R, with the R repair warning only when R is in the covariance
   .e <- .covSelectEnv()
   .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 1L, 1L, "r", "|s|", TRUE, FALSE, 1e-5))
@@ -92,7 +102,7 @@ test_that(".covSelectFocei() checks a doubtful sandwich against R and S", {
     .r$warnings,
     c(
       "R matrix non-positive definite but corrected (because of cholAccept)",
-      "using R matrix to calculate covariance, can check sandwich or S matrix with $covRS and $covS"
+      "\"r,s\" not usable (sandwich doubtful); installed \"r+\""
     )
   )
   .e <- .covSelectEnv(covR = diag(c(0.04, 0.09)), covS = diag(c(0.05, 0.1)), covRS = diag(c(0.01, 0.01)))
@@ -125,7 +135,7 @@ test_that(".covSelectFocei() refuses a covariance of all tiny variances and repo
   .e <- .covSelectEnv(covR = diag(c(1e-8, 1e-9)))
   .r <- .covSelectWarnings(.covSelectFocei(.e, 2L, 1L, 0L, "r", "s", FALSE, FALSE, 1e-5))
   expect_identical(.r$value$slot, 0L)
-  expect_identical(.r$warnings, c("The variance of all elements are unreasonably small, <1e-7", "covariance step failed"))
+  expect_identical(.r$warnings, c("\"r\" not usable (all variances < 1e-7); no covariance", "covariance step failed"))
   .e <- .covSelectEnv()
   .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 1L, 1L, "r", "s", FALSE, TRUE, 1e-5))
   expect_identical(.r$value$label, "r,s")
@@ -157,12 +167,12 @@ test_that(".covSelectFocei() falls back only to the listed methods and records w
   .e <- .covSelectEnv()
   .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 2L, 0L, "r", "s", FALSE, FALSE, 1e-5, fallback = "r"))
   expect_identical(.r$value$slot, 0L)
-  expect_identical(.e$covTried, data.frame(method = "r,s", outcome = "R not positive definite"))
+  expect_identical(.e$covTried, data.frame(method = "r,s", outcome = "R not PD"))
   # S not usable and "r" not listed: none
   .e <- .covSelectEnv()
   .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 1L, 2L, "r", "s", FALSE, FALSE, 1e-5, fallback = "s"))
   expect_identical(.r$value$slot, 0L)
-  expect_identical(.r$warnings, c("cannot calculate covariance", "covariance step failed"))
+  expect_identical(.r$warnings, c("\"r,s\" not usable (S not PD); no covariance", "covariance step failed"))
   # the sandwich check may not pick an unlisted method: the sandwich stays
   .e <- .covSelectEnv()
   .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 1L, 1L, "r+", "s", TRUE, FALSE, 1e-5, fallback = "r"))
@@ -173,13 +183,13 @@ test_that(".covSelectFocei() falls back only to the listed methods and records w
   .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 2L, 1L, "r", "s", FALSE, FALSE, 1e-5))
   expect_identical(
     .e$covTried,
-    data.frame(method = c("r,s", "s"), outcome = c("R not positive definite", "used"))
+    data.frame(method = c("r,s", "s"), outcome = c("R not PD", "used"))
   )
   .e <- .covSelectEnv()
   .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 1L, 1L, "r+", "s", TRUE, FALSE, 1e-5))
   expect_identical(
     .e$covTried,
-    data.frame(method = c("r,s", "s"), outcome = c("sandwich not used (covSmall check)", "used"))
+    data.frame(method = c("r,s", "s"), outcome = c("sandwich doubtful", "used"))
   )
 })
 
@@ -240,7 +250,7 @@ test_that("after the fit, a failed covariance falls back to the listed sa/imp in
   .fit <- list(env = new.env(parent = emptyenv()))
   .fit$env$foceiControl <- foceiControl(covMethod = "r,s", covFallback = list("r,s" = c("r", "s", "imp", "sa")))
   .fit$env$covMethod <- "failed"
-  .fit$env$covTried <- data.frame(method = "r,s", outcome = "R not positive definite")
+  .fit$env$covTried <- data.frame(method = "r,s", outcome = "R not PD")
   .calls <- new.env(parent = emptyenv())
   .calls$m <- character(0)
   local_mocked_bindings(
@@ -263,7 +273,7 @@ test_that("after the fit, a failed covariance falls back to the listed sa/imp in
     .fit$env$covTried,
     data.frame(
       method = c("r,s", "imp", "sa"),
-      outcome = c("R not positive definite", "could not be computed", "used")
+      outcome = c("R not PD", "could not be computed", "used")
     )
   )
   # a fit whose own step gave a covariance, or no fallback after the fit: nothing
