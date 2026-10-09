@@ -280,6 +280,22 @@
   differing number of rows`.  Both now read the fit's own control (`$control`);
   the imp objective read `$foceiControl`, which never holds `adjObf`.
 
+- An `est="saem"` mixture fit's Gaussian-quadrature and Laplace -2LL now
+  weight each subject's likelihood under every component by the mixture
+  probabilities, integrating each component over its own random effects.  It
+  solved every subject under whichever component the previous solve left, so
+  the value was far too high and changed between builds (#1184).
+
+- `setOfv(fit, "foce")`, `"focei"`, `"fo"`, `"imp"` and `"impmap"` now
+  calculate an objective whose row is the uncalculated (`NA`) placeholder a
+  saem fit starts with, instead of switching to the `NA` row; `setOfv(fit,
+  "imp")` on a saem fit no longer stops with `unknown error` (#1184).
+
+- An `est="saem"` mixture fit with a separate eta in each component (for
+  example `mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))`) kept its pooled
+  eta in the wrong column of `$etaMat`, leaving another eta `NA`; its table
+  step failed and its FOCEi objective could not be calculated (#1184).
+
 - `shiErr` and `hessErr` must now be > 0 in `nlmControl()`,
   `nlminbControl()`, `nlsControl()`, `optimControl()` and `trustControl()`,
   as must `hessEps`/`hessEpsLlik` in `foceiControl()` and `rsControl()`;
