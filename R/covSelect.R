@@ -178,8 +178,18 @@
 #' @param fallback methods the request may fall back to (`foceiControl(covFallback=)`)
 #' @return list(slot = 0 (none), 1, 2 or 3, label)
 #' @noRd
-.covSelectFocei <- function(env, req, rState, sState, rstr, sstr, checkSandwich, sHasZero, covSmall,
-                            fallback = c("r", "s")) {
+.covSelectFocei <- function(
+  env,
+  req,
+  rState,
+  sState,
+  rstr,
+  sstr,
+  checkSandwich,
+  sHasZero,
+  covSmall,
+  fallback = c("r", "s")
+) {
   .names <- c("r,s", "r", "s")
   .acc <- new.env(parent = emptyenv())
   .acc$tried <- list()
@@ -231,7 +241,9 @@
   assign("covTried", .tried, envir = env)
   if (.cur == 0L) {
     .w <- .covTriedSummary(.names[req], .tried, NULL)
-    if (!is.null(.w)) warning(.w, call. = FALSE)
+    if (!is.null(.w)) {
+      warning(.w, call. = FALSE)
+    }
     warning("covariance step failed", call. = FALSE)
     return(list(slot = 0L, label = "failed"))
   }
@@ -266,7 +278,9 @@
     .label <- sstr
   }
   .w <- .covTriedSummary(.names[req], .tried, .label)
-  if (!is.null(.w)) warning(.w, call. = FALSE)
+  if (!is.null(.w)) {
+    warning(.w, call. = FALSE)
+  }
   assign("covMethod", .label, envir = env)
   list(slot = .cur, label = .label)
 }

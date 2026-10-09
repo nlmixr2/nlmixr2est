@@ -1218,7 +1218,9 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
   # listed (.setCovFd)
   force(cov)
   .fb <- get0(".setCovFallback", envir = env, inherits = FALSE)
-  if (!is.null(.fb)) rm(list = ".setCovFallback", envir = env)
+  if (!is.null(.fb)) {
+    rm(list = ".setCovFallback", envir = env)
+  }
   if (is.null(cov)) {
     if (!.covSameName(method, env$covMethod) && !identical(.fb, env$covMethod)) {
       stop("setCov() method '", method, "' returned NULL without installing '", method, "'", call. = FALSE)

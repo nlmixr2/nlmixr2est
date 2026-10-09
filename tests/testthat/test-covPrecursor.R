@@ -3,7 +3,10 @@ test_that(".covPrecursorCheck() takes NULL or known sources, in order", {
   expect_identical(.covPrecursorCheck(character(0)), character(0))
   expect_identical(.covPrecursorCheck("analytic"), "analytic")
   expect_identical(.covPrecursorCheck(c("analytic", "fd")), c("analytic", "fd"))
-  expect_error(.covPrecursorCheck("saem"), "unknown source\\(s\\) \"saem\"; use some of \"fd\", \"analytic\", or NULL for none")
+  expect_error(
+    .covPrecursorCheck("saem"),
+    "unknown source\\(s\\) \"saem\"; use some of \"fd\", \"analytic\", or NULL for none"
+  )
   expect_error(.covPrecursorCheck(c("fd", "fd")), "names a source more than once")
   expect_error(.covPrecursorCheck(NA_character_), "must be NULL or some of")
   expect_error(.covPrecursorCheck(1), "must be NULL or some of")

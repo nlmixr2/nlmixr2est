@@ -130,10 +130,20 @@ test_that(".saemWarmCfg() installs a chain state of the right shape, its statist
   # 2 subjects x 3 chains, phi columns 1:2 mu-referenced (i1) and 3 not (i0);
   # endpoints: additive (4 obs), proportional (3 obs), combined (5 obs)
   .cfg <- list(
-    phiM = matrix(0, 6, 3), i1 = 0:1, i0 = 2L, N = 2L, nmc = 3L, nMix = 1L,
-    res.mod = c(1, 2, 4), ares = c(10, 0, 10), bres = c(0, 1, 1), y_offset = c(0, 4, 7, 12),
-    res_offset = c(0L, 1L, 2L, 4L), resValue = c(0.5, 0.1, 0.2, 0.3),
-    Gamma2_phi1 = diag(c(0.4, 0.3)), Gamma2_phi1fixedIx = matrix(1L, 2, 2),
+    phiM = matrix(0, 6, 3),
+    i1 = 0:1,
+    i0 = 2L,
+    N = 2L,
+    nmc = 3L,
+    nMix = 1L,
+    res.mod = c(1, 2, 4),
+    ares = c(10, 0, 10),
+    bres = c(0, 1, 1),
+    y_offset = c(0, 4, 7, 12),
+    res_offset = c(0L, 1L, 2L, 4L),
+    resValue = c(0.5, 0.1, 0.2, 0.3),
+    Gamma2_phi1 = diag(c(0.4, 0.3)),
+    Gamma2_phi1fixedIx = matrix(1L, 2, 2),
     Gamma2_phi1fixedValues = matrix(c(0.5, 0.1, 0.1, 0.2), 2, 2)
   )
   .ph <- matrix(c(1, 2, 3, 4, 5, 6, 10, 20, 30, 40, 50, 60, 7, 8, 9, 10, 11, 12), 6, 3)

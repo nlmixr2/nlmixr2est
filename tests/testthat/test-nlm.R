@@ -430,7 +430,12 @@ nmTest({
     # stats::nlm(hessian = TRUE) differences function values over a step of about
     # 10%, which put tcl's SE 9% low and tv's and add.sd's 9-15% high
     .own <- .nlmixr(.pk, nlmixr2data::theo_sd, est = "nlm", control = nlmControl(print = 0L, calcTables = FALSE))
-    .r <- .nlmixr(.pk, nlmixr2data::theo_sd, est = "nlm", control = nlmControl(print = 0L, calcTables = FALSE, covMethod = "r"))
+    .r <- .nlmixr(
+      .pk,
+      nlmixr2data::theo_sd,
+      est = "nlm",
+      control = nlmControl(print = 0L, calcTables = FALSE, covMethod = "r")
+    )
     expect_identical(.own$covMethod, "r (nlm)")
     expect_identical(.r$covMethod, "r")
     expect_equal(sqrt(diag(.own$cov)), sqrt(diag(.r$cov)), tolerance = 0.01)

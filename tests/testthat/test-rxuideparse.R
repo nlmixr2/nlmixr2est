@@ -121,7 +121,10 @@ nmTest({
     expect_equal(rxUiDeparse.nlmControl(nlmControl(), "var"), quote(var <- nlmControl()))
     expect_equal(rxUiDeparse.nlmControl(nlmControl(covMethod = "r"), "var"), quote(var <- nlmControl(covMethod = "r")))
     # covMethod's default follows solveType: "fun" defaults to "r"
-    expect_equal(rxUiDeparse.nlmControl(nlmControl(solveType = "fun"), "var"), quote(var <- nlmControl(solveType = "fun")))
+    expect_equal(
+      rxUiDeparse.nlmControl(nlmControl(solveType = "fun"), "var"),
+      quote(var <- nlmControl(solveType = "fun"))
+    )
   })
 
   test_that("nlsControl()", {

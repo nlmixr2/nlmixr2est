@@ -141,8 +141,11 @@ saControl <- function(nBurn = 100L, nEm = 100L, nSaCov = 500L, seed = 99L, warmS
   checkmate::assertIntegerish(seed, len = 1, any.missing = FALSE)
   checkmate::assertLogical(warmStart, len = 1, any.missing = FALSE)
   .ret <- list(
-    nBurn = as.integer(nBurn), nEm = as.integer(nEm), nSaCov = as.integer(nSaCov),
-    seed = as.integer(seed), warmStart = warmStart
+    nBurn = as.integer(nBurn),
+    nEm = as.integer(nEm),
+    nSaCov = as.integer(nSaCov),
+    seed = as.integer(seed),
+    warmStart = warmStart
   )
   class(.ret) <- "saControl"
   .ret

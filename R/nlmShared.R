@@ -313,7 +313,8 @@
   for (.k in seq_len(.n)) {
     .e <- replace(numeric(.n), .k, .h[.k])
     .hess[, .k] <- (nlmixr2est::.nlmixrNlminbGradC(par + .e) -
-      nlmixr2est::.nlmixrNlminbGradC(par - .e)) / (2 * .h[.k])
+      nlmixr2est::.nlmixrNlminbGradC(par - .e)) /
+      (2 * .h[.k])
   }
   (.hess + t(.hess)) / 2
 }

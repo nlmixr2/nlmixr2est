@@ -731,7 +731,12 @@ nmTest({
     .r <- .f$env$covList[["r"]]
     expect_lt(max(abs(sqrt(diag(.r))[.nm] / sqrt(diag(.an$cov))[.nm] - 1)), 0.01)
     # forward-difference S legs are the theta-only stage's own, so it runs separately
-    .fw <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covDerivMethod = "forward"))
+    .fw <- .nlmixr(
+      .quietOneCmt,
+      theo_sd,
+      "focei",
+      foceiControl(print = 0, calcTables = FALSE, covDerivMethod = "forward")
+    )
     expect_true(all(.fw$env$covEvals[c("gill", "r", "s", "fullR")] > 0L))
   })
 

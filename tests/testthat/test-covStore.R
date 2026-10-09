@@ -67,7 +67,9 @@ test_that(".covStoreRecord() merges what each covariance step computed under its
   expect_true(.covStoreRecord(.fit, .key, .r))
   expect_identical(.covStoreGet(.fit, .key)$full$S, diag(2))
   .moved <- new.env(parent = emptyenv())
-  for (.n in ls(.r, all.names = TRUE)) assign(.n, get(.n, envir = .r), envir = .moved)
+  for (.n in ls(.r, all.names = TRUE)) {
+    assign(.n, get(.n, envir = .r), envir = .moved)
+  }
   .moved$.fdFullX0 <- c(1, 2.5)
   expect_true(.covStoreRecord(.fit, .key, .moved))
   expect_null(.covStoreGet(.fit, .key)$full$S)
@@ -116,7 +118,11 @@ test_that("every fit starts with an empty covariance store and only setCov()'s i
   }
   # a setCov() refit hands its fit's in explicitly
   .env$covStore <- list(list(key = 1))
-  .env$.covRefitInputs <- list(covHandoff = list(theta = 3, omega = 4), .fdFullStore = list(R = diag(3)), covThetaStore = NULL)
+  .env$.covRefitInputs <- list(
+    covHandoff = list(theta = 3, omega = 4),
+    .fdFullStore = list(R = diag(3)),
+    covThetaStore = NULL
+  )
   .covStoreFitStart(.env)
   expect_null(.env$covStore)
   expect_identical(.env$covHandoff, list(theta = 3, omega = 4))

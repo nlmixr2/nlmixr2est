@@ -301,13 +301,20 @@ nmTest({
     # at the fit's own rtol (1e-3) the finite differences of the objective
     # differenced solver noise: tka's SE came out about 3x too small
     .def <- suppressMessages(suppressWarnings(.nlmixr(
-      .impCovOdeModel, theo_sd, "impmap",
+      .impCovOdeModel,
+      theo_sd,
+      "impmap",
       impmapControl(print = 0L, nIter = 5L, isample = 100L, calcTables = FALSE)
     )))
     .tight <- suppressMessages(suppressWarnings(.nlmixr(
-      .impCovOdeModel, theo_sd, "impmap",
+      .impCovOdeModel,
+      theo_sd,
+      "impmap",
       impmapControl(
-        print = 0L, nIter = 5L, isample = 100L, calcTables = FALSE,
+        print = 0L,
+        nIter = 5L,
+        isample = 100L,
+        calcTables = FALSE,
         rxControl = rxode2::rxControl(atol = 1e-9, rtol = 1e-9)
       )
     )))

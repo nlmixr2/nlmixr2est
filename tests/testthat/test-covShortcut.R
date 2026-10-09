@@ -32,7 +32,9 @@ nmTest({
     suppressMessages(suppressWarnings(
       setCov(.off, "r,s (full)", rsControl(covPrecursor = "analytic", covShortcut = FALSE))
     ))
-    for (.f in list(.none, .sc, .off)) expect_identical(.f$covMethod, "r,s (full)")
+    for (.f in list(.none, .sc, .off)) {
+      expect_identical(.f$covMethod, "r,s (full)")
+    }
     expect_null(.none$env$covPrecursorUsed[["r,s (full)"]])
     .rec <- .sc$env$covPrecursorUsed[["r,s (full)"]]
     expect_identical(.rec[c("source", "shortcut")], list(source = "analytic", shortcut = "accepted"))
@@ -40,7 +42,10 @@ nmTest({
     expect_identical(dim(.rec$checks), c(4L, 3L))
     expect_true(all(abs(.rec$checks[, "measured"] - .rec$checks[, "predicted"]) <= .rec$checks[, "allowance"]))
     expect_equal(unname(.rec$checks[, "allowance"]), 0.01 * abs(unname(.rec$checks[, "predicted"])))
-    expect_identical(.off$env$covPrecursorUsed[["r,s (full)"]][c("source", "shortcut")], list(source = "analytic", shortcut = "off"))
+    expect_identical(
+      .off$env$covPrecursorUsed[["r,s (full)"]][c("source", "shortcut")],
+      list(source = "analytic", shortcut = "off")
+    )
     # the predicted off-diagonals give the measured ones' covariance to within the
     # finite-difference error (0.4% on theo_sd)
     expect_equal(sqrt(diag(.sc$cov)), sqrt(diag(.none$cov)), tolerance = 0.01)

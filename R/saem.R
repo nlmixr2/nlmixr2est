@@ -843,7 +843,9 @@
   }
   # a covariance-only run (.covRecomputeSa) has no iterations
   .ph <- data.frame(
-    iter = seq_len(nrow(.m)), as.data.frame(.m), type = rep("Unscaled", nrow(.m)),
+    iter = seq_len(nrow(.m)),
+    as.data.frame(.m),
+    type = rep("Unscaled", nrow(.m)),
     check.names = FALSE
   )
   names(.ph) <- c("iter", .allThetaNames, "type")
@@ -1456,7 +1458,9 @@
         m,
         .saemCovNextText(nxt)
       ))
-      if (identical(nxt, "linFim")) rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
+      if (identical(nxt, "linFim")) {
+        rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
+      }
       return(FALSE)
     }
     # Both invert a SAEM observed-information matrix (.saemFimToCov): "sa" uses the
@@ -1509,7 +1513,9 @@
       return(TRUE)
     }
     message(sprintf("covMethod=\"%s\" %s; using %s", m, .why, .saemCovNextText(nxt)))
-    if (identical(nxt, "linFim")) rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
+    if (identical(nxt, "linFim")) {
+      rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
+    }
     return(FALSE)
   }
   .done <- FALSE

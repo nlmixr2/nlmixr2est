@@ -138,7 +138,7 @@
     return(NULL)
   }
   .d <- dim(.phiM)
-  .last <- .phiM[, , .d[3], , drop = FALSE]
+  .last <- .phiM[,, .d[3], , drop = FALSE]
   dim(.last) <- c(.d[1] * .d[2], .d[4])
   if (anyNA(.last)) {
     return(NULL)
