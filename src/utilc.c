@@ -1,4 +1,5 @@
 #define STRICT_R_HEADER
+#define USE_FC_LEN_T
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -9,12 +10,16 @@
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
+#include <R_ext/BLAS.h>
 #include <Rmath.h>
 #include <rxode2.h>
 #define _(String) (String)
 
 #include "utilc.h"
 #include "rxProtect.h"
+#ifndef FCONE
+#define FCONE
+#endif
 
 int _setSilentErr=0;
 
@@ -317,6 +322,90 @@ SEXP dfCbindList(SEXP lst) {
   SEXP cls = rxP(Rf_allocVector(STRSXP, 1));
   SET_STRING_ELT(cls, 0, Rf_mkChar("data.frame"));
   Rf_setAttrib(ret, R_ClassSymbol, cls);
+  rxUPAll();
+  return ret;
+}
+
+// sum(x * y) as R computes it: in order, in long double
+static double nmRsum(const double *x, const double *y, int n) {
+  long double t = 0.0;
+  for (int i = 0; i < n; ++i) {
+    double p = x[i] * y[i];
+    t += p;
+  }
+  return (double)t;
+}
+
+// Damped-BFGS update of the n x n column-major H from the secant pair (s, y),
+// computed as R's .trustOuterBfgs() did, so the two agree bitwise: H %*% s
+// through R's BLAS, sum() in long double and no fused multiply-adds.  Hs and r
+// are n-long work vectors.  Returns 1 when H was updated.
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((optimize("fp-contract=off")))
+#endif
+int nmTrustBfgsUpdate(int n, double *H, const double *s, const double *y,
+                      double *Hs, double *r) {
+#if defined(__clang__)
+#pragma STDC FP_CONTRACT OFF
+#endif
+  // R's %*% takes another route through a non-finite operand, but then s'Hs
+  // is not finite either and the update is skipped
+  for (int i = 0; i < n; ++i) {
+    if (!R_FINITE(s[i]) || !R_FINITE(y[i])) return 0;
+  }
+  for (int i = 0; i < n * n; ++i) {
+    if (!R_FINITE(H[i])) return 0;
+  }
+  const char *tr = "N";
+  double one = 1.0, zero = 0.0;
+  int inc = 1;
+  F77_CALL(dgemv)(tr, &n, &n, &one, H, &n, s, &inc, &zero, Hs, &inc FCONE);
+  double sBs = nmRsum(s, Hs, n);
+  if (!R_FINITE(sBs) || !(sBs > 0)) return 0;
+  double sy = nmRsum(s, y, n);
+  // Nocedal & Wright, Numerical Optimization 2nd ed, Procedure 18.2
+  if (sy >= 0.2 * sBs) {
+    for (int i = 0; i < n; ++i) r[i] = y[i];
+  } else {
+    double th = 0.8 * sBs / (sBs - sy);
+    double th1 = 1 - th;
+    for (int i = 0; i < n; ++i) {
+      double a = th * y[i];
+      double b = th1 * Hs[i];
+      r[i] = a + b;
+    }
+  }
+  double sr = nmRsum(s, r, n);
+  double sNorm = sqrt(nmRsum(s, s, n));
+  double rNorm = sqrt(nmRsum(r, r, n));
+  // a reject-then-shrink step gives a near-zero denominator
+  double lim = 1e-10 * sNorm;
+  lim = lim * rNorm;
+  if (!R_FINITE(sr) || !(sr > lim)) return 0;
+  for (int j = 0; j < n; ++j) {
+    for (int i = 0; i < n; ++i) {
+      double a = Hs[i] * Hs[j];
+      a = a / sBs;
+      double b = r[i] * r[j];
+      b = b / sr;
+      double h = H[i + n * j] - a;
+      H[i + n * j] = h + b;
+    }
+  }
+  return 1;
+}
+
+SEXP _nlmixr2est_trustBfgsUpdate(SEXP bS, SEXP sS, SEXP yS) {
+  rxProtectGuard;
+  int n = Rf_length(sS);
+  if (TYPEOF(bS) != REALSXP || TYPEOF(sS) != REALSXP || TYPEOF(yS) != REALSXP ||
+      Rf_length(yS) != n || Rf_length(bS) != n * n) {
+    rxUPAll();
+    Rf_errorcall(R_NilValue, _("trustBfgsUpdate: bad arguments"));
+  }
+  SEXP ret = rxP(Rf_duplicate(bS));
+  double *Hs = (double*)R_alloc(2 * (size_t)n + 1, sizeof(double));
+  nmTrustBfgsUpdate(n, REAL(ret), REAL(sS), REAL(yS), Hs, Hs + n);
   rxUPAll();
   return ret;
 }

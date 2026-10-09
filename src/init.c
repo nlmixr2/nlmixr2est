@@ -334,6 +334,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_powerDLambda", (DL_FUNC) &_nlmixr2est_powerDLambda, 5},
   {"_nlmixr2est_powerDLambda2", (DL_FUNC) &_nlmixr2est_powerDLambda2, 5},
   {"_nlmixr2est_powerL", (DL_FUNC) &_nlmixr2est_powerL, 5},
+  {"_nlmixr2est_trustBfgsUpdate", (DL_FUNC) &_nlmixr2est_trustBfgsUpdate, 3},
   {"_saemResidF", (DL_FUNC) &_saemResidF, 1},
   {"_nlmixr2est_npdeCalc", (DL_FUNC) &_nlmixr2est_npdeCalc, 6},
   {"_nlmixr2est_cwresCalc",  (DL_FUNC) &_nlmixr2est_cwresCalc, 12},

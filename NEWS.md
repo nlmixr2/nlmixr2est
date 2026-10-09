@@ -324,6 +324,12 @@
   for.  The `iter` column still counts every objective evaluation, so it
   skips the probes.
 
+- The damped-BFGS curvature of `outerOpt = "trust"` and `hessianMethod =
+  "bfgs"` (`trustControl()`, `foceiControl()`) is now one C update.  The two
+  had rounded differently (bitwise apart in 177 of 200 random updates); an
+  `outerOpt = "trust"` fit is unchanged, and a `hessianMethod = "bfgs"` one
+  may move at the last digits.
+
 - An ETA finite-differenced through the prediction model (`eventSens = "fd"`
   or a dosing parameter) is now differenced
   against the prediction model's own value at the ETA.  The base point came

@@ -306,9 +306,7 @@ is.latex <- function() {
 #' `trust_solve_c()` calls the objective at every TRIAL point, accepted or not,
 #' so the secant pair is consecutive CALLS -- the same convention
 #' `nlmTrustObjfun()` uses for the analogous outer problem (`src/nlm.cpp`).
-#' It does not call `trustHessianUpdate()` (src/trustHessianUpdate.h): that
-#' rounds differently (it differs bitwise from this on most updates), which
-#' would move the iterates of every `outerOpt="trust"` fit.
+#' The update is `trustHessianUpdate()`'s (`src/trustHessianUpdate.h`).
 #' @param state environment holding the estimate `b` and the previous call's
 #'   `xPrev` and `gPrev`, which this updates
 #' @param x,g the point and its gradient
@@ -316,29 +314,12 @@ is.latex <- function() {
 #' @noRd
 .trustOuterBfgs <- function(state, x, g) {
   if (!is.null(state$xPrev)) {
-    .s <- x - state$xPrev
-    .y <- g - state$gPrev
-    .bs <- drop(state$b %*% .s)
-    .sBs <- sum(.s * .bs)
-    .sy <- sum(.s * .y)
-    if (is.finite(.sBs) && .sBs > 0 && all(is.finite(.y))) {
-      # Damped BFGS (Nocedal & Wright, Numerical Optimization 2nd ed,
-      # Procedure 18.2): keeps the update positive definite when the outer
-      # objective's curvature along s is not.
-      .r <- if (.sy >= 0.2 * .sBs) {
-        .y
-      } else {
-        .th <- 0.8 * .sBs / (.sBs - .sy)
-        .th * .y + (1 - .th) * .bs
-      }
-      .sr <- sum(.s * .r)
-      # Same near-zero-denominator skip as trustHessianUpdate(): a
-      # reject-then-shrink step gives a secant pair whose rank-2 correction is
-      # enormous and meaningless.
-      if (is.finite(.sr) && .sr > 1e-10 * sqrt(sum(.s^2)) * sqrt(sum(.r^2))) {
-        state$b <- state$b - outer(.bs, .bs) / .sBs + outer(.r, .r) / .sr
-      }
-    }
+    state$b <- .Call(
+      `_nlmixr2est_trustBfgsUpdate`,
+      state$b,
+      as.double(x - state$xPrev),
+      as.double(g - state$gPrev)
+    )
   }
   state$xPrev <- x
   state$gPrev <- g
