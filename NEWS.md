@@ -2,6 +2,12 @@
 
 ## New features
 
+- `setCov(fit, "sa")` on a SAEM fit starts the MCMC chains from the fit's last
+  iteration and runs 10 + 10 warm-up iterations instead of 100 + 100, about a
+  quarter less work.  The Monte Carlo path differs from a cold start, so the
+  standard errors differ by Monte Carlo noise; `saControl(warmStart = FALSE)`
+  restores the cold start.
+
 - The imp covariance (`covMethod = "imp"`) no longer solves the model at the
   finite-difference points that move only Omega parameters: its importance
   samples are fixed in eta-space, so those points change only the eta prior, and

@@ -396,6 +396,7 @@
       if (isTRUE(rxode2::rxGetControl(ui, "saemHoldPar", FALSE))) {
         .cfg <- .saemHoldCfg(.cfg)
       }
+      .cfg <- .saemWarmCfg(.cfg, rxode2::rxGetControl(ui, "saemPhiMInit", NULL))
       .saemCheckCfg(.cfg)
       .cfg
     })
@@ -435,6 +436,32 @@
   cfg$nb_fixResid <- 0L
   cfg$nb_correl <- 0L
   cfg$residWarmStart <- 0L
+  cfg
+}
+
+#' Start a SAEM run's MCMC chains from a supplied state
+#'
+#' For the `"sa"` covariance recompute of a SAEM fit (`.covRecomputeSa()`):
+#' the chains start where the fit's last iteration left them instead of at
+#' draws around the initial estimates.  A state of the wrong shape (another
+#' data set, `nmc`, or parameterization) leaves the configuration alone.
+#' @param cfg `.configsaem()` configuration
+#' @param phiM `NULL`, or a `(N * nmc) x nphi` chain state, row `i + k * N`
+#'   holding subject `i` of chain `k`
+#' @return `cfg`
+#' @noRd
+.saemWarmCfg <- function(cfg, phiM) {
+  if (is.null(phiM) || !identical(dim(phiM), dim(cfg$phiM)) || isTRUE(cfg$nMix > 1L)) {
+    return(cfg)
+  }
+  .i1 <- cfg$i1 + 1L
+  .i0 <- cfg$i0 + 1L
+  .mean <- unname(rowsum(phiM, rep(seq_len(cfg$N), cfg$nmc), reorder = TRUE)) / cfg$nmc
+  cfg$phiM <- phiM
+  cfg$statphi11 <- .mean[, .i1, drop = FALSE]
+  cfg$statphi01 <- .mean[, .i0, drop = FALSE]
+  cfg$statphi12 <- crossprod(phiM[, .i1, drop = FALSE])
+  cfg$statphi02 <- crossprod(phiM[, .i0, drop = FALSE])
   cfg
 }
 
@@ -2001,6 +2028,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     # the hold flag of a covariance recompute (.covEngineControl) applies to
     # this run only
     .control$saemHoldPar <- NULL
+    .control$saemPhiMInit <- NULL
     .ret$control <- .control
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)

@@ -454,7 +454,7 @@ saemControl <- function(
   .nuAuto <- missing(nu)
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc", "DEBUG", "iterPrintControl", "saemHoldPar"))]
+  .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc", "DEBUG", "iterPrintControl", "saemHoldPar", "saemPhiMInit"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste(paste0("'", .bad, "'", sep = ""), collapse = ", "), call. = FALSE)
   }
@@ -671,6 +671,11 @@ saemControl <- function(
   # population parameter where it was supplied (.covEngineControl, .saemHoldCfg)
   if (isTRUE(.xtra$saemHoldPar)) {
     .ret$saemHoldPar <- TRUE
+  }
+  # internal: that recompute's chains start from the fit's last MCMC state
+  if (!is.null(.xtra$saemPhiMInit)) {
+    checkmate::assertMatrix(.xtra$saemPhiMInit, mode = "numeric", any.missing = FALSE, .var.name = "saemPhiMInit")
+    .ret$saemPhiMInit <- .xtra$saemPhiMInit
   }
   class(.ret) <- "saemControl"
   .ret

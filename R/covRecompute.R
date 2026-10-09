@@ -116,8 +116,30 @@
 #' @return list(cov, covMethod, extras) or NULL
 #' @noRd
 .covRecomputeSa <- function(fit, control = NULL) {
+  if (is.null(control)) {
+    control <- saControl()
+  }
+  .phiM <- if (control$warmStart) .saemLastPhiM(fit)
   # SAEM derives its own etaMat from the MCMC; no external eta seed
-  .covRecomputeNative(fit, "saem", .covEngineControl("sa", control), useEtaMat = FALSE)
+  .covRecomputeNative(fit, "saem", .covEngineControl("sa", control, .phiM), useEtaMat = FALSE)
+}
+
+#' The MCMC chain state at a SAEM fit's last estimation iteration
+#' @param fit nlmixr2 fit
+#' @return `(N * nmc) x nphi` matrix, or `NULL` when the fit kept no chains
+#' @noRd
+.saemLastPhiM <- function(fit) {
+  .phiM <- tryCatch(fit$phiM, error = function(e) NULL)
+  if (!is.array(.phiM) || length(dim(.phiM)) != 4L || any(dim(.phiM) == 0L)) {
+    return(NULL)
+  }
+  .d <- dim(.phiM)
+  .last <- .phiM[, , .d[3], , drop = FALSE]
+  dim(.last) <- c(.d[1] * .d[2], .d[4])
+  if (anyNA(.last)) {
+    return(NULL)
+  }
+  .last
 }
 
 #' Recompute the importance-sampling Monte-Carlo covariance ("imp") at any fit's
@@ -139,21 +161,25 @@
 #' @param method "sa" or "imp"
 #' @param control `saControl()`/`impCovControl()` options, or `NULL` for the
 #'   defaults
+#' @param phiM for "sa", the chain state to start from (`.saemLastPhiM()`), or
+#'   `NULL` to start the chains around the estimates
 #' @return `saemControl()` or `impmapControl()` object
 #' @noRd
-.covEngineControl <- function(method, control = NULL) {
+.covEngineControl <- function(method, control = NULL, phiM = NULL) {
   if (identical(method, "sa")) {
     if (is.null(control)) {
       control <- saControl()
     }
+    .warm <- !is.null(phiM)
     return(saemControl(
-      nBurn = control$nBurn,
-      nEm = control$nEm,
+      nBurn = if (.warm) control$nWarmBurn else control$nBurn,
+      nEm = if (.warm) control$nWarmEm else control$nEm,
       nSaCov = control$nSaCov,
       seed = control$seed,
       covMethod = "sa",
       calcTables = FALSE,
-      saemHoldPar = TRUE
+      saemHoldPar = TRUE,
+      saemPhiMInit = phiM
     ))
   }
   if (is.null(control)) {

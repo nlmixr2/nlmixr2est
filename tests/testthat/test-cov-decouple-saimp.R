@@ -106,6 +106,48 @@ nmTest({
     expect_equal(.imp$omega[.eta, .eta], .f$omega[.eta, .eta], tolerance = 1e-10)
   })
 
+  test_that("setCov(\"sa\") on a SAEM fit starts the chains from its last iteration", {
+    .f <- suppressWarnings(nlmixr2(
+      .lc,
+      .d,
+      est = "saem",
+      control = saemControl(print = 0L, nBurn = 30, nEm = 30, covMethod = "")
+    ))
+    .all <- .f$phiM
+    expect_identical(dim(.all), c(12L, 3L, 60L, 3L))
+    .ph <- .saemLastPhiM(.f)
+    expect_identical(dim(.ph), c(36L, 3L))
+    # row i + k * N is subject i of chain k
+    expect_identical(.ph[2L + 12L, ], .all[2L, 2L, 60L, ])
+    # a fit without chains starts cold
+    .fo <- suppressWarnings(nlmixr2(.lc, .d, est = "focei", control = foceiControl(print = 0L, covMethod = "")))
+    expect_null(.saemLastPhiM(.fo))
+
+    .eta <- c("eta.ka", "eta.cl", "eta.v")
+    .a <- .covPinnedRefitArgs(.f)
+    .sa <- suppressWarnings(suppressMessages(nlmixr2(
+      .a$ui,
+      .a$data,
+      est = "saem",
+      control = .covEngineControl("sa", saControl(nSaCov = 50L), .ph)
+    )))
+    expect_identical(.sa$covMethod, "sa")
+    expect_true(.isPdFinite(.sa$cov))
+    expect_false("saemPhiMInit" %in% names(.sa$control))
+    expect_equal(.sa$theta[names(.f$theta)], .f$theta, tolerance = 1e-10)
+    expect_equal(.sa$omega[.eta, .eta], .f$omega[.eta, .eta], tolerance = 1e-10)
+    expect_identical(dim(.sa$phiM)[3], 20L)
+    # rejected MCMC proposals keep the supplied state exactly, which draws
+    # around the estimates never reproduce
+    .first <- .sa$phiM[, , 1L, ]
+    dim(.first) <- dim(.ph)
+    expect_gt(sum(.first == .ph), 0L)
+
+    suppressMessages(setCov(.f, "sa"))
+    expect_identical(.f$covMethod, "sa")
+    expect_true(.isPdFinite(.f$cov))
+  })
+
   test_that("impmap accepts the foreign sa covariance", {
     .f <- suppressWarnings(nlmixr2(.lc, .d, est = "impmap", control = impmapControl(print = 0L, covMethod = "sa")))
     expect_equal(.f$covMethod, "sa")

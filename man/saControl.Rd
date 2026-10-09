@@ -4,7 +4,15 @@
 \alias{saControl}
 \title{Options for the SAEM stochastic-approximation covariance in setCov()}
 \usage{
-saControl(nBurn = 100L, nEm = 100L, nSaCov = 500L, seed = 99L)
+saControl(
+  nBurn = 100L,
+  nEm = 100L,
+  nSaCov = 500L,
+  seed = 99L,
+  warmStart = TRUE,
+  nWarmBurn = 10L,
+  nWarmEm = 10L
+)
 }
 \arguments{
 \item{nBurn, nEm}{warm-up iterations that equilibrate the MCMC chains before
@@ -14,6 +22,17 @@ the covariance phase}
 covariance}
 
 \item{seed}{random seed}
+
+\item{warmStart}{for a SAEM fit, start the MCMC chains from the fit's last
+iteration and run \code{nWarmBurn}/\code{nWarmEm} warm-up iterations
+instead of \code{nBurn}/\code{nEm}.  Other fits, and SAEM fits that kept no
+chain history, start the chains around the estimates.  The warm start
+changes the Monte Carlo path, so the covariance differs from a cold start
+by Monte Carlo noise.}
+
+\item{nWarmBurn, nWarmEm}{warm-up iterations after a warm start.  The
+burn-in also settles the residual statistic the covariance phase uses, so
+it needs a few iterations even when the chains start equilibrated.}
 }
 \value{
 \code{saControl} object
