@@ -28,7 +28,11 @@ nmTest({
     .sc <- suppressMessages(.nlmixr(.scModel, theo_sd, "focei", .ctl))
     .off <- suppressMessages(.nlmixr(.scModel, theo_sd, "focei", .ctl))
     suppressMessages(suppressWarnings(setCov(.none, "r,s (full)", rsControl(covPrecursor = NULL))))
-    suppressMessages(suppressWarnings(setCov(.sc, "r,s (full)", rsControl(covPrecursor = "analytic"))))
+    suppressMessages(suppressWarnings(setCov(
+      .sc,
+      "r,s (full)",
+      rsControl(covPrecursor = "analytic", covShortcut = TRUE)
+    )))
     suppressMessages(suppressWarnings(
       setCov(.off, "r,s (full)", rsControl(covPrecursor = "analytic", covShortcut = FALSE))
     ))
@@ -66,7 +70,11 @@ nmTest({
       dimnames(.d) <- dimnames(.f$cov)
       assign("cov", .d, envir = .f$env)
     }
-    suppressMessages(suppressWarnings(setCov(.sc, "r,s (full)", rsControl(covPrecursor = "analytic"))))
+    suppressMessages(suppressWarnings(setCov(
+      .sc,
+      "r,s (full)",
+      rsControl(covPrecursor = "analytic", covShortcut = TRUE)
+    )))
     suppressMessages(suppressWarnings(
       setCov(.off, "r,s (full)", rsControl(covPrecursor = "analytic", covShortcut = FALSE))
     ))

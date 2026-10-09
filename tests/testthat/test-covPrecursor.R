@@ -35,15 +35,15 @@ test_that("covPrecursor deparses and round-trips", {
 })
 
 test_that("foceiControl() and rsControl() carry covShortcut", {
-  expect_true(foceiControl()$covShortcut)
-  expect_false(foceiControl(covShortcut = FALSE)$covShortcut)
+  expect_false(foceiControl()$covShortcut)
+  expect_true(foceiControl(covShortcut = TRUE)$covShortcut)
   expect_error(foceiControl(covShortcut = NA))
   # rsControl(): NULL keeps the fit's value
   expect_false("covShortcut" %in% names(rsControl()))
   expect_false(rsControl(covShortcut = FALSE)$covShortcut)
   expect_error(rsControl(covShortcut = "yes"))
-  .back <- eval(rxode2::rxUiDeparse(foceiControl(covShortcut = FALSE), "ctl")[[3]])
-  expect_false(.back$covShortcut)
+  .back <- eval(rxode2::rxUiDeparse(foceiControl(covShortcut = TRUE), "ctl")[[3]])
+  expect_true(.back$covShortcut)
   .back <- eval(rxode2::rxUiDeparse(rsControl(covShortcut = TRUE), "ctl")[[3]])
   expect_true(.back$covShortcut)
   expect_true("covShortcut" %in% .covStoreKeyFields)

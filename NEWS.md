@@ -76,7 +76,7 @@
   no precursor, so its own covariance is unchanged.  `NULL` turns it off;
   `fit$env$covPrecursorUsed` and the fit print say how one served.
 
-- With a precursor, `foceiControl(covShortcut = TRUE)` (the default, also in
+- With a precursor, `foceiControl(covShortcut = TRUE)` (opt-in, also in
   `rsControl()`) predicts the full R from the measured diagonal and the
   precursor's correlations, checks it against the objective along four fixed
   directions, and when each agrees to 1% does not measure the off-diagonals.
@@ -84,8 +84,9 @@
   evaluations instead of 175 (0.9 s instead of 1.3 s), with standard errors
   within 0.4% of the measured ones.  When a check disagrees the off-diagonals are
   measured as before, at the cost of the check's evaluations (12 on the warfarin
-  model, where one direction missed by 1.9%).  `covShortcut = FALSE` always
-  measures them.
+  model, where one direction missed by 1.9%).  The default `covShortcut = FALSE`
+  always measures them, since four directions cannot see every pattern of wrong
+  correlations.
 
 - With an rxode2 that supports `rxControl(nonmem = TRUE)`, the estimation
   methods now honor it: `time` read in a statement that does not depend on a
