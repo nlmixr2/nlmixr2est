@@ -514,23 +514,10 @@ nmObjGetFoceiControl.vae <- function(x, ...) {
   if (!exists("dataSav", envir = .ret, inherits = FALSE)) {
     .foceiPreProcessData(env$data, .ret, .ui2, .ret$control$rxControl)
   }
-  .idf2 <- .ui2$iniDf
-  .etaU <- .idf2$name[!is.na(.idf2$neta1) & .idf2$neta1 == .idf2$neta2]
-  ## 1. fullTheta -- every non-eta ini() entry, already carrying the VAE estimates
-  ##    (.vaeUpdateModel wrote them into .ui2)
-  if (!exists("fullTheta", envir = .ret, inherits = FALSE)) {
-    .ret$fullTheta <- setNames(.idf2$est[is.na(.idf2$neta1)], .idf2$name[is.na(.idf2$neta1)])
-  }
-  ## 2. etaObf is not supplied: the FOCEi pass writes it from the inner problem
-  ## 3. omega -- dimnamed by the UI eta names, from the updated iniDf: the VAE
-  ##    estimates the full modeled block (diagonal + declared off-diagonals);
-  ##    an occasion eta keeps whatever the model fixed it at
-  if (!exists("omega", envir = .ret, inherits = FALSE)) {
-    .om <- .omegaBlockFromIniDf(.idf2, .etaU)$mat
-    .om[!is.finite(.om)] <- 0
-    .ret$omega <- .om
-  }
-  ## 4/5. cov + objective are deliberately NOT set: the builder derives the
+  ## theta and omega are not supplied: .vaeUpdateModel wrote the estimates into
+  ## .ui2, which the builder reports.  etaObf is not supplied either: the FOCEi
+  ## pass writes it from the inner problem.
+  ## cov + objective are deliberately NOT set: the builder derives the
   ##      objective from the inner pass at the VAE estimates, which is how the VAE
   ##      reports its objective today, and the covariance comes after it.
   ## 6. remaining metadata ($method/$extra/$est set above)

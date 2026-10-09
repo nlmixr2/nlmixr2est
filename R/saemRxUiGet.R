@@ -252,87 +252,13 @@ rxUiGet.saemOmegaTrans <- function(x, ...) {
 attr(rxUiGet.saemOmegaTrans, "rstudio") <- c(1L, 3L)
 
 #' @export
-rxUiGet.saemOmegaShare <- function(x, ...) {
-  .ui <- x[[1]]
-  .etaNames <- rxUiGet.saemEtaNames(x, ...)
-  .ret <- rep(0L, length(.etaNames))
-  if (length(.ui$mixProbs) == 0L) {
-    return(.ret)
-  }
-
-  .allEtas <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
-  .allEtas <- .allEtas[.allEtas$neta1 == .allEtas$neta2, "name"]
-
-  .mixCalls <- do.call(c, lapply(.ui$lstExpr, .findMixCalls))
-  if (length(.mixCalls) == 0L) {
-    return(.ret)
-  }
-
-  .groupId <- 1L
-  for (.mc in .mixCalls) {
-    .args <- as.list(.mc)[-1]
-    .comps <- .args[seq(1, length(.args), by = 2)]
-    .grpEtas <- unique(unlist(lapply(.comps, .extractEtas, etas = .allEtas)))
-    if (length(.grpEtas) > 1L) {
-      for (.eta in .grpEtas) {
-        .w <- which(.eta == .etaNames)
-        if (length(.w) == 1L) {
-          .ret[.w] <- .groupId
-        }
-      }
-      .groupId <- .groupId + 1L
-    }
-  }
-  .ret
-}
-
-#' @export
 rxUiGet.saemOmegaShareSubpop <- function(x, ...) {
-  .ui <- x[[1]]
   .etaNames <- rxUiGet.saemEtaNames(x, ...)
-  .ret <- rep(0L, length(.etaNames))
-  if (length(.ui$mixProbs) == 0L) {
-    return(.ret)
-  }
-
-  .allEtas <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
-  .allEtas <- .allEtas[.allEtas$neta1 == .allEtas$neta2, "name"]
-
-  .mixCalls <- do.call(c, lapply(.ui$lstExpr, .findMixCalls))
-  if (length(.mixCalls) == 0L) {
-    return(.ret)
-  }
-
-  # Collect, for each eta, every component index it is referenced from, across
-  # ALL of the model's mix() calls.  An eta seen from more than one component --
-  # or used anywhere outside a component, where it applies to every component --
-  # is SHARED, not owned: marking it as a component (the assignment below used
-  # to take whichever mix() call mentioned it last) sends a shared-eta mixture
-  # down the split-ETA code paths, which weight that eta's theta/omega update by
-  # a single component's responsibilities.
-  .outside <- unique(unlist(lapply(.ui$lstExpr, .extractEtasOutsideMix, etas = .allEtas)))
-  .compsOf <- list()
-  for (.mc in .mixCalls) {
-    .args <- as.list(.mc)[-1]
-    .comps <- .args[seq(1, length(.args), by = 2)]
-    for (.j in seq_along(.comps)) {
-      for (.eta in .extractEtas(.comps[[.j]], etas = .allEtas)) {
-        .compsOf[[.eta]] <- unique(c(.compsOf[[.eta]], .j))
-      }
-    }
-  }
-  for (.eta in names(.compsOf)) {
-    if (length(.compsOf[[.eta]]) != 1L || .eta %in% .outside) {
-      next
-    }
-    .w <- which(.eta == .etaNames)
-    if (length(.w) == 1L) {
-      .ret[.w] <- .compsOf[[.eta]]
-    }
-  }
-  .ret
+  .own <- .mixEtaOwner(x[[1]])
+  .ret <- unname(.own[.etaNames])
+  .ret[is.na(.ret)] <- 0L
+  as.integer(.ret)
 }
-
 
 #' @export
 rxUiGet.saemModelOmega <- function(x, ...) {

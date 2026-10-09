@@ -317,6 +317,31 @@ nmTest({
     expect_equal(unname(.se1), unname(.se0), tolerance = 1e-10)
   })
 
+  test_that("a mixture fit's condition numbers describe its probability-scale covariance (issue 1140)", {
+    .dat <- .mixCovData()
+    .f <- suppressWarnings(nlmixr2(
+      .mixCovMod,
+      .dat$data,
+      "focei",
+      foceiControl(
+        print = 0,
+        outerOpt = "lbfgsb3c",
+        maxOuterIterations = 200L,
+        maxInnerIterations = 100L,
+        covMethod = "r,s",
+        calcTables = FALSE
+      )
+    ))
+    .cov <- .f$cov
+    expect_true("p1" %in% rownames(.cov))
+    .ev <- abs(eigen(.cov, symmetric = TRUE, only.values = TRUE)$values)
+    .evr <- abs(eigen(stats::cov2cor(.cov), symmetric = TRUE, only.values = TRUE)$values)
+    expect_equal(.f$env$conditionNumberCov, max(.ev) / min(.ev))
+    expect_equal(.f$env$conditionNumberCor, max(.evr) / min(.evr))
+    expect_equal(sort(abs(.f$env$eigenCov)), sort(.ev))
+    expect_equal(.f$objDf[["Condition#(Cov)"]][1], max(.ev) / min(.ev))
+  })
+
   test_that("the S matrix is no longer singular for a mixture model", {
     .dat <- .mixCovData()
     .f <- suppressWarnings(nlmixr2(
@@ -416,6 +441,17 @@ nmTest({
     ## does not expose, so they are deliberately absent
     expect_equal(unname(.e$cov[1:2, 1:2]), matrix(c(4, 1, 1, 9), 2, 2))
     expect_equal(unname(.e$cov[1:2, 3]), c(0, 0))
+  })
+
+  test_that("the appended block refreshes the condition numbers (issue 1140)", {
+    .e <- .mkMixEnv(c(rep(1, 45), rep(0, 55)), 0.45, 100L)
+    .e$conditionNumberCov <- 1
+    .mixCovAppendBlock(.e)
+    expect_equal(dim(.e$cov), c(3L, 3L))
+    .ev <- abs(eigen(.e$cov, symmetric = TRUE, only.values = TRUE)$values)
+    expect_equal(.e$conditionNumberCov, max(.ev) / min(.ev))
+    .evr <- abs(eigen(stats::cov2cor(.e$cov), symmetric = TRUE, only.values = TRUE)$values)
+    expect_equal(.e$conditionNumberCor, max(.evr) / min(.evr))
   })
 
   test_that("the appended block is refused when the fit is not at the EM fixed point", {

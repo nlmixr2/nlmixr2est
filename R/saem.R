@@ -314,7 +314,6 @@
         mixProbStepExp = rxode2::rxGetControl(ui, "mixProbStepExp", 1),
         mixProbPriorN = rxode2::rxGetControl(ui, "mixProbPriorN", 20),
         mixSampleMethod = rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
-        omegaShare = ui$saemOmegaShare,
         omegaShareSubpop = ui$saemOmegaShareSubpop,
         omegaPool = ui$saemOmegaPool,
         # collapsed IOV also shares the group's MEAN (one theta)
@@ -725,8 +724,8 @@
   .etaNames <- .eta[.eta$neta1 == .eta$neta2, "name"]
   .len <- length(.etaNames)
   .ome <- matrix(rep(0, .len * .len), .len, .len, dimnames = list(.etaNames, .etaNames))
-  # Gamma2_phi1Report is the reporting-only pooled BSV for split ETAs; falls
-  # back to Gamma2_phi1 for older cached fits without the field.
+  # Gamma2_phi1Report keeps fix()ed cells; falls back to Gamma2_phi1 for older
+  # cached fits without the field.
   .curOme <- if (!is.null(.saem$Gamma2_phi1Report)) .saem$Gamma2_phi1Report else .saem$Gamma2_phi1
   # Backstop for #1047: .saemAssertEtaPhi() refuses such a model up front, so
   # reaching here means the UI's etas and the kernel's phi1 block disagree.
@@ -1938,8 +1937,8 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
     .saemFoldPseudoEtas(.ret)
-    # Must run against the un-pooled omega, before .saemMixFix() pools split
-    # ETAs, or ui$theta silently falls back to ini() values for every param.
+    # Must run before .saemMixFix(), or ui$theta silently falls back to ini()
+    # values for every param.
     .nlmixr2FitUpdateParams(.ret)
     # Builds mixList/mixNum/mixIcov; must run before nlmixr2CreateOutputFromUi.
     .saemMixFix(.ret, .ui)

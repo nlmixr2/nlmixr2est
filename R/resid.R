@@ -1088,7 +1088,7 @@ addTable <- function(
         )
       } else {
         .tabs <- .calcTables(.fit, data = data, table = table, keep = keep)
-        assign("shrink", .tabs$shrink, .fit)
+        assign("shrink", .mixOwnedEtaShrink(.tabs$shrink, .fit), .fit)
         .df <- .tabs$resid
       }
       .rownum <- as.integer(.df$nlmixrRowNums)

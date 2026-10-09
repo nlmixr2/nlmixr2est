@@ -66,6 +66,13 @@ nlmixr2Est <- function(env, ...) {
   }
   if (!inherits(env, "output")) {
     nlmixr2global$nlmixr2EstEnv$iniDf0 <- data.frame(get("ui", envir = env)$iniDf)
+    # nlmixr2CreateOutputFromUi() reads iniDf0 above only inside a run
+    .depth <- nlmixr2global$nlmixr2EstEnv$estDepth
+    if (is.null(.depth)) {
+      .depth <- 0L
+    }
+    nlmixr2global$nlmixr2EstEnv$estDepth <- .depth + 1L
+    on.exit(nlmixr2global$nlmixr2EstEnv$estDepth <- .depth, add = TRUE)
   }
   if (!exists("data", envir = env)) {
     stop("need 'data' object", call. = FALSE)

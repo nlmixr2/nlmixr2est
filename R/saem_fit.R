@@ -218,7 +218,6 @@
   mixProbStepExp = 1,
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
-  omegaShare = integer(0),
   omegaShareSubpop = integer(0),
   omegaPool = integer(0),
   omegaPoolMean = 0L
@@ -775,7 +774,6 @@
     Gamma2_phi1fixed = Gamma2_phi1fixed,
     Gamma2_phi1fixedIx = Gamma2_phi1fixedIx,
     Gamma2_phi1fixedValues = Gamma2_phi1fixedValues,
-    omegaShare = omegaShare,
     omegaShareSubpop = omegaShareSubpop,
     # phi1 columns sharing a non-zero group id estimate ONE variance (the
     # inter-occasion Psi of a two-level model); 0 means the column has its own

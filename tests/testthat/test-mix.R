@@ -600,6 +600,46 @@ nmTest({
     expect_equal(.outside$saemOmegaShareSubpop[.outside$saemEtaNames == "eta.cl2"], 2L)
   })
 
+  test_that("a component-owned eta's shrinkage is taken over its own component", {
+    splitEta <- function() {
+      ini({
+        tcl1 <- log(1); tcl2 <- log(8); tv <- log(20); tka <- log(1.1)
+        p1 <- 0.5; eta.cl1 ~ 0.1; eta.cl2 ~ 0.1; eta.v ~ 0.1; add.sd <- 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(splitEta)
+    expect_equal(.mixEtaOwner(.ui), c(eta.cl1 = 1L, eta.cl2 = 2L, eta.v = 0L))
+    .mn <- c(1L, 1L, 1L, 2L, 2L, 2L)
+    .ranef <- data.frame(
+      ID = 1:6,
+      eta.cl1 = c(0.3, -0.2, 0.1, 0, 0, 0),
+      eta.cl2 = c(0, 0, 0, 0.25, -0.15, 0.05),
+      eta.v = c(0.1, -0.1, 0.2, -0.2, 0.05, -0.05),
+      mixnum = .mn
+    )
+    .omega <- diag(c(0.1, 0.1, 0.1))
+    dimnames(.omega) <- list(names(.ranef)[2:4], names(.ranef)[2:4])
+    .fixef <- c(tcl1 = 0, tcl2 = 2, tv = 3, tka = 0.1, p1 = 0.5, add.sd = 0.1)
+    .shrinkOf <- function(etas, n) {
+      .p <- .Call(`_nlmixr2est_nlmixr2Parameters`, .fixef, etas)
+      .Call(`_nlmixr2est_calcShrinkOnly`, .omega, .p$eta.lst, n)
+    }
+    .all <- .shrinkOf(.ranef[, 1:4], 6L)
+    .fit <- list(ui = .ui, ranef = .ranef, fixef = .fixef, omega = .omega, mixNum = data.frame(ID = 1:6, mixnum = .mn))
+    .s <- .mixOwnedEtaShrink(.all, .fit)
+    expect_equal(.s$eta.cl1, .shrinkOf(.ranef[1:3, 1:4], 3L)$eta.cl1)
+    expect_equal(.s$eta.cl2, .shrinkOf(.ranef[4:6, 1:4], 3L)$eta.cl2)
+    # a shared eta keeps its shrinkage over every subject
+    expect_equal(.s$eta.v, .all$eta.v)
+    expect_false(isTRUE(all.equal(.s$eta.cl1, .all$eta.cl1)))
+  })
+
   test_that("a mixture model can reference a data covariate", {
     # the mixest column made etTrans() reject any other covariate, so saem
     # failed at setup and every other method lost its table step
@@ -721,5 +761,34 @@ nmTest({
     suppressMessages(.uninformativeEtas(.mk(TRUE), data = nlmixr2data::theo_sd, model = NULL))
     expect_false(is.null(.mix))
     expect_equal(.cap$val, .mix)
+  })
+
+  test_that("a split eta is informative for every subject, whatever its component", {
+    .ui <- rxode2::rxode2(function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(1.5)
+        tcl2 <- log(3)
+        tcl3 <- log(5)
+        tv <- 3.45
+        p1 <- 0.3
+        p2 <- 0.3
+        add.sd <- 0.7
+        eta.ka ~ 0.6
+        eta.cl1 ~ 0.3
+        eta.cl2 ~ 0.3
+        eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2), p2, exp(tcl3))
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    })
+    .m <- suppressMessages(.uninformativeEtas(.ui, data = nlmixr2data::theo_sd, model = NULL))
+    # each subject used to be probed under one component only, which froze
+    # the other components' etas at 0 for the whole fit
+    expect_true(all(.m == 1))
   })
 })

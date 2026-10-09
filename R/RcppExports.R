@@ -359,6 +359,10 @@ nmNearPD_ <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, on
     .Call(`_nlmixr2est_nmNearPD_`, x, keepDiag, do2eigen, doDykstra, only_values, eig_tol, conv_tol, posd_tol, maxit, trace)
 }
 
+nmNearPDKeepDiag_ <- function(x) {
+    .Call(`_nlmixr2est_nmNearPDKeepDiag_`, x)
+}
+
 nlmFree <- function() {
     .Call(`_nlmixr2est_nlmFree`)
 }

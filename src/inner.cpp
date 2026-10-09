@@ -838,6 +838,8 @@ struct focei_options {
   // converged on -- every candidate was a failed attempt, so the selection had
   // nothing good to choose from (#1044).
   std::atomic<int> nInnerNoGood{0};
+  // eta Hessians whose nearPD repair had to change the diagonal
+  std::atomic<int> nNearPdDiag{0};
   // Inner solves where a failed attempt's candidate was dropped from the
   // selection because a succeeded one was available.  This is the count that
   // shows the rule is doing something, rather than that it merely exists.
@@ -3642,8 +3644,11 @@ bool calcEtaHessian(double *eta, int likId, int id,
   if (conditional && forOptimization && op_focei.innerOpt == 3) return H.is_finite();
   if (!H.is_sympd()) {
     arma::mat H2;
-    if (nmNearPD(H2, H)) {
+    int how = nmNearPDKeepDiag(H2, H);
+    if (how > 0) {
       H=H2;
+      // reported after the fit; this can run on any thread
+      if (how == 2) op_focei.nNearPdDiag.fetch_add(1, std::memory_order_relaxed);
     }
   }
   if (fInd->doChol) {
@@ -9050,6 +9055,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
+  op_focei.nNearPdDiag.store(0, std::memory_order_relaxed);
   op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   // Fallback 2 ("none") for a control list that predates/omits warm=: 0 ("save")
   // used to BE self-init because updateZm() was a no-op (#1043), so "none" is what
@@ -10365,6 +10371,7 @@ Environment foceiOuter(Environment e){
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
+  op_focei.nNearPdDiag.store(0, std::memory_order_relaxed);
   op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   op_focei.nDeclineNewton=0;
   op_focei.nDeclineE0=0;
@@ -13246,11 +13253,33 @@ void impReMap() {
   innerOpt();
 }
 
+// impSetOmega()'s floor changes the reported omega (and the fit's ini()), so
+// say which variances it replaced; `idx` holds 0-based eta positions.
+void impWarnOmegaFloor(Environment e, const std::vector<int>& idx) {
+  if (idx.empty()) return;
+  CharacterVector etaNames;
+  if (e.exists("etaNames")) etaNames = as<CharacterVector>(e["etaNames"]);
+  std::string msg = "omega variance floored at 1e-6: ";
+  for (size_t k = 0; k < idx.size(); ++k) {
+    std::string nm = (idx[k] >= 0 && idx[k] < etaNames.size()) ?
+      as<std::string>(etaNames[idx[k]]) : "eta" + std::to_string(idx[k] + 1);
+    if (k > 0) nm = ", " + nm;
+    // keep the warning on one line of $runInfo
+    if (msg.size() + nm.size() > 70) {
+      msg += ", ...";
+      break;
+    }
+    msg += nm;
+  }
+  Rcpp::warning(msg);
+}
+
 // Install a new Omega: rebuild the rxSymInvChol environment (reusing the rxode2
 // matrix->parameterization machinery), refresh the cached inverse/Cholesky/log-
 // determinant, and copy the new Omega thetas into fullTheta so the next MAP and
-// the output see them.
-void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
+// the output see them.  Returns the etas (0-based) whose variance it raised to
+// the floor.
+std::vector<int> impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
   foceiOmegaFastReset(); // the _rxInv env is replaced; the map may change
   foceiOmegaTailMemoClear();
   Environment rxode2ns = Environment::namespace_env("rxode2");
@@ -13261,7 +13290,13 @@ void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
   // rxSymInvCholCreate error "initial 'omega' matrix inverse is non-positive
   // definite".  Symmetrize and floor the diagonal so the inverse is well-defined.
   arma::mat Om = 0.5 * (Omega + Omega.t());
-  for (unsigned int d = 0; d < Om.n_rows; ++d) if (Om(d, d) < 1e-6) Om(d, d) = 1e-6;
+  std::vector<int> floored;
+  for (unsigned int d = 0; d < Om.n_rows; ++d) {
+    if (Om(d, d) < 1e-6) {
+      Om(d, d) = 1e-6;
+      floored.push_back((int)d);
+    }
+  }
   _rxInv = as<List>(f(Rcpp::Named("mat") = wrap(Om),
                       Rcpp::Named("diag.xform") = diagXform));
   if (op_focei.fo == 1) {
@@ -13275,6 +13310,7 @@ void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
   std::copy(omegaTheta.begin(),
             omegaTheta.begin() + op_focei.omegan,
             &op_focei.fullTheta[0] + op_focei.ntheta);
+  return floored;
 }
 
 // Sync the optimizer's reference point (initPar) to the current natural
@@ -14435,6 +14471,10 @@ Environment foceiFitCpp_(Environment e){
   }
   if (op_focei.nnOuterSkipped) {
     warning(_("outer network step skipped (mixture or numeric-difference solve)"));
+  }
+  if (op_focei.nNearPdDiag.load(std::memory_order_relaxed) > 0) {
+    warning(_("eta Hessian repair changed its diagonal %d times"),
+            op_focei.nNearPdDiag.load(std::memory_order_relaxed));
   }
   // The covariance step's searches, listed by parameter: foceiCalcCov() keeps
   // them by the index of its own parameter set (the thetas, by default), which

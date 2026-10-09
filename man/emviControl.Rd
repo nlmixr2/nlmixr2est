@@ -228,18 +228,18 @@ wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
 \item{covMethod}{Covariance of the population estimates.
 
-"\code{vi}" (default) For a full-Bayes fit (\code{fbvi}, \code{pointEstimate = FALSE})
-the population variational covariance; a point-estimate fit (\code{emvi}) has
-no population variational block and uses the FOCEI \code{"r,s"} covariance.
+ "`vi`" (default) For a full-Bayes fit (`fbvi`, `pointEstimate = FALSE`)
+ the population variational covariance; a point-estimate fit (`emvi`) has
+ no population variational block and uses the FOCEI `"r,s"` covariance.
 
-"\code{analytic}", "\code{r,s}", "\code{r}" and "\code{s}" run the FOCEI covariance step (see
-\code{\link[=foceiControl]{foceiControl()}}) at the estimates, starting the individual estimates at
-the variational posterior means.  When it gives no covariance, a
-full-Bayes fit installs the population variational covariance instead,
-with a message.  An integer \code{covMethod} is a \code{foceiControl()} slot: \code{0} is
-no covariance, \code{1}, \code{2} and \code{3} are \code{"r,s"}, \code{"r"} and \code{"s"}.
+ "`analytic`", "`r,s`", "`r`" and "`s`" run the FOCEI covariance step (see
+ [foceiControl()]) at the estimates, starting the individual estimates at
+ the variational posterior means.  When it gives no covariance, a
+ full-Bayes fit installs the population variational covariance instead,
+ with a message.  An integer `covMethod` is a `foceiControl()` slot: `0` is
+ no covariance, `1`, `2` and `3` are `"r,s"`, `"r"` and `"s"`.
 
-"" Does not calculate the covariance step.}
+ "" Does not calculate the covariance step.}
 
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}

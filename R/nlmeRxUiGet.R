@@ -211,23 +211,59 @@ rxUiGet.nlmeGradDimnames <- function(x, ...) {
 }
 
 
+#' The omega blocks a model declares
+#'
+#' Two etas share a block when `ini()` declares a covariance between them (an
+#' off-diagonal `iniDf` row, also one at 0), directly or through other etas of
+#' the block.
+#'
+#' @param iniDf rxode2 `iniDf`
+#' @return list of integer vectors of eta indices (`neta1`), one per block,
+#'   ordered by their first eta
+#' @noRd
+.nlmeOmegaBlocks <- function(iniDf) {
+  .eta <- iniDf[!is.na(iniDf$neta1), c("neta1", "neta2")]
+  .grp <- seq_len(max(.eta$neta1))
+  .off <- .eta[.eta$neta1 != .eta$neta2, , drop = FALSE]
+  for (.i in seq_len(nrow(.off))) {
+    .grp[.grp == .grp[.off$neta1[.i]]] <- .grp[.off$neta2[.i]]
+  }
+  unname(split(seq_along(.grp), factor(.grp, levels = unique(.grp))))
+}
+
+#' nlme `pdMat` for one omega block
+#'
+#' @param idx eta indices of the block
+#' @param omega named omega matrix (initial values)
+#' @return `pdDiag` for a single eta, otherwise `pdSymm`
+#' @noRd
+.nlmePdBlock <- function(idx, omega) {
+  .om <- omega[idx, idx, drop = FALSE]
+  .form <- stats::as.formula(paste(paste(colnames(.om), collapse = "+"), "~1"))
+  if (length(idx) == 1L) {
+    return(nlme::pdDiag(value = .om, form = .form))
+  }
+  .dn <- dimnames(.om)
+  .om <- nmNearPD(.om)
+  dimnames(.om) <- .dn
+  nlme::pdSymm(value = .om, form = .form)
+}
+
 #' @export
 rxUiGet.nlmePdOmega <- function(x, ...) {
   .ui <- x[[1]]
   .omega <- .ui$omega
-  .omega2 <- .omega
-  diag(.omega2) <- 0
-  .name <- dimnames(.omega)[[1]]
-  .name <- .nlmeGetNonMuRefNames(.name, .ui)
+  .name <- .nlmeGetNonMuRefNames(dimnames(.omega)[[1]], .ui)
   dimnames(.omega) <- list(.name, .name)
-  if (all(.omega2 == 0)) {
-    nlme::pdDiag(value = .omega, form = as.formula(paste(paste(.name, collapse = "+"), "~1")))
-  } else {
-    .omega <- as.matrix(Matrix::nearPD(.omega)$mat)
-    dimnames(.omega) <- list(.name, .name)
-    warning("nlme will estimate a full omega matrix if any covariances are estimated", call. = FALSE)
-    nlme::pdSymm(value = .omega, form = as.formula(paste(paste(.name, collapse = "+"), "~1")))
+  .blocks <- .nlmeOmegaBlocks(.ui$iniDf)
+  if (length(.blocks) == length(.name)) {
+    return(nlme::pdDiag(value = .omega, form = as.formula(paste(paste(.name, collapse = "+"), "~1"))))
   }
+  if (length(.blocks) == 1L) {
+    return(.nlmePdBlock(.blocks[[1]], .omega))
+  }
+  # only the covariances ini() declares are estimated
+  nlme::pdBlocked(lapply(.blocks, .nlmePdBlock, omega = .omega))
 }
 #attr(rxUiGet.nlmePdOmega, "desc") <- "nlme omega matrix form"
 
@@ -280,7 +316,11 @@ rxUiGet.nlmeWeights <- function(x, ...) {
     }
   } else {
     if (.errType == "add + prop") {
-      return(nlme::varConstProp())
+      # sigma is fixed at 1 (.nlmeFitModel()), so start from the ini() sds
+      .iniDf <- .ui$iniDf
+      .add <- .iniDf$est[which(.iniDf$err == "add")]
+      .prop <- .iniDf$est[which(.iniDf$err == "prop")]
+      return(nlme::varConstProp(const = .add, prop = .prop))
     } else {
       stop("add+prop combined2 does not support nlme power currently", call. = FALSE)
     }
