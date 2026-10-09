@@ -122,8 +122,9 @@ nmTest({
     .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = "central")
     .old <- .shi21RatioCensor()
     on.exit(.shi21RatioCensor(.old))
+    # .nlmSetupEnv() reads the option
     .err <- vapply(c("legacy", "detected"), function(.type) {
-      .shi21RatioCensor(.type)
+      withr::local_options(list(nlmixr2est.shi21RatioCensor = .type))
       .withNlmProblem(.mod, .d, .ctl, function(x) {
         .gr <- function(p) attr(nlmSolveGradR(p + 0), "gradient")
         .oracle <- numDeriv::jacobian(.gr, x + 0)
