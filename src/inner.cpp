@@ -11413,6 +11413,26 @@ Rcpp::List shi21CentralWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx
   return Rcpp::List::create(_["h"] = h, _["gr"] = gr);
 }
 
+// The methods foceiControl(covFallback=) lists for a covariance method ("r,s", "r", "s",
+// "analytic"), in order; none when the control has no entry for it.
+static std::vector<std::string> covFallbackFor(Environment e, const std::string &method) {
+  std::vector<std::string> ret;
+  if (!e.exists("control")) return ret;
+  List ctl = as<List>(e["control"]);
+  if (!ctl.containsElementNamed("covFallback") || Rf_isNull(ctl["covFallback"])) return ret;
+  List fb = as<List>(ctl["covFallback"]);
+  if (!fb.containsElementNamed(method.c_str())) return ret;
+  RObject v = fb[method];
+  if (TYPEOF(v) != STRSXP) return ret;
+  CharacterVector cv(v);
+  for (int i = 0; i < cv.size(); ++i) ret.push_back(as<std::string>(cv[i]));
+  return ret;
+}
+
+static int covSlotOf(const std::string &m) {
+  return m == "r,s" ? 1 : (m == "r" ? 2 : (m == "s" ? 3 : 0));
+}
+
 // Whether the control asks for the analytic covariance (covType = "analytic").
 static bool foceiCovTypeAnalytic(Environment e) {
   if (!e.exists("control")) return false;
@@ -11454,17 +11474,26 @@ static int foceiCalcRAnalytic(Environment e) {
       return 0;
     }
   }
-  // tell the user (not silent).  RSprintf is the visible channel (like "Could not
-  // calculate covariance matrix"); the warning condition is for programmatic capture.
+  // analytic declined: the first method covFallback$analytic lists (the finite-difference
+  // sandwich "r,s" by default); none listed fails the step.  RSprintf is the visible
+  // channel (like "Could not calculate covariance matrix"); the warning is for
+  // programmatic capture.
+  std::vector<std::string> fb = covFallbackFor(e, "analytic");
+  int slot = fb.empty() ? 0 : covSlotOf(fb[0]);
+  if (slot == 0) {
+    RSprintf("\rcovType=\"analytic\" not available for this model, and covFallback lists "
+             "no fallback for it.\n");
+    Rf_warning("covType=\"analytic\": the analytic covariance is not available for this "
+               "model; covFallback lists no fallback");
+    op_focei.covMethod = 0;
+    return 0;
+  }
   RSprintf("\rcovType=\"analytic\" not available for this model (out of scope, or "
            "the augmented model would not build/solve); using the finite-difference "
-           "sandwich (\"r,s\") covariance.\n");
+           "\"%s\" covariance.\n", fb[0].c_str());
   Rf_warning("covType=\"analytic\": the analytic covariance is not available for "
-             "this model; used the finite-difference sandwich (\"r,s\") covariance instead.");
-  // analytic requested but unavailable -> fall back to the finite-difference SANDWICH
-  // ("r,s"), not the R-matrix alone ("r"): covMethod=2 was only the internal slot the
-  // "analytic" token maps to.  The S block in foceiCalcCov fires once this is 1.
-  if (op_focei.covMethod == 2) op_focei.covMethod = 1;
+             "this model; used the finite-difference \"%s\" covariance instead.", fb[0].c_str());
+  op_focei.covMethod = slot;
   return -1;
 }
 
@@ -11948,10 +11977,12 @@ static bool foceiThetaFromStore(Environment e, const arma::vec &theta) {
 // installs e$cov and e$covMethod and gives the warnings; returns the slot, 0 when none.
 static int foceiCovSelect(Environment e, int req, int rState, int sState,
                           const std::string &rstr, const std::string &sstr,
-                          bool checkSandwich, bool sHasZero) {
+                          bool checkSandwich, bool sHasZero,
+                          const std::vector<std::string> &fallback) {
   Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
   Function sel = as<Function>(nlmixr2[".covSelectFocei"]);
-  List r = sel(e, req, rState, sState, rstr, sstr, checkSandwich, sHasZero, op_focei.covSmall);
+  CharacterVector fb(fallback.begin(), fallback.end());
+  List r = sel(e, req, rState, sState, rstr, sstr, checkSandwich, sHasZero, op_focei.covSmall, fb);
   return as<int>(r["slot"]);
 }
 
@@ -12185,7 +12216,7 @@ NumericMatrix foceiCalcCov(Environment e){
             _["gillErr"] = NumericVector(op_focei.gillErr, op_focei.gillErr + np));
         };
         // covType="analytic": try the analytic R first; it needs no step search
-        bool analyticR = false;
+        bool analyticR = false, analyticDeclined = false;
         if ((op_focei.covMethod == 1 || op_focei.covMethod == 2) && !e.exists("cholR") &&
             foceiCovTypeAnalytic(e)) {
           int rc;
@@ -12200,6 +12231,7 @@ NumericMatrix foceiCalcCov(Environment e){
             return ret;
           }
           analyticR = (rc == 1);
+          analyticDeclined = (rc == -1);
         }
         // covFull: the full stage gives the theta-only R and S too (needs no theta-only
         // step search, stencil or S legs), also when a declined analytic R falls back
@@ -12215,7 +12247,16 @@ NumericMatrix foceiCalcCov(Environment e){
         bool checkSandwich = false, sHasZero = false;
         const int req = op_focei.covMethod;
         int rState = 0, sState = 0;
-        bool needS = (req == 1 || req == 3);
+        // the methods this request may fall back to (covFallback); a declined analytic R
+        // has already taken the first of the analytic list
+        std::vector<std::string> fallback;
+        if (foceiCovTypeAnalytic(e)) {
+          fallback = covFallbackFor(e, "analytic");
+          if (analyticDeclined && !fallback.empty()) fallback.erase(fallback.begin());
+        } else {
+          fallback = covFallbackFor(e, req == 1 ? "r,s" : (req == 2 ? "r" : "s"));
+        }
+        const bool sListed = std::find(fallback.begin(), fallback.end(), "s") != fallback.end();
         if (req == 1 || req == 2) {
           // R matrix based covariance
           if (!e.exists("cholR") && !analyticR){
@@ -12245,7 +12286,6 @@ NumericMatrix foceiCalcCov(Environment e){
               warning(_("R matrix non-positive definite"));
               e["R"] = wrap(e["R.0"]);
               rState = 2;
-              needS = true;
               op_focei.cur += op_focei.npars*2;
               op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
             } else {
@@ -12267,13 +12307,14 @@ NumericMatrix foceiCalcCov(Environment e){
               rState = 1;
             }
           } else {
-            RSprintf("\rR matrix calculation failed; Switch to S-matrix covariance.\n");
+            if (sListed) RSprintf("\rR matrix calculation failed; Switch to S-matrix covariance.\n");
             rState = 3;
-            needS = true;
             op_focei.cur += op_focei.npars*2;
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
           }
         }
+        // S for "s", for the sandwich of a usable R, or as a listed fallback for R
+        const bool needS = req == 3 || (req == 1 && rState == 1) || (rState != 1 && sListed);
         if (needS) {
           if (!e.exists("cholS")){
             runGill();
@@ -12320,7 +12361,8 @@ NumericMatrix foceiCalcCov(Environment e){
         }
         op_focei.cur=op_focei.totTick;
         op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-        int slot = foceiCovSelect(e, req, rState, sState, rstr, sstr, checkSandwich, sHasZero);
+        int slot = foceiCovSelect(e, req, rState, sState, rstr, sstr, checkSandwich, sHasZero,
+                                  fallback);
         if (e.exists(".covSinv")) e.remove(".covSinv");
         if (slot == 0) {
           e["covMethod"] = CharacterVector::create("failed");

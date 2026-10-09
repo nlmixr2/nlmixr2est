@@ -2,6 +2,14 @@
 
 ## New features
 
+- `foceiControl(covFallback=)` says what each covariance method falls back to when
+  it gives no usable covariance, as a named list (`"r,s"` to `"r"` then `"s"`,
+  `"r"` to `"s"`, `"analytic"` to `"r,s"`, `"r"` then `"s"`, by default, as
+  before).  A list you give replaces the default, so a method it does not name
+  has no fallback.  The choice among the R, S and sandwich covariances is now
+  made in R (`.covSelectFocei()`), and `fit$env$covTried` records each method
+  tried and why it was not used.
+
 - The FOCEi covariance step does less work (issue 1140).  With `covFull = TRUE`
   (the default) one finite-difference computation over theta, sigma and Omega
   gives both shapes: the structural-theta covariance is its theta block, so the

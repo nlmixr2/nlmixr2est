@@ -131,3 +131,94 @@ test_that(".covSelectFocei() refuses a covariance of all tiny variances and repo
   expect_identical(.r$value$label, "r,s")
   expect_identical(.r$warnings, "S matrix had problems solving for some subject and parameters")
 })
+
+test_that(".covFallbackCheck() takes a named list of methods and their fallbacks", {
+  expect_identical(.covFallbackCheck(NULL), list())
+  expect_identical(.covFallbackCheck(list()), list())
+  expect_identical(.covFallbackCheck(list("r,s" = "s", r = NULL)), list("r,s" = "s", r = character(0)))
+  expect_error(.covFallbackCheck(c("r", "s")), "must be a named list")
+  expect_error(.covFallbackCheck(list("r", "s")), "must be a named list")
+  expect_error(.covFallbackCheck(list(r = "s", r = "r,s")), "uniquely named")
+  expect_error(.covFallbackCheck(list(sa = "r")), "names a method without fallbacks: \"sa\"")
+  expect_error(.covFallbackCheck(list("r,s" = c("s", "s"))), "must be distinct method names")
+  expect_error(.covFallbackCheck(list("r,s" = NA_character_)), "must be distinct method names")
+  expect_error(.covFallbackCheck(list("r,s" = "r,s")), "cannot fall back to \"r,s\"")
+  expect_error(.covFallbackCheck(list(r = "analytic")), "cannot fall back to \"analytic\"")
+  # the default reproduces the established fallbacks
+  expect_identical(
+    foceiControl()$covFallback,
+    list("r,s" = c("r", "s"), r = "s", s = character(0), analytic = c("r,s", "r", "s"))
+  )
+  expect_identical(foceiControl(covFallback = list(r = "s"))$covFallback, list(r = "s"))
+})
+
+test_that(".covSelectFocei() falls back only to the listed methods and records what it tried", {
+  # R not usable and "s" not listed: none
+  .e <- .covSelectEnv()
+  .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 2L, 0L, "r", "s", FALSE, FALSE, 1e-5, fallback = "r"))
+  expect_identical(.r$value$slot, 0L)
+  expect_identical(.e$covTried, data.frame(method = "r,s", outcome = "R not positive definite"))
+  # S not usable and "r" not listed: none
+  .e <- .covSelectEnv()
+  .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 1L, 2L, "r", "s", FALSE, FALSE, 1e-5, fallback = "s"))
+  expect_identical(.r$value$slot, 0L)
+  expect_identical(.r$warnings, c("cannot calculate covariance", "covariance step failed"))
+  # the sandwich check may not pick an unlisted method: the sandwich stays
+  .e <- .covSelectEnv()
+  .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 1L, 1L, "r+", "s", TRUE, FALSE, 1e-5, fallback = "r"))
+  expect_identical(.r$value$label, "r+,s")
+  expect_identical(.e$cov, .e$covRS)
+  # a fallback that is used, and the request it replaced
+  .e <- .covSelectEnv()
+  .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 2L, 1L, "r", "s", FALSE, FALSE, 1e-5))
+  expect_identical(
+    .e$covTried,
+    data.frame(method = c("r,s", "s"), outcome = c("R not positive definite", "used"))
+  )
+  .e <- .covSelectEnv()
+  .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 1L, 1L, "r+", "s", TRUE, FALSE, 1e-5))
+  expect_identical(
+    .e$covTried,
+    data.frame(method = c("r,s", "s"), outcome = c("sandwich not used (covSmall check)", "used"))
+  )
+})
+
+test_that("a declined analytic covariance falls back as covFallback$analytic lists", {
+  skip_on_cran()
+  # linCmt() is outside the analytic covariance's scope
+  .lin <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .fit <- function(fb) {
+    .ctl <- foceiControl(print = 0, calcTables = FALSE, covMethod = "analytic", covFull = FALSE, covFallback = fb)
+    suppressMessages(suppressWarnings(.nlmixr(.lin, theo_sd, "focei", .ctl)))
+  }
+  .s <- .fit(list(analytic = "s"))
+  expect_identical(.s$covMethod, "s")
+  expect_identical(.s$env$covTried$method[nrow(.s$env$covTried)], "s")
+  .none <- .fit(list())
+  expect_identical(.none$covMethod, "failed")
+  expect_true(any(grepl("covFallback lists no fallback", .none$runInfo, fixed = TRUE)))
+})
+
+test_that("covFallback round-trips through rxUiDeparse()", {
+  .ctl <- foceiControl(covFallback = list("r,s" = "s"))
+  .d <- rxode2::rxUiDeparse(.ctl, "ctl")
+  expect_match(deparse1(.d), "covFallback", fixed = TRUE)
+  expect_identical(eval(.d[[3]])$covFallback, list("r,s" = "s"))
+  expect_false(grepl("covFallback", deparse1(rxode2::rxUiDeparse(foceiControl(), "ctl")), fixed = TRUE))
+})

@@ -1,6 +1,63 @@
 # Choosing a covariance from what the covariance step computed.  The C++ FOCEi step
 # computes the R and S matrices a request needs and calls .covSelectFocei() to choose.
 
+# The FOCEi covariance methods that can fall back, and what they can fall back to
+.covFallbackMethods <- c("r,s", "r", "s", "analytic")
+.covFallbackTargets <- c("r,s", "r", "s")
+
+#' Check `foceiControl(covFallback=)`
+#'
+#' @param covFallback named list, one element per covariance method, each the
+#'   ordered methods it falls back to
+#' @return the list, each element a character vector
+#' @noRd
+.covFallbackCheck <- function(covFallback) {
+  if (is.null(covFallback)) {
+    return(list())
+  }
+  if (!is.list(covFallback) || (length(covFallback) > 0L && is.null(names(covFallback)))) {
+    stop("'covFallback' must be a named list, e.g. list(\"r,s\" = c(\"r\", \"s\"))", call. = FALSE)
+  }
+  .n <- names(covFallback)
+  if (any(!nzchar(.n)) || anyDuplicated(.n)) {
+    stop("'covFallback' needs one uniquely named element per covariance method", call. = FALSE)
+  }
+  .bad <- setdiff(.n, .covFallbackMethods)
+  if (length(.bad) > 0L) {
+    stop(
+      sprintf(
+        "'covFallback' names a method without fallbacks: %s (allowed: %s)",
+        paste(dQuote(.bad, FALSE), collapse = ", "),
+        paste(dQuote(.covFallbackMethods, FALSE), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  for (.m in .n) {
+    .v <- covFallback[[.m]]
+    if (is.null(.v)) {
+      .v <- character(0)
+    }
+    if (!is.character(.v) || anyNA(.v) || anyDuplicated(.v)) {
+      stop(sprintf("'covFallback$%s' must be distinct method names", .m), call. = FALSE)
+    }
+    .bad <- setdiff(.v, setdiff(.covFallbackTargets, .m))
+    if (length(.bad) > 0L) {
+      stop(
+        sprintf(
+          "'covFallback$%s' cannot fall back to %s (allowed: %s)",
+          .m,
+          paste(dQuote(.bad, FALSE), collapse = ", "),
+          paste(dQuote(setdiff(.covFallbackTargets, .m), FALSE), collapse = ", ")
+        ),
+        call. = FALSE
+      )
+    }
+    covFallback[[.m]] <- .v
+  }
+  covFallback
+}
+
 #' Which of the sandwich, R and S covariances the "r,s" request installs
 #'
 #' The sandwich, unless an R or S repair, a pseudo-inverse (`checkSandwich`) or a
@@ -45,12 +102,33 @@
   }
 }
 
+#' What the state of an R or S matrix says about it (see `.covSelectFocei()`)
+#' @param st 0 not computed, 1 usable, 2 not positive definite, 3 not computable
+#' @return description
+#' @noRd
+.covMatState <- function(st) {
+  c("not computed", "usable", "not positive definite", "could not be computed")[st + 1L]
+}
+
+#' Add a method and its outcome to the record of a covariance choice
+#' @param acc environment holding `tried`, the list of rows
+#' @param method covariance method
+#' @param outcome "used" or why it was not
+#' @return invisibly `acc`
+#' @noRd
+.covTriedAdd <- function(acc, method, outcome) {
+  acc$tried[[length(acc$tried) + 1L]] <- data.frame(method = method, outcome = outcome)
+  invisible(acc)
+}
+
 #' Choose the FOCEi covariance from the R and S matrices the C++ step computed
 #'
-#' A request that needs R falls to S when R is not usable; "r,s" falls to R when S is
-#' not usable and is checked by `.covSandwichChoice()`; a covariance whose variances
-#' are all below 1e-7 is none.  Installs `env$cov` and `env$covMethod` (the label, e.g.
-#' "r,s", "r+", "|s|") and gives the warnings.
+#' The request first; when its matrices are not usable, the methods `fallback` lists,
+#' in order (a request that needs R falls to "s" when R is not usable, "r,s" to "r" when
+#' S is not); a doubtful sandwich is checked by `.covSandwichChoice()`, which may only
+#' pick a listed method; a covariance whose variances are all below 1e-7 is none.
+#' Installs `env$cov`, `env$covMethod` (the label, e.g. "r,s", "r+", "|s|") and
+#' `env$covTried` (each method tried and why it was not used) and gives the warnings.
 #' @param env fit environment (`covR`, `covS`, `covRS` and the S inverse `.covSinv`)
 #' @param req requested slot: 1 "r,s", 2 "r", 3 "s"
 #' @param rState,sState each matrix: 0 not computed, 1 usable, 2 not positive definite,
@@ -59,43 +137,52 @@
 #' @param checkSandwich whether a repair or pseudo-inverse was needed
 #' @param sHasZero whether a subject's S score had to be substituted
 #' @param covSmall `foceiControl(covSmall=)`
+#' @param fallback methods the request may fall back to (`foceiControl(covFallback=)`)
 #' @return list(slot = 0 (none), 1, 2 or 3, label)
 #' @noRd
-.covSelectFocei <- function(env, req, rState, sState, rstr, sstr, checkSandwich, sHasZero, covSmall) {
+.covSelectFocei <- function(env, req, rState, sState, rstr, sstr, checkSandwich, sHasZero, covSmall,
+                            fallback = c("r", "s")) {
+  .names <- c("r,s", "r", "s")
+  .acc <- new.env(parent = emptyenv())
+  .acc$tried <- list()
   .cur <- req
   .which <- ""
   if (req %in% c(1L, 2L) && rState != 1L) {
-    .cur <- 3L
+    .covTriedAdd(.acc, .names[req], paste("R", .covMatState(rState)))
+    .cur <- if ("s" %in% fallback) 3L else 0L
   }
   .orig <- .cur
   if (.cur == 2L) {
     .which <- "covR"
   }
   if (.cur %in% c(1L, 3L)) {
-    if (sState == 2L) {
-      if (.cur == 1L) {
+    if (sState == 2L || sState == 3L) {
+      .covTriedAdd(.acc, .names[.cur], paste("S", .covMatState(sState)))
+      if (sState == 3L && .cur == 1L && "r" %in% fallback) {
+        cat("\rS matrix calculation failed; Switch to R-matrix covariance.\n")
+      }
+      if (.cur == 1L && "r" %in% fallback) {
         .which <- "covR"
         .cur <- 2L
       } else {
+        if (sState == 3L) {
+          cat("\rCould not calculate covariance matrix.\n")
+        }
         warning("cannot calculate covariance", call. = FALSE)
         .cur <- 0L
       }
     } else if (sState == 1L) {
       if (.cur == 1L) {
         .which <- .covSandwichChoice(env$covRS, env$covR, env$covS, rstr, sstr, checkSandwich, covSmall)
+        if (.which != "covRS" && !(c(covR = "r", covS = "s")[[.which]] %in% fallback)) {
+          .which <- "covRS"
+        }
+        if (.which != "covRS") {
+          .covTriedAdd(.acc, "r,s", "sandwich not used (covSmall check)")
+        }
         .cur <- c(covRS = 1L, covR = 2L, covS = 3L)[[.which]]
       } else {
         .which <- ".covSinv"
-      }
-    } else if (sState == 3L) {
-      if (.cur == 1L) {
-        cat("\rS matrix calculation failed; Switch to R-matrix covariance.\n")
-        .which <- "covR"
-        .cur <- 2L
-      } else {
-        cat("\rCould not calculate covariance matrix.\n")
-        warning("cannot calculate covariance", call. = FALSE)
-        .cur <- 0L
       }
     }
   }
@@ -103,12 +190,15 @@
     .cov <- get(.which, envir = env, inherits = FALSE)
     if (all(diag(.cov) < 1e-7)) {
       warning("The variance of all elements are unreasonably small, <1e-7", call. = FALSE)
+      .covTriedAdd(.acc, .names[.cur], "all variances below 1e-7")
       .cur <- 0L
       if (exists("cov", envir = env, inherits = FALSE)) rm(list = "cov", envir = env)
     } else {
       assign("cov", .cov, envir = env)
+      .covTriedAdd(.acc, .names[.cur], "used")
     }
   }
+  assign("covTried", do.call(rbind, .acc$tried), envir = env)
   if (.cur == 0L) {
     warning("covariance step failed", call. = FALSE)
     return(list(slot = 0L, label = "failed"))

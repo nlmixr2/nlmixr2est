@@ -193,6 +193,17 @@
 #'     \code{covMethod="analytic"}), a tighter value such as \code{1e-10} or
 #'     \code{1e-12} can help: every probe's solve error enters the differences.
 #'
+#' @param covFallback what each \code{covMethod} falls back to when it gives no
+#'     usable covariance: a named list, one element per method, each the ordered
+#'     methods to try instead (the whole list, not followed further).  The default
+#'     is the established behaviour: \code{"r,s"} falls to \code{"r"} then
+#'     \code{"s"} (whichever matrix is usable), \code{"r"} to \code{"s"},
+#'     \code{"analytic"} to the finite-difference \code{"r,s"}, \code{"r"} and
+#'     \code{"s"}, and \code{"s"} to nothing.  A list you give replaces the
+#'     default: a method it does not name has no fallback.  The \code{"r,s"} check
+#'     of a doubtful sandwich (see \code{covSmall}) only picks a listed method.  The
+#'     methods tried and why each was not used are in \code{fit$env$covTried}.
+#'
 #' @param covFull shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 #'     full theta + residual sigma + Omega covariance (assembled analytically for
 #'     \code{covMethod="analytic"}, or by central finite differences over the same
@@ -1237,6 +1248,7 @@ foceiControl <- function(
   covDerivMethod = c("central", "forward"), #
   covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""), #
   covSolveTol = NULL, #
+  covFallback = list("r,s" = c("r", "s"), r = "s", s = character(0), analytic = c("r,s", "r", "s")),
   covFull = TRUE, #
   fast = FALSE, #
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"), #
@@ -1740,6 +1752,7 @@ foceiControl <- function(
   if (!is.null(covSolveTol)) {
     checkmate::assertNumeric(covSolveTol, len = 1, lower = 0, finite = TRUE, any.missing = FALSE)
   }
+  covFallback <- .covFallbackCheck(covFallback)
   checkmate::assertFlag(covFull)
   checkmate::assertFlag(fast)
   priorMethod <- match.arg(priorMethod)
@@ -2087,6 +2100,7 @@ foceiControl <- function(
     covType = covType,
     covMethodDeferred = covMethodDeferred,
     covSolveTol = covSolveTol,
+    covFallback = covFallback,
     covFull = covFull,
     fast = fast,
     priorMethod = priorMethod,
