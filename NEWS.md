@@ -104,6 +104,13 @@
   
 ## Bug Fixes
 
+- The nlm-family covariance (`covMethod = "r"`, from `nlmixr2Hess()`) now runs
+  its finite-difference stencil at the ODE tolerances FOCEi's covariance step
+  uses (the fit's times 1e-3, capped at 1e-7).  At the fit's own tolerance
+  (`rtol` 1e-3 by default) the stencil differenced solver noise: an `nlminb`
+  fit with `solveType = "fun"` reported a repaired `|r|` covariance with
+  standard errors about 6 times too small.
+
 - `saemControl(nBurn = 0)` and `nEm = 0` no longer add two spurious
   iterations' gains to the step-size schedule, which shifted every later gain.
 

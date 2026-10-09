@@ -251,7 +251,13 @@
     .malert("calculating covariance")
     if (!any(names(.ret) == "hessian")) {
       .p <- setNames(.parScaled, NULL)
-      .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFunC)
+      # the stencil differences objectives that agree in their last digits, so its
+      # solves run at the covariance probe tolerances, as FOCEi's do
+      .tol <- .Call(`_nlmixr2est_covProbeSolveTolSet_`)
+      .hess <- tryCatch(
+        nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFunC),
+        finally = .Call(`_nlmixr2est_covProbeSolveTolRestore_`, .tol)
+      )
       .ret$hessian <- .hess
     }
     dimnames(.ret$hessian) <- list(.name, .name)

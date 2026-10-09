@@ -84,6 +84,8 @@ SEXP _nlmixr2est_likInner(SEXP, SEXP);
 SEXP _nlmixr2est_cholSE_(SEXP, SEXP);
 SEXP _nlmixr2est_cholSEpd_(SEXP, SEXP);
 SEXP _nlmixr2est_covAccept_(SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_covProbeSolveTolSet_(void);
+SEXP _nlmixr2est_covProbeSolveTolRestore_(SEXP);
 SEXP _nlmixr2est_shi21CentralWrap(SEXP, SEXP, SEXP, SEXP, SEXP);
 
 SEXP _nlmixr2est_foceiOuterF(SEXP);
@@ -307,6 +309,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_cholSE_", (DL_FUNC) &_nlmixr2est_cholSE_, 2},
   {"_nlmixr2est_cholSEpd_", (DL_FUNC) &_nlmixr2est_cholSEpd_, 2},
   {"_nlmixr2est_covAccept_", (DL_FUNC) &_nlmixr2est_covAccept_, 4},
+  {"_nlmixr2est_covProbeSolveTolSet_", (DL_FUNC) &_nlmixr2est_covProbeSolveTolSet_, 0},
+  {"_nlmixr2est_covProbeSolveTolRestore_", (DL_FUNC) &_nlmixr2est_covProbeSolveTolRestore_, 1},
   {"_nlmixr2est_shi21CentralWrap", (DL_FUNC) &_nlmixr2est_shi21CentralWrap, 5},
   {"_nlmixr2est_likInner", (DL_FUNC) &_nlmixr2est_likInner, 2},
   {"_nlmixr2est_foceiOuterF", (DL_FUNC) &_nlmixr2est_foceiOuterF, 1},

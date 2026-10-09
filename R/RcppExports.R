@@ -100,6 +100,14 @@ foceiGradPooledSetupLoad_ <- function(st) {
     .Call(`_nlmixr2est_foceiGradPooledSetupLoad_`, st)
 }
 
+covProbeSolveTolSet_ <- function() {
+    .Call(`_nlmixr2est_covProbeSolveTolSet_`)
+}
+
+covProbeSolveTolRestore_ <- function(tol) {
+    .Call(`_nlmixr2est_covProbeSolveTolRestore_`, tol)
+}
+
 .foceiOuterRecord <- function(record) {
     .Call(`_nlmixr2est_foceiOuterRecord_`, record)
 }

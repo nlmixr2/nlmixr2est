@@ -25,6 +25,17 @@ nmTest({
     expect_identical(.ctl$covMethod, "r")
   })
 
+  test_that("the nlm-family covariance Hessian runs at the covariance probe tolerances (issue 1140)", {
+    skip_on_cran()
+    # at the fit's own rtol (1e-3) a "fun" fit's stencil differenced solver noise:
+    # an indefinite R, repaired to |r| with SEs about 6x too small
+    .fun <- .nlmixr(.pk, nlmixr2data::theo_sd, est = "nlminb", control = nlminbControl(print = 0L, solveType = "fun"))
+    .grad <- .nlmixr(.pk, nlmixr2data::theo_sd, est = "nlminb", control = nlminbControl(print = 0L, solveType = "grad"))
+    expect_identical(.fun$covMethod, "r")
+    expect_identical(.grad$covMethod, "r")
+    expect_equal(sqrt(diag(.fun$cov)), sqrt(diag(.grad$cov)), tolerance = 0.05)
+  })
+
   test_that("covMethod = \"nlminb\" installs nlminb's own Hessian at the estimates (issue 1140)", {
     skip_on_cran()
     .acc <- new.env(parent = emptyenv())

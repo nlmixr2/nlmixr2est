@@ -8786,6 +8786,29 @@ static inline double covProbeTol(double fitTol, double tolMax) {
   return std::max(std::min(fitTol, covProbeTolMin), std::min(fitTol * covProbeTolFactor, tolMax));
 }
 
+// The covariance probe tolerances (covProbeTol) on the live solve, for a covariance
+// computed outside the FOCEi covariance step (the nlm family's nlmixr2Hess()).
+// Returns the tolerances it replaced, for covProbeSolveTolRestore_(); NA when there
+// is no live solve to retune.
+//[[Rcpp::export]]
+NumericVector covProbeSolveTolSet_() {
+  double atol = NA_REAL, rtol = NA_REAL;
+  rxGetSolveAtolRtol(&atol, &rtol);
+  if (!R_FINITE(atol) || !R_FINITE(rtol)) {
+    return NumericVector::create(NA_REAL, NA_REAL);
+  }
+  rxSetSolveAtolRtol(covProbeTol(atol, covProbeOdeTolMax), covProbeTol(rtol, covProbeOdeTolMax));
+  return NumericVector::create(atol, rtol);
+}
+
+//[[Rcpp::export]]
+RObject covProbeSolveTolRestore_(NumericVector tol) {
+  if (tol.size() == 2 && R_FINITE(tol[0]) && R_FINITE(tol[1])) {
+    rxSetSolveAtolRtol(tol[0], tol[1]);
+  }
+  return R_NilValue;
+}
+
 // A positive number the control holds under `name`, else NA (NULL, absent, or not one)
 static double covControlTol(Environment e, const char* name) {
   if (!e.exists("control")) return NA_REAL;

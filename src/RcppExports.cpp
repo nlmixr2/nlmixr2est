@@ -357,6 +357,27 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// covProbeSolveTolSet_
+NumericVector covProbeSolveTolSet_();
+RcppExport SEXP _nlmixr2est_covProbeSolveTolSet_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(covProbeSolveTolSet_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// covProbeSolveTolRestore_
+RObject covProbeSolveTolRestore_(NumericVector tol);
+RcppExport SEXP _nlmixr2est_covProbeSolveTolRestore_(SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(covProbeSolveTolRestore_(tol));
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiOuterRecord_
 bool foceiOuterRecord_(bool record);
 RcppExport SEXP _nlmixr2est_foceiOuterRecord_(SEXP recordSEXP) {
