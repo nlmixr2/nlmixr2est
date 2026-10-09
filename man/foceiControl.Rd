@@ -31,7 +31,7 @@ foceiControl(
   covFallback = list(`r,s` = c("r", "s"), r = "s", s = character(0), analytic = c("r,s",
     "r", "s")),
   covPrecursor = c("fd", "analytic"),
-  covShortcut = TRUE,
+  covShortcut = FALSE,
   covFull = TRUE,
   fast = FALSE,
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"),
@@ -361,7 +361,7 @@ full R from the measured diagonal and the precursor's correlations, check
 the prediction against the objective along four fixed directions, and
 skip measuring the off-diagonals when it agrees to 1\% in each (the record
 says "accepted"); otherwise they are measured as usual ("fell back").
-\code{FALSE} always measures them.}
+\code{FALSE} (default) always measures them.}
 
 \item{covFull}{shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 full theta + residual sigma + Omega covariance (assembled analytically for
