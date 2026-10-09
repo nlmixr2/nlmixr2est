@@ -9,37 +9,32 @@ saControl(
   nEm = 100L,
   nSaCov = 500L,
   seed = 99L,
-  warmStart = TRUE,
-  nWarmBurn = 10L,
-  nWarmEm = 10L
+  warmStart = TRUE
 )
 }
 \arguments{
 \item{nBurn, nEm}{warm-up iterations that equilibrate the MCMC chains before
-the covariance phase}
+the covariance phase, for a fit without SAEM chain history (or with
+\code{warmStart = FALSE})}
 
 \item{nSaCov}{iterations in the covariance phase; more gives a less noisy
 covariance}
 
 \item{seed}{random seed}
 
-\item{warmStart}{for a SAEM fit, start the MCMC chains from the fit's last
-iteration and run \code{nWarmBurn}/\code{nWarmEm} warm-up iterations
-instead of \code{nBurn}/\code{nEm}.  Other fits, and SAEM fits that kept no
-chain history, start the chains around the estimates.  The warm start
-changes the Monte Carlo path, so the covariance differs from a cold start
-by Monte Carlo noise.}
-
-\item{nWarmBurn, nWarmEm}{warm-up iterations after a warm start.  The
-burn-in also settles the residual statistic the covariance phase uses, so
-it needs a few iterations even when the chains start equilibrated.}
+\item{warmStart}{for a SAEM fit, continue the fit's own MCMC chains: the
+covariance phase starts from the fit's last iteration with no new warm-up
+iterations.  This changes the Monte Carlo path, so the covariance differs
+from a cold start by Monte Carlo noise.  Other fits, and SAEM fits that
+kept no chain history, always run \code{nBurn}/\code{nEm}.}
 }
 \value{
 \code{saControl} object
 }
 \description{
-Used by \code{setCov(fit, "sa")}, which runs a short SAEM at the fit's
-estimates before the covariance phase.  Every population parameter is held
+Used by \code{setCov(fit, "sa")}, which runs the SAEM covariance phase at the
+fit's estimates, after warm-up iterations unless it continues a SAEM fit's
+own chains.  Every population parameter is held
 at the fit's estimates throughout (mixture proportions excepted), so the
 covariance is the one at those estimates.
 }

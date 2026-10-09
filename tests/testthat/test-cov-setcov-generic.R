@@ -118,7 +118,7 @@ nmTest({
     expect_equal(unclass(rsControl(hessEps = 1e-4, gillKcov = 3)), list(hessEps = 1e-4, gillKcov = 3L))
     expect_equal(
       unclass(saControl(nSaCov = 50)),
-      list(nBurn = 100L, nEm = 100L, nSaCov = 50L, seed = 99L, warmStart = TRUE, nWarmBurn = 10L, nWarmEm = 10L)
+      list(nBurn = 100L, nEm = 100L, nSaCov = 50L, seed = 99L, warmStart = TRUE)
     )
     expect_equal(unclass(impCovControl(isample = 10)), list(nIter = 1L, isample = 10L, impSeed = 42L))
     expect_error(rsControl(hessEps = -1))

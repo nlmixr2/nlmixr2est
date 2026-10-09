@@ -439,12 +439,17 @@
   cfg
 }
 
-#' Start a SAEM run's MCMC chains from a supplied state
+#' Continue another SAEM fit's chains
 #'
-#' For the `"sa"` covariance recompute of a SAEM fit (`.covRecomputeSa()`):
-#' the chains start where the fit's last iteration left them instead of at
-#' draws around the initial estimates.  A state of the wrong shape (another
-#' data set, `nmc`, or parameterization) leaves the configuration alone.
+#' For the `"sa"` covariance recompute of a SAEM fit (`.covRecomputeSa()`),
+#' which runs no warm-up iterations: the chains start where the fit's last
+#' iteration left them, the additive/proportional residual parameters start at
+#' their held values (`resValue`), and the residual statistic the covariance
+#' phase reads as sigma2 starts at them too, `n * ares^2` for an additive
+#' endpoint and `n * bres^2` for a proportional one (the kernel's M-step
+#' inverts both as `sqrt(statrese / n)`).  A state of the wrong shape
+#' (another data set, `nmc`, or parameterization) and mixture fits leave the
+#' configuration alone.
 #' @param cfg `.configsaem()` configuration
 #' @param phiM `NULL`, or a `(N * nmc) x nphi` chain state, row `i + k * N`
 #'   holding subject `i` of chain `k`
@@ -462,6 +467,20 @@
   cfg$statphi01 <- .mean[, .i0, drop = FALSE]
   cfg$statphi12 <- crossprod(phiM[, .i1, drop = FALSE])
   cfg$statphi02 <- crossprod(phiM[, .i0, drop = FALSE])
+  # the held residual parameters, not the kernel's placeholder start (10), so the
+  # first MCMC iteration already samples under them
+  .first <- cfg$resValue[cfg$res_offset[seq_along(cfg$res.mod)] + 1L]
+  .second <- cfg$resValue[cfg$res_offset[seq_along(cfg$res.mod)] + 2L]
+  .add <- cfg$res.mod %in% c(1, 4)
+  .prop <- cfg$res.mod == 2
+  cfg$ares[.add] <- .first[.add]
+  cfg$bres[.prop] <- .first[.prop]
+  cfg$bres[cfg$res.mod == 4] <- .second[cfg$res.mod == 4]
+  # other residual models whiten by their own error model, so SSR / n is near 1
+  .var <- rep(1, length(cfg$res.mod))
+  .var[cfg$res.mod == 1] <- cfg$ares[cfg$res.mod == 1]^2
+  .var[.prop] <- cfg$bres[.prop]^2
+  cfg$statrese <- as.numeric(diff(cfg$y_offset)) * .var
   cfg
 }
 
@@ -802,9 +821,13 @@
 
   .m <- .saem$par_hist
   if (ncol(.m) > length(.allThetaNames)) {
-    .m <- .m[, seq_along(.allThetaNames)]
+    .m <- .m[, seq_along(.allThetaNames), drop = FALSE]
   }
-  .ph <- data.frame(iter = rep(seq_len(nrow(.m))), as.data.frame(.m), type = "Unscaled", check.names = FALSE)
+  # a covariance-only run (.covRecomputeSa) has no iterations
+  .ph <- data.frame(
+    iter = seq_len(nrow(.m)), as.data.frame(.m), type = rep("Unscaled", nrow(.m)),
+    check.names = FALSE
+  )
   names(.ph) <- c("iter", .allThetaNames, "type")
   .cls <- class(.ph)
   attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]

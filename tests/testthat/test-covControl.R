@@ -111,24 +111,27 @@ nmTest({
   })
 })
 
-test_that("a warm \"sa\" start runs the warm-up counts and carries the chain state", {
+test_that("a SAEM fit's \"sa\" recompute continues its chains with no warm-up iterations", {
   .ph <- matrix(seq_len(18) / 10, 6, 3)
-  .warm <- .covEngineControl("sa", saControl(nWarmBurn = 2L, nWarmEm = 3L), .ph)
-  expect_identical(.warm$mcmc$niter, c(2L, 3L))
+  .warm <- .covEngineControl("sa", saControl(nBurn = 7L, nEm = 8L), .ph)
+  expect_identical(.warm$mcmc$niter, c(0L, 0L))
   expect_identical(.warm$saemPhiMInit, .ph)
   expect_true(.warm$saemHoldPar)
-  .cold <- .covEngineControl("sa", saControl())
-  expect_identical(.cold$mcmc$niter, c(100L, 100L))
+  .cold <- .covEngineControl("sa", saControl(nBurn = 7L, nEm = 8L))
+  expect_identical(.cold$mcmc$niter, c(7L, 8L))
   expect_null(.cold$saemPhiMInit)
   expect_error(saControl(warmStart = NA), "warmStart")
-  expect_error(saControl(nWarmBurn = 0L), "nWarmBurn")
-  expect_error(saControl(nWarmEm = 0L), "nWarmEm")
   expect_error(saemControl(saemPhiMInit = matrix(NA_real_, 2, 2)), "saemPhiMInit")
 })
 
-test_that(".saemWarmCfg() installs a chain state of the right shape and its statistics", {
-  # 2 subjects x 3 chains, phi columns 1:2 mu-referenced (i1) and 3 not (i0)
-  .cfg <- list(phiM = matrix(0, 6, 3), i1 = 0:1, i0 = 2L, N = 2L, nmc = 3L, nMix = 1L)
+test_that(".saemWarmCfg() installs a chain state of the right shape, its statistics and the residual statistic", {
+  # 2 subjects x 3 chains, phi columns 1:2 mu-referenced (i1) and 3 not (i0);
+  # endpoints: additive (4 obs), proportional (3 obs), combined (5 obs)
+  .cfg <- list(
+    phiM = matrix(0, 6, 3), i1 = 0:1, i0 = 2L, N = 2L, nmc = 3L, nMix = 1L,
+    res.mod = c(1, 2, 4), ares = c(10, 0, 10), bres = c(0, 1, 1), y_offset = c(0, 4, 7, 12),
+    res_offset = c(0L, 1L, 2L, 4L), resValue = c(0.5, 0.1, 0.2, 0.3)
+  )
   .ph <- matrix(c(1, 2, 3, 4, 5, 6, 10, 20, 30, 40, 50, 60, 7, 8, 9, 10, 11, 12), 6, 3)
   .w <- .saemWarmCfg(.cfg, .ph)
   expect_identical(.w$phiM, .ph)
@@ -137,7 +140,13 @@ test_that(".saemWarmCfg() installs a chain state of the right shape and its stat
   expect_equal(.w$statphi01, matrix(c(9, 10), 2, 1))
   expect_equal(.w$statphi12, crossprod(.ph[, 1:2]))
   expect_equal(.w$statphi02, crossprod(.ph[, 3, drop = FALSE]))
+  # the residual parameters start at their held values, not the placeholder 10
+  expect_equal(.w$ares, c(0.5, 0, 0.2))
+  expect_equal(.w$bres, c(0, 0.1, 0.3))
+  # statrese / n is the held variance the kernel's M-step inverts
+  expect_equal(.w$statrese, c(4 * 0.25, 3 * 0.01, 5))
   expect_identical(.saemWarmCfg(.cfg, NULL), .cfg)
   expect_identical(.saemWarmCfg(.cfg, .ph[1:4, ]), .cfg)
-  expect_identical(.saemWarmCfg(modifyList(.cfg, list(nMix = 2L)), .ph), .cfg |> modifyList(list(nMix = 2L)))
+  .mix <- modifyList(.cfg, list(nMix = 2L))
+  expect_identical(.saemWarmCfg(.mix, .ph), .mix)
 })

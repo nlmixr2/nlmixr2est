@@ -2,11 +2,11 @@
 
 ## New features
 
-- `setCov(fit, "sa")` on a SAEM fit starts the MCMC chains from the fit's last
-  iteration and runs 10 + 10 warm-up iterations instead of 100 + 100, about a
-  quarter less work.  The Monte Carlo path differs from a cold start, so the
-  standard errors differ by Monte Carlo noise; `saControl(warmStart = FALSE)`
-  restores the cold start.
+- `setCov(fit, "sa")` on a SAEM fit continues the fit's own MCMC chains: the
+  covariance phase starts from the fit's last iteration and runs no new
+  warm-up iterations (`nSaCov` instead of `nBurn + nEm + nSaCov`).  The Monte
+  Carlo path differs from a cold start, so the standard errors differ by Monte
+  Carlo noise; `saControl(warmStart = FALSE)` restores the cold start.
 
 - The imp covariance (`covMethod = "imp"`) no longer solves the model at the
   finite-difference points that move only Omega parameters: its importance
@@ -103,6 +103,9 @@
   handled those priors correctly.
   
 ## Bug Fixes
+
+- `saemControl(nBurn = 0)` and `nEm = 0` no longer add two spurious
+  iterations' gains to the step-size schedule, which shifted every later gain.
 
 - The table step of a fit ("Calculating residuals/tables") now protects the
   state, `lhs` and covariate columns it adds to the table from R's garbage

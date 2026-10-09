@@ -2221,6 +2221,17 @@ public:
       }
       statrese[b] = 0.0;
     }
+    // a run that continues another fit's chains (.saemWarmCfg) starts from that
+    // fit's residual statistic: no warm-up iteration is left to settle it, and the
+    // Louis residual score reads it as sigma2
+    if (x.containsElementNamed("statrese")) {
+      vec sr = as<vec>(x["statrese"]);
+      for (int b = 0; b < nendpnt && b < (int)sr.n_elem; ++b) {
+        statrese[b] = sr(b);
+        double nb = (double)(y_offset(b + 1) - y_offset(b));
+        if (nb > 0) sigma2[b] = sr(b) / nb;
+      }
+    }
 
     par_hist = as<mat>(x["par.hist"]);
     parHistThetaKeep=as<uvec>(x["parHistThetaKeep"]);

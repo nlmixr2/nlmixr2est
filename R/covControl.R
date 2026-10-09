@@ -99,44 +99,38 @@ rxUiDeparse.rsControl <- function(object, var) {
 
 #' Options for the SAEM stochastic-approximation covariance in setCov()
 #'
-#' Used by \code{setCov(fit, "sa")}, which runs a short SAEM at the fit's
-#' estimates before the covariance phase.  Every population parameter is held
+#' Used by \code{setCov(fit, "sa")}, which runs the SAEM covariance phase at the
+#' fit's estimates, after warm-up iterations unless it continues a SAEM fit's
+#' own chains.  Every population parameter is held
 #' at the fit's estimates throughout (mixture proportions excepted), so the
 #' covariance is the one at those estimates.
 #'
 #' @param nBurn,nEm warm-up iterations that equilibrate the MCMC chains before
-#'   the covariance phase
+#'   the covariance phase, for a fit without SAEM chain history (or with
+#'   \code{warmStart = FALSE})
 #' @param nSaCov iterations in the covariance phase; more gives a less noisy
 #'   covariance
 #' @param seed random seed
-#' @param warmStart for a SAEM fit, start the MCMC chains from the fit's last
-#'   iteration and run \code{nWarmBurn}/\code{nWarmEm} warm-up iterations
-#'   instead of \code{nBurn}/\code{nEm}.  Other fits, and SAEM fits that kept no
-#'   chain history, start the chains around the estimates.  The warm start
-#'   changes the Monte Carlo path, so the covariance differs from a cold start
-#'   by Monte Carlo noise.
-#' @param nWarmBurn,nWarmEm warm-up iterations after a warm start.  The
-#'   burn-in also settles the residual statistic the covariance phase uses, so
-#'   it needs a few iterations even when the chains start equilibrated.
+#' @param warmStart for a SAEM fit, continue the fit's own MCMC chains: the
+#'   covariance phase starts from the fit's last iteration with no new warm-up
+#'   iterations.  This changes the Monte Carlo path, so the covariance differs
+#'   from a cold start by Monte Carlo noise.  Other fits, and SAEM fits that
+#'   kept no chain history, always run \code{nBurn}/\code{nEm}.
 #' @return \code{saControl} object
 #' @author Matt Fidler
 #' @seealso \code{\link{setCov}()}, \code{\link{saemControl}()}
 #' @examples
 #' saControl(nSaCov = 1000)
 #' @export
-saControl <- function(nBurn = 100L, nEm = 100L, nSaCov = 500L, seed = 99L,
-                      warmStart = TRUE, nWarmBurn = 10L, nWarmEm = 10L) {
+saControl <- function(nBurn = 100L, nEm = 100L, nSaCov = 500L, seed = 99L, warmStart = TRUE) {
   checkmate::assertIntegerish(nBurn, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(nEm, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(nSaCov, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(seed, len = 1, any.missing = FALSE)
   checkmate::assertLogical(warmStart, len = 1, any.missing = FALSE)
-  checkmate::assertIntegerish(nWarmBurn, lower = 1, len = 1, any.missing = FALSE)
-  checkmate::assertIntegerish(nWarmEm, lower = 1, len = 1, any.missing = FALSE)
   .ret <- list(
     nBurn = as.integer(nBurn), nEm = as.integer(nEm), nSaCov = as.integer(nSaCov),
-    seed = as.integer(seed), warmStart = warmStart,
-    nWarmBurn = as.integer(nWarmBurn), nWarmEm = as.integer(nWarmEm)
+    seed = as.integer(seed), warmStart = warmStart
   )
   class(.ret) <- "saControl"
   .ret

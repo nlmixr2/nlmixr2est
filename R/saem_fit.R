@@ -178,6 +178,25 @@
 #'
 #' }
 #' @noRd
+#' SAEM's stochastic-approximation gains, one per estimation iteration
+#'
+#' Phase `ia` runs `niter[ia]` iterations with gain `1 / k^stepsize[ia]`, `k`
+#' continuing from where the previous phase's last gain left it.  A phase of 0
+#' iterations adds no gain.
+#' @param niter iterations per phase (`c(nBurn, nEm)`)
+#' @param stepsize exponent per phase
+#' @return numeric vector of length `sum(niter)`
+#' @noRd
+.saemPas <- function(niter, stepsize) {
+  .pas <- 1 / seq_len(niter[1])^stepsize[1]
+  for (.ia in seq_along(niter)[-1]) {
+    .end <- length(.pas)
+    .k1 <- if (.end > 0L) .pas[.end]^(-1 / stepsize[.ia]) else 0
+    .pas <- c(.pas, 1 / (.k1 + seq_len(niter[.ia]))^stepsize[.ia])
+  }
+  .pas
+}
+
 .configsaem <- function(
   model,
   data,
@@ -666,21 +685,15 @@
   nb_fixResid <- round(mcmc$niter[1] * perFixResid)
   va <- mcmc$stepsize
   vna <- mcmc$niter
-  na <- length(va)
-  pas <- 1 / (1:vna[1])^va[1]
-  for (ia in 2:na) {
-    end <- length(pas)
-    k1 <- pas[end]^(-1 / va[ia])
-    pas <- c(pas, 1 / ((k1 + 1):(k1 + vna[ia]))^va[ia])
-  }
+  pas <- .saemPas(vna, va)
   # one gain per estimation iteration, as pas has: the covariance phase that
   # saem_fit appends after them must read its own zero gains
-  pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))[seq_len(niter)]
+  pash <- c(rep(1, mcmc$burn.in), 1 / seq_len(niter))[seq_len(niter)]
   # Decaying step-size schedule for the "annealed" mixProbMethod (see
   # saemControl() docs); decays from iteration 1 instead of pas's
   # full-replacement step throughout nBurn.
   mixProbMethod <- match.arg(mixProbMethod)
-  pasMix <- 1 / (1:niter)^mixProbStepExp
+  pasMix <- 1 / seq_len(niter)^mixProbStepExp
   mixSampleMethod <- match.arg(mixSampleMethod)
   minv <- rep(1e-20, nphi)
   if (length(mixProb) > 1L) {

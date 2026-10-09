@@ -161,8 +161,9 @@
 #' @param method "sa" or "imp"
 #' @param control `saControl()`/`impCovControl()` options, or `NULL` for the
 #'   defaults
-#' @param phiM for "sa", the chain state to start from (`.saemLastPhiM()`), or
-#'   `NULL` to start the chains around the estimates
+#' @param phiM for "sa", a SAEM fit's last chain state (`.saemLastPhiM()`) to
+#'   continue with no warm-up iterations, or `NULL` to start the chains around
+#'   the estimates and run `nBurn`/`nEm` warm-up iterations
 #' @return `saemControl()` or `impmapControl()` object
 #' @noRd
 .covEngineControl <- function(method, control = NULL, phiM = NULL) {
@@ -170,10 +171,11 @@
     if (is.null(control)) {
       control <- saControl()
     }
+    # a SAEM fit's own iterations are the warm-up of its chains
     .warm <- !is.null(phiM)
     return(saemControl(
-      nBurn = if (.warm) control$nWarmBurn else control$nBurn,
-      nEm = if (.warm) control$nWarmEm else control$nEm,
+      nBurn = if (.warm) 0L else control$nBurn,
+      nEm = if (.warm) 0L else control$nEm,
       nSaCov = control$nSaCov,
       seed = control$seed,
       covMethod = "sa",
