@@ -17,9 +17,12 @@ nmTest({
     })
   }
 
-  test_that("nlminbControl() defaults to the nlmixr2Hess() covariance, as documented (issue 1140)", {
-    expect_identical(nlminbControl()$covMethod, "r")
+  test_that("nlminbControl() defaults to nlminb's own Hessian only where the fit computes it (issue 1140)", {
+    expect_identical(nlminbControl()$covMethod, "nlminb")
+    expect_identical(nlminbControl(solveType = "hessian")$covMethod, "nlminb")
     expect_identical(nlminbControl(solveType = "grad")$covMethod, "r")
+    expect_identical(nlminbControl(solveType = "fun")$covMethod, "r")
+    expect_identical(nlminbControl(covMethod = "r")$covMethod, "r")
     expect_identical(nlminbControl(covMethod = "nlminb")$covMethod, "nlminb")
     expect_warning(.ctl <- nlminbControl(covMethod = "nlminb", solveType = "fun"), "switching to covMethod='r'")
     expect_identical(.ctl$covMethod, "r")

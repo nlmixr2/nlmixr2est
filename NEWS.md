@@ -2,6 +2,13 @@
 
 ## New features
 
+- `nlminbControl(solveType = "hessian")`, the default, now takes the
+  covariance from the Hessian nlminb has already computed at the estimates
+  (`covMethod = "nlminb"`, labelled `"r (nlminb)"`) instead of a separate
+  `nlmixr2Hess()` stencil, as `nlmControl()` does with nlm's.  On theo_sd the
+  standard errors agree to four digits and the fit takes 1.1 s instead of
+  6.5 s.  `covMethod = "r"` keeps the stencil.
+
 - `setCov(fit, "sa")` on a SAEM fit continues the fit's own MCMC chains: the
   covariance phase starts from the fit's last iteration and runs no new
   warm-up iterations (`nSaCov` instead of `nBurn + nEm + nSaCov`).  The Monte

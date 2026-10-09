@@ -4,11 +4,13 @@
 #' @inheritParams stats::nlminb
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
-#' @param covMethod Method for calculating the covariance.  \code{"r"} (the
-#'   default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"nlminb"} uses
-#'   the Hessian nlminb's own Hessian function computes (a finite difference of
-#'   the analytic gradient), at the final estimates; it needs
-#'   \code{solveType = "hessian"} or \code{"grad"}.  \code{""} skips the
+#' @param covMethod Method for calculating the covariance.  \code{"r"} uses
+#'   nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"nlminb"} uses the Hessian
+#'   nlminb's own Hessian function computes (a finite difference of the
+#'   analytic gradient), at the final estimates; it needs
+#'   \code{solveType = "hessian"} or \code{"grad"}.  The default is
+#'   \code{"nlminb"} with \code{solveType = "hessian"}, which has already
+#'   computed that Hessian, and \code{"r"} otherwise.  \code{""} skips the
 #'   covariance step.
 #' @param returnNlminb logical; when TRUE this will return the nlminb
 #'   result instead of the nlmixr2 fit object
@@ -163,7 +165,13 @@ nlminbControl <- function(
 
   solveType <- .nlmCtlCode(solveType, c("hessian" = 3L, "grad" = 2L, "fun" = 1L), "solveType")
 
-  covMethod <- .nlmCtlCovMethod(covMethod, match.arg(covMethod))
+  # the Hessian a "hessian" fit already computes at the estimates, as nlmControl()
+  # uses nlm's own
+  if (missing(covMethod) && solveType == 3L) {
+    covMethod <- "nlminb"
+  } else {
+    covMethod <- .nlmCtlCovMethod(covMethod, match.arg(covMethod))
+  }
   if (covMethod == "nlminb" && !any(solveType == 2:3)) {
     warning(
       "using the Hessian function used during nlminb optimization requires a hessian or gradient solving type\n",
