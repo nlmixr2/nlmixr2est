@@ -28,16 +28,15 @@ BEGIN_RCPP
 END_RCPP
 }
 // covAccept_
-List covAccept_(NumericMatrix A, double cholSEtol, double cholAccept, bool rankStrict);
-RcppExport SEXP _nlmixr2est_covAccept_(SEXP ASEXP, SEXP cholSEtolSEXP, SEXP cholAcceptSEXP, SEXP rankStrictSEXP) {
+List covAccept_(NumericMatrix A, double cholSEtol, double cholAccept);
+RcppExport SEXP _nlmixr2est_covAccept_(SEXP ASEXP, SEXP cholSEtolSEXP, SEXP cholAcceptSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericMatrix >::type A(ASEXP);
     Rcpp::traits::input_parameter< double >::type cholSEtol(cholSEtolSEXP);
     Rcpp::traits::input_parameter< double >::type cholAccept(cholAcceptSEXP);
-    Rcpp::traits::input_parameter< bool >::type rankStrict(rankStrictSEXP);
-    rcpp_result_gen = Rcpp::wrap(covAccept_(A, cholSEtol, cholAccept, rankStrict));
+    rcpp_result_gen = Rcpp::wrap(covAccept_(A, cholSEtol, cholAccept));
     return rcpp_result_gen;
 END_RCPP
 }

@@ -951,10 +951,11 @@
   `$runInfo`.  `"r"` means the Hessian was factored as it is.  It used to
   invert every Hessian after an unreported Schnabel-Eskow perturbation and
   label it `"r"`, which gave several parameters of the derivative-free fits
-  of `theo_sd` the same standard error.  A non-finite or numerically singular Hessian (including the
-  zero one of a failed `trust` solve) gives `covMethod = "failed"` with a
-  warning instead of a covariance; either repair of a singular one would
-  invert its rounding noise.
+  of `theo_sd` the same standard error.  A non-finite Hessian, or one the
+  repairs cannot fix (including the zero one of a failed `trust` solve), gives
+  `covMethod = "failed"` with a warning instead of a covariance.  A numerically
+  singular Hessian is `"r+"` when the correction is within `cholAccept`, as
+  FOCEi's R is, and never `"|r|"`.
 - The Gill (1983) step-size search no longer leaves a parameter at its last
   probe when it ends without an accepted interval (`$scaleInfo` reports
   "Constant Grad", "Odd/Linear Grad" or "Grad changes quickly").  That moved

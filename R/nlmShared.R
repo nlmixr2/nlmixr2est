@@ -324,7 +324,8 @@
 #' acceptance rule (`covAccept_()`, `covAcceptRule()` in src/cholse.cpp), under the
 #' FOCEi labels: "r" as it is; "r+" when Schnabel-Eskow's modified Cholesky
 #' factorization adds diagonals within `foceiControl()`'s default `cholAccept`;
-#' "|r|" for `sqrtm(R %*% R)`.  A numerically rank-deficient R is not repaired.
+#' "|r|" for `sqrtm(R %*% R)`.  A numerically rank-deficient R may be "r+", as in
+#' FOCEi.
 #' @param hess Hessian of the -LL objective (the R matrix)
 #' @return list(r = the (repaired) R matrix and u = its upper Cholesky factor,
 #'   both `NULL` when none is usable; type = "r", "r+", "|r|" or "failed";
@@ -336,13 +337,12 @@
     return(list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .g$reason)))
   }
   .r <- .g$cov
-  .a <- covAccept_(.r, (.Machine$double.eps)^(1 / 3), formals(foceiControl)$cholAccept, TRUE)
+  .a <- covAccept_(.r, (.Machine$double.eps)^(1 / 3), formals(foceiControl)$cholAccept)
   .reason <- if (.g$ok) "is nearly singular" else .g$reason
   switch(
     .a$type,
     "+" = list(r = .r, u = .a$U, type = "r+", warning = sprintf("R matrix %s; corrected as \"r+\"", .reason)),
     "|" = list(r = .a$M, u = .a$U, type = "|r|", warning = sprintf("R matrix %s; corrected as \"|r|\"", .reason)),
-    singular = list(type = "failed", warning = "R matrix is singular; covariance step failed"),
     failed = list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .reason)),
     list(r = hess, u = .a$U, type = "r")
   )

@@ -42,7 +42,7 @@ static inline void _splitYj(int *yj, int *dist,  int *trans) {
 arma::mat cholSE__(arma::mat A, double tol);
 bool cholSE0(arma::mat &Ao, arma::mat &E, arma::mat A, double tol);
 int covAcceptRule(const arma::mat &M0, bool pd, const arma::vec &E, arma::mat &U,
-                  double cholAccept, bool rankStrict, arma::mat *Mabs = nullptr);
+                  double cholAccept, arma::mat *Mabs = nullptr);
 
 using namespace arma;
 using namespace Rcpp;

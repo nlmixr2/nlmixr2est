@@ -11406,7 +11406,7 @@ static bool foceiCovUsable(Environment e, const std::string &X, const arma::mat 
   std::string x(1, (char)std::tolower(X[0]));
   arma::mat U = as<arma::mat>(e["chol" + X]);
   arma::vec E = as<arma::vec>(e[X + ".E"]);
-  int rc = covAcceptRule(M0, as<bool>(e[X + ".pd"]), E, U, op_focei.cholAccept, false);
+  int rc = covAcceptRule(M0, as<bool>(e[X + ".pd"]), E, U, op_focei.cholAccept);
   if (rc == 1) return true;
   if (rc <= 0) return false;
   checkSandwich = true;
