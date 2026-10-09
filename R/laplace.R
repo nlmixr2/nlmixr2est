@@ -98,7 +98,8 @@ getValidNlmixrCtl.laplace <- function(control) {
   .getValidCtl(
     control,
     "laplaceControl",
-    convert = c("foceiControl", "foceControl", "agqControl", "foControl", "foiControl")
+    convert = c("foceiControl", "foceControl", "agqControl", "foControl", "foiControl"),
+    convertFun = .foceiFamilyControlAs
   )
 }
 

@@ -256,6 +256,20 @@
   if (.n == "r" && identical(covType, "analytic")) "analytic" else .n
 }
 
+#' A `foceiControl()` covMethod slot, checked
+#' @param covMethod one integer-valued number
+#' @return `covMethod` as an integer; a number that is not a slot is an error
+#' @noRd
+.covMethodSlotArg <- function(covMethod) {
+  if (!(covMethod %in% c(0L, .covMethodSlot))) {
+    stop(
+      "an integer 'covMethod' is a foceiControl() slot: 0 (none), 1 (\"r,s\"), 2 (\"r\") or 3 (\"s\")",
+      call. = FALSE
+    )
+  }
+  as.integer(covMethod)
+}
+
 #' A control's covMethod argument as one of its names
 #'
 #' An integer is a `foceiControl()` slot, as a round-tripped control carries it,
@@ -268,13 +282,7 @@
 #' @noRd
 .covMethodArg <- function(covMethod, choice) {
   if (checkmate::testIntegerish(covMethod, len = 1, any.missing = FALSE)) {
-    if (!(covMethod %in% c(0L, .covMethodSlot))) {
-      stop(
-        "an integer 'covMethod' is a foceiControl() slot: 0 (none), 1 (\"r,s\"), 2 (\"r\") or 3 (\"s\")",
-        call. = FALSE
-      )
-    }
-    return(.covMethodFromSlot(covMethod))
+    return(.covMethodFromSlot(.covMethodSlotArg(covMethod)))
   }
   # compared by value: a named "" is still "no covariance"
   if (is.character(covMethod) && length(covMethod) == 1L && !is.na(covMethod) && !nzchar(covMethod)) {
