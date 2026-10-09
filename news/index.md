@@ -4,6 +4,29 @@
 
 ### New features
 
+- nlmixr2est now tells the rxode2 event bus
+  ([`rxode2::rxEventListen()`](https://nlmixr2.github.io/rxode2/reference/rxEventListen.html))
+  about top-level work, so loggers such as nlmixr2log can record it:
+  [`nlmixr2()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.md)
+  emits `fitComplete` (or `solveComplete` for simulations and
+  predictions);
+  [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md),
+  [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md),
+  [`addTable()`](https://nlmixr2.github.io/nlmixr2est/reference/addTable.md),
+  [`setOfv()`](https://nlmixr2.github.io/nlmixr2est/reference/setOfv.md)
+  and reading a deferred objective emit `fitUpdate`;
+  [`vpcSim()`](https://nlmixr2.github.io/nlmixr2est/reference/vpcSim.md)
+  and [`augPred()`](https://rdrr.io/pkg/nlme/man/augPred.html) emit
+  `solveComplete`. Internal refits and solves are silent. Without an
+  rxode2 that has the bus nothing changes.
+
+- [`nlmixrUpdateObject()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixrUpdateObject.md)
+  now returns whether it rebound the object, and
+  [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md),
+  [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md)
+  and `addTable(updateObject = TRUE)` no longer error when called on an
+  expression such as `fits[[1]]`.
+
 - With an rxode2 that supports `rxControl(nonmem = TRUE)`, the
   estimation methods now honor it: `time` read in a statement that does
   not depend on a state (NONMEM’s `$PK`) is the time of the record

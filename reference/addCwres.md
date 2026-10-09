@@ -105,7 +105,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8608
+#> → compress parHistData in nlmixr2 object, save 8616
 #> → compress phiM in nlmixr2 object, save 439912
 
 print(f)
@@ -117,9 +117,9 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9645744 3.7323e-05 0.05100949      0.081     0.942 4.513       0.917
+#> elapsed 0.8996893 2.7641e-05 0.05101055      0.068     0.915 4.334       0.921
 #>         table compress     other
-#> elapsed 0.074    0.145 0.3923787
+#> elapsed  0.08    0.131 0.3842726
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -185,9 +185,9 @@ if (!inherits(f, "try-error")) {
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.9645744 3.7323e-05 0.05100949      0.081     0.942 4.513       0.917
+#> elapsed 0.8996893 2.7641e-05 0.05101055      0.068     0.915 4.334       0.921
 #>         table compress     other
-#> elapsed 0.074    0.145 0.3923787
+#> elapsed  0.08    0.131 0.3842726
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

@@ -28,7 +28,8 @@ nlmixrUpdateObject(fit, objName, envir, origFitEnv = NULL)
 
 ## Value
 
-Nothing, called for side effects
+`TRUE` (invisibly) when the binding was updated, `FALSE` otherwise (e.g.
+`objName` is not a single name, as for `addCwres(fits[[1]])`)
 
 ## Author
 

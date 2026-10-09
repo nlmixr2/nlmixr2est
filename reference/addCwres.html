@@ -18,7 +18,8 @@
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/extending-nlmixr2est.html">Extending nlmixr2est: custom estimation methods and behavior hooks</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/events.html">nlmixr2est events for loggers</a></li>
+    <li><a class="dropdown-item" href="../articles/extending-nlmixr2est.html">Extending nlmixr2est: custom estimation methods and behavior hooks</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
@@ -144,7 +145,7 @@ update.  By default this is the global environment.</p></dd>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 6584</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 8608</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 8616</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress phiM in nlmixr2 object, save 439912</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">f</span><span class="op">)</span></span></span>
@@ -156,9 +157,9 @@ update.  By default this is the global environment.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup   optimize covariance preprocess configure  saem postprocess</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.9645744 3.7323e-05 0.05100949      0.081     0.942 4.513       0.917</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.8996893 2.7641e-05 0.05101055      0.068     0.915 4.334       0.921</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         table compress     other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.074    0.145 0.3923787</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed  0.08    0.131 0.3842726</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -224,9 +225,9 @@ update.  By default this is the global environment.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup   optimize covariance preprocess configure  saem postprocess</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.9645744 3.7323e-05 0.05100949      0.081     0.942 4.513       0.917</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.8996893 2.7641e-05 0.05101055      0.068     0.915 4.334       0.921</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         table compress     other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.074    0.145 0.3923787</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed  0.08    0.131 0.3842726</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
