@@ -177,6 +177,25 @@ NumericMatrix cholSE_(NumericMatrix A, double tol){
   return wrap(Ao);
 }
 
+// Whether M0's eigenvalues reach down to rounding level (or cannot be computed)
+static bool covRankDeficient(const arma::mat &M0) {
+  arma::vec ev;
+  if (!arma::eig_sym(ev, arma::symmatu(M0))) return true;
+  ev = arma::abs(ev);
+  return ev.min() <= ev.max() * M0.n_rows * arma::datum::eps;
+}
+
+// The "|.|" rung: U = chol(sqrtm(M0 %*% M0)), and that matrix in *Mabs when given
+static bool covAbsRung(const arma::mat &M0, arma::mat &U, arma::mat *Mabs) {
+  arma::cx_mat H1;
+  arma::mat ch;
+  if (!arma::sqrtmat(H1, M0*M0) || arma::any(arma::any(arma::imag(H1), 0)) ||
+      !arma::chol(ch, arma::real(H1))) return false;
+  U = ch;
+  if (Mabs != nullptr) *Mabs = arma::real(H1);
+  return true;
+}
+
 // Whether an information matrix (R) or score cross-product (S) M0 can be used, after
 // cholSE0 (pd, E, U): 1 as it is; 2 corrected, cholSE0's factor of M0 + diag(E), when
 // every added diagonal is within cholAccept ("+"); 3 chol(sqrtm(M0 %*% M0)) ("|.|", U
@@ -190,22 +209,11 @@ int covAcceptRule(const arma::mat &M0, bool pd, const arma::vec &E, arma::mat &U
   // cholSE0 calls a matrix with NaN positive definite
   if (M0.n_elem == 0 || !M0.is_finite()) return 0;
   if (pd && (M0.n_elem != 1 || M0(0, 0) > 0)) return 1;
-  arma::vec ev;
-  bool haveEv = arma::eig_sym(ev, arma::symmatu(M0));
-  if (haveEv) ev = arma::abs(ev);
-  bool rankDeficient = !haveEv || ev.min() <= ev.max() * M0.n_rows * arma::datum::eps;
-  if (M0.n_elem > 0 && M0.diag().max() > 0 && E.is_finite() && U.is_finite() &&
-      !arma::any(E > cholAccept)) {
+  if (M0.diag().max() > 0 && E.is_finite() && U.is_finite() && !arma::any(E > cholAccept)) {
     return 2;
   }
-  if (rankDeficient) return 0;
-  arma::cx_mat H1;
-  arma::mat ch;
-  if (!arma::sqrtmat(H1, M0*M0) || arma::any(arma::any(arma::imag(H1), 0)) ||
-      !arma::chol(ch, arma::real(H1))) return 0;
-  U = ch;
-  if (Mabs != nullptr) *Mabs = arma::real(H1);
-  return 3;
+  if (covRankDeficient(M0)) return 0;
+  return covAbsRung(M0, U, Mabs) ? 3 : 0;
 }
 
 // covAcceptRule() for R callers: type "" (as it is), "+", "|" or "failed", the factor U

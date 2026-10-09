@@ -11972,14 +11972,9 @@ static bool foceiFdFullMerge(Environment e);
 // runs with the fit's setting wherever it runs
 static int _covFitCalcGrad = 0;
 
-// Install a stored theta-only stage (e$covThetaStore, from setCov()'s lookup) as
-// foceiCalcR() and foceiS() install theirs, when its steps were taken about this theta.
-static bool foceiThetaFromStore(Environment e, const arma::vec &theta) {
-  if (!covReuseOn() || !e.exists("covThetaStore")) return false;
-  List st = as<List>(e["covThetaStore"]);
+// The stored steps (e$covThetaStore$steps) onto op_focei, when they were taken about theta.
+static bool foceiThetaStepsFromStore(List sp, const arma::vec &theta) {
   int np = (int)op_focei.npars;
-  if (!st.containsElementNamed("steps") || Rf_isNull(st["steps"])) return false;
-  List sp = as<List>(st["steps"]);
   NumericVector th = sp["theta"], aE = sp["aEps"], rE = sp["rEps"], aC = sp["aEpsC"], rC = sp["rEpsC"];
   if (th.size() != np || aE.size() != np || rE.size() != np || aC.size() != np || rC.size() != np) {
     return false;
@@ -11991,38 +11986,62 @@ static bool foceiThetaFromStore(Environment e, const arma::vec &theta) {
   std::copy(rE.begin(), rE.end(), op_focei.rEps);
   std::copy(aC.begin(), aC.end(), op_focei.aEpsC);
   std::copy(rC.begin(), rC.end(), op_focei.rEpsC);
-  // the search's outcome, for $scaleInfo and its warning
-  if (sp.containsElementNamed("gillRetC")) {
-    IntegerVector gr = sp["gillRetC"];
-    NumericVector gd = sp["gillDf"], gd2 = sp["gillDf2"], ge = sp["gillErr"];
-    if (gr.size() == np && gd.size() == np && gd2.size() == np && ge.size() == np) {
-      std::copy(gr.begin(), gr.end(), op_focei.gillRetC);
-      std::copy(gd.begin(), gd.end(), op_focei.gillDf);
-      std::copy(gd2.begin(), gd2.end(), op_focei.gillDf2);
-      std::copy(ge.begin(), ge.end(), op_focei.gillErr);
-      op_focei.didGill += 1;
-    }
+  return true;
+}
+
+// The stored step search's outcome, for $scaleInfo and its warning
+static void foceiThetaGillFromStore(List sp) {
+  if (!sp.containsElementNamed("gillRetC")) return;
+  int np = (int)op_focei.npars;
+  IntegerVector gr = sp["gillRetC"];
+  NumericVector gd = sp["gillDf"], gd2 = sp["gillDf2"], ge = sp["gillErr"];
+  if (gr.size() != np || gd.size() != np || gd2.size() != np || ge.size() != np) return;
+  std::copy(gr.begin(), gr.end(), op_focei.gillRetC);
+  std::copy(gd.begin(), gd.end(), op_focei.gillDf);
+  std::copy(gd2.begin(), gd2.end(), op_focei.gillDf2);
+  std::copy(ge.begin(), ge.end(), op_focei.gillErr);
+  op_focei.didGill += 1;
+}
+
+// The stored finite-difference R, when the request uses R and none is installed
+static void foceiThetaRFromStore(Environment e, List st) {
+  if (!(op_focei.covMethod == 1 || op_focei.covMethod == 2) || e.exists("cholR") ||
+      !st.containsElementNamed("R0") || Rf_isNull(st["R0"])) return;
+  int np = (int)op_focei.npars;
+  arma::mat R0 = as<arma::mat>(st["R0"]);
+  if ((int)R0.n_rows != np || (int)R0.n_cols != np) return;
+  e["R.0"] = wrap(R0);
+  foceiCovChol(e, R0, "R");
+}
+
+// The stored S, when the request uses S and none is installed
+static void foceiThetaSFromStore(Environment e, List st) {
+  if (!(op_focei.covMethod == 1 || op_focei.covMethod == 3) || e.exists("cholS") ||
+      !st.containsElementNamed("S0") || Rf_isNull(st["S0"]) || !st.containsElementNamed("Sper")) {
+    return;
   }
+  int np = (int)op_focei.npars;
+  arma::mat S0 = as<arma::mat>(st["S0"]);
+  double sper = as<double>(st["Sper"]);
+  if ((int)S0.n_rows != np || (int)S0.n_cols != np) return;
+  e["S0"] = wrap(S0);
+  e["Sper"] = sper;
+  e["SHasZero"] = st.containsElementNamed("SHasZero") && as<bool>(st["SHasZero"]);
+  if (sper >= op_focei.smatPer) foceiCovChol(e, S0, "S");
+}
+
+// Install a stored theta-only stage (e$covThetaStore, from setCov()'s lookup) as
+// foceiCalcR() and foceiS() install theirs, when its steps were taken about this theta.
+static bool foceiThetaFromStore(Environment e, const arma::vec &theta) {
+  if (!covReuseOn() || !e.exists("covThetaStore")) return false;
+  List st = as<List>(e["covThetaStore"]);
+  if (!st.containsElementNamed("steps") || Rf_isNull(st["steps"])) return false;
+  List sp = as<List>(st["steps"]);
+  if (!foceiThetaStepsFromStore(sp, theta)) return false;
+  foceiThetaGillFromStore(sp);
   e["covSteps"] = sp;
-  if ((op_focei.covMethod == 1 || op_focei.covMethod == 2) && !e.exists("cholR") &&
-      st.containsElementNamed("R0") && !Rf_isNull(st["R0"])) {
-    arma::mat R0 = as<arma::mat>(st["R0"]);
-    if ((int)R0.n_rows == np && (int)R0.n_cols == np) {
-      e["R.0"] = wrap(R0);
-      foceiCovChol(e, R0, "R");
-    }
-  }
-  if ((op_focei.covMethod == 1 || op_focei.covMethod == 3) && !e.exists("cholS") &&
-      st.containsElementNamed("S0") && !Rf_isNull(st["S0"]) && st.containsElementNamed("Sper")) {
-    arma::mat S0 = as<arma::mat>(st["S0"]);
-    double sper = as<double>(st["Sper"]);
-    if ((int)S0.n_rows == np && (int)S0.n_cols == np) {
-      e["S0"] = wrap(S0);
-      e["Sper"] = sper;
-      e["SHasZero"] = st.containsElementNamed("SHasZero") && as<bool>(st["SHasZero"]);
-      if (sper >= op_focei.smatPer) foceiCovChol(e, S0, "S");
-    }
-  }
+  foceiThetaRFromStore(e, st);
+  foceiThetaSFromStore(e, st);
   return true;
 }
 
@@ -12797,20 +12816,12 @@ static bool foceiFdFullCovOf(const FdFullResult &res, arma::mat &cov) {
   return arma::inv_sympd(cov, res.R) || arma::inv(cov, res.R);
 }
 
-// Read a stored full stage (e$.fdFullStore, from setCov()'s lookup) taken about this point;
-// S alone is computed, at the stored steps, when it is needed and was not stored.
-static bool foceiFdFullFromStore(Environment e, bool needS, FdFullResult &res) {
-  if (!covReuseOn() || !e.exists(".fdFullStore") || op_focei.neta <= 0) return false;
-  List st = as<List>(e[".fdFullStore"]);
-  if (!st.containsElementNamed("R") || !st.containsElementNamed("h") ||
-      !st.containsElementNamed("x0")) return false;
+// Whether a stored full-stage R (rows named) was taken about the live point, to the last
+// bit; sets res.c.Om0 and res.x0 to that point.
+static bool foceiFdFullStoreAtPoint(FdFullResult &res, const NumericMatrix &Rs,
+                                    const NumericVector &x0s) {
   FdFullCtx &c = res.c;
-  if (!foceiFdParams(e, c, res.nm)) return false;
   int np = c.nth + c.nom;
-  NumericMatrix Rs = as<NumericMatrix>(st["R"]);
-  NumericVector h = as<NumericVector>(st["h"]), x0s = as<NumericVector>(st["x0"]);
-  if (Rs.nrow() != np || Rs.ncol() != np || h.size() != np || x0s.size() != np) return false;
-  // taken about this point, to the last bit
   c.Om0 = as<arma::mat>(getOmega());
   std::vector<double> &x0 = res.x0;
   x0.resize(np);
@@ -12825,23 +12836,42 @@ static bool foceiFdFullFromStore(Environment e, bool needS, FdFullResult &res) {
   for (int i = 0; i < np; ++i) {
     if (rn[i] != res.nm[i]) return false;
   }
+  return true;
+}
+
+// The stored full-stage S, when one of the right size was stored
+static bool foceiFdFullStoreS(List st, int np, arma::mat &S) {
+  if (!st.containsElementNamed("S") || Rf_isNull(st["S"])) return false;
+  NumericMatrix Ss = as<NumericMatrix>(st["S"]);
+  if (Ss.nrow() != np || Ss.ncol() != np) return false;
+  S = as<arma::mat>(Ss);
+  return true;
+}
+
+// Read a stored full stage (e$.fdFullStore, from setCov()'s lookup) taken about this point;
+// S alone is computed, at the stored steps, when it is needed and was not stored.
+static bool foceiFdFullFromStore(Environment e, bool needS, FdFullResult &res) {
+  if (!covReuseOn() || !e.exists(".fdFullStore") || op_focei.neta <= 0) return false;
+  List st = as<List>(e[".fdFullStore"]);
+  if (!st.containsElementNamed("R") || !st.containsElementNamed("h") ||
+      !st.containsElementNamed("x0")) return false;
+  FdFullCtx &c = res.c;
+  if (!foceiFdParams(e, c, res.nm)) return false;
+  int np = c.nth + c.nom;
+  NumericMatrix Rs = as<NumericMatrix>(st["R"]);
+  NumericVector h = as<NumericVector>(st["h"]), x0s = as<NumericVector>(st["x0"]);
+  if (Rs.nrow() != np || Rs.ncol() != np || h.size() != np || x0s.size() != np) return false;
+  if (!foceiFdFullStoreAtPoint(res, Rs, x0s)) return false;
   res.R = as<arma::mat>(Rs);
   res.h.assign(h.begin(), h.end());
   if (st.containsElementNamed("precursor") && !Rf_isNull(st["precursor"])) {
     e[".fdFullPrecursor"] = st["precursor"];
   }
-  res.okS = false;
-  if (st.containsElementNamed("S") && !Rf_isNull(st["S"])) {
-    NumericMatrix Ss = as<NumericMatrix>(st["S"]);
-    if (Ss.nrow() == np && Ss.ncol() == np) {
-      res.S = as<arma::mat>(Ss);
-      res.okS = true;
-    }
-  }
+  res.okS = foceiFdFullStoreS(st, np, res.S);
   if (needS && !res.okS) {
     FdFullStateGuard _restore;
     CovStageScope _st(covStFullS);
-    res.okS = foceiFdSFull(c, x0, res.h, res.S);
+    res.okS = foceiFdSFull(c, res.x0, res.h, res.S);
   }
   return true;
 }

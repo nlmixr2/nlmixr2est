@@ -24,7 +24,7 @@ test_that("no R source file uses superassignment", {
 
 test_that("the superassignment scan sees both operators", {
   .pd <- utils::getParseData(parse(
-    text = c("f <- function() { a <<- 1; 2 ->> b; x <- '<<-' } # <<-"),
+    text = "f <- function() { a <<- 1; 2 ->> b; x <- '<<-' } # <<-",
     keep.source = TRUE
   ))
   expect_identical(sum(.pd$token == "LEFT_ASSIGN" & .pd$text == "<<-"), 1L)
