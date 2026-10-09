@@ -126,6 +126,10 @@ nmTest({
 
     .ui <- rxode2::rxUiDecompress(.mkMtime(TRUE, "rx.mtime.1.")())
     expect_equal(rxode2::rxModelVars(.ui$focei$inner)$nMtime, 1L)
+    expect_equal(rxode2::rxModelVars(.ui$saemModel)$nMtime, 1L)
+    expect_equal(rxode2::rxModelVars(.ui$nlmRxModel$predOnly)$nMtime, 1L)
+    .ui2 <- rxode2::rxUiDecompress(.mkMtime(TRUE, "rx.mtime.1.")())
+    expect_equal(rxode2::rxModelVars(.ui2$nlmeRxModel)$nMtime, 1L)
   })
 
   test_that("$dataSav keeps no mtime (EVID 10-99) records", {
