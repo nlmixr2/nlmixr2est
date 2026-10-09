@@ -15,7 +15,9 @@
   covariance phase starts from the fit's last iteration and runs no new
   warm-up iterations (`nSaCov` instead of `nBurn + nEm + nSaCov`).  The Monte
   Carlo path differs from a cold start, so the standard errors differ by Monte
-  Carlo noise; `saControl(warmStart = FALSE)` restores the cold start.
+  Carlo noise; `saControl(warmStart = FALSE)` restores the cold start.  Warm
+  or cold, the Louis residual score reads an estimated additive or
+  proportional sigma at its held value rather than the warm-up's residuals.
 
 - The imp covariance (`covMethod = "imp"`) no longer solves the model at the
   finite-difference points that move only Omega parameters: its importance

@@ -418,7 +418,9 @@
 #' * Omega (with its covariances) and the residual parameters are put back
 #'   from the second iteration on, `perFixOmega`/`perFixResid` being 0, and
 #'   the correlations are not zeroed at the start;
-#' * the residual parameters do not start from the observed moments.
+#' * the residual parameters do not start from the observed moments;
+#' * the Louis residual score reads an estimated additive or proportional
+#'   sigma as its held value (`statreseCov`), not the warm-up's residuals.
 #'
 #' Mixture proportions are not held.
 #' @param cfg `.configsaem()` configuration
@@ -431,6 +433,9 @@
   cfg$Gamma2_phi1fixedIx <- matrix(as.integer(cfg$covstruct1 != 0), nrow(cfg$covstruct1))
   # par_hist keeps recording the residuals the model estimates
   cfg$resKeep <- which(cfg$resFixed == 0L) - 1L
+  .off <- cfg$res_offset[seq_along(cfg$res.mod)] + 1L
+  .held <- cfg$res.mod %in% c(1, 2) & cfg$resFixed[.off] == 0L
+  cfg$statreseCov <- ifelse(.held, as.numeric(diff(cfg$y_offset)) * cfg$resValue[.off]^2, NA_real_)
   cfg$resFixed <- rep(1L, length(cfg$resFixed))
   cfg$nb_fixOmega <- 0L
   cfg$nb_fixResid <- 0L

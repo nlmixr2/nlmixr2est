@@ -176,3 +176,22 @@ test_that(".saemWarmCfg() installs a chain state of the right shape, its statist
   .mix <- modifyList(.cfg, list(nMix = 2L))
   expect_identical(.saemWarmCfg(.mix, list(phiM = .ph)), .mix)
 })
+
+test_that(".saemHoldCfg() gives the covariance phase an estimated sigma's held value", {
+  # endpoints: additive estimated (4 obs), proportional fixed (3 obs), combined (5 obs),
+  # additive estimated (2 obs)
+  .cfg <- list(
+    nlambda1 = 2L,
+    nlambda0 = 1L,
+    covstruct1 = diag(2),
+    res.mod = c(1, 2, 4, 1),
+    y_offset = c(0, 4, 7, 12, 14),
+    res_offset = c(0L, 1L, 2L, 4L),
+    resFixed = c(0L, 1L, 0L, 0L, 0L),
+    resValue = c(0.5, 0.1, 0.2, 0.3, 0.7)
+  )
+  .h <- .saemHoldCfg(.cfg)
+  expect_equal(.h$statreseCov, c(4 * 0.25, NA, NA, 2 * 0.49))
+  expect_identical(.h$resFixed, rep(1L, 5))
+  expect_identical(.h$resKeep, c(0L, 2L, 3L, 4L))
+})
