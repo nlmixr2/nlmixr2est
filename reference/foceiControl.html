@@ -453,30 +453,30 @@ the outer optimizer defaults to <code>"lbfgsb3c"</code> (vs <code>"bobyqa"</code
 
 <dt id="arg-priormethod">priorMethod<a class="anchor" aria-label="anchor" href="#arg-priormethod"></a></dt>
 <dd><p>Which of the shared prior kernel's three omega
-conventions (nlmixr2/rxode2#1270) to evaluate an <code>ini({})</code>
-<code>prior()</code> under – <code>"general"</code> (textbook Bayesian),
-<code>"nwpri"</code> (NONMEM's own <code>$PRIOR NWPRI</code>), or <code>"tnpri"</code>
-(the Monolix/NONMEM-own-estimation joint-normal convention on omega).
-The default, <code>"auto"</code>, reads the convention off what the model's
-own <code>ini({})</code> actually wrote (an <code>invWishart()</code> degrees-of-
-freedom prior on an omega block means <code>"nwpri"</code>; a normal prior
-directly on an omega element means <code>"tnpri"</code>; anything else,
-including a <code><a href="https://rdrr.io/r/stats/Cauchy.html" class="external-link">dcauchy()</a></code> prior, means <code>"general"</code>) –
-deliberately never a fixed default, since the identical
-<code>invWishart(nu)</code> syntax means a different number under
-<code>"general"</code> and <code>"nwpri"</code>.  Setting this explicitly forces
-that convention regardless of what auto-detection would have picked,
-and errors before any estimation starts if the model's priors are not
-representable under it (e.g. <code>priorMethod="tnpri"</code> on a model
-with an <code>invWishart()</code> prior).  Ignored when the model has no
-prior at all.</p>
+    conventions (nlmixr2/rxode2#1270) to evaluate an <code>ini({})</code>
+    <code>prior()</code> under – <code>"general"</code> (textbook Bayesian),
+    <code>"nwpri"</code> (NONMEM's own <code>$PRIOR NWPRI</code>), or <code>"tnpri"</code>
+    (the Monolix/NONMEM-own-estimation joint-normal convention on omega).
+    The default, <code>"auto"</code>, reads the convention off what the model's
+    own <code>ini({})</code> actually wrote (an <code>invWishart()</code> degrees-of-
+    freedom prior on an omega block means <code>"nwpri"</code>; a normal prior
+    directly on an omega element means <code>"tnpri"</code>; anything else,
+    including a <code><a href="https://rdrr.io/r/stats/Cauchy.html" class="external-link">dcauchy()</a></code> prior, means <code>"general"</code>) –
+    deliberately never a fixed default, since the identical
+    <code>invWishart(nu)</code> syntax means a different number under
+    <code>"general"</code> and <code>"nwpri"</code>.  Setting this explicitly forces
+    that convention regardless of what auto-detection would have picked,
+    and errors before any estimation starts if the model's priors are not
+    representable under it (e.g. <code>priorMethod="tnpri"</code> on a model
+    with an <code>invWishart()</code> prior).  Ignored when the model has no
+    prior at all.</p>
 <p><code>"none"</code> builds no prior specification: the <code>ini({})</code>
-priors stay on the model but are not evaluated, so the objective is
-the plain (unpenalized) likelihood.  It exists for callers that
-handled the priors somewhere else and only finalize through this
-control – a sampler that already drew from the posterior, say –
-where building a specification would at best be unused and at worst
-refuse a prior this kernel cannot evaluate but the caller could.</p></dd>
+    priors stay on the model but are not evaluated, so the objective is
+    the plain (unpenalized) likelihood.  It exists for callers that
+    handled the priors somewhere else and only finalize through this
+    control – a sampler that already drew from the posterior, say –
+    where building a specification would at best be unused and at worst
+    refuse a prior this kernel cannot evaluate but the caller could.</p></dd>
 
 
 <dt id="arg-fdoutlierz">fdOutlierZ<a class="anchor" aria-label="anchor" href="#arg-fdoutlierz"></a></dt>
@@ -1010,8 +1010,10 @@ coupling these parameters exist to remove. Has no effect unless
 <dd><p>logical; when `TRUE`, each converged `innerOpt="trust"`
 solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
 This makes the objective less dependent on the warm-start ETAs and can
-help a fit that stops short of its minimum (#1152).  `FALSE` (default)
-keeps the plain trust solve.</p></dd>
+help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+outer search then also restarts once from where it stops, which costs
+about twice the outer evaluations.  `FALSE` (default) keeps the plain
+trust solve and a single outer search.</p></dd>
 
 
 <dt id="arg-innerlbfgslmm">innerLbfgsLmm<a class="anchor" aria-label="anchor" href="#arg-innerlbfgslmm"></a></dt>

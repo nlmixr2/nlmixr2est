@@ -33,31 +33,7 @@ augPred(
 
 - covsInterpolation:
 
-  specifies the interpolation method for time-varying covariates. When
-  solving ODEs it often samples times outside the sampling time
-  specified in `events`. When this happens, the time varying covariates
-  are interpolated. Currently this can be:
-
-  - `"linear"` interpolation, which interpolates the covariate by
-    solving the line between the observed covariates and extrapolating
-    the new covariate value.
-
-  - `"locf"` – Last observation carried forward (the default).
-
-  - `"nocb"` – Next Observation Carried Backward. This is the same
-    method that NONMEM uses.
-
-  - `"midpoint"` Last observation carried forward to midpoint; Next
-    observation carried backward to midpoint.
-
-    For time-varying covariates where a missing value is present, the
-    interpolation method will use either "locf" or "nocb" throughout if
-    they are the type of covariate interpolation that is selected.
-
-    When using the linear or midpoint interpolation, the lower point in
-    the interpolation will use locf to interpolate missing covariates
-    and the upper point will use the nocb to interpolate missing
-    covariates.
+  covariate interpolation; by default the one the fit was estimated with
 
 - minimum:
 

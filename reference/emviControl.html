@@ -315,15 +315,15 @@ wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.</p></dd
 
 <dt id="arg-covmethod">covMethod<a class="anchor" aria-label="anchor" href="#arg-covmethod"></a></dt>
 <dd><p>Covariance of the population estimates.</p>
-<p>"<code>vi</code>" (default) For a full-Bayes fit (<code>fbvi</code>, <code>pointEstimate = FALSE</code>)
-the population variational covariance; a point-estimate fit (<code>emvi</code>) has
-no population variational block and uses the FOCEI <code>"r,s"</code> covariance.</p>
-<p>"<code>analytic</code>", "<code>r,s</code>", "<code>r</code>" and "<code>s</code>" run the FOCEI covariance step (see
-<code><a href="foceiControl.html">foceiControl()</a></code>) at the estimates, starting the individual estimates at
-the variational posterior means.  When it gives no covariance, a
-full-Bayes fit installs the population variational covariance instead,
-with a message.  An integer <code>covMethod</code> is a <code><a href="foceiControl.html">foceiControl()</a></code> slot: <code>0</code> is
-no covariance, <code>1</code>, <code>2</code> and <code>3</code> are <code>"r,s"</code>, <code>"r"</code> and <code>"s"</code>.</p>
+<p>"`vi`" (default) For a full-Bayes fit (`fbvi`, `pointEstimate = FALSE`)
+ the population variational covariance; a point-estimate fit (`emvi`) has
+ no population variational block and uses the FOCEI `"r,s"` covariance.</p>
+<p>"`analytic`", "`r,s`", "`r`" and "`s`" run the FOCEI covariance step (see
+ [foceiControl()]) at the estimates, starting the individual estimates at
+ the variational posterior means.  When it gives no covariance, a
+ full-Bayes fit installs the population variational covariance instead,
+ with a message.  An integer `covMethod` is a `foceiControl()` slot: `0` is
+ no covariance, `1`, `2` and `3` are `"r,s"`, `"r"` and `"s"`.</p>
 <p>"" Does not calculate the covariance step.</p></dd>
 
 

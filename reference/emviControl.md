@@ -291,21 +291,18 @@ emviControl(
 
   Covariance of the population estimates.
 
-  "`vi`" (default) For a full-Bayes fit (`fbvi`,
-  `pointEstimate = FALSE`) the population variational covariance; a
-  point-estimate fit (`emvi`) has no population variational block and
-  uses the FOCEI `"r,s"` covariance.
+  "\`vi\`" (default) For a full-Bayes fit (\`fbvi\`, \`pointEstimate =
+  FALSE\`) the population variational covariance; a point-estimate fit
+  (\`emvi\`) has no population variational block and uses the FOCEI
+  \`"r,s"\` covariance.
 
-  "`analytic`", "`r,s`", "`r`" and "`s`" run the FOCEI covariance step
-  (see
-  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md))
-  at the estimates, starting the individual estimates at the variational
-  posterior means. When it gives no covariance, a full-Bayes fit
-  installs the population variational covariance instead, with a
-  message. An integer `covMethod` is a
-  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
-  slot: `0` is no covariance, `1`, `2` and `3` are `"r,s"`, `"r"` and
-  `"s"`.
+  "\`analytic\`", "\`r,s\`", "\`r\`" and "\`s\`" run the FOCEI
+  covariance step (see \[foceiControl()\]) at the estimates, starting
+  the individual estimates at the variational posterior means. When it
+  gives no covariance, a full-Bayes fit installs the population
+  variational covariance instead, with a message. An integer
+  \`covMethod\` is a \`foceiControl()\` slot: \`0\` is no covariance,
+  \`1\`, \`2\` and \`3\` are \`"r,s"\`, \`"r"\` and \`"s"\`.
 
   "" Does not calculate the covariance step.
 
