@@ -129,23 +129,29 @@ test_that("a prediction wrapping the linCmt() value is carried through the outer
 })
 
 test_that("data-independent candidate pairs are memoized by the model digest", {
+  # The counters tell a session hit, a sidecar hit and a fresh detection apart.
+  # The sidecars go to a directory of this test's own, so what another process
+  # or an earlier test file left in rxode2::rxTempDir() cannot turn a fresh
+  # detection into a sidecar hit.
+  .dir <- withr::local_tempdir()
+  local_mocked_bindings(
+    .foceiLinCmtCarryCacheFile = function(key) file.path(.dir, paste0("focei-carry-", key, ".rds"))
+  )
   .foceiLinCmtCarryMemoClear()
   .foceiLinCmtCarryMemoStats(reset = TRUE)
   .ui <- .carryUiCov()
   .p1 <- .foceiLinCmtCarryPairs(.ui)
   .st1 <- .foceiLinCmtCarryMemoStats()
-  expect_equal(.st1[["misses"]], 1L)
-  expect_equal(.st1[["hits"]], 0L)
+  expect_identical(.st1, c(hits = 0L, misses = 1L, fileHits = 0L))
   .p2 <- .foceiLinCmtCarryPairs(.ui)
   .st2 <- .foceiLinCmtCarryMemoStats()
   # mechanism: the second identical-model call is served from the memo
-  expect_equal(.st2[["hits"]], 1L)
-  expect_equal(.st2[["misses"]], 1L)
+  expect_identical(.st2, c(hits = 1L, misses = 1L, fileHits = 0L))
   expect_identical(.p1, .p2)
   # a different model gets its own digest, so a fresh detection
   .p3 <- .foceiLinCmtCarryPairs(.carryUiTwoPair())
   .st3 <- .foceiLinCmtCarryMemoStats()
-  expect_equal(.st3[["misses"]], 2L)
+  expect_identical(.st3, c(hits = 1L, misses = 2L, fileHits = 0L))
   expect_false(identical(.p1, .p3))
   # a data-dependent call bypasses the memo entirely (no counter movement)
   .dat <- data.frame(
@@ -169,7 +175,9 @@ test_that("data-independent candidate pairs are memoized by the model digest", {
   )
   .foceiLinCmtCarryPairs(.ui2)
   .st5 <- .foceiLinCmtCarryMemoStats()
-  expect_equal(.st5[["misses"]], 3L)
+  expect_identical(.st5, c(hits = 1L, misses = 3L, fileHits = 0L))
+  # every fresh detection wrote its own sidecar there
+  expect_identical(length(list.files(.dir, "^focei-carry-")), 3L)
 })
 
 test_that("candidate pairs persist through the rxode2 cache-directory sidecar", {

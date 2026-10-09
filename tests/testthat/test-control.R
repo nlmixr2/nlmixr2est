@@ -124,3 +124,31 @@ nmTest({
     expect_equal(.r$mcmc$nmc, 4)
   })
 })
+
+test_that("saemControl() checks nSaCov and seed as saControl() does", {
+  .msg <- "Assertion on 'nSaCov' failed: Element 1 is not >= 1."
+  expect_error(saemControl(nSaCov = 0), .msg, fixed = TRUE)
+  expect_error(saControl(nSaCov = 0), .msg, fixed = TRUE)
+  expect_error(saemControl(nSaCov = -5), .msg, fixed = TRUE)
+  expect_error(
+    saemControl(nSaCov = NA),
+    "Assertion on 'nSaCov' failed: Contains missing values (element 1).",
+    fixed = TRUE
+  )
+  expect_error(
+    saemControl(nSaCov = 1.5),
+    "Assertion on 'nSaCov' failed: Must be of type 'integerish', but element 1 is not close to an integer.",
+    fixed = TRUE
+  )
+  expect_error(
+    saemControl(nSaCov = c(10, 20)),
+    "Assertion on 'nSaCov' failed: Must have length 1, but has length 2.",
+    fixed = TRUE
+  )
+  expect_identical(saemControl(nSaCov = 1)$nSaCov, 1L)
+  # one seed: the fit seeds its sampler from a single value
+  .msg <- "Assertion on 'seed' failed: Must have length 1, but has length 2."
+  expect_error(saemControl(seed = c(1, 2)), .msg, fixed = TRUE)
+  expect_error(saControl(seed = c(1, 2)), .msg, fixed = TRUE)
+  expect_identical(saemControl(seed = 3)$seed, 3)
+})

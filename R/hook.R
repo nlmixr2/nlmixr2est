@@ -238,7 +238,21 @@ preProcessHooks <- function(name = NULL) {
   }
 }
 
+#' The estimation state the pre-processing hooks record in
+#' `nlmixr2global$nlmixr2EstEnv` (see `.nlmixr2globalReset()`)
+#' @noRd
+.nlmixr2EstEnvFields <- c("uiUnfix", "nlmixrPureInputUi", "vaeNonMuEtas", "saemPseudoTransforms")
+
 .preProcessHooksRun <- function(env, est) {
+  if (identical(est, "rxSolve")) {
+    # augPred(), vpcSim() and the simulation information of an nlmixr2() refit run
+    # the hooks on a model they only simulate.  What the hooks record for an
+    # estimation -- the model before its fixed thetas were substituted, ... -- is
+    # read from nlmixr2global by the estimation and output steps that follow,
+    # so a simulation leaves it as it found it.
+    .estState <- mget(.nlmixr2EstEnvFields, envir = nlmixr2global$nlmixr2EstEnv, ifnotfound = list(NULL))
+    on.exit(list2env(.estState, envir = nlmixr2global$nlmixr2EstEnv), add = TRUE)
+  }
   nlmixr2global$preProcessHookWarnings <- character(0)
   .ret <- .collectWarn(
     {

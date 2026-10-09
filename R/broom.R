@@ -218,7 +218,6 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     .exp <- setNames(rep(FALSE, length(.theta)), names(.theta))
   }
   .eta <- x$eta
-  .noMuRef <- c()
   .x <- setNames(
     data.frame(lapply(names(.eta), function(eta) {
       .w <- which(.muRef$eta == eta)
@@ -236,7 +235,6 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
             sprintf("the parameter '%s' is not mu-referenced and the coef will not be returned", eta),
             call. = FALSE
           )
-          .noMuRef <<- c(.noMuRef, eta)
         }
         .ret <- .eta[[eta]]
       }

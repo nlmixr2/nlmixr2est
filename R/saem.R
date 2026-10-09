@@ -1585,8 +1585,8 @@
 #' positive definite
 #'
 #' `chol()`, else the repair `sqrtm(x %*% t(x))`.  Neither counts unless it is
-#' finite: `chol()` hands back NaN for a NaN input, and `sqrtm()` an empty
-#' matrix for a non-finite one, instead of an error.
+#' finite: `chol()` hands back NaN for a NaN input, instead of an error.  The
+#' repair is only tried for a finite matrix, which is all `sqrtm()` accepts.
 #' @param x square matrix
 #' @param partial factor only its identified (finite-diagonal) submatrix, see
 #'   `.nlmixr2CholPartial()`
@@ -1598,8 +1598,11 @@
   if (!inherits(.ch, "try-error") && all(is.finite(.ch))) {
     return(list(mat = x, sqrtm = FALSE))
   }
-  .s <- try(sqrtm(x %*% t(x)), silent = FALSE)
-  if (inherits(.s, "try-error") || !identical(dim(.s), dim(x)) || !all(is.finite(.s))) {
+  if (!all(is.finite(x))) {
+    return(NULL)
+  }
+  .s <- tryCatch(sqrtm(x %*% t(x)), error = function(e) NULL)
+  if (is.null(.s) || !all(is.finite(.s))) {
     return(NULL)
   }
   list(mat = .s, sqrtm = TRUE)
@@ -1717,11 +1720,17 @@
   } else {
     env$.etaMat
   }
+  # saem substitutes fixed thetas as saemControl(literalFix=) says (a control
+  # saved before that option existed has none, and saem did not substitute
+  # them then) and never substitutes fixed residual parameters
+  # (saemControl() has no literalFixRes)
   .foceiControl <- .foceiOwnEtaControl(
     .saemControl,
     .etaForFocei,
     scaleTo = 0,
     skipCov = env$ui$foceiSkipCov,
+    literalFix = isTRUE(.saemControl$literalFix),
+    literalFixRes = FALSE,
     indTolRelax = .saemControl$indTolRelax,
     resetThetaP = 0,
     resetThetaFinalP = 0,
@@ -1746,6 +1755,45 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .saemControlToFoceiControl(.env, assign = FALSE)
 }
 
+#' The fit-header text that names a saem fit's objective function
+#'
+#' @param type objective function type: a row name of the fit's `$objDf`
+#' @return the text; a type it cannot describe is an error
+#' @noRd
+.saemExtraText <- function(type) {
+  .t <- tolower(type)
+  if (.t == "focei") {
+    return(crayon::silver$italic("OBJF by FOCEi approximation"))
+  }
+  if (.t == "foce") {
+    return(crayon::silver$italic("OBJF by FOCE approximation"))
+  }
+  if (.t == "fo") {
+    return(crayon::silver$italic("OBJF by FO approximation"))
+  }
+  if (.t == "imp") {
+    return(crayon::silver$italic("OBJF by importance sampling (IMP)"))
+  }
+  if (.t == "impmap") {
+    return(crayon::silver$italic("OBJF by importance sampling (IMPMAP)"))
+  }
+  if (type == "") {
+    return(crayon::silver$italic("OBJF not calculated"))
+  }
+  .q <- .saemParseLikName(type)
+  if (is.null(.q)) {
+    stop("the saem fit has no description of objective function '", type, "'", call. = FALSE)
+  }
+  crayon::silver$italic(sprintf(
+    "OBJF by %s",
+    paste0(
+      ifelse(.q[1] == 1, "Laplacian (n.sd=", sprintf("Gaussian Quadrature (n.nodes=%s, n.sd=", .q[1])),
+      .q[2],
+      ")"
+    )
+  ))
+}
+
 #' Set the extra text for saem
 #'
 #' @param .env saem environment
@@ -1757,33 +1805,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   if (inherits(.env, "nlmixr2FitData")) {
     .env <- .env$env
   }
-  .txt <- ""
-  if (tolower(type) == "focei") {
-    .txt <- paste0(.txt, crayon::silver$italic("OBJF by FOCEi approximation"))
-  } else if (tolower(type) == "foce") {
-    .txt <- paste0(.txt, crayon::silver$italic("OBJF by FOCE approximation"))
-  } else if (tolower(type) == "fo") {
-    .txt <- paste0(.txt, crayon::silver$italic("OBJF by FO approximation"))
-  } else if (type == "") {
-    .txt <- paste0(.txt, crayon::silver$italic("OBJF not calculated"))
-  } else {
-    .q <- .saemParseLikName(type)
-    if (is.null(.q)) {
-      stop("unknown error")
-    }
-    .txt <- paste0(
-      .txt,
-      crayon::silver$italic(sprintf(
-        "OBJF by %s",
-        paste0(
-          ifelse(.q[1] == 1, "Laplacian (n.sd=", sprintf("Gaussian Quadrature (n.nodes=%s, n.sd=", .q[1])),
-          .q[2],
-          ")"
-        )
-      ))
-    )
-  }
-  .env$extra <- .txt
+  .env$extra <- .saemExtraText(type)
   invisible()
 }
 

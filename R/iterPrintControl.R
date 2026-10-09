@@ -69,6 +69,11 @@ iterPrintControl <- function(every = 1L, ncol = NULL, headerEvery = NULL, useCol
   .ret
 }
 
+#' @export
+rxUiDeparse.iterPrintControl <- function(object, var) {
+  .deparseControl(object, var, iterPrintControl(), internal = character(0))
+}
+
 #' Derive every iteration-print transform vector from a ui object
 #'
 #' Pure inspection helper: walks `ui$muRefCurEval` against `ui$iniDf` and

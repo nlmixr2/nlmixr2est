@@ -25,3 +25,6 @@ attr(nlmixr2Est.ifoce, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.ifoce, "mu") <- function(control) {
   isTRUE(!identical(control$muModel, "none")) && isTRUE(control$muRefCovAlg)
 }
+
+#' @export
+rxUiDeparse.ifoceControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "ifoceControl")

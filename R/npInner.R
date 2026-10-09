@@ -13,7 +13,13 @@
 #' @noRd
 .npInnerSetup <- function(ui, data, etaMat, control) {
   .ui <- rxode2::rxUiDecompress(ui)
-  .fc <- .foceiInnerControl(control, literalFixRes = control$literalFixRes, stickyRecalcN = control$stickyRecalcN)
+  .fc <- .foceiInnerControl(
+    control,
+    literalFixRes = control$literalFixRes,
+    eventSens = control$eventSens,
+    indTolRelax = control$indTolRelax,
+    stickyRecalcN = control$stickyRecalcN
+  )
   .fc$rxControl <- .npSafeLogDomain(.fc$rxControl, .ui)
   .env <- .foceiInnerEnv(.ui, data, .fc, "focei", etaMat)
   vaeInnerSetup_(.env)

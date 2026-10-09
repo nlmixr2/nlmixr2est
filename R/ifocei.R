@@ -24,3 +24,6 @@ attr(nlmixr2Est.ifocei, "iov") <- TRUE
 attr(nlmixr2Est.ifocei, "mu") <- function(control) {
   isTRUE(!identical(control$muModel, "none")) && isTRUE(control$muRefCovAlg)
 }
+
+#' @export
+rxUiDeparse.ifoceiControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "ifoceiControl")

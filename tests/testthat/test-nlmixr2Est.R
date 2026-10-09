@@ -28,27 +28,22 @@ nmTest({
     ))
   }
 
-  test_that("a deferred sa/imp covariance that cannot be computed is reported", {
+  test_that("a deferred sa/imp covariance that cannot be computed is reported in $runInfo", {
     local_mocked_bindings(.covRecompute = function(fit, method, control = NULL) NULL)
-    expect_warning(
-      .fit <- .fitDeferred("imp"),
-      "\"imp\" covariance could not be computed; none installed",
-      fixed = TRUE
-    )
+    # the post-fit hook's warning is kept with the run's other warnings
+    expect_no_warning(.fit <- .fitDeferred("imp"))
+    expect_identical(tail(.fit$runInfo, 1L), "\"imp\" covariance could not be computed; none installed")
     expect_null(.fit$cov)
     expect_null(.fit$env$covOptions$imp)
   })
 
-  test_that("a deferred sa/imp covariance that fell back to another one says so", {
+  test_that("a deferred sa/imp covariance that fell back to another one says so in $runInfo", {
     local_mocked_bindings(.covRecompute = function(fit, method, control = NULL) {
       .n <- c("tka", "tcl", "tv", "add.sd")
       list(cov = matrix(diag(0.01, 4), 4, 4, dimnames = list(.n, .n)), covMethod = "linFim")
     })
-    expect_warning(
-      .fit <- .fitDeferred("sa"),
-      "\"linFim\" covariance installed instead of the requested \"sa\"",
-      fixed = TRUE
-    )
+    expect_no_warning(.fit <- .fitDeferred("sa"))
+    expect_identical(tail(.fit$runInfo, 1L), "\"linFim\" covariance installed instead of the requested \"sa\"")
     expect_identical(.fit$covMethod, "linFim")
     expect_equal(unname(sqrt(diag(.fit$cov))), rep(0.1, 4))
     # the options are those of the covariance requested, not the one installed
