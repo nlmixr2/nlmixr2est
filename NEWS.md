@@ -14,6 +14,13 @@
   `addCwres()`, `addNpde()` and `addTable(updateObject = TRUE)` no longer
   error when called on an expression such as `fits[[1]]`.
 
+- With an rxode2 that supports `rxControl(nonmem = TRUE)`, the estimation
+  methods now honor it: `time` read in a statement that does not depend on a
+  state (NONMEM's `$PK`) is the time of the record ending the interval, also
+  after it is inlined into `d/dt()` (via `rxS(pkTime = TRUE)`), and the fit's
+  tables, `augPred()` and `vpc()` solve with it too (#1167).  ADDL doses are
+  expanded in `$dataSav`, so they still act as records there.
+
 - `foceiControl(innerOpt = "lbfgsb3c")` runs L-BFGS-B on the per-subject
   ETA problem, using `lbfgsb3c`'s thread-safe port (`lbfgsb3c >= 2024-3.6`).
   It replaces `innerOpt = "BFGS"`, which silently fell back to `"n1qn1"`
