@@ -106,11 +106,22 @@ nmTest({
       rxUiDeparse.nlminbControl(nlminbControl(solveType = "grad"), "var"),
       quote(var <- nlminbControl(solveType = "grad"))
     )
+    # covMethod's default follows solveType
+    expect_equal(
+      rxUiDeparse.nlminbControl(nlminbControl(solveType = "grad", covMethod = "nlminb"), "var"),
+      quote(var <- nlminbControl(solveType = "grad", covMethod = "nlminb"))
+    )
+    expect_equal(
+      rxUiDeparse.nlminbControl(nlminbControl(covMethod = "r"), "var"),
+      quote(var <- nlminbControl(covMethod = "r"))
+    )
   })
 
   test_that("nlmControl()", {
     expect_equal(rxUiDeparse.nlmControl(nlmControl(), "var"), quote(var <- nlmControl()))
     expect_equal(rxUiDeparse.nlmControl(nlmControl(covMethod = "r"), "var"), quote(var <- nlmControl(covMethod = "r")))
+    # covMethod's default follows solveType: "fun" defaults to "r"
+    expect_equal(rxUiDeparse.nlmControl(nlmControl(solveType = "fun"), "var"), quote(var <- nlmControl(solveType = "fun")))
   })
 
   test_that("nlsControl()", {

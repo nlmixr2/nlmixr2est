@@ -305,7 +305,16 @@ nlminbControl <- function(
 }
 
 #' @export
-rxUiDeparse.nlminbControl <- function(object, var) .deparseControl(object, var, nlminbControl())
+rxUiDeparse.nlminbControl <- function(object, var) {
+  # covMethod's default follows solveType, so compare it with the default for the
+  # object's own solveType
+  .default <- nlminbControl()
+  .st <- tryCatch(nlminbControl(solveType = object$solveType)$covMethod, error = function(e) NULL)
+  if (!is.null(.st)) {
+    .default$covMethod <- .st
+  }
+  .deparseControl(object, var, .default)
+}
 
 #' A surrogate function for nlminb to call for ode solving
 #'

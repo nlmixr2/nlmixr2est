@@ -294,7 +294,16 @@ nlmControl <- function(
 }
 
 #' @export
-rxUiDeparse.nlmControl <- function(object, var) .deparseControl(object, var, nlmControl())
+rxUiDeparse.nlmControl <- function(object, var) {
+  # covMethod's default follows solveType, so compare it with the default for the
+  # object's own solveType
+  .default <- nlmControl()
+  .st <- tryCatch(nlmControl(solveType = object$solveType)$covMethod, error = function(e) NULL)
+  if (!is.null(.st)) {
+    .default$covMethod <- .st
+  }
+  .deparseControl(object, var, .default)
+}
 
 
 #' Get the nlm family control

@@ -132,6 +132,15 @@ nmTest({
   }
 
   test_that("a derivative-free fit with an indefinite Hessian gets a repaired positive-definite covariance", {
+    # at the covariance tolerances this model's Hessian is positive definite, so
+    # its smallest eigenvalue is flipped
+    .hess <- nlmixr2Hess
+    local_mocked_bindings(nlmixr2Hess = function(...) {
+      .e <- eigen(.hess(...), symmetric = TRUE)
+      .v <- .e$values
+      .v[length(.v)] <- -abs(.v[length(.v)])
+      .e$vectors %*% diag(.v) %*% t(.e$vectors)
+    })
     .fit <- suppressMessages(nlmixr2(.pk, nlmixr2data::theo_sd, est = "bobyqa", control = bobyqaControl(print = 0L)))
     .h <- .fit$env$bobyqa$r
     expect_lt(min(eigen(.h, symmetric = TRUE, only.values = TRUE)$values), 0)
