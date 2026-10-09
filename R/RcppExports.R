@@ -677,6 +677,14 @@ saemFormGTest <- function(inA, inB, inFt, inC, inAddProp) {
     .Call(`_nlmixr2est_saemFormGTest`, inA, inB, inFt, inC, inAddProp)
 }
 
+shi21RatioCensorSet <- function(type) {
+    .Call(`_nlmixr2est_shi21RatioCensorSet`, type)
+}
+
+shi21RatioTest <- function(all, type) {
+    .Call(`_nlmixr2est_shi21RatioTest`, all, type)
+}
+
 nlmixr2Parameters <- function(theta, eta) {
     .Call(`_nlmixr2est_nlmixr2Parameters`, theta, eta)
 }
