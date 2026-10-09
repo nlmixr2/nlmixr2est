@@ -448,14 +448,18 @@
 #'   (`resValue`), not the kernel's placeholder start;
 #' * the residual statistic the covariance phase's Louis residual score reads
 #'   as sigma2 (`statrese / n`) starts at the fit's own final sigma2.  Without
-#'   it, the held values give it: `ares^2` additive, `bres^2` proportional.
+#'   it, the held values give it: `ares^2` additive, `bres^2` proportional;
+#' * the posterior means (`mpost_phi`), where the linearized FIM spliced into
+#'   the covariance is taken, start at the fit's;
+#' * Omega starts at the held values, covariances included.
 #'
 #' A chain state of the wrong shape (another data set, `nmc`, or
 #' parameterization) and mixture fits leave the configuration alone.
 #' @param cfg `.configsaem()` configuration
 #' @param state `NULL`, or `.saemChainState()`'s list: `phiM`, the
 #'   `(N * nmc) x nphi` chain state (row `i + k * N` holds subject `i` of chain
-#'   `k`), and `sigma2`, the per-endpoint sigma2 or `NULL`
+#'   `k`); `sigma2`, the per-endpoint sigma2 or `NULL`; and `mpostPhi`, the
+#'   `N x nphi` posterior means or `NULL`
 #' @return `cfg`
 #' @noRd
 .saemWarmCfg <- function(cfg, state) {
@@ -486,6 +490,15 @@
     .sigma2[.prop] <- cfg$bres[.prop]^2
   }
   cfg$statrese <- as.numeric(diff(cfg$y_offset)) * .sigma2
+  # the held Omega with its covariances; the kernel otherwise starts from its diagonal
+  # and restores the rest only from the second iteration on
+  .ix <- cfg$Gamma2_phi1fixedIx == 1L
+  if (length(.ix) > 0L && identical(dim(.ix), dim(cfg$Gamma2_phi1))) {
+    cfg$Gamma2_phi1[.ix] <- cfg$Gamma2_phi1fixedValues[.ix]
+  }
+  if (is.matrix(state$mpostPhi) && identical(dim(state$mpostPhi), c(as.integer(cfg$N), ncol(.phiM)))) {
+    cfg$mpost_phi <- state$mpostPhi
+  }
   cfg
 }
 

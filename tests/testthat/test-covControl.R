@@ -123,6 +123,7 @@ test_that("a SAEM fit's \"sa\" recompute continues its chains with no warm-up it
   expect_error(saControl(warmStart = NA), "warmStart")
   expect_error(saemControl(saemWarmState = list(phiM = matrix(NA_real_, 2, 2))), "phiM")
   expect_error(saemControl(saemWarmState = list(phiM = .st$phiM, sigma2 = -1)), "sigma2")
+  expect_error(saemControl(saemWarmState = list(phiM = .st$phiM, mpostPhi = matrix(NA_real_, 2, 3))), "mpostPhi")
 })
 
 test_that(".saemWarmCfg() installs a chain state of the right shape, its statistics and the residual statistic", {
@@ -131,7 +132,9 @@ test_that(".saemWarmCfg() installs a chain state of the right shape, its statist
   .cfg <- list(
     phiM = matrix(0, 6, 3), i1 = 0:1, i0 = 2L, N = 2L, nmc = 3L, nMix = 1L,
     res.mod = c(1, 2, 4), ares = c(10, 0, 10), bres = c(0, 1, 1), y_offset = c(0, 4, 7, 12),
-    res_offset = c(0L, 1L, 2L, 4L), resValue = c(0.5, 0.1, 0.2, 0.3)
+    res_offset = c(0L, 1L, 2L, 4L), resValue = c(0.5, 0.1, 0.2, 0.3),
+    Gamma2_phi1 = diag(c(0.4, 0.3)), Gamma2_phi1fixedIx = matrix(1L, 2, 2),
+    Gamma2_phi1fixedValues = matrix(c(0.5, 0.1, 0.1, 0.2), 2, 2)
   )
   .ph <- matrix(c(1, 2, 3, 4, 5, 6, 10, 20, 30, 40, 50, 60, 7, 8, 9, 10, 11, 12), 6, 3)
   .w <- .saemWarmCfg(.cfg, list(phiM = .ph))
@@ -150,6 +153,13 @@ test_that(".saemWarmCfg() installs a chain state of the right shape, its statist
   .s <- .saemWarmCfg(.cfg, list(phiM = .ph, sigma2 = c(0.3, 0.02, 0.9)))
   expect_equal(.s$statrese, c(4 * 0.3, 3 * 0.02, 5 * 0.9))
   expect_equal(.saemWarmCfg(.cfg, list(phiM = .ph, sigma2 = 1))$statrese, .w$statrese)
+  # Omega starts at the held values, covariances included
+  expect_equal(.w$Gamma2_phi1, matrix(c(0.5, 0.1, 0.1, 0.2), 2, 2))
+  # the posterior means the linearized FIM is taken at; none without them
+  expect_null(.w$mpost_phi)
+  .mp <- matrix(c(1.5, 2.5, 3.5, 4.5, 5.5, 6.5), 2, 3)
+  expect_identical(.saemWarmCfg(.cfg, list(phiM = .ph, mpostPhi = .mp))$mpost_phi, .mp)
+  expect_null(.saemWarmCfg(.cfg, list(phiM = .ph, mpostPhi = .mp[, 1:2]))$mpost_phi)
   expect_identical(.saemWarmCfg(.cfg, NULL), .cfg)
   expect_identical(.saemWarmCfg(.cfg, list(phiM = .ph[1:4, ])), .cfg)
   .mix <- modifyList(.cfg, list(nMix = 2L))

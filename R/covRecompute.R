@@ -127,9 +127,10 @@
 #' The state a SAEM fit's covariance phase continues from
 #' @param fit nlmixr2 fit
 #' @return `NULL` when the fit kept no chains, otherwise a list: `phiM`, the
-#'   `(N * nmc) x nphi` chain state at the last estimation iteration, and
+#'   `(N * nmc) x nphi` chain state at the last estimation iteration;
 #'   `sigma2`, the per-endpoint sigma2 the fit's Louis residual score last
-#'   read (`NULL` when the fit does not have it)
+#'   read; and `mpostPhi`, the `N x nphi` posterior means (each `NULL` when the
+#'   fit does not have it)
 #' @noRd
 .saemChainState <- function(fit) {
   .phiM <- tryCatch(fit$phiM, error = function(e) NULL)
@@ -142,11 +143,16 @@
   if (anyNA(.last)) {
     return(NULL)
   }
-  .sigma2 <- tryCatch(as.numeric(fit$saem$res_info$sigma2), error = function(e) NULL)
+  .saem <- tryCatch(fit$saem, error = function(e) NULL)
+  .sigma2 <- tryCatch(as.numeric(.saem$res_info$sigma2), error = function(e) NULL)
   if (length(.sigma2) == 0L || !all(is.finite(.sigma2)) || any(.sigma2 <= 0)) {
     .sigma2 <- NULL
   }
-  list(phiM = .last, sigma2 = .sigma2)
+  .mpost <- tryCatch(.saem$mpost_phi, error = function(e) NULL)
+  if (!is.matrix(.mpost) || !identical(dim(.mpost), .d[c(1L, 4L)]) || !all(is.finite(.mpost))) {
+    .mpost <- NULL
+  }
+  list(phiM = .last, sigma2 = .sigma2, mpostPhi = .mpost)
 }
 
 #' Recompute the importance-sampling Monte-Carlo covariance ("imp") at any fit's

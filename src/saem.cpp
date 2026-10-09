@@ -2073,6 +2073,8 @@ public:
     i1 = as<uvec>(x["i1"]);
     Gamma2_phi1 = as<mat>(x["Gamma2_phi1"]);
     Gamma2_phi1Init = Gamma2_phi1;
+    // reported until the first M-step replaces it (a run with no estimation iteration)
+    Gamma2_phi1Report = Gamma2_phi1;
     Gamma2_phi1fixedIxIn = as<umat>(x["Gamma2_phi1fixedIx"]);
     Gamma2_phi1fixedIx = find(Gamma2_phi1fixedIxIn);
     Gamma2_phi1fixed = as<int>(x["Gamma2_phi1fixed"]);
@@ -2288,6 +2290,13 @@ public:
     Hb = zeros<mat>(nb_param,nb_param);
     mpost_phi = zeros<mat>(N, nphi);
     cpost_phi = zeros<mat>(N, nphi);
+    // a run that continues another fit's chains (.saemWarmCfg) starts from that fit's
+    // posterior means: with no estimation iteration nothing accumulates them, and the
+    // linearized FIM (calc.COV) is taken there
+    if (x.containsElementNamed("mpost_phi")) {
+      mat mp = as<mat>(x["mpost_phi"]);
+      if (mp.n_rows == (unsigned int)N && mp.n_cols == (unsigned int)nphi) mpost_phi = mp;
+    }
     mpost_phi_mix.set_size(nMix > 1 ? nMix : 0);
     for (int j = 0; j < nMix && nMix > 1; j++) mpost_phi_mix(j) = zeros<mat>(N, nphi);
 

@@ -118,6 +118,7 @@ nmTest({
     expect_identical(.st$phiM[2L + 12L, ], .all[2L, 2L, 200L, ])
     # the sigma2 the fit's Louis residual score read: add.sd^2 at convergence
     expect_equal(.st$sigma2, unname(.f$theta["add.sd"])^2, tolerance = 1e-3)
+    expect_identical(.st$mpostPhi, .f$saem$mpost_phi)
     # a fit without chains starts cold
     .fo <- suppressWarnings(nlmixr2(.lc, .d, est = "focei", control = foceiControl(print = 0L, covMethod = "")))
     expect_null(.saemChainState(.fo))

@@ -677,6 +677,7 @@ saemControl <- function(
     checkmate::assertList(.xtra$saemWarmState, .var.name = "saemWarmState")
     checkmate::assertMatrix(.xtra$saemWarmState$phiM, mode = "numeric", any.missing = FALSE, .var.name = "saemWarmState$phiM")
     checkmate::assertNumeric(.xtra$saemWarmState$sigma2, lower = 0, finite = TRUE, null.ok = TRUE, .var.name = "saemWarmState$sigma2")
+    checkmate::assertMatrix(.xtra$saemWarmState$mpostPhi, mode = "numeric", any.missing = FALSE, null.ok = TRUE, .var.name = "saemWarmState$mpostPhi")
     .ret$saemWarmState <- .xtra$saemWarmState
   }
   class(.ret) <- "saemControl"
