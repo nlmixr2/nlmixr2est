@@ -112,13 +112,15 @@ nmTest({
     .native <- sqrt(diag(.f$cov))
     .all <- .f$phiM
     expect_identical(dim(.all), c(12L, 3L, 200L, 3L))
-    .ph <- .saemLastPhiM(.f)
-    expect_identical(dim(.ph), c(36L, 3L))
+    .st <- .saemChainState(.f)
+    expect_identical(dim(.st$phiM), c(36L, 3L))
     # row i + k * N is subject i of chain k
-    expect_identical(.ph[2L + 12L, ], .all[2L, 2L, 200L, ])
+    expect_identical(.st$phiM[2L + 12L, ], .all[2L, 2L, 200L, ])
+    # the sigma2 the fit's Louis residual score read: add.sd^2 at convergence
+    expect_equal(.st$sigma2, unname(.f$theta["add.sd"])^2, tolerance = 1e-3)
     # a fit without chains starts cold
     .fo <- suppressWarnings(nlmixr2(.lc, .d, est = "focei", control = foceiControl(print = 0L, covMethod = "")))
-    expect_null(.saemLastPhiM(.fo))
+    expect_null(.saemChainState(.fo))
 
     .eta <- c("eta.ka", "eta.cl", "eta.v")
     .a <- .covPinnedRefitArgs(.f)
@@ -126,10 +128,10 @@ nmTest({
       .a$ui,
       .a$data,
       est = "saem",
-      control = .covEngineControl("sa", saControl(), .ph)
+      control = .covEngineControl("sa", saControl(), .st)
     )))
     expect_identical(.sa$covMethod, "sa")
-    expect_false("saemPhiMInit" %in% names(.sa$control))
+    expect_false("saemWarmState" %in% names(.sa$control))
     # no estimation iteration ran, so nothing moved
     expect_identical(nrow(.sa$parHistData), 0L)
     expect_equal(.sa$theta[names(.f$theta)], .f$theta, tolerance = 1e-10)

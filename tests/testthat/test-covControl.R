@@ -112,16 +112,17 @@ nmTest({
 })
 
 test_that("a SAEM fit's \"sa\" recompute continues its chains with no warm-up iterations", {
-  .ph <- matrix(seq_len(18) / 10, 6, 3)
-  .warm <- .covEngineControl("sa", saControl(nBurn = 7L, nEm = 8L), .ph)
+  .st <- list(phiM = matrix(seq_len(18) / 10, 6, 3), sigma2 = 0.5)
+  .warm <- .covEngineControl("sa", saControl(nBurn = 7L, nEm = 8L), .st)
   expect_identical(.warm$mcmc$niter, c(0L, 0L))
-  expect_identical(.warm$saemPhiMInit, .ph)
+  expect_identical(.warm$saemWarmState, .st)
   expect_true(.warm$saemHoldPar)
   .cold <- .covEngineControl("sa", saControl(nBurn = 7L, nEm = 8L))
   expect_identical(.cold$mcmc$niter, c(7L, 8L))
-  expect_null(.cold$saemPhiMInit)
+  expect_null(.cold$saemWarmState)
   expect_error(saControl(warmStart = NA), "warmStart")
-  expect_error(saemControl(saemPhiMInit = matrix(NA_real_, 2, 2)), "saemPhiMInit")
+  expect_error(saemControl(saemWarmState = list(phiM = matrix(NA_real_, 2, 2))), "phiM")
+  expect_error(saemControl(saemWarmState = list(phiM = .st$phiM, sigma2 = -1)), "sigma2")
 })
 
 test_that(".saemWarmCfg() installs a chain state of the right shape, its statistics and the residual statistic", {
@@ -133,7 +134,7 @@ test_that(".saemWarmCfg() installs a chain state of the right shape, its statist
     res_offset = c(0L, 1L, 2L, 4L), resValue = c(0.5, 0.1, 0.2, 0.3)
   )
   .ph <- matrix(c(1, 2, 3, 4, 5, 6, 10, 20, 30, 40, 50, 60, 7, 8, 9, 10, 11, 12), 6, 3)
-  .w <- .saemWarmCfg(.cfg, .ph)
+  .w <- .saemWarmCfg(.cfg, list(phiM = .ph))
   expect_identical(.w$phiM, .ph)
   # row i + k * N is subject i of chain k: subject 1 holds rows 1, 3, 5
   expect_equal(.w$statphi11, matrix(c(3, 4, 30, 40), 2, 2))
@@ -143,10 +144,14 @@ test_that(".saemWarmCfg() installs a chain state of the right shape, its statist
   # the residual parameters start at their held values, not the placeholder 10
   expect_equal(.w$ares, c(0.5, 0, 0.2))
   expect_equal(.w$bres, c(0, 0.1, 0.3))
-  # statrese / n is the held variance the kernel's M-step inverts
+  # without the fit's sigma2, statrese / n is the held variance
   expect_equal(.w$statrese, c(4 * 0.25, 3 * 0.01, 5))
+  # with it, statrese / n is the sigma2 the fit's Louis residual score last read
+  .s <- .saemWarmCfg(.cfg, list(phiM = .ph, sigma2 = c(0.3, 0.02, 0.9)))
+  expect_equal(.s$statrese, c(4 * 0.3, 3 * 0.02, 5 * 0.9))
+  expect_equal(.saemWarmCfg(.cfg, list(phiM = .ph, sigma2 = 1))$statrese, .w$statrese)
   expect_identical(.saemWarmCfg(.cfg, NULL), .cfg)
-  expect_identical(.saemWarmCfg(.cfg, .ph[1:4, ]), .cfg)
+  expect_identical(.saemWarmCfg(.cfg, list(phiM = .ph[1:4, ])), .cfg)
   .mix <- modifyList(.cfg, list(nMix = 2L))
-  expect_identical(.saemWarmCfg(.mix, .ph), .mix)
+  expect_identical(.saemWarmCfg(.mix, list(phiM = .ph)), .mix)
 })

@@ -454,7 +454,7 @@ saemControl <- function(
   .nuAuto <- missing(nu)
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc", "DEBUG", "iterPrintControl", "saemHoldPar", "saemPhiMInit"))]
+  .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc", "DEBUG", "iterPrintControl", "saemHoldPar", "saemWarmState"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste(paste0("'", .bad, "'", sep = ""), collapse = ", "), call. = FALSE)
   }
@@ -672,10 +672,12 @@ saemControl <- function(
   if (isTRUE(.xtra$saemHoldPar)) {
     .ret$saemHoldPar <- TRUE
   }
-  # internal: that recompute's chains start from the fit's last MCMC state
-  if (!is.null(.xtra$saemPhiMInit)) {
-    checkmate::assertMatrix(.xtra$saemPhiMInit, mode = "numeric", any.missing = FALSE, .var.name = "saemPhiMInit")
-    .ret$saemPhiMInit <- .xtra$saemPhiMInit
+  # internal: that recompute continues a SAEM fit's chains (.saemChainState)
+  if (!is.null(.xtra$saemWarmState)) {
+    checkmate::assertList(.xtra$saemWarmState, .var.name = "saemWarmState")
+    checkmate::assertMatrix(.xtra$saemWarmState$phiM, mode = "numeric", any.missing = FALSE, .var.name = "saemWarmState$phiM")
+    checkmate::assertNumeric(.xtra$saemWarmState$sigma2, lower = 0, finite = TRUE, null.ok = TRUE, .var.name = "saemWarmState$sigma2")
+    .ret$saemWarmState <- .xtra$saemWarmState
   }
   class(.ret) <- "saemControl"
   .ret

@@ -119,16 +119,19 @@
   if (is.null(control)) {
     control <- saControl()
   }
-  .phiM <- if (control$warmStart) .saemLastPhiM(fit)
+  .state <- if (control$warmStart) .saemChainState(fit)
   # SAEM derives its own etaMat from the MCMC; no external eta seed
-  .covRecomputeNative(fit, "saem", .covEngineControl("sa", control, .phiM), useEtaMat = FALSE)
+  .covRecomputeNative(fit, "saem", .covEngineControl("sa", control, .state), useEtaMat = FALSE)
 }
 
-#' The MCMC chain state at a SAEM fit's last estimation iteration
+#' The state a SAEM fit's covariance phase continues from
 #' @param fit nlmixr2 fit
-#' @return `(N * nmc) x nphi` matrix, or `NULL` when the fit kept no chains
+#' @return `NULL` when the fit kept no chains, otherwise a list: `phiM`, the
+#'   `(N * nmc) x nphi` chain state at the last estimation iteration, and
+#'   `sigma2`, the per-endpoint sigma2 the fit's Louis residual score last
+#'   read (`NULL` when the fit does not have it)
 #' @noRd
-.saemLastPhiM <- function(fit) {
+.saemChainState <- function(fit) {
   .phiM <- tryCatch(fit$phiM, error = function(e) NULL)
   if (!is.array(.phiM) || length(dim(.phiM)) != 4L || any(dim(.phiM) == 0L)) {
     return(NULL)
@@ -139,40 +142,29 @@
   if (anyNA(.last)) {
     return(NULL)
   }
-  .last
-}
-
-#' Recompute the importance-sampling Monte-Carlo covariance ("imp") at any fit's
-#' converged estimates.
-#'
-#' Runs the imp kernel at the pinned converged estimates with `impFrozen`:
-#' `nIter` E-steps (`mapIter=0`) and no M-step, so the parameters stay where
-#' they are and the MAP pass + `impComputeCov` evaluate the Monte-Carlo
-#' observed information at the fit's own estimates.
-#' @param fit completed nlmixr2 fit
-#' @param control `impCovControl()` options, or `NULL` for the defaults
-#' @return list(cov, covMethod, extras) or NULL
-#' @noRd
-.covRecomputeImp <- function(fit, control = NULL) {
-  .covRecomputeNative(fit, "imp", .covEngineControl("imp", control), useEtaMat = TRUE)
+  .sigma2 <- tryCatch(as.numeric(fit$saem$res_info$sigma2), error = function(e) NULL)
+  if (length(.sigma2) == 0L || !all(is.finite(.sigma2)) || any(.sigma2 <= 0)) {
+    .sigma2 <- NULL
+  }
+  list(phiM = .last, sigma2 = .sigma2)
 }
 
 #' Engine control for a decoupled covariance recompute
 #' @param method "sa" or "imp"
 #' @param control `saControl()`/`impCovControl()` options, or `NULL` for the
 #'   defaults
-#' @param phiM for "sa", a SAEM fit's last chain state (`.saemLastPhiM()`) to
+#' @param state for "sa", a SAEM fit's chain state (`.saemChainState()`) to
 #'   continue with no warm-up iterations, or `NULL` to start the chains around
 #'   the estimates and run `nBurn`/`nEm` warm-up iterations
 #' @return `saemControl()` or `impmapControl()` object
 #' @noRd
-.covEngineControl <- function(method, control = NULL, phiM = NULL) {
+.covEngineControl <- function(method, control = NULL, state = NULL) {
   if (identical(method, "sa")) {
     if (is.null(control)) {
       control <- saControl()
     }
     # a SAEM fit's own iterations are the warm-up of its chains
-    .warm <- !is.null(phiM)
+    .warm <- !is.null(state)
     return(saemControl(
       nBurn = if (.warm) 0L else control$nBurn,
       nEm = if (.warm) 0L else control$nEm,
@@ -181,7 +173,7 @@
       covMethod = "sa",
       calcTables = FALSE,
       saemHoldPar = TRUE,
-      saemPhiMInit = phiM
+      saemWarmState = state
     ))
   }
   if (is.null(control)) {

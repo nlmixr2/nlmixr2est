@@ -2125,6 +2125,10 @@ public:
     Plambda.zeros(nlambda);
     ilambda1 = as<uvec>(x["ilambda1"]);
     ilambda0 = as<uvec>(x["ilambda0"]);
+    // the starting estimates until the first M-step replaces them; a run with no
+    // estimation iteration (the "sa" recompute of a SAEM fit) reports these
+    Plambda.elem(ilambda1) = MCOV1.elem(jcov1);
+    if (nphi0 > 0) Plambda.elem(ilambda0) = MCOV0.elem(jcov0);
 
     DYF = zeros<mat>(mlen, nM);
     phi.set_size(N, nphi, nmc);
