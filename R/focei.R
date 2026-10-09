@@ -1536,7 +1536,6 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   # rxS() drops mtime() entirely (issue #919); keep it so the generated models
   # still stop the solver at the modeled times and still define the variable.
   .rxMtimeAssign(newmod, .ret)
-  .foceiLagSnapResolve(.ret)
   .ret
 }
 
@@ -2422,8 +2421,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # name (op_focei.predOffset) and offsets its reads.
   .lagDefs <- character(0)
   if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
-    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
-    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
+    .lagDefs <- .s$..lhs[grepl(.foceiLagDefPattern(.s$..laggedVars), .s$..lhs)]
   }
   # AR(1) exact eta-gradient: structural-prediction eta-sensitivities lag()-
   # referenced by the corrected HdEta lines; emit them (real lhs) ahead of
