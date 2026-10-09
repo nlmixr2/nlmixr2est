@@ -65,6 +65,13 @@
   `"r"` covariance, `"r,s"` computes only S, and `"r"` or `"s"` after `"r,s"`
   computes nothing.  Every fit starts with an empty store.
 
+- With an rxode2 that supports `rxControl(nonmem = TRUE)`, the estimation
+  methods now honor it: `time` read in a statement that does not depend on a
+  state (NONMEM's `$PK`) is the time of the record ending the interval, also
+  after it is inlined into `d/dt()` (via `rxS(pkTime = TRUE)`), and the fit's
+  tables, `augPred()` and `vpc()` solve with it too (#1167).  ADDL doses are
+  expanded in `$dataSav`, so they still act as records there.
+
 - `foceiControl(innerOpt = "lbfgsb3c")` runs L-BFGS-B on the per-subject
   ETA problem, using `lbfgsb3c`'s thread-safe port (`lbfgsb3c >= 2024-3.6`).
   It replaces `innerOpt = "BFGS"`, which silently fell back to `"n1qn1"`
@@ -148,6 +155,8 @@
   uses such a variable now compiles, and `lag()` of a variable inside an ODE
   gives a clear error.  The analytic `fast=TRUE` gradient and analytic
   covariance fall back to finite differences for these models (#1176).
+  This also holds for a lagged variable that is assigned more than once,
+  which rxode2 now reads through a snapshot (rxode2#1435).
 
 - `$etaMat` of a fit with inter-occasion variability now holds the occasion
   ETAs as the model estimated them; it held them multiplied by the occasion
