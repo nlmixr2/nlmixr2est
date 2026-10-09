@@ -589,7 +589,7 @@ nmTest({
   test_that("the covariance probe tolerances of a high-sigdig fit stay solvable", {
     skip_on_cran()
     # sigdig = 10 asks for ODE and inner tolerances near 1e-11; 1e-3 of those is floored
-    # at 1e-14
+    # at 1e-12
     .f <- .nlmixr(
       .quietOneCmt,
       theo_sd,
@@ -598,6 +598,27 @@ nmTest({
     )
     expect_identical(.f$covMethod, "r")
     expect_true(all(is.finite(sqrt(diag(.f$cov)))))
+  })
+
+  test_that("a fit at ODE tolerance 1e-11 gets the covariance of a 1e-9 one", {
+    skip_on_cran()
+    # 1e-3 of 1e-11 is floored at 1e-12; at 1e-14 the probe solves failed and the
+    # fit had no covariance ("R not PD; S failed")
+    .tight <- .nlmixr(
+      .quietOneCmt,
+      theo_sd,
+      "focei",
+      foceiControl(print = 0, calcTables = FALSE, rxControl = rxode2::rxControl(atol = 1e-11, rtol = 1e-11))
+    )
+    .ref <- .nlmixr(
+      .quietOneCmt,
+      theo_sd,
+      "focei",
+      foceiControl(print = 0, calcTables = FALSE, rxControl = rxode2::rxControl(atol = 1e-9, rtol = 1e-9))
+    )
+    expect_identical(.tight$covMethod, "r,s (full)")
+    expect_identical(.ref$covMethod, "r,s (full)")
+    expect_equal(sqrt(diag(.tight$cov)), sqrt(diag(.ref$cov)), tolerance = 0.01)
   })
 
   test_that("the covariance step runs at its probe tolerances and leaves estimation as it was", {

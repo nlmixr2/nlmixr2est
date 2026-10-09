@@ -143,6 +143,13 @@
   afresh at every iteration, and on `theo_sd` reported the `add.sd` standard
   error 16% high.
 
+- A fit with ODE tolerances below about 1e-10 now gets a covariance.  The
+  covariance step's probe tolerances (the fit's times 1e-3) were floored at
+  1e-14, where the probe solves failed: a FOCEi fit at
+  `rxControl(atol = 1e-11, rtol = 1e-11)` reported no covariance ("R not PD; S
+  failed") and an `impmap` fit no standard errors.  The floor is now 1e-12, also
+  for the analytic covariance's solves.
+
 - `saemControl(nBurn = 0)` and `nEm = 0` no longer add two spurious
   iterations' gains to the step-size schedule, which shifted every later gain.
 

@@ -8779,7 +8779,7 @@ struct OdeFitTolGuard {
 static const double covProbeTolFactor = 1e-3;
 static const double covProbeOdeTolMax = 1e-7;
 static const double covProbeInnerTolMax = 1e-9;
-static const double covProbeTolMin = 1e-14;
+static const double covProbeTolMin = 1e-12;
 
 static inline double covProbeTol(double fitTol, double tolMax) {
   if (!R_FINITE(fitTol) || fitTol <= 0) return fitTol;
