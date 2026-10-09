@@ -446,6 +446,15 @@
 
 ### Covariance
 
+- The analytic covariance (`covMethod = "analytic"`, `setCov(fit, "analytic")`)
+  of a model with additive plus proportional error reported the two residual
+  SEs under each other's names when `ini()` declared the proportional one
+  first.  They are now named by parameter.
+
+- The analytic outer gradient (`foceiControl(fast = TRUE)`) of the same models
+  used each residual parameter's derivative for the other, so the optimizer
+  stepped along a wrong gradient and the fit depended on the `ini()` order.
+
 - The covariance step's progress bar now always reaches 100% and ends its line
   (#1171).  After an earlier bar had finished it stopped at a few percent, the
   next message could print on the bar's line, and an `imp` fit's bar was

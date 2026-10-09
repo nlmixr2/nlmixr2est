@@ -35,6 +35,27 @@
   .th[.th %in% rownames(cov)]
 }
 
+#' The residual-error parameters of an analytic observed information, in its row order
+#'
+#' The general (f,R) assembly follows the direction set (`dir$sgName`, in `ini()`
+#' order); the fast add/prop assembly builds its sigma block additive first, then
+#' proportional (`ef$sgName`), whatever their order in `ini()`.
+#' @param dir the direction set (`.foceiAnalyticDirections()`)
+#' @param ef the error machinery
+#' @param general whether the general (f,R) assembly built the matrix
+#' @return the names in row order, or `NULL` when the two sets disagree
+#' @noRd
+.foceiAnalyticSgNames <- function(dir, ef, general) {
+  if (general) {
+    return(dir$sgName)
+  }
+  .nm <- ef$sgName[ef$sgName %in% dir$sgName]
+  if (!setequal(.nm, dir$sgName)) {
+    return(NULL)
+  }
+  .nm
+}
+
 #' The requested shape of an analytic covariance
 #'
 #' The analytic assembly is always full; the theta-only shape is its structural +
@@ -1288,7 +1309,8 @@
           lamDir = .dir$lamDir
         )
       }
-      Rfull <- if (length(iovVars) == 0L && (isTRUE(ef$foceiOnly) || .hasCensD)) {
+      .general <- length(iovVars) == 0L && (isTRUE(ef$foceiOnly) || .hasCensD)
+      Rfull <- if (.general) {
         .assembleRFR()
       } else {
         .foceiAnalyticAssembleR(
@@ -1319,10 +1341,16 @@
           return(.foceiAnalyticFallback("a floored residual variance"))
         }
         Rfull <- .assembleRFR()
+        .general <- TRUE
       }
       if (is.null(Rfull)) {
         return(NULL)
       }
+      .sgNm <- .foceiAnalyticSgNames(.dir, ef, .general)
+      if (is.null(.sgNm)) {
+        return(NULL)
+      }
+      fullNm <- c(thStruct, .sgNm, .foceiOmegaCovNames(pairs, onm), iovVars)
       dimnames(Rfull) <- list(fullNm, fullNm)
 
       # full natural-scale cov -> fit$cov; theta SEs flow through the native path
@@ -3979,7 +4007,8 @@
       lamDir = .dir$lamDir
     )
   }
-  R <- if (isTRUE(ef$foceiOnly) || .hasCens) {
+  .general <- isTRUE(ef$foceiOnly) || .hasCens
+  R <- if (.general) {
     .assembleRFR()
   } else {
     .foceiAnalyticAssembleR(
@@ -4007,6 +4036,7 @@
       return(.foceiAnalyticFallback("a floored residual variance"))
     }
     R <- .assembleRFR()
+    .general <- TRUE
   }
   if (is.null(R)) {
     return(.foceiAnalyticFallback("an observed information that would not assemble"))
@@ -4016,7 +4046,11 @@
     return(.foceiAnalyticFallback("an observed information that would not invert"))
   }
   onm <- etaNames # Omega named by the eta (om.eta.cl)
-  nm <- c(thStruct, .dir$sgName, .foceiOmegaCovNames(pairs, onm))
+  .sgNm <- .foceiAnalyticSgNames(.dir, ef, .general)
+  if (is.null(.sgNm)) {
+    return(.foceiAnalyticFallback("residual-error parameters the assembly did not order"))
+  }
+  nm <- c(thStruct, .sgNm, .foceiOmegaCovNames(pairs, onm))
   dimnames(R) <- dimnames(cov) <- list(nm, nm)
   # `pd` is the caller's install gate: an observed information with a negative eigenvalue
   # (the outer optimizer stopped at a point that is not a local minimum) inverts to
