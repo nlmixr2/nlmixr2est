@@ -6,14 +6,14 @@ nmTest({
   # lost the modeled times and left the mtime variable undefined (#919).
   # The fits that exercise the other estimation routines live in
   # test-mtime-fit.R (a weekly batch).
-  .mkMtime <- function(useMtime) {
+  .mkMtime <- function(useMtime, mtName = "t5") {
     .bdy <- c(
       "ka <- exp(tka + eta.ka)",
       "cl <- exp(tcl)",
       "v <- exp(tv)",
-      if (useMtime) "mtime(t5) <- 5",
+      if (useMtime) paste0("mtime(", mtName, ") <- 5"),
       if (useMtime) {
-        "kmult <- ifelse(t < t5, 1.0, 2.0)"
+        paste0("kmult <- ifelse(t < ", mtName, ", 1.0, 2.0)")
       } else {
         "kmult <- ifelse(t < 5, 1.0, 2.0)"
       },
@@ -114,6 +114,22 @@ nmTest({
     expect_setequal(.rxMtimeDeps(.lines, .lhs, 3L, "b"), c("a", "b"))
     # a name with no preceding assignment is a leaf (a parameter or covariate)
     expect_setequal(.rxMtimeDeps(.lines, .lhs, 3L, "WT/10"), "WT")
+  })
+
+  test_that("an mtime() variable with a dot in its name is loaded (#1189)", {
+    # symengine::S() parses its argument, and a dotted name is a parse error;
+    # nonmem2rx emits mtime(rx.mtime.1.) for every MTIME(1)
+    .s <- new.env()
+    .s$THETA_1_ <- symengine::Symbol("THETA_1_")
+    .rxMtimeAssign("mtime(rx.mtime.1.)=exp(THETA[1]);\nmtime(mt.2)=rx.mtime.1.+1;\n", .s)
+    expect_equal(.s$..mtime, c("mtime(rx.mtime.1.)~exp(THETA[1])", "mtime(mt.2)~1+rx.mtime.1."))
+
+    .ui <- rxode2::rxUiDecompress(.mkMtime(TRUE, "rx.mtime.1.")())
+    expect_equal(rxode2::rxModelVars(.ui$focei$inner)$nMtime, 1L)
+    expect_equal(rxode2::rxModelVars(.ui$saemModel)$nMtime, 1L)
+    expect_equal(rxode2::rxModelVars(.ui$nlmRxModel$predOnly)$nMtime, 1L)
+    .ui2 <- rxode2::rxUiDecompress(.mkMtime(TRUE, "rx.mtime.1.")())
+    expect_equal(rxode2::rxModelVars(.ui2$nlmeRxModel)$nMtime, 1L)
   })
 
   test_that("$dataSav keeps no mtime (EVID 10-99) records", {

@@ -55,6 +55,9 @@
   
 ## Bug Fixes
 
+- An `mtime()` variable with a `.` in its name (such as nonmem2rx's
+  `rx.mtime.1.`) no longer fails with `SymEngine exception: Parse error`
+  (#1189).
 - The Shi (2021) finite-difference step search over a vector (the
   nlm/nlminb Hessian, the FOCEi inner eta Hessian, theta sensitivities and
   the analytic-covariance tensor) now leaves components with a ratio below

@@ -1408,7 +1408,7 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   }
   .e <- new.env(parent = env)
   for (.v in names(.rhs)) {
-    assign(.v, symengine::S(.v), envir = .e)
+    assign(.v, symengine::Symbol(.v), envir = .e)
   }
   .expand <- function(.i) {
     .se <- rxode2::.rxToSE(str2lang(.rhs[[.i]]))
