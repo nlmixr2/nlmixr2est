@@ -177,12 +177,13 @@ nmTest({
 
   test_that("est='trust' takes the covariance Hessian at the estimates unless asked for its own (issue 1140)", {
     skip_on_cran()
-    .hessCalls <- 0L
+    .acc <- new.env(parent = emptyenv())
+    .acc$hessCalls <- 0L
     .hess <- nlmixr2Hess
     .fitTrust <- function(...) {
       testthat::with_mocked_bindings(
         nlmixr2Hess = function(...) {
-          .hessCalls <<- .hessCalls + 1L
+          .acc$hessCalls <- .acc$hessCalls + 1L
           .hess(...)
         },
         .package = "nlmixr2est",
@@ -196,16 +197,16 @@ nmTest({
     }
     # "trust": the last iteration's (quasi-Newton, by default) Hessian
     .fT <- .fitTrust(covMethod = "trust")
-    expect_identical(.hessCalls, 0L)
+    expect_identical(.acc$hessCalls, 0L)
     expect_true(is.finite(.fT$objective))
     expect_true(.fT$covMethod %in% c("r (trust)", "r+ (trust)", "|r| (trust)"))
     # "r" with hessianMethod = "fd": central differences of the analytic gradient
     .fF <- .fitTrust(hessianMethod = "fd")
-    expect_identical(.hessCalls, 0L)
+    expect_identical(.acc$hessCalls, 0L)
     expect_true(.fF$covMethod %in% c("r", "r+", "|r|"))
     # "r" with the default quasi-Newton hessianMethod: nlmixr2Hess()
     .fR <- .fitTrust()
-    expect_identical(.hessCalls, 1L)
+    expect_identical(.acc$hessCalls, 1L)
     expect_true(.fR$covMethod %in% c("r", "r+", "|r|"))
     # the two agree; the last "fd" iteration's Hessian, whose steps are searched
     # afresh at every iteration, put add.sd's SE 16% high
