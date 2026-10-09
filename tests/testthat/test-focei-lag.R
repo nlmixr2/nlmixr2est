@@ -226,6 +226,62 @@ nmTest({
     expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
   })
 
+  test_that("an ODE between two assignments of a lagged variable reads the snapshot", {
+    # rxode2 builds before rxode2#1445 bind the final c0 in the ODE
+    skip_if_not(grepl(
+      "rx_lagv1_c0",
+      rxode2::rxS("c0=central/10\nd/dt(central)=-c0\nc0=3*c0\ncp=lag(c0)")$..ddt,
+      fixed = TRUE
+    ))
+    .odeMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        tke <- -1
+        eta.cl ~ 0.1
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        ke <- exp(tke)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        c0 <- central / v
+        d/dt(eff) <- ke * (c0 - eff)
+        c0 <- c0 * exp(eta.cl)
+        cp <- eff + lag(c0)
+        cp ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(.odeMod)
+    .s <- .ui$foceiEnv
+    .fd <- .lagFd(.odeMod, .s$..inner, "ETA", seq_len(.s$..maxEta))
+    expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
+    # the inner model predicts what rxSolve() gives for the original model
+    .th <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
+    .inner <- rxode2::rxSolve(
+      rxode2::rxode2(.s$..inner),
+      c(setNames(.th$est, paste0("THETA[", seq_along(.th$est), "]")), "ETA[1]" = 0.2, "ETA[2]" = 0.2),
+      .lagDat,
+      atol = 1e-12,
+      rtol = 1e-12,
+      addDosing = FALSE
+    )
+    .orig <- rxode2::rxSolve(
+      .ui$simulationModel,
+      c(setNames(.th$est, .th$name), eta.cl = 0.2, eta.v = 0.2),
+      .lagDat,
+      atol = 1e-12,
+      rtol = 1e-12,
+      addDosing = FALSE
+    )
+    expect_equal(.inner$rx_pred_, .orig$cp, tolerance = 1e-8)
+  })
+
   test_that("the linCmt() sensitivity carry keeps the lag() terms", {
     .carryMod <- function() {
       ini({
