@@ -57,8 +57,9 @@ test_that("rsControl(covFallback=) is the request's own list, never the fit's", 
   expect_error(rsControl(covFallback = list(r = "vi")), "cannot fall back to \"vi\"")
   .fit <- new.env(parent = emptyenv())
   .fit$foceiControl <- foceiControl()
-  expect_null(setCovOptions(rsControl(), .fit)$covFallback)
-  expect_identical(setCovOptions(rsControl(covFallback = list(r = "s")), .fit)$covFallback, list(r = "s"))
+  # the fallbacks decide what is installed, not how a covariance is computed, so a
+  # cached covariance is reused whatever the list
+  expect_identical(setCovOptions(rsControl(covFallback = list(r = "s")), .fit), setCovOptions(rsControl(), .fit))
   .d <- rxode2::rxUiDeparse(rsControl(covFallback = list(r = "s")), "ctl")
   expect_identical(eval(.d[[3]])$covFallback, list(r = "s"))
 })
@@ -86,8 +87,10 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    .fit <- .nlmixr(.m, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covMethod = "r,s", covFull = FALSE))
-    # an "r" request whose refit can only give "s"
+    # an "s" fit (no R computed, so no "r" to swap to) and an "r" request whose refit
+    # can only give "s"
+    .fit <- .nlmixr(.m, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covMethod = "s", covFull = FALSE))
+    expect_null(.fit$env$covList$r)
     .s <- suppressMessages(.setCovRefit(.fit, covMethod = "s", covFull = FALSE))
     expect_identical(.s$covMethod, "s")
     .args <- new.env(parent = emptyenv())

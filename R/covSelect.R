@@ -317,3 +317,32 @@
   }
   invisible(.ok)
 }
+
+#' Cache the theta-only covariances the covariance step computed
+#'
+#' The "r", "s" and "r,s" covariances (`covR`, `covS`, `covRS`) that pass
+#' `.covGuard()`, except the installed one, so `setCov()` swaps to them without
+#' computing anything.  With `covType = "analytic"` `covR` is the analytic one and
+#' is not kept as "r".
+#' @param env fit environment
+#' @param control the fit's `foceiControl()`
+#' @return invisibly `env`
+#' @noRd
+.foceiCacheThetaCov <- function(env, control) {
+  if (!is.environment(env)) {
+    return(invisible(env))
+  }
+  .analytic <- identical(control$covType, "analytic")
+  .slots <- c(r = "covR", s = "covS", "r,s" = "covRS")
+  for (.n in names(.slots)) {
+    if (.analytic && .n != "s") {
+      next
+    }
+    .cov <- get0(.slots[[.n]], envir = env, inherits = FALSE)
+    if (!is.matrix(.cov) || .covSameName(.n, env$covMethod) || !.covGuard(.cov)$ok) {
+      next
+    }
+    .covCacheAdd(env, .n, .cov)
+  }
+  invisible(env)
+}

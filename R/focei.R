@@ -5635,6 +5635,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       assign("control", .control, envir = .ret)
     }
     .foceiInstallAnalyticCov(.ret)
+    # before the full shapes replace covR/covS/covRS
+    .foceiCacheThetaCov(.ret, .control)
     # Installing the FD-full covariance replaces $cov with a matrix spanning
     # theta AND omega, but the C++ step has already derived popDf$SE from the
     # native theta-only covariance it discards.  Left alone the fit reports SEs

@@ -12361,9 +12361,9 @@ NumericMatrix foceiCalcCov(Environment e){
               arma::mat Sinv;
               foceiCholInv(cholS, Sinv, "S");
               e[".covSinv"] = wrap(Sinv);
+              e["covS"] = Sinv;
               if (req == 1 && rState == 1) {
                 e["covRS"] = Rinv * S * Rinv;
-                e["covS"] = Sinv;
               } else {
                 op_focei.cur++;
                 op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);

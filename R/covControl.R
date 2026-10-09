@@ -224,10 +224,6 @@ setCovOptions.rsControl <- function(control, fit, ...) {
     switch(.rsControlMode[[.n]], double = as.double(.v), integer = as.integer(.v), logical = as.logical(.v))
   })
   names(.ret) <- names(.rsControlMode)
-  # the fallbacks are the request's own, never the fit's
-  if (!is.null(control$covFallback)) {
-    .ret$covFallback <- control$covFallback
-  }
   .ret
 }
 

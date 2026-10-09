@@ -11,7 +11,10 @@
   variational covariance `"vi"`).  A FOCEi list may also name `"sa"` and
   `"imp"`, which are computed after the fit when the methods before them gave no
   covariance.  `setCov()` falls back only as `rsControl(covFallback=)` lists (by
-  default not at all, as before).  A list you give replaces the default, so a method it does not name
+  default not at all, as before); the list decides only what is installed, so a
+  covariance the fit already holds is reused whatever the list.  A theta-only
+  `"r,s"` fit now keeps its `"r"` and `"s"` covariances in `fit$covList`, so
+  `setCov()` switches to them without computing anything.  A list you give replaces the default, so a method it does not name
   has no fallback.  The choice among the R, S and sandwich covariances is now
   made in R (`.covSelectFocei()`), and `fit$env$covTried` records each method
   tried and why it was not used.

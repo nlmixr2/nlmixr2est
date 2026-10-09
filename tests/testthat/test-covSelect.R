@@ -278,3 +278,39 @@ test_that("after the fit, a failed covariance falls back to the listed sa/imp in
   expect_error(foceiControl(covFallback = list(r = "vi")), "cannot fall back to \"vi\"")
   expect_identical(foceiControl(covFallback = list(r = c("s", "sa")))$covFallback, list(r = c("s", "sa")))
 })
+
+test_that("a theta-only \"r,s\" fit keeps its \"r\" and \"s\" covariances to switch to", {
+  skip_on_cran()
+  .m <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  .f <- .nlmixr(.m, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covMethod = "r,s", covFull = FALSE))
+  expect_identical(.f$covMethod, "r,s")
+  expect_setequal(names(.f$env$covList), c("r", "s"))
+  expect_identical(.f$env$covList$r, .f$env$covR)
+  expect_identical(.f$env$covList$s, .f$env$covS)
+  # swapping needs no refit
+  local_mocked_bindings(.setCovRefit = function(...) stop("refit"))
+  suppressMessages(setCov(.f, "s"))
+  expect_identical(.f$covMethod, "s")
+  expect_identical(.f$cov, .f$env$covList[["s"]] %||% .f$env$covS)
+  suppressMessages(setCov(.f, "r,s"))
+  expect_identical(.f$covMethod, "r,s")
+})
