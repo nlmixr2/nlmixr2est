@@ -90,6 +90,59 @@ nmTest({
     expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
   })
 
+  test_that("analytic gradient of a combined error declared prop first matches central differences", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    # the augmented model emits its residual derivative columns in ini() order and the
+    # kernel's sigma slots run additive first; with prop.sd declared first each sigma
+    # gradient read the other's column.  Tight tolerances keep the central differences
+    # free of inner-problem noise (at sigdig 4 tka's differs from the exact value by 2.5).
+    propFirst <- function() {
+      ini({ tka <- 0.2; tcl <- 1.2; tv <- 3.2; eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; prop.sd <- 0.2; add.sd <- 0.5 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp ~ add(add.sd) + prop(prop.sd) })
+    }
+    d <- nlmixr2data::theo_sd
+    .ctl <- function(fast) {
+      foceiControl(
+        print = 0L,
+        covMethod = "",
+        fast = fast,
+        sigdig = 8,
+        rxControl = rxode2::rxControl(atol = 1e-12, rtol = 1e-12),
+        maxOuterIterations = 0L,
+        maxInnerIterations = 300L
+      )
+    }
+    ph <- suppressMessages(nlmixr2(propFirst, d, "focei", .ctl(TRUE)))
+    g <- .foceiGradDirect(ph)
+    expect_identical(names(g)[4:5], c("prop.sd", "add.sd"))
+    base <- fixef(ph)
+    ofvAt <- function(nm, val) {
+      ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
+      suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei", .ctl(FALSE))))$objf
+    }
+    h <- 1e-3
+    fd <- .gradRef("focei-combined-prop-first", function() {
+      vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+    })
+    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 1e-3)
+    # and the estimation steps on it: one fast iteration from either ini() order lands on
+    # the same estimates
+    addFirst <- function() {
+      ini({ tka <- 0.2; tcl <- 1.2; tv <- 3.2; eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.5; prop.sd <- 0.2 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v; cp ~ add(add.sd) + prop(prop.sd) })
+    }
+    .one <- foceiControl(print = 0L, covMethod = "", fast = TRUE, maxOuterIterations = 1L, calcTables = FALSE)
+    .a <- suppressMessages(suppressWarnings(nlmixr2(addFirst, d, "focei", .one)))
+    .p <- suppressMessages(suppressWarnings(nlmixr2(propFirst, d, "focei", .one)))
+    expect_equal(.p$theta[names(.a$theta)], .a$theta, tolerance = 1e-10)
+    expect_equal(.p$objf, .a$objf, tolerance = 1e-10)
+  })
+
   test_that("estimated boxCox/yeoJohnson lambda: analytic gradient matches central differences", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")

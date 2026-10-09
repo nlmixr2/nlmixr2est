@@ -674,7 +674,9 @@
     k1 <- pas[end]^(-1 / va[ia])
     pas <- c(pas, 1 / ((k1 + 1):(k1 + vna[ia]))^va[ia])
   }
-  pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))
+  # one gain per estimation iteration, as pas has: the covariance phase that
+  # saem_fit appends after them must read its own zero gains
+  pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))[seq_len(niter)]
   # Decaying step-size schedule for the "annealed" mixProbMethod (see
   # saemControl() docs); decays from iteration 1 instead of pas's
   # full-replacement step throughout nBurn.
@@ -899,6 +901,36 @@
   cfg
 }
 
+#' The standard errors of an SAEM fit's thetas, in `Plambda` order
+#'
+#' The leading block of `Ha` is laid out `[ilambda1][ilambda0]` (the
+#' mu-referenced thetas, then those with no eta), not in `Plambda` order.  A
+#' theta with no eta holds the pseudo-information `1/gamma2_phi0` there, so it
+#' gets no standard error.
+#' @param fit a saemFit object
+#' @return list(theta, se, H): `H` is the inverse of the mu-referenced block
+#'   in kernel order, `se` is `NA` where there is none or the layout is unknown
+#' @noRd
+.saemFitThetaSe <- function(fit) {
+  .th <- fit$Plambda
+  .nth <- length(.th)
+  .se <- rep(NA_real_, .nth)
+  .cfg <- attr(fit, "saem.cfg")
+  # a fit keeps the phi indices (i1/i0); they are the lambda indices when they
+  # cover every theta (no covariate coefficients)
+  .i1 <- if (is.null(.cfg$ilambda1)) .cfg$i1 else .cfg$ilambda1
+  .i0 <- if (is.null(.cfg$ilambda0)) .cfg$i0 else .cfg$ilambda0
+  .ord <- c(.i1, .i0) + 1L
+  .H <- NULL
+  if (length(.ord) == .nth && !anyDuplicated(.ord) && length(.i1) > 0L) {
+    # the mu-referenced rows come first; the phi0 rows hold no information
+    .k <- seq_along(.i1)
+    .H <- tryCatch(solve(fit$Ha[.k, .k, drop = FALSE]), error = function(e) NULL)
+    if (!is.null(.H)) .se[.i1 + 1L] <- sqrt(diag(.H))
+  }
+  list(theta = .th, se = .se, H = .H)
+}
+
 #' Print an SAEM model fit summary
 #'
 #' Print an SAEM model fit summary
@@ -908,30 +940,21 @@
 #' @return a list
 #' @export
 summary.saemFit <- function(object, ...) {
-  fit <- object ## Rcheck hack
-
-  th <- fit$Plambda
-  nth <- length(th)
-  H <- solve(fit$Ha[1:nth, 1:nth])
-  se <- sqrt(diag(H))
-
-  m <- cbind(exp(th), th, se) # FIXME
-  ## lhsVars = scan("LHS_VARS.txt", what="", quiet=TRUE)
-  ## if (length(lhsVars)==nth) dimnames(m)[[1]] = lhsVars
+  .s <- .saemFitThetaSe(object)
+  m <- cbind(exp(.s$theta), .s$theta, .s$se)
   dimnames(m)[[2]] <- c("th", "log(th)", "se(log_th)")
   cat("THETA:\n")
   print(m)
   cat("\nOMEGA:\n")
-  print(fit$Gamma2_phi1)
-  if (any(fit$sig2 == 0)) {
+  print(object$Gamma2_phi1)
+  if (any(object$sig2 == 0)) {
     cat("\nSIGMA:\n")
-    print(max(fit$sig2^2))
+    print(max(object$sig2^2))
   } else {
     cat("\nARES & BRES:\n")
-    print(fit$sig2)
+    print(object$sig2)
   }
-
-  invisible(list(theta = th, se = se, H = H, omega = fit$Gamma2_phi1, eta = fit$mpost_phi))
+  invisible(list(theta = .s$theta, se = .s$se, H = .s$H, omega = object$Gamma2_phi1, eta = object$mpost_phi))
 }
 
 #' Print an SAEM model fit summary
@@ -943,30 +966,7 @@ summary.saemFit <- function(object, ...) {
 #' @return a list
 #' @export
 print.saemFit <- function(x, ...) {
-  fit <- x ## Rcheck hack
-
-  th <- fit$Plambda
-  nth <- length(th)
-  H <- solve(fit$Ha[1:nth, 1:nth])
-  se <- sqrt(diag(H))
-
-  m <- cbind(exp(th), th, se) # FIXME
-  ## lhsVars = scan("LHS_VARS.txt", what="", quiet=TRUE)
-  ## if (length(lhsVars)==nth) dimnames(m)[[1]] = lhsVars
-  dimnames(m)[[2]] <- c("th", "log(th)", "se(log_th)")
-  cat("THETA:\n")
-  print(m)
-  cat("\nOMEGA:\n")
-  print(fit$Gamma2_phi1)
-  if (any(fit$sig2 == 0)) {
-    cat("\nSIGMA:\n")
-    print(max(fit$sig2^2))
-  } else {
-    cat("\nARES & BRES:\n")
-    print(fit$sig2)
-  }
-
-  invisible(list(theta = th, se = se, H = H, omega = fit$Gamma2_phi1, eta = fit$mpost_phi))
+  summary.saemFit(x, ...)
 }
 
 ##' @export
