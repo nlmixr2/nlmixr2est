@@ -119,7 +119,8 @@
   if (is.null(control)) {
     control <- saControl()
   }
-  .state <- if (control$warmStart) .saemChainState(fit)
+  # a saControl() saved before warmStart existed takes its default
+  .state <- if (!isFALSE(control$warmStart)) .saemChainState(fit)
   # SAEM derives its own etaMat from the MCMC; no external eta seed
   .covRecomputeNative(fit, "saem", .covEngineControl("sa", control, .state), useEtaMat = FALSE)
 }

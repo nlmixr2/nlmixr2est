@@ -1215,7 +1215,10 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 #' @noRd
 .setCovInstall <- function(env, method, cov) {
   # the method runs when cov is forced; it may leave a fallback its covFallback
-  # listed (.setCovFd)
+  # listed (.setCovFd); one left by an earlier request that stopped is not this one's
+  if (exists(".setCovFallback", envir = env, inherits = FALSE)) {
+    rm(list = ".setCovFallback", envir = env)
+  }
   force(cov)
   .fb <- get0(".setCovFallback", envir = env, inherits = FALSE)
   if (!is.null(.fb)) {

@@ -152,8 +152,9 @@ test_that(".saemWarmCfg() installs a chain state of the right shape, its statist
   # row i + k * N is subject i of chain k: subject 1 holds rows 1, 3, 5
   expect_equal(.w$statphi11, matrix(c(3, 4, 30, 40), 2, 2))
   expect_equal(.w$statphi01, matrix(c(9, 10), 2, 1))
-  expect_equal(.w$statphi12, crossprod(.ph[, 1:2]))
-  expect_equal(.w$statphi02, crossprod(.ph[, 3, drop = FALSE]))
+  # the kernel's second moments are averaged over the chains (Statphi12 / nmc)
+  expect_equal(.w$statphi12, crossprod(.ph[, 1:2]) / 3)
+  expect_equal(.w$statphi02, crossprod(.ph[, 3, drop = FALSE]) / 3)
   # the residual parameters start at their held values, not the placeholder 10
   expect_equal(.w$ares, c(0.5, 0, 0.2))
   expect_equal(.w$bres, c(0, 0.1, 0.3))

@@ -473,8 +473,8 @@
   cfg$phiM <- .phiM
   cfg$statphi11 <- .mean[, .i1, drop = FALSE]
   cfg$statphi01 <- .mean[, .i0, drop = FALSE]
-  cfg$statphi12 <- crossprod(.phiM[, .i1, drop = FALSE])
-  cfg$statphi02 <- crossprod(.phiM[, .i0, drop = FALSE])
+  cfg$statphi12 <- crossprod(.phiM[, .i1, drop = FALSE]) / cfg$nmc
+  cfg$statphi02 <- crossprod(.phiM[, .i0, drop = FALSE]) / cfg$nmc
   .first <- cfg$resValue[cfg$res_offset[seq_along(cfg$res.mod)] + 1L]
   .second <- cfg$resValue[cfg$res_offset[seq_along(cfg$res.mod)] + 2L]
   .add <- cfg$res.mod %in% c(1, 4)
