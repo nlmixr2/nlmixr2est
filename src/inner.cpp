@@ -11944,67 +11944,6 @@ static bool foceiThetaFromStore(Environment e, const arma::vec &theta) {
   return true;
 }
 
-// The covariance choice from the R and S states (see foceiCalcCov), as it was made in C++:
-// the slot (0 failed, 1 "r,s", 2 "r", 3 "s") and which matrix (1 covRS, 2 covR, 3 S^-1).
-// Kept to check .covSelectFocei() against (NLMIXR2EST_COV_SELECT_CHECK).
-static int foceiCovSelectCpp(Environment e, int req, int rState, int sState,
-                             const std::string &rstr, const std::string &sstr,
-                             bool checkSandwich, int &which) {
-  int cur = req;
-  which = 0;
-  if ((req == 1 || req == 2) && rState != 1) cur = 3;
-  if (cur == 2) which = 2;
-  if (cur == 1 || cur == 3) {
-    if (sState == 2) {
-      if (cur == 1) { which = 2; cur = 2; } else { cur = 0; }
-    } else if (sState == 1) {
-      if (cur == 1) {
-        arma::mat covRS = as<arma::mat>(e["covRS"]);
-        bool covRSsmall = arma::any(abs(covRS.diag()) < op_focei.covSmall);
-        bool checkSandwich2 = !checkSandwich && covRSsmall;
-        which = 1;
-        if (checkSandwich || checkSandwich2) {
-          if (!checkSandwich2 && rstr == "r") {
-            which = 2; cur = 2;
-          } else if (!checkSandwich2 && sstr == "s") {
-            which = 3; cur = 3;
-          } else {
-            double covRSd = sum(covRS.diag());
-            arma::mat covR = as<arma::mat>(e["covR"]);
-            bool covRsmall = arma::any(abs(2.0*covR.diag()) < op_focei.covSmall);
-            double covRd = sum(2.0*covR.diag());
-            arma::mat covS = as<arma::mat>(e["covS"]);
-            bool covSsmall = arma::any(abs(4.0*covS.diag()) < op_focei.covSmall);
-            double covSd = sum(4.0*covS.diag());
-            if (covRSsmall && covSsmall && covRsmall) {
-              which = 1;
-            } else if (covRSsmall && covSsmall && !covRsmall) {
-              which = 2; cur = 2;
-            } else if (covRSsmall && !covSsmall && covRsmall) {
-              which = 3; cur = 3;
-            } else if (covRSd > covRd) {
-              if (covRd > covSd) { which = 3; cur = 3; } else { which = 2; cur = 2; }
-            } else if (covRSd > covSd) {
-              which = 3; cur = 3;
-            } else {
-              which = 1;
-            }
-          }
-        }
-      } else {
-        which = 3;
-      }
-    } else if (sState == 3) {
-      if (cur == 1) { which = 2; cur = 2; } else { cur = 0; }
-    }
-  }
-  if (cur != 0 && which != 0) {
-    arma::mat cov = as<arma::mat>(e[which == 1 ? "covRS" : (which == 2 ? "covR" : ".covSinv")]);
-    if (all(cov.diag() < 1e-7)) cur = 0;
-  }
-  return cur;
-}
-
 // Choose the covariance from the R and S matrices (.covSelectFocei() in R/covSelect.R):
 // installs e$cov and e$covMethod and gives the warnings; returns the slot, 0 when none.
 static int foceiCovSelect(Environment e, int req, int rState, int sState,
@@ -12013,24 +11952,7 @@ static int foceiCovSelect(Environment e, int req, int rState, int sState,
   Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
   Function sel = as<Function>(nlmixr2[".covSelectFocei"]);
   List r = sel(e, req, rState, sState, rstr, sstr, checkSandwich, sHasZero, op_focei.covSmall);
-  int slot = as<int>(r["slot"]);
-  if (getenv("NLMIXR2EST_COV_SELECT_CHECK") != NULL) {
-    int which;
-    int cslot = foceiCovSelectCpp(e, req, rState, sState, rstr, sstr, checkSandwich, which);
-    bool same = cslot == slot;
-    if (same && slot != 0) {
-      NumericMatrix rc = as<NumericMatrix>(e["cov"]);
-      arma::mat cc = as<arma::mat>(e[which == 1 ? "covRS" : (which == 2 ? "covR" : ".covSinv")]);
-      arma::mat rcm = as<arma::mat>(rc);
-      same = rcm.n_rows == cc.n_rows && rcm.n_cols == cc.n_cols &&
-        std::equal(rcm.begin(), rcm.end(), cc.begin());
-    }
-    if (!same) {
-      stop("covariance selection check: R chose slot %d, C++ slot %d (req %d, R state %d, S state %d)",
-           slot, cslot, req, rState, sState);
-    }
-  }
-  return slot;
+  return as<int>(r["slot"]);
 }
 
 NumericMatrix foceiCalcCov(Environment e){
