@@ -89,7 +89,7 @@
 #' @return single logical
 #' @noRd
 .covStoreRefitOk <- function(args) {
-  all(names(args) %in% c("covMethod", "covFull", "covSmall", .covStoreKeyFields))
+  all(names(args) %in% c("covMethod", "covFull", "covSmall", "covFallback", .covStoreKeyFields))
 }
 
 #' Index of the store entry for a key

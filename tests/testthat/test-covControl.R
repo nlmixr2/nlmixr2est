@@ -50,3 +50,60 @@ test_that("every Gill step factor is a finite number of at least 1", {
     fixed = TRUE
   )
 })
+
+test_that("rsControl(covFallback=) is the request's own list, never the fit's", {
+  expect_null(rsControl()$covFallback)
+  expect_identical(rsControl(covFallback = list(r = "s"))$covFallback, list(r = "s"))
+  expect_error(rsControl(covFallback = list(r = "vi")), "cannot fall back to \"vi\"")
+  .fit <- new.env(parent = emptyenv())
+  .fit$foceiControl <- foceiControl()
+  expect_null(setCovOptions(rsControl(), .fit)$covFallback)
+  expect_identical(setCovOptions(rsControl(covFallback = list(r = "s")), .fit)$covFallback, list(r = "s"))
+  .d <- rxode2::rxUiDeparse(rsControl(covFallback = list(r = "s")), "ctl")
+  expect_identical(eval(.d[[3]])$covFallback, list(r = "s"))
+})
+
+nmTest({
+  test_that("setCov() falls back only as rsControl(covFallback=) lists", {
+    skip_on_cran()
+    .m <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .fit <- .nlmixr(.m, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covMethod = "r,s", covFull = FALSE))
+    # an "r" request whose refit can only give "s"
+    .s <- suppressMessages(.setCovRefit(.fit, covMethod = "s", covFull = FALSE))
+    expect_identical(.s$covMethod, "s")
+    .args <- new.env(parent = emptyenv())
+    local_mocked_bindings(.setCovRefit = function(obj, ...) {
+      .args$fallback <- list(...)$covFallback
+      .s
+    })
+    expect_error(suppressMessages(setCov(.fit, "r")), "\"r\" could not be computed")
+    # the refit was given no fallback
+    expect_identical(.args$fallback, list())
+    expect_warning(
+      suppressMessages(setCov(.fit, "r", control = rsControl(covFallback = list(r = "s")))),
+      "\"s\" covariance installed instead of the requested \"r\""
+    )
+    expect_identical(.args$fallback, list(r = "s"))
+    expect_identical(.fit$covMethod, "s")
+    expect_identical(.fit$cov, .s$cov)
+  })
+})

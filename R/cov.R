@@ -1209,8 +1209,13 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 #' @return invisibly `TRUE`
 #' @noRd
 .setCovInstall <- function(env, method, cov) {
+  # the method runs when cov is forced; it may leave a fallback its covFallback
+  # listed (.setCovFd)
+  force(cov)
+  .fb <- get0(".setCovFallback", envir = env, inherits = FALSE)
+  if (!is.null(.fb)) rm(list = ".setCovFallback", envir = env)
   if (is.null(cov)) {
-    if (!.covSameName(method, env$covMethod)) {
+    if (!.covSameName(method, env$covMethod) && !identical(.fb, env$covMethod)) {
       stop("setCov() method '", method, "' returned NULL without installing '", method, "'", call. = FALSE)
     }
     return(invisible(TRUE))
@@ -1301,10 +1306,21 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 #' @return invisibly `TRUE`
 #' @noRd
 .setCovFd <- function(fit, env, method, base, control = NULL) {
-  .fit2 <- do.call(.setCovRefit, c(list(fit, covMethod = base, covFull = .covIsFull(method)), unclass(control)))
+  .args <- unclass(control)
+  # an explicit request falls back only as its control lists (none by default)
+  .fb <- .args$covFallback
+  .args$covFallback <- if (is.list(.fb)) .fb else list()
+  .fit2 <- do.call(.setCovRefit, c(list(fit, covMethod = base, covFull = .covIsFull(method)), .args))
   .label <- .fit2$covMethod
+  .listed <- nzchar(.covFdType(.label)) &&
+    .covFdType(.label) %in% .args$covFallback[[base]] &&
+    identical(.covIsFull(method), .covIsFull(.label))
   if (!.covSameName(method, .label)) {
-    .setCovFail(method, if (.covIsName(.label)) sprintf("was \"%s\"", .label))
+    if (!.listed) {
+      .setCovFail(method, if (.covIsName(.label)) sprintf("was \"%s\"", .label))
+    }
+    warning(sprintf("\"%s\" covariance installed instead of the requested \"%s\"", .label, method), call. = FALSE)
+    assign(".setCovFallback", .label, envir = env)
   }
   .ok <- .covInstall(
     env,

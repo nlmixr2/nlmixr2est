@@ -1,9 +1,15 @@
 #' Options for the finite-difference covariance in setCov()
 #'
 #' Used by \code{setCov(fit, "r,s")}, \code{"r"} and \code{"s"}.  Each option
-#' left \code{NULL} keeps the value the fit was estimated with.
+#' left \code{NULL} keeps the value the fit was estimated with, except
+#' \code{covFallback}.
 #'
 #' @inheritParams foceiControl
+#' @param covFallback what the requested method may fall back to, as in
+#'   \code{foceiControl(covFallback=)}.  \code{NULL} (default) is none:
+#'   \code{setCov()} installs the method asked for or stops with an error.  With
+#'   a list, a covariance from a method it lists for the request is installed,
+#'   with a warning that names it.
 #' @return \code{rsControl} object
 #' @author Matt Fidler
 #' @seealso \code{\link{setCov}()}
@@ -18,9 +24,13 @@ rsControl <- function(
   covGillF = NULL,
   covSmall = NULL,
   rmatNorm = NULL,
-  smatNorm = NULL
+  smatNorm = NULL,
+  covFallback = NULL
 ) {
   .covFdOptionsAssert(hessEps, gillKcov, gillStepCov, gillFtolCov, covGillF, covSmall, rmatNorm, smatNorm, TRUE)
+  if (!is.null(covFallback)) {
+    covFallback <- .covFallbackCheck(covFallback)
+  }
   .ret <- list(
     hessEps = hessEps,
     gillKcov = gillKcov,
@@ -29,7 +39,8 @@ rsControl <- function(
     covGillF = covGillF,
     covSmall = covSmall,
     rmatNorm = rmatNorm,
-    smatNorm = smatNorm
+    smatNorm = smatNorm,
+    covFallback = covFallback
   )
   if (!is.null(.ret$gillKcov)) {
     .ret$gillKcov <- as.integer(.ret$gillKcov)
@@ -213,6 +224,10 @@ setCovOptions.rsControl <- function(control, fit, ...) {
     switch(.rsControlMode[[.n]], double = as.double(.v), integer = as.integer(.v), logical = as.logical(.v))
   })
   names(.ret) <- names(.rsControlMode)
+  # the fallbacks are the request's own, never the fit's
+  if (!is.null(control$covFallback)) {
+    .ret$covFallback <- control$covFallback
+  }
   .ret
 }
 

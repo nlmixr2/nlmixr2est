@@ -12,7 +12,8 @@ rsControl(
   covGillF = NULL,
   covSmall = NULL,
   rmatNorm = NULL,
-  smatNorm = NULL
+  smatNorm = NULL,
+  covFallback = NULL
 )
 }
 \arguments{
@@ -48,13 +49,20 @@ theta-only stage (see \code{covFull})}
 \item{smatNorm}{A parameter to normalize gradient step size by the
 parameter value during the calculation of the S matrix of the
 theta-only stage (see \code{covFull})}
+
+\item{covFallback}{what the requested method may fall back to, as in
+\code{foceiControl(covFallback=)}.  \code{NULL} (default) is none:
+\code{setCov()} installs the method asked for or stops with an error.  With
+a list, a covariance from a method it lists for the request is installed,
+with a warning that names it.}
 }
 \value{
 \code{rsControl} object
 }
 \description{
 Used by \code{setCov(fit, "r,s")}, \code{"r"} and \code{"s"}.  Each option
-left \code{NULL} keeps the value the fit was estimated with.
+left \code{NULL} keeps the value the fit was estimated with, except
+\code{covFallback}.
 }
 \examples{
 rsControl(hessEps = 1e-4)
