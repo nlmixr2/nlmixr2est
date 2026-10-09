@@ -129,7 +129,11 @@ nmTest({
       .fakeRefit(obj, ...)
     })
     setCov(.fit, "s (full)", control = rsControl(hessEps = 1e-4, covSmall = 1e-6))
-    expect_equal(.seen$args, list(covMethod = "s", covFull = TRUE, hessEps = 1e-4, covSmall = 1e-6))
+    # an explicit request gets no fallbacks unless its control lists some
+    expect_equal(
+      .seen$args,
+      list(covMethod = "s", covFull = TRUE, hessEps = 1e-4, covSmall = 1e-6, covFallback = list())
+    )
     expect_identical(.fit$covMethod, "s (full)")
   })
 
