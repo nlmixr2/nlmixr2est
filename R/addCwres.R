@@ -72,6 +72,14 @@ addCwres <- function(fit, focei = TRUE, updateObject = TRUE, envir = parent.fram
   assertNlmixrFitData(fit)
   checkmate::assertLogical(updateObject, len = 1, any.missing = FALSE)
   checkmate::assertLogical(focei, len = 1, any.missing = FALSE)
+  ## event bus: `fit` is forced above, outside the scope; the internal refit
+  ## below is silent and one fitUpdate is emitted on exit (see rxEvents.R)
+  .nlmixr2EventEnter()
+  .evOrig <- fit
+  .evName <- .nlmixr2EventObjName(substitute(fit))
+  .evRebound <- FALSE
+  on.exit(.nlmixr2EventExitUpdate(returnValue(), .evOrig, .evName, "cwres", .evRebound),
+          add = TRUE)
   if (is.null(fit$eta)) {
     stop("cannot add CWRES to a model without etas", call. = FALSE)
   } else if (any(names(fit) == "CWRES")) {
@@ -112,7 +120,7 @@ addCwres <- function(fit, focei = TRUE, updateObject = TRUE, envir = parent.fram
         nlmixrAddObjectiveFunctionDataFrame(.new, .objDf, .type)
       }
       if (updateObject) {
-        nlmixrUpdateObject(.new, .objName, envir, .origFitEnv)
+        .evRebound <- nlmixrUpdateObject(.new, .objName, envir, .origFitEnv)
       }
       invisible(.new)
     },
@@ -122,6 +130,7 @@ addCwres <- function(fit, focei = TRUE, updateObject = TRUE, envir = parent.fram
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.addCwres <- function(x, ...) {
-  addCwres(x[[1]], updateObject = FALSE, envir = parent.frame(2))
+  ## an accessor, not a user update: silent on the event bus
+  .nlmixr2EventScope(addCwres(x[[1]], updateObject = FALSE, envir = parent.frame(2)))
 }
 attr(nmObjGetData.addCwres, "desc") <- "Add CWRES to object if needed"

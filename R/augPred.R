@@ -291,6 +291,11 @@ nlmixr2AugPredSolve <- function(
 #' @rdname nlmixr2AugPredSolve
 #' @export
 augPred.nlmixr2FitData <- function(object, primary = NULL, minimum = NULL, maximum = NULL, length.out = 51, ...) {
+  ## event bus: one solveComplete linked to the fit (see rxEvents.R)
+  force(object)
+  .nlmixr2EventEnter()
+  .evCall <- sys.call()
+  on.exit(.nlmixr2EventExitSolve(returnValue(), object, .evCall, "augPred"), add = TRUE)
   nlmixr2AugPredSolve(
     fit = object,
     minimum = minimum,

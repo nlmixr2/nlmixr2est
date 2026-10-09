@@ -48,6 +48,13 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   nlmixr2global$finalUiCompressed <- FALSE
   on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   assertNlmixrFitData(object)
+  ## event bus: one fitUpdate on exit (see rxEvents.R)
+  .nlmixr2EventEnter()
+  .evOrig <- object
+  .evName <- .nlmixr2EventObjName(substitute(object))
+  .evRebound <- FALSE
+  on.exit(.nlmixr2EventExitUpdate(returnValue(), .evOrig, .evName, "npde", .evRebound),
+          add = TRUE)
   if (any(names(object) == "NPDE")) {
     warning("already contains NPDE", call. = FALSE)
     return(object)
@@ -70,7 +77,7 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
       .fit <- nlmixrClone(object)
       .new <- nlmixrCbind(.fit, .npde[[2]])
       if (updateObject) {
-        nlmixrUpdateObject(.new, .objName, envir, .fitEnv)
+        .evRebound <- nlmixrUpdateObject(.new, .objName, envir, .fitEnv)
       }
       .msuccess("done")
       .new

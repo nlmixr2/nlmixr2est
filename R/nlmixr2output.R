@@ -639,6 +639,14 @@
 #' @export
 `$.nlmixr2FitData` <- function(obj, arg, exact = FALSE) {
   rxode2::.udfEnvSet(parent.frame(1))
+  if (arg %in% .nmObjObjectiveArgs) {
+    ## reading the objective of a deferred-objective fit (e.g. saem) computes
+    ## it in place; tell the event bus once (see rxEvents.R)
+    .evEnv <- attr(class(obj), ".foceiEnv")
+    .evOfv0 <- if (is.environment(.evEnv)) get0("objective", envir = .evEnv, inherits = FALSE) else NULL
+    .nlmixr2EventEnter()
+    on.exit(.nlmixr2EventExitObjective(obj, .evEnv, .evOfv0), add = TRUE)
+  }
   .ret <- obj[[arg]]
   if (arg == "md5") {
     return(.nlmixr2Md5(obj))

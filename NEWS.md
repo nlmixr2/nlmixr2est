@@ -2,6 +2,18 @@
 
 ## New features
 
+- nlmixr2est now tells the rxode2 event bus (`rxode2::rxEventListen()`)
+  about top-level work, so loggers such as nlmixr2log can record it:
+  `nlmixr2()` emits `fitComplete` (or `solveComplete` for simulations and
+  predictions); `addCwres()`, `addNpde()`, `addTable()`, `setOfv()` and
+  reading a deferred objective emit `fitUpdate`; `vpcSim()` and `augPred()`
+  emit `solveComplete`.  Internal refits and solves are silent.  Without an
+  rxode2 that has the bus nothing changes.
+
+- `nlmixrUpdateObject()` now returns whether it rebound the object, and
+  `addCwres()`, `addNpde()` and `addTable(updateObject = TRUE)` no longer
+  error when called on an expression such as `fits[[1]]`.
+
 - `foceiControl(innerOpt = "lbfgsb3c")` runs L-BFGS-B on the per-subject
   ETA problem, using `lbfgsb3c`'s thread-safe port (`lbfgsb3c >= 2024-3.6`).
   It replaces `innerOpt = "BFGS"`, which silently fell back to `"n1qn1"`

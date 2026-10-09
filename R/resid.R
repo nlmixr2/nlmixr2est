@@ -1039,12 +1039,25 @@ addTable <- function(
 ) {
   nlmixr2global$finalUiCompressed <- FALSE
   on.exit(nlmixr2global$finalUiCompressed <- TRUE)
+  ## event bus: `object` is forced first, outside the scope; one fitUpdate is
+  ## emitted on exit.  updateObject = TRUE keeps (and modifies) the shared
+  ## environment, so "in place" is environment identity here (see rxEvents.R)
+  force(object)
+  .nlmixr2EventEnter()
+  .evOrig <- object
+  .evOrigEnv <- if (inherits(object, "nlmixr2FitCore")) object$env else NULL
+  .evName <- .nlmixr2EventObjName(substitute(object))
+  on.exit(.nlmixr2EventExitUpdate(
+    returnValue(), .evOrig, .evName, "table",
+    inherits(returnValue(), "nlmixr2FitCore") && identical(returnValue()$env, .evOrigEnv)
+  ), add = TRUE)
   nlmixrWithTiming(
     "table",
     {
       keep <- unique(c(keep, "nlmixrRowNums"))
       .malert("Calculating residuals/tables")
       .objName <- substitute(object)
+      .objName <- if (is.name(.objName)) as.character(.objName) else NULL
       if (!inherits(object, "nlmixr2FitCore")) {
         stop("requires a nlmixr2 fit object", call. = FALSE)
       }
@@ -1152,7 +1165,8 @@ addTable <- function(
           .bound <- do.call(
             "c",
             lapply(ls(.parent, all.names = TRUE), function(.cur) {
-              if (.cur == .objName && identical(.parent[[.cur]]$env, .fit$env)) {
+              if (!is.null(.objName) && identical(.cur, .objName) &&
+                    identical(.parent[[.cur]]$env, .fit$env)) {
                 return(.cur)
               }
               return(NULL)

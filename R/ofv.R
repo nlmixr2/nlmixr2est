@@ -118,6 +118,12 @@
 ##' @export
 setOfv <- function(x, type) {
   assertNlmixrFit(x)
+  ## event bus: setOfv() modifies the fit in place; emit one fitUpdate on
+  ## exit (see rxEvents.R)
+  .nlmixr2EventEnter()
+  .evName <- .nlmixr2EventObjName(substitute(x))
+  on.exit(.nlmixr2EventExitUpdate(returnValue(), x, .evName, "ofv", TRUE, force = TRUE),
+          add = TRUE)
   .objDf <- x$objDf
   .w <- which(tolower(row.names(.objDf)) == tolower(type))
   if (length(.w) != 1) {
