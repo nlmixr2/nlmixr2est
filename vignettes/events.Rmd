@@ -56,7 +56,7 @@ hook is a no-op.
 | Function | Event | Notes |
 |---|---|---|
 | `nlmixr2()` that returns a fit | `fitComplete` | any `est`, including `nlmixr2(fit, est = ...)` |
-| `nlmixr2()` with `est = "rxSolve"`, `"simulate"` or `"predict"` | `solveComplete` | also reached by `simulate(fit)` and `predict(fit)` |
+| `nlmixr2()` with `est = "rxSolve"`, `"simulate"` or `"predict"` | `solveComplete` | also reached by `simulate(fit)` (`kind = "rxSolve"`) and `predict(fit)` |
 | `vpcSim()` | `solveComplete` | `kind = "vpcSim"`; the simulations inside are silent |
 | `augPred()` on a fit | `solveComplete` | `kind = "augPred"` |
 | `addCwres()` | `fitUpdate` | `what = "cwres"` |
