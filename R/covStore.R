@@ -130,8 +130,8 @@
 #'
 #' The full stage's R, steps, point and S (`.fdFullR`, `.fdFullH`, `.fdFullX0`,
 #' `.fdFullS`) and a separate theta-only stage's steps (`covSteps`), finite-difference R
-#' (`R.0`) and S (`S0`, `Sper`, `SHasZero`).  An entry already under the key keeps what the new step did not compute, when
-#' both were taken at the same steps.
+#' (`R.0`) and S (`S0`, `Sper`, `SHasZero`).  An entry already under the key keeps
+#' what the new step did not compute, when both were taken at the same steps.
 #' @param env fit environment whose store is updated
 #' @param key from `.covStoreKey()`
 #' @param src environment the covariance step ran in (the fit's own, or a refit's)

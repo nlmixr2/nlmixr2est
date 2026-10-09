@@ -3,7 +3,9 @@
 # The parse data is inspected so strings and comments are not counted.
 test_that("no R source file uses superassignment", {
   .rDir <- testthat::test_path("..", "..", "R")
-  skip_if_not(dir.exists(.rDir), "package source tree not available")
+  # an installed package (covr, R CMD check) has an R/ directory too, holding the
+  # lazy-load database instead of sources
+  skip_if_not(file.exists(file.path(.rDir, "nlmixr2.R")), "package source tree not available")
   .files <- list.files(.rDir, pattern = "\\.[Rr]$", full.names = TRUE)
   expect_gt(length(.files), 0L)
   .hits <- character(0)
