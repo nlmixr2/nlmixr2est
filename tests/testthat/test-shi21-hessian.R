@@ -129,10 +129,10 @@ nmTest({
       function(.type) {
         withr::local_options(list(nlmixr2est.shi21RatioCensor = .type))
         .withNlmProblem(.mod, .d, .ctl, function(x) {
-          .gr <- function(p) attr(nlmSolveGradR(p + 0), "gradient")
+          .gr <- function(p) .nlmixrNlminbGradC(p + 0)
           .oracle <- numDeriv::jacobian(.gr, x + 0)
           .oracle <- (.oracle + t(.oracle)) / 2
-          .h <- attr(nlmSolveGradHess(x + 0), "hessian")
+          .h <- attr(.nlmixrNlmFunC(x + 0), "hessian")
           # cross terms can be exactly 0, so scale by the diagonal
           max(abs(.h - .oracle) / sqrt(abs(outer(diag(.oracle), diag(.oracle)))))
         })
