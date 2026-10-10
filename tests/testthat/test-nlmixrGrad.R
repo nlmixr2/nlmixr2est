@@ -120,6 +120,31 @@ test_that("nlmixr2GradFun() prints wrapped rows, underlining the last continuati
   )
 })
 
+test_that("nlmixr2Hess() differences the parameters `which` leaves out of the search (issue 1140)", {
+  # a quadratic: the 5-point stencil is exact at any step
+  f <- function(x) (x[1] - 1)^2 + 3 * (x[2] - 2)^2 + x[1] * x[2] + 5
+  h <- matrix(c(2, 1, 1, 6), 2)
+  p <- c(0.5, 1)
+  expect_equal(nlmixr2Hess(p, f), h, tolerance = 1e-6)
+  # a parameter left out of the search is still differenced, about f(p)
+  expect_equal(nlmixr2Hess(p, f, which = c(FALSE, TRUE)), h, tolerance = 1e-6)
+  expect_equal(nlmixr2Hess(p, f, which = c(TRUE, FALSE)), h, tolerance = 1e-6)
+  expect_equal(nlmixr2Hess(p, f, which = c(FALSE, FALSE)), h, tolerance = 1e-6)
+  # the base objective is reported on every row, the left-out ones too
+  expect_identical(nlmixr2Gill83(f, p, which = c(FALSE, TRUE))$f, rep(f(p), 2))
+  expect_identical(nlmixr2Gill83(f, p, which = c(FALSE, FALSE))$f, rep(NA_real_, 2))
+  # a left-out parameter is differenced with the interval gillK = 0 gives it
+  f2 <- function(x) exp(x[1]) + sin(x[2]) + x[1] * x[2]
+  expect_identical(
+    nlmixr2Hess(p, f2, which = c(FALSE, TRUE))[1, 1],
+    nlmixr2Hess(p, f2, gillK = 0L)[1, 1]
+  )
+  expect_identical(
+    nlmixr2Hess(p, f2, which = c(FALSE, TRUE))[2, 2],
+    nlmixr2Hess(p, f2)[2, 2]
+  )
+})
+
 test_that("the objective sees the caller's names and attributes", {
   f <- function(x) unname((x["a"] - 1)^2 + x["b"]^2)
   gf <- nlmixr2GradFun(f, print = 0)
@@ -136,4 +161,12 @@ test_that("the objective sees the caller's names and attributes", {
   expect_equal(gw$eval(xw), 15)
   expect_equal(gw$grad(xw), c(6, 12), tolerance = 1e-3)
   expect_equal(nlmixr2Hess(xw, fw), diag(c(6, 6)), tolerance = 1e-3)
+})
+
+test_that("nlmixr2GradFun() takes a Gill step factor of at least 1, as foceiControl() does", {
+  f <- function(x) sum(x^2)
+  for (.bad in list(0.5, 0, Inf, NA_real_, c(2, 3))) {
+    expect_error(nlmixr2GradFun(f, gillStep = .bad), "gillStep")
+  }
+  expect_error(nlmixr2GradFun(f, gillStep = 0.5), "Element 1 is not >= 1", fixed = TRUE)
 })

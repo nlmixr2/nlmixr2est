@@ -24,6 +24,8 @@ nmTest({
     expect_equal(trustControl(hessianMethod = "bofill")$hessianMethod, 4L)
     expect_equal(trustControl(hessianMethod = 3L)$hessianMethod, 3L)
     expect_error(trustControl(hessianMethod = "not-a-method"))
+    expect_identical(trustControl()$covMethod, "r")
+    expect_identical(trustControl(covMethod = "trust")$covMethod, "trust")
   })
 
   test_that("trust registers in the nlm-family method listing", {
@@ -173,49 +175,42 @@ nmTest({
     expect_equal(dim(.raw$hessian), c(4L, 4L))
   })
 
-  test_that("est='trust' reuses its own Hessian, skipping nlmixr2est's post-fit FD Hessian", {
+  test_that("est='trust' takes the covariance Hessian at the estimates unless asked for its own (issue 1140)", {
     skip_on_cran()
-    .calledTrust <- FALSE
-    testthat::with_mocked_bindings(
-      nlmixr2Hess = function(...) {
-        .calledTrust <<- TRUE
-        stop("nlmixr2Hess should not be called for est='trust'")
-      },
-      .package = "nlmixr2est",
-      {
-        .fT <- .nlmixr(
+    .acc <- new.env(parent = emptyenv())
+    .acc$hessCalls <- 0L
+    .hess <- nlmixr2Hess
+    .fitTrust <- function(...) {
+      testthat::with_mocked_bindings(
+        nlmixr2Hess = function(...) {
+          .acc$hessCalls <- .acc$hessCalls + 1L
+          .hess(...)
+        },
+        .package = "nlmixr2est",
+        .nlmixr(
           .oneCmt,
           nlmixr2data::theo_sd,
           est = "trust",
-          control = trustControl(print = 0L, calcTables = FALSE)
+          control = trustControl(print = 0L, calcTables = FALSE, ...)
         )
-      }
-    )
-    expect_false(.calledTrust)
+      )
+    }
+    # "trust": the last iteration's (quasi-Newton, by default) Hessian
+    .fT <- .fitTrust(covMethod = "trust")
+    expect_identical(.acc$hessCalls, 0L)
     expect_true(is.finite(.fT$objective))
-
-    # Control: the SAME mock trips for bobyqa (which has no Hessian of its
-    # own and needs the post-fit FD recompute), proving the mock itself is
-    # capable of detecting the call rather than being coincidentally unused.
-    .calledBobyqa <- FALSE
-    testthat::with_mocked_bindings(
-      nlmixr2Hess = function(...) {
-        .calledBobyqa <<- TRUE
-        stop("nlmixr2Hess should be called for est='bobyqa'")
-      },
-      .package = "nlmixr2est",
-      {
-        expect_error(
-          .nlmixr(
-            .oneCmt,
-            nlmixr2data::theo_sd,
-            est = "bobyqa",
-            control = bobyqaControl(print = 0L, calcTables = FALSE)
-          )
-        )
-      }
-    )
-    expect_true(.calledBobyqa)
+    expect_true(.fT$covMethod %in% c("r (trust)", "r+ (trust)", "|r| (trust)"))
+    # "r" with hessianMethod = "fd": central differences of the analytic gradient
+    .fF <- .fitTrust(hessianMethod = "fd")
+    expect_identical(.acc$hessCalls, 0L)
+    expect_true(.fF$covMethod %in% c("r", "r+", "|r|"))
+    # "r" with the default quasi-Newton hessianMethod: nlmixr2Hess()
+    .fR <- .fitTrust()
+    expect_identical(.acc$hessCalls, 1L)
+    expect_true(.fR$covMethod %in% c("r", "r+", "|r|"))
+    # the two agree; the last "fd" iteration's Hessian, whose steps are searched
+    # afresh at every iteration, put add.sd's SE 16% high
+    expect_equal(sqrt(diag(.fF$cov)), sqrt(diag(.fR$cov)), tolerance = 0.01)
   })
 
   test_that("est='trust' warns when the Newton decrement contradicts trust_solve_c()'s own converged flag", {
@@ -243,7 +238,12 @@ nmTest({
       .r$hessian[] <- 0
       .r
     })
-    .fT <- .nlmixr(.oneCmt, nlmixr2data::theo_sd, est = "trust", control = trustControl(print = 0L, calcTables = FALSE))
+    .fT <- .nlmixr(
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      est = "trust",
+      control = trustControl(print = 0L, calcTables = FALSE, covMethod = "trust")
+    )
     expect_identical(.fT$covMethod, "failed")
     expect_null(.fT$cov)
     expect_true("R matrix is not finite; covariance step failed" %in% .fT$runInfo)

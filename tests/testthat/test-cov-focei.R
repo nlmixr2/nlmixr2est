@@ -244,6 +244,161 @@ nmTest({
     expect_equal(-2 * sum(.pop$llikObs, na.rm = TRUE), .pop$objf)
   })
 
+  test_that("an agq fit reports llikObs at its ETAs, not at the last quadrature node", {
+    # Every quadrature node re-solves the subject at another eta, rewriting its
+    # per-observation log-likelihoods; the fit has to report them at the mode,
+    # where the table's IPRED is solved.  No covariance step, so nothing else
+    # moves them.
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fit <- .nlmixr(one.cmt, theo_sd, "agq", agqControl(print = 0, maxOuterIterations = 0L, covMethod = ""))
+    expect_equal(.fit$control$nAGQ, 2L)
+    .ll <- .fit$llikObs
+    .ll <- .ll[!is.na(.ll)] # dose records
+    # llikObs of a Gaussian row omits the 2*pi constant of dnorm()
+    expect_equal(
+      .ll,
+      dnorm(.fit$DV, .fit$IPRED, .fit$theta[["add.sd"]], log = TRUE) + 0.5 * log(2 * pi),
+      tolerance = 1e-10
+    )
+  })
+
+  test_that("forward-difference S scores are taken from the estimates", {
+    # covDerivMethod = "forward" differences each subject's -2LL from its value at
+    # the estimates.  That value was read after the pooled gradient's own
+    # forward legs, so it was the last leg's, and every score carried that leg's
+    # shift: S came out 100 to 1000 times the central-difference S.
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- function(...) {
+      foceiControl(print = 0, maxOuterIterations = 0L, covMethod = "s", covFull = FALSE, ...)
+    }
+    .central <- .nlmixr(one.cmt, theo_sd, "focei", .ctl())
+    .forward <- .nlmixr(one.cmt, theo_sd, "focei", .ctl(covDerivMethod = "forward"))
+    expect_equal(.forward$covMethod, "s")
+    # forward differences agree with central ones to their truncation error
+    expect_equal(diag(.forward$env$S0), diag(.central$env$S0), tolerance = 0.25)
+  })
+
+  test_that("covDerivMethod = \"forward\" keeps the R matrix", {
+    # the R matrix is always the central stencil; foceiCalcR() stopped on a
+    # forward derivative method instead, so "r" and "r,s" failed
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- function(...) {
+      foceiControl(print = 0, maxOuterIterations = 0L, covFull = FALSE, ...)
+    }
+    .central <- .nlmixr(one.cmt, theo_sd, "focei", .ctl())
+    .forward <- .nlmixr(one.cmt, theo_sd, "focei", .ctl(covDerivMethod = "forward"))
+    expect_equal(.central$covMethod, "r,s")
+    expect_equal(.forward$covMethod, "r,s")
+    expect_identical(.forward$env$R.0, .central$env$R.0)
+    # the sandwich differs only through the forward-difference S
+    expect_equal(sqrt(diag(.forward$cov)), sqrt(diag(.central$cov)), tolerance = 0.2)
+    .r <- .nlmixr(one.cmt, theo_sd, "focei", .ctl(covMethod = "r", covDerivMethod = "forward"))
+    expect_equal(.r$covMethod, "r")
+    expect_equal(unname(.r$cov), unname(.central$covR))
+  })
+
+  test_that("a requested full sandwich gets its S when the native step falls back to R", {
+    # One subject: the theta-only S is rank one, so the native "r,s" falls back to
+    # the R matrix.  The full covariance then computed no S, and the requested
+    # "r,s (full)" was dropped without a word; it is now computed, checked, and
+    # the reason it is not installed is reported.
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .f <- .nlmixr(
+      one.cmt,
+      theo_sd[theo_sd$ID == 1, ],
+      "focei",
+      foceiControl(print = 0, maxOuterIterations = 0L, cholAccept = 0)
+    )
+    expect_equal(.covFdType(.f$covMethod), "r")
+    expect_false(.covIsFull(.f$covMethod))
+    expect_true(is.matrix(.f$env$.fdFullS))
+    expect_true(any(startsWith(.f$runInfo, "\"r,s (full)\" covariance ")))
+  })
+
+  test_that("an all-zero R is not corrected into a covariance", {
+    # the objective does not move with tz at all (its covariate is 0), so R = 0;
+    # cholSE0 adds cholSEtol to a zero 1x1 with nothing to scale it by, which
+    # passed as a small "r+" correction and installed 1/cholSEtol
+    d <- data.frame(ID = rep(1:2, each = 3), TIME = rep(1:3, 2), DV = 5, Z = 0)
+    flat <- function() {
+      ini({
+        ta <- fix(5)
+        tz <- 0.5
+        add.sd <- fix(1)
+      })
+      model({
+        cp <- ta + tz * Z
+        cp ~ add(add.sd)
+      })
+    }
+    .f <- .nlmixr(flat, d, "focei", foceiControl(print = 0, maxOuterIterations = 0L))
+    expect_equal(.f$env$R.0[1, 1], 0)
+    expect_equal(.f$covMethod, "failed")
+    expect_null(.f$cov)
+  })
+
+  test_that("an all-zero R of several thetas is not corrected into a covariance", {
+    # the zero diagonal leaves cholSE0 nothing to scale its correction by for any
+    # theta, not only a single one
+    d <- data.frame(ID = rep(1:2, each = 3), TIME = rep(1:3, 2), DV = 5, Z = 0, W = 0)
+    flat2 <- function() {
+      ini({
+        ta <- fix(5)
+        tz <- 0.5
+        tw <- 0.3
+        add.sd <- fix(1)
+      })
+      model({
+        cp <- ta + tz * Z + tw * W
+        cp ~ add(add.sd)
+      })
+    }
+    .f <- .nlmixr(flat2, d, "focei", foceiControl(print = 0, maxOuterIterations = 0L))
+    expect_equal(unname(.f$env$R.0), matrix(0, 2, 2))
+    expect_equal(.f$covMethod, "failed")
+    expect_null(.f$cov)
+  })
+
   test_that("a non-positive-definite R or S is never installed as it is", {
     # one estimated parameter at a point where the objective is concave: R < 0,
     # which cholSE0 (like for every 1x1 matrix) called positive definite, so
@@ -434,7 +589,7 @@ nmTest({
   test_that("the covariance probe tolerances of a high-sigdig fit stay solvable", {
     skip_on_cran()
     # sigdig = 10 asks for ODE and inner tolerances near 1e-11; 1e-3 of those is floored
-    # at 1e-14
+    # at 1e-12
     .f <- .nlmixr(
       .quietOneCmt,
       theo_sd,
@@ -443,6 +598,27 @@ nmTest({
     )
     expect_identical(.f$covMethod, "r")
     expect_true(all(is.finite(sqrt(diag(.f$cov)))))
+  })
+
+  test_that("a fit at ODE tolerance 1e-11 gets the covariance of a 1e-9 one", {
+    skip_on_cran()
+    # 1e-3 of 1e-11 is floored at 1e-12; at 1e-14 the probe solves failed and the
+    # fit had no covariance ("R not PD; S failed")
+    .tight <- .nlmixr(
+      .quietOneCmt,
+      theo_sd,
+      "focei",
+      foceiControl(print = 0, calcTables = FALSE, rxControl = rxode2::rxControl(atol = 1e-11, rtol = 1e-11))
+    )
+    .ref <- .nlmixr(
+      .quietOneCmt,
+      theo_sd,
+      "focei",
+      foceiControl(print = 0, calcTables = FALSE, rxControl = rxode2::rxControl(atol = 1e-9, rtol = 1e-9))
+    )
+    expect_identical(.tight$covMethod, "r,s (full)")
+    expect_identical(.ref$covMethod, "r,s (full)")
+    expect_equal(sqrt(diag(.tight$cov)), sqrt(diag(.ref$cov)), tolerance = 0.01)
   })
 
   test_that("the covariance step runs at its probe tolerances and leaves estimation as it was", {
@@ -478,5 +654,122 @@ nmTest({
     # and each setting is used: another value gives another matrix
     expect_false(identical(.rule$cov, .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl(covSolveTol = 1e-6))$cov))
     expect_false(identical(.rule$cov, .nlmixr(.quietOneCmt, theo_sd, "focei", .ctl(covInnerTol = 1e-7))$cov))
+  })
+
+  test_that("the covariance step reuses its own evaluations and gives the same covariance", {
+    skip_on_cran()
+    # the full shape's S is read from the per-subject values at the x +/- h points its
+    # R stencil already evaluated, and an analytic R needs no step search; with reuse
+    # switched off (NLMIXR2EST_COV_NO_REUSE) every covariance is the same, bit for bit.
+    # gillKcov = 0 keeps the full stage separate from the theta-only one (no merge).
+    .fit <- function(reuse, ...) {
+      withr::local_envvar(NLMIXR2EST_COV_NO_REUSE = if (reuse) "" else "1")
+      .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, ...))
+    }
+    .on <- .fit(TRUE, gillKcov = 0L)
+    .off <- .fit(FALSE, gillKcov = 0L)
+    expect_identical(names(.on$env$covEvals), c("center", "gill", "r", "s", "fullCenter", "fullGill", "fullR", "fullS"))
+    expect_identical(.on$covMethod, .off$covMethod)
+    expect_identical(.on$cov, .off$cov)
+    expect_identical(.on$env$covList, .off$env$covList)
+    expect_identical(.on$env$covEvals[["fullS"]], 0L)
+    expect_identical(.off$env$covEvals[["fullS"]], 2L * nrow(.on$cov))
+    expect_identical(.on$env$covEvals[["fullR"]], .off$env$covEvals[["fullR"]])
+    .an <- .fit(TRUE, covMethod = "analytic")
+    .anOff <- .fit(FALSE, covMethod = "analytic")
+    expect_identical(.an$cov, .anOff$cov)
+    expect_identical(unname(.an$env$covEvals[c("gill", "r", "s", "fullGill", "fullR", "fullS")]), rep(0L, 6))
+    expect_gt(.anOff$env$covEvals[["gill"]], 0L)
+  })
+
+  test_that("the theta-only S is read from the R stencil when its steps are R's", {
+    skip_on_cran()
+    # with smatNorm = FALSE the S legs are the R stencil's x +/- h points, so no S leg is
+    # solved and the covariance is the same, bit for bit; the default smatNorm = TRUE
+    # takes smaller S steps, which the stencil does not have
+    .fit <- function(reuse, ...) {
+      withr::local_envvar(NLMIXR2EST_COV_NO_REUSE = if (reuse) "" else "1")
+      .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covFull = FALSE, ...))
+    }
+    .on <- .fit(TRUE, smatNorm = FALSE)
+    .off <- .fit(FALSE, smatNorm = FALSE)
+    expect_identical(.on$covMethod, "r,s")
+    expect_identical(.on$cov, .off$cov)
+    expect_identical(.on$env$covS, .off$env$covS)
+    expect_identical(.on$env$covEvals[["s"]], 0L)
+    # solved: 2 central legs per theta and the 2 of each theta's fallback gradient
+    expect_identical(.off$env$covEvals[["s"]], 4L * nrow(.on$cov))
+    expect_identical(.on$env$covEvals[["r"]], .off$env$covEvals[["r"]])
+    .def <- .fit(TRUE)
+    expect_identical(.def$env$covEvals[["s"]], 4L * nrow(.def$cov))
+    # the steps the theta-only stage searched, about the centre value they were taken at
+    expect_named(
+      .on$env$covSteps,
+      c("theta", "f0", "aEps", "rEps", "aEpsC", "rEpsC", "gillRetC", "gillDf", "gillDf2", "gillErr")
+    )
+    expect_identical(lengths(.on$env$covSteps, use.names = FALSE), c(4L, 1L, rep(4L, 8)))
+    expect_true(all(.on$env$covSteps$rEpsC > 0))
+  })
+
+  test_that("the theta-only covariance is read from the full stage", {
+    skip_on_cran()
+    # with covFull the full theta+sigma+Omega stencil also gives the theta-only R and S
+    # (their theta blocks), so the theta-only step search, stencil and S legs do not run
+    .an <- .nlmixr(
+      .quietOneCmt,
+      theo_sd,
+      "focei",
+      foceiControl(print = 0, calcTables = FALSE, covMethod = "analytic", covFull = FALSE)
+    )
+    .f <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE))
+    expect_identical(unname(.f$env$covEvals[c("gill", "r", "s")]), rep(0L, 3))
+    expect_gt(.f$env$covEvals[["fullR"]], 0L)
+    .nm <- c("tka", "tcl", "tv", "add.sd")
+    .Rfull <- solve(.f$env$.fdFullCov)
+    expect_equal(unname(.f$env$R.0), unname(.Rfull[.nm, .nm]), tolerance = 1e-8)
+    # and it is the observed information: the theta-only "r" SEs are the analytic ones
+    .r <- .f$env$covList[["r"]]
+    expect_lt(max(abs(sqrt(diag(.r))[.nm] / sqrt(diag(.an$cov))[.nm] - 1)), 0.01)
+    # forward-difference S legs are the theta-only stage's own, so it runs separately
+    .fw <- .nlmixr(
+      .quietOneCmt,
+      theo_sd,
+      "focei",
+      foceiControl(print = 0, calcTables = FALSE, covDerivMethod = "forward")
+    )
+    expect_true(all(.fw$env$covEvals[c("gill", "r", "s", "fullR")] > 0L))
+  })
+
+  test_that("a fit's covariance is the one a refit at its estimates computes, bit for bit", {
+    skip_on_cran()
+    # the covariance step starts from the hand-off (the fit's parameters and ETAs, with
+    # every inner problem as a fresh setup leaves it), not from what estimation left; a
+    # refit (setCov) carries the fit's parameters to the last bit in env$covHandoff
+    for (.full in c(FALSE, TRUE)) {
+      for (.m in c("r,s", "r", "s")) {
+        .f <- .nlmixr(
+          .quietOneCmt,
+          theo_sd,
+          "focei",
+          foceiControl(print = 0, calcTables = FALSE, covMethod = .m, covFull = .full)
+        )
+        .r <- suppressMessages(.setCovRefit(.f, covMethod = .m, covFull = .full))
+        expect_identical(.r$covMethod, .f$covMethod)
+        expect_identical(.r$cov, .f$cov)
+      }
+    }
+    expect_named(.f$env$covHandoff, c("theta", "omega"))
+    expect_length(.f$env$covHandoff$theta, 4L)
+    expect_length(.f$env$covHandoff$omega, 3L)
+    # a record that does not match the refit's estimates is not installed
+    .bad <- .f$env$covHandoff
+    .bad$theta <- .bad$theta * 1.01
+    .f$env$covHandoff <- .bad
+    .r2 <- suppressMessages(.setCovRefit(.f, covMethod = "s", covFull = TRUE))
+    expect_identical(.r2$covMethod, .f$covMethod)
+    # at the refit's own estimates, which differ in the last place, the covariance is the
+    # same only to the finite-difference noise (about 0.1%, machine dependent)
+    expect_equal(.r2$cov, .f$cov, tolerance = 0.01)
+    expect_false(identical(.r2$env$covHandoff$theta, .bad$theta))
   })
 })

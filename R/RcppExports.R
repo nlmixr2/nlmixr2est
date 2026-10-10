@@ -5,6 +5,14 @@ cholSE_ <- function(A, tol) {
     .Call(`_nlmixr2est_cholSE_`, A, tol)
 }
 
+covAccept_ <- function(A, cholSEtol, cholAccept) {
+    .Call(`_nlmixr2est_covAccept_`, A, cholSEtol, cholAccept)
+}
+
+cholSEpd_ <- function(A, tol) {
+    .Call(`_nlmixr2est_cholSEpd_`, A, tol)
+}
+
 #' Expand Gradient for nlme
 #'
 #' @param state is the state to expand
@@ -92,6 +100,18 @@ foceiGradPooledSetupLoad_ <- function(st) {
     .Call(`_nlmixr2est_foceiGradPooledSetupLoad_`, st)
 }
 
+covProbeSolveTolSet_ <- function() {
+    .Call(`_nlmixr2est_covProbeSolveTolSet_`)
+}
+
+covProbeSolveTolRestore_ <- function(tol) {
+    .Call(`_nlmixr2est_covProbeSolveTolRestore_`, tol)
+}
+
+.foceiOuterRecord <- function(record) {
+    .Call(`_nlmixr2est_foceiOuterRecord_`, record)
+}
+
 foceiOuterF <- function(theta) {
     .Call(`_nlmixr2est_foceiOuterF`, theta)
 }
@@ -144,15 +164,12 @@ shi21CentralWrap <- function(f, t, f0, idx, ef) {
 #'
 #' @param m Matrix to take the square root of.
 #'
-#' @return A square root general square matrix of m
+#' @return A square root general square matrix of m.  A matrix that is not
+#'   finite is an error.
 #'
 #' @export
 sqrtm <- function(m) {
     .Call(`_nlmixr2est_sqrtm`, m)
-}
-
-foceiCalcCov <- function(e) {
-    .Call(`_nlmixr2est_foceiCalcCov`, e)
 }
 
 #' Fit/Evaluate FOCEi
@@ -448,16 +465,8 @@ nlmGetScaleC <- function(theta, to) {
     .Call(`_nlmixr2est_nlmGetScaleC`, theta, to)
 }
 
-nlmSolveGradR <- function(theta) {
-    .Call(`_nlmixr2est_nlmSolveGradR`, theta)
-}
-
 solveGradNls <- function(theta, returnType) {
     .Call(`_nlmixr2est_solveGradNls`, theta, returnType)
-}
-
-nlmSolveGradHess <- function(theta) {
-    .Call(`_nlmixr2est_nlmSolveGradHess`, theta)
 }
 
 nlmLbfgsb3cFit <- function(theta, lower, upper, control) {

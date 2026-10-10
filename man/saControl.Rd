@@ -4,23 +4,37 @@
 \alias{saControl}
 \title{Options for the SAEM stochastic-approximation covariance in setCov()}
 \usage{
-saControl(nBurn = 100L, nEm = 100L, nSaCov = 500L, seed = 99L)
+saControl(
+  nBurn = 100L,
+  nEm = 100L,
+  nSaCov = 500L,
+  seed = 99L,
+  warmStart = TRUE
+)
 }
 \arguments{
 \item{nBurn, nEm}{warm-up iterations that equilibrate the MCMC chains before
-the covariance phase}
+the covariance phase, for a fit without SAEM chain history (or with
+\code{warmStart = FALSE})}
 
 \item{nSaCov}{iterations in the covariance phase; more gives a less noisy
 covariance}
 
 \item{seed}{random seed}
+
+\item{warmStart}{for a SAEM fit, continue the fit's own MCMC chains: the
+covariance phase starts from the fit's last iteration with no new warm-up
+iterations.  This changes the Monte Carlo path, so the covariance differs
+from a cold start by Monte Carlo noise.  Other fits, and SAEM fits that
+kept no chain history, always run \code{nBurn}/\code{nEm}.}
 }
 \value{
 \code{saControl} object
 }
 \description{
-Used by \code{setCov(fit, "sa")}, which runs a short SAEM at the fit's
-estimates before the covariance phase.  Every population parameter is held
+Used by \code{setCov(fit, "sa")}, which runs the SAEM covariance phase at the
+fit's estimates, after warm-up iterations unless it continues a SAEM fit's
+own chains.  Every population parameter is held
 at the fit's estimates throughout (mixture proportions excepted), so the
 covariance is the one at those estimates.
 }

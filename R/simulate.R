@@ -10,15 +10,15 @@
   .tmp <- .ret[[2]]
   .idx <- NULL
   .idxDvid <- NULL
-  .tmp <- lapply(seq(2, length(.tmp)), function(i) {
+  .tmp <- lapply(seq(2, length(.tmp)), function(i) .tmp[[i]])
+  for (i in seq_along(.tmp)) {
     if (identical(.tmp[[i]][[1]], quote(`cmt`))) {
-      .idx <<- i - 1
+      .idx <- i
     }
     if (identical(.tmp[[i]][[1]], quote(`dvid`))) {
-      .idxDvid <<- i - 1
+      .idxDvid <- i
     }
-    .tmp[[i]]
-  })
+  }
   if (is.null(.idx) && !is.null(.idxDvid)) {
     # use dvid() instead of cmt()
     .idx <- .idxDvid
@@ -76,7 +76,8 @@
   .lines <- rxode2::getBaseSimModel(obj)
   # rxode2 only allows a history function of a real lhs, so these stay `<-`
   .lagged <- .simModelLaggedVars(.lines)
-  .keptLhs <- character(0)
+  .acc <- new.env(parent = emptyenv())
+  .acc$keptLhs <- character(0)
   .f <- function(x) {
     if (is.atomic(x) || is.name(x) || is.pairlist(x)) {
       return(x)
@@ -98,7 +99,7 @@
         } else if (length(x[[2]]) == 1L) {
           if (as.character(x[[2]]) %in% .lagged) {
             x[[1]] <- quote(`<-`)
-            .keptLhs <<- c(.keptLhs, as.character(x[[2]]))
+            .acc$keptLhs <- c(.acc$keptLhs, as.character(x[[2]]))
           } else {
             x[[1]] <- quote(`~`)
           }
@@ -118,7 +119,7 @@
     .ret <- .expandSimModelAddTad(.ret)
   }
   # outputs only so `lag()` compiles; callers drop them from the solve
-  attr(.ret, "lagged") <- unique(.keptLhs)
+  attr(.ret, "lagged") <- unique(.acc$keptLhs)
   .ret
 }
 

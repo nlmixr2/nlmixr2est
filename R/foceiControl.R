@@ -180,14 +180,47 @@
 #'     them from the fit's own tolerances: the finite-difference solves use
 #'     \code{atol} and \code{rtol} each times 1e-3, capped at 1e-7 (at the default
 #'     \code{sigdig = 3}, \code{rtol = 1e-7} and \code{atol = 1e-9}), and the
-#'     analytic augmented solves use \code{max(1e-14, min(1e-8, 10^-(sigdig + 6)))}.  The
+#'     analytic augmented solves use \code{max(1e-12, min(1e-8, 10^-(sigdig + 6)))}.  The
 #'     inner problems of the finite-difference probes are tightened the same way,
 #'     whichever \code{innerOpt} runs them: \code{trustFterm} and
 #'     \code{trustMterm}, \code{epsilon} (n1qn1), and the \code{innerLbfgs*}
 #'     tolerances (lbfgsb3c) each times 1e-3, capped at 1e-9.  No derived
-#'     tolerance goes below 1e-14 unless the fit's own already is.
+#'     tolerance goes below 1e-12 unless the fit's own already is.
 #'     A number sets \code{atol = rtol = covSolveTol} for both kinds of solve.
-#'     Estimation itself always runs at the fit's tolerances.
+#'     Estimation itself always runs at the fit's tolerances.  When the
+#'     finite-difference standard errors look noisy (they change with small
+#'     changes to the steps or the estimates, or disagree with
+#'     \code{covMethod="analytic"}), a tighter value such as \code{1e-10} or
+#'     \code{1e-12} can help: every probe's solve error enters the differences.
+#'
+#' @param covFallback what each \code{covMethod} falls back to when it gives no
+#'     usable covariance: a named list, one element per method, each the ordered
+#'     methods to try instead (the whole list, not followed further).  The default
+#'     is the established behaviour: \code{"r,s"} falls to \code{"r"} then
+#'     \code{"s"} (whichever matrix is usable), \code{"r"} to \code{"s"},
+#'     \code{"analytic"} to the finite-difference \code{"r,s"}, \code{"r"} and
+#'     \code{"s"}, and \code{"s"} to nothing.  A list may also name \code{"sa"} and
+#'     \code{"imp"}, which are computed after the fit when the finite-difference
+#'     methods before them gave no covariance.  A list you give replaces the
+#'     default: a method it does not name has no fallback.  The \code{"r,s"} check
+#'     of a doubtful sandwich (see \code{covSmall}) only picks a listed method.  The
+#'     methods tried and why each was not used are in \code{fit$env$covTried}.
+#'
+#' @param covPrecursor what a finite-difference covariance may start from, in
+#'     order of preference: \code{"fd"}, a full-stage R this fit computed under
+#'     other settings (\code{setCov()} with another \code{rsControl()}), and
+#'     \code{"analytic"}, the analytic covariance the fit holds.  The first one
+#'     the fit holds seeds the full stage's step searches with its diagonal;
+#'     every step still passes the same acceptance test.  A fresh fit holds
+#'     neither, so this matters for \code{setCov()}.  \code{NULL} uses none.  How
+#'     it served is in \code{fit$env$covPrecursorUsed} and the fit print.
+#'
+#' @param covShortcut with a precursor (see \code{covPrecursor}), predict the
+#'     full R from the measured diagonal and the precursor's correlations, check
+#'     the prediction against the objective along four fixed directions, and
+#'     skip measuring the off-diagonals when it agrees to 1\% in each (the record
+#'     says "accepted"); otherwise they are measured as usual ("fell back").
+#'     \code{FALSE} (default) always measures them.
 #'
 #' @param covFull shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 #'     full theta + residual sigma + Omega covariance (assembled analytically for
@@ -200,6 +233,13 @@
 #'     installed shape is named by \code{fit$covMethod} -- \code{"r,s (full)"}
 #'     versus \code{"r,s"} -- and the other shape is cached, so
 #'     \code{\link{setCov}()} swaps between them without recomputing either.
+#'     Both shapes come from one finite-difference computation over the full
+#'     parameter set (the structural-theta shape is its theta block), at the steps
+#'     \code{gillKcov}, \code{gillStepCov} and \code{gillFtolCov} choose, so
+#'     \code{rmatNorm}, \code{smatNorm} and \code{covGillF} do not apply; the
+#'     theta-only stage runs separately (with them) for a mixture, a mu-referenced
+#'     model, a generalized log-likelihood, \code{gillKcov = 0} or
+#'     \code{covDerivMethod = "forward"}.
 #'
 #' @param fdOutlierZ Cut of the Iglewicz-Hoaglin modified z-score that decides
 #'   whether a finite-differenced subject's slope is an outlier against the exact
@@ -909,14 +949,16 @@
 #'   log-likelihood estimation.
 #'
 #' @param rmatNorm A parameter to normalize gradient step size by the
-#'     parameter value during the calculation of the R matrix
+#'     parameter value during the calculation of the R matrix of the
+#'     theta-only stage (see \code{covFull})
 #'
 #' @param rmatNormLlik A parameter to normalize gradient step size by
 #'   the parameter value during the calculation of the R matrix if you
 #'   are using generalized log-likelihood Hessian matrix.
 #'
 #' @param smatNorm A parameter to normalize gradient step size by the
-#'     parameter value during the calculation of the S matrix
+#'     parameter value during the calculation of the S matrix of the
+#'     theta-only stage (see \code{covFull})
 #'
 #' @param smatNormLlik A parameter to normalize gradient step size by
 #'   the parameter value during the calculation of the S matrix if you
@@ -924,7 +966,8 @@
 #'
 #' @param covGillF Use the Gill calculated optimal Forward difference
 #'     step size for the instead of the central difference step size
-#'     during the central difference gradient calculation.
+#'     during the central difference gradient calculation of the
+#'     theta-only stage (see \code{covFull}).
 #'
 #' @param optGillF Use the Gill calculated optimal Forward difference
 #'     step size for the instead of the central difference step size
@@ -1223,6 +1266,9 @@ foceiControl <- function(
   covDerivMethod = c("central", "forward"), #
   covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""), #
   covSolveTol = NULL, #
+  covFallback = list("r,s" = c("r", "s"), r = "s", s = character(0), analytic = c("r,s", "r", "s")),
+  covPrecursor = c("fd", "analytic"),
+  covShortcut = FALSE,
   covFull = TRUE, #
   fast = FALSE, #
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"), #
@@ -1571,8 +1617,9 @@ foceiControl <- function(
   checkmate::assertIntegerish(gillK, lower = 0, len = 1, any.missing = FALSE)
   .covFdOptionsAssert(hessEps, gillKcov, gillStepCov, gillFtolCov, covGillF, covSmall, rmatNorm, smatNorm)
   checkmate::assertIntegerish(gillKcovLlik, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(gillStep, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(gillStepCovLlik, lower = 0, len = 1, any.missing = FALSE)
+  # the Gill search multiplies its step by these factors to grow it and divides to shrink it
+  checkmate::assertNumeric(gillStep, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(gillStepCovLlik, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(gillFtol, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillFtolCovLlik, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(gillRtol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
@@ -1701,11 +1748,13 @@ foceiControl <- function(
   # "sa"/"imp" are foreign to the focei kernel; skip the in-kernel cov step and
   # recompute them post-fit at the converged estimates (see .covRecompute).
   covMethodDeferred <- NA_character_
-  if (checkmate::testIntegerish(covMethod, len = 1, lower = 0L, upper = 3L, any.missing = FALSE)) {
-    covMethod <- as.integer(covMethod)
+  if (checkmate::testIntegerish(covMethod, len = 1, any.missing = FALSE)) {
+    covMethod <- .covMethodSlotArg(covMethod)
     .ct <- list(...)$covType
     if (!is.null(.ct)) covType <- match.arg(.ct, c("analytic", "fd"))
-  } else if (rxode2::rxIs(covMethod, "character")) {
+  } else if (!rxode2::rxIs(covMethod, "character")) {
+    stop("'covMethod' must be a covariance method name or a foceiControl() slot (0 to 3)", call. = FALSE)
+  } else {
     covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
     if (covMethod %in% c("sa", "imp")) {
       covMethodDeferred <- covMethod
@@ -1723,6 +1772,9 @@ foceiControl <- function(
   if (!is.null(covSolveTol)) {
     checkmate::assertNumeric(covSolveTol, len = 1, lower = 0, finite = TRUE, any.missing = FALSE)
   }
+  covFallback <- .covFallbackCheck(covFallback, targets = c(.covFallbackTargets, "sa", "imp"))
+  covPrecursor <- .covPrecursorCheck(covPrecursor)
+  checkmate::assertFlag(covShortcut)
   checkmate::assertFlag(covFull)
   checkmate::assertFlag(fast)
   priorMethod <- match.arg(priorMethod)
@@ -2070,6 +2122,9 @@ foceiControl <- function(
     covType = covType,
     covMethodDeferred = covMethodDeferred,
     covSolveTol = covSolveTol,
+    covFallback = covFallback,
+    covPrecursor = covPrecursor,
+    covShortcut = covShortcut,
     covFull = covFull,
     fast = fast,
     priorMethod = priorMethod,
@@ -2291,6 +2346,11 @@ foceiControl <- function(
 #' @return "sa", "imp", "analytic", "r,s", "r", "s", or "" for no covariance
 #' @noRd
 .foceiControlCovMethodName <- function(o) {
+  # an impmapControl() runs the importance-sampling covariance in its kernel
+  # (impCov) and keeps the "analytic" slot for the post-fit step
+  if (isTRUE(o$impCov)) {
+    return("imp")
+  }
   .deferred <- o$covMethodDeferred
   if (length(.deferred) == 1L && !is.na(.deferred)) {
     return(.deferred)

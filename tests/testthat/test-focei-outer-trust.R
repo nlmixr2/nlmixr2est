@@ -150,6 +150,65 @@ test_that("the finite-difference curvature settles every point it reads", {
   expect_identical(.seen[length(.seen)], "fn:1,1")
 })
 
+test_that("the finite-difference curvature keeps its probes out of the history", {
+  # .trustOuterFd evaluates the objective and gradient at n probe points and
+  # re-settles the point after them; none of those is a point the optimizer
+  # asked for.  record(FALSE) is in force for exactly those calls.
+  .rec <- new.env(parent = emptyenv())
+  .rec$on <- TRUE
+  .rec$calls <- character()
+  .record <- function(record) {
+    .was <- .rec$on
+    .rec$on <- record
+    .was
+  }
+  .fn <- function(x) {
+    .rec$calls <- c(.rec$calls, paste0("fn:", .rec$on))
+    sum(x^2)
+  }
+  .gr <- function(x) {
+    .rec$calls <- c(.rec$calls, paste0("gr:", .rec$on))
+    2 * x
+  }
+  .fd <- .trustOuterFd(.fn, .gr, 1e-3, c(-Inf, -Inf), c(Inf, Inf), record = .record)
+  expect_equal(.fd(c(1, 1), c(2, 2)), diag(c(2, 2)), tolerance = 1e-6)
+  expect_identical(.rec$calls, c("fn:FALSE", "gr:FALSE", "fn:FALSE", "gr:FALSE", "fn:FALSE"))
+  expect_true(.rec$on)
+})
+
+test_that("outerTrustHessian = \"fd\" records the points the optimizer asked for", {
+  skip_on_cran()
+  model <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
+          eta.cl ~ 0.3; add.sd <- 0.7 })
+    model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+            d/dt(depot) <- -ka * depot
+            d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v
+            cp ~ add(add.sd) })
+  }
+  .fit <- .nlmixr(
+    model,
+    nlmixr2data::theo_sd,
+    "focei",
+    foceiControl(
+      print = 0L,
+      calcTables = FALSE,
+      covMethod = "",
+      outerOpt = "trust",
+      outerTrustHessian = "fd",
+      maxOuterIterations = 5L
+    )
+  )
+  .ph <- .fit$parHistData
+  .nObj <- sum(.ph$type == "Unscaled")
+  .nGrad <- sum(.ph$type %in% c("Gill83 Gradient", "Forward Difference", "Central Difference", "Mixed Gradient"))
+  # every recorded objective is the optimizer's own and is followed by its
+  # gradient; the probes (n per Hessian, plus the re-settle) were recorded too
+  expect_gt(.nObj, 1L)
+  expect_equal(.nObj, .nGrad)
+})
+
 test_that("the trust driver hands its control through to the region and curvature", {
   # The unit tests above exercise the helpers directly, so they cannot see the
   # driver reading the wrong control field.  Drive .trustOuter() itself over a

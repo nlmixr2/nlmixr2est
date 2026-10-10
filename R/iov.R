@@ -867,10 +867,10 @@ nlmixr2iovVarSd <- function(val) {
         .diagI <- which(.iovDf$neta1 == .iovDf$neta2)
         .offI <- which(.iovDf$neta1 != .iovDf$neta2)
         .newEta <- integer(0)
-        .rmTheta <- function(w) {
+        .rmTheta <- function(df, w) {
           # `x[-integer(0)]` is EMPTY, not everything -- never let an
           # unmatched name silently drop every theta
-          if (length(w) == 1L) .thetaDf <<- .thetaDf[-w, , drop = FALSE]
+          if (length(w) == 1L) df[-w, , drop = FALSE] else df
         }
         .fillRow <- function(i, cur) {
           cur$fix <- .iovDf$fix[i]
@@ -923,7 +923,7 @@ nlmixr2iovVarSd <- function(val) {
           .cur$est <- .est
           .cur$name <- paste0("rx.", .v) # Matches replacement
           .etaDf <- rbind(.etaDf, .fillRow(i, .cur))
-          .rmTheta(.w)
+          .thetaDf <- .rmTheta(.thetaDf, .w)
         }
         for (i in .offI) {
           .nm <- .iovDf$name[i]

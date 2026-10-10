@@ -261,14 +261,16 @@ is.latex <- function() {
       )
   ]
   .ctl$trace <- 0
-  hessianCalls <- 0L
-  hessianFailed <- FALSE
+  # the outer Hessian's calls, and whether one failed
+  .state <- new.env(parent = emptyenv())
+  .state$calls <- 0L
+  .state$failed <- FALSE
   hessian <- NULL
   if (isTRUE(control$fast) && is.function(control$hessian)) {
     hessian <- function(x) {
-      hessianCalls <<- hessianCalls + 1L
+      .state$calls <- .state$calls + 1L
       tryCatch(control$hessian(x), error = function(e) {
-        hessianFailed <<- TRUE
+        .state$failed <- TRUE
         stop(e)
       })
     }
@@ -285,14 +287,14 @@ is.latex <- function() {
     )
   }
   .ret <- tryCatch(run(hessian), error = function(e) {
-    if (!hessianFailed) {
+    if (!.state$failed) {
       stop(e)
     }
     warning("Outer Hessian unavailable; restarting gradient-only nlminb", call. = FALSE)
     run(NULL)
   })
-  .ret$hessianEvaluations <- hessianCalls
-  .ret$hessianFallback <- hessianFailed
+  .ret$hessianEvaluations <- .state$calls
+  .ret$hessianFallback <- .state$failed
   .ret$x <- .ret$par
   ## .ret$message   already there.
   ## .ret$convergence already there.
@@ -358,14 +360,24 @@ is.latex <- function() {
 #' stale conditional mode.  Measured on `theo_sd`, the two differ by ~9e-4 on
 #' gradient components of order 200 -- which a 1e-3 difference step turns into
 #' an O(1) error in the Hessian entries.
+#'
+#' The probes are not points the optimizer asked for, so `record(FALSE)` keeps
+#' them (and the re-settle) out of the parameter history and the iteration
+#' print while they run.
 #' @param fn,gr outer objective and gradient
 #' @param relStep relative difference step
 #' @param lower,upper box the outer problem optimizes in
+#' @param record `.foceiOuterRecord()`, or `NULL` when nothing records `fn` and
+#'   `gr` calls
 #' @return function(x, gradient) returning a symmetric Hessian, or `NULL`
 #' @noRd
-.trustOuterFd <- function(fn, gr, relStep, lower, upper) {
+.trustOuterFd <- function(fn, gr, relStep, lower, upper, record = NULL) {
   .n <- length(lower)
   function(x, g0) {
+    if (is.function(record)) {
+      .was <- record(FALSE)
+      on.exit(record(.was), add = TRUE)
+    }
     .h <- matrix(0.0, .n, .n)
     for (.j in seq_len(.n)) {
       .step <- relStep * max(abs(x[.j]), 1.0)
@@ -533,7 +545,8 @@ is.latex <- function() {
 #' The BFGS update runs on every call whatever source serves it, so its secant
 #' pairs stay consecutive and the fallback starts from a matrix that already
 #' knows the problem rather than the identity.
-#' @param control the foceiControl list
+#' @param control the foceiControl list, with the `hessian` and `outerRecord`
+#'   entries the C++ driver adds
 #' @param fn,gr outer objective and gradient
 #' @param relStep relative step, for both the analytic entry and the difference
 #' @param lower,upper box the outer problem optimizes in
@@ -541,7 +554,7 @@ is.latex <- function() {
 #'   current `method` and the BFGS state
 #' @noRd
 .trustOuterCurvature <- function(control, fn, gr, relStep, lower, upper) {
-  .fd <- .trustOuterFd(fn, gr, relStep, lower, upper)
+  .fd <- .trustOuterFd(fn, gr, relStep, lower, upper, control$outerRecord)
   .state <- new.env(parent = emptyenv())
   .state$method <- .trustOuterMethod(control)
   .state$b <- diag(length(lower))
@@ -2080,8 +2093,10 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   on.exit({
     if (!.progressStopped) rxode2::rxProgressAbort()
   })
-  .any.zero <- FALSE
-  .all.zero <- TRUE
+  # whether any / every d(prediction)/d(ETA) is identically zero, set row by row
+  .zero <- new.env(parent = emptyenv())
+  .zero$any <- FALSE
+  .zero$all <- TRUE
   # linCmt() alag()/f() moving-boundary correction (#920): computed once, then
   # folded into each row's assigned value BELOW the zero-check so a model
   # whose ETA drives ONLY the lag/F (no structural p1/v1/ka/... dependency)
@@ -2137,14 +2152,14 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     }
     .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
     if (identical(.zErr, 0)) {
-      .any.zero <<- TRUE
-    } else if (.all.zero) {
-      .all.zero <<- FALSE
+      .zero$any <- TRUE
+    } else if (.zero$all) {
+      .zero$all <- FALSE
     }
     rxode2::rxTick()
     .ret
   })
-  if (.all.zero) {
+  if (.zero$all) {
     rxode2::rxProgressStop()
     .progressStopped <- TRUE
     stop(
@@ -2155,7 +2170,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
       call. = FALSE
     )
   }
-  if (.any.zero) {
+  if (.zero$any) {
     warning("some of the predictions do not depend on 'ETA'", call. = FALSE)
   }
   if (!is.null(.arCorr)) {
@@ -4518,6 +4533,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   } else {
     .env <- new.env(parent = emptyenv())
   }
+  .covStoreFitStart(.env)
   .env$etaNames <- rxUiGet.foceiEtaNames(x, ...)
   .env$thetaFixed <- rxUiGet.foceiFixed(x, ...)
   rxode2::rxAssignControlValue(.x, "foceiMuRef", .x$foceiMuRefVector)
@@ -5653,6 +5669,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       assign("control", .control, envir = .ret)
     }
     .foceiInstallAnalyticCov(.ret)
+    # before the full shapes replace covR/covS/covRS
+    .foceiCacheThetaCov(.ret, .control)
     # Installing the FD-full covariance replaces $cov with a matrix spanning
     # theta AND omega, but the C++ step has already derived popDf$SE from the
     # native theta-only covariance it discards.  Left alone the fit reports SEs

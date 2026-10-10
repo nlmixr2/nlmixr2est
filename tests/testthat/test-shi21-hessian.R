@@ -38,11 +38,12 @@ nmTest({
     # so the second call differences E0 at that step, outside the window.
     .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = "central", shi21maxHess = 1L)
     .withNlmProblem(.mod, .d, .ctl, function(x) {
-      nlmSolveGradHess(x)
-      # nlmSolveGradHess() works on R's own vector, which for nlminb is the
-      # optimizer's iterate: the Hessian has to leave it exactly as it was.
+      .nlmixrNlmFunC(x)
+      # The objective with solveType = "hessian" works on R's own vector, which
+      # for nlm and nlminb is the optimizer's iterate: the Hessian has to leave
+      # it exactly as it was.
       x0 <- x + 0
-      r <- nlmSolveGradHess(x)
+      r <- .nlmixrNlmFunC(x)
       expect_identical(x, x0)
       .h <- attr(r, "hessian")
       # E0's column has no usable difference; the others do
@@ -70,14 +71,14 @@ nmTest({
     }
     .d <- data.frame(ID = 1L, TIME = seq(0.1, 10, length.out = 20), AMT = 0, EVID = 0L)
     .d$DV <- as.integer(seq_len(nrow(.d)) %% 2 == 0)
-    .hess <- list()
-    .oracle <- NULL
+    .acc <- new.env(parent = emptyenv())
+    .acc$hess <- list()
     for (.type in c("central", "forward")) {
       .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = .type)
       .withNlmProblem(.mod, .d, .ctl, function(x) {
-        .gr <- function(p) attr(nlmSolveGradR(p), "gradient")
+        .gr <- function(p) optimFunC(p, TRUE)
         .h <- 1e-3
-        .oracle <<- vapply(
+        .acc$oracle <- vapply(
           seq_along(x),
           function(k) {
             .e <- replace(numeric(length(x)), k, .h)
@@ -86,20 +87,21 @@ nmTest({
           numeric(length(x))
         )
         # first call searches the steps, second reuses them
-        .hess[[.type]] <<- lapply(1:2, function(.i) attr(nlmSolveGradHess(x + 0), "hessian"))
+        .acc$hess[[.type]] <- lapply(1:2, function(.i) attr(.nlmixrNlmFunC(x + 0), "hessian"))
       })
     }
     # cross terms are nonzero, so a swapped column or row would show
+    .oracle <- .acc$oracle
     expect_true(all(.oracle[upper.tri(.oracle)] != 0))
     for (.i in 1:2) {
-      expect_equal(.hess$central[[.i]], .oracle, tolerance = 1e-6, info = .i)
+      expect_equal(.acc$hess$central[[.i]], .oracle, tolerance = 1e-6, info = .i)
     }
     # forward differs from the oracle in exactly the (a, a) cell
-    .off <- abs(.hess$forward[[1]] - .oracle) > 1e-6 * abs(.oracle)
+    .off <- abs(.acc$hess$forward[[1]] - .oracle) > 1e-6 * abs(.oracle)
     expect_equal(sum(.off), 1L)
     expect_true(.off[1, 1])
     # the step cached for the second call is the one the search settled on
-    expect_equal(.hess$forward[[2]], .hess$forward[[1]], tolerance = 1e-10)
+    expect_equal(.acc$hess$forward[[2]], .acc$hess$forward[[1]], tolerance = 1e-10)
   })
 
   test_that("a gradient component the column does not touch leaves its step alone (#1188)", {
@@ -128,10 +130,10 @@ nmTest({
       function(.type) {
         withr::local_options(list(nlmixr2est.shi21RatioCensor = .type))
         .withNlmProblem(.mod, .d, .ctl, function(x) {
-          .gr <- function(p) attr(nlmSolveGradR(p + 0), "gradient")
+          .gr <- function(p) .nlmixrNlminbGradC(p + 0)
           .oracle <- numDeriv::jacobian(.gr, x + 0)
           .oracle <- (.oracle + t(.oracle)) / 2
-          .h <- attr(nlmSolveGradHess(x + 0), "hessian")
+          .h <- attr(.nlmixrNlmFunC(x + 0), "hessian")
           # cross terms can be exactly 0, so scale by the diagonal
           max(abs(.h - .oracle) / sqrt(abs(outer(diag(.oracle), diag(.oracle)))))
         })

@@ -82,16 +82,20 @@ SEXP _nlmixr2est_foceiRAllFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SE
 SEXP _nlmixr2est_foceiRAllFoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_likInner(SEXP, SEXP);
 SEXP _nlmixr2est_cholSE_(SEXP, SEXP);
+SEXP _nlmixr2est_cholSEpd_(SEXP, SEXP);
+SEXP _nlmixr2est_covAccept_(SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_covProbeSolveTolSet_(void);
+SEXP _nlmixr2est_covProbeSolveTolRestore_(SEXP);
 SEXP _nlmixr2est_shi21CentralWrap(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_shi21RatioCensorSet(SEXP);
 SEXP _nlmixr2est_shi21RatioTest(SEXP, SEXP);
 
 SEXP _nlmixr2est_foceiOuterF(SEXP);
+SEXP _nlmixr2est_foceiOuterRecord_(SEXP);
 SEXP _nlmixr2est_foceiOuterG(SEXP);
 SEXP _nlmixr2est_foceiOuterH(SEXP, SEXP);
 SEXP _nlmixr2est_foceiOuter(SEXP);
 SEXP _nlmixr2est_sqrtm(SEXP);
-SEXP _nlmixr2est_foceiCalcCov(SEXP);
 SEXP _nlmixr2est_foceiFitCpp_(SEXP);
 SEXP _nlmixr2est_foceiCheckIndCounts_(SEXP);
 SEXP _nlmixr2est_foceiIndEventCounts_(void);
@@ -143,11 +147,9 @@ SEXP _nlmixr2est_RcppExport_registerCCallable(void);
 
 SEXP _nlmixr2est_nlmSetup(SEXP);
 SEXP _nlmixr2est_nlmFree(void);
-SEXP _nlmixr2est_nlmSolveGradHess(SEXP);
 SEXP _nlmixr2est_nlmTrustFit(SEXP, SEXP);
 SEXP _nlmixr2est_nlmLbfgsb3cFit(SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_nTrustOuterGet(void);
-SEXP _nlmixr2est_nlmSolveGradR(SEXP);
 SEXP _nlmixr2est_nlmerSolveGrad(SEXP, SEXP);
 SEXP _nlmixr2est_nlmSolveR(SEXP);
 SEXP _nlmixr2est_nlmSolveSwitch(SEXP);
@@ -290,9 +292,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_nlmSolveSwitch", (DL_FUNC) &_nlmixr2est_nlmSolveSwitch, 1},
   {"_nlmixr2est_nlmSolveR", (DL_FUNC) &_nlmixr2est_nlmSolveR, 1},
   {"_nlmixr2est_nlmSetup", (DL_FUNC) &_nlmixr2est_nlmSetup, 1},
-  {"_nlmixr2est_nlmSolveGradR", (DL_FUNC) &_nlmixr2est_nlmSolveGradR, 1},
   {"_nlmixr2est_nlmerSolveGrad", (DL_FUNC) &_nlmixr2est_nlmerSolveGrad, 2},
-  {"_nlmixr2est_nlmSolveGradHess", (DL_FUNC) &_nlmixr2est_nlmSolveGradHess, 1},
   {"_nlmixr2est_nlmTrustFit", (DL_FUNC) &_nlmixr2est_nlmTrustFit, 2},
   {"_nlmixr2est_nlmLbfgsb3cFit", (DL_FUNC) &_nlmixr2est_nlmLbfgsb3cFit, 4},
   {"_nlmixr2est_nTrustOuterGet", (DL_FUNC) &_nlmixr2est_nTrustOuterGet, 0},
@@ -309,16 +309,20 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiRAllFR_", (DL_FUNC) &_nlmixr2est_foceiRAllFR_, 25},
   {"_nlmixr2est_foceiRAllFoceFR_", (DL_FUNC) &_nlmixr2est_foceiRAllFoceFR_, 26},
   {"_nlmixr2est_cholSE_", (DL_FUNC) &_nlmixr2est_cholSE_, 2},
+  {"_nlmixr2est_cholSEpd_", (DL_FUNC) &_nlmixr2est_cholSEpd_, 2},
+  {"_nlmixr2est_covAccept_", (DL_FUNC) &_nlmixr2est_covAccept_, 3},
+  {"_nlmixr2est_covProbeSolveTolSet_", (DL_FUNC) &_nlmixr2est_covProbeSolveTolSet_, 0},
+  {"_nlmixr2est_covProbeSolveTolRestore_", (DL_FUNC) &_nlmixr2est_covProbeSolveTolRestore_, 1},
   {"_nlmixr2est_shi21CentralWrap", (DL_FUNC) &_nlmixr2est_shi21CentralWrap, 5},
   {"_nlmixr2est_shi21RatioCensorSet", (DL_FUNC) &_nlmixr2est_shi21RatioCensorSet, 1},
   {"_nlmixr2est_shi21RatioTest", (DL_FUNC) &_nlmixr2est_shi21RatioTest, 2},
   {"_nlmixr2est_likInner", (DL_FUNC) &_nlmixr2est_likInner, 2},
   {"_nlmixr2est_foceiOuterF", (DL_FUNC) &_nlmixr2est_foceiOuterF, 1},
+  {"_nlmixr2est_foceiOuterRecord_", (DL_FUNC) &_nlmixr2est_foceiOuterRecord_, 1},
   {"_nlmixr2est_foceiOuterG", (DL_FUNC) &_nlmixr2est_foceiOuterG, 1},
   {"_nlmixr2est_foceiOuterH", (DL_FUNC) &_nlmixr2est_foceiOuterH, 2},
   {"_nlmixr2est_foceiOuter", (DL_FUNC) &_nlmixr2est_foceiOuter, 1},
   {"_nlmixr2est_sqrtm", (DL_FUNC) &_nlmixr2est_sqrtm, 1},
-  {"_nlmixr2est_foceiCalcCov", (DL_FUNC) &_nlmixr2est_foceiCalcCov, 1},
   {"_nlmixr2est_foceiFitCpp_", (DL_FUNC) &_nlmixr2est_foceiFitCpp_, 1},
   {"_nlmixr2est_foceiCheckIndCounts_", (DL_FUNC) &_nlmixr2est_foceiCheckIndCounts_, 1},
   {"_nlmixr2est_foceiIndEventCounts_", (DL_FUNC) &_nlmixr2est_foceiIndEventCounts_, 0},

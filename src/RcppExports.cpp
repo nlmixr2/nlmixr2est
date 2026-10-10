@@ -27,6 +27,31 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// covAccept_
+List covAccept_(NumericMatrix A, double cholSEtol, double cholAccept);
+RcppExport SEXP _nlmixr2est_covAccept_(SEXP ASEXP, SEXP cholSEtolSEXP, SEXP cholAcceptSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type A(ASEXP);
+    Rcpp::traits::input_parameter< double >::type cholSEtol(cholSEtolSEXP);
+    Rcpp::traits::input_parameter< double >::type cholAccept(cholAcceptSEXP);
+    rcpp_result_gen = Rcpp::wrap(covAccept_(A, cholSEtol, cholAccept));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cholSEpd_
+List cholSEpd_(NumericMatrix A, double tol);
+RcppExport SEXP _nlmixr2est_cholSEpd_(SEXP ASEXP, SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type A(ASEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(cholSEpd_(A, tol));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmixrExpandFdParNlme_
 List nlmixrExpandFdParNlme_(CharacterVector state, CharacterVector vars);
 static SEXP _nlmixr2est_nlmixrExpandFdParNlme__try(SEXP stateSEXP, SEXP varsSEXP) {
@@ -331,6 +356,38 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// covProbeSolveTolSet_
+NumericVector covProbeSolveTolSet_();
+RcppExport SEXP _nlmixr2est_covProbeSolveTolSet_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(covProbeSolveTolSet_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// covProbeSolveTolRestore_
+RObject covProbeSolveTolRestore_(NumericVector tol);
+RcppExport SEXP _nlmixr2est_covProbeSolveTolRestore_(SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(covProbeSolveTolRestore_(tol));
+    return rcpp_result_gen;
+END_RCPP
+}
+// foceiOuterRecord_
+bool foceiOuterRecord_(bool record);
+RcppExport SEXP _nlmixr2est_foceiOuterRecord_(SEXP recordSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type record(recordSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiOuterRecord_(record));
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiOuterF
 double foceiOuterF(NumericVector& theta);
 RcppExport SEXP _nlmixr2est_foceiOuterF(SEXP thetaSEXP) {
@@ -467,17 +524,6 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericMatrix >::type m(mSEXP);
     rcpp_result_gen = Rcpp::wrap(sqrtm(m));
-    return rcpp_result_gen;
-END_RCPP
-}
-// foceiCalcCov
-NumericMatrix foceiCalcCov(Environment e);
-RcppExport SEXP _nlmixr2est_foceiCalcCov(SEXP eSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Environment >::type e(eSEXP);
-    rcpp_result_gen = Rcpp::wrap(foceiCalcCov(e));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -1129,17 +1175,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// nlmSolveGradR
-RObject nlmSolveGradR(arma::vec& theta);
-RcppExport SEXP _nlmixr2est_nlmSolveGradR(SEXP thetaSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
-    rcpp_result_gen = Rcpp::wrap(nlmSolveGradR(theta));
-    return rcpp_result_gen;
-END_RCPP
-}
 // solveGradNls
 NumericVector solveGradNls(arma::vec& theta, int returnType);
 RcppExport SEXP _nlmixr2est_solveGradNls(SEXP thetaSEXP, SEXP returnTypeSEXP) {
@@ -1149,17 +1184,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
     Rcpp::traits::input_parameter< int >::type returnType(returnTypeSEXP);
     rcpp_result_gen = Rcpp::wrap(solveGradNls(theta, returnType));
-    return rcpp_result_gen;
-END_RCPP
-}
-// nlmSolveGradHess
-RObject nlmSolveGradHess(arma::vec& theta);
-RcppExport SEXP _nlmixr2est_nlmSolveGradHess(SEXP thetaSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
-    rcpp_result_gen = Rcpp::wrap(nlmSolveGradHess(theta));
     return rcpp_result_gen;
 END_RCPP
 }

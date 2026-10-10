@@ -1,4 +1,60 @@
 nmTest({
+  test_that("nlm-family controls take only the codes there are (issue 1140)", {
+    # eventType/optimHessType 1 = forward, 2 = central; solveType 1 = fun,
+    # 2 = grad, 3 = hessian (optim: no hessian); there is no solve for any other
+    for (.f in c("nlmControl", "nlminbControl")) {
+      .ctl <- get(.f)
+      expect_identical(.ctl()$eventType, 2L, info = .f)
+      expect_identical(.ctl(eventType = "forward")$eventType, 1L, info = .f)
+      expect_identical(.ctl(eventType = 1)$eventType, 1L, info = .f)
+      expect_identical(.ctl()$optimHessType, 2L, info = .f)
+      expect_identical(.ctl(optimHessType = "forward")$optimHessType, 1L, info = .f)
+      expect_identical(.ctl(optimHessType = 2L)$optimHessType, 2L, info = .f)
+      expect_identical(.ctl(solveType = 2)$solveType, 2L, info = .f)
+      expect_identical(.ctl(solveType = "fun")$solveType, 1L, info = .f)
+      for (.v in 3:6) {
+        expect_error(.ctl(eventType = .v), "'eventType' must be one of", info = .f)
+        expect_error(.ctl(optimHessType = .v), "'optimHessType' must be one of", info = .f)
+      }
+      expect_error(.ctl(solveType = 4), "'solveType' must be one of", info = .f)
+      expect_error(.ctl(eventType = 1.5), "'eventType' must be one of", info = .f)
+      expect_error(.ctl(eventType = NA_real_), "'eventType' must be one of", info = .f)
+    }
+    expect_identical(optimControl(solveType = 1)$solveType, 1L)
+    expect_identical(optimControl()$solveType, 2L)
+    expect_error(optimControl(solveType = 3), "'solveType' must be one of")
+    expect_error(optimControl(eventType = 3), "'eventType' must be one of")
+    expect_identical(optimControl(eventType = 1)$eventType, 1L)
+    expect_error(nlsControl(eventType = 0), "'eventType' must be one of")
+    expect_identical(nlsControl(eventType = "forward")$eventType, 1L)
+    expect_error(nlmControl(eventType = "sideways"))
+  })
+
+  test_that("the nlm problem refuses codes it has no solve for (issue 1140)", {
+    .mod <- function() {
+      ini({
+        E0 <- 0.5
+        Em <- 0.5
+      })
+      model({
+        v <- E0 + Em * time
+        ll(bin) ~ DV * v - log(1 + exp(v))
+      })
+    }
+    .d <- data.frame(ID = 1L, TIME = 1:10, AMT = 0, EVID = 0L, DV = rep(0:1, 5))
+    # a control built by hand (as external engines do) skips the R checks
+    for (.opt in c("eventType", "optimHessType", "solveType")) {
+      .ctl <- nlmControl(print = 0L)
+      .ctl[[.opt]] <- 5L
+      expect_error(
+        suppressMessages(nlmObjectiveSetup(.mod, .d, control = .ctl, gradient = .opt != "solveType")),
+        .opt,
+        info = .opt
+      )
+      .nlmFreeEnv()
+    }
+  })
+
   test_that("nlm models convert strings to numbers", {
     mod <- function() {
       ini({
@@ -306,6 +362,9 @@ nmTest({
     # so the objective function and fixed effects must agree.
     expect_equal(.fMat$objf, .fOde$objf, tolerance = 1e-3)
     expect_equal(unname(fixef(.fMat)), unname(fixef(.fOde)), tolerance = 1e-3)
+    # the ODE form is a work-around, and the fit says so
+    expect_true(any(grepl("indLin() forcing", .fMat$runInfo, fixed = TRUE)))
+    expect_false(any(grepl("indLin() forcing", .fOde$runInfo, fixed = TRUE)))
   })
 
   test_that("nlm-family covariance from a ll() model matches the Poisson GLM (#issue not doubled)", {
@@ -347,5 +406,38 @@ nmTest({
     .seGlm <- summary(.glm)$coefficients[, "Std. Error"]
 
     expect_equal(unname(.seNlmixr), unname(.seGlm), tolerance = 0.1)
+  })
+
+  test_that("nlm's covMethod = \"nlm\" differences the analytic gradient (issue 1140)", {
+    skip_on_cran()
+    .pk <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        d / dt(depot) <- -ka * depot
+        d / dt(centr) <- ka * depot - cl / v * centr
+        cp <- centr / v
+        cp ~ add(add.sd)
+      })
+    }
+    # stats::nlm(hessian = TRUE) differences function values over a step of about
+    # 10%, which put tcl's SE 9% low and tv's and add.sd's 9-15% high
+    .own <- .nlmixr(.pk, nlmixr2data::theo_sd, est = "nlm", control = nlmControl(print = 0L, calcTables = FALSE))
+    .r <- .nlmixr(
+      .pk,
+      nlmixr2data::theo_sd,
+      est = "nlm",
+      control = nlmControl(print = 0L, calcTables = FALSE, covMethod = "r")
+    )
+    expect_identical(.own$covMethod, "r (nlm)")
+    expect_identical(.r$covMethod, "r")
+    expect_equal(sqrt(diag(.own$cov)), sqrt(diag(.r$cov)), tolerance = 0.01)
   })
 })

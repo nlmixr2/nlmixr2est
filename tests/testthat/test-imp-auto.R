@@ -284,4 +284,39 @@ nmTest({
     expect_lt(abs(sum(.on$env$impNsampleInd) - 300 * .n), 0.25 * 300 * .n)
     expect_true(all(.on$env$impNsampleInd >= 25)) # floor keeps PSIS usable
   })
+
+  test_that("auto reallocates a mixture's sample budget over its expanded subjects", {
+    # A mixture runs the E-step over nsub * nmix expanded subjects, and auto
+    # reallocates the samples over those.  Each one's effective sample size has
+    # to come from the per-EXPANDED-subject values; the per-subject Neff is
+    # nsub long, and reading it with the expanded index ran past its end -- a
+    # heap-buffer-overflow under ASAN, garbage sample counts otherwise.  This
+    # fit drives that path; ASAN is what shows the defect.
+    skip_on_cran()
+    .mix <- function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(2.7)
+        tcl2 <- log(0.5)
+        tv <- 3.45
+        p1 <- 0.5
+        eta.cl ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .on <- .fitAuto(TRUE, nIter = 3L, model = .mix)
+    .nExp <- 2L * length(unique(nlmixr2data::theo_sd$ID))
+    # one count per expanded subject: 12 subjects x 2 components
+    expect_length(.on$env$impNsampleInd, .nExp)
+    expect_true(all(.on$env$impNsampleInd >= 25)) # floor
+    expect_true(all(.on$env$impNsampleInd <= 20 * 300)) # ceiling
+    # load-balancing over all the expanded subjects, not a cost increase
+    expect_lt(abs(sum(.on$env$impNsampleInd) - 300 * .nExp), 0.25 * 300 * .nExp)
+  })
 })

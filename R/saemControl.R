@@ -97,6 +97,15 @@
 #'   estimates by the decoupled recompute engine (\code{setCov()} uses the same
 #'   path); \code{NA} otherwise.
 #'
+#' @param covFallback what each \code{covMethod} falls back to when it gives no
+#'     usable covariance: a named list, one element per method, each the ordered
+#'     methods to try instead (\code{"sa"}, \code{"fim"}, \code{"linFim"} or
+#'     \code{"Ha"}, the inverse of the information matrix's theta block).  The
+#'     default is the established behaviour: \code{"sa"}, \code{"fim"} and
+#'     \code{"analytic"} fall to \code{"linFim"} then \code{"Ha"}, and
+#'     \code{"linFim"} to \code{"Ha"}.  A list you give replaces the default: a
+#'     method it does not name has no fallback.
+#'
 #' @param covFull Boolean (default \code{TRUE}) indicating the covariance
 #'   should include every estimated population parameter -- the structural and
 #'   residual thetas plus the \code{Omega} variance/covariance elements -- named
@@ -105,7 +114,8 @@
 #'   \code{covMethod="sa"}, which is always full.
 #'
 #' @param nSaCov Number of iterations in the dedicated stochastic-approximation
-#'   covariance phase used by \code{covMethod="sa"} (default \code{500}).  These
+#'   covariance phase used by \code{covMethod="sa"}, a whole number of at least 1
+#'   (default \code{500}).  These
 #'   iterations run at the converged estimate (parameters frozen) and only
 #'   resimulate the individual parameters to build the observed Fisher
 #'   information; a larger value gives a less noisy covariance.  Ignored by other
@@ -386,6 +396,7 @@ saemControl <- function(
   trace = 0, # nolint
   covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
   covMethodDeferred = NA_character_,
+  covFallback = list(sa = c("linFim", "Ha"), fim = c("linFim", "Ha"), analytic = c("linFim", "Ha"), linFim = "Ha"),
   covFull = TRUE,
   nSaCov = 500L,
   calcTables = TRUE,
@@ -443,14 +454,15 @@ saemControl <- function(
   .nuAuto <- missing(nu)
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc", "DEBUG", "iterPrintControl", "saemHoldPar"))]
+  .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc", "DEBUG", "iterPrintControl", "saemHoldPar", "saemWarmState"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste(paste0("'", .bad, "'", sep = ""), collapse = ", "), call. = FALSE)
   }
 
   iovXform <- match.arg(iovXform)
   iovMethod <- match.arg(iovMethod)
-  checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
+  checkmate::assertIntegerish(seed, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(nSaCov, lower = 1, len = 1, any.missing = FALSE)
   if (!is.null(.xtra$mcmc)) {
     #mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
     checkmate::assertIntegerish(.xtra$mcmc$niter, len = 2, lower = 0, any.missing = FALSE, .var.name = "mcmc$niter")
@@ -580,6 +592,11 @@ saemControl <- function(
     .covMethod <- ""
   }
 
+  covFallback <- .covFallbackCheck(
+    covFallback,
+    methods = c("sa", "fim", "analytic", "linFim", "r,s", "r", "s"),
+    targets = c("sa", "fim", "linFim", "Ha")
+  )
   checkmate::assertLogical(covFull, len = 1, any.missing = FALSE)
 
   # censOption: FOCEI-family censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic
@@ -622,6 +639,7 @@ saemControl <- function(
     ci = ci,
     covMethod = .covMethod,
     covMethodDeferred = covMethodDeferred,
+    covFallback = covFallback,
     covFull = covFull,
     nSaCov = as.integer(nSaCov),
     logLik = logLik,
@@ -653,6 +671,31 @@ saemControl <- function(
   # population parameter where it was supplied (.covEngineControl, .saemHoldCfg)
   if (isTRUE(.xtra$saemHoldPar)) {
     .ret$saemHoldPar <- TRUE
+  }
+  # internal: that recompute continues a SAEM fit's chains (.saemChainState)
+  if (!is.null(.xtra$saemWarmState)) {
+    checkmate::assertList(.xtra$saemWarmState, .var.name = "saemWarmState")
+    checkmate::assertMatrix(
+      .xtra$saemWarmState$phiM,
+      mode = "numeric",
+      any.missing = FALSE,
+      .var.name = "saemWarmState$phiM"
+    )
+    checkmate::assertNumeric(
+      .xtra$saemWarmState$sigma2,
+      lower = 0,
+      finite = TRUE,
+      null.ok = TRUE,
+      .var.name = "saemWarmState$sigma2"
+    )
+    checkmate::assertMatrix(
+      .xtra$saemWarmState$mpostPhi,
+      mode = "numeric",
+      any.missing = FALSE,
+      null.ok = TRUE,
+      .var.name = "saemWarmState$mpostPhi"
+    )
+    .ret$saemWarmState <- .xtra$saemWarmState
   }
   class(.ret) <- "saemControl"
   .ret

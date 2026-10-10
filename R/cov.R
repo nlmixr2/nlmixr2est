@@ -256,6 +256,20 @@
   if (.n == "r" && identical(covType, "analytic")) "analytic" else .n
 }
 
+#' A `foceiControl()` covMethod slot, checked
+#' @param covMethod one integer-valued number
+#' @return `covMethod` as an integer; a number that is not a slot is an error
+#' @noRd
+.covMethodSlotArg <- function(covMethod) {
+  if (!(covMethod %in% c(0L, .covMethodSlot))) {
+    stop(
+      "an integer 'covMethod' is a foceiControl() slot: 0 (none), 1 (\"r,s\"), 2 (\"r\") or 3 (\"s\")",
+      call. = FALSE
+    )
+  }
+  as.integer(covMethod)
+}
+
 #' A control's covMethod argument as one of its names
 #'
 #' An integer is a `foceiControl()` slot, as a round-tripped control carries it,
@@ -268,13 +282,7 @@
 #' @noRd
 .covMethodArg <- function(covMethod, choice) {
   if (checkmate::testIntegerish(covMethod, len = 1, any.missing = FALSE)) {
-    if (!(covMethod %in% c(0L, .covMethodSlot))) {
-      stop(
-        "an integer 'covMethod' is a foceiControl() slot: 0 (none), 1 (\"r,s\"), 2 (\"r\") or 3 (\"s\")",
-        call. = FALSE
-      )
-    }
-    return(.covMethodFromSlot(covMethod))
+    return(.covMethodFromSlot(.covMethodSlotArg(covMethod)))
   }
   # compared by value: a named "" is still "no covariance"
   if (is.character(covMethod) && length(covMethod) == 1L && !is.na(covMethod) && !nzchar(covMethod)) {
@@ -525,6 +533,11 @@
   if (is.data.frame(obj$iniDf0)) {
     .env2$iniDf0 <- obj$iniDf0
   }
+  # what the refit's covariance step starts from (.covStoreFitStart() unpacks it): the
+  # fit's covariance starting parameters, to the last bit (installed by the C++ covariance
+  # step when they match the refit's estimates), and below, what an earlier covariance
+  # step on this fit computed for these settings
+  .inputs <- list(covHandoff = if (is.list(.env$covHandoff)) .env$covHandoff)
   for (.n in names(.lst)) {
     .control[[.n]] <- .lst[[.n]]
   }
@@ -553,12 +566,20 @@
   } else if (.control$covMethod == 0L) {
     .control$covMethod <- 1L
   }
+  .key <- if (.covStoreRefitOk(.lst)) .covStoreKey(.env, .control)
+  .stored <- .covStoreGet(.env, .key)
+  if (!is.null(.stored)) {
+    .inputs$.fdFullStore <- .stored$full
+    .inputs$covThetaStore <- .stored$theta
+  }
+  .inputs$.fdFullHint <- .covPrecursorHint(.env, .control, .key)
+  .env2$.covRefitInputs <- .inputs
   .dat <- getData(obj)
   .ui <- obj$ui
   .mat <- obj$etaMat # as.matrix(nlme::random.effects(obj)[, -1])
   .control$skipCov <- obj$skipCov
   .control$etaMat <- .mat
-  nlmixr2CreateOutputFromUi(
+  .ret <- nlmixr2CreateOutputFromUi(
     .ui,
     data = .dat,
     control = .control,
@@ -566,6 +587,14 @@
     env = .env2,
     est = "none"
   )
+  .renv <- tryCatch(.ret$env, error = function(e) NULL)
+  if (is.environment(.renv)) {
+    try(.covStoreRecord(.env, .key, .renv, fd = !identical(.control$covType, "analytic")), silent = TRUE)
+    if (checkmate::testString(.renv$covMethod)) {
+      .covPrecursorRecord(.env, .renv$covMethod, .renv)
+    }
+  }
+  .ret
 }
 
 #' Base est whose full model the post-fit covariance recompute runs on
@@ -1185,8 +1214,18 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 #' @return invisibly `TRUE`
 #' @noRd
 .setCovInstall <- function(env, method, cov) {
+  # the method runs when cov is forced; it may leave a fallback its covFallback
+  # listed (.setCovFd); one left by an earlier request that stopped is not this one's
+  if (exists(".setCovFallback", envir = env, inherits = FALSE)) {
+    rm(list = ".setCovFallback", envir = env)
+  }
+  force(cov)
+  .fb <- get0(".setCovFallback", envir = env, inherits = FALSE)
+  if (!is.null(.fb)) {
+    rm(list = ".setCovFallback", envir = env)
+  }
   if (is.null(cov)) {
-    if (!.covSameName(method, env$covMethod)) {
+    if (!.covSameName(method, env$covMethod) && !identical(.fb, env$covMethod)) {
       stop("setCov() method '", method, "' returned NULL without installing '", method, "'", call. = FALSE)
     }
     return(invisible(TRUE))
@@ -1277,10 +1316,21 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 #' @return invisibly `TRUE`
 #' @noRd
 .setCovFd <- function(fit, env, method, base, control = NULL) {
-  .fit2 <- do.call(.setCovRefit, c(list(fit, covMethod = base, covFull = .covIsFull(method)), unclass(control)))
+  .args <- unclass(control)
+  # an explicit request falls back only as its control lists (none by default)
+  .fb <- .args$covFallback
+  .args$covFallback <- if (is.list(.fb)) .fb else list()
+  .fit2 <- do.call(.setCovRefit, c(list(fit, covMethod = base, covFull = .covIsFull(method)), .args))
   .label <- .fit2$covMethod
+  .listed <- nzchar(.covFdType(.label)) &&
+    .covFdType(.label) %in% .args$covFallback[[base]] &&
+    identical(.covIsFull(method), .covIsFull(.label))
   if (!.covSameName(method, .label)) {
-    .setCovFail(method, if (.covIsName(.label)) sprintf("was \"%s\"", .label))
+    if (!.listed) {
+      .setCovFail(method, if (.covIsName(.label)) sprintf("was \"%s\"", .label))
+    }
+    warning(sprintf("\"%s\" covariance installed instead of the requested \"%s\"", .label, method), call. = FALSE)
+    assign(".setCovFallback", .label, envir = env)
   }
   .ok <- .covInstall(
     env,

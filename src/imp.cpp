@@ -561,7 +561,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
                      int iter, double negHalfLogDetOmega, bool isImp,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
                      arma::vec& Li, arma::vec& Neff, arma::vec& Xi,
-                     arma::vec& XiExpOut, arma::vec& KhatExpOut,
+                     arma::vec& NeffExpOut, arma::vec& XiExpOut, arma::vec& KhatExpOut,
                      std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
                      arma::mat& aMat, Environment* eStash,
                      uint32_t qrPinSeed, bool harvestSens,
@@ -985,7 +985,10 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
 
   // Per-EXPANDED-subject xi, which is what the individual-gamma controller
   // drives (one gamma_i per expanded subject).  `Xi` above is the
-  // responsibility-combined per-base-subject value used for reporting.
+  // responsibility-combined per-base-subject value used for reporting.  The
+  // same holds for the effective sample size: AUTO reallocates samples per
+  // expanded subject, so it needs NeffExp, not the per-base-subject `Neff`.
+  NeffExpOut = NeffExp;
   XiExpOut = XiExp;
   KhatExpOut = KhatExp;
 
@@ -1064,6 +1067,15 @@ static arma::mat impFdHessian(const arma::vec& par0,
   }
   return hess;
 }
+
+// src/inner.cpp: the covariance probe tolerances on the live solve, and back
+void covProbeSolveTolPush(double *sav);
+void covProbeSolveTolPop(const double *sav);
+struct ImpCovSolveTolScope {
+  double sav[2];
+  ImpCovSolveTolScope() { covProbeSolveTolPush(sav); }
+  ~ImpCovSolveTolScope() { covProbeSolveTolPop(sav); }
+};
 
 static void impComputeCov(Environment e, const arma::vec& gammaVec,
                           const std::vector<impProp>& props, int covIter) {
@@ -1194,6 +1206,17 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   std::vector<double> objBuf(nExp, 0.0);
   std::vector<char> objGood(nExp, 0);
   std::vector<double> mixLl((size_t)Nm);
+  arma::vec par0(np);
+  for (int j = 0; j < np; ++j)
+    par0[j] = (pl[j] < ntheta) ? impGetFullThetaVal(pl[j])
+                               : impGetOmegaThetaVal(pl[j] - ntheta);
+  // Each fixed sample's data part of the -log joint (impEvalJointLik() less its eta
+  // prior), kept from the evaluation at the estimates: a point that moves only Omega
+  // parameters changes only the prior, so it needs no solve.
+  const bool omReuse = impCovReuseOn() && Nm == 1 && !impIsFo();
+  std::vector<arma::vec> dataPart(nExp);
+  bool haveData = false;
+  int nReused = 0;
   // Progress bar over the finite-difference covariance evaluations, like the
   // focei covariance step.  evalObj is called f0 (1) + 2*np (diagonal) +
   // 2*np*(np-1) (off-diagonal) = 1 + 2*np*np times; tick once per call.
@@ -1204,13 +1227,21 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   if (covProg) RSprintf("calculating covariance matrix\n");
   auto evalObj = [&](const arma::vec& par) -> double {
     for (int j = 0; j < np; ++j) setPar(j, par[j]);
+    bool thetasAtCentre = true;
+    for (int j = 0; thetasAtCentre && j < np; ++j) {
+      if (pl[j] < ntheta && par[j] != par0[j]) thetasAtCentre = false;
+    }
+    const bool reuse = omReuse && haveData && thetasAtCentre;
+    const bool record = omReuse && !haveData;
+    if (reuse) ++nReused;
     // Re-read after setting: an Omega perturbation changes -0.5 log|Omega|.
     double negHalfLogDetOmega = impLogDetOmegaInv5();
     std::fill(objBuf.begin(), objBuf.end(), 0.0);
     std::fill(objGood.begin(), objGood.end(), 0);
     nmForEachSubject(rx, nExp, cores, doParCov, [&](int id) {
       if (ok[id]) {
-        impForceResolve(id);
+        if (!reuse) impForceResolve(id);
+        if (record) dataPart[id].set_size(isample);
         // This subject's converged proposal scale (all equal under "global").
         // Must use the SAME proposal FAMILY and parameters as the E-step or the
         // reweighted objective is not the one the fit converged on.
@@ -1219,7 +1250,14 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
         for (int k = 0; k < isample; ++k) {
           arma::vec eta = Ss[id].row(k).t();
           arma::vec d = eta - modes[id];
-          double qk = -impEvalJointLik(eta, id) +
+          double negLogJoint;
+          if (reuse) {
+            negLogJoint = dataPart[id][k] + impEtaPriorHalf(eta);
+          } else {
+            negLogJoint = impEvalJointLik(eta, id);
+            if (record) dataPart[id][k] = negLogJoint - impEtaPriorHalf(eta);
+          }
+          double qk = -negLogJoint +
             impPropLogKernelRecip(pr, arma::as_scalar(d.t() * Hs[id] * d), gammaVec[id], neta);
           if (R_finite(qk)) { q[k] = qk; ++nGood; } else q[k] = R_NegInf;
         }
@@ -1252,14 +1290,13 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
       }
     }
     if (covProg) covTick = par_progress(covCur++, covTot, covTick, 1, covT0, 0);
+    if (record) haveData = true;
     return obj;
   };
 
-  arma::vec par0(np);
-  for (int j = 0; j < np; ++j)
-    par0[j] = (pl[j] < ntheta) ? impGetFullThetaVal(pl[j])
-                               : impGetOmegaThetaVal(pl[j] - ntheta);
   arma::mat Hess = impFdHessian(par0, evalObj);
+  // objective evaluations that needed no solve
+  e["impCovReused"] = nReused;
   if (covProg) nmProgressEnd(covTot, covTick, covT0, covInPlace);
   // Restore the converged estimates.
   for (int j = 0; j < np; ++j) setPar(j, par0[j]);
@@ -1304,7 +1341,9 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   impGetOmega(Om);
   Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
   Function covInstall = nlmixr2[".impCovInstall"];
-  covInstall(e, wrap(cov), thIdxR, dOmCov, wrap(Om), omPar, wrap(info));
+  // held first: Function's argument list allocates while it is built
+  RObject covR = wrap(cov), omR = wrap(Om), infoR = wrap(info);
+  covInstall(e, covR, thIdxR, dOmCov, omR, omPar, infoR);
 }
 
 void impOuter(Environment e) {
@@ -1353,7 +1392,7 @@ void impOuter(Environment e) {
   std::vector<arma::mat> condVar;
   std::vector<arma::mat> sampS;
   std::vector<arma::vec> sampZk;
-  arma::vec Li, Neff, Xi, XiExp, KhatExp;
+  arma::vec Li, Neff, Xi, NeffExp, XiExp, KhatExp;
   arma::mat aMat;                 // posterior mixture responsibilities (nsub x Nmix)
   int Nmix = impNmix();
   int nExp = nsub * Nmix;         // expanded pseudo-subjects for the mixture E/M-step
@@ -1640,7 +1679,7 @@ void impOuter(Environment e) {
     gammaUsed = gammaVec;
     gammaScalarUsed = gamma;
     impEStep(nsub, neta, isampleVec, gammaVec, props, cores, iter, impLogDetOmegaInv5(), isImp,
-             condMean, condVar, Li, Neff, Xi, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed,
+             condMean, condVar, Li, Neff, Xi, NeffExp, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed,
              harvestSens, outSens);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
@@ -1840,7 +1879,9 @@ void impOuter(Environment e) {
     if (autoOn && nExp > 1) {
       arma::vec need(nExp, arma::fill::ones);
       for (int id = 0; id < nExp; ++id) {
-        double fr = R_finite(Neff[id]) ? Neff[id] / (double)isampleUsed[id] : 1.0;
+        // NeffExp, not Neff: id runs over the EXPANDED subjects, and Neff has
+        // one (responsibility-combined) entry per base subject.
+        double fr = R_finite(NeffExp[id]) ? NeffExp[id] / (double)isampleUsed[id] : 1.0;
         if (!(fr > 0.0) || !R_finite(fr)) fr = 1.0;
         // Only deviate from uniform where the effective-sample fraction is
         // genuinely deficient.  Reallocating on small differences just adds
@@ -2363,6 +2404,9 @@ void impOuter(Environment e) {
   // evaluate the covariance at a proposal the fit never actually used (and
   // disagree with the reported impDfInd / impGammaInd).
   if (impCovEnabled()) {
+    // the finite differences of the objective run at the covariance probe
+    // tolerances, as FOCEi's covariance step does
+    ImpCovSolveTolScope _tol;
     impComputeCov(e, gammaUsed, propsUsed, impQrRefreshEnabled() ? iterRun - 1 : 0);
   }
 

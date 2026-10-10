@@ -1914,12 +1914,14 @@ public:
   List get_resInfo() {
     vec sig2(bres.size());
     std::copy(sigma2, sigma2+bres.size(), &sig2[0]);
-    return List::create(_["sigma2"]  = wrap(sig2),
-			_["ares"]    = wrap(ares),
-			_["bres"]    = wrap(bres),
-			_["cres"]    = wrap(cres),
-			_["lres"]    = wrap(lres),
-			_["res_mod"] = wrap(res_mod));
+    // the vectors go in as themselves: create() wraps each into its protected
+    // result (the scan in test-gc-protect.R keeps wrap() out of create())
+    return List::create(_["sigma2"]  = sig2,
+			_["ares"]    = ares,
+			_["bres"]    = bres,
+			_["cres"]    = cres,
+			_["lres"]    = lres,
+			_["res_mod"] = res_mod);
   }
 
   mat get_mcmcAccTrace()    { return mcmcAccTrace; }
@@ -2071,6 +2073,8 @@ public:
     i1 = as<uvec>(x["i1"]);
     Gamma2_phi1 = as<mat>(x["Gamma2_phi1"]);
     Gamma2_phi1Init = Gamma2_phi1;
+    // reported until the first M-step replaces it (a run with no estimation iteration)
+    Gamma2_phi1Report = Gamma2_phi1;
     Gamma2_phi1fixedIxIn = as<umat>(x["Gamma2_phi1fixedIx"]);
     Gamma2_phi1fixedIx = find(Gamma2_phi1fixedIxIn);
     Gamma2_phi1fixed = as<int>(x["Gamma2_phi1fixed"]);
@@ -2123,6 +2127,10 @@ public:
     Plambda.zeros(nlambda);
     ilambda1 = as<uvec>(x["ilambda1"]);
     ilambda0 = as<uvec>(x["ilambda0"]);
+    // the starting estimates until the first M-step replaces them; a run with no
+    // estimation iteration (the "sa" recompute of a SAEM fit) reports these
+    Plambda.elem(ilambda1) = MCOV1.elem(jcov1);
+    if (nphi0 > 0) Plambda.elem(ilambda0) = MCOV0.elem(jcov0);
 
     DYF = zeros<mat>(mlen, nM);
     phi.set_size(N, nphi, nmc);
@@ -2219,6 +2227,25 @@ public:
       }
       statrese[b] = 0.0;
     }
+    // a run that continues another fit's chains (.saemWarmCfg) starts from that
+    // fit's residual statistic: no warm-up iteration is left to settle it, and the
+    // Louis residual score reads it as sigma2
+    if (x.containsElementNamed("statrese")) {
+      vec sr = as<vec>(x["statrese"]);
+      for (int b = 0; b < nendpnt && b < (int)sr.n_elem; ++b) {
+        statrese[b] = sr(b);
+        double nb = (double)(y_offset(b + 1) - y_offset(b));
+        if (nb > 0) sigma2[b] = sr(b) / nb;
+      }
+    }
+
+    // the covariance phase's residual statistic for an estimated sigma held at its
+    // value (.saemHoldCfg): n * sigma^2, NA where the residuals give it
+    if (x.containsElementNamed("statreseCov")) {
+      statreseCov = as<vec>(x["statreseCov"]);
+    } else {
+      statreseCov.reset();
+    }
 
     par_hist = as<mat>(x["par.hist"]);
     parHistThetaKeep=as<uvec>(x["parHistThetaKeep"]);
@@ -2271,6 +2298,13 @@ public:
     Hb = zeros<mat>(nb_param,nb_param);
     mpost_phi = zeros<mat>(N, nphi);
     cpost_phi = zeros<mat>(N, nphi);
+    // a run that continues another fit's chains (.saemWarmCfg) starts from that fit's
+    // posterior means: with no estimation iteration nothing accumulates them, and the
+    // linearized FIM (calc.COV) is taken there
+    if (x.containsElementNamed("mpost_phi")) {
+      mat mp = as<mat>(x["mpost_phi"]);
+      if (mp.n_rows == (unsigned int)N && mp.n_cols == (unsigned int)nphi) mpost_phi = mp;
+    }
     mpost_phi_mix.set_size(nMix > 1 ? nMix : 0);
     for (int j = 0; j < nMix && nMix > 1; j++) mpost_phi_mix(j) = zeros<mat>(N, nphi);
 
@@ -2555,6 +2589,14 @@ public:
       // entering the SA covariance phase: snapshot the converged estimate so it can be
       // restored afterward (the cov-phase iterations fluctuate the parameters).
       if (nSaCov > 0 && kiter == (unsigned int)niter) {
+        // an estimated sigma held at its value (.saemHoldCfg) is the Louis score's sigma2;
+        // the frozen gain then keeps it for the whole phase
+        for (int b = 0; b < nendpnt && b < (int)statreseCov.n_elem; ++b) {
+          if (!R_FINITE(statreseCov(b))) continue;
+          statrese[b] = statreseCov(b);
+          double nb = (double)(y_offset(b + 1) - y_offset(b));
+          if (nb > 0) sigma2[b] = statrese[b] / nb;
+        }
         _savPlambda = Plambda; _savGamma2_phi1 = Gamma2_phi1; _savGamma2_phi0 = Gamma2_phi0;
         _savGamma2_phi1Report = Gamma2_phi1Report; _savMprior_phi1 = mprior_phi1;
         _savMprior_phi0 = mprior_phi0; _savAres = ares; _savBres = bres; _savCres = cres;
@@ -4570,6 +4612,7 @@ private:
   vec resValue;
   uvec resFixed;
   uvec resKeep;
+  vec statreseCov;
 
   mcmcaux mx;
 
@@ -5922,8 +5965,8 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("HaSa") = saem.get_HaSa(),
     Named("res_info") = saem.get_resInfo(),
     Named("tolFactor") = _saemTf,
-    Named("mixProb") = wrap(saem.get_mixProb()),
-    Named("mixWeights") = wrap(saem.get_mixWeights())
+    Named("mixProb") = saem.get_mixProb(),
+    Named("mixWeights") = saem.get_mixWeights()
   );
   current_saem_state = nullptr;
   out.attr("saem.cfg") = x;

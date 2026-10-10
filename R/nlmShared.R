@@ -219,14 +219,46 @@
   if (!any(names(.ctl) == "covMethod")) {
     .ctl$covMethod <- "r"
   }
-  if (inherits(lst, "nls")) {
-    .cov <- summary(lst)$cov.unscaled
-    .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .cov, .parScaled)
+  # the residual degrees of freedom of a least-squares (nls) fit, NA otherwise
+  .rdf <- if (inherits(lst, "nls")) {
+    length(stats::residuals(lst)) - length(.parScaled)
+  } else if (inherits(lst, "nls.lm")) {
+    length(lst$fvec) - length(lst$par)
+  } else {
+    NA_integer_
+  }
+  if (!is.na(.rdf) && .rdf <= 0 && (inherits(lst, "nls") || (hessianCov && .ctl$covMethod != ""))) {
+    # sigma^2 = RSS / (n - p) does not exist
+    warning(
+      sprintf(
+        "nls has %d residual degrees of freedom, no residual variance; covariance step failed",
+        as.integer(.rdf)
+      ),
+      call. = FALSE
+    )
+    .ret$covMethod <- "failed"
+  } else if (inherits(lst, "nls")) {
+    # sigma^2 (J'J)^-1, the residual variance times summary()$cov.unscaled
+    .g <- .covGuard(stats::vcov(lst))
+    if (.g$ok) {
+      .ret$cov.scaled <- .g$cov
+      .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .parScaled)
+      .ret$covMethod <- "nls"
+    } else {
+      warning(sprintf("nls covariance %s; covariance step failed", .g$reason), call. = FALSE)
+      .ret$covMethod <- "failed"
+    }
   } else if (hessianCov && .ctl$covMethod != "") {
     .malert("calculating covariance")
     if (!any(names(.ret) == "hessian")) {
       .p <- setNames(.parScaled, NULL)
-      .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFunC)
+      # the stencil differences objectives that agree in their last digits, so its
+      # solves run at the covariance probe tolerances, as FOCEi's do
+      .tol <- .Call(`_nlmixr2est_covProbeSolveTolSet_`)
+      .hess <- tryCatch(
+        nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFunC),
+        finally = .Call(`_nlmixr2est_covProbeSolveTolRestore_`, .tol)
+      )
       .ret$hessian <- .hess
     }
     dimnames(.ret$hessian) <- list(.name, .name)
@@ -235,12 +267,19 @@
     # the Hessian is already the Fisher information (unlike the FOCEI R matrix,
     # which halves a -2*LL Hessian to get there).  Do not rescale here.
     .r <- .ret$hessian
+    if (inherits(lst, "nls.lm")) {
+      # minpack.lm's hessian is J'J of the residuals; the information is
+      # J'J / sigma^2, sigma^2 = RSS / (n - p) as in its vcov.nls.lm()
+      .r <- .r / (lst$deviance / (length(lst$fvec) - length(lst$par)))
+    }
     .rc <- .nlmCovFromHessian(.r)
-    .ret$covWarning <- .rc$warning
+    if (!is.null(.rc$warning)) {
+      warning(.rc$warning, call. = FALSE)
+    }
     if (is.null(.rc$r)) {
       .ret$covMethod <- "failed"
     } else {
-      .rinv <- rxode2::rxInv(cholSE(.rc$r))
+      .rinv <- rxode2::rxInv(.rc$u)
       .cov <- .rinv %*% t(.rinv)
       dimnames(.cov) <- list(.name, .name)
       .ret$covMethod <- if (.ctl$covMethod != "r") paste0(.rc$type, " (", .ctl$covMethod, ")") else .rc$type
@@ -255,38 +294,58 @@
   .nlmFreeEnv()
   .ret
 }
+
+#' The nlm-family Hessian from central differences of the analytic gradient
+#'
+#' Column `k` is the central difference of `.nlmixrNlminbGradC()` over the
+#' central step `nlmixr2Gill83()` finds for parameter `k` (the step source
+#' `nlmixr2Hess()` uses), at the covariance probe tolerances.  It needs a loaded
+#' problem with a gradient solve type (`solveType` `"grad"` or `"hessian"`).
+#' @param par scaled parameters at the estimates
+#' @return the symmetric Hessian of the objective
+#' @noRd
+.nlmGradHessian <- function(par) {
+  .tol <- .Call(`_nlmixr2est_covProbeSolveTolSet_`)
+  on.exit(.Call(`_nlmixr2est_covProbeSolveTolRestore_`, .tol))
+  .h <- nlmixr2Gill83(nlmixr2est::.nlmixrNlminbFunC, par)$aEpsC
+  .n <- length(par)
+  .hess <- matrix(0, .n, .n)
+  for (.k in seq_len(.n)) {
+    .e <- replace(numeric(.n), .k, .h[.k])
+    .hess[, .k] <- (nlmixr2est::.nlmixrNlminbGradC(par + .e) -
+      nlmixr2est::.nlmixrNlminbGradC(par - .e)) /
+      (2 * .h[.k])
+  }
+  (.hess + t(.hess)) / 2
+}
 #' The information matrix an nlm-family covariance is inverted from
 #'
-#' A positive-definite Hessian is used as is.  One that is not is repaired as
-#' `sqrtm(R %*% R)` ("|r|") or, when that is not positive definite either, as
-#' the nearest positive-definite matrix ("r+").  A numerically singular one is
-#' not repaired: both repairs would invert its rounding noise.
+#' The Hessian is factored and, when needed, repaired by the covariance step's one
+#' acceptance rule (`covAccept_()`, `covAcceptRule()` in src/cholse.cpp), under the
+#' FOCEi labels: "r" as it is; "r+" when Schnabel-Eskow's modified Cholesky
+#' factorization adds diagonals within `foceiControl()`'s default `cholAccept`;
+#' "|r|" for `sqrtm(R %*% R)`.  A numerically rank-deficient R may be "r+", as in
+#' FOCEi.
 #' @param hess Hessian of the -LL objective (the R matrix)
-#' @return list(r = the matrix to invert, `NULL` when none is usable; type =
-#'   "r", "|r|", "r+" or "failed"; warning = what was done, `NULL` for "r")
+#' @return list(r = the (repaired) R matrix and u = its upper Cholesky factor,
+#'   both `NULL` when none is usable; type = "r", "r+", "|r|" or "failed";
+#'   warning = what was done, `NULL` for "r")
 #' @noRd
 .nlmCovFromHessian <- function(hess) {
   .g <- .covGuard(hess)
-  if (.g$ok) {
-    return(list(r = hess, type = "r"))
-  }
-  .r <- NULL
-  if (!is.null(.g$cov)) {
-    .ev <- abs(.g$ev)
-    if (min(.ev) <= nrow(.g$cov) * .Machine$double.eps * max(.ev)) {
-      return(list(type = "failed", warning = "R matrix is singular; covariance step failed"))
-    }
-    .r <- tryCatch(sqrtm(.g$cov %*% .g$cov), error = function(e) NULL)
-    .type <- "|r|"
-    if (!.covGuard(.r)$ok) {
-      .r <- tryCatch(nmNearPD(.g$cov), error = function(e) NULL)
-      .type <- "r+"
-    }
-  }
-  if (!.covGuard(.r)$ok) {
+  if (is.null(.g$cov)) {
     return(list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .g$reason)))
   }
-  list(r = .r, type = .type, warning = sprintf("R matrix %s; corrected as \"%s\"", .g$reason, .type))
+  .r <- .g$cov
+  .a <- covAccept_(.r, (.Machine$double.eps)^(1 / 3), formals(foceiControl)$cholAccept)
+  .reason <- if (.g$ok) "is nearly singular" else .g$reason
+  switch(
+    .a$type,
+    "+" = list(r = .r, u = .a$U, type = "r+", warning = sprintf("R matrix %s; corrected as \"r+\"", .reason)),
+    "|" = list(r = .a$M, u = .a$U, type = "|r|", warning = sprintf("R matrix %s; corrected as \"|r|\"", .reason)),
+    failed = list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .reason)),
+    list(r = hess, u = .a$U, type = "r")
+  )
 }
 
 #' Adjust nlm and family output environment
@@ -467,6 +526,44 @@
   invisible(ui)
 }
 
+#' Integer code of an nlm-family control option given as a name or a code
+#'
+#' @param value the option as given: one of the names of `idx` (matched as
+#'   `match.arg()` does, the first being the default) or one of its codes
+#' @param idx the name -> code map, its names in the order of the option's
+#'   choices
+#' @param name the option's name, for the error
+#' @return the integer code
+#' @noRd
+.nlmCtlCode <- function(value, idx, name) {
+  if (!is.numeric(value)) {
+    return(setNames(idx[match.arg(value, names(idx))], NULL))
+  }
+  if (length(value) != 1L || is.na(value) || !(value %in% idx)) {
+    stop(
+      "'",
+      name,
+      "' must be one of ",
+      paste0(sprintf("\"%s\" (%d)", names(idx), idx), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  as.integer(value)
+}
+
+#' The covMethod of an nlm-family control
+#'
+#' `""` (no covariance step) is one of the choices, which `match.arg()` cannot
+#' match.
+#' @param covMethod the argument as given
+#' @param choice `match.arg(covMethod)` in the calling control; it is a promise,
+#'   forced only when `covMethod` is not `""`
+#' @return the name, or `""`
+#' @noRd
+.nlmCtlCovMethod <- function(covMethod, choice) {
+  if (identical(covMethod, "")) "" else choice
+}
+
 #' Shared control setup for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui` and `control`)
@@ -569,8 +666,10 @@
 #' @param returnFlag rxode2 control flag name that short-circuits and returns the
 #'   raw optimizer result (e.g. `"returnNlm"`)
 #' @param message `function(fit)` returning the `$message` (default `fit$message`)
-#' @param emitFitWarnings when TRUE, re-emit the warnings collected from
-#'   `fitModel` via `warning()` (nlm does this; the others do not)
+#' @param emitFitWarnings when TRUE (the default), re-emit the warnings
+#'   collected from `fitModel` (the optimizer, the covariance step and
+#'   `nlmWarnings()`) via `warning()`, so they reach the fit's `$runInfo`;
+#'   `FALSE` drops them
 #' @param extra `$extra` print string, or a `function(control)` returning it
 #' @param adjustOutput when TRUE, run `.nlmFamilyAdjustOutput()`
 #' @param objective optional `function(fit)` returning the raw objective, or
@@ -592,7 +691,7 @@
   returnFlag,
   objective = NULL,
   message = function(fit) fit$message,
-  emitFitWarnings = FALSE,
+  emitFitWarnings = TRUE,
   extra = "",
   adjustOutput = TRUE,
   postSetup = NULL
@@ -613,11 +712,6 @@
     .collectWarn(fitModel(.ui, .ret$dataSav), lst = TRUE)
   })
   .ret[[method]] <- .fit[[1]]
-  # the covariance step's report is not one of the optimizer warnings dropped below
-  if (is.character(.fit[[1]]$covWarning)) {
-    warning(.fit[[1]]$covWarning, call. = FALSE)
-    .ret[[method]]$covWarning <- NULL
-  }
   if (!is.null(postSetup)) {
     .ret <- postSetup(.ret, .ui, .fit)
   }

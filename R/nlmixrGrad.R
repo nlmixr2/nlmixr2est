@@ -103,7 +103,7 @@ nlmixr2Gill83 <- function(
   # the same checks foceiControl() makes on these options
   checkmate::assertNumeric(gillRtol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertIntegerish(gillK, lower = 0, len = 1, any.missing = FALSE)
-  checkmate::assertNumeric(gillStep, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillStep, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(gillFtol, lower = 0, len = 1, any.missing = FALSE)
   nlmixr2Gill83_(
     what,
@@ -167,6 +167,7 @@ nlmixr2GradFun <- function(
   printNcol = floor((getOption("width") - 23) / 12),
   print = 1
 ) {
+  checkmate::assertNumeric(gillStep, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
   .md5 <- digest::digest(list(what, gillRtol, gillK, gillStep, gillFtol))
   .nlmixr2GradInfo[["printNcol"]] <- printNcol
   .nlmixr2GradInfo[["useColor"]] <- useColor
@@ -235,6 +236,10 @@ nlmixr2GradFun <- function(
 ##' If you have an analytical gradient function, you should use
 ##' `stats::optimHess`
 ##'
+##' A parameter that `which` (passed on to \code{\link{nlmixr2Gill83}}) leaves
+##' out of the step search is differenced with the interval the search would
+##' start from, the one `gillK = 0` gives every parameter.
+##'
 ##' @inheritParams stats::optimHess
 ##' @param ... Extra arguments sent to \code{\link{nlmixr2Gill83}}
 ##' @inheritParams base::do.call
@@ -269,5 +274,18 @@ nlmixr2GradFun <- function(
 ##' h3 <- nlmixr2Hess(c(1.2,1.2), fr)
 nlmixr2Hess <- function(par, fn, ..., envir = parent.frame()) {
   .gill <- nlmixr2Gill83(fn, par, envir = envir, ...)
-  return(nlmixr2Hess_(par, fn, envir, .gill))
+  .out <- !.gill$which
+  if (any(.out)) {
+    # the parameters left out of the search get the interval it starts from
+    .args <- list(...)
+    .args$which <- .out
+    .args$gillK <- 0L
+    .start <- do.call(nlmixr2Gill83, c(list(fn, par, envir = envir), .args))
+    .gill <- list(
+      rEpsC = ifelse(.out, .start$rEpsC, .gill$rEpsC),
+      aEpsC = ifelse(.out, .start$aEpsC, .gill$aEpsC),
+      f = .start$f
+    )
+  }
+  nlmixr2Hess_(par, fn, envir, .gill)
 }

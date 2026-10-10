@@ -116,7 +116,10 @@ nmTest({
   test_that("covariance controls hold only their own options", {
     expect_equal(unclass(rsControl()), setNames(list(), character(0)))
     expect_equal(unclass(rsControl(hessEps = 1e-4, gillKcov = 3)), list(hessEps = 1e-4, gillKcov = 3L))
-    expect_equal(unclass(saControl(nSaCov = 50)), list(nBurn = 100L, nEm = 100L, nSaCov = 50L, seed = 99L))
+    expect_equal(
+      unclass(saControl(nSaCov = 50)),
+      list(nBurn = 100L, nEm = 100L, nSaCov = 50L, seed = 99L, warmStart = TRUE)
+    )
     expect_equal(unclass(impCovControl(isample = 10)), list(nIter = 1L, isample = 10L, impSeed = 42L))
     expect_error(rsControl(hessEps = -1))
   })
@@ -129,7 +132,11 @@ nmTest({
       .fakeRefit(obj, ...)
     })
     setCov(.fit, "s (full)", control = rsControl(hessEps = 1e-4, covSmall = 1e-6))
-    expect_equal(.seen$args, list(covMethod = "s", covFull = TRUE, hessEps = 1e-4, covSmall = 1e-6))
+    # an explicit request gets no fallbacks unless its control lists some
+    expect_equal(
+      .seen$args,
+      list(covMethod = "s", covFull = TRUE, hessEps = 1e-4, covSmall = 1e-6, covFallback = list())
+    )
     expect_identical(.fit$covMethod, "s (full)")
   })
 

@@ -63,3 +63,6 @@ attr(nlmixr2Est.posthoc, "unbounded") <- FALSE
 # evaluates an already-specified model, so a prior in ini({}) is not something
 # it could silently ignore.  See #938.
 attr(nlmixr2Est.posthoc, "nlmixr2Priors") <- "all"
+
+#' @export
+rxUiDeparse.posthocControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "posthocControl")

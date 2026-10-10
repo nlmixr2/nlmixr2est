@@ -52,6 +52,14 @@
 #'
 #'  "" Does not calculate the covariance step.
 #'
+#' @param covFallback what each `covMethod` falls back to when it gives no
+#'  usable covariance: a named list, one element per method, each the ordered
+#'  methods to try instead -- the FOCEI `"r,s"`, `"r"` and `"s"` (see
+#'  [foceiControl()]), and `"vi"`, the population variational covariance of a
+#'  full-Bayes fit.  The default is the established behaviour: each FOCEI method
+#'  keeps its FOCEI fallbacks and ends with `"vi"`.  A list you give replaces the
+#'  default: a method it does not name has no fallback.
+#'
 #' @param seed Random seed for the variational optimization (reparameterization
 #'   sampling); default 42.  The Monte-Carlo gradient is stochastic, so a fixed
 #'   seed makes every fit reproducible.  Reparameterization noise is drawn from a
@@ -230,6 +238,12 @@ emviControl <- function(
   printNcol = NULL,
 
   covMethod = c("vi", "analytic", "r,s", "r", "s", ""),
+  covFallback = list(
+    "r,s" = c("r", "s", "vi"),
+    r = c("s", "vi"),
+    s = "vi",
+    analytic = c("r,s", "r", "s", "vi")
+  ),
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
@@ -308,6 +322,11 @@ emviControl <- function(
   optim <- match.arg(optim)
   likelihood <- match.arg(likelihood)
   covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
+  covFallback <- .covFallbackCheck(
+    covFallback,
+    methods = c("analytic", "r,s", "r", "s"),
+    targets = c("r,s", "r", "s", "vi")
+  )
   addProp <- match.arg(addProp)
   eventSens <- match.arg(eventSens)
 
@@ -372,6 +391,7 @@ emviControl <- function(
     returnVi = returnVi,
     resume = resume,
     covMethod = covMethod,
+    covFallback = covFallback,
     optExpression = optExpression,
     sumProd = sumProd,
     literalFix = literalFix,

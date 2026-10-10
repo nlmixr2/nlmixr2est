@@ -202,7 +202,7 @@ lbfgsb3cControl <- function(
     lmm = lmm,
     maxit = as.integer(maxit),
 
-    covMethod = match.arg(covMethod),
+    covMethod = .nlmCtlCovMethod(covMethod, match.arg(covMethod)),
     optExpression = optExpression,
     literalFix = literalFix,
     literalFixRes = literalFixRes,

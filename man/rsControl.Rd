@@ -12,7 +12,10 @@ rsControl(
   covGillF = NULL,
   covSmall = NULL,
   rmatNorm = NULL,
-  smatNorm = NULL
+  smatNorm = NULL,
+  covFallback = NULL,
+  covPrecursor,
+  covShortcut = NULL
 )
 }
 \arguments{
@@ -34,24 +37,41 @@ gradient estimates during the covariance step.}
 
 \item{covGillF}{Use the Gill calculated optimal Forward difference
 step size for the instead of the central difference step size
-during the central difference gradient calculation.}
+during the central difference gradient calculation of the
+theta-only stage (see \code{covFull}).}
 
 \item{covSmall}{Small number used to compare covariance estimates
 (sandwich vs R/S matrix) before rejecting one as too small to be
 the final covariance estimate.}
 
 \item{rmatNorm}{A parameter to normalize gradient step size by the
-parameter value during the calculation of the R matrix}
+parameter value during the calculation of the R matrix of the
+theta-only stage (see \code{covFull})}
 
 \item{smatNorm}{A parameter to normalize gradient step size by the
-parameter value during the calculation of the S matrix}
+parameter value during the calculation of the S matrix of the
+theta-only stage (see \code{covFull})}
+
+\item{covFallback}{what the requested method may fall back to, as in
+\code{foceiControl(covFallback=)}.  \code{NULL} (default) is none:
+\code{setCov()} installs the method asked for or stops with an error.  With
+a list, a covariance from a method it lists for the request is installed,
+with a warning that names it.}
+
+\item{covPrecursor}{what the covariance may start from, as in
+\code{foceiControl(covPrecursor=)}.  Left out, the fit's value is kept;
+\code{NULL} uses none.}
+
+\item{covShortcut}{as in \code{foceiControl(covShortcut=)}; \code{NULL}
+(default) keeps the fit's value.}
 }
 \value{
 \code{rsControl} object
 }
 \description{
 Used by \code{setCov(fit, "r,s")}, \code{"r"} and \code{"s"}.  Each option
-left \code{NULL} keeps the value the fit was estimated with.
+left \code{NULL} keeps the value the fit was estimated with, except
+\code{covFallback}.
 }
 \examples{
 rsControl(hessEps = 1e-4)
