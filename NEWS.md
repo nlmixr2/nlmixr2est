@@ -163,6 +163,9 @@
   saved trial's step and curvature, and no longer saves a step the search
   rejected for roundoff (#1194).
 
+- A Gill83 search that finds the objective constant in a parameter now reports
+  its error estimate rather than leaving it unset (#1194).
+
 - A Gill83 step search no longer labels an accurate derivative "High Grad
   Error" when the slope is negative or the accepted interval came from
   shrinking the step; these spurious labels raised the "gradient problems"

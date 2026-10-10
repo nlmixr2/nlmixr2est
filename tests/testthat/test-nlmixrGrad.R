@@ -203,6 +203,24 @@ test_that("the gillFtol fallback skips a step rejected for roundoff (#1194)", {
   expect_identical(g$hphi, g0$hphi)
 })
 
+test_that("the gillFtol fallback skips the growing steps rejected for roundoff (#1194)", {
+  # h grows from roundoff (Ch > 0.1); only those rejected steps have
+  # |phif| < gillFtol, so there is no fallback trial
+  f <- function(x) 1 + 0.01 * x^2
+  g0 <- nlmixr2Gill83(f, 0)
+  expect_identical(as.character(g0$info), "High Grad Error")
+  g <- nlmixr2Gill83(f, 0, gillFtol = 0.01 * g0$hphi * 0.6)
+  expect_identical(g$hf, g0$hf)
+  expect_identical(g$hphi, g0$hphi)
+  expect_identical(g$err, g0$err)
+})
+
+test_that("a constant-gradient Gill83 search reports its roundoff error (#1194)", {
+  g <- nlmixr2Gill83(function(x) 1 + 1e-9 * x^2, 2)
+  expect_identical(as.character(g$info), "Constant Grad")
+  expect_equal(g$err, 2 * g$gillRtol / g$hf)
+})
+
 test_that("an accurate Gill83 derivative is accepted (#1194)", {
   # a negative slope always failed 'err <= 0.5 * df'
   g <- nlmixr2Gill83(function(x) 1 - x + x^2, 0)

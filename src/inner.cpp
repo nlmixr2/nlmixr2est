@@ -7053,6 +7053,14 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   double f , x, hbar, h0, fp, fn=NA_REAL, phif, phib, phic, phicc = 0, phi, Chf, Chb,
     Ch, hs, hphi, hk, tmp, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phit=NA_REAL;
 
+  // the fallback trial: the last one with |phif| < fTol not dominated by roundoff
+  auto saveTrial = [&]() {
+    if (fTol != 0 && fabs(phif) < fTol && Ch <= 0.1) {
+      lastfpt = fp;
+      lastht = lasth;
+      phit = phi;
+    }
+  };
   f = gillF;
   int k = 0;
   // Relative error should be given by the tolerances, I believe.
@@ -7084,6 +7092,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   Chf = Chat(phif, h0, epsA);
   Chb = Chat(phib, h0, epsA);
   Ch  = ChatP(phi, h0, epsA);
+  saveTrial();
   hs  = -1;
   hphi=hbar; // Not defined in Gill, but used for central difference switch if there are problems
   // FD2:  // Decide if to accept the interval
@@ -7094,17 +7103,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   if (0.001 <= Ch && Ch <= 0.1){
     phicc=phic;
     hphi=h0;
-    if (fTol != 0 && fabs(phif) < fTol){
-      lastfpt = fp;
-      phit=phi;
-      lastht  = lasth;
-    }
     goto FD5;
-  }
-  if (fTol != 0 && fabs(phif) < fTol){
-    lastfpt = fp;
-    lastht  = lasth;
-    phit=phi;
   }
   if (Ch < 0.001){
     goto FD4;
@@ -7126,23 +7125,14 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   Chf = Chat(phif, hk, epsA);
   Chb = Chat(phib, hk, epsA);
   Ch = ChatP(phi, hk, epsA);
+  saveTrial();
   if (hs < 0 && max2(Chf, Chb) <= 0.1){
     hs = hk;
   }
   if (Ch <= 0.1){
     phicc=phic;
     hphi = hk;
-    if (fTol != 0 && fabs(phif) < fTol){
-      lastfpt = fp;
-      lastht  = lasth;
-      phit=phi;
-    }
     goto FD5;
-  }
-  if (fTol != 0 && fabs(phif) < fTol){
-    lastfpt = fp;
-    lastht  = lasth;
-    phit=phi;
   }
   // >=, not ==: k is incremented before this test, so K = 0 would never stop
   if (k >= K) goto FD6;
@@ -7165,10 +7155,10 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   Chf = Chat(phif, hk, epsA);
   Chb = Chat(phib, hk, epsA);
   Ch = ChatP(phi, hk, epsA);
+  saveTrial();
   if (Ch > .1){
     phicc=tmp;
     hphi=hk*gillStep; // hphi = h_k-1
-    // hk is rejected for roundoff, so it is not a fallback trial either
     goto FD5;
   }
   if (max2(Chf, Chb) <= 0.1){
@@ -7177,17 +7167,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   if (0.001 <= Ch && Ch <= 1){
     phicc=phic;
     hphi = hk;
-    if (fTol != 0 && fabs(phif) < fTol){
-      lastfpt = fp;
-      lastht  = lasth;
-      phit=phi;
-    }
     goto FD5;
-  }
-  if (fTol != 0 && fabs(phif) < fTol){
-    lastfpt = fp;
-    lastht  = lasth;
-    phit=phi;
   }
   if (k >= K) goto FD6;
   goto FD4;
@@ -7231,7 +7211,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     gill83fn(&fp, theta, cid, foceiGill);
     *df = phiF(f, fp, *hf);
     *df2=0;
-    // *df = 0.0; // Doesn't move.
+    *ef = 2*epsA/(*hf);
     *hphif=_safe_sqrt(h0);
     // warning("The surface around the initial estimate is nearly constant in one parameter grad=0.  Consider a different starting point.");
     ret = 3;
