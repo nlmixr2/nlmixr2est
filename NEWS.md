@@ -160,7 +160,8 @@
 - A Gill83 step search with a nonzero `gillFtol`/`gillFtolCov` whose
   derivative failed the error test fell back to a central-difference step equal
   to the slope (possibly negative) and a slope as the curvature; it now keeps the
-  saved trial's step and curvature (#1194).
+  saved trial's step and curvature, and no longer saves a step the search
+  rejected for roundoff (#1194).
 
 - A Gill83 step search no longer labels an accurate derivative "High Grad
   Error" when the slope is negative or the accepted interval came from

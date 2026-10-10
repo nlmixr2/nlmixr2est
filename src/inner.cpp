@@ -7168,11 +7168,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   if (Ch > .1){
     phicc=tmp;
     hphi=hk*gillStep; // hphi = h_k-1
-    if (fTol != 0 && fabs(phif) < fTol){
-      lastfpt = fp;
-      lastht  = lasth;
-      phit=phi;
-    }
+    // hk is rejected for roundoff, so it is not a fallback trial either
     goto FD5;
   }
   if (max2(Chf, Chb) <= 0.1){

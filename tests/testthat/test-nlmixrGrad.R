@@ -192,6 +192,17 @@ test_that("the gillFtol fallback of a high-error search keeps a step, not a slop
   expect_equal(g$err, .h * abs(g$df2) / 2 + 2 * abs(.f) * g$gillRtol / .h, tolerance = 1e-12)
 })
 
+test_that("the gillFtol fallback skips a step rejected for roundoff (#1194)", {
+  # the first shrink of h overshoots into roundoff (Ch > 0.1), so the search
+  # backs off to h0; the shrunk step used to be the fallback
+  f <- function(x) 1 + 1e4 * x^2
+  g0 <- nlmixr2Gill83(f, 0, gillStep = 50)
+  g <- nlmixr2Gill83(f, 0, gillStep = 50, gillFtol = 1e10)
+  expect_identical(as.character(g$info), "High Grad Error")
+  expect_identical(g$hf, g0$hphi)
+  expect_identical(g$hphi, g0$hphi)
+})
+
 test_that("an accurate Gill83 derivative is accepted (#1194)", {
   # a negative slope always failed 'err <= 0.5 * df'
   g <- nlmixr2Gill83(function(x) 1 - x + x^2, 0)
