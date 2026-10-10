@@ -7051,7 +7051,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
            double gillF, double d2Seed) {
   if (foceiGill == 1) op_focei.calcGrad=1;
   double f , x, hbar, h0, fp, fn=NA_REAL, phif, phib, phic, phicc = 0, phi, Chf, Chb,
-    Ch, hs, hphi, hk, tmp, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phict=NA_REAL;
+    Ch, hs, hphi, hk, tmp, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phit=NA_REAL;
 
   f = gillF;
   int k = 0;
@@ -7096,7 +7096,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     hphi=h0;
     if (fTol != 0 && fabs(phif) < fTol){
       lastfpt = fp;
-      phict=phic;
+      phit=phi;
       lastht  = lasth;
     }
     goto FD5;
@@ -7104,7 +7104,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   if (fTol != 0 && fabs(phif) < fTol){
     lastfpt = fp;
     lastht  = lasth;
-    phict=phic;
+    phit=phi;
   }
   if (Ch < 0.001){
     goto FD4;
@@ -7135,14 +7135,14 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     if (fTol != 0 && fabs(phif) < fTol){
       lastfpt = fp;
       lastht  = lasth;
-      phict=phic;
+      phit=phi;
     }
     goto FD5;
   }
   if (fTol != 0 && fabs(phif) < fTol){
     lastfpt = fp;
     lastht  = lasth;
-    phict=phic;
+    phit=phi;
   }
   // >=, not ==: k is incremented before this test, so K = 0 would never stop
   if (k >= K) goto FD6;
@@ -7171,7 +7171,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     if (fTol != 0 && fabs(phif) < fTol){
       lastfpt = fp;
       lastht  = lasth;
-      phict=phic;
+      phit=phi;
     }
     goto FD5;
   }
@@ -7183,14 +7183,14 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     if (fTol != 0 && fabs(phif) < fTol){
       lastfpt = fp;
       lastht  = lasth;
-      phict=phic;
+      phit=phi;
     }
     goto FD5;
   }
   if (fTol != 0 && fabs(phif) < fTol){
     lastfpt = fp;
     lastht  = lasth;
-    phict=phic;
+    phit=phi;
   }
   if (k >= K) goto FD6;
   goto FD4;
@@ -7212,20 +7212,13 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   } else {
     // warning("The finite difference derivative err more than 50%% of the slope; Consider a different starting point.");
     if (!ISNA(lastht)){
-      // Could be used;  Stick with the last below Ftol
-      // *hf = lasth;
-      // fp = lastfp;
-      // *df = phiF(f, fp, *hf);
-      // *df2=0;
-      // // *df = 0.0; // Doesn't move.
-      // *hphif=2*(*hf);
-      // } else {
+      // fall back to the last trial with |phif| < fTol: its step and curvature
       *hf = lastht;
       fp = lastfpt;
       *df = phiF(f, fp, *hf);
-      *df2=phic;
-      // *df = 0.0; // Doesn't move.
-      *hphif=phict;
+      *df2 = phit;
+      *ef = (*hf)*fabs(phit)/2+2*epsA/(*hf);
+      *hphif = lastht;
     }
     gill83tickStep(k, K, foceiGill);
     return 2;

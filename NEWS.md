@@ -157,6 +157,11 @@
   
 ## Bug Fixes
 
+- A Gill83 step search with a nonzero `gillFtol`/`gillFtolCov` whose
+  derivative failed the error test fell back to a central-difference step equal
+  to the slope (possibly negative) and a slope as the curvature; it now keeps the
+  saved trial's step and curvature (#1194).
+
 - The nlm-family covariance (`covMethod = "r"`, from `nlmixr2Hess()`) now runs
   its finite-difference stencil at the ODE tolerances FOCEi's covariance step
   uses (the fit's times 1e-3, capped at 1e-7).  At the fit's own tolerance

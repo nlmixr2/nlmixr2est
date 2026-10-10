@@ -170,3 +170,20 @@ test_that("nlmixr2GradFun() takes a Gill step factor of at least 1, as foceiCont
   }
   expect_error(nlmixr2GradFun(f, gillStep = 0.5), "Element 1 is not >= 1", fixed = TRUE)
 })
+
+test_that("the gillFtol fallback of a high-error search keeps a step, not a slope (#1194)", {
+  # slope -1 at 0 fails the 50% error test; every trial has |phif| < gillFtol
+  f <- function(x) 1 - x + x^2
+  g0 <- nlmixr2Gill83(f, 0)
+  expect_identical(as.character(g0$info), "High Grad Error")
+  g <- nlmixr2Gill83(f, 0, gillFtol = 10)
+  expect_identical(as.character(g$info), "High Grad Error")
+  # the step was a central-difference derivative (about -1) before the fix
+  expect_gt(g$hphi, 0)
+  expect_identical(g$hphi, g$hf)
+  expect_lt(g$hf, 0.1)
+  # the curvature is f'' = 2, not the slope
+  expect_equal(g$df2, 2, tolerance = 1e-4)
+  expect_equal(g$df, -1 + g$hf, tolerance = 1e-6)
+  expect_equal(g$err, g$hf * abs(g$df2) / 2 + 2 * abs(f(0)) * g$gillRtol / g$hf)
+})
