@@ -37,6 +37,15 @@ nmTest({
     expect_identical(.r$feval, 49L)
   })
 
+  test_that("a decrease below tol keeps the probe point without a restart", {
+    .flat <- function(x) 1e-3 * sum((x - 1)^2)
+    .at <- list(par = c(0, 0), fval = .flat(c(0, 0)), feval = 40L, ierr = 0L)
+    .r <- .bobyqaStationary(.flat, .lo, .hi, .ctl, .at, tol = 0.01)
+    expect_identical(.r$nStationaryRestart, 0L)
+    expect_lt(.r$fval, .at$fval)
+    expect_equal(.r$fval, .flat(.r$par))
+  })
+
   test_that("no check after a non-normal exit or without budget", {
     .n <- 0L
     .fn <- function(x) {

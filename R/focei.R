@@ -158,7 +158,8 @@ is.latex <- function() {
 #' while the objective still falls along the valley floor (#1196).  After a
 #' normal exit this takes a central-difference gradient and probes downhill;
 #' if a probe lowers the objective by more than `tol`, bobyqa restarts from
-#' it.  The lower of the restart and the probe is kept, and the check repeats up to
+#' it, and a smaller decrease keeps the probe point.  The lower of the restart
+#' and the probe is kept, and the check repeats up to
 #' `maxRestart` times within the evaluation budget.
 #' @param fn objective
 #' @param lower,upper bounds
@@ -225,12 +226,17 @@ is.latex <- function() {
       }
     }
     ret$feval <- ret$feval + length(.steps)
-    if (is.null(.bx) || ret$fval - .best <= tol) {
+    if (is.null(.bx)) {
+      break
+    }
+    if (ret$fval - .best <= tol) {
+      ret$par <- .bx
+      ret$fval <- .best
       break
     }
     .ctl2 <- ctl
     if (!is.null(.ctl2$maxfun)) {
-      .ctl2$maxfun <- .left - .cost
+      .ctl2$maxfun <- .left - .nEval - length(.steps)
     }
     .r2 <- minqa::bobyqa(.bx, fn, control = .ctl2, lower = lower, upper = upper)
     .n <- .n + 1L
