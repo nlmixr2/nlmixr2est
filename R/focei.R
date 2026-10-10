@@ -242,6 +242,7 @@ is.latex <- function() {
       }
     }
     ret$feval <- ret$feval + length(.steps)
+    # released before any restart, which then warm-starts from the search's own state
     .release()
     # a decrease within tol is noise; moving there only perturbs a converged fit
     if (is.null(.bx) || ret$fval - .best <= tol) {
