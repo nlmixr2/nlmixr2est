@@ -131,7 +131,11 @@ nmTest({
   test_that("infinite bounds and no budget cap still restart", {
     .stop <- list(par = c(-0.5, 0.25), fval = .valley(c(-0.5, 0.25)), feval = 40L, ierr = 0L)
     .r <- .bobyqaStationary(
-      .valley, c(-Inf, -Inf), c(Inf, Inf), .ctl[names(.ctl) != "maxfun"], .stop,
+      .valley,
+      c(-Inf, -Inf),
+      c(Inf, Inf),
+      .ctl[names(.ctl) != "maxfun"],
+      .stop,
       tol = 0.01
     )
     expect_gte(.r$nStationaryRestart, 1L)

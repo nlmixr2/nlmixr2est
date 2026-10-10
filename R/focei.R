@@ -188,25 +188,29 @@ is.latex <- function() {
     .x <- ret$par
     .h <- ctl$rhobeg / 100
     .nEval <- 0L
-    .g <- vapply(seq_len(.np), function(i) {
-      # central difference, shortened on a side that reaches a bound
-      .up <- max(min(.h, .upper[i] - .x[i]), 0)
-      .dn <- max(min(.h, .x[i] - .lower[i]), 0)
-      if (.up + .dn == 0) {
-        return(0)
-      }
-      .fu <- ret$fval
-      .fd <- ret$fval
-      if (.up > 0) {
-        .fu <- fn(replace(.x, i, .x[i] + .up))
-        .nEval <<- .nEval + 1L
-      }
-      if (.dn > 0) {
-        .fd <- fn(replace(.x, i, .x[i] - .dn))
-        .nEval <<- .nEval + 1L
-      }
-      (.fu - .fd) / (.up + .dn)
-    }, numeric(1))
+    .g <- vapply(
+      seq_len(.np),
+      function(i) {
+        # central difference, shortened on a side that reaches a bound
+        .up <- max(min(.h, .upper[i] - .x[i]), 0)
+        .dn <- max(min(.h, .x[i] - .lower[i]), 0)
+        if (.up + .dn == 0) {
+          return(0)
+        }
+        .fu <- ret$fval
+        .fd <- ret$fval
+        if (.up > 0) {
+          .fu <- fn(replace(.x, i, .x[i] + .up))
+          .nEval <<- .nEval + 1L
+        }
+        if (.dn > 0) {
+          .fd <- fn(replace(.x, i, .x[i] - .dn))
+          .nEval <<- .nEval + 1L
+        }
+        (.fu - .fd) / (.up + .dn)
+      },
+      numeric(1)
+    )
     ret$feval <- ret$feval + .nEval
     .probed <- TRUE
     # project out components whose descent leaves the box
