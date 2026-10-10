@@ -166,16 +166,27 @@ is.latex <- function() {
 #' @param ret the search's `minqa::bobyqa()` result
 #' @param tol objective decrease that triggers a restart
 #' @param maxRestart maximum number of restarts
+#' @param record,hold `.foceiOuterRecord()` and `.foceiOuterHold()`, or `NULL`;
+#'   the probe stays out of the history and leaves the fit's inner state alone
 #' @return a `minqa::bobyqa()`-shaped list with `nStationaryRestart` added
 #' @noRd
-.bobyqaStationary <- function(fn, lower, upper, ctl, ret, tol, maxRestart = 3L) {
+.bobyqaStationary <- function(fn, lower, upper, ctl, ret, tol, maxRestart = 3L, record = NULL, hold = NULL) {
   .n <- 0L
   .np <- length(ret$par)
   .lower <- rep_len(lower, .np)
   .upper <- rep_len(upper, .np)
   .steps <- ctl$rhobeg * 10^-(1:4)
   .cost <- 2L * .np + length(.steps)
-  .probed <- FALSE
+  .was <- NULL
+  .release <- function() {
+    if (is.function(hold)) {
+      hold(FALSE)
+    }
+    if (!is.null(.was)) {
+      record(.was)
+    }
+  }
+  on.exit(.release(), add = TRUE)
   while (.n < maxRestart && identical(as.integer(ret$ierr), 0L)) {
     .left <- if (is.null(ctl$maxfun)) Inf else ctl$maxfun - ret$feval
     if (.left <= .cost + ctl$npt + 2L) {
@@ -183,6 +194,12 @@ is.latex <- function() {
     }
     if (!is.finite(ret$fval)) {
       break
+    }
+    if (is.function(hold)) {
+      hold(TRUE)
+    }
+    if (is.function(record)) {
+      .was <- record(FALSE)
     }
     .x <- ret$par
     .h <- ctl$rhobeg / 100
@@ -208,7 +225,6 @@ is.latex <- function() {
       .g[i] <- (.fu - .fd) / (.up + .dn)
     }
     ret$feval <- ret$feval + .nEval
-    .probed <- TRUE
     # project out components whose descent leaves the box
     .g[(.x <= .lower & .g > 0) | (.x >= .upper & .g < 0)] <- 0
     .gn <- sqrt(sum(.g^2))
@@ -226,14 +242,14 @@ is.latex <- function() {
       }
     }
     ret$feval <- ret$feval + length(.steps)
+    .release()
     # a decrease within tol is noise; moving there only perturbs a converged fit
     if (is.null(.bx) || ret$fval - .best <= tol) {
       break
     }
     .ctl2 <- ctl
     if (!is.null(.ctl2$maxfun)) {
-      # leave one evaluation for the closing fn(ret$par)
-      .ctl2$maxfun <- .left - .nEval - length(.steps) - 1L
+      .ctl2$maxfun <- .left - .nEval - length(.steps)
     }
     .r2 <- minqa::bobyqa(.bx, fn, control = .ctl2, lower = lower, upper = upper)
     .n <- .n + 1L
@@ -245,11 +261,6 @@ is.latex <- function() {
       break
     }
     ret <- .r2
-  }
-  if (.probed) {
-    # end on the returned point; the fit's history checks the last evaluation is the minimum
-    fn(ret$par)
-    ret$feval <- ret$feval + 1L
   }
   ret$nStationaryRestart <- .n
   ret
@@ -269,7 +280,16 @@ is.latex <- function() {
   }
   if (isTRUE(control$bobyqaStationary) && !is.null(.ctl$rhobeg)) {
     .tol <- if (is.null(control$sigdig)) 0.01 else 10^(1 - control$sigdig)
-    .ret <- .bobyqaStationary(fn, lower, upper, .ctl, .ret, tol = .tol)
+    .ret <- .bobyqaStationary(
+      fn,
+      lower,
+      upper,
+      .ctl,
+      .ret,
+      tol = .tol,
+      record = control$outerRecord,
+      hold = control$outerHold
+    )
   }
   .ret$x <- .ret$par
   .ret$message <- .ret$msg

@@ -163,8 +163,8 @@
   objective by more than `10^(1-sigdig)`.  In a narrow curved valley bobyqa
   shrank its trust region and stopped early; an `ar()` fit stopped at OFV
   -1132.2 with `ar1.cor` 0.44 (truth 0.70) and now reaches -1222.5 with 0.70
-  (#1196).  A converged fit pays `2n + 5` extra evaluations;
-  `foceiControl(bobyqaStationary = FALSE)` skips the check.
+  (#1196).  A converged fit pays `2n + 4` extra evaluations and is otherwise
+  unchanged; `foceiControl(bobyqaStationary = FALSE)` skips the check.
 
 - The nlm-family covariance (`covMethod = "r"`, from `nlmixr2Hess()`) now runs
   its finite-difference stencil at the ODE tolerances FOCEi's covariance step

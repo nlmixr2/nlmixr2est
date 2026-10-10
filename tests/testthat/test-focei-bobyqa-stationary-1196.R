@@ -23,7 +23,7 @@ nmTest({
     expect_gt(.r$feval, 40L)
   })
 
-  test_that("a stationary point is left alone at a cost of 2n + 5 evaluations", {
+  test_that("a stationary point is left alone at a cost of 2n + 4 evaluations", {
     .n <- 0L
     .fn <- function(x) {
       .n <<- .n + 1L
@@ -33,8 +33,8 @@ nmTest({
     .r <- .bobyqaStationary(.fn, .lo, .hi, .ctl, .at, tol = 0.01)
     expect_identical(.r$nStationaryRestart, 0L)
     expect_identical(.r$par, c(1, 1))
-    expect_identical(.n, 9L)
-    expect_identical(.r$feval, 49L)
+    expect_identical(.n, 8L)
+    expect_identical(.r$feval, 48L)
   })
 
   test_that("a decrease below tol leaves the exit point alone", {
@@ -71,6 +71,62 @@ nmTest({
     .r <- .bobyqaStationary(.lin, .lo, .hi, .ctl, .out, tol = 0.01)
     expect_identical(.r$nStationaryRestart, 0L)
     expect_identical(.r$par, c(5, 0))
+  })
+
+  test_that("the probe is held and kept out of the history", {
+    .log <- character(0)
+    .rec <- TRUE
+    .record <- function(x) {
+      .old <- .rec
+      .rec <<- x
+      .log <<- c(.log, paste0("record", x))
+      .old
+    }
+    .hold <- function(x) {
+      .log <<- c(.log, paste0("hold", x))
+      FALSE
+    }
+    .fn <- function(x) {
+      # every probe runs held and unrecorded; the restart runs released and recorded
+      .log <<- c(.log, if (.rec) "fnRec" else "fnProbe")
+      .valley(x)
+    }
+    .stop <- list(par = c(-0.5, 0.25), fval = .valley(c(-0.5, 0.25)), feval = 40L, ierr = 0L)
+    .r <- .bobyqaStationary(.fn, .lo, .hi, .ctl, .stop, tol = 0.01, record = .record, hold = .hold)
+    expect_gte(.r$nStationaryRestart, 1L)
+    expect_true(.rec)
+    .holds <- .log[startsWith(.log, "hold")]
+    expect_identical(.holds[1], "holdTRUE")
+    expect_identical(.holds[length(.holds)], "holdFALSE")
+    # a probe's evaluations sit between a hold and its release
+    .on <- 0L
+    for (.e in .log) {
+      if (.e == "holdTRUE") {
+        .on <- 1L
+      }
+      if (.e == "holdFALSE") {
+        .on <- 0L
+      }
+      if (.e == "fnProbe") {
+        expect_identical(.on, 1L)
+      }
+      if (.e == "fnRec") expect_identical(.on, 0L)
+    }
+    expect_true(any(.log == "fnRec"))
+    # a caller that had recording off keeps it off
+    .rec <- FALSE
+    .log <- character(0)
+    .bobyqaStationary(
+      .fn,
+      .lo,
+      .hi,
+      .ctl,
+      list(par = c(1, 1), fval = 0, feval = 40L, ierr = 0L),
+      tol = 0.01,
+      record = .record,
+      hold = .hold
+    )
+    expect_false(.rec)
   })
 
   test_that("a non-finite exit value is left alone", {
