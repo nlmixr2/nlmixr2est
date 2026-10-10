@@ -2301,6 +2301,17 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   isTRUE(.flg != 0L)
 }
 
+#' Does the model have an `ar()` residual?
+#'
+#' The augmented outer-gradient model does not carry the AR(1) lines, whose
+#' lagged residual would also need its own sensitivity chain.
+#' @param ui rxode2 ui
+#' @return logical
+#' @noRd
+.foceiUsesAr <- function(ui) {
+  isTRUE(any(ui$iniDf$err %in% "ar"))
+}
+
 #' Add the second-order eta expansion ([.foceiAddHdEta2]) to an inner-model symengine env
 #' when the fit is a `fast=TRUE` log-likelihood / generalized endpoint, so the inner model
 #' carries `d2(logLik)/deta2` (`rx__d2pred_i_j__`) and `calcEtaHessian` assembles the exact
@@ -5201,6 +5212,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   if (isTRUE(.control$fast) && .foceiUsesLagVar(.ui)) {
     .minfo("lag() of a calculated variable: the analytic 'fast' gradient does not apply -- using fast = FALSE")
+    .control <- .foceiDowngradeFast(.control)
+  }
+  if (isTRUE(.control$fast) && .foceiUsesAr(.ui)) {
+    .minfo("ar() residual: the analytic 'fast' gradient does not apply -- using fast = FALSE")
     .control <- .foceiDowngradeFast(.control)
   }
   # matExp() models: the inner model now solves natively via rxode2's
