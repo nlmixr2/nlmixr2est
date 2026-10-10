@@ -50,12 +50,38 @@ nmTest({
     expect_identical(.n, 0L)
   })
 
-  test_that("a probe point at a bound keeps its gradient inside the box", {
-    .lin <- function(x) sum(x)
-    .at <- list(par = c(-5, 0), fval = -5, feval = 10L, ierr = 0L)
+  test_that("a point on a bound sees an inward gradient and stays in the box", {
+    .lin <- function(x) -x[1]
+    .at <- list(par = c(-5, 0), fval = 5, feval = 10L, ierr = 0L)
     .r <- .bobyqaStationary(.lin, .lo, .hi, .ctl, .at, tol = 0.01)
+    expect_gte(.r$nStationaryRestart, 1L)
+    expect_equal(.r$par[1], 5)
     expect_true(all(.r$par >= .lo & .r$par <= .hi))
-    expect_lte(.r$fval, -5)
+    # descent that would leave the box is not a reason to restart
+    .out <- list(par = c(5, 0), fval = -5, feval = 10L, ierr = 0L)
+    .r <- .bobyqaStationary(.lin, .lo, .hi, .ctl, .out, tol = 0.01)
+    expect_identical(.r$nStationaryRestart, 0L)
+    expect_identical(.r$par, c(5, 0))
+  })
+
+  test_that("a non-finite exit value is left alone", {
+    .at <- list(par = c(-0.5, 0.25), fval = NaN, feval = 40L, ierr = 0L)
+    .r <- .bobyqaStationary(.valley, .lo, .hi, .ctl, .at, tol = 0.01)
+    expect_identical(.r$par, .at$par)
+    expect_identical(.r$nStationaryRestart, 0L)
+  })
+
+  test_that("the probe point is kept when the restart does not beat it", {
+    local_mocked_bindings(
+      bobyqa = function(par, fn, ...) list(par = par + 1, fval = Inf, feval = 3L, ierr = 0L),
+      .package = "minqa"
+    )
+    .stop <- list(par = c(-0.5, 0.25), fval = .valley(c(-0.5, 0.25)), feval = 40L, ierr = 0L)
+    .r <- .bobyqaStationary(.valley, .lo, .hi, .ctl, .stop, tol = 0.01)
+    expect_identical(.r$nStationaryRestart, 1L)
+    expect_lt(.r$fval, .stop$fval - 0.01)
+    expect_equal(.r$fval, .valley(.r$par))
+    expect_true(all(abs(.r$par - .stop$par) < 0.03))
   })
 
   test_that(".bobyqa() runs the check only when bobyqaStationary is set", {

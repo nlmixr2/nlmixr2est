@@ -181,16 +181,35 @@ is.latex <- function() {
     if (.left <= .cost + ctl$npt + 1L) {
       break
     }
+    if (!is.finite(ret$fval)) {
+      break
+    }
     .x <- ret$par
-    .h <- pmin(ctl$rhobeg / 100, (.upper - .x) / 2, (.x - .lower) / 2)
+    .h <- ctl$rhobeg / 100
+    .nEval <- 0L
     .g <- vapply(seq_len(.np), function(i) {
-      if (.h[i] <= 0) {
+      # central difference, shortened on a side that reaches a bound
+      .up <- max(min(.h, .upper[i] - .x[i]), 0)
+      .dn <- max(min(.h, .x[i] - .lower[i]), 0)
+      if (.up + .dn == 0) {
         return(0)
       }
-      (fn(replace(.x, i, .x[i] + .h[i])) - fn(replace(.x, i, .x[i] - .h[i]))) / (2 * .h[i])
+      .fu <- ret$fval
+      .fd <- ret$fval
+      if (.up > 0) {
+        .fu <- fn(replace(.x, i, .x[i] + .up))
+        .nEval <<- .nEval + 1L
+      }
+      if (.dn > 0) {
+        .fd <- fn(replace(.x, i, .x[i] - .dn))
+        .nEval <<- .nEval + 1L
+      }
+      (.fu - .fd) / (.up + .dn)
     }, numeric(1))
-    ret$feval <- ret$feval + 2L * .np
+    ret$feval <- ret$feval + .nEval
     .probed <- TRUE
+    # project out components whose descent leaves the box
+    .g[(.x <= .lower & .g > 0) | (.x >= .upper & .g < 0)] <- 0
     .gn <- sqrt(sum(.g^2))
     if (!is.finite(.gn) || .gn == 0) {
       break
