@@ -322,10 +322,12 @@ nlminbControl(
 
 - covMethod:
 
-  Method for calculating the covariance. `"r"` (the default) uses
-  nlmixr2's
+  Method for calculating the covariance. `"r"` uses nlmixr2's
   [`nlmixr2Hess()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.md)
-  Hessian; `"nlminb"` uses the optimizer's own Hessian; `""` skips the
+  Hessian; `"nlminb"` uses central differences of the analytic gradient
+  at the final estimates, as `nlmControl(covMethod = "nlm")` does; it
+  needs `solveType = "hessian"` or `"grad"`. The default is `"nlminb"`
+  with `solveType = "hessian"` and `"r"` otherwise. `""` skips the
   covariance step.
 
 - adjObf:
@@ -420,20 +422,20 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 8328
-#> → compress parHistData in nlmixr2 object, save 2592
+#> → compress parHistData in nlmixr2 object, save 3960
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -717.6377 1126.239 1140.963      -560.1197        128.9487        37.44164
+#> lPop -717.6377 1126.239 1140.963      -560.1197        128.9486        37.44163
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1385574 0.2630977  8.075e-06      0.047       0.008 0.025    0.011
+#> elapsed 0.1425808 0.2053793 1.2443e-05      0.046       0.009 0.025    0.012
 #>              other
-#> elapsed 0.07933684
+#> elapsed 0.08302755
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -485,6 +487,12 @@ fit2$nlminb
 #> $message
 #> [1] "relative convergence (4)"
 #> 
+#> $hessian
+#>            E0        Em        E50
+#> E0   761.9499 158.13741 -108.42824
+#> Em   158.1374  62.46845  -33.90526
+#> E50 -108.4282 -33.90526   22.06955
+#> 
 #> $scaleC
 #> [1] 2.0 2.0 0.5
 #> 
@@ -492,17 +500,11 @@ fit2$nlminb
 #>        E0        Em       E50 
 #> -1.784754  1.157856  1.249023 
 #> 
-#> $hessian
-#>            E0        Em        E50
-#> E0   761.9499 158.13741 -108.42824
-#> Em   158.1374  62.46845  -33.90526
-#> E50 -108.4282 -33.90526   22.06955
-#> 
 #> $cov.scaled
-#>              E0          Em        E50
-#> E0  0.004496875 0.003656395 0.02771055
-#> Em  0.003656395 0.099311432 0.17053530
-#> E50 0.027710551 0.170535298 0.44344593
+#>              E0         Em        E50
+#> E0  0.004496875 0.00365639 0.02771054
+#> Em  0.003656390 0.09931139 0.17053521
+#> E50 0.027710543 0.17053521 0.44344574
 #> 
 #> $r
 #>            E0        Em        E50

@@ -121,6 +121,26 @@ foiControl()
 #> $covSolveTol
 #> NULL
 #> 
+#> $covFallback
+#> $covFallback$`r,s`
+#> [1] "r" "s"
+#> 
+#> $covFallback$r
+#> [1] "s"
+#> 
+#> $covFallback$s
+#> character(0)
+#> 
+#> $covFallback$analytic
+#> [1] "r,s" "r"   "s"  
+#> 
+#> 
+#> $covPrecursor
+#> [1] "fd"       "analytic"
+#> 
+#> $covShortcut
+#> [1] FALSE
+#> 
 #> $covFull
 #> [1] TRUE
 #> 
@@ -298,7 +318,7 @@ foiControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5600d6e58670>
+#> <bytecode: 0x55d286671420>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

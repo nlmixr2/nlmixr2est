@@ -279,7 +279,9 @@ will calculate tables. By default this is <code>TRUE</code></p></dd>
 <dt id="arg-covmethod">covMethod<a class="anchor" aria-label="anchor" href="#arg-covmethod"></a></dt>
 <dd><p>Method for calculating the covariance.  <code>"r"</code> (the
 default) uses nlmixr2's <code><a href="nlmixr2Hess.html">nlmixr2Hess()</a></code> Hessian; <code>"n1qn1"</code> uses
-the optimizer's own Hessian; <code>""</code> skips the covariance step.</p></dd>
+the optimizer's own Hessian, the quasi-Newton approximation n1qn1 built
+along its path (<code>H</code>), not a finite-difference Hessian at the
+estimates; <code>""</code> skips the covariance step.</p></dd>
 
 
 <dt id="arg-adjobf">adjObf<a class="anchor" aria-label="anchor" href="#arg-adjobf"></a></dt>
@@ -397,9 +399,9 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1366982 0.2030736  7.284e-06      0.053       0.008 0.026    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1373727 0.1940802 1.2954e-05      0.045       0.009 0.025    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.08522094</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.08853409</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

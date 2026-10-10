@@ -45,6 +45,11 @@ Hessian matrix based on Gill83
 If you have an analytical gradient function, you should use
 \`stats::optimHess\`
 
+A parameter that \`which\` (passed on to
+[`nlmixr2Gill83`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Gill83.md))
+leaves out of the step search is differenced with the interval the
+search would start from, the one \`gillK = 0\` gives every parameter.
+
 ## See also
 
 [`nlmixr2Gill83`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Gill83.md),

@@ -88,7 +88,7 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8616
+#> → compress parHistData in nlmixr2 object, save 9616
 #> → compress phiM in nlmixr2 object, save 439912
 
 nlmixrWithTiming("time1", {
@@ -108,16 +108,16 @@ print(fit)
 #> ── Time (sec $time): ──
 #> 
 #>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.09341989 2.3554e-05 0.03900504      0.065     0.192 4.238       0.276
+#> elapsed 0.09637179 3.3804e-05 0.04801154      0.064     0.203 4.275        0.27
 #>         table compress     other time2 time1
-#> elapsed 0.056    0.131 0.1535515 1.002 1.001
+#> elapsed 0.069    0.129 0.1745829 1.002 1.002
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0     -0.106 
-#> tcl               1.01 0.0843 8.35       2.74 (2.33, 3.24)     27.2       4.20 
-#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.01 
+#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0     -0.389 
+#> tcl               1.01 0.0843 8.35       2.74 (2.33, 3.24)     27.2       3.46 
+#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.22 
 #> add.sd           0.696 0.0471 6.77    0.696 (0.604, 0.788)                     
 #>  
 #>   Covariance Type ($covMethod): sa
@@ -129,11 +129,11 @@ print(fit)
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 132 × 18
-#>   ID     TIME    DV  PRED    RES IPRED    IRES   IWRES eta.ka eta.cl   eta.v
-#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>   <dbl>  <dbl>  <dbl>   <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.0971 -0.479 -0.0834
-#> 2 1      0.25  2.84  3.22 -0.377  3.81 -0.975  -1.40   0.0971 -0.479 -0.0834
-#> 3 1      0.57  6.57  5.63  0.942  6.62 -0.0507 -0.0728 0.0971 -0.479 -0.0834
+#>   ID     TIME    DV  PRED    RES IPRED    IRES  IWRES eta.ka eta.cl   eta.v
+#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>  <dbl>  <dbl>  <dbl>   <dbl>
+#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.104 -0.483 -0.0832
+#> 2 1      0.25  2.84  3.22 -0.377  3.84 -0.997  -1.43   0.104 -0.483 -0.0832
+#> 3 1      0.57  6.57  5.63  0.942  6.65 -0.0789 -0.113  0.104 -0.483 -0.0832
 #> # ℹ 129 more rows
 #> # ℹ 7 more variables: depot <dbl>, central <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
 #> #   tad <dbl>, dosenum <dbl>

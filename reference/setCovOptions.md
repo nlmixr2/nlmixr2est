@@ -72,4 +72,7 @@ setCovOptions(saControl(), NULL)
 #> $seed
 #> [1] 99
 #> 
+#> $warmStart
+#> [1] TRUE
+#> 
 ```

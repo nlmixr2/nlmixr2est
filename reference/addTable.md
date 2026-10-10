@@ -116,7 +116,7 @@ f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #>  
 #>  
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8616
+#> → compress parHistData in nlmixr2 object, save 9616
 #> → compress phiM in nlmixr2 object, save 439912
 
 print(f)
@@ -128,16 +128,16 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1006164 2.4606e-05 0.04000528      0.075     0.207 4.323       0.276
+#> elapsed 0.1053984 3.2521e-05 0.04001361      0.075     0.196 4.291       0.285
 #>         compress     other
-#> elapsed    0.132 0.1783537
+#> elapsed     0.13 0.1805554
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0     -0.106 
-#> tcl               1.01 0.0843 8.35       2.74 (2.33, 3.24)     27.2       4.20 
-#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.01 
+#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0     -0.389 
+#> tcl               1.01 0.0843 8.35       2.74 (2.33, 3.24)     27.2       3.46 
+#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.22 
 #> add.sd           0.696 0.0471 6.77    0.696 (0.604, 0.788)                     
 #>  
 #>   Covariance Type ($covMethod): sa
@@ -162,16 +162,16 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1006164 2.4606e-05 0.04000528      0.075     0.207 4.323       0.276
+#> elapsed 0.1053984 3.2521e-05 0.04001361      0.075     0.196 4.291       0.285
 #>         compress     other
-#> elapsed    0.132 0.1783537
+#> elapsed     0.13 0.1805554
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0     -0.106 
-#> tcl               1.01 0.0843 8.35       2.74 (2.33, 3.24)     27.2       4.20 
-#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.01 
+#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0     -0.389 
+#> tcl               1.01 0.0843 8.35       2.74 (2.33, 3.24)     27.2       3.46 
+#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.22 
 #> add.sd           0.696 0.0471 6.77    0.696 (0.604, 0.788)                     
 #>  
 #>   Covariance Type ($covMethod): sa
@@ -183,11 +183,11 @@ print(f)
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 132 × 18
-#>   ID     TIME    DV  PRED    RES IPRED    IRES   IWRES eta.ka eta.cl   eta.v
-#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>   <dbl>  <dbl>  <dbl>   <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.0971 -0.479 -0.0834
-#> 2 1      0.25  2.84  3.22 -0.377  3.81 -0.975  -1.40   0.0971 -0.479 -0.0834
-#> 3 1      0.57  6.57  5.63  0.942  6.62 -0.0507 -0.0728 0.0971 -0.479 -0.0834
+#>   ID     TIME    DV  PRED    RES IPRED    IRES  IWRES eta.ka eta.cl   eta.v
+#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>  <dbl>  <dbl>  <dbl>   <dbl>
+#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.104 -0.483 -0.0832
+#> 2 1      0.25  2.84  3.22 -0.377  3.84 -0.997  -1.43   0.104 -0.483 -0.0832
+#> 3 1      0.57  6.57  5.63  0.942  6.65 -0.0789 -0.113  0.104 -0.483 -0.0832
 #> # ℹ 129 more rows
 #> # ℹ 7 more variables: depot <dbl>, central <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
 #> #   tad <dbl>, dosenum <dbl>

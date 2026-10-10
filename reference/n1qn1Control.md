@@ -232,8 +232,10 @@ n1qn1Control(
   Method for calculating the covariance. `"r"` (the default) uses
   nlmixr2's
   [`nlmixr2Hess()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.md)
-  Hessian; `"n1qn1"` uses the optimizer's own Hessian; `""` skips the
-  covariance step.
+  Hessian; `"n1qn1"` uses the optimizer's own Hessian, the quasi-Newton
+  approximation n1qn1 built along its path (`H`), not a
+  finite-difference Hessian at the estimates; `""` skips the covariance
+  step.
 
 - adjObf:
 
@@ -349,9 +351,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1366982 0.2030736  7.284e-06      0.053       0.008 0.026    0.001
+#> elapsed 0.1373727 0.1940802 1.2954e-05      0.045       0.009 0.025    0.001
 #>              other
-#> elapsed 0.08522094
+#> elapsed 0.08853409
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

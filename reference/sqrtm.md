@@ -16,4 +16,5 @@ sqrtm(m)
 
 ## Value
 
-A square root general square matrix of m
+A square root general square matrix of m. A matrix that is not finite is
+an error.

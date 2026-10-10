@@ -67,6 +67,10 @@
 <span>  covDerivMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
 <span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"r,s"</span>, <span class="st">"analytic"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">"sa"</span>, <span class="st">"imp"</span>, <span class="st">""</span><span class="op">)</span>,</span>
 <span>  covSolveTol <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  covFallback <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>`r,s` <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"r"</span>, <span class="st">"s"</span><span class="op">)</span>, r <span class="op">=</span> <span class="st">"s"</span>, s <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">character</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span>, analytic <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"r,s"</span>,</span>
+<span>    <span class="st">"r"</span>, <span class="st">"s"</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  covPrecursor <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fd"</span>, <span class="st">"analytic"</span><span class="op">)</span>,</span>
+<span>  covShortcut <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  covFull <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  fast <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  priorMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"general"</span>, <span class="st">"nwpri"</span>, <span class="st">"tnpri"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
@@ -405,14 +409,53 @@ solves behind <code>covMethod="analytic"</code>.  <code>NULL</code> (default) de
 them from the fit's own tolerances: the finite-difference solves use
 <code>atol</code> and <code>rtol</code> each times 1e-3, capped at 1e-7 (at the default
 <code>sigdig = 3</code>, <code>rtol = 1e-7</code> and <code>atol = 1e-9</code>), and the
-analytic augmented solves use <code>max(1e-14, min(1e-8, 10^-(sigdig + 6)))</code>.  The
+analytic augmented solves use <code>max(1e-12, min(1e-8, 10^-(sigdig + 6)))</code>.  The
 inner problems of the finite-difference probes are tightened the same way,
 whichever <code>innerOpt</code> runs them: <code>trustFterm</code> and
 <code>trustMterm</code>, <code>epsilon</code> (n1qn1), and the <code>innerLbfgs*</code>
 tolerances (lbfgsb3c) each times 1e-3, capped at 1e-9.  No derived
-tolerance goes below 1e-14 unless the fit's own already is.
+tolerance goes below 1e-12 unless the fit's own already is.
 A number sets <code>atol = rtol = covSolveTol</code> for both kinds of solve.
-Estimation itself always runs at the fit's tolerances.</p></dd>
+Estimation itself always runs at the fit's tolerances.  When the
+finite-difference standard errors look noisy (they change with small
+changes to the steps or the estimates, or disagree with
+<code>covMethod="analytic"</code>), a tighter value such as <code>1e-10</code> or
+<code>1e-12</code> can help: every probe's solve error enters the differences.</p></dd>
+
+
+<dt id="arg-covfallback">covFallback<a class="anchor" aria-label="anchor" href="#arg-covfallback"></a></dt>
+<dd><p>what each <code>covMethod</code> falls back to when it gives no
+usable covariance: a named list, one element per method, each the ordered
+methods to try instead (the whole list, not followed further).  The default
+is the established behaviour: <code>"r,s"</code> falls to <code>"r"</code> then
+<code>"s"</code> (whichever matrix is usable), <code>"r"</code> to <code>"s"</code>,
+<code>"analytic"</code> to the finite-difference <code>"r,s"</code>, <code>"r"</code> and
+<code>"s"</code>, and <code>"s"</code> to nothing.  A list may also name <code>"sa"</code> and
+<code>"imp"</code>, which are computed after the fit when the finite-difference
+methods before them gave no covariance.  A list you give replaces the
+default: a method it does not name has no fallback.  The <code>"r,s"</code> check
+of a doubtful sandwich (see <code>covSmall</code>) only picks a listed method.  The
+methods tried and why each was not used are in <code>fit$env$covTried</code>.</p></dd>
+
+
+<dt id="arg-covprecursor">covPrecursor<a class="anchor" aria-label="anchor" href="#arg-covprecursor"></a></dt>
+<dd><p>what a finite-difference covariance may start from, in
+order of preference: <code>"fd"</code>, a full-stage R this fit computed under
+other settings (<code><a href="setCov.html">setCov()</a></code> with another <code><a href="rsControl.html">rsControl()</a></code>), and
+<code>"analytic"</code>, the analytic covariance the fit holds.  The first one
+the fit holds seeds the full stage's step searches with its diagonal;
+every step still passes the same acceptance test.  A fresh fit holds
+neither, so this matters for <code><a href="setCov.html">setCov()</a></code>.  <code>NULL</code> uses none.  How
+it served is in <code>fit$env$covPrecursorUsed</code> and the fit print.</p></dd>
+
+
+<dt id="arg-covshortcut">covShortcut<a class="anchor" aria-label="anchor" href="#arg-covshortcut"></a></dt>
+<dd><p>with a precursor (see <code>covPrecursor</code>), predict the
+full R from the measured diagonal and the precursor's correlations, check
+the prediction against the objective along four fixed directions, and
+skip measuring the off-diagonals when it agrees to 1% in each (the record
+says "accepted"); otherwise they are measured as usual ("fell back").
+<code>FALSE</code> (default) always measures them.</p></dd>
 
 
 <dt id="arg-covfull">covFull<a class="anchor" aria-label="anchor" href="#arg-covfull"></a></dt>
@@ -426,7 +469,14 @@ parameter set otherwise).  For the finite-difference methods it follows
 installs only the structural-theta block (the historical shape).  The
 installed shape is named by <code>fit$covMethod</code> – <code>"r,s (full)"</code>
 versus <code>"r,s"</code> – and the other shape is cached, so
-<code><a href="setCov.html">setCov()</a></code> swaps between them without recomputing either.</p></dd>
+<code><a href="setCov.html">setCov()</a></code> swaps between them without recomputing either.
+Both shapes come from one finite-difference computation over the full
+parameter set (the structural-theta shape is its theta block), at the steps
+<code>gillKcov</code>, <code>gillStepCov</code> and <code>gillFtolCov</code> choose, so
+<code>rmatNorm</code>, <code>smatNorm</code> and <code>covGillF</code> do not apply; the
+theta-only stage runs separately (with them) for a mixture, a mu-referenced
+model, a generalized log-likelihood, <code>gillKcov = 0</code> or
+<code>covDerivMethod = "forward"</code>.</p></dd>
 
 
 <dt id="arg-fast">fast<a class="anchor" aria-label="anchor" href="#arg-fast"></a></dt>
@@ -1278,7 +1328,8 @@ log-likelihood estimation.</p></dd>
 
 <dt id="arg-rmatnorm">rmatNorm<a class="anchor" aria-label="anchor" href="#arg-rmatnorm"></a></dt>
 <dd><p>A parameter to normalize gradient step size by the
-parameter value during the calculation of the R matrix</p></dd>
+parameter value during the calculation of the R matrix of the
+theta-only stage (see <code>covFull</code>)</p></dd>
 
 
 <dt id="arg-rmatnormllik">rmatNormLlik<a class="anchor" aria-label="anchor" href="#arg-rmatnormllik"></a></dt>
@@ -1289,7 +1340,8 @@ are using generalized log-likelihood Hessian matrix.</p></dd>
 
 <dt id="arg-smatnorm">smatNorm<a class="anchor" aria-label="anchor" href="#arg-smatnorm"></a></dt>
 <dd><p>A parameter to normalize gradient step size by the
-parameter value during the calculation of the S matrix</p></dd>
+parameter value during the calculation of the S matrix of the
+theta-only stage (see <code>covFull</code>)</p></dd>
 
 
 <dt id="arg-smatnormllik">smatNormLlik<a class="anchor" aria-label="anchor" href="#arg-smatnormllik"></a></dt>
@@ -1301,7 +1353,8 @@ are using the generalized log-likelihood.</p></dd>
 <dt id="arg-covgillf">covGillF<a class="anchor" aria-label="anchor" href="#arg-covgillf"></a></dt>
 <dd><p>Use the Gill calculated optimal Forward difference
 step size for the instead of the central difference step size
-during the central difference gradient calculation.</p></dd>
+during the central difference gradient calculation of the
+theta-only stage (see <code>covFull</code>).</p></dd>
 
 
 <dt id="arg-optgillf">optGillF<a class="anchor" aria-label="anchor" href="#arg-optgillf"></a></dt>

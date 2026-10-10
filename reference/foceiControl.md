@@ -29,6 +29,10 @@ foceiControl(
   covDerivMethod = c("central", "forward"),
   covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""),
   covSolveTol = NULL,
+  covFallback = list(`r,s` = c("r", "s"), r = "s", s = character(0), analytic = c("r,s",
+    "r", "s")),
+  covPrecursor = c("fd", "analytic"),
+  covShortcut = FALSE,
   covFull = TRUE,
   fast = FALSE,
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"),
@@ -359,13 +363,57 @@ foceiControl(
   finite-difference solves use `atol` and `rtol` each times 1e-3, capped
   at 1e-7 (at the default `sigdig = 3`, `rtol = 1e-7` and
   `atol = 1e-9`), and the analytic augmented solves use
-  `max(1e-14, min(1e-8, 10^-(sigdig + 6)))`. The inner problems of the
+  `max(1e-12, min(1e-8, 10^-(sigdig + 6)))`. The inner problems of the
   finite-difference probes are tightened the same way, whichever
   `innerOpt` runs them: `trustFterm` and `trustMterm`, `epsilon`
   (n1qn1), and the `innerLbfgs*` tolerances (lbfgsb3c) each times 1e-3,
-  capped at 1e-9. No derived tolerance goes below 1e-14 unless the fit's
+  capped at 1e-9. No derived tolerance goes below 1e-12 unless the fit's
   own already is. A number sets `atol = rtol = covSolveTol` for both
   kinds of solve. Estimation itself always runs at the fit's tolerances.
+  When the finite-difference standard errors look noisy (they change
+  with small changes to the steps or the estimates, or disagree with
+  `covMethod="analytic"`), a tighter value such as `1e-10` or `1e-12`
+  can help: every probe's solve error enters the differences.
+
+- covFallback:
+
+  what each `covMethod` falls back to when it gives no usable
+  covariance: a named list, one element per method, each the ordered
+  methods to try instead (the whole list, not followed further). The
+  default is the established behaviour: `"r,s"` falls to `"r"` then
+  `"s"` (whichever matrix is usable), `"r"` to `"s"`, `"analytic"` to
+  the finite-difference `"r,s"`, `"r"` and `"s"`, and `"s"` to nothing.
+  A list may also name `"sa"` and `"imp"`, which are computed after the
+  fit when the finite-difference methods before them gave no covariance.
+  A list you give replaces the default: a method it does not name has no
+  fallback. The `"r,s"` check of a doubtful sandwich (see `covSmall`)
+  only picks a listed method. The methods tried and why each was not
+  used are in `fit$env$covTried`.
+
+- covPrecursor:
+
+  what a finite-difference covariance may start from, in order of
+  preference: `"fd"`, a full-stage R this fit computed under other
+  settings
+  ([`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  with another
+  [`rsControl()`](https://nlmixr2.github.io/nlmixr2est/reference/rsControl.md)),
+  and `"analytic"`, the analytic covariance the fit holds. The first one
+  the fit holds seeds the full stage's step searches with its diagonal;
+  every step still passes the same acceptance test. A fresh fit holds
+  neither, so this matters for
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md).
+  `NULL` uses none. How it served is in `fit$env$covPrecursorUsed` and
+  the fit print.
+
+- covShortcut:
+
+  with a precursor (see `covPrecursor`), predict the full R from the
+  measured diagonal and the precursor's correlations, check the
+  prediction against the objective along four fixed directions, and skip
+  measuring the off-diagonals when it agrees to 1% in each (the record
+  says "accepted"); otherwise they are measured as usual ("fell back").
+  `FALSE` (default) always measures them.
 
 - covFull:
 
@@ -380,7 +428,13 @@ foceiControl(
   `fit$covMethod` – `"r,s (full)"` versus `"r,s"` – and the other shape
   is cached, so
   [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
-  swaps between them without recomputing either.
+  swaps between them without recomputing either. Both shapes come from
+  one finite-difference computation over the full parameter set (the
+  structural-theta shape is its theta block), at the steps `gillKcov`,
+  `gillStepCov` and `gillFtolCov` choose, so `rmatNorm`, `smatNorm` and
+  `covGillF` do not apply; the theta-only stage runs separately (with
+  them) for a mixture, a mu-referenced model, a generalized
+  log-likelihood, `gillKcov = 0` or `covDerivMethod = "forward"`.
 
 - fast:
 
@@ -1229,7 +1283,8 @@ foceiControl(
 - rmatNorm:
 
   A parameter to normalize gradient step size by the parameter value
-  during the calculation of the R matrix
+  during the calculation of the R matrix of the theta-only stage (see
+  `covFull`)
 
 - rmatNormLlik:
 
@@ -1240,7 +1295,8 @@ foceiControl(
 - smatNorm:
 
   A parameter to normalize gradient step size by the parameter value
-  during the calculation of the S matrix
+  during the calculation of the S matrix of the theta-only stage (see
+  `covFull`)
 
 - smatNormLlik:
 
@@ -1252,7 +1308,8 @@ foceiControl(
 
   Use the Gill calculated optimal Forward difference step size for the
   instead of the central difference step size during the central
-  difference gradient calculation.
+  difference gradient calculation of the theta-only stage (see
+  `covFull`).
 
 - optGillF:
 

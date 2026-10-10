@@ -14,7 +14,7 @@ Shared fit driver for the nlm-family estimation methods
   returnFlag,
   objective = NULL,
   message = function(fit) fit$message,
-  emitFitWarnings = FALSE,
+  emitFitWarnings = TRUE,
   extra = "",
   adjustOutput = TRUE,
   postSetup = NULL
@@ -66,8 +66,10 @@ Shared fit driver for the nlm-family estimation methods
 
 - emitFitWarnings:
 
-  when TRUE, re-emit the warnings collected from \`fitModel\` via
-  \`warning()\` (nlm does this; the others do not)
+  when TRUE (the default), re-emit the warnings collected from
+  \`fitModel\` (the optimizer, the covariance step and
+  \`nlmWarnings()\`) via \`warning()\`, so they reach the fit's
+  \`\$runInfo\`; \`FALSE\` drops them
 
 - extra:
 

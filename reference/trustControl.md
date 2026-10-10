@@ -55,7 +55,7 @@ trustControl(
   eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = FALSE,
-  covMethod = c("r", ""),
+  covMethod = c("r", "trust", ""),
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 3,
@@ -323,10 +323,12 @@ trustControl(
 
 - covMethod:
 
-  Method for calculating the covariance. \`"r"\` (the default) reuses
-  the LAST outer iteration's already-computed Hessian (skipping
-  \`nlmixr2est\`'s own post-fit finite-difference Hessian recompute,
-  since \`trust\` already has one in hand); \`""\` skips the covariance
+  Method for calculating the covariance. \`"r"\` (the default) uses a
+  finite-difference Hessian at the estimates: with \`hessianMethod =
+  "fd"\`, central differences of the analytical gradient over
+  \`nlmixr2Gill83()\` steps, otherwise \`nlmixr2Hess()\`'s. \`"trust"\`
+  uses the last outer iteration's Hessian whatever \`hessianMethod\`
+  built it (a quasi-Newton one by default); \`""\` skips the covariance
   step.
 
 - adjObf:
@@ -438,27 +440,27 @@ print(fit)
 #> ── nlmixr² log-likelihood trust ──
 #> 
 #>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -679.7168 1164.16 1178.884      -579.0801         380.471         65.8466
+#> lPop -679.7168 1164.16 1178.884      -579.0801        407.0783        67.95134
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1394339 0.1820238  6.482e-06      0.049       0.008 0.024    0.001
+#> elapsed 0.1313279 0.1902991 1.5188e-05      0.045       0.008 0.024    0.001
 #>              other
-#> elapsed 0.08753579
+#> elapsed 0.09235779
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>       Est.    SE  %RSE Back-transformed(95%CI)
-#> E0  -0.806 0.126  15.6  -0.806 (-1.05, -0.559)
+#> E0  -0.806 0.123  15.3  -0.806 (-1.05, -0.564)
 #> Em    5.49  1.18  21.6       5.49 (3.17, 7.81)
-#> E50   2.90 0.623  21.5       2.90 (1.68, 4.12)
+#> E50   2.90 0.622  21.5       2.90 (1.68, 4.12)
 #> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Some strong fixed parameter correlations exist ($cor) :
 #>      cor:Em,E0 cor:E50,E0 cor:E50,Em 
-#>     0.361      0.622      0.917  
+#>     0.366      0.627      0.918  
 #>  
 #> 
 #>   Censoring ($censInformation): No censoring
@@ -484,12 +486,6 @@ fit$trust
 #> $fval
 #> [1] 579.0801
 #> 
-#> $hessian
-#>            E0        Em       E50
-#> E0  744.56147 104.45339 -68.96607
-#> Em  104.45339  32.66361 -17.52918
-#> E50 -68.96607 -17.52918  10.45801
-#> 
 #> $convergence
 #> [1] 0
 #> 
@@ -506,17 +502,23 @@ fit$trust
 #>        E0        Em       E50 
 #> -1.653110  1.493295  2.796288 
 #> 
+#> $hessian
+#>            E0        Em       E50
+#> E0  800.34749 110.81271 -73.28628
+#> Em  110.81271  33.38968 -18.02407
+#> E50 -73.28628 -18.02407  10.79471
+#> 
 #> $cov.scaled
-#>              E0         Em        E50
-#> E0  0.003969484 0.01347793 0.04876805
-#> Em  0.013477930 0.35044603 0.67628074
-#> E50 0.048768049 0.67628074 1.55077169
+#>              E0         Em       E50
+#> E0  0.003812745 0.01337146 0.0482116
+#> Em  0.013371457 0.35041798 0.6758779
+#> E50 0.048211599 0.67587793 1.5484740
 #> 
 #> $r
 #>            E0        Em       E50
-#> E0  744.56147 104.45339 -68.96607
-#> Em  104.45339  32.66361 -17.52918
-#> E50 -68.96607 -17.52918  10.45801
+#> E0  800.34749 110.81271 -73.28628
+#> Em  110.81271  33.38968 -18.02407
+#> E50 -73.28628 -18.02407  10.79471
 #> 
 # }
 ```

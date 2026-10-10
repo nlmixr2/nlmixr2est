@@ -32,6 +32,8 @@ emviControl(
   useColor = NULL,
   printNcol = NULL,
   covMethod = c("vi", "analytic", "r,s", "r", "s", ""),
+  covFallback = list(`r,s` = c("r", "s", "vi"), r = c("s", "vi"), s = "vi", analytic =
+    c("r,s", "r", "s", "vi")),
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
@@ -305,6 +307,17 @@ emviControl(
   \`1\`, \`2\` and \`3\` are \`"r,s"\`, \`"r"\` and \`"s"\`.
 
   "" Does not calculate the covariance step.
+
+- covFallback:
+
+  what each \`covMethod\` falls back to when it gives no usable
+  covariance: a named list, one element per method, each the ordered
+  methods to try instead – the FOCEI \`"r,s"\`, \`"r"\` and \`"s"\` (see
+  \[foceiControl()\]), and \`"vi"\`, the population variational
+  covariance of a full-Bayes fit. The default is the established
+  behaviour: each FOCEI method keeps its FOCEI fallbacks and ends with
+  \`"vi"\`. A list you give replaces the default: a method it does not
+  name has no fallback.
 
 - optExpression:
 

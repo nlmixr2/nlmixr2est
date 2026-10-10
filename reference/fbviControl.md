@@ -131,6 +131,20 @@ fbviControl()
 #> $covMethod
 #> [1] "vi"
 #> 
+#> $covFallback
+#> $covFallback$`r,s`
+#> [1] "r"  "s"  "vi"
+#> 
+#> $covFallback$r
+#> [1] "s"  "vi"
+#> 
+#> $covFallback$s
+#> [1] "vi"
+#> 
+#> $covFallback$analytic
+#> [1] "r,s" "r"   "s"   "vi" 
+#> 
+#> 
 #> $optExpression
 #> [1] TRUE
 #> 

@@ -4,6 +4,114 @@
 
 ### New features
 
+- `nlminbControl(solveType = "hessian")`, the default, now takes the
+  covariance from central differences of the analytic gradient at the
+  estimates (`covMethod = "nlminb"`, labelled `"r (nlminb)"`), the
+  Hessian `nlmControl(covMethod = "nlm")` uses, instead of a separate
+  [`nlmixr2Hess()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.md)
+  stencil. On theo_sd the standard errors match the stencil’s and the
+  covariance takes 0.01 s instead of 0.9 s; on a pooled warfarin model
+  the stencil differenced solver noise along the ka/ktr ridge.
+  `covMethod = "r"` keeps the stencil.
+
+- `setCov(fit, "sa")` on a SAEM fit continues the fit’s own MCMC chains:
+  the covariance phase starts from the fit’s last iteration and runs no
+  new warm-up iterations (`nSaCov` instead of `nBurn + nEm + nSaCov`).
+  The Monte Carlo path differs from a cold start, so the standard errors
+  differ by Monte Carlo noise; `saControl(warmStart = FALSE)` restores
+  the cold start. Warm or cold, the Louis residual score reads an
+  estimated additive or proportional sigma at its held value rather than
+  the warm-up’s residuals.
+
+- The imp covariance (`covMethod = "imp"`) no longer solves the model at
+  the finite-difference points that move only Omega parameters: its
+  importance samples are fixed in eta-space, so those points change only
+  the eta prior, and each sample’s data part is reused from the
+  evaluation at the estimates (`fit$env$impCovReused` counts them).
+
+- `foceiControl(covFallback=)`, `saemControl(covFallback=)` and
+  `emviControl(covFallback=)` say what each covariance method falls back
+  to when it gives no usable covariance, as a named list (by default as
+  before: for FOCEi `"r,s"` to `"r"` then `"s"`, `"r"` to `"s"`,
+  `"analytic"` to `"r,s"`, `"r"` then `"s"`; for SAEM `"sa"`, `"fim"`
+  and `"analytic"` to `"linFim"` then `"Ha"`, `"linFim"` to `"Ha"`; for
+  emvi/fbvi each FOCEi chain then the variational covariance `"vi"`). A
+  FOCEi list may also name `"sa"` and `"imp"`, which are computed after
+  the fit when the methods before them gave no covariance.
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  falls back only as `rsControl(covFallback=)` lists (by default not at
+  all, as before); the list decides only what is installed, so a
+  covariance the fit already holds is reused whatever the list. A
+  theta-only `"r,s"` fit now keeps its `"r"` and `"s"` covariances in
+  `fit$covList`, so
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  switches to them without computing anything. A list you give replaces
+  the default, so a method it does not name has no fallback. The choice
+  among the R, S and sandwich covariances is now made in R
+  (`.covSelectFocei()`), `fit$env$covTried` records each method tried
+  and why it was not used, and a fit that falls back or gets no
+  covariance says so in one warning
+  (e.g. `"r,s" not usable (S not PD); installed "r"`) instead of the
+  earlier separate ones.
+
+- The FOCEi covariance step does less work (issue 1140). With
+  `covFull = TRUE` (the default) one finite-difference computation over
+  theta, sigma and Omega gives both shapes: the structural-theta
+  covariance is its theta block, so the separate theta-only step search,
+  R stencil and S legs no longer run, and both shapes use the covariance
+  step sizes (`gillKcov`, `gillStepCov`, `gillFtolCov`); `rmatNorm`,
+  `smatNorm` and `covGillF` now apply only to a theta-only stage that
+  runs on its own (`covFull = FALSE`, mixtures, mu-referenced models, a
+  generalized log-likelihood, `gillKcov = 0` or
+  `covDerivMethod = "forward"`). The S matrix is read from the points
+  the R stencil already evaluates; with `covFull = FALSE` this also
+  holds for `smatNorm = FALSE`, whose S steps are the R stencil’s.
+  `covMethod = "analytic"` runs no step search unless the analytic R is
+  declined. On `theo_sd` and the warfarin model of the audit the default
+  covariance takes about a quarter fewer objective evaluations (242 to
+  178, 505 to 368) and 30-45% less time, and the theta-only standard
+  errors move closer to the analytic ones (theo_sd 2.9% to 0.3%,
+  warfarin 28% to 6%). The fit’s `env$covEvals` counts the evaluations
+  of each stage. With `covFull = TRUE` the covariance columns of
+  `$scaleInfo` read “Not Assessed”, since no theta-only step search
+  runs.
+
+- [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  reads what the fit’s earlier covariance steps computed for the same
+  estimates and settings (the fit’s `env$covStore`: the
+  finite-difference R, S and steps) and computes only what is missing,
+  with the same result: after an `"r"` covariance, `"r,s"` computes only
+  S, and `"r"` or `"s"` after `"r,s"` computes nothing. Every fit starts
+  with an empty store.
+
+- A
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  finite-difference covariance of the full shape (`"r,s (full)"`,
+  `"r (full)"`, `"s (full)"`) can start from what the fit already holds:
+  `foceiControl(covPrecursor=)` and `rsControl(covPrecursor=)` name the
+  sources, `"fd"` (a full-stage R the fit computed under other settings)
+  and `"analytic"` (the analytic covariance it holds), in order of
+  preference. The precursor’s diagonal seeds each step search, which
+  then usually takes its first step (21 instead of 25 evaluations on
+  `theo_sd`, 33 instead of 39 on the warfarin model); every step still
+  passes the same acceptance test. A fresh fit holds no precursor, so
+  its own covariance is unchanged. `NULL` turns it off;
+  `fit$env$covPrecursorUsed` and the fit print say how one served.
+
+- With a precursor, `foceiControl(covShortcut = TRUE)` (opt-in, also in
+  [`rsControl()`](https://nlmixr2.github.io/nlmixr2est/reference/rsControl.md))
+  predicts the full R from the measured diagonal and the precursor’s
+  correlations, checks it against the objective along four fixed
+  directions, and when each agrees to 1% does not measure the
+  off-diagonals. On `theo_sd`, `setCov(fit, "r,s (full)")` after an
+  analytic fit took 95 evaluations instead of 175 (0.9 s instead of 1.3
+  s), with standard errors within 0.4% of the measured ones. When a
+  check disagrees the off-diagonals are measured as before, at the cost
+  of the check’s evaluations (12 on the warfarin model, where one
+  direction missed by 1.9%). The default `covShortcut = FALSE` always
+  measures them, since four directions cannot see every pattern of wrong
+  correlations.
+
 - nlmixr2est now tells the rxode2 event bus
   ([`rxode2::rxEventListen()`](https://nlmixr2.github.io/rxode2/reference/rxEventListen.html))
   about top-level work, so loggers such as nlmixr2log can record it:
@@ -94,6 +202,64 @@
   whose sampler had already handled those priors correctly.
 
 ### Bug Fixes
+
+- The nlm-family covariance (`covMethod = "r"`, from
+  [`nlmixr2Hess()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.md))
+  now runs its finite-difference stencil at the ODE tolerances FOCEi’s
+  covariance step uses (the fit’s times 1e-3, capped at 1e-7). At the
+  fit’s own tolerance (`rtol` 1e-3 by default) the stencil differenced
+  solver noise: an `nlminb` fit with `solveType = "fun"` reported a
+  repaired `|r|` covariance with standard errors about 6 times too
+  small.
+
+- The importance-sampling covariance (`covMethod = "imp"`) now evaluates
+  its finite differences at the same covariance probe tolerances. At the
+  fit’s own tolerance an `impmap` fit on `theo_sd` reported a repaired
+  `|imp|` covariance with the `tka` standard error about 3 times too
+  small.
+
+- `nlmControl(covMethod = "nlm")`, the default with
+  `solveType = "hessian"` or `"grad"`, now builds its Hessian from
+  central differences of the analytic gradient at the estimates, over
+  [`nlmixr2Gill83()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Gill83.md)
+  steps and at the covariance probe tolerances. It used
+  `stats::nlm(hessian = TRUE)`’s, which differences function values over
+  a step of about 10%; on `theo_sd` its standard errors were 9-15% off.
+  `solveType = "fun"` still uses nlm’s own.
+
+- `trustControl(hessianMethod = "fd")` with the default
+  `covMethod = "r"` now takes its covariance from the same
+  gradient-difference Hessian at the estimates. It used the last
+  iteration’s Hessian, whose steps are searched afresh at every
+  iteration, and on `theo_sd` reported the `add.sd` standard error 16%
+  high.
+
+- A fit with ODE tolerances below about 1e-10 now gets a covariance. The
+  covariance step’s probe tolerances (the fit’s times 1e-3) were floored
+  at 1e-14, where the probe solves failed: a FOCEi fit at
+  `rxControl(atol = 1e-11, rtol = 1e-11)` reported no covariance (“R not
+  PD; S failed”) and an `impmap` fit no standard errors. The floor is
+  now 1e-12, also for the analytic covariance’s solves.
+
+- `saemControl(nBurn = 0)` and `nEm = 0` no longer add two spurious
+  iterations’ gains to the step-size schedule, which shifted every later
+  gain.
+
+- The table step of a fit (“Calculating residuals/tables”) now protects
+  the state, `lhs` and covariate columns it adds to the table from R’s
+  garbage collector. A collection that landed in a window of a few
+  allocations dropped those columns from the table, or corrupted R’s
+  heap so that R could crash later (for example with
+  `malloc(): unsorted double linked list corrupted`). The window is
+  small, so this was rare and intermittent.
+
+- `est = "imp"`, `"impmap"` and `"qrpem"` fits of a mixture model with
+  `auto = TRUE` (the default) now reallocate the importance samples by
+  each mixture component’s own effective sample size. The reallocation
+  read the per-subject effective sample sizes with the index of the
+  expanded (subject x component) list, past the end of them, so the
+  sample counts of every component after the first came from unrelated
+  memory.
 
 - An `mtime()` variable with a `.` in its name (such as nonmem2rx’s
   `rx.mtime.1.`) no longer fails with `SymEngine exception: Parse error`
@@ -386,6 +552,220 @@
   own control (`$control`); the imp objective read `$foceiControl`,
   which never holds `adjObf`.
 
+- A failed evaluation of a subject’s inner (ETA) problem – an ODE solve
+  that fails, or a prediction that is not finite – no longer leaves
+  values that a later evaluation returns. The inner problem keeps its
+  last evaluation and answers a repeat at the same ETAs from it; after a
+  failure, a repeat at the last ETAs that succeeded returned what the
+  failed evaluation had left (an objective of 0 when the failure came in
+  the observations). The ETA gradient of a failed evaluation is now `NA`
+  rather than the previous evaluation’s or a partly summed one, so the
+  finite-difference inner Hessian of a non-normal endpoint takes its
+  one-sided difference when a leg fails, and its step search rejects the
+  failed probe, instead of differencing that value. The `n1qn1` inner
+  optimizer is not handed a gradient at a point whose evaluation failed
+  (it keeps the one it has), and every inner optimizer counts a `NaN`
+  objective as a failed evaluation, as it did `NA`.
+
+- The ETA gradient of a non-normal (log-likelihood) endpoint evaluated
+  with the eta-epsilon interaction no longer adds
+  `sqrt(.Machine$double.eps)` for every observation the ETA does not
+  affect. `est = "vi"` and the conditional likelihood of
+  [`foceiLikRun()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiLikRun.md)
+  and its C interface used that gradient; a FOCEi fit of such a model
+  runs without the interaction and was not affected.
+
+- The per-observation log-likelihoods of an `agq` fit (`$llikObs`, the
+  `nlmixrLlikObs` column) are now those at each subject’s ETAs. Every
+  quadrature node re-evaluated the subject at another ETA, so they came
+  from the last node (up to 2.5 away on `theo_sd`).
+
+- `mfoce` and `ifoce` (and their `f` variants) now evaluate the FOCE
+  objective with the residual variance of the current thetas. FOCE
+  (“nonmem”) freezes the variance at each subject’s `eta = 0` prediction
+  and keeps it until the thetas change, but the regression of the
+  mu-referenced thetas inside an evaluation changed them without
+  renewing it, so the later {re-optimize ETAs, regress} cycles used the
+  variance of the thetas the evaluation started from. On `theo_sd` with
+  a proportional error, a zero-iteration `mfoce` fit reported an
+  objective 15.5 below the FOCE objective at its own estimates, and a
+  full fit stopped at an objective 1.0 above the one it now reaches.
+
+- `est = "vae"` with `likelihood = "foce"` and the default
+  `residOptimize = "twoStage"` now estimates the residual parameters at
+  the ETAs it fixed for them. That stage pins the ODE states and
+  recomputes only the residual variance, but the `eta = 0` solve FOCE
+  takes its variance from was written over the pinned states, so the
+  population prediction stood in for every individual one: a
+  proportional error came out 0.377 where FOCE+ gives 0.193 (now 0.182).
+
+- Values the FOCEi family reads as those of the current parameters are
+  now taken there, not at the last finite-difference leg that ran before
+  them. The gradient of a mixture proportion (gradient-based outer
+  optimizers) and the proportion’s rows of the S matrix use the
+  subjects’ responsibilities, which every leg rewrites: the gradient of
+  the same proportion at the same point depended on where it was
+  declared in
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html), and
+  the S matrix entry was off by 3e-5 (relative) on a two-component
+  example with overlapping components. With
+  `covDerivMethod = "forward"`, each subject’s S-matrix score was
+  differenced from its value at the last leg of the pooled gradient,
+  which made S 100 to 1000 times too large on `theo_sd`; it now agrees
+  with the central-difference S to the truncation error.
+
+- `outerOpt = "trust"` with `outerTrustHessian = "fd"` no longer records
+  its finite-difference probes in the parameter history (`$parHistData`)
+  or prints them as iterations. On `theo_sd` with four parameters, 1169
+  objective rows were recorded for the 167 evaluations the optimizer
+  asked for. The `iter` column still counts every objective evaluation,
+  so it skips the probes.
+
+- An ETA finite-differenced through the prediction model
+  (`eventSens = "fd"` or a dosing parameter) is now differenced against
+  the prediction model’s own value at the ETA. The base point came from
+  the sensitivity model, a solve of another ODE system, so a forward
+  difference (`eventType = "forward"`) divided the difference between
+  the two solves by the step: at `atol = rtol = 1e-3` a gradient of 33.8
+  came out 11.6.
+
+- `foceiControl(covMethod=)` (and the controls built on it, such as
+  [`foceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceControl.md)
+  and
+  [`impmapControl()`](https://nlmixr2.github.io/nlmixr2est/reference/impmapControl.md))
+  is now an error for a number that is not a covariance slot (`0` to
+  `3`) and for anything that is neither a method name nor a number
+  (`NULL`, `NA`, `TRUE`, a vector). It was stored as given.
+
+- `est = "foce"`, `"focep"`, `"laplace"` and `"agq"` given a
+  [`foControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foControl.md)
+  or
+  [`foiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foiControl.md)
+  now convert it; they stopped with `unused argument: 'posthoc'`. These
+  four methods now convert another method’s control the way the
+  mu-referenced methods do, keeping only the settings its caller
+  changed, so that method’s own settings no longer replace theirs:
+  `est = "agq"` given a
+  [`foceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceControl.md)
+  ran FOCE (`nAGQ = 0`, no interaction), and `est = "laplace"` given an
+  [`agqControl()`](https://nlmixr2.github.io/nlmixr2est/reference/agqControl.md)
+  ran a two-node quadrature.
+
+- [`rxUiDeparse()`](https://nlmixr2.github.io/rxode2/reference/rxUiDeparse.html)
+  now writes
+  [`foceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceControl.md),
+  [`focepControl()`](https://nlmixr2.github.io/nlmixr2est/reference/focepControl.md),
+  [`foControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foControl.md),
+  [`foiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foiControl.md),
+  [`posthocControl()`](https://nlmixr2.github.io/nlmixr2est/reference/posthocControl.md),
+  [`mfoceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mfoceiControl.md),
+  [`ifoceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/ifoceiControl.md),
+  [`mfoceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mfoceControl.md),
+  [`ifoceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/ifoceControl.md),
+  [`mfocepControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mfocepControl.md)
+  and
+  [`ifocepControl()`](https://nlmixr2.github.io/nlmixr2est/reference/ifocepControl.md)
+  as the call that rebuilds them, as it already did for the other
+  focei-family controls; it returned `NULL` for these.
+
+- [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md)
+  now checks `nSaCov` as
+  [`saControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saControl.md)
+  does (a whole number of at least 1) and requires a single `seed`. A
+  zero, negative or missing `nSaCov` was accepted and skipped the
+  covariance phase of `covMethod = "sa"`, and a vector `seed` stopped
+  the fit with `'.Random.seed' has wrong length`.
+
+- `foceiControl(gillStep=)` and `foceiControl(gillStepCovLlik=)` must
+  now be at least 1, as `gillStepCov` already had to be, and all three
+  must be finite (`rsControl(gillStepCov=)` too);
+  `nlmixr2Gill83(gillStep=)` makes the same check. The Gill step search
+  grows its step by multiplying by this factor and shrinks it by
+  dividing, so a factor below 1 ran the search backwards: on
+  `exp(3 * x)` at `x = 1`, `nlmixr2Gill83(gillStep = 0.1)` gave a
+  derivative 1% off, against 0.01% with the default.
+
+- The FOCEi control of a saem fit (`fit$foceiControl`, which
+  `setOfv(fit, "focei")` and
+  [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md)
+  refit with) now follows `saemControl(literalFix=)` and keeps fixed
+  residual parameters in the model, as the saem fit itself did. It
+  substituted fixed thetas and fixed residual parameters into the model
+  even with `literalFix = FALSE`, the saem default, so those refits used
+  a model the fit had not.
+
+- [`sqrtm()`](https://nlmixr2.github.io/nlmixr2est/reference/sqrtm.md)
+  of a matrix that is not finite is now an error. It returned an empty
+  `0 x 0` matrix for most such matrices (a `NaN` or `Inf` off the
+  diagonal), reported “imaginary” components for a `NaN` diagonal, and
+  gave an infinite root for an infinite diagonal.
+
+- `setOfv(fit, "imp")` (and `"impmap"`) on a saem fit now switches the
+  fit to the importance-sampling objective. It stopped with
+  `unknown error` after the objective, log-likelihood, AIC and BIC had
+  already been switched, leaving the objective type and the fit header
+  naming the previous one. An objective a saem fit cannot describe now
+  stops before anything changes.
+
+- The warnings of the steps that run after a fit is finalized – the
+  post-fit covariance recompute of the mu-referenced (`mfocei`-style),
+  imp, np and nlme families and the deferred `covMethod = "sa"`/`"imp"`
+  covariance – are now kept in the fit’s `$runInfo` with the other
+  warnings of the run. They were raised by
+  [`nlmixr2()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.md)
+  itself instead, and `$runInfo` did not have them.
+
+- Refitting a fit whose fixed thetas stay in the model
+  (`literalFix = FALSE`, the saem default) with `nlmixr2(fit, ...)`, and
+  so `setOfv(fit, "focei")` and
+  [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md)
+  on such a saem fit, no longer stops with
+  `arguments imply differing number of rows: 0, 1`; neither does
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  or `getVarCov(force = TRUE)` after
+  [`augPred()`](https://rdrr.io/pkg/nlme/man/augPred.html) or
+  [`vpcSim()`](https://nlmixr2.github.io/nlmixr2est/reference/vpcSim.md)
+  on such a fit. The simulation these run first substituted the fixed
+  thetas into its model and left the unsubstituted model recorded for
+  the next estimation, whose parameter table then looked for fixed
+  thetas that were not substituted.
+
+- An `est="saem"` mixture fit’s Gaussian-quadrature and Laplace -2LL now
+  weight each subject’s likelihood under every component by the mixture
+  probabilities, integrating each component over its own random effects.
+  It solved every subject under whichever component the previous solve
+  left, so the value was far too high and changed between builds
+  ([\#1184](https://github.com/nlmixr2/nlmixr2est/issues/1184)).
+
+- `setOfv(fit, "foce")`, `"focei"`, `"fo"`, `"imp"` and `"impmap"` now
+  calculate an objective whose row is the uncalculated (`NA`)
+  placeholder a saem fit starts with, instead of switching to the `NA`
+  row; `setOfv(fit, "imp")` on a saem fit no longer stops with
+  `unknown error`
+  ([\#1184](https://github.com/nlmixr2/nlmixr2est/issues/1184)).
+
+- An `est="saem"` mixture fit with a separate eta in each component (for
+  example `mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))`) kept its
+  pooled eta in the wrong column of `$etaMat`, leaving another eta `NA`;
+  its table step failed and its FOCEi objective could not be calculated
+  ([\#1184](https://github.com/nlmixr2/nlmixr2est/issues/1184)).
+
+- `shiErr` and `hessErr` must now be \> 0 in
+  [`nlmControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.md),
+  [`nlminbControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.md),
+  [`nlsControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlsControl.md),
+  [`optimControl()`](https://nlmixr2.github.io/nlmixr2est/reference/optimControl.md)
+  and
+  [`trustControl()`](https://nlmixr2.github.io/nlmixr2est/reference/trustControl.md),
+  as must `hessEps`/`hessEpsLlik` in
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
+  and
+  [`rsControl()`](https://nlmixr2.github.io/nlmixr2est/reference/rsControl.md);
+  0 was accepted and gave a zero finite-difference step (an all-zero
+  gradient for event parameters). A hand-built nlm control with a
+  non-positive value uses the default
+  ([\#1174](https://github.com/nlmixr2/nlmixr2est/issues/1174)).
+
 - `est = "nlme"` with a covariance in
   [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) now
   reports nlme’s estimate of omega in `$omega` and in the fit’s
@@ -537,36 +917,6 @@
   separately identifiable), so the additive and proportional parameters
   are nlme’s `const` and `prop` themselves.
 
-- An `est="saem"` mixture fit’s Gaussian-quadrature and Laplace -2LL now
-  weight each subject’s likelihood under every component by the mixture
-  probabilities, integrating each component over its own random effects.
-  It solved every subject under whichever component the previous solve
-  left, so the value was far too high and changed between builds
-  ([\#1184](https://github.com/nlmixr2/nlmixr2est/issues/1184)).
-
-- `setOfv(fit, "foce")`, `"focei"`, `"fo"`, `"imp"` and `"impmap"` now
-  calculate an objective whose row is the uncalculated (`NA`)
-  placeholder a saem fit starts with, instead of switching to the `NA`
-  row; `setOfv(fit, "imp")` on a saem fit no longer stops with
-  `unknown error`
-  ([\#1184](https://github.com/nlmixr2/nlmixr2est/issues/1184)).
-
-- `shiErr` and `hessErr` must now be \> 0 in
-  [`nlmControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.md),
-  [`nlminbControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.md),
-  [`nlsControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlsControl.md),
-  [`optimControl()`](https://nlmixr2.github.io/nlmixr2est/reference/optimControl.md)
-  and
-  [`trustControl()`](https://nlmixr2.github.io/nlmixr2est/reference/trustControl.md),
-  as must `hessEps`/`hessEpsLlik` in
-  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
-  and
-  [`rsControl()`](https://nlmixr2.github.io/nlmixr2est/reference/rsControl.md);
-  0 was accepted and gave a zero finite-difference step (an all-zero
-  gradient for event parameters). A hand-built nlm control with a
-  non-positive value uses the default
-  ([\#1174](https://github.com/nlmixr2/nlmixr2est/issues/1174)).
-
 #### Parameter scaling
 
 - `ui$scaleCtheta` (and `ui$scaleCnls`) now give one scaling constant
@@ -676,17 +1026,47 @@
 
 #### Covariance
 
+- The FOCEi covariance step no longer accepts an R or S matrix with a
+  non-finite entry as positive definite (the modified Cholesky
+  factorization reported one so); it is not usable, as in the nlm
+  family.
+
+- A fit’s covariance (`covMethod = "r,s"`, `"r"` and `"s"`, either
+  shape) is now the one
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  computes for it. The covariance step starts every subject’s inner
+  problem as a fresh setup leaves it (estimation’s warm Hessian, ETA
+  nudge state and quasi-Newton memory are not carried over), draws its
+  inner restart points from the estimated Omega rather than the starting
+  one, and scales the S step (`smatNorm = TRUE`) by its own centre
+  objective rather than the fit’s initial one;
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  installs the fit’s parameters to the last bit (`env$covHandoff`).
+
 - The covariance step’s progress bar now always reaches 100% and ends
   its line
   ([\#1171](https://github.com/nlmixr2/nlmixr2est/issues/1171)). After
   an earlier bar had finished it stopped at a few percent, the next
   message could print on the bar’s line, and an `imp` fit’s bar was
   sometimes not shown at all.
+
+- The analytic covariance (`covMethod = "analytic"`,
+  `setCov(fit, "analytic")`) of a model with additive plus proportional
+  error reported the two residual SEs under each other’s names when
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html)
+  declared the proportional one first. They are now named by parameter.
+
+- The analytic outer gradient (`foceiControl(fast = TRUE)`) of the same
+  models used each residual parameter’s derivative for the other, so the
+  optimizer stepped along a wrong gradient and the fit depended on the
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) order.
+
 - The post-fit covariance of a model with inter-occasion variability is
   now computed: the recompute of the `mfocei`-style families (and of
   imp/np with a requested covariance) and `setCov(fit, "imp")` (or a
   deferred `covMethod = "imp"`) refit without the occasion ETAs, the
   refit stopped, and no covariance was installed.
+
 - A covariance computed after the fit is now installed only when it is
   finite, symmetric and positive definite; otherwise the fit keeps the
   covariance it had and a warning names the method and the reason. This
@@ -698,6 +1078,7 @@
   [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
   (a covariance cached under the requested name was reinstalled even
   when not positive definite) and `getVarCov(force = TRUE)`.
+
 - `setCov(fit, "r,s")` (and `"r"`, `"s"`, `" (full)"`) keeps the label
   its refit computed, so a corrected result reads `"|r|,s"` rather than
   `"r,s"`. A refit that falls back to another covariance (`"r"` for
@@ -706,6 +1087,7 @@
   used to install the fallback (or no covariance) under the requested
   name. `setCov(fit, "sa")` whose nested SAEM falls back to `"linFim"`
   no longer replaces the covariance before reporting the error.
+
 - The full finite-difference covariance (`foceiControl(covFull = TRUE)`,
   the default) is no longer installed when the full R matrix is not
   positive definite: the `"r,s (full)"` sandwich built from it still
@@ -716,14 +1098,17 @@
   warning. Either way the indefinite R is no longer stored as `$covR` or
   cached as `"r (full)"`. A default `focei` fit of the ODE
   one-compartment model of `theo_sd` was such a case.
+
 - When the analytic covariance (`covMethod = "analytic"`) is not
   positive definite, the theta block the native step installed from it
   is labelled `"r (analytic)"` (it was `"r"`), and the warning no longer
   calls it a finite-difference covariance.
+
 - The condition numbers, `$eigenCov` and `$fullCor` now describe the
   full covariance once it is installed (`covFull = TRUE`, the analytic
   covariance); `foceiCovAnalytic()` also refreshes the parameter-table
   SEs and keeps the covariance it replaced in `$covList`.
+
 - A SAEM full covariance (theta + residual + Omega) corrected by
   [`sqrtm()`](https://nlmixr2.github.io/nlmixr2est/reference/sqrtm.md)
   keeps its `"|linFim|"` label (it was relabelled `"linFim"`), and the
@@ -734,6 +1119,7 @@
   inverted information matrix is now labelled `"Ha"`; it had no
   `covMethod`. `covMethod = "analytic"` falling back to `"linFim"` is
   now a warning, kept in `$runInfo`, rather than a message.
+
 - `saemControl(covMethod = "r,s")` (and `"r"`, `"s"`) computes no R or S
   matrix: it inverts the theta block of SAEM’s estimation-phase
   information `$saem$Ha`. That covariance is now installed as `"Ha"`
@@ -756,6 +1142,7 @@
   read as a
   [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
   slot, so `covMethod = 0L` computes no covariance (it inverted `Ha`).
+
 - The Omega rows of the SAEM covariances (`"sa"`, `"fim"`, `"linFim"`,
   and the linearized variance block spliced into `"sa"`/`"fim"`) now
   belong to the random effects they are named after. They were named in
@@ -770,10 +1157,12 @@
   they are now computed. When the random effects cannot be matched one
   to one to SAEM’s variance parameters, the Omega rows are left out with
   a warning; they were left out silently.
+
 - When a SAEM `"sa"` or `"fim"` covariance falls back to `"linFim"`, the
   message says why (for example
   `the covariance is not positive definite` or
   `the information matrix is singular`).
+
 - The per-observation log-likelihoods of an `imp`, `impmap` or `qrpem`
   fit (`$llikObs`, the `nlmixrLlikObs` column) with the default
   `covMethod = "imp"` are those at the estimates. They were those of the
@@ -781,6 +1170,7 @@
   covariance step: on `theo_sd` they differed from the same fit without
   a covariance step by up to 7.6 (`impmap`) and 8.1 (`imp`)
   log-likelihood units.
+
 - The `imp`/`impmap`/`qrpem` covariance (`covMethod = "imp"`, the
   default) reports its Omega rows as the variances and covariances they
   are named after (`om.<eta>`, `cov.<eta>.<eta>`). They held the
@@ -798,6 +1188,7 @@
   `"|r|"` covariance is, by `sqrtm(info %*% info)`, and installed as
   `"|imp|"` with a warning; when even that fails, a warning says why and
   no covariance is installed.
+
 - `setCov(fit, "sa")`, `setCov(fit, "imp")`, a deferred
   `covMethod = "sa"` or `"imp"` and the default `npag`/`npb` covariance
   now compute the covariance at the fit’s estimates, as
@@ -810,22 +1201,31 @@
   holds every population parameter (mixture proportions excepted) and
   only equilibrates the chains; the importance-sampling iterations are
   E-steps only.
+
 - The printed parameter table of a full-Bayes `fbvi`/`emvi` fit now
   shows the standard errors of the variational covariance (only
   `$parFixedDf` had them), its confidence interval uses the fit’s `ci`,
   and the condition numbers describe that covariance.
+
 - The nlm-family covariance (`bobyqa`, `uobyqa`, `newuoa`, `optim`,
   `nlminb`, `nlm`, `n1qn1`, `lbfgsb3c`, `trust`, `nls` with `"LM"`) now
-  repairs a Hessian that is not positive definite as intended, as
-  `"|r|"` (`sqrtm(R %*% R)`) or, failing that, `"r+"` (the nearest
-  positive-definite matrix), with a warning in `$runInfo`. It used to
-  invert every Hessian after an unreported Schnabel-Eskow perturbation
-  and label it `"r"`, which gave several parameters of the
+  repairs a Hessian that is not positive definite as the FOCEi
+  covariance step repairs its R matrix, under the same labels: `"r+"`
+  (the Schnabel-Eskow modified Cholesky factor, when every diagonal it
+  adds is within
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)’s
+  default `cholAccept`; this includes a positive-definite but nearly
+  singular Hessian) or, failing that, `"|r|"` (`sqrtm(R %*% R)`), with a
+  warning in `$runInfo`. `"r"` means the Hessian was factored as it is.
+  It used to invert every Hessian after an unreported Schnabel-Eskow
+  perturbation and label it `"r"`, which gave several parameters of the
   derivative-free fits of `theo_sd` the same standard error. A
-  non-finite or numerically singular Hessian (including the zero one of
-  a failed `trust` solve) gives `covMethod = "failed"` with a warning
-  instead of a covariance; either repair of a singular one would invert
-  its rounding noise.
+  non-finite Hessian, or one the repairs cannot fix (including the zero
+  one of a failed `trust` solve), gives `covMethod = "failed"` with a
+  warning instead of a covariance. A numerically singular Hessian is
+  `"r+"` when the correction is within `cholAccept`, as FOCEi’s R is,
+  and never `"|r|"`.
+
 - The Gill (1983) step-size search no longer leaves a parameter at its
   last probe when it ends without an accepted interval (`$scaleInfo`
   reports “Constant Grad”, “Odd/Linear Grad” or “Grad changes quickly”).
@@ -834,6 +1234,7 @@
   the covariance step, and the base point of the parameters
   [`nlmixr2Gill83()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Gill83.md)
   searched after it.
+
 - [`nlmixr2Gill83()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Gill83.md)
   and
   [`nlmixr2Hess()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.md)
@@ -842,6 +1243,7 @@
   [`nlmixr2Hess()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.md)
   handed the objective that same vector on every call, so a value the
   objective kept changed under it.
+
 - The step search of
   [`nlmixr2Gill83()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Gill83.md),
   [`nlmixr2Hess()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.md)
@@ -849,6 +1251,7 @@
   [`nlmixr2GradFun()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2GradFun.md)
   gradient now hands the objective the caller’s names and other
   attributes; an objective that indexed by name (`x["a"]`) got `NA`.
+
 - [`nlmixr2Gill83()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Gill83.md)
   (and so `nlmixr2Hess(...)`) now uses its `gillRtol`, `gillK`,
   `gillStep` and `gillFtol` arguments; the defaults were always used. As
@@ -862,8 +1265,10 @@
   search’s iteration limit instead, which could leave it running
   indefinitely; with `foceiControl(gillK = 0)` the full (`covFull`)
   covariance now takes its step-doubling steps.
+
 - `nlmixr2Gill83(which=)` that leaves out the last parameter no longer
   searches the others about an objective value that was never computed.
+
 - `foceiControl(shi21maxOuter=)` no longer runs an unused Shi21 step
   search in the covariance step: the covariance steps come from the Gill
   search (or the fixed `hessEps` step with `gillKcov = 0`), as they
@@ -871,6 +1276,7 @@
   cost time, and with `gillKcov = 0` its last probe became the centre of
   the R matrix. For a non-normal endpoint `gillKcovLlik = 0`, not
   `gillKcov = 0`, now selects the fixed step.
+
 - Every stage of the FOCEi-family covariance step is now taken about the
   estimates. The last leg of the R matrix left the parameters at
   `theta0 - 2*eps` (`theta0` the first estimated parameter), the S
@@ -879,12 +1285,14 @@
   changes the default (`"r,s"`) standard errors, most for the first
   estimated parameter; the sandwich SE of `tka` for `theo_sd` with a
   one-compartment model went from 0.43 to 0.15.
+
 - A FOCEi-family fit’s per-observation log-likelihoods (`$llikObs`, the
   `nlmixrLlikObs` column) are now those of the final objective at the
   estimates. The covariance step rewrote them on every finite-difference
   leg, so with any covariance method they came from its last leg, away
   from the estimates. This affected `focei`, `laplace`, `agq` and
   population-only fits.
+
 - The covariance of a FOCEi-family fit with a single estimated parameter
   no longer installs `1/(cholSEtol*|R|)` labelled `"r"` when the R
   matrix is not positive (`R <= 0`): it is now repaired, or not used,
@@ -893,6 +1301,7 @@
   covariance. A numerically singular R or S (such as S from a single
   subject) is no longer “repaired” into `"|r|"` or `"|s|"`, which
   installed a covariance of rounding noise.
+
 - The `grad()` function from
   [`nlmixr2GradFun()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2GradFun.md)
   no longer leaves the point at `x - h` when a forward difference is not
@@ -900,6 +1309,7 @@
   caller’s own vector, which was also the key of the cached objective
   value, so the next gradient reused the objective of the original point
   at the moved one.
+
 - [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
   and
   [`rsControl()`](https://nlmixr2.github.io/nlmixr2est/reference/rsControl.md)
@@ -917,10 +1327,43 @@
   takes the 0/1 flags `covGillF`, `rmatNorm` and `smatNorm` as integers
   too, like
   [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md).
+
 - `getVarCov(fit, force = TRUE, ...)` given a log-likelihood option
   (`hessEpsLlik`, `gillKcovLlik`, `gillStepCovLlik`, `gillFtolCovLlik`,
   `rmatNormLlik`, `smatNormLlik`) no longer sets the option of the same
   name without `Llik` to its value as well.
+
+- `foceiControl(covDerivMethod = "forward")` no longer fails the `"r"`
+  and `"r,s"` covariances: it chooses the differences of the S matrix’s
+  per-subject scores, and the R matrix keeps its central stencil. The
+  documentation said it applied to the Hessian as well.
+
+- A requested `"r,s"` (or `"s"`) full covariance (`covFull = TRUE`) is
+  now computed when the theta-only step falls back to the R matrix. The
+  full S was computed only for the theta-only step’s final choice, so
+  the requested shape found no S and the fit kept the theta-only
+  covariance without saying why; it is now checked like any full shape,
+  and installed or reported.
+
+- A FOCEi-family fit’s per-subject ODE tolerance factors (`$tolFactor`,
+  which its tables solve with) are now those the estimation left. The
+  covariance step changed them: `covSolveTol` and the analytic
+  covariance set every subject’s factor to 1, and its finite-difference
+  legs loosened them on hard solves (to 316 for every subject of a
+  `theo_sd` fit with a flat parameter, whose estimation loosened none).
+
+- Warnings about difficult ODE solves in the covariance step now say so:
+  loosened tolerances and approximated sensitivities were reported as
+  happening “during the optimization”. A zero in the covariance step’s
+  pooled gradient (the S matrix’s fallback score) no longer reports
+  “zero gradient replaced with small number”: nothing is replaced there.
+
+- An R matrix that is zero (an objective flat in every estimated
+  parameter) is no longer “corrected” as `"r+"`: the modified Cholesky
+  factor has no scale to correct such a matrix within, and a
+  one-parameter fit installed `1/cholSEtol` (165140) as its variance. It
+  is now not usable, like any R the repairs cannot fix.
+
 - The covariance of an `est = "nlme"` fit
   (`nlmeControl(covMethod = "nlme")`, the default) now holds nlme’s
   correlations of the fixed effects (`vcov(fit$nlme)`, nlme’s `varFix`
@@ -928,12 +1371,14 @@
   [`vcov()`](https://rdrr.io/r/stats/vcov.html)’s; for an ML fit they
   are slightly smaller than the ones `summary(fit$nlme)` prints, which
   adjust the residual sd.
+
 - The condition numbers, `$eigenCov` and `$fullCor` of a mixture fit now
   describe its covariance with the mixture proportions on the
   probability scale, the one installed as `$cov`; they were taken before
   those rows were rotated from the mlogit scale (23088 instead of 1332
   on a two-component model), or, for `saem`, before the proportions’
   block was appended (86 instead of 544 on a split-eta model).
+
 - When a covariance replaces another after the parameter table is built
   (the full covariance with `covFull = TRUE`,
   [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md),
@@ -943,6 +1388,7 @@
   previous covariance beside the new standard error. A `backTransform()`
   that names no function keeps the default back-transformation, as it
   does when the fit is built.
+
 - The finite-difference covariance of the FOCEi family
   (`covMethod = "r,s"`, `"r"`, `"s"` and their `covFull` shapes) now
   differentiates the marginal objective the same way in every leg: each
@@ -963,6 +1409,7 @@
   this one is dominated by numerical noise, before and after this
   change, so its default standard errors move by about as much as that
   noise.
+
 - `setCov(fit, "r,s")`, `"r"`, `"s"` (and their `" (full)"` shapes) and
   `getVarCov(fit, force = TRUE)` now compute the covariance of the fit’s
   marginal likelihood, as the estimation-time covariance of the same
@@ -974,6 +1421,7 @@
   `theo_sd` the structural standard errors came out 2 to 25 times too
   small (`setCov(fit, "r,s")` gave `tka` 0.0076 where the analytic
   covariance gives 0.19).
+
 - The post-fit covariance of the `mfocei`/`ifocei`-style families, and
   of nlme, imp/impmap/qrpem and np fits that request
   `covMethod = "r,s"`, `"r"` or `"s"`, now optimizes the ETAs again in
@@ -983,6 +1431,7 @@
   `linCmt()` model, for example) falls back to this finite-difference
   `"r,s"`, so the fallback is the marginal covariance too; a warning
   names the covariance installed instead.
+
 - vae, emvi and fbvi now compute their FOCEi covariance
   (`covMethod = "r,s"`, `"r"`, `"s"` or `"analytic"`, and emvi’s default
   `"vi"`) after their output step, at their estimates: the covariance of
@@ -994,6 +1443,7 @@
   small. The reported objective is unchanged (the output step’s FOCE
   objective at the method’s ETAs). `fit$foceiControl` of a vae, emvi or
   fbvi fit now carries its likelihood.
+
 - `covMethod = "analytic"` on a saem fit, and `setCov(fit, "analytic")`
   on saem, nlme, vae, emvi and fbvi fits, now assemble the observed
   information with the `interaction` of the method’s likelihood (FOCEI
@@ -1002,6 +1452,7 @@
   FOCE formulas were used; with a proportional residual error the
   standard errors differ (the `add.sd` standard error of a
   combined-error `theo_sd` saem fit was 46% larger).
+
 - A FOCEi-family fit with `maxInnerIterations = 0` (for example
   `posthocControl(maxInnerIterations = 0, etaMat = ...)`, or `fo`/`foi`
   with `posthoc = FALSE`) still holds its ETAs fixed in its
@@ -1009,6 +1460,7 @@
   covariance is conditional on those ETAs and that
   [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
   computes the covariance of the marginal likelihood.
+
 - The finite-difference covariance of the FOCEi family (and
   [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md),
   `getVarCov(force = TRUE)`, the post-fit recomputes and the
@@ -1029,6 +1481,191 @@
   unchanged (the objective, estimates, ETAs and tables are identical);
   the covariance step takes 2 to 3 times longer on `theo_sd` and 5 to 8
   times longer on the warfarin example model.
+
+#### nlm family
+
+- The gradient of the nlm-family methods (`nlm`, `nlminb`, `optim`,
+  `n1qn1`, `lbfgsb3c`, `trust`, `nls`) finite-differences each subject
+  with that subject’s own step where it needs one (censored
+  observations, or the dosing parameters under `eventSens = "fd"`).
+  Every subject used the first subject’s step, which is 0 when the first
+  subject needs none: with M3/M4-censored data in which only later
+  subjects are censored every gradient was NaN, `nlminb` stopped with
+  `NA/NaN gradient evaluation` and `nlm` returned its initial estimates.
+  The steps are also searched again once the parameter scaling is set,
+  instead of being kept from the trial gradient that sets it.
+
+- The Shi (2021) finite-difference step search no longer returns a wrong
+  derivative or step after a probe whose objective is not finite. When
+  the outer central probe (`x + 3h`) failed, the central difference at
+  `h` was divided by the shrunken step and came out 1.5 times too large;
+  when the outer forward probe (`x + 4h`) failed, the step grew 3.5
+  times (into the region that failed) and the forward difference at `h`
+  was divided by it; and a forward difference taken after a failed
+  backward probe was returned with an earlier step. This search gives
+  the finite-difference gradient columns of the nlm family and the FOCEi
+  family’s finite-difference gradients and Hessians.
+
+- The finite-difference gradient columns of the nlm family now
+  difference the prediction model against its own value at the estimate.
+  The base point came from the sensitivity model, a solve of a different
+  ODE system, so a forward difference (the default of `n1qn1`,
+  `lbfgsb3c` and `trust`) also divided the difference between the two
+  solves by the step: 0.3% of the gradient on `theo_sd`.
+
+- [`nlmControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.md),
+  [`nlminbControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.md),
+  [`optimControl()`](https://nlmixr2.github.io/nlmixr2est/reference/optimControl.md)
+  and
+  [`nlsControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlsControl.md)
+  now reject an integer `eventType`, `optimHessType` or `solveType` that
+  is not one of their codes (`eventType`/`optimHessType`: 1 forward, 2
+  central; `solveType`: 1 `"fun"`, 2 `"grad"`, 3 `"hessian"`, and no
+  `"hessian"` for `optim`). The codes 3-6 were accepted: they left a
+  finite-difference gradient column uninitialized (`eventType`), a
+  Hessian at zero (`optimHessType`), or the objective undefined
+  (`solveType`). A hand-built control with such a code now stops the nlm
+  problem setup.
+
+- `nlminbControl(covMethod = "nlminb")` and
+  `n1qn1Control(covMethod = "n1qn1")` now use the optimizer’s own
+  Hessian, as documented, instead of recomputing
+  [`nlmixr2Hess()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.md)
+  under another label: for `nlminb` the finite-difference Hessian of the
+  analytic gradient its Hessian function computes, at the final
+  estimates (on `theo_sd` it matches a central difference of the
+  gradient to 5e-5); for `n1qn1` the quasi-Newton matrix `H` it built
+  along its path, a secant approximation (its standard errors were
+  0.83-0.99 of the finite-difference ones on the test models). The label
+  stays `"r (nlminb)"`/`"r (n1qn1)"`, and a matrix that is not positive
+  definite is repaired with a warning as for `"r"`.
+  [`nlminbControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.md)’s
+  default is now `"r"`, as documented; it was `"nlminb"` with
+  `solveType = "hessian"` or `"grad"`, which computed the same
+  [`nlmixr2Hess()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.md)
+  covariance as `"r"`, so default fits are unchanged except for the
+  label (`"r"` instead of `"r (nlminb)"`).
+
+- A covariance labelled `"r+"` (or `"|r|"`) now comes from the same
+  repair of the R matrix whichever method computed it, nlm family or
+  FOCEi family (see the nlm-family covariance entry under Covariance).
+  The nlm family used `"r+"` for the nearest positive-definite matrix
+  ([`nmNearPD()`](https://nlmixr2.github.io/nlmixr2est/reference/nmNearPD.md)),
+  a repair the FOCEi family does not make; it now fails where the FOCEi
+  R matrix repairs do.
+
+- Every nlm-family control
+  ([`nlmControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.md),
+  [`nlminbControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.md),
+  [`optimControl()`](https://nlmixr2.github.io/nlmixr2est/reference/optimControl.md),
+  [`bobyqaControl()`](https://nlmixr2.github.io/nlmixr2est/reference/bobyqaControl.md),
+  [`newuoaControl()`](https://nlmixr2.github.io/nlmixr2est/reference/newuoaControl.md),
+  [`uobyqaControl()`](https://nlmixr2.github.io/nlmixr2est/reference/uobyqaControl.md),
+  [`n1qn1Control()`](https://nlmixr2.github.io/nlmixr2est/reference/n1qn1Control.md),
+  [`lbfgsb3cControl()`](https://nlmixr2.github.io/nlmixr2est/reference/lbfgsb3cControl.md),
+  [`trustControl()`](https://nlmixr2.github.io/nlmixr2est/reference/trustControl.md))
+  now accepts its documented `covMethod = ""`, which skips the
+  covariance step. It stopped with `'arg' should be one of ...`, because
+  [`match.arg()`](https://rdrr.io/r/base/match.arg.html) cannot match
+  `""`.
+
+- `nlmixr2Hess(par, fn, which = )` now returns the whole Hessian: a
+  parameter that `which` leaves out of the step search is differenced
+  with the interval the search would start from (what `gillK = 0`
+  gives). Its row and column were `NA`, and when the first parameter was
+  left out every diagonal was taken about `f = 0` instead of `fn(par)`
+  (2.5e8 instead of 6 for a quadratic).
+  [`nlmixr2Gill83()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Gill83.md)
+  now reports the objective at `args` in the `f` column of every row; it
+  was 0 on the rows `which` left out.
+
+- The fit table of a model that uses
+  [`lag()`](https://rdrr.io/r/stats/lag.html) (or `lead()`,
+  [`diff()`](https://rdrr.io/r/base/diff.html), …) of a calculated
+  variable now has the right `PRED`, `IPRED` and residuals (checked for
+  `nlm` and a zero-iteration `focei` fit). The table read the prediction
+  from the column after `time`, which for such a model is the lagged
+  variable (it is output ahead of the prediction), and the residual
+  variance from the column after that: `IPRED` was the variable itself
+  (for `cp <- 0.5 * c0 + 0.5 * lag(c0)`, `IPRED` was `c0`). The table
+  step now finds the prediction and its variance by name, and stops
+  naming a column it cannot find.
+
+- The nlm-family gradient (`nlm`, `nlminb`, `optim`, `n1qn1`,
+  `lbfgsb3c`, `trust`, `nls`) of a model that uses
+  [`lag()`](https://rdrr.io/r/stats/lag.html) or
+  [`diff()`](https://rdrr.io/r/base/diff.html) of a calculated variable
+  now carries the variable’s sensitivities through
+  (`d(lag(v))/d(theta) = lag(d(v)/d(theta))`), including into an ODE
+  that uses the variable; only an ODE with
+  [`lag()`](https://rdrr.io/r/stats/lag.html) itself, or a lagged
+  variable defined more than once, is finite-differenced. Such a
+  variable is a bare symbol to symengine, so its analytic gradient was 0
+  for every structural parameter: `nlm`, `nlminb`, `n1qn1`, `lbfgsb3c`
+  and `optim` returned the initial structural estimates, and `nls` (with
+  its default `solveType = "grad"`) stopped with
+  `none of the predictions depend on 'THETA'`.
+
+- The covariance of an `est = "nls"` fit is now the least-squares one,
+  `sigma^2 (J'J)^-1` (what [`vcov()`](https://rdrr.io/r/stats/vcov.html)
+  of the underlying `nls` or `nls.lm` fit gives). It left out the
+  residual variance `sigma^2`, so every standard error was divided by
+  the residual standard deviation: 0.635 instead of 6.95 for `Vm` of the
+  `Puromycin` Michaelis-Menten model. The covariance is checked like the
+  other nlm-family ones, and a fit with no residual degrees of freedom
+  (no more observations than parameters) gets `covMethod = "failed"`
+  with a warning.
+
+- The objective of an `est = "nls"` fit with the default
+  `algorithm = "LM"` is now the -2 log-likelihood at the
+  maximum-likelihood residual variance, as with the other algorithms
+  ([`logLik()`](https://rdrr.io/r/stats/logLik.html) of the `nls` fit).
+  It took the residuals as standard normal: 249.71 instead of 216.15 for
+  the one-compartment additive model of `theo_sd`.
+
+- The warnings of an `nlminb`, `optim`, `bobyqa`, `newuoa`, `uobyqa`,
+  `n1qn1`, `lbfgsb3c`, `trust` or `nls` run now reach the fit’s
+  `$runInfo`, as those of `nlm` did: the optimizer’s own, `trust`’s
+  unverified stationary point, and the solver reports (NaN gradients
+  resolved by finite differences, NaN solves replaced by 0, loosened ODE
+  tolerances). They were dropped. For packages that call
+  [`.nlmFamilyFitGeneric()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFamilyFitGeneric.md):
+  `emitFitWarnings` now defaults to `TRUE` (`FALSE` drops them as
+  before), and
+  [`.nlmFinalizeList()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFinalizeList.md)
+  raises the covariance step’s report as a warning instead of returning
+  it as `$covWarning`.
+
+- `trustControl(covMethod = "r")`, the default, now inverts a
+  finite-difference Hessian:
+  [`nlmixr2Hess()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.md)’s,
+  or the last outer iteration’s with `hessianMethod = "fd"`. It inverted
+  the last outer iteration’s Hessian, which with the default
+  `hessianMethod = "sr1"` is a quasi-Newton approximation; that
+  covariance is now `covMethod = "trust"` (labelled `"r (trust)"`).
+
+- An `nlm` fit of a `matExp()` model with `indLin()` forcing now warns
+  that its sensitivities use the ODE form, a work-around until the
+  native matrix-exponential sensitivities of such a model match.
+
+- `est = "nls"` declares the model covariates in its `params()`, as
+  `nlm` does, so the solve’s parameter layout is fixed.
+
+- The residual standard deviation an `est = "nls"` fit reports
+  (`add.sd`, `prop.sd`, …) is now
+  [`sigma()`](https://rdrr.io/r/stats/sigma.html) of the `nls` fit,
+  `sqrt(RSS / (n - p))`, the residual variance its covariance uses. It
+  was [`sd()`](https://rdrr.io/r/stats/sd.html) of the residuals, which
+  also subtracted their mean and divided by `n - 1`. The objective stays
+  [`logLik()`](https://rdrr.io/r/stats/logLik.html) of the fit, the -2
+  log-likelihood at `RSS / n`.
+
+- The internal, exported `.nlmixrNlsFun()` is removed: it solved a model
+  that nothing set up any more. `est = "nls"` calls
+  [`.nlmixrNlsFunValGrad()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsFunValGrad.md),
+  [`.nlmixrNlsFunVal()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsFunVal.md)
+  and
+  [`.nlmixrNlsFunGrad()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsFunVal.md).
 
 ## nlmixr2est 7.1.0
 

@@ -53,6 +53,8 @@
 <span>  trace <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sa"</span>, <span class="st">"analytic"</span>, <span class="st">"linFim"</span>, <span class="st">"fim"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">"imp"</span>, <span class="st">""</span><span class="op">)</span>,</span>
 <span>  covMethodDeferred <span class="op">=</span> <span class="cn">NA_character_</span>,</span>
+<span>  covFallback <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>sa <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"linFim"</span>, <span class="st">"Ha"</span><span class="op">)</span>, fim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"linFim"</span>, <span class="st">"Ha"</span><span class="op">)</span>, analytic <span class="op">=</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"linFim"</span>, <span class="st">"Ha"</span><span class="op">)</span>, linFim <span class="op">=</span> <span class="st">"Ha"</span><span class="op">)</span>,</span>
 <span>  covFull <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  nSaCov <span class="op">=</span> <span class="fl">500L</span>,</span>
 <span>  calcTables <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -219,6 +221,17 @@ estimates by the decoupled recompute engine (<code><a href="setCov.html">setCov(
 path); <code>NA</code> otherwise.</p></dd>
 
 
+<dt id="arg-covfallback">covFallback<a class="anchor" aria-label="anchor" href="#arg-covfallback"></a></dt>
+<dd><p>what each <code>covMethod</code> falls back to when it gives no
+usable covariance: a named list, one element per method, each the ordered
+methods to try instead (<code>"sa"</code>, <code>"fim"</code>, <code>"linFim"</code> or
+<code>"Ha"</code>, the inverse of the information matrix's theta block).  The
+default is the established behaviour: <code>"sa"</code>, <code>"fim"</code> and
+<code>"analytic"</code> fall to <code>"linFim"</code> then <code>"Ha"</code>, and
+<code>"linFim"</code> to <code>"Ha"</code>.  A list you give replaces the default: a
+method it does not name has no fallback.</p></dd>
+
+
 <dt id="arg-covfull">covFull<a class="anchor" aria-label="anchor" href="#arg-covfull"></a></dt>
 <dd><p>Boolean (default <code>TRUE</code>) indicating the covariance
 should include every estimated population parameter – the structural and
@@ -230,7 +243,8 @@ structural-theta-only covariance is reported.  Ignored by
 
 <dt id="arg-nsacov">nSaCov<a class="anchor" aria-label="anchor" href="#arg-nsacov"></a></dt>
 <dd><p>Number of iterations in the dedicated stochastic-approximation
-covariance phase used by <code>covMethod="sa"</code> (default <code>500</code>).  These
+covariance phase used by <code>covMethod="sa"</code>, a whole number of at least 1
+(default <code>500</code>).  These
 iterations run at the converged estimate (parameters frozen) and only
 resimulate the individual parameters to build the observed Fisher
 information; a larger value gives a less noisy covariance.  Ignored by other

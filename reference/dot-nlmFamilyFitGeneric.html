@@ -52,7 +52,7 @@
 <span>  <span class="va">returnFlag</span>,</span>
 <span>  objective <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  message <span class="op">=</span> <span class="kw">function</span><span class="op">(</span><span class="va">fit</span><span class="op">)</span> <span class="va">fit</span><span class="op">$</span><span class="va">message</span>,</span>
-<span>  emitFitWarnings <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  emitFitWarnings <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  extra <span class="op">=</span> <span class="st">""</span>,</span>
 <span>  adjustOutput <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  postSetup <span class="op">=</span> <span class="cn">NULL</span></span>
@@ -103,8 +103,10 @@ the name of the fit's minimized -log-likelihood, which is doubled; when
 
 
 <dt id="arg-emitfitwarnings">emitFitWarnings<a class="anchor" aria-label="anchor" href="#arg-emitfitwarnings"></a></dt>
-<dd><p>when TRUE, re-emit the warnings collected from
-`fitModel` via `warning()` (nlm does this; the others do not)</p></dd>
+<dd><p>when TRUE (the default), re-emit the warnings
+collected from `fitModel` (the optimizer, the covariance step and
+`nlmWarnings()`) via `warning()`, so they reach the fit's `$runInfo`;
+`FALSE` drops them</p></dd>
 
 
 <dt id="arg-extra">extra<a class="anchor" aria-label="anchor" href="#arg-extra"></a></dt>

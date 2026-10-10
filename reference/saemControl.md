@@ -15,6 +15,8 @@ saemControl(
   trace = 0,
   covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
   covMethodDeferred = NA_character_,
+  covFallback = list(sa = c("linFim", "Ha"), fim = c("linFim", "Ha"), analytic =
+    c("linFim", "Ha"), linFim = "Ha"),
   covFull = TRUE,
   nSaCov = 500L,
   calcTables = TRUE,
@@ -196,6 +198,16 @@ saemControl(
   ([`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
   uses the same path); `NA` otherwise.
 
+- covFallback:
+
+  what each `covMethod` falls back to when it gives no usable
+  covariance: a named list, one element per method, each the ordered
+  methods to try instead (`"sa"`, `"fim"`, `"linFim"` or `"Ha"`, the
+  inverse of the information matrix's theta block). The default is the
+  established behaviour: `"sa"`, `"fim"` and `"analytic"` fall to
+  `"linFim"` then `"Ha"`, and `"linFim"` to `"Ha"`. A list you give
+  replaces the default: a method it does not name has no fallback.
+
 - covFull:
 
   Boolean (default `TRUE`) indicating the covariance should include
@@ -208,11 +220,11 @@ saemControl(
 - nSaCov:
 
   Number of iterations in the dedicated stochastic-approximation
-  covariance phase used by `covMethod="sa"` (default `500`). These
-  iterations run at the converged estimate (parameters frozen) and only
-  resimulate the individual parameters to build the observed Fisher
-  information; a larger value gives a less noisy covariance. Ignored by
-  other covariance methods.
+  covariance phase used by `covMethod="sa"`, a whole number of at least
+  1 (default `500`). These iterations run at the converged estimate
+  (parameters frozen) and only resimulate the individual parameters to
+  build the observed Fisher information; a larger value gives a less
+  noisy covariance. Ignored by other covariance methods.
 
 - calcTables:
 

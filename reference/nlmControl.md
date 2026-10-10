@@ -332,9 +332,11 @@ nlmControl(
 
 - covMethod:
 
-  "r" uses nlmixr2's \`nlmixr2Hess()\` for the hessian, or "nlm" uses
-  the hessian from \`stats::nlm(.., hessian=TRUE)\`; defaults to "nlm"
-  when using nlmixr2's hessian/gradient for solving.
+  "r" uses nlmixr2's \`nlmixr2Hess()\` for the hessian, or "nlm" uses a
+  Hessian built from nlmixr2's analytical gradient (central differences
+  over \`nlmixr2Gill83()\` steps) with \`solveType\` \`"hessian"\` or
+  \`"grad"\`, and \`stats::nlm(.., hessian=TRUE)\`'s with \`"fun"\`;
+  defaults to "nlm" when using nlmixr2's hessian/gradient for solving.
 
 - adjObf:
 
@@ -444,31 +446,29 @@ print(fit2)
 #> ── nlmixr² log-likelihood nlm ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -688.1541 1155.723 1170.446      -574.8615        468.8034         19.8222
+#> lPop -688.1541 1155.723 1170.446      -574.8615        2676.324        144.5738
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.129477 0.2250693  6.552e-06      0.046       0.008 0.024    0.001
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1314333 0.2115529  1.594e-05      0.047       0.008 0.025    0.001
 #>              other
-#> elapsed 0.08144716
+#> elapsed 0.09699784
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>       Est.     SE  %RSE Back-transformed(95%CI)
-#> E0  -0.623 0.0947  15.2 -0.623 (-0.809, -0.438)
-#> Em    8.31   1.42  17.1       8.31 (5.52, 11.1)
-#> E50   4.39  0.547  12.5       4.39 (3.31, 5.46)
-#> g     2.00  FIXED FIXED                    2.00
+#>       Est.    SE  %RSE Back-transformed(95%CI)
+#> E0  -0.623 0.107  17.2 -0.623 (-0.833, -0.414)
+#> Em    8.31  3.32  40.0       8.31 (1.80, 14.8)
+#> E50   4.39  1.31  29.9       4.39 (1.81, 6.96)
+#> g     2.00 FIXED FIXED                    2.00
 #>  
-#>   Covariance Type ($covMethod): |r| (nlm)
+#>   Covariance Type ($covMethod): r (nlm)
 #>   Some strong fixed parameter correlations exist ($cor) :
 #>      cor:Em,E0 cor:E50,E0 cor:E50,Em 
-#>   -0.0345       0.353      0.820  
+#>     0.404      0.543      0.971  
 #>  
 #> 
-#>   Information about run found ($runInfo):
-#>    • R matrix is not positive definite; corrected as "|r|" 
 #>   Censoring ($censInformation): No censoring
 #>   Minimization message ($message):  
 #>     relative gradient is close to zero, current iterate is probably solution 
@@ -495,17 +495,17 @@ fit2$nlm
 #> $gradient
 #> [1]  0.2202981 -0.0156478 -0.0584335
 #> 
-#> $hessian
-#>            E0        Em        E50
-#> E0  801.08581 52.525179 -40.233782
-#> Em   52.52518  9.130451  -6.402923
-#> E50 -40.23378 -6.402923   3.629235
-#> 
 #> $code
 #> [1] 1
 #> 
 #> $iterations
 #> [1] 8
+#> 
+#> $hessian
+#>            E0        Em        E50
+#> E0  801.57762 56.046134 -43.321406
+#> Em   56.04613 10.302736  -6.952616
+#> E50 -43.32141 -6.952616   4.898037
 #> 
 #> $scaleC
 #> [1] 2.0 2.0 0.5
@@ -515,16 +515,16 @@ fit2$nlm
 #> -1.561575  2.903718  5.771884 
 #> 
 #> $cov.scaled
-#>               E0           Em        E50
-#> E0   0.002241465 -0.001162753 0.01826117
-#> Em  -0.001162753  0.506284982 0.63804721
-#> E50  0.018261166  0.638047214 1.19697345
+#>              E0         Em        E50
+#> E0  0.002857159 0.03588544 0.07620886
+#> Em  0.035885441 2.75641631 4.23004381
+#> E50 0.076208864 4.23004381 6.88262342
 #> 
 #> $r
 #>            E0        Em        E50
-#> E0  801.08581 52.525179 -40.233782
-#> Em   52.52518  9.130451  -6.402923
-#> E50 -40.23378 -6.402923   3.629235
+#> E0  801.57762 56.046134 -43.321406
+#> Em   56.04613 10.302736  -6.952616
+#> E50 -43.32141 -6.952616   4.898037
 #> 
 
 # The nlm control has been modified slightly to include

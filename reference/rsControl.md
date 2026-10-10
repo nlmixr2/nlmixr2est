@@ -1,7 +1,7 @@
 # Options for the finite-difference covariance in setCov()
 
 Used by `setCov(fit, "r,s")`, `"r"` and `"s"`. Each option left `NULL`
-keeps the value the fit was estimated with.
+keeps the value the fit was estimated with, except `covFallback`.
 
 ## Usage
 
@@ -14,7 +14,10 @@ rsControl(
   covGillF = NULL,
   covSmall = NULL,
   rmatNorm = NULL,
-  smatNorm = NULL
+  smatNorm = NULL,
+  covFallback = NULL,
+  covPrecursor,
+  covShortcut = NULL
 )
 ```
 
@@ -48,7 +51,8 @@ rsControl(
 
   Use the Gill calculated optimal Forward difference step size for the
   instead of the central difference step size during the central
-  difference gradient calculation.
+  difference gradient calculation of the theta-only stage (see
+  `covFull`).
 
 - covSmall:
 
@@ -59,12 +63,34 @@ rsControl(
 - rmatNorm:
 
   A parameter to normalize gradient step size by the parameter value
-  during the calculation of the R matrix
+  during the calculation of the R matrix of the theta-only stage (see
+  `covFull`)
 
 - smatNorm:
 
   A parameter to normalize gradient step size by the parameter value
-  during the calculation of the S matrix
+  during the calculation of the S matrix of the theta-only stage (see
+  `covFull`)
+
+- covFallback:
+
+  what the requested method may fall back to, as in
+  `foceiControl(covFallback=)`. `NULL` (default) is none:
+  [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  installs the method asked for or stops with an error. With a list, a
+  covariance from a method it lists for the request is installed, with a
+  warning that names it.
+
+- covPrecursor:
+
+  what the covariance may start from, as in
+  `foceiControl(covPrecursor=)`. Left out, the fit's value is kept;
+  `NULL` uses none.
+
+- covShortcut:
+
+  as in `foceiControl(covShortcut=)`; `NULL` (default) keeps the fit's
+  value.
 
 ## Value
 
