@@ -206,4 +206,42 @@ nmTest({
     .off <- .bobyqa(c(-1.2, 1), .valley, lower = .lo, upper = .hi, control = c(.base, bobyqaStationary = FALSE))
     expect_null(.off$nStationaryRestart)
   })
+
+  test_that("a fit the probe finds converged is the fit without the probe", {
+    .one <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1.0
+        tv <- 3.45
+        add.sd <- 0.7
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fit <- function(st) {
+      suppressWarnings(nlmixr2(
+        .one,
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(print = 0, calcTables = FALSE, bobyqaStationary = st)
+      ))
+    }
+    .on <- .fit(TRUE)
+    .off <- .fit(FALSE)
+    .o <- .on$env$optReturn
+    expect_identical(.o$nStationaryRestart, 0L)
+    # the probe ran (2n + 4 evaluations) and left the inner state as the search did
+    expect_equal(.o$feval - .off$env$optReturn$feval, 2 * length(.o$par) + 4)
+    expect_identical(.on$objf, .off$objf)
+    expect_identical(.on$theta, .off$theta)
+    expect_identical(.on$eta, .off$eta)
+    expect_identical(.on$cov, .off$cov)
+  })
 })
