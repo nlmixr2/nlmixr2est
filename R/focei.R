@@ -179,7 +179,7 @@ is.latex <- function() {
   .probed <- FALSE
   while (.n < maxRestart && identical(as.integer(ret$ierr), 0L)) {
     .left <- if (is.null(ctl$maxfun)) Inf else ctl$maxfun - ret$feval
-    if (.left <= .cost + ctl$npt + 1L) {
+    if (.left <= .cost + ctl$npt + 2L) {
       break
     }
     if (!is.finite(ret$fval)) {
@@ -236,7 +236,8 @@ is.latex <- function() {
     }
     .ctl2 <- ctl
     if (!is.null(.ctl2$maxfun)) {
-      .ctl2$maxfun <- .left - .nEval - length(.steps)
+      # leave one evaluation for the closing fn(ret$par)
+      .ctl2$maxfun <- .left - .nEval - length(.steps) - 1L
     }
     .r2 <- minqa::bobyqa(.bx, fn, control = .ctl2, lower = lower, upper = upper)
     .n <- .n + 1L

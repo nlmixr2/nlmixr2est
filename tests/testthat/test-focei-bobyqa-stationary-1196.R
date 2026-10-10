@@ -93,6 +93,27 @@ nmTest({
     expect_true(all(abs(.r$par - .stop$par) < 0.03))
   })
 
+  test_that("a non-finite probe on a bound stops the check", {
+    .nan <- function(x) if (x[1] > -5) NaN else -x[1] + x[2]^2
+    .at <- list(par = c(-5, 0), fval = 5, feval = 10L, ierr = 0L)
+    .r <- .bobyqaStationary(.nan, .lo, .hi, .ctl, .at, tol = 0.01)
+    expect_identical(.r$nStationaryRestart, 0L)
+    expect_identical(.r$par, c(-5, 0))
+  })
+
+  test_that("a restart that uses its whole budget stays within maxfun", {
+    local_mocked_bindings(
+      bobyqa = function(par, fn, control, ...) {
+        list(par = c(1, 1), fval = 0, feval = control$maxfun, ierr = 1L)
+      },
+      .package = "minqa"
+    )
+    .stop <- list(par = c(-0.5, 0.25), fval = .valley(c(-0.5, 0.25)), feval = 40L, ierr = 0L)
+    .r <- .bobyqaStationary(.valley, .lo, .hi, replace(.ctl, "maxfun", 200), .stop, tol = 0.01)
+    expect_identical(.r$nStationaryRestart, 1L)
+    expect_equal(.r$feval, 200)
+  })
+
   test_that(".bobyqa() runs the check only when bobyqaStationary is set", {
     .base <- list(rhobeg = 0.2, rhoend = 1e-6, maxfun = 5000, sigdig = 3)
     .on <- .bobyqa(c(-1.2, 1), .valley, lower = .lo, upper = .hi, control = c(.base, bobyqaStationary = TRUE))
