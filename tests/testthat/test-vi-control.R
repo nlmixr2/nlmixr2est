@@ -131,3 +131,17 @@ test_that("getValidNlmixrCtl.fbvi accepts NULL and a bare list", {
   expect_message(v2 <- getValidNlmixrCtl.emvi(list(fbviControl())), "pointEstimate=TRUE")
   expect_true(v2$pointEstimate)
 })
+
+test_that("emviControl(covFallback=) ends each FOCEI chain with the variational covariance", {
+  expect_identical(
+    emviControl()$covFallback,
+    list("r,s" = c("r", "s", "vi"), r = c("s", "vi"), s = "vi", analytic = c("r,s", "r", "s", "vi"))
+  )
+  expect_error(emviControl(covFallback = list(vi = "r")), "names a method without fallbacks: \"vi\"")
+  expect_error(emviControl(covFallback = list(s = "sa")), "cannot fall back to \"sa\"")
+  # the FOCEI control gets the FOCEI part of the list
+  .f <- .adviFoceiControl(emviControl(covMethod = "r,s", covFallback = list("r,s" = c("s", "vi"))), NULL, TRUE)
+  expect_identical(.f$covFallback, list("r,s" = "s"))
+  .d <- .adviFoceiControl(emviControl(covMethod = "r,s"), NULL, TRUE)
+  expect_identical(.d$covFallback, foceiControl()$covFallback)
+})

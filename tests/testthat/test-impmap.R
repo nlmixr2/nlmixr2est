@@ -972,4 +972,36 @@ nmTest({
     expect_equal(.fi$env$method, "impmap")
     expect_equal(.fi$env$extra, "")
   })
+
+  test_that("the imp M-step's 1e-6 omega floor is reported (issue 1140)", {
+    .mod <- function() {
+      ini({
+        tka <- log(1.5)
+        tv <- log(31.5)
+        tke <- log(0.08)
+        add.sd <- 0.7
+        eta.ka ~ fix(1e-8)
+        eta.ke ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        v <- exp(tv)
+        ke <- exp(tke + eta.ke)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - ke * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .f <- suppressWarnings(suppressMessages(nlmixr2(
+      .mod,
+      nlmixr2data::theo_sd,
+      "impmap",
+      impmapControl(print = 0L, nIter = 3L, isample = 100L, covMethod = "", calcTables = FALSE)
+    )))
+    # the fixed 1e-8 is installed (and reported) as the floor, which is now said
+    expect_equal(unname(.f$omega["eta.ka", "eta.ka"]), 1e-6)
+    expect_true(any(.f$runInfo == "omega variance floored at 1e-6: eta.ka"))
+    expect_false(any(grepl("eta.ke", .f$runInfo[grepl("1e-6", .f$runInfo, fixed = TRUE)], fixed = TRUE)))
+  })
 })

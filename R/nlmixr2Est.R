@@ -66,6 +66,13 @@ nlmixr2Est <- function(env, ...) {
   }
   if (!inherits(env, "output")) {
     nlmixr2global$nlmixr2EstEnv$iniDf0 <- data.frame(get("ui", envir = env)$iniDf)
+    # nlmixr2CreateOutputFromUi() reads iniDf0 above only inside a run
+    .depth <- nlmixr2global$nlmixr2EstEnv$estDepth
+    if (is.null(.depth)) {
+      .depth <- 0L
+    }
+    nlmixr2global$nlmixr2EstEnv$estDepth <- .depth + 1L
+    on.exit(nlmixr2global$nlmixr2EstEnv$estDepth <- .depth, add = TRUE)
   }
   if (!exists("data", envir = env)) {
     stop("need 'data' object", call. = FALSE)
@@ -489,12 +496,24 @@ nlmixr2Est0 <- function(env, ...) {
       }
     }
   }
+  # a covariance from another computation, when the fit's own step gave none and its
+  # covFallback lists one
+  try(.covFallbackAfterFit(ret), silent = TRUE)
   # snapshot the options the estimation-time covariances used, so setCov()
   # still sees them if the fit's settings change later
   try(
     .covOptionsRecordEstimation(
       if (is.environment(ret)) ret else ret$env
     ),
+    silent = TRUE
+  )
+  # and what its covariance step computed, for later setCov() requests
+  try(
+    {
+      .sEnv <- if (is.environment(ret)) ret else ret$env
+      .sCtl <- .sEnv$foceiControl
+      .covStoreRecord(.sEnv, .covStoreKey(.sEnv, .sCtl), .sEnv, fd = !identical(.sCtl$covType, "analytic"))
+    },
     silent = TRUE
   )
   invisible()

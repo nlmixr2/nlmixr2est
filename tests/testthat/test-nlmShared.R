@@ -41,20 +41,19 @@ test_that("a Hessian that is not positive definite is repaired as FOCEi repairs 
   expect_identical(.r$warning, "R matrix is not positive definite; corrected as \"|r|\"")
 })
 
-test_that("a numerically singular Hessian is not repaired", {
-  # |R| and the nearest positive-definite matrix would both invert rounding
-  # noise: nmNearPD() floors the zero eigenvalue to 2e-8 (a variance of 5e7)
-  .sing <- "R matrix is singular; covariance step failed"
-  for (.h in list(
-    diag(c(2, 0, -1)),
-    diag(c(2, -1e-17, 1)), # |R| passes as positive definite
-    tcrossprod(1:4) # rank one; |R| fails and R+ was installed
-  )) {
+test_that("a numerically singular Hessian is repaired as FOCEi's R is", {
+  # the shared rule accepts "r+" on a rank-deficient R when cholAccept allows it;
+  # otherwise there is no covariance
+  .fail <- "R matrix is not positive definite; covariance step failed"
+  for (.h in list(diag(c(2, 0, -1)), tcrossprod(1:4))) {
     .r <- .nlmCovFromHessian(.h)
     expect_identical(.r$type, "failed")
     expect_null(.r$r)
-    expect_identical(.r$warning, .sing)
+    expect_identical(.r$warning, .fail)
   }
+  .r <- .nlmCovFromHessian(diag(c(2, -1e-17, 1)))
+  expect_identical(.r$type, "r+")
+  expect_identical(.r$warning, "R matrix is not positive definite; corrected as \"r+\"")
   # a well-conditioned indefinite Hessian is still repaired
   expect_identical(.nlmCovFromHessian(diag(c(2, -1, 1)))$type, "|r|")
 })
@@ -69,7 +68,7 @@ test_that("a Hessian that cannot be repaired gives no covariance", {
   # the zero-filled Hessian of a failed solve
   .r <- .nlmCovFromHessian(matrix(0, 2, 2))
   expect_identical(.r$type, "failed")
-  expect_identical(.r$warning, "R matrix is singular; covariance step failed")
+  expect_identical(.r$warning, "R matrix is not positive definite; covariance step failed")
 })
 
 test_that("every nlm-family control takes covMethod = \"\" (issue 1140)", {
@@ -132,6 +131,15 @@ nmTest({
   }
 
   test_that("a derivative-free fit with an indefinite Hessian gets a repaired positive-definite covariance", {
+    # at the covariance tolerances this model's Hessian is positive definite, so
+    # its smallest eigenvalue is flipped
+    .hess <- nlmixr2Hess
+    local_mocked_bindings(nlmixr2Hess = function(...) {
+      .e <- eigen(.hess(...), symmetric = TRUE)
+      .v <- .e$values
+      .v[length(.v)] <- -abs(.v[length(.v)])
+      .e$vectors %*% diag(.v) %*% t(.e$vectors)
+    })
     .fit <- suppressMessages(nlmixr2(.pk, nlmixr2data::theo_sd, est = "bobyqa", control = bobyqaControl(print = 0L)))
     .h <- .fit$env$bobyqa$r
     expect_lt(min(eigen(.h, symmetric = TRUE, only.values = TRUE)$values), 0)
@@ -179,4 +187,36 @@ nmTest({
     .cov <- matrix(c(4, 1, 0.5, 0.2, 1, 3, 0.1, 0.3, 0.5, 0.1, 2, 0.4, 0.2, 0.3, 0.4, 1), 4, dimnames = list(.n, .n))
     expect_equal(.nlmAdjustCov(.cov, .x), .cov * tcrossprod(.init / 2), tolerance = 1e-14)
   })
+})
+
+test_that("covAccept_() takes every branch of the covariance acceptance rule", {
+  # the one rule FOCEi and the nlm family use: "" as it is, "+" within cholAccept
+  # (a rank-deficient matrix included), "|" for sqrtm(A %*% A)
+  .tol <- .Machine$double.eps^(1 / 3)
+  .cases <- list(
+    pd = list(diag(2), ""),
+    one = list(matrix(2), ""),
+    zero1 = list(matrix(0), "failed"),
+    neg1 = list(matrix(-1), "|"),
+    nearPd = list(matrix(c(1, 1, 1, 1 - 1e-8), 2), "+"),
+    indefinite = list(matrix(c(1, 0, 0, -1), 2), "|"),
+    rank1 = list(matrix(c(1, 1, 1, 1), 2), "+"),
+    zero2 = list(matrix(0, 2, 2), "failed"),
+    nan = list(matrix(c(1, NaN, NaN, 1), 2), "failed"),
+    inf = list(matrix(c(Inf, 0, 0, 1), 2), "failed")
+  )
+  for (.n in names(.cases)) {
+    .c <- .cases[[.n]]
+    expect_identical(covAccept_(.c[[1]], .tol, 1e-3)$type, .c[[2]], label = .n)
+  }
+  # "|" factors sqrtm(A %*% A) and returns it; "+" keeps A and factors A + diag(E)
+  .a <- covAccept_(matrix(c(1, 0, 0, -1), 2), .tol, 1e-3)
+  expect_equal(.a$M, sqrtm(matrix(c(1, 0, 0, -1), 2) %*% matrix(c(1, 0, 0, -1), 2)))
+  expect_equal(crossprod(.a$U), .a$M)
+  .p <- covAccept_(matrix(c(1, 1, 1, 1 - 1e-8), 2), .tol, 1e-3)
+  expect_identical(.p$M, matrix(c(1, 1, 1, 1 - 1e-8), 2))
+  # cholAccept bounds the "+" correction; past it the matrix is "|"
+  .small <- diag(c(1, -1e-6))
+  expect_identical(covAccept_(.small, .tol, 1e-3)$type, "+")
+  expect_identical(covAccept_(.small, .tol, 1e-9)$type, "|")
 })

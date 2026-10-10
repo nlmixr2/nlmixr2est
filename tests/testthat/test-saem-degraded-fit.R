@@ -19,8 +19,8 @@ nmTest({
       expect_false(inherits(try(chol(.r), silent = TRUE), "try-error"))
       expect_equal(dimnames(.r), dimnames(.deg))
     }
-    # a merely singular omega is still repaired by nearPD (no fallback warning)
-    expect_warning(.r <- .foceiRepairOmega(.om(c(0.5, 0, 0, 0))), NA)
+    # a merely singular omega is still repaired by nearPD, and says so
+    expect_warning(.r <- .foceiRepairOmega(.om(c(0.5, 0, 0, 0))), "not positive definite")
     expect_false(inherits(try(chol(.r), silent = TRUE), "try-error"))
     expect_equal(dimnames(.r), dimnames(.om(0)))
     # a good omega is returned unchanged
@@ -57,6 +57,83 @@ nmTest({
     expect_warning(.foceiOptEnvSetupBounds(.ui, .env), "singular omega")
     # the mechanism that used to abort the fit now produced a usable inverse
     expect_false(is.null(.env$rxInv))
+  })
+
+  test_that("a degenerate saem omega is reported as estimated, not as its repair (issue 1140)", {
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl + eta.v ~ c(0.3, 0.01, 0.1)
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    # saem's estimate, made singular: eta.cl and eta.v perfectly correlated
+    .cap <- new.env(parent = emptyenv())
+    .getSaemOmega0 <- .getSaemOmega
+    local_mocked_bindings(.getSaemOmega = function(env) {
+      .getSaemOmega0(env)
+      .om <- env$omega
+      .om["eta.cl", "eta.v"] <- .om["eta.v", "eta.cl"] <- sqrt(.om["eta.cl", "eta.cl"] * .om["eta.v", "eta.v"])
+      env$omega <- .om
+      .cap$omega <- .om
+      invisible()
+    })
+    fit <- suppressMessages(suppressWarnings(nlmixr2(
+      .mod,
+      theo_sd,
+      "saem",
+      saemControl(print = 0, nBurn = 5, nEm = 5, seed = 42, covMethod = "")
+    )))
+    expect_true(inherits(try(chol(.cap$omega), silent = TRUE), "try-error"))
+    expect_equal(fit$omega, .cap$omega)
+    expect_equal(fit$ui$omega, .cap$omega)
+    # the tables needed the repair, and the fit says so
+    expect_true(any(grepl("not positive definite", fit$runInfo, fixed = TRUE)))
+  })
+
+  test_that("a posthoc fit corrects a nearly singular ini() omega, but not a far one", {
+    .mk <- function(cv) {
+      .f <- function() {
+        ini({
+          tka <- 0.45
+          tcl <- 1
+          tv <- 3.45
+          eta.ka ~ 0.6
+          add.sd <- 0.7
+        })
+        model({
+          ka <- exp(tka + eta.ka)
+          cl <- exp(tcl + eta.cl)
+          v <- exp(tv + eta.v)
+          linCmt() ~ add(add.sd)
+        })
+      }
+      suppressMessages(eval(bquote(rxode2::ini(.f, eta.cl + eta.v ~ c(0.1, .(cv), 0.1)))))
+    }
+    .ctl <- foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE)
+    # a correlation of exactly 1, as a rounded import gives: corrected, and the
+    # correction reported
+    fit <- suppressMessages(.nlmixr(.mk(0.1), theo_sd, "focei", .ctl))
+    .om <- fit$omega[c("eta.cl", "eta.v"), c("eta.cl", "eta.v")]
+    expect_false(inherits(try(chol(.om), silent = TRUE), "try-error"))
+    expect_equal(.om[1, 2], 0.1)
+    expect_equal(diag(.om), c(eta.cl = 0.1, eta.v = 0.1), tolerance = 1e-3)
+    expect_equal(fit$ui$omega, fit$omega)
+    expect_true(any(grepl("nearly singular", fit$runInfo, fixed = TRUE)))
+    # a correlation of 2 is no rounding: reported as given
+    fit <- suppressMessages(.nlmixr(.mk(0.2), theo_sd, "focei", .ctl))
+    expect_equal(fit$omega[["eta.cl", "eta.v"]], 0.2)
+    expect_equal(fit$omega[["eta.cl", "eta.cl"]], 0.1)
+    expect_true(any(grepl("not positive definite", fit$runInfo, fixed = TRUE)))
   })
 
   test_that(".saemWarnDegenerateOmega notes a collapsed omega in $runInfo", {

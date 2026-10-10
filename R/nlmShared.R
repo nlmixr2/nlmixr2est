@@ -252,7 +252,13 @@
     .malert("calculating covariance")
     if (!any(names(.ret) == "hessian")) {
       .p <- setNames(.parScaled, NULL)
-      .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFunC)
+      # the stencil differences objectives that agree in their last digits, so its
+      # solves run at the covariance probe tolerances, as FOCEi's do
+      .tol <- .Call(`_nlmixr2est_covProbeSolveTolSet_`)
+      .hess <- tryCatch(
+        nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFunC),
+        finally = .Call(`_nlmixr2est_covProbeSolveTolRestore_`, .tol)
+      )
       .ret$hessian <- .hess
     }
     dimnames(.ret$hessian) <- list(.name, .name)
@@ -288,15 +294,38 @@
   .nlmFreeEnv()
   .ret
 }
+
+#' The nlm-family Hessian from central differences of the analytic gradient
+#'
+#' Column `k` is the central difference of `.nlmixrNlminbGradC()` over the
+#' central step `nlmixr2Gill83()` finds for parameter `k` (the step source
+#' `nlmixr2Hess()` uses), at the covariance probe tolerances.  It needs a loaded
+#' problem with a gradient solve type (`solveType` `"grad"` or `"hessian"`).
+#' @param par scaled parameters at the estimates
+#' @return the symmetric Hessian of the objective
+#' @noRd
+.nlmGradHessian <- function(par) {
+  .tol <- .Call(`_nlmixr2est_covProbeSolveTolSet_`)
+  on.exit(.Call(`_nlmixr2est_covProbeSolveTolRestore_`, .tol))
+  .h <- nlmixr2Gill83(nlmixr2est::.nlmixrNlminbFunC, par)$aEpsC
+  .n <- length(par)
+  .hess <- matrix(0, .n, .n)
+  for (.k in seq_len(.n)) {
+    .e <- replace(numeric(.n), .k, .h[.k])
+    .hess[, .k] <- (nlmixr2est::.nlmixrNlminbGradC(par + .e) -
+      nlmixr2est::.nlmixrNlminbGradC(par - .e)) /
+      (2 * .h[.k])
+  }
+  (.hess + t(.hess)) / 2
+}
 #' The information matrix an nlm-family covariance is inverted from
 #'
-#' The Hessian is factored and, when needed, repaired as the FOCEi covariance
-#' step does its R matrix (`foceiCovUsable()`, src/inner.cpp), under the same
-#' labels.  Schnabel-Eskow's modified Cholesky factorization (`cholSE0()`)
-#' factors `R + E`: "r" when it adds nothing; "r+" when every diagonal `E` it
-#' adds is within `foceiControl()`'s default `cholAccept` (a positive-definite
-#' but nearly singular R gets one too); else `sqrtm(R %*% R)` ("|r|") when its
-#' Cholesky factorization works.  Otherwise there is no covariance.
+#' The Hessian is factored and, when needed, repaired by the covariance step's one
+#' acceptance rule (`covAccept_()`, `covAcceptRule()` in src/cholse.cpp), under the
+#' FOCEi labels: "r" as it is; "r+" when Schnabel-Eskow's modified Cholesky
+#' factorization adds diagonals within `foceiControl()`'s default `cholAccept`;
+#' "|r|" for `sqrtm(R %*% R)`.  A numerically rank-deficient R may be "r+", as in
+#' FOCEi.
 #' @param hess Hessian of the -LL objective (the R matrix)
 #' @return list(r = the (repaired) R matrix and u = its upper Cholesky factor,
 #'   both `NULL` when none is usable; type = "r", "r+", "|r|" or "failed";
@@ -308,31 +337,15 @@
     return(list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .g$reason)))
   }
   .r <- .g$cov
-  .c <- cholSEpd_(.r, (.Machine$double.eps)^(1 / 3))
-  # cholSE0() calls every 1x1 matrix positive definite
-  if (.c$pd && (nrow(.r) > 1L || .r[1, 1] > 0)) {
-    return(list(r = hess, u = .c$U, type = "r"))
-  }
-  # A numerically rank-deficient R is not repaired: "r+" and "|r|" would both
-  # invert its rounding noise (sqrtm() lifts rounding-level eigenvalues to about
-  # sqrt(eps), so |R| would even pass chol()).  A nearly singular R of full rank
-  # is still corrected as "r+".
-  .ev <- abs(.g$ev)
-  if (min(.ev) <= nrow(.r) * .Machine$double.eps * max(.ev)) {
-    return(list(type = "failed", warning = "R matrix is singular; covariance step failed"))
-  }
+  .a <- covAccept_(.r, (.Machine$double.eps)^(1 / 3), formals(foceiControl)$cholAccept)
   .reason <- if (.g$ok) "is nearly singular" else .g$reason
-  # E is scaled by the largest diagonal of R: a Hessian without a positive one
-  # (the zero Hessian of a failed trust solve) has no scale to correct within
-  if (max(diag(.r)) > 0 && all(is.finite(.c$E)) && all(.c$E <= formals(foceiControl)$cholAccept)) {
-    return(list(r = .r, u = .c$U, type = "r+", warning = sprintf("R matrix %s; corrected as \"r+\"", .reason)))
-  }
-  .abs <- tryCatch(sqrtm(.r %*% .r), error = function(e) NULL)
-  .u <- if (is.null(.abs) || !all(is.finite(.abs))) NULL else tryCatch(chol(.abs), error = function(e) NULL)
-  if (is.null(.u)) {
-    return(list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .reason)))
-  }
-  list(r = .abs, u = .u, type = "|r|", warning = sprintf("R matrix %s; corrected as \"|r|\"", .reason))
+  switch(
+    .a$type,
+    "+" = list(r = .r, u = .a$U, type = "r+", warning = sprintf("R matrix %s; corrected as \"r+\"", .reason)),
+    "|" = list(r = .a$M, u = .a$U, type = "|r|", warning = sprintf("R matrix %s; corrected as \"|r|\"", .reason)),
+    failed = list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .reason)),
+    list(r = hess, u = .a$U, type = "r")
+  )
 }
 
 #' Adjust nlm and family output environment

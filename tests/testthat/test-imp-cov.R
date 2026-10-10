@@ -172,7 +172,9 @@ test_that(".impCovInstall() installs nothing when the information cannot be repa
   .info <- .impMockInfo(c(40, 25, 9, 4, 2, -0.5))
   .bad <- replace(.info, 1L, NA_real_)
   .zero <- .impMockInfo(c(40, 25, 9, 4, 2, 0))
-  for (.i in list(NULL, .bad, .zero)) {
+  # nearly singular: solve() inverts it on some LAPACKs (macOS) and not others
+  .tiny <- .impMockInfo(c(40, 25, 9, 4, 2, -1e-13))
+  for (.i in list(NULL, .bad, .zero, .tiny)) {
     .env <- .impMockEnv()
     expect_warning(
       .ok <- .impCovInstall(.env, solve(.info), 1:2, .dOm, .impMockOmega, .rx$theta, .i),
@@ -202,6 +204,27 @@ nmTest({
       cl <- exp(tcl + eta.cl)
       v <- exp(tv + eta.v)
       linCmt() ~ add(add.sd)
+    })
+  }
+
+  .impCovOdeModel <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
     })
   }
 
@@ -253,5 +276,50 @@ nmTest({
     expect_equal(f$env$impCov, f$cov)
     expect_equal(unname(f$env$impSe), unname(sqrt(diag(f$cov))))
     expect_gt(min(eigen(f$cov, symmetric = TRUE, only.values = TRUE)$values), 0)
+  })
+
+  test_that("the imp covariance reads the points that move only Omega without solving", {
+    skip_on_cran()
+    # the fixed importance samples are in eta-space, so an Omega-only point changes only
+    # the eta prior; reuse gives the covariance recomputing does, up to the order the
+    # data and prior parts are added in
+    .fit <- function(reuse) {
+      withr::local_envvar(NLMIXR2EST_COV_NO_REUSE = if (reuse) "" else "1")
+      suppressMessages(suppressWarnings(.nlmixr(.impCovOdeModel, theo_sd, "impmap", .impCovCtl("imp"))))
+    }
+    .on <- .fit(TRUE)
+    .off <- .fit(FALSE)
+    expect_identical(.on$covMethod, .off$covMethod)
+    expect_equal(.on$cov, .off$cov, tolerance = 1e-10)
+    # 3 Omega parameters: 2 diagonal legs each and 4 legs per pair
+    expect_identical(.on$env$impCovReused, 2L * 3L + 4L * 3L)
+    expect_identical(.off$env$impCovReused, 0L)
+  })
+
+  test_that("the imp covariance runs at the covariance probe tolerances (issue 1140)", {
+    skip_on_cran()
+    # at the fit's own rtol (1e-3) the finite differences of the objective
+    # differenced solver noise: tka's SE came out about 3x too small
+    .def <- suppressMessages(suppressWarnings(.nlmixr(
+      .impCovOdeModel,
+      theo_sd,
+      "impmap",
+      impmapControl(print = 0L, nIter = 5L, isample = 100L, calcTables = FALSE)
+    )))
+    .tight <- suppressMessages(suppressWarnings(.nlmixr(
+      .impCovOdeModel,
+      theo_sd,
+      "impmap",
+      impmapControl(
+        print = 0L,
+        nIter = 5L,
+        isample = 100L,
+        calcTables = FALSE,
+        rxControl = rxode2::rxControl(atol = 1e-9, rtol = 1e-9)
+      )
+    )))
+    expect_identical(.def$covMethod, "imp")
+    expect_identical(.tight$covMethod, "imp")
+    expect_equal(sqrt(diag(.def$cov)), sqrt(diag(.tight$cov)), tolerance = 0.01)
   })
 })

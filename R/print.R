@@ -312,6 +312,10 @@ print.nlmixr2FitCore <- function(x, ...) {
         crayon::bold(x$covMethod),
         "\n"
       ))
+      .pl <- .covPrecursorLine(x$env$covPrecursorUsed[[.covMethod]])
+      if (!is.null(.pl)) {
+        cat("    ", .pl, "\n", sep = "")
+      }
     }
     if (
       exists("covList", x$env, inherits = FALSE) &&
@@ -519,6 +523,7 @@ print.nlmixr2FitCore <- function(x, ...) {
   }
   .c <- NULL
   if (x$covMethod != "") {
+    .pl <- .covPrecursorLine(x$env$covPrecursorUsed[[x$covMethod]])
     .c <- c(
       .c,
       paste0(
@@ -526,7 +531,8 @@ print.nlmixr2FitCore <- function(x, ...) {
         .bound,
         "$covMethod): ",
         x$covMethod
-      )
+      ),
+      if (!is.null(.pl)) paste0("    ", .pl)
     )
   }
   if (is.na(get("objective", x$env, inherits = FALSE))) {

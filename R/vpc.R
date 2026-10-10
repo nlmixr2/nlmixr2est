@@ -77,6 +77,12 @@ vpcSim <- function(
   checkmate::assertLogical(normRelated, len = 1, any.missing = FALSE)
   checkmate::assertCharacter(keep, null.ok = TRUE, pattern = "^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$")
   checkmate::assertIntegerish(seed)
+  ## event bus: the simulations inside are silent; emit one solveComplete
+  ## linked to the fit on exit (see rxEvents.R)
+  force(object)
+  .nlmixr2EventEnter()
+  .evCall <- sys.call()
+  on.exit(.nlmixr2EventExitSolve(returnValue(), object, .evCall, "vpcSim"), add = TRUE)
   # seed R's RNG and switch rxode2's own seed sequence off for the simulation: a
   # sequence left in force by an earlier rxSetSeed() advances by the thread
   # count per solve, which would make the simulations thread dependent

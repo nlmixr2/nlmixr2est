@@ -1,9 +1,20 @@
 #' Options for the finite-difference covariance in setCov()
 #'
 #' Used by \code{setCov(fit, "r,s")}, \code{"r"} and \code{"s"}.  Each option
-#' left \code{NULL} keeps the value the fit was estimated with.
+#' left \code{NULL} keeps the value the fit was estimated with, except
+#' \code{covFallback}.
 #'
 #' @inheritParams foceiControl
+#' @param covFallback what the requested method may fall back to, as in
+#'   \code{foceiControl(covFallback=)}.  \code{NULL} (default) is none:
+#'   \code{setCov()} installs the method asked for or stops with an error.  With
+#'   a list, a covariance from a method it lists for the request is installed,
+#'   with a warning that names it.
+#' @param covPrecursor what the covariance may start from, as in
+#'   \code{foceiControl(covPrecursor=)}.  Left out, the fit's value is kept;
+#'   \code{NULL} uses none.
+#' @param covShortcut as in \code{foceiControl(covShortcut=)}; \code{NULL}
+#'   (default) keeps the fit's value.
 #' @return \code{rsControl} object
 #' @author Matt Fidler
 #' @seealso \code{\link{setCov}()}
@@ -18,9 +29,18 @@ rsControl <- function(
   covGillF = NULL,
   covSmall = NULL,
   rmatNorm = NULL,
-  smatNorm = NULL
+  smatNorm = NULL,
+  covFallback = NULL,
+  covPrecursor,
+  covShortcut = NULL
 ) {
   .covFdOptionsAssert(hessEps, gillKcov, gillStepCov, gillFtolCov, covGillF, covSmall, rmatNorm, smatNorm, TRUE)
+  if (!is.null(covFallback)) {
+    covFallback <- .covFallbackCheck(covFallback)
+  }
+  # NULL here means none (character(0)), so only a missing value keeps the fit's
+  covPrecursor <- if (missing(covPrecursor)) NULL else .covPrecursorCheck(covPrecursor)
+  checkmate::assertFlag(covShortcut, null.ok = TRUE)
   .ret <- list(
     hessEps = hessEps,
     gillKcov = gillKcov,
@@ -29,7 +49,10 @@ rsControl <- function(
     covGillF = covGillF,
     covSmall = covSmall,
     rmatNorm = rmatNorm,
-    smatNorm = smatNorm
+    smatNorm = smatNorm,
+    covFallback = covFallback,
+    covPrecursor = covPrecursor,
+    covShortcut = covShortcut
   )
   if (!is.null(.ret$gillKcov)) {
     .ret$gillKcov <- as.integer(.ret$gillKcov)
@@ -88,28 +111,42 @@ rxUiDeparse.rsControl <- function(object, var) {
 
 #' Options for the SAEM stochastic-approximation covariance in setCov()
 #'
-#' Used by \code{setCov(fit, "sa")}, which runs a short SAEM at the fit's
-#' estimates before the covariance phase.  Every population parameter is held
+#' Used by \code{setCov(fit, "sa")}, which runs the SAEM covariance phase at the
+#' fit's estimates, after warm-up iterations unless it continues a SAEM fit's
+#' own chains.  Every population parameter is held
 #' at the fit's estimates throughout (mixture proportions excepted), so the
 #' covariance is the one at those estimates.
 #'
 #' @param nBurn,nEm warm-up iterations that equilibrate the MCMC chains before
-#'   the covariance phase
+#'   the covariance phase, for a fit without SAEM chain history (or with
+#'   \code{warmStart = FALSE})
 #' @param nSaCov iterations in the covariance phase; more gives a less noisy
 #'   covariance
 #' @param seed random seed
+#' @param warmStart for a SAEM fit, continue the fit's own MCMC chains: the
+#'   covariance phase starts from the fit's last iteration with no new warm-up
+#'   iterations.  This changes the Monte Carlo path, so the covariance differs
+#'   from a cold start by Monte Carlo noise.  Other fits, and SAEM fits that
+#'   kept no chain history, always run \code{nBurn}/\code{nEm}.
 #' @return \code{saControl} object
 #' @author Matt Fidler
 #' @seealso \code{\link{setCov}()}, \code{\link{saemControl}()}
 #' @examples
 #' saControl(nSaCov = 1000)
 #' @export
-saControl <- function(nBurn = 100L, nEm = 100L, nSaCov = 500L, seed = 99L) {
+saControl <- function(nBurn = 100L, nEm = 100L, nSaCov = 500L, seed = 99L, warmStart = TRUE) {
   checkmate::assertIntegerish(nBurn, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(nEm, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(nSaCov, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(seed, len = 1, any.missing = FALSE)
-  .ret <- list(nBurn = as.integer(nBurn), nEm = as.integer(nEm), nSaCov = as.integer(nSaCov), seed = as.integer(seed))
+  checkmate::assertLogical(warmStart, len = 1, any.missing = FALSE)
+  .ret <- list(
+    nBurn = as.integer(nBurn),
+    nEm = as.integer(nEm),
+    nSaCov = as.integer(nSaCov),
+    seed = as.integer(seed),
+    warmStart = warmStart
+  )
   class(.ret) <- "saControl"
   .ret
 }
@@ -157,7 +194,9 @@ rxUiDeparse.impCovControl <- function(object, var) {
   covGillF = "logical",
   covSmall = "double",
   rmatNorm = "logical",
-  smatNorm = "logical"
+  smatNorm = "logical",
+  covPrecursor = "character",
+  covShortcut = "logical"
 )
 
 #' The cache key of a covariance method's options
@@ -210,7 +249,13 @@ setCovOptions.rsControl <- function(control, fit, ...) {
     if (is.null(.v)) {
       return(NULL)
     }
-    switch(.rsControlMode[[.n]], double = as.double(.v), integer = as.integer(.v), logical = as.logical(.v))
+    switch(
+      .rsControlMode[[.n]],
+      double = as.double(.v),
+      integer = as.integer(.v),
+      logical = as.logical(.v),
+      character = as.character(.v)
+    )
   })
   names(.ret) <- names(.rsControlMode)
   .ret

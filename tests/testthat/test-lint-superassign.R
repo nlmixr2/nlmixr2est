@@ -3,7 +3,9 @@
 # The parse data is inspected so strings and comments are not counted.
 test_that("no R source file uses superassignment", {
   .rDir <- testthat::test_path("..", "..", "R")
-  # an installed package (covr, R CMD check) has an R/ directory without sources
+  # an installed package (covr, R CMD check) has an R/ directory too, holding the
+  # lazy-load database instead of sources
+  skip_if_not(file.exists(file.path(.rDir, "nlmixr2.R")), "package source tree not available")
   .files <- list.files(.rDir, pattern = "\\.[Rr]$", full.names = TRUE)
   skip_if(length(.files) == 0L, "package source tree not available")
   .hits <- character(0)
@@ -22,7 +24,7 @@ test_that("no R source file uses superassignment", {
 
 test_that("the superassignment scan sees both operators", {
   .pd <- utils::getParseData(parse(
-    text = c("f <- function() { a <<- 1; 2 ->> b; x <- '<<-' } # <<-"),
+    text = "f <- function() { a <<- 1; 2 ->> b; x <- '<<-' } # <<-",
     keep.source = TRUE
   ))
   expect_identical(sum(.pd$token == "LEFT_ASSIGN" & .pd$text == "<<-"), 1L)

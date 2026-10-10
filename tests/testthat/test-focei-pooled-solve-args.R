@@ -36,6 +36,8 @@ nmTest({
     expect_equal(.tol(sigdig = 3), 1e-9)
     expect_equal(.tol(sigdig = 4), 1e-10)
     expect_equal(.tol(sigdig = 6), 1e-12)
+    # floored at 1e-12, which the solvers still reach
+    expect_equal(.tol(sigdig = 8), 1e-12)
     # an explicit covSolveTol wins, and does not move with sigdig
     expect_equal(.tol(covSolveTol = 1e-7), 1e-7)
     expect_equal(.tol(covSolveTol = 1e-7, sigdig = 6), 1e-7)

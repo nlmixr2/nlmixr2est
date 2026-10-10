@@ -217,9 +217,7 @@
   ## variational posterior means as the FOCEi inner EBE start [nsub, neta]
   .eb <- res$mu
   colnames(.eb) <- .prep$etaNames
-  .ret$omega <- .omM
   .ret$ui <- .ui2
-  .ret$fullTheta <- stats::setNames(res$theta, names(.prep$th))
 
   ## the output step evaluates the variational means only; the FOCEi covariance
   ## is computed after it (.foceiInstallOwnEtaCov, below)
@@ -332,10 +330,25 @@
     if (identical(.control$covMethod, "vi")) {
       .adviInstallVarCov(.fit, res)
     } else if (
-      is.null(.e$cov) || !is.matrix(.e$cov) || length(.cmDone) != 1L || !nzchar(.cmDone) || identical(.cmDone, "failed")
+      "vi" %in%
+        .covFallbackOf(.control, "emviControl")[[.control$covMethod]] &&
+        (is.null(.e$cov) ||
+          !is.matrix(.e$cov) ||
+          length(.cmDone) != 1L ||
+          !nzchar(.cmDone) ||
+          identical(.cmDone, "failed"))
     ) {
       message("covMethod=\"", .control$covMethod, "\" covariance was not available; using the variational covariance")
       .adviInstallVarCov(.fit, res)
+      .tried <- if (is.data.frame(.e$covTried)) {
+        .e$covTried
+      } else {
+        data.frame(method = .control$covMethod, outcome = "not usable")
+      }
+      .e$covTried <- rbind(
+        .tried,
+        data.frame(method = "vi", outcome = if (identical(.e$covMethod, "vi")) "used" else "not usable")
+      )
     }
   }
   .e$viState <- .st
@@ -360,10 +373,13 @@
   } else {
     control$covMethod
   }
+  # the FOCEI fallbacks; "vi" is installed after the FOCEI covariance (.adviFitModel)
+  .fb <- lapply(.covFallbackOf(control, "emviControl"), setdiff, y = "vi")
   .foceiOwnEtaControl(
     control,
     etaMat,
     covMethod = .covM,
+    covFallback = .fb,
     likelihood = control$likelihood,
     scaleTo = 0,
     literalFix = control$literalFix,

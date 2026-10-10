@@ -83,6 +83,9 @@ SEXP _nlmixr2est_foceiRAllFoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP
 SEXP _nlmixr2est_likInner(SEXP, SEXP);
 SEXP _nlmixr2est_cholSE_(SEXP, SEXP);
 SEXP _nlmixr2est_cholSEpd_(SEXP, SEXP);
+SEXP _nlmixr2est_covAccept_(SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_covProbeSolveTolSet_(void);
+SEXP _nlmixr2est_covProbeSolveTolRestore_(SEXP);
 SEXP _nlmixr2est_shi21CentralWrap(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_shi21RatioCensorSet(SEXP);
 SEXP _nlmixr2est_shi21RatioTest(SEXP, SEXP);
@@ -131,6 +134,7 @@ SEXP _saemResidF(SEXP v);
 
 SEXP _nlmixr2est_nlmixrExpandFdParNlme_(SEXP, SEXP);
 
+SEXP _nlmixr2est_nmNearPDKeepDiag_(SEXP);
 //SEXP _nlmixr2est_nmNearPD_()
 SEXP _nlmixr2est_nmNearPD_(SEXP, SEXP, SEXP, SEXP, SEXP,
                            SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -306,6 +310,9 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiRAllFoceFR_", (DL_FUNC) &_nlmixr2est_foceiRAllFoceFR_, 26},
   {"_nlmixr2est_cholSE_", (DL_FUNC) &_nlmixr2est_cholSE_, 2},
   {"_nlmixr2est_cholSEpd_", (DL_FUNC) &_nlmixr2est_cholSEpd_, 2},
+  {"_nlmixr2est_covAccept_", (DL_FUNC) &_nlmixr2est_covAccept_, 3},
+  {"_nlmixr2est_covProbeSolveTolSet_", (DL_FUNC) &_nlmixr2est_covProbeSolveTolSet_, 0},
+  {"_nlmixr2est_covProbeSolveTolRestore_", (DL_FUNC) &_nlmixr2est_covProbeSolveTolRestore_, 1},
   {"_nlmixr2est_shi21CentralWrap", (DL_FUNC) &_nlmixr2est_shi21CentralWrap, 5},
   {"_nlmixr2est_shi21RatioCensorSet", (DL_FUNC) &_nlmixr2est_shi21RatioCensorSet, 1},
   {"_nlmixr2est_shi21RatioTest", (DL_FUNC) &_nlmixr2est_shi21RatioTest, 2},
@@ -348,6 +355,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_popResFinal", (DL_FUNC) &_nlmixr2est_popResFinal, 1},
   {"_nlmixr2est_nlmixrExpandFdParNlme_", (DL_FUNC) &_nlmixr2est_nlmixrExpandFdParNlme_, 2},
   {"_nlmixr2est_nmNearPD_", (DL_FUNC) &_nlmixr2est_nmNearPD_, 10},
+  {"_nlmixr2est_nmNearPDKeepDiag_", (DL_FUNC) &_nlmixr2est_nmNearPDKeepDiag_, 1},
   {"_nlmixr2est_npIpmBurke", (DL_FUNC) &_nlmixr2est_npIpmBurke, 1},
   {"_nlmixr2est_npBuildPsi", (DL_FUNC) &_nlmixr2est_npBuildPsi, 2},
   {"_nlmixr2est_npEndpointForCmt_", (DL_FUNC) &_nlmixr2est_npEndpointForCmt_, 2},

@@ -327,6 +327,11 @@ nlmeControl <- nlmixr2NlmeControl
   .weights <- rxode2::rxGetControl(ui, "weights", NULL)
   if (is.null(.weights)) {
     .weights <- ui$nlmeWeights
+    # sigma, const and prop of varConstProp are not separately identifiable;
+    # as nlme recommends, fix sigma at 1 so const and prop are the sds
+    if (inherits(.weights, "varConstProp") && isTRUE(.ctl$sigma == 0)) {
+      .ctl$sigma <- 1
+    }
   } else {
     rxode2::rxAssignControlValue(ui, "returnNlme", TRUE)
   }
@@ -380,31 +385,29 @@ nlmeControl <- nlmixr2NlmeControl
   if (.addProp == "default") {
     .addProp <- rxode2::rxGetControl(ui, "addProp", "combined2")
   }
+  # nlme's residual sd is sigma times its variance function, so each
+  # coefficient of that function is scaled by sigma
+  .nlmePars <- coef(nlme$modelStruct$varStruct, unconstrained = FALSE)
+  .w <- which(ui$iniDf$err == "add")
+  .add <- setNames(nlme$sigma * .nlmePars[["const"]], ui$iniDf$name[.w])
   if (.addProp == "combined1") {
+    # varConstPower: sd = sigma * (const + |f|^power)
     if (.errType == "add + prop") {
-      .nlmePars <- coef(nlme$modelStruct$varStruct)
-      .w <- which(ui$iniDf$err == "add")
-      .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "prop")
       .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
       c(.f, .add, .prop)
     } else {
-      .nlmePars <- coef(nlme$modelStruct$varStruct)
-      .w <- which(ui$iniDf$err == "add")
-      .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "pow")
       .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "pow2")
-      .pow <- setNames(.nlmePars["power"], ui$iniDf$name[.w])
+      .pow <- setNames(.nlmePars[["power"]], ui$iniDf$name[.w])
       c(.f, .add, .prop, .pow)
     }
   } else {
+    # varConstProp: sd = sigma * sqrt(const^2 + (prop * f)^2)
     if (.errType == "add + prop") {
-      .nlmePars <- coef(nlme$modelStruct$varStruct)
-      .w <- which(ui$iniDf$err == "add")
-      .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "prop")
-      .prop <- setNames(.nlmePars["prop"], ui$iniDf$name[.w])
+      .prop <- setNames(nlme$sigma * .nlmePars[["prop"]], ui$iniDf$name[.w])
       c(.f, .add, .prop)
     } else {
       stop("add+prop combined2 does not support nlme power currently", call. = FALSE)
@@ -448,64 +451,45 @@ nlmeControl <- nlmixr2NlmeControl
   .etaMat <- .etaMat[order(as.numeric(row.names(.etaMat))), , drop = FALSE]
   names(.etaMat) <- .nlmeGetNonMuRefNames(names(.etaMat), ui)
   row.names(.etaMat) <- NULL
-  as.matrix(.etaMat)
+  # nlme orders the columns by omega block; the fit maps them by position
+  as.matrix(.etaMat[, dimnames(ui$omega)[[1]], drop = FALSE])
 }
 
 #' Get the covariance from nlme
 #'
+#' nlme's covariance of the fixed effects as is (`varFix`, what `vcov()`
+#' returns).
+#'
 #' @param nlme nlme object
+#' @return named covariance matrix of the fixed effects
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmeGetCov <- function(nlme) {
-  .snt <- summary(nlme)$tTable
-  .se <- .snt[, "Std.Error"]
-  if (length(.se) == 1) {
-    matrix(.se * .se, 1, 1, dimnames = list(rownames(.snt), rownames(.snt)))
-  } else {
-    .cov <- diag(.se * .se)
-    dimnames(.cov) <- list(rownames(.snt), rownames(.snt))
-    .cov
-  }
+  .ret <- as.matrix(nlme$varFix)
+  # a single fixed effect can come back unnamed, so name it from the fixed effects
+  .n <- names(nlme::fixef(nlme))
+  dimnames(.ret) <- list(.n, .n)
+  .ret
 }
 
 #' Get the omega matrix from nlme
 #'
+#' nlme keeps the random-effect covariance relative to the residual variance,
+#' so the estimate is `sigma^2` times its `pdMat`, the same matrix `VarCorr()`
+#' prints (without its rounding).  Its structure is the one `ini()` declares
+#' (`rxUiGet.nlmePdOmega()`).
+#'
 #' @param nlme nlme object
 #' @param ui rxode2 object
-#' @return Named omega matrix
+#' @return omega matrix, named and ordered as `ui$omega`
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmeGetOmega <- function(nlme, ui) {
-  .omega <- ui$omega
-  diag(.omega) <- 0
-  .vc <- nlme::VarCorr(nlme)
-  .var <- as.matrix(.vc[, "Variance", drop = FALSE])
-  .rn <- rownames(.var)
-  .name <- .nlmeGetNonMuRefNames(.rn, ui)
-  .var <- setNames(suppressWarnings(as.numeric(.var)), .name)
-  .var <- .var[names(.var) != "Residual"]
-  if (length(.var) == 1) {
-    .ome <- matrix(.var, 1, 1)
-  } else {
-    .ome <- diag(.var)
-  }
-  .name <- names(.var)
+  .ome <- nlme::pdMatrix(nlme$modelStruct$reStruct[[1]]) * nlme$sigma^2
+  .name <- .nlmeGetNonMuRefNames(rownames(.ome), ui)
   dimnames(.ome) <- list(.name, .name)
-  if (all(.omega == 0)) {
-    return(.ome)
-  }
-  .cor2 <- as.data.frame(.vc[-length(.rn), -(1:2), drop = FALSE])
-  .cor2$extra <- ""
-  names(.cor2) <- rownames(.cor2)
-  .cor2 <- as.matrix(.cor2)
-  diag(.cor2) <- "1"
-  .cor2[upper.tri(.cor2)] <- .cor2[lower.tri(.cor2)]
-  .cor2 <- matrix(suppressMessages(as.numeric(.cor2)), nrow(.cor2), ncol(.cor2), dimnames = dimnames(.ome))
-  diag(.ome) <- sqrt(diag(.ome))
-  .ome <- .ome %*% .cor2 %*% .ome
-  .ome <- as.matrix(Matrix::nearPD(ui$omega)$mat)
-  dimnames(.ome) <- list(.name, .name)
-  .ome
+  .eta <- dimnames(ui$omega)[[1]]
+  .ome[.eta, .eta, drop = FALSE]
 }
 
 #' @rdname nmObjHandleControlObject
@@ -627,6 +611,16 @@ nlmixr2Est.nlme <- function(env, ...) {
   rxode2::assertRxUiSingleEndpoint(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
   rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
+  .fixOme <- .ui$iniDf$name[!is.na(.ui$iniDf$neta1) & .ui$iniDf$fix]
+  if (length(.fixOme) > 0L) {
+    # nlme's pdMat classes have no way to hold one element at its value
+    stop(
+      "fixed omega elements are not supported by est=\"nlme\": ",
+      paste(.fixOme, collapse = ", "),
+      "; use est=\"focei\" or est=\"saem\"",
+      call. = FALSE
+    )
+  }
   .nlmeFamilyControl(env, ...)
   on.exit(
     {

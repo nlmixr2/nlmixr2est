@@ -4,12 +4,13 @@
 #' @inheritParams stats::nlminb
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
-#' @param covMethod Method for calculating the covariance.  \code{"r"} (the
-#'   default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"nlminb"} uses
-#'   the Hessian nlminb's own Hessian function computes (a finite difference of
-#'   the analytic gradient), at the final estimates; it needs
-#'   \code{solveType = "hessian"} or \code{"grad"}.  \code{""} skips the
-#'   covariance step.
+#' @param covMethod Method for calculating the covariance.  \code{"r"} uses
+#'   nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"nlminb"} uses central
+#'   differences of the analytic gradient at the final estimates, as
+#'   \code{nlmControl(covMethod = "nlm")} does; it needs
+#'   \code{solveType = "hessian"} or \code{"grad"}.  The default is
+#'   \code{"nlminb"} with \code{solveType = "hessian"} and \code{"r"}
+#'   otherwise.  \code{""} skips the covariance step.
 #' @param returnNlminb logical; when TRUE this will return the nlminb
 #'   result instead of the nlmixr2 fit object
 #' @param eval.max Maximum number of evaluations of the objective
@@ -163,7 +164,13 @@ nlminbControl <- function(
 
   solveType <- .nlmCtlCode(solveType, c("hessian" = 3L, "grad" = 2L, "fun" = 1L), "solveType")
 
-  covMethod <- .nlmCtlCovMethod(covMethod, match.arg(covMethod))
+  # the Hessian a "hessian" fit already computes at the estimates, as nlmControl()
+  # uses nlm's own
+  if (missing(covMethod) && solveType == 3L) {
+    covMethod <- "nlminb"
+  } else {
+    covMethod <- .nlmCtlCovMethod(covMethod, match.arg(covMethod))
+  }
   if (covMethod == "nlminb" && !any(solveType == 2:3)) {
     warning(
       "using the Hessian function used during nlminb optimization requires a hessian or gradient solving type\n",
@@ -297,7 +304,16 @@ nlminbControl <- function(
 }
 
 #' @export
-rxUiDeparse.nlminbControl <- function(object, var) .deparseControl(object, var, nlminbControl())
+rxUiDeparse.nlminbControl <- function(object, var) {
+  # covMethod's default follows solveType, so compare it with the default for the
+  # object's own solveType
+  .default <- nlminbControl()
+  .st <- tryCatch(nlminbControl(solveType = object$solveType)$covMethod, error = function(e) NULL)
+  if (!is.null(.st)) {
+    .default$covMethod <- .st
+  }
+  .deparseControl(object, var, .default)
+}
 
 #' A surrogate function for nlminb to call for ode solving
 #'
@@ -424,9 +440,7 @@ getValidNlmixrCtl.nlminb <- function(control) .getValidCtl(control, "nlminbContr
   }
   .ret <- eval(.ret)
   if (.ctl$covMethod == "nlminb") {
-    # nlminb's own Hessian at the estimates: the cached one when its last request
-    # was there, otherwise computed once there
-    .ret$hessian <- matrix(.nlmixrNlminbHessC(.ret$par + 0), length(.ret$par))
+    .ret$hessian <- .nlmGradHessian(.ret$par)
   }
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }

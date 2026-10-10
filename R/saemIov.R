@@ -928,6 +928,8 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
     .parts <- .saemIovCollapsedParts(.om, ret$env$fixef, .info)
     .saemIovRestoreUi(ret$env, .info, .parts)
     .saemIovRestoreEst(ret$env, .info, .parts)
+    # the occasion etas are saem's own, not the rewrite's (nmObjGet.etaMat())
+    assign("iovNative", "collapsed", envir = ret$env)
   }
   if (inherits(ret, "data.frame")) {
     .w <- which(grepl("^rx[.]", names(ret)))

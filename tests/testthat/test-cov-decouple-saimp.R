@@ -106,6 +106,47 @@ nmTest({
     expect_equal(.imp$omega[.eta, .eta], .f$omega[.eta, .eta], tolerance = 1e-10)
   })
 
+  test_that("setCov(\"sa\") on a SAEM fit continues its chains with no warm-up iterations", {
+    .f <- suppressWarnings(nlmixr2(.lc, .d, est = "saem", control = saemControl(print = 0L, nBurn = 100, nEm = 100)))
+    expect_identical(.f$covMethod, "sa")
+    .native <- sqrt(diag(.f$cov))
+    .all <- .f$phiM
+    expect_identical(dim(.all), c(12L, 3L, 200L, 3L))
+    .st <- .saemChainState(.f)
+    expect_identical(dim(.st$phiM), c(36L, 3L))
+    # row i + k * N is subject i of chain k
+    expect_identical(.st$phiM[2L + 12L, ], .all[2L, 2L, 200L, ])
+    # the sigma2 the fit's Louis residual score read: add.sd^2 at convergence
+    expect_equal(.st$sigma2, unname(.f$theta["add.sd"])^2, tolerance = 1e-3)
+    expect_identical(.st$mpostPhi, .f$saem$mpost_phi)
+    # a fit without chains starts cold
+    .fo <- suppressWarnings(nlmixr2(.lc, .d, est = "focei", control = foceiControl(print = 0L, covMethod = "")))
+    expect_null(.saemChainState(.fo))
+
+    .eta <- c("eta.ka", "eta.cl", "eta.v")
+    .a <- .covPinnedRefitArgs(.f)
+    .sa <- suppressWarnings(suppressMessages(nlmixr2(
+      .a$ui,
+      .a$data,
+      est = "saem",
+      control = .covEngineControl("sa", saControl(), .st)
+    )))
+    expect_identical(.sa$covMethod, "sa")
+    expect_false("saemWarmState" %in% names(.sa$control))
+    # no estimation iteration ran, so nothing moved
+    expect_identical(nrow(.sa$parHistData), 0L)
+    expect_equal(.sa$theta[names(.f$theta)], .f$theta, tolerance = 1e-10)
+    expect_equal(.sa$omega[.eta, .eta], .f$omega[.eta, .eta], tolerance = 1e-10)
+    # the same estimand as the fit's own sa phase, to Monte Carlo noise (about
+    # 1% here); the residual SE depends on the seeded residual statistic, which
+    # left at the kernel's start gave an SE of about 9
+    expect_equal(sqrt(diag(.sa$cov)), .native, tolerance = 0.1)
+
+    suppressMessages(setCov(.f, "sa", saControl(nSaCov = 400L)))
+    expect_identical(.f$covMethod, "sa")
+    expect_equal(sqrt(diag(.f$cov)), .native, tolerance = 0.1)
+  })
+
   test_that("impmap accepts the foreign sa covariance", {
     .f <- suppressWarnings(nlmixr2(.lc, .d, est = "impmap", control = impmapControl(print = 0L, covMethod = "sa")))
     expect_equal(.f$covMethod, "sa")

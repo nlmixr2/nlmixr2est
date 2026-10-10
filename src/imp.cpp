@@ -1068,6 +1068,15 @@ static arma::mat impFdHessian(const arma::vec& par0,
   return hess;
 }
 
+// src/inner.cpp: the covariance probe tolerances on the live solve, and back
+void covProbeSolveTolPush(double *sav);
+void covProbeSolveTolPop(const double *sav);
+struct ImpCovSolveTolScope {
+  double sav[2];
+  ImpCovSolveTolScope() { covProbeSolveTolPush(sav); }
+  ~ImpCovSolveTolScope() { covProbeSolveTolPop(sav); }
+};
+
 static void impComputeCov(Environment e, const arma::vec& gammaVec,
                           const std::vector<impProp>& props, int covIter) {
   // The proposal Hessians below and every objective evaluation re-score each
@@ -1197,6 +1206,17 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   std::vector<double> objBuf(nExp, 0.0);
   std::vector<char> objGood(nExp, 0);
   std::vector<double> mixLl((size_t)Nm);
+  arma::vec par0(np);
+  for (int j = 0; j < np; ++j)
+    par0[j] = (pl[j] < ntheta) ? impGetFullThetaVal(pl[j])
+                               : impGetOmegaThetaVal(pl[j] - ntheta);
+  // Each fixed sample's data part of the -log joint (impEvalJointLik() less its eta
+  // prior), kept from the evaluation at the estimates: a point that moves only Omega
+  // parameters changes only the prior, so it needs no solve.
+  const bool omReuse = impCovReuseOn() && Nm == 1 && !impIsFo();
+  std::vector<arma::vec> dataPart(nExp);
+  bool haveData = false;
+  int nReused = 0;
   // Progress bar over the finite-difference covariance evaluations, like the
   // focei covariance step.  evalObj is called f0 (1) + 2*np (diagonal) +
   // 2*np*(np-1) (off-diagonal) = 1 + 2*np*np times; tick once per call.
@@ -1207,13 +1227,21 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   if (covProg) RSprintf("calculating covariance matrix\n");
   auto evalObj = [&](const arma::vec& par) -> double {
     for (int j = 0; j < np; ++j) setPar(j, par[j]);
+    bool thetasAtCentre = true;
+    for (int j = 0; thetasAtCentre && j < np; ++j) {
+      if (pl[j] < ntheta && par[j] != par0[j]) thetasAtCentre = false;
+    }
+    const bool reuse = omReuse && haveData && thetasAtCentre;
+    const bool record = omReuse && !haveData;
+    if (reuse) ++nReused;
     // Re-read after setting: an Omega perturbation changes -0.5 log|Omega|.
     double negHalfLogDetOmega = impLogDetOmegaInv5();
     std::fill(objBuf.begin(), objBuf.end(), 0.0);
     std::fill(objGood.begin(), objGood.end(), 0);
     nmForEachSubject(rx, nExp, cores, doParCov, [&](int id) {
       if (ok[id]) {
-        impForceResolve(id);
+        if (!reuse) impForceResolve(id);
+        if (record) dataPart[id].set_size(isample);
         // This subject's converged proposal scale (all equal under "global").
         // Must use the SAME proposal FAMILY and parameters as the E-step or the
         // reweighted objective is not the one the fit converged on.
@@ -1222,7 +1250,14 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
         for (int k = 0; k < isample; ++k) {
           arma::vec eta = Ss[id].row(k).t();
           arma::vec d = eta - modes[id];
-          double qk = -impEvalJointLik(eta, id) +
+          double negLogJoint;
+          if (reuse) {
+            negLogJoint = dataPart[id][k] + impEtaPriorHalf(eta);
+          } else {
+            negLogJoint = impEvalJointLik(eta, id);
+            if (record) dataPart[id][k] = negLogJoint - impEtaPriorHalf(eta);
+          }
+          double qk = -negLogJoint +
             impPropLogKernelRecip(pr, arma::as_scalar(d.t() * Hs[id] * d), gammaVec[id], neta);
           if (R_finite(qk)) { q[k] = qk; ++nGood; } else q[k] = R_NegInf;
         }
@@ -1255,14 +1290,13 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
       }
     }
     if (covProg) covTick = par_progress(covCur++, covTot, covTick, 1, covT0, 0);
+    if (record) haveData = true;
     return obj;
   };
 
-  arma::vec par0(np);
-  for (int j = 0; j < np; ++j)
-    par0[j] = (pl[j] < ntheta) ? impGetFullThetaVal(pl[j])
-                               : impGetOmegaThetaVal(pl[j] - ntheta);
   arma::mat Hess = impFdHessian(par0, evalObj);
+  // objective evaluations that needed no solve
+  e["impCovReused"] = nReused;
   if (covProg) nmProgressEnd(covTot, covTick, covT0, covInPlace);
   // Restore the converged estimates.
   for (int j = 0; j < np; ++j) setPar(j, par0[j]);
@@ -1601,6 +1635,7 @@ void impOuter(Environment e) {
   arma::mat Om0;
   impGetOmega(Om0);
   arma::mat omMask = arma::conv_to<arma::mat>::from(Om0 != 0.0);
+  std::vector<int> omFloored; // etas the installed omega has at the 1e-6 floor
   // Eta indices whose Omega diagonal is fix()ed: their rows/columns are held at
   // the starting Omega through every EM update.
   std::vector<int> omFixedEta;
@@ -2125,7 +2160,7 @@ void impOuter(Environment e) {
       // impSetOmega rebuilds from it -- omegaInv, cholOmegaInv, logDetOmegaInv5,
       // the Omega thetas in fullTheta) stays at its starting value.  The thetas
       // still move; the whole M-step above ran.
-      if (!(burnIter && burnFreezeOmega)) impSetOmega(Omega, diagXform);
+      if (!(burnIter && burnFreezeOmega)) omFloored = impSetOmega(Omega, diagXform);
     }
 
     // Record the current estimates for the parameter-stability half of the test.
@@ -2356,6 +2391,8 @@ void impOuter(Environment e) {
   // (re-adjusting it as if it were an unadjusted -2LL), which would publish the
   // initial-parameter objective instead of the converged FOCEi evaluation.
   if (e.exists("objective")) e.remove("objective");
+  // the omega the last M-step installed is the one reported
+  impWarnOmegaFloor(e, omFloored);
   impSyncInitParToFullTheta();
   impMapPass(e);
 
@@ -2367,6 +2404,9 @@ void impOuter(Environment e) {
   // evaluate the covariance at a proposal the fit never actually used (and
   // disagree with the reported impDfInd / impGammaInd).
   if (impCovEnabled()) {
+    // the finite differences of the objective run at the covariance probe
+    // tolerances, as FOCEi's covariance step does
+    ImpCovSolveTolScope _tol;
     impComputeCov(e, gammaUsed, propsUsed, impQrRefreshEnabled() ? iterRun - 1 : 0);
   }
 

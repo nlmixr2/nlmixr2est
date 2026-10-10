@@ -100,8 +100,9 @@
 #' @param returnTrust return the raw `nlmTrustFit()` output list instead of
 #'   the nlmixr2 fit.
 #' @param covMethod Method for calculating the covariance. `"r"` (the
-#'   default) uses the finite-difference Hessian: the last outer iteration's
-#'   with `hessianMethod = "fd"`, otherwise `nlmixr2Hess()`'s.  `"trust"` uses
+#'   default) uses a finite-difference Hessian at the estimates: with
+#'   `hessianMethod = "fd"`, central differences of the analytical gradient
+#'   over `nlmixr2Gill83()` steps, otherwise `nlmixr2Hess()`'s.  `"trust"` uses
 #'   the last outer iteration's Hessian whatever `hessianMethod` built it (a
 #'   quasi-Newton one by default); `""` skips the covariance step.
 #' @return trust control structure
@@ -443,9 +444,12 @@ getValidNlmixrCtl.trust <- function(control) .getValidCtl(control, "trustControl
     iterations = .tres$iterations,
     message = if (isTRUE(.tres$converged)) "converged" else "did not fully converge"
   )
-  # trust's own Hessian is a finite-difference one only with hessianMethod =
-  # "fd"; without it "r" is nlmixr2Hess()'s (.nlmFinalizeList())
-  if (.ctl$covMethod == "trust" || .ctl$hessianMethod == 1L) {
+  # "r" with hessianMethod = "fd" differences the gradient at the estimates
+  # (.nlmGradHessian()): the last iteration's Hessian searches its steps afresh
+  # at every iteration.  Otherwise "r" is nlmixr2Hess()'s (.nlmFinalizeList())
+  if (.ctl$covMethod == "r" && .ctl$hessianMethod == 1L) {
+    .ret$hessian <- .nlmGradHessian(.ret$par)
+  } else if (.ctl$covMethod == "trust") {
     # a solver error leaves the Hessian zero-filled, not computed
     .ret$hessian <- matrix(
       if (isTRUE(.tres$error < 0)) NA_real_ else .tres$hessian,

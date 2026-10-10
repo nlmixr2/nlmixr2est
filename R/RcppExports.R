@@ -5,6 +5,10 @@ cholSE_ <- function(A, tol) {
     .Call(`_nlmixr2est_cholSE_`, A, tol)
 }
 
+covAccept_ <- function(A, cholSEtol, cholAccept) {
+    .Call(`_nlmixr2est_covAccept_`, A, cholSEtol, cholAccept)
+}
+
 cholSEpd_ <- function(A, tol) {
     .Call(`_nlmixr2est_cholSEpd_`, A, tol)
 }
@@ -94,6 +98,14 @@ likInner <- function(eta, id = 1L) {
 #' @export
 foceiGradPooledSetupLoad_ <- function(st) {
     .Call(`_nlmixr2est_foceiGradPooledSetupLoad_`, st)
+}
+
+covProbeSolveTolSet_ <- function() {
+    .Call(`_nlmixr2est_covProbeSolveTolSet_`)
+}
+
+covProbeSolveTolRestore_ <- function(tol) {
+    .Call(`_nlmixr2est_covProbeSolveTolRestore_`, tol)
 }
 
 .foceiOuterRecord <- function(record) {
@@ -362,6 +374,10 @@ foceiOuterH <- function(theta, relStep = 1e-3) {
 
 nmNearPD_ <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, only_values = FALSE, eig_tol = 1e-6, conv_tol = 1e-7, posd_tol = 1e-8, maxit = 100L, trace = FALSE) {
     .Call(`_nlmixr2est_nmNearPD_`, x, keepDiag, do2eigen, doDykstra, only_values, eig_tol, conv_tol, posd_tol, maxit, trace)
+}
+
+nmNearPDKeepDiag_ <- function(x) {
+    .Call(`_nlmixr2est_nmNearPDKeepDiag_`, x)
 }
 
 nlmFree <- function() {

@@ -1399,7 +1399,7 @@
   if (!is.finite(.sd)) {
     .sd <- 3
   }
-  max(1e-14, min(1e-8, 10^-(.sd + 6)))
+  max(1e-12, min(1e-8, 10^-(.sd + 6)))
 }
 
 #' Non-Cholesky Omega derivatives for the analytic Omega block: Omega^{-1} and

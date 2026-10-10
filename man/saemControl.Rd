@@ -14,6 +14,8 @@ saemControl(
   trace = 0,
   covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
   covMethodDeferred = NA_character_,
+  covFallback = list(sa = c("linFim", "Ha"), fim = c("linFim", "Ha"), analytic =
+    c("linFim", "Ha"), linFim = "Ha"),
   covFull = TRUE,
   nSaCov = 500L,
   calcTables = TRUE,
@@ -168,6 +170,15 @@ typical fitting.}
 is requested, it is stashed here and computed post-fit at the converged
 estimates by the decoupled recompute engine (\code{setCov()} uses the same
 path); \code{NA} otherwise.}
+
+\item{covFallback}{what each \code{covMethod} falls back to when it gives no
+usable covariance: a named list, one element per method, each the ordered
+methods to try instead (\code{"sa"}, \code{"fim"}, \code{"linFim"} or
+\code{"Ha"}, the inverse of the information matrix's theta block).  The
+default is the established behaviour: \code{"sa"}, \code{"fim"} and
+\code{"analytic"} fall to \code{"linFim"} then \code{"Ha"}, and
+\code{"linFim"} to \code{"Ha"}.  A list you give replaces the default: a
+method it does not name has no fallback.}
 
 \item{covFull}{Boolean (default \code{TRUE}) indicating the covariance
 should include every estimated population parameter -- the structural and

@@ -27,6 +27,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// covAccept_
+List covAccept_(NumericMatrix A, double cholSEtol, double cholAccept);
+RcppExport SEXP _nlmixr2est_covAccept_(SEXP ASEXP, SEXP cholSEtolSEXP, SEXP cholAcceptSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type A(ASEXP);
+    Rcpp::traits::input_parameter< double >::type cholSEtol(cholSEtolSEXP);
+    Rcpp::traits::input_parameter< double >::type cholAccept(cholAcceptSEXP);
+    rcpp_result_gen = Rcpp::wrap(covAccept_(A, cholSEtol, cholAccept));
+    return rcpp_result_gen;
+END_RCPP
+}
 // cholSEpd_
 List cholSEpd_(NumericMatrix A, double tol);
 RcppExport SEXP _nlmixr2est_cholSEpd_(SEXP ASEXP, SEXP tolSEXP) {
@@ -340,6 +353,27 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< List >::type st(stSEXP);
     rcpp_result_gen = Rcpp::wrap(foceiGradPooledSetupLoad_(st));
+    return rcpp_result_gen;
+END_RCPP
+}
+// covProbeSolveTolSet_
+NumericVector covProbeSolveTolSet_();
+RcppExport SEXP _nlmixr2est_covProbeSolveTolSet_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(covProbeSolveTolSet_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// covProbeSolveTolRestore_
+RObject covProbeSolveTolRestore_(NumericVector tol);
+RcppExport SEXP _nlmixr2est_covProbeSolveTolRestore_(SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(covProbeSolveTolRestore_(tol));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -1038,6 +1072,17 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type maxit(maxitSEXP);
     Rcpp::traits::input_parameter< bool >::type trace(traceSEXP);
     rcpp_result_gen = Rcpp::wrap(nmNearPD_(x, keepDiag, do2eigen, doDykstra, only_values, eig_tol, conv_tol, posd_tol, maxit, trace));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nmNearPDKeepDiag_
+List nmNearPDKeepDiag_(NumericMatrix x);
+RcppExport SEXP _nlmixr2est_nmNearPDKeepDiag_(SEXP xSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(nmNearPDKeepDiag_(x));
     return rcpp_result_gen;
 END_RCPP
 }

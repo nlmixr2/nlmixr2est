@@ -167,6 +167,65 @@ nmTest({
     expect_equal(.testBoundedTransform(), c(pre = TRUE, post = TRUE))
   })
 
+  test_that("uobyqa/newuoa write the natural-scale bounded theta into the fit's ui (issue 1140)", {
+    for (.opt in c("uobyqa", "newuoa")) {
+      fit <- suppressMessages(suppressWarnings(
+        nlmixr(
+          .logitModel,
+          theo_sd,
+          est = "focei",
+          control = foceiControl(print = 0, maxOuterIterations = 0L, outerOpt = .opt)
+        )
+      ))
+      expect_equal(.testBoundedTransform(), c(pre = TRUE, post = TRUE))
+      .ini <- fit$ui$iniDf
+      # held at its ini() value 0.5, which is 0 on the internal logit scale
+      expect_equal(.ini$est[.ini$name == "td1"], 0.5)
+      expect_equal(.ini$est[.ini$name == "td1"], unname(fit$theta["td1"]))
+      expect_equal(c(.ini$lower[.ini$name == "td1"], .ini$upper[.ini$name == "td1"]), c(0, 1))
+    }
+  })
+
+  test_that("uobyqa/newuoa write every bounded theta back on its natural scale, by name", {
+    # three bound kinds in different theta positions, none at a value whose
+    # internal scale equals its natural one
+    .mixedBounds <- function() {
+      ini({
+        tka <- 0.45
+        td1 <- c(0, 0.3, 1)
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        tlag <- c(0, 0.5)
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        f(depot) <- td1
+        alag(depot) <- tlag
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .want <- c(tka = 0.45, td1 = 0.3, tcl = log(2.7), tv = 3.45, tlag = 0.5)
+    for (.opt in c("uobyqa", "newuoa")) {
+      fit <- suppressMessages(suppressWarnings(
+        nlmixr(
+          .mixedBounds,
+          theo_sd,
+          est = "focei",
+          control = foceiControl(print = 0, maxOuterIterations = 0L, outerOpt = .opt, covMethod = "")
+        )
+      ))
+      .ini <- fit$ui$iniDf
+      .got <- setNames(.ini$est[match(names(.want), .ini$name)], names(.want))
+      expect_equal(.got, .want, tolerance = 1e-8, label = .opt)
+      expect_equal(fit$theta[names(.want)], .want, tolerance = 1e-8, label = .opt)
+    }
+  })
+
   test_that("FOCEI with boundedTransform = FALSE disables the transform", {
     fit <- suppressMessages(suppressWarnings(
       nlmixr(
