@@ -172,18 +172,34 @@ test_that("nlmixr2GradFun() takes a Gill step factor of at least 1, as foceiCont
 })
 
 test_that("the gillFtol fallback of a high-error search keeps a step, not a slope (#1194)", {
-  # slope -1 at 0 fails the 50% error test; every trial has |phif| < gillFtol
-  f <- function(x) 1 - x + x^2
-  g0 <- nlmixr2Gill83(f, 0)
+  # slope ~0 at 0.5 fails the 50% error test; every trial has |phif| < gillFtol
+  f <- function(x) 1 + (x - 0.5)^2 + (x - 0.5)^4
+  g0 <- nlmixr2Gill83(f, 0.5)
   expect_identical(as.character(g0$info), "High Grad Error")
-  g <- nlmixr2Gill83(f, 0, gillFtol = 10)
+  g <- nlmixr2Gill83(f, 0.5, gillFtol = 10)
   expect_identical(as.character(g$info), "High Grad Error")
-  # the step was a central-difference derivative (about -1) before the fix
+  # the step was a central-difference slope (about 0) before the fix
   expect_gt(g$hphi, 0)
   expect_identical(g$hphi, g$hf)
-  expect_lt(g$hf, 0.1)
-  # the curvature is f'' = 2, not the slope
-  expect_equal(g$df2, 2, tolerance = 1e-4)
-  expect_equal(g$df, -1 + g$hf, tolerance = 1e-6)
-  expect_equal(g$err, g$hf * abs(g$df2) / 2 + 2 * abs(f(0)) * g$gillRtol / g$hf)
+  expect_false(g$hf == g0$hf)
+  # slope, curvature and error all belong to the trial at that step
+  .h <- g$hf
+  .fp <- f(0.5 + .h)
+  .fn <- f(0.5 - .h)
+  .f <- f(0.5)
+  expect_equal(g$df, (.fp - .f) / .h, tolerance = 1e-12)
+  expect_equal(g$df2, (.fp - 2 * .f + .fn) / (.h * .h), tolerance = 1e-12)
+  expect_equal(g$err, .h * abs(g$df2) / 2 + 2 * abs(.f) * g$gillRtol / .h, tolerance = 1e-12)
+})
+
+test_that("an accurate Gill83 derivative is accepted (#1194)", {
+  # a negative slope always failed 'err <= 0.5 * df'
+  g <- nlmixr2Gill83(function(x) 1 - x + x^2, 0)
+  expect_identical(as.character(g$info), "Good")
+  expect_equal(g$df, -1, tolerance = 1e-3)
+  # an interval accepted after shrinking the step compared df with a central
+  # difference that was never computed (0)
+  g <- nlmixr2Gill83(function(x) 1 + x + 500 * x^2, 0)
+  expect_identical(as.character(g$info), "Good")
+  expect_equal(g$df, 1, tolerance = 1e-2)
 })

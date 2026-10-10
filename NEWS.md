@@ -162,6 +162,11 @@
   to the slope (possibly negative) and a slope as the curvature; it now keeps the
   saved trial's step and curvature (#1194).
 
+- A Gill83 step search no longer labels an accurate derivative "High Grad
+  Error" when the slope is negative or the accepted interval came from
+  shrinking the step; these spurious labels raised the "gradient problems"
+  warning and, with a nonzero `gillFtol`, replaced a good step (#1194).
+
 - The nlm-family covariance (`covMethod = "r"`, from `nlmixr2Hess()`) now runs
   its finite-difference stencil at the ODE tolerances FOCEi's covariance step
   uses (the fit's times 1e-3, capped at 1e-7).  At the fit's own tolerance

@@ -7179,6 +7179,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     hs = hk;
   }
   if (0.001 <= Ch && Ch <= 1){
+    phicc=phic;
     hphi = hk;
     if (fTol != 0 && fabs(phif) < fTol){
       lastfpt = fp;
@@ -7206,7 +7207,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   *ef = (*hf)*fabs(phi)/2+2*epsA/(*hf);
   *hphif=hphi;
   ehat = fabs(*df-phicc);
-  if (max2(*ef, ehat) <= 0.5*(*df)){
+  if (max2(*ef, ehat) <= 0.5*fabs(*df)){
     gill83tickStep(k, K, foceiGill);
     return 1;
   } else {
