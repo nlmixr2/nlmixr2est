@@ -103,6 +103,55 @@ nmTest({
     expect_equal(.hess$forward[[2]], .hess$forward[[1]], tolerance = 1e-10)
   })
 
+  test_that("a gradient component the column does not touch leaves its step alone (#1188)", {
+    skip_on_cran()
+    # g_c does not depend on a, so its third difference along a is roundoff; the
+    # legacy ratio let it pin the search ratio near 0 and cap a's step at hMax.
+    .mod <- function() {
+      ini({
+        a <- 0.3
+        b <- -0.2
+        c <- 0.7
+      })
+      model({
+        v <- a + b * time
+        ll(bin) ~ DV * v - log(1 + exp(v)) - exp(4 * a) - 0.1 * exp(0.5 * b) - 0.5 * c^2 + 0.01 * c^4
+      })
+    }
+    .d <- data.frame(ID = 1L, TIME = seq(0.1, 10, length.out = 20), AMT = 0, EVID = 0L)
+    .d$DV <- as.integer(seq_len(nrow(.d)) %% 2 == 0)
+    .ctl <- nlmControl(print = 0L, solveType = "hessian", optimHessType = "central")
+    .old <- .shi21RatioCensor()
+    on.exit(.shi21RatioCensor(.old))
+    # .nlmSetupEnv() reads the option
+    .err <- vapply(
+      c("legacy", "detected"),
+      function(.type) {
+        withr::local_options(list(nlmixr2est.shi21RatioCensor = .type))
+        .withNlmProblem(.mod, .d, .ctl, function(x) {
+          .gr <- function(p) optimFunC(p + 0, TRUE)
+          .oracle <- numDeriv::jacobian(.gr, x + 0)
+          .oracle <- (.oracle + t(.oracle)) / 2
+          .h <- attr(.nlmixrNlmFunC(x + 0), "hessian")
+          # cross terms can be exactly 0, so scale by the diagonal
+          max(abs(.h - .oracle) / sqrt(abs(outer(diag(.oracle), diag(.oracle)))))
+        })
+      },
+      numeric(1)
+    )
+    expect_gt(.err[["legacy"]], 1)
+    expect_lt(.err[["detected"]], 1e-3)
+
+    # a fit reads the option: nlminb on the legacy Hessian stops well short
+    .fit <- function(type) {
+      withr::with_options(list(nlmixr2est.shi21RatioCensor = type), {
+        suppressMessages(nlmixr2(.mod, .d, est = "nlminb", control = nlminbControl(print = 0L)))$objf
+      })
+    }
+    .ofv <- vapply(c("legacy", "detected"), .fit, numeric(1))
+    expect_gt(.ofv[["legacy"]] - .ofv[["detected"]], 1)
+  })
+
   test_that("a non-normal-endpoint FOCEi fit reports llikObs at its final ETAs", {
     skip_on_cran()
     # A dnorm() endpoint sets needOptimHess: the inner Hessian is a finite

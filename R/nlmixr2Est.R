@@ -54,6 +54,7 @@
 #'
 #' @export
 nlmixr2Est <- function(env, ...) {
+  .shi21RatioCensor()
   on.exit({
     .nlmixr2clearPipe()
     nlmixr2global$nlmixr2SimInfo <- NULL
@@ -239,6 +240,20 @@ nlmixr2Est.default <- function(env, ...) {
 }
 
 .tablePassthrough <- c("addDosing", "subsetNonmem", "cores", "keep", "drop")
+
+#' Set the shi21 step-search treatment of censored ratios
+#'
+#' Reads `getOption("nlmixr2est.shi21RatioCensor")`, one of `"legacy"`,
+#' `"detected"`, `"substitute"` or `"lmomco"` (#1188).
+#'
+#' @param type treatment name; defaults to the option
+#' @return the previous treatment name, invisibly
+#' @noRd
+.shi21RatioCensor <- function(type = getOption("nlmixr2est.shi21RatioCensor", "detected")) {
+  .types <- c("legacy", "detected", "substitute", "lmomco")
+  type <- match.arg(type, .types)
+  invisible(.types[shi21RatioCensorSet(match(type, .types) - 1L) + 1L])
+}
 
 #' Call nlmixr2Est wrapped to collect the warnings
 #'

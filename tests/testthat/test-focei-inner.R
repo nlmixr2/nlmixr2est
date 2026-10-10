@@ -231,4 +231,253 @@ nmTest({
     f <- suppressMessages(ehc())
     expect_error(f$foceiModel, NA)
   })
+
+  test_that("a failed inner evaluation is neither a gradient nor a cached value", {
+    skip_on_cran()
+    # sqrt(1 - eta.v) makes every prediction NaN for eta.v > 1, so likInner0()
+    # fails in its observation loop, after it has reset llik and lp
+    failMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        cp <- linCmt()
+        cpo <- cp * exp(eta.v) * sqrt(1 - eta.v)
+        cpo ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::assertRxUi(failMod)
+    .n <- length(unique(nlmixr2data::theo_sd$ID))
+    .vaeInnerSetup(.ui, nlmixr2data::theo_sd, matrix(0, .n, 1), vaeControl())
+    on.exit(.vaeInnerFree(), add = TRUE)
+    .good <- likInner(0.2, 1L)
+    .gGood <- foceiInnerLp(0.2, 1L)
+    expect_true(is.finite(.good))
+    expect_true(is.finite(.gGood))
+    expect_true(is.na(likInner(1.5, 1L)))
+    # the failed evaluation has no gradient; its partial lp is not one
+    expect_true(is.na(foceiInnerLp(1.5, 1L)))
+    # and a later call at the last eta that succeeded solves again instead of
+    # returning what the failed call left behind
+    expect_identical(likInner(0.2, 1L), .good)
+    expect_identical(foceiInnerLp(0.2, 1L), .gGood)
+  })
+
+  test_that("a log-density row the eta does not reach adds nothing to the eta gradient", {
+    skip_on_cran()
+    # eta.l reaches lam only through X, and X is 0 on every row of subject 3, so
+    # that subject's log-density does not depend on eta.l at all.  foceiLik keeps
+    # the eta-epsilon interaction branch for a non-normal endpoint.
+    pois <- function() {
+      ini({
+        tl <- 1
+        eta.l ~ 0.1
+      })
+      model({
+        lam <- exp(tl + eta.l * X)
+        y ~ pois(lam)
+      })
+    }
+    .testSeed(42)
+    .d <- do.call(
+      rbind,
+      lapply(1:3, function(id) {
+        .t <- c(1, 2, 3, 5, 6, 8)
+        .x <- if (id == 3L) rep(0, 6L) else as.numeric(.t > 4)
+        data.frame(ID = id, TIME = .t, DV = stats::rpois(6L, exp(1 + 0.3 * .x)), AMT = 0, EVID = 0, X = .x)
+      })
+    )
+    .h <- suppressWarnings(foceiLikLoad(pois, .d, "focei"))
+    on.exit(foceiLikUnload(), add = TRUE)
+    expect_equal(foceiLikSetThetaC_(.h$initPar), 0L)
+    .eta <- matrix(c(0.1, -0.2, 0.3), .h$nid, .h$neta)
+    .g <- foceiLikCondGrad_(.eta, 1L)$grad
+    # each of its six rows added sqrt(DBL_EPSILON) when a zero derivative was
+    # floored there
+    expect_identical(.g[3, 1], 0)
+    expect_identical(foceiInnerLp(0, 3L), 0)
+    # the subjects the eta does reach still get the derivative of their value
+    .fd <- vapply(
+      1:2,
+      function(i) {
+        .up <- .eta
+        .up[i, 1] <- .up[i, 1] + 1e-5
+        .dn <- .eta
+        .dn[i, 1] <- .dn[i, 1] - 1e-5
+        (foceiLikCondGrad_(.up, 1L)$value[i] - foceiLikCondGrad_(.dn, 1L)$value[i]) / 2e-5
+      },
+      numeric(1)
+    )
+    expect_equal(.g[1:2, 1], .fd, tolerance = 1e-7)
+  })
+
+  test_that("a finite-differenced ETA is differenced against the prediction model", {
+    skip_on_cran()
+    # eventSens = "fd" finite-differences an ETA in a dosing parameter by
+    # solving the prediction model at eta +/- h.  The base point was the
+    # sensitivity model's: another ODE system, off by the solver error, which a
+    # forward difference divides by h.  At a loose tolerance that put the
+    # forward eta.f gradient of subject 1 at 11.6 against 33.8 central.
+    fMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- 0.7
+        eta.f ~ 0.1
+        eta.cl ~ 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        f(depot) <- exp(eta.f)
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(fMod))
+    .lp <- function(eventType) {
+      .ctl <- .foceiInnerControl(
+        list(
+          rxControl = rxode2::rxControl(atol = 1e-3, rtol = 1e-3),
+          sumProd = FALSE,
+          optExpression = TRUE,
+          literalFix = FALSE,
+          addProp = "combined2",
+          maxOdeRecalc = 5L,
+          odeRecalcFactor = 10^0.5
+        ),
+        eventSens = "fd",
+        eventType = eventType
+      )
+      .env <- .foceiInnerEnv(.ui, nlmixr2data::theo_sd, .ctl, "focei", matrix(0, 12, 2))
+      foceiLikLoad_(.env)
+      on.exit(foceiLikUnload_(), add = TRUE)
+      vapply(1:3, function(i) foceiInnerLp(c(0.2, -0.1), i)[1], numeric(1))
+    }
+    expect_equal(.lp("forward"), .lp("central"), tolerance = 0.02)
+  })
+
+  test_that("an ETA reaching the prediction through lag() gets its data gradient", {
+    skip_on_cran()
+    # c0 is a bare symbol to symengine (lag() needs it as a real lhs); without the
+    # derivative chained through lag(c0) the inner gradient holds only the prior
+    # term and the inner problem pulls eta.cl to 0 whatever the data
+    lagMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- 0.7
+        eta.cl ~ 0.1
+        eta.f ~ 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        c0 <- central / v
+        cp <- (0.5 * c0 + 0.5 * lag(c0)) * exp(eta.f)
+        cp ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::assertRxUi(lagMod)
+    .n <- length(unique(nlmixr2data::theo_sd$ID))
+    suppressWarnings(.vaeInnerSetup(.ui, nlmixr2data::theo_sd, matrix(0, .n, 2), vaeControl()))
+    on.exit(.vaeInnerFree(), add = TRUE)
+    .eta <- c(0.15, -0.1)
+    .g <- foceiInnerLp(.eta, 1L)
+    .fd <- vapply(
+      1:2,
+      function(k) {
+        .h <- replace(numeric(2), k, 1e-4)
+        (likInner(.eta + .h, 1L) - likInner(.eta - .h, 1L)) / 2e-4
+      },
+      numeric(1)
+    )
+    expect_equal(.g, .fd, tolerance = 1e-3)
+    # fits move eta.cl off 0, and fast = TRUE declines the analytic gradient
+    # (whose augmented model could not be solved: "required for solving: c0")
+    # for finite differences
+    for (.fast in c(FALSE, TRUE)) {
+      .fit <- .nlmixr(
+        lagMod,
+        nlmixr2data::theo_sd,
+        "focei",
+        foceiControl(print = 0L, fast = .fast, maxOuterIterations = 2L, covMethod = "", calcTables = FALSE)
+      )
+      expect_true(is.finite(.fit$objf))
+      expect_gt(stats::sd(.fit$eta$eta.cl), 0.01)
+    }
+  })
+
+  test_that("a model whose only ETA reaches the prediction through lag() is fitted", {
+    skip_on_cran()
+    # every d(pred)/d(eta) goes through lag(c0) here, which the inner Hessian build
+    # takes for "no prediction depends on a random effect" unless the derivative is
+    # chained through it; the analytic covariance declines the model
+    lagOnly <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- 0.7
+        eta.cl ~ 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        c0 <- central / v
+        cp <- 0.5 * c0 + 0.5 * lag(c0)
+        cp ~ add(add.sd)
+      })
+    }
+    .acc <- new.env(parent = emptyenv())
+    .acc$msg <- character(0)
+    .fit <- withCallingHandlers(
+      suppressWarnings(nlmixr2(
+        lagOnly,
+        nlmixr2data::theo_sd,
+        "focei",
+        foceiControl(print = 0L, maxOuterIterations = 2L, covMethod = "analytic", calcTables = FALSE)
+      )),
+      message = function(m) {
+        .acc$msg <- c(.acc$msg, conditionMessage(m))
+        invokeRestart("muffleMessage")
+      }
+    )
+    expect_true(.foceiUsesLagVar(.fit$finalUi))
+    expect_true(is.finite(.fit$objf))
+    expect_gt(stats::sd(.fit$eta$eta.cl), 0.1)
+    expect_true(any(grepl(
+      "lag() of a calculated variable is out of analytic-covariance scope",
+      .acc$msg,
+      fixed = TRUE
+    )))
+    expect_false(.covBaseName(.fit$covMethod) == "analytic")
+  })
+
+  test_that("lag() of an ODE state is refused, so only calculated variables need the lag() chain", {
+    # .foceiUsesLagVar() looks at calculated variables only; if rxode2 ever accepts
+    # lag() of a state, that state's sensitivities need the same chain
+    .out <- utils::capture.output(
+      expect_error(rxode2::rxode2("d/dt(central) <- -central\ncp <- lag(central)"), "syntax errors")
+    )
+    expect_true(any(grepl("state 'central': 'lag'.* not legal", .out)))
+  })
 })

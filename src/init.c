@@ -84,13 +84,15 @@ SEXP _nlmixr2est_likInner(SEXP, SEXP);
 SEXP _nlmixr2est_cholSE_(SEXP, SEXP);
 SEXP _nlmixr2est_cholSEpd_(SEXP, SEXP);
 SEXP _nlmixr2est_shi21CentralWrap(SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_shi21RatioCensorSet(SEXP);
+SEXP _nlmixr2est_shi21RatioTest(SEXP, SEXP);
 
 SEXP _nlmixr2est_foceiOuterF(SEXP);
+SEXP _nlmixr2est_foceiOuterRecord_(SEXP);
 SEXP _nlmixr2est_foceiOuterG(SEXP);
 SEXP _nlmixr2est_foceiOuterH(SEXP, SEXP);
 SEXP _nlmixr2est_foceiOuter(SEXP);
 SEXP _nlmixr2est_sqrtm(SEXP);
-SEXP _nlmixr2est_foceiCalcCov(SEXP);
 SEXP _nlmixr2est_foceiFitCpp_(SEXP);
 SEXP _nlmixr2est_foceiCheckIndCounts_(SEXP);
 SEXP _nlmixr2est_foceiIndEventCounts_(void);
@@ -305,13 +307,15 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_cholSE_", (DL_FUNC) &_nlmixr2est_cholSE_, 2},
   {"_nlmixr2est_cholSEpd_", (DL_FUNC) &_nlmixr2est_cholSEpd_, 2},
   {"_nlmixr2est_shi21CentralWrap", (DL_FUNC) &_nlmixr2est_shi21CentralWrap, 5},
+  {"_nlmixr2est_shi21RatioCensorSet", (DL_FUNC) &_nlmixr2est_shi21RatioCensorSet, 1},
+  {"_nlmixr2est_shi21RatioTest", (DL_FUNC) &_nlmixr2est_shi21RatioTest, 2},
   {"_nlmixr2est_likInner", (DL_FUNC) &_nlmixr2est_likInner, 2},
   {"_nlmixr2est_foceiOuterF", (DL_FUNC) &_nlmixr2est_foceiOuterF, 1},
+  {"_nlmixr2est_foceiOuterRecord_", (DL_FUNC) &_nlmixr2est_foceiOuterRecord_, 1},
   {"_nlmixr2est_foceiOuterG", (DL_FUNC) &_nlmixr2est_foceiOuterG, 1},
   {"_nlmixr2est_foceiOuterH", (DL_FUNC) &_nlmixr2est_foceiOuterH, 2},
   {"_nlmixr2est_foceiOuter", (DL_FUNC) &_nlmixr2est_foceiOuter, 1},
   {"_nlmixr2est_sqrtm", (DL_FUNC) &_nlmixr2est_sqrtm, 1},
-  {"_nlmixr2est_foceiCalcCov", (DL_FUNC) &_nlmixr2est_foceiCalcCov, 1},
   {"_nlmixr2est_foceiFitCpp_", (DL_FUNC) &_nlmixr2est_foceiFitCpp_, 1},
   {"_nlmixr2est_foceiCheckIndCounts_", (DL_FUNC) &_nlmixr2est_foceiCheckIndCounts_, 1},
   {"_nlmixr2est_foceiIndEventCounts_", (DL_FUNC) &_nlmixr2est_foceiIndEventCounts_, 0},
@@ -334,6 +338,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_powerDLambda", (DL_FUNC) &_nlmixr2est_powerDLambda, 5},
   {"_nlmixr2est_powerDLambda2", (DL_FUNC) &_nlmixr2est_powerDLambda2, 5},
   {"_nlmixr2est_powerL", (DL_FUNC) &_nlmixr2est_powerL, 5},
+  {"_nlmixr2est_trustBfgsUpdate", (DL_FUNC) &_nlmixr2est_trustBfgsUpdate, 3},
   {"_saemResidF", (DL_FUNC) &_saemResidF, 1},
   {"_nlmixr2est_npdeCalc", (DL_FUNC) &_nlmixr2est_npdeCalc, 6},
   {"_nlmixr2est_cwresCalc",  (DL_FUNC) &_nlmixr2est_cwresCalc, 12},

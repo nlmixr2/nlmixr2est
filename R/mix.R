@@ -327,14 +327,17 @@
       .toRemove <- .grp[-1]
       .omega <- .omega[!(rownames(.omega) %in% .toRemove), !(colnames(.omega) %in% .toRemove), drop = FALSE]
 
-      .etaObf[[.rootName]] <- vapply(
+      # the pooled column takes the first component's place, keeping the
+      # pooled ui's eta order (the etaMat is matched to it by position)
+      .etaObf[[.grp[1]]] <- vapply(
         seq_len(nrow(.etaObf)),
         function(i) {
           .etaObf[i, .grp[.bestMix[i]]]
         },
         numeric(1)
       )
-      .etaObf <- .etaObf[, !(names(.etaObf) %in% .grp), drop = FALSE]
+      names(.etaObf)[names(.etaObf) == .grp[1]] <- .rootName
+      .etaObf <- .etaObf[, !(names(.etaObf) %in% .grp[-1]), drop = FALSE]
 
       .updateMat <- function(mat) {
         .dfMat <- as.data.frame(mat)
@@ -347,8 +350,9 @@
           },
           numeric(1)
         )
-        .dfMat[[.rootName]] <- .newCol
-        .dfMat <- .dfMat[, !(names(.dfMat) %in% .grp), drop = FALSE]
+        .dfMat[[.grp[1]]] <- .newCol
+        names(.dfMat)[names(.dfMat) == .grp[1]] <- .rootName
+        .dfMat <- .dfMat[, !(names(.dfMat) %in% .grp[-1]), drop = FALSE]
         as.matrix(.dfMat)
       }
       if (exists(".etaMatBase", envir = env, inherits = FALSE) && !is.null(env$.etaMatBase)) {

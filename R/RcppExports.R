@@ -96,6 +96,10 @@ foceiGradPooledSetupLoad_ <- function(st) {
     .Call(`_nlmixr2est_foceiGradPooledSetupLoad_`, st)
 }
 
+.foceiOuterRecord <- function(record) {
+    .Call(`_nlmixr2est_foceiOuterRecord_`, record)
+}
+
 foceiOuterF <- function(theta) {
     .Call(`_nlmixr2est_foceiOuterF`, theta)
 }
@@ -154,10 +158,6 @@ shi21CentralWrap <- function(f, t, f0, idx, ef) {
 #' @export
 sqrtm <- function(m) {
     .Call(`_nlmixr2est_sqrtm`, m)
-}
-
-foceiCalcCov <- function(e) {
-    .Call(`_nlmixr2est_foceiCalcCov`, e)
 }
 
 #' Fit/Evaluate FOCEi
@@ -672,6 +672,14 @@ saem_fit <- function(xSEXP) {
 
 saemFormGTest <- function(inA, inB, inFt, inC, inAddProp) {
     .Call(`_nlmixr2est_saemFormGTest`, inA, inB, inFt, inC, inAddProp)
+}
+
+shi21RatioCensorSet <- function(type) {
+    .Call(`_nlmixr2est_shi21RatioCensorSet`, type)
+}
+
+shi21RatioTest <- function(all, type) {
+    .Call(`_nlmixr2est_shi21RatioTest`, all, type)
 }
 
 nlmixr2Parameters <- function(theta, eta) {

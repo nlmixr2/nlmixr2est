@@ -2054,6 +2054,24 @@ attr(nlmixr2Est.saem, "iovNativeScope") <- function(ui, data, control) {
 }
 
 
+#' Solve options for a post-fit saem prediction
+#'
+#' A mixture fit solves each subject under its assigned component, as
+#' `calc.COV()` does; without it a subject keeps whichever component the last
+#' solve left.
+#'
+#' @param saemCfg saem configuration list (`attr(fit, "saem.cfg")`)
+#' @param env fit environment
+#' @return the `opt` list to pass to `dopred()`
+#' @noRd
+.saemDopredOpt <- function(saemCfg, env) {
+  .opt <- saemCfg$opt
+  if (is.environment(env) && exists("mixIcov", envir = env, inherits = FALSE)) {
+    .opt$mixest <- as.integer(env$mixIcov$mixest)
+  }
+  .opt
+}
+
 #' @rdname nmObjGet
 #' @export
 nmObjGet.saemDopredIpred <- function(x, ...) {
@@ -2063,7 +2081,7 @@ nmObjGet.saemDopredIpred <- function(x, ...) {
     .saem <- .env$saem
     .saemCfg <- attr(.saem, "saem.cfg")
     .dopred <- attr(.saem, "dopred")
-    .dopred(.saem$mpost_phi, .saemCfg$evt, .saemCfg$opt)
+    .dopred(.saem$mpost_phi, .saemCfg$evt, .saemDopredOpt(.saemCfg, .env))
   } else {
     NULL
   }
@@ -2078,7 +2096,7 @@ nmObjGet.saemDopredPred <- function(x, ...) {
     .saem <- .env$saem
     .saemCfg <- attr(.saem, "saem.cfg")
     .dopred <- attr(.saem, "dopred")
-    .dopred(.saem$mprior_phi, .saemCfg$evt, .saemCfg$opt)
+    .dopred(.saem$mprior_phi, .saemCfg$evt, .saemDopredOpt(.saemCfg, .env))
   } else {
     NULL
   }

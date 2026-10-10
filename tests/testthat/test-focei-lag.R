@@ -351,7 +351,8 @@ nmTest({
     .s <- rxode2::rxode2(.arMod)$foceiEnv
     nlmixr2global$rxArNorm <- FALSE
     expect_true(length(.s$..arEtaSens) > 0L)
-    .fd <- .lagFd(.arMod, .s$..inner, "ETA", 1L)
+    # the AR(1) correction reads rx_time_pk, defined in the model prologue (#1167)
+    .fd <- .lagFd(.arMod, .addMtimeLines(.s$..inner, .s), "ETA", 1L)
     expect_true(all(.fd$err < 1e-6 * pmax(1, .fd$fd)))
   })
 

@@ -244,6 +244,161 @@ nmTest({
     expect_equal(-2 * sum(.pop$llikObs, na.rm = TRUE), .pop$objf)
   })
 
+  test_that("an agq fit reports llikObs at its ETAs, not at the last quadrature node", {
+    # Every quadrature node re-solves the subject at another eta, rewriting its
+    # per-observation log-likelihoods; the fit has to report them at the mode,
+    # where the table's IPRED is solved.  No covariance step, so nothing else
+    # moves them.
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fit <- .nlmixr(one.cmt, theo_sd, "agq", agqControl(print = 0, maxOuterIterations = 0L, covMethod = ""))
+    expect_equal(.fit$control$nAGQ, 2L)
+    .ll <- .fit$llikObs
+    .ll <- .ll[!is.na(.ll)] # dose records
+    # llikObs of a Gaussian row omits the 2*pi constant of dnorm()
+    expect_equal(
+      .ll,
+      dnorm(.fit$DV, .fit$IPRED, .fit$theta[["add.sd"]], log = TRUE) + 0.5 * log(2 * pi),
+      tolerance = 1e-10
+    )
+  })
+
+  test_that("forward-difference S scores are taken from the estimates", {
+    # covDerivMethod = "forward" differences each subject's -2LL from its value at
+    # the estimates.  That value was read after the pooled gradient's own
+    # forward legs, so it was the last leg's, and every score carried that leg's
+    # shift: S came out 100 to 1000 times the central-difference S.
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- function(...) {
+      foceiControl(print = 0, maxOuterIterations = 0L, covMethod = "s", covFull = FALSE, ...)
+    }
+    .central <- .nlmixr(one.cmt, theo_sd, "focei", .ctl())
+    .forward <- .nlmixr(one.cmt, theo_sd, "focei", .ctl(covDerivMethod = "forward"))
+    expect_equal(.forward$covMethod, "s")
+    # forward differences agree with central ones to their truncation error
+    expect_equal(diag(.forward$env$S0), diag(.central$env$S0), tolerance = 0.25)
+  })
+
+  test_that("covDerivMethod = \"forward\" keeps the R matrix", {
+    # the R matrix is always the central stencil; foceiCalcR() stopped on a
+    # forward derivative method instead, so "r" and "r,s" failed
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- function(...) {
+      foceiControl(print = 0, maxOuterIterations = 0L, covFull = FALSE, ...)
+    }
+    .central <- .nlmixr(one.cmt, theo_sd, "focei", .ctl())
+    .forward <- .nlmixr(one.cmt, theo_sd, "focei", .ctl(covDerivMethod = "forward"))
+    expect_equal(.central$covMethod, "r,s")
+    expect_equal(.forward$covMethod, "r,s")
+    expect_identical(.forward$env$R.0, .central$env$R.0)
+    # the sandwich differs only through the forward-difference S
+    expect_equal(sqrt(diag(.forward$cov)), sqrt(diag(.central$cov)), tolerance = 0.2)
+    .r <- .nlmixr(one.cmt, theo_sd, "focei", .ctl(covMethod = "r", covDerivMethod = "forward"))
+    expect_equal(.r$covMethod, "r")
+    expect_equal(unname(.r$cov), unname(.central$covR))
+  })
+
+  test_that("a requested full sandwich gets its S when the native step falls back to R", {
+    # One subject: the theta-only S is rank one, so the native "r,s" falls back to
+    # the R matrix.  The full covariance then computed no S, and the requested
+    # "r,s (full)" was dropped without a word; it is now computed, checked, and
+    # the reason it is not installed is reported.
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .f <- .nlmixr(
+      one.cmt,
+      theo_sd[theo_sd$ID == 1, ],
+      "focei",
+      foceiControl(print = 0, maxOuterIterations = 0L, cholAccept = 0)
+    )
+    expect_equal(.covFdType(.f$covMethod), "r")
+    expect_false(.covIsFull(.f$covMethod))
+    expect_true(is.matrix(.f$env$.fdFullS))
+    expect_true(any(startsWith(.f$runInfo, "\"r,s (full)\" covariance ")))
+  })
+
+  test_that("an all-zero R is not corrected into a covariance", {
+    # the objective does not move with tz at all (its covariate is 0), so R = 0;
+    # cholSE0 adds cholSEtol to a zero 1x1 with nothing to scale it by, which
+    # passed as a small "r+" correction and installed 1/cholSEtol
+    d <- data.frame(ID = rep(1:2, each = 3), TIME = rep(1:3, 2), DV = 5, Z = 0)
+    flat <- function() {
+      ini({
+        ta <- fix(5)
+        tz <- 0.5
+        add.sd <- fix(1)
+      })
+      model({
+        cp <- ta + tz * Z
+        cp ~ add(add.sd)
+      })
+    }
+    .f <- .nlmixr(flat, d, "focei", foceiControl(print = 0, maxOuterIterations = 0L))
+    expect_equal(.f$env$R.0[1, 1], 0)
+    expect_equal(.f$covMethod, "failed")
+    expect_null(.f$cov)
+  })
+
+  test_that("an all-zero R of several thetas is not corrected into a covariance", {
+    # the zero diagonal leaves cholSE0 nothing to scale its correction by for any
+    # theta, not only a single one
+    d <- data.frame(ID = rep(1:2, each = 3), TIME = rep(1:3, 2), DV = 5, Z = 0, W = 0)
+    flat2 <- function() {
+      ini({
+        ta <- fix(5)
+        tz <- 0.5
+        tw <- 0.3
+        add.sd <- fix(1)
+      })
+      model({
+        cp <- ta + tz * Z + tw * W
+        cp ~ add(add.sd)
+      })
+    }
+    .f <- .nlmixr(flat2, d, "focei", foceiControl(print = 0, maxOuterIterations = 0L))
+    expect_equal(unname(.f$env$R.0), matrix(0, 2, 2))
+    expect_equal(.f$covMethod, "failed")
+    expect_null(.f$cov)
+  })
+
   test_that("a non-positive-definite R or S is never installed as it is", {
     # one estimated parameter at a point where the objective is concave: R < 0,
     # which cholSE0 (like for every 1x1 matrix) called positive definite, so

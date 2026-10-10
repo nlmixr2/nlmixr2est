@@ -146,9 +146,8 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   .nGauss <- sum(!.isLL)
 
   phi <- fit$mpost_phi
-  IOmega.phi1 <- solve(fit$Gamma2_phi1)
   Omega <- fit$Gamma2_phi1
-  yobs <- yobss <- saem.cfg$y
+  yobs <- saem.cfg$y
   evt <- saem.cfg$evt
   id <- evt[evt[, "EVID"] == 0, "ID"]
   nb_measures <- table(id)
@@ -163,63 +162,93 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
     var(x)
   })
   condsd.eta <- t(sapply(var.all, function(x) sqrt(diag(x))))
+  # a chain that never moved gives a zero-width box; use the prior sd instead
+  .priorSd <- matrix(sqrt(diag(Omega)), N, nphi1, byrow = TRUE)
+  .sd1 <- matrix(condsd.eta[, i1], N, nphi1)
+  .bad <- !is.finite(.sd1) | .sd1 <= 0
+  .sd1[.bad] <- .priorSd[.bad]
 
-  .nodes <- .saemGqNodes(nnodes.gq, nphi1)
+  .mix <- .saemGqMix(fit, saem.cfg)
+  .nodes <- .saemGqNodes(nnodes.gq, max(vapply(.mix$active, length, integer(1))))
   if (.nodes != nnodes.gq) {
     warning("-2LL grid too large; used nnodesGq=", .nodes, call. = FALSE)
     nnodes.gq <- .nodes
   }
-  y <- gqg.mlx(nphi1, nnodes.gq)
-  # xform [0,1] => [-1, 1]
-  x <- (y$nodes - 0.5) * 2
-  w <- (y$weights) * (2^nphi1)
-  nx <- dim(x)[1]
-  ## nx.1 = max(as.integer(nx/10), 1)
-  xmin <- cond.mean.phi[, i1] - nsd.gq * condsd.eta[, i1]
-  xmax <- cond.mean.phi[, i1] + nsd.gq * condsd.eta[, i1]
-  a <- (xmin + xmax) / 2
-  dim(a) <- c(N, nphi1)
-  b <- (xmax - xmin) / 2
-  dim(b) <- c(N, nphi1)
-
-  # accumulated in the LOG domain: a transformed endpoint with a small residual
-  # SD makes the per-subject log-density large enough that exp(ltot) overflows
-  # to Inf, which used to make the whole likelihood Inf (#903)
-  lQ <- rep(-Inf, N)
   if (nnodes.gq == 1) {
     message(sprintf("Calculating Laplace -2LL (nsd=%s)", nsd.gq))
   } else {
     message(sprintf("Calculating -2LL by Gaussian quadrature (nnodes=%s,nsd=%s)", nnodes.gq, nsd.gq))
   }
-  rxode2::rxProgress(nx)
+  .grids <- lapply(.mix$active, function(.act) {
+    if (length(.act) == 0L) {
+      return(list(x = matrix(0, 1L, 0L), w = 1))
+    }
+    y <- gqg.mlx(length(.act), nnodes.gq)
+    # xform [0,1] => [-1, 1]
+    list(x = (y$nodes - 0.5) * 2, w = y$weights * (2^length(.act)))
+  })
+  rxode2::rxProgress(sum(vapply(.grids, function(g) nrow(g$x), integer(1))))
   ysave <- yobs
   yobs <- .Call(`_nlmixr2est_powerD`, yobs, lambda, as.integer(yj), as.double(low), as.double(hi))
   on.exit(rxode2::rxProgressAbort("Error calculating likelihood"))
-  for (j in 1:nx) {
-    phi[, i1] <- a + b * matrix(rep(x[j, ], N), ncol = nphi1, byrow = TRUE)
-    f <- fsave <- as.vector(dopred(phi, saem.cfg$evt, saem.cfg$opt))
-    f <- .Call(`_nlmixr2est_powerD`, f, lambda, as.integer(yj), as.double(low), as.double(hi))
-    g <- ares + bres * abs(fsave)
-    g[g < 1.0e-200] <- 1.0e-200
-    .dyf <- -0.5 * ((yobs - f) / g)^2 - log(g)
-    # user_function() writes 1e99 where the solve returned NaN.  On a normal row
-    # that is a huge residual, but on an ll() row the prediction IS the
-    # log-density, so passing the sentinel through makes a FAILED node the best
-    # one in the quadrature.  Score it the way the kernel's MCMC does
-    # (_saemGenLikBadSolvePenalty, src/saem.cpp).
-    .ll <- fsave[.isLL]
-    .ll[!is.finite(.ll) | .ll >= 1.0e99] <- -1.0e10
-    .dyf[.isLL] <- .ll
-    DYF[ind.io] <- .dyf
-    ly <- colSums(DYF)
-    dphi1 <- phi[, i1] - fit$mprior_phi[, i1]
-    lphi1 <- -0.5 * rowSums((dphi1 %*% IOmega.phi1) * dphi1)
-    ltot <- ly + lphi1
-    ltot[is.na(ltot)] <- -Inf
-    lQ <- .logspaceAdd(lQ, log(w[j]) + ltot)
-    rxode2::rxTick()
+  # per-subject log-likelihood of each component, integrated over that
+  # component's own random effects; the others integrate to 1 under the prior
+  .lk <- matrix(-Inf, N, length(.mix$active))
+  for (.k in seq_along(.mix$active)) {
+    .act <- .mix$active[[.k]]
+    .nd <- length(.act)
+    .opt <- saem.cfg$opt
+    if (!is.null(.mix$prob)) {
+      .opt$mixest <- rep(as.integer(.k), N)
+    }
+    .x <- .grids[[.k]]$x
+    .w <- .grids[[.k]]$w
+    b <- .sd1[, .act, drop = FALSE] * nsd.gq
+    a <- cond.mean.phi[, i1[.act], drop = FALSE]
+    .omegaK <- Omega[.act, .act, drop = FALSE]
+    .iOmegaK <- if (.nd > 0L) solve(.omegaK) else .omegaK
+    phi[, i1] <- fit$mprior_phi[, i1]
+    # accumulated in the LOG domain: a transformed endpoint with a small
+    # residual SD makes the per-subject log-density large enough that
+    # exp(ltot) overflows to Inf (#903)
+    lQ <- rep(-Inf, N)
+    for (j in seq_len(nrow(.x))) {
+      if (.nd > 0L) {
+        phi[, i1[.act]] <- a + b * matrix(rep(.x[j, ], N), ncol = .nd, byrow = TRUE)
+      }
+      fsave <- as.vector(dopred(phi, saem.cfg$evt, .opt))
+      f <- .Call(`_nlmixr2est_powerD`, fsave, lambda, as.integer(yj), as.double(low), as.double(hi))
+      g <- ares + bres * abs(fsave)
+      g[g < 1.0e-200] <- 1.0e-200
+      .dyf <- -0.5 * ((yobs - f) / g)^2 - log(g)
+      # user_function() writes 1e99 where the solve returned NaN.  On a normal row
+      # that is a huge residual, but on an ll() row the prediction IS the
+      # log-density, so passing the sentinel through makes a FAILED node the best
+      # one in the quadrature.  Score it the way the kernel's MCMC does
+      # (_saemGenLikBadSolvePenalty, src/saem.cpp).
+      .ll <- fsave[.isLL]
+      .ll[!is.finite(.ll) | .ll >= 1.0e99] <- -1.0e10
+      .dyf[.isLL] <- .ll
+      DYF[ind.io] <- .dyf
+      ly <- colSums(DYF)
+      dphi1 <- phi[, i1[.act], drop = FALSE] - fit$mprior_phi[, i1[.act], drop = FALSE]
+      lphi1 <- -0.5 * rowSums((dphi1 %*% .iOmegaK) * dphi1)
+      ltot <- ly + lphi1
+      ltot[is.na(ltot)] <- -Inf
+      lQ <- .logspaceAdd(lQ, log(.w[j]) + ltot)
+      rxode2::rxTick()
+    }
+    .lk[, .k] <- lQ + rowSums(log(b)) - 0.5 * (if (.nd > 0L) log(det(.omegaK)) else 0) - 0.5 * .nd * log(2 * pi)
   }
   rxode2::rxProgressStop()
+  if (is.null(.mix$prob)) {
+    .li <- .lk[, 1]
+  } else {
+    .li <- log(.mix$prob[1]) + .lk[, 1]
+    for (.k in seq_along(.mix$prob)[-1]) {
+      .li <- .logspaceAdd(.li, log(.mix$prob[.k]) + .lk[, .k])
+    }
+  }
   # - 2 * saem.cfg$extraLL
   # only a Gaussian row's DYF omits its -0.5*log(2*pi); an ll() row already
   # carries the constant its own expression supplies.
@@ -232,11 +261,37 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   # adding powerL there would count it twice with the kernel's stale starting lambda.
   .g <- !.isLL
   ll2 <- 2 *
-    sum(lQ + rowSums(log(b))) -
-    N * log(det(Omega)) -
-    (N * nphi1 + .nGauss) * log(2 * pi) +
+    sum(.li) -
+    .nGauss * log(2 * pi) +
     2 * .Call(`_nlmixr2est_powerL`, ysave[.g], lambda[.g], as.integer(yj[.g]), as.double(low[.g]), as.double(hi[.g]))
   -ll2
+}
+
+#' Mixture layout of the Gaussian-quadrature objective
+#'
+#' A mixture subject's likelihood is the probability-weighted sum of its
+#' likelihood under each component, and a component does not integrate over
+#' the random effects only the other components use.
+#'
+#' @param fit saemFit fit
+#' @param saemCfg saem configuration list (`attr(fit, "saem.cfg")`)
+#' @return list with `prob` (component probabilities, `NULL` without a
+#'   mixture) and `active` (per component, the phi1 positions it integrates)
+#' @noRd
+.saemGqMix <- function(fit, saemCfg) {
+  .nphi1 <- saemCfg$nphi1
+  .prob <- as.vector(fit$mixProb)
+  if (length(.prob) < 2L) {
+    return(list(prob = NULL, active = list(seq_len(.nphi1))))
+  }
+  .owner <- saemCfg$omegaShareSubpop
+  if (length(.owner) != .nphi1) {
+    .owner <- rep(0L, .nphi1)
+  }
+  list(
+    prob = .prob,
+    active = lapply(seq_along(.prob), function(k) which(.owner == 0L | .owner == k))
+  )
 }
 gqg.mlx <- function(dim, nnodes.gq) {
   # GQG.MLX Nodes and weights for numerical integration on grids
@@ -898,9 +953,7 @@ calc.COV <- function(fit0) {
   evt <- saem.cfg$evt
   id <- evt[evt[, "EVID"] == 0, "ID"] + 1
 
-  if (is.environment(.env) && exists("mixIcov", envir = .env, inherits = FALSE)) {
-    saem.cfg$opt$mixest <- as.integer(.env$mixIcov$mixest)
-  }
+  saem.cfg$opt <- .saemDopredOpt(saem.cfg, .env)
 
   dphi <- cutoff(abs(phi) * 1e-4, 1e-10)
   f1 <- sapply(1:nphi, function(j) {

@@ -261,4 +261,45 @@ nmTest({
     expect_gt(o$theta[["prop.err"]], 0)
     expect_lt(o$objf, m$objf)
   })
+
+  test_that("likelihood = \"foce\" estimates the residual at the pinned states", {
+    skip_on_cran()
+    ## Stage 2 pins the ODE states at the fixed etas and only recomputes r.  FOCE
+    ## ("nonmem") evaluates the variance at the eta = 0 prediction, and the eta = 0
+    ## solve behind it was written over the pinned states, so every stage-2
+    ## evaluation read the population prediction as f: prop.sd came out 0.377.
+    ## FOCE+ evaluates the variance at the conditional eta and makes no such solve;
+    ## the two estimate nearly the same residual (0.182 and 0.193).
+    .mod <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; prop.sd <- 0.2
+        eta.ka ~ 0.6; eta.cl ~ 0.3 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ prop(prop.sd) })
+    }
+    .fitLik <- function(likelihood) {
+      suppressMessages(suppressWarnings(nlmixr2(
+        .mod,
+        nlmixr2data::theo_sd,
+        est = "vae",
+        control = vaeControl(
+          print = 0L,
+          calcTables = FALSE,
+          residOptimize = "twoStage",
+          likelihood = likelihood,
+          itersBurnIn = 10L,
+          iters = 30L,
+          klWarmup = 5L,
+          gammaIter = 20L
+        )
+      )))
+    }
+    .foce <- .fitLik("foce")
+    .focep <- .fitLik("focep")
+    # vae seeds internally, so these are fixed values, not sampling scatter
+    expect_equal(.foce$theta[["prop.sd"]], 0.182027, tolerance = 1e-3)
+    expect_equal(.focep$theta[["prop.sd"]], 0.193162, tolerance = 1e-3)
+  })
 })

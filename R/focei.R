@@ -306,9 +306,7 @@ is.latex <- function() {
 #' `trust_solve_c()` calls the objective at every TRIAL point, accepted or not,
 #' so the secant pair is consecutive CALLS -- the same convention
 #' `nlmTrustObjfun()` uses for the analogous outer problem (`src/nlm.cpp`).
-#' It does not call `trustHessianUpdate()` (src/trustHessianUpdate.h): that
-#' rounds differently (it differs bitwise from this on most updates), which
-#' would move the iterates of every `outerOpt="trust"` fit.
+#' The update is `trustHessianUpdate()`'s (`src/trustHessianUpdate.h`).
 #' @param state environment holding the estimate `b` and the previous call's
 #'   `xPrev` and `gPrev`, which this updates
 #' @param x,g the point and its gradient
@@ -316,29 +314,12 @@ is.latex <- function() {
 #' @noRd
 .trustOuterBfgs <- function(state, x, g) {
   if (!is.null(state$xPrev)) {
-    .s <- x - state$xPrev
-    .y <- g - state$gPrev
-    .bs <- drop(state$b %*% .s)
-    .sBs <- sum(.s * .bs)
-    .sy <- sum(.s * .y)
-    if (is.finite(.sBs) && .sBs > 0 && all(is.finite(.y))) {
-      # Damped BFGS (Nocedal & Wright, Numerical Optimization 2nd ed,
-      # Procedure 18.2): keeps the update positive definite when the outer
-      # objective's curvature along s is not.
-      .r <- if (.sy >= 0.2 * .sBs) {
-        .y
-      } else {
-        .th <- 0.8 * .sBs / (.sBs - .sy)
-        .th * .y + (1 - .th) * .bs
-      }
-      .sr <- sum(.s * .r)
-      # Same near-zero-denominator skip as trustHessianUpdate(): a
-      # reject-then-shrink step gives a secant pair whose rank-2 correction is
-      # enormous and meaningless.
-      if (is.finite(.sr) && .sr > 1e-10 * sqrt(sum(.s^2)) * sqrt(sum(.r^2))) {
-        state$b <- state$b - outer(.bs, .bs) / .sBs + outer(.r, .r) / .sr
-      }
-    }
+    state$b <- .Call(
+      `_nlmixr2est_trustBfgsUpdate`,
+      state$b,
+      as.double(x - state$xPrev),
+      as.double(g - state$gPrev)
+    )
   }
   state$xPrev <- x
   state$gPrev <- g
@@ -360,14 +341,24 @@ is.latex <- function() {
 #' stale conditional mode.  Measured on `theo_sd`, the two differ by ~9e-4 on
 #' gradient components of order 200 -- which a 1e-3 difference step turns into
 #' an O(1) error in the Hessian entries.
+#'
+#' The probes are not points the optimizer asked for, so `record(FALSE)` keeps
+#' them (and the re-settle) out of the parameter history and the iteration
+#' print while they run.
 #' @param fn,gr outer objective and gradient
 #' @param relStep relative difference step
 #' @param lower,upper box the outer problem optimizes in
+#' @param record `.foceiOuterRecord()`, or `NULL` when nothing records `fn` and
+#'   `gr` calls
 #' @return function(x, gradient) returning a symmetric Hessian, or `NULL`
 #' @noRd
-.trustOuterFd <- function(fn, gr, relStep, lower, upper) {
+.trustOuterFd <- function(fn, gr, relStep, lower, upper, record = NULL) {
   .n <- length(lower)
   function(x, g0) {
+    if (is.function(record)) {
+      .was <- record(FALSE)
+      on.exit(record(.was), add = TRUE)
+    }
     .h <- matrix(0.0, .n, .n)
     for (.j in seq_len(.n)) {
       .step <- relStep * max(abs(x[.j]), 1.0)
@@ -535,7 +526,8 @@ is.latex <- function() {
 #' The BFGS update runs on every call whatever source serves it, so its secant
 #' pairs stay consecutive and the fallback starts from a matrix that already
 #' knows the problem rather than the identity.
-#' @param control the foceiControl list
+#' @param control the foceiControl list, with the `hessian` and `outerRecord`
+#'   entries the C++ driver adds
 #' @param fn,gr outer objective and gradient
 #' @param relStep relative step, for both the analytic entry and the difference
 #' @param lower,upper box the outer problem optimizes in
@@ -543,7 +535,7 @@ is.latex <- function() {
 #'   current `method` and the BFGS state
 #' @noRd
 .trustOuterCurvature <- function(control, fn, gr, relStep, lower, upper) {
-  .fd <- .trustOuterFd(fn, gr, relStep, lower, upper)
+  .fd <- .trustOuterFd(fn, gr, relStep, lower, upper, control$outerRecord)
   .state <- new.env(parent = emptyenv())
   .state$method <- .trustOuterMethod(control)
   .state$b <- diag(length(lower))
@@ -1410,7 +1402,7 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   }
   .e <- new.env(parent = env)
   for (.v in names(.rhs)) {
-    assign(.v, symengine::S(.v), envir = .e)
+    assign(.v, symengine::Symbol(.v), envir = .e)
   }
   .expand <- function(.i) {
     .se <- rxode2::.rxToSE(str2lang(.rhs[[.i]]))
@@ -1531,14 +1523,49 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   # mtime() is loaded as an ordinary assignment so derivatives can reach a
   # modeled time that moves with an estimated parameter (see .rxMtimeToAssign);
   # the declaration itself is restored by .rxMtimeAssign() below.
-  .ret <- rxode2::rxS(.rxMtimeToAssign(newmod), TRUE, promoteLinSens = promoteLinSens)
+  .ret <- if (.rxSHasPkTime()) {
+    rxode2::rxS(.rxMtimeToAssign(newmod), TRUE, promoteLinSens = promoteLinSens, pkTime = TRUE)
+  } else {
+    rxode2::rxS(.rxMtimeToAssign(newmod), TRUE, promoteLinSens = promoteLinSens)
+  }
   if (inherits(.ret$rx_r_, "numeric")) {
     assign("rx_r_", symengine::S(as.character(.ret$rx_r_)), envir = .ret)
   }
   # rxS() drops mtime() entirely (issue #919); keep it so the generated models
   # still stop the solver at the modeled times and still define the variable.
   .rxMtimeAssign(newmod, .ret)
+  .rxPkTimeToPrologue(.ret)
   .ret
+}
+
+#' Does the installed rxode2's `rxS()` support `pkTime=`?
+#'
+#' @return `TRUE` when `rxode2::rxS()` takes `pkTime` (rxode2#1429)
+#' @noRd
+.rxSHasPkTime <- function() {
+  "pkTime" %in% names(formals(rxode2::rxS))
+}
+
+#' Move `rx_time_pk~t` from `..lhs0` to the generated-model prologue
+#'
+#' With `pkTime=TRUE`, `rxS()` loads `time` in PK-type statements as
+#' `rx_time_pk` so `rxSolve(nonmem=TRUE)` reads the record time there
+#' (#1167).  Every generated model must define it, but most do not emit
+#' `..lhs0`; the `mtime()` lines are already re-emitted ahead of every
+#' generated model, so the definition rides with them.
+#'
+#' @param env symengine environment from `rxode2::rxS()`
+#' @return Nothing, called for the `..lhs0`/`..mtime` side effect
+#' @noRd
+.rxPkTimeToPrologue <- function(env) {
+  .lhs0 <- env$..lhs0
+  .w <- names(.lhs0) == "rx_time_pk"
+  if (!any(.w)) {
+    return(invisible(NULL))
+  }
+  assign("..lhs0", .lhs0[!.w], envir = env)
+  assign("..mtime", c(unname(.lhs0[.w]), env$..mtime), envir = env)
+  invisible(NULL)
 }
 
 #' @export
@@ -5628,7 +5655,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       # Delete unneeded variables
       .saemCfg2 <- list()
       # res.mod is kept because calc.2LL()/calc.COV() need it to tell an ll()
-      # observation from a normally-distributed one
+      # observation from a normally-distributed one; omegaShareSubpop tells
+      # calc.2LL() which etas a mixture component owns
       for (.v in c(
         "i1",
         "i0",
@@ -5643,7 +5671,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         "opt",
         "inits",
         "Mcovariables",
-        "res.mod"
+        "res.mod",
+        "omegaShareSubpop"
       )) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }

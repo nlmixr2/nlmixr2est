@@ -343,6 +343,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiOuterRecord_
+bool foceiOuterRecord_(bool record);
+RcppExport SEXP _nlmixr2est_foceiOuterRecord_(SEXP recordSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type record(recordSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiOuterRecord_(record));
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiOuterF
 double foceiOuterF(NumericVector& theta);
 RcppExport SEXP _nlmixr2est_foceiOuterF(SEXP thetaSEXP) {
@@ -479,17 +490,6 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericMatrix >::type m(mSEXP);
     rcpp_result_gen = Rcpp::wrap(sqrtm(m));
-    return rcpp_result_gen;
-END_RCPP
-}
-// foceiCalcCov
-NumericMatrix foceiCalcCov(Environment e);
-RcppExport SEXP _nlmixr2est_foceiCalcCov(SEXP eSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Environment >::type e(eSEXP);
-    rcpp_result_gen = Rcpp::wrap(foceiCalcCov(e));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -1501,6 +1501,29 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type inC(inCSEXP);
     Rcpp::traits::input_parameter< SEXP >::type inAddProp(inAddPropSEXP);
     rcpp_result_gen = Rcpp::wrap(saemFormGTest(inA, inB, inFt, inC, inAddProp));
+    return rcpp_result_gen;
+END_RCPP
+}
+// shi21RatioCensorSet
+int shi21RatioCensorSet(int type);
+RcppExport SEXP _nlmixr2est_shi21RatioCensorSet(SEXP typeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type type(typeSEXP);
+    rcpp_result_gen = Rcpp::wrap(shi21RatioCensorSet(type));
+    return rcpp_result_gen;
+END_RCPP
+}
+// shi21RatioTest
+double shi21RatioTest(arma::vec all, int type);
+RcppExport SEXP _nlmixr2est_shi21RatioTest(SEXP allSEXP, SEXP typeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type all(allSEXP);
+    Rcpp::traits::input_parameter< int >::type type(typeSEXP);
+    rcpp_result_gen = Rcpp::wrap(shi21RatioTest(all, type));
     return rcpp_result_gen;
 END_RCPP
 }

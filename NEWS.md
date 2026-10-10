@@ -2,6 +2,13 @@
 
 ## New features
 
+- With an rxode2 that supports `rxControl(nonmem = TRUE)`, the estimation
+  methods now honor it: `time` read in a statement that does not depend on a
+  state (NONMEM's `$PK`) is the time of the record ending the interval, also
+  after it is inlined into `d/dt()` (via `rxS(pkTime = TRUE)`), and the fit's
+  tables, `augPred()` and `vpc()` solve with it too (#1167).  ADDL doses are
+  expanded in `$dataSav`, so they still act as records there.
+
 - `foceiControl(innerOpt = "lbfgsb3c")` runs L-BFGS-B on the per-subject
   ETA problem, using `lbfgsb3c`'s thread-safe port (`lbfgsb3c >= 2024-3.6`).
   It replaces `innerOpt = "BFGS"`, which silently fell back to `"n1qn1"`
@@ -48,6 +55,7 @@
   
 ## Bug Fixes
 
+<<<<<<< ours
 - The table step of a fit ("Calculating residuals/tables") now protects the
   state, `lhs` and covariate columns it adds to the table from R's garbage
   collector.  A collection that landed in a window of a few allocations
@@ -61,6 +69,22 @@
   per-subject effective sample sizes with the index of the expanded
   (subject x component) list, past the end of them, so the sample counts of
   every component after the first came from unrelated memory.
+
+- An `mtime()` variable with a `.` in its name (such as nonmem2rx's
+  `rx.mtime.1.`) no longer fails with `SymEngine exception: Parse error`
+  (#1189).
+- The Shi (2021) finite-difference step search over a vector (the
+  nlm/nlminb Hessian, the FOCEi inner eta Hessian, theta sensitivities and
+  the analytic-covariance tensor) now leaves components with a ratio below
+  1 out of its harmonic mean.  Such a component has no third-difference
+  signal above the noise, often because it does not depend on the stepped
+  parameter at all, and it pinned the ratio near 0, so the step grew to
+  `hMax`: on a binary `ll()` model the nlm Hessian was off by a factor of 58
+  and nlminb stopped 18 OFV points short.  The old treatment, whose zero
+  correction also mis-transcribed `lmomco::harmonic.mean()`, is available
+  with `options(nlmixr2est.shi21RatioCensor = "legacy")`; `"substitute"`
+  and `"lmomco"` are also accepted (#1188).
+>>>>>>> theirs
 
 - FOCEi-family eta sensitivities (and the imp/impmap theta sensitivities)
   now chain through `lag()`/`diff()` of a calculated variable, so a model
@@ -272,6 +296,90 @@
   differing number of rows`.  Both now read the fit's own control (`$control`);
   the imp objective read `$foceiControl`, which never holds `adjObf`.
 
+<<<<<<< ours
+- A failed evaluation of a subject's inner (ETA) problem -- an ODE solve that
+  fails, or a prediction that is not finite -- no longer leaves values that a
+  later evaluation returns.  The inner problem keeps its last evaluation and
+  answers a repeat at the same ETAs from it; after a failure, a repeat at the
+  last ETAs that succeeded returned what the failed evaluation had left (an
+  objective of 0 when the failure came in the observations).  The ETA
+  gradient of a failed evaluation is now `NA` rather than the previous
+  evaluation's or a partly summed one, so the finite-difference inner Hessian
+  of a non-normal endpoint takes its one-sided difference when a leg fails,
+  and its step search rejects the failed probe, instead of differencing that
+  value.  The `n1qn1` inner optimizer is not handed a gradient at a point
+  whose evaluation failed (it keeps the one it has), and every inner
+  optimizer counts a `NaN` objective as a failed evaluation, as it did `NA`.
+
+- The ETA gradient of a non-normal (log-likelihood) endpoint evaluated with
+  the eta-epsilon interaction no longer adds `sqrt(.Machine$double.eps)` for
+  every observation the ETA does not affect.  `est = "vi"` and the
+  conditional likelihood of `foceiLikRun()` and its C interface used that
+  gradient; a FOCEi fit of such a model runs without the interaction and was
+  not affected.
+
+- The per-observation log-likelihoods of an `agq` fit (`$llikObs`, the
+  `nlmixrLlikObs` column) are now those at each subject's ETAs.  Every
+  quadrature node re-evaluated the subject at another ETA, so they came from
+  the last node (up to 2.5 away on `theo_sd`).
+
+- `mfoce` and `ifoce` (and their `f` variants) now evaluate the FOCE objective
+  with the residual variance of the current thetas.  FOCE ("nonmem") freezes
+  the variance at each subject's `eta = 0` prediction and keeps it until the
+  thetas change, but the regression of the mu-referenced thetas inside an
+  evaluation changed them without renewing it, so the later
+  {re-optimize ETAs, regress} cycles used the variance of the thetas the
+  evaluation started from.  On `theo_sd` with a proportional error, a
+  zero-iteration `mfoce` fit reported an objective 15.5 below the FOCE
+  objective at its own estimates, and a full fit stopped at an objective 1.0
+  above the one it now reaches.
+
+- `est = "vae"` with `likelihood = "foce"` and the default
+  `residOptimize = "twoStage"` now estimates the residual parameters at the
+  ETAs it fixed for them.  That stage pins the ODE states and recomputes only
+  the residual variance, but the `eta = 0` solve FOCE takes its variance from
+  was written over the pinned states, so the population prediction stood in
+  for every individual one: a proportional error came out 0.377 where FOCE+
+  gives 0.193 (now 0.182).
+
+- Values the FOCEi family reads as those of the current parameters are now
+  taken there, not at the last finite-difference leg that ran before them.
+  The gradient of a mixture proportion (gradient-based outer optimizers) and
+  the proportion's rows of the S matrix use the subjects' responsibilities,
+  which every leg rewrites: the gradient of the same proportion at the same
+  point depended on where it was declared in `ini()`, and the S matrix entry
+  was off by 3e-5 (relative) on a two-component example with overlapping
+  components.  With `covDerivMethod = "forward"`, each subject's S-matrix
+  score was differenced from its value at the last leg of the pooled
+  gradient, which made S 100 to 1000 times too large on `theo_sd`; it now
+  agrees with the central-difference S to the truncation error.
+
+- `outerOpt = "trust"` with `outerTrustHessian = "fd"` no longer records its
+  finite-difference probes in the parameter history (`$parHistData`) or
+  prints them as iterations.  On `theo_sd` with four parameters, 1169
+  objective rows were recorded for the 167 evaluations the optimizer asked
+  for.  The `iter` column still counts every objective evaluation, so it
+  skips the probes.
+
+- The analytic FOCE outer gradient (`fast = TRUE`) now finite-differences a
+  subject whose frozen-variance ETAs it cannot find (a failed solve, or a mode
+  it does not reach) on its own, as FOCEi does a subject whose sensitivity
+  solve fails.  One such subject sent the whole gradient to finite
+  differences.
+
+- The damped-BFGS curvature of `outerOpt = "trust"` and `hessianMethod =
+  "bfgs"` (`trustControl()`, `foceiControl()`) is now one C update.  The two
+  had rounded differently (bitwise apart in 177 of 200 random updates); an
+  `outerOpt = "trust"` fit is unchanged, and a `hessianMethod = "bfgs"` one
+  may move at the last digits.
+
+- An ETA finite-differenced through the prediction model (`eventSens = "fd"`
+  or a dosing parameter) is now differenced
+  against the prediction model's own value at the ETA.  The base point came
+  from the sensitivity model, a solve of another ODE system, so a forward
+  difference (`eventType = "forward"`) divided the difference between the two
+  solves by the step: at `atol = rtol = 1e-3` a gradient of 33.8 came out
+  11.6.
 - `foceiControl(covMethod=)` (and the controls built on it, such as
   `foceControl()` and `impmapControl()`) is now an error for a number that is
   not a covariance slot (`0` to `3`) and for anything that is neither a
@@ -338,6 +446,23 @@
   The simulation these run first substituted the fixed thetas into its model
   and left the unsubstituted model recorded for the next estimation, whose
   parameter table then looked for fixed thetas that were not substituted.
+
+- An `est="saem"` mixture fit's Gaussian-quadrature and Laplace -2LL now
+  weight each subject's likelihood under every component by the mixture
+  probabilities, integrating each component over its own random effects.  It
+  solved every subject under whichever component the previous solve left, so
+  the value was far too high and changed between builds (#1184).
+
+- `setOfv(fit, "foce")`, `"focei"`, `"fo"`, `"imp"` and `"impmap"` now
+  calculate an objective whose row is the uncalculated (`NA`) placeholder a
+  saem fit starts with, instead of switching to the `NA` row; `setOfv(fit,
+  "imp")` on a saem fit no longer stops with `unknown error` (#1184).
+
+- An `est="saem"` mixture fit with a separate eta in each component (for
+  example `mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))`) kept its pooled
+  eta in the wrong column of `$etaMat`, leaving another eta `NA`; its table
+  step failed and its FOCEi objective could not be calculated (#1184).
+>>>>>>> theirs
 
 - `shiErr` and `hessErr` must now be > 0 in `nlmControl()`,
   `nlminbControl()`, `nlsControl()`, `optimControl()` and `trustControl()`,
@@ -655,6 +780,31 @@
   (`hessEpsLlik`, `gillKcovLlik`, `gillStepCovLlik`, `gillFtolCovLlik`,
   `rmatNormLlik`, `smatNormLlik`) no longer sets the option of the same name
   without `Llik` to its value as well.
+- `foceiControl(covDerivMethod = "forward")` no longer fails the `"r"` and
+  `"r,s"` covariances: it chooses the differences of the S matrix's
+  per-subject scores, and the R matrix keeps its central stencil.  The
+  documentation said it applied to the Hessian as well.
+- A requested `"r,s"` (or `"s"`) full covariance (`covFull = TRUE`) is now
+  computed when the theta-only step falls back to the R matrix.  The full S
+  was computed only for the theta-only step's final choice, so the requested
+  shape found no S and the fit kept the theta-only covariance without saying
+  why; it is now checked like any full shape, and installed or reported.
+- A FOCEi-family fit's per-subject ODE tolerance factors (`$tolFactor`, which
+  its tables solve with) are now those the estimation left.  The covariance
+  step changed them: `covSolveTol` and the analytic covariance set every
+  subject's factor to 1, and its finite-difference legs loosened them on hard
+  solves (to 316 for every subject of a `theo_sd` fit with a flat
+  parameter, whose estimation loosened none).
+- Warnings about difficult ODE solves in the covariance step now say so:
+  loosened tolerances and approximated sensitivities were reported as
+  happening "during the optimization".  A zero in the covariance step's
+  pooled gradient (the S matrix's fallback score) no longer reports "zero
+  gradient replaced with small number": nothing is replaced there.
+- An R matrix that is zero (an objective flat in every estimated parameter)
+  is no longer "corrected" as `"r+"`: the modified Cholesky factor has no
+  scale to correct such a matrix within, and a one-parameter fit installed
+  `1/cholSEtol` (165140) as its variance.  It is now not usable, like any R
+  the repairs cannot fix.
 - The finite-difference covariance of the FOCEi family (`covMethod = "r,s"`,
   `"r"`, `"s"` and their `covFull` shapes) now differentiates the marginal
   objective the same way in every leg: each leg optimizes the ETAs again,

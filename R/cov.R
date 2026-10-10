@@ -933,6 +933,7 @@ setCov <- function(fit, method, ...) {
     stop("'method' must be a single covariance method name", call. = FALSE)
   }
   .pt <- proc.time()
+  .shi21RatioCensor()
   .env <- fit
   if (rxode2::rxIs(fit, "nlmixr2FitData")) {
     .env <- fit$env
