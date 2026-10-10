@@ -10580,6 +10580,39 @@ bool foceiOuterRecord_(bool record) {
   return was;
 }
 
+// The inner state held across outer evaluations the optimizer did not ask for
+// (.bobyqaStationary's probe), so a probe that finds nothing leaves the fit as the
+// search did (#1196), the way the fast= posthoc gradient's guards do (#1057).
+static std::vector< std::unique_ptr<FdInnerStateGuard> > _outerHoldInner;
+static std::unique_ptr<FdPhaseStateGuard> _outerHoldPhase;
+
+// hold=TRUE saves the per-subject inner state and the fit-wide eta statistics;
+// hold=FALSE puts them back.  Returns whether a hold was released.
+//[[Rcpp::export(".foceiOuterHold")]]
+bool foceiOuterHold_(bool hold) {
+  const bool was = (_outerHoldPhase != nullptr);
+  const int nHeld = (int)_outerHoldInner.size();
+  _outerHoldInner.clear();
+  _outerHoldPhase.reset();
+  // As after CovEtaStart: the restored setup/oldEta would answer from the cache while
+  // ind->solve holds the last probe's solution, so force the next evaluation to solve.
+  for (int i = 0; i < nHeld; ++i) {
+    inds_focei[i].setup = 0;
+    if (covFitSolveLost_) continue;
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    if (ind != NULL) setIndSolve(ind, -1);
+  }
+  if (!hold) return was;
+  rx = getRxSolve_();
+  const int ns = (rx == NULL || inds_focei == NULL || getRxNsub(rx) <= 0) ? 0 : nIndsFocei;
+  _outerHoldPhase.reset(new FdPhaseStateGuard());
+  _outerHoldInner.reserve((size_t)ns);
+  for (int i = 0; i < ns; ++i) {
+    _outerHoldInner.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(i)));
+  }
+  return was;
+}
+
 //[[Rcpp::export]]
 double foceiOuterF(NumericVector &theta){
   int n = theta.size();
@@ -10756,10 +10789,12 @@ void foceiCustomFun(Environment e){
   List ctl = clone(as<List>(e["control"]));
   ctl["hessian"] = nlmixr2["foceiOuterH"];
   ctl["outerRecord"] = nlmixr2[".foceiOuterRecord"];
+  ctl["outerHold"] = nlmixr2[".foceiOuterHold"];
   Function opt = as<Function>(ctl["outerOptFun"]);
   //.bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...)
   List ret = as<List>(opt(_["par"]=x, _["fn"]=f, _["gr"]=g, _["lower"]=lower,
                           _["upper"]=upper,_["control"]=ctl));
+  foceiOuterHold_(false);
   x = ret["x"];
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
   // Otherwise ETAs may be off

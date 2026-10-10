@@ -388,6 +388,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiOuterHold_
+bool foceiOuterHold_(bool hold);
+RcppExport SEXP _nlmixr2est_foceiOuterHold_(SEXP holdSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type hold(holdSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiOuterHold_(hold));
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiOuterF
 double foceiOuterF(NumericVector& theta);
 RcppExport SEXP _nlmixr2est_foceiOuterF(SEXP thetaSEXP) {

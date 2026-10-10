@@ -112,6 +112,10 @@ covProbeSolveTolRestore_ <- function(tol) {
     .Call(`_nlmixr2est_foceiOuterRecord_`, record)
 }
 
+.foceiOuterHold <- function(hold) {
+    .Call(`_nlmixr2est_foceiOuterHold_`, hold)
+}
+
 foceiOuterF <- function(theta) {
     .Call(`_nlmixr2est_foceiOuterF`, theta)
 }

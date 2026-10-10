@@ -719,6 +719,13 @@
 #'     about twice the outer evaluations.  `FALSE` (default) keeps the plain
 #'     trust solve and a single outer search.
 #'
+#' @param bobyqaStationary logical; when `TRUE` (default), a normal exit of
+#'     the `"bobyqa"` outer search is checked with a central-difference
+#'     gradient and a downhill probe.  If the probe lowers the objective by
+#'     more than `10^(1-sigdig)`, bobyqa restarts from there (up to 3 times,
+#'     within `maxOuterIterations`).  This catches a search that stops in a
+#'     narrow valley short of the minimum (#1196); `FALSE` skips the check.
+#'
 #' @param innerHessian Inner optimization curvature: `"focei"` (default) or
 #'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
 #'   Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
@@ -1355,6 +1362,7 @@ foceiControl <- function(
   trustFterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
   trustMterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
   trustPolish = FALSE,
+  bobyqaStationary = TRUE,
   ## innerOpt="lbfgsb3c" (lbfgsb3c's thread-safe L-BFGS-B)
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL, # NULL -> 10^(-sigdig-2)/eps
@@ -1931,6 +1939,8 @@ foceiControl <- function(
   }
   checkmate::assertNumeric(trustMterm, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertFlag(trustPolish)
+  bobyqaStationary <- as.logical(bobyqaStationary)
+  checkmate::assertFlag(bobyqaStationary)
   checkmate::assertIntegerish(innerLbfgsLmm, lower = 1L, any.missing = FALSE, len = 1)
   innerLbfgsLmm <- as.integer(innerLbfgsLmm)
   checkmate::assertNumeric(innerLbfgsFactr, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
@@ -2202,6 +2212,7 @@ foceiControl <- function(
     trustFterm = trustFterm,
     trustMterm = trustMterm,
     trustPolish = trustPolish,
+    bobyqaStationary = bobyqaStationary,
     innerLbfgsLmm = innerLbfgsLmm,
     innerLbfgsFactr = as.double(innerLbfgsFactr),
     innerLbfgsPgtol = as.double(innerLbfgsPgtol),

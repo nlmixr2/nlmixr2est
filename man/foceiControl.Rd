@@ -96,6 +96,7 @@ foceiControl(
   trustFterm = NULL,
   trustMterm = NULL,
   trustPolish = FALSE,
+  bobyqaStationary = TRUE,
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL,
   innerLbfgsPgtol = NULL,
@@ -865,6 +866,13 @@ help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
 outer search then also restarts once from where it stops, which costs
 about twice the outer evaluations.  `FALSE` (default) keeps the plain
 trust solve and a single outer search.}
+
+\item{bobyqaStationary}{logical; when `TRUE` (default), a normal exit of
+the `"bobyqa"` outer search is checked with a central-difference
+gradient and a downhill probe.  If the probe lowers the objective by
+more than `10^(1-sigdig)`, bobyqa restarts from there (up to 3 times,
+within `maxOuterIterations`).  This catches a search that stops in a
+narrow valley short of the minimum (#1196); `FALSE` skips the check.}
 
 \item{innerLbfgsLmm}{number of BFGS updates retained by the
 `innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.
