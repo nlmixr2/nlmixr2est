@@ -7,7 +7,7 @@ test_that("no R source file uses superassignment", {
   # lazy-load database instead of sources
   skip_if_not(file.exists(file.path(.rDir, "nlmixr2.R")), "package source tree not available")
   .files <- list.files(.rDir, pattern = "\\.[Rr]$", full.names = TRUE)
-  expect_gt(length(.files), 0L)
+  skip_if(length(.files) == 0L, "package source tree not available")
   .hits <- character(0)
   for (.f in .files) {
     .pd <- utils::getParseData(parse(.f, keep.source = TRUE))

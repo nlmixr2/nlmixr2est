@@ -130,7 +130,7 @@ nmTest({
       function(.type) {
         withr::local_options(list(nlmixr2est.shi21RatioCensor = .type))
         .withNlmProblem(.mod, .d, .ctl, function(x) {
-          .gr <- function(p) .nlmixrNlminbGradC(p + 0)
+          .gr <- function(p) optimFunC(p + 0, TRUE)
           .oracle <- numDeriv::jacobian(.gr, x + 0)
           .oracle <- (.oracle + t(.oracle)) / 2
           .h <- attr(.nlmixrNlmFunC(x + 0), "hessian")

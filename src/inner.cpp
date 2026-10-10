@@ -17983,15 +17983,15 @@ static void obsFromInd(rx_solving_options_ind *ind, const VaeOuterE &E,
 // use convTol.  These are the FIXED values the routine shipped with (1e-3 / 1e-9), not
 // sigdig-derived: a score convergence target on an inner Newton is not a solve precision,
 // and tying it to sigdig made the analytic FOCE gradient available or not depending on
-// the requested digits.  foceiControl(foceEbeTol=) overrides convTol.  Returns false if
-// any subject fails to converge, which sends the whole
-// gradient to the ordinary finite-difference route rather than reporting a mode that was
-// never reached.
+// the requested digits.  foceiControl(foceEbeTol=) overrides convTol.  A subject whose
+// solve fails or whose mode is not reached is marked in `skip` (which may arrive with
+// subjects already marked) and left at its incoming eta; the caller finite-differences
+// it as FOCEI does a flagged subject.  Returns false only when every subject is skipped.
 static bool foceEbeNewton(const FoceiGradPooledSetup &G,
                           const std::vector<double> &thVals, const arma::mat &ebes,
                           const arma::mat &Oi, const std::vector<VaeOuterE> *E0all,
                           int cores, rx_solving_options *op, int nsub, int neta,
-                          arma::mat &etaOut) {
+                          arma::mat &etaOut, std::vector<char> &skip) {
   // Backtracking line search on |S|, arranged to fit the BATCHED solve: each iteration is
   // one population solve, and a subject either accepts a fresh Newton step or halves the
   // one it last took, so a backtrack costs no extra solve of its own.
@@ -18011,7 +18011,14 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
   const bool fp = (G.foceType == 1) || (E0all == NULL);
   const bool hasCens = hasRxCens(rx), hasLimit = hasRxLimit(rx);
   etaOut = ebes;
+  skip.resize((size_t)nsub, 0);
   std::vector<char> active((size_t)nsub, 1);
+  for (int i = 0; i < nsub; ++i) if (skip[(size_t)i]) active[(size_t)i] = 0;
+  auto skipSub = [&](int i) {
+    skip[(size_t)i] = 1;
+    active[(size_t)i] = 0;
+    etaOut.row(i) = ebes.row(i);
+  };
   std::vector<VaeOuterE> Es((size_t)nsub);
   // Per-subject line-search state.  prevS is |S| at the eta BEFORE the step currently
   // being judged; lastStep is that step's full (undamped) direction and alpha the
@@ -18033,11 +18040,11 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
     for (int i = 0; i < nsub; ++i) {
       if (!active[(size_t)i]) continue;
       const VaeOuterE &E = Es[(size_t)i];
-      if (!E.ok) { op_focei.nNewtonSolve++; return false; }
+      if (!E.ok) { op_focei.nNewtonSolve++; skipSub(i); continue; }
       const int nobs = E.nobs;
-      if (nobs <= 0) { op_focei.nNewtonSolve++; return false; }
+      if (nobs <= 0) { op_focei.nNewtonSolve++; skipSub(i); continue; }
       const arma::vec &R0v = fp ? E.R : (*E0all)[(size_t)i].R;
-      if ((int)R0v.n_elem != nobs) { op_focei.nNewtonSolve++; return false; }
+      if ((int)R0v.n_elem != nobs) { op_focei.nNewtonSolve++; skipSub(i); continue; }
       rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
       arma::vec yt, limt; arma::ivec cens;
       obsFromInd(ind, E, G.hasT, hasCens, hasLimit, yt, cens, limt);
@@ -18070,7 +18077,7 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
           Hf(l, m) += h;
         }
       }
-      if (!S.is_finite() || !Hf.is_finite()) { op_focei.nNewtonSingular++; return false; }
+      if (!S.is_finite() || !Hf.is_finite()) { op_focei.nNewtonSingular++; skipSub(i); continue; }
       double sMax = arma::abs(S).max();
       if (sMax < (it == 0 ? skipTol : convTol)) { active[(size_t)i] = 0; continue; }
       // The Newton decrement lam2 = S' Hf^-1 S is how much of the objective this point
@@ -18116,7 +18123,8 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
         }
         op_focei.nNewtonMaxit++;
         if (bestS[(size_t)i] > op_focei.newtonWorstS) op_focei.newtonWorstS = bestS[(size_t)i];
-        return false;
+        skipSub(i);
+        continue;
       }
       // Did the last step actually reduce |S|?  If not, undo it and retry at half the
       // length; the Newton DIRECTION is kept, only its magnitude is cut.
@@ -18129,7 +18137,7 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
         any = true;
         continue;                                  // re-solve and re-judge the same step
       }
-      if (!haveSolve) { op_focei.nNewtonSingular++; return false; }
+      if (!haveSolve) { op_focei.nNewtonSingular++; skipSub(i); continue; }
       prevS[(size_t)i] = sMax;                     // reference for judging this new step
       lastStep[(size_t)i] = step;
       alpha[(size_t)i] = 1.0;
@@ -18140,8 +18148,9 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
     }
     if (!any) break;
   }
-  for (int i = 0; i < nsub; ++i) if (active[(size_t)i]) return false;
-  return true;
+  for (int i = 0; i < nsub; ++i) if (active[(size_t)i]) skipSub(i);
+  for (int i = 0; i < nsub; ++i) if (!skip[(size_t)i]) return true;
+  return false;
 }
 
 // ---- ll() / generalized likelihood -------------------------------------------------
@@ -18858,16 +18867,19 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   // population prediction, which needs its own solve first.
   std::vector<VaeOuterE> E0s;
   arma::mat foceEta;
+  // FOCE subjects whose frozen variance or mode could not be found; they are
+  // finite-differenced below like a subject whose augmented solve failed
+  std::vector<char> foceSkip((size_t)nsub, 0);
   const bool needE0 = isFoce && (G.foceType == 0) && G.dependsF0;
   if (needE0) {
     E0s.resize((size_t)nsub);
     arma::mat zeroEta((unsigned int)nsub, (unsigned int)neta, arma::fill::zeros);
     outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, zeroEta, G, cores, op, nsub, neta, E0s);
     for (int i = 0; i < nsub; ++i)
-      if (!E0s[(size_t)i].ok) { op_focei.nDeclineE0++; return declineHere(9); }
+      if (!E0s[(size_t)i].ok) { op_focei.nDeclineE0++; foceSkip[(size_t)i] = 1; }
   }
   if (isFoce && !foceEbeNewton(G, thVals, ebes, Oi, needE0 ? &E0s : NULL,
-                               cores, op, nsub, neta, foceEta)) {
+                               cores, op, nsub, neta, foceEta, foceSkip)) {
     op_focei.nDeclineNewton++;
     return declineHere(10);
   }
@@ -18875,6 +18887,9 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
 
   std::vector<VaeOuterE> Es((size_t)nsub);
   outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, ebesUse, G, cores, op, nsub, neta, Es);
+  if (isFoce) {
+    for (int i = 0; i < nsub; ++i) if (foceSkip[(size_t)i]) Es[(size_t)i].ok = false;
+  }
 
   // Swap the pool outer -> inner for the failed subjects.  The augmented solve ran under
   // the OUTER event-sensitivity shape; the difference needs the INNER problem, and the
