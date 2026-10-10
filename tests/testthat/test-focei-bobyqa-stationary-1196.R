@@ -114,6 +114,30 @@ nmTest({
     expect_equal(.r$feval, 200)
   })
 
+  test_that("restarts stop at maxRestart", {
+    local_mocked_bindings(
+      bobyqa = function(par, fn, ...) {
+        .p <- par - c(0.05, 0)
+        list(par = .p, fval = fn(.p), feval = 5L, ierr = 0L)
+      },
+      .package = "minqa"
+    )
+    .lin <- function(x) x[1]
+    .at <- list(par = c(0, 0), fval = 0, feval = 10L, ierr = 0L)
+    .r <- .bobyqaStationary(.lin, .lo, .hi, .ctl, .at, tol = 0.01)
+    expect_identical(.r$nStationaryRestart, 3L)
+  })
+
+  test_that("infinite bounds and no budget cap still restart", {
+    .stop <- list(par = c(-0.5, 0.25), fval = .valley(c(-0.5, 0.25)), feval = 40L, ierr = 0L)
+    .r <- .bobyqaStationary(
+      .valley, c(-Inf, -Inf), c(Inf, Inf), .ctl[names(.ctl) != "maxfun"], .stop,
+      tol = 0.01
+    )
+    expect_gte(.r$nStationaryRestart, 1L)
+    expect_lt(.r$fval, 1e-6)
+  })
+
   test_that(".bobyqa() runs the check only when bobyqaStationary is set", {
     .base <- list(rhobeg = 0.2, rhoend = 1e-6, maxfun = 5000, sigdig = 3)
     .on <- .bobyqa(c(-1.2, 1), .valley, lower = .lo, upper = .hi, control = c(.base, bobyqaStationary = TRUE))
