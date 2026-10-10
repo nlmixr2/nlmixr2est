@@ -152,6 +152,87 @@ is.latex <- function() {
   ret
 }
 
+#' Restart bobyqa when its normal exit is not a stationary point
+#'
+#' In a narrow curved valley bobyqa can shrink its trust region to `rhoend`
+#' while the objective still falls along the valley floor (#1196).  After a
+#' normal exit this takes a central-difference gradient and probes downhill;
+#' if a probe lowers the objective by more than `tol`, bobyqa restarts from
+#' it.  The lower of the restart and the probe is kept, and the check repeats up to
+#' `maxRestart` times within the evaluation budget.
+#' @param fn objective
+#' @param lower,upper bounds
+#' @param ctl `minqa::bobyqa()` control
+#' @param ret the search's `minqa::bobyqa()` result
+#' @param tol objective decrease that triggers a restart
+#' @param maxRestart maximum number of restarts
+#' @return a `minqa::bobyqa()`-shaped list with `nStationaryRestart` added
+#' @noRd
+.bobyqaStationary <- function(fn, lower, upper, ctl, ret, tol, maxRestart = 3L) {
+  .n <- 0L
+  .np <- length(ret$par)
+  .lower <- rep_len(lower, .np)
+  .upper <- rep_len(upper, .np)
+  .steps <- ctl$rhobeg * 10^-(1:4)
+  .cost <- 2L * .np + length(.steps)
+  .probed <- FALSE
+  while (.n < maxRestart && identical(as.integer(ret$ierr), 0L)) {
+    .left <- if (is.null(ctl$maxfun)) Inf else ctl$maxfun - ret$feval
+    if (.left <= .cost + ctl$npt + 1L) {
+      break
+    }
+    .x <- ret$par
+    .h <- pmin(ctl$rhobeg / 100, (.upper - .x) / 2, (.x - .lower) / 2)
+    .g <- vapply(seq_len(.np), function(i) {
+      if (.h[i] <= 0) {
+        return(0)
+      }
+      (fn(replace(.x, i, .x[i] + .h[i])) - fn(replace(.x, i, .x[i] - .h[i]))) / (2 * .h[i])
+    }, numeric(1))
+    ret$feval <- ret$feval + 2L * .np
+    .probed <- TRUE
+    .gn <- sqrt(sum(.g^2))
+    if (!is.finite(.gn) || .gn == 0) {
+      break
+    }
+    .best <- ret$fval
+    .bx <- NULL
+    for (.st in .steps) {
+      .y <- pmin(pmax(.x - .st * .g / .gn, .lower), .upper)
+      .fy <- fn(.y)
+      if (is.finite(.fy) && .fy < .best) {
+        .best <- .fy
+        .bx <- .y
+      }
+    }
+    ret$feval <- ret$feval + length(.steps)
+    if (is.null(.bx) || ret$fval - .best <= tol) {
+      break
+    }
+    .ctl2 <- ctl
+    if (!is.null(.ctl2$maxfun)) {
+      .ctl2$maxfun <- .left - .cost
+    }
+    .r2 <- minqa::bobyqa(.bx, fn, control = .ctl2, lower = lower, upper = upper)
+    .n <- .n + 1L
+    .r2$feval <- .r2$feval + ret$feval
+    if (!(is.finite(.r2$fval) && .r2$fval < .best)) {
+      ret$par <- .bx
+      ret$fval <- .best
+      ret$feval <- .r2$feval
+      break
+    }
+    ret <- .r2
+  }
+  if (.probed) {
+    # end on the returned point; the fit's history checks the last evaluation is the minimum
+    fn(ret$par)
+    ret$feval <- ret$feval + 1L
+  }
+  ret$nStationaryRestart <- .n
+  ret
+}
+
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) {
@@ -163,6 +244,10 @@ is.latex <- function() {
   .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, .ret)
   if (isTRUE(control$trustPolish)) {
     .ret <- .bobyqaRestart(fn, lower, upper, .ctl, .ret)
+  }
+  if (isTRUE(control$bobyqaStationary) && !is.null(.ctl$rhobeg)) {
+    .tol <- if (is.null(control$sigdig)) 0.01 else 10^(1 - control$sigdig)
+    .ret <- .bobyqaStationary(fn, lower, upper, .ctl, .ret, tol = .tol)
   }
   .ret$x <- .ret$par
   .ret$message <- .ret$msg

@@ -157,6 +157,15 @@
   
 ## Bug Fixes
 
+- The default FOCEi outer search (`outerOpt = "bobyqa"`) now checks that its
+  normal exit is a stationary point: a central-difference gradient and a short
+  downhill probe, restarting bobyqa (up to 3 times) when the probe lowers the
+  objective by more than `10^(1-sigdig)`.  In a narrow curved valley bobyqa
+  shrank its trust region and stopped early; an `ar()` fit stopped at OFV
+  -1132.2 with `ar1.cor` 0.44 (truth 0.70) and now reaches -1222.5 with 0.70
+  (#1196).  A converged fit pays `2n + 5` extra evaluations;
+  `foceiControl(bobyqaStationary = FALSE)` skips the check.
+
 - The nlm-family covariance (`covMethod = "r"`, from `nlmixr2Hess()`) now runs
   its finite-difference stencil at the ODE tolerances FOCEi's covariance step
   uses (the fit's times 1e-3, capped at 1e-7).  At the fit's own tolerance
