@@ -232,3 +232,20 @@ test_that("an accurate Gill83 derivative is accepted (#1194)", {
   expect_identical(as.character(g$info), "Good")
   expect_equal(g$df, 1, tolerance = 1e-2)
 })
+
+test_that("a Gill83 search that backs off a shrunk step keeps that step's curvature (#1197)", {
+  # h0 is accurate (Ch < 0.001) but the curvature collapses at h0/10, so the
+  # search rejects the shrunk step for roundoff and backs off to h0
+  x0 <- 0.1
+  f <- function(x) 1 + x^2 + 1e7 * (x - x0)^4
+  g <- nlmixr2Gill83(f, x0, gillStep = 10)
+  expect_identical(as.character(g$info), "Good")
+  h <- g$hphi
+  phi <- (f(x0 + h) - 2 * f(x0) + f(x0 - h)) / h^2
+  expect_equal(g$df2, phi, tolerance = 1e-6)
+  expect_equal(g$hf, 2 * sqrt(abs(f(x0)) * g$gillRtol / abs(phi)), tolerance = 1e-6)
+  # the rejected step is roundoff-dominated: its curvature fails the condition test
+  hk <- h / 10
+  phiK <- (f(x0 + hk) - 2 * f(x0) + f(x0 - hk)) / hk^2
+  expect_gt(4 * abs(f(x0)) * g$gillRtol / (hk^2 * abs(phiK)), 0.1)
+})

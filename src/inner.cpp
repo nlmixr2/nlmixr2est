@@ -7051,7 +7051,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
            double gillF, double d2Seed) {
   if (foceiGill == 1) op_focei.calcGrad=1;
   double f , x, hbar, h0, fp, fn=NA_REAL, phif, phib, phic, phicc = 0, phi, Chf, Chb,
-    Ch, hs, hphi, hk, tmp, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phit=NA_REAL;
+    Ch, hs, hphi, hk, tmp, tmpPhi, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phit=NA_REAL;
 
   // the fallback trial: the last one with |phif| < fTol not dominated by roundoff
   auto saveTrial = [&]() {
@@ -7150,6 +7150,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   phif = phiF(f, fp, hk);
   phib = phiB(f, fn, hk);
   tmp=phic;
+  tmpPhi=phi;
   phic = phiC(fp, fn, hk);
   phi = Phi(fp, f, fn, hk);
   Chf = Chat(phif, hk, epsA);
@@ -7157,7 +7158,9 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   Ch = ChatP(phi, hk, epsA);
   saveTrial();
   if (Ch > .1){
+    // back off to h_{k-1}: FD5 uses its curvature, not the rejected step's
     phicc=tmp;
+    phi=tmpPhi;
     hphi=hk*gillStep; // hphi = h_k-1
     goto FD5;
   }
