@@ -157,6 +157,19 @@
   
 ## Bug Fixes
 
+- A Gill83 step search with a nonzero `gillFtol`/`gillFtolCov` whose
+  derivative failed the error test fell back to a central-difference step equal
+  to the slope (possibly negative) and a slope as the curvature; it now keeps the
+  saved trial's step and curvature, and no longer saves a step the search
+  rejected for roundoff (#1194).
+
+- A Gill83 search that finds the objective constant in a parameter now reports
+  its error estimate rather than leaving it unset (#1194).
+
+- A Gill83 step search no longer labels an accurate derivative "High Grad
+  Error" when the slope is negative or the accepted interval came from
+  shrinking the step; these spurious labels raised the "gradient problems"
+  warning and, with a nonzero `gillFtol`, replaced a good step (#1194).
 - `foceiControl(fast = TRUE)` no longer stops on a model with an `ar()`
   residual ("required for solving: rx_arEp_cp, rx_arT_cp"); the fit uses the
   finite-difference gradient instead, and `covMethod = "analytic"` falls back
