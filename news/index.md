@@ -245,6 +245,11 @@
   problems” warning and, with a nonzero `gillFtol`, replaced a good step
   ([\#1194](https://github.com/nlmixr2/nlmixr2est/issues/1194)).
 
+- A Gill83 step search that shrank its step into roundoff and backed off
+  to the previous step now computes the forward interval from that
+  step’s curvature, not from the rejected step’s
+  ([\#1197](https://github.com/nlmixr2/nlmixr2est/issues/1197)).
+
 - `foceiControl(fast = TRUE)` no longer stops on a model with an
   [`ar()`](https://rdrr.io/r/stats/ar.html) residual (“required for
   solving: rx_arEp_cp, rx_arT_cp”); the fit uses the finite-difference
