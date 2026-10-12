@@ -107,6 +107,49 @@ nmTest({
     }
   })
 
+  test_that("a FOCE subject without a mode is finite-differenced too", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .fbClearHooks()
+    on.exit(.fbClearHooks(), add = TRUE)
+    # proportional error: FOCE freezes the variance at eta = 0, so the hook also
+    # fails that solve for the flagged subjects
+    .mod <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; prop.sd <- 0.2
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ prop(prop.sd)
+      })
+    }
+    fit <- suppressMessages(suppressWarnings(nlmixr2(
+      .mod,
+      nlmixr2data::theo_sd,
+      "foce",
+      foceiControl(print = 0L, covMethod = "", fast = TRUE, sigdig = 3, calcTables = FALSE, maxOuterIterations = 3L)
+    )))
+    gRef <- .fbGrad(fit)
+    np <- length(gRef)
+    expect_equal(np, 7L)
+    for (ids in list(2L, c(2L, 7L))) {
+      gSkip <- .fbGrad(fit, ids, skip = TRUE)
+      gOne <- .fbGrad(fit, ids, skip = FALSE)
+      # NULL would mean the whole gradient declined, as it did before
+      expect_equal(length(gSkip), np)
+      expect_equal(length(gOne), np)
+      an <- gRef - gSkip
+      fd <- gOne - gSkip
+      expect_true(all(is.finite(fd)))
+      expect_true(all(abs(fd) > 0))
+      expect_lt(sqrt(sum((fd - an)^2)) / sqrt(sum(an^2)), 0.05)
+    }
+  })
+
   test_that("the fallback survives a fit and reports it, and omega is not silently zero", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")

@@ -6,11 +6,25 @@
 
 .foceiHistFn <- c("lag", "lead", "diff", "first", "last", "lag0", "lead0", "diff0")
 
+#' Which `var=expr` lines define a lagged variable
+#'
+#' rxode2 reads a lagged variable assigned more than once through snapshot
+#' lines `rx_lagv<i>_<var>=<var>` (rxode2#1435); they belong with its
+#' definitions.
+#' @param lhs `var=expr` lines
+#' @param vars lagged variable names
+#' @return logical, one per line
+#' @noRd
+.foceiIsLagDef <- function(lhs, vars) {
+  .n <- sub("=.*$", "", lhs)
+  .snap <- grepl("^rx_lagv[0-9]+_", .n)
+  (.n %in% vars & !.snap) | (.snap & sub("^rx_lagv[0-9]+_", "", .n) %in% vars)
+}
+
 #' The definitions of the lagged calculated variables
 #'
 #' The AR(1) residual's own lagged variables (`rx_ar*`) are excluded; the
-#' AR(1) gradient correction handles those.  rxode2's snapshots of a
-#' reassigned lagged variable (`rx_lagv<i>_<var>`) are included.
+#' AR(1) gradient correction handles those.
 #' @param s symengine environment
 #' @return the `var=expr` lines of `s$..lhs` that define them
 #' @noRd
@@ -20,17 +34,7 @@
     return(character(0))
   }
   .v <- .v[!grepl("^rx_ar", .v)]
-  .nm <- sub("^rx_lagv[0-9]+_", "", sub("=.*$", "", s$..lhs))
-  s$..lhs[.nm %in% .v]
-}
-
-#' Regex matching the lhs lines that define the given lagged variables
-#'
-#' @param vars lagged variable names
-#' @return pattern matching `var=` and its rxode2 snapshots `rx_lagv<i>_var=`
-#' @noRd
-.foceiLagDefPattern <- function(vars) {
-  paste0("^(rx_lagv[0-9]+_)?(", paste0(gsub(".", "\\.", vars, fixed = TRUE), collapse = "|"), ")=")
+  s$..lhs[.foceiIsLagDef(s$..lhs, .v)]
 }
 
 #' Whether rxode2 text uses any of the given variables

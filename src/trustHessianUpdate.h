@@ -1,6 +1,8 @@
 #ifndef __TRUSTHESSIANUPDATE_H__
 #define __TRUSTHESSIANUPDATE_H__
 #if defined(__cplusplus)
+#include <stdexcept>
+#include "utilc.h"
 
 // Shared hessianMethod= codes for every RcppTrust-backed Hessian in this
 // package (est="trust"'s outer theta problem, src/nlm.cpp; FOCEi's inner eta
@@ -37,21 +39,22 @@
 // step, generalized).
 static inline void trustHessianUpdate(int method, arma::mat &H,
                                        const arma::vec &s, const arma::vec &y) {
-  arma::vec Hs = H * s;
   if (method == trustHessBfgs) {
     // Damped BFGS: Nocedal & Wright, Numerical Optimization, 2nd ed.
     // (2006), Procedure 18.2 / Eq. 18.16. trust does no line search, so the
     // curvature condition s'y>0 is not guaranteed -- Powell's damping keeps
-    // the update positive-definite regardless.
-    double sBs = arma::dot(s, Hs);
-    if (sBs <= 0) return; // H itself not PD (should not happen after seeding); skip
-    double sy = arma::dot(s, y);
-    double thetaD = (sy >= 0.2 * sBs) ? 1.0 : (0.8 * sBs / (sBs - sy));
-    arma::vec yBar = thetaD * y + (1.0 - thetaD) * Hs;
-    double syBar = arma::dot(s, yBar);
-    if (syBar <= 1e-10 * arma::norm(s) * arma::norm(yBar)) return; // skip
-    H += (yBar * yBar.t()) / syBar - (Hs * Hs.t()) / sBs;
-  } else if (method == trustHessSr1) {
+    // the update positive-definite regardless.  Shared with the outer trust
+    // region of FOCEi (R's .trustOuterBfgs()), bit for bit.
+    const int n = (int)s.n_elem;
+    if ((int)y.n_elem != n || (int)H.n_rows != n || (int)H.n_cols != n) {
+      throw std::logic_error("trustHessianUpdate: incompatible dimensions");
+    }
+    arma::vec Hs(n), r(n);
+    nmTrustBfgsUpdate(n, H.memptr(), s.memptr(), y.memptr(), Hs.memptr(), r.memptr());
+    return;
+  }
+  arma::vec Hs = H * s;
+  if (method == trustHessSr1) {
     // Symmetric Rank-1: Nocedal & Wright Eq. 6.24, skip safeguard Eq. 6.26
     // (originally Murtagh & Sargent, Comput. J. 13, 185-194, 1970). N&W
     // recommend SR1 specifically for trust-region methods: unlike BFGS it

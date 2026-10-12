@@ -616,16 +616,19 @@ nmTest({
     expect_gt(unname(.st$env$nNewtonStall), 0L) # the acceptance really ran
     expect_equal(unname(.st$env$nFDGradFast), 0L) # ...and did not decline
     expect_equal(unname(.st$env$nNewtonFail[["maxit"]]), 0L)
-    # The gate must still be able to say NO, or "an unconverged mode declines" is
-    # untested and a regression that accepts everything would look identical.  Same
-    # stall, decrement bound driven below anything the solve can deliver: rejected,
-    # and attributed to the Newton rather than lost.
+    # The gate must still be able to say NO, or a regression that accepts everything
+    # would look identical.  Same stall, decrement bound driven below anything the solve
+    # can deliver: rejected, attributed to the Newton, and the rejected subjects are
+    # finite-differenced on their own rather than declining the whole gradient.
     expect_equal(unname(.no$env$nNewtonStall), 0L)
     expect_gt(.no$env$nNewtonFail[["maxit"]], 0L)
-    expect_equal(.no$env$nGradDecline[["newton"]], .no$env$nNewtonFail[["maxit"]])
+    expect_equal(.no$env$nGradDecline[["newton"]], 0L)
+    expect_equal(unname(.no$env$nOuterFdInd), .no$env$nNewtonFail[["maxit"]])
     expect_equal(.no$env$nNewtonFail[["singular"]], 0L) # rejected by the gate, not by Hf
-    expect_null(.foceiGradDirect(.no)) # ...so no analytic gradient
     gOk <- .foceiGradDirect(.ok)
+    gNo <- .foceiGradDirect(.no)
+    expect_equal(length(gNo), length(gOk))
+    expect_lt(max(abs(gNo - gOk) / pmax(abs(gOk), 1)), 0.05)
     gSt <- .foceiGradDirect(.st)
     expect_false(is.null(gOk))
     expect_false(is.null(gSt))

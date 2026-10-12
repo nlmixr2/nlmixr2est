@@ -122,6 +122,62 @@ test_that("the curvature supplier falls back when the analytic Hessian declines"
   expect_equal(.seen, 5e-4)
 })
 
+test_that("the BFGS curvature is the C++ update, bitwise the former R one", {
+  # the damped-BFGS update .trustOuterBfgs() computed in R before it moved to C
+  .ref <- function(b, s, y) {
+    .bs <- drop(b %*% s)
+    .sBs <- sum(s * .bs)
+    .sy <- sum(s * y)
+    if (is.finite(.sBs) && .sBs > 0 && all(is.finite(y))) {
+      .r <- if (.sy >= 0.2 * .sBs) {
+        y
+      } else {
+        .th <- 0.8 * .sBs / (.sBs - .sy)
+        .th * y + (1 - .th) * .bs
+      }
+      .sr <- sum(s * .r)
+      if (is.finite(.sr) && .sr > 1e-10 * sqrt(sum(s^2)) * sqrt(sum(.r^2))) {
+        b <- b - outer(.bs, .bs) / .sBs + outer(.r, .r) / .sr
+      }
+    }
+    b
+  }
+  set.seed(1140)
+  .nDamp <- 0L
+  for (n in c(1L, 2L, 3L, 5L, 8L)) {
+    .state <- new.env(parent = emptyenv())
+    .state$b <- diag(n)
+    .b <- diag(n)
+    .x <- rnorm(n)
+    .g <- rnorm(n)
+    .trustOuterBfgs(.state, .x, .g)
+    for (it in 1:40) {
+      .s <- rnorm(n) * 10^runif(1, -6, 1)
+      .y <- if (it %% 3 == 0) {
+        -.s * runif(1) + rnorm(n) * 0.1
+      } else {
+        drop(crossprod(matrix(rnorm(n * n), n)) %*% .s)
+      }
+      if (sum(.s * .y) < 0.2 * sum(.s * drop(.b %*% .s))) {
+        .nDamp <- .nDamp + 1L
+      }
+      .x1 <- .x + .s
+      .g1 <- .g + .y
+      .b <- .ref(.b, .x1 - .x, .g1 - .g)
+      .x <- .x1
+      .g <- .g1
+      expect_identical(.trustOuterBfgs(.state, .x, .g), .b)
+    }
+  }
+  expect_gt(.nDamp, 0L)
+  # an unreliable secant pair leaves the estimate alone
+  .state <- new.env(parent = emptyenv())
+  .state$b <- diag(2)
+  .trustOuterBfgs(.state, c(0, 0), c(0, 0))
+  expect_identical(.trustOuterBfgs(.state, c(1, 0), c(NaN, 0)), diag(2))
+  expect_identical(.trustOuterBfgs(.state, c(1, 0), c(NaN, 0)), diag(2))
+})
+
 test_that("the finite-difference curvature settles every point it reads", {
   # the gradient callback warm-starts from the last evaluation, so a probe read
   # without settling it first returns the gradient at a stale conditional mode

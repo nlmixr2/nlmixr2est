@@ -13,6 +13,9 @@ extern "C" {
   SEXP _nlmixr2est_powerDLambda2(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS);
   SEXP getDfSubsetVars(SEXP ipred, SEXP lhs);
   SEXP dfCbindList(SEXP lst);
+  int nmTrustBfgsUpdate(int n, double *H, const double *s, const double *y,
+                        double *Hs, double *r);
+  SEXP _nlmixr2est_trustBfgsUpdate(SEXP bS, SEXP sS, SEXP yS);
 
 #if defined(__cplusplus)
 }
