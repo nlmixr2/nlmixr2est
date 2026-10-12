@@ -7051,8 +7051,16 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
            double gillF, double d2Seed) {
   if (foceiGill == 1) op_focei.calcGrad=1;
   double f , x, hbar, h0, fp, fn=NA_REAL, phif, phib, phic, phicc = 0, phi, Chf, Chb,
-    Ch, hs, hphi, hk, tmp, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phict=NA_REAL;
+    Ch, hs, hphi, hk, tmp, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phit=NA_REAL;
 
+  // the fallback trial: the last one with |phif| < fTol not dominated by roundoff
+  auto saveTrial = [&]() {
+    if (fTol != 0 && fabs(phif) < fTol && Ch <= 0.1) {
+      lastfpt = fp;
+      lastht = lasth;
+      phit = phi;
+    }
+  };
   f = gillF;
   int k = 0;
   // Relative error should be given by the tolerances, I believe.
@@ -7084,6 +7092,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   Chf = Chat(phif, h0, epsA);
   Chb = Chat(phib, h0, epsA);
   Ch  = ChatP(phi, h0, epsA);
+  saveTrial();
   hs  = -1;
   hphi=hbar; // Not defined in Gill, but used for central difference switch if there are problems
   // FD2:  // Decide if to accept the interval
@@ -7094,17 +7103,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   if (0.001 <= Ch && Ch <= 0.1){
     phicc=phic;
     hphi=h0;
-    if (fTol != 0 && fabs(phif) < fTol){
-      lastfpt = fp;
-      phict=phic;
-      lastht  = lasth;
-    }
     goto FD5;
-  }
-  if (fTol != 0 && fabs(phif) < fTol){
-    lastfpt = fp;
-    lastht  = lasth;
-    phict=phic;
   }
   if (Ch < 0.001){
     goto FD4;
@@ -7126,23 +7125,14 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   Chf = Chat(phif, hk, epsA);
   Chb = Chat(phib, hk, epsA);
   Ch = ChatP(phi, hk, epsA);
+  saveTrial();
   if (hs < 0 && max2(Chf, Chb) <= 0.1){
     hs = hk;
   }
   if (Ch <= 0.1){
     phicc=phic;
     hphi = hk;
-    if (fTol != 0 && fabs(phif) < fTol){
-      lastfpt = fp;
-      lastht  = lasth;
-      phict=phic;
-    }
     goto FD5;
-  }
-  if (fTol != 0 && fabs(phif) < fTol){
-    lastfpt = fp;
-    lastht  = lasth;
-    phict=phic;
   }
   // >=, not ==: k is incremented before this test, so K = 0 would never stop
   if (k >= K) goto FD6;
@@ -7165,32 +7155,19 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   Chf = Chat(phif, hk, epsA);
   Chb = Chat(phib, hk, epsA);
   Ch = ChatP(phi, hk, epsA);
+  saveTrial();
   if (Ch > .1){
     phicc=tmp;
     hphi=hk*gillStep; // hphi = h_k-1
-    if (fTol != 0 && fabs(phif) < fTol){
-      lastfpt = fp;
-      lastht  = lasth;
-      phict=phic;
-    }
     goto FD5;
   }
   if (max2(Chf, Chb) <= 0.1){
     hs = hk;
   }
   if (0.001 <= Ch && Ch <= 1){
+    phicc=phic;
     hphi = hk;
-    if (fTol != 0 && fabs(phif) < fTol){
-      lastfpt = fp;
-      lastht  = lasth;
-      phict=phic;
-    }
     goto FD5;
-  }
-  if (fTol != 0 && fabs(phif) < fTol){
-    lastfpt = fp;
-    lastht  = lasth;
-    phict=phic;
   }
   if (k >= K) goto FD6;
   goto FD4;
@@ -7206,26 +7183,19 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   *ef = (*hf)*fabs(phi)/2+2*epsA/(*hf);
   *hphif=hphi;
   ehat = fabs(*df-phicc);
-  if (max2(*ef, ehat) <= 0.5*(*df)){
+  if (max2(*ef, ehat) <= 0.5*fabs(*df)){
     gill83tickStep(k, K, foceiGill);
     return 1;
   } else {
     // warning("The finite difference derivative err more than 50%% of the slope; Consider a different starting point.");
     if (!ISNA(lastht)){
-      // Could be used;  Stick with the last below Ftol
-      // *hf = lasth;
-      // fp = lastfp;
-      // *df = phiF(f, fp, *hf);
-      // *df2=0;
-      // // *df = 0.0; // Doesn't move.
-      // *hphif=2*(*hf);
-      // } else {
+      // fall back to the last trial with |phif| < fTol: its step and curvature
       *hf = lastht;
       fp = lastfpt;
       *df = phiF(f, fp, *hf);
-      *df2=phic;
-      // *df = 0.0; // Doesn't move.
-      *hphif=phict;
+      *df2 = phit;
+      *ef = (*hf)*fabs(phit)/2+2*epsA/(*hf);
+      *hphif = lastht;
     }
     gill83tickStep(k, K, foceiGill);
     return 2;
@@ -7241,7 +7211,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     gill83fn(&fp, theta, cid, foceiGill);
     *df = phiF(f, fp, *hf);
     *df2=0;
-    // *df = 0.0; // Doesn't move.
+    *ef = 2*epsA/(*hf);
     *hphif=_safe_sqrt(h0);
     // warning("The surface around the initial estimate is nearly constant in one parameter grad=0.  Consider a different starting point.");
     ret = 3;
@@ -10580,6 +10550,39 @@ bool foceiOuterRecord_(bool record) {
   return was;
 }
 
+// The inner state held across outer evaluations the optimizer did not ask for
+// (.bobyqaStationary's probe), so a probe that finds nothing leaves the fit as the
+// search did (#1196), the way the fast= posthoc gradient's guards do (#1057).
+static std::vector< std::unique_ptr<FdInnerStateGuard> > _outerHoldInner;
+static std::unique_ptr<FdPhaseStateGuard> _outerHoldPhase;
+
+// hold=TRUE saves the per-subject inner state and the fit-wide eta statistics;
+// hold=FALSE puts them back.  Returns whether a hold was released.
+//[[Rcpp::export(".foceiOuterHold")]]
+bool foceiOuterHold_(bool hold) {
+  const bool was = (_outerHoldPhase != nullptr);
+  const int nHeld = (int)_outerHoldInner.size();
+  _outerHoldInner.clear();
+  _outerHoldPhase.reset();
+  // As after CovEtaStart: the restored setup/oldEta would answer from the cache while
+  // ind->solve holds the last probe's solution, so force the next evaluation to solve.
+  for (int i = 0; i < nHeld; ++i) {
+    inds_focei[i].setup = 0;
+    if (covFitSolveLost_) continue;
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    if (ind != NULL) setIndSolve(ind, -1);
+  }
+  if (!hold) return was;
+  rx = getRxSolve_();
+  const int ns = (rx == NULL || inds_focei == NULL || getRxNsub(rx) <= 0) ? 0 : nIndsFocei;
+  _outerHoldPhase.reset(new FdPhaseStateGuard());
+  _outerHoldInner.reserve((size_t)ns);
+  for (int i = 0; i < ns; ++i) {
+    _outerHoldInner.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(i)));
+  }
+  return was;
+}
+
 //[[Rcpp::export]]
 double foceiOuterF(NumericVector &theta){
   int n = theta.size();
@@ -10756,10 +10759,12 @@ void foceiCustomFun(Environment e){
   List ctl = clone(as<List>(e["control"]));
   ctl["hessian"] = nlmixr2["foceiOuterH"];
   ctl["outerRecord"] = nlmixr2[".foceiOuterRecord"];
+  ctl["outerHold"] = nlmixr2[".foceiOuterHold"];
   Function opt = as<Function>(ctl["outerOptFun"]);
   //.bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...)
   List ret = as<List>(opt(_["par"]=x, _["fn"]=f, _["gr"]=g, _["lower"]=lower,
                           _["upper"]=upper,_["control"]=ctl));
+  foceiOuterHold_(false);
   x = ret["x"];
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
   // Otherwise ETAs may be off
