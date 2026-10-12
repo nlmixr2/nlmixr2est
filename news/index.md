@@ -203,6 +203,48 @@
 
 ### Bug Fixes
 
+- The analytic FOCE outer gradient (`fast = TRUE`) now
+  finite-differences a subject whose frozen-variance ETAs it cannot find
+  (a failed solve, or a mode it does not reach) on its own, as FOCEi
+  does a subject whose sensitivity solve fails. One such subject sent
+  the whole gradient to finite differences.
+
+- The damped-BFGS curvature of `outerOpt = "trust"` and
+  `hessianMethod = "bfgs"`
+  ([`trustControl()`](https://nlmixr2.github.io/nlmixr2est/reference/trustControl.md),
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md))
+  is now one C update. The two had rounded differently (bitwise apart in
+  177 of 200 random updates); an `outerOpt = "trust"` fit is unchanged,
+  and a `hessianMethod = "bfgs"` one may move at the last digits.
+
+- The default FOCEi outer search (`outerOpt = "bobyqa"`) now checks that
+  its normal exit is a stationary point: a central-difference gradient
+  and a short downhill probe, restarting bobyqa (up to 3 times) when the
+  probe lowers the objective by more than `10^(1-sigdig)`. In a narrow
+  curved valley bobyqa shrank its trust region and stopped early; an
+  [`ar()`](https://rdrr.io/r/stats/ar.html) fit stopped at OFV -1132.2
+  with `ar1.cor` 0.44 (truth 0.70) and now reaches -1222.5 with 0.70
+  ([\#1196](https://github.com/nlmixr2/nlmixr2est/issues/1196)). A
+  converged fit pays `2n + 4` extra evaluations and is otherwise
+  unchanged; `foceiControl(bobyqaStationary = FALSE)` skips the check.
+
+- A Gill83 step search with a nonzero `gillFtol`/`gillFtolCov` whose
+  derivative failed the error test fell back to a central-difference
+  step equal to the slope (possibly negative) and a slope as the
+  curvature; it now keeps the saved trial’s step and curvature, and no
+  longer saves a step the search rejected for roundoff
+  ([\#1194](https://github.com/nlmixr2/nlmixr2est/issues/1194)).
+
+- A Gill83 search that finds the objective constant in a parameter now
+  reports its error estimate rather than leaving it unset
+  ([\#1194](https://github.com/nlmixr2/nlmixr2est/issues/1194)).
+
+- A Gill83 step search no longer labels an accurate derivative “High
+  Grad Error” when the slope is negative or the accepted interval came
+  from shrinking the step; these spurious labels raised the “gradient
+  problems” warning and, with a nonzero `gillFtol`, replaced a good step
+  ([\#1194](https://github.com/nlmixr2/nlmixr2est/issues/1194)).
+
 - `foceiControl(fast = TRUE)` no longer stops on a model with an
   [`ar()`](https://rdrr.io/r/stats/ar.html) residual (“required for
   solving: rx_arEp_cp, rx_arT_cp”); the fit uses the finite-difference

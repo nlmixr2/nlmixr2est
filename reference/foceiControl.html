@@ -135,6 +135,7 @@
 <span>  trustFterm <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  trustMterm <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  trustPolish <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  bobyqaStationary <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  innerLbfgsLmm <span class="op">=</span> <span class="fl">5L</span>,</span>
 <span>  innerLbfgsFactr <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  innerLbfgsPgtol <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -1065,6 +1066,15 @@ help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
 outer search then also restarts once from where it stops, which costs
 about twice the outer evaluations.  `FALSE` (default) keeps the plain
 trust solve and a single outer search.</p></dd>
+
+
+<dt id="arg-bobyqastationary">bobyqaStationary<a class="anchor" aria-label="anchor" href="#arg-bobyqastationary"></a></dt>
+<dd><p>logical; when `TRUE` (default), a normal exit of
+the `"bobyqa"` outer search is checked with a central-difference
+gradient and a downhill probe.  If the probe lowers the objective by
+more than `10^(1-sigdig)`, bobyqa restarts from there (up to 3 times,
+within `maxOuterIterations`).  This catches a search that stops in a
+narrow valley short of the minimum (#1196); `FALSE` skips the check.</p></dd>
 
 
 <dt id="arg-innerlbfgslmm">innerLbfgsLmm<a class="anchor" aria-label="anchor" href="#arg-innerlbfgslmm"></a></dt>

@@ -334,13 +334,20 @@ ifoceControl()
 #>     if (isTRUE(control$trustPolish)) {
 #>         .ret <- .bobyqaRestart(fn, lower, upper, .ctl, .ret)
 #>     }
+#>     if (isTRUE(control$bobyqaStationary) && !is.null(.ctl$rhobeg)) {
+#>         .tol <- if (is.null(control$sigdig)) 
+#>             0.01
+#>         else 10^(1 - control$sigdig)
+#>         .ret <- .bobyqaStationary(fn, lower, upper, .ctl, .ret, 
+#>             tol = .tol, record = control$outerRecord, hold = control$outerHold)
+#>     }
 #>     .ret$x <- .ret$par
 #>     .ret$message <- .ret$msg
 #>     .ret$convergence <- .ret$ierr
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5644ca2bed50>
+#> <bytecode: 0x55860562cf88>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -393,6 +400,9 @@ ifoceControl()
 #> 
 #> $trustPolish
 #> [1] FALSE
+#> 
+#> $bobyqaStationary
+#> [1] TRUE
 #> 
 #> $innerLbfgsLmm
 #> [1] 5
