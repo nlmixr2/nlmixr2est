@@ -157,6 +157,14 @@
   
 ## Bug Fixes
 
+- The default FOCEi outer search (`outerOpt = "bobyqa"`) now checks that its
+  normal exit is a stationary point: a central-difference gradient and a short
+  downhill probe, restarting bobyqa (up to 3 times) when the probe lowers the
+  objective by more than `10^(1-sigdig)`.  In a narrow curved valley bobyqa
+  shrank its trust region and stopped early; an `ar()` fit stopped at OFV
+  -1132.2 with `ar1.cor` 0.44 (truth 0.70) and now reaches -1222.5 with 0.70
+  (#1196).  A converged fit pays `2n + 4` extra evaluations and is otherwise
+  unchanged; `foceiControl(bobyqaStationary = FALSE)` skips the check.
 - A Gill83 step search with a nonzero `gillFtol`/`gillFtolCov` whose
   derivative failed the error test fell back to a central-difference step equal
   to the slope (possibly negative) and a slope as the curvature; it now keeps the

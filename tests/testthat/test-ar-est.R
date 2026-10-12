@@ -71,6 +71,10 @@ nmTest({
     # regression guard: cor must not collapse to the [0,1) boundary (nor the sd)
     expect_lt(.corF, 0.95)
     expect_gt(.sdF, 0.2)
+    # bobyqa stopped in a narrow valley at OFV -1132 / cor 0.44 until the
+    # stationarity check restarted it (#1196)
+    expect_gt(.ff$env$optReturn$nStationaryRestart, 0L)
+    expect_lt(.ff$objf, -1220)
   })
 
   test_that("ar() combines with the log-likelihood residuals (+dnorm/+dt/+dcauchy) under focei", {
