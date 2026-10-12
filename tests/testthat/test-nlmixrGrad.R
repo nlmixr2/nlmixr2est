@@ -170,3 +170,65 @@ test_that("nlmixr2GradFun() takes a Gill step factor of at least 1, as foceiCont
   }
   expect_error(nlmixr2GradFun(f, gillStep = 0.5), "Element 1 is not >= 1", fixed = TRUE)
 })
+
+test_that("the gillFtol fallback of a high-error search keeps a step, not a slope (#1194)", {
+  # slope ~0 at 0.5 fails the 50% error test; every trial has |phif| < gillFtol
+  f <- function(x) 1 + (x - 0.5)^2 + (x - 0.5)^4
+  g0 <- nlmixr2Gill83(f, 0.5)
+  expect_identical(as.character(g0$info), "High Grad Error")
+  g <- nlmixr2Gill83(f, 0.5, gillFtol = 10)
+  expect_identical(as.character(g$info), "High Grad Error")
+  # the step was a central-difference slope (about 0) before the fix
+  expect_gt(g$hphi, 0)
+  expect_identical(g$hphi, g$hf)
+  expect_false(g$hf == g0$hf)
+  # slope, curvature and error all belong to the trial at that step
+  .h <- g$hf
+  .fp <- f(0.5 + .h)
+  .fn <- f(0.5 - .h)
+  .f <- f(0.5)
+  expect_equal(g$df, (.fp - .f) / .h, tolerance = 1e-12)
+  expect_equal(g$df2, (.fp - 2 * .f + .fn) / (.h * .h), tolerance = 1e-12)
+  expect_equal(g$err, .h * abs(g$df2) / 2 + 2 * abs(.f) * g$gillRtol / .h, tolerance = 1e-12)
+})
+
+test_that("the gillFtol fallback skips a step rejected for roundoff (#1194)", {
+  # the first shrink of h overshoots into roundoff (Ch > 0.1), so the search
+  # backs off to h0; the shrunk step used to be the fallback
+  f <- function(x) 1 + 1e4 * x^2
+  g0 <- nlmixr2Gill83(f, 0, gillStep = 50)
+  g <- nlmixr2Gill83(f, 0, gillStep = 50, gillFtol = 1e10)
+  expect_identical(as.character(g$info), "High Grad Error")
+  expect_identical(g$hf, g0$hphi)
+  expect_identical(g$hphi, g0$hphi)
+})
+
+test_that("the gillFtol fallback skips the growing steps rejected for roundoff (#1194)", {
+  # h grows from roundoff (Ch > 0.1); only those rejected steps have
+  # |phif| < gillFtol, so there is no fallback trial
+  f <- function(x) 1 + 0.01 * x^2
+  g0 <- nlmixr2Gill83(f, 0)
+  expect_identical(as.character(g0$info), "High Grad Error")
+  g <- nlmixr2Gill83(f, 0, gillFtol = 0.01 * g0$hphi * 0.6)
+  expect_identical(g$hf, g0$hf)
+  expect_identical(g$hphi, g0$hphi)
+  expect_identical(g$err, g0$err)
+})
+
+test_that("a constant-gradient Gill83 search reports its roundoff error (#1194)", {
+  g <- nlmixr2Gill83(function(x) 1 + 1e-9 * x^2, 2)
+  expect_identical(as.character(g$info), "Constant Grad")
+  expect_equal(g$err, 2 * g$gillRtol / g$hf)
+})
+
+test_that("an accurate Gill83 derivative is accepted (#1194)", {
+  # a negative slope always failed 'err <= 0.5 * df'
+  g <- nlmixr2Gill83(function(x) 1 - x + x^2, 0)
+  expect_identical(as.character(g$info), "Good")
+  expect_equal(g$df, -1, tolerance = 1e-3)
+  # an interval accepted after shrinking the step compared df with a central
+  # difference that was never computed (0)
+  g <- nlmixr2Gill83(function(x) 1 + x + 500 * x^2, 0)
+  expect_identical(as.character(g$info), "Good")
+  expect_equal(g$df, 1, tolerance = 1e-2)
+})

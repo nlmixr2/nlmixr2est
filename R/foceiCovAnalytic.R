@@ -1040,6 +1040,9 @@
       if (.foceiUsesLagVar(ui)) {
         return(.foceiAnalyticFallback("lag() of a calculated variable"))
       }
+      if (.foceiUsesAr(ui)) {
+        return(.foceiAnalyticFallback("an ar() residual"))
+      }
       if (.foceiCholSECovActive(ui)) {
         return(.foceiAnalyticFallback(.foceiCholSECovReason))
       }
@@ -3877,6 +3880,9 @@
   }
   if (.foceiUsesLagVar(ui)) {
     return(.foceiAnalyticFallback("lag() of a calculated variable"))
+  }
+  if (.foceiUsesAr(ui)) {
+    return(.foceiAnalyticFallback("an ar() residual"))
   }
   if (.foceiCholSECovActive(ui)) {
     return(.foceiAnalyticFallback(.foceiCholSECovReason))
