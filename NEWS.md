@@ -170,6 +170,10 @@
   Error" when the slope is negative or the accepted interval came from
   shrinking the step; these spurious labels raised the "gradient problems"
   warning and, with a nonzero `gillFtol`, replaced a good step (#1194).
+- `foceiControl(fast = TRUE)` no longer stops on a model with an `ar()`
+  residual ("required for solving: rx_arEp_cp, rx_arT_cp"); the fit uses the
+  finite-difference gradient instead, and `covMethod = "analytic"` falls back
+  to the finite-difference covariance (#1195).
 
 - The nlm-family covariance (`covMethod = "r"`, from `nlmixr2Hess()`) now runs
   its finite-difference stencil at the ODE tolerances FOCEi's covariance step
