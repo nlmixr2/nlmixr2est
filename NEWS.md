@@ -157,6 +157,11 @@
   
 ## Bug Fixes
 
+- `foceiControl(fast = TRUE)` no longer stops on a model with an `ar()`
+  residual ("required for solving: rx_arEp_cp, rx_arT_cp"); the fit uses the
+  finite-difference gradient instead, and `covMethod = "analytic"` falls back
+  to the finite-difference covariance (#1195).
+
 - The nlm-family covariance (`covMethod = "r"`, from `nlmixr2Hess()`) now runs
   its finite-difference stencil at the ODE tolerances FOCEi's covariance step
   uses (the fit's times 1e-3, capped at 1e-7).  At the fit's own tolerance
