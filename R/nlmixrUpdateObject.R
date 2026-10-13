@@ -4,8 +4,8 @@
 #' @param objName Name of the object
 #' @param envir Environment to search
 #' @param origFitEnv Original fit$env to compare, otherwise simply use fit$env
-#' @return `TRUE` (invisibly) when the binding was updated, `FALSE` otherwise
-#'   (e.g. `objName` is not a single name, as for `addCwres(fits[[1]])`)
+#' @return \code{TRUE} (invisibly) when the binding was updated, \code{FALSE} otherwise
+#'   (e.g. \code{objName} is not a single name, as for \code{addCwres(fits[[1]])})
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export

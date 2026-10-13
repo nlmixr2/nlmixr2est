@@ -1,4 +1,4 @@
-# nlmixr2est (development version)
+# nlmixr2est 7.2.0
 
 ## New features
 
@@ -155,7 +155,7 @@
   `dunif()`, `dweibull()`, `dlogis()`), failing a fit whose sampler had already
   handled those priors correctly.
   
-## Bug Fixes
+## Bug fixes
 
 - The analytic FOCE outer gradient (`fast = TRUE`) now finite-differences a
   subject whose frozen-variance ETAs it cannot find (a failed solve, or a mode
