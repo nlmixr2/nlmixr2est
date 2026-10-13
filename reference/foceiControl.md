@@ -606,8 +606,8 @@ foceiControl(
   `sigdig` – it is a convergence target on an inner Newton rather than a
   precision request. It also bounds the Newton decrement at which a
   stalled subject is accepted at the ODE solve's noise floor rather than
-  declining the gradient. Set it explicitly to test whether a fit's
-  finite-difference fallbacks are tolerance-driven.
+  finite-differenced on its own. Set it explicitly to test whether a
+  fit's finite-difference fallbacks are tolerance-driven.
 
 - hessEps:
 
