@@ -27,8 +27,8 @@ cat("> **Note:** the installed `rxode2` has no event bus, so the code in",
 finishes: a fit, a simulation, or an update to an existing fit.  This vignette
 is for people who want to **listen** to those events, for example to keep a
 log of every fit in a project.  The main consumer is the
-[nlmixr2log](https://github.com/nlmixr2/nlmixr2log) package; if you simply want
-a full log, use that package instead of writing your own listener.
+'nlmixr2log' package (in development); once available, use it for a full log
+instead of writing your own listener.
 
 ## The event bus in brief
 
@@ -252,7 +252,7 @@ rxode2::rxEventUnlisten("demo")
 
 ## Full logging
 
-[nlmixr2log](https://github.com/nlmixr2/nlmixr2log) listens to these events
+'nlmixr2log' (in development) listens to these events
 (and to those of the other nlmixr2 packages) and keeps a project log of fits,
 simulations, updates and saved results, so you rarely need to write a listener
 yourself.
