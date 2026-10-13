@@ -157,6 +157,12 @@
   
 ## Bug fixes
 
+- Now requires 'rxode2' >= 5.1.8, which no longer parses models in parallel
+  with a 'dparser' that is not thread-safe; this fixes the segfault in
+  `rxOptExpr()` seen in the CRAN r-devel clang checks of 7.1.0.
+
+- 'Matrix' moved from Imports to Suggests; it is only used in the tests.
+
 - The analytic FOCE outer gradient (`fast = TRUE`) now finite-differences a
   subject whose frozen-variance ETAs it cannot find (a failed solve, or a mode
   it does not reach) on its own, as FOCEi does a subject whose sensitivity
