@@ -135,8 +135,11 @@ nmTest({
       .cov_blk_data(),
       "focei",
       foceiControl(
-        sigdig = 3, maxOuterIterations = 1L, print = 0L,
-        covMethod = "r,s", covFull = TRUE
+        sigdig = 3,
+        maxOuterIterations = 1L,
+        print = 0L,
+        covMethod = "r,s",
+        covFull = TRUE
       )
     ))
     .cov0 <- fit$cov
