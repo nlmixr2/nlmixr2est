@@ -1,7 +1,7 @@
 Type: Package
 Package: nlmixr2est
 Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation Routines
-Version: 7.1.0
+Version: 7.2.0
 Authors@R: c(
     person("Matthew", "Fidler", , "matthew.fidler@gmail.com", role = c("aut", "cre"), comment = c(ORCID = "0000-0001-8538-6691")),
     person("Wenping", "Wang", , "wwang8198@gmail.com", role = "aut"),
@@ -51,7 +51,6 @@ Imports:
     L0Learn,
     lbfgsb3c (>= 2024-3.6),
     lotri,
-    Matrix,
     methods,
     minqa,
     n1qn1 (>= 6.0.1-12),
@@ -59,7 +58,7 @@ Imports:
     Rcpp,
     RcppTrust (>= 0.1.0),
     rex,
-    rxode2 (>= 5.1.7),
+    rxode2 (>= 5.1.8),
     stats,
     symengine,
     utils
@@ -80,6 +79,7 @@ Suggests:
     xgxr,
     sfsmisc,
     minpack.lm,
+    Matrix,
     remotes,
     fastGHQuad,
     rmarkdown,
@@ -96,7 +96,7 @@ LinkingTo:
     RcppArmadillo (>= 0.11.2.3.1),
     RcppEigen,
     RcppTrust (>= 0.1.0),
-    rxode2 (>= 5.1.7)
+    rxode2 (>= 5.1.8)
 Biarch: true
 Config/testthat/edition: 3
 Encoding: UTF-8

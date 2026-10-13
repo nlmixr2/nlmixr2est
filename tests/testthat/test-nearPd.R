@@ -1,5 +1,6 @@
 nmTest({
   test_that("test nearPD with same functions as Matrix", {
+    skip_if_not_installed("Matrix")
     # https://github.com/cran/Matrix/blob/65c37738919156f6bbb682a1d8198d715a82a19f/tests/dpo-test.R#L69-L136
     # Testing nearPD() --- this is partly in  ../man/nearPD.Rd :
 
