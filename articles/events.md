@@ -244,7 +244,8 @@ inside the fit and emits a `fitUpdate`; later reads do not:
 ``` r
 
 fit2 <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "saem",
-                                 control = saemControl(print = 0)))
+                                 control = saemControl(print = 0, nBurn = 10,
+                                                       nEm = 10)))
 show()
 #> fitComplete(objName = "one.cmt")
 o1 <- suppressMessages(fit2$objf)

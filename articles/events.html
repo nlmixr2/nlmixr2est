@@ -70,6 +70,8 @@
 
     
     
+<!-- events.Rmd is knitted from events.Rmd.orig (fits take too long for CRAN):
+knitr::knit("events.Rmd.orig", "events.Rmd") in vignettes/ -->
 <p><code>nlmixr2est</code> tells the <code>rxode2</code> <em>event
 bus</em> when a user-facing piece of work finishes: a fit, a simulation,
 or an update to an existing fit. This vignette is for people who want to
@@ -457,7 +459,8 @@ computes it inside the fit and emits a <code>fitUpdate</code>; later
 reads do not:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/message.html" class="external-link">suppressMessages</a></span><span class="op">(</span><span class="fu"><a href="../reference/nlmixr2.html">nlmixr2</a></span><span class="op">(</span><span class="va">one.cmt</span>, <span class="fu">nlmixr2data</span><span class="fu">::</span><span class="va"><a href="https://nlmixr2.github.io/nlmixr2data/reference/theo_sd.html" class="external-link">theo_sd</a></span>, est <span class="op">=</span> <span class="st">"saem"</span>,</span>
-<span>                                 control <span class="op">=</span> <span class="fu"><a href="../reference/saemControl.html">saemControl</a></span><span class="op">(</span>print <span class="op">=</span> <span class="fl">0</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span>                                 control <span class="op">=</span> <span class="fu"><a href="../reference/saemControl.html">saemControl</a></span><span class="op">(</span>print <span class="op">=</span> <span class="fl">0</span>, nBurn <span class="op">=</span> <span class="fl">10</span>,</span>
+<span>                                                       nEm <span class="op">=</span> <span class="fl">10</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="fu">show</span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; fitComplete(objName = "one.cmt")</span></span>
 <span><span class="va">o1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/message.html" class="external-link">suppressMessages</a></span><span class="op">(</span><span class="va">fit2</span><span class="op">$</span><span class="va">objf</span><span class="op">)</span></span>
