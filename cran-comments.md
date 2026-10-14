@@ -7,7 +7,9 @@ This release fixes the issues flagged in the CRAN checks of 7.2.0:
   gradient".  The Gill (1983) step search estimated the error in an objective
   near 0 as essentially 0, shrinking the finite-difference steps to roundoff;
   that error is now floored, and the example's derivatives are accurate on every
-  platform.
+  platform.  A search ending in its "odd or nearly linear" case (which the
+  example reaches on macOS) also reported the slope at its largest trial step;
+  it now uses its starting step.
 * noLD: a test compared a C++ BFGS update bitwise with an R reference; it now
   compares to a tolerance of 1e-10.
 
@@ -19,8 +21,10 @@ This release fixes the issues flagged in the CRAN checks of 7.2.0:
 
 ## R CMD check results
 
-`R CMD check --as-cran` on the submitted tarball: 0 ERRORs, 0 WARNINGs, 1 NOTE:
+`R CMD check --as-cran` on the submitted tarball: 0 ERRORs, 0 WARNINGs, 2 NOTEs:
 
+* `checking CRAN incoming feasibility ... NOTE` (Days since last update: 1):
+  this release fixes the check issues flagged on 7.2.0 above.
 * `checking compilation flags used ... NOTE` (`-mno-omit-leaf-frame-pointer`):
   set by the local R installation's `Makeconf`, not by `src/Makevars`.
 
