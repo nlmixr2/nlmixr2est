@@ -15,7 +15,9 @@ This release fixes the issues flagged in the CRAN checks of 7.2.0:
 
 The first submission of 7.2.1 gave "Overall checktime 13 min > 10 min" on
 r-devel-windows-x86_64.  The test files that compile models no longer run on
-CRAN (they still run on our CI), and the events vignette's SAEM fit is shorter.
+CRAN (they still run on our CI), and the events vignette is precomputed.
+On win-builder (R 4.6.1) the check time is now 485s; `checking tests` went
+from 255s to 27s.
 
 ## Test environments
 
