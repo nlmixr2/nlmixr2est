@@ -1,18 +1,20 @@
-# nlmixr2est 7.2.0
+# nlmixr2est 7.2.1
 
-This release fixes the r-devel-linux-x86_64-debian-clang ERROR in the CRAN checks
-of 7.1.0 (a segfault in `rxOptExpr()` during the tests).  The cause was a data
-race in 'dparser' when 'rxode2' parsed in parallel; 'rxode2' 5.1.8 (now on CRAN)
-only parses in parallel when 'dparser' is race-free, and this version requires
-`rxode2 (>= 5.1.8)`.  The failing test file was run repeatedly with a clang 21 /
-libomp 21 build against the CRAN 'rxode2' and 'dparser' without a crash.
+This release fixes the issues flagged in the CRAN checks of 7.2.0:
+
+* r-release-macos-x86_64, r-oldrel-macos-x86_64 and linux-arm64: the
+  `nlmixr2GradFun()` example stopped with "one or more parameters have a zero
+  gradient".  The Gill (1983) step search estimated the error in an objective
+  near 0 as essentially 0, shrinking the finite-difference steps to roundoff;
+  that error is now floored, and the example's derivatives are accurate on every
+  platform.
+* noLD: a test compared a C++ BFGS update bitwise with an R reference; it now
+  compares to a tolerance of 1e-10.
 
 ## Test environments
 
 * local: Ubuntu 24.04, R 4.6.1 (x86_64-pc-linux-gnu), gcc/g++ 14.2.0, checked
   against the CRAN versions of all dependencies (including `rxode2` 5.1.8)
-* local: clang 21.1.8 + libomp 21 build of the package and of the CRAN
-  `rxode2`/`dparser`
 * GitHub Actions: Windows, macOS and Linux, R release and devel
 
 ## R CMD check results

@@ -7063,8 +7063,9 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   };
   f = gillF;
   int k = 0;
-  // Relative error should be given by the tolerances, I believe.
-  double epsA=std::fabs(f)*epsR;
+  // error in f: relative to |f|, floored at epsR so an f near 0 (cancellation) does not
+  // shrink the steps to roundoff (Gill, Murray and Wright 1981)
+  double epsA=std::max(std::fabs(f), 1.0)*epsR;
   x = theta[cpar];
   // FD1: // Initialization
   hbar = 2*(1+std::fabs(x))*_safe_sqrt(epsA/(1+std::fabs(f)));
@@ -7176,7 +7177,8 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   goto FD4;
  FD5: // Compute the estimate of the optimal interval
   *df2 = phi;
-  *hf = 2*_safe_sqrt(epsA/fabs(phi));
+  // zero curvature (f locally linear) leaves the optimal interval unbounded: keep h0
+  *hf = (phi == 0) ? h0 : 2*_safe_sqrt(epsA/fabs(phi));
   theta[cpar] = x + *hf;
   gill83fn(&fp, theta, cid, foceiGill);
   // Restore theta
