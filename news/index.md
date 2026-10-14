@@ -2,6 +2,8 @@
 
 ## nlmixr2est 7.2.0
 
+CRAN release: 2026-10-13
+
 ### New features
 
 - `nlminbControl(solveType = "hessian")`, the default, now takes the

@@ -33,11 +33,11 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/v7.2.0/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="7.2.0" id="nlmixr2est-720">nlmixr2est 7.2.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-720"></a></h2>
+<h2 class="pkg-version" data-toc-text="7.2.0" id="nlmixr2est-720">nlmixr2est 7.2.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-720"></a></h2><p class="text-muted">CRAN release: 2026-10-13</p>
 <div class="section level3">
 <h3 id="new-features-7-2-0">New features<a class="anchor" aria-label="anchor" href="#new-features-7-2-0"></a></h3>
 <ul><li><p><code>nlminbControl(solveType = "hessian")</code>, the default, now takes the covariance from central differences of the analytic gradient at the estimates (<code>covMethod = "nlminb"</code>, labelled <code>"r (nlminb)"</code>), the Hessian <code>nlmControl(covMethod = "nlm")</code> uses, instead of a separate <code><a href="../reference/nlmixr2Hess.html">nlmixr2Hess()</a></code> stencil. On theo_sd the standard errors match the stencil’s and the covariance takes 0.01 s instead of 0.9 s; on a pooled warfarin model the stencil differenced solver noise along the ka/ktr ridge. <code>covMethod = "r"</code> keeps the stencil.</p></li>

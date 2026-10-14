@@ -411,7 +411,7 @@ npbControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55f43912ebd0>
+#> <bytecode: 0x55d82eb2cb18>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
