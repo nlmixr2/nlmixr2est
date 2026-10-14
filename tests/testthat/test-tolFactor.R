@@ -103,9 +103,7 @@ nmTest({
 
   test_that("the covariance step leaves the fit's tolFactor and its warnings alone", {
     # A covariate coefficient whose covariate is 0 everywhere: the objective is
-    # flat in tz, so the covariance step's search for its step size probes far
-    # enough to need looser tolerances.  The estimation (no outer iterations)
-    # never does.
+    # flat in tz.
     flat <- function() {
       ini({
         tka <- log(1.5)
@@ -127,8 +125,13 @@ nmTest({
     d <- nlmixr2data::theo_sd
     d$Z <- 0
     .ctl <- function(...) foceiControl(print = 0, maxOuterIterations = 0L, calcTables = FALSE, ...)
-    .none <- .nlmixr(flat, d, "focei", .ctl(covMethod = ""))
-    .rs <- .nlmixr(flat, d, "focei", .ctl())
+    # maxsteps = 100 is enough at the initial estimates (no outer iterations) but
+    # too few for some of the covariance step's perturbed solves
+    .ctl100 <- function(...) {
+      .ctl(rxControl = rxode2::rxControl(maxsteps = 100L), ...)
+    }
+    .none <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "focei", .ctl100(covMethod = ""))
+    .rs <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "focei", .ctl100())
     expect_false(any(grepl("tolerances", .none$runInfo, fixed = TRUE)))
     # the fit's own (and its tables') tolFactor; the covariance step's loosening
     # was reported as every subject's (316)
