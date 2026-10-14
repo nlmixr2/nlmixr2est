@@ -7051,7 +7051,8 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
            double gillF, double d2Seed) {
   if (foceiGill == 1) op_focei.calcGrad=1;
   double f , x, hbar, h0, fp, fn=NA_REAL, phif, phib, phic, phicc = 0, phi, Chf, Chb,
-    Ch, hs, hphi, hk, tmp, tmpPhi, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phit=NA_REAL;
+    Ch, hs, hphi, hk, tmp, tmpPhi, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phit=NA_REAL,
+    phic0;
 
   // the fallback trial: the last one with |phif| < fTol not dominated by roundoff
   auto saveTrial = [&]() {
@@ -7088,6 +7089,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   phif = phiF(f, fp, h0);
   phib = phiB(f, fn, h0);
   phic = phiC(fp, fn, h0);
+  phic0 = phic;
   phi = Phi(fp, f, fn, h0);
 
   Chf = Chat(phif, h0, epsA);
@@ -7222,7 +7224,8 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     ret = 3;
   } else if (Ch > 0.1){ // Odd or nearly linear.
     *hf = h0;
-    *df = phic;
+    // the central difference at h0: the last trial's step grew up to gillStep^K * h0
+    *df = phic0;
     *df2 = 0;
     *ef = 2*epsA/(*hf);
     *hphif=hphi;

@@ -264,3 +264,11 @@ test_that("Gill83 steps stay above roundoff when f is near 0", {
   # at x = 0, pi, 2 * pi f'' is exactly 0; the interval used to be 2 * sqrt(epsA / 0)
   expect_true(all(g$df2[c(1, 6, 11)] == 0))
 })
+
+test_that("an odd/linear Gill83 search reports the central difference at h0", {
+  # f'' at 0.5 is too small to accept an interval; the step grows to
+  # gillStep^gillK * h0, where the central difference was off by ~9%
+  f <- function(x) sin(x - 0.5) + 1e-7 * (x - 0.5)^2
+  g <- nlmixr2Gill83(f, 0.5)
+  expect_equal(g$df, 1, tolerance = 1e-4)
+})
