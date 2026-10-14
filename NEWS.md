@@ -1,3 +1,19 @@
+# nlmixr2est 7.2.1
+
+## Bug fixes
+
+- The Gill (1983) finite-difference step search now floors its estimate of the
+  error in the objective at `gillRtol` (`max(|f|, 1) * gillRtol`), so an
+  objective near 0 no longer shrinks the steps to roundoff.  This fixed the
+  `nlmixr2GradFun()` example erroring with a zero gradient on macOS and
+  linux-arm64.  A search that accepts an interval with zero curvature (f
+  locally linear) now keeps its starting interval instead of an infinite one,
+  and a search that ends as "Odd/Linear Grad" reports the central difference at
+  its starting interval rather than at its last, largest trial step.
+
+- A test compared the C++ damped-BFGS update bitwise with the former R one; it
+  now allows for rounding differences (failed on CRAN's noLD check).
+
 # nlmixr2est 7.2.0
 
 ## New features

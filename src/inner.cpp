@@ -7051,7 +7051,8 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
            double gillF, double d2Seed) {
   if (foceiGill == 1) op_focei.calcGrad=1;
   double f , x, hbar, h0, fp, fn=NA_REAL, phif, phib, phic, phicc = 0, phi, Chf, Chb,
-    Ch, hs, hphi, hk, tmp, tmpPhi, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phit=NA_REAL;
+    Ch, hs, hphi, hk, tmp, tmpPhi, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phit=NA_REAL,
+    phic0;
 
   // the fallback trial: the last one with |phif| < fTol not dominated by roundoff
   auto saveTrial = [&]() {
@@ -7063,8 +7064,9 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   };
   f = gillF;
   int k = 0;
-  // Relative error should be given by the tolerances, I believe.
-  double epsA=std::fabs(f)*epsR;
+  // error in f: relative to |f|, floored at epsR so an f near 0 (cancellation) does not
+  // shrink the steps to roundoff (Gill, Murray and Wright 1981)
+  double epsA=std::max(std::fabs(f), 1.0)*epsR;
   x = theta[cpar];
   // FD1: // Initialization
   hbar = 2*(1+std::fabs(x))*_safe_sqrt(epsA/(1+std::fabs(f)));
@@ -7087,6 +7089,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   phif = phiF(f, fp, h0);
   phib = phiB(f, fn, h0);
   phic = phiC(fp, fn, h0);
+  phic0 = phic;
   phi = Phi(fp, f, fn, h0);
 
   Chf = Chat(phif, h0, epsA);
@@ -7176,7 +7179,8 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   goto FD4;
  FD5: // Compute the estimate of the optimal interval
   *df2 = phi;
-  *hf = 2*_safe_sqrt(epsA/fabs(phi));
+  // zero curvature (f locally linear) leaves the optimal interval unbounded: keep h0
+  *hf = (phi == 0) ? h0 : 2*_safe_sqrt(epsA/fabs(phi));
   theta[cpar] = x + *hf;
   gill83fn(&fp, theta, cid, foceiGill);
   // Restore theta
@@ -7220,7 +7224,8 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     ret = 3;
   } else if (Ch > 0.1){ // Odd or nearly linear.
     *hf = h0;
-    *df = phic;
+    // the central difference at h0: the last trial's step grew up to gillStep^K * h0
+    *df = phic0;
     *df2 = 0;
     *ef = 2*epsA/(*hf);
     *hphif=hphi;

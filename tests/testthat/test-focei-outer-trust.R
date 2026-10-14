@@ -122,7 +122,7 @@ test_that("the curvature supplier falls back when the analytic Hessian declines"
   expect_equal(.seen, 5e-4)
 })
 
-test_that("the BFGS curvature is the C++ update, bitwise the former R one", {
+test_that("the BFGS curvature is the C++ update of the former R one", {
   # the damped-BFGS update .trustOuterBfgs() computed in R before it moved to C
   .ref <- function(b, s, y) {
     .bs <- drop(b %*% s)
@@ -166,7 +166,8 @@ test_that("the BFGS curvature is the C++ update, bitwise the former R one", {
       .b <- .ref(.b, .x1 - .x, .g1 - .g)
       .x <- .x1
       .g <- .g1
-      expect_identical(.trustOuterBfgs(.state, .x, .g), .b)
+      # not bitwise: C++ and R may round differently (FMA, no long double)
+      expect_equal(.trustOuterBfgs(.state, .x, .g), .b, tolerance = 1e-10)
     }
   }
   expect_gt(.nDamp, 0L)

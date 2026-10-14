@@ -51,18 +51,18 @@ test_that("nlmixr2Gill83() and nlmixr2Hess() use the gill* arguments", {
   expect_equal(g$gillK, 4L)
   expect_equal(g$gillStep, 3)
   expect_equal(g$gillFtol, 1e-3)
-  # an accepted interval is 2*sqrt(|f|*gillRtol/|f''|)
+  # an accepted interval is 2*sqrt(max(|f|, 1)*gillRtol/|f''|)
   expect_equal(as.character(g$info), "Good")
-  expect_equal(g$hf, 2 * sqrt(abs(sin(1)) * 1e-6 / abs(g$df2)))
+  expect_equal(g$hf, 2 * sqrt(max(abs(sin(1)), 1) * 1e-6 / abs(g$df2)))
   expect_false(identical(nlmixr2Hess(1, sin, gillRtol = 1e-4), nlmixr2Hess(1, sin)))
   expect_error(nlmixr2Gill83(sin, 1, gillK = -1L), "gillK")
 })
 
 test_that("gillK = 0 determines no step size", {
   # the search would start from gillStep * 2 * (1 + |x|) * sqrt(epsA / (1 + |f|)),
-  # epsA = |f| * gillRtol; that is what is reported, unsearched
+  # epsA = max(|f|, 1) * gillRtol; that is what is reported, unsearched
   .f <- sin(1)
-  .epsA <- abs(.f) * sqrt(.Machine$double.eps)
+  .epsA <- max(abs(.f), 1) * sqrt(.Machine$double.eps)
   .h0 <- 2 * (2 * (1 + 1) * sqrt(.epsA / (1 + abs(.f))))
   g <- nlmixr2Gill83(sin, 1, gillK = 0L)
   expect_identical(as.character(g$info), "Not Assessed")
@@ -248,4 +248,27 @@ test_that("a Gill83 search that backs off a shrunk step keeps that step's curvat
   hk <- h / 10
   phiK <- (f(x0 + hk) - 2 * f(x0) + f(x0 - hk)) / hk^2
   expect_gt(4 * abs(f(x0)) * g$gillRtol / (hk^2 * abs(phiK)), 0.1)
+})
+
+test_that("Gill83 steps stay above roundoff when f is near 0", {
+  # sum(sin(x)) over a full period cancels to ~1e-16; an error model of |f| * gillRtol
+  # shrank the steps to roundoff, giving 10% wrong (or exactly 0) derivatives
+  f <- function(x) sum(sin(x))
+  x <- (0:10) * 2 * pi / 10
+  g <- nlmixr2Gill83(f, x)
+  expect_true(all(is.finite(g$hf) & g$hf > 1e-8))
+  expect_equal(g$df, cos(x), tolerance = 1e-3)
+  gf <- nlmixr2GradFun(f, print = 0)
+  gf$eval(x)
+  expect_equal(gf$grad(x), cos(x), tolerance = 1e-3)
+  # at x = 0, pi, 2 * pi f'' is exactly 0; the interval used to be 2 * sqrt(epsA / 0)
+  expect_true(all(g$df2[c(1, 6, 11)] == 0))
+})
+
+test_that("an odd/linear Gill83 search reports the central difference at h0", {
+  # f'' at 0.5 is too small to accept an interval; the step grows to
+  # gillStep^gillK * h0, where the central difference was off by ~9%
+  f <- function(x) sin(x - 0.5) + 1e-7 * (x - 0.5)^2
+  g <- nlmixr2Gill83(f, 0.5)
+  expect_equal(g$df, 1, tolerance = 1e-4)
 })
