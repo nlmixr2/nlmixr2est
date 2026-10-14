@@ -7,21 +7,14 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r, include = FALSE}
-knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
-has_bus <- exists("rxEventListen", asNamespace("rxode2"))
-knitr::opts_chunk$set(eval = has_bus)
-```
+<!-- events.Rmd is knitted from events.Rmd.orig (fits take too long for CRAN):
+knitr::knit("events.Rmd.orig", "events.Rmd") in vignettes/ -->
 
-```{r, include = FALSE}
-rxode2::rxSetProgressBar(0)
-```
 
-```{r, echo = FALSE, eval = !has_bus, results = "asis"}
-cat("> **Note:** the installed `rxode2` has no event bus, so the code in",
-    "this vignette is shown but not run.  With such an `rxode2`, nlmixr2est",
-    "emits nothing and behaves exactly as before.\n")
-```
+
+
+
+
 
 `nlmixr2est` tells the `rxode2` *event bus* when a user-facing piece of work
 finishes: a fit, a simulation, or an update to an existing fit.  This vignette
@@ -146,8 +139,10 @@ frame inlined by `do.call()`) become `` `<value>` `` (or a single
 
 A small recording listener keeps the event names and a few payload fields:
 
-```{r}
+
+``` r
 library(nlmixr2est)
+#> Loading required package: nlmixr2data
 
 events <- list()
 rxode2::rxEventListen("demo", function(event, ...) {
@@ -169,7 +164,8 @@ show <- function() {
 
 A small model fit with `posthoc`:
 
-```{r, results = "hide"}
+
+``` r
 one.cmt <- function() {
   ini({
     tka <- log(1.57)
@@ -193,19 +189,25 @@ fit <- suppressMessages(
 )
 ```
 
-```{r}
+
+``` r
 show()
+#> fitComplete(objName = "one.cmt")
 ```
 
 Only one `fitComplete` is delivered, although the fit solved the model many
 times.  Simulations and predictions from the fit each give one
 `solveComplete`:
 
-```{r}
+
+``` r
 s <- suppressMessages(simulate(fit))
 p <- suppressMessages(predict(fit, nlmixr2data::theo_sd))
 v <- suppressMessages(vpcSim(fit, n = 3))
 show()
+#> solveComplete(kind = "rxSolve")
+#> solveComplete(kind = "predict")
+#> solveComplete(kind = "vpcSim")
 ```
 
 Updates report whether the user's object now holds the result.  `addTable()`
@@ -214,39 +216,50 @@ shared environment.  The second call below recomputes the table the fit
 already has, so its result is identical to its input and nothing is emitted;
 the third adds NPDE in place:
 
-```{r}
+
+``` r
 f2 <- suppressMessages(addTable(fit))
 fit <- suppressMessages(addTable(fit, updateObject = TRUE))
 fit <- suppressMessages(addTable(fit, updateObject = TRUE,
                                  table = tableControl(npde = TRUE)))
 show()
+#> fitUpdate(what = "table", inPlace = FALSE)
+#> fitUpdate(what = "table", name = "fit", inPlace = TRUE)
 ```
 
 A `saem` fit defers its objective function.  The first read computes it inside
 the fit and emits a `fitUpdate`; later reads do not:
 
-```{r}
+
+``` r
 fit2 <- suppressMessages(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "saem",
-                                 control = saemControl(print = 0)))
+                                 control = saemControl(print = 0, nBurn = 10,
+                                                       nEm = 10)))
 show()
+#> fitComplete(objName = "one.cmt")
 o1 <- suppressMessages(fit2$objf)
 o2 <- fit2$objf
 show()
+#> fitUpdate(what = "ofv", inPlace = TRUE)
 ```
 
 `addCwres()` rebinds the variable it was given.  Calling it again has nothing
 to do, so the second call emits nothing:
 
-```{r}
+
+``` r
 fit2 <- suppressMessages(addCwres(fit2))
 show()
+#> fitUpdate(what = "cwres", name = "fit2", inPlace = TRUE)
 fit2 <- suppressMessages(addCwres(fit2))
 show()
+#> (no events)
 ```
 
 Remove the listener when you are done:
 
-```{r}
+
+``` r
 rxode2::rxEventUnlisten("demo")
 ```
 

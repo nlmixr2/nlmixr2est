@@ -286,8 +286,31 @@ if (nzchar(.batch)) {
   } else {
     .filter <- paste0("^(?!(", paste(.slowAll, collapse = "|"), ")$)")
   }
+} else if (.onCran) {
+  # CRAN-visible files that compile models; they pushed CRAN's Windows check
+  # past its 10 min limit.  CI's essential subset still runs them.
+  .cranSkip <- c(
+    "focei-lincmt-carry-trans",
+    "focei-lincmt-carry-ll",
+    "nlmixr2output",
+    "focei-lincmt-carry-jump",
+    "focei-lincmt-carry-emit-fd",
+    "imp-cov",
+    "focei-lincmt-carry-eligible-gates",
+    "iov-method-gate",
+    "focei-lincmt-carry-emit",
+    "rxuideparse",
+    "cov-analytic",
+    "lint-superassign",
+    "saem-iov-twolevel",
+    "focei-lincmt-carry-eligible",
+    "focei-family-control",
+    "cov",
+    "focei-outer-trust"
+  )
+  .filter <- paste0("^(?!(", paste(.cranSkip, collapse = "|"), ")$)")
 }
-# Locally (and on CRAN) .filter stays NULL -> run everything.
+# Locally .filter stays NULL -> run everything.
 
 # stop_on_failure MUST stay TRUE (the default).  It was set to FALSE in
 # 4af6a7eba as a debugging aid ("Be more verbose in testthat to track-down
