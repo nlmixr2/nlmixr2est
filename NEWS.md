@@ -2,10 +2,21 @@
 
 ## Bug fixes
 
+### Estimation
+
 - A fit that fails late in its output step (for example a `saem` fit whose
   inter-occasion variability cannot be finalized) now reports its own error.
   The timing step read the fit's time table before the fit had one, and its
   "object 'time' not found" replaced the error.
+
+### Covariance
+
+- `covMethod = "analytic"` no longer falls back to the finite-difference
+  covariance when a record that is not an observation (an EVID 2 record, or an
+  EVID 0 record with a missing DV or `MDV = 1`) shares the time of one of a
+  subject's observations.  The augmented sensitivity solves kept every row at an
+  observation time, counted that record as an observation and gave up; they now
+  keep the observation records.
 
 # nlmixr2est 7.2.1
 

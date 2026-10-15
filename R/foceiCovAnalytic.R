@@ -3715,11 +3715,21 @@
   R
 }
 
+#' Whether a solve's observation rows are the caller's observations, in order
+#' @param solved times of the solve's observation (EVID 0) rows
+#' @param times the observation times the caller expects
+#' @return `TRUE` when they agree
+#' @noRd
+.foceiAnalyticObsAligned <- function(solved, times) {
+  length(solved) > 0L && length(solved) == length(times) && all(solved == times)
+}
+
 #' Base subject solve: `f` plus the 1st/2nd analytic sensitivities (`a`, `A`), no
 #' 3rd-order Shi tensor.  Shared by [.foceiAnalyticSolveSubjectFD3] (which adds `Ath`),
 #' the AGQ node solves and the VAE decoder.  Muffles benign solver
-#' warnings (a real error returns `NULL` -> FD fallback); the nrow guard bails when an
-#' EVID==2/covariate-update row shares an obs timestamp (would misalign f against y).
+#' warnings (a real error returns `NULL` -> FD fallback).  The rows are the solve's
+#' observation (EVID 0) records, so an EVID 2 or missing-DV record at an observation
+#' time is not one; `times` only confirms they line up with the caller's observations.
 #' @noRd
 .foceiAnalyticSolveFA <- function(aug, params, ev, times, tol = 1e-10) {
   dirs <- aug$dirs
@@ -3745,6 +3755,7 @@
             events = .ev,
             cores = .nc,
             returnType = "data.frame",
+            addDosing = NULL, # observation (EVID 0) records only
             atol = tol,
             rtol = tol
           ),
@@ -3758,9 +3769,8 @@
   if (is.null(.d)) {
     return(NULL)
   }
-  .d <- .d[.d$time %in% times, , drop = FALSE]
   .fD <- if (is.null(aug$fDirs)) dirs else aug$fDirs # sigma-skip: f-sensitivities only over f-directions
-  if (nrow(.d) == 0L || nrow(.d) != length(times) || !all(c("rx_predf_", paste0("rx_f1_", .fD)) %in% names(.d))) {
+  if (!.foceiAnalyticObsAligned(.d$time, times) || !all(c("rx_predf_", paste0("rx_f1_", .fD)) %in% names(.d))) {
     return(NULL)
   }
   no <- nrow(.d)

@@ -303,6 +303,7 @@
             events = .ev,
             cores = .nc,
             returnType = "data.frame",
+            addDosing = NULL, # observation (EVID 0) records only
             atol = tol[1],
             rtol = tol[length(tol)]
           ),
@@ -379,11 +380,12 @@
     if (is.null(.ri)) {
       return(NULL)
     }
-    .keep <- .ri[.tm[.ri] %in% obsTimes[[i]]]
-    no <- length(.keep)
-    if (no != length(obsTimes[[i]])) {
+    # the solve kept only observation records, so these are the subject's observations
+    if (!.foceiAnalyticObsAligned(.tm[.ri], obsTimes[[i]])) {
       return(NULL)
     }
+    .keep <- .ri
+    no <- length(.keep)
     a <- matrix(0, no, nd)
     a[, .cm$fDirIdx] <- .M1[.keep, , drop = FALSE]
     A <- array(0, c(no, nd, nd))
