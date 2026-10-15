@@ -441,14 +441,16 @@
 #' Stop a `setCov()` request that could not be computed or installed
 #' @param method requested covariance-method name
 #' @param reason what was wrong with the result, or `NULL`
+#' @param why why no result was computed, or `NULL`
 #' @return never returns
 #' @noRd
-.setCovFail <- function(method, reason = NULL) {
+.setCovFail <- function(method, reason = NULL, why = NULL) {
   stop(
     "covMethod=\"",
     method,
     "\" could not be computed for this fit",
     if (length(reason) == 1L && reason != "could not be computed") paste0(" (the result ", reason, ")"),
+    if (length(why) == 1L) paste0(" (", why, ")"),
     "; the covariance is left unchanged",
     call. = FALSE
   )
@@ -1267,6 +1269,15 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
   .setCovInstall(env, method, structure(.cov, mixRotated = TRUE))
 }
 
+#' Keep an error from the analytic assembly as the reason `setCov()` gives
+#' @param e the condition
+#' @return `NULL`
+#' @noRd
+.setCovAnalyticError <- function(e) {
+  .foceiAnalyticWhy$reason <- paste0("an error (", conditionMessage(e), ")")
+  NULL
+}
+
 #' Assemble the exact analytic observed information and install the shape
 #' `method` names
 #'
@@ -1280,16 +1291,20 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 #' @noRd
 .setCovAnalytic <- function(fit, env, method) {
   .full <- .covIsFull(method)
-  .r <- tryCatch(.foceiCovAnalyticCalc(fit), error = function(e) NULL)
+  .r <- tryCatch(.foceiCovAnalyticCalc(fit), error = .setCovAnalyticError)
+  if (is.null(.r)) {
+    .why <- .foceiAnalyticWhy$reason
+    .setCovFail(method, why = if (is.null(.why)) "no reason recorded" else .why)
+  }
   # `pd` judges the FULL matrix, which is the right gate for either shape: a
   # submatrix of the inverse of an indefinite information can look positive
   # definite on its own (#1055)
-  if (!is.null(.r) && !isTRUE(.r$pd)) {
+  if (!isTRUE(.r$pd)) {
     .setCovFail(method, "is not positive definite")
   }
   .cov <- .covAnalyticScope(env, .r$cov, .full)
   if (is.null(.cov)) {
-    .setCovFail(method)
+    .setCovFail(method, why = "its theta block could not be identified")
   }
   .setCovInstall(env, method, .cov)
   assign(".covAnalytic", .r, envir = env)

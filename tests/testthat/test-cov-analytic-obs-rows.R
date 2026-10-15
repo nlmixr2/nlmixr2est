@@ -180,7 +180,12 @@ nmTest({
       expect_length(.e$f, length(.t))
       expect_equal(.e$f, .e0$f, tolerance = 1e-6)
     }
-    # the times only confirm the rows
+    # the times only confirm the rows; a mismatch is a NULL with the mismatch noted
+    .foceiAnalyticWhyReset()
     expect_null(.foceiAnalyticSolveFA(.am, .p, .s1(.orBase), c(.t, 30)))
+    expect_identical(
+      .foceiAnalyticWhy$detail,
+      sprintf("%d observation rows solved for %d observations", length(.t), length(.t) + 1L)
+    )
   })
 })
