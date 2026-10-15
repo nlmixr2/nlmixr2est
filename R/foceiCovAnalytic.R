@@ -523,7 +523,7 @@
     # foce+ (foceType=1) keeps the live R (no eta=0 solve).  Per-subject Shi fallback.
     .obsAll <- lapply(seq_len(nsub), function(i) {
       .s <- .byId[[as.character(.idCode[i])]]
-      if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE]
+      if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.nmObsRows(.s), , drop = FALSE]
     })
     if (any(vapply(.obsAll, is.null, logical(1L)))) {
       return(.foceiAnalyticFallback("a subject with no observations"))
@@ -703,7 +703,7 @@
   # (withR=TRUE), instead of the per-subject Shi.  Per-subject Shi is the fallback.
   .obsAll <- lapply(seq_len(nsub), function(i) {
     .s <- .byId[[as.character(.idCode[i])]]
-    if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE]
+    if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.nmObsRows(.s), , drop = FALSE]
   })
   if (any(vapply(.obsAll, is.null, logical(1L)))) {
     return(.foceiAnalyticFallback("a subject with no observations"))
@@ -919,7 +919,7 @@
   # foce+ keeps the live R (no eta=0 solve).  Per-subject Shi is the fallback.
   .obsAll <- lapply(seq_along(ids), function(i) {
     .s <- .byId[[as.character(.idCode[i])]]
-    if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE]
+    if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.nmObsRows(.s), , drop = FALSE]
   })
   if (any(vapply(.obsAll, is.null, logical(1L)))) {
     return(.foceiAnalyticFallback("a subject with no observations"))

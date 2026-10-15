@@ -1316,7 +1316,7 @@ vaeCovariates <- function(
     ## Exponents and lambdas are NOT scales and are left alone.
     .errScaleAbs <- as.character(.idf$name[!is.na(.idf$err) & .idf$err %in% c("add", "lnorm")])
     .errScaleRel <- as.character(.idf$name[!is.na(.idf$err) & .idf$err %in% c("prop", "pow")])
-    .dvObs <- suppressWarnings(as.numeric(d$DV[d$EVID == 0]))
+    .dvObs <- suppressWarnings(as.numeric(d$DV[.nmObsRows(d)]))
     .dvSpread <- stats::sd(.dvObs[is.finite(.dvObs)])
     if (!is.finite(.dvSpread) || .dvSpread <= 0) {
       .dvSpread <- 1
@@ -1404,7 +1404,7 @@ vaeCovariates <- function(
   .allDv <- numeric(0)
   for (i in seq_len(N)) {
     .di <- d[d$ID == .ids[i], , drop = FALSE]
-    .obs <- .di[.di$EVID == 0, , drop = FALSE]
+    .obs <- .di[.nmObsRows(.di), , drop = FALSE]
     .times <- .obs$TIME
     .y <- .obs$DV
     ## M2/M3/M4 censoring columns (0 / NA when absent)

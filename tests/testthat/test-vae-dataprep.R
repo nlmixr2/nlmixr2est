@@ -207,4 +207,46 @@ nmTest({
     ## lsd is the only stage-2 parameter; every structural one stays in stage 1
     expect_equal(prep$regressNames[prep$regressStage2 > 0L], "lsd")
   })
+
+  test_that(".vaeDataPrep counts no missing-DV or MDV = 1 record as an observation", {
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    ui <- rxode2::assertRxUi(.mod)
+    .base <- nlmixr2data::theo_sd
+    .base$MDV <- as.integer(.base$EVID != 0)
+    .t <- .base$TIME[.base$ID == 1 & .base$EVID == 0][3]
+    .add <- function(dv, mdv) {
+      .r <- .base[.base$ID == 1 & .base$EVID == 0, ][1, ]
+      .r$TIME <- .t
+      .r$DV <- dv
+      .r$MDV <- mdv
+      .d <- rbind(.base, .r)
+      .d[order(.d$ID, .d$TIME, -.d$EVID), ]
+    }
+    .p0 <- .vaeDataPrep(ui, .base)
+    for (.d in list(.add(NA_real_, 0L), .add(5, 1L))) {
+      .p <- .vaeDataPrep(ui, .d)
+      expect_identical(.p$Nobs, .p0$Nobs)
+      expect_identical(.p$subj[[1]]$times, .p0$subj[[1]]$times)
+      expect_identical(.p$subj[[1]]$y, .p0$subj[[1]]$y)
+    }
+  })
 })

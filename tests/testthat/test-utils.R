@@ -91,4 +91,16 @@ nmTest({
     expect_true("Aborted calculation" %in% check$error)
     expect_true("none of the predictions depend on 'ETA'" %in% check$error)
   })
+
+  test_that(".nmObsRows() counts EVID 0 records with a DV and MDV 0", {
+    .d <- data.frame(
+      EVID = c(1, 0, 0, 0, 2, 0, NA),
+      DV = c(NA, 1, NA, 3, NA, 4, 5),
+      MDV = c(1, 0, 0, 1, 1, NA, 0)
+    )
+    expect_identical(.nmObsRows(.d), c(FALSE, TRUE, FALSE, FALSE, FALSE, TRUE, FALSE))
+    .d$MDV <- NULL
+    expect_identical(.nmObsRows(.d), c(FALSE, TRUE, FALSE, TRUE, FALSE, TRUE, FALSE))
+    expect_identical(.nmObsRows(.d[0, ]), logical(0))
+  })
 })

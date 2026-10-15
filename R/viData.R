@@ -115,7 +115,7 @@
   .nobs <- 0L
   for (i in seq_len(N)) {
     .di <- d[d$ID == .ids[i], , drop = FALSE]
-    .obs <- .di[.di$EVID == 0, , drop = FALSE]
+    .obs <- .di[.nmObsRows(.di), , drop = FALSE]
     .cens <- if (is.null(.obs$CENS)) integer(nrow(.obs)) else as.integer(.obs$CENS)
     .limit <- if (is.null(.obs$LIMIT)) rep(NA_real_, nrow(.obs)) else as.numeric(.obs$LIMIT)
     subj[[i]] <- list(ev = .di, times = .obs$TIME, y = .obs$DV, n = nrow(.obs), cens = .cens, limit = .limit)
