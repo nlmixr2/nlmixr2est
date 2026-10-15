@@ -21,6 +21,22 @@
 
 # Utilities for nlmixr2 ####################################################
 
+#' Which records of an event table are observations
+#'
+#' An EVID 0 record with a missing DV or MDV = 1 is not one; `etTrans()` makes
+#' those EVID 2, but data that has not been through it still carries them as
+#' EVID 0.
+#' @param d data frame with upper-case `EVID` and `DV`, and optionally `MDV`
+#' @return logical, one per row
+#' @noRd
+.nmObsRows <- function(d) {
+  .obs <- !is.na(d$EVID) & d$EVID == 0 & !is.na(d$DV)
+  if (!is.null(d$MDV)) {
+    .obs <- .obs & (is.na(d$MDV) | d$MDV == 0)
+  }
+  .obs
+}
+
 #' Message suffix for a method that requires random effects
 #'
 #' Used as the `extra` argument to `rxode2::assertRxUiMixedOnly()` so a

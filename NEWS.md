@@ -19,6 +19,13 @@
   information that would not invert, a failed sensitivity solve and several
   other failures used to print only "not available for this model".
 
+### Estimation
+
+- `est = "vae"` no longer counts an EVID 0 record with a missing DV or
+  `MDV = 1` as an observation; a missing DV at an observation time made the fit
+  stop on missing values.  The emvi/fbvi data preparation counts observations
+  the same way.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
