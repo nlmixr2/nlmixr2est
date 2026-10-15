@@ -2,6 +2,8 @@
 
 ## nlmixr2est 7.2.1
 
+CRAN release: 2026-10-14
+
 ### Bug fixes
 
 - The Gill (1983) finite-difference step search now floors its estimate

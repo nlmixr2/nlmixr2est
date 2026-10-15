@@ -33,7 +33,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="logo.png" class="logo" alt=""><h1>CLAUDE.md</h1>
-      <small class="dont-index">Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/v7.2.1/CLAUDE.md" class="external-link"><code>CLAUDE.md</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/CLAUDE.md" class="external-link"><code>CLAUDE.md</code></a></small>
     </div>
 
 <div id="claudemd" class="section level1">
@@ -169,6 +169,12 @@
 <strong>Use <code>=</code> only for a variable you will read back</strong> (an output column of the solve). Use <code>~</code> (suppressed assignment) for any intermediate you compute but do NOT output – extra <code>=</code> output columns shift the positional column layout and add solve overhead.</li>
 <li>
 <strong>Declare the theta/eta inputs AND the model covariates (<code>ui$allCovs</code>) with <code>param(...)</code></strong> so the solve parameter order is fixed and positional (values are keyed by name, but pinning order keeps the input layout stable across builds). Covariates are supplied from the event data at solve time but must still be declared in <code>param(...)</code>. A general-likelihood formula referencing <code>DV</code> (dnorm()/t()/cauchy() sugar, or a literal <code>ll()</code> expression) needs <code>DV</code> itself declared here too – and needs the model-BUILDING side (not the solve-consuming side) to actually supply it: <code>DV</code> must be listed in <code>.configsaem</code>’s <code>inPars</code> (see <code>rxUiGet.saemInParsAndMuRefCovariates</code>, <code>R/saemRxUiGet.R</code>) so its DV-append step fires, and must land in the model’s first (and only effective) <code>param()</code> statement, not a second one appended later (rxode2 silently ignores a second <code>param()</code> statement in one model – nlmixr2/rxode2#1279).</li>
+</ul></div>
+<div class="section level2">
+<h2 id="cran-tests-never-assert-on-timing">CRAN tests: never assert on timing<a class="anchor" aria-label="anchor" href="#cran-tests-never-assert-on-timing"></a></h2>
+<ul><li>Never put a wall-clock timing expectation in a test that can run on CRAN: no <code>expect_lt()</code>/<code>expect_true()</code> on <code><a href="https://rdrr.io/r/base/Sys.time.html" class="external-link">Sys.time()</a></code> differences, <code><a href="https://rdrr.io/r/base/system.time.html" class="external-link">system.time()</a></code>, <code><a href="https://rdrr.io/r/base/proc.time.html" class="external-link">proc.time()</a></code>, <code>bench</code>/<code>microbenchmark</code> results, or any other elapsed-time threshold. CRAN check machines are shared and heavily loaded, so elapsed time there is random and a timing assertion fails at random. Example: nlmixr2plot <code>test-model-diagram.R</code> asserted a <code>modelGraph()</code> call took &lt; 30 s; on CRAN it took 48.4 s and failed.</li>
+<li>Test the result, not the speed. If a speed regression guard is really needed, put it only in a test that starts with <code>skip_on_cran()</code> (or the package’s own CRAN skip helper), and never in examples or vignettes.</li>
+<li>Tests that take more than a few seconds should also skip on CRAN.</li>
 </ul></div>
 </div>
 
