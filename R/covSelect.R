@@ -167,6 +167,8 @@
 #' pick a listed method; a covariance whose variances are all below 1e-7 is none.
 #' Installs `env$cov`, `env$covMethod` (the label, e.g. "r,s", "r+", "|s|") and
 #' `env$covTried` (each method tried and why it was not used) and gives the warnings.
+#' A `covType = "analytic"` request the analytic R declined (`env$.analyticReason`)
+#' heads `covTried` and is the request the warning names.
 #' @param env fit environment (`covR`, `covS`, `covRS` and the S inverse `.covSinv`)
 #' @param req requested slot: 1 "r,s", 2 "r", 3 "s"
 #' @param rState,sState each matrix: 0 not computed, 1 usable, 2 not positive definite,
@@ -193,6 +195,11 @@
   .names <- c("r,s", "r", "s")
   .acc <- new.env(parent = emptyenv())
   .acc$tried <- list()
+  .request <- .names[req]
+  if (exists(".analyticReason", envir = env, inherits = FALSE)) {
+    .covTriedAdd(.acc, "analytic", get(".analyticReason", envir = env))
+    .request <- "analytic"
+  }
   .cur <- req
   .which <- ""
   if (req %in% c(1L, 2L) && rState != 1L) {
@@ -240,7 +247,7 @@
   .tried <- do.call(rbind, .acc$tried)
   assign("covTried", .tried, envir = env)
   if (.cur == 0L) {
-    .w <- .covTriedSummary(.names[req], .tried, NULL)
+    .w <- .covTriedSummary(.request, .tried, NULL)
     if (!is.null(.w)) {
       warning(.w, call. = FALSE)
     }
@@ -277,7 +284,7 @@
   } else {
     .label <- sstr
   }
-  .w <- .covTriedSummary(.names[req], .tried, .label)
+  .w <- .covTriedSummary(.request, .tried, .label)
   if (!is.null(.w)) {
     warning(.w, call. = FALSE)
   }

@@ -18,6 +18,14 @@
   observation time, counted that record as an observation and gave up; they now
   keep the observation records.
 
+- A declined `covMethod = "analytic"` now says why.  The reason is in the
+  message, in the line printed for the covariance step, in `$runInfo` (for
+  example `"analytic" not usable (an observed information that would not
+  invert (...)); installed "r,s"`) and in the first row of `fit$env$covTried`,
+  and `setCov(fit, "analytic")` stops with the same reason.  An observed
+  information that would not invert, a failed sensitivity solve and several
+  other failures used to print only "not available for this model".
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes

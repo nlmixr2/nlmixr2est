@@ -11533,9 +11533,11 @@ static int foceiCalcRAnalytic(Environment e) {
   }
   // analytic declined: the first method covFallback$analytic lists (the finite-difference
   // sandwich "r,s" by default); none listed fails the step.  RSprintf is the visible
-  // channel (like "Could not calculate covariance matrix"); the warning is for
-  // programmatic capture.
+  // channel (like "Could not calculate covariance matrix"); a fallback's warning, with the
+  // reason, comes from .covSelectFocei(), which also heads e$covTried with it.
   // the first finite-difference method listed; "sa"/"imp" come after the fit
+  std::string why = e.exists(".analyticReason") ? as<std::string>(e[".analyticReason"])
+                                                : std::string("no reason recorded");
   std::vector<std::string> fb = covFallbackFor(e, "analytic");
   int slot = 0;
   std::string rung;
@@ -11547,18 +11549,14 @@ static int foceiCalcRAnalytic(Environment e) {
     }
   }
   if (slot == 0) {
-    RSprintf("\rcovType=\"analytic\" not available for this model, and covFallback lists "
-             "no fallback for it.\n");
-    Rf_warning("covType=\"analytic\": the analytic covariance is not available for this "
-               "model; covFallback lists no fallback");
+    RSprintf("\rcovType=\"analytic\" not used (%s), and covFallback lists no fallback for it.\n",
+             why.c_str());
+    Rf_warning("\"analytic\" not usable (%s); covFallback lists no fallback", why.c_str());
     op_focei.covMethod = 0;
     return 0;
   }
-  RSprintf("\rcovType=\"analytic\" not available for this model (out of scope, or "
-           "the augmented model would not build/solve); using the finite-difference "
-           "\"%s\" covariance.\n", rung.c_str());
-  Rf_warning("covType=\"analytic\": the analytic covariance is not available for "
-             "this model; used the finite-difference \"%s\" covariance instead.", rung.c_str());
+  RSprintf("\rcovType=\"analytic\" not used (%s); using the finite-difference \"%s\" covariance.\n",
+           why.c_str(), rung.c_str());
   op_focei.covMethod = slot;
   return -1;
 }

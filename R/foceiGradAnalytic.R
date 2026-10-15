@@ -312,12 +312,13 @@
       )),
       warning = function(w) invokeRestart("muffleWarning")
     ),
-    error = function(e) NULL
+    error = function(e) .foceiAnalyticNote(paste0("rxSolve: ", conditionMessage(e)))
   )
-  if (
-    is.null(.sol) || !all(c("rx_predf_", paste0("rx_f1_", if (is.null(am$fDirs)) dirs else am$fDirs)) %in% names(.sol))
-  ) {
+  if (is.null(.sol)) {
     return(NULL)
+  }
+  if (!all(c("rx_predf_", paste0("rx_f1_", if (is.null(am$fDirs)) dirs else am$fDirs)) %in% names(.sol))) {
+    return(.foceiAnalyticNote("the augmented solve lacks sensitivity columns"))
   }
   # Extract every sensitivity column from the WHOLE solve as a matrix ONCE (the per-subject
   # data.frame [[ + paste0 dominated the gradient -- the ODE solve itself is ~4%); slice by row
@@ -349,7 +350,7 @@
     .need <- c(.need, "rx_tyj_", "rx_tlambda_", "rx_tlow_", "rx_thi_")
   }
   if (!all(.need %in% names(.sol))) {
-    return(NULL)
+    return(.foceiAnalyticNote("the augmented solve lacks sensitivity columns"))
   }
   .M1 <- as.matrix(.sol[, .cm$f1, drop = FALSE])
   .M2 <- as.matrix(.sol[, .cm$f2, drop = FALSE])
@@ -378,11 +379,11 @@
       .ri <- .byIdSol[[as.character(i)]]
     }
     if (is.null(.ri)) {
-      return(NULL)
+      return(.foceiAnalyticNote(paste0("no solved rows for subject ", ids[i])))
     }
     # the solve kept only observation records, so these are the subject's observations
     if (!.foceiAnalyticObsAligned(.tm[.ri], obsTimes[[i]])) {
-      return(NULL)
+      return(.foceiAnalyticNote(paste0("subject ", ids[i], ": ", .foceiAnalyticWhy$detail)))
     }
     .keep <- .ri
     no <- length(.keep)
