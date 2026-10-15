@@ -75,6 +75,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c(
     "focei-wang2007-lognormal",
     "cov-analytic",
+    "cov-analytic-obs-rows",
     "focei-wang2007-power",
     "cov-condition",
     "agq-cov",
