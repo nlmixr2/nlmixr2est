@@ -282,38 +282,7 @@
   for (.nm in names(thv)) {
     pars[[.nm]] <- thv[[.nm]]
   }
-  .ev <- .foceiAnalyticEvents(am, data) # reuse the pre-translated event table
-  .nc <- if (is.null(am$cores)) 0L else am$cores # fit's rxControl thread count (parallel)
-  # DDE: force pure dop853 (dense, no Jacobian) -- its 8th-order dense history reproduces the
-  # delayed sensitivity solve exactly and needs no Jacobian, sidestepping the composite/ros4
-  # on-the-fly Jacobian generation for this THETA/ETA-named augmented model.
-  .ddeArgs <- if (isTRUE(rxode2::rxModelVars(am$augMod)$flags[["hasDelay"]] == 1L)) {
-    list(method = "dop853", stiff2 = 0L, dense = TRUE)
-  } else {
-    list()
-  }
-  .sol <- tryCatch(
-    withCallingHandlers(
-      as.data.frame(do.call(
-        rxode2::rxSolve,
-        c(
-          list(
-            am$augMod,
-            params = pars,
-            events = .ev,
-            cores = .nc,
-            returnType = "data.frame",
-            addDosing = NULL, # observation (EVID 0) records only
-            atol = tol[1],
-            rtol = tol[length(tol)]
-          ),
-          .ddeArgs
-        )
-      )),
-      warning = function(w) invokeRestart("muffleWarning")
-    ),
-    error = function(e) .foceiAnalyticNote(paste0("rxSolve: ", conditionMessage(e)))
-  )
+  .sol <- .foceiAnalyticRxSolve(am, pars, data, tol)
   if (is.null(.sol)) {
     return(NULL)
   }
