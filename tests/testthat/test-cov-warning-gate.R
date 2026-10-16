@@ -11,6 +11,7 @@
   "\\$cov[A-Z]",
   "\\bcov(Full|Method)\\b",
   "\\bSE\\b",
+  "\\banalytic err[0-9]",
   sep = "|"
 )
 
@@ -22,7 +23,7 @@
   if (is.name(.h)) {
     return(as.character(.h))
   }
-  if (is.call(.h) && length(.h) == 3L && as.character(.h[[1L]]) %in% c("::", ":::")) {
+  if (is.call(.h) && length(.h) == 3L && is.name(.h[[1L]]) && as.character(.h[[1L]]) %in% c("::", ":::")) {
     return(as.character(.h[[3L]]))
   }
   ""
@@ -101,6 +102,33 @@
   Filter(function(x) is.function(x) && !is.primitive(x), mget(ls(.ns, all.names = TRUE), envir = .ns))
 }
 
+# The functions of `fns` that call .covWarn() or .covClip(), the funnel apart.
+.covGateCallers <- function(fns, funnel = ".covWarn") {
+  .has <- vapply(
+    fns,
+    function(f) length(.covGateFnCalls(f, c(".covWarn", ".covClip"))) > 0L,
+    logical(1)
+  )
+  setdiff(names(fns)[.has], funnel)
+}
+
+# The package functions the tests in `dir` say they drive: the first argument of
+# each .covSite() call.
+.covGateDriven <- function(dir) {
+  .files <- list.files(dir, pattern = "^test-.*[.]R$", full.names = TRUE)
+  .names <- character()
+  for (.f in .files) {
+    for (.e in parse(.f, keep.source = FALSE)) {
+      for (.call in .covGateWalk(.e, ".covSite")) {
+        if (length(.call) >= 2L && is.character(.call[[2L]])) {
+          .names <- c(.names, .call[[2L]])
+        }
+      }
+    }
+  }
+  list(files = .files, names = unique(.names))
+}
+
 test_that("the gate finds a covariance warning that bypasses .covWarn()", {
   .bad <- list(
     plain = function() warning("covariance step failed"),
@@ -146,6 +174,44 @@ test_that("the gate lets a covariance warning through .covWarn() and other warni
   })
   expect_identical(.covGateBypasses(.funnel), character())
   expect_identical(.covGateBypasses(.funnel, funnel = "other"), ".covWarn")
+})
+
+test_that("the gate lists the callers of .covWarn() and .covClip() and the ones a test drives", {
+  .fns <- list(
+    warns = function() .covWarn("x"),
+    clips = function(w) .covClip(w, 54L),
+    nested = function() lapply(1, function(i) .covWarn("x")),
+    default = function(a = .covClip("x")) a,
+    .covWarn = function(w) .covClip(w),
+    none = function() warning("x"),
+    called = function(x) (function() warning("x"))()
+  )
+  expect_identical(.covGateCallers(.fns), c("warns", "clips", "nested", "default"))
+  expect_identical(.covGateCallers(.fns, funnel = "warns"), c("clips", "nested", "default", ".covWarn"))
+  .dir <- withr::local_tempdir()
+  writeLines(
+    c(
+      "test_that('a', { .covSite('first', f()) })",
+      "nmTest({ test_that('b', { x <- .covSite(\"second\", g()) }) })",
+      "test_that('c', { .covSite(name, h()) })",
+      "test_that('d', { .covSite('first', f()) })"
+    ),
+    file.path(.dir, "test-one.R")
+  )
+  writeLines("test_that('e', { .covSite('third', f()) })", file.path(.dir, "test-two.R"))
+  writeLines(".covSite('hidden', f())", file.path(.dir, "other.R"))
+  .d <- .covGateDriven(.dir)
+  expect_identical(basename(.d$files), c("test-one.R", "test-two.R"))
+  expect_identical(.d$names, c("first", "second", "third"))
+})
+
+test_that("every function that calls .covWarn() or .covClip() is driven by a .covSite() test", {
+  .d <- .covGateDriven(testthat::test_path())
+  expect_gt(length(.d$files), 10L)
+  .callers <- .covGateCallers(.covGateFunctions())
+  # a caller no test drives, and a name no function answers to
+  expect_identical(setdiff(.callers, .d$names), character())
+  expect_identical(setdiff(.d$names, .callers), character())
 })
 
 test_that("no warning in the package reports on a covariance method except through .covWarn()", {

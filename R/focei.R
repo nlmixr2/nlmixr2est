@@ -5545,6 +5545,41 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   ret
 }
 
+#' Drop a covariance that is not a matrix of the proper form
+#'
+#' NA is accepted only for whole ill-identified parameter rows and columns (see
+#' `.nlmixr2RobustCov()`, R/cov.R); any other missingness is malformed.  The
+#' dropped matrix stays in `env$covDebug`.
+#' @param env fit environment
+#' @return invisibly `NULL`
+#' @noRd
+.foceiDropMalformedCov <- function(env) {
+  if (is.null(env$cov)) {
+    return(invisible())
+  }
+  .validCov <- checkmate::testMatrix(
+    env$cov,
+    min.rows = 1,
+    row.names = "strict",
+    col.names = "strict"
+  )
+  if (.validCov && anyNA(env$cov)) {
+    .bad <- which(is.na(diag(env$cov)))
+    .good <- setdiff(seq_len(nrow(env$cov)), .bad)
+    .validCov <- length(.bad) > 0 &&
+      all(is.na(env$cov[.bad, , drop = FALSE])) &&
+      all(is.na(env$cov[, .bad, drop = FALSE])) &&
+      !anyNA(env$cov[.good, .good, drop = FALSE])
+  }
+  if (!.validCov) {
+    env$covDebug <- env$cov
+    .minfo(paste0("covariance not in proper form, can access value in ", crayon::bold$blue("$covDebug")))
+    .covWarn("covariance not in proper form, can access value in $covDebug")
+    env$cov <- NULL
+  }
+  invisible()
+}
+
 .foceiFamilyReturn <- function(env, ui, ..., method = NULL, est = "none") {
   .control <- ui$control
   .control$est <- est
@@ -5669,30 +5704,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .env[["control"]] <- .ctl
     }
   }
-  if (!is.null(.env$cov)) {
-    # Accept NA only for whole ill-identified parameter rows/columns (see
-    # .nlmixr2RobustCov(), R/cov.R); any other missingness is malformed.
-    .validCov <- checkmate::testMatrix(
-      .env$cov,
-      min.rows = 1, # .var.name="env$cov",
-      row.names = "strict",
-      col.names = "strict"
-    )
-    if (.validCov && anyNA(.env$cov)) {
-      .bad <- which(is.na(diag(.env$cov)))
-      .good <- setdiff(seq_len(nrow(.env$cov)), .bad)
-      .validCov <- length(.bad) > 0 &&
-        all(is.na(.env$cov[.bad, , drop = FALSE])) &&
-        all(is.na(.env$cov[, .bad, drop = FALSE])) &&
-        !anyNA(.env$cov[.good, .good, drop = FALSE])
-    }
-    if (!.validCov) {
-      .env$covDebug <- .env$cov
-      .minfo(paste0("covariance not in proper form, can access value in ", crayon::bold$blue("$covDebug")))
-      .covWarn("covariance not in proper form, can access value in $covDebug")
-      .env$cov <- NULL
-    }
-  }
+  .foceiDropMalformedCov(.env)
   if (.control$nAGQ > 0) {
     .ag <- .agq(length(ui$eta), .control$nAGQ)
     .env$aqn <- as.integer(.ag$n)

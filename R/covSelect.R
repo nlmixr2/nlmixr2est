@@ -275,34 +275,34 @@
   if (.cur == 0L) {
     .w <- .covTriedSummary(.request, .triedW, NULL)
     if (!is.null(.w)) {
-      warning(.w, call. = FALSE)
+      .covWarn(.w)
     }
-    warning("covariance step failed", call. = FALSE)
+    .covWarn("covariance step failed")
     return(list(slot = 0L, label = "failed"))
   }
   if (sHasZero) {
-    warning("S matrix had problems solving for some subject and parameters", call. = FALSE)
+    .covWarn("S matrix had problems solving for some subject and parameters")
   }
   .doWarn <- FALSE
   if (.cur != 3L) {
     if (rstr == "|r|") {
-      warning("R matrix non-positive definite but corrected by R = sqrtm(R%*%R)", call. = FALSE)
+      .covWarn("R matrix non-positive definite but corrected by R = sqrtm(R%*%R)")
       .doWarn <- TRUE
     } else if (rstr == "r+") {
-      warning("R matrix non-positive definite but corrected (because of cholAccept)", call. = FALSE)
+      .covWarn("R matrix non-positive definite but corrected (because of cholAccept)")
       .doWarn <- TRUE
     }
   }
   if (.cur == 1L) {
     if (sstr == "|s|") {
-      warning("S matrix non-positive definite but corrected by S = sqrtm(S%*%S)", call. = FALSE)
+      .covWarn("S matrix non-positive definite but corrected by S = sqrtm(S%*%S)")
       .doWarn <- TRUE
     } else if (sstr == "s+") {
-      warning("S matrix non-positive definite but corrected (because of cholAccept)", call. = FALSE)
+      .covWarn("S matrix non-positive definite but corrected (because of cholAccept)")
       .doWarn <- TRUE
     }
     if (.doWarn) {
-      warning("since sandwich matrix is corrected, you may compare to $covR or $covS if you wish", call. = FALSE)
+      .covWarn("sandwich matrix corrected; compare it to $covR or $covS")
     }
     .label <- paste0(rstr, ",", sstr)
   } else if (.cur == 2L) {
@@ -312,7 +312,7 @@
   }
   .w <- .covTriedSummary(.request, .triedW, .label)
   if (!is.null(.w)) {
-    warning(.w, call. = FALSE)
+    .covWarn(.w)
   }
   assign("covMethod", .label, envir = env)
   list(slot = .cur, label = .label)

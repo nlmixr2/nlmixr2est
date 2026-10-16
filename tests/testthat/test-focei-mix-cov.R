@@ -255,7 +255,7 @@ nmTest({
     ## proportion approaches 0 or 1.  That is the correct delta-method answer but
     ## reads as certainty, so it must be said out loud.
     .w <- "mixture proportion near 0/1; its SE is shrunk by the p(1-p) scale"
-    expect_identical(capture_warnings(.mixWarnBoundary(c(0.001, 0.999))), .w)
+    expect_identical(.covSite(".mixWarnBoundary", capture_warnings(.mixWarnBoundary(c(0.001, 0.999)))), .w)
     expect_identical(capture_warnings(.mixWarnBoundary(c(0.45, 0.996))), .w)
     expect_silent(.mixWarnBoundary(c(0.45, 0.55)))
     expect_silent(.mixWarnBoundary(c(0.02, 0.98)))
@@ -499,7 +499,7 @@ nmTest({
     ## and this is not one.  saem lands here (nlmixr2est#1058), and reporting a
     ## number would be a confident-looking SE on a non-stationary estimate.
     .e <- .mkMixEnv(c(rep(1, 30), rep(0, 70)), 0.64, 100L)
-    expect_identical(capture_warnings(.mixCovAppendBlock(.e)), .mixSkipW)
+    expect_identical(.covSite(".mixCovAppendBlock", capture_warnings(.mixCovAppendBlock(.e))), .mixSkipW)
     expect_false("p1" %in% rownames(.e$cov))
     expect_equal(dim(.e$cov), c(2L, 2L))
   })

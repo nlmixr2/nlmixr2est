@@ -1703,7 +1703,7 @@
     .covWarn(paste0(.pre, .vaeTruncList(r$phi0, prefix = .pre)))
   }
   if (r$label %in% c("|linFim|", .saemHaThetaRepairedName)) {
-    .covWarn(sprintf("\"%s\" not positive definite; installed as \"%s\" (sqrtm)", .covUnrepaired(r$label), r$label))
+    .covRepairWarn(.covUnrepaired(r$label), r$label)
   }
   invisible()
 }

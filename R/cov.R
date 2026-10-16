@@ -805,10 +805,7 @@
   }
   .r <- tryCatch(.foceiRecomputeCov(fit, "focei", control), error = function(e) e)
   if (inherits(.r, "error")) {
-    warning(
-      sprintf("FOCEi covariance not computed (%s)", conditionMessage(.r)),
-      call. = FALSE
-    )
+    .foceiOwnEtaCovFail(.env, "computed", .r)
     return(invisible(FALSE))
   }
   if (is.null(.r)) {
@@ -820,13 +817,38 @@
   tryCatch(
     .covInstall(.env, .r$cov, .r$covMethod, what = .r$what, extras = .extras, refresh = "all"),
     error = function(e) {
-      warning(
-        sprintf("FOCEi covariance not installed (%s)", conditionMessage(e)),
-        call. = FALSE
-      )
+      .foceiOwnEtaCovFail(.env, "installed", e)
       invisible(FALSE)
     }
   )
+}
+
+#' Warn that the FOCEi covariance of a completed fit was not computed or installed
+#'
+#' The warning clips the condition message to one line; the fit's covariance
+#' history (`covTried`) keeps it whole.
+#' @param env fit environment
+#' @param what "computed" or "installed"
+#' @param e the condition
+#' @return invisibly `NULL`
+#' @noRd
+.foceiOwnEtaCovFail <- function(env, what, e) {
+  .m <- .foceiAnalyticOneLine(conditionMessage(e))
+  .covTriedNote(env, "focei", sprintf("not %s (%s)", what, .m))
+  .covWarn(sprintf("FOCEi covariance not %s (%s)", what, .m))
+  invisible()
+}
+
+#' Add a method and its outcome to the covariance history of a fit
+#' @param env fit environment
+#' @param method covariance method
+#' @param outcome why it was not used, whole
+#' @return invisibly `env`
+#' @noRd
+.covTriedNote <- function(env, method, outcome) {
+  .row <- data.frame(method = method, outcome = outcome)
+  env$covTried <- if (is.data.frame(env$covTried)) rbind(env$covTried, .row) else .row
+  invisible(env)
 }
 
 #' Parameter tables a fit that estimates its own ETAs keeps when its FOCEi

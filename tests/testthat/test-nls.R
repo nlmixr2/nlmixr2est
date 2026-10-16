@@ -244,10 +244,36 @@ nmTest({
       # with no n - p the residual SD falls back to sqrt(RSS / n)
       expect_true(is.finite(.fit$theta[["add.sd"]]), info = .alg)
       expect_true(
-        "nls has 0 residual degrees of freedom, no residual variance; covariance step failed" %in% .fit$runInfo,
+        "0 residual degrees of freedom; covariance step failed" %in% .fit$runInfo,
         info = .alg
       )
     }
+  })
+
+  test_that("an nls covariance that is not usable is reported on one line", {
+    .treated <- Puromycin[Puromycin$state == "treated", ]
+    names(.treated) <- gsub("rate", "DV", gsub("conc", "time", names(.treated)))
+    .treated$ID <- 1
+    .mm <- function() {
+      ini({
+        Vm <- 200
+        K <- 0.1
+        add.sd <- 10
+      })
+      model({
+        pred <- (Vm * time) / (K + time)
+        pred ~ add(add.sd)
+      })
+    }
+    local_mocked_bindings(.covGuard = function(x) list(ok = FALSE, cov = NULL, reason = paste("is", strrep("x", 80))))
+    .fit <- .covSite(
+      ".nlmFinalizeList",
+      .nlmixr(.mm, .treated, est = "nls", control = nlsControl(print = 0L, algorithm = "default"))
+    )
+    expect_identical(.fit$covMethod, "failed")
+    .w <- paste0("\"nls\" is ", strrep("x", 62), "...")
+    expect_true(.w %in% .fit$runInfo)
+    expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
   })
 
   test_that("nls fits a delay() model with its past() pre-history", {

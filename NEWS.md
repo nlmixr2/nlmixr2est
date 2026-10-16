@@ -29,6 +29,17 @@
   kept "nlme"`), so the same failure reads the same whatever the labels, and they
   stay under 75 characters.
 
+- The other covariance warnings now stay under 75 characters too: the SAEM
+  `"linFim"` and `"Ha"` fallbacks (`"linFim" failed; trying "Ha"` for `linearized
+  FIM failed; using the SAEM information matrix`), the sqrtm repair, the nls,
+  nlm-family, sandwich, full-sandwich and mixture-SE ones, and `nlminbControl()`'s
+  switch to `covMethod = "r"`.  A FOCEi covariance that a vae or vi fit could
+  not compute or install is clipped in the warning and recorded whole in
+  `fit$env$covTried`; the thetas that have no standard error are listed up to
+  the line, then `+k more`, and are the `NA` rows of the parameter table.  A
+  test fails for any warning about a covariance method that does not go through
+  the one clip.
+
 ### Estimation
 
 - `est = "vae"`, `"emvi"` and `"fbvi"` count as observations the records

@@ -24,7 +24,7 @@ nmTest({
     expect_identical(nlminbControl(solveType = "fun")$covMethod, "r")
     expect_identical(nlminbControl(covMethod = "r")$covMethod, "r")
     expect_identical(nlminbControl(covMethod = "nlminb")$covMethod, "nlminb")
-    .w <- capture_warnings(.ctl <- nlminbControl(covMethod = "nlminb", solveType = "fun"))
+    .w <- .covSite("nlminbControl", capture_warnings(.ctl <- nlminbControl(covMethod = "nlminb", solveType = "fun")))
     expect_identical(.w, "covMethod=\"nlminb\" needs solveType \"grad\" or \"hessian\"; using \"r\"")
     expect_identical(.ctl$covMethod, "r")
   })

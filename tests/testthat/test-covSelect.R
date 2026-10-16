@@ -114,9 +114,10 @@ test_that(".covSelectFocei() checks a doubtful sandwich against R and S", {
     c(
       "R matrix non-positive definite but corrected by R = sqrtm(R%*%R)",
       "S matrix non-positive definite but corrected (because of cholAccept)",
-      "since sandwich matrix is corrected, you may compare to $covR or $covS if you wish"
+      "sandwich matrix corrected; compare it to $covR or $covS"
     )
   )
+  expect_true(all(cli::ansi_nchar(.r$warnings, type = "width") <= 74L))
   # an unrepaired sandwich with a variance below covSmall is checked the same way: kept
   # here, its diagonal sum being the smallest of the three
   .e <- .covSelectEnv(covRS = diag(c(1e-6, 0.095)))
@@ -129,6 +130,37 @@ test_that(".covSelectFocei() checks a doubtful sandwich against R and S", {
   expect_identical(.r$value$label, "r")
   expect_identical(.e$cov, .e$covR)
   expect_identical(.covSandwichChoice(diag(2), diag(2), diag(2), "r", "s", FALSE, 1e-5), "covRS")
+})
+
+test_that(".covSelectFocei() gives whole lines for every correction of R and S", {
+  .got <- character()
+  .covSite(".covSelectFocei", {
+    for (.req in 1:3) {
+      for (.rState in if (.req == 3L) 0:3 else 1:3) {
+        for (.sState in if (.req == 2L) 0:3 else 1:3) {
+          for (.rs in c("r", "r+", "|r|")) {
+            for (.ss in c("s", "s+", "|s|")) {
+              for (.check in c(FALSE, TRUE)) {
+                for (.zero in c(FALSE, TRUE)) {
+                  .got <- c(
+                    .got,
+                    capture_warnings(
+                      .covSelectFocei(.covSelectEnv(), .req, .rState, .sState, .rs, .ss, .check, .zero, 1e-5)
+                    )
+                  )
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+  expect_gt(length(.got), 1000L)
+  expect_true(.covSiteWhole(.got))
+  # the lines that name a label carry the decorated one whole
+  expect_true(any(endsWith(.got, "installed \"|r|\"")))
+  expect_true(any(endsWith(.got, "installed \"s+\"")))
 })
 
 test_that(".covSelectFocei() refuses a covariance of all tiny variances and reports S problems", {

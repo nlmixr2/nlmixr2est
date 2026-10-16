@@ -50,7 +50,7 @@ test_that("a linFim covariance repaired by sqrtm keeps that label with its full 
   attr(.lin, "varCov") <- matrix(0.01, 1, 1, dimnames = list("add.sd", "add.sd"))
   local_mocked_bindings(calc.COV = function(x) .lin)
   .w <- capture_warnings(.saemCalcCov(.e))
-  expect_identical(.w, "\"linFim\" not positive definite; installed as \"|linFim|\" (sqrtm)")
+  expect_identical(.w, "\"linFim\" is not positive definite; installed as \"|linFim|\" (sqrtm)")
   expect_identical(.e$covMethod, "|linFim|")
   .abs <- sqrtm(.lin %*% t(.lin))
   expect_equal(unname(.e$cov), unname(.abs))
@@ -123,7 +123,7 @@ test_that("an indefinite Ha theta block is repaired by sqrtm and labelled so", {
   .e <- .saemCovEnv(Ha = .bad, covMethod = "r,s")
   expect_identical(
     capture_warnings(.saemCalcCov(.e)),
-    "\"Ha\" not positive definite; installed as \"|Ha|\" (sqrtm)"
+    "\"Ha\" is not positive definite; installed as \"|Ha|\" (sqrtm)"
   )
   expect_identical(.e$covMethod, "|Ha|")
   expect_equal(unname(.e$cov), unname(solve(sqrtm(.bad %*% .bad))))
@@ -210,7 +210,7 @@ test_that("the SE-less theta list is clipped to one line, the label is not", {
   .pre <- "no \"Ha\" SE for non-mu-referenced theta(s) "
   .r <- list(cov = .saemHa, label = "Ha", phi0 = strrep("t", 80))
   dimnames(.r$cov) <- list(.saemTheta, .saemTheta)
-  .w <- capture_warnings(.saemInstallThetaCov(.saemCovEnv(), .r))
+  .w <- .covSite(".saemInstallThetaCov", capture_warnings(.saemInstallThetaCov(.saemCovEnv(), .r)))
   expect_identical(.w, paste0(.pre, strrep("t", 29), "..."))
   expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
   .r$phi0 <- paste0("theta", 1:30)
@@ -218,16 +218,41 @@ test_that("the SE-less theta list is clipped to one line, the label is not", {
   expect_identical(.w, paste0(.pre, "theta1, theta2, theta3, +27 more"))
 })
 
+test_that("each label a SAEM theta covariance carries gives whole warning lines", {
+  .r <- list(cov = .saemHa, phi0 = "tka")
+  dimnames(.r$cov) <- list(.saemTheta, .saemTheta)
+  for (.l in c("Ha", "|Ha|", "linFim", "|linFim|")) {
+    .r$label <- .l
+    .w <- capture_warnings(.saemInstallThetaCov(.saemCovEnv(), .r))
+    .want <- sprintf("no \"%s\" SE for non-mu-referenced theta(s) tka", .l)
+    if (!identical(.covUnrepaired(.l), .l)) {
+      .want <- c(.want, sprintf("\"%s\" is not positive definite; installed as \"%s\" (sqrtm)", .covUnrepaired(.l), .l))
+    }
+    expect_identical(.w, .want, label = .l)
+    expect_true(.covSiteWhole(.w), label = .l)
+  }
+})
+
 test_that("the linFim warning is clipped to one line when the next method is long", {
-  .w <- capture_warnings(.saemLinFimWarn("not usable", strrep("m", 80)))
+  .w <- .covSite(".saemLinFimWarn", capture_warnings(.saemLinFimWarn("not usable", strrep("m", 80))))
   .full <- paste0("\"linFim\" not usable; trying \"", strrep("m", 80), "\"")
   expect_identical(.w, paste0(substr(.full, 1L, 71L), "..."))
   expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
 })
 
+test_that("the linFim warning is one whole line for every method it can fall back to", {
+  .next <- .covRealLabels(decorated = FALSE, full = FALSE)
+  for (.why in c("failed", "not usable")) {
+    .w <- vapply(.next, function(m) capture_warnings(.saemLinFimWarn(.why, m)), character(1), USE.NAMES = FALSE)
+    expect_identical(.w, sprintf("\"linFim\" %s; trying \"%s\"", .why, .next))
+    expect_true(.covSiteWhole(.w))
+  }
+  expect_identical(capture_warnings(.saemLinFimWarn("failed", NA_character_)), "\"linFim\" failed; none installed")
+})
+
 test_that("no population parameters is a covariance warning of one line", {
   .e <- .saemCovEnv(theta = character(0))
-  .w <- capture_warnings(.saemCalcCov(.e))
+  .w <- .covSite(".saemCovRung", capture_warnings(.saemCalcCov(.e)))
   expect_identical(.w, "no population parameters in the model, no covariance matrix calculated")
   expect_lte(cli::ansi_nchar(.w, type = "width"), 74L)
   expect_identical(.e$covMethod, "none")
