@@ -40,10 +40,15 @@
 # Collect, into `acc`, the symbols an expression names and the ui properties it
 # reads: `x$name` and `rxUiGet(x, "name")` add "name" to acc$fields (rxode2
 # dispatches them to rxUiGet.name()), and the field after `$` or `@` is not a
-# symbol it names
+# symbol it names.  A string counts as a name too, for a function called by
+# name (do.call(".f", ...), match.fun(), lapply(x, ".f")).
 .covAnalyticWalk <- function(e, acc) {
   if (is.symbol(e)) {
     acc$syms <- c(acc$syms, as.character(e))
+    return(invisible())
+  }
+  if (is.character(e)) {
+    acc$syms <- c(acc$syms, e)
     return(invisible())
   }
   if (!is.call(e)) {
@@ -79,6 +84,7 @@
   .acc$fields <- character(0)
   .covAnalyticWalk(body(get(fn, envir = ns)), .acc)
   .nm <- unique(c(.acc$syms, paste0("rxUiGet.", .acc$fields)))
+  .nm <- .nm[!is.na(.nm) & nzchar(.nm)]
   .nm[vapply(
     .nm,
     function(.n) exists(.n, envir = ns, inherits = FALSE) && is.function(get(.n, envir = ns)),
@@ -91,10 +97,15 @@
 # the covariance decline only by making a leaf give up, which the enumeration does
 # for every leaf.  The model build behind .foceiAnalyticAugModelDirs (the
 # rxUiGet.* methods it reads) is such a subtree.
-.covAnalyticDeclineClosure <- function(ns = asNamespace("nlmixr2est"), stopAtLeaves = TRUE) {
-  .leaves <- unique(unlist(.covAnalyticDeclineLeaves))
+.covAnalyticDeclineClosure <- function(
+  ns = asNamespace("nlmixr2est"),
+  stopAtLeaves = TRUE,
+  entries = .covAnalyticDeclineEntries,
+  leaves = unique(unlist(.covAnalyticDeclineLeaves))
+) {
+  .leaves <- leaves
   .seen <- character(0)
-  .todo <- .covAnalyticDeclineEntries
+  .todo <- entries
   while (length(.todo) > 0L) {
     .f <- .todo[1L]
     .todo <- .todo[-1L]
