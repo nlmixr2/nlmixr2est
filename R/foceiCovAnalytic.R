@@ -2618,17 +2618,21 @@
   .tried <- new.env(parent = emptyenv())
   Aflat <- function(.tt) {
     E <- .foceiAnalyticSolveFA(aug, setNames(.tt, names(params)), ev, times, tol = tol)
-    .ok <- !is.null(E) && all(is.finite(E$A)) && (!.hasR || all(is.finite(E$AR)))
+    .v <- if (is.null(E)) {
+      NULL
+    } else if (.hasR) {
+      c(as.vector(E$A), as.vector(E$AR))
+    } else {
+      as.vector(E$A)
+    }
+    # shi21Central takes a result of another length as a failed solve too
+    .ok <- length(.v) == length(f0) && all(is.finite(.v))
     .tried$x <- c(.tried$x, .tt[.tried$idx])
     .tried$ok <- c(.tried$ok, .ok)
     if (!.ok) {
       return(NULL)
     }
-    if (.hasR) {
-      c(as.vector(E$A), as.vector(E$AR))
-    } else {
-      as.vector(E$A)
-    }
+    .v
   }
   Ath <- array(0, c(nobs, neta, nd, nd))
   AthR <- if (.hasR) array(0, c(nobs, neta, nd, nd)) else NULL
@@ -2648,7 +2652,12 @@
     .bothSides <- TRUE
     for (.x in params[idx] + c(sc$h, -sc$h)) {
       .k <- match(.x, .tried$x)
-      .bothSides <- if (is.na(.k)) !is.null(Aflat(replace(params, idx, .x))) else .tried$ok[.k]
+      # shi21Central solves both sides of the step it returns (the minus side only
+      # once the plus side solved), so an unrecorded side is a change in it
+      if (is.na(.k)) {
+        return(.foceiAnalyticNote("a third-order step with a side the differencing did not solve"))
+      }
+      .bothSides <- .tried$ok[.k]
       if (!.bothSides) {
         break
       }
