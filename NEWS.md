@@ -301,6 +301,10 @@
 - `addCwres()` now records its time in the fit's `time` table; it was
   lost.
 
+- `est = "emvi"` and `"fbvi"` fit data with no EVID and no AMT column (for
+  example ID, TIME and DV only), whose every record is an observation, as
+  `est = "vae"` does; they used to stop with "replacement has 0 rows".
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
