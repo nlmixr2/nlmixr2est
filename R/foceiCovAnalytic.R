@@ -146,11 +146,14 @@
 }
 
 #' A reason clipped for a warning or printed line (CLAUDE.md: $runInfo lines < 75 chars)
+#'
+#' 54 columns, not [.covClip()]'s 74: the reason sits inside the fixed text of
+#' the "analytic errN: " warning and of the printed covType line.
 #' @param x the text
-#' @param width the most characters to keep, the ellipsis included
+#' @param width the most display columns to keep, the ellipsis included
 #' @noRd
 .foceiAnalyticClip <- function(x, width = 54L) {
-  as.character(cli::ansi_strtrim(x, width, ellipsis = "..."))
+  .covClip(x, width)
 }
 
 # The reason a decline gives when nothing recorded one: unreachable when every decline
@@ -2594,6 +2597,16 @@
   .res
 }
 
+#' The second-order sensitivities the third-order differencing works on, as one vector
+#' @param E a solve's sensitivities
+#' @param withR include the residual variance's (AR)
+#' @param rsig include the sigma slots' (RsigDir, Rsig2), differenced under Route A
+#' @return numeric vector
+#' @noRd
+.foceiAnalyticFD3Flat <- function(E, withR, rsig = FALSE) {
+  c(as.vector(E$A), if (withR) as.vector(E$AR), if (rsig) c(as.vector(E$RsigDir), as.vector(E$Rsig2)))
+}
+
 #' Solve the direction-set 2nd-order model for one subject and recover the
 #' 3rd-order tensor `Ath` by Shi (2021) central differences of the analytic
 #' 2nd-order sensitivities `A` (C++ `shi21CentralWrap`, perturbing one full-param
@@ -2650,6 +2663,7 @@
   nA <- nobs * nd * nd
   nRd <- nobs * nd * nsig
   nR2 <- nobs * nsig * nsig
+  f0 <- .foceiAnalyticFD3Flat(E0, .hasR, .dRsig)
   # shi21CentralWrap differences the closure at a perturbed full-param vector; it
   # strips names, so re-attach names(params) before mapping back through the solve.
   # Each value of the differenced coordinate is recorded with whether it solved, so
@@ -2657,16 +2671,11 @@
   .tried <- new.env(parent = emptyenv())
   Aflat <- function(.tt) {
     E <- .foceiAnalyticSolveFA(aug, setNames(.tt, names(params)), ev, times, tol = tol)
-    .v <- if (is.null(E)) {
-      NULL
-    } else {
-      c(
-        as.vector(E$A),
-        if (.hasR) as.vector(E$AR),
-        if (.dRsig) c(as.vector(E$RsigDir), as.vector(E$Rsig2))
-      )
-    }
+    .v <- if (is.null(E)) NULL else .foceiAnalyticFD3Flat(E, .hasR, .dRsig)
     # shi21Central takes a result of another length as a failed solve too
+    if (!is.null(.v) && length(.v) != length(f0)) {
+      .foceiAnalyticNote("a third-order solve of another size")
+    }
     .ok <- length(.v) == length(f0) && all(is.finite(.v))
     .tried$x <- c(.tried$x, .tt[.tried$idx])
     .tried$ok <- c(.tried$ok, .ok)
@@ -2675,11 +2684,6 @@
     }
     .v
   }
-  f0 <- c(
-    as.vector(E0$A),
-    if (.hasR) as.vector(E0$AR),
-    if (.dRsig) c(as.vector(E0$RsigDir), as.vector(E0$Rsig2))
-  )
   Ath <- array(0, c(nobs, neta, nd, nd))
   AthR <- if (.hasR) array(0, c(nobs, neta, nd, nd)) else NULL
   RsigDirEta <- if (.dRsig) array(0, c(nobs, neta, nd, nsig)) else NULL

@@ -284,7 +284,7 @@ nmTest({
     })
     .foceiAnalyticWhyReset()
     expect_null(.foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1)))
-    expect_identical(.foceiAnalyticWhy$detail, "a non-finite third-order sensitivity")
+    expect_identical(.foceiAnalyticWhy$detail, "a third-order solve of another size")
   })
 
   test_that("a successful third-order differencing solves no point twice", {

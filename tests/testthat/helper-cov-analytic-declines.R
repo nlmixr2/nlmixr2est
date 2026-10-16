@@ -41,7 +41,9 @@
 # reads: `x$name` and `rxUiGet(x, "name")` add "name" to acc$fields (rxode2
 # dispatches them to rxUiGet.name()), and the field after `$` or `@` is not a
 # symbol it names.  A string counts as a name too, for a function called by
-# name (do.call(".f", ...), match.fun(), lapply(x, ".f")).
+# name (do.call(".f", ...), match.fun(), lapply(x, ".f")); any string equal to
+# a package function's name is included, so labels such as
+# ini$err %in% c("boxCox", "yeoJohnson") add those functions as well.
 .covAnalyticWalk <- function(e, acc) {
   if (is.symbol(e)) {
     acc$syms <- c(acc$syms, as.character(e))
@@ -84,7 +86,8 @@
   .acc$fields <- character(0)
   .covAnalyticWalk(body(get(fn, envir = ns)), .acc)
   .nm <- unique(c(.acc$syms, paste0("rxUiGet.", .acc$fields)))
-  .nm <- .nm[!is.na(.nm) & nzchar(.nm)]
+  # exists() rejects an empty name and one over 10000 bytes
+  .nm <- .nm[!is.na(.nm) & nzchar(.nm) & nchar(.nm, type = "bytes") <= 10000L]
   .nm[vapply(
     .nm,
     function(.n) exists(.n, envir = ns, inherits = FALSE) && is.function(get(.n, envir = ns)),
@@ -103,7 +106,6 @@
   entries = .covAnalyticDeclineEntries,
   leaves = unique(unlist(.covAnalyticDeclineLeaves))
 ) {
-  .leaves <- leaves
   .seen <- character(0)
   .todo <- entries
   while (length(.todo) > 0L) {
@@ -113,7 +115,7 @@
       next
     }
     .seen <- c(.seen, .f)
-    if (!(stopAtLeaves && .f %in% .leaves)) {
+    if (!(stopAtLeaves && .f %in% leaves)) {
       .todo <- c(.todo, setdiff(.covAnalyticNamedFns(.f, ns), .seen))
     }
   }
