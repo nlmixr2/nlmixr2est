@@ -1,14 +1,15 @@
-# Every way covMethod="analytic" can decline gives a reason.  Each helper the live
-# hook (.foceiCalcRanalytic) depends on is made to fail -- return NULL, noting
+# Every way covMethod="analytic" can decline gives a reason.  Each helper in
+# .covAnalyticDeclineLeaves (helper-cov-analytic-declines.R, kept complete by the
+# static gate in test-cov-analytic-units.R) is made to fail -- return NULL, noting
 # nothing -- one at a time, on each assembly: add/prop FOCEI, add + prop FOCE (the
 # frozen-R0 eta = 0 solve), the general (f,R) assembly under FOCEI and FOCE, and
-# AGQ.  A decline must record a reason other than the "no reason recorded"
-# sentinel, the same in covTried, and every helper must make the covariance decline
-# on some assembly.  A failed batched solve is recovered by the per-subject solve on
-# the add/prop assembly; on the general (f,R) assembly the per-subject solve does
-# not rebuild the sigma slots and errors (pre-existing on origin/main 011375065,
-# reported for its own fix), which is pinned here so that a fix updates this test.
-# The reason texts themselves are pinned in test-cov-analytic-reason.R.
+# AGQ.  A decline must record a reason other than the internal-error sentinel, the
+# same in covTried, and every helper must make the covariance decline on some
+# assembly.  A failed batched solve is recovered by the per-subject solve on the
+# add/prop assembly; on the general (f,R) assembly that per-subject solve does not
+# rebuild the sigma slots and stops on an error, which is pinned below, so making it
+# recover changes this test.  The reason texts are pinned in
+# test-cov-analytic-reason.R.
 
 nmTest({
   .dcModAdd <- function() {
@@ -89,33 +90,13 @@ nmTest({
   .dcNull <- function(...) NULL
 
   # helpers before the assemblies split, then those of the solves and assemblies
-  .dcLeaves <- list(
-    ".foceiEtaThetaMap",
-    ".foceiAnalyticErrFull",
-    ".foceiAnalyticDirections",
-    ".foceiOmegaPairs",
-    ".omegaVarCovDeriv",
-    ".foceiAnalyticAugModelDirs",
-    ".nmSubjectObs",
-    ".foceiAnalyticSolveAll",
-    ".foceiAnalyticRxSolve",
-    ".foceiAnalyticSolveAllFD3",
-    c(".foceiAnalyticSolveAllFD3", ".foceiAnalyticSolveSubjectFD3"),
-    c(".foceiAnalyticSolveAllFD3", ".foceiAnalyticSolveFA"),
-    ".foceiAnalyticExpandSigma",
-    ".foceiAnalyticSubjectR",
-    ".foceiAnalyticSubjectRfoce",
-    "foceiRAllFR_",
-    "foceiRAllFoceFR_",
-    ".foceiAnalyticSgNames",
-    ".foceiAnalyticSolve"
-  )
+  .dcLeaves <- .covAnalyticDeclineLeaves
   .dcBatch <- ".foceiAnalyticSolveAllFD3"
-  .dcBatchError <- "an error (number of items to replace is not a multiple of replacement length)"
 
   .dcPaths <- list(
     addFocei = list(model = .dcModAdd, est = "focei", leaves = .dcLeaves, recovers = TRUE),
     addPropFoce = list(model = .dcModAddProp, est = "foce", leaves = .dcLeaves, recovers = TRUE),
+    # recovers = FALSE: the (f,R) per-subject solve errors instead of recovering
     generalFocei = list(model = .dcModC1, est = "focei", leaves = .dcLeaves, recovers = FALSE),
     generalFoce = list(model = .dcModC1, est = "foce", leaves = .dcLeaves, recovers = FALSE),
     # AGQ shares the add/prop assembly; only the node solve and assembly are its own
@@ -150,18 +131,20 @@ nmTest({
         if (identical(.name, .dcBatch)) {
           expect_identical(.gone, !.path$recovers, label = .label)
           if (.gone) {
-            expect_identical(.r$env$.analyticReason, .dcBatchError, label = .label)
+            # the error comes from base R, whose message text is translated, so only
+            # the reason's stable prefix is matched
+            expect_true(startsWith(.r$env$.analyticReason, "an error ("), label = .label)
           }
         }
         if (!.gone) {
           next
         }
         .why <- .r$env$.analyticReason
-        expect_false(identical(.why, "no reason recorded"), label = .label)
+        expect_false(identical(.why, .foceiAnalyticNoReason), label = .label)
         expect_true(nzchar(.why), label = .label)
         expect_identical(.r$env$covTried$method[1], "analytic", label = .label)
         expect_identical(.r$env$covTried$outcome[1], .why, label = .label)
-        expect_false(identical(.r$env$.analyticReasonShort, "no reason recorded"), label = .label)
+        expect_false(identical(.r$env$.analyticReasonShort, .foceiAnalyticNoReason), label = .label)
         expect_lt(nchar(.r$env$.analyticWarnNoFallback), 75L, label = .label)
         .declined <- c(.declined, .name)
       }

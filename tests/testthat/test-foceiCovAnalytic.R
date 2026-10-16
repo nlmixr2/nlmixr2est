@@ -38,6 +38,14 @@ test_that("a rejected analytic covariance names the theta block the native step 
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "|r| (analytic)")
+  # the full label would take the line past 74 characters, so "covariance" goes
+  .e <- .anEnv(.anBad, "|r|")
+  expect_warning(
+    .foceiInstallAnalyticCov(.e),
+    "^\"analytic \\(full\\)\" is not positive definite; kept \"\\|r\\| \\(analytic\\)\"$"
+  )
+  .w <- "\"analytic (full)\" is not positive definite; kept \"|r| (analytic)\""
+  expect_lt(nchar(.w), 75L)
   .e <- .anEnv(.anBad, "s")
   expect_warning(.foceiInstallAnalyticCov(.e), "kept \"s\"", fixed = TRUE)
   expect_identical(.e$covMethod, "s")

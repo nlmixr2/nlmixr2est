@@ -335,7 +335,13 @@
     "kept the previous one"
   }
   .what <- if (.covIsName(what)) sprintf("\"%s\"", what) else "the"
-  warning(sprintf("%s covariance %s; %s", .what, reason, .kept), call. = FALSE)
+  .w <- sprintf("%s covariance %s; %s", .what, reason, .kept)
+  # under 75 characters, the width a $runInfo line renders in (CLAUDE.md): a long
+  # label first loses the redundant "covariance", then is clipped
+  if (nchar(.w) > 74L) {
+    .w <- as.character(cli::ansi_strtrim(sprintf("%s %s; %s", .what, reason, .kept), 74L, ellipsis = "..."))
+  }
+  warning(.w, call. = FALSE)
 }
 
 #' Keep the installed covariance recoverable from covList before it is replaced
@@ -1294,7 +1300,7 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
   .r <- tryCatch(.foceiCovAnalyticCalc(fit), error = .setCovAnalyticError)
   if (is.null(.r)) {
     .why <- .foceiAnalyticWhy$reason
-    .setCovFail(method, why = if (is.null(.why)) "no reason recorded" else .why)
+    .setCovFail(method, why = if (is.null(.why)) .foceiAnalyticNoReason else .why)
   }
   # `pd` judges the FULL matrix, which is the right gate for either shape: a
   # submatrix of the inverse of an indefinite information can look positive

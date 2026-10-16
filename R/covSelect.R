@@ -130,8 +130,9 @@
 
 #' The warning that a requested covariance was not used
 #'
-#' `why` is clipped so the warning stays under 75 characters, the width a
-#' `$runInfo` line renders in (CLAUDE.md).
+#' The warning stays under 75 characters, the width a `$runInfo` line renders in
+#' (CLAUDE.md): `why` is clipped to fit, and a request and tail too long to leave it
+#' ten characters clip the whole line.
 #' @param request the requested method
 #' @param why why it was not used
 #' @param tail what was done instead
@@ -140,7 +141,8 @@
 .covNotUsableMsg <- function(request, why, tail) {
   .fixed <- nchar(sprintf("\"%s\" not usable (); %s", request, tail))
   .why <- as.character(cli::ansi_strtrim(why, max(10L, 74L - .fixed), ellipsis = "..."))
-  sprintf("\"%s\" not usable (%s); %s", request, .why, tail)
+  .w <- sprintf("\"%s\" not usable (%s); %s", request, .why, tail)
+  as.character(cli::ansi_strtrim(.w, 74L, ellipsis = "..."))
 }
 
 #' The one warning a covariance walk gives when it falls back or gives none
