@@ -44,9 +44,9 @@
   not one; with a missing DV at an observation time `est = "vae"` stopped on
   missing values.  `est = "vae"` also gives data without an EVID column the EVID
   FOCEi gives it, taken from an MDV column when the data has an AMT column.
-  These estimators, the benchmark observation count and `covMethod =
-  "analytic"` now stop with FOCEi's message on an EVID, MDV or AMT column not
-  stored as numbers, or an infinite TIME, instead of reading it anyway.
+  These estimators and the benchmark observation count now stop with FOCEi's
+  message on an EVID, MDV or AMT column not stored as numbers, or an infinite
+  TIME, instead of reading it anyway.
 
 - `est = "vae"`, `"emvi"` and `"fbvi"` drop a subject that has records but no
   observations, with a warning naming it, as FOCEi does; they used to stop with
