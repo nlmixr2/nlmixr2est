@@ -324,7 +324,7 @@
 #' @param env fit environment
 #' @param what covariance-method name that was not installed
 #' @param reason why (a `.covGuard()` reason)
-#' @return invisibly `NULL`
+#' @return the warning text, invisibly
 #' @noRd
 .covRejectWarn <- function(env, what, reason) {
   .kept <- if (!is.matrix(env$cov)) {
@@ -344,16 +344,29 @@
   )
 }
 
+#' Clip a covariance message to the width of a `$runInfo` line
+#'
+#' Under 75 characters of display width, the width a `$runInfo` line renders in
+#' (CLAUDE.md), with an ellipsis where it was cut.
+#' @param w the text
+#' @param width the most display columns to keep, the ellipsis included
+#' @return the clipped text
+#' @noRd
+.covClip <- function(w, width = 74L) {
+  as.character(cli::ansi_strtrim(w, width, ellipsis = "..."))
+}
+
 #' Give a covariance warning on one line
 #'
 #' Covariance warnings name a method by its quoted label, which stands for its
-#' covariance, and are clipped under 75 characters of display width, the width a
-#' `$runInfo` line renders in (CLAUDE.md).
+#' covariance, and are clipped by [.covClip()].
 #' @param w the warning text
-#' @return invisibly `NULL`
+#' @return the clipped text, invisibly
 #' @noRd
 .covWarn <- function(w) {
-  warning(as.character(cli::ansi_strtrim(w, 74L, ellipsis = "...")), call. = FALSE)
+  .w <- .covClip(w)
+  warning(.w, call. = FALSE)
+  invisible(.w)
 }
 
 #' Keep the installed covariance recoverable from covList before it is replaced
@@ -444,7 +457,7 @@
   .w <- .covUnrepaired(label)
   .wb <- .covBaseName(what)
   if (!identical(.w, label) && !nzchar(.covFdType(label)) && identical(.wb, .covUnrepaired(.wb))) {
-    .covWarn(sprintf("\"%s\" not positive definite; installed as \"%s\" (sqrtm)", .w, label))
+    .covWarn(sprintf("\"%s\" is not positive definite; installed as \"%s\" (sqrtm)", .w, label))
   }
   invisible()
 }
