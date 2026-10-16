@@ -139,7 +139,10 @@
 #' @return the warning text
 #' @noRd
 .covNotUsableMsg <- function(request, why, tail) {
-  .fixed <- nchar(sprintf("\"%s\" not usable (); %s", request, tail))
+  checkmate::assertString(request)
+  checkmate::assertString(why)
+  checkmate::assertString(tail)
+  .fixed <- cli::ansi_nchar(sprintf("\"%s\" not usable (); %s", request, tail), type = "width")
   .why <- as.character(cli::ansi_strtrim(why, max(10L, 74L - .fixed), ellipsis = "..."))
   .w <- sprintf("\"%s\" not usable (%s); %s", request, .why, tail)
   as.character(cli::ansi_strtrim(.w, 74L, ellipsis = "..."))

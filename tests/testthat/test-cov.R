@@ -197,7 +197,7 @@ test_that(".covInstall() leaves the fit as it was when the matrix is rejected", 
   .bad <- matrix(c(1, 2, 2, 1), 2, dimnames = dimnames(.pdCov()))
   expect_warning(
     .ok <- .covInstall(.e, .bad, "sa", extras = list(parFixedDf = "refit")),
-    "\"sa\" covariance is not positive definite; kept \"r,s\"",
+    "\"sa\" is not positive definite; kept \"r,s\"",
     fixed = TRUE
   )
   expect_false(.ok)
@@ -210,11 +210,25 @@ test_that(".covInstall() leaves the fit as it was when the matrix is rejected", 
   .e2 <- new.env(parent = emptyenv())
   expect_warning(
     .covInstall(.e2, NULL, "imp"),
-    "\"imp\" covariance could not be computed; none installed",
+    "\"imp\" could not be computed; none installed",
     fixed = TRUE
   )
   expect_silent(.covInstall(.e2, NULL, "imp", warn = FALSE))
   expect_warning(.covInstall(.e2, NULL, NULL), "the covariance could not be computed; none installed", fixed = TRUE)
+})
+
+test_that(".covRejectWarn() reads the same for every method and stays under 75 characters", {
+  .e <- new.env(parent = emptyenv())
+  # a quoted method name stands for its covariance; only "the" takes the noun
+  expect_warning(
+    .covRejectWarn(.e, "r,s", "is not positive definite"),
+    "^\"r,s\" is not positive definite; none installed$"
+  )
+  expect_warning(.covRejectWarn(.e, NA_character_, "is not finite"), "^the covariance is not finite; none installed$")
+  expect_warning(.covRejectWarn(.e, NULL, "is not finite"), "^the covariance is not finite; none installed$")
+  .w <- tryCatch(.covRejectWarn(.e, "analytic (full)", strrep("x", 80)), warning = conditionMessage)
+  expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
+  expect_identical(.w, paste0("\"analytic (full)\" ", strrep("x", 53), "..."))
 })
 
 test_that(".covInstall() says when what it installed is not what was asked for", {
@@ -242,7 +256,7 @@ test_that("the post-fit mu recompute keeps the fit's covariance when its result 
   })
   expect_warning(
     .foceiInstallMuCov(.e, "nlme"),
-    "\"r,s\" covariance is not positive definite; kept \"nlme\"",
+    "\"r,s\" is not positive definite; kept \"nlme\"",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "nlme")
@@ -252,7 +266,7 @@ test_that("the post-fit mu recompute keeps the fit's covariance when its result 
   local_mocked_bindings(.foceiRecomputeMuCov = function(fit, est) list(what = "analytic"))
   expect_warning(
     .foceiInstallMuCov(.e, "nlme"),
-    "\"analytic\" covariance could not be computed; kept \"nlme\"",
+    "\"analytic\" could not be computed; kept \"nlme\"",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "nlme")
