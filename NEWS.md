@@ -23,6 +23,13 @@
   information that would not invert, a failed sensitivity solve and several
   other failures used to print only "not available for this model".
 
+- `covMethod = "analytic"` no longer gives a wrong covariance when the
+  per-subject third-order differencing (the fallback when the batched solve
+  fails) cannot solve on one or both sides of its step.  Since 7.0.2 it used a
+  zero difference (every solve failing, or the plus side only) or a forward
+  difference (the minus side only) without saying so; the subject now declines
+  and the covariance falls back with the solve's reason.
+
 ### Estimation
 
 - `est = "vae"`, `"emvi"` and `"fbvi"` count as observations the records

@@ -2612,15 +2612,18 @@
   f0 <- if (.hasR) c(as.vector(E0$A), as.vector(E0$AR)) else as.vector(E0$A)
   # shi21CentralWrap differences the closure at a perturbed full-param vector; it
   # strips names, so re-attach names(params) before mapping back through the solve.
+  # Each value of the differenced coordinate is recorded with whether it solved, so
+  # the step's two sides are checked without solving again.
+  .tried <- new.env(parent = emptyenv())
   Aflat <- function(.tt) {
     E <- .foceiAnalyticSolveFA(aug, setNames(.tt, names(params)), ev, times, tol = tol)
-    if (is.null(E) || !all(is.finite(E$A))) {
+    .ok <- !is.null(E) && all(is.finite(E$A)) && (!.hasR || all(is.finite(E$AR)))
+    .tried$x <- c(.tried$x, .tt[.tried$idx])
+    .tried$ok <- c(.tried$ok, .ok)
+    if (!.ok) {
       return(NULL)
     }
     if (.hasR) {
-      if (!all(is.finite(E$AR))) {
-        return(NULL)
-      }
       c(as.vector(E$A), as.vector(E$AR))
     } else {
       as.vector(E$A)
@@ -2633,14 +2636,23 @@
     if (is.na(idx)) {
       return(.foceiAnalyticNote(paste0("no parameter for direction ", dirs[.etaDir[li]])))
     }
+    .tried$idx <- idx
+    .tried$x <- numeric(0)
+    .tried$ok <- logical(0)
     sc <- shi21CentralWrap(Aflat, params, f0, idx, .fdEps) # C++ shi21Central
-    # a failed solve reaches shi21Central as NaN, from which it can still return a
-    # zero difference, so the step it chose has to solve on both sides
-    .tp <- params
-    .tp[idx] <- params[idx] + sc$h
-    .tm <- params
-    .tm[idx] <- params[idx] - sc$h
-    if (is.null(sc$gr) || !all(is.finite(sc$gr)) || is.null(Aflat(.tp)) || is.null(Aflat(.tm))) {
+    # A failed solve reaches shi21Central as NaN.  With every solve failing, or the
+    # plus side only, it returns a zero difference; with the minus side only, a
+    # forward one.  So the chosen step must have solved on both sides (shi21Central
+    # forms x +/- h as here, so the recorded values match exactly).
+    .bothSides <- TRUE
+    for (.x in params[idx] + c(sc$h, -sc$h)) {
+      .k <- match(.x, .tried$x)
+      .bothSides <- if (is.na(.k)) !is.null(Aflat(replace(params, idx, .x))) else .tried$ok[.k]
+      if (!.bothSides) {
+        break
+      }
+    }
+    if (is.null(sc$gr) || !all(is.finite(sc$gr)) || !.bothSides) {
       # keep what the failing solve noted
       if (is.null(.foceiAnalyticWhy$detail)) {
         .foceiAnalyticNote("a non-finite third-order sensitivity")
