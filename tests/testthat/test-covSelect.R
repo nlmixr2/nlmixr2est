@@ -325,6 +325,14 @@ test_that("a theta-only \"r,s\" fit keeps its \"r\" and \"s\" covariances to swi
   expect_identical(.f$covMethod, "r,s")
 })
 
+test_that(".covNotUsableMsg() takes one string for each part", {
+  expect_error(.covNotUsableMsg("analytic", NULL, "no fallback"), "Assertion on 'why' failed", fixed = TRUE)
+  expect_error(.covNotUsableMsg("analytic", c("a", "b"), "no fallback"), "Assertion on 'why' failed", fixed = TRUE)
+  expect_error(.covNotUsableMsg("analytic", NA_character_, "no fallback"), "Assertion on 'why' failed", fixed = TRUE)
+  expect_error(.covNotUsableMsg(NULL, "a reason", "no fallback"), "Assertion on 'request' failed", fixed = TRUE)
+  expect_error(.covNotUsableMsg("analytic", "a reason", NULL), "Assertion on 'tail' failed", fixed = TRUE)
+})
+
 test_that(".covNotUsableMsg() keeps the warning under 75 characters", {
   expect_identical(
     .covNotUsableMsg("r,s", "R not PD", "installed \"s\""),
