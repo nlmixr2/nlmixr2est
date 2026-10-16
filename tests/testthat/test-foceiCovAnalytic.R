@@ -23,7 +23,7 @@ test_that("a rejected analytic covariance names the theta block the native step 
   .e <- .anEnv(.anBad)
   expect_warning(
     .foceiInstallAnalyticCov(.e),
-    "\"analytic (full)\" covariance is not positive definite; kept \"r (analytic)\"",
+    "\"analytic (full)\" is not positive definite; kept \"r (analytic)\"",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "r (analytic)")
@@ -34,11 +34,11 @@ test_that("a rejected analytic covariance names the theta block the native step 
   .e <- .anEnv(.anBad, "|r|", covFull = FALSE)
   expect_warning(
     .foceiInstallAnalyticCov(.e),
-    "\"analytic\" covariance is not positive definite; kept \"|r| (analytic)\"",
+    "\"analytic\" is not positive definite; kept \"|r| (analytic)\"",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "|r| (analytic)")
-  # the full label would take the line past 74 characters, so "covariance" goes
+  # with a long kept label the line still reads the same way
   .e <- .anEnv(.anBad, "|r|")
   expect_warning(
     .foceiInstallAnalyticCov(.e),
@@ -107,7 +107,7 @@ test_that("foceiCovAnalytic() never installs an indefinite covariance, and says 
       pd = FALSE
     )
   })
-  .msg <- "\"analytic (full)\" covariance is not positive definite; kept \"r,s (full)\""
+  .msg <- "\"analytic (full)\" is not positive definite; kept \"r,s (full)\""
   expect_warning(.r <- foceiCovAnalytic(.e), .msg, fixed = TRUE)
   expect_false(.r$pd)
   expect_warning(foceiCovAnalytic(.e), .msg, fixed = TRUE)

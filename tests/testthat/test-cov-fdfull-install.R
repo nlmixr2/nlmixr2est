@@ -68,7 +68,7 @@ test_that("s/r,s with a missing or non-finite Sfull is a no-op", {
   expect_false(exists("cov", envir = .e, inherits = FALSE))
   .Sbad <- matrix(c(1, NA, NA, 1), 2)
   .e2 <- .mkFdEnv("s", .Rinv, .Sbad)
-  expect_warning(.foceiInstallFdFullCov(.e2), "\"s (full)\" covariance is not finite; none installed", fixed = TRUE)
+  expect_warning(.foceiInstallFdFullCov(.e2), "\"s (full)\" is not finite; none installed", fixed = TRUE)
   expect_false(exists("cov", envir = .e2, inherits = FALSE))
 })
 
@@ -77,7 +77,7 @@ test_that("PD guard rejects an indefinite assembled cov", {
   .e <- .mkFdEnv("r", .Rbad)
   expect_warning(
     .foceiInstallFdFullCov(.e),
-    "\"r (full)\" covariance is not positive definite; none installed",
+    "\"r (full)\" is not positive definite; none installed",
     fixed = TRUE
   )
   expect_false(exists("cov", envir = .e, inherits = FALSE))

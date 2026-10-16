@@ -1,14 +1,14 @@
-# est = "vae", "emvi", "fbvi" and "saem" with a record that is not an observation
-# at the time of one.  An EVID 0 record with a missing DV or MDV = 1 is not an
-# observation; once translated it is the same event as an EVID 2 record, so the
-# three fits must be the same fit, and near the one without the record.  The
-# record adds a solver stop, which moved the estimates at most 3.0e-3 relative for
-# vae, 2.9e-5 for emvi and 8.4e-8 for saem; the tolerances are about 3x, 30x and
-# 100x that.  The vae test pins the missing-DV record that ended its fit on missing
-# values; emvi, fbvi and saem are pinned as reading their data the same way.  Also
-# here: a subject with no observations (vae and emvi stopped on a subject-count
-# mismatch) and data out of time order (vae paired the observations in data order,
-# moving its estimates by 1.2e-2; emvi and fbvi solve the translated data).
+# est = "vae", "emvi", "fbvi" and "saem" read the observations FOCEi reads.
+#  - A record that is not an observation at the time of one: an EVID 0 record
+#    with a missing DV or MDV = 1, which translates to the same event as an EVID 2
+#    record.  The three fits are the same fit, and near the one without the
+#    record.  The record adds a solver stop, which moves the estimates at most
+#    3.0e-3 relative for vae, 2.9e-5 for emvi and 8.4e-8 for saem; the tolerances
+#    are about 3x, 30x and 100x that.
+#  - A subject with records but no observations is dropped with FOCEi's warning,
+#    and the fit equals the one without it (vae and emvi).
+#  - Data out of time order within a subject gives the sorted data's fit (vae,
+#    emvi and fbvi); a pairing in data order moves vae's estimates by 1.2e-2.
 
 nmTest({
   .ovMod <- function() {

@@ -32,7 +32,7 @@ nmTest({
     local_mocked_bindings(.covRecompute = function(fit, method, control = NULL) NULL)
     # the post-fit hook's warning is kept with the run's other warnings
     expect_no_warning(.fit <- .fitDeferred("imp"))
-    expect_identical(tail(.fit$runInfo, 1L), "\"imp\" covariance could not be computed; none installed")
+    expect_identical(tail(.fit$runInfo, 1L), "\"imp\" could not be computed; none installed")
     expect_null(.fit$cov)
     expect_null(.fit$env$covOptions$imp)
   })
