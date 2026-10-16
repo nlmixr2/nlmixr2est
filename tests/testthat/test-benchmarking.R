@@ -109,4 +109,15 @@ nmTest({
     expect_identical(.nlmixr2BenchmarkNobs(NULL), NA_integer_)
     expect_identical(.nlmixr2BenchmarkNobs(nlmixr2data::theo_sd), 132L)
   })
+
+  test_that(".nlmixr2BenchmarkNobs() gives data without an EVID column FOCEi's EVID", {
+    # no AMT column: every record EVID 0, so only a missing DV is not counted
+    expect_identical(.nlmixr2BenchmarkNobs(data.frame(ID = 1, TIME = 0:2, DV = c(1, NA, 3))), 2L)
+    # AMT and MDV: MDV is the EVID, so MDV 0 with an AMT is an observation
+    .d <- data.frame(ID = 1, TIME = 0:2, DV = c(NA, 4, 5), AMT = c(100, 50, 0), MDV = c(1, 0, 0))
+    expect_identical(.nlmixr2BenchmarkNobs(.d), 2L)
+    # AMT only: a nonzero AMT is a dose
+    .d$MDV <- NULL
+    expect_identical(.nlmixr2BenchmarkNobs(.d), 1L)
+  })
 })

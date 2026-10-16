@@ -49,6 +49,39 @@
   !is.na(.c) & startsWith(.c, "-")
 }
 
+#' Stop on event columns `etTrans()` rejects, with its message
+#'
+#' EVID and MDV must be integers and AMT a number (a factor or a logical is
+#' one, as `etTrans()` reads its type), and no TIME may be infinite.  A
+#' character TIME or DV is read as a number, as FOCEi reads it.
+#' @param d data frame with upper-case names
+#' @return `d`, invisibly
+#' @noRd
+.nmAssertEventColumns <- function(d) {
+  .num <- c("double", "integer", "logical")
+  if (!is.null(d[["EVID"]]) && !(typeof(d[["EVID"]]) %in% .num)) {
+    stop("event id ('evid') needs to be an integer", call. = FALSE)
+  }
+  if (!is.null(d[["MDV"]]) && !(typeof(d[["MDV"]]) %in% .num)) {
+    stop("missing dependent variable ('mdv') needs to be an integer", call. = FALSE)
+  }
+  if (!is.null(d[["AMT"]]) && !(typeof(d[["AMT"]]) %in% .num)) {
+    stop("amount ('amt') needs to be a number", call. = FALSE)
+  }
+  .inf <- which(is.infinite(.nmAsDouble(d[["TIME"]])))
+  if (length(.inf) > 0L) {
+    stop(
+      "infinite times are not allowed (",
+      if (!is.null(d[["ID"]])) paste0("id: ", d[["ID"]][.inf[1L]], ", "),
+      "row: ",
+      .inf[1L],
+      ")",
+      call. = FALSE
+    )
+  }
+  invisible(d)
+}
+
 #' Which records of an event table are observations
 #'
 #' The records `etTrans()` keeps as observations (EVID 0), so data that has not
@@ -67,6 +100,7 @@
   if (is.null(d[["DV"]]) || is.null(d[["EVID"]]) || is.null(d[["TIME"]])) {
     stop("the data needs DV, EVID and TIME columns to find its observations", call. = FALSE)
   }
+  .nmAssertEventColumns(d)
   .evid <- suppressWarnings(as.integer(.nmAsDouble(d[["EVID"]])))
   .obs <- !.nmIsNA(.nmAsDouble(d[["TIME"]])) & (is.na(.evid) | .evid == 0L)
   .mdv <- d[["MDV"]]
@@ -97,6 +131,7 @@
 #' @return `d`, with an integer EVID column when it had none
 #' @noRd
 .nmWithEvid <- function(d) {
+  .nmAssertEventColumns(d)
   if (!is.null(d[["EVID"]])) {
     return(d)
   }
