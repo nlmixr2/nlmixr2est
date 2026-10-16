@@ -1399,21 +1399,9 @@ vaeCovariates <- function(
   .regressStage2 <- .vaeRegressStage2(ui, .regressNames, .regressErrIdx0)
 
   ## per-subject decoder inputs + gather all obs for standardization
-  subj <- vector("list", N)
-  .allTime <- numeric(0)
-  .allDv <- numeric(0)
-  for (i in seq_len(N)) {
-    .di <- d[d$ID == .ids[i], , drop = FALSE]
-    .obs <- .di[.nmObsRows(.di), , drop = FALSE]
-    .times <- .obs$TIME
-    .y <- .obs$DV
-    ## M2/M3/M4 censoring columns (0 / NA when absent)
-    .cens <- if (is.null(.obs$CENS)) integer(length(.y)) else as.integer(.obs$CENS)
-    .limit <- if (is.null(.obs$LIMIT)) rep(NA_real_, length(.y)) else as.numeric(.obs$LIMIT)
-    subj[[i]] <- list(ev = .di, times = .times, y = .y, n = length(.times), cens = .cens, limit = .limit)
-    .allTime <- c(.allTime, .times)
-    .allDv <- c(.allDv, .y)
-  }
+  subj <- .nmSubjectObs(d, .ids)
+  .allTime <- as.numeric(unlist(lapply(subj, `[[`, "times")))
+  .allDv <- as.numeric(unlist(lapply(subj, `[[`, "y")))
   Tmax <- max(vapply(subj, function(s) s$n, integer(1)))
   .tMax <- max(.allTime)
   ## inputScale: which DV values the encoder-input centering/scaling is computed

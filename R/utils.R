@@ -37,6 +37,36 @@
   .obs
 }
 
+#' Each subject's records and observations
+#'
+#' @param d data frame with upper-case `ID`, `TIME`, `EVID` and `DV`, and optionally
+#'   `MDV`, `CENS` and `LIMIT`
+#' @param ids the subjects wanted, in order, as values of `d$ID`
+#' @return one element per `ids`: `NULL` for a subject with no records, else
+#'   `list(ev, times, y, n, cens, limit)` -- its records, then the time, DV, count,
+#'   censoring code (0 without `CENS`) and limit (`NA` without `LIMIT`) of its
+#'   observations ([.nmObsRows()])
+#' @noRd
+.nmSubjectObs <- function(d, ids) {
+  .byId <- split(d, as.character(d$ID))
+  lapply(as.character(ids), function(.id) {
+    .di <- .byId[[.id]]
+    if (is.null(.di) || nrow(.di) == 0L) {
+      return(NULL)
+    }
+    .obs <- .di[.nmObsRows(.di), , drop = FALSE]
+    .n <- nrow(.obs)
+    list(
+      ev = .di,
+      times = .obs$TIME,
+      y = .obs$DV,
+      n = .n,
+      cens = if (is.null(.obs$CENS)) integer(.n) else as.integer(.obs$CENS),
+      limit = if (is.null(.obs$LIMIT)) rep(NA_real_, .n) else as.numeric(.obs$LIMIT)
+    )
+  })
+}
+
 #' Message suffix for a method that requires random effects
 #'
 #' Used as the `extra` argument to `rxode2::assertRxUiMixedOnly()` so a

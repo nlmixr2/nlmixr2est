@@ -504,8 +504,13 @@
   # give the curvature of an idealized objective the reported fit does not sit on.
   .foce <- identical(as.integer(interaction), 0L)
   .fp <- identical(as.integer(foceType), 1L) # foce+ keeps the live conditional R
-  .byId <- split(data, as.character(data$ID))
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
+  # each subject's records and observations, in `ids` order
+  .subj <- .nmSubjectObs(data, .idCode)
+  if (any(vapply(.subj, is.null, logical(1L)))) {
+    return(.foceiAnalyticFallback("a subject with no observations"))
+  }
+  .obsT <- lapply(.subj, `[[`, "times")
   R <- matrix(0, np, np)
   if (.foce) {
     # FOCE cov: the per-subject eta=0 population solve + 3rd-order Shi FD3 stay in R
@@ -521,14 +526,6 @@
     # then ONE batched SolveAllFD3 delivers f/a/A/Ath AND R/aR/AR for all subjects
     # (withR=FALSE: FOCE reads R/aR/AR from the base solve + Ath, but never AthR).
     # foce+ (foceType=1) keeps the live R (no eta=0 solve).  Per-subject Shi fallback.
-    .obsAll <- lapply(seq_len(nsub), function(i) {
-      .s <- .byId[[as.character(.idCode[i])]]
-      if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.nmObsRows(.s), , drop = FALSE]
-    })
-    if (any(vapply(.obsAll, is.null, logical(1L)))) {
-      return(.foceiAnalyticFallback("a subject with no observations"))
-    }
-    .obsT <- lapply(.obsAll, function(.o) .o$TIME)
     E0all <- if (!.fp) .foceiAnalyticSolveAll(am, th, matrix(0, nsub, neta), .idCode, data, .obsT, solveTol) else NULL
     if (!.fp && is.null(E0all)) {
       return(.foceiAnalyticFallback("a failed eta=0 population solve", scope = FALSE))
@@ -552,14 +549,13 @@
       .foceiAnalyticNote(NULL)
     }
     for (i in seq_len(nsub)) {
-      s <- .byId[[as.character(.idCode[i])]]
-      obs <- .obsAll[[i]]
+      s <- .subj[[i]]
       eta0 <- eta0Mat[i, ]
       E0 <- if (.fp) NULL else E0all[[i]]
       E <- if (.batch) {
         .EsAll[[i]]
       } else {
-        .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s, obs$TIME, tol = solveTol, withR = FALSE)
+        .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s$ev, s$times, tol = solveTol, withR = FALSE)
       }
       if (is.null(E)) {
         return(.foceiAnalyticFallback(paste0("a failed sensitivity solve for subject ", ids[i]), scope = FALSE))
@@ -570,7 +566,7 @@
           return(.foceiAnalyticFallback("proportional error near a zero prediction"))
         }
       }
-      E$y <- .foceiAnalyticTbsY(obs$DV, E$trans)
+      E$y <- .foceiAnalyticTbsY(s$y, E$trans)
       # E0list[i] <- list(E0) keeps a NULL slot (foce+) without shrinking the list.
       Elist[[i]] <- E
       E0list[i] <- list(E0)
@@ -620,17 +616,15 @@
         ARcB[rows, , ] <- E0$AR
       } # aReB/AReB stay 0 (frozen)
       if (length(lamDir) || .hasCens) {
-        s <- .byId[[as.character(.idCode[i])]]
-        obs <- s[s$EVID == 0, , drop = FALSE]
+        s <- .subj[[i]]
         if (length(lamDir)) {
           # DV-transform chain (estimated lambda)
-          dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
-          dvSens2B[rows, lamDir] <- .foceiAnalyticDvSensLambda2(obs$DV, E$trans)
+          dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(s$y, E$trans)
+          dvSens2B[rows, lamDir] <- .foceiAnalyticDvSensLambda2(s$y, E$trans)
         }
         if (.hasCens) {
-          censB[rows] <- if (is.null(obs$CENS)) 0L else as.integer(obs$CENS)
-          .lim <- if (is.null(obs$LIMIT)) rep(NA_real_, length(rows)) else as.numeric(obs$LIMIT)
-          limB[rows] <- .foceiAnalyticTbsY(.lim, E$trans)
+          censB[rows] <- s$cens
+          limB[rows] <- .foceiAnalyticTbsY(s$limit, E$trans)
         }
       }
       ehatB[i, ] <- eta0list[[i]]
@@ -701,14 +695,6 @@
   nobsAll <- integer(nsub)
   # BATCHED (f,R) FOCEI solves: ONE SolveAllFD3 gives f/a/A/Ath AND R/aR/AR/AthR for all subjects
   # (withR=TRUE), instead of the per-subject Shi.  Per-subject Shi is the fallback.
-  .obsAll <- lapply(seq_len(nsub), function(i) {
-    .s <- .byId[[as.character(.idCode[i])]]
-    if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.nmObsRows(.s), , drop = FALSE]
-  })
-  if (any(vapply(.obsAll, is.null, logical(1L)))) {
-    return(.foceiAnalyticFallback("a subject with no observations"))
-  }
-  .obsT <- lapply(.obsAll, function(.o) .o$TIME)
   .batch <- !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
   .EsAll <- if (.batch) {
     .foceiAnalyticSolveAllFD3(am, th, ebes, .idCode, data, .obsT, tol = solveTol, withR = TRUE, sigSel = .sigSel)
@@ -720,12 +706,11 @@
     .foceiAnalyticNote(NULL)
   }
   for (i in seq_len(nsub)) {
-    s <- .byId[[as.character(.idCode[i])]]
-    obs <- .obsAll[[i]]
+    s <- .subj[[i]]
     E <- if (.batch) {
       .EsAll[[i]]
     } else {
-      .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(ebes[i, ], etav)), s, obs$TIME, tol = solveTol, withR = TRUE)
+      .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(ebes[i, ], etav)), s$ev, s$times, tol = solveTol, withR = TRUE)
     }
     if (is.null(E)) {
       return(.foceiAnalyticFallback(paste0("a failed sensitivity solve for subject ", ids[i]), scope = FALSE))
@@ -736,7 +721,7 @@
         return(.foceiAnalyticFallback("proportional error near a zero prediction"))
       }
     }
-    E$y <- .foceiAnalyticTbsY(obs$DV, E$trans)
+    E$y <- .foceiAnalyticTbsY(s$y, E$trans)
     Elist[[i]] <- E
     nobsAll[i] <- length(E$f)
   }
@@ -776,17 +761,15 @@
     RB[rows] <- E$R
     ehatB[i, ] <- ebes[i, ]
     if (length(lamDir) || .hasCens) {
-      s <- .byId[[as.character(.idCode[i])]]
-      obs <- s[s$EVID == 0, , drop = FALSE]
+      s <- .subj[[i]]
       if (length(lamDir)) {
         # DV-transform chain (estimated lambda)
-        dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
-        dvSens2B[rows, lamDir] <- .foceiAnalyticDvSensLambda2(obs$DV, E$trans)
+        dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(s$y, E$trans)
+        dvSens2B[rows, lamDir] <- .foceiAnalyticDvSensLambda2(s$y, E$trans)
       }
       if (.hasCens) {
-        censB[rows] <- if (is.null(obs$CENS)) 0L else as.integer(obs$CENS)
-        .lim <- if (is.null(obs$LIMIT)) rep(NA_real_, length(rows)) else as.numeric(obs$LIMIT)
-        limB[rows] <- .foceiAnalyticTbsY(.lim, E$trans) # transform the censoring bound like the DV
+        censB[rows] <- s$cens
+        limB[rows] <- .foceiAnalyticTbsY(s$limit, E$trans) # transform the censoring bound like the DV
       }
     }
   }
@@ -911,20 +894,17 @@
   # `data` (dataSav) keys on the etTrans integer code (1..N); `ids` (etaObf$ID /
   # fit$eta$ID) is a factor whose LABELS are the original dataset IDs.  Key BOTH on
   # the integer code so non-1..N IDs (e.g. 101,102,..) and permutations join right.
-  .byId <- split(data, as.character(data$ID)) # pre-split once (avoid per-subject rescan)
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
+  # each subject's records and observations, in `ids` order
+  .subj <- .nmSubjectObs(data, .idCode)
+  if (any(vapply(.subj, is.null, logical(1L)))) {
+    return(.foceiAnalyticFallback("a subject with no observations"))
+  }
+  .obsT <- lapply(.subj, `[[`, "times")
   # Batch the 3rd-order solve across ALL subjects (FOCEI *and* FOCE, no IOV rescale) so both take
   # the IDENTICAL method and both get the speedup (1 + 2*neta population solves vs the per-subject
   # Shi's O(nsub*neta)).  CORRECTED FOCE freezes R0 at the eta=0 population solve (batched);
   # foce+ keeps the live R (no eta=0 solve).  Per-subject Shi is the fallback.
-  .obsAll <- lapply(seq_along(ids), function(i) {
-    .s <- .byId[[as.character(.idCode[i])]]
-    if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.nmObsRows(.s), , drop = FALSE]
-  })
-  if (any(vapply(.obsAll, is.null, logical(1L)))) {
-    return(.foceiAnalyticFallback("a subject with no observations"))
-  }
-  .obsT <- lapply(.obsAll, function(.o) .o$TIME)
   .needF0 <- .foce && identical(as.integer(foceType), 0L) && isTRUE(ef$dependsF0)
   E0List <- vector("list", length(ids))
   if (.needF0) {
@@ -946,14 +926,13 @@
     }
   }
   for (i in seq_along(ids)) {
-    s <- .byId[[as.character(.idCode[i])]]
-    obs <- .obsAll[[i]]
+    s <- .subj[[i]]
     eta0 <- eta0Mat[i, ]
     E0 <- E0List[[i]]
     E <- if (.batch) {
       .EsAll[[i]]
     } else {
-      .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s, obs$TIME, tol = solveTol)
+      .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s$ev, s$times, tol = solveTol)
     }
     if (is.null(E)) {
       return(.foceiAnalyticFallback(paste0("a failed sensitivity solve for subject ", ids[i]), scope = FALSE))
@@ -974,7 +953,7 @@
         return(structure(list(), class = "foceiFlooredR"))
       }
     }
-    E$y <- .foceiAnalyticTbsY(obs$DV, E$trans)
+    E$y <- .foceiAnalyticTbsY(s$y, E$trans)
     ehat <- eta0
     if (rescale) {
       E$a <- sweep(E$a, 2, iovDirScale, `*`) # a_B = a_A / w on occasion directions
@@ -1011,7 +990,7 @@
       NULL
     } else {
       function(etak) {
-        .Ek <- .foceiAnalyticSolveFA(am, c(th, setNames(etak, etav)), s, obs$TIME, tol = solveTol)
+        .Ek <- .foceiAnalyticSolveFA(am, c(th, setNames(etak, etav)), s$ev, s$times, tol = solveTol)
         # a node can floor R while eta-hat does not; stop and report it like eta-hat
         if (!is.null(.Ek) && !is.null(ef$rvar) && any(ef$ev(ef$rvar, .Ek$f, NA_real_) < sqrt(.Machine$double.eps))) {
           .nodeState$floored <- TRUE
