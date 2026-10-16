@@ -217,9 +217,10 @@ test_that("a Ha theta block whose rows cannot be ordered is not installed", {
     theta = c("tka", "tcl", "wt.cl", "tv"),
     cfg = list(i1 = 1:2, i0 = 0L, nphi1 = 2L, nphi0 = 1L)
   )
+  # 76 characters with "covariance", so .covRejectWarn() drops it
   expect_warning(
     .saemCalcCov(.e),
-    "\"Ha\" covariance has information rows not matching the thetas; none installed",
+    "\"Ha\" has information rows not matching the thetas; none installed",
     fixed = TRUE
   )
   expect_false(exists("cov", envir = .e, inherits = FALSE))
