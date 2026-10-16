@@ -1,9 +1,14 @@
 # est = "vae", "emvi", "fbvi" and "saem" with a record that is not an observation
 # at the time of one.  An EVID 0 record with a missing DV or MDV = 1 is not an
 # observation; once translated it is the same event as an EVID 2 record, so the
-# three fits must agree, and stay near the fit without the record (the extra
-# solver stop moved the estimates 3.0e-3 relative for vae, 2.9e-5 for emvi and
-# 8.4e-8 for saem).
+# three fits must be the same fit, and near the one without the record.  The
+# record adds a solver stop, which moved the estimates at most 3.0e-3 relative for
+# vae, 2.9e-5 for emvi and 8.4e-8 for saem; the tolerances are about 3x, 30x and
+# 100x that.  On origin/main only the vae test fails (a missing DV ends the fit on
+# missing values); the others are the evidence that those methods were not
+# affected.  Also here: a subject with no observations (vae and emvi stopped on a
+# subject-count mismatch) and data out of time order (vae paired the observations
+# in data order and moved by 1.2e-2).
 
 nmTest({
   .ovMod <- function() {
@@ -56,9 +61,8 @@ nmTest({
       suppressMessages(suppressWarnings(nlmixr2(.ovMod, .d, est = est, control = control)))
     })
     for (.n in names(.fits)) {
-      expect_true(all(is.finite(.fits[[.n]]$theta)))
-      expect_true(all(is.finite(.fits[[.n]]$omega)))
       expect_equal(.fits[[.n]]$theta, .fits$base$theta, tolerance = tol)
+      expect_equal(.fits[[.n]]$omega, .fits$base$omega, tolerance = tol)
     }
     for (.n in c("dvNa", "mdv1")) {
       expect_equal(.fits[[.n]]$theta, .fits$evid2$theta)
@@ -94,5 +98,48 @@ nmTest({
   test_that("est = \"saem\" does not either", {
     skip_on_cran()
     .ovExpect("saem", saemControl(nBurn = 50L, nEm = 50L, print = 0L, covMethod = ""), tol = 1e-5)
+  })
+
+  .ovVaeControl <- function() {
+    vaeControl(
+      itersBurnIn = 40L,
+      klWarmup = 20L,
+      gammaIter = 60L,
+      iters = 80L,
+      hiddenDim = 25L,
+      seed = 1L,
+      covariateSelection = FALSE,
+      print = 0L,
+      covMethod = ""
+    )
+  }
+
+  test_that("a subject with no observations is dropped, with a warning, as FOCEi does", {
+    skip_on_cran()
+    .none <- .ovBase
+    .none$DV[.none$ID == 12 & .none$EVID == 0] <- NA
+    .without <- .ovBase[.ovBase$ID != 12, ]
+    for (.c in list(list("vae", .ovVaeControl()), list("emvi", emviControl(iters = 150L, seed = 7L, print = 0L)))) {
+      .f <- suppressMessages(nlmixr2(.ovMod, .none, est = .c[[1]], control = .c[[2]]))
+      .w <- suppressMessages(suppressWarnings(nlmixr2(.ovMod, .without, est = .c[[1]], control = .c[[2]])))
+      expect_true("IDs without observations dropped: 12" %in% .f$runInfo, label = .c[[1]])
+      expect_equal(.f$theta, .w$theta, label = .c[[1]])
+      expect_equal(.f$omega, .w$omega, label = .c[[1]])
+    }
+  })
+
+  test_that("est = \"vae\" gives the same fit for data out of time order", {
+    skip_on_cran()
+    # each subject's observations in reverse time order
+    .u <- do.call(
+      rbind,
+      lapply(split(.ovBase, .ovBase$ID), function(.s) {
+        rbind(.s[.s$EVID != 0, ], .s[rev(which(.s$EVID == 0)), ])
+      })
+    )
+    .s <- suppressMessages(suppressWarnings(nlmixr2(.ovMod, .ovBase, est = "vae", control = .ovVaeControl())))
+    .r <- suppressMessages(suppressWarnings(nlmixr2(.ovMod, .u, est = "vae", control = .ovVaeControl())))
+    expect_equal(.r$theta, .s$theta)
+    expect_equal(.r$omega, .s$omega)
   })
 })

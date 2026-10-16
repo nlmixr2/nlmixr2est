@@ -23,22 +23,65 @@
 
 #' Which records of an event table are observations
 #'
-#' An EVID 0 record with a missing DV or MDV = 1 is not one; `etTrans()` makes
-#' those EVID 2, but data that has not been through it still carries them as
-#' EVID 0.
-#' @param d data frame with upper-case `EVID` and `DV`, and optionally `MDV`
+#' The records `etTrans()` keeps as observations (EVID 0), so data that has not
+#' been through it agrees with what a solve returns: EVID 0 or missing, MDV other
+#' than 1, and a DV.  `etTrans()` makes the rest EVID 2, except a record with a
+#' missing EVID and a positive AMT, which it keeps (and whose dose it drops) even
+#' with a missing DV.
+#' @param d data frame with upper-case `EVID` and `DV`, and optionally `MDV` and
+#'   `AMT`
 #' @return logical, one per row
 #' @noRd
 .nmObsRows <- function(d) {
-  .obs <- !is.na(d$EVID) & d$EVID == 0 & !is.na(d$DV)
-  if (!is.null(d$MDV)) {
-    .obs <- .obs & (is.na(d$MDV) | d$MDV == 0)
+  .dv <- d[["DV"]]
+  .evid <- d[["EVID"]]
+  if (is.null(.dv) || is.null(.evid)) {
+    stop("the data needs a DV and an EVID column to find its observations", call. = FALSE)
   }
-  .obs
+  .mdv <- d[["MDV"]]
+  .amt <- d[["AMT"]]
+  .naEvid <- is.na(.evid)
+  .obs <- .naEvid | .evid == 0
+  if (!is.null(.mdv)) {
+    .obs <- .obs & !(.mdv %in% 1)
+  }
+  .keepNa <- if (is.null(.amt)) FALSE else .naEvid & !is.na(.amt) & .amt > 0
+  .obs & (!is.na(.dv) | .keepNa)
+}
+
+#' Stop on a record with a missing ID
+#' @param d data frame with an upper-case `ID`
+#' @return `d`, invisibly
+#' @noRd
+.nmAssertIds <- function(d) {
+  if (anyNA(d[["ID"]])) {
+    stop("ID is missing on ", sum(is.na(d[["ID"]])), " record(s)", call. = FALSE)
+  }
+  invisible(d)
+}
+
+#' Drop the subjects with no observations, as the FOCEi data step does
+#'
+#' Mirrors `.foceiPreProcessData()`: the subjects are named in a warning, and data
+#' with no observation at all is kept whole.
+#' @param d data frame with upper-case `ID`, `EVID` and `DV`
+#' @return `d` without those subjects' records
+#' @noRd
+.nmDropNoObsSubjects <- function(d) {
+  .nmAssertIds(d)
+  .obsId <- unique(d[["ID"]][.nmObsRows(d)])
+  .drop <- setdiff(unique(d[["ID"]]), .obsId)
+  if (length(.drop) == 0L || length(.obsId) == 0L) {
+    return(d)
+  }
+  warning("IDs without observations dropped: ", paste(.drop, collapse = " "), call. = FALSE)
+  d[d[["ID"]] %in% .obsId, , drop = FALSE]
 }
 
 #' Each subject's records and observations
 #'
+#' A subject's records are put in time order (ties keep their order), which is the
+#' order a solve returns its observations in.
 #' @param d data frame with upper-case `ID`, `TIME`, `EVID` and `DV`, and optionally
 #'   `MDV`, `CENS` and `LIMIT`
 #' @param ids the subjects wanted, in order, as values of `d$ID`
@@ -48,21 +91,23 @@
 #'   observations ([.nmObsRows()])
 #' @noRd
 .nmSubjectObs <- function(d, ids) {
-  .byId <- split(d, as.character(d$ID))
+  .nmAssertIds(d)
+  .byId <- split(d, as.character(d[["ID"]]))
   lapply(as.character(ids), function(.id) {
     .di <- .byId[[.id]]
     if (is.null(.di) || nrow(.di) == 0L) {
       return(NULL)
     }
+    .di <- .di[order(.di[["TIME"]]), , drop = FALSE]
     .obs <- .di[.nmObsRows(.di), , drop = FALSE]
     .n <- nrow(.obs)
     list(
       ev = .di,
-      times = .obs$TIME,
-      y = .obs$DV,
+      times = .obs[["TIME"]],
+      y = .obs[["DV"]],
       n = .n,
-      cens = if (is.null(.obs$CENS)) integer(.n) else as.integer(.obs$CENS),
-      limit = if (is.null(.obs$LIMIT)) rep(NA_real_, .n) else as.numeric(.obs$LIMIT)
+      cens = if (is.null(.obs[["CENS"]])) integer(.n) else as.integer(.obs[["CENS"]]),
+      limit = if (is.null(.obs[["LIMIT"]])) rep(NA_real_, .n) else as.numeric(.obs[["LIMIT"]])
     )
   })
 }

@@ -109,6 +109,8 @@
   if (is.null(d$EVID)) {
     d$EVID <- ifelse(is.na(d$AMT) | d$AMT == 0, 0L, 1L)
   }
+  # the FOCEi inner problem drops these subjects too, so the two agree
+  d <- .nmDropNoObsSubjects(d)
   .ids <- unique(d$ID)
   N <- length(.ids)
   subj <- .nmSubjectObs(d, .ids)

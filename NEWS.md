@@ -21,10 +21,19 @@
 
 ### Estimation
 
-- `est = "vae"` no longer counts an EVID 0 record with a missing DV or
-  `MDV = 1` as an observation; a missing DV at an observation time made the fit
-  stop on missing values.  The emvi/fbvi data preparation counts observations
-  the same way.
+- `est = "vae"`, `"emvi"` and `"fbvi"` count as observations exactly the
+  records `etTrans()` keeps as observations, so an EVID 0 record with a missing
+  DV or `MDV = 1` is not one; with a missing DV at an observation time
+  `est = "vae"` stopped on missing values.
+
+- `est = "vae"`, `"emvi"` and `"fbvi"` drop a subject that has records but no
+  observations, with a warning naming it, as FOCEi does; they used to stop with
+  "The etaMat must have the same number of ETAs (rows) as subjects".  A record
+  with a missing ID is now an error that says so.
+
+- `est = "vae"` gives the same fit for data that is not sorted by time within a
+  subject as for sorted data; it used to pair the predictions with the
+  observations in data order (the estimates moved by about 1%).
 
 # nlmixr2est 7.2.1
 
