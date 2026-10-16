@@ -180,8 +180,8 @@ dt <- stats::dt
 
 #' Observations in a benchmark fit's data
 #'
-#' The records `etTrans()` keeps as observations ([.nmObsRows()]), with the EVID a
-#' data set without one implies ([.nmDefaultEvid()], as the VAE prep does).
+#' The records `etTrans()` keeps as observations ([.nmObsRows()]), with the EVID
+#' FOCEi gives a data set without one ([.nmWithEvid()], as the VAE prep does).
 #' @param d the fit's original data
 #' @return the count, or `NA` for data without a DV or TIME (nothing to count)
 #' @noRd
@@ -194,10 +194,7 @@ dt <- stats::dt
   if (is.null(d[["DV"]]) || is.null(d[["TIME"]])) {
     return(NA_integer_)
   }
-  if (is.null(d[["EVID"]])) {
-    d$EVID <- .nmDefaultEvid(d)
-  }
-  sum(.nmObsRows(d))
+  sum(.nmObsRows(.nmWithEvid(d)))
 }
 
 .nlmixr2BenchmarkExtractFit <- function(fit, case, threads = .nlmixr2BenchmarkRxThreads()) {

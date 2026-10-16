@@ -19,9 +19,11 @@
 ### Estimation
 
 - `est = "vae"`, `"emvi"` and `"fbvi"` count as observations the records
-  `etTrans()` keeps as observations, so an EVID 0 record with a missing DV,
-  `MDV = 1` or a missing TIME is not one; with a missing DV at an observation
-  time `est = "vae"` stopped on missing values.
+  FOCEi's translated data keeps as observations, so an EVID 0 record with a
+  missing DV, `MDV = 1`, a missing TIME or a compartment-off (negative) CMT is
+  not one; with a missing DV at an observation time `est = "vae"` stopped on
+  missing values.  `est = "vae"` also gives data without an EVID column the EVID
+  FOCEi gives it, taken from an MDV column when the data has an AMT column.
 
 - `est = "vae"`, `"emvi"` and `"fbvi"` drop a subject that has records but no
   observations, with a warning naming it, as FOCEi does; they used to stop with

@@ -114,53 +114,144 @@ nmTest({
     # DV and TIME are read as FOCEi reads them, so "." is a missing DV
     .d <- data.frame(TIME = c("0", "1", "2"), EVID = 0, DV = c(".", "3", NA))
     expect_identical(.nmObsRows(.d), c(FALSE, TRUE, FALSE))
+    # as etTrans() reads them: EVID and MDV truncated, NaN not missing, and a
+    # negative or "-name" CMT turns a compartment off
+    .d <- data.frame(
+      TIME = c(1, NaN, 1, 1, 1, 1),
+      EVID = c(0.7, 0, 1.2, 0, 0, 0),
+      DV = c(4, 4, 4, NaN, 4, 4),
+      MDV = c(0, 0, 0, 0, 1.5, 0),
+      CMT = c(2, 2, 2, 2, 2, -2)
+    )
+    expect_identical(.nmObsRows(.d), c(TRUE, TRUE, FALSE, TRUE, FALSE, FALSE))
+    expect_identical(.nmObsRows(data.frame(TIME = 1, EVID = 0, DV = 4, CMT = c("center", "-center"))), c(TRUE, FALSE))
     # the columns are matched exactly: DVID is not DV
     expect_error(.nmObsRows(data.frame(TIME = 0, EVID = 0, DVID = 1)), "needs DV, EVID and TIME columns")
     expect_error(.nmObsRows(data.frame(TIME = 0, DV = 1)), "needs DV, EVID and TIME columns")
     expect_error(.nmObsRows(data.frame(EVID = 0, DV = 1)), "needs DV, EVID and TIME columns")
   })
 
-  test_that(".nmObsRows() agrees with etTrans() over every EVID, DV, MDV, AMT and TIME case", {
+  # FOCEi's verdict on the second of three records (a dose, the record, and an
+  # observation at t = 2): TRUE when its data ($dataSav, after its own defaults
+  # and etTrans()) has two EVID 0 records.  When etTrans() rejects the data, its
+  # message, which must be one of the reasons no data can avoid: a dose with a
+  # missing AMT, EVID 1 or 4 with an MDV of 0 or missing, or (rxode2 after 5.1.8)
+  # a missing EVID with a nonzero AMT
+  .utFoceiObs <- function(d, ui) {
+    .e <- new.env(parent = emptyenv())
+    .err <- tryCatch(
+      {
+        suppressWarnings(.foceiPreProcessData(d, .e, ui))
+        NULL
+      },
+      error = function(e) conditionMessage(e)
+    )
+    if (!is.null(.err)) {
+      expect_match(
+        .err,
+        "'amt' value NA for dose event|'mdv' cannot be 0 when 'evid'=[14]|'evid' is missing on a record with a nonzero 'amt'",
+        label = paste(names(d), d[2, ], collapse = " ")
+      )
+      return(.err)
+    }
+    sum(.e$dataSav$EVID == 0) == 2L
+  }
+
+  # a dose, the record under test and an observation at t = 2; a NULL evid, amt
+  # or mdv leaves that column out
+  .utObsRecord <- function(time, dv, cmt, evid, amt, mdv) {
+    .d <- data.frame(ID = 1L, TIME = c(0, time, 2), DV = c(NA, dv, 3), CMT = c(1, cmt, 2))
+    if (!is.null(evid)) {
+      .d$EVID <- c(1, evid, 0)
+    }
+    if (!is.null(amt)) {
+      .d$AMT <- c(100, amt, 0)
+    }
+    if (!is.null(mdv)) {
+      .d$MDV <- c(1, mdv, 0)
+    }
+    .d
+  }
+
+  test_that(".nmObsRows() and .nmWithEvid() agree with FOCEi's translated data", {
     skip_on_cran()
-    .m <- rxode2::rxode2({
-      d/dt(depot) <- -ka * depot
-      d/dt(center) <- ka * depot - cl / v * center
-      cp <- center / v
+    .ui <- rxode2::assertRxUi(function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.cl ~ 0.3
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
     })
+    # -1 (EVID, MDV) and Inf (AMT): no such column
     .g <- expand.grid(
-      evid = c(0, 1, 2, 3, 4, 101, NA),
-      dv = c(4, NA),
-      mdv = c(-1, 0, 1, NA, 2), # -1: no MDV column
-      amt = c(0, NA, 50, -50),
-      time = c(1, NA)
+      evid = c(0, 1, 2, 3, 4, 101, NA, -1),
+      dv = c(4, NA, NaN),
+      mdv = c(-1, 0, 1, 2, NA),
+      amt = c(0, NA, 50, -50, Inf),
+      time = c(1, NA),
+      cmt = c(2, -2)
     )
     .n <- 0L
+    .nNew <- 0L
     for (.k in seq_len(nrow(.g))) {
       .r <- .g[.k, ]
-      # a dose, the record under test, and an observation at t = 2
-      .d <- data.frame(
-        ID = 1L,
-        TIME = c(0, .r$time, 2),
-        DV = c(NA, .r$dv, 3),
-        AMT = c(100, .r$amt, 0),
-        EVID = c(1, .r$evid, 0),
-        CMT = 2L
+      .d <- .utObsRecord(
+        .r$time,
+        .r$dv,
+        .r$cmt,
+        if (.r$evid %in% -1) NULL else .r$evid,
+        if (.r$amt %in% Inf) NULL else .r$amt,
+        if (.r$mdv %in% -1) NULL else .r$mdv
       )
-      if (!(.r$mdv %in% -1)) {
-        .d$MDV <- c(1, .r$mdv, 0)
-      }
-      # etTrans() rejects a dose with a missing AMT, and EVID 1 or 4 with an MDV of 0
-      # or missing; those combinations are skipped, as no data can carry them
-      .et <- tryCatch(as.data.frame(suppressWarnings(rxode2::etTrans(.d, .m))), error = function(e) NULL)
-      if (is.null(.et)) {
+      .want <- .utFoceiObs(.d, .ui)
+      if (is.character(.want)) {
+        .nNew <- .nNew + grepl("'evid' is missing on a record", .want, fixed = TRUE)
         next
       }
       .n <- .n + 1L
-      .want <- sum(.et$EVID == 0) == 2L
-      expect_identical(.nmObsRows(.d)[2], .want, label = paste(names(.r), .r, collapse = " "))
+      expect_identical(.nmObsRows(.nmWithEvid(.d))[2], .want, label = paste(names(.r), .r, collapse = " "))
     }
-    # 560 combinations, of which etTrans() rejects 54
-    expect_identical(.n, 506L)
+    # 2400 combinations, of which etTrans() rejects 174 for the first two reasons;
+    # a later rxode2 also rejects the missing-EVID ones with a nonzero AMT
+    expect_identical(.n + .nNew, 2226L)
+    # values the grid leaves out: NaN TIME, AMT, EVID and MDV, fractional EVID and
+    # MDV, and a "-name" CMT
+    .base <- list(time = 1, dv = 4, cmt = 2, evid = 0, amt = 0, mdv = 0)
+    .special <- list(
+      list(time = NaN),
+      list(dv = NA, amt = NaN),
+      list(evid = NaN),
+      list(mdv = NaN),
+      list(evid = 0.7),
+      list(evid = 1.2, mdv = 1),
+      list(mdv = 0.5),
+      list(mdv = 1.5),
+      list(evid = NULL, mdv = 0.5, amt = 50),
+      list(cmt = "-center")
+    )
+    for (.v in .special) {
+      .a <- utils::modifyList(.base, .v, keep.null = TRUE)
+      .d <- do.call(.utObsRecord, .a)
+      if (identical(.a$cmt, "-center")) {
+        .d$CMT <- c("depot", "-center", "center")
+      }
+      expect_identical(
+        .nmObsRows(.nmWithEvid(.d))[2],
+        .utFoceiObs(.d, .ui),
+        label = paste(names(.v), .v, collapse = " ")
+      )
+    }
   })
 
   test_that(".nmAssertIds() and .nmDropNoObsSubjects() match the FOCEi data step", {
@@ -184,9 +275,22 @@ nmTest({
     expect_error(.nmSubjectObs(data.frame(ID = 1, EVID = 0, DV = 1), 1), "the data needs a TIME column", fixed = TRUE)
   })
 
-  test_that(".nmDefaultEvid() makes a nonzero AMT a dose", {
-    expect_identical(.nmDefaultEvid(data.frame(AMT = c(0, NA, 100, -1))), c(0L, 0L, 1L, 1L))
-    expect_identical(.nmDefaultEvid(data.frame(DV = 1:2)), c(0L, 0L))
+  test_that(".nmWithEvid() gives data without an EVID column FOCEi's", {
+    # no AMT column either: every record EVID 0, and an MDV column stays an MDV
+    expect_identical(.nmWithEvid(data.frame(DV = 1:2))$EVID, c(0L, 0L))
+    .m <- .nmWithEvid(data.frame(DV = 1:2, MDV = c(1, 0)))
+    expect_identical(.m$EVID, c(0L, 0L))
+    expect_identical(.m$MDV, c(1, 0))
+    # a nonzero AMT (NaN too, as etTrans() reads it) is a dose
+    expect_identical(.nmWithEvid(data.frame(AMT = c(0, NA, 100, -1, NaN)))$EVID, c(0L, 0L, 1L, 1L, 1L))
+    # with AMT, an MDV column is the EVID and is dropped: a missing MDV is a dose,
+    # MDV 1 with a zero AMT is EVID 2, and other values are truncated
+    .m <- .nmWithEvid(data.frame(AMT = c(100, 0, 50, 0, 0, 0), MDV = c(1, 1, 0, NA, 2, 0.5)))
+    expect_identical(.m$EVID, c(1L, 2L, 0L, 1L, 2L, 0L))
+    expect_null(.m$MDV)
+    # data with an EVID column is unchanged
+    .k <- data.frame(EVID = c(0, 1), AMT = c(0, 1), MDV = c(0, 1))
+    expect_identical(.nmWithEvid(.k), .k)
   })
 
   test_that(".nmSubjectObs() gives each subject's records and observations, in order", {

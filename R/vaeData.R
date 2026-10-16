@@ -1047,11 +1047,8 @@ vaeCovariates <- function(
   ## normalize data columns (needed early for covariate discovery + pinning)
   d <- as.data.frame(data)
   names(d) <- toupper(names(d))
-  ## no EVID: derive from AMT; with no AMT column either (dose-free data), all
-  ## rows are observations (d$AMT is NULL -> the ifelse would yield length 0).
-  if (is.null(d$EVID)) {
-    d$EVID <- .nmDefaultEvid(d)
-  }
+  ## no EVID column: the one FOCEi and etTrans() derive
+  d <- .nmWithEvid(d)
   # the FOCEi inner problem drops these subjects too, so the two agree
   d <- .nmDropNoObsSubjects(d)
   .ids <- unique(d$ID)
