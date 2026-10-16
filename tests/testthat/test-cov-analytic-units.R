@@ -69,6 +69,29 @@ nmTest({
     expect_identical(.foceiAnalyticWhy$detail, "solved observation times differ from the data's")
   })
 
+  test_that("a decline with no reason gives the internal-error sentinel, and the fallback runs", {
+    # unreachable while every decline records a reason; mocked to pin the wording
+    local_mocked_bindings(.foceiCalcRanalyticAssemble = function(e) NULL)
+    .e <- new.env(parent = emptyenv())
+    expect_null(.foceiCalcRanalytic(.e))
+    expect_identical(.e$.analyticReason, .foceiAnalyticNoReason)
+    expect_identical(.e$.analyticReason, "an internal error: no reason was recorded (please report it)")
+    expect_identical(.e$.analyticReasonShort, "an internal error: no reason was recorded (please r...")
+    expect_identical(
+      .e$.analyticWarnNoFallback,
+      "\"analytic\" not usable (an internal error: no reason was r...); no fallback"
+    )
+    expect_identical(.e$covTried, data.frame(method = "analytic", outcome = .foceiAnalyticNoReason))
+    # setCov() stops with it
+    local_mocked_bindings(.foceiCovAnalyticCalc = function(fit) NULL)
+    .foceiAnalyticWhyReset()
+    expect_error(
+      .setCovAnalytic(NULL, new.env(parent = emptyenv()), "analytic"),
+      "covMethod=\"analytic\" could not be computed for this fit (an internal error: no reason was recorded (please report it)); the covariance is left unchanged",
+      fixed = TRUE
+    )
+  })
+
   test_that("every exit of the entry points and assemblers is a named decline", {
     .other <- function(fn) {
       .k <- unname(.covAnalyticReturnKinds(fn))
