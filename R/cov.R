@@ -335,14 +335,25 @@
     "kept the previous one"
   }
   # a quoted method name stands for its covariance; only a bare "the" needs the noun
-  .w <- if (.covIsName(what)) {
-    sprintf("\"%s\" %s; %s", what, reason, .kept)
-  } else {
-    sprintf("the covariance %s; %s", reason, .kept)
-  }
-  # clipped under 75 characters of display width, the width a $runInfo line
-  # renders in (CLAUDE.md)
-  warning(as.character(cli::ansi_strtrim(.w, 74L, ellipsis = "...")), call. = FALSE)
+  .covWarn(
+    if (.covIsName(what)) {
+      sprintf("\"%s\" %s; %s", what, reason, .kept)
+    } else {
+      sprintf("the covariance %s; %s", reason, .kept)
+    }
+  )
+}
+
+#' Give a covariance warning on one line
+#'
+#' Covariance warnings name a method by its quoted label, which stands for its
+#' covariance, and are clipped under 75 characters of display width, the width a
+#' `$runInfo` line renders in (CLAUDE.md).
+#' @param w the warning text
+#' @return invisibly `NULL`
+#' @noRd
+.covWarn <- function(w) {
+  warning(as.character(cli::ansi_strtrim(w, 74L, ellipsis = "...")), call. = FALSE)
 }
 
 #' Keep the installed covariance recoverable from covList before it is replaced
@@ -412,7 +423,7 @@
   }
   .nlmixr2CovConditionUpdate(env)
   if (warn && .covIsName(what) && !.covSameName(.covBaseName(what), .covBaseName(label))) {
-    warning(sprintf("\"%s\" covariance installed instead of the requested \"%s\"", label, what), call. = FALSE)
+    .covWarn(sprintf("\"%s\" installed instead of the requested \"%s\"", label, what))
   } else if (warn && .covIsName(what) && .covIsName(label) && !identical(what, label)) {
     .covRepairWarn(what, label)
   }
@@ -433,14 +444,7 @@
   .w <- .covUnrepaired(label)
   .wb <- .covBaseName(what)
   if (!identical(.w, label) && !nzchar(.covFdType(label)) && identical(.wb, .covUnrepaired(.wb))) {
-    warning(
-      sprintf(
-        "\"%s\" covariance not positive definite; installed as \"%s\" (sqrtm)",
-        .w,
-        label
-      ),
-      call. = FALSE
-    )
+    .covWarn(sprintf("\"%s\" not positive definite; installed as \"%s\" (sqrtm)", .w, label))
   }
   invisible()
 }
@@ -1351,7 +1355,7 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
     if (!.listed) {
       .setCovFail(method, if (.covIsName(.label)) sprintf("was \"%s\"", .label))
     }
-    warning(sprintf("\"%s\" covariance installed instead of the requested \"%s\"", .label, method), call. = FALSE)
+    .covWarn(sprintf("\"%s\" installed instead of the requested \"%s\"", .label, method))
     assign(".setCovFallback", .label, envir = env)
   }
   .ok <- .covInstall(

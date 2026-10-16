@@ -235,7 +235,7 @@ test_that(".covInstall() says when what it installed is not what was asked for",
   .e <- .fakeFitEnv()
   expect_warning(
     .covInstall(.e, .pdCov(), "linFim", what = "sa"),
-    "\"linFim\" covariance installed instead of the requested \"sa\"",
+    "\"linFim\" installed instead of the requested \"sa\"",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "linFim")
@@ -552,7 +552,7 @@ nmTest({
         invokeRestart("muffleWarning")
       }
     )
-    .msg <- "\"r,s (full)\" covariance installed instead of the requested \"analytic\""
+    .msg <- "\"r,s (full)\" installed instead of the requested \"analytic\""
     expect_identical(sum(grepl(.msg, c(.acc$w, .mfa$runInfo), fixed = TRUE)), 1L)
     expect_identical(.mfa$covMethod, "r,s (full)")
     expect_lt(.maxRel(.seOf(.mfa), .seOf(.ref)), 1e-6)
