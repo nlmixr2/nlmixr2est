@@ -4,11 +4,9 @@
 # frozen-R0 eta = 0 solve), the general (f,R) assembly under FOCEI and FOCE, and
 # AGQ.  A decline must record a reason other than the "no reason recorded"
 # sentinel, the same in covTried, and every helper must make the covariance decline
-# on some assembly.  A failed batched solve is recovered by the per-subject solve on
-# the add/prop assembly; on the general (f,R) assembly the per-subject solve does
-# not rebuild the sigma slots and errors (pre-existing on origin/main 011375065,
-# reported for its own fix), which is pinned here so that a fix updates this test.
-# The reason texts themselves are pinned in test-cov-analytic-reason.R.
+# on some assembly, except the batched solve, whose failure the per-subject solve
+# recovers on every assembly.  The reason texts themselves are pinned in
+# test-cov-analytic-reason.R.
 
 nmTest({
   .dcModAdd <- function() {
@@ -111,20 +109,18 @@ nmTest({
     ".foceiAnalyticSolve"
   )
   .dcBatch <- ".foceiAnalyticSolveAllFD3"
-  .dcBatchError <- "an error (number of items to replace is not a multiple of replacement length)"
 
   .dcPaths <- list(
-    addFocei = list(model = .dcModAdd, est = "focei", leaves = .dcLeaves, recovers = TRUE),
-    addPropFoce = list(model = .dcModAddProp, est = "foce", leaves = .dcLeaves, recovers = TRUE),
-    generalFocei = list(model = .dcModC1, est = "focei", leaves = .dcLeaves, recovers = FALSE),
-    generalFoce = list(model = .dcModC1, est = "foce", leaves = .dcLeaves, recovers = FALSE),
+    addFocei = list(model = .dcModAdd, est = "focei", leaves = .dcLeaves),
+    addPropFoce = list(model = .dcModAddProp, est = "foce", leaves = .dcLeaves),
+    generalFocei = list(model = .dcModC1, est = "focei", leaves = .dcLeaves),
+    generalFoce = list(model = .dcModC1, est = "foce", leaves = .dcLeaves),
     # AGQ shares the add/prop assembly; only the node solve and assembly are its own
     agq = list(
       model = .dcModAdd,
       est = "focei",
       agq = 3L,
-      leaves = list(".foceiAnalyticSolveFA", ".foceiAnalyticSubjectR", ".foceiAnalyticRxSolve"),
-      recovers = TRUE
+      leaves = list(".foceiAnalyticSolveFA", ".foceiAnalyticSubjectR", ".foceiAnalyticRxSolve")
     )
   )
 
@@ -148,10 +144,7 @@ nmTest({
         .label <- paste(.p, .name)
         .gone <- exists(".analyticReason", envir = .r$env, inherits = FALSE)
         if (identical(.name, .dcBatch)) {
-          expect_identical(.gone, !.path$recovers, label = .label)
-          if (.gone) {
-            expect_identical(.r$env$.analyticReason, .dcBatchError, label = .label)
-          }
+          expect_false(.gone, label = .label)
         }
         if (!.gone) {
           next
@@ -172,6 +165,6 @@ nmTest({
       character(1),
       collapse = "+"
     ))
-    expect_setequal(unique(.declined), .all)
+    expect_setequal(unique(.declined), setdiff(.all, .dcBatch))
   })
 })

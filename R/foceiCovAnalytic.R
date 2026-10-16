@@ -584,7 +584,15 @@
       E <- if (.batch) {
         .EsAll[[i]]
       } else {
-        .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s$ev, s$times, tol = solveTol, withR = FALSE)
+        .foceiAnalyticSolveSubjectFD3(
+          am,
+          c(th, setNames(eta0, etav)),
+          s$ev,
+          s$times,
+          tol = solveTol,
+          withR = FALSE,
+          sigSel = .sigSel
+        )
       }
       if (is.null(E)) {
         return(.foceiAnalyticFallback(paste0("a failed sensitivity solve for subject ", ids[i]), scope = FALSE))
@@ -750,7 +758,15 @@
     E <- if (.batch) {
       .EsAll[[i]]
     } else {
-      .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(ebes[i, ], etav)), s$ev, s$times, tol = solveTol, withR = TRUE)
+      .foceiAnalyticSolveSubjectFD3(
+        am,
+        c(th, setNames(ebes[i, ], etav)),
+        s$ev,
+        s$times,
+        tol = solveTol,
+        withR = TRUE,
+        sigSel = .sigSel
+      )
     }
     if (is.null(E)) {
       return(.foceiAnalyticFallback(paste0("a failed sensitivity solve for subject ", ids[i]), scope = FALSE))
@@ -2574,11 +2590,24 @@
 #' Solve the direction-set 2nd-order model for one subject and recover the
 #' 3rd-order tensor `Ath` by Shi (2021) central differences of the analytic
 #' 2nd-order sensitivities `A` (C++ `shi21CentralWrap`, perturbing one full-param
-#' coordinate per direction), then symmetrize.  Returns `list(f, a, A, Ath)` or
-#' `NULL` on failure.  (`rxode2::rxExpandSens3_` would give `Ath` analytically but
-#' at O(ndir^3) augmented-model compile cost; the Shi FD keeps it at O(ndir^2).)
+#' coordinate per direction), then symmetrize.  Returns `list(f, a, A, Ath)` (with the
+#' residual-variance slots when the model has them) or `NULL` on failure.  The
+#' per-subject fallback of [.foceiAnalyticSolveAllFD3], so it rebuilds the sigma slots
+#' the same way.  (`rxode2::rxExpandSens3_` would give `Ath` analytically but at
+#' O(ndir^3) augmented-model compile cost; the Shi FD keeps it at O(ndir^2).)
+#' @param sigSel the sigma directions the caller dropped, as for
+#'   [.foceiAnalyticSolveAllFD3]
 #' @noRd
-.foceiAnalyticSolveSubjectFD3 <- function(aug, params, ev, times, .fdEps = 7e-7, tol = 1e-10, withR = FALSE) {
+.foceiAnalyticSolveSubjectFD3 <- function(
+  aug,
+  params,
+  ev,
+  times,
+  .fdEps = 7e-7,
+  tol = 1e-10,
+  withR = FALSE,
+  sigSel = NULL
+) {
   dirs <- aug$dirs
   nd <- length(dirs)
   # base solve (f, a, A) via the shared helper; this tier adds the 3rd-order Ath by
@@ -2602,26 +2631,44 @@
     return(.foceiAnalyticNote("no eta directions"))
   }
   .hasR <- isTRUE(withR) && !is.null(E0$AR)
+  # Route A, under the condition .foceiAnalyticSolveAllFD3 uses: the sigma slots come
+  # from the model's rsig outputs, and with withR their eta-derivatives are differenced
+  # alongside AR
+  .rsig <- !nzchar(Sys.getenv("FOCEI_NO_RSIG")) &&
+    !is.null(E0$Rsig) &&
+    length(E0$Rsig) > 0L &&
+    (is.null(sigSel) || length(sigSel) > 0L)
+  nsig <- if (.rsig) ncol(E0$Rsig) else 0L
+  .dRsig <- .rsig && .hasR
   nA <- nobs * nd * nd
-  f0 <- if (.hasR) c(as.vector(E0$A), as.vector(E0$AR)) else as.vector(E0$A)
+  nRd <- nobs * nd * nsig
+  nR2 <- nobs * nsig * nsig
   # shi21CentralWrap differences the closure at a perturbed full-param vector; it
   # strips names, so re-attach names(params) before mapping back through the solve.
   Aflat <- function(.tt) {
     E <- .foceiAnalyticSolveFA(aug, setNames(.tt, names(params)), ev, times, tol = tol)
-    if (is.null(E) || !all(is.finite(E$A))) {
+    if (is.null(E)) {
       return(NULL)
     }
-    if (.hasR) {
-      if (!all(is.finite(E$AR))) {
-        return(NULL)
-      }
-      c(as.vector(E$A), as.vector(E$AR))
-    } else {
-      as.vector(E$A)
+    .v <- c(
+      as.vector(E$A),
+      if (.hasR) as.vector(E$AR),
+      if (.dRsig) c(as.vector(E$RsigDir), as.vector(E$Rsig2))
+    )
+    if (!all(is.finite(.v))) {
+      return(NULL)
     }
+    .v
   }
+  f0 <- c(
+    as.vector(E0$A),
+    if (.hasR) as.vector(E0$AR),
+    if (.dRsig) c(as.vector(E0$RsigDir), as.vector(E0$Rsig2))
+  )
   Ath <- array(0, c(nobs, neta, nd, nd))
   AthR <- if (.hasR) array(0, c(nobs, neta, nd, nd)) else NULL
+  RsigDirEta <- if (.dRsig) array(0, c(nobs, neta, nd, nsig)) else NULL
+  Rsig2Eta <- if (.dRsig) array(0, c(nobs, neta, nsig, nsig)) else NULL
   for (li in seq_len(neta)) {
     idx <- match(dirs[.etaDir[li]], names(params)) # this eta's coordinate in params
     if (is.na(idx)) {
@@ -2636,19 +2683,33 @@
       return(NULL)
     }
     Ath[, li, , ] <- array(sc$gr[seq_len(nA)], c(nobs, nd, nd))
-    if (.hasR) AthR[, li, , ] <- array(sc$gr[nA + seq_len(nA)], c(nobs, nd, nd))
+    .o <- nA
+    if (.hasR) {
+      AthR[, li, , ] <- array(sc$gr[.o + seq_len(nA)], c(nobs, nd, nd))
+      .o <- .o + nA
+    }
+    if (.dRsig) {
+      RsigDirEta[, li, , ] <- array(sc$gr[.o + seq_len(nRd)], c(nobs, nd, nsig))
+      Rsig2Eta[, li, , ] <- array(sc$gr[.o + nRd + seq_len(nR2)], c(nobs, nsig, nsig))
+    }
   }
+  # the residual-variance slots whenever the solve has them, as the batched route
+  # carries them; AthR only when differenced
   .out <- c(
     list(f = E0$f, a = E0$a, A = E0$A, Ath = Ath),
-    if (.hasR) {
-      list(R = E0$R, aR = E0$aR, AR = E0$AR, AthR = AthR, Rsig = E0$Rsig, RsigDir = E0$RsigDir, Rsig2 = E0$Rsig2)
+    if (!is.null(E0$AR)) {
+      list(R = E0$R, aR = E0$aR, AR = E0$AR, Rsig = E0$Rsig, RsigDir = E0$RsigDir, Rsig2 = E0$Rsig2)
     } else {
       NULL
     },
+    if (.hasR) list(AthR = AthR) else NULL,
     if (!is.null(E0$trans)) list(trans = E0$trans) else NULL
   )
   if (!all(is.finite(.out$f)) || !all(is.finite(.out$a)) || !all(is.finite(.out$A)) || !all(is.finite(.out$Ath))) {
     return(.foceiAnalyticNote("a non-finite sensitivity"))
+  }
+  if (.rsig) {
+    .out <- .foceiAnalyticExpandSigma(.out, nsig, neta, RsigDirEta, Rsig2Eta, sigSel)
   }
   # a solve the differencing tried and recovered from must not explain a later decline
   .foceiAnalyticNote(NULL)

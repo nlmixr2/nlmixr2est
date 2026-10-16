@@ -16,6 +16,12 @@
   information that would not invert, a failed sensitivity solve and several
   other failures used to print only "not available for this model".
 
+- `covMethod = "analytic"` with a residual variance the general (f,R) assembly
+  handles (for example `combined1`) now keeps the analytic covariance when its
+  batched augmented solve fails: the per-subject solve it falls back to rebuilds
+  the residual-error slots as the batched one does, where it used to stop on
+  "number of items to replace is not a multiple of replacement length".
+
 ### Estimation
 
 - `est = "vae"`, `"emvi"` and `"fbvi"` count as observations exactly the
