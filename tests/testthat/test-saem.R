@@ -212,7 +212,7 @@ test_that("the SE-less theta list is clipped to one line, the label is not", {
   dimnames(.r$cov) <- list(.saemTheta, .saemTheta)
   .w <- .covSite(".saemInstallThetaCov", capture_warnings(.saemInstallThetaCov(.saemCovEnv(), .r)))
   expect_identical(.w, paste0(.pre, strrep("t", 29), "..."))
-  expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
+  expect_identical(cli::ansi_nchar(.w, type = "width"), .covWarnWidth)
   .r$phi0 <- paste0("theta", 1:30)
   .w <- capture_warnings(.saemInstallThetaCov(.saemCovEnv(), .r))
   expect_identical(.w, paste0(.pre, "theta1, theta2, theta3, +27 more"))
@@ -237,7 +237,7 @@ test_that("the linFim warning is clipped to one line when the next method is lon
   .w <- .covSite(".saemLinFimWarn", capture_warnings(.saemLinFimWarn("not usable", strrep("m", 80))))
   .full <- paste0("\"linFim\" not usable; trying \"", strrep("m", 80), "\"")
   expect_identical(.w, paste0(substr(.full, 1L, 71L), "..."))
-  expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
+  expect_identical(cli::ansi_nchar(.w, type = "width"), .covWarnWidth)
 })
 
 test_that("the linFim warning is one whole line for every method it can fall back to", {
@@ -254,7 +254,7 @@ test_that("no population parameters is a covariance warning of one line", {
   .e <- .saemCovEnv(theta = character(0))
   .w <- .covSite(".saemCovRung", capture_warnings(.saemCalcCov(.e)))
   expect_identical(.w, "no population parameters in the model, no covariance matrix calculated")
-  expect_lte(cli::ansi_nchar(.w, type = "width"), 74L)
+  expect_lte(cli::ansi_nchar(.w, type = "width"), .covWarnWidth)
   expect_identical(.e$covMethod, "none")
 })
 

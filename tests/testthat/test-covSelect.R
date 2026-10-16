@@ -117,7 +117,7 @@ test_that(".covSelectFocei() checks a doubtful sandwich against R and S", {
       "sandwich matrix corrected; compare it to $covR or $covS"
     )
   )
-  expect_true(all(cli::ansi_nchar(.r$warnings, type = "width") <= 74L))
+  expect_true(all(cli::ansi_nchar(.r$warnings, type = "width") <= .covWarnWidth))
   # an unrepaired sandwich with a variance below covSmall is checked the same way: kept
   # here, its diagonal sum being the smallest of the three
   .e <- .covSelectEnv(covRS = diag(c(1e-6, 0.095)))
@@ -134,7 +134,7 @@ test_that(".covSelectFocei() checks a doubtful sandwich against R and S", {
 
 test_that(".covSelectFocei() gives whole lines for every correction of R and S", {
   .got <- character()
-  .covSite(".covSelectFocei", {
+  .covSite(c(".covSelectFocei", ".covTriedSummary"), {
     for (.req in 1:3) {
       for (.rState in if (.req == 3L) 0:3 else 1:3) {
         for (.sState in if (.req == 2L) 0:3 else 1:3) {

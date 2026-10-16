@@ -273,7 +273,7 @@ nmTest({
     expect_identical(.fit$covMethod, "failed")
     .w <- paste0("\"nls\" is ", strrep("x", 62), "...")
     expect_true(.w %in% .fit$runInfo)
-    expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
+    expect_identical(cli::ansi_nchar(.w, type = "width"), .covWarnWidth)
   })
 
   test_that("nls fits a delay() model with its past() pre-history", {

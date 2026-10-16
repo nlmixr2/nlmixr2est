@@ -17,44 +17,6 @@
 
 .covGateWarners <- c("warning", "warningCondition", "simpleWarning", "warn", "cli_warn")
 
-# the function a call names, "" when it is not a name or pkg::name
-.covGateHead <- function(e) {
-  .h <- e[[1L]]
-  if (is.name(.h)) {
-    return(as.character(.h))
-  }
-  if (is.call(.h) && length(.h) == 3L && is.name(.h[[1L]]) && as.character(.h[[1L]]) %in% c("::", ":::")) {
-    return(as.character(.h[[3L]]))
-  }
-  ""
-}
-
-# every call to one of `heads` anywhere in `e`, argument defaults included
-.covGateWalk <- function(e, heads) {
-  if (!is.call(e) && !is.pairlist(e)) {
-    return(list())
-  }
-  .own <- if (is.call(e) && .covGateHead(e) %in% heads) list(e) else list()
-  .sub <- lapply(seq_along(e), function(i) {
-    if (identical(e[[i]], quote(expr = ))) list() else .covGateWalk(e[[i]], heads)
-  })
-  c(.own, unlist(.sub, recursive = FALSE))
-}
-
-# every string constant in `e`
-.covGateStrings <- function(e) {
-  if (is.character(e)) {
-    return(e)
-  }
-  if (!is.call(e) && !is.pairlist(e)) {
-    return(character())
-  }
-  .sub <- lapply(seq_along(e), function(i) {
-    if (identical(e[[i]], quote(expr = ))) character() else .covGateStrings(e[[i]])
-  })
-  as.character(unlist(.sub))
-}
-
 # The functions of `fns` that raise a covariance warning without .covWarn().  A
 # warning() with no text of its own passes a condition on, so the text of its
 # function stands for it.
@@ -74,7 +36,7 @@
 
 # The functions of `fns` with a .covWarn() text whose fixed part alone is wider
 # than a $runInfo line, labels and counts left out.
-.covGateTooWide <- function(fns, width = 74L) {
+.covGateTooWide <- function(fns, width = .covWarnWidth) {
   .hit <- character()
   for (.n in names(fns)) {
     for (.call in .covGateFnCalls(fns[[.n]], ".covWarn")) {
@@ -87,41 +49,39 @@
   unique(.hit)
 }
 
-# every call to one of `heads` in a function, its argument defaults included
-.covGateFnCalls <- function(f, heads) {
-  c(.covGateWalk(body(f), heads), .covGateWalk(formals(f), heads))
-}
+# what a covariance warning is built or clipped with
+.covGateTextFns <- c(".covWarn", ".covClip", ".covNotUsableMsg")
 
-# every string constant in a function, its argument defaults included
-.covGateFnStrings <- function(f) {
-  c(.covGateStrings(body(f)), .covGateStrings(formals(f)))
-}
-
-.covGateFunctions <- function() {
-  .ns <- asNamespace("nlmixr2est")
-  Filter(function(x) is.function(x) && !is.primitive(x), mget(ls(.ns, all.names = TRUE), envir = .ns))
-}
-
-# The functions of `fns` that call .covWarn() or .covClip(), the funnel apart.
-.covGateCallers <- function(fns, funnel = ".covWarn") {
+# The functions of the environment `ns` that call or pass by name one of `heads`
+# (directly, in an argument default, as a symbol or as a string: do.call(".covWarn",
+# ...)), the funnel apart.
+.covGateCallers <- function(ns, heads = .covGateTextFns, funnel = ".covWarn") {
+  .fns <- Filter(is.function, mget(ls(ns, all.names = TRUE), envir = ns))
   .has <- vapply(
-    fns,
-    function(f) length(.covGateFnCalls(f, c(".covWarn", ".covClip"))) > 0L,
+    names(.fns),
+    function(n) length(.covGateFnCalls(.fns[[n]], heads)) > 0L || any(heads %in% .covAnalyticNamedFns(n, ns)),
     logical(1)
   )
-  setdiff(names(fns)[.has], funnel)
+  setdiff(names(.fns)[.has], funnel)
 }
 
-# The package functions the tests in `dir` say they drive: the first argument of
-# each .covSite() call.
+# Callers a parse cannot see, C++ that warns with text built in R, and the R
+# function that builds it.  foceiCalcRAnalytic (src/inner.cpp) warns with
+# `.analyticWarnNoFallback`, which .foceiCalcRanalytic builds with
+# .covNotUsableMsg (the C++ calls .covNotUsableMsg itself only when it is
+# missing); its width is driven through that builder.
+.covGateNative <- c(foceiCalcRAnalytic = ".foceiCalcRanalytic")
+
+# The package functions the tests in `dir` say they drive: every string in the
+# first argument of each .covSite() call.
 .covGateDriven <- function(dir) {
   .files <- list.files(dir, pattern = "^test-.*[.]R$", full.names = TRUE)
   .names <- character()
   for (.f in .files) {
     for (.e in parse(.f, keep.source = FALSE)) {
       for (.call in .covGateWalk(.e, ".covSite")) {
-        if (length(.call) >= 2L && is.character(.call[[2L]])) {
-          .names <- c(.names, .call[[2L]])
+        if (length(.call) >= 2L) {
+          .names <- c(.names, .covGateStrings(.call[[2L]]))
         }
       }
     }
@@ -176,25 +136,37 @@ test_that("the gate lets a covariance warning through .covWarn() and other warni
   expect_identical(.covGateBypasses(.funnel, funnel = "other"), ".covWarn")
 })
 
-test_that("the gate lists the callers of .covWarn() and .covClip() and the ones a test drives", {
-  .fns <- list(
-    warns = function() .covWarn("x"),
-    clips = function(w) .covClip(w, 54L),
-    nested = function() lapply(1, function(i) .covWarn("x")),
-    default = function(a = .covClip("x")) a,
-    .covWarn = function(w) .covClip(w),
-    none = function() warning("x"),
-    called = function(x) (function() warning("x"))()
+test_that("the gate lists the callers of the text functions and the ones a test drives", {
+  .ns <- list2env(
+    list(
+      .covWarn = function(w) .covClip(w),
+      .covClip = function(w, width = 74L) w,
+      .covNotUsableMsg = function(request, why, tail) why,
+      warns = function() .covWarn("x"),
+      clips = function(w) .covClip(w, 54L),
+      msg = function() .covNotUsableMsg("a", "b", "c"),
+      nested = function() lapply(1, function(i) .covWarn("x")),
+      default = function(a = .covClip("x")) a,
+      byName = function() do.call(".covWarn", list("x")),
+      passed = function(x) lapply(x, .covWarn),
+      none = function() warning("x"),
+      other = function() "a string"
+    ),
+    parent = emptyenv()
   )
-  expect_identical(.covGateCallers(.fns), c("warns", "clips", "nested", "default"))
-  expect_identical(.covGateCallers(.fns, funnel = "warns"), c("clips", "nested", "default", ".covWarn"))
+  expect_setequal(.covGateCallers(.ns), c("warns", "clips", "msg", "nested", "default", "byName", "passed"))
+  expect_setequal(
+    .covGateCallers(.ns, funnel = "warns"),
+    c(".covWarn", "clips", "msg", "nested", "default", "byName", "passed")
+  )
+  expect_setequal(.covGateCallers(.ns, heads = ".covNotUsableMsg"), "msg")
   .dir <- withr::local_tempdir()
   writeLines(
     c(
       "test_that('a', { .covSite('first', f()) })",
       "nmTest({ test_that('b', { x <- .covSite(\"second\", g()) }) })",
       "test_that('c', { .covSite(name, h()) })",
-      "test_that('d', { .covSite('first', f()) })"
+      "test_that('d', { .covSite(c('first', 'fourth'), f()) })"
     ),
     file.path(.dir, "test-one.R")
   )
@@ -202,16 +174,19 @@ test_that("the gate lists the callers of .covWarn() and .covClip() and the ones 
   writeLines(".covSite('hidden', f())", file.path(.dir, "other.R"))
   .d <- .covGateDriven(.dir)
   expect_identical(basename(.d$files), c("test-one.R", "test-two.R"))
-  expect_identical(.d$names, c("first", "second", "third"))
+  expect_identical(.d$names, c("first", "second", "fourth", "third"))
 })
 
-test_that("every function that calls .covWarn() or .covClip() is driven by a .covSite() test", {
+test_that("every function that builds or clips a covariance warning is driven by a .covSite() test", {
   .d <- .covGateDriven(testthat::test_path())
   expect_gt(length(.d$files), 10L)
-  .callers <- .covGateCallers(.covGateFunctions())
+  .callers <- .covGateCallers(asNamespace("nlmixr2est"))
   # a caller no test drives, and a name no function answers to
   expect_identical(setdiff(.callers, .d$names), character())
   expect_identical(setdiff(.d$names, .callers), character())
+  # the C++ callers get their text from an R function that is driven
+  expect_true(all(.covGateNative %in% .callers))
+  expect_true(all(.covGateNative %in% .d$names))
 })
 
 test_that("no warning in the package reports on a covariance method except through .covWarn()", {

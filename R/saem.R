@@ -1700,7 +1700,7 @@
   if (length(r$phi0) > 0L) {
     # the thetas without an SE are the NA rows of the parameter table
     .pre <- sprintf("no \"%s\" SE for non-mu-referenced theta(s) ", r$label)
-    .covWarn(paste0(.pre, .vaeTruncList(r$phi0, prefix = .pre)))
+    .covWarn(paste0(.pre, .vaeTruncList(r$phi0, prefix = .pre, budget = .covWarnWidth)))
   }
   if (r$label %in% c("|linFim|", .saemHaThetaRepairedName)) {
     .covRepairWarn(.covUnrepaired(r$label), r$label)
