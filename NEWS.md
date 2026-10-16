@@ -1,3 +1,25 @@
+# nlmixr2est (development version)
+
+## Bug fixes
+
+- A finite-difference gradient or Hessian no longer takes a slope of 0 where
+  its differences do not solve.
+  - When the steps on one side of a parameter never solve, the step search
+    takes the one-sided difference on the other side.  It did that already
+    when the minus side failed; when the plus side failed at every step, it
+    returned 0.
+  - When neither side solves, `nlm` and `nlminb` stop with the optimizer's
+    error.  They could return the initial estimates without a warning.
+  - FOCEi keeps such an eta's slope (and its eta Hessian column) at 0 and
+    says how often in the fit's `runInfo` ("eta finite differences solved on
+    neither side N times; slope 0").  The outer `shi21maxOuter` gradient asks
+    for a reset, as the other outer gradients do, and `est = "imp"` drops the
+    sample.
+  - A step search also stops at a step too small to move its parameter.  It
+    used to difference the parameter with itself and report 0.
+
+  Fits whose differences solve are unchanged.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
