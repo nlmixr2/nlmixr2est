@@ -102,6 +102,13 @@
 
   Fits whose differences solve are unchanged.
 
+- `foceiControl()` now rejects the integer codes it has no case for,
+  `eventType = 1` and `optimHessType = 2` or `optimHessCovType = 2`, with an
+  error that names the accepted values.  They used to be accepted: `eventType = 1`
+  left the finite-difference eta gradient at 0, and Hessian type 2 gave a
+  Hessian of zeros.  The names and the codes the control stores (`eventType` 2
+  and 3, the Hessian types 1 and 3) are accepted as before.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
