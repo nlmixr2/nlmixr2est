@@ -131,6 +131,18 @@ nmTest({
     expect_error(.nmObsRows(data.frame(EVID = 0, DV = 1)), "needs DV, EVID and TIME columns")
   })
 
+  # The message .foceiPreProcessData() stops with on `d`, or NULL; `env` keeps
+  # what it builds
+  .utFoceiError <- function(d, ui, env = new.env(parent = emptyenv())) {
+    tryCatch(
+      {
+        suppressWarnings(.foceiPreProcessData(d, env, ui))
+        NULL
+      },
+      error = function(e) conditionMessage(e)
+    )
+  }
+
   # FOCEi's verdict on the second of three records (a dose, the record, and an
   # observation at t = 2): TRUE when its data ($dataSav, after its own defaults
   # and etTrans()) has two EVID 0 records.  When etTrans() rejects the data, its
@@ -139,13 +151,7 @@ nmTest({
   # a missing EVID with a nonzero AMT
   .utFoceiObs <- function(d, ui) {
     .e <- new.env(parent = emptyenv())
-    .err <- tryCatch(
-      {
-        suppressWarnings(.foceiPreProcessData(d, .e, ui))
-        NULL
-      },
-      error = function(e) conditionMessage(e)
-    )
+    .err <- .utFoceiError(d, ui, .e)
     if (!is.null(.err)) {
       expect_match(
         .err,
@@ -254,6 +260,95 @@ nmTest({
     }
   })
 
+  test_that(".nmAssertEventColumns() rejects the column types FOCEi rejects, with its message", {
+    skip_on_cran()
+    .ui <- rxode2::assertRxUi(function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.cl ~ 0.3
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    })
+    .base <- data.frame(
+      ID = 1L,
+      TIME = c(0, 1, 2),
+      DV = c(NA, 4, 3),
+      AMT = c(100, 0, 0),
+      EVID = c(1, 0, 0),
+      CMT = c(1, 2, 2),
+      MDV = c(1, 0, 0)
+    )
+    .types <- list(
+      character = as.character,
+      factor = factor,
+      logical = as.logical,
+      naOnly = function(x) rep(NA, length(x)),
+      Date = function(x) as.Date(x),
+      POSIXct = function(x) as.POSIXct(x, origin = "1970-01-01", tz = "UTC")
+    )
+    if (requireNamespace("bit64", quietly = TRUE)) {
+      .types$integer64 <- function(x) bit64::as.integer64(x)
+    }
+    # with and without the EVID and AMT columns, which change the MDV message
+    .layouts <- list(all = character(0), noEvid = "EVID", noEvidAmt = c("EVID", "AMT"))
+    .known <- "needs to be an integer|needs to be a number|infinite times are not allowed"
+    .n <- 0L
+    for (.lay in names(.layouts)) {
+      for (.col in c("EVID", "MDV", "AMT", "TIME", "DV")) {
+        if (.col %in% .layouts[[.lay]]) {
+          next
+        }
+        for (.ty in names(.types)) {
+          .d <- .base[!(names(.base) %in% .layouts[[.lay]])]
+          .d[[.col]] <- .types[[.ty]](.base[[.col]])
+          .lab <- paste(.lay, .col, .ty)
+          .f <- .utFoceiError(.d, .ui)
+          .h <- tryCatch(
+            {
+              .nmAssertEventColumns(.d)
+              NULL
+            },
+            error = function(e) conditionMessage(e)
+          )
+          if (is.null(.h)) {
+            # FOCEi may stop for another reason, but not for one this check covers
+            expect_false(!is.null(.f) && grepl(.known, .f), label = paste(.lab, .f))
+          } else {
+            expect_identical(.h, .f, label = .lab)
+            .n <- .n + 1L
+          }
+        }
+      }
+    }
+    # the rejections are the character EVID, MDV and AMT, in each layout that has
+    # them (3 + 2 + 1); a factor, a logical, a Date, a POSIXct or an integer64 is
+    # stored as a number, as etTrans() checks it
+    expect_identical(.n, 6L)
+    # infinite times: the first in the data as given, in several subjects out of
+    # order, and with no ID column
+    .inf <- data.frame(ID = c(2L, 2L, 1L, 1L), TIME = c(1, 0, -Inf, Inf), DV = c(1, 2, 3, 4), EVID = 0)
+    expect_identical(
+      tryCatch(.nmAssertEventColumns(.inf), error = conditionMessage),
+      .utFoceiError(.inf, .ui)
+    )
+    .inf$ID <- NULL
+    expect_identical(
+      tryCatch(.nmAssertEventColumns(.inf), error = conditionMessage),
+      .utFoceiError(.inf, .ui)
+    )
+  })
+
   test_that(".nmAssertIds() and .nmDropNoObsSubjects() match the FOCEi data step", {
     .d <- data.frame(ID = c(1, 1, 2, 2, 3), TIME = c(0, 1, 0, 1, 0), EVID = c(1, 0, 1, 0, 1), DV = c(NA, 2, NA, NA, NA))
     expect_warning(.k <- .nmDropNoObsSubjects(.d), "IDs without observations dropped: 2 3", fixed = TRUE)
@@ -283,7 +378,10 @@ nmTest({
     .m <- .d
     .m$MDV <- as.character(.m$MDV)
     expect_error(.nmObsRows(.m), "missing dependent variable ('mdv') needs to be an integer", fixed = TRUE)
-    expect_error(.nmWithEvid(.m[names(.m) != "EVID"]), "('mdv') needs to be an integer", fixed = TRUE)
+    # with no EVID column but an AMT, the MDV column stands for the EVID
+    expect_error(.nmWithEvid(.m[names(.m) != "EVID"]), "^missing DV \\('mdv'\\) needs to be an integer$")
+    .n <- .m[!(names(.m) %in% c("EVID", "AMT"))]
+    expect_error(.nmWithEvid(.n), "^missing dependent variable \\('mdv'\\) needs to be an integer$")
     .a <- .d
     .a$AMT <- as.character(.a$AMT)
     expect_error(.nmObsRows(.a), "amount ('amt') needs to be a number", fixed = TRUE)
@@ -293,7 +391,12 @@ nmTest({
       .t$TIME[2] <- .inf
       expect_error(.nmObsRows(.t), "infinite times are not allowed (id: 1, row: 2)", fixed = TRUE)
       expect_error(.nmWithEvid(.t), "infinite times are not allowed (id: 1, row: 2)", fixed = TRUE)
+      # without an ID column the subject is 1, as FOCEi makes it
+      expect_error(.nmObsRows(.t[names(.t) != "ID"]), "infinite times are not allowed (id: 1, row: 2)", fixed = TRUE)
     }
+    # the first infinite time in the data as given
+    .o <- data.frame(ID = c(2, 2, 1, 1), TIME = c(1, 0, -Inf, Inf), EVID = 0, DV = 1)
+    expect_error(.nmObsRows(.o), "infinite times are not allowed (id: 1, row: 3)", fixed = TRUE)
     # what FOCEi reads as numbers: a character TIME or DV, a logical or factor EVID
     .c <- .d
     .c$TIME <- c("0", "1")

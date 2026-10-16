@@ -51,9 +51,12 @@
 
 #' Stop on event columns `etTrans()` rejects, with its message
 #'
-#' EVID and MDV must be integers and AMT a number (a factor or a logical is
-#' one, as `etTrans()` reads its type), and no TIME may be infinite.  A
-#' character TIME or DV is read as a number, as FOCEi reads it.
+#' EVID, MDV and AMT must be stored as numbers: double, integer or logical, a
+#' factor too (its codes), as `etTrans()` checks the storage type and not the
+#' values.  No TIME may be infinite.  A character TIME or DV is read as a
+#' number, as FOCEi reads it.  The messages are `etTrans()`'s, after FOCEi's
+#' defaults: without an EVID column but with AMT, the MDV column stands for the
+#' EVID and is named "missing DV"; without an ID column the subject is 1.
 #' @param d data frame with upper-case names
 #' @return `d`, invisibly
 #' @noRd
@@ -63,6 +66,9 @@
     stop("event id ('evid') needs to be an integer", call. = FALSE)
   }
   if (!is.null(d[["MDV"]]) && !(typeof(d[["MDV"]]) %in% .num)) {
+    if (is.null(d[["EVID"]]) && !is.null(d[["AMT"]])) {
+      stop("missing DV ('mdv') needs to be an integer", call. = FALSE)
+    }
     stop("missing dependent variable ('mdv') needs to be an integer", call. = FALSE)
   }
   if (!is.null(d[["AMT"]]) && !(typeof(d[["AMT"]]) %in% .num)) {
@@ -70,14 +76,8 @@
   }
   .inf <- which(is.infinite(.nmAsDouble(d[["TIME"]])))
   if (length(.inf) > 0L) {
-    stop(
-      "infinite times are not allowed (",
-      if (!is.null(d[["ID"]])) paste0("id: ", d[["ID"]][.inf[1L]], ", "),
-      "row: ",
-      .inf[1L],
-      ")",
-      call. = FALSE
-    )
+    .id <- if (is.null(d[["ID"]])) 1L else d[["ID"]][.inf[1L]]
+    stop("infinite times are not allowed (id: ", .id, ", row: ", .inf[1L], ")", call. = FALSE)
   }
   invisible(d)
 }

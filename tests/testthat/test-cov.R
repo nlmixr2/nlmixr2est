@@ -231,12 +231,36 @@ test_that(".covRejectWarn() reads the same for every method and stays under 75 c
   expect_identical(.w, paste0("\"analytic (full)\" ", strrep("x", 53), "..."))
 })
 
+test_that("every covariance warning stays under 75 characters with a long label", {
+  # each site that warns through .covWarn(), driven with an 80-character label
+  .long <- strrep("m", 80)
+  .w <- capture_warnings(.covInstall(.fakeFitEnv(), .pdCov(), "linFim", what = .long))
+  expect_identical(.w, paste0("\"linFim\" installed instead of the requested \"", strrep("m", 26), "..."))
+  .w <- capture_warnings(.covRepairWarn("imp", paste0("|", .long, "|")))
+  expect_identical(.w, paste0("\"", strrep("m", 70), "..."))
+  local_mocked_bindings(
+    .setCovRefit = function(...) list(covMethod = "r", cov = .pdCov(), parFixedDf = NULL, parFixed = NULL),
+    .covInstall = function(...) TRUE,
+    .covCacheDrop = function(...) NULL
+  )
+  .w <- capture_warnings(.setCovFd(NULL, new.env(), .long, "b", control = list(covFallback = list(b = "r"))))
+  expect_identical(.w, paste0("\"r\" installed instead of the requested \"", strrep("m", 31), "..."))
+  # a long label of a finite-difference covariance whose ETAs were held
+  local_mocked_bindings(.covFdType = function(x) "r")
+  .e <- new.env(parent = emptyenv())
+  .e$etaObf <- 1
+  .e$cov <- diag(2)
+  .e$covMethod <- .long
+  .w <- capture_warnings(.foceiWarnConditionalCov(.e, list(maxInnerIterations = 0L)))
+  expect_identical(.w, paste0("\"", strrep("m", 70), "..."))
+  expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
+})
+
 test_that(".covInstall() says when what it installed is not what was asked for", {
   .e <- .fakeFitEnv()
-  expect_warning(
-    .covInstall(.e, .pdCov(), "linFim", what = "sa"),
-    "\"linFim\" installed instead of the requested \"sa\"",
-    fixed = TRUE
+  expect_identical(
+    capture_warnings(.covInstall(.e, .pdCov(), "linFim", what = "sa")),
+    "\"linFim\" installed instead of the requested \"sa\""
   )
   expect_identical(.e$covMethod, "linFim")
   # a correction decoration or the full-shape suffix names the same covariance
@@ -553,7 +577,7 @@ nmTest({
       }
     )
     .msg <- "\"r,s (full)\" installed instead of the requested \"analytic\""
-    expect_identical(sum(grepl(.msg, c(.acc$w, .mfa$runInfo), fixed = TRUE)), 1L)
+    expect_identical(sum(c(.acc$w, .mfa$runInfo) == .msg), 1L)
     expect_identical(.mfa$covMethod, "r,s (full)")
     expect_lt(.maxRel(.seOf(.mfa), .seOf(.ref)), 1e-6)
   })
