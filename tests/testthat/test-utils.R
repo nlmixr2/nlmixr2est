@@ -94,6 +94,7 @@ nmTest({
 
   test_that(".nmObsRows() counts the records etTrans() keeps as observations", {
     .d <- data.frame(
+      TIME = c(0, 1, 2, 3, 4, 5, 6, 7),
       EVID = c(1, 0, 0, 0, 2, 0, NA, 0),
       DV = c(NA, 1, NA, 3, NA, 4, 5, 6),
       MDV = c(1, 0, 0, 1, 1, NA, 0, 2)
@@ -103,15 +104,23 @@ nmTest({
     .d$MDV <- NULL
     expect_identical(.nmObsRows(.d), c(FALSE, TRUE, FALSE, TRUE, FALSE, TRUE, TRUE, TRUE))
     expect_identical(.nmObsRows(.d[0, ]), logical(0))
-    # etTrans() keeps a missing-EVID record with a positive AMT even with no DV
-    .d <- data.frame(EVID = c(NA, NA), DV = c(NA, NA), AMT = c(50, 0))
-    expect_identical(.nmObsRows(.d), c(TRUE, FALSE))
+    # a missing TIME is no record at all to etTrans()
+    .d$TIME[2] <- NA
+    expect_false(.nmObsRows(.d)[2])
+    # with no DV, a positive AMT keeps an EVID 0 or missing-EVID record (etTrans()
+    # drops its dose)
+    .d <- data.frame(TIME = 1:4, EVID = c(NA, NA, 0, 0), DV = NA, AMT = c(50, 0, 50, 0))
+    expect_identical(.nmObsRows(.d), c(TRUE, FALSE, TRUE, FALSE))
+    # DV and TIME are read as FOCEi reads them, so "." is a missing DV
+    .d <- data.frame(TIME = c("0", "1", "2"), EVID = 0, DV = c(".", "3", NA))
+    expect_identical(.nmObsRows(.d), c(FALSE, TRUE, FALSE))
     # the columns are matched exactly: DVID is not DV
-    expect_error(.nmObsRows(data.frame(EVID = 0, DVID = 1)), "needs a DV and an EVID column")
-    expect_error(.nmObsRows(data.frame(DV = 1)), "needs a DV and an EVID column")
+    expect_error(.nmObsRows(data.frame(TIME = 0, EVID = 0, DVID = 1)), "needs DV, EVID and TIME columns")
+    expect_error(.nmObsRows(data.frame(TIME = 0, DV = 1)), "needs DV, EVID and TIME columns")
+    expect_error(.nmObsRows(data.frame(EVID = 0, DV = 1)), "needs DV, EVID and TIME columns")
   })
 
-  test_that(".nmObsRows() agrees with etTrans() over every EVID, DV, MDV and AMT case", {
+  test_that(".nmObsRows() agrees with etTrans() over every EVID, DV, MDV, AMT and TIME case", {
     skip_on_cran()
     .m <- rxode2::rxode2({
       d/dt(depot) <- -ka * depot
@@ -119,18 +128,19 @@ nmTest({
       cp <- center / v
     })
     .g <- expand.grid(
-      evid = c(0, NA),
+      evid = c(0, 1, 2, 3, 4, 101, NA),
       dv = c(4, NA),
       mdv = c(-1, 0, 1, NA, 2), # -1: no MDV column
-      amt = c(0, NA, 50)
+      amt = c(0, NA, 50),
+      time = c(1, NA)
     )
-    .g <- .g[!(.g$evid %in% 0 & .g$amt %in% 50), ]
+    .n <- 0L
     for (.k in seq_len(nrow(.g))) {
       .r <- .g[.k, ]
-      # a dose, the record under test at t = 1, and an observation
+      # a dose, the record under test, and an observation at t = 2
       .d <- data.frame(
         ID = 1L,
-        TIME = c(0, 1, 2),
+        TIME = c(0, .r$time, 2),
         DV = c(NA, .r$dv, 3),
         AMT = c(100, .r$amt, 0),
         EVID = c(1, .r$evid, 0),
@@ -139,10 +149,18 @@ nmTest({
       if (!(.r$mdv %in% -1)) {
         .d$MDV <- c(1, .r$mdv, 0)
       }
-      .et <- as.data.frame(rxode2::etTrans(.d, .m))
-      .want <- any(.et$TIME == 1 & .et$EVID == 0)
+      # etTrans() rejects a dose with a missing AMT, and EVID 1 or 4 with an MDV of 0
+      # or missing; those combinations are skipped, as no data can carry them
+      .et <- tryCatch(as.data.frame(suppressWarnings(rxode2::etTrans(.d, .m))), error = function(e) NULL)
+      if (is.null(.et)) {
+        next
+      }
+      .n <- .n + 1L
+      .want <- sum(.et$EVID == 0) == 2L
       expect_identical(.nmObsRows(.d)[2], .want, label = paste(names(.r), .r, collapse = " "))
     }
+    # 420 combinations, of which etTrans() rejects 46
+    expect_identical(.n, 374L)
   })
 
   test_that(".nmAssertIds() and .nmDropNoObsSubjects() match the FOCEi data step", {
@@ -152,9 +170,23 @@ nmTest({
     # all subjects have observations: unchanged; none has: kept whole
     expect_silent(expect_identical(.nmDropNoObsSubjects(.d[1:2, ]), .d[1:2, ]))
     expect_silent(expect_identical(.nmDropNoObsSubjects(.d[3:5, ]), .d[3:5, ]))
+    # an observation with a missing TIME does not count, as in etTrans()
+    .t <- data.frame(ID = c(1, 1, 2), TIME = c(0, 1, NA), EVID = c(1, 0, 0), DV = c(NA, 3, 4))
+    expect_warning(.k <- .nmDropNoObsSubjects(.t), "IDs without observations dropped: 2", fixed = TRUE)
+    expect_identical(.k, .t[1:2, ])
     .d$ID[2] <- NA
     expect_error(.nmDropNoObsSubjects(.d), "ID is missing on 1 record(s)", fixed = TRUE)
     expect_error(.nmSubjectObs(.d, 1), "ID is missing on 1 record(s)", fixed = TRUE)
+    # the columns are matched exactly: IDENT is not ID
+    .i <- data.frame(IDENT = 1, TIME = 0, EVID = 0, DV = 1)
+    expect_error(.nmDropNoObsSubjects(.i), "the data needs an ID column", fixed = TRUE)
+    expect_error(.nmSubjectObs(.i, 1), "the data needs an ID column", fixed = TRUE)
+    expect_error(.nmSubjectObs(data.frame(ID = 1, EVID = 0, DV = 1), 1), "the data needs a TIME column", fixed = TRUE)
+  })
+
+  test_that(".nmDefaultEvid() makes a nonzero AMT a dose", {
+    expect_identical(.nmDefaultEvid(data.frame(AMT = c(0, NA, 100, -1))), c(0L, 0L, 1L, 1L))
+    expect_identical(.nmDefaultEvid(data.frame(DV = 1:2)), c(0L, 0L))
   })
 
   test_that(".nmSubjectObs() gives each subject's records and observations, in order", {

@@ -1050,7 +1050,7 @@ vaeCovariates <- function(
   ## no EVID: derive from AMT; with no AMT column either (dose-free data), all
   ## rows are observations (d$AMT is NULL -> the ifelse would yield length 0).
   if (is.null(d$EVID)) {
-    d$EVID <- if (is.null(d$AMT)) rep(0L, nrow(d)) else ifelse(is.na(d$AMT) | d$AMT == 0, 0L, 1L)
+    d$EVID <- .nmDefaultEvid(d)
   }
   # the FOCEi inner problem drops these subjects too, so the two agree
   d <- .nmDropNoObsSubjects(d)

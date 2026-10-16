@@ -99,8 +99,13 @@ nmTest({
       mdv = c(1, 0, 0, 1, 0, 1)
     )
     expect_identical(.nlmixr2BenchmarkNobs(.d), 2L)
+    # no EVID: taken from AMT as the VAE prep does (a nonzero AMT is a dose)
     expect_identical(.nlmixr2BenchmarkNobs(.d[, c("id", "time", "dv")]), 3L)
+    .a <- data.frame(id = 1, time = 0:3, dv = c(5, 1, 2, 3), amt = c(100, 0, 0, 0))
+    expect_identical(.nlmixr2BenchmarkNobs(.a), 3L)
+    # no DV or no TIME: nothing to count
     expect_identical(.nlmixr2BenchmarkNobs(.d[, c("id", "time", "evid")]), NA_integer_)
+    expect_identical(.nlmixr2BenchmarkNobs(.d[, c("id", "evid", "dv")]), NA_integer_)
     expect_identical(.nlmixr2BenchmarkNobs(NULL), NA_integer_)
     expect_identical(.nlmixr2BenchmarkNobs(nlmixr2data::theo_sd), 132L)
   })

@@ -24,38 +24,57 @@
 #' Which records of an event table are observations
 #'
 #' The records `etTrans()` keeps as observations (EVID 0), so data that has not
-#' been through it agrees with what a solve returns: EVID 0 or missing, MDV other
-#' than 1, and a DV.  `etTrans()` makes the rest EVID 2, except a record with a
-#' missing EVID and a positive AMT, which it keeps (and whose dose it drops) even
-#' with a missing DV.
-#' @param d data frame with upper-case `EVID` and `DV`, and optionally `MDV` and
-#'   `AMT`
+#' been through it agrees with what a solve returns: a TIME, an EVID of 0 or
+#' missing, an MDV other than 1, and a DV -- or, with no DV, a positive AMT, which
+#' `etTrans()` keeps as an observation (dropping the dose).  DV and TIME are read as
+#' FOCEi reads them (`as.double()`), so a DV of "." is missing.
+#' @param d data frame with upper-case `TIME`, `EVID` and `DV`, and optionally `MDV`
+#'   and `AMT`
 #' @return logical, one per row
 #' @noRd
 .nmObsRows <- function(d) {
-  .dv <- d[["DV"]]
   .evid <- d[["EVID"]]
-  if (is.null(.dv) || is.null(.evid)) {
-    stop("the data needs a DV and an EVID column to find its observations", call. = FALSE)
+  if (is.null(d[["DV"]]) || is.null(.evid) || is.null(d[["TIME"]])) {
+    stop("the data needs DV, EVID and TIME columns to find its observations", call. = FALSE)
   }
+  .dv <- suppressWarnings(as.double(d[["DV"]]))
+  .time <- suppressWarnings(as.double(d[["TIME"]]))
   .mdv <- d[["MDV"]]
   .amt <- d[["AMT"]]
-  .naEvid <- is.na(.evid)
-  .obs <- .naEvid | .evid == 0
+  .obs <- !is.na(.time) & (is.na(.evid) | .evid == 0)
   if (!is.null(.mdv)) {
     .obs <- .obs & !(.mdv %in% 1)
   }
-  .keepNa <- if (is.null(.amt)) FALSE else .naEvid & !is.na(.amt) & .amt > 0
-  .obs & (!is.na(.dv) | .keepNa)
+  .dose <- if (is.null(.amt)) FALSE else !is.na(.amt) & .amt > 0
+  .obs & (!is.na(.dv) | .dose)
 }
 
-#' Stop on a record with a missing ID
+#' The EVID implied by data without one: a dose where AMT is nonzero
+#' @param d data frame with an optional upper-case `AMT`
+#' @return integer, one per row
+#' @noRd
+.nmDefaultEvid <- function(d) {
+  .amt <- d[["AMT"]]
+  if (is.null(.amt)) {
+    return(rep(0L, nrow(d)))
+  }
+  ifelse(is.na(.amt) | .amt == 0, 0L, 1L)
+}
+
+#' Stop on data without an ID column, or with a missing ID
+#'
+#' The VAE and VI preps need subjects, so data without an ID column is an error
+#' there rather than FOCEi's single subject.
 #' @param d data frame with an upper-case `ID`
 #' @return `d`, invisibly
 #' @noRd
 .nmAssertIds <- function(d) {
-  if (anyNA(d[["ID"]])) {
-    stop("ID is missing on ", sum(is.na(d[["ID"]])), " record(s)", call. = FALSE)
+  .id <- d[["ID"]]
+  if (is.null(.id)) {
+    stop("the data needs an ID column", call. = FALSE)
+  }
+  if (anyNA(.id)) {
+    stop("ID is missing on ", sum(is.na(.id)), " record(s)", call. = FALSE)
   }
   invisible(d)
 }
@@ -64,7 +83,7 @@
 #'
 #' Mirrors `.foceiPreProcessData()`: the subjects are named in a warning, and data
 #' with no observation at all is kept whole.
-#' @param d data frame with upper-case `ID`, `EVID` and `DV`
+#' @param d data frame with upper-case `ID`, `TIME`, `EVID` and `DV`
 #' @return `d` without those subjects' records
 #' @noRd
 .nmDropNoObsSubjects <- function(d) {
@@ -92,19 +111,22 @@
 #' @noRd
 .nmSubjectObs <- function(d, ids) {
   .nmAssertIds(d)
+  if (is.null(d[["TIME"]])) {
+    stop("the data needs a TIME column", call. = FALSE)
+  }
   .byId <- split(d, as.character(d[["ID"]]))
   lapply(as.character(ids), function(.id) {
     .di <- .byId[[.id]]
     if (is.null(.di) || nrow(.di) == 0L) {
       return(NULL)
     }
-    .di <- .di[order(.di[["TIME"]]), , drop = FALSE]
+    .di <- .di[order(suppressWarnings(as.double(.di[["TIME"]]))), , drop = FALSE]
     .obs <- .di[.nmObsRows(.di), , drop = FALSE]
     .n <- nrow(.obs)
     list(
       ev = .di,
-      times = .obs[["TIME"]],
-      y = .obs[["DV"]],
+      times = as.double(.obs[["TIME"]]),
+      y = suppressWarnings(as.double(.obs[["DV"]])),
       n = .n,
       cens = if (is.null(.obs[["CENS"]])) integer(.n) else as.integer(.obs[["CENS"]]),
       limit = if (is.null(.obs[["LIMIT"]])) rep(NA_real_, .n) else as.numeric(.obs[["LIMIT"]])
