@@ -88,4 +88,20 @@ nmTest({
     expect_equal(.summary$elapsed_mean[.summary$stage == "estimate"], 5)
     expect_equal(.summary$total_elapsed_mean[.summary$stage == "covariance"], 6)
   })
+
+  test_that("the benchmark counts the observations etTrans() keeps", {
+    # lower-case names, a missing DV, MDV = 1, a missing EVID with a DV, and a dose
+    .d <- data.frame(
+      id = 1,
+      time = 0:5,
+      evid = c(1, 0, 0, 0, NA, 2),
+      dv = c(NA, 1, NA, 3, 4, NA),
+      mdv = c(1, 0, 0, 1, 0, 1)
+    )
+    expect_identical(.nlmixr2BenchmarkNobs(.d), 2L)
+    expect_identical(.nlmixr2BenchmarkNobs(.d[, c("id", "time", "dv")]), 3L)
+    expect_identical(.nlmixr2BenchmarkNobs(.d[, c("id", "time", "evid")]), NA_integer_)
+    expect_identical(.nlmixr2BenchmarkNobs(NULL), NA_integer_)
+    expect_identical(.nlmixr2BenchmarkNobs(nlmixr2data::theo_sd), 132L)
+  })
 })

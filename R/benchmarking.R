@@ -178,6 +178,28 @@ dt <- stats::dt
   .ret
 }
 
+#' Observations in a benchmark fit's data
+#'
+#' The records `etTrans()` keeps as observations ([.nmObsRows()]); data without an
+#' EVID counts its records with a DV.
+#' @param d the fit's original data
+#' @return the count, or `NA` for data with no DV
+#' @noRd
+.nlmixr2BenchmarkNobs <- function(d) {
+  if (!inherits(d, "data.frame")) {
+    return(NA_integer_)
+  }
+  d <- as.data.frame(d)
+  names(d) <- toupper(names(d))
+  if (is.null(d[["DV"]])) {
+    return(NA_integer_)
+  }
+  if (is.null(d[["EVID"]])) {
+    return(sum(!is.na(d[["DV"]])))
+  }
+  sum(.nmObsRows(d))
+}
+
 .nlmixr2BenchmarkExtractFit <- function(fit, case, threads = .nlmixr2BenchmarkRxThreads()) {
   .time <- fit$time
   .stages <- .nlmixr2BenchmarkNormalizeTime(.time)
@@ -211,13 +233,7 @@ dt <- stats::dt
   } else {
     NA_integer_
   }
-  .nObs <- if (inherits(.origData, "data.frame") && "EVID" %in% names(.origData)) {
-    sum(is.na(.origData$EVID) | .origData$EVID == 0)
-  } else if (inherits(.origData, "data.frame") && "DV" %in% names(.origData)) {
-    sum(!is.na(.origData$DV))
-  } else {
-    NA_integer_
-  }
+  .nObs <- .nlmixr2BenchmarkNobs(.origData)
   .totalElapsed <- sum(.stages$elapsed)
   data.frame(
     case = rep_len(case, nrow(.stages)),
