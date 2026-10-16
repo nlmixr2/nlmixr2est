@@ -103,7 +103,7 @@ nmTest({
     expect_identical(.args$fallback, list())
     expect_warning(
       suppressMessages(setCov(.fit, "r", control = rsControl(covFallback = list(r = "s")))),
-      "\"s\" covariance installed instead of the requested \"r\""
+      "\"s\" installed instead of the requested \"r\""
     )
     expect_identical(.args$fallback, list(r = "s"))
     expect_identical(.fit$covMethod, "s")

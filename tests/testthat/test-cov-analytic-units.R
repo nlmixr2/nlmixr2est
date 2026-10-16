@@ -75,11 +75,11 @@ nmTest({
     .e <- new.env(parent = emptyenv())
     expect_null(.foceiCalcRanalytic(.e))
     expect_identical(.e$.analyticReason, .foceiAnalyticNoReason)
-    expect_identical(.e$.analyticReason, "an internal error: no reason was recorded (please report it)")
-    expect_identical(.e$.analyticReasonShort, "an internal error: no reason was recorded (please r...")
+    expect_identical(.e$.analyticReason, "an internal error (please report it)")
+    expect_identical(.e$.analyticReasonShort, "an internal error (please report it)")
     expect_identical(
       .e$.analyticWarnNoFallback,
-      "\"analytic\" not usable (an internal error: no reason was r...); no fallback"
+      "\"analytic\" not usable (an internal error (please report it)); no fallback"
     )
     expect_identical(.e$covTried, data.frame(method = "analytic", outcome = .foceiAnalyticNoReason))
     # setCov() stops with it
@@ -87,7 +87,7 @@ nmTest({
     .foceiAnalyticWhyReset()
     expect_error(
       .setCovAnalytic(NULL, new.env(parent = emptyenv()), "analytic"),
-      "covMethod=\"analytic\" could not be computed for this fit (an internal error: no reason was recorded (please report it)); the covariance is left unchanged",
+      "covMethod=\"analytic\" could not be computed for this fit (an internal error (please report it)); the covariance is left unchanged",
       fixed = TRUE
     )
   })
@@ -118,17 +118,59 @@ nmTest({
     .acc$fields <- character(0)
     .covAnalyticWalk(
       quote({
-      .a <- ui$predDfFocei
-      .b <- rxode2::rxUiGet(ui, "foce")
-      f(x$g$h, y@k, z[, 1])
-    }),
+        .a <- ui$predDfFocei
+        .b <- rxode2::rxUiGet(ui, "foce")
+        f(x$g$h, y@k, z[, 1])
+        do.call(".foceiX", list(1))
+      }),
       .acc
     )
     expect_setequal(.acc$fields, c("predDfFocei", "foce", "g", "h"))
-    expect_false(any(c("predDfFocei", "g", "h", "k") %in% .acc$syms))
-    expect_true(all(c("ui", "f", "x", "y", "z", ".a", ".b") %in% .acc$syms))
+    # the fields after $ and @ are not names; a string is (do.call by name)
+    expect_setequal(
+      .acc$syms,
+      c(
+        "{",
+        "<-",
+        ".a",
+        ".b",
+        "::",
+        "rxode2",
+        "rxUiGet",
+        "ui",
+        "foce",
+        "f",
+        "x",
+        "y",
+        "[",
+        "z",
+        "do.call",
+        ".foceiX",
+        "list"
+      )
+    )
     .ns <- asNamespace("nlmixr2est")
     expect_true("rxUiGet.loadPruneSens" %in% .covAnalyticNamedFns(".foceiAnalyticAugModelDirs", .ns))
+  })
+
+  test_that("the closure walk stops at a leaf and follows a call by name", {
+    .fake <- new.env(parent = emptyenv())
+    .fake$entry <- function() {
+      leafA()
+      other()
+    }
+    .fake$leafA <- function() below()
+    .fake$below <- function() NULL
+    .fake$other <- function() do.call("byName", list())
+    .fake$byName <- function() NULL
+    expect_setequal(
+      .covAnalyticDeclineClosure(.fake, entries = "entry", leaves = "leafA"),
+      c("entry", "leafA", "other", "byName")
+    )
+    expect_setequal(
+      .covAnalyticDeclineClosure(.fake, stopAtLeaves = FALSE, entries = "entry", leaves = "leafA"),
+      c("entry", "leafA", "below", "other", "byName")
+    )
   })
 
   test_that("every helper of the decline chain that can give up is a leaf or exempt for a reason", {
@@ -218,6 +260,33 @@ nmTest({
     }
   })
 
+  test_that("the third-order differencing declines on a step it did not solve on both sides", {
+    # shi21Central always solves the step it returns; a step it did not is a change
+    # in it, so the subject declines instead of solving there
+    .calls <- new.env(parent = emptyenv())
+    .calls$x <- numeric(0)
+    local_mocked_bindings(
+      .foceiAnalyticSolveFA = .unitsSolveFA(.calls, function(.e) FALSE),
+      shi21CentralWrap = function(f, t, f0, idx, ef) list(h = 0.125, gr = rep(0, length(f0)))
+    )
+    .foceiAnalyticWhyReset()
+    expect_null(.foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1)))
+    expect_identical(.foceiAnalyticWhy$detail, "a third-order step with a side the differencing did not solve")
+    expect_identical(.calls$x, 0)
+  })
+
+  test_that("a differencing solve of another size counts as a failed one", {
+    # shiWrapCall_ turns such a result into NaN; the side check must agree
+    local_mocked_bindings(.foceiAnalyticSolveFA = function(aug, params, ev, times, tol = 1e-10) {
+      .eta <- params[["ETA_1_"]]
+      .n <- if (.eta == 0) 2L else 3L
+      list(f = seq_len(.n), a = matrix(0.1, .n, 1L), A = array(0.01 + 0.5 * .eta, c(.n, 1L, 1L)))
+    })
+    .foceiAnalyticWhyReset()
+    expect_null(.foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1)))
+    expect_identical(.foceiAnalyticWhy$detail, "a non-finite third-order sensitivity")
+  })
+
   test_that("a successful third-order differencing solves no point twice", {
     .calls <- new.env(parent = emptyenv())
     .calls$x <- numeric(0)
@@ -225,7 +294,7 @@ nmTest({
     .foceiAnalyticWhyReset()
     .r <- .foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1))
     # A is linear in the eta, so the central difference is exact up to rounding
-    expect_equal(.r$Ath, array(0.5, c(2L, 1L, 1L, 1L)), tolerance = 1e-8)
+    expect_equal(.r$Ath, array(0.5, c(2L, 1L, 1L, 1L)), tolerance = 1e-12)
     expect_identical(anyDuplicated(.calls$x), 0L)
     expect_null(.foceiAnalyticWhy$detail)
   })
