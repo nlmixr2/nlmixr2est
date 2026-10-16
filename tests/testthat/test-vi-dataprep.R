@@ -89,3 +89,35 @@ test_that(".adviDataPrep counts no missing-DV or MDV = 1 record as an observatio
     expect_identical(.p$subj[[1]]$y, .p0$subj[[1]]$y)
   }
 })
+
+test_that(".adviDataPrep drops a subject with no observations, as the FOCEi inner problem does", {
+  .mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  ui <- rxode2::rxode2(.mod)
+  .d <- nlmixr2data::theo_sd
+  .d$DV[.d$ID == 12 & .d$EVID == 0] <- NA
+  expect_warning(.p <- .adviDataPrep(ui, .d), "IDs without observations dropped: 12", fixed = TRUE)
+  expect_identical(.p$N, 11L)
+  expect_identical(.p$Nobs, 121L)
+  .d <- nlmixr2data::theo_sd
+  .d$ID[5] <- NA
+  expect_error(.adviDataPrep(ui, .d), "ID is missing on 1 record(s)", fixed = TRUE)
+})
