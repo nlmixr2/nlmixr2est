@@ -75,11 +75,11 @@ nmTest({
     .e <- new.env(parent = emptyenv())
     expect_null(.foceiCalcRanalytic(.e))
     expect_identical(.e$.analyticReason, .foceiAnalyticNoReason)
-    expect_identical(.e$.analyticReason, "an internal error: no reason was recorded (please report it)")
-    expect_identical(.e$.analyticReasonShort, "an internal error: no reason was recorded (please r...")
+    expect_identical(.e$.analyticReason, "an internal error (please report it)")
+    expect_identical(.e$.analyticReasonShort, "an internal error (please report it)")
     expect_identical(
       .e$.analyticWarnNoFallback,
-      "\"analytic\" not usable (an internal error: no reason was r...); no fallback"
+      "\"analytic\" not usable (an internal error (please report it)); no fallback"
     )
     expect_identical(.e$covTried, data.frame(method = "analytic", outcome = .foceiAnalyticNoReason))
     # setCov() stops with it
@@ -87,7 +87,7 @@ nmTest({
     .foceiAnalyticWhyReset()
     expect_error(
       .setCovAnalytic(NULL, new.env(parent = emptyenv()), "analytic"),
-      "covMethod=\"analytic\" could not be computed for this fit (an internal error: no reason was recorded (please report it)); the covariance is left unchanged",
+      "covMethod=\"analytic\" could not be computed for this fit (an internal error (please report it)); the covariance is left unchanged",
       fixed = TRUE
     )
   })
