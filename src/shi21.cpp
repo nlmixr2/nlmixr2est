@@ -400,7 +400,8 @@ arma::mat shi21Hessian(shi21fn_type grad, arma::vec &x, arma::vec &gr0, int id,
       H.col(k) = col;
       continue;
     }
-    col.zeros();
+    // NA when neither leg is finite
+    col.fill(NA_REAL);
     shi21HessColumn(grad, x, gr0, id, type, k, h, col);
     H.col(k) = col;
   }

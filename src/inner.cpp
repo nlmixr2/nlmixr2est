@@ -849,6 +849,9 @@ struct focei_options {
   std::atomic<int> nInnerNoGood{0};
   // eta Hessians whose nearPD repair had to change the diagonal
   std::atomic<int> nNearPdDiag{0};
+  // eta gradient and Hessian finite-difference columns that solved on neither side
+  // (taken as 0); counted over the whole fit, so reset only in foceiSetup_()
+  std::atomic<int> nEtaFdNoSlope{0};
   // Inner solves where a failed attempt's candidate was dropped from the
   // selection because a succeeded one was available.  This is the count that
   // shows the rule is doing something, rather than that it merely exists.
@@ -2535,6 +2538,7 @@ arma::vec shi21LikTheta(arma::vec &theta, int id) {
 arma::vec shi21ThetaF(arma::vec &theta, int id) { return shi21ThetaGeneral(theta, id, 0); }
 arma::vec shi21ThetaR(arma::vec &theta, int id) { return shi21ThetaGeneral(theta, id, 1); }
 
+// A difference at a fixed step h: NA when no leg is finite, never a zero slope.
 arma::vec calcGradForward(arma::vec &f0,
                           arma::vec &grPH,  double h) {
   if (grPH.is_finite()) {
@@ -2542,7 +2546,7 @@ arma::vec calcGradForward(arma::vec &f0,
     return (grPH - f0)/h;
   }
   arma::vec ret(grPH.size());
-  ret.zeros();
+  ret.fill(NA_REAL);
   return ret;
 }
 
@@ -2558,7 +2562,7 @@ arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0,
     return (f0 - grMH)/(h);
   }
   arma::vec ret(grPH.size());
-  ret.zeros();
+  ret.fill(NA_REAL);
   return ret;
 }
 // FOCE (interaction==0): R must enter the inner likelihood at the eta=0
@@ -3046,6 +3050,16 @@ double likInner0(double *eta, int id) {
         }
         // restore the prior solve
         std::copy(solveSave.begin(), solveSave.end(), solve);
+        // An eta whose differences solved on neither side has no slope.  It is
+        // taken as 0 and counted for the fit's warning: failing the evaluation
+        // instead would fail the subject at an eta it cannot leave.
+        for (int ii = 0; ii < op_focei.neta; ++ii) {
+          bool noF = !etaGradF.col(ii).is_finite();
+          bool noR = op_focei.interaction == 1 && !etaGradR.col(ii).is_finite();
+          if (noF) etaGradF.col(ii).zeros();
+          if (noR) etaGradR.col(ii).zeros();
+          if (noF || noR) op_focei.nEtaFdNoSlope.fetch_add(1, std::memory_order_relaxed);
+        }
       }
       if (op_focei.fo == 1){
         Vid.zeros();
@@ -3728,6 +3742,13 @@ bool calcEtaHessian(double *eta, int likId, int id,
                           op_focei.shi21maxInner, op_focei.shi21hMax,
                           hMin.memptr());
     });
+    // A column whose differences solved on neither side is NA (and so is its row,
+    // once symmetrized).  It is taken as 0 and counted, as the eta gradient's is:
+    // failing here would fail the subject at an eta it cannot leave.
+    if (!H.is_finite()) {
+      H.elem(arma::find_nonfinite(H)).zeros();
+      op_focei.nEtaFdNoSlope.fetch_add(1, std::memory_order_relaxed);
+    }
   } else if (op_focei.interaction) {
     int nO = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
     arma::mat a(fInd->a, nO, op_focei.neta, false, true);
@@ -7854,6 +7875,11 @@ void numericGrad(double *theta, double *g){
                                            op_focei.shi21hMax, op_focei.shi21hMin);
         op_focei.aEpsC[cpar] = op_focei.aEps[cpar];
         g[cpar] = grFinal(0);
+        // no difference solved: a reset request, as in the other branches
+        if (!R_FINITE(g[cpar])) {
+          op_focei.zeroGrad = 1;
+          break;
+        }
       }
     }
     if (op_focei.slow) {
@@ -9434,6 +9460,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
   op_focei.nNearPdDiag.store(0, std::memory_order_relaxed);
+  op_focei.nEtaFdNoSlope.store(0, std::memory_order_relaxed);
   op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   // Fallback 2 ("none") for a control list that predates/omits warm=: 0 ("save")
   // used to BE self-init because updateZm() was a no-op (#1043), so "none" is what
@@ -14294,8 +14321,9 @@ double impEvalJointLik(const arma::vec& eta, int id) {
 // not solve).  Solves the pred model at the current (theta, eta) for per-obs f and
 // V, then shi21-optimized central differences over each estimated theta for
 // d(f)/d(theta) and d(V)/d(theta).  Fills fvec/Vvec (nobs) and dfmat/dVmat
-// (nobs x nSens); restores fullTheta on exit.
-static void impThetaSensFD(int id, arma::vec& curTheta,
+// (nobs x nSens); restores fullTheta on exit.  False when a difference is not
+// finite: a theta whose differences solved on neither side.
+static bool impThetaSensFD(int id, arma::vec& curTheta,
                            arma::vec& fvec, arma::vec& Vvec,
                            arma::mat& dfmat, arma::mat& dVmat) {
   int nSens = op_focei.impThetaSensIdx.size();
@@ -14324,6 +14352,7 @@ static void impThetaSensFD(int id, arma::vec& curTheta,
   for (int t = 0; t < (int)op_focei.ntheta; ++t) {
     setIndParPtr(ind, op_focei.thetaTrans[t], op_focei.fullTheta[t]);
   }
+  return dfmat.is_finite() && dVmat.is_finite();
 }
 
 // Accumulate subject id's importance-sampling contribution to the score `g`
@@ -14527,12 +14556,12 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out,
       // sensitivity ODE unsolvable: central FD on the pred model.  Flag it as an
       // optimization problem (same warning as the inner FD fallback).
       op_focei.didPredSolve.store(true, std::memory_order_relaxed);
-      impThetaSensFD(id, curTheta, fvec, Vvec, dfmat, dVmat);
+      bool fdOk = impThetaSensFD(id, curTheta, fvec, Vvec, dfmat, dVmat);
       // restore this sample's eta (impThetaSensFD only touched thetas)
       for (int j = 0; j < (int)op_focei.neta; ++j) {
         setIndParPtr(ind, op_focei.etaTrans[j], S(k, j));
       }
-      if ((int)dfmat.n_rows != nobs) okRow = false;
+      if (!fdOk || (int)dfmat.n_rows != nobs) okRow = false;
     }
     if (okRow) {
       out.fvec[k] = fvec; out.Vvec[k] = Vvec;
@@ -15415,6 +15444,10 @@ Environment foceiFitCpp_(Environment e){
   if (op_focei.nNearPdDiag.load(std::memory_order_relaxed) > 0) {
     warning(_("eta Hessian repair changed its diagonal %d times"),
             op_focei.nNearPdDiag.load(std::memory_order_relaxed));
+  }
+  if (op_focei.nEtaFdNoSlope.load(std::memory_order_relaxed) > 0) {
+    warning(_("eta finite differences solved on neither side %d times; slope 0"),
+            op_focei.nEtaFdNoSlope.load(std::memory_order_relaxed));
   }
   // The covariance step's searches, listed by parameter: foceiCalcCov() keeps
   // them by the index of its own parameter set (the thetas, by default), which

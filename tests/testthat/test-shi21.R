@@ -154,6 +154,45 @@ nmTest({
     }
   })
 
+  test_that("an eta whose differences solve on neither side keeps the fit and is reported", {
+    skip_on_cran()
+    # eventSens = "fd" differences eta.f (it enters F); the log-likelihood is -Inf
+    # at any eta.f but 0, so no difference forms for it.  Its slope (and its eta
+    # Hessian column) are taken as 0, as before, and the fit says how often.
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        tf <- 0
+        eta.cl ~ 0.3
+        eta.f ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d / dt(depot) <- -ka * depot
+        f(depot) <- exp(tf + eta.f)
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        ll(err) ~ -0.5 * ((DV - cp) / add.sd)^2 - log(add.sd) - exp(1e300 * eta.f^2)
+      })
+    }
+    .fit <- suppressMessages(nlmixr2(
+      .mod,
+      nlmixr2data::theo_sd,
+      "focei",
+      foceiControl(print = 0, eventSens = "fd", covMethod = "", maxOuterIterations = 0)
+    ))
+    expect_true(is.finite(.fit$objective))
+    expect_identical(unique(.fit$eta$eta.f), 0)
+    .w <- grep("^eta finite differences", .fit$runInfo, value = TRUE)
+    expect_length(.w, 1L)
+    expect_match(.w, "^eta finite differences solved on neither side [1-9][0-9]* times; slope 0$")
+  })
+
   test_that("shi21Central() falls back to a backward difference, and to NA when none forms", {
     .ef <- 7e-7
     .h0 <- (3 * .ef)^(1 / 3)
