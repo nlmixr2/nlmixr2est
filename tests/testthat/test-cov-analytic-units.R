@@ -118,17 +118,59 @@ nmTest({
     .acc$fields <- character(0)
     .covAnalyticWalk(
       quote({
-      .a <- ui$predDfFocei
-      .b <- rxode2::rxUiGet(ui, "foce")
-      f(x$g$h, y@k, z[, 1])
-    }),
+        .a <- ui$predDfFocei
+        .b <- rxode2::rxUiGet(ui, "foce")
+        f(x$g$h, y@k, z[, 1])
+        do.call(".foceiX", list(1))
+      }),
       .acc
     )
     expect_setequal(.acc$fields, c("predDfFocei", "foce", "g", "h"))
-    expect_false(any(c("predDfFocei", "g", "h", "k") %in% .acc$syms))
-    expect_true(all(c("ui", "f", "x", "y", "z", ".a", ".b") %in% .acc$syms))
+    # the fields after $ and @ are not names; a string is (do.call by name)
+    expect_setequal(
+      .acc$syms,
+      c(
+        "{",
+        "<-",
+        ".a",
+        ".b",
+        "::",
+        "rxode2",
+        "rxUiGet",
+        "ui",
+        "foce",
+        "f",
+        "x",
+        "y",
+        "[",
+        "z",
+        "do.call",
+        ".foceiX",
+        "list"
+      )
+    )
     .ns <- asNamespace("nlmixr2est")
     expect_true("rxUiGet.loadPruneSens" %in% .covAnalyticNamedFns(".foceiAnalyticAugModelDirs", .ns))
+  })
+
+  test_that("the closure walk stops at a leaf and follows a call by name", {
+    .fake <- new.env(parent = emptyenv())
+    .fake$entry <- function() {
+      leafA()
+      other()
+    }
+    .fake$leafA <- function() below()
+    .fake$below <- function() NULL
+    .fake$other <- function() do.call("byName", list())
+    .fake$byName <- function() NULL
+    expect_setequal(
+      .covAnalyticDeclineClosure(.fake, entries = "entry", leaves = "leafA"),
+      c("entry", "leafA", "other", "byName")
+    )
+    expect_setequal(
+      .covAnalyticDeclineClosure(.fake, stopAtLeaves = FALSE, entries = "entry", leaves = "leafA"),
+      c("entry", "leafA", "below", "other", "byName")
+    )
   })
 
   test_that("every helper of the decline chain that can give up is a leaf or exempt for a reason", {
