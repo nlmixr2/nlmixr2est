@@ -122,18 +122,51 @@ nmTest({
     expect_length(.solve(), 2L)
   })
 
-  test_that("a solve that fails inside the third-order differencing keeps its own detail", {
-    .E0 <- list(f = c(1, 2), a = matrix(c(0.1, 0.2), 2L, 1L), A = array(0.01, c(2L, 1L, 1L)))
+  # A per-subject solve whose A is linear in ETA_1_ (slope 0.5), failing where
+  # `fails(eta)` is TRUE; `calls$x` records the eta of every solve
+  .unitsSolveFA <- function(calls, fails) {
+    function(aug, params, ev, times, tol = 1e-10) {
+      .eta <- params[["ETA_1_"]]
+      calls$x <- c(calls$x, .eta)
+      if (fails(.eta)) {
+        return(.foceiAnalyticNote("a test solve failure"))
+      }
+      list(f = c(1, 2), a = matrix(c(0.1, 0.2), 2L, 1L), A = array(0.01 + 0.5 * .eta, c(2L, 1L, 1L)))
+    }
+  }
+
+  test_that("the third-order differencing declines when a side of its step fails", {
+    # every solve but the base one fails, then only the plus side, then only the
+    # minus side: shi21Central gives a zero, a zero and a forward difference
+    .fails <- list(
+      all = function(.e) .e != 0,
+      plus = function(.e) .e > 0,
+      minus = function(.e) .e < 0
+    )
+    for (.nm in names(.fails)) {
+      .calls <- new.env(parent = emptyenv())
+      .calls$x <- numeric(0)
+      local_mocked_bindings(.foceiAnalyticSolveFA = .unitsSolveFA(.calls, .fails[[.nm]]))
+      .foceiAnalyticWhyReset()
+      expect_null(
+        .foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1)),
+        label = .nm
+      )
+      expect_identical(.foceiAnalyticWhy$detail, "a test solve failure", label = .nm)
+      # the check of the step's sides reuses the differencing's own solves
+      expect_identical(anyDuplicated(.calls$x), 0L, label = .nm)
+    }
+  })
+
+  test_that("a successful third-order differencing solves no point twice", {
     .calls <- new.env(parent = emptyenv())
-    .calls$n <- 0L
-    # the base solve works; every solve the differencing asks for fails
-    local_mocked_bindings(.foceiAnalyticSolveFA = function(...) {
-      .calls$n <- .calls$n + 1L
-      if (.calls$n == 1L) .E0 else .foceiAnalyticNote("a test solve failure")
-    })
+    .calls$x <- numeric(0)
+    local_mocked_bindings(.foceiAnalyticSolveFA = .unitsSolveFA(.calls, function(.e) FALSE))
     .foceiAnalyticWhyReset()
-    expect_null(.foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1)))
-    expect_gt(.calls$n, 1L)
-    expect_identical(.foceiAnalyticWhy$detail, "a test solve failure")
+    .r <- .foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1))
+    # A is linear in the eta, so the central difference is exact up to rounding
+    expect_equal(.r$Ath, array(0.5, c(2L, 1L, 1L, 1L)), tolerance = 1e-8)
+    expect_identical(anyDuplicated(.calls$x), 0L)
+    expect_null(.foceiAnalyticWhy$detail)
   })
 })
