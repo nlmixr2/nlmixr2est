@@ -34,7 +34,8 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
 // or shi21Central search (ef, maxiter, hMax and hMin[k] tune it; a NULL hMin means
 // shi21hMinDefault), which stores the step it settles on in hh[k].  With a step,
 // column k is a forward or central difference; when one leg is non-finite it is the
-// other one-sided difference, and when both are it stays 0.
+// other one-sided difference, and when both are it is NA, as is a searched column
+// whose search formed no difference.
 //
 // type is shi21HessForward or shi21HessCentral; any other value returns zeros without
 // evaluating grad.  x is perturbed in place and put back exactly on every path.  Any
