@@ -1,3 +1,14 @@
+# nlmixr2est (development version)
+
+## Bug fixes
+
+- Whether a fit can use the analytic outer gradient no longer depends on the
+  fit before it in the session.  The check read whether the model has
+  inter-occasion variability from the last fit's IOV rewrite, so after an IOV
+  fit a model without IOV took the finite-difference gradient, and after a fit
+  without IOV a model with IOV was let through.  It now reads the model being
+  fit.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
