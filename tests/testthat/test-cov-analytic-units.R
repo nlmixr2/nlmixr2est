@@ -121,4 +121,19 @@ nmTest({
     .rows$n <- c(3L, 3L)
     expect_length(.solve(), 2L)
   })
+
+  test_that("a solve that fails inside the third-order differencing keeps its own detail", {
+    .E0 <- list(f = c(1, 2), a = matrix(c(0.1, 0.2), 2L, 1L), A = array(0.01, c(2L, 1L, 1L)))
+    .calls <- new.env(parent = emptyenv())
+    .calls$n <- 0L
+    # the base solve works; every solve the differencing asks for fails
+    local_mocked_bindings(.foceiAnalyticSolveFA = function(...) {
+      .calls$n <- .calls$n + 1L
+      if (.calls$n == 1L) .E0 else .foceiAnalyticNote("a test solve failure")
+    })
+    .foceiAnalyticWhyReset()
+    expect_null(.foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1)))
+    expect_gt(.calls$n, 1L)
+    expect_identical(.foceiAnalyticWhy$detail, "a test solve failure")
+  })
 })
