@@ -250,6 +250,46 @@ nmTest({
     }
   })
 
+  test_that(".vaeDataPrep takes an MDV column as the EVID when there is none, as FOCEi does", {
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    ui <- rxode2::assertRxUi(.mod)
+    .p0 <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
+    .d <- nlmixr2data::theo_sd
+    .d$MDV <- as.integer(.d$EVID != 0)
+    .d$EVID <- NULL
+    .p <- .vaeDataPrep(ui, .d)
+    expect_identical(.p$Nobs, .p0$Nobs)
+    expect_identical(.p$subj[[1]]$times, .p0$subj[[1]]$times)
+    expect_identical(.p$subj[[1]]$y, .p0$subj[[1]]$y)
+    # MDV 0 makes a record an observation even with an AMT, as etTrans() reads it
+    .r <- .d[.d$ID == 1 & .d$MDV == 0, ][1, ]
+    .r$TIME <- 30
+    .r$DV <- 2
+    .r$AMT <- 50
+    .p <- .vaeDataPrep(ui, rbind(.d, .r))
+    expect_identical(.p$Nobs, .p0$Nobs + 1L)
+    expect_identical(utils::tail(.p$subj[[1]]$y, 1L), 2)
+  })
+
   test_that(".vaeDataPrep drops a subject with no observations, as the FOCEi inner problem does", {
     .mod <- function() {
       ini({
