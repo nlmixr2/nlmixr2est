@@ -32,8 +32,9 @@
 - `covMethod = "analytic"` with a residual variance the general (f,R) assembly
   handles (for example `combined1`) now keeps the analytic covariance when its
   batched augmented solve fails: the per-subject solve it falls back to rebuilds
-  the residual-error slots as the batched one does, where it used to stop on
-  "number of items to replace is not a multiple of replacement length".
+  the residual-error slots as the batched one does.  Since 7.0.2 that solve
+  failed ("number of items to replace is not a multiple of replacement length")
+  and the fit fell back to the finite-difference covariance.
 
 ### Estimation
 
