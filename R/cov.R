@@ -344,15 +344,18 @@
   )
 }
 
+# The most display columns a covariance warning keeps: a `$runInfo` line renders
+# under 75 characters (CLAUDE.md)
+.covWarnWidth <- 74L
+
 #' Clip a covariance message to the width of a `$runInfo` line
 #'
-#' Under 75 characters of display width, the width a `$runInfo` line renders in
-#' (CLAUDE.md), with an ellipsis where it was cut.
+#' To `.covWarnWidth` display columns, with an ellipsis where it was cut.
 #' @param w the text
 #' @param width the most display columns to keep, the ellipsis included
 #' @return the clipped text
 #' @noRd
-.covClip <- function(w, width = 74L) {
+.covClip <- function(w, width = .covWarnWidth) {
   as.character(cli::ansi_strtrim(w, width, ellipsis = "..."))
 }
 

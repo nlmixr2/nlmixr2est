@@ -143,7 +143,7 @@
   checkmate::assertString(why)
   checkmate::assertString(tail)
   .fixed <- cli::ansi_nchar(sprintf("\"%s\" not usable (); %s", request, tail), type = "width")
-  .why <- .covClip(why, max(10L, 74L - .fixed))
+  .why <- .covClip(why, max(10L, .covWarnWidth - .fixed))
   .covClip(sprintf("\"%s\" not usable (%s); %s", request, .why, tail))
 }
 

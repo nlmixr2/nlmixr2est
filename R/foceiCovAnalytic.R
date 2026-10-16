@@ -147,8 +147,8 @@
 
 #' A reason clipped for a warning or printed line (CLAUDE.md: $runInfo lines < 75 chars)
 #'
-#' 54 columns, not [.covClip()]'s 74: the reason sits inside the fixed text of
-#' the "analytic errN: " warning and of the printed covType line.
+#' 54 columns, not [.covClip()]'s `.covWarnWidth`: the "analytic errN: " warning
+#' is 69 columns with a 54-column reason.
 #' @param x the text
 #' @param width the most display columns to keep, the ellipsis included
 #' @noRd

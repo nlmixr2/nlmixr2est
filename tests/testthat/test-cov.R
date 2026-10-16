@@ -231,8 +231,8 @@ test_that(".covRejectWarn() reads the same for every method and stays under 75 c
   expect_identical(.w, paste0("\"analytic (full)\" ", strrep("x", 53), "..."))
 })
 
-test_that("every covariance warning stays under 75 characters with a long label", {
-  # each site that warns through .covWarn(), driven with an 80-character label
+test_that("each .covWarn() site clips an 80-character label to 74 columns", {
+  # each site that warns through .covWarn(), driven with an abnormal label
   .long <- strrep("m", 80)
   .w <- capture_warnings(.covInstall(.fakeFitEnv(), .pdCov(), "linFim", what = .long))
   expect_identical(.w, paste0("\"linFim\" installed instead of the requested \"", strrep("m", 26), "..."))
@@ -254,6 +254,162 @@ test_that("every covariance warning stays under 75 characters with a long label"
   .w <- capture_warnings(.foceiWarnConditionalCov(.e, list(maxInnerIterations = 0L)))
   expect_identical(.w, paste0("\"", strrep("m", 70), "..."))
   expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
+})
+
+test_that("the long-label test drives every .covWarn() caller", {
+  .ns <- asNamespace("nlmixr2est")
+  .callers <- Filter(
+    function(.f) is.function(.ns[[.f]]) && ".covWarn" %in% all.names(body(.ns[[.f]])),
+    ls(.ns, all.names = TRUE)
+  )
+  # a new caller needs a case above and in the real-label test below
+  expect_setequal(
+    .callers,
+    c(".covInstall", ".covRejectWarn", ".covRepairWarn", ".foceiWarnConditionalCov", ".setCovFd")
+  )
+})
+
+test_that("every covariance warning stays whole for every real method label", {
+  # the labels the code gives a covariance: the finite-difference ones
+  # (.covFdType()'s decorations), with and without " (full)"; a rejected analytic
+  # install's native "r" label with " (analytic)"; and the other methods
+  .fdBase <- c(
+    "r",
+    "r+",
+    "|r|",
+    "s",
+    "s+",
+    "|s|",
+    as.vector(outer(c("r", "r+", "|r|"), c("s", "s+", "|s|"), paste, sep = ","))
+  )
+  .fd <- c(.fdBase, paste0(.fdBase, " (full)"))
+  .anaKept <- paste0(c("r", "r+", "|r|", "r (full)", "r+ (full)", "|r| (full)"), " (analytic)")
+  .other <- c(
+    "analytic",
+    "analytic (full)",
+    "linFim",
+    "linFim (full)",
+    "|linFim|",
+    "Ha",
+    "|Ha|",
+    "sa",
+    "imp",
+    "|imp|",
+    "nlme",
+    "vi"
+  )
+  .guard <- c("could not be computed", "is not finite", "is not symmetric", "is not positive definite")
+  .rej <- function(what, reason, kept) {
+    .e <- new.env(parent = emptyenv())
+    if (!is.na(kept)) {
+      .e$cov <- diag(2)
+      .e$covMethod <- kept
+    }
+    tryCatch(.covRejectWarn(.e, what, reason), warning = conditionMessage)
+  }
+  .lines <- character(0)
+  # .covInstall()'s guard: any label rejected, any one kept (NA: none installed)
+  .g <- expand.grid(
+    what = c(.fd, .other),
+    reason = .guard,
+    kept = c(.fd, .anaKept, .other, NA),
+    stringsAsFactors = FALSE
+  )
+  .lines <- c(.lines, mapply(.rej, .g$what, .g$reason, .g$kept))
+  # the full finite-difference step; the SAEM "Ha" block
+  .g <- expand.grid(
+    what = c("r (full)", "s (full)", "r,s (full)"),
+    reason = "needs a positive-definite R",
+    kept = .fd,
+    stringsAsFactors = FALSE
+  )
+  .lines <- c(.lines, mapply(.rej, .g$what, .g$reason, .g$kept))
+  .g <- expand.grid(
+    what = "Ha",
+    reason = c("has information rows not matching the thetas", "has no estimated mu-referenced theta", .guard),
+    kept = c("linFim", "|linFim|", "linFim (full)", NA),
+    stringsAsFactors = FALSE
+  )
+  .lines <- c(.lines, mapply(.rej, .g$what, .g$reason, .g$kept))
+  # .covInstall(): a label installed instead of the one requested
+  .requests <- c(
+    "r,s",
+    "r",
+    "s",
+    "r,s (full)",
+    "r (full)",
+    "s (full)",
+    "analytic",
+    "analytic (full)",
+    "linFim",
+    "linFim (full)",
+    "sa",
+    "imp",
+    "nlme",
+    "vi",
+    "Ha"
+  )
+  for (.l in c(.fd, .other)) {
+    for (.w in .requests) {
+      .lines <- c(.lines, capture_warnings(.covInstall(.fakeFitEnv(), .pdCov(), .l, what = .w)))
+    }
+  }
+  # the sqrtm repairs of the covariances that are repaired
+  for (.p in list(
+    c("imp", "|imp|"),
+    c("linFim", "|linFim|"),
+    c("sa", "|sa|"),
+    c("Ha", "|Ha|"),
+    c("imp (full)", "|imp| (full)")
+  )) {
+    .lines <- c(.lines, capture_warnings(.covRepairWarn(.p[1], .p[2])))
+  }
+  # a finite-difference covariance whose ETAs were held
+  for (.l in .fd) {
+    .e <- new.env(parent = emptyenv())
+    .e$etaObf <- 1
+    .e$cov <- diag(2)
+    .e$covMethod <- .l
+    .lines <- c(.lines, capture_warnings(.foceiWarnConditionalCov(.e, list(maxInnerIterations = 0L))))
+  }
+  # .covNotUsableMsg(), one reason at a time, per walk: FOCEi's finite-difference
+  # walk, the after-fit fallback and SAEM's chain.  Several reasons joined by "; "
+  # can pass 74 columns and are clipped by design (covTried has them in full), as
+  # is the analytic reason, which test-covSelect.R pins.
+  .tails <- function(labels) c("no covariance", sprintf("installed \"%s\"", labels))
+  .walks <- list(
+    list(
+      r = c("r,s", "r", "s", "r,s (full)", "r (full)", "s (full)"),
+      why = c(
+        "R not computed",
+        "R not PD",
+        "R failed",
+        "S not computed",
+        "S not PD",
+        "S failed",
+        "sandwich doubtful",
+        "all variances < 1e-7"
+      ),
+      tail = .tails(.fd)
+    ),
+    list(
+      r = c("r,s", "r", "s", "analytic"),
+      why = "could not be computed",
+      tail = .tails(c("sa", "imp", "|imp|", "nlme", "linFim"))
+    ),
+    list(
+      r = c("linFim", "linFim (full)", "sa", "Ha"),
+      why = "not usable",
+      tail = .tails(c("linFim", "|linFim|", "linFim (full)", "sa", "Ha", "|Ha|"))
+    )
+  )
+  for (.wk in .walks) {
+    .g <- expand.grid(r = .wk$r, why = .wk$why, tail = .wk$tail, stringsAsFactors = FALSE)
+    .lines <- c(.lines, mapply(.covNotUsableMsg, .g$r, .g$why, .g$tail))
+  }
+  .cut <- unique(.lines[endsWith(.lines, "...") | cli::ansi_nchar(.lines, type = "width") > 74L])
+  expect_identical(.cut, character(0))
+  expect_gt(length(.lines), 10000L)
 })
 
 test_that(".covInstall() says when what it installed is not what was asked for", {
