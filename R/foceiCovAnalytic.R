@@ -3825,27 +3825,27 @@
   TRUE
 }
 
-#' Base subject solve: `f` plus the 1st/2nd analytic sensitivities (`a`, `A`), no
-#' 3rd-order Shi tensor.  Shared by [.foceiAnalyticSolveSubjectFD3] (which adds `Ath`),
-#' the AGQ node solves and the VAE decoder.  Muffles benign solver
-#' warnings (a real error returns `NULL` -> FD fallback).  The rows are the solve's
-#' observation (EVID 0) records, so an EVID 2 or missing-DV record at an observation
-#' time is not one; `times` only confirms they line up with the caller's observations.
+#' Solve an augmented sensitivity model at its observation (EVID 0) records
+#'
+#' The one rxSolve() of an augmented model, for a subject ([.foceiAnalyticSolveFA]) or
+#' the population ([.foceiAnalyticSolveAll]'s fallback from the shared pool).  Benign
+#' solver warnings are muffled; an error returns `NULL` with what rxSolve() said noted.
+#' @param aug augmented model ([.foceiAnalyticAugModelDirs])
+#' @param params named parameters, or a data frame with one row per subject
+#' @param ev event data
+#' @param tol `atol` then `rtol`; a single value is both
+#' @return the solve as a data frame, or `NULL`
 #' @noRd
-.foceiAnalyticSolveFA <- function(aug, params, ev, times, tol = 1e-10) {
-  dirs <- aug$dirs
-  nd <- length(dirs)
-  .ev <- .foceiAnalyticEvents(aug, ev) # reuse the pre-translated events (FOCE Newton reuse)
-  .nc <- if (is.null(aug$cores)) 0L else aug$cores
-  # DDE augmented solve: force pure dop853 (dense, no Jacobian).  Its 8th-order dense history
-  # reproduces the delayed sensitivity solve exactly and needs no Jacobian, so it sidesteps the
-  # composite/ros4 on-the-fly Jacobian generation for this THETA/ETA-named augmented model.
+.foceiAnalyticRxSolve <- function(aug, params, ev, tol) {
+  # DDE: force pure dop853 (dense, no Jacobian).  Its 8th-order dense history reproduces the
+  # delayed sensitivity solve exactly and needs no Jacobian, so it sidesteps the composite/ros4
+  # on-the-fly Jacobian generation for this THETA/ETA-named augmented model.
   .ddeArgs <- if (isTRUE(rxode2::rxModelVars(aug$augMod)$flags[["hasDelay"]] == 1L)) {
     list(method = "dop853", stiff2 = 0L, dense = TRUE)
   } else {
     list()
   }
-  .d <- tryCatch(
+  tryCatch(
     withCallingHandlers(
       as.data.frame(do.call(
         rxode2::rxSolve,
@@ -3853,12 +3853,12 @@
           list(
             aug$augMod,
             params = params,
-            events = .ev,
-            cores = .nc,
+            events = .foceiAnalyticEvents(aug, ev), # reuse the pre-translated events
+            cores = if (is.null(aug$cores)) 0L else aug$cores, # the fit's rxControl threads
             returnType = "data.frame",
             addDosing = NULL, # observation (EVID 0) records only
-            atol = tol,
-            rtol = tol
+            atol = tol[1],
+            rtol = tol[length(tol)]
           ),
           .ddeArgs
         )
@@ -3867,6 +3867,19 @@
     ),
     error = function(e) .foceiAnalyticNote(paste0("rxSolve: ", conditionMessage(e)))
   )
+}
+
+#' Base subject solve: `f` plus the 1st/2nd analytic sensitivities (`a`, `A`), no
+#' 3rd-order Shi tensor.  Shared by [.foceiAnalyticSolveSubjectFD3] (which adds `Ath`),
+#' the AGQ node solves and the VAE decoder.  A failed solve returns `NULL` -> FD
+#' fallback.  The rows are the solve's observation (EVID 0) records, so an EVID 2 or
+#' missing-DV record at an observation time is not one; `times` only confirms they line
+#' up with the caller's observations.
+#' @noRd
+.foceiAnalyticSolveFA <- function(aug, params, ev, times, tol = 1e-10) {
+  dirs <- aug$dirs
+  nd <- length(dirs)
+  .d <- .foceiAnalyticRxSolve(aug, params, ev, tol)
   if (is.null(.d)) {
     return(NULL)
   }
