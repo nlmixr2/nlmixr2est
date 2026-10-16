@@ -534,11 +534,13 @@ calculation.}
 
 \item{optimHessType}{Hessian type for numeric-difference individual
 Hessians in generalized log-likelihood estimation: "central" (matches
-R's `optimHess()`, default) or "forward" (faster).}
+R's `optimHess()`, default) or "forward" (faster), or the integer code
+the control stores for one of them.}
 
 \item{optimHessCovType}{Hessian type for numeric-difference individual
 Hessians used for the covariance step/final likelihood: "central"
-(more accurate, used here) or "forward".}
+(more accurate, used here) or "forward", or the integer code the control
+stores for one of them.}
 
 \item{hessEtaStepMin}{Floor on the finite-difference step used for the
   individual (eta) Hessian in generalized log-likelihood estimation,
@@ -570,7 +572,8 @@ SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
 finite-difference Hessian that already reflects censoring exactly.}
 
 \item{eventType}{Event gradient type for dosing events; Can be
-"central" or "forward"}
+"central" or "forward", or the integer code the control stores for one
+of them}
 
 \item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:

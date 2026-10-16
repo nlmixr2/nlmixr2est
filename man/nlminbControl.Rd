@@ -140,7 +140,8 @@ When `FALSE`, all subjects have their tolerances relaxed on
 each retry and tolerances are reset afterward.}
 
 \item{eventType}{Event gradient type for dosing events; Can be
-"central" or "forward"}
+"central" or "forward", or the integer code the control stores for one
+of them}
 
 \item{shiErr}{This represents the epsilon when optimizing the ideal
 step size for numeric differentiation using the Shi2021 method}
@@ -151,7 +152,8 @@ time, modeled duration/rate and bioavailability)}
 
 \item{optimHessType}{Hessian type for numeric-difference individual
 Hessians in generalized log-likelihood estimation: "central" (matches
-R's `optimHess()`, default) or "forward" (faster).}
+R's `optimHess()`, default) or "forward" (faster), or the integer code
+the control stores for one of them.}
 
 \item{hessErr}{This represents the epsilon when optimizing the
 Hessian step size using the Shi2021 method.}

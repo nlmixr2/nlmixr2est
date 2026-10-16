@@ -154,7 +154,8 @@ When `FALSE`, all subjects have their tolerances relaxed on
 each retry and tolerances are reset afterward.}
 
 \item{eventType}{Event gradient type for dosing events; Can be
-"central" or "forward"}
+"central" or "forward", or the integer code the control stores for one
+of them}
 
 \item{shiErr}{This represents the epsilon when optimizing the ideal
 step size for numeric differentiation using the Shi2021 method}
