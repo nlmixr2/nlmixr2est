@@ -338,6 +338,93 @@ nmTest({
     expect_identical(.foceiAnalyticWhy$detail, "a third-order solve of another size")
   })
 
+  # A per-subject solve with one residual sigma (rx_rsig_): every slot affine in
+  # ETA_1_, so the differences are exact.  Two observations; the values at eta 0
+  # are what the expanded slots must hold.
+  .unitsSolveRsig <- function(aug, params, ev, times, tol = 1e-10) {
+    .eta <- params[["ETA_1_"]]
+    list(
+      f = c(1, 2),
+      a = matrix(c(0.1, 0.2), 2L, 1L),
+      A = array(0.01 + 0.5 * .eta, c(2L, 1L, 1L)),
+      R = c(0.3, 0.4),
+      aR = matrix(c(0.05, 0.06), 2L, 1L),
+      AR = array(c(0.02, 0.03) + 0.25 * .eta, c(2L, 1L, 1L)),
+      Rsig = matrix(c(0.7, 0.8), 2L, 1L),
+      RsigDir = array(c(0.4, 0.45) + 0.125 * .eta, c(2L, 1L, 1L)),
+      Rsig2 = array(c(0.6, 0.65) + 0.0625 * .eta, c(2L, 1L, 1L))
+    )
+  }
+
+  test_that("the per-subject solve rebuilds the sigma slots the caller dropped (Route A)", {
+    local_mocked_bindings(.foceiAnalyticSolveFA = .unitsSolveRsig)
+    withr::local_envvar(FOCEI_NO_RSIG = "")
+    .solve <- function(withR, sigSel) {
+      .foceiAnalyticWhyReset()
+      .foceiAnalyticSolveSubjectFD3(
+        list(dirs = "ETA_1_"),
+        c(ETA_1_ = 0),
+        data.frame(),
+        c(0, 1),
+        withR = withR,
+        sigSel = sigSel
+      )
+    }
+    .r <- .solve(TRUE, 1L)
+    # one direction plus the dropped sigma
+    expect_identical(dim(.r$a), c(2L, 2L))
+    expect_identical(.r$a[, 2], c(0, 0))
+    expect_identical(.r$aR, cbind(c(0.05, 0.06), c(0.7, 0.8)))
+    expect_equal(.r$AR[1, , ], rbind(c(0.02, 0.4), c(0.4, 0.6)), tolerance = 1e-12)
+    expect_equal(.r$Ath[1, 1, , ], rbind(c(0.5, 0), c(0, 0)), tolerance = 1e-8)
+    expect_equal(.r$AthR[1, 1, , ], rbind(c(0.25, 0.125), c(0.125, 0.0625)), tolerance = 1e-8)
+    # without withR the slots are rebuilt too, with no third-order R
+    .r <- .solve(FALSE, 1L)
+    expect_identical(dim(.r$a), c(2L, 2L))
+    expect_equal(.r$AR[1, , ], rbind(c(0.02, 0.4), c(0.4, 0.6)), tolerance = 1e-12)
+    expect_null(.r$AthR)
+    # a caller that dropped no sigma (the add/prop and SD-IOV assemblies) gets its own
+    # directions only, R slots included
+    .r <- .solve(TRUE, NULL)
+    expect_identical(dim(.r$a), c(2L, 1L))
+    expect_identical(dim(.r$AR), c(2L, 1L, 1L))
+    expect_equal(drop(.r$AthR[1, 1, , ]), 0.25, tolerance = 1e-8)
+    expect_identical(.r$R, c(0.3, 0.4))
+    # FOCEI_NO_RSIG turns Route A off
+    withr::local_envvar(FOCEI_NO_RSIG = "1")
+    expect_identical(dim(.solve(TRUE, 1L)$a), c(2L, 1L))
+  })
+
+  test_that(".foceiAnalyticRouteA() counts Rsig columns only for a caller that dropped sigmas", {
+    withr::local_envvar(FOCEI_NO_RSIG = "")
+    .E <- list(Rsig = matrix(0, 2L, 3L))
+    expect_identical(.foceiAnalyticRouteA(.E, 2L), 3L)
+    expect_identical(.foceiAnalyticRouteA(.E, NULL), 0L)
+    expect_identical(.foceiAnalyticRouteA(.E, integer(0)), 0L)
+    expect_identical(.foceiAnalyticRouteA(list(), 2L), 0L)
+    expect_identical(.foceiAnalyticRouteA(list(Rsig = matrix(0, 2L, 0L)), 2L), 0L)
+    withr::local_envvar(FOCEI_NO_RSIG = "1")
+    expect_identical(.foceiAnalyticRouteA(.E, 2L), 0L)
+  })
+
+  test_that(".foceiAnalyticFD3Unflat() inverts .foceiAnalyticFD3Flat()", {
+    .E <- list(
+      A = array(1:8, c(2L, 2L, 2L)),
+      AR = array(9:16, c(2L, 2L, 2L)),
+      RsigDir = array(17:20, c(2L, 2L, 1L)),
+      Rsig2 = array(21:22, c(2L, 1L, 1L))
+    )
+    for (.withR in c(FALSE, TRUE)) {
+      for (.rsig in c(FALSE, TRUE)) {
+        .v <- .foceiAnalyticFD3Flat(.E, .withR, .rsig)
+        .u <- .foceiAnalyticFD3Unflat(.v, 2L, 2L, 1L, .withR, .rsig)
+        .slots <- c("A", if (.withR) "AR", if (.rsig) c("RsigDir", "Rsig2"))
+        expect_identical(names(.u), .slots)
+        expect_identical(.u, .E[.slots])
+      }
+    }
+  })
+
   test_that("a successful third-order differencing solves no point twice", {
     .calls <- new.env(parent = emptyenv())
     .calls$x <- numeric(0)

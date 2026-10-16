@@ -557,12 +557,11 @@
     if (!.fp && is.null(E0all)) {
       return(.foceiAnalyticFallback("a failed eta=0 population solve", scope = FALSE))
     }
-    if (.rsigA && !.fp) {
-      # Route A: rebuild frozen-R0 sigma slots (aR/AR) from rsig
-      .ns0 <- ncol(E0all[[1L]]$Rsig)
-      if (!is.null(.ns0) && .ns0 > 0L) {
-        E0all <- lapply(E0all, function(.E0) .foceiAnalyticExpandSigma(.E0, .ns0, neta, NULL, NULL, .sigSel))
-      }
+    # Route A: rebuild the frozen-R0 sigma slots (aR/AR) from rsig, as the FD3 routes
+    # rebuild E's
+    .ns0 <- if (.fp) 0L else .foceiAnalyticRouteA(E0all[[1L]], .sigSel)
+    if (.ns0 > 0L) {
+      E0all <- lapply(E0all, function(.E0) .foceiAnalyticExpandSigma(.E0, .ns0, neta, NULL, NULL, .sigSel))
     }
     eta0Mat <- ebes # the fit's own EBEs -- see .foce above
     .batch <- !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
@@ -2607,6 +2606,81 @@
   c(as.vector(E$A), if (withR) as.vector(E$AR), if (rsig) c(as.vector(E$RsigDir), as.vector(E$Rsig2)))
 }
 
+#' The slots of a difference of [.foceiAnalyticFD3Flat]'s vector, by name
+#' @param v the differenced vector
+#' @param nobs,nd,nsig observations, directions and Route A sigma columns
+#' @param withR,rsig as for [.foceiAnalyticFD3Flat]
+#' @return list of `A`, and `AR`, `RsigDir` and `Rsig2` when present
+#' @noRd
+.foceiAnalyticFD3Unflat <- function(v, nobs, nd, nsig, withR, rsig = FALSE) {
+  .n <- c(
+    A = nobs * nd * nd,
+    AR = if (withR) nobs * nd * nd,
+    RsigDir = if (rsig) nobs * nd * nsig,
+    Rsig2 = if (rsig) nobs * nsig * nsig
+  )
+  .dim <- list(A = c(nobs, nd, nd), AR = c(nobs, nd, nd), RsigDir = c(nobs, nd, nsig), Rsig2 = c(nobs, nsig, nsig))
+  .end <- cumsum(.n)
+  .ret <- lapply(names(.n), function(.s) array(v[.end[[.s]] - .n[[.s]] + seq_len(.n[[.s]])], .dim[[.s]]))
+  setNames(.ret, names(.n))
+}
+
+#' Route A's sigma columns for a solve
+#'
+#' Route A (default on; `FOCEI_NO_RSIG` opts out) rebuilds the sigma slots from the
+#' model's `rx_rsig_` outputs, but only for a caller that dropped sigma directions
+#' (`sigSel`): expanding for a caller that did not widens `E` past its buffers.
+#' @param E a solve's sensitivities
+#' @param sigSel the sigma directions the caller dropped, or `NULL`
+#' @return the number of `Rsig` columns to rebuild from, or 0
+#' @noRd
+.foceiAnalyticRouteA <- function(E, sigSel) {
+  if (nzchar(Sys.getenv("FOCEI_NO_RSIG")) || length(sigSel) == 0L || length(E$Rsig) == 0L) {
+    return(0L)
+  }
+  ncol(E$Rsig)
+}
+
+#' The third-order tensors one subject's differencing fills, one eta at a time
+#' @param nobs,neta,nd,nsig observations, etas, directions and Route A sigma columns
+#' @param withR include the residual variance's (`AthR`) and, with `nsig`, the sigma
+#'   slots' eta-derivatives
+#' @return list of `Ath` and, when present, `AthR`, `RsigDirEta`, `Rsig2Eta`
+#' @noRd
+.foceiAnalyticFD3Alloc <- function(nobs, neta, nd, nsig, withR) {
+  .r <- withR && nsig > 0L
+  list(
+    Ath = array(0, c(nobs, neta, nd, nd)),
+    AthR = if (withR) array(0, c(nobs, neta, nd, nd)),
+    RsigDirEta = if (.r) array(0, c(nobs, neta, nd, nsig)),
+    Rsig2Eta = if (.r) array(0, c(nobs, neta, nsig, nsig))
+  )
+}
+
+#' Store eta `li`'s derivatives `d` (slots as [.foceiAnalyticFD3Unflat] names them)
+#' in the tensors from [.foceiAnalyticFD3Alloc]
+#' @noRd
+.foceiAnalyticFD3Store <- function(T3, li, d) {
+  T3$Ath[, li, , ] <- d$A
+  if (!is.null(T3$AthR)) {
+    T3$AthR[, li, , ] <- d$AR
+  }
+  if (!is.null(T3$RsigDirEta)) {
+    T3$RsigDirEta[, li, , ] <- d$RsigDir
+    T3$Rsig2Eta[, li, , ] <- d$Rsig2
+  }
+  T3
+}
+
+#' Subject `i`'s Richardson-extrapolated central difference of `slot` from the
+#' batched solves at steps h (`s1`) and h/2 (`s2`)
+#' @noRd
+.foceiAnalyticRichardson <- function(s1, s2, i, slot) {
+  d1 <- (s1$Ep[[i]][[slot]] - s1$Em[[i]][[slot]]) / (2 * s1$h)
+  d2 <- (s2$Ep[[i]][[slot]] - s2$Em[[i]][[slot]]) / (2 * s2$h)
+  (4 * d2 - d1) / 3
+}
+
 #' Solve the direction-set 2nd-order model for one subject and recover the
 #' 3rd-order tensor `Ath` by Shi (2021) central differences of the analytic
 #' 2nd-order sensitivities `A` (C++ `shi21CentralWrap`, perturbing one full-param
@@ -2651,18 +2725,12 @@
     return(.foceiAnalyticNote("no eta directions"))
   }
   .hasR <- isTRUE(withR) && !is.null(E0$AR)
-  # Route A, under the condition .foceiAnalyticSolveAllFD3 uses: the sigma slots come
-  # from the model's rsig outputs, and with withR their eta-derivatives are differenced
+  # Route A, as .foceiAnalyticSolveAllFD3 applies it: the sigma slots come from the
+  # model's rsig outputs, and with withR their eta-derivatives are differenced
   # alongside AR
-  .rsig <- !nzchar(Sys.getenv("FOCEI_NO_RSIG")) &&
-    !is.null(E0$Rsig) &&
-    length(E0$Rsig) > 0L &&
-    (is.null(sigSel) || length(sigSel) > 0L)
-  nsig <- if (.rsig) ncol(E0$Rsig) else 0L
+  nsig <- .foceiAnalyticRouteA(E0, sigSel)
+  .rsig <- nsig > 0L
   .dRsig <- .rsig && .hasR
-  nA <- nobs * nd * nd
-  nRd <- nobs * nd * nsig
-  nR2 <- nobs * nsig * nsig
   f0 <- .foceiAnalyticFD3Flat(E0, .hasR, .dRsig)
   # shi21CentralWrap differences the closure at a perturbed full-param vector; it
   # strips names, so re-attach names(params) before mapping back through the solve.
@@ -2684,10 +2752,7 @@
     }
     .v
   }
-  Ath <- array(0, c(nobs, neta, nd, nd))
-  AthR <- if (.hasR) array(0, c(nobs, neta, nd, nd)) else NULL
-  RsigDirEta <- if (.dRsig) array(0, c(nobs, neta, nd, nsig)) else NULL
-  Rsig2Eta <- if (.dRsig) array(0, c(nobs, neta, nsig, nsig)) else NULL
+  .T3 <- .foceiAnalyticFD3Alloc(nobs, neta, nd, nsig, .hasR)
   for (li in seq_len(neta)) {
     idx <- match(dirs[.etaDir[li]], names(params)) # this eta's coordinate in params
     if (is.na(idx)) {
@@ -2721,34 +2786,25 @@
       }
       return(NULL)
     }
-    Ath[, li, , ] <- array(sc$gr[seq_len(nA)], c(nobs, nd, nd))
-    .o <- nA
-    if (.hasR) {
-      AthR[, li, , ] <- array(sc$gr[.o + seq_len(nA)], c(nobs, nd, nd))
-      .o <- .o + nA
-    }
-    if (.dRsig) {
-      RsigDirEta[, li, , ] <- array(sc$gr[.o + seq_len(nRd)], c(nobs, nd, nsig))
-      Rsig2Eta[, li, , ] <- array(sc$gr[.o + nRd + seq_len(nR2)], c(nobs, nsig, nsig))
-    }
+    .T3 <- .foceiAnalyticFD3Store(.T3, li, .foceiAnalyticFD3Unflat(sc$gr, nobs, nd, nsig, .hasR, .dRsig))
   }
   # the residual-variance slots whenever the solve has them, as the batched route
   # carries them; AthR only when differenced
   .out <- c(
-    list(f = E0$f, a = E0$a, A = E0$A, Ath = Ath),
+    list(f = E0$f, a = E0$a, A = E0$A, Ath = .T3$Ath),
     if (!is.null(E0$AR)) {
       list(R = E0$R, aR = E0$aR, AR = E0$AR, Rsig = E0$Rsig, RsigDir = E0$RsigDir, Rsig2 = E0$Rsig2)
     } else {
       NULL
     },
-    if (.hasR) list(AthR = AthR) else NULL,
+    if (.hasR) list(AthR = .T3$AthR) else NULL,
     if (!is.null(E0$trans)) list(trans = E0$trans) else NULL
   )
   if (!all(is.finite(.out$f)) || !all(is.finite(.out$a)) || !all(is.finite(.out$A)) || !all(is.finite(.out$Ath))) {
     return(.foceiAnalyticNote("a non-finite sensitivity"))
   }
   if (.rsig) {
-    .out <- .foceiAnalyticExpandSigma(.out, nsig, neta, RsigDirEta, Rsig2Eta, sigSel)
+    .out <- .foceiAnalyticExpandSigma(.out, nsig, neta, .T3$RsigDirEta, .T3$Rsig2Eta, sigSel)
   }
   # a solve the differencing tried and recovered from must not explain a later decline
   .foceiAnalyticNote(NULL)
@@ -2865,20 +2921,12 @@
     return(NULL)
   }
   nsub <- length(E0)
-  Ath <- lapply(E0, function(E) array(0, c(nrow(E$a), neta, nd, nd)))
-  AthR <- if (withR) lapply(E0, function(E) array(0, c(nrow(E$a), neta, nd, nd))) else NULL
-  # Route A (default ON; FOCEI_NO_RSIG=1 opts out): am is the gradient's `dirs` model (no sigma
-  # directions); rebuild the sigma tensor slots from the rsig outputs + their eta-derivatives
-  # (differenced here alongside A/AR).  Guarded on Rsig actually being present in the solve.
-  # expand only when the caller actually dropped sigma directions (sigSel); expanding on
-  # Rsig presence alone widens E past the caller's buffers when the two disagree
-  .rsig <- !nzchar(Sys.getenv("FOCEI_NO_RSIG")) &&
-    !is.null(E0[[1L]]$Rsig) &&
-    length(E0[[1L]]$Rsig) > 0L &&
-    (is.null(sigSel) || length(sigSel) > 0L)
-  nsig <- if (.rsig) ncol(E0[[1L]]$Rsig) else 0L
-  RsigDirEta <- if (.rsig && withR) lapply(E0, function(E) array(0, c(nrow(E$a), neta, nd, nsig))) else NULL
-  Rsig2Eta <- if (.rsig && withR) lapply(E0, function(E) array(0, c(nrow(E$a), neta, nsig, nsig))) else NULL
+  # Route A: am is the gradient's `dirs` model (no sigma directions); the sigma tensor
+  # slots are rebuilt from the rsig outputs and their eta-derivatives (differenced
+  # here alongside A/AR)
+  nsig <- .foceiAnalyticRouteA(E0[[1L]], sigSel)
+  .rsig <- nsig > 0L
+  .T3 <- lapply(E0, function(E) .foceiAnalyticFD3Alloc(nrow(E$a), neta, nd, nsig, withR))
   # differencing A carries the ODE solve's ~tol error floor; solve the PERTURBED models tighter
   # than the base so the 3rd-order Ath stays as clean as the per-subject adaptive Shi.
   .ptol <- min(tol, 1e-12)
@@ -2909,39 +2957,19 @@
     if (is.null(s2)) {
       return(NULL)
     }
+    .slots <- c("A", if (withR) c("AR", if (.rsig) c("RsigDir", "Rsig2")))
     for (i in seq_len(nsub)) {
-      d1 <- (s1$Ep[[i]]$A - s1$Em[[i]]$A) / (2 * s1$h)
-      d2 <- (s2$Ep[[i]]$A - s2$Em[[i]]$A) / (2 * s2$h)
-      Ath[[i]][, li, , ] <- (4 * d2 - d1) / 3
-      if (withR) {
-        e1 <- (s1$Ep[[i]]$AR - s1$Em[[i]]$AR) / (2 * s1$h)
-        e2 <- (s2$Ep[[i]]$AR - s2$Em[[i]]$AR) / (2 * s2$h)
-        AthR[[i]][, li, , ] <- (4 * e2 - e1) / 3
-        if (.rsig) {
-          g1 <- (s1$Ep[[i]]$RsigDir - s1$Em[[i]]$RsigDir) / (2 * s1$h)
-          g2 <- (s2$Ep[[i]]$RsigDir - s2$Em[[i]]$RsigDir) / (2 * s2$h)
-          RsigDirEta[[i]][, li, , ] <- (4 * g2 - g1) / 3
-          k1 <- (s1$Ep[[i]]$Rsig2 - s1$Em[[i]]$Rsig2) / (2 * s1$h)
-          k2 <- (s2$Ep[[i]]$Rsig2 - s2$Em[[i]]$Rsig2) / (2 * s2$h)
-          Rsig2Eta[[i]][, li, , ] <- (4 * k2 - k1) / 3
-        }
-      }
+      .d <- setNames(lapply(.slots, function(.s) .foceiAnalyticRichardson(s1, s2, i, .s)), .slots)
+      .T3[[i]] <- .foceiAnalyticFD3Store(.T3[[i]], li, .d)
     }
   }
   for (i in seq_len(nsub)) {
-    E0[[i]]$Ath <- Ath[[i]]
+    E0[[i]]$Ath <- .T3[[i]]$Ath
     if (withR) {
-      E0[[i]]$AthR <- AthR[[i]]
+      E0[[i]]$AthR <- .T3[[i]]$AthR
     }
     if (.rsig) {
-      E0[[i]] <- .foceiAnalyticExpandSigma(
-        E0[[i]],
-        nsig,
-        neta,
-        if (is.null(RsigDirEta)) NULL else RsigDirEta[[i]],
-        if (is.null(Rsig2Eta)) NULL else Rsig2Eta[[i]],
-        sigSel
-      )
+      E0[[i]] <- .foceiAnalyticExpandSigma(E0[[i]], nsig, neta, .T3[[i]]$RsigDirEta, .T3[[i]]$Rsig2Eta, sigSel)
     }
     if (!all(is.finite(E0[[i]]$A)) || !all(is.finite(E0[[i]]$Ath))) {
       return(.foceiAnalyticNote(paste0("subject ", labels[i], ": a non-finite sensitivity")))
