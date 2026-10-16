@@ -323,6 +323,20 @@ nlmixr2iovVarSd <- function(val) {
   invisible()
 }
 
+#' Whether a ui carries inter-occasion variability
+#'
+#' Read from the ui itself, not from `.uiIovEnv`, which holds the last fit's
+#' rewrite: before `.uiApplyIov()` an occasion eta has a condition other than
+#' "id"; after it, the occasion etas are the synthetic `rx.` ones.
+#' @param ui rxode2 ui
+#' @return `TRUE` or `FALSE`
+#' @noRd
+.uiHasIov <- function(ui) {
+  .idf <- ui$iniDf
+  .occ <- !is.na(.idf$neta1) & !is.na(.idf$condition) & .idf$condition != "id"
+  any(.occ) || length(.getSyntheticIovEtaNames(ui)) > 0L
+}
+
 #' This applies the IOV method to the model based on the data used
 #'
 #' @return nothing, called for side effects
