@@ -1274,7 +1274,7 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 #' @return `NULL`
 #' @noRd
 .setCovAnalyticError <- function(e) {
-  .foceiAnalyticWhy$reason <- paste0("an error (", conditionMessage(e), ")")
+  .foceiAnalyticWhy$reason <- paste0("an error (", .foceiAnalyticOneLine(conditionMessage(e)), ")")
   NULL
 }
 

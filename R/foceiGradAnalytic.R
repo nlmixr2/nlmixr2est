@@ -205,7 +205,7 @@
   )
 }
 
-.foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol) {
+.foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol, labels = ids) {
   ## Solve the augmented model IN THE SHARED FOCEi pool (which it sized) and take
   ## the per-subject E structures straight from C++, instead of routing through
   ## rxode2::rxSolve, which frees and rebuilds the global solve on every call.
@@ -232,6 +232,8 @@
   ## (This used to be gated by .odeSwapNoPool, a verification-only opt-out that let a
   ## test evaluate the same fit through rxSolve instead of the pool.  Its only setter was
   ## the R gradient route, which is gone, so the gate could never fire.)
+  ## `ids` are the subjects' codes in the data; `labels` name them in a reason.
+  .foceiAnalyticNote(NULL)
   .cols <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
   if (!is.null(.cols)) {
     .nc <- .foceiPoolCores(am$cores) # 0 means rxode2's threads, not one
@@ -266,6 +268,18 @@
       .ok <- attr(.Ec, "ok")
       .foceiOuterFlagged$ids <- if (is.null(.ok)) integer(0) else which(.ok == 0L)
       if (length(.foceiOuterFlagged$ids) == 0L) {
+        # the pooled route counts its observation records as well; a disagreement is
+        # a decline, as it is on the rxSolve route below
+        .no <- vapply(.Ec, function(.E) NROW(.E$a), integer(1))
+        .bad <- which(.no != lengths(obsTimes))
+        if (length(.bad) > 0L) {
+          return(.foceiAnalyticNote(sprintf(
+            "subject %s: %d observation rows solved for %d observations",
+            labels[.bad[1L]],
+            .no[.bad[1L]],
+            length(obsTimes[[.bad[1L]]])
+          )))
+        }
         return(.Ec)
       }
       .foceiOuterFlagged$n <- .foceiOuterFlagged$n + 1L
@@ -348,11 +362,11 @@
       .ri <- .byIdSol[[as.character(i)]]
     }
     if (is.null(.ri)) {
-      return(.foceiAnalyticNote(paste0("no solved rows for subject ", ids[i])))
+      return(.foceiAnalyticNote(paste0("no solved rows for subject ", labels[i])))
     }
     # the solve kept only observation records, so these are the subject's observations
     if (!.foceiAnalyticObsAligned(.tm[.ri], obsTimes[[i]])) {
-      return(.foceiAnalyticNote(paste0("subject ", ids[i], ": ", .foceiAnalyticWhy$detail)))
+      return(.foceiAnalyticNote(paste0("subject ", labels[i], ": ", .foceiAnalyticWhy$detail)))
     }
     .keep <- .ri
     no <- length(.keep)

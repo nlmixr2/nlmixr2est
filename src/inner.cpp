@@ -11535,9 +11535,11 @@ static int foceiCalcRAnalytic(Environment e) {
   // sandwich "r,s" by default); none listed fails the step.  RSprintf is the visible
   // channel (like "Could not calculate covariance matrix"); a fallback's warning, with the
   // reason, comes from .covSelectFocei(), which also heads e$covTried with it.
+  // .foceiCalcRanalytic() leaves the reason both clipped for this line and inside the
+  // no-fallback warning, so both stay one line; the full reason is in e$covTried.
   // the first finite-difference method listed; "sa"/"imp" come after the fit
-  std::string why = e.exists(".analyticReason") ? as<std::string>(e[".analyticReason"])
-                                                : std::string("no reason recorded");
+  std::string why = e.exists(".analyticReasonShort") ? as<std::string>(e[".analyticReasonShort"])
+                                                     : std::string("no reason recorded");
   std::vector<std::string> fb = covFallbackFor(e, "analytic");
   int slot = 0;
   std::string rung;
@@ -11551,7 +11553,10 @@ static int foceiCalcRAnalytic(Environment e) {
   if (slot == 0) {
     RSprintf("\rcovType=\"analytic\" not used (%s), and covFallback lists no fallback for it.\n",
              why.c_str());
-    Rf_warning("\"analytic\" not usable (%s); covFallback lists no fallback", why.c_str());
+    std::string w = e.exists(".analyticWarnNoFallback")
+                        ? as<std::string>(e[".analyticWarnNoFallback"])
+                        : std::string("\"analytic\" not usable; covFallback lists no fallback");
+    Rf_warning("%s", w.c_str());
     op_focei.covMethod = 0;
     return 0;
   }

@@ -11,18 +11,15 @@
 
 ### Covariance
 
-- `covMethod = "analytic"` no longer falls back to the finite-difference
-  covariance when a record that is not an observation (an EVID 2 record, or an
-  EVID 0 record with a missing DV or `MDV = 1`) shares the time of one of a
-  subject's observations.  The augmented sensitivity solves kept every row at an
-  observation time, counted that record as an observation and gave up; they now
-  keep the observation records.
+- `covMethod = "analytic"` now keeps the analytic covariance when a record that
+  is not an observation (an EVID 2 record, or an EVID 0 record with a missing DV
+  or `MDV = 1`) shares the time of one of a subject's observations; it used to
+  fall back to the finite-difference covariance.
 
-- A declined `covMethod = "analytic"` now says why.  The reason is in the
-  message, in the line printed for the covariance step, in `$runInfo` (for
-  example `"analytic" not usable (an observed information that would not
-  invert (...)); installed "r,s"`) and in the first row of `fit$env$covTried`,
-  and `setCov(fit, "analytic")` stops with the same reason.  An observed
+- A declined `covMethod = "analytic"` now says why.  `fit$env$covTried` and the
+  message give the reason in full, the line printed for the covariance step and
+  the `$runInfo` warning give the step that failed on one line, and
+  `setCov(fit, "analytic")` stops with the same reason.  An observed
   information that would not invert, a failed sensitivity solve and several
   other failures used to print only "not available for this model".
 

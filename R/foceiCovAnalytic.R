@@ -130,35 +130,48 @@
   # it as a warning so it reaches $runInfo (CLAUDE.md: <75 chars, no method prefix), and
   # NUMBER the site so the throwing entry point is identifiable from the fit alone:
   #   err1 = live-fit .foceiCalcRanalytic   err2 = standalone foceiCovAnalytic
-  #   err3 = per-subject AGQ node assembly
   function(e) {
-    .m <- conditionMessage(e)
-    if (nchar(.m) > 54L) {
-      .m <- paste0(substr(.m, 1L, 51L), "...")
-    }
-    warning(sprintf("analytic err%d: %s", site, .m), call. = FALSE)
-    .foceiAnalyticWhy$reason <- paste0("an error (", conditionMessage(e), ")")
+    .m <- .foceiAnalyticOneLine(conditionMessage(e))
+    warning(sprintf("analytic err%d: %s", site, .foceiAnalyticClip(.m)), call. = FALSE)
+    .foceiAnalyticWhy$reason <- paste0("an error (", .m, ")")
+    .foceiAnalyticWhy$short <- "an error"
     NULL
   }
 }
 
-# Why the analytic attempt in progress declined: `reason` is what the caller reports
-# (fit$env$covTried, setCov()), `detail` what a solve or model build said before the step
-# that called it gave up.  Each entry point clears both with .foceiAnalyticWhyReset().
+#' A condition message or solve detail on one line (rxode2's errors span several)
+#' @noRd
+.foceiAnalyticOneLine <- function(x) {
+  gsub("[[:space:]]+", " ", trimws(x))
+}
+
+#' A reason clipped for a warning or printed line (CLAUDE.md: $runInfo lines < 75 chars)
+#' @param x the text
+#' @param width the most characters to keep, the ellipsis included
+#' @noRd
+.foceiAnalyticClip <- function(x, width = 54L) {
+  as.character(cli::ansi_strtrim(x, width, ellipsis = "..."))
+}
+
+# Why the analytic attempt in progress declined: `reason` is what the caller records
+# in full (fit$env$covTried, setCov(), the message), `short` the step alone for the
+# warning and printed line, `detail` what a solve or model build said before the step
+# that called it gave up.  Each entry point clears them with .foceiAnalyticWhyReset().
 .foceiAnalyticWhy <- new.env(parent = emptyenv())
 
 .foceiAnalyticWhyReset <- function() {
   .foceiAnalyticWhy$reason <- NULL
+  .foceiAnalyticWhy$short <- NULL
   .foceiAnalyticWhy$detail <- NULL
   invisible()
 }
 
 #' Record what a low-level solve or build found wrong, for the step that reports it
-#' @param detail short phrase, or `NULL` to clear one a recovered failure left
+#' @param detail short phrase, or `NULL` to clear an earlier one
 #' @return `NULL`
 #' @noRd
 .foceiAnalyticNote <- function(detail) {
-  .foceiAnalyticWhy$detail <- detail
+  .foceiAnalyticWhy$detail <- if (is.null(detail)) NULL else .foceiAnalyticOneLine(detail)
   NULL
 }
 
@@ -187,6 +200,7 @@
   if (keep && !is.null(.foceiAnalyticWhy$reason)) {
     return(NULL)
   }
+  .foceiAnalyticWhy$short <- reason
   if (!scope && !is.null(.foceiAnalyticWhy$detail)) {
     reason <- paste0(reason, " (", .foceiAnalyticWhy$detail, ")")
   }
@@ -526,7 +540,11 @@
     # then ONE batched SolveAllFD3 delivers f/a/A/Ath AND R/aR/AR for all subjects
     # (withR=FALSE: FOCE reads R/aR/AR from the base solve + Ath, but never AthR).
     # foce+ (foceType=1) keeps the live R (no eta=0 solve).  Per-subject Shi fallback.
-    E0all <- if (!.fp) .foceiAnalyticSolveAll(am, th, matrix(0, nsub, neta), .idCode, data, .obsT, solveTol) else NULL
+    E0all <- if (!.fp) {
+      .foceiAnalyticSolveAll(am, th, matrix(0, nsub, neta), .idCode, data, .obsT, solveTol, labels = ids)
+    } else {
+      NULL
+    }
     if (!.fp && is.null(E0all)) {
       return(.foceiAnalyticFallback("a failed eta=0 population solve", scope = FALSE))
     }
@@ -540,7 +558,18 @@
     eta0Mat <- ebes # the fit's own EBEs -- see .foce above
     .batch <- !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
     .EsAll <- if (.batch) {
-      .foceiAnalyticSolveAllFD3(am, th, eta0Mat, .idCode, data, .obsT, tol = solveTol, withR = FALSE, sigSel = .sigSel)
+      .foceiAnalyticSolveAllFD3(
+        am,
+        th,
+        eta0Mat,
+        .idCode,
+        data,
+        .obsT,
+        tol = solveTol,
+        withR = FALSE,
+        sigSel = .sigSel,
+        labels = ids
+      )
     } else {
       NULL
     }
@@ -697,7 +726,18 @@
   # (withR=TRUE), instead of the per-subject Shi.  Per-subject Shi is the fallback.
   .batch <- !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
   .EsAll <- if (.batch) {
-    .foceiAnalyticSolveAllFD3(am, th, ebes, .idCode, data, .obsT, tol = solveTol, withR = TRUE, sigSel = .sigSel)
+    .foceiAnalyticSolveAllFD3(
+      am,
+      th,
+      ebes,
+      .idCode,
+      data,
+      .obsT,
+      tol = solveTol,
+      withR = TRUE,
+      sigSel = .sigSel,
+      labels = ids
+    )
   } else {
     NULL
   }
@@ -909,7 +949,16 @@
   E0List <- vector("list", length(ids))
   if (.needF0) {
     # eta=0 population solve (frozen R0), batched
-    E0List <- .foceiAnalyticSolveAll(am, th, matrix(0, length(ids), neta), .idCode, data, .obsT, solveTol)
+    E0List <- .foceiAnalyticSolveAll(
+      am,
+      th,
+      matrix(0, length(ids), neta),
+      .idCode,
+      data,
+      .obsT,
+      solveTol,
+      labels = ids
+    )
     if (is.null(E0List)) {
       return(.foceiAnalyticFallback("a failed eta=0 population solve", scope = FALSE))
     }
@@ -918,7 +967,17 @@
   .batch <- !rescale && !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
   .EsAll <- NULL
   if (.batch) {
-    .EsAll <- .foceiAnalyticSolveAllFD3(am, th, eta0Mat, .idCode, data, .obsT, tol = solveTol, withR = FALSE)
+    .EsAll <- .foceiAnalyticSolveAllFD3(
+      am,
+      th,
+      eta0Mat,
+      .idCode,
+      data,
+      .obsT,
+      tol = solveTol,
+      withR = FALSE,
+      labels = ids
+    )
     if (is.null(.EsAll)) {
       # batched solve failed -> per-subject fallback, whose own failure is what to report
       .batch <- FALSE
@@ -1027,7 +1086,7 @@
     }
     if (is.null(Ri)) {
       return(.foceiAnalyticFallback(
-        paste0("a subject observed information that would not assemble for subject ", ids[i]),
+        paste0("an observed information that would not assemble for subject ", ids[i]),
         scope = FALSE
       ))
     }
@@ -1043,21 +1102,28 @@
 #' assemble the full theta+sigma+Omega observed-information R, stash the natural
 #' cov (installed by [.foceiInstallAnalyticCov]), and return the theta `R.0` for
 #' the native SE path -- or `NULL` to fall back to the FD Hessian.  A decline
-#' leaves its reason in `e$.analyticReason` (printed by the C++ hook) and
-#' `e$covTried`.
+#' leaves its reason in `e$covTried` and `e$.analyticReason` (in full), and in
+#' `e$.analyticReasonShort` and `e$.analyticWarnNoFallback` (the step alone, for the
+#' line and the warning the C++ hook gives).
 #' @noRd
 .foceiCalcRanalytic <- function(e) {
   .foceiAnalyticWhyReset()
-  if (exists(".analyticReason", envir = e, inherits = FALSE)) {
-    rm(".analyticReason", envir = e)
-  }
+  .rm <- c(".analyticReason", ".analyticReasonShort", ".analyticWarnNoFallback")
+  rm(list = .rm[vapply(.rm, exists, logical(1), envir = e, inherits = FALSE)], envir = e)
   .R0 <- .foceiCalcRanalyticAssemble(e)
   if (is.null(.R0)) {
     .why <- .foceiAnalyticWhy$reason
+    .short <- .foceiAnalyticWhy$short
     if (is.null(.why)) {
-      .why <- "no reason recorded"
+      .why <- .short <- "no reason recorded"
     }
     assign(".analyticReason", .why, envir = e)
+    assign(".analyticReasonShort", .foceiAnalyticClip(.short), envir = e)
+    assign(
+      ".analyticWarnNoFallback",
+      .covNotUsableMsg("analytic", .short, "covFallback lists no fallback"),
+      envir = e
+    )
     assign("covTried", data.frame(method = "analytic", outcome = .why), envir = e)
   }
   .R0
@@ -2056,6 +2122,7 @@
     .hit <- get0(.key, envir = .foceiAnalyticAugCache, inherits = FALSE)
     if (!is.null(.hit)) return(.hit)
   }
+  .foceiAnalyticNote(NULL)
   .res <- tryCatch(
     {
       .s <- ui$loadPruneSens
@@ -2562,7 +2629,11 @@
     }
     sc <- shi21CentralWrap(Aflat, params, f0, idx, .fdEps) # C++ shi21Central
     if (is.null(sc$gr) || !all(is.finite(sc$gr))) {
-      return(.foceiAnalyticNote("a non-finite third-order sensitivity"))
+      # a failed solve reaches here as NaN; keep what it noted
+      if (is.null(.foceiAnalyticWhy$detail)) {
+        .foceiAnalyticNote("a non-finite third-order sensitivity")
+      }
+      return(NULL)
     }
     Ath[, li, , ] <- array(sc$gr[seq_len(nA)], c(nobs, nd, nd))
     if (.hasR) AthR[, li, , ] <- array(sc$gr[nA + seq_len(nA)], c(nobs, nd, nd))
@@ -2579,6 +2650,8 @@
   if (!all(is.finite(.out$f)) || !all(is.finite(.out$a)) || !all(is.finite(.out$A)) || !all(is.finite(.out$Ath))) {
     return(.foceiAnalyticNote("a non-finite sensitivity"))
   }
+  # a solve the differencing tried and recovered from must not explain a later decline
+  .foceiAnalyticNote(NULL)
   .out
 }
 
@@ -2681,12 +2754,13 @@
   tol,
   fdEps = 1e-3,
   withR = FALSE,
-  sigSel = NULL
+  sigSel = NULL,
+  labels = ids
 ) {
   dirs <- am$dirs
   nd <- length(dirs)
   neta <- ncol(ebes)
-  E0 <- .foceiAnalyticSolveAll(am, thv, ebes, ids, data, obsTimes, tol)
+  E0 <- .foceiAnalyticSolveAll(am, thv, ebes, ids, data, obsTimes, tol, labels)
   if (is.null(E0)) {
     return(NULL)
   }
@@ -2713,9 +2787,13 @@
     ep[, li] <- ebes[, li] + h
     em <- ebes
     em[, li] <- ebes[, li] - h
-    Ep <- .foceiAnalyticSolveAll(am, thv, ep, ids, data, obsTimes, .ptol)
-    Em <- .foceiAnalyticSolveAll(am, thv, em, ids, data, obsTimes, .ptol)
-    if (is.null(Ep) || is.null(Em) || length(Ep) != nsub || length(Em) != nsub) {
+    # each failure returns at once, so the next solve does not clear what it noted
+    Ep <- .foceiAnalyticSolveAll(am, thv, ep, ids, data, obsTimes, .ptol, labels)
+    if (is.null(Ep) || length(Ep) != nsub) {
+      return(NULL)
+    }
+    Em <- .foceiAnalyticSolveAll(am, thv, em, ids, data, obsTimes, .ptol, labels)
+    if (is.null(Em) || length(Em) != nsub) {
       return(NULL)
     }
     list(Ep = Ep, Em = Em, h = h)
@@ -2724,8 +2802,11 @@
     # ETA_li coordinate == ebes column li
     h <- fdEps * max(abs(ebes[, li]), 1)
     s1 <- .cdiff(li, h)
+    if (is.null(s1)) {
+      return(NULL)
+    }
     s2 <- .cdiff(li, h / 2)
-    if (is.null(s1) || is.null(s2)) {
+    if (is.null(s2)) {
       return(NULL)
     }
     for (i in seq_len(nsub)) {
@@ -2763,7 +2844,7 @@
       )
     }
     if (!all(is.finite(E0[[i]]$A)) || !all(is.finite(E0[[i]]$Ath))) {
-      return(.foceiAnalyticNote(paste0("a non-finite sensitivity for subject ", ids[i])))
+      return(.foceiAnalyticNote(paste0("a non-finite sensitivity for subject ", labels[i])))
     }
   }
   E0
@@ -3816,6 +3897,7 @@
 #' @return the solve as a data frame, or `NULL`
 #' @noRd
 .foceiAnalyticRxSolve <- function(aug, params, ev, tol) {
+  .foceiAnalyticNote(NULL)
   # DDE: force pure dop853 (dense, no Jacobian).  Its 8th-order dense history reproduces the
   # delayed sensitivity solve exactly and needs no Jacobian, so it sidesteps the composite/ros4
   # on-the-fly Jacobian generation for this THETA/ETA-named augmented model.
