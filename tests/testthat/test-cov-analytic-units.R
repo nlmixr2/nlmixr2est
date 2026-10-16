@@ -93,28 +93,65 @@ nmTest({
   })
 
   test_that("every exit of the entry points and assemblers is a named decline", {
-    .other <- function(fn) {
-      .k <- unname(.covAnalyticReturnKinds(fn))
+    .other <- function(fn, nested = FALSE) {
+      .k <- unname(.covAnalyticReturnKinds(fn, nested = nested))
       sort(.k[.k != ".foceiAnalyticFallback"])
     }
     expect_identical(.other(".foceiCovAnalyticCalc"), character(0))
     # the covType opt-out, which the C++ hook never reaches
     expect_identical(.other(".foceiCalcRanalyticAssemble"), "NULL")
-    # the floored-R signal (twice) and the quadrature-node callback's NULL, which sets
-    # the floored flag its caller turns into that signal
-    expect_identical(.other(".foceiAnalyticAssembleR"), c("NULL", "structure", "structure"))
+    # the floored-R signal, twice
+    expect_identical(.other(".foceiAnalyticAssembleR"), c("structure", "structure"))
     # the FOCE branch's result
     expect_identical(.other(".foceiAnalyticAssembleRFR"), "R")
+    # the one return() of a function they define: the quadrature-node callback's
+    # NULL, which sets the floored flag its caller turns into that signal
+    expect_identical(unname(.covAnalyticReturnKinds(".foceiAnalyticAssembleR", nested = TRUE)), "NULL")
+    for (.fn in c(".foceiCovAnalyticCalc", ".foceiCalcRanalyticAssemble", ".foceiAnalyticAssembleRFR")) {
+      expect_identical(.other(.fn, nested = TRUE), character(0), label = .fn)
+    }
+  })
+
+  test_that("the closure walk reads calls and ui properties, not list fields", {
+    .acc <- new.env(parent = emptyenv())
+    .acc$syms <- character(0)
+    .acc$fields <- character(0)
+    .covAnalyticWalk(
+      quote({
+      .a <- ui$predDfFocei
+      .b <- rxode2::rxUiGet(ui, "foce")
+      f(x$g$h, y@k, z[, 1])
+    }),
+      .acc
+    )
+    expect_setequal(.acc$fields, c("predDfFocei", "foce", "g", "h"))
+    expect_false(any(c("predDfFocei", "g", "h", "k") %in% .acc$syms))
+    expect_true(all(c("ui", "f", "x", "y", "z", ".a", ".b") %in% .acc$syms))
+    .ns <- asNamespace("nlmixr2est")
+    expect_true("rxUiGet.loadPruneSens" %in% .covAnalyticNamedFns(".foceiAnalyticAugModelDirs", .ns))
   })
 
   test_that("every helper of the decline chain that can give up is a leaf or exempt for a reason", {
+    .full <- .covAnalyticDeclineClosure(stopAtLeaves = FALSE)
     .reach <- .covAnalyticDeclineClosure()
     .leaves <- unique(unlist(.covAnalyticDeclineLeaves))
-    expect_true(all(.leaves %in% .reach), label = paste(setdiff(.leaves, .reach), collapse = ", "))
+    expect_true(all(.leaves %in% .full), label = paste(setdiff(.leaves, .full), collapse = ", "))
     .gives <- .reach[vapply(.reach, .covAnalyticGivesUp, logical(1))]
     # a new helper that can give up must be made a leaf or exempted; a stale
     # exemption fails too
     expect_setequal(setdiff(.gives, .leaves), names(.covAnalyticDeclineExempt))
+    # reached only through leaves: the solve's row check and the model build
+    # behind .foceiAnalyticAugModelDirs
+    .below <- setdiff(.full, .reach)
+    .known <- c(
+      ".foceiAnalyticObsAligned",
+      "rxUiGet.loadPruneSens",
+      "rxUiGet.foceiCmtPreModel",
+      "rxUiGet.interpLinesStr"
+    )
+    expect_true(all(.known %in% .below), label = paste(setdiff(.known, .below), collapse = ", "))
+    # fit$foceiControl is a list field, not a call of foceiControl()
+    expect_false("foceiControl" %in% .full)
   })
 
   test_that("the pooled solve declines when its observation rows do not match", {
