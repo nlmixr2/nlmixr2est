@@ -155,8 +155,9 @@
 
 # The reason a decline gives when nothing recorded one: unreachable when every decline
 # path names its reason (test-cov-analytic-declines.R), so it says it is a bug.  The
-# C++ hook (foceiCalcRAnalytic) carries the same text.
-.foceiAnalyticNoReason <- "an internal error: no reason was recorded (please report it)"
+# C++ hook (foceiCalcRAnalytic) reads it from the namespace.  Short enough to stay
+# whole on the printed line and in the no-fallback warning.
+.foceiAnalyticNoReason <- "an internal error (please report it)"
 
 # Why the analytic attempt in progress declined: `reason` is what the caller records
 # in full (fit$env$covTried, setCov(), the message), `short` the step alone for the
