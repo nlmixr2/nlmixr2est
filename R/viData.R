@@ -111,16 +111,8 @@
   }
   .ids <- unique(d$ID)
   N <- length(.ids)
-  subj <- vector("list", N)
-  .nobs <- 0L
-  for (i in seq_len(N)) {
-    .di <- d[d$ID == .ids[i], , drop = FALSE]
-    .obs <- .di[.nmObsRows(.di), , drop = FALSE]
-    .cens <- if (is.null(.obs$CENS)) integer(nrow(.obs)) else as.integer(.obs$CENS)
-    .limit <- if (is.null(.obs$LIMIT)) rep(NA_real_, nrow(.obs)) else as.numeric(.obs$LIMIT)
-    subj[[i]] <- list(ev = .di, times = .obs$TIME, y = .obs$DV, n = nrow(.obs), cens = .cens, limit = .limit)
-    .nobs <- .nobs + nrow(.obs)
-  }
+  subj <- .nmSubjectObs(d, .ids)
+  .nobs <- sum(vapply(subj, `[[`, integer(1), "n"))
 
   list(
     N = N,

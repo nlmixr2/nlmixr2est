@@ -103,4 +103,27 @@ nmTest({
     expect_identical(.nmObsRows(.d), c(FALSE, TRUE, FALSE, TRUE, FALSE, TRUE, FALSE))
     expect_identical(.nmObsRows(.d[0, ]), logical(0))
   })
+
+  test_that(".nmSubjectObs() gives each subject's records and observations, in order", {
+    .d <- data.frame(
+      ID = c(2, 2, 2, 1, 1, 1),
+      TIME = c(0, 1, 1, 0, 2, 3),
+      EVID = c(1, 0, 0, 1, 0, 0),
+      DV = c(NA, 5, NA, NA, 7, 8),
+      CENS = c(0, 1, 0, 0, 0, 0)
+    )
+    .s <- .nmSubjectObs(.d, c(1, 2, 3))
+    expect_length(.s, 3L)
+    expect_null(.s[[3]])
+    expect_identical(.s[[1]]$ev, .d[4:6, ])
+    expect_identical(.s[[1]]$times, c(2, 3))
+    expect_identical(.s[[1]]$y, c(7, 8))
+    expect_identical(.s[[1]]$n, 2L)
+    expect_identical(.s[[2]]$times, 1)
+    expect_identical(.s[[2]]$y, 5)
+    expect_identical(.s[[2]]$cens, 1L)
+    expect_identical(.s[[2]]$limit, NA_real_)
+    .d$CENS <- NULL
+    expect_identical(.nmSubjectObs(.d, 1)[[1]]$cens, c(0L, 0L))
+  })
 })
