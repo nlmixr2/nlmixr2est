@@ -10,6 +10,10 @@ typedef arma::vec (*shi21fn_type)(arma::vec &t, int id);
 #define shi21hMaxDefault 0.5
 #define shi21hMinDefault 1e-4
 
+// The Shi et al. (2021) step search along coordinate idx; returns the step and
+// leaves the difference at it in gr.  The search ends after maxiter probes, or at a
+// step too small to move t[idx].  When f(t + h) never solves, gr is the backward
+// difference; when no difference forms at all, gr is NA.
 double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef = 7e-7, double rl = 1.5, double ru = 6.0,
