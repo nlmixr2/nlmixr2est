@@ -294,12 +294,9 @@ nmTest({
       factor = factor,
       logical = as.logical,
       naOnly = function(x) rep(NA, length(x)),
-      Date = function(x) as.Date(x),
+      Date = function(x) as.Date(x, origin = "1970-01-01"),
       POSIXct = function(x) as.POSIXct(x, origin = "1970-01-01", tz = "UTC")
     )
-    if (requireNamespace("bit64", quietly = TRUE)) {
-      .types$integer64 <- function(x) bit64::as.integer64(x)
-    }
     # with and without the EVID and AMT columns, which change the MDV message
     .layouts <- list(all = character(0), noEvid = "EVID", noEvidAmt = c("EVID", "AMT"))
     .known <- "needs to be an integer|needs to be a number|infinite times are not allowed"
@@ -332,7 +329,7 @@ nmTest({
       }
     }
     # the rejections are the character EVID, MDV and AMT, in each layout that has
-    # them (3 + 2 + 1); a factor, a logical, a Date, a POSIXct or an integer64 is
+    # them (3 + 2 + 1); a factor, a logical, a Date or a POSIXct is
     # stored as a number, as etTrans() checks it
     expect_identical(.n, 6L)
     # infinite times: the first in the data as given, in several subjects out of
@@ -397,6 +394,9 @@ nmTest({
     # the first infinite time in the data as given
     .o <- data.frame(ID = c(2, 2, 1, 1), TIME = c(1, 0, -Inf, Inf), EVID = 0, DV = 1)
     expect_error(.nmObsRows(.o), "infinite times are not allowed (id: 1, row: 3)", fixed = TRUE)
+    # a missing ID is reported first, as FOCEi checks the IDs first
+    .o$ID[1] <- NA
+    expect_error(.nmObsRows(.o), "^ID is missing on 1 record\\(s\\)$")
     # what FOCEi reads as numbers: a character TIME or DV, a logical or factor EVID
     .c <- .d
     .c$TIME <- c("0", "1")

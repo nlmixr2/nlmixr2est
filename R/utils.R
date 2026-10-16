@@ -61,6 +61,10 @@
 #' @return `d`, invisibly
 #' @noRd
 .nmAssertEventColumns <- function(d) {
+  # FOCEi stops on a missing ID before it looks at the event columns
+  if (!is.null(d[["ID"]])) {
+    .nmAssertIds(d)
+  }
   .num <- c("double", "integer", "logical")
   if (!is.null(d[["EVID"]]) && !(typeof(d[["EVID"]]) %in% .num)) {
     stop("event id ('evid') needs to be an integer", call. = FALSE)

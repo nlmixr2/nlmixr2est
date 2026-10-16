@@ -163,6 +163,10 @@ nmTest({
     .fake$below <- function() NULL
     .fake$other <- function() do.call("byName", list())
     .fake$byName <- function() NULL
+    # an empty string and one too long for exists() are not names
+    .fake$strings <- function() NULL
+    body(.fake$strings) <- call("c", "", strrep("x", 10001L))
+    expect_identical(.covAnalyticNamedFns("strings", .fake), character(0))
     expect_setequal(
       .covAnalyticDeclineClosure(.fake, entries = "entry", leaves = "leafA"),
       c("entry", "leafA", "other", "byName")
@@ -284,6 +288,53 @@ nmTest({
     })
     .foceiAnalyticWhyReset()
     expect_null(.foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1)))
+    expect_identical(.foceiAnalyticWhy$detail, "a third-order solve of another size")
+  })
+
+  test_that("a right-sized differencing solve with a non-finite value counts as failed", {
+    local_mocked_bindings(.foceiAnalyticSolveFA = function(aug, params, ev, times, tol = 1e-10) {
+      .eta <- params[["ETA_1_"]]
+      list(f = c(1, 2), a = matrix(c(0.1, 0.2), 2L, 1L), A = array(if (.eta == 0) 0.01 else NaN, c(2L, 1L, 1L)))
+    })
+    .foceiAnalyticWhyReset()
+    expect_null(.foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1)))
+    expect_identical(.foceiAnalyticWhy$detail, "a non-finite third-order sensitivity")
+  })
+
+  test_that(".foceiAnalyticFD3Flat() flattens A, and AR with withR", {
+    .E <- list(A = array(1:4, c(1L, 2L, 2L)), AR = array(5:8, c(1L, 2L, 2L)))
+    expect_identical(.foceiAnalyticFD3Flat(.E, FALSE), 1:4)
+    expect_identical(.foceiAnalyticFD3Flat(.E, TRUE), 1:8)
+    expect_identical(.foceiAnalyticFD3Flat(list(A = .E$A), TRUE), 1:4)
+  })
+
+  test_that("the third-order differencing differences AR with withR", {
+    # A and AR linear in the eta (slopes 0.5 and 0.25), so the differences are exact
+    .solve <- function(aug, params, ev, times, tol = 1e-10) {
+      .eta <- params[["ETA_1_"]]
+      .r <- list(f = c(1, 2), a = matrix(c(0.1, 0.2), 2L, 1L), A = array(0.01 + 0.5 * .eta, c(2L, 1L, 1L)))
+      if (.eta == 0 || !isTRUE(.dropAR$on)) {
+        .r$AR <- array(0.02 + 0.25 * .eta, c(2L, 1L, 1L))
+      }
+      .r
+    }
+    .dropAR <- new.env(parent = emptyenv())
+    .dropAR$on <- FALSE
+    local_mocked_bindings(.foceiAnalyticSolveFA = .solve)
+    .foceiAnalyticWhyReset()
+    .r <- .foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1), withR = TRUE)
+    expect_equal(.r$Ath, array(0.5, c(2L, 1L, 1L, 1L)), tolerance = 1e-12)
+    expect_equal(.r$AthR, array(0.25, c(2L, 1L, 1L, 1L)), tolerance = 1e-12)
+    # a perturbed solve without AR is shorter than f0, so it is one of another size
+    .dropAR$on <- TRUE
+    .foceiAnalyticWhyReset()
+    expect_null(.foceiAnalyticSolveSubjectFD3(
+      list(dirs = "ETA_1_"),
+      c(ETA_1_ = 0),
+      data.frame(),
+      c(0, 1),
+      withR = TRUE
+    ))
     expect_identical(.foceiAnalyticWhy$detail, "a third-order solve of another size")
   })
 

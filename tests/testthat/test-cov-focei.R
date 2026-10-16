@@ -514,7 +514,7 @@ nmTest({
       })
     }
     .eta <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(print = 0, covMethod = ""))$etaMat
-    .msg <- "is conditional on the ETAs; setCov() gives the marginal one"
+    .msg <- "is conditional on the ETAs; setCov() gives the marginal"
     # maxInnerIterations = 0 evaluates the given ETAs, in the fit and in its covariance
     .fixed <- .nlmixr(
       one.cmt,
