@@ -41,11 +41,8 @@ test_that(".foceiFdFullShapes() judges the sandwich by its pieces", {
 
 test_that("an indefinite full R falls back from the sandwich to the full S (#1152)", {
   .e <- .fdEnv("r,s", .fdRbad, .fdS)
-  expect_warning(
-    .ok <- .foceiInstallFdFullCov(.e),
-    "full R matrix non-positive definite; using s (full)",
-    fixed = TRUE
-  )
+  .w <- capture_warnings(.ok <- .foceiInstallFdFullCov(.e))
+  expect_identical(.w, "\"r,s (full)\" needs a positive-definite R; using \"s (full)\"")
   expect_true(.ok)
   expect_identical(.e$covMethod, "s (full)")
   expect_equal(unname(.e$cov), unname(solve(.fdS)))

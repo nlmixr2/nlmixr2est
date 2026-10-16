@@ -474,7 +474,7 @@ nmTest({
       expect_true(any(grepl("^om\\.", rownames(fit$cov))))
     } else if (.sh$s$ok) {
       expect_identical(fit$covMethod, "s (full)")
-      expect_true("full R matrix non-positive definite; using s (full)" %in% fit$runInfo)
+      expect_true("\"r,s (full)\" needs a positive-definite R; using \"s (full)\"" %in% fit$runInfo)
     } else {
       expect_false(any(grepl("^om\\.", rownames(fit$cov))))
       expect_true("\"r,s (full)\" needs a positive-definite R; kept \"r,s\"" %in% fit$runInfo)

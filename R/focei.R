@@ -5689,7 +5689,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     if (!.validCov) {
       .env$covDebug <- .env$cov
       .minfo(paste0("covariance not in proper form, can access value in ", crayon::bold$blue("$covDebug")))
-      warning(paste0("covariance not in proper form, can access value in $covDebug"))
+      .covWarn("covariance not in proper form, can access value in $covDebug")
       .env$cov <- NULL
     }
   }

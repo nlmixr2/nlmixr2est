@@ -1025,7 +1025,7 @@ calc.COV <- function(fit0) {
         # silently discarding its (generally nonzero) correlation with the
         # residual parameters this cfg cannot place -- an unflagged, degraded
         # Omega covariance is worse than reporting no variance block at all.
-        warning("saem covFull: residual parameter endpoint unknown; variance block dropped", call. = FALSE)
+        .covWarn("covFull variance block dropped; residual parameter endpoint unknown")
         .resNames <- character(0)
         .resType <- integer(0)
         .resEndpnt <- integer(0)
