@@ -11538,10 +11538,11 @@ static int foceiCalcRAnalytic(Environment e) {
   // .foceiCalcRanalytic() leaves the reason both clipped for this line and inside the
   // no-fallback warning, so both stay one line; the full reason is in e$covTried.
   // the first finite-difference method listed; "sa"/"imp" come after the fit
-  // .foceiAnalyticNoReason (R/foceiCovAnalytic.R): set by every decline, so unreachable
+  // .foceiCalcRanalytic() sets the reason on every decline, so the sentinel
+  // .foceiAnalyticNoReason only stands in for a bug
   std::string why = e.exists(".analyticReasonShort")
                         ? as<std::string>(e[".analyticReasonShort"])
-                        : std::string("an internal error: no reason was recorded (please report it)");
+                        : as<std::string>(nlmixr2est[".foceiAnalyticNoReason"]);
   std::vector<std::string> fb = covFallbackFor(e, "analytic");
   int slot = 0;
   std::string rung;
@@ -11555,9 +11556,10 @@ static int foceiCalcRAnalytic(Environment e) {
   if (slot == 0) {
     RSprintf("\rcovType=\"analytic\" not used (%s), and covFallback lists no fallback for it.\n",
              why.c_str());
+    Function notUsable = as<Function>(nlmixr2est[".covNotUsableMsg"]);
     std::string w = e.exists(".analyticWarnNoFallback")
                         ? as<std::string>(e[".analyticWarnNoFallback"])
-                        : std::string("\"analytic\" not usable (an internal error); no fallback");
+                        : as<std::string>(notUsable("analytic", why, "no fallback"));
     Rf_warning("%s", w.c_str());
     op_focei.covMethod = 0;
     return 0;
