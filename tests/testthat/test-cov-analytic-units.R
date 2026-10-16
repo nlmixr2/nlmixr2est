@@ -69,29 +69,89 @@ nmTest({
     expect_identical(.foceiAnalyticWhy$detail, "solved observation times differ from the data's")
   })
 
+  test_that("a decline with no reason gives the internal-error sentinel, and the fallback runs", {
+    # unreachable while every decline records a reason; mocked to pin the wording
+    local_mocked_bindings(.foceiCalcRanalyticAssemble = function(e) NULL)
+    .e <- new.env(parent = emptyenv())
+    expect_null(.foceiCalcRanalytic(.e))
+    expect_identical(.e$.analyticReason, .foceiAnalyticNoReason)
+    expect_identical(.e$.analyticReason, "an internal error: no reason was recorded (please report it)")
+    expect_identical(.e$.analyticReasonShort, "an internal error: no reason was recorded (please r...")
+    expect_identical(
+      .e$.analyticWarnNoFallback,
+      "\"analytic\" not usable (an internal error: no reason was r...); no fallback"
+    )
+    expect_identical(.e$covTried, data.frame(method = "analytic", outcome = .foceiAnalyticNoReason))
+    # setCov() stops with it
+    local_mocked_bindings(.foceiCovAnalyticCalc = function(fit) NULL)
+    .foceiAnalyticWhyReset()
+    expect_error(
+      .setCovAnalytic(NULL, new.env(parent = emptyenv()), "analytic"),
+      "covMethod=\"analytic\" could not be computed for this fit (an internal error: no reason was recorded (please report it)); the covariance is left unchanged",
+      fixed = TRUE
+    )
+  })
+
   test_that("every exit of the entry points and assemblers is a named decline", {
-    .other <- function(fn) {
-      .k <- unname(.covAnalyticReturnKinds(fn))
+    .other <- function(fn, nested = FALSE) {
+      .k <- unname(.covAnalyticReturnKinds(fn, nested = nested))
       sort(.k[.k != ".foceiAnalyticFallback"])
     }
     expect_identical(.other(".foceiCovAnalyticCalc"), character(0))
     # the covType opt-out, which the C++ hook never reaches
     expect_identical(.other(".foceiCalcRanalyticAssemble"), "NULL")
-    # the floored-R signal (twice) and the quadrature-node callback's NULL, which sets
-    # the floored flag its caller turns into that signal
-    expect_identical(.other(".foceiAnalyticAssembleR"), c("NULL", "structure", "structure"))
+    # the floored-R signal, twice
+    expect_identical(.other(".foceiAnalyticAssembleR"), c("structure", "structure"))
     # the FOCE branch's result
     expect_identical(.other(".foceiAnalyticAssembleRFR"), "R")
+    # the one return() of a function they define: the quadrature-node callback's
+    # NULL, which sets the floored flag its caller turns into that signal
+    expect_identical(unname(.covAnalyticReturnKinds(".foceiAnalyticAssembleR", nested = TRUE)), "NULL")
+    for (.fn in c(".foceiCovAnalyticCalc", ".foceiCalcRanalyticAssemble", ".foceiAnalyticAssembleRFR")) {
+      expect_identical(.other(.fn, nested = TRUE), character(0), label = .fn)
+    }
+  })
+
+  test_that("the closure walk reads calls and ui properties, not list fields", {
+    .acc <- new.env(parent = emptyenv())
+    .acc$syms <- character(0)
+    .acc$fields <- character(0)
+    .covAnalyticWalk(
+      quote({
+      .a <- ui$predDfFocei
+      .b <- rxode2::rxUiGet(ui, "foce")
+      f(x$g$h, y@k, z[, 1])
+    }),
+      .acc
+    )
+    expect_setequal(.acc$fields, c("predDfFocei", "foce", "g", "h"))
+    expect_false(any(c("predDfFocei", "g", "h", "k") %in% .acc$syms))
+    expect_true(all(c("ui", "f", "x", "y", "z", ".a", ".b") %in% .acc$syms))
+    .ns <- asNamespace("nlmixr2est")
+    expect_true("rxUiGet.loadPruneSens" %in% .covAnalyticNamedFns(".foceiAnalyticAugModelDirs", .ns))
   })
 
   test_that("every helper of the decline chain that can give up is a leaf or exempt for a reason", {
+    .full <- .covAnalyticDeclineClosure(stopAtLeaves = FALSE)
     .reach <- .covAnalyticDeclineClosure()
     .leaves <- unique(unlist(.covAnalyticDeclineLeaves))
-    expect_true(all(.leaves %in% .reach), label = paste(setdiff(.leaves, .reach), collapse = ", "))
+    expect_true(all(.leaves %in% .full), label = paste(setdiff(.leaves, .full), collapse = ", "))
     .gives <- .reach[vapply(.reach, .covAnalyticGivesUp, logical(1))]
     # a new helper that can give up must be made a leaf or exempted; a stale
     # exemption fails too
     expect_setequal(setdiff(.gives, .leaves), names(.covAnalyticDeclineExempt))
+    # reached only through leaves: the solve's row check and the model build
+    # behind .foceiAnalyticAugModelDirs
+    .below <- setdiff(.full, .reach)
+    .known <- c(
+      ".foceiAnalyticObsAligned",
+      "rxUiGet.loadPruneSens",
+      "rxUiGet.foceiCmtPreModel",
+      "rxUiGet.interpLinesStr"
+    )
+    expect_true(all(.known %in% .below), label = paste(setdiff(.known, .below), collapse = ", "))
+    # fit$foceiControl is a list field, not a call of foceiControl()
+    expect_false("foceiControl" %in% .full)
   })
 
   test_that("the pooled solve declines when its observation rows do not match", {
@@ -122,18 +182,51 @@ nmTest({
     expect_length(.solve(), 2L)
   })
 
-  test_that("a solve that fails inside the third-order differencing keeps its own detail", {
-    .E0 <- list(f = c(1, 2), a = matrix(c(0.1, 0.2), 2L, 1L), A = array(0.01, c(2L, 1L, 1L)))
+  # A per-subject solve whose A is linear in ETA_1_ (slope 0.5), failing where
+  # `fails(eta)` is TRUE; `calls$x` records the eta of every solve
+  .unitsSolveFA <- function(calls, fails) {
+    function(aug, params, ev, times, tol = 1e-10) {
+      .eta <- params[["ETA_1_"]]
+      calls$x <- c(calls$x, .eta)
+      if (fails(.eta)) {
+        return(.foceiAnalyticNote("a test solve failure"))
+      }
+      list(f = c(1, 2), a = matrix(c(0.1, 0.2), 2L, 1L), A = array(0.01 + 0.5 * .eta, c(2L, 1L, 1L)))
+    }
+  }
+
+  test_that("the third-order differencing declines when a side of its step fails", {
+    # every solve but the base one fails, then only the plus side, then only the
+    # minus side: shi21Central gives a zero, a zero and a forward difference
+    .fails <- list(
+      all = function(.e) .e != 0,
+      plus = function(.e) .e > 0,
+      minus = function(.e) .e < 0
+    )
+    for (.nm in names(.fails)) {
+      .calls <- new.env(parent = emptyenv())
+      .calls$x <- numeric(0)
+      local_mocked_bindings(.foceiAnalyticSolveFA = .unitsSolveFA(.calls, .fails[[.nm]]))
+      .foceiAnalyticWhyReset()
+      expect_null(
+        .foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1)),
+        label = .nm
+      )
+      expect_identical(.foceiAnalyticWhy$detail, "a test solve failure", label = .nm)
+      # the check of the step's sides reuses the differencing's own solves
+      expect_identical(anyDuplicated(.calls$x), 0L, label = .nm)
+    }
+  })
+
+  test_that("a successful third-order differencing solves no point twice", {
     .calls <- new.env(parent = emptyenv())
-    .calls$n <- 0L
-    # the base solve works; every solve the differencing asks for fails
-    local_mocked_bindings(.foceiAnalyticSolveFA = function(...) {
-      .calls$n <- .calls$n + 1L
-      if (.calls$n == 1L) .E0 else .foceiAnalyticNote("a test solve failure")
-    })
+    .calls$x <- numeric(0)
+    local_mocked_bindings(.foceiAnalyticSolveFA = .unitsSolveFA(.calls, function(.e) FALSE))
     .foceiAnalyticWhyReset()
-    expect_null(.foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1)))
-    expect_gt(.calls$n, 1L)
-    expect_identical(.foceiAnalyticWhy$detail, "a test solve failure")
+    .r <- .foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1))
+    # A is linear in the eta, so the central difference is exact up to rounding
+    expect_equal(.r$Ath, array(0.5, c(2L, 1L, 1L, 1L)), tolerance = 1e-8)
+    expect_identical(anyDuplicated(.calls$x), 0L)
+    expect_null(.foceiAnalyticWhy$detail)
   })
 })

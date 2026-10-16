@@ -178,7 +178,7 @@ test_that(".impCovInstall() installs nothing when the information cannot be repa
     .env <- .impMockEnv()
     expect_warning(
       .ok <- .impCovInstall(.env, solve(.info), 1:2, .dOm, .impMockOmega, .rx$theta, .i),
-      "\"imp\" covariance is not positive definite; none installed",
+      "\"imp\" is not positive definite; none installed",
       fixed = TRUE
     )
     expect_false(.ok)

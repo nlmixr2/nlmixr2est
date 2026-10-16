@@ -52,7 +52,7 @@ test_that("a variational covariance that is not finite is not installed", {
   .bad[2, 2] <- NaN
   expect_warning(
     .adviInstallVarCov(.e, .viRes(.bad)),
-    "\"vi\" covariance is not finite; none installed",
+    "\"vi\" is not finite; none installed",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "")

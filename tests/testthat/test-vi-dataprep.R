@@ -87,6 +87,19 @@ test_that(".adviDataPrep drops a subject with no observations, as the FOCEi inne
   expect_error(.adviDataPrep(ui, .d), "ID is missing on 1 record(s)", fixed = TRUE)
 })
 
+test_that(".adviDataPrep takes an MDV column as the EVID when there is none, as FOCEi does", {
+  ui <- rxode2::rxode2(.vdMod)
+  .d <- nlmixr2data::theo_sd
+  .d$MDV <- as.integer(.d$EVID != 0)
+  .d$EVID <- NULL
+  # MDV 0 keeps a record an observation even with an AMT; from AMT alone every
+  # record of subject 12 would be a dose and the subject dropped
+  .d$AMT[.d$ID == 12 & .d$MDV == 0] <- 50
+  .p <- .adviDataPrep(ui, .d)
+  expect_identical(.p$N, 12L)
+  expect_identical(.p$ids, unique(.d$ID))
+})
+
 test_that(".adviDataPrep takes dose-free data with no AMT or EVID column", {
   ui <- rxode2::rxode2(.vdMod)
   .d <- nlmixr2data::theo_sd

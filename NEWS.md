@@ -16,12 +16,26 @@
   information that would not invert, a failed sensitivity solve and several
   other failures used to print only "not available for this model".
 
+- `covMethod = "analytic"` no longer gives a wrong covariance when the
+  per-subject third-order differencing (the fallback when the batched solve
+  fails) cannot solve on one or both sides of its step.  Since 7.0.2 it used a
+  zero difference (every solve failing, or the plus side only) or a forward
+  difference (the minus side only) without saying so; the subject now declines
+  and the covariance falls back with the solve's reason.
+
+- The warning that a covariance was not installed now names its method without
+  the word "covariance" (`"r,s" is not positive definite; kept "nlme"`), so the
+  same failure reads the same whatever covariance was kept, and it stays under 75
+  characters.
+
 ### Estimation
 
 - `est = "vae"`, `"emvi"` and `"fbvi"` count as observations the records
-  `etTrans()` keeps as observations, so an EVID 0 record with a missing DV,
-  `MDV = 1` or a missing TIME is not one; with a missing DV at an observation
-  time `est = "vae"` stopped on missing values.
+  FOCEi's translated data keeps as observations, so an EVID 0 record with a
+  missing DV, `MDV = 1`, a missing TIME or a compartment-off (negative) CMT is
+  not one; with a missing DV at an observation time `est = "vae"` stopped on
+  missing values.  `est = "vae"` also gives data without an EVID column the EVID
+  FOCEi gives it, taken from an MDV column when the data has an AMT column.
 
 - `est = "vae"`, `"emvi"` and `"fbvi"` drop a subject that has records but no
   observations, with a warning naming it, as FOCEi does; they used to stop with
@@ -33,9 +47,10 @@
   used to pair the predictions with the observations in data order (the
   estimates moved by about 1%).
 
-- `est = "emvi"` and `"fbvi"` fit data with no EVID and no AMT column (for
-  example ID, TIME and DV only), whose every record is an observation, as
-  `est = "vae"` does; they used to stop with "replacement has 0 rows".
+- `est = "emvi"` and `"fbvi"` give data without an EVID column the EVID FOCEi
+  gives it, as `est = "vae"` does.  With no AMT column either (for example ID,
+  TIME and DV only) every record is an observation, where they used to stop with
+  "replacement has 0 rows"; with an AMT column, an MDV column stands for the EVID.
 
 # nlmixr2est 7.2.1
 

@@ -334,14 +334,15 @@
   } else {
     "kept the previous one"
   }
-  .what <- if (.covIsName(what)) sprintf("\"%s\"", what) else "the"
-  .w <- sprintf("%s covariance %s; %s", .what, reason, .kept)
-  # under 75 characters, the width a $runInfo line renders in (CLAUDE.md): a long
-  # label first loses the redundant "covariance", then is clipped
-  if (nchar(.w) > 74L) {
-    .w <- as.character(cli::ansi_strtrim(sprintf("%s %s; %s", .what, reason, .kept), 74L, ellipsis = "..."))
+  # a quoted method name stands for its covariance; only a bare "the" needs the noun
+  .w <- if (.covIsName(what)) {
+    sprintf("\"%s\" %s; %s", what, reason, .kept)
+  } else {
+    sprintf("the covariance %s; %s", reason, .kept)
   }
-  warning(.w, call. = FALSE)
+  # clipped under 75 characters of display width, the width a $runInfo line
+  # renders in (CLAUDE.md)
+  warning(as.character(cli::ansi_strtrim(.w, 74L, ellipsis = "...")), call. = FALSE)
 }
 
 #' Keep the installed covariance recoverable from covList before it is replaced

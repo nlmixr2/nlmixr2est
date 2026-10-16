@@ -21,44 +21,102 @@
 
 # Utilities for nlmixr2 ####################################################
 
+#' A value C's `ISNA()` takes as missing: `NA`, but not `NaN`
+#' @param x numeric vector
+#' @return logical, one per element
+#' @noRd
+.nmIsNA <- function(x) {
+  is.na(x) & !is.nan(x)
+}
+
+#' A data column as a double, as FOCEi reads DV and TIME (so "." is missing)
+#' @param x data column
+#' @return double vector
+#' @noRd
+.nmAsDouble <- function(x) {
+  suppressWarnings(as.double(x))
+}
+
+#' Which records turn a compartment off: a negative or "-name" CMT
+#' @param cmt the CMT column
+#' @return logical, one per row
+#' @noRd
+.nmCmtOff <- function(cmt) {
+  if (is.numeric(cmt)) {
+    return(!is.na(cmt) & cmt < 0)
+  }
+  .c <- as.character(cmt)
+  !is.na(.c) & startsWith(.c, "-")
+}
+
 #' Which records of an event table are observations
 #'
 #' The records `etTrans()` keeps as observations (EVID 0), so data that has not
-#' been through it agrees with what a solve returns: a TIME, an EVID of 0 or
-#' missing, an MDV other than 1, and a DV -- or, with no DV, a nonzero AMT, which
-#' `etTrans()` keeps as an observation (dropping the dose).  DV and TIME are read as
-#' FOCEi reads them (`as.double()`), so a DV of "." is missing.
-#' @param d data frame with upper-case `TIME`, `EVID` and `DV`, and optionally `MDV`
-#'   and `AMT`
+#' been through it agrees with what a solve returns, in every case
+#' test-utils.R compares: a TIME; an EVID of 0 or missing; an MDV other than 1;
+#' a CMT that does not turn a compartment off; and a DV -- or, with no DV, a
+#' nonzero AMT, which `etTrans()` keeps as an observation (dropping the dose).
+#' DV, TIME and AMT are read with `as.double()`, so a DV of "." is missing, and
+#' EVID and MDV are truncated to integers, as `etTrans()` reads them; like its
+#' `ISNA()`, a `NaN` is not missing.
+#' @param d data frame with upper-case `TIME`, `EVID` and `DV`, and optionally
+#'   `MDV`, `CMT` and `AMT`; [.nmWithEvid()] gives data without an EVID column one
 #' @return logical, one per row
 #' @noRd
 .nmObsRows <- function(d) {
-  .evid <- d[["EVID"]]
-  if (is.null(d[["DV"]]) || is.null(.evid) || is.null(d[["TIME"]])) {
+  if (is.null(d[["DV"]]) || is.null(d[["EVID"]]) || is.null(d[["TIME"]])) {
     stop("the data needs DV, EVID and TIME columns to find its observations", call. = FALSE)
   }
-  .dv <- suppressWarnings(as.double(d[["DV"]]))
-  .time <- suppressWarnings(as.double(d[["TIME"]]))
+  .evid <- suppressWarnings(as.integer(.nmAsDouble(d[["EVID"]])))
+  .obs <- !.nmIsNA(.nmAsDouble(d[["TIME"]])) & (is.na(.evid) | .evid == 0L)
   .mdv <- d[["MDV"]]
-  .amt <- d[["AMT"]]
-  .obs <- !is.na(.time) & (is.na(.evid) | .evid == 0)
   if (!is.null(.mdv)) {
-    .obs <- .obs & !(.mdv %in% 1)
+    .obs <- .obs & !(suppressWarnings(as.integer(.nmAsDouble(.mdv))) %in% 1L)
   }
-  .dose <- if (is.null(.amt)) FALSE else !is.na(.amt) & .amt != 0
-  .obs & (!is.na(.dv) | .dose)
+  .cmt <- d[["CMT"]]
+  if (!is.null(.cmt)) {
+    .obs <- .obs & !.nmCmtOff(.cmt)
+  }
+  .amt <- d[["AMT"]]
+  .dose <- if (is.null(.amt)) {
+    FALSE
+  } else {
+    .a <- .nmAsDouble(.amt)
+    !.nmIsNA(.a) & !(.a %in% 0)
+  }
+  .obs & (!.nmIsNA(.nmAsDouble(d[["DV"]])) | .dose)
 }
 
-#' The EVID implied by data without one: a dose where AMT is nonzero
-#' @param d data frame with an optional upper-case `AMT`
-#' @return integer, one per row
+#' Data with the EVID column FOCEi and `etTrans()` give data without one
+#'
+#' With no AMT column either, every record is EVID 0, as `.foceiPreProcessData()`
+#' sets it.  Otherwise `etTrans()` takes an MDV column as the EVID (a missing MDV
+#' is a dose, and MDV 1 with a zero AMT is EVID 2) and no longer reads it as an
+#' MDV, so it is dropped; without one a nonzero AMT is a dose.
+#' @param d data frame with upper-case names
+#' @return `d`, with an integer EVID column when it had none
 #' @noRd
-.nmDefaultEvid <- function(d) {
+.nmWithEvid <- function(d) {
+  if (!is.null(d[["EVID"]])) {
+    return(d)
+  }
   .amt <- d[["AMT"]]
   if (is.null(.amt)) {
-    return(rep(0L, nrow(d)))
+    d$EVID <- rep(0L, nrow(d))
+    return(d)
   }
-  ifelse(is.na(.amt) | .amt == 0, 0L, 1L)
+  .amt <- .nmAsDouble(.amt)
+  .mdv <- d[["MDV"]]
+  if (is.null(.mdv)) {
+    d$EVID <- ifelse(.nmIsNA(.amt) | .amt %in% 0, 0L, 1L)
+    return(d)
+  }
+  .evid <- suppressWarnings(as.integer(.nmAsDouble(.mdv)))
+  .evid[.evid %in% 1L & .amt %in% 0] <- 2L
+  .evid[is.na(.evid)] <- 1L
+  d$EVID <- .evid
+  d$MDV <- NULL
+  d
 }
 
 #' Stop on data without an ID column, or with a missing ID
