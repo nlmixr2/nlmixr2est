@@ -147,8 +147,11 @@
 
 #' A reason clipped for a warning or printed line (CLAUDE.md: $runInfo lines < 75 chars)
 #'
-#' 54 columns, not [.covClip()]'s `.covWarnWidth`: the "analytic errN: " warning
-#' is 69 columns with a 54-column reason.
+#' 54 columns, not [.covClip()]'s `.covWarnWidth`, for its two uses: the
+#' "analytic errN: " warning is 69 columns with a 54-column reason; and
+#' `.analyticReasonShort`, which goes into [.covNotUsableMsg()] (the no-fallback
+#' warning, and FOCEi's fallback summary through [.covTriedSummary()]), which
+#' clips it again to the columns its own fixed text leaves.
 #' @param x the text
 #' @param width the most display columns to keep, the ellipsis included
 #' @noRd
