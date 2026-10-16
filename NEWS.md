@@ -57,12 +57,11 @@
   used to pair the predictions with the observations in data order (the
   estimates moved by about 1%).
 
-- Whether a fit can use the analytic outer gradient no longer depends on the
-  fit before it in the session.  The check read whether the model has
-  inter-occasion variability from the last fit's IOV rewrite, so after an IOV
-  fit a model without IOV took the finite-difference gradient, and after a fit
-  without IOV a model with IOV was let through.  It now reads the model being
-  fit.
+- The analytic-gradient scope checks called outside a fit (`ui$foceiOuter`, and
+  the VAE gradient scope) no longer depend on the previous fit in the session:
+  they read whether the model has inter-occasion variability from the model
+  itself, not from the last fit's IOV rewrite.  Fits were not affected, since
+  each fit sets that rewrite before the checks run.
 
 # nlmixr2est 7.2.1
 
