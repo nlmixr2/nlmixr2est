@@ -319,6 +319,6 @@ nmTest({
     expect_identical(.p$Nobs, 121L)
     .d <- nlmixr2data::theo_sd
     .d$ID[5] <- NA
-    expect_error(.vaeDataPrep(ui, .d), "ID is missing on 1 record(s)", fixed = TRUE)
+    expect_error(.vaeDataPrep(ui, .d), "^'id' cannot have NA values$")
   })
 })

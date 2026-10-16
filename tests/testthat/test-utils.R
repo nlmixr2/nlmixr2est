@@ -344,6 +344,43 @@ nmTest({
       tryCatch(.nmAssertEventColumns(.inf), error = conditionMessage),
       .utFoceiError(.inf, .ui)
     )
+    # a missing ID beside each of those: FOCEi checks an integer or character ID
+    # first and a double one record by record with TIME, after the event columns
+    .ids <- list(double = as.double, integer = as.integer, character = as.character)
+    .m <- 0L
+    for (.it in names(.ids)) {
+      .cases <- list()
+      for (.lay in c("all", "noEvid")) {
+        for (.col in c("EVID", "MDV", "AMT")) {
+          if (.col %in% .layouts[[.lay]]) {
+            next
+          }
+          .d <- .base[!(names(.base) %in% .layouts[[.lay]])]
+          .d[[.col]] <- as.character(.d[[.col]])
+          .d$ID <- .ids[[.it]](c(NA, 1, 1))
+          .cases[[paste(.lay, .col)]] <- .d
+        }
+      }
+      .d <- .base
+      .d$ID <- .ids[[.it]](c(NA, 1, 1))
+      .d$TIME[3] <- Inf
+      .cases[["ID before TIME"]] <- .d
+      .d <- .base
+      .d$ID <- .ids[[.it]](c(1, 1, NA))
+      .d$TIME[1] <- -Inf
+      .cases[["TIME before ID"]] <- .d
+      for (.nm in names(.cases)) {
+        .f <- .utFoceiError(.cases[[.nm]], .ui)
+        expect_false(is.null(.f), label = paste(.it, .nm))
+        expect_identical(
+          tryCatch(.nmAssertEventColumns(.cases[[.nm]]), error = conditionMessage),
+          .f,
+          label = paste(.it, .nm)
+        )
+        .m <- .m + 1L
+      }
+    }
+    expect_identical(.m, 21L)
   })
 
   test_that(".nmAssertIds() and .nmDropNoObsSubjects() match the FOCEi data step", {
@@ -357,9 +394,13 @@ nmTest({
     .t <- data.frame(ID = c(1, 1, 2), TIME = c(0, 1, NA), EVID = c(1, 0, 0), DV = c(NA, 3, 4))
     expect_warning(.k <- .nmDropNoObsSubjects(.t), "IDs without observations dropped: 2", fixed = TRUE)
     expect_identical(.k, .t[1:2, ])
+    # a missing ID, with etTrans()'s message for a double ID and for any other
     .d$ID[2] <- NA
-    expect_error(.nmDropNoObsSubjects(.d), "ID is missing on 1 record(s)", fixed = TRUE)
-    expect_error(.nmSubjectObs(.d, 1), "ID is missing on 1 record(s)", fixed = TRUE)
+    expect_error(.nmDropNoObsSubjects(.d), "^'id' cannot be 'NA'$")
+    expect_error(.nmSubjectObs(.d, 1), "^'id' cannot be 'NA'$")
+    .d$ID <- as.integer(.d$ID)
+    expect_error(.nmDropNoObsSubjects(.d), "^'id' cannot have NA values$")
+    expect_error(.nmSubjectObs(.d, 1), "^'id' cannot have NA values$")
     # the columns are matched exactly: IDENT is not ID
     .i <- data.frame(IDENT = 1, TIME = 0, EVID = 0, DV = 1)
     expect_error(.nmDropNoObsSubjects(.i), "the data needs an ID column", fixed = TRUE)
@@ -394,9 +435,10 @@ nmTest({
     # the first infinite time in the data as given
     .o <- data.frame(ID = c(2, 2, 1, 1), TIME = c(1, 0, -Inf, Inf), EVID = 0, DV = 1)
     expect_error(.nmObsRows(.o), "infinite times are not allowed (id: 1, row: 3)", fixed = TRUE)
-    # a missing ID is reported first, as FOCEi checks the IDs first
+    # a missing double ID ahead of the first infinite time is reported, as FOCEi
+    # checks the two record by record
     .o$ID[1] <- NA
-    expect_error(.nmObsRows(.o), "^ID is missing on 1 record\\(s\\)$")
+    expect_error(.nmObsRows(.o), "^'id' cannot be 'NA'$")
     # what FOCEi reads as numbers: a character TIME or DV, a logical or factor EVID
     .c <- .d
     .c$TIME <- c("0", "1")
