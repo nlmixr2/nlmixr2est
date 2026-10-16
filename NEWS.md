@@ -23,10 +23,11 @@
   difference (the minus side only) without saying so; the subject now declines
   and the covariance falls back with the solve's reason.
 
-- The warning that a covariance was not installed now names its method without
-  the word "covariance" (`"r,s" is not positive definite; kept "nlme"`), so the
-  same failure reads the same whatever covariance was kept, and it stays under 75
-  characters.
+- The covariance warnings (one not installed, one installed instead of the one
+  requested, an sqrtm repair, a covariance conditional on the ETAs) now name
+  their method without the word "covariance" (`"r,s" is not positive definite;
+  kept "nlme"`), so the same failure reads the same whatever the labels, and they
+  stay under 75 characters.
 
 ### Estimation
 

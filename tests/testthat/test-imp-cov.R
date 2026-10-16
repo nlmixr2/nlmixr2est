@@ -147,7 +147,7 @@ test_that(".impCovInstall() repairs an imp information that is not positive defi
   .env <- .impMockEnv()
   expect_warning(
     .ok <- .impCovInstall(.env, solve(.info), 1:2, .dOm, .impMockOmega, .rx$theta, .info),
-    "\"imp\" covariance not positive definite; installed as \"|imp|\" (sqrtm)",
+    "\"imp\" not positive definite; installed as \"|imp|\" (sqrtm)",
     fixed = TRUE
   )
   expect_true(.ok)
