@@ -2634,8 +2634,14 @@
       return(.foceiAnalyticNote(paste0("no parameter for direction ", dirs[.etaDir[li]])))
     }
     sc <- shi21CentralWrap(Aflat, params, f0, idx, .fdEps) # C++ shi21Central
-    if (is.null(sc$gr) || !all(is.finite(sc$gr))) {
-      # a failed solve reaches here as NaN; keep what it noted
+    # a failed solve reaches shi21Central as NaN, from which it can still return a
+    # zero difference, so the step it chose has to solve on both sides
+    .tp <- params
+    .tp[idx] <- params[idx] + sc$h
+    .tm <- params
+    .tm[idx] <- params[idx] - sc$h
+    if (is.null(sc$gr) || !all(is.finite(sc$gr)) || is.null(Aflat(.tp)) || is.null(Aflat(.tm))) {
+      # keep what the failing solve noted
       if (is.null(.foceiAnalyticWhy$detail)) {
         .foceiAnalyticNote("a non-finite third-order sensitivity")
       }
