@@ -514,7 +514,7 @@ nmTest({
       })
     }
     .eta <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(print = 0, covMethod = ""))$etaMat
-    .msg <- "covariance is conditional on the ETAs; setCov() is marginal"
+    .msg <- "is conditional on the ETAs; setCov() is marginal"
     # maxInnerIterations = 0 evaluates the given ETAs, in the fit and in its covariance
     .fixed <- .nlmixr(
       one.cmt,
@@ -529,7 +529,7 @@ nmTest({
       )
     )
     expect_identical(.covFdType(.fixed$covMethod), "r")
-    expect_true(any(grepl(.msg, .fixed$runInfo, fixed = TRUE)))
+    expect_true(sprintf("\"%s\" %s", .fixed$covMethod, .msg) %in% .fixed$runInfo)
     # optimizing them: the covariance of the marginal likelihood, nothing to say
     .opt <- .nlmixr(
       one.cmt,

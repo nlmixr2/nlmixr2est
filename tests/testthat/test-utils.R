@@ -275,6 +275,34 @@ nmTest({
     expect_error(.nmSubjectObs(data.frame(ID = 1, EVID = 0, DV = 1), 1), "the data needs a TIME column", fixed = TRUE)
   })
 
+  test_that(".nmObsRows() and .nmWithEvid() stop on the columns FOCEi rejects, with its message", {
+    .d <- data.frame(ID = 1, TIME = c(0, 1), EVID = c(1, 0), DV = c(NA, 1), AMT = c(100, 0), MDV = c(1, 0))
+    .e <- .d
+    .e$EVID <- as.character(.e$EVID)
+    expect_error(.nmObsRows(.e), "event id ('evid') needs to be an integer", fixed = TRUE)
+    .m <- .d
+    .m$MDV <- as.character(.m$MDV)
+    expect_error(.nmObsRows(.m), "missing dependent variable ('mdv') needs to be an integer", fixed = TRUE)
+    expect_error(.nmWithEvid(.m[names(.m) != "EVID"]), "('mdv') needs to be an integer", fixed = TRUE)
+    .a <- .d
+    .a$AMT <- as.character(.a$AMT)
+    expect_error(.nmObsRows(.a), "amount ('amt') needs to be a number", fixed = TRUE)
+    expect_error(.nmWithEvid(.a[names(.a) != "EVID"]), "amount ('amt') needs to be a number", fixed = TRUE)
+    for (.inf in c(Inf, -Inf)) {
+      .t <- .d
+      .t$TIME[2] <- .inf
+      expect_error(.nmObsRows(.t), "infinite times are not allowed (id: 1, row: 2)", fixed = TRUE)
+      expect_error(.nmWithEvid(.t), "infinite times are not allowed (id: 1, row: 2)", fixed = TRUE)
+    }
+    # what FOCEi reads as numbers: a character TIME or DV, a logical or factor EVID
+    .c <- .d
+    .c$TIME <- c("0", "1")
+    .c$DV <- c(".", "1")
+    expect_identical(.nmObsRows(.c), c(FALSE, TRUE))
+    .c$EVID <- c(TRUE, FALSE)
+    expect_identical(.nmObsRows(.c), c(FALSE, TRUE))
+  })
+
   test_that(".nmWithEvid() gives data without an EVID column FOCEi's", {
     # no AMT column either: every record EVID 0, and an MDV column stays an MDV
     expect_identical(.nmWithEvid(data.frame(DV = 1:2))$EVID, c(0L, 0L))
