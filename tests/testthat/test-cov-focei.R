@@ -352,7 +352,7 @@ nmTest({
     expect_equal(.covFdType(.f$covMethod), "r")
     expect_false(.covIsFull(.f$covMethod))
     expect_true(is.matrix(.f$env$.fdFullS))
-    expect_true(any(startsWith(.f$runInfo, "\"r,s (full)\" covariance ")))
+    expect_true("\"r,s (full)\" needs a positive-definite R; kept \"r\"" %in% .f$runInfo)
   })
 
   test_that("an all-zero R is not corrected into a covariance", {
