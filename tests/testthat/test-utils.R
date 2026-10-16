@@ -394,6 +394,9 @@ nmTest({
     # the first infinite time in the data as given
     .o <- data.frame(ID = c(2, 2, 1, 1), TIME = c(1, 0, -Inf, Inf), EVID = 0, DV = 1)
     expect_error(.nmObsRows(.o), "infinite times are not allowed (id: 1, row: 3)", fixed = TRUE)
+    # a missing ID is reported first, as FOCEi checks the IDs first
+    .o$ID[1] <- NA
+    expect_error(.nmObsRows(.o), "^ID is missing on 1 record\\(s\\)$")
     # what FOCEi reads as numbers: a character TIME or DV, a logical or factor EVID
     .c <- .d
     .c$TIME <- c("0", "1")
