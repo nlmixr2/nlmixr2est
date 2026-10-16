@@ -107,10 +107,10 @@ nmTest({
     # a missing TIME is no record at all to etTrans()
     .d$TIME[2] <- NA
     expect_false(.nmObsRows(.d)[2])
-    # with no DV, a positive AMT keeps an EVID 0 or missing-EVID record (etTrans()
-    # drops its dose)
-    .d <- data.frame(TIME = 1:4, EVID = c(NA, NA, 0, 0), DV = NA, AMT = c(50, 0, 50, 0))
-    expect_identical(.nmObsRows(.d), c(TRUE, FALSE, TRUE, FALSE))
+    # with no DV, a nonzero AMT, negative too, keeps an EVID 0 or missing-EVID
+    # record (etTrans() drops its dose)
+    .d <- data.frame(TIME = 1:6, EVID = c(NA, NA, NA, 0, 0, 0), DV = NA, AMT = c(50, -50, 0, 50, -50, 0))
+    expect_identical(.nmObsRows(.d), c(TRUE, TRUE, FALSE, TRUE, TRUE, FALSE))
     # DV and TIME are read as FOCEi reads them, so "." is a missing DV
     .d <- data.frame(TIME = c("0", "1", "2"), EVID = 0, DV = c(".", "3", NA))
     expect_identical(.nmObsRows(.d), c(FALSE, TRUE, FALSE))
@@ -131,7 +131,7 @@ nmTest({
       evid = c(0, 1, 2, 3, 4, 101, NA),
       dv = c(4, NA),
       mdv = c(-1, 0, 1, NA, 2), # -1: no MDV column
-      amt = c(0, NA, 50),
+      amt = c(0, NA, 50, -50),
       time = c(1, NA)
     )
     .n <- 0L
@@ -159,8 +159,8 @@ nmTest({
       .want <- sum(.et$EVID == 0) == 2L
       expect_identical(.nmObsRows(.d)[2], .want, label = paste(names(.r), .r, collapse = " "))
     }
-    # 420 combinations, of which etTrans() rejects 46
-    expect_identical(.n, 374L)
+    # 560 combinations, of which etTrans() rejects 54
+    expect_identical(.n, 506L)
   })
 
   test_that(".nmAssertIds() and .nmDropNoObsSubjects() match the FOCEi data step", {

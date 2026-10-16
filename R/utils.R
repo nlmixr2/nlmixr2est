@@ -25,7 +25,7 @@
 #'
 #' The records `etTrans()` keeps as observations (EVID 0), so data that has not
 #' been through it agrees with what a solve returns: a TIME, an EVID of 0 or
-#' missing, an MDV other than 1, and a DV -- or, with no DV, a positive AMT, which
+#' missing, an MDV other than 1, and a DV -- or, with no DV, a nonzero AMT, which
 #' `etTrans()` keeps as an observation (dropping the dose).  DV and TIME are read as
 #' FOCEi reads them (`as.double()`), so a DV of "." is missing.
 #' @param d data frame with upper-case `TIME`, `EVID` and `DV`, and optionally `MDV`
@@ -45,7 +45,7 @@
   if (!is.null(.mdv)) {
     .obs <- .obs & !(.mdv %in% 1)
   }
-  .dose <- if (is.null(.amt)) FALSE else !is.na(.amt) & .amt > 0
+  .dose <- if (is.null(.amt)) FALSE else !is.na(.amt) & .amt != 0
   .obs & (!is.na(.dv) | .dose)
 }
 
