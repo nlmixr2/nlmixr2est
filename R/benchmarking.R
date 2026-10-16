@@ -180,10 +180,10 @@ dt <- stats::dt
 
 #' Observations in a benchmark fit's data
 #'
-#' The records `etTrans()` keeps as observations ([.nmObsRows()]); data without an
-#' EVID counts its records with a DV.
+#' The records `etTrans()` keeps as observations ([.nmObsRows()]), with the EVID a
+#' data set without one implies ([.nmDefaultEvid()], as the VAE prep does).
 #' @param d the fit's original data
-#' @return the count, or `NA` for data with no DV
+#' @return the count, or `NA` for data without a DV or TIME (nothing to count)
 #' @noRd
 .nlmixr2BenchmarkNobs <- function(d) {
   if (!inherits(d, "data.frame")) {
@@ -191,11 +191,11 @@ dt <- stats::dt
   }
   d <- as.data.frame(d)
   names(d) <- toupper(names(d))
-  if (is.null(d[["DV"]])) {
+  if (is.null(d[["DV"]]) || is.null(d[["TIME"]])) {
     return(NA_integer_)
   }
   if (is.null(d[["EVID"]])) {
-    return(sum(!is.na(d[["DV"]])))
+    d$EVID <- .nmDefaultEvid(d)
   }
   sum(.nmObsRows(d))
 }
