@@ -63,8 +63,9 @@ nmTest({
     .w
   }
 
-  # `reason` is the full recorded reason, `short` the step alone, `msg` the message
-  .arExpectReason <- function(r, reason, msg, short = reason) {
+  # `reason` is the full recorded reason, `short` the step alone, `msg` the message,
+  # `warn` the $runInfo warning
+  .arExpectReason <- function(r, reason, msg, short = reason, warn) {
     expect_false(identical(.covBaseName(r$fit$covMethod), "analytic"))
     expect_identical(r$fit$env$covTried$method[1], "analytic")
     expect_identical(r$fit$env$covTried$outcome[1], reason)
@@ -79,13 +80,9 @@ nmTest({
       r$out,
       fixed = TRUE
     )))
-    # the warning names the analytic step and then any finite-difference matrix that
-    # was not usable either, as covTried does after its first row
-    .tried <- r$fit$env$covTried$outcome[-1L]
-    .why <- paste(unique(c(short, .tried[.tried != "used"])), collapse = "; ")
     .w <- grep("^\"analytic\" not usable \\(", .arWarnings(r), value = TRUE)
     expect_length(.w, 1L)
-    expect_identical(.w, .covNotUsableMsg("analytic", .why, sub("^.*\\); ", "", .w)))
+    expect_identical(.w, warn)
     expect_false(any(grepl("not available for this model", c(r$out, r$fit$runInfo), fixed = TRUE)))
   }
 
@@ -106,14 +103,24 @@ nmTest({
     local_mocked_bindings(.foceiAnalyticErrFull = function(ui) NULL)
     .r <- .arFit()
     .why <- "a residual error model the analytic covariance cannot read"
-    .arExpectReason(.r, .why, .arScope(.why))
+    .arExpectReason(
+      .r,
+      .why,
+      .arScope(.why),
+      warn = "\"analytic\" not usable (a residual error model the ana...); installed \"r,s\""
+    )
   })
 
   test_that("the reason the error model gave is kept, and said once", {
     skip_on_cran()
     local_mocked_bindings(.foceiAnalyticErrFull = function(ui) .foceiAnalyticFallback("a test error model"))
     .r <- .arFit()
-    .arExpectReason(.r, "a test error model", .arScope("a test error model"))
+    .arExpectReason(
+      .r,
+      "a test error model",
+      .arScope("a test error model"),
+      warn = "\"analytic\" not usable (a test error model); installed \"r,s\""
+    )
   })
 
   test_that("a mu-referenced occasion eta says so", {
@@ -191,7 +198,12 @@ nmTest({
       .m
     })
     .r <- .arFit(.iov, .d, iovXform = "sd")
-    .arExpectReason(.r, "a mu-referenced occasion (IOV) eta", .arScope("a mu-referenced occasion (IOV) eta"))
+    .arExpectReason(
+      .r,
+      "a mu-referenced occasion (IOV) eta",
+      .arScope("a mu-referenced occasion (IOV) eta"),
+      warn = "\"analytic\" not usable (a mu-referenced occasion (IOV)...); installed \"r,s\""
+    )
   })
 
   test_that("covariance parameters missing from the assembly are named", {
@@ -204,7 +216,12 @@ nmTest({
     })
     .r <- .arFit()
     .why <- "covariance parameters the analytic assembly does not carry (add.sd)"
-    .arExpectReason(.r, .why, .arScope(.why))
+    .arExpectReason(
+      .r,
+      .why,
+      .arScope(.why),
+      warn = "\"analytic\" not usable (covariance parameters the anal...); installed \"r,s\""
+    )
   })
 
   test_that("an augmented model that will not build says so", {
@@ -212,7 +229,12 @@ nmTest({
     local_mocked_bindings(.foceiAnalyticAugModelDirs = function(ui, dirs, order = 2L) NULL)
     .r <- .arFit()
     .why <- "an augmented model that would not build"
-    .arExpectReason(.r, .why, .arFailed(.why))
+    .arExpectReason(
+      .r,
+      .why,
+      .arFailed(.why),
+      warn = "\"analytic\" not usable (an augmented model that would ...); installed \"r,s\""
+    )
   })
 
   test_that("a failed subject solve names the subject and what the solve said", {
@@ -224,8 +246,14 @@ nmTest({
       .foceiAnalyticSolveSubjectFD3 = function(...) .foceiAnalyticNote("a test solve failure")
     )
     .r <- .arFit()
-    .why <- "a failed sensitivity solve for subject 1 (a test solve failure)"
-    .arExpectReason(.r, .why, .arFailed(.why), "a failed sensitivity solve for subject 1")
+    .why <- "subject 1: a failed sensitivity solve (a test solve failure)"
+    .arExpectReason(
+      .r,
+      .why,
+      .arFailed(.why),
+      "subject 1: a failed sensitivity solve",
+      warn = "\"analytic\" not usable (subject 1: a failed sensitivit...); installed \"r,s\""
+    )
   })
 
   test_that("residual-error parameters the assembly did not order say so", {
@@ -233,7 +261,12 @@ nmTest({
     local_mocked_bindings(.foceiAnalyticSgNames = function(dir, ef, general) NULL)
     .r <- .arFit()
     .why <- "residual-error parameters the assembly did not order"
-    .arExpectReason(.r, .why, .arFailed(.why))
+    .arExpectReason(
+      .r,
+      .why,
+      .arFailed(.why),
+      warn = "\"analytic\" not usable (residual-error parameters the ...); installed \"r,s\""
+    )
   })
 
   test_that("an observed information that will not invert gives what solve() said", {
@@ -241,7 +274,13 @@ nmTest({
     local_mocked_bindings(.foceiAnalyticSolve = function(m) .foceiAnalyticNote("a test singular matrix"))
     .r <- .arFit()
     .why <- "an observed information that would not invert (a test singular matrix)"
-    .arExpectReason(.r, .why, .arFailed(.why), "an observed information that would not invert")
+    .arExpectReason(
+      .r,
+      .why,
+      .arFailed(.why),
+      "an observed information that would not invert",
+      warn = "\"analytic\" not usable (an observed information that w...); installed \"r,s\""
+    )
   })
 
   test_that("a theta block that will not invert says so", {
@@ -255,7 +294,13 @@ nmTest({
     .r <- .arFit()
     expect_identical(.calls$n, 2L)
     .why <- "a theta block of the covariance that would not invert (a test singular block)"
-    .arExpectReason(.r, .why, .arFailed(.why), "a theta block of the covariance that would not invert")
+    .arExpectReason(
+      .r,
+      .why,
+      .arFailed(.why),
+      "a theta block of the covariance that would not invert",
+      warn = "\"analytic\" not usable (a theta block of the covarianc...); installed \"r,s\""
+    )
   })
 
   test_that("an error in the assembly is the reason, and still a warning", {
@@ -265,7 +310,7 @@ nmTest({
     expect_identical(.r$fit$env$covTried$outcome[1], "an error (a test error)")
     expect_true("analytic err1: a test error" %in% .arWarnings(.r))
     expect_true(any(grepl("covType=\"analytic\" not used (an error)", .r$out, fixed = TRUE)))
-    expect_true(any(startsWith(.arWarnings(.r), "\"analytic\" not usable (an error); installed \"")))
+    expect_true("\"analytic\" not usable (an error); installed \"r,s\"" %in% .arWarnings(.r))
     # a long, multi-line error is one line, and clipped in the warning
     local_mocked_bindings(.foceiAnalyticDirections = function(...) {
       stop(paste(rep("a long test error", 6), collapse = "\n"))
@@ -293,7 +338,8 @@ nmTest({
       .r$out,
       fixed = TRUE
     )))
-    expect_true(.covNotUsableMsg("analytic", .why, "covFallback lists no fallback") %in% .arWarnings(.r))
+    .w <- grep("^\"analytic\" not usable \\(", .arWarnings(.r), value = TRUE)
+    expect_identical(.w, "\"analytic\" not usable (residual-error parameters the asse...); no fallback")
   })
 
   test_that("an analytic covariance that is used records no decline", {
@@ -360,7 +406,12 @@ nmTest({
     local_mocked_bindings(.foceiAnalyticSolveAll = function(...) NULL)
     .why <- "a failed eta=0 population solve"
     for (.m in list(.arModAddProp, .arModC1)) {
-      .arExpectReason(.arFit(.m, est = "foce"), .why, .arFailed(.why))
+      .arExpectReason(
+        .arFit(.m, est = "foce"),
+        .why,
+        .arFailed(.why),
+        warn = "\"analytic\" not usable (a failed eta=0 population solve;...); installed \"s\""
+      )
     }
   })
 
@@ -377,7 +428,8 @@ nmTest({
       .arFit(.arModAddProp, .arData101, est = "foce"),
       .why,
       .arFailed(.why),
-      "a failed eta=0 population solve"
+      "a failed eta=0 population solve",
+      warn = "\"analytic\" not usable (a failed eta=0 population solve;...); installed \"s\""
     )
     local_mocked_bindings(.foceiAnalyticRxSolve = function(...) {
       .d <- .rx(...)
@@ -388,7 +440,8 @@ nmTest({
       .arFit(.arModAddProp, .arData101, est = "foce"),
       .why,
       .arFailed(.why),
-      "a failed eta=0 population solve"
+      "a failed eta=0 population solve",
+      warn = "\"analytic\" not usable (a failed eta=0 population solve;...); installed \"s\""
     )
   })
 
@@ -408,9 +461,15 @@ nmTest({
         .d <- .rx(...)
         if (is.null(.d)) .d else .alter[[.n]](.d)
       })
-      .short <- "a failed sensitivity solve for subject 101"
+      .short <- "subject 101: a failed sensitivity solve"
       .why <- paste0(.short, " (", .n, ")")
-      .arExpectReason(.arFit(data = .arData101), .why, .arFailed(.why), .short)
+      .arExpectReason(
+        .arFit(data = .arData101),
+        .why,
+        .arFailed(.why),
+        .short,
+        warn = "\"analytic\" not usable (subject 101: a failed sensitiv...); installed \"r,s\""
+      )
     }
   })
 
@@ -423,14 +482,25 @@ nmTest({
         do.call(local_mocked_bindings, .m)
         .short <- "a failed observed-information kernel"
         .why <- paste0(.short, " (a test kernel failure)")
-        .arExpectReason(.arFit(.arModC1, est = .k$est), .why, .arFailed(.why), .short)
+        .arExpectReason(
+          .arFit(.arModC1, est = .k$est),
+          .why,
+          .arFailed(.why),
+          .short,
+          warn = "\"analytic\" not usable (a failed observed-information ke...); installed \"s\""
+        )
       })
       local({
         .m <- list(function(...) matrix(NaN, 2L, 2L))
         names(.m) <- .k$fn
         do.call(local_mocked_bindings, .m)
         .why <- "a non-finite observed information"
-        .arExpectReason(.arFit(.arModC1, est = .k$est), .why, .arFailed(.why))
+        .arExpectReason(
+          .arFit(.arModC1, est = .k$est),
+          .why,
+          .arFailed(.why),
+          warn = "\"analytic\" not usable (a non-finite observed informatio...); installed \"s\""
+        )
       })
     }
   })
@@ -439,13 +509,23 @@ nmTest({
     skip_on_cran()
     local({
       local_mocked_bindings(.foceiAnalyticSubjectR = function(...) NULL)
-      .why <- "an observed information that would not assemble for subject 101"
-      .arExpectReason(.arFit(data = .arData101), .why, .arFailed(.why))
+      .why <- "subject 101: an observed information that would not assemble"
+      .arExpectReason(
+        .arFit(data = .arData101),
+        .why,
+        .arFailed(.why),
+        warn = "\"analytic\" not usable (subject 101: an observed infor...); installed \"r,s\""
+      )
     })
     local({
       local_mocked_bindings(.foceiAnalyticSubjectR = function(...) matrix(NaN, 1L, 1L))
-      .why <- "a non-finite observed information for subject 101"
-      .arExpectReason(.arFit(data = .arData101), .why, .arFailed(.why))
+      .why <- "subject 101: a non-finite observed information"
+      .arExpectReason(
+        .arFit(data = .arData101),
+        .why,
+        .arFailed(.why),
+        warn = "\"analytic\" not usable (subject 101: a non-finite obse...); installed \"r,s\""
+      )
     })
   })
 
@@ -453,9 +533,15 @@ nmTest({
     skip_on_cran()
     # the node solves are the only subject solves left once the batched solve works
     local_mocked_bindings(.foceiAnalyticSolveFA = function(...) .foceiAnalyticNote("a test node failure"))
-    .short <- "an observed information that would not assemble for subject 101"
+    .short <- "subject 101: an observed information that would not assemble"
     .why <- paste0(.short, " (a failed quadrature-node solve: a test node failure)")
-    .arExpectReason(.arFit(data = .arData101, nAGQ = 3L), .why, .arFailed(.why), .short)
+    .arExpectReason(
+      .arFit(data = .arData101, nAGQ = 3L),
+      .why,
+      .arFailed(.why),
+      .short,
+      warn = "\"analytic\" not usable (subject 101: an observed infor...); installed \"r,s\""
+    )
   })
 
   test_that("setCov(fit, \"analytic\") stops with the reason", {
@@ -509,6 +595,12 @@ nmTest({
     local_mocked_bindings(.foceiAnalyticCols = function(...) stop("a test build error"))
     .short <- "an augmented model that would not build"
     .why <- paste0(.short, " (a test build error)")
-    .arExpectReason(.arFit(), .why, .arFailed(.why), .short)
+    .arExpectReason(
+      .arFit(),
+      .why,
+      .arFailed(.why),
+      .short,
+      warn = "\"analytic\" not usable (an augmented model that would ...); installed \"r,s\""
+    )
   })
 })

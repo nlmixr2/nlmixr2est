@@ -153,6 +153,11 @@
   as.character(cli::ansi_strtrim(x, width, ellipsis = "..."))
 }
 
+# The reason a decline gives when nothing recorded one: unreachable when every decline
+# path names its reason (test-cov-analytic-declines.R), so it says it is a bug.  The
+# C++ hook (foceiCalcRAnalytic) carries the same text.
+.foceiAnalyticNoReason <- "an internal error: no reason was recorded (please report it)"
+
 # Why the analytic attempt in progress declined: `reason` is what the caller records
 # in full (fit$env$covTried, setCov(), the message), `short` the step alone for the
 # warning and printed line, `detail` what a solve or model build said before the step
@@ -595,7 +600,7 @@
         )
       }
       if (is.null(E)) {
-        return(.foceiAnalyticFallback(paste0("a failed sensitivity solve for subject ", ids[i]), scope = FALSE))
+        return(.foceiAnalyticFallback(paste0("subject ", ids[i], ": a failed sensitivity solve"), scope = FALSE))
       }
       if (isTRUE(ef$canVanish)) {
         .fa <- abs(E$f)
@@ -769,7 +774,7 @@
       )
     }
     if (is.null(E)) {
-      return(.foceiAnalyticFallback(paste0("a failed sensitivity solve for subject ", ids[i]), scope = FALSE))
+      return(.foceiAnalyticFallback(paste0("subject ", ids[i], ": a failed sensitivity solve"), scope = FALSE))
     }
     if (isTRUE(ef$canVanish)) {
       .fa <- abs(E$f)
@@ -1010,7 +1015,7 @@
       .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s$ev, s$times, tol = solveTol)
     }
     if (is.null(E)) {
-      return(.foceiAnalyticFallback(paste0("a failed sensitivity solve for subject ", ids[i]), scope = FALSE))
+      return(.foceiAnalyticFallback(paste0("subject ", ids[i], ": a failed sensitivity solve"), scope = FALSE))
     }
     # near-zero-prediction guard for a vanishing residual variance (pure proportional
     # R = sp^2 f^2 -> 0): the 1/R observed-information terms blow up, so drop to FD.
@@ -1102,12 +1107,12 @@
     }
     if (is.null(Ri)) {
       return(.foceiAnalyticFallback(
-        paste0("an observed information that would not assemble for subject ", ids[i]),
+        paste0("subject ", ids[i], ": an observed information that would not assemble"),
         scope = FALSE
       ))
     }
     if (!all(is.finite(Ri))) {
-      return(.foceiAnalyticFallback(paste0("a non-finite observed information for subject ", ids[i]), scope = FALSE))
+      return(.foceiAnalyticFallback(paste0("subject ", ids[i], ": a non-finite observed information"), scope = FALSE))
     }
     R <- R + Ri
   }
@@ -1131,13 +1136,14 @@
     .why <- .foceiAnalyticWhy$reason
     .short <- .foceiAnalyticWhy$short
     if (is.null(.why)) {
-      .why <- .short <- "no reason recorded"
+      # a bug, but the finite-difference fallback still runs
+      .why <- .short <- .foceiAnalyticNoReason
     }
     assign(".analyticReason", .why, envir = e)
     assign(".analyticReasonShort", .foceiAnalyticClip(.short), envir = e)
     assign(
       ".analyticWarnNoFallback",
-      .covNotUsableMsg("analytic", .short, "covFallback lists no fallback"),
+      .covNotUsableMsg("analytic", .short, "no fallback"),
       envir = e
     )
     assign("covTried", data.frame(method = "analytic", outcome = .why), envir = e)
@@ -2675,8 +2681,14 @@
       return(.foceiAnalyticNote(paste0("no parameter for direction ", dirs[.etaDir[li]])))
     }
     sc <- shi21CentralWrap(Aflat, params, f0, idx, .fdEps) # C++ shi21Central
-    if (is.null(sc$gr) || !all(is.finite(sc$gr))) {
-      # a failed solve reaches here as NaN; keep what it noted
+    # a failed solve reaches shi21Central as NaN, from which it can still return a
+    # zero difference, so the step it chose has to solve on both sides
+    .tp <- params
+    .tp[idx] <- params[idx] + sc$h
+    .tm <- params
+    .tm[idx] <- params[idx] - sc$h
+    if (is.null(sc$gr) || !all(is.finite(sc$gr)) || is.null(Aflat(.tp)) || is.null(Aflat(.tm))) {
+      # keep what the failing solve noted
       if (is.null(.foceiAnalyticWhy$detail)) {
         .foceiAnalyticNote("a non-finite third-order sensitivity")
       }
@@ -2905,7 +2917,7 @@
       )
     }
     if (!all(is.finite(E0[[i]]$A)) || !all(is.finite(E0[[i]]$Ath))) {
-      return(.foceiAnalyticNote(paste0("a non-finite sensitivity for subject ", labels[i])))
+      return(.foceiAnalyticNote(paste0("subject ", labels[i], ": a non-finite sensitivity")))
     }
   }
   E0

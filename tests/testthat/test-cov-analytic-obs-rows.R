@@ -9,7 +9,8 @@
 # record 0.05 h away).  The strict check evaluates the covariance at the base fit's
 # estimates (maxOuterIterations = 0), where only the re-solved EBEs differ (largest
 # measured SE difference: 3.8e-4 at the observation time, 9.8e-4 for the record
-# 0.05 h away).  The subject solve itself is pinned in test-cov-analytic-units.R.
+# 0.05 h away).  The subject solve itself, which compiles an augmented model, is the
+# last test here.
 
 nmTest({
   .orMod <- function() {
@@ -165,5 +166,72 @@ nmTest({
     # 9.3e-3 in an SE); 0.01 and 0.02 are about 11x and 2x that
     expect_equal(.r$fit$theta, .b$fit$theta, tolerance = 0.01)
     expect_equal(.orSe(.r$fit)[names(.orSe(.b$fit))], .orSe(.b$fit), tolerance = 0.02)
+  })
+
+  test_that("the subject solve keeps the observation records, whatever else shares their time", {
+    skip_on_cran()
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(.mod))
+    .am <- .foceiAnalyticAugModelDirs(.ui, paste0("ETA_", 1:3, "_"))
+    expect_false(is.null(.am))
+    .thr <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
+    .thr <- .thr[order(.thr$ntheta), ]
+    .p <- c(
+      stats::setNames(.thr$est, paste0("THETA_", .thr$ntheta, "_")),
+      stats::setNames(rep(0, 3), paste0("ETA_", 1:3, "_"))
+    )
+    .s1 <- nlmixr2data::theo_sd[nlmixr2data::theo_sd$ID == 1, ]
+    .s1$MDV <- as.integer(.s1$EVID != 0)
+    .t <- .s1$TIME[.s1$EVID == 0]
+    .add <- function(evid, dv, mdv) {
+      .r <- .s1[.s1$EVID == 0, ][1, ]
+      .r$TIME <- .t[3]
+      .r$EVID <- evid
+      .r$DV <- dv
+      .r$MDV <- mdv
+      .d <- rbind(.s1, .r)
+      .d[order(.d$TIME, -.d$EVID), ]
+    }
+    .e0 <- .foceiAnalyticSolveFA(.am, .p, .s1, .t)
+    expect_length(.e0$f, length(.t))
+    # the predictions agree to 1e-9: measured 0 for the missing-DV and MDV = 1
+    # records and 1.1e-11 for the EVID 2 one, whose compartment event restarts the
+    # solver at that time
+    for (.d in list(.add(2L, NA_real_, 1L), .add(0L, NA_real_, 0L), .add(0L, 5, 1L))) {
+      .e <- .foceiAnalyticSolveFA(.am, .p, .d, .t)
+      expect_length(.e$f, length(.t))
+      expect_equal(.e$f, .e0$f, tolerance = 1e-9)
+    }
+    # the times only confirm the rows; a mismatch is a NULL with the mismatch noted
+    .foceiAnalyticWhyReset()
+    expect_null(.foceiAnalyticSolveFA(.am, .p, .s1, c(.t, 30)))
+    expect_identical(
+      .foceiAnalyticWhy$detail,
+      sprintf("%d observation rows solved for %d observations", length(.t), length(.t) + 1L)
+    )
+    # a failed rxSolve() is noted on one line
+    .foceiAnalyticWhyReset()
+    expect_null(.foceiAnalyticRxSolve(.am, .p[-1], .s1, 1e-8))
+    expect_match(.foceiAnalyticWhy$detail, "^rxSolve: ")
+    expect_false(grepl("\n", .foceiAnalyticWhy$detail, fixed = TRUE))
   })
 })

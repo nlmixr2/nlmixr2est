@@ -1,11 +1,12 @@
-# Every way covMethod="analytic" can decline gives a reason.  Each helper the live
-# hook (.foceiCalcRanalytic) depends on is made to fail -- return NULL, noting
+# Every way covMethod="analytic" can decline gives a reason.  Each helper in
+# .covAnalyticDeclineLeaves (helper-cov-analytic-declines.R, kept complete by the
+# static gate in test-cov-analytic-units.R) is made to fail -- return NULL, noting
 # nothing -- one at a time, on each assembly: add/prop FOCEI, add + prop FOCE (the
 # frozen-R0 eta = 0 solve), the general (f,R) assembly under FOCEI and FOCE, and
-# AGQ.  A decline must record a reason other than the "no reason recorded"
-# sentinel, the same in covTried, and every helper must make the covariance decline
-# on some assembly, except the batched solve, whose failure the per-subject solve
-# recovers on every assembly.  The reason texts themselves are pinned in
+# AGQ.  A decline must record a reason other than the internal-error sentinel, the
+# same in covTried, and every helper must make the covariance decline on some
+# assembly, except the batched solve, whose failure the per-subject solve recovers on
+# every assembly.  The reason texts are pinned in
 # test-cov-analytic-reason.R.
 
 nmTest({
@@ -87,27 +88,7 @@ nmTest({
   .dcNull <- function(...) NULL
 
   # helpers before the assemblies split, then those of the solves and assemblies
-  .dcLeaves <- list(
-    ".foceiEtaThetaMap",
-    ".foceiAnalyticErrFull",
-    ".foceiAnalyticDirections",
-    ".foceiOmegaPairs",
-    ".omegaVarCovDeriv",
-    ".foceiAnalyticAugModelDirs",
-    ".nmSubjectObs",
-    ".foceiAnalyticSolveAll",
-    ".foceiAnalyticRxSolve",
-    ".foceiAnalyticSolveAllFD3",
-    c(".foceiAnalyticSolveAllFD3", ".foceiAnalyticSolveSubjectFD3"),
-    c(".foceiAnalyticSolveAllFD3", ".foceiAnalyticSolveFA"),
-    ".foceiAnalyticExpandSigma",
-    ".foceiAnalyticSubjectR",
-    ".foceiAnalyticSubjectRfoce",
-    "foceiRAllFR_",
-    "foceiRAllFoceFR_",
-    ".foceiAnalyticSgNames",
-    ".foceiAnalyticSolve"
-  )
+  .dcLeaves <- .covAnalyticDeclineLeaves
   .dcBatch <- ".foceiAnalyticSolveAllFD3"
 
   .dcPaths <- list(
@@ -150,11 +131,11 @@ nmTest({
           next
         }
         .why <- .r$env$.analyticReason
-        expect_false(identical(.why, "no reason recorded"), label = .label)
+        expect_false(identical(.why, .foceiAnalyticNoReason), label = .label)
         expect_true(nzchar(.why), label = .label)
         expect_identical(.r$env$covTried$method[1], "analytic", label = .label)
         expect_identical(.r$env$covTried$outcome[1], .why, label = .label)
-        expect_false(identical(.r$env$.analyticReasonShort, "no reason recorded"), label = .label)
+        expect_false(identical(.r$env$.analyticReasonShort, .foceiAnalyticNoReason), label = .label)
         expect_lt(nchar(.r$env$.analyticWarnNoFallback), 75L, label = .label)
         .declined <- c(.declined, .name)
       }

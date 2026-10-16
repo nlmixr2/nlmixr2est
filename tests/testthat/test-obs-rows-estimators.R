@@ -4,11 +4,11 @@
 # three fits must be the same fit, and near the one without the record.  The
 # record adds a solver stop, which moved the estimates at most 3.0e-3 relative for
 # vae, 2.9e-5 for emvi and 8.4e-8 for saem; the tolerances are about 3x, 30x and
-# 100x that.  On origin/main only the vae test fails (a missing DV ends the fit on
-# missing values); the others are the evidence that those methods were not
-# affected.  Also here: a subject with no observations (vae and emvi stopped on a
-# subject-count mismatch) and data out of time order (vae paired the observations
-# in data order and moved by 1.2e-2).
+# 100x that.  The vae test pins the missing-DV record that ended its fit on missing
+# values; emvi, fbvi and saem are pinned as reading their data the same way.  Also
+# here: a subject with no observations (vae and emvi stopped on a subject-count
+# mismatch) and data out of time order (vae paired the observations in data order,
+# moving its estimates by 1.2e-2; emvi and fbvi solve the translated data).
 
 nmTest({
   .ovMod <- function() {
@@ -128,7 +128,7 @@ nmTest({
     }
   })
 
-  test_that("est = \"vae\" gives the same fit for data out of time order", {
+  test_that("est = \"vae\", \"emvi\" and \"fbvi\" give the same fit for data out of time order", {
     skip_on_cran()
     # each subject's observations in reverse time order
     .u <- do.call(
@@ -137,9 +137,16 @@ nmTest({
         rbind(.s[.s$EVID != 0, ], .s[rev(which(.s$EVID == 0)), ])
       })
     )
-    .s <- suppressMessages(suppressWarnings(nlmixr2(.ovMod, .ovBase, est = "vae", control = .ovVaeControl())))
-    .r <- suppressMessages(suppressWarnings(nlmixr2(.ovMod, .u, est = "vae", control = .ovVaeControl())))
-    expect_equal(.r$theta, .s$theta)
-    expect_equal(.r$omega, .s$omega)
+    .ctl <- list(
+      vae = .ovVaeControl(),
+      emvi = emviControl(iters = 150L, seed = 7L, print = 0L),
+      fbvi = fbviControl(iters = 150L, seed = 7L, print = 0L)
+    )
+    for (.est in names(.ctl)) {
+      .s <- suppressMessages(suppressWarnings(nlmixr2(.ovMod, .ovBase, est = .est, control = .ctl[[.est]])))
+      .r <- suppressMessages(suppressWarnings(nlmixr2(.ovMod, .u, est = .est, control = .ctl[[.est]])))
+      expect_equal(.r$theta, .s$theta, label = .est)
+      expect_equal(.r$omega, .s$omega, label = .est)
+    }
   })
 })
