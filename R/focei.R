@@ -6018,7 +6018,7 @@ attr(nlmixr2Est.focei, "iov") <- TRUE
   ) {
     return(invisible())
   }
-  .covWarn(sprintf("\"%s\" is conditional on the ETAs; setCov() is marginal", env$covMethod))
+  .covWarn(sprintf("\"%s\" is conditional on the ETAs; setCov() gives the marginal one", env$covMethod))
   invisible()
 }
 

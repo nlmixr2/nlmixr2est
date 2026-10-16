@@ -146,11 +146,14 @@
 }
 
 #' A reason clipped for a warning or printed line (CLAUDE.md: $runInfo lines < 75 chars)
+#'
+#' 54 columns, not [.covClip()]'s 74: the reason sits inside the fixed text of
+#' the "analytic errN: " warning and of the printed covType line.
 #' @param x the text
-#' @param width the most characters to keep, the ellipsis included
+#' @param width the most display columns to keep, the ellipsis included
 #' @noRd
 .foceiAnalyticClip <- function(x, width = 54L) {
-  as.character(cli::ansi_strtrim(x, width, ellipsis = "..."))
+  .covClip(x, width)
 }
 
 # The reason a decline gives when nothing recorded one: unreachable when every decline

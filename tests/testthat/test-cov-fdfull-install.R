@@ -153,10 +153,9 @@ test_that(".covSameName ignores decorations but not the scope", {
 })
 
 test_that(".covRepairWarn reports an |x| repair once, and only of a non-FD covariance", {
-  expect_warning(
-    .covRepairWarn("imp", "|imp|"),
-    "\"imp\" not positive definite; installed as \"|imp|\" (sqrtm)",
-    fixed = TRUE
+  expect_identical(
+    capture_warnings(.covRepairWarn("imp", "|imp|")),
+    "\"imp\" is not positive definite; installed as \"|imp|\" (sqrtm)"
   )
   # a stashed repaired matrix was reported when it was computed
   expect_no_warning(.covRepairWarn("|linFim| (full)", "|linFim|"))

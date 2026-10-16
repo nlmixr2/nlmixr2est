@@ -143,9 +143,8 @@
   checkmate::assertString(why)
   checkmate::assertString(tail)
   .fixed <- cli::ansi_nchar(sprintf("\"%s\" not usable (); %s", request, tail), type = "width")
-  .why <- as.character(cli::ansi_strtrim(why, max(10L, 74L - .fixed), ellipsis = "..."))
-  .w <- sprintf("\"%s\" not usable (%s); %s", request, .why, tail)
-  as.character(cli::ansi_strtrim(.w, 74L, ellipsis = "..."))
+  .why <- .covClip(why, max(10L, 74L - .fixed))
+  .covClip(sprintf("\"%s\" not usable (%s); %s", request, .why, tail))
 }
 
 #' The one warning a covariance walk gives when it falls back or gives none
