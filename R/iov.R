@@ -209,8 +209,8 @@ nlmixr2iovVarSd <- function(val) {
 #'
 #' A method in neither list is refused a model with a repeated block
 #' (`.nlmixr0preProcessAssertSameBlock()`).  An out-of-tree method opts in
-#' with `attr(nlmixr2Est.<est>, "sameBlock") <- TRUE` (see `?nlmixr2Est`), or
-#' with `"iovSame"`.
+#' with `attr(nlmixr2Est.<est>, "sameBlock")`, `TRUE` or `"fixed"` (see
+#' `?nlmixr2Est`), or with `"iovSame"`.
 #'
 #' @noRd
 .sameBlockMethods <- c(
@@ -240,7 +240,17 @@ nlmixr2iovVarSd <- function(val) {
     return(TRUE)
   }
   .fn <- utils::getS3method("nlmixr2Est", est, optional = TRUE)
-  !is.null(.fn) && (isTRUE(attr(.fn, "sameBlock")) || isTRUE(attr(.fn, "iovSame")))
+  !is.null(.fn) && (.sameBlockKeeps(.fn) || identical(attr(.fn, "sameBlock"), "fixed"))
+}
+
+#' Whether a registered method declares it estimates a repeated block's copies
+#' as one ("sameBlock" TRUE, or "iovSame" TRUE); "fixed", omega taken as
+#' given, is accepted but is no alternative to name
+#' @param fn the method
+#' @return `TRUE` or `FALSE`
+#' @noRd
+.sameBlockKeeps <- function(fn) {
+  isTRUE(attr(fn, "sameBlock")) || isTRUE(attr(fn, "iovSame"))
 }
 
 #' The methods a refusal names: the user-facing ones that keep the tie, then
@@ -251,7 +261,7 @@ nlmixr2iovVarSd <- function(val) {
   .alt <- Filter(.isSameBlockMethod, names(.nlmixr2EstTypeInfo))
   .v <- sub("^nlmixr2Est[.]", "", as.character(utils::methods("nlmixr2Est")))
   .v <- setdiff(.v, c(.iovSameMethods, names(.sameBlockMethods), names(.nlmixr2EstTypeInfo), "default"))
-  c(.alt, Filter(.isSameBlockMethod, .v))
+  c(.alt, Filter(function(e) .sameBlockKeeps(utils::getS3method("nlmixr2Est", e)), .v))
 }
 
 #' Refuse a repeated (`same()`) omega block to a method that would drop the tie
