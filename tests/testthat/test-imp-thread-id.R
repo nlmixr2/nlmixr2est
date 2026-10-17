@@ -26,27 +26,51 @@
   .d[.d$ID %in% 1:3, ]
 }
 
-# The parallel subject iterations that began on another thread's rxode2 id
+# c(checked, miss): the parallel subject iterations checked, and those that
+# began on another thread's rxode2 id, since the last reset
 .impThreadMiss <- function(reset = FALSE) {
   .Call(`_nlmixr2est_nmRxThreadIdMissTest`, reset, PACKAGE = "nlmixr2est")
 }
 
-nmTest({
-  test_that("imp and impmap give each thread its own rxode2 id for every subject", {
-    skip_on_cran()
-    .old <- rxode2::getRxThreads()
-    rxode2::setRxThreads(2L)
-    withr::defer(rxode2::setRxThreads(.old))
-    # the objective does not depend on the thread count (1, 2 and 3 threads
-    # give these to 10 digits)
-    .want <- c(imp = 18.5322024276, impmap = 18.5303802572)
-    for (.est in names(.want)) {
-      .impThreadMiss(TRUE)
-      .fit <- suppressMessages(suppressWarnings(
-        nlmixr2(.impThreadMod, .impThreadData(), .est, control = list(print = 0L))
-      ))
-      expect_equal(.fit$objective, .want[[.est]], tolerance = 1e-9, label = .est)
-      expect_identical(.impThreadMiss(), 0L, label = .est)
-    }
-  })
-})
+# Turn the thread-id check on or off; returns whether it was on
+.impThreadTrack <- function(on) {
+  .Call(`_nlmixr2est_nmRxThreadIdTrack`, on, PACKAGE = "nlmixr2est")
+}
+
+.impThreadFit <- function(est, nthr) {
+  rxode2::setRxThreads(nthr)
+  suppressMessages(suppressWarnings(
+    nlmixr2(.impThreadMod, .impThreadData(), est, control = list(print = 0L))
+  ))
+}
+
+# Run on every CI runner, Windows' CRAN-only subset included, where the stale
+# id crashed; not on CRAN itself
+nmTest(
+  {
+    test_that("imp and impmap give each thread its own rxode2 id for every subject", {
+      skip_if(
+        !identical(Sys.getenv("NOT_CRAN"), "true") && !isTRUE(as.logical(Sys.getenv("CI", "false"))),
+        "on CRAN"
+      )
+      .old <- rxode2::getRxThreads()
+      withr::defer(rxode2::setRxThreads(.old))
+      .wasOn <- .impThreadTrack(TRUE)
+      withr::defer(.impThreadTrack(.wasOn))
+      .want <- c(imp = 18.5322024276, impmap = 18.5303802572)
+      for (.est in names(.want)) {
+        .one <- .impThreadFit(.est, 1L)
+        .impThreadMiss(TRUE)
+        .two <- .impThreadFit(.est, 2L)
+        .m <- .impThreadMiss()
+        # the region forked, so the check ran
+        expect_gt(.m[["checked"]], 0L, label = .est)
+        expect_identical(.m[["miss"]], 0L, label = .est)
+        # the objective does not depend on the thread count
+        expect_equal(.two$objective, .one$objective, tolerance = 1e-10, label = .est)
+        expect_equal(.two$objective, .want[[.est]], tolerance = 1e-6, label = .est)
+      }
+    })
+  },
+  skipOnCran = FALSE
+)

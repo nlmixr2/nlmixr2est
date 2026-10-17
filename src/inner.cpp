@@ -256,32 +256,49 @@ extern "C" {
   iniRcppTrust
 
 // rxode2's setRxThreadId(), and the wrapper nmRxThreadIdTrack() puts in its
-// place, which also records the id per thread for nmRxThreadIdCheck()
+// place while the check is on, which also records the id per thread
 static setRxThreadId_t nmSetRxThreadIdRx = NULL;
 static void nmSetRxThreadIdTracked(int id) {
   nmRxThreadIdSet = id;
   nmSetRxThreadIdRx(id);
 }
 
-SEXP _nlmixr2est_nmRxThreadIdTrack(void) {
-  if (setRxThreadId != NULL && setRxThreadId != nmSetRxThreadIdTracked) {
-    nmSetRxThreadIdRx = setRxThreadId;
-    setRxThreadId = nmSetRxThreadIdTracked;
+// For unit tests: `on` TRUE puts the recording wrapper in place of rxode2's
+// setRxThreadId() and turns on nmForEachSubject()'s thread-id check
+// (nmParallel.h); FALSE puts rxode2's back.  Returns whether it was on.
+SEXP _nlmixr2est_nmRxThreadIdTrack(SEXP onS) {
+  bool was = nmRxThreadIdOn;
+  if (Rf_asLogical(onS) == TRUE) {
+    if (setRxThreadId != NULL && setRxThreadId != nmSetRxThreadIdTracked) {
+      nmSetRxThreadIdRx = setRxThreadId;
+      setRxThreadId = nmSetRxThreadIdTracked;
+    }
+  } else if (setRxThreadId == nmSetRxThreadIdTracked) {
+    setRxThreadId = nmSetRxThreadIdRx;
   }
-  return R_NilValue;
+  nmRxThreadIdOn = (setRxThreadId == nmSetRxThreadIdTracked);
+  return Rf_ScalarLogical(was);
 }
 
-// For unit tests: the parallel subject iterations that began on another
-// thread's id (nmRxThreadIdCheck()) since the last reset; `reset` zeroes it.
+// For unit tests: c(checked, miss), the parallel subject iterations checked and
+// those that began on another thread's id since the last reset; `reset` zeroes
+// both.  The check reads only the id at the start of each nmForEachSubject()
+// iteration: a body that sets a wrong id and solves in the same iteration, and
+// a hand-written region (outerSolveFill()'s), are not seen, so miss = 0 says
+// nothing about them.
 SEXP _nlmixr2est_nmRxThreadIdMissTest(SEXP reset) {
-  int n = nmRxThreadIdMiss.load(std::memory_order_relaxed);
-  if (Rf_asLogical(reset) == TRUE) nmRxThreadIdMiss.store(0, std::memory_order_relaxed);
-  return Rf_ScalarInteger(n);
+  bool r = Rf_asLogical(reset) == TRUE;
+  SEXP ret = PROTECT(Rf_allocVector(INTSXP, 2));
+  INTEGER(ret)[0] = r ? nmRxThreadIdChecked.exchange(0) : nmRxThreadIdChecked.load();
+  INTEGER(ret)[1] = r ? nmRxThreadIdMiss.exchange(0) : nmRxThreadIdMiss.load();
+  SEXP nm = PROTECT(Rf_allocVector(STRSXP, 2));
+  SET_STRING_ELT(nm, 0, Rf_mkChar("checked"));
+  SET_STRING_ELT(nm, 1, Rf_mkChar("miss"));
+  Rf_setAttrib(ret, R_NamesSymbol, nm);
+  UNPROTECT(2);
+  return ret;
 }
 }
-
-thread_local int nmRxThreadIdSet = -1;
-std::atomic<int> nmRxThreadIdMiss{0};
 
 #define _(String) (String)
 
