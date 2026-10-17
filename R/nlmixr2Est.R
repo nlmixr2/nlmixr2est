@@ -52,6 +52,16 @@
 #'   `dcauchy()` and `invWishart()` are refused
 #' - `"all"` -- the method handles everything, so nothing is checked
 #'
+#' A repeated omega block (`same()`) ties its copies' variances to its
+#' master's.  A model with one is refused by any method that has not said it
+#' keeps that tie, so a method that would estimate the copies apart fails with
+#' an explanation instead of dropping the tie.  A method that estimates the
+#' copies as one, or does not estimate omega at all, says so with
+#'
+#' ```
+#' attr(nlmixr2Est.myMethod, "sameBlock") <- TRUE
+#' ```
+#'
 #' @export
 nlmixr2Est <- function(env, ...) {
   .shi21RatioCensor()
