@@ -90,17 +90,26 @@
     takes the one-sided difference on the other side.  It did that already
     when the minus side failed; when the plus side failed at every step, it
     returned 0.
-  - When neither side solves, `nlm` and `nlminb` stop with the optimizer's
-    error.  They could return the initial estimates without a warning.
+  - When neither side solves, every nlm-family optimizer (`nlm`, `nlminb`,
+    `optim`, `n1qn1`, `lbfgsb3c`, `trust`) stops with an error naming the
+    parameter ("the gradient of 'x' is not finite: its finite differences
+    solved on neither side").  Its slope used to be 0, so the parameter kept
+    its initial value without a warning; `nlm` and `nlminb` returned every
+    initial estimate.
   - FOCEi keeps such an eta's slope (and its eta Hessian column) at 0 and
     says how often in the fit's `runInfo` ("eta finite differences solved on
-    neither side N times; slope 0").  The outer `shi21maxOuter` gradient asks
-    for a reset, as the other outer gradients do, and `est = "imp"` drops the
-    sample.
-  - A step search also stops at a step too small to move its parameter.  It
-    used to difference the parameter with itself and report 0.
+    neither side N times; slope 0").  With `innerOpt = "trust"` the
+    quasi-Newton Hessian methods now start from that finite Hessian; a
+    `"bofill"` fit of such a model could end at a meaningless objective.  The
+    outer `shi21maxOuter` gradient asks for a reset, as the other outer
+    gradients do, and `est = "imp"`, `"impmap"` and the variational methods
+    drop the sample.
+  - A step search also stops at a step shrunk too small to move its
+    parameter.  It used to difference the parameter with itself and report 0.
+  - A search allowed no iterations (`shi21maxFD = 0` and the like) takes the
+    difference at its starting step; its first use gave a slope of 0.
 
-  Fits whose differences solve are unchanged.
+  Fits whose differences solve are unchanged, apart from that last case.
 
 - `foceiControl()` now rejects the integer codes it has no case for,
   `eventType = 1` and `optimHessType = 2` or `optimHessCovType = 2`, with an
