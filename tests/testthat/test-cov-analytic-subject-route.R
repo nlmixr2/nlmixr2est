@@ -81,6 +81,30 @@ nmTest({
     })
   }
 
+  # combined1 with both sigmas fixed: its solve carries Rsig, but no sigma
+  # direction is dropped
+  .srC1Fixed <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- fix(0.5)
+      prop.sd <- fix(0.1)
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd) + prop(prop.sd) + combined1()
+    })
+  }
+
   .srBoxCox <- function() {
     ini({
       tka <- 0.45
@@ -141,12 +165,13 @@ nmTest({
   }
 
   .srCase <- list(
-    addFocei = list(model = .srBase, est = "focei"),
-    addPropFoce = list(model = .srAddProp, est = "foce"),
-    generalFocei = list(model = .srC1, est = "focei"),
-    generalFoce = list(model = .srC1, est = "foce"),
-    generalFocePlus = list(model = .srC1, est = "foce", ctl = list(foce = "foce+")),
-    boxCoxFocei = list(model = .srBoxCox, est = "focei")
+    addFocei = list(model = .srBase, est = "focei", label = "analytic (full)"),
+    addPropFoce = list(model = .srAddProp, est = "foce", label = "|r| (analytic)"),
+    generalFocei = list(model = .srC1, est = "focei", label = "analytic (full)"),
+    generalFoce = list(model = .srC1, est = "foce", label = "analytic (full)"),
+    generalFocePlus = list(model = .srC1, est = "foce", ctl = list(foce = "foce+"), label = "analytic (full)"),
+    boxCoxFocei = list(model = .srBoxCox, est = "focei", label = "analytic (full)"),
+    fixedSigmaFocei = list(model = .srC1Fixed, est = "focei", label = "analytic (full)")
   )
 
   test_that("the per-subject solve gives the batched solve's analytic covariance", {
@@ -160,9 +185,19 @@ nmTest({
       .subject <- do.call(.srCov, c(list(.fit, .c$est, batch = FALSE), .ctl))
       expect_identical(.batched$calls, 0L, label = .label)
       expect_identical(.subject$calls, .nsub, label = .label)
-      expect_match(.batched$fit$covMethod, "analytic", fixed = TRUE, label = .label)
+      expect_identical(.batched$fit$covMethod, .c$label, label = .label)
       .srExpectSame(.subject$fit, .batched$fit, .label)
     }
+  })
+
+  test_that("setCov(fit, \"analytic\") installs the analytic covariance with every sigma fixed", {
+    skip_on_cran()
+    # the solve carries Rsig and no sigma direction is dropped: the analytic
+    # covariance is computed, as the batched route gives it
+    .fit <- .srFit(.srC1Fixed, "focei", covMethod = "")
+    suppressMessages(suppressWarnings(setCov(.fit, "analytic")))
+    expect_identical(.fit$covMethod, "analytic")
+    expect_true(all(is.finite(sqrt(diag(.fit$cov)))))
   })
 
   test_that("the SD-scale IOV covariance is the same with Route A on and off", {

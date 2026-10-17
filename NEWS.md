@@ -34,7 +34,10 @@
   batched augmented solve fails: the per-subject solve it falls back to rebuilds
   the residual-error slots as the batched one does.  Since 7.0.2 that solve
   failed ("number of items to replace is not a multiple of replacement length")
-  and the fit fell back to the finite-difference covariance.
+  and the fit fell back to the finite-difference covariance.  A general (f,R)
+  model with no estimated sigma (`combined1` with both sigmas fixed, or
+  `boxCox()` with its additive sigma fixed) now gets the analytic covariance
+  too; `setCov(fit, "analytic")` used to stop on it.
 
 ### Estimation
 
