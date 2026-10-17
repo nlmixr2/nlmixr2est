@@ -187,6 +187,106 @@ test_that("an id-level same() block beside IOV fits in both expansions", {
   }
 })
 
+# an id-level same() block and no IOV: eta.v repeats eta.cl's block
+.idSameMod <- function() {
+  .sameMod("eta.cl ~ 0.3; eta.v ~ same()", "cl <- exp(tcl + eta.cl)\n v <- exp(tv + eta.v)")
+}
+
+.sameRefusal <- function(est) {
+  paste0(
+    "'",
+    est,
+    "' does not honour a repeated (same()) omega block\n",
+    "use fo, foi, foce, focei, focep, laplace, agq, emvi, fbvi or vae"
+  )
+}
+
+.errMsg <- function(expr) {
+  tryCatch(
+    {
+      expr
+      NULL
+    },
+    error = conditionMessage
+  )
+}
+
+test_that("every method that would drop a same() tie refuses the model", {
+  skip_on_cran()
+  .ui <- rxode2::rxode2(.idSameMod())
+  .ests <- nlmixr2AllEst()
+  .refused <- .ests[!vapply(.ests, .isSameBlockMethod, logical(1), USE.NAMES = FALSE)]
+  # measured on a same() model: nlme drops the tie; saem and the imp, qrpem and
+  # npag families crash on it; the optimizers refuse any eta
+  expect_identical(
+    sort(.refused),
+    sort(c(
+      "nlme",
+      "saem",
+      "imp",
+      "impmap",
+      "qrpem",
+      "npag",
+      "npb",
+      "inpag",
+      "inpb",
+      "mnpag",
+      "mnpb",
+      "bfgs",
+      "bobyqa",
+      "brent",
+      "cg",
+      "lbfgsb",
+      "lbfgsb3c",
+      "n1qn1",
+      "neldermead",
+      "newuoa",
+      "nlm",
+      "nlminb",
+      "nls",
+      "optim",
+      "sann",
+      "trust",
+      "uobyqa"
+    ))
+  )
+  for (.e in .refused) {
+    expect_identical(.errMsg(.nlmixr0preProcessAssertSameBlock(.ui, .e, NULL, NULL)), .sameRefusal(.e))
+  }
+  for (.e in setdiff(.ests, .refused)) {
+    expect_null(.nlmixr0preProcessAssertSameBlock(.ui, .e, NULL, NULL), label = .e)
+  }
+  # an occasion block without same() is no repeated block
+  .iov <- rxode2::rxode2(.diagMod())
+  for (.e in .ests) {
+    expect_null(.nlmixr0preProcessAssertSameBlock(.iov, .e, NULL, NULL), label = .e)
+  }
+})
+
+test_that("the refusal runs before the IOV hooks and reaches the user", {
+  skip_on_cran()
+  expect_identical(preProcessHooks()[1], ".nlmixr0preProcessAssertSameBlock")
+  expect_identical(
+    .errMsg(suppressMessages(nlmixr2est::nlmixr2(.idSameMod(), .sameData(), "saem", saemControl(print = 0)))),
+    .sameRefusal("saem")
+  )
+})
+
+test_that("an out-of-tree method keeps a same() block through its attribute", {
+  skip_on_cran()
+  .ns <- asNamespace("nlmixr2est")
+  .fn <- function(env, ...) NULL
+  attr(.fn, "sameBlock") <- TRUE
+  registerS3method("nlmixr2Est", "sameBlockTest", .fn, envir = .ns)
+  withr::defer(rm(list = "nlmixr2Est.sameBlockTest", envir = .ns[[".__S3MethodsTable__."]]))
+  expect_true(.isSameBlockMethod("sameBlockTest"))
+  attr(.fn, "sameBlock") <- NULL
+  registerS3method("nlmixr2Est", "sameBlockTest", .fn, envir = .ns)
+  expect_false(.isSameBlockMethod("sameBlockTest"))
+  expect_false(.isSameBlockMethod(NA_character_))
+  expect_false(.isSameBlockMethod(character(0)))
+})
+
 test_that("two occasion parameters get their occasion number, not NA", {
   skip_on_cran()
   # `.dt`'s occasion column is built from the FIRST occasion parameter's
