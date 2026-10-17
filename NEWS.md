@@ -17,6 +17,16 @@
   rewrite copied its template rows from an eta that was not there and its
   output step lost the shape of tables left with one column.
 
+- A repeated (`same()`) occasion-level block, such as `iov.v ~ same() | occ`,
+  is not supported, and every estimation method that handles IOV now says so
+  before it fits: "same() is not supported for an occasion-level block:
+  'iov.v' | occ".  `focei`, `imp`, `laplace`, `agq` and `npag` used to run the
+  whole fit and then stop with "the 'same()' condition 'occ:same:iov.cl'
+  refers to 'iov.cl', which is not in this block", `saem` stopped with
+  "object 'time' not found", and `vae` estimated the two variances apart,
+  dropping the tie.  A repeated subject-level block (`eta.v ~ same()`) is not
+  affected, and `rxSolve` still simulates the model.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
