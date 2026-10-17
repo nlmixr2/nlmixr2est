@@ -1,3 +1,14 @@
+# nlmixr2est (development version)
+
+## Bug fixes
+
+- The NPDE of censored observations is now computed from the data's DV with
+  `tableControl(censMethod =)` "omit", "truncated-normal", "ipred" and
+  "pred", so it changes for censored data under those methods.  The
+  residual step, which runs first, wrote its own values for the censored
+  rows (NA, or imputed ones) into the predictions the NPDE step then read.
+  "cdf" and "epred", and the residual columns themselves, are unchanged.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
