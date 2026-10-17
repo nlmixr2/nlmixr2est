@@ -1,3 +1,46 @@
+# nlmixr2est (development version)
+
+## Bug fixes
+
+- A finite-difference gradient or Hessian no longer takes a slope of 0 where
+  its differences do not solve.
+  - When the steps on one side of a parameter never solve, the step search
+    takes the one-sided difference on the other side.  It did that already
+    when the minus side failed; when the plus side failed at every step, it
+    returned 0.
+  - When neither side solves, every nlm-family optimizer (`nlm`, `nlminb`,
+    `optim`, `n1qn1`, `lbfgsb3c`, `trust`) stops with an error naming the
+    parameter ("the gradient of 'x' is not finite: its finite differences
+    solved on neither side").  Its slope used to be 0, so the parameter kept
+    its initial value without a warning; `nlm` and `nlminb` returned every
+    initial estimate.  `nls` keeps its handling: it takes such a slope as 0
+    and warns ("solved items that were NaN/NA were replaced with 0.0").
+  - FOCEi keeps such an eta's slope (and its eta Hessian column) at 0 and
+    says how often in the fit's `runInfo` ("eta finite differences solved on
+    neither side N times; slope 0").  With `innerOpt = "trust"` the
+    quasi-Newton Hessian methods now start from that finite Hessian; a
+    `"bofill"` fit of such a model could end at a meaningless objective.  The
+    outer `shi21maxOuter` gradient asks for a reset, as the other outer
+    gradients do, and `est = "imp"`, `"impmap"` and the variational methods
+    drop the sample.
+  - A step search also stops at a step shrunk too small to move its
+    parameter, and a difference at a step that does not move it gives no
+    slope.  It used to difference the parameter with itself and report 0.
+  - A search allowed no iterations (`shi21maxFD = 0` and the like) takes the
+    difference at its starting step.  It used to give a slope of 0 on the
+    evaluation that searched for the step (for an eta, the first for each
+    subject); later evaluations reuse the saved step and were not affected.
+
+  Fits whose differences solve are unchanged, apart from that last case.
+
+- `foceiControl()` now rejects the integer codes it has no case for,
+  `eventType = 1` and `optimHessType = 2` or `optimHessCovType = 2`, with an
+  error that names the accepted values.  They used to be accepted:
+  `eventType = 1` left the finite-difference eta gradient at 0, and Hessian
+  type 2 gave a Hessian of zeros.  The names and the codes the control
+  stores (`eventType` 2 and 3, the Hessian types 1 and 3) are accepted as
+  before.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes

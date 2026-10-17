@@ -16,7 +16,7 @@ nmTest({
     f(.env$par.ini + 0)
   }
 
-  test_that("a Hessian column with both legs non-finite leaves theta where it was", {
+  test_that("a Hessian column with both legs non-finite is NA and leaves theta where it was", {
     skip_on_cran()
     # exp() overflows to Inf once |E0 - 0.5| > 1.31e-3, so the gradient in E0
     # is infinite on both sides of E0 = 0.5 at any step bigger than that.
@@ -46,9 +46,12 @@ nmTest({
       r <- .nlmixrNlmFunC(x)
       expect_identical(x, x0)
       .h <- attr(r, "hessian")
-      # E0's column has no usable difference; the others do
-      expect_identical(.h[1, 1], 0)
-      expect_true(all(is.finite(.h)))
+      # E0's column has no usable difference, so it is NA, and the symmetrized
+      # matrix carries that into E0's row; the others are differences
+      # (is.na(): the symmetrizing sum can carry NA or NaN)
+      expect_identical(is.na(unname(.h[1, ])), rep(TRUE, 3))
+      expect_identical(is.na(unname(.h[, 1])), rep(TRUE, 3))
+      expect_true(all(is.finite(.h[-1, -1])))
       expect_true(all(.h[-1, -1] != 0))
     })
   })
