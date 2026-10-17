@@ -37,7 +37,7 @@
   not one; with a missing DV at an observation time `est = "vae"` stopped on
   missing values.  The three also give data without an EVID column the EVID
   FOCEi gives it: with an AMT column, an MDV column stands for the EVID, and
-  without one a NaN AMT is a dose, where all three read it as no dose;
+  without one a NaN AMT is a dose, which all three used to read as no dose;
   with no AMT column (for example ID, TIME and DV only) every record is EVID 0,
   where `"emvi"` and `"fbvi"` used to stop with "replacement has 0 rows".
   These estimators and the benchmark observation count now stop with FOCEi's
