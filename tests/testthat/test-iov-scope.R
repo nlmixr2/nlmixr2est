@@ -128,6 +128,29 @@ test_that(".uiHasIov() reads the ui, before and after the IOV rewrite", {
   expect_identical(.uiIovNames(rxode2::assertRxUi(.isLlModel(TRUE))), "iov.b")
 })
 
+test_that(".uiIovNames() names the variables of a correlated occasion block, not its pair", {
+  .ui <- rxode2::assertRxUi(.isEtaModel(
+    "eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; iov.cl + iov.v ~ c(0.08, 0.01, 0.05) | occ",
+    "ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + iov.cl); v <- exp(tv + eta.v + iov.v)"
+  ))
+  expect_identical(.uiIovNames(.ui), c("iov.cl", "iov.v"))
+})
+
+test_that("the after-fit analytic covariance declines IOV and a repeated block by their own reasons", {
+  .isKeepIovEnv()
+  .msg <- function(ui) testthat::capture_messages(.foceiCovAnalyticCalc(list(finalUi = ui)))
+  .iov <- "covType=\"analytic\": inter-occasion variability (IOV) is out of analytic-covariance scope; using the finite-difference covariance instead\n"
+  .ui <- suppressMessages(rxode2::assertRxUi(.isIov))
+  .rw <- suppressMessages(.uiApplyIov(.ui, "focei", .isData, foceiControl())$ui)
+  .same <- suppressMessages(rxode2::assertRxUi(.isSame))
+  expect_identical(.msg(.ui), .iov)
+  expect_identical(.msg(.rw), .iov)
+  expect_identical(
+    .msg(.same),
+    "covType=\"analytic\": a repeated (SAME) omega block is out of analytic-covariance scope; using the finite-difference covariance instead\n"
+  )
+})
+
 test_that(".iovOccRows() takes the level from the condition's base", {
   .idf <- data.frame(
     name = c("t", "a", "b", "c", "d", "e", "(c,d)"),
@@ -180,6 +203,12 @@ nmTest({
       expect_false(.foceiLLGradInScope(rxode2::assertRxUi(.isLlModel(TRUE)), "vae"), label = .state)
       # no eta: nothing to differentiate
       expect_identical(.isProbes(.isNoEta), list(dirs = NULL, ll = FALSE, setup = FALSE), label = .state)
+      # the rewritten ui a fit passes them: its occasion etas are at the id level and
+      # mu-referenced, so only the IOV gates refuse it
+      for (.m in c("theta", "omega")) {
+        .rw <- .uiApplyIov(rxode2::assertRxUi(.isIov), "focei", .isData, foceiControl(iovMethod = .m))$ui
+        expect_identical(.isProbes(.rw), list(dirs = NULL, ll = FALSE, setup = FALSE), label = paste(.state, .m))
+      }
     }
   })
 })
