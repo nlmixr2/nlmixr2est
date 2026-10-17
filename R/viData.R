@@ -103,7 +103,7 @@
   .errThetaIdx <- as.integer(.errRow$ntheta)
   .errType <- as.character(.errRow$err)
 
-  ## normalize data columns; no EVID column: the one FOCEi and etTrans() derive
+  ## upper-case the names; data without an EVID column gets the EVID FOCEi gives it
   d <- as.data.frame(data)
   names(d) <- toupper(names(d))
   d <- .nmWithEvid(d)

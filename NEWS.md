@@ -35,8 +35,11 @@
   FOCEi's translated data keeps as observations, so an EVID 0 record with a
   missing DV, `MDV = 1`, a missing TIME or a compartment-off (negative) CMT is
   not one; with a missing DV at an observation time `est = "vae"` stopped on
-  missing values.  `est = "vae"` also gives data without an EVID column the EVID
-  FOCEi gives it, taken from an MDV column when the data has an AMT column.
+  missing values.  The three also give data without an EVID column the EVID
+  FOCEi gives it: with an AMT column, an MDV column stands for the EVID, and
+  without one a NaN AMT is a dose (`"emvi"` and `"fbvi"` read it as no dose);
+  with no AMT column (for example ID, TIME and DV only) every record is EVID 0,
+  where `"emvi"` and `"fbvi"` used to stop with "replacement has 0 rows".
   These estimators and the benchmark observation count now stop with FOCEi's
   message, and in FOCEi's order, on an EVID, MDV or AMT column not stored as
   numbers, an infinite TIME or a missing ID, instead of reading the data anyway;
@@ -51,11 +54,6 @@
   within a subject as for sorted data, as `"emvi"` and `"fbvi"` already did; it
   used to pair the predictions with the observations in data order (the
   estimates moved by about 1%).
-
-- `est = "emvi"` and `"fbvi"` give data without an EVID column the EVID FOCEi
-  gives it, as `est = "vae"` does.  With no AMT column either (for example ID,
-  TIME and DV only) every record is an observation, where they used to stop with
-  "replacement has 0 rows"; with an AMT column, an MDV column stands for the EVID.
 
 # nlmixr2est 7.2.1
 
