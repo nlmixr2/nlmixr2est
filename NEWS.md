@@ -2,6 +2,8 @@
 
 ## Bug fixes
 
+### Estimation
+
 - Whether a model has inter-occasion variability is now read from the model
   itself, not from the last fit's IOV rewrite.  The analytic-gradient scope
   checks called outside a fit (`ui$foceiOuter`, the VAE gradient scope) no longer
@@ -11,6 +13,22 @@
   magnitude, which left it out of `ui$foceiSkipCov`'s covariance thetas, the
   mu-referenced thetas and, during an `est = "vae"` fit, the nonMuTheta
   handling.
+
+- A subject-level repeated omega block (`same()`, from lotri 1.0.5) beside
+  inter-occasion variability no longer stops a FOCEi-family fit with "invalid
+  first argument", in either `iovMethod`.  The methods that cannot keep a
+  repeated block's variances equal now refuse such a model and name the methods
+  that can: `est = "nlme"` estimated each copy on its own without a word,
+  `est = "saem"` stopped with "IOV variable 'id:same:<eta>' is not present in
+  the data", and `imp`, `impmap`, `qrpem` and the `npag` and `npb` family
+  stopped with "theta has to have 3 elements".  The population-only optimizers,
+  which refuse any eta, now give this message first.  The FOCEi family, `fo`,
+  `foi`, `vae`, `fbvi` and `emvi` keep the tie, as before.
+
+- With a time-varying covariate on a `linCmt()` parameter, an eta whose block
+  repeats another's (`same()`) was left out of the sensitivity carry added in
+  7.1.0, so its analytic gradient took the parameter as constant within a
+  subject; it now gets the carry like any other subject-level eta.
 
 # nlmixr2est 7.2.1
 
