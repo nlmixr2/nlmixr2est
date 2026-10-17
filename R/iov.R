@@ -196,13 +196,12 @@ nlmixr2iovVarSd <- function(val) {
   if (length(est) != 1L || is.na(est)) {
     return(FALSE)
   }
-  ## an out-of-tree method can opt in the way it declares `iov` itself
-  .v <- as.character(utils::methods("nlmixr2Est"))
-  if (paste0("nlmixr2Est.", est) %in% .v) {
-    .a <- attr(utils::getS3method("nlmixr2Est", est), "iovSame")
-    if (isTRUE(.a)) return(TRUE)
+  if (est %in% .iovSameMethods) {
+    return(TRUE)
   }
-  est %in% .iovSameMethods
+  ## an out-of-tree method can opt in the way it declares `iov` itself
+  .fn <- utils::getS3method("nlmixr2Est", est, optional = TRUE)
+  !is.null(.fn) && isTRUE(attr(.fn, "iovSame"))
 }
 
 #' Methods outside `.iovSameMethods` that keep a user's repeated (`same()`)
@@ -210,7 +209,8 @@ nlmixr2iovVarSd <- function(val) {
 #'
 #' A method in neither list is refused a model with a repeated block
 #' (`.nlmixr0preProcessAssertSameBlock()`).  An out-of-tree method opts in
-#' with `attr(nlmixr2Est.<est>, "sameBlock") <- TRUE`, or with `"iovSame"`.
+#' with `attr(nlmixr2Est.<est>, "sameBlock") <- TRUE` (see `?nlmixr2Est`), or
+#' with `"iovSame"`.
 #'
 #' @noRd
 .sameBlockMethods <- c(
@@ -236,24 +236,36 @@ nlmixr2iovVarSd <- function(val) {
   if (length(est) != 1L || is.na(est)) {
     return(FALSE)
   }
-  if (.isIovSameMethod(est) || est %in% names(.sameBlockMethods)) {
+  if (est %in% .iovSameMethods || est %in% names(.sameBlockMethods)) {
     return(TRUE)
   }
-  .v <- as.character(utils::methods("nlmixr2Est"))
-  paste0("nlmixr2Est.", est) %in% .v && isTRUE(attr(utils::getS3method("nlmixr2Est", est), "sameBlock"))
+  .fn <- utils::getS3method("nlmixr2Est", est, optional = TRUE)
+  !is.null(.fn) && (isTRUE(attr(.fn, "sameBlock")) || isTRUE(attr(.fn, "iovSame")))
+}
+
+#' The methods a refusal names: the user-facing ones that keep the tie, then
+#' any other registered method that opted in
+#' @return character vector
+#' @noRd
+.sameBlockAlternatives <- function() {
+  .alt <- Filter(.isSameBlockMethod, names(.nlmixr2EstTypeInfo))
+  .v <- sub("^nlmixr2Est[.]", "", as.character(utils::methods("nlmixr2Est")))
+  .v <- setdiff(.v, c(.iovSameMethods, names(.sameBlockMethods), names(.nlmixr2EstTypeInfo), "default"))
+  c(.alt, Filter(.isSameBlockMethod, .v))
 }
 
 #' Refuse a repeated (`same()`) omega block to a method that would drop the tie
 #'
-#' Runs before the IOV hooks, so it sees only the user's own blocks.  The
-#' alternatives named are the user-facing methods that keep the tie.
+#' Runs before the IOV hooks, so it sees only the user's own blocks; a model
+#' without one costs one condition test.  The alternatives named are
+#' `.sameBlockAlternatives()`.
 #' @param ui rxode2 ui
 #' @param est estimation method name
 #' @param data,control unused; the hook signature
 #' @return `NULL`, or an error
 #' @noRd
 .nlmixr0preProcessAssertSameBlock <- function(ui, est, data, control) {
-  if (!checkmate::testString(est) || .isSameBlockMethod(est)) {
+  if (!checkmate::testString(est)) {
     return(NULL)
   }
   .idf <- ui$iniDf
@@ -261,7 +273,12 @@ nlmixr2iovVarSd <- function(val) {
   if (!any(.cnd != lotri::lotriBaseCondition(.cnd), na.rm = TRUE)) {
     return(NULL)
   }
-  .alt <- Filter(.isSameBlockMethod, names(.nlmixr2EstTypeInfo))
+  # an est with no nlmixr2Est method (foceiLikLoad(est = "mystan")) asks
+  # nothing of the block; nlmixr2() refuses an unknown est itself
+  if (is.null(utils::getS3method("nlmixr2Est", est, optional = TRUE)) || .isSameBlockMethod(est)) {
+    return(NULL)
+  }
+  .alt <- .sameBlockAlternatives()
   stop(
     "'",
     est,
