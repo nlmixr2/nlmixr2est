@@ -1,3 +1,13 @@
+# nlmixr2est (development version)
+
+## Bug fixes
+
+- `est = "imp"` and `"impmap"` no longer crash on Windows with an ODE model
+  and more than one thread (since 7.1.0).  After a thread's first subject in
+  the E-step, rxode2 was left without that thread's id, so two threads could
+  share one solver slot once there were more subjects than threads.  Linux
+  and macOS were not affected.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
