@@ -237,3 +237,51 @@ test_that(".saemIovCollapsedParts splits the CS block into Omega and Psi", {
   expect_equal(.p$omega[["iov.cl"]], 0.3) # the off-diagonal IS Omega
   expect_equal(.p$psi[["iov.cl"]], 0.4 - 0.3) # diagonal minus off-diagonal
 })
+
+test_that(".saemIovInfo takes the occasion level from the base condition", {
+  # eta.v repeats eta.cl's block at the id level (condition "id:same:eta.cl")
+  # nolint start: object_usage_linter. rxode2 ini()/model() are NSE blocks:
+  # every assignment here is model specification, consumed by rxode2, not a
+  # local variable lintr can see used.
+  .same <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ same()
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .sameIov <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ same()
+      iov.cl ~ 0.1 | occ
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # nolint end
+  expect_null(.saemIovInfo(rxode2::rxUiDecompress(.same()), .twoLevelData()))
+  .i <- .saemIovInfo(rxode2::rxUiDecompress(.sameIov()), .twoLevelData())
+  expect_identical(.i$occVar, "occ")
+  expect_identical(.i$pars$iov, "iov.cl")
+  expect_identical(.i$etaNames$iov.cl, c("rx.iov.cl.1", "rx.iov.cl.2"))
+})

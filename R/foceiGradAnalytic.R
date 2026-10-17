@@ -548,7 +548,7 @@
     return(NULL)
   }
   thetaForEta <- .map$thetaForEta
-  if (length(.uiIovEnv$iovVars) > 0L) {
+  if (.uiHasIov(ui)) {
     return(NULL)
   } # IOV out of Phase-1 scope
   .valc <- setNames(as.numeric(thVals[ef$sgName]), ef$sgVar)
@@ -763,7 +763,7 @@
   if (neta == 0L) {
     return(NULL)
   }
-  if (length(.uiIovEnv$iovVars) > 0L) {
+  if (.uiHasIov(ui)) {
     return(NULL)
   }
   .foceiAnalyticDirections(
@@ -825,7 +825,7 @@
       if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) {
         return(FALSE)
       }
-      if (length(.uiIovEnv$iovVars) > 0L) {
+      if (.uiHasIov(ui)) {
         return(FALSE)
       }
       length(.foceiEtaThetaMap(ui)$etaNames) > 0L

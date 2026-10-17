@@ -108,15 +108,11 @@
 #' @noRd
 .saemIovInfo <- function(ui, data) {
   .iniDf <- ui$iniDf
-  .w <- which(
-    !is.na(.iniDf$condition) &
-      .iniDf$condition != "id" &
-      is.na(.iniDf$err)
-  )
+  .w <- which(.iovOccRows(.iniDf))
   if (length(.w) == 0L) {
     return(NULL)
   }
-  .occ <- unique(.iniDf$condition[.w])
+  .occ <- unique(lotri::lotriBaseCondition(.iniDf$condition[.w]))
   if (length(.occ) != 1L) {
     return("two-level IOV needs one occasion variable")
   }

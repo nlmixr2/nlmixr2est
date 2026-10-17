@@ -4538,8 +4538,10 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     # errors are estimated alongside the structural thetas (all theta parameters are
     # included).  Only fixed, IOV, and (mlogit-scale) mixture-probability thetas skip.
     .skipCov[.theta$fix] <- TRUE
-    if (length(.uiIovEnv$iovVars) > 0) {
-      .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE
+    # the IOV magnitude thetas of this ui (after the rewrite), not the last fit's
+    .iov <- .uiIovNames(.ui)
+    if (length(.iov) > 0) {
+      .skipCov[which(.theta$name %in% .iov)] <- TRUE
     }
     # Mixture probability parameters ARE part of the covariance.  They are
     # estimated on the mlogit scale, but the installed covariance is rotated to
