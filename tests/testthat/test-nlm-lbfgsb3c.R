@@ -104,6 +104,24 @@ nmTest({
     expect_identical(.again$value, .full$value)
   })
 
+  test_that("an exception inside the lbfgsb3c protected solve comes back after it", {
+    # mode 1 is a C++ exception (as checkUserInterrupt() throws on an
+    # interrupt), mode 2 an R error; each repeat would find R's context stack
+    # broken if one had unwound through R_UnwindProtect()
+    for (.i in 1:20) {
+      expect_identical(
+        tryCatch(nlmUnwindProtectTest(1L), error = conditionMessage),
+        "thrown inside unwindProtect()"
+      )
+      expect_identical(
+        tryCatch(nlmUnwindProtectTest(2L), error = conditionMessage),
+        "R error inside unwindProtect()"
+      )
+      expect_identical(tryCatch(stop("after"), error = conditionMessage), "after")
+    }
+    expect_identical(nlmUnwindProtectTest(0L), 0L)
+  })
+
   test_that("est='lbfgsb3c' honors maxit", {
     skip_on_cran()
     .ret <- suppressWarnings(suppressMessages(

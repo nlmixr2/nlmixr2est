@@ -1232,6 +1232,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmUnwindProtectTest
+int nlmUnwindProtectTest(int mode);
+RcppExport SEXP _nlmixr2est_nlmUnwindProtectTest(SEXP modeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type mode(modeSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmUnwindProtectTest(mode));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmLbfgsb3cFit
 List nlmLbfgsb3cFit(arma::vec& theta, NumericVector lower, NumericVector upper, List control);
 RcppExport SEXP _nlmixr2est_nlmLbfgsb3cFit(SEXP thetaSEXP, SEXP lowerSEXP, SEXP upperSEXP, SEXP controlSEXP) {

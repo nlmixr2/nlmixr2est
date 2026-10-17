@@ -481,6 +481,10 @@ solveGradNls <- function(theta, returnType) {
     .Call(`_nlmixr2est_solveGradNls`, theta, returnType)
 }
 
+nlmUnwindProtectTest <- function(mode) {
+    .Call(`_nlmixr2est_nlmUnwindProtectTest`, mode)
+}
+
 nlmLbfgsb3cFit <- function(theta, lower, upper, control) {
     .Call(`_nlmixr2est_nlmLbfgsb3cFit`, theta, lower, upper, control)
 }
