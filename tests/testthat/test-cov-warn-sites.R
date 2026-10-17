@@ -37,6 +37,8 @@ test_that("the labels come from the code that names them", {
 })
 
 test_that(".covInstall() says what it installed instead of the request, whole, for every label", {
+  # the grid of label pairs is large
+  skip_on_cran()
   .labels <- .covRealLabels()
   .got <- character()
   .want <- character()
@@ -57,6 +59,8 @@ test_that(".covInstall() says what it installed instead of the request, whole, f
 })
 
 test_that(".covRejectWarn() is one whole line for every label, reason and kept covariance", {
+  # the grid of label pairs is large
+  skip_on_cran()
   .labels <- .covRealLabels()
   .fd <- .covFdLabels()
   .fdAll <- c(.fd, paste0(.fd, .covFullSuffix))
