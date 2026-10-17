@@ -84,6 +84,11 @@
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
 
+- An interrupt (or another C++ error) during an `est = "lbfgsb3c"` fit no
+  longer leaves R's error handling broken.  The error passed through R's own
+  frames while it unwound, and the next R error could crash the session; it
+  is now held until those frames have returned.
+
 - A finite-difference gradient or Hessian no longer takes a slope of 0 where
   its differences do not solve.
   - When the steps on one side of a parameter never solve, the step search
