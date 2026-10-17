@@ -50,7 +50,8 @@
   FOCEi gives it, taken from an MDV column when the data has an AMT column.
   These estimators and the benchmark observation count now stop with FOCEi's
   message, and in FOCEi's order, on an EVID, MDV or AMT column not stored as
-  numbers, an infinite TIME or a missing ID, instead of reading the data anyway.
+  numbers, an infinite TIME or a missing ID, instead of reading the data anyway;
+  a logical ID, which FOCEi cannot read either, stops too.
 
 - `est = "vae"`, `"emvi"` and `"fbvi"` drop a subject that has records but no
   observations, with a warning naming it, as FOCEi does; they used to stop with
