@@ -49,12 +49,13 @@
 nmTest(
   {
     test_that("imp and impmap give each thread its own rxode2 id for every subject", {
-      skip_if(
-        !identical(Sys.getenv("NOT_CRAN"), "true") && !isTRUE(as.logical(Sys.getenv("CI", "false"))),
-        "on CRAN"
-      )
+      .skipOnCranOnly()
       .old <- rxode2::getRxThreads()
       withr::defer(rxode2::setRxThreads(.old))
+      # setRxThreads() clamps to the CPUs and OMP_THREAD_LIMIT; with one
+      # thread the region does not fork and nothing is checked
+      rxode2::setRxThreads(2L)
+      skip_if(rxode2::getRxThreads() < 2L, "one thread")
       .wasOn <- .impThreadTrack(TRUE)
       withr::defer(.impThreadTrack(.wasOn))
       .want <- c(imp = 18.5322024276, impmap = 18.5303802572)
