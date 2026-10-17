@@ -33,6 +33,8 @@
 test_that("every estimating method the registry lets through keeps eta.v tied to eta.cl", {
   skip_on_cran()
   .ests <- c(.iovSameMethods, names(.sameBlockMethods)[.sameBlockMethods == "keeps the tie, measured"])
+  # the 33 FOCEi-family methods and the five measured to keep the tie
+  expect_length(.ests, 38L)
   for (.e in .ests) {
     .fit <- suppressWarnings(suppressMessages(
       nlmixr2est::nlmixr2(.sameFitMod, nlmixr2data::theo_sd, .e, control = list(print = 0))
@@ -49,6 +51,7 @@ test_that("the methods that do not estimate omega run on a same() model", {
   .ests <- names(.sameBlockMethods)[.sameBlockMethods == "does not estimate omega"]
   # "output" builds a fit's output from an estimate; nlmixr2() does not dispatch to it
   .ests <- setdiff(.ests, "output")
+  expect_identical(.ests, c("posthoc", "predict", "rxSolve", "simulate", "simulation"))
   .fit <- suppressWarnings(suppressMessages(
     nlmixr2est::nlmixr2(.sameFitMod, nlmixr2data::theo_sd, "posthoc", control = list(print = 0))
   ))
