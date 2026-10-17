@@ -5861,7 +5861,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .saemCfg2 <- list()
       # res.mod is kept because calc.2LL()/calc.COV() need it to tell an ll()
       # observation from a normally-distributed one; omegaShareSubpop tells
-      # calc.2LL() which etas a mixture component owns
+      # calc.2LL() which etas a mixture component owns; evt is the event matrix
+      # the kernel solved with, which the fit's own model cannot rebuild for an
+      # IOV fit (the occasion column is a covariate of the rewritten model only)
       for (.v in c(
         "i1",
         "i0",
@@ -5877,7 +5879,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         "inits",
         "Mcovariables",
         "res.mod",
-        "omegaShareSubpop"
+        "omegaShareSubpop",
+        "evt"
       )) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }
