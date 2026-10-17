@@ -346,7 +346,7 @@ nmTest({
     )
     # a missing ID beside each of those: FOCEi checks an integer or character ID
     # first and a double one record by record with TIME, after the event columns
-    .ids <- list(double = as.double, integer = as.integer, character = as.character)
+    .ids <- list(double = as.double, integer = as.integer, character = as.character, factor = factor)
     .m <- 0L
     for (.it in names(.ids)) {
       .cases <- list()
@@ -380,7 +380,15 @@ nmTest({
         .m <- .m + 1L
       }
     }
-    expect_identical(.m, 21L)
+    expect_identical(.m, 28L)
+    # a logical ID: etTrans() cannot read one at all (a type-conversion error),
+    # with or without a missing value; the check stops first and names it
+    for (.l in list(c(TRUE, TRUE, TRUE), c(NA, TRUE, TRUE))) {
+      .d <- .base
+      .d$ID <- .l
+      expect_false(is.null(.utFoceiError(.d, .ui)))
+      expect_identical(tryCatch(.nmAssertEventColumns(.d), error = conditionMessage), "'id' cannot be logical")
+    }
   })
 
   test_that(".nmAssertIds() and .nmDropNoObsSubjects() match the FOCEi data step", {
@@ -401,6 +409,13 @@ nmTest({
     .d$ID <- as.integer(.d$ID)
     expect_error(.nmDropNoObsSubjects(.d), "^'id' cannot have NA values$")
     expect_error(.nmSubjectObs(.d, 1), "^'id' cannot have NA values$")
+    # a missing double ID beside a character EVID: the EVID first, as FOCEi checks
+    # a double ID with the records, after the event columns
+    .e <- .d
+    .e$ID <- as.double(.e$ID)
+    .e$EVID <- as.character(.e$EVID)
+    expect_error(.nmDropNoObsSubjects(.e), "^event id \\('evid'\\) needs to be an integer$")
+    expect_error(.nmSubjectObs(.e, 1), "^event id \\('evid'\\) needs to be an integer$")
     # the columns are matched exactly: IDENT is not ID
     .i <- data.frame(IDENT = 1, TIME = 0, EVID = 0, DV = 1)
     expect_error(.nmDropNoObsSubjects(.i), "the data needs an ID column", fixed = TRUE)

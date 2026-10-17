@@ -85,6 +85,10 @@ test_that(".adviDataPrep drops a subject with no observations, as the FOCEi inne
   .d <- nlmixr2data::theo_sd
   .d$ID[5] <- NA
   expect_error(.adviDataPrep(ui, .d), "^'id' cannot have NA values$")
+  # a missing double ID beside a character EVID stops on the EVID, as FOCEi does
+  .d$ID <- as.double(.d$ID)
+  .d$EVID <- as.character(.d$EVID)
+  expect_error(.adviDataPrep(ui, .d), "^event id \\('evid'\\) needs to be an integer$")
 })
 
 test_that(".adviDataPrep takes an MDV column as the EVID when there is none, as FOCEi does", {
