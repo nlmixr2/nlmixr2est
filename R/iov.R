@@ -507,6 +507,9 @@ nlmixr2iovVarSd <- function(val) {
     .eta1$fix <- TRUE
     .eta1$neta1 <- .eta1$neta2 <- 0
     .eta1$est <- 1
+    # the occasion etas are subject-level etas; with no subject-level eta in
+    # the model the row copied is an occasion eta's own
+    .eta1$condition <- "id"
     # Both rows are COPIES of an unrelated parameter's row used as a
     # template; a `prior` carried over from it belongs to that parameter,
     # not to the IOV magnitude / occasion eta this becomes.  The magnitude
@@ -534,7 +537,6 @@ nlmixr2iovVarSd <- function(val) {
       .maxeta <- max(.etas$neta1, na.rm = TRUE)
     } else {
       .maxeta <- 0L
-      .theta1 <- .etas[1, ]
     }
 
     .data <- data
@@ -999,7 +1001,7 @@ nlmixr2iovVarSd <- function(val) {
       # Fix shrinkage, now split out by iov variable
       .shrink <- ret$env$shrink
       .w <- which(names(.shrink) %in% .uiIovEnv$iovDrop)
-      .shrink0 <- .shrink[, -.w]
+      .shrink0 <- .shrink[, -.w, drop = FALSE]
       .shrinkN <- cbind(data.frame(type = row.names(.shrink0)), .shrink)
       .shrink1 <- lapply(.n, function(var) {
         .cur <- .omega[[var]]
@@ -1067,7 +1069,7 @@ nlmixr2iovVarSd <- function(val) {
 
       .w <- which(names(.ranef) %in% .uiIovEnv$iovDrop)
       .iov <- .ranef
-      .ranef <- .ranef[, -.w]
+      .ranef <- .ranef[, -.w, drop = FALSE]
       assign("ranef", .ranef, envir = ret$env)
 
       .w <- which(names(.iov) %in% c(.uiIovEnv$iovDrop, "ID"))
