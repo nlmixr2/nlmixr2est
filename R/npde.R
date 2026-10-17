@@ -72,9 +72,13 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
       }
       table$npde <- TRUE
       .fitEnv <- object$env
-      .npde <- .calcNpde(object, dv = object$DV, table = table)
+      if (.uiHasIov(object$ui)) {
+        .npde <- .addNpdeIovRefit(object, table)
+      } else {
+        .npde <- .calcNpde(object, dv = object$DV, table = table)[[2]]
+      }
       .fit <- nlmixrClone(object)
-      .new <- nlmixrCbind(.fit, .npde[[2]])
+      .new <- nlmixrCbind(.fit, .npde)
       if (updateObject) {
         .evRebound <- nlmixrUpdateObject(.new, .objName, envir, .fitEnv)
       }
@@ -83,4 +87,54 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
     },
     object$env
   )
+}
+
+#' Whether a model has an occasion-level (IOV) eta
+#'
+#' An eta whose base condition is not `"id"`, the rows `.uiApplyIov()`
+#' expands; a repeated subject-level block (`"id:same:<eta>"`) is not one.
+#'
+#' @param ui rxode2 user interface model
+#' @return `TRUE` when the model has an occasion eta
+#' @noRd
+#' @author Matthew L. Fidler
+.uiHasIov <- function(ui) {
+  .iniDf <- ui$iniDf
+  .cnd <- .iniDf$condition
+  any(!is.na(.cnd) & is.na(.iniDf$err) & lotri::lotriBaseCondition(.cnd) != "id")
+}
+
+#' The NPDE columns of a fit with IOV
+#'
+#' A finished IOV fit keeps the IOV-expanded model, but its thetas, etas and
+#' data are the user's model's: the occasion etas, their magnitude thetas and
+#' the occasion column are gone, so `.calcNpde()` cannot solve it.  The
+#' columns come instead from a focei refit with no iterations at the fit's
+#' etas, as `addCwres()` refits, whose tables see the expanded model.
+#'
+#' @param fit nlmixr2 fit with IOV
+#' @param table `tableControl()` with `npde = TRUE`
+#' @return data frame of the refit's NPDE columns
+#' @noRd
+#' @author Matthew L. Fidler
+.addNpdeIovRefit <- function(fit, table) {
+  .ctl <- fit$foceiControl
+  .ctl$maxOuterIterations <- 0L
+  .ctl$maxInnerIterations <- 0L
+  .ctl$etaMat <- fit$etaMat
+  .ctl$compress <- FALSE
+  .ctl$covMethod <- 0L
+  .ctl$nAGQ <- 0L
+  .newFit <- .nlmixr2PriorGateBypass(
+    nlmixr2(fit, data = nlme::getData(fit), est = "focei", control = .ctl, table = table)
+  )
+  # the columns _nlmixr2est_npdeCalc() (src/npde.cpp) returns; the refit's
+  # other new columns (a focei refit's CWRES, the expanded occasion etas) are
+  # not NPDE's
+  .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD")
+  .miss <- setdiff(.cols, names(.newFit))
+  if (length(.miss) > 0L) {
+    stop("the IOV refit for NPDE did not give: ", paste(.miss, collapse = ", "), call. = FALSE)
+  }
+  as.data.frame(.newFit)[, .cols, drop = FALSE]
 }

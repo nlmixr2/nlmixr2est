@@ -1,3 +1,52 @@
+# A model with an occasion eta, and the same model with a subject-level eta in
+# its place
+.npdeIovMod <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    add.sd <- 0.7
+    eta.v ~ 0.1
+    iov.cl ~ 0.1 | occ
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + iov.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+# eta.v repeats eta.cl's subject-level block ("id:same:eta.cl")
+.npdeSameMod <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    add.sd <- 0.7
+    eta.cl ~ 0.3
+    eta.v ~ same()
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+.npdeIovData <- function() {
+  .d <- nlmixr2data::theo_sd
+  .d$occ <- ifelse(.d$TIME < 6, 1L, 2L)
+  .d
+}
+
+.npdeIovFit <- function(est, table = tableControl()) {
+  suppressWarnings(suppressMessages(
+    nlmixr2(.npdeIovMod, .npdeIovData(), est, control = list(print = 0, covMethod = ""), table = table)
+  ))
+}
+
 nmTest({
   test_that("npde", {
     one.cmt <- function() {
@@ -98,5 +147,27 @@ nmTest({
 
     expect_false(isTRUE(all.equal(fit$NPDE, fit$NPD)))
     expect_false(isTRUE(all.equal(fit$PDE, fit$PD)))
+  })
+
+  test_that("addNpde() on a fit with IOV gives the NPDE the fit computes itself", {
+    # the finished fit's thetas, etas and data are the user's model's, so
+    # addNpde() refits; its columns match those of a fit asked for NPDE
+    .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD")
+    for (.est in c("focei", "saem")) {
+      .with <- .npdeIovFit(.est, tableControl(npde = TRUE))
+      .fit <- .npdeIovFit(.est)
+      .new <- suppressMessages(addNpde(.fit, updateObject = FALSE))
+      expect_identical(setdiff(names(.new), names(.fit)), .cols, label = .est)
+      expect_identical(nrow(.new), nrow(.fit), label = .est)
+      for (.c in .cols) {
+        expect_equal(.new[[.c]], .with[[.c]], tolerance = 1e-10, label = paste(.est, .c))
+      }
+      expect_true(all(is.finite(.new$NPDE)), label = .est)
+    }
+  })
+
+  test_that(".uiHasIov() finds occasion etas, not repeated subject blocks", {
+    expect_true(.uiHasIov(rxode2::rxode2(.npdeIovMod)))
+    expect_false(.uiHasIov(rxode2::rxode2(.npdeSameMod)))
   })
 })
