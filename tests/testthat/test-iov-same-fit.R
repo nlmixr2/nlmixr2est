@@ -65,3 +65,12 @@ test_that("the methods that do not estimate omega run on a same() model", {
     expect_gt(nrow(.sim), 0L, label = .e)
   }
 })
+
+test_that("foceiLikLoad() loads a same() model for an est with no method", {
+  skip_on_cran()
+  # the hooks run with the est foceiLikLoad() is given; with no nlmixr2Est
+  # method nothing refuses the block, and the FOCEi inner problem keeps the tie
+  .h <- suppressMessages(foceiLikLoad(.sameFitMod, nlmixr2data::theo_sd, "focei", est = "x"))
+  withr::defer(foceiLikUnload())
+  expect_identical(.h$neta, 3L)
+})
