@@ -1,3 +1,18 @@
+# nlmixr2est (development version)
+
+## Bug fixes
+
+- A fit with inter-occasion variability keeps its `omega` as the nested
+  `lotri` list it is, so `rxSolve(fit)` and `predict(fit, level =
+  "individual")` work; they stopped with "The following parameter(s) are
+  required for solving: iov.cl, eta.v", since the list had lost its class.
+
+- `augPred()` now works on a fit with inter-occasion variability.  Its
+  individual curve takes each subject's estimate for the occasion in force
+  at each time, and its population curve sets every eta, of every level, to
+  zero; it stopped with "The following parameter(s) are required for
+  solving: iov.cl".
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
