@@ -2,11 +2,15 @@
 
 ## Bug fixes
 
-- The analytic-gradient scope checks called outside a fit (`ui$foceiOuter`, and
-  the VAE gradient scope) no longer depend on the previous fit in the session:
-  they read whether the model has inter-occasion variability from the model
-  itself, not from the last fit's IOV rewrite.  Fits were not affected, since
-  each fit sets that rewrite before the checks run.
+- Whether a model has inter-occasion variability is now read from the model
+  itself, not from the last fit's IOV rewrite.  The analytic-gradient scope
+  checks called outside a fit (`ui$foceiOuter`, the VAE gradient scope) no longer
+  depend on the previous fit in the session; inside a fit they were not
+  affected, since each fit sets the rewrite before they run.  A theta named
+  like an IOV variable of the previous fit is no longer taken for an IOV
+  magnitude, which left it out of `ui$foceiSkipCov`'s covariance thetas, the
+  mu-referenced thetas and, during an `est = "vae"` fit, the nonMuTheta
+  handling.
 
 # nlmixr2est 7.2.1
 

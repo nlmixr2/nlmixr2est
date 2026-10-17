@@ -151,6 +151,34 @@ test_that("the after-fit analytic covariance declines IOV and a repeated block b
   )
 })
 
+test_that("a theta named like the last fit's IOV variable is an ordinary theta", {
+  .isKeepIovEnv()
+  # the previous rewrite leaves iov.cl and iov.v in .uiIovEnv
+  .uiApplyIov(rxode2::assertRxUi(.isIov), "focei", .isData, foceiControl())
+  expect_identical(.uiIovEnv$iovVars, c("iov.cl", "iov.v"))
+  .ui <- rxode2::assertRxUi(function() {
+    ini({
+      tka <- 0.45
+      iov.cl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(iov.cl + eta.cl)
+      v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  })
+  expect_identical(.ui$foceiSkipCov, rep(FALSE, 4))
+  expect_true("iov.cl" %in% .muRefClassify(.ui)$muPlainThetas)
+})
+
 test_that(".iovOccRows() takes the level from the condition's base", {
   .idf <- data.frame(
     name = c("t", "a", "b", "c", "d", "e", "(c,d)"),
