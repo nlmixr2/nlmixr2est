@@ -14,16 +14,16 @@
   mu-referenced thetas and, during an `est = "vae"` fit, the nonMuTheta
   handling.
 
-- A subject-level repeated omega block (`same()`, from lotri 1.0.5) beside
-  inter-occasion variability no longer stops a FOCEi-family fit with "invalid
-  first argument", in either `iovMethod`.  The methods that cannot keep a
-  repeated block's variances equal now refuse such a model and name the methods
-  that can: `est = "nlme"` estimated each copy on its own without a word,
-  `est = "saem"` stopped with "IOV variable 'id:same:<eta>' is not present in
-  the data", and `imp`, `impmap`, `qrpem` and the `npag` and `npb` family
-  stopped with "theta has to have 3 elements".  The population-only optimizers,
-  which refuse any eta, now give this message first.  The FOCEi family, `fo`,
-  `foi`, `vae`, `fbvi` and `emvi` keep the tie, as before.
+- A subject-level repeated omega block (`same()`, lotri 1.0.5) beside
+  inter-occasion variability no longer stops a FOCEi-family fit with
+  "invalid first argument".  A method that cannot keep a repeated block's
+  variances equal now refuses a model built with one and names the methods
+  that can: `est = "nlme"` estimated each copy on its own without a word, and
+  `saem`, `imp`, `impmap`, `qrpem` and the `npag` and `npb` family stopped
+  with unrelated errors.  A third-party method is refused too until it
+  declares `attr(nlmixr2Est.<method>, "sameBlock") <- TRUE` (see
+  `?nlmixr2Est`).  A refit from a fit is not refused, since the fit's model
+  has already lost the tie, as it did before.
 
 - With a time-varying covariate on a `linCmt()` parameter, an eta whose block
   repeats another's (`same()`) was left out of the sensitivity carry added in
