@@ -261,7 +261,16 @@ nlmixr2iovVarSd <- function(val) {
   .alt <- Filter(.isSameBlockMethod, names(.nlmixr2EstTypeInfo))
   .v <- sub("^nlmixr2Est[.]", "", as.character(utils::methods("nlmixr2Est")))
   .v <- setdiff(.v, c(.iovSameMethods, names(.sameBlockMethods), names(.nlmixr2EstTypeInfo), "default"))
-  c(.alt, Filter(function(e) .sameBlockKeeps(utils::getS3method("nlmixr2Est", e)), .v))
+  c(.alt, Filter(.sameBlockKeepsName, .v))
+}
+
+#' `.sameBlockKeeps()` of the nlmixr2Est method named `est`; `FALSE` when none
+#' is found
+#' @param est method name
+#' @return `TRUE` or `FALSE`
+#' @noRd
+.sameBlockKeepsName <- function(est) {
+  .sameBlockKeeps(utils::getS3method("nlmixr2Est", est, optional = TRUE))
 }
 
 #' Refuse a repeated (`same()`) omega block to a method that would drop the tie
