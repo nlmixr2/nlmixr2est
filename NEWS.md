@@ -10,6 +10,13 @@
   The quadrature, which runs after the fit, solved with an event matrix
   rebuilt from the data, which had lost the occasion column.
 
+- A model whose only random effects are occasion ones (`iov.cl ~ 0.1 | occ`
+  with no subject-level eta) now fits with `focei`, `foce` and `saem`, in
+  either IOV expansion.  It used to stop with "missing value where TRUE/FALSE
+  needed" or "arguments imply differing number of rows", because the IOV
+  rewrite copied its template rows from an eta that was not there and its
+  output step lost the shape of tables left with one column.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
