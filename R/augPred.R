@@ -157,6 +157,63 @@
   .params
 }
 
+#' augPred()'s events with the fit's occasion etas
+#'
+#' A fit with IOV estimated one value of each occasion eta per subject and
+#' occasion (`fit$env$iov`, one table per occasion column).  Each row of
+#' `events` takes its subject's value for the occasion in force at its time,
+#' as a column the model reads as that eta.
+#'
+#' @param fit nlmixr2 fit
+#' @param events augPred()'s events (`.augPredExpandData()`), whose `ID` is
+#'   the fit's integer subject code
+#' @return `events`, with one column per occasion eta when the fit has IOV
+#' @noRd
+#' @author Matthew L. Fidler
+.augPredIovEvents <- function(fit, events) {
+  .iov <- fit$env$iov
+  if (!is.list(.iov) || length(.iov) == 0L) {
+    return(events)
+  }
+  .orig <- as.data.frame(fit$origData)
+  .nm <- tolower(names(.orig))
+  .dataId <- as.character(.orig[[which(.nm == "id")[1]]])
+  .dataTime <- .orig[[which(.nm == "time")[1]]]
+  .id <- as.character(fit$idLvl[events$ID])
+  for (.lvl in names(.iov)) {
+    .tab <- .iov[[.lvl]]
+    .occ <- .augPredIovOcc(.id, events$TIME, .dataId, .dataTime, .orig[[.lvl]])
+    .row <- match(paste(.id, .occ), paste(as.character(.tab$ID), .tab[[.lvl]]))
+    for (.eta in setdiff(names(.tab), c("ID", .lvl))) {
+      events[[.eta]] <- .tab[[.eta]][.row]
+    }
+  }
+  events
+}
+
+#' The occasion in force at each time, per subject
+#'
+#' The occasion of the subject's last record at or before the time in the
+#' fit's data, or of its first record for a time before them all.
+#'
+#' @param id,time subject label and time of each row asked for
+#' @param dataId,dataTime,dataOcc subject label, time and occasion of each
+#'   record of the fit's data
+#' @return the occasion of each row
+#' @noRd
+#' @author Matthew L. Fidler
+.augPredIovOcc <- function(id, time, dataId, dataTime, dataOcc) {
+  .ret <- dataOcc[rep(NA_integer_, length(id))]
+  for (.s in unique(id)) {
+    .w <- which(id == .s)
+    .d <- which(dataId == .s)
+    .d <- .d[order(dataTime[.d])]
+    .k <- findInterval(time[.w], dataTime[.d])
+    .ret[.w] <- dataOcc[.d][pmax(.k, 1L)]
+  }
+  .ret
+}
+
 #' Name of the covariate interpolation a fit was estimated with
 #'
 #' @param fit nlmixr2 fit
@@ -225,7 +282,7 @@ nlmixr2AugPredSolve <- function(
   .sim <- .rxSolveNonmem(
     object = .rx,
     .params,
-    .events,
+    .augPredIovEvents(fit, .events),
     keepInterpolation = "na",
     covsInterpolation = covsInterpolation,
     naInterpolation = .naInterpolation,
@@ -241,8 +298,10 @@ nlmixr2AugPredSolve <- function(
     .stk <- stack(.sim[, c("pred", "DV")])
   } else {
     names(.sim) <- sub("^sim$", "ipred", names(.sim))
-    .params <- c(t(fit$theta), t(rep(0, dim(.omega)[1])), t(rep(0, dim(.sigma)[1])))
-    .params <- setNames(.params, c(names(fit$theta), dimnames(.omega)[[2]], dimnames(.sigma)[[2]]))
+    # every eta, of every level of a nested omega, is zero
+    .etaNames <- dimnames(lotri::lotriMat(.omega))[[2]]
+    .params <- c(t(fit$theta), t(rep(0, length(.etaNames))), t(rep(0, dim(.sigma)[1])))
+    .params <- setNames(.params, c(names(fit$theta), .etaNames, dimnames(.sigma)[[2]]))
     .sim2 <- .rxSolveNonmem(
       object = .rx,
       params = .params,

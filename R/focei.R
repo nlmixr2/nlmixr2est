@@ -5500,13 +5500,12 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     return(mat)
   }
   if (is.list(mat)) {
-    .n <- names(mat)
-    return(stats::setNames(
-      lapply(seq_along(.n), function(i) {
-        .stripFastmatchItem(mat[[i]])
-      }),
-      .n
-    ))
+    # the list keeps its own attributes: a nested omega is a "lotri" list,
+    # which rxode2 reads by its class
+    .a <- attributes(mat)
+    .ret <- lapply(unclass(mat), .stripFastmatchItem)
+    attributes(.ret) <- .a
+    return(.ret)
   }
   if (is.character(mat)) {
     .ret <- mat

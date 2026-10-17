@@ -246,4 +246,25 @@ nmTest({
 
     expect_error(augPred(fit514), NA)
   })
+
+  test_that("augPred() on a fit with IOV gives the fit's predictions at the observations", {
+    # the individual curve takes each occasion's estimate in turn, and the
+    # population curve has every eta zero; both match the fit's own IPRED
+    # and PRED to the ODE solver's tolerance on augPred()'s finer grid
+    for (.case in list(c("focei", "same"), c("saem", "same"), c("focei", "subject"))) {
+      .lab <- paste(.case, collapse = " ")
+      .fit <- .iovOdeFit(.case[1], .case[2])
+      .obs <- as.data.frame(.fit)
+      .a <- as.data.frame(suppressWarnings(suppressMessages(augPred(.fit))))
+      expect_identical(levels(.a$ind), c("Individual", "Population", "Observed"), label = .lab)
+      .ind <- .a[.a$ind == "Individual", ]
+      .pop <- .a[.a$ind == "Population", ]
+      .ki <- match(paste(.obs$ID, .obs$TIME), paste(.ind$id, .ind$time))
+      .kp <- match(paste(.obs$ID, .obs$TIME), paste(.pop$id, .pop$time))
+      expect_false(anyNA(.ki), label = .lab)
+      expect_false(anyNA(.kp), label = .lab)
+      expect_equal(.ind$values[.ki], .obs$IPRED, tolerance = 1e-3, label = .lab)
+      expect_equal(.pop$values[.kp], .obs$PRED, tolerance = 1e-3, label = .lab)
+    }
+  })
 })

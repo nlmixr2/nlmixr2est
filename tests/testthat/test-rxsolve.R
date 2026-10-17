@@ -137,4 +137,16 @@ nmTest({
     expect_true(any(grepl("from the number of subjects", .acc$msg, fixed = TRUE)))
     expect_equal(length(unique(.sim$sim.id)), 2L)
   })
+
+  test_that("a fit with IOV keeps its nested omega, so it can be solved", {
+    for (.est in c("focei", "saem")) {
+      .fit <- .iovOdeFit(.est)
+      expect_s3_class(.fit$omega, "lotri")
+      expect_identical(names(.fit$omega), c("id", "occ"), label = .est)
+      .s <- suppressWarnings(suppressMessages(rxode2::rxSolve(.fit)))
+      expect_identical(nrow(as.data.frame(.s)), nrow(.fit), label = .est)
+      .p <- suppressWarnings(suppressMessages(predict(.fit, level = "individual")))
+      expect_identical(nrow(.p), nrow(.fit), label = .est)
+    }
+  })
 })

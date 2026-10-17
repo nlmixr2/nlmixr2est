@@ -66,4 +66,16 @@ nmTest({
     ipredNewData <- suppressMessages(predict(fit, theo_md, level = "individual"))
     expect_true("ipredSim" %in% names(ipredNewData))
   })
+
+  test_that("population predict() of a fit with IOV gives the fit's PRED", {
+    skip_if(
+      !.rxode2ZeroesNestedOmega(),
+      "needs rxode2 with .rxParamsZero() zeroing every block of a nested omega, fix/params-zero-nested-omega"
+    )
+    for (.est in c("focei", "saem")) {
+      .fit <- .iovOdeFit(.est)
+      .p <- suppressWarnings(suppressMessages(predict(.fit)))
+      expect_equal(.p$pred, as.data.frame(.fit)$PRED, tolerance = 1e-6, label = .est)
+    }
+  })
 })
