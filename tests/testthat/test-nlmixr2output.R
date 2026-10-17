@@ -525,58 +525,72 @@ test_that("the output builder writes a method's estimates into the ui and keeps 
   expect_equal(nlmixr2global$nlmixr2EstEnv$iniDf0, .env2$iniDf0)
 })
 
-test_that("a fit's model keeps a repeated (same()) block, so a refit keeps the tie", {
-  skip_on_cran()
-  # eta.v repeats eta.cl's block ("id:same:eta.cl"); the output rebuilds the
-  # omega rows from the estimated matrix, which carries no such condition
-  .d <- nlmixr2data::theo_sd
-  .d$occ <- 1 + (.d$TIME >= 5)
-  .mod <- function(iov) {
-    eval(parse(
-      text = sprintf(
-        "function() {
-          ini({
-            tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- c(0, 0.7)
-            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ same() %s
-          })
-          model({
-            ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl %s); v <- exp(tv + eta.v)
-            linCmt() ~ add(add.sd)
-          })
-        }",
-        if (iov) "; iov.cl ~ 0.1 | occ" else "",
-        if (iov) "+ iov.cl" else ""
-      )
-    ))
-  }
-  .ctl <- foceiControl(print = 0, covMethod = "")
-  .refusal <- paste0(
-    "'saem' does not honour a repeated (same()) omega block\n",
-    "use fo, foi, foce, focei, focep, laplace, agq, emvi, fbvi or vae"
-  )
-  .errMsg <- function(expr) {
-    tryCatch(
-      {
-        expr
-        NULL
-      },
-      error = conditionMessage
-    )
-  }
-  for (.iov in c(FALSE, TRUE)) {
-    .fit <- suppressWarnings(suppressMessages(nlmixr2(.mod(.iov)(), .d, "focei", .ctl)))
-    .idf <- .fit$ui$iniDf
-    expect_identical(.idf$condition[.idf$name == "eta.v"], "id:same:eta.cl", label = .iov)
-    expect_identical(.fit$ui$omegaSameMap, if (.iov) c(0L, 0L, 2L, 0L) else c(0L, 0L, 2L), label = .iov)
-    .refit <- suppressWarnings(suppressMessages(nlmixr2(.fit$ui, .d, "focei", .ctl)))
-    .om <- if (is.list(.refit$omega)) .refit$omega$id else .refit$omega
-    expect_equal(.om["eta.v", "eta.v"], .om["eta.cl", "eta.cl"], tolerance = 1e-12, label = .iov)
-    # a method that would drop the tie now sees it in a fit too
-    expect_identical(.errMsg(suppressMessages(nlmixr2(.fit, est = "saem"))), .refusal, label = .iov)
-    expect_identical(
-      .errMsg(suppressMessages(nlmixr2(rxode2::ini(.fit, tka = 0.5), .d, "saem"))),
-      .refusal,
-      label = .iov
-    )
+# A 2x2 block repeated (eta.c, eta.d ~ same()), its names in either order
+.sameBlockAB <- function() {
+  ini({
+    ta <- 1
+    tb <- 2
+    tc <- 3
+    td <- 4
+    add.sd <- 0.7
+    eta.a + eta.b ~ c(0.3, 0.01, 0.1)
+    eta.c + eta.d ~ same()
+  })
+  model({
+    a <- exp(ta + eta.a)
+    b <- exp(tb + eta.b)
+    cc <- exp(tc + eta.c)
+    d <- exp(td + eta.d)
+    y <- a + b + cc + d
+    y ~ add(add.sd)
+  })
+}
+
+.sameBlockBA <- function() {
+  ini({
+    ta <- 1
+    tb <- 2
+    tc <- 3
+    td <- 4
+    add.sd <- 0.7
+    eta.b + eta.a ~ c(0.1, 0.01, 0.3)
+    eta.d + eta.c ~ same()
+  })
+  model({
+    a <- exp(ta + eta.a)
+    b <- exp(tb + eta.b)
+    cc <- exp(tc + eta.c)
+    d <- exp(td + eta.d)
+    y <- a + b + cc + d
+    y ~ add(add.sd)
+  })
+}
+
+test_that("the output builder keeps every row of a repeated (same()) block", {
+  .old <- nlmixr2global$nlmixr2EstEnv$iniDf0
+  .depth <- nlmixr2global$nlmixr2EstEnv$estDepth
+  withr::defer({
+    nlmixr2global$nlmixr2EstEnv$iniDf0 <- .old
+    nlmixr2global$nlmixr2EstEnv$estDepth <- .depth
+  })
+  for (.mod in list(.sameBlockAB, .sameBlockBA)) {
+    .ui <- rxode2::rxode2(.mod)
+    # an estimate: the block's values scaled, the copy still equal to it
+    .om <- unclass(.ui$omega) * 1.5
+    attributes(.om) <- list(dim = dim(.om), dimnames = dimnames(.ui$omega))
+    nlmixr2global$nlmixr2EstEnv$estDepth <- 0L
+    nlmixr2global$nlmixr2EstEnv$iniDf0 <- NULL
+    .env <- new.env(parent = emptyenv())
+    .env$fullTheta <- c(ta = 1.1, tb = 2.1, tc = 3.1, td = 4.1, add.sd = 0.5)
+    .env$omega <- .om
+    .u <- .nlmixr2OutputContract(rxode2::rxUiDecompress(.ui), .env)
+    .label <- paste(rownames(.om), collapse = ",")
+    # every eta row, the covariance rows included, keeps the model's condition
+    .want <- .ui$iniDf[!is.na(.ui$iniDf$neta1), c("name", "condition")]
+    .got <- .u$iniDf[!is.na(.u$iniDf$neta1), c("name", "condition")]
+    expect_setequal(.got$name, .want$name)
+    expect_identical(.got$condition[match(.want$name, .got$name)], .want$condition, label = .label)
+    expect_identical(.u$omegaSameMap, .ui$omegaSameMap, label = .label)
+    expect_equal(unclass(.u$omega)[rownames(.om), colnames(.om)], .om, ignore_attr = TRUE, label = .label)
   }
 })
