@@ -386,13 +386,14 @@
 #'
 #' @param optimHessType Hessian type for numeric-difference individual
 #'   Hessians in generalized log-likelihood estimation: "central" (matches
-#'   R's `optimHess()`, default) or "forward" (faster), or the integer code
-#'   the control stores for one of them.
+#'   R's `optimHess()`, default) or "forward" (faster).  The integer code a
+#'   control stores is accepted too: 1 (central) or 3 (forward) in
+#'   `foceiControl()`, 2 (central) or 1 (forward) in the nlm-family controls.
 #'
 #' @param optimHessCovType Hessian type for numeric-difference individual
 #'   Hessians used for the covariance step/final likelihood: "central"
-#'   (more accurate, used here) or "forward", or the integer code the control
-#'   stores for one of them.
+#'   (more accurate, used here) or "forward".  The integer code a control
+#'   stores is accepted too: 1 (central) or 3 (forward) in `foceiControl()`.
 #'
 #' @param hessEtaStepMin Floor on the finite-difference step used for the
 #'   individual (eta) Hessian in generalized log-likelihood estimation,
@@ -1066,8 +1067,9 @@
 #'     the problem.  This is similar to 'PsN' resampling.
 #'
 #' @param eventType Event gradient type for dosing events; Can be
-#'   "central" or "forward", or the integer code the control stores for one
-#'   of them
+#'   "central" or "forward".  The integer code a control stores is accepted
+#'   too: 2 (central) or 3 (forward) in `foceiControl()`, 2 (central) or 1
+#'   (forward) in the nlm-family controls.
 #'
 #' @param eventSens How sensitivities of dosing/event parameters
 #'   (absorption lag time, bioavailability, infusion rate and duration,
