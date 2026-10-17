@@ -1,3 +1,15 @@
+# nlmixr2est (development version)
+
+## Bug fixes
+
+- `addNpde()` now works on a fit with inter-occasion variability.  It
+  stopped with "The following parameter(s) are required for solving: occ,
+  ETA[3], ETA[2], THETA[5]" for every such fit, since the finished fit's
+  thetas, etas and data are those of the model before its occasion etas were
+  expanded.  It now refits with no iterations, as `addCwres()` does, and adds
+  the same NPDE columns the fit gives when asked for them with
+  `tableControl(npde = TRUE)`.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
