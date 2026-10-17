@@ -75,7 +75,8 @@ nmTest({
     for (.est in c("focei", "saem")) {
       .fit <- .iovOdeFit(.est)
       .p <- suppressWarnings(suppressMessages(predict(.fit)))
-      expect_equal(.p$pred, as.data.frame(.fit)$PRED, tolerance = 1e-6, label = .est)
+      # the fit's table solves with its own ODE tolerances
+      expect_equal(.p$pred, as.data.frame(.fit)$PRED, tolerance = 1e-3, label = .est)
     }
   })
 })
