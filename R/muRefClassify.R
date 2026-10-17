@@ -72,7 +72,8 @@
   } else {
     .idRows <- .muRefDf
   }
-  .iovVars <- as.character(.uiIovEnv$iovVars)
+  # this ui's IOV variables, not the last fit's
+  .iovVars <- .uiIovNames(ui)
   .diagEtas <- character(0)
   if (!is.null(.iniDf)) {
     .e2 <- .iniDf[is.na(.iniDf$ntheta), , drop = FALSE]
