@@ -284,7 +284,7 @@ test_that("the long-label test drives every .covWarn() caller", {
 .covNotUsableTails <- function(labels) c("no covariance", sprintf("installed \"%s\"", labels))
 
 test_that("every covariance warning stays whole for every real method label", {
-  # about 13 s, most of it the .covRejectWarn() grid
+  # slow: the .covRejectWarn() grid has thousands of label combinations
   skip_on_cran()
   # the labels the code gives a covariance: the finite-difference ones
   # (.covFdType()'s decorations), with and without " (full)"; a rejected analytic
@@ -315,7 +315,7 @@ test_that("every covariance warning stays whole for every real method label", {
     "vi"
   )
   .guard <- c("could not be computed", "is not finite", "is not symmetric", "is not positive definite")
-  .lines <- character(0)
+  .by <- list()
   # .covInstall()'s guard: any label rejected, any one kept (NA: none installed)
   .g <- expand.grid(
     what = c(.fd, .other),
@@ -323,7 +323,7 @@ test_that("every covariance warning stays whole for every real method label", {
     kept = c(.fd, .anaKept, .other, NA),
     stringsAsFactors = FALSE
   )
-  .lines <- c(.lines, mapply(.covRejText, .g$what, .g$reason, .g$kept))
+  .by$reject <- c(.by$reject, mapply(.covRejText, .g$what, .g$reason, .g$kept))
   # the full finite-difference step; the SAEM "Ha" block
   .g <- expand.grid(
     what = c("r (full)", "s (full)", "r,s (full)"),
@@ -331,14 +331,14 @@ test_that("every covariance warning stays whole for every real method label", {
     kept = .fd,
     stringsAsFactors = FALSE
   )
-  .lines <- c(.lines, mapply(.covRejText, .g$what, .g$reason, .g$kept))
+  .by$reject <- c(.by$reject, mapply(.covRejText, .g$what, .g$reason, .g$kept))
   .g <- expand.grid(
     what = "Ha",
     reason = c("has information rows not matching the thetas", "has no estimated mu-referenced theta", .guard),
     kept = c("linFim", "|linFim|", "linFim (full)", NA),
     stringsAsFactors = FALSE
   )
-  .lines <- c(.lines, mapply(.covRejText, .g$what, .g$reason, .g$kept))
+  .by$reject <- c(.by$reject, mapply(.covRejText, .g$what, .g$reason, .g$kept))
   # .covInstall(): a label installed instead of the one requested
   .requests <- c(
     "r,s",
@@ -359,12 +359,12 @@ test_that("every covariance warning stays whole for every real method label", {
   )
   for (.l in c(.fd, .other)) {
     for (.w in .requests) {
-      .lines <- c(.lines, capture_warnings(.covInstall(.fakeFitEnv(), .pdCov(), .l, what = .w)))
+      .by$install <- c(.by$install, capture_warnings(.covInstall(.fakeFitEnv(), .pdCov(), .l, what = .w)))
     }
   }
   # .setCovFd(): a refit's finite-difference label for the finite-difference request
   .g <- expand.grid(label = .fd, what = .requests[1:6], stringsAsFactors = FALSE)
-  .lines <- c(.lines, mapply(.covInsteadMsg, .g$label, .g$what))
+  .by$setCovFd <- c(.by$setCovFd, mapply(.covInsteadMsg, .g$label, .g$what))
   # the sqrtm repairs of the covariances that are repaired
   for (.p in list(
     c("imp", "|imp|"),
@@ -373,7 +373,7 @@ test_that("every covariance warning stays whole for every real method label", {
     c("Ha", "|Ha|"),
     c("imp (full)", "|imp| (full)")
   )) {
-    .lines <- c(.lines, capture_warnings(.covRepairWarn(.p[1], .p[2])))
+    .by$repair <- c(.by$repair, capture_warnings(.covRepairWarn(.p[1], .p[2])))
   }
   # a finite-difference covariance whose ETAs were held
   for (.l in .fd) {
@@ -381,9 +381,9 @@ test_that("every covariance warning stays whole for every real method label", {
     .e$etaObf <- 1
     .e$cov <- diag(2)
     .e$covMethod <- .l
-    .lines <- c(.lines, capture_warnings(.foceiWarnConditionalCov(.e, list(maxInnerIterations = 0L))))
+    .by$conditional <- c(.by$conditional, capture_warnings(.foceiWarnConditionalCov(.e, list(maxInnerIterations = 0L))))
   }
-  # .covNotUsableMsg() through .covTriedSummary(), from FOCEi's walk
+  # .covNotUsableMsg() over the domain .covTriedSummary() reaches from FOCEi's walk
   # (.covSelectFocei()): its requests, one reason at a time, and its installs.
   # Several reasons joined by "; " can pass 74 columns and are clipped by design
   # (covTried has them in full), as is the analytic reason, which
@@ -403,9 +403,15 @@ test_that("every covariance warning stays whole for every real method label", {
     tail = .covNotUsableTails(.fdBase),
     stringsAsFactors = FALSE
   )
-  .lines <- c(.lines, mapply(.covNotUsableMsg, .g$r, .g$why, .g$tail))
+  .by$notUsable <- c(.by$notUsable, mapply(.covNotUsableMsg, .g$r, .g$why, .g$tail))
+  .lines <- unlist(.by, use.names = FALSE)
   .cut <- unique(.lines[endsWith(.lines, "...") | cli::ansi_nchar(.lines, type = "width") > 74L])
   expect_identical(.cut, character(0))
+  # the lines from each site, so a change shows which grid moved
+  expect_identical(
+    lengths(.by),
+    c(reject = 8346L, install = 557L, setCovFd = 180L, repair = 5L, conditional = 30L, notUsable = 512L)
+  )
   expect_identical(length(.lines), 9630L)
 })
 
