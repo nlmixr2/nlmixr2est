@@ -1,22 +1,3 @@
-# A model with an occasion eta, and the same model with a subject-level eta in
-# its place
-.npdeIovMod <- function() {
-  ini({
-    tka <- 0.45
-    tcl <- 1
-    tv <- 3.45
-    add.sd <- 0.7
-    eta.v ~ 0.1
-    iov.cl ~ 0.1 | occ
-  })
-  model({
-    ka <- exp(tka)
-    cl <- exp(tcl + iov.cl)
-    v <- exp(tv + eta.v)
-    linCmt() ~ add(add.sd)
-  })
-}
-
 # eta.v repeats eta.cl's subject-level block ("id:same:eta.cl")
 .npdeSameMod <- function() {
   ini({
@@ -33,18 +14,6 @@
     v <- exp(tv + eta.v)
     linCmt() ~ add(add.sd)
   })
-}
-
-.npdeIovData <- function() {
-  .d <- nlmixr2data::theo_sd
-  .d$occ <- ifelse(.d$TIME < 6, 1L, 2L)
-  .d
-}
-
-.npdeIovFit <- function(est, table = tableControl()) {
-  suppressWarnings(suppressMessages(
-    nlmixr2(.npdeIovMod, .npdeIovData(), est, control = list(print = 0, covMethod = ""), table = table)
-  ))
 }
 
 nmTest({
@@ -154,8 +123,17 @@ nmTest({
     # addNpde() refits; its columns match those of a fit asked for NPDE
     .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD")
     for (.est in c("focei", "saem")) {
-      .with <- .npdeIovFit(.est, tableControl(npde = TRUE))
-      .fit <- .npdeIovFit(.est)
+      .with <- .iovFit(.est, table = tableControl(npde = TRUE))
+      .fit <- .iovFit(.est)
+      # a fit asked for NPDE is finalized as one that is not: npde's vpcSim()
+      # in its table step runs a simulation's hooks, which clear the IOV
+      # rewrite's state unless they put it back
+      expect_identical(setdiff(names(.with), names(.fit)), .cols, label = .est)
+      expect_identical(setdiff(names(.fit), names(.with)), character(0), label = .est)
+      expect_identical(.with$ui$iniDf$name, .fit$ui$iniDf$name, label = .est)
+      expect_identical(rownames(.with$parFixedDf), rownames(.fit$parFixedDf), label = .est)
+      expect_identical(names(.with$ranef), c("ID", "eta.v"), label = .est)
+      expect_equal(.with$fixef, .fit$fixef, tolerance = 1e-10, label = .est)
       .new <- suppressMessages(addNpde(.fit, updateObject = FALSE))
       expect_identical(setdiff(names(.new), names(.fit)), .cols, label = .est)
       expect_identical(nrow(.new), nrow(.fit), label = .est)
@@ -166,8 +144,22 @@ nmTest({
     }
   })
 
+  test_that("addNpde() on an IOV fit works after simulate()", {
+    skip_if(
+      .rxode2WritesNestingData(),
+      "needs rxode2 with nestingInfo_() not writing into the caller's data, fix/nesting-info-no-mutate"
+    )
+    .fit <- .iovFit("focei")
+    invisible(suppressWarnings(suppressMessages(simulate(.fit))))
+    # simulate() leaves the fit's data as it was, so the refit still sees a
+    # numeric occasion
+    expect_identical(.fit$origData$occ, .iovFitData()$occ)
+    .new <- suppressMessages(addNpde(.fit, updateObject = FALSE))
+    expect_true(all(is.finite(.new$NPDE)))
+  })
+
   test_that(".uiHasIov() finds occasion etas, not repeated subject blocks", {
-    expect_true(.uiHasIov(rxode2::rxode2(.npdeIovMod)))
+    expect_true(.uiHasIov(rxode2::rxode2(.iovFitMod)))
     expect_false(.uiHasIov(rxode2::rxode2(.npdeSameMod)))
   })
 })

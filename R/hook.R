@@ -252,6 +252,9 @@ preProcessHooks <- function(name = NULL) {
     # so a simulation leaves it as it found it.
     .estState <- mget(.nlmixr2EstEnvFields, envir = nlmixr2global$nlmixr2EstEnv, ifnotfound = list(NULL))
     on.exit(list2env(.estState, envir = nlmixr2global$nlmixr2EstEnv), add = TRUE)
+    # and the IOV rewrite's state, which .uiApplyIov() clears for a simulation
+    .iovState <- as.list(.uiIovEnv, all.names = TRUE)
+    on.exit(.uiIovEnvRestore(.iovState), add = TRUE)
   }
   nlmixr2global$preProcessHookWarnings <- character(0)
   .ret <- .collectWarn(
