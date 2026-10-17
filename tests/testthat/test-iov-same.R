@@ -214,7 +214,12 @@ test_that("an id-level same() block beside IOV fits in both expansions", {
 test_that("every method that would drop a same() tie refuses the model", {
   skip_on_cran()
   .ui <- rxode2::rxode2(.idSameMod())
-  .ests <- nlmixr2AllEst()
+  # nlmixr2est's own methods; a method another test registers is not
+  # nlmixr2est's to classify
+  .ests <- Filter(
+    function(e) exists(paste0("nlmixr2Est.", e), envir = asNamespace("nlmixr2est"), inherits = FALSE),
+    nlmixr2AllEst()
+  )
   .refused <- .ests[!vapply(.ests, .isSameBlockMethod, logical(1), USE.NAMES = FALSE)]
   # measured on a same() model: nlme drops the tie; saem and the imp, qrpem and
   # npag families crash on it; the optimizers refuse any eta
@@ -261,6 +266,19 @@ test_that("every method that would drop a same() tie refuses the model", {
   for (.e in .ests) {
     expect_null(.nlmixr0preProcessAssertSameBlock(.iov, .e, NULL, NULL), label = .e)
   }
+})
+
+test_that("the refusal asks nothing of an est with no method, or an eta row with no condition", {
+  skip_on_cran()
+  # foceiLikLoad() runs the hooks with whatever est it is given; with no
+  # nlmixr2Est method there is nothing to refuse, and the FOCEi inner problem
+  # keeps the tie
+  .h <- suppressMessages(foceiLikLoad(.idSameMod(), .sameData(), "focei", est = "x"))
+  withr::defer(foceiLikUnload())
+  expect_identical(.h$neta, 3L)
+  # an eta row whose condition is missing is no repeated block
+  .ui <- list(iniDf = data.frame(neta1 = c(1, 2), condition = c("id", NA_character_)))
+  expect_null(.nlmixr0preProcessAssertSameBlock(.ui, "saem", NULL, NULL))
 })
 
 test_that("the refusal runs before the IOV hooks and reaches the user", {
