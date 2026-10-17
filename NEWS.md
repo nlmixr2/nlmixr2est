@@ -75,9 +75,12 @@
   `saem`, `imp`, `impmap`, `qrpem` and the `npag` and `npb` family stopped
   with unrelated errors.  A third-party method is refused too until it
   declares `attr(nlmixr2Est.<method>, "sameBlock")`: `TRUE` when it keeps the
-  tie, `"fixed"` when it does not estimate omega (see `?nlmixr2Est`).  A
-  refit from a fit is not refused, since the fit's model has already lost the
-  tie, as it did before.
+  tie, `"fixed"` when it does not estimate omega (see `?nlmixr2Est`).
+
+- A fit's model (`fit$ui`) kept a repeated (`same()`) block's copies as
+  ordinary etas, so a refit from it, or from `ini()` on it, estimated each copy
+  on its own.  It now keeps the tie, and a method that cannot keep it refuses
+  such a refit too.
 
 - With a time-varying covariate on a `linCmt()` parameter, an eta whose block
   repeats another's (`same()`) was left out of the sensitivity carry added in
