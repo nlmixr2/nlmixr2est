@@ -11507,18 +11507,21 @@ Rcpp::List shi21CentralWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx
 }
 
 // Test bridge to both step searches: shi21Forward() when `forward`, else
-// shi21Central(), at the given maxiter and the rl/ru/nu FOCEi's eta search uses.
+// shi21Central(), at the given maxiter and wantGr and the rl/ru/nu FOCEi's eta
+// search uses.
 //[[Rcpp::export]]
 Rcpp::List shi21SearchWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx, double ef,
-                           bool forward, int maxiter) {
+                           bool forward, int maxiter, bool wantGr) {
   ShiWrapGuard _g;
   shiWrapFn_ = &f; shiWrapN_ = f0.n_elem;
   arma::vec gr(f0.n_elem, arma::fill::zeros);
   double h = 0.0;
   if (forward) {
-    h = shi21Forward(shiWrapCall_, t, h, f0, gr, 0, idx - 1, ef, 1.5, 6.0, maxiter);
+    h = shi21Forward(shiWrapCall_, t, h, f0, gr, 0, idx - 1, ef, 1.5, 6.0, maxiter,
+                     shi21hMaxDefault, shi21hMinDefault, wantGr);
   } else {
-    h = shi21Central(shiWrapCall_, t, h, f0, gr, 0, idx - 1, ef, 1.5, 4.5, 3.0, maxiter);
+    h = shi21Central(shiWrapCall_, t, h, f0, gr, 0, idx - 1, ef, 1.5, 4.5, 3.0, maxiter,
+                     shi21hMaxDefault, shi21hMinDefault, wantGr);
   }
   return Rcpp::List::create(_["h"] = h, _["gr"] = gr);
 }
