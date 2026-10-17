@@ -1,6 +1,6 @@
 # viData.R -- data preparation for est="emvi"/"fbvi".  Builds, from the rxode2 ui + data:
 #  - the eta<->theta (population) map and initial theta / omega from ini()
-#  - per-subject observation/event inputs (times, DV, censoring)
+#  - the subjects: those with an observation, as the FOCEi inner problem keeps them
 #  - the latent-parameter classification that drives the gradient path:
 #      * mu-referenced structural thetas    -> gradient via d/dtheta = d/deta
 #      * non-mu structural thetas           -> theta-sensitivity ODE (impThetaScore)
@@ -103,18 +103,14 @@
   .errThetaIdx <- as.integer(.errRow$ntheta)
   .errType <- as.character(.errRow$err)
 
-  ## normalize data columns + per-subject observation/event inputs
+  ## upper-case the names; data without an EVID column gets the EVID FOCEi gives it
   d <- as.data.frame(data)
   names(d) <- toupper(names(d))
-  if (is.null(d$EVID)) {
-    d$EVID <- ifelse(is.na(d$AMT) | d$AMT == 0, 0L, 1L)
-  }
+  d <- .nmWithEvid(d)
   # the FOCEi inner problem drops these subjects too, so the two agree
   d <- .nmDropNoObsSubjects(d)
   .ids <- unique(d$ID)
   N <- length(.ids)
-  subj <- .nmSubjectObs(d, .ids)
-  .nobs <- sum(vapply(subj, `[[`, integer(1), "n"))
 
   list(
     N = N,
@@ -140,8 +136,6 @@
     jacRange = .jacRange,
     errThetaIdx = .errThetaIdx,
     errType = .errType,
-    a = .a,
-    subj = subj,
-    Nobs = .nobs
+    a = .a
   )
 }
