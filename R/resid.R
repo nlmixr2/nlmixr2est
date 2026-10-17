@@ -1064,6 +1064,13 @@ addTable <- function(
   ## emitted on exit.  updateObject = TRUE keeps (and modifies) the shared
   ## environment, so "in place" is environment identity here (see rxEvents.R)
   force(object)
+  # a finished fit with IOV gets its tables from a refit (.iovRefit()); the
+  # fit's own table step calls addTable() with updateObject = "no"
+  .iovTables <- missing(data) &&
+    missing(thetaEtaParameters) &&
+    !identical(updateObject, "no") &&
+    inherits(object, "nlmixr2FitCore") &&
+    .uiHasIov(object$ui)
   .nlmixr2EventEnter()
   .evOrig <- object
   .evOrigEnv <- if (inherits(object, "nlmixr2FitCore")) object$env else NULL
@@ -1106,6 +1113,22 @@ addTable <- function(
           subsetNonmem = table$subsetNonmem,
           keep = keep
         )
+      } else if (.iovTables) {
+        if (!inherits(table, "tableControl")) {
+          table <- do.call(tableControl, table)
+        }
+        # CWRES as .calcTables() decides it for this fit, not for the focei refit
+        if (is.null(table$cwres)) {
+          table$cwres <- !is.null(.fit$innerModel) || .foceiObjfWithoutCwres(.fit)
+        }
+        .keep <- setdiff(keep, "nlmixrRowNums")
+        if (length(.keep) > 0L) {
+          table$keep <- .keep
+        }
+        .newFit <- .iovRefit(object, table)
+        assign("shrink", .newFit$shrink, .fit)
+        .df <- as.data.frame(.newFit)
+        .df$nlmixrRowNums <- .newFit$env$.rownum
       } else {
         .tabs <- .calcTables(.fit, data = data, table = table, keep = keep)
         assign("shrink", .mixOwnedEtaShrink(.tabs$shrink, .fit), .fit)

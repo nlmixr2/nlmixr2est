@@ -104,20 +104,21 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   any(!is.na(.cnd) & is.na(.iniDf$err) & lotri::lotriBaseCondition(.cnd) != "id")
 }
 
-#' The NPDE columns of a fit with IOV
+#' A focei refit of a fit with IOV, for its tables
 #'
 #' A finished IOV fit keeps the IOV-expanded model, but its thetas, etas and
 #' data are the user's model's: the occasion etas, their magnitude thetas and
-#' the occasion column are gone, so `.calcNpde()` cannot solve it.  The
-#' columns come instead from a focei refit with no iterations at the fit's
-#' etas, as `addCwres()` refits, whose tables see the expanded model.
+#' the occasion column are gone, so `.calcTables()` and `.calcNpde()` cannot
+#' solve it.  A focei refit with no iterations at the fit's etas, as
+#' `addCwres()` refits, rewrites the model again, so its table step sees the
+#' expanded model.
 #'
 #' @param fit nlmixr2 fit with IOV
-#' @param table `tableControl()` with `npde = TRUE`
-#' @return data frame of the refit's NPDE columns
+#' @param table `tableControl()` for the refit's tables
+#' @return the refit
 #' @noRd
 #' @author Matthew L. Fidler
-.addNpdeIovRefit <- function(fit, table) {
+.iovRefit <- function(fit, table) {
   .ctl <- fit$foceiControl
   .ctl$maxOuterIterations <- 0L
   .ctl$maxInnerIterations <- 0L
@@ -125,12 +126,24 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   .ctl$compress <- FALSE
   .ctl$covMethod <- 0L
   .ctl$nAGQ <- 0L
-  .newFit <- .nlmixr2PriorGateBypass(
+  # the refit exists for its tables, whether or not the fit computed its own
+  .ctl$calcTables <- TRUE
+  .nlmixr2PriorGateBypass(
     nlmixr2(fit, data = nlme::getData(fit), est = "focei", control = .ctl, table = table)
   )
+}
+
+#' The NPDE columns of a fit with IOV, from `.iovRefit()`
+#'
+#' @param fit nlmixr2 fit with IOV
+#' @param table `tableControl()` with `npde = TRUE`
+#' @return data frame of the refit's NPDE columns
+#' @noRd
+#' @author Matthew L. Fidler
+.addNpdeIovRefit <- function(fit, table) {
+  .newFit <- .iovRefit(fit, table)
   # the columns _nlmixr2est_npdeCalc() (src/npde.cpp) returns; the refit's
-  # other new columns (a focei refit's CWRES, the expanded occasion etas) are
-  # not NPDE's
+  # other new columns (a focei refit's CWRES) are not NPDE's
   .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD")
   .miss <- setdiff(.cols, names(.newFit))
   if (length(.miss) > 0L) {
