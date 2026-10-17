@@ -254,7 +254,34 @@ extern "C" {
   iniN1qn1c
 #define iniRcppTrustPtrs _nlmixr2est_iniRcppTrustPtrs
   iniRcppTrust
+
+// rxode2's setRxThreadId(), and the wrapper nmRxThreadIdTrack() puts in its
+// place, which also records the id per thread for nmRxThreadIdCheck()
+static setRxThreadId_t nmSetRxThreadIdRx = NULL;
+static void nmSetRxThreadIdTracked(int id) {
+  nmRxThreadIdSet = id;
+  nmSetRxThreadIdRx(id);
 }
+
+SEXP _nlmixr2est_nmRxThreadIdTrack(void) {
+  if (setRxThreadId != NULL && setRxThreadId != nmSetRxThreadIdTracked) {
+    nmSetRxThreadIdRx = setRxThreadId;
+    setRxThreadId = nmSetRxThreadIdTracked;
+  }
+  return R_NilValue;
+}
+
+// For unit tests: the parallel subject iterations that began on another
+// thread's id (nmRxThreadIdCheck()) since the last reset; `reset` zeroes it.
+SEXP _nlmixr2est_nmRxThreadIdMissTest(SEXP reset) {
+  int n = nmRxThreadIdMiss.load(std::memory_order_relaxed);
+  if (Rf_asLogical(reset) == TRUE) nmRxThreadIdMiss.store(0, std::memory_order_relaxed);
+  return Rf_ScalarInteger(n);
+}
+}
+
+thread_local int nmRxThreadIdSet = -1;
+std::atomic<int> nmRxThreadIdMiss{0};
 
 #define _(String) (String)
 

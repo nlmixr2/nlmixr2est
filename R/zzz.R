@@ -47,6 +47,8 @@
 ## DESCRIPTION version requirement -- not by string-comparing a snapshot at load.
 .iniRxode2Ptr <- function() {
   .Call(`_nlmixr2est_iniRxodePtrs`, rxode2::.rxode2ptrs(), PACKAGE = "nlmixr2est")
+  # record each thread's handed-over id, so subject loops can check it
+  .Call(`_nlmixr2est_nmRxThreadIdTrack`, PACKAGE = "nlmixr2est")
 }
 
 .iniN1qn1ptr <- function() {

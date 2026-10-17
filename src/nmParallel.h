@@ -30,7 +30,26 @@
 // Requires rxode2ptr.h (setRxThreadId, getOrdId, getRxNsim, getRxNsub).
 
 #include "nmParallelCore.h"
+#include <atomic>
 #include <cstdint>  // int64_t in nmOrdId
+
+// The id this OS thread last handed rxode2, recorded by the setRxThreadId()
+// wrapper nmRxThreadIdTrack() installs (inner.cpp); -1 before any.  And how
+// many parallel subject iterations began with the thread holding another id:
+// a body that resets the id leaves its thread's next subject on rxode2's own
+// omp_get_thread_num(), which on Windows is 0 for every one of our threads.
+extern thread_local int nmRxThreadIdSet;
+extern std::atomic<int> nmRxThreadIdMiss;
+
+static inline void nmRxThreadIdCheck(bool par) {
+#ifdef _OPENMP
+  if (par && nmRxThreadIdSet != omp_get_thread_num()) {
+    nmRxThreadIdMiss.fetch_add(1, std::memory_order_relaxed);
+  }
+#else
+  (void)par;
+#endif
+}
 
 // Hands our real thread id to rxode2 for the life of this thread's slice.
 struct nmRxThreadScope {
@@ -67,6 +86,7 @@ static inline void nmForEachSubject(rx_solve *rxIn, int n, int cores, bool par,
                                     nmFlags flags, F&& body) {
   const bool mapIt = !(flags & nmNoMap);
   nmForEach<nmRxThreadScope>(n, cores, par, flags, [&](int pos) {
+    nmRxThreadIdCheck(par);
     body(mapIt ? nmOrdId(rxIn, pos, n) - 1 : pos);
   });
 }
@@ -82,7 +102,10 @@ static inline void nmForEachSubject(rx_solve *rxIn, int n, int cores, bool par,
                                     nmFlags flags, F&& body, E&& onError) {
   const bool mapIt = !(flags & nmNoMap);
   nmForEach<nmRxThreadScope>(n, cores, par, flags,
-                             [&](int pos) { body(mapIt ? nmOrdId(rxIn, pos, n) - 1 : pos); },
+                             [&](int pos) {
+                               nmRxThreadIdCheck(par);
+                               body(mapIt ? nmOrdId(rxIn, pos, n) - 1 : pos);
+                             },
                              [&](int pos) { onError(mapIt ? nmOrdId(rxIn, pos, n) - 1 : pos); });
 }
 
