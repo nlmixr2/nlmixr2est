@@ -344,8 +344,8 @@ nmTest({
       tryCatch(.nmAssertEventColumns(.inf), error = conditionMessage),
       .utFoceiError(.inf, .ui)
     )
-    # a missing ID beside each of those: FOCEi checks an integer or character ID
-    # first and a double one record by record with TIME, after the event columns
+    # a missing ID beside each of those: FOCEi checks any ID but a double first,
+    # and a double one record by record with TIME, after the event columns
     .ids <- list(double = as.double, integer = as.integer, character = as.character, factor = factor)
     .m <- 0L
     for (.it in names(.ids)) {
@@ -409,6 +409,12 @@ nmTest({
     .d$ID <- as.integer(.d$ID)
     expect_error(.nmDropNoObsSubjects(.d), "^'id' cannot have NA values$")
     expect_error(.nmSubjectObs(.d, 1), "^'id' cannot have NA values$")
+    # with no TIME column the record check still finds a missing double ID, and a
+    # missing ID of any other type is checked first anyway
+    expect_error(.nmAssertEventColumns(data.frame(ID = c(NA, 1), DV = 1, EVID = 0)), "^'id' cannot be 'NA'$")
+    expect_error(.nmAssertEventColumns(data.frame(ID = c(NA, 1L), DV = 1, EVID = 0)), "^'id' cannot have NA values$")
+    expect_error(.nmWithEvid(data.frame(ID = c(NA, 1), DV = 1)), "^'id' cannot be 'NA'$")
+    expect_error(.nmWithEvid(data.frame(ID = c(NA, 1L), DV = 1)), "^'id' cannot have NA values$")
     # a missing double ID beside a character EVID: the EVID first, as FOCEi checks
     # a double ID with the records, after the event columns
     .e <- .d
