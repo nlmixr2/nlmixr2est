@@ -200,6 +200,20 @@ nmTest({
     expect_false("foceiControl" %in% .full)
   })
 
+  # the pooled population solve of two subjects with three observations each
+  .unitsSolveAllTwo <- function() {
+    .foceiAnalyticSolveAll(
+      list(cores = 1L),
+      c(THETA_1_ = 1),
+      matrix(0, 2L, 1L),
+      1:2,
+      data.frame(),
+      list(1:3, 1:3),
+      1e-6,
+      labels = c(101, 102)
+    )
+  }
+
   test_that("the pooled solve declines when its observation rows do not match", {
     .rows <- new.env(parent = emptyenv())
     .rows$n <- c(3L, 2L)
@@ -209,23 +223,11 @@ nmTest({
         structure(lapply(.rows$n, function(.n) list(a = matrix(0, .n, 1L))), ok = c(1L, 1L))
       }
     )
-    .solve <- function() {
-      .foceiAnalyticSolveAll(
-        list(cores = 1L),
-        c(THETA_1_ = 1),
-        matrix(0, 2L, 1L),
-        1:2,
-        data.frame(),
-        list(1:3, 1:3),
-        1e-6,
-        labels = c(101, 102)
-      )
-    }
     .foceiAnalyticWhyReset()
-    expect_null(.solve())
+    expect_null(.unitsSolveAllTwo())
     expect_identical(.foceiAnalyticWhy$detail, "subject 102: 2 observation rows solved for 3 observations")
     .rows$n <- c(3L, 3L)
-    expect_length(.solve(), 2L)
+    expect_length(.unitsSolveAllTwo(), 2L)
   })
 
   # A per-subject solve whose A is linear in ETA_1_ (slope 0.5), failing where
@@ -308,19 +310,24 @@ nmTest({
     expect_identical(.foceiAnalyticFD3Flat(list(A = .E$A), TRUE), 1:4)
   })
 
-  test_that("the third-order differencing differences AR with withR", {
-    # A and AR linear in the eta (slopes 0.5 and 0.25), so the differences are exact
-    .solve <- function(aug, params, ev, times, tol = 1e-10) {
+  # A per-subject solve whose A and AR are linear in ETA_1_ (slopes 0.5 and 0.25);
+  # with `dropAR$on`, a perturbed solve leaves AR out
+  .unitsSolveAR <- function(dropAR) {
+    function(aug, params, ev, times, tol = 1e-10) {
       .eta <- params[["ETA_1_"]]
       .r <- list(f = c(1, 2), a = matrix(c(0.1, 0.2), 2L, 1L), A = array(0.01 + 0.5 * .eta, c(2L, 1L, 1L)))
-      if (.eta == 0 || !isTRUE(.dropAR$on)) {
+      if (.eta == 0 || !isTRUE(dropAR$on)) {
         .r$AR <- array(0.02 + 0.25 * .eta, c(2L, 1L, 1L))
       }
       .r
     }
+  }
+
+  test_that("the third-order differencing differences AR with withR", {
+    # linear A and AR, so the differences are exact
     .dropAR <- new.env(parent = emptyenv())
     .dropAR$on <- FALSE
-    local_mocked_bindings(.foceiAnalyticSolveFA = .solve)
+    local_mocked_bindings(.foceiAnalyticSolveFA = .unitsSolveAR(.dropAR))
     .foceiAnalyticWhyReset()
     .r <- .foceiAnalyticSolveSubjectFD3(list(dirs = "ETA_1_"), c(ETA_1_ = 0), data.frame(), c(0, 1), withR = TRUE)
     expect_equal(.r$Ath, array(0.5, c(2L, 1L, 1L, 1L)), tolerance = 1e-12)
