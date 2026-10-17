@@ -1026,6 +1026,11 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
       .w <- match(.iniDf2$name, .iniDf$name)
       .iniDf2$prior[!is.na(.w)] <- .iniDf$prior[.w[!is.na(.w)]]
     }
+    # nor a repeated block's tie: the matrix gives every row the condition
+    # "id", so a same() copy ("id:same:<master>") would come back estimated
+    # on its own by a refit
+    .w <- match(.iniDf2$name, .iniDf$name)
+    .iniDf2$condition[!is.na(.w)] <- .iniDf$condition[.w[!is.na(.w)]]
     .names <- names(.iniDf)
     .iniDf <- rbind(.iniDf1, .iniDf2)
     .iniDf <- .iniDf[, .names]
