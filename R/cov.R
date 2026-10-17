@@ -439,11 +439,20 @@
   }
   .nlmixr2CovConditionUpdate(env)
   if (warn && .covIsName(what) && !.covSameName(.covBaseName(what), .covBaseName(label))) {
-    .covWarn(sprintf("\"%s\" installed instead of the requested \"%s\"", label, what))
+    .covWarn(.covInsteadMsg(label, what))
   } else if (warn && .covIsName(what) && .covIsName(label) && !identical(what, label)) {
     .covRepairWarn(what, label)
   }
   invisible(TRUE)
+}
+
+#' The warning that a covariance other than the requested one was installed
+#' @param label the installed covariance's label
+#' @param what the requested method
+#' @return the warning text
+#' @noRd
+.covInsteadMsg <- function(label, what) {
+  sprintf("\"%s\" installed instead of the requested \"%s\"", label, what)
 }
 
 #' Warn that a covariance was installed in its sqrtm-repaired form
@@ -1371,7 +1380,7 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
     if (!.listed) {
       .setCovFail(method, if (.covIsName(.label)) sprintf("was \"%s\"", .label))
     }
-    .covWarn(sprintf("\"%s\" installed instead of the requested \"%s\"", .label, method))
+    .covWarn(.covInsteadMsg(.label, method))
     assign(".setCovFallback", .label, envir = env)
   }
   .ok <- .covInstall(

@@ -53,16 +53,19 @@
 #'
 #' EVID, MDV and AMT must be stored as numbers: double, integer or logical, a
 #' factor too (its codes), as `etTrans()` checks the storage type and not the
-#' values.  No TIME may be infinite.  A character TIME or DV is read as a
-#' number, as FOCEi reads it.  The messages are `etTrans()`'s, after FOCEi's
-#' defaults: without an EVID column but with AMT, the MDV column stands for the
-#' EVID and is named "missing DV"; without an ID column the subject is 1.
+#' values.  No TIME may be infinite, and no ID missing.  A character TIME or DV
+#' is read as a number, as FOCEi reads it.  The checks run in `etTrans()`'s order
+#' and stop with its messages, after FOCEi's defaults: an ID it reads through
+#' factor levels (any type but double) is checked first, and a double ID record
+#' by record with TIME, after the event columns; without an EVID column but with
+#' AMT, the MDV column stands for the EVID and is named "missing DV"; without an
+#' ID column the subject is 1.
 #' @param d data frame with upper-case names
 #' @return `d`, invisibly
 #' @noRd
 .nmAssertEventColumns <- function(d) {
-  # FOCEi stops on a missing ID before it looks at the event columns
-  if (!is.null(d[["ID"]])) {
+  .id <- d[["ID"]]
+  if (!is.null(.id) && !is.double(.id)) {
     .nmAssertIds(d)
   }
   .num <- c("double", "integer", "logical")
@@ -78,10 +81,24 @@
   if (!is.null(d[["AMT"]]) && !(typeof(d[["AMT"]]) %in% .num)) {
     stop("amount ('amt') needs to be a number", call. = FALSE)
   }
-  .inf <- which(is.infinite(.nmAsDouble(d[["TIME"]])))
-  if (length(.inf) > 0L) {
-    .id <- if (is.null(d[["ID"]])) 1L else d[["ID"]][.inf[1L]]
-    stop("infinite times are not allowed (id: ", .id, ", row: ", .inf[1L], ")", call. = FALSE)
+  # record by record: the first infinite TIME or missing double ID
+  .bad <- is.infinite(.nmAsDouble(d[["TIME"]]))
+  if (is.double(.id)) {
+    .bad <- .bad | is.na(.id)
+  }
+  .row <- which(.bad)[1L]
+  if (!is.na(.row)) {
+    if (is.double(.id) && is.na(.id[.row])) {
+      .nmAssertIds(d)
+    }
+    stop(
+      "infinite times are not allowed (id: ",
+      if (is.null(.id)) 1L else .id[.row],
+      ", row: ",
+      .row,
+      ")",
+      call. = FALSE
+    )
   }
   invisible(d)
 }
@@ -171,7 +188,9 @@
     stop("the data needs an ID column", call. = FALSE)
   }
   if (anyNA(.id)) {
-    stop("ID is missing on ", sum(is.na(.id)), " record(s)", call. = FALSE)
+    # etTrans()'s messages: it reads a double ID record by record, any other
+    # through its factor levels
+    stop(if (is.double(.id)) "'id' cannot be 'NA'" else "'id' cannot have NA values", call. = FALSE)
   }
   invisible(d)
 }
