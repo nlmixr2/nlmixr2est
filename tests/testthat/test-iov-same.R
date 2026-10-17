@@ -201,6 +201,15 @@ test_that("an id-level same() block beside IOV fits in both expansions", {
   )
 }
 
+# register a do-nothing nlmixr2Est method `name` in `ns`, carrying
+# attr(, attrName) <- value
+.fakeEst <- function(env, ...) NULL
+.regFake <- function(ns, name, attrName, value) {
+  .fn <- .fakeEst
+  attr(.fn, attrName) <- value
+  registerS3method("nlmixr2Est", name, .fn, envir = ns)
+}
+
 .errMsg <- function(expr) {
   tryCatch(
     {
@@ -291,19 +300,14 @@ test_that("the refusal runs before the IOV hooks and reaches the user", {
 test_that("an out-of-tree method keeps a same() block through its attribute", {
   skip_on_cran()
   .ns <- asNamespace("nlmixr2est")
-  .reg <- function(name, attrName, value) {
-    .fn <- function(env, ...) NULL
-    attr(.fn, attrName) <- value
-    registerS3method("nlmixr2Est", name, .fn, envir = .ns)
-  }
   withr::defer(rm(
     list = paste0("nlmixr2Est.", c("fakeSame", "fakeIovSame", "fakeFixed", "fakeNone")),
     envir = .ns[[".__S3MethodsTable__."]]
   ))
-  .reg("fakeSame", "sameBlock", TRUE)
-  .reg("fakeIovSame", "iovSame", TRUE)
-  .reg("fakeFixed", "sameBlock", "fixed")
-  .reg("fakeNone", "sameBlock", NULL)
+  .regFake(.ns, "fakeSame", "sameBlock", TRUE)
+  .regFake(.ns, "fakeIovSame", "iovSame", TRUE)
+  .regFake(.ns, "fakeFixed", "sameBlock", "fixed")
+  .regFake(.ns, "fakeNone", "sameBlock", NULL)
   expect_identical(
     vapply(c("fakeSame", "fakeIovSame", "fakeFixed", "fakeNone"), .isSameBlockMethod, logical(1)),
     c(fakeSame = TRUE, fakeIovSame = TRUE, fakeFixed = TRUE, fakeNone = FALSE)
