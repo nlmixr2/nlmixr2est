@@ -12,20 +12,22 @@ typedef arma::vec (*shi21fn_type)(arma::vec &t, int id);
 
 // The Shi et al. (2021) step search along coordinate idx; returns the step and
 // leaves the difference at it in gr.  The search ends after maxiter probes, or at a
-// step too small to move t[idx].  When f(t + h) never solves, gr is the backward
-// difference; when no difference forms at all, gr is NA.
+// step shrunk too small to move t[idx]; maxiter <= 0 differences at the starting
+// step without a search.  When f(t + h) never solves, gr is the backward
+// difference; when no difference forms at all, gr is NA.  A caller that wants only
+// the step passes wantGr = false, which skips the probes made for gr alone.
 double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef = 7e-7, double rl = 1.5, double ru = 6.0,
                     int maxiter=15, double hMax = shi21hMaxDefault,
-                    double hMin = shi21hMinDefault);
+                    double hMin = shi21hMinDefault, bool wantGr = true);
 
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef = 7e-7, double rl = 1.5, double ru = 6.0,
                     double nu = 8.0,
                     int maxiter=15, double hMax = shi21hMaxDefault,
-                    double hMin = shi21hMinDefault);
+                    double hMin = shi21hMinDefault, bool wantGr = true);
 
 // Hessian by finite differences of the gradient `grad`, whose value at x is gr0:
 // column k differences grad along coordinate k, then the matrix is symmetrized.

@@ -114,10 +114,39 @@ double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   return shiRatio(abs(f4-4*f1+3*f0)/(8.0*ef));
 }
 
+// The difference at step h without a search: central when both sides solve (and
+// `central`), else the one-sided difference that does; NA when neither does or h
+// does not move t[idx].
+static void shi21PlainDiff(shi21fn_type f, arma::vec &t, double h, arma::vec &f0,
+                           arma::vec &gr, int id, int idx, bool central) {
+  arma::vec tp1 = t, tm1 = t;
+  tp1(idx) += h;
+  tm1(idx) -= h;
+  bool okP = false, okM = false;
+  arma::vec fp1, fm1;
+  if (tp1(idx) != t(idx)) {
+    fp1 = f(tp1, id);
+    okP = fp1.is_finite();
+  }
+  if ((central || !okP) && tm1(idx) != t(idx)) {
+    fm1 = f(tm1, id);
+    okM = fm1.is_finite();
+  }
+  if (central && okP && okM) {
+    gr = (fp1 - fm1)/(2*h);
+  } else if (okP) {
+    gr = (fp1 - f0)/h;
+  } else if (okM) {
+    gr = (f0 - fm1)/h;
+  } else {
+    gr.fill(NA_REAL);
+  }
+}
+
 double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef, double rl, double ru, int maxiter,
-                    double hMax, double hMin) {
+                    double hMax, double hMin, bool wantGr) {
   // Algorithm 2.1 in paper
   // q=2, alpha=4, r=3
   // s = 0, 1
@@ -133,14 +162,21 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
   double l = 0, u = R_PosInf, rcur = NA_REAL;
   arma::vec f1(f0.size());
   gr.zeros(f0.n_elem);
-  double lasth = h;
+  if (maxiter <= 0) {
+    // no search: the difference at the starting step
+    if (wantGr) shi21PlainDiff(f, t, h, f0, gr, id, idx, false);
+    return h;
+  }
+  double lasth = h, h0 = h;
   int iter=0;
   // backwardOnly: gr is the backward difference, which any forward one replaces
   bool finiteF1 = true, finiteF4 = true, calcGrad = false, backwardOnly = false;
   while(true) {
     iter++;
-    // a step that no longer moves t[idx] differences t with itself
-    if (iter > maxiter || t(idx) + h == t(idx)) {
+    // a step shrunk below the start that no longer moves t[idx] differences t with
+    // itself; the start itself may grow
+    if (iter > maxiter ||
+        (h < h0 && (t(idx) + h == t(idx) || t(idx) - h == t(idx)))) {
       h = lasth;
       break;
     }
@@ -148,10 +184,10 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
                  finiteF1, finiteF4);
     if (rcur == -1) {
       if (!finiteF1) {
-        if (!calcGrad) {
+        arma::vec tm1 = t;
+        tm1(idx) -= h;
+        if (wantGr && !calcGrad && tm1(idx) != t(idx)) {
           // backward difference until a forward one forms, as shi21Central does
-          arma::vec tm1 = t;
-          tm1(idx) -= h;
           arma::vec fm1 = f(tm1, id);
           if (fm1.is_finite()) {
             calcGrad = true;
@@ -255,7 +291,7 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef, double rl, double ru, double nu,
-                    int maxiter, double hMax, double hMin) {
+                    int maxiter, double hMax, double hMin, bool wantGr) {
   // Algorithm 3.1
   // weights = -0.5, 0.5
   // s = -1, 1
@@ -279,6 +315,12 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   arma::vec fp1(f0.size());
   arma::vec fm1(f0.size());
   gr.zeros(f0.n_elem);
+  if (maxiter <= 0) {
+    // no search: the difference at the starting step
+    if (wantGr) shi21PlainDiff(f, t, h, f0, gr, id, idx, true);
+    return h;
+  }
+  double h0 = h;
 
   int iter=0;
   // backwardOnly: gr is the backward difference, which any other one replaces
@@ -286,13 +328,15 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
     finiteFm1=true, finiteFm3=true, calcGrad=false, backwardOnly=false;
   while(true) {
     iter++;
-    // a step that no longer moves t[idx] differences t with itself
-    if (iter > maxiter || t(idx) + h == t(idx) || t(idx) - h == t(idx)) {
+    // a step shrunk below the start that no longer moves t[idx] differences t with
+    // itself; the start itself may grow
+    if (iter > maxiter ||
+        (h < h0 && (t(idx) + h == t(idx) || t(idx) - h == t(idx)))) {
       h=hlast;
       break;
     }
     rcur = shiRC(h, f, ef, t, id, idx, fp1, fm1, l, u,
-                 finiteFp1, finiteFp3, finiteFm1, finiteFm3, !calcGrad);
+                 finiteFp1, finiteFp3, finiteFm1, finiteFm3, wantGr && !calcGrad);
     // Need f1 from shiRF to compute forward difference
     if (rcur == -1.0) {
       if (!finiteFp1) {

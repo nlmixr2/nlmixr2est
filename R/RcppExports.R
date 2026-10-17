@@ -164,6 +164,10 @@ shi21CentralWrap <- function(f, t, f0, idx, ef) {
     .Call(`_nlmixr2est_shi21CentralWrap`, f, t, f0, idx, ef)
 }
 
+shi21SearchWrap <- function(f, t, f0, idx, ef, forward, maxiter) {
+    .Call(`_nlmixr2est_shi21SearchWrap`, f, t, f0, idx, ef, forward, maxiter)
+}
+
 #' Return the square root of general square matrix A
 #'
 #' @param m Matrix to take the square root of.

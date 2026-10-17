@@ -2975,6 +2975,11 @@ double likInner0(double *eta, int id) {
                                                6.0,  //double ru = 6.0);;
                                                op_focei.shi21maxFD, // maxiter
                                                op_focei.shi21hMax, op_focei.shi21hMin);
+                break;
+              default:
+                // unreachable (foceiControl() takes 2 and 3 only); no slope, counted
+                // below -- an exception cannot leave this parallel loop
+                grETA.fill(NA_REAL);
               }
               etaGradF.col(ii) = grETA;
               if (op_focei.interaction == 1) {
@@ -2998,6 +3003,8 @@ double likInner0(double *eta, int id) {
                                                  op_focei.shi21maxFD, // maxiter
                                                  op_focei.shi21hMax, op_focei.shi21hMin);
                   break;
+                default:
+                  grETA.fill(NA_REAL); // unreachable, as above
                 }
                 etaGradR.col(ii) = grETA;
               }
@@ -3053,7 +3060,7 @@ double likInner0(double *eta, int id) {
         // An eta whose differences solved on neither side has no slope.  It is
         // taken as 0 and counted for the fit's warning: failing the evaluation
         // instead would fail the subject at an eta it cannot leave.
-        for (int ii = 0; ii < op_focei.neta; ++ii) {
+        for (unsigned int ii = 0; ii < op_focei.neta; ++ii) {
           bool noF = !etaGradF.col(ii).is_finite();
           bool noR = op_focei.interaction == 1 && !etaGradR.col(ii).is_finite();
           if (noF) etaGradF.col(ii).zeros();
@@ -3735,20 +3742,22 @@ bool calcEtaHessian(double *eta, int likId, int id,
       // eta left.
       LikInner0OutputGuard _outputs(fInd, ind);
       // optimHessType: 3 = forward, 1 = central.
-      return shi21Hessian(getGradForOptimHess, x, gr0, id,
-                          op_focei.optimHessType == 3 ? shi21HessForward :
-                          (op_focei.optimHessType == 1 ? shi21HessCentral : 0),
-                          fInd->etahh, op_focei.hessEpsInner,
-                          op_focei.shi21maxInner, op_focei.shi21hMax,
-                          hMin.memptr());
+      arma::mat Hfd = shi21Hessian(getGradForOptimHess, x, gr0, id,
+                                   op_focei.optimHessType == 3 ? shi21HessForward :
+                                   (op_focei.optimHessType == 1 ? shi21HessCentral : 0),
+                                   fInd->etahh, op_focei.hessEpsInner,
+                                   op_focei.shi21maxInner, op_focei.shi21hMax,
+                                   hMin.memptr());
+      // A column whose differences solved on neither side is NA (and so is its
+      // row, once symmetrized).  It is taken as 0 and counted, as the eta
+      // gradient's is: failing here would fail the subject at an eta it cannot
+      // leave.  Here, not after trustHessian(), so a quasi-Newton seed is finite.
+      if (!Hfd.is_finite()) {
+        Hfd.elem(arma::find_nonfinite(Hfd)).zeros();
+        op_focei.nEtaFdNoSlope.fetch_add(1, std::memory_order_relaxed);
+      }
+      return Hfd;
     });
-    // A column whose differences solved on neither side is NA (and so is its row,
-    // once symmetrized).  It is taken as 0 and counted, as the eta gradient's is:
-    // failing here would fail the subject at an eta it cannot leave.
-    if (!H.is_finite()) {
-      H.elem(arma::find_nonfinite(H)).zeros();
-      op_focei.nEtaFdNoSlope.fetch_add(1, std::memory_order_relaxed);
-    }
   } else if (op_focei.interaction) {
     int nO = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
     arma::mat a(fInd->a, nO, op_focei.neta, false, true);
@@ -7875,11 +7884,12 @@ void numericGrad(double *theta, double *g){
                                            op_focei.shi21hMax, op_focei.shi21hMin);
         op_focei.aEpsC[cpar] = op_focei.aEps[cpar];
         g[cpar] = grFinal(0);
-        // no difference solved: a reset request, as in the other branches
-        if (!R_FINITE(g[cpar])) {
+        // no difference solved: a reset request, as in the other branches.  A fit's
+        // outer objective is finite at a failed point, so none reaches it.
+        if (!R_FINITE(g[cpar])) { // # nocov start
           op_focei.zeroGrad = 1;
           break;
-        }
+        } // # nocov end
       }
     }
     if (op_focei.slow) {
@@ -11493,6 +11503,23 @@ Rcpp::List shi21CentralWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx
   arma::vec gr(f0.n_elem, arma::fill::zeros);
   double h = 0.0;
   h = shi21Central(shiWrapCall_, t, h, f0, gr, 0, idx - 1, ef);
+  return Rcpp::List::create(_["h"] = h, _["gr"] = gr);
+}
+
+// Test bridge to both step searches: shi21Forward() when `forward`, else
+// shi21Central(), at the given maxiter and the rl/ru/nu FOCEi's eta search uses.
+//[[Rcpp::export]]
+Rcpp::List shi21SearchWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx, double ef,
+                           bool forward, int maxiter) {
+  ShiWrapGuard _g;
+  shiWrapFn_ = &f; shiWrapN_ = f0.n_elem;
+  arma::vec gr(f0.n_elem, arma::fill::zeros);
+  double h = 0.0;
+  if (forward) {
+    h = shi21Forward(shiWrapCall_, t, h, f0, gr, 0, idx - 1, ef, 1.5, 6.0, maxiter);
+  } else {
+    h = shi21Central(shiWrapCall_, t, h, f0, gr, 0, idx - 1, ef, 1.5, 4.5, 3.0, maxiter);
+  }
   return Rcpp::List::create(_["h"] = h, _["gr"] = gr);
 }
 
@@ -16314,7 +16341,8 @@ static void fdThetaStepPer(const arma::vec &theta, int j,
                                       _fdThIds[(size_t)k], j,
                                       std::pow(DBL_EPSILON, 0.25),
                                       1.5, 4.5, 3.0, op_focei.shi21maxFD,
-                                      op_focei.shi21hMax, op_focei.shi21hMin);
+                                      op_focei.shi21hMax, op_focei.shi21hMin,
+                                      false); // the step only
   });
 }
 
@@ -16934,7 +16962,8 @@ static double foceiFdOmegaStep1(arma::vec &om, arma::vec &f0, int col, int q,
                    4.5,   // ru
                    3.0,   // nu
                    op_focei.shi21maxFD,
-                   op_focei.shi21hMax, op_focei.shi21hMin);
+                   op_focei.shi21hMax, op_focei.shi21hMin,
+                   false); // the step only
   // Clamped: neither used nor cached, exactly as in the theta block.
   if (!R_finite(h) || h <= 0.0 ||
       h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
@@ -17362,7 +17391,8 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
             double hs = 0.0;
             h = shi21Central(shi21LikThetaSum, tw, hs, f0s, gr, _fdThIds[0], j,
                              std::pow(DBL_EPSILON, 0.25), 1.5, 4.5, 3.0,
-                             op_focei.shi21maxFD, op_focei.shi21hMax, op_focei.shi21hMin);
+                             op_focei.shi21maxFD, op_focei.shi21hMax, op_focei.shi21hMin,
+                             false); // the step only
             if (!R_finite(h) || h <= 0.0 ||
                 h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
               op_focei.nFdStepClamped++;
