@@ -86,6 +86,7 @@ nmTest({
 
   test_that("a theta whose plus-side probes never solve takes the backward difference", {
     skip_on_cran()
+    withr::defer(.nlmFreeEnv())
     # the log-likelihood is -Inf at any fdepot above 0.9, an edge sharp enough
     # that every probe the search tries past it fails, so the fdepot gradient is
     # the backward difference at the search's starting step h0
@@ -112,6 +113,7 @@ nmTest({
 
   test_that("a theta whose differences solve on neither side fails the evaluation, not a zero slope", {
     skip_on_cran()
+    withr::defer(.nlmFreeEnv())
     # the log-likelihood is -Inf at any fdepot but 0.9: the step search forms no
     # difference for fdepot, so nlmixr2NlmEval() reports the point as failed
     # (+Inf, one bad evaluation) instead of a zero fdepot gradient
@@ -190,7 +192,8 @@ nmTest({
     expect_identical(unique(.fit$eta$eta.f), 0)
     .w <- grep("^eta finite differences", .fit$runInfo, value = TRUE)
     expect_length(.w, 1L)
-    expect_match(.w, "^eta finite differences solved on neither side [1-9][0-9]* times; slope 0$")
+    # 1140 from the eta gradient, 24 from the eta Hessian (12 subjects, twice)
+    expect_identical(.w, "eta finite differences solved on neither side 1164 times; slope 0")
   })
 
   test_that("shi21Central() falls back to a backward difference, and to NA when none forms", {
@@ -211,5 +214,185 @@ nmTest({
     .f <- function(x) c(2 * x[1], 3 * x[1])
     .r <- shi21CentralWrap(.f, c(0, 1), .f(c(0, 1)), 1L, .ef)
     expect_equal(drop(.r$gr), c(2, 3), tolerance = 1e-10)
+  })
+
+  # shi21SearchWrap(f, t, f0, idx, ef, forward, maxiter): either step search, with
+  # the rl/ru/nu FOCEi's eta search uses
+  .ef <- 7e-7
+  .h0c <- (3 * .ef)^(1 / 3)
+  .h0f <- 2 / sqrt(3) * sqrt(.ef)
+
+  test_that("a backward difference gives way to any other difference that forms", {
+    # finite only at and below 0.001: the first steps fail on the plus side, and a
+    # shrunk step that solves replaces the backward difference
+    .f <- function(x) if (x[1] > 0.001) NaN else 2 * (x[1]^2 + x[1])
+    .r <- shi21SearchWrap(.f, 0, .f(0), 1L, .ef, FALSE, 15L)
+    expect_equal(.r$h, 0.000249831021, tolerance = 1e-8)
+    expect_equal(drop(.r$gr), 2, tolerance = 1e-12) # the central difference is exact
+    .r <- shi21SearchWrap(.f, 0, .f(0), 1L, .ef, TRUE, 15L)
+    expect_equal(.r$h, 0.000241522946, tolerance = 1e-8)
+    expect_equal(drop(.r$gr), 2 * (1 + .r$h), tolerance = 1e-12) # the forward one
+  })
+
+  test_that("maxiter = 0 differences at the starting step, without a search", {
+    .g <- function(x) 2 * x[1] + 3
+    for (.fw in c(FALSE, TRUE)) {
+      .r <- shi21SearchWrap(.g, 1, .g(1), 1L, .ef, .fw, 0L)
+      expect_equal(.r$h, if (.fw) .h0f else .h0c, tolerance = 1e-12, label = .fw)
+      expect_equal(drop(.r$gr), 2, tolerance = 1e-10, label = .fw)
+      # the plus side fails: the backward difference
+      .g1 <- function(x) if (x[1] > 1) NaN else 2 * x[1]
+      expect_equal(drop(shi21SearchWrap(.g1, 1, 2, 1L, .ef, .fw, 0L)$gr), 2, tolerance = 1e-10, label = .fw)
+      # neither side: NA
+      .g2 <- function(x) if (x[1] != 1) NaN else 0
+      expect_identical(drop(shi21SearchWrap(.g2, 1, 0, 1L, .ef, .fw, 0L)$gr), NA_real_, label = .fw)
+    }
+  })
+
+  test_that("the forward search stops at a step too small to move t on either side", {
+    # finite only at t: past about 44 halvings t - h rounds to t at these t
+    .only <- function(t0) function(x) if (x[1] != t0) NaN else 0
+    for (.t in c(-1, -2, -0.5, -4)) {
+      .r <- shi21SearchWrap(.only(.t), .t, 0, 1L, .ef, TRUE, 60L)
+      expect_identical(drop(.r$gr), NA_real_, label = .t)
+    }
+  })
+
+  test_that("a starting step too small to move t may still grow", {
+    # at 1e13 the starting steps round to t; the search grows them to hMax = 0.5
+    .e <- function(x) exp(x[1] / 1e14)
+    .t <- 1e13
+    .r <- shi21SearchWrap(.e, .t, .e(.t), 1L, .ef, TRUE, 15L)
+    expect_identical(.r$h, 0.5)
+    expect_identical(drop(.r$gr), (.e(.t + 0.5) - .e(.t)) / 0.5)
+    .r <- shi21SearchWrap(.e, .t, .e(.t), 1L, .ef, FALSE, 15L)
+    expect_identical(.r$h, 0.5)
+    expect_identical(drop(.r$gr), (.e(.t + 0.5) - .e(.t - 0.5)) / 1)
+  })
+
+  # finite only at fdepot = 0.9: fdepot's differences solve on neither side
+  .shiEdge2 <- function() {
+    ini({
+      fdepot <- 0.9
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl)
+      v <- exp(tv)
+      d / dt(depot) <- -ka * depot
+      f(depot) <- fdepot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      ll(err) ~ -0.5 * ((DV - cp) / add.sd)^2 - log(add.sd) - exp(1e300 * (fdepot - 0.9)^2)
+    })
+  }
+  test_that("every nlm-family optimizer stops on a gradient whose differences solve on neither side", {
+    skip_on_cran()
+    .msg <- "the gradient of 'fdepot' is not finite: its finite differences solved on neither side"
+    .ctl <- list(
+      nlm = nlmControl(print = 0L, eventSens = "fd"),
+      nlminb = nlminbControl(print = 0L, eventSens = "fd"),
+      optim = optimControl(method = "BFGS", print = 0L, eventSens = "fd"),
+      optim = optimControl(method = "CG", print = 0L, eventSens = "fd"),
+      n1qn1 = n1qn1Control(print = 0L, eventSens = "fd"),
+      lbfgsb3c = lbfgsb3cControl(print = 0L, eventSens = "fd"),
+      trust = trustControl(print = 0L, eventSens = "fd")
+    )
+    for (.i in seq_along(.ctl)) {
+      .e <- tryCatch(
+        suppressWarnings(suppressMessages(
+          nlmixr2(.shiEdge2, nlmixr2data::theo_sd, names(.ctl)[.i], control = .ctl[[.i]])
+        )),
+        error = conditionMessage
+      )
+      expect_identical(.e, .msg, label = names(.ctl)[.i])
+    }
+  })
+
+  test_that("shi21maxFD = 0 differences eta at the starting step, and reports nothing", {
+    skip_on_cran()
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        tf <- 0
+        eta.cl ~ 0.3
+        eta.f ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d / dt(depot) <- -ka * depot
+        f(depot) <- exp(tf + eta.f)
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .fit <- suppressMessages(nlmixr2(
+      .mod,
+      nlmixr2data::theo_sd,
+      "focei",
+      foceiControl(print = 0, eventSens = "fd", covMethod = "", maxOuterIterations = 0, shi21maxFD = 0L)
+    ))
+    expect_true(is.finite(.fit$objective))
+    expect_false(any(grepl("^eta finite differences", .fit$runInfo)))
+    expect_false(all(.fit$eta$eta.f == 0))
+  })
+
+  test_that("innerOpt = 'trust' seeds its quasi-Newton Hessian with a finite matrix", {
+    skip_on_cran()
+    # as the eta test above; an eta.f Hessian column that solved on neither side
+    # was the quasi-Newton seed as NaN, so SR1 skipped every update and Bofill
+    # spread it (OFV -565)
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        tf <- 0
+        eta.cl ~ 0.3
+        eta.f ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d / dt(depot) <- -ka * depot
+        f(depot) <- exp(tf + eta.f)
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        ll(err) ~ -0.5 * ((DV - cp) / add.sd)^2 - log(add.sd) - exp(1e300 * eta.f^2)
+      })
+    }
+    for (.hm in c("bfgs", "sr1", "bofill")) {
+      .fit <- suppressMessages(nlmixr2(
+        .mod,
+        nlmixr2data::theo_sd,
+        "focei",
+        foceiControl(
+          print = 0,
+          eventSens = "fd",
+          covMethod = "",
+          maxOuterIterations = 0,
+          innerOpt = "trust",
+          hessianMethod = .hm
+        )
+      ))
+      expect_equal(.fit$objective, 122.316911911, tolerance = 1e-9, label = .hm)
+      expect_identical(
+        grep("^eta finite", .fit$runInfo, value = TRUE),
+        "eta finite differences solved on neither side 596 times; slope 0",
+        label = .hm
+      )
+    }
   })
 })
