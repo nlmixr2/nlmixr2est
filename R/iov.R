@@ -838,7 +838,7 @@ nlmixr2iovVarSd <- function(val) {
       # Get the IOV variables that are present as thetas in the model
       .iovName <- new.env(parent = emptyenv())
       .iovDf <- .uiIovEnv$ui$iniDf
-      .iovDf <- .iovDf[!is.na(.iovDf$neta1) & .iovDf$condition != "id", , drop = FALSE]
+      .iovDf <- .iovDf[.iovOccRows(.iovDf), , drop = FALSE]
       .iovName$var <- .iovDf$name
 
       getEstimateDf <- function(iniDf) {
