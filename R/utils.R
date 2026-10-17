@@ -21,6 +21,253 @@
 
 # Utilities for nlmixr2 ####################################################
 
+#' A value C's `ISNA()` takes as missing: `NA`, but not `NaN`
+#' @param x numeric vector
+#' @return logical, one per element
+#' @noRd
+.nmIsNA <- function(x) {
+  is.na(x) & !is.nan(x)
+}
+
+#' A data column as a double, as FOCEi reads DV and TIME (so "." is missing)
+#' @param x data column
+#' @return double vector
+#' @noRd
+.nmAsDouble <- function(x) {
+  suppressWarnings(as.double(x))
+}
+
+#' Which records turn a compartment off: a negative or "-name" CMT
+#' @param cmt the CMT column
+#' @return logical, one per row
+#' @noRd
+.nmCmtOff <- function(cmt) {
+  if (is.numeric(cmt)) {
+    return(!is.na(cmt) & cmt < 0)
+  }
+  .c <- as.character(cmt)
+  !is.na(.c) & startsWith(.c, "-")
+}
+
+#' Stop on event columns `etTrans()` rejects, with its message
+#'
+#' EVID, MDV and AMT must be stored as numbers: double, integer or logical, a
+#' factor too (its codes), as `etTrans()` checks the storage type and not the
+#' values.  No TIME may be infinite, and no ID missing.  A character TIME or DV
+#' is read as a number, as FOCEi reads it.  The checks run in `etTrans()`'s order
+#' and stop with its messages, after FOCEi's defaults: an ID it reads through
+#' factor levels (any type but double) is checked first, and a double ID record
+#' by record with TIME, after the event columns.  A logical ID, which `etTrans()`
+#' rejects with a type-conversion error, stops first with a message naming it.
+#' Without an EVID column but with AMT, the MDV column stands for the EVID and is
+#' named "missing DV"; without an ID column the subject is 1.
+#' @param d data frame with upper-case names
+#' @return `d`, invisibly
+#' @noRd
+.nmAssertEventColumns <- function(d) {
+  .id <- d[["ID"]]
+  if (!is.null(.id) && !is.double(.id)) {
+    .nmAssertIds(d)
+  }
+  .num <- c("double", "integer", "logical")
+  if (!is.null(d[["EVID"]]) && !(typeof(d[["EVID"]]) %in% .num)) {
+    stop("event id ('evid') needs to be an integer", call. = FALSE)
+  }
+  if (!is.null(d[["MDV"]]) && !(typeof(d[["MDV"]]) %in% .num)) {
+    if (is.null(d[["EVID"]]) && !is.null(d[["AMT"]])) {
+      stop("missing DV ('mdv') needs to be an integer", call. = FALSE)
+    }
+    stop("missing dependent variable ('mdv') needs to be an integer", call. = FALSE)
+  }
+  if (!is.null(d[["AMT"]]) && !(typeof(d[["AMT"]]) %in% .num)) {
+    stop("amount ('amt') needs to be a number", call. = FALSE)
+  }
+  # record by record: the first infinite TIME or missing double ID (with no TIME
+  # column, the first missing double ID)
+  .time <- d[["TIME"]]
+  .bad <- if (is.null(.time)) rep(FALSE, nrow(d)) else is.infinite(.nmAsDouble(.time))
+  if (is.double(.id)) {
+    .bad <- .bad | is.na(.id)
+  }
+  .row <- which(.bad)[1L]
+  if (!is.na(.row)) {
+    if (is.double(.id) && is.na(.id[.row])) {
+      .nmAssertIds(d)
+    }
+    stop(
+      "infinite times are not allowed (id: ",
+      if (is.null(.id)) 1L else .id[.row],
+      ", row: ",
+      .row,
+      ")",
+      call. = FALSE
+    )
+  }
+  invisible(d)
+}
+
+#' Which records of an event table are observations
+#'
+#' The records `etTrans()` keeps as observations (EVID 0), so data that has not
+#' been through it agrees with what a solve returns, in every case
+#' test-utils.R compares: a TIME; an EVID of 0 or missing; an MDV other than 1;
+#' a CMT that does not turn a compartment off; and a DV -- or, with no DV, a
+#' nonzero AMT, which `etTrans()` keeps as an observation (dropping the dose).
+#' DV, TIME and AMT are read with `as.double()`, so a DV of "." is missing, and
+#' EVID and MDV are truncated to integers, as `etTrans()` reads them; like its
+#' `ISNA()`, a `NaN` is not missing.
+#' @param d data frame with upper-case `TIME`, `EVID` and `DV`, and optionally
+#'   `MDV`, `CMT` and `AMT`; [.nmWithEvid()] gives data without an EVID column one
+#' @return logical, one per row
+#' @noRd
+.nmObsRows <- function(d) {
+  if (is.null(d[["DV"]]) || is.null(d[["EVID"]]) || is.null(d[["TIME"]])) {
+    stop("the data needs DV, EVID and TIME columns to find its observations", call. = FALSE)
+  }
+  .nmAssertEventColumns(d)
+  .evid <- suppressWarnings(as.integer(.nmAsDouble(d[["EVID"]])))
+  .obs <- !.nmIsNA(.nmAsDouble(d[["TIME"]])) & (is.na(.evid) | .evid == 0L)
+  .mdv <- d[["MDV"]]
+  if (!is.null(.mdv)) {
+    .obs <- .obs & !(suppressWarnings(as.integer(.nmAsDouble(.mdv))) %in% 1L)
+  }
+  .cmt <- d[["CMT"]]
+  if (!is.null(.cmt)) {
+    .obs <- .obs & !.nmCmtOff(.cmt)
+  }
+  .amt <- d[["AMT"]]
+  .dose <- if (is.null(.amt)) {
+    FALSE
+  } else {
+    .a <- .nmAsDouble(.amt)
+    !.nmIsNA(.a) & !(.a %in% 0)
+  }
+  .obs & (!.nmIsNA(.nmAsDouble(d[["DV"]])) | .dose)
+}
+
+#' Data with the EVID column FOCEi and `etTrans()` give data without one
+#'
+#' With no AMT column either, every record is EVID 0, as `.foceiPreProcessData()`
+#' sets it.  Otherwise `etTrans()` takes an MDV column as the EVID (a missing MDV
+#' is a dose, and MDV 1 with a zero AMT is EVID 2) and no longer reads it as an
+#' MDV, so it is dropped; without one a nonzero AMT is a dose.
+#' @param d data frame with upper-case names
+#' @return `d`, with an integer EVID column when it had none
+#' @noRd
+.nmWithEvid <- function(d) {
+  .nmAssertEventColumns(d)
+  if (!is.null(d[["EVID"]])) {
+    return(d)
+  }
+  .amt <- d[["AMT"]]
+  if (is.null(.amt)) {
+    d$EVID <- rep(0L, nrow(d))
+    return(d)
+  }
+  .amt <- .nmAsDouble(.amt)
+  .mdv <- d[["MDV"]]
+  if (is.null(.mdv)) {
+    d$EVID <- ifelse(.nmIsNA(.amt) | .amt %in% 0, 0L, 1L)
+    return(d)
+  }
+  .evid <- suppressWarnings(as.integer(.nmAsDouble(.mdv)))
+  .evid[.evid %in% 1L & .amt %in% 0] <- 2L
+  .evid[is.na(.evid)] <- 1L
+  d$EVID <- .evid
+  d$MDV <- NULL
+  d
+}
+
+#' Stop on a logical ID, or a missing one
+#'
+#' @param d data frame with an upper-case `ID` column
+#' @return `d`, invisibly
+#' @noRd
+.nmAssertIds <- function(d) {
+  .id <- d[["ID"]]
+  # etTrans() cannot read a logical ID at all; its own error is a type-conversion
+  # one ("Not compatible with requested type"), so this one names the column
+  if (is.logical(.id)) {
+    stop("'id' cannot be logical", call. = FALSE)
+  }
+  if (anyNA(.id)) {
+    # etTrans()'s messages: it reads a double ID record by record, any other
+    # through its factor levels
+    stop(if (is.double(.id)) "'id' cannot be 'NA'" else "'id' cannot have NA values", call. = FALSE)
+  }
+  invisible(d)
+}
+
+#' Stop on data without an ID column, then where FOCEi stops, in its order
+#'
+#' The ID column, then [.nmAssertEventColumns()], which checks the IDs where
+#' `etTrans()` does.  The VAE and VI preps need subjects, so data without an ID
+#' column is an error there rather than FOCEi's single subject.
+#' @param d data frame with upper-case names
+#' @return `d`, invisibly
+#' @noRd
+.nmAssertIdData <- function(d) {
+  if (is.null(d[["ID"]])) {
+    stop("the data needs an ID column", call. = FALSE)
+  }
+  .nmAssertEventColumns(d)
+}
+
+#' Drop the subjects with no observations, as the FOCEi data step does
+#'
+#' Mirrors `.foceiPreProcessData()`: the subjects are named in a warning, and data
+#' with no observation at all is kept whole.
+#' @param d data frame with upper-case `ID`, `TIME`, `EVID` and `DV`
+#' @return `d` without those subjects' records
+#' @noRd
+.nmDropNoObsSubjects <- function(d) {
+  .nmAssertIdData(d)
+  .obsId <- unique(d[["ID"]][.nmObsRows(d)])
+  .drop <- setdiff(unique(d[["ID"]]), .obsId)
+  if (length(.drop) == 0L || length(.obsId) == 0L) {
+    return(d)
+  }
+  warning("IDs without observations dropped: ", paste(.drop, collapse = " "), call. = FALSE)
+  d[d[["ID"]] %in% .obsId, , drop = FALSE]
+}
+
+#' Each subject's records and observations
+#'
+#' A subject's records are put in time order (ties keep their order), which is the
+#' order a solve returns its observations in.
+#' @param d data frame with upper-case `ID`, `TIME`, `EVID` and `DV`, and optionally
+#'   `MDV`, `CENS` and `LIMIT`
+#' @param ids the subjects wanted, in order, as values of `d$ID`
+#' @return one element per `ids`: `NULL` for a subject with no records, else
+#'   `list(ev, times, y, n, cens, limit)` -- its records, then the time, DV, count,
+#'   censoring code (0 without `CENS`) and limit (`NA` without `LIMIT`) of its
+#'   observations ([.nmObsRows()])
+#' @noRd
+.nmSubjectObs <- function(d, ids) {
+  .nmAssertIdData(d)
+  if (is.null(d[["TIME"]])) {
+    stop("the data needs a TIME column", call. = FALSE)
+  }
+  .byId <- split(d, as.character(d[["ID"]]))
+  lapply(as.character(ids), function(.id) {
+    .di <- .byId[[.id]]
+    if (is.null(.di) || nrow(.di) == 0L) {
+      return(NULL)
+    }
+    .di <- .di[order(suppressWarnings(as.double(.di[["TIME"]]))), , drop = FALSE]
+    .obs <- .di[.nmObsRows(.di), , drop = FALSE]
+    .n <- nrow(.obs)
+    list(
+      ev = .di,
+      times = as.double(.obs[["TIME"]]),
+      y = suppressWarnings(as.double(.obs[["DV"]])),
+      n = .n,
+      cens = if (is.null(.obs[["CENS"]])) integer(.n) else as.integer(.obs[["CENS"]]),
+      limit = if (is.null(.obs[["LIMIT"]])) rep(NA_real_, .n) else as.numeric(.obs[["LIMIT"]])
+    )
+  })
+}
+
 #' Message suffix for a method that requires random effects
 #'
 #' Used as the `extra` argument to `rxode2::assertRxUiMixedOnly()` so a

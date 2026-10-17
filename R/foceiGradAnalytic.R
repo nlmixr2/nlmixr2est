@@ -205,7 +205,7 @@
   )
 }
 
-.foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol) {
+.foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol, labels = ids) {
   ## Solve the augmented model IN THE SHARED FOCEi pool (which it sized) and take
   ## the per-subject E structures straight from C++, instead of routing through
   ## rxode2::rxSolve, which frees and rebuilds the global solve on every call.
@@ -232,6 +232,8 @@
   ## (This used to be gated by .odeSwapNoPool, a verification-only opt-out that let a
   ## test evaluate the same fit through rxSolve instead of the pool.  Its only setter was
   ## the R gradient route, which is gone, so the gate could never fire.)
+  ## `ids` are the subjects' codes in the data; `labels` name them in a reason.
+  .foceiAnalyticNote(NULL)
   .cols <- tryCatch(.vaeOuterCols(am), error = function(e) NULL)
   if (!is.null(.cols)) {
     .nc <- .foceiPoolCores(am$cores) # 0 means rxode2's threads, not one
@@ -266,6 +268,18 @@
       .ok <- attr(.Ec, "ok")
       .foceiOuterFlagged$ids <- if (is.null(.ok)) integer(0) else which(.ok == 0L)
       if (length(.foceiOuterFlagged$ids) == 0L) {
+        # the pooled route counts its observation records as well; a disagreement is
+        # a decline, as it is on the rxSolve route below
+        .no <- vapply(.Ec, function(.E) NROW(.E$a), integer(1))
+        .bad <- which(.no != lengths(obsTimes))
+        if (length(.bad) > 0L) {
+          return(.foceiAnalyticNote(sprintf(
+            "subject %s: %d observation rows solved for %d observations",
+            labels[.bad[1L]],
+            .no[.bad[1L]],
+            length(obsTimes[[.bad[1L]]])
+          )))
+        }
         return(.Ec)
       }
       .foceiOuterFlagged$n <- .foceiOuterFlagged$n + 1L
@@ -282,41 +296,12 @@
   for (.nm in names(thv)) {
     pars[[.nm]] <- thv[[.nm]]
   }
-  .ev <- .foceiAnalyticEvents(am, data) # reuse the pre-translated event table
-  .nc <- if (is.null(am$cores)) 0L else am$cores # fit's rxControl thread count (parallel)
-  # DDE: force pure dop853 (dense, no Jacobian) -- its 8th-order dense history reproduces the
-  # delayed sensitivity solve exactly and needs no Jacobian, sidestepping the composite/ros4
-  # on-the-fly Jacobian generation for this THETA/ETA-named augmented model.
-  .ddeArgs <- if (isTRUE(rxode2::rxModelVars(am$augMod)$flags[["hasDelay"]] == 1L)) {
-    list(method = "dop853", stiff2 = 0L, dense = TRUE)
-  } else {
-    list()
-  }
-  .sol <- tryCatch(
-    withCallingHandlers(
-      as.data.frame(do.call(
-        rxode2::rxSolve,
-        c(
-          list(
-            am$augMod,
-            params = pars,
-            events = .ev,
-            cores = .nc,
-            returnType = "data.frame",
-            atol = tol[1],
-            rtol = tol[length(tol)]
-          ),
-          .ddeArgs
-        )
-      )),
-      warning = function(w) invokeRestart("muffleWarning")
-    ),
-    error = function(e) NULL
-  )
-  if (
-    is.null(.sol) || !all(c("rx_predf_", paste0("rx_f1_", if (is.null(am$fDirs)) dirs else am$fDirs)) %in% names(.sol))
-  ) {
+  .sol <- .foceiAnalyticRxSolve(am, pars, data, tol)
+  if (is.null(.sol)) {
     return(NULL)
+  }
+  if (!all(c("rx_predf_", paste0("rx_f1_", if (is.null(am$fDirs)) dirs else am$fDirs)) %in% names(.sol))) {
+    return(.foceiAnalyticNote("the augmented solve lacks sensitivity columns"))
   }
   # Extract every sensitivity column from the WHOLE solve as a matrix ONCE (the per-subject
   # data.frame [[ + paste0 dominated the gradient -- the ODE solve itself is ~4%); slice by row
@@ -348,7 +333,7 @@
     .need <- c(.need, "rx_tyj_", "rx_tlambda_", "rx_tlow_", "rx_thi_")
   }
   if (!all(.need %in% names(.sol))) {
-    return(NULL)
+    return(.foceiAnalyticNote("the augmented solve lacks sensitivity columns"))
   }
   .M1 <- as.matrix(.sol[, .cm$f1, drop = FALSE])
   .M2 <- as.matrix(.sol[, .cm$f2, drop = FALSE])
@@ -377,13 +362,14 @@
       .ri <- .byIdSol[[as.character(i)]]
     }
     if (is.null(.ri)) {
-      return(NULL)
+      return(.foceiAnalyticNote(paste0("no solved rows for subject ", labels[i])))
     }
-    .keep <- .ri[.tm[.ri] %in% obsTimes[[i]]]
+    # the solve kept only observation records, so these are the subject's observations
+    if (!.foceiAnalyticObsAligned(.tm[.ri], obsTimes[[i]])) {
+      return(.foceiAnalyticNote(paste0("subject ", labels[i], ": ", .foceiAnalyticWhy$detail)))
+    }
+    .keep <- .ri
     no <- length(.keep)
-    if (no != length(obsTimes[[i]])) {
-      return(NULL)
-    }
     a <- matrix(0, no, nd)
     a[, .cm$fDirIdx] <- .M1[.keep, , drop = FALSE]
     A <- array(0, c(no, nd, nd))
