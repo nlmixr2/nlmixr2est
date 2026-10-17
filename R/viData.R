@@ -103,13 +103,10 @@
   .errThetaIdx <- as.integer(.errRow$ntheta)
   .errType <- as.character(.errRow$err)
 
-  ## normalize data columns; with no EVID column it comes from AMT, or every
-  ## record is an observation when there is no AMT column either
+  ## upper-case the names; data without an EVID column gets the EVID FOCEi gives it
   d <- as.data.frame(data)
   names(d) <- toupper(names(d))
-  if (is.null(d$EVID)) {
-    d$EVID <- .nmDefaultEvid(d)
-  }
+  d <- .nmWithEvid(d)
   # the FOCEi inner problem drops these subjects too, so the two agree
   d <- .nmDropNoObsSubjects(d)
   .ids <- unique(d$ID)
