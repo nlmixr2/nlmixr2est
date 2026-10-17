@@ -270,12 +270,10 @@ test_that("every method that would drop a same() tie refuses the model", {
 
 test_that("the refusal asks nothing of an est with no method, or an eta row with no condition", {
   skip_on_cran()
-  # foceiLikLoad() runs the hooks with whatever est it is given; with no
-  # nlmixr2Est method there is nothing to refuse, and the FOCEi inner problem
-  # keeps the tie
-  .h <- suppressMessages(foceiLikLoad(.idSameMod(), .sameData(), "focei", est = "x"))
-  withr::defer(foceiLikUnload())
-  expect_identical(.h$neta, 3L)
+  # foceiLikLoad() runs the hooks with whatever est it is given (the load
+  # itself is in the weekly test-iov-same-fit.R); with no nlmixr2Est method
+  # there is nothing to refuse
+  expect_null(.nlmixr0preProcessAssertSameBlock(rxode2::rxode2(.idSameMod()), "x", NULL, NULL))
   # an eta row whose condition is missing is no repeated block
   .ui <- list(iniDf = data.frame(neta1 = c(1, 2), condition = c("id", NA_character_)))
   expect_null(.nlmixr0preProcessAssertSameBlock(.ui, "saem", NULL, NULL))
@@ -293,14 +291,40 @@ test_that("the refusal runs before the IOV hooks and reaches the user", {
 test_that("an out-of-tree method keeps a same() block through its attribute", {
   skip_on_cran()
   .ns <- asNamespace("nlmixr2est")
-  .fn <- function(env, ...) NULL
-  attr(.fn, "sameBlock") <- TRUE
-  registerS3method("nlmixr2Est", "sameBlockTest", .fn, envir = .ns)
-  withr::defer(rm(list = "nlmixr2Est.sameBlockTest", envir = .ns[[".__S3MethodsTable__."]]))
-  expect_true(.isSameBlockMethod("sameBlockTest"))
-  attr(.fn, "sameBlock") <- NULL
-  registerS3method("nlmixr2Est", "sameBlockTest", .fn, envir = .ns)
-  expect_false(.isSameBlockMethod("sameBlockTest"))
+  .reg <- function(name, attrName, value) {
+    .fn <- function(env, ...) NULL
+    attr(.fn, attrName) <- value
+    registerS3method("nlmixr2Est", name, .fn, envir = .ns)
+  }
+  withr::defer(rm(
+    list = paste0("nlmixr2Est.", c("fakeSame", "fakeIovSame", "fakeFixed", "fakeNone")),
+    envir = .ns[[".__S3MethodsTable__."]]
+  ))
+  .reg("fakeSame", "sameBlock", TRUE)
+  .reg("fakeIovSame", "iovSame", TRUE)
+  .reg("fakeFixed", "sameBlock", "fixed")
+  .reg("fakeNone", "sameBlock", NULL)
+  expect_identical(
+    vapply(c("fakeSame", "fakeIovSame", "fakeFixed", "fakeNone"), .isSameBlockMethod, logical(1)),
+    c(fakeSame = TRUE, fakeIovSame = TRUE, fakeFixed = TRUE, fakeNone = FALSE)
+  )
+  # a method that estimates the copies as one is named; one that does not
+  # estimate omega ("fixed") is accepted but no alternative
+  .ui <- rxode2::rxode2(.idSameMod())
+  expect_identical(
+    .errMsg(.nlmixr0preProcessAssertSameBlock(.ui, "saem", NULL, NULL)),
+    paste0(
+      "'saem' does not honour a repeated (same()) omega block\n",
+      "use fo, foi, foce, focei, focep, laplace, agq, emvi, fbvi, vae, fakeIovSame or fakeSame"
+    )
+  )
+  expect_identical(
+    .errMsg(.nlmixr0preProcessAssertSameBlock(.ui, "fakeNone", NULL, NULL)),
+    paste0(
+      "'fakeNone' does not honour a repeated (same()) omega block\n",
+      "use fo, foi, foce, focei, focep, laplace, agq, emvi, fbvi, vae, fakeIovSame or fakeSame"
+    )
+  )
   expect_false(.isSameBlockMethod(NA_character_))
   expect_false(.isSameBlockMethod(character(0)))
 })

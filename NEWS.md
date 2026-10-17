@@ -21,8 +21,8 @@
   that can: `est = "nlme"` estimated each copy on its own without a word, and
   `saem`, `imp`, `impmap`, `qrpem` and the `npag` and `npb` family stopped
   with unrelated errors.  A third-party method is refused too until it
-  declares `attr(nlmixr2Est.<method>, "sameBlock") <- TRUE` (see
-  `?nlmixr2Est`).
+  declares `attr(nlmixr2Est.<method>, "sameBlock")`: `TRUE` when it keeps the
+  tie, `"fixed"` when it does not estimate omega (see `?nlmixr2Est`).
 
 - A fit's model (`fit$ui`) kept a repeated (`same()`) block's copies as
   ordinary etas, so a refit from it, or from `ini()` on it, estimated each copy
