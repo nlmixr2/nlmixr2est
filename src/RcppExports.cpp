@@ -528,8 +528,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // shi21SearchWrap
-Rcpp::List shi21SearchWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx, double ef, bool forward, int maxiter);
-RcppExport SEXP _nlmixr2est_shi21SearchWrap(SEXP fSEXP, SEXP tSEXP, SEXP f0SEXP, SEXP idxSEXP, SEXP efSEXP, SEXP forwardSEXP, SEXP maxiterSEXP) {
+Rcpp::List shi21SearchWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx, double ef, bool forward, int maxiter, bool wantGr);
+RcppExport SEXP _nlmixr2est_shi21SearchWrap(SEXP fSEXP, SEXP tSEXP, SEXP f0SEXP, SEXP idxSEXP, SEXP efSEXP, SEXP forwardSEXP, SEXP maxiterSEXP, SEXP wantGrSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -540,7 +540,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type ef(efSEXP);
     Rcpp::traits::input_parameter< bool >::type forward(forwardSEXP);
     Rcpp::traits::input_parameter< int >::type maxiter(maxiterSEXP);
-    rcpp_result_gen = Rcpp::wrap(shi21SearchWrap(f, t, f0, idx, ef, forward, maxiter));
+    Rcpp::traits::input_parameter< bool >::type wantGr(wantGrSEXP);
+    rcpp_result_gen = Rcpp::wrap(shi21SearchWrap(f, t, f0, idx, ef, forward, maxiter, wantGr));
     return rcpp_result_gen;
 END_RCPP
 }

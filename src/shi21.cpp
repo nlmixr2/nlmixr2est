@@ -235,8 +235,11 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
       h = (l + u)/2.0;
     }
   }
-  // No forward difference formed: gr is NA, not a zero slope
-  if (!calcGrad) gr.fill(NA_REAL);
+  // No forward difference formed, or its step leaves t[idx] where it is: gr is
+  // NA, not a zero slope
+  if (!calcGrad || (backwardOnly ? t(idx) - h : t(idx) + h) == t(idx)) {
+    gr.fill(NA_REAL);
+  }
   return h;
 }
 
@@ -323,9 +326,11 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   double h0 = h;
 
   int iter=0;
-  // backwardOnly: gr is the backward difference, which any other one replaces
+  // backwardOnly: gr is the backward difference, which any other one replaces;
+  // grSide: the side(s) gr's difference stepped to, 0 both, 1 plus, -1 minus
   bool finiteFp1 = true, finiteFp3 = true,
     finiteFm1=true, finiteFm3=true, calcGrad=false, backwardOnly=false;
+  int grSide = 0;
   while(true) {
     iter++;
     // a step shrunk below the start that no longer moves t[idx] differences t with
@@ -344,6 +349,7 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
           // backward difference, as the forward one below when f(t-h) fails
           calcGrad = true;
           backwardOnly = true;
+          grSide = -1;
           gr = (f0-fm1)/h;
           hlast = h;
         }
@@ -355,6 +361,7 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
           // forward difference
           calcGrad = true;
           backwardOnly = false;
+          grSide = 1;
           gr = (fp1-f0)/h;
           hlast = h;
         }
@@ -367,6 +374,7 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
       if (!calcGrad || backwardOnly) {
         calcGrad = true;
         backwardOnly = false;
+        grSide = 0;
         gr = (fp1-fm1)/(2*h);
         hlast = h;
       }
@@ -375,6 +383,7 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
     } else {
       calcGrad = true;
       backwardOnly = false;
+      grSide = 0;
       gr = (fp1-fm1)/(2*h);
       hlast = h;
     }
@@ -397,8 +406,12 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
       h = (l + u)/2.0;
     }
   }
-  // No central or one-sided difference formed: gr is NA, not a zero slope
-  if (!calcGrad) gr.fill(NA_REAL);
+  // No central or one-sided difference formed, or its step leaves t[idx] where
+  // it is on a side it used: gr is NA, not a zero slope
+  if (!calcGrad || (grSide >= 0 && t(idx) + h == t(idx)) ||
+      (grSide <= 0 && t(idx) - h == t(idx))) {
+    gr.fill(NA_REAL);
+  }
   return h;
 }
 

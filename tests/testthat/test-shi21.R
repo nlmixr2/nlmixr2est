@@ -1,3 +1,16 @@
+# A function finite only at .shiAt$t0, and one finite only at and below 0
+# that counts its calls in .shiAt$n
+.shiAt <- new.env(parent = emptyenv())
+.shiAt$t0 <- 0
+.shiAt$n <- 0L
+.shiOnlyAt <- function(x) if (x[1] != .shiAt$t0) NaN else 0
+.shiCounted <- function(x) {
+  .shiAt$n <- .shiAt$n + 1L
+  if (x[1] > 0) NaN else 2 * x[1]
+}
+.shiExp <- function(x) exp(x[1] / 1e14)
+.shiSq <- function(x) x[1]^2
+
 nmTest({
   # shi21Forward()/shi21Central() (src/shi21.cpp): the Shi et al. (2021) step
   # search when one of its outer probes is not finite.
@@ -216,7 +229,7 @@ nmTest({
     expect_equal(drop(.r$gr), c(2, 3), tolerance = 1e-10)
   })
 
-  # shi21SearchWrap(f, t, f0, idx, ef, forward, maxiter): either step search, with
+  # shi21SearchWrap(f, t, f0, idx, ef, forward, maxiter, wantGr): either step search, with
   # the rl/ru/nu FOCEi's eta search uses
   .ef <- 7e-7
   .h0c <- (3 * .ef)^(1 / 3)
@@ -226,35 +239,79 @@ nmTest({
     # finite only at and below 0.001: the first steps fail on the plus side, and a
     # shrunk step that solves replaces the backward difference
     .f <- function(x) if (x[1] > 0.001) NaN else 2 * (x[1]^2 + x[1])
-    .r <- shi21SearchWrap(.f, 0, .f(0), 1L, .ef, FALSE, 15L)
+    .r <- shi21SearchWrap(.f, 0, .f(0), 1L, .ef, FALSE, 15L, TRUE)
     expect_equal(.r$h, 0.000249831021, tolerance = 1e-8)
     expect_equal(drop(.r$gr), 2, tolerance = 1e-12) # the central difference is exact
-    .r <- shi21SearchWrap(.f, 0, .f(0), 1L, .ef, TRUE, 15L)
+    .r <- shi21SearchWrap(.f, 0, .f(0), 1L, .ef, TRUE, 15L, TRUE)
     expect_equal(.r$h, 0.000241522946, tolerance = 1e-8)
     expect_equal(drop(.r$gr), 2 * (1 + .r$h), tolerance = 1e-12) # the forward one
   })
 
   test_that("maxiter = 0 differences at the starting step, without a search", {
+    # x^2 at 1: the forward difference is 2 + h, the central one 2
+    .r <- shi21SearchWrap(.shiSq, 1, 1, 1L, .ef, TRUE, 0L, TRUE)
+    expect_equal(drop(.r$gr), ((1 + .h0f)^2 - 1) / .h0f, tolerance = 1e-12)
+    expect_gt(drop(.r$gr) - 2, 9e-4)
+    .r <- shi21SearchWrap(.shiSq, 1, 1, 1L, .ef, FALSE, 0L, TRUE)
+    expect_equal(drop(.r$gr), 2, tolerance = 1e-12)
+    # a starting step that does not move t forms no difference: NA
+    expect_identical(drop(shi21SearchWrap(.shiExp, 1e13, .shiExp(1e13), 1L, .ef, TRUE, 0L, TRUE)$gr), NA_real_)
+    expect_identical(drop(shi21SearchWrap(.shiExp, 1e15, .shiExp(1e15), 1L, .ef, FALSE, 0L, TRUE)$gr), NA_real_)
     .g <- function(x) 2 * x[1] + 3
     for (.fw in c(FALSE, TRUE)) {
-      .r <- shi21SearchWrap(.g, 1, .g(1), 1L, .ef, .fw, 0L)
+      .r <- shi21SearchWrap(.g, 1, .g(1), 1L, .ef, .fw, 0L, TRUE)
       expect_equal(.r$h, if (.fw) .h0f else .h0c, tolerance = 1e-12, label = .fw)
       expect_equal(drop(.r$gr), 2, tolerance = 1e-10, label = .fw)
       # the plus side fails: the backward difference
       .g1 <- function(x) if (x[1] > 1) NaN else 2 * x[1]
-      expect_equal(drop(shi21SearchWrap(.g1, 1, 2, 1L, .ef, .fw, 0L)$gr), 2, tolerance = 1e-10, label = .fw)
+      expect_equal(drop(shi21SearchWrap(.g1, 1, 2, 1L, .ef, .fw, 0L, TRUE)$gr), 2, tolerance = 1e-10, label = .fw)
       # neither side: NA
       .g2 <- function(x) if (x[1] != 1) NaN else 0
-      expect_identical(drop(shi21SearchWrap(.g2, 1, 0, 1L, .ef, .fw, 0L)$gr), NA_real_, label = .fw)
+      expect_identical(drop(shi21SearchWrap(.g2, 1, 0, 1L, .ef, .fw, 0L, TRUE)$gr), NA_real_, label = .fw)
     }
   })
 
-  test_that("the forward search stops at a step too small to move t on either side", {
-    # finite only at t: past about 44 halvings t - h rounds to t at these t
-    .only <- function(t0) function(x) if (x[1] != t0) NaN else 0
-    for (.t in c(-1, -2, -0.5, -4)) {
-      .r <- shi21SearchWrap(.only(.t), .t, 0, 1L, .ef, TRUE, 60L)
-      expect_identical(drop(.r$gr), NA_real_, label = .t)
+  test_that("both searches stop at a step too small to move t on either side", {
+    # finite only at t: past about 44 halvings t - h rounds to t at these t, and
+    # the search stops there with no difference, at its starting step
+    for (.fw in c(TRUE, FALSE)) {
+      for (.t in c(-1, -2, -0.5, -4)) {
+        .shiAt$t0 <- .t
+        .r <- shi21SearchWrap(.shiOnlyAt, .t, 0, 1L, .ef, .fw, 60L, TRUE)
+        expect_identical(drop(.r$gr), NA_real_, label = paste(.fw, .t))
+        expect_identical(.r$h, if (.fw) .h0f else .h0c, label = paste(.fw, .t))
+      }
+    }
+  })
+
+  test_that("a difference at a step that does not move t is NA, not a zero slope", {
+    # at 1e13 the forward search's first step rounds to t: one iteration ends
+    # there; at 1e15 neither search's first two steps move t
+    expect_identical(drop(shi21SearchWrap(.shiExp, 1e13, .shiExp(1e13), 1L, .ef, TRUE, 1L, TRUE)$gr), NA_real_)
+    for (.fw in c(TRUE, FALSE)) {
+      for (.mi in 1:2) {
+        expect_identical(
+          drop(shi21SearchWrap(.shiExp, 1e15, .shiExp(1e15), 1L, .ef, .fw, .mi, TRUE)$gr),
+          NA_real_,
+          label = paste(.fw, .mi)
+        )
+      }
+    }
+  })
+
+  test_that("wantGr = FALSE finds the same step without the probes made for gr", {
+    # finite only at and below 0: with wantGr the search also solves the
+    # backward probe that gives gr
+    for (.fw in c(TRUE, FALSE)) {
+      .shiAt$n <- 0L
+      .with <- shi21SearchWrap(.shiCounted, 0, 0, 1L, .ef, .fw, 15L, TRUE)
+      .nWith <- .shiAt$n
+      .shiAt$n <- 0L
+      .without <- shi21SearchWrap(.shiCounted, 0, 0, 1L, .ef, .fw, 15L, FALSE)
+      expect_identical(.without$h, .with$h, label = .fw)
+      expect_identical(.nWith, 16L, label = .fw)
+      expect_identical(.shiAt$n, 15L, label = .fw)
+      expect_equal(drop(.with$gr), 2, tolerance = 1e-12, label = .fw)
     }
   })
 
@@ -262,10 +319,15 @@ nmTest({
     # at 1e13 the starting steps round to t; the search grows them to hMax = 0.5
     .e <- function(x) exp(x[1] / 1e14)
     .t <- 1e13
-    .r <- shi21SearchWrap(.e, .t, .e(.t), 1L, .ef, TRUE, 15L)
+    .r <- shi21SearchWrap(.e, .t, .e(.t), 1L, .ef, TRUE, 15L, TRUE)
     expect_identical(.r$h, 0.5)
     expect_identical(drop(.r$gr), (.e(.t + 0.5) - .e(.t)) / 0.5)
-    .r <- shi21SearchWrap(.e, .t, .e(.t), 1L, .ef, FALSE, 15L)
+    .r <- shi21SearchWrap(.e, .t, .e(.t), 1L, .ef, FALSE, 15L, TRUE)
+    expect_identical(.r$h, 0.5)
+    expect_identical(drop(.r$gr), (.e(.t + 0.5) - .e(.t - 0.5)) / 1)
+    # at 1e15 the central search's starting step does not move t either
+    .t <- 1e15
+    .r <- shi21SearchWrap(.e, .t, .e(.t), 1L, .ef, FALSE, 15L, TRUE)
     expect_identical(.r$h, 0.5)
     expect_identical(drop(.r$gr), (.e(.t + 0.5) - .e(.t - 0.5)) / 1)
   })
@@ -293,23 +355,26 @@ nmTest({
   test_that("every nlm-family optimizer stops on a gradient whose differences solve on neither side", {
     skip_on_cran()
     .msg <- "the gradient of 'fdepot' is not finite: its finite differences solved on neither side"
-    .ctl <- list(
-      nlm = nlmControl(print = 0L, eventSens = "fd"),
-      nlminb = nlminbControl(print = 0L, eventSens = "fd"),
-      optim = optimControl(method = "BFGS", print = 0L, eventSens = "fd"),
-      optim = optimControl(method = "CG", print = 0L, eventSens = "fd"),
-      n1qn1 = n1qn1Control(print = 0L, eventSens = "fd"),
-      lbfgsb3c = lbfgsb3cControl(print = 0L, eventSens = "fd"),
-      trust = trustControl(print = 0L, eventSens = "fd")
+    # covMethod = "": the covariance step's differences stop the same way, so
+    # each fit must stop in its optimizer
+    .runs <- list(
+      list("nlm", "nlm", nlmControl(print = 0L, eventSens = "fd", covMethod = "")),
+      list("nlm grad", "nlm", nlmControl(print = 0L, eventSens = "fd", covMethod = "", solveType = "grad")),
+      list("nlminb", "nlminb", nlminbControl(print = 0L, eventSens = "fd", covMethod = "")),
+      list("optim BFGS", "optim", optimControl(method = "BFGS", print = 0L, eventSens = "fd", covMethod = "")),
+      list("optim CG", "optim", optimControl(method = "CG", print = 0L, eventSens = "fd", covMethod = "")),
+      list("n1qn1", "n1qn1", n1qn1Control(print = 0L, eventSens = "fd", covMethod = "")),
+      list("lbfgsb3c", "lbfgsb3c", lbfgsb3cControl(print = 0L, eventSens = "fd", covMethod = "")),
+      list("trust", "trust", trustControl(print = 0L, eventSens = "fd", covMethod = ""))
     )
-    for (.i in seq_along(.ctl)) {
+    for (.run in .runs) {
       .e <- tryCatch(
         suppressWarnings(suppressMessages(
-          nlmixr2(.shiEdge2, nlmixr2data::theo_sd, names(.ctl)[.i], control = .ctl[[.i]])
+          nlmixr2(.shiEdge2, nlmixr2data::theo_sd, .run[[2]], control = .run[[3]])
         )),
         error = conditionMessage
       )
-      expect_identical(.e, .msg, label = names(.ctl)[.i])
+      expect_identical(.e, .msg, label = .run[[1]])
     }
   })
 
@@ -342,16 +407,16 @@ nmTest({
       "focei",
       foceiControl(print = 0, eventSens = "fd", covMethod = "", maxOuterIterations = 0, shi21maxFD = 0L)
     ))
-    expect_true(is.finite(.fit$objective))
+    expect_equal(.fit$objective, 228.4947214, tolerance = 1e-8)
     expect_false(any(grepl("^eta finite differences", .fit$runInfo)))
     expect_false(all(.fit$eta$eta.f == 0))
   })
 
   test_that("innerOpt = 'trust' seeds its quasi-Newton Hessian with a finite matrix", {
     skip_on_cran()
-    # as the eta test above; an eta.f Hessian column that solved on neither side
-    # was the quasi-Newton seed as NaN, so SR1 skipped every update and Bofill
-    # spread it (OFV -565)
+    # as the eta test above, with eta.f's Hessian column solving on neither
+    # side: each quasi-Newton update starts from a finite seed, reaches the same
+    # OFV and reports the failed columns
     .mod <- function() {
       ini({
         tka <- 0.45
