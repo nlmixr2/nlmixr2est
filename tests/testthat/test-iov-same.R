@@ -158,6 +158,35 @@ test_that("a correlated IOV model fits and restores the user's own block", {
   expect_equal(sort(unique(.fit$iov$occ$occ)), c(1L, 2L))
 })
 
+test_that("an id-level same() block beside IOV fits in both expansions", {
+  skip_on_cran()
+  # eta.v repeats eta.cl's block at the id level (condition "id:same:eta.cl"),
+  # so it is a between-subject eta; iov.cl is the only occasion parameter
+  .f <- .sameMod(
+    "eta.cl ~ 0.3; eta.v ~ same(); iov.cl ~ 0.1 | occ",
+    "cl <- exp(tcl + eta.cl + iov.cl)\n v <- exp(tv + eta.v)"
+  )
+  for (.m in c("theta", "omega")) {
+    .fit <- suppressWarnings(suppressMessages(
+      nlmixr2est::nlmixr2(.f(), .sameData(), "focei", foceiControl(print = 0, covMethod = "", iovMethod = .m))
+    ))
+    .ini <- .fit$ui$iniDf
+    .eta <- .ini[!is.na(.ini$neta1), ]
+    expect_identical(.eta$name, c("eta.ka", "eta.cl", "eta.v", "iov.cl"), label = .m)
+    expect_identical(.eta$condition[.eta$name == "iov.cl"], "occ", label = .m)
+    expect_false(any(grepl("^rx\\.", .ini$name)), label = .m)
+    expect_false("iov.cl" %in% .ini$name[!is.na(.ini$ntheta)], label = .m)
+    # the copy kept its master's variance
+    expect_identical(dimnames(.fit$omega$id)[[1]], c("eta.ka", "eta.cl", "eta.v"), label = .m)
+    expect_equal(.fit$omega$id["eta.v", "eta.v"], .fit$omega$id["eta.cl", "eta.cl"], label = .m)
+    expect_identical(dimnames(.fit$omega$occ)[[1]], "iov.cl", label = .m)
+    .bck <- grep("Back", names(.fit$parFixedDf))
+    expect_equal(.fit$parFixedDf["iov.cl", .bck], nlmixr2iovSdCv(sqrt(.fit$omega$occ[1, 1])), label = .m)
+    expect_equal(sort(unique(.fit$iov$occ$occ)), c(1L, 2L), label = .m)
+    expect_false(anyNA(.fit$iov$occ$iov.cl), label = .m)
+  }
+})
+
 test_that("two occasion parameters get their occasion number, not NA", {
   skip_on_cran()
   # `.dt`'s occasion column is built from the FIRST occasion parameter's
