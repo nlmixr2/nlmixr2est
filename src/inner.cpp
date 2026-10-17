@@ -17558,6 +17558,23 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
   return out;
 }
 
+// The rxode2 thread id for one iteration of outerSolveFill()'s region, whose `if`
+// clause can keep it serial: handed over only when `par`, and put back on every way
+// out of the iteration, its `continue` included.
+struct OuterSolveThreadId {
+  bool on;
+  explicit OuterSolveThreadId(bool par) : on(par) {
+#ifdef _OPENMP
+    if (on) setRxThreadId(omp_get_thread_num());
+#endif
+  }
+  ~OuterSolveThreadId() {
+#ifdef _OPENMP
+    if (on) setRxThreadId(-1);
+#endif
+  }
+};
+
 // Unpack the augmented model's lhs column map and solve every subject in the shared
 // pool, filling Es.  Split out of vaeOuterSolve_ so the gradient assembly can consume
 // these structures in C++ without a round trip through R (Phase 8E) -- the ndir^2
@@ -17613,9 +17630,7 @@ static void outerSolveFill(int slot, rxSolveF *fns,
 #endif
   for (int i = 0; i < (subject < 0 ? nsub : 1); ++i) {
     int id = subject >= 0 ? subject : (nmOrdId(rx, i, nsub) - 1);
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(omp_get_thread_num());
-#endif
+    OuterSolveThreadId _tid(doParallel);
     int _rxId = getRxId(id);
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
     VaeOuterE& E = Es[subject >= 0 ? 0 : (size_t)id];
@@ -17838,9 +17853,6 @@ static void outerSolveFill(int slot, rxSolveF *fns,
     // script silently disarmed the hook.
     for (size_t q = 0; q < _failIds.size(); ++q)
       if (_failIds[q] == id) { E.ok = false; break; }
-#ifdef _OPENMP
-    if (doParallel) setRxThreadId(-1);
-#endif
   }
   if (doParallel) { _innerParallel.store(0, std::memory_order_release); sortIds(rx, 0); }
   // Counted HERE, at the pooled solve itself, not at the R-facing wrapper.  It used to
