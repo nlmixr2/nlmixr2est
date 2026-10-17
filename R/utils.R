@@ -178,18 +178,13 @@
   d
 }
 
-#' Stop on data without an ID column, or with a missing ID
+#' Stop on a logical ID, or a missing one
 #'
-#' The VAE and VI preps need subjects, so data without an ID column is an error
-#' there rather than FOCEi's single subject.
-#' @param d data frame with an upper-case `ID`
+#' @param d data frame with an upper-case `ID` column
 #' @return `d`, invisibly
 #' @noRd
 .nmAssertIds <- function(d) {
   .id <- d[["ID"]]
-  if (is.null(.id)) {
-    stop("the data needs an ID column", call. = FALSE)
-  }
   # etTrans() cannot read a logical ID at all; its own error is a type-conversion
   # one ("Not compatible with requested type"), so this one names the column
   if (is.logical(.id)) {
@@ -205,8 +200,9 @@
 
 #' Stop on data without an ID column, then where FOCEi stops, in its order
 #'
-#' [.nmAssertIds()]'s ID-column check, then [.nmAssertEventColumns()] (which checks
-#' the IDs where `etTrans()` does), then the IDs for data without a TIME column.
+#' The ID column, then [.nmAssertEventColumns()], which checks the IDs where
+#' `etTrans()` does.  The VAE and VI preps need subjects, so data without an ID
+#' column is an error there rather than FOCEi's single subject.
 #' @param d data frame with upper-case names
 #' @return `d`, invisibly
 #' @noRd
@@ -215,7 +211,6 @@
     stop("the data needs an ID column", call. = FALSE)
   }
   .nmAssertEventColumns(d)
-  .nmAssertIds(d)
 }
 
 #' Drop the subjects with no observations, as the FOCEi data step does
