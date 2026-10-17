@@ -10,6 +10,17 @@
   the same NPDE columns the fit gives when asked for them with
   `tableControl(npde = TRUE)`.
 
+- `addTable()` now works on a fit with inter-occasion variability,
+  including one run with `calcTables = FALSE`.  It stopped with the same
+  error as `addNpde()`, and now refits with no iterations in the same way.
+
+- A fit with inter-occasion variability run with `tableControl(npde =
+  TRUE)` is now finished like one without NPDE.  Its model, fixed and random
+  effects, `omega` and parameter table kept the expanded occasion etas (such
+  as `rx.iov.cl.1`) and their magnitude thetas, and its data kept their
+  columns, because the NPDE simulation cleared what the fit needed to undo
+  the expansion.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
