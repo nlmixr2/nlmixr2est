@@ -8,6 +8,11 @@
   subject has no observations ("Col::subvec(): indices out of bounds").
   That subject's NPDE columns are `NA`, as its other table columns are.
 
+- In a model with a normal and a non-normal endpoint (such as `dpois()`), a
+  subject with no observations of the normal endpoint gave the next
+  subject's CWRES, CRES and CPRED the wrong subject's etas.  Each row now
+  takes its own subject's.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes

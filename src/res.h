@@ -5,8 +5,10 @@
 #include "censResid.h"
 #include "shrink.h"
 #include "utilc.h"
+arma::uvec etaRowsById(arma::Col<int>& ID, SEXP etaId);
+
 void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
-		     List &etasDfFull, int &nid, unsigned int &neta);
+		     List &etasDfFull, unsigned int &neta, SEXP etaId);
 
 int getPredIndex(List &ipredL);
 

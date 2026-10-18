@@ -34,6 +34,29 @@
   }
 }
 
+# In a child process: npdeCalc() given a simulation with 3 observations per
+# sample for 2 observations, which used to index past them
+.npdeCalcMismatchChild <- function(pkg) {
+  if (nzchar(pkg)) {
+    pkgload::load_all(pkg, quiet = TRUE)
+  } else {
+    library(nlmixr2est)
+  }
+  .sim <- data.frame(
+    sim.id = rep(1:2, each = 3),
+    id = rep(c(1L, 1L, 2L), 2),
+    sim = c(1, 2, 3, 1, 2, 3),
+    rxLambda = 1,
+    rxYj = 0,
+    rxLow = 0,
+    rxHi = 1
+  )
+  tryCatch(
+    .Call("_nlmixr2est_npdeCalc", .sim, c(1, 2), c(0L, 0L), NULL, NULL, tableControl(), PACKAGE = "nlmixr2est"),
+    error = conditionMessage
+  )
+}
+
 # In a child process, so an abort fails the test: the NPDE of a fit with an
 # observation-less subject, from the fit's table or from addNpde()
 .npdeNoObsChild <- function(pkg, est, mode, mod, dat) {
@@ -151,6 +174,14 @@ nmTest({
 
     expect_false(isTRUE(all.equal(fit$NPDE, fit$NPD)))
     expect_false(isTRUE(all.equal(fit$PDE, fit$PD)))
+  })
+
+  test_that("npdeCalc() stops when the simulation does not match the observations", {
+    skip_if_not_installed("callr")
+    expect_identical(
+      callr::r(.npdeCalcMismatchChild, args = list(pkg = .npdeChildPkg())),
+      "npdeCalc: the simulation has 3 observations per sample (2 samples, 6 rows), but the data 2"
+    )
   })
 
   test_that("NPDE of a fit with a subject without observations", {
