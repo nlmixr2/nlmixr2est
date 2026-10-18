@@ -2,6 +2,12 @@
 
 ## Bug fixes
 
+### Tables
+
+- `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
+  subject has no observations ("Col::subvec(): indices out of bounds").
+  That subject's NPDE columns are `NA`, as its other table columns are.
+
 - `addNpde()` now works on a fit with inter-occasion variability.  It
   stopped with "The following parameter(s) are required for solving: occ,
   ETA[3], ETA[2], THETA[5]" for every such fit, since the finished fit's

@@ -480,6 +480,30 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .ret
 }
 
+#' The simulated rows of the subjects the fit estimated
+#'
+#' The NPDE simulation solves the fit's original data, so a subject with no
+#' observation, which the fit dropped, is in it; its rows would misalign every
+#' later subject's against the fit's observations.
+#'
+#' @param sim `vpcSim()` result, whose `id` is the original subject label
+#' @param idLvl the fit's subject labels
+#' @param nobs the number of observations the NPDE is computed for
+#' @return `sim` without the subjects the fit did not estimate
+#' @noRd
+#' @author Matthew L. Fidler
+.npdeSimFitSubjects <- function(sim, idLvl, nobs) {
+  .keep <- as.character(sim$id) %in% as.character(idLvl)
+  if (!all(.keep)) {
+    sim <- sim[.keep, , drop = FALSE]
+  }
+  .perSim <- sum(sim$sim.id == sim$sim.id[1])
+  if (.perSim != nobs) {
+    stop("the NPDE simulation has ", .perSim, " observations per sample, but the fit has ", nobs, call. = FALSE)
+  }
+  sim
+}
+
 .calcCwres0 <- function(
   fit,
   data = fit$dataSav,
@@ -520,6 +544,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .ipred <- .prdLst$ipred
     .ipred <- .ipred[.ipred$nlmixrRowNums %in% .ni$nlmixrRowNums, ]
     .ipred <- .ipred[order(.ipred$nlmixrRowNums), ]
+    .sim <- .npdeSimFitSubjects(.sim, fit$idLvl, nrow(.ipred))
     .ret <- .Call(`_nlmixr2est_npdeCalc`, .sim, .ipred$dv, .ipred$evid, .prdLst$ipred$cens, .prdLst$ipred$limit, table)
     .df <- data.frame(nlmixrRowNums = .prdLst$ipred$nlmixrRowNums)
     .ret1 <- .ret[[1]]

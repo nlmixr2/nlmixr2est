@@ -356,6 +356,12 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   arma::Col<int> aIdVec(INTEGER(VECTOR_ELT(npdeSim, 1)), simLen, false, true);
   unsigned int nid, K;
   arma::Col<int> idLoc = getSimIdLoc(aIdVec, aSimIdVec, nid, K);
+  // every subject's span indexes the observations below, so a simulation
+  // with other subjects or rows than the data's would read past them
+  if ((int)idLoc[nid] != dvLen || (int)(K * idLoc[nid]) != simLen) {
+    stop("npdeCalc: the simulation has %d observations per sample (%d samples, %d rows), but the data %d",
+         (int)idLoc[nid], (int)K, simLen, dvLen);
+  }
   arma::vec sim(REAL(VECTOR_ELT(npdeSim, nsim)), simLen, false, true);
   arma::vec lambda(REAL(VECTOR_ELT(npdeSim, nsim+1)), simLen, false, true);
   arma::vec yj(REAL(VECTOR_ELT(npdeSim, nsim+2)), simLen, false, true);
