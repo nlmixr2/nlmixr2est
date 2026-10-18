@@ -362,7 +362,7 @@ nmTest({
     ))))
     expect_identical(
       conditionMessage(.e),
-      "saem does not estimate a repeated (same()) omega block; use focei"
+      "'saem' does not honour a repeated (same()) omega block\nuse focei"
     )
   })
 })

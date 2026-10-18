@@ -2057,7 +2057,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   # saem estimates every eta's variance on its own, so a repeated block would
   # silently get its own estimates
   if (any(.ui$omegaSameMap != 0L)) {
-    stop("saem does not estimate a repeated (same()) omega block; use focei", call. = FALSE)
+    stop("'saem' does not honour a repeated (same()) omega block\nuse focei", call. = FALSE)
   }
   .control <- .ui$control
   .data <- env$data

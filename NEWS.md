@@ -43,9 +43,9 @@
 
 ### SAEM
 
-- `saem` now stops with "saem does not estimate a repeated (same()) omega
-  block; use focei" for a model with a subject-level `same()` block.  It
-  stopped with "IOV variable 'id:same:eta.cl' is not present in the data".
+- `saem` now stops with "'saem' does not honour a repeated (same()) omega
+  block" for a model with a subject-level `same()` block.  It stopped with
+  "IOV variable 'id:same:eta.cl' is not present in the data".
 
 # nlmixr2est 7.2.1
 
