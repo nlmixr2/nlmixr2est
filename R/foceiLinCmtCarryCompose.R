@@ -9,6 +9,92 @@
 #' Shared per-model context for the carry emission (parsed once per pair
 #' row; cheap)
 #' @noRd
+#' The covariate interpolation of a carry build
+#'
+#' @param ui rxode2 ui
+#' @return "locf", "nocb", "midpoint" or "linear" (rxode2's default, locf,
+#'   when the control sets none)
+#' @noRd
+.rxFoceiLinCmtCarryInterp <- function(ui) {
+  .i <- rxode2::rxGetControl(ui, "rxControl", NULL)$covsInterpolation
+  if (is.null(.i) || length(.i) != 1L) {
+    return("locf")
+  }
+  if (is.numeric(.i)) {
+    # rxControl's integer codes
+    return(c("linear", "locf", "nocb", "midpoint")[as.integer(.i) + 1L])
+  }
+  as.character(.i)
+}
+
+#' The interval value of each covariate the carry reads
+#'
+#' rxode2 advances the linear compartments over each interval between
+#' records with that interval's covariates: under locf the start record's,
+#' under nocb the end record's, under midpoint their mean.  The carry's
+#' generated lines run at the record that ends the interval, so under locf
+#' and midpoint each covariate in the advance's parameters and in g is read
+#' through its interval value, built from the previous record's value.
+#'
+#' That value is lagged from a model copy of the covariate (`copies`, real
+#' lhs ahead of rx_pred_, as lag() needs), not from the covariate: a record
+#' with no value of its own, such as an infusion's end, holds NA, which
+#' lag0() turns into 0, where the model evaluation fills it as rxode2 fills
+#' any NA covariate.  A subject's first record has no previous one and an
+#' empty interval; its own value stands in (lag0() is 0 there, and newind
+#' is 1 only there).
+#'
+#' @param covs the model's covariates
+#' @param interp `.rxFoceiLinCmtCarryInterp()`
+#' @return NULL when the record's own values are the interval's (nocb, or no
+#'   covariates), else list(copies = the copy lines, to go ahead of rx_pred_,
+#'   lines = the lines defining each interval value, map = covariate -> the
+#'   symbol holding its interval value)
+#' @noRd
+.rxFoceiLinCmtCarryCovInterval <- function(covs, interp) {
+  if (length(covs) == 0L || !(interp %in% c("locf", "midpoint"))) {
+    return(NULL)
+  }
+  .copy <- paste0("rx_lcCov_", covs, "_")
+  .lag <- paste0("rx_lcLag_", covs, "_")
+  .int <- paste0("rx_lcCovI_", covs, "_")
+  .lines <- character(0)
+  for (.i in seq_along(covs)) {
+    .lines <- c(
+      .lines,
+      paste0(.lag[.i], "~lag0(", .copy[.i], ")+", covs[.i], "*(newind==1)"),
+      if (interp == "locf") {
+        paste0(.int[.i], "~", .lag[.i])
+      } else {
+        paste0(.int[.i], "~0.5*(", covs[.i], "+", .lag[.i], ")")
+      }
+    )
+  }
+  list(
+    copies = paste0(.copy, "=", covs),
+    lines = .lines,
+    map = stats::setNames(.int, covs)
+  )
+}
+
+#' Model text with each covariate read through its interval value
+#'
+#' @param txt model text (rxFromSE() output)
+#' @param covInterval `.rxFoceiLinCmtCarryCovInterval()`
+#' @return `txt` with every covariate symbol replaced
+#' @noRd
+.rxFoceiLinCmtCarryCovSub <- function(txt, covInterval) {
+  if (is.null(covInterval)) {
+    return(txt)
+  }
+  .map <- covInterval$map
+  for (.c in names(.map)) {
+    .pat <- paste0("(?<![A-Za-z0-9._])", gsub("([.])", "\\\\\\1", .c), "(?![A-Za-z0-9._])")
+    txt <- gsub(.pat, .map[[.c]], txt, perl = TRUE)
+  }
+  txt
+}
+
 .rxFoceiLinCmtCarryCtx <- function(pairs, s) {
   .pc <- .rxFoceiCarryPredCall(s)
   .a <- .pc$args
@@ -37,6 +123,9 @@
     trans = .txt[8],
     pfx = paste(.txt[1:5], collapse = ","),
     thetas = .txt[9:15],
+    # the advance's parameters over the interval ending at the row
+    covInterval = attr(pairs, "carryCovInterval"),
+    thetasInterval = .rxFoceiLinCmtCarryCovSub(.txt[9:15], attr(pairs, "carryCovInterval")),
     zero = rep("0", 7),
     nP = .nP,
     anyJump = .anyJump,
@@ -83,7 +172,8 @@
     .dTxt <- rxode2::rxFromSE(.dRepr)
     # lead with the symbol: rxode2's expression optimizer folds "-(1)*x"
     # to "-x", and "-" + "-x" would read as a C decrement
-    .conc <- paste0(.conc, "-rx_lcCarryG", .p, "_*(", .dTxt, ")*", cx$conc, "/", .vcTxt)
+    # the observation's own scaling: g at the record, not over the interval
+    .conc <- paste0(.conc, "-rx_lcCarryGr", .p, "_*(", .dTxt, ")*", cx$conc, "/", .vcTxt)
   }
   if (cx$bare) {
     return(paste0(dfe, "=", .conc))
