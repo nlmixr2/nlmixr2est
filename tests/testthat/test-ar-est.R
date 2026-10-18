@@ -66,15 +66,14 @@ nmTest({
     .ff <- .nlmixr(.mF, .dat, est = "focei", control = foceiControl(print = 0))
     .corF <- unname(.ff$parFixedDf["ar1.cor", "Estimate"])
     .sdF <- unname(.ff$parFixedDf["add.sd", "Estimate"])
-    expect_equal(.corF, 0.7, tolerance = 0.15)
-    expect_equal(.sdF, 0.4, tolerance = 0.15)
-    # regression guard: cor must not collapse to the [0,1) boundary (nor the sd)
-    expect_lt(.corF, 0.95)
-    expect_gt(.sdF, 0.2)
-    # bobyqa once stopped in a narrow valley at OFV -1132 / cor 0.44 (#1196); the
-    # objective bound guards that whether or not this platform's path needed the
-    # stationarity restart, which test-focei-bobyqa-stationary-1196.R drives
-    expect_lt(.ff$objf, -1220)
+    # Windows converges without a stationarity restart to OFV -1221.95 / cor 0.680 /
+    # sd 0.395 and Linux, after one, to -1222.26 / 0.696 / 0.404; bobyqa once stopped
+    # in a narrow valley at -1132 / 0.44 (#1196).  The bands hold both with margin,
+    # whatever path the optimizer takes; test-focei-bobyqa-stationary-1196.R drives
+    # the restart itself.
+    expect_equal(.ff$objf, -1222.1, tolerance = 5e-4)
+    expect_equal(.corF, 0.69, tolerance = 0.03)
+    expect_equal(.sdF, 0.4, tolerance = 0.05)
   })
 
   test_that("ar() combines with the log-likelihood residuals (+dnorm/+dt/+dcauchy) under focei", {
