@@ -817,22 +817,30 @@
   }
   .r <- tryCatch(.foceiRecomputeCov(fit, "focei", control), error = function(e) e)
   if (inherits(.r, "error")) {
-    .foceiOwnEtaCovFail(.env, "computed", .r)
+    .asked <- .covMethodFromSlot(control$covMethod, control$covType)
+    .foceiOwnEtaCovFail(.env, if (nzchar(.asked)) .asked else "focei", "computed", .r)
     return(invisible(FALSE))
   }
   if (is.null(.r)) {
     return(invisible(FALSE))
   }
   .extras <- .r$extras[setdiff(names(.r$extras), .covOwnTables)]
+  .tried <- if (.covIsName(.r$what)) .r$what else .r$covMethod
   # the fit is complete; a failed install leaves it without a covariance, not without
   # its estimates
-  tryCatch(
+  .ok <- tryCatch(
     .covInstall(.env, .r$cov, .r$covMethod, what = .r$what, extras = .extras, refresh = "all"),
-    error = function(e) {
-      .foceiOwnEtaCovFail(.env, "installed", e)
-      invisible(FALSE)
-    }
+    error = function(e) e
   )
+  if (inherits(.ok, "error")) {
+    .foceiOwnEtaCovFail(.env, .tried, "installed", .ok)
+    return(invisible(FALSE))
+  }
+  if (!isTRUE(.ok)) {
+    # .covInstall() warned that the matrix was rejected
+    .covTriedNote(.env, .tried, paste0("not installed (", attr(.ok, "reason"), ")"))
+  }
+  invisible(.ok)
 }
 
 #' Warn that the FOCEi covariance of a completed fit was not computed or installed
@@ -840,15 +848,25 @@
 #' The warning clips the condition message to one line; the fit's covariance
 #' history (`covTried`) keeps it whole.
 #' @param env fit environment
+#' @param method the covariance method that was tried
 #' @param what "computed" or "installed"
 #' @param e the condition
 #' @return invisibly `NULL`
 #' @noRd
-.foceiOwnEtaCovFail <- function(env, what, e) {
+.foceiOwnEtaCovFail <- function(env, method, what, e) {
   .m <- .foceiAnalyticOneLine(conditionMessage(e))
-  .covTriedNote(env, "focei", sprintf("not %s (%s)", what, .m))
+  .covTriedNote(env, method, sprintf("not %s (%s)", what, .m))
   .covWarn(sprintf("FOCEi covariance not %s (%s)", what, .m))
   invisible()
+}
+
+#' One row of the record of a covariance choice (`covTried`)
+#' @param method covariance method
+#' @param outcome "used" or why it was not
+#' @return a one-row data frame
+#' @noRd
+.covTriedRow <- function(method, outcome) {
+  data.frame(method = method, outcome = outcome)
 }
 
 #' Add a method and its outcome to the covariance history of a fit
@@ -858,9 +876,22 @@
 #' @return invisibly `env`
 #' @noRd
 .covTriedNote <- function(env, method, outcome) {
-  .row <- data.frame(method = method, outcome = outcome)
+  .row <- .covTriedRow(method, outcome)
   env$covTried <- if (is.data.frame(env$covTried)) rbind(env$covTried, .row) else .row
   invisible(env)
+}
+
+#' Warn that thetas at a boundary left the fit without a covariance
+#'
+#' The thetas are clipped to the line; `$covMethod` of the fit lists them all.
+#' @param names the thetas at a boundary
+#' @return invisibly `NULL`
+#' @noRd
+.covBoundaryWarn <- function(names) {
+  .tail <- " near boundary; covariance not calculated"
+  .names <- unique(paste0("\"", names, "\""))
+  .covWarn(paste0(.vaeTruncList(.names, prefix = .tail, budget = .covWarnWidth), .tail))
+  invisible()
 }
 
 #' Parameter tables a fit that estimates its own ETAs keeps when its FOCEi

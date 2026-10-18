@@ -247,6 +247,8 @@ nmTest({
         "0 residual degrees of freedom; covariance step failed" %in% .fit$runInfo,
         info = .alg
       )
+      # the failed step is the only thing said about the covariance
+      expect_false(any(grepl("proper form", .fit$runInfo, fixed = TRUE)), info = .alg)
     }
   })
 
@@ -273,6 +275,7 @@ nmTest({
     expect_identical(.fit$covMethod, "failed")
     .w <- paste0("\"nls\" is ", strrep("x", 62), "...")
     expect_true(.w %in% .fit$runInfo)
+    expect_false(any(grepl("proper form", .fit$runInfo, fixed = TRUE)))
     expect_identical(cli::ansi_nchar(.w, type = "width"), .covWarnWidth)
   })
 

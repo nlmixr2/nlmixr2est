@@ -12080,6 +12080,7 @@ static int foceiCovSelect(Environment e, int req, int rState, int sState,
 
 NumericMatrix foceiCalcCov(Environment e){
   std::string boundStr = "";
+  std::vector<std::string> boundNames;
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
   // covType="analytic" stashes the fit's solve args (foceiSetup_); restoreFitSolve_
   // needs them for the whole cov step (incl. foceiCalcR below), so release only on
@@ -12156,12 +12157,14 @@ NumericMatrix foceiCalcCov(Environment e){
                 (std::fabs((cur-op_focei.lower[k])/cur) < op_focei.boundTol)) {
               boundary = true;
               boundStr += "\"" + thetaNames[j] + "\" ";
+              boundNames.push_back(as<std::string>(thetaNames[j]));
             }
             if (checkUpperBound &&
                 j < thetaNames.size() &&
                 (std::fabs((op_focei.upper[k]-cur)/cur) < op_focei.boundTol)) {
               boundary = true;
               boundStr += "\"" + thetaNames[j] + "\" ";
+              boundNames.push_back(as<std::string>(thetaNames[j]));
             }
           }
         }
@@ -12474,8 +12477,10 @@ NumericMatrix foceiCalcCov(Environment e){
         return ret;
       } else {
         if (op_focei.covMethod && boundary){
-          warning(_("parameter estimate near boundary; covariance not calculated:\n   ") + boundStr +
-                  _("\n use 'getVarCov' to calculate anyway"));
+          // clipped to one line in R; covMethod keeps every name
+          Environment nlmixr2est = Environment::namespace_env("nlmixr2est");
+          Function boundWarn = as<Function>(nlmixr2est[".covBoundaryWarn"]);
+          boundWarn(wrap(boundNames));
           e["covMethod"] = "Boundary issue; Get SEs with `getVarCov()`: " + boundStr;
         }
         NumericMatrix ret;

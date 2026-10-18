@@ -23,6 +23,9 @@ test_that("the labels come from the code that names them", {
   expect_true(all(
     c("r,s", "r", "s", "analytic", "linFim", "Ha", "|r|,s+", "r+,|s|", "|r|,|s|", "|Ha|", "r,s (full)") %in% .labels
   ))
+  # a covMethod a control accepts that is new changes the count: look at the sites
+  # it reaches, then update it
+  expect_identical(length(.labels), 64L)
   expect_false(anyDuplicated(.labels) > 0L)
   expect_false(any(c("", NA_character_) %in% .labels))
   expect_true(all(.covRealLabels(decorated = FALSE, full = FALSE) %in% .labels))
@@ -165,7 +168,10 @@ test_that(".covNotUsableMsg() is one whole line for every walk, request, reason 
     rbind,
     lapply(.walks, function(w) expand.grid(request = w$request, why = w$why, tail = w$tail, stringsAsFactors = FALSE))
   )
-  .got <- .covSite(".covNotUsableMsg", mapply(.covNotUsableMsg, .grid$request, .grid$why, .grid$tail, USE.NAMES = FALSE))
+  .got <- .covSite(
+    ".covNotUsableMsg",
+    mapply(.covNotUsableMsg, .grid$request, .grid$why, .grid$tail, USE.NAMES = FALSE)
+  )
   expect_identical(.got, sprintf("\"%s\" not usable (%s); %s", .grid$request, .grid$why, .grid$tail))
   expect_true(.covSiteWhole(.got))
   expect_gt(length(.got), 500L)
@@ -269,4 +275,28 @@ test_that(".foceiDropMalformedCov() drops a malformed covariance with one whole 
   }
   # no covariance, nothing to check
   expect_silent(.foceiDropMalformedCov(new.env(parent = emptyenv())))
+})
+
+test_that(".covBoundaryWarn() names the thetas at a boundary on one line", {
+  .tail <- " near boundary; covariance not calculated"
+  .w <- .covSite(".covBoundaryWarn", capture_warnings(.covBoundaryWarn(c("tcl", "tv"))))
+  expect_identical(.w, paste0("\"tcl\", \"tv\"", .tail))
+  # a theta at both bounds is named once
+  expect_identical(capture_warnings(.covBoundaryWarn(c("tcl", "tcl"))), paste0("\"tcl\"", .tail))
+  # many thetas: the leading names, then a count
+  .w <- capture_warnings(.covBoundaryWarn(paste0("theta", 1:30)))
+  expect_identical(.w, paste0("\"theta1\", \"theta2\", +28 more", .tail))
+  # a name too long for the line is cut
+  .w <- capture_warnings(.covBoundaryWarn(strrep("t", 80)))
+  expect_identical(.w, paste0("\"", strrep("t", 29), "...", .tail))
+  expect_identical(cli::ansi_nchar(.w, type = "width"), .covWarnWidth)
+})
+
+test_that(".foceiDropMalformedCov() has nothing to add to a covariance step that failed", {
+  # the nlm family hands over "failed" as the covariance when its step said so
+  .e <- new.env(parent = emptyenv())
+  .e$cov <- "failed"
+  expect_silent(.foceiDropMalformedCov(.e))
+  expect_null(.e$cov)
+  expect_false(exists("covDebug", envir = .e, inherits = FALSE))
 })

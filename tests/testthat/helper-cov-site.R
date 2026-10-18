@@ -107,6 +107,21 @@
   identical(body(f), body(target)) || .covSiteHas(body(target), body(f))
 }
 
+# Record in `rec$hit` the `callers` that the function running in `frame` is, or
+# has defined inside it.  `frame` is the frame the call was written in: code handed
+# to a timer runs inside the function that wrote it.
+.covSiteNote <- function(rec, targets, callers, frame) {
+  if (frame > 0L && !all(rec$hit)) {
+    .f <- sys.function(frame)
+    for (.n in callers[!rec$hit]) {
+      if (.covSiteIn(.f, targets[[.n]])) {
+        rec$hit[[.n]] <- TRUE
+      }
+    }
+  }
+  invisible()
+}
+
 # Evaluate `code`, which has to reach .covWarn(), .covClip() or .covNotUsableMsg()
 # from each of the package functions named in `callers`, and return its value.
 # The names are what the gate in test-cov-warning-gate.R reads.
@@ -118,30 +133,18 @@
   .warn <- get(".covWarn", envir = .ns)
   .clip <- get(".covClip", envir = .ns)
   .msg <- get(".covNotUsableMsg", envir = .ns)
-  # the frame the call was written in: code handed to a timer runs inside the
-  # function that wrote it
-  .note <- function(frame) {
-    if (frame > 0L && !all(.rec$hit)) {
-      .f <- sys.function(frame)
-      for (.n in callers[!.rec$hit]) {
-        if (.covSiteIn(.f, .targets[[.n]])) {
-          .rec$hit[[.n]] <- TRUE
-        }
-      }
-    }
-  }
   .out <- testthat::with_mocked_bindings(
     code,
     .covWarn = function(w) {
-      .note(sys.parent())
+      .covSiteNote(.rec, .targets, callers, sys.parent())
       .warn(w)
     },
     .covClip = function(w, width = .covWarnWidth) {
-      .note(sys.parent())
+      .covSiteNote(.rec, .targets, callers, sys.parent())
       .clip(w, width)
     },
     .covNotUsableMsg = function(request, why, tail) {
-      .note(sys.parent())
+      .covSiteNote(.rec, .targets, callers, sys.parent())
       .msg(request, why, tail)
     }
   )
@@ -221,4 +224,3 @@
   .ns <- asNamespace("nlmixr2est")
   Filter(function(x) is.function(x) && !is.primitive(x), mget(ls(.ns, all.names = TRUE), envir = .ns))
 }
-

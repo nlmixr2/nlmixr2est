@@ -5557,6 +5557,11 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (is.null(env$cov)) {
     return(invisible())
   }
+  # the covariance step already said it failed: nothing is left to report
+  if (identical(env$cov, "failed")) {
+    env$cov <- NULL
+    return(invisible())
+  }
   .validCov <- checkmate::testMatrix(
     env$cov,
     min.rows = 1,
