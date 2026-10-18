@@ -17,7 +17,7 @@ nlmixrUpdateObject(fit, objName, envir, origFitEnv = NULL)
 }
 \value{
 \code{TRUE} (invisibly) when the binding was updated, \code{FALSE} otherwise
-  (e.g. \code{objName} is not a single name, as for \code{addCwres(fits[[1]])})
+(e.g. \code{objName} is not a single name, as for \code{addCwres(fits[[1]])})
 }
 \description{
 Update the nlmixr2 object with new fit information
