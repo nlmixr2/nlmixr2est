@@ -207,6 +207,36 @@ nmTest({
     expect_null(.off$nStationaryRestart)
   })
 
+  test_that(".bobyqa() restarts a normal exit that is not stationary, whatever path the optimizer took", {
+    # the first search ends short of the minimum with a normal exit, as it did in
+    # the ar() fit of #1196; later searches are the real bobyqa()
+    .real <- minqa::bobyqa
+    .state <- new.env(parent = emptyenv())
+    .state$calls <- 0L
+    local_mocked_bindings(
+      bobyqa = function(par, fn, control, lower, upper) {
+        .state$calls <- .state$calls + 1L
+        if (.state$calls == 1L) {
+          return(list(par = c(-0.5, 0.25), fval = .valley(c(-0.5, 0.25)), feval = 40L, ierr = 0L, msg = "done"))
+        }
+        .real(par, fn, control = control, lower = lower, upper = upper)
+      },
+      .package = "minqa"
+    )
+    .base <- list(rhobeg = 0.2, rhoend = 1e-6, maxfun = 5000, sigdig = 3)
+    .on <- .bobyqa(c(-1.2, 1), .valley, lower = .lo, upper = .hi, control = c(.base, bobyqaStationary = TRUE))
+    expect_gte(.on$nStationaryRestart, 1L)
+    expect_gte(.state$calls, 2L)
+    expect_lt(.on$value, 1e-6)
+    expect_equal(.on$x, c(1, 1), tolerance = 1e-3)
+    # without the check the exit point stands
+    .state$calls <- 0L
+    .off <- .bobyqa(c(-1.2, 1), .valley, lower = .lo, upper = .hi, control = c(.base, bobyqaStationary = FALSE))
+    expect_null(.off$nStationaryRestart)
+    expect_identical(.state$calls, 1L)
+    expect_identical(.off$x, c(-0.5, 0.25))
+  })
+
   test_that("a fit the probe finds converged is the fit without the probe", {
     .one <- function() {
       ini({

@@ -71,9 +71,9 @@ nmTest({
     # regression guard: cor must not collapse to the [0,1) boundary (nor the sd)
     expect_lt(.corF, 0.95)
     expect_gt(.sdF, 0.2)
-    # bobyqa stopped in a narrow valley at OFV -1132 / cor 0.44 until the
-    # stationarity check restarted it (#1196)
-    expect_gt(.ff$env$optReturn$nStationaryRestart, 0L)
+    # bobyqa once stopped in a narrow valley at OFV -1132 / cor 0.44 (#1196); the
+    # objective bound guards that whether or not this platform's path needed the
+    # stationarity restart, which test-focei-bobyqa-stationary-1196.R drives
     expect_lt(.ff$objf, -1220)
   })
 
