@@ -13,11 +13,12 @@
 
 - `predict(fit, level = "individual")` now works on a fit with
   inter-occasion variability; it stopped with "attempt access index 0/0 in
-  VECTOR_ELT".  Each record takes its subject's estimate for its occasion,
-  so the predictions are the fit's IPRED.  A subject or occasion the fit
-  did not estimate gets occasion etas of 0, with a warning.  Under
-  `"midpoint"` or `"linear"` covariate interpolation they differ from IPRED
-  after an occasion changes (`?predict.nlmixr2FitCore`).
+  VECTOR_ELT".  Each record takes its subject's estimates, joined on the
+  subject and its occasion, so under `"locf"` or `"nocb"` covariate
+  interpolation the predictions are the fit's IPRED, in any row order of
+  `newdata`.  A subject or occasion the fit did not estimate gets etas of
+  0, with a warning.  Under `"midpoint"` or `"linear"` interpolation they
+  differ from IPRED after an occasion changes (`?predict.nlmixr2FitCore`).
 
 - Population `predict()` of a fit with inter-occasion variability now
   works, and gives its PRED; it stopped with "The following parameter(s)
