@@ -264,24 +264,31 @@ nmTest({
 nmTest({
   test_that("residuals take each row's etas from its own subject", {
     # CWRES uses only the normally distributed rows, so a subject with counts
-    # only has none there; its etas went to the next subject by position.  At
-    # maxOuterIterations = 0 subject 2's etas and residuals do not depend on
-    # subject 1, so they equal those of the same data without subject 1, to
-    # the inner problem's convergence (the wrong subject's etas were 0.3 off).
+    # only has none there, and its absence shifted the etas by position.  At
+    # maxOuterIterations = 0 the other subjects' etas and residuals do not
+    # depend on that subject, so they equal those of the same data without
+    # it, to the inner problem's convergence (the shifted ones were 0.3-0.9
+    # off).
+    # With subject 5 count-only, every subject before it took the next
+    # subject's etas and the first one's were left unset; with subject 1,
+    # subject 2's were.
     .ctl <- foceiControl(print = 0, covMethod = "", maxOuterIterations = 0L)
-    .with <- suppressWarnings(suppressMessages(
-      nlmixr2(.residTwoEndpointMod, .residTwoEndpointData(cpless = 1), "focei", control = .ctl)
-    ))
-    .without <- suppressWarnings(suppressMessages(
-      nlmixr2(.residTwoEndpointMod, .residTwoEndpointData(drop = 1), "focei", control = .ctl)
-    ))
-    .a <- as.data.frame(.with)
-    .b <- as.data.frame(.without)
-    .a2 <- .a[.a$ID == "2" & .a$CMT == "cp", ]
-    .b2 <- .b[.b$ID == "2" & .b$CMT == "cp", ]
-    expect_identical(nrow(.a2), 11L)
-    for (.c in c("CWRES", "CRES", "CPRED", "eta.cl")) {
-      expect_equal(.a2[[.c]], .b2[[.c]], tolerance = 1e-4, label = .c)
+    for (.k in c(1L, 5L)) {
+      .with <- suppressWarnings(suppressMessages(
+        nlmixr2(.residTwoEndpointMod, .residTwoEndpointData(cpless = .k), "focei", control = .ctl)
+      ))
+      .without <- suppressWarnings(suppressMessages(
+        nlmixr2(.residTwoEndpointMod, .residTwoEndpointData(drop = .k), "focei", control = .ctl)
+      ))
+      .a <- as.data.frame(.with)
+      .b <- as.data.frame(.without)
+      .a <- .a[.a$CMT == "cp", ]
+      .b <- .b[.b$CMT == "cp", ]
+      expect_identical(nrow(.a), 121L, label = .k)
+      expect_identical(as.character(.a$ID), as.character(.b$ID), label = .k)
+      for (.c in c("CWRES", "CRES", "CPRED", "eta.cl")) {
+        expect_equal(.a[[.c]], .b[[.c]], tolerance = 1e-4, label = paste(.k, .c))
+      }
     }
   })
 
