@@ -18,6 +18,18 @@
   })
 }
 
+# A quiet fit of .npdeNoObsMod() on theo_sd, its table with or without the
+# dosing rows
+.npdeDosingFit <- function(addDosing, ctl) {
+  suppressWarnings(suppressMessages(nlmixr2(
+    .npdeNoObsMod,
+    nlmixr2data::theo_sd,
+    "focei",
+    control = ctl,
+    table = tableControl(addDosing = addDosing)
+  )))
+}
+
 .npdeNoObsData <- function() {
   .d <- nlmixr2data::theo_sd
   .d$DV[.d$ID == 3 & .d$EVID == 0] <- NA
@@ -176,6 +188,26 @@ nmTest({
 
     expect_false(isTRUE(all.equal(fit$NPDE, fit$NPD)))
     expect_false(isTRUE(all.equal(fit$PDE, fit$PD)))
+  })
+
+  test_that("addNpde() on a table with the dosing rows gives them NA, as the fit's own NPDE does", {
+    # the NPDE is the observations'; the dosing rows (addDosing) get NA, and
+    # each observation keeps the value it has in a table without them
+    .ctl <- foceiControl(print = 0, covMethod = "", maxOuterIterations = 0L)
+    .fits <- lapply(c(FALSE, TRUE), .npdeDosingFit, ctl = .ctl)
+    .with <- suppressWarnings(suppressMessages(nlmixr2(
+      .npdeNoObsMod,
+      nlmixr2data::theo_sd,
+      "focei",
+      control = .ctl,
+      table = tableControl(npde = TRUE, addDosing = TRUE)
+    )))
+    expect_identical(which(is.na(.with$NPDE)), which(.with$EVID != 0))
+    .plain <- suppressMessages(addNpde(.fits[[1]], updateObject = FALSE))
+    .new <- suppressMessages(addNpde(.fits[[2]], updateObject = FALSE))
+    expect_identical(nrow(.new), 144L)
+    expect_identical(which(is.na(.new$NPDE)), which(.new$EVID != 0))
+    expect_equal(.new$NPDE[.new$EVID == 0], .plain$NPDE, tolerance = 1e-12)
   })
 
   test_that("npdeCalc() stops when the simulation does not match the observations", {

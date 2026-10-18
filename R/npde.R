@@ -87,13 +87,15 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
 
 #' NPDE columns with one row per row of the fit
 #'
-#' The NPDE is computed for the fit's observations; a subject with none, which
-#' the fit's table reinserts from its data, gets NA rows.  The fit's table and
-#' the NPDE follow the same order for the subjects the fit estimated.
+#' The NPDE is computed for the fit's observations.  The other rows of its
+#' table get NA, as in a fit run with `tableControl(npde = TRUE)`: those of a
+#' subject with no observation, which the table reinserts from its data, and
+#' the dosing rows of a table with them (`addDosing`, which adds `EVID`).  The
+#' fit's table and the NPDE follow the same order for the observations.
 #'
 #' @param fit nlmixr2 fit
 #' @param npde NPDE columns for the fit's observations
-#' @return `npde`, with NA rows for the reinserted subjects
+#' @return `npde`, with NA rows for the fit's other rows
 #' @noRd
 #' @author Matthew L. Fidler
 .npdeFitRows <- function(fit, npde) {
@@ -101,6 +103,9 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
     return(npde)
   }
   .in <- as.character(fit$ID) %in% as.character(fit$idLvl)
+  if ("EVID" %in% names(fit)) {
+    .in <- .in & fit$EVID == 0
+  }
   if (sum(.in) != nrow(npde)) {
     stop("NPDE has ", nrow(npde), " rows for the fit's ", sum(.in), " observations", call. = FALSE)
   }

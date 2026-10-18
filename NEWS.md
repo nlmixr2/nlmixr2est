@@ -10,9 +10,9 @@
 
 - In a model with a normal and a non-normal endpoint (such as `dpois()`), a
   subject with no observations of the normal endpoint left every subject
-  before it in the data with CWRES, CRES and CPRED computed from another
-  subject's etas (or none), since nlmixr2est 2.1.0.  Each row now takes its
-  own subject's.
+  before it in the data (the next subject, when it was the first) with CWRES,
+  CRES and CPRED computed from another subject's etas (or none), since
+  nlmixr2est 2.1.0.  Each row now takes its own subject's.
 
 # nlmixr2est 7.2.1
 
