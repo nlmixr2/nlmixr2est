@@ -69,3 +69,61 @@ test_that("a simulation restores every estimation field the reset creates", {
   expect_gt(length(.made), 0L)
   expect_setequal(.made, .nlmixr2EstEnvFields)
 })
+
+test_that("every simulation method leaves the hooks' globals as it found them", {
+  # .uiApplyIov() clears the IOV rewrite's state and the mu-referencing
+  # translations are reset for any method; a simulation inside a fit (its
+  # table step's vpcSim() or population predict()) must leave the fit's
+  .state <- .preProcessHookState()
+  withr::defer(.preProcessHookStateRestore(.state))
+  for (.est in .preProcessHooksSimulationEst) {
+    .uiIovEnv$ui <- "fit's rewrite"
+    .muRefTrans$cur <- "fit's translations"
+    .sim <- new.env(parent = emptyenv())
+    .sim$ui <- rxode2::assertRxUi(.iovFitMod)
+    .sim$data <- .iovFitData()
+    suppressMessages(.preProcessHooksRun(.sim, .est))
+    expect_identical(.uiIovEnv$ui, "fit's rewrite", label = .est)
+    expect_identical(.muRefTrans$cur, "fit's translations", label = .est)
+  }
+})
+
+# A saem model with a mu-referenced covariate (wt.cl * log(WT / 70)), which
+# saem's hooks rewrite into the data and the model
+.hookMuCovariate <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    wt.cl <- 0.75
+    add.sd <- 0.7
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl + wt.cl * log(WT / 70))
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+nmTest({
+  test_that("a saem fit with a mu-referenced covariate asked for NPDE is finished", {
+    # npde's vpcSim() in the table step reset the translations the fit's
+    # finish undoes
+    .fit <- suppressWarnings(suppressMessages(nlmixr2(
+      .hookMuCovariate,
+      nlmixr2data::theo_sd,
+      "saem",
+      control = saemControl(print = 0, covMethod = ""),
+      table = tableControl(npde = TRUE)
+    )))
+    expect_true(all(c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD") %in% names(.fit)))
+    expect_false(any(grepl("nlmixrMuDerCov", names(.fit))))
+    expect_false(any(grepl("nlmixrMuDerCov", names(.fit$dataSav))))
+    expect_false(any(grepl("nlmixrMuDerCov", deparse(.fit$ui$fun))))
+    expect_identical(.fit$ui$iniDf$name, rxode2::assertRxUi(.hookMuCovariate)$iniDf$name)
+  })
+})

@@ -243,18 +243,49 @@ preProcessHooks <- function(name = NULL) {
 #' @noRd
 .nlmixr2EstEnvFields <- c("uiUnfix", "nlmixrPureInputUi", "vaeNonMuEtas", "saemPseudoTransforms")
 
+# The nlmixr2Est() methods that only solve a model; predict(level =
+# "individual") solves through rxSolve
+.preProcessHooksSimulationEst <- c("rxSolve", "simulate", "simulation", "predict")
+
+#' The globals the pre-process hooks set for an estimation
+#'
+#' The nlmixr2EstEnv fields, the IOV rewrite's state (`.uiIovEnv`) and the
+#' mu-referencing translations (`.muRefTrans$cur`), which the estimation and
+#' output steps read after the hooks ran.
+#'
+#' @return a list for `.preProcessHookStateRestore()`
+#' @noRd
+#' @author Matthew L. Fidler
+.preProcessHookState <- function() {
+  list(
+    est = mget(.nlmixr2EstEnvFields, envir = nlmixr2global$nlmixr2EstEnv, ifnotfound = list(NULL)),
+    iov = as.list(.uiIovEnv, all.names = TRUE),
+    muRef = .muRefTrans$cur
+  )
+}
+
+#' Put the pre-process hooks' globals back as `.preProcessHookState()` had them
+#'
+#' @param state `.preProcessHookState()`'s list
+#' @return nothing
+#' @noRd
+#' @author Matthew L. Fidler
+.preProcessHookStateRestore <- function(state) {
+  list2env(state$est, envir = nlmixr2global$nlmixr2EstEnv)
+  .uiIovEnvRestore(state$iov)
+  .muRefTrans$cur <- state$muRef
+  invisible()
+}
+
 .preProcessHooksRun <- function(env, est) {
-  if (identical(est, "rxSolve")) {
-    # augPred(), vpcSim() and the simulation information of an nlmixr2() refit run
-    # the hooks on a model they only simulate.  What the hooks record for an
-    # estimation -- the model before its fixed thetas were substituted, ... -- is
-    # read from nlmixr2global by the estimation and output steps that follow,
-    # so a simulation leaves it as it found it.
-    .estState <- mget(.nlmixr2EstEnvFields, envir = nlmixr2global$nlmixr2EstEnv, ifnotfound = list(NULL))
-    on.exit(list2env(.estState, envir = nlmixr2global$nlmixr2EstEnv), add = TRUE)
-    # and the IOV rewrite's state, which .uiApplyIov() clears for a simulation
-    .iovState <- as.list(.uiIovEnv, all.names = TRUE)
-    on.exit(.uiIovEnvRestore(.iovState), add = TRUE)
+  if (isTRUE(est %in% .preProcessHooksSimulationEst)) {
+    # augPred(), vpcSim(), predict() and the simulation information of an
+    # nlmixr2() refit run the hooks on a model they only simulate, also inside
+    # a fit's table step.  What the hooks record for an estimation is read by
+    # the estimation and output steps that follow, so a simulation leaves it
+    # as it found it.
+    .state <- .preProcessHookState()
+    on.exit(.preProcessHookStateRestore(.state), add = TRUE)
   }
   nlmixr2global$preProcessHookWarnings <- character(0)
   .ret <- .collectWarn(
