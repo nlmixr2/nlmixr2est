@@ -74,7 +74,7 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
       .fitEnv <- object$env
       .npde <- .calcNpde(object, dv = object$DV, table = table)
       .fit <- nlmixrClone(object)
-      .new <- nlmixrCbind(.fit, .npde[[2]])
+      .new <- nlmixrCbind(.fit, .npdeFitRows(object, .npde[[2]]))
       if (updateObject) {
         .evRebound <- nlmixrUpdateObject(.new, .objName, envir, .fitEnv)
       }
@@ -83,4 +83,29 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
     },
     object$env
   )
+}
+
+#' NPDE columns with one row per row of the fit
+#'
+#' The NPDE is computed for the fit's observations; a subject with none, which
+#' the fit's table reinserts from its data, gets NA rows.  The fit's table and
+#' the NPDE follow the same order for the subjects the fit estimated.
+#'
+#' @param fit nlmixr2 fit
+#' @param npde NPDE columns for the fit's observations
+#' @return `npde`, with NA rows for the reinserted subjects
+#' @noRd
+#' @author Matthew L. Fidler
+.npdeFitRows <- function(fit, npde) {
+  if (nrow(npde) == nrow(fit)) {
+    return(npde)
+  }
+  .in <- as.character(fit$ID) %in% as.character(fit$idLvl)
+  if (sum(.in) != nrow(npde)) {
+    stop("NPDE has ", nrow(npde), " rows for the fit's ", sum(.in), " observations", call. = FALSE)
+  }
+  .ret <- npde[rep(NA_integer_, nrow(fit)), , drop = FALSE]
+  .ret[.in, ] <- npde
+  rownames(.ret) <- NULL
+  .ret
 }
