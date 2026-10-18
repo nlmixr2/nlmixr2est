@@ -2054,6 +2054,11 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @noRd
 .saemFamilyFit <- function(env, ...) {
   .ui <- env$ui
+  # saem estimates every eta's variance on its own, so a repeated block would
+  # silently get its own estimates
+  if (any(.ui$omegaSameMap != 0L)) {
+    stop("saem does not estimate a repeated (same()) omega block; use focei", call. = FALSE)
+  }
   .control <- .ui$control
   .data <- env$data
   .ret <- new.env(parent = emptyenv())

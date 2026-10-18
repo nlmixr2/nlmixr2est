@@ -3895,16 +3895,16 @@
     return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1) without interaction"))
   }
   # IOV is out of scope; derive the flag from THIS fit, not the process-global
-  # .uiIovEnv (which reflects the LAST-preprocessed model).  An occasion (IOV) eta
-  # carries a non-"id" `condition` -- the same signal .uiApplyIov keys on.
+  # .uiIovEnv (which reflects the LAST-preprocessed model), by the predicate
+  # .uiApplyIov keys on.
   .idf0 <- ui$iniDf
-  if (any(!is.na(.idf0$condition) & .idf0$condition != "id" & is.na(.idf0$err))) {
+  if (any(.iniDfIovRows(.idf0))) {
     # IOV
     return(.foceiAnalyticFallback("inter-occasion variability (IOV)"))
   }
   # Under `iovMethod = "omega"` the occasion etas all sit at the `id` level,
-  # so the test above only catches them through the `id:same:` copies.  Check
-  # the repetition directly rather than relying on that.
+  # as repeated `id:same:` blocks, which the test above leaves out; check the
+  # repetition directly.
   .sm0 <- ui$omegaSameMap
   if (length(.sm0) > 0L && any(.sm0 != 0L)) {
     return(.foceiAnalyticFallback("a repeated (SAME) omega block"))

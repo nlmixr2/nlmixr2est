@@ -128,11 +128,37 @@ nlmixr2iovVarSd <- function(val) {
 .uiIovEnv <- new.env(parent = emptyenv())
 .uiIovEnv$iovVars <- NULL
 
+#' Which rows of a model's iniDf are occasion-level (IOV) etas
+#'
+#' An eta row whose base condition is not `"id"`.  A repeated (`same()`)
+#' block's condition carries a `:same:<master>` suffix, which is not a level
+#' of variability, so a repeated subject-level block (`"id:same:<eta>"`) is
+#' not one.
+#'
+#' @param iniDf a model's iniDf
+#' @return a logical vector, one per row
+#' @noRd
+#' @author Matthew L. Fidler
+.iniDfIovRows <- function(iniDf) {
+  .cnd <- iniDf$condition
+  !is.na(.cnd) & is.na(iniDf$err) & lotri::lotriBaseCondition(.cnd) != "id"
+}
+
+#' Whether a model has an occasion-level (IOV) eta
+#'
+#' @param ui rxode2 user interface model
+#' @return `TRUE` when the model has an occasion eta
+#' @noRd
+#' @author Matthew L. Fidler
+.uiHasIov <- function(ui) {
+  any(.iniDfIovRows(ui$iniDf))
+}
+
 #' Put .uiIovEnv back as a snapshot had it
 #'
-#' A simulation's pre-process hooks (`est = "rxSolve"`) clear the rewrite's
-#' state; one run inside a fit (npde's `vpcSim()` in the table step) restores
-#' it after, so the fit's `.uiFinalizeIov()` still sees its own rewrite.
+#' A simulation's pre-process hooks clear the rewrite's state;
+#' `.preProcessHookStateRestore()` puts it back after one run inside a fit,
+#' so the fit's `.uiFinalizeIov()` still sees its own rewrite.
 #'
 #' @param state `as.list(.uiIovEnv, all.names = TRUE)`, taken before
 #' @return nothing
@@ -384,14 +410,8 @@ nlmixr2iovVarSd <- function(val) {
   }
   .ui <- ui
   .iniDf <- .ui$iniDf
-  ## the level is the BASE condition: a repeated (`same()`) block carries a
-  ## `:same:<master>` suffix, which is not a level of variability
   .baseCnd <- lotri::lotriBaseCondition(.iniDf$condition)
-  .wOcc <- which(
-    !is.na(.iniDf$condition) &
-      .baseCnd != "id" &
-      is.na(.iniDf$err)
-  )
+  .wOcc <- which(.iniDfIovRows(.iniDf))
   .wOff <- .wOcc[which(
     !is.na(.iniDf$neta1[.wOcc]) &
       .iniDf$neta1[.wOcc] != .iniDf$neta2[.wOcc]

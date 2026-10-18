@@ -89,21 +89,6 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   )
 }
 
-#' Whether a model has an occasion-level (IOV) eta
-#'
-#' An eta whose base condition is not `"id"`, the rows `.uiApplyIov()`
-#' expands; a repeated subject-level block (`"id:same:<eta>"`) is not one.
-#'
-#' @param ui rxode2 user interface model
-#' @return `TRUE` when the model has an occasion eta
-#' @noRd
-#' @author Matthew L. Fidler
-.uiHasIov <- function(ui) {
-  .iniDf <- ui$iniDf
-  .cnd <- .iniDf$condition
-  any(!is.na(.cnd) & is.na(.iniDf$err) & lotri::lotriBaseCondition(.cnd) != "id")
-}
-
 #' A focei refit of a fit with IOV, for its tables
 #'
 #' A finished IOV fit keeps the IOV-expanded model, but its thetas, etas and

@@ -108,11 +108,7 @@
 #' @noRd
 .saemIovInfo <- function(ui, data) {
   .iniDf <- ui$iniDf
-  .w <- which(
-    !is.na(.iniDf$condition) &
-      .iniDf$condition != "id" &
-      is.na(.iniDf$err)
-  )
+  .w <- which(.iniDfIovRows(.iniDf))
   if (length(.w) == 0L) {
     return(NULL)
   }

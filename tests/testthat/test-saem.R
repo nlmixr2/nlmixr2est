@@ -332,3 +332,37 @@ test_that(".saemPas() gives one gain per iteration, a phase of 0 iterations none
   expect_equal(.saemPas(c(2L, 0L), 0:1), c(1, 1))
   expect_identical(.saemPas(c(0L, 0L), 0:1), numeric(0))
 })
+
+# eta.v repeats eta.cl's subject-level block ("id:same:eta.cl")
+.saemSameMod <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    add.sd <- 0.7
+    eta.cl ~ 0.3
+    eta.v ~ same()
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+nmTest({
+  test_that("saem refuses a repeated (same()) omega block", {
+    # it would estimate eta.v's variance on its own
+    .e <- expect_error(suppressWarnings(suppressMessages(nlmixr2(
+      .saemSameMod,
+      nlmixr2data::theo_sd,
+      "saem",
+      control = saemControl(print = 0, covMethod = "")
+    ))))
+    expect_identical(
+      conditionMessage(.e),
+      "saem does not estimate a repeated (same()) omega block; use focei"
+    )
+  })
+})
