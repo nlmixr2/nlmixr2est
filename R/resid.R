@@ -1114,7 +1114,10 @@ addTable <- function(
   nlmixrWithTiming(
     "table",
     {
-      keep <- unique(c(keep, "nlmixrRowNums"))
+      # the table's keep and drop count as the arguments do, as in the fit's
+      # own table step and in the IOV route's refit
+      keep <- unique(c(keep, table$keep, "nlmixrRowNums"))
+      drop <- unique(c(drop, table$drop))
       .malert("Calculating residuals/tables")
       .objName <- substitute(object)
       .objName <- if (is.name(.objName)) as.character(.objName) else NULL
