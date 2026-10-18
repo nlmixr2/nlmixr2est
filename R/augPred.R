@@ -196,7 +196,10 @@
 #' A fit with IOV estimated one value of each occasion eta per subject and
 #' occasion (`fit$env$iov`, a table per occasion variable).  Each row takes
 #' the value for its own subject and occasion; a pair the fit did not
-#' estimate (a new subject or occasion) takes 0, the population value.
+#' estimate (a new subject or occasion) takes 0, the population value.  A
+#' row with no occasion, such as a dose rxode2 adds for `addl` under
+#' `addlKeepsCov = FALSE`, takes NA, which rxode2 fills as it fills that
+#' row's occasion in the fit's own solve.
 #'
 #' @param fit nlmixr2 fit with IOV
 #' @param id subject label of each row
@@ -215,12 +218,13 @@
     .tab <- .iov[[.lvl]]
     .key <- paste(id, occ[[.lvl]])
     .row <- match(.key, paste(as.character(.tab$ID), .tab[[.lvl]]))
-    if (anyNA(.row)) {
-      .unseen <- c(.unseen, paste(.lvl, .key[is.na(.row)]))
+    .new <- is.na(.row) & !is.na(occ[[.lvl]])
+    if (any(.new)) {
+      .unseen <- c(.unseen, paste(.lvl, .key[.new]))
     }
     for (.eta in setdiff(names(.tab), c("ID", .lvl))) {
       .v <- .tab[[.eta]][.row]
-      .v[is.na(.v)] <- 0
+      .v[.new] <- 0
       .etas[[.eta]] <- .v
     }
   }
@@ -232,11 +236,12 @@
 #' Each row takes its subject's estimate for its occasion, which
 #' `.augPredExpandData()` gives every row of a fit with IOV, as columns the
 #' model reads as those etas.  A grid point between two occasions under
-#' linear covariate interpolation has no occasion of its own and takes 0.
+#' linear covariate interpolation has no occasion of its own and takes 0; a
+#' whole occasion the fit did not estimate takes 0 with a warning.
 #'
 #' @param fit nlmixr2 fit
 #' @param events augPred()'s events (`.augPredExpandData()`), whose `ID` is
-#'   a factor of the fit's subject labels
+#'   a factor whose labels are the fit's integer subject codes
 #' @return `events`, with one column per occasion eta when the fit has IOV
 #' @noRd
 #' @author Matthew L. Fidler
@@ -245,20 +250,69 @@
   if (length(.occCols) == 0L) {
     return(events)
   }
-  .r <- .iovEtaRows(fit, as.character(events$ID), as.list(events[.occCols]))
+  # the events' ID levels are the fit's integer subject codes (dataSav's)
+  .id <- as.character(fit$idLvl[as.integer(as.character(events$ID))])
+  .occ <- as.list(events[.occCols])
+  .r <- .iovEtaRows(fit, .id, .occ)
+  # a fractional occasion (linear interpolation between two) is expected to
+  # match none; a whole one that does not is a subject or occasion the fit
+  # did not estimate
+  .whole <- Reduce(`&`, lapply(.occ, .augPredWholeOcc))
+  .miss <- .iovEtaRows(fit, .id[.whole], lapply(.occ, `[`, .whole))$unseen
+  if (.miss > 0L) {
+    warning(
+      .miss,
+      " subject-occasion pair(s) not in the fit get occasion etas of 0",
+      call. = FALSE
+    )
+  }
   events[names(.r$etas)] <- .r$etas
   events
 }
 
-#' Data with the fit's occasion etas, for individual predictions
+#' Which occasion values are whole numbers
 #'
-#' The model reads each occasion eta from its column, so none is simulated.
-#' A (subject, occasion) pair the fit did not estimate gets 0, with a
-#' warning.
+#' @param occ occasion values
+#' @return logical, `TRUE` where `occ` is a whole number
+#' @noRd
+#' @author Matthew L. Fidler
+.augPredWholeOcc <- function(occ) {
+  !is.na(occ) & occ == round(occ)
+}
+
+#' The fit's subject-level etas for rows of data
+#'
+#' Each row takes the estimate for its own subject (`fit$eta`, by label); a
+#' subject the fit did not estimate takes 0, the population value.
+#'
+#' @param fit nlmixr2 fit
+#' @param id subject label of each row
+#' @return a list: `etas`, a data frame with one column per subject eta,
+#'   and `unseen`, the number of subjects the fit did not estimate
+#' @noRd
+#' @author Matthew L. Fidler
+.subjectEtaRows <- function(fit, id) {
+  .eta <- fit$eta
+  .row <- match(id, as.character(.eta$ID))
+  .etas <- list()
+  for (.n in setdiff(names(.eta), "ID")) {
+    .v <- .eta[[.n]][.row]
+    .v[is.na(.v)] <- 0
+    .etas[[.n]] <- .v
+  }
+  list(etas = as.data.frame(.etas), unseen = length(unique(id[is.na(.row)])))
+}
+
+#' Data with the fit's etas, for individual predictions of a fit with IOV
+#'
+#' The model reads each subject eta and occasion eta from its column, joined
+#' on the subject (and occasion), so none is simulated and the solve does not
+#' depend on how rxode2 zeroes or orders the etas it is given.  A
+#' (subject, occasion) pair the fit did not estimate gets 0, with a warning.
 #'
 #' @param fit nlmixr2 fit with IOV
 #' @param data data to predict, with the subject and occasion columns
-#' @return `data` as a data frame, with one column per occasion eta
+#' @return `data` as a data frame, with one column per eta
 #' @noRd
 #' @author Matthew L. Fidler
 .nlmixrIovEtaData <- function(fit, data) {
@@ -273,8 +327,9 @@
       call. = FALSE
     )
   }
+  .id <- as.character(.d[[.w[1]]])
   .occ <- stats::setNames(as.list(.d[.w[-1]]), .occCols)
-  .r <- .iovEtaRows(fit, as.character(.d[[.w[1]]]), .occ)
+  .r <- .iovEtaRows(fit, .id, .occ)
   if (.r$unseen > 0L) {
     warning(
       .r$unseen,
@@ -283,6 +338,9 @@
     )
   }
   .d[names(.r$etas)] <- .r$etas
+  # a new subject's pairs are all unseen, so the warning above covers it
+  .s <- .subjectEtaRows(fit, .id)
+  .d[names(.s$etas)] <- .s$etas
   .d
 }
 
