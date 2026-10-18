@@ -153,6 +153,10 @@
     return(NULL)
   }
   .rxFoceiLinCmtCarryCheckCap(.pairs)
+  attr(.pairs, "carryCovInterval") <- .rxFoceiLinCmtCarryCovInterval(
+    x[[1]]$allCovs,
+    .rxFoceiLinCmtCarryInterp(x[[1]])
+  )
   list(pairs = .pairs, fp = .fp)
 }
 

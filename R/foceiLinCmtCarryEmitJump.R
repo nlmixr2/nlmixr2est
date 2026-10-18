@@ -18,13 +18,14 @@
       )
     )
   }
-  # once-per-row advance of every carry column (M depends only on this
-  # row's theta, so one call serves every pair AND every tracker)
+  # once-per-row advance of every carry column (M depends only on the
+  # interval's theta, so one call serves every pair AND every tracker)
   .l <- c(
     .l,
+    cx$covInterval$lines,
     paste0(
       "rx_lcCarryAdv_~",
-      .rxFoceiLinCmtCarryCall(cx$pfx, -5L, 0L, cx$trans, cx$thetas)
+      .rxFoceiLinCmtCarryCall(cx$pfx, -5L, 0L, cx$trans, cx$thetasInterval)
     )
   )
   if (!cx$anyJump) {
