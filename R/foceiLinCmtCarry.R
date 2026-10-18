@@ -91,7 +91,14 @@
   # its argument EXPRESSION, so it must see a bare symbol bound to the string
   if (.hasSlot) {
     .gRepr <- pairs$dEtaFormula[w]
-    .l <- c(.l, paste0(.g, "~", rxode2::rxFromSE(.gRepr)))
+    .gTxt <- rxode2::rxFromSE(.gRepr)
+    # g over the interval for the carry, and at the record for the
+    # observation's direct scaling term
+    .l <- c(
+      .l,
+      paste0(.g, "~", .rxFoceiLinCmtCarryCovSub(.gTxt, cx$covInterval)),
+      paste0("rx_lcCarryGr", .p, "_~", .gTxt)
+    )
   }
   if (!is.na(pairs$fD[w])) {
     .fRepr <- pairs$fD[w]
