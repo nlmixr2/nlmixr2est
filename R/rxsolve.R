@@ -415,11 +415,12 @@ predict.nlmixr2FitCore <- function(object, ..., level = c("population", "individ
     .data <- .both$rest$newdata
   }
   if (.est == "ipred") {
-    .params <- .nlmixrGetIpredParams(object)
-    if (length(object$env$iov) > 0L) {
-      # the occasion etas are the fit's estimates, by subject and occasion;
-      # with the subject etas in `.params`, no eta is simulated
-      .data <- .nlmixrIovEtaData(object, .data)
+    # each record takes its own subject's etas (and occasion etas), joined
+    # on the subject, as data columns; the parameters are the thetas, so no
+    # eta is simulated and the data may hold the subjects in any order
+    .params <- .nlmixrGetIpredParams(object, etas = FALSE)
+    if (!is.null(object$omega)) {
+      .data <- .nlmixrIpredEtaData(object, .data)
       .rxControl$omega <- NA
     }
     do.call(

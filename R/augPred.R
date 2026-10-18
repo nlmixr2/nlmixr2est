@@ -148,14 +148,17 @@
 #' Get the ipred parameters for the fit
 #'
 #' @param fit the fit to extract the ipred parameters from
-#' @return data.frame of parameters for ipred
+#' @param etas `TRUE` for a row per subject with its etas; `FALSE` for the
+#'   thetas alone, when the data carries the etas (`.nlmixrIpredEtaData()`)
+#' @return data.frame of parameters for ipred, or a named vector without the
+#'   etas
 #' @noRd
 #' @author Matthew L. Fidler
-.nlmixrGetIpredParams <- function(fit) {
+.nlmixrGetIpredParams <- function(fit, etas = TRUE) {
   .si <- fit$simInfo
   .sigma <- .si$sigma
   .omega <- .si$omega
-  if (is.null(.omega)) {
+  if (is.null(.omega) || !etas) {
     .params <- data.frame(t(fit$theta), t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
     .params <- setNames(as.numeric(.params), names(.params))
   } else {
@@ -293,6 +296,9 @@
 #' @author Matthew L. Fidler
 .subjectEtaRows <- function(fit, id) {
   .eta <- fit$eta
+  if (is.null(.eta)) {
+    return(list(etas = data.frame(row.names = seq_along(id)), unseen = 0L))
+  }
   .row <- match(id, as.character(.eta$ID))
   .etas <- list()
   for (.n in setdiff(names(.eta), "ID")) {
@@ -303,19 +309,21 @@
   list(etas = as.data.frame(.etas), unseen = length(unique(id[is.na(.row)])))
 }
 
-#' Data with the fit's etas, for individual predictions of a fit with IOV
+#' Data with the fit's etas, for individual predictions
 #'
-#' The model reads each subject eta and occasion eta from its column, joined
-#' on the subject (and occasion), so none is simulated and the solve does not
-#' depend on how rxode2 zeroes or orders the etas it is given.  A
-#' (subject, occasion) pair the fit did not estimate gets 0, with a warning.
+#' The model reads each subject eta (and, with IOV, each occasion eta) from
+#' its column, joined on the subject (and occasion), so none is simulated
+#' and the solve does not depend on the order of the subjects in `data`, on
+#' which of them it has, or on how rxode2 zeroes or orders the etas it is
+#' given.  A subject (with IOV, a subject-occasion pair) the fit did not
+#' estimate gets 0, with a warning.
 #'
-#' @param fit nlmixr2 fit with IOV
-#' @param data data to predict, with the subject and occasion columns
+#' @param fit nlmixr2 fit
+#' @param data data to predict, with the subject (and occasion) columns
 #' @return `data` as a data frame, with one column per eta
 #' @noRd
 #' @author Matthew L. Fidler
-.nlmixrIovEtaData <- function(fit, data) {
+.nlmixrIpredEtaData <- function(fit, data) {
   .d <- as.data.frame(data)
   .occCols <- names(fit$env$iov)
   .w <- match(tolower(c("ID", .occCols)), tolower(names(.d)))
@@ -323,23 +331,27 @@
     stop(
       "the data needs ",
       paste(c("ID", .occCols)[is.na(.w)], collapse = ", "),
-      " for the fit's occasion etas",
+      " for the fit's individual etas",
       call. = FALSE
     )
   }
   .id <- as.character(.d[[.w[1]]])
-  .occ <- stats::setNames(as.list(.d[.w[-1]]), .occCols)
-  .r <- .iovEtaRows(fit, .id, .occ)
-  if (.r$unseen > 0L) {
-    warning(
-      .r$unseen,
-      " subject-occasion pair(s) not in the fit get occasion etas of 0",
-      call. = FALSE
-    )
-  }
-  .d[names(.r$etas)] <- .r$etas
-  # a new subject's pairs are all unseen, so the warning above covers it
   .s <- .subjectEtaRows(fit, .id)
+  if (length(.occCols) > 0L) {
+    .occ <- stats::setNames(as.list(.d[.w[-1]]), .occCols)
+    .r <- .iovEtaRows(fit, .id, .occ)
+    # a new subject's pairs are all unseen, so this warning covers it
+    if (.r$unseen > 0L) {
+      warning(
+        .r$unseen,
+        " subject-occasion pair(s) not in the fit get occasion etas of 0",
+        call. = FALSE
+      )
+    }
+    .d[names(.r$etas)] <- .r$etas
+  } else if (.s$unseen > 0L) {
+    warning(.s$unseen, " subject(s) not in the fit get etas of 0", call. = FALSE)
+  }
   .d[names(.s$etas)] <- .s$etas
   .d
 }
