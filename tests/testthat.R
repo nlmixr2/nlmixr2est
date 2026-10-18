@@ -160,6 +160,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   # batch 7
   c(
     "mu-plain-fit",
+    "iov-predict",
     "vae-fit",
     "focei-wang2007-basic",
     "vae-neonatal",

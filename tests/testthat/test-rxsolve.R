@@ -137,16 +137,16 @@ nmTest({
     expect_true(any(grepl("from the number of subjects", .acc$msg, fixed = TRUE)))
     expect_equal(length(unique(.sim$sim.id)), 2L)
   })
+})
 
-  test_that("a fit with IOV keeps its nested omega, so it can be solved", {
-    for (.est in c("focei", "saem")) {
-      .fit <- .iovOdeFit(.est)
-      expect_s3_class(.fit$omega, "lotri")
-      expect_identical(names(.fit$omega), c("id", "occ"), label = .est)
-      .s <- suppressWarnings(suppressMessages(rxode2::rxSolve(.fit)))
-      expect_identical(nrow(as.data.frame(.s)), nrow(.fit), label = .est)
-      .p <- suppressWarnings(suppressMessages(predict(.fit, level = "individual")))
-      expect_identical(nrow(.p), nrow(.fit), label = .est)
-    }
-  })
+test_that(".predictZeroNestedEtas() zeroes every eta of a nested omega", {
+  .d <- data.frame(ID = 1, TIME = 0:1)
+  .nested <- list(
+    omega = lotri::lotri(lotri::lotri(eta.v ~ 0.1) | id(nu = 100), lotri::lotri(iov.cl ~ 0.1) | occ(nu = 100))
+  )
+  expect_identical(.predictZeroNestedEtas(.nested, .d), data.frame(ID = 1, TIME = 0:1, eta.v = 0, iov.cl = 0))
+  # a matrix omega's etas rxode2 zeroes itself
+  .flat <- list(omega = lotri::lotri(eta.v ~ 0.1))
+  expect_identical(.predictZeroNestedEtas(.flat, .d), .d)
+  expect_identical(.predictZeroNestedEtas(list(omega = NULL), .d), .d)
 })
