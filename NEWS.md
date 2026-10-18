@@ -1,3 +1,13 @@
+# nlmixr2est (development version)
+
+## Bug fixes
+
+### Tables
+
+- `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
+  subject has no observations ("Col::subvec(): indices out of bounds").
+  That subject's NPDE columns are `NA`, as its other table columns are.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
