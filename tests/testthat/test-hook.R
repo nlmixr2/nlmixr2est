@@ -17,6 +17,11 @@
   })
 }
 
+# Whether the nlmixr2Est() method `est` is marked as one that only solves
+.hookMethodRandom <- function(est) {
+  isTRUE(attr(utils::getS3method("nlmixr2Est", est), "random"))
+}
+
 test_that("a simulation's pre-processing leaves the estimation state as it found it", {
   .old <- mget(.nlmixr2EstEnvFields, envir = nlmixr2global$nlmixr2EstEnv, ifnotfound = list(NULL))
   withr::defer(list2env(.old, envir = nlmixr2global$nlmixr2EstEnv))
@@ -79,13 +84,23 @@ test_that("every simulation method leaves the hooks' globals as it found them", 
   for (.est in .preProcessHooksSimulationEst) {
     .uiIovEnv$ui <- "fit's rewrite"
     .muRefTrans$cur <- "fit's translations"
+    nlmixr2global$transformMu <- "fit's flag"
     .sim <- new.env(parent = emptyenv())
     .sim$ui <- rxode2::assertRxUi(.iovFitMod)
     .sim$data <- .iovFitData()
     suppressMessages(.preProcessHooksRun(.sim, .est))
     expect_identical(.uiIovEnv$ui, "fit's rewrite", label = .est)
     expect_identical(.muRefTrans$cur, "fit's translations", label = .est)
+    expect_identical(nlmixr2global$transformMu, "fit's flag", label = .est)
   }
+})
+
+test_that("the solve-only methods are the nlmixr2Est() methods marked random", {
+  # .preProcessHooksRun() keeps the fit's state around exactly these; a new
+  # method that only solves marks itself the same way and must be listed
+  .m <- sub("^nlmixr2Est[.]", "", as.character(utils::methods("nlmixr2Est")))
+  .random <- .m[vapply(.m, .hookMethodRandom, logical(1))]
+  expect_setequal(.random, .preProcessHooksSimulationEst)
 })
 
 # A saem model with a mu-referenced covariate (wt.cl * log(WT / 70)), which

@@ -243,15 +243,19 @@ preProcessHooks <- function(name = NULL) {
 #' @noRd
 .nlmixr2EstEnvFields <- c("uiUnfix", "nlmixrPureInputUi", "vaeNonMuEtas", "saemPseudoTransforms")
 
-# The nlmixr2Est() methods that only solve a model; predict(level =
-# "individual") solves through rxSolve
+# The nlmixr2Est() methods that only solve a model, those that set
+# attr(, "random") <- TRUE; predict(level = "individual") solves through
+# rxSolve
 .preProcessHooksSimulationEst <- c("rxSolve", "simulate", "simulation", "predict")
+
+# The nlmixr2global fields the bounded-transform hook sets for an estimation
+.preProcessHookBoundedFields <- c("preProcessBoundedTransform", "postEstimationBoundedTransform", "transformMu")
 
 #' The globals the pre-process hooks set for an estimation
 #'
-#' The nlmixr2EstEnv fields, the IOV rewrite's state (`.uiIovEnv`) and the
-#' mu-referencing translations (`.muRefTrans$cur`), which the estimation and
-#' output steps read after the hooks ran.
+#' The nlmixr2EstEnv fields, the IOV rewrite's state (`.uiIovEnv`), the
+#' mu-referencing translations (`.muRefTrans$cur`) and the bounded-transform
+#' flags, which the estimation and output steps read after the hooks ran.
 #'
 #' @return a list for `.preProcessHookStateRestore()`
 #' @noRd
@@ -260,7 +264,8 @@ preProcessHooks <- function(name = NULL) {
   list(
     est = mget(.nlmixr2EstEnvFields, envir = nlmixr2global$nlmixr2EstEnv, ifnotfound = list(NULL)),
     iov = as.list(.uiIovEnv, all.names = TRUE),
-    muRef = .muRefTrans$cur
+    muRef = .muRefTrans$cur,
+    bounded = mget(.preProcessHookBoundedFields, envir = nlmixr2global, ifnotfound = list(NULL))
   )
 }
 
@@ -274,6 +279,7 @@ preProcessHooks <- function(name = NULL) {
   list2env(state$est, envir = nlmixr2global$nlmixr2EstEnv)
   .uiIovEnvRestore(state$iov)
   .muRefTrans$cur <- state$muRef
+  list2env(state$bounded, envir = nlmixr2global)
   invisible()
 }
 
