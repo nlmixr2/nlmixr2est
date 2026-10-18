@@ -88,17 +88,7 @@ addCwres <- function(fit, focei = TRUE, updateObject = TRUE, envir = parent.fram
     "CWRES",
     {
       .objName <- as.character(substitute(fit))
-      .foceiControl <- fit$foceiControl
-      .foceiControl$maxOuterIterations <- 0L
-      .foceiControl$maxInnerIterations <- 0L
-      .foceiControl$etaMat <- fit$etaMat # as.matrix(fit$eta[, -1, drop = FALSE])
-      .foceiControl$compress <- FALSE
-      .foceiControl$covMethod <- 0L
-      .foceiControl$interaction <- focei
-      .foceiControl$nAGQ <- 0L # focei/foce objective row, not the fit's quadrature
-      .newFit <- .nlmixr2PriorGateBypass(
-        nlmixr2(fit, data = nlme::getData(fit), est = "focei", control = .foceiControl)
-      )
+      .newFit <- .refitNoIterations(fit, interaction = focei)
       .extra <- setdiff(names(.newFit), names(fit))
       .extra <- as.data.frame(.newFit)[, .extra]
       .origFitEnv <- fit$env
@@ -133,3 +123,47 @@ nmObjGetData.addCwres <- function(x, ...) {
   .nlmixr2EventScope(addCwres(x[[1]], updateObject = FALSE, envir = parent.frame(2)))
 }
 attr(nmObjGetData.addCwres, "desc") <- "Add CWRES to object if needed"
+
+#' A focei refit of a fit with no iterations, at its etas
+#'
+#' The fit's thetas, omega and etas (`etaMat`) are kept, so the refit's tables
+#' are the fit's; `addCwres()` and the IOV route of `addNpde()`/`addTable()`
+#' use it.  Its objective row is focei/foce, not a quadrature.  The nested
+#' `nlmixr2()` resets the timing globals when it ends, so the caller's are put
+#' back.
+#'
+#' @param fit nlmixr2 fit
+#' @param interaction `foceiControl(interaction =)`, or NULL for the fit's
+#' @param calcTables `foceiControl(calcTables =)`, or NULL for the fit's
+#' @param table `tableControl()` for the refit, or NULL for the fit's
+#' @return the refit
+#' @noRd
+#' @author Matthew L. Fidler
+.refitNoIterations <- function(fit, interaction = NULL, calcTables = NULL, table = NULL) {
+  .ctl <- fit$foceiControl
+  .ctl$maxOuterIterations <- 0L
+  .ctl$maxInnerIterations <- 0L
+  .ctl$etaMat <- fit$etaMat
+  .ctl$compress <- FALSE
+  .ctl$covMethod <- 0L
+  .ctl$nAGQ <- 0L
+  if (!is.null(interaction)) {
+    .ctl$interaction <- interaction
+  }
+  if (!is.null(calcTables)) {
+    .ctl$calcTables <- calcTables
+  }
+  .timing <- mget(
+    c("nlmixr2Time", "currentTimingEnvironment", "extraTimingTable", "timingStack"),
+    envir = nlmixr2global,
+    ifnotfound = list(NULL)
+  )
+  on.exit(list2env(.timing, envir = nlmixr2global), add = TRUE)
+  .nlmixr2PriorGateBypass(
+    if (is.null(table)) {
+      nlmixr2(fit, data = nlme::getData(fit), est = "focei", control = .ctl)
+    } else {
+      nlmixr2(fit, data = nlme::getData(fit), est = "focei", control = .ctl, table = table)
+    }
+  )
+}

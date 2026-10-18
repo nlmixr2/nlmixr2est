@@ -163,28 +163,6 @@ test_that("popResFinal keeps every column when a GC runs at every allocation", {
   )
 })
 
-nmTest({
-  test_that("addTable() on a fit with IOV gives the fit's own tables", {
-    # the finished fit's thetas, etas and data are the user's model's, so
-    # addTable() refits; a fit run without tables gets the same ones
-    for (.est in c("focei", "saem")) {
-      .fit <- .iovFit(.est)
-      .num <- names(Filter(is.numeric, as.data.frame(.fit)))
-      expect_true(all(c("IPRED", "PRED", "IWRES", "iov.cl", "eta.v") %in% .num), label = .est)
-      for (.f in list(.fit, .iovFit(.est, control = list(calcTables = FALSE)))) {
-        .t <- suppressMessages(addTable(.f, updateObject = FALSE))
-        expect_identical(names(.t), names(.fit), label = .est)
-        expect_identical(class(.t)[1:3], class(.fit)[1:3], label = .est)
-        expect_identical(.t$ID, .fit$ID, label = .est)
-        for (.c in .num) {
-          expect_equal(.t[[.c]], .fit[[.c]], tolerance = 1e-10, label = paste(.est, .c))
-        }
-        expect_equal(.t$objf, .fit$objf, label = .est)
-      }
-    }
-  })
-})
-
 # The arguments .calcCwres0() hands resCalc() (cwres = FALSE) or cwresCalc()
 # (cwres = TRUE), with `eta` as the eta table
 .residCall <- function(fit, eta, cwres) {

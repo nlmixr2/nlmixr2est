@@ -89,36 +89,7 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   )
 }
 
-#' A focei refit of a fit with IOV, for its tables
-#'
-#' A finished IOV fit keeps the IOV-expanded model, but its thetas, etas and
-#' data are the user's model's: the occasion etas, their magnitude thetas and
-#' the occasion column are gone, so `.calcTables()` and `.calcNpde()` cannot
-#' solve it.  A focei refit with no iterations at the fit's etas, as
-#' `addCwres()` refits, rewrites the model again, so its table step sees the
-#' expanded model.
-#'
-#' @param fit nlmixr2 fit with IOV
-#' @param table `tableControl()` for the refit's tables
-#' @return the refit
-#' @noRd
-#' @author Matthew L. Fidler
-.iovRefit <- function(fit, table) {
-  .ctl <- fit$foceiControl
-  .ctl$maxOuterIterations <- 0L
-  .ctl$maxInnerIterations <- 0L
-  .ctl$etaMat <- fit$etaMat
-  .ctl$compress <- FALSE
-  .ctl$covMethod <- 0L
-  .ctl$nAGQ <- 0L
-  # the refit exists for its tables, whether or not the fit computed its own
-  .ctl$calcTables <- TRUE
-  .nlmixr2PriorGateBypass(
-    nlmixr2(fit, data = nlme::getData(fit), est = "focei", control = .ctl, table = table)
-  )
-}
-
-#' The NPDE columns of a fit with IOV, from `.iovRefit()`
+#' The NPDE columns of a fit with IOV, from `.refitNoIterations()`
 #'
 #' @param fit nlmixr2 fit with IOV
 #' @param table `tableControl()` with `npde = TRUE`
@@ -126,15 +97,41 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
 #' @noRd
 #' @author Matthew L. Fidler
 .addNpdeIovRefit <- function(fit, table) {
-  .newFit <- .iovRefit(fit, table)
-  # the columns _nlmixr2est_npdeCalc() (src/npde.cpp) returns; the refit's
-  # other new columns (a focei refit's CWRES) are not NPDE's
+  .iovRefitAssertConsistent(fit, "addNpde()")
+  # the refit's CWRES would be discarded
+  table$cwres <- FALSE
+  .newFit <- .refitNoIterations(fit, calcTables = TRUE, table = table)
+  # the columns _nlmixr2est_npdeCalc() (src/npde.cpp) returns
   .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD")
   .miss <- setdiff(.cols, names(.newFit))
   if (length(.miss) > 0L) {
     stop("the IOV refit for NPDE did not give: ", paste(.miss, collapse = ", "), call. = FALSE)
   }
   as.data.frame(.newFit)[, .cols, drop = FALSE]
+}
+
+#' Stop when a refit can't give an IOV fit's tables
+#'
+#' A saem fit with `iovMethod = "collapsed"` computed its tables on the
+#' collapsed model it fitted (an eta per occasion, in a compound-symmetric
+#' block), which a focei refit does not rebuild: the refit's NPDE comes from
+#' another model's simulation, and its table has eta columns the fit's lacks.
+#'
+#' @param fit nlmixr2 fit with IOV
+#' @param what the calling function, for the message
+#' @return `NULL`, invisibly; called for its error
+#' @noRd
+#' @author Matthew L. Fidler
+.iovRefitAssertConsistent <- function(fit, what) {
+  if (identical(fit$env$iovNative, "collapsed")) {
+    stop(
+      what,
+      " can't recompute the tables of a saem fit with iovMethod = \"collapsed\"; ",
+      "ask for them when fitting (`table = tableControl()`, `calcTables = TRUE`)",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
 }
 
 #' NPDE columns with one row per row of the fit

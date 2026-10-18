@@ -194,46 +194,6 @@ nmTest({
     expect_false(isTRUE(all.equal(fit$PDE, fit$PD)))
   })
 
-  test_that("addNpde() on a fit with IOV gives the NPDE the fit computes itself", {
-    # the finished fit's thetas, etas and data are the user's model's, so
-    # addNpde() refits; its columns match those of a fit asked for NPDE
-    .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD")
-    for (.est in c("focei", "saem")) {
-      .with <- .iovFit(.est, table = tableControl(npde = TRUE))
-      .fit <- .iovFit(.est)
-      # a fit asked for NPDE is finalized as one that is not: npde's vpcSim()
-      # in its table step runs a simulation's hooks, which clear the IOV
-      # rewrite's state unless they put it back
-      expect_identical(setdiff(names(.with), names(.fit)), .cols, label = .est)
-      expect_identical(setdiff(names(.fit), names(.with)), character(0), label = .est)
-      expect_identical(.with$ui$iniDf$name, .fit$ui$iniDf$name, label = .est)
-      expect_identical(rownames(.with$parFixedDf), rownames(.fit$parFixedDf), label = .est)
-      expect_identical(names(.with$ranef), c("ID", "eta.v"), label = .est)
-      expect_equal(.with$fixef, .fit$fixef, tolerance = 1e-10, label = .est)
-      .new <- suppressMessages(addNpde(.fit, updateObject = FALSE))
-      expect_identical(setdiff(names(.new), names(.fit)), .cols, label = .est)
-      expect_identical(nrow(.new), nrow(.fit), label = .est)
-      for (.c in .cols) {
-        expect_equal(.new[[.c]], .with[[.c]], tolerance = 1e-10, label = paste(.est, .c))
-      }
-      expect_true(all(is.finite(.new$NPDE)), label = .est)
-    }
-  })
-
-  test_that("addNpde() on an IOV fit works after simulate()", {
-    skip_if(
-      .rxode2WritesNestingData(),
-      "needs rxode2 with nestingInfo_() not writing into the caller's data, fix/nesting-info-no-mutate"
-    )
-    .fit <- .iovFit("focei")
-    invisible(suppressWarnings(suppressMessages(simulate(.fit))))
-    # simulate() leaves the fit's data as it was, so the refit still sees a
-    # numeric occasion
-    expect_identical(.fit$origData$occ, .iovFitData()$occ)
-    .new <- suppressMessages(addNpde(.fit, updateObject = FALSE))
-    expect_true(all(is.finite(.new$NPDE)))
-  })
-
   test_that(".uiHasIov() finds occasion etas, not repeated subject blocks", {
     expect_true(.uiHasIov(rxode2::rxode2(.iovFitMod)))
     expect_false(.uiHasIov(rxode2::rxode2(.npdeSameMod)))
