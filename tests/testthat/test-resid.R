@@ -184,3 +184,125 @@ nmTest({
     }
   })
 })
+
+# The arguments .calcCwres0() hands resCalc() (cwres = FALSE) or cwresCalc()
+# (cwres = TRUE), with `eta` as the eta table
+.residCall <- function(fit, eta, cwres) {
+  .prd <- .foceiPredIpredList(
+    fit,
+    data = fit$dataSav,
+    keep = "nlmixrRowNums",
+    thetaEtaParameters = fit$foceiThetaEtaParameters,
+    predOnly = !cwres,
+    addDosing = FALSE,
+    subsetNonmem = TRUE
+  )
+  .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
+  .lhs <- setdiff(unique(.getRelevantLhs(fit, "nlmixrRowNums", .prd$ipred)), .state)
+  .params <- setdiff(intersect(names(fit$dataSav), fit$predOnlyModel$params), c("CMT", "cmt", "Cmt", .state, .lhs))
+  .tab <- tableControl()
+  .tab$doSim <- TRUE
+  .Call(
+    if (cwres) `_nlmixr2est_cwresCalc` else `_nlmixr2est_resCalc`,
+    .prd,
+    fit$omega,
+    eta,
+    .prd$ipred$dv,
+    .prd$ipred$evid,
+    .prd$ipred$cens,
+    .prd$ipred$limit,
+    .lhs,
+    .state,
+    .params,
+    fit$IDlabel,
+    .tab,
+    PACKAGE = "nlmixr2est"
+  )
+}
+
+# A model with a normal endpoint (cp) and a count (cnt), on theo_sd with
+# counts for every subject; `cpless` subjects have counts only
+.residTwoEndpointMod <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    tl <- log(3)
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+    eta.l ~ 0.1
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    lam <- exp(tl + eta.l)
+    d / dt(depot) <- -ka * depot
+    d / dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+    cnt ~ dpois(lam)
+  })
+}
+
+.residTwoEndpointData <- function(cpless = integer(0), drop = integer(0)) {
+  .d <- nlmixr2data::theo_sd
+  .d <- .d[!(.d$ID %in% drop), ]
+  .obs <- .d[.d$EVID == 0, ]
+  .cnt <- .obs
+  .cnt$DV <- (seq_len(nrow(.cnt)) %% 5) + 1
+  .cnt$CMT <- "cnt"
+  .obs$CMT <- "cp"
+  .dose <- .d[.d$EVID != 0, ]
+  .dose$CMT <- "depot"
+  .d <- rbind(.dose, .obs[!(.obs$ID %in% cpless), ], .cnt)
+  .d[order(.d$ID, .d$TIME, -.d$EVID), ]
+}
+
+nmTest({
+  test_that("residuals take each row's etas from its own subject", {
+    # CWRES uses only the normally distributed rows, so a subject with counts
+    # only has none there; its etas went to the next subject by position.  At
+    # maxOuterIterations = 0 subject 2's etas and residuals do not depend on
+    # subject 1, so they equal those of the same data without subject 1, to
+    # the inner problem's convergence (the wrong subject's etas were 0.3 off).
+    .ctl <- foceiControl(print = 0, covMethod = "", maxOuterIterations = 0L)
+    .with <- suppressWarnings(suppressMessages(
+      nlmixr2(.residTwoEndpointMod, .residTwoEndpointData(cpless = 1), "focei", control = .ctl)
+    ))
+    .without <- suppressWarnings(suppressMessages(
+      nlmixr2(.residTwoEndpointMod, .residTwoEndpointData(drop = 1), "focei", control = .ctl)
+    ))
+    .a <- as.data.frame(.with)
+    .b <- as.data.frame(.without)
+    .a2 <- .a[.a$ID == "2" & .a$CMT == "cp", ]
+    .b2 <- .b[.b$ID == "2" & .b$CMT == "cp", ]
+    expect_identical(nrow(.a2), 11L)
+    for (.c in c("CWRES", "CRES", "CPRED", "eta.cl")) {
+      expect_equal(.a2[[.c]], .b2[[.c]], tolerance = 1e-4, label = .c)
+    }
+  })
+
+  test_that("residuals stop when a subject of the rows has no eta row", {
+    .fit <- suppressWarnings(suppressMessages(nlmixr2(
+      .residTwoEndpointMod,
+      .residTwoEndpointData(),
+      "focei",
+      control = foceiControl(print = 0, covMethod = "", maxOuterIterations = 0L)
+    )))
+    .eta <- .fit$eta
+    expect_true(is.list(.residCall(.fit, .eta, FALSE)))
+    expect_true(is.list(.residCall(.fit, .eta, TRUE)))
+    .bad <- .eta[.eta$ID != "2", ]
+    for (.cw in c(FALSE, TRUE)) {
+      .e <- expect_error(.residCall(.fit, .bad, .cw))
+      expect_identical(
+        conditionMessage(.e),
+        "subject code 2 of the solved rows has no row in the eta table",
+        label = .cw
+      )
+    }
+  })
+})
