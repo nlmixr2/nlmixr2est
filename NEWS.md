@@ -8,30 +8,44 @@
   subject has no observations ("Col::subvec(): indices out of bounds").
   That subject's NPDE columns are `NA`, as its other table columns are.
 
-- `addNpde()` now works on a fit with inter-occasion variability.  It
-  stopped with "The following parameter(s) are required for solving: occ,
-  ETA[3], ETA[2], THETA[5]" for every such fit, since the finished fit's
-  thetas, etas and data are those of the model before its occasion etas were
-  expanded.  It now refits with no iterations, as `addCwres()` does, and adds
-  the same NPDE columns the fit gives when asked for them with
-  `tableControl(npde = TRUE)`.
-
-- `addTable()` now works on a fit with inter-occasion variability,
-  including one run with `calcTables = FALSE`.  It stopped with the same
-  error as `addNpde()`, and now refits with no iterations in the same way.
-
-- A fit with inter-occasion variability run with `tableControl(npde =
-  TRUE)` is now finished like one without NPDE.  Its model, fixed and random
-  effects, `omega` and parameter table kept the expanded occasion etas (such
-  as `rx.iov.cl.1`) and their magnitude thetas, and its data kept their
-  columns, because the NPDE simulation cleared what the fit needed to undo
-  the expansion.
-
 - In a model with a normal and a non-normal endpoint (such as `dpois()`), a
   subject with no observations of the normal endpoint left every subject
   before it in the data with CWRES, CRES and CPRED computed from another
   subject's etas (or none), since nlmixr2est 2.1.0.  Each row now takes its
   own subject's.
+
+- `addNpde()` and `addTable()` now work on a fit with inter-occasion
+  variability, including one run with `calcTables = FALSE`.  They stopped
+  with "The following parameter(s) are required for solving: occ, ..."
+  (the parameters listed depend on the model and the method).  They refit
+  with no iterations at the fit's estimates, as `addCwres()` does, and give
+  the columns the fit gives itself; for an ODE model, to the solver's
+  tolerance.  A `saem` fit with `iovMethod = "collapsed"` is refused with a
+  message: ask for its tables when fitting it.
+
+- A fit with inter-occasion variability is now finished like any other when
+  it is run with `tableControl(npde = TRUE)` or has a subject with no
+  observations.  Its model, fixed and random effects, `omega`, parameter
+  table and data kept the expanded occasion etas (such as `rx.iov.cl.1`) and
+  their magnitude thetas.
+
+- A `saem` fit with a mu-referenced covariate (such as
+  `cl <- exp(tcl + eta.cl + wt.cl * log(WT / 70))`) run with
+  `tableControl(npde = TRUE)` is now finished like one without NPDE.  Its
+  table, data and model kept the `nlmixrMuDerCov1` column it was fitted
+  with.
+
+- `addTable()` now applies the `keep` and `drop` of its `table`, as it
+  applies its `keep` and `drop` arguments; it ignored them.
+
+- `addCwres()` now records its time in the fit's `time` table; it was
+  lost.
+
+### SAEM
+
+- `saem` now stops with "saem does not estimate a repeated (same()) omega
+  block; use focei" for a model with a subject-level `same()` block.  It
+  stopped with "IOV variable 'id:same:eta.cl' is not present in the data".
 
 # nlmixr2est 7.2.1
 
