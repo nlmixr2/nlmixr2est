@@ -247,28 +247,3 @@ nmTest({
     expect_error(augPred(fit514), NA)
   })
 })
-
-# A fit with IOV as far as the occasion-eta helpers read it: occasion
-# estimates for subjects "1" and "2", occasions 1 and 2
-.augPredIovFitStub <- function() {
-  .iov <- data.frame(ID = factor(c("1", "1", "2", "2")), occ = c(1L, 2L, 1L, 2L), iov.cl = c(0.1, 0.2, 0.3, 0.4))
-  list(env = list(iov = list(occ = .iov)))
-}
-
-test_that(".iovEtaRows() joins on subject and occasion, and counts unseen pairs", {
-  .r <- .iovEtaRows(.augPredIovFitStub(), c("2", "1", "1", "3", "1"), list(occ = c(1, 2, 3, 1, 3)))
-  # subject 3 and subject 1's occasion 3 are not in the fit: eta 0, two pairs
-  expect_identical(.r$etas, data.frame(iov.cl = c(0.3, 0.2, 0, 0, 0)))
-  expect_identical(.r$unseen, 2L)
-})
-
-test_that(".nlmixrIovEtaData() adds the occasion etas and warns about unseen pairs", {
-  .d <- data.frame(id = c(1, 1, 2), TIME = 0:2, OCC = c(1, 2, 2))
-  expect_identical(.nlmixrIovEtaData(.augPredIovFitStub(), .d)$iov.cl, c(0.1, 0.2, 0.4))
-  .d$OCC[3] <- 5
-  .w <- capture_warnings(.r <- .nlmixrIovEtaData(.augPredIovFitStub(), .d))
-  expect_identical(.w, "1 subject-occasion pair(s) not in the fit get occasion etas of 0")
-  expect_identical(.r$iov.cl, c(0.1, 0.2, 0))
-  .e <- expect_error(.nlmixrIovEtaData(.augPredIovFitStub(), .d[, c("id", "TIME")]))
-  expect_identical(conditionMessage(.e), "the data needs occ for the fit's occasion etas")
-})

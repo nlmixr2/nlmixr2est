@@ -23,7 +23,12 @@
   list(key = "focei-nocb", est = "focei", interpolation = "nocb"),
   list(key = "focei-tie-obs-dose", est = "focei", data = .iovOdeTieData("obs-dose")),
   list(key = "focei-tie-dose-obs", est = "focei", data = .iovOdeTieData("dose-obs")),
-  list(key = "focei-two-occ", est = "focei", model = .iovOdeTwoOccMod)
+  list(key = "focei-two-occ", est = "focei", model = .iovOdeTwoOccMod),
+  list(key = "focei-id-shifted", est = "focei", data = .iovOdeIdData("shifted")),
+  list(key = "focei-id-character", est = "focei", data = .iovOdeIdData("character")),
+  list(key = "focei-id-descending", est = "focei", data = .iovOdeIdData("descending")),
+  list(key = "focei-id-dose-only", est = "focei", data = .iovOdeIdData("dose-only")),
+  list(key = "focei-addl", est = "focei", data = .iovOdeAddlData())
 )
 
 # The cached fit of one of .iovPredictAugCases
@@ -60,6 +65,33 @@ nmTest({
       .k <- match(paste(.obs$ID, ifelse(.obs$TIME < 6, 1L, 2L)), paste(.iov$ID, .iov$occ))
       expect_identical(.p1$iov.cl, .iov$iov.cl[.k], label = .est)
     }
+  })
+
+  test_that("individual predict() joins every eta on the subject, in any row order", {
+    # newdata in descending subject order: each row still takes its own
+    # subject's etas, not those of the subject in its position
+    for (.est in c("focei", "saem")) {
+      .fit <- .iovPredictFit(.est, .est)
+      .obs <- as.data.frame(.fit)
+      .d <- .iovOdeIdData("descending")
+      .p <- suppressMessages(predict(.fit, newdata = .d, level = "individual"))
+      .k <- match(paste(.obs$ID, .obs$TIME), paste(.p$id, .p$time))
+      expect_false(anyNA(.k), label = .est)
+      expect_equal(.p$sim[.k], .obs$IPRED, tolerance = 1e-8, label = .est)
+      expect_identical(
+        .p$eta.v[.k],
+        .fit$eta$eta.v[match(as.character(.obs$ID), as.character(.fit$eta$ID))],
+        label = .est
+      )
+    }
+  })
+
+  test_that("individual predict() of a fit whose occasion starts at an addl dose gives its IPRED", {
+    # rxode2 adds the 12 h dose with no occasion (addlKeepsCov = FALSE), and
+    # fills the eta column there as the fit's own solve fills the occasion
+    .fit <- .iovPredictCaseFit(.iovPredictAugCases[[length(.iovPredictAugCases)]])
+    .p <- suppressMessages(predict(.fit, level = "individual"))
+    expect_equal(.p$sim, as.data.frame(.fit)$IPRED, tolerance = 1e-8)
   })
 
   test_that("individual predict() gives an occasion the fit did not see eta 0, with a warning", {

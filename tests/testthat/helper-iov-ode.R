@@ -56,6 +56,26 @@
   .d
 }
 
+# .iovOdeData() with its subjects relabelled or reordered: "shifted" labels
+# them 101-112, "character" S01-S12, "descending" puts them in descending
+# order, and "dose-only" keeps only subject 3's dose, so the fit drops it and
+# the later subjects' codes shift by one
+.iovOdeIdData <- function(layout = c("shifted", "character", "descending", "dose-only")) {
+  layout <- match.arg(layout)
+  .d <- .iovOdeData()
+  if (layout == "shifted") {
+    .d$ID <- .d$ID + 100L
+  } else if (layout == "character") {
+    .d$ID <- sprintf("S%02d", .d$ID)
+  } else if (layout == "descending") {
+    .d <- .d[order(-.d$ID, seq_len(nrow(.d))), ]
+  } else {
+    .d <- .d[!(.d$ID == 3 & .d$EVID == 0), ]
+  }
+  rownames(.d) <- NULL
+  .d
+}
+
 # theo_sd with a second dose at each subject's observation nearest 12 h, at
 # the same time, so the occasion changes between two tied records: the
 # observation is occasion 1 and the dose occasion 2.  `order` is the data's
@@ -79,6 +99,16 @@
   }
   .d <- do.call(rbind, .rows)
   rownames(.d) <- NULL
+  .d
+}
+
+# theo_sd with its dose repeated once 12 h later (addl = 1, ii = 12) and the
+# occasion changing at 12 h, so the dose rxode2 adds starts occasion 2
+.iovOdeAddlData <- function() {
+  .d <- nlmixr2data::theo_sd
+  .d$ADDL <- ifelse(.d$EVID != 0, 1L, 0L)
+  .d$II <- ifelse(.d$EVID != 0, 12, 0)
+  .d$occ <- ifelse(.d$TIME < 12, 1L, 2L)
   .d
 }
 

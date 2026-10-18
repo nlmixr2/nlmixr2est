@@ -150,3 +150,56 @@ test_that(".predictZeroNestedEtas() zeroes every eta of a nested omega", {
   expect_identical(.predictZeroNestedEtas(.flat, .d), .d)
   expect_identical(.predictZeroNestedEtas(list(omega = NULL), .d), .d)
 })
+
+# A fit with IOV as far as the eta helpers read it: subject etas and
+# occasion estimates for subjects "1" and "2", occasions 1 and 2
+.rxsolveIovFitStub <- function() {
+  .iov <- data.frame(ID = factor(c("1", "1", "2", "2")), occ = c(1L, 2L, 1L, 2L), iov.cl = c(0.1, 0.2, 0.3, 0.4))
+  list(env = list(iov = list(occ = .iov)), eta = data.frame(ID = factor(c("1", "2")), eta.v = c(0.5, 0.6)))
+}
+
+test_that(".iovEtaRows() leaves a row with no occasion NA, not unseen", {
+  .r <- .iovEtaRows(.rxsolveIovFitStub(), c("1", "1", "2"), list(occ = c(1, NA, 2)))
+  expect_identical(.r$etas, data.frame(iov.cl = c(0.1, NA, 0.4)))
+  expect_identical(.r$unseen, 0L)
+})
+
+test_that(".augPredIovEvents() warns about a whole occasion the fit did not see, not a fractional one", {
+  .fit <- .rxsolveIovFitStub()
+  .fit$idLvl <- c("1", "2")
+  # the events' subject levels are the fit's integer codes
+  .ev <- data.frame(ID = factor(c("1", "2", "2"), levels = c("1", "2")), occ = c(1, 1.5, 3))
+  .w <- capture_warnings(.r <- .augPredIovEvents(.fit, .ev))
+  expect_identical(.w, "1 subject-occasion pair(s) not in the fit get occasion etas of 0")
+  expect_identical(.r$iov.cl, c(0.1, 0, 0))
+  .ev$occ[3] <- 2
+  expect_identical(capture_warnings(.r <- .augPredIovEvents(.fit, .ev)), character(0))
+  expect_identical(.r$iov.cl, c(0.1, 0, 0.4))
+})
+
+test_that(".subjectEtaRows() joins on the subject, and counts unseen subjects", {
+  .r <- .subjectEtaRows(.rxsolveIovFitStub(), c("2", "1", "3", "3"))
+  expect_identical(.r$etas, data.frame(eta.v = c(0.6, 0.5, 0, 0)))
+  expect_identical(.r$unseen, 1L)
+})
+
+test_that(".iovEtaRows() joins on subject and occasion, and counts unseen pairs", {
+  .r <- .iovEtaRows(.rxsolveIovFitStub(), c("2", "1", "1", "3", "1"), list(occ = c(1, 2, 3, 1, 3)))
+  # subject 3 and subject 1's occasion 3 are not in the fit: eta 0, two pairs
+  expect_identical(.r$etas, data.frame(iov.cl = c(0.3, 0.2, 0, 0, 0)))
+  expect_identical(.r$unseen, 2L)
+})
+
+test_that(".nlmixrIovEtaData() adds the occasion etas and warns about unseen pairs", {
+  .d <- data.frame(id = c(1, 1, 2), TIME = 0:2, OCC = c(1, 2, 2))
+  .r <- .nlmixrIovEtaData(.rxsolveIovFitStub(), .d)
+  expect_identical(.r$iov.cl, c(0.1, 0.2, 0.4))
+  # the subject etas too, so the solve does not take them from its params
+  expect_identical(.r$eta.v, c(0.5, 0.5, 0.6))
+  .d$OCC[3] <- 5
+  .w <- capture_warnings(.r <- .nlmixrIovEtaData(.rxsolveIovFitStub(), .d))
+  expect_identical(.w, "1 subject-occasion pair(s) not in the fit get occasion etas of 0")
+  expect_identical(.r$iov.cl, c(0.1, 0.2, 0))
+  .e <- expect_error(.nlmixrIovEtaData(.rxsolveIovFitStub(), .d[, c("id", "TIME")]))
+  expect_identical(conditionMessage(.e), "the data needs occ for the fit's occasion etas")
+})
