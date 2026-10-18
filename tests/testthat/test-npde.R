@@ -27,8 +27,10 @@
 # The source to load in a child process when the tests run on a loaded (not
 # installed) nlmixr2est, or "" for the installed one
 .npdeChildPkg <- function() {
-  if (requireNamespace("pkgload", quietly = TRUE) && pkgload::is_dev_package("nlmixr2est")) {
-    dirname(system.file("DESCRIPTION", package = "nlmixr2est"))
+  # a namespace devtools::load_all() made carries .__DEVTOOLS__
+  .ns <- asNamespace("nlmixr2est")
+  if (exists(".__DEVTOOLS__", envir = .ns, inherits = FALSE)) {
+    getNamespaceInfo(.ns, "path")
   } else {
     ""
   }
@@ -38,7 +40,7 @@
 # sample for 2 observations, which used to index past them
 .npdeCalcMismatchChild <- function(pkg) {
   if (nzchar(pkg)) {
-    pkgload::load_all(pkg, quiet = TRUE)
+    devtools::load_all(pkg, quiet = TRUE)
   } else {
     library(nlmixr2est)
   }
@@ -61,7 +63,7 @@
 # observation-less subject, from the fit's table or from addNpde()
 .npdeNoObsChild <- function(pkg, est, mode, mod, dat) {
   if (nzchar(pkg)) {
-    pkgload::load_all(pkg, quiet = TRUE)
+    devtools::load_all(pkg, quiet = TRUE)
   } else {
     library(nlmixr2est)
   }
