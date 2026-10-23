@@ -128,6 +128,25 @@
   c("not computed", "usable", "not PD", "failed")[st + 1L]
 }
 
+#' The warning that a requested covariance was not used
+#'
+#' The warning stays under 75 characters, the width a `$runInfo` line renders in
+#' (CLAUDE.md): `why` is clipped to fit, and a request and tail too long to leave it
+#' ten characters clip the whole line.
+#' @param request the requested method
+#' @param why why it was not used
+#' @param tail what was done instead
+#' @return the warning text
+#' @noRd
+.covNotUsableMsg <- function(request, why, tail) {
+  checkmate::assertString(request)
+  checkmate::assertString(why)
+  checkmate::assertString(tail)
+  .fixed <- cli::ansi_nchar(sprintf("\"%s\" not usable (); %s", request, tail), type = "width")
+  .why <- .covClip(why, max(10L, .covWarnWidth - .fixed))
+  .covClip(sprintf("\"%s\" not usable (%s); %s", request, .why, tail))
+}
+
 #' The one warning a covariance walk gives when it falls back or gives none
 #'
 #' @param request the requested method
@@ -140,8 +159,7 @@
   if (length(.why) == 0L) {
     return(NULL)
   }
-  sprintf(
-    "\"%s\" not usable (%s); %s",
+  .covNotUsableMsg(
     request,
     paste(unique(.why), collapse = "; "),
     if (is.null(installed)) "no covariance" else sprintf("installed \"%s\"", installed)
@@ -167,6 +185,9 @@
 #' pick a listed method; a covariance whose variances are all below 1e-7 is none.
 #' Installs `env$cov`, `env$covMethod` (the label, e.g. "r,s", "r+", "|s|") and
 #' `env$covTried` (each method tried and why it was not used) and gives the warnings.
+#' A `covType = "analytic"` request the analytic R declined heads `covTried` with
+#' its full reason (`env$.analyticReason`) and is the request the warning names,
+#' with the short one (`env$.analyticReasonShort`).
 #' @param env fit environment (`covR`, `covS`, `covRS` and the S inverse `.covSinv`)
 #' @param req requested slot: 1 "r,s", 2 "r", 3 "s"
 #' @param rState,sState each matrix: 0 not computed, 1 usable, 2 not positive definite,
@@ -193,6 +214,13 @@
   .names <- c("r,s", "r", "s")
   .acc <- new.env(parent = emptyenv())
   .acc$tried <- list()
+  .request <- .names[req]
+  .short <- NULL
+  if (exists(".analyticReason", envir = env, inherits = FALSE)) {
+    .covTriedAdd(.acc, "analytic", get(".analyticReason", envir = env))
+    .request <- "analytic"
+    .short <- get0(".analyticReasonShort", envir = env, inherits = FALSE)
+  }
   .cur <- req
   .which <- ""
   if (req %in% c(1L, 2L) && rState != 1L) {
@@ -239,8 +267,13 @@
   }
   .tried <- do.call(rbind, .acc$tried)
   assign("covTried", .tried, envir = env)
+  # the warning names the analytic step alone; covTried keeps what it said in full
+  .triedW <- .tried
+  if (!is.null(.short)) {
+    .triedW$outcome[1L] <- .short
+  }
   if (.cur == 0L) {
-    .w <- .covTriedSummary(.names[req], .tried, NULL)
+    .w <- .covTriedSummary(.request, .triedW, NULL)
     if (!is.null(.w)) {
       warning(.w, call. = FALSE)
     }
@@ -277,7 +310,7 @@
   } else {
     .label <- sstr
   }
-  .w <- .covTriedSummary(.names[req], .tried, .label)
+  .w <- .covTriedSummary(.request, .triedW, .label)
   if (!is.null(.w)) {
     warning(.w, call. = FALSE)
   }
