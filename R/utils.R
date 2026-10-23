@@ -233,8 +233,9 @@
 
 #' Each subject's records and observations
 #'
-#' A subject's records are put in time order (ties keep their order), which is the
-#' order a solve returns its observations in.
+#' A subject's records are put in time order within each reset (EVID 3 or 4)
+#' episode (ties keep their order), which is the order a solve returns its
+#' observations in.
 #' @param d data frame with upper-case `ID`, `TIME`, `EVID` and `DV`, and optionally
 #'   `MDV`, `CENS` and `LIMIT`
 #' @param ids the subjects wanted, in order, as values of `d$ID`
@@ -254,7 +255,9 @@
     if (is.null(.di) || nrow(.di) == 0L) {
       return(NULL)
     }
-    .di <- .di[order(suppressWarnings(as.double(.di[["TIME"]]))), , drop = FALSE]
+    # a reset (EVID 3 or 4) starts an episode that may reuse earlier clock times
+    .episode <- cumsum(suppressWarnings(as.integer(.nmAsDouble(.di[["EVID"]]))) %in% c(3L, 4L))
+    .di <- .di[order(.episode, suppressWarnings(as.double(.di[["TIME"]]))), , drop = FALSE]
     .obs <- .di[.nmObsRows(.di), , drop = FALSE]
     .n <- nrow(.obs)
     list(

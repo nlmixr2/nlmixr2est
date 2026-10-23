@@ -52,6 +52,7 @@ nmTest({
     nlmixr2Est.fakeBadLevel <- function(env, ...) TRUE
     attr(nlmixr2Est.fakeBadLevel, "nlmixr2Priors") <- "sometimes"
     registerS3method("nlmixr2Est", "fakeBadLevel", nlmixr2Est.fakeBadLevel, envir = globalenv())
+    withr::defer(rm(list = "nlmixr2Est.fakeBadLevel", envir = asNamespace("nlmixr2est")[[".__S3MethodsTable__."]]))
     expect_error(.nlmixr2PriorSupport(.env("fakeBadLevel", NULL)), "nlmixr2Priors")
   })
 
@@ -97,6 +98,7 @@ nmTest({
     nlmixr2Est.fakeAll <- function(env, ...) TRUE
     attr(nlmixr2Est.fakeAll, "nlmixr2Priors") <- "all"
     registerS3method("nlmixr2Est", "fakeAll", nlmixr2Est.fakeAll, envir = globalenv())
+    withr::defer(rm(list = "nlmixr2Est.fakeAll", envir = asNamespace("nlmixr2est")[[".__S3MethodsTable__."]]))
 
     expect_equal(.nlmixr2PriorSupport(.env("fakeAll", .ui)), "all")
     expect_error(.nlmixr2AssertPriors(.env("fakeAll", .ui)), NA)
@@ -109,6 +111,7 @@ nmTest({
     nlmixr2Est.fakeTnpri <- function(env, ...) TRUE
     attr(nlmixr2Est.fakeTnpri, "nlmixr2Priors") <- "tnpri"
     registerS3method("nlmixr2Est", "fakeTnpri", nlmixr2Est.fakeTnpri, envir = globalenv())
+    withr::defer(rm(list = "nlmixr2Est.fakeTnpri", envir = asNamespace("nlmixr2est")[[".__S3MethodsTable__."]]))
 
     expect_error(
       .nlmixr2AssertPriors(
@@ -139,6 +142,7 @@ nmTest({
     nlmixr2Est.fakeNwpri <- function(env, ...) TRUE
     attr(nlmixr2Est.fakeNwpri, "nlmixr2Priors") <- "nwpri"
     registerS3method("nlmixr2Est", "fakeNwpri", nlmixr2Est.fakeNwpri, envir = globalenv())
+    withr::defer(rm(list = "nlmixr2Est.fakeNwpri", envir = asNamespace("nlmixr2est")[[".__S3MethodsTable__."]]))
 
     ## degrees of freedom on the omega are what NWPRI needs
     expect_error(
@@ -159,6 +163,7 @@ nmTest({
     nlmixr2Est.fakeTheta <- function(env, ...) TRUE
     attr(nlmixr2Est.fakeTheta, "nlmixr2Priors") <- "theta"
     registerS3method("nlmixr2Est", "fakeTheta", nlmixr2Est.fakeTheta, envir = globalenv())
+    withr::defer(rm(list = "nlmixr2Est.fakeTheta", envir = asNamespace("nlmixr2est")[[".__S3MethodsTable__."]]))
 
     ## a Cauchy is fine too -- "theta" restricts WHERE the prior can sit
     ## (never on omega), not the distribution family
@@ -194,6 +199,7 @@ nmTest({
     nlmixr2Est.fakeGeneral <- function(env, ...) TRUE
     attr(nlmixr2Est.fakeGeneral, "nlmixr2Priors") <- "general"
     registerS3method("nlmixr2Est", "fakeGeneral", nlmixr2Est.fakeGeneral, envir = globalenv())
+    withr::defer(rm(list = "nlmixr2Est.fakeGeneral", envir = asNamespace("nlmixr2est")[[".__S3MethodsTable__."]]))
 
     expect_error(
       .nlmixr2AssertPriors(
