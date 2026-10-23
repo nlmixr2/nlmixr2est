@@ -78,6 +78,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "cov-analytic-obs-rows",
     "cov-analytic-reason",
     "cov-analytic-declines",
+    "cov-analytic-subject-route",
     "obs-rows-estimators",
     "focei-wang2007-power",
     "cov-condition",
