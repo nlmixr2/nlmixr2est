@@ -107,7 +107,9 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   if (length(.miss) > 0L) {
     stop("the IOV refit for NPDE did not give: ", paste(.miss, collapse = ", "), call. = FALSE)
   }
-  as.data.frame(.newFit)[, .cols, drop = FALSE]
+  # a table that asks for doses the fit's table lacks gives the refit more rows
+  .df <- as.data.frame(.newFit)
+  .df[.npdeObsRows(.df, .newFit$idLvl), .cols, drop = FALSE]
 }
 
 #' Stop when a refit can't give an IOV fit's tables
@@ -151,10 +153,7 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   if (nrow(npde) == nrow(fit)) {
     return(npde)
   }
-  .in <- as.character(fit$ID) %in% as.character(fit$idLvl)
-  if ("EVID" %in% names(fit)) {
-    .in <- .in & fit$EVID == 0
-  }
+  .in <- .npdeObsRows(fit, fit$idLvl)
   if (sum(.in) != nrow(npde)) {
     stop("NPDE has ", nrow(npde), " rows for the fit's ", sum(.in), " observations", call. = FALSE)
   }
@@ -162,4 +161,19 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   .ret[.in, ] <- npde
   rownames(.ret) <- NULL
   .ret
+}
+
+#' The rows of a fit's table that are observations NPDE is computed for
+#'
+#' @param df the fit's table
+#' @param idLvl the fit's subject labels; a reinserted subject has none
+#' @return logical vector, one per row
+#' @noRd
+#' @author Matthew L. Fidler
+.npdeObsRows <- function(df, idLvl) {
+  .in <- as.character(df$ID) %in% as.character(idLvl)
+  if ("EVID" %in% names(df)) {
+    .in <- .in & df$EVID == 0
+  }
+  .in
 }

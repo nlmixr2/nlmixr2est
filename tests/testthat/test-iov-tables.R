@@ -43,6 +43,19 @@ nmTest({
     }
   })
 
+  test_that("addNpde() on an IOV fit with a table asking for doses keeps the fit's rows", {
+    # the dosing rows change the simulation's draws, as in the fit's own NPDE
+    .with <- .iovTablesFit(
+      "focei-npde-dosing",
+      "focei",
+      table = tableControl(npde = TRUE, addDosing = TRUE)
+    )
+    .fit <- .iovTablesFit("focei", "focei")
+    .new <- suppressMessages(addNpde(.fit, updateObject = FALSE, table = tableControl(addDosing = TRUE)))
+    expect_identical(nrow(.new), nrow(.fit))
+    expect_equal(.new$NPDE, .with$NPDE[.with$EVID == 0], tolerance = 1e-10)
+  })
+
   test_that("addNpde() on an IOV fit works after simulate()", {
     skip_if(
       .rxode2WritesNestingData(),
