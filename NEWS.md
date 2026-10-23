@@ -12,9 +12,10 @@
 ### NPDE
 
 - NPDE of censored observations now draws each censored value from the
-  subject's simulated predictive distribution (multivariate normal),
-  conditional on its measured observations and truncated to its censoring
-  interval, for every `tableControl(censMethod =)` but "cdf" and "omit".
+  subject's simulated predictive distribution (a Gaussian copula of the
+  simulations), conditional on its measured observations and truncated to its
+  censoring interval, for every `tableControl(censMethod =)` but "cdf" and
+  "omit".  The simulations themselves are left untruncated.
   Before, NPDE under "truncated-normal", "ipred" and "pred" used whatever the
   residual step had written into the shared DV (a draw around IPRED, or
   IPRED/PRED), and "epred" used the LOQ itself.  The residual columns are

@@ -49,9 +49,10 @@ you supply single subject event tables (created with
 
   For NPDE, every method but `"cdf"` and `"omit"` replaces each censored
   observation by a draw from the subject's simulated predictive
-  distribution (multivariate normal), conditional on its measured
-  observations and truncated to its censoring interval; `"omit"` gives
-  censored observations no NPDE and leaves them out of the decorrelation.}
+  distribution (a Gaussian copula of the simulations), conditional on its
+  measured observations and truncated to its censoring interval; `"omit"`
+  gives censored observations no NPDE and leaves them out of the
+  decorrelation.}
 
 \item{seed}{an object specifying if and how the random number
 generator should be initialized}
