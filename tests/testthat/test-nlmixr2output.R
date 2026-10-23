@@ -524,3 +524,73 @@ test_that("the output builder writes a method's estimates into the ui and keeps 
   expect_equal(.u2$omega, .ui$omega)
   expect_equal(nlmixr2global$nlmixr2EstEnv$iniDf0, .env2$iniDf0)
 })
+
+# A 2x2 block repeated (eta.c, eta.d ~ same()), its names in either order
+.sameBlockAB <- function() {
+  ini({
+    ta <- 1
+    tb <- 2
+    tc <- 3
+    td <- 4
+    add.sd <- 0.7
+    eta.a + eta.b ~ c(0.3, 0.01, 0.1)
+    eta.c + eta.d ~ same()
+  })
+  model({
+    a <- exp(ta + eta.a)
+    b <- exp(tb + eta.b)
+    cc <- exp(tc + eta.c)
+    d <- exp(td + eta.d)
+    y <- a + b + cc + d
+    y ~ add(add.sd)
+  })
+}
+
+.sameBlockBA <- function() {
+  ini({
+    ta <- 1
+    tb <- 2
+    tc <- 3
+    td <- 4
+    add.sd <- 0.7
+    eta.b + eta.a ~ c(0.1, 0.01, 0.3)
+    eta.d + eta.c ~ same()
+  })
+  model({
+    a <- exp(ta + eta.a)
+    b <- exp(tb + eta.b)
+    cc <- exp(tc + eta.c)
+    d <- exp(td + eta.d)
+    y <- a + b + cc + d
+    y ~ add(add.sd)
+  })
+}
+
+test_that("the output builder keeps every row of a repeated (same()) block", {
+  .old <- nlmixr2global$nlmixr2EstEnv$iniDf0
+  .depth <- nlmixr2global$nlmixr2EstEnv$estDepth
+  withr::defer({
+    nlmixr2global$nlmixr2EstEnv$iniDf0 <- .old
+    nlmixr2global$nlmixr2EstEnv$estDepth <- .depth
+  })
+  for (.mod in list(.sameBlockAB, .sameBlockBA)) {
+    .ui <- rxode2::rxode2(.mod)
+    # an estimate: the block's values scaled, the copy still equal to it
+    .om <- unclass(.ui$omega) * 1.5
+    attributes(.om) <- list(dim = dim(.om), dimnames = dimnames(.ui$omega))
+    nlmixr2global$nlmixr2EstEnv$estDepth <- 0L
+    nlmixr2global$nlmixr2EstEnv$iniDf0 <- NULL
+    .env <- new.env(parent = emptyenv())
+    .env$fullTheta <- c(ta = 1.1, tb = 2.1, tc = 3.1, td = 4.1, add.sd = 0.5)
+    .env$omega <- .om
+    .u <- .nlmixr2OutputContract(rxode2::rxUiDecompress(.ui), .env)
+    .label <- paste(rownames(.om), collapse = ",")
+    # every eta row, the covariance rows included, keeps the model's condition
+    .want <- .ui$iniDf[!is.na(.ui$iniDf$neta1), c("name", "condition")]
+    .got <- .u$iniDf[!is.na(.u$iniDf$neta1), c("name", "condition")]
+    expect_setequal(.got$name, .want$name)
+    expect_identical(.got$condition[match(.want$name, .got$name)], .want$condition, label = .label)
+    expect_identical(.u$omegaSameMap, .ui$omegaSameMap, label = .label)
+    expect_equal(unclass(.u$omega)[rownames(.om), colnames(.om)], .om, ignore_attr = TRUE, label = .label)
+  }
+})
