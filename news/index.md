@@ -4,10 +4,64 @@
 
 ### Bug fixes
 
+#### Covariance
+
+- `covMethod = "analytic"` now keeps the analytic covariance when a
+  record that is not an observation (an EVID 2 record, or an EVID 0
+  record with a missing DV or `MDV = 1`) shares the time of one of a
+  subject’s observations; it used to fall back to the finite-difference
+  covariance.
+
+- A declined `covMethod = "analytic"` now says why. `fit$env$covTried`
+  and the message give the reason in full, the line printed for the
+  covariance step and the `$runInfo` warning give the step that failed
+  on one line, and `setCov(fit, "analytic")` stops with the same reason.
+  An observed information that would not invert, a failed sensitivity
+  solve and several other failures used to print only “not available for
+  this model”.
+
+- `covMethod = "analytic"` no longer gives a wrong covariance when the
+  per-subject third-order differencing (the fallback when the batched
+  solve fails) cannot solve on one or both sides of its step. Since
+  7.0.2 it used a zero difference (every solve failing, or the plus side
+  only) or a forward difference (the minus side only) without saying so;
+  the subject now declines and the covariance falls back with the
+  solve’s reason.
+
+- The covariance warnings (one not installed, one installed instead of
+  the one requested, an sqrtm repair, a covariance conditional on the
+  ETAs) now name their method without the word “covariance”
+  (`"r,s" is not positive definite; kept "nlme"`), so the same failure
+  reads the same whatever the labels, and they stay under 75 characters.
+
+#### Estimation
+
 - A fit that fails late in its output step (for example a `saem` fit
   whose inter-occasion variability cannot be finalized) now reports its
   own error. The timing step read the fit’s time table before the fit
   had one, and its “object ‘time’ not found” replaced the error.
+
+- `est = "vae"`, `"emvi"` and `"fbvi"` count as observations the records
+  FOCEi’s translated data keeps as observations, so an EVID 0 record
+  with a missing DV, `MDV = 1`, a missing TIME or a compartment-off
+  (negative) CMT is not one; with a missing DV at an observation time
+  `est = "vae"` stopped on missing values. `est = "vae"` also gives data
+  without an EVID column the EVID FOCEi gives it, taken from an MDV
+  column when the data has an AMT column. These estimators and the
+  benchmark observation count now stop with FOCEi’s message, and in
+  FOCEi’s order, on an EVID, MDV or AMT column not stored as numbers, an
+  infinite TIME or a missing ID, instead of reading the data anyway; a
+  logical ID, which FOCEi cannot read either, stops too.
+
+- `est = "vae"`, `"emvi"` and `"fbvi"` drop a subject that has records
+  but no observations, with a warning naming it, as FOCEi does; they
+  used to stop with “The etaMat must have the same number of ETAs (rows)
+  as subjects”. A record with a missing ID is now an error that says so.
+
+- `est = "vae"` now gives the same fit for data that is not sorted by
+  time within a subject as for sorted data, as `"emvi"` and `"fbvi"`
+  already did; it used to pair the predictions with the observations in
+  data order (the estimates moved by about 1%).
 
 ## nlmixr2est 7.2.1
 
