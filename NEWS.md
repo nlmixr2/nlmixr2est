@@ -2,10 +2,92 @@
 
 ## Bug fixes
 
+### Covariance
+
+- `covMethod = "analytic"` now keeps the analytic covariance when a record that
+  is not an observation (an EVID 2 record, or an EVID 0 record with a missing DV
+  or `MDV = 1`) shares the time of one of a subject's observations; it used to
+  fall back to the finite-difference covariance.
+
+- A declined `covMethod = "analytic"` now says why.  `fit$env$covTried` and the
+  message give the reason in full, the line printed for the covariance step and
+  the `$runInfo` warning give the step that failed on one line, and
+  `setCov(fit, "analytic")` stops with the same reason.  An observed
+  information that would not invert, a failed sensitivity solve and several
+  other failures used to print only "not available for this model".
+
+- `covMethod = "analytic"` no longer gives a wrong covariance when the
+  per-subject third-order differencing (the fallback when the batched solve
+  fails) cannot solve on one or both sides of its step.  Since 7.0.2 it used a
+  zero difference (every solve failing, or the plus side only) or a forward
+  difference (the minus side only) without saying so; the subject now declines
+  and the covariance falls back with the solve's reason.
+
+- The covariance warnings (one not installed, one installed instead of the one
+  requested, an sqrtm repair, a covariance conditional on the ETAs) now name
+  their method without the word "covariance" (`"r,s" is not positive definite;
+  kept "nlme"`), so the same failure reads the same whatever the labels, and they
+  stay under 75 characters.
+
+### Estimation
+
 - On Windows with more than one thread, `est = "imp"` and `"impmap"` no
   longer crash (ODE models) or give estimates that depend on the number of
   threads (`linCmt()` models); affected since 7.1.0.  Linux and macOS were
   not affected.
+
+- A fit that fails late in its output step (for example a `saem` fit whose
+  inter-occasion variability cannot be finalized) now reports its own error.
+  The timing step read the fit's time table before the fit had one, and its
+  "object 'time' not found" replaced the error.
+
+- `est = "vae"`, `"emvi"` and `"fbvi"` count as observations the records
+  FOCEi's translated data keeps as observations, so an EVID 0 record with a
+  missing DV, `MDV = 1`, a missing TIME or a compartment-off (negative) CMT is
+  not one; with a missing DV at an observation time `est = "vae"` stopped on
+  missing values.  `est = "vae"` also gives data without an EVID column the EVID
+  FOCEi gives it, taken from an MDV column when the data has an AMT column.
+  These estimators and the benchmark observation count now stop with FOCEi's
+  message, and in FOCEi's order, on an EVID, MDV or AMT column not stored as
+  numbers, an infinite TIME or a missing ID, instead of reading the data anyway;
+  a logical ID, which FOCEi cannot read either, stops too.
+
+- `est = "vae"`, `"emvi"` and `"fbvi"` drop a subject that has records but no
+  observations, with a warning naming it, as FOCEi does; they used to stop with
+  "The etaMat must have the same number of ETAs (rows) as subjects".  A record
+  with a missing ID is now an error that says so.
+
+- `est = "vae"` now gives the same fit for data that is not sorted by time
+  within a subject as for sorted data, as `"emvi"` and `"fbvi"` already did; it
+  used to pair the predictions with the observations in data order (the
+  estimates moved by about 1%).
+
+- Whether a model has inter-occasion variability is now read from the model
+  itself, not from the last fit's IOV rewrite.  The analytic-gradient scope
+  checks called outside a fit (`ui$foceiOuter`, the VAE gradient scope) no longer
+  depend on the previous fit in the session; inside a fit they were not
+  affected, since each fit sets the rewrite before they run.  A theta named
+  like an IOV variable of the previous fit is no longer taken for an IOV
+  magnitude, which left it out of `ui$foceiSkipCov`'s covariance thetas, the
+  mu-referenced thetas and, during an `est = "vae"` fit, the nonMuTheta
+  handling.
+
+- A subject-level repeated omega block (`same()`, lotri 1.0.5) beside
+  inter-occasion variability no longer stops a FOCEi-family fit with
+  "invalid first argument".  A method that cannot keep a repeated block's
+  variances equal now refuses a model built with one and names the methods
+  that can: `est = "nlme"` estimated each copy on its own without a word, and
+  `saem`, `imp`, `impmap`, `qrpem` and the `npag` and `npb` family stopped
+  with unrelated errors.  A third-party method is refused too until it
+  declares `attr(nlmixr2Est.<method>, "sameBlock")`: `TRUE` when it keeps the
+  tie, `"fixed"` when it does not estimate omega (see `?nlmixr2Est`).  A
+  refit from a fit is not refused, since the fit's model has already lost the
+  tie, as it did before.
+
+- With a time-varying covariate on a `linCmt()` parameter, an eta whose block
+  repeats another's (`same()`) was left out of the sensitivity carry added in
+  7.1.0, so its analytic gradient took the parameter as constant within a
+  subject; it now gets the carry like any other subject-level eta.
 
 # nlmixr2est 7.2.1
 

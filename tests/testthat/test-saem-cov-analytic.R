@@ -61,7 +61,7 @@ nmTest({
       nlmixr2(linMod, nlmixr2data::theo_sd, est = "saem", control = ctl(covMethod = "analytic"))
     ))
     # a warning, so it is kept in $runInfo
-    expect_true("\"analytic\" covariance could not be computed; kept \"linFim\"" %in% fit$runInfo)
+    expect_true("\"analytic\" could not be computed; kept \"linFim\"" %in% fit$runInfo)
     expect_identical(fit$covMethod, "linFim")
     expect_true(all(is.finite(fit$parFixedDf$SE)))
   })

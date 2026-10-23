@@ -75,6 +75,10 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c(
     "focei-wang2007-lognormal",
     "cov-analytic",
+    "cov-analytic-obs-rows",
+    "cov-analytic-reason",
+    "cov-analytic-declines",
+    "obs-rows-estimators",
     "focei-wang2007-power",
     "cov-condition",
     "agq-cov",
@@ -155,7 +159,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "mu-family",
     "uninformative-etas-revisit",
     "saem-iov-twolevel-fit",
-    "iov-loglik-1000"
+    "iov-loglik-1000",
+    "iov-same-fit"
   ),
   # batch 7
   c(
