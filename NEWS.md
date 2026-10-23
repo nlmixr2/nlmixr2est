@@ -2,6 +2,13 @@
 
 ## Bug fixes
 
+### Estimation
+
+- A fit that fails late in its output step (for example a `saem` fit whose
+  inter-occasion variability cannot be finalized) now reports its own error.
+  The timing step read the fit's time table before the fit had one, and its
+  "object 'time' not found" replaced the error.
+
 ### NPDE
 
 - NPDE of censored observations now draws each censored value from the
