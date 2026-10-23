@@ -2,13 +2,6 @@
 
 ## Bug fixes
 
-### Estimation
-
-- A fit that fails late in its output step (for example a `saem` fit whose
-  inter-occasion variability cannot be finalized) now reports its own error.
-  The timing step read the fit's time table before the fit had one, and its
-  "object 'time' not found" replaced the error.
-
 ### Covariance
 
 - `covMethod = "analytic"` now keeps the analytic covariance when a record that
@@ -37,6 +30,11 @@
   stay under 75 characters.
 
 ### Estimation
+
+- A fit that fails late in its output step (for example a `saem` fit whose
+  inter-occasion variability cannot be finalized) now reports its own error.
+  The timing step read the fit's time table before the fit had one, and its
+  "object 'time' not found" replaced the error.
 
 - `est = "vae"`, `"emvi"` and `"fbvi"` count as observations the records
   FOCEi's translated data keeps as observations, so an EVID 0 record with a
