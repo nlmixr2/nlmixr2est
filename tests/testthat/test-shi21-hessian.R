@@ -56,6 +56,21 @@ nmTest({
     })
   })
 
+  test_that("a cached step that does not move x gives an NA column, not 0", {
+    .gr <- function(x) x
+    for (.central in c(FALSE, TRUE)) {
+      # one iteration ends on a step too small to move 1e15; the second call
+      # reuses it
+      .r1 <- shi21HessianWrap(.gr, 1e15, 1e15, .central, 0, 1L)
+      expect_true(is.na(.r1$H[1, 1]), info = .central)
+      expect_true(.r1$hh > 0 && 1e15 + .r1$hh == 1e15, info = .central)
+      .r2 <- shi21HessianWrap(.gr, 1e15, 1e15, .central, .r1$hh, 1L)
+      expect_true(is.na(.r2$H[1, 1]), info = .central)
+      # the same cached step at x = 1 moves it, so the slope is the difference
+      expect_equal(shi21HessianWrap(.gr, 1, 1, .central, .r1$hh, 1L)$H[1, 1], 1, info = .central)
+    }
+  })
+
   test_that("the Hessian matches the gradient's Jacobian, searched and cached", {
     skip_on_cran()
     # Cubic in a and quadratic otherwise: the gradient is quadratic, so a

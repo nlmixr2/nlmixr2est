@@ -415,22 +415,31 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   return h;
 }
 
-// Column k of shi21Hessian() at the fixed step h; x[k] is put back exactly.
+// Column k of shi21Hessian() at the fixed step h; x[k] is put back exactly.  A
+// leg whose step leaves x[k] where it is does not count.
 static void shi21HessColumn(shi21fn_type grad, arma::vec &x, arma::vec &gr0, int id,
                             int type, int k, double h, arma::vec &col) {
   double xk = x[k];
   x[k] += h;
-  arma::vec grPH = grad(x, id);
-  bool forwardFinite = grPH.is_finite();
+  bool forwardFinite = false;
+  arma::vec grPH;
+  if (x[k] != xk) {
+    grPH = grad(x, id);
+    forwardFinite = grPH.is_finite();
+  }
   if (type == shi21HessForward && forwardFinite) {
     col = (grPH - gr0)/h;
     x[k] = xk;
     return;
   }
-  x[k] -= 2*h;
-  arma::vec grMH = grad(x, id);
+  x[k] = xk - h;
+  bool backwardFinite = false;
+  arma::vec grMH;
+  if (x[k] != xk) {
+    grMH = grad(x, id);
+    backwardFinite = grMH.is_finite();
+  }
   x[k] = xk;
-  bool backwardFinite = grMH.is_finite();
   if (forwardFinite && backwardFinite) {
     // only reached for central: forward returned above
     col = (grPH - grMH)/(2.0*h);

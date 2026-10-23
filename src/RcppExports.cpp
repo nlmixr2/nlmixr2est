@@ -545,6 +545,22 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// shi21HessianWrap
+Rcpp::List shi21HessianWrap(Rcpp::Function grad, arma::vec x, arma::vec gr0, bool central, arma::vec hh, int maxiter);
+RcppExport SEXP _nlmixr2est_shi21HessianWrap(SEXP gradSEXP, SEXP xSEXP, SEXP gr0SEXP, SEXP centralSEXP, SEXP hhSEXP, SEXP maxiterSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::Function >::type grad(gradSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type x(xSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type gr0(gr0SEXP);
+    Rcpp::traits::input_parameter< bool >::type central(centralSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type hh(hhSEXP);
+    Rcpp::traits::input_parameter< int >::type maxiter(maxiterSEXP);
+    rcpp_result_gen = Rcpp::wrap(shi21HessianWrap(grad, x, gr0, central, hh, maxiter));
+    return rcpp_result_gen;
+END_RCPP
+}
 // sqrtm
 NumericMatrix sqrtm(NumericMatrix m);
 RcppExport SEXP _nlmixr2est_sqrtm(SEXP mSEXP) {

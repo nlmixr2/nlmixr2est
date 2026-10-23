@@ -11526,6 +11526,19 @@ Rcpp::List shi21SearchWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx,
   return Rcpp::List::create(_["h"] = h, _["gr"] = gr);
 }
 
+// Test bridge to shi21Hessian(): `grad` returns the gradient at x; hh holds the
+// steps (<= 0 searches) and comes back updated.
+//[[Rcpp::export]]
+Rcpp::List shi21HessianWrap(Rcpp::Function grad, arma::vec x, arma::vec gr0, bool central,
+                            arma::vec hh, int maxiter) {
+  ShiWrapGuard _g;
+  shiWrapFn_ = &grad; shiWrapN_ = gr0.n_elem;
+  arma::mat H = shi21Hessian(shiWrapCall_, x, gr0, 0,
+                             central ? shi21HessCentral : shi21HessForward,
+                             hh.memptr(), 7e-7, maxiter, shi21hMaxDefault, NULL);
+  return Rcpp::List::create(_["H"] = H, _["hh"] = hh);
+}
+
 // The methods foceiControl(covFallback=) lists for a covariance method ("r,s", "r", "s",
 // "analytic"), in order; none when the control has no entry for it.
 static std::vector<std::string> covFallbackFor(Environment e, const std::string &method) {
