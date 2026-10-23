@@ -22,14 +22,14 @@ nmTest({
     .sim
   }
 
-  .npdeImpute <- function(sim, dv, cens, n) {
+  .npdeImpute <- function(sim, dv, cens, n, limit = NULL) {
     .r <- .Call(
       `_nlmixr2est_npdeCalc`,
       sim,
       dv,
       rep(0L, length(dv)),
       cens,
-      NULL,
+      limit,
       list(censMethod = 3L, seed = 7L)
     )
     matrix(as.numeric(.r[[1]]), ncol = n, byrow = TRUE)
@@ -83,6 +83,39 @@ nmTest({
     for (.j in 1:4) {
       expect_gt(suppressWarnings(ks.test(.imp[, .j], .x[, .j])$p.value), 0.01, label = .j)
     }
+  })
+
+  test_that("a narrow interval does not pin its censored neighbour", {
+    set.seed(5)
+    .S <- matrix(c(1, 0.5, 0.5, 1), 2)
+    .nid <- 2000
+    .sim <- .npdeSims(.S, .nid, 300)
+    # row 1 interval censored in (0, 1e-6); row 2 effectively untruncated
+    .imp <- .npdeImpute(
+      .sim,
+      rep(c(1e-6, 10), .nid),
+      rep(1L, 2 * .nid),
+      2,
+      limit = rep(c(0, -Inf), .nid)
+    )
+    expect_true(all(.imp[, 1] >= 0 & .imp[, 1] <= 1e-6))
+    # y2 | y1 = 0 is N(0, 0.75)
+    expect_equal(sd(.imp[, 2]), sqrt(0.75), tolerance = 0.06)
+    expect_equal(mean(.imp[, 2]), 0, tolerance = 0.06)
+  })
+
+  test_that("a constant simulated row is imputed as its value", {
+    set.seed(6)
+    .nid <- 500
+    .sim <- .npdeSims(diag(2), .nid, 300)
+    .sim$sim[c(TRUE, FALSE)] <- 0
+    # row 1 (always 0) censored below 1, row 2 censored below 0
+    # (the decorrelation itself falls back to eigenvalues and says so)
+    .imp <- suppressWarnings(.npdeImpute(.sim, rep(c(1, 0), .nid), rep(1L, 2 * .nid), 2))
+    expect_equal(.imp[, 1], rep(0, .nid))
+    expect_true(all(.imp[, 2] <= 0))
+    # half-normal mean
+    expect_equal(mean(.imp[, 2]), -sqrt(2 / pi), tolerance = 0.1)
   })
 
   test_that("a singular covariance conditions on the measured value", {

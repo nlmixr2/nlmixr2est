@@ -335,34 +335,46 @@ struct npdeScoreMap {
 // row is mapped to normal scores through its empirical CDF (npdeScoreMap),
 // the scores are taken as multivariate normal, the censored block is
 // conditioned on the measured one (Schur complement, valid when singular) and
-// drawn truncated by Gibbs sampling in whitened coordinates (Rodriguez-Yam,
-// Davis and Scharf 2004), then mapped back through the empirical quantiles.
+// drawn truncated by Gibbs sampling, then mapped back through the empirical
+// quantiles.  Each sweep updates the whitened coordinates (Rodriguez-Yam,
+// Davis and Scharf 2004), which handles strong correlation, then each score
+// from its own conditional, which handles a narrow neighbouring interval.  A
+// row whose simulations are all equal is a point mass: it is imputed as that
+// value and conditions nothing.
 //
-// Draw `sweep` of global row r is seeded with seed + nObs*(1 + sweep) + r; the
-// seeds below seed + nObs belong to the jitter uniforms.
+// Global row r is seeded with seed + nObs*(1 + 2*sweep) + r for its whitened
+// update and seed + nObs*(2 + 2*sweep) + r for its own; the seeds below
+// seed + nObs belong to the jitter uniforms.
 static inline void imputeCensNpde(calcNpdeInfoId &ret, arma::Col<int> &cens, arma::vec &limit,
                                   arma::vec &lambda, arma::vec &yj, arma::vec &low, arma::vec &hi,
                                   unsigned int row0, int seed, int nObs) {
   arma::uvec o = arma::conv_to<arma::uvec>::from(ret.obs);
-  arma::uvec cpos = find(cens.elem(o) != 0);
-  if (cpos.n_elem == 0) return;
-  arma::uvec upos = find(cens.elem(o) == 0);
-  unsigned int n = o.n_elem, nc = cpos.n_elem;
+  if (!arma::any(cens.elem(o) != 0)) return;
+  unsigned int n = o.n_elem;
   arma::mat sims = ret.matsim.rows(o);
   std::vector<npdeScoreMap> mp(n);
-  arma::mat zs(n, sims.n_cols);
-  arma::vec zy(n);
+  std::vector<unsigned int> cv, uv;
   for (unsigned int i = 0; i < n; ++i) {
+    unsigned int r = o[i];
     mp[i].init(sims.row(i));
-    if (!mp[i].ok) {
-      // a degenerate row cannot be imputed or used to condition
-      if (cens[o[i]] != 0) return;
-      zs.row(i).zeros();
-      zy[i] = 0.0;
-      continue;
+    if (mp[i].ok) {
+      (cens[r] != 0 ? cv : uv).push_back(i);
+    } else if (cens[r] != 0) {
+      double l, u, x0 = sims(i, 0);
+      npdeCensBounds(cens[r], ret.yobst[r], limit[r], lambda[row0 + r], yj[row0 + r],
+                     low[row0 + r], hi[row0 + r], l, u);
+      if (x0 >= l && x0 <= u) ret.yobst[r] = x0;
     }
+  }
+  unsigned int nc = cv.size();
+  if (nc == 0) return;
+  arma::uvec cpos = arma::conv_to<arma::uvec>::from(cv), upos = arma::conv_to<arma::uvec>::from(uv);
+  arma::mat zs(n, sims.n_cols, arma::fill::zeros);
+  arma::vec zy(n, arma::fill::zeros);
+  for (unsigned int i = 0; i < n; ++i) {
+    if (!mp[i].ok) continue;
     for (unsigned int j = 0; j < sims.n_cols; ++j) zs(i, j) = mp[i].toZ(sims(i, j));
-    zy[i] = (cens[o[i]] == 0) ? mp[i].toZ(ret.yobst[o[i]]) : 0.0;
+    if (cens[o[i]] == 0) zy[i] = mp[i].toZ(ret.yobst[o[i]]);
   }
   arma::vec mu = arma::mean(zs, 1);
   arma::mat S = arma::symmatu(arma::cov(zs.t()));
@@ -379,6 +391,18 @@ static inline void imputeCensNpde(calcNpdeInfoId &ret, arma::Col<int> &cens, arm
   if (!arma::eig_sym(d, U, V)) return;
   d.transform([](double v) { return v > 0 ? sqrt(v) : 0.0; });
   arma::mat L = U * arma::diagmat(d);
+  // each score given the other censored ones: m_k + b_k'(y_-k - m_-k), var_k
+  arma::mat Bk(nc, nc, arma::fill::zeros);
+  arma::vec vk(nc);
+  for (unsigned int k = 0; k < nc; ++k) {
+    vk[k] = V(k, k);
+    if (nc == 1) continue;
+    arma::uvec rest = arma::regspace<arma::uvec>(0, nc - 1);
+    rest.shed_row(k);
+    arma::rowvec b = V.submat(arma::uvec{k}, rest) * arma::pinv(V.submat(rest, rest));
+    Bk.submat(arma::uvec{k}, rest) = b;
+    vk[k] -= arma::as_scalar(b * V.submat(rest, arma::uvec{k}));
+  }
   arma::vec lo(nc), up(nc), xlo(nc), xup(nc);
   arma::uvec gRow(nc);
   for (unsigned int k = 0; k < nc; ++k) {
@@ -407,7 +431,8 @@ static inline void imputeCensNpde(calcNpdeInfoId &ret, arma::Col<int> &cens, arm
     }
     y[k] = std::min(std::max(m[k], a), b);
   }
-  arma::vec w = arma::pinv(L) * (y - m);
+  arma::mat Li = arma::pinv(L);
+  arma::vec w = Li * (y - m);
   y = m + L * w;
   int nSweep = (nc == 1) ? 1 : NPDE_CENS_SWEEPS;
   const double eps = 1e-12;
@@ -424,11 +449,21 @@ static inline void imputeCensNpde(calcNpdeInfoId &ret, arma::Col<int> &cens, arm
         if (b2 < wu) wu = b2;
       }
       if (!(wl < wu)) continue;
-      nmSetSeedEng1(nmSeqSeed(seed, (uint64_t)nObs * (1 + sweep) + gRow[k]));
+      nmSetSeedEng1(nmSeqSeed(seed, (uint64_t)nObs * (1 + 2 * (uint64_t)sweep) + gRow[k]));
       double wk = rxTruncNorm(wl, wu);
       y += L.col(k) * (wk - w[k]);
       w[k] = wk;
     }
+    if (nc == 1) break;
+    for (unsigned int k = 0; k < nc; ++k) {
+      if (!(vk[k] > eps) || !(lo[k] < up[k])) continue;
+      double mk = m[k] + arma::dot(Bk.row(k), y - m);
+      double sd = sqrt(vk[k]);
+      nmSetSeedEng1(nmSeqSeed(seed, (uint64_t)nObs * (2 + 2 * (uint64_t)sweep) + gRow[k]));
+      y[k] = mk + sd * rxTruncNorm((lo[k] - mk) / sd, (up[k] - mk) / sd);
+    }
+    // keep the whitened coordinates in step with y
+    w = Li * (y - m);
   }
   for (unsigned int k = 0; k < nc; ++k) {
     double v = std::min(std::max(y[k], lo[k]), up[k]);
