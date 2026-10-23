@@ -21,7 +21,7 @@
 # Conservative rules beyond the shape check, each biased to FALSE:
 # - an eta appearing in more than one linCmtB() argument slot is dropped
 # - a slot containing more than one eta is dropped
-# - IOV/occasion etas (iniDf condition != "id") are dropped
+# - IOV/occasion etas (iniDf base condition != "id") are dropped
 # - a slot whose formula references time (t) directly is dropped
 # - a covariate-driven alag() is dropped (its boundary terms need the
 #   entering dose's own d(lag)/d(eta))
@@ -126,7 +126,8 @@
     return(FALSE)
   }
   .cond <- etaDf$condition[.wEta]
-  is.na(.cond) || identical(.cond, "id")
+  # a same() copy of an id-level block has condition "id:same:<master>"
+  is.na(.cond) || identical(lotri::lotriBaseCondition(.cond), "id")
 }
 
 #' The eta's slot channel: list(k, g, shape, covs) for a single qualifying
