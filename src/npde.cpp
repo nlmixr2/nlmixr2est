@@ -379,21 +379,33 @@ static inline void imputeCensNpde(calcNpdeInfoId &ret, arma::Col<int> &cens, arm
   if (!arma::eig_sym(d, U, V)) return;
   d.transform([](double v) { return v > 0 ? sqrt(v) : 0.0; });
   arma::mat L = U * arma::diagmat(d);
-  arma::vec lo(nc), up(nc);
+  arma::vec lo(nc), up(nc), xlo(nc), xup(nc);
   arma::uvec gRow(nc);
   for (unsigned int k = 0; k < nc; ++k) {
     unsigned int i = o[cpos[k]];
     gRow[k] = row0 + i;
-    double l, u;
     npdeCensBounds(cens[i], ret.yobst[i], limit[i], lambda[gRow[k]], yj[gRow[k]],
-                   low[gRow[k]], hi[gRow[k]], l, u);
-    lo[k] = mp[cpos[k]].toZ(l);
-    up[k] = mp[cpos[k]].toZ(u);
+                   low[gRow[k]], hi[gRow[k]], xlo[k], xup[k]);
+    lo[k] = mp[cpos[k]].toZ(xlo[k]);
+    up[k] = mp[cpos[k]].toZ(xup[k]);
   }
-  // y = m + L w with w ~ N(0, I) truncated so that lo <= y <= up
+  // y = m + L w with w ~ N(0, I) truncated so that lo <= y <= up.  Start
+  // strictly inside: on a corner of active bounds no direction may be free.
   arma::vec y = m;
   for (unsigned int k = 0; k < nc; ++k) {
-    if (lo[k] <= up[k]) y[k] = std::min(std::max(m[k], lo[k]), up[k]);
+    if (!(lo[k] < up[k])) continue;
+    double sd = sqrt(V(k, k));
+    if (!(sd > 0) || !R_FINITE(sd)) sd = 1.0;
+    double a = lo[k], b = up[k];
+    if (R_FINITE(a) && R_FINITE(b)) {
+      double h = std::min(sd, (b - a) / 4.0);
+      a += h;
+      b -= h;
+    } else {
+      if (R_FINITE(a)) a += sd;
+      if (R_FINITE(b)) b -= sd;
+    }
+    y[k] = std::min(std::max(m[k], a), b);
   }
   arma::vec w = arma::pinv(L) * (y - m);
   y = m + L * w;
@@ -420,7 +432,9 @@ static inline void imputeCensNpde(calcNpdeInfoId &ret, arma::Col<int> &cens, arm
   }
   for (unsigned int k = 0; k < nc; ++k) {
     double v = std::min(std::max(y[k], lo[k]), up[k]);
-    if (R_FINITE(v)) ret.yobst[o[cpos[k]]] = mp[cpos[k]].toX(v);
+    if (!R_FINITE(v)) continue;
+    // the score map's round trip can step past a bound by round-off
+    ret.yobst[o[cpos[k]]] = std::min(std::max(mp[cpos[k]].toX(v), xlo[k]), xup[k]);
   }
 }
 

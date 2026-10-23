@@ -67,6 +67,24 @@ nmTest({
     expect_gt(min(cor(.imp)), 0.99)
   })
 
+  test_that("Gibbs leaves a censoring corner it would start on", {
+    set.seed(4)
+    # eigenvectors with mixed signs, so no single direction is free at the corner
+    .u <- cbind(c(1, 1, 1, 1), c(1, -1, 1, -1), c(1, 1, -1, -1), c(1, -1, -1, 1)) / 2
+    .S <- .u %*% diag(c(2.5, 1.5, 1, 0.5)) %*% t(.u)
+    .nid <- 1000
+    .sim <- .npdeSims(.S, .nid, 300)
+    # rows 1-3 left censored at 0, row 4 right censored at 0
+    .imp <- .npdeImpute(.sim, rep(0, 4 * .nid), rep(c(1L, 1L, 1L, -1L), .nid), 4)
+    expect_true(all(.imp[, 1:3] <= 0))
+    expect_true(all(.imp[, 4] >= 0))
+    .x <- matrix(rnorm(4e6), ncol = 4) %*% chol(.S)
+    .x <- .x[.x[, 1] <= 0 & .x[, 2] <= 0 & .x[, 3] <= 0 & .x[, 4] >= 0, ]
+    for (.j in 1:4) {
+      expect_gt(suppressWarnings(ks.test(.imp[, .j], .x[, .j])$p.value), 0.01, label = .j)
+    }
+  })
+
   test_that("a singular covariance conditions on the measured value", {
     set.seed(3)
     .nid <- 50
