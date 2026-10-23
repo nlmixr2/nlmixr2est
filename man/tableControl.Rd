@@ -42,7 +42,16 @@ you supply single subject event tables (created with
 
  - `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)
 
- - `"omit"` omit the residuals for censoring}
+ - `"omit"` omit the residuals for censoring
+
+ - `"ipred"`, `"pred"` and `"epred"` replace a censored DV with the IPRED,
+   PRED or EPRED in the residuals.
+
+  For NPDE, every method but `"cdf"` and `"omit"` replaces each censored
+  observation by a draw from the subject's simulated predictive
+  distribution (multivariate normal), conditional on its measured
+  observations and truncated to its censoring interval; `"omit"` gives
+  censored observations no NPDE and leaves them out of the decorrelation.}
 
 \item{seed}{an object specifying if and how the random number
 generator should be initialized}

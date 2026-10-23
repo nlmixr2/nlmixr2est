@@ -1228,6 +1228,15 @@ addTable <- function(
 #'
 #'  - `"omit"` omit the residuals for censoring
 #'
+#'  - `"ipred"`, `"pred"` and `"epred"` replace a censored DV with the IPRED,
+#'    PRED or EPRED in the residuals.
+#'
+#'   For NPDE, every method but `"cdf"` and `"omit"` replaces each censored
+#'   observation by a draw from the subject's simulated predictive
+#'   distribution (multivariate normal), conditional on its measured
+#'   observations and truncated to its censoring interval; `"omit"` gives
+#'   censored observations no NPDE and leaves them out of the decorrelation.
+#'
 #' @param ties When `TRUE` jitter prediction-discrepancy points to discourage ties in cdf.
 #'
 #' @param cholSEtol The tolerance for the `rxode2::choleSE` function

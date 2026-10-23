@@ -4,7 +4,8 @@
 #include <rxode2ptr.h>
 #include "nmMcmcRng.h"
 #include "nmSeqSeed.h"
-#include "nmParallelCore.h"
+#include "nmParallel.h"
+#include "truncNorm.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -263,13 +264,95 @@ static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, arma::Col<int> &cens
   }
 }
 
+// Gibbs sweeps used when a subject has two or more censored observations
+#define NPDE_CENS_SWEEPS 20
+
+// Censoring interval of a row on the transformed scale; its DV is the LOQ.
+static inline void npdeCensBounds(int cens, double dvt, double limit, double lambda,
+                                  double yj, double low, double hi,
+                                  double &lo, double &up) {
+  if (cens == 1) {
+    lo = R_FINITE(limit) ? _powerD(limit, lambda, (int) yj, low, hi) : R_NegInf;
+    up = dvt;
+  } else {
+    lo = dvt;
+    up = R_FINITE(limit) ? _powerD(limit, lambda, (int) yj, low, hi) : R_PosInf;
+  }
+  if (ISNAN(lo)) lo = R_NegInf;
+  if (ISNAN(up)) up = R_PosInf;
+}
+
+// Impute a subject's censored observations for NPDE.
+//
+// The subject's simulations give its predictive distribution N(mu, S) (mean
+// and covariance over its observations, transformed scale).  Each censored
+// observation y_c is replaced by a draw from N(mu, S) conditional on the
+// measured observations y_u and truncated to its censoring interval; with
+// several censored rows, by Gibbs sampling over their univariate full
+// conditionals.  Given what was observed (y_u and y_c in its interval), the
+// true y_c has exactly this distribution, so the completed vector is a draw
+// from the untruncated model -- the distribution the untouched simulations
+// represent -- and the usual decorrelation and comparison stay calibrated.
+// Truncating the simulations instead biases NPDE (PR #1221).
+//
+// Draw `sweep` of global row r is seeded with seed + nObs*(1 + sweep) + r; the
+// seeds below seed + nObs belong to the jitter uniforms.
+static inline void imputeCensNpde(calcNpdeInfoId &ret, arma::Col<int> &cens, arma::vec &limit,
+                                  arma::vec &lambda, arma::vec &yj, arma::vec &low, arma::vec &hi,
+                                  unsigned int row0, int seed, int nObs) {
+  arma::uvec o = arma::conv_to<arma::uvec>::from(ret.obs);
+  arma::uvec cpos = find(cens.elem(o) != 0);
+  if (cpos.n_elem == 0) return;
+  arma::vec mu = ret.epredt.elem(o);
+  arma::mat S = arma::symmatu(cov(trans(ret.matsim.rows(o))));
+  arma::mat Q;
+  bool haveQ = arma::inv_sympd(Q, S) || arma::pinv(Q, S);
+  arma::vec y = ret.yobst.elem(o);
+  arma::vec lo(cpos.n_elem), up(cpos.n_elem);
+  for (unsigned int k = 0; k < cpos.n_elem; ++k) {
+    unsigned int i = o[cpos[k]];
+    unsigned int g = row0 + i;
+    npdeCensBounds(cens[i], y[cpos[k]], limit[i], lambda[g], yj[g], low[g], hi[g],
+                   lo[k], up[k]);
+    if (lo[k] < up[k]) {
+      // start the chain inside the interval
+      y[cpos[k]] = std::min(std::max(mu[cpos[k]], lo[k]), up[k]);
+    }
+  }
+  int nSweep = (cpos.n_elem == 1) ? 1 : NPDE_CENS_SWEEPS;
+  for (int sweep = 0; sweep < nSweep; ++sweep) {
+    for (unsigned int k = 0; k < cpos.n_elem; ++k) {
+      // an empty interval leaves the LOQ
+      if (!(lo[k] < up[k])) continue;
+      unsigned int c = cpos[k];
+      double m = mu[c], var = S(c, c);
+      if (haveQ && Q(c, c) > 0 && R_FINITE(Q(c, c))) {
+        var = 1.0 / Q(c, c);
+        double acc = 0.0;
+        for (unsigned int j = 0; j < y.n_elem; ++j) {
+          if (j != c) acc += Q(c, j) * (y[j] - mu[j]);
+        }
+        m -= var * acc;
+      }
+      if (!(var > 0) || !R_FINITE(var) || !R_FINITE(m)) continue;
+      double sd = sqrt(var);
+      nmSetSeedEng1(nmSeqSeed(seed, (uint64_t)nObs * (1 + sweep) + row0 + o[c]));
+      y[c] = m + sd * rxTruncNorm((lo[k] - m) / sd, (up[k] - m) / sd);
+    }
+  }
+  for (unsigned int k = 0; k < cpos.n_elem; ++k) {
+    ret.yobst[o[cpos[k]]] = y[cpos[k]];
+  }
+}
+
 calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
                           arma::vec &dvt, arma::Col<int> &evidIn, arma::Col<int> &censIn, arma::vec &limitIn,
                           int &censMethod, bool &doLimit,
                           unsigned int& id,
                           unsigned int& K, double &tolChol, bool &ties,
                           arma::vec &ruIn, arma::vec &ru2In, arma::vec &ru3In,
-                          arma::vec &lambda, arma::vec &yj, arma::vec &hi, arma::vec &low) {
+                          arma::vec &lambda, arma::vec &yj, arma::vec &hi, arma::vec &low,
+                          int seed, int nObs) {
   calcNpdeInfoId ret;
   ret.matsim = getSimMatById(idLoc, sim, id, K);
   // transformed y observations
@@ -281,7 +364,16 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
   arma::vec limit = limitIn(span(idLoc[id], idLoc[id+1]-1));
   arma::Col<int> evid = evidIn(span(idLoc[id], idLoc[id+1]-1));
   handleNpdeNAandCalculateEpred(ret, K);
-  ret.obs = find(evid == 0);
+  unsigned int row0 = idLoc[id];
+  if (censMethod == CENS_OMIT) {
+    // censored rows are left out of the decorrelation and get no NPDE
+    ret.obs = find(evid == 0 && cens == 0);
+  } else {
+    ret.obs = find(evid == 0);
+    if (censMethod != CENS_CDF) {
+      imputeCensNpde(ret, cens, limit, lambda, yj, low, hi, row0, seed, nObs);
+    }
+  }
   calculatePD(ret, id, K, tolChol);
   calculateNPDEfromPD(ret, cens, limit, censMethod, doLimit, K, ties, ru, ru2, ru3);
   ret.epred = arma::vec(ret.yobst.size());
@@ -289,16 +381,21 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
   ret.eres = arma::vec(ret.yobst.size());
   for (unsigned int j = ret.yobst.size(); j--; ) {
     // Transfer back to original scale ie log(x) -> exp(log(x))
-    ret.epred[j] = _powerDi(ret.epredt[j], lambda[j], (int) yj[j], low[j], hi[j]);
+    unsigned int g = row0 + j;
+    ret.epred[j] = _powerDi(ret.epredt[j], lambda[g], (int) yj[g], low[g], hi[g]);
     if (censMethod == CENS_EPRED && cens[j] != 0) {
       ret.yobst[j] = ret.epredt[j];
     }
-    ret.yobs[j] = _powerDi(ret.yobst[j], lambda[j], (int) yj[j], low[j], hi[j]);
+    ret.yobs[j] = _powerDi(ret.yobst[j], lambda[g], (int) yj[g], low[g], hi[g]);
     ret.eres[j] = ret.yobs[j] - ret.epred[j];
     if (censMethod == CENS_OMIT && cens[j] != 0) {
       ret.yobs[j] = NA_REAL;
       ret.epred[j] = NA_REAL;
       ret.eres[j] = NA_REAL;
+      ret.npde[j] = NA_REAL;
+      ret.npd[j] = NA_REAL;
+      ret.pd[j] = NA_REAL;
+      ret.pd2[j] = NA_REAL;
     } else if (evid[j] != 0) {
       ret.yobs[j] = NA_REAL;
       ret.eres[j] = NA_REAL;
@@ -458,7 +555,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
     _cores = Rcpp::as<int>(_rxGetThreads(false));
     _doParallel = (_cores > 1);
 #endif
-    nmForEach(_nid, _cores, _doParallel, [&](int _curid) {
+    nmForEach<nmRxThreadScope>(_nid, _cores, _doParallel, [&](int _curid) {
       unsigned int curid = (unsigned int)_curid;
       // A C++ exception must never escape this OMP region -- doing so calls
       // std::terminate() and aborts R. Any per-subject numerical failure (e.g. a
@@ -466,7 +563,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
       // is set NA instead.
       try {
         calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
-                                           lambda, yj, hi, low);
+                                           lambda, yj, hi, low, npdeSeed, nObs);
         npde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npde;
         npd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npd;
         pde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd;

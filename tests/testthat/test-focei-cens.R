@@ -422,7 +422,7 @@ nmTest({
     }
   })
 
-  test_that("a censored fit's NPDE is computed from its data's DV", {
+  test_that("a censored fit's NPDE matches an NPDE pass on fresh predictions", {
     for (.cm in c("truncated-normal", "omit")) {
       .fit <- suppressWarnings(suppressMessages(nlmixr2(
         .censNpdeMod,
@@ -437,5 +437,36 @@ nmTest({
       expect_identical(nrow(.p$ipred), nrow(.fit), label = .cm)
       expect_equal(.fit$NPDE, .fresh[[2]]$NPDE, tolerance = 1e-12, label = .cm)
     }
+  })
+
+  test_that("NPDE imputes censored observations inside their interval", {
+    .d <- .censNpdeData()
+    .fit <- suppressWarnings(suppressMessages(
+      nlmixr2(.censNpdeMod, .d, "focei", control = foceiControl(print = 0, covMethod = ""))
+    ))
+    .env <- .fit$env
+    .p <- .censNpdePred(.env)
+    .cens <- .p$ipred$cens == 1
+    .old <- rxode2::getRxThreads(verbose = FALSE)
+    on.exit(rxode2::setRxThreads(.old), add = TRUE)
+    for (.cm in c("truncated-normal", "ipred", "pred", "epred")) {
+      .tab <- tableControl(npde = TRUE, censMethod = .cm)
+      rxode2::setRxThreads(1L)
+      .n1 <- .censNpdePass(.env, .tab, .p, TRUE)
+      rxode2::setRxThreads(2L)
+      .n2 <- .censNpdePass(.env, .tab, .p, TRUE)
+      # seeded per observation, so the thread count cannot move the draws
+      expect_identical(.n1[[2]]$NPDE, .n2[[2]]$NPDE, label = .cm)
+      expect_true(all(is.finite(.n1[[2]]$NPDE)), label = .cm)
+      if (.cm != "epred") {
+        # drawn below the LOQ (3), not left at it
+        .dv <- as.numeric(.n1[[1]])[.cens]
+        expect_true(all(.dv < 3), label = .cm)
+        expect_gt(sd(.dv), 0)
+      }
+    }
+    .omit <- .censNpdePass(.env, tableControl(npde = TRUE, censMethod = "omit"), .p, TRUE)
+    expect_true(all(is.na(.omit[[2]]$NPDE[.cens])))
+    expect_true(all(is.finite(.omit[[2]]$NPDE[!.cens])))
   })
 })

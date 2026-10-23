@@ -2,12 +2,23 @@
 
 ## Bug fixes
 
-- The NPDE of censored observations is now computed from the data's DV with
-  `tableControl(censMethod =)` "omit", "truncated-normal", "ipred" and
-  "pred", so it changes for censored data under those methods.  The
-  residual step, which runs first, wrote its own values for the censored
-  rows (NA, or imputed ones) into the predictions the NPDE step then read.
-  "cdf" and "epred", and the residual columns themselves, are unchanged.
+### NPDE
+
+- NPDE of censored observations now draws each censored value from the
+  subject's simulated predictive distribution (multivariate normal),
+  conditional on its measured observations and truncated to its censoring
+  interval, for every `tableControl(censMethod =)` but "cdf" and "omit".
+  Before, NPDE under "truncated-normal", "ipred" and "pred" used whatever the
+  residual step had written into the shared DV (a draw around IPRED, or
+  IPRED/PRED), and "epred" used the LOQ itself.  The residual columns are
+  unchanged.
+
+- NPDE under `censMethod = "omit"` now gives censored observations NA and
+  leaves them out of the decorrelation.  Before, the residual step's NA
+  spread through the decorrelation and the subject's NPDE were meaningless.
+
+- NPDE's back-transformation of EPRED and DV now uses each observation's own
+  transform; it used the first subject's rows for every subject.
 
 # nlmixr2est 7.2.1
 
