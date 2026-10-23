@@ -7,6 +7,7 @@
 - `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
   subject has no observations ("Col::subvec(): indices out of bounds").
   That subject's NPDE columns are `NA`, as its other table columns are.
+  The NPDE of a fit with a single subject no longer fails either.
 
 - In a model with a normal and a non-normal endpoint (such as `dpois()`), a
   subject with no observations of the normal endpoint left every subject
