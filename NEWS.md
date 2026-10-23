@@ -31,6 +31,14 @@
 
 ### Estimation
 
+- A `saem` fit with inter-occasion variability now reports its
+  Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
+  reported a FOCEi objective in its place, so its AIC and BIC were not
+  comparable with other `saem` fits; the only sign was the message "gaussian
+  quadrature failed, changed to focei" when the objective was first read.
+  The quadrature, which runs after the fit, solved with an event matrix
+  rebuilt from the data, which had lost the occasion column.
+
 - A fit that fails late in its output step (for example a `saem` fit whose
   inter-occasion variability cannot be finalized) now reports its own error.
   The timing step read the fit's time table before the fit had one, and its

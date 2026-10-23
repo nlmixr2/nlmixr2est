@@ -159,6 +159,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "mu-family",
     "uninformative-etas-revisit",
     "saem-iov-twolevel-fit",
+    "saem-iov-objective",
     "iov-loglik-1000",
     "iov-same-fit"
   ),
