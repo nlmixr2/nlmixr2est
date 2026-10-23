@@ -104,6 +104,28 @@ nmTest({
     expect_equal(mean(.imp[, 2]), 0, tolerance = 0.06)
   })
 
+  test_that("a singular censored block starts inside its support", {
+    set.seed(7)
+    .nid <- 300
+    .sim <- .npdeSims(diag(3), .nid, 300)
+    # the third observation is the sum of the first two in every replicate
+    .m <- matrix(.sim$sim, ncol = 3, byrow = TRUE)
+    .m[, 3] <- .m[, 1] + .m[, 2]
+    .sim$sim <- as.vector(t(.m))
+    # rows 1-2 left censored at -1, row 3 right censored at -10
+    .imp <- suppressWarnings(.npdeImpute(
+      .sim,
+      rep(c(-1, -1, -10), .nid),
+      rep(c(1L, 1L, -1L), .nid),
+      3
+    ))
+    expect_true(all(.imp[, 1:2] <= -1))
+    expect_true(all(.imp[, 3] >= -10))
+    # strictly below the LOQ, not stuck on it
+    expect_lt(max(.imp[, 1:2]), -1 + 1e-6)
+    expect_gt(sd(.imp[, 1]), 0.1)
+  })
+
   test_that("a constant simulated row is imputed as its value", {
     set.seed(6)
     .nid <- 500

@@ -386,23 +386,6 @@ static inline void imputeCensNpde(calcNpdeInfoId &ret, arma::Col<int> &cens, arm
     m += B * (zy.elem(upos) - mu.elem(upos));
     V = arma::symmatu(V - B * S.submat(upos, cpos));
   }
-  arma::vec d;
-  arma::mat U;
-  if (!arma::eig_sym(d, U, V)) return;
-  d.transform([](double v) { return v > 0 ? sqrt(v) : 0.0; });
-  arma::mat L = U * arma::diagmat(d);
-  // each score given the other censored ones: m_k + b_k'(y_-k - m_-k), var_k
-  arma::mat Bk(nc, nc, arma::fill::zeros);
-  arma::vec vk(nc);
-  for (unsigned int k = 0; k < nc; ++k) {
-    vk[k] = V(k, k);
-    if (nc == 1) continue;
-    arma::uvec rest = arma::regspace<arma::uvec>(0, nc - 1);
-    rest.shed_row(k);
-    arma::rowvec b = V.submat(arma::uvec{k}, rest) * arma::pinv(V.submat(rest, rest));
-    Bk.submat(arma::uvec{k}, rest) = b;
-    vk[k] -= arma::as_scalar(b * V.submat(rest, arma::uvec{k}));
-  }
   arma::vec lo(nc), up(nc), xlo(nc), xup(nc);
   arma::uvec gRow(nc);
   for (unsigned int k = 0; k < nc; ++k) {
@@ -415,11 +398,11 @@ static inline void imputeCensNpde(calcNpdeInfoId &ret, arma::Col<int> &cens, arm
   }
   // y = m + L w with w ~ N(0, I) truncated so that lo <= y <= up.  Start
   // strictly inside: on a corner of active bounds no direction may be free.
-  arma::vec y = m;
+  arma::vec y0 = m;
   for (unsigned int k = 0; k < nc; ++k) {
-    if (!(lo[k] < up[k])) continue;
     double sd = sqrt(V(k, k));
-    if (!(sd > 0) || !R_FINITE(sd)) sd = 1.0;
+    // a point mass (or an empty interval) stays at its mean
+    if (!(lo[k] < up[k]) || !(sd > 1e-8) || !R_FINITE(sd)) continue;
     double a = lo[k], b = up[k];
     if (R_FINITE(a) && R_FINITE(b)) {
       double h = std::min(sd, (b - a) / 4.0);
@@ -429,11 +412,34 @@ static inline void imputeCensNpde(calcNpdeInfoId &ret, arma::Col<int> &cens, arm
       if (R_FINITE(a)) a += sd;
       if (R_FINITE(b)) b -= sd;
     }
-    y[k] = std::min(std::max(m[k], a), b);
+    y0[k] = std::min(std::max(m[k], a), b);
   }
-  arma::mat Li = arma::pinv(L);
-  arma::vec w = Li * (y - m);
-  y = m + L * w;
+  arma::vec d;
+  arma::mat U, L, Li;
+  for (int ridge = 0; ridge < 2; ++ridge) {
+    if (!arma::eig_sym(d, U, V)) return;
+    d.transform([](double v) { return v > 0 ? sqrt(v) : 0.0; });
+    L = U * arma::diagmat(d);
+    Li = arma::pinv(L);
+    // a singular V can leave the start outside its support; a small ridge
+    // makes it reachable while staying inside the intervals
+    if (arma::norm(L * (Li * (y0 - m)) - (y0 - m)) <= 1e-8 * (1.0 + arma::norm(y0 - m))) break;
+    V.diag() += 1e-8 * std::max(1.0, V.diag().max());
+  }
+  arma::vec w = Li * (y0 - m);
+  arma::vec y = m + L * w;
+  // each score given the other censored ones: m_k + b_k'(y_-k - m_-k), var_k
+  arma::mat Bk(nc, nc, arma::fill::zeros);
+  arma::vec vk(nc);
+  for (unsigned int k = 0; k < nc; ++k) {
+    vk[k] = V(k, k);
+    if (nc == 1) continue;
+    arma::uvec rest = arma::regspace<arma::uvec>(0, nc - 1);
+    rest.shed_row(k);
+    arma::rowvec b = V.submat(arma::uvec{k}, rest) * arma::pinv(V.submat(rest, rest));
+    Bk.submat(arma::uvec{k}, rest) = b;
+    vk[k] -= arma::as_scalar(b * V.submat(rest, arma::uvec{k}));
+  }
   int nSweep = (nc == 1) ? 1 : NPDE_CENS_SWEEPS;
   const double eps = 1e-12;
   for (int sweep = 0; sweep < nSweep; ++sweep) {
