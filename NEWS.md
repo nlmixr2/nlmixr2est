@@ -84,6 +84,46 @@
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
 
+### Tables
+
+- `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
+  subject has no observations ("Col::subvec(): indices out of bounds").
+  That subject's NPDE columns are `NA`, as its other table columns are.
+  The NPDE of a fit with a single subject no longer fails either.
+
+- In a model with a normal and a non-normal endpoint (such as `dpois()`), a
+  subject with no observations of the normal endpoint left every subject
+  before it in the data (the next subject, when it was the first) with CWRES,
+  CRES and CPRED computed from another subject's etas (or none), since
+  nlmixr2est 2.1.0.  Each row now takes its own subject's.
+
+- `addNpde()` and `addTable()` now work on a fit with inter-occasion
+  variability, including one run with `calcTables = FALSE`.  They stopped
+  with "The following parameter(s) are required for solving: occ, ..."
+  (the parameters listed depend on the model and the method).  They refit
+  with no iterations at the fit's estimates, as `addCwres()` does, and give
+  the columns the fit gives itself; for an ODE model, to the solver's
+  tolerance.  A `saem` fit with `iovMethod = "collapsed"` is refused with a
+  message: ask for its tables when fitting it.
+
+- A fit with inter-occasion variability is now finished like any other when
+  it is run with `tableControl(npde = TRUE)` or has a subject with no
+  observations.  Its model, fixed and random effects, `omega`, parameter
+  table and data kept the expanded occasion etas (such as `rx.iov.cl.1`) and
+  their magnitude thetas.
+
+- A `saem` fit with a mu-referenced covariate (such as
+  `cl <- exp(tcl + eta.cl + wt.cl * log(WT / 70))`) run with
+  `tableControl(npde = TRUE)` is now finished like one without NPDE.  Its
+  table, data and model kept the `nlmixrMuDerCov1` column it was fitted
+  with.
+
+- `addTable()` now applies the `keep` and `drop` of its `table`, as it
+  applies its `keep` and `drop` arguments; it ignored them.
+
+- `addCwres()` now records its time in the fit's `time` table; it was
+  lost.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes

@@ -6,42 +6,46 @@
 
 #define _(String) (String)
 
-void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
-                     List &etasDfFull, int &nid, unsigned int &neta) {
-  int idSize = ID.size();
-  int lastId = ID[ID.size()-1], lastCol = nid-1, lastIndex=ID.size()-1;
-  bool singleEta = lastId == ID[0];
-  int etaFulli = nid-1;
-  double curEta=0.0;
-  if (singleEta) {
-    for (unsigned int i = neta; i--;){
-      curEta = etas(0, i);//(as<NumericVector>(etasDf1[i]))[0];
-      NumericVector cur = etasDfFull[i];
-      std::fill_n(cur.begin(),ID.size(),curEta);
-    }
+// The eta table's row of each row's subject.  The eta table's first column
+// holds its subjects' integer codes, the codes the solved rows' ID column
+// uses; a row's subject without an eta row is an error.  Looking the rows up
+// by code, not by position, keeps the subjects right when the rows leave a
+// subject out (CWRES uses only the normally distributed, uncensored rows).
+arma::uvec etaRowsById(arma::Col<int>& ID, SEXP etaId) {
+  int nid = Rf_length(etaId);
+  IntegerVector code;
+  if (TYPEOF(etaId) == INTSXP) {
+    code = IntegerVector(etaId);
   } else {
-    for (unsigned int j = ID.size(); j--; ){
-      if (lastId != ID[j]) {
-        // Fill in full eta data frame
-        for (unsigned int i = neta; i--;){
-          curEta = etas(etaFulli, i);//(as<NumericVector>(etasDf1[i]))[etaFulli];
-          NumericVector cur = etasDfFull[i];
-          std::fill_n(cur.begin()+j+1,lastIndex-j,curEta);
-        }
-        etaFulli--;
-        lastId=ID[j];
-        lastIndex=j;
-        lastCol--;
-        if (lastCol == 0) {
-          // Finalize ETA
-          for (unsigned int i = neta; i--;){
-            curEta = etas(0, i);//(as<NumericVector>(etasDf1[i]))[0];
-            NumericVector cur = etasDfFull[i];
-            std::fill_n(cur.begin(),lastIndex+1,curEta);
-          }
-          break;
-        }
-      }
+    code = as<IntegerVector>(etaId);
+  }
+  int mx = 0;
+  for (int i = 0; i < nid; ++i) {
+    if (code[i] > mx) mx = code[i];
+  }
+  std::vector<int> pos(mx + 1, -1);
+  for (int i = 0; i < nid; ++i) {
+    if (code[i] >= 0) pos[code[i]] = i;
+  }
+  arma::uvec ret(ID.size());
+  for (unsigned int j = 0; j < ID.size(); ++j) {
+    int id = ID[j];
+    if (id < 0 || id > mx || pos[id] < 0) {
+      stop(_("subject code %d of the solved rows has no row in the eta table"), id);
+    }
+    ret[j] = (unsigned int)pos[id];
+  }
+  return ret;
+}
+
+// The etas of each row's subject, one column per eta
+void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
+                     List &etasDfFull, unsigned int &neta, SEXP etaId) {
+  arma::uvec rows = etaRowsById(ID, etaId);
+  for (unsigned int i = neta; i--;) {
+    NumericVector cur = etasDfFull[i];
+    for (unsigned int j = ID.size(); j--;) {
+      cur[j] = etas(rows[j], i);
     }
   }
 }
@@ -312,7 +316,7 @@ extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   etasDfFull.attr("row.names")=IntegerVector::create(NA_INTEGER,-ncalc);
   etasDfFull.attr("class") = "data.frame";
 
-  calculateDfFull(ID, etas, etasDfFull, nid, neta);
+  calculateDfFull(ID, etas, etasDfFull, neta, etasDf[0]);
 
   for (unsigned int i = pred.size(); i--;){
     int cyj, dist, yj0 = (int)yj[i];

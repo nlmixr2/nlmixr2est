@@ -72,9 +72,13 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
       }
       table$npde <- TRUE
       .fitEnv <- object$env
-      .npde <- .calcNpde(object, dv = object$DV, table = table)
+      if (.uiHasIov(object$ui)) {
+        .npde <- .addNpdeIovRefit(object, table)
+      } else {
+        .npde <- .calcNpde(object, dv = object$DV, table = table)[[2]]
+      }
       .fit <- nlmixrClone(object)
-      .new <- nlmixrCbind(.fit, .npde[[2]])
+      .new <- nlmixrCbind(.fit, .npdeFitRows(object, .npde))
       if (updateObject) {
         .evRebound <- nlmixrUpdateObject(.new, .objName, envir, .fitEnv)
       }
@@ -83,4 +87,102 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
     },
     object$env
   )
+}
+
+#' The NPDE columns of a fit with IOV, from `.refitNoIterations()`
+#'
+#' @param fit nlmixr2 fit with IOV
+#' @param table `tableControl()` with `npde = TRUE`
+#' @return data frame of the refit's NPDE columns
+#' @noRd
+#' @author Matthew L. Fidler
+.addNpdeIovRefit <- function(fit, table) {
+  .iovRefitAssertConsistent(fit, "addNpde()")
+  # the refit's CWRES would be discarded
+  table$cwres <- FALSE
+  .newFit <- .refitNoIterations(fit, calcTables = TRUE, table = table)
+  # the columns _nlmixr2est_npdeCalc() (src/npde.cpp) returns
+  .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD")
+  .miss <- setdiff(.cols, names(.newFit))
+  if (length(.miss) > 0L) {
+    stop("the IOV refit for NPDE did not give: ", paste(.miss, collapse = ", "), call. = FALSE)
+  }
+  # a table that asks for doses the fit's table lacks gives the refit more rows
+  .df <- as.data.frame(.newFit)
+  .df[.npdeObsRows(.df, .newFit$idLvl), .cols, drop = FALSE]
+}
+
+#' Stop when a refit can't give an IOV fit's tables
+#'
+#' A saem fit with `iovMethod = "collapsed"` computed its tables on the
+#' collapsed model it fitted (an eta per occasion, in a compound-symmetric
+#' block), which a focei refit does not rebuild: the refit's NPDE comes from
+#' another model's simulation, and its table has eta columns the fit's lacks.
+#'
+#' @param fit nlmixr2 fit with IOV
+#' @param what the calling function, for the message
+#' @return `NULL`, invisibly; called for its error
+#' @noRd
+#' @author Matthew L. Fidler
+.iovRefitAssertConsistent <- function(fit, what) {
+  if (identical(fit$env$iovNative, "collapsed")) {
+    stop(
+      what,
+      " can't recompute the tables of a saem fit with iovMethod = \"collapsed\"; ",
+      "ask for them when fitting (`table = tableControl()`, `calcTables = TRUE`)",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
+}
+
+#' NPDE columns with one row per row of the fit
+#'
+#' The NPDE is computed for the fit's observations.  The other rows of its
+#' table get NA, as in a fit run with `tableControl(npde = TRUE)`: those of a
+#' subject with no observation, which the table reinserts from its data, and
+#' the dosing rows of a table with them (`addDosing`, which adds `EVID`).  The
+#' fit's table and the NPDE follow the same order for the observations.
+#'
+#' @param fit nlmixr2 fit
+#' @param npde NPDE columns for the fit's observations
+#' @return `npde`, with NA rows for the fit's other rows
+#' @noRd
+#' @author Matthew L. Fidler
+.npdeFitRows <- function(fit, npde) {
+  if (nrow(npde) == nrow(fit)) {
+    return(npde)
+  }
+  .in <- .npdeObsRows(fit, fit$idLvl)
+  if (sum(.in) != nrow(npde)) {
+    # without EVID, a table's dosing rows cannot be told from its observations
+    stop(
+      "NPDE has ",
+      nrow(npde),
+      " rows for the fit's ",
+      sum(.in),
+      " observations",
+      if (!("EVID" %in% names(fit))) "; a table with dosing rows needs its 'EVID' column",
+      call. = FALSE
+    )
+  }
+  .ret <- npde[rep(NA_integer_, nrow(fit)), , drop = FALSE]
+  .ret[.in, ] <- npde
+  rownames(.ret) <- NULL
+  .ret
+}
+
+#' The rows of a fit's table that are observations NPDE is computed for
+#'
+#' @param df the fit's table
+#' @param idLvl the fit's subject labels; a reinserted subject has none
+#' @return logical vector, one per row
+#' @noRd
+#' @author Matthew L. Fidler
+.npdeObsRows <- function(df, idLvl) {
+  .in <- as.character(df$ID) %in% as.character(idLvl)
+  if ("EVID" %in% names(df)) {
+    .in <- .in & df$EVID == 0
+  }
+  .in
 }
