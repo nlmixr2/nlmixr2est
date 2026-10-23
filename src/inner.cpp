@@ -280,20 +280,26 @@ SEXP _nlmixr2est_nmRxThreadIdTrack(SEXP onS) {
   return Rf_ScalarLogical(was);
 }
 
-// For unit tests: c(checked, miss), the parallel subject iterations checked and
-// those that began on another thread's id since the last reset; `reset` zeroes
-// both.  The check reads only the id at the start of each nmForEachSubject()
+// For unit tests: c(checked, miss, openmp), the parallel subject iterations
+// checked and those that began on another thread's id since the last reset
+// (`reset` zeroes both), and whether nlmixr2est has OpenMP (else nothing forks).  The check reads only the id at the start of each nmForEachSubject()
 // iteration: a body that sets a wrong id and solves in the same iteration, and
 // a hand-written region (outerSolveFill()'s), are not seen, so miss = 0 says
 // nothing about them.
 SEXP _nlmixr2est_nmRxThreadIdMissTest(SEXP reset) {
   bool r = Rf_asLogical(reset) == TRUE;
-  SEXP ret = PROTECT(Rf_allocVector(INTSXP, 2));
+  SEXP ret = PROTECT(Rf_allocVector(INTSXP, 3));
   INTEGER(ret)[0] = r ? nmRxThreadIdChecked.exchange(0) : nmRxThreadIdChecked.load();
   INTEGER(ret)[1] = r ? nmRxThreadIdMiss.exchange(0) : nmRxThreadIdMiss.load();
-  SEXP nm = PROTECT(Rf_allocVector(STRSXP, 2));
+#ifdef _OPENMP
+  INTEGER(ret)[2] = 1;
+#else
+  INTEGER(ret)[2] = 0;
+#endif
+  SEXP nm = PROTECT(Rf_allocVector(STRSXP, 3));
   SET_STRING_ELT(nm, 0, Rf_mkChar("checked"));
   SET_STRING_ELT(nm, 1, Rf_mkChar("miss"));
+  SET_STRING_ELT(nm, 2, Rf_mkChar("openmp"));
   Rf_setAttrib(ret, R_NamesSymbol, nm);
   UNPROTECT(2);
   return ret;

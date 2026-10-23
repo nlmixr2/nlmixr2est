@@ -26,8 +26,9 @@
   .d[.d$ID %in% 1:3, ]
 }
 
-# c(checked, miss): the parallel subject iterations checked, and those that
-# began on another thread's rxode2 id, since the last reset
+# c(checked, miss, openmp): the parallel subject iterations checked, and those
+# that began on another thread's rxode2 id, since the last reset; and whether
+# nlmixr2est has OpenMP
 .impThreadMiss <- function(reset = FALSE) {
   .Call(`_nlmixr2est_nmRxThreadIdMissTest`, reset, PACKAGE = "nlmixr2est")
 }
@@ -56,6 +57,7 @@ nmTest(
       # thread the region does not fork and nothing is checked
       rxode2::setRxThreads(2L)
       skip_if(rxode2::getRxThreads() < 2L, "one thread")
+      skip_if(.impThreadMiss()[["openmp"]] == 0L, "nlmixr2est has no OpenMP")
       .wasOn <- .impThreadTrack(TRUE)
       withr::defer(.impThreadTrack(.wasOn))
       .want <- c(imp = 18.5322024276, impmap = 18.5303802572)
