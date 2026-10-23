@@ -148,16 +148,18 @@ nmTest({
   # and etTrans()) has two EVID 0 records.  When etTrans() rejects the data, its
   # message, which must be one of the reasons no data can avoid: a dose with a
   # missing AMT, EVID 1 or 4 with an MDV of 0 or missing, or (rxode2 after 5.1.8)
-  # a missing EVID with a nonzero AMT
+  # a missing EVID on a dose record
+  .utFoceiReasons <- paste0(
+    "'amt' value NA for dose event|'mdv' cannot be 0 when 'evid'=[14]",
+    if (utils::packageVersion("rxode2") > "5.1.8") {
+      "|'evid' is missing on a record with dose information"
+    }
+  )
   .utFoceiObs <- function(d, ui) {
     .e <- new.env(parent = emptyenv())
     .err <- .utFoceiError(d, ui, .e)
     if (!is.null(.err)) {
-      expect_match(
-        .err,
-        "'amt' value NA for dose event|'mdv' cannot be 0 when 'evid'=[14]|'evid' is missing on a record with a nonzero 'amt'",
-        label = paste(names(d), d[2, ], collapse = " ")
-      )
+      expect_match(.err, .utFoceiReasons, label = paste(names(d), d[2, ], collapse = " "))
       return(.err)
     }
     sum(.e$dataSav$EVID == 0) == 2L
