@@ -107,7 +107,16 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
     .in <- .in & fit$EVID == 0
   }
   if (sum(.in) != nrow(npde)) {
-    stop("NPDE has ", nrow(npde), " rows for the fit's ", sum(.in), " observations", call. = FALSE)
+    # without EVID, a table's dosing rows cannot be told from its observations
+    stop(
+      "NPDE has ",
+      nrow(npde),
+      " rows for the fit's ",
+      sum(.in),
+      " observations",
+      if (!("EVID" %in% names(fit))) "; a table with dosing rows needs its 'EVID' column",
+      call. = FALSE
+    )
   }
   .ret <- npde[rep(NA_integer_, nrow(fit)), , drop = FALSE]
   .ret[.in, ] <- npde

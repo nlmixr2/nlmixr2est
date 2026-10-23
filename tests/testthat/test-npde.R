@@ -240,6 +240,13 @@ nmTest({
     expect_identical(nrow(.new), 144L)
     expect_identical(which(is.na(.new$NPDE)), which(.new$EVID != 0))
     expect_equal(.new$NPDE[.new$EVID == 0], .plain$NPDE, tolerance = 1e-12)
+    # without EVID the dosing rows cannot be found
+    .noEvid <- .fits[[2]][, setdiff(names(.fits[[2]]), "EVID")]
+    expect_error(
+      .npdeFitRows(.noEvid, .plain[, "NPDE", drop = FALSE]),
+      "NPDE has 132 rows for the fit's 144 observations; a table with dosing rows needs its 'EVID' column",
+      fixed = TRUE
+    )
   })
 
   test_that("npdeCalc() stops when the simulation does not match the observations", {
