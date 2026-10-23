@@ -87,6 +87,8 @@ SEXP _nlmixr2est_covAccept_(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_covProbeSolveTolSet_(void);
 SEXP _nlmixr2est_covProbeSolveTolRestore_(SEXP);
 SEXP _nlmixr2est_shi21CentralWrap(SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_shi21SearchWrap(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_shi21HessianWrap(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_shi21RatioCensorSet(SEXP);
 SEXP _nlmixr2est_shi21RatioTest(SEXP, SEXP);
 
@@ -315,6 +317,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_covProbeSolveTolSet_", (DL_FUNC) &_nlmixr2est_covProbeSolveTolSet_, 0},
   {"_nlmixr2est_covProbeSolveTolRestore_", (DL_FUNC) &_nlmixr2est_covProbeSolveTolRestore_, 1},
   {"_nlmixr2est_shi21CentralWrap", (DL_FUNC) &_nlmixr2est_shi21CentralWrap, 5},
+  {"_nlmixr2est_shi21SearchWrap", (DL_FUNC) &_nlmixr2est_shi21SearchWrap, 8},
+  {"_nlmixr2est_shi21HessianWrap", (DL_FUNC) &_nlmixr2est_shi21HessianWrap, 6},
   {"_nlmixr2est_shi21RatioCensorSet", (DL_FUNC) &_nlmixr2est_shi21RatioCensorSet, 1},
   {"_nlmixr2est_shi21RatioTest", (DL_FUNC) &_nlmixr2est_shi21RatioTest, 2},
   {"_nlmixr2est_likInner", (DL_FUNC) &_nlmixr2est_likInner, 2},
