@@ -232,15 +232,15 @@ nlmixr2Est(env, ...)
 
   This needs to have:
 
-  \- rxode2 ui object in \`\$ui\`
+  - rxode2 ui object in `$ui`
 
-  \- data to fit in the estimation routine in \`\$data\`
+  - data to fit in the estimation routine in `$data`
 
-  \- control for the estimation routine's control options in \`\$ui\`
+  - control for the estimation routine's control options in `$ui`
 
 - ...:
 
-  Other arguments provided to \`nlmixr2Est()\` provided for flexibility
+  Other arguments provided to `nlmixr2Est()` provided for flexibility
   but not currently used inside nlmixr
 
 ## Value
@@ -252,32 +252,59 @@ nlmixr2 fit object
 This is a S3 generic that allows others to use the nlmixr2 environment
 to do their own estimation routines
 
-A prior distribution given in the \`ini()\` block is never silently
-ignored. Before dispatching, \`nlmixr2Est()\` refuses any prior the
-method cannot use, so a method that does not handle priors gets that for
-free and a model carrying one fails with an explanation instead of being
-fit to something other than what it says.
+A prior distribution given in the `ini({})` block is never silently
+ignored. Before dispatching, `nlmixr2Est()` refuses any prior the method
+cannot use, so a method that does not handle priors gets that for free
+and a model carrying one fails with an explanation instead of being fit
+to something other than what it says.
 
 A method says what it supports with an attribute on itself:
 
-“\` attr(nlmixr2Est.myMethod, "nlmixr2Priors") \<- "general" “\`
+    attr(nlmixr2Est.myMethod, "nlmixr2Priors") <- "general"
 
-\- \`"none"\`, which is also what an absent attribute means – the method
-cannot use priors at all - \`"theta"\` – priors on population parameters
-only (\`dnorm()\`, \`dcauchy()\`, \`stdNormal()\` and the
-\`multiNormal()\` family among thetas); anything referencing an omega
-element is refused. No FOCEi-family method uses this level – they
-declare \`"general"\`. - \`"general"\` – everything the shared kernel's
-\`"general"\` method covers: the above, plus a normal prior directly on
-an omega element and a textbook inverse-Wishart on an omega block. This
-is what \`est="focei"\` and the rest of its family declare. -
-\`"nwpri"\` – normal priors and degrees of freedom on an omega block
-(\`invWishart(4)\`), evaluated the way a NONMEM NWPRI model works; a
-normal prior on the omega values themselves is refused - \`"tnpri"\` –
-normal priors including directly on omega elements (Monolix's/NONMEM's
-own-estimation joint-normal assumption); \`dcauchy()\` and
-\`invWishart()\` are refused - \`"all"\` – the method handles
-everything, so nothing is checked
+- `"none"`, which is also what an absent attribute means – the method
+  cannot use priors at all
+
+- `"theta"` – priors on population parameters only
+  ([`dnorm()`](https://rdrr.io/r/stats/Normal.html),
+  [`dcauchy()`](https://rdrr.io/r/stats/Cauchy.html), `stdNormal()` and
+  the `multiNormal()` family among thetas); anything referencing an
+  omega element is refused. No FOCEi-family method uses this level –
+  they declare `"general"`.
+
+- `"general"` – everything the shared kernel's `"general"` method
+  covers: the above, plus a normal prior directly on an omega element
+  and a textbook inverse-Wishart on an omega block. This is what
+  `est="focei"` and the rest of its family declare.
+
+- `"nwpri"` – normal priors and degrees of freedom on an omega block
+  (`invWishart(4)`), evaluated the way a NONMEM NWPRI model works; a
+  normal prior on the omega values themselves is refused
+
+- `"tnpri"` – normal priors including directly on omega elements
+  (Monolix's/NONMEM's own-estimation joint-normal assumption);
+  [`dcauchy()`](https://rdrr.io/r/stats/Cauchy.html) and `invWishart()`
+  are refused
+
+- `"all"` – the method handles everything, so nothing is checked
+
+A repeated omega block (`same()`) ties its copies' variances to its
+master's. A model with one is refused by any method that has not said it
+keeps that tie, so a method that would estimate the copies apart fails
+with an explanation instead of dropping the tie. A method says so with
+
+    attr(nlmixr2Est.myMethod, "sameBlock") <- TRUE
+
+when it estimates the copies as one, and the refusal then names it among
+the methods that keep the tie; or with
+
+    attr(nlmixr2Est.myMethod, "sameBlock") <- "fixed"
+
+when it does not estimate omega at all (it takes the model's omega as
+given), so it is accepted but not named.
+`attr(nlmixr2Est.myMethod, "iovSame") <- TRUE`, which lets a method use
+the repeated-block expansion of inter-occasion variability
+(`iovMethod = "omega"`), says the same as `"sameBlock"` `TRUE`.
 
 ## Author
 

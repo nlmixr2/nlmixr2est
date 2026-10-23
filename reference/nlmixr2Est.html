@@ -268,14 +268,14 @@
 
 <dl><dt id="arg-env">env<a class="anchor" aria-label="anchor" href="#arg-env"></a></dt>
 <dd><p>Environment for the nlmixr2 estimation routines.</p>
-<p>This needs to have:</p>
-<p>- rxode2 ui object in `$ui`</p>
-<p>- data to fit in the estimation routine in `$data`</p>
-<p>- control for the estimation routine's control options in `$ui`</p></dd>
+<p>This needs to have:</p><ul><li><p>rxode2 ui object in <code>$ui</code></p></li>
+<li><p>data to fit in the estimation routine in <code>$data</code></p></li>
+<li><p>control for the estimation routine's control options in <code>$ui</code></p></li>
+</ul></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Other arguments provided to `nlmixr2Est()` provided for
+<dd><p>Other arguments provided to <code>nlmixr2Est()</code> provided for
 flexibility but not currently used inside nlmixr</p></dd>
 
 </dl></div>
@@ -286,33 +286,42 @@ flexibility but not currently used inside nlmixr</p></dd>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>This is a S3 generic that allows others to use the nlmixr2
-  environment to do their own estimation routines</p>
-<p>A prior distribution given in the `ini()` block is never silently
-ignored.  Before dispatching, `nlmixr2Est()` refuses any prior the
+environment to do their own estimation routines</p>
+<p>A prior distribution given in the <code>ini({})</code> block is never silently
+ignored.  Before dispatching, <code>nlmixr2Est()</code> refuses any prior the
 method cannot use, so a method that does not handle priors gets that
 for free and a model carrying one fails with an explanation instead
 of being fit to something other than what it says.</p>
 <p>A method says what it supports with an attribute on itself:</p>
-<p>“`
-attr(nlmixr2Est.myMethod, "nlmixr2Priors") &lt;- "general"
-“`</p>
-<p>- `"none"`, which is also what an absent attribute means – the
-  method cannot use priors at all
-- `"theta"` – priors on population parameters only (`dnorm()`,
-  `dcauchy()`, `stdNormal()` and the `multiNormal()` family among
-  thetas); anything referencing an omega element is refused.  No
-  FOCEi-family method uses this level – they declare `"general"`.
-- `"general"` – everything the shared kernel's `"general"` method
-  covers: the above, plus a normal prior directly on an omega element
-  and a textbook inverse-Wishart on an omega block.  This is what
-  `est="focei"` and the rest of its family declare.
-- `"nwpri"` – normal priors and degrees of freedom on an omega block
-  (`invWishart(4)`), evaluated the way a NONMEM NWPRI model works; a
-  normal prior on the omega values themselves is refused
-- `"tnpri"` – normal priors including directly on omega elements
-  (Monolix's/NONMEM's own-estimation joint-normal assumption);
-  `dcauchy()` and `invWishart()` are refused
-- `"all"` – the method handles everything, so nothing is checked</p>
+<p></p><div class="sourceCode"><pre><code><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">attr</span>(nlmixr2Est.myMethod, <span class="st">"nlmixr2Priors"</span>) <span class="ot">&lt;-</span> <span class="st">"general"</span></span></code></pre><p></p></div><ul><li><p><code>"none"</code>, which is also what an absent attribute means – the
+method cannot use priors at all</p></li>
+<li><p><code>"theta"</code> – priors on population parameters only (<code><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">dnorm()</a></code>,
+<code><a href="https://rdrr.io/r/stats/Cauchy.html" class="external-link">dcauchy()</a></code>, <code>stdNormal()</code> and the <code>multiNormal()</code> family among
+thetas); anything referencing an omega element is refused.  No
+FOCEi-family method uses this level – they declare <code>"general"</code>.</p></li>
+<li><p><code>"general"</code> – everything the shared kernel's <code>"general"</code> method
+covers: the above, plus a normal prior directly on an omega element
+and a textbook inverse-Wishart on an omega block.  This is what
+<code>est="focei"</code> and the rest of its family declare.</p></li>
+<li><p><code>"nwpri"</code> – normal priors and degrees of freedom on an omega block
+(<code>invWishart(4)</code>), evaluated the way a NONMEM NWPRI model works; a
+normal prior on the omega values themselves is refused</p></li>
+<li><p><code>"tnpri"</code> – normal priors including directly on omega elements
+(Monolix's/NONMEM's own-estimation joint-normal assumption);
+<code><a href="https://rdrr.io/r/stats/Cauchy.html" class="external-link">dcauchy()</a></code> and <code>invWishart()</code> are refused</p></li>
+<li><p><code>"all"</code> – the method handles everything, so nothing is checked</p></li>
+</ul><p>A repeated omega block (<code>same()</code>) ties its copies' variances to its
+master's.  A model with one is refused by any method that has not said it
+keeps that tie, so a method that would estimate the copies apart fails with
+an explanation instead of dropping the tie.  A method says so with</p>
+<p></p><div class="sourceCode"><pre><code><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">attr</span>(nlmixr2Est.myMethod, <span class="st">"sameBlock"</span>) <span class="ot">&lt;-</span> <span class="cn">TRUE</span></span></code></pre><p></p></div>
+<p>when it estimates the copies as one, and the refusal then names it among the
+methods that keep the tie; or with</p>
+<p></p><div class="sourceCode"><pre><code><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">attr</span>(nlmixr2Est.myMethod, <span class="st">"sameBlock"</span>) <span class="ot">&lt;-</span> <span class="st">"fixed"</span></span></code></pre><p></p></div>
+<p>when it does not estimate omega at all (it takes the model's omega as
+given), so it is accepted but not named.  <code>attr(nlmixr2Est.myMethod, "iovSame") &lt;- TRUE</code>, which lets a method use the repeated-block expansion
+of inter-occasion variability (<code>iovMethod = "omega"</code>), says the same as
+<code>"sameBlock"</code> <code>TRUE</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="author">Author<a class="anchor" aria-label="anchor" href="#author"></a></h2>
