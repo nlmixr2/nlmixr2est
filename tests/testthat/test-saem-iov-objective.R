@@ -43,11 +43,8 @@
 }
 
 # The fit's objective, its type, and whether reading it fell back to FOCEi
-.saemIovObj <- function(mod, iovMethod = NULL) {
-  .ctl <- saemControl(print = 0, covMethod = "")
-  if (!is.null(iovMethod)) {
-    .ctl$iovMethod <- iovMethod
-  }
+.saemIovObj <- function(mod, iovMethod = "twoLevel") {
+  .ctl <- saemControl(print = 0, covMethod = "", iovMethod = iovMethod)
   .fit <- suppressWarnings(suppressMessages(nlmixr2(mod, .saemIovObjData(), "saem", control = .ctl)))
   .msg <- capture.output(.objf <- .fit$objf, type = "message")
   list(objf = .objf, ofvType = .fit$ofvType, fellBack = any(grepl("quadrature failed", .msg)))
