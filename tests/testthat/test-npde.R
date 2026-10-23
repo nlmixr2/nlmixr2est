@@ -89,6 +89,38 @@
   )
 }
 
+# In a child process: npdeCalc() for a single subject, which left its span's
+# end unset
+.npdeCalcOneIdChild <- function(pkg) {
+  if (nzchar(pkg)) {
+    devtools::load_all(pkg, quiet = TRUE)
+  } else {
+    library(nlmixr2est)
+  }
+  # npdeCalc() draws from rxode2's engines, which its first draw creates
+  rxode2::rxnorm(n = 1)
+  .sim <- data.frame(
+    sim.id = rep(1:50, each = 2),
+    id = 1L,
+    sim = rep(seq(-2, 2, length.out = 50), each = 2) + rep(c(0, 0.5), 50),
+    rxLambda = 1,
+    rxYj = 0,
+    rxLow = 0,
+    rxHi = 1
+  )
+  .ret <- .Call(
+    "_nlmixr2est_npdeCalc",
+    .sim,
+    c(0.1, 0.4),
+    c(0L, 0L),
+    NULL,
+    NULL,
+    tableControl(),
+    PACKAGE = "nlmixr2est"
+  )
+  .ret[[2]]$NPDE
+}
+
 # In a child process, so an abort fails the test: the NPDE of a fit with an
 # observation-less subject, from the fit's table or from addNpde()
 .npdeNoObsChild <- function(pkg, est, mode, mod, dat) {
@@ -239,6 +271,13 @@ nmTest({
     expect_identical(nrow(.new), 144L)
     expect_identical(which(is.na(.new$NPDE)), which(.new$EVID != 0))
     expect_equal(.new$NPDE[.new$EVID == 0], .plain$NPDE, tolerance = 1e-12)
+    # without EVID the dosing rows cannot be found
+    .noEvid <- .fits[[2]][, setdiff(names(.fits[[2]]), "EVID")]
+    expect_error(
+      .npdeFitRows(.noEvid, .plain[, "NPDE", drop = FALSE]),
+      "NPDE has 132 rows for the fit's 144 observations; a table with dosing rows needs its 'EVID' column",
+      fixed = TRUE
+    )
   })
 
   test_that("npdeCalc() stops when the simulation does not match the observations", {
@@ -247,6 +286,14 @@ nmTest({
       callr::r(.npdeCalcMismatchChild, args = list(pkg = .npdeChildPkg())),
       "npdeCalc: the simulation has 3 observations per sample (2 samples, 6 rows), but the data 2"
     )
+  })
+
+  test_that("npdeCalc() of a single subject", {
+    # two subjects, one without observations, leave the fit with one
+    skip_if_not_installed("callr")
+    .npde <- callr::r(.npdeCalcOneIdChild, args = list(pkg = .npdeChildPkg()))
+    expect_length(.npde, 2L)
+    expect_true(all(is.finite(.npde)))
   })
 
   test_that("NPDE of a fit with a subject without observations", {

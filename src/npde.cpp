@@ -12,12 +12,12 @@
 
 arma::Col<int> getSimIdLoc(arma::Col<int>& id, arma::Col<int>& simId,
 		      unsigned int &nid, unsigned int &K) {
-  int i = 0;
+  int i = 0, n = id.size();
   int lastId=id[0];
   int lastSimId = simId[0];
   int totNobs = 0;
   nid = 1;
-  while (simId[i] == lastSimId) {
+  while (i < n && simId[i] == lastSimId) {
     if (lastId != id[i]) {
       nid++;
       lastId = id[i];
@@ -27,8 +27,11 @@ arma::Col<int> getSimIdLoc(arma::Col<int>& id, arma::Col<int>& simId,
   K =   id.size() /  totNobs;
 
   arma::Col<int> idLoc(nid+1);
-  unsigned int j = 0;
-  for (i = 0; i < totNobs; i++) {
+  // the first subject starts at 0 even when it is the only one
+  idLoc[0] = 0;
+  unsigned int j = 1;
+  lastId = id[0];
+  for (i = 1; i < totNobs; i++) {
     if (lastId != id[i]){
       idLoc[j++] = i;
       lastId = id[i];
