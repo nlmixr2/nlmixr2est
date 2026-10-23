@@ -1,5 +1,14 @@
 # Changelog
 
+## nlmixr2est (development version)
+
+### Bug fixes
+
+- A fit that fails late in its output step (for example a `saem` fit
+  whose inter-occasion variability cannot be finalized) now reports its
+  own error. The timing step read the fit’s time table before the fit
+  had one, and its “object ‘time’ not found” replaced the error.
+
 ## nlmixr2est 7.2.1
 
 CRAN release: 2026-10-14
