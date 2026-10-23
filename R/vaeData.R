@@ -1047,11 +1047,10 @@ vaeCovariates <- function(
   ## normalize data columns (needed early for covariate discovery + pinning)
   d <- as.data.frame(data)
   names(d) <- toupper(names(d))
-  ## no EVID: derive from AMT; with no AMT column either (dose-free data), all
-  ## rows are observations (d$AMT is NULL -> the ifelse would yield length 0).
-  if (is.null(d$EVID)) {
-    d$EVID <- if (is.null(d$AMT)) rep(0L, nrow(d)) else ifelse(is.na(d$AMT) | d$AMT == 0, 0L, 1L)
-  }
+  ## no EVID column: the one FOCEi and etTrans() derive
+  d <- .nmWithEvid(d)
+  # the FOCEi inner problem drops these subjects too, so the two agree
+  d <- .nmDropNoObsSubjects(d)
   .ids <- unique(d$ID)
   N <- length(.ids)
 
@@ -1316,7 +1315,7 @@ vaeCovariates <- function(
     ## Exponents and lambdas are NOT scales and are left alone.
     .errScaleAbs <- as.character(.idf$name[!is.na(.idf$err) & .idf$err %in% c("add", "lnorm")])
     .errScaleRel <- as.character(.idf$name[!is.na(.idf$err) & .idf$err %in% c("prop", "pow")])
-    .dvObs <- suppressWarnings(as.numeric(d$DV[d$EVID == 0]))
+    .dvObs <- suppressWarnings(as.numeric(d$DV[.nmObsRows(d)]))
     .dvSpread <- stats::sd(.dvObs[is.finite(.dvObs)])
     if (!is.finite(.dvSpread) || .dvSpread <= 0) {
       .dvSpread <- 1
@@ -1399,21 +1398,9 @@ vaeCovariates <- function(
   .regressStage2 <- .vaeRegressStage2(ui, .regressNames, .regressErrIdx0)
 
   ## per-subject decoder inputs + gather all obs for standardization
-  subj <- vector("list", N)
-  .allTime <- numeric(0)
-  .allDv <- numeric(0)
-  for (i in seq_len(N)) {
-    .di <- d[d$ID == .ids[i], , drop = FALSE]
-    .obs <- .di[.di$EVID == 0, , drop = FALSE]
-    .times <- .obs$TIME
-    .y <- .obs$DV
-    ## M2/M3/M4 censoring columns (0 / NA when absent)
-    .cens <- if (is.null(.obs$CENS)) integer(length(.y)) else as.integer(.obs$CENS)
-    .limit <- if (is.null(.obs$LIMIT)) rep(NA_real_, length(.y)) else as.numeric(.obs$LIMIT)
-    subj[[i]] <- list(ev = .di, times = .times, y = .y, n = length(.times), cens = .cens, limit = .limit)
-    .allTime <- c(.allTime, .times)
-    .allDv <- c(.allDv, .y)
-  }
+  subj <- .nmSubjectObs(d, .ids)
+  .allTime <- as.numeric(unlist(lapply(subj, `[[`, "times")))
+  .allDv <- as.numeric(unlist(lapply(subj, `[[`, "y")))
   Tmax <- max(vapply(subj, function(s) s$n, integer(1)))
   .tMax <- max(.allTime)
   ## inputScale: which DV values the encoder-input centering/scaling is computed
