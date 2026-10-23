@@ -514,5 +514,20 @@ nmTest({
     expect_identical(.s$ev, .d[4:6, ])
     expect_identical(.s$times, c(2, 3))
     expect_identical(.s$y, c(7, 8))
+    # a reset starts a new episode at an earlier clock time; episodes keep their order
+    .r <- data.frame(
+      ID = 1,
+      TIME = c(0, 1, 0, 1),
+      EVID = c(1, 0, 4, 0),
+      AMT = c(100, 0, 200, 0),
+      DV = c(NA, 3, NA, 6)
+    )
+    .s <- .nmSubjectObs(.r, 1)[[1]]
+    expect_identical(.s$ev, .r)
+    expect_identical(.s$times, c(1, 1))
+    expect_identical(.s$y, c(3, 6))
+    .s <- .nmSubjectObs(.r[c(2, 1, 3, 4), ], 1)[[1]]
+    expect_identical(.s$ev, .r)
+    expect_identical(.s$y, c(3, 6))
   })
 })
