@@ -50,7 +50,7 @@ Imports:
     knitr,
     L0Learn,
     lbfgsb3c (>= 2024-3.6),
-    lotri,
+    lotri (>= 1.0.5),
     methods,
     minqa,
     n1qn1 (>= 6.0.1-12),

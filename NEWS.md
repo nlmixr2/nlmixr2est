@@ -57,6 +57,33 @@
   used to pair the predictions with the observations in data order (the
   estimates moved by about 1%).
 
+- Whether a model has inter-occasion variability is now read from the model
+  itself, not from the last fit's IOV rewrite.  The analytic-gradient scope
+  checks called outside a fit (`ui$foceiOuter`, the VAE gradient scope) no longer
+  depend on the previous fit in the session; inside a fit they were not
+  affected, since each fit sets the rewrite before they run.  A theta named
+  like an IOV variable of the previous fit is no longer taken for an IOV
+  magnitude, which left it out of `ui$foceiSkipCov`'s covariance thetas, the
+  mu-referenced thetas and, during an `est = "vae"` fit, the nonMuTheta
+  handling.
+
+- A subject-level repeated omega block (`same()`, lotri 1.0.5) beside
+  inter-occasion variability no longer stops a FOCEi-family fit with
+  "invalid first argument".  A method that cannot keep a repeated block's
+  variances equal now refuses a model built with one and names the methods
+  that can: `est = "nlme"` estimated each copy on its own without a word, and
+  `saem`, `imp`, `impmap`, `qrpem` and the `npag` and `npb` family stopped
+  with unrelated errors.  A third-party method is refused too until it
+  declares `attr(nlmixr2Est.<method>, "sameBlock")`: `TRUE` when it keeps the
+  tie, `"fixed"` when it does not estimate omega (see `?nlmixr2Est`).  A
+  refit from a fit is not refused, since the fit's model has already lost the
+  tie, as it did before.
+
+- With a time-varying covariate on a `linCmt()` parameter, an eta whose block
+  repeats another's (`same()`) was left out of the sensitivity carry added in
+  7.1.0, so its analytic gradient took the parameter as constant within a
+  subject; it now gets the carry like any other subject-level eta.
+
 # nlmixr2est 7.2.1
 
 ## Bug fixes
