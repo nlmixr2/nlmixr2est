@@ -324,7 +324,7 @@
 #' @param env fit environment
 #' @param what covariance-method name that was not installed
 #' @param reason why (a `.covGuard()` reason)
-#' @return invisibly `NULL`
+#' @return the warning text, invisibly
 #' @noRd
 .covRejectWarn <- function(env, what, reason) {
   .kept <- if (!is.matrix(env$cov)) {
@@ -334,8 +334,42 @@
   } else {
     "kept the previous one"
   }
-  .what <- if (.covIsName(what)) sprintf("\"%s\"", what) else "the"
-  warning(sprintf("%s covariance %s; %s", .what, reason, .kept), call. = FALSE)
+  # a quoted method name stands for its covariance; only a bare "the" needs the noun
+  .covWarn(
+    if (.covIsName(what)) {
+      sprintf("\"%s\" %s; %s", what, reason, .kept)
+    } else {
+      sprintf("the covariance %s; %s", reason, .kept)
+    }
+  )
+}
+
+# The most display columns a covariance warning keeps: a `$runInfo` line renders
+# under 75 characters (CLAUDE.md)
+.covWarnWidth <- 74L
+
+#' Clip a covariance message to the width of a `$runInfo` line
+#'
+#' To `.covWarnWidth` display columns, with an ellipsis where it was cut.
+#' @param w the text
+#' @param width the most display columns to keep, the ellipsis included
+#' @return the clipped text
+#' @noRd
+.covClip <- function(w, width = .covWarnWidth) {
+  as.character(cli::ansi_strtrim(w, width, ellipsis = "..."))
+}
+
+#' Give a covariance warning on one line
+#'
+#' Covariance warnings name a method by its quoted label, which stands for its
+#' covariance, and are clipped by [.covClip()].
+#' @param w the warning text
+#' @return the clipped text, invisibly
+#' @noRd
+.covWarn <- function(w) {
+  .w <- .covClip(w)
+  warning(.w, call. = FALSE)
+  invisible(.w)
 }
 
 #' Keep the installed covariance recoverable from covList before it is replaced
@@ -405,11 +439,20 @@
   }
   .nlmixr2CovConditionUpdate(env)
   if (warn && .covIsName(what) && !.covSameName(.covBaseName(what), .covBaseName(label))) {
-    warning(sprintf("\"%s\" covariance installed instead of the requested \"%s\"", label, what), call. = FALSE)
+    .covWarn(.covInsteadMsg(label, what))
   } else if (warn && .covIsName(what) && .covIsName(label) && !identical(what, label)) {
     .covRepairWarn(what, label)
   }
   invisible(TRUE)
+}
+
+#' The warning that a covariance other than the requested one was installed
+#' @param label the installed covariance's label
+#' @param what the requested method
+#' @return the warning text
+#' @noRd
+.covInsteadMsg <- function(label, what) {
+  sprintf("\"%s\" installed instead of the requested \"%s\"", label, what)
 }
 
 #' Warn that a covariance was installed in its sqrtm-repaired form
@@ -426,14 +469,7 @@
   .w <- .covUnrepaired(label)
   .wb <- .covBaseName(what)
   if (!identical(.w, label) && !nzchar(.covFdType(label)) && identical(.wb, .covUnrepaired(.wb))) {
-    warning(
-      sprintf(
-        "\"%s\" covariance not positive definite; installed as \"%s\" (sqrtm)",
-        .w,
-        label
-      ),
-      call. = FALSE
-    )
+    .covWarn(sprintf("\"%s\" is not positive definite; installed as \"%s\" (sqrtm)", .w, label))
   }
   invisible()
 }
@@ -441,14 +477,16 @@
 #' Stop a `setCov()` request that could not be computed or installed
 #' @param method requested covariance-method name
 #' @param reason what was wrong with the result, or `NULL`
+#' @param why why no result was computed, or `NULL`
 #' @return never returns
 #' @noRd
-.setCovFail <- function(method, reason = NULL) {
+.setCovFail <- function(method, reason = NULL, why = NULL) {
   stop(
     "covMethod=\"",
     method,
     "\" could not be computed for this fit",
     if (length(reason) == 1L && reason != "could not be computed") paste0(" (the result ", reason, ")"),
+    if (length(why) == 1L) paste0(" (", why, ")"),
     "; the covariance is left unchanged",
     call. = FALSE
   )
@@ -1267,6 +1305,15 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
   .setCovInstall(env, method, structure(.cov, mixRotated = TRUE))
 }
 
+#' Keep an error from the analytic assembly as the reason `setCov()` gives
+#' @param e the condition
+#' @return `NULL`
+#' @noRd
+.setCovAnalyticError <- function(e) {
+  .foceiAnalyticWhy$reason <- paste0("an error (", .foceiAnalyticOneLine(conditionMessage(e)), ")")
+  NULL
+}
+
 #' Assemble the exact analytic observed information and install the shape
 #' `method` names
 #'
@@ -1280,16 +1327,20 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
 #' @noRd
 .setCovAnalytic <- function(fit, env, method) {
   .full <- .covIsFull(method)
-  .r <- tryCatch(.foceiCovAnalyticCalc(fit), error = function(e) NULL)
+  .r <- tryCatch(.foceiCovAnalyticCalc(fit), error = .setCovAnalyticError)
+  if (is.null(.r)) {
+    .why <- .foceiAnalyticWhy$reason
+    .setCovFail(method, why = if (is.null(.why)) .foceiAnalyticNoReason else .why)
+  }
   # `pd` judges the FULL matrix, which is the right gate for either shape: a
   # submatrix of the inverse of an indefinite information can look positive
   # definite on its own (#1055)
-  if (!is.null(.r) && !isTRUE(.r$pd)) {
+  if (!isTRUE(.r$pd)) {
     .setCovFail(method, "is not positive definite")
   }
   .cov <- .covAnalyticScope(env, .r$cov, .full)
   if (is.null(.cov)) {
-    .setCovFail(method)
+    .setCovFail(method, why = "its theta block could not be identified")
   }
   .setCovInstall(env, method, .cov)
   assign(".covAnalytic", .r, envir = env)
@@ -1329,7 +1380,7 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
     if (!.listed) {
       .setCovFail(method, if (.covIsName(.label)) sprintf("was \"%s\"", .label))
     }
-    warning(sprintf("\"%s\" covariance installed instead of the requested \"%s\"", .label, method), call. = FALSE)
+    .covWarn(.covInsteadMsg(.label, method))
     assign(".setCovFallback", .label, envir = env)
   }
   .ok <- .covInstall(

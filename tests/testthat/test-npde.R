@@ -215,10 +215,10 @@ nmTest({
     # is the occasion eta, and the thetas and add.sd have no condition or are
     # residual
     .iniDf <- rxode2::rxode2(.iovFitMuMod)$iniDf
-    expect_identical(.iniDf$name[.iniDfIovRows(.iniDf)], "iov.cl")
+    expect_identical(.iniDf$name[.iovOccRows(.iniDf)], "iov.cl")
     .iniDf <- rxode2::rxode2(.npdeSameMod)$iniDf
     expect_identical(.iniDf$condition[.iniDf$name == "eta.v"], "id:same:eta.cl")
-    expect_false(any(.iniDfIovRows(.iniDf)))
+    expect_false(any(.iovOccRows(.iniDf)))
   })
 
   test_that("addNpde() on a table with the dosing rows gives them NA, as the fit's own NPDE does", {

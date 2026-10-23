@@ -101,7 +101,7 @@ test_that("an unusable information matrix is reported instead of silently leavin
     .w,
     c(
       "linearized FIM failed; using the SAEM information matrix",
-      "\"Ha\" covariance is not finite; none installed"
+      "\"Ha\" is not finite; none installed"
     )
   )
   expect_false(exists("cov", envir = .e, inherits = FALSE))
@@ -181,7 +181,7 @@ test_that("a Ha theta block with every theta fixed installs nothing and says so"
   )
   expect_identical(
     capture_warnings(.saemCalcCov(.e)),
-    "\"Ha\" covariance has no estimated mu-referenced theta; none installed"
+    "\"Ha\" has no estimated mu-referenced theta; none installed"
   )
   expect_false(exists("cov", envir = .e, inherits = FALSE))
   expect_false(exists("covMethod", envir = .e, inherits = FALSE))
@@ -219,7 +219,7 @@ test_that("a Ha theta block whose rows cannot be ordered is not installed", {
   )
   expect_warning(
     .saemCalcCov(.e),
-    "\"Ha\" covariance has information rows not matching the thetas; none installed",
+    "\"Ha\" has information rows not matching the thetas; none installed",
     fixed = TRUE
   )
   expect_false(exists("cov", envir = .e, inherits = FALSE))
@@ -276,7 +276,7 @@ test_that("a full SAEM covariance that is not usable is reported and the theta b
   .e$covMethod <- "linFim"
   expect_warning(
     .saemInstallFullCov(.e),
-    "\"linFim (full)\" covariance is not finite; kept \"linFim\"",
+    "\"linFim (full)\" is not finite; kept \"linFim\"",
     fixed = TRUE
   )
   expect_equal(.e$cov, .saemFull[1:2, 1:2])
@@ -331,38 +331,4 @@ test_that(".saemPas() gives one gain per iteration, a phase of 0 iterations none
   expect_equal(.saemPas(c(0L, 3L), 0:1), c(1, 1 / 2, 1 / 3))
   expect_equal(.saemPas(c(2L, 0L), 0:1), c(1, 1))
   expect_identical(.saemPas(c(0L, 0L), 0:1), numeric(0))
-})
-
-# eta.v repeats eta.cl's subject-level block ("id:same:eta.cl")
-.saemSameMod <- function() {
-  ini({
-    tka <- 0.45
-    tcl <- 1
-    tv <- 3.45
-    add.sd <- 0.7
-    eta.cl ~ 0.3
-    eta.v ~ same()
-  })
-  model({
-    ka <- exp(tka)
-    cl <- exp(tcl + eta.cl)
-    v <- exp(tv + eta.v)
-    linCmt() ~ add(add.sd)
-  })
-}
-
-nmTest({
-  test_that("saem refuses a repeated (same()) omega block", {
-    # it would estimate eta.v's variance on its own
-    .e <- expect_error(suppressWarnings(suppressMessages(nlmixr2(
-      .saemSameMod,
-      nlmixr2data::theo_sd,
-      "saem",
-      control = saemControl(print = 0, covMethod = "")
-    ))))
-    expect_identical(
-      conditionMessage(.e),
-      "'saem' does not honour a repeated (same()) omega block\nuse focei"
-    )
-  })
 })

@@ -115,7 +115,9 @@
   ## empty and every est="vae" IOV fit dying in `.uiFinalizeIov` with
   ## "invalid second argument of length 0".  Estimating it in the M-step is what
   ## the omega-fixed-at-1 parameterization expects.
-  .iov <- if (is.null(.uiIovEnv$iovVars)) character(0) else .uiIovEnv$iovVars
+  ## the IOV variables of this ui, before or after the rewrite (the hook runs
+  ## before .uiApplyIov(), so .uiIovEnv would hold the previous fit's)
+  .iov <- .uiIovNames(ui)
   ## a mixture proportion (ui$mixProbs) is not a candidate: it is estimated on
   ## the mlogit scale through its own analytic gradient, not injected as an eta
   ## and not moved by the regress M-step (which would run it unbounded, against
