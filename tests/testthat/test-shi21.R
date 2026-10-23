@@ -299,6 +299,17 @@ nmTest({
     }
   })
 
+  test_that("a forward probe that does not move t gives way to a backward difference", {
+    # at 2^43 the first forward step rounds to t but t - h does not, and the
+    # plus side fails beyond t
+    .t <- 2^43
+    .f <- function(x) if (x[1] > .t) NaN else x[1] - .t
+    .r <- shi21SearchWrap(.f, .t, 0, 1L, .ef, TRUE, 15L, TRUE)
+    expect_true(.t + .r$h == .t && .t - .r$h != .t)
+    # the backward difference, by h rather than the rounded step
+    expect_identical(drop(.r$gr), (0 - .f(.t - .r$h)) / .r$h)
+  })
+
   test_that("wantGr = FALSE finds the same step without the probes made for gr", {
     # finite only at and below 0: with wantGr the search also solves the
     # backward probe that gives gr

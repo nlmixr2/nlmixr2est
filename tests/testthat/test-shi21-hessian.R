@@ -69,6 +69,7 @@ nmTest({
       # the same cached step at x = 1 moves it, so the slope is the difference
       expect_equal(shi21HessianWrap(.gr, 1, 1, .central, .r1$hh, 1L)$H[1, 1], 1, info = .central)
     }
+    expect_error(shi21HessianWrap(.gr, c(1, 2), c(1, 2), TRUE, 0, 1L), "same length")
   })
 
   test_that("the Hessian matches the gradient's Jacobian, searched and cached", {

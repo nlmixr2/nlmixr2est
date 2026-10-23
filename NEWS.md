@@ -109,7 +109,8 @@
     parameter, and a difference at a step that does not move it gives no
     slope.  It used to difference the parameter with itself and report 0.
     A Hessian column at a saved step that does not move its parameter is
-    likewise no slope rather than 0.
+    likewise no slope rather than 0, and a forward search whose plus step
+    rounds away takes the backward difference when that side moves.
   - A search allowed no iterations (`shi21maxFD = 0` and the like) takes the
     difference at its starting step.  It used to give a slope of 0 on the
     evaluation that searched for the step (for an eta, the first for each

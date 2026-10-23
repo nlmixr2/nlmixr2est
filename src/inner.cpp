@@ -11531,6 +11531,9 @@ Rcpp::List shi21SearchWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx,
 //[[Rcpp::export]]
 Rcpp::List shi21HessianWrap(Rcpp::Function grad, arma::vec x, arma::vec gr0, bool central,
                             arma::vec hh, int maxiter) {
+  if (hh.n_elem != x.n_elem || gr0.n_elem != x.n_elem) {
+    Rcpp::stop("'x', 'gr0' and 'hh' must have the same length");
+  }
   ShiWrapGuard _g;
   shiWrapFn_ = &grad; shiWrapN_ = gr0.n_elem;
   arma::mat H = shi21Hessian(shiWrapCall_, x, gr0, 0,

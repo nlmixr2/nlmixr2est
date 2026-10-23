@@ -183,7 +183,8 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
     rcur = shiRF(h, f, ef, t, id, idx, f0, f1, l, u,
                  finiteF1, finiteF4);
     if (rcur == -1) {
-      if (!finiteF1) {
+      // a forward probe that leaves t[idx] where it is forms no difference either
+      if (!finiteF1 || t(idx) + h == t(idx)) {
         arma::vec tm1 = t;
         tm1(idx) -= h;
         if (wantGr && !calcGrad && tm1(idx) != t(idx)) {
