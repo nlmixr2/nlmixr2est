@@ -178,6 +178,25 @@ dt <- stats::dt
   .ret
 }
 
+#' Observations in a benchmark fit's data
+#'
+#' The records `etTrans()` keeps as observations ([.nmObsRows()]), with the EVID
+#' FOCEi gives a data set without one ([.nmWithEvid()], as the VAE prep does).
+#' @param d the fit's original data
+#' @return the count, or `NA` for data without a DV or TIME (nothing to count)
+#' @noRd
+.nlmixr2BenchmarkNobs <- function(d) {
+  if (!inherits(d, "data.frame")) {
+    return(NA_integer_)
+  }
+  d <- as.data.frame(d)
+  names(d) <- toupper(names(d))
+  if (is.null(d[["DV"]]) || is.null(d[["TIME"]])) {
+    return(NA_integer_)
+  }
+  sum(.nmObsRows(.nmWithEvid(d)))
+}
+
 .nlmixr2BenchmarkExtractFit <- function(fit, case, threads = .nlmixr2BenchmarkRxThreads()) {
   .time <- fit$time
   .stages <- .nlmixr2BenchmarkNormalizeTime(.time)
@@ -211,13 +230,7 @@ dt <- stats::dt
   } else {
     NA_integer_
   }
-  .nObs <- if (inherits(.origData, "data.frame") && "EVID" %in% names(.origData)) {
-    sum(is.na(.origData$EVID) | .origData$EVID == 0)
-  } else if (inherits(.origData, "data.frame") && "DV" %in% names(.origData)) {
-    sum(!is.na(.origData$DV))
-  } else {
-    NA_integer_
-  }
+  .nObs <- .nlmixr2BenchmarkNobs(.origData)
   .totalElapsed <- sum(.stages$elapsed)
   data.frame(
     case = rep_len(case, nrow(.stages)),

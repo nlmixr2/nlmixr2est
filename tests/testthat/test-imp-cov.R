@@ -145,10 +145,9 @@ test_that(".impCovInstall() repairs an imp information that is not positive defi
   .ev <- c(40, 25, 9, 4, 2, -0.5)
   .info <- .impMockInfo(.ev)
   .env <- .impMockEnv()
-  expect_warning(
-    .ok <- .impCovInstall(.env, solve(.info), 1:2, .dOm, .impMockOmega, .rx$theta, .info),
-    "\"imp\" covariance not positive definite; installed as \"|imp|\" (sqrtm)",
-    fixed = TRUE
+  expect_identical(
+    capture_warnings(.ok <- .impCovInstall(.env, solve(.info), 1:2, .dOm, .impMockOmega, .rx$theta, .info)),
+    "\"imp\" is not positive definite; installed as \"|imp|\" (sqrtm)"
   )
   expect_true(.ok)
   expect_identical(.env$covMethod, "|imp|")
@@ -178,7 +177,7 @@ test_that(".impCovInstall() installs nothing when the information cannot be repa
     .env <- .impMockEnv()
     expect_warning(
       .ok <- .impCovInstall(.env, solve(.info), 1:2, .dOm, .impMockOmega, .rx$theta, .i),
-      "\"imp\" covariance is not positive definite; none installed",
+      "\"imp\" is not positive definite; none installed",
       fixed = TRUE
     )
     expect_false(.ok)
