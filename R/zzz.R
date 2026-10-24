@@ -59,8 +59,8 @@
 
 .iniRcppTrustPtr <- function() {
   .ptr <- RcppTrust::.RcppTrustPtr()
-  # slots 2-4 (bobyqa/newuoa/minqa free) need RcppTrust >= 0.2.0
-  if (length(.ptr) < 5L) {
+  # slots 2-6 (bobyqa, newuoa, steihaug) need RcppTrust >= 0.2.0
+  if (length(.ptr) < 7L) {
     stop("nlmixr2est requires RcppTrust >= 0.2.0", call. = FALSE)
   }
   .Call(`_nlmixr2est_iniRcppTrustPtrs`,
