@@ -51,7 +51,7 @@ trustControl(
 \item{rinit}{Initial trust-region radius, in the SAME scaled-parameter
 space every nlm-family method (bobyqa included) optimizes in. `NULL`
 (default) derives it from the scaled starting vector using
-`minqa::bobyqa()`'s own default-`rhobeg` formula,
+`RcppTrust::bobyqa()`'s own default-`rhobeg` formula,
 `min(0.95, 0.2*max(abs(par.ini)))`, so swapping `est="bobyqa"` for
 `est="trust"` on the same model starts from a comparable trust-region
 size.}

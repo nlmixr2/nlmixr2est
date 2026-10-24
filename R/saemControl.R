@@ -327,6 +327,19 @@
 #'   analytic eta-Hessian is used, else a finite-difference one (e.g. for
 #'   `linCmt()`).
 #'
+#' @param ebe Individual estimates reported as `fit$eta`: `"mode"` (default)
+#'   is each subject's conditional mode, found with NEWUOA after the last SAEM
+#'   iteration; `"saem"` is SAEM's approximate conditional mean.  The SAEM
+#'   etas are always available as `fit$etaSaem`.
+#'
+#' @param ebeMaxEval Maximum objective evaluations per subject for the
+#'   conditional-mode search (default 200).
+#'
+#' @param ebeTol Final NEWUOA trust-region radius of the conditional-mode
+#'   search, in standard-deviation units of each eta.  `NULL` (default) uses
+#'   `sqrt(rtol)` of the SAEM ODE solve (`rxControl`), the precision that solve
+#'   can resolve a minimum to.
+#'
 #' @param residWarmStart Boolean (default `TRUE`); warm-start the residual-error
 #'   parameters from the observed per-endpoint moments at the initial predictions
 #'   (additive SD from `sqrt(mean(err^2))`, proportional SD from
@@ -424,6 +437,9 @@ saemControl <- function(seed = 99,
                         phi1Hessian = FALSE,
                         residWarmStart = TRUE,
                         censOption = c("gauss", "laplace"),
+                        ebe = c("mode", "saem"),
+                        ebeMaxEval = 200L,
+                        ebeTol = NULL,
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -505,6 +521,8 @@ saemControl <- function(seed = 99,
   checkmate::assertIntegerish(phi1ThetaEvery, any.missing=FALSE, len=1, lower=1)
   checkmate::assertLogical(phi1Hessian, any.missing=FALSE, len=1)
   checkmate::assertLogical(residWarmStart, any.missing=FALSE, len=1)
+  ebe <- match.arg(ebe)
+  checkmate::assertIntegerish(ebeMaxEval, any.missing=FALSE, len=1, lower=1)
 
 
   type <- match.arg(type)
@@ -548,6 +566,10 @@ saemControl <- function(seed = 99,
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }
+  # an objective solved to relative error rtol locates its minimum only to
+  # about sqrt(rtol); a tighter mode search just chases solver noise
+  if (is.null(ebeTol)) ebeTol <- sqrt(max(rxControl$rtol))
+  checkmate::assertNumeric(ebeTol, any.missing=FALSE, len=1, lower=0, finite=TRUE)
 
   # "imp" is foreign to the SAEM kernel; skip the native cov and recompute the
   # importance-sampling covariance post-fit at the converged estimates.  The
@@ -633,7 +655,10 @@ saemControl <- function(seed = 99,
     phi1ThetaMaxEval=as.integer(phi1ThetaMaxEval),
     phi1ThetaEvery=as.integer(phi1ThetaEvery),
     phi1Hessian=isTRUE(phi1Hessian),
-    residWarmStart=residWarmStart
+    residWarmStart=residWarmStart,
+    ebe=ebe,
+    ebeMaxEval=as.integer(ebeMaxEval),
+    ebeTol=ebeTol
   )
   class(.ret) <- "saemControl"
   .ret

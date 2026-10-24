@@ -30,6 +30,7 @@
 #include "scale.h"
 #include <n1qn1c.h>
 #include <RcppTrust.h>
+#include "minqaC.h"
 #include <Rinternals.h>
 #ifdef _OPENMP
   #include <omp.h>
@@ -22045,15 +22046,15 @@ static inline void vaeRestoreFrozen(int id) {
 
 // Residual objective: push the candidate residual parameters, restore the pinned
 // states, and re-evaluate the SAME likelihood the fit reports.
-static double gVaeFreezeObjR(Rcpp::NumericVector p) {
+static double gVaeFreezeObj(const double *p) {
   arma::vec ac = gVaeElsA;
   arma::vec thc = gVaeRegThBase;
-  // Dual write, exactly as gVaeThetaObjR does: the theta slot ALWAYS, plus the
+  // Dual write, exactly as gVaeThetaObj does: the theta slot ALWAYS, plus the
   // `a` slot when the parameter is an error parameter (vaeBuildTh writes `a` back
   // over the error theta positions, so for those the `a` write is what survives).
   // A plain ll() theta has no `a` slot at all -- without the theta write the
   // objective is flat in it and bobyqa never moves it.
-  for (arma::uword k = 0; k < (arma::uword)p.size(); ++k) {
+  for (arma::uword k = 0; k < gVaeElsMap.n_elem; ++k) {
     if (k < gVaeElsTh.n_elem && gVaeElsTh[k] >= 0 && gVaeElsTh[k] < (int)thc.n_elem)
       thc[gVaeElsTh[k]] = p[k];
     if (k < gVaeElsMap.n_elem && gVaeElsMap[k] >= 0 && gVaeElsMap[k] < (int)ac.n_elem)
@@ -22077,7 +22078,7 @@ static double gVaeFreezeObjR(Rcpp::NumericVector p) {
 }
 
 
-static double gVaeThetaObjR(Rcpp::NumericVector r) {
+static double gVaeThetaObj(const double *r) {
   arma::vec thc = gVaeRegThBase;
   arma::vec aCand = gVaeRegA;
   for (arma::uword j = 0; j < gVaeRegIdx.n_elem; ++j) {
@@ -22924,9 +22925,6 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       gVaeRegEtaCentered = last.mu; gVaeRegEtaCentered.each_row() -= baseline.t();
       gVaeRegCores = cores; gVaeRegNMix = nMix; gVaeRegMixProb = mixProb;
       gVaeRegAdjOuter = mStepOuter;  // outer objective, or the reference ELBO
-      Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
-      Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
-      Rcpp::InternalFunction fn(&gVaeThetaObjR);
       int m = (int)regIdx.n_elem;
       // two-stage: stage 1 optimizes the structural thetas with the residuals
       // held, so restrict the active set here and do the residuals in stage 2
@@ -22953,7 +22951,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper, errCombined1) : a;
       const int m1 = (int)stage1Idx.n_elem;
       gVaeRegIdx = stage1Idx; gVaeRegErrMap = stage1Map;
-      Rcpp::NumericVector par0(m1), lo(m1), hi(m1);
+      std::vector<double> par0(m1), lo(m1), hi(m1);
       // map stage-1 slot -> original regIdx slot (identity unless restricted)
       std::vector<int> s1Src(m1);
       { int c2 = 0;
@@ -22975,12 +22973,10 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         if (R_FINITE(hi[jj]) && par0[jj] > hi[jj]) par0[jj] = hi[jj];
       }
       double vaeRhoend = control.containsElementNamed("rhoend") ? as<double>(control["rhoend"]) : 1e-4;
-      Rcpp::NumericVector rx(m1);
+      std::vector<double> rx(m1);
       if (m1 > 0) {
-        Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
-                                    Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi,
-                                    Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["rhoend"] = vaeRhoend));
-        rx = ret["x"];
+        rx = boundedResidOptC(m1, par0.data(), lo.data(), hi.data(), gVaeThetaObj,
+                              vaeRhoend).x;
       }
       for (int jj = 0; jj < m1; ++jj) {
         int j = s1Src[jj];
@@ -23011,7 +23007,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           gVaeRegThBase = th;
           gVaeRegA = a;
           arma::uvec sReg(sIdx.n_elem); arma::ivec sMap(sIdx.n_elem);
-          Rcpp::NumericVector p2(sIdx.n_elem), l2(sIdx.n_elem), u2(sIdx.n_elem);
+          std::vector<double> p2(sIdx.n_elem), l2(sIdx.n_elem), u2(sIdx.n_elem);
           for (arma::uword k = 0; k < sIdx.n_elem; ++k) {
             arma::uword j = sIdx[k];
             sReg[k] = regIdx[j]; sMap[k] = (j < (int)regErrMapV.n_elem) ? regErrMapV[j] : -1;
@@ -23034,16 +23030,14 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
           gVaeRegThBase = th;
           arma::mat etaFrozen = last.mu; etaFrozen.each_row() -= baseline.t();
           vaeFreezeBuild(etaFrozen, cores);
-          Rcpp::InternalFunction elsFn(&gVaeFreezeObjR);
           // the residual step may converge to its own tolerance: it runs with the
           // ODE frozen, so tightening it here is far cheaper than tightening the
           // structural regression, which re-solves per candidate
           double vaeResidRhoend = control.containsElementNamed("residRhoend") ?
             as<double>(control["residRhoend"]) : vaeRhoend;
-          Rcpp::List r2 = boundedOpt(Rcpp::_["par"] = p2, Rcpp::_["fn"] = elsFn,
-                                     Rcpp::_["lower"] = l2, Rcpp::_["upper"] = u2,
-                                     Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["rhoend"] = vaeResidRhoend));
-          Rcpp::NumericVector x2 = r2["x"];
+          std::vector<double> x2 = boundedResidOptC((int)sIdx.n_elem, p2.data(), l2.data(),
+                                                    u2.data(), gVaeFreezeObj,
+                                                    vaeResidRhoend).x;
           nStage2++;
           for (arma::uword k = 0; k < sIdx.n_elem; ++k) {
             arma::uword j = sIdx[k];

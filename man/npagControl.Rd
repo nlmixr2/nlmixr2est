@@ -41,7 +41,7 @@ no meaning here.}
 
 \item{residOptimize}{How to estimate the residual-error thetas (every endpoint's
 `add`/`prop`/`lnorm`, each transform `lambda`, each `ar`) with the support points
-and weights held fixed, using bounded \code{minqa::bobyqa} on the EXTENDED LEAST
+and weights held fixed, using bounded \code{RcppTrust::bobyqa} on the EXTENDED LEAST
 SQUARES objective `sum_obs((f-dv)^2/r + log(r))` at the posterior-mean etas.  The
 `log(r)` term keeps the residual from drifting to zero on a flexible support (which
 the marginal likelihood would reward), giving the saem/focei residual; each

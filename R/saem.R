@@ -1,14 +1,3 @@
-# Methods for newuoa residual optimization
-.saemResidF <- function(x) {
-  # Exports the C residual functions in saem
-  .Call(`_saemResidF`, x)
-}
-
-.saemOpt1 <- function(p1) {
-  .opt <- stats::nlm(.saemResidF, p1)
-  .opt$estimate
-}
-
 .newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- control
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
@@ -32,18 +21,6 @@
   .ret$convergence <- .ret$ierr
   .ret$value <- .ret$fval
   return(.ret)
-}
-
-# newuoa refinement of the non-mu (phi0) thetas, saemControl(nonMuThetaOpt="newuoa").
-# Warnings are suppressed because this runs once per SAEM iteration and stopping on
-# the evaluation budget is the expected outcome, not a problem to report -- an
-# unsuppressed warning here would be collected into the fit's $runInfo every
-# iteration.
-.saemPhi0Newuoa <- function(par, fn, maxfun, rhobeg, rhoend, npt) {
-  suppressWarnings(
-    .newuoa(par = par, fn = fn,
-            control = list(maxfun = maxfun, rhobeg = rhobeg,
-                           rhoend = rhoend, npt = npt)))
 }
 
 .saemCheckCfg <- function(cfg) {
@@ -318,6 +295,10 @@
     .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol",
                                                           .Machine$double.eps^0.25))
     .cfg$nonMuThetaEvery <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaEvery", 1L))
+    # conditional-mode EBEs, computed in C++ after the last SAEM iteration
+    .cfg$ebeMode <- as.integer(identical(rxode2::rxGetControl(ui, "ebe", "mode"), "mode"))
+    .cfg$ebeMaxEval <- as.integer(rxode2::rxGetControl(ui, "ebeMaxEval", 200L))
+    .cfg$ebeTol <- as.numeric(rxode2::rxGetControl(ui, "ebeTol", 1e-6))
     # Phase 4 (SAEM general-likelihood theta plan): cadence/budget for the
     # phi1 (mu-referenced theta) Laplace-corrected refinement -- see
     # saemControl()'s own docs for phi1ThetaEvery/phi1ThetaMaxEval.
@@ -584,6 +565,15 @@
   .mat <- nlme::random.effects(.saem)
   .mat2 <- .mat[, .etaTrans, drop = FALSE]
   colnames(.mat2) <- .etaNames
+  # the SAEM conditional-mean etas are kept as fit$etaSaem
+  env$etaSaem <- data.frame(ID = seq_along(.mat2[, 1]),
+                            setNames(as.data.frame(.mat2), .etaNames))
+  env$ebe <- rxode2::rxGetControl(.ui, "ebe", "mode")
+  if (identical(env$ebe, "mode") && is.matrix(.saem$etaMode) &&
+        all(dim(.saem$etaMode) == dim(.mat))) {
+    .mat2 <- .saem$etaMode[, .etaTrans, drop = FALSE]
+    colnames(.mat2) <- .etaNames
+  }
   for (i in seq_along(.eta$name)) {
     .e1 <- .eta$neta1[i]
     .e2 <- .eta$neta2[i]

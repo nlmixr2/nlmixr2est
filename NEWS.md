@@ -2,6 +2,20 @@
 
 ## New features
 
+- `saem` now reports each subject's conditional mode as `fit$eta` (the
+  Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
+  iteration, in parallel over subjects.  The tables and shrinkage use the
+  mode.  SAEM's approximate conditional mean is kept as `fit$etaSaem`;
+  `saemControl(ebe = "saem")` restores the old behavior, and
+  `ebeMaxEval`/`ebeTol` control the search (`ebeTol` defaults to `sqrt(rtol)`
+  of the SAEM ODE solve).  Uninformative etas stay at zero.
+
+- `minqa` is now only suggested.  BOBYQA and NEWUOA (the `bobyqa`/`newuoa`
+  estimation methods, the FOCEi outer optimizers and every internal call) use
+  the thread-safe ports in `RcppTrust` (>= 0.2.0), called directly from C++
+  without a round-trip through R.  `est = "uobyqa"` and
+  `foceiControl(outerOpt = "uobyqa")` still need `minqa` installed.
+
 - `saemControl(iovMethod = "twoLevel")` estimates inter-occasion variability
   the way the rest of `saem` estimates a variance.  The shared pre-processing
   rewrite that every estimation method uses carries the occasion magnitude as a
@@ -53,6 +67,11 @@
   error 2.9% high.  `iovMethod = "theta"` restores the old behavior.
 
 ## Bug fixes
+
+- `saem` now reports the non-mu-referenced thetas it actually used.  With
+  `nonMuTheta = "regress"` (the default) the model ran at the directly
+  optimized values, but `$theta` showed the regression estimate taken before
+  that optimization, so the reported thetas, etas and tables disagreed.
 
 - A fit no longer reports the PREVIOUS fit's censoring.  `$censInformation`
   is built from a process-global flag recording which censoring methods

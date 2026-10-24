@@ -17,6 +17,7 @@
 #include <memory>
 #include "solveWarnHelper.h"
 #include "truncNorm.h"
+#include "minqaC.h"
 
 #define _(String) (String)
 
@@ -509,14 +510,9 @@ int _saemType = 1;
 static inline void _saemOpt(int n, double *pxmin) {
   if (n == 0) return;
   if (n == 1) {
-    // Use R's optimize for unidimensional optimization
-    Function loadNamespace("loadNamespace", R_BaseNamespace);
-    Environment nlmixr2 = loadNamespace("nlmixr2est");
-    Function optimize1 = nlmixr2[".saemOpt1"];
-    NumericVector par0(1);
-    par0[0] = _saemStart[0];
-    double x0 = as<double>(optimize1(par0));
-    pxmin[0] = x0;
+    // bracket + Brent; matched nlm's optimum and beat boost's brent_find_minima
+    pxmin[0] = min1D([](double x) { double fx; _saemFn(&x, &fx); return fx; },
+                     _saemStart[0], 1e-8);
   } else {
     if (_saemType == 1) {
       int iconv, it, nfcall, iprint=0, itmax=_saemItmax*n;
@@ -524,40 +520,27 @@ static inline void _saemOpt(int n, double *pxmin) {
       nelder_fn(_saemFn, n, _saemStart, _saemStep, itmax, _saemTol, 1.0, 2.0, .5,
                 &iconv, &it, &nfcall, &ynewlo, pxmin, &iprint);
     } else if (_saemType == 2) {
-      // Try Newoua
-      Function loadNamespace("loadNamespace", R_BaseNamespace);
-      Environment nlmixr2 = loadNamespace("nlmixr2est");
-      Function newuoa = nlmixr2[".newuoa"];
-      NumericVector par0(n);
-      for (int i = n; i--;) {
-        par0[i] = _saemStart[i];
-      }
-      List ret = newuoa(_["par"] = par0, _["fn"] = nlmixr2[".saemResidF"],
-                        _["control"]=List::create(_["rhoend"]=_saemTol,
-                                                  _["maxfun"]=_saemItmax*n*n));
-      double f = as<double>(ret["value"]);
-      if (ISNA(f)) {
+      minqaCRes ret = newuoaC(n, _saemStart,
+                              [](const double *x) {
+                                double fx; _saemFn(const_cast<double*>(x), &fx); return fx;
+                              },
+                              0.2, _saemTol, _saemItmax*n*n);
+      double f = ret.value;
+      if (ret.convergence < 0 || ISNA(f)) {
         RSprintf("newoua failed, switch to nelder-mead\n");
         int iconv, it, nfcall, iprint=0, itmax=_saemItmax*n;
         double ynewlo;
         nelder_fn(_saemFn, n, _saemStart, _saemStep, itmax, _saemTol, 1.0, 2.0, .5,
                   &iconv, &it, &nfcall, &ynewlo, pxmin, &iprint);
       } else {
-        NumericVector x = ret["x"];
         for (int i = n; i--;) {
-          pxmin[i] = x[i];
+          pxmin[i] = ret.x[i];
         }
       }
     }
   }
 }
 
-extern "C" SEXP _saemResidF(SEXP v) {
-  SEXP ret = PROTECT(Rf_allocVector(REALSXP, 1));
-  _saemFn(REAL(v),REAL(ret));
-  UNPROTECT(1);
-  return ret;
-}
 
 
 struct mcmcphi {
@@ -592,11 +575,11 @@ uvec getObsIdx(umat m) {
 
 
 // phi0 objective for the general-likelihood direct optimization (bounded bobyqa
-// via .boundedResidOpt); gPhi0Self is the active SAEM object.  R-callable through
-// Rcpp::InternalFunction.  Defined after the class body.
+// via boundedResidOptC); gPhi0Self is the active SAEM object.  Defined after the
+// class body.
 class SAEM;
 static SAEM* gPhi0Self = nullptr;
-static double gPhi0ObjR(Rcpp::NumericVector p);
+static double gPhi0Obj(const double *p);
 // Coordinate-descent state for the normal-model phi0 direct optimization:
 // gPhi0Work is the full phi0 vector, gPhi0Coord the coordinate optimize() varies.
 static arma::vec gPhi0Work;
@@ -605,7 +588,7 @@ static int gPhi0Coord = 0;
 // the full phi0 vector so FIXED coordinates keep their ini value in the objective.
 static arma::vec gPhi0Full;
 static std::vector<int> gPhi0FreeIx;
-static double gPhi0Obj1DR(double x);
+static double gPhi0Obj1D(double x);
 // Shared state for the multivariate phi0 refinements (nelder-mead and newuoa).
 // Both are unbounded, so the objective clamps each candidate into the trust
 // region before evaluating it, and both need their evaluation budget enforced
@@ -618,14 +601,13 @@ static int gPhi0RefEvalMax = 0, gPhi0RefEvalN = 0;
 static double gPhi0RefBestF = 0.0;
 static double gPhi0RefObj(const double *p);
 static void gPhi0NmFn(double *p, double *fx);
-static double gPhi0RefObjR(Rcpp::NumericVector p);
 
 // phi1 objective for the general-likelihood Laplace-corrected direct
 // optimization (Phase 4, SAEM general-likelihood theta plan) -- the phi1
-// sibling of gPhi0Self/gPhi0ObjR above, same bounded-bobyqa/.boundedResidOpt
-// wiring.  Defined after the class body.
+// sibling of gPhi0Self/gPhi0Obj above, same bounded-bobyqa wiring.  Defined
+// after the class body.
 static SAEM* gPhi1Self = nullptr;
-static double gPhi1ObjR(Rcpp::NumericVector p);
+static double gPhi1Obj(const double *p);
 static arma::vec gPhi1Full;
 static std::vector<int> gPhi1FreeIx;
 // Diagnostic: how many times refinePhi1Lik actually ran, so a test can prove
@@ -751,6 +733,9 @@ extern int _saemPhi1H2PredOffset;
 extern int _saemPhi1H2HessOffset;
 extern arma::uvec _saemPhi1I0;
 extern arma::uvec _saemPhi1I1;
+extern bool _saemPhi1PoolActive;
+extern t_calc_lhs saem_lhs;
+extern t_update_inis saem_inis;
 
 // class def starts
 class SAEM {
@@ -1112,7 +1097,7 @@ public:
       doFreeze = false;
     }
     _saemFreezeOde = doFreeze;
-    // optimize phi0 with the BOUNDED bobyqa (.boundedResidOpt), honoring the
+    // optimize phi0 with the BOUNDED bobyqa (boundedResidOptC), honoring the
     // ini-block bounds of the phi0 thetas.  An unbounded method (newuoa/
     // nelder-mead) could push a phi0 like a likelihood SD into an invalid region.
     gPhi0Self = this;
@@ -1151,8 +1136,8 @@ public:
       // proportional-error SD makes it change by orders of magnitude over a
       // small phi0 step), which breaks bobyqa's quadratic model.  Two
       // derivative-free options within the local trust bounds:
-      //   nonMuThetaOpt="optimize"   -- coordinate descent with R's golden-section
-      //     optimize(); exact per coordinate but costs sweeps*nphi0*~20 objective
+      //   nonMuThetaOpt="optimize"   -- coordinate descent with Brent (stats::optimize
+      //     port); exact per coordinate but costs sweeps*nphi0*~20 objective
       //     evaluations, each a full ODE re-solve when phi0 drives the model.
       //   nonMuThetaOpt="nelderMead" -- one clamped nelder-mead over all free
       //     coordinates; a fixed, much smaller budget, and it sees the coupling
@@ -1193,80 +1178,67 @@ public:
           // a budget below that leaves it no working evaluations at all.
           int npt = 2*nFree + 1;
           if (gPhi0RefEvalMax < npt + 2) gPhi0RefEvalMax = npt + 2;
-          Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
-          Rcpp::Function phi0Newuoa = nlmixr2[".saemPhi0Newuoa"];
-          Rcpp::InternalFunction fnRef(&gPhi0RefObjR);
-          Rcpp::NumericVector parFree(nFree);
+          std::vector<double> parFree((size_t)nFree);
           double rhobeg = R_PosInf;
           for (int fi = 0; fi < nFree; fi++) {
             int c = gPhi0FreeIx[(size_t)fi];
-            parFree[fi] = par0[c];
+            parFree[(size_t)fi] = par0[c];
             double span = hi[c] - lo[c];
             if (R_finite(span) && span > 0.0 && 0.2*span < rhobeg) rhobeg = 0.2*span;
           }
           if (!R_finite(rhobeg) || rhobeg <= 0.0) rhobeg = 0.2;
-          phi0Newuoa(Rcpp::_["par"] = parFree, Rcpp::_["fn"] = fnRef,
-                     Rcpp::_["maxfun"] = gPhi0RefEvalMax,
-                     Rcpp::_["rhobeg"] = rhobeg,
-                     Rcpp::_["rhoend"] = nonMuThetaTol,
-                     Rcpp::_["npt"] = npt);
+          // the result is ignored: gPhi0RefObj tracks the best point it saw
+          newuoaC(nFree, parFree.data(), [](const double *p) { return gPhi0RefObj(p); },
+                  rhobeg, nonMuThetaTol, gPhi0RefEvalMax, npt);
         }
         for (int fi = 0; fi < nFree; fi++) {
           gPhi0Work[gPhi0FreeIx[(size_t)fi]] = gPhi0RefBest(fi);
         }
       } else {
-        Rcpp::Environment stats = Rcpp::Environment::namespace_env("stats");
-        Rcpp::Function optimize = stats["optimize"];
-        Rcpp::InternalFunction fn1d(&gPhi0Obj1DR);
         for (int sweep = 0; sweep < nonMuThetaSweeps; sweep++) {
           for (int c = 0; c < nphi0; c++) {
             if (phi0Fix[(size_t)c]) continue;
             if (!(hi[c] > lo[c])) continue;
             gPhi0Coord = c;
-            Rcpp::List o = optimize(Rcpp::_["f"] = fn1d,
-                                    Rcpp::_["lower"] = lo[c],
-                                    Rcpp::_["upper"] = hi[c],
-                                    Rcpp::_["tol"] = nonMuThetaTol);
-            double xm = Rcpp::as<double>(o["minimum"]);
-            gPhi0Work[c] = xm;
+            gPhi0Work[c] = brentFmin(lo[c], hi[c], gPhi0Obj1D, nonMuThetaTol);
           }
         }
       }
       for (int c = 0; c < nphi0; c++) xmin[c] = gPhi0Work[c];
     } else {
-      Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
-      Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
-      Rcpp::InternalFunction fn(&gPhi0ObjR);
-      // Optimize only the free coordinates: gPhi0ObjR expands them back into
+      // Optimize only the free coordinates: gPhi0Obj expands them back into
       // gPhi0Full, which holds the FIXED coordinates at their ini values.
       gPhi0Full.set_size(nphi0);
       for (int c = 0; c < nphi0; c++) gPhi0Full[c] = par0[c];
       int nFree = (int)gPhi0FreeIx.size();
-      Rcpp::NumericVector parFree(nFree), loFree(nFree), hiFree(nFree);
+      std::vector<double> parFree((size_t)nFree), loFree((size_t)nFree), hiFree((size_t)nFree);
       for (int fi = 0; fi < nFree; fi++) {
         int c = gPhi0FreeIx[(size_t)fi];
-        parFree[fi] = par0[c];
-        loFree[fi] = lo[c];
-        hiFree[fi] = hi[c];
+        parFree[(size_t)fi] = par0[c];
+        loFree[(size_t)fi] = lo[c];
+        hiFree[(size_t)fi] = hi[c];
       }
-      Rcpp::List ret = boundedOpt(Rcpp::_["par"] = parFree, Rcpp::_["fn"] = fn,
-                                  Rcpp::_["lower"] = loFree, Rcpp::_["upper"] = hiFree);
-      Rcpp::NumericVector rx = ret["x"];
+      minqaCRes ret = boundedResidOptC(nFree, parFree.data(), loFree.data(),
+                                       hiFree.data(), gPhi0Obj);
       for (int c = 0; c < nphi0; c++) xmin[c] = par0[c];
-      for (int fi = 0; fi < nFree; fi++) xmin[gPhi0FreeIx[(size_t)fi]] = rx[fi];
+      for (int fi = 0; fi < nFree; fi++) xmin[gPhi0FreeIx[(size_t)fi]] = ret.x[(size_t)fi];
     }
     _saemFreezeOde = false;
     for (int c = 0; c < nphi0; c++) {
       double cur = mprior_phi0(0, c);
       mprior_phi0.col(c).fill(cur + pas(kiter) * (xmin[c] - cur));
     }
-    // MCOV0 is BLOCK structured by LCOV0 -- each lambda row belongs to exactly one
-    // phi0 column -- so a single least-squares against all of COV0 is rank
-    // deficient whenever nphi0 > 1: with no phi0 covariate every column of COV0 is
-    // the same intercept column, and arma warns "solve(): system is singular"
-    // every iteration from niter_phi0 on.  It also fills MCOV0 off-structure, so a
-    // FIXED phi0 no longer reproduces its value through COV0*MCOV0.  Back-solve
-    // each phi0 column against only its own design columns instead.
+    phi0BackSolveMCOV(mcov0Fixed);
+  }
+
+  // MCOV0 is BLOCK structured by LCOV0 -- each lambda row belongs to exactly one
+  // phi0 column -- so a single least-squares against all of COV0 is rank
+  // deficient whenever nphi0 > 1: with no phi0 covariate every column of COV0 is
+  // the same intercept column, and arma warns "solve(): system is singular"
+  // every iteration from niter_phi0 on.  It also fills MCOV0 off-structure, so a
+  // FIXED phi0 no longer reproduces its value through COV0*MCOV0.  Back-solve
+  // each phi0 column against only its own design columns instead.
+  void phi0BackSolveMCOV(const vec &mcov0Fixed) {
     for (int c = 0; c < nphi0; c++) {
       uvec li = arma::find(LCOV0.col(c) == 1);
       if (li.n_elem == 0) continue;
@@ -1552,21 +1524,16 @@ public:
     // "problem with matrix inverse" after enough burn-in iterations).
     const double trust = 0.75;
     int nFree = (int)gPhi1FreeIx.size();
-    Rcpp::NumericVector parFree(nFree), loFree(nFree), hiFree(nFree);
+    std::vector<double> parFree((size_t)nFree), loFree((size_t)nFree), hiFree((size_t)nFree);
     for (int fi = 0; fi < nFree; fi++) {
       int c = gPhi1FreeIx[(size_t)fi];
-      parFree[fi] = par0[c];
-      loFree[fi] = par0[c] - trust;
-      hiFree[fi] = par0[c] + trust;
+      parFree[(size_t)fi] = par0[c];
+      loFree[(size_t)fi] = par0[c] - trust;
+      hiFree[(size_t)fi] = par0[c] + trust;
     }
-    Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
-    Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
-    Rcpp::InternalFunction fn(&gPhi1ObjR);
-    Rcpp::List ctl = Rcpp::List::create(Rcpp::_["maxfun"] = phi1ThetaMaxEval);
-    Rcpp::List ret = boundedOpt(Rcpp::_["par"] = parFree, Rcpp::_["fn"] = fn,
-                                Rcpp::_["lower"] = loFree, Rcpp::_["upper"] = hiFree,
-                                Rcpp::_["control"] = ctl);
-    Rcpp::NumericVector rxOpt = ret["x"];
+    minqaCRes ret = boundedResidOptC(nFree, parFree.data(), loFree.data(),
+                                     hiFree.data(), gPhi1Obj, 0.0, phi1ThetaMaxEval);
+    const std::vector<double> &rxOpt = ret.x;
     Rcpp::NumericVector xmin(nphi1);
     for (int c = 0; c < nphi1; ++c) xmin[c] = par0[c];
     for (int fi = 0; fi < nFree; ++fi) xmin[gPhi1FreeIx[(size_t)fi]] = rxOpt[fi];
@@ -1909,6 +1876,273 @@ public:
     return eta;
   }
 
+  // Conditional-mode EBEs (saemControl(ebe="mode")), the Monolix "EBEs" task:
+  // per subject, minimize the data -loglik plus the Omega prior over the
+  // informative phi1 columns, starting from the SAEM conditional mean.
+  mat etaMode;
+  ivec etaModeConv;   // 0 ok, 1 maxfun, 2 not improved, 3 no free eta, -1 failed
+  int ebeMode = 0;
+  int ebeMaxEval = 200;
+  double ebeTol = 1e-6;
+
+  mat get_etaMode() { return etaMode; }
+  ivec get_etaModeConv() { return etaModeConv; }
+
+  // Solve chain-0 row i at the full phi row and return its observation
+  // predictions; false on a failed solve.
+  bool modeRowPred(int i, const vec &phi, const std::vector<int> &doParam,
+                   int mixest, std::vector<double> &f, std::vector<double> &cens,
+                   std::vector<double> &lim) {
+    rx_solving_options *op = getSolvingOptions(_rx);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
+    bool hasCens = hasRxCens(_rx), hasLimit = hasRxLimit(_rx);
+    if (mixest > 0) setIndMixest(ind, mixest);
+    f.clear(); cens.clear(); lim.clear();
+    if (_saemPhi1PoolActive) {
+      int nH2Theta = (int)_saemPhi1H2ThetaKind.n_elem;
+      int nEta = (int)_saemPhi1H2EtaCol.n_elem;
+      for (int k = 0; k < nH2Theta; ++k) {
+        int kind = _saemPhi1H2ThetaKind(k);
+        int col = _saemPhi1H2ThetaCol(k);
+        double val = (kind == 1) ? phi(_saemPhi1I1(col)) :
+          ((kind == 0) ? phi(_saemPhi1I0(col)) : _saemPhi1H2ThetaFixedVal(k));
+        setIndParPtr(ind, k, val);
+      }
+      for (int k = 0; k < nEta; ++k) setIndParPtr(ind, nH2Theta + k, 0.0);
+      OdeSwapScope neqGuard(odeSlotPred, ind, op);
+      OdeSwapCmtScope cmtGuard(odeSlotPred, op, ind);
+      setIndSolve(ind, -1);
+      odeSwapSolveInd(odeSlotPred, i);
+      if (odeSwapIndBadSolveSlot(op, ind, odeSlotPred)) return false;
+      iniSubjectE(i, 1, ind, op, _rx, rxPred.update_inis);
+      double *lhs = neqGuard.lhs();
+      for (int j = 0; j < getIndNallTimes(ind); ++j) {
+        setIndIdx(ind, j);
+        int kk = getIndIx(ind, j);
+        if (getIndEvid(ind, kk) != 0) continue;
+        rxPred.calc_lhs(i, getTime(kk, ind), getOpIndSolve(op, ind, j), lhs);
+        double cur = lhs[_saemPhi1PredOffset];
+        f.push_back(std::isnan(cur) ? 1.0e99 : cur);
+        cens.push_back(hasCens ? getIndCens(ind, kk) : 0.0);
+        lim.push_back(hasLimit ? getIndLimit(ind, kk) : R_NegInf);
+      }
+      return true;
+    }
+    int k = 0;
+    for (size_t j = 0; j < doParam.size(); ++j) {
+      if (doParam[j] == 1) setIndParPtr(ind, (int)j, phi(k++));
+    }
+    int neq = getOpNeq(op);
+    double tol0 = getIndTolFactor(ind);
+    bool bad = false;
+    for (int r = 0; ; ++r) {
+      setIndSolve(ind, -1);
+      ind_solve(_rx, (unsigned int)i, rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum,
+                rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis,
+                rxInner.global_jt);
+      bad = false;
+      if (neq > 0) {
+        double *sol = getIndSolve(ind);
+        int ns = neq * getIndNallTimes(ind);
+        for (int q = 0; q < ns; ++q) {
+          if (!std::isfinite(sol[q])) { bad = true; break; }
+        }
+      }
+      if (!bad || r >= current_saem_state->_saemMaxOdeRecalc) break;
+      setIndTolFactor(ind, getIndTolFactor(ind) * current_saem_state->_saemOdeRecalcFactor);
+    }
+    if (!current_saem_state->_saemIndTolRelax) setIndTolFactor(ind, tol0);
+    if (bad) return false;
+    double *lhs = getIndLhs(ind);
+    iniSubjectE(neq, 1, ind, op, _rx, saem_inis);
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, getIndIdx(ind));
+      double curT = getTime(kk, ind);
+      if (isDose(getIndEvid(ind, kk))) {
+        saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
+      } else if (getIndEvid(ind, kk) == 0) {
+        saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
+        double cur = lhs[0];
+        f.push_back(std::isnan(cur) ? 1.0e99 : cur);
+        cens.push_back(hasCens ? getIndCens(ind, kk) : 0.0);
+        lim.push_back(hasLimit ? getIndLimit(ind, kk) : R_NegInf);
+      }
+    }
+    return true;
+  }
+
+  // Subject i's observation loss (the do_mcmc per-observation term), for its
+  // observations starting at chain-0 index s.
+  double modeRowLoss(int s, const std::vector<double> &f,
+                     const std::vector<double> &cens, const std::vector<double> &lim,
+                     const vec &yt) {
+    const double double_xmin = 1.0e-200, xmax = 1e300;
+    int n = (int)f.size();
+    double sum = 0.0;
+    switch (distribution) {
+    case 1: {
+      std::vector<double> e0(n), ft(n), g(n);
+      for (int q = 0; q < n; ++q) {
+        int j = s + q;
+        int cur = ix_endpnt(j);
+        double fq = f[q];
+        ft[q] = _powerD(fq, lambda(cur), yj(cur), low(cur), hi(cur));
+        double ftT = handleF(propT(cur), ft[q], fq, false, true);
+        double fa = std::fabs(ftT);
+        double fac = (veccres[j] == 1.0) ? fa : std::pow(fa, veccres[j]);
+        double gq = (vecaddProp[j] == 1) ? vecares[j] + vecbres[j]*fac :
+          std::sqrt(vecares[j]*vecares[j] + vecbres[j]*vecbres[j]*fac*fac);
+        if (gq == 0.0) gq = 1.0;
+        if (gq < double_xmin) gq = double_xmin;
+        if (gq > xmax) gq = xmax;
+        g[q] = gq;
+        e0[q] = yt(j) - ft[q];
+      }
+      for (int q = 0; q < n; ++q) {
+        int j = s + q;
+        int cur = ix_endpnt(j);
+        double e = e0[q], gg = g[q];
+        if (hasAr && arActive(cur)) {
+          arma::sword p = arPrev(j);
+          if (p >= s && p < j) {
+            double phiAr = std::pow(arCor(cur), arDt(j));
+            double om = 1.0 - phiAr*phiAr;
+            if (om < 1e-8) om = 1e-8;
+            e = e0[q] - phiAr*e0[p - s];
+            gg *= std::sqrt(om);
+          }
+        }
+        double loss = 0.5*(e/gg)*(e/gg) + std::log(gg);
+        if (cens[q] != 0.0) {
+          double limT = _powerD(lim[q], lambda(cur), yj(cur), low(cur), hi(cur));
+          loss = -doCensNormal1(cens[q], yt(j), limT, -loss, yt(j) - e, gg*gg, 0);
+        }
+        sum += loss;
+      }
+      break;
+    }
+    case 2:
+      for (int q = 0; q < n; ++q) sum += -y(s + q)*std::log(f[q]) + f[q];
+      break;
+    case 3:
+      for (int q = 0; q < n; ++q)
+        sum += -y(s + q)*std::log(f[q]) - (1 - y(s + q))*std::log(1 - f[q]);
+      break;
+    case 4:
+      for (int q = 0; q < n; ++q) {
+        double fq = f[q];
+        if (fq >= 1.0e99) fq = _saemGenLikBadSolvePenalty;
+        if (fq > _saemGenLikCeiling) fq = _saemGenLikCeiling;
+        sum += -fq;
+      }
+      break;
+    }
+    return sum;
+  }
+
+  void computeEtaMode() {
+    etaMode = get_eta();
+    etaModeConv.set_size(N);
+    etaModeConv.fill(3);
+    if (!ebeMode || nphi1 == 0) return;
+    rx_solving_options *op = getSolvingOptions(_rx);
+    // observation-level residual state at the final estimates
+    vecares = ares(ix_endpnt);
+    vecbres = bres(ix_endpnt);
+    veccres = cres(ix_endpnt);
+    vec yt = y;
+    if (distribution == 1) {
+      if (hasFixedObsTransform) {
+        yt = yTrans;
+      } else {
+        for (int j = 0; j < ntotal; ++j) {
+          int cur = ix_endpnt(j);
+          yt(j) = _powerD(y(j), lambda(cur), yj(cur), low(cur), hi(cur));
+        }
+      }
+    }
+    mat IG = invSympdNearPd(Gamma2_phi1, "Gamma2_phi1 (Omega)");
+    vec sd = sqrt(Gamma2_phi1.diag());
+    std::vector<int> doParam;
+    if (!_saemPhi1PoolActive) {
+      IntegerVector pu = optM["paramUpdate"];
+      doParam.assign(pu.begin(), pu.end());
+    }
+    ivec mixComp(N, fill::zeros);
+    if (nMix > 1 && mixWeights.n_rows == (unsigned int)N) {
+      for (int i = 0; i < N; ++i) mixComp(i) = (int)mixWeights.row(i).index_max() + 1;
+    }
+    mat ue = current_saem_state->_saemUE;
+    int cores = getOpCores(op);
+    bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+    std::unique_ptr<OdeSwapEsBatch> predEsBatch;
+    if (_saemPhi1PoolActive) predEsBatch.reset(new OdeSwapEsBatch(odeSlotPred));
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(doParallel)
+#endif
+    for (int i = 0; i < N; ++i) {
+#ifdef _OPENMP
+      if (doParallel) setRxThreadId(omp_get_thread_num());
+#endif
+      try {
+        std::vector<int> freeC;
+        for (int c = 0; c < nphi1; ++c) {
+          if (ue(i, i1(c)) != 0.0 && sd(c) > 0.0) freeC.push_back(c);
+        }
+        int nf = (int)freeC.size();
+        if (nf == 0) continue;
+        vec start = mpost_phi.row(i).t();
+        if (nphi0 > 0) start.elem(i0) = mprior_phi0.row(i).t();
+        rowvec mu1 = mprior_phi1.row(i);
+        int s = ix_idM(i, 0);
+        std::vector<double> f, cens, lim;
+        double fBest = R_PosInf;
+        std::vector<double> zBest(nf, 0.0);
+        auto obj = [&](const double *z) -> double {
+          vec phi = start;
+          for (int k = 0; k < nf; ++k) phi(i1(freeC[k])) += z[k]*sd(freeC[k]);
+          double v;
+          if (!modeRowPred(i, phi, doParam, mixComp(i), f, cens, lim)) {
+            v = 1.0e300;
+          } else {
+            rowvec d = phi.elem(i1).t() - mu1;
+            v = modeRowLoss(s, f, cens, lim, yt) + 0.5*as_scalar(d*IG*d.t());
+            if (!std::isfinite(v)) v = 1.0e300;
+          }
+          if (v < fBest) {
+            fBest = v;
+            std::copy(z, z + nf, zBest.begin());
+          }
+          return v;
+        };
+        std::vector<double> z0(nf, 0.0);
+        double f0 = obj(z0.data());
+        int conv = 0;
+        if (nf == 1) {
+          min1D([&](double z) { return obj(&z); }, 0.0, ebeTol);
+        } else {
+          minqaCRes r = newuoaC(nf, z0.data(), obj, 0.5, ebeTol, ebeMaxEval, 2*nf + 1);
+          conv = r.convergence;
+        }
+        if (conv < 0) {
+          etaModeConv(i) = -1;
+        } else if (!(fBest < f0)) {
+          etaModeConv(i) = 2;
+        } else {
+          for (int k = 0; k < nf; ++k) {
+            int c = freeC[k];
+            etaMode(i, c) = start(i1(c)) + zBest[k]*sd(c) - mu1(c);
+          }
+          etaModeConv(i) = conv;
+        }
+      } catch (...) {
+        etaModeConv(i) = -1;
+      }
+    }
+    setRxThreadId(-1);
+  }
+
   void inits(List x) {
     _saemItmax = as<int>(x["itmax"]);
     _saemTol = as<double>(x["tol"]);
@@ -2216,6 +2450,9 @@ public:
       as<int>(x["nonMuThetaOptType"]) : 0;
     nonMuThetaMaxEval = x.containsElementNamed("nonMuThetaMaxEval") ?
       as<int>(x["nonMuThetaMaxEval"]) : 25;
+    ebeMode = x.containsElementNamed("ebeMode") ? as<int>(x["ebeMode"]) : 0;
+    ebeMaxEval = x.containsElementNamed("ebeMaxEval") ? as<int>(x["ebeMaxEval"]) : 200;
+    ebeTol = x.containsElementNamed("ebeTol") ? as<double>(x["ebeTol"]) : 1e-6;
     nonMuThetaSweeps = x.containsElementNamed("nonMuThetaSweeps") ?
       as<int>(x["nonMuThetaSweeps"]) : 2;
     nonMuThetaEvery = x.containsElementNamed("nonMuThetaEvery") ?
@@ -2247,7 +2484,7 @@ public:
     // fit's _saemPhi1PoolReady=true and stale THETA/ETA maps sized for a
     // DIFFERENT model -- refinePhi1Lik/phi1Objective then run for a plain
     // normal fit using garbage offsets (measured: segfaulted inside
-    // gPhi1ObjR, confirmed via valgrind's backtrace).
+    // gPhi1Obj, confirmed via valgrind's backtrace).
     _saemPhi1PoolReady = false;
     _saemPhi1UseAnalyticHess = false;
     _saemPhi1WantHessian = x.containsElementNamed("phi1Hessian") &&
@@ -3393,6 +3630,15 @@ public:
           (kiter - (unsigned int)niter_phi0) % (unsigned int)nonMuThetaEvery == 0) {
         refinePhi0Lik(kiter, pas);
       }
+      // once the refinement owns phi0 the model runs at mprior_phi0, so report
+      // that rather than the pre-refinement regression estimate
+      if ((distribution == 4 || nonMuThetaRegress) &&
+          nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
+        vec mcov0Fixed;
+        if (fixedIx0.n_elem > 0) mcov0Fixed = vec(MCOV0(jcov0(fixedIx0)));
+        phi0BackSolveMCOV(mcov0Fixed);
+        Plambda0 = MCOV0(jcov0);
+      }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
       if (nphi0 > 0) {
         phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
@@ -4326,6 +4572,7 @@ public:
       lambda = lres;
       if (nMix > 1) { mixProb = _savMixProb; mixWeights = _savMixWeights; }
     }
+    nmRngGuard([&]{ computeEtaMode(); return 0; });
     phiFile.close();
   }
 
@@ -5069,14 +5316,14 @@ private:
 };
 
 // phi0 objective trampoline for the general-likelihood direct optimization.
-static double gPhi0ObjR(Rcpp::NumericVector p) {
+static double gPhi0Obj(const double *p) {
   for (size_t i = 0; i < gPhi0FreeIx.size(); ++i) {
     gPhi0Full[gPhi0FreeIx[i]] = p[i];
   }
   return gPhi0Self->phi0Objective(gPhi0Full.memptr());
 }
 
-static double gPhi1ObjR(Rcpp::NumericVector p) {
+static double gPhi1Obj(const double *p) {
   for (size_t i = 0; i < gPhi1FreeIx.size(); ++i) {
     gPhi1Full[gPhi1FreeIx[i]] = p[i];
   }
@@ -5086,7 +5333,7 @@ static double gPhi1ObjR(Rcpp::NumericVector p) {
 //[[Rcpp::export]]
 long saemPhi1RefineN_() { return _saemPhi1RefineN; }
 
-static double gPhi0Obj1DR(double x) {
+static double gPhi0Obj1D(double x) {
   gPhi0Work[gPhi0Coord] = x;
   return gPhi0Self->phi0Objective(gPhi0Work.memptr());
 }
@@ -5117,9 +5364,6 @@ static double gPhi0RefObj(const double *p) {
 
 static void gPhi0NmFn(double *p, double *fx) { *fx = gPhi0RefObj(p); }
 
-static double gPhi0RefObjR(Rcpp::NumericVector p) {
-  return gPhi0RefObj(&(p[0]));
-}
 
 
 // closing for #ifndef __SAEM_CLASS_RCPP_HPP__
@@ -5143,7 +5387,7 @@ t_update_inis saem_inis = NULL;
 // fit and for a general-lik fit whose map did not resolve (covariate on a
 // phi0/phi1 theta, unpaired eta, ...) -- both keep the original
 // single-model rxInner path, byte-identically.
-static bool _saemPhi1PoolActive = false;
+bool _saemPhi1PoolActive = false;
 bool _saemPhi1PoolReady = false;
 bool _saemPhi1UseAnalyticHess = false;
 arma::ivec _saemPhi1H2ThetaKind;
@@ -5626,9 +5870,15 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("res_info") = saem.get_resInfo(),
     Named("tolFactor") = _saemTf,
     Named("mixProb") = wrap(saem.get_mixProb()),
-    Named("mixWeights") = wrap(saem.get_mixWeights())
+    Named("mixWeights") = wrap(saem.get_mixWeights()),
+    Named("etaMode") = saem.get_etaMode(),
+    Named("etaModeConv") = wrap(saem.get_etaModeConv())
   );
   current_saem_state = nullptr;
+  int nModeFail = (int)accu(saem.get_etaModeConv() < 0);
+  if (nModeFail > 0) {
+    Rcpp::warning("conditional mode failed for %d subjects; kept SAEM eta", nModeFail);
+  }
   out.attr("saem.cfg") = x;
   out.attr("class") = "saemFit";
   return out;
