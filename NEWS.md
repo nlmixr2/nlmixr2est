@@ -16,6 +16,12 @@
   without a round-trip through R.  `est = "uobyqa"` and
   `foceiControl(outerOpt = "uobyqa")` still need `minqa` installed.
 
+- `foceiControl(innerOpt = "steihaug")` (RcppTrust's truncated-CG trust
+  region on the same exact gradient and Hessian as `"trust"`) and
+  `innerOpt = "newuoa"` (derivative-free, `rhoend` from `newuoaRhoend`,
+  default `sqrt(rtol)`) are new inner (eta) optimizers.  `steihaugPolish` and
+  `newuoaPolish` add the opt-in Newton polish that `trustPolish` gives trust.
+
 ## Bug fixes
 
 ### Covariance

@@ -73,6 +73,9 @@ dir.create(file.path(.outDir, "cases"), showWarnings = FALSE, recursive = TRUE)
   .base <- new.env(parent = asNamespace("nlmixr2est"))
   assign("nlmixr2", .wrap, envir = .base)
   assign("nlmixr", .wrap, envir = .base)
+  # nlmixr2save's := would load cached vignette fits instead of fitting
+  assign(":=", function(lhs, rhs) assign(deparse(substitute(lhs)), rhs, envir = parent.frame()),
+         envir = .base)
   assign("test_that", function(desc, code) tryCatch(force(code), error = function(e) NULL), envir = .base)
   assign("nmTest", function(code, ...) tryCatch(force(code), error = function(e) NULL), envir = .base)
   for (.s in c("skip_on_cran", "skip_if_not_installed", "skip_on_ci", "skip",
@@ -95,7 +98,9 @@ dir.create(file.path(.outDir, "cases"), showWarnings = FALSE, recursive = TRUE)
   }
   # test files that fit a FOCEi-family method
   .re <- paste0("est *= *\"(", paste(.foceiFamily, collapse = "|"), ")\"")
-  for (.f in sort(list.files("tests/testthat", "^test-.*\\.R$", full.names = TRUE))) {
+  .testFiles <- if (identical(Sys.getenv("NLMIXR2EST_BENCH_SKIP_TESTS"), "true")) character()
+    else sort(list.files("tests/testthat", "^test-.*\\.R$", full.names = TRUE))
+  for (.f in .testFiles) {
     if (!any(grepl(.re, readLines(.f, warn = FALSE)))) next
     .runFile(.f, paste0("test_", sub("^test-(.*)\\.R$", "\\1", basename(.f))))
   }
