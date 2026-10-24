@@ -183,6 +183,7 @@ dir.create(file.path(.outDir, "cases"), showWarnings = FALSE, recursive = TRUE)
   .set <- .arms[[arm]]
   if (is.null(.set)) stop("unknown arm ", arm)
   .csv <- file.path(.outDir, paste0("arm-", arm, ".csv"))
+  .prev <- list(calls = 0, polish = 0, failed = 0)
   .done <- if (file.exists(.csv)) unique(paste(utils::read.csv(.csv)$case, utils::read.csv(.csv)$start)) else character(0)
   for (.p in sort(list.files(file.path(.outDir, "cases"), "\\.rds$", full.names = TRUE))) {
     .c <- readRDS(.p)
@@ -218,9 +219,12 @@ dir.create(file.path(.outDir, "cases"), showWarnings = FALSE, recursive = TRUE)
         .row$maxOuter <- tryCatch(as.integer(.fit$control$maxOuterIterations), error = function(e) NA_integer_)
         .nt <- tryCatch(.fit$env$nTrustInner, error = function(e) NULL)
         if (!is.null(.nt)) {
-          .row$calls <- .nt[["calls"]]
-          if ("polish" %in% names(.nt)) .row$polish <- .nt[["polish"]]
-          if ("failed" %in% names(.nt)) .row$failed <- .nt[["failed"]]
+          # the counters accumulate over the session; record this fit's share
+          .d <- function(n) if (n %in% names(.nt)) .nt[[n]] - .prev[[n]] else NA_integer_
+          .row$calls <- .d("calls")
+          .row$polish <- .d("polish")
+          .row$failed <- .d("failed")
+          .prev[names(.nt)] <- as.list(.nt)
         }
         .row$nRunInfo <- tryCatch(length(.fit$runInfo), error = function(e) NA_integer_)
       }
