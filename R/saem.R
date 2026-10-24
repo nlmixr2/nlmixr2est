@@ -10,7 +10,11 @@
 }
 
 .newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  # Also the outer optimizer for foceiControl(outerOpt = "newuoa"), so a
+  # foceiControl() list's maxOuterIterations becomes maxfun here, as in
+  # .uobyqa() and .bobyqa().  RcppTrust::newuoa() is a thread-safe port of
+  # minqa::newuoa() with the same arguments, control list and result.
+  .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) {
     .ctl$npt <- length(par) * 2 + 1
   }
@@ -22,7 +26,7 @@
   }
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
-  .ret <- try(minqa::newuoa(par, fn, control = .ctl))
+  .ret <- try(RcppTrust::newuoa(par, fn, control = .ctl))
   if (inherits(.ret, "try-error")) {
     .ret <- list()
     .ret$x <- rep(NA_real_, length(.ret$par))
