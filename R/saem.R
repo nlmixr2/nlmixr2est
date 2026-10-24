@@ -10,7 +10,10 @@
 }
 
 .newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  # Also the outer optimizer for foceiControl(outerOpt = "newuoa"), so a
+  # foceiControl() list's maxOuterIterations becomes maxfun here, as in
+  # .uobyqa() and .bobyqa().
+  .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) {
     .ctl$npt <- length(par) * 2 + 1
   }
