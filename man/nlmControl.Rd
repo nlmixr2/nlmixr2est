@@ -297,28 +297,27 @@ nlm control object
 nlmixr2 defaults controls for nlm
 }
 \examples{
-
 \donttest{
 # A logit regression example with emax model
 
-dsn <- data.frame(i=1:1000)
+dsn <- data.frame(i = 1:1000)
 dsn$time <- exp(rnorm(1000))
-dsn$DV=rbinom(1000,1,exp(-1+dsn$time)/(1+exp(-1+dsn$time)))
+dsn$DV <- rbinom(1000, 1, exp(-1 + dsn$time) / (1 + exp(-1 + dsn$time)))
 
 mod <- function() {
- ini({
-   E0 <- 0.5
-   Em <- 0.5
-   E50 <- 2
-   g <- fix(2)
- })
- model({
-   v <- E0+Em*time^g/(E50^g+time^g)
-   ll(bin) ~ DV * v - log(1 + exp(v))
- })
+  ini({
+    E0 <- 0.5
+    Em <- 0.5
+    E50 <- 2
+    g <- fix(2)
+  })
+  model({
+    v <- E0 + Em * time^g / (E50^g + time^g)
+    ll(bin) ~ DV * v - log(1 + exp(v))
+  })
 }
 
-fit2 <- nlmixr(mod, dsn, est="nlm")
+fit2 <- nlmixr(mod, dsn, est = "nlm")
 
 print(fit2)
 

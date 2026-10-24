@@ -53,6 +53,12 @@ test_that("saem ebe='mode' returns the conditional mode", {
   # the SAEM run itself does not depend on the ebe choice
   expect_equal(.fitS$etaSaem, fit$etaSaem)
   expect_equal(.fitS$theta, fit$theta)
+
+  # each subject's search is independent, so threads do not change the answer
+  .fit2 <- .nlmixr(.mod, nlmixr2data::theo_sd, est = "saem",
+                   control = saemControl(print = 0, nBurn = 50, nEm = 50,
+                                         rxControl = rxode2::rxControl(cores = 2L)))
+  expect_equal(as.matrix(.fit2$eta[, .etaCols]), .mode, ignore_attr = TRUE)
 })
 
 test_that("saem ebe='mode' handles a single eta (1-D search)", {
