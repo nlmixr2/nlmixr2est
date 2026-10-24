@@ -34,6 +34,9 @@
 - `foceiControl(outerOpt = "newuoa")` now stops the outer optimization at
   `maxOuterIterations` function evaluations, as `outerOpt = "uobyqa"` and
   `"bobyqa"` do; it used to ignore the limit and run NEWUOA to convergence.
+  NEWUOA, here and in `saemControl(nonMuThetaOpt = "newuoa")`, is now
+  `RcppTrust::newuoa()`, a thread-safe port of `minqa::newuoa()`, so
+  'RcppTrust' (>= 0.2.0) is required.
 
 - A fit that fails late in its output step (for example a `saem` fit whose
   inter-occasion variability cannot be finalized) now reports its own error.

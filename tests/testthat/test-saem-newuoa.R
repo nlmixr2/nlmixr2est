@@ -14,6 +14,17 @@ test_that(".newuoa() stops at maxOuterIterations evaluations", {
   expect_equal(.ret$convergence, 1)
 })
 
+test_that(".newuoa() runs RcppTrust::newuoa() with the control it builds", {
+  .direct <- RcppTrust::newuoa(
+    c(-1.2, 1),
+    .rosenbrock,
+    control = list(npt = 5L, rhobeg = 0.2, rhoend = 1e-4, iprint = 0L, maxfun = 50L)
+  )
+  .ret <- .newuoa(c(-1.2, 1), .rosenbrock, control = list(maxOuterIterations = 50L))
+  expect_identical(.ret$par, .direct$par)
+  expect_identical(.ret$feval, .direct$feval)
+})
+
 test_that(".newuoa() and .uobyqa() apply maxOuterIterations alike", {
   .ctl <- list(maxOuterIterations = 50L)
   expect_identical(
