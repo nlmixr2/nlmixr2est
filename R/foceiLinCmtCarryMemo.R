@@ -58,9 +58,7 @@
 #' session temp dir, so the sidecar quietly degrades to session scope.
 #' @noRd
 .foceiLinCmtCarryCacheFile <- function(key) {
-  tryCatch(file.path(rxode2::rxTempDir(), paste0("focei-carry-", key, ".rds")),
-    error = function(e) NULL
-  )
+  tryCatch(file.path(rxode2::rxTempDir(), paste0("focei-carry-", key, ".rds")), error = function(e) NULL)
 }
 
 #' Read the sidecar; NULL unless it exists and was written by THIS
@@ -86,9 +84,7 @@
   if (is.null(.f)) {
     return(invisible(NULL))
   }
-  tryCatch(saveRDS(list(md5 = nlmixr2.md5, pairs = pairs), .f),
-    error = function(e) NULL
-  )
+  tryCatch(saveRDS(list(md5 = nlmixr2.md5, pairs = pairs), .f), error = function(e) NULL)
   invisible(NULL)
 }
 
@@ -121,9 +117,7 @@
   if (is.null(key)) {
     return(invisible(NULL))
   }
-  assign("misses", .foceiLinCmtCarryMemoStats()[["misses"]] + 1L,
-    envir = .carryPairsMemo
-  )
+  assign("misses", .foceiLinCmtCarryMemoStats()[["misses"]] + 1L, envir = .carryPairsMemo)
   # bound the memo (a session rarely fits more than a handful of models)
   .keys <- setdiff(
     ls(envir = .carryPairsMemo, all.names = FALSE),

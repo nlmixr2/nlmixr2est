@@ -1,6 +1,5 @@
 nmTest({
   test_that("testing saem without table can add focei objf", {
-
     one.cmt <- function() {
       ini({
         tka <- 0.45 ; label("Log Ka")
@@ -18,7 +17,6 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-
 
     currentControl <- saemControlFast
     currentControl$calcTables <- FALSE

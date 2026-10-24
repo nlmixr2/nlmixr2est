@@ -1,6 +1,5 @@
 nmTest({
   test_that("nmObject get tests", {
-
     one.cmt <- function() {
       ini({
         ## You may label each parameter with a comment
@@ -23,7 +22,7 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="focei", control = foceiControlFast)
+    fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est = "focei", control = foceiControlFast)
 
     expect_equal(fit$modelName, "one.cmt")
 
@@ -46,8 +45,70 @@ nmTest({
       })
     }
 
-    fit2 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="focei", control = foceiControlFast)
+    fit2 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est = "focei", control = foceiControlFast)
 
     expect_equal(fit2$modelName, "one.cmt")
+  })
+})
+
+nmTest({
+  test_that("nlmixr2() names a model the way rxode2() does", {
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    mkModel <- function() one.cmt
+
+    # a symbol keeps its name
+    expect_equal(nlmixr(one.cmt)$modelName, "one.cmt")
+    expect_equal(nlmixr(one.cmt)$modelName, rxode2::rxode2(one.cmt)$modelName)
+    # a call is named by its text, not by the head of the call alone
+    expect_equal(nlmixr(mkModel())$modelName, "mkModel()")
+    expect_equal(nlmixr(mkModel())$modelName, rxode2::rxode2(mkModel())$modelName)
+    # an anonymous model function is unnamed, not "function"
+    expect_null(
+      nlmixr(function() {
+        ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+        model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+      })$modelName
+    )
+    # an rxUi keeps the name it has, and an unnamed one is named by its symbol
+    expect_equal(nlmixr(rxode2::rxode2(one.cmt))$modelName, "one.cmt")
+    ui <- rxode2::rxode2(function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    })
+    expect_null(ui$modelName)
+    expect_equal(nlmixr(ui)$modelName, "ui")
   })
 })

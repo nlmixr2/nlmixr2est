@@ -10,273 +10,450 @@ nmTest({
   ## BoxCox(0.5)
   ################################################################################
 
-  .boxCoxAdd <- c(10.402, 10.402, 10.402, 10.402, 11.078, 11.078,
-                  10.502, 10.502, 10.402, 10.402)
+  .boxCoxAdd <- c(10.402, 10.402, 10.402, 10.402, 11.078, 11.078, 10.502, 10.502, 10.402, 10.402)
 
-  testWang2007ErrorModel("boxCox(0.5)+add", function(f) {
-    f |> model(ipre ~ add(add.sd) + boxCox(lambda)) |>
-      ini(add.sd=sqrt(0.1), lambda=0.5)
-  }, .boxCoxAdd, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add",
+    function(f) {
+      f |> model(ipre ~ add(add.sd) + boxCox(lambda)) |> ini(add.sd=sqrt(0.1), lambda=0.5)
+    },
+    .boxCoxAdd,
+    addProp = 1
+  )
 
   ################################################################################
   ## boxCox(0.5)+prop
   ################################################################################
 
-  .boxCoxProp <- c(77.857, 77.857, 77.698, 77.732, 77.732, 77.732,
-                   77.508, 77.508, 77.857, 77.857)
-  testWang2007ErrorModel("boxCox(0.5)+prop", function(f) {
-    f |> model(ipre ~ boxCox(lambda) + prop(prop.sd)) |> ini(prop.sd=sqrt(0.1), lambda=0.5)
-  }, .boxCoxProp, addProp = 1)
+  .boxCoxProp <- c(77.857, 77.857, 77.698, 77.732, 77.732, 77.732, 77.508, 77.508, 77.857, 77.857)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+prop",
+    function(f) {
+      f |> model(ipre ~ boxCox(lambda) + prop(prop.sd)) |> ini(prop.sd=sqrt(0.1), lambda=0.5)
+    },
+    .boxCoxProp,
+    addProp = 1
+  )
 
-  .boxCoxPropT <- c(48.455, 48.455, 48.321, 48.287, 48.291, 48.291,
-                    48.271, 48.271, 48.455, 48.455)
-  testWang2007ErrorModel("boxCox(0.5)+propT", function(f) {
-    f |> model(ipre ~ boxCox(lambda) + propT(prop.sd)) |>
-      ini(prop.sd=sqrt(0.1), lambda=0.5)
-  }, .boxCoxPropT, addProp = 1)
+  .boxCoxPropT <- c(48.455, 48.455, 48.321, 48.287, 48.291, 48.291, 48.271, 48.271, 48.455, 48.455)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+propT",
+    function(f) {
+      f |> model(ipre ~ boxCox(lambda) + propT(prop.sd)) |> ini(prop.sd=sqrt(0.1), lambda=0.5)
+    },
+    .boxCoxPropT,
+    addProp = 1
+  )
 
-  .boxCoxPropF <- c(4.243, 4.243, 3.537, 3.537, 6.584, 6.584, 4.527,
-                    4.527, 4.243, 4.243)
-  testWang2007ErrorModel("boxCox(0.5)+propF", function(f) {
-    f |> model(ipre ~ boxCox(lm) + propF(prop.sd, f2)) |>
-      ini(prop.sd=sqrt(0.1), lm=0.5)
-  }, .boxCoxPropF, addProp = 1)
+  .boxCoxPropF <- c(4.243, 4.243, 3.537, 3.537, 6.584, 6.584, 4.527, 4.527, 4.243, 4.243)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+propF",
+    function(f) {
+      f |> model(ipre ~ boxCox(lm) + propF(prop.sd, f2)) |> ini(prop.sd=sqrt(0.1), lm=0.5)
+    },
+    .boxCoxPropF,
+    addProp = 1
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+pow->boxCox(0.5)+prop", function(f) {
-    f |> model(ipre ~ boxCox(lm) + pow(prop.sd, pw)) |>
-      ini(prop.sd=sqrt(0.1), pw=1, lm=0.5)
-  }, .boxCoxProp, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+pow->boxCox(0.5)+prop",
+    function(f) {
+      f |> model(ipre ~ boxCox(lm) + pow(prop.sd, pw)) |> ini(prop.sd=sqrt(0.1), pw=1, lm=0.5)
+    },
+    .boxCoxProp,
+    addProp = 1
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+powT->boxCox(0.5)+propT", function(f) {
-    f |> model(ipre ~ boxCox(lm) + powT(prop.sd, pw)) |>
-      ini(prop.sd=sqrt(0.1), pw=1, lm=0.5)
-  }, .boxCoxPropT, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+powT->boxCox(0.5)+propT",
+    function(f) {
+      f |> model(ipre ~ boxCox(lm) + powT(prop.sd, pw)) |> ini(prop.sd=sqrt(0.1), pw=1, lm=0.5)
+    },
+    .boxCoxPropT,
+    addProp = 1
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+powF->boxCox(0.5)+propF", function(f) {
-    f |> model(ipre ~ boxCox(lm) + powF(prop.sd, pw, f2)) |>
-      ini(prop.sd=sqrt(0.1), pw=1, lm=0.5)
-  }, .boxCoxPropF, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+powF->boxCox(0.5)+propF",
+    function(f) {
+      f |> model(ipre ~ boxCox(lm) + powF(prop.sd, pw, f2)) |> ini(prop.sd=sqrt(0.1), pw=1, lm=0.5)
+    },
+    .boxCoxPropF,
+    addProp = 1
+  )
 
-  .boxCoxPow <- c(39.674, 39.674, 39.629, 39.563, 39.573, 39.573,
-                  39.623, 39.623, 39.674, 39.674)
+  .boxCoxPow <- c(39.674, 39.674, 39.629, 39.563, 39.573, 39.573, 39.623, 39.623, 39.674, 39.674)
 
-  testWang2007ErrorModel("boxCox(0.5)+pow", function(f) {
-    f |> model(ipre ~ boxCox(lm) + pow(prop.sd, pw)) |>
-      ini(prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
-  }, .boxCoxPow, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+pow",
+    function(f) {
+      f |> model(ipre ~ boxCox(lm) + pow(prop.sd, pw)) |> ini(prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
+    },
+    .boxCoxPow,
+    addProp = 1
+  )
 
-  .boxCoxPowT <- c(27.311, 27.311, 27.296, 27.082, 27.148, 27.148,
-                   27.305, 27.305, 27.311, 27.311)
-  testWang2007ErrorModel("boxCox(0.5)+powT", function(f) {
-    f |> model(ipre ~ boxCox(lm) + powT(prop.sd, pw)) |>
-      ini(prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
-  }, .boxCoxPowT, addProp = 1)
+  .boxCoxPowT <- c(27.311, 27.311, 27.296, 27.082, 27.148, 27.148, 27.305, 27.305, 27.311, 27.311)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+powT",
+    function(f) {
+      f |> model(ipre ~ boxCox(lm) + powT(prop.sd, pw)) |> ini(prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
+    },
+    .boxCoxPowT,
+    addProp = 1
+  )
 
-  .boxCoxPowF <- c(7.046, 7.046, 6.617, 6.617, 8.287, 8.287, 7.21,
-                   7.21, 7.046, 7.046)
-  testWang2007ErrorModel("boxCox(0.5)+powF", function(f) {
-    f |> model(ipre ~ boxCox(lm) + powF(prop.sd, pw, f2)) |>
-      ini(prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
-  }, .boxCoxPowF, addProp = 1)
-
+  .boxCoxPowF <- c(7.046, 7.046, 6.617, 6.617, 8.287, 8.287, 7.21, 7.21, 7.046, 7.046)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+powF",
+    function(f) {
+      f |> model(ipre ~ boxCox(lm) + powF(prop.sd, pw, f2)) |> ini(prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
+    },
+    .boxCoxPowF,
+    addProp = 1
+  )
 
   ################################################################################
   ## lnorm combined1
   ################################################################################
 
-  testWang2007ErrorModel("boxCox(0.5)+add+prop combined1->boxCox(0.5)+prop", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) |>
-      ini(lnorm.sd=0, prop.sd=sqrt(0.1), lm=0.5)
-  }, .boxCoxProp, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+prop combined1->boxCox(0.5)+prop",
+    function(f) {
+      f |> model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) |> ini(lnorm.sd=0, prop.sd=sqrt(0.1), lm=0.5)
+    },
+    .boxCoxProp,
+    addProp = 1
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+propT combined1->boxCox(0.5)+propT", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) |>
-      ini(lnorm.sd=0, prop.sd=sqrt(0.1), lm=0.5)
-  }, .boxCoxPropT, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+propT combined1->boxCox(0.5)+propT",
+    function(f) {
+      f |> model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) |> ini(lnorm.sd=0, prop.sd=sqrt(0.1), lm=0.5)
+    },
+    .boxCoxPropT,
+    addProp = 1
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+propF combined1->boxCox(0.5)+propF", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + propF(prop.sd, f2) + boxCox(lm)) |>
-      ini(lnorm.sd=0, prop.sd=sqrt(0.1), lm=0.5)
-  }, .boxCoxPropF, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+propF combined1->boxCox(0.5)+propF",
+    function(f) {
+      f |> model(ipre ~ add(lnorm.sd) + propF(prop.sd, f2) + boxCox(lm)) |> ini(lnorm.sd=0, prop.sd=sqrt(0.1), lm=0.5)
+    },
+    .boxCoxPropF,
+    addProp = 1
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+prop combined1->boxCox(0.5)+add", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0.5)
-  }, .boxCoxAdd, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+prop combined1->boxCox(0.5)+add",
+    function(f) {
+      f |> model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) |> ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0.5)
+    },
+    .boxCoxAdd,
+    addProp = 1
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+propT combined1->boxCox(0.5)+add", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0.5)
-  }, .boxCoxAdd, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+propT combined1->boxCox(0.5)+add",
+    function(f) {
+      f |> model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) |> ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0.5)
+    },
+    .boxCoxAdd,
+    addProp = 1
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+propF combined1->boxCox(0.5)+add", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + propF(prop.sd, f2) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0.5)
-  }, .boxCoxAdd, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+propF combined1->boxCox(0.5)+add",
+    function(f) {
+      f |> model(ipre ~ add(lnorm.sd) + propF(prop.sd, f2) + boxCox(lm)) |> ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0.5)
+    },
+    .boxCoxAdd,
+    addProp = 1
+  )
 
-  .boxCoxAddProp1 <- c(82.622, 82.622, 82.508, 82.534, 82.534,
-                       82.534, 82.345, 82.345, 82.622, 82.622)
+  .boxCoxAddProp1 <- c(82.622, 82.622, 82.508, 82.534, 82.534, 82.534, 82.345, 82.345, 82.622, 82.622)
 
-  testWang2007ErrorModel("boxCox(0.5)+add+prop combined1", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
-  }, .boxCoxAddProp1, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+prop combined1",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+    },
+    .boxCoxAddProp1,
+    addProp = 1
+  )
 
-  .boxCoxAddPropT1 <- c(57.327, 57.327, 57.252, 57.256, 57.257,
-                        57.257, 57.179, 57.179, 57.327, 57.327)
+  .boxCoxAddPropT1 <- c(57.327, 57.327, 57.252, 57.256, 57.257, 57.257, 57.179, 57.179, 57.327, 57.327)
 
-  testWang2007ErrorModel("boxCox(0.5)+add+propT combined1", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
-  }, .boxCoxAddPropT1, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+propT combined1",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+    },
+    .boxCoxAddPropT1,
+    addProp = 1
+  )
 
-  .boxCoxAddPropF1 <- c(22.065, 22.065, 22.064, 21.96, 22.067,
-                        22.067, 22.095, 22.095, 22.065, 22.065)
+  .boxCoxAddPropF1 <- c(22.065, 22.065, 22.064, 21.96, 22.067, 22.067, 22.095, 22.095, 22.065, 22.065)
 
-  testWang2007ErrorModel("boxCox(0.5)+add+propF combined1", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + propF(prop.sd, f2) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
-  }, .boxCoxAddPropF1, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+propF combined1",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + propF(prop.sd, f2) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+    },
+    .boxCoxAddPropF1,
+    addProp = 1
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+powF->boxCox(0.5)+add+propF combined1", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + powF(prop.sd, pw, f2) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
-  }, .boxCoxAddPropF1, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+powF->boxCox(0.5)+add+propF combined1",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + powF(prop.sd, pw, f2) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
+    },
+    .boxCoxAddPropF1,
+    addProp = 1
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+pow->boxCox(0.5)+add+prop combined1", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + pow(prop.sd, pw) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
-  }, .boxCoxAddProp1, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+pow->boxCox(0.5)+add+prop combined1",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + pow(prop.sd, pw) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
+    },
+    .boxCoxAddProp1,
+    addProp = 1
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+powT->boxCox(0.5)+add+propT combined1", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + powT(prop.sd, pw) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
-  }, .boxCoxAddPropT1, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+powT->boxCox(0.5)+add+propT combined1",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + powT(prop.sd, pw) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
+    },
+    .boxCoxAddPropT1,
+    addProp = 1
+  )
 
-  .boxCoxAddPowF1 <- c(24.676, 24.676, 24.676, 24.631, 24.692,
-                       24.692, 24.701, 24.701, 24.676, 24.676)
+  .boxCoxAddPowF1 <- c(24.676, 24.676, 24.676, 24.631, 24.692, 24.692, 24.701, 24.701, 24.676, 24.676)
 
-  testWang2007ErrorModel("boxCox(0.5)+add+powF combined1", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + powF(prop.sd, pw, f2) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
-  }, .boxCoxAddPowF1, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+powF combined1",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + powF(prop.sd, pw, f2) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
+    },
+    .boxCoxAddPowF1,
+    addProp = 1
+  )
 
-  .boxCoxAddPow1 <- c(50.265, 50.265, 50.241, 50.23, 50.232, 50.232,
-                      50.216, 50.216, 50.265, 50.265)
+  .boxCoxAddPow1 <- c(50.265, 50.265, 50.241, 50.23, 50.232, 50.232, 50.216, 50.216, 50.265, 50.265)
 
-  testWang2007ErrorModel("boxCox(0.5)+add+pow combined1", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + pow(prop.sd, pw) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
-  }, .boxCoxAddPow1, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+pow combined1",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + pow(prop.sd, pw) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
+    },
+    .boxCoxAddPow1,
+    addProp = 1
+  )
 
-  .boxCoxAddPowT1 <- c(40.45, 40.45, 40.436, 40.41, 40.416, 40.416,
-                       40.427, 40.427, 40.45, 40.45)
+  .boxCoxAddPowT1 <- c(40.45, 40.45, 40.436, 40.41, 40.416, 40.416, 40.427, 40.427, 40.45, 40.45)
 
-  testWang2007ErrorModel("boxCox(0.5)+add+powT combined1", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + powT(prop.sd, pw) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
-  }, .boxCoxAddPowT1, addProp = 1)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+powT combined1",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + powT(prop.sd, pw) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
+    },
+    .boxCoxAddPowT1,
+    addProp = 1
+  )
 
   ################################################################################
   ## boxCox(0.5) combined2
   ################################################################################
 
-  testWang2007ErrorModel("boxCox(0.5)+add+propT combined2->boxCox(0.5)+propT", function(f) {
-    f |> model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) |>
-      ini(add.sd=0, prop.sd=sqrt(0.1), lambda=0.5)
-  }, .boxCoxPropT, addProp = 2)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+propT combined2->boxCox(0.5)+propT",
+    function(f) {
+      f |> model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) |> ini(add.sd=0, prop.sd=sqrt(0.1), lambda=0.5)
+    },
+    .boxCoxPropT,
+    addProp = 2
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+propF combined2->boxCox(0.5)+propF", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + boxCox(lm)+ propF(prop.sd, f2)) |>
-      ini(lnorm.sd=0, prop.sd=sqrt(0.1), lm=0.5)
-  }, .boxCoxPropF, addProp = 2)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+propF combined2->boxCox(0.5)+propF",
+    function(f) {
+      f |> model(ipre ~ add(lnorm.sd) + boxCox(lm)+ propF(prop.sd, f2)) |> ini(lnorm.sd=0, prop.sd=sqrt(0.1), lm=0.5)
+    },
+    .boxCoxPropF,
+    addProp = 2
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+prop combined2->boxCox(0.5)+add", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0.5)
-  }, .boxCoxAdd, addProp = 2)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+prop combined2->boxCox(0.5)+add",
+    function(f) {
+      f |> model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) |> ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0.5)
+    },
+    .boxCoxAdd,
+    addProp = 2
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+propT combined2->boxCox(0.5)+add", function(f) {
-    f |> model(ipre ~ boxCox(lm) + add(lnorm.sd) + propT(prop.sd)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0.5)
-  }, .boxCoxAdd, addProp = 2)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+propT combined2->boxCox(0.5)+add",
+    function(f) {
+      f |> model(ipre ~ boxCox(lm) + add(lnorm.sd) + propT(prop.sd)) |> ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0.5)
+    },
+    .boxCoxAdd,
+    addProp = 2
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+propF combined2->boxCox(0.5)+add", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + boxCox(lm) + propF(prop.sd, f2)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0.5)
-  }, .boxCoxAdd, addProp = 2)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+propF combined2->boxCox(0.5)+add",
+    function(f) {
+      f |> model(ipre ~ add(lnorm.sd) + boxCox(lm) + propF(prop.sd, f2)) |> ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0.5)
+    },
+    .boxCoxAdd,
+    addProp = 2
+  )
 
-  .boxCoxAddProp2 <- c(78.202, 78.202, 78.052, 78.084, 78.084,
-                       78.084, 77.871, 77.871, 78.202, 78.202)
+  .boxCoxAddProp2 <- c(78.202, 78.202, 78.052, 78.084, 78.084, 78.084, 77.871, 77.871, 78.202, 78.202)
 
-  testWang2007ErrorModel("boxCox(0.5)+add+pow->boxCox(0.5)+add+prop combined2", function(f) {
-    f |> model(ipre ~ boxCox(lm) + add(lnorm.sd) + pow(prop.sd, pw)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
-  }, .boxCoxAddProp2, addProp = 2)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+pow->boxCox(0.5)+add+prop combined2",
+    function(f) {
+      f |>
+        model(ipre ~ boxCox(lm) + add(lnorm.sd) + pow(prop.sd, pw)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
+    },
+    .boxCoxAddProp2,
+    addProp = 2
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+prop combined2", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
-  }, .boxCoxAddProp2 ,addProp = 2)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+prop combined2",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+    },
+    .boxCoxAddProp2,
+    addProp = 2
+  )
 
-  .boxCoxAddPropT2 <- c(49.798, 49.798, 49.689, 49.668, 49.671,
-                        49.671, 49.641, 49.641, 49.798, 49.798)
+  .boxCoxAddPropT2 <- c(49.798, 49.798, 49.689, 49.668, 49.671, 49.671, 49.641, 49.641, 49.798, 49.798)
 
-  testWang2007ErrorModel("boxCox(0.5)+add+propT combined2", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
-  }, .boxCoxAddPropT2, addProp = 2)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+propT combined2",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+    },
+    .boxCoxAddPropT2,
+    addProp = 2
+  )
 
+  .boxCoxAddPropF2 <- c(14.213, 14.213, 14.21, 14.085, 14.498, 14.498, 14.291, 14.291, 14.213, 14.213)
 
-  .boxCoxAddPropF2 <- c(14.213, 14.213, 14.21, 14.085, 14.498,
-                        14.498, 14.291, 14.291, 14.213, 14.213)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+propF combined1",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + boxCox(lm)+ propF(prop.sd, f2)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+    },
+    .boxCoxAddPropF2,
+    addProp = 2
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+propF combined1", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + boxCox(lm)+ propF(prop.sd, f2)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
-  }, .boxCoxAddPropF2, addProp = 2)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+powF->lnorm+propF combined2",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + powF(prop.sd, pw, f2) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
+    },
+    .boxCoxAddPropF2,
+    addProp = 2
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+powF->lnorm+propF combined2", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + powF(prop.sd, pw, f2) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
-  }, .boxCoxAddPropF2, addProp = 2)
+  .boxCoxAddPropF2 <- c(78.202, 78.202, 78.052, 78.084, 78.084, 78.084, 77.871, 77.871, 78.202, 78.202)
 
-  .boxCoxAddPropF2 <- c(78.202, 78.202, 78.052, 78.084, 78.084,
-                        78.084, 77.871, 77.871, 78.202, 78.202)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+pow->lnorm+prop combined2",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + boxCox(lm)+ pow(prop.sd, pw)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
+    },
+    .boxCoxAddPropF2,
+    addProp = 2
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+pow->lnorm+prop combined2", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + boxCox(lm)+ pow(prop.sd, pw)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
-  }, .boxCoxAddPropF2, addProp = 2)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+powT->boxCox(0.5)+add+propT combined2",
+    function(f) {
+      f |>
+        model(ipre ~ add(lnorm.sd) + powT(prop.sd, pw) + boxCox(lm)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
+    },
+    .boxCoxAddPropT2,
+    addProp = 2
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+powT->boxCox(0.5)+add+propT combined2", function(f) {
-    f |> model(ipre ~ add(lnorm.sd) + powT(prop.sd, pw) + boxCox(lm)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
-  }, .boxCoxAddPropT2, addProp = 2)
+  .boxCoxAddPowF2 <- c(15.857, 15.857, 15.856, 15.771, 16.06, 16.06, 15.918, 15.918, 15.857, 15.857)
 
-  .boxCoxAddPowF2 <- c(15.857, 15.857, 15.856, 15.771, 16.06, 16.06,
-                       15.918, 15.918, 15.857, 15.857)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+powF combined2",
+    function(f) {
+      f |>
+        model(ipre ~ boxCox(lm) + add(lnorm.sd) + powF(prop.sd, pw, f2)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
+    },
+    .boxCoxAddPowF2,
+    addProp = 2
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+powF combined2", function(f) {
-    f |> model(ipre ~ boxCox(lm) + add(lnorm.sd) + powF(prop.sd, pw, f2)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
-  }, .boxCoxAddPowF2, addProp = 2)
+  .boxCoxAddPow2 <- c(41.665, 41.665, 41.631, 41.589, 41.596, 41.596, 41.623, 41.623, 41.665, 41.665)
 
-  .boxCoxAddPow2 <- c(41.665, 41.665, 41.631, 41.589, 41.596, 41.596,
-                      41.623, 41.623, 41.665, 41.665)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+pow combined2",
+    function(f) {
+      f |>
+        model(ipre ~ boxCox(lm) + add(lnorm.sd) + pow(prop.sd, pw)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
+    },
+    .boxCoxAddPow2,
+    addProp = 2
+  )
 
-  testWang2007ErrorModel("boxCox(0.5)+add+pow combined2", function(f) {
-    f |> model(ipre ~ boxCox(lm) + add(lnorm.sd) + pow(prop.sd, pw)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
-  }, .boxCoxAddPow2, addProp = 2)
+  .boxCoxAddPowT2 <- c(30.736, 30.736, 30.722, 30.625, 30.657, 30.657, 30.732, 30.732, 30.736, 30.736)
 
-  .boxCoxAddPowT2 <- c(30.736, 30.736, 30.722, 30.625, 30.657,
-                       30.657, 30.732, 30.732, 30.736, 30.736)
-
-  testWang2007ErrorModel("boxCox(0.5)+add+powT combined2", function(f) {
-    f |> model(ipre ~ boxCox(lm) + add(lnorm.sd) + powT(prop.sd, pw)) |>
-      ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
-  }, .boxCoxAddPowT2, addProp = 2)
+  testWang2007ErrorModel(
+    "boxCox(0.5)+add+powT combined2",
+    function(f) {
+      f |>
+        model(ipre ~ boxCox(lm) + add(lnorm.sd) + powT(prop.sd, pw)) |>
+        ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
+    },
+    .boxCoxAddPowT2,
+    addProp = 2
+  )
 
   rxode2::rxUnloadAll()
 })

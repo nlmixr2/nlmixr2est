@@ -15,9 +15,9 @@ test_that("all-mu-referenced model has an empty theta-sensitivity set", {
   ui <- rxode2::rxode2(allMu)
   cls <- .adviClassifyPars(ui)
   expect_length(cls$etaNames, 3L)
-  expect_true(all(!is.na(cls$muRefThetaIdx)))   # every eta mu-references a theta
-  expect_length(cls$struct, 0L)                 # no non-mu structural thetas
-  expect_length(cls$sigma, 1L)                  # add.sd is a sigma theta
+  expect_true(all(!is.na(cls$muRefThetaIdx))) # every eta mu-references a theta
+  expect_length(cls$struct, 0L) # no non-mu structural thetas
+  expect_length(cls$sigma, 1L) # add.sd is a sigma theta
   expect_setequal(cls$thetaSensIdx, cls$sigma)
 
   prep <- .adviDataPrep(ui, nlmixr2data::theo_sd)
@@ -46,4 +46,82 @@ test_that("fixed-effect-only thetas become non-mu structural sensitivities", {
   expect_gt(length(prep$structIdx), 0L)
   expect_equal(prep$N, length(unique(nlmixr2data::theo_sd$ID)))
   expect_gt(prep$Nobs, 0L)
+})
+
+test_that(".adviDataPrep counts no missing-DV or MDV = 1 record as an observation", {
+  .mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  ui <- rxode2::rxode2(.mod)
+  .base <- nlmixr2data::theo_sd
+  .base$MDV <- as.integer(.base$EVID != 0)
+  .t <- .base$TIME[.base$ID == 1 & .base$EVID == 0][3]
+  .add <- function(dv, mdv) {
+    .r <- .base[.base$ID == 1 & .base$EVID == 0, ][1, ]
+    .r$TIME <- .t
+    .r$DV <- dv
+    .r$MDV <- mdv
+    .d <- rbind(.base, .r)
+    .d[order(.d$ID, .d$TIME, -.d$EVID), ]
+  }
+  .p0 <- .adviDataPrep(ui, .base)
+  for (.d in list(.add(NA_real_, 0L), .add(5, 1L))) {
+    .p <- .adviDataPrep(ui, .d)
+    expect_identical(.p$Nobs, .p0$Nobs)
+    expect_identical(.p$subj[[1]]$times, .p0$subj[[1]]$times)
+    expect_identical(.p$subj[[1]]$y, .p0$subj[[1]]$y)
+  }
+})
+
+test_that(".adviDataPrep drops a subject with no observations, as the FOCEi inner problem does", {
+  .mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  ui <- rxode2::rxode2(.mod)
+  .d <- nlmixr2data::theo_sd
+  .d$DV[.d$ID == 12 & .d$EVID == 0] <- NA
+  expect_warning(.p <- .adviDataPrep(ui, .d), "IDs without observations dropped: 12", fixed = TRUE)
+  expect_identical(.p$N, 11L)
+  expect_identical(.p$Nobs, 121L)
+  .d <- nlmixr2data::theo_sd
+  .d$ID[5] <- NA
+  expect_error(.adviDataPrep(ui, .d), "^'id' cannot have NA values$")
+  # a missing double ID beside a character EVID stops on the EVID, as FOCEi does
+  .d$ID <- as.double(.d$ID)
+  .d$EVID <- as.character(.d$EVID)
+  expect_error(.adviDataPrep(ui, .d), "^event id \\('evid'\\) needs to be an integer$")
 })

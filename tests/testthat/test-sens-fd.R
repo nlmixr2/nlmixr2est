@@ -1,5 +1,4 @@
 nmTest({
-
   f <- function() {
     ini({
       popKe <- 0.5
@@ -32,18 +31,24 @@ nmTest({
   meth <- "focei"
 
   testIt <- function(meth) {
-
     test_that(sprintf("finite difference %s, central", meth), {
-
-      fit <- .nlmixr(f, dat2, est=meth,
-                     control = foceiControl(maxOuterIterations = 0, covMethod = "", eventType="central"))
+      fit <- .nlmixr(
+        f,
+        dat2,
+        est = meth,
+        control = foceiControl(maxOuterIterations = 0, covMethod = "", eventType = "central")
+      )
 
       expect_false(all(fit$eta$etaF == 0))
     })
 
     test_that(sprintf("finite difference %s, forward", meth), {
-      fit <- .nlmixr(f, dat2, est=meth,
-                     control = foceiControl(maxOuterIterations = 0, covMethod = "", eventType="forward"))
+      fit <- .nlmixr(
+        f,
+        dat2,
+        est = meth,
+        control = foceiControl(maxOuterIterations = 0, covMethod = "", eventType = "forward")
+      )
       expect_false(all(fit$eta$etaF == 0))
     })
 
@@ -51,5 +56,4 @@ nmTest({
   }
 
   invisible(lapply(c("focei", "foce", "foi", "fo"), testIt))
-
 })

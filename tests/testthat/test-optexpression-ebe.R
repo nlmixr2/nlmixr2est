@@ -21,17 +21,23 @@ nmTest({
       })
     }
 
-    .on <- .nlmixrMsg(oneCmt, nlmixr2data::theo_sd, est = "bobyqa",
-                      control = bobyqaControl(optExpression = TRUE, maxfun = 10,
-                                              print = 0),
-                      table = tableControl(cwres = FALSE, npde = FALSE))
+    .on <- .nlmixrMsg(
+      oneCmt,
+      nlmixr2data::theo_sd,
+      est = "bobyqa",
+      control = bobyqaControl(optExpression = TRUE, maxfun = 10, print = 0),
+      table = tableControl(cwres = FALSE, npde = FALSE)
+    )
     expect_true(any(grepl("duplicate expressions in (Llik )?EBE model", .on$msg)))
     expect_true(grepl("rx_expr", rxode2::rxNorm(.on$fit$env$foceiModel$predOnly)))
 
-    .off <- .nlmixrMsg(oneCmt, nlmixr2data::theo_sd, est = "bobyqa",
-                       control = bobyqaControl(optExpression = FALSE, maxfun = 10,
-                                               print = 0),
-                       table = tableControl(cwres = FALSE, npde = FALSE))
+    .off <- .nlmixrMsg(
+      oneCmt,
+      nlmixr2data::theo_sd,
+      est = "bobyqa",
+      control = bobyqaControl(optExpression = FALSE, maxfun = 10, print = 0),
+      table = tableControl(cwres = FALSE, npde = FALSE)
+    )
     # the EBE model is still compiled ("compiling EBE model..."), just not rewritten
     expect_false(any(grepl("duplicate expressions", .off$msg)))
     expect_false(grepl("rx_expr", rxode2::rxNorm(.off$fit$env$foceiModel$predOnly)))
@@ -56,12 +62,14 @@ nmTest({
       })
     }
 
-    .on <- .nlmixrMsg(oneCmt, nlmixr2data::theo_sd, est = "bobyqa",
-                      control = bobyqaControl(sumProd = TRUE, optExpression = FALSE,
-                                              maxfun = 10, print = 0),
-                      table = tableControl(cwres = FALSE, npde = FALSE))
-    expect_true(any(grepl("stabilizing round off errors in predictions or EBE model",
-                          .on$msg)))
+    .on <- .nlmixrMsg(
+      oneCmt,
+      nlmixr2data::theo_sd,
+      est = "bobyqa",
+      control = bobyqaControl(sumProd = TRUE, optExpression = FALSE, maxfun = 10, print = 0),
+      table = tableControl(cwres = FALSE, npde = FALSE)
+    )
+    expect_true(any(grepl("stabilizing round off errors in predictions or EBE model", .on$msg)))
     .txt <- rxode2::rxNorm(.on$fit$env$foceiModel$predOnly)
     expect_true(grepl("prod(", .txt, fixed = TRUE))
     expect_true(grepl("sum(", .txt, fixed = TRUE))

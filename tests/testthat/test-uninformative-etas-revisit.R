@@ -1,6 +1,5 @@
 nmTest({
   test_that("saemControl exposes revisitUninformativeEtas", {
-
     ## off by default: the revisit can freeze an eta for the rest of the fit, and the
     ## two verdicts only disagree when theta moved far enough during burn-in that it
     ## has probably not settled
@@ -14,27 +13,105 @@ nmTest({
 
 nmTest({
   test_that("the uninformative-eta verdict is re-decided at the end of burn-in", {
-
     ## Subjects 11, 12, 13 dose into the central compartment (IV), so `ka` -- and
     ## therefore eta.ka -- cannot be identified from their data at ANY theta.
     ## Subjects 21, 22, 23 dose into the depot (PO), where it can.
     .dat <- data.frame(
       ID = c(rep(11, 7), rep(12, 7), rep(13, 8), rep(21, 7), rep(22, 7), rep(23, 7)),
-      TIME = c(0, 0.05, 0.25, 0.5, 1, 3, 5,   0, 0.05, 0.25, 0.5, 1, 3, 5,
-               0, 0.05, 0.25, 0.5, 1, 3, 5, 8, 0, 0.25, 0.5, 1, 3, 5, 8,
-               0, 0.25, 0.5, 1, 3, 5, 8,      0, 0.25, 0.5, 1, 3, 5, 8),
-      DV = c(NA, 2017.85, 1323.74, 792.5, 822.72, 36.27, 3.33,
-             NA, 1702, 1290.75, 1095.95, 907.6, 125.44, 14.44,
-             NA, 1933.04, 1242.43, 661.22, 193.52, 1.75, NA, NA,
-             NA, 706.58, 1063.14, 2257.62, 941.33, 629.69, 100,
-             NA, 1462.95, 2217.76, 2739.5, 705.3, 108.47, 8.75,
-             NA, 211.66, 467.23, 174.24, 153.6, 27.07, 2.81),
-      AMT = c(1, rep(0, 6), 1, rep(0, 6), 1, rep(0, 7),
-              5, rep(0, 6), 5, rep(0, 6), 5, rep(0, 6)),
-      EVID = c(1, rep(0, 6), 1, rep(0, 6), 1, rep(0, 7),
-               1, rep(0, 6), 1, rep(0, 6), 1, rep(0, 6)),
-      CMT = c(rep(2, 7), rep(2, 7), rep(2, 8),
-              1, rep(2, 6), 1, rep(2, 6), 1, rep(2, 6)))
+      TIME = c(
+        0,
+        0.05,
+        0.25,
+        0.5,
+        1,
+        3,
+        5,
+        0,
+        0.05,
+        0.25,
+        0.5,
+        1,
+        3,
+        5,
+        0,
+        0.05,
+        0.25,
+        0.5,
+        1,
+        3,
+        5,
+        8,
+        0,
+        0.25,
+        0.5,
+        1,
+        3,
+        5,
+        8,
+        0,
+        0.25,
+        0.5,
+        1,
+        3,
+        5,
+        8,
+        0,
+        0.25,
+        0.5,
+        1,
+        3,
+        5,
+        8
+      ),
+      DV = c(
+        NA,
+        2017.85,
+        1323.74,
+        792.5,
+        822.72,
+        36.27,
+        3.33,
+        NA,
+        1702,
+        1290.75,
+        1095.95,
+        907.6,
+        125.44,
+        14.44,
+        NA,
+        1933.04,
+        1242.43,
+        661.22,
+        193.52,
+        1.75,
+        NA,
+        NA,
+        NA,
+        706.58,
+        1063.14,
+        2257.62,
+        941.33,
+        629.69,
+        100,
+        NA,
+        1462.95,
+        2217.76,
+        2739.5,
+        705.3,
+        108.47,
+        8.75,
+        NA,
+        211.66,
+        467.23,
+        174.24,
+        153.6,
+        27.07,
+        2.81
+      ),
+      AMT = c(1, rep(0, 6), 1, rep(0, 6), 1, rep(0, 7), 5, rep(0, 6), 5, rep(0, 6), 5, rep(0, 6)),
+      EVID = c(1, rep(0, 6), 1, rep(0, 6), 1, rep(0, 7), 1, rep(0, 6), 1, rep(0, 6), 1, rep(0, 6)),
+      CMT = c(rep(2, 7), rep(2, 7), rep(2, 8), 1, rep(2, 6), 1, rep(2, 6), 1, rep(2, 6))
+    )
 
     ## `tv` is the only difference between the two models below.
     .mod <- function(tvIni) {
@@ -65,10 +142,21 @@ nmTest({
     }
 
     .fit <- function(tvIni, revisit) {
-      .nlmixr(.mod(tvIni)(), .dat, "saem",
-              control = saemControl(nBurn = 60, nEm = 40, print = 0, seed = 42,
-                                    calcTables = FALSE, logLik = FALSE, covMethod = "",
-                                    revisitUninformativeEtas = revisit))
+      .nlmixr(
+        .mod(tvIni)(),
+        .dat,
+        "saem",
+        control = saemControl(
+          nBurn = 60,
+          nEm = 40,
+          print = 0,
+          seed = 42,
+          calcTables = FALSE,
+          logLik = FALSE,
+          covMethod = "",
+          revisitUninformativeEtas = revisit
+        )
+      )
     }
 
     ## `tv = 20` puts v at 4.9e8, so every prediction underflows at the initial
@@ -103,7 +191,6 @@ nmTest({
 
 nmTest({
   test_that("the revisit is skipped when the mask itself is off", {
-
     .d <- nlmixr2data::theo_sd
     .m <- function() {
       ini({
@@ -123,14 +210,12 @@ nmTest({
       })
     }
     .ctl <- function(...) {
-      saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42, calcTables = FALSE,
-                  logLik = FALSE, covMethod = "", ...)
+      saemControl(nBurn = 20, nEm = 20, print = 0, seed = 42, calcTables = FALSE, logLik = FALSE, covMethod = "", ...)
     }
 
     ## handleUninformativeEtas=FALSE means there is no mask to re-decide; the revisit
     ## must not run and reintroduce one.
-    .noMask <- .nlmixr(.m(), .d, "saem",
-                       control = .ctl(handleUninformativeEtas = FALSE))
+    .noMask <- .nlmixr(.m(), .d, "saem", control = .ctl(handleUninformativeEtas = FALSE))
     expect_equal(unname(.noMask$saem$ueRevisitInfo[["ran"]]), 0L)
 
     ## Off by default.
@@ -139,8 +224,7 @@ nmTest({
 
     ## Explicitly enabled: it runs, and when it changes no verdict the fit is
     ## untouched -- the probe draws no random numbers, so the RNG stream does not shift.
-    .rev <- .nlmixr(.m(), .d, "saem",
-                    control = .ctl(revisitUninformativeEtas = TRUE))
+    .rev <- .nlmixr(.m(), .d, "saem", control = .ctl(revisitUninformativeEtas = TRUE))
     expect_equal(unname(.rev$saem$ueRevisitInfo[["ran"]]), 1L)
     expect_equal(unname(.rev$saem$ueRevisitInfo[["unfroze"]]), 0L)
     expect_equal(unname(.rev$saem$ueRevisitInfo[["froze"]]), 0L)

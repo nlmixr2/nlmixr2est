@@ -32,15 +32,18 @@
 # nolint end
 
 .twoLevelCtl <- function(nBurn = 60, nEm = 80, covMethod = "", ...) {
-  saemControl(nBurn = nBurn, nEm = nEm, seed = 42L, print = 0L,
-              covMethod = covMethod, calcTables = FALSE, ...)
+  saemControl(nBurn = nBurn, nEm = nEm, seed = 42L, print = 0L, covMethod = covMethod, calcTables = FALSE, ...)
 }
 
 test_that("iovMethod='twoLevel' estimates one occasion variance in closed form", {
   skip_on_cran()
   .d <- .twoLevelFitData()
-  .f2 <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
-                                  control = .twoLevelCtl(iovMethod = "twoLevel")))
+  .f2 <- suppressWarnings(nlmixr2(
+    .twoLevelFitModel(),
+    .d,
+    est = "saem",
+    control = .twoLevelCtl(iovMethod = "twoLevel")
+  ))
 
   # the mechanism: the occasion term is an ordinary omega entry, not a
   # population parameter multiplying a unit-variance eta.  There is no
@@ -65,10 +68,13 @@ test_that("iovMethod='twoLevel' estimates one occasion variance in closed form",
 test_that("the two-level occasion variance does not collapse the way the shared rewrite's does", {
   skip_on_cran()
   .d <- .twoLevelFitData()
-  .f0 <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
-                                  control = .twoLevelCtl(iovMethod = "theta")))
-  .f2 <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
-                                  control = .twoLevelCtl(iovMethod = "twoLevel")))
+  .f0 <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem", control = .twoLevelCtl(iovMethod = "theta")))
+  .f2 <- suppressWarnings(nlmixr2(
+    .twoLevelFitModel(),
+    .d,
+    est = "saem",
+    control = .twoLevelCtl(iovMethod = "twoLevel")
+  ))
   .iov0 <- .f0$omega$occ[1, 1]
   .iov2 <- .f2$omega$occ[1, 1]
 
@@ -111,9 +117,12 @@ test_that("a model outside the two-level scope falls back to the shared rewrite"
     })
   }
   # nolint end
-  .f <- suppressWarnings(nlmixr2(.two(), .d, est = "saem",
-                                 control = .twoLevelCtl(nBurn = 15, nEm = 15,
-                                                        iovMethod = "twoLevel")))
+  .f <- suppressWarnings(nlmixr2(
+    .two(),
+    .d,
+    est = "saem",
+    control = .twoLevelCtl(nBurn = 15, nEm = 15, iovMethod = "twoLevel")
+  ))
   # it fitted, by the shared rewrite, and said so
   expect_true(inherits(.f, "nlmixr2FitCore"))
   expect_true(any(grepl("two-level IOV needs one occasion variable", .f$runInfo)))
@@ -124,9 +133,12 @@ test_that("a model outside the two-level scope falls back to the shared rewrite"
 test_that("a two-level fit's covariance carries one row for the occasion variance", {
   skip_on_cran()
   .d <- .twoLevelFitData()
-  .f <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
-                                 control = .twoLevelCtl(covMethod = "linFim",
-                                                        iovMethod = "twoLevel")))
+  .f <- suppressWarnings(nlmixr2(
+    .twoLevelFitModel(),
+    .d,
+    est = "saem",
+    control = .twoLevelCtl(covMethod = "linFim", iovMethod = "twoLevel")
+  ))
   .cv <- .f$cov
   skip_if(is.null(.cv) || !is.matrix(.cv))
   # the K per-occasion columns are ONE parameter; they must not appear
@@ -141,8 +153,12 @@ test_that("a two-level fit's covariance carries one row for the occasion varianc
 test_that("iovMethod='collapsed' imposes both constraints exactly", {
   skip_on_cran()
   .d <- .twoLevelFitData()
-  .f <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
-                                 control = .twoLevelCtl(iovMethod = "collapsed")))
+  .f <- suppressWarnings(nlmixr2(
+    .twoLevelFitModel(),
+    .d,
+    est = "saem",
+    control = .twoLevelCtl(iovMethod = "collapsed")
+  ))
 
   # the fit presents in the user's own parameterization, like every other path
   expect_true("tcl" %in% names(.f$fixef))
@@ -171,15 +187,24 @@ test_that("the collapsed and two-level paths do not contaminate each other", {
   # .uiIovEnv is process-global, and each path installs its own post-fit
   # restoration; a stale marker sends a fit through the wrong one
   .d <- .twoLevelFitData()
-  .fc <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
-                                  control = .twoLevelCtl(nBurn = 15, nEm = 15,
-                                                         iovMethod = "collapsed")))
-  .ft <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
-                                  control = .twoLevelCtl(nBurn = 15, nEm = 15,
-                                                         iovMethod = "twoLevel")))
-  .fl <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem",
-                                  control = .twoLevelCtl(nBurn = 15, nEm = 15,
-                                                         iovMethod = "theta")))
+  .fc <- suppressWarnings(nlmixr2(
+    .twoLevelFitModel(),
+    .d,
+    est = "saem",
+    control = .twoLevelCtl(nBurn = 15, nEm = 15, iovMethod = "collapsed")
+  ))
+  .ft <- suppressWarnings(nlmixr2(
+    .twoLevelFitModel(),
+    .d,
+    est = "saem",
+    control = .twoLevelCtl(nBurn = 15, nEm = 15, iovMethod = "twoLevel")
+  ))
+  .fl <- suppressWarnings(nlmixr2(
+    .twoLevelFitModel(),
+    .d,
+    est = "saem",
+    control = .twoLevelCtl(nBurn = 15, nEm = 15, iovMethod = "theta")
+  ))
   for (.f in list(.fc, .ft, .fl)) {
     expect_equal(names(.f$omega), c("id", "occ"))
     expect_equal(rownames(.f$omega$occ), "iov.cl")
@@ -237,12 +262,14 @@ test_that("the FOCEi objective under IOV is minimized at the true Psi", {
     .ini[[1]] <- quote(`ini`)
     .fun <- .getUiFunFromIniAndModel(.u, .ini, rxode2::as.model(.u$lstExpr))
     .u2 <- rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.fun())))
-    suppressWarnings(nlmixr2(.u2, .d, est = "focei",
-                             control = foceiControl(maxOuterIterations = 0,
-                                                    print = 0L, covMethod = "",
-                                                    calcTables = FALSE)))$objf
+    suppressWarnings(nlmixr2(
+      .u2,
+      .d,
+      est = "focei",
+      control = foceiControl(maxOuterIterations = 0, print = 0L, covMethod = "", calcTables = FALSE)
+    ))$objf
   }
-  .grid <- c(1e-4, 1e-3, 1e-2, 1e-1)   # the true value is 0.01
+  .grid <- c(1e-4, 1e-3, 1e-2, 1e-1) # the true value is 0.01
   .obj <- vapply(.grid, .at, numeric(1))
 
   expect_true(all(is.finite(.obj)))
@@ -250,4 +277,36 @@ test_that("the FOCEi objective under IOV is minimized at the true Psi", {
   expect_equal(.grid[which.min(.obj)], 1e-2)
   # and it is a real minimum, not a flat line
   expect_true(min(.obj) < min(.obj[.grid != 1e-2]) - 1)
+})
+
+test_that("a two-level or collapsed fit's $etaMat has the occasion etas a focei refit expands to (issue 1140)", {
+  skip_on_cran()
+  .d <- .twoLevelFitData()
+  for (.m in c("twoLevel", "collapsed")) {
+    .f <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem", control = .twoLevelCtl(iovMethod = .m)))
+    .em <- .f$etaMat
+    expect_equal(colnames(.em), c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
+    # the "theta" rewrite's occasion etas have unit variance; $iov holds them
+    # times the occasion standard deviation
+    .sd <- sqrt(.f$omega$occ[["iov.cl", "iov.cl"]])
+    .iov <- .f$iov$occ
+    expect_equal(unname(.em[, "rx.iov.cl.1"]), .iov$iov.cl[.iov$occ == 1] / .sd)
+    expect_equal(unname(.em[, "rx.iov.cl.2"]), .iov$iov.cl[.iov$occ == 2] / .sd)
+    expect_equal(unname(.em[, c("eta.ka", "eta.cl", "eta.v")]), unname(as.matrix(.f$eta[, -1])))
+    # held fixed in a focei refit, they give back saem's occasion deviations
+    .g <- suppressWarnings(suppressMessages(nlmixr2(
+      .f,
+      .d,
+      est = "focei",
+      control = foceiControl(
+        print = 0L,
+        maxOuterIterations = 0L,
+        maxInnerIterations = 0L,
+        covMethod = "",
+        calcTables = FALSE,
+        etaMat = .em
+      )
+    )))
+    expect_equal(.g$iov$occ$iov.cl, .iov$iov.cl, tolerance = 1e-6)
+  }
 })

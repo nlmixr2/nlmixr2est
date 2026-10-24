@@ -1,7 +1,6 @@
 nmTest({
   test_that("rmEta()", {
-
-    mod <- function ()  {
+    mod <- function() {
       description <- "One compartment PK model with linear clearance"
       ini({
         lka <- 0.45
@@ -29,7 +28,7 @@ nmTest({
 
     expect_true(all(is.na(mod1$iniDf$neta1)))
 
-    mod <- function ()  {
+    mod <- function() {
       description <- "One compartment PK model with linear clearance"
       ini({
         lka <- 0.45
@@ -56,11 +55,13 @@ nmTest({
     expect_true(!rxode2::testExists(mod1, "etaKa"))
     expect_true(!rxode2::testExists(mod1, "etaCl"))
 
-    expect_error(mod |>
-                   rmEta("etaX"), regexp = "'etaX' not in the model")
+    expect_error(
+      mod |>
+        rmEta("etaX"),
+      regexp = "'etaX' not in the model"
+    )
 
-
-    mod <- function ()  {
+    mod <- function() {
       description <- "One compartment PK model with linear clearance"
       ini({
         lka <- 0.45
@@ -86,8 +87,5 @@ nmTest({
     expect_true(!rxode2::testExists(mod1, "etaVc"))
     expect_true(rxode2::testExists(mod1, "etaKa"))
     expect_true(rxode2::testExists(mod1, "etaCl"))
-
-
-
   })
 })

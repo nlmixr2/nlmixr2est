@@ -16,18 +16,18 @@ test_that("ss dose rows fall back to the standard gradient with a runInfo note",
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   d <- data.frame(
-    id = 1, time = c(0, 3, 7, 15, 24, 30),
+    id = 1,
+    time = c(0, 3, 7, 15, 24, 30),
     amt = c(100, 0, 100, 0, 100, 0),
-    evid = c(1, 0, 1, 0, 1, 0), cmt = 1,
-    ss = c(1, 0, 0, 0, 0, 0), ii = c(12, 0, 0, 0, 0, 0)
+    evid = c(1, 0, 1, 0, 1, 0),
+    cmt = 1,
+    ss = c(1, 0, 0, 0, 0, 0),
+    ii = c(12, 0, 0, 0, 0, 0)
   )
   d$wt <- ifelse(d$time < 20, 70, 85)
   d$dv <- c(0, 3.2, 0, 2.5, 0, 2.2)
   fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.carryModCov, d,
-      est = "focei",
-      control = .carryFitCtl("auto")
-    )
+    nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = .carryFitCtl("auto"))
   ))
   expect_identical(fit$foceiControl$linCmtSensCarry, "none")
   expect_true(any(grepl("carry gradient off", unlist(fit$runInfo))))
@@ -37,17 +37,16 @@ test_that("evid=2 rows fall back to the standard gradient with a runInfo note", 
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   d <- data.frame(
-    id = 1, time = c(0, 3, 5, 7, 15, 24, 30),
+    id = 1,
+    time = c(0, 3, 5, 7, 15, 24, 30),
     amt = c(100, 0, 0, 100, 0, 100, 0),
-    evid = c(1, 0, 2, 1, 0, 1, 0), cmt = 1
+    evid = c(1, 0, 2, 1, 0, 1, 0),
+    cmt = 1
   )
   d$wt <- ifelse(d$time < 20, 70, 85)
   d$dv <- c(0, 3.2, 0, 0, 2.5, 0, 2.2)
   fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.carryModCov, d,
-      est = "focei",
-      control = .carryFitCtl("auto")
-    )
+    nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = .carryFitCtl("auto"))
   ))
   expect_identical(fit$foceiControl$linCmtSensCarry, "none")
   expect_true(any(grepl("carry gradient off", unlist(fit$runInfo))))
@@ -60,7 +59,10 @@ test_that("linear covariate interpolation on a varying eligible covariate is an 
   d <- .carryFitDat(2L)
   d$dv <- ifelse(d$evid == 0, 3, 0)
   ctlLin <- nlmixr2est::foceiControl(
-    print = 0, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE,
+    print = 0,
+    maxOuterIterations = 0L,
+    covMethod = "",
+    calcTables = FALSE,
     rxControl = rxode2::rxControl(covsInterpolation = "linear")
   )
   expect_error(
@@ -82,10 +84,7 @@ test_that("linear covariate interpolation on a varying eligible covariate is an 
 test_that("runtime constant-theta fast path engages per subject and is equivalent", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
-  skip_if_not(exists("linCmtCarryFastStats",
-    envir = asNamespace("rxode2"),
-    inherits = FALSE
-  ))
+  skip_if_not(exists("linCmtCarryFastStats", envir = asNamespace("rxode2"), inherits = FALSE))
   .stats <- function(reset = FALSE) utils::getFromNamespace("linCmtCarryFastStats", "rxode2")(reset)
   .setFast <- function(x) utils::getFromNamespace("linCmtCarrySetFast", "rxode2")(x)
   on.exit(.setFast(TRUE), add = TRUE)
@@ -95,7 +94,9 @@ test_that("runtime constant-theta fast path engages per subject and is equivalen
   expect_true(grepl("rx_lcCarryAdv_", s$..inner))
   m <- suppressWarnings(rxode2::rxode2(s$..inner))
   pars <- c(
-    `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5,
+    `THETA[1]` = log(2),
+    `THETA[2]` = log(20),
+    `THETA[3]` = 0.5,
     `ETA[1]` = 0.3
   )
   evConst <- .carryEv()
@@ -106,10 +107,7 @@ test_that("runtime constant-theta fast path engages per subject and is equivalen
   runOne <- function(ev, fastOn) {
     .setFast(fastOn)
     invisible(.stats(TRUE))
-    r <- rxode2::rxSolve(m,
-      params = pars, events = ev,
-      returnType = "data.frame"
-    )
+    r <- rxode2::rxSolve(m, params = pars, events = ev, returnType = "data.frame")
     list(r = r, s = .stats(FALSE))
   }
   # constant-covariate subject: every advance skips; results identical to slow
@@ -137,9 +135,12 @@ test_that("CWRES consumes the carried gradient through the shared inner env", {
   # calcTables on (default) so CWRES is computed through the shared inner env
   fitOne <- function(carry) {
     ctl <- nlmixr2est::foceiControl(
-      print = 0, maxOuterIterations = 0L,
-      covMethod = "", sigdig = 8,
-      etaNudge = 0, etaNudge2 = 0,
+      print = 0,
+      maxOuterIterations = 0L,
+      covMethod = "",
+      sigdig = 8,
+      etaNudge = 0,
+      etaNudge2 = 0,
       rxControl = rxode2::rxControl(covsInterpolation = "nocb"),
       linCmtSensCarry = carry
     )
@@ -165,8 +166,11 @@ test_that("a carry-eligible fit survives foceiControl(fast=TRUE)", {
   d <- .carryFitDat(2L)
   d$dv <- ifelse(d$evid == 0, 3, 0)
   ctl <- nlmixr2est::foceiControl(
-    print = 0, maxOuterIterations = 2L,
-    covMethod = "", calcTables = FALSE, fast = TRUE,
+    print = 0,
+    maxOuterIterations = 2L,
+    covMethod = "",
+    calcTables = FALSE,
+    fast = TRUE,
     rxControl = rxode2::rxControl(covsInterpolation = "nocb")
   )
   fit <- suppressWarnings(suppressMessages(

@@ -12,57 +12,67 @@
       Version = NA_character_,
       dev = NA,
       installed = FALSE,
-      install = NA_character_))
+      install = NA_character_
+    ))
   }
   .ret <- list(
     Package = pkg,
-    Version = .pkg$Version)
+    Version = .pkg$Version
+  )
   if (!is.null(.pkg$GithubUsername)) {
-    .ret <- c(.ret,
-              list(
-                dev=TRUE,
-                installed = TRUE,
-                install=deparse1(bquote(remotes::install_github(
-                  .(paste0(.pkg$GithubUsername,"/", .pkg$GithubRepo)),
-                  ref = .(.pkg$GithubSHA1))))))
-
+    .ret <- c(
+      .ret,
+      list(
+        dev = TRUE,
+        installed = TRUE,
+        install = deparse1(bquote(remotes::install_github(
+          .(paste0(.pkg$GithubUsername, "/", .pkg$GithubRepo)),
+          ref = .(.pkg$GithubSHA1)
+        )))
+      )
+    )
   } else {
-    .ret <- c(.ret,
-              list(
-                dev=FALSE,
-                installed = TRUE,
-                install=deparse1(bquote(remotes::install_version(.(pkg), version=.(.pkg$Version))))))
+    .ret <- c(
+      .ret,
+      list(
+        dev = FALSE,
+        installed = TRUE,
+        install = deparse1(bquote(remotes::install_version(.(pkg), version = .(.pkg$Version))))
+      )
+    )
   }
   class(.ret) <- "nlmixr2estPkgInfo"
   .ret
 }
 
-.sessionInfoEnv <- new.env(parent=emptyenv())
-.sessionInfoEnv$pkg <- c("dparser",
-                         "lotri",
-                         "PreciseSums",
-                         "rxode2ll",
-                         "rxode2",
-                         "lbfgsb3c",
-                         "n1qn1",
-                         "nlmixr2est",
-                         "nlmixr2extra",
-                         "nlmixr2lib",
-                         "nlmixr2",
-                         "nonemem2rx",
-                         "monolix2rx",
-                         "babelmixr2",
-                         "PopED",
-                         "PKNCA",
-                         "lotri",
-                         "nlmixr2data",
-                         "nlmixr2est",
-                         "nlmixr2extra",
-                         "nlmixr2plot",
-                         "rxode2",
-                         "ggPMX",
-                         "shinyMixR",
-                         "xpose.nlmixr2")
+.sessionInfoEnv <- new.env(parent = emptyenv())
+.sessionInfoEnv$pkg <- c(
+  "dparser",
+  "lotri",
+  "PreciseSums",
+  "rxode2ll",
+  "rxode2",
+  "lbfgsb3c",
+  "n1qn1",
+  "nlmixr2est",
+  "nlmixr2extra",
+  "nlmixr2lib",
+  "nlmixr2",
+  "nonemem2rx",
+  "monolix2rx",
+  "babelmixr2",
+  "PopED",
+  "PKNCA",
+  "lotri",
+  "nlmixr2data",
+  "nlmixr2est",
+  "nlmixr2extra",
+  "nlmixr2plot",
+  "rxode2",
+  "ggPMX",
+  "shinyMixR",
+  "xpose.nlmixr2"
+)
 
 #' Adds a package to the nlmixr2's $sessioninfo inside the fit
 #'
@@ -89,8 +99,9 @@
   .ret <- setNames(lapply(.sessionInfoEnv$pkg, .pkgInfo), .sessionInfoEnv$pkg)
 
   .os <- suppressWarnings(utils::sessionInfo("base")$running)
-  if (is.null(.os))
+  if (is.null(.os)) {
     return(NA_character_)
+  }
   .os <- gsub("Service Pack", "SP", .os)
   if (is.null(.os)) {
     .os <- NA_character_
@@ -120,7 +131,7 @@ print.nlmixr2estSessionInfo <- function(x, ...) {
   cat("## ==============================\n")
   cat("## nlmixr2est Session Information\n")
   cat("## ==============================\n")
-  cat(paste(attr(x, "extra"), collapse="\n"), sep="\n")
+  cat(paste(attr(x, "extra"), collapse = "\n"), sep = "\n")
   for (pkg in names(x)) {
     print.nlmixr2estPkgInfo(x[[pkg]])
   }
@@ -132,14 +143,14 @@ print.nlmixr2estPkgInfo <- function(x, ...) {
   if (x$installed) {
     cat("\n# Install ")
     if (x$dev) {
-      cat("Development version of '", x$Package, "' from GitHub (shows ver ", x$Version, ")\n", sep="")
+      cat("Development version of '", x$Package, "' from GitHub (shows ver ", x$Version, ")\n", sep = "")
       cat(x$install, "\n")
     } else {
-      cat("Package version ", x$Version, " of '", x$Package, "'\n", sep="")
+      cat("Package version ", x$Version, " of '", x$Package, "'\n", sep = "")
       cat(x$install, "\n")
     }
   } else {
-    cat("\n# Package '", x$Package, "' is not installed, but known to enhance nlmixr2/babelmixr2\n", sep="")
+    cat("\n# Package '", x$Package, "' is not installed, but known to enhance nlmixr2/babelmixr2\n", sep = "")
   }
   invisible(x)
 }

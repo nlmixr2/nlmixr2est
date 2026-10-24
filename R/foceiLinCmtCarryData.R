@@ -21,7 +21,8 @@
     function(v) {
       v <- v[!is.na(v)]
       length(unique(v)) > 1L
-    }, logical(1)
+    },
+    logical(1)
   ))
 }
 
@@ -39,13 +40,20 @@
 #' @noRd
 .rxFoceiCarryEmpty <- function() {
   data.frame(
-    slot = integer(0), slotName = character(0),
-    eta = character(0), etaName = character(0),
-    covs = character(0), shape = character(0),
-    formula = character(0), dEtaFormula = character(0),
+    slot = integer(0),
+    slotName = character(0),
+    eta = character(0),
+    etaName = character(0),
+    covs = character(0),
+    shape = character(0),
+    formula = character(0),
+    dEtaFormula = character(0),
     varying = logical(0),
-    fD = character(0), fCov = logical(0), fCmt = character(0),
-    lagD = character(0), lagCmt = character(0),
+    fD = character(0),
+    fCov = logical(0),
+    fCmt = character(0),
+    lagD = character(0),
+    lagCmt = character(0),
     stringsAsFactors = FALSE
   )
 }
@@ -56,8 +64,7 @@
 #' @inheritParams .rxFoceiLinCmtCarryEligible
 #' @return see `.rxFoceiLinCmtCarryEligible`
 #' @noRd
-.foceiLinCmtCarryPairs <- function(ui, data = NULL,
-                                   interpolation = c("locf", "nocb", "midpoint", "linear")) {
+.foceiLinCmtCarryPairs <- function(ui, data = NULL, interpolation = c("locf", "nocb", "midpoint", "linear")) {
   .ui <- rxode2::assertRxUi(ui)
   # cheap UI-level exits before ui$foceiEtaS builds a full symengine
   # environment (~0.25 s per call): no linCmt() or no covariate means no
@@ -72,26 +79,32 @@
   # the data-independent candidate result is a pure function of the model
   # digest; skip the foceiEtaS symengine build on a repeat fit of the same
   # model.  Data-dependent checks never reach this memo (data = NULL only).
-  .key <- if (is.null(data) && # nolint: object_usage_linter.
-    !identical(Sys.getenv("NLMIXR2EST_CARRY_MEMO"), "off")) {
+  .key <- if (
+    is.null(data) &&
+      !identical(Sys.getenv("NLMIXR2EST_CARRY_MEMO"), "off")
+  ) {
     tryCatch(rxUiGet.foceiModelDigest(list(.ui)), error = function(e) NULL)
   }
-  .cached <- .foceiLinCmtCarryMemoGet(.key) # nolint: object_usage_linter.
+  .cached <- .foceiLinCmtCarryMemoGet(.key)
   if (!is.null(.cached)) {
     return(.cached)
   }
   .s <- .ui$foceiEtaS
   .etaVars <- paste0("ETA_", seq_len(.s$..maxEta), "_")
-  .ret <- .rxFoceiLinCmtCarryEligible(list(.ui), .s, .etaVars,
-    data = data, # nolint: object_usage_linter.
+  .ret <- .rxFoceiLinCmtCarryEligible(
+    list(.ui),
+    .s,
+    .etaVars,
+    data = data,
     interpolation = interpolation
   )
   # the final shape rides with the result so consumers (the fit-time
   # jump-data check) never rebuild the symengine environment for it
-  attr(.ret, "oral0") <- tryCatch(.rxFoceiLinCmtCarryShape(.s)$oral0, # nolint: object_usage_linter.
+  attr(.ret, "oral0") <- tryCatch(
+    .rxFoceiLinCmtCarryShape(.s)$oral0,
     error = function(e) NULL
   )
-  .foceiLinCmtCarryMemoPut(.key, .ret) # nolint: object_usage_linter.
+  .foceiLinCmtCarryMemoPut(.key, .ret)
   .ret
 }
 
@@ -101,10 +114,10 @@
 #' render later themselves)
 #' @noRd
 .rxFoceiCarryPairRow <- function(eta, etaName, slot, jump, mods, why, varying, render) {
-  .txt <- function(x) .rxFoceiCarryTxt(x, render) # nolint: object_usage_linter.
+  .txt <- function(x) .rxFoceiCarryTxt(x, render)
   data.frame(
     slot = if (is.null(slot)) NA_integer_ else slot$k,
-    slotName = if (is.null(slot)) NA_character_ else .rxFoceiLinCmtCarrySlotNames[slot$k], # nolint: object_usage_linter.
+    slotName = if (is.null(slot)) NA_character_ else .rxFoceiLinCmtCarrySlotNames[slot$k],
     eta = eta,
     etaName = etaName,
     covs = paste(why, collapse = ","),
@@ -151,8 +164,12 @@
 #' @noRd
 .rxFoceiCarryHasInfusion <- function(dose) {
   .inf <- FALSE
-  if ("RATE" %in% names(dose)) .inf <- .inf || any(dose[["RATE"]] != 0, na.rm = TRUE)
-  if ("DUR" %in% names(dose)) .inf <- .inf || any(dose[["DUR"]] != 0, na.rm = TRUE)
+  if ("RATE" %in% names(dose)) {
+    .inf <- .inf || any(dose[["RATE"]] != 0, na.rm = TRUE)
+  }
+  if ("DUR" %in% names(dose)) {
+    .inf <- .inf || any(dose[["DUR"]] != 0, na.rm = TRUE)
+  }
   .inf
 }
 

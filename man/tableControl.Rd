@@ -37,7 +37,8 @@ you supply single subject event tables (created with
 
 \item{censMethod}{Handle censoring method:
 
- - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of the model and censoring.
+ - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of
+   the model and censoring.
 
  - `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)
 

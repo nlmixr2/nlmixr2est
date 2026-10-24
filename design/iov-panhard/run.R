@@ -32,15 +32,20 @@ panhardExtract <- function(fit, iovMethod) {
   .fx <- fit$fixef
   .om <- fit$omega$id
   .o <- fit$omega$occ
-  .psi <- c(lV = .o["iov.lV", "iov.lV"],
-            lKa = .o["iov.lKa", "iov.lKa"],
-            lAUC = .o["iov.lAUC", "iov.lAUC"])
-  c(mu.lV = .fx[["tlV"]], mu.lKa = .fx[["tlKa"]], mu.lAUC = .fx[["tlAUC"]],
+  .psi <- c(lV = .o["iov.lV", "iov.lV"], lKa = .o["iov.lKa", "iov.lKa"], lAUC = .o["iov.lAUC", "iov.lAUC"])
+  c(
+    mu.lV = .fx[["tlV"]],
+    mu.lKa = .fx[["tlKa"]],
+    mu.lAUC = .fx[["tlAUC"]],
     omega.lV = .om["eta.lV", "eta.lV"],
     omega.lKa = .om["eta.lKa", "eta.lKa"],
     omega.lAUC = .om["eta.lAUC", "eta.lAUC"],
-    psi.lV = .psi[["lV"]], psi.lKa = .psi[["lKa"]], psi.lAUC = .psi[["lAUC"]],
-    sigmaAdd = .fx[["add.sd"]], sigmaProp = .fx[["prop.sd"]])
+    psi.lV = .psi[["lV"]],
+    psi.lKa = .psi[["lKa"]],
+    psi.lAUC = .psi[["lAUC"]],
+    sigmaAdd = .fx[["add.sd"]],
+    sigmaProp = .fx[["prop.sd"]]
+  )
 }
 
 panhardTrue <- c(
@@ -54,7 +59,8 @@ panhardTrue <- c(
   psi.lKa = panhardTruth$psi[["lKa"]],
   psi.lAUC = panhardTruth$psi[["lAUC"]],
   sigmaAdd = panhardTruth$sigma,
-  sigmaProp = panhardTruth$sigma)
+  sigmaProp = panhardTruth$sigma
+)
 
 #' Relative bias and RMSE over the usable replicates
 panhardSummary <- function(res) {
@@ -63,17 +69,25 @@ panhardSummary <- function(res) {
     return(data.frame(true = panhardTrue, biasPct = NA_real_, rmsePct = NA_real_))
   }
   .d <- sweep(res[.ok, , drop = FALSE], 2, panhardTrue, "-")
-  data.frame(true = panhardTrue,
-             biasPct = 100 * colMeans(.d) / panhardTrue,
-             rmsePct = 100 * sqrt(colMeans(.d^2)) / abs(panhardTrue))
+  data.frame(
+    true = panhardTrue,
+    biasPct = 100 * colMeans(.d) / panhardTrue,
+    rmsePct = 100 * sqrt(colMeans(.d^2)) / abs(panhardTrue)
+  )
 }
 
-.ctl <- saemControl(nBurn = 200, nEm = 300, nmc = 3, seed = 99,
-                    print = 0L, covMethod = "", calcTables = FALSE,
-                    iovMethod = iovMethod)
+.ctl <- saemControl(
+  nBurn = 200,
+  nEm = 300,
+  nmc = 3,
+  seed = 99,
+  print = 0L,
+  covMethod = "",
+  calcTables = FALSE,
+  iovMethod = iovMethod
+)
 
-.res <- matrix(NA_real_, nrow = nRep, ncol = length(panhardTrue),
-               dimnames = list(NULL, names(panhardTrue)))
+.res <- matrix(NA_real_, nrow = nRep, ncol = length(panhardTrue), dimnames = list(NULL, names(panhardTrue)))
 .done <- 0L
 # resume: a run of 1000 replicates is hours, so pick up where a previous one
 # stopped rather than starting over
@@ -88,27 +102,37 @@ if (file.exists(outFile)) {
 }
 .t0 <- proc.time()
 .save <- function(done) {
-  saveRDS(list(n = nSub, nRep = nRep, iovMethod = iovMethod, done = done,
-               estimates = .res, summary = panhardSummary(.res)), outFile)
+  saveRDS(
+    list(n = nSub, nRep = nRep, iovMethod = iovMethod, done = done, estimates = .res, summary = panhardSummary(.res)),
+    outFile
+  )
 }
 for (.r in seq_len(nRep)) {
-  if (.r <= .done) next
+  if (.r <= .done) {
+    next
+  }
   .d <- panhardSim(nSub, seed = 1000L + .r)
-  .f <- try(suppressWarnings(suppressMessages(
-    nlmixr2(panhardModel(), .d, est = "saem", control = .ctl))), silent = TRUE)
+  .f <- try(
+    suppressWarnings(suppressMessages(
+      nlmixr2(panhardModel(), .d, est = "saem", control = .ctl)
+    )),
+    silent = TRUE
+  )
   if (!inherits(.f, "try-error")) {
     .e <- try(panhardExtract(.f, iovMethod), silent = TRUE)
     if (!inherits(.e, "try-error")) .res[.r, ] <- .e
   }
-  cat(sprintf("rep %d/%d  (%.1f s elapsed)\n", .r, nRep,
-              (proc.time() - .t0)[["elapsed"]]))
+  cat(sprintf("rep %d/%d  (%.1f s elapsed)\n", .r, nRep, (proc.time() - .t0)[["elapsed"]]))
   # checkpoint every 25 replicates so a killed run keeps its work
   if (.r %% 25L == 0L) .save(.r)
 }
 
 .summary <- panhardSummary(.res)
 print(round(.summary, 2))
-cat(sprintf("\n%d/%d replicates usable; %.1f s total\n",
-            sum(stats::complete.cases(.res)), nRep,
-            (proc.time() - .t0)[["elapsed"]]))
+cat(sprintf(
+  "\n%d/%d replicates usable; %.1f s total\n",
+  sum(stats::complete.cases(.res)),
+  nRep,
+  (proc.time() - .t0)[["elapsed"]]
+))
 .save(nRep)

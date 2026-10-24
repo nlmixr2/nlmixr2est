@@ -27,6 +27,9 @@ bool impPoolSizing();              // true when the pool is sized for the theta-
 
 // 0.5 * log|Omega^-1| = -0.5 * log|Omega| (importance-sampling objective normalizer).
 double impLogDetOmegaInv5();
+double impEtaPriorHalf(const arma::vec& eta);
+bool impCovReuseOn();
+bool impIsFo();
 
 // Maximum EM iterations (from the impmap control).
 int impNiter();
@@ -36,6 +39,9 @@ std::string impDiagXform();
 
 // Convergence controller / proposal-scale adaptation controls (from impmapControl):
 double impIaccept();      // target effective-sample fraction that gamma adapts toward
+int impMapIter();         // MAP-assist period in EM iterations; 0 = never re-center
+int impNburn();           // burn-in EM iterations run before the nIter budget
+bool impBurnFreezeOmega();// hold Omega at its starting value during burn-in
 double impDf();           // proposal degrees of freedom (NONMEM DF); 0 = Gaussian
 void impNsampleVecGet(std::vector<int>& out); // per-subject ISAMPLE (empty = use the scalar)
 int impNobs(int id);      // observation count for subject id (AUTO's sparsity test)
@@ -60,7 +66,9 @@ bool impIsImp();                                   // est="imp": no MAP search, 
 double impUpdateMuThetas();                        // mu-referenced covariate regression (updateMuGroups)
 void impMuInterceptStep();                         // simple mu intercept EM update (no covariates)
 void impReMap();                                   // re-optimize all conditional modes (innerOpt)
-void impSetOmega(const arma::mat& Omega, const std::string& diagXform); // install new Omega
+// install new Omega; returns the etas whose variance it floored at 1e-6
+std::vector<int> impSetOmega(const arma::mat& Omega, const std::string& diagXform);
+void impWarnOmegaFloor(Rcpp::Environment e, const std::vector<int>& idx); // warn, naming them
 void impSyncInitParToFullTheta();                  // sync optimizer reference to converged fullTheta
 void impGetEstPar(arma::vec& par);                 // current estimated free-parameter vector (EM convergence)
 
@@ -70,9 +78,6 @@ void impMapPass(Rcpp::Environment e);
 
 // Copy subject `id`'s current MAP mode (eta, length neta) into `mode`.
 void impGetMode(int id, arma::vec& mode);
-
-// Subject `id`'s individual objective contribution at its current mode.
-double impGetIndLik(int id);
 
 // Eta Hessian of the negative inner joint objective at subject `id`'s mode
 // (the FOCEI Laplace information matrix; positive-definite at the mode).
@@ -172,26 +177,42 @@ void impUpdateMixProbs();                          // recompute mixProb from the
 void impSetMixThetas(const arma::vec& theta);      // install absolute mixture-proportion thetas (EM) + recompute proportions
 void npMixEMUpdate(const arma::mat& etaPoints, const arma::vec& lam, int cores); // EM update of the mixture proportions (support/weights fixed)
 void npbSampleMixProbs(const arma::mat& subEta, double alpha0, uint32_t seed);     // npb Gibbs: Dirichlet draw of the mixture proportions
+double impMixLogSumExp(const std::vector<double>& ll);  // log(sum_m p_m exp(ll[m])); R_NegInf if nothing finite
 
 // ---- Monte-Carlo covariance support (implemented in inner.cpp) ----
 int impNtheta();                                   // number of thetas
 bool impCovEnabled();                              // whether impCov=TRUE was requested
+bool impFrozen();                                  // E-steps only, at the supplied parameters
 
 // ---- quasi-random (QRPEM) + SIR controls (from impmapControl) ----
 bool impQrEnabled();                               // qr=TRUE: Sobol importance samples
 bool impQrShiftEnabled();                          // Cranley-Patterson shift randomization
 bool impQrRefreshEnabled();                        // redraw the shift each iteration
+int impQrScramble();                               // 0 none, 1 Owen, 2 linear matrix
+int impProposalType();                             // 0 auto, 1 normal, 2 t, 3 laplace, 4 mixture
+void impPropMixGet(std::vector<double>& c, std::vector<double>& w); // mixture scales/weights
 bool impSirEnabled();                              // sir=TRUE: SIR-accelerated theta M-step
 int impSirN();                                     // SIR resampled points per subject
 int impBaseSeed();                                 // base seed for the per-(iter,subject) streams
-void impGetEstThetaIdx(std::vector<int>& idx);     // fullTheta indices of the estimated thetas
 void impGetCovParList(std::vector<int>& idx);      // fullTheta index of every free param (fixedTrans order)
 double impGetFullThetaVal(int idx);                // current value of fullTheta[idx]
 void impSetThetaAll(int idx, double val);          // set fullTheta[idx] on every subject (FD perturb)
 void impForceResolve(int id);                      // force likInner0 to re-solve subject id
-int impOmegaN();                                   // number of parameterized Omega free parameters
 double impGetOmegaThetaVal(int m);                 // current value of Omega free parameter m
 void impSetOmegaThetaAll(int m, double val);       // set Omega free param m + rebuild omegaInv/logdet
+// d(Omega)/d(p_m) for every Omega parameter p_m = fullTheta[ntheta + m] at the
+// current estimate (element m of the list is an neta x neta matrix), from the
+// chol(Omega^-1) parameterization the inner problem uses.
+Rcpp::List impOmegaParDeriv();
+
+// The per-observation log-likelihoods the fit reports (addLlikObs) are those of the
+// final objective at the estimates, and every covariance evaluation rewrites them:
+// saved on construction, put back on destruction.
+struct CovLlikObsGuard {
+  std::vector<double> sav;
+  CovLlikObsGuard();
+  ~CovLlikObsGuard();
+};
 
 // Clear the persistent inner neqOverride (multi-endpoint pool) at fit end so it
 // does not leak into a subsequent fit sharing the global solve context.
@@ -199,14 +220,15 @@ void impClearInnerNeqOverride();
 // Apply a Newton step: add `step` (length nSens) to the non-mu structural thetas
 // and propagate to the full parameter vector.
 void impUpdateStructThetas(const arma::vec& step);
+double impStructStepRel(const arma::vec& step);
 
 // ---- implemented in imp.cpp ----
 
 // Monte-Carlo observed-information covariance for the estimated thetas: FD
 // Hessian of the importance-sampling -2LL over fixed (common-random-number)
 // samples.  Stashes impCovTheta / impSeTheta / impCovThetaIdx on `e`.
-void impComputeCov(Rcpp::Environment e, const arma::vec& gammaVec,
-                   const arma::vec& dfVec);
+// (declared in imp.cpp, which owns the impProp proposal type; not called
+// outside that translation unit)
 bool impCovProgress();                             // draw the cov-step progress bar?
 
 // Importance-sampling EM driver; called from foceiFitCpp_ when est=="impmap"

@@ -46,8 +46,7 @@ nmTest({
   }
 
   test_that("near-Gaussian t() twin matches its add() twin (SAEM general-lik phi1, #999)", {
-    ctl <- saemControl(nBurn = 200, nEm = 300, seed = 42L, print = 0L,
-                       covMethod = "", calcTables = FALSE)
+    ctl <- saemControl(nBurn = 200, nEm = 300, seed = 42L, print = 0L, covMethod = "", calcTables = FALSE)
     fA <- suppressWarnings(.nlmixr(mAdd, theo_sd, est = "saem", control = ctl))
     fT <- suppressWarnings(.nlmixr(mT, theo_sd, est = "saem", control = ctl))
 

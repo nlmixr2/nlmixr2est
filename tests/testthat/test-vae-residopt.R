@@ -52,10 +52,20 @@ nmTest({
   ## At sigdig >= 4 twoStage wins by ~2e-3, about 2000x the 1e-6 bound.
   .fit <- function(mod, ro) {
     suppressMessages(suppressWarnings(nlmixr2(
-      mod, nlmixr2data::theo_sd, est = "vae",
-      control = vaeControl(print = 0L, calcTables = FALSE, residOptimize = ro,
-                           sigdig = 4, itersBurnIn = 40L, iters = 80L,
-                           klWarmup = 30L, gammaIter = 60L))))
+      mod,
+      nlmixr2data::theo_sd,
+      est = "vae",
+      control = vaeControl(
+        print = 0L,
+        calcTables = FALSE,
+        residOptimize = ro,
+        sigdig = 4,
+        itersBurnIn = 40L,
+        iters = 80L,
+        klWarmup = 30L,
+        gammaIter = 60L
+      )
+    )))
   }
 
   test_that("residOptimize defaults to twoStage", {
@@ -121,7 +131,7 @@ nmTest({
     skip_on_cran()
     m <- .fit(.bcMod(), "moment")
     o <- .fit(.bcMod(), "twoStage")
-    expect_equal(m$theta[["lam"]], 1, tolerance = 1e-8)   # frozen without the optimizer
+    expect_equal(m$theta[["lam"]], 1, tolerance = 1e-8) # frozen without the optimizer
     expect_gt(abs(o$theta[["lam"]] - 1), 1e-3)
     expect_gte(o$theta[["lam"]], -2)
     expect_lte(o$theta[["lam"]], 2)
@@ -140,7 +150,7 @@ nmTest({
     p <- .vaeDataPrep(rxode2::assertRxUi(.bcMod()), nlmixr2data::theo_sd, vaeControl())
     lo <- p$regressLower[match("add.err", p$regressNames)]
     expect_gt(lo, 0)
-    expect_lt(lo, 0.01)   # far below any plausible estimate
+    expect_lt(lo, 0.01) # far below any plausible estimate
   })
 
   test_that("a yeoJohnson lambda is estimated and improves the fit", {
@@ -163,12 +173,13 @@ nmTest({
   ## ini(), none of them rests on a bound, and (where a closed form exists) the
   ## optimizer reproduces it.  See helper-vae-resid.R for why.
   .sweep <- list(
-    list(nm = "add",        mod = NULL, pars = "add.err",              closed = "add.err"),
-    list(nm = "combined",   mod = NULL, pars = c("add.err","prop.err"), closed = NULL),
-    list(nm = "pow",        mod = NULL, pars = c("prop.err","pw"),      closed = NULL),
-    list(nm = "lnorm",      mod = NULL, pars = "add.err",               closed = NULL),
-    list(nm = "boxCox",     mod = NULL, pars = c("add.err","lam"),      closed = NULL),
-    list(nm = "yeoJohnson", mod = NULL, pars = c("add.err","lam"),      closed = NULL))
+    list(nm = "add", mod = NULL, pars = "add.err", closed = "add.err"),
+    list(nm = "combined", mod = NULL, pars = c("add.err", "prop.err"), closed = NULL),
+    list(nm = "pow", mod = NULL, pars = c("prop.err", "pw"), closed = NULL),
+    list(nm = "lnorm", mod = NULL, pars = "add.err", closed = NULL),
+    list(nm = "boxCox", mod = NULL, pars = c("add.err", "lam"), closed = NULL),
+    list(nm = "yeoJohnson", mod = NULL, pars = c("add.err", "lam"), closed = NULL)
+  )
   .sweep[[1]]$mod <- .addOnlyMod <- function() {
     ini({ lka <- 0.45; lcl <- 1; lv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3; add.err <- 0.7 })
     model({ ka <- exp(lka + eta.ka); cl <- exp(lcl + eta.cl); v <- exp(lv)
@@ -196,7 +207,9 @@ nmTest({
         ## 2. none of them is resting on a bound (the zero-collapse signature)
         expectResidInterior(o, prep)
         ## 3. where a closed form exists, the optimizer must reproduce it
-        if (!is.null(cs$closed)) expectMatchesClosedForm(o, m, cs$closed)
+        if (!is.null(cs$closed)) {
+          expectMatchesClosedForm(o, m, cs$closed)
+        }
         ## 4. and only then, the objective comparison
         expect_lte(o$objf, m$objf + 1e-6)
       })
@@ -247,5 +260,46 @@ nmTest({
     expect_gt(o$theta[["add.err"]], 0)
     expect_gt(o$theta[["prop.err"]], 0)
     expect_lt(o$objf, m$objf)
+  })
+
+  test_that("likelihood = \"foce\" estimates the residual at the pinned states", {
+    skip_on_cran()
+    ## Stage 2 pins the ODE states at the fixed etas and only recomputes r.  FOCE
+    ## ("nonmem") evaluates the variance at the eta = 0 prediction, and the eta = 0
+    ## solve behind it was written over the pinned states, so every stage-2
+    ## evaluation read the population prediction as f: prop.sd came out 0.377.
+    ## FOCE+ evaluates the variance at the conditional eta and makes no such solve;
+    ## the two estimate nearly the same residual (0.182 and 0.193).
+    .mod <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; prop.sd <- 0.2
+        eta.ka ~ 0.6; eta.cl ~ 0.3 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ prop(prop.sd) })
+    }
+    .fitLik <- function(likelihood) {
+      suppressMessages(suppressWarnings(nlmixr2(
+        .mod,
+        nlmixr2data::theo_sd,
+        est = "vae",
+        control = vaeControl(
+          print = 0L,
+          calcTables = FALSE,
+          residOptimize = "twoStage",
+          likelihood = likelihood,
+          itersBurnIn = 10L,
+          iters = 30L,
+          klWarmup = 5L,
+          gammaIter = 20L
+        )
+      )))
+    }
+    .foce <- .fitLik("foce")
+    .focep <- .fitLik("focep")
+    # vae seeds internally, so these are fixed values, not sampling scatter
+    expect_equal(.foce$theta[["prop.sd"]], 0.182027, tolerance = 1e-3)
+    expect_equal(.focep$theta[["prop.sd"]], 0.193162, tolerance = 1e-3)
   })
 })

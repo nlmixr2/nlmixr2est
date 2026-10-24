@@ -1,7 +1,6 @@
 nmTest({
   test_that("restart resid", {
-
-    lobo  <- function() {
+    lobo <- function() {
       ini({
         lkng <- log(0.02)
         ltau <- log(c(1, 34.1, 500))
@@ -28,7 +27,6 @@ nmTest({
 
     prepfit <- readRDS(test_path("test-restart.rds"))
 
-    expect_error(.nlmixr(lobo, data=prepfit, "focei", control=foceiControl(print=0)), NA)
-
+    expect_error(.nlmixr(lobo, data = prepfit, "focei", control = foceiControl(print = 0)), NA)
   })
 })

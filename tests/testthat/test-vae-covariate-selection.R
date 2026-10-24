@@ -24,36 +24,46 @@ nmTest({
     ## Pin the 7.0.1 search explicitly (one shape family, mean centering) so the
     ## paper-matching numbers below keep their original meaning; the multi-shape
     ## default is covered separately.
-    ctl <- vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L,
-                      iters = 160L, hiddenDim = 25L, seed = 1L, covariateSelection = TRUE,
-                      print = 0L, shapes = "power", covCenterType = "mean")
+    ctl <- vaeControl(
+      itersBurnIn = 80L,
+      klWarmup = 40L,
+      gammaIter = 120L,
+      iters = 160L,
+      hiddenDim = 25L,
+      seed = 1L,
+      covariateSelection = TRUE,
+      print = 0L,
+      shapes = "power",
+      covCenterType = "mean"
+    )
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd, ctl)
     expect_equal(prep$covNames, "WT_power")
     expect_equal(prep$covRaw, "WT")
     expect_equal(prep$covType, "continuous")
     ## the design is the historic log(WT/mean(WT)) column
-    .wt <- vapply(unique(nlmixr2data::theo_sd$ID),
-                  function(i) nlmixr2data::theo_sd$WT[nlmixr2data::theo_sd$ID == i][1],
-                  numeric(1))
+    .wt <- vapply(
+      unique(nlmixr2data::theo_sd$ID),
+      function(i) nlmixr2data::theo_sd$WT[nlmixr2data::theo_sd$ID == i][1],
+      numeric(1)
+    )
     expect_equal(prep$covPop, mean(.wt))
     expect_equal(unname(prep$covMat[, 1]), unname(log(.wt / mean(.wt))))
 
-    innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd,
-                               matrix(0, prep$N, prep$zDim), ctl)
+    innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, prep$N, prep$zDim), ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
     fit <- rxode2::rxWithSeed(1L, .vaeTrain(prep, innerEnv, ctl))
 
     ## rows = params (ka, ke, V), single column WT
-    expect_true(fit$selected[1, 1])   # WT -> ka
-    expect_false(fit$selected[2, 1])  # WT -> ke NOT selected
-    expect_true(fit$selected[3, 1])   # WT -> V
+    expect_true(fit$selected[1, 1]) # WT -> ka
+    expect_false(fit$selected[2, 1]) # WT -> ke NOT selected
+    expect_true(fit$selected[3, 1]) # WT -> V
     ## WT->ka effect is large and positive (paper ~2.55)
     expect_gt(fit$beta[1, 1], 1.5)
     ## omega_ka pulled down toward the with-covariate value (< no-covariate ~0.61)
     expect_lt(sqrt(fit$omega[1]), 0.58)
     ## fixed effects sane
-    expect_lt(abs(exp(fit$zPop[2]) - 0.0867) / 0.0867, 0.05)   # ke
-    expect_lt(abs(exp(fit$zPop[3]) - 31.97) / 31.97, 0.10)     # V
+    expect_lt(abs(exp(fit$zPop[2]) - 0.0867) / 0.0867, 0.05) # ke
+    expect_lt(abs(exp(fit$zPop[3]) - 31.97) / 31.97, 0.10) # V
   })
 
   ## End-to-end regression for the two covariate-output bugs, exercised together
@@ -81,35 +91,39 @@ nmTest({
     }
     ## the 7.0.1 search, so this stays a test of the OUTPUT bugs rather than of
     ## which shape the expanded search happens to pick
-    ctl <- vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L,
-                      iters = 160L, hiddenDim = 25L, seed = 1L,
-                      covariateSelection = TRUE, print = 0L,
-                      shapes = "power", covCenterType = "mean")
+    ctl <- vaeControl(
+      itersBurnIn = 80L,
+      klWarmup = 40L,
+      gammaIter = 120L,
+      iters = 160L,
+      hiddenDim = 25L,
+      seed = 1L,
+      covariateSelection = TRUE,
+      print = 0L,
+      shapes = "power",
+      covCenterType = "mean"
+    )
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(theoFix, nlmixr2data::theo_sd, est = "vae", control = ctl)))
+      nlmixr2(theoFix, nlmixr2data::theo_sd, est = "vae", control = ctl)
+    ))
 
     pf <- fit$parFixedDf
     ## Bug 1: covariate coefficients present in the population-parameter table
     ## (WT selected on ka and V for theophylline).  Coefficients carry the shape
     ## they were written in.
     expect_true(all(c("beta.lka.WT.power", "beta.lV.WT.power") %in% rownames(pf)))
-    expect_true(all(rownames(pf) %in% rownames(fit$cov) |
-                      rownames(pf) == "add.err"))
+    expect_true(all(rownames(pf) %in% rownames(fit$cov) | rownames(pf) == "add.err"))
 
     ## Bug 2: the covariate-bearing mu-parameters back-transform (exp), so the
     ## Back-transformed value differs from the raw log-scale Estimate
-    expect_equal(pf["lka", "Back-transformed"], exp(pf["lka", "Estimate"]),
-                 tolerance = 1e-6)
-    expect_equal(pf["lV", "Back-transformed"], exp(pf["lV", "Estimate"]),
-                 tolerance = 1e-6)
+    expect_equal(pf["lka", "Back-transformed"], exp(pf["lka", "Estimate"]), tolerance = 1e-6)
+    expect_equal(pf["lV", "Back-transformed"], exp(pf["lV", "Estimate"]), tolerance = 1e-6)
     ## the covariate-free lke also back-transforms
-    expect_equal(pf["lke", "Back-transformed"], exp(pf["lke", "Estimate"]),
-                 tolerance = 1e-6)
+    expect_equal(pf["lke", "Back-transformed"], exp(pf["lke", "Estimate"]), tolerance = 1e-6)
     ## the fixed residual parameter is on the natural scale (no exp)
     expect_equal(pf["add.err", "Estimate"], 0.7, tolerance = 1e-6)
     ## covariate coefficients are reported raw (not back-transformed)
-    expect_equal(pf["beta.lka.WT.power", "Back-transformed"],
-                 pf["beta.lka.WT.power", "Estimate"], tolerance = 1e-6)
+    expect_equal(pf["beta.lka.WT.power", "Back-transformed"], pf["beta.lka.WT.power", "Estimate"], tolerance = 1e-6)
   })
 
   ## The multi-shape default: BICc now arbitrates between the log and linear
@@ -135,16 +149,12 @@ nmTest({
     ## the encoder input keeps one BLOCK per group, so a selected hockey reaches
     ## the encoder whole rather than truncated at the knot
     expect_equal(ncol(prep$covIn), 1L)
-    hkOnly <- .vaeDataPrep(ui, nlmixr2data::theo_sd,
-                          vaeControl(shapes = "hockey", print = 0L,
-                                     covMethod = ""))
+    hkOnly <- .vaeDataPrep(ui, nlmixr2data::theo_sd, vaeControl(shapes = "hockey", print = 0L, covMethod = ""))
     expect_equal(hkOnly$covShape, c("hockeyLow", "hockeyHi"))
     expect_equal(hkOnly$covBlock, c(1L, 1L))
     expect_equal(ncol(hkOnly$covIn), 2L)
     ## and with no hockey requested every column is its own block, as before
-    plain <- .vaeDataPrep(ui, nlmixr2data::theo_sd,
-                          vaeControl(shapes = c("power", "lin"), print = 0L,
-                                     covMethod = ""))
+    plain <- .vaeDataPrep(ui, nlmixr2data::theo_sd, vaeControl(shapes = c("power", "lin"), print = 0L, covMethod = ""))
     expect_false(any(grepl("hockey", plain$covShape)))
     expect_equal(plain$covBlock, seq_along(plain$covShape))
   })
@@ -159,9 +169,17 @@ nmTest({
         cp <- central / V; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(theo)
-    ctl <- vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L,
-                      iters = 160L, hiddenDim = 25L, seed = 1L,
-                      covariateSelection = TRUE, print = 0L, covMethod = "")
+    ctl <- vaeControl(
+      itersBurnIn = 80L,
+      klWarmup = 40L,
+      gammaIter = 120L,
+      iters = 160L,
+      hiddenDim = 25L,
+      seed = 1L,
+      covariateSelection = TRUE,
+      print = 0L,
+      covMethod = ""
+    )
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd, ctl)
     ## WT contributes every shape family, all sharing one exclusion group; the
     ## hockey arms are two columns of one block within it
@@ -171,19 +189,24 @@ nmTest({
     expect_equal(length(unique(prep$covBlock)), 3L)
 
     fit <- suppressWarnings(rxode2::rxWithSeed(
-      1L, nlmixr2(ui, nlmixr2data::theo_sd, est = "vae", control = ctl)))
+      1L,
+      nlmixr2(ui, nlmixr2data::theo_sd, est = "vae", control = ctl)
+    ))
     sel <- fit$vae$selected
     ## WT still lands on ka and V but not ke, whichever shape won
-    expect_true(any(sel[1, ]));  expect_false(any(sel[2, ])); expect_true(any(sel[3, ]))
+    expect_true(any(sel[1, ]))
+    expect_false(any(sel[2, ]))
+    expect_true(any(sel[3, ]))
     ## exclusivity: never two shapes of one covariate on one parameter
-    for (k in seq_len(nrow(sel))) expect_lte(sum(sel[k, ]), 1L)
+    for (k in seq_len(nrow(sel))) {
+      expect_lte(sum(sel[k, ]), 1L)
+    }
     ## exactly one coefficient per selected parameter, named for the shape used
     bn <- grep("^beta\\.", fit$ui$iniDf$name, value = TRUE)
     expect_equal(length(bn), sum(sel))
     expect_true(all(grepl("\\.(power|lin|log|identity|center)$", bn)))
     ## and the emitted model still re-parses with the mu-ref exp() intact
-    expect_equal(fit$ui$muRefCurEval$curEval[fit$ui$muRefCurEval$parameter == "lka"],
-                 "exp")
+    expect_equal(fit$ui$muRefCurEval$curEval[fit$ui$muRefCurEval$parameter == "lka"], "exp")
   })
 
   ## The L0-penalty warmup ramp (covSelectAlpha) is a distinct step in the
@@ -198,16 +221,27 @@ nmTest({
         d/dt(depot) = -ka * depot; d/dt(central) = ka * depot - ke * central
         cp <- central / V; cp ~ add(add.err) })
     }
-    ctl <- vaeControl(itersBurnIn = 2L, iters = 6L, klWarmup = 4L, gammaIter = 5L,
-                      nGradStep = 2L, covariateSelection = TRUE, covSelectAlpha = 2,
-                      print = 1L)
+    ctl <- vaeControl(
+      itersBurnIn = 2L,
+      iters = 6L,
+      klWarmup = 4L,
+      gammaIter = 5L,
+      nGradStep = 2L,
+      covariateSelection = TRUE,
+      covSelectAlpha = 2,
+      print = 1L
+    )
     tc <- textConnection("msgs", "w", local = TRUE)
     sink(tc, type = "message")
     ## guarantee the message sink and connection are released even if the fit errors
-    withr::defer({ sink(type = "message"); close(tc) })
+    withr::defer({
+      sink(type = "message")
+      close(tc)
+    })
     out <- capture.output(
       suppressWarnings(nlmixr2(theo, nlmixr2data::theo_sd, est = "vae", control = ctl)),
-      type = "output")
+      type = "output"
+    )
     allout <- c(out, msgs)
     ## the ramp iterations (it < klWarmup) are labeled, and the legend documents it
     expect_true(any(grepl("CovSel ramp", allout)))
@@ -224,12 +258,20 @@ nmTest({
         d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v; cp ~ add(add.err) })
     }
-    ctl <- vaeControl(covariateSelection = FALSE, nonMuTheta = "none", itersBurnIn = 3L,
-                      klWarmup = 5L, iters = 15L, seed = 1L, print = 0L, calcTables = FALSE)
+    ctl <- vaeControl(
+      covariateSelection = FALSE,
+      nonMuTheta = "none",
+      itersBurnIn = 3L,
+      klWarmup = 5L,
+      iters = 15L,
+      seed = 1L,
+      print = 0L,
+      calcTables = FALSE
+    )
     fit <- suppressWarnings(nlmixr2(cov, nlmixr2data::theo_sd, est = "vae", control = ctl))
     est <- fit$parFixedDf["cl.wt", "Estimate"]
     expect_true(is.finite(est))
-    expect_false(isTRUE(all.equal(est, 0.1)))        # moved off the init
+    expect_false(isTRUE(all.equal(est, 0.1))) # moved off the init
     expect_true("cl.wt" %in% colnames(fit$parHist)) # the regress M-step ran on it
   })
 
@@ -263,8 +305,15 @@ nmTest({
       })
     }
     ui <- rxode2::assertRxUi(theo)
-    ctl <- vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L, iters = 160L,
-                      seed = 1L, print = 0L, covMethod = "")
+    ctl <- vaeControl(
+      itersBurnIn = 80L,
+      klWarmup = 40L,
+      gammaIter = 120L,
+      iters = 160L,
+      seed = 1L,
+      print = 0L,
+      covMethod = ""
+    )
     fit <- suppressWarnings(rxode2::rxWithSeed(1L, nlmixr2(ui, d, est = "vae", control = ctl)))
 
     ## The centered covariates are mu2 references, so the search runs on the
@@ -317,10 +366,17 @@ nmTest({
         cp ~ add(add.err)
       })
     }
-    ctl <- vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L, iters = 160L,
-                      seed = 1L, print = 0L, covMethod = "", nonMuTheta = "eta")
-    fit <- suppressWarnings(rxode2::rxWithSeed(1L,
-      nlmixr2(indirect, nlmixr2data::theo_sd, est = "vae", control = ctl)))
+    ctl <- vaeControl(
+      itersBurnIn = 80L,
+      klWarmup = 40L,
+      gammaIter = 120L,
+      iters = 160L,
+      seed = 1L,
+      print = 0L,
+      covMethod = "",
+      nonMuTheta = "eta"
+    )
+    fit <- suppressWarnings(rxode2::rxWithSeed(1L, nlmixr2(indirect, nlmixr2data::theo_sd, est = "vae", control = ctl)))
     bk <- fit$ui$iniDf$est[fit$ui$iniDf$name == "beta.ka"]
     ## not frozen at the 0.1 ini value; pulled to the theophylline WT-on-ka effect
     expect_gt(abs(bk - 0.1), 0.5)

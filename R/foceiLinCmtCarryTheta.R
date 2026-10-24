@@ -37,7 +37,9 @@
   }
   .a <- tryCatch(symengine::get_args(expr), error = function(e) NULL)
   if (!is.null(.a)) {
-    for (.i in seq_along(.a)) acc <- .rxCarryFindLinCmtB(.a[[.i]], acc)
+    for (.i in seq_along(.a)) {
+      acc <- .rxCarryFindLinCmtB(.a[[.i]], acc)
+    }
   }
   acc
 }
@@ -86,29 +88,43 @@
 #' @noRd
 .rxCarryThetaEligible <- function(x, s, thetaVars, fp, render = FALSE) {
   .ui <- x[[1]]
-  .empty <- .rxFoceiCarryEmpty() # nolint: object_usage_linter.
+  .empty <- .rxFoceiCarryEmpty()
   .allCovs <- .ui$allCovs
   if (length(.allCovs) == 0L) {
     return(.empty)
   }
   .slotExpr <- lapply(1:7, function(k) fp$args[[k + 8L]])
-  .slotFree <- lapply(.slotExpr, .rxFoceiCarryFreeSyms) # nolint: object_usage_linter.
-  .mods <- .rxFoceiCarryEventMods(.ui, s, thetaVars) # nolint: object_usage_linter.
+  .slotFree <- lapply(.slotExpr, .rxFoceiCarryFreeSyms)
+  .mods <- .rxFoceiCarryEventMods(.ui, s, thetaVars)
   .ret <- .empty
   for (.k in seq_along(thetaVars)) {
     .th <- thetaVars[.k]
-    .jump <- .rxFoceiCarryEtaJump(.th, .mods, .allCovs) # nolint: object_usage_linter.
-    if (!isTRUE(.jump$ok)) next
-    .slot <- .rxFoceiCarryEtaSlotInfo(.th, thetaVars, .allCovs, .slotExpr, .slotFree) # nolint: object_usage_linter.
-    if (is.null(.slot)) next
+    .jump <- .rxFoceiCarryEtaJump(.th, .mods, .allCovs)
+    if (!isTRUE(.jump$ok)) {
+      next
+    }
+    .slot <- .rxFoceiCarryEtaSlotInfo(.th, thetaVars, .allCovs, .slotExpr, .slotFree)
+    if (is.null(.slot)) {
+      next
+    }
     .hasSlot <- length(.slot) > 0L
-    .why <- .rxFoceiCarryWhy(if (.hasSlot) .slot else NULL, .jump, .mods, .slotFree, .allCovs) # nolint: object_usage_linter.
-    if (length(.why) == 0L) next
-    .ret <- rbind(.ret, .rxFoceiCarryPairRow(
-      .th, .rxCarryThetaName(.ui, .k), # nolint: object_usage_linter.
-      if (.hasSlot) .slot else NULL,
-      .jump, .mods, .why, NA, render
-    ))
+    .why <- .rxFoceiCarryWhy(if (.hasSlot) .slot else NULL, .jump, .mods, .slotFree, .allCovs)
+    if (length(.why) == 0L) {
+      next
+    }
+    .ret <- rbind(
+      .ret,
+      .rxFoceiCarryPairRow(
+        .th,
+        .rxCarryThetaName(.ui, .k),
+        if (.hasSlot) .slot else NULL,
+        .jump,
+        .mods,
+        .why,
+        NA,
+        render
+      )
+    )
   }
   .ret
 }
@@ -136,7 +152,7 @@
   if (is.null(.pairs)) {
     return(NULL)
   }
-  .rxFoceiLinCmtCarryCheckCap(.pairs) # nolint: object_usage_linter.
+  .rxFoceiLinCmtCarryCheckCap(.pairs)
   list(pairs = .pairs, fp = .fp)
 }
 
@@ -145,7 +161,7 @@
 .rxCarryThetaModelOk <- function(ui, s) {
   if (!.rxFoceiLinCmtCarryBuildEnabled(ui)) {
     return(NULL)
-  } # nolint: object_usage_linter.
+  }
   if (rxode2::.rxLinNcmt(ui)["numLin"] <= 0L) {
     return(NULL)
   }
@@ -158,8 +174,10 @@
     return(NULL)
   }
   .sh <- .rxCarryCallShape(.fp)
-  if (any(is.na(unlist(.sh))) ||
-    is.null(.rxFoceiCarryMicro(.sh$ncmt, .sh$oral0, .sh$trans))) { # nolint: object_usage_linter.
+  if (
+    any(is.na(unlist(.sh))) ||
+      is.null(.rxFoceiCarryMicro(.sh$ncmt, .sh$oral0, .sh$trans))
+  ) {
     return(NULL)
   }
   .fp
@@ -168,14 +186,10 @@
 #' Detected theta pairs, slot channels only; NULL when none qualify
 #' @noRd
 .rxCarryThetaDetect <- function(x, s, thetaVars, fp) {
-  .pairs <- tryCatch(.rxCarryThetaEligible(x, s, thetaVars, fp, render = FALSE),
-    error = function(e) {
-      warning("linCmt() theta carry detection failed; standard gradient used",
-        call. = FALSE
-      )
-      NULL
-    }
-  )
+  .pairs <- tryCatch(.rxCarryThetaEligible(x, s, thetaVars, fp, render = FALSE), error = function(e) {
+    warning("linCmt() theta carry detection failed; standard gradient used", call. = FALSE)
+    NULL
+  })
   if (is.null(.pairs) || nrow(.pairs) == 0L) {
     return(NULL)
   }
@@ -201,15 +215,12 @@
   .proxy <- new.env(parent = emptyenv())
   assign("rx_pred_", fp$call, envir = .proxy)
   .tmp <- paste0("rx_lcCarryC", .p, "_")
-  .lines <- strsplit(.rxFoceiLinCmtCarryEmit(pairs, w, .proxy, .tmp), "\n", fixed = TRUE)[[1]] # nolint: object_usage_linter.
+  .lines <- strsplit(.rxFoceiLinCmtCarryEmit(pairs, w, .proxy, .tmp), "\n", fixed = TRUE)[[1]]
   .i <- length(.lines)
   # the emission's final line assigns the concentration sensitivity to
   # `tmp=`; make it an intermediate and point its direct term at the
   # factored concentration rather than at rx_pred_
-  .lines[.i] <- gsub("rx_pred_", "rx_lcConc_",
-    sub(paste0("^", .tmp, "="), paste0(.tmp, "~"), .lines[.i]),
-    fixed = TRUE
-  )
+  .lines[.i] <- gsub("rx_pred_", "rx_lcConc_", sub(paste0("^", .tmp, "="), paste0(.tmp, "~"), .lines[.i]), fixed = TRUE)
   if (w == 1L) {
     .callRepr <- paste(fp$call)
     .lines <- c(paste0("rx_lcConc_~", rxode2::rxFromSE(.callRepr)), .lines)
@@ -218,10 +229,12 @@
   .dcRepr <- paste(symengine::D(fp$outer, .S("rx_lcConc_")))
   .out <- paste0("(", rxode2::rxFromSE(.dcRepr), ")*", .tmp)
   .dt <- symengine::D(fp$outer, .S(pairs$eta[w]))
-  if (!.rxFoceiCarryIsZero(.dt)) { # nolint: object_usage_linter.
+  if (!.rxFoceiCarryIsZero(.dt)) {
     .dtRepr <- paste(.dt)
     .out <- paste0(.out, "+(", rxode2::rxFromSE(.dtRepr), ")")
   }
-  if (!isTRUE(predMinusDv)) .out <- paste0("-(", .out, ")")
+  if (!isTRUE(predMinusDv)) {
+    .out <- paste0("-(", .out, ")")
+  }
   paste(c(.lines, paste0(dfe, "=", .out)), collapse = "\n")
 }

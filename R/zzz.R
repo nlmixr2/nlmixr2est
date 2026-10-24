@@ -21,9 +21,7 @@
 }
 
 .iniLotriPtr <- function() {
-  .Call(`_nlmixr2est_iniLotriPtr`,
-        lotri::.lotriPointers(),
-        PACKAGE = "nlmixr2est")
+  .Call(`_nlmixr2est_iniLotriPtr`, lotri::.lotriPointers(), PACKAGE = "nlmixr2est")
 }
 
 ## DO NOT re-add an rxode2 API version/name check here.
@@ -48,20 +46,15 @@
 ## matters, by rxode2's own build-time check that no slot is left unset and by the
 ## DESCRIPTION version requirement -- not by string-comparing a snapshot at load.
 .iniRxode2Ptr <- function() {
-  .Call(`_nlmixr2est_iniRxodePtrs`, rxode2::.rxode2ptrs(),
-        PACKAGE = "nlmixr2est")
+  .Call(`_nlmixr2est_iniRxodePtrs`, rxode2::.rxode2ptrs(), PACKAGE = "nlmixr2est")
 }
 
 .iniN1qn1ptr <- function() {
-  .Call(`_nlmixr2est_iniN1qn1cPtrs`,
-        n1qn1::.n1qn1ptr(),
-        PACKAGE = "nlmixr2est")
+  .Call(`_nlmixr2est_iniN1qn1cPtrs`, n1qn1::.n1qn1ptr(), PACKAGE = "nlmixr2est")
 }
 
 .iniLbfgsb3c <- function() {
-  .Call(`_nlmixr2est_iniLbfgsb3ptr`,
-        lbfgsb3c::.lbfgsb3cPtr(),
-        PACKAGE = "nlmixr2est")
+  .Call(`_nlmixr2est_iniLbfgsb3ptr`, lbfgsb3c::.lbfgsb3cPtr(), PACKAGE = "nlmixr2est")
 }
 
 .iniRcppTrustPtr <- function() {
@@ -128,6 +121,7 @@
   rxode2::.s3register("rxode2::rxUiDeparse", "tableControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "agqControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "laplaceControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "impmapControl")
   rxode2::.s3register("rxode2::rxUiGet", "foceiOuter")
   rxode2::.s3register("rxode2::rxUiGet", "impmapThetaSens")
   .resetCacheIfNeeded()

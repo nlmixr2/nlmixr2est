@@ -20,12 +20,13 @@
 
 .foceiLikData <- function() {
   .testSeed(42)
-  do.call(rbind, lapply(1:4, function(id) {
-    tt <- c(0.5, 1, 2, 4, 8)
-    data.frame(ID = id, TIME = tt,
-               DV = 5 * exp(-0.05 * tt) + stats::rnorm(length(tt), 0, 0.5),
-               AMT = 0, EVID = 0)
-  }))
+  do.call(
+    rbind,
+    lapply(1:4, function(id) {
+      tt <- c(0.5, 1, 2, 4, 8)
+      data.frame(ID = id, TIME = tt, DV = 5 * exp(-0.05 * tt) + stats::rnorm(length(tt), 0, 0.5), AMT = 0, EVID = 0)
+    })
+  )
 }
 
 test_that("foceiLikLoad() loads, reports dimensions, and guards double loading", {
@@ -35,7 +36,7 @@ test_that("foceiLikLoad() loads, reports dimensions, and guards double loading",
   on.exit(foceiLikUnload(), add = TRUE)
   expect_equal(h$nid, 4L)
   expect_equal(h$neta, 1L)
-  expect_equal(h$npars, 4L)   # tcl, tv, add.sd + one omega element
+  expect_equal(h$npars, 4L) # tcl, tv, add.sd + one omega element
   expect_equal(h$etaNames, "eta.cl")
   expect_equal(h$thetaNames, c("tcl", "tv", "add.sd"))
   expect_equal(h$likelihood, "focei")
@@ -72,20 +73,22 @@ test_that("foceiLikRun() returns per-id log-likelihoods on the right scale", {
   expect_true(all(is.finite(llData)))
   expect_equal(names(llData), as.character(h$idLvl))
   # "joint" is the default type, and it differs from "cond" (by the eta prior)
-  expect_equal(foceiLikRun(h$initPar, eta0),
-               foceiLikRun(h$initPar, eta0, type = "joint"))
-  expect_false(isTRUE(all.equal(as.numeric(llData),
-                               as.numeric(foceiLikRun(h$initPar, eta0)))))
+  expect_equal(foceiLikRun(h$initPar, eta0), foceiLikRun(h$initPar, eta0, type = "joint"))
+  expect_false(isTRUE(all.equal(as.numeric(llData), as.numeric(foceiLikRun(h$initPar, eta0)))))
   # Reference at eta=0 in nlmixr2's residual convention:
   # -0.5*err^2/r - 0.5*log(r) per observation (Gaussian 2*pi constant omitted).
   # The remaining difference is the inner (sensitivity) model solve vs this
   # closed-form evaluation, hence the loose tolerance.
   th <- h$initPar
-  ref <- vapply(1:4, function(id) {
-    di <- d[d$ID == id, ]
-    cp <- 100 / exp(th[2]) * exp(-exp(th[1]) / exp(th[2]) * di$TIME)
-    sum(-0.5 * (di$DV - cp)^2 / th[3]^2 - 0.5 * log(th[3]^2))
-  }, numeric(1))
+  ref <- vapply(
+    1:4,
+    function(id) {
+      di <- d[d$ID == id, ]
+      cp <- 100 / exp(th[2]) * exp(-exp(th[1]) / exp(th[2]) * di$TIME)
+      sum(-0.5 * (di$DV - cp)^2 / th[3]^2 - 0.5 * log(th[3]^2))
+    },
+    numeric(1)
+  )
   expect_equal(as.numeric(llData), ref, tolerance = 1e-2)
 })
 
@@ -128,8 +131,7 @@ test_that("each likelihood type runs; interaction only matters away from eta=0",
     h <- foceiLikLoad(.foceiLikMod, d, lik)
     on.exit(foceiLikUnload(), add = TRUE)
     expect_equal(h$likelihood, lik)
-    list(zero = foceiLikRun(h$initPar, eta0, type = "joint"),
-         nz = foceiLikRun(h$initPar, etaNz, type = "joint"))
+    list(zero = foceiLikRun(h$initPar, eta0, type = "joint"), nz = foceiLikRun(h$initPar, etaNz, type = "joint"))
   })
   names(res) <- c("focei", "focep", "foce")
   for (r in res) {
@@ -161,7 +163,8 @@ test_that("foceiLikRun() responds to theta changes", {
   eta0 <- matrix(0, h$nid, h$neta)
   ll0 <- foceiLikRun(h$initPar, eta0, type = "cond")
   # doubling the additive SD must change the data log-likelihood
-  th2 <- h$initPar; th2[3] <- th2[3] * 2
+  th2 <- h$initPar
+  th2[3] <- th2[3] * 2
   ll2 <- foceiLikRun(th2, eta0, type = "cond")
   expect_false(isTRUE(all.equal(as.numeric(ll0), as.numeric(ll2))))
   # and the theta must actually be re-applied (not cached): returning to the
@@ -183,11 +186,15 @@ test_that("foceiLikLoad(scale='natural') makes theta the natural scale (#939)", 
   th <- c(1.2, 3.1, 0.6, 0.1^(-0.25))
   eta0 <- matrix(0, h$nid, h$neta)
   llNat <- foceiLikRun(th, eta0, type = "cond")
-  ref <- vapply(1:4, function(id) {
-    di <- d[d$ID == id, ]
-    cp <- 100 / exp(th[2]) * exp(-exp(th[1]) / exp(th[2]) * di$TIME)
-    sum(-0.5 * (di$DV - cp)^2 / th[3]^2 - 0.5 * log(th[3]^2))
-  }, numeric(1))
+  ref <- vapply(
+    1:4,
+    function(id) {
+      di <- d[d$ID == id, ]
+      cp <- 100 / exp(th[2]) * exp(-exp(th[1]) / exp(th[2]) * di$TIME)
+      sum(-0.5 * (di$DV - cp)^2 / th[3]^2 - 0.5 * log(th[3]^2))
+    },
+    numeric(1)
+  )
   expect_equal(as.numeric(llNat), ref, tolerance = 1e-2)
   foceiLikUnload()
   # the same numeric vector under the default (focei) scale means something
@@ -196,8 +203,7 @@ test_that("foceiLikLoad(scale='natural') makes theta the natural scale (#939)", 
   h2 <- foceiLikLoad(.foceiLikMod, d, "focei")
   expect_equal(h2$scale, "focei")
   llDef <- foceiLikRun(th, eta0, type = "cond")
-  expect_false(isTRUE(all.equal(as.numeric(llNat), as.numeric(llDef),
-                                tolerance = 1e-4)))
+  expect_false(isTRUE(all.equal(as.numeric(llNat), as.numeric(llDef), tolerance = 1e-4)))
 })
 
 test_that("foceiLikLoad(thetaSens=TRUE) builds and reports the sensitivity model (#939)", {

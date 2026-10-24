@@ -64,3 +64,11 @@ bool chol_sym(mat &Hout, mat &Hin) {
   if (!H.is_symmetric()) return false;
   return chol(Hout, H);
 }
+
+// nmNearPDKeepDiag() for the tests: the repaired matrix and which repair it took
+//[[Rcpp::export]]
+List nmNearPDKeepDiag_(NumericMatrix x) {
+  arma::mat ret;
+  int how = nmNearPDKeepDiag(ret, as<arma::mat>(x));
+  return List::create(_["mat"] = ret, _["how"] = how);
+}

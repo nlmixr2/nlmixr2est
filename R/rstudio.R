@@ -8,15 +8,15 @@
 #' # Determines if rstudio is running completion
 #' .rstudioComplete()
 .rstudioComplete <- function() {
-  .sc <- try(sys.calls(), silent=TRUE)
+  .sc <- try(sys.calls(), silent = TRUE)
   if (inherits(.sc, "try-error")) {
     return(FALSE)
   }
-  .sc <- try(.sc[[1]], silent=TRUE)
+  .sc <- try(.sc[[1]], silent = TRUE)
   if (inherits(.sc, "try-error")) {
     return(FALSE)
   }
-  .sc <- try(.sc[[1]], silent=TRUE)
+  .sc <- try(.sc[[1]], silent = TRUE)
   if (inherits(.sc, "try-error")) {
     return(FALSE)
   }

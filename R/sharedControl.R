@@ -25,52 +25,56 @@ getValidNlmixrCtl <- function(control) {
   UseMethod("getValidNlmixrCtl")
 }
 
-#' @rdname getValidNlmixrControl
-#' @export
-getValidNlmixrCtl.focei <- function(control) {
+#' Validate the control of an estimation method
+#'
+#' The body of most `getValidNlmixrCtl()` methods.  `NULL` gives the default
+#' control and a plain list is passed to the constructor.  A control of the
+#' method's own class is rebuilt; one of a `convert` class is converted, by
+#' `convertFun` or else by passing its fields to the constructor; anything
+#' else is replaced by the default, with a message.
+#' @param control the list `getValidNlmixrControl()` dispatches on
+#' @param ctl name of the method's control constructor, which is also the
+#'   class of its control
+#' @param est method named in the message about an invalid control
+#' @param convert classes of the controls that are converted
+#' @param convertFun `function(control, ctl)` converting one, or `NULL`
+#' @return the validated control
+#' @noRd
+.getValidCtl <- function(control, ctl, est = class(control)[1], convert = character(0), convertFun = NULL) {
+  .fun <- get(ctl, mode = "function")
   .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- foceiControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
-    .ctl <- do.call("foceiControl", .ctl)
-  if (!inherits(.ctl, "foceiControl")) {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- foceiControl()
-  } else {
-    .ctl <- do.call(foceiControl, .ctl)
+  if (is.null(.ctl)) {
+    .ctl <- .fun()
   }
-  .ctl
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
+    .ctl <- do.call(ctl, .ctl)
+  }
+  if (inherits(.ctl, ctl)) {
+    return(do.call(.fun, .ctl))
+  }
+  if (inherits(.ctl, convert)) {
+    .minfo(paste0("converting ", class(.ctl)[1], " to ", ctl))
+    if (is.function(convertFun)) {
+      return(convertFun(.ctl, ctl))
+    }
+    class(.ctl) <- NULL
+    return(do.call(.fun, .ctl))
+  }
+  .minfo(paste0("invalid control for `est=\"", est, "\"`, using default"))
+  .fun()
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.nlme <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) .ctl <- nlmeControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("nlmeControl", .ctl)
-  if (!inherits(.ctl, "nlmeControl")) {
-    .minfo("invalid control for `est=\"nlme\"`, using default")
-    .ctl <- nlmeControl()
-  } else {
-    .ctl <- do.call(nlmeControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.focei <- function(control) .getValidCtl(control, "foceiControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.saem <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) .ctl <- saemControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("saemControl", .ctl)
-  if (!inherits(.ctl, "saemControl")) {
-    .minfo("invalid control for `est=\"saem\"`, using default")
-    .ctl <- saemControl()
-  } else {
-    .ctl <- do.call(saemControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.nlme <- function(control) .getValidCtl(control, "nlmeControl", "nlme")
+
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.saem <- function(control) .getValidCtl(control, "saemControl", "saem")
 
 #' @rdname getValidNlmixrControl
 #' @export
@@ -82,7 +86,9 @@ getValidNlmixrCtl.rxSolve <- function(control) {
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
-  if (is.null(.ctl)) .ctl <- rxControl(envir=.env)
+  if (is.null(.ctl)) {
+    .ctl <- rxControl(envir = .env)
+  }
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
     .ctl <- do.call(rxode2::rxControl, .ctl)
     .ctl$envir <- .env
@@ -91,7 +97,7 @@ getValidNlmixrCtl.rxSolve <- function(control) {
     .ctl <- .ctl$rxControl
     if (!inherits(.ctl, "rxControl")) {
       .minfo(paste0("invalid control for `est=\"", class(control)[1], "\"`, using default"))
-      .ctl <- rxode2::rxControl(envir=.env)
+      .ctl <- rxode2::rxControl(envir = .env)
     } else {
       .ctl <- do.call(rxode2::rxControl, .ctl)
       .ctl$envir <- .env
@@ -116,13 +122,16 @@ getValidNlmixrCtl.simulation <- getValidNlmixrCtl.rxSolve
 getValidNlmixrCtl.predict <- getValidNlmixrCtl.rxSolve
 
 
-
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.tableControl <- function(control) {
   .ctl <- control[[1]]
-  if (is.null(.ctl)) .ctl <- tableControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call(tableControl, .ctl)
+  if (is.null(.ctl)) {
+    .ctl <- tableControl()
+  }
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
+    .ctl <- do.call(tableControl, .ctl)
+  }
   if (!inherits(.ctl, "tableControl")) {
     .minfo("invalid control for table, using default")
     .ctl <- tableControl()
@@ -138,14 +147,24 @@ getValidNlmixrCtl.default <- function(control) {
   .cls <- class(control)[1]
   # An unknown est= reaches here before nlmixr2Est dispatch; show the tagged,
   # category-grouped list of available methods (issue #750) when one exists.
-  .lines <- .nlmixr2EstTypeLines(current=.cls)
+  .lines <- .nlmixr2EstTypeLines(current = .cls)
   if (length(.lines) > 0L) {
-    stop("nlmixr2 estimation `est=\"", .cls, "\"` is not supported; available methods:\n",
-         paste(.lines, collapse="\n"),
-         call.=FALSE)
+    stop(
+      "nlmixr2 estimation `est=\"",
+      .cls,
+      "\"` is not supported; available methods:\n",
+      paste(.lines, collapse = "\n"),
+      call. = FALSE
+    )
   }
-  stop("do not know how to validate control for `est=\"", .cls, "\"`, please add `getValidNlmixrCtl.", .cls, "` method",
-       call.=FALSE)
+  stop(
+    "do not know how to validate control for `est=\"",
+    .cls,
+    "\"`, please add `getValidNlmixrCtl.",
+    .cls,
+    "` method",
+    call. = FALSE
+  )
 }
 
 #'  Get specified control structure from reference
@@ -155,9 +174,9 @@ getValidNlmixrCtl.default <- function(control) {
 #' @return List for new control object
 #' @author Matthew L. Fidler
 #' @noRd
-.getControlFromDots <- function(ref, ...){
+.getControlFromDots <- function(ref, ...) {
   .in <- list(...)
-  .out <- vector(mode="list")
+  .out <- vector(mode = "list")
   for (.n in names(ref)) {
     .w <- which(names(.in) == .n)
     if (length(.w) == 1L) {
@@ -165,7 +184,26 @@ getValidNlmixrCtl.default <- function(control) {
       .in <- .in[-.w]
     }
   }
-  return(list(ctl=.out, rest=.in))
+  return(list(ctl = .out, rest = .in))
+}
+
+# integer codes of the scaleType and normType options, which C++ reads
+.scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
+.normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
+
+#' Integer code of a control option given as a code or a name
+#'
+#' @param value the option as given
+#' @param idx the name -> code map
+#' @param choice `match.arg()` of the option in the calling control; it is a
+#'   promise, forced only when `value` is not a code
+#' @return the integer code
+#' @noRd
+.ctlIdx <- function(value, idx, choice) {
+  if (checkmate::testIntegerish(value, len = 1, lower = 1, upper = length(idx), any.missing = FALSE)) {
+    return(as.integer(value))
+  }
+  idx[[choice]]
 }
 
 #' Optimizer convergence tolerance derived from `sigdig`
@@ -179,11 +217,17 @@ getValidNlmixrCtl.default <- function(control) {
 #' @noRd
 .sigdigOptTol <- function(sigdig) 10^(-sigdig)
 
-#' L-BFGS `factr` derived from `sigdig` (relative-f tolerance `10^-sigdig`)
+#' L-BFGS-B `factr` derived from `sigdig`
+#'
+#' Two orders tighter than `10^-sigdig`, as `foceiControl(lbfgsFactr=)`:
+#' `factr` tests one step's objective reduction, so `10^-sigdig` stops early.
 #' @param sigdig optimization significant digits
-#' @return the `factr` value (`tol / .Machine$double.eps`)
+#' @param floor smallest `factr` returned
+#' @return the `factr` value (`10^(-sigdig-2) / .Machine$double.eps`)
 #' @noRd
-.sigdigFactr <- function(sigdig) 10^(-sigdig) / .Machine$double.eps
+.sigdigFactr <- function(sigdig, floor = 1) {
+  max(10^(-sigdig - 2) / .Machine$double.eps, floor)
+}
 
 #' Scale a tuned default tolerance by `sigdig` around `sigdig = 4`
 #'
@@ -201,6 +245,21 @@ getValidNlmixrCtl.default <- function(control) {
 #' @return the scaled tolerance
 #' @noRd
 .sigdigScale <- function(default, sigdig) default * 10^(4 - sigdig)
+
+#' Set one tolerance field of an `rxControl`, unless the user supplied it
+#'
+#' @param rxControl an `rxode2::rxControl()` object
+#' @param field name of the tolerance field
+#' @param value the tolerance; recycled to the length of the existing field
+#' @param skip field names the user set explicitly, which are left untouched
+#' @return `rxControl`, with `field` replaced unless it is in `skip`
+#' @noRd
+.rxControlSetTol <- function(rxControl, field, value, skip) {
+  if (!(field %in% skip)) {
+    rxControl[[field]] <- rep_len(value, length(rxControl[[field]]))
+  }
+  rxControl
+}
 
 #' Scale ODE solver tolerances from the optimization `sigdig`
 #'
@@ -226,7 +285,9 @@ getValidNlmixrCtl.default <- function(control) {
 #' @return `rxControl` with ODE solver tolerances set from `sigdig`
 #' @noRd
 .rxControlScaleSigdig <- function(rxControl, sigdig, skip = character(0), tighten = 0) {
-  if (is.null(sigdig) || is.null(rxControl)) return(rxControl)
+  if (is.null(sigdig) || is.null(rxControl)) {
+    return(rxControl)
+  }
   .rtol <- 10^(-(sigdig + tighten))
   .atol <- 10^(-(sigdig + 3 + tighten))
   # only set a tolerance the user did not pass explicitly (skip).  Sensitivity
@@ -234,16 +295,17 @@ getValidNlmixrCtl.default <- function(control) {
   # them, so a looser sens tolerance degrades analytic gradient/covariance
   # accuracy (and leaves the optimizer's gradient less accurate than its
   # objective).  Steady-state solves stay one order looser than the main solve.
-  .set <- function(field, value) {
-    if (!(field %in% skip)) rxControl[[field]] <<- rep_len(value, length(rxControl[[field]]))
+  rxControl <- .rxControlSetTol(rxControl, "rtol", .rtol, skip)
+  rxControl <- .rxControlSetTol(rxControl, "atol", .atol, skip)
+  rxControl <- .rxControlSetTol(rxControl, "rtolSens", .rtol, skip)
+  rxControl <- .rxControlSetTol(rxControl, "atolSens", .atol, skip)
+  rxControl <- .rxControlSetTol(rxControl, "ssRtol", 10 * .rtol, skip)
+  rxControl <- .rxControlSetTol(rxControl, "ssAtol", 10 * .atol, skip)
+  if (!is.null(rxControl$ssRtolSens)) {
+    rxControl <- .rxControlSetTol(rxControl, "ssRtolSens", 10 * .rtol, skip)
   }
-  .set("rtol", .rtol)
-  .set("atol", .atol)
-  .set("rtolSens", .rtol)
-  .set("atolSens", .atol)
-  .set("ssRtol", 10 * .rtol)
-  .set("ssAtol", 10 * .atol)
-  if (!is.null(rxControl$ssRtolSens)) .set("ssRtolSens", 10 * .rtol)
-  if (!is.null(rxControl$ssAtolSens)) .set("ssAtolSens", 10 * .atol)
+  if (!is.null(rxControl$ssAtolSens)) {
+    rxControl <- .rxControlSetTol(rxControl, "ssAtolSens", 10 * .atol, skip)
+  }
   rxControl
 }

@@ -95,9 +95,14 @@ test_that("more than four carry-eligible pairs fails loudly at model build", {
   ui <- .carrySetControl(nlmixr2est::nlmixr2(five), "auto")
   expect_equal(nrow(.foceiLinCmtCarryPairs(ui)), 5L)
   s <- ui$foceiEtaS
-  expect_error(.rxFoceiLinCmtCarryPairsForBuild(
-    list(ui), s, paste0("ETA_", seq_len(s$..maxEta), "_")
-  ), "carry columns")
+  expect_error(
+    .rxFoceiLinCmtCarryPairsForBuild(
+      list(ui),
+      s,
+      paste0("ETA_", seq_len(s$..maxEta), "_")
+    ),
+    "carry columns"
+  )
   # (inside the HdEta build the error is re-raised by the progress abort as
   # "Aborted calculation", which escapes expect_error -- the direct call
   # above is what pins the message)

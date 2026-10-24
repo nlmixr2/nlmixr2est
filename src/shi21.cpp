@@ -3,13 +3,95 @@
 //
 // https://arxiv.org/pdf/2110.06380.pdf
 
-// Harmonic mean correction see:
-// https://github.com/cran/lmomco/blob/8558903cdcdf6ce0640822a8f6ee7caf07ebd451/R/harmonic.mean.R
-// https://rdrr.io/cran/lmomco/man/harmonic.mean.html
+// Components with r < 1 are non-detects: the third difference is within the 8*ef
+// noise bound, so r is left-censored at 1 (#1188).  shiRatioCensor picks how they
+// enter the harmonic mean:
+//   0 "legacy"     harmonic mean of the nonzero ratios, legacy zero correction
+//   1 "detected"   (default) harmonic mean of the detected (r >= 1) ratios; max(r) if none
+//   2 "substitute" censored ratios set to the detection limit 1
+//   3 "lmomco"     detected harmonic mean times (N - N0)/N, N0 = censored count
+// lmomco::harmonic.mean() (TCEQ RG-194 / EPA DFLOW) is the source of option 3.
+// Options 2 and 3 still depend on how many components are censored.
 #define ARMA_WARN_LEVEL 1
 #define STRICT_R_HEADER
 #include "armahead.h"
 #include "shi21.h"
+
+static int shiRatioCensor_ = 1;
+
+// Selects the shiRatio() treatment of censored ratios; returns the previous one.
+//[[Rcpp::export]]
+int shi21RatioCensorSet(int type) {
+  if (type < 0 || type > 3) {
+    Rcpp::stop("unknown shi21 ratio censor type");
+  }
+  int old = shiRatioCensor_;
+  shiRatioCensor_ = type;
+  return old;
+}
+
+// Harmonic mean of the nonzero ratios with the legacy zero correction.
+static double shiRatioLegacy(const arma::vec &all) {
+  double sum = 0.0;
+  int nzero = 0;
+  int n = 0;
+  for (unsigned int j = all.size(); j--;) {
+    if  (all[j] == 0) {
+      nzero++;
+    } else {
+      sum += 1.0/all[j];
+      n++;
+    }
+  }
+  double correction = (double)(n-nzero)/((double)n);
+  if (correction <= 0) correction=1;
+  return (double)(n)/sum * correction;
+}
+
+// Sum of 1/r over the detected (r >= 1) ratios and their count; rmax is the
+// largest censored ratio.
+static int shiRatioDetected(const arma::vec &all, double &sum, double &rmax) {
+  int n = 0;
+  sum = 0.0;
+  rmax = 0.0;
+  for (unsigned int j = all.size(); j--;) {
+    if (all[j] >= 1.0) {
+      sum += 1.0/all[j];
+      n++;
+    } else if (all[j] > rmax) {
+      rmax = all[j];
+    }
+  }
+  return n;
+}
+
+static double shiRatioType(const arma::vec &all, int type) {
+  if (all.size() == 1) return all(0);
+  if (type == 0) return shiRatioLegacy(all);
+  double sum, rmax;
+  int n = shiRatioDetected(all, sum, rmax);
+  double nAll = (double)(all.size());
+  switch (type) {
+  case 1:
+    return n == 0 ? rmax : (double)(n)/sum;
+  case 2:
+    return nAll/(sum + nAll - (double)(n));
+  default:
+    return n == 0 ? 0.0 : (double)(n)/sum * (double)(n)/nAll;
+  }
+}
+
+// The ratio test statistic of a step: the one ratio itself for a scalar function,
+// else a harmonic mean of the per-element ratios (see shiRatioCensor_).
+static double shiRatio(const arma::vec &all) {
+  return shiRatioType(all, shiRatioCensor_);
+}
+
+// R-callable shiRatio() for unit tests.
+//[[Rcpp::export]]
+double shi21RatioTest(arma::vec all, int type) {
+  return shiRatioType(all, type);
+}
 
 double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
              arma::vec &f0, arma::vec &f1, double &l, double &u,
@@ -29,28 +111,7 @@ double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   if (!finiteF4) {
     return -1.0;
   }
-  arma::vec all = abs(f4-4*f1+3*f0)/(8.0*ef);
-  if (all.size() == 1) {
-    return all(0);
-  }
-  // Return harmonic mean
-  arma::vec all0 = all;
-  all = 1.0/all;
-  double sum = 0.0;
-  int nzero = 0;
-  int n = 0;
-  for (unsigned int j = all.size(); j--;) {
-    if  (all0[j] == 0) {
-      nzero++;
-    } else {
-      sum += all[j];
-      n++;
-    }
-  }
-  double correction = (double)(n-nzero)/((double)n);
-  if (correction <= 0) correction=1;
-  double hm = (double)(n)/sum * correction;
-  return hm;
+  return shiRatio(abs(f4-4*f1+3*f0)/(8.0*ef));
 }
 
 double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
@@ -85,17 +146,21 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
                  finiteF1, finiteF4);
     if (rcur == -1) {
       if (!finiteF1) {
-        // hnew = t + 2.5*hold
         h = 0.5*h;
         continue;
       }
-      h = 3.5*h;
+      // f(t+h) is finite and f(t+4h) is not: without a difference from an
+      // earlier step, keep the forward difference at h, then shrink so the outer
+      // probe lands at 2h (hnew*4 = hold*2)
       if (!calcGrad) {
+        calcGrad = true;
         lasth = h;
         gr = (f1-f0)/h;
       }
+      h = 0.5*h;
       continue;
     } else {
+      calcGrad = true;
       lasth = h;
       gr = (f1-f0)/h;
     }
@@ -159,28 +224,7 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   if (!finiteFm3) {
     return -1.0;
   }
-  arma::vec all = abs(fp3-3*fp1+3*fm1-fm3)/(8.0*ef);
-  if (fm3.size() == 1) {
-    return all(0);
-  }
-  // Return harmonic mean
-  arma::vec all0 = all;
-  all = 1.0/all;
-  double sum = 0.0;
-  int nzero = 0;
-  int n = 0;
-  for (unsigned int j = all.size(); j--;) {
-    if  (all0[j] == 0) {
-      nzero++;
-    } else {
-      sum += all[j];
-      n++;
-    }
-  }
-  double correction = (double)(n-nzero)/((double)n);
-  if (correction <= 0) correction=1;
-  double hm = (double)(n)/sum * correction;
-  return hm;
+  return shiRatio(abs(fp3-3*fp1+3*fm1-fm3)/(8.0*ef));
 }
 
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,
@@ -233,18 +277,20 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
           // forward difference
           calcGrad = true;
           gr = (fp1-f0)/h;
+          hlast = h;
         }
         h = h*0.5/3.0;
         continue;
       }
-      // hnew*3 = hold*2
-      h = h*2.0/3.0;
+      // f(t+-h) are finite and f(t+-3h) are not: without a difference from an
+      // earlier step, keep the central difference at h, then shrink so the outer
+      // probes land at 2h (hnew*3 = hold*2)
       if (!calcGrad) {
-        // central difference
         calcGrad = true;
         gr = (fp1-fm1)/(2*h);
         hlast = h;
       }
+      h = h*2.0/3.0;
       continue;
     } else {
       calcGrad = true;
@@ -271,4 +317,53 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
     }
   }
   return h;
+}
+
+// Column k of shi21Hessian() at the fixed step h; x[k] is put back exactly.
+static void shi21HessColumn(shi21fn_type grad, arma::vec &x, arma::vec &gr0, int id,
+                            int type, int k, double h, arma::vec &col) {
+  double xk = x[k];
+  x[k] += h;
+  arma::vec grPH = grad(x, id);
+  bool forwardFinite = grPH.is_finite();
+  if (type == shi21HessForward && forwardFinite) {
+    col = (grPH - gr0)/h;
+    x[k] = xk;
+    return;
+  }
+  x[k] -= 2*h;
+  arma::vec grMH = grad(x, id);
+  x[k] = xk;
+  bool backwardFinite = grMH.is_finite();
+  if (forwardFinite && backwardFinite) {
+    // only reached for central: forward returned above
+    col = (grPH - grMH)/(2.0*h);
+  } else if (forwardFinite) {
+    col = (grPH - gr0)/h;
+  } else if (backwardFinite) {
+    col = (gr0 - grMH)/h;
+  }
+}
+
+arma::mat shi21Hessian(shi21fn_type grad, arma::vec &x, arma::vec &gr0, int id,
+                       int type, double *hh, double ef, int maxiter,
+                       double hMax, const double *hMin) {
+  arma::mat H(x.n_elem, x.n_elem, arma::fill::zeros);
+  if (type != shi21HessForward && type != shi21HessCentral) return H;
+  arma::vec col(x.n_elem);
+  for (int k = x.n_elem; k--;) {
+    double h = hh[k];
+    if (h <= 0) {
+      double hMinK = (hMin == NULL) ? shi21hMinDefault : hMin[k];
+      hh[k] = (type == shi21HessForward) ?
+        shi21Forward(grad, x, h, gr0, col, id, k, ef, 1.5, 6.0, maxiter, hMax, hMinK) :
+        shi21Central(grad, x, h, gr0, col, id, k, ef, 1.5, 4.5, 3.0, maxiter, hMax, hMinK);
+      H.col(k) = col;
+      continue;
+    }
+    col.zeros();
+    shi21HessColumn(grad, x, gr0, id, type, k, h, col);
+    H.col(k) = col;
+  }
+  return 0.5*(H + H.t());
 }

@@ -39,14 +39,14 @@ nmTest({
     ui <- rxode2::assertRxUi(mod)
     ctl <- vaeControl(print = 0L, calcTables = FALSE)
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd, ctl)
-    N <- prep$N; zDim <- prep$zDim
+    N <- prep$N
+    zDim <- prep$zDim
     innerEnv <- .vaeInnerSetup(ui, nlmixr2data::theo_sd, matrix(0, N, zDim), ctl)
     on.exit(.vaeInnerFree(), add = TRUE)
     .testSeed(3)
     params <- .vaeEncoderInitParams(zDim, 8L, ncol(prep$covIn), prep$zPop, rep(0.1, zDim))
     eps <- matrix(stats::rnorm(N * zDim), N, zDim)
-    st <- .vaeElboStepInner(params, prep, innerEnv, prep$zPop, prep$omega, prep$a,
-                            1, eps, ctl)
+    st <- .vaeElboStepInner(params, prep, innerEnv, prep$zPop, prep$omega, prep$a, 1, eps, ctl)
     list(st = st, prep = prep)
   }
 
@@ -59,7 +59,7 @@ nmTest({
     for (i in seq_len(r$prep$N)) {
       expect_length(r$st$rvar[[i]], length(r$st$preds[[i]]))
       expect_true(all(is.finite(r$st$rvar[[i]])))
-      expect_true(all(r$st$rvar[[i]] > 0))   # a variance
+      expect_true(all(r$st$rvar[[i]] > 0)) # a variance
     }
   })
 
@@ -85,7 +85,8 @@ nmTest({
   test_that("r is the proportional variance (f*prop.err)^2 where f > 0", {
     skip_on_cran()
     r <- .step(.propMod())
-    f <- unlist(r$st$preds); rr <- unlist(r$st$rvar)
+    f <- unlist(r$st$preds)
+    rr <- unlist(r$st$rvar)
     ok <- f > 0
     expect_gt(sum(ok), 0)
     expect_equal(rr[ok], (f[ok] * 0.15)^2, tolerance = 1e-3)
@@ -107,7 +108,8 @@ nmTest({
     ## takes log(0) at every predose record of a proportional model.  The rule is
     ## `if (r == 0) r = 1`, matching handleF's treatment of a zero prediction.
     r <- .step(.propMod())
-    f <- unlist(r$st$preds); rr <- unlist(r$st$rvar)
+    f <- unlist(r$st$preds)
+    rr <- unlist(r$st$rvar)
     zero <- f == 0
     expect_gt(sum(zero), 0)
     expect_true(all(rr[zero] == 0))
@@ -117,7 +119,8 @@ nmTest({
     skip_on_cran()
     ## vaeControl() defaults to combined2, i.e. variances add
     r <- .step(.combMod())
-    f <- unlist(r$st$preds); rr <- unlist(r$st$rvar)
+    f <- unlist(r$st$preds)
+    rr <- unlist(r$st$rvar)
     ok <- f > 0
     expect_equal(rr[ok], 0.7^2 + (f[ok] * 0.15)^2, tolerance = 1e-3)
     ## combined1 would be (add + f*prop)^2, which differs by the cross term

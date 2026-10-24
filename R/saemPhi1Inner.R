@@ -70,7 +70,9 @@
 #' @export
 rxUiGet.saemPhi1Inner <- function(x, ...) {
   .ui <- x[[1]]
-  if (!.saemGeneralLik(.ui)) return(NULL)
+  if (!.saemGeneralLik(.ui)) {
+    return(NULL)
+  }
   # saemControl(phi1Hessian=FALSE) is the default (see its own docs -- an
   # ablation check found the Laplace log|H| correction was not what fixed a
   # diverging Gaussian twin, and it can instead dominate/diverge for a
@@ -80,10 +82,13 @@ rxUiGet.saemPhi1Inner <- function(x, ...) {
   # map, when the Hessian correction is actually wanted.
   .wantHessian <- isTRUE(tryCatch(
     as.logical(rxode2::rxGetControl(.ui, "phi1Hessian", FALSE)),
-    error = function(e) FALSE))
+    error = function(e) FALSE
+  ))
   .origControl <- .ui$control
-  if (.wantHessian &&
-        !isTRUE(tryCatch(as.logical(rxode2::rxGetControl(.ui, "fast", FALSE)), error = function(e) FALSE))) {
+  if (
+    .wantHessian &&
+      !isTRUE(tryCatch(as.logical(rxode2::rxGetControl(.ui, "fast", FALSE)), error = function(e) FALSE))
+  ) {
     assign("control", foceiControl(fast = TRUE), envir = .ui)
   }
   .fm <- tryCatch(.ui$focei, error = function(e) NULL)
@@ -92,14 +97,20 @@ rxUiGet.saemPhi1Inner <- function(x, ...) {
   } else if (exists("control", envir = .ui, inherits = FALSE)) {
     rm(list = "control", envir = .ui)
   }
-  if (is.null(.fm)) return(NULL)
+  if (is.null(.fm)) {
+    return(NULL)
+  }
   .inner <- if (!is.null(.fm$innerLlik)) .fm$innerLlik else .fm$inner
-  if (is.null(.inner)) return(NULL)
+  if (is.null(.inner)) {
+    return(NULL)
+  }
   .predNoLhs <- if (!is.null(.fm$predNoLhsLlik)) .fm$predNoLhsLlik else .fm$predNoLhs
   .innerHess2 <- if (.wantHessian) .fm$innerHess2 else NULL
   .map <- .saemPhi1TargetMap(.ui, .innerHess2, .predNoLhs)
-  c(list(inner = .inner, innerHess2 = .innerHess2, predNoLhs = .predNoLhs),
-    if (is.null(.map)) list(ok = FALSE) else .map)
+  c(
+    list(inner = .inner, innerHess2 = .innerHess2, predNoLhs = .predNoLhs),
+    if (is.null(.map)) list(ok = FALSE) else .map
+  )
 }
 attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
 
@@ -145,7 +156,9 @@ attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
 #' @noRd
 .saemPhi1TargetMap <- function(ui, hess2Mod, predMod) {
   .refMod <- if (!is.null(hess2Mod)) hess2Mod else predMod
-  if (is.null(.refMod)) return(NULL)
+  if (is.null(.refMod)) {
+    return(NULL)
+  }
   .parsH2 <- rxode2::rxParam(.refMod)
   .parsPred <- rxode2::rxParam(predMod)
   if (!is.null(hess2Mod) && !is.null(predMod)) {
@@ -154,23 +167,37 @@ attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
     if (!identical(.thEtH2, .thEtPred)) return(NULL)
   }
   .other <- .parsH2[!(grepl("^(THETA|ETA)\\[", .parsH2) | .parsH2 == "DV")]
-  if (length(.other) > 0) return(NULL)
+  if (length(.other) > 0) {
+    return(NULL)
+  }
   .otherPred <- .parsPred[!(grepl("^(THETA|ETA)\\[", .parsPred) | .parsPred == "DV")]
-  if (length(.otherPred) > 0) return(NULL)
+  if (length(.otherPred) > 0) {
+    return(NULL)
+  }
   # Readiness check only (see this function's own docs above for how DV
   # actually gets supplied) -- confirms DV resolved to a real slot in EACH
   # model actually solved (predMod always; hess2Mod only when it built)
   # rather than assuming the two agree.
   .dvCol <- match("DV", .parsPred) - 1L
-  if (is.na(.dvCol)) return(NULL)
-  .dvColHess2 <- if (is.null(hess2Mod)) NA_integer_ else {
+  if (is.na(.dvCol)) {
+    return(NULL)
+  }
+  .dvColHess2 <- if (is.null(hess2Mod)) {
+    NA_integer_
+  } else {
     .v <- match("DV", .parsH2) - 1L
-    if (is.na(.v)) return(NULL)
+    if (is.na(.v)) {
+      return(NULL)
+    }
     .v
   }
-  if (length(ui$nonMuEtas) > 0) return(NULL)
+  if (length(ui$nonMuEtas) > 0) {
+    return(NULL)
+  }
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))
-  if (length(.cov$covariateParameter) > 0) return(NULL)
+  if (length(.cov$covariateParameter) > 0) {
+    return(NULL)
+  }
 
   .iniDf <- ui$iniDf
   .parsAll <- rxUiGet.saemParamsToEstimateCov(list(ui))
@@ -185,7 +212,9 @@ attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
   .thetaFixedVal <- numeric(.nTheta)
   for (.k in seq_len(.nTheta)) {
     .nm <- .iniDf$name[!is.na(.iniDf$ntheta) & .iniDf$ntheta == .k]
-    if (length(.nm) != 1L) return(NULL)
+    if (length(.nm) != 1L) {
+      return(NULL)
+    }
     if (.nm %in% .phi1Names) {
       .thetaKind[.k] <- 1L
       .thetaCol[.k] <- match(.nm, .phi1Names) - 1L
@@ -195,7 +224,9 @@ attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
     } else {
       .thetaKind[.k] <- -1L
       .est <- .iniDf$est[.iniDf$name == .nm]
-      if (length(.est) != 1L || is.na(.est)) return(NULL)
+      if (length(.est) != 1L || is.na(.est)) {
+        return(NULL)
+      }
       .thetaFixedVal[.k] <- .est
     }
   }
@@ -206,13 +237,23 @@ attr(rxUiGet.saemPhi1Inner, "rstudio") <- emptyenv()
     (is.na(.iniDf$neta2) | .iniDf$neta1 == .iniDf$neta2)
   for (.k in seq_len(.nEta)) {
     .nm <- .iniDf$name[.etaDiag & .iniDf$neta1 == .k]
-    if (length(.nm) != 1L) return(NULL)
+    if (length(.nm) != 1L) {
+      return(NULL)
+    }
     .thNm <- .muRef$theta[.muRef$eta == .nm]
-    if (length(.thNm) != 1L || !(.thNm %in% .phi1Names)) return(NULL)
+    if (length(.thNm) != 1L || !(.thNm %in% .phi1Names)) {
+      return(NULL)
+    }
     .etaCol[.k] <- match(.thNm, .phi1Names) - 1L
   }
 
-  list(ok = TRUE, thetaKind = .thetaKind, thetaCol = .thetaCol,
-       thetaFixedVal = .thetaFixedVal, etaCol = .etaCol,
-       dvCol = .dvCol, dvColHess2 = .dvColHess2)
+  list(
+    ok = TRUE,
+    thetaKind = .thetaKind,
+    thetaCol = .thetaCol,
+    thetaFixedVal = .thetaFixedVal,
+    etaCol = .etaCol,
+    dvCol = .dvCol,
+    dvColHess2 = .dvColHess2
+  )
 }

@@ -62,16 +62,22 @@
 # Deterministic observations; the fit only has to exercise the inner problem,
 # so no simulation model is compiled here.
 .phiDat <- function(times, nid = 4L) {
-  do.call(rbind, lapply(seq_len(nid), function(i) {
-    cp <- 100 / 30 * (exp(-0.13 * times) - exp(-1.2 * times)) * (1 + 0.05 * i)
-    rbind(
-      data.frame(id = i, time = 0, amt = 100, evid = 1, dv = NA_real_),
-      data.frame(
-        id = i, time = times, amt = 0, evid = 0,
-        dv = cp * (1 + 0.1 * sin(seq_along(times)))
+  do.call(
+    rbind,
+    lapply(seq_len(nid), function(i) {
+      cp <- 100 / 30 * (exp(-0.13 * times) - exp(-1.2 * times)) * (1 + 0.05 * i)
+      rbind(
+        data.frame(id = i, time = 0, amt = 100, evid = 1, dv = NA_real_),
+        data.frame(
+          id = i,
+          time = times,
+          amt = 0,
+          evid = 0,
+          dv = cp * (1 + 0.1 * sin(seq_along(times)))
+        )
       )
-    )
-  }))
+    })
+  )
 }
 
 # One posthoc fit, returning the counters it accumulated and its objective.
@@ -81,12 +87,16 @@
   .dat <- .phiDat(times)
   invisible(.phiStats(TRUE))
   .rx <- rxode2::rxControl(
-    cores = 1L, linCmtSensType = "AD",
+    cores = 1L,
+    linCmtSensType = "AD",
     linCmtSensPhi = phi
   )
   .ctl <- nlmixr2est::foceiControl(
-    maxOuterIterations = 0L, print = 0L,
-    calcTables = FALSE, covMethod = "", rxControl = .rx
+    maxOuterIterations = 0L,
+    print = 0L,
+    calcTables = FALSE,
+    covMethod = "",
+    rxControl = .rx
   )
   .f <- suppressMessages(nlmixr2est::nlmixr2(.phiMod, .dat, "focei", .ctl))
   list(stats = .phiStats(TRUE), objf = .f$objf)

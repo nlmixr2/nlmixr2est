@@ -1,6 +1,5 @@
 nmTest({
   test_that("test focei", {
-
     one.compartment <- function() {
       ini({
         tka <- 0.45; label("Ka")
@@ -27,26 +26,24 @@ nmTest({
       })
     }
 
-    f <- .nlmixr(one.compartment, theo_sd, "focei",
-                 control=foceiControl(print=0, maxOuterIterations = 1L,
-                                      maxInnerIterations = 1L))
+    f <- .nlmixr(
+      one.compartment,
+      theo_sd,
+      "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 1L, maxInnerIterations = 1L)
+    )
 
     expect_true(inherits(f$a, "factor"))
 
-    expect_equal(unique(f$a),
-                 structure(1:2, levels = c("<5", ">=5"),
-                           class = "factor"))
+    expect_equal(unique(f$a), structure(1:2, levels = c("<5", ">=5"), class = "factor"))
 
     f <- suppressMessages(addNpde(f))
 
     expect_true(inherits(f$a, "factor"))
 
-    expect_equal(unique(f$a),
-                 structure(1:2, levels = c("<5", ">=5"),
-                           class = "factor"))
+    expect_equal(unique(f$a), structure(1:2, levels = c("<5", ">=5"), class = "factor"))
   })
   test_that("test saem", {
-
     one.compartment <- function() {
       ini({
         tka <- 0.45; label("Ka")
@@ -72,8 +69,6 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-
-
 
     f <- .nlmixr(one.compartment, theo_sd, "saem", control = saemControlFast)
     expect_equal(unique(f$a), factor(1:2, labels = c("<5", ">=5")))
@@ -86,7 +81,6 @@ nmTest({
   })
 
   test_that("test nlme", {
-
     one.compartment <- function() {
       ini({
         tka <- 0.45 # Log Ka
@@ -112,33 +106,26 @@ nmTest({
       })
     }
 
-    f  <- .nlmixr(one.compartment, theo_sd, "nlme", control=nlmeControl(verbose=FALSE, returnObject=TRUE))
+    f <- .nlmixr(one.compartment, theo_sd, "nlme", control = nlmeControl(verbose = FALSE, returnObject = TRUE))
 
     expect_true(inherits(f$a, "factor"))
 
-    expect_equal(unique(f$a),
-                 structure(1:2, levels = c("<5", ">=5"),
-                           class = "factor"))
+    expect_equal(unique(f$a), structure(1:2, levels = c("<5", ">=5"), class = "factor"))
 
     f <- suppressMessages(addNpde(f))
 
     expect_true(inherits(f$a, "factor"))
 
-    expect_equal(unique(f$a),
-                 structure(1:2, levels = c("<5", ">=5"),
-                           class = "factor"))
+    expect_equal(unique(f$a), structure(1:2, levels = c("<5", ">=5"), class = "factor"))
 
     f <- suppressMessages(addCwres(f))
 
     expect_true(inherits(f$a, "factor"))
 
-    expect_equal(unique(f$a),
-                 structure(1:2, levels = c("<5", ">=5"),
-                           class = "factor"))
+    expect_equal(unique(f$a), structure(1:2, levels = c("<5", ">=5"), class = "factor"))
   })
 
   test_that("nlm/nls", {
-
     one.compartment <- function() {
       ini({
         tka <- 0.45 # Log Ka
@@ -161,24 +148,16 @@ nmTest({
       })
     }
 
-    f  <- .nlmixr(one.compartment, theo_sd, "nlm", nlmControl(print=0L))
+    f <- .nlmixr(one.compartment, theo_sd, "nlm", nlmControl(print = 0L))
 
     expect_true(inherits(f$a, "factor"))
 
-    expect_equal(unique(f$a),
-                 structure(1:2, levels = c("<5", ">=5"),
-                           class = "factor"))
+    expect_equal(unique(f$a), structure(1:2, levels = c("<5", ">=5"), class = "factor"))
 
-    f  <- .nlmixr(one.compartment, theo_sd, "nls", nlsControl(print=0L))
+    f <- .nlmixr(one.compartment, theo_sd, "nls", nlsControl(print = 0L))
 
     expect_true(inherits(f$a, "factor"))
 
-    expect_equal(unique(f$a),
-                 structure(1:2, levels = c("<5", ">=5"),
-                           class = "factor"))
-
-
+    expect_equal(unique(f$a), structure(1:2, levels = c("<5", ">=5"), class = "factor"))
   })
-
-
 })

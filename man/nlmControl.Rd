@@ -255,8 +255,10 @@ will calculate tables. By default this is \code{TRUE}}
 \item{compress}{Should the object have compressed items}
 
 \item{covMethod}{"r" uses nlmixr2's `nlmixr2Hess()` for the hessian, or
-"nlm" uses the hessian from `stats::nlm(.., hessian=TRUE)`; defaults to
-"nlm" when using nlmixr2's hessian/gradient for solving.}
+"nlm" uses a Hessian built from nlmixr2's analytical gradient (central
+differences over `nlmixr2Gill83()` steps) with `solveType` `"hessian"` or
+`"grad"`, and `stats::nlm(.., hessian=TRUE)`'s with `"fun"`; defaults
+to "nlm" when using nlmixr2's hessian/gradient for solving.}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective

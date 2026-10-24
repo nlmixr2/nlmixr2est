@@ -39,6 +39,8 @@
   ## through getOption("rxode2.eventSens"), and `missing(eventSens)` changes what it
   ## builds, so "not passed" has to replay as "not passed".
   .es <- list(...)$eventSens
-  if (!is.null(.es)) attr(.ret, "nlmixr2estEventSens") <- .es
+  if (!is.null(.es)) {
+    attr(.ret, "nlmixr2estEventSens") <- .es
+  }
   .ret
 }

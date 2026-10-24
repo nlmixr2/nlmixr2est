@@ -1,5 +1,7 @@
 .foUnbounded <- function(control) {
-  if (is.null(control) || is.null(control$outerOpt)) return(FALSE)
+  if (is.null(control) || is.null(control$outerOpt)) {
+    return(FALSE)
+  }
   control$outerOptTxt %in% c("uobyqa", "newuoa")
 }
 
@@ -19,13 +21,13 @@
 #' @keywords internal
 #' @examples
 #' .agq(neta=2, nAGQ=3)
-.agq <- function(neta=2, nAGQ=3) {
+.agq <- function(neta = 2, nAGQ = 3) {
   .n <- .nlmixr2estAgq(NA_integer_)
   if (nAGQ > .n) {
     rxode2::rxReq("fastGHQuad") # conditionally require
     .gh <- fastGHQuad::gaussHermiteData(nAGQ)
     .x <- .gh$x
-    .w <- .gh$w/sqrt(pi)
+    .w <- .gh$w / sqrt(pi)
   } else {
     .gh <- .nlmixr2estAgq(as.integer(nAGQ))
     .x <- .gh$x
@@ -35,13 +37,13 @@
   if (nAGQ %% 2 == 1) {
     # If nAQD is odd, have the zero weight at the beginning so that
     # the F value is cached and it doesn't need to evaluate it twice
-    .zero <- (nAGQ+1L)/2L
+    .zero <- (nAGQ + 1L) / 2L
     .x <- c(0, .x[-.zero])
     .w <- c(.w[.zero], .w[-.zero])
     .first <- TRUE
   }
-  .x <-   as.matrix(do.call("expand.grid", lapply(1:neta, function(x) .x)))
-  .w <-   as.matrix(do.call("expand.grid", lapply(1:neta, function(x) .w)))
+  .x <- as.matrix(do.call("expand.grid", lapply(1:neta, function(x) .x)))
+  .w <- as.matrix(do.call("expand.grid", lapply(1:neta, function(x) .w)))
   list(
     x = .x,
     w = .w,
@@ -157,105 +159,56 @@
 #'
 #' }
 #'
-agqControl <- function(sigdig=3, nAGQ=2, ..., interaction=TRUE,
-                       agqLow=-Inf,
-                       agqHi=Inf) {
+agqControl <- function(sigdig = 3, nAGQ = 2, ..., interaction = TRUE, agqLow = -Inf, agqHi = Inf) {
   # interaction forces the calculation of the hessian, which is needed
   # for the adaptive Gaussian quadrature
-  .control <- foceiControl(sigdig=sigdig, ...,
-                           nAGQ=nAGQ, interaction=interaction,
-                           agqLow=agqLow,
-                           agqHi=agqHi)
+  .control <- foceiControl(sigdig = sigdig, ..., nAGQ = nAGQ, interaction = interaction, agqLow = agqLow, agqHi = agqHi)
   class(.control) <- "agqControl"
   .control
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.agqControl <- function(control, env) {
-  assign("agqControl", control, envir=env)
-}
+nmObjHandleControlObject.agqControl <- function(control, env) assign("agqControl", control, envir = env)
 
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.agq <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
-  if (is.null(.ctl)) .ctl <- agqControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
-    .ctl <- do.call("agqControl", .ctl)
-  if (inherits(.ctl, "foceiControl") ||
-        inherits(.ctl, "foceControl") ||
-        inherits(.ctl, "foControl") ||
-        inherits(.ctl, "foiControl")) {
-    .minfo(paste0("converting ", class(.ctl)[1], " to agqControl"))
-    class(.ctl) <- NULL
-    .ctl <- do.call(agqControl, .ctl)
-  } else if (!inherits(.ctl, "agqControl")) {
-    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
-    .ctl <- agqControl()
-  } else {
-    .ctl <- do.call(agqControl, .ctl)
-  }
-  .ctl
+  .getValidCtl(
+    control,
+    "agqControl",
+    convert = c("foceiControl", "foceControl", "foControl", "foiControl"),
+    convertFun = .foceiFamilyControlAs
+  )
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.agq <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("agqControl", .env)) {
-    .control <- get("agqControl", .env)
-    if (inherits(.control, "agqControl")) return(.control)
-  }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
-    if (inherits(.control, "agqControl")) return(.control)
-  }
-  stop("cannot find agq related control object", call.=FALSE)
-}
-
-.agqControlToFoceiControl <- function(env, assign=TRUE) {
-  .agqControl <- env$agqControl
-  .ui <- env$ui
-  .n <- names(.agqControl)
-  .foceiControl <- setNames(lapply(.n,
-                                   function(n) {
-                                     if (n == "interaction") {
-                                       return(.agqControl$interaction)
-                                     }
-                                     .agqControl[[n]]
-                                   }), .n)
-  class(.foceiControl) <- "foceiControl"
-  if (assign) env$control <- .foceiControl
-  .foceiControl
-}
+nmObjGetControl.agq <- function(x, ...) .nmObjGetControlByClass(x, "agqControl")
 
 #' @rdname nmObjGetFoceiControl
 #' @export
 nmObjGetFoceiControl.agq <- function(x, ...) {
-  .env <- x[[1]]
-  .agqControlToFoceiControl(.env, assign=FALSE)
+  .foceiFamilyControlToFoceiControl(x[[1]], "agqControl", assign = FALSE)
 }
 
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.agq <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'agq'",
-                             .var.name=.ui$modelName)
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'agq'", .var.name = .ui$modelName)
   .control <- env$control
-  .foceiFamilyControl(env, ..., type="agqControl")
-  .agqControlToFoceiControl(env)
+  .foceiFamilyControl(env, ..., type = "agqControl")
+  .foceiFamilyControlToFoceiControl(env, "agqControl")
   on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
+    if (exists("control", envir = .ui)) {
+      rm("control", envir = .ui)
     }
   })
   env$agqControl <- .control
   env$est <- "agq"
   .ui <- env$ui
-  .foceiFamilyReturn(env, .ui, ..., est="agq")
+  .foceiFamilyReturn(env, .ui, ..., est = "agq")
 }
 attr(nlmixr2Est.agq, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.agq, "iov") <- TRUE
@@ -264,6 +217,4 @@ attr(nlmixr2Est.agq, "unbounded") <- .foUnbounded
 
 
 #' @export
-rxUiDeparse.agqControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type="agqControl")
-}
+rxUiDeparse.agqControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "agqControl")

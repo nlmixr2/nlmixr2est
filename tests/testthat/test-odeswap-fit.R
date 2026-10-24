@@ -37,13 +37,23 @@ nmTest({
     ## fail on test-file scheduling rather than on behavior.
     .b <- .odeSwapInfo()
     .fit0 <- suppressWarnings(suppressMessages(
-      nlmixr2(m, nlmixr2data::theo_sd, "impmap",
-              impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE,
-                            # combSens=TRUE (the default since #958) carries the theta
-                            # sensitivities on the INNER model, so no dedicated
-                            # theta-sensitivity peer is built at all.  This test is
-                            # about that peer, so ask for the two-model path.
-                            combSens = FALSE))))
+      nlmixr2(
+        m,
+        nlmixr2data::theo_sd,
+        "impmap",
+        impmapControl(
+          print = 0L,
+          nIter = 1L,
+          isample = 50L,
+          calcTables = FALSE,
+          # combSens=TRUE (the default since #958) carries the theta
+          # sensitivities on the INNER model, so no dedicated
+          # theta-sensitivity peer is built at all.  This test is
+          # about that peer, so ask for the two-model path.
+          combSens = FALSE
+        )
+      )
+    ))
     # Read the fit's OWN captured layout, not the process-global registry: the
     # registry describes the most recent registration, and impmap's post-fit
     # objective recompute runs a nested focei fit that re-registers the slots.
@@ -51,8 +61,8 @@ nmTest({
     ts <- i$models[i$models$name %in% "thetaSens", ]
     inr <- i$models[i$models$name %in% "inner", ]
     expect_identical(nrow(ts), 1L)
-    expect_lt(ts$neq, inr$neq)     # fewer states ...
-    expect_gt(ts$nlhs, inr$nlhs)   # ... but a wider lhs
+    expect_lt(ts$neq, inr$neq) # fewer states ...
+    expect_gt(ts$nlhs, inr$nlhs) # ... but a wider lhs
     expect_identical(i$poolName, "inner")
     expect_false(ts$sizesPool)
     expect_true(i$needsScratch)
@@ -70,7 +80,7 @@ nmTest({
     # scratchUsedN above already proves the private lhs buffer -- what this test is
     # actually about -- was taken.
     expect_identical(i$overrideArmedN - .b$overrideArmedN, 0)
-    expect_identical(i$scratchResizeN - .b$scratchResizeN, 0)   # the plan sized it correctly up front
+    expect_identical(i$scratchResizeN - .b$scratchResizeN, 0) # the plan sized it correctly up front
   })
 
   test_that("a fit does not inherit the previous fit's registered peers", {
@@ -96,8 +106,7 @@ nmTest({
       })
     }
     d <- nlmixr2data::theo_sd
-    ctl <- foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
-                        calcTables = FALSE)
+    ctl <- foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L, calcTables = FALSE)
     ref <- suppressWarnings(suppressMessages(nlmixr2(one, d, "focei", ctl)))
     refPool <- .odeSwapInfo()
     expect_identical(refPool$poolName, "inner")
@@ -118,15 +127,25 @@ nmTest({
       })
     }
     .fitInv <- suppressWarnings(suppressMessages(
-      nlmixr2(inv, d, "impmap",
-              impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE,
-                            # combSens=TRUE (the default since #958) carries the theta
-                            # sensitivities on the INNER model, so no dedicated
-                            # theta-sensitivity peer is built at all.  This test is
-                            # about that peer, so ask for the two-model path.
-                            combSens = FALSE))))
+      nlmixr2(
+        inv,
+        d,
+        "impmap",
+        impmapControl(
+          print = 0L,
+          nIter = 1L,
+          isample = 50L,
+          calcTables = FALSE,
+          # combSens=TRUE (the default since #958) carries the theta
+          # sensitivities on the INNER model, so no dedicated
+          # theta-sensitivity peer is built at all.  This test is
+          # about that peer, so ask for the two-model path.
+          combSens = FALSE
+        )
+      )
+    ))
     # the fit's own captured layout -- see the note above
-    expect_true(.fitInv$env$odeSwapInfo$models$loaded[3])   # thetaSens registered
+    expect_true(.fitInv$env$odeSwapInfo$models$loaded[3]) # thetaSens registered
 
     # ... and the next plain fit must be unaffected by it
     after <- suppressWarnings(suppressMessages(nlmixr2(one, d, "focei", ctl)))
@@ -167,22 +186,20 @@ nmTest({
               cp <- center / v
               cp ~ add(add.sd) + prop(prop.sd) + boxCox(lambda) })
     }
-    ctl <- foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
-                        calcTables = FALSE)
+    ctl <- foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L, calcTables = FALSE)
     ref <- suppressWarnings(suppressMessages(nlmixr2(one, d, "focei", ctl)))
     expect_false(.odeSwapInfo()$pinned)
 
     suppressWarnings(suppressMessages(
-      nlmixr2(pin, d, "impmap",
-              impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE))))
+      nlmixr2(pin, d, "impmap", impmapControl(print = 0L, nIter = 1L, isample = 50L, calcTables = FALSE))
+    ))
     # the pin is released by the time the fit returns
     expect_false(.odeSwapInfo()$pinned)
     expect_true(all(.odeSwapInfo()$activeOverride == -1L))
 
     after <- suppressWarnings(suppressMessages(nlmixr2(one, d, "focei", ctl)))
     expect_identical(after$objf, ref$objf)
-    expect_identical(unname(as.numeric(after$theta)),
-                     unname(as.numeric(ref$theta)))
+    expect_identical(unname(as.numeric(after$theta)), unname(as.numeric(ref$theta)))
   })
 
   test_that("a pooled multi-endpoint model re-bases CMT and stays correct", {
@@ -211,12 +228,18 @@ nmTest({
     }
     withr::local_seed(7)
     mk <- function(i, mu) {
-      o <- rbind(data.frame(ID = i, TIME = c(.5, 1, 2, 4, 8), EVID = 0, AMT = 0,
-                            DV = abs(stats::rnorm(5, mu, 1)), CMT = "cp"),
-                 data.frame(ID = i, TIME = c(.75, 1.5, 3, 6, 10), EVID = 0, AMT = 0,
-                            DV = abs(stats::rnorm(5, 2, .3)), CMT = "pd"))
-      rbind(data.frame(ID = i, TIME = 0, EVID = 101, AMT = 100, DV = NA, CMT = "cp"),
-            o[order(o$TIME), ])
+      o <- rbind(
+        data.frame(ID = i, TIME = c(.5, 1, 2, 4, 8), EVID = 0, AMT = 0, DV = abs(stats::rnorm(5, mu, 1)), CMT = "cp"),
+        data.frame(
+          ID = i,
+          TIME = c(.75, 1.5, 3, 6, 10),
+          EVID = 0,
+          AMT = 0,
+          DV = abs(stats::rnorm(5, 2, .3)),
+          CMT = "pd"
+        )
+      )
+      rbind(data.frame(ID = i, TIME = 0, EVID = 101, AMT = 100, DV = NA, CMT = "cp"), o[order(o$TIME), ])
     }
     d <- rbind(mk(1, 8), mk(2, 3))
     # one thread: the parallel inner optimizer is not bitwise reproducible, and this
@@ -225,11 +248,17 @@ nmTest({
     on.exit(rxode2::setRxThreads(.th), add = TRUE)
     rxode2::setRxThreads(1L)
     ctl <- function(fast) {
-      foceiControl(print = 0L, covMethod = "", sigdig = 4, fast = fast,
-                   maxOuterIterations = 0L, maxInnerIterations = 200L,
-                   calcTables = FALSE)
+      foceiControl(
+        print = 0L,
+        covMethod = "",
+        sigdig = 4,
+        fast = fast,
+        maxOuterIterations = 0L,
+        maxInnerIterations = 200L,
+        calcTables = FALSE
+      )
     }
-    ref  <- suppressWarnings(suppressMessages(nlmixr2(me, d, "focei", ctl(FALSE))))
+    ref <- suppressWarnings(suppressMessages(nlmixr2(me, d, "focei", ctl(FALSE))))
     fast <- suppressWarnings(suppressMessages(nlmixr2(me, d, "focei", ctl(TRUE))))
     # the augmented model DOES size the pool here -- the point is that the CMT
     # re-base keeps the objective right anyway

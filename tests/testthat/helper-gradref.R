@@ -48,9 +48,10 @@
 ## this cache -- an untracked reference is rebuilt by whatever code is checked out, which
 ## is precisely the regression it exists to catch.  baselines/ is the repo's documented
 ## home for checked-in reference data that must survive cache clearing.
-.gradRefDir <- normalizePath(file.path(testthat::test_path(), "baselines"),
-                             winslash = "/", mustWork = FALSE)
-if (!dir.exists(.gradRefDir)) dir.create(.gradRefDir, recursive = TRUE)
+.gradRefDir <- normalizePath(file.path(testthat::test_path(), "baselines"), winslash = "/", mustWork = FALSE)
+if (!dir.exists(.gradRefDir)) {
+  dir.create(.gradRefDir, recursive = TRUE)
+}
 
 .gradRefRegen <- isTRUE(as.logical(Sys.getenv("NLMIXR2EST_REGEN_GRADREF", "false")))
 
@@ -76,10 +77,9 @@ if (!dir.exists(.gradRefDir)) dir.create(.gradRefDir, recursive = TRUE)
   .r <- fn()
   ## Deliberately NOT silent: a reference that cannot be written means every run pays to
   ## rebuild it, which is the entire cost this cache exists to remove.  Warn loudly.
-  tryCatch(saveRDS(.r, .path),
-           error = function(e)
-             warning("could not cache reference '", name, "' to ", .path, ": ",
-                     conditionMessage(e), call. = FALSE))
+  tryCatch(saveRDS(.r, .path), error = function(e) {
+    warning("could not cache reference '", name, "' to ", .path, ": ", conditionMessage(e), call. = FALSE)
+  })
   .r
 }
 

@@ -1,7 +1,5 @@
 nmTest({
-
   test_that("focei 429", {
-
     pk.turnover.emax.lag <- function() {
       ini({
         talag <- c(0,0.1)
@@ -61,11 +59,10 @@ nmTest({
     }
 
     expect_error(
-      fit.TOF <- .nlmixr(pk.turnover.emax.lag, warfarin, "focei", foceiControl(print=0, maxOuterIterations = 0)),
+      fit.TOF <- .nlmixr(pk.turnover.emax.lag, warfarin, "focei", foceiControl(print = 0, maxOuterIterations = 0)),
       NA
     )
 
     expect_s3_class(fit.TOF, "nlmixr2FitCore")
   })
-
 })

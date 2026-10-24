@@ -41,8 +41,7 @@ test_that("saem repeats a combined-error fit exactly (residual transform cache)"
   }
   # nolint end
 
-  .ctl <- saemControl(nBurn = 60, nEm = 60, seed = 42L, print = 0L,
-                      covMethod = "", calcTables = FALSE)
+  .ctl <- saemControl(nBurn = 60, nEm = 60, seed = 42L, print = 0L, covMethod = "", calcTables = FALSE)
   .f1 <- suppressWarnings(nlmixr2(.mod(), .d, est = "saem", control = .ctl))
   .f2 <- suppressWarnings(nlmixr2(.mod(), .d, est = "saem", control = .ctl))
 

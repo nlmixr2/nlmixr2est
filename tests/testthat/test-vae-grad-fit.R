@@ -33,15 +33,22 @@ nmTest({
   test_that("nonMuTheta='grad' runs the analytic-gradient M-step and fits near the FOCEi MLE", {
     skip_on_cran()
     .mle <- suppressMessages(
-      nlmixr2(.mod(), nlmixr2data::theo_sd, est = "focei",
-              control = foceiControl(print = 0L, covMethod = "", calcTables = FALSE)))$theta[["tv"]]
+      nlmixr2(
+        .mod(),
+        nlmixr2data::theo_sd,
+        est = "focei",
+        control = foceiControl(print = 0L, covMethod = "", calcTables = FALSE)
+      )
+    )$theta[["tv"]]
 
-    .reg <- suppressWarnings(suppressMessages(rxode2::rxWithSeed(42,
-      nlmixr2(.mod(), nlmixr2data::theo_sd, est = "vae",
-              control = .ctl("regress", returnVae = TRUE)))))
-    .grd <- suppressWarnings(suppressMessages(rxode2::rxWithSeed(42,
-      nlmixr2(.mod(), nlmixr2data::theo_sd, est = "vae",
-              control = .ctl("grad", returnVae = TRUE)))))
+    .reg <- suppressWarnings(suppressMessages(rxode2::rxWithSeed(
+      42,
+      nlmixr2(.mod(), nlmixr2data::theo_sd, est = "vae", control = .ctl("regress", returnVae = TRUE))
+    )))
+    .grd <- suppressWarnings(suppressMessages(rxode2::rxWithSeed(
+      42,
+      nlmixr2(.mod(), nlmixr2data::theo_sd, est = "vae", control = .ctl("grad", returnVae = TRUE))
+    )))
 
     ## the mechanism actually ran (a silent bobyqa fallback would still produce a
     ## plausible number, so assert the path, not just the value)
@@ -61,8 +68,10 @@ nmTest({
     ## ~1.70 against ~0.80 for "regress" and the objective was ~86 units worse,
     ## while tv stayed within 3e-3 of the MLE -- invisible to a tv-only check.
     .fitFor <- function(m) {
-      suppressWarnings(suppressMessages(rxode2::rxWithSeed(42,
-        nlmixr2(.mod(), nlmixr2data::theo_sd, est = "vae", control = .ctl(m)))))
+      suppressWarnings(suppressMessages(rxode2::rxWithSeed(
+        42,
+        nlmixr2(.mod(), nlmixr2data::theo_sd, est = "vae", control = .ctl(m))
+      )))
     }
     .reg <- .fitFor("regress")
     .grd <- .fitFor("grad")
@@ -93,9 +102,10 @@ nmTest({
         cp ~ add(add.sd) })
     }
     .fitFar <- function(m, kw) {
-      suppressWarnings(suppressMessages(rxode2::rxWithSeed(42,
-        nlmixr2(.modFar(), nlmixr2data::theo_sd, est = "vae",
-                control = .ctl(m, klWarmup = kw)))))
+      suppressWarnings(suppressMessages(rxode2::rxWithSeed(
+        42,
+        nlmixr2(.modFar(), nlmixr2data::theo_sd, est = "vae", control = .ctl(m, klWarmup = kw))
+      )))
     }
     .reg <- .fitFar("regress", 50L)
     .grd <- .fitFar("grad", 50L)

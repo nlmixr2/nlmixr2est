@@ -13,16 +13,20 @@ nmTest({
   test_that("est='emvi' raw loop: ELBO increases and is reproducible", {
     ctl <- emviControl(iters = 150L, seed = 7L, print = 0L, returnVi = TRUE)
     res <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = ctl)))
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = ctl)
+    ))
     expect_s3_class(res, "nlmixr2vi")
-    e <- res$elbo; n <- length(e); d <- max(1L, n %/% 10L)
-    expect_gt(mean(e[(n - d + 1L):n]), mean(e[1:d]))   # ELBO trend up
+    e <- res$elbo
+    n <- length(e)
+    d <- max(1L, n %/% 10L)
+    expect_gt(mean(e[(n - d + 1L):n]), mean(e[1:d])) # ELBO trend up
     expect_true(all(is.finite(res$theta)))
     expect_true(all(res$popOmega > 0))
 
     ## same seed -> identical
     res2 <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = ctl)))
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = ctl)
+    ))
     expect_identical(res$theta, res2$theta)
     expect_identical(res$elbo, res2$elbo)
     expect_identical(res$mu, res2$mu)
@@ -30,8 +34,8 @@ nmTest({
 
   test_that("est='advi' assembles a full nlmixr2FitData (objf + tables + cov)", {
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-              control = emviControl(iters = 120L, print = 0L))))
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = emviControl(iters = 120L, print = 0L))
+    ))
     expect_s3_class(fit, "nlmixr2FitData")
     expect_true(is.finite(fit$objf))
     expect_true(all(c("IPRED", "CWRES") %in% names(fit)))
@@ -56,18 +60,18 @@ nmTest({
     ## run every iteration.  Before this was wired up, `tol` was documented but
     ## never reached the C++ loop, so both runs were identical -- a test that
     ## only checked the fit succeeded would not have caught that.
-    .base <- function(tol) emviControl(iters = 400L, seed = 7L, print = 0L,
-                                       returnVi = TRUE, tol = tol,
-                                       evalElbo = 25L)
+    .base <- function(tol) emviControl(iters = 400L, seed = 7L, print = 0L, returnVi = TRUE, tol = tol, evalElbo = 25L)
     rOff <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = .base(0))))
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = .base(0))
+    ))
     expect_equal(rOff$itRun, 400L)
     expect_false(isTRUE(rOff$tolStopped))
     expect_equal(length(rOff$elbo), 400L)
 
     rOn <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = .base(1))))
-    expect_true(isTRUE(rOn$tolStopped))      # rel change < 1 always -> first check
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = .base(1))
+    ))
+    expect_true(isTRUE(rOn$tolStopped)) # rel change < 1 always -> first check
     expect_lt(rOn$itRun, 400L)
     ## the reported trace is truncated to what actually ran, not zero-padded
     expect_equal(length(rOn$elbo), rOn$itRun)
@@ -80,10 +84,21 @@ nmTest({
     ## built through the same helper that applies that scale, the fit would
     ## otherwise report an INFLATED omega -- silently, and only for short runs.
     r <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-              control = emviControl(iters = 10L, klWarmup = 50L, temperInit = 10,
-                                    seed = 7L, print = 0L, returnVi = TRUE,
-                                    tol = 0))))
+      nlmixr2(
+        one.cmt,
+        nlmixr2data::theo_sd,
+        est = "emvi",
+        control = emviControl(
+          iters = 10L,
+          klWarmup = 50L,
+          temperInit = 10,
+          seed = 7L,
+          print = 0L,
+          returnVi = TRUE,
+          tol = 0
+        )
+      )
+    ))
     expect_equal(unname(diag(r$popOmegaMat)), unname(r$popOmega), tolerance = 1e-12)
     expect_true(all(r$popOmega > 0))
 
@@ -98,15 +113,29 @@ nmTest({
     ## klWarmup must also EXCEED nAdapt (= min(iters, 75)); candidates are scored
     ## on their last nAdapt/3 iterations, so a smaller klWarmup leaves that
     ## window past the warm-up and untempered even without the fix.
-    .fit <- function(kl) suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-              control = emviControl(iters = 60L, klWarmup = kl, temperInit = 100,
-                                    seed = 7L, print = 0L, returnVi = TRUE,
-                                    tol = 0))))
-    .a <- .fit(0L); .b <- .fit(80L)
-    expect_equal(length(.a$etaScores), 5L)          # the search actually ran
+    .fit <- function(kl) {
+      suppressMessages(suppressWarnings(
+        nlmixr2(
+          one.cmt,
+          nlmixr2data::theo_sd,
+          est = "emvi",
+          control = emviControl(
+            iters = 60L,
+            klWarmup = kl,
+            temperInit = 100,
+            seed = 7L,
+            print = 0L,
+            returnVi = TRUE,
+            tol = 0
+          )
+        )
+      ))
+    }
+    .a <- .fit(0L)
+    .b <- .fit(80L)
+    expect_equal(length(.a$etaScores), 5L) # the search actually ran
     expect_true(all(is.finite(.a$etaScores)))
-    expect_equal(.a$etaScores, .b$etaScores)        # untempered either way
+    expect_equal(.a$etaScores, .b$etaScores) # untempered either way
     expect_equal(.a$etaScale, .b$etaScale)
   })
 
@@ -121,9 +150,13 @@ nmTest({
     ## never does.
     .info <- function(cand) {
       .f <- suppressMessages(suppressWarnings(
-        nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-                control = emviControl(iters = 60L, seed = 7L, print = 0L,
-                                      tol = 0, etaCandidates = cand))))
+        nlmixr2(
+          one.cmt,
+          nlmixr2data::theo_sd,
+          est = "emvi",
+          control = emviControl(iters = 60L, seed = 7L, print = 0L, tol = 0, etaCandidates = cand)
+        )
+      ))
       as.character(.f$runInfo)
     }
     ## every entry of this grid is tiny, so the search runs to its top edge
@@ -158,23 +191,34 @@ nmTest({
     ## the absolute form exists -- a restartable fit needs its schedule points
     ## pinned to absolute iterations rather than to a share of whatever slice is
     ## being run.
-    .ctl <- function(n, res = NULL)
-      emviControl(iters = n, seed = 7L, print = 0L, tol = 0, resume = res,
-                  perNoCor = 90, adaptEta = FALSE, etaCandidates = 0.05)
+    .ctl <- function(n, res = NULL) {
+      emviControl(
+        iters = n,
+        seed = 7L,
+        print = 0L,
+        tol = 0,
+        resume = res,
+        perNoCor = 90,
+        adaptEta = FALSE,
+        etaCandidates = 0.05
+      )
+    }
 
     one <- suppressMessages(suppressWarnings(
-      nlmixr2(.cor, nlmixr2data::theo_sd, est = "emvi", control = .ctl(120L))))
+      nlmixr2(.cor, nlmixr2data::theo_sd, est = "emvi", control = .ctl(120L))
+    ))
     half <- suppressMessages(suppressWarnings(
-      nlmixr2(.cor, nlmixr2data::theo_sd, est = "emvi", control = .ctl(60L))))
+      nlmixr2(.cor, nlmixr2data::theo_sd, est = "emvi", control = .ctl(60L))
+    ))
     cont <- suppressMessages(suppressWarnings(
-      nlmixr2(.cor, nlmixr2data::theo_sd, est = "emvi",
-              control = .ctl(60L, res = half$env$viState))))
+      nlmixr2(.cor, nlmixr2data::theo_sd, est = "emvi", control = .ctl(60L, res = half$env$viState))
+    ))
 
     expect_equal(unname(cont$omega), unname(one$omega), tolerance = 1e-8)
     expect_equal(unname(cont$theta), unname(one$theta), tolerance = 1e-8)
     ## the release point travelled with the state rather than being recomputed
     expect_equal(half$env$viState$nbCorrel, cont$env$viState$nbCorrel)
-    expect_equal(one$env$viState$nbCorrel, 90)   # absolute, not 0.75 * iters
+    expect_equal(one$env$viState$nbCorrel, 90) # absolute, not 0.75 * iters
   })
 
   test_that("est decides the algorithm, whatever the control says", {
@@ -182,10 +226,10 @@ nmTest({
     ## $est misdescribes the algorithm that ran.  This is the direct-dispatch
     ## path (nlmixr2Est.emvi), which does not go through getValidNlmixrCtl.
     .run <- function(est, pe) {
-      ctl <- emviControl(iters = 40L, seed = 7L, print = 0L, returnVi = TRUE,
-                       pointEstimate = pe)
+      ctl <- emviControl(iters = 40L, seed = 7L, print = 0L, returnVi = TRUE, pointEstimate = pe)
       suppressMessages(suppressWarnings(
-        nlmixr2(one.cmt, nlmixr2data::theo_sd, est = est, control = ctl)))
+        nlmixr2(one.cmt, nlmixr2data::theo_sd, est = est, control = ctl)
+      ))
     }
     expect_true(.run("emvi", FALSE)$pointEstimate)
     expect_false(.run("fbvi", TRUE)$pointEstimate)
@@ -196,17 +240,31 @@ nmTest({
     ## reaches adviOptimize_ with the wrong half missing and used to die on an
     ## Rcpp NULL conversion instead of naming the problem
     fE <- suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-              control = emviControl(iters = 40L, seed = 7L, print = 0L))))
-    expect_error(suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fbvi",
-              control = emviControl(iters = 40L, seed = 7L, print = 0L, resume = fE)))),
-      "cannot resume")
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi", control = emviControl(iters = 40L, seed = 7L, print = 0L))
+    ))
+    expect_error(
+      suppressMessages(suppressWarnings(
+        nlmixr2(
+          one.cmt,
+          nlmixr2data::theo_sd,
+          est = "fbvi",
+          control = emviControl(iters = 40L, seed = 7L, print = 0L, resume = fE)
+        )
+      )),
+      "cannot resume"
+    )
     ## the same-method resume still works
-    expect_s3_class(suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-              control = emviControl(iters = 40L, seed = 7L, print = 0L, resume = fE)))),
-      "nlmixr2FitData")
+    expect_s3_class(
+      suppressMessages(suppressWarnings(
+        nlmixr2(
+          one.cmt,
+          nlmixr2data::theo_sd,
+          est = "emvi",
+          control = emviControl(iters = 40L, seed = 7L, print = 0L, resume = fE)
+        )
+      )),
+      "nlmixr2FitData"
+    )
   })
 
   test_that("a fit does not depend on what ran before it in the same session", {
@@ -221,19 +279,35 @@ nmTest({
     ## a default, which is exactly how the previous three got in.
     .runB <- function() {
       suppressMessages(suppressWarnings(
-        nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "emvi",
-                control = emviControl(iters = 60L, seed = 3L, print = 0L,
-                                      returnVi = TRUE))))
+        nlmixr2(
+          one.cmt,
+          nlmixr2data::theo_sd,
+          est = "emvi",
+          control = emviControl(iters = 60L, seed = 3L, print = 0L, returnVi = TRUE)
+        )
+      ))
     }
     b1 <- .runB()
     ## dirty every static a run can touch: tempering on, an early ELBO stop, a
     ## non-default correlation schedule, and the full-Bayes Jacobian tables
     suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "fbvi",
-              control = fbviControl(iters = 60L, seed = 11L, print = 0L,
-                                    returnVi = TRUE, klWarmup = 40L,
-                                    temperInit = 10, tol = 1e-1, evalElbo = 10L,
-                                    perNoCor = 5))))
+      nlmixr2(
+        one.cmt,
+        nlmixr2data::theo_sd,
+        est = "fbvi",
+        control = fbviControl(
+          iters = 60L,
+          seed = 11L,
+          print = 0L,
+          returnVi = TRUE,
+          klWarmup = 40L,
+          temperInit = 10,
+          tol = 1e-1,
+          evalElbo = 10L,
+          perNoCor = 5
+        )
+      )
+    ))
     b2 <- .runB()
     expect_identical(b1$theta, b2$theta)
     expect_identical(b1$popOmega, b2$popOmega)

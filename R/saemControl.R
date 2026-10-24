@@ -18,7 +18,8 @@
 #'     numbers of transitions of the three different kernels used in
 #'     the Hasting-Metropolis algorithm.  The default value is \code{c(2,2,2)},
 #'     representing 40 for each transition initially (each value is
-#'     multiplied by 20).
+#'     multiplied by 20).  When unset, a residual error model that depends on
+#'     an eta uses \code{c(4,4,4)}, since its chains mix more slowly.
 #'
 #'     The first value represents the initial number of multi-variate
 #'     Gibbs samples are taken from a normal distribution.
@@ -72,13 +73,22 @@
 #'
 #'  Neither is used for a general log-likelihood endpoint (\code{ll()}), which has
 #'  no residual error to anchor the complete-data correction; such a model goes
-#'  straight to \code{linFim} with a message.
+#'  straight to \code{linFim} with a message.  This includes a residual error with
+#'  modeled components (\code{a <- add.sd*exp(eta.sd); cp ~ add(a)}), which saem
+#'  fits as \code{cp ~ add(a) + dnorm()}.
 #'
-#'  "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
-#'
-#'  "\code{r}" Uses the Hessian matrix to calculate the covariance as \eqn{2\times R^-1}
-#'
-#'  "\code{s}" Uses the crossproduct matrix to calculate the covariance as \eqn{4\times S^-1}
+#'  "\code{r,s}", "\code{r}" and "\code{s}" compute no R or S matrix in
+#'  \code{saem}: all three invert the structural-theta block of the
+#'  estimation-phase information matrix (\code{fit$saem$Ha}, the matrix
+#'  \code{fim} inverts in full).  The result covers the estimated mu-referenced
+#'  thetas only, conditional on the \code{Omega} and residual parameters; a
+#'  theta without a random effect has no row in it and gets no standard error.
+#'  It is installed as \code{fit$covMethod == "Ha"}, or
+#'  \code{"|Ha|"} when the block was not positive definite and was
+#'  replaced by \code{sqrtm(Ha \%*\% Ha)}.  For the finite-difference R and S
+#'  covariances at the SAEM estimates use \code{setCov(fit, "r,s")}.  An integer
+#'  \code{covMethod} is a \code{foceiControl()} slot: \code{0} is no covariance,
+#'  \code{1}, \code{2} and \code{3} are \code{"r,s"}, \code{"r"} and \code{"s"}.
 #'
 #'  "" Does not calculate the covariance step.
 #'
@@ -86,6 +96,15 @@
 #'   is requested, it is stashed here and computed post-fit at the converged
 #'   estimates by the decoupled recompute engine (\code{setCov()} uses the same
 #'   path); \code{NA} otherwise.
+#'
+#' @param covFallback what each \code{covMethod} falls back to when it gives no
+#'     usable covariance: a named list, one element per method, each the ordered
+#'     methods to try instead (\code{"sa"}, \code{"fim"}, \code{"linFim"} or
+#'     \code{"Ha"}, the inverse of the information matrix's theta block).  The
+#'     default is the established behaviour: \code{"sa"}, \code{"fim"} and
+#'     \code{"analytic"} fall to \code{"linFim"} then \code{"Ha"}, and
+#'     \code{"linFim"} to \code{"Ha"}.  A list you give replaces the default: a
+#'     method it does not name has no fallback.
 #'
 #' @param covFull Boolean (default \code{TRUE}) indicating the covariance
 #'   should include every estimated population parameter -- the structural and
@@ -95,7 +114,8 @@
 #'   \code{covMethod="sa"}, which is always full.
 #'
 #' @param nSaCov Number of iterations in the dedicated stochastic-approximation
-#'   covariance phase used by \code{covMethod="sa"} (default \code{500}).  These
+#'   covariance phase used by \code{covMethod="sa"}, a whole number of at least 1
+#'   (default \code{500}).  These
 #'   iterations run at the converged estimate (parameters frozen) and only
 #'   resimulate the individual parameters to build the observed Fisher
 #'   information; a larger value gives a less noisy covariance.  Ignored by other
@@ -106,7 +126,7 @@
 #'
 #' @param nnodesGq number of nodes to use for the Gaussian
 #'     quadrature when computing the likelihood with this method
-#'     (defaults to 1, equivalent to the Laplacian likelihood)
+#'     (defaults to 3; 1 is the Laplacian likelihood; at most 25)
 #'
 #' @param nsdGq span (in SD) over which to integrate when computing
 #'     the likelihood by Gaussian quadrature. Defaults to 3 (eg 3
@@ -124,8 +144,10 @@
 #'   of iterations is itmax*number of parameters
 #'
 #' @param type indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")
-#' @param powRange This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(-10, 10)
-#' @param lambdaRange This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range c(-3,3)
+#' @param powRange This indicates the range that powers can take for residual errors;
+#'   By default this is 10 indicating the range is c(-10, 10)
+#' @param lambdaRange This indicates the range that Box-Cox and Yeo-Johnson parameters are
+#'   constrained to be;  The default is 3 indicating the range c(-3,3)
 #'
 #' @param perSa This is the percent of the time the `nBurn`
 #'   iterations in phase runs runs a simulated annealing.
@@ -377,153 +399,164 @@
 #' arXiv:2502.05305. \doi{10.48550/arXiv.2502.05305}
 #' @family Estimation control
 #' @export
-saemControl <- function(seed = 99,
-                        nBurn = 200,
-                        nEm = 300,
-                        nmc = 3,
-                        nu = c(2, 2, 2),
-                        print = 1L,
-                        trace = 0, # nolint
-                        covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
-                        covMethodDeferred = NA_character_,
-                        covFull = TRUE,
-                        nSaCov = 500L,
-                        calcTables = TRUE,
-                        logLik = FALSE,
-                        nnodesGq = 3,
-                        nsdGq = 1.6,
-                        optExpression = TRUE,
-                        literalFix=FALSE,
-                        adjObf = TRUE,
-                        sumProd = FALSE,
-                        addProp = c("combined2", "combined1"),
-                        tol = NULL,
-                        itmax = 30,
-                        type = c("newuoa", "nelder-mead"),
-                        powRange = 10,
-                        lambdaRange = 3,
-                        odeRecalcFactor=10^(0.5),
-                        maxOdeRecalc=5L,
-                        indTolRelax=TRUE,
-                        perSa=0.75,
-                        perNoCor=0.75,
-                        perFixOmega=0.1,
-                        perFixResid=0.1,
-                        compress=TRUE,
-                        rxControl=NULL,
-                        sigdig=NULL,
-                        sigdigTable=NULL,
-                        ci=0.95,
-                        muRefCov=TRUE,
-                        muRefCovAlg=TRUE,
-                        handleUninformativeEtas=TRUE,
-                        revisitUninformativeEtas=FALSE,
-                        iovXform = c("sd", "var", "logsd", "logvar"),
-                        iovMethod = c("twoLevel", "collapsed", "theta"),
-                        boundedTransform = TRUE,
-                        eventSens = c("jump", "fd"),
-                        mixProbMethod = c("regress", "regularized", "annealed"),
-                        mixProbStepExp = 1,
-                        mixProbPriorN = 20,
-                        mixSampleMethod = c("parallel", "msaem"),
-                        nonMuTheta = c("regress", "eta"),
-                        nonMuThetaOpt = c("newuoa", "optimize", "nelderMead"),
-                        nonMuThetaSweeps = 2L,
-                        nonMuThetaMaxEval = 25L,
-                        nonMuThetaTol = .Machine$double.eps^0.25,
-                        nonMuThetaEvery = 1L,
-                        phi1ThetaMaxEval = 50L,
-                        phi1ThetaEvery = 1L,
-                        phi1Hessian = FALSE,
-                        residWarmStart = TRUE,
-                        censOption = c("gauss", "laplace"),
-                        ebe = c("mode", "saem"),
-                        ebeMaxEval = 200L,
-                        ebeTol = NULL,
-                        ...) {
+saemControl <- function(
+  seed = 99,
+  nBurn = 200,
+  nEm = 300,
+  nmc = 3,
+  nu = c(2, 2, 2),
+  print = 1L,
+  trace = 0, # nolint
+  covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
+  covMethodDeferred = NA_character_,
+  covFallback = list(sa = c("linFim", "Ha"), fim = c("linFim", "Ha"), analytic = c("linFim", "Ha"), linFim = "Ha"),
+  covFull = TRUE,
+  nSaCov = 500L,
+  calcTables = TRUE,
+  logLik = FALSE,
+  nnodesGq = 3,
+  nsdGq = 1.6,
+  optExpression = TRUE,
+  literalFix = FALSE,
+  adjObf = TRUE,
+  sumProd = FALSE,
+  addProp = c("combined2", "combined1"),
+  tol = NULL,
+  itmax = 30,
+  type = c("newuoa", "nelder-mead"),
+  powRange = 10,
+  lambdaRange = 3,
+  odeRecalcFactor = 10^(0.5),
+  maxOdeRecalc = 5L,
+  indTolRelax = TRUE,
+  perSa = 0.75,
+  perNoCor = 0.75,
+  perFixOmega = 0.1,
+  perFixResid = 0.1,
+  compress = TRUE,
+  rxControl = NULL,
+  sigdig = NULL,
+  sigdigTable = NULL,
+  ci = 0.95,
+  muRefCov = TRUE,
+  muRefCovAlg = TRUE,
+  handleUninformativeEtas = TRUE,
+  revisitUninformativeEtas = FALSE,
+  iovXform = c("sd", "var", "logsd", "logvar"),
+  iovMethod = c("twoLevel", "collapsed", "theta"),
+  boundedTransform = TRUE,
+  eventSens = c("jump", "fd"),
+  mixProbMethod = c("regress", "regularized", "annealed"),
+  mixProbStepExp = 1,
+  mixProbPriorN = 20,
+  mixSampleMethod = c("parallel", "msaem"),
+  nonMuTheta = c("regress", "eta"),
+  nonMuThetaOpt = c("newuoa", "optimize", "nelderMead"),
+  nonMuThetaSweeps = 2L,
+  nonMuThetaMaxEval = 25L,
+  nonMuThetaTol = .Machine$double.eps^0.25,
+  nonMuThetaEvery = 1L,
+  phi1ThetaMaxEval = 50L,
+  phi1ThetaEvery = 1L,
+  phi1Hessian = FALSE,
+  residWarmStart = TRUE,
+  censOption = c("gauss", "laplace"),
+  ebe = c("mode", "saem"),
+  ebeMaxEval = 200L,
+  ebeTol = NULL,
+  ...
+) {
+  # a modeled residual error with an eta raises an unset nu (see .saemAutoNu)
+  .nuAuto <- missing(nu)
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc",
-                             "DEBUG", "iterPrintControl"))]
+  .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc", "DEBUG", "iterPrintControl", "saemHoldPar", "saemWarmState"))]
   if (length(.bad) > 0) {
-    stop("unused argument: ", paste
-    (paste0("'", .bad, "'", sep=""), collapse=", "),
-    call.=FALSE)
+    stop("unused argument: ", paste(paste0("'", .bad, "'", sep = ""), collapse = ", "), call. = FALSE)
   }
 
   iovXform <- match.arg(iovXform)
   iovMethod <- match.arg(iovMethod)
-  checkmate::assertIntegerish(seed, any.missing=FALSE, min.len=1)
+  checkmate::assertIntegerish(seed, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(nSaCov, lower = 1, len = 1, any.missing = FALSE)
   if (!is.null(.xtra$mcmc)) {
     #mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
-    checkmate::assertIntegerish(.xtra$mcmc$niter, len=2, lower=0, any.missing=FALSE, .var.name="mcmc$niter")
+    checkmate::assertIntegerish(.xtra$mcmc$niter, len = 2, lower = 0, any.missing = FALSE, .var.name = "mcmc$niter")
     nBurn <- .xtra$mcmc$niter[1]
-    nEm   <- .xtra$mcmc$niter[2]
-    checkmate::assertIntegerish(.xtra$mcmc$nmc, len=1, lower=1, any.missing=FALSE, .var.name="mcmc$nmc")
+    nEm <- .xtra$mcmc$niter[2]
+    checkmate::assertIntegerish(.xtra$mcmc$nmc, len = 1, lower = 1, any.missing = FALSE, .var.name = "mcmc$nmc")
     nmc <- .xtra$mcmc$nmc
-    checkmate::assertIntegerish(.xtra$mcmc$nu, len=3, lower=1, any.missing=FALSE, .var.name="mcmc$nu")
+    checkmate::assertIntegerish(.xtra$mcmc$nu, len = 3, lower = 1, any.missing = FALSE, .var.name = "mcmc$nu")
+    ## ASSIGNED, not only validated.  saem rebuilds its control from a plain
+    ## list through do.call(saemControl, ...) (.saemFamilyControl), which lands
+    ## here; without this line nBurn, nEm and nmc survived the rebuild and `nu`
+    ## silently reverted to c(2, 2, 2) -- measured, saemControl(nu = c(10, 11,
+    ## 12)) reached .configsaem as c(2, 2, 2) and fitted identically to the
+    ## default.
+    nu <- .xtra$mcmc$nu
+    .nuAuto <- isTRUE(.xtra$mcmc$nuAuto)
   }
-  checkmate::assertIntegerish(nBurn, any.missing=FALSE, len=1, lower=0)
-  checkmate::assertIntegerish(nEm, any.missing=FALSE, len=1, lower=0)
-  checkmate::assertIntegerish(nmc, any.missing=FALSE, len=1, lower=1)
-  checkmate::assertIntegerish(nu, any.missing=FALSE, len=3, lower=1)
+  checkmate::assertIntegerish(nBurn, any.missing = FALSE, len = 1, lower = 0)
+  checkmate::assertIntegerish(nEm, any.missing = FALSE, len = 1, lower = 0)
+  checkmate::assertIntegerish(nmc, any.missing = FALSE, len = 1, lower = 1)
+  checkmate::assertIntegerish(nu, any.missing = FALSE, len = 3, lower = 1)
   # `print` can be either a scalar print-frequency or a pre-built
   # iterPrintControl object; .absorbIterPrintControl validates either form
   # and returns the canonical iterPrintControl list.  list(...)$iterPrintControl
   # catches the round-trip case where the previous saemControl()'s return
   # value is passed back through do.call(saemControl, .ctl).
-  .iterPrintControl <- .absorbIterPrintControl(print = print,
-                                               iterPrintControl = .xtra$iterPrintControl)
+  .iterPrintControl <- .absorbIterPrintControl(print = print, iterPrintControl = .xtra$iterPrintControl)
   if (!is.null(.xtra$DEBUG)) {
     trace <- .xtra$DEBUG # nolint
   }
-  checkmate::assertIntegerish(trace, any.missing=FALSE, lower=0, upper=1, len=1) # nolint
-  checkmate::assertLogical(calcTables, any.missing=FALSE, len=1)
-  checkmate::assertLogical(logLik, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(nnodesGq, any.missing=FALSE, lower=1, len=1)
-  checkmate::assertNumeric(nsdGq, any.missing=FALSE, lower=1, len=1, finite=TRUE)
-  checkmate::assertLogical(optExpression, any.missing=FALSE, len=1)
-  checkmate::assertLogical(literalFix, any.missing=FALSE, len=1)
-  checkmate::assertLogical(adjObf, any.missing=FALSE, len=1)
-  checkmate::assertLogical(sumProd, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(trace, any.missing = FALSE, lower = 0, upper = 1, len = 1) # nolint
+  checkmate::assertLogical(calcTables, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(logLik, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(nnodesGq, any.missing = FALSE, lower = 1, upper = 25, len = 1)
+  checkmate::assertNumeric(nsdGq, any.missing = FALSE, lower = 1, len = 1, finite = TRUE)
+  checkmate::assertLogical(optExpression, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(literalFix, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(adjObf, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(sumProd, any.missing = FALSE, len = 1)
   # `tol` is the rhoend/tolerance of saem's inner residual-regression optimizer
   # (bounded bobyqa / newuoa / nelder-mead); tie it to sigdig with the FOCEi
   # mechanism.  A user value wins, sigdig=NULL keeps the historic default.
-  if (is.null(tol)) tol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
-  checkmate::assertNumeric(tol, any.missing=FALSE, len=1, finite=TRUE)
-  checkmate::assertIntegerish(itmax, any.missing=FALSE, len=1, lower=1)
-  checkmate::assertNumeric(powRange, any.missing=FALSE, len=1, lower=0)
-  checkmate::assertNumeric(lambdaRange, any.missing=FALSE, len=1, lower=0)
-  checkmate::assertNumeric(odeRecalcFactor, any.missing=FALSE, lower=0, len=1, finite=TRUE)
-  checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(perSa, any.missing=FALSE, lower=0, upper=1, len=1)
-  checkmate::assertNumeric(perNoCor, any.missing=FALSE, lower=0, upper=1, len=1)
-  checkmate::assertNumeric(perFixOmega, any.missing=FALSE, lower=0, upper=1, len=1)
-  checkmate::assertNumeric(perFixResid, any.missing=FALSE, lower=0, upper=1, len=1)
-  checkmate::assertLogical(muRefCov, any.missing=FALSE, len=1)
-  checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
-  checkmate::assertLogical(handleUninformativeEtas, any.missing=FALSE, len=1)
-  checkmate::assertLogical(revisitUninformativeEtas, any.missing=FALSE, len=1)
-  checkmate::assertLogical(boundedTransform, any.missing=FALSE, len=1)
+  if (is.null(tol)) {
+    tol <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-6
+  }
+  checkmate::assertNumeric(tol, any.missing = FALSE, len = 1, finite = TRUE)
+  checkmate::assertIntegerish(itmax, any.missing = FALSE, len = 1, lower = 1)
+  checkmate::assertNumeric(powRange, any.missing = FALSE, len = 1, lower = 0)
+  checkmate::assertNumeric(lambdaRange, any.missing = FALSE, len = 1, lower = 0)
+  checkmate::assertNumeric(odeRecalcFactor, any.missing = FALSE, lower = 0, len = 1, finite = TRUE)
+  checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertLogical(indTolRelax, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(perSa, any.missing = FALSE, lower = 0, upper = 1, len = 1)
+  checkmate::assertNumeric(perNoCor, any.missing = FALSE, lower = 0, upper = 1, len = 1)
+  checkmate::assertNumeric(perFixOmega, any.missing = FALSE, lower = 0, upper = 1, len = 1)
+  checkmate::assertNumeric(perFixResid, any.missing = FALSE, lower = 0, upper = 1, len = 1)
+  checkmate::assertLogical(muRefCov, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(muRefCovAlg, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(handleUninformativeEtas, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(revisitUninformativeEtas, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(boundedTransform, any.missing = FALSE, len = 1)
   eventSens <- match.arg(eventSens)
   mixProbMethod <- match.arg(mixProbMethod)
-  checkmate::assertNumeric(mixProbStepExp, any.missing=FALSE, len=1, lower=0, finite=TRUE)
-  checkmate::assertNumeric(mixProbPriorN, any.missing=FALSE, len=1, lower=0, finite=TRUE)
+  checkmate::assertNumeric(mixProbStepExp, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
+  checkmate::assertNumeric(mixProbPriorN, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
   mixSampleMethod <- match.arg(mixSampleMethod)
   nonMuTheta <- match.arg(nonMuTheta)
   nonMuThetaOpt <- match.arg(nonMuThetaOpt)
-  checkmate::assertIntegerish(nonMuThetaSweeps, any.missing=FALSE, len=1, lower=1)
-  checkmate::assertIntegerish(nonMuThetaMaxEval, any.missing=FALSE, len=1, lower=0)
-  checkmate::assertNumeric(nonMuThetaTol, any.missing=FALSE, len=1, lower=0, finite=TRUE)
-  checkmate::assertIntegerish(nonMuThetaEvery, any.missing=FALSE, len=1, lower=1)
-  checkmate::assertIntegerish(phi1ThetaMaxEval, any.missing=FALSE, len=1, lower=0)
-  checkmate::assertIntegerish(phi1ThetaEvery, any.missing=FALSE, len=1, lower=1)
-  checkmate::assertLogical(phi1Hessian, any.missing=FALSE, len=1)
-  checkmate::assertLogical(residWarmStart, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(nonMuThetaSweeps, any.missing = FALSE, len = 1, lower = 1)
+  checkmate::assertIntegerish(nonMuThetaMaxEval, any.missing = FALSE, len = 1, lower = 0)
+  checkmate::assertNumeric(nonMuThetaTol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
+  checkmate::assertIntegerish(nonMuThetaEvery, any.missing = FALSE, len = 1, lower = 1)
+  checkmate::assertIntegerish(phi1ThetaMaxEval, any.missing = FALSE, len = 1, lower = 0)
+  checkmate::assertIntegerish(phi1ThetaEvery, any.missing = FALSE, len = 1, lower = 1)
+  checkmate::assertLogical(phi1Hessian, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(residWarmStart, any.missing = FALSE, len = 1)
   ebe <- match.arg(ebe)
-  checkmate::assertIntegerish(ebeMaxEval, any.missing=FALSE, len=1, lower=1)
-
+  checkmate::assertIntegerish(ebeMaxEval, any.missing = FALSE, len = 1, lower = 1)
 
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
@@ -532,18 +565,18 @@ saemControl <- function(seed = 99,
     } else if (addProp == 2) {
       addProp <- "combined2"
     } else {
-      stop("addProp must be 1, 2, \"combined1\" or \"combined2\"", call.=FALSE)
+      stop("addProp must be 1, 2, \"combined1\" or \"combined2\"", call. = FALSE)
     }
   } else {
     addProp <- match.arg(addProp)
   }
-  checkmate::assertLogical(compress, any.missing=FALSE, len=1)
+  checkmate::assertLogical(compress, any.missing = FALSE, len = 1)
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
     .genRxControl <- .xtra$genRxControl
   }
   if (!is.null(sigdig)) {
-    checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+    checkmate::assertNumeric(sigdig, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
     if (is.null(sigdigTable)) {
       sigdigTable <- round(sigdig)
     }
@@ -551,62 +584,60 @@ saemControl <- function(seed = 99,
   if (is.null(sigdigTable)) {
     sigdigTable <- 3
   }
-  checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
   .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
   if (is.null(rxControl)) {
-    rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig, envir=.env), sigdig)
+    rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig = sigdig, envir = .env), sigdig)
     .genRxControl <- TRUE
-  } else if (inherits(rxControl, "rxControl")) {
-  } else if (is.list(rxControl)) {
+  } else if (inherits(rxControl, "rxControl")) {} else if (is.list(rxControl)) {
     rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
     rxControl$envir <- .env
   } else {
-    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
+    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call = FALSE)
   }
   # an objective solved to relative error rtol locates its minimum only to
   # about sqrt(rtol); a tighter mode search just chases solver noise
   if (is.null(ebeTol)) ebeTol <- sqrt(max(rxControl$rtol))
-  checkmate::assertNumeric(ebeTol, any.missing=FALSE, len=1, lower=0, finite=TRUE)
+  checkmate::assertNumeric(ebeTol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
 
   # "imp" is foreign to the SAEM kernel; skip the native cov and recompute the
   # importance-sampling covariance post-fit at the converged estimates.  The
   # covMethodDeferred formal carries a round-tripped request (default NA).
-  if (identical(covMethod, "")) {
-    ## "" requests no covariance; match.arg() cannot select it because
-    ## pmatch("") matches nothing, so handle it explicitly.
+  # An integer is a foceiControl() slot (a round-tripped control carries one):
+  # 0 is no covariance, 1/2/3 are "r,s"/"r"/"s".
+  .covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
+  if (identical(.covMethod, "imp")) {
+    covMethodDeferred <- "imp"
     .covMethod <- ""
-  } else if (checkmate::testIntegerish(covMethod, lower=0, len=1, any.missing=FALSE)) {
-    .covMethod <- covMethod
-  } else {
-    .covMethod <- match.arg(covMethod)
-    if (identical(.covMethod, "imp")) {
-      covMethodDeferred <- "imp"
-      .covMethod <- ""
-    }
   }
 
-  checkmate::assertLogical(covFull, len=1, any.missing=FALSE)
+  covFallback <- .covFallbackCheck(
+    covFallback,
+    methods = c("sa", "fim", "analytic", "linFim", "r,s", "r", "s"),
+    targets = c("sa", "fim", "linFim", "Ha")
+  )
+  checkmate::assertLogical(covFull, len = 1, any.missing = FALSE)
 
   # censOption: FOCEI-family censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic
   # Gauss-Newton, default) or "laplace" (exact).  Accepted for a uniform interface but INERT for
   # SAEM (stochastic EM has no Laplace inner Hessian); kept for alignment with focei/nlm.
-  if (checkmate::testIntegerish(censOption, len=1, lower=0, upper=1, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(censOption, len = 1, lower = 0, upper = 1, any.missing = FALSE)) {
     censOption <- as.integer(censOption)
   } else {
     censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
   }
   .ret <- list(
-    mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
+    mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto),
     rxControl = rxControl,
     seed = seed,
     censOption = censOption,
     iterPrintControl = .iterPrintControl,
     DEBUG = trace, # nolint
     optExpression = optExpression,
-    literalFix=literalFix,
+    literalFix = literalFix,
     sumProd = sumProd,
     nnodesGq = nnodesGq,
     nsdGq = nsdGq,
@@ -617,78 +648,120 @@ saemControl <- function(seed = 99,
     type = type,
     powRange = powRange,
     lambdaRange = lambdaRange,
-    odeRecalcFactor=odeRecalcFactor,
-    maxOdeRecalc=maxOdeRecalc,
-    indTolRelax=indTolRelax,
-    perSa=perSa,
-    perNoCor=perNoCor,
-    perFixOmega=perFixOmega,
-    perFixResid=perFixResid,
-    compress=compress,
-    genRxControl=.genRxControl,
-    sigdigTable=sigdigTable,
-    ci=ci,
-    covMethod=.covMethod,
-    covMethodDeferred=covMethodDeferred,
-    covFull=covFull,
-    nSaCov=as.integer(nSaCov),
-    logLik=logLik,
-    calcTables=calcTables,
-    muRefCov=muRefCov,
-    muRefCovAlg=muRefCovAlg,
-    handleUninformativeEtas=handleUninformativeEtas,
-    revisitUninformativeEtas=revisitUninformativeEtas,
-    iovXform=iovXform,
-    iovMethod=iovMethod,
-    boundedTransform=boundedTransform,
-    eventSens=eventSens,
-    mixProbMethod=mixProbMethod,
-    mixProbStepExp=mixProbStepExp,
-    mixProbPriorN=mixProbPriorN,
-    mixSampleMethod=mixSampleMethod,
-    nonMuTheta=nonMuTheta,
-    nonMuThetaOpt=nonMuThetaOpt,
-    nonMuThetaSweeps=as.integer(nonMuThetaSweeps),
-    nonMuThetaMaxEval=as.integer(nonMuThetaMaxEval),
-    nonMuThetaTol=nonMuThetaTol,
-    nonMuThetaEvery=as.integer(nonMuThetaEvery),
-    phi1ThetaMaxEval=as.integer(phi1ThetaMaxEval),
-    phi1ThetaEvery=as.integer(phi1ThetaEvery),
-    phi1Hessian=isTRUE(phi1Hessian),
-    residWarmStart=residWarmStart,
-    ebe=ebe,
-    ebeMaxEval=as.integer(ebeMaxEval),
-    ebeTol=ebeTol
+    odeRecalcFactor = odeRecalcFactor,
+    maxOdeRecalc = maxOdeRecalc,
+    indTolRelax = indTolRelax,
+    perSa = perSa,
+    perNoCor = perNoCor,
+    perFixOmega = perFixOmega,
+    perFixResid = perFixResid,
+    compress = compress,
+    genRxControl = .genRxControl,
+    sigdigTable = sigdigTable,
+    ci = ci,
+    covMethod = .covMethod,
+    covMethodDeferred = covMethodDeferred,
+    covFallback = covFallback,
+    covFull = covFull,
+    nSaCov = as.integer(nSaCov),
+    logLik = logLik,
+    calcTables = calcTables,
+    muRefCov = muRefCov,
+    muRefCovAlg = muRefCovAlg,
+    handleUninformativeEtas = handleUninformativeEtas,
+    revisitUninformativeEtas = revisitUninformativeEtas,
+    iovXform = iovXform,
+    iovMethod = iovMethod,
+    boundedTransform = boundedTransform,
+    eventSens = eventSens,
+    mixProbMethod = mixProbMethod,
+    mixProbStepExp = mixProbStepExp,
+    mixProbPriorN = mixProbPriorN,
+    mixSampleMethod = mixSampleMethod,
+    nonMuTheta = nonMuTheta,
+    nonMuThetaOpt = nonMuThetaOpt,
+    nonMuThetaSweeps = as.integer(nonMuThetaSweeps),
+    nonMuThetaMaxEval = as.integer(nonMuThetaMaxEval),
+    nonMuThetaTol = nonMuThetaTol,
+    nonMuThetaEvery = as.integer(nonMuThetaEvery),
+    phi1ThetaMaxEval = as.integer(phi1ThetaMaxEval),
+    phi1ThetaEvery = as.integer(phi1ThetaEvery),
+    phi1Hessian = isTRUE(phi1Hessian),
+    residWarmStart = residWarmStart,
+    ebe = ebe,
+    ebeMaxEval = as.integer(ebeMaxEval),
+    ebeTol = ebeTol
   )
+  # internal: the "sa" covariance recompute at a fit's estimates holds every
+  # population parameter where it was supplied (.covEngineControl, .saemHoldCfg)
+  if (isTRUE(.xtra$saemHoldPar)) {
+    .ret$saemHoldPar <- TRUE
+  }
+  # internal: that recompute continues a SAEM fit's chains (.saemChainState)
+  if (!is.null(.xtra$saemWarmState)) {
+    checkmate::assertList(.xtra$saemWarmState, .var.name = "saemWarmState")
+    checkmate::assertMatrix(
+      .xtra$saemWarmState$phiM,
+      mode = "numeric",
+      any.missing = FALSE,
+      .var.name = "saemWarmState$phiM"
+    )
+    checkmate::assertNumeric(
+      .xtra$saemWarmState$sigma2,
+      lower = 0,
+      finite = TRUE,
+      null.ok = TRUE,
+      .var.name = "saemWarmState$sigma2"
+    )
+    checkmate::assertMatrix(
+      .xtra$saemWarmState$mpostPhi,
+      mode = "numeric",
+      any.missing = FALSE,
+      null.ok = TRUE,
+      .var.name = "saemWarmState$mpostPhi"
+    )
+    .ret$saemWarmState <- .xtra$saemWarmState
+  }
   class(.ret) <- "saemControl"
   .ret
 }
 
 .saemDeparseExtra <- function(default, name, value) {
+  if (name == "DEBUG") {
+    return(paste0("trace=", deparse1(value)))
+  }
   if (name == "mcmc") {
     .ret <- character(0)
     if (!identical(default$mcmc$niter, value$niter)) {
-      if (default$mcmc$niter[1] != value$niter[1]) {
-        .ret <- c(.ret, paste0("nBurn=", value$niter[1]))
+      # both are written when integer, since c(nBurn, nEm) is integer only then
+      .both <- !identical(storage.mode(default$mcmc$niter), storage.mode(value$niter)) ||
+        !is.null(names(value$niter))
+      if (.both || default$mcmc$niter[1] != value$niter[1]) {
+        .ret <- c(.ret, paste0("nBurn=", deparse1(value$niter[1])))
       }
-      if (default$mcmc$niter[2] != value$niter[2]) {
-        .ret <- c(.ret, paste0("nEm=", value$niter[2]))
+      if (.both || default$mcmc$niter[2] != value$niter[2]) {
+        .ret <- c(.ret, paste0("nEm=", deparse1(value$niter[2])))
       }
     }
-    if (default$mcmc$nmc != value$nmc) {
-      .ret <- c(.ret, paste0("nmc=", value$nmc))
+    if (!identical(default$mcmc$nmc, value$nmc)) {
+      .ret <- c(.ret, paste0("nmc=", deparse1(value$nmc)))
     }
-    if (!identical(default$mcmc$nu, value$nu)) {
+    # nu is written only when supplied (nuAuto FALSE), even at its default; an
+    # automatic nu may have been raised by the fit (.saemAutoNu) and is redone
+    if (!isTRUE(value$nuAuto) && (!identical(default$mcmc$nu, value$nu) || isTRUE(default$mcmc$nuAuto))) {
       .ret <- c(.ret, paste0("nu=", deparse1(value$nu)))
     }
-    return(paste0(.ret, collapse=","))
+    return(paste0(.ret, collapse = ","))
   }
   NA_character_
 }
 
 #' @export
 rxUiDeparse.saemControl <- function(object, var) {
-  .default <- saemControl()
-  .w <- .deparseDifferent(.default, object, c("genRxControl", "DEBUG"))
-  .deparseFinal(.default, object, .w, var, fun=.saemDeparseExtra)
+  .ret <- .deparseControl(object, var, saemControl(), "genRxControl", fun = .saemDeparseExtra)
+  # an rxControl generated at a sigdig that could not be recovered
+  if (isTRUE(object$genRxControl) && !is.null(.ret[[3]]$rxControl)) {
+    .ret[[3]]$genRxControl <- TRUE
+  }
+  .ret
 }

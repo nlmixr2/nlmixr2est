@@ -54,8 +54,7 @@
           })
         }
       },
-      truth = c(tka = log(1.2), tcl = log(0.25), tv = log(5),
-                prop.sd = 0.15, eta.cl = 0.09),
+      truth = c(tka = log(1.2), tcl = log(0.25), tv = log(5), prop.sd = 0.15, eta.cl = 0.09),
       dose = 100,
       times = c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 24)
     ),
@@ -85,8 +84,7 @@
           })
         }
       },
-      truth = c(tka = log(1.2), tcl = log(0.25), tv = log(5),
-                pow = 0.75, prop.sd = 0.15, eta.cl = 0.09),
+      truth = c(tka = log(1.2), tcl = log(0.25), tv = log(5), pow = 0.75, prop.sd = 0.15, eta.cl = 0.09),
       dose = 100,
       times = c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 24)
     ),
@@ -116,8 +114,15 @@
           })
         }
       },
-      truth = c(tka = log(1.2), tcl1 = log(0.15), tcl2 = log(0.45),
-                tv = log(5), p1 = 0.6, prop.sd = 0.12, eta.cl = 0.05),
+      truth = c(
+        tka = log(1.2),
+        tcl1 = log(0.15),
+        tcl2 = log(0.45),
+        tv = log(5),
+        p1 = 0.6,
+        prop.sd = 0.12,
+        eta.cl = 0.05
+      ),
       dose = 100,
       times = c(0.25, 0.5, 1, 2, 4, 6, 8, 12, 24),
       simData = function(entry, nsub, seed) {
@@ -126,19 +131,23 @@
         comp <- ifelse(stats::runif(nsub) < tr[["p1"]], 1L, 2L)
         tcl <- ifelse(comp == 1L, tr[["tcl1"]], tr[["tcl2"]])
         eta <- stats::rnorm(nsub, 0, sqrt(tr[["eta.cl"]]))
-        ka <- exp(tr[["tka"]]); v <- exp(tr[["tv"]]); cl <- exp(tcl + eta)
-        do.call(rbind, lapply(seq_len(nsub), function(i) {
-          tt <- entry$times
-          ke <- cl[i] / v
-          ## 1-cmt oral closed form (ka != ke)
-          f <- entry$dose / v * ka[1] / (ka[1] - ke) *
-            (exp(-ke * tt) - exp(-ka[1] * tt))
-          dv <- f * (1 + stats::rnorm(length(tt), 0, tr[["prop.sd"]]))
-          rbind(
-            data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = entry$dose, EVID = 1),
-            data.frame(ID = i, TIME = tt, DV = dv, AMT = 0, EVID = 0)
-          )
-        }))
+        ka <- exp(tr[["tka"]])
+        v <- exp(tr[["tv"]])
+        cl <- exp(tcl + eta)
+        do.call(
+          rbind,
+          lapply(seq_len(nsub), function(i) {
+            tt <- entry$times
+            ke <- cl[i] / v
+            ## 1-cmt oral closed form (ka != ke)
+            f <- entry$dose / v * ka[1] / (ka[1] - ke) * (exp(-ke * tt) - exp(-ka[1] * tt))
+            dv <- f * (1 + stats::rnorm(length(tt), 0, tr[["prop.sd"]]))
+            rbind(
+              data.frame(ID = i, TIME = 0, DV = NA_real_, AMT = entry$dose, EVID = 1),
+              data.frame(ID = i, TIME = tt, DV = dv, AMT = 0, EVID = 0)
+            )
+          })
+        )
       }
     )
   )
@@ -156,14 +165,15 @@
   set.seed(seed)
   s <- as.data.frame(rxode2::rxSolve(ui, et, addDosing = FALSE))
   obs <- data.frame(ID = s$id, TIME = s$time, DV = s$sim, AMT = 0, EVID = 0)
-  dose <- data.frame(ID = seq_len(nsub), TIME = 0, DV = NA_real_,
-                     AMT = entry$dose, EVID = 1)
+  dose <- data.frame(ID = seq_len(nsub), TIME = 0, DV = NA_real_, AMT = entry$dose, EVID = 1)
   d <- rbind(dose, obs)
   d[order(d$ID, d$TIME, -d$EVID), ]
 }
 
 seSimData <- function(entry, nsub, seed) {
-  if (is.function(entry$simData)) return(entry$simData(entry, nsub, seed))
+  if (is.function(entry$simData)) {
+    return(entry$simData(entry, nsub, seed))
+  }
   .seSimDefault(entry, nsub, seed)
 }
 
@@ -172,10 +182,13 @@ seSimData <- function(entry, nsub, seed) {
 ## ---------------------------------------------------------------------------
 .seEstVec <- function(fit) {
   est <- tryCatch(nlmixr2est::fixef(fit), error = function(e) stats::coef(fit))
-  om <- tryCatch({
-    o <- fit$omega
-    if (is.null(o)) numeric(0) else stats::setNames(diag(o), rownames(o))
-  }, error = function(e) numeric(0))
+  om <- tryCatch(
+    {
+      o <- fit$omega
+      if (is.null(o)) numeric(0) else stats::setNames(diag(o), rownames(o))
+    },
+    error = function(e) numeric(0)
+  )
   c(est, om[!(names(om) %in% names(est))])
 }
 
@@ -184,20 +197,26 @@ seFitScore <- function(entry, data, control, seed) {
   t0 <- proc.time()[["elapsed"]]
   fit <- tryCatch(
     suppressWarnings(nlmixr2est::nlmixr2(ui, data, est = "saem", control = control)),
-    error = function(e) e)
+    error = function(e) e
+  )
   elapsed <- proc.time()[["elapsed"]] - t0
   if (inherits(fit, "error")) {
-    return(list(converged = FALSE, error = conditionMessage(fit),
-                time = elapsed, seed = seed))
+    return(list(converged = FALSE, error = conditionMessage(fit), time = elapsed, seed = seed))
   }
   est <- .seEstVec(fit)
   truth <- entry$truth
   nm <- intersect(names(truth), names(est))
   objf <- tryCatch(as.numeric(fit$objf), error = function(e) NA_real_)
   bias <- est[nm] - truth[nm]
-  list(converged = all(is.finite(est[nm])),
-       est = est[nm], truth = truth[nm], bias = bias,
-       objf = objf, time = elapsed, seed = seed)
+  list(
+    converged = all(is.finite(est[nm])),
+    est = est[nm],
+    truth = truth[nm],
+    bias = bias,
+    objf = objf,
+    time = elapsed,
+    seed = seed
+  )
 }
 
 ## ---------------------------------------------------------------------------
@@ -205,10 +224,11 @@ seFitScore <- function(entry, data, control, seed) {
 ## ---------------------------------------------------------------------------
 ## Returns a list with $perParam (bias/RMSE per parameter per config) and
 ## $summary (convergence rate, mean objf, mean runtime per config).
-seCompareConfigs <- function(entryName, configs, nsub = 40, seeds = 1:3,
-                             models = .seModels()) {
+seCompareConfigs <- function(entryName, configs, nsub = 40, seeds = 1:3, models = .seModels()) {
   entry <- models[[entryName]]
-  if (is.null(entry)) stop("unknown model '", entryName, "'")
+  if (is.null(entry)) {
+    stop("unknown model '", entryName, "'")
+  }
   runs <- list()
   for (cn in names(configs)) {
     for (sd in seeds) {
@@ -220,26 +240,47 @@ seCompareConfigs <- function(entryName, configs, nsub = 40, seeds = 1:3,
   }
   ok <- Filter(function(x) isTRUE(x$converged), runs)
   ## per-parameter bias/RMSE
-  perParam <- do.call(rbind, lapply(names(configs), function(cn) {
-    cok <- Filter(function(x) x$config == cn, ok)
-    if (length(cok) == 0L) return(NULL)
-    pn <- names(entry$truth)
-    do.call(rbind, lapply(pn, function(p) {
-      b <- vapply(cok, function(x) unname(x$bias[p]), numeric(1))
-      b <- b[is.finite(b)]
-      if (length(b) == 0L) return(NULL)
-      data.frame(config = cn, param = p, truth = unname(entry$truth[p]),
-                 meanBias = mean(b), rmse = sqrt(mean(b^2)), n = length(b))
-    }))
-  }))
-  summary <- do.call(rbind, lapply(names(configs), function(cn) {
-    cruns <- Filter(function(x) x$config == cn, runs)
-    cok <- Filter(function(x) isTRUE(x$converged), cruns)
-    data.frame(config = cn,
-               convRate = length(cok) / length(cruns),
-               meanObjf = mean(vapply(cok, function(x) x$objf, numeric(1))),
-               meanTime = mean(vapply(cruns, function(x) x$time, numeric(1))))
-  }))
+  perParam <- do.call(
+    rbind,
+    lapply(names(configs), function(cn) {
+      cok <- Filter(function(x) x$config == cn, ok)
+      if (length(cok) == 0L) {
+        return(NULL)
+      }
+      pn <- names(entry$truth)
+      do.call(
+        rbind,
+        lapply(pn, function(p) {
+          b <- vapply(cok, function(x) unname(x$bias[p]), numeric(1))
+          b <- b[is.finite(b)]
+          if (length(b) == 0L) {
+            return(NULL)
+          }
+          data.frame(
+            config = cn,
+            param = p,
+            truth = unname(entry$truth[p]),
+            meanBias = mean(b),
+            rmse = sqrt(mean(b^2)),
+            n = length(b)
+          )
+        })
+      )
+    })
+  )
+  summary <- do.call(
+    rbind,
+    lapply(names(configs), function(cn) {
+      cruns <- Filter(function(x) x$config == cn, runs)
+      cok <- Filter(function(x) isTRUE(x$converged), cruns)
+      data.frame(
+        config = cn,
+        convRate = length(cok) / length(cruns),
+        meanObjf = mean(vapply(cok, function(x) x$objf, numeric(1))),
+        meanTime = mean(vapply(cruns, function(x) x$time, numeric(1)))
+      )
+    })
+  )
   list(perParam = perParam, summary = summary, runs = runs)
 }
 
@@ -252,6 +293,5 @@ seStrictlyBetter <- function(cmp, a, b, tol = 1e-8) {
   m <- merge(ra, rb, by = "param", suffixes = c(".a", ".b"))
   sa <- cmp$summary[cmp$summary$config == a, "convRate"]
   sb <- cmp$summary[cmp$summary$config == b, "convRate"]
-  all(m$rmse.b <= m$rmse.a + tol) && sb + tol >= sa &&
-    (any(m$rmse.b < m$rmse.a - tol) || sb > sa + tol)
+  all(m$rmse.b <= m$rmse.a + tol) && sb + tol >= sa && (any(m$rmse.b < m$rmse.a - tol) || sb > sa + tol)
 }

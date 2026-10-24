@@ -29,7 +29,7 @@ suppressPackageStartupMessages({
 dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
 .csvPath <- file.path(.outDir, "focei-hessian-method-benchmark.csv")
 .logPath <- file.path(.outDir, "focei-hessian-method-benchmark.log")
-.mdPath  <- file.path(.outDir, "focei-hessian-method-benchmark.md")
+.mdPath <- file.path(.outDir, "focei-hessian-method-benchmark.md")
 
 .logCon <- file(.logPath, open = "a")
 .blog <- function(fmt, ...) {
@@ -59,32 +59,49 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
   }
   .benchResults[[length(.benchResults) + 1]] <<- row
   write.csv(do.call(rbind, .benchResults), .csvPath, row.names = FALSE)
-  .blog("[%s] %s", model,
-        paste(sapply(.hessianMethods, function(hm) {
-          r <- results[[hm]]
-          sprintf("%s: ok=%s time=%.2fs objf=%s nHessianQN=%d", hm, r$ok, r$time,
-                  format(r$objf), r$nHessianQN)
-        }), collapse = " | "))
+  .blog(
+    "[%s] %s",
+    model,
+    paste(
+      sapply(.hessianMethods, function(hm) {
+        r <- results[[hm]]
+        sprintf("%s: ok=%s time=%.2fs objf=%s nHessianQN=%d", hm, r$ok, r$time, format(r$objf), r$nHessianQN)
+      }),
+      collapse = " | "
+    )
+  )
 }
 
 .fitOnce <- function(object, data, hessianMethod, ...) {
   t0 <- proc.time()["elapsed"]
   fit <- tryCatch(
     suppressWarnings(suppressMessages(
-      nlmixr2est::nlmixr2(object, data, est = "focei",
-                          control = nlmixr2est::foceiControl(print = 0L, innerOpt = "trust",
-                                                             hessianMethod = hessianMethod, ...))
+      nlmixr2est::nlmixr2(
+        object,
+        data,
+        est = "focei",
+        control = nlmixr2est::foceiControl(print = 0L, innerOpt = "trust", hessianMethod = hessianMethod, ...)
+      )
     )),
     error = function(e) e
   )
   t1 <- proc.time()["elapsed"]
   if (inherits(fit, "error")) {
-    return(list(ok = FALSE, time = unname(t1 - t0), objf = NA_real_,
-                nHessianQN = .nHessianQN(), error = conditionMessage(fit)))
+    return(list(
+      ok = FALSE,
+      time = unname(t1 - t0),
+      objf = NA_real_,
+      nHessianQN = .nHessianQN(),
+      error = conditionMessage(fit)
+    ))
   }
-  list(ok = TRUE, time = unname(t1 - t0),
-       objf = tryCatch(as.numeric(fit$objective), error = function(e) NA_real_),
-       nHessianQN = .nHessianQN(), error = NA_character_)
+  list(
+    ok = TRUE,
+    time = unname(t1 - t0),
+    objf = tryCatch(as.numeric(fit$objective), error = function(e) NA_real_),
+    nHessianQN = .nHessianQN(),
+    error = NA_character_
+  )
 }
 
 .runModel <- function(label, object, data, ...) {
@@ -160,23 +177,38 @@ if (length(.benchResults)) {
     ok <- df[!is.na(df[[okCol]]) & df[[okCol]], , drop = FALSE]
     lines <- c(lines, sprintf("## hessianMethod=\"%s\" (converged: %d/%d)", hm, nrow(ok), nrow(df)), "")
     if (nrow(ok)) {
-      lines <- c(lines,
+      lines <- c(
+        lines,
         sprintf("- Median time: %.3fs", stats::median(ok[[paste0(hm, "_time")]], na.rm = TRUE)),
         sprintf("- Median |objf diff| vs fd: %.4g", stats::median(abs(ok[[paste0(hm, "_dObjf")]]), na.rm = TRUE)),
         sprintf("- Total nHessianQN calls: %d", sum(ok[[paste0(hm, "_nHessianQN")]], na.rm = TRUE)),
-        "")
+        ""
+      )
     }
   }
-  header <- paste0("| model | ", paste(sapply(.hessianMethods, function(hm)
-    sprintf("%s ok | %s time | %s objf | %s dObjf", hm, hm, hm, hm)), collapse = " | "), " |")
+  header <- paste0(
+    "| model | ",
+    paste(
+      sapply(.hessianMethods, function(hm) {
+        sprintf("%s ok | %s time | %s objf | %s dObjf", hm, hm, hm, hm)
+      }),
+      collapse = " | "
+    ),
+    " |"
+  )
   sep <- paste0("|", paste(rep("---", 1 + 4 * length(.hessianMethods)), collapse = "|"), "|")
   lines <- c(lines, header, sep)
   for (i in seq_len(nrow(df))) {
     r <- df[i, ]
     cells <- r$model
     for (hm in .hessianMethods) {
-      cells <- c(cells, r[[paste0(hm, "_ok")]], format(r[[paste0(hm, "_time")]]),
-                 format(r[[paste0(hm, "_objf")]]), format(r[[paste0(hm, "_dObjf")]]))
+      cells <- c(
+        cells,
+        r[[paste0(hm, "_ok")]],
+        format(r[[paste0(hm, "_time")]]),
+        format(r[[paste0(hm, "_objf")]]),
+        format(r[[paste0(hm, "_dObjf")]])
+      )
     }
     lines <- c(lines, paste0("| ", paste(cells, collapse = " | "), " |"))
   }

@@ -27,32 +27,45 @@ nmTest({
 
     ## nCov MUST come from the prep -- the encoder head is [hDim + nCov] wide and
     ## the encoder is conditioned on the covariates (as in the reference)
-    zDim <- prep$zDim; hDim <- 6L; nCov <- ncol(prep$covIn)
+    zDim <- prep$zDim
+    hDim <- 6L
+    nCov <- ncol(prep$covIn)
     .testSeed(7)
     params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, rep(0.1, zDim))
-    .testSeed(123); eps <- matrix(rnorm(prep$N * zDim), prep$N, zDim)
+    .testSeed(123)
+    eps <- matrix(rnorm(prep$N * zDim), prep$N, zDim)
     alphaKL <- 0.7
 
     st <- .vaeElboStep(params, prep, am, prep$zPop, prep$omega, prep$a, alphaKL, eps)
     expect_false(is.null(st$grads))
     expect_true(is.finite(st$loss))
 
-    elboOnly <- function(p) .vaeElboStep(p, prep, am, prep$zPop, prep$omega, prep$a,
-                                         alphaKL, eps, withGrad = FALSE)$loss
+    elboOnly <- function(p) {
+      .vaeElboStep(p, prep, am, prep$zPop, prep$omega, prep$a, alphaKL, eps, withGrad = FALSE)$loss
+    }
     h <- 1e-5
     fdMax <- function(name, ncoord = 6) {
-      tmpl <- params[[name]]; g <- as.numeric(st$grads[[name]]); flat <- as.numeric(tmpl)
+      tmpl <- params[[name]]
+      g <- as.numeric(st$grads[[name]])
+      flat <- as.numeric(tmpl)
       idx <- if (length(flat) > ncoord) sort(sample(length(flat), ncoord)) else seq_along(flat)
       d <- 0
       for (k in idx) {
-        up <- flat; up[k] <- up[k] + h; dn <- flat; dn[k] <- dn[k] - h
-        pu <- params; pu[[name]] <- if (is.null(dim(tmpl))) up else array(up, dim(tmpl))
-        pd <- params; pd[[name]] <- if (is.null(dim(tmpl))) dn else array(dn, dim(tmpl))
+        up <- flat
+        up[k] <- up[k] + h
+        dn <- flat
+        dn[k] <- dn[k] - h
+        pu <- params
+        pu[[name]] <- if (is.null(dim(tmpl))) up else array(up, dim(tmpl))
+        pd <- params
+        pd[[name]] <- if (is.null(dim(tmpl))) dn else array(dn, dim(tmpl))
         d <- max(d, abs(g[k] - (elboOnly(pu) - elboOnly(pd)) / (2 * h)))
       }
       d
     }
     .testSeed(1)
-    for (nm in c("fcB", "fcW", "Wih", "Whh", "bih")) expect_lt(fdMax(nm), 1e-4)
+    for (nm in c("fcB", "fcW", "Wih", "Whh", "bih")) {
+      expect_lt(fdMax(nm), 1e-4)
+    }
   })
 })

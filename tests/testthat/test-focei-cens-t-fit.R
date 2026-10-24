@@ -34,8 +34,12 @@
     d$CENS[.lo] <- 1L
     d$DV[.lo] <- lloq
   }
-  if (mode == "m4") d$LIMIT[.lo] <- limit
-  if (mode == "m2") d$LIMIT[d$EVID == 0] <- limit
+  if (mode == "m4") {
+    d$LIMIT[.lo] <- limit
+  }
+  if (mode == "m2") {
+    d$LIMIT[d$EVID == 0] <- limit
+  }
   d
 }
 # the same rows, as plain covariate columns for the hand-written ll() model
@@ -57,8 +61,10 @@
   .z <- function(x) (x - f) / sd
   if (cens != 0) {
     if (is.finite(lim)) {
-      return(log(stats::pt(cens * .z(dv), nu) - stats::pt(cens * .z(lim), nu)) -
-               stats::pt(cens * .z(lim), nu, lower.tail = FALSE, log.p = TRUE))
+      return(
+        log(stats::pt(cens * .z(dv), nu) - stats::pt(cens * .z(lim), nu)) -
+          stats::pt(cens * .z(lim), nu, lower.tail = FALSE, log.p = TRUE)
+      )
     }
     return(stats::pt(cens * .z(dv), nu, log.p = TRUE))
   }
@@ -71,7 +77,6 @@
 }
 
 nmTest({
-
   ## ---------------------------------------------------------------- 1. value
   .popT <- function() {
     ini({
@@ -103,18 +108,19 @@ nmTest({
       .obs <- dat[dat$EVID == 0, ]
       .f <- as.data.frame(fit)$IPRED
       expect_equal(length(.f), nrow(.obs))
-      .ll <- vapply(seq_along(.f), function(k) {
-        .refLl(.obs$DV[k], .obs$CENS[k], .obs$LIMIT[k], .f[k], 0.7, 5)
-      }, numeric(1))
+      .ll <- vapply(
+        seq_along(.f),
+        function(k) {
+          .refLl(.obs$DV[k], .obs$CENS[k], .obs$LIMIT[k], .f[k], 0.7, 5)
+        },
+        numeric(1)
+      )
       -2 * (sum(.ll) - length(.ll) * log(sqrt(2 * pi)))
     }
     for (.nm in c("none", "m3", "m4", "m2")) {
       .dat <- .censDat(.d, .nm, limit = 0.25)
-      .fit <- .nlmixr(.popT, .dat, est = "focei",
-                      foceiControl(print = 0L, covMethod = "",
-                                   maxOuterIterations = 0L))
-      expect_equal(as.numeric(.fit$objf), .refObjf(.fit, .dat), tolerance = 1e-8,
-                   info = paste("case", .nm))
+      .fit <- .nlmixr(.popT, .dat, est = "focei", foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L))
+      expect_equal(as.numeric(.fit$objf), .refObjf(.fit, .dat), tolerance = 1e-8, info = paste("case", .nm))
     }
   })
 
@@ -211,25 +217,34 @@ nmTest({
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     .d <- .censTheo()
-    .ctl <- foceiControl(print = 0L, covMethod = "", calcTables = FALSE,
-                         maxOuterIterations = 0L)
+    .ctl <- foceiControl(print = 0L, covMethod = "", calcTables = FALSE, maxOuterIterations = 0L)
     .run <- function(m, dat) as.numeric(.nlmixr(m, dat, est = "focei", .ctl)$objf)
 
-    expect_equal(.run(.etaCauchy, .censDat(.d, "m3")),
-                 .run(.manM3, .manDat(.d, "m3")), tolerance = 1e-6)
+    expect_equal(.run(.etaCauchy, .censDat(.d, "m3")), .run(.manM3, .manDat(.d, "m3")), tolerance = 1e-6)
     # est="foce" reaches the same place by a different route -- it is the
     # explicit form of the interaction=0 build .foceiFitInternal picks anyway
     .runFoce <- function(m, dat) {
-      as.numeric(.nlmixr(m, dat, est = "foce", foceiControl(
-        print = 0L, covMethod = "", calcTables = FALSE,
-        maxOuterIterations = 0L))$objf)
+      as.numeric(
+        .nlmixr(
+          m,
+          dat,
+          est = "foce",
+          foceiControl(
+            print = 0L,
+            covMethod = "",
+            calcTables = FALSE,
+            maxOuterIterations = 0L
+          )
+        )$objf
+      )
     }
-    expect_equal(.runFoce(.etaCauchy, .censDat(.d, "m3")),
-                 .runFoce(.manM3, .manDat(.d, "m3")), tolerance = 1e-6)
-    expect_equal(.run(.etaCauchy, .censDat(.d, "m4")),
-                 .run(.manM4, .manDat(.d, "m4")), tolerance = 1e-5)
-    expect_equal(.run(.etaCauchy, .censDat(.d, "m2", limit = 0.25)),
-                 .run(.manM2, .manDat(.d, "m2", limit = 0.25)), tolerance = 1e-6)
+    expect_equal(.runFoce(.etaCauchy, .censDat(.d, "m3")), .runFoce(.manM3, .manDat(.d, "m3")), tolerance = 1e-6)
+    expect_equal(.run(.etaCauchy, .censDat(.d, "m4")), .run(.manM4, .manDat(.d, "m4")), tolerance = 1e-5)
+    expect_equal(
+      .run(.etaCauchy, .censDat(.d, "m2", limit = 0.25)),
+      .run(.manM2, .manDat(.d, "m2", limit = 0.25)),
+      tolerance = 1e-6
+    )
   })
 
   ## ------------------------------------------------ mechanism-used evidence
@@ -237,8 +252,7 @@ nmTest({
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     .d <- .censTheo(2L)
-    .ctl <- foceiControl(print = 0L, covMethod = "", calcTables = FALSE,
-                         maxOuterIterations = 0L)
+    .ctl <- foceiControl(print = 0L, covMethod = "", calcTables = FALSE, maxOuterIterations = 0L)
     .m3 <- .censDat(.d, "m3", lloq = 3)
     .naive <- .m3
     .naive$CENS <- 0L
@@ -251,7 +265,8 @@ nmTest({
     expect_true(abs(.fitCens$objf - .fitNaive$objf) > 1e-6)
     # ...and it must no longer warn that censoring was ignored
     expect_no_warning(suppressMessages(
-      nlmixr2(.etaCauchy, .m3, est = "focei", .ctl)))
+      nlmixr2(.etaCauchy, .m3, est = "focei", .ctl)
+    ))
   })
 
   test_that("a llik-forced dnorm() endpoint honors censoring too (#992)", {
@@ -301,11 +316,12 @@ nmTest({
       })
     }
     .d <- .censTheo()
-    .ctl <- foceiControl(print = 0L, covMethod = "", calcTables = FALSE,
-                         maxOuterIterations = 0L)
-    expect_equal(as.numeric(.nlmixr(.dn, .censDat(.d, "m3"), est = "focei", .ctl)$objf),
-                 as.numeric(.nlmixr(.manDn, .manDat(.d, "m3"), est = "focei", .ctl)$objf),
-                 tolerance = 1e-6)
+    .ctl <- foceiControl(print = 0L, covMethod = "", calcTables = FALSE, maxOuterIterations = 0L)
+    expect_equal(
+      as.numeric(.nlmixr(.dn, .censDat(.d, "m3"), est = "focei", .ctl)$objf),
+      as.numeric(.nlmixr(.manDn, .manDat(.d, "m3"), est = "focei", .ctl)$objf),
+      tolerance = 1e-6
+    )
   })
   ## ------------------------------------------------------- 3. eta gradient
   # LAST in the file on purpose: .vaeInnerSetup()'s direct likInner() calls set
@@ -383,13 +399,17 @@ nmTest({
     .testSeed(11)
     .etaMat <- matrix(stats::rnorm(.N * 2, 0, 0.1), .N, 2)
     .fdLp <- function(eta, id, h = 1e-5) {
-      vapply(seq_along(eta), function(j) {
-        .ep <- eta
-        .ep[j] <- .ep[j] + h
-        .em <- eta
-        .em[j] <- .em[j] - h
-        (likInner(.ep, id) - likInner(.em, id)) / (2 * h)
-      }, numeric(1))
+      vapply(
+        seq_along(eta),
+        function(j) {
+          .ep <- eta
+          .ep[j] <- .ep[j] + h
+          .em <- eta
+          .em[j] <- .em[j] - h
+          (likInner(.ep, id) - likInner(.em, id)) / (2 * h)
+        },
+        numeric(1)
+      )
     }
     .models <- list(add = .addM, prop = .propM, lnorm = .lnormM)
     for (.err in names(.models)) {
@@ -398,13 +418,15 @@ nmTest({
         .dat <- .censDat(.d, .mode, limit = if (.mode == "m2") 0.25 else 0.5)
         suppressWarnings(.vaeInnerSetup(.ui, .dat, .etaMat, vaeControl()))
         for (.id in seq_len(.N)) {
-          expect_equal(as.numeric(foceiInnerLp(.etaMat[.id, ], .id)),
-                       .fdLp(.etaMat[.id, ], .id), tolerance = 1e-3,
-                       info = paste(.err, .mode, "id", .id))
+          expect_equal(
+            as.numeric(foceiInnerLp(.etaMat[.id, ], .id)),
+            .fdLp(.etaMat[.id, ], .id),
+            tolerance = 1e-3,
+            info = paste(.err, .mode, "id", .id)
+          )
         }
         .vaeInnerFree()
       }
     }
   })
-
 })

@@ -1,7 +1,5 @@
 nmTest({
-
   test_that("issue #470: a theta-reset restart does not raise a factor-ID assertion", {
-
     # The fixed tv is deliberately far from the truth, so this fit never
     # converges (it drifts, triggers repeated "Theta reset (ETA drift)" and a
     # restart).  On the restart .foceiFitInternal() re-validates the previous
@@ -31,11 +29,11 @@ nmTest({
 
     .res <- tryCatch(
       .nlmixr(mod, theo_sd, "focei", foceiControl(print = 0L)),
-      error = function(e) e)
+      error = function(e) e
+    )
 
     .msg <- if (inherits(.res, "condition")) conditionMessage(.res) else ""
     expect_false(grepl("not 'factor'", .msg, fixed = TRUE))
     expect_false(grepl("Must be of type 'integer'", .msg, fixed = TRUE))
   })
-
 })

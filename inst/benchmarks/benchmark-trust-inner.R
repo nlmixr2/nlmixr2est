@@ -46,16 +46,20 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
 .benchResults <- list()
 .benchRecord <- function(source, model, n1, tr) {
   maxParDiff <- NA_real_
-  if (isTRUE(n1$ok) && isTRUE(tr$ok) &&
-        !is.null(n1$theta) && !is.null(tr$theta)) {
+  if (isTRUE(n1$ok) && isTRUE(tr$ok) && !is.null(n1$theta) && !is.null(tr$theta)) {
     common <- intersect(names(n1$theta), names(tr$theta))
     if (length(common)) maxParDiff <- max(abs(n1$theta[common] - tr$theta[common]))
   }
   row <- data.frame(
-    source = source, model = model,
-    n1qn1_ok = isTRUE(n1$ok), n1qn1_time = as.numeric(n1$time), n1qn1_objf = as.numeric(n1$objf),
+    source = source,
+    model = model,
+    n1qn1_ok = isTRUE(n1$ok),
+    n1qn1_time = as.numeric(n1$time),
+    n1qn1_objf = as.numeric(n1$objf),
     n1qn1_error = ifelse(is.null(n1$error), NA_character_, n1$error),
-    trust_ok = isTRUE(tr$ok), trust_time = as.numeric(tr$time), trust_objf = as.numeric(tr$objf),
+    trust_ok = isTRUE(tr$ok),
+    trust_time = as.numeric(tr$time),
+    trust_objf = as.numeric(tr$objf),
     trust_error = ifelse(is.null(tr$error), NA_character_, tr$error),
     dObjf = as.numeric(tr$objf) - as.numeric(n1$objf),
     speedup = as.numeric(n1$time) / as.numeric(tr$time),
@@ -64,18 +68,37 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
   )
   .benchResults[[length(.benchResults) + 1]] <<- row
   write.csv(do.call(rbind, .benchResults), .csvPath, row.names = FALSE)
-  .blog("[%s] %s: n1qn1 ok=%s time=%.2fs objf=%s | trust ok=%s time=%.2fs objf=%s | dObjf=%s maxParDiff=%s",
-        source, model, n1$ok, n1$time, format(n1$objf), tr$ok, tr$time, format(tr$objf),
-        format(row$dObjf), format(maxParDiff))
+  .blog(
+    "[%s] %s: n1qn1 ok=%s time=%.2fs objf=%s | trust ok=%s time=%.2fs objf=%s | dObjf=%s maxParDiff=%s",
+    source,
+    model,
+    n1$ok,
+    n1$time,
+    format(n1$objf),
+    tr$ok,
+    tr$time,
+    format(tr$objf),
+    format(row$dObjf),
+    format(maxParDiff)
+  )
 }
 
 .benchLogSkip <- function(source, model, reason) {
   .blog("[%s] %s: SKIPPED -- %s", source, model, reason)
   .benchResults[[length(.benchResults) + 1]] <<- data.frame(
-    source = source, model = model,
-    n1qn1_ok = NA, n1qn1_time = NA_real_, n1qn1_objf = NA_real_, n1qn1_error = reason,
-    trust_ok = NA, trust_time = NA_real_, trust_objf = NA_real_, trust_error = reason,
-    dObjf = NA_real_, speedup = NA_real_, maxParDiff = NA_real_,
+    source = source,
+    model = model,
+    n1qn1_ok = NA,
+    n1qn1_time = NA_real_,
+    n1qn1_objf = NA_real_,
+    n1qn1_error = reason,
+    trust_ok = NA,
+    trust_time = NA_real_,
+    trust_objf = NA_real_,
+    trust_error = reason,
+    dObjf = NA_real_,
+    speedup = NA_real_,
+    maxParDiff = NA_real_,
     stringsAsFactors = FALSE
   )
   write.csv(do.call(rbind, .benchResults), .csvPath, row.names = FALSE)
@@ -91,27 +114,35 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
   ctlList$calcTables <- FALSE
   ctl <- tryCatch(do.call(nlmixr2est::foceiControl, ctlList), error = function(e) NULL)
   if (is.null(ctl)) {
-    return(list(ok = FALSE, time = NA_real_, objf = NA_real_, theta = NULL,
-                error = "could not rebuild foceiControl for this innerOpt"))
+    return(list(
+      ok = FALSE,
+      time = NA_real_,
+      objf = NA_real_,
+      theta = NULL,
+      error = "could not rebuild foceiControl for this innerOpt"
+    ))
   }
   t0 <- proc.time()["elapsed"]
   fit <- tryCatch(
     suppressWarnings(suppressMessages(
-      do.call(nlmixr2est::nlmixr2,
-              c(list(object = object, data = data, est = est, control = ctl,
-                     table = table, save = save, envir = envir), dots))
+      do.call(
+        nlmixr2est::nlmixr2,
+        c(list(object = object, data = data, est = est, control = ctl, table = table, save = save, envir = envir), dots)
+      )
     )),
     error = function(e) e
   )
   t1 <- proc.time()["elapsed"]
   if (inherits(fit, "error")) {
-    return(list(ok = FALSE, time = unname(t1 - t0), objf = NA_real_, theta = NULL,
-                error = conditionMessage(fit)))
+    return(list(ok = FALSE, time = unname(t1 - t0), objf = NA_real_, theta = NULL, error = conditionMessage(fit)))
   }
-  list(ok = TRUE, time = unname(t1 - t0),
-       objf = tryCatch(as.numeric(fit$objf), error = function(e) NA_real_),
-       theta = tryCatch(setNames(as.numeric(fit$theta), names(fit$theta)), error = function(e) NULL),
-       error = NA_character_)
+  list(
+    ok = TRUE,
+    time = unname(t1 - t0),
+    objf = tryCatch(as.numeric(fit$objf), error = function(e) NA_real_),
+    theta = tryCatch(setNames(as.numeric(fit$theta), names(fit$theta)), error = function(e) NULL),
+    error = NA_character_
+  )
 }
 
 # ---------------------------------------------------------------------------
@@ -131,29 +162,45 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
 
 .origNlmixr2 <- nlmixr2est::nlmixr2
 
-.benchNlmixr2Wrap <- function(object, data, est = NULL, control = list(),
-                               table = nlmixr2est::tableControl(), ..., save = NULL,
-                               envir = parent.frame()) {
+.benchNlmixr2Wrap <- function(
+  object,
+  data,
+  est = NULL,
+  control = list(),
+  table = nlmixr2est::tableControl(),
+  ...,
+  save = NULL,
+  envir = parent.frame()
+) {
   dots <- list(...)
   t0 <- proc.time()["elapsed"]
   fit <- tryCatch(
-    do.call(.origNlmixr2,
-            c(list(object = object, data = data, est = est, control = control,
-                   table = table, save = save, envir = envir), dots)),
+    do.call(
+      .origNlmixr2,
+      c(
+        list(object = object, data = data, est = est, control = control, table = table, save = save, envir = envir),
+        dots
+      )
+    ),
     error = function(e) e
   )
   t1 <- proc.time()["elapsed"]
-  if (inherits(fit, "error")) return(fit) # let the sourced file's own error handling see it
+  if (inherits(fit, "error")) {
+    return(fit)
+  } # let the sourced file's own error handling see it
   isFocei <- tryCatch(identical(fit$est, "focei"), error = function(e) FALSE)
   if (isTRUE(isFocei)) {
     label <- .nextBenchModelLabel()
     baseCtl <- tryCatch(fit$control, error = function(e) list())
     curInnerOpt <- tryCatch(baseCtl$innerOpt, error = function(e) NA_integer_)
     if (identical(curInnerOpt, 1L)) {
-      n1 <- list(ok = TRUE, time = unname(t1 - t0),
-                 objf = tryCatch(as.numeric(fit$objf), error = function(e) NA_real_),
-                 theta = tryCatch(setNames(as.numeric(fit$theta), names(fit$theta)), error = function(e) NULL),
-                 error = NA_character_)
+      n1 <- list(
+        ok = TRUE,
+        time = unname(t1 - t0),
+        objf = tryCatch(as.numeric(fit$objf), error = function(e) NA_real_),
+        theta = tryCatch(setNames(as.numeric(fit$theta), names(fit$theta)), error = function(e) NULL),
+        error = NA_character_
+      )
     } else {
       n1 <- .benchFitOnce(object, data, est, baseCtl, table, dots, save, envir, "n1qn1")
     }
@@ -167,12 +214,20 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
   assign("nlmixr2", .benchNlmixr2Wrap, envir = envir)
   assign("nlmixr", .benchNlmixr2Wrap, envir = envir)
   # Neutralize testthat's skip/report machinery -- run the block, don't assert.
-  assign("test_that", function(desc, code) {
-    tryCatch(force(code), error = function(e) NULL)
-  }, envir = envir)
-  assign("nmTest", function(code) {
-    tryCatch(force(code), error = function(e) NULL)
-  }, envir = envir)
+  assign(
+    "test_that",
+    function(desc, code) {
+      tryCatch(force(code), error = function(e) NULL)
+    },
+    envir = envir
+  )
+  assign(
+    "nmTest",
+    function(code) {
+      tryCatch(force(code), error = function(e) NULL)
+    },
+    envir = envir
+  )
   assign("skip_on_cran", function(...) invisible(NULL), envir = envir)
   assign("skip_if_not_installed", function(...) invisible(NULL), envir = envir)
   assign("skip_on_ci", function(...) invisible(NULL), envir = envir)
@@ -184,13 +239,16 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
   .benchModelCounter <<- 0L
   env <- new.env(parent = globalenv())
   .withBenchOverrides(env)
-  ok <- tryCatch({
-    source(path, local = env, echo = FALSE)
-    TRUE
-  }, error = function(e) {
-    .blog("[%s] source() failed: %s", sourceTag, conditionMessage(e))
-    FALSE
-  })
+  ok <- tryCatch(
+    {
+      source(path, local = env, echo = FALSE)
+      TRUE
+    },
+    error = function(e) {
+      .blog("[%s] source() failed: %s", sourceTag, conditionMessage(e))
+      FALSE
+    }
+  )
   if (ok && .benchModelCounter == 0L) {
     .benchLogSkip(sourceTag, "(whole file)", "sourced cleanly but no focei fit was intercepted")
   } else if (!ok) {
@@ -274,14 +332,38 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
     list(label = "d924-pheno-sparse", ui = .phenoSparse, data = nlmixr2data::pheno_sd)
   )
   for (cs in cases) {
-    ok <- tryCatch({
-      n1 <- .benchFitOnce(cs$ui, cs$data, "focei", list(), nlmixr2est::tableControl(), list(),
-                           NULL, parent.frame(), "n1qn1")
-      tr <- .benchFitOnce(cs$ui, cs$data, "focei", list(), nlmixr2est::tableControl(), list(),
-                           NULL, parent.frame(), "trust")
-      .benchRecord("discussion-924", cs$label, n1, tr)
-      TRUE
-    }, error = function(e) { .blog("[discussion-924] %s errored: %s", cs$label, conditionMessage(e)); FALSE })
+    ok <- tryCatch(
+      {
+        n1 <- .benchFitOnce(
+          cs$ui,
+          cs$data,
+          "focei",
+          list(),
+          nlmixr2est::tableControl(),
+          list(),
+          NULL,
+          parent.frame(),
+          "n1qn1"
+        )
+        tr <- .benchFitOnce(
+          cs$ui,
+          cs$data,
+          "focei",
+          list(),
+          nlmixr2est::tableControl(),
+          list(),
+          NULL,
+          parent.frame(),
+          "trust"
+        )
+        .benchRecord("discussion-924", cs$label, n1, tr)
+        TRUE
+      },
+      error = function(e) {
+        .blog("[discussion-924] %s errored: %s", cs$label, conditionMessage(e))
+        FALSE
+      }
+    )
     if (!ok) .benchLogSkip("discussion-924", cs$label, "case setup errored -- see log")
   }
 }
@@ -303,14 +385,20 @@ dir.create(.outDir, showWarnings = FALSE, recursive = TRUE)
   for (rmd in rmds) {
     tag <- paste0("vignette:", sub("\\.Rmd$", "", basename(rmd)))
     rFile <- tempfile(fileext = ".R")
-    purlOk <- tryCatch({
-      knitr::purl(rmd, output = rFile, documentation = 0L, quiet = TRUE)
-      TRUE
-    }, error = function(e) {
-      .blog("[%s] knitr::purl() failed: %s", tag, conditionMessage(e))
-      FALSE
-    })
-    if (!purlOk) { .benchLogSkip(tag, "(whole file)", "knitr::purl() failed -- see log"); next }
+    purlOk <- tryCatch(
+      {
+        knitr::purl(rmd, output = rFile, documentation = 0L, quiet = TRUE)
+        TRUE
+      },
+      error = function(e) {
+        .blog("[%s] knitr::purl() failed: %s", tag, conditionMessage(e))
+        FALSE
+      }
+    )
+    if (!purlOk) {
+      .benchLogSkip(tag, "(whole file)", "knitr::purl() failed -- see log")
+      next
+    }
     .sourceCorpusFile(rFile, tag)
     unlink(rFile)
   }
@@ -353,26 +441,47 @@ if (length(.benchResults)) {
   lines <- c(
     "# innerOpt=\"trust\" vs innerOpt=\"n1qn1\" benchmark",
     "",
-    sprintf("Total corpus entries: %d (both converged: %d, skipped/failed: %d)",
-            nrow(df), nrow(ok), nrow(df) - nrow(ok)),
+    sprintf(
+      "Total corpus entries: %d (both converged: %d, skipped/failed: %d)",
+      nrow(df),
+      nrow(ok),
+      nrow(df) - nrow(ok)
+    ),
     ""
   )
   if (nrow(ok)) {
-    lines <- c(lines,
+    lines <- c(
+      lines,
       sprintf("Median speedup (n1qn1 time / trust time): %.2fx", stats::median(ok$speedup, na.rm = TRUE)),
       sprintf("Median |objf diff|: %.4g", stats::median(abs(ok$dObjf), na.rm = TRUE)),
       sprintf("Median max |param diff|: %.4g", stats::median(ok$maxParDiff, na.rm = TRUE)),
       ""
     )
   }
-  lines <- c(lines, "| source | model | n1qn1 ok | n1qn1 time | n1qn1 objf | trust ok | trust time | trust objf | dObjf | speedup | maxParDiff |",
-             "|---|---|---|---|---|---|---|---|---|---|---|")
+  lines <- c(
+    lines,
+    "| source | model | n1qn1 ok | n1qn1 time | n1qn1 objf | trust ok | trust time | trust objf | dObjf | speedup | maxParDiff |",
+    "|---|---|---|---|---|---|---|---|---|---|---|"
+  )
   for (i in seq_len(nrow(df))) {
     r <- df[i, ]
-    lines <- c(lines, sprintf("| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |",
-      r$source, r$model, r$n1qn1_ok, format(r$n1qn1_time), format(r$n1qn1_objf),
-      r$trust_ok, format(r$trust_time), format(r$trust_objf),
-      format(r$dObjf), format(r$speedup), format(r$maxParDiff)))
+    lines <- c(
+      lines,
+      sprintf(
+        "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |",
+        r$source,
+        r$model,
+        r$n1qn1_ok,
+        format(r$n1qn1_time),
+        format(r$n1qn1_objf),
+        r$trust_ok,
+        format(r$trust_time),
+        format(r$trust_objf),
+        format(r$dObjf),
+        format(r$speedup),
+        format(r$maxParDiff)
+      )
+    )
   }
   writeLines(lines, mdPath)
   .blog("wrote %s and %s", .csvPath, mdPath)

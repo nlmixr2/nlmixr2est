@@ -1,6 +1,5 @@
 nmTest({
   test_that("unary plus mu estimate", {
-
     pheno <- function() {
       ini({
         tcl <- log(0.008) # typical value of clearance

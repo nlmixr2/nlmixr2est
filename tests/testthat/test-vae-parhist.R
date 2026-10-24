@@ -18,10 +18,18 @@ nmTest({
 
   test_that("est=vae captures the parameter walk and is reproducible", {
     skip_on_cran()
-    ctl <- vaeControl(itersBurnIn = 5L, iters = 8L, klWarmup = 4L, gammaIter = 5L,
-                      nGradStep = 2L, covariateSelection = FALSE, print = 0L)
+    ctl <- vaeControl(
+      itersBurnIn = 5L,
+      iters = 8L,
+      klWarmup = 4L,
+      gammaIter = 5L,
+      nGradStep = 2L,
+      covariateSelection = FALSE,
+      print = 0L
+    )
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(.vaePhMod(), nlmixr2data::theo_sd, est = "vae", control = ctl)))
+      nlmixr2(.vaePhMod(), nlmixr2data::theo_sd, est = "vae", control = ctl)
+    ))
 
     ## seed recorded on the fit
     expect_equal(fit$env$vae$seed, 42L)
@@ -32,12 +40,13 @@ nmTest({
     expect_s3_class(ph, "data.frame")
     expect_equal(nrow(ph), 5L + 8L)
     expect_true(all(c("iter", "objf", "lka", "lke", "lV", "add.err") %in% names(ph)))
-    expect_false("type" %in% names(ph))            # .parHistCalc drops the type col
+    expect_false("type" %in% names(ph)) # .parHistCalc drops the type col
     expect_true(all(is.finite(ph$objf)))
 
     ## same seed -> identical walk
     fit2 <- suppressMessages(suppressWarnings(
-      nlmixr2(.vaePhMod(), nlmixr2data::theo_sd, est = "vae", control = ctl)))
+      nlmixr2(.vaePhMod(), nlmixr2data::theo_sd, est = "vae", control = ctl)
+    ))
     expect_equal(fit$parHist, fit2$parHist)
   })
 
@@ -45,12 +54,21 @@ nmTest({
     skip_on_cran()
     ## the seed is set ONCE for the whole estimation (rxWithSeed in nlmixr2Est.vae)
     ## and the caller's global .Random.seed is restored on exit
-    ctl <- vaeControl(itersBurnIn = 3L, iters = 4L, klWarmup = 2L, gammaIter = 3L,
-                      nGradStep = 2L, covariateSelection = FALSE, print = 0L)
-    .testSeed(123); want <- runif(3)
+    ctl <- vaeControl(
+      itersBurnIn = 3L,
+      iters = 4L,
+      klWarmup = 2L,
+      gammaIter = 3L,
+      nGradStep = 2L,
+      covariateSelection = FALSE,
+      print = 0L
+    )
+    .testSeed(123)
+    want <- runif(3)
     .testSeed(123)
     invisible(suppressMessages(suppressWarnings(
-      nlmixr2(.vaePhMod(), nlmixr2data::theo_sd, est = "vae", control = ctl))))
+      nlmixr2(.vaePhMod(), nlmixr2data::theo_sd, est = "vae", control = ctl)
+    )))
     got <- runif(3)
     expect_equal(got, want)
   })

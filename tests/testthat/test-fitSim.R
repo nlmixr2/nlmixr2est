@@ -3,9 +3,7 @@ test_that("the focei-family simulation models are the default method", {
   # default method twice -- identical output, three times the work.  Aliases,
   # not copies, so this fails the moment a body grows back.
   for (.m in c("focei", "foce", "focep", "fo", "foi", "posthoc")) {
-    expect_identical(get(paste0("getBaseSimModelFit.", .m)),
-                     getBaseSimModelFit.default,
-                     info = .m)
+    expect_identical(get(paste0("getBaseSimModelFit.", .m)), getBaseSimModelFit.default, info = .m)
   }
 })
 
@@ -34,7 +32,6 @@ nmTest({
   test_that("a focei fit lowers to the same simulation model as any other fit", {
     skip_if(is.null(one.compartment.fit.focei))
     .fit <- one.compartment.fit.focei
-    expect_equal(rxode2::rxNorm(.fit$simulationModel),
-                 rxode2::rxNorm(eval(rxode2::getBaseSimModel(.fit$ui))))
+    expect_equal(rxode2::rxNorm(.fit$simulationModel), rxode2::rxNorm(eval(rxode2::getBaseSimModel(.fit$ui))))
   })
 })

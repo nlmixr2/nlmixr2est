@@ -1,6 +1,5 @@
 nmTest({
   test_that("update estimates", {
-
     one.compartment <- function() {
       ini({
         tka <- 0.45 ; label("Log Ka")
@@ -24,7 +23,8 @@ nmTest({
 
     fit2 <-
       .nlmixr(
-        one.compartment, theo_sd,
+        one.compartment,
+        theo_sd,
         est = "focei",
         control = list(print = 0)
       )

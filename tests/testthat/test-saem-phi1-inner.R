@@ -87,23 +87,33 @@ nmTest({
 
     .ev <- rxode2::et(amt = 320, time = 0) |> rxode2::et(seq(0.5, 24, by = 4))
     .ev$DV <- 5
-    .pars <- c("THETA[1]" = 0.45, "THETA[2]" = 1, "THETA[3]" = 3.45,
-              "THETA[4]" = log(0.7), "ETA[1]" = 0.1, "ETA[2]" = -0.05, "ETA[3]" = 0.02)
+    .pars <- c(
+      "THETA[1]" = 0.45,
+      "THETA[2]" = 1,
+      "THETA[3]" = 3.45,
+      "THETA[4]" = log(0.7),
+      "ETA[1]" = 0.1,
+      "ETA[2]" = -0.05,
+      "ETA[3]" = 0.02
+    )
     .h <- 1e-4
 
     .solveAt <- function(mod, eta1) {
-      .p <- .pars; .p["ETA[1]"] <- eta1
+      .p <- .pars
+      .p["ETA[1]"] <- eta1
       .s <- suppressWarnings(rxode2::rxSolve(mod, .p, .ev, returnType = "data.frame"))
       sum(.s$rx_pred_)
     }
     .fdGrad <- (.solveAt(.inner, .pars[["ETA[1]"]] + .h) -
-                  .solveAt(.inner, .pars[["ETA[1]"]] - .h)) / (2 * .h)
+      .solveAt(.inner, .pars[["ETA[1]"]] - .h)) /
+      (2 * .h)
     .s0 <- suppressWarnings(rxode2::rxSolve(.inner, .pars, .ev, returnType = "data.frame"))
     .analyticGrad <- sum(.s0$rx__sens_rx_pred__BY_ETA_1___)
     expect_equal(.analyticGrad, .fdGrad, tolerance = 1e-3)
 
     .solveAtH2 <- function(eta1) {
-      .p <- .pars; .p["ETA[1]"] <- eta1
+      .p <- .pars
+      .p["ETA[1]"] <- eta1
       .s <- suppressWarnings(rxode2::rxSolve(.innerHess2, .p, .ev, returnType = "data.frame"))
       sum(.s$rx__sens_rx_pred__BY_ETA_1___)
     }

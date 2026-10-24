@@ -49,24 +49,25 @@ nmTest({
       d/dt(ce) <- ke0 * (C2 - ce)
       eff <- emax * ce
     })
-    .th <- c(tka = log(1.57), tcl = log(2.72), tv = log(31.5),
-             tke0 = log(0.5), temax = log(3))
+    .th <- c(tka = log(1.57), tcl = log(2.72), tv = log(31.5), tke0 = log(0.5), temax = log(3))
     .ev <- rxode2::et(amt = 320, cmt = "depot")
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 2))
     .ev <- rxode2::et(.ev, id = seq_len(nid))
-    .s <- rxode2::rxSolve(.sim, .th, .ev,
-                          omega = lotri::lotri(eta.ka ~ 0.2, eta.cl ~ 0.1),
-                          addDosing = FALSE, returnType = "data.frame")
+    .s <- rxode2::rxSolve(
+      .sim,
+      .th,
+      .ev,
+      omega = lotri::lotri(eta.ka ~ 0.2, eta.cl ~ 0.1),
+      addDosing = FALSE,
+      returnType = "data.frame"
+    )
     .obs <- rbind(
-      data.frame(id = .s$id, time = .s$time,
-                 dv = .s$C2 * (1 + 0.1 * stats::rnorm(nrow(.s))), cmt = "C2"),
-      data.frame(id = .s$id, time = .s$time,
-                 dv = .s$eff + 0.3 * stats::rnorm(nrow(.s)), cmt = "eff"))
+      data.frame(id = .s$id, time = .s$time, dv = .s$C2 * (1 + 0.1 * stats::rnorm(nrow(.s))), cmt = "C2"),
+      data.frame(id = .s$id, time = .s$time, dv = .s$eff + 0.3 * stats::rnorm(nrow(.s)), cmt = "eff")
+    )
     .obs$amt <- NA_real_
     .obs$evid <- 0
-    .d <- rbind(data.frame(id = seq_len(nid), time = 0, dv = NA_real_,
-                           cmt = "depot", amt = 320, evid = 1),
-                .obs)
+    .d <- rbind(data.frame(id = seq_len(nid), time = 0, dv = NA_real_, cmt = "depot", amt = 320, evid = 1), .obs)
     .d[order(.d$id, .d$time, -.d$evid), ]
   }
 
@@ -75,8 +76,7 @@ nmTest({
       rxode2::rxSetSeed(42)
       .d <- .simData(nid = 4)
     })
-    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, covMethod = "",
-                         calcTables = FALSE)
+    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, covMethod = "", calcTables = FALSE)
     .fLin <- suppressWarnings(nlmixr2(.lin(), .d, est = "focei", control = .ctl))
     expect_true(any(grepl("analytic 'linCmt()'", .fLin$runInfo, fixed = TRUE)))
     # the equivalent all-ODE model has nothing to say about linCmt()
@@ -89,8 +89,7 @@ nmTest({
       rxode2::rxSetSeed(42)
       .d <- .simData()
     })
-    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, covMethod = "",
-                         calcTables = FALSE)
+    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, covMethod = "", calcTables = FALSE)
     .fLin <- suppressWarnings(nlmixr2(.lin(), .d, est = "focei", control = .ctl))
     .fOde <- suppressWarnings(nlmixr2(.ode(), .d, est = "focei", control = .ctl))
     # the two encodings are the same statistical model, so the objective
@@ -144,12 +143,10 @@ nmTest({
     # solveType="fun" uses no analytic derivatives and so never had the
     # compartment shift; "grad"/"hessian" add theta-sensitivity states and did
     for (.st in c("fun", "grad", "hessian")) {
-      .ctl <- nlmControl(print = 0, iterlim = 1, calcTables = FALSE,
-                         solveType = .st)
+      .ctl <- nlmControl(print = 0, iterlim = 1, calcTables = FALSE, solveType = .st)
       .fLin <- suppressWarnings(nlmixr2(.linPop(), .d, est = "nlm", control = .ctl))
       .fOde <- suppressWarnings(nlmixr2(.odePop(), .d, est = "nlm", control = .ctl))
-      expect_equal(.fLin$objDf$OBJF, .fOde$objDf$OBJF, tolerance = 1e-4,
-                   info = paste0("solveType=", .st))
+      expect_equal(.fLin$objDf$OBJF, .fOde$objDf$OBJF, tolerance = 1e-4, info = paste0("solveType=", .st))
     }
   })
 
@@ -182,12 +179,10 @@ nmTest({
     })
     # fallbackFD=TRUE routes a failed inner solve through the prediction model
     for (.fb in c(FALSE, TRUE)) {
-      .ctl <- foceiControl(print = 0, maxOuterIterations = 0, covMethod = "",
-                           calcTables = FALSE, fallbackFD = .fb)
+      .ctl <- foceiControl(print = 0, maxOuterIterations = 0, covMethod = "", calcTables = FALSE, fallbackFD = .fb)
       .fLin <- suppressWarnings(nlmixr2(.lin(), .d, est = "focei", control = .ctl))
       .fOde <- suppressWarnings(nlmixr2(.ode(), .d, est = "focei", control = .ctl))
-      expect_equal(.fLin$objDf$OBJF, .fOde$objDf$OBJF, tolerance = 1e-4,
-                   info = paste0("fallbackFD=", .fb))
+      expect_equal(.fLin$objDf$OBJF, .fOde$objDf$OBJF, tolerance = 1e-4, info = paste0("fallbackFD=", .fb))
     }
     # the prediction/table models are solved with the same event table
     .ctl <- foceiControl(print = 0, maxOuterIterations = 0, covMethod = "")
@@ -203,14 +198,15 @@ nmTest({
       rxode2::rxSetSeed(42)
       .d <- .simData(nid = 12)
     })
-    .fLin <- suppressWarnings(nlmixr2(.lin(), .d, est = "focei",
-                                      control = foceiControl(print = 0)))
-    .fSaem <- suppressWarnings(nlmixr2(.lin(), .d, est = "saem",
-                                       control = saemControl(print = 0,
-                                                             nBurn = 50, nEm = 100)))
+    .fLin <- suppressWarnings(nlmixr2(.lin(), .d, est = "focei", control = foceiControl(print = 0)))
+    .fSaem <- suppressWarnings(nlmixr2(
+      .lin(),
+      .d,
+      est = "saem",
+      control = saemControl(print = 0, nBurn = 50, nEm = 100)
+    ))
     # saem never had the compartment-numbering problem, so it is the reference
-    expect_equal(unname(.fLin$parFixedDf$Estimate),
-                 unname(.fSaem$parFixedDf$Estimate), tolerance = 0.15)
+    expect_equal(unname(.fLin$parFixedDf$Estimate), unname(.fSaem$parFixedDf$Estimate), tolerance = 0.15)
     # and the dose actually reaches the system now (predictions are not all 0)
     expect_gt(mean(abs(.fLin$IPRED)), 1)
   })

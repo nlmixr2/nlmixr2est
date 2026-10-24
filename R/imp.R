@@ -52,19 +52,21 @@ nlmixr2Est.imp <- function(env, ...) {
   # General (dnorm/ll) likelihoods flow through the shared FOCEI inner problem, so
   # only require transformable normality when the rxode2 build has no llik support.
   if (!rxode2hasLlik()) {
-    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'imp'", .var.name=.ui$modelName)
+    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'imp'", .var.name = .ui$modelName)
   }
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'imp'",
-                             .var.name=.ui$modelName)
-  .foceiFamilyControl(env, ..., type="impmapControl")
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'imp'", .var.name = .ui$modelName)
+  .foceiFamilyControl(env, ..., type = "impmapControl")
   # imp = the impmap kernel with no per-iteration MAP re-centering.
   env$control$mapIter <- 0L
   .control <- env$control
-  on.exit({
-    if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {
-      rm("control", envir=.ui)
-    }
-  }, add=TRUE)
+  on.exit(
+    {
+      if (is.environment(.ui) && exists("control", envir = .ui, inherits = FALSE)) {
+        rm("control", envir = .ui)
+      }
+    },
+    add = TRUE
+  )
   env$impmapControl <- .control
   env$est <- "imp"
   .ui <- env$ui

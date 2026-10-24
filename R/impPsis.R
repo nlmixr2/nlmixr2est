@@ -39,22 +39,32 @@
 #' @noRd
 .impGpdFit <- function(x, minGridPts = 30L) {
   .n <- length(x)
-  if (.n < 5L) return(list(k = NA_real_, sigma = NA_real_))
+  if (.n < 5L) {
+    return(list(k = NA_real_, sigma = NA_real_))
+  }
   .prior <- 3
   .m <- minGridPts + floor(sqrt(.n))
   .jj <- seq_len(.m)
   # quartile used to set the grid scale
   .xstar <- x[floor(.n / 4 + 0.5)]
-  if (!is.finite(.xstar) || .xstar <= 0) return(list(k = NA_real_, sigma = NA_real_))
+  if (!is.finite(.xstar) || .xstar <= 0) {
+    return(list(k = NA_real_, sigma = NA_real_))
+  }
   .theta <- 1 / x[.n] + (1 - sqrt(.m / (.jj - 0.5))) / .prior / .xstar
   # profile log-likelihood of theta, up to an additive constant
-  .lx <- vapply(.theta, function(.t) {
-    .k <- mean(log1p(-.t * x))
-    log(-.t / .k) - .k - 1
-  }, numeric(1))
+  .lx <- vapply(
+    .theta,
+    function(.t) {
+      .k <- mean(log1p(-.t * x))
+      log(-.t / .k) - .k - 1
+    },
+    numeric(1)
+  )
   .l <- .n * .lx
   .l[!is.finite(.l)] <- -Inf
-  if (all(!is.finite(.l))) return(list(k = NA_real_, sigma = NA_real_))
+  if (all(!is.finite(.l))) {
+    return(list(k = NA_real_, sigma = NA_real_))
+  }
   .w <- exp(.l - max(.l))
   .w <- .w / sum(.w)
   .thetaHat <- sum(.theta * .w)
@@ -72,16 +82,22 @@
   .w <- as.numeric(w)
   .w <- .w[is.finite(.w) & .w > 0]
   .s <- length(.w)
-  if (.s < 25L) return(NA_real_)
+  if (.s < 25L) {
+    return(NA_real_)
+  }
   # PSIS tail size: min(0.2*S, 3*sqrt(S)), the usual choice
   .tail <- min(floor(0.2 * .s), floor(3 * sqrt(.s)))
-  if (.tail < 5L) return(NA_real_)
+  if (.tail < 5L) {
+    return(NA_real_)
+  }
   .srt <- sort(.w)
   # threshold is the largest weight NOT in the tail
   .u <- .srt[.s - .tail]
   .exc <- .srt[(.s - .tail + 1L):.s] - .u
   .exc <- .exc[.exc > 0]
-  if (length(.exc) < 5L) return(NA_real_)
+  if (length(.exc) < 5L) {
+    return(NA_real_)
+  }
   .impGpdFit(sort(.exc))$k
 }
 
@@ -92,7 +108,8 @@
 #' @noRd
 .impPsisKAll <- function(env) {
   .w <- tryCatch(env$impWeights, error = function(e) NULL)
-  if (is.null(.w) || length(.w) == 0L) return(numeric(0))
-  vapply(.w, function(.wi) tryCatch(.impPsisK(.wi), error = function(e) NA_real_),
-         numeric(1), USE.NAMES = FALSE)
+  if (is.null(.w) || length(.w) == 0L) {
+    return(numeric(0))
+  }
+  vapply(.w, function(.wi) tryCatch(.impPsisK(.wi), error = function(e) NA_real_), numeric(1), USE.NAMES = FALSE)
 }

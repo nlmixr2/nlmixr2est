@@ -7,24 +7,27 @@
 ##' @author Matthew L. Fidler
 ##' @return Nothing, called for its side effects
 ##' @export
-nlmixr2Validate <- function(type = NULL, skipOnCran=TRUE) {
+nlmixr2Validate <- function(type = NULL, skipOnCran = TRUE) {
   rxode2::rxReq("withr")
   if (is(substitute(type), "{")) {
     if (isTRUE(skipOnCran)) {
-      if (!identical(Sys.getenv("NOT_CRAN"), "true") ||
-            !identical(Sys.getenv("nmTest"), "")) {
+      if (
+        !identical(Sys.getenv("NOT_CRAN"), "true") ||
+          !identical(Sys.getenv("nmTest"), "")
+      ) {
         return(invisible())
       }
     }
     gc()
     rxode2::rxUnloadAll()
-    return(withr::with_options(list(rxode2.verbose.pipe=FALSE),
-                               force(type)))
+    return(withr::with_options(list(rxode2.verbose.pipe = FALSE), force(type)))
   }
 
   pt <- proc.time()
   .filter <- NULL
-  if (is.null(type)) type <- FALSE
+  if (is.null(type)) {
+    type <- FALSE
+  }
   if (is.character(type)) {
     .filter <- type
     type <- TRUE
@@ -34,15 +37,15 @@ nlmixr2Validate <- function(type = NULL, skipOnCran=TRUE) {
     .oldNmTest <- Sys.getenv("nmTest")
     Sys.setenv("NOT_CRAN" = "true") # nolint
     Sys.setenv("nmTest" = "") # nolint
-    on.exit(Sys.setenv("NOT_CRAN" = .oldCran, "nmTest"=.oldNmTest)) # nolint
+    on.exit(Sys.setenv("NOT_CRAN" = .oldCran, "nmTest" = .oldNmTest)) # nolint
   } else if (type == FALSE) {
     .oldCran <- Sys.getenv("NOT_CRAN")
     .oldNmTest <- Sys.getenv("nmTest")
     Sys.setenv("NOT_CRAN" = "false") # nolint
     Sys.setenv("rxTest" = "false") # nolint
-    on.exit(Sys.setenv("NOT_CRAN" = .oldCran, "rxTest"=.oldNmTest)) # nolint
+    on.exit(Sys.setenv("NOT_CRAN" = .oldCran, "rxTest" = .oldNmTest)) # nolint
   }
-  rxode2::.rxWithOptions(list(testthat.progress.max_fails=10000000000), {
+  rxode2::.rxWithOptions(list(testthat.progress.max_fails = 10000000000), {
     path <- file.path(system.file("tests", package = "nlmixr2est"), "testthat")
     rxode2::.rxWithWd(path, {
       try(testthat::test_dir(path, filter = .filter))

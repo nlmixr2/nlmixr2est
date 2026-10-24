@@ -25,12 +25,12 @@ nlmixr2fix <- function(fit) {
   message("\n")
   message("# If all else fails you can try to install the version of nlmixr2 used to create the fit\n")
   # repair raw slots first; `ui` itself may be serialized in an old fit
-  for (.v in ls(fit$env, all.names=TRUE)) {
-    .raw <- get(.v, envir=fit$env)
+  for (.v in ls(fit$env, all.names = TRUE)) {
+    .raw <- get(.v, envir = fit$env)
     if (inherits(.raw, "raw")) {
-      .c <- try(.deserializeRaw(.raw), silent=TRUE)
+      .c <- try(.deserializeRaw(.raw), silent = TRUE)
       if (!inherits(.c, "try-error")) {
-        assign(.v, .c, envir=fit$env)
+        assign(.v, .c, envir = fit$env)
       }
     }
   }
@@ -51,15 +51,17 @@ nlmixr2fix <- function(fit) {
 #' @return the deserialized object; errors when the format needs a package
 #'   that is not installed
 #' @noRd
-.deserializeRaw <- function(raw, type=rxode2::rxGetSerialType_(raw)) {
-  switch(type,
-         qs2 = .legacyQsFn("qs2", "qs_deserialize")(raw),
-         qdata = .legacyQsFn("qs2", "qd_deserialize")(raw),
-         qs = .legacyQsFn("qs", "qdeserialize")(raw),
-         xz = unserialize(memDecompress(raw, type="xz")),
-         bzip2 = unserialize(memDecompress(raw, type="bzip2")),
-         base = unserialize(raw),
-         stop("unknown serialization type '", type, "'", call.=FALSE))
+.deserializeRaw <- function(raw, type = rxode2::rxGetSerialType_(raw)) {
+  switch(
+    type,
+    qs2 = .legacyQsFn("qs2", "qs_deserialize")(raw),
+    qdata = .legacyQsFn("qs2", "qd_deserialize")(raw),
+    qs = .legacyQsFn("qs", "qdeserialize")(raw),
+    xz = unserialize(memDecompress(raw, type = "xz")),
+    bzip2 = unserialize(memDecompress(raw, type = "bzip2")),
+    base = unserialize(raw),
+    stop("unknown serialization type '", type, "'", call. = FALSE)
+  )
 }
 
 #' @param pkg legacy serialization package ("qs2" or "qs")
@@ -67,9 +69,8 @@ nlmixr2fix <- function(fit) {
 #' @return the function, when `pkg` is installed
 #' @noRd
 .legacyQsFn <- function(pkg, fun) {
-  if (!requireNamespace(pkg, quietly=TRUE)) {
-    stop("this object was saved with '", pkg, "'; install ", pkg,
-         " to read it", call.=FALSE)
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    stop("this object was saved with '", pkg, "'; install ", pkg, " to read it", call. = FALSE)
   }
   getExportedValue(pkg, fun)
 }

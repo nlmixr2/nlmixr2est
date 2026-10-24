@@ -103,10 +103,13 @@ nmTest({
     # long-lived cached fixture computed independently of this feature --
     # if a Phase 2-4 change had altered default behavior even slightly,
     # this would drift.
-    fitFresh <- .nlmixr(one.compartment, theo_sd, est = "focei",
-                        control = foceiControl(print = 0, maxOuterIterations = 0L))
-    expect_equal(unname(fitFresh$theta), unname(one.compartment.fit.focei$theta),
-                 tolerance = 1e-6)
+    fitFresh <- .nlmixr(
+      one.compartment,
+      theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 0L)
+    )
+    expect_equal(unname(fitFresh$theta), unname(one.compartment.fit.focei$theta), tolerance = 1e-6)
     expect_equal(fitFresh$objf, one.compartment.fit.focei$objf, tolerance = 1e-6)
 
     # (b) a model that DOES have a mu-ref covariate relationship, fit with
@@ -139,16 +142,14 @@ nmTest({
     fitDefault <- .getCachedFit(
       name = "mu-family-none-default",
       fitFn = function() {
-        .nlmixr(mod, theo_sd2, "focei",
-                foceiControl(print = 0, maxOuterIterations = 0L))
+        .nlmixr(mod, theo_sd2, "focei", foceiControl(print = 0, maxOuterIterations = 0L))
       },
       cacheFile = "fit-mu-family-none-default.rds"
     )
     fitExplicitNone <- .getCachedFit(
       name = "mu-family-none-explicit",
       fitFn = function() {
-        .nlmixr(mod, theo_sd2, "focei",
-                foceiControl(print = 0, maxOuterIterations = 0L, muModel = "none"))
+        .nlmixr(mod, theo_sd2, "focei", foceiControl(print = 0, maxOuterIterations = 0L, muModel = "none"))
       },
       cacheFile = "fit-mu-family-none-explicit.rds"
     )
@@ -180,13 +181,16 @@ nmTest({
     # half the subjects get 1 observation (low information for their eta),
     # half get 8 (high information)
     nobs <- ifelse(ids <= nsub / 2, 1L, 8L)
-    d <- do.call(rbind, lapply(ids, function(i) {
-      times <- sort(c(0.25, seq_len(nobs[i] - 1) * 1.5 + 0.25))[seq_len(nobs[i])]
-      rbind(
-        data.frame(ID = i, TIME = 0, AMT = 320, DV = 0, EVID = 101, logWT = logWT[i]),
-        data.frame(ID = i, TIME = times, AMT = 0, DV = 0, EVID = 0, logWT = logWT[i])
-      )
-    }))
+    d <- do.call(
+      rbind,
+      lapply(ids, function(i) {
+        times <- sort(c(0.25, seq_len(nobs[i] - 1) * 1.5 + 0.25))[seq_len(nobs[i])]
+        rbind(
+          data.frame(ID = i, TIME = 0, AMT = 320, DV = 0, EVID = 101, logWT = logWT[i]),
+          data.frame(ID = i, TIME = times, AMT = 0, DV = 0, EVID = 0, logWT = logWT[i])
+        )
+      })
+    )
 
     simMod <- function() {
       ini({
@@ -233,5 +237,52 @@ nmTest({
     .refAllo <- unname(fitRef$theta["allo.cl"])
     expect_equal(unname(fitLin$theta["allo.cl"]), .refAllo, tolerance = 0.3)
     expect_equal(unname(fitIrls$theta["allo.cl"]), .refAllo, tolerance = 0.3)
+  })
+
+  test_that("mfoce's objective is the FOCE objective at its estimates", {
+    # FOCE ("nonmem") freezes the residual variance at the eta = 0 prediction and
+    # keeps it per subject.  The mu-referenced regression moves the thetas between
+    # the inner optimizations of one evaluation without updateTheta(), so the
+    # later cycles used the variance of the thetas the evaluation started from:
+    # with maxOuterIterations = 0 the objective came out 15.5 below the FOCE
+    # objective at the estimates the fit reported.  A proportional error makes
+    # the variance depend on the regressed thetas.
+    mProp <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        prop.sd <- 0.1
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ prop(prop.sd)
+      })
+    }
+    .f <- .nlmixr(
+      mProp,
+      theo_sd,
+      "mfoce",
+      mfoceControl(print = 0L, covMethod = "", calcTables = FALSE, maxOuterIterations = 0L)
+    )
+    # the regression moved the mu-referenced thetas off their initial values
+    expect_gt(abs(.f$theta[["tka"]] - 0.45), 0.05)
+    .p <- .nlmixr(
+      .f$finalUi,
+      theo_sd,
+      "foce",
+      foceControl(print = 0L, covMethod = "", calcTables = FALSE, maxOuterIterations = 0L, etaMat = .f)
+    )
+    # what is left is the last regression step, taken after the last inner
+    # optimization
+    expect_lt(abs(.f$objf - .p$objf), 5e-3)
   })
 })

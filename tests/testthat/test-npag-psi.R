@@ -24,10 +24,7 @@ nmTest({
 
     # support points in eta space (eta.ka, eta.v, eta.ke)
     .testSeed(42)
-    pts <- rbind(c(0, 0, 0),
-                 c(0.4, -0.2, 0.1),
-                 c(-0.5, 0.3, -0.15),
-                 matrix(rnorm(9, 0, 0.3), 3, 3))
+    pts <- rbind(c(0, 0, 0), c(0.4, -0.2, 0.1), c(-0.5, 0.3, -0.15), matrix(rnorm(9, 0, 0.3), 3, 3))
     colnames(pts) <- c("eta.ka", "eta.v", "eta.ke")
 
     .npInnerSetup(ui, dat, matrix(0, N, 3L), ctl)
@@ -54,10 +51,15 @@ nmTest({
       .d <- dat[dat$ID == ids[ii], , drop = FALSE]
       .obs <- .d[.d$EVID == 0, , drop = FALSE]
       for (kk in seq_len(nrow(pts))) {
-        .p <- c(tka = unname(th[["tka"]]), tv = unname(th[["tv"]]), tke = unname(th[["tke"]]),
-                eta.ka = unname(pts[kk, 1]), eta.v = unname(pts[kk, 2]), eta.ke = unname(pts[kk, 3]))
-        .s <- rxode2::rxSolve(rxMod, params = .p, events = .d, returnType = "data.frame",
-                              atol = 1e-10, rtol = 1e-10)
+        .p <- c(
+          tka = unname(th[["tka"]]),
+          tv = unname(th[["tv"]]),
+          tke = unname(th[["tke"]]),
+          eta.ka = unname(pts[kk, 1]),
+          eta.v = unname(pts[kk, 2]),
+          eta.ke = unname(pts[kk, 3])
+        )
+        .s <- rxode2::rxSolve(rxMod, params = .p, events = .d, returnType = "data.frame", atol = 1e-10, rtol = 1e-10)
         # rxSolve returns one output row per observation record, in order
         .pred <- .s$cp
         expect_equal(length(.pred), nrow(.obs))

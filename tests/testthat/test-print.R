@@ -22,7 +22,7 @@ nmTest({
     }
 
     suppressMessages(
-      fit <-.nlmixr(one.compartment, theo_sd, est="saem", control = saemControlFast)
+      fit <- .nlmixr(one.compartment, theo_sd, est = "saem", control = saemControlFast)
     )
     expect_output(
       .getCorPrint(fit$omegaR),

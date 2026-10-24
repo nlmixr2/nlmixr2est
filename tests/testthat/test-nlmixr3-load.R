@@ -7,9 +7,10 @@ nmTest({
     expect_error(rxode2::rxSolve(fit))
 
     fit <- expect_error(
-      suppressWarnings(suppressMessages(nlmixr2fix(fit))), NA)
+      suppressWarnings(suppressMessages(nlmixr2fix(fit))),
+      NA
+    )
 
     expect_error(rxode2::rxSolve(fit), NA)
-
   })
 })

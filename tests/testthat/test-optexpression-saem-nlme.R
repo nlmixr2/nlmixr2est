@@ -21,17 +21,23 @@ nmTest({
   }
 
   test_that("optExpression is honored for the saem predOnly model", {
-    .on <- .nlmixrMsg(.oneCmtEta, nlmixr2data::theo_sd, est = "saem",
-                      control = saemControl(optExpression = TRUE, nBurn = 1, nEm = 1,
-                                            print = 0),
-                      table = tableControl(cwres = FALSE, npde = FALSE))
+    .on <- .nlmixrMsg(
+      .oneCmtEta,
+      nlmixr2data::theo_sd,
+      est = "saem",
+      control = saemControl(optExpression = TRUE, nBurn = 1, nEm = 1, print = 0),
+      table = tableControl(cwres = FALSE, npde = FALSE)
+    )
     expect_true(any(grepl("duplicate expressions in saem predOnly model", .on$msg)))
     expect_true(grepl("rx_expr", rxode2::rxNorm(.on$fit$env$saemModel$predOnly)))
 
-    .off <- .nlmixrMsg(.oneCmtEta, nlmixr2data::theo_sd, est = "saem",
-                       control = saemControl(optExpression = FALSE, nBurn = 1, nEm = 1,
-                                             print = 0),
-                       table = tableControl(cwres = FALSE, npde = FALSE))
+    .off <- .nlmixrMsg(
+      .oneCmtEta,
+      nlmixr2data::theo_sd,
+      est = "saem",
+      control = saemControl(optExpression = FALSE, nBurn = 1, nEm = 1, print = 0),
+      table = tableControl(cwres = FALSE, npde = FALSE)
+    )
     expect_false(any(grepl("duplicate expressions", .off$msg)))
     expect_false(grepl("rx_expr", rxode2::rxNorm(.off$fit$env$saemModel$predOnly)))
   })
@@ -55,15 +61,23 @@ nmTest({
       })
     }
 
-    .on <- .nlmixrMsg(oneCmtLin, nlmixr2data::theo_sd, est = "nlme",
-                      control = nlmeControl(optExpression = TRUE, verbose = FALSE),
-                      table = tableControl(cwres = FALSE, npde = FALSE))
+    .on <- .nlmixrMsg(
+      oneCmtLin,
+      nlmixr2data::theo_sd,
+      est = "nlme",
+      control = nlmeControl(optExpression = TRUE, verbose = FALSE),
+      table = tableControl(cwres = FALSE, npde = FALSE)
+    )
     expect_true(any(grepl("duplicate expressions in (Llik )?EBE model", .on$msg)))
     expect_true(grepl("rx_expr", rxode2::rxNorm(.on$fit$env$foceiModel$predOnly)))
 
-    .off <- .nlmixrMsg(oneCmtLin, nlmixr2data::theo_sd, est = "nlme",
-                       control = nlmeControl(optExpression = FALSE, verbose = FALSE),
-                       table = tableControl(cwres = FALSE, npde = FALSE))
+    .off <- .nlmixrMsg(
+      oneCmtLin,
+      nlmixr2data::theo_sd,
+      est = "nlme",
+      control = nlmeControl(optExpression = FALSE, verbose = FALSE),
+      table = tableControl(cwres = FALSE, npde = FALSE)
+    )
     expect_false(any(grepl("duplicate expressions", .off$msg)))
     expect_false(grepl("rx_expr", rxode2::rxNorm(.off$fit$env$foceiModel$predOnly)))
   })

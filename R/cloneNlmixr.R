@@ -10,7 +10,7 @@
   .cls <- attr(env, "class")
   .env <- new.env(parent = emptyenv())
   .seen[[.addr]] <- .env
-  for (.x in ls(env, all.names=TRUE)) {
+  for (.x in ls(env, all.names = TRUE)) {
     if (is.environment(get(.x, env))) {
       assign(.x, .cloneEnv(get(.x, env), .seen), .env)
     } else {
@@ -64,7 +64,7 @@ nlmixrClone <- function(x) {
     .df <- x
     class(.df) <- "data.frame"
     .df <- cbind(.df)
-    .env <- .cloneEnv(attr(.cls,".foceiEnv"))
+    .env <- .cloneEnv(attr(.cls, ".foceiEnv"))
     attr(.cls, ".foceiEnv") <- .env
     class(.df) <- .cls
     .df

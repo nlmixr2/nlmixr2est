@@ -15,10 +15,11 @@
 #' @export
 #' @author Matthew L. Fidler
 .preProcessZeroTheta <- function(ui, est, data, control) {
-  if (!inherits(control, "foceiControl")) return(NULL)
+  if (!inherits(control, "foceiControl")) {
+    return(NULL)
+  }
   .mag <- control$zeroTheta
-  if (is.null(.mag) || !is.numeric(.mag) || length(.mag) != 1L ||
-        !is.finite(.mag) || .mag <= 0) {
+  if (is.null(.mag) || !is.numeric(.mag) || length(.mag) != 1L || !is.finite(.mag) || .mag <= 0) {
     return(NULL)
   }
   .ui <- rxode2::rxUiDecompress(ui)
@@ -27,9 +28,10 @@
   # (is.na(err) FALSE) get their own scaleC (0.5*|init|, or 1 for boxCox/
   # yeoJohnson), so |init|=0 never freezes them, and a 0-valued error sd is a
   # deliberate "disable this component" that must reduce to the smaller model.
-  .w <- which(!is.na(.iniDf$ntheta) & is.na(.iniDf$err) &
-                .iniDf$est == 0 & !.iniDf$fix)
-  if (length(.w) == 0L) return(NULL)
+  .w <- which(!is.na(.iniDf$ntheta) & is.na(.iniDf$err) & .iniDf$est == 0 & !.iniDf$fix)
+  if (length(.w) == 0L) {
+    return(NULL)
+  }
   .changed <- character(0)
   for (.i in .w) {
     .lower <- .iniDf$lower[.i]
@@ -39,17 +41,26 @@
     } else if (-.mag > .lower && -.mag < .upper) {
       .new <- -.mag
     } else {
-      stop("cannot move the zero initial estimate of '", .iniDf$name[.i],
-           "' off 0: neither ", .mag, " nor ", -.mag,
-           " is within its bounds (", .lower, ", ", .upper, ")",
-           call.=FALSE)
+      stop(
+        "cannot move the zero initial estimate of '",
+        .iniDf$name[.i],
+        "' off 0: neither ",
+        .mag,
+        " nor ",
+        -.mag,
+        " is within its bounds (",
+        .lower,
+        ", ",
+        .upper,
+        ")",
+        call. = FALSE
+      )
     }
     .iniDf$est[.i] <- .new
     .changed <- c(.changed, .iniDf$name[.i])
   }
   .ui$iniDf <- .iniDf
-  .minfo(paste0("moved zero initial estimate(s) off 0 (foceiControl(zeroTheta)): ",
-                paste(.changed, collapse=", ")))
-  list(ui=.ui)
+  .minfo(paste0("moved zero initial estimate(s) off 0 (foceiControl(zeroTheta)): ", paste(.changed, collapse = ", ")))
+  list(ui = .ui)
 }
 preProcessHooksAdd(".preProcessZeroTheta", .preProcessZeroTheta)

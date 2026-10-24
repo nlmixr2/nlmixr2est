@@ -1,6 +1,5 @@
 nmTest({
   test_that("vpcSim retains column information", {
-
     PKPDdata <- nlmixr2data::warfarin
     PKPDdata$dvid <- ifelse(PKPDdata$dvid == "cp", "central", "effect")
     PKPDdata <- PKPDdata[, names(PKPDdata) != "DVID"]
@@ -78,10 +77,8 @@ nmTest({
     expect_equal(setdiff(names(tmp), c(names(f), "ID", "dvid")), character(0))
 
     # an unknown extra warns and returns the simulation unchanged (#830)
-    expect_warning(tmp3 <- vpcSimExpand(fitKA1tr1_PDimmemax1_F, f, "NOSUCHCOL"),
-                   "NOSUCHCOL")
+    expect_warning(tmp3 <- vpcSimExpand(fitKA1tr1_PDimmemax1_F, f, "NOSUCHCOL"), "NOSUCHCOL")
     expect_identical(tmp3, f)
-
   })
 
   test_that("vpcSim works with etas that are set to zero (#341)", {
@@ -103,8 +100,8 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.cmt, theo_sd, est="focei", control = foceiControl(print = 0, eval.max = 1))
-    expect_s3_class(vpcSim(fit, pred=TRUE), "data.frame")
+    fit <- .nlmixr(one.cmt, theo_sd, est = "focei", control = foceiControl(print = 0, eval.max = 1))
+    expect_s3_class(vpcSim(fit, pred = TRUE), "data.frame")
   })
 
   test_that("vpcSim works with IOV, including pred=TRUE (#629)", {
@@ -131,20 +128,23 @@ nmTest({
     theo_iov$occ <- 1
     theo_iov$occ[theo_iov$TIME >= 144] <- 2
 
-    fit <- .nlmixr(one.cmt, theo_iov, est="focei",
-                   control=foceiControl(print=0, maxOuterIterations=0L,
-                                        maxInnerIterations=5L, covMethod=""))
+    fit <- .nlmixr(
+      one.cmt,
+      theo_iov,
+      est = "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 0L, maxInnerIterations = 5L, covMethod = "")
+    )
 
     # IOV omega is a list of matrices (id + occ); the sim must vary iov.cl by
     # occasion within a subject
-    f <- vpcSim(fit, n=3)
+    f <- vpcSim(fit, n = 3)
     expect_s3_class(f, "data.frame")
     .byId <- tapply(f$iov.cl, paste(f$sim.id, f$id), function(x) length(unique(x)))
     expect_true(all(.byId == 2))
 
     # pred=TRUE previously errored ("invalid 'times' argument") because the
     # list omega was treated as a single matrix
-    fp <- vpcSim(fit, n=3, pred=TRUE)
+    fp <- vpcSim(fit, n = 3, pred = TRUE)
     expect_s3_class(fp, "data.frame")
     expect_true("pred" %in% names(fp))
   })

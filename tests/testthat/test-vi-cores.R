@@ -12,11 +12,17 @@ nmTest({
   }
 
   .runVi <- function(cores, family = "meanField", est = "emvi") {
-    ctl <- emviControl(iters = 120L, seed = 7L, print = 0L, returnVi = TRUE,
-                       viFamily = family,
-                       rxControl = rxode2::rxControl(cores = cores))
+    ctl <- emviControl(
+      iters = 120L,
+      seed = 7L,
+      print = 0L,
+      returnVi = TRUE,
+      viFamily = family,
+      rxControl = rxode2::rxControl(cores = cores)
+    )
     suppressMessages(suppressWarnings(
-      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = est, control = ctl)))
+      nlmixr2(one.cmt, nlmixr2data::theo_sd, est = est, control = ctl)
+    ))
   }
 
   test_that("mean-field ADVI is bit-for-bit identical for cores=1 vs cores=2", {

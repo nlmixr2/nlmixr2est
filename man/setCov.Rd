@@ -2,15 +2,43 @@
 % Please edit documentation in R/cov.R
 \name{setCov}
 \alias{setCov}
+\alias{setCov.default}
+\alias{setCov.analytic}
+\alias{setCov.r,s}
+\alias{setCov.r}
+\alias{setCov.s}
+\alias{setCov.sa}
+\alias{setCov.imp}
 \title{Set the covariance type based on prior calculated covariances}
 \usage{
-setCov(fit, method)
+setCov(fit, method, ...)
+
+\method{setCov}{default}(fit, method, ...)
+
+\method{setCov}{analytic}(fit, method, ...)
+
+\method{setCov}{`r,s`}(fit, method, control = rsControl(), ...)
+
+\method{setCov}{r}(fit, method, control = rsControl(), ...)
+
+\method{setCov}{s}(fit, method, control = rsControl(), ...)
+
+\method{setCov}{sa}(fit, method, control = saControl(), ...)
+
+\method{setCov}{imp}(fit, method, control = impCovControl(), ...)
 }
 \arguments{
 \item{fit}{nlmixr2 fit}
 
-\item{method}{covariance method (see the `covMethod` argument for the control
-options for the choices)}
+\item{method}{covariance method (see the \code{covMethod} argument of the
+control options for the choices)}
+
+\item{...}{arguments passed to the covariance method}
+
+\item{control}{options for the covariance method itself, only needed to
+change its defaults: \code{\link{rsControl}()} for \code{"r,s"}, \code{"r"}
+and \code{"s"}, \code{\link{saControl}()} for \code{"sa"} and
+\code{\link{impCovControl}()} for \code{"imp"}}
 }
 \value{
 Fit object with covariance updated
@@ -18,13 +46,84 @@ Fit object with covariance updated
 \description{
 Switches a completed fit's covariance to \code{method}.  A previously
 computed covariance is re-installed from the cache; otherwise it is
-recomputed at the converged estimates: \code{"r,s"}/\code{"r"}/\code{"s"} and
-\code{"analytic"} on a zero-iteration FOCEI model, and \code{"sa"} (SAEM
-Louis FIM) / \code{"imp"} (importance-sampling Monte-Carlo) via the decoupled
-recompute engine (the latter two require a mixed-effects fit).  When
-\code{"sa"}/\code{"imp"}/\code{"analytic"} cannot be computed the covariance
-is left unchanged (it is never silently downgraded to \code{"r,s"}).
+recomputed at the converged estimates: \code{"r,s"}/\code{"r"}/\code{"s"} by
+the finite-difference covariance step of the FOCEI family, \code{"analytic"}
+as the analytic observed information at the fit's estimates and ETAs, and
+\code{"sa"} (SAEM Louis FIM) / \code{"imp"} (importance-sampling Monte-Carlo)
+via the decoupled recompute engine (the latter two require a mixed-effects
+fit).  When a covariance cannot be computed it is left unchanged (it is never
+silently downgraded to \code{"r,s"}).
 }
+\details{
+The finite-difference covariances differentiate the fit's marginal
+likelihood, in the fit's own approximation (its \code{interaction}): at every
+finite-difference step the ETAs are optimized again, starting from the fit's
+ETAs.  So \code{setCov(fit, "r,s")} reproduces the \code{"r,s"} covariance a
+FOCEI-family fit computes during estimation, and on a fit of another method
+(saem, nlme, vae, emvi, fbvi) it is that covariance at the method's
+estimates.
+
+Every focei covariance comes in two shapes (see \code{covFull} in
+\code{\link{foceiControl}()}), and both are named: \code{"r,s"}, \code{"r"},
+\code{"s"} and \code{"analytic"} are the structural-theta block, while
+\code{"r,s (full)"}, \code{"r (full)"}, \code{"s (full)"} and
+\code{"analytic (full)"} are the full theta + residual sigma + Omega matrix.
+A focei fit computes both and caches the one it does not install, so swapping
+between them costs nothing.  The shapes are not submatrices of one another on
+the finite-difference path -- \code{"s"} inverts the theta block of the
+cross-product while \code{"s (full)"} takes the theta block of the full
+inverse, which also carries the Omega estimation uncertainty -- so the
+standard errors differ.  On the analytic path the assembly is always full and
+\code{"analytic"} is a submatrix of \code{"analytic (full)"}, so the theta
+standard errors agree.
+
+\code{fit$covMethod} names the installed covariance and
+\code{names(fit$covList)} the cached alternatives (the fit print shows both).
+}
+\section{Adding a covariance method}{
+
+
+\code{setCov()} is an S3 generic dispatched on \code{method} (without any
+\code{" (full)"} suffix), so another package (for example SIR or a bootstrap)
+can add a covariance by registering a method:
+
+\preformatted{
+# registered with S3method(nlmixr2est::setCov, sir) in NAMESPACE
+setCov.sir <- function(fit, method, control = sirControl(), ...) {
+  # compute on the estimation scale, named like fit$cov
+  mySirCovariance(fit, control)
+}
+}
+
+A method that has options declares its own \code{control} holding only those
+options, so \code{setCov(fit, "sir")} uses the defaults and
+\code{setCov(fit, "sir", control = sirControl(...))} changes them.  The
+method receives the fit and \code{method} (carrying dispatch classes; use
+\code{unclass(method)} for the plain name) and either returns a named
+covariance matrix, which \code{setCov()} checks for positive definiteness and
+installs as \code{method} (updating the standard errors and keeping the prior
+covariance in \code{fit$covList}), or installs the covariance itself and
+returns \code{NULL}.  A mixture fit's matrix is rotated onto the probability
+scale unless it carries \code{attr(, "mixRotated")} set to \code{TRUE}.  A
+method that cannot compute the covariance should \code{stop()}.
+\code{setCovAllMethods()} lists the available methods.
+
+A method's options are recorded under the key \code{\link{setCovOptions}()}
+gives its control, by default the control itself.  A covariance that depends
+on other state on the fit -- one seeded from another covariance, say -- adds
+a \code{setCovOptions()} method for its control class that puts that state
+in the key.  A package can also let an already-computed result be installed
+with \code{setCov(fit) <- result} by adding a \code{\link{setCovValue}()}
+method for the result's class.
+
+Each covariance remembers the options it was computed with (in
+\code{fit$env$covOptions}).  A covariance already on the fit is reinstalled
+from \code{fit$covList} only when the requested options -- the supplied
+\code{control}, or the method's default one -- are the same; otherwise it is
+recomputed.  A covariance computed during estimation used the fit's own
+settings.
+}
+
 \seealso{
 \code{\link{foceiControl}()}, \code{\link{saemControl}()}
 }

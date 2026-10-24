@@ -7,18 +7,18 @@ nmTest({
     # RNG state afterwards, so the data is reproducible without leaking the seed
     # into the fits that follow (or into downstream test files).
     rxode2::rxWithSeed(seed, {
-    .ev <- rxode2::et(amt = 320, cmt = "depot", id = seq_len(nid)) |>
-      rxode2::et(seq(0.5, 24, by = 1.5))
-    .sim <- rxode2::rxSolve(model, .ev, params = params)
-    .dat <- as.data.frame(.sim)[, c("id", "time", "cp")]
-    .dat$cp <- .dat$cp + stats::rnorm(nrow(.dat), 0, sd)
-    names(.dat) <- c("ID", "TIME", "DV")
-    .dat$AMT <- 0
-    .dat$EVID <- 0
-    # dose row deliberately lacks cmt so it defaults to compartment 1
-    .dose <- data.frame(ID = seq_len(nid), TIME = 0, DV = NA, AMT = 320, EVID = 1)
-    .dat <- rbind(.dose, .dat)
-    .dat[order(.dat$ID, .dat$TIME, -.dat$EVID), ]
+      .ev <- rxode2::et(amt = 320, cmt = "depot", id = seq_len(nid)) |>
+        rxode2::et(seq(0.5, 24, by = 1.5))
+      .sim <- rxode2::rxSolve(model, .ev, params = params)
+      .dat <- as.data.frame(.sim)[, c("id", "time", "cp")]
+      .dat$cp <- .dat$cp + stats::rnorm(nrow(.dat), 0, sd)
+      names(.dat) <- c("ID", "TIME", "DV")
+      .dat$AMT <- 0
+      .dat$EVID <- 0
+      # dose row deliberately lacks cmt so it defaults to compartment 1
+      .dose <- data.frame(ID = seq_len(nid), TIME = 0, DV = NA, AMT = 320, EVID = 1)
+      .dat <- rbind(.dose, .dat)
+      .dat[order(.dat$ID, .dat$TIME, -.dat$EVID), ]
     })
   }
 
@@ -158,10 +158,14 @@ nmTest({
     .mod <- suppressMessages(rxode2::rxode2(paste(.paramsPre, .cmtPre, .s$..inner, sep = "\n")))
     expect_equal(
       rxode2::rxModelVars(.mod)$lhs,
-      c("rx_pred_",
-        "rx__sens_rx_pred__BY_ETA_1___", "rx__sens_rx_pred__BY_ETA_2___",
+      c(
+        "rx_pred_",
+        "rx__sens_rx_pred__BY_ETA_1___",
+        "rx__sens_rx_pred__BY_ETA_2___",
         "rx_r_",
-        "rx__sens_rx_r__BY_ETA_1___", "rx__sens_rx_r__BY_ETA_2___")
+        "rx__sens_rx_r__BY_ETA_1___",
+        "rx__sens_rx_r__BY_ETA_2___"
+      )
     )
   })
 
@@ -187,7 +191,8 @@ nmTest({
     # "CL_int" or "eta_CL" identifier and corrupt it.
     .renamed <- .rxRenameTokens(
       c("CL_int <- 2.0", "k_central_output <- exp(CL + eta_CL) / exp(V)"),
-      "CL", "THETA_1_"
+      "CL",
+      "THETA_1_"
     )
     expect_equal(.renamed, c("CL_int <- 2.0", "k_central_output <- exp(THETA_1_ + eta_CL) / exp(V)"))
     # the rxSensMatExp() compartment-naming convention (the reason the
@@ -215,8 +220,7 @@ nmTest({
       })
     }
     .dat <- .mkData(matLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
-    .fM <- .nlmixr(matLin, .dat, est = "focei",
-                   control = foceiControl(print = 0, fast = TRUE, maxOuterIterations = 0))
+    .fM <- .nlmixr(matLin, .dat, est = "focei", control = foceiControl(print = 0, fast = TRUE, maxOuterIterations = 0))
     expect_false(isTRUE(.fM$env$control$fast))
   })
 
@@ -316,7 +320,7 @@ nmTest({
       })
     }
     .datLin <- .mkData(odeLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
-    .datMM  <- .mkData(odeMM,  c(tka = 0.6, tvmax = log(70), tkm = log(45), tv = 3.6))
+    .datMM <- .mkData(odeMM, c(tka = 0.6, tvmax = log(70), tkm = log(45), tv = 3.6))
 
     .cmp <- function(ode, mat, dat, est, ctlFun, seTol = 1e-2) {
       # matExp/indLin are exact for these linear/pseudo-linear systems, so the ODE
@@ -338,12 +342,12 @@ nmTest({
 
     for (.est in c("focei", "foce", "focep")) {
       .ctlFun <- switch(.est, focei = foceiControl, foce = foceControl, focep = focepControl)
-      .cmp(odeLin, matLin, .datLin, .est, .ctlFun)   # pure-linear matExp
+      .cmp(odeLin, matLin, .datLin, .est, .ctlFun) # pure-linear matExp
       # seTol = 0.08: the comment below records that near-collinear tvmax/tkm inflate
       # the ODE-vs-matExp SE difference to ~5-6% on this 6-subject data.  The
       # helper's 1e-2 default asserts 1% against a quantity documented as 5-6%, so
       # the MM case gets the looser ballpark tolerance that comment intends.
-      .cmp(odeMM,  matMM,  .datMM,  .est, .ctlFun, seTol = 0.08)   # indLin() Michaelis-Menten
+      .cmp(odeMM, matMM, .datMM, .est, .ctlFun, seTol = 0.08) # indLin() Michaelis-Menten
     }
     # mu-referenced and IRLS families share the same augmented builder, but the
     # mu-regression re-derives the mu-thetas (tka is regression-updated since plain

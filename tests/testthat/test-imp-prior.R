@@ -1,6 +1,8 @@
 nmTest({
-  skip_if_not(exists("rxPriorBuildSpec", envir = asNamespace("rxode2"), inherits = FALSE),
-              "rxode2 without the shared prior kernel (nlmixr2/rxode2#1270)")
+  skip_if_not(
+    exists("rxPriorBuildSpec", envir = asNamespace("rxode2"), inherits = FALSE),
+    "rxode2 without the shared prior kernel (nlmixr2/rxode2#1270)"
+  )
 
   test_that("imp/impmap/qrpem declare 'general'-level prior support individually (#932)", {
     expect_identical(attr(nlmixr2Est.imp, "nlmixr2Priors"), "general")
@@ -27,8 +29,8 @@ nmTest({
       })
     }
     .fi <- suppressWarnings(suppressMessages(
-      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap",
-              control = impmapControl(print = 0L, nIter = 1L))))
+      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap", control = impmapControl(print = 0L, nIter = 1L))
+    ))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     expect_true("eta.cl" %in% rxode2::rxUiPriors(.fi$ui)$name)
   })
@@ -54,8 +56,8 @@ nmTest({
       })
     }
     .fi <- suppressWarnings(suppressMessages(
-      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap",
-              control = impmapControl(print = 0L, nIter = 30L, isample = 300L))))
+      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap", control = impmapControl(print = 0L, nIter = 30L, isample = 300L))
+    ))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     expect_equal(unname(fixef(.fi)["add.sd"]), 2, tolerance = 0.15)
   })
@@ -77,8 +79,8 @@ nmTest({
       })
     }
     .fi <- suppressWarnings(suppressMessages(
-      nlmixr2(m, nlmixr2data::theo_sd, est = "imp",
-              control = impControl(print = 0L, nIter = 40L, isample = 300L))))
+      nlmixr2(m, nlmixr2data::theo_sd, est = "imp", control = impControl(print = 0L, nIter = 40L, isample = 300L))
+    ))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     expect_equal(unname(fixef(.fi)["tcl"]), 3, tolerance = 0.1)
   })
@@ -104,8 +106,8 @@ nmTest({
       })
     }
     .fi <- suppressWarnings(suppressMessages(
-      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap",
-              control = impmapControl(print = 0L, nIter = 40L, isample = 300L))))
+      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap", control = impmapControl(print = 0L, nIter = 40L, isample = 300L))
+    ))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     expect_true(.fi$env$impMuGroupN >= 1L)
     expect_equal(unname(fixef(.fi)["cl.wt"]), 0, tolerance = 0.05)
@@ -131,8 +133,8 @@ nmTest({
       })
     }
     .fi <- suppressWarnings(suppressMessages(
-      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap",
-              control = impmapControl(print = 0L, nIter = 30L, isample = 300L))))
+      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap", control = impmapControl(print = 0L, nIter = 30L, isample = 300L))
+    ))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     expect_equal(unname(.fi$omega["eta.cl", "eta.cl"]), 0.3, tolerance = 0.1)
   })
@@ -156,8 +158,8 @@ nmTest({
       })
     }
     .fi <- suppressWarnings(suppressMessages(
-      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap",
-              control = impmapControl(print = 0L, nIter = 30L, isample = 300L))))
+      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap", control = impmapControl(print = 0L, nIter = 30L, isample = 300L))
+    ))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     expect_equal(unname(.fi$omega["eta.cl", "eta.cl"]), 0.05, tolerance = 0.15)
     # Omega stays a valid (symmetric positive-definite) covariance under the
@@ -186,8 +188,8 @@ nmTest({
       })
     }
     .fi <- suppressWarnings(suppressMessages(
-      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap",
-              control = impmapControl(print = 0L, nIter = 30L, isample = 300L))))
+      nlmixr2(m, nlmixr2data::theo_sd, est = "impmap", control = impmapControl(print = 0L, nIter = 30L, isample = 300L))
+    ))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     expect_equal(unname(.fi$omega["eta.cl", "eta.v"]), 0, tolerance = 0.02)
     expect_true(all(eigen(.fi$omega, symmetric = TRUE, only.values = TRUE)$values > 0))

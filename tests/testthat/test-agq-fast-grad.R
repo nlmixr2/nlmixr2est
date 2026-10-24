@@ -19,8 +19,7 @@ nmTest({
     })
   }
   .ctl <- function(...) {
-    agqControl(maxOuterIterations = 0L, maxInnerIterations = 500L, covMethod = "",
-               calcTables = FALSE, print = 0L, ...)
+    agqControl(maxOuterIterations = 0L, maxInnerIterations = 500L, covMethod = "", calcTables = FALSE, print = 0L, ...)
   }
 
   test_that("agqf/magqf/iagqf are registered and default to fast=TRUE", {
@@ -47,12 +46,19 @@ nmTest({
     # Phi_eta(etahat)'etaP is zero at a converged EBE).  Both fits fix theta
     # (maxOuterIterations=0), so the two analytic gradients are evaluated at the same point;
     # this is the identity that guards the duplicated eta-hat block.
-    .c0 <- list(maxOuterIterations = 0L, maxInnerIterations = 500L,
-                covMethod = "", calcTables = FALSE, print = 0L)
-    .fl <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "laplace",
-      do.call(laplaceControl, c(list(fast = TRUE), .c0))))
-    .fa <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq",
-      do.call(agqControl, c(list(fast = TRUE, nAGQ = 1L), .c0))))
+    .c0 <- list(maxOuterIterations = 0L, maxInnerIterations = 500L, covMethod = "", calcTables = FALSE, print = 0L)
+    .fl <- suppressMessages(nlmixr2(
+      .agq_one_cmt,
+      nlmixr2data::theo_sd,
+      "laplace",
+      do.call(laplaceControl, c(list(fast = TRUE), .c0))
+    ))
+    .fa <- suppressMessages(nlmixr2(
+      .agq_one_cmt,
+      nlmixr2data::theo_sd,
+      "agq",
+      do.call(agqControl, c(list(fast = TRUE, nAGQ = 1L), .c0))
+    ))
     .gl <- .foceiGradDirect(.fl)
     .ga <- .foceiGradDirect(.fa)
     expect_false(is.null(.gl))
@@ -65,25 +71,33 @@ nmTest({
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     for (.n in c(2L, 3L)) {
-      .f <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq",
-                                     .ctl(nAGQ = .n, fast = TRUE, sigdig = 7)))
+      .f <- suppressMessages(nlmixr2(
+        .agq_one_cmt,
+        nlmixr2data::theo_sd,
+        "agq",
+        .ctl(nAGQ = .n, fast = TRUE, sigdig = 7)
+      ))
       .g <- .foceiGradDirect(.f)
       expect_false(is.null(.g))
       .base <- fixef(.f)
       .ofvAt <- function(nm, val) {
         .ui <- do.call(rxode2::ini, c(list(.f$finalUi), setNames(list(val), nm)))
-        suppressMessages(suppressWarnings(nlmixr2(.ui, nlmixr2data::theo_sd, "agq",
-                                                  .ctl(nAGQ = .n, sigdig = 7))))$objf
+        suppressMessages(suppressWarnings(nlmixr2(.ui, nlmixr2data::theo_sd, "agq", .ctl(nAGQ = .n, sigdig = 7))))$objf
       }
       # NB h: the AGQ objective's central-difference error bottoms out around 3e-3..1e-2;
       # 1e-4 sits on the noisy side of the V and reads ~1e-3 relative even for an exact
       # gradient, so do not tighten this.
       ## cached reference -- see helper-gradref.R
-      .fd <- .gradRef(paste0("agq-nAGQ", .n), function()
-        vapply(names(.base), function(nm) {
-          h <- 3e-3 * max(abs(.base[[nm]]), 1)
-          (.ofvAt(nm, .base[nm] + h) - .ofvAt(nm, .base[nm] - h)) / (2 * h)
-        }, numeric(1)))
+      .fd <- .gradRef(paste0("agq-nAGQ", .n), function() {
+        vapply(
+          names(.base),
+          function(nm) {
+            h <- 3e-3 * max(abs(.base[[nm]]), 1)
+            (.ofvAt(nm, .base[nm] + h) - .ofvAt(nm, .base[nm] - h)) / (2 * h)
+          },
+          numeric(1)
+        )
+      })
       expect_equal(unname(.g[names(.base)]), unname(.fd), tolerance = 0.02)
     }
   })
@@ -95,13 +109,21 @@ nmTest({
     .f0 <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq", .ctl(nAGQ = 2L)))
     expect_null(.foceiGradDirect(.f0))
     # an active agqLow/agqHi clamp kinks the objective (both default to +/-Inf)
-    .fc <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq",
-                                    .ctl(nAGQ = 2L, fast = TRUE, agqLow = -1e6)))
+    .fc <- suppressMessages(nlmixr2(
+      .agq_one_cmt,
+      nlmixr2data::theo_sd,
+      "agq",
+      .ctl(nAGQ = 2L, fast = TRUE, agqLow = -1e6)
+    ))
     expect_null(.foceiGradDirect(.fc))
     # cholSEOpt uses a different Cholesky factor than chol(), and the factor places the
     # quadrature nodes -- differentiating chol() would be the wrong function
-    .fs <- suppressMessages(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq",
-                                    .ctl(nAGQ = 2L, fast = TRUE, cholSEOpt = TRUE)))
+    .fs <- suppressMessages(nlmixr2(
+      .agq_one_cmt,
+      nlmixr2data::theo_sd,
+      "agq",
+      .ctl(nAGQ = 2L, fast = TRUE, cholSEOpt = TRUE)
+    ))
     expect_null(.foceiGradDirect(.fs))
   })
 
@@ -111,11 +133,15 @@ nmTest({
     # outerOpt forced on BOTH arms: fast=TRUE otherwise re-defaults nlminb -> lbfgsb3c,
     # which would make this compare optimizers rather than gradients.
     .fit <- function(fast) {
-      suppressMessages(suppressWarnings(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq",
-        agqControl(nAGQ = 2L, fast = fast, outerOpt = "lbfgsb3c", covMethod = "",
-                   calcTables = FALSE, print = 0L))))
+      suppressMessages(suppressWarnings(nlmixr2(
+        .agq_one_cmt,
+        nlmixr2data::theo_sd,
+        "agq",
+        agqControl(nAGQ = 2L, fast = fast, outerOpt = "lbfgsb3c", covMethod = "", calcTables = FALSE, print = 0L)
+      )))
     }
-    .fd <- .fit(FALSE); .an <- .fit(TRUE)
+    .fd <- .fit(FALSE)
+    .an <- .fit(TRUE)
     # The analytic gradient must not change the OBJECTIVE, and that is what to
     # assert.  Comparing two FREE-RUNNING fits does not test it: both optimize the
     # same function from the same start, but they follow different paths and stop
@@ -129,20 +155,27 @@ nmTest({
     # same point.  There the objectives agree to ~1e-9, which IS the claim: a wrong
     # analytic objective could not survive this.
     .evalAt <- function(fitFrom, fast) {
-      .ctl <- agqControl(nAGQ = 2L, fast = fast, outerOpt = "lbfgsb3c",
-                         covMethod = "", calcTables = FALSE, print = 0L,
-                         maxOuterIterations = 0L, maxInnerIterations = 0L)
+      .ctl <- agqControl(
+        nAGQ = 2L,
+        fast = fast,
+        outerOpt = "lbfgsb3c",
+        covMethod = "",
+        calcTables = FALSE,
+        print = 0L,
+        maxOuterIterations = 0L,
+        maxInnerIterations = 0L
+      )
       .eta <- tryCatch(fitFrom$eta, error = function(e) NULL)
       if (!is.null(.eta)) {
         .cols <- setdiff(names(.eta), "ID")
         .ctl$etaMat <- as.matrix(.eta[, .cols, drop = FALSE])
       }
       suppressMessages(suppressWarnings(
-        nlmixr2(fitFrom$ui, nlmixr2data::theo_sd, "agq", .ctl)))
+        nlmixr2(fitFrom$ui, nlmixr2data::theo_sd, "agq", .ctl)
+      ))
     }
     for (.src in list(fd = .fd, an = .an)) {
-      expect_equal(.evalAt(.src, TRUE)$objf, .evalAt(.src, FALSE)$objf,
-                   tolerance = 1e-6)
+      expect_equal(.evalAt(.src, TRUE)$objf, .evalAt(.src, FALSE)$objf, tolerance = 1e-6)
     }
     # Free-running, the two arms stop at different points.  Which one gets further
     # is not fixed: on this fixture the analytic arm ends 0.13 HIGHER (118.82
@@ -169,11 +202,18 @@ nmTest({
   test_that("est='agqf' equals est='agq' with fast=TRUE", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    .a <- suppressMessages(suppressWarnings(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agqf",
-      agqControl(nAGQ = 2L, outerOpt = "lbfgsb3c", covMethod = "", calcTables = FALSE, print = 0L))))
-    .b <- suppressMessages(suppressWarnings(nlmixr2(.agq_one_cmt, nlmixr2data::theo_sd, "agq",
-      agqControl(nAGQ = 2L, fast = TRUE, outerOpt = "lbfgsb3c", covMethod = "",
-                 calcTables = FALSE, print = 0L))))
+    .a <- suppressMessages(suppressWarnings(nlmixr2(
+      .agq_one_cmt,
+      nlmixr2data::theo_sd,
+      "agqf",
+      agqControl(nAGQ = 2L, outerOpt = "lbfgsb3c", covMethod = "", calcTables = FALSE, print = 0L)
+    )))
+    .b <- suppressMessages(suppressWarnings(nlmixr2(
+      .agq_one_cmt,
+      nlmixr2data::theo_sd,
+      "agq",
+      agqControl(nAGQ = 2L, fast = TRUE, outerOpt = "lbfgsb3c", covMethod = "", calcTables = FALSE, print = 0L)
+    )))
     expect_equal(.a$objf, .b$objf, tolerance = 1e-8)
     expect_equal(unname(fixef(.a)), unname(fixef(.b)), tolerance = 1e-6)
   })
@@ -189,22 +229,25 @@ nmTest({
               d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
               cp <- center / v; cp ~ add(add.sd) })
     }
-    .f <- suppressMessages(nlmixr2(.cov, nlmixr2data::theo_sd, "agq",
-                                   .ctl(nAGQ = 2L, fast = TRUE, sigdig = 7)))
+    .f <- suppressMessages(nlmixr2(.cov, nlmixr2data::theo_sd, "agq", .ctl(nAGQ = 2L, fast = TRUE, sigdig = 7)))
     .g <- .foceiGradDirect(.f)
     expect_false(is.null(.g))
     .base <- fixef(.f)
     .ofvAt <- function(nm, val) {
       .ui <- do.call(rxode2::ini, c(list(.f$finalUi), setNames(list(val), nm)))
-      suppressMessages(suppressWarnings(nlmixr2(.ui, nlmixr2data::theo_sd, "agq",
-                                                .ctl(nAGQ = 2L, sigdig = 7))))$objf
+      suppressMessages(suppressWarnings(nlmixr2(.ui, nlmixr2data::theo_sd, "agq", .ctl(nAGQ = 2L, sigdig = 7))))$objf
     }
     ## cached reference -- see helper-gradref.R
-    .fd <- .gradRef("agq-agqf-equivalence", function()
-      vapply(names(.base), function(nm) {
-        h <- 3e-3 * max(abs(.base[[nm]]), 1)
-        (.ofvAt(nm, .base[nm] + h) - .ofvAt(nm, .base[nm] - h)) / (2 * h)
-      }, numeric(1)))
+    .fd <- .gradRef("agq-agqf-equivalence", function() {
+      vapply(
+        names(.base),
+        function(nm) {
+          h <- 3e-3 * max(abs(.base[[nm]]), 1)
+          (.ofvAt(nm, .base[nm] + h) - .ofvAt(nm, .base[nm] - h)) / (2 * h)
+        },
+        numeric(1)
+      )
+    })
     expect_equal(unname(.g[names(.base)]), unname(.fd), tolerance = 0.02)
   })
 })

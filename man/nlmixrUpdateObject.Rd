@@ -16,7 +16,8 @@ nlmixrUpdateObject(fit, objName, envir, origFitEnv = NULL)
 \item{origFitEnv}{Original fit$env to compare, otherwise simply use fit$env}
 }
 \value{
-Nothing, called for side effects
+\code{TRUE} (invisibly) when the binding was updated, \code{FALSE} otherwise
+(e.g. \code{objName} is not a single name, as for \code{addCwres(fits[[1]])})
 }
 \description{
 Update the nlmixr2 object with new fit information

@@ -28,9 +28,13 @@ foceiControl(
   covDerivMethod = c("central", "forward"),
   covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""),
   covSolveTol = NULL,
+  covFallback = list(`r,s` = c("r", "s"), r = "s", s = character(0), analytic = c("r,s",
+    "r", "s")),
+  covPrecursor = c("fd", "analytic"),
+  covShortcut = FALSE,
   covFull = TRUE,
   fast = FALSE,
-  priorMethod = c("auto", "general", "nwpri", "tnpri"),
+  priorMethod = c("auto", "general", "nwpri", "tnpri", "none"),
   fdOutlierZ = 3.5,
   fdOutlierScale = TRUE,
   fdRefine = c("chartrand", "lanczos", "richardson"),
@@ -57,6 +61,7 @@ foceiControl(
   eigen = TRUE,
   diagXform = c("sqrt", "log", "identity"),
   iovXform = c("sd", "var", "logsd", "logvar"),
+  iovMethod = c("auto", "theta", "omega"),
   sumProd = FALSE,
   optExpression = TRUE,
   literalFix = TRUE,
@@ -80,14 +85,30 @@ foceiControl(
   fo = FALSE,
   covTryHarder = FALSE,
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
-    "uobyqa", "newuoa"),
-  innerOpt = c("auto", "trust", "n1qn1", "BFGS"),
+    "uobyqa", "newuoa", "trust"),
+  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c"),
+  innerHessian = c("focei", "conditional"),
+  detHessian = c("focei", "conditional"),
   hessianMethod = c("fd", "bfgs", "sr1", "bofill"),
   trustConf = 0.975,
   trustRinit = NULL,
   trustRmax = NULL,
   trustFterm = NULL,
   trustMterm = NULL,
+  trustPolish = FALSE,
+  bobyqaStationary = TRUE,
+  innerLbfgsLmm = 5L,
+  innerLbfgsFactr = NULL,
+  innerLbfgsPgtol = NULL,
+  innerLbfgsAbstol = NULL,
+  innerLbfgsReltol = NULL,
+  outerTrustHessian = c("auto", "analytic", "bfgs", "fd"),
+  outerTrustRinit = NULL,
+  outerTrustRmax = NULL,
+  outerTrustFterm = NULL,
+  outerTrustMterm = NULL,
+  outerTrustRelStep = 0.001,
+  outerTrustRestarts = 3L,
   rhobeg = 0.2,
   rhoend = NULL,
   npt = NULL,
@@ -135,6 +156,7 @@ foceiControl(
   gradCalcCentralLarge = 10000,
   etaNudge = qnorm(1 - 0.05/2)/sqrt(3),
   etaNudge2 = qnorm(1 - 0.05/2) * sqrt(3/5),
+  etaRestart = 4L,
   nRetries = 3,
   seed = 42,
   resetThetaCheckPer = 0.1,
@@ -158,7 +180,7 @@ foceiControl(
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
   mceta = -2L,
-  warm = c("calc", "save"),
+  warm = c("calc", "save", "none"),
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
@@ -236,14 +258,16 @@ multiplicatively otherwise.}
 \item{scaleCmin}{Minimum value of the scaleC to prevent underflow.}
 
 \item{scaleCband}{Length-2 increasing pair `c(low, high)` (default
-`c(0.1, 10)`).  Each `theta`'s derivative-based scaling constant
-(`1/|init|` for a linear parameter, or the transform-specific
-formula) is kept when it lands inside this band, and otherwise
-replaced by the parameter's native magnitude `|init|`.  This catches
-the singular cases -- `1/|init|` blowing up for a small covariate
-initial estimate, `log()` at init `1`, `logit` at the interval
-midpoint, `factorial`/`gamma` at a digamma zero -- while leaving the
-well-scaled common case (and its results) untouched.}
+`c(0.1, 10)`).  The derivative-based scaling constant of a linear
+`theta` (`1/|init|`), or of a transformed one whose transform has no
+band of its own, is kept when it lands inside this band, and otherwise
+replaced by the parameter's native magnitude `|init|`, so a small
+initial estimate (a covariate coefficient, say) does not get a huge
+constant.  Transformed thetas are guarded to bands of their own
+transform, which catch `log()` at init `1`, `logit` at the interval
+midpoint and `factorial`/`gamma` at a digamma zero.  The constants of
+residual-error parameters and those given in `scaleC` are used as
+they are.}
 
 \item{scaleC}{Scaling constant used with \code{scaleType="nlmixr2"};
 when not specified, chosen by parameter type to keep gradient sizes
@@ -292,9 +316,53 @@ are computed post-fit at the converged estimates by the decoupled
 recompute engine.}
 
 \item{covSolveTol}{absolute/relative ODE tolerance for the covariance solves --
-the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
-perturbed solves behind the finite-difference methods.  \code{NULL} (default)
-derives a tight tolerance from \code{sigdig}; supply a number to override it.}
+the perturbed solves behind the finite-difference methods (every probe and
+the stencil centre it is compared against) and the augmented-sensitivity
+solves behind \code{covMethod="analytic"}.  \code{NULL} (default) derives
+them from the fit's own tolerances: the finite-difference solves use
+\code{atol} and \code{rtol} each times 1e-3, capped at 1e-7 (at the default
+\code{sigdig = 3}, \code{rtol = 1e-7} and \code{atol = 1e-9}), and the
+analytic augmented solves use \code{max(1e-12, min(1e-8, 10^-(sigdig + 6)))}.  The
+inner problems of the finite-difference probes are tightened the same way,
+whichever \code{innerOpt} runs them: \code{trustFterm} and
+\code{trustMterm}, \code{epsilon} (n1qn1), and the \code{innerLbfgs*}
+tolerances (lbfgsb3c) each times 1e-3, capped at 1e-9.  No derived
+tolerance goes below 1e-12 unless the fit's own already is.
+A number sets \code{atol = rtol = covSolveTol} for both kinds of solve.
+Estimation itself always runs at the fit's tolerances.  When the
+finite-difference standard errors look noisy (they change with small
+changes to the steps or the estimates, or disagree with
+\code{covMethod="analytic"}), a tighter value such as \code{1e-10} or
+\code{1e-12} can help: every probe's solve error enters the differences.}
+
+\item{covFallback}{what each \code{covMethod} falls back to when it gives no
+usable covariance: a named list, one element per method, each the ordered
+methods to try instead (the whole list, not followed further).  The default
+is the established behaviour: \code{"r,s"} falls to \code{"r"} then
+\code{"s"} (whichever matrix is usable), \code{"r"} to \code{"s"},
+\code{"analytic"} to the finite-difference \code{"r,s"}, \code{"r"} and
+\code{"s"}, and \code{"s"} to nothing.  A list may also name \code{"sa"} and
+\code{"imp"}, which are computed after the fit when the finite-difference
+methods before them gave no covariance.  A list you give replaces the
+default: a method it does not name has no fallback.  The \code{"r,s"} check
+of a doubtful sandwich (see \code{covSmall}) only picks a listed method.  The
+methods tried and why each was not used are in \code{fit$env$covTried}.}
+
+\item{covPrecursor}{what a finite-difference covariance may start from, in
+order of preference: \code{"fd"}, a full-stage R this fit computed under
+other settings (\code{setCov()} with another \code{rsControl()}), and
+\code{"analytic"}, the analytic covariance the fit holds.  The first one
+the fit holds seeds the full stage's step searches with its diagonal;
+every step still passes the same acceptance test.  A fresh fit holds
+neither, so this matters for \code{setCov()}.  \code{NULL} uses none.  How
+it served is in \code{fit$env$covPrecursorUsed} and the fit print.}
+
+\item{covShortcut}{with a precursor (see \code{covPrecursor}), predict the
+full R from the measured diagonal and the precursor's correlations, check
+the prediction against the objective along four fixed directions, and
+skip measuring the off-diagonals when it agrees to 1\% in each (the record
+says "accepted"); otherwise they are measured as usual ("fell back").
+\code{FALSE} (default) always measures them.}
 
 \item{covFull}{shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 full theta + residual sigma + Omega covariance (assembled analytically for
@@ -303,7 +371,17 @@ parameter set otherwise).  For the finite-difference methods it follows
 \code{covMethod}: \code{"r,s"} is the full sandwich
 \code{solve(Rfull) \%*\% Sfull \%*\% solve(Rfull)}, \code{"s"} is
 \code{solve(Sfull)}, \code{"r"} is \code{solve(Rfull)}.  \code{FALSE}
-installs only the structural-theta block (the historical shape).}
+installs only the structural-theta block (the historical shape).  The
+installed shape is named by \code{fit$covMethod} -- \code{"r,s (full)"}
+versus \code{"r,s"} -- and the other shape is cached, so
+\code{\link{setCov}()} swaps between them without recomputing either.
+Both shapes come from one finite-difference computation over the full
+parameter set (the structural-theta shape is its theta block), at the steps
+\code{gillKcov}, \code{gillStepCov} and \code{gillFtolCov} choose, so
+\code{rmatNorm}, \code{smatNorm} and \code{covGillF} do not apply; the
+theta-only stage runs separately (with them) for a mixture, a mu-referenced
+model, a generalized log-likelihood, \code{gillKcov = 0} or
+\code{covDerivMethod = "forward"}.}
 
 \item{fast}{When \code{TRUE}, compute the outer (population) gradient
 analytically from Almquist (2015) sensitivity equations instead of by
@@ -327,23 +405,31 @@ the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"bobyqa"} for
 \code{foceif}) default this to \code{TRUE}.}
 
 \item{priorMethod}{Which of the shared prior kernel's three omega
-conventions (nlmixr2/rxode2#1270) to evaluate an \code{ini({})}
-\code{prior()} under -- \code{"general"} (textbook Bayesian),
-\code{"nwpri"} (NONMEM's own \verb{$PRIOR NWPRI}), or \code{"tnpri"}
-(the Monolix/NONMEM-own-estimation joint-normal convention on omega).
-The default, \code{"auto"}, reads the convention off what the model's
-own \code{ini({})} actually wrote (an \code{invWishart()} degrees-of-
-freedom prior on an omega block means \code{"nwpri"}; a normal prior
-directly on an omega element means \code{"tnpri"}; anything else,
-including a \code{dcauchy()} prior, means \code{"general"}) --
-deliberately never a fixed default, since the identical
-\code{invWishart(nu)} syntax means a different number under
-\code{"general"} and \code{"nwpri"}.  Setting this explicitly forces
-that convention regardless of what auto-detection would have picked,
-and errors before any estimation starts if the model's priors are not
-representable under it (e.g. \code{priorMethod="tnpri"} on a model
-with an \code{invWishart()} prior).  Ignored when the model has no
-prior at all.}
+    conventions (nlmixr2/rxode2#1270) to evaluate an \code{ini({})}
+    \code{prior()} under -- \code{"general"} (textbook Bayesian),
+    \code{"nwpri"} (NONMEM's own \verb{$PRIOR NWPRI}), or \code{"tnpri"}
+    (the Monolix/NONMEM-own-estimation joint-normal convention on omega).
+    The default, \code{"auto"}, reads the convention off what the model's
+    own \code{ini({})} actually wrote (an \code{invWishart()} degrees-of-
+    freedom prior on an omega block means \code{"nwpri"}; a normal prior
+    directly on an omega element means \code{"tnpri"}; anything else,
+    including a \code{dcauchy()} prior, means \code{"general"}) --
+    deliberately never a fixed default, since the identical
+    \code{invWishart(nu)} syntax means a different number under
+    \code{"general"} and \code{"nwpri"}.  Setting this explicitly forces
+    that convention regardless of what auto-detection would have picked,
+    and errors before any estimation starts if the model's priors are not
+    representable under it (e.g. \code{priorMethod="tnpri"} on a model
+    with an \code{invWishart()} prior).  Ignored when the model has no
+    prior at all.
+
+    \code{"none"} builds no prior specification: the \code{ini({})}
+    priors stay on the model but are not evaluated, so the objective is
+    the plain (unpenalized) likelihood.  It exists for callers that
+    handled the priors somewhere else and only finalize through this
+    control -- a sampler that already drew from the posterior, say --
+    where building a specification would at best be unused and at worst
+    refuse a prior this kernel cannot evaluate but the caller could.}
 
 \item{fdOutlierZ}{Cut of the Iglewicz-Hoaglin modified z-score that decides
 whether a finite-differenced subject's slope is an outlier against the exact
@@ -435,7 +521,7 @@ returned untouched.  Unlike the solver and optimizer tolerances this is not
 derived from \code{sigdig} -- it is a convergence target on an inner Newton
 rather than a precision request.  It also bounds the Newton decrement at
 which a stalled subject is accepted at the ODE solve's noise floor rather
-than declining the gradient.  Set it explicitly to test whether a fit's
+than finite-differenced on its own.  Set it explicitly to test whether a fit's
 finite-difference fallbacks are tolerance-driven.}
 
 \item{hessEps}{is a double value representing the epsilon for the
@@ -525,7 +611,51 @@ to include a condition number calculation.}
 \code{"sqrt"} (default), \code{"log"}, or \code{"identity"}.}
 
 \item{iovXform}{Transformation used on the diagonal of the IOV: one of
-\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.}
+\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.
+This parameterizes the magnitude theta of the \code{"theta"}
+\code{iovMethod}; it has no effect under \code{"omega"}, where the
+magnitude is fixed at one and the variability is carried by the
+omega block itself.}
+
+\item{iovMethod}{How inter-occasion variability is expanded before
+    estimation: one of \code{"auto"} (default), \code{"theta"} or
+    \code{"omega"}.
+
+    \code{"theta"} is the long-standing expansion: each occasion
+    parameter becomes a magnitude theta, with one unit-variance eta per
+    occasion fixed to it.  That shape cannot represent a correlation
+    between two occasion parameters.
+
+    \code{"omega"} instead fixes the magnitude theta at one and
+    estimates the per-occasion eta blocks directly, occasion one being
+    the block and the rest repeating it (NONMEM's
+    \code{$OMEGA BLOCK(n) SAME}).  The correlation then lives in the
+    estimated block.
+
+    \code{"auto"} picks \code{"omega"} when the IOV block has any
+    off-diagonal element, since \code{"theta"} provably cannot
+    represent one, and \code{"theta"} otherwise.  \code{"omega"} may
+    be asked for on a diagonal block as well, so the two can be
+    compared on the same model.  The choice is made per LEVEL of
+    variability, so a correlation on \code{occ} does not change how
+    an unrelated diagonal \code{occ2} is expanded.
+
+    \code{"omega"} is only available for estimation methods that
+    honour the repeated block (the FOCEi family).  \code{saem} and
+    the variational, nonparametric and importance-sampling methods
+    estimate omega elsewhere, so they continue to refuse a
+    correlated occasion block rather than silently estimate each
+    occasion on its own.
+
+    The two are the same statistical model -- at an occasion variance
+    of one, where the parameterizations coincide, they agree on the
+    objective to machine precision, and evaluated at matched random
+    effects they agree to ~2e-8 at any variance.  They are not
+    interchangeable in practice: \code{"theta"} hands FOCEi's inner
+    optimizer unit-scale etas and so converges the inner problem
+    better when the occasion variance is far from one.  That is why
+    \code{"auto"} keeps \code{"theta"} unless a correlation forces
+    \code{"omega"}.}
 
 \item{sumProd}{Is a boolean indicating if the model should change
 multiplication to high precision multiplication and sums to
@@ -567,21 +697,15 @@ instead of FOCE (FALSE)}
     \itemize{
 
     \item \code{"nonmem"} freezes R at the \code{eta = 0} population
-    prediction and holds it constant across the inner optimization, matching
-    NONMEM's FOCE.  Advantage: reproduces NONMEM FOCE objective and standard
-    errors, and an ODE model agrees with its closed-form (\code{linCmt})
-    equivalent.  Disadvantage: R ignores the individual (conditional)
-    heteroscedasticity, so it can be slightly less accurate than
-    \code{"foce+"} for proportional/combined error.
+    prediction and holds it constant across the inner optimization. This
+    follows NONMEM's residual-variance convention for FOCE without interaction.
 
     \item \code{"foce+"} evaluates R at the current conditional
     \code{eta} (the live variance), keeping the truncated FOCE
-    inner gradient.  Advantage: uses the conditional variance and
-    is a bit more accurate than NONMEM's FOCE in some cases.
-    Disadvantage: does not match NONMEM FOCE.  This was the FOCE
-    behavior in \pkg{nlmixr2est} 6.0.1 and earlier. This does not
-    use the gradient of \code{eta} like the full \code{focei}
-    method, so it is not as accurate as \code{focei}.
+    inner score, which is refined before evaluating the marginal objective.
+    It retains the live-variance convention used in \pkg{nlmixr2est} 6.0.1
+    and earlier. It differs from NONMEM's FOCE without interaction and
+    omits the variance derivatives included in FOCEI.
 
     }}
 
@@ -625,14 +749,20 @@ should be used while calculating the Covariance Matrix.}
 cannot be corrected to be non-positive definite try estimating
 the Hessian on the unscaled parameter space.}
 
-\item{outerOpt}{optimization method for the outer problem}
+\item{outerOpt}{optimization method for the outer problem
+Fast \code{"nlminb"} fits automatically use the analytical outer Hessian
+for supported Gaussian FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
+curvature is unavailable.  \code{"trust"} is a trust-region Newton method
+(\pkg{RcppTrust}) built on that same Hessian; see
+\code{outerTrustHessian}.  It is unbounded, so a trial point outside the
+box is reported as an infinite objective and the region shrinks instead.}
 
 \item{innerOpt}{optimization method for the inner (per-subject eta)
     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
-    using an exact Gauss-Newton+Omega^-1 Hessian every iteration) or
+    using an exact Gauss-Newton+Omega^-1 Hessian every iteration),
     `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
-    seed).  `"BFGS"` is accepted but not implemented -- it silently falls
-    back to `"n1qn1"`.
+    seed) or `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
+    by the `innerLbfgs*` arguments; `"auto"` never picks it).
 
     `"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
     (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
@@ -641,6 +771,21 @@ the Hessian on the unscaled parameter space.}
     costs 2*neta inner solves each time, while `"n1qn1"` builds it once as a
     warm-start seed and corrects it with its own quasi-Newton updates.  On
     everything else `"trust"` is typically the faster of the two.}
+
+\item{innerHessian}{Inner optimization curvature: `"focei"` (default) or
+`"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
+Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
+Value, gradient and full curvature share one sensitivity solve.
+The marginal objective's FOCEI curvature is unchanged.  It is not
+supported with registered external likelihood contributions.}
+
+\item{detHessian}{Curvature entering the objective's Laplace
+log-determinant: `"focei"` (default), the Gauss-Newton expected
+information, or `"conditional"`, the full conditional Hessian (the
+observed information at the conditional mode, as NONMEM's LAPLACE).
+`"conditional"` requires fast Gaussian FOCEI; the analytic outer
+gradient then carries the matching third-order terms, and the
+analytic covariance falls back to finite differences.}
 
 \item{hessianMethod}{For a non-normal-endpoint model (any distribution
     other than \code{norm}), the per-subject inner Hessian has no
@@ -713,6 +858,70 @@ Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
 criterion to a value picked for a different optimizer is exactly the
 coupling these parameters exist to remove. Has no effect unless
 `innerOpt="trust"`.}
+
+\item{trustPolish}{logical; when `TRUE`, each converged `innerOpt="trust"`
+solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
+This makes the objective less dependent on the warm-start ETAs and can
+help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+outer search then also restarts once from where it stops, which costs
+about twice the outer evaluations.  `FALSE` (default) keeps the plain
+trust solve and a single outer search.}
+
+\item{bobyqaStationary}{logical; when `TRUE` (default), a normal exit of
+the `"bobyqa"` outer search is checked with a central-difference
+gradient and a downhill probe.  If the probe lowers the objective by
+more than `10^(1-sigdig)`, bobyqa restarts from there (up to 3 times,
+within `maxOuterIterations`).  This catches a search that stops in a
+narrow valley short of the minimum (#1196); `FALSE` skips the check.}
+
+\item{innerLbfgsLmm}{number of BFGS updates retained by the
+`innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.
+Defaults to 5.}
+
+\item{innerLbfgsFactr, innerLbfgsPgtol}{`innerOpt="lbfgsb3c"`'s own L-BFGS-B
+objective-reduction factor and projected-gradient tolerance, separate
+from the outer `lbfgsFactr`/`lbfgsPgtol`. `NULL` (default) derives them
+from `sigdig`: `innerLbfgsFactr` is `10^(-sigdig-2) /
+.Machine$double.eps` (floored at 1) and `innerLbfgsPgtol` is
+`10^(-sigdig-2)`, the same scale as `trustFterm`.}
+
+\item{innerLbfgsAbstol, innerLbfgsReltol}{`innerOpt="lbfgsb3c"`'s absolute and
+relative eta-change tolerances, separate from the outer
+`abstol`/`reltol`. `NULL` (default) uses `10^(-sigdig-2)`. With
+`innerOpt="lbfgsb3c"`, `maxInnerIterations` caps the function evaluations
+of each solve.}
+
+\item{outerTrustHessian}{Curvature source for \code{outerOpt="trust"}.
+\code{"auto"} (default) uses the analytical outer Hessian when
+\code{fast=TRUE} makes it available and the damped-BFGS update otherwise,
+and falls back to that update if the Hessian is refused mid-fit.
+\code{"analytic"} requires \code{fast=TRUE}.  \code{"bfgs"} is the
+damped BFGS update (Nocedal & Wright, Numerical Optimization 2nd ed.,
+Procedure 18.2) built from consecutive gradients, so it adds no
+evaluations.  \code{"fd"} differences the outer gradient, costing one
+extra population gradient per parameter per iteration.}
+
+\item{outerTrustRinit, outerTrustRmax}{Initial and maximum trust-region
+radius for \code{outerOpt="trust"}, in the scaled-parameter space the
+outer problem optimizes in.  \code{NULL} (default) derives
+\code{outerTrustRinit} from \code{minqa::bobyqa()}'s own default-rhobeg
+formula and \code{outerTrustRmax} as \code{8 * outerTrustRinit}.}
+
+\item{outerTrustFterm, outerTrustMterm}{Function-value and predicted-decrease
+convergence tolerances for \code{outerOpt="trust"}.  \code{NULL}
+(default) uses \code{10^(-sigdig-2)}; \code{outerTrustMterm} defaults to
+\code{outerTrustFterm}.}
+
+\item{outerTrustRelStep}{Relative step handed to the analytical outer
+Hessian, and used for the \code{outerTrustHessian="fd"} gradient
+difference.}
+
+\item{outerTrustRestarts}{How many times \code{outerOpt="trust"} may
+re-enter the trust region from its own reported solution when the Newton
+decrement there says the point is not stationary.  A collapsing trust
+region satisfies the solver's own convergence test at a point that is not
+a minimum; re-entering restores the initial radius.
+\code{maxOuterIterations} is the total across restarts, not per restart.}
 
 \item{rhobeg}{Initial trust region radius for the bobyqa outer optimizer
 (with `rhoend`, must satisfy `0 < rhoend < rhobeg`). Default `0.2`
@@ -845,14 +1054,16 @@ gradient estimates during the covariance step.}
 log-likelihood estimation.}
 
 \item{rmatNorm}{A parameter to normalize gradient step size by the
-parameter value during the calculation of the R matrix}
+parameter value during the calculation of the R matrix of the
+theta-only stage (see \code{covFull})}
 
 \item{rmatNormLlik}{A parameter to normalize gradient step size by
 the parameter value during the calculation of the R matrix if you
 are using generalized log-likelihood Hessian matrix.}
 
 \item{smatNorm}{A parameter to normalize gradient step size by the
-parameter value during the calculation of the S matrix}
+parameter value during the calculation of the S matrix of the
+theta-only stage (see \code{covFull})}
 
 \item{smatNormLlik}{A parameter to normalize gradient step size by
 the parameter value during the calculation of the S matrix if you
@@ -860,7 +1071,8 @@ are using the generalized log-likelihood.}
 
 \item{covGillF}{Use the Gill calculated optimal Forward difference
 step size for the instead of the central difference step size
-during the central difference gradient calculation.}
+during the central difference gradient calculation of the
+theta-only stage (see \code{covFull}).}
 
 \item{optGillF}{Use the Gill calculated optimal Forward difference
 step size for the instead of the central difference step size
@@ -902,6 +1114,21 @@ zero (stop optimizing) if unsuccessful.}
 \item{etaNudge2}{This is the second eta nudge.  By default it is
 qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
 (excluding zero) times by the 0.95\% normal region}
+
+\item{etaRestart}{Number of Omega draws the inner restart cascade tries
+  once the `etaNudge`/`etaNudge2` restarts are spent and the ETA solve is
+  still not converged.  Every nudge sets EVERY ETA to the same constant,
+  which explores poorly when the inner problem has more than one basin; a
+  draw from Omega is a starting point from the distribution the ETAs
+  actually come from.  The draws are taken once per fit, seeded from
+  `seed` (so the objective stays a function of theta alone and the fit
+  stays reproducible), and are only read after an inner solve has already
+  failed -- a fit whose inner solves converge never pays for them.  Use 0
+  to disable.
+
+  This applies to `innerOpt="trust"` (the default for a normal endpoint),
+  which reports a convergence verdict per solve.  `n1qn1` reports none, so
+  its own restart cascade is unchanged.}
 
 \item{nRetries}{If FOCEi doesn't fit with the current parameter
 estimates, randomly sample new parameter estimates and restart
@@ -1006,16 +1233,28 @@ reset bound (else keeping the last eta, or resetting to 0 when that is also
 out of bound); `-1` jumps between the extrapolated eta and eta=0, keeping
 the better; both `-2` and `-1` fall back to keeping the last eta when no
 analytic `d eta*/d theta` is available (`fast = FALSE`).  `0` uses eta=0
-for each inner optimization; for `n>0`, the last eta, eta=0, and n-1
-etas sampled from omega are each evaluated and the best (by inner
-objective) is used.}
+for each inner optimization; for `n>0`, eta=0 and n-1 etas sampled from
+omega are each evaluated and the best (by inner objective) starts the
+inner optimization.  The carried last eta is deliberately not one of the
+`n>0` candidates -- it is the previous iteration's converged conditional
+mode, so it would win for every subject and `n>0` would reduce to the
+keep-last behavior of `-1`/`-2`.  When a sampled eta wins, the inner
+problem is also solved from eta=0 and the better converged result kept --
+compared on the marginal objective the fit reports, which carries the
+Laplace `log|H|` term, not on the inner objective the optimizer minimizes --
+so no inner solve ends above the one `0` would have reached.  The search is
+skipped while the outer gradient is being differenced, where the eta is
+pinned to the central evaluation's mode.}
 
 \item{warm}{Seeding of the n1qn1 inner-optimization Hessian:
 `"calc"` (default) warm-starts each inner problem with the eta
 Hessian calculated at the starting eta and the current theta;
 since theta moves between outer evaluations it is always
-recalculated, never reused from an earlier round.  `"save"` uses
-the classic self-initialized Hessian.}
+recalculated, never reused from an earlier round.  `"save"`
+restarts from the curvature n1qn1 built during the subject's
+previous inner solve.  `"none"` lets n1qn1 initialize its own
+diagonal Hessian.  Ignored by `innerOpt = "trust"`, which always
+supplies its own exact Hessian.}
 
 \item{nAGQ}{Number of Gauss-Hermite adaptive quadrature points. `0`
 disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
@@ -1063,6 +1302,17 @@ The control object that changes the options for the FOCEi
 Control Options for FOCEi
 }
 \details{
+Custom outer optimizers receive \code{control$hessian(par, relStep=1e-3)}.
+  It settles the requested point and assembles the reported objective's
+  Hessian in the existing C++ sensitivity pool. Third-order terms are obtained
+  by differencing second-order sensitivities in ETA directions. The result uses
+  optimizer coordinates and objective scaling and retains negative curvature.
+  This requires \code{fast=TRUE}. M2/M3/M4 censoring uses the analytical-SE
+  \code{censOption="gauss"} convention. Censored \code{"laplace"} curvature,
+  priors, clipped AGQ and estimated transformations are unsupported.
+  Unsuccessful inner solves and an
+  active variance floor also make curvature unavailable.
+
 Uses R's L-BFGS-B (\code{\link{optim}}) for the outer problem and BFGS
 \code{\link[n1qn1]{n1qn1}} (restoring the prior individual Hessian) for
 the inner problem, which is left unscaled since eta estimates start near

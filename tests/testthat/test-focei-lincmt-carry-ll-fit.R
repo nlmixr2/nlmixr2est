@@ -19,13 +19,17 @@ cp = central/v")
   set.seed(17)
   etaTrue <- rnorm(6, 0, 0.3)
   dv <- unlist(lapply(1:6, function(i) {
-    rxode2::rxSolve(m,
+    rxode2::rxSolve(
+      m,
       params = c(
-        tcl = log(2), tv = log(20),
+        tcl = log(2),
+        tv = log(20),
         eta_cl = etaTrue[i]
       ),
-      events = dat[dat$id == i, ], returnType = "data.frame",
-      covsInterpolation = "nocb", useLinCmt = FALSE
+      events = dat[dat$id == i, ],
+      returnType = "data.frame",
+      covsInterpolation = "nocb",
+      useLinCmt = FALSE
     )$cp
   }))
   obs <- dat$evid == 0
@@ -34,10 +38,7 @@ cp = central/v")
   dat$dv[obs] <- dv + rnorm(sum(obs), 0, 0.3)
   fit <- function(ui, carry, maxOut = 0L) {
     suppressWarnings(suppressMessages(
-      nlmixr2est::nlmixr2(ui, dat,
-        est = "focei",
-        control = .carryFitCtl(carry, maxOut)
-      )
+      nlmixr2est::nlmixr2(ui, dat, est = "focei", control = .carryFitCtl(carry, maxOut))
     ))
   }
   fO <- fit(uiO, "none")

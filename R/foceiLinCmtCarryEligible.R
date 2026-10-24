@@ -21,7 +21,7 @@
 # Conservative rules beyond the shape check, each biased to FALSE:
 # - an eta appearing in more than one linCmtB() argument slot is dropped
 # - a slot containing more than one eta is dropped
-# - IOV/occasion etas (iniDf condition != "id") are dropped
+# - IOV/occasion etas (iniDf base condition != "id") are dropped
 # - a slot whose formula references time (t) directly is dropped
 # - a covariate-driven alag() is dropped (its boundary terms need the
 #   entering dose's own d(lag)/d(eta))
@@ -42,10 +42,11 @@
 #' Free symbol names of a symengine expression (empty on error/constant)
 #' @noRd
 .rxFoceiCarryFreeSyms <- function(expr) {
-  tryCatch(vapply(symengine::free_symbols(expr), as.character, character(1)),
-    error = function(e) character(0)
-  )
+  tryCatch(vapply(symengine::free_symbols(expr), as.character, character(1)), error = function(e) character(0))
 }
+
+# time symbols; rxS(pkTime = TRUE) loads a PK-type `t` as rx_time_pk (#1167)
+.rxFoceiCarryTimeSyms <- c("t", "rx_time_pk")
 
 #' Is a symengine expression identically zero?
 #' @noRd
@@ -71,17 +72,22 @@
 #'   `fCov` (F references a covariate), `fCmt`, `lagD` (d(lag)/d(eta) text
 #'   or `NA`), `lagCmt`; zero rows when nothing is eligible
 #' @noRd
-.rxFoceiLinCmtCarryEligible <- function(x, s, etaVars, data = NULL,
-                                        interpolation = c("locf", "nocb", "midpoint", "linear"),
-                                        render = TRUE) {
+.rxFoceiLinCmtCarryEligible <- function(
+  x,
+  s,
+  etaVars,
+  data = NULL,
+  interpolation = c("locf", "nocb", "midpoint", "linear"),
+  render = TRUE
+) {
   interpolation <- match.arg(interpolation)
   .ui <- x[[1]]
-  .empty <- .rxFoceiCarryEmpty() # nolint: object_usage_linter.
+  .empty <- .rxFoceiCarryEmpty()
   .allCovs <- .ui$allCovs
   if (length(.allCovs) == 0L) {
     return(.empty)
   }
-  .predArgs <- .rxFoceiCarryPredArgs(.ui, s) # nolint: object_usage_linter.
+  .predArgs <- .rxFoceiCarryPredArgs(.ui, s)
   if (is.null(.predArgs)) {
     return(.empty)
   }
@@ -90,12 +96,20 @@
   # per-slot free symbols (slots 9-15 of the linCmtB call are p1..ka)
   .slotExpr <- lapply(1:7, function(k) .predArgs[[k + 8L]])
   .slotFree <- lapply(.slotExpr, .rxFoceiCarryFreeSyms)
-  .mods <- .rxFoceiCarryEventMods(.ui, s, etaVars) # nolint: object_usage_linter.
+  .mods <- .rxFoceiCarryEventMods(.ui, s, etaVars)
   .ret <- .empty
   for (.e in seq_along(etaVars)) {
     .row <- .rxFoceiCarryEligibleEta(
-      .e, etaVars, .etaDf, .allCovs, .slotExpr,
-      .slotFree, .mods, data, interpolation, render
+      .e,
+      etaVars,
+      .etaDf,
+      .allCovs,
+      .slotExpr,
+      .slotFree,
+      .mods,
+      data,
+      interpolation,
+      render
     )
     if (!is.null(.row)) .ret <- rbind(.ret, .row)
   }
@@ -112,7 +126,8 @@
     return(FALSE)
   }
   .cond <- etaDf$condition[.wEta]
-  is.na(.cond) || identical(.cond, "id")
+  # a same() copy of an id-level block has condition "id:same:<master>"
+  is.na(.cond) || identical(lotri::lotriBaseCondition(.cond), "id")
 }
 
 #' The eta's slot channel: list(k, g, shape, covs) for a single qualifying
@@ -130,7 +145,7 @@
   }
   .free <- slotFree[[.inSlot]]
   # exactly one eta in that slot, no direct time dependence
-  if (sum(etaVars %in% .free) != 1L || "t" %in% .free) {
+  if (sum(etaVars %in% .free) != 1L || any(.rxFoceiCarryTimeSyms %in% .free)) {
     return(NULL)
   }
   .expr <- slotExpr[[.inSlot]]
@@ -143,7 +158,10 @@
     return(NULL)
   }
   list(
-    k = .inSlot, g = .d, expr = .expr, shape = .shape,
+    k = .inSlot,
+    g = .d,
+    expr = .expr,
+    shape = .shape,
     covs = intersect(.free, allCovs)
   )
 }
@@ -155,7 +173,7 @@
     return("mult")
   }
   .dFree <- .rxFoceiCarryFreeSyms(d)
-  if (length(intersect(.dFree, c(allCovs, etaVars, "t"))) == 0L) {
+  if (length(intersect(.dFree, c(allCovs, etaVars, .rxFoceiCarryTimeSyms))) == 0L) {
     return("add")
   }
   NULL
@@ -172,13 +190,23 @@
 
 #' One eligibility row for eta `e`, or NULL
 #' @noRd
-.rxFoceiCarryEligibleEta <- function(e, etaVars, etaDf, allCovs, slotExpr,
-                                     slotFree, mods, data, interpolation, render) {
+.rxFoceiCarryEligibleEta <- function(
+  e,
+  etaVars,
+  etaDf,
+  allCovs,
+  slotExpr,
+  slotFree,
+  mods,
+  data,
+  interpolation,
+  render
+) {
   .eta <- etaVars[e]
   if (!.rxFoceiCarryEtaIdOnly(e, etaDf)) {
     return(NULL)
   }
-  .jump <- .rxFoceiCarryEtaJump(.eta, mods, allCovs) # nolint: object_usage_linter.
+  .jump <- .rxFoceiCarryEtaJump(.eta, mods, allCovs)
   if (!isTRUE(.jump$ok)) {
     return(NULL)
   }
@@ -191,17 +219,25 @@
   if (length(.why) == 0L) {
     return(NULL)
   }
-  .varying <- .rxFoceiCarryVarying(.why, data) # nolint: object_usage_linter.
+  .varying <- .rxFoceiCarryVarying(.why, data)
   if (identical(interpolation, "linear") && isTRUE(.varying)) {
-    stop("time-varying covariate '", paste(.why, collapse = "', '"),
+    stop(
+      "time-varying covariate '",
+      paste(.why, collapse = "', '"),
       "' on a linCmt() parameter needs 'locf', 'nocb' or 'midpoint' ",
       "interpolation; 'linear' cannot be represented by the linCmt() solution",
       call. = FALSE
     )
   }
   .rxFoceiCarryPairRow(
-    .eta, etaDf$name[which(etaDf$neta1 == e)], # nolint: object_usage_linter.
-    if (.hasSlot) .slot else NULL, .jump, mods, .why, .varying, render
+    .eta,
+    etaDf$name[which(etaDf$neta1 == e)],
+    if (.hasSlot) .slot else NULL,
+    .jump,
+    mods,
+    .why,
+    .varying,
+    render
   )
 }
 
@@ -214,7 +250,7 @@
   if (isTRUE(jump$fCov)) {
     .why <- c(.why, intersect(.rxFoceiCarryFreeSyms(mods$f$sym), allCovs))
   }
-  if (!is.null(jump$lagD) && .rxFoceiCarryKernelHasCov(slotFree, allCovs)) { # nolint: object_usage_linter.
+  if (!is.null(jump$lagD) && .rxFoceiCarryKernelHasCov(slotFree, allCovs)) {
     .why <- c(.why, unlist(lapply(slotFree, intersect, allCovs)))
   }
   unique(.why)

@@ -20,7 +20,8 @@ object and evaluates the model variables.
 \details{
 The function performs the following steps:
 
-- Retrieves the simulation model from the provided `fit` object using `.getSimModel` with `hideIpred` and `tad` set to `FALSE`.
+- Retrieves the simulation model from the provided `fit` object using `.getSimModel` with
+  `hideIpred` and `tad` set to `FALSE`.
 
 - Evaluates the model variables using `rxModelVars`.
 }

@@ -55,8 +55,7 @@ test_that("saem: an ll() endpoint with IOV gives a sane objf (#1000)", {
     })
   }
 
-  .ctl <- saemControl(nBurn = 60, nEm = 80, seed = 42L, print = 0L,
-                      covMethod = "", calcTables = FALSE)
+  .ctl <- saemControl(nBurn = 60, nEm = 80, seed = 42L, print = 0L, covMethod = "", calcTables = FALSE)
   .fL <- suppressWarnings(nlmixr2(.ll, .theoIov, est = "saem", control = .ctl))
   .fA <- suppressWarnings(nlmixr2(.add, .theoIov, est = "saem", control = .ctl))
 

@@ -51,7 +51,9 @@ nmTest({
           })
         }
         fit <- nlmixr2(
-          one.compartment, nlmixr2data::theo_sd, est = "focei",
+          one.compartment,
+          nlmixr2data::theo_sd,
+          est = "focei",
           control = foceiControl(print = 0L, maxOuterIterations = 0L)
         )
         as.numeric(fit$objDf$OBJF[1])

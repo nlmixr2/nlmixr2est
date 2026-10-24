@@ -8,10 +8,12 @@
 #include "shi21.h"
 #include "inner.h"
 #include "odeSwap.h"
+#include "nmParallel.h"
 #include "rxomp.h"
 #include "../inst/include/nlmixr2estLikContrib.h"
 #include "likContribUtil.h"
 #include <atomic>
+#include <exception>
 #include <limits>
 
 #define _(String) (String)
@@ -23,6 +25,8 @@
 // same globals (ordinary linker-visible symbols within this one .so).
 #include <RcppTrust.h>
 #include "trustHessianUpdate.h"
+#include <lbfgsb3ptr.h>
+#include "lbfgsbTask.h"
 
 
 // Solves go through odeSwapSolveInd(slot, id) -- see the note in inner.cpp.  nlm's
@@ -30,6 +34,7 @@
 
 struct nlmOptions {
   unsigned int ntheta=0;
+  unsigned int nsub=0;
   int *thetaFD=NULL; // theta needs finite difference?
   int *nobs = NULL;
   int *idS  = NULL;
@@ -84,13 +89,13 @@ struct nlmOptions {
   int trustHessMethod=1;
   // Running quasi-Newton Hessian state for trustHessMethod 2/3/4 -- the
   // previous outer call's theta/gradient and the Hessian estimate carried
-  // forward between calls. Reset (trustHasPrev=false) at the top of every
+  // forward between calls. Reset (trustHasPrev=0) at the top of every
   // nlmTrustFit() call, not just once at model load, since it is only valid
   // within a single trust_solve_c() run.
   arma::mat trustHessQN;
   arma::vec trustThetaPrev;
   arma::vec trustGradPrev;
-  bool trustHasPrev=false;
+  int trustHasPrev=0;
   int hasFR=0; // 1 if predOnly model has rx_pred_f_ (lhs[1]) and rx_r_ (lhs[2])
   // Index of rx_pred_ in each model's lhs.  The gradient (thetaGrad) model emits
   // the intermediate parameter assignments (eg ka/cl/v needed by the sensitivity
@@ -160,6 +165,13 @@ RObject nlmSetup(Environment e) {
   resetCensFlag();
 
   nlmOp.solveType = as<int>(control["solveType"]);
+  // the codes the solves below handle: an other would fall through every switch
+  // (no objective, or a gradient column left uninitialized)
+  if (nlmOp.solveType != solveType_pred && nlmOp.solveType != solveType_grad &&
+      nlmOp.solveType != solveType_hess && nlmOp.solveType != solveType_nls &&
+      nlmOp.solveType != solveType_nls_pred) {
+    stop(_("unknown nlm 'solveType' code %d"), nlmOp.solveType);
+  }
   RObject model;
   nlmOp.gradOffset = 0;
   if (e.exists("thetaGrad")) {
@@ -199,7 +211,7 @@ RObject nlmSetup(Environment e) {
   nlmOp.saveType = 0;
   nlmOp.naGrad.store(0, std::memory_order_relaxed);
   nlmOp.nTrustOuter.store(0, std::memory_order_relaxed);
-  nlmOp.trustHasPrev = false;
+  nlmOp.trustHasPrev = 0;
   nlmOp.maxOdeRecalc = as<int>(control["maxOdeRecalc"]);
   nlmOp.odeRecalcFactor = as<double>(control["odeRecalcFactor"]);
 
@@ -210,6 +222,13 @@ RObject nlmSetup(Environment e) {
   nlmOp.optimHessType = control["optimHessType"];
   nlmOp.shi21maxHess = control["shi21maxHess"];
   nlmOp.hessErr = control["hessErr"];
+  // 1 = forward, 2 = central are the only differences there are
+  if (nlmOp.eventType != 1 && nlmOp.eventType != 2) {
+    stop(_("'eventType' must be 1 (forward) or 2 (central), not %d"), nlmOp.eventType);
+  }
+  if (nlmOp.optimHessType != 1 && nlmOp.optimHessType != 2) {
+    stop(_("'optimHessType' must be 1 (forward) or 2 (central), not %d"), nlmOp.optimHessType);
+  }
 
 
   // Size the pool for the largest registered model rather than assuming it is
@@ -225,6 +244,7 @@ RObject nlmSetup(Environment e) {
                    R_NilValue, // inits
                    1);//const int setupOnly = 0
   rx = getRxSolve_();
+  nlmOp.nsub = (unsigned int)getRxNsub(rx);
   // Size the per-subject inner-retry counter now that `rx` is valid.
   nlmOp.stickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
 
@@ -291,9 +311,9 @@ RObject nlmSetup(Environment e) {
     nlmOp.scaleC  = nlmOp.initPar   + ntheta; // [ntheta]
 #undef ntheta
 #undef nsub
-
-    std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, R_PosInf); // not likely to be equal
   }
+  // An empty cache: no theta, not even an all-zero one, equals +Inf.
+  if (nlmOp.thetaSave != NULL) std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, R_PosInf);
 
   std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
 
@@ -389,14 +409,6 @@ NumericVector nlmUnscalePar(NumericVector p) {
   return ret;
 }
 
-// Shared with inner.cpp: scan ind->solve for NaN/Inf over the span this
-// subject's solve actually wrote, instead of the shared op->badSolve flag which
-// another thread can flip mid-loop.
-static inline bool nlmIndHasBadSolve(rx_solving_options *op,
-                                     rx_solving_options_ind *ind) {
-  return odeSwapIndBadSolve(op, ind);
-}
-
 // nlm latches a different "reduced tolerance" flag per solve kind, and (unlike
 // FOCEi) never un-sticks a subject that recovered -- see OdeRetryOpts.
 struct NlmRetryHooks {
@@ -454,6 +466,49 @@ static inline void saveTheta(arma::vec &theta) {
   thetaSave = theta;
 }
 
+// optimFunC(), nlminbFunC() and solveGradNls() share one cache: valSave/grSave/hSave hold
+// the solve at thetaSave up to level saveType (solveType_pred < solveType_grad <
+// solveType_hess); nls keeps every observation's residual and gradient row.
+static inline bool nlmSaved(arma::vec &theta, int level) {
+  return nlmOp.saveType >= level && isThetaSame(theta);
+}
+
+// Censoring of observation kk, read for a censorable endpoint: normal/dnorm, or
+// t()/cauchy() when the model emits rx_nu_ (nuOffset >= 0, see #979).
+struct NlmCensObs {
+  int dist = 0, cens = 0;
+  double dv = 0.0, limit = R_NegInf;
+  bool on = false; // a censored (M2/M3/M4) observation
+  // -LL of the censored observation; val is its uncensored -LL, f/r its rx_pred_f_/rx_r_.
+  double negLL(double val, double f, double r, const double *lhs, int nuOffset) const {
+    if (dist == rxDistributionT || dist == rxDistributionCauchy) {
+      // cauchy is Student-t with nu=1 (#979); .fixCensRNuLine (R/focei.R)
+      // already emits rx_nu_ ~ 1 for cauchy, so this always reads a real nu.
+      return -doCensT1((double)cens, dv, limit, -val, f, r, lhs[nuOffset]);
+    }
+    return -doCensNormal1((double)cens, dv, limit, -val, f, r, 0);
+  }
+};
+
+static inline NlmCensObs nlmCensObs(rx_solving_options_ind *ind, int kk, int nuOffset) {
+  NlmCensObs c;
+  if (!nlmOp.hasFR || !(hasRxCens(rx) || hasRxLimit(rx))) return c;
+  int yj = getIndYj(ind), yj0 = 0;
+  _splitYj(&yj, &c.dist, &yj0);
+  if (c.dist != rxDistributionNorm && c.dist != rxDistributionDnorm &&
+      !((c.dist == rxDistributionT || c.dist == rxDistributionCauchy) && nuOffset >= 0)) {
+    return c;
+  }
+  if (hasRxCens(rx)) c.cens = getIndCens(ind, kk);
+  c.dv = getIndDv(ind, kk);
+  if (hasRxLimit(rx)) {
+    c.limit = getIndLimit(ind, kk);
+    if (ISNA(c.limit)) c.limit = R_NegInf;
+  }
+  c.on = (c.cens != 0) || (R_FINITE(c.limit) && !ISNA(c.limit));
+  return c;
+}
+
 // Solve prediction
 void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   arma::vec ret(retD, nobs, false, true);
@@ -493,36 +548,8 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
         lhs[po] = 0.0;
       }
       double val = lhs[po];
-      if (nlmOp.hasFR && (hasRxCens(rx) || hasRxLimit(rx))) {
-        int yj = getIndYj(ind), dist = 0, yj0 = 0;
-        _splitYj(&yj, &dist, &yj0);
-        if (dist == rxDistributionDnorm || dist == rxDistributionNorm ||
-            ((dist == rxDistributionT || dist == rxDistributionCauchy) &&
-             nlmOp.predNuOffset >= 0)) {
-          int censi = 0;
-          if (hasRxCens(rx)) censi = getIndCens(ind, kk);
-          double dvi = getIndDv(ind, kk);
-          double limiti = R_NegInf;
-          if (hasRxLimit(rx)) {
-            limiti = getIndLimit(ind, kk);
-            if (ISNA(limiti)) limiti = R_NegInf;
-          }
-          if (censi != 0 || (R_FINITE(limiti) && !ISNA(limiti))) {
-            double f = lhs[po + 1]; // rx_pred_f_
-            double r = lhs[po + 2]; // rx_r_
-            double ll;
-            if (dist == rxDistributionT || dist == rxDistributionCauchy) {
-              // cauchy is Student-t with nu=1 (#979); .fixCensRNuLine (R/focei.R)
-              // already emits rx_nu_ ~ 1 for cauchy, so this always reads a real nu.
-              double nu = lhs[nlmOp.predNuOffset];
-              ll = doCensT1((double)censi, dvi, limiti, -val, f, r, nu);
-            } else {
-              ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
-            }
-            val = -ll;
-          }
-        }
-      }
+      NlmCensObs censObs = nlmCensObs(ind, kk, nlmOp.predNuOffset);
+      if (censObs.on) val = censObs.negLL(val, lhs[po + 1], lhs[po + 2], lhs, nlmOp.predNuOffset);
       ret(k) = val;
       if (_hasContrib) {
         int yjC = getIndYj(ind), distC = 0, yj0C = 0;
@@ -535,11 +562,7 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
         // matching likInner0's non-normal branch.
         if (nlmOp.hasFR && (distC == rxDistributionNorm || distC == rxDistributionDnorm)) {
           fO = lhs[po + 1]; rO = lhs[po + 2];
-          int censi = 0;
-          if (hasRxCens(rx)) censi = getIndCens(ind, kk);
-          double limiti = R_NegInf;
-          if (hasRxLimit(rx)) { limiti = getIndLimit(ind, kk); if (ISNA(limiti)) limiti = R_NegInf; }
-          nlmixrLikContribGaussCotan((double)censi, dvi, limiti, fO, rO, &dLLdf, &dLLdr);
+          nlmixrLikContribGaussCotan((double)censObs.cens, dvi, censObs.limit, fO, rO, &dLLdf, &dLLdr);
         }
         double _llAdd = nlmixrLikContribObs1(id, k, 0, fO, dvi, rO, dLLdf, dLLdr, NULL, NULL);
         ret(k) -= _llAdd;  // objective is -LL; a contributor LL lowers it
@@ -563,14 +586,9 @@ arma::vec nlmSolveF(arma::vec &theta) {
   double *retD = ret.memptr();
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores)
-#endif
-  for (int id = 0; id < getRxNsub(rx); ++id) {
-    setRxThreadId(omp_get_thread_num());
+  nmForEachSubject(rx, getRxNsub(rx), cores, cores > 1, [&](int id) {
     nlmSolveFid(retD + nlmOp.idS[id], nlmOp.nobs[id], theta, id);
-    setRxThreadId(-1);
-  }
+  });
   return ret;
 }
 
@@ -602,37 +620,8 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
       rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
-      // Save outer kk (time index) for censoring data access before inner kk loop shadows it
-      int kkOuter = kk;
-      // Determine censoring status for this observation (normal/dnorm and,
-      // via doCensT1(), t()/cauchy() -- see #979)
-      bool hasCensObs = false;
-      bool isTDist = false;
-      int censi = 0;
-      double dvi = 0.0, limiti = R_NegInf;
-      if (nlmOp.hasFR && (hasRxCens(rx) || hasRxLimit(rx))) {
-        int yj = getIndYj(ind), dist = 0, yj0 = 0;
-        _splitYj(&yj, &dist, &yj0);
-        if (dist == rxDistributionNorm || dist == rxDistributionDnorm) {
-          if (hasRxCens(rx)) censi = getIndCens(ind, kkOuter);
-          dvi = getIndDv(ind, kkOuter);
-          if (hasRxLimit(rx)) {
-            limiti = getIndLimit(ind, kkOuter);
-            if (ISNA(limiti)) limiti = R_NegInf;
-          }
-          hasCensObs = (censi != 0) || (R_FINITE(limiti) && !ISNA(limiti));
-        } else if ((dist == rxDistributionT || dist == rxDistributionCauchy) &&
-                   nlmOp.gradNuOffset >= 0) {
-          if (hasRxCens(rx)) censi = getIndCens(ind, kkOuter);
-          dvi = getIndDv(ind, kkOuter);
-          if (hasRxLimit(rx)) {
-            limiti = getIndLimit(ind, kkOuter);
-            if (ISNA(limiti)) limiti = R_NegInf;
-          }
-          hasCensObs = (censi != 0) || (R_FINITE(limiti) && !ISNA(limiti));
-          isTDist = true;
-        }
-      }
+      // read before the loop below shadows kk
+      NlmCensObs censObs = nlmCensObs(ind, kk, nlmOp.gradNuOffset);
       // rx_pred_ is at lhs[gradOffset]; the ntheta sensitivity columns follow
       // contiguously, then rx_pred_f_ and rx_r_.  ret column 0 is the objective
       // and columns 1..ntheta are the theta gradients (offset only the lhs read).
@@ -644,25 +633,16 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
         }
         if (kk == 0) {
           double val = lhs[go];
-          if (hasCensObs) {
+          if (censObs.on) {
             double f = lhs[go + nlmOp.ntheta + 1]; // rx_pred_f_
             double r = lhs[go + nlmOp.ntheta + 2]; // rx_r_
-            if (!ISNA(f) && !ISNA(r)) {
-              double ll;
-              if (isTDist) {
-                double nu = lhs[nlmOp.gradNuOffset];
-                ll = doCensT1((double)censi, dvi, limiti, -val, f, r, nu);
-              } else {
-                ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
-              }
-              val = -ll;
-            }
+            if (!ISNA(f) && !ISNA(r)) val = censObs.negLL(val, f, r, lhs, nlmOp.gradNuOffset);
           }
           ret(k, 0) = val;
-        } else if (hasCensObs) {
+        } else if (censObs.on) {
           ret(k, kk) = R_NaN; // force finite differences for censored observations
         } else {
-          ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), lhs[go + kk], &theta[0], kk-1);
+          ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), lhs[go + kk], kk-1);
         }
       }
       k++;
@@ -672,15 +652,31 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       break;
     }
   }
+  // This subject's own FD steps: each is searched at the subject's first FD
+  // request and read back only by this subject, so the steps do not depend on
+  // the order (or the thread) the subjects are solved in.
   double *thetahf = nlmOp.thetahf + id*nlmOp.ntheta;
 
-  arma::vec f0 = ret.col(0);
+  // The differences are of the pred model (nlmSolveFid), so their base point is
+  // the pred model's objective at theta, solved the first time a step search, a
+  // forward difference or a one-sided fallback needs it (a central difference
+  // does not).  Column 0 is the sensitivity model's, a solve of a different ODE
+  // system that differs from it by the solver error, which a forward difference
+  // divides by h.
+  arma::vec f0;
+  bool haveF0 = false;
   arma::vec grTheta(nlmOp.nobs[id]);
   arma::vec grPH(nlmOp.nobs[id]);
   arma::vec grMH(nlmOp.nobs[id]);
 
   arma::vec hTheta(nlmOp.ntheta);
   arma::vec curTheta = theta;
+  auto needF0 = [&]() {
+    if (!haveF0) {
+      f0 = nlmSolveFid(curTheta, id);
+      haveF0 = true;
+    }
+  };
   for (int ii = 0; ii < nlmOp.ntheta; ++ii) {
     if (nlmOp.thetaFD[ii] == 0) {
       if (!ret.col(ii+1).has_nan()) {
@@ -689,6 +685,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       nlmOp.naGrad.store(1, std::memory_order_relaxed);
     }
     if (thetahf[ii] == 0.0) {
+      needF0();
       double h = 0;
       switch(nlmOp.eventType) {
       case 2: // central
@@ -714,24 +711,26 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
     }
     // already calculated optimum thetahf, now do the differences
     hTheta = curTheta;
-    hTheta[ii] += nlmOp.thetahf[ii];
+    hTheta[ii] += thetahf[ii];
     grPH = nlmSolveFid(hTheta, id);
     bool useForward = false;
     if (nlmOp.eventType == 1) {
       // if this isn't true try backward
       if (grPH.is_finite()) {
         useForward = true;
-        ret.col(ii+1) = calcGradForward(f0, grPH,  nlmOp.thetahf[ii]);
+        needF0();
+        ret.col(ii+1) = calcGradForward(f0, grPH,  thetahf[ii]);
         continue;
       }
     }
     if (!useForward) {
       // stencil or central
       hTheta = curTheta;
-      hTheta[ii] -= nlmOp.thetahf[ii];
+      hTheta[ii] -= thetahf[ii];
       grMH = nlmSolveFid(hTheta, id);
-      // central
-      ret.col(ii+1) = calcGradCentral(grMH, f0, grPH,  nlmOp.thetahf[ii]);
+      // central, or one-sided from f0 when a leg is not finite
+      if (!grPH.is_finite() || !grMH.is_finite()) needF0();
+      ret.col(ii+1) = calcGradCentral(grMH, f0, grPH,  thetahf[ii]);
     }
   }
   // restore save (may not be needed)
@@ -743,14 +742,9 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
   arma::mat ret(nlmOp.nobsTot, nlmOp.ntheta+1);
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores)
-#endif
-  for (int id = 0; id < getRxNsub(rx); ++id) {
-    setRxThreadId(omp_get_thread_num());
+  nmForEachSubject(rx, getRxNsub(rx), cores, cores > 1, [&](int id) {
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(theta, id);
-    setRxThreadId(-1);
-  }
+  });
   return ret;
 }
 
@@ -800,15 +794,10 @@ RObject nlmerSolveGrad(arma::mat &thetaMat, bool record=false) {
   arma::mat ret(nlmOp.nobsTot, nlmOp.ntheta+1);
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores)
-#endif
-  for (int id = 0; id < nsub; ++id) {
-    setRxThreadId(omp_get_thread_num());
+  nmForEachSubject(rx, nsub, cores, cores > 1, [&](int id) {
     arma::vec th = thetaMat.row(id).t();
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(th, id);
-    setRxThreadId(-1);
-  }
+  });
   if (record) {
     // Population parameter estimate = column means of the per-subject phi.
     // No objective is available here (lme4 owns the deviance), so record the
@@ -820,6 +809,15 @@ RObject nlmerSolveGrad(arma::mat &thetaMat, bool record=false) {
   return wrap(ret);
 }
 
+// The FD steps (per subject in thetahf, for the Hessian in thetahh) and the cached
+// solve are in the scaled parameters, so a new scale invalidates them: forget them
+// and let the next request search the steps again.
+static inline void nlmResetScaled() {
+  std::fill_n(nlmOp.thetahf, (size_t)nlmOp.ntheta*nlmOp.nsub, 0.0);
+  if (nlmOp.thetahh != NULL) std::fill_n(nlmOp.thetahh, nlmOp.ntheta, 0.0);
+  nlmOp.saveType = 0;
+}
+
 //[[Rcpp::export]]
 RObject nlmSetScaleC(NumericVector scaleC) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
@@ -828,6 +826,7 @@ RObject nlmSetScaleC(NumericVector scaleC) {
     stop("scaleC size mismatch");
   }
   std::copy(scaleC.begin(), scaleC.end(), nlmOp.scaleC);
+  nlmResetScaled();
   return R_NilValue;
 }
 
@@ -846,12 +845,13 @@ NumericVector nlmGetScaleC(arma::vec &theta, double to) {
     scaleC[i] = fabs(to/cs(i+1));
   }
   std::copy(scaleC.begin(), scaleC.end(), nlmOp.scaleC);
+  // the steps this gradient searched are for C = 1
+  nlmResetScaled();
   return scaleC;
 }
 
 
 
-//[[Rcpp::export]]
 RObject nlmSolveGradR(arma::vec &theta) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
   if (nlmOp.solveType == solveType_pred) stop("incorrect solve type");
@@ -886,18 +886,18 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
   if (nlmOp.solveType != solveType_nls) {
     stop(_("incorrect solve type"));
   }
-  if (!isThetaSame(theta)) {
+  if (!nlmSaved(theta, solveType_grad)) {
     arma::mat ret0(nlmOp.valSave, nlmOp.nobsTot, nlmOp.ntheta+1, false, true);
     ret0 = nlmSolveGrad(theta);
     if (ret0.has_nan()) {
       nlmOp.naZero.store(1, std::memory_order_relaxed);
       ret0.replace(datum::nan, 0);
     }
-    double llik;
     arma::vec resid =ret0.col(0);
     resid = resid % resid;
     double rss = arma::sum(resid);
     scalePrintFun(&(nlmOp.scale), &theta[0], rss);
+    nlmOp.saveType = solveType_grad;
     saveTheta(theta);
   }
   if (returnType == 1) {
@@ -926,79 +926,13 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
   return NumericVector::create();
 }
 
+// optimHessType: 1 = forward, 2 = central (shi21Hessian's own codes).  No hMax/hMin,
+// so a searched step is bounded by the shi21 defaults.
 arma::mat nlmCalcHessian(arma::vec &gr0, arma::vec &theta) {
-  int id = 0; // dummy id
-  mat H(nlmOp.ntheta, nlmOp.ntheta);
-  H.zeros();
-  arma::vec grPH(nlmOp.ntheta);
-  arma::vec grMH(nlmOp.ntheta);
-  double h;
-  double *thetahh = nlmOp.thetahh;
-  for (int k = nlmOp.ntheta; k--;) {
-    h = thetahh[k];
-    if (nlmOp.optimHessType == 1 && h <= 0) {
-      arma::vec t = theta;
-      thetahh[k] = shi21Forward(nlmSolveGrad1, theta, h,
-                                gr0, grPH, id, k,
-                                nlmOp.hessErr, //double ef = 7e-7,
-                                1.5,  //double rl = 1.5,
-                                6.0,  //double ru = 6.0);;
-                                nlmOp.shi21maxHess);  //maxiter=15
-      H.col(k) = grPH;
-      continue;
-    }
-    if (nlmOp.optimHessType == 2 && h <= 0) {
-      // Central
-      arma::vec t = theta;
-      thetahh[k] = shi21Central(nlmSolveGrad1, t, h,
-                                gr0, grPH, id, k,
-                                nlmOp.hessErr, // ef,
-                                1.5,//double rl = 1.5,
-                                4.5,//double ru = 4.5,
-                                3.0,//double nu = 8.0);
-                                nlmOp.shi21maxHess); // maxiter
-      H.col(k) = grPH;
-      continue;
-    }
-    // x + h
-    theta[k] += h;
-    grPH = nlmSolveGrad1(theta, id);
-    bool forwardFinite =  grPH.is_finite();
-    if (nlmOp.optimHessType == 1 && forwardFinite) { // forward
-      H.col(k) = (grPH-gr0)/h;
-      theta[k] -= h;
-      continue;
-    }
-    // x - h
-    theta[k] -= 2*h;
-    grMH = nlmSolveGrad1(theta, 0);
-    bool backwardFinite = grMH.is_finite();
-    if (nlmOp.optimHessType == 2 &&
-        forwardFinite && backwardFinite) {
-      // central
-      theta[k] += h;
-      H.col(k) = (grPH-grMH)/(2.0*h);
-      continue;
-    }
-    if (forwardFinite && !backwardFinite) {
-      // forward difference
-      H.col(k) = (grPH-gr0)/h;
-      theta[k] += h;
-      continue;
-    }
-    if (!forwardFinite && backwardFinite) {
-      // backward difference
-      H.col(k) = (gr0-grMH)/h;
-      theta[k] += h;
-      continue;
-    }
-  }
-  // symmetrize
-  H = 0.5*(H + H.t());
-  return H;
+  return shi21Hessian(nlmSolveGrad1, theta, gr0, 0, nlmOp.optimHessType,
+                      nlmOp.thetahh, nlmOp.hessErr, nlmOp.shi21maxHess);
 }
 
-//[[Rcpp::export]]
 RObject nlmSolveGradHess(arma::vec &theta) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
   if (nlmOp.solveType == solveType_pred) stop("incorrect solve type");
@@ -1046,46 +980,32 @@ extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
     }
     double ll = cs[0];
     arma::vec gr0 = cs(span(1, nlmOp.ntheta));
-    arma::mat H;
-    if (nlmOp.trustHessMethod == trustHessFd) {
-      // nlmCalcHessian() caches its per-theta FD step size (nlmOp.thetahh[k])
-      // and only re-derives it via shi21Forward/shi21Central when h<=0. Every
-      // OTHER caller invokes this at most once per fit (post-fit covariance),
-      // so that cache is valid for the theta it was calibrated at. trust calls
-      // this every outer iteration as theta moves, so a step size calibrated
-      // at iteration 1 can become stale (or, per this method's own benchmark
-      // history, simply unstable near a bounded/transformed parameter
-      // regardless of caching) once theta has moved away from where it was
-      // derived -- force a fresh derivation every call.
+    // nlmCalcHessian() searches each theta's FD step only while
+    // nlmOp.thetahh[k] is 0, then reuses it: nlm (solveType="hessian") and
+    // nlminb call it at every Hessian request and keep the steps from their
+    // first call for the whole fit.  trust calls this every outer iteration
+    // as theta moves, so a step size calibrated at iteration 1 can become
+    // stale (or, per this method's own benchmark history, simply unstable
+    // near a bounded/transformed parameter regardless of caching) once theta
+    // has moved away from where it was derived -- every FD Hessian it asks
+    // for (each call under "fd", the quasi-Newton seed otherwise) is
+    // searched afresh.
+    //
+    // The quasi-Newton methods update on every call: trust_solve_c() calls
+    // this once per TRIAL point every outer iteration, whether or not that
+    // trial is later accepted (verified directly in RcppTrust's
+    // trust_core_run()) -- the secant equation y ~= H*s holds for any two
+    // evaluated points regardless of trust's accept/reject bookkeeping, so
+    // updating on every call is standard practice; the skip guards inside
+    // trustHessianUpdate() protect against an unreliable (e.g.
+    // reject-then-shrink, near-zero-step) secant pair corrupting the running
+    // estimate.
+    arma::mat H = trustHessian(nlmOp.trustHessMethod, nlmOp.trustHasPrev,
+                               nlmOp.trustHessQN, nlmOp.trustThetaPrev,
+                               nlmOp.trustGradPrev, theta, gr0, [&]() {
       std::fill(nlmOp.thetahh, nlmOp.thetahh + nlmOp.ntheta, 0.0);
-      H = nlmCalcHessian(gr0, theta);
-    } else if (!nlmOp.trustHasPrev) {
-      // Seed the quasi-Newton methods with one FD Hessian, matching how
-      // every other nlmCalcHessian() consumer uses it (a one-time, not
-      // per-iteration, cost).
-      std::fill(nlmOp.thetahh, nlmOp.thetahh + nlmOp.ntheta, 0.0);
-      H = nlmCalcHessian(gr0, theta);
-      nlmOp.trustHessQN = H;
-      nlmOp.trustThetaPrev = theta;
-      nlmOp.trustGradPrev = gr0;
-      nlmOp.trustHasPrev = true;
-    } else {
-      // trust_solve_c() calls this once per TRIAL point every outer
-      // iteration, whether or not that trial is later accepted (verified
-      // directly in RcppTrust's trust_core_run()) -- the secant equation
-      // y ~= H*s holds for any two evaluated points regardless of trust's
-      // accept/reject bookkeeping, so updating on every call is standard
-      // practice; the skip guards inside trustHessianUpdate() protect
-      // against an unreliable (e.g. reject-then-shrink, near-zero-step)
-      // secant pair corrupting the running estimate.
-      arma::vec s = theta - nlmOp.trustThetaPrev;
-      arma::vec y = gr0 - nlmOp.trustGradPrev;
-      trustHessianUpdate(nlmOp.trustHessMethod, nlmOp.trustHessQN, s, y);
-      nlmOp.trustThetaPrev = theta;
-      nlmOp.trustGradPrev = gr0;
-      H = nlmOp.trustHessQN;
-    }
-    H = 0.5 * (H + H.t());
+      return nlmCalcHessian(gr0, theta);
+    });
     if (!H.is_finite()) {
       *value = std::numeric_limits<double>::infinity();
       return 1;
@@ -1116,6 +1036,95 @@ extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
   }
 }
 
+// est="lbfgsb3c": value and gradient come from one sensitivity solve, cached
+// by theta, so the paired fn/gr calls at a point cost one solve.  Any error
+// (including an R longjmp, turned into an exception by unwindProtect) is held
+// and rethrown after lbfgsb3Cts returns, so nothing unwinds through it.
+static std::exception_ptr nlmLbfgsErr = nullptr;
+
+static bool nlmLbfgsFill(int n, double *x) {
+  if (nlmLbfgsErr) return false;
+  try {
+    arma::vec theta(x, n);
+    if (!isThetaSame(theta)) {
+      Rcpp::unwindProtect([&]() -> SEXP {
+        arma::mat ret0 = nlmSolveGrad(theta);
+        arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
+        saveVec = (arma::sum(ret0, 0)).t();
+        saveTheta(theta);
+        scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
+        scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
+        return R_NilValue;
+      });
+    }
+    return true;
+  } catch (...) {
+    nlmLbfgsErr = std::current_exception();
+  }
+  return false;
+}
+
+extern "C" double nlmLbfgsF(int n, double *x, void *ex) {
+  (void)ex;
+  if (!nlmLbfgsFill(n, x)) return NA_REAL;
+  return nlmOp.valSave[0];
+}
+
+extern "C" void nlmLbfgsG(int n, double *x, double *g, void *ex) {
+  (void)ex;
+  if (!nlmLbfgsFill(n, x)) {
+    std::fill_n(g, n, NA_REAL);
+    return;
+  }
+  std::copy(nlmOp.grSave, nlmOp.grSave + n, g);
+}
+
+//[[Rcpp::export]]
+List nlmLbfgsb3cFit(arma::vec &theta, NumericVector lower, NumericVector upper,
+                    List control) {
+  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
+  if (nlmOp.solveType != solveType_grad) stop(_("incorrect solve type"));
+  if (lbfgsb3Cts == NULL) {
+    stop(_("est=\"lbfgsb3c\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)"));
+  }
+  int n = (int)theta.n_elem;
+  if (n != (int)nlmOp.ntheta) stop(_("'theta' does not match the loaded problem"));
+  if ((lower.size() != 1 && lower.size() != n) ||
+      (upper.size() != 1 && upper.size() != n)) {
+    stop(_("'lower'/'upper' must have length 1 or length(theta)"));
+  }
+  std::vector<double> x(theta.begin(), theta.end()), low(n), up(n), g(n, 0.0);
+  std::vector<int> nbd(n);
+  for (int i = 0; i < n; ++i) {
+    low[i] = lower.size() == 1 ? lower[0] : lower[i];
+    up[i] = upper.size() == 1 ? upper[0] : upper[i];
+    // 0 unbounded, 1 lower only, 2 both, 3 upper only
+    nbd[i] = R_FINITE(low[i]) ? 1 : 0;
+    if (R_FINITE(up[i])) nbd[i] = 3 - nbd[i];
+  }
+  // Force a fresh solve at the start rather than reusing another fit's cache.
+  std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, NA_REAL);
+  nlmLbfgsErr = nullptr;
+  double fmin = NA_REAL;
+  int fail = 0, fncount = 0, grcount = 0;
+  lbfgsb3Cts(n, as<int>(control["lmm"]), x.data(), low.data(), up.data(),
+             nbd.data(), &fmin, nlmLbfgsF, nlmLbfgsG, &fail, NULL,
+             as<double>(control["factr"]), as<double>(control["pgtol"]),
+             &fncount, &grcount, as<int>(control["maxit"]), NULL, 0, -1,
+             as<double>(control["abstol"]), as<double>(control["reltol"]),
+             g.data());
+  if (nlmLbfgsErr) {
+    std::exception_ptr err = nlmLbfgsErr;
+    nlmLbfgsErr = nullptr;
+    std::rethrow_exception(err);
+  }
+  return List::create(_["par"] = x, _["grad"] = g,
+                      _["value"] = fncount > 0 ? fmin : NA_REAL,
+                      _["counts"] = IntegerVector::create(fncount, grcount),
+                      _["convergence"] = lbfgsbConvergence(fail),
+                      _["message"] = lbfgsbTaskName(fail));
+}
+
 //[[Rcpp::export]]
 List nlmTrustFit(arma::vec &theta, List control) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
@@ -1123,7 +1132,7 @@ List nlmTrustFit(arma::vec &theta, List control) {
   // (see nlmOptions' comment) -- reset here, not just at model load.
   nlmOp.trustHessMethod = control.containsElementNamed("hessianMethod") ?
     as<int>(control["hessianMethod"]) : trustHessFd;
-  nlmOp.trustHasPrev = false;
+  nlmOp.trustHasPrev = 0;
   nlmOp.trustHessQN.reset();
   nlmOp.trustThetaPrev.reset();
   nlmOp.trustGradPrev.reset();
@@ -1210,6 +1219,17 @@ RObject nlmSolveSwitch(arma::vec &theta) {
 }
 
 
+// The objective and gradient at theta (column sums of nlmSolveGrad) into valSave/grSave,
+// unless the cache holds them already; true when it solved.
+static inline bool nlmSolveGradSaved(arma::vec &theta) {
+  if (nlmSaved(theta, solveType_grad)) return false;
+  arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
+  saveVec = (arma::sum(nlmSolveGrad(theta), 0)).t();
+  nlmOp.saveType = solveType_grad;
+  saveTheta(theta);
+  return true;
+}
+
 //[[Rcpp::export]]
 NumericVector optimFunC(arma::vec &theta, bool grad=false) {
   if (!nlmOp.loaded) stop("'optim' problem not loaded");
@@ -1220,98 +1240,38 @@ NumericVector optimFunC(arma::vec &theta, bool grad=false) {
     scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
     return ret;
   }
-  if (isThetaSame(theta)) {
-    if (grad) {
-      NumericVector ret(nlmOp.ntheta);
-      std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
-      return ret;
-    }
-    NumericVector ret(1);
-    ret[0] = nlmOp.valSave[0];
-    return ret;
-  }
-  arma::mat ret0 = nlmSolveGrad(theta);
-  arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
-  saveVec = (arma::sum(ret0, 0)).t();
-  saveTheta(theta);
-  if (grad) {
-    NumericVector ret(nlmOp.ntheta);
-    std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
+  if (nlmSolveGradSaved(theta)) {
     scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
     scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
-    return ret;
   }
-  NumericVector ret(1);
-  ret[0] = nlmOp.valSave[0];
-  scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
-  scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
-  return ret;
+  if (grad) return NumericVector(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta);
+  return NumericVector::create(nlmOp.valSave[0]);
 }
 
 //[[Rcpp::export]]
 NumericVector nlminbFunC(arma::vec &theta, int type) {
   if (!nlmOp.loaded) stop("'nlminb' problem not loaded");
-  // restore saved values
-  bool isSame = isThetaSame(theta);
-  if (isSame) {
-    switch (type) {
-    case solveType_pred:
-      if (nlmOp.saveType >= solveType_pred) {
-        NumericVector ret(1);
-        ret[0] = nlmOp.valSave[0];
-        return ret;
-      }
-      break;
-    case solveType_grad:
-      if (nlmOp.saveType >= solveType_grad) {
-        NumericVector ret(nlmOp.ntheta);
-        std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
-        return ret;
-      }
-      break;
-    case solveType_hess:
-      if (nlmOp.saveType == solveType_hess) {
-        NumericVector ret(nlmOp.ntheta*nlmOp.ntheta);
-        std::copy(nlmOp.hSave, nlmOp.hSave + nlmOp.ntheta * nlmOp.ntheta, ret.begin());
-        ret.attr("dim") = IntegerVector::create(nlmOp.ntheta, nlmOp.ntheta);
-        return ret;
-      }
-      break;
-    }
-  }
-  // calculate saved values
   switch (type) {
-  case solveType_pred: {
-    NumericVector ret(1);
-    nlmOp.valSave[0] = ret[0] = nlmSolveR(theta);
-    nlmOp.saveType = solveType_pred;
-    saveTheta(theta);
-    scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
-    return ret;
-  }
-    break;
-  case solveType_grad: {
+  case solveType_pred:
+    if (!nlmSaved(theta, solveType_pred)) {
+      nlmOp.valSave[0] = nlmSolveR(theta);
+      nlmOp.saveType = solveType_pred;
+      saveTheta(theta);
+      scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
+    }
+    return NumericVector::create(nlmOp.valSave[0]);
+  case solveType_grad:
     // You have to solve the full system for the grad anyway
-    arma::mat ret0 = nlmSolveGrad(theta);
-    arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
-    saveVec = (arma::sum(ret0, 0)).t();
-    nlmOp.saveType = solveType_grad;
-    saveTheta(theta);
-    NumericVector ret(nlmOp.ntheta);
-    std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
-    scalePrintGrad(&(nlmOp.scale), &ret[0], iterTypeSens);
-    return ret;
-  }
-    break;
+    if (nlmSolveGradSaved(theta)) scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
+    return NumericVector(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta);
   case solveType_hess: {
-    if (isSame && nlmOp.saveType == solveType_grad) {
+    if (nlmSaved(theta, solveType_grad) && nlmOp.saveType == solveType_grad) {
       // Just add hessian
-      arma::vec gr0(nlmOp.ntheta);
-      std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, gr0.begin());
+      arma::vec gr0(nlmOp.grSave, nlmOp.ntheta);
       mat H = nlmCalcHessian(gr0, theta);
       std::copy(H.begin(), H.end(), nlmOp.hSave);
       nlmOp.saveType = solveType_hess;
-    } else {
+    } else if (!nlmSaved(theta, solveType_hess)) {
       // Calculate everything
       NumericVector attrRet = as<NumericVector>(nlmSolveGradHess(theta));
       saveTheta(theta);
@@ -1322,12 +1282,10 @@ NumericVector nlminbFunC(arma::vec &theta, int type) {
       NumericVector hess = as<NumericVector>(attrRet.attr("hessian"));
       std::copy(hess.begin(), hess.end(), nlmOp.hSave);
     }
-    NumericVector ret(nlmOp.ntheta*nlmOp.ntheta);
-    std::copy(nlmOp.hSave, nlmOp.hSave + nlmOp.ntheta * nlmOp.ntheta, ret.begin());
+    NumericVector ret(nlmOp.hSave, nlmOp.hSave + nlmOp.ntheta * nlmOp.ntheta);
     ret.attr("dim") = IntegerVector::create(nlmOp.ntheta, nlmOp.ntheta);
     return ret;
   }
-    break;
   }
   stop("Couldn't find solution type: %d", type);
   return NumericVector::create(NA_REAL);
@@ -1397,33 +1355,20 @@ RObject nlmGetParHist(bool p=true) {
   nlmOp.scale.save = 0;
   nlmOp.scale.every = 0;
   if (p) {
-    scalePrintLine(&(nlmOp.scale), min2(nlmOp.scale.npars, nlmOp.scale.ncol));
+    scalePrintLine(nlmOp.scale.showOfv, min2(nlmOp.scale.npars, nlmOp.scale.ncol));
   }
   return scaleParHisDf(&(nlmOp.scale));
 }
 
 
 //[[Rcpp::export]]
-RObject nlmAdjustHessian(RObject Hin, arma::vec theta) {
-  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
-  arma::mat J(nlmOp.ntheta, nlmOp.ntheta);
-  arma::mat H = as<arma::mat>(Hin);
-  for (int i = 0; i < nlmOp.ntheta; ++i) {
-    J(i, i) =1.0/scaleAdjustGradScale(&(nlmOp.scale), 1.0, &theta[0], i);
-  }
-  H = J * H * J;
-  RObject ret = wrap(H);
-  ret.attr("dimnames") = Hin.attr("dimnames");
-  return ret;
-}
-
-//[[Rcpp::export]]
 RObject nlmAdjustCov(RObject CovIn, arma::vec theta) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
-  arma::mat J(nlmOp.ntheta, nlmOp.ntheta);
+  // J = d(natural)/d(scaled) is diagonal: every scaling is per parameter
+  arma::mat J(nlmOp.ntheta, nlmOp.ntheta, arma::fill::zeros);
   arma::mat Cov = as<arma::mat>(CovIn);
   for (int i = 0; i < nlmOp.ntheta; ++i) {
-    J(i, i) = scaleAdjustGradScale(&(nlmOp.scale), 1.0, &theta[0], i);
+    J(i, i) = scaleAdjustGradScale(&(nlmOp.scale), 1.0, i);
   }
   Cov = J * Cov * J;
   RObject ret = wrap(Cov);
@@ -1548,6 +1493,6 @@ List nlmLikEvalC_(NumericVector theta) {
   std::vector<double> g(ntheta, 0.0);
   int rc = nlmixr2NlmEval(&theta[0], ntheta, &value, g.data());
   if (rc < 0) stop("nlmixr2NlmEval failed with status %d", rc);
-  return List::create(_["value"] = value, _["grad"] = wrap(g),
+  return List::create(_["value"] = value, _["grad"] = g,
                       _["nBad"] = rc);
 }

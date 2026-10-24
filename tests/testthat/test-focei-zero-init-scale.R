@@ -5,7 +5,7 @@
 # initialized at 0 this is 1/0 = Inf, which clamps to scaleCmax and makes the
 # parameter effectively unoptimizable -- a tiny step in the scaled space becomes
 # an enormous step in the parameter, the line search rejects it, and the value
-# stays frozen at ~0.  getScaleC() now falls back to unit scaling when initPar
+# stays frozen at ~0.  scaleGetScaleC() now falls back to unit scaling when initPar
 # is 0 so the parameter is estimated normally.
 #
 # Pinned to innerOpt="n1qn1": under innerOpt="trust" this specific fixture's
@@ -55,20 +55,24 @@ nmTest({
     }
     .testSeed(11)
     .obsT <- seq(0.5, 60, length.out = 12)
-    .ev <- do.call(rbind, lapply(seq_len(60), function(id) {
-      wt <- round(runif(1, 50, 110))
-      e <- as.data.frame(rxode2::et(amt = 320) |> rxode2::et(.obsT))
-      e$ID <- id
-      e$WT <- wt
-      e
-    }))
+    .ev <- do.call(
+      rbind,
+      lapply(seq_len(60), function(id) {
+        wt <- round(runif(1, 50, 110))
+        e <- as.data.frame(rxode2::et(amt = 320) |> rxode2::et(.obsT))
+        e$ID <- id
+        e$WT <- wt
+        e
+      })
+    )
     .s <- rxode2::rxSolve(.sim(), .ev, returnType = "data.frame")
-    .dose <- do.call(rbind, lapply(seq_len(60), function(id) {
-      data.frame(ID = id, time = 0, DV = NA, amt = 320, evid = 1,
-                 WT = .ev$WT[.ev$ID == id][1])
-    }))
-    .obs <- data.frame(ID = .s$id, time = .s$time, DV = .s$sim, amt = NA,
-                       evid = 0, WT = .s$WT)
+    .dose <- do.call(
+      rbind,
+      lapply(seq_len(60), function(id) {
+        data.frame(ID = id, time = 0, DV = NA, amt = 320, evid = 1, WT = .ev$WT[.ev$ID == id][1])
+      })
+    )
+    .obs <- data.frame(ID = .s$id, time = .s$time, DV = .s$sim, amt = NA, evid = 0, WT = .s$WT)
     .d <- rbind(.dose, .obs)
     .d <- .d[order(.d$ID, .d$time, -.d$evid), ]
 
@@ -87,8 +91,7 @@ nmTest({
     }
 
     fit <- suppressWarnings(
-      nlmixr2(.cand, .d, "focei",
-              foceiControl(print = 0L, covMethod = "", innerOpt = "n1qn1"))
+      nlmixr2(.cand, .d, "focei", foceiControl(print = 0L, covMethod = "", innerOpt = "n1qn1"))
     )
 
     b <- unname(fit$parFixedDf["b", "Estimate"])

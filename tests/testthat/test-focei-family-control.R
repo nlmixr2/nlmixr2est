@@ -10,24 +10,38 @@ nmTest({
   # accepts the whole family via .nlmixrIsFoceiFamilyControl().
 
   test_that(".nlmixrIsFoceiFamilyControl accepts every FOCEi-family control", {
-    .family <- c("focei", "foce", "focep", "fo", "foi",
-                 "mfocei", "ifocei", "mfoce", "ifoce",
-                 "mfocep", "ifocep",
-                 "agq", "magq", "iagq",
-                 "laplace", "mlaplace", "ilaplace")
+    .family <- c(
+      "focei",
+      "foce",
+      "focep",
+      "fo",
+      "foi",
+      "mfocei",
+      "ifocei",
+      "mfoce",
+      "ifoce",
+      "mfocep",
+      "ifocep",
+      "agq",
+      "magq",
+      "iagq",
+      "laplace",
+      "mlaplace",
+      "ilaplace"
+    )
     for (.m in .family) {
       .ctl <- do.call(paste0(.m, "Control"), list())
-      expect_true(nlmixr2est:::.nlmixrIsFoceiFamilyControl(.ctl),
-                  info = paste0(.m, "Control (class ",
-                                paste(class(.ctl), collapse = ","), ")"))
+      expect_true(
+        .nlmixrIsFoceiFamilyControl(.ctl),
+        info = paste0(.m, "Control (class ", paste(class(.ctl), collapse = ","), ")")
+      )
     }
   })
 
   test_that(".nlmixrIsFoceiFamilyControl rejects non-FOCEi controls", {
     for (.m in c("saem", "nlme", "nlm")) {
       .ctl <- do.call(paste0(.m, "Control"), list())
-      expect_false(nlmixr2est:::.nlmixrIsFoceiFamilyControl(.ctl),
-                   info = paste0(.m, "Control"))
+      expect_false(.nlmixrIsFoceiFamilyControl(.ctl), info = paste0(.m, "Control"))
     }
   })
 
@@ -43,10 +57,53 @@ nmTest({
     .env$upper <- c(Inf, Inf)
     .env$etaMat <- NA
     .env$control <- ifoceiControl()
-    expect_error(nlmixr2est:::.nlmixrCheckFoceiEnvironment(.env), NA)
+    expect_error(.nlmixrCheckFoceiEnvironment(.env), NA)
     # and it still rejects an unrelated control
     .env$control <- saemControl()
-    expect_error(nlmixr2est:::.nlmixrCheckFoceiEnvironment(.env),
-                 "focei control object")
+    expect_error(.nlmixrCheckFoceiEnvironment(.env), "focei control object")
   })
+})
+
+test_that("foce, focep, laplace and agq convert a family control by what its caller set", {
+  .targets <- c(foce = "foceControl", focep = "focepControl", laplace = "laplaceControl", agq = "agqControl")
+  .identity <- c("fo", "interaction", "nAGQ", "foce")
+  for (.est in names(.targets)) {
+    .default <- do.call(.targets[[.est]], list())
+    for (.src in c("foControl", "foiControl")) {
+      for (.posthoc in c(TRUE, FALSE)) {
+        .in <- do.call(.src, list(maxOuterIterations = 7L, posthoc = .posthoc))
+        expect_message(
+          .ctl <- getValidNlmixrControl(.in, .est),
+          paste0("converting ", .src, " to ", .targets[[.est]]),
+          fixed = TRUE
+        )
+        expect_s3_class(.ctl, .targets[[.est]], exact = TRUE)
+        expect_identical(.ctl$maxOuterIterations, 7L)
+        # posthoc is a field of foControl()/foiControl() only; posthoc = FALSE (no
+        # inner problem) arrives as maxInnerIterations = 0
+        expect_false("posthoc" %in% names(.ctl))
+        expect_identical(.ctl$maxInnerIterations, if (.posthoc) .default$maxInnerIterations else 0L)
+        # the target method's own settings, not FO's
+        expect_identical(.ctl[.identity], .default[.identity])
+      }
+    }
+  }
+  # the settings that make a method what it is come from the target, so agq
+  # given a foceControl() runs AGQ, not FOCE, and laplace given an
+  # agqControl() runs the Laplace approximation
+  .agq <- suppressMessages(getValidNlmixrControl(foceControl(maxOuterIterations = 7L), "agq"))
+  expect_identical(.agq[.identity], agqControl()[.identity])
+  expect_identical(.agq$maxOuterIterations, 7L)
+  .lap <- suppressMessages(getValidNlmixrControl(foceControl(), "laplace"))
+  expect_identical(.lap[.identity], laplaceControl()[.identity])
+  .lap <- suppressMessages(getValidNlmixrControl(agqControl(), "laplace"))
+  expect_identical(.lap[.identity], laplaceControl()[.identity])
+  # an explicit setting is kept, and a foceiControl() is passed through as is
+  .lap <- suppressMessages(getValidNlmixrControl(agqControl(nAGQ = 5), "laplace"))
+  expect_equal(.lap$nAGQ, 5)
+  .agq <- suppressMessages(getValidNlmixrControl(foceiControl(nAGQ = 3), "agq"))
+  expect_equal(.agq$nAGQ, 3)
+  # fo and foi still take their own posthoc
+  .fo <- suppressMessages(getValidNlmixrControl(foiControl(posthoc = FALSE), "fo"))
+  expect_false(.fo$posthoc)
 })

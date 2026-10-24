@@ -1,4 +1,10 @@
-^build$
+# build/ holds the NSIS installer assets, which must not ship, but R CMD build
+# also writes the vignette index to build/vignette.rds.  Excluding the whole
+# directory dropped that index and left a 'VignetteBuilder field but no prebuilt
+# vignette index' NOTE, so exclude the contents and keep vignette.rds.
+^man-roxygen$
+^nlmixr2est-bisect$
+^build/(?!vignette\.rds$).*$
 ^nlmixr2est/man-roxygen$
 ^nlmixr2est/tests/testthat/_snaps$
 ^design$
@@ -6,6 +12,10 @@
 ^tools$
 ^.augment$
 ^CLAUDE.md$
+^\.lintr$
+^air\.toml$
+^\.habit-hooks$
+^bench$
 ^.antigravity$
 ^.continue$
 ^.kilocode$
@@ -34,7 +44,6 @@
 ^\.gitignore$
 ^vignettes/examples/ACoP7poster/.*$
 ^vignettes/examples/LiveDemo/.*$
-^build/.*$
 ^vignettes/figure/.*$
 ^appveyor\.yml$
 rx_.*\.(so|dll)$
@@ -112,7 +121,6 @@ BinaryFiles$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
 ^LICENSE\.md$
-^vignettes/$
 # Generated test fixtures.  helper-zzz-fits.R prefits ~10 models and helper-gradref.R
 # caches numeric references; both are keyed on a hash of R/ and src/ and regenerate on
 # first use, so they are local build artifacts, not package content.  They are
@@ -121,3 +129,7 @@ BinaryFiles$
 # The fixtures CRAN's own checks read are the CHECKED-IN csv references
 # (npag/pmetrics_reference.csv, npag/ipm/burke-golden.csv) and are kept.
 ^tests/testthat/fixtures/.*\.rds$
+# testthat's record of a failing local run, not package content
+^tests/testthat/testthat-problems\.rds$
+^tests/testthat/_problems$
+^vignettes/.*\.Rmd\.orig$

@@ -17,7 +17,6 @@
 # with "target" as the default the df/AUTO tail machinery is a secondary safety
 # net rather than the primary remedy.
 nmTest({
-
   # FIXTURE: THREE ETAs.  These tests need a Gaussian proposal that genuinely
   # FAILS, and that has to be measured, not assumed.  The previous fixture was a
   # single-ETA model, which reads k-hat about -1.4 for every subject and can never
@@ -44,10 +43,20 @@ nmTest({
   }
 
   .fitDf <- function(df, nIter = 8L, isample = 300L) {
-    suppressWarnings(nlmixr2(.tModel, nlmixr2data::theo_sd, "impmap",
-                             impmapControl(print = 0L, nIter = nIter,
-                                           isample = isample, covMethod = "",
-                                           auto = FALSE, df = df, gammaRule = "floor")))
+    suppressWarnings(nlmixr2(
+      .tModel,
+      nlmixr2data::theo_sd,
+      "impmap",
+      impmapControl(
+        print = 0L,
+        nIter = nIter,
+        isample = isample,
+        covMethod = "",
+        auto = FALSE,
+        df = df,
+        gammaRule = "floor"
+      )
+    ))
   }
 
   test_that("df control round-trips and defaults to the Gaussian proposal", {
@@ -64,9 +73,9 @@ nmTest({
     # (df=20), -0.86 (df=5).
     .g <- .fitDf(0)
     .t <- .fitDf(50)
-    expect_gt(max(.g$env$impPsisK), 0.7)      # premise: the Gaussian fails
+    expect_gt(max(.g$env$impPsisK), 0.7) # premise: the Gaussian fails
     expect_gt(sum(.g$env$impPsisK > 0.7), 0L)
-    expect_lt(max(.t$env$impPsisK), 0.7)      # and the t proposal fixes it
+    expect_lt(max(.t$env$impPsisK), 0.7) # and the t proposal fixes it
     expect_equal(sum(.t$env$impPsisK > 0.7), 0L)
   })
 
@@ -101,15 +110,20 @@ nmTest({
   })
 
   test_that("the t proposal composes with qrpem and with individual gamma", {
-    .q <- suppressWarnings(nlmixr2(.tModel, nlmixr2data::theo_sd, "qrpem",
-                                   qrpemControl(print = 0L, nIter = 6L,
-                                                covMethod = "", df = 10)))
+    .q <- suppressWarnings(nlmixr2(
+      .tModel,
+      nlmixr2data::theo_sd,
+      "qrpem",
+      qrpemControl(print = 0L, nIter = 6L, covMethod = "", df = 10)
+    ))
     expect_true(inherits(.q, "nlmixr2FitCore"))
     expect_true(all(is.finite(.q$env$impPsisK)))
-    .i <- suppressWarnings(nlmixr2(.tModel, nlmixr2data::theo_sd, "impmap",
-                                   impmapControl(print = 0L, nIter = 6L,
-                                                 covMethod = "", df = 10,
-                                                 gammaMethod = "individual", gammaRule = "floor")))
+    .i <- suppressWarnings(nlmixr2(
+      .tModel,
+      nlmixr2data::theo_sd,
+      "impmap",
+      impmapControl(print = 0L, nIter = 6L, covMethod = "", df = 10, gammaMethod = "individual", gammaRule = "floor")
+    ))
     expect_equal(.i$env$impGammaMethod, "individual")
     expect_true(all(is.finite(.i$env$impGammaInd)))
   })
@@ -117,20 +131,20 @@ nmTest({
   test_that("covMethod='imp' works under a t proposal", {
     # The covariance step builds its own proposal and must use the SAME df, or
     # the reweighted objective is not the one the fit converged on.
-    .f <- suppressWarnings(nlmixr2(.tModel, nlmixr2data::theo_sd, "impmap",
-                                   impmapControl(print = 0L, nIter = 8L,
-                                                 covMethod = "imp", df = 10, gammaRule = "floor")))
+    .f <- suppressWarnings(nlmixr2(
+      .tModel,
+      nlmixr2data::theo_sd,
+      "impmap",
+      impmapControl(print = 0L, nIter = 8L, covMethod = "imp", df = 10, gammaRule = "floor")
+    ))
     .cv <- as.matrix(.f$env$cov)
     expect_true(all(is.finite(.cv)))
     expect_true(all(diag(.cv) > 0))
   })
-
 })
 
 # Per-subject ISAMPLE (the NM7 Technical Guide's own remedy) vs the t proposal.
 nmTest({
-
-
   # three ETAs, for the same reason .tModel has them: the tail-failure premise
   # below is unsatisfiable on a single-ETA model
   .isModel <- function() {
@@ -146,28 +160,36 @@ nmTest({
     expect_error(impmapControl(isample = 0L, gammaRule = "floor"))
     .d <- nlmixr2data::theo_sd
     .n <- length(unique(.d$ID))
-    .iv <- rep(300L, .n); .iv[c(1L, 3L)] <- 900L
+    .iv <- rep(300L, .n)
+    .iv[c(1L, 3L)] <- 900L
     # auto = FALSE: this tests that an explicit per-subject vector is PLUMBED
     # through, and AUTO's job is to reallocate the budget away from exactly such
     # a vector (measured: 836/912/905/... against the requested 900/300/300/...),
     # which would be testing AUTO rather than the plumbing.
-    .f <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 5L,
-                                                 isample = .iv, covMethod = "",
-                                                 auto = FALSE, gammaRule = "floor")))
+    .f <- suppressWarnings(nlmixr2(
+      .isModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 5L, isample = .iv, covMethod = "", auto = FALSE, gammaRule = "floor")
+    ))
     expect_equal(as.integer(.f$env$impNsampleInd), .iv)
   })
 
   test_that("a uniform isample vector matches the equivalent scalar", {
     .d <- nlmixr2data::theo_sd
     .n <- length(unique(.d$ID))
-    .a <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 5L,
-                                                 isample = 300L, covMethod = "", gammaRule = "floor")))
-    .b <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 5L,
-                                                 isample = rep(300L, .n),
-                                                 covMethod = "", gammaRule = "floor")))
+    .a <- suppressWarnings(nlmixr2(
+      .isModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 5L, isample = 300L, covMethod = "", gammaRule = "floor")
+    ))
+    .b <- suppressWarnings(nlmixr2(
+      .isModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 5L, isample = rep(300L, .n), covMethod = "", gammaRule = "floor")
+    ))
     expect_equal(.b$objf, .a$objf, tolerance = 1e-10)
     expect_equal(unname(.b$theta), unname(.a$theta), tolerance = 1e-10)
   })
@@ -200,28 +222,34 @@ nmTest({
     # for "sample count is deliberately not driven by Pareto k-hat"
     # (src/imp.cpp).  That rationale now rests on the sparse row alone.
     skip_on_cran()
-    .d <- nlmixr2data::theo_sd             # 3-ETA fixture -- see .tModel above
+    .d <- nlmixr2data::theo_sd # 3-ETA fixture -- see .tModel above
     .n <- length(unique(.d$ID))
-    .g <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 8L,
-                                                 isample = 300L, covMethod = "",
-                                                 auto = FALSE, gammaRule = "floor")))
+    .g <- suppressWarnings(nlmixr2(
+      .isModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 8L, isample = 300L, covMethod = "", auto = FALSE, gammaRule = "floor")
+    ))
     .k0 <- .g$env$impPsisK
-    expect_gt(sum(.k0 > 0.7), 0L)                     # premise
-    .iv <- rep(300L, .n); .iv[.k0 > 0.7] <- 3000L
-    .boost <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
-                                       impmapControl(print = 0L, nIter = 8L,
-                                                     isample = .iv, covMethod = "",
-                                                     auto = FALSE, gammaRule = "floor")))
-    .t <- suppressWarnings(nlmixr2(.isModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 8L,
-                                                 isample = 300L, covMethod = "",
-                                                 auto = FALSE, df = 50, gammaRule = "floor")))
+    expect_gt(sum(.k0 > 0.7), 0L) # premise
+    .iv <- rep(300L, .n)
+    .iv[.k0 > 0.7] <- 3000L
+    .boost <- suppressWarnings(nlmixr2(
+      .isModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 8L, isample = .iv, covMethod = "", auto = FALSE, gammaRule = "floor")
+    ))
+    .t <- suppressWarnings(nlmixr2(
+      .isModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 8L, isample = 300L, covMethod = "", auto = FALSE, df = 50, gammaRule = "floor")
+    ))
     # the heavier tail is at least as good as 10x the draws ...
     expect_lte(max(.t$env$impPsisK), max(.boost$env$impPsisK) + 1e-8)
     # ... and clears the unreliable regime at the ORIGINAL sample count
     expect_lt(max(.t$env$impPsisK), 0.7)
     expect_equal(sum(.t$env$impPsisK > 0.7), 0L)
   })
-
 })

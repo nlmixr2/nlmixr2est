@@ -1,6 +1,5 @@
 nmTest({
   test_that("between session saem ll works", {
-
     src <-
       deparse(quote({
         library(nlmixr2est) #nolint
@@ -32,8 +31,13 @@ nmTest({
       writeLines(src, "000.R")
       .cmd <- file.path(R.home("bin"), "R")
       .args <- c("CMD", "BATCH", "000.R")
-      .out <- sys::exec_internal(cmd = .cmd, args = .args, error = FALSE)
-      message(paste(readLines(paste0("000.Rout")), collapse="\n"))
+      # rxode2 exports its cache dir as rxTempDir; without a fresh one the
+      # child's rxClean() deletes this process's compiled models.
+      .out <- withr::with_envvar(
+        c(rxTempDir = file.path(getwd(), "rxTmp")),
+        sys::exec_internal(cmd = .cmd, args = .args, error = FALSE)
+      )
+      message(paste(readLines(paste0("000.Rout")), collapse = "\n"))
       readRDS("fit.rds")
     })
 

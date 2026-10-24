@@ -1,8 +1,3 @@
-#' Compartments that `linCmt()` owns
-#'
-#' @noRd
-.linCmtOdeStates <- c("depot", "central", "peripheral1", "peripheral2")
-
 #' Estimation methods that add sensitivity compartments to the solved model
 #'
 #' The FOCEi family (the callers of `.foceiFamilyControl()`) gains
@@ -17,15 +12,55 @@
 #' @noRd
 .linCmtOdeEstFamily <- c(
   # FOCEi family -- .foceiFamilyControl()
-  "focei", "foce", "focep", "fo", "foi", "laplace", "agq", "posthoc",
-  "impmap", "imp", "qrpem", "npb", "npag", "emvi", "fbvi",
-  "mfocei", "mfoce", "mfocep", "mlaplace", "magq", "mnpb", "mnpag",
-  "ifocei", "ifoce", "ifocep", "ilaplace", "iagq", "inpb", "inpag",
-  "foceif", "focef", "focepf", "mfoceif", "mfocef", "mfocepf",
-  "ifoceif", "ifocef", "ifocepf",
+  "focei",
+  "foce",
+  "focep",
+  "fo",
+  "foi",
+  "laplace",
+  "agq",
+  "posthoc",
+  "impmap",
+  "imp",
+  "qrpem",
+  "npb",
+  "npag",
+  "emvi",
+  "fbvi",
+  "mfocei",
+  "mfoce",
+  "mfocep",
+  "mlaplace",
+  "magq",
+  "mnpb",
+  "mnpag",
+  "ifocei",
+  "ifoce",
+  "ifocep",
+  "ilaplace",
+  "iagq",
+  "inpb",
+  "inpag",
+  "foceif",
+  "focef",
+  "focepf",
+  "mfoceif",
+  "mfocef",
+  "mfocepf",
+  "ifoceif",
+  "ifocef",
+  "ifocepf",
   # nlm family -- .nlmSetupEnv()
-  "nlm", "nlminb", "bobyqa", "newuoa", "uobyqa", "n1qn1", "lbfgsb3c",
-  "optim", "nls", "trust"
+  "nlm",
+  "nlminb",
+  "bobyqa",
+  "newuoa",
+  "uobyqa",
+  "n1qn1",
+  "lbfgsb3c",
+  "optim",
+  "nls",
+  "trust"
 )
 
 #' Does this model mix `linCmt()` with ODE states?
@@ -38,46 +73,81 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .uiIsMixedLinCmtOde <- function(ui) {
-  if (is.null(ui$mvL)) return(FALSE)
-  length(setdiff(ui$state, .linCmtOdeStates)) > 0L
+  if (is.null(ui$mvL)) {
+    return(FALSE)
+  }
+  length(.linCmtOdeDdtStates(ui$lstExpr)) > 0L
 }
 
-#' Reorder the `d/dt()` lines of a linToOde() model to a target state order
+#' The states a model defines with `d/dt()`, in the order they appear
 #'
-#' rxode2 numbers compartments by the order the `d/dt()` lines appear, and
-#' `linToOde()` emits the linear compartments where `linCmt()` was called.  In
-#' the original model the `linCmt()` compartments are appended last instead, so
-#' without this the translation would silently renumber the compartments a
-#' numeric `cmt` in the data refers to.
+#' Looks inside `if`/`else` and `{}` blocks too, where a `d/dt()` may sit.
+#'
+#' @param lst a ui's `lstExpr`
+#' @return character vector of state names
+#' @noRd
+#' @author Matthew L. Fidler
+.linCmtOdeDdtStates <- function(lst) {
+  .walk <- function(e) {
+    if (.linCmtOdeIsDdt(e)) {
+      return(as.character(e[[2]][[3]][[2]]))
+    }
+    if (is.call(e)) {
+      return(unlist(lapply(as.list(e)[-1L], .walk)))
+    }
+    character(0)
+  }
+  unique(as.character(unlist(lapply(lst, .walk))))
+}
+
+#' Is this model line a `d/dt(state)` assignment?
+#' @noRd
+.linCmtOdeIsDdt <- function(e) {
+  is.call(e) &&
+    length(e) >= 2L &&
+    is.call(e[[2]]) &&
+    identical(e[[2]][[1]], quote(`/`)) &&
+    identical(e[[2]][[2]], quote(d))
+}
+
+#' The compartment numbering a numeric `cmt` uses in a mixed `linCmt()` model
+#'
+#' The `linCmt()` depot and central come first, then the model's own ODE
+#' states in `ui$state` order, then any peripheral compartments.  The `linCmt()`
+#' compartments are the states `linToOde()` added, not whatever is named
+#' `depot`: an IV `linCmt()` can sit next to an ODE of that name.
+#'
+#' @param ui the original mixed `linCmt()`/ODE ui
+#' @param odeState the `linToOde()` translation's states
+#' @return state names in compartment-number order
+#' @noRd
+#' @author Matthew L. Fidler
+.linCmtOdeCmtOrder <- function(ui, odeState) {
+  .ode <- .linCmtOdeDdtStates(ui$lstExpr)
+  .first <- intersect(c("depot", "central"), setdiff(odeState, .ode))
+  .ord <- c(.first, intersect(ui$state, .ode))
+  c(.ord, setdiff(odeState, .ord))
+}
+
+#' Number a linToOde() model's compartments in a target order
+#'
+#' An older `linToOde()` numbered the compartments by where the `d/dt()` lines
+#' fell, which renumbers what a numeric `cmt` in the data refers to when an ODE
+#' is declared before `linCmt()`.  Leading `cmt()` declarations fix the numbers
+#' (as a newer `linToOde()` emits) without moving any line of the model.
 #'
 #' @param ui the `linToOde()` translated ui
-#' @param state the state order to restore (the original `linCmt()` model's)
-#' @return ui with the `d/dt()` lines reordered, or `ui` when already in order
+#' @param state the state order to restore (`.linCmtOdeCmtOrder()`)
+#' @return ui numbered in `state` order, or `ui` when already in order
 #' @noRd
 #' @author Matthew L. Fidler
 .linCmtOdeRestoreStateOrder <- function(ui, state) {
-  if (identical(ui$state, state)) return(ui)
+  if (identical(ui$state, state) || !setequal(ui$state, state)) {
+    return(ui)
+  }
   ui <- rxode2::rxUiDecompress(ui)
-  .lst <- ui$lstExpr
-  .isDdt <- vapply(.lst, function(e) {
-    is.call(e) && length(e) >= 2L && is.call(e[[2]]) &&
-      identical(e[[2]][[1]], quote(`/`)) &&
-      identical(e[[2]][[2]], quote(d))
-  }, logical(1))
-  if (!any(.isDdt)) return(ui)
-  .ddtState <- vapply(.lst[.isDdt], function(e) as.character(e[[2]][[3]][[2]]),
-                      character(1))
-  if (!setequal(.ddtState, state)) return(ui)
-  # Gather the d/dt() lines, in the target order, at the last d/dt() position.
-  # They cannot simply be permuted among the slots they already occupy: the
-  # `linCmt()` output assignment (e.g. C2 <- central/v) sits between them, and a
-  # d/dt() moved ahead of it would read C2 before it is defined.  Every d/dt()
-  # RHS only needs the assignments that already preceded the last d/dt().
-  .idx <- which(.isDdt)
-  .at <- max(.idx)
-  .ddt <- .lst[.idx][order(match(.ddtState, state))]
-  .lst <- append(.lst[-.idx], .ddt, after=sum(!.isDdt[seq_len(.at)]))
-  .rebuildRxUiFromLstExpr(ui, .lst)
+  .decl <- lapply(state, function(.s) as.call(list(quote(cmt), as.name(.s))))
+  .rebuildRxUiFromLstExpr(ui, c(.decl, ui$lstExpr))
 }
 
 #' Rebuild an rxUi from a modified lstExpr
@@ -90,7 +160,7 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .rebuildRxUiFromLstExpr <- function(ui, expr) {
-  .ls <- ls(ui$meta, all.names=TRUE)
+  .ls <- ls(ui$meta, all.names = TRUE)
   .hasIni <- length(ui$iniDf$cond) > 0L
   .ret <- vector("list", length(.ls) + if (.hasIni) 3L else 2L)
   .ret[[1L]] <- quote(`{`)
@@ -106,7 +176,9 @@
   }
   .fun <- function() {}
   body(.fun) <- as.call(.ret)
-  if (is.function(ui$model)) environment(.fun) <- environment(ui$model)
+  if (is.function(ui$model)) {
+    environment(.fun) <- environment(ui$model)
+  }
   suppressMessages(rxode2::as.rxUi(.fun))
 }
 
@@ -128,26 +200,39 @@
 #' @export
 #' @author Matthew L. Fidler
 .preProcessLinCmtOde <- function(ui, est, data, control) {
-  if (!(est %in% .linCmtOdeEstFamily)) return(NULL)
-  if (!.uiIsMixedLinCmtOde(ui)) return(NULL)
-  .state <- ui$state
+  if (!(est %in% .linCmtOdeEstFamily)) {
+    return(NULL)
+  }
+  if (!.uiIsMixedLinCmtOde(ui)) {
+    return(NULL)
+  }
   .ui <- try(rxode2::linToOde(ui), silent = TRUE)
-  if (inherits(.ui, "try-error")) return(NULL)
+  if (inherits(.ui, "try-error")) {
+    return(NULL)
+  }
+  .state <- .linCmtOdeCmtOrder(ui, .ui$state)
   # The model no longer mixes solved and ODE compartments, which is what was
   # asked for; say so rather than quietly changing how the model is solved.
-  warning("'", est, "' cannot use the analytic 'linCmt()' in a model that also has ODEs ",
-          "(the sensitivity compartments it adds renumber the linear compartments); ",
-          "the linear compartments are solved as ODEs instead, which is slower. ",
-          "'est=\"saem\"' uses the analytic 'linCmt()'.",
-          call.=FALSE)
+  warning(
+    "'",
+    est,
+    "' cannot use the analytic 'linCmt()' in a model that also has ODEs ",
+    "(the sensitivity compartments it adds renumber the linear compartments); ",
+    "the linear compartments are solved as ODEs instead, which is slower. ",
+    "'est=\"saem\"' uses the analytic 'linCmt()'.",
+    call. = FALSE
+  )
   .ui <- .linCmtOdeRestoreStateOrder(.ui, .state)
   if (!identical(.ui$state, .state)) {
     # never renumber the data's compartments quietly
-    warning("mixed 'linCmt()'/ODE model: compartments were renumbered from '",
-            paste(.state, collapse="', '"), "' to '",
-            paste(.ui$state, collapse="', '"),
-            "'; refer to compartments by name in 'cmt' rather than by number",
-            call.=FALSE)
+    warning(
+      "mixed 'linCmt()'/ODE model: compartments were renumbered from '",
+      paste(.state, collapse = "', '"),
+      "' to '",
+      paste(.ui$state, collapse = "', '"),
+      "'; refer to compartments by name in 'cmt' rather than by number",
+      call. = FALSE
+    )
   }
   list(ui = .ui)
 }

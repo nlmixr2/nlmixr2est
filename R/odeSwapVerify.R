@@ -54,8 +54,7 @@
 #' compiled entry points, and solving one calls those rather than re-registering
 #' a shared slot.
 #' @noRd
-.odeSwapSlots <- c("inner", "pred", "thetaSens", "hess2",
-                   "outer", "outerNode", "outerCov")
+.odeSwapSlots <- c("inner", "pred", "thetaSens", "hess2", "outer", "outerNode", "outerCov")
 
 #' Drive the shared bad-solve retry loop with stub side effects.
 #'
@@ -63,29 +62,27 @@
 #' analytic-outer and nlm solves all use -- without needing an ODE that fails.
 #' The first `nFail` solves report bad, then they succeed.
 #' @noRd
-.odeSwapRetryTest <- function(nFail, maxOdeRecalc = 5L, stickyRecalcN = 4L,
-                              odeRecalcFactor = 10^0.5, relaxMode = 1L,
-                              sticky0 = 0L, restoreTolOnSuccess = TRUE) {
-  odeSwapRetryTest_(as.integer(nFail), as.integer(maxOdeRecalc),
-                    as.integer(stickyRecalcN), as.double(odeRecalcFactor),
-                    as.integer(relaxMode), as.integer(sticky0),
-                    isTRUE(restoreTolOnSuccess))
+.odeSwapRetryTest <- function(
+  nFail,
+  maxOdeRecalc = 5L,
+  stickyRecalcN = 4L,
+  odeRecalcFactor = 10^0.5,
+  relaxMode = 1L,
+  sticky0 = 0L,
+  restoreTolOnSuccess = TRUE
+) {
+  odeSwapRetryTest_(
+    as.integer(nFail),
+    as.integer(maxOdeRecalc),
+    as.integer(stickyRecalcN),
+    as.double(odeRecalcFactor),
+    as.integer(relaxMode),
+    as.integer(sticky0),
+    isTRUE(restoreTolOnSuccess)
+  )
 }
 
 #' Relaxation modes, matching the C++ `OdeRelaxMode` enum.
 #' @noRd
 .odeRelaxGlobal <- 0L
 .odeRelaxInd <- 1L
-
-#' Count of proven calc_lhs width mismatches (bound code vs declared nlhs).
-#'
-#' Non-zero means some model's compiled entry point does not compute the columns the
-#' model declares -- see nlmixr2/rxode2#1171.  Cheap enough to read around a single
-#' pooled solve.
-#' @return integer count since the last registry reset
-#' @noRd
-.odeSwapLhsMismatchN <- function() {
-  .n <- tryCatch(odeSwapInfo_()$lhsWidthMismatchN, error = function(e) NA_real_)
-  if (is.null(.n) || length(.n) != 1L || is.na(.n)) return(0L)
-  as.integer(.n)
-}

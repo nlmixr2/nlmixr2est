@@ -7,7 +7,6 @@
 #' @author Matthew Fidler
 #' @noRd
 
-
 # Since it can be accessed by the object, simply export it
 #' @rdname nmObjGet
 #' @export
@@ -17,7 +16,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .thetas <- .fit$fixef
   .w <- which(names(.etas) %in% c("mixnum", "MIXEST"))
   if (length(.w) > 0L) {
-    .etas <- .etas[, -.w, drop=FALSE]
+    .etas <- .etas[, -.w, drop = FALSE]
   }
   .Call(`_nlmixr2est_nlmixr2Parameters`, .thetas, .etas)
 }
@@ -52,7 +51,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' @author Matthew Fidler
 #' @noRd
 .foceiSolveWithId <- function(...) {
-  .ret <- rxode2::rxSolve(..., warnIdSort = FALSE)
+  .ret <- .rxSolveNonmem(..., warnIdSort = FALSE)
   if (names(.ret)[1] == "time") {
     ## For single subject ID is dropped.
     .ret <- data.frame(ID = 1L, .ret)
@@ -62,6 +61,30 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   return(.ret)
 }
 
+
+#' Name of the ODE method a fit used
+#'
+#' `rxControl()` stores the method as rxode2's integer code.  Read the name
+#' back from rxode2's own table (`odeMethodToInt(NULL)`) rather than a copy
+#' of it here: a copy of only the first methods (`dop853`, `lsoda`,
+#' `liblsoda`, `indLin`) turned any newer code (`cvode` is 21, `lsode` 106)
+#' into a malformed factor, and the table step of the fit failed.
+#'
+#' @param method `fit$methodOde`, a name or rxode2's integer code
+#' @return the method name
+#' @author Matthew L. Fidler
+#' @noRd
+.residOdeMethodName <- function(method) {
+  if (is.character(method)) {
+    return(method)
+  }
+  .codes <- rxode2::odeMethodToInt(NULL)
+  .name <- names(.codes)[match(as.integer(method), .codes)]
+  if (length(.name) != 1L || is.na(.name)) {
+    stop("unknown rxode2 ODE method code: ", paste(method, collapse = ", "), call. = FALSE)
+  }
+  .name
+}
 
 #' Build the ODE-method fallback list for a post-fit table/residual solve
 #'
@@ -85,6 +108,40 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   )
 }
 
+#' Covariate interpolation settings a fit was estimated with
+#'
+#' @param fit focei style fit
+#' @return named list of the fit's `covsInterpolation` and
+#'   `naInterpolation` (rxode2 integer codes; `NULL` when unset)
+#' @author Matthew L. Fidler
+#' @noRd
+.residCovsInterpolation <- function(fit) {
+  # the estimation control's own rxControl; $foceiControl can rewrite a
+  # non-focei fit's control
+  .rxControl <- fit$rxControl
+  list(
+    covsInterpolation = .rxControl$covsInterpolation,
+    naInterpolation = .rxControl$naInterpolation,
+    # PK-type statements read the record time (#1167); NULL unless set, since
+    # an rxode2 without rxControl(nonmem=) rejects the argument
+    nonmem = if (isTRUE(.rxControl$nonmem)) TRUE
+  )
+}
+
+#' `rxode2::rxSolve()` that passes `nonmem = TRUE` only when it is set
+#'
+#' @param ... passed to `rxode2::rxSolve()`
+#' @param nonmem `TRUE` to solve with `rxControl(nonmem = TRUE)`; `NULL`
+#'   or `FALSE` leaves it out (older rxode2 does not know the argument)
+#' @return solved data
+#' @noRd
+.rxSolveNonmem <- function(..., nonmem = NULL) {
+  if (isTRUE(nonmem)) {
+    return(rxode2::rxSolve(..., nonmem = TRUE))
+  }
+  rxode2::rxSolve(...)
+}
+
 #' Solve for pred/ipred types of calculations (including residuals)
 #'
 #' @param fit focei style fit
@@ -96,21 +153,22 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' @return Solved rxode2 data
 #' @author Matthew Fidler
 #' @noRd
-.foceiSolvePars <- function(fit, model, pars=NULL, returnType="data.frame", keep=NULL, what="pred",
-                            addDosing=FALSE, subsetNonmem=TRUE, addCov=FALSE) {
+.foceiSolvePars <- function(
+  fit,
+  model,
+  pars = NULL,
+  returnType = "data.frame",
+  keep = NULL,
+  what = "pred",
+  addDosing = FALSE,
+  subsetNonmem = TRUE,
+  addCov = FALSE
+) {
   if (is.null(model)) {
-    stop("cannot solve with `model` NULL", call.=FALSE)
+    stop("cannot solve with `model` NULL", call. = FALSE)
   }
   keep <- unique(c(keep, "nlmixrRowNums"))
-  # Use character method names, not numeric codes, to avoid staying in sync
-  # with rxode2 internals.
-  currentOdeMethod <- fit$methodOde
-  if (!inherits(currentOdeMethod, "character")) {
-    cur <- as.integer(currentOdeMethod)+1L
-    attr(cur, "levels") <- c("dop853", "lsoda", "liblsoda", "indLin")
-    attr(cur, "class") <- "factor"
-    currentOdeMethod <- as.character(cur)
-  }
+  currentOdeMethod <- .residOdeMethodName(fit$methodOde)
   odeMethods <- .residOdeFallbackMethods(currentOdeMethod)
   failedMethods <- character()
   isFirstFit <- TRUE
@@ -118,6 +176,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   maxAtolRtol <- fit$foceiControl$rxControl$maxAtolRtolFactor
   recalcFactor <- fit$foceiControl$odeRecalcFactor
   .tolFactor <- fit$env$tolFactor
+  # the table must interpolate covariates the way the fit did (#1137)
+  .covsi <- .residCovsInterpolation(fit)
   # For mixture models, pass per-subject mixture assignments via iCov so
   # rxode2 sets ind->mixest correctly during the table solve. `fit` is the
   # nlmixr2FitCore environment, accessed directly.
@@ -126,67 +186,141 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   if (!is.environment(.env) && is.environment(fit$env)) {
     .env <- fit$env
   }
-  if (is.environment(.env) && exists("mixIcov", envir=.env, inherits = FALSE)) {
-    .iCov <- get("mixIcov", envir=.env, inherits = FALSE)
+  if (is.environment(.env) && exists("mixIcov", envir = .env, inherits = FALSE)) {
+    .iCov <- get("mixIcov", envir = .env, inherits = FALSE)
+    # ID is the subject index fit$dataSav is solved with.  Output creation may
+    # already have re-leveled it to a factor labeled with the original IDs, so
+    # take the factor's codes (the index), never its labels.
+    if (!is.null(.iCov) && !is.null(.iCov$ID)) {
+      .iCov$ID <- as.integer(.iCov$ID)
+      if (anyNA(.iCov$ID)) .iCov <- NULL
+    }
   }
-  # Fallback flag: if rxode2 rejects iCov (older versions), retry without
-  # it; .mixFixTable() post-corrects me/mn/mu from mixNum.
-  .iCovOK <- !is.null(.iCov)
-  while (recalc & length(odeMethods) > 0) {
+  # Fallback flag: an rxode2 that predates per-individual mixest for an
+  # expanded mix() rejects the iCov; retry without it rather than losing the
+  # whole table step.  The retry SAYS SO -- mixest/mixnum and everything
+  # mix() feeds read 0 without it, and that is the silently-wrong table this
+  # whole path exists to stop producing.
+  .iCovState <- new.env(parent = emptyenv())
+  .iCovState$ok <- !is.null(.iCov)
+  if (.iCovState$ok) {
+    # An rxode2 without nlmixr2/rxode2#1358 does not reject the iCov, it just
+    # never reads a mixture out of a model whose mix() symengine expanded away.
+    # Nothing errors, so say so here or the zeros are silent.
+    .predFlags <- try(rxode2::rxModelVars(model)$flags, silent = TRUE)
+    if (
+      !inherits(.predFlags, "try-error") &&
+        !is.null(.predFlags) &&
+        "mix" %in% names(.predFlags) &&
+        .predFlags[["mix"]] == 0L
+    ) {
+      warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
+      .iCovState$ok <- FALSE
+    }
+  }
+  while (recalc && length(odeMethods) > 0) {
     recalcN <- 0
     currentOdeMethod <- odeMethods[[1]]
     odeMethods <- odeMethods[-1]
     .atol <- fit$atol[1]
     .rtol <- fit$rtol[1]
     ## message(currentOdeMethod)
-    while (recalc & recalcN < fit$foceiControl$stickyRecalcN) {
+    while (recalc && recalcN < fit$foceiControl$stickyRecalcN) {
       # Iterate up atol/rtol
       ## message("\t", .atol, " ", .rtol)
-      .res <- if (.iCovOK) {
+      .res <- if (.iCovState$ok) {
         tryCatch(
-          .foceiSolveWithId(model, pars, fit$dataSav,
-                            returnType = returnType,
-                            atol = .atol, rtol = .rtol,
-                            maxsteps = fit$maxstepsOde,
-                            hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
-                            maxordn = fit$maxordn, maxords = fit$maxords,
-                            method = rxode2::odeMethodToInt(currentOdeMethod),
-                            tolFactor = .tolFactor,
-                            iCov = .iCov,
-                            keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov),
+          .foceiSolveWithId(
+            model,
+            pars,
+            fit$dataSav,
+            returnType = returnType,
+            atol = .atol,
+            rtol = .rtol,
+            maxsteps = fit$maxstepsOde,
+            hmin = fit$hmin,
+            hmax = fit$hmax,
+            hini = fit$hini,
+            maxordn = fit$maxordn,
+            maxords = fit$maxords,
+            method = rxode2::odeMethodToInt(currentOdeMethod),
+            tolFactor = .tolFactor,
+            covsInterpolation = .covsi$covsInterpolation,
+            naInterpolation = .covsi$naInterpolation,
+            nonmem = .covsi$nonmem,
+            iCov = .iCov,
+            keep = keep,
+            addDosing = addDosing,
+            subsetNonmem = subsetNonmem,
+            addCov = addCov
+          ),
           error = function(e) {
-            if (grepl("time.varying|mixest must be", conditionMessage(e), ignore.case=TRUE)) {
-              .iCovOK <<- FALSE
-              .foceiSolveWithId(model, pars, fit$dataSav,
-                                returnType = returnType,
-                                atol = .atol, rtol = .rtol,
-                                maxsteps = fit$maxstepsOde,
-                                hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
-                                maxordn = fit$maxordn, maxords = fit$maxords,
-                                method = rxode2::odeMethodToInt(currentOdeMethod),
-                                tolFactor = .tolFactor,
-                                iCov = NULL,
-                                keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
-            } else stop(e)
-          })
+            # SET_VECTOR_ELT: older rxode2 overran its covariate list when an iCov
+            # mixest came with any other covariate
+            if (grepl("iCov|mixest|mixunif|time.varying|SET_VECTOR_ELT", conditionMessage(e), ignore.case = TRUE)) {
+              .iCovState$ok <- FALSE
+              warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
+              .foceiSolveWithId(
+                model,
+                pars,
+                fit$dataSav,
+                returnType = returnType,
+                atol = .atol,
+                rtol = .rtol,
+                maxsteps = fit$maxstepsOde,
+                hmin = fit$hmin,
+                hmax = fit$hmax,
+                hini = fit$hini,
+                maxordn = fit$maxordn,
+                maxords = fit$maxords,
+                method = rxode2::odeMethodToInt(currentOdeMethod),
+                tolFactor = .tolFactor,
+                covsInterpolation = .covsi$covsInterpolation,
+                naInterpolation = .covsi$naInterpolation,
+                nonmem = .covsi$nonmem,
+                iCov = NULL,
+                keep = keep,
+                addDosing = addDosing,
+                subsetNonmem = subsetNonmem,
+                addCov = addCov
+              )
+            } else {
+              stop(e)
+            }
+          }
+        )
       } else {
-        .foceiSolveWithId(model, pars, fit$dataSav,
-                          returnType = returnType,
-                          atol = .atol, rtol = .rtol,
-                          maxsteps = fit$maxstepsOde,
-                          hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
-                          maxordn = fit$maxordn, maxords = fit$maxords,
-                          method = rxode2::odeMethodToInt(currentOdeMethod),
-                          tolFactor = .tolFactor,
-                          iCov = NULL,
-                          keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
+        .foceiSolveWithId(
+          model,
+          pars,
+          fit$dataSav,
+          returnType = returnType,
+          atol = .atol,
+          rtol = .rtol,
+          maxsteps = fit$maxstepsOde,
+          hmin = fit$hmin,
+          hmax = fit$hmax,
+          hini = fit$hini,
+          maxordn = fit$maxordn,
+          maxords = fit$maxords,
+          method = rxode2::odeMethodToInt(currentOdeMethod),
+          tolFactor = .tolFactor,
+          covsInterpolation = .covsi$covsInterpolation,
+          naInterpolation = .covsi$naInterpolation,
+          nonmem = .covsi$nonmem,
+          iCov = NULL,
+          keep = keep,
+          addDosing = addDosing,
+          subsetNonmem = subsetNonmem,
+          addCov = addCov
+        )
       }
       rxode2::rxSolveFree()
       recalc <- any(is.na(.res$rx_pred_))
       recalcN <- recalcN + 1
       if (recalc) {
-        .atol <- min(.atol*recalcFactor, maxAtolRtol)
-        .rtol <- min(.rtol*recalcFactor, maxAtolRtol)
+        .atol <- min(.atol * recalcFactor, maxAtolRtol)
+        .rtol <- min(.rtol * recalcFactor, maxAtolRtol)
         if (.atol == maxAtolRtol && .rtol == maxAtolRtol) {
           recalcN <- fit$foceiControl$stickyRecalcN + 1
         }
@@ -202,9 +336,46 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   }
   if (recalc) {
     .res <- .resFirst
-    warning("Problems solving ", what, " with ", paste(failedMethods, collapse = ", "), ", returning results from the first method")
+    warning(
+      "Problems solving ",
+      what,
+      " with ",
+      paste(failedMethods, collapse = ", "),
+      ", returning results from the first method"
+    )
   } else if (length(failedMethods) > 0) {
-    warning("Problems solving ", what, " with ", paste(failedMethods, collapse = ", "), ", returning results from ", currentOdeMethod)
+    warning(
+      "Problems solving ",
+      what,
+      " with ",
+      paste(failedMethods, collapse = ", "),
+      ", returning results from ",
+      currentOdeMethod
+    )
+  }
+  # mtime() records are model output, not data (#919): the solve emits one extra
+  # row per subject per mtime, which is not an observation and has no source row
+  # in the input dataset, so it would land in the fit table as a DV=NA row.  Only
+  # looked for when the solved model actually declares an mtime.
+  .hasMtime <- tryCatch(rxode2::rxModelVars(model)$nMtime > 0L, error = function(e) FALSE)
+  if (isTRUE(.hasMtime)) {
+    .evidW <- which(tolower(names(.res)) == "evid")
+    if (length(.evidW) == 1L) {
+      # addDosing: dose rows are in the output, so the EVID is too -- use it.
+      .ev <- .res[[.evidW]]
+      .drop <- !is.na(.ev) & .ev >= 10 & .ev <= 99
+    } else if (!is.null(.res$nlmixrRowNums)) {
+      # No EVID column means dose rows were left out, so the only rows with no
+      # source row left are the mtime ones.  Do NOT use this when doses are kept:
+      # an ADDL-expanded dose also has no source row and must stay.
+      .drop <- is.na(.res$nlmixrRowNums)
+    } else {
+      .drop <- FALSE
+    }
+    if (any(.drop)) {
+      .res <- .res[!.drop, , drop = FALSE]
+      rownames(.res) <- NULL
+    }
   }
   .res
 }
@@ -218,11 +389,15 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' @return list with ipred and pred datasets
 #' @author Matthew Fidler
 #' @noRd
-.foceiPredIpredList <- function(fit, data=fit$dataSav,
-                                thetaEtaParameters=fit$foceiThetaEtaParameters,
-                                keep=NULL,
-                                predOnly=is.null(fit$innerModel),
-                                addDosing=FALSE, subsetNonmem=TRUE) {
+.foceiPredIpredList <- function(
+  fit,
+  data = fit$dataSav,
+  thetaEtaParameters = fit$foceiThetaEtaParameters,
+  keep = NULL,
+  predOnly = is.null(fit$innerModel),
+  addDosing = FALSE,
+  subsetNonmem = TRUE
+) {
   keep <- unique(c(keep, "nlmixrRowNums"))
   if (!predOnly && is.null(fit$innerModel)) {
     # Add inner problem calculation for cwres calculation
@@ -247,23 +422,54 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     # solves predOnlyModel for these display columns; see nlmixr2/nlmixr2est#497.
     .ipredModel <- fit$predOnlyModel
   }
-  .ret <- list(ipred = .residAdjustIpredNames(
-    .foceiSolvePars(fit, .ipredModel, thetaEtaParameters$ipred,
-                    returnType="data.frame.TBS", keep=.keep, what="ipred",
-                    addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=predOnly)),
-               pred = .foceiSolvePars(fit, .ipredModel, thetaEtaParameters$pred,returnType="data.frame", what="pred",
-                                      addDosing=addDosing, subsetNonmem=subsetNonmem),
-               etaLst=thetaEtaParameters$eta.lst)
+  .ret <- list(
+    ipred = .residAdjustIpredNames(
+      .foceiSolvePars(
+        fit,
+        .ipredModel,
+        thetaEtaParameters$ipred,
+        returnType = "data.frame.TBS",
+        keep = .keep,
+        what = "ipred",
+        addDosing = addDosing,
+        subsetNonmem = subsetNonmem,
+        addCov = predOnly
+      )
+    ),
+    pred = .foceiSolvePars(
+      fit,
+      .ipredModel,
+      thetaEtaParameters$pred,
+      returnType = "data.frame",
+      what = "pred",
+      addDosing = addDosing,
+      subsetNonmem = subsetNonmem
+    ),
+    etaLst = thetaEtaParameters$eta.lst
+  )
   if (!predOnly) {
-    .ret <- c(.ret, list(predOnly=.foceiSolvePars(fit, fit$predOnlyModel, thetaEtaParameters$ipred,
-                                                   returnType="data.frame", keep=.keep, what="ebe",
-                                                   addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=TRUE)))
+    .ret <- c(
+      .ret,
+      list(
+        predOnly = .foceiSolvePars(
+          fit,
+          fit$predOnlyModel,
+          thetaEtaParameters$ipred,
+          returnType = "data.frame",
+          keep = .keep,
+          what = "ebe",
+          addDosing = addDosing,
+          subsetNonmem = subsetNonmem,
+          addCov = TRUE
+        )
+      )
+    )
   }
   .ret
 }
 
-.getRelevantLhs <- function(fit, keep=NULL, ipred=NULL) {
-  .ret <- setdiff(fit$predOnlyModel$lhs,fit$ui$ini$name)
+.getRelevantLhs <- function(fit, keep = NULL, ipred = NULL) {
+  .ret <- setdiff(fit$predOnlyModel$lhs, fit$ui$ini$name)
   .w <- which(regexpr("^rx", .ret) == -1)
   .ret <- unique(c(.ret[.w], keep))
   if (any(.ret == "tad")) {
@@ -274,16 +480,25 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .ret
 }
 
-.calcCwres0 <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters,
-                        table=tableControl(), dv=NULL, predOnly=FALSE,
-                        addDosing=FALSE, subsetNonmem=TRUE, keep=NULL, npde=FALSE,
-                        .prdLst) {
+.calcCwres0 <- function(
+  fit,
+  data = fit$dataSav,
+  thetaEtaParameters = fit$foceiThetaEtaParameters,
+  table = tableControl(),
+  dv = NULL,
+  predOnly = FALSE,
+  addDosing = FALSE,
+  subsetNonmem = TRUE,
+  keep = NULL,
+  npde = FALSE,
+  .prdLst
+) {
   assertNlmixrFit(fit)
   checkmate::assertDataFrame(data)
-  checkmate::assertLogical(predOnly, len=1, any.missing=FALSE)
-  checkmate::assertLogical(addDosing, len=1, any.missing=FALSE)
-  checkmate::assertLogical(subsetNonmem, len=1, any.missing=FALSE)
-  checkmate::assertLogical(npde, len=1, any.missing=FALSE)
+  checkmate::assertLogical(predOnly, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(addDosing, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(subsetNonmem, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(npde, len = 1, any.missing = FALSE)
   keep <- unique(c(keep, "nlmixrRowNums"))
   if (!inherits(dv, "numeric")) {
     dv <- .prdLst$ipred$dv
@@ -294,83 +509,140 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 
   if (npde) {
     .ni <- fit$dataNormInfo
-    .sim <- vpcSim(fit, n = table$nsim, seed = table$seed,
-                   addDosing=addDosing, subsetNonmem=subsetNonmem)
+    .sim <- vpcSim(fit, n = table$nsim, seed = table$seed, addDosing = addDosing, subsetNonmem = subsetNonmem)
     .w <- which(names(.sim) == "ipred")
-    if (length(.w) == 1) .sim <- .sim[, -.w]
+    if (length(.w) == 1) {
+      .sim <- .sim[, -.w]
+    }
     .w <- which(names(.sim) == "sim")
-    .n0 <- c(names(.sim)[seq(1, .w)], "rxLambda", "rxYj", "rxLow", "rxHi")
+    .n0 <- c(names(.sim)[seq_len(.w)], "rxLambda", "rxYj", "rxLow", "rxHi")
     .sim <- .sim[, .n0]
     .ipred <- .prdLst$ipred
     .ipred <- .ipred[.ipred$nlmixrRowNums %in% .ni$nlmixrRowNums, ]
     .ipred <- .ipred[order(.ipred$nlmixrRowNums), ]
-    .ret <- .Call(`_nlmixr2est_npdeCalc`, .sim, .ipred$dv, .ipred$evid,
-                  .prdLst$ipred$cens, .prdLst$ipred$limit, table)
-    .df <- data.frame(nlmixrRowNums=.prdLst$ipred$nlmixrRowNums)
+    .ret <- .Call(`_nlmixr2est_npdeCalc`, .sim, .ipred$dv, .ipred$evid, .prdLst$ipred$cens, .prdLst$ipred$limit, table)
+    .df <- data.frame(nlmixrRowNums = .prdLst$ipred$nlmixrRowNums)
     .ret1 <- .ret[[1]]
     .ret2 <- .ret[[2]]
     .ret2$nlmixrRowNums <- .ipred$nlmixrRowNums
-    .ret2 <- merge(.df, .ret2, all.x=TRUE, by="nlmixrRowNums")
-    .ret2 <- .ret2[,names(.ret2) != "nlmixrRowNums"]
+    .ret2 <- merge(.df, .ret2, all.x = TRUE, by = "nlmixrRowNums")
+    .ret2 <- .ret2[, names(.ret2) != "nlmixrRowNums"]
     .ret1 <- as.data.frame(.ret1)
     .ret1$nlmixrRowNums <- .ipred$nlmixrRowNums
-    .ret1 <- merge(.df, .ret1, all.x=TRUE, by="nlmixrRowNums")
-    .ret1 <- .ret1[,names(.ret1) != "nlmixrRowNums"]
+    .ret1 <- merge(.df, .ret1, all.x = TRUE, by = "nlmixrRowNums")
+    .ret1 <- .ret1[, names(.ret1) != "nlmixrRowNums"]
     .ret1 <- as.matrix(.ret1)
     list(.ret1, .ret2)
   } else {
     if (predOnly) {
       .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$ipred)), .state)
-      .params <- setdiff(intersect(names(fit$dataSav),fit$predOnlyModel$params),
-                         c("CMT","cmt","Cmt", .state, .lhs))
-      .Call(`_nlmixr2est_resCalc`, .prdLst, fit$omega,
-            fit$eta, .prdLst$ipred$dv, .prdLst$ipred$evid, .prdLst$ipred$cens,
-            .prdLst$ipred$limit, .lhs, .state, .params, fit$IDlabel, table)
+      .params <- setdiff(intersect(names(fit$dataSav), fit$predOnlyModel$params), c("CMT", "cmt", "Cmt", .state, .lhs))
+      .Call(
+        `_nlmixr2est_resCalc`,
+        .prdLst,
+        fit$omega,
+        fit$eta,
+        .prdLst$ipred$dv,
+        .prdLst$ipred$evid,
+        .prdLst$ipred$cens,
+        .prdLst$ipred$limit,
+        .lhs,
+        .state,
+        .params,
+        fit$IDlabel,
+        table
+      )
     } else {
       .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$predOnly)), .state)
-      .params <- setdiff(intersect(names(fit$dataSav),fit$predOnlyModel$params),c("CMT","cmt","Cmt", .state, .lhs))
-      .Call(`_nlmixr2est_cwresCalc`, .prdLst, fit$omega,
-            fit$eta, .prdLst$ipred$dv, .prdLst$ipred$evid, .prdLst$ipred$cens,
-            .prdLst$ipred$limit, .lhs, .state, .params, fit$IDlabel, table)
+      .params <- setdiff(intersect(names(fit$dataSav), fit$predOnlyModel$params), c("CMT", "cmt", "Cmt", .state, .lhs))
+      .Call(
+        `_nlmixr2est_cwresCalc`,
+        .prdLst,
+        fit$omega,
+        fit$eta,
+        .prdLst$ipred$dv,
+        .prdLst$ipred$evid,
+        .prdLst$ipred$cens,
+        .prdLst$ipred$limit,
+        .lhs,
+        .state,
+        .params,
+        fit$IDlabel,
+        table
+      )
     }
   }
 }
 
-.calcCwres <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters,
-                       table=tableControl(), dv=NULL, predOnly=TRUE,
-                       addDosing=FALSE, subsetNonmem=TRUE, keep=NULL, npde=FALSE,
-                       .prdLst=NULL) {
-  if (!inherits(table, "tableControl")) table <- do.call(tableControl, table)
+.calcCwres <- function(
+  fit,
+  data = fit$dataSav,
+  thetaEtaParameters = fit$foceiThetaEtaParameters,
+  table = tableControl(),
+  dv = NULL,
+  predOnly = TRUE,
+  addDosing = FALSE,
+  subsetNonmem = TRUE,
+  keep = NULL,
+  npde = FALSE,
+  .prdLst = NULL
+) {
+  if (!inherits(table, "tableControl")) {
+    table <- do.call(tableControl, table)
+  }
   keep <- unique(c(keep, "nlmixrRowNums"))
   if (is.null(.prdLst)) {
-    .prdLst <- .foceiPredIpredList(fit, data=data, keep=keep, thetaEtaParameters=thetaEtaParameters, predOnly=predOnly,
-                                   addDosing=addDosing, subsetNonmem=subsetNonmem)
+    .prdLst <- .foceiPredIpredList(
+      fit,
+      data = data,
+      keep = keep,
+      thetaEtaParameters = thetaEtaParameters,
+      predOnly = predOnly,
+      addDosing = addDosing,
+      subsetNonmem = subsetNonmem
+    )
   }
   ## Split out so that .prdLst can be shared between npde/cwres npde/res
-  .ret <- .calcCwres0(fit, data, thetaEtaParameters, table, dv=dv, predOnly,
-                      addDosing, subsetNonmem, keep, npde, .prdLst=.prdLst)
+  .ret <- .calcCwres0(
+    fit,
+    data,
+    thetaEtaParameters,
+    table,
+    dv = dv,
+    predOnly,
+    addDosing,
+    subsetNonmem,
+    keep,
+    npde,
+    .prdLst = .prdLst
+  )
   .dups <- which(duplicated(names(.ret)))
   if (length(.dups) > 0) {
-    warning("some duplicate columns were dropped", call.=FALSE)
+    warning("some duplicate columns were dropped", call. = FALSE)
     .ret <- .ret[, -.dups]
   }
   .ret
 }
 
-.calcRes <- function(..., predOnly=TRUE) {
-  .calcCwres(..., predOnly=predOnly)
+.calcNpde <- function(..., npde = TRUE, predOnly = TRUE) {
+  .calcCwres(..., npde = npde, predOnly = predOnly)
 }
 
-.calcNpde <- function(..., npde=TRUE, predOnly=TRUE) {
-  .calcCwres(..., npde=npde, predOnly=predOnly)
-}
-
-.calcIres <- function(fit, data=fit$dataSav, table=tableControl(), dv=NULL,
-                      addDosing=FALSE, subsetNonmem=TRUE, keep=NULL) {
+.calcIres <- function(
+  fit,
+  data = fit$dataSav,
+  table = tableControl(),
+  dv = NULL,
+  addDosing = FALSE,
+  subsetNonmem = TRUE,
+  keep = NULL
+) {
   keep <- unique(c(keep, "nlmixrRowNums"))
-  if (!inherits(table, "tableControl")) table <- do.call(tableControl, table)
+  if (!inherits(table, "tableControl")) {
+    table <- do.call(tableControl, table)
+  }
   .keep <- keep
   .names <- names(data)
   .lowerNames <- tolower(.names)
@@ -388,12 +660,19 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .pars <- fit$ipredModel$params
   .cmt <- which(tolower(.pars) == "cmt")
   if (length(.cmt) == 1) {
-    .cmt <-.pars[.cmt]
+    .cmt <- .pars[.cmt]
     .keep <- c(.cmt, .keep)
   }
-  .ipred <- .residAdjustIpredNames(.foceiSolvePars(fit, fit$ipredModel, .thetas,
-                                                   returnType="data.frame.TBS", keep=.keep, what="ipred",
-                                                   addDosing=addDosing, subsetNonmem=subsetNonmem))
+  .ipred <- .residAdjustIpredNames(.foceiSolvePars(
+    fit,
+    fit$ipredModel,
+    .thetas,
+    returnType = "data.frame.TBS",
+    keep = .keep,
+    what = "ipred",
+    addDosing = addDosing,
+    subsetNonmem = subsetNonmem
+  ))
   if (!inherits(dv, "numeric")) {
     dv <- .ipred$dv
     table$doSim <- TRUE
@@ -402,31 +681,26 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   }
   .state <- c(fit$ipredModel$state, fit$ipredModel$stateExtra)
   .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .ipred)), .state)
-  .params <- setdiff(intersect(names(fit$dataSav),fit$ipredModel$params),c("CMT","cmt","Cmt", .state, .lhs))
-  .ret <- .Call(`_nlmixr2est_iresCalc`, .ipred, dv, .ipred$evid, .ipred$cens, .ipred$limit,
-                .lhs, .state, .params, fit$IDlabel, table)
+  .params <- setdiff(intersect(names(fit$dataSav), fit$ipredModel$params), c("CMT", "cmt", "Cmt", .state, .lhs))
+  .ret <- .Call(
+    `_nlmixr2est_iresCalc`,
+    .ipred,
+    dv,
+    .ipred$evid,
+    .ipred$cens,
+    .ipred$limit,
+    .lhs,
+    .state,
+    .params,
+    fit$IDlabel,
+    table
+  )
   .dups <- which(duplicated(names(.ret)))
   if (length(.dups) > 0) {
-    warning("some duplicate columns were dropped", call.=FALSE)
+    warning("some duplicate columns were dropped", call. = FALSE)
     .ret <- .ret[, -.dups]
   }
   .addLevels(fit, .ret)
-}
-
-.calcShrinkOnly <- function(fit, thetaEtaParameters=fit$foceiThetaEtaParameters) {
-  .omega <- fit$omega
-  if (exists("etaExpected", envir=fit$env)) {
-    .etas <- fit$env$etaExpected
-    .w <- which(names(.etas) %in% c("mixnum", "MIXEST"))
-    if (length(.w) > 0L) {
-      .etas <- .etas[, -.w, drop=FALSE]
-    }
-    .pars <- .Call(`_nlmixr2est_nlmixr2Parameters`, fit$fixef, .etas)
-    .ret <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, .pars$eta.lst, length(.etas[,1]))
-  } else {
-    .ret <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, thetaEtaParameters$eta.lst, length(fit$eta[,1]))
-  }
-  .ret[, -dim(.omega)[1] - 1]
 }
 
 #' Add factor levels to data based on fit object
@@ -438,7 +712,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 .addLevels <- function(fit, data) {
-  .levels <-  fit$ui$levels
+  .levels <- fit$ui$levels
   if (!is.null(.levels)) {
     for (i in seq_along(.levels)) {
       .cur <- .levels[[i]] # levels() expression
@@ -460,13 +734,53 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   data
 }
 
-.calcTables <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters,
-                        table=tableControl(), keep=NULL) {
+#' Does the fit already report a calculated focei-family objective function?
+#'
+#' `addCwres()` attaches the CWRES columns together with the objective function
+#' row it calculates ("FOCEi", or "FOCE"/"lFOCEi" for `focei=FALSE`) and cannot
+#' add a row the fit already has, so a fit reporting one has to calculate CWRES
+#' in its own table step.  An uncalculated (NA) objective function is replaced
+#' rather than appended, so it does not count.
+#'
+#' @param fit fit environment
+#' @return `TRUE` when `addCwres()` could not add CWRES to this fit later
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiObjfWithoutCwres <- function(fit) {
+  # read the fit environment directly; the `$` fallback for a name the
+  # environment does not have re-derives it from the ui, which is not free
+  .objDf <- if (is.environment(fit)) {
+    if (exists("objDf", envir = fit, inherits = FALSE)) {
+      get("objDf", envir = fit, inherits = FALSE)
+    } else {
+      NULL
+    }
+  } else {
+    fit$objDf
+  }
+  if (!is.data.frame(.objDf)) {
+    return(FALSE)
+  }
+  if (!any(rownames(.objDf) %in% c("FOCEi", "lFOCEi", "FOCE"))) {
+    return(FALSE)
+  }
+  any(!is.na(.objDf$OBJF))
+}
+
+.calcTables <- function(
+  fit,
+  data = fit$dataSav,
+  thetaEtaParameters = fit$foceiThetaEtaParameters,
+  table = tableControl(),
+  keep = NULL
+) {
   keep <- unique(c(keep, "nlmixrRowNums"))
 
-  if (!inherits(table, "tableControl")) table <- do.call(tableControl, table)
+  if (!inherits(table, "tableControl")) {
+    table <- do.call(tableControl, table)
+  }
   if (is.null(table$cwres)) {
-    table$cwres <- !is.null(fit$innerModel)
+    table$cwres <- !is.null(fit$innerModel) || .foceiObjfWithoutCwres(fit)
   }
   if (table$cwres) {
     fit$innerModelForce
@@ -476,13 +790,20 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   }
   .predOnly <- !table$cwres
   .censMethod <- table$censMethod
-  .ret <- vector("list",2)
+  .ret <- vector("list", 2)
   .thetaEtaParameters <- fit$foceiThetaEtaParameters
-  .prdLst <- .foceiPredIpredList(fit, data=fit$dataSav, keep=keep, thetaEtaParameters=.thetaEtaParameters, predOnly=.predOnly,
-                                 addDosing=table$addDosing, subsetNonmem=table$subsetNonmem)
+  .prdLst <- .foceiPredIpredList(
+    fit,
+    data = fit$dataSav,
+    keep = keep,
+    thetaEtaParameters = .thetaEtaParameters,
+    predOnly = .predOnly,
+    addDosing = table$addDosing,
+    subsetNonmem = table$subsetNonmem
+  )
   if (.censMethod %in% c(2L, 6L)) {
     if (!table$npde) {
-      warning("censoring method requires npde, adding npde", call.=FALSE)
+      warning("censoring method requires npde, adding npde", call. = FALSE)
       table$npde <- TRUE
     }
     .npde1 <- TRUE
@@ -491,27 +812,78 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .npde1 <- FALSE
     .npde2 <- TRUE
   }
-  if ((.npde1 & table$npde) | !.npde1)
-    .ret[[1]] <- .calcCwres(fit, data=fit$dataSav, thetaEtaParameters=.thetaEtaParameters, table=table,
-                            predOnly=.predOnly, addDosing=table$addDosing, subsetNonmem=table$subsetNonmem,
-                            keep=keep, .prdLst=.prdLst, npde=.npde1)
-  if ((.npde2 & table$npde) | !.npde2)
-    .ret[[2]] <- .calcCwres(fit, data=fit$dataSav, thetaEtaParameters=.thetaEtaParameters, table=table, dv=.ret[[1]][[1]],
-                            predOnly=.predOnly, addDosing=table$addDosing, subsetNonmem=table$subsetNonmem,
-                            keep=keep, .prdLst=.prdLst, npde=.npde2)
+  if ((.npde1 && table$npde) || !.npde1) {
+    .ret[[1]] <- .calcCwres(
+      fit,
+      data = fit$dataSav,
+      thetaEtaParameters = .thetaEtaParameters,
+      table = table,
+      predOnly = .predOnly,
+      addDosing = table$addDosing,
+      subsetNonmem = table$subsetNonmem,
+      keep = keep,
+      .prdLst = .prdLst,
+      npde = .npde1
+    )
+  }
+  if ((.npde2 && table$npde) || !.npde2) {
+    .ret[[2]] <- .calcCwres(
+      fit,
+      data = fit$dataSav,
+      thetaEtaParameters = .thetaEtaParameters,
+      table = table,
+      dv = .ret[[1]][[1]],
+      predOnly = .predOnly,
+      addDosing = table$addDosing,
+      subsetNonmem = table$subsetNonmem,
+      keep = keep,
+      .prdLst = .prdLst,
+      npde = .npde2
+    )
+  }
   .ret <- .Call(`_nlmixr2est_popResFinal`, .ret)
   .dups <- which(duplicated(names(.ret)))
   if (length(.dups) > 0) {
-    warning("some duplicate columns were dropped", call.=FALSE)
+    warning("some duplicate columns were dropped", call. = FALSE)
     .ret <- .ret[, -.dups]
   }
   .ret[[1]] <- .addLevels(fit, .ret[[1]])
+  .ret[[1]] <- .addMixestColumn(fit, .ret[[1]])
   .ret
+}
+
+#' Add the fitted mixture component per subject as a `mixest` column
+#'
+#' @param fit nlmixr2 fit environment
+#' @param df output table with an `ID` column
+#' @return `df`, with `mixest` added when the fit is a mixture fit
+#' @noRd
+.addMixestColumn <- function(fit, df) {
+  .env <- fit
+  if (!is.environment(.env) && is.environment(fit$env)) {
+    .env <- fit$env
+  }
+  if (
+    !is.environment(.env) ||
+      !exists("mixNum", envir = .env, inherits = FALSE) ||
+      is.null(df$ID) ||
+      "mixest" %in% names(df)
+  ) {
+    return(df)
+  }
+  .mn <- get("mixNum", envir = .env, inherits = FALSE)
+  if (!is.data.frame(.mn) || is.null(.mn$ID) || is.null(.mn$mixnum)) {
+    return(df)
+  }
+  # both IDs are the solve's subject index here (a factor's codes, if releveled)
+  df$mixest <- as.integer(.mn$mixnum)[match(as.integer(df$ID), as.integer(.mn$ID))]
+  df
 }
 
 #' Re-insert subjects dropped during preprocessing into an output table
 #'
-#' Adds subjects dropped by `.foceiPreProcessData()` back into the table with a population `PRED` and NA individual columns.
+#' Adds subjects dropped by `.foceiPreProcessData()` back into the table with a population `PRED`
+#' and NA individual columns.
 #'
 #' @param df assembled output data.frame (one row per output record for the
 #'   subjects that were estimated)
@@ -531,7 +903,9 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .cov <- tryCatch(object$ui$covariates, error = function(e) character(0))
   names(.orig) <- .nmUpcaseNonCov(names(.orig), .cov)
   .have <- levels(df$ID)
-  if (is.null(.have)) .have <- unique(as.character(df$ID))
+  if (is.null(.have)) {
+    .have <- unique(as.character(df$ID))
+  }
   .full <- unique(as.character(.orig$ID))
   .miss <- setdiff(.full, .have)
   if (length(.miss) == 0L) {
@@ -551,7 +925,9 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .add[[.cn]][] <- NA
   }
   for (.cn in intersect(names(.add), names(.rows))) {
-    if (.cn == "ID") next
+    if (.cn == "ID") {
+      next
+    }
     if (is.factor(df[[.cn]])) {
       .add[[.cn]] <- factor(as.character(.rows[[.cn]]), levels = levels(df[[.cn]]))
     } else {
@@ -583,7 +959,9 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     return(add)
   }
   .orig <- object$origData
-  if (is.null(.orig) || is.null(.orig$ID)) return(add)
+  if (is.null(.orig) || is.null(.orig$ID)) {
+    return(add)
+  }
   .cov <- tryCatch(object$ui$covariates, error = function(e) character(0))
   names(.orig) <- .nmUpcaseNonCov(names(.orig), .cov)
   .dvCol <- which(names(.orig) == "DV")
@@ -594,12 +972,19 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     if (length(.dvCol) == 1L) {
       .subj[[.dvCol]][is.na(.subj[[.dvCol]])] <- 0
     }
-    .p <- tryCatch(suppressMessages(suppressWarnings(
-      as.data.frame(stats::predict(object, newdata = .subj, level = "population")))),
-      error = function(e) NULL)
-    if (is.null(.p)) next
+    .p <- tryCatch(
+      suppressMessages(suppressWarnings(
+        as.data.frame(stats::predict(object, newdata = .subj, level = "population"))
+      )),
+      error = function(e) NULL
+    )
+    if (is.null(.p)) {
+      next
+    }
     .pc <- which(tolower(names(.p)) == "pred")
-    if (length(.pc) != 1L) next
+    if (length(.pc) != 1L) {
+      next
+    }
     .w <- which(as.character(rows$ID) == .id)
     if (length(.w) == nrow(.p)) {
       add$PRED[.w] <- .p[[.pc]]
@@ -663,125 +1048,168 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' print(f)
 #'
 #' }
-addTable <- function(object, updateObject = FALSE,
-                     data=object$dataSav,
-                     thetaEtaParameters=object$foceiThetaEtaParameters,
-                     table=tableControl(),
-                     keep=NULL, drop=NULL,
-                     envir = parent.frame(1)) {
+addTable <- function(
+  object,
+  updateObject = FALSE,
+  data = object$dataSav,
+  thetaEtaParameters = object$foceiThetaEtaParameters,
+  table = tableControl(),
+  keep = NULL,
+  drop = NULL,
+  envir = parent.frame(1)
+) {
   nlmixr2global$finalUiCompressed <- FALSE
   on.exit(nlmixr2global$finalUiCompressed <- TRUE)
-  nlmixrWithTiming("table", {
-    keep <- unique(c(keep, "nlmixrRowNums"))
-    .malert("Calculating residuals/tables")
-    .objName <- substitute(object)
-    if (!inherits(object, "nlmixr2FitCore")) {
-      stop("requires a nlmixr2 fit object",
-           call.=FALSE)
-    }
-    .fit <- object$env
-    if (exists("origControl", .fit)) {
-      .control <- .fit$origControl
-    } else if (exists("control", .fit)) {
-      .control <- .fit$control
-    } else {
-      .control <- foceiControl()
-    }
-    if (is.null(.fit$omega)) {
-      .df <- .calcIres(.fit, data=data, table=table, dv=NULL,
-                       addDosing=table$addDosing, subsetNonmem=table$subsetNonmem, keep=keep)
-    } else {
-      .tabs <- .calcTables(.fit, data=data, table=table, keep=keep)
-      assign("shrink", .tabs$shrink, .fit)
-      .df <- .tabs$resid
-    }
-    .rownum <- as.integer(.df$nlmixrRowNums)
-    assign(".rownum", .rownum, envir=.fit)
-    drop <- c(drop, "rxLambda", "rxYj", "nlmixrRowNums",
-              "rx__sens_central_BY_p1",
-                "rx__sens_central_BY_v1",
-                "rx__sens_central_BY_p2",
-                "rx__sens_central_BY_p3",
-                "rx__sens_central_BY_p4",
-                "rx__sens_central_BY_ka",
-                "rx__sens_peripheral1_BY_p1",
-                "rx__sens_peripheral1_BY_v1",
-                "rx__sens_peripheral1_BY_p2",
-                "rx__sens_peripheral1_BY_p3",
-                "rx__sens_peripheral1_BY_p4",
-                "rx__sens_peripheral1_BY_ka",
-                "rx__sens_peripheral2_BY_p1",
-                "rx__sens_peripheral2_BY_v1",
-                "rx__sens_peripheral2_BY_p2",
-                "rx__sens_peripheral2_BY_p3",
-                "rx__sens_peripheral2_BY_p4",
-                "rx__sens_peripheral2_BY_ka",
-                "rx__sens_depot_BY_ka")
-    .w <- -which(names(.df) %in% drop)
-    if (length(.w) > 0) .df <- .df[, .w, drop=FALSE]
-    class(.df) <- "data.frame"
-    .id <- .df$ID
-    if (is.null(.id)) {
-      .df$ID <- 1L
-    } else {
-      attr(.id, "levels") <- object$idLvl
-      class(.id) <- "factor"
-      .df$ID <- .id
-    }
-    .covLvl <- object$covLvl
-    for (.v in names(.covLvl)) {
-      .l <- as.integer(.df[[.v]])
-      attr(.l, "levels") <- .covLvl[[.v]]
-      class(.l) <- "factor"
-      .df[[.v]] <- .l
-    }
-    # re-insert subjects dropped for having no usable observation
-    .df <- .reinsertNoObsSubjects(.df, object, table)
-    .isDplyr <- requireNamespace("tibble", quietly = TRUE)
-    if (!.isDplyr) {
-      .isDataTable <- requireNamespace("data.table", quietly = TRUE)
-      if (.isDataTable) {
-        .df <- data.table::data.table(.df)
+  ## event bus: `object` is forced first, outside the scope; one fitUpdate is
+  ## emitted on exit.  updateObject = TRUE keeps (and modifies) the shared
+  ## environment, so "in place" is environment identity here (see rxEvents.R)
+  force(object)
+  .nlmixr2EventEnter()
+  .evOrig <- object
+  .evOrigEnv <- if (inherits(object, "nlmixr2FitCore")) object$env else NULL
+  .evName <- .nlmixr2EventObjName(substitute(object))
+  on.exit(
+    .nlmixr2EventExitUpdate(
+      returnValue(),
+      .evOrig,
+      .evName,
+      "table",
+      inherits(returnValue(), "nlmixr2FitCore") && identical(returnValue()$env, .evOrigEnv)
+    ),
+    add = TRUE
+  )
+  nlmixrWithTiming(
+    "table",
+    {
+      keep <- unique(c(keep, "nlmixrRowNums"))
+      .malert("Calculating residuals/tables")
+      .objName <- substitute(object)
+      .objName <- if (is.name(.objName)) as.character(.objName) else NULL
+      if (!inherits(object, "nlmixr2FitCore")) {
+        stop("requires a nlmixr2 fit object", call. = FALSE)
       }
-    } else {
-      .df <- tibble::as_tibble(.df)
-    }
-    .cls <- class(.df)
-    if (!any(names(.control) == "interaction")) {
-      .control$interaction <- FALSE
-    }
-    if (.fit$method == "population only") {
-      .cls <- c("nlmixr2FitData", "nlmixr2FitCore", "pop", paste0("nlmixr2.", .fit$env$est),  .cls)
-    } else {
-      .cls <- c("nlmixr2FitData", "nlmixr2FitCore", paste0("nlmixr2.", .fit$env$est), .cls)
-    }
-    if (inherits(updateObject, "logical")) {
-      if (!updateObject) {
-        .fit <- .cloneEnv(.fit)
+      .fit <- object$env
+      if (exists("origControl", .fit)) {
+        .control <- .fit$origControl
+      } else if (exists("control", .fit)) {
+        .control <- .fit$control
+      } else {
+        .control <- foceiControl()
       }
-    }
-    class(.fit) <- "nlmixr2FitCoreSilent"
-    attr(.cls, ".foceiEnv") <- .fit
-    class(.df) <- .cls
-    if (inherits(updateObject, "logical")) {
-      if (updateObject) {
-        .parent <- envir
-        .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE), function(.cur) {
-          if (.cur == .objName && identical(.parent[[.cur]]$env, .fit$env)) {
-            return(.cur)
-          }
-          return(NULL)
-        }))
-        if (length(.bound) == 1) {
-          if (exists(.bound, envir = .parent)) {
-            assign(.bound, .df, envir = .parent)
+      if (is.null(.fit$omega)) {
+        .df <- .calcIres(
+          .fit,
+          data = data,
+          table = table,
+          dv = NULL,
+          addDosing = table$addDosing,
+          subsetNonmem = table$subsetNonmem,
+          keep = keep
+        )
+      } else {
+        .tabs <- .calcTables(.fit, data = data, table = table, keep = keep)
+        assign("shrink", .mixOwnedEtaShrink(.tabs$shrink, .fit), .fit)
+        .df <- .tabs$resid
+      }
+      .rownum <- as.integer(.df$nlmixrRowNums)
+      assign(".rownum", .rownum, envir = .fit)
+      drop <- c(
+        drop,
+        "rxLambda",
+        "rxYj",
+        "nlmixrRowNums",
+        "rx__sens_central_BY_p1",
+        "rx__sens_central_BY_v1",
+        "rx__sens_central_BY_p2",
+        "rx__sens_central_BY_p3",
+        "rx__sens_central_BY_p4",
+        "rx__sens_central_BY_ka",
+        "rx__sens_peripheral1_BY_p1",
+        "rx__sens_peripheral1_BY_v1",
+        "rx__sens_peripheral1_BY_p2",
+        "rx__sens_peripheral1_BY_p3",
+        "rx__sens_peripheral1_BY_p4",
+        "rx__sens_peripheral1_BY_ka",
+        "rx__sens_peripheral2_BY_p1",
+        "rx__sens_peripheral2_BY_v1",
+        "rx__sens_peripheral2_BY_p2",
+        "rx__sens_peripheral2_BY_p3",
+        "rx__sens_peripheral2_BY_p4",
+        "rx__sens_peripheral2_BY_ka",
+        "rx__sens_depot_BY_ka"
+      )
+      .w <- -which(names(.df) %in% drop)
+      if (length(.w) > 0) {
+        .df <- .df[, .w, drop = FALSE]
+      }
+      class(.df) <- "data.frame"
+      .id <- .df$ID
+      if (is.null(.id)) {
+        .df$ID <- 1L
+      } else {
+        attr(.id, "levels") <- object$idLvl
+        class(.id) <- "factor"
+        .df$ID <- .id
+      }
+      .covLvl <- object$covLvl
+      for (.v in names(.covLvl)) {
+        .l <- as.integer(.df[[.v]])
+        attr(.l, "levels") <- .covLvl[[.v]]
+        class(.l) <- "factor"
+        .df[[.v]] <- .l
+      }
+      # re-insert subjects dropped for having no usable observation
+      .df <- .reinsertNoObsSubjects(.df, object, table)
+      .isDplyr <- requireNamespace("tibble", quietly = TRUE)
+      if (!.isDplyr) {
+        .isDataTable <- requireNamespace("data.table", quietly = TRUE)
+        if (.isDataTable) {
+          .df <- data.table::data.table(.df)
+        }
+      } else {
+        .df <- tibble::as_tibble(.df)
+      }
+      .cls <- class(.df)
+      if (!any(names(.control) == "interaction")) {
+        .control$interaction <- FALSE
+      }
+      if (.fit$method == "population only") {
+        .cls <- c("nlmixr2FitData", "nlmixr2FitCore", "pop", paste0("nlmixr2.", .fit$env$est), .cls)
+      } else {
+        .cls <- c("nlmixr2FitData", "nlmixr2FitCore", paste0("nlmixr2.", .fit$env$est), .cls)
+      }
+      if (inherits(updateObject, "logical")) {
+        if (!updateObject) {
+          .fit <- .cloneEnv(.fit)
+        }
+      }
+      class(.fit) <- "nlmixr2FitCoreSilent"
+      attr(.cls, ".foceiEnv") <- .fit
+      class(.df) <- .cls
+      if (inherits(updateObject, "logical")) {
+        if (updateObject) {
+          .parent <- envir
+          .bound <- do.call(
+            "c",
+            lapply(ls(.parent, all.names = TRUE), function(.cur) {
+              if (!is.null(.objName) && identical(.cur, .objName) && identical(.parent[[.cur]]$env, .fit$env)) {
+                return(.cur)
+              }
+              return(NULL)
+            })
+          )
+          if (length(.bound) == 1) {
+            if (exists(.bound, envir = .parent)) {
+              assign(.bound, .df, envir = .parent)
+            }
           }
         }
       }
-    }
-    .msuccess("done")
-    .df
-  }, envir=object)
+      .msuccess("done")
+      .df
+    },
+    envir = object
+  )
 }
 
 #' Output table/data.frame options
@@ -793,7 +1221,8 @@ addTable <- function(object, updateObject = FALSE,
 #'
 #' @param censMethod Handle censoring method:
 #'
-#'  - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of the model and censoring.
+#'  - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of
+#'    the model and censoring.
 #'
 #'  - `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)
 #'
@@ -824,55 +1253,79 @@ addTable <- function(object, updateObject = FALSE,
 #' @return A list of table options for nlmixr2
 #' @author Matthew L. Fidler
 #' @export
-tableControl <- function(npde = NULL,
-                         cwres = NULL,
-                         nsim = 300, ties = TRUE,
-                         censMethod=c("truncated-normal", "cdf", "ipred", "pred", "epred", "omit"),
-                         seed = 1009,
-                         cholSEtol=(.Machine$double.eps)^(1/3),
-                         state=TRUE,
-                         lhs=TRUE,
-                         eta=TRUE,
-                         covariates=TRUE,
-                         addDosing=FALSE, subsetNonmem = TRUE,
-                         cores=NULL,
-                         keep=NULL,
-                         drop=NULL) {
-  checkmate::assertLogical(npde, any.missing=FALSE, len=1, null.ok=TRUE)
-  checkmate::assertLogical(cwres, any.missing=FALSE, len=1, null.ok=TRUE)
-  checkmate::assertLogical(ties, any.missing=FALSE, len=1, null.ok=FALSE)
-  checkmate::assertIntegerish(nsim, lower=0, len=1)
-  checkmate::assertIntegerish(seed, lower=0, len=1)
-  checkmate::assertNumeric(cholSEtol, lower=0, len=1)
-  checkmate::assertLogical(state, len=1, any.missing=FALSE)
-  checkmate::assertLogical(lhs, len=1, any.missing=FALSE)
-  checkmate::assertLogical(eta, len=1, any.missing=FALSE)
-  checkmate::assertLogical(covariates, len=1, any.missing=FALSE)
-  checkmate::assertLogical(addDosing, len=1, any.missing=FALSE)
-  checkmate::assertLogical(subsetNonmem, len=1, any.missing=FALSE)
-  checkmate::assertCharacter(keep, null.ok=TRUE, pattern = "^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
-                             any.missing = FALSE,min.chars=1)
+tableControl <- function(
+  npde = NULL,
+  cwres = NULL,
+  nsim = 300,
+  ties = TRUE,
+  censMethod = c("truncated-normal", "cdf", "ipred", "pred", "epred", "omit"),
+  seed = 1009,
+  cholSEtol = (.Machine$double.eps)^(1 / 3),
+  state = TRUE,
+  lhs = TRUE,
+  eta = TRUE,
+  covariates = TRUE,
+  addDosing = FALSE,
+  subsetNonmem = TRUE,
+  cores = NULL,
+  keep = NULL,
+  drop = NULL
+) {
+  checkmate::assertLogical(npde, any.missing = FALSE, len = 1, null.ok = TRUE)
+  checkmate::assertLogical(cwres, any.missing = FALSE, len = 1, null.ok = TRUE)
+  checkmate::assertLogical(ties, any.missing = FALSE, len = 1, null.ok = FALSE)
+  checkmate::assertIntegerish(nsim, lower = 0, len = 1)
+  checkmate::assertIntegerish(seed, lower = 0, len = 1)
+  checkmate::assertNumeric(cholSEtol, lower = 0, len = 1)
+  checkmate::assertLogical(state, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(lhs, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(eta, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(covariates, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(addDosing, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(subsetNonmem, len = 1, any.missing = FALSE)
+  checkmate::assertCharacter(
+    keep,
+    null.ok = TRUE,
+    pattern = "^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
+    any.missing = FALSE,
+    min.chars = 1
+  )
   .invalidKeep <- c("id", "sim.id", "resetno", "time", "nlmixrRowNums")
   .invalidKeep <- intersect(tolower(keep), tolower(.invalidKeep))
   if (length(.invalidKeep) > 0) {
     .w <- which(tolower(keep) %in% .invalidKeep)
     keep <- keep[-.w]
-    warning("'keep' contains ", paste(.invalidKeep, collapse=", "), "\nwhich are output when needed, ignoring these items", call.=FALSE)
+    warning(
+      "'keep' contains ",
+      paste(.invalidKeep, collapse = ", "),
+      "\nwhich are output when needed, ignoring these items",
+      call. = FALSE
+    )
   }
-  .invalidKeep <- c("evid",  "ss", "amt", "rate", "dur", "ii")
+  .invalidKeep <- c("evid", "ss", "amt", "rate", "dur", "ii")
   .invalidKeep <- intersect(tolower(keep), tolower(.invalidKeep))
   if (length(.invalidKeep) > 0) {
-    stop("'keep' cannot contain ", paste(.invalidKeep, collapse=", "), "\nconsider using addDosing=TRUE or merging to original dataset\nfor a fit the merge can be called by fit$dataMergeLeft fit$dataMergeRight or fit$dataMergeInner", call.=FALSE)
+    stop(
+      "'keep' cannot contain ",
+      paste(.invalidKeep, collapse = ", "),
+      "\nconsider using addDosing=TRUE or merging to original dataset\nfor a fit the merge can be called by fit$dataMergeLeft fit$dataMergeRight or fit$dataMergeInner", # nolint: line_length_linter.
+      call. = FALSE
+    )
   }
-  .invalidKeep <- c ("rxLambda", "rxYj", "rxLow", "rxHi")
+  .invalidKeep <- c("rxLambda", "rxYj", "rxLow", "rxHi")
   .invalidKeep <- intersect(tolower(keep), tolower(.invalidKeep))
   if (length(.invalidKeep) > 0) {
-    stop("'keep' cannot contain ", paste(.invalidKeep, collapse=", "), call.=FALSE)
+    stop("'keep' cannot contain ", paste(.invalidKeep, collapse = ", "), call. = FALSE)
   }
 
-  checkmate::assertCharacter(drop, null.ok=TRUE)
+  checkmate::assertCharacter(drop, null.ok = TRUE)
   if (inherits(censMethod, "character")) {
-    .censMethod <- setNames(c("truncated-normal"=3L, "cdf"=2L, "omit"=1L, "pred"=5L, "ipred"=4L, "epred"=6L)[match.arg(censMethod)], NULL)
+    .censMethod <- setNames(
+      c("truncated-normal" = 3L, "cdf" = 2L, "omit" = 1L, "pred" = 5L, "ipred" = 4L, "epred" = 6L)[match.arg(
+        censMethod
+      )],
+      NULL
+    )
   } else {
     checkmate::assertIntegerish(censMethod)
     .censMethod <- as.integer(censMethod)
@@ -880,19 +1333,29 @@ tableControl <- function(npde = NULL,
   if (is.null(cores)) {
     cores <- rxode2::rxCores()
   } else {
-    checkmate::assertIntegerish(cores, len=1, lower=1)
+    checkmate::assertIntegerish(cores, len = 1, lower = 1)
   }
   .ret <- list(
-    npde = npde, cwres = cwres, nsim = nsim, ties = ties, seed = seed,
-    censMethod=.censMethod,
-    cholSEtol=cholSEtol, state=state, lhs=lhs, eta=eta, covariates=covariates, addDosing=addDosing, subsetNonmem=subsetNonmem, cores=cores, keep=keep, drop=drop)
+    npde = npde,
+    cwres = cwres,
+    nsim = nsim,
+    ties = ties,
+    seed = seed,
+    censMethod = .censMethod,
+    cholSEtol = cholSEtol,
+    state = state,
+    lhs = lhs,
+    eta = eta,
+    covariates = covariates,
+    addDosing = addDosing,
+    subsetNonmem = subsetNonmem,
+    cores = cores,
+    keep = keep,
+    drop = drop
+  )
   class(.ret) <- "tableControl"
   .ret
 }
 
 #' @export
-rxUiDeparse.tableControl <- function(object, var) {
-  .default <- tableControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.tableControl <- function(object, var) .deparseControl(object, var, tableControl())

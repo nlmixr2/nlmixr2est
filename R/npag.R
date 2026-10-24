@@ -127,12 +127,21 @@
 #' @examples
 #'
 #' npagControl()
-npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
-                        residOptimize = c("alternate", "final", "none"),
-                        muExpand = FALSE, gridWidth = 4,
-                        gridBounds = c("auto", "ini", "both"), dfScan = -1L,
-                        cores = NULL, rhoend = 1e-4,
-                        gamma, df, ...) {
+npagControl <- function(
+  points = NULL,
+  cycles = 100L,
+  gammaOptimize = TRUE,
+  residOptimize = c("alternate", "final", "none"),
+  muExpand = FALSE,
+  gridWidth = 4,
+  gridBounds = c("auto", "ini", "both"),
+  dfScan = -1L,
+  cores = NULL,
+  rhoend = 1e-4,
+  gamma,
+  df,
+  ...
+) {
   # `gamma` and `df` are declared ONLY to be rejected.  They are prefixes of the
   # real formals gammaOptimize and dfScan, so without them R partial-matches and
   # npagControl(gamma = 2) silently sets gammaOptimize = isTRUE(2) = FALSE.  An
@@ -147,15 +156,19 @@ npagControl <- function(points = NULL, cycles = 100L, gammaOptimize = TRUE,
   # the request -- comparing values would let foo(gamma = 1) through a wrapper
   # merely because 1 is impmap's default for it.
   .npExp <- .npCallNames(sys.call())
-  if (!missing(gamma)) .npExp <- union(.npExp, "gamma")
-  if (!missing(df)) .npExp <- union(.npExp, "df")
+  if (!missing(gamma)) {
+    .npExp <- union(.npExp, "gamma")
+  }
+  if (!missing(df)) {
+    .npExp <- union(.npExp, "df")
+  }
   .npAssertImpCtl(.npDots, "npag", explicit = .npExp)
   .ctl <- impmapControl(...)
   # outcome check: catches an abbreviated name R partial-matched inside
   # impmapControl(), and a wrapper that hid the literal names from sys.call()
   .npAssertBuilt(.ctl, "npag")
   .ctl$est <- "npag"
-  checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
+  checkmate::assertNumeric(rhoend, len = 1, lower = 0, finite = TRUE, any.missing = FALSE)
   .ctl$rhoend <- as.numeric(rhoend)
   # NULL -> auto (scaled with the number of dimensions in .npEstCore); NA is the
   # sentinel that survives the control round-trip.
@@ -204,7 +217,7 @@ attr(nlmixr2Est.npag, "mu") <- .npMuAttr
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.mnpag <- function(env, ...) {
-  .npEstCore(env, "mnpag", muModel="lin", ...)
+  .npEstCore(env, "mnpag", muModel = "lin", ...)
 }
 attr(nlmixr2Est.mnpag, "covPresent") <- TRUE
 attr(nlmixr2Est.mnpag, "unbounded") <- .foUnbounded
@@ -215,7 +228,7 @@ attr(nlmixr2Est.mnpag, "mu") <- function(control) TRUE
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.inpag <- function(env, ...) {
-  .npEstCore(env, "inpag", muModel="irls", ...)
+  .npEstCore(env, "inpag", muModel = "irls", ...)
 }
 attr(nlmixr2Est.inpag, "covPresent") <- TRUE
 attr(nlmixr2Est.inpag, "unbounded") <- .foUnbounded

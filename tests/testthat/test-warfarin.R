@@ -1,6 +1,5 @@
 nmTest({
   test_that("warfarin residuals do not go to zero", {
-
     PKdata <- nlmixr2data::warfarin
     PKdata <- PKdata[PKdata$dvid == "cp", ]
 
@@ -34,8 +33,8 @@ nmTest({
       })
     }
 
-  run007F <-
-    .nlmixr(One.comp.transit.allo, PKdata, est = "focei", foceiControl(print = 0))
+    run007F <-
+      .nlmixr(One.comp.transit.allo, PKdata, est = "focei", foceiControl(print = 0))
 
     expect_true(all(run007F$theta[c("prop.err", "add.err")] > 0.0001))
 
@@ -67,9 +66,9 @@ nmTest({
       })
     }
 
-  run007F2 <-
-    .nlmixr(One.comp.transit.allo, PKdata, est = "focei", foceiControl(print = 0))
+    run007F2 <-
+      .nlmixr(One.comp.transit.allo, PKdata, est = "focei", foceiControl(print = 0))
 
-  expect_equal(run007F2$objf, run007F$objf)
-})
+    expect_equal(run007F2$objf, run007F$objf)
+  })
 })

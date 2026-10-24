@@ -122,8 +122,9 @@ in the `"L-BFGS-B"` method, It defaults to `5`}
 
 \item{factr}{controls the convergence of the `"L-BFGS-B"` method.
 Convergence occurs when the reduction in the objective is within
-this factor of the machine tolerance. Default is `1e7`, that is a
-tolerance of about `1e-8`.}
+this factor of the machine tolerance. `NULL` (default) uses
+`10^(-sigdig-2) / .Machine$double.eps` (at least 1), two orders tighter
+than `sigdig`, as `foceiControl(lbfgsFactr=)` does.}
 
 \item{pgtol}{helps control the convergence of the `"L-BFGS-B"`
 method.  It is a tolerance on the projected gradient in the

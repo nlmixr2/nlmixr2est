@@ -30,8 +30,9 @@
 test_that("likelihood contributions reach the nonparametric objective (npag/npb)", {
   skip_on_cran()
 
-  .old <- rxode2::getRxThreads(); on.exit(rxode2::setRxThreads(.old), add = TRUE)
-  rxode2::setRxThreads(1L)   # test contributor uses global accumulators
+  .old <- rxode2::getRxThreads()
+  on.exit(rxode2::setRxThreads(.old), add = TRUE)
+  rxode2::setRxThreads(1L) # test contributor uses global accumulators
 
   .nObs <- sum(theo_sd$EVID == 0)
   cc <- 0.01
@@ -51,11 +52,10 @@ test_that("likelihood contributions reach the nonparametric objective (npag/npb)
 
     ## the llikObs fold-in, not just fInd->llik: a constant c per observation
     ## shifts -2LL by exactly -2*c*nObs
-    expect_equal(f1$objf - f0$objf, -2 * cc * .nObs, tolerance = 1e-6,
-                 info = .est)
+    expect_equal(f1$objf - f0$objf, -2 * cc * .nObs, tolerance = 1e-6, info = .est)
     ## and the hook actually ran, in balanced subject brackets
-    expect_gt(res[[1]], 0)                 # nObs
-    expect_equal(res[[5]], res[[6]])       # nBegin == nEnd
+    expect_gt(res[[1]], 0) # nObs
+    expect_equal(res[[5]], res[[6]]) # nBegin == nEnd
   }
 })
 
@@ -66,7 +66,8 @@ test_that("likelihood contributions survive the FO objective rebuild", {
   ## finalizing the per-observation accumulation, so the contributed LL has to be
   ## added back explicitly -- otherwise est="fo"/"foi" silently drop it and this
   ## difference is 0.
-  .old <- rxode2::getRxThreads(); on.exit(rxode2::setRxThreads(.old), add = TRUE)
+  .old <- rxode2::getRxThreads()
+  on.exit(rxode2::setRxThreads(.old), add = TRUE)
   rxode2::setRxThreads(1L)
   on.exit(.Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est"), add = TRUE)
 
@@ -74,12 +75,10 @@ test_that("likelihood contributions survive the FO objective rebuild", {
   cc <- 0.01
 
   for (.est in c("fo", "foi")) {
-    f0 <- .nlmixr(.likContribModel, theo_sd, est = .est,
-                  control = foceiControl(print = 0L))
+    f0 <- .nlmixr(.likContribModel, theo_sd, est = .est, control = foceiControl(print = 0L))
     .Call("_nlmixr2est_registerTestContrib", PACKAGE = "nlmixr2est")
     .Call("_nlmixr2est_setTestContribAddLL", cc, PACKAGE = "nlmixr2est")
-    f1 <- .nlmixr(.likContribModel, theo_sd, est = .est,
-                  control = foceiControl(print = 0L))
+    f1 <- .nlmixr(.likContribModel, theo_sd, est = .est, control = foceiControl(print = 0L))
     res <- .Call("_nlmixr2est_getTestContrib", PACKAGE = "nlmixr2est")
     .Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est")
 
@@ -108,27 +107,29 @@ nmTest({
       })
     }
 
-    .old <- rxode2::getRxThreads(); on.exit(rxode2::setRxThreads(.old), add = TRUE)
+    .old <- rxode2::getRxThreads()
+    on.exit(rxode2::setRxThreads(.old), add = TRUE)
     rxode2::setRxThreads(1L)
 
     ui <- rxode2::assertRxUi(theo)
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
     am <- .vaeDecoderModel(ui)
-    zDim <- prep$zDim; hDim <- 6L; nCov <- ncol(prep$covIn)
+    zDim <- prep$zDim
+    hDim <- 6L
+    nCov <- ncol(prep$covIn)
     .testSeed(7)
     params <- .vaeEncoderInitParams(zDim, hDim, nCov, prep$zPop, rep(0.1, zDim))
-    .testSeed(123); eps <- matrix(rnorm(prep$N * zDim), prep$N, zDim)
+    .testSeed(123)
+    eps <- matrix(rnorm(prep$N * zDim), prep$N, zDim)
     nObsTot <- sum(vapply(prep$subj, function(s) length(s$y), integer(1)))
 
-    st0 <- .vaeElboStep(params, prep, am, prep$zPop, prep$omega, prep$a, 0.7, eps,
-                        withGrad = FALSE)
+    st0 <- .vaeElboStep(params, prep, am, prep$zPop, prep$omega, prep$a, 0.7, eps, withGrad = FALSE)
 
     cc <- 0.01
     .Call("_nlmixr2est_registerTestContrib", PACKAGE = "nlmixr2est")
     on.exit(.Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est"), add = TRUE)
     .Call("_nlmixr2est_setTestContribAddLL", cc, PACKAGE = "nlmixr2est")
-    st1 <- .vaeElboStep(params, prep, am, prep$zPop, prep$omega, prep$a, 0.7, eps,
-                        withGrad = FALSE)
+    st1 <- .vaeElboStep(params, prep, am, prep$zPop, prep$omega, prep$a, 0.7, eps, withGrad = FALSE)
     res <- .Call("_nlmixr2est_getTestContrib", PACKAGE = "nlmixr2est")
     .Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est")
 

@@ -37,7 +37,9 @@ nlmixr2CreateOutputFromUi(
 - `$objective` objective function value
 - `$extra` Extra print information
 - `$method` Estimation method (for printing)
-- `$omega` Omega matrix
+- `$omega` Omega matrix (final estimate); with `$fullTheta` it is written
+  into the reported ui, and the ui passed in is kept as `$iniDf0` unless an
+  `nlmixr2()` run supplies the original model
 - `$theta` Is a theta data frame
 - `$model` a list of model information for table generation.  Needs a `predOnly` model
 - `$message` Message for display

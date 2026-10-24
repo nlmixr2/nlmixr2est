@@ -1,5 +1,4 @@
 nmTest({
-
   ## D2: guard against OOB curRow read in handleCensNpdeCdf when pd rounds to 1.0
   test_that("npde cdf censoring on BLQ data yields finite NPDE (D2 OOB regression)", {
     d <- theo_sd
@@ -14,9 +13,14 @@ nmTest({
               linCmt() ~ add(add.sd) })
     }
     fit <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt, d, est = "focei",
-              control = foceiControl(print = 0L),
-              table = tableControl(censMethod = "cdf", npde = TRUE))))
+      .nlmixr(
+        one.cmt,
+        d,
+        est = "focei",
+        control = foceiControl(print = 0L),
+        table = tableControl(censMethod = "cdf", npde = TRUE)
+      )
+    ))
     expect_true("NPDE" %in% names(fit))
     expect_true(all(is.finite(fit$NPDE)))
   })
@@ -30,9 +34,8 @@ nmTest({
               linCmt() ~ prop(prop.sd) + boxCox(lm) })
     }
     fit <- suppressMessages(suppressWarnings(
-      .nlmixr(f, theo_sd, est = "saem",
-              control = saemControl(nBurn = 30, nEm = 30, print = 0L, nmc = 3))))
+      .nlmixr(f, theo_sd, est = "saem", control = saemControl(nBurn = 30, nEm = 30, print = 0L, nmc = 3))
+    ))
     expect_true(all(is.finite(fit$parFixedDf$Estimate)))
   })
-
 })

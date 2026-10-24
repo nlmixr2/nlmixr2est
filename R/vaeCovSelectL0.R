@@ -12,16 +12,23 @@
 #' @return list of ascending 0-based integer vectors (empty list on failure)
 #' @noRd
 .vaeL0Path <- function(x, y, penalty) {
-  .f <- tryCatch(suppressWarnings(
-    L0Learn::L0Learn.fit(x, y, penalty = penalty, algorithm = "CDPSI",
-                         maxSuppSize = ncol(x))),
-    error = function(e) NULL)
-  if (is.null(.f) || !length(.f$beta)) return(list())
+  .f <- tryCatch(
+    suppressWarnings(
+      L0Learn::L0Learn.fit(x, y, penalty = penalty, algorithm = "CDPSI", maxSuppSize = ncol(x))
+    ),
+    error = function(e) NULL
+  )
+  if (is.null(.f) || !length(.f$beta)) {
+    return(list())
+  }
   # beta is one p x nLambda sparse matrix per gamma; each column is one support
-  unlist(lapply(.f$beta, function(b) {
-    b <- as.matrix(b)
-    lapply(seq_len(ncol(b)), function(j) which(b[, j] != 0) - 1L)
-  }), recursive = FALSE)
+  unlist(
+    lapply(.f$beta, function(b) {
+      b <- as.matrix(b)
+      lapply(seq_len(ncol(b)), function(j) which(b[, j] != 0) - 1L)
+    }),
+    recursive = FALSE
+  )
 }
 
 #' Candidate supports for one latent dimension.
@@ -36,8 +43,12 @@
 #' @noRd
 .vaeL0Supports <- function(x, y) {
   .empty <- list(integer(0))
-  if (!is.matrix(x) || ncol(x) == 0L || nrow(x) < 3L) return(.empty)
-  if (!all(is.finite(x)) || !all(is.finite(y))) return(.empty)
+  if (!is.matrix(x) || ncol(x) == 0L || nrow(x) < 3L) {
+    return(.empty)
+  }
+  if (!all(is.finite(x)) || !all(is.finite(y))) {
+    return(.empty)
+  }
   .all <- c(.empty, .vaeL0Path(x, y, "L0"), .vaeL0Path(x, y, "L0L2"))
   .all[!duplicated(vapply(.all, paste, character(1), collapse = ","))]
 }
@@ -61,7 +72,9 @@
   ## one shape, and truncating it would quietly widen the exact-search region
   nCand <- as.numeric(nCand)
   .method <- control$covSelectMethod
-  if (is.null(.method)) .method <- "auto"
+  if (is.null(.method)) {
+    .method <- "auto"
+  }
   .msg <- character(0)
   .mode <- integer(length(nCand))
   if (.method == "l0learn") {
@@ -72,7 +85,13 @@
     # NA).
     .mode[nCand >= control$covSelectMaxExact] <- 1L
   }
-  .used <- if (all(.mode == 1L)) "l0learn" else if (any(.mode == 1L)) "mixed" else "bnb"
+  .used <- if (all(.mode == 1L)) {
+    "l0learn"
+  } else if (any(.mode == 1L)) {
+    "mixed"
+  } else {
+    "bnb"
+  }
   if (.used != "bnb") {
     .msg <- c(.msg, "covariate search used L0Learn, not the exact search")
   }
@@ -94,9 +113,13 @@
 #' @noRd
 .vaeL0Candidates <- function(y, covMat, mode, allowed = NULL) {
   lapply(seq_len(ncol(y)), function(k) {
-    if (mode[k] != 1L) return(NULL)
+    if (mode[k] != 1L) {
+      return(NULL)
+    }
     .cols <- if (is.null(allowed)) seq_len(ncol(covMat)) - 1L else allowed[[k]]
-    if (!length(.cols)) return(list(integer(0)))
+    if (!length(.cols)) {
+      return(list(integer(0)))
+    }
     .vaeL0Supports(covMat[, .cols + 1L, drop = FALSE], y[, k])
   })
 }

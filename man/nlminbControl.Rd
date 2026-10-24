@@ -238,9 +238,13 @@ will calculate tables. By default this is \code{TRUE}}
 
 \item{compress}{Should the object have compressed items}
 
-\item{covMethod}{Method for calculating the covariance.  \code{"r"} (the
-default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"nlminb"} uses
-the optimizer's own Hessian; \code{""} skips the covariance step.}
+\item{covMethod}{Method for calculating the covariance.  \code{"r"} uses
+nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"nlminb"} uses central
+differences of the analytic gradient at the final estimates, as
+\code{nlmControl(covMethod = "nlm")} does; it needs
+\code{solveType = "hessian"} or \code{"grad"}.  The default is
+\code{"nlminb"} with \code{solveType = "hessian"} and \code{"r"}
+otherwise.  \code{""} skips the covariance step.}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective

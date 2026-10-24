@@ -1,14 +1,15 @@
-run_nlmixr2_runtime_benchmarks <- function(threads = NULL,
-                                           file = NULL,
-                                           summary_file = NULL,
-                                           calcTables = TRUE,
-                                           quiet = TRUE,
-                                           reps = 1L,
-                                           warmup = 0L,
-                                           summarize = FALSE) {
+run_nlmixr2_runtime_benchmarks <- function(
+  threads = NULL,
+  file = NULL,
+  summary_file = NULL,
+  calcTables = TRUE,
+  quiet = TRUE,
+  reps = 1L,
+  warmup = 0L,
+  summarize = FALSE
+) {
   .cases <- nlmixr2est:::.nlmixr2BenchmarkDefaultCases(calcTables = calcTables)
-  .needsReplicates <- as.integer(reps) > 1L || as.integer(warmup) > 0L ||
-    !is.null(summary_file) || isTRUE(summarize)
+  .needsReplicates <- as.integer(reps) > 1L || as.integer(warmup) > 0L || !is.null(summary_file) || isTRUE(summarize)
   if (!.needsReplicates) {
     return(nlmixr2est:::.nlmixr2BenchmarkRun(
       cases = .cases,

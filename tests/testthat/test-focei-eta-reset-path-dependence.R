@@ -20,7 +20,6 @@
 
 nmTest({
   test_that("FOCEi objective does not depend on the inner eta history", {
-
     ## ---- simulate: 1-cmt oral, Michaelis-Menten elimination, 4 etas ---------
     ## Ingredients that make the reset fire often:
     ##  - four random effects,
@@ -38,20 +37,29 @@ nmTest({
       d/dt(centr) <-  ka * depot - vmax * cp / (km + cp)
     })
 
-    nsub  <- 32L
+    nsub <- 32L
     doses <- rep(c(10, 50, 200), length.out = nsub)
-    tobs  <- c(0.5, 1, 2, 4, 8, 12, 24, 48)
-    ev <- do.call(rbind, lapply(seq_len(nsub), function(i) {
-      rbind(data.frame(id = i, time = 0, amt = doses[i], evid = 1),
-            data.frame(id = i, time = tobs, amt = 0, evid = 0))
-    }))
+    tobs <- c(0.5, 1, 2, 4, 8, 12, 24, 48)
+    ev <- do.call(
+      rbind,
+      lapply(seq_len(nsub), function(i) {
+        rbind(
+          data.frame(id = i, time = 0, amt = doses[i], evid = 1),
+          data.frame(id = i, time = tobs, amt = 0, evid = 0)
+        )
+      })
+    )
     omTrue <- lotri::lotri(eta.ka + eta.vc + eta.vmax + eta.km ~
                              c(0.6, 0, 0.6, 0, 0, 0.6, 0, 0, 0, 0.6))
-    sim <- rxode2::rxSolve(simMod, ev,
-                           params = c(lka = log(0.8), lvc = log(30),
-                                      lvmax = log(15), lkm = log(2)),
-                           omega = omTrue, returnType = "data.frame",
-                           addDosing = TRUE, seed = 20260727)
+    sim <- rxode2::rxSolve(
+      simMod,
+      ev,
+      params = c(lka = log(0.8), lvc = log(30), lvmax = log(15), lkm = log(2)),
+      omega = omTrue,
+      returnType = "data.frame",
+      addDosing = TRUE,
+      seed = 20260727
+    )
 
     ## rxSolve(addDosing=TRUE) marks observation rows evid = 2
     d <- sim[, c("id", "time", "amt", "evid", "cp")]
@@ -95,8 +103,8 @@ nmTest({
     }
 
     fit <- suppressWarnings(
-      nlmixr2(fitMod, d, est = "focei",
-              control = list(print = 0L, innerOpt = "n1qn1")))
+      nlmixr2(fitMod, d, est = "focei", control = list(print = 0L, innerOpt = "n1qn1"))
+    )
 
     ## (1) the optimizer must not return a point worse than one it evaluated
     trace <- fit$parHistData$objf[fit$parHistData$type == "Unscaled"]
@@ -109,14 +117,16 @@ nmTest({
     om <- diag(fit$omega)
     om <- om[om > 0]
     cold <- suppressWarnings(nlmixr2(
-      fitMod |> rxode2::ini(lka = th[["lka"]], lvc = th[["lvc"]],
+      fitMod |>
+        rxode2::ini(lka = th[["lka"]], lvc = th[["lvc"]],
                             lvmax = th[["lvmax"]], lkm = th[["lkm"]],
                             propSd = th[["propSd"]], addSd = th[["addSd"]],
                             eta.ka = om[[1]], eta.vc = om[[2]],
                             eta.vmax = om[[3]], eta.km = om[[4]]),
-      d, est = "focei",
-      control = list(print = 0L, maxOuterIterations = 0L,
-                     covMethod = "", calcTables = FALSE, innerOpt = "n1qn1")))
+      d,
+      est = "focei",
+      control = list(print = 0L, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE, innerOpt = "n1qn1")
+    ))
 
     expect_lt(fit$objDf$OBJF[1] - cold$objDf$OBJF[1], 1)
   })

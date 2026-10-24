@@ -87,31 +87,37 @@ nmTest({
 
   test_that("nlm t() endpoint honors M2 censoring (#979)", {
     fitCens <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt.t, .datM2, est = "nlm", list(print = 0))))
+      .nlmixr(one.cmt.t, .datM2, est = "nlm", list(print = 0))
+    ))
     expect_equal(as.character(fitCens$censInformation), "M2 censoring")
 
     fitNaive <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt.t, .dat, est = "nlm", list(print = 0))))
+      .nlmixr(one.cmt.t, .dat, est = "nlm", list(print = 0))
+    ))
     expect_true(abs(fitCens$objf - fitNaive$objf) > 1e-6)
   })
 
   test_that("nlm t() endpoint honors M4 censoring (#979)", {
     fitCens <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt.t, .datM4, est = "nlm", list(print = 0))))
+      .nlmixr(one.cmt.t, .datM4, est = "nlm", list(print = 0))
+    ))
     expect_equal(as.character(fitCens$censInformation), "M2 and M4 censoring")
 
     fitNaive <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt.t, .datNaive, est = "nlm", list(print = 0))))
+      .nlmixr(one.cmt.t, .datNaive, est = "nlm", list(print = 0))
+    ))
     expect_true(abs(fitCens$objf - fitNaive$objf) > 1e-6)
   })
 
   test_that("nlm t() endpoint honors M3 censoring (#979)", {
     fitCens <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt.t, .datM3, est = "nlm", list(print = 0))))
+      .nlmixr(one.cmt.t, .datM3, est = "nlm", list(print = 0))
+    ))
     expect_equal(as.character(fitCens$censInformation), "M3 censoring")
 
     fitNaive <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt.t, .datNaive, est = "nlm", list(print = 0))))
+      .nlmixr(one.cmt.t, .datNaive, est = "nlm", list(print = 0))
+    ))
     expect_equal(as.character(fitNaive$censInformation), "No censoring")
 
     # the M2/M3/M4 correction must change the objective relative to the
@@ -122,11 +128,13 @@ nmTest({
 
   test_that("nlm cauchy() endpoint honors M3 censoring (#979)", {
     fitCens <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt.cauchy, .datM3, est = "nlm", list(print = 0))))
+      .nlmixr(one.cmt.cauchy, .datM3, est = "nlm", list(print = 0))
+    ))
     expect_equal(as.character(fitCens$censInformation), "M3 censoring")
 
     fitNaive <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt.cauchy, .datNaive, est = "nlm", list(print = 0))))
+      .nlmixr(one.cmt.cauchy, .datNaive, est = "nlm", list(print = 0))
+    ))
     expect_equal(as.character(fitNaive$censInformation), "No censoring")
 
     expect_true(abs(fitCens$objf - fitNaive$objf) > 1e-6)
@@ -137,16 +145,20 @@ nmTest({
     # serving both, so the fitted -2LL at the same starting values/data
     # should agree to solver tolerance.
     fitT1 <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt.t1, .datM3, est = "nlm", list(print = 0))))
+      .nlmixr(one.cmt.t1, .datM3, est = "nlm", list(print = 0))
+    ))
     fitCauchy <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt.cauchy, .datM3, est = "nlm", list(print = 0))))
+      .nlmixr(one.cmt.cauchy, .datM3, est = "nlm", list(print = 0))
+    ))
     expect_equal(fitT1$objf, fitCauchy$objf, tolerance = 1e-3)
   })
 
   test_that("nlm t()/cauchy() censoring does not warn (#979 catch-all)", {
     expect_no_warning(suppressMessages(
-      .nlmixr(one.cmt.t, .datM3, est = "nlm", list(print = 0))))
+      .nlmixr(one.cmt.t, .datM3, est = "nlm", list(print = 0))
+    ))
     expect_no_warning(suppressMessages(
-      .nlmixr(one.cmt.cauchy, .datM3, est = "nlm", list(print = 0))))
+      .nlmixr(one.cmt.cauchy, .datM3, est = "nlm", list(print = 0))
+    ))
   })
 })

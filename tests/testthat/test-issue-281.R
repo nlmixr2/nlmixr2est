@@ -1,6 +1,5 @@
 nmTest({
   test_that("saem building works; Issue nlmixr#281", {
-
     Lesion7 <- function() {
       ini({
         temaxD <- -0.05 ; label("typical value of drug emax")
@@ -60,7 +59,6 @@ nmTest({
   })
 
   test_that("locf and other issues", {
-
     Lesion7 <- function() {
       ini({
         temaxD <- -0.05 ; label("typical value of drug emax")
@@ -118,5 +116,4 @@ nmTest({
 
     expect_true(grepl("linear\\(TRX\\)", rxode2::rxNorm(m$predNoLhs)))
   })
-
 })

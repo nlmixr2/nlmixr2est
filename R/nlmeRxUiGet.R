@@ -34,7 +34,7 @@ rxGetDistributionNlmeLines.norm <- function(line) {
   .ret <- vector("list", 6)
   .yj <- as.double(pred1$transform) - 1
   .ret[[1]] <- bquote(rx_yj_ ~ .(.yj))
-  .ret[[2]] <- bquote(rx_lambda_~.(rxode2::.rxGetLambdaFromPred1AndIni(env, pred1)))
+  .ret[[2]] <- bquote(rx_lambda_ ~ .(rxode2::.rxGetLambdaFromPred1AndIni(env, pred1)))
   .ret[[3]] <- bquote(rx_low_ ~ .(rxode2::.rxGetLowBoundaryPred1AndIni(env, pred1)))
   .ret[[4]] <- bquote(rx_hi_ ~ .(rxode2::.rxGetHiBoundaryPred1AndIni(env, pred1)))
   .ret[[5]] <- bquote(rx_pred_f_ ~ .(rxode2::.rxGetPredictionF(env, pred1)))
@@ -44,19 +44,21 @@ rxGetDistributionNlmeLines.norm <- function(line) {
 
 #' @export
 rxGetDistributionNlmeLines.t <- function(line) {
-  stop("t isn't supported yet", call.=FALSE)
+  stop("t isn't supported yet", call. = FALSE)
 }
 
 #' @export
-rxGetDistributionNlmeLines.default  <- function(line) {
-  stop("distribution not supported", call.=FALSE)
+rxGetDistributionNlmeLines.default <- function(line) {
+  stop("distribution not supported", call. = FALSE)
 }
 
 #' @export
 rxGetDistributionNlmeLines.rxUi <- function(line) {
   .predDf <- get("predDf", line)
-  if (length(.predDf$cond) != 1) stop("nlme does not support multiple endpoint models", call.=FALSE)
-  lapply(seq_along(.predDf$cond), function(c){
+  if (length(.predDf$cond) != 1) {
+    stop("nlme does not support multiple endpoint models", call. = FALSE)
+  }
+  lapply(seq_along(.predDf$cond), function(c) {
     .mod <- .createFoceiLineObject(line, c)
     rxGetDistributionNlmeLines(.mod)
   })
@@ -76,8 +78,7 @@ rxGetDistributionNlmeLines.rxUi <- function(line) {
   .env$.if <- NULL
   .env$.def1 <- NULL
   .malert("pruning branches ({.code if}/{.code else}) of nlme model...")
-  .ret <- rxode2::.rxPrune(.x, envir = .env,
-                           strAssign=rxode2::rxModelVars(x[[1]])$strAssign)
+  .ret <- rxode2::.rxPrune(.x, envir = .env, strAssign = rxode2::rxModelVars(x[[1]])$strAssign)
   .mv <- rxode2::rxModelVars(.ret)
   ## Need to convert to a function
   if (rxode2::.rxIsLinCmt() == 1L) {
@@ -91,12 +92,15 @@ rxGetDistributionNlmeLines.rxUi <- function(line) {
 #' @export
 rxUiGet.nlmeModel0 <- function(x, ...) {
   .f <- x[[1]]
-  rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionNlmeLines(.f),
-                              paramsLine=NA, #.uiGetThetaEtaParams(.f),
-                              modelVars=TRUE,
-                              cmtLines=FALSE,
-                              dvidLine=FALSE,
-                              lstExpr=.saemDropMuRefFromModel(.f, noCovs=TRUE))
+  rxode2::rxCombineErrorLines(
+    .f,
+    errLines = rxGetDistributionNlmeLines(.f),
+    paramsLine = NA, #.uiGetThetaEtaParams(.f),
+    modelVars = TRUE,
+    cmtLines = FALSE,
+    dvidLine = FALSE,
+    lstExpr = .saemDropMuRefFromModel(.f, noCovs = TRUE)
+  )
 }
 attr(rxUiGet.nlmeModel0, "rstudio") <- quote(rxModelVars({}))
 #attr(rxUiGet.nlmeModel, "desc") <- "nlmixr nlme model, equivalent to saem rxode2 model"
@@ -114,11 +118,19 @@ rxUiGet.nlmeFunction <- function(x, ...) {
   .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
   #.par <- c(.estPar, .ui$covariates)
   .par <- .estPar
-  eval(parse(text=paste0("function(", paste(.par, collapse=","), ", ID) {\n",
-                         "nlmixr2est::.nlmixrNlmeFun(list(", paste(paste0(.estPar, "=", .estPar), collapse=","), "), ID)\n",
-                         "}")))
+  eval(parse(
+    text = paste0(
+      "function(",
+      paste(.par, collapse = ","),
+      ", ID) {\n",
+      "nlmixr2est::.nlmixrNlmeFun(list(",
+      paste(paste0(.estPar, "=", .estPar), collapse = ","),
+      "), ID)\n",
+      "}"
+    )
+  ))
 }
-attr(rxUiGet.nlmeFunction, "rstudio") <- function(){}
+attr(rxUiGet.nlmeFunction, "rstudio") <- function() {}
 
 #' @export
 rxUiGet.nlmeRxModelFD <- function(x, ...) {
@@ -128,15 +140,18 @@ rxUiGet.nlmeRxModelFD <- function(x, ...) {
   ## .lhs0 <- .s$..lhs0
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
-  .ret <- paste(c(
-    #.s$..stateInfo["state"],
-    #.lhs0,
-    .ddt,
-    .prd,
-    #.s$..stateInfo["statef"],
-    #.s$..stateInfo["dvid"],
-    ""
-  ), collapse = "\n")
+  .ret <- paste(
+    c(
+      #.s$..stateInfo["state"],
+      #.lhs0,
+      .ddt,
+      .prd,
+      #.s$..stateInfo["statef"],
+      #.s$..stateInfo["dvid"],
+      ""
+    ),
+    collapse = "\n"
+  )
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   if (.sumProd) {
@@ -146,17 +161,14 @@ rxUiGet.nlmeRxModelFD <- function(x, ...) {
   }
   if (.optExpression) {
     .ret <- rxode2::rxOptExpr(.ret, "nlme model", parallel = .optExprCores(x[[1]]))
-     .msuccess("done")
+    .msuccess("done")
   }
-  .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)
-  .interp <- rxUiGet.interpLinesStr(x, ...)
-  if (.interp != "") {
-    .cmt <-paste0(.cmt, "\n", .interp)
-  }
+  .cmt <- rxUiGet.foceiCmtPreModel(x, ...)
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  .cmt <- .addPreModelLines(.cmt, rxUiGet.interpLinesStr(x, ...), .mtimeLinesStr(.s))
   ## no splitBolus() here -- the doses were already split when the data was
   ## translated (see .foceiPreProcessData())
-  paste(c(rxUiGet.saemParams(x, ...), .cmt,
-          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
+  paste(c(rxUiGet.saemParams(x, ...), .cmt, .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse = "\n")
 }
 attr(rxUiGet.nlmeRxModelFD, "rstudio") <- "params()"
 
@@ -176,46 +188,82 @@ rxUiGet.nlmeModel <- function(x, ...) {
   saem.par <- rxUiGet.saemParamsToEstimate(x, ...)
   muRef.par <-
     setNames(
-      paste(x[[1]]$muRefDataFrame$theta, x[[1]]$muRefDataFrame$eta, sep="+"),
+      paste(x[[1]]$muRefDataFrame$theta, x[[1]]$muRefDataFrame$eta, sep = "+"),
       x[[1]]$muRefDataFrame$theta
     )
   nonMuRef.par <-
-    setNames(nm=setdiff(saem.par, x[[1]]$muRefDataFrame$theta))
+    setNames(nm = setdiff(saem.par, x[[1]]$muRefDataFrame$theta))
   all.par <- c(muRef.par, nonMuRef.par)
   as.formula(
     sprintf(
       "DV~.nlmixrNlmeFun(pars=list(%s), id=ID)",
-      paste(names(all.par), all.par, sep="=", collapse=", ")
+      paste(names(all.par), all.par, sep = "=", collapse = ", ")
     )
   )
 }
 #attr(rxUiGet.nlmeModel, "desc") <- "nlme formula for nlmixr model"
-attr(rxUiGet.nlmeModel, "rstudio") <- DV ~ nlmixr2est::nlmixrNlmeFun(pars=list(), id=ID)
+attr(rxUiGet.nlmeModel, "rstudio") <- DV ~ nlmixr2est::nlmixrNlmeFun(pars = list(), id = ID)
 
 #' @export
 rxUiGet.nlmeGradDimnames <- function(x, ...) {
   .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
-  eval(parse(text=paste0("list(NULL, list(", paste(paste0(.estPar, "=quote(", .estPar, ")"), collapse=","), "))")))
+  eval(parse(text = paste0("list(NULL, list(", paste(paste0(.estPar, "=quote(", .estPar, ")"), collapse = ","), "))")))
 }
 
+
+#' The omega blocks a model declares
+#'
+#' Two etas share a block when `ini()` declares a covariance between them (an
+#' off-diagonal `iniDf` row, also one at 0), directly or through other etas of
+#' the block.
+#'
+#' @param iniDf rxode2 `iniDf`
+#' @return list of integer vectors of eta indices (`neta1`), one per block,
+#'   ordered by their first eta
+#' @noRd
+.nlmeOmegaBlocks <- function(iniDf) {
+  .eta <- iniDf[!is.na(iniDf$neta1), c("neta1", "neta2")]
+  .grp <- seq_len(max(.eta$neta1))
+  .off <- .eta[.eta$neta1 != .eta$neta2, , drop = FALSE]
+  for (.i in seq_len(nrow(.off))) {
+    .grp[.grp == .grp[.off$neta1[.i]]] <- .grp[.off$neta2[.i]]
+  }
+  unname(split(seq_along(.grp), factor(.grp, levels = unique(.grp))))
+}
+
+#' nlme `pdMat` for one omega block
+#'
+#' @param idx eta indices of the block
+#' @param omega named omega matrix (initial values)
+#' @return `pdDiag` for a single eta, otherwise `pdSymm`
+#' @noRd
+.nlmePdBlock <- function(idx, omega) {
+  .om <- omega[idx, idx, drop = FALSE]
+  .form <- stats::as.formula(paste(paste(colnames(.om), collapse = "+"), "~1"))
+  if (length(idx) == 1L) {
+    return(nlme::pdDiag(value = .om, form = .form))
+  }
+  .dn <- dimnames(.om)
+  .om <- nmNearPD(.om)
+  dimnames(.om) <- .dn
+  nlme::pdSymm(value = .om, form = .form)
+}
 
 #' @export
 rxUiGet.nlmePdOmega <- function(x, ...) {
   .ui <- x[[1]]
   .omega <- .ui$omega
-  .omega2 <- .omega
-  diag(.omega2) <- 0
-  .name <- dimnames(.omega)[[1]]
-  .name <- .nlmeGetNonMuRefNames(.name, .ui)
+  .name <- .nlmeGetNonMuRefNames(dimnames(.omega)[[1]], .ui)
   dimnames(.omega) <- list(.name, .name)
-  if (all(.omega2 == 0)) {
-    nlme::pdDiag(value=.omega, form=as.formula(paste(paste(.name, collapse="+"), "~1")))
-  } else {
-    .omega <- as.matrix(Matrix::nearPD(.omega)$mat)
-    dimnames(.omega) <- list(.name, .name)
-    warning("nlme will estimate a full omega matrix if any covariances are estimated", call.=FALSE)
-    nlme::pdSymm(value=.omega, form=as.formula(paste(paste(.name, collapse="+"), "~1")))
+  .blocks <- .nlmeOmegaBlocks(.ui$iniDf)
+  if (length(.blocks) == length(.name)) {
+    return(nlme::pdDiag(value = .omega, form = as.formula(paste(paste(.name, collapse = "+"), "~1"))))
   }
+  if (length(.blocks) == 1L) {
+    return(.nlmePdBlock(.blocks[[1]], .omega))
+  }
+  # only the covariances ini() declares are estimated
+  nlme::pdBlocked(lapply(.blocks, .nlmePdBlock, omega = .omega))
 }
 #attr(rxUiGet.nlmePdOmega, "desc") <- "nlme omega matrix form"
 
@@ -227,26 +275,30 @@ rxUiGet.nlmeStart <- function(x, ...) {
   setNames(.iniDf$est[.w], .iniDf$name[.w])
 }
 #attr(rxUiGet.nlmeStart, "desc") <- "nlme starting estimates for fixed effects"
-attr(rxUiGet.nlmeStart, "rstudio") <- c(tka=0.45)
+attr(rxUiGet.nlmeStart, "rstudio") <- c(tka = 0.45)
 
 
 #' @export
 rxUiGet.nlmeFixedFormula <- function(x, ...) {
   .start <- rxUiGet.nlmeStart(x, ...)
-  as.formula(paste(paste(names(.start), collapse="+"), "~1"))
+  as.formula(paste(paste(names(.start), collapse = "+"), "~1"))
 }
 #attr(rxUiGet.nlmeStart, "desc") <- "nlme starting estimates for fixed effects"
-attr(rxUiGet.nlmeFixedFormula, "rstudio") <- tka+tcl ~ 1
+attr(rxUiGet.nlmeFixedFormula, "rstudio") <- tka + tcl ~ 1
 
 #' @export
 rxUiGet.nlmeWeights <- function(x, ...) {
   .ui <- x[[1]]
   .predDf <- .ui$predDf
-  if (length(.predDf$cond) != 1) stop("cannot apply to multiple endpoint models", call.=FALSE)
-  if (.predDf$distribution != "norm") stop("nlme not supported for this unexplained error structure", call.=FALSE)
+  if (length(.predDf$cond) != 1) {
+    stop("cannot apply to multiple endpoint models", call. = FALSE)
+  }
+  if (.predDf$distribution != "norm") {
+    stop("nlme not supported for this unexplained error structure", call. = FALSE)
+  }
   .errType <- .predDf$errType
   if (.errType == "prop") {
-    return(nlme::varPower(fixed=list(power=1)))
+    return(nlme::varPower(fixed = list(power = 1)))
   } else if (.errType == "pow") {
     return(nlme::varPower())
   } else if (.errType == "add") {
@@ -258,16 +310,19 @@ rxUiGet.nlmeWeights <- function(x, ...) {
   }
   if (.addProp == "combined1") {
     if (.errType == "add + prop") {
-      return(nlme::varConstPower(fixed=list(power=1)))
+      return(nlme::varConstPower(fixed = list(power = 1)))
     } else {
       return(nlme::varConstPower())
     }
   } else {
     if (.errType == "add + prop") {
-      return(nlme::varConstProp())
+      # sigma is fixed at 1 (.nlmeFitModel()), so start from the ini() sds
+      .iniDf <- .ui$iniDf
+      .add <- .iniDf$est[which(.iniDf$err == "add")]
+      .prop <- .iniDf$est[which(.iniDf$err == "prop")]
+      return(nlme::varConstProp(const = .add, prop = .prop))
     } else {
-      stop("add+prop combined2 does not support nlme power currently",
-           call.=FALSE)
+      stop("add+prop combined2 does not support nlme power currently", call. = FALSE)
     }
   }
 }

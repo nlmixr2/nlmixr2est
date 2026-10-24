@@ -46,12 +46,13 @@ lbfgsb3cControl(
 )
 }
 \arguments{
-\item{trace}{If positive, print tracing information; higher values give
-more detail (see source for "L-BFGS-B" trace levels).}
+\item{trace}{Ignored: the thread-safe C++ L-BFGS-B prints nothing; use
+`print` for the iteration log.  Kept so existing calls still work.}
 
 \item{factr}{Convergence tolerance factor for "L-BFGS-B"; converges when
-the objective reduction is within this factor of machine tolerance
-(default 1e7, i.e. ~1e-8).}
+the objective reduction is within this factor of machine tolerance.
+`NULL` (default) uses `10^(-sigdig-2) / .Machine$double.eps` (at least
+10), two orders tighter than `sigdig`, as `foceiControl(lbfgsFactr=)` does.}
 
 \item{pgtol}{Tolerance on the projected gradient for "L-BFGS-B"; 0
 (default) suppresses the check.}
@@ -64,7 +65,7 @@ suppresses the check.}
 
 \item{lmm}{Number of BFGS updates retained in "L-BFGS-B" (default 5).}
 
-\item{maxit}{maximum number of iterations.}
+\item{maxit}{maximum number of objective function evaluations.}
 
 \item{returnLbfgsb3c}{return the lbfgsb3c output instead of the nlmixr2
 fit}

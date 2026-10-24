@@ -23,7 +23,10 @@ nmTest({
     am <- .vaeDecoderModel(ui)
     expect_false(is.null(am))
 
-    lka <- log(1.8); lke <- log(0.086); lV <- log(32); addErr <- 0.7
+    lka <- log(1.8)
+    lke <- log(0.086)
+    lV <- log(32)
+    addErr <- 0.7
     th <- c(THETA_1_ = lka, THETA_2_ = lke, THETA_3_ = lV, THETA_4_ = addErr)
     eta <- c(0.15, -0.08, 0.2)
     dose <- 320
@@ -37,7 +40,9 @@ nmTest({
 
     ## closed-form cp and its eta-derivatives
     cf <- function(eta, t) {
-      ka <- exp(lka + eta[1]); ke <- exp(lke + eta[2]); V <- exp(lV + eta[3])
+      ka <- exp(lka + eta[1])
+      ke <- exp(lke + eta[2])
+      V <- exp(lV + eta[3])
       dose * ka / (V * (ka - ke)) * (exp(-ke * t) - exp(-ka * t))
     }
     fCf <- cf(eta, times)
@@ -46,7 +51,10 @@ nmTest({
     ## df/deta vs FD of the closed form
     h <- 1e-6
     for (k in 1:3) {
-      ep <- eta; ep[k] <- ep[k] + h; em <- eta; em[k] <- em[k] - h
+      ep <- eta
+      ep[k] <- ep[k] + h
+      em <- eta
+      em[k] <- em[k] - h
       fd <- (cf(ep, times) - cf(em, times)) / (2 * h)
       expect_lt(max(abs(E$a[, k] - fd)) / max(abs(fd)), 1e-4)
     }
@@ -64,7 +72,10 @@ nmTest({
       .vaeDecoderPxz(Ee, y)$pxz
     }
     for (k in 1:3) {
-      ep <- eta; ep[k] <- ep[k] + h; em <- eta; em[k] <- em[k] - h
+      ep <- eta
+      ep[k] <- ep[k] + h
+      em <- eta
+      em[k] <- em[k] - h
       fd <- (pxzOf(ep) - pxzOf(em)) / (2 * h)
       expect_lt(abs(px$gEta[k] - fd) / max(abs(fd), 1), 1e-4)
     }

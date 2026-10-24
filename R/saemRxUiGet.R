@@ -2,7 +2,7 @@
 rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
   .ui <- x[[1]]
   if (!rxode2::rxGetControl(x[[1]], "muRefCov", getOption("nlmixr2.saemMuRefCov", TRUE))) {
-    return(data.frame(theta=character(0), covariate=character(0), covariateParameter=character(0)))
+    return(data.frame(theta = character(0), covariate = character(0), covariateParameter = character(0)))
   }
   if (exists("muRefFinal", .ui)) {
     .cov <- .ui$muRefFinal
@@ -13,14 +13,18 @@ rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
   .rm <- NULL
   for (.i in seq_along(.cov$covariateParameter)) {
     .cp <- .cov$covariateParameter[.i]
-    .cv <- .cov$covariate[.i]
     .w <- which(.iniDf$name == .cp)
     if (.iniDf$fix[.w]) {
       .rm <- c(.rm, -.i)
     }
   }
   if (!is.null(.rm)) {
-    .cov <- .cov[.rm,]
+    .cov <- .cov[.rm, ]
+  }
+  if (.saemGeneralLik(.ui) && length(.cov$theta) > 0L) {
+    # refinePhi0Lik only refines an intercept-only phi0, so a covariate on a
+    # theta without an eta (a <- add.sd + WT*cov.sd) stays in the model instead
+    .cov <- .cov[.cov$theta %in% .ui$muRefDataFrame$theta, , drop = FALSE]
   }
   .cov
 }
@@ -49,7 +53,7 @@ rxUiGet.saemInParsAndMuRefCovariates <- function(x, ...) {
   if (.saemGeneralLik(.ui)) {
     .cov <- unique(c(.cov, "DV"))
   }
-  list(inPars=.cov, covars=.muCov)
+  list(inPars = .cov, covars = .muCov)
 }
 #attr(rxUiGet.saemInParsAndMuRefCovariates, "desc") <- "Get inPars and covars for saem"
 
@@ -119,13 +123,18 @@ rxUiGet.saemFunction <- function(x, ...) {
     .param <- .param[!(.param %in% .cov$covariateParameter)]
     .estParam <- .estParam[!(.estParam %in% .cov$covariateParameter)]
   }
-  .parmUpdate <- vapply(.param, function(x) {
-    if (x %in% .estParam) {
-      return(1L)
-    } else {
-      return(0L)
-    }
-  }, integer(1), USE.NAMES=FALSE)
+  .parmUpdate <- vapply(
+    .param,
+    function(x) {
+      if (x %in% .estParam) {
+        return(1L)
+      } else {
+        return(0L)
+      }
+    },
+    integer(1),
+    USE.NAMES = FALSE
+  )
   .nendpnt <- length(.ui$predDf$cond)
   .fn <- eval(.fn)
   attr(.fn, "form") <- "ode" ## Not sure this is necessary any more
@@ -138,17 +147,16 @@ rxUiGet.saemFunction <- function(x, ...) {
   attr(.fn, "nendpnt") <- .nendpnt
   .fn
 }
-attr(rxUiGet.saemFunction, "rstudio") <- function(){}
+attr(rxUiGet.saemFunction, "rstudio") <- function() {}
 
 #' @export
 rxUiGet.saemFixed <- function(x, ...) {
   .ui <- x[[1]]
   .df <- .ui$iniDf
   .dft <- .df[!is.na(.df$ntheta), ]
-  .fixError <- .dft[!is.na(.dft$err), ]
   .dft <- .dft[.saemIsEstimableThetaRow(.ui, .dft), ]
   if (length(.ui$mixProbs) > 0) {
-    .dft <- .dft[!(.dft$name %in%.ui$mixProbs), ]
+    .dft <- .dft[!(.dft$name %in% .ui$mixProbs), ]
   }
   .dft <- setNames(.dft$fix, paste(.dft$name))
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
@@ -165,7 +173,7 @@ rxUiGet.saemFixed <- function(x, ...) {
       .curPar <- .cov[.c, "covariateParameter"]
       .m[.curTheta, .curCov] <- .curPar
     }
-    .m <- cbind(matrix(names(.theta), ncol=1), .m)
+    .m <- cbind(matrix(names(.theta), ncol = 1), .m)
     .m <- as.vector(t(.m))
     .dft <- .dft[.m[!is.na(.m)]]
   }
@@ -174,9 +182,9 @@ rxUiGet.saemFixed <- function(x, ...) {
   c(.dft, .extra)
 }
 #attr(rxUiGet.saemFixed, "desc") <- "Get the saem fixed parameters"
-attr(rxUiGet.saemFixed, "rstudio") <- function(){}
+attr(rxUiGet.saemFixed, "rstudio") <- function() {}
 
-.saemEtaTrans <- function(x, ..., nonMu=FALSE) {
+.saemEtaTrans <- function(x, ..., nonMu = FALSE) {
   .ui <- x[[1]]
   .etas <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
   .etas <- .etas$name[.etas$neta1 == .etas$neta2]
@@ -185,21 +193,28 @@ attr(rxUiGet.saemFixed, "rstudio") <- function(){}
     .thetas <- .thetas[!(.thetas %in% .ui$nonMuEtas)]
   }
   .muRefDataFrame <- .ui$muRefDataFrame
-  vapply(.etas, function(eta) {
-    .w <- which(eta == .muRefDataFrame$eta)
-    if (length(.w) == 1L) {
-      .muTheta <- .muRefDataFrame$theta[.w]
-      .w <- which(.muTheta == .thetas)
-      if (length(.w) == 1L) return(.w)
-    }
-    if (nonMu && eta %in% .ui$nonMuEtas) {
-      .w <- which(eta == .etas)
-      if (length(.w) == 1L) return(-.w)
-    }
-    .w <- which(eta == .thetas)
-    if (length(.w) == 1L) return(.w)
-    return(NA_integer_)
-  }, integer(1), USE.NAMES=FALSE)
+  vapply(
+    .etas,
+    function(eta) {
+      .w <- which(eta == .muRefDataFrame$eta)
+      if (length(.w) == 1L) {
+        .muTheta <- .muRefDataFrame$theta[.w]
+        .w <- which(.muTheta == .thetas)
+        if (length(.w) == 1L) return(.w)
+      }
+      if (nonMu && eta %in% .ui$nonMuEtas) {
+        .w <- which(eta == .etas)
+        if (length(.w) == 1L) return(-.w)
+      }
+      .w <- which(eta == .thetas)
+      if (length(.w) == 1L) {
+        return(.w)
+      }
+      return(NA_integer_)
+    },
+    integer(1),
+    USE.NAMES = FALSE
+  )
 }
 
 #' @export
@@ -210,7 +225,7 @@ attr(rxUiGet.saemEtaTrans, "rstudio") <- c(1L, 3L)
 
 #' @export
 rxUiGet.saemEtaTransPred <- function(x, ...) {
-  .saemEtaTrans(x, ..., nonMu=TRUE)
+  .saemEtaTrans(x, ..., nonMu = TRUE)
 }
 #attr(rxUiGet.saemEtaTrans, "desc") <- "Get the saem eta to theta translation"
 attr(rxUiGet.saemEtaTransPred, "rstudio") <- c(1L, 3L)
@@ -222,6 +237,12 @@ rxUiGet.saemOmegaTrans <- function(x, ...) {
   .etaTrans2 <- .etaTrans
   .c <- 1
   for (i in .o) {
+    # An eta with no phi parameter (NA) owns no Gamma2_phi1 column, so it gets
+    # no slot either.  Handing it a dense rank is what used to index past the
+    # matrix in .getSaemOmega() (#1047).
+    if (is.na(.etaTrans[i])) {
+      next
+    }
     .etaTrans2[i] <- .c
     .c <- .c + 1
   }
@@ -230,67 +251,14 @@ rxUiGet.saemOmegaTrans <- function(x, ...) {
 #attr(rxUiGet.saemOmegaTrans, "desc") <- "Get the saem omega to UI omega translation"
 attr(rxUiGet.saemOmegaTrans, "rstudio") <- c(1L, 3L)
 
-
-#' @export
-rxUiGet.saemOmegaShare <- function(x, ...) {
-  .ui <- x[[1]]
-  .etaNames <- rxUiGet.saemEtaNames(x, ...)
-  .ret <- rep(0L, length(.etaNames))
-  if (length(.ui$mixProbs) == 0L) return(.ret)
-  
-  .allEtas <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
-  .allEtas <- .allEtas[.allEtas$neta1 == .allEtas$neta2, "name"]
-
-  .mixCalls <- do.call(c, lapply(.ui$lstExpr, .findMixCalls))
-  if (length(.mixCalls) == 0L) return(.ret)
-
-  .groupId <- 1L
-  for (.mc in .mixCalls) {
-    .args <- as.list(.mc)[-1]
-    .comps <- .args[seq(1, length(.args), by = 2)]
-    .grpEtas <- unique(unlist(lapply(.comps, .extractEtas, etas = .allEtas)))
-    if (length(.grpEtas) > 1L) {
-      for (.eta in .grpEtas) {
-        .w <- which(.eta == .etaNames)
-        if (length(.w) == 1L) {
-          .ret[.w] <- .groupId
-        }
-      }
-      .groupId <- .groupId + 1L
-    }
-  }
-  .ret
-}
-
 #' @export
 rxUiGet.saemOmegaShareSubpop <- function(x, ...) {
-  .ui <- x[[1]]
   .etaNames <- rxUiGet.saemEtaNames(x, ...)
-  .ret <- rep(0L, length(.etaNames))
-  if (length(.ui$mixProbs) == 0L) return(.ret)
-  
-  .allEtas <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
-  .allEtas <- .allEtas[.allEtas$neta1 == .allEtas$neta2, "name"]
-
-  .mixCalls <- do.call(c, lapply(.ui$lstExpr, .findMixCalls))
-  if (length(.mixCalls) == 0L) return(.ret)
-
-  for (.mc in .mixCalls) {
-    .args <- as.list(.mc)[-1]
-    .comps <- .args[seq(1, length(.args), by = 2)]
-    for (.j in seq_along(.comps)) {
-      .grpEtas <- .extractEtas(.comps[[.j]], etas = .allEtas)
-      for (.eta in .grpEtas) {
-        .w <- which(.eta == .etaNames)
-        if (length(.w) == 1L) {
-          .ret[.w] <- .j
-        }
-      }
-    }
-  }
-  .ret
+  .own <- .mixEtaOwner(x[[1]])
+  .ret <- unname(.own[.etaNames])
+  .ret[is.na(.ret)] <- 0L
+  as.integer(.ret)
 }
-
 
 #' @export
 rxUiGet.saemModelOmega <- function(x, ...) {
@@ -308,7 +276,7 @@ rxUiGet.saemModelOmega <- function(x, ...) {
   .mat
 }
 #attr(rxUiGet.saemModelOmega, "desc") <- "Get the saem model omega"
-attr(rxUiGet.saemModelOmega, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
+attr(rxUiGet.saemModelOmega, "rstudio") <- lotri::lotri(a + b ~ c(1, 0.1, 1))
 
 #' @export
 rxUiGet.saemModelOmegaFixed <- function(x, ...) {
@@ -326,7 +294,7 @@ rxUiGet.saemModelOmegaFixed <- function(x, ...) {
   .mat
 }
 #attr(rxUiGet.saemModelOmegaFixed, "desc") <- "Get the indicator for saem model omega fixed components"
-attr(rxUiGet.saemModelOmegaFixed, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
+attr(rxUiGet.saemModelOmegaFixed, "rstudio") <- lotri::lotri(a + b ~ c(1, 0.1, 1))
 
 #' @export
 rxUiGet.saemModelOmegaFixedValues <- function(x, ...) {
@@ -344,7 +312,7 @@ rxUiGet.saemModelOmegaFixedValues <- function(x, ...) {
   .mat
 }
 #attr(rxUiGet.saemModelOmegaFixedValues, "desc") <- "Get the omega values may be fixed"
-attr(rxUiGet.saemModelOmegaFixedValues, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
+attr(rxUiGet.saemModelOmegaFixedValues, "rstudio") <- lotri::lotri(a + b ~ c(1, 0.1, 1))
 
 #' @export
 rxUiGet.saemLow <- function(x, ...) {
@@ -365,7 +333,7 @@ attr(rxUiGet.saemHi, "rstudio") <- Inf
 #' @export
 rxUiGet.saemPropT <- function(x, ...) {
   .ui <- x[[1]]
-  as.integer((.ui$predDf$errTypeF=="transformed")*1L)
+  as.integer((.ui$predDf$errTypeF == "transformed") * 1L)
 }
 #attr(rxUiGet.saemPropT, "desc") <- "Get the saem transformation type for the function"
 attr(rxUiGet.saemPropT, "rstudio") <- 1L
@@ -389,24 +357,27 @@ rxUiGet.saemResMod <- function(x, ...) {
   # (.saemGeneralLik(.ui)), every condition has no residual error parameter,
   # not just the ones whose own raw distribution already said so.
   .genLik <- .saemGeneralLik(.ui)
-  vapply(seq_along(.predDf$errType),
-         function(i) {
-           # general log-likelihood endpoint (ll() ~ expr, or any non-normal
-           # distribution() family): no residual error parameter -- the inner
-           # supplies the likelihood (distribution=4 path)
-           if (.genLik || .predDf$distribution[i] != "norm") return(0L)
-           .errType <- as.integer(.predDf$errType[i])
-           .hasLambda <- .predDf$transform[i] %in% c("boxCox", "yeoJohnson",
-                                                     "logit + yeoJohnson",
-                                                     "probit + yeoJohnson",
-                                                     "logit + boxCox",
-                                                     "probit + boxCox")
-           if (.hasLambda) {
-             return(.errType + 5L)
-           } else {
-             return(.errType)
-           }
-         }, integer(1), USE.NAMES=FALSE)
+  vapply(
+    seq_along(.predDf$errType),
+    function(i) {
+      # general log-likelihood endpoint (ll() ~ expr, or any non-normal
+      # distribution() family): no residual error parameter -- the inner
+      # supplies the likelihood (distribution=4 path)
+      if (.genLik || .predDf$distribution[i] != "norm") {
+        return(0L)
+      }
+      .errType <- as.integer(.predDf$errType[i])
+      .hasLambda <- .predDf$transform[i] %in%
+        c("boxCox", "yeoJohnson", "logit + yeoJohnson", "probit + yeoJohnson", "logit + boxCox", "probit + boxCox")
+      if (.hasLambda) {
+        return(.errType + 5L)
+      } else {
+        return(.errType)
+      }
+    },
+    integer(1),
+    USE.NAMES = FALSE
+  )
 }
 #attr(rxUiGet.saemResMod, "desc") <- "saem res.mod component"
 attr(rxUiGet.saemResMod, "rstudio") <- c(1L, 2L)
@@ -420,11 +391,20 @@ rxUiGet.saemArActive <- function(x, ...) {
   # only through iniDf (err == "ar"); index it only when it is actually present
   # for this condition, otherwise fall back to iniDf.
   .ar <- .predDf$ar
-  vapply(seq_along(.predDf$cond), function(i) {
-    if (length(.ar) >= i && !is.na(.ar[i])) return(1L)
-    if (isTRUE(any(.iniDf$err == "ar" & .iniDf$condition == .predDf$cond[i]))) return(1L)
-    0L
-  }, integer(1), USE.NAMES=FALSE)
+  vapply(
+    seq_along(.predDf$cond),
+    function(i) {
+      if (length(.ar) >= i && !is.na(.ar[i])) {
+        return(1L)
+      }
+      if (isTRUE(any(.iniDf$err == "ar" & .iniDf$condition == .predDf$cond[i]))) {
+        return(1L)
+      }
+      0L
+    },
+    integer(1),
+    USE.NAMES = FALSE
+  )
 }
 attr(rxUiGet.saemArActive, "rstudio") <- 0L
 
@@ -434,49 +414,66 @@ rxUiGet.saemArCor <- function(x, ...) {
   .predDf <- .ui$predDf
   .iniDf <- .ui$iniDf
   .ar <- .predDf$ar
-  vapply(seq_along(.predDf$cond), function(i) {
-    if (length(.ar) >= i && !is.na(.ar[i])) {
-      .v <- suppressWarnings(as.numeric(.ar[i]))
-      if (!is.na(.v)) return(.v)
-    }
-    .w <- which(.iniDf$err == "ar" & .iniDf$condition == .predDf$cond[i])
-    if (length(.w) == 1L) return(.iniDf$est[.w])
-    0.0
-  }, numeric(1), USE.NAMES=FALSE)
+  vapply(
+    seq_along(.predDf$cond),
+    function(i) {
+      if (length(.ar) >= i && !is.na(.ar[i])) {
+        .v <- suppressWarnings(as.numeric(.ar[i]))
+        if (!is.na(.v)) return(.v)
+      }
+      .w <- which(.iniDf$err == "ar" & .iniDf$condition == .predDf$cond[i])
+      if (length(.w) == 1L) {
+        return(.iniDf$est[.w])
+      }
+      0.0
+    },
+    numeric(1),
+    USE.NAMES = FALSE
+  )
 }
 attr(rxUiGet.saemArCor, "rstudio") <- 0.0
 
 #' @export
 rxUiGet.saemModNumEst <- function(x, ...) {
   .resMod <- rxUiGet.saemResMod(x, ...)
-  vapply(.resMod, function(i) {
-    if (i == 0L) return(0L) # general log-likelihood endpoint: no residual params
-    switch(i,
-           1L, # add = 1
-           1L, # prop = 2
-           2L, # pow = 3
-           2L, # add + prop = 4
-           3L, # add + pow = 5
-           2L, # add + lambda = 6
-           2L, # prop + lambda = 7
-           3L, # pow + lambda = 8
-           3L, # add + prop + lambda = 9
-           4L # add + pow + lambda = 10
-           )
-  }, integer(1), USE.NAMES=TRUE)
+  vapply(
+    .resMod,
+    function(i) {
+      if (i == 0L) {
+        return(0L)
+      } # general log-likelihood endpoint: no residual params
+      switch(
+        i,
+        1L, # add = 1
+        1L, # prop = 2
+        2L, # pow = 3
+        2L, # add + prop = 4
+        3L, # add + pow = 5
+        2L, # add + lambda = 6
+        2L, # prop + lambda = 7
+        3L, # pow + lambda = 8
+        3L, # add + prop + lambda = 9
+        4L # add + pow + lambda = 10
+      )
+    },
+    integer(1),
+    USE.NAMES = TRUE
+  )
 }
 #attr(rxUiGet.saemModNumEst, "desc") <- "saem number of parameters that can be estimated for each component"
 attr(rxUiGet.saemModNumEst, "rstudio") <- c(1L, 2L)
 
 #' @export
-rxUiGet.saemModResOffset <- function(x, ...) { # res_offset
+rxUiGet.saemModResOffset <- function(x, ...) {
+  # res_offset
   cumsum(c(0, rxUiGet.saemModNumEst(x, ...)))
 }
 #attr(rxUiGet.saemModResOffset, "desc") <- "saem residual parameters offset"
 attr(rxUiGet.saemModResOffset, "rstudio") <- c(1, 2)
 
 #' @export
-rxUiGet.saemModResTotalResiduals <- function(x, ...) { # res_offset
+rxUiGet.saemModResTotalResiduals <- function(x, ...) {
+  # res_offset
   sum(rxUiGet.saemModNumEst(x, ...))
 }
 #attr(rxUiGet.saemModResTotalResiduals, "desc") <- "saem total number of residuals"
@@ -490,25 +487,25 @@ attr(rxUiGet.saemModResTotalResiduals, "rstudio") <- c(1, 2)
 #' @return Name of the ares for saem
 #' @author Matthew L. Fidler
 #' @noRd
-.saemGetIniDfResNameFromType <- function(iniDf, cond, types, column="name") {
+.saemGetIniDfResNameFromType <- function(iniDf, cond, types, column = "name") {
   .ini <- iniDf[iniDf$condition == cond, ]
   .ini[.ini$err %in% types, column]
 }
 
-.saemGetIniDfAResName <- function(iniDf, cond, column="name") {
-  .saemGetIniDfResNameFromType(iniDf, cond, c("add", "lnorm", "probitNorm", "logitNorm"), column=column)
+.saemGetIniDfAResName <- function(iniDf, cond, column = "name") {
+  .saemGetIniDfResNameFromType(iniDf, cond, c("add", "lnorm", "probitNorm", "logitNorm"), column = column)
 }
 
-.saemGetIniDfBResName <- function(iniDf, cond, column="name") {
-  .saemGetIniDfResNameFromType(iniDf, cond, c("prop", "propT", "propF", "pow", "powT", "powF"), column=column)
+.saemGetIniDfBResName <- function(iniDf, cond, column = "name") {
+  .saemGetIniDfResNameFromType(iniDf, cond, c("prop", "propT", "propF", "pow", "powT", "powF"), column = column)
 }
 
-.saemGetIniDfCResName <- function(iniDf, cond, column="name") {
-  .saemGetIniDfResNameFromType(iniDf, cond, c("pow2", "powF2", "powT2"), column=column)
+.saemGetIniDfCResName <- function(iniDf, cond, column = "name") {
+  .saemGetIniDfResNameFromType(iniDf, cond, c("pow2", "powF2", "powT2"), column = column)
 }
 
-.saemGetIniDfLResName <- function(iniDf, cond, column="name") {
-  .saemGetIniDfResNameFromType(iniDf, cond, c("boxCox", "yeoJohnson"), column=column)
+.saemGetIniDfLResName <- function(iniDf, cond, column = "name") {
+  .saemGetIniDfResNameFromType(iniDf, cond, c("boxCox", "yeoJohnson"), column = column)
 }
 #'  Get saem residual item
 #' @param ui rxode2 UI
@@ -516,58 +513,67 @@ attr(rxUiGet.saemModResTotalResiduals, "rstudio") <- c(1, 2)
 #' @return Residual names
 #' @author Matthew L. Fidler
 #' @noRd
-.saemGetResItem <- function(ui, column="name") {
+.saemGetResItem <- function(ui, column = "name") {
   .predDf <- ui$predDf
   .iniDf <- ui$iniDf
   .numEst <- ui$saemModNumEst
   .resMod <- ui$saemResMod
-  do.call("c", lapply(seq_along(.numEst),
-         function(i) {
-           .num <- .numEst[i]
-           .cond <- .predDf$cond[i]
-           .ret <- switch(.resMod[i],
-                          .saemGetIniDfAResName(.iniDf, .cond, column), # add = 1
-                          .saemGetIniDfBResName(.iniDf, .cond, column), # prop = 2
-                          c(.saemGetIniDfBResName(.iniDf, .cond, column),
-                            .saemGetIniDfCResName(.iniDf, .cond, column)), # pow = 3
+  do.call(
+    "c",
+    lapply(seq_along(.numEst), function(i) {
+      .num <- .numEst[i]
+      .cond <- .predDf$cond[i]
+      .ret <- switch(
+        .resMod[i],
+        .saemGetIniDfAResName(.iniDf, .cond, column), # add = 1
+        .saemGetIniDfBResName(.iniDf, .cond, column), # prop = 2
+        c(.saemGetIniDfBResName(.iniDf, .cond, column), .saemGetIniDfCResName(.iniDf, .cond, column)), # pow = 3
 
-                          c(.saemGetIniDfAResName(.iniDf, .cond, column),
-                            .saemGetIniDfBResName(.iniDf, .cond, column)), # add + prop = 4
+        c(.saemGetIniDfAResName(.iniDf, .cond, column), .saemGetIniDfBResName(.iniDf, .cond, column)), # add + prop = 4
 
-                          c(.saemGetIniDfAResName(.iniDf, .cond, column),
-                            .saemGetIniDfBResName(.iniDf, .cond, column),
-                            .saemGetIniDfCResName(.iniDf, .cond, column)), # add + pow = 5
+        c(
+          .saemGetIniDfAResName(.iniDf, .cond, column),
+          .saemGetIniDfBResName(.iniDf, .cond, column),
+          .saemGetIniDfCResName(.iniDf, .cond, column)
+        ), # add + pow = 5
 
-                          c(.saemGetIniDfAResName(.iniDf, .cond, column),
-                            .saemGetIniDfLResName(.iniDf, .cond, column)), # add + lambda = 6
+        # add + lambda = 6
+        c(.saemGetIniDfAResName(.iniDf, .cond, column), .saemGetIniDfLResName(.iniDf, .cond, column)),
 
-                          c(.saemGetIniDfBResName(.iniDf, .cond, column),
-                            .saemGetIniDfLResName(.iniDf, .cond, column)), # prop + lambda = 7
+        # prop + lambda = 7
+        c(.saemGetIniDfBResName(.iniDf, .cond, column), .saemGetIniDfLResName(.iniDf, .cond, column)),
 
-                          c(.saemGetIniDfBResName(.iniDf, .cond, column),
-                            .saemGetIniDfCResName(.iniDf, .cond, column),
-                            .saemGetIniDfLResName(.iniDf, .cond, column)), # pow + lambda = 8
+        c(
+          .saemGetIniDfBResName(.iniDf, .cond, column),
+          .saemGetIniDfCResName(.iniDf, .cond, column),
+          .saemGetIniDfLResName(.iniDf, .cond, column)
+        ), # pow + lambda = 8
 
-                          c(.saemGetIniDfAResName(.iniDf, .cond, column),
-                            .saemGetIniDfBResName(.iniDf, .cond, column),
-                            .saemGetIniDfLResName(.iniDf, .cond, column)), # add + prop + lambda = 9
+        c(
+          .saemGetIniDfAResName(.iniDf, .cond, column),
+          .saemGetIniDfBResName(.iniDf, .cond, column),
+          .saemGetIniDfLResName(.iniDf, .cond, column)
+        ), # add + prop + lambda = 9
 
-                          c(.saemGetIniDfAResName(.iniDf, .cond, column),
-                            .saemGetIniDfBResName(.iniDf, .cond, column),
-                            .saemGetIniDfCResName(.iniDf, .cond, column),
-                            .saemGetIniDfLResName(.iniDf, .cond, column)) # add + pow + lambda = 10
-                          )
-           if (.num != length(.ret)) {
-             stop("endpoint '", .cond, "' for saem cannot locate the residual error(s) correctly", call.=FALSE)
-           }
-           .ret
-         }))
+        c(
+          .saemGetIniDfAResName(.iniDf, .cond, column),
+          .saemGetIniDfBResName(.iniDf, .cond, column),
+          .saemGetIniDfCResName(.iniDf, .cond, column),
+          .saemGetIniDfLResName(.iniDf, .cond, column)
+        ) # add + pow + lambda = 10
+      )
+      if (.num != length(.ret)) {
+        stop("endpoint '", .cond, "' for saem cannot locate the residual error(s) correctly", call. = FALSE)
+      }
+      .ret
+    })
+  )
 }
 
 #' @export
 rxUiGet.saemResNames <- function(x, ...) {
   .ui <- x[[1]]
-  .saemGetResItem(.ui, column="name")
+  .saemGetResItem(.ui, column = "name")
 }
 #attr(rxUiGet.saemResNames, "desc") <- "Get error names for SAEM"
 attr(rxUiGet.saemResNames, "rstudio") <- "add.err"
@@ -575,7 +581,7 @@ attr(rxUiGet.saemResNames, "rstudio") <- "add.err"
 #' @export
 rxUiGet.saemResFixed <- function(x, ...) {
   .ui <- x[[1]]
-  as.integer(.saemGetResItem(.ui, column="fix"))
+  as.integer(.saemGetResItem(.ui, column = "fix"))
 }
 #attr(rxUiGet.saemResFixed, "desc") <- "Integer vector of residual fixed components"
 attr(rxUiGet.saemResFixed, "rstudio") <- c(1L, 2L)
@@ -591,7 +597,7 @@ attr(rxUiGet.saemParHistResNames, "rstudio") <- "add.sd"
 #' @export
 rxUiGet.saemResValue <- function(x, ...) {
   .ui <- x[[1]]
-  .saemGetResItem(.ui, column="est")
+  .saemGetResItem(.ui, column = "est")
 }
 attr(rxUiGet.saemResValue, "rstudio") <- 0.7
 
@@ -611,32 +617,37 @@ rxUiGet.saemEtaNames <- function(x, ...) {
   .names
 }
 #attr(rxUiGet.saemParHistEtaNames, "desc") <- "Get ETA names for SAEM based on theta order"
-attr(rxUiGet.saemEtaNames,"rstudio") <- "eta.names"
+attr(rxUiGet.saemEtaNames, "rstudio") <- "eta.names"
 
 #' @export
 rxUiGet.saemParHistOmegaKeep <- function(x, ...) {
   .ui <- x[[1]]
   .etaNames <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
-  .etaNames <- .etaNames[.etaNames$neta1 == .etaNames$neta2,]
+  .etaNames <- .etaNames[.etaNames$neta1 == .etaNames$neta2, ]
   .names <- rxUiGet.saemEtaNames(x, ...)
-  vapply(.names, function(etaName) {
-    .w <- which(.etaNames$name == etaName)
-    if (length(.w) == 1) {
-      return(1L - as.integer(.etaNames$fix[.w]))
-    } else {
-      stop("cannot figure out saemParHistOmegaKeep", call.=FALSE)
-    }
-  }, integer(1))
+  vapply(
+    .names,
+    function(etaName) {
+      .w <- which(.etaNames$name == etaName)
+      if (length(.w) == 1) {
+        return(1L - as.integer(.etaNames$fix[.w]))
+      } else {
+        stop("cannot figure out saemParHistOmegaKeep", call. = FALSE)
+      }
+    },
+    integer(1)
+  )
 }
 #attr(rxUiGet.saemOmegaKeep, "desc") <- "Get the etas that are kept for SAEM based on theta order"
-attr(rxUiGet.saemParHistOmegaKeep, "rstudio") <- c("eta.ka"=1)
+attr(rxUiGet.saemParHistOmegaKeep, "rstudio") <- c("eta.ka" = 1)
 
 #' @export
 rxUiGet.saemParHistEtaNames <- function(x, ...) {
-  .ui <- x[[1]]
   .names <- rxUiGet.saemParHistOmegaKeep(x, ...)
   .names <- .names[.names == 1L]
-  if (length(.names) == 0) return(NULL)
+  if (length(.names) == 0) {
+    return(NULL)
+  }
   paste0("V(", names(.names), ")")
 }
 #attr(rxUiGet.saemParHistEtaNames, "desc") <- "Get the parameter history eta names"
@@ -653,7 +664,7 @@ attr(rxUiGet.saemParHistEtaNames, "rstudio") <- "V(ka)"
 rxUiGet.saemParHistOmegaOffInfo <- function(x, ...) {
   .ui <- x[[1]]
   .idf <- .ui$iniDf
-  .etaN <- rxUiGet.saemEtaNames(x, ...)                 # phi1 / Gamma2_phi1 order
+  .etaN <- rxUiGet.saemEtaNames(x, ...) # phi1 / Gamma2_phi1 order
   .diag <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2, , drop = FALSE]
   .num2name <- stats::setNames(.diag$name, .diag$neta1)
   .off <- .idf[!is.na(.idf$neta1) & .idf$neta1 != .idf$neta2 & !.idf$fix, , drop = FALSE]
@@ -662,11 +673,12 @@ rxUiGet.saemParHistOmegaOffInfo <- function(x, ...) {
   }
   .pi <- match(.num2name[as.character(.off$neta1)], .etaN)
   .pj <- match(.num2name[as.character(.off$neta2)], .etaN)
-  .hi <- pmax(.pi, .pj); .lo <- pmin(.pi, .pj)
+  .hi <- pmax(.pi, .pj)
+  .lo <- pmin(.pi, .pj)
   .ord <- order(.hi, .lo)
-  .hi <- .hi[.ord]; .lo <- .lo[.ord]
-  list(pairs = cbind(.hi - 1L, .lo - 1L),
-       names = paste0("cov.", .etaN[.hi], ".", .etaN[.lo]))
+  .hi <- .hi[.ord]
+  .lo <- .lo[.ord]
+  list(pairs = cbind(.hi - 1L, .lo - 1L), names = paste0("cov.", .etaN[.hi], ".", .etaN[.lo]))
 }
 attr(rxUiGet.saemParHistOmegaOffInfo, "rstudio") <- "off-diagonal omega history"
 
@@ -676,9 +688,13 @@ rxUiGet.saemParHistNames <- function(x, ...) {
   .plambda <- rxUiGet.saemParamsToEstimate(x, ...)
   .plambda <- .plambda[!rxUiGet.saemFixed(x, ...)]
   .ui <- x[[1]]
-  c(.plambda, rxUiGet.saemParHistEtaNames(x, ...),
+  c(
+    .plambda,
+    rxUiGet.saemParHistEtaNames(x, ...),
     rxUiGet.saemParHistOmegaOffInfo(x, ...)$names,
-    rxUiGet.saemParHistResNames(x, ...), .ui$mixProbs)
+    rxUiGet.saemParHistResNames(x, ...),
+    .ui$mixProbs
+  )
 }
 attr(rxUiGet.saemParHistNames, "rstudio") <- c("ka", "add.sd")
 
@@ -691,8 +707,12 @@ rxUiGet.saemMixProb <- function(x, ...) {
     # don't catch an individually out-of-range probability whose sum still
     # looks valid, so re-validate before deriving the implicit last component.
     if (any(.probs < 0) || any(.probs > 1) || sum(.probs) > 1) {
-      stop("initial mixture probabilities must each be in [0, 1] and sum to no more than 1 (got: ",
-           paste(signif(.probs, 3), collapse = ", "), ")", call. = FALSE)
+      stop(
+        "initial mixture probabilities must each be in [0, 1] and sum to no more than 1 (got: ",
+        paste(signif(.probs, 3), collapse = ", "),
+        ")",
+        call. = FALSE
+      )
     }
     # To get the full simplex, we append 1 - sum(probs)
     return(c(.probs, 1.0 - sum(.probs)))
@@ -717,21 +737,44 @@ rxUiGet.saemAres <- function(x, ...) {
   .predDf <- .ui$predDf
   .ini <- .ui$iniDf
   .ini <- .ini[!is.na(.ini$err), ]
-  return(vapply(.predDf$cond, function(x) {
-    .tmp <- .ini[which(.ini$condition == x), ]
-    .w <- which(vapply(.tmp$err, function(x) {
-      x %in% c(
-        "add", "norm", "dnorm", "dpois",
-        "pois", "dbinom", "binom", "dbern", "bern",
-        "lnorm", "dlnorm", "logn", "dlogn",
-        "logitNorm", "probitNorm")
-    }, logical(1), USE.NAMES=FALSE))
-    if (length(.w) == 1) {
-      return(.tmp$est[.w])
-    } else {
-      return(10)
-    }
-  }, numeric(1), USE.NAMES=FALSE))
+  vapply(
+    .predDf$cond,
+    function(x) {
+      .tmp <- .ini[which(.ini$condition == x), ]
+      .w <- which(vapply(
+        .tmp$err,
+        function(x) {
+          x %in%
+            c(
+              "add",
+              "norm",
+              "dnorm",
+              "dpois",
+              "pois",
+              "dbinom",
+              "binom",
+              "dbern",
+              "bern",
+              "lnorm",
+              "dlnorm",
+              "logn",
+              "dlogn",
+              "logitNorm",
+              "probitNorm"
+            )
+        },
+        logical(1),
+        USE.NAMES = FALSE
+      ))
+      if (length(.w) == 1) {
+        return(.tmp$est[.w])
+      } else {
+        return(10)
+      }
+    },
+    numeric(1),
+    USE.NAMES = FALSE
+  )
 }
 #attr(rxUiGet.saemAres, "desc") <- "ares initial estimates for saem"
 attr(rxUiGet.saemAres, "rstudio") <- 0.7
@@ -742,24 +785,35 @@ rxUiGet.saemBres <- function(x, ...) {
   .predDf <- .ui$predDf
   .ini <- .ui$iniDf
   .ini <- .ini[!is.na(.ini$err), ]
-  return(vapply(.predDf$cond, function(x) {
-    .tmp <- .ini[which(.ini$condition == x), ]
-    .w <- which(vapply(.tmp$err,
-                       function(x) (any(x == "prop") || any(x == "propT") || any(x == "propF")),
-                       logical(1), USE.NAMES=FALSE))
-    if (length(.w) == 1) {
-      return(.tmp$est[.w])
-    } else {
-      .w <- which(vapply(.tmp$err,
-                         function(x) (any(x == "pow") || any(x == "powT") || any(x == "powF")),
-                         logical(1), USE.NAMES=FALSE))
+  vapply(
+    .predDf$cond,
+    function(x) {
+      .tmp <- .ini[which(.ini$condition == x), ]
+      .w <- which(vapply(
+        .tmp$err,
+        function(x) (any(x == "prop") || any(x == "propT") || any(x == "propF")),
+        logical(1),
+        USE.NAMES = FALSE
+      ))
       if (length(.w) == 1) {
         return(.tmp$est[.w])
       } else {
-        return(1)
+        .w <- which(vapply(
+          .tmp$err,
+          function(x) (any(x == "pow") || any(x == "powT") || any(x == "powF")),
+          logical(1),
+          USE.NAMES = FALSE
+        ))
+        if (length(.w) == 1) {
+          return(.tmp$est[.w])
+        } else {
+          return(1)
+        }
       }
-    }
-  }, numeric(1), USE.NAMES=FALSE))
+    },
+    numeric(1),
+    USE.NAMES = FALSE
+  )
 }
 #attr(rxUiGet.saemBres, "desc") <- "bres initial estimates for saem"
 attr(rxUiGet.saemBres, "rstudio") <- 0.7
@@ -770,16 +824,25 @@ rxUiGet.saemCres <- function(x, ...) {
   .predDf <- .ui$predDf
   .ini <- .ui$iniDf
   .ini <- .ini[!is.na(.ini$err), ]
-  return(vapply(.predDf$cond, function(x) {
-    .tmp <- .ini[which(.ini$condition == x), ]
-    .w <- which(vapply(.tmp$err, function(x) (any(x == "pow2") || any(x == "powT2") || any(x == "powF2")),
-                       logical(1), USE.NAMES=FALSE))
-    if (length(.w) == 1) {
-      return(.tmp$est[.w])
-    } else {
-      return(1)
-    }
-  }, numeric(1), USE.NAMES=FALSE))
+  vapply(
+    .predDf$cond,
+    function(x) {
+      .tmp <- .ini[which(.ini$condition == x), ]
+      .w <- which(vapply(
+        .tmp$err,
+        function(x) (any(x == "pow2") || any(x == "powT2") || any(x == "powF2")),
+        logical(1),
+        USE.NAMES = FALSE
+      ))
+      if (length(.w) == 1) {
+        return(.tmp$est[.w])
+      } else {
+        return(1)
+      }
+    },
+    numeric(1),
+    USE.NAMES = FALSE
+  )
 }
 #attr(rxUiGet.saemCres, "desc") <- "cres initial estimates for saem"
 attr(rxUiGet.saemCres, "rstudio") <- 0.7
@@ -787,21 +850,26 @@ attr(rxUiGet.saemCres, "rstudio") <- 0.7
 #' @export
 rxUiGet.saemLres <- function(x, ...) {
   .ui <- x[[1]]
- .predDf <- .ui$predDf
+  .predDf <- .ui$predDf
   .ini <- .ui$iniDf
   .ini <- .ini[!is.na(.ini$err), ]
-  return(vapply(.predDf$cond, function(x) {
-    .tmp <- .ini[which(.ini$condition == x), ]
-    .boxCox <- which(.tmp$err == "boxCox")
-    if (length(.boxCox) == 1L) {
-      return(.tmp$est[.boxCox])
-    }
-    .yeoJohnson <- which(.tmp$err == "yeoJohnson")
-    if (length(.yeoJohnson) == 1L) {
-      return(.tmp$est[.yeoJohnson])
-    }
-    return(1.0)
-  }, numeric(1), USE.NAMES=FALSE))
+  vapply(
+    .predDf$cond,
+    function(x) {
+      .tmp <- .ini[which(.ini$condition == x), ]
+      .boxCox <- which(.tmp$err == "boxCox")
+      if (length(.boxCox) == 1L) {
+        return(.tmp$est[.boxCox])
+      }
+      .yeoJohnson <- which(.tmp$err == "yeoJohnson")
+      if (length(.yeoJohnson) == 1L) {
+        return(.tmp$est[.yeoJohnson])
+      }
+      return(1.0)
+    },
+    numeric(1),
+    USE.NAMES = FALSE
+  )
 }
 #attr(rxUiGet.saemLres, "desc") <- "lres (lambda) initial estimates for saem"
 attr(rxUiGet.saemLres, "rstudio") <- 0.7
@@ -813,14 +881,20 @@ rxUiGet.saemLogEta <- function(x, ...) {
   .ce <- .ui$muRefCurEval
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .thetas <- .thetas[!(.thetas %in% .cov$covariateParameter)]
-  vapply(.thetas, function(x) {
-    .w <- which(.ce$parameter == x)
-    if (length(.w) == 1L) return(.ce$curEval[.w] == "exp")
-    FALSE
-  }, logical(1))
+  vapply(
+    .thetas,
+    function(x) {
+      .w <- which(.ce$parameter == x)
+      if (length(.w) == 1L) {
+        return(.ce$curEval[.w] == "exp")
+      }
+      FALSE
+    },
+    logical(1)
+  )
 }
 #attr(rxUiGet.saemLogEta, "desc") <- "saem's log.eta for saem"
-attr(rxUiGet.saemLogEta, "rstudio") <- c(tka=TRUE)
+attr(rxUiGet.saemLogEta, "rstudio") <- c(tka = TRUE)
 
 #' @export
 rxUiGet.saemModelList <- function(x, ...) {
@@ -834,9 +908,9 @@ rxUiGet.saemModelList <- function(x, ...) {
   .mod$arActive <- rxUiGet.saemArActive(x, ...)
   .mod$arCor <- rxUiGet.saemArCor(x, ...)
   .mod$log.eta <- rxUiGet.saemLogEta(x, ...)
-  .mod$ares    <- rxUiGet.saemAres(x, ...)
-  .mod$bres    <- rxUiGet.saemBres(x, ...)
-  .mod$omega   <- rxUiGet.saemModelOmega(x, ...)
+  .mod$ares <- rxUiGet.saemAres(x, ...)
+  .mod$bres <- rxUiGet.saemBres(x, ...)
+  .mod$omega <- rxUiGet.saemModelOmega(x, ...)
   .mod
 }
 #attr(rxUiGet.saemModelList "desc") <- "saem's log.eta for saem"
@@ -860,26 +934,29 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .theta <- .fixed
   .theta <- .theta[!(names(.theta) %in% .cov$covariateParameter)]
   .logEta <- .logEta[!(names(.logEta) %in% .cov$covariateParameter)]
-  .n <- vapply(.theta, function(x) ifelse(x, "FIXED", ""),
-               character(1), USE.NAMES=FALSE)
-  .ret <- vapply(seq_along(.logEta),
-                   function(i) {
-                    .isEta <- any(.names[i] %in% .etaNames)
-                    .curName <- .names[i]
-                    if (.logEta[i]) {
-                      if (.isEta) {
-                        return(1)
-                      } else {
-                        return(exp(.est[.curName]))
-                      }
-                    } else {
-                      if (.isEta) {
-                        return(0)
-                      } else {
-                        return(.est[.curName])
-                      }
-                    }
-                  }, numeric(1), USE.NAMES=FALSE)
+  .n <- vapply(.theta, function(x) ifelse(x, "FIXED", ""), character(1), USE.NAMES = FALSE)
+  .ret <- vapply(
+    seq_along(.logEta),
+    function(i) {
+      .isEta <- any(.names[i] %in% .etaNames)
+      .curName <- .names[i]
+      if (.logEta[i]) {
+        if (.isEta) {
+          return(1)
+        } else {
+          return(exp(.est[.curName]))
+        }
+      } else {
+        if (.isEta) {
+          return(0)
+        } else {
+          return(.est[.curName])
+        }
+      }
+    },
+    numeric(1),
+    USE.NAMES = FALSE
+  )
   if (length(.cov$theta) > 0) {
     .allCovs <- rxUiGet.saemCovars(x, ...)
     .lc <- length(.allCovs)
@@ -902,7 +979,7 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .ret
 }
 #attr(rxUiGet.saemInitTheta, "desc") <- "initialization for saem's theta"
-attr(rxUiGet.saemInitTheta, "rstudio") <- c(" "=1, tcl=1)
+attr(rxUiGet.saemInitTheta, "rstudio") <- c(" " = 1, tcl = 1)
 
 #' @export
 rxUiGet.saemInitOmega <- function(x, ...) {
@@ -925,12 +1002,11 @@ rxUiGet.saemInitOmega <- function(x, ...) {
   .ret
 }
 #attr(rxUiGet.saemInitOmega, "desc") <- "initialization for saem's omega"
-attr(rxUiGet.saemInitOmega, "rstudio") <- c(tka=0.6)
+attr(rxUiGet.saemInitOmega, "rstudio") <- c(tka = 0.6)
 
 #' @export
 rxUiGet.saemInit <- function(x, ...) {
-  list(theta=rxUiGet.saemInitTheta(x, ...),
-       omega=rxUiGet.saemInitOmega(x, ...))
+  list(theta = rxUiGet.saemInitTheta(x, ...), omega = rxUiGet.saemInitOmega(x, ...))
 }
 #attr(rxUiGet.saemInit, "desc") <- "initialization for saem's theta and omega"
 
@@ -939,14 +1015,14 @@ rxUiGet.saemThetaDataFrame <- function(x, ...) {
   .ui <- x[[1]]
   .theta <- .ui$theta
   .fixed <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "fix"]
-  data.frame(lower= -Inf, theta=.theta, fixed=.fixed, upper=Inf, row.names=names(.theta))
+  data.frame(lower = -Inf, theta = .theta, fixed = .fixed, upper = Inf, row.names = names(.theta))
 }
 #attr(rxUiGet.saemThetaDataFrame, "desc") <- "Get theta data frame"
 attr(rxUiGet.saemThetaDataFrame, "rstudio") <- NA
 
 #' @export
 rxUiGet.saemParHistThetaKeep <- function(x, ...) {
-  1L-as.integer(rxUiGet.saemFixed(x, ...))
+  1L - as.integer(rxUiGet.saemFixed(x, ...))
 }
 #attr(rxUiGet.saemParHistThetaKeep, "desc") <- "The thetas that are kept in the parameter history"
 attr(rxUiGet.saemParHistThetaKeep, "rstudio") <- c(1L, 2L)
@@ -958,7 +1034,7 @@ rxUiGet.saemAddProp <- function(x, ...) {
   .addProp <- as.integer(.parDf$addProp)
   .w <- which(.addProp == 3L)
   if (length(.w) > 0) {
-    .default <- c(combined1=1, combined2=2)[rxode2::rxGetControl(.ui, "addProp", "combined2")]
+    .default <- c(combined1 = 1, combined2 = 2)[rxode2::rxGetControl(.ui, "addProp", "combined2")]
     .addProp[.w] <- .default
   }
   .addProp

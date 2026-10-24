@@ -4,32 +4,123 @@
 # MCMC/SAMBA-style callers that need individual log-likelihoods, evaluated in
 # parallel per id, outside a full fit.  Only one system can be loaded at a time.
 
+#' `foceiControl()` for an inner problem evaluated at supplied etas
+#'
+#' No outer step, inner optimization (`maxInnerIterations = 0`), covariance or
+#' table runs: vae, emvi/fbvi, the npag/npb harness and `foceiLikLoad()` only
+#' evaluate the inner likelihood.
+#' @param control source of the shared solving options (a method control)
+#' @param ... other `foceiControl()` settings of the method
+#' @param likelihood inner likelihood (see `.foceiLikelihoodArgs()`)
+#' @return `foceiControl()` object
+#' @noRd
+.foceiInnerControl <- function(control, ..., likelihood = "focei") {
+  .lik <- .foceiLikelihoodArgs(likelihood)
+  foceiControl(
+    rxControl = control$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = "",
+    interaction = .lik$interaction,
+    foce = .lik$foce,
+    sumProd = control$sumProd,
+    optExpression = control$optExpression,
+    literalFix = control$literalFix,
+    addProp = control$addProp,
+    calcTables = FALSE,
+    compress = FALSE,
+    maxOdeRecalc = control$maxOdeRecalc,
+    odeRecalcFactor = control$odeRecalcFactor,
+    print = 0L,
+    ...
+  )
+}
+
+#' Set up the FOCEi inner problem for an engine that drives it directly
+#'
+#' Builds the optimization env of `ui` under `control`, processes the data,
+#' turns quadrature off and installs `etaMat`; the caller adds its own fields
+#' and calls the C++ setup (`vaeInnerSetup_()` or `foceiLikLoad_()`).
+#' `needOptimHess` follows the endpoints; only vae also forces
+#' `interaction = 0` with it, as the focei flow does (`.vaeInnerSetup()`).  The
+#' conditional log-density vi and np evaluate is the same either way, and
+#' `foceiLikLoad()` reports `interaction` to its C callers.
+#' @param ui decompressed rxode2 ui; its control is replaced
+#' @param data estimation data
+#' @param control inner `foceiControl()`
+#' @param est inner engine marker
+#' @param etaMat starting etas [nsub, neta]
+#' @param extra control fields the C++ setup reads, set before and after the
+#'   model build
+#' @return the setup env
+#' @noRd
+.foceiInnerEnv <- function(ui, data, control, est, etaMat = NULL, extra = list()) {
+  control$est <- est
+  control[names(extra)] <- extra
+  ui$control <- control
+  .env <- ui$foceiOptEnv
+  .env$ui <- ui
+  .env$est <- est
+  .env$table <- NULL
+  .foceiPreProcessData(data, .env, ui, control$rxControl)
+  .env$control$est <- est
+  .env$control[names(extra)] <- extra
+  .env$control$printTop <- FALSE
+  if (is.null(.env$control$nF)) {
+    .env$control$nF <- 0L
+  }
+  .env$control$needOptimHess <- isTRUE(any(ui$predDfFocei$distribution != "norm"))
+  .env$aqn <- 0L
+  .env$qx <- double(0)
+  .env$qw <- double(0)
+  .env$qfirst <- FALSE
+  .env$nAGQ <- 0L
+  .env$aqLow <- -Inf
+  .env$aqHi <- Inf
+  .env$nEstOmega <- 0L
+  .env$etaMat <- etaMat
+  .env
+}
+
 #' A foceiControl carrying the requested inner likelihood + solving options.
 #'
-#' Mirrors `.adviInnerFoceiControl`: focei -> interaction=1; focep -> foce+
-#' (interaction=0, residual variance at the live conditional eta); foce ->
-#' nonmem (interaction=0, R frozen at eta=0).  `maxInnerIterations=0` means the
-#' inner is evaluated at the supplied etas, never re-optimized.
+#' focei -> interaction=1; focep -> foce+ (interaction=0, residual variance at
+#' the live conditional eta); foce -> nonmem (interaction=0, R frozen at eta=0).
 #' @noRd
-.foceiLikControl <- function(likelihood, rxControl,
-                             sumProd = FALSE, optExpression = TRUE,
-                             literalFix = FALSE, addProp = "combined2",
-                             eventSens = "jump", indTolRelax = TRUE,
-                             maxOdeRecalc = 5L, odeRecalcFactor = 10^0.5,
-                             scaleType = "nlmixr2", scaleTo = 1.0,
-                             fallbackFD = FALSE, iovXform = "sd") {
-  .interaction <- if (likelihood %in% c("foce", "focep")) 0L else 1L
-  .foce <- if (identical(likelihood, "focep")) "foce+" else "nonmem"
-  foceiControl(rxControl = rxControl, maxOuterIterations = 0L,
-               maxInnerIterations = 0L, covMethod = "",
-               interaction = .interaction, foce = .foce,
-               sumProd = sumProd, optExpression = optExpression,
-               literalFix = literalFix, addProp = addProp,
-               calcTables = FALSE, compress = FALSE, eventSens = eventSens,
-               indTolRelax = indTolRelax, maxOdeRecalc = maxOdeRecalc,
-               odeRecalcFactor = odeRecalcFactor, print = 0L,
-               scaleType = scaleType, scaleTo = scaleTo,
-               fallbackFD = fallbackFD, iovXform = iovXform)
+.foceiLikControl <- function(
+  likelihood,
+  rxControl,
+  sumProd = FALSE,
+  optExpression = TRUE,
+  literalFix = FALSE,
+  addProp = "combined2",
+  eventSens = "jump",
+  indTolRelax = TRUE,
+  maxOdeRecalc = 5L,
+  odeRecalcFactor = 10^0.5,
+  scaleType = "nlmixr2",
+  scaleTo = 1.0,
+  fallbackFD = FALSE,
+  iovXform = "sd"
+) {
+  .foceiInnerControl(
+    list(
+      rxControl = rxControl,
+      sumProd = sumProd,
+      optExpression = optExpression,
+      literalFix = literalFix,
+      addProp = addProp,
+      maxOdeRecalc = maxOdeRecalc,
+      odeRecalcFactor = odeRecalcFactor
+    ),
+    likelihood = likelihood,
+    eventSens = eventSens,
+    indTolRelax = indTolRelax,
+    scaleType = scaleType,
+    scaleTo = scaleTo,
+    fallbackFD = fallbackFD,
+    iovXform = iovXform
+  )
 }
 
 #' Load a general FOCE-family likelihood into memory
@@ -141,34 +232,34 @@
 #' }
 #' @export
 #' @author Matthew L. Fidler
-foceiLikLoad <- function(object, data,
-                         likelihood = c("focei", "focep", "foce"),
-                         rxControl = rxode2::rxControl(),
-                         scale = c("focei", "natural"),
-                         thetaSens = FALSE,
-                         combSens = FALSE,
-                         iovXform = c("sd", "var", "logsd", "logvar"),
-                         est = "focei", ...) {
+foceiLikLoad <- function(
+  object,
+  data,
+  likelihood = c("focei", "focep", "foce"),
+  rxControl = rxode2::rxControl(),
+  scale = c("focei", "natural"),
+  thetaSens = FALSE,
+  combSens = FALSE,
+  iovXform = c("sd", "var", "logsd", "logvar"),
+  est = "focei",
+  ...
+) {
   likelihood <- match.arg(likelihood)
   scale <- match.arg(scale)
   checkmate::assertLogical(thetaSens, len = 1, any.missing = FALSE)
   checkmate::assertCharacter(est, len = 1, any.missing = FALSE, min.chars = 1)
   if (!is.null(nlmixr2global$foceiLikEnv)) {
-    stop("a general likelihood system is already loaded; call foceiLikUnload() first",
-         call. = FALSE)
+    stop("a general likelihood system is already loaded; call foceiLikUnload() first", call. = FALSE)
   }
   .ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(object))
   iovXform <- match.arg(iovXform)
   if (identical(scale, "natural")) {
     # identity scale/unscale: scaleType="mult" with scaleTo=0 returns the
-    # parameter unchanged in both directions (see unscalePar()/scalePar(),
-    # src/inner.cpp), so the estimation scale IS the natural scale (#939)
-    .control <- .foceiLikControl(likelihood, rxControl,
-                                 scaleType = "mult", scaleTo = 0,
-                                 iovXform = iovXform, ...)
+    # parameter unchanged in both directions (see scaleUnscalePar()/scaleScalePar(),
+    # src/scale.h), so the estimation scale IS the natural scale (#939)
+    .control <- .foceiLikControl(likelihood, rxControl, scaleType = "mult", scaleTo = 0, iovXform = iovXform, ...)
   } else {
-    .control <- .foceiLikControl(likelihood, rxControl,
-                                 iovXform = iovXform, ...)
+    .control <- .foceiLikControl(likelihood, rxControl, iovXform = iovXform, ...)
   }
   .control$est <- "focei"
   # Run the standard pre-process hooks (bounded transforms, covariates,
@@ -189,44 +280,18 @@ foceiLikLoad <- function(object, data,
   # .foceiOptEnvLik build the model and foceiSetup_/vaeInnerSetup_ wire its
   # lhs offsets; impThetaSensIdx (0-based) names the estimated non-mu thetas
   # that get sensitivity columns -- exactly the .adviInnerSetup arrangement.
+  # combSens (#958): the INNER model carries the theta columns, so one solve
+  # serves value + d/d(eta) + d/d(theta); it implies a theta-sensitivity request.
   .thetaSensIdx <- integer(0)
-  if (isTRUE(thetaSens)) {
-    .thetaSensIdx <- as.integer(.impmapEstTheta(.ui)$all)
-    .control$thetaSensLoad <- TRUE
-    .control$impThetaSensIdx <- .thetaSensIdx - 1L
-  }
-  # combined eta+theta sensitivity build (#958): the INNER model carries the
-  # theta columns, so one solve serves value + d/d(eta) + d/d(theta); implies
-  # a theta-sensitivity request
-  if (isTRUE(combSens)) {
-    if (!isTRUE(thetaSens)) {
-      .thetaSensIdx <- as.integer(.impmapEstTheta(.ui)$all)
-      .control$thetaSensLoad <- TRUE
-      .control$impThetaSensIdx <- .thetaSensIdx - 1L
-    }
-    .control$combSens <- TRUE
-  }
-  # vi-style inner setup on the hooked ui
-  .ui$control <- .control
-  .env <- .ui$foceiOptEnv
-  .env$ui <- .ui
-  .env$est <- "focei"
-  .env$table <- NULL
-  .foceiPreProcessData(.data, .env, .ui, .control$rxControl)
-  .env$control$est <- "focei"
+  .extra <- list()
   if (isTRUE(thetaSens) || isTRUE(combSens)) {
-    # foceiSetup_ reads thetaSensLoad/impThetaSensIdx from e$control (foceiO);
-    # make sure both are present there (not only on the pre-build .control) so
-    # op_focei wires the offsets -- same defensive re-set as .adviInnerSetup.
-    .env$control$thetaSensLoad <- TRUE
-    .env$control$impThetaSensIdx <- .thetaSensIdx - 1L
-    if (isTRUE(combSens)) .env$control$combSens <- TRUE
+    .thetaSensIdx <- as.integer(.impmapEstTheta(.ui)$all)
+    .extra <- list(thetaSensLoad = TRUE, impThetaSensIdx = .thetaSensIdx - 1L)
   }
-  .env$control$printTop <- FALSE
-  if (is.null(.env$control$nF)) .env$control$nF <- 0L
-  .env$control$needOptimHess <- isTRUE(any(.ui$predDfFocei$distribution != "norm"))
-  .env$aqn <- 0L; .env$qx <- double(0); .env$qw <- double(0); .env$qfirst <- FALSE
-  .env$nAGQ <- 0L; .env$aqLow <- -Inf; .env$aqHi <- Inf; .env$nEstOmega <- 0L
+  if (isTRUE(combSens)) {
+    .extra$combSens <- TRUE
+  }
+  .env <- .foceiInnerEnv(.ui, .data, .control, "focei", extra = .extra)
   .neta <- length(.env$etaNames)
   .nid <- length(.env$idLvl)
   .env$etaMat <- matrix(0, .nid, .neta)
@@ -240,23 +305,24 @@ foceiLikLoad <- function(object, data,
   .thetaSensBuilt <- (isTRUE(thetaSens) && !is.null(.env$model$thetaSens)) ||
     (isTRUE(combSens) && length(.thetaSensIdx) > 0L)
   if (isTRUE(thetaSens) && !.thetaSensBuilt && length(.thetaSensIdx) > 0L) {
-    warning("the theta-sensitivity model could not be built; handle$thetaSens is FALSE",
-            call. = FALSE)
+    warning("the theta-sensitivity model could not be built; handle$thetaSens is FALSE", call. = FALSE)
   }
   .iniDf <- .ui$iniDf
-  .handle <- list(initPar = .initPar,
-                  npars = length(.initPar),
-                  ntheta = sum(!is.na(.iniDf$ntheta)),
-                  neta = .neta,
-                  nid = .nid,
-                  thetaNames = .env$thetaNames,
-                  etaNames = .env$etaNames,
-                  idLvl = .env$idLvl,
-                  likelihood = likelihood,
-                  scale = scale,
-                  thetaSens = .thetaSensBuilt,
-                  combSens = isTRUE(combSens),
-                  thetaSensIdx = .thetaSensIdx)
+  .handle <- list(
+    initPar = .initPar,
+    npars = length(.initPar),
+    ntheta = sum(!is.na(.iniDf$ntheta)),
+    neta = .neta,
+    nid = .nid,
+    thetaNames = .env$thetaNames,
+    etaNames = .env$etaNames,
+    idLvl = .env$idLvl,
+    likelihood = likelihood,
+    scale = scale,
+    thetaSens = .thetaSensBuilt,
+    combSens = isTRUE(combSens),
+    thetaSensIdx = .thetaSensIdx
+  )
   nlmixr2global$foceiLikEnv <- .handle
   invisible(.handle)
 }
@@ -365,30 +431,27 @@ foceiLikLoad <- function(object, data,
 #' }
 #' @export
 #' @author Matthew L. Fidler
-foceiLikRun <- function(theta, eta, type = c("joint", "cond"),
-                        cores = rxode2::getRxThreads()) {
+foceiLikRun <- function(theta, eta, type = c("joint", "cond"), cores = rxode2::getRxThreads()) {
   type <- match.arg(type)
   .h <- nlmixr2global$foceiLikEnv
   if (is.null(.h)) {
-    stop("no general likelihood system loaded; call foceiLikLoad() first",
-         call. = FALSE)
+    stop("no general likelihood system loaded; call foceiLikLoad() first", call. = FALSE)
   }
   theta <- as.numeric(theta)
   if (length(theta) != .h$npars) {
-    stop(sprintf("'theta' must have length %d (the loaded system's npars)", .h$npars),
-         call. = FALSE)
+    stop(sprintf("'theta' must have length %d (the loaded system's npars)", .h$npars), call. = FALSE)
   }
   eta <- as.matrix(eta)
   if (ncol(eta) != .h$neta) {
-    stop(sprintf("'eta' must have %d columns (one per random effect)", .h$neta),
-         call. = FALSE)
+    stop(sprintf("'eta' must have %d columns (one per random effect)", .h$neta), call. = FALSE)
   }
   if (nrow(eta) != .h$nid) {
-    stop(sprintf("'eta' must have %d rows (one per subject)", .h$nid),
-         call. = FALSE)
+    stop(sprintf("'eta' must have %d rows (one per subject)", .h$nid), call. = FALSE)
   }
   .cores <- as.integer(cores)
-  if (is.na(.cores) || .cores < 1L) .cores <- 1L
+  if (is.na(.cores) || .cores < 1L) {
+    .cores <- 1L
+  }
   foceiLikSetTheta_(theta)
   .retType <- if (identical(type, "cond")) 1L else 0L
   .ll <- foceiLikEval_(eta, .cores, .retType)
@@ -446,13 +509,11 @@ foceiLikUnload <- function() {
 #'   when printing was never started)
 #' @export
 #' @author Matthew L. Fidler
-foceiLikIterPrintStart <- function(every, initPar, names,
-                                   iterPrintControl = NULL, xform = NULL) {
+foceiLikIterPrintStart <- function(every, initPar, names, iterPrintControl = NULL, xform = NULL) {
   checkmate::assertIntegerish(every, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(initPar, min.len = 1, any.missing = FALSE)
   checkmate::assertCharacter(names, len = length(initPar))
-  invisible(foceiLikIterPrintStart_(as.integer(every), as.double(initPar),
-                                    names, iterPrintControl, xform))
+  invisible(foceiLikIterPrintStart_(as.integer(every), as.double(initPar), names, iterPrintControl, xform))
 }
 
 #' @rdname foceiLikIterPrintStart

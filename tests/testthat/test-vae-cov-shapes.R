@@ -1,8 +1,7 @@
 nmTest({
   test_that("shapes collapse to the searchable families", {
     expect_equal(.vaeShapeFamily(c("power", "log")), c("log", "log"))
-    expect_equal(.vaeShapeFamily(c("lin", "identity", "center")),
-                 c("lin", "lin", "lin"))
+    expect_equal(.vaeShapeFamily(c("lin", "identity", "center")), c("lin", "lin", "lin"))
     expect_equal(.vaeShapeFamily("cat"), "cat")
     expect_error(.vaeShapeFamily("notAShape"), "unknown covariate shape")
   })
@@ -38,7 +37,7 @@ nmTest({
     ## no subject is in both arms, and the subject at the knot is in the high one
     expect_true(all(lo == 0 | hi == 0))
     expect_equal(lo[cov == ctr], 0)
-    expect_equal(hi[cov == ctr], 0)   # both vanish AT the knot
+    expect_equal(hi[cov == ctr], 0) # both vanish AT the knot
     ## below the knot only the low arm is non-zero, above only the high arm
     expect_true(all(hi[cov < ctr] == 0))
     expect_true(all(lo[cov > ctr] == 0))
@@ -56,10 +55,8 @@ nmTest({
       txt <- .vaeShapeExpr(arm, "WT", ctr)
       expect_equal(eval(str2lang(txt)), .vaeShapeValue(arm, WT, ctr), info = arm)
     }
-    expect_equal(.vaeShapeExpr("hockeyLow", "WT", 70.5),
-                 "(WT < 70.5)*(WT - 70.5)")
-    expect_equal(.vaeShapeExpr("hockeyHi", "WT", 70.5),
-                 "(WT >= 70.5)*(WT - 70.5)")
+    expect_equal(.vaeShapeExpr("hockeyLow", "WT", 70.5), "(WT < 70.5)*(WT - 70.5)")
+    expect_equal(.vaeShapeExpr("hockeyHi", "WT", 70.5), "(WT >= 70.5)*(WT - 70.5)")
   })
 
   test_that("a hockey arm needs no intercept correction", {
@@ -148,8 +145,7 @@ nmTest({
     expect_true(is.na(r$var) && is.na(r$cov))
     expect_equal(.vaeShapesFor(r, "cl", "WT"), c("power", "lin"))
     ## NULL means the default shapes
-    expect_equal(.vaeShapesFor(.vaeResolveShapes(NULL)$rules, "cl", "WT"),
-                 .vaeDefaultShapes)
+    expect_equal(.vaeShapesFor(.vaeResolveShapes(NULL)$rules, "cl", "WT"), .vaeDefaultShapes)
   })
 
   test_that("a covariate-named list restricts that covariate only", {
@@ -163,7 +159,8 @@ nmTest({
   test_that("a pairsVec list restricts one parameter/covariate pair", {
     r <- .vaeResolveShapes(list(
       list(var = "cl", covar = "wt", shapes = "power"),
-      list(var = "v", covar = "wt", shapes = c("lin", "identity"))))$rules
+      list(var = "v", covar = "wt", shapes = c("lin", "identity"))
+    ))$rules
     expect_equal(.vaeShapesFor(r, "cl", "WT"), "power")
     expect_equal(.vaeShapesFor(r, "v", "WT"), c("lin", "identity"))
     ## shapes= restricts parameterizations only -- a pair no rule mentions is
@@ -175,7 +172,8 @@ nmTest({
   test_that("the most specific rule wins", {
     r <- .vaeResolveShapes(list(
       list(covar = "wt", shapes = "lin"),
-      list(var = "cl", covar = "wt", shapes = "power")))$rules
+      list(var = "cl", covar = "wt", shapes = "power")
+    ))$rules
     expect_equal(.vaeShapesFor(r, "cl", "WT"), "power")
     expect_equal(.vaeShapesFor(r, "v", "WT"), "lin")
   })
@@ -213,9 +211,10 @@ nmTest({
     ## WT is power-only on cl and lin-only on v.  Both columns must exist (the
     ## design is shared), so the restriction has to land in the covAllow mask --
     ## otherwise cl could be given the linear column it forbids.
-    ctl <- vaeControl(shapes = list(list(var = "cl", covar = "wt", shapes = "power"),
-                                    list(var = "v", covar = "wt", shapes = "lin")),
-                      muRefCovAlg = FALSE)
+    ctl <- vaeControl(
+      shapes = list(list(var = "cl", covar = "wt", shapes = "power"), list(var = "v", covar = "wt", shapes = "lin")),
+      muRefCovAlg = FALSE
+    )
     m <- function() {
       ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.err <- 0.7
         eta.cl ~ 0.1; eta.v ~ 0.1 })
@@ -243,8 +242,7 @@ nmTest({
     ## pinned log(WT/70) pair takes WT_power -- deduping the encoder input against
     ## a fixed canonical column would drop WT from the encoder entirely
     ctl <- vaeControl(shapes = c("lin", "power"), muRefCovAlg = FALSE)
-    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.pinLog()),
-                                       nlmixr2data::theo_sd, ctl))
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.pinLog()), nlmixr2data::theo_sd, ctl))
     expect_equal(p$covNames, c("WT_lin", "WT_power"))
     expect_equal(which(colSums(p$covAllow) > 0L), 2L)
     expect_equal(ncol(p$covIn), 1L)
@@ -258,8 +256,7 @@ nmTest({
     expect_true(.vaeShapeUsable("lin", 0))
     expect_true(.vaeShapeUsable("identity", 0))
     ## a covariate whose center is 0 falls back to a writable sibling shape
-    d <- data.frame(id = rep(1:4, each = 3), time = rep(0:2, 4), dv = 1:12,
-                    score = rep(c(-3, -1, 1, 3), each = 3))
+    d <- data.frame(id = rep(1:4, each = 3), time = rep(0:2, 4), dv = 1:12, score = rep(c(-3, -1, 1, 3), each = 3))
     res <- vaeCovariates(d, shapes = c("center", "lin"))
     expect_equal(unique(res$center), 0)
     expect_false(any(res$shape == "center"))
@@ -281,25 +278,23 @@ nmTest({
       "  ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; b1 <- 0.1; add.err <- 0.7\n",
       "        eta.cl ~ 0.1 })\n",
       "  model({ ka <- exp(tka)\n",
-      "    cl <- exp(tcl + b1 * ", term, " + eta.cl)\n",
+      "    cl <- exp(tcl + b1 * ",
+      term,
+      " + eta.cl)\n",
       "    v <- exp(tv)\n",
       "    d/dt(depot) <- -ka * depot\n",
       "    d/dt(center) <- ka * depot - cl / v * center\n",
-      "    cp <- center / v; cp ~ add(add.err) })\n}")
+      "    cp <- center / v; cp ~ add(add.err) })\n}"
+    )
     eval(parse(text = .txt))
   }
 
   test_that("every written shape is detected with its center", {
-    expect_equal(.vaeDetectShape(quote(log(WT/70)), "WT")[c("shape", "center")],
-                 list(shape = "power", center = 70))
-    expect_equal(.vaeDetectShape(quote(log(WT)), "WT")[c("shape", "center")],
-                 list(shape = "log", center = 1))
-    expect_equal(.vaeDetectShape(quote((WT - 70)), "WT")[c("shape", "center")],
-                 list(shape = "lin", center = 70))
-    expect_equal(.vaeDetectShape(quote(WT), "WT")[c("shape", "center")],
-                 list(shape = "identity", center = 0))
-    expect_equal(.vaeDetectShape(quote((WT/70)), "WT")[c("shape", "center")],
-                 list(shape = "center", center = 70))
+    expect_equal(.vaeDetectShape(quote(log(WT/70)), "WT")[c("shape", "center")], list(shape = "power", center = 70))
+    expect_equal(.vaeDetectShape(quote(log(WT)), "WT")[c("shape", "center")], list(shape = "log", center = 1))
+    expect_equal(.vaeDetectShape(quote((WT - 70)), "WT")[c("shape", "center")], list(shape = "lin", center = 70))
+    expect_equal(.vaeDetectShape(quote(WT), "WT")[c("shape", "center")], list(shape = "identity", center = 0))
+    expect_equal(.vaeDetectShape(quote((WT/70)), "WT")[c("shape", "center")], list(shape = "center", center = 70))
     expect_equal(.vaeDetectShape(quote((SEX == "F")), "SEX")$shape, "cat")
     ## an untransferable form stays unrecognized
     expect_true(is.na(.vaeDetectShape(quote(log(WT/AGE)), "WT")$shape))
@@ -315,16 +310,17 @@ nmTest({
   test_that("each written shape pins to its own column and transfers directly", {
     d <- as.data.frame(nlmixr2data::theo_sd)
     .wt <- vapply(unique(d$ID), function(i) d$WT[d$ID == i][1], numeric(1))
-    .cases <- list(power = list("log(WT/70)", function(v) log(v / 70)),
-                   log = list("log(WT)", function(v) log(v)),
-                   lin = list("(WT - 70)", function(v) v - 70),
-                   identity = list("WT", function(v) v),
-                   center = list("(WT/70)", function(v) v / 70))
+    .cases <- list(
+      power = list("log(WT/70)", function(v) log(v / 70)),
+      log = list("log(WT)", function(v) log(v)),
+      lin = list("(WT - 70)", function(v) v - 70),
+      identity = list("WT", function(v) v),
+      center = list("(WT/70)", function(v) v / 70)
+    )
     for (.s in names(.cases)) {
       .term <- .cases[[.s]][[1]]
       .val <- .cases[[.s]][[2]]
-      p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.mk(.term)), d,
-                                         vaeControl(muRefCovAlg = FALSE)))
+      p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.mk(.term)), d, vaeControl(muRefCovAlg = FALSE)))
       expect_true(p$pinActive, info = .s)
       ## detected as the shape it was written in, and pinned
       expect_equal(p$pinPairs$shape, .s, info = .s)
@@ -344,8 +340,7 @@ nmTest({
 
   test_that("an unrecognized form still falls back to the regress M-step", {
     d <- as.data.frame(nlmixr2data::theo_sd)
-    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.mk("sqrt(WT)")), d,
-                                       vaeControl(muRefCovAlg = FALSE)))
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.mk("sqrt(WT)")), d, vaeControl(muRefCovAlg = FALSE)))
     expect_false(any(p$pinPairs$inPool))
     expect_true("b1" %in% p$regressNames)
   })
@@ -368,10 +363,13 @@ nmTest({
         cp <- center / v; cp ~ add(add.err) })
     }
     p <- suppressWarnings(.vaeDataPrep(
-      rxode2::assertRxUi(m), d,
-      vaeControl(shapes = list(list(var = "cl", covar = "wt", shapes = "power"),
-                               list(var = "v", covar = "wt", shapes = "lin")),
-                 muRefCovAlg = FALSE)))
+      rxode2::assertRxUi(m),
+      d,
+      vaeControl(
+        shapes = list(list(var = "cl", covar = "wt", shapes = "power"), list(var = "v", covar = "wt", shapes = "lin")),
+        muRefCovAlg = FALSE
+      )
+    ))
     expect_true(p$pinActive)
     expect_equal(p$pinPairs$shape, "lin")
     ## the declared effect is still reachable: searched on its own column ...
@@ -396,9 +394,7 @@ nmTest({
         d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v; cp ~ add(add.err) })
     }
-    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d,
-                                       vaeControl(shapes = "power",
-                                                  muRefCovAlg = FALSE)))
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d, vaeControl(shapes = "power", muRefCovAlg = FALSE)))
     expect_equal(p$covNames, "WT_power")
     expect_false(any(p$pinPairs$inPool))
     expect_true("cl.wt" %in% p$regressNames)
@@ -417,32 +413,33 @@ nmTest({
     .ix <- quote(cl <- exp(tcl + b1 * WT * AGE + eta.cl))
     expect_null(.vaeCoefFactor(.ix, "b1"))
     ## the legitimate additive forms still resolve, in either factor order
-    expect_equal(.vaeCoefFactor(quote(cl <- exp(tcl + b1 * log(WT/70) + eta.cl)), "b1"),
-                 quote(log(WT/70)))
-    expect_equal(.vaeCoefFactor(quote(cl <- exp(tcl + log(WT/70) * b1 + eta.cl)), "b1"),
-                 quote(log(WT/70)))
-    expect_equal(.vaeCoefFactor(quote(cl <- exp(tcl + b1 * (WT - 70) + eta.cl)), "b1"),
-                 quote((WT - 70)))
+    expect_equal(.vaeCoefFactor(quote(cl <- exp(tcl + b1 * log(WT/70) + eta.cl)), "b1"), quote(log(WT/70)))
+    expect_equal(.vaeCoefFactor(quote(cl <- exp(tcl + log(WT/70) * b1 + eta.cl)), "b1"), quote(log(WT/70)))
+    expect_equal(.vaeCoefFactor(quote(cl <- exp(tcl + b1 * (WT - 70) + eta.cl)), "b1"), quote((WT - 70)))
   })
 
   test_that("an interaction or wrapped term regresses instead of pinning", {
     mk <- function(term) {
-      eval(parse(text = paste0(
-        "function() {\n",
-        "  ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; cl.wt <- 0.1; add.err <- 0.7\n",
-        "        eta.cl ~ 0.1 })\n",
-        "  model({ ka <- exp(tka)\n",
-        "    cl <- exp(tcl + ", term, " + eta.cl)\n",
-        "    v <- exp(tv)\n",
-        "    d/dt(depot) <- -ka * depot\n",
-        "    d/dt(center) <- ka * depot - cl / v * center\n",
-        "    cp <- center / v; cp ~ add(add.err) })\n}")))
+      eval(parse(
+        text = paste0(
+          "function() {\n",
+          "  ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; cl.wt <- 0.1; add.err <- 0.7\n",
+          "        eta.cl ~ 0.1 })\n",
+          "  model({ ka <- exp(tka)\n",
+          "    cl <- exp(tcl + ",
+          term,
+          " + eta.cl)\n",
+          "    v <- exp(tv)\n",
+          "    d/dt(depot) <- -ka * depot\n",
+          "    d/dt(center) <- ka * depot - cl / v * center\n",
+          "    cp <- center / v; cp ~ add(add.err) })\n}"
+        )
+      ))
     }
     for (.t in c("sqrt(cl.wt * WT)", "cl.wt * WT * AGE")) {
       d2 <- .d
       d2$AGE <- 40 + (as.integer(d2$ID) %% 5)
-      p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(mk(.t)), d2,
-                                         vaeControl(muRefCovAlg = FALSE)))
+      p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(mk(.t)), d2, vaeControl(muRefCovAlg = FALSE)))
       expect_false(any(p$pinPairs$inPool), info = .t)
       expect_true("cl.wt" %in% p$regressNames, info = .t)
     }
@@ -454,21 +451,28 @@ nmTest({
     lv <- c("W", "W", "W", "W", "W", "B", "B", "B", "U", "U", "U", "U")
     d2$RACE <- lv[match(d2$ID, ids)]
     mk <- function(term) {
-      eval(parse(text = paste0(
-        "function() {\n",
-        "  ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; r1 <- 0.1; add.err <- 0.7\n",
-        "        eta.cl ~ 0.1 })\n",
-        "  model({ ka <- exp(tka)\n",
-        "    cl <- exp(tcl + r1 * ", term, " + eta.cl)\n",
-        "    v <- exp(tv)\n",
-        "    d/dt(depot) <- -ka * depot\n",
-        "    d/dt(center) <- ka * depot - cl / v * center\n",
-        "    cp <- center / v; cp ~ add(add.err) })\n}")))
+      eval(parse(
+        text = paste0(
+          "function() {\n",
+          "  ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; r1 <- 0.1; add.err <- 0.7\n",
+          "        eta.cl ~ 0.1 })\n",
+          "  model({ ka <- exp(tka)\n",
+          "    cl <- exp(tcl + r1 * ",
+          term,
+          " + eta.cl)\n",
+          "    v <- exp(tv)\n",
+          "    d/dt(depot) <- -ka * depot\n",
+          "    d/dt(center) <- ka * depot - cl / v * center\n",
+          "    cp <- center / v; cp ~ add(add.err) })\n}"
+        )
+      ))
     }
     for (.l in c("B", "U")) {
       p <- suppressWarnings(.vaeDataPrep(
-        rxode2::assertRxUi(mk(paste0('(RACE == "', .l, '")'))), d2,
-        vaeControl(muRefCovAlg = FALSE)))
+        rxode2::assertRxUi(mk(paste0('(RACE == "', .l, '")'))),
+        d2,
+        vaeControl(muRefCovAlg = FALSE)
+      ))
       ## the indicator round-trips: recognized, pinned, and searched
       expect_equal(p$pinPairs$shape, "cat", info = .l)
       expect_true(all(p$pinPairs$inPool), info = .l)
@@ -483,8 +487,12 @@ nmTest({
   test_that("a fallback column is not masked away by shapes=", {
     ## WT has non-positive values so no log-family column can be built; the
     ## linear fallback keeps it searchable and must not then be masked out
-    d2 <- data.frame(id = rep(1:6, each = 3), time = rep(0:2, 6), dv = 1:18,
-                     wt = rep(c(-10, 0, 10, 20, 30, 40), each = 3))
+    d2 <- data.frame(
+      id = rep(1:6, each = 3),
+      time = rep(0:2, 6),
+      dv = 1:18,
+      wt = rep(c(-10, 0, 10, 20, 30, 40), each = 3)
+    )
     res <- suppressWarnings(vaeCovariates(d2, shapes = "power"))
     expect_equal(nrow(res), 1L)
     expect_equal(res$shape, "lin")
@@ -497,8 +505,7 @@ nmTest({
     }
     names(d2) <- toupper(names(d2))
     d2$AMT <- 0
-    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d2,
-                                       vaeControl(shapes = "power")))
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d2, vaeControl(shapes = "power")))
     ## the fallback column stays selectable rather than being zeroed everywhere
     expect_true(is.null(p$covAllow) || sum(p$covAllow) > 0L)
   })
@@ -512,18 +519,21 @@ nmTest({
     expect_null(.vaeCoefFactor(quote(cl <- exp(tcl - b1 * (WT - 70) + eta.cl)), "b1"))
     expect_null(.vaeCoefFactor(quote(cl <- exp(tcl + -(b1 * (WT - 70)) + eta.cl)), "b1"))
     ## a positive term is still found when something else is subtracted
-    expect_equal(.vaeCoefFactor(quote(cl <- exp(tcl + b1 * (WT - 70) - eta.cl)), "b1"),
-                 quote((WT - 70)))
+    expect_equal(.vaeCoefFactor(quote(cl <- exp(tcl + b1 * (WT - 70) - eta.cl)), "b1"), quote((WT - 70)))
   })
 
   test_that("a coefficient used more than once is not pinned", {
     ## fitting on the first term and writing the estimate back to both corrupts
     ## the prediction, so this must regress instead
     expect_null(.vaeCoefFactor(
-      quote(cl <- exp(tcl + b1 * (WT - 70) + b1 * (AGE - 40) + eta.cl)), "b1"))
+      quote(cl <- exp(tcl + b1 * (WT - 70) + b1 * (AGE - 40) + eta.cl)),
+      "b1"
+    ))
     ## and a coefficient reused inside another call escapes the additive walk
     expect_null(.vaeCoefFactor(
-      quote(cl <- exp(tcl + b1 * (WT - 70) + sqrt(b1) + eta.cl)), "b1"))
+      quote(cl <- exp(tcl + b1 * (WT - 70) + sqrt(b1) + eta.cl)),
+      "b1"
+    ))
   })
 
   test_that("a subtracted or duplicated coefficient regresses end-to-end", {
@@ -537,8 +547,7 @@ nmTest({
         d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v; cp ~ add(add.err) })
     }
-    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d,
-                                       vaeControl(muRefCovAlg = FALSE)))
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d, vaeControl(muRefCovAlg = FALSE)))
     expect_false(any(p$pinPairs$inPool))
     expect_true("b1" %in% p$regressNames)
     expect_equal(sum(p$covAllow), 0L)
@@ -563,9 +572,7 @@ nmTest({
         d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v; cp ~ add(add.err) })
     }
-    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d,
-                                       vaeControl(muRefCovAlg = FALSE,
-                                                  catCutoff = 0.10)))
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d, vaeControl(muRefCovAlg = FALSE, catCutoff = 0.10)))
     ## RACE_B exists but RACE_Asian does not, so there IS a wrong column to
     ## mis-pin to
     expect_true("B" %in% p$covLevel)
@@ -595,8 +602,7 @@ nmTest({
         d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v; cp ~ add(add.err) })
     }
-    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d,
-                                       vaeControl(muRefCovAlg = FALSE)))
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(m), d, vaeControl(muRefCovAlg = FALSE)))
     expect_true(all(p$pinPairs$inPool))
     .j <- which(colSums(p$covAllow) > 0L)
     expect_equal(p$covLevel[.j], "01")
@@ -610,15 +616,11 @@ nmTest({
     ## expit/logit/probit take limit arguments, so requiring a one-argument call
     ## demoted an ordinary bounded parameter to the regress M-step
     p <- function(s) parse(text = s)[[1]]
-    expect_equal(.vaeCoefFactor(p("f1 <- expit(tf1 + b1 * (WT - 70) + eta.f1, 0, 1)"), "b1"),
-                 quote((WT - 70)))
-    expect_equal(.vaeCoefFactor(p("f1 <- probitInv(tf1 + b1 * (WT - 70) + eta.f1, 0, 1)"), "b1"),
-                 quote((WT - 70)))
-    expect_equal(.vaeCoefFactor(p("f1 <- logit(tf1 + b1 * log(WT/70) + eta.f1, 0, 10)"), "b1"),
-                 quote(log(WT/70)))
+    expect_equal(.vaeCoefFactor(p("f1 <- expit(tf1 + b1 * (WT - 70) + eta.f1, 0, 1)"), "b1"), quote((WT - 70)))
+    expect_equal(.vaeCoefFactor(p("f1 <- probitInv(tf1 + b1 * (WT - 70) + eta.f1, 0, 1)"), "b1"), quote((WT - 70)))
+    expect_equal(.vaeCoefFactor(p("f1 <- logit(tf1 + b1 * log(WT/70) + eta.f1, 0, 10)"), "b1"), quote(log(WT/70)))
     ## the unbounded spellings keep working
-    expect_equal(.vaeCoefFactor(p("f1 <- expit(tf1 + b1 * (WT - 70) + eta.f1)"), "b1"),
-                 quote((WT - 70)))
+    expect_equal(.vaeCoefFactor(p("f1 <- expit(tf1 + b1 * (WT - 70) + eta.f1)"), "b1"), quote((WT - 70)))
   })
 
   test_that("a level containing quotes or backslashes emits parseable text", {
@@ -678,8 +680,7 @@ nmTest({
   })
 
   test_that("named and pair entries mix in one list", {
-    r <- .vaeResolveShapes(list(list(var = "cl", covar = "wt", shapes = "power"),
-                                sex = TRUE))
+    r <- .vaeResolveShapes(list(list(var = "cl", covar = "wt", shapes = "power"), sex = TRUE))
     expect_equal(nrow(r$rules), 2L)
     ## a named entry is exactly the covar-only rule it is shorthand for
     expect_equal(.vaeShapesFor(r$rules, "cl", "WT"), "power")
@@ -694,12 +695,10 @@ nmTest({
   test_that("fixCov survives the pair form it is mixed into", {
     ## the regression this ordering exists to prevent: a bare logical element is
     ## not a list, so leaving it in would flip the per-element dispatch
-    r <- .vaeResolveShapes(list(list(var = "cl", covar = "wt", shapes = "power"),
-                                fixCov = FALSE))
+    r <- .vaeResolveShapes(list(list(var = "cl", covar = "wt", shapes = "power"), fixCov = FALSE))
     expect_false(r$fixCov)
     expect_equal(nrow(r$rules), 1L)
-    expect_true(all(.el(list(list(var = "cl", covar = "wt", shapes = "power"),
-                             fixCov = FALSE))))
+    expect_true(all(.el(list(list(var = "cl", covar = "wt", shapes = "power"), fixCov = FALSE))))
   })
 
   test_that("TRUE means eligible with the default shapes", {
@@ -710,23 +709,20 @@ nmTest({
 
   test_that("contradictory fixCov specifications are rejected", {
     ## a rule naming neither var nor covar makes everything eligible
-    expect_error(.el(list(list(shapes = "lin"), wt = "power")),
-                 "contradicts fixCov")
-    expect_error(.vaeResolveShapes(list(wt = FALSE)),
-                 "TRUE or a shape vector")
-    expect_error(.vaeResolveShapes(list(wt = "power", fixCov = TRUE, fixCov = FALSE)),
-                 "more than once")
+    expect_error(.el(list(list(shapes = "lin"), wt = "power")), "contradicts fixCov")
+    expect_error(.vaeResolveShapes(list(wt = FALSE)), "TRUE or a shape vector")
+    expect_error(.vaeResolveShapes(list(wt = "power", fixCov = TRUE, fixCov = FALSE)), "more than once")
     expect_error(.vaeResolveShapes(list(wt = "power", fixCov = "yes")), "fixCov")
     ## a data column colliding with the flag name
-    expect_error(.vaeEligible(.vaeResolveShapes(list(wt = "power"))$rules, TRUE,
-                              .etas, .thetas, c("WT", "FIXCOV")),
-                 "collides with the eligibility flag")
+    expect_error(
+      .vaeEligible(.vaeResolveShapes(list(wt = "power"))$rules, TRUE, .etas, .thetas, c("WT", "FIXCOV")),
+      "collides with the eligibility flag"
+    )
   })
 
   test_that("an unnamed non-list element is still an error", {
     expect_error(.vaeResolveShapes(list("power")), "named by covariate")
-    expect_error(.vaeResolveShapes(list(list(covar = "wt", shapes = "lin"), "power")),
-                 "named by covariate")
+    expect_error(.vaeResolveShapes(list(list(covar = "wt", shapes = "lin"), "power")), "named by covariate")
   })
 })
 
@@ -736,27 +732,39 @@ nmTest({
 nmTest({
   .d <- nlmixr2data::theo_sd
   .d$WT <- rep(c(60, 70, 80), length.out = length(unique(.d$ID)))[
-    match(.d$ID, unique(.d$ID))]
+    match(.d$ID, unique(.d$ID))
+  ]
   .d$AGE <- rep(c(30, 40, 50), length.out = length(unique(.d$ID)))[
-    match(.d$ID, unique(.d$ID))]
+    match(.d$ID, unique(.d$ID))
+  ]
   names(.d) <- toupper(names(.d))
 
   ## built as text like the pinning tests above: model()/ini() piping inside
   ## test_that() resolves the covariate symbol in the wrong environment
   .mk <- function(term = NULL) {
     .ini <- if (is.null(term)) "" else " b1 <- 0.1;"
-    .cl <- if (is.null(term)) "exp(tcl + eta.cl)"
-           else paste0("exp(tcl + b1 * ", term, " + eta.cl)")
-    eval(parse(text = paste0(
-      "function() {\n",
-      "  ini({ tka <- 0.45; tcl <- 1; tv <- 3.45;", .ini, " add.sd <- 0.7\n",
-      "        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })\n",
-      "  model({ ka <- exp(tka + eta.ka)\n",
-      "    cl <- ", .cl, "\n",
-      "    v <- exp(tv + eta.v)\n",
-      "    d/dt(depot) <- -ka * depot\n",
-      "    d/dt(center) <- ka * depot - cl / v * center\n",
-      "    cp <- center / v; cp ~ add(add.sd) })\n}")))
+    .cl <- if (is.null(term)) {
+      "exp(tcl + eta.cl)"
+    } else {
+      paste0("exp(tcl + b1 * ", term, " + eta.cl)")
+    }
+    eval(parse(
+      text = paste0(
+        "function() {\n",
+        "  ini({ tka <- 0.45; tcl <- 1; tv <- 3.45;",
+        .ini,
+        " add.sd <- 0.7\n",
+        "        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })\n",
+        "  model({ ka <- exp(tka + eta.ka)\n",
+        "    cl <- ",
+        .cl,
+        "\n",
+        "    v <- exp(tv + eta.v)\n",
+        "    d/dt(depot) <- -ka * depot\n",
+        "    d/dt(center) <- ka * depot - cl / v * center\n",
+        "    cp <- center / v; cp ~ add(add.sd) })\n}"
+      )
+    ))
   }
 
   test_that("fixCov masks whole covariates in .vaeShapeAllowMask", {
@@ -776,20 +784,21 @@ nmTest({
   ## contract, so collect them all rather than relying on which one comes first
   .warns <- function(expr) {
     .w <- character(0)
-    withCallingHandlers(invisible(force(expr)),
-                        warning = function(cond) {
-                          .w <<- c(.w, conditionMessage(cond))
-                          invokeRestart("muffleWarning")
-                        })
+    withCallingHandlers(invisible(force(expr)), warning = function(cond) {
+      .w <<- c(.w, conditionMessage(cond))
+      invokeRestart("muffleWarning")
+    })
     .w
   }
 
   test_that("a covariate restricted to one shape is not reported as excluded", {
     ## the false positive an independent review predicted: WT's non-power
     ## columns are masked, but WT itself is still searched through WT_power
-    .w <- .warns(.vaeDataPrep(rxode2::assertRxUi(.mk()), .d,
-                              vaeControl(shapes = list(wt = "power"),
-                                         muRefCovAlg = FALSE)))
+    .w <- .warns(.vaeDataPrep(
+      rxode2::assertRxUi(.mk()),
+      .d,
+      vaeControl(shapes = list(wt = "power"), muRefCovAlg = FALSE)
+    ))
     .fx <- grep("fixCov=TRUE, covariate", .w, value = TRUE)
     expect_length(.fx, 1L)
     expect_match(.fx, "AGE")
@@ -798,10 +807,9 @@ nmTest({
 
   test_that("fixCov=TRUE with nothing searchable is an error", {
     expect_error(
-      .vaeDataPrep(rxode2::assertRxUi(.mk()), .d,
-                   vaeControl(shapes = list(noSuchCov = "power"),
-                              muRefCovAlg = FALSE)),
-      "leaves no covariate searchable")
+      .vaeDataPrep(rxode2::assertRxUi(.mk()), .d, vaeControl(shapes = list(noSuchCov = "power"), muRefCovAlg = FALSE)),
+      "leaves no covariate searchable"
+    )
   })
 
   test_that("covariateSelection=FALSE has nothing for fixCov to narrow", {
@@ -809,23 +817,29 @@ nmTest({
     ## not fire at someone who already has -- there is no search to restrict
     expect_error(
       suppressWarnings(
-        .vaeDataPrep(rxode2::assertRxUi(.mk()), .d,
-                     vaeControl(covariateSelection = FALSE,
-                                shapes = list(noSuchCov = "power"),
-                                muRefCovAlg = FALSE))),
-      NA)
+        .vaeDataPrep(
+          rxode2::assertRxUi(.mk()),
+          .d,
+          vaeControl(covariateSelection = FALSE, shapes = list(noSuchCov = "power"), muRefCovAlg = FALSE)
+        )
+      ),
+      NA
+    )
     ## nor may it blame fixCov for a search that was off regardless
-    .w <- .warns(.vaeDataPrep(rxode2::assertRxUi(.mk()), .d,
-                              vaeControl(covariateSelection = FALSE,
-                                         shapes = list(wt = "power"),
-                                         muRefCovAlg = FALSE)))
+    .w <- .warns(.vaeDataPrep(
+      rxode2::assertRxUi(.mk()),
+      .d,
+      vaeControl(covariateSelection = FALSE, shapes = list(wt = "power"), muRefCovAlg = FALSE)
+    ))
     expect_false(any(grepl("fixCov=TRUE, covariate", .w)))
   })
 
   test_that("a declaring model overrides fixCov", {
-    .w <- .warns(.vaeDataPrep(rxode2::assertRxUi(.mk("log(WT/70)")), .d,
-                              vaeControl(shapes = list(age = "power"),
-                                         muRefCovAlg = FALSE)))
+    .w <- .warns(.vaeDataPrep(
+      rxode2::assertRxUi(.mk("log(WT/70)")),
+      .d,
+      vaeControl(shapes = list(age = "power"), muRefCovAlg = FALSE)
+    ))
     expect_true(any(grepl("fixCov=TRUE ignored", .w)))
     ## the declaration is what actually restricts the search
     expect_true(any(grepl("pinned to model-specified covariates", .w)))

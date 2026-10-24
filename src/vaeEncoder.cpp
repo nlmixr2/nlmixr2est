@@ -17,6 +17,7 @@
 // Validated against the torch autograd oracle (tests/testthat/fixtures/vae/
 // encoder_golden.rds) and finite differences to ~1e-6.
 #include "vaeEncoder.h"
+#include "nmParallelCore.h"
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -90,10 +91,11 @@ void vaeEncoderFwdBwdCore(const arma::cube& dataIn, const arma::ivec& lengths,
       tFcW[c].zeros(outDim, h + nCov); tFcB[c].zeros(outDim);
     }
   }
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(static) if((cores > 1 && !backward) || parBwd)
-#endif
-  for (int i = 0; i < N; ++i) {
+  // nmStatic is load bearing, not a preference: with parBwd each thread sums
+  // its statically assigned subjects into a private partial and the partials
+  // are reduced in thread order below, so the partition has to be the same
+  // every run.  (nmNoMap would be too, but this TU has no rx to map through.)
+  nmForEach(N, cores, (cores > 1 && !backward) || parBwd, nmStatic, [&](int i) {
     const int Ti = lengths[i];
     // forward caches for this subject
     arma::mat I(h, Ti), F(h, Ti), G(h, Ti), O(h, Ti), C(h, Ti), H(h, Ti), X(xDim, Ti);
@@ -135,7 +137,7 @@ void vaeEncoderFwdBwdCore(const arma::cube& dataIn, const arma::ivec& lengths,
     Lout.slice(i) = Li;
     zOut.row(i) = zI.t();
 
-    if (!backward) continue;
+    if (!backward) return;   // forward-only: this subject is done
 
     // ---- backward ----
     // accumulate into this thread's private partial when parBwd, else straight
@@ -198,7 +200,7 @@ void vaeEncoderFwdBwdCore(const arma::cube& dataIn, const arma::ivec& lengths,
       dh = Whh.t() * dpre;   // grad to h_{t-1}
       dc = dcPrev;
     }
-  }
+  });
 
   // reduce per-thread partials in thread order (parBwd only); the shared outputs
   // were already zeroed above so this is the whole gradient.

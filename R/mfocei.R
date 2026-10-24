@@ -3,23 +3,27 @@
 nlmixr2Est.mfocei <- function(env, ...) {
   .ui <- env$ui
   .control <- env$control
-  .foceiFamilyControl(env, ..., type="mfoceiControl")
-  .mfoceiControlToFoceiControl(env)
+  .foceiFamilyControl(env, ..., type = "mfoceiControl")
+  .foceiFamilyControlToFoceiControl(env, "mfoceiControl")
   on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
+    if (exists("control", envir = .ui)) {
+      rm("control", envir = .ui)
     }
   })
   env$mfoceiControl <- .control
   env$est <- "mfocei"
   .ui <- env$ui
-  .foceiFamilyReturn(env, .ui, ..., est="mfocei")
+  .foceiFamilyReturn(env, .ui, ..., est = "mfocei")
 }
 attr(nlmixr2Est.mfocei, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.mfocei, "covPresent") <- TRUE
 attr(nlmixr2Est.mfocei, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.mfocei, "iov") <- TRUE
 # Activates the mu2/mu3/mu4 covariate-rewriting hook (.uiApplyMu2hook,
 # R/mu2.R) for this family only, gated on muModel/muRefCovAlg.
 attr(nlmixr2Est.mfocei, "mu") <- function(control) {
   isTRUE(!identical(control$muModel, "none")) && isTRUE(control$muRefCovAlg)
 }
+
+#' @export
+rxUiDeparse.mfoceiControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "mfoceiControl")

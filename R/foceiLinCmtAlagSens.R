@@ -61,12 +61,17 @@
   .rows <- list()
   for (.st in lin) {
     .nm <- paste0("rx_", kind, "_", .st, "_")
-    if (!exists(.nm, envir = s, inherits = FALSE)) next
+    if (!exists(.nm, envir = s, inherits = FALSE)) {
+      next
+    }
     .sym <- get(.nm, envir = s, inherits = FALSE)
-    .free <- tryCatch(vapply(symengine::free_symbols(.sym), as.character, character(1)),
-                       error = function(e) character(0))
+    .free <- tryCatch(vapply(symengine::free_symbols(.sym), as.character, character(1)), error = function(e) {
+      character(0)
+    })
     .drv <- intersect(.free, etaVars)
-    if (length(.drv) == 0L) next
+    if (length(.drv) == 0L) {
+      next
+    }
     .rows[[.st]] <- list(sym = .sym, drivers = .drv)
   }
   .rows
@@ -127,30 +132,43 @@
 #' @noRd
 .rxFoceiLinCmtEventPredExtra <- function(x, s, etaVars) {
   .ui <- x[[1]]
-  if (rxode2::.rxLinNcmt(.ui)["numLin"] <= 0L) return(NULL)
+  if (rxode2::.rxLinNcmt(.ui)["numLin"] <= 0L) {
+    return(NULL)
+  }
   # A steady-state infusion into the lagged compartment still reads NA; this
   # build-time step has no per-subject event data to gate on, so reuse the
   # existing analytic-vs-fd opt-out instead.
-  if (identical(rxode2::rxGetControl(.ui, "eventSens", "jump"), "fd")) return(NULL)
-  if (!exists("rx_pred_", envir = s, inherits = FALSE)) return(NULL)
+  if (identical(rxode2::rxGetControl(.ui, "eventSens", "jump"), "fd")) {
+    return(NULL)
+  }
+  if (!exists("rx_pred_", envir = s, inherits = FALSE)) {
+    return(NULL)
+  }
   .pred <- get("rx_pred_", envir = s, inherits = FALSE)
   if (!identical(tryCatch(symengine::get_name(.pred), error = function(e) ""), "linCmtB")) {
     return(NULL)
   }
   .predArgs <- symengine::get_args(.pred)
-  if (length(.predArgs) != 15L) return(NULL)
+  if (length(.predArgs) != 15L) {
+    return(NULL)
+  }
   .lin <- rxode2::.rxLinCmt(.ui)
   .lin <- grep("^rx__sens_", .lin, value = TRUE, invert = TRUE)
-  if (length(.lin) == 0L) return(NULL)
+  if (length(.lin) == 0L) {
+    return(NULL)
+  }
   .lagRows <- .rxFoceiLinCmtEventRows(s, .lin, "lag", etaVars)
   .fRows <- .rxFoceiLinCmtEventRows(s, .lin, "f", etaVars)
-  if (length(.lagRows) == 0L && length(.fRows) == 0L) return(NULL)
+  if (length(.lagRows) == 0L && length(.fRows) == 0L) {
+    return(NULL)
+  }
   # .lin is the linCmt() block order (depot first when oral), which is the
   # 0-based origin index the which2 packing takes.
   .qOf <- stats::setNames(seq_along(.lin) - 1L, .lin)
-  .extra <- stats::setNames(vector("list", length(etaVars)), etaVars)
+  .acc <- new.env(parent = emptyenv())
+  .acc$extra <- stats::setNames(vector("list", length(etaVars)), etaVars)
   .accum <- function(param, term) {
-    .extra[[param]] <<- if (is.null(.extra[[param]])) term else .extra[[param]] + term
+    .acc$extra[[param]] <- if (is.null(.acc$extra[[param]])) term else .acc$extra[[param]] + term
   }
   # d(pred)/d(alag_q) = the dose-time sensitivity of compartment q's own
   # doses; d(pred)/dF_q = A^(q)/F_q, the part of pred that came through q.
@@ -162,15 +180,19 @@
       .row <- rows[[.cmt]]
       for (.p in .row$drivers) {
         .d <- symengine::D(.row$sym, symengine::S(.p))
-        if (paste(.d) %in% c("0", "0.0")) next
+        if (paste(.d) %in% c("0", "0.0")) {
+          next
+        }
         .accum(.p, .d * factor(.call, .row$sym))
       }
     }
   }
   .addRows(.lagRows, -9, function(call, sym) call)
   .addRows(.fRows, -10, function(call, sym) call / sym)
-  .extra <- .extra[!vapply(.extra, is.null, logical(1))]
-  if (length(.extra) == 0L) return(NULL)
+  .extra <- .acc$extra[!vapply(.acc$extra, is.null, logical(1))]
+  if (length(.extra) == 0L) {
+    return(NULL)
+  }
   .extra
 }
 
@@ -194,11 +216,15 @@
 #'   only); `NULL` when `target` does not depend on `pred` at all
 #' @noRd
 .rxFoceiLinCmtEventChain <- function(target, pred, extraPred) {
-  if (is.null(extraPred) || length(extraPred) == 0L) return(NULL)
+  if (is.null(extraPred) || length(extraPred) == 0L) {
+    return(NULL)
+  }
   .ph <- symengine::S("rx__linCmtEventPh__")
   .sub <- symengine::subs(target, pred, .ph)
   .dTdPred <- symengine::D(.sub, .ph)
-  if (paste(.dTdPred) %in% c("0", "0.0")) return(NULL)
+  if (paste(.dTdPred) %in% c("0", "0.0")) {
+    return(NULL)
+  }
   .dTdPred <- symengine::subs(.dTdPred, .ph, pred)
   lapply(extraPred, function(.e) .dTdPred * .e)
 }

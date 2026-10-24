@@ -28,18 +28,29 @@ nmTest({
     nsub <- 20
     ndose <- 3400
     nobs <- 5
-    d <- do.call(rbind, lapply(seq_len(nsub), function(id) {
-      rbind(data.frame(ID = id, TIME = 0, DV = NA, AMT = 100, EVID = 1,
-                       CMT = 1, II = 1, ADDL = ndose - 1),
-            data.frame(ID = id, TIME = seq(0.5, ndose - 0.5, length.out = nobs),
-                       DV = 5, AMT = 0, EVID = 0, CMT = 1, II = 0, ADDL = 0))
-    }))
+    d <- do.call(
+      rbind,
+      lapply(seq_len(nsub), function(id) {
+        rbind(
+          data.frame(ID = id, TIME = 0, DV = NA, AMT = 100, EVID = 1, CMT = 1, II = 1, ADDL = ndose - 1),
+          data.frame(
+            ID = id,
+            TIME = seq(0.5, ndose - 0.5, length.out = nobs),
+            DV = 5,
+            AMT = 0,
+            EVID = 0,
+            CMT = 1,
+            II = 0,
+            ADDL = 0
+          )
+        )
+      })
+    )
     expect_equal(nrow(d), nsub * (nobs + 1))
 
     fit <- suppressMessages(suppressWarnings(
-      nlmixr(.i1010Model(), d, "focei",
-             control = foceiControl(maxOuterIterations = 0, covMethod = "",
-                                    print = 0))))
+      nlmixr(.i1010Model(), d, "focei", control = foceiControl(maxOuterIterations = 0, covMethod = "", print = 0))
+    ))
     # dataSav is the ADDL-expanded event table, i.e. exactly the `nall` the old
     # guard tested -- assert the fit really did cross the old threshold.
     expect_gt(nrow(fit$dataSav), 65535)
@@ -53,12 +64,24 @@ nmTest({
     # gVid corrupts the censored inner-Hessian coefficients.  Unequal nobs_i is
     # what distinguishes sum(nobs_i^2) from any per-subject-constant sizing.
     nobsI <- c(2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
-    d <- do.call(rbind, lapply(seq_along(nobsI), function(id) {
-      rbind(data.frame(ID = id, TIME = 0, DV = NA, AMT = 100, EVID = 1,
-                       CMT = 1, II = 24, ADDL = 6),
-            data.frame(ID = id, TIME = seq(0.5, 24, length.out = nobsI[id]),
-                       DV = 5, AMT = 0, EVID = 0, CMT = 1, II = 0, ADDL = 0))
-    }))
+    d <- do.call(
+      rbind,
+      lapply(seq_along(nobsI), function(id) {
+        rbind(
+          data.frame(ID = id, TIME = 0, DV = NA, AMT = 100, EVID = 1, CMT = 1, II = 24, ADDL = 6),
+          data.frame(
+            ID = id,
+            TIME = seq(0.5, 24, length.out = nobsI[id]),
+            DV = 5,
+            AMT = 0,
+            EVID = 0,
+            CMT = 1,
+            II = 0,
+            ADDL = 0
+          )
+        )
+      })
+    )
     d$CENS <- 0
     # censor each subject's first observation so the M3 path (and with it
     # gcHff/gcHfr/gcHrr) is exercised
@@ -67,9 +90,8 @@ nmTest({
     d$DV[d$CENS == 1] <- 1
 
     fit <- suppressMessages(suppressWarnings(
-      nlmixr(.i1010Model(), d, "focei",
-             control = foceiControl(maxOuterIterations = 0, covMethod = "",
-                                    print = 0))))
+      nlmixr(.i1010Model(), d, "focei", control = foceiControl(maxOuterIterations = 0, covMethod = "", print = 0))
+    ))
     expect_equal(nrow(fit), sum(nobsI))
     expect_match(as.character(fit$censInformation), "^M3 censoring")
     expect_true(is.finite(fit$objf))
@@ -83,11 +105,15 @@ nmTest({
     # empty and llikObsFull started at the same address.  The per-subject
     # thetaGrad writes (npars per subject) then ran past the allocation
     # whenever npars * nsub exceeded nall.
-    d <- do.call(rbind, lapply(1:12, function(id) {
-      rbind(data.frame(ID = id, TIME = 0, DV = NA, AMT = 320, EVID = 1, CMT = 1),
-            data.frame(ID = id, TIME = 2 + id / 12, DV = 6 + id / 10, AMT = 0,
-                       EVID = 0, CMT = 1))
-    }))
+    d <- do.call(
+      rbind,
+      lapply(1:12, function(id) {
+        rbind(
+          data.frame(ID = id, TIME = 0, DV = NA, AMT = 320, EVID = 1, CMT = 1),
+          data.frame(ID = id, TIME = 2 + id / 12, DV = 6 + id / 10, AMT = 0, EVID = 0, CMT = 1)
+        )
+      })
+    )
 
     noEta <- function() {
       ini({
@@ -105,8 +131,8 @@ nmTest({
     }
 
     fit <- suppressMessages(suppressWarnings(
-      nlmixr(noEta(), d, "focei",
-             control = foceiControl(covMethod = "", print = 0))))
+      nlmixr(noEta(), d, "focei", control = foceiControl(covMethod = "", print = 0))
+    ))
     # the setup really is in the regime the old sizing overflowed: npars per
     # subject over 12 subjects is more than the whole event table
     expect_gt(length(fit$theta) * 12, nrow(fit$dataSav))
@@ -122,15 +148,20 @@ nmTest({
     # used to be a running total taken in the setup loop's BACKWARDS order, so
     # subject 1 was given the tail of the buffer and the exported per-record
     # log-likelihoods came back reversed by subject.
-    d <- data.frame(ID = rep(1:3, each = 2), TIME = rep(c(0, 1), 3),
-                    DV = c(NA, 1, NA, 100, NA, 20), AMT = c(320, 0, 320, 0, 320, 0),
-                    EVID = c(1, 0, 1, 0, 1, 0), CMT = 1)
+    d <- data.frame(
+      ID = rep(1:3, each = 2),
+      TIME = rep(c(0, 1), 3),
+      DV = c(NA, 1, NA, 100, NA, 20),
+      AMT = c(320, 0, 320, 0, 320, 0),
+      EVID = c(1, 0, 1, 0, 1, 0),
+      CMT = 1
+    )
 
     # subject-order-dependent by construction: the three residuals are wildly
     # different, so a reversal is unmistakable
     .check <- function(fit) {
       ll <- fit$llikObs
-      ll <- ll[!is.na(ll)]                     # drop the dose records
+      ll <- ll[!is.na(ll)] # drop the dose records
       sd <- fit$theta[["add.sd"]]
       expect_equal(ll, -log(sd) - 0.5 * ((fit$DV - fit$IPRED) / sd)^2)
     }
@@ -142,9 +173,8 @@ nmTest({
               linCmt() ~ add(add.sd) })
     }
     .fitNoEta <- suppressMessages(suppressWarnings(
-      nlmixr(noEta(), d, "focei",
-             control = foceiControl(maxOuterIterations = 0, covMethod = "",
-                                    print = 0))))
+      nlmixr(noEta(), d, "focei", control = foceiControl(maxOuterIterations = 0, covMethod = "", print = 0))
+    ))
     .check(.fitNoEta)
     # with no etas the objective IS -2 * the per-record log-likelihood
     expect_equal(-2 * sum(.fitNoEta$llikObs, na.rm = TRUE), .fitNoEta$objf)
@@ -156,9 +186,8 @@ nmTest({
               linCmt() ~ add(add.sd) })
     }
     .check(suppressMessages(suppressWarnings(
-      nlmixr(wEta(), d, "focei",
-             control = foceiControl(maxOuterIterations = 0, covMethod = "",
-                                    print = 0)))))
+      nlmixr(wEta(), d, "focei", control = foceiControl(maxOuterIterations = 0, covMethod = "", print = 0))
+    )))
   })
 
   test_that("gVid scales with the mixture replicate count", {
@@ -196,9 +225,8 @@ nmTest({
     }
 
     fit <- suppressMessages(suppressWarnings(
-      nlmixr(mixMod(), d, "focei",
-             control = foceiControl(maxOuterIterations = 0, covMethod = "",
-                                    print = 0))))
+      nlmixr(mixMod(), d, "focei", control = foceiControl(maxOuterIterations = 0, covMethod = "", print = 0))
+    ))
     expect_equal(length(fit$mixList), 2L)
     expect_equal(nrow(fit), sum(as.integer(nobsI)))
     expect_true(is.finite(fit$objf))

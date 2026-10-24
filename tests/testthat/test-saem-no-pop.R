@@ -1,6 +1,5 @@
 nmTest({
   test_that("all theta parameters are fixed", {
-
     one.compartment <- function() {
       ini({
         tka <- fixed(log(1.57))
@@ -20,7 +19,11 @@ nmTest({
     }
 
     f <- .nlmixr(
-      one.compartment, data = theo_sd, est="saem", control = saemControl(print=0, nEm=10, nBurn=10, literalFix=FALSE))
+      one.compartment,
+      data = theo_sd,
+      est = "saem",
+      control = saemControl(print = 0, nEm = 10, nBurn = 10, literalFix = FALSE)
+    )
 
     expect_true(inherits(f, "nlmixr2FitData"))
 
@@ -28,10 +31,13 @@ nmTest({
 
     expect_error(suppressMessages(m2$saemModelPred), NA)
 
-    f <-.nlmixr(
-      one.compartment, data = theo_sd, est="saem", control = saemControl(print=0, nEm=10, nBurn=10, literalFix=TRUE))
+    f <- .nlmixr(
+      one.compartment,
+      data = theo_sd,
+      est = "saem",
+      control = saemControl(print = 0, nEm = 10, nBurn = 10, literalFix = TRUE)
+    )
 
     expect_true(inherits(f, "nlmixr2FitData"))
-
   })
 })

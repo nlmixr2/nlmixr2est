@@ -10,6 +10,11 @@ on:
 
 name: pkgdown.yaml
 
+# a new commit on a pull request cancels that pull request's earlier run
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions: read-all
 
 jobs:
@@ -42,6 +47,7 @@ jobs:
             nlmixr2/dparser-R
             nlmixr2/lotri
             nlmixr2/rxode2ll
+            nlmixr2/rxode2lincmt
             nlmixr2/rxode2
             nlmixr2/PreciseSums
             nlmixr2/RcppTrust

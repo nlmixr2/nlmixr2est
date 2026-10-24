@@ -19,29 +19,34 @@
 #' @param env Environment for the fit information
 nmObjHandleModelObject <- function(model, env) {
   on.exit({
-    if (exists("model", envir=env)){
-      rm("model", envir=env)
-    }})
+    if (exists("model", envir = env, inherits = FALSE)) {
+      rm("model", envir = env)
+    }
+  })
   UseMethod("nmObjHandleModelObject")
 }
 
 #' @rdname nmObjHandleModelObject
 #' @export
 nmObjHandleModelObject.saemModelList <- function(model, env) {
-  assign("saemModel", model, envir=env)
+  assign("saemModel", model, envir = env)
 }
 
- #' @rdname nmObjHandleModelObject
+#' @rdname nmObjHandleModelObject
 #' @export
 nmObjHandleModelObject.foceiModelList <- function(model, env) {
-  assign("foceiModel", model, envir=env)
+  assign("foceiModel", model, envir = env)
 }
 
 #' @rdname nmObjHandleModelObject
 #' @export
 nmObjHandleModelObject.default <- function(model, env) {
-  stop("cannot figure out how to handle the model, add method for `nmObjHandleModelObject.", class(model)[1], "`",
-       call.=FALSE)
+  stop(
+    "cannot figure out how to handle the model, add method for `nmObjHandleModelObject.",
+    class(model)[1],
+    "`",
+    call. = FALSE
+  )
 }
 
 #' Handle the control object
@@ -54,8 +59,8 @@ nmObjHandleModelObject.default <- function(model, env) {
 #' @export
 nmObjHandleControlObject <- function(control, env) {
   on.exit({
-    if (exists("control", envir=env)) {
-      rm("control", envir=env)
+    if (exists("control", envir = env, inherits = FALSE)) {
+      rm("control", envir = env)
     }
   })
   UseMethod("nmObjHandleControlObject")
@@ -63,23 +68,23 @@ nmObjHandleControlObject <- function(control, env) {
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.foceiControl <- function(control, env) {
-  assign("foceiControl0", control, envir=env)
-}
+nmObjHandleControlObject.foceiControl <- function(control, env) assign("foceiControl0", control, envir = env)
 
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.saemControl <- function(control, env) {
-  assign("saemControl", control, envir=env)
-}
+nmObjHandleControlObject.saemControl <- function(control, env) assign("saemControl", control, envir = env)
 
 
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.default <- function(control, env) {
-  stop("cannot figure out how to handle the model, add method for `nmObjHandleControlObject.", class(control)[1], "`",
-       call.=FALSE)
+  stop(
+    "cannot figure out how to handle the model, add method for `nmObjHandleControlObject.",
+    class(control)[1],
+    "`",
+    call. = FALSE
+  )
 }
 
 #' Method for getting focei compatible control object from nlmixr object
@@ -99,13 +104,15 @@ nmObjGetFoceiControl <- function(x, ...) {
 #' @export
 nmObjGetFoceiControl.default <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("foceiControl0", .env)) {
-    return(get("foceiControl0", .env))
-  } else {
-    stop("cannot figure out how to make/retrieve the focei control\nmissing 'nmObjGetFoceiControl.",
-         class(x)[1], "'",
-         call.=FALSE)
+  if (!exists("foceiControl0", .env, inherits = FALSE)) {
+    stop(
+      "cannot figure out how to make/retrieve the focei control\nmissing 'nmObjGetFoceiControl.",
+      class(x)[1],
+      "'",
+      call. = FALSE
+    )
   }
+  get("foceiControl0", .env, inherits = FALSE)
 }
 
 #' Get control object from fit
@@ -119,36 +126,48 @@ nmObjGetControl <- function(x, ...) {
   UseMethod("nmObjGetControl")
 }
 
-#' @rdname nmObjGetControl
-#' @export
-nmObjGetControl.focei <- function(x, ...) {
+#' A fit's control of one class
+#'
+#' The body of the `nmObjGetControl()` methods.  The fit environment is
+#' searched under the method's own name, then `control`, then `others`; the
+#' first control of class `cls` is returned.  With `convert`, a control of
+#' another class is also returned when `convert(list(control))` turns it into
+#' one of class `cls`.
+#' @param x the list `nmObjGetControl()` dispatches on (the fit environment
+#'   first)
+#' @param cls class of the control (e.g. `"nlmControl"`)
+#' @param name name the method stores its control under
+#' @param others further names to search
+#' @param convert `getValidNlmixrCtl()` method converting a control, or `NULL`
+#' @return the control
+#' @noRd
+.nmObjGetControlByClass <- function(x, cls, name = cls, others = character(0), convert = NULL) {
   .env <- x[[1]]
-  if (exists("foceiControl0", .env)) {
-    .control <- get("foceiControl0", .env)
-    if (inherits(.control, "foceiControl")) return(.control)
+  for (.n in c(name, "control", others)) {
+    if (!exists(.n, .env, inherits = FALSE)) {
+      next
+    }
+    .control <- get(.n, .env, inherits = FALSE)
+    if (inherits(.control, cls)) {
+      return(.control)
+    }
+    if (is.function(convert)) {
+      .ret <- try(suppressMessages(convert(list(.control))), silent = TRUE)
+      if (inherits(.ret, cls)) {
+        return(.ret)
+      }
+    }
   }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
-    if (inherits(.control, "foceiControl")) return(.control)
-  }
-  stop("cannot find focei related control object", call.=FALSE)
+  stop("cannot find ", sub("Control$", "", cls), " related control object", call. = FALSE)
 }
 
+#' @rdname nmObjGetControl
+#' @export
+nmObjGetControl.focei <- function(x, ...) .nmObjGetControlByClass(x, "foceiControl", "foceiControl0")
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.saem <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("saemControl", .env)) {
-    .control <- get("saemControl", .env)
-    if (inherits(.control, "saemControl")) return(.control)
-  }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
-    if (inherits(.control, "saemControl")) return(.control)
-  }
-  stop("cannot find saem related control object", call.=FALSE)
-}
+nmObjGetControl.saem <- function(x, ...) .nmObjGetControlByClass(x, "saemControl")
 
 #' @rdname nmObjGetControl
 #' @export
@@ -159,8 +178,8 @@ nmObjGetControl.default <- function(x, ...) {
   # FO/FOI linearization pass, issue #517) still carry their control in the
   # raw `control` binding -- surface it so $control is not silently NULL.
   .env <- x[[1]]
-  if (is.environment(.env) && exists("control", envir=.env, inherits=FALSE)) {
-    .control <- get("control", envir=.env)
+  if (is.environment(.env) && exists("control", envir = .env, inherits = FALSE)) {
+    .control <- get("control", envir = .env, inherits = FALSE)
     if (is.list(.control)) return(.control)
   }
   NULL

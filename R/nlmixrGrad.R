@@ -30,7 +30,9 @@
 ##'
 ##' The \code{info} returns one of the following:
 ##'
-##' - "Not Assessed" Gradient wasn't assessed
+##' - "Not Assessed" Gradient wasn't assessed: the parameter is left out
+##' by \code{which}, or \code{gillK = 0}, which determines no interval and
+##' reports the one the search starts from as \code{hf}
 ##'
 ##' - "Good Success" in Estimating optimal forward difference interval
 ##'
@@ -85,14 +87,34 @@
 ##' max(abs(exact - g$df)/(1 + abs(exact)))
 ##'
 ##' @export
-nlmixr2Gill83 <- function(what, args, envir = parent.frame(),
-                         which, gillRtol = sqrt(.Machine$double.eps), gillK = 10L, gillStep = 2, gillFtol = 0) {
+nlmixr2Gill83 <- function(
+  what,
+  args,
+  envir = parent.frame(),
+  which,
+  gillRtol = sqrt(.Machine$double.eps),
+  gillK = 10L,
+  gillStep = 2,
+  gillFtol = 0
+) {
   if (missing(which)) {
     which <- rep(TRUE, length(args))
   }
-  return(nlmixr2Gill83_(what, args, envir, which,
-    gillRtol = sqrt(.Machine$double.eps), gillK = 10L, gillStep = 2, gillFtol = 0
-  ))
+  # the same checks foceiControl() makes on these options
+  checkmate::assertNumeric(gillRtol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertIntegerish(gillK, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillStep, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(gillFtol, lower = 0, len = 1, any.missing = FALSE)
+  nlmixr2Gill83_(
+    what,
+    args,
+    envir,
+    which,
+    gillRtol = gillRtol,
+    gillK = gillK,
+    gillStep = gillStep,
+    gillFtol = gillFtol
+  )
 }
 
 .nlmixr2GradInfo <- new.env(parent = emptyenv())
@@ -132,11 +154,20 @@ nlmixr2Gill83 <- function(what, args, envir = parent.frame(),
 ##' gf$hist()
 ##'
 ##' @export
-nlmixr2GradFun <- function(what, envir = parent.frame(), which, thetaNames,
-                          gillRtol = sqrt(.Machine$double.eps), gillK = 10L, gillStep = 2, gillFtol = 0,
-                          useColor = crayon::has_color(),
-                          printNcol = floor((getOption("width") - 23) / 12),
-                          print = 1) {
+nlmixr2GradFun <- function(
+  what,
+  envir = parent.frame(),
+  which,
+  thetaNames,
+  gillRtol = sqrt(.Machine$double.eps),
+  gillK = 10L,
+  gillStep = 2,
+  gillFtol = 0,
+  useColor = crayon::has_color(),
+  printNcol = floor((getOption("width") - 23) / 12),
+  print = 1
+) {
+  checkmate::assertNumeric(gillStep, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
   .md5 <- digest::digest(list(what, gillRtol, gillK, gillStep, gillFtol))
   .nlmixr2GradInfo[["printNcol"]] <- printNcol
   .nlmixr2GradInfo[["useColor"]] <- useColor
@@ -155,18 +186,42 @@ nlmixr2GradFun <- function(what, envir = parent.frame(), which, thetaNames,
   .nlmixr2GradInfo[[paste0(.md5, ".k")]] <- gillK
   .nlmixr2GradInfo[[paste0(.md5, ".s")]] <- gillStep
   .nlmixr2GradInfo[[paste0(.md5, ".ftol")]] <- gillFtol
-  .eval <- eval(parse(text = paste0("function(theta){
-        nlmixr2Eval_(theta, \"", .md5, "\");
-    }")))
-  .grad <- eval(parse(text = paste0("function(theta){
-        nlmixr2Grad_(theta, \"", .md5, "\");
-    }")))
-  .hist <- eval(parse(text = paste0("function(){
-        nlmixr2ParHist_(md5=\"", .md5, "\");
-    }")))
-  .unscaled <- eval(parse(text = paste0("function(theta){
-        nlmixr2Unscaled_(theta,md5=\"", .md5, "\");
-    }")))
+  .eval <- eval(parse(
+    text = paste0(
+      "function(theta){
+        nlmixr2Eval_(theta, \"",
+      .md5,
+      "\");
+    }"
+    )
+  ))
+  .grad <- eval(parse(
+    text = paste0(
+      "function(theta){
+        nlmixr2Grad_(theta, \"",
+      .md5,
+      "\");
+    }"
+    )
+  ))
+  .hist <- eval(parse(
+    text = paste0(
+      "function(){
+        nlmixr2ParHist_(md5=\"",
+      .md5,
+      "\");
+    }"
+    )
+  ))
+  .unscaled <- eval(parse(
+    text = paste0(
+      "function(theta){
+        nlmixr2Unscaled_(theta,md5=\"",
+      .md5,
+      "\");
+    }"
+    )
+  ))
   return(list(eval = .eval, grad = .grad, hist = .hist, unscaled = .unscaled))
 }
 
@@ -180,6 +235,10 @@ nlmixr2GradFun <- function(what, envir = parent.frame(), which, thetaNames,
 ##'
 ##' If you have an analytical gradient function, you should use
 ##' `stats::optimHess`
+##'
+##' A parameter that `which` (passed on to \code{\link{nlmixr2Gill83}}) leaves
+##' out of the step search is differenced with the interval the search would
+##' start from, the one `gillK = 0` gives every parameter.
 ##'
 ##' @inheritParams stats::optimHess
 ##' @param ... Extra arguments sent to \code{\link{nlmixr2Gill83}}
@@ -215,5 +274,18 @@ nlmixr2GradFun <- function(what, envir = parent.frame(), which, thetaNames,
 ##' h3 <- nlmixr2Hess(c(1.2,1.2), fr)
 nlmixr2Hess <- function(par, fn, ..., envir = parent.frame()) {
   .gill <- nlmixr2Gill83(fn, par, envir = envir, ...)
-  return(nlmixr2Hess_(par, fn, envir, .gill))
+  .out <- !.gill$which
+  if (any(.out)) {
+    # the parameters left out of the search get the interval it starts from
+    .args <- list(...)
+    .args$which <- .out
+    .args$gillK <- 0L
+    .start <- do.call(nlmixr2Gill83, c(list(fn, par, envir = envir), .args))
+    .gill <- list(
+      rEpsC = ifelse(.out, .start$rEpsC, .gill$rEpsC),
+      aEpsC = ifelse(.out, .start$aEpsC, .gill$aEpsC),
+      f = .start$f
+    )
+  }
+  nlmixr2Hess_(par, fn, envir, .gill)
 }

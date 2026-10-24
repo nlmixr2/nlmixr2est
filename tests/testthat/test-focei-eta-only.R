@@ -25,6 +25,5 @@ nmTest({
     f <- f()
 
     suppressMessages(expect_error(f$foceiModel, NA))
-
   })
 })

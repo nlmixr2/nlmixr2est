@@ -18,32 +18,42 @@ nmTest({
   }
 
   test_that("est=vae declares IOV support and theta+eta+iov stays mu-referenced", {
-    expect_true(isTRUE(attr(nlmixr2est:::nlmixr2Est.vae, "iov")))
+    expect_true(isTRUE(attr(nlmixr2Est.vae, "iov")))
     ## the id-level eta pairs with its theta even with the extra iov term
     ui <- rxode2::assertRxUi(.vaeIovMod())
     m <- .foceiEtaThetaMap(ui)
     expect_equal(m$thetaForEta[m$etaNames == "eta.ka"], "lka")
-    expect_true(is.na(m$thetaForEta[m$etaNames == "iov.ka"]))  # occasion effect, not mu-ref
+    expect_true(is.na(m$thetaForEta[m$etaNames == "iov.ka"])) # occasion effect, not mu-ref
   })
 
   test_that("est=vae trains an IOV model, holding the occasion etas fixed", {
     skip_on_cran()
-    dat <- nlmixr2data::theo_md; dat$occ <- 1L; dat$occ[dat$TIME >= 144] <- 2L
+    dat <- nlmixr2data::theo_md
+    dat$occ <- 1L
+    dat$occ[dat$TIME >= 144] <- 2L
     ## the IOV hook produces per-occasion fixed-variance(1) free etas
-    res <- nlmixr2est:::.uiApplyIov(rxode2::assertRxUi(.vaeIovMod()), "vae", dat, vaeControl())
+    res <- .uiApplyIov(rxode2::assertRxUi(.vaeIovMod()), "vae", dat, vaeControl())
     .eta <- res$ui$iniDf[!is.na(res$ui$iniDf$neta1), ]
-    expect_true(all(.eta$fix[grepl("^rx\\.iov", .eta$name)]))            # variance fixed
-    prep <- nlmixr2est:::.vaeDataPrep(res$ui, dat)
-    expect_true(all(prep$isFree[grepl("^rx\\.iov", prep$etaNames)]))     # theta forced to 0
+    expect_true(all(.eta$fix[grepl("^rx\\.iov", .eta$name)])) # variance fixed
+    prep <- .vaeDataPrep(res$ui, dat)
+    expect_true(all(prep$isFree[grepl("^rx\\.iov", prep$etaNames)])) # theta forced to 0
 
-    ctl <- vaeControl(itersBurnIn = 15L, iters = 40L, klWarmup = 12L, gammaIter = 25L,
-                      nGradStep = 3L, covariateSelection = FALSE, returnVae = TRUE, seed = 1L)
+    ctl <- vaeControl(
+      itersBurnIn = 15L,
+      iters = 40L,
+      klWarmup = 12L,
+      gammaIter = 25L,
+      nGradStep = 3L,
+      covariateSelection = FALSE,
+      returnVae = TRUE,
+      seed = 1L
+    )
     fit <- suppressMessages(suppressWarnings(nlmixr2(.vaeIovMod(), dat, est = "vae", control = ctl)))
     .iov <- grepl("^rx\\.iov", fit$prep$etaNames)
     expect_true(all(is.finite(fit$zPop)))
-    expect_true(all(fit$zPop[.iov] == 0))          # occasion etas centered at 0
-    expect_true(all(fit$omega[.iov] == 1))         # occasion-eta variance held at 1
-    expect_true(all(fit$omega[!.iov] > 0))         # id-level omegas estimated
+    expect_true(all(fit$zPop[.iov] == 0)) # occasion etas centered at 0
+    expect_true(all(fit$omega[.iov] == 1)) # occasion-eta variance held at 1
+    expect_true(all(fit$omega[!.iov] > 0)) # id-level omegas estimated
   })
 
   test_that("est=vae builds a full IOV fit object (returnVae=FALSE)", {
@@ -56,11 +66,19 @@ nmTest({
     ## variance 1), and vaeControl() must supply a numeric `sigdig`, since
     ## .uiFinalizeIov does signif(x, digits = control$sigdig) and a NULL there
     ## raises "invalid second argument of length 0".
-    dat <- nlmixr2data::theo_md; dat$occ <- 1L; dat$occ[dat$TIME >= 144] <- 2L
-    ctl <- vaeControl(itersBurnIn = 8L, iters = 16L, klWarmup = 4L, gammaIter = 12L,
-                      covariateSelection = FALSE, print = 0L, calcTables = FALSE)
-    fit <- suppressMessages(suppressWarnings(nlmixr2(.vaeIovMod(), dat, est = "vae",
-                                                     control = ctl)))
+    dat <- nlmixr2data::theo_md
+    dat$occ <- 1L
+    dat$occ[dat$TIME >= 144] <- 2L
+    ctl <- vaeControl(
+      itersBurnIn = 8L,
+      iters = 16L,
+      klWarmup = 4L,
+      gammaIter = 12L,
+      covariateSelection = FALSE,
+      print = 0L,
+      calcTables = FALSE
+    )
+    fit <- suppressMessages(suppressWarnings(nlmixr2(.vaeIovMod(), dat, est = "vae", control = ctl)))
     expect_true(inherits(fit, "nlmixr2FitCore"))
     expect_true(is.finite(fit$objf))
     ## the occasion effects are reported under $iov, and the IOV magnitude theta is

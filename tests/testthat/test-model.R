@@ -1,6 +1,5 @@
 nmTest({
   test_that("model piping", {
-
     # Use centralized fit from helper-fits.R
     f <- one.compartment.with.lag.fit.saem
 

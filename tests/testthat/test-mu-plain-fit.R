@@ -39,8 +39,7 @@ nmTest({
   test_that("ifocei profiles plain mu thetas out of the outer optimizer", {
     fit <- .getCachedFit(
       name = "mu-plain-ifocei",
-      fitFn = function() .nlmixr(.ocmt, theo_sd, "ifocei",
-                                 ifoceiControl(print = 0)),
+      fitFn = function() .nlmixr(.ocmt, theo_sd, "ifocei", ifoceiControl(print = 0)),
       cacheFile = "fit-mu-plain-ifocei.rds"
     )
     # same optimum as plain focei (different path)
@@ -53,16 +52,15 @@ nmTest({
     }
     # only add.sd + the omegas were outer-optimized
     expect_equal(
-      nlmixr2est:::.foceiMuSkipThetaNames(fit$ui,
-        fit$ui$iniDf$name[!is.na(fit$ui$iniDf$ntheta)]),
-      c("tka", "tcl", "tv"))
+      .foceiMuSkipThetaNames(fit$ui, fit$ui$iniDf$name[!is.na(fit$ui$iniDf$ntheta)]),
+      c("tka", "tcl", "tv")
+    )
   })
 
   test_that("mfocei profiles plain mu thetas out of the outer optimizer", {
     fit <- .getCachedFit(
       name = "mu-plain-mfocei",
-      fitFn = function() .nlmixr(.ocmt, theo_sd, "mfocei",
-                                 mfoceiControl(print = 0)),
+      fitFn = function() .nlmixr(.ocmt, theo_sd, "mfocei", mfoceiControl(print = 0)),
       cacheFile = "fit-mu-plain-mfocei.rds"
     )
     expect_equal(unname(fit$theta), unname(fitFocei$theta), tolerance = 0.05)
@@ -72,8 +70,7 @@ nmTest({
   test_that("ifoceif consumes the analytic gradient on the plain-profiled set", {
     fit <- .getCachedFit(
       name = "mu-plain-ifoceif",
-      fitFn = function() .nlmixr(.ocmt, theo_sd, "ifoceif",
-                                 ifoceiControl(print = 1)),
+      fitFn = function() .nlmixr(.ocmt, theo_sd, "ifoceif", ifoceiControl(print = 1)),
       cacheFile = "fit-mu-plain-ifoceif.rds"
     )
     expect_equal(unname(fit$theta), unname(fitFocei$theta), tolerance = 0.05)
@@ -85,11 +82,17 @@ nmTest({
     # mu thetas are regression-updated but print as standard scale.h columns in
     # natural theta order; the bolt-on `|   mu|` row was removed (the full
     # layout/parHist checks live in test-mu-parhist.R)
-    out <- withr::with_options(list(width = 200), capture.output({
-      nlmixr2est::nlmixr(.ocmt, theo_sd, "ifocei",
-                         ifoceiControl(print = 1, maxOuterIterations = 2,
-                                          covMethod = "", calcTables = FALSE))
-    }))
+    out <- withr::with_options(
+      list(width = 200),
+      capture.output({
+        nlmixr2est::nlmixr(
+          .ocmt,
+          theo_sd,
+          "ifocei",
+          ifoceiControl(print = 1, maxOuterIterations = 2, covMethod = "", calcTables = FALSE)
+        )
+      })
+    )
     expect_false(any(grepl("^\\|   mu\\|", out)))
     headerRows <- grep("^\\|    #\\|", out, value = TRUE)
     expect_true(length(headerRows) > 0)
@@ -142,9 +145,9 @@ nmTest({
   test_that("a bounded mu theta is profiled (clamped regression), inactive bound matches unbounded", {
     fit <- .getCachedFit(
       name = "mu-plain-irls-bounded",
-      fitFn = function() .nlmixr(.ocmtBnd, theo_sd, "ifocei",
-                                 ifoceiControl(print = 0, covMethod = "",
-                                                  calcTables = FALSE)),
+      fitFn = function() {
+        .nlmixr(.ocmtBnd, theo_sd, "ifocei", ifoceiControl(print = 0, covMethod = "", calcTables = FALSE))
+      },
       cacheFile = "fit-mu-plain-irls-bounded.rds"
     )
     ## NOT cached: unlike fitFocei above, both arms here are ifocei -- the reference is
@@ -153,15 +156,19 @@ nmTest({
     ## absolute pin that a legitimate ifocei change breaks.
     fitFree <- .getCachedFit(
       name = "mu-plain-irls-free",
-      fitFn = function() .nlmixr(.ocmt, theo_sd, "ifocei",
-                                 ifoceiControl(print = 0, covMethod = "",
-                                                  calcTables = FALSE)),
+      fitFn = function() {
+        .nlmixr(.ocmt, theo_sd, "ifocei", ifoceiControl(print = 0, covMethod = "", calcTables = FALSE))
+      },
       cacheFile = "fit-mu-plain-irls-free.rds"
     )
     # tcl is profiled out despite its bounds
-    expect_true("tcl" %in%
-                  nlmixr2est:::.foceiMuSkipThetaNames(
-                    fit$ui, fit$ui$iniDf$name[!is.na(fit$ui$iniDf$ntheta)]))
+    expect_true(
+      "tcl" %in%
+        .foceiMuSkipThetaNames(
+          fit$ui,
+          fit$ui$iniDf$name[!is.na(fit$ui$iniDf$ntheta)]
+        )
+    )
     # the interior optimum is unaffected by the inactive bound
     expect_equal(unname(fit$theta), unname(fitFree$theta), tolerance = 1e-4)
     expect_equal(fit$objf, fitFree$objf, tolerance = 1e-4)
@@ -170,9 +177,9 @@ nmTest({
   test_that("an active bound clamps the regression update and is reported once", {
     fit <- .getCachedFit(
       name = "mu-plain-irls-clamped",
-      fitFn = function() .nlmixr(.ocmtClamp, theo_sd, "ifocei",
-                                 ifoceiControl(print = 0, covMethod = "",
-                                                  calcTables = FALSE)),
+      fitFn = function() {
+        .nlmixr(.ocmtClamp, theo_sd, "ifocei", ifoceiControl(print = 0, covMethod = "", calcTables = FALSE))
+      },
       cacheFile = "fit-mu-plain-irls-clamped.rds"
     )
     # pinned exactly at the upper bound
@@ -185,8 +192,7 @@ nmTest({
     # plain focei with the same bound ends at the same place
     ## plain-FOCEI reference, cached as a value -- see the note on fitFocei above
     fitFocei2 <- .numRef("fit-mu-plain-focei-clamped", function() {
-      .f <- .nlmixr(.ocmtClamp, theo_sd, "focei",
-                    foceiControl(print = 0, covMethod = "", calcTables = FALSE))
+      .f <- .nlmixr(.ocmtClamp, theo_sd, "focei", foceiControl(print = 0, covMethod = "", calcTables = FALSE))
       list(theta = .f$theta, objf = .f$objf)
     })
     expect_equal(unname(fitFocei2$theta["tka"]), 0.2, tolerance = 1e-3)
@@ -194,10 +200,14 @@ nmTest({
     # a single-pass clamp cap still yields a feasible (in-bounds) fit
     fit1 <- .getCachedFit(
       name = "mu-plain-irls-clamp1",
-      fitFn = function() .nlmixr(.ocmtClamp, theo_sd, "ifocei",
-                                 ifoceiControl(print = 0, covMethod = "",
-                                                  calcTables = FALSE,
-                                                  muModelClampRetries = 1L)),
+      fitFn = function() {
+        .nlmixr(
+          .ocmtClamp,
+          theo_sd,
+          "ifocei",
+          ifoceiControl(print = 0, covMethod = "", calcTables = FALSE, muModelClampRetries = 1L)
+        )
+      },
       cacheFile = "fit-mu-plain-irls-clamp1.rds"
     )
     expect_true(unname(fit1$theta["tka"]) <= 0.2)

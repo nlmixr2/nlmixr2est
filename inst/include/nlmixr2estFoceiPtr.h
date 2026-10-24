@@ -17,9 +17,10 @@
 //  - a problem must be loaded with nlmixr2est::foceiLikLoad() before any
 //    entry other than the version query is used; entries report "not loaded"
 //    by return code rather than erroring.
+//    outerHessian instead requires an active fast optimization.
 //
 // NONE of these entry points longjmp (Rf_error/stop) or let a C++ exception
-// escape, with one documented exception: nlmixr2FoceiSetTheta calls back into
+// escape. nlmixr2FoceiSetTheta and outerHessian can call back into
 // R (the Omega rebuild) and therefore contains any R error with
 // R_ToplevelExec, reporting it as a return code -- but it may only be called
 // from the main R thread, never from a worker or a parallel region.  All
@@ -165,6 +166,14 @@ extern "C" {
                                                   double *gradEta,
                                                   double *dTheta);
 
+  /* Active fast FOCE-family optimization only, on the main R thread. Settles theta
+     as an objective evaluation would; sensitivity probes restore that point.
+     Hessian is column-major npars x npars, in optimizer coordinates.
+     0 success, -1 inactive, -2 bad input, -3 evaluation error, -4 unavailable.
+     R errors and C++ exceptions do not escape this entry. */
+  typedef int (*nlmixr2FoceiOuterHessian_t)(const double *theta, int npars,
+                                          double relStep, double *hessian);
+
   extern nlmixr2FoceiApiVersion_t    nlmixr2FoceiApiVersionP;
   extern nlmixr2FoceiDims_t          nlmixr2FoceiDimsP;
   extern nlmixr2FoceiSetTheta_t      nlmixr2FoceiSetThetaP;
@@ -175,6 +184,7 @@ extern "C" {
   extern nlmixr2FoceiNMix_t          nlmixr2FoceiNMixP;
   extern nlmixr2FoceiIterPrintRow_t  nlmixr2FoceiIterPrintRowP;
   extern nlmixr2FoceiCondBatchThetaGrad_t nlmixr2FoceiCondBatchThetaGradP;
+  extern nlmixr2FoceiOuterHessian_t nlmixr2FoceiOuterHessianP;
 
   // Always refresh: a reloaded nlmixr2est hands back new addresses, and
   // keeping the first set seen would leave the caller calling into an
@@ -196,6 +206,8 @@ extern "C" {
       (nlmixr2FoceiIterPrintRow_t) R_ExternalPtrAddrFn(VECTOR_ELT(p, 8)) : NULL;
     nlmixr2FoceiCondBatchThetaGradP = (Rf_xlength(p) > 9) ?
       (nlmixr2FoceiCondBatchThetaGrad_t) R_ExternalPtrAddrFn(VECTOR_ELT(p, 9)) : NULL;
+    nlmixr2FoceiOuterHessianP = (Rf_xlength(p) > 10) ?
+      (nlmixr2FoceiOuterHessian_t) R_ExternalPtrAddrFn(VECTOR_ELT(p, 10)) : NULL;
     return R_NilValue;
   }
 
@@ -210,6 +222,7 @@ extern "C" {
   nlmixr2FoceiNMix_t          nlmixr2FoceiNMixP          = NULL;        \
   nlmixr2FoceiIterPrintRow_t  nlmixr2FoceiIterPrintRowP  = NULL;        \
   nlmixr2FoceiCondBatchThetaGrad_t nlmixr2FoceiCondBatchThetaGradP = NULL; \
+  nlmixr2FoceiOuterHessian_t nlmixr2FoceiOuterHessianP = NULL;           \
   SEXP iniNlmixr2estFocei(SEXP p) { return iniNlmixr2estFocei0(p); }
 
 #ifdef __cplusplus

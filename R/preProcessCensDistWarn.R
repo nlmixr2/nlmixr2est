@@ -26,38 +26,64 @@ NULL
 #' @return logical
 #' @noRd
 .nlmixrDataHasCens <- function(data) {
-  if (!is.data.frame(data)) return(FALSE)
+  if (!is.data.frame(data)) {
+    return(FALSE)
+  }
   .nms <- tolower(names(data))
   .w <- which(.nms == "cens")
-  if (length(.w) == 1L && isTRUE(any(data[[.w]] != 0, na.rm = TRUE))) return(TRUE)
+  if (length(.w) == 1L && isTRUE(any(data[[.w]] != 0, na.rm = TRUE))) {
+    return(TRUE)
+  }
   .w <- which(.nms == "limit")
   length(.w) == 1L && isTRUE(any(is.finite(data[[.w]]), na.rm = TRUE))
 }
 
 .preProcessCensDistWarn <- function(ui, est, data, control) {
-  if (identical(est, "nls")) return(list(ui = ui))
+  if (identical(est, "nls")) {
+    return(list(ui = ui))
+  }
   # t()/cauchy() M2/M3/M4 is wired for two kernels: src/nlm.cpp's
   # population-only one (#979) and src/inner.cpp's likInner0 (#992, which also
   # supplies the eta gradient).  Methods built on some OTHER kernel -- SAEM,
   # the importance-sampling family (imp/impmap/qrpem), nlme, the nonparametric
   # engines -- keep t()/cauchy() in the unsafe set.
-  .nlmFamily <- c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb",
-                  "optim", "uobyqa")
+  .nlmFamily <- c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim", "uobyqa")
   # `fo`/`foi` are deliberately absent: they hard-stop on censoring rather
   # than ignoring it.
-  .foceiFamily <- c("focei", "foce", "focep", "laplace", "agq", "posthoc",
-                    "ifocei", "ifoce", "ifocep", "ilaplace", "iagq",
-                    "mfocei", "mfoce", "mfocep", "mlaplace", "magq")
+  .foceiFamily <- c(
+    "focei",
+    "foce",
+    "focep",
+    "laplace",
+    "agq",
+    "posthoc",
+    "ifocei",
+    "ifoce",
+    "ifocep",
+    "ilaplace",
+    "iagq",
+    "mfocei",
+    "mfoce",
+    "mfocep",
+    "mlaplace",
+    "magq"
+  )
   .safe <- if (isTRUE(est %in% c(.nlmFamily, .foceiFamily))) {
     c("norm", "dnorm", "t", "cauchy")
   } else {
     c("norm", "dnorm")
   }
   .predDf <- tryCatch(ui$predDf, error = function(e) NULL)
-  if (is.null(.predDf) || nrow(.predDf) == 0) return(list(ui = ui))
+  if (is.null(.predDf) || nrow(.predDf) == 0) {
+    return(list(ui = ui))
+  }
   .unsafeDist <- unique(.predDf$distribution[!(.predDf$distribution %in% .safe)])
-  if (length(.unsafeDist) == 0) return(list(ui = ui))
-  if (!.nlmixrDataHasCens(data)) return(list(ui = ui))
+  if (length(.unsafeDist) == 0) {
+    return(list(ui = ui))
+  }
+  if (!.nlmixrDataHasCens(data)) {
+    return(list(ui = ui))
+  }
   for (.d in .unsafeDist) {
     warning(paste0("censoring ignored for '", .d, "' endpoint(s)"), call. = FALSE)
   }

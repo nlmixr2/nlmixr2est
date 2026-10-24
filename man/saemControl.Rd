@@ -14,6 +14,8 @@ saemControl(
   trace = 0,
   covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
   covMethodDeferred = NA_character_,
+  covFallback = list(sa = c("linFim", "Ha"), fim = c("linFim", "Ha"), analytic =
+    c("linFim", "Ha"), linFim = "Ha"),
   covFull = TRUE,
   nSaCov = 500L,
   calcTables = TRUE,
@@ -90,7 +92,8 @@ computation.  In Monolix this is equivalent to \code{L}.}
     numbers of transitions of the three different kernels used in
     the Hasting-Metropolis algorithm.  The default value is \code{c(2,2,2)},
     representing 40 for each transition initially (each value is
-    multiplied by 20).
+    multiplied by 20).  When unset, a residual error model that depends on
+    an eta uses \code{c(4,4,4)}, since its chains mix more slowly.
 
     The first value represents the initial number of multi-variate
     Gibbs samples are taken from a normal distribution.
@@ -147,13 +150,22 @@ typical fitting.}
 
  Neither is used for a general log-likelihood endpoint (\code{ll()}), which has
  no residual error to anchor the complete-data correction; such a model goes
- straight to \code{linFim} with a message.
+ straight to \code{linFim} with a message.  This includes a residual error with
+ modeled components (\code{a <- add.sd*exp(eta.sd); cp ~ add(a)}), which saem
+ fits as \code{cp ~ add(a) + dnorm()}.
 
- "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
-
- "\code{r}" Uses the Hessian matrix to calculate the covariance as \eqn{2\times R^-1}
-
- "\code{s}" Uses the crossproduct matrix to calculate the covariance as \eqn{4\times S^-1}
+ "\code{r,s}", "\code{r}" and "\code{s}" compute no R or S matrix in
+ \code{saem}: all three invert the structural-theta block of the
+ estimation-phase information matrix (\code{fit$saem$Ha}, the matrix
+ \code{fim} inverts in full).  The result covers the estimated mu-referenced
+ thetas only, conditional on the \code{Omega} and residual parameters; a
+ theta without a random effect has no row in it and gets no standard error.
+ It is installed as \code{fit$covMethod == "Ha"}, or
+ \code{"|Ha|"} when the block was not positive definite and was
+ replaced by \code{sqrtm(Ha \%*\% Ha)}.  For the finite-difference R and S
+ covariances at the SAEM estimates use \code{setCov(fit, "r,s")}.  An integer
+ \code{covMethod} is a \code{foceiControl()} slot: \code{0} is no covariance,
+ \code{1}, \code{2} and \code{3} are \code{"r,s"}, \code{"r"} and \code{"s"}.
 
  "" Does not calculate the covariance step.}
 
@@ -161,6 +173,15 @@ typical fitting.}
 is requested, it is stashed here and computed post-fit at the converged
 estimates by the decoupled recompute engine (\code{setCov()} uses the same
 path); \code{NA} otherwise.}
+
+\item{covFallback}{what each \code{covMethod} falls back to when it gives no
+usable covariance: a named list, one element per method, each the ordered
+methods to try instead (\code{"sa"}, \code{"fim"}, \code{"linFim"} or
+\code{"Ha"}, the inverse of the information matrix's theta block).  The
+default is the established behaviour: \code{"sa"}, \code{"fim"} and
+\code{"analytic"} fall to \code{"linFim"} then \code{"Ha"}, and
+\code{"linFim"} to \code{"Ha"}.  A list you give replaces the default: a
+method it does not name has no fallback.}
 
 \item{covFull}{Boolean (default \code{TRUE}) indicating the covariance
 should include every estimated population parameter -- the structural and
@@ -170,7 +191,8 @@ structural-theta-only covariance is reported.  Ignored by
 \code{covMethod="sa"}, which is always full.}
 
 \item{nSaCov}{Number of iterations in the dedicated stochastic-approximation
-covariance phase used by \code{covMethod="sa"} (default \code{500}).  These
+covariance phase used by \code{covMethod="sa"}, a whole number of at least 1
+(default \code{500}).  These
 iterations run at the converged estimate (parameters frozen) and only
 resimulate the individual parameters to build the observed Fisher
 information; a larger value gives a less noisy covariance.  Ignored by other
@@ -184,7 +206,7 @@ calculate by Gaussian quadrature.}
 
 \item{nnodesGq}{number of nodes to use for the Gaussian
 quadrature when computing the likelihood with this method
-(defaults to 1, equivalent to the Laplacian likelihood)}
+(defaults to 3; 1 is the Laplacian likelihood; at most 25)}
 
 \item{nsdGq}{span (in SD) over which to integrate when computing
 the likelihood by Gaussian quadrature. Defaults to 3 (eg 3
@@ -223,9 +245,11 @@ of iterations is itmax*number of parameters}
 
 \item{type}{indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")}
 
-\item{powRange}{This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(-10, 10)}
+\item{powRange}{This indicates the range that powers can take for residual errors;
+By default this is 10 indicating the range is c(-10, 10)}
 
-\item{lambdaRange}{This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range c(-3,3)}
+\item{lambdaRange}{This indicates the range that Box-Cox and Yeo-Johnson parameters are
+constrained to be;  The default is 3 indicating the range c(-3,3)}
 
 \item{odeRecalcFactor}{The ODE recalculation factor when ODE
 solving goes bad, this is the factor the rtol/atol is reduced}
@@ -349,7 +373,11 @@ rest of the fit.  Skipped for mixture models and when
 `handleUninformativeEtas=FALSE`.}
 
 \item{iovXform}{Transformation used on the diagonal of the IOV: one of
-\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.}
+\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.
+This parameterizes the magnitude theta of the \code{"theta"}
+\code{iovMethod}; it has no effect under \code{"omega"}, where the
+magnitude is fixed at one and the variability is carried by the
+omega block itself.}
 
 \item{iovMethod}{How inter-occasion variability (`iov.x ~ v | occ`) is
 estimated.  \code{"theta"} uses the shared pre-processing rewrite, which

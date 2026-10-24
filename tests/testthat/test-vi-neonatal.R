@@ -9,8 +9,7 @@
 nmTest({
   test_that("est='advi' fits the neonatal turnover model (no covariate selection)", {
     skip_on_cran()
-    skip_if_not(exists("neonatal_wt", where = asNamespace("nlmixr2data")),
-                "nlmixr2data::neonatal_wt not available")
+    skip_if_not(exists("neonatal_wt", where = asNamespace("nlmixr2data")), "nlmixr2data::neonatal_wt not available")
     neonatal <- function() {
       ini({ lW0 <- log(3000); lkin <- log(30); lTL <- log(2)
         lkoutmax <- log(0.05); lT50 <- log(1)
@@ -25,8 +24,8 @@ nmTest({
     }
     dat <- get("neonatal_wt", envir = asNamespace("nlmixr2data"))
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(neonatal, dat, est = "emvi",
-              control = emviControl(iters = 400L, print = 0L, returnVi = TRUE))))
+      nlmixr2(neonatal, dat, est = "emvi", control = emviControl(iters = 400L, print = 0L, returnVi = TRUE))
+    ))
 
     ## all five structural typical values + the two error params estimated finite
     expect_true(all(is.finite(fit$theta)))
@@ -34,13 +33,13 @@ nmTest({
     ## typical birth weight in a physiologically sane range (grams), matching the
     ## vae fit's canonical result
     bw <- exp(fit$theta[1])
-    expect_gt(bw, 2500); expect_lt(bw, 5000)
+    expect_gt(bw, 2500)
+    expect_lt(bw, 5000)
   })
 
   test_that("est='advi' assembles a full neonatal fit object", {
     skip_on_cran()
-    skip_if_not(exists("neonatal_wt", where = asNamespace("nlmixr2data")),
-                "nlmixr2data::neonatal_wt not available")
+    skip_if_not(exists("neonatal_wt", where = asNamespace("nlmixr2data")), "nlmixr2data::neonatal_wt not available")
     neonatal <- function() {
       ini({ lW0 <- log(3000); lkin <- log(30); lTL <- log(2)
         lkoutmax <- log(0.05); lT50 <- log(1)
@@ -55,7 +54,8 @@ nmTest({
     }
     dat <- get("neonatal_wt", envir = asNamespace("nlmixr2data"))
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(neonatal, dat, est = "emvi", control = emviControl(iters = 400L, print = 0L))))
+      nlmixr2(neonatal, dat, est = "emvi", control = emviControl(iters = 400L, print = 0L))
+    ))
     expect_s3_class(fit, "nlmixr2FitData")
     expect_true(is.finite(fit$objf))
     expect_true(all(c("IPRED", "CWRES") %in% names(fit)))

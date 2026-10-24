@@ -26,10 +26,21 @@ nmTest({
     ## search would otherwise decide the coefficient NAMES (lka picks "lin" and
     ## lV "power" by default), making this test about which shape wins rather
     ## than about the fit accessors it is here to check.
-    f <- nlmixr2(theo, nlmixr2data::theo_sd, est = "vae",
-                 control = vaeControl(itersBurnIn = 80L, klWarmup = 40L, gammaIter = 120L,
-                                      iters = 160L, hiddenDim = 25L, seed = 1L,
-                                      shapes = "power", covCenterType = "mean"))
+    f <- nlmixr2(
+      theo,
+      nlmixr2data::theo_sd,
+      est = "vae",
+      control = vaeControl(
+        itersBurnIn = 80L,
+        klWarmup = 40L,
+        gammaIter = 120L,
+        iters = 160L,
+        hiddenDim = 25L,
+        seed = 1L,
+        shapes = "power",
+        covCenterType = "mean"
+      )
+    )
     expect_s3_class(f, "nlmixr2FitData")
 
     ## selected covariate coefficients are population parameters in the fit

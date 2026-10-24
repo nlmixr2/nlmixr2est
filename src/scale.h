@@ -22,6 +22,12 @@
 #define normTypeLen      5
 #define normTypeConstant 6
 
+// The rule scaleGetScaleC() fills an NA scaleC entry by: 1/|init| (1/(2|init|)
+// for the chol(Omega^-1) codes 4 and 5), with |init| floored at scaleCmin
+// (Floor) or with unit scaling when init is 0 (Unit, focei).
+#define scaleCdefaultFloor 0
+#define scaleCdefaultUnit  1
+
 struct scaling {
   int npars; // number of parameters
   int scaleType; // scaling type
@@ -31,6 +37,9 @@ struct scaling {
   double c2; // internal scaling constant
   double scaleCmin; // Cmin scaling constant
   double scaleCmax; // Cmax scaling constant
+  // the NA scaleC default rule, which focei_options (src/inner.cpp) declares
+  // under the same name
+  int scaleCdefault = scaleCdefaultFloor;
   // Iteration-print formatting, populated via scaleApplyIterPrintControl();
   // field names mirror iterPrintControl()'s R argument names.
   int useColor;
@@ -97,12 +106,63 @@ struct scaling {
 #define iterTypeSens 8
 };
 
-static inline void scaleNone(scaling *scale) {
-  scale->scaleType= scaleTypeNone;
-  scale->normType=normTypeConstant;
-  scale->scaleTo = 0.0;
-  scale->every = 0;
-  scale->save = 0;
+// The normalization of normType, scaled = (v - c1)/c2, from the npars initial
+// values v: rescale2 to (-1, 1), rescale to (0, 1), mean centred with range 1,
+// std to mean 0 and sd 1, len to unit length, constant none.  Values that are
+// all equal switch to len, and values that are all zero to constant, with a
+// warning; *normType is set to the rule used.  The scaling of the nlm family
+// (scaleSetup()) and of the FOCEi outer problem (foceiSetup_()) both use it.
+static inline void scaleNormalize(const double *v, int npars, int *normType,
+                                  double *c1, double *c2) {
+  if (*normType < normTypeRescale2 || *normType > normTypeConstant) {
+    stop("unrecognized normalization (normType=%d)", *normType);
+  }
+  *c1 = 0;
+  *c2 = 1;
+  if (npars <= 0) return;
+  double mn = R_PosInf, mx = R_NegInf, mean = 0, oN = 0, oM = 0, s = 0, len = 0;
+  for (int k = npars; k-- > 0;) {
+    mn = min2(v[k], mn);
+    mx = max2(v[k], mx);
+    oM = mean;
+    oN++;
+    mean += (v[k] - mean)/oN;
+    s += (v[k] - mean)*(v[k] - oM);
+    len += v[k]*v[k];
+  }
+  if (*normType <= normTypeStd && fabs(mx - mn) < DBL_EPSILON) {
+    if (len >= DBL_EPSILON) {
+      warning(_("all parameters are the same value, switch to length normType"));
+    }
+    *normType = normTypeLen;
+  }
+  if (*normType == normTypeLen && len < DBL_EPSILON) {
+    warning(_("all parameters are zero, cannot scale, run unscaled"));
+    *normType = normTypeConstant;
+  }
+  switch (*normType) {
+  case normTypeRescale2:
+    // OptdesX
+    // http://apmonitor.com/me575/uploads/Main/optimization_book.pdf
+    *c1 = (mx + mn)/2;
+    *c2 = (mx - mn)/2;
+    break;
+  case normTypeRescale: // min-max normalization
+    *c1 = mn;
+    *c2 = mx - mn;
+    break;
+  case normTypeMean:
+    *c1 = mean;
+    *c2 = mx - mn;
+    break;
+  case normTypeStd:
+    *c1 = mean;
+    *c2 = sqrt(s/(oN - 1));
+    break;
+  case normTypeLen:
+    *c2 = sqrt(len);
+    break;
+  }
 }
 
 // Sets scale/print fields not coming from the R-side xform sub-list; the six
@@ -149,6 +209,7 @@ static inline void scaleSetup(scaling *scale,
   scale->scaleCmin = scaleCmin;
   scale->scaleCmax = scaleCmax;
   scale->scaleTo = scaleTo;
+  scale->scaleCdefault = scaleCdefaultFloor;
 
   scale->vGrad.clear();
   scale->vPar.clear();
@@ -159,185 +220,53 @@ static inline void scaleSetup(scaling *scale,
 
   scale->cn = 0;
 
-  double mn = scale->initPar[scale->npars-1],
-    mx=scale->initPar[scale->npars-1],
-    mean=0, oN=0, oM=0,s=0;
-  double len=0;
-  // `for (unsigned int k = scale->npars; k-- > 0;)` visits k=npars-1 down to
-  // 0 inclusive (the previous `for (k = scale->npars-1; k--;)` form skipped
-  // k=npars-1: k-- as the condition tests the PRE-decrement value, so the
-  // first body execution already saw the post-decrement k, silently leaving
-  // scale->scaleC[npars-1] unreset and dropping the top parameter from the
-  // mean/std/len accumulators below -- issue #995).
-  switch (scale->normType){
-  case normTypeRescale2:
-    // OptdesX
-    // http://apmonitor.com/me575/uploads/Main/optimization_book.pdf
-    for (unsigned int k = scale->npars; k-- > 0;){
-      mn = min2(scale->initPar[k],mn);
-      mx = max2(scale->initPar[k],mx);
-      scale->scaleC[k] = NA_REAL;
-    }
-    if (fabs(mx-mn) < DBL_EPSILON) {
-      for (unsigned int k = scale->npars; k-- > 0;){
-        len += scale->initPar[k]*scale->initPar[k];
-      }
-      if (len < DBL_EPSILON){
-        warning(_("all parameters are zero, cannot scale, run unscaled"));
-        scale->c1 = 0;
-        scale->c2 = 1;
-        scale->normType = normTypeConstant;
-      } else {
-        warning(_("all parameters are the same value, switch to length normType"));
-        scale->c1 = 0;
-        scale->c2 = sqrt(len);
-        scale->normType = 5;
-      }
-    } else {
-      scale->c1 = (mx+mn)/2;
-      scale->c2 = (mx-mn)/2;
-    }
-    break;
-  case normTypeRescale: // Rescaling (min-max normalization)
-    for (unsigned int k = scale->npars; k-- > 0;){
-      mn = min2(scale->initPar[k],mn);
-      mx = max2(scale->initPar[k],mx);
-      scale->scaleC[k] = NA_REAL;
-    }
-    if (fabs(mx-mn) < DBL_EPSILON) {
-      for (unsigned int k = scale->npars; k-- > 0;){
-        len += scale->initPar[k]*scale->initPar[k];
-      }
-      if (len < DBL_EPSILON){
-        warning(_("all parameters are zero, cannot scale, run unscaled"));
-        scale->c1 = 0;
-        scale->c2 = 1;
-        scale->normType = normTypeConstant;
-      } else {
-        warning(_("all parameters are the same value, switch to length normType"));
-        scale->c1 = 0;
-        scale->c2 = sqrt(len);
-        scale->normType = 5;
-      }
-    } else {
-      scale->c1 = mn;
-      scale->c2 = (mx-mn);
-    }
-    break;
-  case normTypeMean: // Mean normalization
-    for (unsigned int k = scale->npars; k-- > 0;){
-      mn = min2(scale->initPar[k],mn);
-      mx = max2(scale->initPar[k],mx);
-      oN++;
-      mean += (scale->initPar[k]-mean)/oN;
-      scale->scaleC[k] = NA_REAL;
-    }
-    if (fabs(mx-mn) < DBL_EPSILON) {
-      for (unsigned int k = scale->npars; k-- > 0;){
-        len += scale->initPar[k]*scale->initPar[k];
-      }
-      if (len < DBL_EPSILON){
-        warning(_("all parameters are zero, cannot scale, run unscaled"));
-        scale->c1 = 0;
-        scale->c2 = 1;
-        scale->normType = normTypeConstant;
-      } else {
-        warning(_("all parameters are the same value, switch to length normType"));
-        scale->c1 = 0;
-        scale->c2 = sqrt(len);
-        scale->normType = 5;
-      }
-    } else {
-      scale->c1 = mean;
-      scale->c2 = (mx-mn);
-    }
-    break;
-  case normTypeStd: // Standardization
-    for (unsigned int k = scale->npars; k-- > 0;){
-      mn = min2(scale->initPar[k],mn);
-      mx = max2(scale->initPar[k],mx);
-      oM= mean;
-      oN++;
-      mean += (scale->initPar[k]-mean)/oN;
-      s += (scale->initPar[k]-mean)*(scale->initPar[k]-oM);
-      scale->scaleC[k] = NA_REAL;
-    }
-    if (fabs(mx-mn) < DBL_EPSILON) {
-      for (unsigned int k = scale->npars; k-- > 0;){
-        len += scale->initPar[k]*scale->initPar[k];
-      }
-      if (len < DBL_EPSILON){
-        warning(_("all parameters are zero, cannot scale, run unscaled"));
-        scale->c1 = 0;
-        scale->c2 = 1;
-        scale->normType = normTypeConstant;
-      } else {
-        warning(_("all parameters are the same value, switch to length normType"));
-        scale->c1 = 0;
-        scale->c2 = sqrt(len);
-        scale->normType = 5;
-      }
-    } else {
-      scale->c1 = mean;
-      scale->c2 = sqrt(s/(oN-1));
-    }
-    break;
-  case normTypeLen: // Normalize to length.
-    for (unsigned int k = scale->npars; k-- > 0;){
-      len += scale->initPar[k]*scale->initPar[k];
-      scale->scaleC[k] = NA_REAL;
-    }
-    if (len < DBL_EPSILON){
-      warning(_("all parameters are zero, cannot scale, run unscaled"));
-      scale->c1 = 0;
-      scale->c2 = 1;
-      scale->normType = normTypeConstant;
-    } else {
-      scale->c1 = 0;
-      scale->c2 = sqrt(len);
-    }
-    break;
-  case normTypeConstant:
-    // No Normalization
-    for (unsigned int k = scale->npars; k-- > 0;){
-      scale->scaleC[k] = NA_REAL;
-    }
-    scale->c1 = 0;
-    scale->c2 = 1;
-    break;
-  default:
-    stop("unrecognized normalization (normType=%d)", scale->normType);
+  for (int k = scale->npars; k-- > 0;) {
+    scale->scaleC[k] = NA_REAL;
   }
+  scaleNormalize(scale->initPar, scale->npars, &scale->normType, &scale->c1, &scale->c2);
 }
 
+// The functions below take a scaling or a focei_options (src/inner.cpp; the
+// FOCEi outer optimizer passes op_focei), which share the fields they read.
 
-static inline double scaleGetScaleC(scaling *scale, int i){
+// The default scaleC for an NA entry whose 1/|init| denominator is d.
+template <typename S>
+static inline double scaleDefaultC(S *scale, double d) {
+  if (scale->scaleCdefault == scaleCdefaultUnit) return (d == 0.0) ? 1.0 : 1.0/d;
+  return 1.0/max2(d, scale->scaleCmin);
+}
+
+// The scaling constant of parameter i, clamped to [scaleCmin, scaleCmax].  An NA
+// entry is filled in place from xPar and scaleCdefault.  Any other entry is used
+// as given: R chose it (and guarded it to its band, .guardScaleC()), the user did
+// (foceiControl(scaleC=)), or the zero-gradient retry did (scaleC0).
+template <typename S>
+static inline double scaleGetScaleC(S *scale, int i){
   if (ISNA(scale->scaleC[i]) || isnan(scale->scaleC[i])) {
+    double aInit = fabs(scale->initPar[i]);
     switch (scale->xPar[i]){
     case 1: // log
       scale->scaleC[i]=1.0;
-      break;
-    case 2: // diag^2
-      scale->scaleC[i]=1.0/max2(fabs(scale->initPar[i]), scale->scaleCmin);
       break;
     case 3: // exp(diag)
       scale->scaleC[i] = 1.0/2.0;
       break;
     case 4: // Identity diagonal chol(Omega ^-1)
     case 5: // off diagonal chol(Omega^-1)
-      scale->scaleC[i] = 1.0/max2(2.0*fabs(scale->initPar[i]), scale->scaleCmin);
+      scale->scaleC[i] = scaleDefaultC(scale, 2.0*aInit);
       break;
-    default:
-      scale->scaleC[i]= 1.0/max2(fabs(scale->initPar[i]), scale->scaleCmin);
+    default: // diag^2 (2) and linear / additive thetas
+      scale->scaleC[i] = scaleDefaultC(scale, aInit);
       break;
     }
   }
   return min2(max2(scale->scaleC[i], scale->scaleCmin), scale->scaleCmax);
 }
 
-static inline double scaleAdjustGradScale(scaling *scale, double grad, double *x, int i) {
-  // Here we have f(unscalePar(x)) hence the derivative is df/du*du/dx
-  // (by chain rule); df/du is provided by the routine, du/dx is provided here
+// grad*du/dx for u = scaleUnscalePar(x)_i: a derivative by the natural parameter
+// taken to the optimizer's scale.  With grad = 1 it is the Jacobian du/dx.
+template <typename S>
+static inline double scaleAdjustGradScale(S *scale, double grad, int i) {
   double scaleTo = scale->scaleTo, C=scaleGetScaleC(scale, i);
   switch(scale->scaleType) {
   case scaleTypeNorm: // normalized
@@ -345,11 +274,11 @@ static inline double scaleAdjustGradScale(scaling *scale, double grad, double *x
     return grad*scale->c2;
     break;
   case scaleTypeNlmixr2: // log vs linear scales and/or ranges
-    // here du/dx = C*x[i]
+    // here du/dx = C
     return grad*C;
     break;
   case scaleTypeMult: // simple multiplicative scaling
-    if (scale->scaleTo != 0){
+    if (scale->scaleTo > 0){
       return grad*scale->initPar[i]/scaleTo;
     } else {
       return grad;
@@ -375,7 +304,8 @@ static inline double scaleAdjustGradScale(scaling *scale, double grad, double *x
   return 0;
 }
 
-static inline double scaleUnscalePar(scaling *scale, double *x, int i){
+template <typename S>
+static inline double scaleUnscalePar(S *scale, double *x, int i){
   double scaleTo = scale->scaleTo, C=scaleGetScaleC(scale, i);
   switch(scale->scaleType) {
   case scaleTypeNorm: // normalized
@@ -390,7 +320,7 @@ static inline double scaleUnscalePar(scaling *scale, double *x, int i){
     return (x[i]-scaleTo)*C + scale->initPar[i];
     break;
   case scaleTypeMult: // simple multiplicative scaling
-    if (scale->scaleTo != 0){
+    if (scale->scaleTo > 0){
       return x[i]*scale->initPar[i]/scaleTo;
     } else {
       return x[i];
@@ -419,13 +349,14 @@ static inline double scaleUnscalePar(scaling *scale, double *x, int i){
   return 0;
 }
 
-static inline double scaleScalePar(scaling *scale, double *x, int i){
+template <typename S>
+static inline double scaleScalePar(S *scale, double *x, int i){
   double scaleTo = scale->scaleTo, C=scaleGetScaleC(scale, i);
   switch(scale->scaleType) {
   case scaleTypeNorm:
     return (x[i]-scale->c1)/scale->c2;
   case scaleTypeNlmixr2:
-    if (scale->normType <= 5){
+    if (scale->normType != normTypeConstant){
       scaleTo = (scale->initPar[i]-scale->c1)/scale->c2;
     } else if (scaleTo == 0){
       scaleTo=scale->initPar[i];
@@ -506,21 +437,34 @@ static inline void scaleAttachXform(scaling *scale,
   scale->probitThetaHi  = scale->probitHiStorage .empty() ? NULL : scale->probitHiStorage .data();
 }
 
-// Wrap-continuation marker for rows with more parameter columns than fit in
-// `ncol`; its width matches the label prefix so wrapped columns line up.
-// `colored` selects the ANSI-underlined variant used with `useColor`.
-static inline const char *scaleWrapMarker(scaling *scale, int colored) {
-  if (colored) {
-    return scale->showOfv ? "\n\033[4m|.....................|"
-                          : "\n\033[4m|.....|";
+// The iteration table's row primitives, shared with nlmixr2GradFun's table
+// (src/inner.cpp).  showOfv = 0 drops the Function-Val column.
+
+// After cell i of an n-cell row, wraps every ncol cells onto a continuation line whose
+// marker width matches the label prefix, so wrapped columns line up; `underline`
+// selects the ANSI-underlined marker.  Returns 1 when it wrapped.
+static inline int scalePrintWrap(int showOfv, int i, int n, int ncol, int underline) {
+  if ((i + 1) == n || (i + 1) % ncol != 0) return 0;
+  if (underline) {
+    RSprintf("%s", showOfv ? "\n\033[4m|.....................|" : "\n\033[4m|.....|");
+  } else {
+    RSprintf("%s", showOfv ? "\n|.....................|" : "\n|.....|");
   }
-  return scale->showOfv ? "\n|.....................|" : "\n|.....|";
+  return 1;
 }
 
-// Separator line under the column header / between iteration blocks; skips
-// the Function-Val segment when showOfv is 0 to match the header/rows.
-static inline void scalePrintLine(scaling *scale, int ncol) {
-  if (scale->showOfv) {
+// Ends a row whose last cell was i-1; a wrapped row first pads its last line to ncol cells.
+static inline void scalePrintRowEnd(int wrapped, int i, int ncol, int useColor) {
+  if (wrapped) {
+    while ((i++) % ncol != 0) RSprintf("...........|");
+    if (useColor) RSprintf("\033[0m");
+  }
+  RSprintf("\n");
+}
+
+// Separator line under the column header / between iteration blocks.
+static inline void scalePrintLine(int showOfv, int ncol) {
+  if (showOfv) {
     RSprintf("|-----+---------------+");
   } else {
     RSprintf("|-----+");
@@ -575,32 +519,16 @@ static inline void scalePrintHeader(scaling *scale, int withKey = 1) {
     for (i = 0; i < n; i++){
       tmpS = scale->thetaNames[i];
       RSprintf("%#10s |", tmpS.c_str());
-      if ((i + 1) != n && (i + 1) % scale->ncol == 0){
-        if (scale->useColor && scale->ncol + i  >= n){
-          RSprintf("%s", scaleWrapMarker(scale, 1));
-          underlineUsed = 1;
-        } else {
-          RSprintf("%s", scaleWrapMarker(scale, 0));
-        }
-        finalize=1;
+      int underline = scale->useColor && scale->ncol + i >= n;
+      if (scalePrintWrap(scale->showOfv, i, n, scale->ncol, underline)) {
+        finalize = 1;
+        if (underline) underlineUsed = 1;
       }
     }
-    if (finalize){
-      while(true){
-        if ((i++) % scale->ncol == 0){
-          if (scale->useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
+    scalePrintRowEnd(finalize, i, scale->ncol, scale->useColor);
     // Skip the separator if the last continuation row's underline already acts as one.
     if (!underlineUsed) {
-      scalePrintLine(scale, min2(scale->npars, scale->ncol));
+      scalePrintLine(scale->showOfv, min2(scale->npars, scale->ncol));
     }
   }
 }
@@ -701,54 +629,19 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
     }
     for (i = 0; i < scale->npars; i++){
       RSprintf("%#10.4g |", x[i]);
-      if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
-        if (scale->useColor && scale->ncol + i  > scale->npars){
-          RSprintf("%s", scaleWrapMarker(scale, 1));
-        } else {
-          RSprintf("%s", scaleWrapMarker(scale, 0));
-        }
-        finalize=1;
-      }
+      finalize |= scalePrintWrap(scale->showOfv, i, scale->npars, scale->ncol,
+                                 scale->useColor && scale->ncol + i > scale->npars);
     }
-    if (finalize){
-      while(true){
-        if ((i++) % scale->ncol == 0){
-          if (scale->useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
+    scalePrintRowEnd(finalize, i, scale->ncol, scale->useColor);
     if (!scale->simple && !skipU) {
       if (scale->showOfv) RSprintf("|    U|               |");
       else                RSprintf("|    U|");
       for (i = 0; i < scale->npars; i++){
         RSprintf("%#10.4g |", scaleNoGrad(scale, i) ? x[i] : scaleUnscalePar(scale, x, i));
-        if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
-          if (scale->useColor && scale->ncol + i  > scale->npars){
-            RSprintf("%s", scaleWrapMarker(scale, 1));
-          } else {
-            RSprintf("%s", scaleWrapMarker(scale, 0));
-          }
-        }
+        scalePrintWrap(scale->showOfv, i, scale->npars, scale->ncol,
+                       scale->useColor && scale->ncol + i > scale->npars);
       }
-      if (finalize){
-        while(true){
-          if ((i++) % scale->ncol == 0){
-            if (scale->useColor) RSprintf("\033[0m");
-            RSprintf("\n");
-            break;
-          } else {
-            RSprintf("...........|");
-          }
-        }
-      } else {
-        RSprintf("\n");
-      }
+      scalePrintRowEnd(finalize, i, scale->ncol, scale->useColor);
     }
     if (!scale->simple && !skipX) {
       if (scale->showOfv) {
@@ -780,27 +673,10 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
                                     scale->xPar[i], probitCode,
                                     scale->logitThetaLow, scale->logitThetaHi,
                                     scale->probitThetaLow, scale->probitThetaHi));
-        if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
-          if (scale->useColor && scale->ncol + i >= scale->npars){
-            RSprintf("%s", scaleWrapMarker(scale, 1));
-          } else {
-            RSprintf("%s", scaleWrapMarker(scale, 0));
-          }
-        }
+        scalePrintWrap(scale->showOfv, i, scale->npars, scale->ncol,
+                       scale->useColor && scale->ncol + i >= scale->npars);
       }
-      if (finalize){
-        while(true){
-          if ((i++) % scale->ncol == 0){
-            if (scale->useColor) RSprintf("\033[0m");
-            RSprintf("\n");
-            break;
-          } else {
-            RSprintf("...........|");
-          }
-        }
-      } else {
-        RSprintf("\n");
-      }
+      scalePrintRowEnd(finalize, i, scale->ncol, scale->useColor);
     }
   }
   // Flush accumulated rxode2 solve warnings here so every estimator routed through
@@ -864,30 +740,12 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
         RSprintf("\033[0m");
       }
       RSprintf("|");
-      if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
-        if (scale->useColor && scale->ncol + i >= scale->npars){
-          RSprintf("%s", scaleWrapMarker(scale, 1));
-        } else {
-          RSprintf("%s", scaleWrapMarker(scale, 0));
-        }
-        finalize=1;
-      }
+      finalize |= scalePrintWrap(scale->showOfv, i, scale->npars, scale->ncol,
+                                 scale->useColor && scale->ncol + i >= scale->npars);
     }
-    if (finalize){
-      while(true){
-        if ((i++) % scale->ncol == 0){
-          if (scale->useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
+    scalePrintRowEnd(finalize, i, scale->ncol, scale->useColor);
     if (!scale->useColor){
-      scalePrintLine(scale, min2(scale->npars, scale->ncol));
+      scalePrintLine(scale->showOfv, min2(scale->npars, scale->ncol));
     }
   }
   if (scale->save) {
@@ -898,29 +756,34 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   }
 }
 
-static inline RObject scaleParHisDf(scaling *scale) {
-  if (scale->iterType.size() == 0)  return R_NilValue;
-  CharacterVector dfNames(3+scale->thetaNames.size());
+// The parameter-history data frame (iter, type, objf, then one column per name) of the
+// iteration records -- niter/iterType/vPar for the parameter rows, niterGrad/gradType/
+// vGrad for the gradient rows -- which it then clears.  focei's parHistData()
+// (src/inner.cpp) keeps its own records and print-map names.
+static inline List scaleParHisList(CharacterVector names,
+                                   std::vector<int> &niter, std::vector<int> &iterType,
+                                   std::vector<double> &vPar, std::vector<int> &niterGrad,
+                                   std::vector<int> &gradType, std::vector<double> &vGrad) {
+  int i, n = names.size();
+  CharacterVector dfNames(3+n);
   dfNames[0] = "iter";
   dfNames[1] = "type";
   dfNames[2] = "objf";
-  int i;
-  for (i = 0; i < scale->thetaNames.size(); i++){
-    dfNames[i+3] = scale->thetaNames[i];
+  for (i = 0; i < n; i++){
+    dfNames[i+3] = names[i];
   }
-  List ret(3+scale->thetaNames.size());
-  int sz = scale->niter.size()+scale->niterGrad.size();
+  List ret(3+n);
+  int sz = niter.size()+niterGrad.size();
   std::vector<int> iter;
   iter.reserve(sz);
-  iter.insert(iter.end(), scale->niter.begin(), scale->niter.end());
-  iter.insert(iter.end(), scale->niterGrad.begin(), scale->niterGrad.end());
+  iter.insert(iter.end(), niter.begin(), niter.end());
+  iter.insert(iter.end(), niterGrad.begin(), niterGrad.end());
   ret[0] = iter;
-  IntegerVector tmp;
-  tmp = IntegerVector(sz);
   std::vector<int> typ;
   typ.reserve(sz);
-  typ.insert(typ.end(), scale->iterType.begin(), scale->iterType.end());
-  typ.insert(typ.end(), scale->gradType.begin(), scale->gradType.end());
+  typ.insert(typ.end(), iterType.begin(), iterType.end());
+  typ.insert(typ.end(), gradType.begin(), gradType.end());
+  IntegerVector tmp;
   tmp = typ;
   tmp.attr("levels") = CharacterVector::create("Gill83 Gradient", "Mixed Gradient",
                                                "Forward Difference", "Central Difference",
@@ -931,12 +794,12 @@ static inline RObject scaleParHisDf(scaling *scale) {
                                                "Analytic Gradient (Chartrand)");
   tmp.attr("class") = "factor";
   ret[1] = tmp;
-  arma::mat cPar(scale->vPar.size()/scale->iterType.size(), scale->iterType.size());
-  std::copy(scale->vPar.begin(), scale->vPar.end(), cPar.begin());
+  arma::mat cPar(vPar.size()/iterType.size(), iterType.size());
+  std::copy(vPar.begin(), vPar.end(), cPar.begin());
   arma::mat vals;
-  if (scale->vGrad.size() > 0){
-    arma::mat cGrad(scale->vGrad.size()/scale->gradType.size(), scale->gradType.size());
-    std::copy(scale->vGrad.begin(), scale->vGrad.end(), cGrad.begin());
+  if (vGrad.size() > 0){
+    arma::mat cGrad(vGrad.size()/gradType.size(), gradType.size());
+    std::copy(vGrad.begin(), vGrad.end(), cGrad.begin());
     cPar = cPar.t();
     cGrad = cGrad.t();
     vals = arma::join_cols(cPar, cGrad);
@@ -944,17 +807,23 @@ static inline RObject scaleParHisDf(scaling *scale) {
     cPar = cPar.t();
     vals = cPar;
   }
-  for (i = 0; i < scale->thetaNames.size()+1; i++){
+  for (i = 0; i < min2(n+1, (int)vals.n_cols); i++){
     ret[i+2]= vals.col(i);
   }
-  scale->vGrad.clear();
-  scale->vPar.clear();
-  scale->iterType.clear();
-  scale->gradType.clear();
-  scale->niter.clear();
-  scale->niterGrad.clear();
+  vGrad.clear();
+  vPar.clear();
+  iterType.clear();
+  gradType.clear();
+  niter.clear();
+  niterGrad.clear();
   ret.attr("names")=dfNames;
   ret.attr("class") = "data.frame";
   ret.attr("row.names")=IntegerVector::create(NA_INTEGER, -sz);
   return ret;
+}
+
+static inline RObject scaleParHisDf(scaling *scale) {
+  if (scale->iterType.size() == 0)  return R_NilValue;
+  return scaleParHisList(scale->thetaNames, scale->niter, scale->iterType, scale->vPar,
+                         scale->niterGrad, scale->gradType, scale->vGrad);
 }

@@ -33,7 +33,7 @@ nmTest({
     f5 <- nlmixr2(.mix5, nlmixr2data::theo_sd, est = "npag", control = .ctl)
     f9 <- nlmixr2(.mix9, nlmixr2data::theo_sd, est = "npag", control = .ctl)
     expect_s3_class(f5, "nlmixr2FitData")
-    expect_equal(as.numeric(f5$theta[["p1"]]), 0.5)   # fixed -> held
+    expect_equal(as.numeric(f5$theta[["p1"]]), 0.5) # fixed -> held
     expect_equal(as.numeric(f9$theta[["p1"]]), 0.9)
     expect_false(isTRUE(all.equal(as.numeric(f5$objf), as.numeric(f9$objf))))
   })
@@ -48,8 +48,12 @@ nmTest({
         d/dt(center) <- ka * depot - ke * center
         cp <- center / v; cp ~ add(add.sd) })
     }
-    f <- nlmixr2(.mixMod, nlmixr2data::theo_sd, est = "npb",
-                 control = npbControl(points = 20L, burnin = 20L, nsamp = 20L, seed = 1L))
+    f <- nlmixr2(
+      .mixMod,
+      nlmixr2data::theo_sd,
+      est = "npb",
+      control = npbControl(points = 20L, burnin = 20L, nsamp = 20L, seed = 1L)
+    )
     expect_s3_class(f, "nlmixr2FitData")
     expect_true(is.finite(as.numeric(f$objf)))
     # the mixture proportions are sampled (Dirichlet Gibbs) -> a valid probability
@@ -65,7 +69,7 @@ nmTest({
     skip_if_not_installed("rxode2")
     .testSeed(7)
     N <- 40L
-    comp <- rbinom(N, 1, 0.3)                  # 1 = fast-clearance subpopulation
+    comp <- rbinom(N, 1, 0.3) # 1 = fast-clearance subpopulation
     clTrue <- ifelse(comp == 1, 2, 0.5)
     sim <- rxode2::rxode2({
       d/dt(depot) <- -ka * depot
@@ -73,15 +77,18 @@ nmTest({
       cp <- center / v
     })
     ev <- rxode2::et(amt = 100, cmt = "depot")
-    for (.t in c(0.5, 1, 2, 4, 6, 8, 12, 24)) ev <- rxode2::et(ev, .t)
-    s <- rxode2::rxSolve(sim, data.frame(ka = 1.2, v = 32, cl = clTrue), ev,
-                         returnType = "data.frame")
+    for (.t in c(0.5, 1, 2, 4, 6, 8, 12, 24)) {
+      ev <- rxode2::et(ev, .t)
+    }
+    s <- rxode2::rxSolve(sim, data.frame(ka = 1.2, v = 32, cl = clTrue), ev, returnType = "data.frame")
     .idc <- names(s)[grepl("id$", names(s), ignore.case = TRUE)][1]
-    s$.id <- s[[.idc]]; obs <- s[s$time > 0, ]
+    s$.id <- s[[.idc]]
+    obs <- s[s$time > 0, ]
     obs$DV <- obs$cp + rnorm(nrow(obs), 0, 0.3)
     dat <- rbind(
       data.frame(ID = unique(obs$.id), TIME = 0, DV = 0, AMT = 100, EVID = 1, CMT = 1),
-      data.frame(ID = obs$.id, TIME = obs$time, DV = obs$DV, AMT = 0, EVID = 0, CMT = 2))
+      data.frame(ID = obs$.id, TIME = obs$time, DV = obs$DV, AMT = 0, EVID = 0, CMT = 2)
+    )
     dat <- dat[order(dat$ID, dat$TIME, -dat$EVID), ]
 
     mixMod <- function() {
@@ -96,9 +103,12 @@ nmTest({
     # muExpand=FALSE: the component structural thetas (tka, tcl1, tcl2) are estimated
     # as regressors against the exact mixture likelihood (they are NOT mu-referenced
     # here); mu-expansion is an alternative covered separately.
-    f <- nlmixr2(mixMod, dat, est = "npag",
-                 control = npagControl(points = 64L, cycles = 20L, seed = 1L,
-                                       gammaOptimize = FALSE, muExpand = FALSE))
+    f <- nlmixr2(
+      mixMod,
+      dat,
+      est = "npag",
+      control = npagControl(points = 64L, cycles = 20L, seed = 1L, gammaOptimize = FALSE, muExpand = FALSE)
+    )
     expect_s3_class(f, "nlmixr2FitData")
     # the slow-clearance proportion (p1) recovers the simulated fraction (0.70)
     # from a deliberately-wrong 0.50 start.
@@ -126,14 +136,23 @@ nmTest({
         d/dt(center) <- ka * depot - ke * center
         cp <- center / v; cp ~ add(add.sd) })
     }
-    f <- nlmixr2(.m, nlmixr2data::theo_sd, est = "npag",
-                 control = npagControl(points = 32L, cycles = 3L, seed = 1L,
-                                       gammaOptimize = FALSE, calcTables = FALSE,
-                                       muExpand = TRUE))
+    f <- nlmixr2(
+      .m,
+      nlmixr2data::theo_sd,
+      est = "npag",
+      control = npagControl(
+        points = 32L,
+        cycles = 3L,
+        seed = 1L,
+        gammaOptimize = FALSE,
+        calcTables = FALSE,
+        muExpand = TRUE
+      )
+    )
     expect_true(is.finite(as.numeric(f$objf)))
     # tka and the component clearances gained injected (collapsed) etas ...
     expect_true(all(c("eta.tka", "eta.tcl1", "eta.tcl2") %in% rownames(f$omega)))
-    expect_lt(f$omega["eta.tka", "eta.tka"], 1e-4)         # collapsed to a fixed effect
+    expect_lt(f$omega["eta.tka", "eta.tka"], 1e-4) # collapsed to a fixed effect
     # ... while the proportion is not injected and is a valid probability
     expect_false("eta.p1" %in% rownames(f$omega))
     expect_true(as.numeric(f$theta[["p1"]]) > 0 && as.numeric(f$theta[["p1"]]) < 1)

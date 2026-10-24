@@ -21,12 +21,18 @@ nmTest({
   }
 
   test_that("FOCEi cores=2 matches cores=1 baseline", {
-    fit1 <- .nlmixr(one.compartment, nlmixr2data::theo_sd, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "",
-                                          rxControl = rxode2::rxControl(cores = 1L)))
-    fit2 <- .nlmixr(one.compartment, nlmixr2data::theo_sd, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "",
-                                          rxControl = rxode2::rxControl(cores = 2L)))
+    fit1 <- .nlmixr(
+      one.compartment,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", rxControl = rxode2::rxControl(cores = 1L))
+    )
+    fit2 <- .nlmixr(
+      one.compartment,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", rxControl = rxode2::rxControl(cores = 2L))
+    )
     expect_s3_class(fit1, "nlmixr2FitData")
     expect_s3_class(fit2, "nlmixr2FitData")
     expect_equal(fit1$objective, fit2$objective, tolerance = 1e-4)
@@ -35,12 +41,18 @@ nmTest({
 
   test_that("FOCEi cores=2 matches cores=1 with mceta=0 (always reset)", {
     # mceta=0 path in innerOpt1: zero ETAs each call, no R API.
-    fit1 <- .nlmixr(one.compartment, nlmixr2data::theo_sd, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "", mceta = 0L,
-                                          rxControl = rxode2::rxControl(cores = 1L)))
-    fit2 <- .nlmixr(one.compartment, nlmixr2data::theo_sd, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "", mceta = 0L,
-                                          rxControl = rxode2::rxControl(cores = 2L)))
+    fit1 <- .nlmixr(
+      one.compartment,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", mceta = 0L, rxControl = rxode2::rxControl(cores = 1L))
+    )
+    fit2 <- .nlmixr(
+      one.compartment,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", mceta = 0L, rxControl = rxode2::rxControl(cores = 2L))
+    )
     expect_equal(fit1$objective, fit2$objective, tolerance = 1e-4)
   })
 
@@ -49,12 +61,18 @@ nmTest({
     # R API.  Samples are now pre-drawn serially before the parallel region.
     # The objective need not match cores=1 bit-for-bit because the optimizer
     # trajectory differs across cores; only require that both fits complete.
-    fit1 <- .nlmixr(one.compartment, nlmixr2data::theo_sd, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "", mceta = 2L,
-                                          rxControl = rxode2::rxControl(cores = 1L)))
-    fit2 <- .nlmixr(one.compartment, nlmixr2data::theo_sd, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "", mceta = 2L,
-                                          rxControl = rxode2::rxControl(cores = 2L)))
+    fit1 <- .nlmixr(
+      one.compartment,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", mceta = 2L, rxControl = rxode2::rxControl(cores = 1L))
+    )
+    fit2 <- .nlmixr(
+      one.compartment,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", mceta = 2L, rxControl = rxode2::rxControl(cores = 2L))
+    )
     expect_s3_class(fit1, "nlmixr2FitData")
     expect_s3_class(fit2, "nlmixr2FitData")
     expect_true(is.finite(fit1$objective))
@@ -92,12 +110,18 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    fit1 <- .nlmixr(mod_fbio, nlmixr2data::theo_sd, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "",
-                                          rxControl = rxode2::rxControl(cores = 1L)))
-    fit2 <- .nlmixr(mod_fbio, nlmixr2data::theo_sd, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "",
-                                          rxControl = rxode2::rxControl(cores = 2L)))
+    fit1 <- .nlmixr(
+      mod_fbio,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", rxControl = rxode2::rxControl(cores = 1L))
+    )
+    fit2 <- .nlmixr(
+      mod_fbio,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", rxControl = rxode2::rxControl(cores = 2L))
+    )
     expect_s3_class(fit1, "nlmixr2FitData")
     expect_s3_class(fit2, "nlmixr2FitData")
     # cores=2 must match cores=1 bit-for-bit.  Per-subject stickyRecalcN2
@@ -135,12 +159,18 @@ nmTest({
     # Modeled-duration data: RATE = -2 marks dose records.
     d <- nlmixr2data::theo_sd
     d$RATE <- ifelse(d$EVID == 1, -2, 0)
-    fit1 <- .nlmixr(mod_dur, d, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "",
-                                          rxControl = rxode2::rxControl(cores = 1L)))
-    fit2 <- .nlmixr(mod_dur, d, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "",
-                                          rxControl = rxode2::rxControl(cores = 2L)))
+    fit1 <- .nlmixr(
+      mod_dur,
+      d,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", rxControl = rxode2::rxControl(cores = 1L))
+    )
+    fit2 <- .nlmixr(
+      mod_dur,
+      d,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", rxControl = rxode2::rxControl(cores = 2L))
+    )
     # cores=2 must match cores=1 bit-for-bit.  Per-subject stickyRecalcN2
     # and indHasBadSolve() (replacing the shared op->badSolve poll) make
     # the inner-retry loop fully deterministic per subject, so the
@@ -176,12 +206,18 @@ nmTest({
     # Modeled-rate data: RATE = -1.
     d <- nlmixr2data::theo_sd
     d$RATE <- ifelse(d$EVID == 1, -1, 0)
-    fit1 <- .nlmixr(mod_rate, d, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "",
-                                          rxControl = rxode2::rxControl(cores = 1L)))
-    fit2 <- .nlmixr(mod_rate, d, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "",
-                                          rxControl = rxode2::rxControl(cores = 2L)))
+    fit1 <- .nlmixr(
+      mod_rate,
+      d,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", rxControl = rxode2::rxControl(cores = 1L))
+    )
+    fit2 <- .nlmixr(
+      mod_rate,
+      d,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", rxControl = rxode2::rxControl(cores = 2L))
+    )
     # cores=2 must match cores=1 bit-for-bit.  Per-subject stickyRecalcN2
     # and indHasBadSolve() (replacing the shared op->badSolve poll) make
     # the inner-retry loop fully deterministic per subject, so the
@@ -215,12 +251,18 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    fit1 <- .nlmixr(mod_alag, nlmixr2data::theo_sd, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "",
-                                          rxControl = rxode2::rxControl(cores = 1L)))
-    fit2 <- .nlmixr(mod_alag, nlmixr2data::theo_sd, est = "focei",
-                    control = foceiControl(print = 0, covMethod = "",
-                                          rxControl = rxode2::rxControl(cores = 2L)))
+    fit1 <- .nlmixr(
+      mod_alag,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", rxControl = rxode2::rxControl(cores = 1L))
+    )
+    fit2 <- .nlmixr(
+      mod_alag,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0, covMethod = "", rxControl = rxode2::rxControl(cores = 2L))
+    )
     # cores=2 must match cores=1 bit-for-bit.  Per-subject stickyRecalcN2
     # and indHasBadSolve() (replacing the shared op->badSolve poll) make
     # the inner-retry loop fully deterministic per subject, so the

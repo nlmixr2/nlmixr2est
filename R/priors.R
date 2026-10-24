@@ -67,13 +67,23 @@
 #' @author Matthew L. Fidler
 .nlmixr2PriorSupport <- function(env) {
   for (.cls in class(env)) {
-    .fn <- utils::getS3method("nlmixr2Est", .cls, optional=TRUE)
-    if (is.null(.fn)) next
+    .fn <- utils::getS3method("nlmixr2Est", .cls, optional = TRUE)
+    if (is.null(.fn)) {
+      next
+    }
     .a <- attr(.fn, "nlmixr2Priors")
-    if (is.null(.a)) return("none")
+    if (is.null(.a)) {
+      return("none")
+    }
     if (length(.a) != 1L || !(.a %in% .nlmixr2PriorLevels)) {
-      stop("the 'nlmixr2Priors' of the '", .cls, "' estimation method must be one of '",
-           paste(.nlmixr2PriorLevels, collapse="', '"), "'", call.=FALSE)
+      stop(
+        "the 'nlmixr2Priors' of the '",
+        .cls,
+        "' estimation method must be one of '",
+        paste(.nlmixr2PriorLevels, collapse = "', '"),
+        "'",
+        call. = FALSE
+      )
     }
     return(.a)
   }
@@ -92,8 +102,10 @@
 #' @author Matthew L. Fidler
 .nlmixr2RxAssert <- function(what) {
   .ns <- asNamespace("rxode2")
-  if (!exists(what, envir=.ns, inherits=FALSE)) return(NULL)
-  get(what, envir=.ns)
+  if (!exists(what, envir = .ns, inherits = FALSE)) {
+    return(NULL)
+  }
+  get(what, envir = .ns)
 }
 
 #' Fallback used when rxode2 predates the prior assertions
@@ -103,15 +115,20 @@
 #' @return nothing, called for the error
 #' @noRd
 #' @author Matthew L. Fidler
-.nlmixr2AssertNoPriorsFallback <- function(ui, extra="") {
+.nlmixr2AssertNoPriorsFallback <- function(ui, extra = "") {
   .iniDf <- ui$iniDf
-  if (is.null(.iniDf) || !any(names(.iniDf) == "prior")) return(invisible(ui))
+  if (is.null(.iniDf) || !any(names(.iniDf) == "prior")) {
+    return(invisible(ui))
+  }
   .w <- which(!is.na(.iniDf$prior))
   if (length(.w) > 0L) {
-    stop("the model specifies prior distribution(s) on ",
-         paste0("'", .iniDf$name[.w], "'", collapse=", "),
-         ", which this estimation method cannot use", extra,
-         call.=FALSE)
+    stop(
+      "the model specifies prior distribution(s) on ",
+      paste0("'", .iniDf$name[.w], "'", collapse = ", "),
+      ", which this estimation method cannot use",
+      extra,
+      call. = FALSE
+    )
   }
   invisible(ui)
 }
@@ -138,8 +155,10 @@
 .nlmixr2PriorGateBypass <- function(expr) {
   .saved <- nlmixr2global$nlmixr2PriorGateBypass
   nlmixr2global$nlmixr2PriorGateBypass <- TRUE
-  on.exit(assign("nlmixr2PriorGateBypass", .saved, envir=nlmixr2global))
-  force(expr)
+  on.exit(assign("nlmixr2PriorGateBypass", .saved, envir = nlmixr2global))
+  ## every internal re-estimation goes through here: keep it silent on the
+  ## event bus (see rxEvents.R)
+  .nlmixr2EventScope(force(expr))
 }
 
 #' Refuse a prior that references an omega element
@@ -156,15 +175,20 @@
 #' @return the ui, invisibly; called for the error otherwise
 #' @noRd
 #' @author Matthew L. Fidler
-.nlmixr2AssertThetaOnlyPriors <- function(ui, extra="") {
+.nlmixr2AssertThetaOnlyPriors <- function(ui, extra = "") {
   .p <- rxode2::rxUiPriors(ui)
-  if (length(.p$name) == 0L) return(invisible(ui))
+  if (length(.p$name) == 0L) {
+    return(invisible(ui))
+  }
   .bad <- which(!is.na(.p$neta1))
   if (length(.bad) > 0L) {
-    stop("the model puts a prior on the omega parameter(s) ",
-         paste0("'", .p$name[.bad], "'", collapse=", "),
-         ", which this estimation method cannot use yet", extra,
-         call.=FALSE)
+    stop(
+      "the model puts a prior on the omega parameter(s) ",
+      paste0("'", .p$name[.bad], "'", collapse = ", "),
+      ", which this estimation method cannot use yet",
+      extra,
+      call. = FALSE
+    )
   }
   invisible(ui)
 }
@@ -176,17 +200,23 @@
 #' @noRd
 #' @author Matthew L. Fidler
 .nlmixr2AssertPriors <- function(env) {
-  if (isTRUE(nlmixr2global$nlmixr2PriorGateBypass)) return(invisible())
+  if (isTRUE(nlmixr2global$nlmixr2PriorGateBypass)) {
+    return(invisible())
+  }
   .support <- .nlmixr2PriorSupport(env)
-  if (.support == "all") return(invisible())
-  .ui <- get("ui", envir=env)
+  if (.support == "all") {
+    return(invisible())
+  }
+  .ui <- get("ui", envir = env)
   .extra <- paste0(" with est=\"", class(env)[1], "\"")
   if (.support == "none") {
     .f <- .nlmixr2RxAssert("assertRxUiNoPriors")
-    if (is.null(.f)) return(invisible(.nlmixr2AssertNoPriorsFallback(.ui, extra=.extra)))
-    .f(.ui, extra=.extra)
+    if (is.null(.f)) {
+      return(invisible(.nlmixr2AssertNoPriorsFallback(.ui, extra = .extra)))
+    }
+    .f(.ui, extra = .extra)
   } else if (.support == "theta") {
-    .nlmixr2AssertThetaOnlyPriors(.ui, extra=.extra)
+    .nlmixr2AssertThetaOnlyPriors(.ui, extra = .extra)
   } else if (.support == "general") {
     ## rxPriorBuildSpec() itself is the validator; nothing beyond what
     ## rxUiPriors() reports can reach it.
@@ -195,14 +225,18 @@
     ## normal priors, including directly on omega, are fine; dcauchy()
     ## and invWishart() (that's "nwpri"'s mechanism) are not
     .f <- .nlmixr2RxAssert("assertRxUiNormalPriors")
-    if (is.null(.f)) return(invisible())
-    .f(.ui, extra=.extra)
+    if (is.null(.f)) {
+      return(invisible())
+    }
+    .f(.ui, extra = .extra)
   } else if (.support == "nwpri") {
     ## normal priors and omega degrees of freedom are fine; a normal
     ## prior on the omega values themselves is not
     .f <- .nlmixr2RxAssert("assertRxUiNoOmegaNormalPriors")
-    if (is.null(.f)) return(invisible())
-    .f(.ui, extra=.extra)
+    if (is.null(.f)) {
+      return(invisible())
+    }
+    .f(.ui, extra = .extra)
   }
   invisible()
 }
@@ -239,29 +273,48 @@
   .hasOmegaNormal <- FALSE
   .hasCauchy <- FALSE
   .testOmegaDf <- .nlmixr2RxAssert("testRxUiOmegaDf")
-  if (!is.null(.testOmegaDf)) .hasWishart <- isTRUE(tryCatch(.testOmegaDf(ui), error=function(e) FALSE))
+  if (!is.null(.testOmegaDf)) {
+    .hasWishart <- isTRUE(tryCatch(.testOmegaDf(ui), error = function(e) FALSE))
+  }
   .testOmegaNormal <- .nlmixr2RxAssert("testRxUiOmegaNormalPriors")
   if (!is.null(.testOmegaNormal)) {
-    .hasOmegaNormal <- isTRUE(tryCatch(.testOmegaNormal(ui), error=function(e) FALSE))
+    .hasOmegaNormal <- isTRUE(tryCatch(.testOmegaNormal(ui), error = function(e) FALSE))
   }
   .stanName <- .nlmixr2RxAssert(".rxPriorStanName")
   if (!is.null(.stanName)) {
     .p <- rxode2::rxUiPriors(ui)
     if (length(.p$name) > 0L) {
-      .hasCauchy <- any(vapply(.p$prior, function(p) {
-        .fn <- try(str2lang(p)[[1]], silent=TRUE)
-        if (inherits(.fn, "try-error")) return(FALSE)
-        .fn <- as.character(.fn)
-        if (length(.fn) != 1L) return(FALSE)
-        .s <- try(.stanName(.fn), silent=TRUE)
-        !inherits(.s, "try-error") && !is.na(.s) && identical(.s, "cauchy")
-      }, logical(1), USE.NAMES=FALSE))
+      .hasCauchy <- any(vapply(
+        .p$prior,
+        function(p) {
+          .fn <- try(str2lang(p)[[1]], silent = TRUE)
+          if (inherits(.fn, "try-error")) {
+            return(FALSE)
+          }
+          .fn <- as.character(.fn)
+          if (length(.fn) != 1L) {
+            return(FALSE)
+          }
+          .s <- try(.stanName(.fn), silent = TRUE)
+          !inherits(.s, "try-error") && !is.na(.s) && identical(.s, "cauchy")
+        },
+        logical(1),
+        USE.NAMES = FALSE
+      ))
     }
   }
-  if (.hasWishart && .hasOmegaNormal) return("general")
-  if (.hasCauchy) return("general")
-  if (.hasWishart) return("nwpri")
-  if (.hasOmegaNormal) return("tnpri")
+  if (.hasWishart && .hasOmegaNormal) {
+    return("general")
+  }
+  if (.hasCauchy) {
+    return("general")
+  }
+  if (.hasWishart) {
+    return("nwpri")
+  }
+  if (.hasOmegaNormal) {
+    return("tnpri")
+  }
   "general"
 }
 
@@ -281,17 +334,24 @@
 #' @param ui rxode2 ui
 #' @param method one of `"auto"` (default -- see `.nlmixr2PriorMethod()`
 #'   for how the omega convention is read off the model), `"general"`,
-#'   `"nwpri"`, `"tnpri"`.  Typically `foceiControl(priorMethod=)`, passed
-#'   straight through by the caller.
+#'   `"nwpri"`, `"tnpri"`, or `"none"` (build nothing; see
+#'   `foceiControl(priorMethod=)`).  Typically `foceiControl(priorMethod=)`,
+#'   passed straight through by the caller.
 #' @return an R external pointer (`rx_prior_spec_t*`) for
 #'   `foceiControl(priorSpec=)` to carry into `op_focei`, or `NULL`
 #' @noRd
 #' @author Matthew L. Fidler
-.nlmixr2BuildPriorSpec <- function(ui, method=c("auto", "general", "nwpri", "tnpri")) {
+.nlmixr2BuildPriorSpec <- function(ui, method = c("auto", "general", "nwpri", "tnpri", "none")) {
   method <- match.arg(method)
-  if (length(rxode2::rxUiPriors(ui)$name) == 0L) return(NULL)
+  if (identical(method, "none") || length(rxode2::rxUiPriors(ui)$name) == 0L) {
+    return(NULL)
+  }
   .build <- .nlmixr2RxAssert("rxPriorBuildSpec")
-  if (is.null(.build)) return(NULL)
-  if (identical(method, "auto")) method <- .nlmixr2PriorMethod(ui)
-  .build(ui, method=method)
+  if (is.null(.build)) {
+    return(NULL)
+  }
+  if (identical(method, "auto")) {
+    method <- .nlmixr2PriorMethod(ui)
+  }
+  .build(ui, method = method)
 }

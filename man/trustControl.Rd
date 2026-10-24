@@ -38,7 +38,7 @@ trustControl(
   eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = FALSE,
-  covMethod = c("r", ""),
+  covMethod = c("r", "trust", ""),
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 3,
@@ -65,9 +65,11 @@ subject eta trust region.}
 
 \item{fterm, mterm}{`trust_solve_c()`'s function-value and predicted-
 decrease convergence tolerances. `NULL` (default) uses
-`10^(-sigdig)`, matching `bobyqaControl()`'s `rhoend` and
-`foceiControl()`'s inner `epsilon`. `mterm` defaults to `fterm` when
-not given separately.}
+`10^(-sigdig-2)`, two orders tighter than `bobyqaControl()`'s `rhoend`
+and `foceiControl()`'s inner `epsilon` (both the plain `10^(-sigdig)`),
+matching `foceiControl(trustFterm=, trustMterm=)` instead -- the
+analogous tolerance for the other `RcppTrust`-backed solve in this
+package. `mterm` defaults to `fterm` when not given separately.}
 
 \item{optimHessType}{Finite-difference type for the per-iteration outer
 Hessian: `1L` forward (default), `2L` central. Exposed explicitly
@@ -243,10 +245,11 @@ will calculate tables. By default this is \code{TRUE}}
 \item{compress}{Should the object have compressed items}
 
 \item{covMethod}{Method for calculating the covariance. `"r"` (the
-default) reuses the LAST outer iteration's already-computed Hessian
-(skipping `nlmixr2est`'s own post-fit finite-difference Hessian
-recompute, since `trust` already has one in hand); `""` skips the
-covariance step.}
+default) uses a finite-difference Hessian at the estimates: with
+`hessianMethod = "fd"`, central differences of the analytical gradient
+over `nlmixr2Gill83()` steps, otherwise `nlmixr2Hess()`'s.  `"trust"` uses
+the last outer iteration's Hessian whatever `hessianMethod` built it (a
+quasi-Newton one by default); `""` skips the covariance step.}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective

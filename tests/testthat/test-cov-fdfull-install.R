@@ -7,14 +7,17 @@
   .nm <- c("tka", "om.eta.ka")
   dimnames(Rinv) <- list(.nm, .nm)
   .e$.fdFullCov <- Rinv
-  if (!is.null(S)) { dimnames(S) <- list(.nm, .nm); .e$.fdFullS <- S }
+  if (!is.null(S)) {
+    dimnames(S) <- list(.nm, .nm)
+    .e$.fdFullS <- S
+  }
   .e$covMethod <- covMethod
   .e
 }
 
 # well-conditioned PD pieces
 .Rinv <- matrix(c(4, 1, 1, 3), 2)
-.S    <- matrix(c(2, 0.5, 0.5, 1), 2)
+.S <- matrix(c(2, 0.5, 0.5, 1), 2)
 .sandwich <- .Rinv %*% .S %*% .Rinv
 
 test_that("covMethod='r,s' installs the true full sandwich Rinv %*% S %*% Rinv", {
@@ -43,7 +46,7 @@ test_that("covMethod='s' installs solve(Sfull)", {
 })
 
 test_that("covMethod='r' installs Rinv and does not touch covS/covRS", {
-  .e <- .mkFdEnv("r", .Rinv)          # no S stashed
+  .e <- .mkFdEnv("r", .Rinv) # no S stashed
   .foceiInstallFdFullCov(.e)
   expect_equal(unname(.e$cov), unname(.Rinv))
   expect_equal(unname(.e$covR), unname(.Rinv))
@@ -60,20 +63,50 @@ test_that("non-FD covMethod (analytic/failed/boundary/empty) is a no-op", {
 })
 
 test_that("s/r,s with a missing or non-finite Sfull is a no-op", {
-  .e <- .mkFdEnv("r,s", .Rinv)        # no .fdFullS
-  .foceiInstallFdFullCov(.e)
+  .e <- .mkFdEnv("r,s", .Rinv) # no .fdFullS
+  expect_silent(.foceiInstallFdFullCov(.e))
   expect_false(exists("cov", envir = .e, inherits = FALSE))
   .Sbad <- matrix(c(1, NA, NA, 1), 2)
   .e2 <- .mkFdEnv("s", .Rinv, .Sbad)
-  .foceiInstallFdFullCov(.e2)
+  expect_warning(.foceiInstallFdFullCov(.e2), "\"s (full)\" is not finite; none installed", fixed = TRUE)
   expect_false(exists("cov", envir = .e2, inherits = FALSE))
 })
 
 test_that("PD guard rejects an indefinite assembled cov", {
-  .Rbad <- matrix(c(1, 0, 0, -2), 2)  # negative variance -> not PD
+  .Rbad <- matrix(c(1, 0, 0, -2), 2) # negative variance -> not PD
   .e <- .mkFdEnv("r", .Rbad)
-  .foceiInstallFdFullCov(.e)
+  expect_warning(
+    .foceiInstallFdFullCov(.e),
+    "\"r (full)\" is not positive definite; none installed",
+    fixed = TRUE
+  )
   expect_false(exists("cov", envir = .e, inherits = FALSE))
+})
+
+test_that("an indefinite full R installs s (full), not a PD-looking sandwich (#1152)", {
+  # Rinv %*% S %*% Rinv is PD even when Rinv is not, so the cov PD guard alone let an
+  # indefinite R through as a sandwich
+  .Rbad <- matrix(c(4, 3, 3, -1), 2)
+  expect_gt(min(eigen(.Rbad %*% .S %*% .Rbad)$values), 0)
+  .e <- .mkFdEnv("r,s", .Rbad, .S)
+  # native theta-only pieces must not survive beside the full cov
+  .e$covR <- matrix(1)
+  .e$covRS <- matrix(2)
+  expect_warning(.foceiInstallFdFullCov(.e), "using s (full)", fixed = TRUE)
+  expect_identical(.e$covMethod, "s (full)")
+  expect_equal(unname(.e$cov), unname(solve(.S)))
+  expect_false(exists("covR", envir = .e, inherits = FALSE))
+  expect_false(exists("covRS", envir = .e, inherits = FALSE))
+  expect_false(any(c("r (full)", "r,s (full)") %in% names(.e$covList)))
+  expect_equal(.e$covList[["r"]], matrix(1))
+  # without an S there is nothing to fall back to: keep the native covariance
+  .e2 <- .mkFdEnv("r,s", .Rbad)
+  expect_warning(.foceiInstallFdFullCov(.e2), "needs a positive-definite R", fixed = TRUE)
+  expect_false(exists("cov", envir = .e2, inherits = FALSE))
+  # nor with a singular S: the warning must not claim s (full) was installed
+  .e3 <- .mkFdEnv("r,s", .Rbad, matrix(1, 2, 2))
+  expect_warning(.foceiInstallFdFullCov(.e3), "needs a positive-definite R", fixed = TRUE)
+  expect_false(exists("cov", envir = .e3, inherits = FALSE))
 })
 
 test_that("no .fdFullCov stashed is a no-op", {
@@ -81,4 +114,87 @@ test_that("no .fdFullCov stashed is a no-op", {
   .e$covMethod <- "r,s"
   .foceiInstallFdFullCov(.e)
   expect_false(exists("cov", envir = .e, inherits = FALSE))
+})
+
+# --- covariance scope naming + the covList cache the install populates --------
+
+test_that("covariance scope names round-trip", {
+  expect_identical(.covFullName("s"), "s (full)")
+  expect_identical(.covFullName("r,s"), "r,s (full)")
+  expect_identical(.covFullName("analytic"), "analytic (full)")
+  expect_identical(.covFullName("s (full)"), "s (full)") # idempotent
+  expect_identical(.covBaseName("r,s (full)"), "r,s")
+  expect_identical(.covBaseName("r,s"), "r,s")
+  expect_true(.covIsFull("analytic (full)"))
+  expect_false(.covIsFull("analytic"))
+  expect_false(.covIsFull(character(0)))
+  expect_false(.covIsFull(NA_character_))
+})
+
+test_that("decorated native covMethod strings resolve to their FD type", {
+  expect_identical(.covFdType("|r|,s+"), "r,s")
+  expect_identical(.covFdType("|s| (full)"), "s")
+  expect_identical(.covFdType("r+"), "r")
+  expect_identical(.covFdType("analytic"), "")
+  expect_identical(.covFdType("failed"), "")
+})
+
+test_that(".covSameName ignores decorations but not the scope", {
+  expect_true(.covSameName("s", "|s|"))
+  expect_true(.covSameName("r,s (full)", "r+,s (full)"))
+  expect_false(.covSameName("s", "s (full)"))
+  expect_false(.covSameName("r", "s"))
+  # the |x| sqrtm repair of a non-FD covariance
+  expect_true(.covSameName("imp", "|imp|"))
+  expect_true(.covSameName("linFim", "|linFim|"))
+  expect_false(.covSameName("imp", "|linFim|"))
+  expect_false(.covSameName("sa", "|Ha|"))
+  expect_false(.covSameName("imp", NULL))
+})
+
+test_that(".covRepairWarn reports an |x| repair once, and only of a non-FD covariance", {
+  expect_identical(
+    capture_warnings(.covRepairWarn("imp", "|imp|")),
+    "\"imp\" is not positive definite; installed as \"|imp|\" (sqrtm)"
+  )
+  # a stashed repaired matrix was reported when it was computed
+  expect_no_warning(.covRepairWarn("|linFim| (full)", "|linFim|"))
+  expect_no_warning(.covRepairWarn("|imp|", "|imp|"))
+  # the FD decorations are reported by the native step
+  expect_no_warning(.covRepairWarn("s", "|s|"))
+  expect_no_warning(.covRepairWarn("imp", "imp"))
+})
+
+test_that("the FD-full install names the full shape and caches the others", {
+  .e <- .mkFdEnv("r,s", .Rinv, .S)
+  expect_true(.foceiInstallFdFullCov(.e))
+  expect_identical(.e$covMethod, "r,s (full)")
+  # the installed shape is never left in the cache; the other full shapes are
+  expect_false("r,s (full)" %in% names(.e$covList))
+  expect_setequal(names(.e$covList), c("r (full)", "s (full)"))
+  expect_equal(unname(.e$covList[["s (full)"]]), unname(solve(.S)))
+})
+
+test_that("the native theta-only covariance is cached under its own type", {
+  # covMethod="s" writes only e$cov in C++ (no e$covS), so the installed native
+  # covariance is the only copy of the theta-only shape -- cache it before the swap
+  .e <- .mkFdEnv("s", .Rinv, .S)
+  .native <- matrix(c(0.25, 0.01, 0.01, 0.16), 2, dimnames = list(c("tka", "om.eta.ka"), c("tka", "om.eta.ka")))
+  .e$cov <- .native
+  expect_true(.foceiInstallFdFullCov(.e))
+  expect_identical(.e$covMethod, "s (full)")
+  expect_equal(.e$covList[["s"]], .native)
+  expect_false("s (full)" %in% names(.e$covList))
+})
+
+test_that("a decorated native covMethod keeps its decoration under the suffix", {
+  .e <- .mkFdEnv("|s|", .Rinv, .S)
+  expect_true(.foceiInstallFdFullCov(.e))
+  expect_identical(.e$covMethod, "|s| (full)")
+})
+
+test_that("a no-op install caches nothing", {
+  .e <- .mkFdEnv("analytic", .Rinv, .S)
+  expect_false(.foceiInstallFdFullCov(.e))
+  expect_false(exists("covList", envir = .e, inherits = FALSE))
 })

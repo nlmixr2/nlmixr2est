@@ -13,7 +13,8 @@
       # tryInvokeRestart: a condition signaled with signalCondition() has no
       # muffleMessage restart, and invokeRestart() would error on it
       tryInvokeRestart("muffleMessage")
-    })
+    }
+  )
   list(fit = .fit, msg = .msg)
 }
 
@@ -29,14 +30,17 @@
     NULL
   }
   .oldRx <- rxode2::rxGetSeed()
-  withr::defer({
-    if (is.null(.oldR)) {
-      suppressWarnings(rm(".Random.seed", envir = .GlobalEnv))
-    } else {
-      assign(".Random.seed", .oldR, envir = .GlobalEnv)
-    }
-    rxode2::rxSetSeed(.oldRx)
-  }, envir = envir)
+  withr::defer(
+    {
+      if (is.null(.oldR)) {
+        suppressWarnings(rm(".Random.seed", envir = .GlobalEnv))
+      } else {
+        assign(".Random.seed", .oldR, envir = .GlobalEnv)
+      }
+      rxode2::rxSetSeed(.oldRx)
+    },
+    envir = envir
+  )
   set.seed(seed)
   invisible()
 }

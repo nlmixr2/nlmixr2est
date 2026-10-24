@@ -7,7 +7,7 @@
 # and the jump pin (which1=-8) and skips cleanly without them.
 
 .carryJumpCapable <- function() {
-  .rxFoceiLinCmtCarryCapable() && .rxFoceiLinCmtCarryJumpCapable() # nolint: object_usage_linter.
+  .rxFoceiLinCmtCarryCapable() && .rxFoceiLinCmtCarryJumpCapable()
 }
 
 test_that("f()/alag() etas on a time-varying kernel become carry pairs", {
@@ -157,8 +157,12 @@ test_that("an additive f() shape with a covariate needs the carry and matches FD
   ev <- .carryEv()
   ev$cmt <- 1
   pars <- c(
-    `THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = log(1.2),
-    `THETA[4]` = 0, `THETA[5]` = 0.5, `ETA[1]` = 0.3
+    `THETA[1]` = log(2),
+    `THETA[2]` = log(20),
+    `THETA[3]` = log(1.2),
+    `THETA[4]` = 0,
+    `THETA[5]` = 0.5,
+    `ETA[1]` = 0.3
   )
   p <- .foceiLinCmtCarryPairs(suppressMessages(nlmixr2est::nlmixr2(mod)))
   expect_equal(nrow(p), 1L)

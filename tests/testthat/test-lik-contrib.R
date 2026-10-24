@@ -23,8 +23,9 @@ test_that("likelihood-contribution hooks fire per observation and fold into the 
     })
   }
 
-  .old <- rxode2::getRxThreads(); on.exit(rxode2::setRxThreads(.old), add = TRUE)
-  rxode2::setRxThreads(1L)   # test contributor uses global accumulators
+  .old <- rxode2::getRxThreads()
+  on.exit(rxode2::setRxThreads(.old), add = TRUE)
+  rxode2::setRxThreads(1L) # test contributor uses global accumulators
 
   .nObs <- sum(theo_sd$EVID == 0)
   .nsub <- length(unique(theo_sd$ID))
@@ -44,15 +45,15 @@ test_that("likelihood-contribution hooks fire per observation and fold into the 
 
   ## the obs hook fires once per observation within each subject bracket
   expect_gt(res[["nObs"]], 0)
-  expect_equal(res[["nObs"]] / res[["nBegin"]], .nObs / .nsub)  # obs per subject
+  expect_equal(res[["nObs"]] / res[["nBegin"]], .nObs / .nsub) # obs per subject
   ## begin/end are balanced
   expect_equal(res[["nBegin"]], res[["nEnd"]])
 
   ## after removing the contributor, a fit does not invoke it
   .Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est")
-  .Call("_nlmixr2est_registerTestContrib", PACKAGE = "nlmixr2est")  # resets counters
+  .Call("_nlmixr2est_registerTestContrib", PACKAGE = "nlmixr2est") # resets counters
   .Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est")
   f2 <- .nlmixr(one.compartment, theo_sd, est = "focei", control = foceiControl(print = 0L))
   res2 <- .Call("_nlmixr2est_getTestContrib", PACKAGE = "nlmixr2est")
-  expect_equal(res2[[1]], 0)   # nObs: not invoked
+  expect_equal(res2[[1]], 0) # nObs: not invoked
 })

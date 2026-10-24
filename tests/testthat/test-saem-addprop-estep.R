@@ -64,12 +64,18 @@ nmTest({
         linCmt() ~ add(add.sd) + prop(prop.sd)
       })
     }
-    f1 <- .nlmixr(mod, theo_sd, est = "saem",
-                  control = saemControl(nBurn = 10, nEm = 10, print = 0, nmc = 2,
-                                        addProp = "combined1"))
-    f2 <- .nlmixr(mod, theo_sd, est = "saem",
-                  control = saemControl(nBurn = 10, nEm = 10, print = 0, nmc = 2,
-                                        addProp = "combined2"))
+    f1 <- .nlmixr(
+      mod,
+      theo_sd,
+      est = "saem",
+      control = saemControl(nBurn = 10, nEm = 10, print = 0, nmc = 2, addProp = "combined1")
+    )
+    f2 <- .nlmixr(
+      mod,
+      theo_sd,
+      est = "saem",
+      control = saemControl(nBurn = 10, nEm = 10, print = 0, nmc = 2, addProp = "combined2")
+    )
     expect_true(all(is.finite(f1$parFixedDf$Estimate)))
     expect_true(all(is.finite(f2$parFixedDf$Estimate)))
   })
@@ -92,8 +98,7 @@ nmTest({
         linCmt() ~ add(add.sd) + pow(prop.sd, pw)
       })
     }
-    fit <- .nlmixr(mod, theo_sd, est = "saem",
-                   control = saemControl(nBurn = 20, nEm = 20, print = 0, nmc = 2))
+    fit <- .nlmixr(mod, theo_sd, est = "saem", control = saemControl(nBurn = 20, nEm = 20, print = 0, nmc = 2))
     expect_true(all(is.finite(fit$parFixedDf$Estimate)))
     expect_true(fit$parFixedDf["add.sd", "Estimate"] > 0)
     expect_true(fit$parFixedDf["prop.sd", "Estimate"] > 0)
