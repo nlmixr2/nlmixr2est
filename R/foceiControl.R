@@ -939,7 +939,6 @@
 #'   always keeps the standard gradient.
 #'
 #' @inheritParams rxode2::rxSolve
-#' @inheritParams minqa::bobyqa
 #'
 #' @details
 #'
@@ -1521,7 +1520,6 @@ foceiControl <- function(sigdig = 3, #
     outerOpt <- match.arg(outerOpt)
     .outerOptTxt <- outerOpt
     if (outerOpt == "bobyqa") {
-      rxode2::rxReq("minqa")
       outerOptFun <- .bobyqa
       outerOpt <- -1L
     } else if (outerOpt == "nlminb") {
@@ -1537,6 +1535,7 @@ foceiControl <- function(sigdig = 3, #
       outerOptFun <- .lbfgsbLG
       outerOpt <- -1L
     } else if (outerOpt == "uobyqa") {
+      rxode2::rxReq("minqa")
       outerOptFun <- .uobyqa
       outerOpt <- -1L
     } else if (outerOpt == "newuoa") {

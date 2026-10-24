@@ -16,7 +16,7 @@
   if (is.null(.ctl$rhoend)) .ctl$rhoend <- 1e-4
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
-  .ret <- try(minqa::newuoa(par, fn,
+  .ret <- try(RcppTrust::newuoa(par, fn,
     control = .ctl
     ))
   if (inherits(.ret, "try-error")) {

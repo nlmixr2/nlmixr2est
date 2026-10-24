@@ -154,7 +154,7 @@ nmTest({
     expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
   })
 
-  foceiControlFast <- foceiControl(print = 0, maxOuterIterations = 0L, outerOpt="uobyqa")
+  foceiControlFast <- foceiControl(print = 0, maxOuterIterations = 0L, outerOpt="newuoa")
 
   test_that("FOCEI with logit-bounded param keeps estimate within bounds", {
     fit <- suppressMessages(suppressWarnings(
@@ -171,7 +171,7 @@ nmTest({
     fit <- suppressMessages(suppressWarnings(
       nlmixr(.logitModel, theo_sd, est = "focei",
              control = foceiControl(print = 0, maxOuterIterations = 0L,
-                                    outerOpt="uobyqa",
+                                    outerOpt="newuoa",
                                     boundedTransform = FALSE))
     ))
     expect_true("td1" %in% names(fit$theta))

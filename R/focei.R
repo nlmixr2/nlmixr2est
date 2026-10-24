@@ -26,7 +26,7 @@ is.latex <- function() {
   get("is_latex_output", asNamespace("knitr"))()
 }
 
-#' Get the maxfun control for minqa optimizers
+#' Get the maxfun control for bobyqa-family optimizers
 #'
 #' @param control control to update based on foceiControl()
 #' @return control with maxfun updated based on maxOuterIterations
@@ -40,6 +40,7 @@ is.latex <- function() {
 }
 
 .uobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  rxode2::rxReq("minqa")
   .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   .ctl$iprint <- 0L
@@ -86,7 +87,7 @@ is.latex <- function() {
 #' Only engages when the caller passed an explicit `rhobeg` (as
 #' `.foceiFitInternal()`'s outer optimizer always does, via
 #' `foceiControl()$rhobeg`'s own non-NULL default) -- a caller that leaves
-#' `rhobeg` for `minqa::bobyqa()` to default internally (e.g.
+#' `rhobeg` for `RcppTrust::bobyqa()` to default internally (e.g.
 #' `.boundedResidOpt()`) has no known starting radius to compare against or
 #' widen, so is left alone.
 #'
@@ -94,8 +95,8 @@ is.latex <- function() {
 #' @param fn the objective function
 #' @param lower,upper bobyqa's bounds
 #' @param ctl the (already-filtered) bobyqa control list the first attempt used
-#' @param ret the first attempt's `minqa::bobyqa()` result
-#' @return a `minqa::bobyqa()`-shaped list, from whichever attempt is returned
+#' @param ret the first attempt's `RcppTrust::bobyqa()` result
+#' @return a `RcppTrust::bobyqa()`-shaped list, from whichever attempt is returned
 #' @noRd
 #' @author Matthew L. Fidler
 .bobyqaRetryIfStuck <- function(par, fn, lower, upper, ctl, ret) {
@@ -109,7 +110,7 @@ is.latex <- function() {
     .ctl2 <- ctl
     .ctl2$rhobeg <- .rb
     if (!is.null(.ctl2$rhoend) && .ctl2$rhoend >= .rb) .ctl2$rhoend <- .rb / 100
-    ret <- minqa::bobyqa(par, fn, control = .ctl2, lower = lower, upper = upper)
+    ret <- RcppTrust::bobyqa(par, fn, control = .ctl2, lower = lower, upper = upper)
     .rhobeg <- .rb
   }
   ret
@@ -120,7 +121,7 @@ is.latex <- function() {
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
-  .ret <- minqa::bobyqa(par, fn,
+  .ret <- RcppTrust::bobyqa(par, fn,
     control = .ctl,
     lower = lower,
     upper = upper
@@ -3656,7 +3657,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         } else if (this.env$zeroGrad && isTRUE(.ret$control$zeroGradBobyqa)) {
           message("Theta reset (zero/bad gradient values); Switch to bobyqa")
           warning("Theta reset (zero/bad gradient values); Switch to bobyqa")
-          rxode2::rxReq("minqa")
           .ret$control$outerOptFun <- .bobyqa
           .ret$control$outerOpt <- -1L
           .ret$control$outerOptTxt <- "bobyqa"
@@ -3752,7 +3752,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .draw <- TRUE
     if (isFALSE(control$zeroGradFirstReset) && grepl("bobyqa", attr(.ret0, "condition")$message)) {
       message("Changing to \"bobyqa\"")
-      rxode2::rxReq("minqa")
       .ret$control$outerOpt <- -1L
       .ret$control$outerOptFun <- .bobyqa
       .ret$control$outerOptTxt <- "bobyqa"

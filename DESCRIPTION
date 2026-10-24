@@ -53,11 +53,10 @@ Imports:
     lotri,
     Matrix,
     methods,
-    minqa,
     n1qn1 (>= 6.0.1-12),
     nlme,
     Rcpp,
-    RcppTrust (>= 0.1.0),
+    RcppTrust (>= 0.2.0),
     rex,
     rxode2 (>= 5.1.7),
     stats,
@@ -80,6 +79,7 @@ Suggests:
     xgxr,
     sfsmisc,
     minpack.lm,
+    minqa,
     remotes,
     fastGHQuad,
     rmarkdown,
@@ -95,8 +95,10 @@ LinkingTo:
     Rcpp,
     RcppArmadillo (>= 0.11.2.3.1),
     RcppEigen,
-    RcppTrust (>= 0.1.0),
+    RcppTrust (>= 0.2.0),
     rxode2 (>= 5.1.7)
+Remotes:
+    nlmixr2/RcppTrust
 Biarch: true
 Config/testthat/edition: 3
 Encoding: UTF-8

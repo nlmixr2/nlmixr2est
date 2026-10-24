@@ -82,7 +82,7 @@ newuoaControl <- function(npt=NULL,
 
   checkmate::assertIntegerish(npt, null.ok=TRUE, any.missing=FALSE, lower=2, len=1)
   # bobyqa final trust-region radius from sigdig (FOCEi mechanism, matches
-  # foceiControl rhoend); a user value wins, sigdig=NULL leaves the minqa default
+  # foceiControl rhoend); a user value wins, sigdig=NULL leaves the RcppTrust default
   if (is.null(rhoend) && !is.null(sigdig)) rhoend <- .sigdigOptTol(sigdig)
   checkmate::assertNumeric(rhobeg, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
   checkmate::assertNumeric(rhoend, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
@@ -285,7 +285,6 @@ getValidNlmixrCtl.newuoa <- function(control) {
 
 .newuoaFitModel <- function(ui, dataSav) {
   # Use nlmEnv and function for DRY principle
-  rxode2::rxReq("minqa")
   .ctl <- ui$control
   .keep <- c("npt", "rhobeg", "rhoend", "iprint", "maxfun")
   .keep <- .keep[vapply(.keep, function(opt) {
@@ -300,7 +299,7 @@ getValidNlmixrCtl.newuoa <- function(control) {
                        lower=ui$optimParLower, upper=ui$optimParUpper)
   on.exit({.nlmFreeEnv()})
   # support gradient
-  .ret <- bquote(minqa::newuoa(
+  .ret <- bquote(RcppTrust::newuoa(
     par=.(.env$par.ini),
     fn=.(nlmixr2est::.nlmixrOptimFunC),
     control=.(.oCtl)))
@@ -350,4 +349,4 @@ nlmixr2Est.newuoa <- function(env, ...) {
 attr(nlmixr2Est.newuoa, "covPresent") <- TRUE
 attr(nlmixr2Est.newuoa, "unbounded") <- TRUE
 
-#minqa::newuoa()
+#RcppTrust::newuoa()

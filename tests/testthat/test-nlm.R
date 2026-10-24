@@ -96,9 +96,10 @@ nmTest({
 
     expect_s3_class(fit2, "nlmixr2.bobyqa")
 
-    fit2 <- .nlmixr(mod, dsn, est="uobyqa", uobyqaControl(print=0))
-
-    expect_s3_class(fit2, "nlmixr2.uobyqa")
+    if (requireNamespace("minqa", quietly = TRUE)) {
+      fit2 <- .nlmixr(mod, dsn, est="uobyqa", uobyqaControl(print=0))
+      expect_s3_class(fit2, "nlmixr2.uobyqa")
+    }
 
     fit2 <- .nlmixr(mod, dsn, est="newuoa", newuoaControl(print=0))
 
