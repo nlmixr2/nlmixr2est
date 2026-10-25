@@ -507,6 +507,10 @@ struct focei_options {
   double aqHi;
   bool aqfirst = false;
   double scaleC0;
+  // one-step start for thetas that began at 0 (#1228): largest move in typical
+  // magnitudes (0 = off) and their optimizer indices
+  double zeroThetaStep = 0.0;
+  std::vector<int> zeroThetaK;
   int *xPar = NULL;
   // probitIdxArr (npars-sized): 0 = no probit transform, k>=1 = k-th probit
   // transform (bounds at probitThetaLow/Hi[k-1]). Kept separate from xPar's
@@ -10251,6 +10255,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.scaleType = as<int>(foceiO["scaleType"]);
   op_focei.normType = as<int>(foceiO["normType"]);
   op_focei.scaleC0=as<double>(foceiO["scaleC0"]);
+  op_focei.zeroThetaStep = foceiO.containsElementNamed("zeroThetaStep") ?
+    as<double>(foceiO["zeroThetaStep"]) : 0.0;
   op_focei.scaleCmin=as<double>(foceiO["scaleCmin"]);
   op_focei.scaleCmax=as<double>(foceiO["scaleCmax"]);
   op_focei.abstol=as<double>(foceiO["abstol"]);
@@ -10785,6 +10791,58 @@ void foceiCustomFun(Environment e){
 }
 
 
+// Le Cam one-step start for thetas that began at 0 (#1228).  The objective at
+// +/- a tenth of the typical magnitude gives g and H; the start moves to -g/H
+// (clamped to zeroThetaStep typical magnitudes and the bounds) only when that
+// lowers the objective.  Works on the natural scale, and moving initPar with
+// the start keeps every scaleType's map consistent.
+static void foceiZeroThetaOneStep(Environment e) {
+  const unsigned int np = op_focei.npars;
+  std::vector<double> nat(np), v, x(np);
+  for (unsigned int k = np; k--;) nat[k] = op_focei.fullTheta[op_focei.fixedTrans[k]];
+  auto ofvAt = [&](std::vector<double> &p) {
+    for (unsigned int k = np; k--;) x[k] = scaleScalePar(&op_focei, p.data(), k);
+    double f = foceiOfv0(x.data());
+    return (std::isfinite(f) && f < 1e100) ? f : R_PosInf;
+  };
+  const int derivMethod = op_focei.derivMethod;
+  double f0 = ofvAt(nat);
+  bool atNat = true;
+  NumericVector moved(op_focei.zeroThetaK.size(), NA_REAL);
+  for (size_t z = 0; z < op_focei.zeroThetaK.size() && std::isfinite(f0); ++z) {
+    const int k = op_focei.zeroThetaK[z];
+    if (foceiIsMixPar(k)) continue;
+    double t = scaleGetScaleC(&op_focei, k);
+    if (!std::isfinite(t) || t <= 0) t = 1.0;
+    const double x0 = nat[k], h = 0.1 * t;
+    if (!(x0 - h > op_focei.lower[k] && x0 + h < op_focei.upper[k])) continue;
+    v = nat;
+    v[k] = x0 + h;
+    const double fp = ofvAt(v);
+    v[k] = x0 - h;
+    const double fm = ofvAt(v);
+    atNat = false;
+    const double g = (fp - fm) / (2.0 * h), H = (fp - 2.0 * f0 + fm) / (h * h);
+    if (!std::isfinite(g) || !std::isfinite(H) || H <= 0) continue;
+    const double mx = op_focei.zeroThetaStep * t;
+    const double x1 = x0 + std::min(mx, std::max(-mx, -g / H));
+    if (!(x1 > op_focei.lower[k] && x1 < op_focei.upper[k])) continue;
+    v[k] = x1;
+    const double f1 = ofvAt(v);
+    if (!(f1 < f0)) continue;
+    nat[k] = x1;
+    f0 = f1;
+    atNat = true;
+    moved[z] = x1;
+    op_focei.fullTheta[op_focei.fixedTrans[k]] = x1;
+    op_focei.initPar[k] = x1;
+  }
+  // leave the inner state (etas, lastOfv) at the optimizer's starting point
+  if (!atNat) ofvAt(nat);
+  op_focei.derivMethod = derivMethod;
+  e["zeroThetaStart"] = moved;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Overall Outer Problem
 
@@ -10840,6 +10898,12 @@ Environment foceiOuter(Environment e){
   op_focei.warnedResetNoProgress=0;
   op_focei.warnedContribFallback=0;
   if (op_focei.maxOuterIterations > 0){
+    // before the bounds are put on the optimizer's scale; a theta-reset restart
+    // keeps the first attempt's start
+    if (op_focei.zeroThetaStep > 0 && !op_focei.zeroThetaK.empty() &&
+        op_focei.nF2 == 0 && !muPrintActive()) {
+      foceiZeroThetaOneStep(e);
+    }
     for (unsigned int k = op_focei.npars; k--;){
       if (R_FINITE(op_focei.lower[k])){
         op_focei.lower[k]=scaleScalePar(&op_focei, op_focei.lower, k);
@@ -15210,6 +15274,15 @@ Environment foceiFitCpp_(Environment e){
     for (unsigned int k = op_focei.npars; k--;){
       int j = op_focei.fixedTrans[k];
       if (j < scaleC.size()) op_focei.scaleC[k] = scaleC[j];
+    }
+  }
+  op_focei.zeroThetaK.clear();
+  if (e.exists("zeroThetaIdx")) {
+    IntegerVector zeroIdx = as<IntegerVector>(e["zeroThetaIdx"]);
+    for (int z = 0; z < zeroIdx.size(); ++z) {
+      for (unsigned int k = 0; k < op_focei.npars; ++k) {
+        if (op_focei.fixedTrans[k] == zeroIdx[z] - 1) op_focei.zeroThetaK.push_back((int)k);
+      }
     }
   }
   // Theta transforms (ntheta-indexed, from R's .iterPrintXParFromUi xform list,

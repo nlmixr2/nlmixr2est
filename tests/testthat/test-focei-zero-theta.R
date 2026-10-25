@@ -59,6 +59,62 @@ nmTest({
     expect_equal(hookErr(mErr, "add.sd"), 0)
   })
 
+  test_that("a zero-start theta's typical magnitude comes from its covariate", {
+    m <- function() {
+      ini({ tka<-0.45; tcl<- -1; tv<-3.45; b<-0; bv<-0; c0<-0; add.sd<-0.3; eta.cl~0.1 })
+      model({
+        ka<-exp(tka); cl<-exp(tcl+b*(WT-70)+eta.cl); v<-exp(tv+COV*bv) + c0
+        linCmt() ~ add(add.sd)
+      })
+    }
+    ui <- rxode2::rxUiDecompress(rxode2::rxode2(m))
+    d <- data.frame(wt = c(50, 70, 90, 110), COV = c(0, 1, 0, 1))
+    # case-insensitive column match; the factor is (WT - 70), on either side of `*`
+    expect_equal(.zeroThetaTypical(ui, "b", d), 1 / sd(d$wt))
+    expect_equal(.zeroThetaTypical(ui, "bv", d), 1 / sd(d$COV))
+    # no covariate, no data, or a constant covariate -> 1
+    expect_equal(.zeroThetaTypical(ui, "c0", d), 1)
+    expect_equal(.zeroThetaTypical(ui, "b", NULL), 1)
+    expect_equal(.zeroThetaTypical(ui, "bv", data.frame(WT = 1:4, COV = 0)), 1)
+  })
+
+  test_that("the zero-start scale replaces |nudge| and reaches every method's scaleC", {
+    m <- function() {
+      ini({ tka<-0.45; tcl<- -1; tv<-3.45; b<-0; add.sd<-0.3; eta.cl~0.1 })
+      model({ ka<-exp(tka); cl<-exp(tcl+b*WT+eta.cl); v<-exp(tv); linCmt() ~ add(add.sd) })
+    }
+    d <- data.frame(WT = c(50, 70, 90, 110))
+    on.exit(nlmixr2global$nlmixr2EstEnv$zeroThetaScale <- NULL, add = TRUE)
+    scB <- function(ui) {
+      sc <- ui$scaleCtheta
+      names(sc) <- ui$iniDf$name[!is.na(ui$iniDf$ntheta) & !ui$iniDf$fix]
+      unname(sc["b"])
+    }
+    ui <- rxode2::rxUiDecompress(rxode2::rxode2(m))
+    r <- .preProcessZeroTheta(ui, "focei", d, foceiControl())
+    z <- nlmixr2global$nlmixr2EstEnv$zeroThetaScale
+    expect_equal(z$name, "b")
+    expect_equal(z$est, 0.001)
+    expect_equal(z$scale, 1 / sd(d$WT))
+    # the nudge is not the scale: |0.001| used to freeze the parameter (#1228)
+    expect_equal(scB(r$ui), 1 / sd(d$WT))
+    # another start value does not pick up the record
+    ui2 <- rxode2::rxUiDecompress(rxode2::rxode2(m))
+    ui2$iniDf$est[ui2$iniDf$name == "b"] <- 0.5
+    expect_equal(scB(ui2), 1 / 0.5)
+    # nls / nlm-family controls: recorded, not moved
+    ui3 <- rxode2::rxUiDecompress(rxode2::rxode2(m))
+    expect_null(.preProcessZeroTheta(ui3, "nlminb", d, nlminbControl()))
+    expect_equal(nlmixr2global$nlmixr2EstEnv$zeroThetaScale$est, 0)
+    expect_equal(scB(ui3), 1 / sd(d$WT))
+  })
+
+  test_that("zeroThetaStep round-trips and validates", {
+    expect_equal(foceiControl()$zeroThetaStep, 100)
+    expect_equal(foceiControl(zeroThetaStep = 0)$zeroThetaStep, 0)
+    expect_error(foceiControl(zeroThetaStep = -1))
+  })
+
   test_that("linear thetas get guarded 1/|init|, log thetas 1", {
     base <- function() {
       ini({ tka<-0.45; tcl<- -1; tv<-3.45; b<-2.5; add.sd<-0.3; eta.cl~0.1 })

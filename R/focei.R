@@ -4395,19 +4395,30 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   }
   # Any estimated theta still without a scaleC is a linear (additive / unbounded)
   # parameter: derivative-based 1/|init|, guarded to scaleCband so an extreme init
-  # falls back to native |init|.  Zero-init params (nudged off 0 elsewhere) fall
-  # back to unit scaling.  This is the only guard: FOCEi's C++ side uses every
-  # value given here as it is.
+  # falls back to native |init|.  A theta that started at 0 has no |init| to scale
+  # by (its zeroTheta nudge is not a magnitude), so it takes the typical magnitude
+  # .preProcessZeroTheta recorded (#1228).  This is the only guard: FOCEi's C++
+  # side uses every value given here as it is.
   .thetaIni <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
+  .zero <- nlmixr2global$nlmixr2EstEnv$zeroThetaScale
+  .zeroIdx <- integer(0)
   for (.k in seq_len(nrow(.thetaIni))) {
     .nt <- .thetaIni$ntheta[.k]
     if (.nt <= length(.scaleC) && is.na(.scaleC[.nt]) && !.thetaIni$fix[.k]) {
       .init <- .thetaIni$est[.k]
+      .z <- which(.zero$name == .thetaIni$name[.k] & .zero$est == .init)
+      if (length(.z) == 1L) {
+        .scaleC[.nt] <- .zero$scale[.z]
+        .zeroIdx <- c(.zeroIdx, as.integer(.nt))
+        next
+      }
       .raw <- if (.init == 0) Inf else 1 / abs(.init)
       .scaleC[.nt] <- .guardScaleC(.raw, .init, .scLo, .scHi)
     }
   }
   env$scaleC <- .scaleC
+  # thetas (1-based) whose start the C++ outer setup may move by one Newton step
+  env$zeroThetaIdx <- .zeroIdx
 }
 
 #' The FOCEi scaleC of the estimated thetas, in theta order
