@@ -16,7 +16,9 @@
   if (.op %in% c("*", "/") && length(expr) == 3L) {
     # numerator leaves of the */ chain (parentheses are transparent)
     .num <- function(e, inNum) {
-      while (is.call(e) && identical(e[[1]], quote(`(`))) e <- e[[2]]
+      while (is.call(e) && identical(e[[1]], quote(`(`))) {
+        e <- e[[2]]
+      }
       if (is.call(e) && as.character(e[[1]]) %in% c("*", "/") && length(e) == 3L) {
         return(.num(e[[2]], inNum) || .num(e[[3]], inNum && identical(e[[1]], quote(`*`))))
       }

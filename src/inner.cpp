@@ -10846,49 +10846,59 @@ void foceiCustomFun(Environment e){
 // (clamped to zeroThetaStep typical magnitudes and the bounds) only when that
 // lowers the objective.  Works on the natural scale, and moving initPar with
 // the start keeps every scaleType's map consistent.
+static double zeroThetaOfv(std::vector<double> &p, std::vector<double> &x) {
+  for (unsigned int k = op_focei.npars; k--;) x[k] = scaleScalePar(&op_focei, p.data(), k);
+  double f = foceiOfv0(x.data());
+  return (std::isfinite(f) && f < 1e100) ? f : R_PosInf;
+}
+
+// One-step move of theta k from nat; returns the new value (and its objective
+// in f0) or NA when the move does not lower the objective.
+static double zeroThetaMove(std::vector<double> &nat, int k, double &f0,
+                            bool &atNat, std::vector<double> &x) {
+  if (foceiIsMixPar(k)) return NA_REAL;
+  double t = scaleGetScaleC(&op_focei, k);
+  if (!std::isfinite(t) || t <= 0) t = 1.0;
+  const double x0 = nat[k], h = 0.1 * t;
+  if (!(x0 - h > op_focei.lower[k] && x0 + h < op_focei.upper[k])) return NA_REAL;
+  std::vector<double> v = nat;
+  v[k] = x0 + h;
+  const double fp = zeroThetaOfv(v, x);
+  v[k] = x0 - h;
+  const double fm = zeroThetaOfv(v, x);
+  atNat = false;
+  const double g = (fp - fm) / (2.0 * h), H = (fp - 2.0 * f0 + fm) / (h * h);
+  if (!std::isfinite(g) || !std::isfinite(H) || H <= 0) return NA_REAL;
+  const double mx = op_focei.zeroThetaStep * t;
+  const double x1 = x0 + std::min(mx, std::max(-mx, -g / H));
+  if (!(x1 > op_focei.lower[k] && x1 < op_focei.upper[k])) return NA_REAL;
+  v[k] = x1;
+  const double f1 = zeroThetaOfv(v, x);
+  if (!(f1 < f0)) return NA_REAL;
+  f0 = f1;
+  atNat = true;
+  return x1;
+}
+
 static void foceiZeroThetaOneStep(Environment e) {
   const unsigned int np = op_focei.npars;
-  std::vector<double> nat(np), v, x(np);
+  std::vector<double> nat(np), x(np);
   for (unsigned int k = np; k--;) nat[k] = op_focei.fullTheta[op_focei.fixedTrans[k]];
-  auto ofvAt = [&](std::vector<double> &p) {
-    for (unsigned int k = np; k--;) x[k] = scaleScalePar(&op_focei, p.data(), k);
-    double f = foceiOfv0(x.data());
-    return (std::isfinite(f) && f < 1e100) ? f : R_PosInf;
-  };
   const int derivMethod = op_focei.derivMethod;
-  double f0 = ofvAt(nat);
+  double f0 = zeroThetaOfv(nat, x);
   bool atNat = true;
   NumericVector moved(op_focei.zeroThetaK.size(), NA_REAL);
   for (size_t z = 0; z < op_focei.zeroThetaK.size() && std::isfinite(f0); ++z) {
     const int k = op_focei.zeroThetaK[z];
-    if (foceiIsMixPar(k)) continue;
-    double t = scaleGetScaleC(&op_focei, k);
-    if (!std::isfinite(t) || t <= 0) t = 1.0;
-    const double x0 = nat[k], h = 0.1 * t;
-    if (!(x0 - h > op_focei.lower[k] && x0 + h < op_focei.upper[k])) continue;
-    v = nat;
-    v[k] = x0 + h;
-    const double fp = ofvAt(v);
-    v[k] = x0 - h;
-    const double fm = ofvAt(v);
-    atNat = false;
-    const double g = (fp - fm) / (2.0 * h), H = (fp - 2.0 * f0 + fm) / (h * h);
-    if (!std::isfinite(g) || !std::isfinite(H) || H <= 0) continue;
-    const double mx = op_focei.zeroThetaStep * t;
-    const double x1 = x0 + std::min(mx, std::max(-mx, -g / H));
-    if (!(x1 > op_focei.lower[k] && x1 < op_focei.upper[k])) continue;
-    v[k] = x1;
-    const double f1 = ofvAt(v);
-    if (!(f1 < f0)) continue;
+    const double x1 = zeroThetaMove(nat, k, f0, atNat, x);
+    if (ISNA(x1)) continue;
     nat[k] = x1;
-    f0 = f1;
-    atNat = true;
     moved[z] = x1;
     op_focei.fullTheta[op_focei.fixedTrans[k]] = x1;
     op_focei.initPar[k] = x1;
   }
   // leave the inner state (etas, lastOfv) at the optimizer's starting point
-  if (!atNat) ofvAt(nat);
+  if (!atNat) zeroThetaOfv(nat, x);
   op_focei.derivMethod = derivMethod;
   e["zeroThetaStart"] = moved;
 }
