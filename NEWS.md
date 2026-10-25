@@ -31,6 +31,11 @@
 
 ### Estimation
 
+- On Windows with more than one thread, `est = "imp"` and `"impmap"` no
+  longer crash (ODE models) or give estimates that depend on the number of
+  threads (`linCmt()` models); affected since 7.1.0.  Linux and macOS were
+  not affected.
+
 - A population parameter (`theta`) that starts at exactly 0, such as a covariate
   effect, is now estimated instead of staying at about 0 (#1228).  Its scale used
   to be the `zeroTheta` nudge (0.001); it is now a typical magnitude, `1/sd()` of
@@ -82,9 +87,14 @@
   `saem`, `imp`, `impmap`, `qrpem` and the `npag` and `npb` family stopped
   with unrelated errors.  A third-party method is refused too until it
   declares `attr(nlmixr2Est.<method>, "sameBlock")`: `TRUE` when it keeps the
-  tie, `"fixed"` when it does not estimate omega (see `?nlmixr2Est`).  A
-  refit from a fit is not refused, since the fit's model has already lost the
-  tie, as it did before.
+  tie, `"fixed"` when it does not estimate omega (see `?nlmixr2Est`).
+
+- A fit's model (`fit$ui`) kept a repeated (`same()`) block's copies as
+  ordinary etas, so a refit from it, or from `ini()` on it, estimated each copy
+  on its own.  It now keeps the tie, and a method that cannot keep it refuses
+  such a refit too.  A fit made before this change keeps its old model (the
+  copy at condition `"id"`), so a refit from it still runs untied; rerun the
+  fit to get the tie.
 
 - With a time-varying covariate on a `linCmt()` parameter, an eta whose block
   repeats another's (`same()`) was left out of the sensitivity carry added in
