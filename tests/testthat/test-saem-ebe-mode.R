@@ -38,26 +38,28 @@ test_that("saem ebe='mode' returns the conditional mode", {
 
   # FOCEi's inner problem at the same final parameters is the same conditional
   # density, so its converged etas are the mode too
-  .f2 <- .nlmixr(fit, est = "focei",
-                 control = foceiControl(print = 0, maxOuterIterations = 0L,
-                                        covMethod = ""))
-  expect_equal(as.matrix(.f2$eta[, .etaCols]), .mode,
-               tolerance = 1e-3, ignore_attr = TRUE)
+  .f2 <- .nlmixr(fit, est = "focei", control = foceiControl(print = 0, maxOuterIterations = 0L, covMethod = ""))
+  expect_equal(as.matrix(.f2$eta[, .etaCols]), .mode, tolerance = 1e-3, ignore_attr = TRUE)
 
-  .fitS <- .nlmixr(.mod, nlmixr2data::theo_sd, est = "saem",
-                   control = saemControl(print = 0, nBurn = 50, nEm = 50,
-                                         ebe = "saem"))
+  .fitS <- .nlmixr(
+    .mod,
+    nlmixr2data::theo_sd,
+    est = "saem",
+    control = saemControl(print = 0, nBurn = 50, nEm = 50, ebe = "saem")
+  )
   expect_equal(.fitS$ebe, "saem")
-  expect_equal(as.matrix(.fitS$eta[, .etaCols]),
-               as.matrix(.fitS$etaSaem[, .etaCols]), ignore_attr = TRUE)
+  expect_equal(as.matrix(.fitS$eta[, .etaCols]), as.matrix(.fitS$etaSaem[, .etaCols]), ignore_attr = TRUE)
   # the SAEM run itself does not depend on the ebe choice
   expect_equal(.fitS$etaSaem, fit$etaSaem)
   expect_equal(.fitS$theta, fit$theta)
 
   # each subject's search is independent, so threads do not change the answer
-  .fit2 <- .nlmixr(.mod, nlmixr2data::theo_sd, est = "saem",
-                   control = saemControl(print = 0, nBurn = 50, nEm = 50,
-                                         rxControl = rxode2::rxControl(cores = 2L)))
+  .fit2 <- .nlmixr(
+    .mod,
+    nlmixr2data::theo_sd,
+    est = "saem",
+    control = saemControl(print = 0, nBurn = 50, nEm = 50, rxControl = rxode2::rxControl(cores = 2L))
+  )
   expect_equal(as.matrix(.fit2$eta[, .etaCols]), .mode, ignore_attr = TRUE)
 })
 
@@ -82,11 +84,8 @@ test_that("saem ebe='mode' handles a single eta (1-D search)", {
   }
   # nolint end
 
-  fit <- .nlmixr(.mod, nlmixr2data::theo_sd, est = "saem",
-                 control = saemControl(print = 0, nBurn = 50, nEm = 50))
-  .f2 <- .nlmixr(fit, est = "focei",
-                 control = foceiControl(print = 0, maxOuterIterations = 0L,
-                                        covMethod = ""))
+  fit <- .nlmixr(.mod, nlmixr2data::theo_sd, est = "saem", control = saemControl(print = 0, nBurn = 50, nEm = 50))
+  .f2 <- .nlmixr(fit, est = "focei", control = foceiControl(print = 0, maxOuterIterations = 0L, covMethod = ""))
   expect_equal(.f2$eta$eta.cl, fit$eta$eta.cl, tolerance = 1e-3)
   expect_false(isTRUE(all.equal(fit$eta$eta.cl, fit$etaSaem$eta.cl)))
 })

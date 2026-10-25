@@ -784,11 +784,9 @@
   .mat2 <- .mat[, .etaTrans, drop = FALSE]
   colnames(.mat2) <- .etaNames
   # the SAEM conditional-mean etas are kept as fit$etaSaem
-  env$etaSaem <- data.frame(ID = seq_along(.mat2[, 1]),
-                            setNames(as.data.frame(.mat2), .etaNames))
+  env$etaSaem <- data.frame(ID = seq_along(.mat2[, 1]), setNames(as.data.frame(.mat2), .etaNames))
   env$ebe <- rxode2::rxGetControl(.ui, "ebe", "mode")
-  if (identical(env$ebe, "mode") && is.matrix(.saem$etaMode) &&
-        all(dim(.saem$etaMode) == dim(.mat))) {
+  if (identical(env$ebe, "mode") && is.matrix(.saem$etaMode) && all(dim(.saem$etaMode) == dim(.mat))) {
     .mat2 <- .saem$etaMode[, .etaTrans, drop = FALSE]
     colnames(.mat2) <- .etaNames
   }

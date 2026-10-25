@@ -600,7 +600,9 @@ saemControl <- function(
   }
   # an objective solved to relative error rtol locates its minimum only to
   # about sqrt(rtol); a tighter mode search just chases solver noise
-  if (is.null(ebeTol)) ebeTol <- sqrt(max(rxControl$rtol))
+  if (is.null(ebeTol)) {
+    ebeTol <- sqrt(max(rxControl$rtol))
+  }
   checkmate::assertNumeric(ebeTol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
 
   # "imp" is foreign to the SAEM kernel; skip the native cov and recompute the

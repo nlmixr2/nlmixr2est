@@ -1,8 +1,7 @@
 # innerOpt= levels.  "auto" is resolved in C++ (foceiSetup_) once
 # needOptimHess is known: n1qn1 for a generalized-likelihood endpoint, trust
 # otherwise.  See the innerOpt @param below.
-.innerOptFun <- c("n1qn1" = 1L, "lbfgsb3c" = 2L, "trust" = 3L, "auto" = 4L,
-                  "newuoa" = 5L, "steihaug" = 6L)
+.innerOptFun <- c("n1qn1" = 1L, "lbfgsb3c" = 2L, "trust" = 3L, "auto" = 4L, "newuoa" = 5L, "steihaug" = 6L)
 
 # hessianMethod= levels.  Anything but "fd" is only consulted under
 # innerOpt="trust"/"steihaug" (hessianQNEligible, src/inner.cpp).

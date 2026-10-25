@@ -63,9 +63,7 @@
   if (length(.ptr) < 7L) {
     stop("nlmixr2est requires RcppTrust >= 0.2.0", call. = FALSE)
   }
-  .Call(`_nlmixr2est_iniRcppTrustPtrs`,
-        .ptr,
-        PACKAGE = "nlmixr2est")
+  .Call(`_nlmixr2est_iniRcppTrustPtrs`, .ptr, PACKAGE = "nlmixr2est")
 }
 
 .iniPtrs <- function() {

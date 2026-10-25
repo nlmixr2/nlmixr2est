@@ -23,10 +23,19 @@ nmTest({
   # nolint end
   .etaCols <- c("eta.ka", "eta.cl", "eta.v")
   .fit <- function(innerOpt, maxOuter = 0L, ...) {
-    .nlmixr(.mod, nlmixr2data::theo_sd, est = "focei",
-            control = foceiControl(print = 0, innerOpt = innerOpt,
-                                   maxOuterIterations = maxOuter,
-                                   covMethod = "", calcTables = FALSE, ...))
+    .nlmixr(
+      .mod,
+      nlmixr2data::theo_sd,
+      est = "focei",
+      control = foceiControl(
+        print = 0,
+        innerOpt = innerOpt,
+        maxOuterIterations = maxOuter,
+        covMethod = "",
+        calcTables = FALSE,
+        ...
+      )
+    )
   }
 
   test_that("steihaug and newuoa reach trust's posthoc etas and objective", {
@@ -38,8 +47,13 @@ nmTest({
         .f <- do.call(.fit, .args)
         expect_true(.f$env$nTrustInner[["calls"]] > 0, info = .o)
         expect_equal(.f$objf, .tr$objf, tolerance = 1e-3, info = paste(.o, .p))
-        expect_equal(as.matrix(.f$eta[, .etaCols]), as.matrix(.tr$eta[, .etaCols]),
-                     tolerance = 1e-2, ignore_attr = TRUE, info = paste(.o, .p))
+        expect_equal(
+          as.matrix(.f$eta[, .etaCols]),
+          as.matrix(.tr$eta[, .etaCols]),
+          tolerance = 1e-2,
+          ignore_attr = TRUE,
+          info = paste(.o, .p)
+        )
       }
     }
   })
@@ -51,15 +65,15 @@ nmTest({
   })
 
   test_that("inner optimizer options validate and round-trip", {
-    expect_error(foceiControl(innerOpt = "newuoa", hessianMethod = "bfgs"),
-                 "hessianMethod")
+    expect_error(foceiControl(innerOpt = "newuoa", hessianMethod = "bfgs"), "hessianMethod")
     expect_error(foceiControl(innerOpt = "steihaug", hessianMethod = "bfgs"), NA)
-    .ctl <- foceiControl(innerOpt = "steihaug", steihaugPolish = TRUE,
-                         newuoaRhoend = 1e-4)
-    expect_equal(rxUiDeparse.foceiControl(.ctl, "var"),
-                 quote(var <- foceiControl(innerOpt = "steihaug",
+    .ctl <- foceiControl(innerOpt = "steihaug", steihaugPolish = TRUE, newuoaRhoend = 1e-4)
+    expect_equal(
+      rxUiDeparse.foceiControl(.ctl, "var"),
+      quote(var <- foceiControl(innerOpt = "steihaug",
                                            steihaugPolish = TRUE,
-                                           newuoaRhoend = 1e-4)))
+                                           newuoaRhoend = 1e-4))
+    )
     # the default rhoend follows the ODE tolerance
     expect_equal(foceiControl()$newuoaRhoend, sqrt(max(foceiControl()$rxControl$rtol)))
   })

@@ -223,7 +223,9 @@ nmTest({
     # checked for parameter accuracy.
     f.focei <- .nlmixr(one.cmt, .datM3, est = "focei", control = foceiControl(print = 0))
     .meths <- c("bobyqa", "newuoa", "nlminb")
-    if (requireNamespace("minqa", quietly = TRUE)) .meths <- c(.meths, "uobyqa")
+    if (requireNamespace("minqa", quietly = TRUE)) {
+      .meths <- c(.meths, "uobyqa")
+    }
     for (meth in .meths) {
       fit <- .nlmixr(one.cmt, .datM3, est = meth, control = nlmControl(print = 0))
       expect_equal(as.numeric(fit$theta[["tka"]]), as.numeric(f.focei$theta[["tka"]]), tolerance = 0.1, info = meth)
