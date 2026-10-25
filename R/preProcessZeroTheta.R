@@ -1,39 +1,79 @@
-#' Typical magnitude of a theta that starts at 0
+#' Covariate factors of thetas, found in one walk of the model
 #'
-#' A mu-referenced covariate coefficient (`theta*COV` in
-#' `muRefCovariateDataFrame`, or a mu2 term like `theta*(WT - 70)` in
-#' `mu2RefCovariateReplaceDataFrame`) gets `1/sd()` of its covariate in the data,
-#' so a unit step moves the linear predictor by one standard deviation; anything
-#' else gets 1.  Reusing rxode2's mu-reference tables keeps the model walked once.
+#' For each of `names`, the factor is the whole product/quotient term holding it
+#' as a numerator leaf, with the theta set to 1, kept only when every variable
+#' left is a covariate; so `b*WT/70` gives `1*WT/70`, and `WT/b` or `tcl*b*WT`
+#' give nothing.  The first (outermost) match wins.
 #'
-#' @param ui rxode2 ui
-#' @param name theta name
-#' @param data estimation data (may be `NULL`)
-#' @return positive typical magnitude
+#' @param lst list of model expressions
+#' @param names theta names to look for
+#' @param covs covariate names
+#' @return named list of factor expressions (only the names found)
 #' @noRd
-.zeroThetaTypical <- function(ui, name, data) {
-  if (!is.data.frame(data)) {
-    return(1)
+.zeroThetaCovFactors <- function(lst, names, covs) {
+  .found <- list()
+  .isChain <- function(e) {
+    is.call(e) && as.character(e[[1]]) %in% c("*", "/") && length(e) == 3L
   }
-  .cov <- NULL
-  for (.df in list(ui$muRefCovariateDataFrame, ui$mu2RefCovariateReplaceDataFrame)) {
-    .w <- which(.df$covariateParameter == name)
-    if (length(.w) > 0L) {
-      .cov <- str2lang(as.character(.df$covariate[.w[1]]))
-      break
+  .unparen <- function(e) {
+    while (is.call(e) && identical(e[[1]], quote(`(`))) {
+      e <- e[[2]]
     }
+    e
   }
-  if (is.null(.cov)) {
-    return(1)
+  # leaves of a */ chain, flagged by whether they sit in the numerator
+  .leaves <- function(e, inNum) {
+    e <- .unparen(e)
+    if (.isChain(e)) {
+      return(c(.leaves(e[[2]], inNum), .leaves(e[[3]], inNum && identical(e[[1]], quote(`*`)))))
+    }
+    list(list(e = e, num = inNum))
   }
-  # covariate names match data columns without regard to case, as in estimation
-  .v <- all.vars(.cov)
+  .walk <- function(e) {
+    if (!is.call(e) || length(.found) == length(names)) {
+      return(invisible())
+    }
+    if (!.isChain(e)) {
+      for (.a in as.list(e)[-1]) {
+        .walk(.a)
+      }
+      return(invisible())
+    }
+    .lv <- .leaves(e, TRUE)
+    for (.l in .lv) {
+      .n <- if (is.name(.l$e)) as.character(.l$e) else ""
+      if (.l$num && .n %in% names && is.null(.found[[.n]])) {
+        .f <- do.call(substitute, list(e, stats::setNames(list(1), .n)))
+        .v <- all.vars(.f)
+        if (length(.v) > 0L && all(.v %in% covs)) {
+          .found[[.n]] <<- .f
+        }
+      }
+    }
+    # a theta in this chain is consumed here; only look inside its call leaves
+    for (.l in .lv) {
+      .walk(.l$e)
+    }
+    invisible()
+  }
+  for (.e in lst) {
+    .walk(.e)
+  }
+  .found
+}
+
+#' 1/sd() of a covariate expression in the data, or 1
+#'
+#' Covariate names match data columns without regard to case, as in estimation.
+#' @noRd
+.zeroThetaInvSd <- function(expr, data) {
+  .v <- all.vars(expr)
   .w <- match(tolower(.v), tolower(names(data)))
   if (anyNA(.w)) {
     return(1)
   }
   .env <- setNames(lapply(.w, function(i) as.double(data[[i]])), .v)
-  .x <- tryCatch(eval(.cov, .env, mu2env), error = function(e) NULL)
+  .x <- tryCatch(eval(expr, .env, mu2env), error = function(e) NULL)
   if (!is.numeric(.x)) {
     return(1)
   }
@@ -44,12 +84,46 @@
   1 / .sd
 }
 
+#' Typical magnitude of thetas that start at 0
+#'
+#' A covariate coefficient gets `1/sd()` of its covariate in the data, so a unit
+#' step moves the linear predictor by one standard deviation; anything else gets
+#' 1.  The covariate comes from rxode2's mu-reference tables
+#' (`muRefCovariateDataFrame`, `mu2RefCovariateReplaceDataFrame`) when listed
+#' there; the rest are found in a single walk of the model.
+#'
+#' @param ui rxode2 ui
+#' @param names theta names
+#' @param data estimation data (may be `NULL`)
+#' @return named positive typical magnitudes
+#' @noRd
+.zeroThetaTypical <- function(ui, names, data) {
+  .ret <- setNames(rep(1, length(names)), names)
+  if (!is.data.frame(data) || length(names) == 0L) {
+    return(.ret)
+  }
+  .cov <- list()
+  for (.df in list(ui$muRefCovariateDataFrame, ui$mu2RefCovariateReplaceDataFrame)) {
+    for (.n in setdiff(intersect(names, .df$covariateParameter), names(.cov))) {
+      .cov[[.n]] <- str2lang(as.character(.df$covariate[match(.n, .df$covariateParameter)]))
+    }
+  }
+  .rest <- setdiff(names, names(.cov))
+  if (length(.rest) > 0L && length(ui$allCovs) > 0L) {
+    .cov <- c(.cov, .zeroThetaCovFactors(ui$lstExpr, .rest, ui$allCovs))
+  }
+  for (.n in names(.cov)) {
+    .ret[.n] <- .zeroThetaInvSd(.cov[[.n]], data)
+  }
+  .ret
+}
+
 #' Handle theta initial estimates that are exactly zero
 #'
 #' A linear `theta` has no magnitude to be scaled by when it starts at `0`, so
 #' this hook records a typical magnitude for each estimated, non-fixed,
-#' non-residual theta that starts at `0` (`1/sd()` of its mu-referenced
-#' covariate, else 1).  The scaling setup uses it as that parameter's `scaleC`.
+#' non-residual theta that starts at `0` (`1/sd()` of the covariate it
+#' multiplies, else 1).  The scaling setup uses it as that parameter's `scaleC`.
 #' For the FOCEi family (a `foceiControl`) the parameter is also moved to
 #' `+zeroTheta` when that is within its bounds, otherwise `-zeroTheta`; if neither
 #' is within the bounds it errors.  Runs before `.preProcessBoundedTransform` so
@@ -73,7 +147,7 @@
   }
   .mag <- if (inherits(control, "foceiControl")) control$zeroTheta else NULL
   .nudge <- is.numeric(.mag) && length(.mag) == 1L && is.finite(.mag) && .mag > 0
-  .scale <- vapply(.w, function(i) .zeroThetaTypical(.ui, .iniDf$name[i], data), double(1))
+  .scale <- unname(.zeroThetaTypical(.ui, .iniDf$name[.w], data))
   if (.nudge) {
     for (.i in .w) {
       .lower <- .iniDf$lower[.i]

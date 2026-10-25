@@ -70,12 +70,12 @@ nmTest({
     ui <- rxode2::rxUiDecompress(rxode2::rxode2(m))
     d <- data.frame(wt = c(50, 70, 90, 110), COV = c(0, 1, 0, 1))
     # case-insensitive column match; mu2 (WT - 70) and plain mu-ref COV*bv
-    expect_equal(.zeroThetaTypical(ui, "b", d), 1 / sd(d$wt))
-    expect_equal(.zeroThetaTypical(ui, "bv", d), 1 / sd(d$COV))
+    expect_equal(unname(.zeroThetaTypical(ui, "b", d)), 1 / sd(d$wt))
+    expect_equal(unname(.zeroThetaTypical(ui, "bv", d)), 1 / sd(d$COV))
     # no covariate, no data, or a constant covariate -> 1
-    expect_equal(.zeroThetaTypical(ui, "c0", d), 1)
-    expect_equal(.zeroThetaTypical(ui, "b", NULL), 1)
-    expect_equal(.zeroThetaTypical(ui, "bv", data.frame(WT = 1:4, COV = 0)), 1)
+    expect_equal(unname(.zeroThetaTypical(ui, "c0", d)), 1)
+    expect_equal(unname(.zeroThetaTypical(ui, "b", NULL)), 1)
+    expect_equal(unname(.zeroThetaTypical(ui, "bv", data.frame(WT = 1:4, COV = 0))), 1)
     # mu2 covariate expressions are evaluated in the data
     m2 <- function() {
       ini({ tka<-0.45; tcl<- -1; tv<-3.45; b<-0; bv<-0; add.sd<-0.3; eta.cl~0.1; eta.v~0.1 })
@@ -85,8 +85,26 @@ nmTest({
       })
     }
     ui2 <- rxode2::rxUiDecompress(rxode2::rxode2(m2))
-    expect_equal(.zeroThetaTypical(ui2, "b", d), 70 / sd(d$wt))
-    expect_equal(.zeroThetaTypical(ui2, "bv", d), 1 / sd(log(d$wt / 70)))
+    expect_equal(unname(.zeroThetaTypical(ui2, "b", d)), 70 / sd(d$wt))
+    expect_equal(unname(.zeroThetaTypical(ui2, "bv", d)), 1 / sd(log(d$wt / 70)))
+    # not mu-referenced: the whole */ term is found in one walk of the model
+    m3 <- function() {
+      ini({ tka<-0.45; tcl<- -1; tv<-3.45; b<-0; bv<-0; c1<-0; c2<-0; add.sd<-0.3; eta.cl~0.1 })
+      model({
+        ka<-exp(tka); cl<-exp(tcl+b*WT/70+eta.cl); v<-exp(tv)*(1+bv*COV) + WT/c1 + tcl*c2*WT
+        linCmt() ~ add(add.sd)
+      })
+    }
+    ui3 <- rxode2::rxUiDecompress(rxode2::rxode2(m3))
+    expect_equal(
+      .zeroThetaTypical(ui3, c("b", "bv", "c1", "c2"), d),
+      c(b = 70 / sd(d$wt), bv = 1 / sd(d$COV), c1 = 1, c2 = 1)
+    )
+    cv <- c("WT", "COV")
+    expect_equal(
+      .zeroThetaCovFactors(list(quote(cl <- exp(tcl + b * (WT / 70)))), "b", cv),
+      list(b = quote(1 * (WT / 70)))
+    )
   })
 
   test_that("the zero-start scale replaces |nudge| and reaches every method's scaleC", {
