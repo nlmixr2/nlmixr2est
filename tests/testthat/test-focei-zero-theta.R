@@ -100,6 +100,22 @@ nmTest({
       .zeroThetaTypical(ui3, c("b", "bv", "c1", "c2"), d),
       c(b = 70 / sd(d$wt), bv = 1 / sd(d$COV), c1 = 1, c2 = 1)
     )
+    # mu3 (model variable) and mu4 (string assignment) covariates
+    m4 <- function() {
+      ini({ tka<-0.45; tcl<- -1; tv<-3.45; b<-0; bv<-0; add.sd<-0.3; eta.cl~0.1; eta.v~0.1 })
+      model({
+        wt70 <- WT / 70
+        if (wt70 > 1) { wt70s <- "larger" } else { wt70s <- "smaller" }
+        ka<-exp(tka); cl<-exp(tcl+log(wt70)*b+eta.cl); v<-exp(tv+(wt70s == "larger")*bv+eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    ui4 <- rxode2::rxUiDecompress(rxode2::rxode2(m4))
+    d4 <- data.frame(wt = c(50, 60, 90, 110))
+    expect_equal(
+      suppressMessages(.zeroThetaTypical(ui4, c("b", "bv"), d4)),
+      c(b = 1 / sd(log(d4$wt / 70)), bv = 1 / sd(as.double(d4$wt > 70)))
+    )
     cv <- c("WT", "COV")
     expect_equal(
       .zeroThetaCovFactors(list(quote(cl <- exp(tcl + b * (WT / 70)))), "b", cv),

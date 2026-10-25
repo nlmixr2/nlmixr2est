@@ -64,19 +64,16 @@
 
 #' 1/sd() of a covariate expression in the data, or 1
 #'
-#' Covariate names match data columns without regard to case, as in estimation.
+#' Evaluated like mu2/mu3/mu4 covariates (`.mu2CovValue()`), so model variables
+#' and string assignments resolve as they do for mu referencing.
 #' @noRd
-.zeroThetaInvSd <- function(expr, data) {
-  .v <- all.vars(expr)
-  .w <- match(tolower(.v), tolower(names(data)))
-  if (anyNA(.w)) {
+.zeroThetaInvSd <- function(expr, datEnv) {
+  # mu4 comparisons evaluate to logical
+  .x <- .mu2CovValue(datEnv, deparse1(expr))$value
+  if (!is.numeric(.x) && !is.logical(.x)) {
     return(1)
   }
-  .env <- setNames(lapply(.w, function(i) as.double(data[[i]])), .v)
-  .x <- tryCatch(eval(expr, .env, mu2env), error = function(e) NULL)
-  if (!is.numeric(.x)) {
-    return(1)
-  }
+  .x <- as.double(.x)
   .sd <- stats::sd(.x[is.finite(.x)])
   if (length(.sd) != 1L || !is.finite(.sd) || .sd <= 0) {
     return(1)
@@ -89,8 +86,9 @@
 #' A covariate coefficient gets `1/sd()` of its covariate in the data, so a unit
 #' step moves the linear predictor by one standard deviation; anything else gets
 #' 1.  The covariate comes from rxode2's mu-reference tables
-#' (`muRefCovariateDataFrame`, `mu2RefCovariateReplaceDataFrame`) when listed
-#' there; the rest are found in a single walk of the model.
+#' (`muRefCovariateDataFrame`, `mu2RefCovariateReplaceDataFrame`, which also
+#' hold mu3/mu4 terms) when listed there; the rest are found in a single walk of
+#' the model.
 #'
 #' @param ui rxode2 ui
 #' @param names theta names
@@ -112,8 +110,16 @@
   if (length(.rest) > 0L && length(ui$allCovs) > 0L) {
     .cov <- c(.cov, .zeroThetaCovFactors(ui$lstExpr, .rest, ui$allCovs))
   }
+  if (length(.cov) == 0L) {
+    return(.ret)
+  }
+  # covariate names match data columns without regard to case, as in estimation
+  .covs <- ui$allCovs
+  .w <- match(tolower(names(data)), tolower(.covs))
+  names(data)[!is.na(.w)] <- .covs[.w[!is.na(.w)]]
+  .datEnv <- .mu2CovEnv(ui, data)
   for (.n in names(.cov)) {
-    .ret[.n] <- .zeroThetaInvSd(.cov[[.n]], data)
+    .ret[.n] <- .zeroThetaInvSd(.cov[[.n]], .datEnv)
   }
   .ret
 }
