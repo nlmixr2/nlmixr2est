@@ -94,6 +94,55 @@ static inline minqaCRes bobyqaC(int n, const double *par, const double *lower,
   return out;
 }
 
+// State of the Brent_fmin() search: bracket [a, b], best x, runner-up w,
+// previous w in v, and the last two steps d and e.
+struct brentState {
+  double a, b, d, e, v, w, x, fv, fw, fx;
+};
+
+// Brent_fmin() step from x: parabolic when acceptable, else golden section.
+static inline double brentStep(brentState &st, double xm, double tol1, double t2) {
+  const double c = (3. - std::sqrt(5.)) * .5;
+  double p = 0., q = 0., r = 0.;
+  if (std::fabs(st.e) > tol1) {
+    r = (st.x - st.w) * (st.fx - st.fv);
+    q = (st.x - st.v) * (st.fx - st.fw);
+    p = (st.x - st.v) * q - (st.x - st.w) * r;
+    q = (q - r) * 2.;
+    if (q > 0.) p = -p; else q = -q;
+    r = st.e;
+    st.e = st.d;
+  }
+  if (std::fabs(p) >= std::fabs(q * .5 * r) ||
+      p <= q * (st.a - st.x) || p >= q * (st.b - st.x)) {
+    st.e = (st.x < xm) ? st.b - st.x : st.a - st.x;
+    st.d = c * st.e;
+  } else {
+    st.d = p / q;
+    double u = st.x + st.d;
+    if (u - st.a < t2 || st.b - u < t2) st.d = (st.x >= xm) ? -tol1 : tol1;
+  }
+  if (std::fabs(st.d) >= tol1) return st.x + st.d;
+  return (st.d > 0.) ? st.x + tol1 : st.x - tol1;
+}
+
+// Brent_fmin() bookkeeping after evaluating f(u) = fu.
+static inline void brentUpdate(brentState &st, double u, double fu) {
+  if (fu <= st.fx) {
+    if (u < st.x) st.b = st.x; else st.a = st.x;
+    st.v = st.w; st.w = st.x; st.x = u;
+    st.fv = st.fw; st.fw = st.fx; st.fx = fu;
+    return;
+  }
+  if (u < st.x) st.a = u; else st.b = u;
+  if (fu <= st.fw || st.w == st.x) {
+    st.v = st.w; st.fv = st.fw;
+    st.w = u; st.fw = fu;
+  } else if (fu <= st.fv || st.v == st.x || st.v == st.w) {
+    st.v = u; st.fv = fu;
+  }
+}
+
 // Port of R's Brent_fmin() (stats::optimize); non-finite values become DBL_MAX
 // as optimize() does.
 static inline double brentFmin(double ax, double bx,
@@ -105,62 +154,23 @@ static inline double brentFmin(double ax, double bx,
     return std::isfinite(v) ? v : DBL_MAX;
   };
   const double c = (3. - std::sqrt(5.)) * .5;
-  double a, b, d, e, p, q, r, u, v, w, x;
-  double t2, fu, fv, fw, fx, xm, eps, tol1, tol3;
-  eps = std::sqrt(DBL_EPSILON);
-  a = ax; b = bx;
-  v = a + c * (b - a);
-  w = v; x = v;
-  d = 0.; e = 0.;
-  fx = f(x);
-  fv = fx; fw = fx;
-  tol3 = tol / 3.;
+  const double eps = std::sqrt(DBL_EPSILON), tol3 = tol / 3.;
+  brentState st;
+  st.a = ax; st.b = bx;
+  st.v = st.a + c * (st.b - st.a);
+  st.w = st.v; st.x = st.v;
+  st.d = 0.; st.e = 0.;
+  st.fx = f(st.x);
+  st.fv = st.fx; st.fw = st.fx;
   for (;;) {
-    xm = (a + b) * .5;
-    tol1 = eps * std::fabs(x) + tol3;
-    t2 = tol1 * 2.;
-    if (std::fabs(x - xm) <= t2 - (b - a) * .5) break;
-    p = 0.; q = 0.; r = 0.;
-    if (std::fabs(e) > tol1) {
-      r = (x - w) * (fx - fv);
-      q = (x - v) * (fx - fw);
-      p = (x - v) * q - (x - w) * r;
-      q = (q - r) * 2.;
-      if (q > 0.) p = -p; else q = -q;
-      r = e;
-      e = d;
-    }
-    if (std::fabs(p) >= std::fabs(q * .5 * r) ||
-        p <= q * (a - x) || p >= q * (b - x)) {
-      if (x < xm) e = b - x; else e = a - x;
-      d = c * e;
-    } else {
-      d = p / q;
-      u = x + d;
-      if (u - a < t2 || b - u < t2) {
-        d = tol1;
-        if (x >= xm) d = -d;
-      }
-    }
-    if (std::fabs(d) >= tol1) u = x + d;
-    else if (d > 0.) u = x + tol1;
-    else u = x - tol1;
-    fu = f(u);
-    if (fu <= fx) {
-      if (u < x) b = x; else a = x;
-      v = w; w = x; x = u;
-      fv = fw; fw = fx; fx = fu;
-    } else {
-      if (u < x) a = u; else b = u;
-      if (fu <= fw || w == x) {
-        v = w; fv = fw;
-        w = u; fw = fu;
-      } else if (fu <= fv || v == x || v == w) {
-        v = u; fv = fu;
-      }
-    }
+    double xm = (st.a + st.b) * .5;
+    double tol1 = eps * std::fabs(st.x) + tol3;
+    double t2 = tol1 * 2.;
+    if (std::fabs(st.x - xm) <= t2 - (st.b - st.a) * .5) break;
+    double u = brentStep(st, xm, tol1, t2);
+    brentUpdate(st, u, f(u));
   }
-  return x;
+  return st.x;
 }
 
 // Golden-ratio downhill expansion from x0 until the minimum is bracketed;

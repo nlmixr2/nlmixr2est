@@ -8,7 +8,8 @@
   mode.  SAEM's approximate conditional mean is kept as `fit$etaSaem`;
   `saemControl(ebe = "saem")` restores the old behavior, and
   `ebeMaxEval`/`ebeTol` control the search (`ebeTol` defaults to `sqrt(rtol)`
-  of the SAEM ODE solve).  Uninformative etas stay at zero.
+  of the SAEM ODE solve).  Uninformative etas stay at zero and the temporary
+  etas of eta-less likelihood thetas keep their SAEM values.
 
 - `minqa` is now only suggested.  BOBYQA and NEWUOA (the `bobyqa`/`newuoa`
   estimation methods, the FOCEi outer optimizers and every internal call) use

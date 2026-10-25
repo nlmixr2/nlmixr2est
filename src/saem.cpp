@@ -1938,50 +1938,48 @@ public:
   mat get_etaMode() { return etaMode; }
   ivec get_etaModeConv() { return etaModeConv; }
 
-  // Solve chain-0 row i at the full phi row and return its observation
-  // predictions; false on a failed solve.
-  bool modeRowPred(int i, const vec &phi, const std::vector<int> &doParam,
-                   int mixest, std::vector<double> &f, std::vector<double> &cens,
+  // Append observation record kk's prediction, censoring flag and limit.
+  void modeRowPush(rx_solving_options_ind *ind, int kk, double cur,
+                   std::vector<double> &f, std::vector<double> &cens,
                    std::vector<double> &lim) {
-    rx_solving_options *op = getSolvingOptions(_rx);
-    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
-    bool hasCens = hasRxCens(_rx), hasLimit = hasRxLimit(_rx);
-    if (mixest > 0) setIndMixest(ind, mixest);
-    f.clear(); cens.clear(); lim.clear();
-    if (_saemPhi1PoolActive) {
-      int nH2Theta = (int)_saemPhi1H2ThetaKind.n_elem;
-      int nEta = (int)_saemPhi1H2EtaCol.n_elem;
-      for (int k = 0; k < nH2Theta; ++k) {
-        int kind = _saemPhi1H2ThetaKind(k);
-        int col = _saemPhi1H2ThetaCol(k);
-        double val = (kind == 1) ? phi(_saemPhi1I1(col)) :
-          ((kind == 0) ? phi(_saemPhi1I0(col)) : _saemPhi1H2ThetaFixedVal(k));
-        setIndParPtr(ind, k, val);
-      }
-      for (int k = 0; k < nEta; ++k) setIndParPtr(ind, nH2Theta + k, 0.0);
-      OdeSwapScope neqGuard(odeSlotPred, ind, op);
-      OdeSwapCmtScope cmtGuard(odeSlotPred, op, ind);
-      setIndSolve(ind, -1);
-      odeSwapSolveInd(odeSlotPred, i);
-      if (odeSwapIndBadSolveSlot(op, ind, odeSlotPred)) return false;
-      iniSubjectE(i, 1, ind, op, _rx, rxPred.update_inis);
-      double *lhs = neqGuard.lhs();
-      for (int j = 0; j < getIndNallTimes(ind); ++j) {
-        setIndIdx(ind, j);
-        int kk = getIndIx(ind, j);
-        if (getIndEvid(ind, kk) != 0) continue;
-        rxPred.calc_lhs(i, getTime(kk, ind), getOpIndSolve(op, ind, j), lhs);
-        double cur = lhs[_saemPhi1PredOffset];
-        f.push_back(std::isnan(cur) ? 1.0e99 : cur);
-        cens.push_back(hasCens ? getIndCens(ind, kk) : 0.0);
-        lim.push_back(hasLimit ? getIndLimit(ind, kk) : R_NegInf);
-      }
-      return true;
+    f.push_back(std::isnan(cur) ? 1.0e99 : cur);
+    cens.push_back(hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0);
+    lim.push_back(hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf);
+  }
+
+  // Pooled general-likelihood path of modeRowPred().
+  bool modeRowPredPool(int i, const vec &phi, rx_solving_options *op,
+                       rx_solving_options_ind *ind, std::vector<double> &f,
+                       std::vector<double> &cens, std::vector<double> &lim) {
+    int nH2Theta = (int)_saemPhi1H2ThetaKind.n_elem;
+    int nEta = (int)_saemPhi1H2EtaCol.n_elem;
+    for (int k = 0; k < nH2Theta; ++k) {
+      int kind = _saemPhi1H2ThetaKind(k);
+      int col = _saemPhi1H2ThetaCol(k);
+      double val = (kind == 1) ? phi(_saemPhi1I1(col)) :
+        ((kind == 0) ? phi(_saemPhi1I0(col)) : _saemPhi1H2ThetaFixedVal(k));
+      setIndParPtr(ind, k, val);
     }
-    int k = 0;
-    for (size_t j = 0; j < doParam.size(); ++j) {
-      if (doParam[j] == 1) setIndParPtr(ind, (int)j, phi(k++));
+    for (int k = 0; k < nEta; ++k) setIndParPtr(ind, nH2Theta + k, 0.0);
+    OdeSwapScope neqGuard(odeSlotPred, ind, op);
+    OdeSwapCmtScope cmtGuard(odeSlotPred, op, ind);
+    setIndSolve(ind, -1);
+    odeSwapSolveInd(odeSlotPred, i);
+    if (odeSwapIndBadSolveSlot(op, ind, odeSlotPred)) return false;
+    iniSubjectE(i, 1, ind, op, _rx, rxPred.update_inis);
+    double *lhs = neqGuard.lhs();
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) != 0) continue;
+      rxPred.calc_lhs(i, getTime(kk, ind), getOpIndSolve(op, ind, j), lhs);
+      modeRowPush(ind, kk, lhs[_saemPhi1PredOffset], f, cens, lim);
     }
+    return true;
+  }
+
+  // Solve row i with the SAEM ODE retry rules; false if the solve stays bad.
+  bool modeRowSolveInd(int i, rx_solving_options *op, rx_solving_options_ind *ind) {
     int neq = getOpNeq(op);
     double tol0 = getIndTolFactor(ind);
     bool bad = false;
@@ -2002,7 +2000,25 @@ public:
       setIndTolFactor(ind, getIndTolFactor(ind) * current_saem_state->_saemOdeRecalcFactor);
     }
     if (!current_saem_state->_saemIndTolRelax) setIndTolFactor(ind, tol0);
-    if (bad) return false;
+    return !bad;
+  }
+
+  // Solve chain-0 row i at the full phi row and return its observation
+  // predictions; false on a failed solve.
+  bool modeRowPred(int i, const vec &phi, const std::vector<int> &doParam,
+                   int mixest, std::vector<double> &f, std::vector<double> &cens,
+                   std::vector<double> &lim) {
+    rx_solving_options *op = getSolvingOptions(_rx);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
+    if (mixest > 0) setIndMixest(ind, mixest);
+    f.clear(); cens.clear(); lim.clear();
+    if (_saemPhi1PoolActive) return modeRowPredPool(i, phi, op, ind, f, cens, lim);
+    int k = 0;
+    for (size_t j = 0; j < doParam.size(); ++j) {
+      if (doParam[j] == 1) setIndParPtr(ind, (int)j, phi(k++));
+    }
+    if (!modeRowSolveInd(i, op, ind)) return false;
+    int neq = getOpNeq(op);
     double *lhs = getIndLhs(ind);
     iniSubjectE(neq, 1, ind, op, _rx, saem_inis);
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
@@ -2013,13 +2029,64 @@ public:
         saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       } else if (getIndEvid(ind, kk) == 0) {
         saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
-        double cur = lhs[0];
-        f.push_back(std::isnan(cur) ? 1.0e99 : cur);
-        cens.push_back(hasCens ? getIndCens(ind, kk) : 0.0);
-        lim.push_back(hasLimit ? getIndLimit(ind, kk) : R_NegInf);
+        modeRowPush(ind, kk, lhs[0], f, cens, lim);
       }
     }
     return true;
+  }
+
+  // Residual sd of observation j at untransformed prediction fq; ft gets the
+  // transformed prediction.
+  double modeObsSd(int j, double fq, double &ft) {
+    const double double_xmin = 1.0e-200, xmax = 1e300;
+    int cur = ix_endpnt(j);
+    ft = _powerD(fq, lambda(cur), yj(cur), low(cur), hi(cur));
+    double fa = std::fabs(handleF(propT(cur), ft, fq, false, true));
+    double fac = (veccres[j] == 1.0) ? fa : std::pow(fa, veccres[j]);
+    double gq = (vecaddProp[j] == 1) ? vecares[j] + vecbres[j]*fac :
+      std::sqrt(vecares[j]*vecares[j] + vecbres[j]*vecbres[j]*fac*fac);
+    if (gq == 0.0) gq = 1.0;
+    return std::min(std::max(gq, double_xmin), xmax);
+  }
+
+  // AR(1) conditioning of observation j's residual e and sd gg on the previous
+  // observation of the same subject (indices from s).
+  void modeObsAr(int s, int j, const std::vector<double> &e0, double &e, double &gg) {
+    int cur = ix_endpnt(j);
+    if (!hasAr || !arActive(cur)) return;
+    arma::sword p = arPrev(j);
+    if (p < s || p >= j) return;
+    double phiAr = std::pow(arCor(cur), arDt(j));
+    double om = std::max(1.0 - phiAr*phiAr, 1e-8);
+    e = e0[j - s] - phiAr*e0[p - s];
+    gg *= std::sqrt(om);
+  }
+
+  // Normal-family observation loss of modeRowLoss().
+  double modeRowLossNormal(int s, const std::vector<double> &f,
+                           const std::vector<double> &cens,
+                           const std::vector<double> &lim, const vec &yt) {
+    int n = (int)f.size();
+    std::vector<double> e0(n), g(n);
+    for (int q = 0; q < n; ++q) {
+      double ft;
+      g[q] = modeObsSd(s + q, f[q], ft);
+      e0[q] = yt(s + q) - ft;
+    }
+    double sum = 0.0;
+    for (int q = 0; q < n; ++q) {
+      int j = s + q;
+      int cur = ix_endpnt(j);
+      double e = e0[q], gg = g[q];
+      modeObsAr(s, j, e0, e, gg);
+      double loss = 0.5*(e/gg)*(e/gg) + std::log(gg);
+      if (cens[q] != 0.0) {
+        double limT = _powerD(lim[q], lambda(cur), yj(cur), low(cur), hi(cur));
+        loss = -doCensNormal1(cens[q], yt(j), limT, -loss, yt(j) - e, gg*gg, 0);
+      }
+      sum += loss;
+    }
+    return sum;
   }
 
   // Subject i's observation loss (the do_mcmc per-observation term), for its
@@ -2027,51 +2094,11 @@ public:
   double modeRowLoss(int s, const std::vector<double> &f,
                      const std::vector<double> &cens, const std::vector<double> &lim,
                      const vec &yt) {
-    const double double_xmin = 1.0e-200, xmax = 1e300;
     int n = (int)f.size();
     double sum = 0.0;
     switch (distribution) {
-    case 1: {
-      std::vector<double> e0(n), ft(n), g(n);
-      for (int q = 0; q < n; ++q) {
-        int j = s + q;
-        int cur = ix_endpnt(j);
-        double fq = f[q];
-        ft[q] = _powerD(fq, lambda(cur), yj(cur), low(cur), hi(cur));
-        double ftT = handleF(propT(cur), ft[q], fq, false, true);
-        double fa = std::fabs(ftT);
-        double fac = (veccres[j] == 1.0) ? fa : std::pow(fa, veccres[j]);
-        double gq = (vecaddProp[j] == 1) ? vecares[j] + vecbres[j]*fac :
-          std::sqrt(vecares[j]*vecares[j] + vecbres[j]*vecbres[j]*fac*fac);
-        if (gq == 0.0) gq = 1.0;
-        if (gq < double_xmin) gq = double_xmin;
-        if (gq > xmax) gq = xmax;
-        g[q] = gq;
-        e0[q] = yt(j) - ft[q];
-      }
-      for (int q = 0; q < n; ++q) {
-        int j = s + q;
-        int cur = ix_endpnt(j);
-        double e = e0[q], gg = g[q];
-        if (hasAr && arActive(cur)) {
-          arma::sword p = arPrev(j);
-          if (p >= s && p < j) {
-            double phiAr = std::pow(arCor(cur), arDt(j));
-            double om = 1.0 - phiAr*phiAr;
-            if (om < 1e-8) om = 1e-8;
-            e = e0[q] - phiAr*e0[p - s];
-            gg *= std::sqrt(om);
-          }
-        }
-        double loss = 0.5*(e/gg)*(e/gg) + std::log(gg);
-        if (cens[q] != 0.0) {
-          double limT = _powerD(lim[q], lambda(cur), yj(cur), low(cur), hi(cur));
-          loss = -doCensNormal1(cens[q], yt(j), limT, -loss, yt(j) - e, gg*gg, 0);
-        }
-        sum += loss;
-      }
-      break;
-    }
+    case 1:
+      return modeRowLossNormal(s, f, cens, lim, yt);
     case 2:
       for (int q = 0; q < n; ++q) sum += -y(s + q)*std::log(f[q]) + f[q];
       break;
@@ -2091,27 +2118,86 @@ public:
     return sum;
   }
 
+  // Observation-level residual state at the final estimates; returns the
+  // transformed observations.
+  vec modeResidSetup() {
+    vecares = ares(ix_endpnt);
+    vecbres = bres(ix_endpnt);
+    veccres = cres(ix_endpnt);
+    vec yt = y;
+    if (distribution != 1) return yt;
+    if (hasFixedObsTransform) return yTrans;
+    for (int j = 0; j < ntotal; ++j) {
+      int cur = ix_endpnt(j);
+      yt(j) = _powerD(y(j), lambda(cur), yj(cur), low(cur), hi(cur));
+    }
+    return yt;
+  }
+
+  // Conditional mode of subject i over its free phi1 columns; fills row i of
+  // etaMode and etaModeConv.
+  void modeSubject(int i, const vec &yt, const mat &IG, const vec &sd,
+                   const mat &ue, const std::vector<int> &doParam, int mixest) {
+    std::vector<int> freeC;
+    for (int c = 0; c < nphi1; ++c) {
+      // temporary etas stand in for a theta and keep their SAEM value
+      bool pseudo = any(pseudoIx1 == (uword)c);
+      if (!pseudo && ue(i, i1(c)) != 0.0 && sd(c) > 0.0) freeC.push_back(c);
+    }
+    int nf = (int)freeC.size();
+    if (nf == 0) return;
+    vec start = mpost_phi.row(i).t();
+    if (nphi0 > 0) start.elem(i0) = mprior_phi0.row(i).t();
+    rowvec mu1 = mprior_phi1.row(i);
+    int s = ix_idM(i, 0);
+    std::vector<double> f, cens, lim;
+    double fBest = R_PosInf;
+    std::vector<double> zBest(nf, 0.0);
+    auto obj = [&](const double *z) -> double {
+      vec phi = start;
+      for (int k = 0; k < nf; ++k) phi(i1(freeC[k])) += z[k]*sd(freeC[k]);
+      double v = 1.0e300;
+      if (modeRowPred(i, phi, doParam, mixest, f, cens, lim)) {
+        rowvec d = phi.elem(i1).t() - mu1;
+        v = modeRowLoss(s, f, cens, lim, yt) + 0.5*as_scalar(d*IG*d.t());
+        if (!std::isfinite(v)) v = 1.0e300;
+      }
+      if (v < fBest) {
+        fBest = v;
+        std::copy(z, z + nf, zBest.begin());
+      }
+      return v;
+    };
+    std::vector<double> z0(nf, 0.0);
+    double f0 = obj(z0.data());
+    int conv = 0;
+    if (nf == 1) {
+      min1D([&](double z) { return obj(&z); }, 0.0, ebeTol);
+    } else {
+      conv = newuoaC(nf, z0.data(), obj, 0.5, ebeTol, ebeMaxEval, 2*nf + 1).convergence;
+    }
+    if (conv < 0) {
+      etaModeConv(i) = -1;
+      return;
+    }
+    if (!(fBest < f0)) {
+      etaModeConv(i) = 2;
+      return;
+    }
+    for (int k = 0; k < nf; ++k) {
+      int c = freeC[k];
+      etaMode(i, c) = start(i1(c)) + zBest[k]*sd(c) - mu1(c);
+    }
+    etaModeConv(i) = conv;
+  }
+
   void computeEtaMode() {
     etaMode = get_eta();
     etaModeConv.set_size(N);
     etaModeConv.fill(3);
     if (!ebeMode || nphi1 == 0) return;
     rx_solving_options *op = getSolvingOptions(_rx);
-    // observation-level residual state at the final estimates
-    vecares = ares(ix_endpnt);
-    vecbres = bres(ix_endpnt);
-    veccres = cres(ix_endpnt);
-    vec yt = y;
-    if (distribution == 1) {
-      if (hasFixedObsTransform) {
-        yt = yTrans;
-      } else {
-        for (int j = 0; j < ntotal; ++j) {
-          int cur = ix_endpnt(j);
-          yt(j) = _powerD(y(j), lambda(cur), yj(cur), low(cur), hi(cur));
-        }
-      }
-    }
+    vec yt = modeResidSetup();
     mat IG = invSympdNearPd(Gamma2_phi1, "Gamma2_phi1 (Omega)");
     vec sd = sqrt(Gamma2_phi1.diag());
     std::vector<int> doParam;
@@ -2136,56 +2222,7 @@ public:
       if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
       try {
-        std::vector<int> freeC;
-        for (int c = 0; c < nphi1; ++c) {
-          if (ue(i, i1(c)) != 0.0 && sd(c) > 0.0) freeC.push_back(c);
-        }
-        int nf = (int)freeC.size();
-        if (nf == 0) continue;
-        vec start = mpost_phi.row(i).t();
-        if (nphi0 > 0) start.elem(i0) = mprior_phi0.row(i).t();
-        rowvec mu1 = mprior_phi1.row(i);
-        int s = ix_idM(i, 0);
-        std::vector<double> f, cens, lim;
-        double fBest = R_PosInf;
-        std::vector<double> zBest(nf, 0.0);
-        auto obj = [&](const double *z) -> double {
-          vec phi = start;
-          for (int k = 0; k < nf; ++k) phi(i1(freeC[k])) += z[k]*sd(freeC[k]);
-          double v;
-          if (!modeRowPred(i, phi, doParam, mixComp(i), f, cens, lim)) {
-            v = 1.0e300;
-          } else {
-            rowvec d = phi.elem(i1).t() - mu1;
-            v = modeRowLoss(s, f, cens, lim, yt) + 0.5*as_scalar(d*IG*d.t());
-            if (!std::isfinite(v)) v = 1.0e300;
-          }
-          if (v < fBest) {
-            fBest = v;
-            std::copy(z, z + nf, zBest.begin());
-          }
-          return v;
-        };
-        std::vector<double> z0(nf, 0.0);
-        double f0 = obj(z0.data());
-        int conv = 0;
-        if (nf == 1) {
-          min1D([&](double z) { return obj(&z); }, 0.0, ebeTol);
-        } else {
-          minqaCRes r = newuoaC(nf, z0.data(), obj, 0.5, ebeTol, ebeMaxEval, 2*nf + 1);
-          conv = r.convergence;
-        }
-        if (conv < 0) {
-          etaModeConv(i) = -1;
-        } else if (!(fBest < f0)) {
-          etaModeConv(i) = 2;
-        } else {
-          for (int k = 0; k < nf; ++k) {
-            int c = freeC[k];
-            etaMode(i, c) = start(i1(c)) + zBest[k]*sd(c) - mu1(c);
-          }
-          etaModeConv(i) = conv;
-        }
+        modeSubject(i, yt, IG, sd, ue, doParam, mixComp(i));
       } catch (...) {
         etaModeConv(i) = -1;
       }
