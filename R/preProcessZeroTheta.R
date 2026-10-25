@@ -1,21 +1,34 @@
-#' Find the covariate expression a theta multiplies
+#' Find the covariate factor a theta multiplies
+#'
+#' The factor is the whole product/quotient term holding `name` as a numerator
+#' leaf, with `name` set to 1, so `b*WT/70` and `b*(WT/70)` both give `WT/70`.
 #'
 #' @param expr model expression to search
 #' @param name theta name
 #' @param covs covariate names
-#' @return the first covariate-only factor of a `name * <expr>` product, or `NULL`
+#' @return the covariate-only factor, or `NULL`
 #' @noRd
 .zeroThetaCovFactor <- function(expr, name, covs) {
   if (!is.call(expr)) {
     return(NULL)
   }
-  if (identical(expr[[1]], quote(`*`)) && length(expr) == 3L) {
-    for (.k in 2:3) {
-      .o <- expr[[5L - .k]]
-      .v <- all.vars(.o)
-      if (identical(expr[[.k]], as.name(name)) && length(.v) > 0L && all(.v %in% covs)) {
-        return(.o)
+  .op <- as.character(expr[[1]])
+  if (.op %in% c("*", "/") && length(expr) == 3L) {
+    # numerator leaves of the */ chain (parentheses are transparent)
+    .num <- function(e, inNum) {
+      while (is.call(e) && identical(e[[1]], quote(`(`))) e <- e[[2]]
+      if (is.call(e) && as.character(e[[1]]) %in% c("*", "/") && length(e) == 3L) {
+        return(.num(e[[2]], inNum) || .num(e[[3]], inNum && identical(e[[1]], quote(`*`))))
       }
+      inNum && identical(e, as.name(name))
+    }
+    if (.num(expr, TRUE)) {
+      .f <- do.call(substitute, list(expr, stats::setNames(list(1), name)))
+      .v <- all.vars(.f)
+      if (length(.v) > 0L && all(.v %in% covs)) {
+        return(.f)
+      }
+      return(NULL)
     }
   }
   for (.e in as.list(expr)[-1]) {

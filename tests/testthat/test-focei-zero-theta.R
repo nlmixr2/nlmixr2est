@@ -76,6 +76,13 @@ nmTest({
     expect_equal(.zeroThetaTypical(ui, "c0", d), 1)
     expect_equal(.zeroThetaTypical(ui, "b", NULL), 1)
     expect_equal(.zeroThetaTypical(ui, "bv", data.frame(WT = 1:4, COV = 0)), 1)
+    # the whole */ term is the factor, whatever the parentheses
+    cv <- c("WT", "COV")
+    expect_equal(.zeroThetaCovFactor(quote(cl <- exp(tcl + b * WT / 70)), "b", cv), quote(1 * WT / 70))
+    expect_equal(.zeroThetaCovFactor(quote(cl <- exp(tcl + b * (WT / 70))), "b", cv), quote(1 * (WT / 70)))
+    # not linear in b, or multiplied by another theta -> no factor
+    expect_null(.zeroThetaCovFactor(quote(v <- WT / b), "b", cv))
+    expect_null(.zeroThetaCovFactor(quote(v <- tcl * b * WT), "b", cv))
   })
 
   test_that("the zero-start scale replaces |nudge| and reaches every method's scaleC", {
