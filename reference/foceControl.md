@@ -316,7 +316,7 @@ foceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5597fe476530>
+#> <bytecode: 0x559b5ef8d048>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1108,6 +1108,9 @@ foceControl()
 #> 
 #> $zeroTheta
 #> [1] 0.001
+#> 
+#> $zeroThetaStep
+#> [1] 100
 #> 
 #> attr(,"class")
 #> [1] "foceControl"

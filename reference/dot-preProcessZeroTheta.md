@@ -1,14 +1,14 @@
-# Nudge exactly-zero theta initial estimates off zero (FOCEi family)
+# Handle theta initial estimates that are exactly zero
 
-FOCEi scales a linear parameter by its native magnitude \`\|init\|\`,
-which is \`0\` (no scale) when a population parameter is initialized at
-exactly \`0\` (the parameter then freezes). This hook moves every
-estimated, non-fixed \`theta\` whose initial estimate is exactly \`0\`
-to \`+zeroTheta\` when that is within its bounds, otherwise
-\`-zeroTheta\`; if neither is within the bounds it errors. Only runs for
-the FOCEi family (a \`foceiControl\`), and runs before
-\`.preProcessBoundedTransform\` so the nudged value is what gets
-transformed.
+A linear \`theta\` has no magnitude to be scaled by when it starts at
+\`0\`, so this hook records a typical magnitude for each estimated,
+non-fixed, non-residual theta that starts at \`0\` (\`1/sd()\` of the
+covariate it multiplies, else 1). The scaling setup uses it as that
+parameter's \`scaleC\`. For the FOCEi family (a \`foceiControl\`) the
+parameter is also moved to \`+zeroTheta\` when that is within its
+bounds, otherwise \`-zeroTheta\`; if neither is within the bounds it
+errors. Runs before \`.preProcessBoundedTransform\` so the moved value
+is what gets transformed.
 
 ## Usage
 

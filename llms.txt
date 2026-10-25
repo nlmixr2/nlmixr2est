@@ -188,7 +188,7 @@ plot(fit)
 - [`.preProcessZeroOmega()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessZeroOmega.md)
   : Preprocess the zero omegas
 - [`.preProcessZeroTheta()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessZeroTheta.md)
-  : Nudge exactly-zero theta initial estimates off zero (FOCEi family)
+  : Handle theta initial estimates that are exactly zero
 - [`emviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/emviControl.md)
   : Control for the variational inference methods emvi and fbvi in
   nlmixr2
