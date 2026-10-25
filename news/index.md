@@ -84,8 +84,14 @@
   `attr(nlmixr2Est.<method>, "sameBlock")`: `TRUE` when it keeps the
   tie, `"fixed"` when it does not estimate omega (see
   [`?nlmixr2Est`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Est.md)).
-  A refit from a fit is not refused, since the fit’s model has already
-  lost the tie, as it did before.
+
+- A fit’s model (`fit$ui`) kept a repeated (`same()`) block’s copies as
+  ordinary etas, so a refit from it, or from
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) on it,
+  estimated each copy on its own. It now keeps the tie, and a method
+  that cannot keep it refuses such a refit too. A fit made before this
+  change keeps its old model (the copy at condition `"id"`), so a refit
+  from it still runs untied; rerun the fit to get the tie.
 
 - With a time-varying covariate on a `linCmt()` parameter, an eta whose
   block repeats another’s (`same()`) was left out of the sensitivity
