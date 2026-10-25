@@ -1193,7 +1193,7 @@
 #'   otherwise `-zeroTheta`; if neither is within the bounds an error is
 #'   raised.  The move is not used as the parameter's scale: a linear
 #'   theta that starts at `0` is scaled by a typical magnitude instead,
-#'   `1/sd()` of the covariate term it multiplies (e.g. `theta*WT`) or 1.
+#'   `1/sd()` of its mu-referenced covariate (e.g. `theta*WT`) or 1.
 #'   Fixed parameters (including those fixed at `0`) are left untouched.
 #'
 #' @param zeroThetaStep Largest one-step (Newton) move, in typical

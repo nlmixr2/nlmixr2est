@@ -1,52 +1,10 @@
-#' Find the covariate factor a theta multiplies
-#'
-#' The factor is the whole product/quotient term holding `name` as a numerator
-#' leaf, with `name` set to 1, so `b*WT/70` and `b*(WT/70)` both give `WT/70`.
-#'
-#' @param expr model expression to search
-#' @param name theta name
-#' @param covs covariate names
-#' @return the covariate-only factor, or `NULL`
-#' @noRd
-.zeroThetaCovFactor <- function(expr, name, covs) {
-  if (!is.call(expr)) {
-    return(NULL)
-  }
-  .op <- as.character(expr[[1]])
-  if (.op %in% c("*", "/") && length(expr) == 3L) {
-    # numerator leaves of the */ chain (parentheses are transparent)
-    .num <- function(e, inNum) {
-      while (is.call(e) && identical(e[[1]], quote(`(`))) {
-        e <- e[[2]]
-      }
-      if (is.call(e) && as.character(e[[1]]) %in% c("*", "/") && length(e) == 3L) {
-        return(.num(e[[2]], inNum) || .num(e[[3]], inNum && identical(e[[1]], quote(`*`))))
-      }
-      inNum && identical(e, as.name(name))
-    }
-    if (.num(expr, TRUE)) {
-      .f <- do.call(substitute, list(expr, stats::setNames(list(1), name)))
-      .v <- all.vars(.f)
-      if (length(.v) > 0L && all(.v %in% covs)) {
-        return(.f)
-      }
-      return(NULL)
-    }
-  }
-  for (.e in as.list(expr)[-1]) {
-    .r <- .zeroThetaCovFactor(.e, name, covs)
-    if (!is.null(.r)) {
-      return(.r)
-    }
-  }
-  NULL
-}
-
 #' Typical magnitude of a theta that starts at 0
 #'
-#' A coefficient of a covariate term (`theta * COV`, `theta * (WT - 70)`) gets
-#' `1/sd()` of that term in the data, so a unit step moves the linear predictor by
-#' one standard deviation of the covariate; anything else gets 1.
+#' A mu-referenced covariate coefficient (`theta*COV` in
+#' `muRefCovariateDataFrame`, or a mu2 term like `theta*(WT - 70)` in
+#' `mu2RefCovariateReplaceDataFrame`) gets `1/sd()` of its covariate in the data,
+#' so a unit step moves the linear predictor by one standard deviation; anything
+#' else gets 1.  Reusing rxode2's mu-reference tables keeps the model walked once.
 #'
 #' @param ui rxode2 ui
 #' @param name theta name
@@ -57,26 +15,25 @@
   if (!is.data.frame(data)) {
     return(1)
   }
-  .covs <- ui$allCovs
-  if (length(.covs) == 0L) {
-    return(1)
+  .cov <- NULL
+  for (.df in list(ui$muRefCovariateDataFrame, ui$mu2RefCovariateReplaceDataFrame)) {
+    .w <- which(.df$covariateParameter == name)
+    if (length(.w) > 0L) {
+      .cov <- str2lang(as.character(.df$covariate[.w[1]]))
+      break
+    }
   }
-  .f <- NULL
-  for (.e in ui$lstExpr) {
-    .f <- .zeroThetaCovFactor(.e, name, .covs)
-    if (!is.null(.f)) break
-  }
-  if (is.null(.f)) {
+  if (is.null(.cov)) {
     return(1)
   }
   # covariate names match data columns without regard to case, as in estimation
-  .v <- all.vars(.f)
+  .v <- all.vars(.cov)
   .w <- match(tolower(.v), tolower(names(data)))
   if (anyNA(.w)) {
     return(1)
   }
   .env <- setNames(lapply(.w, function(i) as.double(data[[i]])), .v)
-  .x <- tryCatch(eval(.f, .env, baseenv()), error = function(e) NULL)
+  .x <- tryCatch(eval(.cov, .env, mu2env), error = function(e) NULL)
   if (!is.numeric(.x)) {
     return(1)
   }
@@ -91,8 +48,8 @@
 #'
 #' A linear `theta` has no magnitude to be scaled by when it starts at `0`, so
 #' this hook records a typical magnitude for each estimated, non-fixed,
-#' non-residual theta that starts at `0` (`1/sd()` of the covariate term it
-#' multiplies, else 1).  The scaling setup uses it as that parameter's `scaleC`.
+#' non-residual theta that starts at `0` (`1/sd()` of its mu-referenced
+#' covariate, else 1).  The scaling setup uses it as that parameter's `scaleC`.
 #' For the FOCEi family (a `foceiControl`) the parameter is also moved to
 #' `+zeroTheta` when that is within its bounds, otherwise `-zeroTheta`; if neither
 #' is within the bounds it errors.  Runs before `.preProcessBoundedTransform` so
