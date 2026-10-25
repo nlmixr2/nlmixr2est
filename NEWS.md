@@ -68,6 +68,13 @@
   optimized values, but `$theta` showed the regression estimate taken before
   that optimization, so the reported thetas, etas and tables disagreed.
 
+- A population parameter (`theta`) that starts at exactly 0, such as a covariate
+  effect, is now estimated instead of staying at about 0 (#1228).  Its scale used
+  to be the `zeroTheta` nudge (0.001); it is now a typical magnitude, `1/sd()` of
+  the covariate it multiplies (or 1), for FOCEi, nls and the nlm family.
+  FOCEi also moves its start by one Newton step (`foceiControl(zeroThetaStep=)`)
+  when that lowers the objective.
+
 - A fit that fails late in its output step (for example a `saem` fit whose
   inter-occasion variability cannot be finalized) now reports its own error.
   The timing step read the fit's time table before the fit had one, and its

@@ -241,7 +241,7 @@ preProcessHooks <- function(name = NULL) {
 #' The estimation state the pre-processing hooks record in
 #' `nlmixr2global$nlmixr2EstEnv` (see `.nlmixr2globalReset()`)
 #' @noRd
-.nlmixr2EstEnvFields <- c("uiUnfix", "nlmixrPureInputUi", "vaeNonMuEtas", "saemPseudoTransforms")
+.nlmixr2EstEnvFields <- c("uiUnfix", "nlmixrPureInputUi", "vaeNonMuEtas", "saemPseudoTransforms", "zeroThetaScale")
 
 .preProcessHooksRun <- function(env, est) {
   if (identical(est, "rxSolve")) {

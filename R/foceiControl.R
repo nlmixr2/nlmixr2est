@@ -1199,14 +1199,21 @@
 #'   bounds passed to the optimizer. `NA` transforms for optimization but
 #'   skips the final back-transform.
 #'
-#' @param zeroTheta Positive magnitude (default `0.001`) used to nudge a
+#' @param zeroTheta Positive magnitude (default `0.001`) used to move a
 #'   population parameter (`theta`) whose initial estimate is exactly `0`
-#'   off zero before estimation.  FOCEi scales a linear parameter by its
-#'   native magnitude `|init|`, which is `0` (no scale) for a zero
-#'   initial estimate, so the parameter is moved to `+zeroTheta` when it
-#'   is within the parameter's bounds, otherwise `-zeroTheta`; if neither
-#'   is within the bounds an error is raised.  Fixed parameters
-#'   (including those fixed at `0`) are left untouched.
+#'   off zero: to `+zeroTheta` when it is within the parameter's bounds,
+#'   otherwise `-zeroTheta`; if neither is within the bounds an error is
+#'   raised.  The move is not used as the parameter's scale: a linear
+#'   theta that starts at `0` is scaled by a typical magnitude instead,
+#'   `1/sd()` of the covariate it multiplies (e.g. `theta*WT`) or 1.
+#'   Fixed parameters (including those fixed at `0`) are left untouched.
+#'
+#' @param zeroThetaStep Largest one-step (Newton) move, in typical
+#'   magnitudes, from the start of a theta that began at `0` (default
+#'   `100`).  Before the outer optimization starts, the objective is
+#'   evaluated on either side of the start and the start moves to the
+#'   one-step estimate `-g/H` when that lowers the objective.  `0`
+#'   disables it.
 #'
 #' @param eventSens Controls how dosing/event-parameter (`alag`, `F`,
 #'   `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
@@ -1475,6 +1482,7 @@ foceiControl <- function(
   sensMethod = c("default", "forward"),
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
+  zeroThetaStep = 100,
   boundedTransform = TRUE
 ) {
   #
@@ -2126,6 +2134,7 @@ foceiControl <- function(
   if (zeroTheta <= 0) {
     stop("'zeroTheta' must be a positive number", call. = FALSE)
   }
+  checkmate::assertNumber(zeroThetaStep, lower = 0, finite = TRUE)
   checkmate::assertNumber(shi21hMin, lower = 0, finite = TRUE)
   checkmate::assertNumber(shi21hMax, lower = 0, finite = TRUE)
   if (shi21hMax <= shi21hMin) {
@@ -2337,7 +2346,8 @@ foceiControl <- function(
     sensMethod = sensMethod,
     linCmtSensCarry = linCmtSensCarry,
     boundedTransform = boundedTransform,
-    zeroTheta = zeroTheta
+    zeroTheta = zeroTheta,
+    zeroThetaStep = as.double(zeroThetaStep)
   )
   if (!is.null(.xtra$est)) {
     .ret$est <- .xtra$est
