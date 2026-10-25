@@ -36,6 +36,11 @@
 
 #### Estimation
 
+- On Windows with more than one thread, `est = "imp"` and `"impmap"` no
+  longer crash (ODE models) or give estimates that depend on the number
+  of threads (`linCmt()` models); affected since 7.1.0. Linux and macOS
+  were not affected.
+
 - A fit that fails late in its output step (for example a `saem` fit
   whose inter-occasion variability cannot be finalized) now reports its
   own error. The timing step read the fit’s time table before the fit
