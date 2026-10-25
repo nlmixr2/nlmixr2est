@@ -2134,16 +2134,33 @@ public:
     return yt;
   }
 
+  // Free phi1 columns of subject i's mode search; temporary etas stand in for
+  // a theta and keep their SAEM value.
+  std::vector<int> modeFreeCols(int i, const mat &ue, const vec &sd) {
+    std::vector<int> freeC;
+    for (int c = 0; c < nphi1; ++c) {
+      bool pseudo = any(pseudoIx1 == (uword)c);
+      if (!pseudo && ue(i, i1(c)) != 0.0 && sd(c) > 0.0) freeC.push_back(c);
+    }
+    return freeC;
+  }
+
+  // Minimize obj over nf standardized coordinates from 0; returns the
+  // optimizer's convergence code.
+  int modeMinimize(int nf, const minqaCFn &obj) {
+    std::vector<double> z0(nf, 0.0);
+    if (nf == 1) {
+      min1D([&](double z) { return obj(&z); }, 0.0, ebeTol);
+      return 0;
+    }
+    return newuoaC(nf, z0.data(), obj, 0.5, ebeTol, ebeMaxEval, 2*nf + 1).convergence;
+  }
+
   // Conditional mode of subject i over its free phi1 columns; fills row i of
   // etaMode and etaModeConv.
   void modeSubject(int i, const vec &yt, const mat &IG, const vec &sd,
                    const mat &ue, const std::vector<int> &doParam, int mixest) {
-    std::vector<int> freeC;
-    for (int c = 0; c < nphi1; ++c) {
-      // temporary etas stand in for a theta and keep their SAEM value
-      bool pseudo = any(pseudoIx1 == (uword)c);
-      if (!pseudo && ue(i, i1(c)) != 0.0 && sd(c) > 0.0) freeC.push_back(c);
-    }
+    std::vector<int> freeC = modeFreeCols(i, ue, sd);
     int nf = (int)freeC.size();
     if (nf == 0) return;
     vec start = mpost_phi.row(i).t();
@@ -2170,18 +2187,9 @@ public:
     };
     std::vector<double> z0(nf, 0.0);
     double f0 = obj(z0.data());
-    int conv = 0;
-    if (nf == 1) {
-      min1D([&](double z) { return obj(&z); }, 0.0, ebeTol);
-    } else {
-      conv = newuoaC(nf, z0.data(), obj, 0.5, ebeTol, ebeMaxEval, 2*nf + 1).convergence;
-    }
-    if (conv < 0) {
-      etaModeConv(i) = -1;
-      return;
-    }
-    if (!(fBest < f0)) {
-      etaModeConv(i) = 2;
+    int conv = modeMinimize(nf, obj);
+    if (conv < 0 || !(fBest < f0)) {
+      etaModeConv(i) = (conv < 0) ? -1 : 2;
       return;
     }
     for (int k = 0; k < nf; ++k) {
