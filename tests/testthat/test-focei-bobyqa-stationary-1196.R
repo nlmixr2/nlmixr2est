@@ -139,7 +139,7 @@ nmTest({
   test_that("the probe point is kept when the restart does not beat it", {
     local_mocked_bindings(
       bobyqa = function(par, fn, ...) list(par = par + 1, fval = Inf, feval = 3L, ierr = 0L),
-      .package = "minqa"
+      .package = "RcppTrust"
     )
     .stop <- list(par = c(-0.5, 0.25), fval = .valley(c(-0.5, 0.25)), feval = 40L, ierr = 0L)
     .r <- .bobyqaStationary(.valley, .lo, .hi, .ctl, .stop, tol = 0.01)
@@ -162,7 +162,7 @@ nmTest({
       bobyqa = function(par, fn, control, ...) {
         list(par = c(1, 1), fval = 0, feval = control$maxfun, ierr = 1L)
       },
-      .package = "minqa"
+      .package = "RcppTrust"
     )
     .stop <- list(par = c(-0.5, 0.25), fval = .valley(c(-0.5, 0.25)), feval = 40L, ierr = 0L)
     .r <- .bobyqaStationary(.valley, .lo, .hi, replace(.ctl, "maxfun", 200), .stop, tol = 0.01)
@@ -176,7 +176,7 @@ nmTest({
         .p <- par - c(0.05, 0)
         list(par = .p, fval = fn(.p), feval = 5L, ierr = 0L)
       },
-      .package = "minqa"
+      .package = "RcppTrust"
     )
     .lin <- function(x) x[1]
     .at <- list(par = c(0, 0), fval = 0, feval = 10L, ierr = 0L)
