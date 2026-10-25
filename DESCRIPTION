@@ -52,7 +52,6 @@ Imports:
     lbfgsb3c (>= 2024-3.6),
     lotri (>= 1.0.5),
     methods,
-    minqa,
     n1qn1 (>= 6.0.1-12),
     nlme,
     Rcpp,
@@ -80,6 +79,7 @@ Suggests:
     sfsmisc,
     minpack.lm,
     Matrix,
+    minqa,
     remotes,
     fastGHQuad,
     rmarkdown,
@@ -95,8 +95,10 @@ LinkingTo:
     Rcpp,
     RcppArmadillo (>= 0.11.2.3.1),
     RcppEigen,
-    RcppTrust (>= 0.1.0),
+    RcppTrust (>= 0.2.0),
     rxode2 (>= 5.1.8)
+Remotes:
+    nlmixr2/RcppTrust
 Biarch: true
 Config/testthat/edition: 3
 Encoding: UTF-8
@@ -104,4 +106,4 @@ Language: en-US
 NeedsCompilation: yes
 LazyData: true
 VignetteBuilder: knitr
-Config/roxygen2/version: 8.1.0
+Config/roxygen2/version: 8.1.1
