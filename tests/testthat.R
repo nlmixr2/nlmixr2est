@@ -104,7 +104,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "splitbolus-interp",
     "optexpression-saem-nlme",
     "saem-cov-multi-endpoint-904",
-    "saem-modeled-resid-fit"
+    "saem-modeled-resid-fit",
+    "nlmixr2output-same-fit"
   ),
 
   # batches 4-7 -- the former batches 4 (13 files) and 5 (15 files), each split
