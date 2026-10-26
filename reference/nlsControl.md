@@ -210,7 +210,10 @@ nlsControl(
 
 - eventType:
 
-  Event gradient type for dosing events; Can be "central" or "forward"
+  Event gradient type for dosing events; Can be "central" or "forward".
+  The integer code a control stores is accepted too: 2 (central) or 3
+  (forward) in \`foceiControl()\`, 2 (central) or 1 (forward) in the
+  nlm-family controls.
 
 - shiErr:
 
@@ -529,7 +532,7 @@ fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est = "nls", nlsControl(algorithm 
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 2744
+#> → compress parHistData in nlmixr2 object, save 2784
 
 # You can access the underlying nls object with `$nls`
 fit2$nls

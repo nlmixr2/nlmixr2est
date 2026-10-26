@@ -197,7 +197,10 @@ optimControl(
 
 - eventType:
 
-  Event gradient type for dosing events; Can be "central" or "forward"
+  Event gradient type for dosing events; Can be "central" or "forward".
+  The integer code a control stores is accepted too: 2 (central) or 3
+  (forward) in \`foceiControl()\`, 2 (central) or 1 (forward) in the
+  nlm-family controls.
 
 - shiErr:
 
@@ -473,9 +476,9 @@ fit2
 #> ── Time (sec value$time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1049194 0.1435599 1.7907e-05      0.049       0.007  0.02    0.001
+#> elapsed 0.1295873 0.1834439  2.041e-05      0.059       0.008 0.024    0.001
 #>              other
-#> elapsed 0.06450277
+#> elapsed 0.08194836
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 

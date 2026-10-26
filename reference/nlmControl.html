@@ -198,7 +198,9 @@ each retry and tolerances are reset afterward.</p></dd>
 
 <dt id="arg-eventtype">eventType<a class="anchor" aria-label="anchor" href="#arg-eventtype"></a></dt>
 <dd><p>Event gradient type for dosing events; Can be
-"central" or "forward"</p></dd>
+"central" or "forward".  The integer code a control stores is accepted
+too: 2 (central) or 3 (forward) in `foceiControl()`, 2 (central) or 1
+(forward) in the nlm-family controls.</p></dd>
 
 
 <dt id="arg-shierr">shiErr<a class="anchor" aria-label="anchor" href="#arg-shierr"></a></dt>
@@ -215,7 +217,9 @@ time, modeled duration/rate and bioavailability)</p></dd>
 <dt id="arg-optimhesstype">optimHessType<a class="anchor" aria-label="anchor" href="#arg-optimhesstype"></a></dt>
 <dd><p>Hessian type for numeric-difference individual
 Hessians in generalized log-likelihood estimation: "central" (matches
-R's `optimHess()`, default) or "forward" (faster).</p></dd>
+R's `optimHess()`, default) or "forward" (faster).  The integer code a
+control stores is accepted too: 1 (central) or 3 (forward) in
+`foceiControl()`, 2 (central) or 1 (forward) in the nlm-family controls.</p></dd>
 
 
 <dt id="arg-hesserr">hessErr<a class="anchor" aria-label="anchor" href="#arg-hesserr"></a></dt>
@@ -504,10 +508,10 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09573595 0.1569457 1.4832e-05      0.035       0.006 0.025    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            setup  optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.124444 0.1968287 1.7526e-05      0.044       0.008 0.031    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.06730351</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.08370983</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

@@ -259,7 +259,9 @@ each retry and tolerances are reset afterward.</p></dd>
 
 <dt id="arg-eventtype">eventType<a class="anchor" aria-label="anchor" href="#arg-eventtype"></a></dt>
 <dd><p>Event gradient type for dosing events; Can be
-"central" or "forward"</p></dd>
+"central" or "forward".  The integer code a control stores is accepted
+too: 2 (central) or 3 (forward) in `foceiControl()`, 2 (central) or 1
+(forward) in the nlm-family controls.</p></dd>
 
 
 <dt id="arg-shierr">shiErr<a class="anchor" aria-label="anchor" href="#arg-shierr"></a></dt>
@@ -584,7 +586,7 @@ for random effects do not apply to `nls`.</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 6584</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2744</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2784</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># You can access the underlying nls object with `$nls`</span></span></span>
 <span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">nls</span></span></span>

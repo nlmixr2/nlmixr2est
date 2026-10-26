@@ -153,7 +153,10 @@ nlmControl(
 
 - eventType:
 
-  Event gradient type for dosing events; Can be "central" or "forward"
+  Event gradient type for dosing events; Can be "central" or "forward".
+  The integer code a control stores is accepted too: 2 (central) or 3
+  (forward) in \`foceiControl()\`, 2 (central) or 1 (forward) in the
+  nlm-family controls.
 
 - shiErr:
 
@@ -170,7 +173,9 @@ nlmControl(
 
   Hessian type for numeric-difference individual Hessians in generalized
   log-likelihood estimation: "central" (matches R's \`optimHess()\`,
-  default) or "forward" (faster).
+  default) or "forward" (faster). The integer code a control stores is
+  accepted too: 1 (central) or 3 (forward) in \`foceiControl()\`, 2
+  (central) or 1 (forward) in the nlm-family controls.
 
 - hessErr:
 
@@ -450,10 +455,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.09573595 0.1569457 1.4832e-05      0.035       0.006 0.025    0.001
+#>            setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.124444 0.1968287 1.7526e-05      0.044       0.008 0.031    0.001
 #>              other
-#> elapsed 0.06730351
+#> elapsed 0.08370983
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

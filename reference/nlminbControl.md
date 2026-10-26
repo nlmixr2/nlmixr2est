@@ -186,7 +186,10 @@ nlminbControl(
 
 - eventType:
 
-  Event gradient type for dosing events; Can be "central" or "forward"
+  Event gradient type for dosing events; Can be "central" or "forward".
+  The integer code a control stores is accepted too: 2 (central) or 3
+  (forward) in \`foceiControl()\`, 2 (central) or 1 (forward) in the
+  nlm-family controls.
 
 - shiErr:
 
@@ -203,7 +206,9 @@ nlminbControl(
 
   Hessian type for numeric-difference individual Hessians in generalized
   log-likelihood estimation: "central" (matches R's \`optimHess()\`,
-  default) or "forward" (faster).
+  default) or "forward" (faster). The integer code a control stores is
+  accepted too: 1 (central) or 3 (forward) in \`foceiControl()\`, 2
+  (central) or 1 (forward) in the nlm-family controls.
 
 - hessErr:
 
@@ -422,7 +427,7 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 8328
-#> → compress parHistData in nlmixr2 object, save 3960
+#> → compress parHistData in nlmixr2 object, save 3992
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
@@ -432,10 +437,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.103844 0.1602228 1.2319e-05      0.036       0.007 0.019    0.008
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.1365526 0.199518 1.1938e-05      0.046       0.008 0.024    0.011
 #>              other
-#> elapsed 0.06992088
+#> elapsed 0.07791745
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
