@@ -63,6 +63,11 @@
   than the sampled-mean update.
 - `saem` now uses censoring (M2/M3/M4) for `dnorm()`, `t()` and `cauchy()`
   endpoints; it scored a censored observation by its density at the limit.
+- M2 censoring (`CENS = 0` with a finite `LIMIT`) now conditions on the side
+  of the limit the observation is on, not the prediction.  Before, the
+  objective had a kink wherever a prediction crossed the limit, and an
+  observation predicted on the wrong side of it was scored against the
+  wrong tail.
 - On Windows with more than one thread, `est = "imp"` and `"impmap"` no
   longer crash (ODE models) or give estimates that depend on the number of
   threads (`linCmt()` models); affected since 7.1.0.  Linux and macOS were

@@ -48,8 +48,8 @@ nmTest({
 
   test_that("the normal-model mode uses M2 (uncensored rows with a finite LIMIT)", {
     skip_on_cran()
-    # every row carries an M2 term; predictions stay above LIMIT (M2 has a kink there)
-    .dM2 <- .d[!.obs | .d$DV > 2, ]
+    # every row carries an M2 term, and some predictions cross LIMIT
+    .dM2 <- .d[!.obs | .d$DV > 1, ]
     .dM2$CENS <- 0
     .dM2$LIMIT <- ifelse(.dM2$EVID == 0, 1, NA_real_)
     .f <- .nlmixr(.mod("cp ~ add(add.sd)"), .dM2, est = "saem", control = .ctl)
