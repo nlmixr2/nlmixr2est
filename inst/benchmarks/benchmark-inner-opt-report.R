@@ -1,7 +1,13 @@
-# Report for benchmark-inner-opt.R: the #1153 comparison tables, with refArm as
-# the reference.  Gap = OFV minus the best any arm reached for that case and
-# start; better/worse = an OFV difference of more than 0.01 against refArm.
-
+#' Report for benchmark-inner-opt.R: the #1153 comparison tables
+#'
+#' Only rows every arm finished with a finite objective are compared.  Gap is
+#' the OFV minus the best any arm reached for that case and start;
+#' better/worse is an OFV difference of more than 0.01 against `refArm`.
+#'
+#' @param outDir benchmark output directory holding the `arm-*.csv` files
+#' @param refArm reference arm
+#' @return the report lines (invisibly); also written to `<outDir>/report.md`
+#' @noRd
 .innerOptReport <- function(outDir, refArm = "trust") {
   .files <- list.files(outDir, "^arm-.*\\.csv$", full.names = TRUE)
   .d <- do.call(rbind, lapply(.files, utils::read.csv, stringsAsFactors = FALSE))

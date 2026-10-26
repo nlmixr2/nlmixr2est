@@ -1096,12 +1096,23 @@ struct focei_options {
 
 focei_options op_focei;
 
-// innerOpt codes that run the trust-region retry cascade: trust (3),
-// newuoa (5) and steihaug (6).
+// Does an innerOpt code run the trust-region retry cascade?
+//
+// trust (3), newuoa (5) and steihaug (6) share the cascade, the Newton gate
+// and the polish step.
+// @param innerOpt `foceiControl()` innerOpt code
+// @return true for the trust family
+// @noRd
 static inline bool innerOptTrustFamily(int innerOpt) {
   return innerOpt == 3 || innerOpt == 5 || innerOpt == 6;
 }
 
+// Is the Newton polish requested for the current inner optimizer?
+//
+// Reads `trustPolish`, `newuoaPolish` or `steihaugPolish` to match
+// `op_focei.innerOpt`.
+// @return true when the polish step should run
+// @noRd
 static inline bool innerPolishOn() {
   switch (op_focei.innerOpt) {
   case 3: return op_focei.trustPolish != 0;
@@ -4130,9 +4141,12 @@ extern "C" int trustInnerObjfun(int n, const double *par, double *value,
 }
 
 
-// innerOpt="steihaug" works in parscale units y = eta/parscale (it has no
-// parscale option); the last full evaluation is cached so the final Hessian
-// does not need another solve.
+// State for one `innerOpt="steihaug"` subject solve
+//
+// Steihaug works in parscale units y = eta/parscale (it has no parscale
+// option); the last full evaluation is cached so the final Hessian does not
+// need another solve.
+// @noRd
 struct innerSteihaugData {
   int id;
   const std::vector<double> *parscale;
@@ -4141,6 +4155,18 @@ struct innerSteihaugData {
   bool haveLast;
 };
 
+// Steihaug objective callback on the FOCEi inner problem
+//
+// Evaluates `trustInnerObjfun()` at eta = y * parscale and rescales the
+// gradient and Hessian to parscale units.
+// @param n number of etas
+// @param y point in parscale units
+// @param value objective value (output; +Inf on a failed solve)
+// @param gradient gradient (output, may be NULL when not requested)
+// @param hessian column-major Hessian (output, may be NULL)
+// @param userdata an `innerSteihaugData`
+// @return 0, or -1 when derivatives are requested at a failed point
+// @noRd
 extern "C" int innerSteihaugObjfun(int n, const double *y, double *value,
                                    double *gradient, double *hessian, void *userdata) {
   innerSteihaugData *d = (innerSteihaugData*)userdata;
@@ -4171,8 +4197,20 @@ extern "C" int innerSteihaugObjfun(int n, const double *y, double *value,
   return 0;
 }
 
-// Fill a trust_result_t-shaped answer (argument, value, gradient, Hessian in
-// raw eta units, malloc-owned) at x with one exact evaluation.
+// Fill a `trust_result_t` at a point
+//
+// The argument, value, gradient and Hessian are in raw eta units and
+// malloc-owned (freed by `trust_result_free_ptr`).  Supplied g/h are copied;
+// otherwise one exact `trustInnerObjfun()` evaluation provides them.
+// @param n number of etas
+// @param x eta point
+// @param id subject id
+// @param value objective at x, or NA_REAL to evaluate it
+// @param g gradient at x, or NULL
+// @param h column-major Hessian at x, or NULL
+// @param tres result to fill
+// @return false when the evaluation failed
+// @noRd
 static bool innerFillResultAt(int n, const double *x, int id, double value,
                               const double *g, const double *h, trust_result_t *tres) {
   tres->argument = (double*)malloc(sizeof(double) * n);
@@ -4202,8 +4240,19 @@ static bool innerFillResultAt(int n, const double *x, int id, double value,
   return true;
 }
 
-// One inner solve for the trust-family innerOpt codes, returned as a
-// trust_result_t so the trust retry cascade, Newton gate and polish apply as-is.
+// One inner solve for the trust-family innerOpt codes
+//
+// Dispatches to RcppTrust's trust, steihaug or newuoa solver and returns a
+// `trust_result_t`, so the trust retry cascade, Newton gate and polish apply
+// unchanged.
+// @param npar number of etas
+// @param x0 starting etas
+// @param id subject id
+// @param parscale per-eta scale (sqrt of the Omega diagonal)
+// @param topts trust options (radii, iteration limit, tolerances)
+// @param tres result (output)
+// @return nothing
+// @noRd
 static void innerTrustFamilySolve(int npar, double *x0, int id,
                                   const std::vector<double> &parscale,
                                   const trust_options_t &topts, trust_result_t *tres) {
@@ -24401,8 +24450,13 @@ static inline void vaeRestoreFrozen(int id) {
   std::copy(c.begin(), c.end(), getIndSolve(ind));
 }
 
-// Residual objective: push the candidate residual parameters, restore the pinned
-// states, and re-evaluate the SAME likelihood the fit reports.
+// VAE residual M-step objective
+//
+// Pushes the candidate residual parameters, restores the pinned states, and
+// re-evaluates the same likelihood the fit reports.
+// @param p candidate residual parameters
+// @return the objective, or DBL_MAX when it is not finite
+// @noRd
 static double gVaeFreezeObj(const double *p) {
   arma::vec ac = gVaeElsA;
   arma::vec thc = gVaeRegThBase;
@@ -24435,6 +24489,11 @@ static double gVaeFreezeObj(const double *p) {
 }
 
 
+// VAE regression theta M-step objective
+//
+// @param r candidate regression thetas (the `gVaeRegIdx` entries)
+// @return the objective, or DBL_MAX when it is not finite
+// @noRd
 static double gVaeThetaObj(const double *r) {
   arma::vec thc = gVaeRegThBase;
   arma::vec aCand = gVaeRegA;
