@@ -172,6 +172,8 @@ SEXP _nlmixr2est_nlmGetParHist(SEXP);
 SEXP _nlmixr2est_iniLotriPtr(SEXP ptr);
 
 SEXP _nlmixr2est_iniRxodePtrs(SEXP ptr);
+SEXP _nlmixr2est_nmRxThreadIdTrack(SEXP on);
+SEXP _nlmixr2est_nmRxThreadIdMissTest(SEXP reset);
 
 SEXP _nlmixr2est_iniN1qn1cPtrs(SEXP ptr);
 
@@ -275,6 +277,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiFinalOfvWorseR", (DL_FUNC) &_nlmixr2est_foceiFinalOfvWorseR, 2},
   {"_nlmixr2est_foceiCalcGradGet", (DL_FUNC) &_nlmixr2est_foceiCalcGradGet, 0},
   {"_nlmixr2est_iniRxodePtrs", (DL_FUNC) &_nlmixr2est_iniRxodePtrs, 1},
+  {"_nlmixr2est_nmRxThreadIdTrack", (DL_FUNC) &_nlmixr2est_nmRxThreadIdTrack, 1},
+  {"_nlmixr2est_nmRxThreadIdMissTest", (DL_FUNC) &_nlmixr2est_nmRxThreadIdMissTest, 1},
   {"_nlmixr2est_iniLotriPtr", (DL_FUNC) &_nlmixr2est_iniLotriPtr, 1},
   {"_nlmixr2est_uninformativeEta", (DL_FUNC) &_nlmixr2est_uninformativeEta, 1},
   {"_nlmixr2est_nlmGetParHist", (DL_FUNC) &_nlmixr2est_nlmGetParHist, 1},
