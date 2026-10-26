@@ -903,6 +903,9 @@ struct focei_options {
   std::atomic<int> nInnerNoGood{0};
   // eta Hessians whose nearPD repair had to change the diagonal
   std::atomic<int> nNearPdDiag{0};
+  // eta gradient and Hessian finite-difference columns that solved on neither side
+  // (taken as 0); counted over the whole fit, so reset only in foceiSetup_()
+  std::atomic<int> nEtaFdNoSlope{0};
   // Inner solves where a failed attempt's candidate was dropped from the
   // selection because a succeeded one was available.  This is the count that
   // shows the rule is doing something, rather than that it merely exists.
@@ -2589,6 +2592,7 @@ arma::vec shi21LikTheta(arma::vec &theta, int id) {
 arma::vec shi21ThetaF(arma::vec &theta, int id) { return shi21ThetaGeneral(theta, id, 0); }
 arma::vec shi21ThetaR(arma::vec &theta, int id) { return shi21ThetaGeneral(theta, id, 1); }
 
+// A difference at a fixed step h: NA when no leg is finite, never a zero slope.
 arma::vec calcGradForward(arma::vec &f0,
                           arma::vec &grPH,  double h) {
   if (grPH.is_finite()) {
@@ -2596,7 +2600,7 @@ arma::vec calcGradForward(arma::vec &f0,
     return (grPH - f0)/h;
   }
   arma::vec ret(grPH.size());
-  ret.zeros();
+  ret.fill(NA_REAL);
   return ret;
 }
 
@@ -2612,7 +2616,7 @@ arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0,
     return (f0 - grMH)/(h);
   }
   arma::vec ret(grPH.size());
-  ret.zeros();
+  ret.fill(NA_REAL);
   return ret;
 }
 // FOCE (interaction==0): R must enter the inner likelihood at the eta=0
@@ -3025,6 +3029,11 @@ double likInner0(double *eta, int id) {
                                                6.0,  //double ru = 6.0);;
                                                op_focei.shi21maxFD, // maxiter
                                                op_focei.shi21hMax, op_focei.shi21hMin);
+                break;
+              default:
+                // unreachable (foceiControl() takes 2 and 3 only); no slope, counted
+                // below -- an exception cannot leave this parallel loop
+                grETA.fill(NA_REAL);
               }
               etaGradF.col(ii) = grETA;
               if (op_focei.interaction == 1) {
@@ -3048,6 +3057,8 @@ double likInner0(double *eta, int id) {
                                                  op_focei.shi21maxFD, // maxiter
                                                  op_focei.shi21hMax, op_focei.shi21hMin);
                   break;
+                default:
+                  grETA.fill(NA_REAL); // unreachable, as above
                 }
                 etaGradR.col(ii) = grETA;
               }
@@ -3100,6 +3111,16 @@ double likInner0(double *eta, int id) {
         }
         // restore the prior solve
         std::copy(solveSave.begin(), solveSave.end(), solve);
+        // An eta whose differences solved on neither side has no slope.  It is
+        // taken as 0 and counted for the fit's warning: failing the evaluation
+        // instead would fail the subject at an eta it cannot leave.
+        for (unsigned int ii = 0; ii < op_focei.neta; ++ii) {
+          bool noF = !etaGradF.col(ii).is_finite();
+          bool noR = op_focei.interaction == 1 && !etaGradR.col(ii).is_finite();
+          if (noF) etaGradF.col(ii).zeros();
+          if (noR) etaGradR.col(ii).zeros();
+          if (noF || noR) op_focei.nEtaFdNoSlope.fetch_add(1, std::memory_order_relaxed);
+        }
       }
       if (op_focei.fo == 1){
         Vid.zeros();
@@ -3775,12 +3796,21 @@ bool calcEtaHessian(double *eta, int likId, int id,
       // eta left.
       LikInner0OutputGuard _outputs(fInd, ind);
       // optimHessType: 3 = forward, 1 = central.
-      return shi21Hessian(getGradForOptimHess, x, gr0, id,
-                          op_focei.optimHessType == 3 ? shi21HessForward :
-                          (op_focei.optimHessType == 1 ? shi21HessCentral : 0),
-                          fInd->etahh, op_focei.hessEpsInner,
-                          op_focei.shi21maxInner, op_focei.shi21hMax,
-                          hMin.memptr());
+      arma::mat Hfd = shi21Hessian(getGradForOptimHess, x, gr0, id,
+                                   op_focei.optimHessType == 3 ? shi21HessForward :
+                                   (op_focei.optimHessType == 1 ? shi21HessCentral : 0),
+                                   fInd->etahh, op_focei.hessEpsInner,
+                                   op_focei.shi21maxInner, op_focei.shi21hMax,
+                                   hMin.memptr());
+      // A column whose differences solved on neither side is NA (and so is its
+      // row, once symmetrized).  It is taken as 0 and counted, as the eta
+      // gradient's is: failing here would fail the subject at an eta it cannot
+      // leave.  Here, not after trustHessian(), so a quasi-Newton seed is finite.
+      if (!Hfd.is_finite()) {
+        Hfd.elem(arma::find_nonfinite(Hfd)).zeros();
+        op_focei.nEtaFdNoSlope.fetch_add(1, std::memory_order_relaxed);
+      }
+      return Hfd;
     });
   } else if (op_focei.interaction) {
     int nO = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
@@ -7908,6 +7938,12 @@ void numericGrad(double *theta, double *g){
                                            op_focei.shi21hMax, op_focei.shi21hMin);
         op_focei.aEpsC[cpar] = op_focei.aEps[cpar];
         g[cpar] = grFinal(0);
+        // no difference solved: a reset request, as in the other branches.  A fit's
+        // outer objective is finite at a failed point, so none reaches it.
+        if (!R_FINITE(g[cpar])) { // # nocov start
+          op_focei.zeroGrad = 1;
+          break;
+        } // # nocov end
       }
     }
     if (op_focei.slow) {
@@ -9488,6 +9524,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
   op_focei.nNearPdDiag.store(0, std::memory_order_relaxed);
+  op_focei.nEtaFdNoSlope.store(0, std::memory_order_relaxed);
   op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   // Fallback 2 ("none") for a control list that predates/omits warm=: 0 ("save")
   // used to BE self-init because updateZm() was a no-op (#1043), so "none" is what
@@ -11591,6 +11628,42 @@ Rcpp::List shi21CentralWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx
   double h = 0.0;
   h = shi21Central(shiWrapCall_, t, h, f0, gr, 0, idx - 1, ef);
   return Rcpp::List::create(_["h"] = h, _["gr"] = gr);
+}
+
+// Test bridge to both step searches: shi21Forward() when `forward`, else
+// shi21Central(), at the given maxiter and wantGr and the rl/ru/nu FOCEi's eta
+// search uses.
+//[[Rcpp::export]]
+Rcpp::List shi21SearchWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx, double ef,
+                           bool forward, int maxiter, bool wantGr) {
+  ShiWrapGuard _g;
+  shiWrapFn_ = &f; shiWrapN_ = f0.n_elem;
+  arma::vec gr(f0.n_elem, arma::fill::zeros);
+  double h = 0.0;
+  if (forward) {
+    h = shi21Forward(shiWrapCall_, t, h, f0, gr, 0, idx - 1, ef, 1.5, 6.0, maxiter,
+                     shi21hMaxDefault, shi21hMinDefault, wantGr);
+  } else {
+    h = shi21Central(shiWrapCall_, t, h, f0, gr, 0, idx - 1, ef, 1.5, 4.5, 3.0, maxiter,
+                     shi21hMaxDefault, shi21hMinDefault, wantGr);
+  }
+  return Rcpp::List::create(_["h"] = h, _["gr"] = gr);
+}
+
+// Test bridge to shi21Hessian(): `grad` returns the gradient at x; hh holds the
+// steps (<= 0 searches) and comes back updated.
+//[[Rcpp::export]]
+Rcpp::List shi21HessianWrap(Rcpp::Function grad, arma::vec x, arma::vec gr0, bool central,
+                            arma::vec hh, int maxiter) {
+  if (hh.n_elem != x.n_elem || gr0.n_elem != x.n_elem) {
+    Rcpp::stop("'x', 'gr0' and 'hh' must have the same length");
+  }
+  ShiWrapGuard _g;
+  shiWrapFn_ = &grad; shiWrapN_ = gr0.n_elem;
+  arma::mat H = shi21Hessian(shiWrapCall_, x, gr0, 0,
+                             central ? shi21HessCentral : shi21HessForward,
+                             hh.memptr(), 7e-7, maxiter, shi21hMaxDefault, NULL);
+  return Rcpp::List::create(_["H"] = H, _["hh"] = hh);
 }
 
 // The methods foceiControl(covFallback=) lists for a covariance method ("r,s", "r", "s",
@@ -14418,8 +14491,9 @@ double impEvalJointLik(const arma::vec& eta, int id) {
 // not solve).  Solves the pred model at the current (theta, eta) for per-obs f and
 // V, then shi21-optimized central differences over each estimated theta for
 // d(f)/d(theta) and d(V)/d(theta).  Fills fvec/Vvec (nobs) and dfmat/dVmat
-// (nobs x nSens); restores fullTheta on exit.
-static void impThetaSensFD(int id, arma::vec& curTheta,
+// (nobs x nSens); restores fullTheta on exit.  False when a difference is not
+// finite: a theta whose differences solved on neither side.
+static bool impThetaSensFD(int id, arma::vec& curTheta,
                            arma::vec& fvec, arma::vec& Vvec,
                            arma::mat& dfmat, arma::mat& dVmat) {
   int nSens = op_focei.impThetaSensIdx.size();
@@ -14448,6 +14522,7 @@ static void impThetaSensFD(int id, arma::vec& curTheta,
   for (int t = 0; t < (int)op_focei.ntheta; ++t) {
     setIndParPtr(ind, op_focei.thetaTrans[t], op_focei.fullTheta[t]);
   }
+  return dfmat.is_finite() && dVmat.is_finite();
 }
 
 // Accumulate subject id's importance-sampling contribution to the score `g`
@@ -14651,12 +14726,12 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out,
       // sensitivity ODE unsolvable: central FD on the pred model.  Flag it as an
       // optimization problem (same warning as the inner FD fallback).
       op_focei.didPredSolve.store(true, std::memory_order_relaxed);
-      impThetaSensFD(id, curTheta, fvec, Vvec, dfmat, dVmat);
+      bool fdOk = impThetaSensFD(id, curTheta, fvec, Vvec, dfmat, dVmat);
       // restore this sample's eta (impThetaSensFD only touched thetas)
       for (int j = 0; j < (int)op_focei.neta; ++j) {
         setIndParPtr(ind, op_focei.etaTrans[j], S(k, j));
       }
-      if ((int)dfmat.n_rows != nobs) okRow = false;
+      if (!fdOk || (int)dfmat.n_rows != nobs) okRow = false;
     }
     if (okRow) {
       out.fvec[k] = fvec; out.Vvec[k] = Vvec;
@@ -15549,6 +15624,10 @@ Environment foceiFitCpp_(Environment e){
     warning(_("eta Hessian repair changed its diagonal %d times"),
             op_focei.nNearPdDiag.load(std::memory_order_relaxed));
   }
+  if (op_focei.nEtaFdNoSlope.load(std::memory_order_relaxed) > 0) {
+    warning(_("eta finite differences solved on neither side %d times; slope 0"),
+            op_focei.nEtaFdNoSlope.load(std::memory_order_relaxed));
+  }
   // The covariance step's searches, listed by parameter: foceiCalcCov() keeps
   // them by the index of its own parameter set (the thetas, by default), which
   // fixedTrans maps once it has run
@@ -16414,7 +16493,8 @@ static void fdThetaStepPer(const arma::vec &theta, int j,
                                       _fdThIds[(size_t)k], j,
                                       std::pow(DBL_EPSILON, 0.25),
                                       1.5, 4.5, 3.0, op_focei.shi21maxFD,
-                                      op_focei.shi21hMax, op_focei.shi21hMin);
+                                      op_focei.shi21hMax, op_focei.shi21hMin,
+                                      false); // the step only
   });
 }
 
@@ -17034,7 +17114,8 @@ static double foceiFdOmegaStep1(arma::vec &om, arma::vec &f0, int col, int q,
                    4.5,   // ru
                    3.0,   // nu
                    op_focei.shi21maxFD,
-                   op_focei.shi21hMax, op_focei.shi21hMin);
+                   op_focei.shi21hMax, op_focei.shi21hMin,
+                   false); // the step only
   // Clamped: neither used nor cached, exactly as in the theta block.
   if (!R_finite(h) || h <= 0.0 ||
       h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
@@ -17462,7 +17543,8 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
             double hs = 0.0;
             h = shi21Central(shi21LikThetaSum, tw, hs, f0s, gr, _fdThIds[0], j,
                              std::pow(DBL_EPSILON, 0.25), 1.5, 4.5, 3.0,
-                             op_focei.shi21maxFD, op_focei.shi21hMax, op_focei.shi21hMin);
+                             op_focei.shi21maxFD, op_focei.shi21hMax, op_focei.shi21hMin,
+                             false); // the step only
             if (!R_finite(h) || h <= 0.0 ||
                 h <= op_focei.shi21hMin || h >= op_focei.shi21hMax) {
               op_focei.nFdStepClamped++;
