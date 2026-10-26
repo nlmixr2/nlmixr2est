@@ -2058,7 +2058,7 @@ foceiControl <- function(
     .rtol <- if (is.list(rxControl) && length(rxControl$rtol) > 0) max(rxControl$rtol) else 1e-6
     newuoaRhoend <- sqrt(.rtol)
   }
-  checkmate::assertNumeric(newuoaRhoend, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(newuoaRhoend, lower = .Machine$double.eps, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(diagOmegaBoundUpper, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(diagOmegaBoundLower, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
 

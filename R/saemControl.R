@@ -603,7 +603,7 @@ saemControl <- function(
   if (is.null(ebeTol)) {
     ebeTol <- sqrt(max(rxControl$rtol))
   }
-  checkmate::assertNumeric(ebeTol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
+  checkmate::assertNumeric(ebeTol, any.missing = FALSE, len = 1, lower = .Machine$double.eps, finite = TRUE)
 
   # "imp" is foreign to the SAEM kernel; skip the native cov and recompute the
   # importance-sampling covariance post-fit at the converged estimates.  The

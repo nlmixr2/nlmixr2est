@@ -2179,7 +2179,7 @@ public:
       double e = e0[q], gg = g[q];
       modeObsAr(s, j, e0, e, gg);
       double loss = 0.5*(e/gg)*(e/gg) + std::log(gg);
-      if (cens[q] != 0.0) {
+      if (cens[q] != 0.0 || R_FINITE(lim[q])) {
         double limT = _powerD(lim[q], lambda(cur), yj(cur), low(cur), hi(cur));
         loss = -doCensNormal1(cens[q], yt(j), limT, -loss, yt(j) - e, gg*gg, 0);
       }

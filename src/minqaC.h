@@ -7,6 +7,7 @@
 // inner.cpp and filled by .iniRcppTrustPtr() at load.
 
 #include <RcppTrust.h>
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <functional>
@@ -225,7 +226,8 @@ static inline double brentFmin(double ax, double bx,
     return std::isfinite(v) ? v : DBL_MAX;
   };
   const double c = (3. - std::sqrt(5.)) * .5;
-  const double eps = std::sqrt(DBL_EPSILON), tol3 = tol / 3.;
+  // optimize() rejects tol <= 0; with tol 0 and the minimum at 0 the bracket never closes
+  const double eps = std::sqrt(DBL_EPSILON), tol3 = std::max(tol, DBL_EPSILON) / 3.;
   brentState st;
   st.a = ax; st.b = bx;
   st.v = st.a + c * (st.b - st.a);
@@ -233,7 +235,7 @@ static inline double brentFmin(double ax, double bx,
   st.d = 0.; st.e = 0.;
   st.fx = f(st.x);
   st.fv = st.fx; st.fw = st.fx;
-  for (;;) {
+  for (int it = 0; it < 1000; ++it) {
     double xm = (st.a + st.b) * .5;
     double tol1 = eps * std::fabs(st.x) + tol3;
     double t2 = tol1 * 2.;

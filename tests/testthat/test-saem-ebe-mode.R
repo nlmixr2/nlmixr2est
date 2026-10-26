@@ -89,3 +89,8 @@ test_that("saem ebe='mode' handles a single eta (1-D search)", {
   expect_equal(.f2$eta$eta.cl, fit$eta$eta.cl, tolerance = 1e-3)
   expect_false(isTRUE(all.equal(fit$eta$eta.cl, fit$etaSaem$eta.cl)))
 })
+
+test_that("saem ebeTol must be positive", {
+  # a zero tolerance never stops the 1-D search
+  expect_error(saemControl(ebeTol = 0), "ebeTol")
+})
