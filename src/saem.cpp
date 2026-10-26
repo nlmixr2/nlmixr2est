@@ -760,6 +760,30 @@ extern arma::uvec _saemPhi1I1;
 extern bool _saemPhi1PoolActive;
 extern t_calc_lhs saem_lhs;
 extern t_update_inis saem_inis;
+extern arma::ivec _saemGenCensIx;
+
+// Log-likelihood of one general-likelihood observation, censoring included
+//
+// A censored (or M2) observation of a normal, t or Cauchy endpoint is scored
+// as FOCEi does, from the density's inputs the saem model outputs (lhs
+// columns _saemGenCensIx: transformed DV, mean, sd, nu, transformed limit).
+// @param lhs the row's lhs values
+// @param cens CENS of the row
+// @param lim LIMIT of the row
+// @param ll the row's log-density (rx_pred_)
+// @return the log-likelihood
+// @noRd
+static inline double saemGenLikCens(const double *lhs, double cens, double lim, double ll) {
+  if (_saemGenCensIx.n_elem != 5 || std::isnan(ll)) return ll;
+  if (cens == 0.0 && !R_FINITE(lim)) return ll;
+  double nu = lhs[_saemGenCensIx(3)];
+  if (nu < 0.0) return ll;
+  double limT = (R_FINITE(lim) && _saemGenCensIx(4) >= 0) ? lhs[_saemGenCensIx(4)] : lim;
+  double x = lhs[_saemGenCensIx(0)], mu = lhs[_saemGenCensIx(1)];
+  double sd = lhs[_saemGenCensIx(2)];
+  if (nu == 0.0) return doCensNormal1(cens, x, limT, ll, mu, sd*sd, 0);
+  return doCensT1(cens, x, limT, ll, mu, sd*sd, nu);
+}
 
 // class def starts
 class SAEM {
@@ -2002,7 +2026,12 @@ public:
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       rxPred.calc_lhs(i, getTime(kk, ind), getOpIndSolve(op, ind, j), lhs);
-      modeRowPush(ind, kk, lhs[_saemPhi1PredOffset], f, cens, lim);
+      // FOCEi's log-density leaves out the transform's log-Jacobian, as in
+      // saemReadRowsPooled()
+      double cur = lhs[_saemPhi1PredOffset] +
+        _powerL(getIndDv(ind, kk), getIndLambda(ind), getIndLambdaYj(ind),
+                getIndLogitLow(ind), getIndLogitHi(ind));
+      modeRowPush(ind, kk, cur, f, cens, lim);
     }
     return true;
   }
@@ -2076,7 +2105,10 @@ public:
         saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       } else if (getIndEvid(ind, kk) == 0) {
         saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
-        modeRowPush(ind, kk, lhs[0], f, cens, lim);
+        double ll = saemGenLikCens(lhs, hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0,
+                                   hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf,
+                                   lhs[0]);
+        modeRowPush(ind, kk, ll, f, cens, lim);
       }
     }
     return true;
@@ -2210,8 +2242,8 @@ public:
 
   // Free phi1 columns of subject i's mode search
   //
-  // Uninformative etas and temporary etas (which stand in for a theta) keep
-  // their SAEM value.
+  // Uninformative etas keep their SAEM value; temporary etas (which stand in
+  // for a theta) are held by modeSubject() at their mean.
   // @param i subject
   // @param ue uninformative-eta mask
   // @param sd Omega sd of each phi1 column
@@ -2248,21 +2280,29 @@ public:
   // not improve on it.
   // @param i subject
   // @param yt transformed observations
-  // @param IG inverse of Omega
+  // @param IG inverse of Omega over the realIx columns
+  // @param realIx phi1 columns of the reported etas (all but temporary etas)
   // @param sd Omega sd of each phi1 column
   // @param ue uninformative-eta mask
   // @param doParam which model parameters phi fills
   // @param mixest mixture component to use, or 0
+  // @param pseudoMean mean SAEM eta of each phi1 column; a temporary eta is
+  //   held there, the value its fold moves into the reported theta
   // @return nothing; fills row i of etaMode and etaModeConv
   // @noRd
-  void modeSubject(int i, const vec &yt, const mat &IG, const vec &sd,
-                   const mat &ue, const std::vector<int> &doParam, int mixest) {
+  void modeSubject(int i, const vec &yt, const mat &IG, const uvec &realIx,
+                   const vec &sd, const mat &ue, const std::vector<int> &doParam,
+                   int mixest, const rowvec &pseudoMean) {
     std::vector<int> freeC = modeFreeCols(i, ue, sd);
     int nf = (int)freeC.size();
     if (nf == 0) return;
     vec start = mpost_phi.row(i).t();
     if (nphi0 > 0) start.elem(i0) = mprior_phi0.row(i).t();
     rowvec mu1 = mprior_phi1.row(i);
+    for (unsigned int k = 0; k < pseudoIx1.n_elem; ++k) {
+      int c = (int)pseudoIx1(k);
+      if (c < nphi1) start(i1(c)) = mu1(c) + pseudoMean(c);
+    }
     int s = ix_idM(i, 0);
     std::vector<double> f, cens, lim;
     double fBest = R_PosInf;
@@ -2272,7 +2312,10 @@ public:
       for (int k = 0; k < nf; ++k) phi(i1(freeC[k])) += z[k]*sd(freeC[k]);
       double v = 1.0e300;
       if (modeRowPred(i, phi, doParam, mixest, f, cens, lim)) {
-        rowvec d = phi.elem(i1).t() - mu1;
+        // the reported model has no temporary etas: its prior is the
+        // marginal Omega of the other etas
+        vec phi1 = phi.elem(i1);
+        rowvec d = phi1.elem(realIx).t() - mu1.cols(realIx);
         v = modeRowLoss(s, f, cens, lim, yt) + 0.5*as_scalar(d*IG*d.t());
         if (!std::isfinite(v)) v = 1.0e300;
       }
@@ -2307,10 +2350,22 @@ public:
     etaModeConv.set_size(N);
     etaModeConv.fill(3);
     if (!ebeMode || nphi1 == 0) return;
+    rowvec pseudoMean = mean(etaMode, 0);
+    for (unsigned int k = 0; k < pseudoIx1.n_elem; ++k) {
+      if ((int)pseudoIx1(k) < nphi1) etaMode.col(pseudoIx1(k)).fill(pseudoMean(pseudoIx1(k)));
+    }
     rx_solving_options *op = getSolvingOptions(_rx);
     vec yt = modeResidSetup();
-    mat IG = invSympdNearPd(Gamma2_phi1, "Gamma2_phi1 (Omega)");
-    vec sd = sqrt(Gamma2_phi1.diag());
+    std::vector<uword> realC;
+    for (int c = 0; c < nphi1; ++c) {
+      if (!any(pseudoIx1 == (uword)c)) realC.push_back((uword)c);
+    }
+    uvec realIx(realC);
+    // the reported Omega (before the variance floor), as the fit's model has
+    mat G = get_Gamma2_phi1Report();
+    mat Greal = G.submat(realIx, realIx);
+    mat IG = invSympdNearPd(Greal, "Gamma2_phi1 (Omega)");
+    vec sd = sqrt(G.diag());
     std::vector<int> doParam;
     if (!_saemPhi1PoolActive) {
       IntegerVector pu = optM["paramUpdate"];
@@ -2333,7 +2388,7 @@ public:
       if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
       try {
-        modeSubject(i, yt, IG, sd, ue, doParam, mixComp(i));
+        modeSubject(i, yt, IG, realIx, sd, ue, doParam, mixComp(i), pseudoMean);
       } catch (...) {
         etaModeConv(i) = -1;
       }
@@ -3934,6 +3989,15 @@ public:
       if (_saemPhi1PoolReady && kiter >= (unsigned int)niter_phi0 &&
           (kiter - (unsigned int)niter_phi0) % (unsigned int)phi1ThetaEvery == 0) {
         refinePhi1Lik(kiter, pas);
+      }
+      // once the pooled refinement owns phi1 the model runs at mprior_phi1, so
+      // report that rather than the sampled-mean update
+      if (_saemPhi1PoolReady && kiter >= (unsigned int)niter_phi0) {
+        vec mcov1Fixed;
+        if (fixedIx1.n_elem > 0) mcov1Fixed = vec(MCOV1(jcov1(fixedIx1)));
+        phi1BackSolveMCOV();
+        if (fixedIx1.n_elem > 0) MCOV1(jcov1(fixedIx1)) = mcov1Fixed;
+        Plambda1 = MCOV1(jcov1);
       }
       // The sampled-mean update above only weakly informs fixed-effect-only
       // (phi0) parameters, so once the SA/variance-shrinkage phase has begun,
@@ -5894,6 +5958,9 @@ arma::ivec _saemPhi1H2EtaCol;
 // solving only odeSlotPred, never odeSlotHess2/the FD-Hessian fallback.
 bool _saemPhi1WantHessian = false;
 int _saemPhi1PredOffset = -1;
+// lhs columns of the censoring inputs of a censored general-likelihood fit
+// (see saemGenLikCens); empty otherwise.
+arma::ivec _saemGenCensIx;
 int _saemPhi1H2PredOffset = -1;
 int _saemPhi1H2HessOffset = -1;
 int _saemPhi1DvCol = -1;
@@ -6157,7 +6224,9 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       } else if (getIndEvid(ind,kk) == 0) {
         saem_lhs((int)id, curT,
                  getOpIndSolve(op, ind, j), lhs);
-        double cur = lhs[0];
+        double cur = saemGenLikCens(lhs, hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0,
+                                    hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf,
+                                    lhs[0]);
         if (std::isnan(cur)) {
           cur = 1.0e99;
           hasNan = true;
@@ -6224,6 +6293,10 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
   // for it (measured: a normal-model fit run after a general-lik pooled fit
   // in the same R session segfaulted from exactly this).
   odeSwapClearAll();
+  _saemGenCensIx.reset();
+  if (opt.containsElementNamed("saemGenCensIx") && !Rf_isNull(opt["saemGenCensIx"])) {
+    _saemGenCensIx = as<arma::ivec>(opt["saemGenCensIx"]);
+  }
   _saemPhi1PoolActive = opt.containsElementNamed("saemPhi1Pred") &&
     !Rf_isNull(opt["saemPhi1Pred"]);
   if (_saemPhi1PoolActive) {

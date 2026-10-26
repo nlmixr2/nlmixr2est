@@ -58,6 +58,11 @@
   `nonMuTheta = "regress"` (the default) the model ran at the directly
   optimized values, but `$theta` showed the regression estimate taken before
   that optimization, so the reported thetas, etas and tables disagreed.
+  Likewise a general-likelihood fit (`ll()`, `dnorm()`, `t()`, ...) now
+  reports the mu-referenced thetas its direct optimization settled on rather
+  than the sampled-mean update.
+- `saem` now uses censoring (M2/M3/M4) for `dnorm()`, `t()` and `cauchy()`
+  endpoints; it scored a censored observation by its density at the limit.
 - On Windows with more than one thread, `est = "imp"` and `"impmap"` no
   longer crash (ODE models) or give estimates that depend on the number of
   threads (`linCmt()` models); affected since 7.1.0.  Linux and macOS were
