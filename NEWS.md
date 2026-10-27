@@ -160,6 +160,13 @@
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
 
+- An IOV model whose occasion eta is named `eta.<something>` (such as
+  `eta.ka.occ ~ 0.1 | OCC`) now fits with every estimator.  saem's clean-up
+  of its temporary etas, which runs after every fit, took the occasion etas
+  (`rx.eta.ka.occ.1`, ...) for its own and dropped them, so the fit stopped
+  with "incorrect number of dimensions" after warning that the eta was "not
+  present in the shrinkage results" (#1233).
+
 ### Tables
 
 - `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
