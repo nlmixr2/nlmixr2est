@@ -87,7 +87,7 @@ foceiControl(
   covTryHarder = FALSE,
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa", "trust"),
-  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c"),
+  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c", "steihaug", "newuoa"),
   innerHessian = c("focei", "conditional"),
   detHessian = c("focei", "conditional"),
   hessianMethod = c("fd", "bfgs", "sr1", "bofill"),
@@ -97,6 +97,9 @@ foceiControl(
   trustFterm = NULL,
   trustMterm = NULL,
   trustPolish = FALSE,
+  steihaugPolish = FALSE,
+  newuoaPolish = FALSE,
+  newuoaRhoend = NULL,
   bobyqaStationary = TRUE,
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL,
@@ -916,9 +919,12 @@ foceiControl(
   \`"auto"\` (default), \`"trust"\` (RcppTrust trust-region Newton,
   using an exact Gauss-Newton+Omega^-1 Hessian every iteration),
   \`"n1qn1"\` (quasi-Newton, gets a Hessian only once as a warm-start
-  seed) or \`"lbfgsb3c"\` (thread-safe L-BFGS-B from \`lbfgsb3c\`,
-  controlled by the \`innerLbfgs\*\` arguments; \`"auto"\` never picks
-  it).
+  seed), \`"lbfgsb3c"\` (thread-safe L-BFGS-B from \`lbfgsb3c\`,
+  controlled by the \`innerLbfgs\*\` arguments), \`"steihaug"\`
+  (RcppTrust truncated conjugate-gradient trust region on the same
+  Hessian as \`"trust"\`, using the \`trust\*\` controls) or
+  \`"newuoa"\` (RcppTrust derivative-free NEWUOA). \`"auto"\` never
+  picks the last three.
 
   \`"auto"\` picks \`"n1qn1"\` for a generalized-likelihood endpoint
   (\`dnorm()\`, \`ll()\`, \`dpois()\`, ...) and \`"trust"\` for
@@ -1041,6 +1047,19 @@ foceiControl(
   about twice the outer evaluations. \`FALSE\` (default) keeps the plain
   trust solve and a single outer search.
 
+- steihaugPolish, newuoaPolish:
+
+  logical; the \`trustPolish\` Newton polish for a converged
+  \`innerOpt="steihaug"\` or \`innerOpt="newuoa"\` solve. \`FALSE\`
+  (default) keeps the plain solve.
+
+- newuoaRhoend:
+
+  final NEWUOA trust-region radius for \`innerOpt="newuoa"\`, in
+  sqrt(diag(Omega)) units. \`NULL\` (default) uses \`sqrt(rtol)\` of the
+  FOCEi ODE solve (\`rxControl\`), the precision that solve can resolve
+  a minimum to.
+
 - bobyqaStationary:
 
   logical; when \`TRUE\` (default), a normal exit of the \`"bobyqa"\`
@@ -1088,8 +1107,9 @@ foceiControl(
   Initial and maximum trust-region radius for `outerOpt="trust"`, in the
   scaled-parameter space the outer problem optimizes in. `NULL`
   (default) derives `outerTrustRinit` from
-  [`minqa::bobyqa()`](https://rdrr.io/pkg/minqa/man/bobyqa.html)'s own
-  default-rhobeg formula and `outerTrustRmax` as `8 * outerTrustRinit`.
+  [`RcppTrust::bobyqa()`](https://nlmixr2.github.io/RcppTrust/reference/bobyqa.html)'s
+  own default-rhobeg formula and `outerTrustRmax` as
+  `8 * outerTrustRinit`.
 
 - outerTrustFterm, outerTrustMterm:
 

@@ -99,13 +99,10 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> ✔ done
 #>  
 #>  
-#> Registered S3 method overwritten by 'minqa':
-#>   method      from     
-#>   print.minqa RcppTrust
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 9616
+#> → compress parHistData in nlmixr2 object, save 9560
 #> → compress phiM in nlmixr2 object, save 439912
 
 print(f)
@@ -116,17 +113,17 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.934846 4.1853e-05 0.04302125      0.068     0.933 4.682       0.913
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.9158338 4.3592e-05   0.051012      0.072     0.933 4.304        0.92
 #>         table compress     other
-#> elapsed  0.09    0.136 0.4090909
+#> elapsed 0.066     0.13 0.3941106
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0     -0.389 
-#> tcl               1.01 0.0843 8.35       2.74 (2.33, 3.24)     27.2       3.46 
-#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.22 
+#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0       1.57 
+#> tcl               1.01 0.0843 8.37       2.74 (2.32, 3.23)     27.2       4.23 
+#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.12 
 #> add.sd           0.696 0.0471 6.77    0.696 (0.604, 0.788)                     
 #>  
 #>   Covariance Type ($covMethod): sa
@@ -138,11 +135,11 @@ print(f)
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 132 × 18
-#>   ID     TIME    DV  PRED    RES IPRED    IRES  IWRES eta.ka eta.cl   eta.v
-#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>  <dbl>  <dbl>  <dbl>   <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.104 -0.483 -0.0832
-#> 2 1      0.25  2.84  3.22 -0.377  3.84 -0.997  -1.43   0.104 -0.483 -0.0832
-#> 3 1      0.57  6.57  5.63  0.942  6.65 -0.0789 -0.113  0.104 -0.483 -0.0832
+#>   ID     TIME    DV  PRED    RES IPRED    IRES   IWRES eta.ka eta.cl   eta.v
+#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>   <dbl>  <dbl>  <dbl>   <dbl>
+#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.0925 -0.473 -0.0848
+#> 2 1      0.25  2.84  3.22 -0.377  3.81 -0.966  -1.39   0.0925 -0.473 -0.0848
+#> 3 1      0.57  6.57  5.63  0.944  6.61 -0.0389 -0.0559 0.0925 -0.473 -0.0848
 #> # ℹ 129 more rows
 #> # ℹ 7 more variables: depot <dbl>, central <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
 #> #   tad <dbl>, dosenum <dbl>
@@ -180,21 +177,21 @@ if (!inherits(f, "try-error")) {
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
 #> 
 #>           OBJF      AIC     BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> FOCEi 116.9196 373.5193 393.699      -179.7597        459.3324        1.454275
+#> FOCEi 116.8447 373.4444 393.624      -179.7222        459.3324        1.454275
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.934846 4.1853e-05 0.04302125      0.068     0.933 4.682       0.913
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.9158338 4.3592e-05   0.051012      0.072     0.933 4.304        0.92
 #>         table compress     other
-#> elapsed  0.09    0.136 0.4090909
+#> elapsed 0.066     0.13 0.3941106
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0     -0.389 
-#> tcl               1.01 0.0843 8.35       2.74 (2.33, 3.24)     27.2       3.46 
-#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.22 
+#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0       1.57 
+#> tcl               1.01 0.0843 8.37       2.74 (2.32, 3.23)     27.2       4.23 
+#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.12 
 #> add.sd           0.696 0.0471 6.77    0.696 (0.604, 0.788)                     
 #>  
 #>   Covariance Type ($covMethod): sa
@@ -206,11 +203,11 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 132 × 22
-#>   ID     TIME    DV  PRED    RES IPRED    IRES  IWRES eta.ka eta.cl   eta.v
-#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>  <dbl>  <dbl>  <dbl>   <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.104 -0.483 -0.0832
-#> 2 1      0.25  2.84  3.22 -0.377  3.84 -0.997  -1.43   0.104 -0.483 -0.0832
-#> 3 1      0.57  6.57  5.63  0.942  6.65 -0.0789 -0.113  0.104 -0.483 -0.0832
+#>   ID     TIME    DV  PRED    RES IPRED    IRES   IWRES eta.ka eta.cl   eta.v
+#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>   <dbl>  <dbl>  <dbl>   <dbl>
+#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.0925 -0.473 -0.0848
+#> 2 1      0.25  2.84  3.22 -0.377  3.81 -0.966  -1.39   0.0925 -0.473 -0.0848
+#> 3 1      0.57  6.57  5.63  0.944  6.61 -0.0389 -0.0559 0.0925 -0.473 -0.0848
 #> # ℹ 129 more rows
 #> # ℹ 11 more variables: depot <dbl>, central <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
 #> #   tad <dbl>, dosenum <dbl>, WRES <dbl>, CPRED <dbl>, CRES <dbl>, CWRES <dbl>

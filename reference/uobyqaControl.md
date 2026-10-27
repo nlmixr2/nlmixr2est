@@ -310,6 +310,9 @@ fit2 <- nlmixr(mod, dsn, est="uobyqa")
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
+#> Registered S3 method overwritten by 'minqa':
+#>   method      from     
+#>   print.minqa RcppTrust
 #> → pruning branches (`if`/`else`) of population log-likelihood model...
 #> ✔ done
 #> → loading into symengine environment...
@@ -339,9 +342,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1414385 0.1458337 1.3341e-05      0.063       0.008 0.025    0.001
+#> elapsed 0.1474567 0.1531269 1.2714e-05      0.052       0.008 0.026    0.001
 #>              other
-#> elapsed 0.08071454
+#> elapsed 0.09140365
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

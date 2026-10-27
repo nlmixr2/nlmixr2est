@@ -125,7 +125,7 @@
 <span>  covTryHarder <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  outerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"bobyqa"</span>, <span class="st">"nlminb"</span>, <span class="st">"lbfgsb3c"</span>, <span class="st">"L-BFGS-B"</span>, <span class="st">"mma"</span>, <span class="st">"lbfgsbLG"</span>, <span class="st">"slsqp"</span>,</span>
 <span>    <span class="st">"uobyqa"</span>, <span class="st">"newuoa"</span>, <span class="st">"trust"</span><span class="op">)</span>,</span>
-<span>  innerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"trust"</span>, <span class="st">"n1qn1"</span>, <span class="st">"lbfgsb3c"</span><span class="op">)</span>,</span>
+<span>  innerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"trust"</span>, <span class="st">"n1qn1"</span>, <span class="st">"lbfgsb3c"</span>, <span class="st">"steihaug"</span>, <span class="st">"newuoa"</span><span class="op">)</span>,</span>
 <span>  innerHessian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"focei"</span>, <span class="st">"conditional"</span><span class="op">)</span>,</span>
 <span>  detHessian <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"focei"</span>, <span class="st">"conditional"</span><span class="op">)</span>,</span>
 <span>  hessianMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fd"</span>, <span class="st">"bfgs"</span>, <span class="st">"sr1"</span>, <span class="st">"bofill"</span><span class="op">)</span>,</span>
@@ -135,6 +135,9 @@
 <span>  trustFterm <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  trustMterm <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  trustPolish <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  steihaugPolish <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  newuoaPolish <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  newuoaRhoend <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  bobyqaStationary <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  innerLbfgsLmm <span class="op">=</span> <span class="fl">5L</span>,</span>
 <span>  innerLbfgsFactr <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -953,8 +956,11 @@ box is reported as an infinite objective and the region shrinks instead.</p></dd
     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
     using an exact Gauss-Newton+Omega^-1 Hessian every iteration),
     `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
-    seed) or `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
-    by the `innerLbfgs*` arguments; `"auto"` never picks it).</p>
+    seed), `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
+    by the `innerLbfgs*` arguments), `"steihaug"` (RcppTrust truncated
+    conjugate-gradient trust region on the same Hessian as `"trust"`, using
+    the `trust*` controls) or `"newuoa"` (RcppTrust derivative-free NEWUOA).
+    `"auto"` never picks the last three.</p>
 <p>`"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
     (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
     Such an endpoint has no Gauss-Newton shortcut, so the inner eta Hessian
@@ -1074,6 +1080,19 @@ about twice the outer evaluations.  `FALSE` (default) keeps the plain
 trust solve and a single outer search.</p></dd>
 
 
+<dt id="arg-steihaugpolish-newuoapolish">steihaugPolish, newuoaPolish<a class="anchor" aria-label="anchor" href="#arg-steihaugpolish-newuoapolish"></a></dt>
+<dd><p>logical; the `trustPolish` Newton
+polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
+solve.  `FALSE` (default) keeps the plain solve.</p></dd>
+
+
+<dt id="arg-newuoarhoend">newuoaRhoend<a class="anchor" aria-label="anchor" href="#arg-newuoarhoend"></a></dt>
+<dd><p>final NEWUOA trust-region radius for
+`innerOpt="newuoa"`, in sqrt(diag(Omega)) units.  `NULL` (default) uses
+`sqrt(rtol)` of the FOCEi ODE solve (`rxControl`), the precision that
+solve can resolve a minimum to.</p></dd>
+
+
 <dt id="arg-bobyqastationary">bobyqaStationary<a class="anchor" aria-label="anchor" href="#arg-bobyqastationary"></a></dt>
 <dd><p>logical; when `TRUE` (default), a normal exit of
 the `"bobyqa"` outer search is checked with a central-difference
@@ -1122,7 +1141,7 @@ extra population gradient per parameter per iteration.</p></dd>
 <dd><p>Initial and maximum trust-region
 radius for <code>outerOpt="trust"</code>, in the scaled-parameter space the
 outer problem optimizes in.  <code>NULL</code> (default) derives
-<code>outerTrustRinit</code> from <code><a href="https://rdrr.io/pkg/minqa/man/bobyqa.html" class="external-link">minqa::bobyqa()</a></code>'s own default-rhobeg
+<code>outerTrustRinit</code> from <code><a href="https://nlmixr2.github.io/RcppTrust/reference/bobyqa.html" class="external-link">RcppTrust::bobyqa()</a></code>'s own default-rhobeg
 formula and <code>outerTrustRmax</code> as <code>8 * outerTrustRinit</code>.</p></dd>
 
 

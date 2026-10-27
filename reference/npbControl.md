@@ -391,7 +391,7 @@ npbControl()
 #>     .ctl$iprint <- 0L
 #>     .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", 
 #>         "iprint", "maxfun")]
-#>     .ret <- minqa::bobyqa(par, fn, control = .ctl, lower = lower, 
+#>     .ret <- RcppTrust::bobyqa(par, fn, control = .ctl, lower = lower, 
 #>         upper = upper)
 #>     .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, 
 #>         .ret)
@@ -411,7 +411,7 @@ npbControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55c827d62d10>
+#> <bytecode: 0x55ec0058a068>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -464,6 +464,15 @@ npbControl()
 #> 
 #> $trustPolish
 #> [1] FALSE
+#> 
+#> $steihaugPolish
+#> [1] FALSE
+#> 
+#> $newuoaPolish
+#> [1] FALSE
+#> 
+#> $newuoaRhoend
+#> [1] 0.03162278
 #> 
 #> $bobyqaStationary
 #> [1] TRUE

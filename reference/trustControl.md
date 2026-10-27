@@ -71,10 +71,11 @@ trustControl(
 
   Initial trust-region radius, in the SAME scaled-parameter space every
   nlm-family method (bobyqa included) optimizes in. \`NULL\` (default)
-  derives it from the scaled starting vector using \`minqa::bobyqa()\`'s
-  own default-\`rhobeg\` formula, \`min(0.95, 0.2\*max(abs(par.ini)))\`,
-  so swapping \`est="bobyqa"\` for \`est="trust"\` on the same model
-  starts from a comparable trust-region size.
+  derives it from the scaled starting vector using
+  \`RcppTrust::bobyqa()\`'s own default-\`rhobeg\` formula, \`min(0.95,
+  0.2\*max(abs(par.ini)))\`, so swapping \`est="bobyqa"\` for
+  \`est="trust"\` on the same model starts from a comparable
+  trust-region size.
 
 - rmax:
 
@@ -445,9 +446,9 @@ print(fit)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1325843 0.1964606 1.8458e-05      0.045       0.008 0.025    0.001
-#>             other
-#> elapsed 0.1009367
+#> elapsed 0.1456657 0.1926111 2.2011e-05       0.06       0.009 0.026    0.001
+#>              other
+#> elapsed 0.08870117
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

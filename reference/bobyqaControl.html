@@ -99,7 +99,7 @@ adjusted upward if smaller than `abs(upper-lower)/2`.</p></dd>
 <dt id="arg-rhoend">rhoend<a class="anchor" aria-label="anchor" href="#arg-rhoend"></a></dt>
 <dd><p>Final trust region radius.  When `NULL` (default) it is derived
 from `sigdig` the way `foceiControl()` does (`10^(-sigdig)`); otherwise the
-minqa `1e-6*rhobeg` default applies.</p></dd>
+RcppTrust `1e-6*rhobeg` default applies.</p></dd>
 
 
 <dt id="arg-iprint">iprint<a class="anchor" aria-label="anchor" href="#arg-iprint"></a></dt>
@@ -377,9 +377,9 @@ doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.7936623 0.7721505 1.8168e-05      0.047       0.012 0.031    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.7851193 0.7741187 1.4808e-05       0.05        0.01 0.031    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09216912</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09474718</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

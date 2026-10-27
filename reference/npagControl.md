@@ -55,20 +55,20 @@ npagControl(
   How to estimate the residual-error thetas (every endpoint's
   \`add\`/\`prop\`/\`lnorm\`, each transform \`lambda\`, each \`ar\`)
   with the support points and weights held fixed, using bounded
-  [`minqa::bobyqa`](https://rdrr.io/pkg/minqa/man/bobyqa.html) on the
-  EXTENDED LEAST SQUARES objective \`sum_obs((f-dv)^2/r + log(r))\` at
-  the posterior-mean etas. The \`log(r)\` term keeps the residual from
-  drifting to zero on a flexible support (which the marginal likelihood
-  would reward), giving the saem/focei residual; each variance scale is
-  warm-started from the per-endpoint moment (additive SD from
-  \`sqrt(mean(err^2))\`, proportional from \`sqrt(mean((err/f)^2))\`, on
-  the transform- both-sides scale). `"alternate"` (default) optimizes
-  every cycle (block- coordinate ascent); `"final"` optimizes once at
-  the converged support; `"none"` holds them at their initial values.
-  Fixed residual parameters are always held. After the residual thetas
-  converge, a final adaptive-grid pass re-optimizes the support with
-  them held constant so the support remains the nonparametric MLE (D(F)
-  ~ 0) for the fitted residual.
+  [`RcppTrust::bobyqa`](https://nlmixr2.github.io/RcppTrust/reference/bobyqa.html)
+  on the EXTENDED LEAST SQUARES objective \`sum_obs((f-dv)^2/r +
+  log(r))\` at the posterior-mean etas. The \`log(r)\` term keeps the
+  residual from drifting to zero on a flexible support (which the
+  marginal likelihood would reward), giving the saem/focei residual;
+  each variance scale is warm-started from the per-endpoint moment
+  (additive SD from \`sqrt(mean(err^2))\`, proportional from
+  \`sqrt(mean((err/f)^2))\`, on the transform- both-sides scale).
+  `"alternate"` (default) optimizes every cycle (block- coordinate
+  ascent); `"final"` optimizes once at the converged support; `"none"`
+  holds them at their initial values. Fixed residual parameters are
+  always held. After the residual thetas converge, a final adaptive-grid
+  pass re-optimizes the support with them held constant so the support
+  remains the nonparametric MLE (D(F) ~ 0) for the fitted residual.
 
 - muExpand:
 
@@ -437,7 +437,7 @@ npagControl()
 #>     .ctl$iprint <- 0L
 #>     .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", 
 #>         "iprint", "maxfun")]
-#>     .ret <- minqa::bobyqa(par, fn, control = .ctl, lower = lower, 
+#>     .ret <- RcppTrust::bobyqa(par, fn, control = .ctl, lower = lower, 
 #>         upper = upper)
 #>     .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, 
 #>         .ret)
@@ -457,7 +457,7 @@ npagControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55c827d62d10>
+#> <bytecode: 0x55ec0058a068>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -510,6 +510,15 @@ npagControl()
 #> 
 #> $trustPolish
 #> [1] FALSE
+#> 
+#> $steihaugPolish
+#> [1] FALSE
+#> 
+#> $newuoaPolish
+#> [1] FALSE
+#> 
+#> $newuoaRhoend
+#> [1] 0.03162278
 #> 
 #> $bobyqaStationary
 #> [1] TRUE

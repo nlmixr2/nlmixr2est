@@ -97,7 +97,7 @@ no meaning here.</p></dd>
 <dt id="arg-residoptimize">residOptimize<a class="anchor" aria-label="anchor" href="#arg-residoptimize"></a></dt>
 <dd><p>How to estimate the residual-error thetas (every endpoint's
 `add`/`prop`/`lnorm`, each transform `lambda`, each `ar`) with the support points
-and weights held fixed, using bounded <code><a href="https://rdrr.io/pkg/minqa/man/bobyqa.html" class="external-link">minqa::bobyqa</a></code> on the EXTENDED LEAST
+and weights held fixed, using bounded <code><a href="https://nlmixr2.github.io/RcppTrust/reference/bobyqa.html" class="external-link">RcppTrust::bobyqa</a></code> on the EXTENDED LEAST
 SQUARES objective `sum_obs((f-dv)^2/r + log(r))` at the posterior-mean etas.  The
 `log(r)` term keeps the residual from drifting to zero on a flexible support (which
 the marginal likelihood would reward), giving the saem/focei residual; each
@@ -468,7 +468,7 @@ values if a fixed error model is desired.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ctl$iprint &lt;- 0L</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ctl &lt;- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         "iprint", "maxfun")]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     .ret &lt;- minqa::bobyqa(par, fn, control = .ctl, lower = lower, </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     .ret &lt;- RcppTrust::bobyqa(par, fn, control = .ctl, lower = lower, </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         upper = upper)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret &lt;- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         .ret)</span>
@@ -488,7 +488,7 @@ values if a fixed error model is desired.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$value &lt;- .ret$fval</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x55c827d62d10&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x55ec0058a068&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
@@ -541,6 +541,15 @@ values if a fixed error model is desired.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $trustPolish</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $steihaugPolish</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $newuoaPolish</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $newuoaRhoend</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.03162278</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $bobyqaStationary</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>

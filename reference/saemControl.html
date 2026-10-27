@@ -106,6 +106,9 @@
 <span>  phi1Hessian <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  residWarmStart <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  censOption <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"gauss"</span>, <span class="st">"laplace"</span><span class="op">)</span>,</span>
+<span>  ebe <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mode"</span>, <span class="st">"saem"</span><span class="op">)</span>,</span>
+<span>  ebeMaxEval <span class="op">=</span> <span class="fl">200L</span>,</span>
+<span>  ebeTol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -694,6 +697,25 @@ proper Laplace inner Hessian and analytic covariance).  Accepted by
 <code>saemControl</code>/<code>nlmControl</code> for a uniform interface but inert there –
 SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
 finite-difference Hessian that already reflects censoring exactly.</p></dd>
+
+
+<dt id="arg-ebe">ebe<a class="anchor" aria-label="anchor" href="#arg-ebe"></a></dt>
+<dd><p>Individual estimates reported as `fit$eta`: `"mode"` (default)
+is each subject's conditional mode, found with NEWUOA after the last SAEM
+iteration; `"saem"` is SAEM's approximate conditional mean.  The SAEM
+etas are always available as `fit$etaSaem`.</p></dd>
+
+
+<dt id="arg-ebemaxeval">ebeMaxEval<a class="anchor" aria-label="anchor" href="#arg-ebemaxeval"></a></dt>
+<dd><p>Maximum objective evaluations per subject for the
+conditional-mode search (default 200).</p></dd>
+
+
+<dt id="arg-ebetol">ebeTol<a class="anchor" aria-label="anchor" href="#arg-ebetol"></a></dt>
+<dd><p>Final NEWUOA trust-region radius of the conditional-mode
+search, in standard-deviation units of each eta.  `NULL` (default) uses
+`sqrt(rtol)` of the SAEM ODE solve (`rxControl`), the precision that solve
+can resolve a minimum to.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
