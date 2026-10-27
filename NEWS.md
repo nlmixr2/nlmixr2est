@@ -64,6 +64,13 @@
 
 ### Estimation
 
+- A `saem` fit with inter-occasion variability now reports its
+  Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
+  reported a FOCEi objective in its place, so its AIC and BIC were not
+  comparable with other `saem` fits; the only sign was the message "gaussian
+  quadrature failed, changed to focei" when the objective was first read.
+  The quadrature, which runs after the fit, solved with an event matrix
+  rebuilt from the data, which had lost the occasion column.
 - `foceiControl(outerOpt = "newuoa")` now stops the outer optimization at
   `maxOuterIterations` function evaluations, as `outerOpt = "uobyqa"` and
   `"bobyqa"` do; it used to ignore the limit and run NEWUOA to convergence.
@@ -160,6 +167,24 @@
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
 
+### NPDE
+
+- NPDE of censored observations now draws each censored value from the
+  subject's simulated predictive distribution (a Gaussian copula of the
+  simulations), conditional on its measured observations and truncated to its
+  censoring interval, for every `tableControl(censMethod =)` but "cdf" and
+  "omit".  The simulations themselves are left untruncated.
+  Before, NPDE under "truncated-normal", "ipred" and "pred" used whatever the
+  residual step had written into the shared DV (a draw around IPRED, or
+  IPRED/PRED), and "epred" used the LOQ itself.  The residual columns are
+  unchanged.
+
+- NPDE under `censMethod = "omit"` now gives censored observations NA and
+  leaves them out of the decorrelation.  Before, the residual step's NA
+  spread through the decorrelation and the subject's NPDE were meaningless.
+
+- NPDE's back-transformation of EPRED and DV now uses each observation's own
+  transform; it used the first subject's rows for every subject.
 ### Tables
 
 - `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
@@ -265,6 +290,32 @@
   interpolation, rxode2's `linCmt()` takes a covariate's value at the end
   of each interval, so the times `augPred()` adds move where a change takes
   effect.
+- `addNpde()` and `addTable()` now work on a fit with inter-occasion
+  variability, including one run with `calcTables = FALSE`.  They stopped
+  with "The following parameter(s) are required for solving: occ, ..."
+  (the parameters listed depend on the model and the method).  They refit
+  with no iterations at the fit's estimates, as `addCwres()` does, and give
+  the columns the fit gives itself; for an ODE model, to the solver's
+  tolerance.  A `saem` fit with `iovMethod = "collapsed"` is refused with a
+  message: ask for its tables when fitting it.
+
+- A fit with inter-occasion variability is now finished like any other when
+  it is run with `tableControl(npde = TRUE)` or has a subject with no
+  observations.  Its model, fixed and random effects, `omega`, parameter
+  table and data kept the expanded occasion etas (such as `rx.iov.cl.1`) and
+  their magnitude thetas.
+
+- A `saem` fit with a mu-referenced covariate (such as
+  `cl <- exp(tcl + eta.cl + wt.cl * log(WT / 70))`) run with
+  `tableControl(npde = TRUE)` is now finished like one without NPDE.  Its
+  table, data and model kept the `nlmixrMuDerCov1` column it was fitted
+  with.
+
+- `addTable()` now applies the `keep` and `drop` of its `table`, as it
+  applies its `keep` and `drop` arguments; it ignored them.
+
+- `addCwres()` now records its time in the fit's `time` table; it was
+  lost.
 
 # nlmixr2est 7.2.1
 
