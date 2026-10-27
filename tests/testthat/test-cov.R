@@ -254,6 +254,11 @@ test_that("each .covWarn() site clips an 80-character label to 74 columns", {
   .w <- capture_warnings(.foceiWarnConditionalCov(.e, list(maxInnerIterations = 0L)))
   expect_identical(.w, paste0("\"", strrep("m", 70), "..."))
   expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
+  # a long condition message of the FOCEi covariance a vae or vi fit tries; it
+  # names no label, so the real-label test has no case for it
+  .w <- capture_warnings(.foceiOwnEtaCovFail(new.env(parent = emptyenv()), "r,s", "computed", simpleError(.long)))
+  expect_identical(.w, paste0("FOCEi covariance not computed (", strrep("m", 40), "..."))
+  expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
 })
 
 test_that("the long-label test drives every .covWarn() caller", {
@@ -265,7 +270,7 @@ test_that("the long-label test drives every .covWarn() caller", {
   # a new caller needs a case above and in the real-label test below
   expect_setequal(
     .callers,
-    c(".covInstall", ".covRejectWarn", ".covRepairWarn", ".foceiWarnConditionalCov", ".setCovFd")
+    c(".covInstall", ".covRejectWarn", ".covRepairWarn", ".foceiOwnEtaCovFail", ".foceiWarnConditionalCov", ".setCovFd")
   )
 })
 
