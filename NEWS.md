@@ -160,6 +160,24 @@
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
 
+### NPDE
+
+- NPDE of censored observations now draws each censored value from the
+  subject's simulated predictive distribution (a Gaussian copula of the
+  simulations), conditional on its measured observations and truncated to its
+  censoring interval, for every `tableControl(censMethod =)` but "cdf" and
+  "omit".  The simulations themselves are left untruncated.
+  Before, NPDE under "truncated-normal", "ipred" and "pred" used whatever the
+  residual step had written into the shared DV (a draw around IPRED, or
+  IPRED/PRED), and "epred" used the LOQ itself.  The residual columns are
+  unchanged.
+
+- NPDE under `censMethod = "omit"` now gives censored observations NA and
+  leaves them out of the decorrelation.  Before, the residual step's NA
+  spread through the decorrelation and the subject's NPDE were meaningless.
+
+- NPDE's back-transformation of EPRED and DV now uses each observation's own
+  transform; it used the first subject's rows for every subject.
 ### Tables
 
 - `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a

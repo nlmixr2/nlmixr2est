@@ -91,6 +91,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "focei-wang2007-boxcox-half",
     "nlm-cens",
     "focei-cens-t-fit",
+    "npde-cens-calib",
     "mtime-fit",
     "issue-429",
     "issue-470",
