@@ -173,7 +173,9 @@ When `FALSE`, all subjects have their tolerances relaxed on
 each retry and tolerances are reset afterward.}
 
 \item{eventType}{Event gradient type for dosing events; Can be
-"central" or "forward"}
+"central" or "forward".  The integer code a control stores is accepted
+too: 2 (central) or 3 (forward) in `foceiControl()`, 2 (central) or 1
+(forward) in the nlm-family controls.}
 
 \item{shiErr}{This represents the epsilon when optimizing the ideal
 step size for numeric differentiation using the Shi2021 method}

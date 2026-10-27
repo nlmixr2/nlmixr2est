@@ -294,6 +294,8 @@ nlmixr2Est.default <- function(env, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 nlmixr2Est0 <- function(env, ...) {
+  # the zero-start scales are for this estimation only (#1228)
+  on.exit(nlmixr2global$nlmixr2EstEnv$zeroThetaScale <- NULL, add = TRUE)
   rxode2::rxUnloadAll()
   .ui <- rxode2::rxUiDecompress(get("ui", env))
   assign("ui", .ui, envir = env)

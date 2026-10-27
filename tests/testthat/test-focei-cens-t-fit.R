@@ -70,7 +70,7 @@
   }
   .ll <- stats::dt(.z(dv), nu, log = TRUE) - log(sd)
   if (is.finite(lim)) {
-    .zz <- ifelse(lim < f, 1, -1) * (lim - f) / sd
+    .zz <- ifelse(lim <= dv, 1, -1) * (lim - f) / sd
     .ll <- .ll - stats::pt(.zz, nu, lower.tail = FALSE, log.p = TRUE)
   }
   .ll
@@ -208,7 +208,7 @@ nmTest({
       cp <- center / v
       sdv <- abs(add.sd)
       zz <- (DV - cp) / sdv
-      zl <- (2 * (LIM < cp) - 1) * (LIM - cp) / sdv
+      zl <- (2 * (LIM <= DV) - 1) * (LIM - cp) / sdv
       ll(err) ~ -log(pi * sdv) - log(1 + zz * zz) - log(0.5 - atan(zl) / pi)
     })
   }

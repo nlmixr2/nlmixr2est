@@ -5,10 +5,8 @@
 # frozen-R0 eta = 0 solve), the general (f,R) assembly under FOCEI and FOCE, and
 # AGQ.  A decline must record a reason other than the internal-error sentinel, the
 # same in covTried, and every helper must make the covariance decline on some
-# assembly.  A failed batched solve is recovered by the per-subject solve on the
-# add/prop assembly; on the general (f,R) assembly that per-subject solve does not
-# rebuild the sigma slots and stops on an error, which is pinned below, so making it
-# recover changes this test.  The reason texts are pinned in
+# assembly, except the batched solve, whose failure the per-subject solve recovers on
+# every assembly.  The reason texts are pinned in
 # test-cov-analytic-reason.R.
 
 nmTest({
@@ -94,18 +92,16 @@ nmTest({
   .dcBatch <- ".foceiAnalyticSolveAllFD3"
 
   .dcPaths <- list(
-    addFocei = list(model = .dcModAdd, est = "focei", leaves = .dcLeaves, recovers = TRUE),
-    addPropFoce = list(model = .dcModAddProp, est = "foce", leaves = .dcLeaves, recovers = TRUE),
-    # recovers = FALSE: the (f,R) per-subject solve errors instead of recovering
-    generalFocei = list(model = .dcModC1, est = "focei", leaves = .dcLeaves, recovers = FALSE),
-    generalFoce = list(model = .dcModC1, est = "foce", leaves = .dcLeaves, recovers = FALSE),
+    addFocei = list(model = .dcModAdd, est = "focei", leaves = .dcLeaves),
+    addPropFoce = list(model = .dcModAddProp, est = "foce", leaves = .dcLeaves),
+    generalFocei = list(model = .dcModC1, est = "focei", leaves = .dcLeaves),
+    generalFoce = list(model = .dcModC1, est = "foce", leaves = .dcLeaves),
     # AGQ shares the add/prop assembly; only the node solve and assembly are its own
     agq = list(
       model = .dcModAdd,
       est = "focei",
       agq = 3L,
-      leaves = list(".foceiAnalyticSolveFA", ".foceiAnalyticSubjectR", ".foceiAnalyticRxSolve"),
-      recovers = TRUE
+      leaves = list(".foceiAnalyticSolveFA", ".foceiAnalyticSubjectR", ".foceiAnalyticRxSolve")
     )
   )
 
@@ -129,12 +125,7 @@ nmTest({
         .label <- paste(.p, .name)
         .gone <- exists(".analyticReason", envir = .r$env, inherits = FALSE)
         if (identical(.name, .dcBatch)) {
-          expect_identical(.gone, !.path$recovers, label = .label)
-          if (.gone) {
-            # the error comes from base R, whose message text is translated, so only
-            # the reason's stable prefix is matched
-            expect_true(startsWith(.r$env$.analyticReason, "an error ("), label = .label)
-          }
+          expect_false(.gone, label = .label)
         }
         if (!.gone) {
           next
@@ -155,6 +146,6 @@ nmTest({
       character(1),
       collapse = "+"
     ))
-    expect_setequal(unique(.declined), .all)
+    expect_setequal(unique(.declined), setdiff(.all, .dcBatch))
   })
 })
