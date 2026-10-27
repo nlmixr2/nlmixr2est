@@ -116,26 +116,42 @@
 #' the EVID) with a zero AMT as a dose.  Later rxode2 reads the first as a dose
 #' and the second as EVID 2, each with a warning.  The mirrors here follow
 #' whichever the installed rxode2 does, from one `etTrans()` probe of each.
+#' A probe that errors is taken as rxode2 5.1.8's reading.
 #' @return list of `obsAmtDose` (the first record is a dose) and `mdvNaNoDose`
 #'   (the second is EVID 2), each `TRUE` or `FALSE`
 #' @noRd
 .nmEtTransReadings <- function() {
   if (is.null(.nmEtTransEnv$readings)) {
-    .mv <- rxode2::rxModelVars("d/dt(y) <- 0")
-    .a <- suppressWarnings(rxode2::etTrans(
-      data.frame(ID = 1, TIME = c(0, 1), EVID = 0, AMT = c(1, 0), DV = c(NA, 1)),
-      .mv
-    ))
-    .b <- suppressWarnings(rxode2::etTrans(
-      data.frame(ID = 1, TIME = c(0, 1), MDV = c(NA, 0), AMT = 0, DV = c(NA, 1)),
-      .mv
-    ))
-    .nmEtTransEnv$readings <- list(
-      obsAmtDose = any(.a$AMT[.a$TIME == 0] %in% 1),
-      mdvNaNoDose = any(.b$EVID %in% 2L)
-    )
+    .nmEtTransEnv$readings <- tryCatch(.nmEtTransProbe(), error = .nmEtTransOldReading)
   }
   .nmEtTransEnv$readings
+}
+
+#' rxode2 5.1.8's readings, as `.nmEtTransReadings()` returns them
+#' @param e the probe's error, unused
+#' @return list with `obsAmtDose` and `mdvNaNoDose` both `FALSE`
+#' @noRd
+.nmEtTransOldReading <- function(e) {
+  list(obsAmtDose = FALSE, mdvNaNoDose = FALSE)
+}
+
+#' `.nmEtTransReadings()`'s two `etTrans()` probes
+#' @return the list `.nmEtTransReadings()` returns
+#' @noRd
+.nmEtTransProbe <- function() {
+  .mv <- rxode2::rxModelVars("d/dt(y) <- 0")
+  .a <- suppressWarnings(rxode2::etTrans(
+    data.frame(ID = 1, TIME = c(0, 1), EVID = 0, AMT = c(1, 0), DV = c(NA, 1)),
+    .mv
+  ))
+  .b <- suppressWarnings(rxode2::etTrans(
+    data.frame(ID = 1, TIME = c(0, 1), MDV = c(NA, 0), AMT = 0, DV = c(NA, 1)),
+    .mv
+  ))
+  list(
+    obsAmtDose = any(.a$AMT[.a$TIME == 0] %in% 1),
+    mdvNaNoDose = any(.b$EVID %in% 2L)
+  )
 }
 
 #' Which records carry a rate or duration that is dose information

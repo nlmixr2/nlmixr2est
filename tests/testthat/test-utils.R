@@ -1,3 +1,8 @@
+# a probe that fails, for .nmEtTransReadings()'s fallback
+.utEtTransProbeError <- function() {
+  stop("no etTrans()")
+}
+
 nmTest({
   test_that(".collectWarn", {
     expect_equal(
@@ -509,6 +514,14 @@ nmTest({
     expect_identical(.nmWithEvid(.m)$EVID, c(2L, 1L, 1L, 1L))
   })
 
+  test_that(".nmEtTransReadings() falls back to the 5.1.8 reading when its probe errors", {
+    .old <- .nmEtTransEnv$readings
+    withr::defer(.nmEtTransEnv$readings <- .old)
+    .nmEtTransEnv$readings <- NULL
+    testthat::local_mocked_bindings(.nmEtTransProbe = .utEtTransProbeError)
+    expect_identical(.nmEtTransReadings(), list(obsAmtDose = FALSE, mdvNaNoDose = FALSE))
+  })
+
   test_that(".nmEtTransReadings() is the installed etTrans()'s, asked once", {
     .old <- .nmEtTransEnv$readings
     withr::defer(.nmEtTransEnv$readings <- .old)
@@ -521,8 +534,8 @@ nmTest({
 
   test_that("the later etTrans() readings are pinned when the installed rxode2 has them", {
     skip_if_not(
-      .nmEtTransReadings()$obsAmtDose,
-      "the installed rxode2 keeps an EVID 0 record with no DV and an amount as an observation"
+      .nmEtTransReadings()$obsAmtDose && .nmEtTransReadings()$mdvNaNoDose,
+      "the installed rxode2 reads an EVID 0 record with no DV and an amount, and a missing MDV with no amount, as 5.1.8 does"
     )
     .mv <- rxode2::rxModelVars("d/dt(y) <- 0")
     .d <- data.frame(ID = 1, TIME = 0:2, EVID = c(0, 0, 0), AMT = c(5, 0, 0), DV = c(NA, 1, 2))
