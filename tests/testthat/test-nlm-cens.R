@@ -222,7 +222,11 @@ nmTest({
     # reproduces even without censoring -- out of scope here, so they are not
     # checked for parameter accuracy.
     f.focei <- .nlmixr(one.cmt, .datM3, est = "focei", control = foceiControl(print = 0))
-    for (meth in c("bobyqa", "newuoa", "uobyqa", "nlminb")) {
+    .meths <- c("bobyqa", "newuoa", "nlminb")
+    if (requireNamespace("minqa", quietly = TRUE)) {
+      .meths <- c(.meths, "uobyqa")
+    }
+    for (meth in .meths) {
       fit <- .nlmixr(one.cmt, .datM3, est = meth, control = nlmControl(print = 0))
       expect_equal(as.numeric(fit$theta[["tka"]]), as.numeric(f.focei$theta[["tka"]]), tolerance = 0.1, info = meth)
       expect_equal(as.numeric(fit$theta[["tcl"]]), as.numeric(f.focei$theta[["tcl"]]), tolerance = 0.1, info = meth)

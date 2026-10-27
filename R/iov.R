@@ -196,13 +196,117 @@ nlmixr2iovVarSd <- function(val) {
   if (length(est) != 1L || is.na(est)) {
     return(FALSE)
   }
-  ## an out-of-tree method can opt in the way it declares `iov` itself
-  .v <- as.character(utils::methods("nlmixr2Est"))
-  if (paste0("nlmixr2Est.", est) %in% .v) {
-    .a <- attr(utils::getS3method("nlmixr2Est", est), "iovSame")
-    if (isTRUE(.a)) return(TRUE)
+  if (est %in% .iovSameMethods) {
+    return(TRUE)
   }
-  est %in% .iovSameMethods
+  ## an out-of-tree method can opt in the way it declares `iov` itself
+  .fn <- utils::getS3method("nlmixr2Est", est, optional = TRUE)
+  !is.null(.fn) && isTRUE(attr(.fn, "iovSame"))
+}
+
+#' Methods outside `.iovSameMethods` that keep a user's repeated (`same()`)
+#' omega block, each with the reason
+#'
+#' A method in neither list is refused a model with a repeated block
+#' (`.nlmixr0preProcessAssertSameBlock()`).  An out-of-tree method opts in
+#' with `attr(nlmixr2Est.<est>, "sameBlock")`, `TRUE` or `"fixed"` (see
+#' `?nlmixr2Est`), or with `"iovSame"`.
+#'
+#' @noRd
+.sameBlockMethods <- c(
+  fo = "keeps the tie, measured",
+  foi = "keeps the tie, measured",
+  vae = "keeps the tie, measured",
+  fbvi = "keeps the tie, measured",
+  emvi = "keeps the tie, measured",
+  posthoc = "does not estimate omega",
+  output = "does not estimate omega",
+  predict = "does not estimate omega",
+  rxSolve = "does not estimate omega",
+  simulate = "does not estimate omega",
+  simulation = "does not estimate omega"
+)
+
+#' Does this estimation method keep a repeated (`same()`) omega block?
+#'
+#' @param est estimation method name
+#' @return `TRUE` or `FALSE`
+#' @noRd
+.isSameBlockMethod <- function(est) {
+  if (length(est) != 1L || is.na(est)) {
+    return(FALSE)
+  }
+  if (est %in% .iovSameMethods || est %in% names(.sameBlockMethods)) {
+    return(TRUE)
+  }
+  .fn <- utils::getS3method("nlmixr2Est", est, optional = TRUE)
+  !is.null(.fn) && (.sameBlockKeeps(.fn) || identical(attr(.fn, "sameBlock"), "fixed"))
+}
+
+#' Whether a registered method declares it estimates a repeated block's copies
+#' as one ("sameBlock" TRUE, or "iovSame" TRUE); "fixed", omega taken as
+#' given, is accepted but is no alternative to name
+#' @param fn the method
+#' @return `TRUE` or `FALSE`
+#' @noRd
+.sameBlockKeeps <- function(fn) {
+  isTRUE(attr(fn, "sameBlock")) || isTRUE(attr(fn, "iovSame"))
+}
+
+#' The methods a refusal names: the user-facing ones that keep the tie, then
+#' any other registered method that opted in
+#' @return character vector
+#' @noRd
+.sameBlockAlternatives <- function() {
+  .alt <- Filter(.isSameBlockMethod, names(.nlmixr2EstTypeInfo))
+  .v <- sub("^nlmixr2Est[.]", "", as.character(utils::methods("nlmixr2Est")))
+  .v <- setdiff(.v, c(.iovSameMethods, names(.sameBlockMethods), names(.nlmixr2EstTypeInfo), "default"))
+  c(.alt, Filter(.sameBlockKeepsName, .v))
+}
+
+#' `.sameBlockKeeps()` of the nlmixr2Est method named `est`; `FALSE` when none
+#' is found
+#' @param est method name
+#' @return `TRUE` or `FALSE`
+#' @noRd
+.sameBlockKeepsName <- function(est) {
+  .sameBlockKeeps(utils::getS3method("nlmixr2Est", est, optional = TRUE))
+}
+
+#' Refuse a repeated (`same()`) omega block to a method that would drop the tie
+#'
+#' Runs before the IOV hooks, so it sees only the user's own blocks; a model
+#' without one costs one condition test.  The alternatives named are
+#' `.sameBlockAlternatives()`.
+#' @param ui rxode2 ui
+#' @param est estimation method name
+#' @param data,control unused; the hook signature
+#' @return `NULL`, or an error
+#' @noRd
+.nlmixr0preProcessAssertSameBlock <- function(ui, est, data, control) {
+  if (!checkmate::testString(est)) {
+    return(NULL)
+  }
+  .idf <- ui$iniDf
+  .cnd <- .idf$condition[!is.na(.idf$neta1)]
+  if (!any(.cnd != lotri::lotriBaseCondition(.cnd), na.rm = TRUE)) {
+    return(NULL)
+  }
+  # an est with no nlmixr2Est method (foceiLikLoad(est = "mystan")) asks
+  # nothing of the block; nlmixr2() refuses an unknown est itself
+  if (is.null(utils::getS3method("nlmixr2Est", est, optional = TRUE)) || .isSameBlockMethod(est)) {
+    return(NULL)
+  }
+  .alt <- .sameBlockAlternatives()
+  stop(
+    "'",
+    est,
+    "' does not honour a repeated (same()) omega block\nuse ",
+    paste(.alt[-length(.alt)], collapse = ", "),
+    " or ",
+    .alt[length(.alt)],
+    call. = FALSE
+  )
 }
 
 #' Build the per-occasion eta blocks for `iovMethod="omega"`
@@ -323,6 +427,43 @@ nlmixr2iovVarSd <- function(val) {
   invisible()
 }
 
+#' The ini rows of occasion (IOV) etas, before the IOV rewrite
+#'
+#' An eta row (diagonal or off-diagonal) whose level is not "id".  The level is
+#' the condition's base: a repeated (`same()`) block carries a `:same:<master>`
+#' suffix, which is not a level of variability.
+#' @param iniDf a ui's `iniDf`
+#' @return logical, one per row
+#' @noRd
+.iovOccRows <- function(iniDf) {
+  .cnd <- iniDf$condition
+  !is.na(.cnd) & lotri::lotriBaseCondition(.cnd) != "id" & is.na(iniDf$err)
+}
+
+#' The inter-occasion variables of a ui
+#'
+#' Read from the ui itself, not from `.uiIovEnv`, which holds the last fit's
+#' rewrite.  Before `.uiApplyIov()` they are the occasion etas ([.iovOccRows()]);
+#' after it, the thetas that carry their magnitude, the only thetas the rewrite
+#' gives an `nlmixr2iov*` back-transformation.
+#' @param ui rxode2 ui
+#' @return character vector of names
+#' @noRd
+.uiIovNames <- function(ui) {
+  .idf <- ui$iniDf
+  .occ <- .iovOccRows(.idf) & !is.na(.idf$neta1) & .idf$neta1 == .idf$neta2
+  .mag <- !is.na(.idf$ntheta) & grepl("^nlmixr2iov", .idf$backTransform)
+  unique(c(.idf$name[.occ], .idf$name[.mag]))
+}
+
+#' Whether a ui carries inter-occasion variability, before or after the IOV rewrite
+#' @param ui rxode2 ui
+#' @return `TRUE` or `FALSE`
+#' @noRd
+.uiHasIov <- function(ui) {
+  length(.uiIovNames(ui)) > 0L
+}
+
 #' This applies the IOV method to the model based on the data used
 #'
 #' @return nothing, called for side effects
@@ -368,14 +509,9 @@ nlmixr2iovVarSd <- function(val) {
   }
   .ui <- ui
   .iniDf <- .ui$iniDf
-  ## the level is the BASE condition: a repeated (`same()`) block carries a
-  ## `:same:<master>` suffix, which is not a level of variability
+  ## the level is the BASE condition (.iovOccRows())
   .baseCnd <- lotri::lotriBaseCondition(.iniDf$condition)
-  .wOcc <- which(
-    !is.na(.iniDf$condition) &
-      .baseCnd != "id" &
-      is.na(.iniDf$err)
-  )
+  .wOcc <- which(.iovOccRows(.iniDf))
   .wOff <- .wOcc[which(
     !is.na(.iniDf$neta1[.wOcc]) &
       .iniDf$neta1[.wOcc] != .iniDf$neta2[.wOcc]
@@ -808,7 +944,7 @@ nlmixr2iovVarSd <- function(val) {
       # Get the IOV variables that are present as thetas in the model
       .iovName <- new.env(parent = emptyenv())
       .iovDf <- .uiIovEnv$ui$iniDf
-      .iovDf <- .iovDf[!is.na(.iovDf$neta1) & .iovDf$condition != "id", , drop = FALSE]
+      .iovDf <- .iovDf[.iovOccRows(.iovDf), , drop = FALSE]
       .iovName$var <- .iovDf$name
 
       getEstimateDf <- function(iniDf) {
@@ -1233,5 +1369,6 @@ nlmixr2iovVarSd <- function(val) {
   ret
 }
 
+preProcessHooksAdd(".nlmixr0preProcessAssertSameBlock", .nlmixr0preProcessAssertSameBlock)
 preProcessHooksAdd(".uiApplyIov", .uiApplyIov)
 postFinalObjectHooksAdd(".uiFinalizeIov", .uiFinalizeIov)

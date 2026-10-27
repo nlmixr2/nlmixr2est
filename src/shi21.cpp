@@ -114,10 +114,39 @@ double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   return shiRatio(abs(f4-4*f1+3*f0)/(8.0*ef));
 }
 
+// The difference at step h without a search: central when both sides solve (and
+// `central`), else the one-sided difference that does; NA when neither does or h
+// does not move t[idx].
+static void shi21PlainDiff(shi21fn_type f, arma::vec &t, double h, arma::vec &f0,
+                           arma::vec &gr, int id, int idx, bool central) {
+  arma::vec tp1 = t, tm1 = t;
+  tp1(idx) += h;
+  tm1(idx) -= h;
+  bool okP = false, okM = false;
+  arma::vec fp1, fm1;
+  if (tp1(idx) != t(idx)) {
+    fp1 = f(tp1, id);
+    okP = fp1.is_finite();
+  }
+  if ((central || !okP) && tm1(idx) != t(idx)) {
+    fm1 = f(tm1, id);
+    okM = fm1.is_finite();
+  }
+  if (central && okP && okM) {
+    gr = (fp1 - fm1)/(2*h);
+  } else if (okP) {
+    gr = (fp1 - f0)/h;
+  } else if (okM) {
+    gr = (f0 - fm1)/h;
+  } else {
+    gr.fill(NA_REAL);
+  }
+}
+
 double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef, double rl, double ru, int maxiter,
-                    double hMax, double hMin) {
+                    double hMax, double hMin, bool wantGr) {
   // Algorithm 2.1 in paper
   // q=2, alpha=4, r=3
   // s = 0, 1
@@ -132,28 +161,51 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
   // vanishing step is roundoff.
   double l = 0, u = R_PosInf, rcur = NA_REAL;
   arma::vec f1(f0.size());
-  gr.zeros(f0.n_elem); // avoid uninitialized read if no finite forward step is found
-  double lasth = h;
+  gr.zeros(f0.n_elem);
+  if (maxiter <= 0) {
+    // no search: the difference at the starting step
+    if (wantGr) shi21PlainDiff(f, t, h, f0, gr, id, idx, false);
+    return h;
+  }
+  double lasth = h, h0 = h;
   int iter=0;
-  bool finiteF1 = true, finiteF4 = true, calcGrad = false;
+  // backwardOnly: gr is the backward difference, which any forward one replaces
+  bool finiteF1 = true, finiteF4 = true, calcGrad = false, backwardOnly = false;
   while(true) {
     iter++;
-    if (iter > maxiter) {
+    // a step shrunk below the start that no longer moves t[idx] differences t with
+    // itself; the start itself may grow
+    if (iter > maxiter ||
+        (h < h0 && (t(idx) + h == t(idx) || t(idx) - h == t(idx)))) {
       h = lasth;
       break;
     }
     rcur = shiRF(h, f, ef, t, id, idx, f0, f1, l, u,
                  finiteF1, finiteF4);
     if (rcur == -1) {
-      if (!finiteF1) {
+      // a forward probe that leaves t[idx] where it is forms no difference either
+      if (!finiteF1 || t(idx) + h == t(idx)) {
+        arma::vec tm1 = t;
+        tm1(idx) -= h;
+        if (wantGr && !calcGrad && tm1(idx) != t(idx)) {
+          // backward difference until a forward one forms, as shi21Central does
+          arma::vec fm1 = f(tm1, id);
+          if (fm1.is_finite()) {
+            calcGrad = true;
+            backwardOnly = true;
+            lasth = h;
+            gr = (f0-fm1)/h;
+          }
+        }
         h = 0.5*h;
         continue;
       }
       // f(t+h) is finite and f(t+4h) is not: without a difference from an
       // earlier step, keep the forward difference at h, then shrink so the outer
       // probe lands at 2h (hnew*4 = hold*2)
-      if (!calcGrad) {
+      if (!calcGrad || backwardOnly) {
         calcGrad = true;
+        backwardOnly = false;
         lasth = h;
         gr = (f1-f0)/h;
       }
@@ -161,6 +213,7 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
       continue;
     } else {
       calcGrad = true;
+      backwardOnly = false;
       lasth = h;
       gr = (f1-f0)/h;
     }
@@ -183,13 +236,20 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
       h = (l + u)/2.0;
     }
   }
+  // No forward difference formed, or its step leaves t[idx] where it is: gr is
+  // NA, not a zero slope
+  if (!calcGrad || (backwardOnly ? t(idx) - h : t(idx) + h) == t(idx)) {
+    gr.fill(NA_REAL);
+  }
   return h;
 }
 
+// needBackward: when f(t+h) is not finite, solve f(t-h) too, for a backward
+// difference
 double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
              arma::vec &fp1, arma::vec &fm1, double &l, double &u,
              bool &finiteFp1, bool &finiteFp3,
-             bool &finiteFm1, bool &finiteFm3) {
+             bool &finiteFm1, bool &finiteFm3, bool needBackward) {
   arma::vec tp3 = t;
   arma::vec tp1 = t;
   arma::vec tm3 = t;
@@ -201,7 +261,12 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   fp1 = f(tp1, id);
   finiteFp1 = fp1.is_finite();
   if (!finiteFp1) {
-    finiteFm1 = true;
+    if (needBackward) {
+      fm1 = f(tm1, id);
+      finiteFm1 = fm1.is_finite();
+    } else {
+      finiteFm1 = false;
+    }
     finiteFp3 = true;
     finiteFm3 = true;
     return -1.0;
@@ -230,7 +295,7 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef, double rl, double ru, double nu,
-                    int maxiter, double hMax, double hMin) {
+                    int maxiter, double hMax, double hMin, bool wantGr) {
   // Algorithm 3.1
   // weights = -0.5, 0.5
   // s = -1, 1
@@ -253,29 +318,51 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
 
   arma::vec fp1(f0.size());
   arma::vec fm1(f0.size());
-  gr.zeros(f0.n_elem); // avoid uninitialized read if no finite central step is found
+  gr.zeros(f0.n_elem);
+  if (maxiter <= 0) {
+    // no search: the difference at the starting step
+    if (wantGr) shi21PlainDiff(f, t, h, f0, gr, id, idx, true);
+    return h;
+  }
+  double h0 = h;
 
   int iter=0;
+  // backwardOnly: gr is the backward difference, which any other one replaces;
+  // grSide: the side(s) gr's difference stepped to, 0 both, 1 plus, -1 minus
   bool finiteFp1 = true, finiteFp3 = true,
-    finiteFm1=true, finiteFm3=true, calcGrad=false;
+    finiteFm1=true, finiteFm3=true, calcGrad=false, backwardOnly=false;
+  int grSide = 0;
   while(true) {
     iter++;
-    if (iter > maxiter) {
+    // a step shrunk below the start that no longer moves t[idx] differences t with
+    // itself; the start itself may grow
+    if (iter > maxiter ||
+        (h < h0 && (t(idx) + h == t(idx) || t(idx) - h == t(idx)))) {
       h=hlast;
       break;
     }
     rcur = shiRC(h, f, ef, t, id, idx, fp1, fm1, l, u,
-                 finiteFp1, finiteFp3, finiteFm1, finiteFm3);
+                 finiteFp1, finiteFp3, finiteFm1, finiteFm3, wantGr && !calcGrad);
     // Need f1 from shiRF to compute forward difference
     if (rcur == -1.0) {
       if (!finiteFp1) {
+        if (finiteFm1) {
+          // backward difference, as the forward one below when f(t-h) fails
+          calcGrad = true;
+          backwardOnly = true;
+          grSide = -1;
+          gr = (f0-fm1)/h;
+          hlast = h;
+        }
         // hnew*3 = hold*0.5
         h = h*0.5/3.0;
         continue;
       } else if (!finiteFm1) {
-        if (!calcGrad) {
+        if (!calcGrad || backwardOnly) {
           // forward difference
           calcGrad = true;
+          backwardOnly = false;
+          grSide = 1;
           gr = (fp1-f0)/h;
           hlast = h;
         }
@@ -285,8 +372,10 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
       // f(t+-h) are finite and f(t+-3h) are not: without a difference from an
       // earlier step, keep the central difference at h, then shrink so the outer
       // probes land at 2h (hnew*3 = hold*2)
-      if (!calcGrad) {
+      if (!calcGrad || backwardOnly) {
         calcGrad = true;
+        backwardOnly = false;
+        grSide = 0;
         gr = (fp1-fm1)/(2*h);
         hlast = h;
       }
@@ -294,6 +383,8 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
       continue;
     } else {
       calcGrad = true;
+      backwardOnly = false;
+      grSide = 0;
       gr = (fp1-fm1)/(2*h);
       hlast = h;
     }
@@ -316,25 +407,40 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
       h = (l + u)/2.0;
     }
   }
+  // No central or one-sided difference formed, or its step leaves t[idx] where
+  // it is on a side it used: gr is NA, not a zero slope
+  if (!calcGrad || (grSide >= 0 && t(idx) + h == t(idx)) ||
+      (grSide <= 0 && t(idx) - h == t(idx))) {
+    gr.fill(NA_REAL);
+  }
   return h;
 }
 
-// Column k of shi21Hessian() at the fixed step h; x[k] is put back exactly.
+// Column k of shi21Hessian() at the fixed step h; x[k] is put back exactly.  A
+// leg whose step leaves x[k] where it is does not count.
 static void shi21HessColumn(shi21fn_type grad, arma::vec &x, arma::vec &gr0, int id,
                             int type, int k, double h, arma::vec &col) {
   double xk = x[k];
   x[k] += h;
-  arma::vec grPH = grad(x, id);
-  bool forwardFinite = grPH.is_finite();
+  bool forwardFinite = false;
+  arma::vec grPH;
+  if (x[k] != xk) {
+    grPH = grad(x, id);
+    forwardFinite = grPH.is_finite();
+  }
   if (type == shi21HessForward && forwardFinite) {
     col = (grPH - gr0)/h;
     x[k] = xk;
     return;
   }
-  x[k] -= 2*h;
-  arma::vec grMH = grad(x, id);
+  x[k] = xk - h;
+  bool backwardFinite = false;
+  arma::vec grMH;
+  if (x[k] != xk) {
+    grMH = grad(x, id);
+    backwardFinite = grMH.is_finite();
+  }
   x[k] = xk;
-  bool backwardFinite = grMH.is_finite();
   if (forwardFinite && backwardFinite) {
     // only reached for central: forward returned above
     col = (grPH - grMH)/(2.0*h);
@@ -361,7 +467,8 @@ arma::mat shi21Hessian(shi21fn_type grad, arma::vec &x, arma::vec &gr0, int id,
       H.col(k) = col;
       continue;
     }
-    col.zeros();
+    // NA when neither leg is finite
+    col.fill(NA_REAL);
     shi21HessColumn(grad, x, gr0, id, type, k, h, col);
     H.col(k) = col;
   }

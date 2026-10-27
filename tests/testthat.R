@@ -75,6 +75,11 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c(
     "focei-wang2007-lognormal",
     "cov-analytic",
+    "cov-analytic-obs-rows",
+    "cov-analytic-reason",
+    "cov-analytic-declines",
+    "cov-analytic-subject-route",
+    "obs-rows-estimators",
     "focei-wang2007-power",
     "cov-condition",
     "agq-cov",
@@ -101,6 +106,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "optexpression-saem-nlme",
     "saem-cov-multi-endpoint-904",
     "saem-modeled-resid-fit",
+    "saem-ebe-mode-lik",
+    "nlmixr2output-same-fit",
     "iov-only-fit"
   ),
 
@@ -156,7 +163,9 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "mu-family",
     "uninformative-etas-revisit",
     "saem-iov-twolevel-fit",
-    "iov-loglik-1000"
+    "saem-iov-objective",
+    "iov-loglik-1000",
+    "iov-same-fit"
   ),
   # batch 7
   c(
