@@ -150,6 +150,18 @@ nmTest({
     expect_null(.fit$env$bobyqa$covWarning)
   })
 
+  test_that("a failed nlminb covariance step is the only thing $runInfo says about the covariance", {
+    # the shared return used to add that the covariance was not in proper form
+    local_mocked_bindings(nlmixr2Hess = function(par, ...) matrix(NaN, length(par), length(par)))
+    .fit <- suppressMessages(
+      nlmixr2(.pk, nlmixr2data::theo_sd, est = "nlminb", control = nlminbControl(print = 0L, covMethod = "r"))
+    )
+    expect_identical(.fit$covMethod, "failed")
+    expect_null(.fit$cov)
+    expect_true("R matrix is not finite; covariance step failed" %in% .fit$runInfo)
+    expect_false(any(grepl("proper form", .fit$runInfo, fixed = TRUE)))
+  })
+
   test_that("an nlm-family fit with covMethod = \"\" computes no covariance (issue 1140)", {
     .fit <- .nlmixr(.pk, nlmixr2data::theo_sd, est = "n1qn1", control = n1qn1Control(print = 0L, covMethod = ""))
     expect_null(.fit$cov)

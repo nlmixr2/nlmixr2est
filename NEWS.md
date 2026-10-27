@@ -27,6 +27,10 @@
 
 ### Covariance
 
+- A failed covariance step of an nls, nlminb or other nlm-family fit no longer
+  gives `covariance not in proper form, can access value in $covDebug` as the first
+  `$runInfo` line; only the step's own message is left.
+
 - `covMethod = "analytic"` now keeps the analytic covariance when a record that
   is not an observation (an EVID 2 record, or an EVID 0 record with a missing DV
   or `MDV = 1`) shares the time of one of a subject's observations; it used to
