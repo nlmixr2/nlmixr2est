@@ -54,10 +54,22 @@
 
 ### Estimation
 
+- `foceiControl(outerOpt = "newuoa")` now stops the outer optimization at
+  `maxOuterIterations` function evaluations, as `outerOpt = "uobyqa"` and
+  `"bobyqa"` do; it used to ignore the limit and run NEWUOA to convergence.
+
 - `saem` now reports the non-mu-referenced thetas it actually used.  With
   `nonMuTheta = "regress"` (the default) the model ran at the directly
   optimized values, but `$theta` showed the regression estimate taken before
   that optimization, so the reported thetas, etas and tables disagreed.
+
+- A population parameter (`theta`) that starts at exactly 0, such as a covariate
+  effect, is now estimated instead of staying at about 0 (#1228).  Its scale used
+  to be the `zeroTheta` nudge (0.001); it is now a typical magnitude, `1/sd()` of
+  the covariate it multiplies (or 1), for FOCEi, nls and the nlm family.
+  FOCEi also moves its start by one Newton step (`foceiControl(zeroThetaStep=)`)
+  when that lowers the objective.
+
   Likewise a general-likelihood fit (`ll()`, `dnorm()`, `t()`, ...) now
   reports the mu-referenced thetas its direct optimization settled on rather
   than the sampled-mean update.
