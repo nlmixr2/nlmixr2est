@@ -23,6 +23,16 @@ A data frame with predictions
 Generates population- or individual-level predictions from an
 `nlmixr2FitCore` object.
 }
+\details{
+For a fit with inter-occasion variability, individual predictions take
+each record's occasion etas from the fit's estimates, by subject and
+occasion, so `newdata` needs the occasion columns.  A subject or occasion
+the fit did not estimate gets occasion etas of 0, with a warning.  Under
+`"midpoint"` or `"linear"` covariate interpolation they differ from the
+fit's own predictions after an occasion changes: the fit compares the
+interpolated occasion with each occasion's value, so between records of
+two occasions its occasion etas are 0.
+}
 \examples{
 \donttest{
 
