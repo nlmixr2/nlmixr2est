@@ -1,5 +1,28 @@
 # nlmixr2est (development version)
 
+## New features
+
+- `saem` now reports each subject's conditional mode as `fit$eta` (the
+  Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
+  iteration, in parallel over subjects.  The tables and shrinkage use the
+  mode.  SAEM's approximate conditional mean is kept as `fit$etaSaem`;
+  `saemControl(ebe = "saem")` restores the old behavior, and
+  `ebeMaxEval`/`ebeTol` control the search (`ebeTol` defaults to `sqrt(rtol)`
+  of the SAEM ODE solve).  Uninformative etas stay at zero and the temporary
+  etas of eta-less likelihood thetas keep their SAEM values.
+
+- `minqa` is now only suggested.  BOBYQA and NEWUOA (the `bobyqa`/`newuoa`
+  estimation methods, the FOCEi outer optimizers and every internal call) use
+  the thread-safe ports in `RcppTrust` (>= 0.2.0), called directly from C++
+  without a round-trip through R.  `est = "uobyqa"` and
+  `foceiControl(outerOpt = "uobyqa")` still need `minqa` installed.
+
+- `foceiControl(innerOpt = "steihaug")` (RcppTrust's truncated-CG trust
+  region on the same exact gradient and Hessian as `"trust"`) and
+  `innerOpt = "newuoa"` (derivative-free, `rhoend` from `newuoaRhoend`,
+  default `sqrt(rtol)`) are new inner (eta) optimizers.  `steihaugPolish` and
+  `newuoaPolish` add the opt-in Newton polish that `trustPolish` gives trust.
+
 ## Bug fixes
 
 ### Covariance
@@ -31,6 +54,20 @@
 
 ### Estimation
 
+- `saem` now reports the non-mu-referenced thetas it actually used.  With
+  `nonMuTheta = "regress"` (the default) the model ran at the directly
+  optimized values, but `$theta` showed the regression estimate taken before
+  that optimization, so the reported thetas, etas and tables disagreed.
+  Likewise a general-likelihood fit (`ll()`, `dnorm()`, `t()`, ...) now
+  reports the mu-referenced thetas its direct optimization settled on rather
+  than the sampled-mean update.
+- `saem` now uses censoring (M2/M3/M4) for `dnorm()`, `t()` and `cauchy()`
+  endpoints; it scored a censored observation by its density at the limit.
+- M2 censoring (`CENS = 0` with a finite `LIMIT`) now conditions on the side
+  of the limit the observation is on, not the prediction.  Before, the
+  objective had a kink wherever a prediction crossed the limit, and an
+  observation predicted on the wrong side of it was scored against the
+  wrong tail.
 - On Windows with more than one thread, `est = "imp"` and `"impmap"` no
   longer crash (ODE models) or give estimates that depend on the number of
   threads (`linCmt()` models); affected since 7.1.0.  Linux and macOS were
