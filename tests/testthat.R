@@ -154,6 +154,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
   c(
     "focei-llik",
     "iov",
+    "iov-tables",
     "iov-zero-eta",
     "saem-mix",
     "saem-mix-regress",
