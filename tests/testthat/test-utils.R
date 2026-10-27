@@ -107,10 +107,11 @@ nmTest({
     # a missing TIME is no record at all to etTrans()
     .d$TIME[2] <- NA
     expect_false(.nmObsRows(.d)[2])
-    # with no DV, a nonzero AMT, negative too, keeps an EVID 0 or missing-EVID
-    # record (etTrans() drops its dose)
+    # with no DV, a nonzero AMT, negative too, keeps a missing-EVID record, and
+    # an EVID 0 record unless the installed rxode2 reads it as a dose
     .d <- data.frame(TIME = 1:6, EVID = c(NA, NA, NA, 0, 0, 0), DV = NA, AMT = c(50, -50, 0, 50, -50, 0))
-    expect_identical(.nmObsRows(.d), c(TRUE, TRUE, FALSE, TRUE, TRUE, FALSE))
+    .ev0 <- !.nmEtTransReadings()$obsAmtDose
+    expect_identical(.nmObsRows(.d), c(TRUE, TRUE, FALSE, .ev0, .ev0, FALSE))
     # DV and TIME are read as FOCEi reads them, so "." is a missing DV
     .d <- data.frame(TIME = c("0", "1", "2"), EVID = 0, DV = c(".", "3", NA))
     expect_identical(.nmObsRows(.d), c(FALSE, TRUE, FALSE))
@@ -479,14 +480,61 @@ nmTest({
     expect_identical(.m$MDV, c(1, 0))
     # a nonzero AMT (NaN too, as etTrans() reads it) is a dose
     expect_identical(.nmWithEvid(data.frame(AMT = c(0, NA, 100, -1, NaN)))$EVID, c(0L, 0L, 1L, 1L, 1L))
-    # with AMT, an MDV column is the EVID and is dropped: a missing MDV is a dose,
-    # MDV 1 with a zero AMT is EVID 2, and other values are truncated
+    # with AMT, an MDV column is the EVID and is dropped: a missing MDV is a dose
+    # (with a zero AMT, EVID 2 when the installed rxode2 reads it so), MDV 1 with
+    # a zero AMT is EVID 2, and other values are truncated
     .m <- .nmWithEvid(data.frame(AMT = c(100, 0, 50, 0, 0, 0), MDV = c(1, 1, 0, NA, 2, 0.5)))
-    expect_identical(.m$EVID, c(1L, 2L, 0L, 1L, 2L, 0L))
+    .mdvNa <- if (.nmEtTransReadings()$mdvNaNoDose) 2L else 1L
+    expect_identical(.m$EVID, c(1L, 2L, 0L, .mdvNa, 2L, 0L))
     expect_null(.m$MDV)
     # data with an EVID column is unchanged
     .k <- data.frame(EVID = c(0, 1), AMT = c(0, 1), MDV = c(0, 1))
     expect_identical(.nmWithEvid(.k), .k)
+  })
+
+  test_that(".nmObsRows() and .nmWithEvid() follow either etTrans() reading", {
+    .old <- .nmEtTransEnv$readings
+    withr::defer(.nmEtTransEnv$readings <- .old)
+    .d <- data.frame(TIME = 1:4, EVID = c(0, 0, NA, 0), DV = c(NA, NA, NA, 2), AMT = c(50, 0, 50, 50))
+    .m <- data.frame(AMT = c(0, 0, 0, 5), MDV = c(NA, NA, NA, NA), RATE = c(0, 10, 0, 0), DUR = c(0, 0, -2, 0))
+    # rxode2 5.1.8: an EVID 0 record with no DV and an amount is an observation,
+    # and a missing MDV is a dose
+    .nmEtTransEnv$readings <- list(obsAmtDose = FALSE, mdvNaNoDose = FALSE)
+    expect_identical(.nmObsRows(.d), c(TRUE, FALSE, TRUE, TRUE))
+    expect_identical(.nmWithEvid(.m)$EVID, c(1L, 1L, 1L, 1L))
+    # later rxode2: the first is a dose; a missing MDV with a zero AMT and no
+    # rate or duration is EVID 2
+    .nmEtTransEnv$readings <- list(obsAmtDose = TRUE, mdvNaNoDose = TRUE)
+    expect_identical(.nmObsRows(.d), c(FALSE, FALSE, TRUE, TRUE))
+    expect_identical(.nmWithEvid(.m)$EVID, c(2L, 1L, 1L, 1L))
+  })
+
+  test_that(".nmEtTransReadings() is the installed etTrans()'s, asked once", {
+    .old <- .nmEtTransEnv$readings
+    withr::defer(.nmEtTransEnv$readings <- .old)
+    .nmEtTransEnv$readings <- NULL
+    .r <- .nmEtTransReadings()
+    expect_identical(names(.r), c("obsAmtDose", "mdvNaNoDose"))
+    expect_true(checkmate::testFlag(.r$obsAmtDose) && checkmate::testFlag(.r$mdvNaNoDose))
+    expect_identical(.nmEtTransEnv$readings, .r)
+  })
+
+  test_that("the later etTrans() readings are pinned when the installed rxode2 has them", {
+    skip_if_not(
+      .nmEtTransReadings()$obsAmtDose,
+      "the installed rxode2 keeps an EVID 0 record with no DV and an amount as an observation"
+    )
+    .mv <- rxode2::rxModelVars("d/dt(y) <- 0")
+    .d <- data.frame(ID = 1, TIME = 0:2, EVID = c(0, 0, 0), AMT = c(5, 0, 0), DV = c(NA, 1, 2))
+    .w <- testthat::capture_warnings(.e <- rxode2::etTrans(.d, .mv))
+    expect_identical(.w, "'evid' 0 with a missing 'dv' and a nonzero 'amt' is read as a dose\nrows: 1")
+    expect_identical(.nmObsRows(.d), c(FALSE, TRUE, TRUE))
+    expect_identical(sum(.e$EVID == 0L), 2L)
+    .m <- data.frame(ID = 1, TIME = 0:2, MDV = c(NA, 0, 0), AMT = c(0, 0, 0), DV = c(NA, 1, 2))
+    .w <- testthat::capture_warnings(.e <- rxode2::etTrans(.m, .mv))
+    expect_identical(.w, "a missing 'mdv' with a zero 'amt' is read as 'evid' 2, not a dose\nrows: 1")
+    expect_identical(.nmWithEvid(.m)$EVID, c(2L, 0L, 0L))
+    expect_true(2L %in% .e$EVID)
   })
 
   test_that(".nmSubjectObs() gives each subject's records and observations, in order", {

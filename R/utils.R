@@ -106,13 +106,65 @@
   invisible(d)
 }
 
+# the installed rxode2's etTrans() readings, asked once per session
+.nmEtTransEnv <- new.env(parent = emptyenv())
+
+#' How the installed rxode2's `etTrans()` reads two records
+#'
+#' rxode2 5.1.8 keeps an EVID 0 record with a missing DV and a nonzero AMT as
+#' an observation, dropping its dose, and reads a missing MDV (standing in for
+#' the EVID) with a zero AMT as a dose.  Later rxode2 reads the first as a dose
+#' and the second as EVID 2, each with a warning.  The mirrors here follow
+#' whichever the installed rxode2 does, from one `etTrans()` probe of each.
+#' @return list of `obsAmtDose` (the first record is a dose) and `mdvNaNoDose`
+#'   (the second is EVID 2), each `TRUE` or `FALSE`
+#' @noRd
+.nmEtTransReadings <- function() {
+  if (is.null(.nmEtTransEnv$readings)) {
+    .mv <- rxode2::rxModelVars("d/dt(y) <- 0")
+    .a <- suppressWarnings(rxode2::etTrans(
+      data.frame(ID = 1, TIME = c(0, 1), EVID = 0, AMT = c(1, 0), DV = c(NA, 1)),
+      .mv
+    ))
+    .b <- suppressWarnings(rxode2::etTrans(
+      data.frame(ID = 1, TIME = c(0, 1), MDV = c(NA, 0), AMT = 0, DV = c(NA, 1)),
+      .mv
+    ))
+    .nmEtTransEnv$readings <- list(
+      obsAmtDose = any(.a$AMT[.a$TIME == 0] %in% 1),
+      mdvNaNoDose = any(.b$EVID %in% 2L)
+    )
+  }
+  .nmEtTransEnv$readings
+}
+
+#' Which records carry a rate or duration that is dose information
+#'
+#' As `etTrans()` reads it (its `etRateDurIsDose()`): a RATE or DUR that is
+#' positive or modeled (-1, -2).
+#' @param d data frame with upper-case names
+#' @return logical, one per row
+#' @noRd
+.nmRateDurIsDose <- function(d) {
+  .ret <- rep(FALSE, nrow(d))
+  for (.col in c("RATE", "DUR")) {
+    .x <- d[[.col]]
+    if (!is.null(.x)) {
+      .x <- .nmAsDouble(.x)
+      .ret <- .ret | (!is.na(.x) & (.x > 0 | .x %in% c(-1, -2)))
+    }
+  }
+  .ret
+}
+
 #' Which records of an event table are observations
 #'
 #' The records `etTrans()` keeps as observations (EVID 0), so data that has not
 #' been through it agrees with what a solve returns, in every case
 #' test-utils.R compares: a TIME; an EVID of 0 or missing; an MDV other than 1;
 #' a CMT that does not turn a compartment off; and a DV -- or, with no DV, a
-#' nonzero AMT, which `etTrans()` keeps as an observation (dropping the dose).
+#' nonzero AMT on a record with a missing EVID, or with EVID 0 when the
+#' installed rxode2 keeps that as an observation ([.nmEtTransReadings()]).
 #' DV, TIME and AMT are read with `as.double()`, so a DV of "." is missing, and
 #' EVID and MDV are truncated to integers, as `etTrans()` reads them; like its
 #' `ISNA()`, a `NaN` is not missing.
@@ -142,6 +194,10 @@
     .a <- .nmAsDouble(.amt)
     !.nmIsNA(.a) & !(.a %in% 0)
   }
+  if (.nmEtTransReadings()$obsAmtDose) {
+    # rxode2 reads an EVID 0 record with no DV and an amount as that dose
+    .dose <- .dose & is.na(.evid)
+  }
   .obs & (!.nmIsNA(.nmAsDouble(d[["DV"]])) | .dose)
 }
 
@@ -150,7 +206,9 @@
 #' With no AMT column either, every record is EVID 0, as `.foceiPreProcessData()`
 #' sets it.  Otherwise `etTrans()` takes an MDV column as the EVID (a missing MDV
 #' is a dose, and MDV 1 with a zero AMT is EVID 2) and no longer reads it as an
-#' MDV, so it is dropped; without one a nonzero AMT is a dose.
+#' MDV, so it is dropped; without one a nonzero AMT is a dose.  A missing MDV
+#' with a zero AMT and no rate or duration is EVID 2 when the installed rxode2
+#' reads it so ([.nmEtTransReadings()]).
 #' @param d data frame with upper-case names
 #' @return `d`, with an integer EVID column when it had none
 #' @noRd
@@ -172,6 +230,9 @@
   }
   .evid <- suppressWarnings(as.integer(.nmAsDouble(.mdv)))
   .evid[.evid %in% 1L & .amt %in% 0] <- 2L
+  if (.nmEtTransReadings()$mdvNaNoDose) {
+    .evid[is.na(.evid) & .amt %in% 0 & !.nmRateDurIsDose(d)] <- 2L
+  }
   .evid[is.na(.evid)] <- 1L
   d$EVID <- .evid
   d$MDV <- NULL
