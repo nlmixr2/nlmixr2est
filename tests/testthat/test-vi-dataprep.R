@@ -105,3 +105,12 @@ test_that(".adviDataPrep takes dose-free data with no AMT or EVID column", {
   expect_identical(.p$N, 12L)
   expect_identical(.p$ids, unique(.d$ID))
 })
+
+test_that(".adviDataPrep reads a NaN AMT as a dose without an EVID or MDV column, as FOCEi does", {
+  ui <- rxode2::rxode2(.vdMod)
+  .d <- nlmixr2data::theo_sd
+  .d$EVID <- NULL
+  .d$AMT[.d$ID == 12 & .d$AMT == 0] <- NaN
+  expect_warning(.p <- .adviDataPrep(ui, .d), "IDs without observations dropped: 12", fixed = TRUE)
+  expect_identical(.p$N, 11L)
+})
