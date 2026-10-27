@@ -46,8 +46,8 @@ nmTest({
 
   test_that(".bobyqaRetryIfStuck() is a no-op when rhobeg was not explicitly set", {
     skip_on_cran()
-    # .boundedResidOpt() (npag/saem's phi0 step) calls .bobyqa() without a
-    # rhobeg, letting minqa::bobyqa() pick its own internal default -- there
+    # A caller that leaves rhobeg unset (e.g. a bounded residual step) gets
+    # the bobyqa internal default -- there
     # is no known starting radius to compare against or widen, so this must
     # not engage.
     .ctlNoRhobeg <- list(rhoend = 0.001, npt = 7)

@@ -7,7 +7,9 @@ nmTest({
     expect_equal(foceiControl(innerOpt = "auto")$innerOpt, 4L)
     expect_equal(foceiControl(innerOpt = 3L)$innerOpt, 3L)
     expect_error(foceiControl(innerOpt = "bogus"))
-    expect_error(foceiControl(innerOpt = 5L))
+    expect_equal(foceiControl(innerOpt = "newuoa")$innerOpt, 5L)
+    expect_equal(foceiControl(innerOpt = "steihaug")$innerOpt, 6L)
+    expect_error(foceiControl(innerOpt = 7L))
 
     expect_equal(foceiControl()$trustConf, 0.975)
     expect_equal(foceiControl(trustConf = 0.9)$trustConf, 0.9)

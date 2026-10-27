@@ -1,3 +1,125 @@
+# A one-compartment model, and theo_sd with subject 3's observations all NA,
+# so the fit drops it and its table reinserts it
+.npdeNoObsMod <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+# A quiet fit of .npdeNoObsMod() on theo_sd, its table with or without the
+# dosing rows
+.npdeDosingFit <- function(addDosing, ctl) {
+  suppressWarnings(suppressMessages(nlmixr2(
+    .npdeNoObsMod,
+    nlmixr2data::theo_sd,
+    "focei",
+    control = ctl,
+    table = tableControl(addDosing = addDosing)
+  )))
+}
+
+.npdeNoObsData <- function() {
+  .d <- nlmixr2data::theo_sd
+  .d$DV[.d$ID == 3 & .d$EVID == 0] <- NA
+  .d
+}
+
+# The source to load in a child process when the tests run on a loaded (not
+# installed) nlmixr2est, or "" for the installed one
+.npdeChildPkg <- function() {
+  # a namespace devtools::load_all() made carries .__DEVTOOLS__
+  .ns <- asNamespace("nlmixr2est")
+  if (exists(".__DEVTOOLS__", envir = .ns, inherits = FALSE)) {
+    getNamespaceInfo(.ns, "path")
+  } else {
+    ""
+  }
+}
+
+# In a child process: npdeCalc() given a simulation with 3 observations per
+# sample for 2 observations, which used to index past them
+.npdeCalcMismatchChild <- function(pkg) {
+  if (nzchar(pkg)) {
+    devtools::load_all(pkg, quiet = TRUE)
+  } else {
+    library(nlmixr2est)
+  }
+  .sim <- data.frame(
+    sim.id = rep(1:2, each = 3),
+    id = rep(c(1L, 1L, 2L), 2),
+    sim = c(1, 2, 3, 1, 2, 3),
+    rxLambda = 1,
+    rxYj = 0,
+    rxLow = 0,
+    rxHi = 1
+  )
+  tryCatch(
+    .Call("_nlmixr2est_npdeCalc", .sim, c(1, 2), c(0L, 0L), NULL, NULL, tableControl(), PACKAGE = "nlmixr2est"),
+    error = conditionMessage
+  )
+}
+
+# In a child process: npdeCalc() for a single subject, which left its span's
+# end unset
+.npdeCalcOneIdChild <- function(pkg) {
+  if (nzchar(pkg)) {
+    devtools::load_all(pkg, quiet = TRUE)
+  } else {
+    library(nlmixr2est)
+  }
+  # npdeCalc() draws from rxode2's engines, which its first draw creates
+  rxode2::rxnorm(n = 1)
+  .sim <- data.frame(
+    sim.id = rep(1:50, each = 2),
+    id = 1L,
+    sim = rep(seq(-2, 2, length.out = 50), each = 2) + rep(c(0, 0.5), 50),
+    rxLambda = 1,
+    rxYj = 0,
+    rxLow = 0,
+    rxHi = 1
+  )
+  .ret <- .Call(
+    "_nlmixr2est_npdeCalc",
+    .sim,
+    c(0.1, 0.4),
+    c(0L, 0L),
+    NULL,
+    NULL,
+    tableControl(),
+    PACKAGE = "nlmixr2est"
+  )
+  .ret[[2]]$NPDE
+}
+
+# In a child process, so an abort fails the test: the NPDE of a fit with an
+# observation-less subject, from the fit's table or from addNpde()
+.npdeNoObsChild <- function(pkg, est, mode, mod, dat) {
+  if (nzchar(pkg)) {
+    devtools::load_all(pkg, quiet = TRUE)
+  } else {
+    library(nlmixr2est)
+  }
+  .ctl <- list(print = 0, covMethod = "")
+  .fit <- if (mode == "table") {
+    suppressWarnings(suppressMessages(nlmixr2(mod, dat, est, control = .ctl, table = tableControl(npde = TRUE))))
+  } else {
+    suppressWarnings(suppressMessages(addNpde(nlmixr2(mod, dat, est, control = .ctl), updateObject = FALSE)))
+  }
+  list(id = as.character(.fit$ID), npde = .fit$NPDE)
+}
+
 nmTest({
   test_that("npde", {
     one.cmt <- function() {
@@ -98,5 +220,68 @@ nmTest({
 
     expect_false(isTRUE(all.equal(fit$NPDE, fit$NPD)))
     expect_false(isTRUE(all.equal(fit$PDE, fit$PD)))
+  })
+
+  test_that("addNpde() on a table with the dosing rows gives them NA, as the fit's own NPDE does", {
+    # the NPDE is the observations'; the dosing rows (addDosing) get NA, and
+    # each observation keeps the value it has in a table without them
+    .ctl <- foceiControl(print = 0, covMethod = "", maxOuterIterations = 0L)
+    .fits <- lapply(c(FALSE, TRUE), .npdeDosingFit, ctl = .ctl)
+    .with <- suppressWarnings(suppressMessages(nlmixr2(
+      .npdeNoObsMod,
+      nlmixr2data::theo_sd,
+      "focei",
+      control = .ctl,
+      table = tableControl(npde = TRUE, addDosing = TRUE)
+    )))
+    expect_identical(which(is.na(.with$NPDE)), which(.with$EVID != 0))
+    .plain <- suppressMessages(addNpde(.fits[[1]], updateObject = FALSE))
+    .new <- suppressMessages(addNpde(.fits[[2]], updateObject = FALSE))
+    expect_identical(nrow(.new), 144L)
+    expect_identical(which(is.na(.new$NPDE)), which(.new$EVID != 0))
+    expect_equal(.new$NPDE[.new$EVID == 0], .plain$NPDE, tolerance = 1e-12)
+    # without EVID the dosing rows cannot be found
+    .noEvid <- .fits[[2]][, setdiff(names(.fits[[2]]), "EVID")]
+    expect_error(
+      .npdeFitRows(.noEvid, .plain[, "NPDE", drop = FALSE]),
+      "NPDE has 132 rows for the fit's 144 observations; a table with dosing rows needs its 'EVID' column",
+      fixed = TRUE
+    )
+  })
+
+  test_that("npdeCalc() stops when the simulation does not match the observations", {
+    skip_if_not_installed("callr")
+    expect_identical(
+      callr::r(.npdeCalcMismatchChild, args = list(pkg = .npdeChildPkg())),
+      "npdeCalc: the simulation has 3 observations per sample (2 samples, 6 rows), but the data 2"
+    )
+  })
+
+  test_that("npdeCalc() of a single subject", {
+    # two subjects, one without observations, leave the fit with one
+    skip_if_not_installed("callr")
+    .npde <- callr::r(.npdeCalcOneIdChild, args = list(pkg = .npdeChildPkg()))
+    expect_length(.npde, 2L)
+    expect_true(all(is.finite(.npde)))
+  })
+
+  test_that("NPDE of a fit with a subject without observations", {
+    # the NPDE simulation solves the fit's data, the dropped subject included;
+    # its rows misaligned every later subject's and aborted R
+    skip_if_not_installed("callr")
+    .pkg <- .npdeChildPkg()
+    for (.est in c("focei", "saem")) {
+      for (.mode in c("table", "add")) {
+        .lab <- paste(.est, .mode)
+        .r <- callr::r(
+          .npdeNoObsChild,
+          args = list(pkg = .pkg, est = .est, mode = .mode, mod = .npdeNoObsMod, dat = .npdeNoObsData())
+        )
+        expect_identical(length(.r$npde), 132L, label = .lab)
+        expect_identical(sum(.r$id == "3"), 11L, label = .lab)
+        expect_true(all(is.na(.r$npde[.r$id == "3"])), label = .lab)
+        expect_true(all(is.finite(.r$npde[.r$id != "3"])), label = .lab)
+      }
+    }
   })
 })

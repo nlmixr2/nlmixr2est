@@ -152,6 +152,64 @@ mu2env$expit <- rxode2::expit
   .tmp <- str2lang(paste0("with(.datEnv, with(data,", .tmp, "))"))
   eval(.tmp)
 }
+#' Evaluate a mu2/mu3/mu4 covariate expression in the data
+#'
+#' Tries the expression directly in the data (mu2), then through the model's
+#' symengine (mu3, model variables), then with string assignments replaced by
+#' their index (mu4).  The symengine is loaded on first need and kept in
+#' `.datEnv`.
+#'
+#' @param .datEnv environment from `.mu2CovEnv()`
+#' @param cov covariate expression (character)
+#' @return `list(value=, type=)` with `type` one of `"mu2"`, `"mu3"`, `"mu4"`,
+#'   or `NULL` when it cannot be evaluated
+#' @noRd
+.mu2CovValue <- function(.datEnv, cov) {
+  .datEnv$cov <- cov
+  .tmp <- try(with(.datEnv, with(data, eval(str2lang(cov)))), silent = TRUE)
+  if (!inherits(.tmp, "try-error")) {
+    return(list(value = .tmp, type = "mu2"))
+  }
+  if (is.null(.datEnv$symengine)) {
+    .minfo(paste0("loading model to look for ", .datEnv$mu3, "/", .datEnv$mu4, " references"))
+    .datEnv$symengine <- .datEnv$ui$loadPruneSaem
+    .minfo("done")
+  }
+  .tmp <- try(.uiGetMu3(.datEnv$data, .datEnv, cov), silent = TRUE)
+  if (!inherits(.tmp, "try-error")) {
+    return(list(value = .tmp, type = "mu3"))
+  }
+  .tmp <- try(.uiGetMu4(.datEnv$data, .datEnv, cov), silent = TRUE)
+  if (!inherits(.tmp, "try-error")) {
+    return(list(value = .tmp, type = "mu4"))
+  }
+  NULL
+}
+
+#' Environment for evaluating mu2/mu3/mu4 covariates
+#'
+#' @param ui rxode2 ui
+#' @param data input dataset
+#' @return environment holding the data, model, ui and (lazily) symengine
+#' @noRd
+.mu2CovEnv <- function(ui, data) {
+  .datEnv <- new.env(parent = mu2env)
+  .datEnv$data <- data
+  .datEnv$model <- rxode2::as.model(ui)
+  .datEnv$ui <- ui
+  .datEnv$symengine <- NULL
+  if (use.utf()) {
+    .datEnv$mu2 <- "\u03BC\u2082"
+    .datEnv$mu3 <- "\u03BC\u2083"
+    .datEnv$mu4 <- "\u03BC\u2084"
+  } else {
+    .datEnv$mu2 <- "mu2"
+    .datEnv$mu3 <- "mu3"
+    .datEnv$mu4 <- "mu4"
+  }
+  .datEnv
+}
+
 #' This function handles mu2 covariates
 #'
 #' In general the dataset is modified with nlmixrMuDerCov# and the mu2
@@ -163,78 +221,35 @@ mu2env$expit <- rxode2::expit
 #' @author Matthew L. Fidler
 #' @noRd
 .uiModifyForCovs <- function(ui, data) {
-  .datEnv <- new.env(parent = mu2env)
-  .datEnv$data <- data
-  .datEnv$model <- rxode2::as.model(ui)
-  .datEnv$ui <- ui
-  .datEnv$symengine <- NULL
-  if (use.utf()) {
-    .mu2 <- "\u03BC\u2082"
-    .mu3 <- "\u03BC\u2083"
-    .mu4 <- "\u03BC\u2084"
-  } else {
-    .mu2 <- "mu2"
-    .mu3 <- "mu3"
-    .mu4 <- "mu4"
-  }
-  lapply(seq_along(ui$mu2RefCovariateReplaceDataFrame$covariate), function(i) {
-    .bad <- paste0("not ", .mu2, ", ", .mu3, " or ", .mu4, " item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
-
+  .datEnv <- .mu2CovEnv(ui, data)
+  .df <- ui$mu2RefCovariateReplaceDataFrame
+  lapply(seq_along(.df$covariate), function(i) {
     .datEnv$i <- i
-    .tmp <- try(
-      with(.datEnv, with(data, eval(str2lang(ui$mu2RefCovariateReplaceDataFrame$covariate[i])))),
-      silent = TRUE
-    )
-    if (inherits(.tmp, "try-error")) {
-      if (is.null(.datEnv$symengine)) {
-        .minfo(paste0("loading model to look for ", .mu3, "/", .mu4, " references"))
-        .datEnv$symengine <- ui$loadPruneSaem
-        .minfo("done")
-      }
-      .tmp <- try(.uiGetMu3(data, .datEnv, ui$mu2RefCovariateReplaceDataFrame$covariate[i]), silent = TRUE)
-      if (!inherits(.tmp, "try-error")) {
-        .txt <- paste0(.mu3, " item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
-        .minfo(.txt)
-        # Will put into the fit information
-        warning(.txt, call. = FALSE)
-      } else {
-        .tmp <- try(.uiGetMu4(data, .datEnv, ui$mu2RefCovariateReplaceDataFrame$covariate[i]), silent = TRUE)
-        if (!inherits(.tmp, "try-error")) {
-          .txt <- paste0(.mu4, " item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
-          .minfo(.txt)
-          warning(.txt, call. = FALSE)
-        } else {
-          .txt <- paste0(
-            "not ",
-            .mu2,
-            ", ",
-            .mu3,
-            " or ",
-            .mu4,
-            " item: ",
-            ui$mu2RefCovariateReplaceDataFrame$covariate[i]
-          )
-          .minfo(.txt)
-          warning(.txt, call. = FALSE)
-        }
-      }
-    } else {
-      .txt <- paste0(.mu2, " item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
+    .r <- .mu2CovValue(.datEnv, .df$covariate[i])
+    if (is.null(.r)) {
+      .txt <- paste0(
+        "not ",
+        .datEnv$mu2,
+        ", ",
+        .datEnv$mu3,
+        " or ",
+        .datEnv$mu4,
+        " item: ",
+        .df$covariate[i]
+      )
       .minfo(.txt)
       warning(.txt, call. = FALSE)
+      return(invisible())
     }
-    if (!inherits(.tmp, "try-error")) {
-      .datEnv$data[[paste0("nlmixrMuDerCov", i)]] <- .tmp
-      .new <- str2lang(paste0("nlmixrMuDerCov", i, "*", ui$mu2RefCovariateReplaceDataFrame$covariateParameter[i]))
-      .old <- str2lang(ui$mu2RefCovariateReplaceDataFrame$modelExpression[i])
-      .datEnv$model <- .uiModifyForCovsRep(.datEnv$model, .old, .new)
-
-      .muRefTrans$cur[[length(.muRefTrans$cur) + 1L]] <- list(old = .old, new = .new)
-    } else {
-      .txt <- paste0("not ", .mu2, ", ", .mu3, " or ", .mu4, " item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
-      .minfo(.txt)
-      warning(.txt, call. = FALSE)
-    }
+    .txt <- paste0(.datEnv[[.r$type]], " item: ", .df$covariate[i])
+    .minfo(.txt)
+    # Will put into the fit information
+    warning(.txt, call. = FALSE)
+    .datEnv$data[[paste0("nlmixrMuDerCov", i)]] <- .r$value
+    .new <- str2lang(paste0("nlmixrMuDerCov", i, "*", .df$covariateParameter[i]))
+    .old <- str2lang(.df$modelExpression[i])
+    .datEnv$model <- .uiModifyForCovsRep(.datEnv$model, .old, .new)
+    .muRefTrans$cur[[length(.muRefTrans$cur) + 1L]] <- list(old = .old, new = .new)
     invisible()
   })
   ui2 <- ui

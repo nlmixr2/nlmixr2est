@@ -1,5 +1,28 @@
 # nlmixr2est (development version)
 
+## New features
+
+- `saem` now reports each subject's conditional mode as `fit$eta` (the
+  Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
+  iteration, in parallel over subjects.  The tables and shrinkage use the
+  mode.  SAEM's approximate conditional mean is kept as `fit$etaSaem`;
+  `saemControl(ebe = "saem")` restores the old behavior, and
+  `ebeMaxEval`/`ebeTol` control the search (`ebeTol` defaults to `sqrt(rtol)`
+  of the SAEM ODE solve).  Uninformative etas stay at zero and the temporary
+  etas of eta-less likelihood thetas keep their SAEM values.
+
+- `minqa` is now only suggested.  BOBYQA and NEWUOA (the `bobyqa`/`newuoa`
+  estimation methods, the FOCEi outer optimizers and every internal call) use
+  the thread-safe ports in `RcppTrust` (>= 0.2.0), called directly from C++
+  without a round-trip through R.  `est = "uobyqa"` and
+  `foceiControl(outerOpt = "uobyqa")` still need `minqa` installed.
+
+- `foceiControl(innerOpt = "steihaug")` (RcppTrust's truncated-CG trust
+  region on the same exact gradient and Hessian as `"trust"`) and
+  `innerOpt = "newuoa"` (derivative-free, `rhoend` from `newuoaRhoend`,
+  default `sqrt(rtol)`) are new inner (eta) optimizers.  `steihaugPolish` and
+  `newuoaPolish` add the opt-in Newton polish that `trustPolish` gives trust.
+
 ## Bug fixes
 
 ### Covariance
@@ -29,6 +52,16 @@
   kept "nlme"`), so the same failure reads the same whatever the labels, and they
   stay under 75 characters.
 
+- `covMethod = "analytic"` with a residual variance the general (f,R) assembly
+  handles (for example `combined1`) now keeps the analytic covariance when its
+  batched augmented solve fails: the per-subject solve it falls back to rebuilds
+  the residual-error slots as the batched one does.  Since 7.0.2 that solve
+  failed ("number of items to replace is not a multiple of replacement length")
+  and the fit fell back to the finite-difference covariance.  A general (f,R)
+  model with no estimated sigma (`combined1` with both sigmas fixed, or
+  `boxCox()` with its additive sigma fixed) now gets the analytic covariance
+  too; `setCov(fit, "analytic")` used to stop on it.
+
 ### Estimation
 
 - A `saem` fit with inter-occasion variability now reports its
@@ -38,6 +71,43 @@
   quadrature failed, changed to focei" when the objective was first read.
   The quadrature, which runs after the fit, solved with an event matrix
   rebuilt from the data, which had lost the occasion column.
+- `foceiControl(outerOpt = "newuoa")` now stops the outer optimization at
+  `maxOuterIterations` function evaluations, as `outerOpt = "uobyqa"` and
+  `"bobyqa"` do; it used to ignore the limit and run NEWUOA to convergence.
+
+- `saem` now reports the non-mu-referenced thetas it actually used.  With
+  `nonMuTheta = "regress"` (the default) the model ran at the directly
+  optimized values, but `$theta` showed the regression estimate taken before
+  that optimization, so the reported thetas, etas and tables disagreed.
+
+- A population parameter (`theta`) that starts at exactly 0, such as a covariate
+  effect, is now estimated instead of staying at about 0 (#1228).  Its scale used
+  to be the `zeroTheta` nudge (0.001); it is now a typical magnitude, `1/sd()` of
+  the covariate it multiplies (or 1), for FOCEi, nls and the nlm family.
+  FOCEi also moves its start by one Newton step (`foceiControl(zeroThetaStep=)`)
+  when that lowers the objective.
+
+  Likewise a general-likelihood fit (`ll()`, `dnorm()`, `t()`, ...) now
+  reports the mu-referenced thetas its direct optimization settled on rather
+  than the sampled-mean update.
+- `saem` now uses censoring (M2/M3/M4) for `dnorm()`, `t()` and `cauchy()`
+  endpoints; it scored a censored observation by its density at the limit.
+- M2 censoring (`CENS = 0` with a finite `LIMIT`) now conditions on the side
+  of the limit the observation is on, not the prediction.  Before, the
+  objective had a kink wherever a prediction crossed the limit, and an
+  observation predicted on the wrong side of it was scored against the
+  wrong tail.
+- On Windows with more than one thread, `est = "imp"` and `"impmap"` no
+  longer crash (ODE models) or give estimates that depend on the number of
+  threads (`linCmt()` models); affected since 7.1.0.  Linux and macOS were
+  not affected.
+
+- A population parameter (`theta`) that starts at exactly 0, such as a covariate
+  effect, is now estimated instead of staying at about 0 (#1228).  Its scale used
+  to be the `zeroTheta` nudge (0.001); it is now a typical magnitude, `1/sd()` of
+  the covariate it multiplies (or 1), for FOCEi, nls and the nlm family.
+  FOCEi also moves its start by one Newton step (`foceiControl(zeroThetaStep=)`)
+  when that lowers the objective.
 
 - A fit that fails late in its output step (for example a `saem` fit whose
   inter-occasion variability cannot be finalized) now reports its own error.
@@ -83,14 +153,73 @@
   `saem`, `imp`, `impmap`, `qrpem` and the `npag` and `npb` family stopped
   with unrelated errors.  A third-party method is refused too until it
   declares `attr(nlmixr2Est.<method>, "sameBlock")`: `TRUE` when it keeps the
-  tie, `"fixed"` when it does not estimate omega (see `?nlmixr2Est`).  A
-  refit from a fit is not refused, since the fit's model has already lost the
-  tie, as it did before.
+  tie, `"fixed"` when it does not estimate omega (see `?nlmixr2Est`).
+
+- A fit's model (`fit$ui`) kept a repeated (`same()`) block's copies as
+  ordinary etas, so a refit from it, or from `ini()` on it, estimated each copy
+  on its own.  It now keeps the tie, and a method that cannot keep it refuses
+  such a refit too.  A fit made before this change keeps its old model (the
+  copy at condition `"id"`), so a refit from it still runs untied; rerun the
+  fit to get the tie.
 
 - With a time-varying covariate on a `linCmt()` parameter, an eta whose block
   repeats another's (`same()`) was left out of the sensitivity carry added in
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
+
+### Tables
+
+- `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
+  subject has no observations ("Col::subvec(): indices out of bounds").
+  That subject's NPDE columns are `NA`, as its other table columns are.
+  The NPDE of a fit with a single subject no longer fails either.
+
+- In a model with a normal and a non-normal endpoint (such as `dpois()`), a
+  subject with no observations of the normal endpoint left every subject
+  before it in the data (the next subject, when it was the first) with CWRES,
+  CRES and CPRED computed from another subject's etas (or none), since
+  nlmixr2est 2.1.0.  Each row now takes its own subject's.
+- A finite-difference gradient or Hessian no longer takes a slope of 0 where
+  its differences do not solve.
+  - When the steps on one side of a parameter never solve, the step search
+    takes the one-sided difference on the other side.  It did that already
+    when the minus side failed; when the plus side failed at every step, it
+    returned 0.
+  - When neither side solves, every nlm-family optimizer (`nlm`, `nlminb`,
+    `optim`, `n1qn1`, `lbfgsb3c`, `trust`) stops with an error naming the
+    parameter ("the gradient of 'x' is not finite: its finite differences
+    solved on neither side").  Its slope used to be 0, so the parameter kept
+    its initial value without a warning; `nlm` and `nlminb` returned every
+    initial estimate.  `nls` keeps its handling: it takes such a slope as 0
+    and warns ("solved items that were NaN/NA were replaced with 0.0").
+  - FOCEi keeps such an eta's slope (and its eta Hessian column) at 0 and
+    says how often in the fit's `runInfo` ("eta finite differences solved on
+    neither side N times; slope 0").  With `innerOpt = "trust"` the
+    quasi-Newton Hessian methods now start from that finite Hessian; a
+    `"bofill"` fit of such a model could end at a meaningless objective.  The
+    outer `shi21maxOuter` gradient asks for a reset, as the other outer
+    gradients do, and `est = "imp"`, `"impmap"` and the variational methods
+    drop the sample.
+  - A step search also stops at a step shrunk too small to move its
+    parameter, and a difference at a step that does not move it gives no
+    slope.  It used to difference the parameter with itself and report 0.
+    A Hessian column at a saved step that does not move its parameter is
+    likewise no slope rather than 0, and a forward search whose plus step
+    rounds away takes the backward difference when that side moves.
+  - A search allowed no iterations (`shi21maxFD = 0` and the like) takes the
+    difference at its starting step.  It used to give a slope of 0 on the
+    evaluation that searched for the step (for an eta, the first for each
+    subject); later evaluations reuse the saved step and were not affected.
+
+  Fits whose differences solve are unchanged, apart from that last case.
+
+- `foceiControl()` now rejects the integer codes it has no case for,
+  `eventType = 1` and `optimHessType = 2` or `optimHessCovType = 2`, with an
+  error that names the accepted values.  They used to be accepted:
+  `eventType = 1` left the finite-difference eta gradient at 0, and Hessian
+  type 2 gave a Hessian of zeros.  The names and the codes the control
+  stores (`eventType` 2 and 3, the Hessian types 1 and 3) are accepted as
+  before.
 
 # nlmixr2est 7.2.1
 

@@ -1,10 +1,10 @@
 # innerOpt= levels.  "auto" is resolved in C++ (foceiSetup_) once
 # needOptimHess is known: n1qn1 for a generalized-likelihood endpoint, trust
 # otherwise.  See the innerOpt @param below.
-.innerOptFun <- c("n1qn1" = 1L, "lbfgsb3c" = 2L, "trust" = 3L, "auto" = 4L)
+.innerOptFun <- c("n1qn1" = 1L, "lbfgsb3c" = 2L, "trust" = 3L, "auto" = 4L, "newuoa" = 5L, "steihaug" = 6L)
 
 # hessianMethod= levels.  Anything but "fd" is only consulted under
-# innerOpt="trust" (hessianQNEligible, src/inner.cpp).
+# innerOpt="trust"/"steihaug" (hessianQNEligible, src/inner.cpp).
 .hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
 
 #' Refuse a hessianMethod no inner optimizer would consult.
@@ -14,13 +14,13 @@
 #' R/focei.R re-checks with the value it resolves to.
 #' @noRd
 .foceiAssertHessianMethod <- function(hessianMethod, innerOpt, note = "") {
-  if (hessianMethod == 1L || innerOpt == 3L || innerOpt == 4L) {
+  if (hessianMethod == 1L || innerOpt %in% c(3L, 4L, 6L)) {
     return(invisible(TRUE))
   }
   stop(
     "hessianMethod = \"",
     names(.hessianMethodIdx)[hessianMethod],
-    "\" requires innerOpt = \"trust\"",
+    "\" requires innerOpt = \"trust\" or \"steihaug\"",
     note,
     call. = FALSE
   )
@@ -386,11 +386,14 @@
 #'
 #' @param optimHessType Hessian type for numeric-difference individual
 #'   Hessians in generalized log-likelihood estimation: "central" (matches
-#'   R's `optimHess()`, default) or "forward" (faster).
+#'   R's `optimHess()`, default) or "forward" (faster).  The integer code a
+#'   control stores is accepted too: 1 (central) or 3 (forward) in
+#'   `foceiControl()`, 2 (central) or 1 (forward) in the nlm-family controls.
 #'
 #' @param optimHessCovType Hessian type for numeric-difference individual
 #'   Hessians used for the covariance step/final likelihood: "central"
-#'   (more accurate, used here) or "forward".
+#'   (more accurate, used here) or "forward".  The integer code a control
+#'   stores is accepted too: 1 (central) or 3 (forward) in `foceiControl()`.
 #'
 #' @param hessEtaStepMin Floor on the finite-difference step used for the
 #'   individual (eta) Hessian in generalized log-likelihood estimation,
@@ -621,7 +624,7 @@
 #' @param outerTrustRinit,outerTrustRmax Initial and maximum trust-region
 #'   radius for \code{outerOpt="trust"}, in the scaled-parameter space the
 #'   outer problem optimizes in.  \code{NULL} (default) derives
-#'   \code{outerTrustRinit} from \code{minqa::bobyqa()}'s own default-rhobeg
+#'   \code{outerTrustRinit} from \code{RcppTrust::bobyqa()}'s own default-rhobeg
 #'   formula and \code{outerTrustRmax} as \code{8 * outerTrustRinit}.
 #'
 #' @param outerTrustFterm,outerTrustMterm Function-value and predicted-decrease
@@ -655,8 +658,11 @@
 #'     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
 #'     using an exact Gauss-Newton+Omega^-1 Hessian every iteration),
 #'     `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
-#'     seed) or `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
-#'     by the `innerLbfgs*` arguments; `"auto"` never picks it).
+#'     seed), `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
+#'     by the `innerLbfgs*` arguments), `"steihaug"` (RcppTrust truncated
+#'     conjugate-gradient trust region on the same Hessian as `"trust"`, using
+#'     the `trust*` controls) or `"newuoa"` (RcppTrust derivative-free NEWUOA).
+#'     `"auto"` never picks the last three.
 #'
 #'     `"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
 #'     (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
@@ -718,6 +724,15 @@
 #'     outer search then also restarts once from where it stops, which costs
 #'     about twice the outer evaluations.  `FALSE` (default) keeps the plain
 #'     trust solve and a single outer search.
+#'
+#' @param steihaugPolish,newuoaPolish logical; the `trustPolish` Newton
+#'     polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
+#'     solve.  `FALSE` (default) keeps the plain solve.
+#'
+#' @param newuoaRhoend final NEWUOA trust-region radius for
+#'     `innerOpt="newuoa"`, in sqrt(diag(Omega)) units.  `NULL` (default) uses
+#'     `sqrt(rtol)` of the FOCEi ODE solve (`rxControl`), the precision that
+#'     solve can resolve a minimum to.
 #'
 #' @param bobyqaStationary logical; when `TRUE` (default), a normal exit of
 #'     the `"bobyqa"` outer search is checked with a central-difference
@@ -1064,7 +1079,9 @@
 #'     the problem.  This is similar to 'PsN' resampling.
 #'
 #' @param eventType Event gradient type for dosing events; Can be
-#'   "central" or "forward"
+#'   "central" or "forward".  The integer code a control stores is accepted
+#'   too: 2 (central) or 3 (forward) in `foceiControl()`, 2 (central) or 1
+#'   (forward) in the nlm-family controls.
 #'
 #' @param eventSens How sensitivities of dosing/event parameters
 #'   (absorption lag time, bioavailability, infusion rate and duration,
@@ -1187,14 +1204,21 @@
 #'   bounds passed to the optimizer. `NA` transforms for optimization but
 #'   skips the final back-transform.
 #'
-#' @param zeroTheta Positive magnitude (default `0.001`) used to nudge a
+#' @param zeroTheta Positive magnitude (default `0.001`) used to move a
 #'   population parameter (`theta`) whose initial estimate is exactly `0`
-#'   off zero before estimation.  FOCEi scales a linear parameter by its
-#'   native magnitude `|init|`, which is `0` (no scale) for a zero
-#'   initial estimate, so the parameter is moved to `+zeroTheta` when it
-#'   is within the parameter's bounds, otherwise `-zeroTheta`; if neither
-#'   is within the bounds an error is raised.  Fixed parameters
-#'   (including those fixed at `0`) are left untouched.
+#'   off zero: to `+zeroTheta` when it is within the parameter's bounds,
+#'   otherwise `-zeroTheta`; if neither is within the bounds an error is
+#'   raised.  The move is not used as the parameter's scale: a linear
+#'   theta that starts at `0` is scaled by a typical magnitude instead,
+#'   `1/sd()` of the covariate it multiplies (e.g. `theta*WT`) or 1.
+#'   Fixed parameters (including those fixed at `0`) are left untouched.
+#'
+#' @param zeroThetaStep Largest one-step (Newton) move, in typical
+#'   magnitudes, from the start of a theta that began at `0` (default
+#'   `100`).  Before the outer optimization starts, the objective is
+#'   evaluated on either side of the start and the start moves to the
+#'   one-step estimate `-g/H` when that lowers the objective.  `0`
+#'   disables it.
 #'
 #' @param eventSens Controls how dosing/event-parameter (`alag`, `F`,
 #'   `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
@@ -1218,7 +1242,6 @@
 #'   always keeps the standard gradient.
 #'
 #' @inheritParams rxode2::rxSolve
-#' @inheritParams minqa::bobyqa
 #'
 #' @details
 #'
@@ -1351,7 +1374,7 @@ foceiControl <- function(
     "newuoa",
     "trust"
   ), #
-  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c"), #
+  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c", "steihaug", "newuoa"), #
   innerHessian = c("focei", "conditional"), #
   detHessian = c("focei", "conditional"), #
   hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
@@ -1362,6 +1385,9 @@ foceiControl <- function(
   trustFterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
   trustMterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
   trustPolish = FALSE,
+  steihaugPolish = FALSE,
+  newuoaPolish = FALSE,
+  newuoaRhoend = NULL, # NULL -> sqrt(rtol) of the ODE solve
   bobyqaStationary = TRUE,
   ## innerOpt="lbfgsb3c" (lbfgsb3c's thread-safe L-BFGS-B)
   innerLbfgsLmm = 5L,
@@ -1461,6 +1487,7 @@ foceiControl <- function(
   sensMethod = c("default", "forward"),
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
+  zeroThetaStep = 100,
   boundedTransform = TRUE
 ) {
   #
@@ -1700,19 +1727,9 @@ foceiControl <- function(
   ## method <- as.integer(.methodIdx[method]);
   scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
-  if (checkmate::testIntegerish(optimHessType, len = 1, lower = 1, upper = 3, any.missing = FALSE)) {
-    optimHessType <- as.integer(optimHessType)
-  } else {
-    .optimHessTypeIdx <- c("central" = 1L, "forward" = 3L)
-    optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
-  }
-
-  if (checkmate::testIntegerish(optimHessCovType, len = 1, lower = 1, upper = 3, any.missing = FALSE)) {
-    optimHessCovType <- as.integer(optimHessCovType)
-  } else {
-    .optimHessCovTypeIdx <- c("central" = 1L, "forward" = 3L)
-    optimHessCovType <- setNames(.optimHessCovTypeIdx[match.arg(optimHessCovType)], NULL)
-  }
+  # the codes the C++ has a case for; any other integer reached it as a Hessian of zeros
+  optimHessType <- .nlmCtlCode(optimHessType, c("central" = 1L, "forward" = 3L), "optimHessType")
+  optimHessCovType <- .nlmCtlCode(optimHessCovType, c("central" = 1L, "forward" = 3L), "optimHessCovType")
   # censOption: the censored (M2/M3/M4) inner-Hessian / 2nd-derivative treatment.
   # "gauss" (default) keeps the historic uncensored Gauss-Newton curvature; "laplace"
   # uses the exact censored 2nd derivative (a proper Laplace).  Shared with saem/nlm.
@@ -1721,12 +1738,8 @@ foceiControl <- function(
   } else {
     censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
   }
-  if (checkmate::testIntegerish(eventType, len = 1, lower = 1, upper = 3, any.missing = FALSE)) {
-    eventType <- as.integer(eventType)
-  } else {
-    .eventTypeIdx <- c("central" = 2L, "forward" = 3L)
-    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
-  }
+  # the codes the inner eta finite difference has a case for; 1 left its gradient 0
+  eventType <- .nlmCtlCode(eventType, c("central" = 2L, "forward" = 3L), "eventType")
   ## How dosing/event-parameter (alag, F, rate, dur, ...) sensitivities are
   ## computed: "fd" (legacy finite differences) or "jump" (analytic jump/event
   ## sensitivities from rxode2).  "fd" is the backward-compatible default.
@@ -1817,7 +1830,6 @@ foceiControl <- function(
     outerOpt <- match.arg(outerOpt)
     .outerOptTxt <- outerOpt
     if (outerOpt == "bobyqa") {
-      rxode2::rxReq("minqa")
       outerOptFun <- .bobyqa
       outerOpt <- -1L
     } else if (outerOpt == "nlminb") {
@@ -1833,6 +1845,7 @@ foceiControl <- function(
       outerOptFun <- .lbfgsbLG
       outerOpt <- -1L
     } else if (outerOpt == "uobyqa") {
+      rxode2::rxReq("minqa")
       outerOptFun <- .uobyqa
       outerOpt <- -1L
     } else if (outerOpt == "newuoa") {
@@ -1869,7 +1882,7 @@ foceiControl <- function(
     )
     fast <- FALSE
   }
-  if (checkmate::testIntegerish(innerOpt, lower = 1, upper = 4, len = 1)) {
+  if (checkmate::testIntegerish(innerOpt, lower = 1, upper = 6, len = 1)) {
     innerOpt <- as.integer(innerOpt)
   } else {
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
@@ -1939,6 +1952,8 @@ foceiControl <- function(
   }
   checkmate::assertNumeric(trustMterm, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertFlag(trustPolish)
+  checkmate::assertFlag(steihaugPolish)
+  checkmate::assertFlag(newuoaPolish)
   bobyqaStationary <- as.logical(bobyqaStationary)
   checkmate::assertFlag(bobyqaStationary)
   checkmate::assertIntegerish(innerLbfgsLmm, lower = 1L, any.missing = FALSE, len = 1)
@@ -2036,6 +2051,13 @@ foceiControl <- function(
       stop("rxControl needs to be ode solving options from rxode2::rxControl()", call. = FALSE)
     }
   }
+  # an objective solved to relative error rtol locates its minimum only to
+  # about sqrt(rtol); a tighter derivative-free inner search chases solver noise
+  if (is.null(newuoaRhoend)) {
+    .rtol <- if (is.list(rxControl) && length(rxControl$rtol) > 0) max(rxControl$rtol) else 1e-6
+    newuoaRhoend <- sqrt(.rtol)
+  }
+  checkmate::assertNumeric(newuoaRhoend, lower = .Machine$double.eps, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(diagOmegaBoundUpper, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(diagOmegaBoundLower, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
 
@@ -2103,6 +2125,7 @@ foceiControl <- function(
   if (zeroTheta <= 0) {
     stop("'zeroTheta' must be a positive number", call. = FALSE)
   }
+  checkmate::assertNumber(zeroThetaStep, lower = 0, finite = TRUE)
   checkmate::assertNumber(shi21hMin, lower = 0, finite = TRUE)
   checkmate::assertNumber(shi21hMax, lower = 0, finite = TRUE)
   if (shi21hMax <= shi21hMin) {
@@ -2212,6 +2235,9 @@ foceiControl <- function(
     trustFterm = trustFterm,
     trustMterm = trustMterm,
     trustPolish = trustPolish,
+    steihaugPolish = steihaugPolish,
+    newuoaPolish = newuoaPolish,
+    newuoaRhoend = newuoaRhoend,
     bobyqaStationary = bobyqaStationary,
     innerLbfgsLmm = innerLbfgsLmm,
     innerLbfgsFactr = as.double(innerLbfgsFactr),
@@ -2311,7 +2337,8 @@ foceiControl <- function(
     sensMethod = sensMethod,
     linCmtSensCarry = linCmtSensCarry,
     boundedTransform = boundedTransform,
-    zeroTheta = zeroTheta
+    zeroTheta = zeroTheta,
+    zeroThetaStep = as.double(zeroThetaStep)
   )
   if (!is.null(.xtra$est)) {
     .ret$est <- .xtra$est
