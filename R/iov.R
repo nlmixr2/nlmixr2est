@@ -327,6 +327,52 @@ nlmixr2iovVarSd <- function(val) {
   )
 }
 
+#' Refuse a repeated (`same()`) occasion-level block
+#'
+#' `iov.v ~ same() | occ` gives `iov.v` the condition `"occ:same:iov.cl"`.
+#' Neither the IOV rewrite nor a method's own IOV handling ties such a block,
+#' so a method that handles IOV (an `"iov"` attribute that is not `FALSE`) stops here,
+#' naming the etas, whether or not it honours a repeated subject-level block.
+#' A repeated `"id"` block (`"id:same:<eta>"`) is not an occasion block and
+#' passes.
+#'
+#' @param ui rxode2 user interface model
+#' @param est estimation routine name
+#' @return nothing; an error for a repeated occasion-level block
+#' @noRd
+#' @author Matthew L. Fidler
+.iovSameRefuse <- function(ui, est) {
+  # a method that handles IOV at all: through the shared rewrite (TRUE) or
+  # with its own handling too (a function of the control, saem's); FALSE says
+  # it takes no IOV.  .isIovMethod() answers only whether the rewrite runs.
+  .iov <- attr(utils::getS3method("nlmixr2Est", est, optional = TRUE), "iov")
+  if (is.null(.iov) || isFALSE(.iov)) {
+    return(invisible())
+  }
+  .iniDf <- ui$iniDf
+  .cnd <- .iniDf$condition
+  .base <- lotri::lotriBaseCondition(.cnd)
+  .w <- which(
+    .iovOccRows(.iniDf) &
+      !is.na(.iniDf$neta1) &
+      .iniDf$neta1 == .iniDf$neta2 &
+      .cnd != .base
+  )
+  if (length(.w) == 0L) {
+    return(invisible())
+  }
+  # the etas of each occasion column, in the model's order
+  .byLvl <- split(
+    paste0("'", .iniDf$name[.w], "'"),
+    factor(.base[.w], levels = unique(.base[.w]))
+  )
+  stop(
+    "same() is not supported for an occasion-level block: ",
+    paste(paste0(vapply(.byLvl, paste, character(1), collapse = ", "), " | ", names(.byLvl)), collapse = "; "),
+    call. = FALSE
+  )
+}
+
 #' Build the per-occasion eta blocks for `iovMethod="omega"`
 #'
 #' Occasion one IS the estimated block: it takes the variances and
@@ -480,48 +526,6 @@ nlmixr2iovVarSd <- function(val) {
 #' @noRd
 .uiHasIov <- function(ui) {
   length(.uiIovNames(ui)) > 0L
-}
-
-#' Refuse a repeated (`same()`) occasion-level block
-#'
-#' `iov.v ~ same() | occ` gives `iov.v` the condition `"occ:same:iov.cl"`.
-#' Neither the IOV rewrite nor a method's own IOV handling ties such a block,
-#' so a method that handles IOV (one with an `"iov"` attribute) stops here,
-#' naming the etas, whether or not it honours a repeated subject-level block.
-#' A repeated `"id"` block (`"id:same:<eta>"`) is not an occasion block and
-#' passes.
-#'
-#' @param ui rxode2 user interface model
-#' @param est estimation routine name
-#' @return nothing; an error for a repeated occasion-level block
-#' @noRd
-#' @author Matthew L. Fidler
-.iovSameRefuse <- function(ui, est) {
-  if (is.null(attr(utils::getS3method("nlmixr2Est", est, optional = TRUE), "iov"))) {
-    return(invisible())
-  }
-  .iniDf <- ui$iniDf
-  .cnd <- .iniDf$condition
-  .base <- lotri::lotriBaseCondition(.cnd)
-  .w <- which(
-    .iovOccRows(.iniDf) &
-      !is.na(.iniDf$neta1) &
-      .iniDf$neta1 == .iniDf$neta2 &
-      .cnd != .base
-  )
-  if (length(.w) == 0L) {
-    return(invisible())
-  }
-  # the etas of each occasion column, in the model's order
-  .byLvl <- split(
-    paste0("'", .iniDf$name[.w], "'"),
-    factor(.base[.w], levels = unique(.base[.w]))
-  )
-  stop(
-    "same() is not supported for an occasion-level block: ",
-    paste(paste0(vapply(.byLvl, paste, character(1), collapse = ", "), " | ", names(.byLvl)), collapse = "; "),
-    call. = FALSE
-  )
 }
 
 #' This applies the IOV method to the model based on the data used
