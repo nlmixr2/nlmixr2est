@@ -60,13 +60,40 @@
   (`"r,s" is not positive definite; kept "nlme"`), so the same failure
   reads the same whatever the labels, and they stay under 75 characters.
 
+- `covMethod = "analytic"` with a residual variance the general (f,R)
+  assembly handles (for example `combined1`) now keeps the analytic
+  covariance when its batched augmented solve fails: the per-subject
+  solve it falls back to rebuilds the residual-error slots as the
+  batched one does. Since 7.0.2 that solve failed (“number of items to
+  replace is not a multiple of replacement length”) and the fit fell
+  back to the finite-difference covariance. A general (f,R) model with
+  no estimated sigma (`combined1` with both sigmas fixed, or
+  [`boxCox()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)
+  with its additive sigma fixed) now gets the analytic covariance too;
+  `setCov(fit, "analytic")` used to stop on it.
+
 #### Estimation
+
+- `foceiControl(outerOpt = "newuoa")` now stops the outer optimization
+  at `maxOuterIterations` function evaluations, as `outerOpt = "uobyqa"`
+  and `"bobyqa"` do; it used to ignore the limit and run NEWUOA to
+  convergence.
 
 - `saem` now reports the non-mu-referenced thetas it actually used. With
   `nonMuTheta = "regress"` (the default) the model ran at the directly
   optimized values, but `$theta` showed the regression estimate taken
   before that optimization, so the reported thetas, etas and tables
-  disagreed. Likewise a general-likelihood fit (`ll()`,
+  disagreed.
+
+- A population parameter (`theta`) that starts at exactly 0, such as a
+  covariate effect, is now estimated instead of staying at about 0
+  ([\#1228](https://github.com/nlmixr2/nlmixr2est/issues/1228)). Its
+  scale used to be the `zeroTheta` nudge (0.001); it is now a typical
+  magnitude, `1/sd()` of the covariate it multiplies (or 1), for FOCEi,
+  nls and the nlm family. FOCEi also moves its start by one Newton step
+  (`foceiControl(zeroThetaStep=)`) when that lowers the objective.
+
+  Likewise a general-likelihood fit (`ll()`,
   [`dnorm()`](https://rdrr.io/r/stats/Normal.html),
   [`t()`](https://rdrr.io/r/base/t.html), …) now reports the
   mu-referenced thetas its direct optimization settled on rather than
@@ -158,6 +185,22 @@
   carry added in 7.1.0, so its analytic gradient took the parameter as
   constant within a subject; it now gets the carry like any other
   subject-level eta.
+
+#### Tables
+
+- `tableControl(npde = TRUE)` and
+  [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md)
+  no longer abort R when a subject has no observations (“Col::subvec():
+  indices out of bounds”). That subject’s NPDE columns are `NA`, as its
+  other table columns are. The NPDE of a fit with a single subject no
+  longer fails either.
+
+- In a model with a normal and a non-normal endpoint (such as
+  [`dpois()`](https://rdrr.io/r/stats/Poisson.html)), a subject with no
+  observations of the normal endpoint left every subject before it in
+  the data (the next subject, when it was the first) with CWRES, CRES
+  and CPRED computed from another subject’s etas (or none), since
+  nlmixr2est 2.1.0. Each row now takes its own subject’s.
 
 - A finite-difference gradient or Hessian no longer takes a slope of 0
   where its differences do not solve.
