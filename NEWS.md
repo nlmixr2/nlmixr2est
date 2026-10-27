@@ -64,6 +64,13 @@
 
 ### Estimation
 
+- A `saem` fit with inter-occasion variability now reports its
+  Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
+  reported a FOCEi objective in its place, so its AIC and BIC were not
+  comparable with other `saem` fits; the only sign was the message "gaussian
+  quadrature failed, changed to focei" when the objective was first read.
+  The quadrature, which runs after the fit, solved with an event matrix
+  rebuilt from the data, which had lost the occasion column.
 - `foceiControl(outerOpt = "newuoa")` now stops the outer optimization at
   `maxOuterIterations` function evaluations, as `outerOpt = "uobyqa"` and
   `"bobyqa"` do; it used to ignore the limit and run NEWUOA to convergence.
