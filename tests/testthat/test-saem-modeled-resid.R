@@ -98,16 +98,19 @@ nmTest({
   })
 
   test_that("temporary-eta thetas are named for the saem kernel", {
+    # the hook's ui carries the temporary etas' specs, the record saem passes
     .ui <- .hook(.modeledResidUi("cp ~ add(add.sd) + boxCox(lam) + dnorm()"))
-    expect_setequal(.saemPseudoEtaThetaNames(.ui), c("rxBoundedTr.add.sd", "rxBoundedTr.lam"))
-    expect_equal(.saemPseudoEtaThetaNames(.modeledResidUi("cp ~ add(add.sd)")), character(0))
+    expect_setequal(.saemPseudoEtaThetaNames(.ui, .ui$boundedTransforms), c("rxBoundedTr.add.sd", "rxBoundedTr.lam"))
+    expect_equal(.saemPseudoEtaThetaNames(.modeledResidUi("cp ~ add(add.sd)"), NULL), character(0))
+    # an rx.eta.<x> name with no spec is not a temporary eta
+    expect_equal(.saemPseudoEtaThetaNames(.ui, NULL), character(0))
   })
 
   test_that("temporary-eta phi1 columns are indexed for the saem kernel", {
     .ui <- .hook(.modeledResidUi("cp ~ add(add.sd) + boxCox(lam) + dnorm()"))
     # phi1 is tka, tcl, then the two temporary-eta thetas
-    expect_equal(.saemPseudoPhi1Ix(.ui), c(2L, 3L))
-    expect_length(.saemPseudoPhi1Ix(.modeledResidUi("cp ~ add(add.sd)")), 0L)
+    expect_equal(.saemPseudoPhi1Ix(.ui, .ui$boundedTransforms), c(2L, 3L))
+    expect_length(.saemPseudoPhi1Ix(.modeledResidUi("cp ~ add(add.sd)"), NULL), 0L)
   })
 
   test_that("propF()/powF() prediction variables do not promote the endpoint", {
