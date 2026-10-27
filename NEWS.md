@@ -214,6 +214,22 @@
   stores (`eventType` 2 and 3, the Hessian types 1 and 3) are accepted as
   before.
 
+### Predictions
+
+- `predict(fit, newdata, level = "individual")` now gives each subject the
+  fit's etas for its own ID.  They went to the subjects by position:
+  - with the subjects of `newdata` in another order, each took another
+    subject's etas (up to 5.4 off on theo_sd);
+  - with only some of them, rxode2 repeated those subjects over the rows of
+    etas, as a simulation: two subjects of a 12-subject fit came back as 6
+    sets, 132 rows;
+  - a subject the fit did not estimate silently took the etas at its
+    position.  It now gets etas of 0, with a warning ("1 subject(s) not in
+    the fit get etas of 0");
+  - a fit with a subject that has no observations stopped with "number of
+    parameters (11) solved by rxode2 for multi-subject data needs to be a
+    multiple of the number of subjects (12)".
+
 ### Inter-occasion variability
 
 - A fit with inter-occasion variability keeps its `omega` as the nested
