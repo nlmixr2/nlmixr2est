@@ -52,6 +52,29 @@
 #'   `dcauchy()` and `invWishart()` are refused
 #' - `"all"` -- the method handles everything, so nothing is checked
 #'
+#' A repeated omega block (`same()`) ties its copies' variances to its
+#' master's.  A model with one is refused by any method that has not said it
+#' keeps that tie, so a method that would estimate the copies apart fails with
+#' an explanation instead of dropping the tie.  A method says so with
+#'
+#' ```
+#' attr(nlmixr2Est.myMethod, "sameBlock") <- TRUE
+#' ```
+#'
+#' when it estimates the copies as one, and the refusal then names it among the
+#' methods that keep the tie; or with
+#'
+#' ```
+#' attr(nlmixr2Est.myMethod, "sameBlock") <- "fixed"
+#' ```
+#'
+#' when it does not estimate omega at all (it takes the model's omega as
+#' given), so it is accepted but not named.  `attr(nlmixr2Est.myMethod,
+#' "iovSame") <- TRUE`, which lets a method use the repeated-block expansion
+#' of inter-occasion variability (`iovMethod = "omega"`), says the same as
+#' `"sameBlock"` `TRUE`.
+#'
+#' @md
 #' @export
 nlmixr2Est <- function(env, ...) {
   .shi21RatioCensor()
@@ -271,6 +294,8 @@ nlmixr2Est.default <- function(env, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 nlmixr2Est0 <- function(env, ...) {
+  # the zero-start scales are for this estimation only (#1228)
+  on.exit(nlmixr2global$nlmixr2EstEnv$zeroThetaScale <- NULL, add = TRUE)
   rxode2::rxUnloadAll()
   .ui <- rxode2::rxUiDecompress(get("ui", env))
   assign("ui", .ui, envir = env)

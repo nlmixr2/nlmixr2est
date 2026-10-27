@@ -27,6 +27,12 @@
 // other entries report failure by return code only, so they are safe to call
 // from inside a sampler's log-density evaluation (past live destructors and
 // an in-flight autodiff tape).
+//
+// No entry is reentrant: call them from one thread at a time, normally the R
+// main thread, never concurrently and never from inside the caller's own
+// thread team.  Every call solves through rxode2's single global solve state,
+// and a call's own parallel region hands out rxode2's per-thread ids 0..n-1,
+// so two calls at once would share rxode2's per-thread buffers.
 
 #ifdef __cplusplus
 extern "C" {

@@ -1,16 +1,9 @@
-# Methods for newuoa residual optimization
-.saemResidF <- function(x) {
-  # Exports the C residual functions in saem
-  .Call(`_saemResidF`, x)
-}
-
-.saemOpt1 <- function(p1) {
-  .opt <- stats::nlm(.saemResidF, p1)
-  .opt$estimate
-}
-
 .newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  # The outer optimizer for foceiControl(outerOpt = "newuoa"), so a
+  # foceiControl() list's maxOuterIterations becomes maxfun here, as in
+  # .uobyqa() and .bobyqa().  RcppTrust::newuoa() is a thread-safe port of
+  # minqa::newuoa() with the same arguments, control list and result.
+  .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) {
     .ctl$npt <- length(par) * 2 + 1
   }
@@ -22,7 +15,7 @@
   }
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
-  .ret <- try(minqa::newuoa(par, fn, control = .ctl))
+  .ret <- try(RcppTrust::newuoa(par, fn, control = .ctl))
   if (inherits(.ret, "try-error")) {
     .ret <- list()
     .ret$x <- rep(NA_real_, length(.ret$par))
@@ -36,24 +29,6 @@
   .ret$convergence <- .ret$ierr
   .ret$value <- .ret$fval
   return(.ret)
-}
-
-# newuoa refinement of the non-mu (phi0) thetas, saemControl(nonMuThetaOpt="newuoa").
-# Warnings are suppressed because this runs once per SAEM iteration and stopping on
-# the evaluation budget is the expected outcome, not a problem to report -- an
-# unsuppressed warning here would be collected into the fit's $runInfo every
-# iteration.
-.saemPhi0Newuoa <- function(par, fn, maxfun, rhobeg, rhoend, npt) {
-  suppressWarnings(
-    .newuoa(par = par, fn = fn, control = list(maxfun = maxfun, rhobeg = rhobeg, rhoend = rhoend, npt = npt))
-  )
-}
-
-# Bounded refinement of the saem general-likelihood phi0/phi1 thetas.  Warnings are
-# suppressed for the same reason as .saemPhi0Newuoa: minqa's small-maxfun advice
-# would otherwise reach $runInfo on every iteration.
-.saemBoundedResidOpt <- function(par, fn, lower = -Inf, upper = Inf, control = list()) {
-  suppressWarnings(.boundedResidOpt(par, fn, lower = lower, upper = upper, control = control))
 }
 
 .saemCheckCfg <- function(cfg) {
@@ -191,6 +166,26 @@
   checkmate::assertIntegerish(cfg$resFixed, lower = 0, upper = 1, .var.name = "cfg$resFixed")
 }
 
+#' Is the saem data censored?
+#'
+#' @param data saem data
+#' @return 0 uncensored, 1 censored (`CENS != 0`), 2 a finite `LIMIT` too
+#'   (M2/M4, which also need the transformed limit)
+#' @noRd
+.saemCensOutCode <- function(data) {
+  .n <- toupper(names(data))
+  .cens <- if ("CENS" %in% .n) data[[which(.n == "CENS")[1]]] else 0
+  .lim <- if ("LIMIT" %in% .n) data[[which(.n == "LIMIT")[1]]] else NA_real_
+  .hasLim <- any(is.finite(.lim))
+  if (.hasLim) {
+    return(2L)
+  }
+  if (any(.cens != 0, na.rm = TRUE)) {
+    return(1L)
+  }
+  0L
+}
+
 #' Fit a UI model with saem
 #'
 #' @param ui rxode2 ui
@@ -205,6 +200,12 @@
   # with the mu-referenced focei family, see .nlmixrSetMuRefTimeVarying).
   .nlmixrSetMuRefTimeVarying(ui, timeVaryingCovariates)
   on.exit(.nlmixrRmMuRefTimeVarying(ui))
+  # a censored general likelihood needs the density's inputs (saemModel)
+  .censOut <- if (.saemGeneralLik(ui)) .saemCensOutCode(data) else 0L
+  if (.censOut > 0L) {
+    assign(".saemCensOut", .censOut, envir = ui)
+    on.exit(rm(list = ".saemCensOut", envir = ui), add = TRUE)
+  }
   # Building the saem model list does the symengine translation and rxode2
   # compilation -- timed as "configure" (mapped to "setup") so it is not
   # silently absorbed into the "other" bucket.
@@ -215,7 +216,9 @@
   # exact-Hessian model and its pred-only FD-fallback peer so .configsaem can
   # thread them into opt$saemPhi1Hess2/opt$saemPhi1Pred -- setupRx registers
   # them as odeSwap peers of SAEM's own model for the phi1 theta step.
-  if (.saemGeneralLik(ui)) {
+  # the pooled theta step scores FOCEi's log-density, which has no censoring
+  # inputs, so a censored fit keeps saem's own model
+  if (.saemGeneralLik(ui) && .censOut == 0L) {
     .p1 <- nlmixrWithTiming("configure", ui$saemPhi1Inner)
     if (!is.null(.p1) && isTRUE(.p1$ok)) {
       .model$saemPhi1Hess2 <- .p1$innerHess2
@@ -227,6 +230,11 @@
       .model$saemPhi1DvCol <- as.integer(.p1$dvCol)
       .model$saemPhi1DvColHess2 <- as.integer(.p1$dvColHess2)
     }
+  }
+  if (.censOut > 0L) {
+    .lhs <- rxode2::rxModelVars(attr(.model$saem_mod, "rx"))$lhs
+    .ix <- match(c("rx_cx_", "rx_cmu_", "rx_csd_", "rx_cnu_", "rx_clim_"), .lhs) - 1L
+    .model$saemGenCensIx <- ifelse(is.na(.ix), -1L, .ix)
   }
   .inits <- ui$saemInit
   .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
@@ -342,6 +350,10 @@
       .cfg$nonMuThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaMaxEval", 25L))
       .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol", .Machine$double.eps^0.25))
       .cfg$nonMuThetaEvery <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaEvery", 1L))
+      # conditional-mode EBEs, computed in C++ after the last SAEM iteration
+      .cfg$ebeMode <- as.integer(identical(rxode2::rxGetControl(ui, "ebe", "mode"), "mode"))
+      .cfg$ebeMaxEval <- as.integer(rxode2::rxGetControl(ui, "ebeMaxEval", 200L))
+      .cfg$ebeTol <- as.numeric(rxode2::rxGetControl(ui, "ebeTol", 1e-3))
       # Phase 4 (SAEM general-likelihood theta plan): cadence/budget for the
       # phi1 (mu-referenced theta) Laplace-corrected refinement -- see
       # saemControl()'s own docs for phi1ThetaEvery/phi1ThetaMaxEval.
@@ -808,6 +820,13 @@
   .mat <- nlme::random.effects(.saem)
   .mat2 <- .mat[, .etaTrans, drop = FALSE]
   colnames(.mat2) <- .etaNames
+  # the SAEM conditional-mean etas are kept as fit$etaSaem
+  env$etaSaem <- data.frame(ID = seq_along(.mat2[, 1]), setNames(as.data.frame(.mat2), .etaNames))
+  env$ebe <- rxode2::rxGetControl(.ui, "ebe", "mode")
+  if (identical(env$ebe, "mode") && is.matrix(.saem$etaMode) && all(dim(.saem$etaMode) == dim(.mat))) {
+    .mat2 <- .saem$etaMode[, .etaTrans, drop = FALSE]
+    colnames(.mat2) <- .etaNames
+  }
   for (i in seq_along(.eta$name)) {
     .e1 <- .eta$neta1[i]
     .e2 <- .eta$neta2[i]

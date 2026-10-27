@@ -148,16 +148,18 @@ nmTest({
   # and etTrans()) has two EVID 0 records.  When etTrans() rejects the data, its
   # message, which must be one of the reasons no data can avoid: a dose with a
   # missing AMT, EVID 1 or 4 with an MDV of 0 or missing, or (rxode2 after 5.1.8)
-  # a missing EVID with a nonzero AMT
+  # a missing EVID on a dose record
+  .utFoceiReasons <- paste0(
+    "'amt' value NA for dose event|'mdv' cannot be 0 when 'evid'=[14]",
+    if (utils::packageVersion("rxode2") > "5.1.8") {
+      "|'evid' is missing on a record with dose information"
+    }
+  )
   .utFoceiObs <- function(d, ui) {
     .e <- new.env(parent = emptyenv())
     .err <- .utFoceiError(d, ui, .e)
     if (!is.null(.err)) {
-      expect_match(
-        .err,
-        "'amt' value NA for dose event|'mdv' cannot be 0 when 'evid'=[14]|'evid' is missing on a record with a nonzero 'amt'",
-        label = paste(names(d), d[2, ], collapse = " ")
-      )
+      expect_match(.err, .utFoceiReasons, label = paste(names(d), d[2, ], collapse = " "))
       return(.err)
     }
     sum(.e$dataSav$EVID == 0) == 2L
@@ -514,5 +516,20 @@ nmTest({
     expect_identical(.s$ev, .d[4:6, ])
     expect_identical(.s$times, c(2, 3))
     expect_identical(.s$y, c(7, 8))
+    # a reset starts a new episode at an earlier clock time; episodes keep their order
+    .r <- data.frame(
+      ID = 1,
+      TIME = c(0, 1, 0, 1),
+      EVID = c(1, 0, 4, 0),
+      AMT = c(100, 0, 200, 0),
+      DV = c(NA, 3, NA, 6)
+    )
+    .s <- .nmSubjectObs(.r, 1)[[1]]
+    expect_identical(.s$ev, .r)
+    expect_identical(.s$times, c(1, 1))
+    expect_identical(.s$y, c(3, 6))
+    .s <- .nmSubjectObs(.r[c(2, 1, 3, 4), ], 1)[[1]]
+    expect_identical(.s$ev, .r)
+    expect_identical(.s$y, c(3, 6))
   })
 })

@@ -26,7 +26,7 @@ is.latex <- function() {
   get("is_latex_output", asNamespace("knitr"))()
 }
 
-#' Get the maxfun control for minqa optimizers
+#' Get the maxfun control for bobyqa-family optimizers
 #'
 #' @param control control to update based on foceiControl()
 #' @return control with maxfun updated based on maxOuterIterations
@@ -40,6 +40,7 @@ is.latex <- function() {
 }
 
 .uobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  rxode2::rxReq("minqa")
   .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) {
     .ctl$npt <- length(par) * 2 + 1
@@ -84,7 +85,7 @@ is.latex <- function() {
 #' Only engages when the caller passed an explicit `rhobeg` (as
 #' `.foceiFitInternal()`'s outer optimizer always does, via
 #' `foceiControl()$rhobeg`'s own non-NULL default) -- a caller that leaves
-#' `rhobeg` for `minqa::bobyqa()` to default internally (e.g.
+#' `rhobeg` for `RcppTrust::bobyqa()` to default internally (e.g.
 #' `.boundedResidOpt()`) has no known starting radius to compare against or
 #' widen, so is left alone.
 #'
@@ -92,8 +93,8 @@ is.latex <- function() {
 #' @param fn the objective function
 #' @param lower,upper bobyqa's bounds
 #' @param ctl the (already-filtered) bobyqa control list the first attempt used
-#' @param ret the first attempt's `minqa::bobyqa()` result
-#' @return a `minqa::bobyqa()`-shaped list, from whichever attempt is returned
+#' @param ret the first attempt's `RcppTrust::bobyqa()` result
+#' @return a `RcppTrust::bobyqa()`-shaped list, from whichever attempt is returned
 #' @noRd
 #' @author Matthew L. Fidler
 .bobyqaRetryIfStuck <- function(par, fn, lower, upper, ctl, ret) {
@@ -113,7 +114,7 @@ is.latex <- function() {
     if (!is.null(.ctl2$rhoend) && .ctl2$rhoend >= .rb) {
       .ctl2$rhoend <- .rb / 100
     }
-    ret <- minqa::bobyqa(par, fn, control = .ctl2, lower = lower, upper = upper)
+    ret <- RcppTrust::bobyqa(par, fn, control = .ctl2, lower = lower, upper = upper)
     .rhobeg <- .rb
   }
   ret
@@ -129,9 +130,9 @@ is.latex <- function() {
 #' is lower.
 #' @param fn objective
 #' @param lower,upper bounds
-#' @param ctl `minqa::bobyqa()` control
-#' @param ret the first search's `minqa::bobyqa()` result
-#' @return a `minqa::bobyqa()`-shaped list
+#' @param ctl `RcppTrust::bobyqa()` control
+#' @param ret the first search's `RcppTrust::bobyqa()` result
+#' @return a `RcppTrust::bobyqa()`-shaped list
 #' @noRd
 .bobyqaRestart <- function(fn, lower, upper, ctl, ret) {
   if (!identical(as.integer(ret$ierr), 0L)) {
@@ -143,7 +144,7 @@ is.latex <- function() {
       return(ret)
     }
   }
-  .ret2 <- minqa::bobyqa(ret$par, fn, control = ctl, lower = lower, upper = upper)
+  .ret2 <- RcppTrust::bobyqa(ret$par, fn, control = ctl, lower = lower, upper = upper)
   if (is.finite(.ret2$fval) && .ret2$fval < ret$fval) {
     .ret2$feval <- .ret2$feval + ret$feval
     return(.ret2)
@@ -162,13 +163,13 @@ is.latex <- function() {
 #' up to `maxRestart` times within the evaluation budget.
 #' @param fn objective
 #' @param lower,upper bounds
-#' @param ctl `minqa::bobyqa()` control
-#' @param ret the search's `minqa::bobyqa()` result
+#' @param ctl `RcppTrust::bobyqa()` control
+#' @param ret the search's `RcppTrust::bobyqa()` result
 #' @param tol objective decrease that triggers a restart
 #' @param maxRestart maximum number of restarts
 #' @param record,hold `.foceiOuterRecord()` and `.foceiOuterHold()`, or `NULL`;
 #'   the probe stays out of the history and leaves the fit's inner state alone
-#' @return a `minqa::bobyqa()`-shaped list with `nStationaryRestart` added
+#' @return a `RcppTrust::bobyqa()`-shaped list with `nStationaryRestart` added
 #' @noRd
 .bobyqaStationary <- function(fn, lower, upper, ctl, ret, tol, maxRestart = 3L, record = NULL, hold = NULL) {
   .n <- 0L
@@ -252,7 +253,7 @@ is.latex <- function() {
     if (!is.null(.ctl2$maxfun)) {
       .ctl2$maxfun <- .left - .nEval - length(.steps)
     }
-    .r2 <- minqa::bobyqa(.bx, fn, control = .ctl2, lower = lower, upper = upper)
+    .r2 <- RcppTrust::bobyqa(.bx, fn, control = .ctl2, lower = lower, upper = upper)
     .n <- .n + 1L
     .r2$feval <- .r2$feval + ret$feval
     if (!(is.finite(.r2$fval) && .r2$fval < .best)) {
@@ -274,7 +275,7 @@ is.latex <- function() {
   }
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
-  .ret <- minqa::bobyqa(par, fn, control = .ctl, lower = lower, upper = upper)
+  .ret <- RcppTrust::bobyqa(par, fn, control = .ctl, lower = lower, upper = upper)
   .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, .ret)
   if (isTRUE(control$trustPolish)) {
     .ret <- .bobyqaRestart(fn, lower, upper, .ctl, .ret)
@@ -297,32 +298,6 @@ is.latex <- function() {
   .ret$convergence <- .ret$ierr
   .ret$value <- .ret$fval
   .ret
-}
-
-#' Bounded derivative-free optimization of a residual/likelihood objective,
-#' honoring the ini-block lower/upper bounds.  Uses bobyqa for >= 2 parameters
-#' and stats::optimize (also bounded) for a single parameter, which bobyqa cannot
-#' handle.  Infinite bounds are widened to a finite box around the start.  Used by
-#' the npag residual step and the saem general-likelihood phi0 step so an unbounded
-#' optimizer never wanders into an invalid region (e.g. a negative SD).
-#' @return list(x, value, convergence)
-#' @noRd
-.boundedResidOpt <- function(par, fn, lower = -Inf, upper = Inf, control = list()) {
-  .n <- length(par)
-  .lo <- rep_len(as.numeric(lower), .n)
-  .hi <- rep_len(as.numeric(upper), .n)
-  .span <- pmax(abs(par), 1) * 1e3
-  .lo[!is.finite(.lo)] <- (par - .span)[!is.finite(.lo)]
-  .hi[!is.finite(.hi)] <- (par + .span)[!is.finite(.hi)]
-  .par <- pmin(pmax(par, .lo + 1e-8 * (.hi - .lo)), .hi - 1e-8 * (.hi - .lo))
-  if (.n == 1L) {
-    .o <- try(stats::optimize(function(x) fn(x), lower = .lo, upper = .hi), silent = TRUE)
-    if (inherits(.o, "try-error")) {
-      return(list(x = par, value = NA_real_, convergence = -42L))
-    }
-    return(list(x = .o$minimum, value = .o$objective, convergence = 0L))
-  }
-  .bobyqa(.par, fn, lower = .lo, upper = .hi, control = control)
 }
 
 .optimize <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
@@ -509,7 +484,7 @@ is.latex <- function() {
 
 #' Resolve the trust region's radii and tolerances
 #'
-#' `rinit` mirrors `minqa::bobyqa()`'s own default-rhobeg formula so swapping
+#' `rinit` mirrors `RcppTrust::bobyqa()`'s own default-rhobeg formula so swapping
 #' `outerOpt="bobyqa"` for `"trust"` starts from a comparable region; `rmax`
 #' reuses the 8x growth ceiling of the other `RcppTrust` solves in this package.
 #' A scaled start of all zeros would give a zero (never-stepping) radius.
@@ -2387,7 +2362,6 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 .foceiDowngradeFast <- function(control) {
   control$fast <- FALSE
   if (isTRUE(control$outerOptDefault) && identical(control$outerOptTxt, "lbfgsb3c")) {
-    rxode2::rxReq("minqa")
     control$outerOpt <- -1L
     control$outerOptFun <- .bobyqa
     control$outerOptTxt <- "bobyqa"
@@ -4395,19 +4369,30 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   }
   # Any estimated theta still without a scaleC is a linear (additive / unbounded)
   # parameter: derivative-based 1/|init|, guarded to scaleCband so an extreme init
-  # falls back to native |init|.  Zero-init params (nudged off 0 elsewhere) fall
-  # back to unit scaling.  This is the only guard: FOCEi's C++ side uses every
-  # value given here as it is.
+  # falls back to native |init|.  A theta that started at 0 has no |init| to scale
+  # by (its zeroTheta nudge is not a magnitude), so it takes the typical magnitude
+  # .preProcessZeroTheta recorded (#1228).  This is the only guard: FOCEi's C++
+  # side uses every value given here as it is.
   .thetaIni <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
+  .zero <- nlmixr2global$nlmixr2EstEnv$zeroThetaScale
+  .zeroIdx <- integer(0)
   for (.k in seq_len(nrow(.thetaIni))) {
     .nt <- .thetaIni$ntheta[.k]
     if (.nt <= length(.scaleC) && is.na(.scaleC[.nt]) && !.thetaIni$fix[.k]) {
       .init <- .thetaIni$est[.k]
+      .z <- which(.zero$name == .thetaIni$name[.k] & .zero$est == .init)
+      if (length(.z) == 1L) {
+        .scaleC[.nt] <- .zero$scale[.z]
+        .zeroIdx <- c(.zeroIdx, as.integer(.nt))
+        next
+      }
       .raw <- if (.init == 0) Inf else 1 / abs(.init)
       .scaleC[.nt] <- .guardScaleC(.raw, .init, .scLo, .scHi)
     }
   }
   env$scaleC <- .scaleC
+  # thetas (1-based) whose start the C++ outer setup may move by one Newton step
+  env$zeroThetaIdx <- .zeroIdx
 }
 
 #' The FOCEi scaleC of the estimated thetas, in theta order
@@ -4538,8 +4523,10 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     # errors are estimated alongside the structural thetas (all theta parameters are
     # included).  Only fixed, IOV, and (mlogit-scale) mixture-probability thetas skip.
     .skipCov[.theta$fix] <- TRUE
-    if (length(.uiIovEnv$iovVars) > 0) {
-      .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE
+    # the IOV magnitude thetas of this ui (after the rewrite), not the last fit's
+    .iov <- .uiIovNames(.ui)
+    if (length(.iov) > 0) {
+      .skipCov[which(.theta$name %in% .iov)] <- TRUE
     }
     # Mixture probability parameters ARE part of the covariance.  They are
     # estimated on the mlogit scale, but the installed covariance is rotated to
@@ -5084,7 +5071,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         } else if (this.env$zeroGrad && isTRUE(.ret$control$zeroGradBobyqa)) {
           message("Theta reset (zero/bad gradient values); Switch to bobyqa")
           warning("Theta reset (zero/bad gradient values); Switch to bobyqa")
-          rxode2::rxReq("minqa")
           .ret$control$outerOptFun <- .bobyqa
           .ret$control$outerOpt <- -1L
           .ret$control$outerOptTxt <- "bobyqa"
@@ -5172,7 +5158,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .draw <- TRUE
     if (isFALSE(control$zeroGradFirstReset) && grepl("bobyqa", attr(.ret0, "condition")$message)) {
       message("Changing to \"bobyqa\"")
-      rxode2::rxReq("minqa")
       .ret$control$outerOpt <- -1L
       .ret$control$outerOptFun <- .bobyqa
       .ret$control$outerOptTxt <- "bobyqa"

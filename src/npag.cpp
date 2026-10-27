@@ -6,6 +6,7 @@
 #include <RcppArmadillo.h>
 #include "np.h"
 #include "npCommon.h"
+#include "minqaC.h"
 #include "imp.h"   // M-step helpers (impSetEta/impSetOmega/impMapPass/...) reused for finalization
 
 using namespace Rcpp;
@@ -96,7 +97,6 @@ namespace {
     if (!std::isfinite(gNpResidRef)) return NP_RESID_PENALTY_ABS;
     return gNpResidRef + NP_RESID_PENALTY_MULT * (1.0 + std::fabs(gNpResidRef));
   }
-  double npResidObjR(Rcpp::NumericVector p) { return npResidObjVal(p.begin()); }
 }
 
 // Optimize the residual thetas in idx (kinds in kind) at the posterior-mean etas
@@ -166,7 +166,7 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
   }
 
   std::vector<double> start(n);
-  Rcpp::NumericVector par0(n), lo(n), hi(n);
+  std::vector<double> par0(n), lo(n), hi(n);
   for (int j = 0; j < n; ++j) {
     double v = impGetFullThetaVal(idx[j]);
     if (kind[j] == 1) v = std::fabs(v);
@@ -204,21 +204,17 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
   // regressor (reDerive) DOES move f, so it must keep re-solving.
   bool doFreeze = freeze && !reDerive;
   if (doFreeze) npResidFreezeBuild(gNpPostEta);   // also sets op_focei.freezeOde
-  // .boundedResidOpt: bobyqa (>=2 params) / bounded optimize (1 param), honoring
-  // the ini-block bounds so the optimizer stays in the valid region.
-  Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
-  Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
-  Rcpp::InternalFunction fn(&npResidObjR);
-  Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
-                              Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi,
-                              Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["maxfun"] = 200 * n * n,
-                                                                     Rcpp::_["rhoend"] = rhoend));
+  // bobyqa (>=2 params) / bounded Brent (1 param), honoring the ini-block bounds
+  // so the optimizer stays in the valid region.
+  minqaCRes ret = boundedResidOptC(n, par0.data(), lo.data(), hi.data(),
+                                   [](const double *p) { return npResidObjVal(p); },
+                                   rhoend, 200 * n * n);
   if (doFreeze) npResidFreezeClear();   // unfreezes op_focei.freezeOde
-  double f = as<double>(ret["value"]);
+  double f = ret.value;
   bool didReDerive = gNpReDerive;
   gNpReDerive = false;
   if (!ISNA(f)) {
-    Rcpp::NumericVector x = ret["x"];
+    const std::vector<double> &x = ret.x;
     for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(x[j], kind[j]));
     // With a regressor, gNpPostEta was re-derived for every candidate bobyqa sampled, so
     // it currently belongs to the LAST point tried -- which is not the optimum it

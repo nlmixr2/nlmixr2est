@@ -10,12 +10,24 @@
   nlmixr2global$timingStack <- NULL
 }
 
+#' Whether `envir` is an environment that holds a timing table
+#'
+#' @param envir environment, or anything else
+#' @return `TRUE` when `envir` is an environment with a `time` binding
+#' @noRd
+.nlmixrHasTimeTable <- function(envir) {
+  is.environment(envir) && exists("time", envir = envir, inherits = FALSE)
+}
+
 .finalizeOverallTiming <- function() {
   on.exit({
     .popNlmixr2Timing()
   })
+  # a fit that fails after its environment is made the timing one, but before
+  # it has a time table, records no overall time; reading one would replace
+  # the fit's error with "object 'time' not found"
   if (
-    is.environment(nlmixr2global$currentTimingEnvironment) &&
+    .nlmixrHasTimeTable(nlmixr2global$currentTimingEnvironment) &&
       inherits(nlmixr2global$nlmixr2Time, "proc_time")
   ) {
     .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir = nlmixr2global$currentTimingEnvironment))
@@ -126,7 +138,9 @@
   if (is.environment(nlmixr2global$currentTimingEnvironment) && !is.environment(envir)) {
     envir <- nlmixr2global$currentTimingEnvironment
   }
-  if (is.environment(envir)) {
+  # an environment with no time table yet keeps this stage in the extra table,
+  # as no environment does
+  if (.nlmixrHasTimeTable(envir)) {
     .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir = envir))
     assign("time", .nlmixrFinalizeTimingConstructTable(.time, name, preTiming), envir = envir)
   } else {
