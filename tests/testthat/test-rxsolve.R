@@ -190,16 +190,39 @@ test_that(".iovEtaRows() joins on subject and occasion, and counts unseen pairs"
   expect_identical(.r$unseen, 2L)
 })
 
-test_that(".nlmixrIovEtaData() adds the occasion etas and warns about unseen pairs", {
+test_that(".nlmixrIpredEtaData() adds the occasion etas and warns about unseen pairs", {
   .d <- data.frame(id = c(1, 1, 2), TIME = 0:2, OCC = c(1, 2, 2))
-  .r <- .nlmixrIovEtaData(.rxsolveIovFitStub(), .d)
+  .r <- .nlmixrIpredEtaData(.rxsolveIovFitStub(), .d)
   expect_identical(.r$iov.cl, c(0.1, 0.2, 0.4))
   # the subject etas too, so the solve does not take them from its params
   expect_identical(.r$eta.v, c(0.5, 0.5, 0.6))
   .d$OCC[3] <- 5
-  .w <- capture_warnings(.r <- .nlmixrIovEtaData(.rxsolveIovFitStub(), .d))
+  .w <- capture_warnings(.r <- .nlmixrIpredEtaData(.rxsolveIovFitStub(), .d))
   expect_identical(.w, "1 subject-occasion pair(s) not in the fit get occasion etas of 0")
   expect_identical(.r$iov.cl, c(0.1, 0.2, 0))
-  .e <- expect_error(.nlmixrIovEtaData(.rxsolveIovFitStub(), .d[, c("id", "TIME")]))
-  expect_identical(conditionMessage(.e), "the data needs occ for the fit's occasion etas")
+  .e <- expect_error(.nlmixrIpredEtaData(.rxsolveIovFitStub(), .d[, c("id", "TIME")]))
+  expect_identical(conditionMessage(.e), "the data needs occ for the fit's individual etas")
+})
+
+test_that(".nlmixrIpredEtaData() warns only for subjects and pairs it predicts", {
+  # subject 3 has a dose and no observation: it is not predicted
+  .d <- data.frame(ID = c(1, 2, 3), TIME = 0, EVID = c(0, 0, 1), AMT = c(0, 0, 1), DV = c(1, 1, NA), OCC = 1)
+  expect_identical(capture_warnings(.r <- .nlmixrIpredEtaData(.rxsolveIovFitStub(), .d)), character(0))
+  expect_identical(.r$iov.cl, c(0.1, 0.3, 0))
+  .d$EVID[3] <- 0
+  .d$DV[3] <- 1
+  expect_identical(
+    capture_warnings(.nlmixrIpredEtaData(.rxsolveIovFitStub(), .d)),
+    "1 subject-occasion pair(s) not in the fit get occasion etas of 0"
+  )
+  # a fit without IOV counts subjects
+  .fit <- .rxsolveIovFitStub()
+  .fit$env$iov <- NULL
+  .d$EVID[3] <- 1
+  .d$DV[3] <- NA
+  expect_identical(capture_warnings(.r <- .nlmixrIpredEtaData(.fit, .d)), character(0))
+  expect_identical(.r$eta.v, c(0.5, 0.6, 0))
+  .d$EVID[3] <- 0
+  .d$DV[3] <- 1
+  expect_identical(capture_warnings(.nlmixrIpredEtaData(.fit, .d)), "1 subject(s) not in the fit get etas of 0")
 })

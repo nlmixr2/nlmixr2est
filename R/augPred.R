@@ -316,7 +316,9 @@
 #' and the solve does not depend on the order of the subjects in `data`, on
 #' which of them it has, or on how rxode2 zeroes or orders the etas it is
 #' given.  A subject (with IOV, a subject-occasion pair) the fit did not
-#' estimate gets 0, with a warning.
+#' estimate gets 0, with a warning that counts those with an observation
+#' record ([.ipredObsRows()]): the others are not predicted, and a subject
+#' without observations has no etas in its own fit.
 #'
 #' @param fit nlmixr2 fit
 #' @param data data to predict, with the subject (and occasion) columns
@@ -336,24 +338,46 @@
     )
   }
   .id <- as.character(.d[[.w[1]]])
+  .obs <- .ipredObsRows(.d)
   .s <- .subjectEtaRows(fit, .id)
   if (length(.occCols) > 0L) {
     .occ <- stats::setNames(as.list(.d[.w[-1]]), .occCols)
     .r <- .iovEtaRows(fit, .id, .occ)
     # a new subject's pairs are all unseen, so this warning covers it
-    if (.r$unseen > 0L) {
+    .miss <- .iovEtaRows(fit, .id[.obs], lapply(.occ, `[`, .obs))$unseen
+    if (.miss > 0L) {
       warning(
-        .r$unseen,
+        .miss,
         " subject-occasion pair(s) not in the fit get occasion etas of 0",
         call. = FALSE
       )
     }
     .d[names(.r$etas)] <- .r$etas
-  } else if (.s$unseen > 0L) {
-    warning(.s$unseen, " subject(s) not in the fit get etas of 0", call. = FALSE)
+  } else {
+    .miss <- .subjectEtaRows(fit, .id[.obs])$unseen
+    if (.miss > 0L) {
+      warning(.miss, " subject(s) not in the fit get etas of 0", call. = FALSE)
+    }
   }
   .d[names(.s$etas)] <- .s$etas
   .d
+}
+
+#' Which records of the data to predict are observations
+#'
+#' [.nmObsRows()] of the data with upper-case names.  Data without a DV
+#' column, such as an event table, has its observation records' DV taken as
+#' present, as a solve takes them.
+#'
+#' @param d data to predict
+#' @return logical, one per row
+#' @noRd
+.ipredObsRows <- function(d) {
+  names(d) <- toupper(names(d))
+  if (is.null(d[["DV"]])) {
+    d$DV <- rep(0, nrow(d))
+  }
+  .nmObsRows(.nmWithEvid(d))
 }
 
 #' Name of the covariate interpolation a fit was estimated with
