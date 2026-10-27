@@ -1109,12 +1109,27 @@ int nlmUnwindProtectTest(int mode) {
 // and rethrown after lbfgsb3Cts returns, so nothing unwinds through it.
 static std::exception_ptr nlmLbfgsErr = nullptr;
 
+// Test hook: when > 0, counts down the protected solves of nlmLbfgsFill() and
+// throws a C++ exception inside the one that reaches 0.
+static int nlmLbfgsThrowAt = 0;
+
+// Sets nlmLbfgsFill()'s throw countdown (0 turns it off); returns the old one.
+//[[Rcpp::export]]
+int nlmLbfgsThrowTest(int at) {
+  int old = nlmLbfgsThrowAt;
+  nlmLbfgsThrowAt = at;
+  return old;
+}
+
 static bool nlmLbfgsFill(int n, double *x) {
   if (nlmLbfgsErr) return false;
   try {
     arma::vec theta(x, n);
     if (!isThetaSame(theta)) {
       nlmUnwindProtect([&]() {
+        if (nlmLbfgsThrowAt > 0 && --nlmLbfgsThrowAt == 0) {
+          Rcpp::stop("thrown inside the lbfgsb3c solve");
+        }
         arma::mat ret0 = nlmSolveGrad(theta);
         arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
         saveVec = (arma::sum(ret0, 0)).t();
