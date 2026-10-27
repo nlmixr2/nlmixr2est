@@ -276,8 +276,9 @@ nlmixr2iovVarSd <- function(val) {
 #' Refuse a repeated (`same()`) omega block to a method that would drop the tie
 #'
 #' Runs before the IOV hooks, so it sees only the user's own blocks; a model
-#' without one costs one condition test.  The alternatives named are
-#' `.sameBlockAlternatives()`.
+#' without one costs one condition test.  A repeated occasion-level block is
+#' refused first, for every method that handles IOV ([.iovSameRefuse()]).  The
+#' alternatives named are `.sameBlockAlternatives()`.
 #' @param ui rxode2 ui
 #' @param est estimation method name
 #' @param data,control unused; the hook signature
@@ -292,6 +293,7 @@ nlmixr2iovVarSd <- function(val) {
   if (!any(.cnd != lotri::lotriBaseCondition(.cnd), na.rm = TRUE)) {
     return(NULL)
   }
+  .iovSameRefuse(ui, est)
   # an est with no nlmixr2Est method (foceiLikLoad(est = "mystan")) asks
   # nothing of the block; nlmixr2() refuses an unknown est itself
   if (is.null(utils::getS3method("nlmixr2Est", est, optional = TRUE)) || .isSameBlockMethod(est)) {
@@ -469,8 +471,9 @@ nlmixr2iovVarSd <- function(val) {
 #' `iov.v ~ same() | occ` gives `iov.v` the condition `"occ:same:iov.cl"`.
 #' Neither the IOV rewrite nor a method's own IOV handling ties such a block,
 #' so a method that handles IOV (one with an `"iov"` attribute) stops here,
-#' naming the etas.  A repeated `"id"` block (`"id:same:<eta>"`) is not an
-#' occasion block and passes.
+#' naming the etas, whether or not it honours a repeated subject-level block.
+#' A repeated `"id"` block (`"id:same:<eta>"`) is not an occasion block and
+#' passes.
 #'
 #' @param ui rxode2 user interface model
 #' @param est estimation routine name
@@ -478,21 +481,16 @@ nlmixr2iovVarSd <- function(val) {
 #' @noRd
 #' @author Matthew L. Fidler
 .iovSameRefuse <- function(ui, est) {
-  if (!(paste0("nlmixr2Est.", est) %in% as.character(utils::methods("nlmixr2Est")))) {
-    return(invisible())
-  }
-  if (is.null(attr(utils::getS3method("nlmixr2Est", est), "iov"))) {
+  if (is.null(attr(utils::getS3method("nlmixr2Est", est, optional = TRUE), "iov"))) {
     return(invisible())
   }
   .iniDf <- ui$iniDf
   .cnd <- .iniDf$condition
   .base <- lotri::lotriBaseCondition(.cnd)
   .w <- which(
-    !is.na(.cnd) &
-      is.na(.iniDf$err) &
+    .iovOccRows(.iniDf) &
       !is.na(.iniDf$neta1) &
       .iniDf$neta1 == .iniDf$neta2 &
-      .base != "id" &
       .cnd != .base
   )
   if (length(.w) == 0L) {
@@ -516,7 +514,6 @@ nlmixr2iovVarSd <- function(val) {
 #' @noRd
 #' @author Matthew L. Fidler
 .uiApplyIov <- function(ui, est, data, control) {
-  .iovSameRefuse(ui, est)
   .fellBack <- FALSE
   if (!.isIovMethod(est, control)) {
     # the method's own IOV handling is in force -- unless this model is outside

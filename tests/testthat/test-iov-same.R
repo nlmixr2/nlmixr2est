@@ -659,8 +659,8 @@ test_that("a repeated occasion-level block stops before the fit, naming its etas
     "iov.cl ~ 0.1 | occ\n iov.v ~ same() | occ",
     "cl <- exp(tcl + iov.cl)\n v <- exp(tv + iov.v)"
   )
-  # every method that handles IOV, saem's own handling included; the others
-  # ran the fit and then stopped in lotri, and vae fitted the variances apart
+  # every method that handles IOV, saem's own handling included, whether or
+  # not it honours a repeated subject-level block
   for (.est in c("focei", "saem", "imp", "laplace", "agq", "npag", "vae")) {
     .e <- expect_error(nlmixr2(.one, .sameData(), .est, control = list(print = 0)), label = .est)
     expect_identical(conditionMessage(.e), paste0(.msg, "'iov.v' | occ"), label = .est)
