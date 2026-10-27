@@ -160,6 +160,18 @@
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
 
+### Tables
+
+- `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
+  subject has no observations ("Col::subvec(): indices out of bounds").
+  That subject's NPDE columns are `NA`, as its other table columns are.
+  The NPDE of a fit with a single subject no longer fails either.
+
+- In a model with a normal and a non-normal endpoint (such as `dpois()`), a
+  subject with no observations of the normal endpoint left every subject
+  before it in the data (the next subject, when it was the first) with CWRES,
+  CRES and CPRED computed from another subject's etas (or none), since
+  nlmixr2est 2.1.0.  Each row now takes its own subject's.
 - A finite-difference gradient or Hessian no longer takes a slope of 0 where
   its differences do not solve.
   - When the steps on one side of a parameter never solve, the step search
