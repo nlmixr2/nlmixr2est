@@ -56,9 +56,10 @@
 #' left behind makes the ui unparseable for a later rebuild (`.uiFinalizeIov()`).
 #'
 #' @param env fit environment
+#' @param pseudo the temporary etas' names
 #' @return Nothing, called for side effects
 #' @noRd
-.saemPseudoEtaCleanUi <- function(env) {
+.saemPseudoEtaCleanUi <- function(env, pseudo) {
   .ui <- get0("ui", envir = env, inherits = FALSE)
   if (!inherits(.ui, "rxUi")) {
     return(invisible())
@@ -66,7 +67,7 @@
   .ui <- rxode2::rxUiDecompress(.ui)
   .iniDf <- .ui$iniDf
   .used <- unique(unlist(lapply(.ui$lstExpr, all.vars)))
-  .rm <- grepl("^rx[.]eta[.]", .iniDf$name) & !(.iniDf$name %in% .used)
+  .rm <- .iniDf$name %in% pseudo & !(.iniDf$name %in% .used)
   if (!any(.rm)) {
     return(invisible())
   }
@@ -95,14 +96,14 @@
   if (!is.environment(ret$env)) {
     return(ret)
   }
-  .saemPseudoEtaCleanUi(ret$env)
-  # the ui is already back-transformed here, so read the etas off the fit
-  .ranef <- get0("ranef", envir = ret$env, inherits = FALSE)
-  .pseudo <- unique(grep("^rx[.]eta[.]", c(names(.ranef), names(ret)), value = TRUE))
-  if (length(.pseudo) == 0L) {
+  # only saem records temporary etas; a name such as an IOV rewrite's
+  # rx.eta.<x>.<occ> is not one
+  .thetas <- .saemPseudoTransformNames(get0("saemPseudoTransforms", envir = ret$env, inherits = FALSE))
+  if (length(.thetas) == 0L) {
     return(ret)
   }
-  .thetas <- sub("^rx[.]eta[.]", "", .pseudo)
+  .pseudo <- paste0("rx.eta.", .thetas)
+  .saemPseudoEtaCleanUi(ret$env, .pseudo)
   .drop <- c(.pseudo, paste0("rx.l.", .thetas), .thetas)
   .saemPseudoEtaDropSlots(ret$env, .drop)
   .saemPseudoEtaBlankVariability(ret$env, .thetas)

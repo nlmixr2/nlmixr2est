@@ -191,10 +191,12 @@
 #' @param ui rxode2 ui
 #' @param data nlmixr data
 #' @param timeVaryingCovariates Time varying covarites in the data
+#' @param pseudoTransforms the estimation's `saemPseudoTransforms`, the specs
+#'   of the temporary etas
 #' @return lower level saem fit
 #' @author Matthew L. Fidler
 #' @noRd
-.saemFitModel <- function(ui, data, timeVaryingCovariates = character(0)) {
+.saemFitModel <- function(ui, data, timeVaryingCovariates = character(0), pseudoTransforms = NULL) {
   # Stage the time-varying/non-time-varying mu-ref covariate split so
   # $saemModel0 collapses to the phi + timeVaryingCovariate*beta model (shared
   # with the mu-referenced focei family, see .nlmixrSetMuRefTimeVarying).
@@ -286,7 +288,7 @@
           if (is.null(.oi)) matrix(integer(0), ncol = 2L) else .oi$pairs
         },
         seed = rxode2::rxGetControl(ui, "seed", 99),
-        pseudoI1 = .saemPseudoPhi1Ix(ui),
+        pseudoI1 = .saemPseudoPhi1Ix(ui, pseudoTransforms),
         DEBUG = rxode2::rxGetControl(ui, "DEBUG", 0),
         tol = rxode2::rxGetControl(ui, "tol", 1e-6),
         itmax = rxode2::rxGetControl(ui, "itmax", 30),
@@ -2082,7 +2084,12 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .tv <- .nlmixrTimeVaryingCovariates(.ret$dataSav, .ui, .control$rxControl)
   })
 
-  .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates = .tv)
+  .ret$saem <- .saemFitModel(
+    .ui,
+    .ret$dataSav,
+    timeVaryingCovariates = .tv,
+    pseudoTransforms = env$saemPseudoTransforms
+  )
   # Re-stage the mu-ref time-varying split for the post-processing: the theta
   # table and parameter history are named from saemParamsToEstimate/
   # saemParHistNames, which only put a time-varying covariate in the correct
@@ -2104,7 +2111,9 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
-    .saemFoldPseudoEtas(.ret)
+    .saemFoldPseudoEtas(.ret, env$saemPseudoTransforms)
+    # the temporary etas' record, for .saemPseudoEtaFinalize()
+    .ret$saemPseudoTransforms <- env$saemPseudoTransforms
     # Must run before .saemMixFix(), or ui$theta silently falls back to ini()
     # values for every param.
     .nlmixr2FitUpdateParams(.ret)

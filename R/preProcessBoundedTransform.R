@@ -601,8 +601,7 @@
     str2lang(transforms[[i]]$name)
   })
   # saem's temporary etas (.saemAddPseudoEtas) also add a helper line and an eta
-  .pseudo <- vapply(transforms, function(tr) isTRUE(tr$pseudoEta), logical(1))
-  .pseudoNames <- vapply(transforms[.pseudo], function(tr) tr$name, character(1))
+  .pseudoNames <- .saemPseudoTransformNames(transforms)
   .trLhs <- c(.trLhs, lapply(paste0("rx.l.", .pseudoNames), str2lang))
 
   .keep <- which(vapply(

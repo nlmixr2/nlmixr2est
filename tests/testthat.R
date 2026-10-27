@@ -163,7 +163,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "uninformative-etas-revisit",
     "saem-iov-twolevel-fit",
     "iov-loglik-1000",
-    "iov-same-fit"
+    "iov-same-fit",
+    "saem-pseudo-eta-names-fit"
   ),
   # batch 7
   c(

@@ -146,6 +146,22 @@
   .ui
 }
 
+#' The thetas saem gave a temporary eta, from its transform specs
+#'
+#' Each temporary eta is `rx.eta.<theta>`, its internal theta
+#' `rxBoundedTr.<theta>` (`.saemAddPseudoEtas()`).  The specs are the record:
+#' a name of that form is not enough, since an occasion eta `eta.<x>` becomes
+#' `rx.eta.<x>.<occ>` in the IOV rewrite.
+#'
+#' @param transforms bounded-transform specs, as `ui$boundedTransforms` or
+#'   the estimation's `saemPseudoTransforms`
+#' @return the theta names, character
+#' @noRd
+.saemPseudoTransformNames <- function(transforms) {
+  .pseudo <- vapply(transforms, function(tr) isTRUE(tr$pseudoEta), logical(1))
+  vapply(transforms[.pseudo], function(tr) tr$name, character(1))
+}
+
 #' Fold saem's temporary etas back into their thetas
 #'
 #' An eta-less theta is fit as `transform(rxBoundedTr.theta + rx.eta.theta)`
@@ -154,16 +170,19 @@
 #' individual prediction unchanged.
 #'
 #' @param env saem fit environment after `.getSaemTheta()`/`.getSaemOmega()`
+#' @param transforms the estimation's `saemPseudoTransforms`
 #' @return Nothing, called for side effects
 #' @noRd
-.saemFoldPseudoEtas <- function(env) {
+.saemFoldPseudoEtas <- function(env, transforms) {
   .eta <- env$.etaMatBase
   if (is.null(.eta) || is.null(colnames(.eta))) {
     return(invisible())
   }
-  .pseudo <- grep("^rx[.]eta[.]", colnames(.eta), value = TRUE)
-  for (.e in .pseudo) {
-    .t <- sub("^rx[.]eta[.]", "", .e)
+  for (.t in .saemPseudoTransformNames(transforms)) {
+    .e <- paste0("rx.eta.", .t)
+    if (!(.e %in% colnames(.eta))) {
+      next
+    }
     if (paste0("rxBoundedTr.", .t) %in% names(env$fullTheta)) {
       .t <- paste0("rxBoundedTr.", .t)
     }
@@ -184,12 +203,12 @@
 #' Internal theta names that carry a temporary eta
 #'
 #' @param ui rxode2 ui
-#' @return `rxBoundedTr.<name>` for each `rx.eta.<name>` in the model
+#' @param transforms the estimation's `saemPseudoTransforms`
+#' @return `rxBoundedTr.<name>` for each temporary eta's theta in the model
 #' @noRd
-.saemPseudoEtaThetaNames <- function(ui) {
-  .n <- ui$iniDf$name
-  .t <- paste0("rxBoundedTr.", sub("^rx[.]eta[.]", "", grep("^rx[.]eta[.]", .n, value = TRUE)))
-  .t[.t %in% .n]
+.saemPseudoEtaThetaNames <- function(ui, transforms) {
+  .t <- paste0("rxBoundedTr.", .saemPseudoTransformNames(transforms))
+  .t[.t %in% ui$iniDf$name]
 }
 
 #' Kernel phi1 columns (0-based) whose theta carries a temporary eta
@@ -197,10 +216,11 @@
 #' Uses the phi1 order of `.saemPhi1TargetMap()`; `ui$saemInit` carries no theta names.
 #'
 #' @param ui rxode2 ui
+#' @param transforms the estimation's `saemPseudoTransforms`
 #' @return integer vector
 #' @noRd
-.saemPseudoPhi1Ix <- function(ui) {
+.saemPseudoPhi1Ix <- function(ui, transforms) {
   .pars <- rxUiGet.saemParamsToEstimateCov(list(ui))
   .phi1 <- .pars[.pars %in% ui$muRefDataFrame$theta]
-  which(.phi1 %in% .saemPseudoEtaThetaNames(ui)) - 1L
+  which(.phi1 %in% .saemPseudoEtaThetaNames(ui, transforms)) - 1L
 }
