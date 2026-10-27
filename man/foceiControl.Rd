@@ -86,7 +86,7 @@ foceiControl(
   covTryHarder = FALSE,
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa", "trust"),
-  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c"),
+  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c", "steihaug", "newuoa"),
   innerHessian = c("focei", "conditional"),
   detHessian = c("focei", "conditional"),
   hessianMethod = c("fd", "bfgs", "sr1", "bofill"),
@@ -96,6 +96,9 @@ foceiControl(
   trustFterm = NULL,
   trustMterm = NULL,
   trustPolish = FALSE,
+  steihaugPolish = FALSE,
+  newuoaPolish = FALSE,
+  newuoaRhoend = NULL,
   bobyqaStationary = TRUE,
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL,
@@ -767,8 +770,11 @@ box is reported as an infinite objective and the region shrinks instead.}
     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
     using an exact Gauss-Newton+Omega^-1 Hessian every iteration),
     `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
-    seed) or `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
-    by the `innerLbfgs*` arguments; `"auto"` never picks it).
+    seed), `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
+    by the `innerLbfgs*` arguments), `"steihaug"` (RcppTrust truncated
+    conjugate-gradient trust region on the same Hessian as `"trust"`, using
+    the `trust*` controls) or `"newuoa"` (RcppTrust derivative-free NEWUOA).
+    `"auto"` never picks the last three.
 
     `"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
     (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
@@ -873,6 +879,15 @@ outer search then also restarts once from where it stops, which costs
 about twice the outer evaluations.  `FALSE` (default) keeps the plain
 trust solve and a single outer search.}
 
+\item{steihaugPolish, newuoaPolish}{logical; the `trustPolish` Newton
+polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
+solve.  `FALSE` (default) keeps the plain solve.}
+
+\item{newuoaRhoend}{final NEWUOA trust-region radius for
+`innerOpt="newuoa"`, in sqrt(diag(Omega)) units.  `NULL` (default) uses
+`sqrt(rtol)` of the FOCEi ODE solve (`rxControl`), the precision that
+solve can resolve a minimum to.}
+
 \item{bobyqaStationary}{logical; when `TRUE` (default), a normal exit of
 the `"bobyqa"` outer search is checked with a central-difference
 gradient and a downhill probe.  If the probe lowers the objective by
@@ -910,7 +925,7 @@ extra population gradient per parameter per iteration.}
 \item{outerTrustRinit, outerTrustRmax}{Initial and maximum trust-region
 radius for \code{outerOpt="trust"}, in the scaled-parameter space the
 outer problem optimizes in.  \code{NULL} (default) derives
-\code{outerTrustRinit} from \code{minqa::bobyqa()}'s own default-rhobeg
+\code{outerTrustRinit} from \code{RcppTrust::bobyqa()}'s own default-rhobeg
 formula and \code{outerTrustRmax} as \code{8 * outerTrustRinit}.}
 
 \item{outerTrustFterm, outerTrustMterm}{Function-value and predicted-decrease

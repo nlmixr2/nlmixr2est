@@ -1,5 +1,28 @@
 # nlmixr2est (development version)
 
+## New features
+
+- `saem` now reports each subject's conditional mode as `fit$eta` (the
+  Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
+  iteration, in parallel over subjects.  The tables and shrinkage use the
+  mode.  SAEM's approximate conditional mean is kept as `fit$etaSaem`;
+  `saemControl(ebe = "saem")` restores the old behavior, and
+  `ebeMaxEval`/`ebeTol` control the search (`ebeTol` defaults to `sqrt(rtol)`
+  of the SAEM ODE solve).  Uninformative etas stay at zero and the temporary
+  etas of eta-less likelihood thetas keep their SAEM values.
+
+- `minqa` is now only suggested.  BOBYQA and NEWUOA (the `bobyqa`/`newuoa`
+  estimation methods, the FOCEi outer optimizers and every internal call) use
+  the thread-safe ports in `RcppTrust` (>= 0.2.0), called directly from C++
+  without a round-trip through R.  `est = "uobyqa"` and
+  `foceiControl(outerOpt = "uobyqa")` still need `minqa` installed.
+
+- `foceiControl(innerOpt = "steihaug")` (RcppTrust's truncated-CG trust
+  region on the same exact gradient and Hessian as `"trust"`) and
+  `innerOpt = "newuoa"` (derivative-free, `rhoend` from `newuoaRhoend`,
+  default `sqrt(rtol)`) are new inner (eta) optimizers.  `steihaugPolish` and
+  `newuoaPolish` add the opt-in Newton polish that `trustPolish` gives trust.
+
 ## Bug fixes
 
 ### Covariance
@@ -29,8 +52,44 @@
   kept "nlme"`), so the same failure reads the same whatever the labels, and they
   stay under 75 characters.
 
+- `covMethod = "analytic"` with a residual variance the general (f,R) assembly
+  handles (for example `combined1`) now keeps the analytic covariance when its
+  batched augmented solve fails: the per-subject solve it falls back to rebuilds
+  the residual-error slots as the batched one does.  Since 7.0.2 that solve
+  failed ("number of items to replace is not a multiple of replacement length")
+  and the fit fell back to the finite-difference covariance.  A general (f,R)
+  model with no estimated sigma (`combined1` with both sigmas fixed, or
+  `boxCox()` with its additive sigma fixed) now gets the analytic covariance
+  too; `setCov(fit, "analytic")` used to stop on it.
+
 ### Estimation
 
+- `foceiControl(outerOpt = "newuoa")` now stops the outer optimization at
+  `maxOuterIterations` function evaluations, as `outerOpt = "uobyqa"` and
+  `"bobyqa"` do; it used to ignore the limit and run NEWUOA to convergence.
+
+- `saem` now reports the non-mu-referenced thetas it actually used.  With
+  `nonMuTheta = "regress"` (the default) the model ran at the directly
+  optimized values, but `$theta` showed the regression estimate taken before
+  that optimization, so the reported thetas, etas and tables disagreed.
+
+- A population parameter (`theta`) that starts at exactly 0, such as a covariate
+  effect, is now estimated instead of staying at about 0 (#1228).  Its scale used
+  to be the `zeroTheta` nudge (0.001); it is now a typical magnitude, `1/sd()` of
+  the covariate it multiplies (or 1), for FOCEi, nls and the nlm family.
+  FOCEi also moves its start by one Newton step (`foceiControl(zeroThetaStep=)`)
+  when that lowers the objective.
+
+  Likewise a general-likelihood fit (`ll()`, `dnorm()`, `t()`, ...) now
+  reports the mu-referenced thetas its direct optimization settled on rather
+  than the sampled-mean update.
+- `saem` now uses censoring (M2/M3/M4) for `dnorm()`, `t()` and `cauchy()`
+  endpoints; it scored a censored observation by its density at the limit.
+- M2 censoring (`CENS = 0` with a finite `LIMIT`) now conditions on the side
+  of the limit the observation is on, not the prediction.  Before, the
+  objective had a kink wherever a prediction crossed the limit, and an
+  observation predicted on the wrong side of it was scored against the
+  wrong tail.
 - On Windows with more than one thread, `est = "imp"` and `"impmap"` no
   longer crash (ODE models) or give estimates that depend on the number of
   threads (`linCmt()` models); affected since 7.1.0.  Linux and macOS were
@@ -106,6 +165,18 @@
   frames while it unwound, and the next R error could crash the session; it
   is now held until those frames have returned.
 
+### Tables
+
+- `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
+  subject has no observations ("Col::subvec(): indices out of bounds").
+  That subject's NPDE columns are `NA`, as its other table columns are.
+  The NPDE of a fit with a single subject no longer fails either.
+
+- In a model with a normal and a non-normal endpoint (such as `dpois()`), a
+  subject with no observations of the normal endpoint left every subject
+  before it in the data (the next subject, when it was the first) with CWRES,
+  CRES and CPRED computed from another subject's etas (or none), since
+  nlmixr2est 2.1.0.  Each row now takes its own subject's.
 - A finite-difference gradient or Hessian no longer takes a slope of 0 where
   its differences do not solve.
   - When the steps on one side of a parameter never solve, the step search
@@ -147,6 +218,33 @@
   type 2 gave a Hessian of zeros.  The names and the codes the control
   stores (`eventType` 2 and 3, the Hessian types 1 and 3) are accepted as
   before.
+
+- `addNpde()` and `addTable()` now work on a fit with inter-occasion
+  variability, including one run with `calcTables = FALSE`.  They stopped
+  with "The following parameter(s) are required for solving: occ, ..."
+  (the parameters listed depend on the model and the method).  They refit
+  with no iterations at the fit's estimates, as `addCwres()` does, and give
+  the columns the fit gives itself; for an ODE model, to the solver's
+  tolerance.  A `saem` fit with `iovMethod = "collapsed"` is refused with a
+  message: ask for its tables when fitting it.
+
+- A fit with inter-occasion variability is now finished like any other when
+  it is run with `tableControl(npde = TRUE)` or has a subject with no
+  observations.  Its model, fixed and random effects, `omega`, parameter
+  table and data kept the expanded occasion etas (such as `rx.iov.cl.1`) and
+  their magnitude thetas.
+
+- A `saem` fit with a mu-referenced covariate (such as
+  `cl <- exp(tcl + eta.cl + wt.cl * log(WT / 70))`) run with
+  `tableControl(npde = TRUE)` is now finished like one without NPDE.  Its
+  table, data and model kept the `nlmixrMuDerCov1` column it was fitted
+  with.
+
+- `addTable()` now applies the `keep` and `drop` of its `table`, as it
+  applies its `keep` and `drop` arguments; it ignored them.
+
+- `addCwres()` now records its time in the fit's `time` table; it was
+  lost.
 
 # nlmixr2est 7.2.1
 

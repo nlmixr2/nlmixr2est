@@ -162,3 +162,149 @@ test_that("popResFinal keeps every column when a GC runs at every allocation", {
     c("a", "b", "DV", "c")
   )
 })
+
+nmTest({
+  test_that("addTable() takes the table's keep and drop as its arguments", {
+    # as a fit's own table step does.  It solves the fit's processed data
+    # (`dataSav`), which has only the model's columns, so rxode2 warns that a
+    # data column can't be kept; the IOV route refits from the data, so it can
+    .fit <- one.compartment.fit.focei
+    expect_true("IWRES" %in% names(.fit))
+    .tab <- tableControl(keep = "WT", drop = "IWRES")
+    .w <- capture_warnings(.t <- suppressMessages(addTable(.fit, updateObject = FALSE, table = .tab)))
+    expect_identical(unique(.w), "Cannot keep missing columns: WT")
+    expect_false("IWRES" %in% names(.t))
+    .w <- capture_warnings(.t <- suppressMessages(addTable(.fit, updateObject = FALSE, keep = "WT", drop = "IWRES")))
+    expect_identical(unique(.w), "Cannot keep missing columns: WT")
+    expect_false("IWRES" %in% names(.t))
+  })
+})
+
+# The arguments .calcCwres0() hands resCalc() (cwres = FALSE) or cwresCalc()
+# (cwres = TRUE), with `eta` as the eta table
+.residCall <- function(fit, eta, cwres) {
+  .prd <- .foceiPredIpredList(
+    fit,
+    data = fit$dataSav,
+    keep = "nlmixrRowNums",
+    thetaEtaParameters = fit$foceiThetaEtaParameters,
+    predOnly = !cwres,
+    addDosing = FALSE,
+    subsetNonmem = TRUE
+  )
+  .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
+  .lhs <- setdiff(unique(.getRelevantLhs(fit, "nlmixrRowNums", .prd$ipred)), .state)
+  .params <- setdiff(intersect(names(fit$dataSav), fit$predOnlyModel$params), c("CMT", "cmt", "Cmt", .state, .lhs))
+  .tab <- tableControl()
+  .tab$doSim <- TRUE
+  .Call(
+    if (cwres) `_nlmixr2est_cwresCalc` else `_nlmixr2est_resCalc`,
+    .prd,
+    fit$omega,
+    eta,
+    .prd$ipred$dv,
+    .prd$ipred$evid,
+    .prd$ipred$cens,
+    .prd$ipred$limit,
+    .lhs,
+    .state,
+    .params,
+    fit$IDlabel,
+    .tab,
+    PACKAGE = "nlmixr2est"
+  )
+}
+
+# A model with a normal endpoint (cp) and a count (cnt), on theo_sd with
+# counts for every subject; `cpless` subjects have counts only
+.residTwoEndpointMod <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    tl <- log(3)
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+    eta.l ~ 0.1
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    lam <- exp(tl + eta.l)
+    d / dt(depot) <- -ka * depot
+    d / dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+    cnt ~ dpois(lam)
+  })
+}
+
+.residTwoEndpointData <- function(cpless = integer(0), drop = integer(0)) {
+  .d <- nlmixr2data::theo_sd
+  .d <- .d[!(.d$ID %in% drop), ]
+  .obs <- .d[.d$EVID == 0, ]
+  .cnt <- .obs
+  .cnt$DV <- (seq_len(nrow(.cnt)) %% 5) + 1
+  .cnt$CMT <- "cnt"
+  .obs$CMT <- "cp"
+  .dose <- .d[.d$EVID != 0, ]
+  .dose$CMT <- "depot"
+  .d <- rbind(.dose, .obs[!(.obs$ID %in% cpless), ], .cnt)
+  .d[order(.d$ID, .d$TIME, -.d$EVID), ]
+}
+
+nmTest({
+  test_that("residuals take each row's etas from its own subject", {
+    # CWRES uses only the normally distributed rows, so a subject with counts
+    # only has none there, and its absence shifted the etas by position.  At
+    # maxOuterIterations = 0 the other subjects' etas and residuals do not
+    # depend on that subject, so they equal those of the same data without
+    # it, to the inner problem's convergence (the shifted ones were 0.3-0.9
+    # off).
+    # With subject 5 count-only, every subject before it took the next
+    # subject's etas and the first one's were left unset; with subject 1,
+    # subject 2's were.
+    .ctl <- foceiControl(print = 0, covMethod = "", maxOuterIterations = 0L)
+    for (.k in c(1L, 5L)) {
+      .with <- suppressWarnings(suppressMessages(
+        nlmixr2(.residTwoEndpointMod, .residTwoEndpointData(cpless = .k), "focei", control = .ctl)
+      ))
+      .without <- suppressWarnings(suppressMessages(
+        nlmixr2(.residTwoEndpointMod, .residTwoEndpointData(drop = .k), "focei", control = .ctl)
+      ))
+      .a <- as.data.frame(.with)
+      .b <- as.data.frame(.without)
+      .a <- .a[.a$CMT == "cp", ]
+      .b <- .b[.b$CMT == "cp", ]
+      expect_identical(nrow(.a), 121L, label = .k)
+      expect_identical(as.character(.a$ID), as.character(.b$ID), label = .k)
+      for (.c in c("CWRES", "CRES", "CPRED", "eta.cl")) {
+        expect_equal(.a[[.c]], .b[[.c]], tolerance = 1e-4, label = paste(.k, .c))
+      }
+    }
+  })
+
+  test_that("residuals stop when a subject of the rows has no eta row", {
+    .fit <- suppressWarnings(suppressMessages(nlmixr2(
+      .residTwoEndpointMod,
+      .residTwoEndpointData(),
+      "focei",
+      control = foceiControl(print = 0, covMethod = "", maxOuterIterations = 0L)
+    )))
+    .eta <- .fit$eta
+    expect_true(is.list(.residCall(.fit, .eta, FALSE)))
+    expect_true(is.list(.residCall(.fit, .eta, TRUE)))
+    .bad <- .eta[.eta$ID != "2", ]
+    for (.cw in c(FALSE, TRUE)) {
+      .e <- expect_error(.residCall(.fit, .bad, .cw))
+      expect_identical(
+        conditionMessage(.e),
+        "subject code 2 of the solved rows has no row in the eta table",
+        label = .cw
+      )
+    }
+  })
+})

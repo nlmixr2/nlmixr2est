@@ -480,6 +480,30 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .ret
 }
 
+#' The simulated rows of the subjects the fit estimated
+#'
+#' The NPDE simulation solves the fit's original data, so a subject with no
+#' observation, which the fit dropped, is in it; its rows would misalign every
+#' later subject's against the fit's observations.
+#'
+#' @param sim `vpcSim()` result, whose `id` is the original subject label
+#' @param idLvl the fit's subject labels
+#' @param nobs the number of observations the NPDE is computed for
+#' @return `sim` without the subjects the fit did not estimate
+#' @noRd
+#' @author Matthew L. Fidler
+.npdeSimFitSubjects <- function(sim, idLvl, nobs) {
+  .keep <- as.character(sim$id) %in% as.character(idLvl)
+  if (!all(.keep)) {
+    sim <- sim[.keep, , drop = FALSE]
+  }
+  .perSim <- sum(sim$sim.id == sim$sim.id[1])
+  if (.perSim != nobs) {
+    stop("the NPDE simulation has ", .perSim, " observations per sample, but the fit has ", nobs, call. = FALSE)
+  }
+  sim
+}
+
 .calcCwres0 <- function(
   fit,
   data = fit$dataSav,
@@ -520,6 +544,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .ipred <- .prdLst$ipred
     .ipred <- .ipred[.ipred$nlmixrRowNums %in% .ni$nlmixrRowNums, ]
     .ipred <- .ipred[order(.ipred$nlmixrRowNums), ]
+    .sim <- .npdeSimFitSubjects(.sim, fit$idLvl, nrow(.ipred))
     .ret <- .Call(`_nlmixr2est_npdeCalc`, .sim, .ipred$dv, .ipred$evid, .prdLst$ipred$cens, .prdLst$ipred$limit, table)
     .df <- data.frame(nlmixrRowNums = .prdLst$ipred$nlmixrRowNums)
     .ret1 <- .ret[[1]]
@@ -1064,6 +1089,14 @@ addTable <- function(
   ## emitted on exit.  updateObject = TRUE keeps (and modifies) the shared
   ## environment, so "in place" is environment identity here (see rxEvents.R)
   force(object)
+  # a finished fit with IOV gets its tables from a refit
+  # (.refitNoIterations()); the fit's own table step calls addTable() with
+  # updateObject = "no"
+  .iovTables <- missing(data) &&
+    missing(thetaEtaParameters) &&
+    !identical(updateObject, "no") &&
+    inherits(object, "nlmixr2FitCore") &&
+    .uiHasIov(object$ui)
   .nlmixr2EventEnter()
   .evOrig <- object
   .evOrigEnv <- if (inherits(object, "nlmixr2FitCore")) object$env else NULL
@@ -1081,7 +1114,10 @@ addTable <- function(
   nlmixrWithTiming(
     "table",
     {
-      keep <- unique(c(keep, "nlmixrRowNums"))
+      # the table's keep and drop count as the arguments do, as in the fit's
+      # own table step and in the IOV route's refit
+      keep <- unique(c(keep, table$keep, "nlmixrRowNums"))
+      drop <- unique(c(drop, table$drop))
       .malert("Calculating residuals/tables")
       .objName <- substitute(object)
       .objName <- if (is.name(.objName)) as.character(.objName) else NULL
@@ -1096,6 +1132,9 @@ addTable <- function(
       } else {
         .control <- foceiControl()
       }
+      # the IOV route's refit has already finished its table: subject labels,
+      # factors and reinserted subjects
+      .finished <- FALSE
       if (is.null(.fit$omega)) {
         .df <- .calcIres(
           .fit,
@@ -1106,12 +1145,32 @@ addTable <- function(
           subsetNonmem = table$subsetNonmem,
           keep = keep
         )
+      } else if (.iovTables) {
+        .iovRefitAssertConsistent(object, "addTable()")
+        if (!inherits(table, "tableControl")) {
+          table <- do.call(tableControl, table)
+        }
+        # CWRES as .calcTables() decides it for this fit, not for the focei refit
+        if (is.null(table$cwres)) {
+          table$cwres <- !is.null(.fit$innerModel) || .foceiObjfWithoutCwres(.fit)
+        }
+        .keep <- setdiff(keep, "nlmixrRowNums")
+        if (length(.keep) > 0L) {
+          table$keep <- .keep
+        }
+        .newFit <- .refitNoIterations(object, calcTables = TRUE, table = table)
+        assign("shrink", .newFit$shrink, .fit)
+        .df <- as.data.frame(.newFit)
+        .rownum <- .newFit$env$.rownum
+        .finished <- TRUE
       } else {
         .tabs <- .calcTables(.fit, data = data, table = table, keep = keep)
         assign("shrink", .mixOwnedEtaShrink(.tabs$shrink, .fit), .fit)
         .df <- .tabs$resid
       }
-      .rownum <- as.integer(.df$nlmixrRowNums)
+      if (!.finished) {
+        .rownum <- as.integer(.df$nlmixrRowNums)
+      }
       assign(".rownum", .rownum, envir = .fit)
       drop <- c(
         drop,
@@ -1143,23 +1202,25 @@ addTable <- function(
         .df <- .df[, .w, drop = FALSE]
       }
       class(.df) <- "data.frame"
-      .id <- .df$ID
-      if (is.null(.id)) {
-        .df$ID <- 1L
-      } else {
-        attr(.id, "levels") <- object$idLvl
-        class(.id) <- "factor"
-        .df$ID <- .id
+      if (!.finished) {
+        .id <- .df$ID
+        if (is.null(.id)) {
+          .df$ID <- 1L
+        } else {
+          attr(.id, "levels") <- object$idLvl
+          class(.id) <- "factor"
+          .df$ID <- .id
+        }
+        .covLvl <- object$covLvl
+        for (.v in names(.covLvl)) {
+          .l <- as.integer(.df[[.v]])
+          attr(.l, "levels") <- .covLvl[[.v]]
+          class(.l) <- "factor"
+          .df[[.v]] <- .l
+        }
+        # re-insert subjects dropped for having no usable observation
+        .df <- .reinsertNoObsSubjects(.df, object, table)
       }
-      .covLvl <- object$covLvl
-      for (.v in names(.covLvl)) {
-        .l <- as.integer(.df[[.v]])
-        attr(.l, "levels") <- .covLvl[[.v]]
-        class(.l) <- "factor"
-        .df[[.v]] <- .l
-      }
-      # re-insert subjects dropped for having no usable observation
-      .df <- .reinsertNoObsSubjects(.df, object, table)
       .isDplyr <- requireNamespace("tibble", quietly = TRUE)
       if (!.isDplyr) {
         .isDataTable <- requireNamespace("data.table", quietly = TRUE)

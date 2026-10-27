@@ -133,7 +133,6 @@ SEXP _nlmixr2est_powerD(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_powerDLambda(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_powerDLambda2(SEXP, SEXP, SEXP, SEXP, SEXP);
 
-SEXP _saemResidF(SEXP v);
 
 SEXP _nlmixr2est_nlmixrExpandFdParNlme_(SEXP, SEXP);
 
@@ -358,7 +357,6 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_powerDLambda2", (DL_FUNC) &_nlmixr2est_powerDLambda2, 5},
   {"_nlmixr2est_powerL", (DL_FUNC) &_nlmixr2est_powerL, 5},
   {"_nlmixr2est_trustBfgsUpdate", (DL_FUNC) &_nlmixr2est_trustBfgsUpdate, 3},
-  {"_saemResidF", (DL_FUNC) &_saemResidF, 1},
   {"_nlmixr2est_npdeCalc", (DL_FUNC) &_nlmixr2est_npdeCalc, 6},
   {"_nlmixr2est_cwresCalc",  (DL_FUNC) &_nlmixr2est_cwresCalc, 12},
   {"_nlmixr2est_resCalc",  (DL_FUNC) &_nlmixr2est_resCalc, 12},
