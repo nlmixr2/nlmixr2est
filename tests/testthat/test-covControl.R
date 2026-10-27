@@ -101,9 +101,9 @@ nmTest({
     expect_error(suppressMessages(setCov(.fit, "r")), "\"r\" could not be computed")
     # the refit was given no fallback
     expect_identical(.args$fallback, list())
-    expect_warning(
-      suppressMessages(setCov(.fit, "r", control = rsControl(covFallback = list(r = "s")))),
-      "\"s\" covariance installed instead of the requested \"r\""
+    expect_identical(
+      capture_warnings(suppressMessages(setCov(.fit, "r", control = rsControl(covFallback = list(r = "s"))))),
+      "\"s\" installed instead of the requested \"r\""
     )
     expect_identical(.args$fallback, list(r = "s"))
     expect_identical(.fit$covMethod, "s")

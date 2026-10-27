@@ -109,18 +109,12 @@
   if (is.null(d$EVID)) {
     d$EVID <- ifelse(is.na(d$AMT) | d$AMT == 0, 0L, 1L)
   }
+  # the FOCEi inner problem drops these subjects too, so the two agree
+  d <- .nmDropNoObsSubjects(d)
   .ids <- unique(d$ID)
   N <- length(.ids)
-  subj <- vector("list", N)
-  .nobs <- 0L
-  for (i in seq_len(N)) {
-    .di <- d[d$ID == .ids[i], , drop = FALSE]
-    .obs <- .di[.di$EVID == 0, , drop = FALSE]
-    .cens <- if (is.null(.obs$CENS)) integer(nrow(.obs)) else as.integer(.obs$CENS)
-    .limit <- if (is.null(.obs$LIMIT)) rep(NA_real_, nrow(.obs)) else as.numeric(.obs$LIMIT)
-    subj[[i]] <- list(ev = .di, times = .obs$TIME, y = .obs$DV, n = nrow(.obs), cens = .cens, limit = .limit)
-    .nobs <- .nobs + nrow(.obs)
-  }
+  subj <- .nmSubjectObs(d, .ids)
+  .nobs <- sum(vapply(subj, `[[`, integer(1), "n"))
 
   list(
     N = N,

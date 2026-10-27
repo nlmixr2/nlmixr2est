@@ -222,7 +222,7 @@ test_that("a declined analytic covariance falls back as covFallback$analytic lis
   expect_identical(.s$env$covTried$method[nrow(.s$env$covTried)], "s")
   .none <- .fit(list())
   expect_identical(.none$covMethod, "failed")
-  expect_true(any(grepl("covFallback lists no fallback", .none$runInfo, fixed = TRUE)))
+  expect_true("\"analytic\" not usable (a linCmt() model); no fallback" %in% .none$runInfo)
 })
 
 test_that("covFallback round-trips through rxUiDeparse()", {
@@ -323,4 +323,53 @@ test_that("a theta-only \"r,s\" fit keeps its \"r\" and \"s\" covariances to swi
   expect_identical(.f$cov, .f$env$covList[["s"]] %||% .f$env$covS)
   suppressMessages(setCov(.f, "r,s"))
   expect_identical(.f$covMethod, "r,s")
+})
+
+test_that(".covNotUsableMsg() takes one string for each part", {
+  expect_error(.covNotUsableMsg("analytic", NULL, "no fallback"), "Assertion on 'why' failed", fixed = TRUE)
+  expect_error(.covNotUsableMsg("analytic", c("a", "b"), "no fallback"), "Assertion on 'why' failed", fixed = TRUE)
+  expect_error(.covNotUsableMsg("analytic", NA_character_, "no fallback"), "Assertion on 'why' failed", fixed = TRUE)
+  expect_error(.covNotUsableMsg(NULL, "a reason", "no fallback"), "Assertion on 'request' failed", fixed = TRUE)
+  expect_error(.covNotUsableMsg("analytic", "a reason", NULL), "Assertion on 'tail' failed", fixed = TRUE)
+})
+
+test_that(".covNotUsableMsg() keeps the warning under 75 characters", {
+  expect_identical(
+    .covNotUsableMsg("r,s", "R not PD", "installed \"s\""),
+    "\"r,s\" not usable (R not PD); installed \"s\""
+  )
+  .w <- .covNotUsableMsg("analytic", strrep("x", 80), "installed \"r,s (full)\"")
+  expect_identical(nchar(.w), 74L)
+  expect_match(.w, "^\"analytic\" not usable \\(x+\\.\\.\\.\\); installed \"r,s \\(full\\)\"$")
+  # a request and tail too long to leave the reason ten characters clip the line
+  .w <- .covNotUsableMsg(strrep("m", 40), strrep("x", 80), strrep("t", 40))
+  expect_identical(nchar(.w), 74L)
+  expect_identical(
+    .w,
+    paste0("\"", strrep("m", 40), "\" not usable (", strrep("x", 7), "...); ", strrep("t", 3), "...")
+  )
+})
+
+test_that("a declined analytic covariance heads covTried in full and is named in the warning", {
+  .e <- .covSelectEnv()
+  .full <- "an observed information that would not invert (Lapack routine dgesv: system is exactly singular: U[3,3] = 0)"
+  .short <- "an observed information that would not invert"
+  .e$.analyticReason <- .full
+  .e$.analyticReasonShort <- .short
+  .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 1L, 1L, "r", "s", FALSE, FALSE, 1e-5))
+  expect_identical(.r$value, list(slot = 1L, label = "r,s"))
+  expect_identical(.e$covTried, data.frame(method = c("analytic", "r,s"), outcome = c(.full, "used")))
+  expect_identical(.r$warnings, "\"analytic\" not usable (an observed information that w...); installed \"r,s\"")
+  expect_lt(nchar(.r$warnings), 75L)
+  # with no covariance at all, the analytic step and the matrices' states share the line
+  .e <- .covSelectEnv()
+  .e$.analyticReason <- .full
+  .e$.analyticReasonShort <- .short
+  .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 2L, 2L, "r", "s", FALSE, FALSE, 1e-5))
+  expect_identical(.e$covTried$outcome, c(.full, "R not PD", "S not PD"))
+  expect_identical(
+    .r$warnings,
+    c("\"analytic\" not usable (an observed information that wou...); no covariance", "covariance step failed")
+  )
+  expect_true(all(nchar(.r$warnings) < 75L))
 })

@@ -32,7 +32,7 @@ nmTest({
     local_mocked_bindings(.covRecompute = function(fit, method, control = NULL) NULL)
     # the post-fit hook's warning is kept with the run's other warnings
     expect_no_warning(.fit <- .fitDeferred("imp"))
-    expect_identical(tail(.fit$runInfo, 1L), "\"imp\" covariance could not be computed; none installed")
+    expect_identical(tail(.fit$runInfo, 1L), "\"imp\" could not be computed; none installed")
     expect_null(.fit$cov)
     expect_null(.fit$env$covOptions$imp)
   })
@@ -43,7 +43,7 @@ nmTest({
       list(cov = matrix(diag(0.01, 4), 4, 4, dimnames = list(.n, .n)), covMethod = "linFim")
     })
     expect_no_warning(.fit <- .fitDeferred("sa"))
-    expect_identical(tail(.fit$runInfo, 1L), "\"linFim\" covariance installed instead of the requested \"sa\"")
+    expect_identical(tail(.fit$runInfo, 1L), "\"linFim\" installed instead of the requested \"sa\"")
     expect_identical(.fit$covMethod, "linFim")
     expect_equal(unname(sqrt(diag(.fit$cov))), rep(0.1, 4))
     # the options are those of the covariance requested, not the one installed

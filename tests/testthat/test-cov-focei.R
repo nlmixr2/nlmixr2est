@@ -352,7 +352,7 @@ nmTest({
     expect_equal(.covFdType(.f$covMethod), "r")
     expect_false(.covIsFull(.f$covMethod))
     expect_true(is.matrix(.f$env$.fdFullS))
-    expect_true(any(startsWith(.f$runInfo, "\"r,s (full)\" covariance ")))
+    expect_true("\"r,s (full)\" needs a positive-definite R; kept \"r\"" %in% .f$runInfo)
   })
 
   test_that("an all-zero R is not corrected into a covariance", {
@@ -514,7 +514,7 @@ nmTest({
       })
     }
     .eta <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(print = 0, covMethod = ""))$etaMat
-    .msg <- "covariance is conditional on the ETAs; setCov() is marginal"
+    .msg <- "is conditional on the ETAs; setCov() gives the marginal"
     # maxInnerIterations = 0 evaluates the given ETAs, in the fit and in its covariance
     .fixed <- .nlmixr(
       one.cmt,
@@ -529,7 +529,7 @@ nmTest({
       )
     )
     expect_identical(.covFdType(.fixed$covMethod), "r")
-    expect_true(any(grepl(.msg, .fixed$runInfo, fixed = TRUE)))
+    expect_true(sprintf("\"%s\" %s", .fixed$covMethod, .msg) %in% .fixed$runInfo)
     # optimizing them: the covariance of the marginal likelihood, nothing to say
     .opt <- .nlmixr(
       one.cmt,

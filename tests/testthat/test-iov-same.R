@@ -158,6 +158,181 @@ test_that("a correlated IOV model fits and restores the user's own block", {
   expect_equal(sort(unique(.fit$iov$occ$occ)), c(1L, 2L))
 })
 
+test_that("an id-level same() block beside IOV fits in both expansions", {
+  skip_on_cran()
+  # eta.v repeats eta.cl's block at the id level (condition "id:same:eta.cl"),
+  # so it is a between-subject eta; iov.cl is the only occasion parameter
+  .f <- .sameMod(
+    "eta.cl ~ 0.3; eta.v ~ same(); iov.cl ~ 0.1 | occ",
+    "cl <- exp(tcl + eta.cl + iov.cl)\n v <- exp(tv + eta.v)"
+  )
+  for (.m in c("theta", "omega")) {
+    .fit <- suppressWarnings(suppressMessages(
+      nlmixr2est::nlmixr2(.f(), .sameData(), "focei", foceiControl(print = 0, covMethod = "", iovMethod = .m))
+    ))
+    .ini <- .fit$ui$iniDf
+    .eta <- .ini[!is.na(.ini$neta1), ]
+    expect_identical(.eta$name, c("eta.ka", "eta.cl", "eta.v", "iov.cl"), label = .m)
+    expect_identical(.eta$condition[.eta$name == "iov.cl"], "occ", label = .m)
+    expect_false(any(grepl("^rx\\.", .ini$name)), label = .m)
+    expect_false("iov.cl" %in% .ini$name[!is.na(.ini$ntheta)], label = .m)
+    # the copy kept its master's variance
+    expect_identical(dimnames(.fit$omega$id)[[1]], c("eta.ka", "eta.cl", "eta.v"), label = .m)
+    expect_equal(.fit$omega$id["eta.v", "eta.v"], .fit$omega$id["eta.cl", "eta.cl"], label = .m)
+    expect_identical(dimnames(.fit$omega$occ)[[1]], "iov.cl", label = .m)
+    .bck <- grep("Back", names(.fit$parFixedDf))
+    expect_equal(.fit$parFixedDf["iov.cl", .bck], nlmixr2iovSdCv(sqrt(.fit$omega$occ[1, 1])), label = .m)
+    expect_equal(sort(unique(.fit$iov$occ$occ)), c(1L, 2L), label = .m)
+    expect_false(anyNA(.fit$iov$occ$iov.cl), label = .m)
+  }
+})
+
+# an id-level same() block and no IOV: eta.v repeats eta.cl's block
+.idSameMod <- function() {
+  .sameMod("eta.cl ~ 0.3; eta.v ~ same()", "cl <- exp(tcl + eta.cl)\n v <- exp(tv + eta.v)")
+}
+
+.sameRefusal <- function(est) {
+  paste0(
+    "'",
+    est,
+    "' does not honour a repeated (same()) omega block\n",
+    "use fo, foi, foce, focei, focep, laplace, agq, emvi, fbvi or vae"
+  )
+}
+
+# register a do-nothing nlmixr2Est method `name` in `ns`, carrying
+# attr(, attrName) <- value
+.fakeEst <- function(env, ...) NULL
+.regFake <- function(ns, name, attrName, value) {
+  .fn <- .fakeEst
+  attr(.fn, attrName) <- value
+  registerS3method("nlmixr2Est", name, .fn, envir = ns)
+}
+
+.errMsg <- function(expr) {
+  tryCatch(
+    {
+      expr
+      NULL
+    },
+    error = conditionMessage
+  )
+}
+
+test_that("every method that would drop a same() tie refuses the model", {
+  skip_on_cran()
+  .ui <- rxode2::rxode2(.idSameMod())
+  # nlmixr2est's own methods; a method another test registers is not
+  # nlmixr2est's to classify
+  .ests <- Filter(
+    function(e) exists(paste0("nlmixr2Est.", e), envir = asNamespace("nlmixr2est"), inherits = FALSE),
+    nlmixr2AllEst()
+  )
+  .refused <- .ests[!vapply(.ests, .isSameBlockMethod, logical(1), USE.NAMES = FALSE)]
+  # measured on a same() model: nlme drops the tie; saem and the imp, qrpem and
+  # npag families crash on it; the optimizers refuse any eta
+  expect_identical(
+    sort(.refused),
+    sort(c(
+      "nlme",
+      "saem",
+      "imp",
+      "impmap",
+      "qrpem",
+      "npag",
+      "npb",
+      "inpag",
+      "inpb",
+      "mnpag",
+      "mnpb",
+      "bfgs",
+      "bobyqa",
+      "brent",
+      "cg",
+      "lbfgsb",
+      "lbfgsb3c",
+      "n1qn1",
+      "neldermead",
+      "newuoa",
+      "nlm",
+      "nlminb",
+      "nls",
+      "optim",
+      "sann",
+      "trust",
+      "uobyqa"
+    ))
+  )
+  for (.e in .refused) {
+    expect_identical(.errMsg(.nlmixr0preProcessAssertSameBlock(.ui, .e, NULL, NULL)), .sameRefusal(.e))
+  }
+  for (.e in setdiff(.ests, .refused)) {
+    expect_null(.nlmixr0preProcessAssertSameBlock(.ui, .e, NULL, NULL), label = .e)
+  }
+  # an occasion block without same() is no repeated block
+  .iov <- rxode2::rxode2(.diagMod())
+  for (.e in .ests) {
+    expect_null(.nlmixr0preProcessAssertSameBlock(.iov, .e, NULL, NULL), label = .e)
+  }
+})
+
+test_that("the refusal asks nothing of an est with no method, or an eta row with no condition", {
+  skip_on_cran()
+  # foceiLikLoad() runs the hooks with whatever est it is given (the load
+  # itself is in the weekly test-iov-same-fit.R); with no nlmixr2Est method
+  # there is nothing to refuse
+  expect_null(.nlmixr0preProcessAssertSameBlock(rxode2::rxode2(.idSameMod()), "x", NULL, NULL))
+  # an eta row whose condition is missing is no repeated block
+  .ui <- list(iniDf = data.frame(neta1 = c(1, 2), condition = c("id", NA_character_)))
+  expect_null(.nlmixr0preProcessAssertSameBlock(.ui, "saem", NULL, NULL))
+})
+
+test_that("the refusal runs before the IOV hooks and reaches the user", {
+  skip_on_cran()
+  expect_identical(preProcessHooks()[1], ".nlmixr0preProcessAssertSameBlock")
+  expect_identical(
+    .errMsg(suppressMessages(nlmixr2est::nlmixr2(.idSameMod(), .sameData(), "saem", saemControl(print = 0)))),
+    .sameRefusal("saem")
+  )
+})
+
+test_that("an out-of-tree method keeps a same() block through its attribute", {
+  skip_on_cran()
+  .ns <- asNamespace("nlmixr2est")
+  withr::defer(rm(
+    list = paste0("nlmixr2Est.", c("fakeSame", "fakeIovSame", "fakeFixed", "fakeNone")),
+    envir = .ns[[".__S3MethodsTable__."]]
+  ))
+  .regFake(.ns, "fakeSame", "sameBlock", TRUE)
+  .regFake(.ns, "fakeIovSame", "iovSame", TRUE)
+  .regFake(.ns, "fakeFixed", "sameBlock", "fixed")
+  .regFake(.ns, "fakeNone", "sameBlock", NULL)
+  expect_identical(
+    vapply(c("fakeSame", "fakeIovSame", "fakeFixed", "fakeNone"), .isSameBlockMethod, logical(1)),
+    c(fakeSame = TRUE, fakeIovSame = TRUE, fakeFixed = TRUE, fakeNone = FALSE)
+  )
+  # a method that estimates the copies as one is named; one that does not
+  # estimate omega ("fixed") is accepted but no alternative
+  .ui <- rxode2::rxode2(.idSameMod())
+  expect_identical(
+    .errMsg(.nlmixr0preProcessAssertSameBlock(.ui, "saem", NULL, NULL)),
+    paste0(
+      "'saem' does not honour a repeated (same()) omega block\n",
+      "use fo, foi, foce, focei, focep, laplace, agq, emvi, fbvi, vae, fakeIovSame or fakeSame"
+    )
+  )
+  expect_identical(
+    .errMsg(.nlmixr0preProcessAssertSameBlock(.ui, "fakeNone", NULL, NULL)),
+    paste0(
+      "'fakeNone' does not honour a repeated (same()) omega block\n",
+      "use fo, foi, foce, focei, focep, laplace, agq, emvi, fbvi, vae, fakeIovSame or fakeSame"
+    )
+  )
+  expect_false(.isSameBlockMethod(NA_character_))
+  expect_false(.isSameBlockMethod(character(0)))
+})
+
 test_that("two occasion parameters get their occasion number, not NA", {
   skip_on_cran()
   # `.dt`'s occasion column is built from the FIRST occasion parameter's

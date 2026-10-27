@@ -118,9 +118,11 @@ nmTest({
       })
     }
     .n0 <- saemPhi1RefineN_()
+    # the Laplace-corrected phi1 refinement needs more than 40+40 iterations
+    # to settle tka (40+40 ran at tka ~0.31 while reporting the sampled mean)
     ctl <- saemControl(
-      nBurn = 40,
-      nEm = 40,
+      nBurn = 100,
+      nEm = 100,
       nmc = 3,
       seed = 42L,
       print = 0L,

@@ -906,9 +906,6 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       }
       cvExp[id] = B;
     }
-#ifdef _OPENMP
-    if (doPar) setRxThreadId(-1);
-#endif
   });
 
   // Combine over mixture components per base subject.  For a single component
