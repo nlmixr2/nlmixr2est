@@ -4,7 +4,10 @@
 #include <rxode2ptr.h>
 #include "nmMcmcRng.h"
 #include "nmSeqSeed.h"
-#include "nmParallelCore.h"
+#include "nmParallel.h"
+#include <algorithm>
+#include <vector>
+#include "truncNorm.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -266,13 +269,227 @@ static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, arma::Col<int> &cens
   }
 }
 
+// Gibbs sweeps used when a subject has two or more censored observations
+#define NPDE_CENS_SWEEPS 50
+
+// Censoring interval of a row on the transformed scale; its DV is the LOQ.
+static inline void npdeCensBounds(int cens, double dvt, double limit, double lambda,
+                                  double yj, double low, double hi,
+                                  double &lo, double &up) {
+  if (cens == 1) {
+    lo = R_FINITE(limit) ? _powerD(limit, lambda, (int) yj, low, hi) : R_NegInf;
+    up = dvt;
+  } else {
+    lo = dvt;
+    up = R_FINITE(limit) ? _powerD(limit, lambda, (int) yj, low, hi) : R_PosInf;
+  }
+  if (ISNAN(lo)) lo = R_NegInf;
+  if (ISNAN(up)) up = R_PosInf;
+}
+
+// Monotone map between a row's simulated values and normal scores: piecewise
+// linear through (sorted sim, qnorm((rank - 0.5)/K)), ties averaged, with
+// normal tails (slope 1/sd) past the simulated range.
+struct npdeScoreMap {
+  std::vector<double> x, z;
+  double sd = 0.0;
+  bool ok = false;
+  void init(const arma::rowvec &sims) {
+    arma::vec xs = arma::sort(arma::vec(sims.t()));
+    unsigned int K = xs.n_elem;
+    x.clear(); z.clear();
+    sd = arma::stddev(xs);
+    for (unsigned int i = 0; i < K;) {
+      unsigned int j = i;
+      while (j + 1 < K && xs[j + 1] == xs[i]) ++j;
+      x.push_back(xs[i]);
+      z.push_back(R::qnorm(((i + j) / 2.0 + 0.5) / K, 0.0, 1.0, 1, 0));
+      i = j + 1;
+    }
+    ok = x.size() >= 2 && sd > 0 && R_FINITE(sd);
+  }
+  double toZ(double v) const {
+    if (!R_FINITE(v)) return v;
+    if (v <= x.front()) return z.front() + (v - x.front()) / sd;
+    if (v >= x.back()) return z.back() + (v - x.back()) / sd;
+    size_t k = std::upper_bound(x.begin(), x.end(), v) - x.begin();
+    return z[k - 1] + (z[k] - z[k - 1]) * (v - x[k - 1]) / (x[k] - x[k - 1]);
+  }
+  double toX(double v) const {
+    if (!R_FINITE(v)) return v;
+    if (v <= z.front()) return x.front() + (v - z.front()) * sd;
+    if (v >= z.back()) return x.back() + (v - z.back()) * sd;
+    size_t k = std::upper_bound(z.begin(), z.end(), v) - z.begin();
+    return x[k - 1] + (x[k] - x[k - 1]) * (v - z[k - 1]) / (z[k] - z[k - 1]);
+  }
+};
+
+// Impute a subject's censored observations for NPDE.  See PR #1221 for the
+// derivation and the calibration study.
+//
+// Given what was observed (the measured values y_u and each censored y_c in
+// its interval), the true y_c follows the predictive distribution conditional
+// on y_u and truncated to the intervals.  A draw from it completes the vector
+// as a draw from the untruncated model -- what the untouched simulations
+// represent -- so the usual decorrelation and comparison stay calibrated.
+// Truncating the simulations instead biases NPDE.
+//
+// The predictive distribution is a Gaussian copula of the simulations: each
+// row is mapped to normal scores through its empirical CDF (npdeScoreMap),
+// the scores are taken as multivariate normal, the censored block is
+// conditioned on the measured one (Schur complement, valid when singular) and
+// drawn truncated by Gibbs sampling, then mapped back through the empirical
+// quantiles.  Each sweep updates the whitened coordinates (Rodriguez-Yam,
+// Davis and Scharf 2004), which handles strong correlation, then each score
+// from its own conditional, which handles a narrow neighbouring interval.  A
+// row whose simulations are all equal is a point mass: it is imputed as that
+// value and conditions nothing.
+//
+// Global row r is seeded with seed + nObs*(1 + 2*sweep) + r for its whitened
+// update and seed + nObs*(2 + 2*sweep) + r for its own; the seeds below
+// seed + nObs belong to the jitter uniforms.
+static inline void imputeCensNpde(calcNpdeInfoId &ret, arma::Col<int> &cens, arma::vec &limit,
+                                  arma::vec &lambda, arma::vec &yj, arma::vec &low, arma::vec &hi,
+                                  unsigned int row0, int seed, int nObs) {
+  arma::uvec o = arma::conv_to<arma::uvec>::from(ret.obs);
+  if (!arma::any(cens.elem(o) != 0)) return;
+  unsigned int n = o.n_elem;
+  arma::mat sims = ret.matsim.rows(o);
+  std::vector<npdeScoreMap> mp(n);
+  std::vector<unsigned int> cv, uv;
+  for (unsigned int i = 0; i < n; ++i) {
+    unsigned int r = o[i];
+    mp[i].init(sims.row(i));
+    if (mp[i].ok) {
+      (cens[r] != 0 ? cv : uv).push_back(i);
+    } else if (cens[r] != 0) {
+      double l, u, x0 = sims(i, 0);
+      npdeCensBounds(cens[r], ret.yobst[r], limit[r], lambda[row0 + r], yj[row0 + r],
+                     low[row0 + r], hi[row0 + r], l, u);
+      if (x0 >= l && x0 <= u) ret.yobst[r] = x0;
+    }
+  }
+  unsigned int nc = cv.size();
+  if (nc == 0) return;
+  arma::uvec cpos = arma::conv_to<arma::uvec>::from(cv), upos = arma::conv_to<arma::uvec>::from(uv);
+  arma::mat zs(n, sims.n_cols, arma::fill::zeros);
+  arma::vec zy(n, arma::fill::zeros);
+  for (unsigned int i = 0; i < n; ++i) {
+    if (!mp[i].ok) continue;
+    for (unsigned int j = 0; j < sims.n_cols; ++j) zs(i, j) = mp[i].toZ(sims(i, j));
+    if (cens[o[i]] == 0) zy[i] = mp[i].toZ(ret.yobst[o[i]]);
+  }
+  arma::vec mu = arma::mean(zs, 1);
+  arma::mat S = arma::symmatu(arma::cov(zs.t()));
+  // censored scores given the measured ones: N(m, V)
+  arma::vec m = mu.elem(cpos);
+  arma::mat V = S.submat(cpos, cpos);
+  if (upos.n_elem > 0) {
+    arma::mat B = S.submat(cpos, upos) * arma::pinv(S.submat(upos, upos));
+    m += B * (zy.elem(upos) - mu.elem(upos));
+    V = arma::symmatu(V - B * S.submat(upos, cpos));
+  }
+  arma::vec lo(nc), up(nc), xlo(nc), xup(nc);
+  arma::uvec gRow(nc);
+  for (unsigned int k = 0; k < nc; ++k) {
+    unsigned int i = o[cpos[k]];
+    gRow[k] = row0 + i;
+    npdeCensBounds(cens[i], ret.yobst[i], limit[i], lambda[gRow[k]], yj[gRow[k]],
+                   low[gRow[k]], hi[gRow[k]], xlo[k], xup[k]);
+    lo[k] = mp[cpos[k]].toZ(xlo[k]);
+    up[k] = mp[cpos[k]].toZ(xup[k]);
+  }
+  // y = m + L w with w ~ N(0, I) truncated so that lo <= y <= up.  Start
+  // strictly inside: on a corner of active bounds no direction may be free.
+  arma::vec y0 = m;
+  for (unsigned int k = 0; k < nc; ++k) {
+    double sd = sqrt(V(k, k));
+    // a point mass (or an empty interval) stays at its mean
+    if (!(lo[k] < up[k]) || !(sd > 1e-8) || !R_FINITE(sd)) continue;
+    double a = lo[k], b = up[k];
+    if (R_FINITE(a) && R_FINITE(b)) {
+      double h = std::min(sd, (b - a) / 4.0);
+      a += h;
+      b -= h;
+    } else {
+      if (R_FINITE(a)) a += sd;
+      if (R_FINITE(b)) b -= sd;
+    }
+    y0[k] = std::min(std::max(m[k], a), b);
+  }
+  arma::vec d;
+  arma::mat U, L, Li;
+  for (int ridge = 0; ridge < 2; ++ridge) {
+    if (!arma::eig_sym(d, U, V)) return;
+    d.transform([](double v) { return v > 0 ? sqrt(v) : 0.0; });
+    L = U * arma::diagmat(d);
+    Li = arma::pinv(L);
+    // a singular V can leave the start outside its support; a small ridge
+    // makes it reachable while staying inside the intervals
+    if (arma::norm(L * (Li * (y0 - m)) - (y0 - m)) <= 1e-8 * (1.0 + arma::norm(y0 - m))) break;
+    V.diag() += 1e-8 * std::max(1.0, V.diag().max());
+  }
+  arma::vec w = Li * (y0 - m);
+  arma::vec y = m + L * w;
+  // each score given the other censored ones: m_k + b_k'(y_-k - m_-k), var_k
+  arma::mat Bk(nc, nc, arma::fill::zeros);
+  arma::vec vk(nc);
+  for (unsigned int k = 0; k < nc; ++k) {
+    vk[k] = V(k, k);
+    if (nc == 1) continue;
+    arma::uvec rest = arma::regspace<arma::uvec>(0, nc - 1);
+    rest.shed_row(k);
+    arma::rowvec b = V.submat(arma::uvec{k}, rest) * arma::pinv(V.submat(rest, rest));
+    Bk.submat(arma::uvec{k}, rest) = b;
+    vk[k] -= arma::as_scalar(b * V.submat(rest, arma::uvec{k}));
+  }
+  int nSweep = (nc == 1) ? 1 : NPDE_CENS_SWEEPS;
+  const double eps = 1e-12;
+  for (int sweep = 0; sweep < nSweep; ++sweep) {
+    for (unsigned int k = 0; k < nc; ++k) {
+      double wl = R_NegInf, wu = R_PosInf;
+      for (unsigned int i = 0; i < nc; ++i) {
+        double a = L(i, k);
+        if (fabs(a) <= eps) continue;
+        double r = y[i] - a * w[k];
+        double b1 = (lo[i] - r) / a, b2 = (up[i] - r) / a;
+        if (a < 0) std::swap(b1, b2);
+        if (b1 > wl) wl = b1;
+        if (b2 < wu) wu = b2;
+      }
+      if (!(wl < wu)) continue;
+      nmSetSeedEng1(nmSeqSeed(seed, (uint64_t)nObs * (1 + 2 * (uint64_t)sweep) + gRow[k]));
+      double wk = rxTruncNorm(wl, wu);
+      y += L.col(k) * (wk - w[k]);
+      w[k] = wk;
+    }
+    if (nc == 1) break;
+    for (unsigned int k = 0; k < nc; ++k) {
+      if (!(vk[k] > eps) || !(lo[k] < up[k])) continue;
+      double mk = m[k] + arma::dot(Bk.row(k), y - m);
+      double sd = sqrt(vk[k]);
+      nmSetSeedEng1(nmSeqSeed(seed, (uint64_t)nObs * (2 + 2 * (uint64_t)sweep) + gRow[k]));
+      y[k] = mk + sd * rxTruncNorm((lo[k] - mk) / sd, (up[k] - mk) / sd);
+    }
+    // keep the whitened coordinates in step with y
+    w = Li * (y - m);
+  }
+  for (unsigned int k = 0; k < nc; ++k) {
+    double v = std::min(std::max(y[k], lo[k]), up[k]);
+    if (!R_FINITE(v)) continue;
+    // the score map's round trip can step past a bound by round-off
+    ret.yobst[o[cpos[k]]] = std::min(std::max(mp[cpos[k]].toX(v), xlo[k]), xup[k]);
+  }
+}
+
 calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
                           arma::vec &dvt, arma::Col<int> &evidIn, arma::Col<int> &censIn, arma::vec &limitIn,
                           int &censMethod, bool &doLimit,
                           unsigned int& id,
                           unsigned int& K, double &tolChol, bool &ties,
                           arma::vec &ruIn, arma::vec &ru2In, arma::vec &ru3In,
-                          arma::vec &lambda, arma::vec &yj, arma::vec &hi, arma::vec &low) {
+                          arma::vec &lambda, arma::vec &yj, arma::vec &hi, arma::vec &low,
+                          int seed, int nObs) {
   calcNpdeInfoId ret;
   ret.matsim = getSimMatById(idLoc, sim, id, K);
   // transformed y observations
@@ -284,7 +501,16 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
   arma::vec limit = limitIn(span(idLoc[id], idLoc[id+1]-1));
   arma::Col<int> evid = evidIn(span(idLoc[id], idLoc[id+1]-1));
   handleNpdeNAandCalculateEpred(ret, K);
-  ret.obs = find(evid == 0);
+  unsigned int row0 = idLoc[id];
+  if (censMethod == CENS_OMIT) {
+    // censored rows are left out of the decorrelation and get no NPDE
+    ret.obs = find(evid == 0 && cens == 0);
+  } else {
+    ret.obs = find(evid == 0);
+    if (censMethod != CENS_CDF) {
+      imputeCensNpde(ret, cens, limit, lambda, yj, low, hi, row0, seed, nObs);
+    }
+  }
   calculatePD(ret, id, K, tolChol);
   calculateNPDEfromPD(ret, cens, limit, censMethod, doLimit, K, ties, ru, ru2, ru3);
   ret.epred = arma::vec(ret.yobst.size());
@@ -292,16 +518,21 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
   ret.eres = arma::vec(ret.yobst.size());
   for (unsigned int j = ret.yobst.size(); j--; ) {
     // Transfer back to original scale ie log(x) -> exp(log(x))
-    ret.epred[j] = _powerDi(ret.epredt[j], lambda[j], (int) yj[j], low[j], hi[j]);
+    unsigned int g = row0 + j;
+    ret.epred[j] = _powerDi(ret.epredt[j], lambda[g], (int) yj[g], low[g], hi[g]);
     if (censMethod == CENS_EPRED && cens[j] != 0) {
       ret.yobst[j] = ret.epredt[j];
     }
-    ret.yobs[j] = _powerDi(ret.yobst[j], lambda[j], (int) yj[j], low[j], hi[j]);
+    ret.yobs[j] = _powerDi(ret.yobst[j], lambda[g], (int) yj[g], low[g], hi[g]);
     ret.eres[j] = ret.yobs[j] - ret.epred[j];
     if (censMethod == CENS_OMIT && cens[j] != 0) {
       ret.yobs[j] = NA_REAL;
       ret.epred[j] = NA_REAL;
       ret.eres[j] = NA_REAL;
+      ret.npde[j] = NA_REAL;
+      ret.npd[j] = NA_REAL;
+      ret.pd[j] = NA_REAL;
+      ret.pd2[j] = NA_REAL;
     } else if (evid[j] != 0) {
       ret.yobs[j] = NA_REAL;
       ret.eres[j] = NA_REAL;
@@ -467,7 +698,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
     _cores = Rcpp::as<int>(_rxGetThreads(false));
     _doParallel = (_cores > 1);
 #endif
-    nmForEach(_nid, _cores, _doParallel, [&](int _curid) {
+    nmForEach<nmRxThreadScope>(_nid, _cores, _doParallel, [&](int _curid) {
       unsigned int curid = (unsigned int)_curid;
       // A C++ exception must never escape this OMP region -- doing so calls
       // std::terminate() and aborts R. Any per-subject numerical failure (e.g. a
@@ -475,7 +706,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
       // is set NA instead.
       try {
         calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
-                                           lambda, yj, hi, low);
+                                           lambda, yj, hi, low, npdeSeed, nObs);
         npde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npde;
         npd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npd;
         pde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd;
