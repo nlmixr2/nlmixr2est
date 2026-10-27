@@ -1,30 +1,16 @@
 #define STRICT_R_HEADER
 #include "res.h"
 #include "cwres.h"
+// dErr/dEta of each row at its subject's etas, under the population (fppm)
+// and individual (fpim) models
 static inline void calculateCwresDerr(arma::mat& fppm, arma::mat& fpim,
                                       arma::Col<int>& ID, arma::mat &etas,
                                       arma::vec &dErr_dEta_i, arma::vec &dErr_dEta_p,
-                                      int &nid) {
-  int lastId = ID[ID.size()-1], lastCol = nid-1, lastIndex=ID.size()-1;
-  for (unsigned int j = fppm.n_rows; j--; ){
-    if (lastId != ID[j]){
-      // FIXME do it without copy?
-      arma::vec tmp = fppm.rows(j+1, lastIndex) * trans(etas.row(lastCol));
-      std::copy(tmp.begin(),tmp.end(),dErr_dEta_p.begin()+j+1);
-      tmp = fpim.rows(j+1, lastIndex) * trans(etas.row(lastCol));
-      std::copy(tmp.begin(),tmp.end(),dErr_dEta_i.begin()+j+1);
-      lastId=ID[j];
-      lastIndex=j;
-      lastCol--;
-      if (lastCol == 0){
-        // Finalize dErr_dEta
-        arma::vec tmp = fppm.rows(0, lastIndex) * trans(etas.row(lastCol));
-        std::copy(tmp.begin(),tmp.end(),dErr_dEta_p.begin());
-        tmp = fpim.rows(0, lastIndex) * trans(etas.row(lastCol));
-        std::copy(tmp.begin(),tmp.end(),dErr_dEta_i.begin());
-        break;
-      }
-    }
+                                      SEXP etaId) {
+  arma::uvec rows = etaRowsById(ID, etaId);
+  for (unsigned int j = fppm.n_rows; j--; ) {
+    dErr_dEta_p[j] = arma::dot(fppm.row(j), etas.row(rows[j]));
+    dErr_dEta_i[j] = arma::dot(fpim.row(j), etas.row(rows[j]));
   }
 }
 
@@ -185,7 +171,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
 
     arma::vec dErr_dEta_i(ncalc2);
     arma::vec dErr_dEta_p(ncalc2);
-    calculateCwresDerr(fppm2, fpim2, IDnorm, etas, dErr_dEta_i, dErr_dEta_p, nid);
+    calculateCwresDerr(fppm2, fpim2, IDnorm, etas, dErr_dEta_i, dErr_dEta_p, etasDf[0]);
     arma::vec rest = dvt.elem(normIdx) - predtNorm;
     arma::vec vsum = abs(Vfop+rpvNorm);
     arma::vec wres = rest;
@@ -229,7 +215,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
     cresFinal.elem(nonNormIdx).fill(NA_REAL);
     cwresFinal.elem(nonNormIdx).fill(NA_REAL);
   }
-  calculateDfFull(ID, etas, etasDfFull, nid, neta);
+  calculateDfFull(ID, etas, etasDfFull, neta, etasDf[0]);
 
 
   for (unsigned int j = dv.size(); j--; ) {

@@ -78,6 +78,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "cov-analytic-obs-rows",
     "cov-analytic-reason",
     "cov-analytic-declines",
+    "cov-analytic-subject-route",
     "obs-rows-estimators",
     "focei-wang2007-power",
     "cov-condition",
@@ -105,7 +106,9 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "splitbolus-interp",
     "optexpression-saem-nlme",
     "saem-cov-multi-endpoint-904",
-    "saem-modeled-resid-fit"
+    "saem-modeled-resid-fit",
+    "saem-ebe-mode-lik",
+    "nlmixr2output-same-fit"
   ),
 
   # batches 4-7 -- the former batches 4 (13 files) and 5 (15 files), each split

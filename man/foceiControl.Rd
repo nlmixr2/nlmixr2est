@@ -86,7 +86,7 @@ foceiControl(
   covTryHarder = FALSE,
   outerOpt = c("bobyqa", "nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa", "trust"),
-  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c"),
+  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c", "steihaug", "newuoa"),
   innerHessian = c("focei", "conditional"),
   detHessian = c("focei", "conditional"),
   hessianMethod = c("fd", "bfgs", "sr1", "bofill"),
@@ -96,6 +96,9 @@ foceiControl(
   trustFterm = NULL,
   trustMterm = NULL,
   trustPolish = FALSE,
+  steihaugPolish = FALSE,
+  newuoaPolish = FALSE,
+  newuoaRhoend = NULL,
   bobyqaStationary = TRUE,
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL,
@@ -187,6 +190,7 @@ foceiControl(
   sensMethod = c("default", "forward"),
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
+  zeroThetaStep = 100,
   boundedTransform = TRUE
 )
 }
@@ -534,11 +538,14 @@ calculation.}
 
 \item{optimHessType}{Hessian type for numeric-difference individual
 Hessians in generalized log-likelihood estimation: "central" (matches
-R's `optimHess()`, default) or "forward" (faster).}
+R's `optimHess()`, default) or "forward" (faster).  The integer code a
+control stores is accepted too: 1 (central) or 3 (forward) in
+`foceiControl()`, 2 (central) or 1 (forward) in the nlm-family controls.}
 
 \item{optimHessCovType}{Hessian type for numeric-difference individual
 Hessians used for the covariance step/final likelihood: "central"
-(more accurate, used here) or "forward".}
+(more accurate, used here) or "forward".  The integer code a control
+stores is accepted too: 1 (central) or 3 (forward) in `foceiControl()`.}
 
 \item{hessEtaStepMin}{Floor on the finite-difference step used for the
   individual (eta) Hessian in generalized log-likelihood estimation,
@@ -570,7 +577,9 @@ SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
 finite-difference Hessian that already reflects censoring exactly.}
 
 \item{eventType}{Event gradient type for dosing events; Can be
-"central" or "forward"}
+"central" or "forward".  The integer code a control stores is accepted
+too: 2 (central) or 3 (forward) in `foceiControl()`, 2 (central) or 1
+(forward) in the nlm-family controls.}
 
 \item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
@@ -761,8 +770,11 @@ box is reported as an infinite objective and the region shrinks instead.}
     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
     using an exact Gauss-Newton+Omega^-1 Hessian every iteration),
     `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
-    seed) or `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
-    by the `innerLbfgs*` arguments; `"auto"` never picks it).
+    seed), `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
+    by the `innerLbfgs*` arguments), `"steihaug"` (RcppTrust truncated
+    conjugate-gradient trust region on the same Hessian as `"trust"`, using
+    the `trust*` controls) or `"newuoa"` (RcppTrust derivative-free NEWUOA).
+    `"auto"` never picks the last three.
 
     `"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
     (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
@@ -867,6 +879,15 @@ outer search then also restarts once from where it stops, which costs
 about twice the outer evaluations.  `FALSE` (default) keeps the plain
 trust solve and a single outer search.}
 
+\item{steihaugPolish, newuoaPolish}{logical; the `trustPolish` Newton
+polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
+solve.  `FALSE` (default) keeps the plain solve.}
+
+\item{newuoaRhoend}{final NEWUOA trust-region radius for
+`innerOpt="newuoa"`, in sqrt(diag(Omega)) units.  `NULL` (default) uses
+`sqrt(rtol)` of the FOCEi ODE solve (`rxControl`), the precision that
+solve can resolve a minimum to.}
+
 \item{bobyqaStationary}{logical; when `TRUE` (default), a normal exit of
 the `"bobyqa"` outer search is checked with a central-difference
 gradient and a downhill probe.  If the probe lowers the objective by
@@ -904,7 +925,7 @@ extra population gradient per parameter per iteration.}
 \item{outerTrustRinit, outerTrustRmax}{Initial and maximum trust-region
 radius for \code{outerOpt="trust"}, in the scaled-parameter space the
 outer problem optimizes in.  \code{NULL} (default) derives
-\code{outerTrustRinit} from \code{minqa::bobyqa()}'s own default-rhobeg
+\code{outerTrustRinit} from \code{RcppTrust::bobyqa()}'s own default-rhobeg
 formula and \code{outerTrustRmax} as \code{8 * outerTrustRinit}.}
 
 \item{outerTrustFterm, outerTrustMterm}{Function-value and predicted-decrease
@@ -1279,14 +1300,21 @@ eta and a time-varying covariate (needs an rxode2 with the carry
 sentinels; silently keeps the standard gradient otherwise); `"none"`
 always keeps the standard gradient.}
 
-\item{zeroTheta}{Positive magnitude (default `0.001`) used to nudge a
+\item{zeroTheta}{Positive magnitude (default `0.001`) used to move a
 population parameter (`theta`) whose initial estimate is exactly `0`
-off zero before estimation.  FOCEi scales a linear parameter by its
-native magnitude `|init|`, which is `0` (no scale) for a zero
-initial estimate, so the parameter is moved to `+zeroTheta` when it
-is within the parameter's bounds, otherwise `-zeroTheta`; if neither
-is within the bounds an error is raised.  Fixed parameters
-(including those fixed at `0`) are left untouched.}
+off zero: to `+zeroTheta` when it is within the parameter's bounds,
+otherwise `-zeroTheta`; if neither is within the bounds an error is
+raised.  The move is not used as the parameter's scale: a linear
+theta that starts at `0` is scaled by a typical magnitude instead,
+`1/sd()` of the covariate it multiplies (e.g. `theta*WT`) or 1.
+Fixed parameters (including those fixed at `0`) are left untouched.}
+
+\item{zeroThetaStep}{Largest one-step (Newton) move, in typical
+magnitudes, from the start of a theta that began at `0` (default
+`100`).  Before the outer optimization starts, the objective is
+evaluated on either side of the start and the start moves to the
+one-step estimate `-g/H` when that lowers the objective.  `0`
+disables it.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed

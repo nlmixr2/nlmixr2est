@@ -15,12 +15,12 @@
 
 arma::Col<int> getSimIdLoc(arma::Col<int>& id, arma::Col<int>& simId,
 		      unsigned int &nid, unsigned int &K) {
-  int i = 0;
+  int i = 0, n = id.size();
   int lastId=id[0];
   int lastSimId = simId[0];
   int totNobs = 0;
   nid = 1;
-  while (simId[i] == lastSimId) {
+  while (i < n && simId[i] == lastSimId) {
     if (lastId != id[i]) {
       nid++;
       lastId = id[i];
@@ -30,8 +30,11 @@ arma::Col<int> getSimIdLoc(arma::Col<int>& id, arma::Col<int>& simId,
   K =   id.size() /  totNobs;
 
   arma::Col<int> idLoc(nid+1);
-  unsigned int j = 0;
-  for (i = 0; i < totNobs; i++) {
+  // the first subject starts at 0 even when it is the only one
+  idLoc[0] = 0;
+  unsigned int j = 1;
+  lastId = id[0];
+  for (i = 1; i < totNobs; i++) {
     if (lastId != id[i]){
       idLoc[j++] = i;
       lastId = id[i];
@@ -587,6 +590,12 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   arma::Col<int> aIdVec(INTEGER(VECTOR_ELT(npdeSim, 1)), simLen, false, true);
   unsigned int nid, K;
   arma::Col<int> idLoc = getSimIdLoc(aIdVec, aSimIdVec, nid, K);
+  // every subject's span indexes the observations below, so a simulation
+  // with other subjects or rows than the data's would read past them
+  if ((int)idLoc[nid] != dvLen || (int)(K * idLoc[nid]) != simLen) {
+    stop("npdeCalc: the simulation has %d observations per sample (%d samples, %d rows), but the data %d",
+         (int)idLoc[nid], (int)K, simLen, dvLen);
+  }
   arma::vec sim(REAL(VECTOR_ELT(npdeSim, nsim)), simLen, false, true);
   arma::vec lambda(REAL(VECTOR_ELT(npdeSim, nsim+1)), simLen, false, true);
   arma::vec yj(REAL(VECTOR_ELT(npdeSim, nsim+2)), simLen, false, true);
