@@ -154,7 +154,7 @@ nmTest({
     expect_equal(.testBoundedTransform(), c(pre = FALSE, post = FALSE))
   })
 
-  foceiControlFast <- foceiControl(print = 0, maxOuterIterations = 0L, outerOpt = "uobyqa")
+  foceiControlFast <- foceiControl(print = 0, maxOuterIterations = 0L, outerOpt = "newuoa")
 
   test_that("FOCEI with logit-bounded param keeps estimate within bounds", {
     fit <- suppressMessages(suppressWarnings(
@@ -168,7 +168,7 @@ nmTest({
   })
 
   test_that("uobyqa/newuoa write the natural-scale bounded theta into the fit's ui (issue 1140)", {
-    for (.opt in c("uobyqa", "newuoa")) {
+    for (.opt in c(if (requireNamespace("minqa", quietly = TRUE)) "uobyqa", "newuoa")) {
       fit <- suppressMessages(suppressWarnings(
         nlmixr(
           .logitModel,
@@ -210,7 +210,7 @@ nmTest({
       })
     }
     .want <- c(tka = 0.45, td1 = 0.3, tcl = log(2.7), tv = 3.45, tlag = 0.5)
-    for (.opt in c("uobyqa", "newuoa")) {
+    for (.opt in c(if (requireNamespace("minqa", quietly = TRUE)) "uobyqa", "newuoa")) {
       fit <- suppressMessages(suppressWarnings(
         nlmixr(
           .mixedBounds,
@@ -232,7 +232,7 @@ nmTest({
         .logitModel,
         theo_sd,
         est = "focei",
-        control = foceiControl(print = 0, maxOuterIterations = 0L, outerOpt = "uobyqa", boundedTransform = FALSE)
+        control = foceiControl(print = 0, maxOuterIterations = 0L, outerOpt = "newuoa", boundedTransform = FALSE)
       )
     ))
     expect_true("td1" %in% names(fit$theta))

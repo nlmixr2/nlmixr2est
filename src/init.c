@@ -87,6 +87,8 @@ SEXP _nlmixr2est_covAccept_(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_covProbeSolveTolSet_(void);
 SEXP _nlmixr2est_covProbeSolveTolRestore_(SEXP);
 SEXP _nlmixr2est_shi21CentralWrap(SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_shi21SearchWrap(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_shi21HessianWrap(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_shi21RatioCensorSet(SEXP);
 SEXP _nlmixr2est_shi21RatioTest(SEXP, SEXP);
 
@@ -131,7 +133,6 @@ SEXP _nlmixr2est_powerD(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_powerDLambda(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_powerDLambda2(SEXP, SEXP, SEXP, SEXP, SEXP);
 
-SEXP _saemResidF(SEXP v);
 
 SEXP _nlmixr2est_nlmixrExpandFdParNlme_(SEXP, SEXP);
 
@@ -173,6 +174,8 @@ SEXP _nlmixr2est_nlmGetParHist(SEXP);
 SEXP _nlmixr2est_iniLotriPtr(SEXP ptr);
 
 SEXP _nlmixr2est_iniRxodePtrs(SEXP ptr);
+SEXP _nlmixr2est_nmRxThreadIdTrack(SEXP on);
+SEXP _nlmixr2est_nmRxThreadIdMissTest(SEXP reset);
 
 SEXP _nlmixr2est_iniN1qn1cPtrs(SEXP ptr);
 
@@ -276,6 +279,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiFinalOfvWorseR", (DL_FUNC) &_nlmixr2est_foceiFinalOfvWorseR, 2},
   {"_nlmixr2est_foceiCalcGradGet", (DL_FUNC) &_nlmixr2est_foceiCalcGradGet, 0},
   {"_nlmixr2est_iniRxodePtrs", (DL_FUNC) &_nlmixr2est_iniRxodePtrs, 1},
+  {"_nlmixr2est_nmRxThreadIdTrack", (DL_FUNC) &_nlmixr2est_nmRxThreadIdTrack, 1},
+  {"_nlmixr2est_nmRxThreadIdMissTest", (DL_FUNC) &_nlmixr2est_nmRxThreadIdMissTest, 1},
   {"_nlmixr2est_iniLotriPtr", (DL_FUNC) &_nlmixr2est_iniLotriPtr, 1},
   {"_nlmixr2est_uninformativeEta", (DL_FUNC) &_nlmixr2est_uninformativeEta, 1},
   {"_nlmixr2est_nlmGetParHist", (DL_FUNC) &_nlmixr2est_nlmGetParHist, 1},
@@ -315,6 +320,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_covProbeSolveTolSet_", (DL_FUNC) &_nlmixr2est_covProbeSolveTolSet_, 0},
   {"_nlmixr2est_covProbeSolveTolRestore_", (DL_FUNC) &_nlmixr2est_covProbeSolveTolRestore_, 1},
   {"_nlmixr2est_shi21CentralWrap", (DL_FUNC) &_nlmixr2est_shi21CentralWrap, 5},
+  {"_nlmixr2est_shi21SearchWrap", (DL_FUNC) &_nlmixr2est_shi21SearchWrap, 8},
+  {"_nlmixr2est_shi21HessianWrap", (DL_FUNC) &_nlmixr2est_shi21HessianWrap, 6},
   {"_nlmixr2est_shi21RatioCensorSet", (DL_FUNC) &_nlmixr2est_shi21RatioCensorSet, 1},
   {"_nlmixr2est_shi21RatioTest", (DL_FUNC) &_nlmixr2est_shi21RatioTest, 2},
   {"_nlmixr2est_likInner", (DL_FUNC) &_nlmixr2est_likInner, 2},
@@ -348,7 +355,6 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_powerDLambda2", (DL_FUNC) &_nlmixr2est_powerDLambda2, 5},
   {"_nlmixr2est_powerL", (DL_FUNC) &_nlmixr2est_powerL, 5},
   {"_nlmixr2est_trustBfgsUpdate", (DL_FUNC) &_nlmixr2est_trustBfgsUpdate, 3},
-  {"_saemResidF", (DL_FUNC) &_saemResidF, 1},
   {"_nlmixr2est_npdeCalc", (DL_FUNC) &_nlmixr2est_npdeCalc, 6},
   {"_nlmixr2est_cwresCalc",  (DL_FUNC) &_nlmixr2est_cwresCalc, 12},
   {"_nlmixr2est_resCalc",  (DL_FUNC) &_nlmixr2est_resCalc, 12},
