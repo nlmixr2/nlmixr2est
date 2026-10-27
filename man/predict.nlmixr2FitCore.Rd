@@ -24,10 +24,19 @@ Generates population- or individual-level predictions from an
 `nlmixr2FitCore` object.
 }
 \details{
+Individual predictions take each subject's etas from the fit's
+estimates, joined on its ID, so `newdata` may hold the subjects in any
+order, or only some of them.  A subject the fit did not estimate gets
+etas of 0, its population prediction, with a warning.  A subject with no
+observation record is not predicted, so it gives no warning; a fit has no
+etas for such a subject in its own data.
+
 For a fit with inter-occasion variability, individual predictions take
 each record's occasion etas from the fit's estimates, by subject and
 occasion, so `newdata` needs the occasion columns.  A subject or occasion
-the fit did not estimate gets occasion etas of 0, with a warning.  Under
+the fit did not estimate gets occasion etas of 0, with a warning.  A
+record whose occasion is missing (`NA`) takes a missing occasion eta,
+which rxode2 fills as it fills a missing covariate.  Under
 `"midpoint"` or `"linear"` covariate interpolation they differ from the
 fit's own predictions after an occasion changes: the fit compares the
 interpolated occasion with each occasion's value, so between records of
