@@ -160,6 +160,18 @@
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
 
+- The occasion of an IOV model now steps at its first record (locf) under
+  every `covsInterpolation`, as rxode2 steps the occasion variables of a
+  nested omega.  The IOV rewrite read the occasion as a covariate, so under
+  `"nocb"` an occasion's etas took effect from the record before, and under
+  `"midpoint"` or `"linear"` a fractional occasion between two took neither
+  occasion's etas.  Fits of IOV models under those interpolations change: on
+  theo_sd with an occasion change at 5 h, focei's objective at the initial
+  estimates was 136.2144 under `"nocb"` and 140.5934 under `"midpoint"`; it
+  is now 132.0456, as under `"locf"`.  A model that declares `nocb()`,
+  `linear()` or `midpoint()` for an occasion variable stops: "occasion
+  variable(s) 'occ' (nocb) must use 'locf' interpolation".
+
 ### Tables
 
 - `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
