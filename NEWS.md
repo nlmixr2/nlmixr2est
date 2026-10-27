@@ -64,6 +64,13 @@
 
 ### Estimation
 
+- A `saem` fit with inter-occasion variability now reports its
+  Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
+  reported a FOCEi objective in its place, so its AIC and BIC were not
+  comparable with other `saem` fits; the only sign was the message "gaussian
+  quadrature failed, changed to focei" when the objective was first read.
+  The quadrature, which runs after the fit, solved with an event matrix
+  rebuilt from the data, which had lost the occasion column.
 - `foceiControl(outerOpt = "newuoa")` now stops the outer optimization at
   `maxOuterIterations` function evaluations, as `outerOpt = "uobyqa"` and
   `"bobyqa"` do; it used to ignore the limit and run NEWUOA to convergence.
@@ -164,6 +171,25 @@
   longer leaves R's error handling broken.  The error passed through R's own
   frames while it unwound, and the next R error could crash the session; it
   is now held until those frames have returned.
+
+### NPDE
+
+- NPDE of censored observations now draws each censored value from the
+  subject's simulated predictive distribution (a Gaussian copula of the
+  simulations), conditional on its measured observations and truncated to its
+  censoring interval, for every `tableControl(censMethod =)` but "cdf" and
+  "omit".  The simulations themselves are left untruncated.
+  Before, NPDE under "truncated-normal", "ipred" and "pred" used whatever the
+  residual step had written into the shared DV (a draw around IPRED, or
+  IPRED/PRED), and "epred" used the LOQ itself.  The residual columns are
+  unchanged.
+
+- NPDE under `censMethod = "omit"` now gives censored observations NA and
+  leaves them out of the decorrelation.  Before, the residual step's NA
+  spread through the decorrelation and the subject's NPDE were meaningless.
+
+- NPDE's back-transformation of EPRED and DV now uses each observation's own
+  transform; it used the first subject's rows for every subject.
 
 ### Tables
 
