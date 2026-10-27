@@ -210,7 +210,7 @@ nmTest({
   test_that(".bobyqa() restarts a normal exit that is not stationary, whatever path the optimizer took", {
     # the first search ends short of the minimum with a normal exit, as it did in
     # the ar() fit of #1196; later searches are the real bobyqa()
-    .real <- minqa::bobyqa
+    .real <- RcppTrust::bobyqa
     .state <- new.env(parent = emptyenv())
     .state$calls <- 0L
     local_mocked_bindings(
@@ -221,7 +221,7 @@ nmTest({
         }
         .real(par, fn, control = control, lower = lower, upper = upper)
       },
-      .package = "minqa"
+      .package = "RcppTrust"
     )
     .base <- list(rhobeg = 0.2, rhoend = 1e-6, maxfun = 5000, sigdig = 3)
     .on <- .bobyqa(c(-1.2, 1), .valley, lower = .lo, upper = .hi, control = c(.base, bobyqaStationary = TRUE))
