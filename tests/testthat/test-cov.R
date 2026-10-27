@@ -197,7 +197,7 @@ test_that(".covInstall() leaves the fit as it was when the matrix is rejected", 
   .bad <- matrix(c(1, 2, 2, 1), 2, dimnames = dimnames(.pdCov()))
   expect_warning(
     .ok <- .covInstall(.e, .bad, "sa", extras = list(parFixedDf = "refit")),
-    "\"sa\" covariance is not positive definite; kept \"r,s\"",
+    "\"sa\" is not positive definite; kept \"r,s\"",
     fixed = TRUE
   )
   expect_false(.ok)
@@ -210,19 +210,216 @@ test_that(".covInstall() leaves the fit as it was when the matrix is rejected", 
   .e2 <- new.env(parent = emptyenv())
   expect_warning(
     .covInstall(.e2, NULL, "imp"),
-    "\"imp\" covariance could not be computed; none installed",
+    "\"imp\" could not be computed; none installed",
     fixed = TRUE
   )
   expect_silent(.covInstall(.e2, NULL, "imp", warn = FALSE))
   expect_warning(.covInstall(.e2, NULL, NULL), "the covariance could not be computed; none installed", fixed = TRUE)
 })
 
+test_that(".covRejectWarn() reads the same for every method and stays under 75 characters", {
+  .e <- new.env(parent = emptyenv())
+  # a quoted method name stands for its covariance; only "the" takes the noun
+  expect_warning(
+    .covRejectWarn(.e, "r,s", "is not positive definite"),
+    "^\"r,s\" is not positive definite; none installed$"
+  )
+  expect_warning(.covRejectWarn(.e, NA_character_, "is not finite"), "^the covariance is not finite; none installed$")
+  expect_warning(.covRejectWarn(.e, NULL, "is not finite"), "^the covariance is not finite; none installed$")
+  .w <- tryCatch(.covRejectWarn(.e, "analytic (full)", strrep("x", 80)), warning = conditionMessage)
+  expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
+  expect_identical(.w, paste0("\"analytic (full)\" ", strrep("x", 53), "..."))
+})
+
+test_that("each .covWarn() site clips an 80-character label to 74 columns", {
+  # each site that warns through .covWarn(), driven with an abnormal label
+  .long <- strrep("m", 80)
+  .w <- capture_warnings(.covInstall(.fakeFitEnv(), .pdCov(), "linFim", what = .long))
+  expect_identical(.w, paste0("\"linFim\" installed instead of the requested \"", strrep("m", 26), "..."))
+  .w <- capture_warnings(.covRepairWarn("imp", paste0("|", .long, "|")))
+  expect_identical(.w, paste0("\"", strrep("m", 70), "..."))
+  local_mocked_bindings(
+    .setCovRefit = function(...) list(covMethod = "r", cov = .pdCov(), parFixedDf = NULL, parFixed = NULL),
+    .covInstall = function(...) TRUE,
+    .covCacheDrop = function(...) NULL
+  )
+  .w <- capture_warnings(.setCovFd(NULL, new.env(), .long, "b", control = list(covFallback = list(b = "r"))))
+  expect_identical(.w, paste0("\"r\" installed instead of the requested \"", strrep("m", 31), "..."))
+  # a long label of a finite-difference covariance whose ETAs were held
+  local_mocked_bindings(.covFdType = function(x) "r")
+  .e <- new.env(parent = emptyenv())
+  .e$etaObf <- 1
+  .e$cov <- diag(2)
+  .e$covMethod <- .long
+  .w <- capture_warnings(.foceiWarnConditionalCov(.e, list(maxInnerIterations = 0L)))
+  expect_identical(.w, paste0("\"", strrep("m", 70), "..."))
+  expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
+})
+
+test_that("the long-label test drives every .covWarn() caller", {
+  .ns <- asNamespace("nlmixr2est")
+  .callers <- Filter(
+    function(.f) is.function(.ns[[.f]]) && ".covWarn" %in% all.names(body(.ns[[.f]])),
+    ls(.ns, all.names = TRUE)
+  )
+  # a new caller needs a case above and in the real-label test below
+  expect_setequal(
+    .callers,
+    c(".covInstall", ".covRejectWarn", ".covRepairWarn", ".foceiWarnConditionalCov", ".setCovFd")
+  )
+})
+
+# .covRejectWarn()'s text for `what` rejected for `reason`, with `kept` installed
+# (NA: none)
+.covRejText <- function(what, reason, kept) {
+  .e <- new.env(parent = emptyenv())
+  if (!is.na(kept)) {
+    .e$cov <- diag(2)
+    .e$covMethod <- kept
+  }
+  tryCatch(.covRejectWarn(.e, what, reason), warning = conditionMessage)
+}
+
+# .covNotUsableMsg()'s tails: no covariance, or one of `labels` installed
+.covNotUsableTails <- function(labels) c("no covariance", sprintf("installed \"%s\"", labels))
+
+test_that("every covariance warning stays whole for every real method label", {
+  # slow: the .covRejectWarn() grid has thousands of label combinations
+  skip_on_cran()
+  # the labels the code gives a covariance: the finite-difference ones
+  # (.covFdType()'s decorations), with and without " (full)"; a rejected analytic
+  # install's native "r" label with " (analytic)"; and the other methods
+  .fdBase <- c(
+    "r",
+    "r+",
+    "|r|",
+    "s",
+    "s+",
+    "|s|",
+    as.vector(outer(c("r", "r+", "|r|"), c("s", "s+", "|s|"), paste, sep = ","))
+  )
+  .fd <- c(.fdBase, paste0(.fdBase, " (full)"))
+  .anaKept <- paste0(c("r", "r+", "|r|", "r (full)", "r+ (full)", "|r| (full)"), " (analytic)")
+  .other <- c(
+    "analytic",
+    "analytic (full)",
+    "linFim",
+    "linFim (full)",
+    "|linFim|",
+    "Ha",
+    "|Ha|",
+    "sa",
+    "imp",
+    "|imp|",
+    "nlme",
+    "vi"
+  )
+  .guard <- c("could not be computed", "is not finite", "is not symmetric", "is not positive definite")
+  .by <- list()
+  # .covInstall()'s guard: any label rejected, any one kept (NA: none installed)
+  .g <- expand.grid(
+    what = c(.fd, .other),
+    reason = .guard,
+    kept = c(.fd, .anaKept, .other, NA),
+    stringsAsFactors = FALSE
+  )
+  .by$reject <- c(.by$reject, mapply(.covRejText, .g$what, .g$reason, .g$kept))
+  # the full finite-difference step; the SAEM "Ha" block
+  .g <- expand.grid(
+    what = c("r (full)", "s (full)", "r,s (full)"),
+    reason = "needs a positive-definite R",
+    kept = .fd,
+    stringsAsFactors = FALSE
+  )
+  .by$reject <- c(.by$reject, mapply(.covRejText, .g$what, .g$reason, .g$kept))
+  .g <- expand.grid(
+    what = "Ha",
+    reason = c("has information rows not matching the thetas", "has no estimated mu-referenced theta", .guard),
+    kept = c("linFim", "|linFim|", "linFim (full)", NA),
+    stringsAsFactors = FALSE
+  )
+  .by$reject <- c(.by$reject, mapply(.covRejText, .g$what, .g$reason, .g$kept))
+  # .covInstall(): a label installed instead of the one requested
+  .requests <- c(
+    "r,s",
+    "r",
+    "s",
+    "r,s (full)",
+    "r (full)",
+    "s (full)",
+    "analytic",
+    "analytic (full)",
+    "linFim",
+    "linFim (full)",
+    "sa",
+    "imp",
+    "nlme",
+    "vi",
+    "Ha"
+  )
+  for (.l in c(.fd, .other)) {
+    for (.w in .requests) {
+      .by$install <- c(.by$install, capture_warnings(.covInstall(.fakeFitEnv(), .pdCov(), .l, what = .w)))
+    }
+  }
+  # .setCovFd(): a refit's finite-difference label for the finite-difference request
+  .g <- expand.grid(label = .fd, what = .requests[1:6], stringsAsFactors = FALSE)
+  .by$setCovFd <- c(.by$setCovFd, mapply(.covInsteadMsg, .g$label, .g$what))
+  # the sqrtm repairs of the covariances that are repaired
+  for (.p in list(
+    c("imp", "|imp|"),
+    c("linFim", "|linFim|"),
+    c("sa", "|sa|"),
+    c("Ha", "|Ha|"),
+    c("imp (full)", "|imp| (full)")
+  )) {
+    .by$repair <- c(.by$repair, capture_warnings(.covRepairWarn(.p[1], .p[2])))
+  }
+  # a finite-difference covariance whose ETAs were held
+  for (.l in .fd) {
+    .e <- new.env(parent = emptyenv())
+    .e$etaObf <- 1
+    .e$cov <- diag(2)
+    .e$covMethod <- .l
+    .by$conditional <- c(.by$conditional, capture_warnings(.foceiWarnConditionalCov(.e, list(maxInnerIterations = 0L))))
+  }
+  # .covNotUsableMsg() over the domain .covTriedSummary() reaches from FOCEi's walk
+  # (.covSelectFocei()): its requests, one reason at a time, and its installs.
+  # Several reasons joined by "; " can pass 74 columns and are clipped by design
+  # (covTried has them in full), as is the analytic reason, which
+  # test-covSelect.R pins; the analytic paths' own calls give only that reason.
+  .g <- expand.grid(
+    r = c("r,s", "r", "s", "analytic"),
+    why = c(
+      "R not computed",
+      "R not PD",
+      "R failed",
+      "S not computed",
+      "S not PD",
+      "S failed",
+      "sandwich doubtful",
+      "all variances < 1e-7"
+    ),
+    tail = .covNotUsableTails(.fdBase),
+    stringsAsFactors = FALSE
+  )
+  .by$notUsable <- c(.by$notUsable, mapply(.covNotUsableMsg, .g$r, .g$why, .g$tail))
+  .lines <- unlist(.by, use.names = FALSE)
+  .cut <- unique(.lines[endsWith(.lines, "...") | cli::ansi_nchar(.lines, type = "width") > 74L])
+  expect_identical(.cut, character(0))
+  # the lines from each site, so a change shows which grid moved
+  expect_identical(
+    lengths(.by),
+    c(reject = 8346L, install = 557L, setCovFd = 180L, repair = 5L, conditional = 30L, notUsable = 512L)
+  )
+  expect_identical(length(.lines), 9630L)
+})
+
 test_that(".covInstall() says when what it installed is not what was asked for", {
   .e <- .fakeFitEnv()
-  expect_warning(
-    .covInstall(.e, .pdCov(), "linFim", what = "sa"),
-    "\"linFim\" covariance installed instead of the requested \"sa\"",
-    fixed = TRUE
+  expect_identical(
+    capture_warnings(.covInstall(.e, .pdCov(), "linFim", what = "sa")),
+    "\"linFim\" installed instead of the requested \"sa\""
   )
   expect_identical(.e$covMethod, "linFim")
   # a correction decoration or the full-shape suffix names the same covariance
@@ -242,7 +439,7 @@ test_that("the post-fit mu recompute keeps the fit's covariance when its result 
   })
   expect_warning(
     .foceiInstallMuCov(.e, "nlme"),
-    "\"r,s\" covariance is not positive definite; kept \"nlme\"",
+    "\"r,s\" is not positive definite; kept \"nlme\"",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "nlme")
@@ -252,7 +449,7 @@ test_that("the post-fit mu recompute keeps the fit's covariance when its result 
   local_mocked_bindings(.foceiRecomputeMuCov = function(fit, est) list(what = "analytic"))
   expect_warning(
     .foceiInstallMuCov(.e, "nlme"),
-    "\"analytic\" covariance could not be computed; kept \"nlme\"",
+    "\"analytic\" could not be computed; kept \"nlme\"",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "nlme")
@@ -538,8 +735,8 @@ nmTest({
         invokeRestart("muffleWarning")
       }
     )
-    .msg <- "\"r,s (full)\" covariance installed instead of the requested \"analytic\""
-    expect_identical(sum(grepl(.msg, c(.acc$w, .mfa$runInfo), fixed = TRUE)), 1L)
+    .msg <- "\"r,s (full)\" installed instead of the requested \"analytic\""
+    expect_identical(sum(c(.acc$w, .mfa$runInfo) == .msg), 1L)
     expect_identical(.mfa$covMethod, "r,s (full)")
     expect_lt(.maxRel(.seOf(.mfa), .seOf(.ref)), 1e-6)
   })

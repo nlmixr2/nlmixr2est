@@ -129,4 +129,7 @@ BinaryFiles$
 # The fixtures CRAN's own checks read are the CHECKED-IN csv references
 # (npag/pmetrics_reference.csv, npag/ipm/burke-golden.csv) and are kept.
 ^tests/testthat/fixtures/.*\.rds$
+# testthat's record of a failing local run, not package content
+^tests/testthat/testthat-problems\.rds$
+^tests/testthat/_problems$
 ^vignettes/.*\.Rmd\.orig$

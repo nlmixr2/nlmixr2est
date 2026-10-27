@@ -101,7 +101,7 @@ test_that("an unusable information matrix is reported instead of silently leavin
     .w,
     c(
       "linearized FIM failed; using the SAEM information matrix",
-      "\"Ha\" covariance is not finite; none installed"
+      "\"Ha\" is not finite; none installed"
     )
   )
   expect_false(exists("cov", envir = .e, inherits = FALSE))
@@ -181,7 +181,7 @@ test_that("a Ha theta block with every theta fixed installs nothing and says so"
   )
   expect_identical(
     capture_warnings(.saemCalcCov(.e)),
-    "\"Ha\" covariance has no estimated mu-referenced theta; none installed"
+    "\"Ha\" has no estimated mu-referenced theta; none installed"
   )
   expect_false(exists("cov", envir = .e, inherits = FALSE))
   expect_false(exists("covMethod", envir = .e, inherits = FALSE))
@@ -219,7 +219,7 @@ test_that("a Ha theta block whose rows cannot be ordered is not installed", {
   )
   expect_warning(
     .saemCalcCov(.e),
-    "\"Ha\" covariance has information rows not matching the thetas; none installed",
+    "\"Ha\" has information rows not matching the thetas; none installed",
     fixed = TRUE
   )
   expect_false(exists("cov", envir = .e, inherits = FALSE))
@@ -276,7 +276,7 @@ test_that("a full SAEM covariance that is not usable is reported and the theta b
   .e$covMethod <- "linFim"
   expect_warning(
     .saemInstallFullCov(.e),
-    "\"linFim (full)\" covariance is not finite; kept \"linFim\"",
+    "\"linFim (full)\" is not finite; kept \"linFim\"",
     fixed = TRUE
   )
   expect_equal(.e$cov, .saemFull[1:2, 1:2])

@@ -74,7 +74,7 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
       .fitEnv <- object$env
       .npde <- .calcNpde(object, dv = object$DV, table = table)
       .fit <- nlmixrClone(object)
-      .new <- nlmixrCbind(.fit, .npde[[2]])
+      .new <- nlmixrCbind(.fit, .npdeFitRows(object, .npde[[2]]))
       if (updateObject) {
         .evRebound <- nlmixrUpdateObject(.new, .objName, envir, .fitEnv)
       }
@@ -83,4 +83,43 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
     },
     object$env
   )
+}
+
+#' NPDE columns with one row per row of the fit
+#'
+#' The NPDE is computed for the fit's observations.  The other rows of its
+#' table get NA, as in a fit run with `tableControl(npde = TRUE)`: those of a
+#' subject with no observation, which the table reinserts from its data, and
+#' the dosing rows of a table with them (`addDosing`, which adds `EVID`).  The
+#' fit's table and the NPDE follow the same order for the observations.
+#'
+#' @param fit nlmixr2 fit
+#' @param npde NPDE columns for the fit's observations
+#' @return `npde`, with NA rows for the fit's other rows
+#' @noRd
+#' @author Matthew L. Fidler
+.npdeFitRows <- function(fit, npde) {
+  if (nrow(npde) == nrow(fit)) {
+    return(npde)
+  }
+  .in <- as.character(fit$ID) %in% as.character(fit$idLvl)
+  if ("EVID" %in% names(fit)) {
+    .in <- .in & fit$EVID == 0
+  }
+  if (sum(.in) != nrow(npde)) {
+    # without EVID, a table's dosing rows cannot be told from its observations
+    stop(
+      "NPDE has ",
+      nrow(npde),
+      " rows for the fit's ",
+      sum(.in),
+      " observations",
+      if (!("EVID" %in% names(fit))) "; a table with dosing rows needs its 'EVID' column",
+      call. = FALSE
+    )
+  }
+  .ret <- npde[rep(NA_integer_, nrow(fit)), , drop = FALSE]
+  .ret[.in, ] <- npde
+  rownames(.ret) <- NULL
+  .ret
 }

@@ -185,3 +185,47 @@ test_that("IOV/occasion eta is dropped", {
   .p <- suppressMessages(suppressWarnings(.foceiLinCmtCarryPairs(.uiIov)))
   expect_equal(nrow(.p), 0L)
 })
+
+test_that("an id-level same() copy is a between-subject eta, and is eligible", {
+  # eta.v repeats eta.cl's block: its condition is "id:same:eta.cl", whose
+  # base is "id"
+  .same <- function() {
+    ini({
+      tcl <- log(0.1)
+      tv <- log(2)
+      eta.cl ~ 0.1
+      eta.v ~ same()
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+      v <- exp(tv) * (wt / 70) * exp(eta.v)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  .p <- suppressMessages(.foceiLinCmtCarryPairs(.same))
+  expect_identical(.p$etaName, c("eta.cl", "eta.v"))
+  expect_identical(.p$slotName, c("p1", "v1"))
+  expect_identical(.p$shape, c("mult", "mult"))
+})
+
+test_that("an occasion eta alone on its slot is dropped", {
+  .iov <- function() {
+    ini({
+      tcl <- log(0.1)
+      tv <- log(2)
+      eta.cl ~ 0.1
+      iov.v ~ 0.05 | occ
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+      v <- exp(tv) * (wt / 70) * exp(iov.v)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  .p <- suppressMessages(suppressWarnings(.foceiLinCmtCarryPairs(.iov)))
+  expect_identical(.p$etaName, "eta.cl")
+})

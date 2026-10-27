@@ -43,6 +43,29 @@ nmTest({
     expect_error(foceiControl(foceiControl = "matt"))
   })
 
+  test_that("foceiControl() takes only the gradient and Hessian codes the C++ has", {
+    .err <- function(...) tryCatch(foceiControl(...), error = conditionMessage)
+    # names, codes, and the defaults
+    expect_identical(foceiControl()$eventType, 2L)
+    expect_identical(foceiControl(eventType = "forward")$eventType, 3L)
+    expect_identical(foceiControl(eventType = 3)$eventType, 3L)
+    expect_identical(foceiControl()$optimHessType, 1L)
+    expect_identical(foceiControl(optimHessType = "forward")$optimHessType, 3L)
+    expect_identical(foceiControl(optimHessCovType = 3L)$optimHessCovType, 3L)
+    expect_identical(foceiControl(optimHessType = "forward", optimHessCovType = "forward")$optimHessCovType, 3L)
+    # eventType 1 left the inner eta finite difference without a case (a zero
+    # gradient); Hessian type 2 gave a Hessian of zeros
+    expect_identical(.err(eventType = 1L), "'eventType' must be one of \"central\" (2), \"forward\" (3)")
+    expect_identical(.err(optimHessType = 2L), "'optimHessType' must be one of \"central\" (1), \"forward\" (3)")
+    expect_identical(.err(optimHessCovType = 2L), "'optimHessCovType' must be one of \"central\" (1), \"forward\" (3)")
+    expect_identical(.err(eventType = 2.5), "'eventType' must be one of \"central\" (2), \"forward\" (3)")
+    expect_identical(.err(eventType = NA_real_), "'eventType' must be one of \"central\" (2), \"forward\" (3)")
+    expect_identical(.err(eventType = c(2L, 3L)), "'eventType' must be one of \"central\" (2), \"forward\" (3)")
+    # a control's stored codes survive the round trip
+    .ctl <- foceiControl(eventType = "forward", optimHessType = "forward", optimHessCovType = "forward")
+    expect_equal(do.call(foceiControl, .ctl), .ctl)
+  })
+
   test_that("saemControl sanity", {
     expect_error(saemControl(), NA)
     nlmixrControlTest(saemControl())
