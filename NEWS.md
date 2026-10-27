@@ -239,6 +239,41 @@
   stores (`eventType` 2 and 3, the Hessian types 1 and 3) are accepted as
   before.
 
+### Inter-occasion variability
+
+- A fit with inter-occasion variability keeps its `omega` as the nested
+  `lotri` list it is, one block per level, so `rxSolve(fit)` works; it
+  stopped with "The following parameter(s) are required for solving:
+  iov.cl, eta.v".  `as.matrix(fit$omega)` now stops for such a fit
+  ("cannot convert multiple level lotri matrix to simple matrix");
+  `lotri::lotriMat(fit$omega)` gives the whole matrix.
+
+- `predict(fit, level = "individual")` now works on a fit with
+  inter-occasion variability; it stopped with "attempt access index 0/0 in
+  VECTOR_ELT".  Each record takes its subject's estimates, joined on the
+  subject and its occasion, so under `"locf"` or `"nocb"` covariate
+  interpolation the predictions are the fit's IPRED, in any row order of
+  `newdata`.  A subject or occasion the fit did not estimate gets etas of
+  0, with a warning.  Under `"midpoint"` or `"linear"` interpolation they
+  differ from IPRED after an occasion changes (`?predict.nlmixr2FitCore`).
+
+- Population `predict()` of a fit with inter-occasion variability now
+  works, and gives its PRED; it stopped with "The following parameter(s)
+  are required for solving: iov.cl, eta.v".
+
+- `augPred()` now works on a fit with inter-occasion variability; it
+  stopped with "The following parameter(s) are required for solving:
+  iov.cl".  Its individual curve takes each time's occasion from the fit's
+  covariate interpolation and record order, and its population curve sets
+  every eta, of every level, to zero.
+
+### Documentation
+
+- `?augPred` says that its curves for a `linCmt()` model with
+  time-varying covariates are approximate: under the default `"locf"`
+  interpolation, rxode2's `linCmt()` takes a covariate's value at the end
+  of each interval, so the times `augPred()` adds move where a change takes
+  effect.
 - `addNpde()` and `addTable()` now work on a fit with inter-occasion
   variability, including one run with `calcTables = FALSE`.  They stopped
   with "The following parameter(s) are required for solving: occ, ..."
