@@ -800,22 +800,78 @@ test_that("a vae or vi FOCEi covariance that fails leaves the fit without one, w
     .foceiRecomputeCov = function(...) stop("no solve"),
     .package = "nlmixr2est"
   )
-  expect_warning(
-    .r <- .foceiInstallOwnEtaCov(.e, foceiControl()),
-    "FOCEi covariance not computed (no solve)",
-    fixed = TRUE
+  expect_identical(
+    capture_warnings(.r <- .foceiInstallOwnEtaCov(.e, foceiControl())),
+    "FOCEi covariance not computed (no solve)"
   )
   expect_false(.r)
+  # the covariance the control asked for is the method tried
+  expect_identical(.covMethodFromSlot(foceiControl()$covMethod, foceiControl()$covType), "r,s")
+  expect_identical(.e$covTried, data.frame(method = "r,s", outcome = "not computed (no solve)"))
   local_mocked_bindings(
     .foceiRecomputeCov = function(...) list(cov = diag(2), covMethod = "r", what = "r", extras = list()),
     .covInstall = function(...) stop("no table"),
     .package = "nlmixr2est"
   )
-  expect_warning(
-    .r <- .foceiInstallOwnEtaCov(.e, foceiControl()),
-    "FOCEi covariance not installed (no table)",
-    fixed = TRUE
+  expect_identical(
+    capture_warnings(.r <- .foceiInstallOwnEtaCov(.e, foceiControl())),
+    "FOCEi covariance not installed (no table)"
   )
   expect_false(.r)
   expect_false(exists("cov", envir = .e, inherits = FALSE))
+  expect_identical(
+    .e$covTried,
+    data.frame(method = c("r,s", "r"), outcome = c("not computed (no solve)", "not installed (no table)"))
+  )
+})
+
+test_that("a FOCEi covariance that .covInstall() rejects is in covTried too", {
+  .e <- new.env(parent = emptyenv())
+  local_mocked_bindings(
+    .setCovEnv = function(fit) .e,
+    .foceiRecomputeCov = function(...) {
+      list(cov = matrix(c(1, 2, 2, 1), 2), covMethod = "r", what = "r,s", extras = list())
+    },
+    .package = "nlmixr2est"
+  )
+  expect_identical(
+    capture_warnings(.r <- .foceiInstallOwnEtaCov(.e, foceiControl())),
+    "\"r,s\" is not positive definite; none installed"
+  )
+  expect_false(.r)
+  expect_identical(.e$covTried, data.frame(method = "r,s", outcome = "not installed (is not positive definite)"))
+  # a second failure joins the first
+  .e$covTried <- data.frame(method = "analytic", outcome = "not usable")
+  suppressWarnings(.foceiInstallOwnEtaCov(.e, foceiControl()))
+  expect_identical(
+    .e$covTried,
+    data.frame(
+      method = c("analytic", "r,s"),
+      outcome = c("not usable", "not installed (is not positive definite)")
+    )
+  )
+})
+
+test_that("a long or multi-line FOCEi covariance failure is clipped in the warning, whole in covTried", {
+  .e <- new.env(parent = emptyenv())
+  .msg <- paste0("first line\n  ", strrep("m", 80))
+  .one <- paste0("first line ", strrep("m", 80))
+  local_mocked_bindings(
+    .setCovEnv = function(fit) .e,
+    .foceiRecomputeCov = function(...) stop(.msg),
+    .package = "nlmixr2est"
+  )
+  .w <- capture_warnings(.foceiInstallOwnEtaCov(.e, foceiControl()))
+  expect_identical(.w, paste0("FOCEi covariance not computed (first line ", strrep("m", 29), "..."))
+  expect_identical(cli::ansi_nchar(.w, type = "width"), .covWarnWidth)
+  expect_identical(.e$covTried, data.frame(method = "r,s", outcome = paste0("not computed (", .one, ")")))
+  local_mocked_bindings(
+    .foceiRecomputeCov = function(...) list(cov = diag(2), covMethod = "r", what = "r", extras = list()),
+    .covInstall = function(...) stop(.msg),
+    .package = "nlmixr2est"
+  )
+  .w <- capture_warnings(.foceiInstallOwnEtaCov(.e, foceiControl()))
+  expect_identical(.w, paste0("FOCEi covariance not installed (first line ", strrep("m", 28), "..."))
+  expect_identical(cli::ansi_nchar(.w, type = "width"), .covWarnWidth)
+  expect_identical(.e$covTried$outcome[2L], paste0("not installed (", .one, ")"))
 })
