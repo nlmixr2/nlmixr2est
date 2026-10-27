@@ -166,6 +166,26 @@
   checkmate::assertIntegerish(cfg$resFixed, lower = 0, upper = 1, .var.name = "cfg$resFixed")
 }
 
+#' Is the saem data censored?
+#'
+#' @param data saem data
+#' @return 0 uncensored, 1 censored (`CENS != 0`), 2 a finite `LIMIT` too
+#'   (M2/M4, which also need the transformed limit)
+#' @noRd
+.saemCensOutCode <- function(data) {
+  .n <- toupper(names(data))
+  .cens <- if ("CENS" %in% .n) data[[which(.n == "CENS")[1]]] else 0
+  .lim <- if ("LIMIT" %in% .n) data[[which(.n == "LIMIT")[1]]] else NA_real_
+  .hasLim <- any(is.finite(.lim))
+  if (.hasLim) {
+    return(2L)
+  }
+  if (any(.cens != 0, na.rm = TRUE)) {
+    return(1L)
+  }
+  0L
+}
+
 #' Fit a UI model with saem
 #'
 #' @param ui rxode2 ui
@@ -180,6 +200,12 @@
   # with the mu-referenced focei family, see .nlmixrSetMuRefTimeVarying).
   .nlmixrSetMuRefTimeVarying(ui, timeVaryingCovariates)
   on.exit(.nlmixrRmMuRefTimeVarying(ui))
+  # a censored general likelihood needs the density's inputs (saemModel)
+  .censOut <- if (.saemGeneralLik(ui)) .saemCensOutCode(data) else 0L
+  if (.censOut > 0L) {
+    assign(".saemCensOut", .censOut, envir = ui)
+    on.exit(rm(list = ".saemCensOut", envir = ui), add = TRUE)
+  }
   # Building the saem model list does the symengine translation and rxode2
   # compilation -- timed as "configure" (mapped to "setup") so it is not
   # silently absorbed into the "other" bucket.
@@ -190,7 +216,9 @@
   # exact-Hessian model and its pred-only FD-fallback peer so .configsaem can
   # thread them into opt$saemPhi1Hess2/opt$saemPhi1Pred -- setupRx registers
   # them as odeSwap peers of SAEM's own model for the phi1 theta step.
-  if (.saemGeneralLik(ui)) {
+  # the pooled theta step scores FOCEi's log-density, which has no censoring
+  # inputs, so a censored fit keeps saem's own model
+  if (.saemGeneralLik(ui) && .censOut == 0L) {
     .p1 <- nlmixrWithTiming("configure", ui$saemPhi1Inner)
     if (!is.null(.p1) && isTRUE(.p1$ok)) {
       .model$saemPhi1Hess2 <- .p1$innerHess2
@@ -202,6 +230,11 @@
       .model$saemPhi1DvCol <- as.integer(.p1$dvCol)
       .model$saemPhi1DvColHess2 <- as.integer(.p1$dvColHess2)
     }
+  }
+  if (.censOut > 0L) {
+    .lhs <- rxode2::rxModelVars(attr(.model$saem_mod, "rx"))$lhs
+    .ix <- match(c("rx_cx_", "rx_cmu_", "rx_csd_", "rx_cnu_", "rx_clim_"), .lhs) - 1L
+    .model$saemGenCensIx <- ifelse(is.na(.ix), -1L, .ix)
   }
   .inits <- ui$saemInit
   .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())

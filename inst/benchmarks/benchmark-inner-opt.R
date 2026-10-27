@@ -45,6 +45,10 @@ dir.create(file.path(.outDir, "cases"), showWarnings = FALSE, recursive = TRUE)
   newuoaPolish = list(innerOpt = 5L, newuoaPolish = TRUE)
 )
 
+#' Load this checkout of nlmixr2est with pkgload
+#'
+#' @return nothing, called for its side effect
+#' @noRd
 .loadPkg <- function() {
   suppressPackageStartupMessages(pkgload::load_all(".", quiet = TRUE, helpers = FALSE))
 }
@@ -52,6 +56,15 @@ dir.create(file.path(.outDir, "cases"), showWarnings = FALSE, recursive = TRUE)
 # ---------------------------------------------------------------------------
 # capture
 # ---------------------------------------------------------------------------
+#' Capture the FOCEi-family corpus
+#'
+#' Sources every FOCEi-family test file, the vignettes and the #924 models with
+#' `nlmixr2()`/`nlmixr()` intercepted, saving each FOCEi-family call to
+#' `<outDir>/cases/` and logging each source to `capture.log`.
+#'
+#' @param vigDir directory of the nlmixr2 vignettes (`.Rmd`)
+#' @return nothing, called for its side effects
+#' @noRd
 .capture <- function(vigDir) {
   .loadPkg()
   rxode2::setRxThreads(4L)
@@ -177,7 +190,13 @@ dir.create(file.path(.outDir, "cases"), showWarnings = FALSE, recursive = TRUE)
 # ---------------------------------------------------------------------------
 # replay
 # ---------------------------------------------------------------------------
-# start 0: as captured; 1: thetas +10%, omega x1.25; 2: thetas -10%, omega x0.8
+#' Starting estimates for one replay start
+#'
+#' @param ui captured rxode2 ui
+#' @param start 0: as captured; 1: thetas +10% and omega x1.25; 2: thetas -10%
+#'   and omega x0.8 (thetas kept within their bounds)
+#' @return the ui with the start's initial estimates
+#' @noRd
 .startUi <- function(ui, start) {
   if (start == 0L) {
     return(ui)
@@ -192,6 +211,14 @@ dir.create(file.path(.outDir, "cases"), showWarnings = FALSE, recursive = TRUE)
   ui
 }
 
+#' Model features used to group the report
+#'
+#' @param ui captured rxode2 ui
+#' @param data captured data
+#' @param control captured control
+#' @param est estimation method
+#' @return named list of logical features plus `est`
+#' @noRd
 .features <- function(ui, data, control, est) {
   .pd <- ui$predDf
   .lst <- paste(deparse(ui$lstExpr), collapse = " ")
@@ -214,6 +241,11 @@ dir.create(file.path(.outDir, "cases"), showWarnings = FALSE, recursive = TRUE)
   )
 }
 
+#' Feature row for a case whose features could not be computed
+#'
+#' @param est estimation method
+#' @return `.features()`-shaped list of NA features plus `est`
+#' @noRd
 .noFeatures <- function(est) {
   list(
     errAdd = NA,
@@ -231,6 +263,16 @@ dir.create(file.path(.outDir, "cases"), showWarnings = FALSE, recursive = TRUE)
   )
 }
 
+#' Replay every captured case under one arm
+#'
+#' Runs each case from 3 starts and appends one row per fit (objective, time,
+#' per-fit inner counters, error, features) to `<outDir>/arm-<arm>.csv`,
+#' skipping rows already there.
+#'
+#' @param arm name of an entry of `.arms`
+#' @param threads rxode2 threads for each fit
+#' @return nothing, called for its side effects
+#' @noRd
 .replay <- function(arm, threads) {
   .loadPkg()
   rxode2::setRxThreads(threads)

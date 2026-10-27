@@ -7,13 +7,22 @@
 // inner.cpp and filled by .iniRcppTrustPtr() at load.
 
 #include <RcppTrust.h>
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <functional>
 #include <vector>
 
+// Objective of the minqa-style C++ optimizers: value at an n-vector
+// @noRd
 typedef std::function<double(const double *)> minqaCFn;
 
+// Result of newuoaC(), bobyqaC() and boundedResidOptC()
+//
+// `x` is the final point (the start when the solver is unavailable),
+// `value` its objective (NA on failure), `convergence` RcppTrust's ierr
+// (negative on failure) and `feval` the number of evaluations.
+// @noRd
 struct minqaCRes {
   std::vector<double> x;
   double value = NA_REAL;
@@ -21,13 +30,24 @@ struct minqaCRes {
   int feval = 0;
 };
 
+// C callback handed to RcppTrust; forwards to the wrapped minqaCFn
+// @param n dimension (unused; the minqaCFn knows it)
+// @param x point
+// @param f objective value (output)
+// @param ud the minqaCFn
+// @return 0
+// @noRd
 static inline int minqaCTramp(int n, const double *x, double *f, void *ud) {
   (void)n;
   *f = (*static_cast<const minqaCFn *>(ud))(x);
   return 0;
 }
 
-// minqa's defaults for unset rhobeg/rhoend: rhobeg = min(0.95, 0.2*max|par|).
+// minqa's default rhobeg
+// @param n dimension
+// @param par start
+// @return min(0.95, 0.2*max|par|), or 0.1 when par is all zero
+// @noRd
 static inline double minqaCRhobeg(int n, const double *par) {
   double mx = 0.0;
   for (int i = 0; i < n; ++i) mx = std::max(mx, std::fabs(par[i]));
@@ -35,6 +55,13 @@ static inline double minqaCRhobeg(int n, const double *par) {
   return rb > 0.0 ? rb : 0.1;
 }
 
+// Copy an RcppTrust minqa result into a minqaCRes
+// @param out result to fill
+// @param n dimension
+// @param res RcppTrust result (still owned by the caller)
+// @param ierr solver return code
+// @return nothing
+// @noRd
 static inline void minqaCFill(minqaCRes &out, int n, minqa_result_t &res, int ierr) {
   out.convergence = ierr;
   out.feval = res.feval;
@@ -46,7 +73,16 @@ static inline void minqaCFill(minqaCRes &out, int n, minqa_result_t &res, int ie
   }
 }
 
-// rhobeg/rhoend <= 0 select minqa's defaults; npt <= 0 selects 2n+1.
+// NEWUOA through RcppTrust's C API
+// @param n dimension (>= 2)
+// @param par start
+// @param fn objective
+// @param rhobeg initial trust radius; <= 0 selects minqa's default
+// @param rhoend final trust radius; <= 0 selects 1e-6*rhobeg
+// @param maxfun evaluation limit
+// @param npt interpolation points; <= 0 selects 2n+1
+// @return a minqaCRes
+// @noRd
 static inline minqaCRes newuoaC(int n, const double *par, const minqaCFn &fn,
                                 double rhobeg, double rhoend, int maxfun,
                                 int npt = 0) {
@@ -67,8 +103,20 @@ static inline minqaCRes newuoaC(int n, const double *par, const minqaCFn &fn,
   return out;
 }
 
-// Mirrors minqa::bobyqa()'s R-side setup (npt = 2n+1 as .bobyqa() sets it,
-// rhobeg shrunk to 0.2*min(upper-lower) for a tight box).
+// BOBYQA through RcppTrust's C API
+//
+// Mirrors minqa::bobyqa()'s R-side setup: npt = 2n+1 as .bobyqa() sets it,
+// and rhobeg shrunk to 0.2*min(upper-lower) for a tight box.
+// @param n dimension (>= 2)
+// @param par start, inside the box
+// @param lower lower bounds
+// @param upper upper bounds
+// @param fn objective
+// @param rhobeg initial trust radius; <= 0 selects minqa's default
+// @param rhoend final trust radius; <= 0 selects 1e-6*rhobeg
+// @param maxfun evaluation limit
+// @return a minqaCRes
+// @noRd
 static inline minqaCRes bobyqaC(int n, const double *par, const double *lower,
                                 const double *upper, const minqaCFn &fn,
                                 double rhobeg, double rhoend, int maxfun) {
@@ -94,13 +142,24 @@ static inline minqaCRes bobyqaC(int n, const double *par, const double *lower,
   return out;
 }
 
-// State of the Brent_fmin() search: bracket [a, b], best x, runner-up w,
-// previous w in v, and the last two steps d and e.
+// State of the brentFmin() search
+//
+// Bracket [a, b], best point x, runner-up w, previous w in v (with their
+// objectives), and the last two steps d and e.
+// @noRd
 struct brentState {
   double a, b, d, e, v, w, x, fv, fw, fx;
 };
 
-// Brent_fmin() step from x: parabolic when acceptable, else golden section.
+// Next brentFmin() trial point
+//
+// A parabolic step when it is acceptable, otherwise golden section.
+// @param st search state (d and e are updated)
+// @param xm bracket midpoint
+// @param tol1 current tolerance
+// @param t2 twice tol1
+// @return the trial point u
+// @noRd
 static inline double brentStep(brentState &st, double xm, double tol1, double t2) {
   const double c = (3. - std::sqrt(5.)) * .5;
   double p = 0., q = 0., r = 0.;
@@ -126,7 +185,12 @@ static inline double brentStep(brentState &st, double xm, double tol1, double t2
   return (st.d > 0.) ? st.x + tol1 : st.x - tol1;
 }
 
-// Brent_fmin() bookkeeping after evaluating f(u) = fu.
+// Update the brentFmin() bracket and best points after evaluating f(u)
+// @param st search state
+// @param u trial point
+// @param fu objective at u
+// @return nothing
+// @noRd
 static inline void brentUpdate(brentState &st, double u, double fu) {
   if (fu <= st.fx) {
     if (u < st.x) st.b = st.x; else st.a = st.x;
@@ -143,8 +207,16 @@ static inline void brentUpdate(brentState &st, double u, double fu) {
   }
 }
 
-// Port of R's Brent_fmin() (stats::optimize); non-finite values become DBL_MAX
-// as optimize() does.
+// Port of R's Brent_fmin() (stats::optimize())
+//
+// Non-finite values become DBL_MAX, as optimize() does.
+// @param ax lower end of the interval
+// @param bx upper end of the interval
+// @param f0 objective
+// @param tol x tolerance
+// @param nEval evaluation counter to increment, or NULL
+// @return the minimizing x
+// @noRd
 static inline double brentFmin(double ax, double bx,
                                const std::function<double(double)> &f0,
                                double tol, int *nEval = NULL) {
@@ -154,7 +226,8 @@ static inline double brentFmin(double ax, double bx,
     return std::isfinite(v) ? v : DBL_MAX;
   };
   const double c = (3. - std::sqrt(5.)) * .5;
-  const double eps = std::sqrt(DBL_EPSILON), tol3 = tol / 3.;
+  // optimize() rejects tol <= 0; with tol 0 and the minimum at 0 the bracket never closes
+  const double eps = std::sqrt(DBL_EPSILON), tol3 = std::max(tol, DBL_EPSILON) / 3.;
   brentState st;
   st.a = ax; st.b = bx;
   st.v = st.a + c * (st.b - st.a);
@@ -162,7 +235,7 @@ static inline double brentFmin(double ax, double bx,
   st.d = 0.; st.e = 0.;
   st.fx = f(st.x);
   st.fv = st.fx; st.fw = st.fx;
-  for (;;) {
+  for (int it = 0; it < 1000; ++it) {
     double xm = (st.a + st.b) * .5;
     double tol1 = eps * std::fabs(st.x) + tol3;
     double t2 = tol1 * 2.;
@@ -173,8 +246,16 @@ static inline double brentFmin(double ax, double bx,
   return st.x;
 }
 
-// Golden-ratio downhill expansion from x0 until the minimum is bracketed;
-// returns false (leaving the widest bracket tried) if it never turns up.
+// Bracket a 1-D minimum by golden-ratio downhill expansion from x0
+// @param f objective
+// @param x0 start
+// @param step first step
+// @param lo lower end of the bracket (output)
+// @param hi upper end of the bracket (output)
+// @param nEval evaluation counter to increment, or NULL
+// @param maxIt expansion limit
+// @return false (leaving the widest bracket tried) if no minimum was bracketed
+// @noRd
 static inline bool bracketMin1D(const std::function<double(double)> &f,
                                 double x0, double step, double &lo, double &hi,
                                 int *nEval = NULL, int maxIt = 60) {
@@ -202,7 +283,13 @@ static inline bool bracketMin1D(const std::function<double(double)> &f,
   return fb <= fc;
 }
 
-// Unbounded 1-D minimization: bracket from x0, then Brent on the bracket.
+// Unbounded 1-D minimization: bracket from x0, then Brent on the bracket
+// @param f objective
+// @param x0 start
+// @param tol x tolerance
+// @param nEval evaluation counter to increment, or NULL
+// @return the minimizing x
+// @noRd
 static inline double min1D(const std::function<double(double)> &f, double x0,
                            double tol, int *nEval = NULL) {
   double step = std::max(0.1 * std::fabs(x0), 0.1);
@@ -211,8 +298,19 @@ static inline double min1D(const std::function<double(double)> &f, double x0,
   return brentFmin(lo, hi, f, tol, nEval);
 }
 
-// Port of .boundedResidOpt(): infinite bounds widened to a finite box around
-// the start; bobyqa for n >= 2, bounded Brent for n == 1.
+// C++ port of .boundedResidOpt()
+//
+// Infinite bounds are widened to a finite box around the start and the
+// start is nudged inside it; bobyqa for n >= 2, bounded Brent for n == 1.
+// @param n dimension
+// @param par start
+// @param lower lower bounds (may be infinite)
+// @param upper upper bounds (may be infinite)
+// @param fn objective
+// @param rhoend bobyqa final trust radius; <= 0 selects the default
+// @param maxfun bobyqa evaluation limit
+// @return a minqaCRes
+// @noRd
 static inline minqaCRes boundedResidOptC(int n, const double *par,
                                          const double *lower, const double *upper,
                                          const minqaCFn &fn, double rhoend = 0.0,

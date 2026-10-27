@@ -105,6 +105,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "optexpression-saem-nlme",
     "saem-cov-multi-endpoint-904",
     "saem-modeled-resid-fit",
+    "saem-ebe-mode-lik",
     "nlmixr2output-same-fit"
   ),
 

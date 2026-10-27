@@ -179,7 +179,49 @@ nmGetDistributionSaemLines.LL <- function(line) {
   # internally, so one forwarding body covers all of them.
   .ui <- line[[1]]
   .errNum <- line[[3]]
-  .saemAddTbsJacobian(rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum)), line[[2]])
+  .lines <- .saemAddCensLines(rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum)))
+  .saemAddTbsJacobian(.lines, line[[2]])
+}
+
+#' Censoring inputs of a general-likelihood line
+#'
+#' Puts the arguments of a normal, t or Cauchy log-density in `rx_cx_`
+#' (transformed DV), `rx_cmu_` (mean), `rx_csd_` (sd), `rx_cnu_` (degrees of
+#' freedom: 0 normal, 1 Cauchy, -1 no closed form) and `rx_clim_` (the
+#' transformed `LIMIT`), so saem can score a censored observation as FOCEi does.
+#' They are only output when the data are censored (`rxUiGet.saemModel`).
+#'
+#' @param lines generated error lines of one endpoint
+#' @return lines with the capture lines before the log-density line
+#' @noRd
+.saemAddCensLines <- function(lines) {
+  .w <- which(vapply(lines, .saemIsLlikLine, logical(1)))
+  .args <- NULL
+  if (length(.w) == 1L) {
+    .call <- lines[[.w]][[3]]
+    .args <- switch(
+      as.character(.call[[1]]),
+      llikNorm = list(.call[[2]], .call[[3]], .call[[4]], 0),
+      llikT = list(.call[[2]], .call[[4]], .call[[5]], .call[[3]]),
+      llikCauchy = list(.call[[2]], .call[[3]], .call[[4]], 1),
+      NULL
+    )
+  }
+  if (is.null(.args)) {
+    .args <- list(0, 0, 1, -1)
+    .lim <- 0
+  } else {
+    .lim <- eval(call("substitute", .args[[1]], list(DV = quote(LIMIT))))
+  }
+  .cap <- list(
+    bquote(rx_cx_ ~ .(.args[[1]])),
+    bquote(rx_cmu_ ~ .(.args[[2]])),
+    bquote(rx_csd_ ~ .(.args[[3]])),
+    bquote(rx_cnu_ ~ .(.args[[4]])),
+    bquote(rx_clim_ ~ .(.lim))
+  )
+  .at <- if (length(.w) == 1L) .w - 1L else length(lines)
+  append(lines, .cap, after = .at)
 }
 
 #' Is this generated line `rx_pred_ ~ llik*(...)`?
@@ -473,6 +515,7 @@ rxUiGet.saemModel <- function(x, ...) {
 
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
+  .prd <- c(.prd, .saemCensOutLines(x[[1]], .s))
   ## .lhs0 <- .s$..lhs0
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
@@ -523,6 +566,32 @@ rxUiGet.saemModel <- function(x, ...) {
   paste(c(rxUiGet.saemParams(x, ...), .cmt, .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse = "\n")
 }
 attr(rxUiGet.saemModel, "rstudio") <- "params(tcl)"
+
+#' Censoring outputs of a general-likelihood saem model
+#'
+#' Emitted only when `.saemFitModel()` staged censored data on the ui
+#' (`.saemCensOut`: 1 censored, 2 censored with a `LIMIT` column).
+#'
+#' @param ui rxode2 ui
+#' @param s symengine environment of the saem model
+#' @return model lines (`rx_cx_=...`, ...), or character(0)
+#' @noRd
+.saemCensOutLines <- function(ui, s) {
+  .out <- get0(".saemCensOut", envir = ui, inherits = FALSE)
+  if (is.null(.out) || !exists("rx_cnu_", envir = s, inherits = FALSE)) {
+    return(character(0))
+  }
+  .v <- c("rx_cx_", "rx_cmu_", "rx_csd_", "rx_cnu_", if (.out == 2L) "rx_clim_")
+  vapply(
+    .v,
+    function(v) {
+      .e <- get(v, envir = s)
+      paste0(v, "=", rxode2::rxFromSE(.e))
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+}
 
 #'@export
 rxUiGet.saemModelPredReplaceLst <- function(x, ...) {

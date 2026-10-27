@@ -16,6 +16,9 @@
 
 #define hasFiniteLimit(lim) (R_FINITE(lim) && !ISNA(lim))
 #define isM2(cens, lim) (cens == 0.0 && hasFiniteLimit(lim))
+// M2 conditions on the side of LIMIT the observation is on: +1 (above, a lower
+// limit) gives log P(y > lim), -1 log P(y < lim)
+#define m2Sign(limDv, lim) ((lim <= limDv)*2.0 - 1.0)
 #define isM3orM4(cens) (cens == 1.0 || cens == -1.0)
 
 #define _safe_zero(a) ((a) == 0 ? DBL_EPSILON : (a))
@@ -78,9 +81,10 @@ static inline double doCensNormal1(double cens, double limDv, double lim, double
     // M2 adds likelihood even when the observation is defined
     // Note the ll is the numerator of equation 1 in Beal 2001, Ways to fit a PK model with some data below the quantification limit
     // So the negative represents the fact this is the denominator
-    // The M2 can also be applied for quantitation above the limit.
+    // The M2 can also be applied for quantitation above the limit.  The side is
+    // the observation's, not the prediction's (which made the objective kink at lim).
     updateCensFlag(censFlagM2);
-    double z = ((lim<f)*2.0 - 1.0)*(lim - f)/sqrt(r);
+    double z = m2Sign(limDv, lim)*(lim - f)/sqrt(r);
     return ll - finite_log_prob(R::pnorm5(z, 0.0, 1.0, 0, 1)) - adj;
   } else if (isM3orM4(cens)) {
     if (hasFiniteLimit(lim)) {
@@ -119,8 +123,8 @@ static inline double dCensNormal1(double cens, double limDv, double lim,
                                   double df, double dr) {
   // M2 has the contribution of the dll as well as the censoring
   if (isM2(cens, lim)) { /*
-  #log(1.0 - PHI(((lim<f)*2.0 - 1.0)*(lim - f)/sqrt(r))) - adj;
-# Case 1 lim < f
+  #log(1.0 - PHI(m2Sign(limDv, lim)*(lim - f)/sqrt(r))) - adj;
+# Case 1 lim <= limDv
 # > rxToSE("log(1.0 - phi((lim - f)/sqrt(r)))")
 # Then changed to 
 # D(S("log(1-0.5*(1+erf(((lim-f(x))/sqrt(r(x)))/sqrt(2))))"),"x")
@@ -130,7 +134,7 @@ ll=-1.0*exp((-1/2)*(lim - f)^2/r)*((-1/2)*sqrt(2)*fpm/sqrt(r) + (-1/4)*sqrt(2)*d
 
 tmp <- rxode2(rxOptExpr("ll=-1.0*exp((-1/2)*(lim - f)^2/r)*((-1/2)*sqrt(2)*fpm/sqrt(r) + (-1/4)*sqrt(2)*dr*(lim - f)/r^(3/2))/(sqrt(pi)*(1 - 0.5*(1 + erf((1/2)*sqrt(2)*(lim - f)/sqrt(r)))))"))
  */
-    if (lim < f) {
+    if (lim <= limDv) {
       double rx_expr_0 =lim-f;
       double rx_expr_1 = M_SQRT2;
       double rx_expr_2 =_safe_sqrt(r);
@@ -250,7 +254,7 @@ static inline double doCensT1(double cens, double limDv, double lim, double ll,
     // M2 adds likelihood even when the observation is defined; see
     // doCensNormal1 for the derivation this mirrors.
     updateCensFlag(censFlagM2);
-    double z = ((lim<f)*2.0 - 1.0)*(lim - f)/sd;
+    double z = m2Sign(limDv, lim)*(lim - f)/sd;
     return ll - finite_log_prob(R::pt(z, nu, 0, 1));
   } else if (isM3orM4(cens)) {
     if (hasFiniteLimit(lim)) {
@@ -289,7 +293,7 @@ static inline double dCensT1(double cens, double limDv, double lim,
     return sgn*(-df*sd - (x - f)*dsd)/sd2;
   };
   if (isM2(cens, lim)) {
-    double sgn = (lim<f)*2.0 - 1.0;
+    double sgn = m2Sign(limDv, lim);
     double z = sgn*(lim - f)/sd;
     double dzv = dz(lim, sgn);
     double upper = R::pt(z, nu, 0, 0);
@@ -336,7 +340,7 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
   double dv = limDv;
   int hasFin = (R_FINITE(lim) && !ISNA(lim));
   if (cens == 0.0 && hasFin) {            // M2
-    if (lim < f) {
+    if (lim <= dv) {
       double rx_expr_0 = (dv - f);
       double rx_expr_2 = 1.414213562373095;
       double rx_expr_3 = sqrt(r);
@@ -781,6 +785,7 @@ static inline void censNormalDvPartials(double cens, double limDv, double lim,
 }
 #undef hasFiniteLimit
 #undef isM2
+#undef m2Sign
 #undef isM3orM4
 #undef PHI
 #undef _safe_zero

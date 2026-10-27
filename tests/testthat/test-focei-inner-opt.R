@@ -76,5 +76,7 @@ nmTest({
     )
     # the default rhoend follows the ODE tolerance
     expect_equal(foceiControl()$newuoaRhoend, sqrt(max(foceiControl()$rxControl$rtol)))
+    # a zero tolerance never stops the 1-D search
+    expect_error(foceiControl(newuoaRhoend = 0), "newuoaRhoend")
   })
 })

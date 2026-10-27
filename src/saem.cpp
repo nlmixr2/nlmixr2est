@@ -760,6 +760,30 @@ extern arma::uvec _saemPhi1I1;
 extern bool _saemPhi1PoolActive;
 extern t_calc_lhs saem_lhs;
 extern t_update_inis saem_inis;
+extern arma::ivec _saemGenCensIx;
+
+// Log-likelihood of one general-likelihood observation, censoring included
+//
+// A censored (or M2) observation of a normal, t or Cauchy endpoint is scored
+// as FOCEi does, from the density's inputs the saem model outputs (lhs
+// columns _saemGenCensIx: transformed DV, mean, sd, nu, transformed limit).
+// @param lhs the row's lhs values
+// @param cens CENS of the row
+// @param lim LIMIT of the row
+// @param ll the row's log-density (rx_pred_)
+// @return the log-likelihood
+// @noRd
+static inline double saemGenLikCens(const double *lhs, double cens, double lim, double ll) {
+  if (_saemGenCensIx.n_elem != 5 || std::isnan(ll)) return ll;
+  if (cens == 0.0 && !R_FINITE(lim)) return ll;
+  double nu = lhs[_saemGenCensIx(3)];
+  if (nu < 0.0) return ll;
+  double limT = (R_FINITE(lim) && _saemGenCensIx(4) >= 0) ? lhs[_saemGenCensIx(4)] : lim;
+  double x = lhs[_saemGenCensIx(0)], mu = lhs[_saemGenCensIx(1)];
+  double sd = lhs[_saemGenCensIx(2)];
+  if (nu == 0.0) return doCensNormal1(cens, x, limT, ll, mu, sd*sd, 0);
+  return doCensT1(cens, x, limT, ll, mu, sd*sd, nu);
+}
 
 // class def starts
 class SAEM {
@@ -1266,13 +1290,15 @@ public:
     phi0BackSolveMCOV(mcov0Fixed);
   }
 
-  // MCOV0 is BLOCK structured by LCOV0 -- each lambda row belongs to exactly one
-  // phi0 column -- so a single least-squares against all of COV0 is rank
-  // deficient whenever nphi0 > 1: with no phi0 covariate every column of COV0 is
-  // the same intercept column, and arma warns "solve(): system is singular"
-  // every iteration from niter_phi0 on.  It also fills MCOV0 off-structure, so a
-  // FIXED phi0 no longer reproduces its value through COV0*MCOV0.  Back-solve
-  // each phi0 column against only its own design columns instead.
+  // Back-solve MCOV0 from mprior_phi0, one phi0 column at a time
+  //
+  // MCOV0 is block structured by LCOV0 (each lambda row belongs to exactly
+  // one phi0 column), so one least-squares against all of COV0 is rank
+  // deficient whenever nphi0 > 1 and fills MCOV0 off-structure; each column
+  // is solved against only its own design columns instead.
+  // @param mcov0Fixed MCOV0 entries of the FIXED phi0 parameters, kept as-is
+  // @return nothing; updates MCOV0
+  // @noRd
   void phi0BackSolveMCOV(const vec &mcov0Fixed) {
     for (int c = 0; c < nphi0; c++) {
       uvec li = arma::find(LCOV0.col(c) == 1);
@@ -1935,10 +1961,25 @@ public:
   int ebeMaxEval = 200;
   double ebeTol = 1e-6;
 
+  // Conditional-mode etas from computeEtaMode()
+  // @return N x nphi1 matrix; the SAEM eta where no mode was taken
+  // @noRd
   mat get_etaMode() { return etaMode; }
+
+  // Per-subject convergence of computeEtaMode()
+  // @return codes: 0 ok, 1 maxfun, 2 not improved, 3 no free eta, -1 failed
+  // @noRd
   ivec get_etaModeConv() { return etaModeConv; }
 
-  // Append observation record kk's prediction, censoring flag and limit.
+  // Append one observation's prediction, censoring flag and limit
+  // @param ind the subject's solving options
+  // @param kk the observation's record index
+  // @param cur prediction (NaN is stored as 1e99)
+  // @param f predictions (appended)
+  // @param cens censoring flags (appended)
+  // @param lim censoring limits (appended)
+  // @return nothing
+  // @noRd
   void modeRowPush(rx_solving_options_ind *ind, int kk, double cur,
                    std::vector<double> &f, std::vector<double> &cens,
                    std::vector<double> &lim) {
@@ -1947,7 +1988,19 @@ public:
     lim.push_back(hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf);
   }
 
-  // Pooled general-likelihood path of modeRowPred().
+  // Pooled general-likelihood path of modeRowPred()
+  //
+  // Solves row i through the odeSwap pred slot (with its neq and compartment
+  // guards spanning the reads) and reads the likelihood column.
+  // @param i subject (chain-0 row)
+  // @param phi full phi row
+  // @param op solving options
+  // @param ind the subject's solving options
+  // @param f predictions (output)
+  // @param cens censoring flags (output)
+  // @param lim censoring limits (output)
+  // @return false on a failed solve
+  // @noRd
   bool modeRowPredPool(int i, const vec &phi, rx_solving_options *op,
                        rx_solving_options_ind *ind, std::vector<double> &f,
                        std::vector<double> &cens, std::vector<double> &lim) {
@@ -1973,12 +2026,25 @@ public:
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       rxPred.calc_lhs(i, getTime(kk, ind), getOpIndSolve(op, ind, j), lhs);
-      modeRowPush(ind, kk, lhs[_saemPhi1PredOffset], f, cens, lim);
+      // FOCEi's log-density leaves out the transform's log-Jacobian, as in
+      // saemReadRowsPooled()
+      double cur = lhs[_saemPhi1PredOffset] +
+        _powerL(getIndDv(ind, kk), getIndLambda(ind), getIndLambdaYj(ind),
+                getIndLogitLow(ind), getIndLogitHi(ind));
+      modeRowPush(ind, kk, cur, f, cens, lim);
     }
     return true;
   }
 
-  // Solve row i with the SAEM ODE retry rules; false if the solve stays bad.
+  // Solve row i with the SAEM ODE retry rules
+  //
+  // A non-finite solve is retried with a relaxed tolerance factor, up to
+  // `maxOdeRecalc` times, as the SAEM solve does.
+  // @param i subject (chain-0 row)
+  // @param op solving options
+  // @param ind the subject's solving options
+  // @return false if the solve stays bad
+  // @noRd
   bool modeRowSolveInd(int i, rx_solving_options *op, rx_solving_options_ind *ind) {
     int neq = getOpNeq(op);
     double tol0 = getIndTolFactor(ind);
@@ -2003,8 +2069,18 @@ public:
     return !bad;
   }
 
-  // Solve chain-0 row i at the full phi row and return its observation
-  // predictions; false on a failed solve.
+  // Observation predictions of chain-0 row i at a full phi row
+  //
+  // Solves only this subject, so subjects can run in parallel.
+  // @param i subject (chain-0 row)
+  // @param phi full phi row
+  // @param doParam which model parameters phi fills (non-pooled path)
+  // @param mixest mixture component to use, or 0
+  // @param f predictions (output)
+  // @param cens censoring flags (output)
+  // @param lim censoring limits (output)
+  // @return false on a failed solve
+  // @noRd
   bool modeRowPred(int i, const vec &phi, const std::vector<int> &doParam,
                    int mixest, std::vector<double> &f, std::vector<double> &cens,
                    std::vector<double> &lim) {
@@ -2029,14 +2105,21 @@ public:
         saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       } else if (getIndEvid(ind, kk) == 0) {
         saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
-        modeRowPush(ind, kk, lhs[0], f, cens, lim);
+        double ll = saemGenLikCens(lhs, hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0,
+                                   hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf,
+                                   lhs[0]);
+        modeRowPush(ind, kk, ll, f, cens, lim);
       }
     }
     return true;
   }
 
-  // Residual sd of observation j at untransformed prediction fq; ft gets the
-  // transformed prediction.
+  // Residual sd of observation j, as do_mcmc computes it
+  // @param j observation index
+  // @param fq untransformed prediction
+  // @param ft transformed prediction (output)
+  // @return the residual sd, clamped to [1e-200, 1e300]
+  // @noRd
   double modeObsSd(int j, double fq, double &ft) {
     const double double_xmin = 1.0e-200, xmax = 1e300;
     int cur = ix_endpnt(j);
@@ -2049,8 +2132,14 @@ public:
     return std::min(std::max(gq, double_xmin), xmax);
   }
 
-  // AR(1) conditioning of observation j's residual e and sd gg on the previous
-  // observation of the same subject (indices from s).
+  // AR(1) conditioning of observation j on the subject's previous observation
+  // @param s index of the subject's first observation
+  // @param j observation index
+  // @param e0 the subject's unconditioned residuals (from s)
+  // @param e residual (updated)
+  // @param gg residual sd (updated)
+  // @return nothing
+  // @noRd
   void modeObsAr(int s, int j, const std::vector<double> &e0, double &e, double &gg) {
     int cur = ix_endpnt(j);
     if (!hasAr || !arActive(cur)) return;
@@ -2062,7 +2151,17 @@ public:
     gg *= std::sqrt(om);
   }
 
-  // Normal-family observation loss of modeRowLoss().
+  // Normal-family observation loss of modeRowLoss()
+  //
+  // Covers transforms, add/prop/combined residuals, AR(1) and M3/M4
+  // censoring.
+  // @param s index of the subject's first observation
+  // @param f predictions
+  // @param cens censoring flags
+  // @param lim censoring limits
+  // @param yt transformed observations
+  // @return the -log-likelihood
+  // @noRd
   double modeRowLossNormal(int s, const std::vector<double> &f,
                            const std::vector<double> &cens,
                            const std::vector<double> &lim, const vec &yt) {
@@ -2080,7 +2179,7 @@ public:
       double e = e0[q], gg = g[q];
       modeObsAr(s, j, e0, e, gg);
       double loss = 0.5*(e/gg)*(e/gg) + std::log(gg);
-      if (cens[q] != 0.0) {
+      if (cens[q] != 0.0 || R_FINITE(lim[q])) {
         double limT = _powerD(lim[q], lambda(cur), yj(cur), low(cur), hi(cur));
         loss = -doCensNormal1(cens[q], yt(j), limT, -loss, yt(j) - e, gg*gg, 0);
       }
@@ -2089,8 +2188,14 @@ public:
     return sum;
   }
 
-  // Subject i's observation loss (the do_mcmc per-observation term), for its
-  // observations starting at chain-0 index s.
+  // A subject's observation loss (the do_mcmc per-observation term)
+  // @param s index of the subject's first observation
+  // @param f predictions
+  // @param cens censoring flags
+  // @param lim censoring limits
+  // @param yt transformed observations
+  // @return the -log-likelihood
+  // @noRd
   double modeRowLoss(int s, const std::vector<double> &f,
                      const std::vector<double> &cens, const std::vector<double> &lim,
                      const vec &yt) {
@@ -2118,8 +2223,9 @@ public:
     return sum;
   }
 
-  // Observation-level residual state at the final estimates; returns the
-  // transformed observations.
+  // Observation-level residual state at the final estimates
+  // @return the transformed observations
+  // @noRd
   vec modeResidSetup() {
     vecares = ares(ix_endpnt);
     vecbres = bres(ix_endpnt);
@@ -2134,8 +2240,15 @@ public:
     return yt;
   }
 
-  // Free phi1 columns of subject i's mode search; temporary etas stand in for
-  // a theta and keep their SAEM value.
+  // Free phi1 columns of subject i's mode search
+  //
+  // Uninformative etas keep their SAEM value; temporary etas (which stand in
+  // for a theta) are held by modeSubject() at their mean.
+  // @param i subject
+  // @param ue uninformative-eta mask
+  // @param sd Omega sd of each phi1 column
+  // @return the free phi1 column indices
+  // @noRd
   std::vector<int> modeFreeCols(int i, const mat &ue, const vec &sd) {
     std::vector<int> freeC;
     for (int c = 0; c < nphi1; ++c) {
@@ -2145,8 +2258,13 @@ public:
     return freeC;
   }
 
-  // Minimize obj over nf standardized coordinates from 0; returns the
-  // optimizer's convergence code.
+  // Minimize a mode objective over standardized coordinates from 0
+  //
+  // NEWUOA for nf >= 2, min1D() for nf == 1.
+  // @param nf number of free coordinates
+  // @param obj objective (tracks its own best point)
+  // @return the optimizer's convergence code
+  // @noRd
   int modeMinimize(int nf, const minqaCFn &obj) {
     std::vector<double> z0(nf, 0.0);
     if (nf == 1) {
@@ -2156,16 +2274,35 @@ public:
     return newuoaC(nf, z0.data(), obj, 0.5, ebeTol, ebeMaxEval, 2*nf + 1).convergence;
   }
 
-  // Conditional mode of subject i over its free phi1 columns; fills row i of
-  // etaMode and etaModeConv.
-  void modeSubject(int i, const vec &yt, const mat &IG, const vec &sd,
-                   const mat &ue, const std::vector<int> &doParam, int mixest) {
+  // Conditional mode of one subject over its free phi1 columns
+  //
+  // Starts from the SAEM conditional mean; keeps it when the search does
+  // not improve on it.
+  // @param i subject
+  // @param yt transformed observations
+  // @param IG inverse of Omega over the realIx columns
+  // @param realIx phi1 columns of the reported etas (all but temporary etas)
+  // @param sd Omega sd of each phi1 column
+  // @param ue uninformative-eta mask
+  // @param doParam which model parameters phi fills
+  // @param mixest mixture component to use, or 0
+  // @param pseudoMean mean SAEM eta of each phi1 column; a temporary eta is
+  //   held there, the value its fold moves into the reported theta
+  // @return nothing; fills row i of etaMode and etaModeConv
+  // @noRd
+  void modeSubject(int i, const vec &yt, const mat &IG, const uvec &realIx,
+                   const vec &sd, const mat &ue, const std::vector<int> &doParam,
+                   int mixest, const rowvec &pseudoMean) {
     std::vector<int> freeC = modeFreeCols(i, ue, sd);
     int nf = (int)freeC.size();
     if (nf == 0) return;
     vec start = mpost_phi.row(i).t();
     if (nphi0 > 0) start.elem(i0) = mprior_phi0.row(i).t();
     rowvec mu1 = mprior_phi1.row(i);
+    for (unsigned int k = 0; k < pseudoIx1.n_elem; ++k) {
+      int c = (int)pseudoIx1(k);
+      if (c < nphi1) start(i1(c)) = mu1(c) + pseudoMean(c);
+    }
     int s = ix_idM(i, 0);
     std::vector<double> f, cens, lim;
     double fBest = R_PosInf;
@@ -2175,7 +2312,10 @@ public:
       for (int k = 0; k < nf; ++k) phi(i1(freeC[k])) += z[k]*sd(freeC[k]);
       double v = 1.0e300;
       if (modeRowPred(i, phi, doParam, mixest, f, cens, lim)) {
-        rowvec d = phi.elem(i1).t() - mu1;
+        // the reported model has no temporary etas: its prior is the
+        // marginal Omega of the other etas
+        vec phi1 = phi.elem(i1);
+        rowvec d = phi1.elem(realIx).t() - mu1.cols(realIx);
         v = modeRowLoss(s, f, cens, lim, yt) + 0.5*as_scalar(d*IG*d.t());
         if (!std::isfinite(v)) v = 1.0e300;
       }
@@ -2199,15 +2339,33 @@ public:
     etaModeConv(i) = conv;
   }
 
+  // Conditional mode (EBE) of every subject at the final estimates
+  //
+  // Runs after the last SAEM iteration, in parallel over subjects, when
+  // `ebe="mode"`.
+  // @return nothing; fills etaMode and etaModeConv
+  // @noRd
   void computeEtaMode() {
     etaMode = get_eta();
     etaModeConv.set_size(N);
     etaModeConv.fill(3);
     if (!ebeMode || nphi1 == 0) return;
+    rowvec pseudoMean = mean(etaMode, 0);
+    for (unsigned int k = 0; k < pseudoIx1.n_elem; ++k) {
+      if ((int)pseudoIx1(k) < nphi1) etaMode.col(pseudoIx1(k)).fill(pseudoMean(pseudoIx1(k)));
+    }
     rx_solving_options *op = getSolvingOptions(_rx);
     vec yt = modeResidSetup();
-    mat IG = invSympdNearPd(Gamma2_phi1, "Gamma2_phi1 (Omega)");
-    vec sd = sqrt(Gamma2_phi1.diag());
+    std::vector<uword> realC;
+    for (int c = 0; c < nphi1; ++c) {
+      if (!any(pseudoIx1 == (uword)c)) realC.push_back((uword)c);
+    }
+    uvec realIx(realC);
+    // the reported Omega (before the variance floor), as the fit's model has
+    mat G = get_Gamma2_phi1Report();
+    mat Greal = G.submat(realIx, realIx);
+    mat IG = invSympdNearPd(Greal, "Gamma2_phi1 (Omega)");
+    vec sd = sqrt(G.diag());
     std::vector<int> doParam;
     if (!_saemPhi1PoolActive) {
       IntegerVector pu = optM["paramUpdate"];
@@ -2230,7 +2388,7 @@ public:
       if (doParallel) setRxThreadId(omp_get_thread_num());
 #endif
       try {
-        modeSubject(i, yt, IG, sd, ue, doParam, mixComp(i));
+        modeSubject(i, yt, IG, realIx, sd, ue, doParam, mixComp(i), pseudoMean);
       } catch (...) {
         etaModeConv(i) = -1;
       }
@@ -3831,6 +3989,15 @@ public:
       if (_saemPhi1PoolReady && kiter >= (unsigned int)niter_phi0 &&
           (kiter - (unsigned int)niter_phi0) % (unsigned int)phi1ThetaEvery == 0) {
         refinePhi1Lik(kiter, pas);
+      }
+      // once the pooled refinement owns phi1 the model runs at mprior_phi1, so
+      // report that rather than the sampled-mean update
+      if (_saemPhi1PoolReady && kiter >= (unsigned int)niter_phi0) {
+        vec mcov1Fixed;
+        if (fixedIx1.n_elem > 0) mcov1Fixed = vec(MCOV1(jcov1(fixedIx1)));
+        phi1BackSolveMCOV();
+        if (fixedIx1.n_elem > 0) MCOV1(jcov1(fixedIx1)) = mcov1Fixed;
+        Plambda1 = MCOV1(jcov1);
       }
       // The sampled-mean update above only weakly informs fixed-effect-only
       // (phi0) parameters, so once the SA/variance-shrinkage phase has begun,
@@ -5635,7 +5802,10 @@ private:
   }
 };
 
-// phi0 objective trampoline for the general-likelihood direct optimization.
+// phi0 objective trampoline for the general-likelihood direct optimization
+// @param p free (non-FIXED) phi0 values
+// @return the phi0 objective
+// @noRd
 static double gPhi0Obj(const double *p) {
   for (size_t i = 0; i < gPhi0FreeIx.size(); ++i) {
     gPhi0Full[gPhi0FreeIx[i]] = p[i];
@@ -5643,6 +5813,10 @@ static double gPhi0Obj(const double *p) {
   return gPhi0Self->phi0Objective(gPhi0Full.memptr());
 }
 
+// phi1 objective trampoline for the general-likelihood direct optimization
+// @param p free (non-FIXED) phi1 values
+// @return the phi1 objective
+// @noRd
 static double gPhi1Obj(const double *p) {
   for (size_t i = 0; i < gPhi1FreeIx.size(); ++i) {
     gPhi1Full[gPhi1FreeIx[i]] = p[i];
@@ -5711,6 +5885,10 @@ Rcpp::NumericVector saemSeedLayoutTest_(Rcpp::IntegerVector nu, int nphi1, int n
   return Rcpp::wrap(out);
 }
 
+// phi0 objective along one coordinate (normal-model coordinate descent)
+// @param x value of coordinate gPhi0Coord
+// @return the phi0 objective
+// @noRd
 static double gPhi0Obj1D(double x) {
   gPhi0Work[gPhi0Coord] = x;
   return gPhi0Self->phi0Objective(gPhi0Work.memptr());
@@ -5780,6 +5958,9 @@ arma::ivec _saemPhi1H2EtaCol;
 // solving only odeSlotPred, never odeSlotHess2/the FD-Hessian fallback.
 bool _saemPhi1WantHessian = false;
 int _saemPhi1PredOffset = -1;
+// lhs columns of the censoring inputs of a censored general-likelihood fit
+// (see saemGenLikCens); empty otherwise.
+arma::ivec _saemGenCensIx;
 int _saemPhi1H2PredOffset = -1;
 int _saemPhi1H2HessOffset = -1;
 int _saemPhi1DvCol = -1;
@@ -6043,7 +6224,9 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       } else if (getIndEvid(ind,kk) == 0) {
         saem_lhs((int)id, curT,
                  getOpIndSolve(op, ind, j), lhs);
-        double cur = lhs[0];
+        double cur = saemGenLikCens(lhs, hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0,
+                                    hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf,
+                                    lhs[0]);
         if (std::isnan(cur)) {
           cur = 1.0e99;
           hasNan = true;
@@ -6110,6 +6293,10 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
   // for it (measured: a normal-model fit run after a general-lik pooled fit
   // in the same R session segfaulted from exactly this).
   odeSwapClearAll();
+  _saemGenCensIx.reset();
+  if (opt.containsElementNamed("saemGenCensIx") && !Rf_isNull(opt["saemGenCensIx"])) {
+    _saemGenCensIx = as<arma::ivec>(opt["saemGenCensIx"]);
+  }
   _saemPhi1PoolActive = opt.containsElementNamed("saemPhi1Pred") &&
     !Rf_isNull(opt["saemPhi1Pred"]);
   if (_saemPhi1PoolActive) {

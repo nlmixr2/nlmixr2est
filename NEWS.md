@@ -70,10 +70,27 @@
   FOCEi also moves its start by one Newton step (`foceiControl(zeroThetaStep=)`)
   when that lowers the objective.
 
+  Likewise a general-likelihood fit (`ll()`, `dnorm()`, `t()`, ...) now
+  reports the mu-referenced thetas its direct optimization settled on rather
+  than the sampled-mean update.
+- `saem` now uses censoring (M2/M3/M4) for `dnorm()`, `t()` and `cauchy()`
+  endpoints; it scored a censored observation by its density at the limit.
+- M2 censoring (`CENS = 0` with a finite `LIMIT`) now conditions on the side
+  of the limit the observation is on, not the prediction.  Before, the
+  objective had a kink wherever a prediction crossed the limit, and an
+  observation predicted on the wrong side of it was scored against the
+  wrong tail.
 - On Windows with more than one thread, `est = "imp"` and `"impmap"` no
   longer crash (ODE models) or give estimates that depend on the number of
   threads (`linCmt()` models); affected since 7.1.0.  Linux and macOS were
   not affected.
+
+- A population parameter (`theta`) that starts at exactly 0, such as a covariate
+  effect, is now estimated instead of staying at about 0 (#1228).  Its scale used
+  to be the `zeroTheta` nudge (0.001); it is now a typical magnitude, `1/sd()` of
+  the covariate it multiplies (or 1), for FOCEi, nls and the nlm family.
+  FOCEi also moves its start by one Newton step (`foceiControl(zeroThetaStep=)`)
+  when that lowers the objective.
 
 - A fit that fails late in its output step (for example a `saem` fit whose
   inter-occasion variability cannot be finalized) now reports its own error.
@@ -132,6 +149,48 @@
   repeats another's (`same()`) was left out of the sensitivity carry added in
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
+
+- A finite-difference gradient or Hessian no longer takes a slope of 0 where
+  its differences do not solve.
+  - When the steps on one side of a parameter never solve, the step search
+    takes the one-sided difference on the other side.  It did that already
+    when the minus side failed; when the plus side failed at every step, it
+    returned 0.
+  - When neither side solves, every nlm-family optimizer (`nlm`, `nlminb`,
+    `optim`, `n1qn1`, `lbfgsb3c`, `trust`) stops with an error naming the
+    parameter ("the gradient of 'x' is not finite: its finite differences
+    solved on neither side").  Its slope used to be 0, so the parameter kept
+    its initial value without a warning; `nlm` and `nlminb` returned every
+    initial estimate.  `nls` keeps its handling: it takes such a slope as 0
+    and warns ("solved items that were NaN/NA were replaced with 0.0").
+  - FOCEi keeps such an eta's slope (and its eta Hessian column) at 0 and
+    says how often in the fit's `runInfo` ("eta finite differences solved on
+    neither side N times; slope 0").  With `innerOpt = "trust"` the
+    quasi-Newton Hessian methods now start from that finite Hessian; a
+    `"bofill"` fit of such a model could end at a meaningless objective.  The
+    outer `shi21maxOuter` gradient asks for a reset, as the other outer
+    gradients do, and `est = "imp"`, `"impmap"` and the variational methods
+    drop the sample.
+  - A step search also stops at a step shrunk too small to move its
+    parameter, and a difference at a step that does not move it gives no
+    slope.  It used to difference the parameter with itself and report 0.
+    A Hessian column at a saved step that does not move its parameter is
+    likewise no slope rather than 0, and a forward search whose plus step
+    rounds away takes the backward difference when that side moves.
+  - A search allowed no iterations (`shi21maxFD = 0` and the like) takes the
+    difference at its starting step.  It used to give a slope of 0 on the
+    evaluation that searched for the step (for an eta, the first for each
+    subject); later evaluations reuse the saved step and were not affected.
+
+  Fits whose differences solve are unchanged, apart from that last case.
+
+- `foceiControl()` now rejects the integer codes it has no case for,
+  `eventType = 1` and `optimHessType = 2` or `optimHessCovType = 2`, with an
+  error that names the accepted values.  They used to be accepted:
+  `eventType = 1` left the finite-difference eta gradient at 0, and Hessian
+  type 2 gave a Hessian of zeros.  The names and the codes the control
+  stores (`eventType` 2 and 3, the Hessian types 1 and 3) are accepted as
+  before.
 
 # nlmixr2est 7.2.1
 

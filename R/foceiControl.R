@@ -386,11 +386,14 @@
 #'
 #' @param optimHessType Hessian type for numeric-difference individual
 #'   Hessians in generalized log-likelihood estimation: "central" (matches
-#'   R's `optimHess()`, default) or "forward" (faster).
+#'   R's `optimHess()`, default) or "forward" (faster).  The integer code a
+#'   control stores is accepted too: 1 (central) or 3 (forward) in
+#'   `foceiControl()`, 2 (central) or 1 (forward) in the nlm-family controls.
 #'
 #' @param optimHessCovType Hessian type for numeric-difference individual
 #'   Hessians used for the covariance step/final likelihood: "central"
-#'   (more accurate, used here) or "forward".
+#'   (more accurate, used here) or "forward".  The integer code a control
+#'   stores is accepted too: 1 (central) or 3 (forward) in `foceiControl()`.
 #'
 #' @param hessEtaStepMin Floor on the finite-difference step used for the
 #'   individual (eta) Hessian in generalized log-likelihood estimation,
@@ -1076,7 +1079,9 @@
 #'     the problem.  This is similar to 'PsN' resampling.
 #'
 #' @param eventType Event gradient type for dosing events; Can be
-#'   "central" or "forward"
+#'   "central" or "forward".  The integer code a control stores is accepted
+#'   too: 2 (central) or 3 (forward) in `foceiControl()`, 2 (central) or 1
+#'   (forward) in the nlm-family controls.
 #'
 #' @param eventSens How sensitivities of dosing/event parameters
 #'   (absorption lag time, bioavailability, infusion rate and duration,
@@ -1722,19 +1727,9 @@ foceiControl <- function(
   ## method <- as.integer(.methodIdx[method]);
   scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
-  if (checkmate::testIntegerish(optimHessType, len = 1, lower = 1, upper = 3, any.missing = FALSE)) {
-    optimHessType <- as.integer(optimHessType)
-  } else {
-    .optimHessTypeIdx <- c("central" = 1L, "forward" = 3L)
-    optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
-  }
-
-  if (checkmate::testIntegerish(optimHessCovType, len = 1, lower = 1, upper = 3, any.missing = FALSE)) {
-    optimHessCovType <- as.integer(optimHessCovType)
-  } else {
-    .optimHessCovTypeIdx <- c("central" = 1L, "forward" = 3L)
-    optimHessCovType <- setNames(.optimHessCovTypeIdx[match.arg(optimHessCovType)], NULL)
-  }
+  # the codes the C++ has a case for; any other integer reached it as a Hessian of zeros
+  optimHessType <- .nlmCtlCode(optimHessType, c("central" = 1L, "forward" = 3L), "optimHessType")
+  optimHessCovType <- .nlmCtlCode(optimHessCovType, c("central" = 1L, "forward" = 3L), "optimHessCovType")
   # censOption: the censored (M2/M3/M4) inner-Hessian / 2nd-derivative treatment.
   # "gauss" (default) keeps the historic uncensored Gauss-Newton curvature; "laplace"
   # uses the exact censored 2nd derivative (a proper Laplace).  Shared with saem/nlm.
@@ -1743,12 +1738,8 @@ foceiControl <- function(
   } else {
     censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
   }
-  if (checkmate::testIntegerish(eventType, len = 1, lower = 1, upper = 3, any.missing = FALSE)) {
-    eventType <- as.integer(eventType)
-  } else {
-    .eventTypeIdx <- c("central" = 2L, "forward" = 3L)
-    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
-  }
+  # the codes the inner eta finite difference has a case for; 1 left its gradient 0
+  eventType <- .nlmCtlCode(eventType, c("central" = 2L, "forward" = 3L), "eventType")
   ## How dosing/event-parameter (alag, F, rate, dur, ...) sensitivities are
   ## computed: "fd" (legacy finite differences) or "jump" (analytic jump/event
   ## sensitivities from rxode2).  "fd" is the backward-compatible default.
@@ -2066,7 +2057,7 @@ foceiControl <- function(
     .rtol <- if (is.list(rxControl) && length(rxControl$rtol) > 0) max(rxControl$rtol) else 1e-6
     newuoaRhoend <- sqrt(.rtol)
   }
-  checkmate::assertNumeric(newuoaRhoend, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(newuoaRhoend, lower = .Machine$double.eps, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(diagOmegaBoundUpper, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(diagOmegaBoundLower, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
 
