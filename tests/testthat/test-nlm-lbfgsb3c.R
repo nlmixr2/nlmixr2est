@@ -122,6 +122,28 @@ nmTest({
     expect_identical(nlmUnwindProtectTest(0L), 0L)
   })
 
+  test_that("a C++ exception inside an est='lbfgsb3c' fit's solve reaches R intact", {
+    skip_on_cran()
+    # nlmLbfgsThrowTest() makes nlmLbfgsFill()'s protected solve throw, as
+    # checkUserInterrupt() does on an interrupt
+    on.exit(nlmLbfgsThrowTest(0L), add = TRUE)
+    .dsn <- .dsnLbfgsb3c()
+    .ctl <- lbfgsb3cControl(print = 0, returnLbfgsb3c = TRUE)
+    .full <- suppressMessages(nlmixr2(.emaxLbfgsb3c, .dsn, est = "lbfgsb3c", .ctl))
+    expect_gt(.full$counts[1], 3L)
+    for (.i in 1:5) {
+      nlmLbfgsThrowTest(3L)
+      expect_error(
+        suppressMessages(nlmixr2(.emaxLbfgsb3c, .dsn, est = "lbfgsb3c", .ctl)),
+        "thrown inside the lbfgsb3c solve"
+      )
+      expect_identical(nlmLbfgsThrowTest(0L), 0L)
+      expect_identical(tryCatch(stop("after"), error = conditionMessage), "after")
+    }
+    .again <- suppressMessages(nlmixr2(.emaxLbfgsb3c, .dsn, est = "lbfgsb3c", .ctl))
+    expect_identical(.again$value, .full$value)
+  })
+
   test_that("est='lbfgsb3c' honors maxit", {
     skip_on_cran()
     .ret <- suppressWarnings(suppressMessages(
