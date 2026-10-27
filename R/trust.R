@@ -24,7 +24,7 @@
 #' @param rinit Initial trust-region radius, in the SAME scaled-parameter
 #'   space every nlm-family method (bobyqa included) optimizes in. `NULL`
 #'   (default) derives it from the scaled starting vector using
-#'   `minqa::bobyqa()`'s own default-`rhobeg` formula,
+#'   `RcppTrust::bobyqa()`'s own default-`rhobeg` formula,
 #'   `min(0.95, 0.2*max(abs(par.ini)))`, so swapping `est="bobyqa"` for
 #'   `est="trust"` on the same model starts from a comparable trust-region
 #'   size.
@@ -411,7 +411,7 @@ getValidNlmixrCtl.trust <- function(control) .getValidCtl(control, "trustControl
   })
 
   # rinit/rmax need the scaled starting vector -- not available inside
-  # trustControl() itself. rinit mirrors minqa::bobyqa()'s own default-rhobeg
+  # trustControl() itself. rinit mirrors RcppTrust::bobyqa()'s own default-rhobeg
   # formula; rmax reuses the 8x growth-ceiling convention already established
   # for foceiControl(innerOpt="trust")'s per-subject eta trust region.
   .rinit <- .ctl$rinit

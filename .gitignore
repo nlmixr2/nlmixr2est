@@ -73,6 +73,8 @@ vignettes/ggpmx_GOF/
 docs
 revdep/
 tests/testthat/fixtures/*.rds
+# testthat writes this on a failing run and deletes it on a passing one
+tests/testthat/testthat-problems.rds
 /.antigravity/
 /.augment/
 /.cache/

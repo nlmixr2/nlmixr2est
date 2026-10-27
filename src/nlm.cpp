@@ -738,6 +738,35 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
   return ret;
 }
 
+// cs: the objective and gradient (column sums of nlmSolveGrad()).  At a point
+// whose objective is finite, a gradient component that is not finite comes from
+// finite differences that solved on neither side; the optimizers cannot step on
+// it (optim and lbfgsb3c stall at it, n1qn1 returns NA), so the fit stops.  The
+// first such component's index, or -1.
+static int nlmNonFiniteGradIdx(const arma::vec &cs) {
+  if (!std::isfinite(cs(0))) return -1;
+  for (unsigned int i = 0; i < nlmOp.ntheta; ++i) {
+    if (!std::isfinite(cs(i + 1))) return (int)i;
+  }
+  return -1;
+}
+
+static void nlmStopNonFiniteGradIdx(int i) {
+  std::string nm = i < (int)nlmOp.scale.thetaNames.size() ?
+    as<std::string>(nlmOp.scale.thetaNames[i]) : std::to_string(i + 1);
+  Rcpp::stop(_("the gradient of '%s' is not finite: its finite differences solved on neither side"),
+             nm.c_str());
+}
+
+static void nlmStopNonFiniteGrad(const arma::vec &cs) {
+  int i = nlmNonFiniteGradIdx(cs);
+  if (i >= 0) nlmStopNonFiniteGradIdx(i);
+}
+
+// the trust callback cannot throw through trust_solve_c(); it records the
+// component here and nlmTrustFit() stops after the run
+static int nlmTrustNaGrad = -1;
+
 arma::mat nlmSolveGrad(arma::vec &theta) {
   arma::mat ret(nlmOp.nobsTot, nlmOp.ntheta+1);
   rx_solving_options *op = getSolvingOptions(rx);
@@ -858,6 +887,7 @@ RObject nlmSolveGradR(arma::vec &theta) {
   int ntheta = theta.size();
   arma::mat ret0 = nlmSolveGrad(theta);
   arma::vec cs = (arma::sum(ret0, 0)).t();
+  nlmStopNonFiniteGrad(cs);
   NumericVector ret(1);
   NumericVector grad(ntheta);
   ret[0] = cs[0];
@@ -938,6 +968,7 @@ RObject nlmSolveGradHess(arma::vec &theta) {
   if (nlmOp.solveType == solveType_pred) stop("incorrect solve type");
   arma::mat ret0 = nlmSolveGrad(theta);
   arma::vec cs = (arma::sum(ret0, 0)).t();
+  nlmStopNonFiniteGrad(cs);
   double ll = cs[0];
   arma::vec gr0 = cs(span(1, nlmOp.ntheta));
   mat H = nlmCalcHessian(gr0, theta);
@@ -974,6 +1005,11 @@ extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
     std::copy(par, par + n, theta.begin());
     arma::mat ret0 = nlmSolveGrad(theta);
     arma::vec cs = (arma::sum(ret0, 0)).t();
+    int naGrad = nlmNonFiniteGradIdx(cs);
+    if (naGrad >= 0) {
+      nlmTrustNaGrad = naGrad;
+      return -4;
+    }
     if (!cs.is_finite()) {
       *value = std::numeric_limits<double>::infinity();
       return 1; // infeasible, per trust_c_objfun_t's contract
@@ -1056,6 +1092,9 @@ static bool nlmLbfgsFill(int n, double *x) {
         scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
         return R_NilValue;
       });
+      // outside unwindProtect(): an exception must not cross its C frames
+      arma::vec saved(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
+      nlmStopNonFiniteGrad(saved);
     }
     return true;
   } catch (...) {
@@ -1152,8 +1191,13 @@ List nlmTrustFit(arma::vec &theta, List control) {
   topts.mterm = as<double>(control["mterm"]);
 
   trust_result_t tres;
+  nlmTrustNaGrad = -1;
   trust_solve_c_ptr((int)nlmOp.ntheta, theta.memptr(), nlmTrustObjfun,
                      nullptr, &topts, &tres);
+  if (nlmTrustNaGrad >= 0) {
+    trust_result_free_ptr(&tres);
+    nlmStopNonFiniteGradIdx(nlmTrustNaGrad);
+  }
   bool converged = false, underConverged = false;
   int ntheta = (int)nlmOp.ntheta;
   NumericVector par(ntheta), grad(ntheta);
@@ -1225,6 +1269,7 @@ static inline bool nlmSolveGradSaved(arma::vec &theta) {
   if (nlmSaved(theta, solveType_grad)) return false;
   arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
   saveVec = (arma::sum(nlmSolveGrad(theta), 0)).t();
+  nlmStopNonFiniteGrad(saveVec);
   nlmOp.saveType = solveType_grad;
   saveTheta(theta);
   return true;

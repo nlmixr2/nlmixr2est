@@ -67,6 +67,9 @@ saemControl(
   phi1Hessian = FALSE,
   residWarmStart = TRUE,
   censOption = c("gauss", "laplace"),
+  ebe = c("mode", "saem"),
+  ebeMaxEval = 200L,
+  ebeTol = NULL,
   ...
 )
 }
@@ -560,6 +563,19 @@ proper Laplace inner Hessian and analytic covariance).  Accepted by
 \code{saemControl}/\code{nlmControl} for a uniform interface but inert there --
 SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
 finite-difference Hessian that already reflects censoring exactly.}
+
+\item{ebe}{Individual estimates reported as `fit$eta`: `"mode"` (default)
+is each subject's conditional mode, found with NEWUOA after the last SAEM
+iteration; `"saem"` is SAEM's approximate conditional mean.  The SAEM
+etas are always available as `fit$etaSaem`.}
+
+\item{ebeMaxEval}{Maximum objective evaluations per subject for the
+conditional-mode search (default 200).}
+
+\item{ebeTol}{Final NEWUOA trust-region radius of the conditional-mode
+search, in standard-deviation units of each eta.  `NULL` (default) uses
+`sqrt(rtol)` of the SAEM ODE solve (`rxControl`), the precision that solve
+can resolve a minimum to.}
 
 \item{...}{Other arguments to control SAEM.}
 }
