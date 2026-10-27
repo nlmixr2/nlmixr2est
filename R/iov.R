@@ -464,6 +464,35 @@ nlmixr2iovVarSd <- function(val) {
   length(.uiIovNames(ui)) > 0L
 }
 
+#' `locf()` for each occasion variable of the IOV rewrite
+#'
+#' The rewrite reads an occasion variable as a covariate (`occ == 1`), which
+#' `covsInterpolation` would interpolate.  rxode2 steps an occasion variable
+#' whatever the interpolation, declaring `locf()` in its nesting expansion
+#' (`rxExpandNestingLocf()` in rxode2's src/expandGrid.cpp), so the rewrite
+#' declares it too.  A variable the model already declares `locf()` needs no
+#' line; any other declared interpolation stops, with rxode2's message.
+#'
+#' @param ui the user's rxode2 ui, before the rewrite
+#' @param lvls occasion variable names
+#' @return list of `locf(<occ>)` calls
+#' @noRd
+.iovLocfLines <- function(ui, lvls) {
+  .interp <- ui$mv0$interp
+  .cur <- if (is.factor(.interp)) as.character(.interp[lvls]) else rep(NA_character_, length(lvls))
+  .cur[is.na(.cur)] <- "default"
+  .bad <- !(.cur %in% c("default", "locf"))
+  if (any(.bad)) {
+    stop(
+      "occasion variable(s) ",
+      paste0("'", lvls[.bad], "' (", .cur[.bad], ")", collapse = ", "),
+      " must use 'locf' interpolation",
+      call. = FALSE
+    )
+  }
+  lapply(sprintf("locf(%s)", lvls[.cur == "default"]), str2lang)
+}
+
 #' This applies the IOV method to the model based on the data used
 #'
 #' @return nothing, called for side effects
@@ -879,7 +908,7 @@ nlmixr2iovVarSd <- function(val) {
       .lst
     })
     .uiIovEnv$lines <- do.call(`c`, .lines)
-    .lines <- c(.uiIovEnv$lines, .ui$lstExpr)
+    .lines <- c(.iovLocfLines(ui, names(.lvls)), .uiIovEnv$lines, .ui$lstExpr)
     .ui <- rxode2::rxUiDecompress(.ui)
     # Now the lines can be added to the model
     assign("iniDf", rbind(.env$thetas, .env$etas), envir = .ui)
