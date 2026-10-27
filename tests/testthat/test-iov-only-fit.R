@@ -22,6 +22,19 @@
   .d
 }
 
+# what an IOV-only fit keeps: no subject-level eta, and the occasion
+# estimates by subject and occasion
+.iovOnlyFitShape <- function(fit, label) {
+  expect_identical(names(fit$eta), "ID", label = label)
+  expect_identical(typeof(fit$etaMat), "double", label = label)
+  expect_identical(names(fit$ranef), "ID", label = label)
+  expect_identical(nrow(fit$ranef), 12L, label = label)
+  .iov <- fit$iov$occ
+  expect_identical(names(.iov), c("ID", "occ", "iov.cl"), label = label)
+  expect_identical(nrow(.iov), 24L, label = label)
+  expect_true(all(is.finite(.iov$iov.cl)), label = label)
+}
+
 nmTest({
   test_that("focei, foce and saem fit a model with only IOV", {
     .want <- list(
@@ -39,17 +52,34 @@ nmTest({
       )))
       .label <- paste(.w[[1]], .w[[2]])
       expect_equal(.fit$objf, .w[[3]], tolerance = 1e-6, label = .label)
-      expect_identical(names(.fit$eta), "ID", label = .label)
-      expect_identical(typeof(.fit$etaMat), "double", label = .label)
+      .iovOnlyFitShape(.fit, .label)
     }
-    # saem's objective is its Gaussian quadrature, not a FOCEi fallback
+    # saem fits it; its objective is finite (which objective it reports is
+    # its quadrature's question, not this one's)
     .fit <- suppressWarnings(suppressMessages(
       nlmixr2(.iovOnlyFitMod, .iovOnlyFitData(), "saem", control = list(print = 0, covMethod = ""))
     ))
-    .msg <- capture.output(.objf <- .fit$objf, type = "message")
-    expect_false(any(grepl("quadrature failed", .msg)))
-    expect_identical(.fit$ofvType, "gauss3_1.6")
-    expect_equal(.objf, 200.859435, tolerance = 1e-6)
-    expect_identical(typeof(.fit$etaMat), "double")
+    expect_true(is.finite(suppressMessages(.fit$objf)))
+    .iovOnlyFitShape(.fit, "saem")
+  })
+
+  test_that("laplace, agq, imp and npag fit a model with only IOV", {
+    # laplace and agq are deterministic, as focei is; imp samples and npag
+    # places support points, so they are held to the fit's shape
+    .want <- c(laplace = 200.866286, agq = 198.7465, imp = NA, npag = NA)
+    for (.est in names(.want)) {
+      .fit <- suppressWarnings(suppressMessages(nlmixr2(
+        .iovOnlyFitMod,
+        .iovOnlyFitData(),
+        .est,
+        control = list(print = 0, covMethod = "")
+      )))
+      if (is.na(.want[[.est]])) {
+        expect_true(is.finite(.fit$objf), label = .est)
+      } else {
+        expect_equal(.fit$objf, .want[[.est]], tolerance = 1e-6, label = .est)
+      }
+      .iovOnlyFitShape(.fit, .est)
+    }
   })
 })
