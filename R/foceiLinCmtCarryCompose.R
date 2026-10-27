@@ -41,8 +41,10 @@
 #' with no value of its own, such as an infusion's end, holds NA, which
 #' lag0() turns into 0, where the model evaluation fills it as rxode2 fills
 #' any NA covariate.  A subject's first record has no previous one and an
-#' empty interval; its own value stands in (lag0() is 0 there, and newind
-#' is 1 only there).
+#' empty interval; its own value stands in (newind is 1 only there).  lag0()
+#' reads the last lhs computed, which at a subject's first record is NA only
+#' in a fresh solve: FOCEi solves a subject again for each eta, and there it
+#' holds the previous pass's last record, so the first record ignores it.
 #'
 #' @param covs the model's covariates
 #' @param interp `.rxFoceiLinCmtCarryInterp()`
@@ -62,7 +64,7 @@
   for (.i in seq_along(covs)) {
     .lines <- c(
       .lines,
-      paste0(.lag[.i], "~lag0(", .copy[.i], ")+", covs[.i], "*(newind==1)"),
+      paste0(.lag[.i], "~lag0(", .copy[.i], ")*(newind!=1)+", covs[.i], "*(newind==1)"),
       if (interp == "locf") {
         paste0(.int[.i], "~", .lag[.i])
       } else {
