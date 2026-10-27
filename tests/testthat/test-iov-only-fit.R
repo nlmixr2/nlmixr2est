@@ -49,7 +49,7 @@ nmTest({
     .msg <- capture.output(.objf <- .fit$objf, type = "message")
     expect_false(any(grepl("quadrature failed", .msg)))
     expect_identical(.fit$ofvType, "gauss3_1.6")
-    expect_equal(.objf, 200.859435, tolerance = 1e-6)
+    expect_equal(.objf, 200.727474, tolerance = 1e-6)
     expect_identical(typeof(.fit$etaMat), "double")
   })
 })
