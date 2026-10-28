@@ -69,19 +69,13 @@
   .pairs
 }
 
-#' Is the carry switched on for this build (capability, control, interpolation)?
+#' Is the carry switched on for this build (capability, control)?
 #' @noRd
 .rxFoceiLinCmtCarryBuildEnabled <- function(ui) {
   if (!.rxFoceiLinCmtCarryCapable()) {
     return(FALSE)
   }
-  if (identical(rxode2::rxGetControl(ui, "linCmtSensCarry", "auto"), "none")) {
-    return(FALSE)
-  }
-  # covsInterpolation rides inside control$rxControl (0=linear, 1=locf,
-  # 2=nocb, 3=midpoint); a bare rxGetControl() lookup never sees it
-  .interp <- rxode2::rxGetControl(ui, "rxControl", NULL)$covsInterpolation
-  !(identical(as.integer(.interp), 0L) || identical(.interp, "linear"))
+  !identical(rxode2::rxGetControl(ui, "linCmtSensCarry", "auto"), "none")
 }
 
 #' Run the eligibility detection without rendering; a failure warns and

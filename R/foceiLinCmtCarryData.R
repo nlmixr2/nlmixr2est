@@ -64,7 +64,7 @@
 #' @inheritParams .rxFoceiLinCmtCarryEligible
 #' @return see `.rxFoceiLinCmtCarryEligible`
 #' @noRd
-.foceiLinCmtCarryPairs <- function(ui, data = NULL, interpolation = c("locf", "nocb", "midpoint", "linear")) {
+.foceiLinCmtCarryPairs <- function(ui, data = NULL) {
   .ui <- rxode2::assertRxUi(ui)
   # cheap UI-level exits before ui$foceiEtaS builds a full symengine
   # environment (~0.25 s per call): no linCmt() or no covariate means no
@@ -75,7 +75,6 @@
   if (length(.ui$allCovs) == 0L) {
     return(.rxFoceiCarryEmpty())
   }
-  interpolation <- match.arg(interpolation)
   # the data-independent candidate result is a pure function of the model
   # digest; skip the foceiEtaS symengine build on a repeat fit of the same
   # model.  Data-dependent checks never reach this memo (data = NULL only).
@@ -95,8 +94,7 @@
     list(.ui),
     .s,
     .etaVars,
-    data = data,
-    interpolation = interpolation
+    data = data
   )
   # the final shape rides with the result so consumers (the fit-time
   # jump-data check) never rebuild the symengine environment for it

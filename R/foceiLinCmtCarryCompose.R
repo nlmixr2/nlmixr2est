@@ -47,39 +47,56 @@
 
 #' The covariates the carry reads through hidden locf and nocb copies
 #'
-#' Under midpoint rxode2 advances an interval with the mean of the two
-#' records that carry the covariate on either side of it.  A record with no
-#' value of its own (an infusion's end, an addl dose, a missing value) lies
-#' between them, so neither the record nor its neighbour stands for them.
-#' The carry reads them instead as the covariate's locf view at the
-#' interval's start and its nocb view at its end, from two hidden copies of
-#' the column (`rx_lcL_<cov>`, `rx_lcN_<cov>`) that the generated models
-#' declare `locf()` and `nocb()`.
+#' Under midpoint and linear rxode2 advances an interval with the covariate
+#' at the interval's middle, from the nearest records that carry it on
+#' either side: their mean under midpoint, the line between them under
+#' linear.  A record with no value of its own (an infusion's end, an addl
+#' dose, a missing value) lies between them, so neither the record nor its
+#' neighbour stands for them.  The carry reads them instead as the
+#' covariate's locf view at the interval's start and its nocb view at its
+#' end, from two hidden copies of the column (`rx_lcL_<cov>`,
+#' `rx_lcN_<cov>`) that the generated models declare `locf()` and `nocb()`;
+#' under linear, two more hidden columns (`rx_lcTL_<cov>`, `rx_lcTN_<cov>`)
+#' give those records' times the same way.
 #'
 #' @param ui rxode2 ui with its control
-#' @return the covariates under midpoint, by the control or by their own
-#'   declaration, of a `linCmt()` model the carry is on for; `character(0)`
+#' @return the interpolation ("midpoint" or "linear") of each covariate under
+#'   one of them, by the control or by its own declaration, named by
+#'   covariate, of a `linCmt()` model the carry is on for; `character(0)`
 #'   otherwise
 #' @noRd
-.rxFoceiLinCmtCarryMidCovs <- function(ui) {
+.rxFoceiLinCmtCarryAliasCovs <- function(ui) {
   if (!.foceiUsesLinCmt(ui) || !.rxFoceiLinCmtCarryBuildEnabled(ui)) {
     return(character(0))
   }
   .covs <- ui$allCovs
-  .covs[.rxFoceiLinCmtCarryInterp(ui, .covs) == "midpoint"]
+  .interp <- .rxFoceiLinCmtCarryInterp(ui, .covs)
+  .interp[.interp %in% c("midpoint", "linear")]
 }
 
-#' Data with the hidden copies the carry reads under midpoint
+#' Data with the hidden copies the carry reads under midpoint and linear
 #'
-#' @param data data frame or event table with the covariate columns
-#' @param covs `.rxFoceiLinCmtCarryMidCovs()`
+#' @param data data frame or event table with the covariate columns and a
+#'   time column
+#' @param covs `.rxFoceiLinCmtCarryAliasCovs()`
 #' @return `data` with `rx_lcL_<cov>` and `rx_lcN_<cov>`, copies of each of
-#'   `covs`
+#'   `covs`, and for each linear one `rx_lcTL_<cov>` and `rx_lcTN_<cov>`,
+#'   the record's time where the covariate has a value and NA where it has
+#'   none
 #' @noRd
 .rxFoceiLinCmtCarryAliasData <- function(data, covs) {
-  for (.c in covs) {
+  .time <- NULL
+  for (.c in names(covs)) {
     data[[paste0("rx_lcL_", .c)]] <- data[[.c]]
     data[[paste0("rx_lcN_", .c)]] <- data[[.c]]
+    if (covs[[.c]] == "linear") {
+      if (is.null(.time)) {
+        .time <- data[[which(tolower(names(data)) == "time")[1]]]
+      }
+      .t <- ifelse(is.na(data[[.c]]), NA_real_, .time)
+      data[[paste0("rx_lcTL_", .c)]] <- .t
+      data[[paste0("rx_lcTN_", .c)]] <- .t
+    }
   }
   data
 }
@@ -97,8 +114,9 @@
 #' - midpoint: the mean of its locf view at the previous record and its nocb
 #'   view at this one, from the hidden copies of
 #'   `.rxFoceiLinCmtCarryAliasData()`;
-#' - linear: the mean of its values at the two records, its value at the
-#'   middle of an interval between two records that carry it.
+#' - linear: the line between its locf view at the previous record and its
+#'   nocb view at this one, at the interval's middle, with those records'
+#'   times from the hidden time copies.
 #'
 #' The lag is taken from a model copy (`copies`, real lhs ahead of
 #' rx_pred_, as lag() needs), not from the column: a record with no value of
@@ -122,26 +140,63 @@
   }
   .copies <- character(0)
   .lines <- character(0)
+  if (any(interp[covs] == "linear")) {
+    # the previous record's time, for the interval's middle
+    .copies <- "rx_lcT_=t"
+    .lines <- "rx_lcTPrev_~lag0(rx_lcT_)"
+  }
   for (.c in covs) {
     .copy <- paste0("rx_lcCov_", .c, "_")
     .lag <- paste0("rx_lcLag_", .c, "_")
     .int <- paste0("rx_lcCovI_", .c, "_")
-    .mid <- interp[[.c]] == "midpoint"
-    # under midpoint the lag reads the locf copy of the column
-    .src <- if (.mid) paste0("rx_lcL_", .c) else .c
+    .alias <- interp[[.c]] %in% c("midpoint", "linear")
+    .lin <- interp[[.c]] == "linear"
+    # under midpoint and linear the lag reads the locf copy of the column
+    .src <- if (.alias) paste0("rx_lcL_", .c) else .c
     .copies <- c(
       .copies,
-      if (.mid) c(paste0("locf(rx_lcL_", .c, ")"), paste0("nocb(rx_lcN_", .c, ")")),
+      if (.alias) c(paste0("locf(rx_lcL_", .c, ")"), paste0("nocb(rx_lcN_", .c, ")")),
+      if (.lin) {
+        c(
+          paste0("locf(rx_lcTL_", .c, ")"),
+          paste0("nocb(rx_lcTN_", .c, ")"),
+          paste0("rx_lcTim_", .c, "_=rx_lcTL_", .c)
+        )
+      },
       paste0(.copy, "=", .src)
     )
+    .tLag <- paste0("rx_lcTLag_", .c, "_")
+    .tN <- paste0("rx_lcTN_", .c)
     .lines <- c(
       .lines,
       paste0(.lag, "~lag0(", .copy, ")"),
+      if (.lin) paste0(.tLag, "~lag0(rx_lcTim_", .c, "_)"),
       switch(
         interp[[.c]],
         locf = paste0(.int, "~", .lag),
         midpoint = paste0(.int, "~0.5*(", .lag, "+rx_lcN_", .c, ")"),
-        linear = paste0(.int, "~0.5*(", .c, "+", .lag, ")")
+        # equal times: the interval lies past the covariate's last value (or
+        # before its first), where rxode2 holds that value
+        linear = paste0(
+          .int,
+          "~",
+          .lag,
+          "+(rx_lcN_",
+          .c,
+          "-",
+          .lag,
+          ")*(0.5*(rx_lcTPrev_+t)-",
+          .tLag,
+          ")/(",
+          .tN,
+          "-",
+          .tLag,
+          "+(",
+          .tN,
+          "==",
+          .tLag,
+          "))"
+        )
       )
     )
   }

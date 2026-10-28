@@ -3550,8 +3550,8 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## linCmt() sensitivity-carry substitution (3b.3) changes the inner model
   ## text; it depends on both the control and whether the loaded rxode2 has
   ## the carry sentinels, so both key the cache.
-  ## covsInterpolation gates the substitution ("linear" skips it), so it must
-  ## key the cache too, else a locf build would be reused for a linear fit
+  ## covsInterpolation sets the carry's interval lines, so it must key the
+  ## cache too, else a locf build would be reused for a linear fit
   .linCmtCarry <- paste0(
     rxode2::rxGetControl(.ui, "linCmtSensCarry", "auto"),
     ",",
@@ -4850,7 +4850,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .idLvl <- .lst$idLvl
   .dat <- cbind(as.data.frame(.et), .keepL)
   # the linCmt() carry's hidden copies of its midpoint covariates
-  .dat <- .rxFoceiLinCmtCarryAliasData(.dat, .rxFoceiLinCmtCarryMidCovs(ui))
+  .dat <- .rxFoceiLinCmtCarryAliasData(.dat, .rxFoceiLinCmtCarryAliasCovs(ui))
   # Drop subjects without an EVID==0 observation; re-inserted later in
   # addTable().  Two ways a subject loses all observations: (1) DV=NA rows
   # become EVID==2 in etTrans (rows still present, just no EVID==0), and (2)
@@ -5583,22 +5583,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     .rd <- tryCatch(as.data.frame(env$data), error = function(e) NULL)
     if (is.null(.rd)) {
-      return(invisible(NULL))
-    }
-    # "linear" covariate interpolation cannot be represented by linCmt()'s
-    # one-sample-per-row evaluation: with a data-confirmed time-varying
-    # covariate on an eligible pair this is an error, not a silent skip
-    .interp <- rxode2::rxGetControl(ui, "rxControl", NULL)$covsInterpolation
-    if (identical(as.integer(.interp), 0L) || identical(.interp, "linear")) {
-      .s <- ui$foceiEtaS
-      .rxFoceiLinCmtCarryEligible(
-        list(ui),
-        .s,
-        paste0("ETA_", seq_len(.s$..maxEta), "_"),
-        data = .rd,
-        interpolation = "linear",
-        render = FALSE
-      )
       return(invisible(NULL))
     }
     .rdUp <- .rd
