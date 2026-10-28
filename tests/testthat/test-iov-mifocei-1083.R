@@ -164,7 +164,13 @@ test_that("setCov(fit, \"imp\") installs a covariance on an IOV fit", {
   theoIov <- nlmixr2data::theo_md
   theoIov$occ <- 1L + (theoIov$TIME >= 144)
 
-  .ctl <- list(print = 0L, maxOuterIterations = 0L, calcTables = FALSE)
+  # A converged fit.  At the initial estimates, with an rxode2 whose linCmt()
+  # reads each interval's covariates (rxode2 PR 1517), this model's imp
+  # information matrix is not positive definite and setCov() installs the
+  # repaired "|imp|": the linCmt() sensitivity carry has no pairs for the
+  # occasion etas, so FOCEi takes the naive d(pred)/d(eta).  That case needs
+  # the carry to cover IOV models.
+  .ctl <- list(print = 0L, calcTables = FALSE)
   .fit <- suppressMessages(suppressWarnings(nlmixr2(one.cmt, theoIov, est = "focei", control = .ctl)))
   suppressMessages(setCov(.fit, "imp"))
   expect_equal(.fit$covMethod, "imp")
