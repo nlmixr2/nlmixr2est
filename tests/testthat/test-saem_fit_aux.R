@@ -22,18 +22,22 @@
 }
 
 nmTest({
+  .ctl <- saemControl(nBurn = 10, nEm = 10, print = 0, seed = 1L, covMethod = "", calcTables = FALSE)
+  .fit <- .nlmixr(.saemAuxModel, nlmixr2data::theo_sd, est = "saem", control = .ctl)
+  .s <- .fit$env$saem
+  attr(.s, "env") <- .fit$env
+  attr(.s, "dopred") <- .saemAuxStopPred
+
   # calc.2LL() and calc.COV() show a progress bar; the error that stops them
   # reaches the caller, not the bar's generic abort message
-  test_that("an error inside saem's quadrature and linearization is the one raised", {
-    .ctl <- saemControl(nBurn = 10, nEm = 10, print = 0, seed = 1L, covMethod = "", calcTables = FALSE)
-    .fit <- .nlmixr(.saemAuxModel, nlmixr2data::theo_sd, est = "saem", control = .ctl)
-    .s <- .fit$env$saem
-    attr(.s, "env") <- .fit$env
-    attr(.s, "dopred") <- .saemAuxStopPred
+  test_that("an error inside saem's quadrature is the one raised", {
     expect_error(
       suppressMessages(calc.2LL(.s, nnodes.gq = 3, nsd.gq = 1.6, .fit$phiM)),
       "the prediction stopped"
     )
+  })
+
+  test_that("an error inside saem's linearization is the one raised", {
     expect_error(suppressMessages(calc.COV(.s)), "the prediction stopped")
   })
 })
