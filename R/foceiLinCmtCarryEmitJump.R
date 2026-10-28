@@ -65,13 +65,17 @@
       )
     )
   }
-  # K_r P_r: the kernel's right-hand side applied to the advanced amounts
-  .kp <- .rxFoceiCarryRhsTxt(
-    cx$ncmt,
-    cx$oral0,
-    as.numeric(cx$trans),
-    cx$slotExpr,
-    paste0("rx_lcCarryPA", cx$rows, "_")
+  # K_r P_r: the kernel's right-hand side applied to the advanced amounts,
+  # with the interval's covariates, as the advance has them
+  .kp <- .rxFoceiLinCmtCarryCovSub(
+    .rxFoceiCarryRhsTxt(
+      cx$ncmt,
+      cx$oral0,
+      as.numeric(cx$trans),
+      cx$slotExpr,
+      paste0("rx_lcCarryPA", cx$rows, "_")
+    ),
+    cx$covInterval
   )
   for (.r in cx$rows) {
     .l <- c(.l, paste0("rx_lcCarryKP", .r, "_~", .kp[.r + 1L]))
