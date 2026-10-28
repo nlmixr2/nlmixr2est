@@ -73,6 +73,17 @@ nlmixr2; matching other `predict` methods, these can include
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A data frame with predictions</p>
     </div>
+    <div class="section level2">
+    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
+    <p>For a fit with inter-occasion variability, individual predictions take
+each record's occasion etas from the fit's estimates, by subject and
+occasion, so `newdata` needs the occasion columns.  A subject or occasion
+the fit did not estimate gets occasion etas of 0, with a warning.  Under
+`"midpoint"` or `"linear"` covariate interpolation they differ from the
+fit's own predictions after an occasion changes: the fit compares the
+interpolated occasion with each occasion's value, so between records of
+two occasions its occasion etas are 0.</p>
+    </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>

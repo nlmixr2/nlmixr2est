@@ -58,6 +58,16 @@ tableControl(
 
   \- \`"omit"\` omit the residuals for censoring
 
+  \- \`"ipred"\`, \`"pred"\` and \`"epred"\` replace a censored DV with
+  the IPRED, PRED or EPRED in the residuals.
+
+  For NPDE, every method but \`"cdf"\` and \`"omit"\` replaces each
+  censored observation by a draw from the subject's simulated predictive
+  distribution (a Gaussian copula of the simulations), conditional on
+  its measured observations and truncated to its censoring interval;
+  \`"omit"\` gives censored observations no NPDE and leaves them out of
+  the decorrelation.
+
 - seed:
 
   an object specifying if and how the random number generator should be
