@@ -50,6 +50,15 @@
   ret
 }
 
+#' The SAEM pseudo-etas (`rx.eta.<theta>`) among `x`.  The IOV rewrite names
+#' an occasion eta's columns `rx.<eta>.<occ>`, so a dotted occasion eta like
+#' `eta.ka.occ` gives `rx.eta.ka.occ.1`; those belong to `.uiFinalizeIov()`
+#' (#1233).
+#' @noRd
+.saemPseudoEtaNames <- function(x) {
+  setdiff(grep("^rx[.]eta[.]", x, value = TRUE), .uiIovEnv$iovDrop)
+}
+
 #' Drop temporary-eta rows the fit's model no longer uses
 #'
 #' The back-transform removes the temporary eta's model line; an `ini()` row
@@ -66,7 +75,7 @@
   .ui <- rxode2::rxUiDecompress(.ui)
   .iniDf <- .ui$iniDf
   .used <- unique(unlist(lapply(.ui$lstExpr, all.vars)))
-  .rm <- grepl("^rx[.]eta[.]", .iniDf$name) & !(.iniDf$name %in% .used)
+  .rm <- .iniDf$name %in% .saemPseudoEtaNames(.iniDf$name) & !(.iniDf$name %in% .used)
   if (!any(.rm)) {
     return(invisible())
   }
@@ -98,7 +107,7 @@
   .saemPseudoEtaCleanUi(ret$env)
   # the ui is already back-transformed here, so read the etas off the fit
   .ranef <- get0("ranef", envir = ret$env, inherits = FALSE)
-  .pseudo <- unique(grep("^rx[.]eta[.]", c(names(.ranef), names(ret)), value = TRUE))
+  .pseudo <- unique(.saemPseudoEtaNames(c(names(.ranef), names(ret))))
   if (length(.pseudo) == 0L) {
     return(ret)
   }
