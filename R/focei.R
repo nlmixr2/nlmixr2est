@@ -1581,6 +1581,23 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   paste(c(.lines[seq_len(.i)], .m, .lines[-seq_len(.i)]), collapse = "\n")
 }
 
+#' Model text without its interpolation declarations
+#'
+#' A generated model's prologue (`nlmixr2global$toRxParam`) carries the ui's
+#' interpolation lines (`ui$interpLinesStr`).  Model text compiled after it
+#' that keeps its own, such as a mixture's pruned model, would declare them
+#' twice, which rxode2 refuses ("cannot have more than one interpolation
+#' method").
+#'
+#' @param txt model text, one statement per line
+#' @return `txt` without its `linear()`, `locf()`, `nocb()` and `midpoint()`
+#'   lines
+#' @noRd
+.dropInterpLines <- function(txt) {
+  .lines <- unlist(strsplit(paste(txt, collapse = "\n"), "\n", fixed = TRUE))
+  paste(.lines[!grepl("^[ \t]*(linear|locf|nocb|midpoint)[ \t]*\\(", .lines)], collapse = "\n")
+}
+
 #' Append the model prologue lines that are not always present
 #'
 #' @param cmt compartment/parameter prologue built so far
@@ -3279,7 +3296,11 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   .mixProbs <- try(ui$mixProbs, silent = TRUE)
   .hasMix <- !inherits(.mixProbs, "try-error") && length(.mixProbs) > 0L
   .predOnly <- if (.hasMix) {
-    .prunedStr <- paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""), collapse = "\n")
+    # the prologue declares the interpolation, so the pruned text's own
+    # declarations go
+    .prunedStr <- .dropInterpLines(
+      paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""), collapse = "\n")
+    )
     .toRx(
       .prunedStr,
       role = "rxPredPruned",
