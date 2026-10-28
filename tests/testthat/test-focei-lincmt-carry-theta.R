@@ -32,10 +32,12 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   buildTxt <- function(mod, carry, method = "nlm") {
     ui <- suppressMessages(nlmixr2est::nlmixr2(mod))
     u <- rxode2::.copyUi(ui)
+    # built for the nocb solve below
+    .rc <- rxode2::rxControl(covsInterpolation = "nocb")
     ctl <- if (method == "nlm") {
-      nlmixr2est::nlmControl(linCmtSensCarry = carry)
+      nlmixr2est::nlmControl(linCmtSensCarry = carry, rxControl = .rc)
     } else {
-      nlmixr2est::nlsControl(linCmtSensCarry = carry)
+      nlmixr2est::nlsControl(linCmtSensCarry = carry, rxControl = .rc)
     }
     assign("control", ctl, envir = u)
     e <- suppressMessages(if (method == "nlm") u$nlmEnv else u$nlsEnv)
