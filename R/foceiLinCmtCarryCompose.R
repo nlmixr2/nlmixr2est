@@ -170,6 +170,23 @@
   txt
 }
 
+#' The carry's tracker columns, one per slot
+#'
+#' @param slot the pairs' slots (1-7, `NA` for an event-only pair)
+#' @return list(col = each pair's 0-based tracker column after the `nP`
+#'   carry columns, `NA` without a slot; last = whether the pair is the
+#'   last of its slot, which updates the tracker once every pair of the slot
+#'   has read it; n = the number of tracker columns)
+#' @noRd
+.rxFoceiLinCmtCarryTrackers <- function(slot) {
+  .slots <- unique(slot[!is.na(slot)])
+  list(
+    col = length(slot) + match(slot, .slots) - 1L,
+    last = !is.na(slot) & !duplicated(slot, fromLast = TRUE),
+    n = length(.slots)
+  )
+}
+
 #' Shared per-model context for the carry emission (parsed once per pair
 #' row; cheap)
 #' @noRd
@@ -190,6 +207,9 @@
   .ncmt <- as.integer(as.numeric(.txt[4]))
   .oral0 <- as.integer(as.numeric(.txt[5]))
   .nP <- nrow(pairs)
+  # one tracker column per slot: it holds M_i J_{i-1}(:, k), which belongs
+  # to the slot, so the pairs of one slot share it
+  .trk <- .rxFoceiLinCmtCarryTrackers(pairs$slot)
   .anyJump <- any(!is.na(pairs$fD) | !is.na(pairs$lagD))
   .anyLag <- any(!is.na(pairs$lagD))
   .m <- .ncmt + .oral0
@@ -206,10 +226,13 @@
     thetasInterval = .rxFoceiLinCmtCarryCovSub(.txt[9:15], attr(pairs, "carryCovInterval")),
     zero = rep("0", 7),
     nP = .nP,
+    trk = .trk$col,
+    trkLast = .trk$last,
     anyJump = .anyJump,
+    anyMultCov = any(pairs$shape %in% "multCov"),
     anyLag = .anyLag,
-    aCol = 2L * .nP,
-    lCol = 2L * .nP + 1L,
+    aCol = .nP + .trk$n,
+    lCol = .nP + .trk$n + 1L,
     slotExpr = lapply(1:7, function(k) .a[[k + 8L]]),
     rows = seq_len(.m) - 1L,
     # an ll() endpoint embeds the concentration call in a larger

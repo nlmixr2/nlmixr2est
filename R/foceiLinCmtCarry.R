@@ -29,15 +29,17 @@
 #     (foceiLinCmtCarryEvent.R); it does not telescope, so the row is
 #     pinned to the full advance (which1=-8).
 #
-# Each eligible pair therefore consumes TWO carry columns (the carry itself
-# and its tracker), plus one shared amounts column when any pair has a jump
-# channel and one shared lag column when any has an alag() channel; the cap
-# fails loudly at model build.  calc_lhs fires exactly once per event row in
-# solve order (dose rows included, a lagged dose on its own shifted row,
-# output filtering notwithstanding), which is what makes lhs-driven stepping
-# sound; the -5 advance derives its interval from its own previous
-# invocation time (rxode2 side) because ind->tprior is stale in the
-# post-solve lhs pass.
+# Each eligible pair therefore consumes one carry column, and each slot one
+# tracker column that the slot's pairs share, plus one shared amounts column
+# when any pair has a jump channel and one shared lag column when any has an
+# alag() channel.  Past the cap, the multCov pairs (IOV occasion etas) and
+# then the pairs sharing a slot keep the standard gradient, with a message;
+# a model still past it fails loudly at model build.  calc_lhs fires exactly
+# once per event row in solve order (dose rows included, a lagged dose on
+# its own shifted row, output filtering notwithstanding), which is what
+# makes lhs-driven stepping sound; the -5 advance derives its interval from
+# its own previous invocation time (rxode2 side) because ind->tprior is
+# stale in the post-solve lhs pass.
 #
 # Known limitations (documented, all bias to the status quo):
 # - Steady-state (ss) dose rows: the carry recurrence does not model the
@@ -80,7 +82,7 @@
 #' -7 carry add (kernel + jump terms) and the tracker update
 #' @noRd
 .rxFoceiLinCmtCarryPairLines <- function(cx, pairs, w) {
-  .p <- w - 1L # 0-based pair column; tracker column is nP + p
+  .p <- w - 1L # 0-based pair column; the slot's tracker column is trk[w]
   .slot <- pairs$slot[w]
   .hasSlot <- !is.na(.slot)
   .l <- character(0)
@@ -125,7 +127,7 @@
           .rxFoceiLinCmtCarryCall(
             cx$pfx,
             -6L,
-            .r + cx$m * (cx$nP + .p),
+            .r + cx$m * cx$trk[w],
             cx$trans,
             .z7
           )
@@ -160,7 +162,9 @@
         .rxFoceiLinCmtCarryCall(cx$pfx, -7L, .r + cx$m * .p, cx$trans, .z7)
       )
     )
-    if (.hasSlot) {
+    # the slot's last pair moves its shared tracker on, after every pair of
+    # the slot has read it
+    if (.hasSlot && cx$trkLast[w]) {
       .z7[3] <- .dloc
       .l <- c(
         .l,
@@ -173,7 +177,7 @@
           .rxFoceiLinCmtCarryCall(
             cx$pfx,
             -7L,
-            .r + cx$m * (cx$nP + .p),
+            .r + cx$m * cx$trk[w],
             cx$trans,
             .z7
           )

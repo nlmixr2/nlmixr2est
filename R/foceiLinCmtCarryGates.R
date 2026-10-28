@@ -54,13 +54,15 @@
   if (!.rxFoceiLinCmtCarryModelOk(s)) {
     return(NULL)
   }
-  .jump <- !is.na(.pairs$fD) | !is.na(.pairs$lagD)
+  # a jump channel and a multCov pair both need the fast-path pin (-8)
+  .jump <- !is.na(.pairs$fD) | !is.na(.pairs$lagD) | .pairs$shape %in% "multCov"
   if (any(.jump) && !.rxFoceiLinCmtCarryJumpCapable()) {
     .pairs <- .pairs[!.jump, , drop = FALSE]
     if (nrow(.pairs) == 0L) {
       return(NULL)
     }
   }
+  .pairs <- .rxFoceiLinCmtCarryCapPairs(.pairs)
   .rxFoceiLinCmtCarryCheckCap(.pairs)
   attr(.pairs, "carryCovInterval") <- .rxFoceiLinCmtCarryCovInterval(
     x[[1]]$allCovs,
@@ -126,15 +128,60 @@
   !is.null(.rxFoceiCarryMicro(.sh$ncmt, .sh$oral0, .sh$trans))
 }
 
+#' Carry columns the pairs need
+#'
+#' One per pair, one tracker per slot (`.rxFoceiLinCmtCarryTrackers()`), plus
+#' one shared amounts tracker when any pair has a jump channel and one shared
+#' lag tracker when any pair has an alag() channel
 #' @noRd
-.rxFoceiLinCmtCarryCheckCap <- function(pairs) {
-  # two carry columns per pair (carry + tracker), plus one shared amounts
-  # tracker when any pair has a jump channel and one shared lag tracker when
-  # any pair has an alag() channel; RX_LINCMT_CARRY_MAXPAIRS = 8 columns
-  .need <- 2L *
-    nrow(pairs) +
+.rxFoceiLinCmtCarryColumns <- function(pairs) {
+  nrow(pairs) +
+    .rxFoceiLinCmtCarryTrackers(pairs$slot)$n +
     as.integer(any(!is.na(pairs$fD) | !is.na(pairs$lagD))) +
     as.integer(any(!is.na(pairs$lagD)))
+}
+
+#' Drop the pairs past the carry's column cap, the newest kinds first
+#'
+#' rxode2 has RX_LINCMT_CARRY_MAXPAIRS = 8 carry columns.  Past them, the
+#' multCov pairs (an IOV rewrite's occasion etas), last first, and then the
+#' other pairs that share a slot keep the standard gradient, with one
+#' message, so a model past the cap is carried no worse than without them; a
+#' model still past it stops in `.rxFoceiLinCmtCarryCheckCap()`.
+#' @param pairs the eligible pairs
+#' @return `pairs` without the dropped rows
+#' @noRd
+.rxFoceiLinCmtCarryCapPairs <- function(pairs) {
+  if (.rxFoceiLinCmtCarryColumns(pairs) <= 8L) {
+    return(pairs)
+  }
+  .shared <- !is.na(pairs$slot) &
+    (duplicated(pairs$slot) | duplicated(pairs$slot, fromLast = TRUE))
+  .order <- c(
+    rev(which(pairs$shape %in% "multCov")),
+    rev(which(.shared & !(pairs$shape %in% "multCov")))
+  )
+  .keep <- rep(TRUE, nrow(pairs))
+  for (.w in .order) {
+    if (.rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) <= 8L) {
+      break
+    }
+    .keep[.w] <- FALSE
+  }
+  if (any(!.keep) && .rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) <= 8L) {
+    .minfo(paste0(
+      "linCmt() carry: ",
+      paste(pairs$etaName[!.keep], collapse = ", "),
+      " keep the standard gradient (carry column limit)"
+    ))
+    pairs <- pairs[.keep, , drop = FALSE]
+  }
+  pairs
+}
+
+#' @noRd
+.rxFoceiLinCmtCarryCheckCap <- function(pairs) {
+  .need <- .rxFoceiLinCmtCarryColumns(pairs)
   if (.need > 8L) {
     stop(
       "the carry-eligible (linCmt parameter, eta) pairs need ",
