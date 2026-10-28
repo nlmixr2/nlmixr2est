@@ -59,10 +59,9 @@ Augmented Prediction for nlmixr2 fit
 }
 \details{
 For a fit with inter-occasion variability, each time takes its subject's
-estimate for the occasion the fit's covariate interpolation gives that
-time, in the fit's record order where records tie.  Under `"midpoint"`
-or `"linear"` interpolation the individual curve differs from the fit's
-predictions after an occasion changes, as `predict()` does.
+estimate for its occasion, carried from the occasion's first record
+(locf, in the fit's record order where records tie) whatever the covariate
+interpolation, as the fit steps its occasion.
 
 For a `linCmt()` model with time-varying covariates or occasions the
 curves are approximate: under the default `"locf"` interpolation,

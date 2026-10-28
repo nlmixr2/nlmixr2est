@@ -93,7 +93,10 @@
               suppressWarnings({
                 .x <- .cur$TIME
                 .y <- .cur[[cov]]
-                if (.covsi == "midpoint" && length(.x) > 1L) {
+                # an occasion steps (locf), as the fit steps it, whatever the
+                # interpolation
+                .ci <- if (cov %in% .occCols) "locf" else .covsi
+                if (.ci == "midpoint" && length(.x) > 1L) {
                   # rxode2 steps to the next value at the midpoint, it does
                   # not average the two
                   .o <- order(.x)
@@ -106,9 +109,9 @@
                 .fun <- stats::approxfun(
                   .x,
                   .y,
-                  method = ifelse(.covsi == "linear", "linear", "constant"),
+                  method = ifelse(.ci == "linear", "linear", "constant"),
                   rule = 2,
-                  f = .fs[.covsi],
+                  f = .fs[.ci],
                   ties = if (cov %in% .occCols) "ordered" else mean
                 )
                 .fun(.base$TIME)
@@ -235,9 +238,9 @@
 #'
 #' Each row takes its subject's estimate for its occasion, which
 #' `.augPredExpandData()` gives every row of a fit with IOV, as columns the
-#' model reads as those etas.  A grid point between two occasions under
-#' linear covariate interpolation has no occasion of its own and takes 0; a
-#' whole occasion the fit did not estimate takes 0 with a warning.
+#' model reads as those etas.  The occasions are carried by LOCF, so each is
+#' one of the subject's; a whole occasion the fit did not estimate takes 0
+#' with a warning, and a fractional value, which is no occasion, takes 0.
 #'
 #' @param fit nlmixr2 fit
 #' @param events augPred()'s events (`.augPredExpandData()`), whose `ID` is
@@ -254,9 +257,8 @@
   .id <- as.character(fit$idLvl[as.integer(as.character(events$ID))])
   .occ <- as.list(events[.occCols])
   .r <- .iovEtaRows(fit, .id, .occ)
-  # a fractional occasion (linear interpolation between two) is expected to
-  # match none; a whole one that does not is a subject or occasion the fit
-  # did not estimate
+  # a fractional value matches no occasion; a whole one that does not is a
+  # subject or occasion the fit did not estimate
   .whole <- Reduce(`&`, lapply(.occ, .augPredWholeOcc))
   .miss <- .iovEtaRows(fit, .id[.whole], lapply(.occ, `[`, .whole))$unseen
   if (.miss > 0L) {
@@ -301,6 +303,31 @@
     .etas[[.n]] <- .v
   }
   list(etas = as.data.frame(.etas), unseen = length(unique(id[is.na(.row)])))
+}
+
+#' The fit's simulation model, its occasion etas stepping (locf)
+#'
+#' Individual predictions read each occasion eta from a data column
+#' (`.nlmixrIovEtaData()`, `.augPredIovEvents()`).  The fit steps its occasions
+#' whatever `covsInterpolation` is (`.iovLocfLines()`), so these columns step
+#' too: a `locf()` line for each, ahead of the simulation model.
+#'
+#' @param fit nlmixr2 fit with IOV
+#' @param model the simulation model's text; by default the fit's
+#' @return rxode2 model
+#' @noRd
+.iovLocfSimModel <- function(fit, model = rxode2::rxNorm(fit$simulationModel)) {
+  rxode2::rxode2(paste(c(sprintf("locf(%s);", .iovOccEtaNames(fit)), model), collapse = "\n"))
+}
+
+#' The occasion etas of a fit with IOV, as `fit$env$iov` names them
+#' @param fit nlmixr2 fit with IOV
+#' @return character vector
+#' @noRd
+.iovOccEtaNames <- function(fit) {
+  .iov <- fit$env$iov
+  .n <- lapply(names(.iov), function(.lvl) setdiff(names(.iov[[.lvl]]), c("ID", .lvl)))
+  unique(unlist(.n, use.names = FALSE))
 }
 
 #' Data with the fit's etas, for individual predictions of a fit with IOV
@@ -372,10 +399,9 @@
 #' @details
 #'
 #' For a fit with inter-occasion variability, each time takes its subject's
-#' estimate for the occasion the fit's covariate interpolation gives that
-#' time, in the fit's record order where records tie.  Under `"midpoint"`
-#' or `"linear"` interpolation the individual curve differs from the fit's
-#' predictions after an occasion changes, as `predict()` does.
+#' estimate for its occasion, carried from the occasion's first record
+#' (locf, in the fit's record order where records tie) whatever the covariate
+#' interpolation, as the fit steps its occasion.
 #'
 #' For a `linCmt()` model with time-varying covariates or occasions the
 #' curves are approximate: under the default `"locf"` interpolation,
@@ -411,6 +437,10 @@ nlmixr2AugPredSolve <- function(
     .drop <- NULL
   }
   .rx <- eval(.rx)
+  if (length(fit$env$iov) > 0L) {
+    # its occasion etas, given as columns, step as the fit's occasion does
+    .rx <- .iovLocfSimModel(fit, rxode2::rxNorm(.rx))
+  }
   .sigma <- .si$sigma
   .omega <- .si$omega
   .params <- .nlmixrGetIpredParams(fit)

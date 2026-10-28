@@ -249,7 +249,9 @@
   occasion's etas.  Fits of IOV models under those interpolations change: on
   theo_sd with an occasion change at 5 h, focei's objective at the initial
   estimates was 136.2144 under `"nocb"` and 140.5934 under `"midpoint"`; it
-  is now 132.0456, as under `"locf"`.  A model that declares `nocb()`,
+  is now 132.0456, as under `"locf"`.  Individual `predict()` and `augPred()`
+  step the occasion etas the same way, so they equal the fit's IPRED under
+  every interpolation.  A model that declares `nocb()`,
   `linear()` or `midpoint()` for an occasion variable stops: "occasion
   variable(s) 'occ' (nocb) must use 'locf' interpolation".
 
@@ -263,11 +265,9 @@
 - `predict(fit, level = "individual")` now works on a fit with
   inter-occasion variability; it stopped with "attempt access index 0/0 in
   VECTOR_ELT".  Each record takes its subject's estimates, joined on the
-  subject and its occasion, so under `"locf"` or `"nocb"` covariate
-  interpolation the predictions are the fit's IPRED, in any row order of
-  `newdata`.  A subject or occasion the fit did not estimate gets etas of
-  0, with a warning.  Under `"midpoint"` or `"linear"` interpolation they
-  differ from IPRED after an occasion changes (`?predict.nlmixr2FitCore`).
+  subject and its occasion, so the predictions are the fit's IPRED, in any
+  row order of `newdata`.  A subject or occasion the fit did not estimate
+  gets etas of 0, with a warning.
 
 - Population `predict()` of a fit with inter-occasion variability now
   works, and gives its PRED; it stopped with "The following parameter(s)
@@ -275,8 +275,8 @@
 
 - `augPred()` now works on a fit with inter-occasion variability; it
   stopped with "The following parameter(s) are required for solving:
-  iov.cl".  Its individual curve takes each time's occasion from the fit's
-  covariate interpolation and record order, and its population curve sets
+  iov.cl".  Its individual curve carries each occasion from its first
+  record (locf, in the fit's record order), and its population curve sets
   every eta, of every level, to zero.
 
 ### Documentation
