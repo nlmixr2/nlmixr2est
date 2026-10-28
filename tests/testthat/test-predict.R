@@ -140,10 +140,109 @@ nmTest({
   })
 
   test_that(".ipredObsRows() finds the observations of data, and of an event table", {
+    # an observation record counts whatever its DV, as a prediction grid's
     .d <- data.frame(ID = 1, TIME = c(0, 0, 1, 2), EVID = c(1, 0, 0, 2), AMT = c(1, 0, 0, 0), DV = c(NA, 1, NA, NA))
-    expect_identical(.ipredObsRows(.d), c(FALSE, TRUE, FALSE, FALSE))
-    # lower-case names, and no DV column: every observation record counts
+    expect_identical(.ipredObsRows(.d), c(FALSE, TRUE, TRUE, FALSE))
+    # lower-case names, and no DV column
     .e <- data.frame(id = 1, time = c(0, 1, 2), evid = c(1L, 0L, 0L), amt = c(1, 0, 0))
     expect_identical(.ipredObsRows(.e), c(FALSE, TRUE, TRUE))
   })
+
+  test_that("a prediction grid with no DV takes each subject's etas, and warns for a new one", {
+    .fit <- one.compartment.fit.focei
+    .ref <- .predIndKeyed(.fit, theo_sd)
+    .g <- theo_sd
+    .g$DV[.g$EVID == 0] <- NA
+    expect_identical(testthat::capture_warnings(.p <- .predIndKeyed(.fit, .g)), character(0))
+    expect_equal(.p, .ref, tolerance = 1e-12)
+    .g$ID[.g$ID == 12] <- 99
+    expect_identical(
+      testthat::capture_warnings(.predIndKeyed(.fit, .g)),
+      "1 subject(s) not in the fit get etas of 0"
+    )
+  })
+
+  test_that("newdata without an ID column is predicted for each fitted subject", {
+    .et <- rxode2::et(amt = 320) |> rxode2::et(c(0.5, 1, 2, 4, 8, 12, 24))
+    .g <- as.data.frame(.et)
+    .n <- nrow(.g)
+    # each fitted subject's curve, from the grid with its ID
+    .fit <- one.compartment.fit.focei
+    .all <- .g[rep(seq_len(.n), 12), ]
+    .all$ID <- rep(1:12, each = .n)
+    .ref <- .predIndKeyed(.fit, .all)
+    .p <- as.data.frame(suppressMessages(predict(.fit, .et, level = "individual", atol = 1e-12, rtol = 1e-12)))
+    # one solve per fitted subject, in the fit's order
+    expect_identical(as.integer(.p$sim.id), rep(1:12, each = 7L))
+    expect_equal(.p$ipredSim, unname(.ref[paste(.p$sim.id, .p$time)]), tolerance = 1e-12)
+    # a one-subject fit predicts its subject's curve
+    .one <- suppressWarnings(suppressMessages(nlmixr2(
+      one.compartment,
+      theo_sd[theo_sd$ID == 4, ],
+      "focei",
+      control = foceiControl(print = 0, maxOuterIterations = 0L, covMethod = "")
+    )))
+    .g$ID <- 4
+    .ref1 <- .predIndKeyed(.one, .g)
+    .p1 <- .predIndKeyed(.one, .et)
+    expect_length(.p1, 7L)
+    expect_equal(unname(.p1), unname(.ref1), tolerance = 1e-12)
+    expect_true(all(.one$eta$eta.ka != 0))
+  })
+
+  test_that("individual predictions match subjects whose labels are not their codes", {
+    # IDs 1e5 to 1.2e6, read back as integers in another order
+    .d <- theo_sd
+    .d$ID <- .d$ID * 1e5
+    .fit <- suppressWarnings(suppressMessages(nlmixr2(
+      one.compartment,
+      .d,
+      "focei",
+      control = foceiControl(
+        print = 0,
+        maxOuterIterations = 0L,
+        covMethod = "",
+        rxControl = rxode2::rxControl(atol = 1e-10, rtol = 1e-10)
+      )
+    )))
+    .tab <- as.data.frame(.fit)
+    .want <- stats::setNames(.tab$IPRED, paste(as.numeric(as.character(.tab$ID)), .tab$TIME))
+    .n <- .d[order(-.d$ID, seq_len(nrow(.d))), ]
+    .n$ID <- as.integer(.n$ID)
+    expect_identical(testthat::capture_warnings(.p <- .predIndKeyed(.fit, .n)), character(0))
+    names(.p) <- paste(as.numeric(sub(" .*", "", names(.p))), sub("^[^ ]* ", "", names(.p)))
+    expect_identical(sort(names(.p)), sort(names(.want)))
+    expect_equal(.p[names(.want)], .want, tolerance = 1e-8)
+  })
+
+  test_that("saem's individual predictions are its IPRED", {
+    .fit <- one.compartment.fit.saem
+    .tab <- as.data.frame(.fit)
+    .p <- as.data.frame(suppressMessages(predict(.fit, theo_sd, level = "individual")))
+    expect_identical(nrow(.p), nrow(.tab))
+    expect_equal(.p$ipredSim, .tab$IPRED, tolerance = 1e-6)
+  })
+})
+
+test_that(".ipredIdLabels() matches a numeric ID to the fit's label by value", {
+  .fit <- list(eta = data.frame(ID = factor(c("100000", "2"))))
+  expect_identical(.ipredIdLabels(.fit, c(1e5, 2, 3, 2.5e5)), c("100000", "2", "3", "250000"))
+  expect_identical(.ipredIdLabels(.fit, c(100000L, 2L)), c("100000", "2"))
+  # a label written in scientific notation matches its value
+  .fit$eta$ID <- factor(c("1e+05", "2"))
+  expect_identical(.ipredIdLabels(.fit, 100000L), "1e+05")
+  # an IOV-only fit's labels are its occasion tables'
+  .iov <- list(env = list(iov = list(occ = data.frame(ID = factor(c("300000", "300000")), occ = 1:2))))
+  expect_identical(.ipredIdLabels(.iov, c(3e5, 4e5)), c("300000", "400000"))
+  # text and factor IDs match by their text
+  expect_identical(.ipredIdLabels(.fit, c("1e+05", "100000")), c("1e+05", "100000"))
+  expect_identical(.ipredIdLabels(.fit, factor("2")), "2")
+})
+
+test_that(".ipredHasId() looks for a subject column in the data frame", {
+  expect_true(.ipredHasId(data.frame(Id = 1, time = 0)))
+  expect_false(.ipredHasId(data.frame(time = 0)))
+  # an event table of one subject has none
+  expect_false(.ipredHasId(rxode2::et(amt = 1) |> rxode2::et(1)))
+  expect_true(.ipredHasId(rxode2::et(amt = 1, id = 1:2) |> rxode2::et(1)))
 })

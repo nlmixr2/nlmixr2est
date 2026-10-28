@@ -250,10 +250,15 @@
     sets, 132 rows;
   - a subject the fit did not estimate silently took the etas at its
     position.  It now gets etas of 0, with a warning ("1 subject(s) not in
-    the fit get etas of 0");
+    the fit get etas of 0"), also when its observation records have no DV,
+    as a prediction grid's;
   - a fit with a subject that has no observations stopped with "number of
     parameters (11) solved by rxode2 for multi-subject data needs to be a
     multiple of the number of subjects (12)".
+
+  A numeric ID matches the fit's by value (`1e5` matches subject 100000).
+  `newdata` without an ID column, such as an event table of one subject, is
+  still predicted once for each fitted subject.
 
 ### Inter-occasion variability
 

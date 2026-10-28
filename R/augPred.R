@@ -318,7 +318,8 @@
 #' given.  A subject (with IOV, a subject-occasion pair) the fit did not
 #' estimate gets 0, with a warning that counts those with an observation
 #' record ([.ipredObsRows()]): the others are not predicted, and a subject
-#' without observations has no etas in its own fit.
+#' without observations has no etas in its own fit.  The subjects match the
+#' fit's by [.ipredIdLabels()].
 #'
 #' @param fit nlmixr2 fit
 #' @param data data to predict, with the subject (and occasion) columns
@@ -337,7 +338,7 @@
       call. = FALSE
     )
   }
-  .id <- as.character(.d[[.w[1]]])
+  .id <- .ipredIdLabels(fit, .d[[.w[1]]])
   .obs <- .ipredObsRows(.d)
   .s <- .subjectEtaRows(fit, .id)
   if (length(.occCols) > 0L) {
@@ -363,20 +364,56 @@
   .d
 }
 
+#' The fit's subject labels for the IDs of data to predict
+#'
+#' A numeric ID matches a label by value, so `1e5` matches the label
+#' `"100000"`; any other ID matches by its text.  An ID that matches no label
+#' keeps its own text, so the subjects the fit did not estimate can be
+#' counted.
+#'
+#' @param fit nlmixr2 fit
+#' @param id the data's ID column
+#' @return character, one label per row
+#' @noRd
+.ipredIdLabels <- function(fit, id) {
+  if (is.factor(id) || !is.numeric(id)) {
+    return(as.character(id))
+  }
+  # the estimated subjects' labels; fit$idLvl would rerun the data step
+  .lab <- as.character(fit$eta$ID)
+  for (.tab in fit$env$iov) {
+    .lab <- c(.lab, as.character(.tab$ID))
+  }
+  .lab <- unique(.lab)
+  .ret <- .lab[match(id, suppressWarnings(as.numeric(.lab)))]
+  .new <- is.na(.ret)
+  .ret[.new] <- sprintf("%.15g", id[.new])
+  .ret
+}
+
+#' Whether data to predict has a subject column
+#'
+#' An event table of one subject has none as a data frame.
+#'
+#' @param data data to predict
+#' @return `TRUE` when `data` has an ID column
+#' @noRd
+.ipredHasId <- function(data) {
+  "ID" %in% toupper(names(as.data.frame(data)))
+}
+
 #' Which records of the data to predict are observations
 #'
-#' [.nmObsRows()] of the data with upper-case names.  Data without a DV
-#' column, such as an event table, has its observation records' DV taken as
-#' present, as a solve takes them.
+#' [.nmObsRows()] of the data with upper-case names, whatever their DV: a
+#' prediction grid's DV is missing, and data without a DV column, such as
+#' an event table, has none.
 #'
 #' @param d data to predict
 #' @return logical, one per row
 #' @noRd
 .ipredObsRows <- function(d) {
   names(d) <- toupper(names(d))
-  if (is.null(d[["DV"]])) {
-    d$DV <- rep(0, nrow(d))
-  }
+  d$DV <- rep(0, nrow(d))
   .nmObsRows(.nmWithEvid(d))
 }
 
