@@ -1351,6 +1351,7 @@ public:
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       double curT = getTime(kk, ind);
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       pred += lhs[_saemPhi1PredOffset];
     }
@@ -1377,6 +1378,7 @@ public:
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       double curT = getTime(kk, ind);
+      lhsWalkNewind(ind, j);
       rxHess2.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       rowPred += lhs[_saemPhi1H2PredOffset];
       int r = 0;
@@ -2025,6 +2027,7 @@ public:
       setIndIdx(ind, j);
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(i, getTime(kk, ind), getOpIndSolve(op, ind, j), lhs);
       // FOCEi's log-density leaves out the transform's log-Jacobian, as in
       // saemReadRowsPooled()
@@ -2102,8 +2105,10 @@ public:
       int kk = getIndIx(ind, getIndIdx(ind));
       double curT = getTime(kk, ind);
       if (isDose(getIndEvid(ind, kk))) {
+        lhsWalkNewind(ind, j);
         saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       } else if (getIndEvid(ind, kk) == 0) {
+        lhsWalkNewind(ind, j);
         saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
         double ll = saemGenLikCens(lhs, hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0,
                                    hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf,
@@ -6064,6 +6069,7 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       double curT = getTime(kk, ind);
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       double cur = lhs[_saemPhi1PredOffset];
       // The pooled pred model is FOCEi's, whose log-density leaves the transform's
@@ -6219,9 +6225,11 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       double curT = getTime(kk, ind);
       if (isDose(getIndEvid(ind, kk))) {
         // Need to calculate for advan sensitivities
+        lhsWalkNewind(ind, j);
         saem_lhs((int)id, curT,
                  getOpIndSolve(op, ind, j), lhs);
       } else if (getIndEvid(ind,kk) == 0) {
+        lhsWalkNewind(ind, j);
         saem_lhs((int)id, curT,
                  getOpIndSolve(op, ind, j), lhs);
         double cur = saemGenLikCens(lhs, hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0,

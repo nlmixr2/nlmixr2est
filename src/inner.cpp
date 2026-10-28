@@ -2324,18 +2324,22 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
       if (predSolve) {
+        lhsWalkNewind(ind, j);
         rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       } else {
+        lhsWalkNewind(ind, j);
         rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       }
       continue;
     }
     fInd->nObs++;
     if (predSolve) {
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       retF(k) = lhs[op_focei.predNoLhsOffset];
       retR(k) = lhs[op_focei.predNoLhsOffset + 1];
     } else {
+      lhsWalkNewind(ind, j);
       rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       retF(k) = lhs[op_focei.predOffset];
       retR(k) = lhs[op_focei.predOffset + op_focei.neta + 1];
@@ -2400,6 +2404,7 @@ static Rcpp::NumericMatrix assembleNnOuterMatrix() {
       double curT = getTime(kk, ind);
       double *lhs = getIndLhs(ind);
       double *st = getOpIndSolve(op, ind, j);
+      lhsWalkNewind(ind, j);
       rxInner.calc_lhs(_rxId, curT, st, lhs); // advance lhs for dose + obs records
       if (getIndEvid(ind, kk) != 0) continue;
       mat(row, 0) = lhs[op_focei.predOffset];             // rx_pred_ (predicted f)
@@ -2467,9 +2472,11 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
     curT = getTime(kk, ind);
     double *lhs = neqGuard.lhs();   // scope decides the buffer, not this loop
     if (isDose(getIndEvid(ind, kk))) {
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     }
+    lhsWalkNewind(ind, j);
     rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
     // rx_pred_ (w=0) / rx_r_ (w=1) may be preceded by other lhs outputs in the
     // pred model (AR(1) lag defs, etc.), so index from predNoLhsOffset -- matching
@@ -2522,9 +2529,11 @@ arma::vec shi21ThetaGeneral(arma::vec &theta, int id, int w) {
     curT = getTime(kk, ind);
     double *lhs = neqGuard.lhs();   // scope decides the buffer, not this loop
     if (isDose(getIndEvid(ind, kk))) {
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     }
+    lhsWalkNewind(ind, j);
     rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
     if (k < nObs) ret(k) = lhs[op_focei.predNoLhsOffset + w];
     k++;
@@ -2701,9 +2710,11 @@ static void getPopR(int id, arma::vec &rPop) {
     curT = getTime(kk, ind);
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
+      lhsWalkNewind(ind, j);
       rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
+      lhsWalkNewind(ind, j);
       rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       rPop(k) = lhs[op_focei.neta + 1]; // inner-model rx_r_ at eta=0
       k++;
@@ -3206,6 +3217,7 @@ double likInner0(double *eta, int id) {
           llikObs[kk] = NA_REAL;
           // Need to calculate for advan sensitivities
           if (predSolve) {
+            lhsWalkNewind(ind, j);
             rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
             // Normalize the predNoLhs layout into the inner offset layout so the
             // shared reads below use op_focei.predOffset uniformly.
@@ -3215,10 +3227,12 @@ double likInner0(double *eta, int id) {
             lhs[op_focei.predOffset + op_focei.neta + 1] = _pr;
           }
           else {
+            lhsWalkNewind(ind, j);
             rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
           }
         } else if (getIndEvid(ind, kk) == 0) {
           if (predSolve) {
+            lhsWalkNewind(ind, j);
             rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
             // Normalize the predNoLhs layout into the inner offset layout.
             double _pf = lhs[op_focei.predNoLhsOffset];
@@ -3226,6 +3240,7 @@ double likInner0(double *eta, int id) {
             lhs[op_focei.predOffset] = _pf;
             lhs[op_focei.predOffset + op_focei.neta + 1] = _pr;
           } else {
+            lhsWalkNewind(ind, j);
             rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
           }
           // Read the endpoint's distribution/transform AFTER calc_lhs: rx_yj_ (and
@@ -3673,6 +3688,7 @@ static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
     int kk2 = getIndIx(ind, jj);
     if (getIndEvid(ind, kk2) != 0) continue;              // observations only
     double curT2 = getTime(kk2, ind);
+    lhsWalkNewind(ind, jj);
     rxHess2.calc_lhs(_rxId, curT2, getOpIndSolve(op, ind, jj), lhs);
     double cp[9] = {};
     if (conditional) {
@@ -14930,9 +14946,11 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out,
       for (int jj = 0; jj < getIndNallTimes(ind) && ko < nobs; ++jj) {
         setIndIdx(ind, jj); kk = getIndIx(ind, jj); curT = getTime(kk, ind);
         if (isDose(getIndEvid(ind, kk))) {
+          lhsWalkNewind(ind, jj);
           tsModel.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
           continue;
         } else if (getIndEvid(ind, kk) == 0) {
+          lhsWalkNewind(ind, jj);
           tsModel.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
           // ind->yj / ind->lambda now describe THIS row -- the only point in the
           // subject where that is true, so take the per-obs DV transform and
@@ -14979,6 +14997,7 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out,
     for (int jj = 0; jj < getIndNallTimes(ind) && ko < nobs; ++jj) {
       setIndIdx(ind, jj); kk = getIndIx(ind, jj); curT = getTime(kk, ind);
       if (!isDose(getIndEvid(ind, kk)) && getIndEvid(ind, kk) != 0) continue;
+      lhsWalkNewind(ind, jj);
       tsModel.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
       if (getIndEvid(ind, kk) == 0) {
         rowInfoAt(ko, lhs);
@@ -18131,6 +18150,7 @@ static void outerSolveFill(int slot, rxSolveF *fns,
       setIndIdx(ind, q);
       int kk = getIndIx(ind, q);
       double curT = getTime(kk, ind);
+      lhsWalkNewind(ind, q);
       fns->calc_lhs(_rxId, curT, getOpIndSolve(op, ind, q), lhs);
       if (getIndEvid(ind, kk) != 0) continue;   // dose rows: solve advanced, no output
       E.f[ko] = lhs[predf];
@@ -18691,6 +18711,7 @@ static bool llHblockFill(bool useHess2, const FoceiGradPooledSetup &G,
       setIndIdx(ind, q);
       int kk = getIndIx(ind, q);
       double curT = getTime(kk, ind);
+      lhsWalkNewind(ind, q);
       rxHess2.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, q), lhs);
       if (getIndEvid(ind, kk) != 0) continue;            // dose rows: solve advanced only
       int r = 0;                                         // rx__d2pred_ order: j outer, i<=j
