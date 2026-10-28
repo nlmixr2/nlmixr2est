@@ -175,8 +175,9 @@
   'iov.cl', which is not in this block"; `saem`, `imp` and `npag` stopped
   with "'saem' does not honour a repeated (same()) omega block", naming
   `focei` as an alternative; and `vae`, `emvi` and `fbvi` estimated the two
-  variances apart, dropping the tie.  A repeated subject-level block (`eta.v ~ same()`) is not
-  affected, and `rxSolve` still simulates the model.
+  variances apart, dropping the tie.  A repeated subject-level block
+  (`eta.v ~ same()`) is not affected, and `rxSolve` still simulates the
+  model.
 
 ### NPDE
 
