@@ -78,8 +78,7 @@
 - A mixture (`mix()`) model that declares a covariate's interpolation, such
   as `locf(WT)`, now fits with `focei`; it stopped with "syntax errors" and
   "'WT' cannot have more than one interpolation method", since the
-  declaration reached its EBE model twice.  So does every mixture model
-  with inter-occasion variability, whose occasion is declared `locf()`.
+  declaration reached its EBE model twice.
 
 - `saem` now reports the non-mu-referenced thetas it actually used.  With
   `nonMuTheta = "regress"` (the default) the model ran at the directly
