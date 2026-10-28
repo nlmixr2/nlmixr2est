@@ -6,9 +6,6 @@
 # prediction, through the outer chain rule around rx_lcConc_ for a wrapped
 # ll() likelihood (#1004).
 
-#' Shared per-model context for the carry emission (parsed once per pair
-#' row; cheap)
-#' @noRd
 #' The covariate interpolation of a carry build
 #'
 #' @param ui rxode2 ui
@@ -97,6 +94,9 @@
   txt
 }
 
+#' Shared per-model context for the carry emission (parsed once per pair
+#' row; cheap)
+#' @noRd
 .rxFoceiLinCmtCarryCtx <- function(pairs, s) {
   .pc <- .rxFoceiCarryPredCall(s)
   .a <- .pc$args
