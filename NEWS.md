@@ -84,7 +84,7 @@
   occasion etas in one parameter), so their gradient ignored the change
   of occasion: on theo_md with IOV on `cl` and the occasion stepping at
   144 h, the objective at the initial estimates was 487.3129 against the
-  ODE model's 473.1498, and `setCov(fit, "imp")` installed the repaired
+  ODE model's 473.1587, and `setCov(fit, "imp")` installed the repaired
   `"|imp|"`.  They are now equal, under either `iovMethod`.  With more
   occasions than the carry has room for, the last occasion etas keep the
   standard gradient, with a message.
