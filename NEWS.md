@@ -78,6 +78,17 @@
   `"locf"` and 325.7027 under `"midpoint"`, against 318.8375 and 324.3126
   for the ODE model; they are now equal (`"nocb"` was equal already).
 
+- FOCEi now fits a `linCmt()` model with inter-occasion variability whose
+  occasion changes within a subject as its ODE twin.  The sensitivity
+  carry left such models alone (the IOV rewrite puts the subject and the
+  occasion etas in one parameter), so their gradient ignored the change
+  of occasion: on theo_md with IOV on `cl` and the occasion stepping at
+  144 h, the objective at the initial estimates was 487.3129 against the
+  ODE model's 473.1498, and `setCov(fit, "imp")` installed the repaired
+  `"|imp|"`.  They are now equal, under either `iovMethod`.  With more
+  occasions than the carry has room for, the last occasion etas keep the
+  standard gradient, with a message.
+
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not
