@@ -1,3 +1,46 @@
+# ar() correlations that are not an "ar" row of the fit's $iniDf: a fixed
+# one and a modeled one
+.arModFixedCor <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    eta.cl ~ 0.1
+    add.sd <- 0.7
+    ar1.cor <- fix(0.9)
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv)
+    d/dt(depot) <- -ka * depot
+    d/dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd) + ar(ar1.cor)
+  })
+}
+
+.arModModeledCor <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    eta.cl ~ 0.1
+    add.sd <- 0.7
+    tcor <- 2
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv)
+    corv <- expit(tcor)
+    d/dt(depot) <- -ka * depot
+    d/dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd) + ar(corv)
+  })
+}
+
 nmTest({
   # ar() residuals are out of analytic outer-gradient scope (#1195)
   .arMod <- function() {
@@ -64,5 +107,25 @@ nmTest({
     expect_false(.covBaseName(.fit$covMethod) == "analytic")
     expect_false(isTRUE(.fit$foceiControl$fast))
     expect_false(isTRUE(.fit$env$nAnalyticGradDirect > 0))
+  })
+
+  # the fixed correlation is no "ar" row of the ui FOCEi builds from; the
+  # fast gradient used to be built anyway, without the AR(1) lines, and the
+  # fit stopped ("required for solving: rx_arNf_cp, rx_arEp_cp, rx_arT_cp")
+  test_that("fast = TRUE falls back for an ar() with a fixed or a modeled correlation", {
+    skip_on_cran()
+    for (.m in list(fixed = .arModFixedCor, modeled = .arModModeledCor)) {
+      .msg <- testthat::capture_messages(
+        .fit <- suppressWarnings(nlmixr2(
+          .m,
+          nlmixr2data::theo_sd,
+          "focei",
+          foceiControl(fast = TRUE, print = 0L, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE)
+        ))
+      )
+      expect_true(is.finite(.fit$objf))
+      expect_true(any(grepl("ar() residual: the analytic 'fast' gradient does not apply", .msg, fixed = TRUE)))
+      expect_false(isTRUE(.fit$foceiControl$fast))
+    }
   })
 })
