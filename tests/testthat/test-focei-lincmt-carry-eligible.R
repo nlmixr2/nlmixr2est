@@ -120,7 +120,7 @@ test_that("same eta on two linCmt parameters is dropped (multi-slot unvalidated)
   expect_equal(nrow(suppressMessages(.foceiLinCmtCarryPairs(.twoSlot))), 0L)
 })
 
-test_that("two etas in one slot's formula are dropped", {
+test_that("two etas in one slot's formula each make a pair", {
   .twoEta <- function() {
     ini({
       tcl <- log(0.1)
@@ -138,7 +138,10 @@ test_that("two etas in one slot's formula are dropped", {
   }
   # (two etas on one parameter also downgrades mu-referencing with a warning
   # at UI build; that is rxode2 noise, not the detection's)
-  expect_equal(nrow(suppressWarnings(suppressMessages(.foceiLinCmtCarryPairs(.twoEta)))), 0L)
+  .p <- suppressWarnings(suppressMessages(.foceiLinCmtCarryPairs(.twoEta)))
+  expect_equal(.p$etaName, c("eta.cl", "eta.cl2"))
+  expect_equal(.p$slot, c(1L, 1L))
+  expect_equal(.p$shape, c("mult", "mult"))
 })
 
 test_that("a second eta on a covariate-free parameter does not block the eligible one", {
@@ -162,7 +165,7 @@ test_that("a second eta on a covariate-free parameter does not block the eligibl
   expect_equal(.p$etaName, "eta.cl")
 })
 
-test_that("IOV/occasion eta is dropped", {
+test_that("an IOV eta before the rewrite is dropped, and its slot's eta.cl is not", {
   .iov <- function() {
     ini({
       tcl <- log(0.1)
@@ -180,10 +183,10 @@ test_that("IOV/occasion eta is dropped", {
   }
   .uiIov <- suppressMessages(suppressWarnings(try(rxode2::rxode2(.iov), silent = TRUE)))
   skip_if(inherits(.uiIov, "try-error"))
-  # eta.cl + iov.cl share cl's slot, so BOTH the two-eta rule and the IOV
-  # rule apply; either way nothing may come back eligible
+  # iov.cl's condition is occ until the fit rewrites it into id-level
+  # occasion etas; eta.cl in the same slot makes its pair
   .p <- suppressMessages(suppressWarnings(.foceiLinCmtCarryPairs(.uiIov)))
-  expect_equal(nrow(.p), 0L)
+  expect_equal(.p$etaName, "eta.cl")
 })
 
 test_that("an id-level same() copy is a between-subject eta, and is eligible", {
