@@ -167,12 +167,13 @@ isTRUE2 <- function(x) !is.na(x) & x
     ## with `p + eta` uses the same eta realization everywhere and consistently
     ## moves the structural parameter into the latent space (a first-only rewrite
     ## would leave the other uses frozen at the population value).
-    ## inject FLAT (no wrapping parens) so `exp(theta + eta)` stays the additive
-    ## form rxode2 recognizes as a mu-referenced exp() parameter (parens would hide
-    ## the exp() back-transform -- see .vaeUpdateModel)
+    ## substitute in the parse tree, not the deparsed text: `exp(theta)` becomes
+    ## the flat `exp(theta + eta)` rxode2 recognizes as a mu-referenced exp()
+    ## parameter, while `exp(theta * COV)` becomes `exp((theta + eta) * COV)`
+    ## instead of `exp(theta + eta * COV)` (#1234)
     for (.i in .idx) {
-      .newTxt <- gsub(paste0("\\b", .p, "\\b"), paste0(.p, " + ", .eta), deparse1(.lines[[.i]]))
-      .ui <- do.call(rxode2::model, list(.ui, str2lang(.newTxt)))
+      .new <- .npSubstThetaAddEta(.lines[[.i]], .p, .eta)
+      .ui <- do.call(rxode2::model, list(.ui, .new))
     }
     .ui <- do.call(rxode2::ini, list(.ui, str2lang(paste0(.eta, " ~ ", signif(omega, 12)))))
     .etas <- c(.etas, .eta)
