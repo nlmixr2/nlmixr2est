@@ -54,12 +54,12 @@ nmTest({
       expect_equal(.fit$objf, .w[[3]], tolerance = 1e-6, label = .label)
       .iovOnlyFitShape(.fit, .label)
     }
-    # saem fits it; its objective is finite (which objective it reports is
-    # its quadrature's question, not this one's)
+    # saem fits it, and reports its Gaussian-quadrature objective
     .fit <- suppressWarnings(suppressMessages(
       nlmixr2(.iovOnlyFitMod, .iovOnlyFitData(), "saem", control = list(print = 0, covMethod = ""))
     ))
-    expect_true(is.finite(suppressMessages(.fit$objf)))
+    expect_equal(suppressMessages(.fit$objf), 200.727474, tolerance = 1e-6)
+    expect_identical(.fit$ofvType, "gauss3_1.6")
     .iovOnlyFitShape(.fit, "saem")
   })
 
