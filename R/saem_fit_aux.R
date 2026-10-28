@@ -190,7 +190,7 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   rxode2::rxProgress(sum(vapply(.grids, function(g) nrow(g$x), integer(1))))
   ysave <- yobs
   yobs <- .Call(`_nlmixr2est_powerD`, yobs, lambda, as.integer(yj), as.double(low), as.double(hi))
-  on.exit(rxode2::rxProgressAbort("Error calculating likelihood"))
+  on.exit(.nmProgressClose())
   # per-subject log-likelihood of each component, integrated over that
   # component's own random effects; the others integrate to 1 under the prior
   .lk <- matrix(-Inf, N, length(.mix$active))
@@ -928,7 +928,7 @@ calc.COV <- function(fit0) {
   nphi <- nphi0 + nphi1
   N <- saem.cfg$N
   rxode2::rxProgress(N + nphi)
-  on.exit(rxode2::rxProgressAbort("Error calculating covariance via linearization"))
+  on.exit(.nmProgressClose())
 
   ntotal <- saem.cfg$ntotal
   ix_endpnt <- saem.cfg$ix_endpnt[1:ntotal] + 1

@@ -533,3 +533,15 @@ nmTest({
     expect_identical(.s$y, c(3, 6))
   })
 })
+
+test_that(".nmProgressClose() closes a bar without raising its abort", {
+  # an unfinished bar: rxProgressAbort() itself raises its message
+  rxode2::rxProgress(2L)
+  expect_error(rxode2::rxProgressAbort("the bar did not finish"), "the bar did not finish")
+  rxode2::rxProgress(2L)
+  expect_null(.nmProgressClose())
+  # a finished bar
+  rxode2::rxProgress(2L)
+  rxode2::rxProgressStop()
+  expect_null(.nmProgressClose())
+})
