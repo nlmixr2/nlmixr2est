@@ -248,6 +248,38 @@
   (`eventType` 2 and 3, the Hessian types 1 and 3) are accepted as
   before.
 
+- [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md)
+  and
+  [`addTable()`](https://nlmixr2.github.io/nlmixr2est/reference/addTable.md)
+  now work on a fit with inter-occasion variability, including one run
+  with `calcTables = FALSE`. They stopped with “The following
+  parameter(s) are required for solving: occ, …” (the parameters listed
+  depend on the model and the method). They refit with no iterations at
+  the fit’s estimates, as
+  [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md)
+  does, and give the columns the fit gives itself; for an ODE model, to
+  the solver’s tolerance. A `saem` fit with `iovMethod = "collapsed"` is
+  refused with a message: ask for its tables when fitting it.
+
+- A fit with inter-occasion variability is now finished like any other
+  when it is run with `tableControl(npde = TRUE)` or has a subject with
+  no observations. Its model, fixed and random effects, `omega`,
+  parameter table and data kept the expanded occasion etas (such as
+  `rx.iov.cl.1`) and their magnitude thetas.
+
+- A `saem` fit with a mu-referenced covariate (such as
+  `cl <- exp(tcl + eta.cl + wt.cl * log(WT / 70))`) run with
+  `tableControl(npde = TRUE)` is now finished like one without NPDE. Its
+  table, data and model kept the `nlmixrMuDerCov1` column it was fitted
+  with.
+
+- [`addTable()`](https://nlmixr2.github.io/nlmixr2est/reference/addTable.md)
+  now applies the `keep` and `drop` of its `table`, as it applies its
+  `keep` and `drop` arguments; it ignored them.
+
+- [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md)
+  now records its time in the fit’s `time` table; it was lost.
+
 ## nlmixr2est 7.2.1
 
 CRAN release: 2026-10-14
