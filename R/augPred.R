@@ -326,8 +326,11 @@
 #' @noRd
 .iovOccEtaNames <- function(fit) {
   .iov <- fit$env$iov
-  .n <- lapply(names(.iov), function(.lvl) setdiff(names(.iov[[.lvl]]), c("ID", .lvl)))
-  unique(unlist(.n, use.names = FALSE))
+  .n <- character(0)
+  for (.lvl in names(.iov)) {
+    .n <- c(.n, setdiff(names(.iov[[.lvl]]), c("ID", .lvl)))
+  }
+  unique(.n)
 }
 
 #' Data with the fit's etas, for individual predictions of a fit with IOV
