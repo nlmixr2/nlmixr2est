@@ -60,8 +60,10 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   pars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5)
   fdErr <- function(txt, interp = "nocb") {
     m <- suppressWarnings(rxode2::rxode2(txt))
+    # under midpoint the model reads wt's hidden copies too
+    .ev <- .rxFoceiLinCmtCarryAliasData(ev, if (interp == "midpoint") "wt" else character(0))
     slv <- function(q) {
-      rxode2::rxSolve(m, params = q, events = ev, returnType = "data.frame", covsInterpolation = interp)
+      rxode2::rxSolve(m, params = q, events = .ev, returnType = "data.frame", covsInterpolation = interp)
     }
     r0 <- slv(pars)
     h <- 1e-5

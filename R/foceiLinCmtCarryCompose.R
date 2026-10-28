@@ -6,13 +6,13 @@
 # prediction, through the outer chain rule around rx_lcConc_ for a wrapped
 # ll() likelihood (#1004).
 
-#' The covariate interpolation of a carry build
+#' The control's covariate interpolation
 #'
 #' @param ui rxode2 ui
 #' @return "locf", "nocb", "midpoint" or "linear" (rxode2's default, locf,
 #'   when the control sets none)
 #' @noRd
-.rxFoceiLinCmtCarryInterp <- function(ui) {
+.rxFoceiLinCmtCarryGlobalInterp <- function(ui) {
   .i <- rxode2::rxGetControl(ui, "rxControl", NULL)$covsInterpolation
   if (is.null(.i) || length(.i) != 1L) {
     return("locf")
@@ -24,55 +24,133 @@
   as.character(.i)
 }
 
+#' The covariate interpolation of a carry build, for each covariate
+#'
+#' A covariate's own declaration in the model (`nocb(wt)`, in `ui$mv0$interp`)
+#' wins, as it does in rxode2; the others take the control's.
+#'
+#' @param ui rxode2 ui
+#' @param covs the model's covariates
+#' @return named character, "locf", "nocb", "midpoint" or "linear" for each of
+#'   `covs`
+#' @noRd
+.rxFoceiLinCmtCarryInterp <- function(ui, covs) {
+  .ret <- stats::setNames(rep(.rxFoceiLinCmtCarryGlobalInterp(ui), length(covs)), covs)
+  .decl <- ui$mv0$interp
+  if (is.factor(.decl) && length(covs) > 0L) {
+    .d <- as.character(.decl[match(covs, names(.decl))])
+    .w <- !is.na(.d) & .d != "default"
+    .ret[.w] <- .d[.w]
+  }
+  .ret
+}
+
+#' The covariates the carry reads through hidden locf and nocb copies
+#'
+#' Under midpoint rxode2 advances an interval with the mean of the two
+#' records that carry the covariate on either side of it.  A record with no
+#' value of its own (an infusion's end, an addl dose, a missing value) lies
+#' between them, so neither the record nor its neighbour stands for them.
+#' The carry reads them instead as the covariate's locf view at the
+#' interval's start and its nocb view at its end, from two hidden copies of
+#' the column (`rx_lcL_<cov>`, `rx_lcN_<cov>`) that the generated models
+#' declare `locf()` and `nocb()`.
+#'
+#' @param ui rxode2 ui with its control
+#' @return the covariates under midpoint, by the control or by their own
+#'   declaration, of a `linCmt()` model the carry is on for; `character(0)`
+#'   otherwise
+#' @noRd
+.rxFoceiLinCmtCarryMidCovs <- function(ui) {
+  if (!.foceiUsesLinCmt(ui) || !.rxFoceiLinCmtCarryBuildEnabled(ui)) {
+    return(character(0))
+  }
+  .covs <- ui$allCovs
+  .covs[.rxFoceiLinCmtCarryInterp(ui, .covs) == "midpoint"]
+}
+
+#' Data with the hidden copies the carry reads under midpoint
+#'
+#' @param data data frame or event table with the covariate columns
+#' @param covs `.rxFoceiLinCmtCarryMidCovs()`
+#' @return `data` with `rx_lcL_<cov>` and `rx_lcN_<cov>`, copies of each of
+#'   `covs`
+#' @noRd
+.rxFoceiLinCmtCarryAliasData <- function(data, covs) {
+  for (.c in covs) {
+    data[[paste0("rx_lcL_", .c)]] <- data[[.c]]
+    data[[paste0("rx_lcN_", .c)]] <- data[[.c]]
+  }
+  data
+}
+
 #' The interval value of each covariate the carry reads
 #'
 #' rxode2 advances the linear compartments over each interval between
-#' records with that interval's covariates: under locf the start record's,
-#' under nocb the end record's, under midpoint their mean.  The carry's
-#' generated lines run at the record that ends the interval, so under locf
-#' and midpoint each covariate in the advance's parameters and in g is read
-#' through its interval value, built from the previous record's value.
+#' records with that interval's covariates, each read at the interval's
+#' middle by its interpolation: under locf the start record's, under nocb
+#' the end record's, under midpoint the mean of the two records that carry
+#' it on either side.  The carry's generated lines run at the record that
+#' ends the interval, so a covariate under locf or midpoint is read in the
+#' advance's parameters and in g through its interval value:
+#' - locf: its value at the previous record, lagged from a model copy;
+#' - midpoint: the mean of its locf view at the previous record and its nocb
+#'   view at this one, from the hidden copies of
+#'   `.rxFoceiLinCmtCarryAliasData()`;
+#' - linear: the mean of its values at the two records, its value at the
+#'   middle of an interval between two records that carry it.
 #'
-#' That value is lagged from a model copy of the covariate (`copies`, real
-#' lhs ahead of rx_pred_, as lag() needs), not from the covariate: a record
-#' with no value of its own, such as an infusion's end, holds NA, which
-#' lag0() turns into 0, where the model evaluation fills it as rxode2 fills
-#' any NA covariate.  A subject's first record has no previous one and an
-#' empty interval; its own value stands in (newind is 1 only there).  lag0()
-#' reads the last lhs computed, which at a subject's first record is NA only
-#' in a fresh solve: FOCEi solves a subject again for each eta, and there it
-#' holds the previous pass's last record, so the first record ignores it.
+#' The lag is taken from a model copy (`copies`, real lhs ahead of
+#' rx_pred_, as lag() needs), not from the column: a record with no value of
+#' its own holds NA, which lag0() turns into 0, where the model evaluation
+#' fills it as rxode2 fills any NA covariate.  A subject's first record has
+#' no previous one and an empty interval; its own value stands in (newind is
+#' 1 only there).  lag0() reads the last lhs computed, which at a subject's
+#' first record is NA only in a fresh solve: FOCEi solves a subject again for
+#' each eta, and there it holds the previous pass's last record, so the first
+#' record ignores it.
 #'
 #' @param covs the model's covariates
-#' @param interp `.rxFoceiLinCmtCarryInterp()`
-#' @return NULL when the record's own values are the interval's (nocb, or no
-#'   covariates), else list(copies = the copy lines, to go ahead of rx_pred_,
-#'   lines = the lines defining each interval value, map = covariate -> the
-#'   symbol holding its interval value)
+#' @param interp `.rxFoceiLinCmtCarryInterp()`, named by covariate
+#' @return NULL when every covariate's record value is its interval's (nocb,
+#'   or no covariates), else list(copies = the copy and declaration lines, to
+#'   go ahead of rx_pred_, lines = the lines defining each interval value, map
+#'   = covariate -> the symbol holding its interval value)
 #' @noRd
 .rxFoceiLinCmtCarryCovInterval <- function(covs, interp) {
-  if (length(covs) == 0L || !(interp %in% c("locf", "midpoint"))) {
+  covs <- covs[interp[covs] %in% c("locf", "midpoint", "linear")]
+  if (length(covs) == 0L) {
     return(NULL)
   }
-  .copy <- paste0("rx_lcCov_", covs, "_")
-  .lag <- paste0("rx_lcLag_", covs, "_")
-  .int <- paste0("rx_lcCovI_", covs, "_")
+  .copies <- character(0)
   .lines <- character(0)
-  for (.i in seq_along(covs)) {
+  for (.c in covs) {
+    .copy <- paste0("rx_lcCov_", .c, "_")
+    .lag <- paste0("rx_lcLag_", .c, "_")
+    .int <- paste0("rx_lcCovI_", .c, "_")
+    .mid <- interp[[.c]] == "midpoint"
+    # under midpoint the lag reads the locf copy of the column
+    .src <- if (.mid) paste0("rx_lcL_", .c) else .c
+    .copies <- c(
+      .copies,
+      if (.mid) c(paste0("locf(rx_lcL_", .c, ")"), paste0("nocb(rx_lcN_", .c, ")")),
+      paste0(.copy, "=", .src)
+    )
     .lines <- c(
       .lines,
-      paste0(.lag[.i], "~lag0(", .copy[.i], ")*(newind!=1)+", covs[.i], "*(newind==1)"),
-      if (interp == "locf") {
-        paste0(.int[.i], "~", .lag[.i])
-      } else {
-        paste0(.int[.i], "~0.5*(", covs[.i], "+", .lag[.i], ")")
-      }
+      paste0(.lag, "~lag0(", .copy, ")*(newind!=1)+", .src, "*(newind==1)"),
+      switch(
+        interp[[.c]],
+        locf = paste0(.int, "~", .lag),
+        midpoint = paste0(.int, "~0.5*(", .lag, "+rx_lcN_", .c, ")"),
+        linear = paste0(.int, "~0.5*(", .c, "+", .lag, ")")
+      )
     )
   }
   list(
-    copies = paste0(.copy, "=", covs),
+    copies = .copies,
     lines = .lines,
-    map = stats::setNames(.int, covs)
+    map = stats::setNames(paste0("rx_lcCovI_", covs, "_"), covs)
   )
 }
 

@@ -286,3 +286,115 @@ test_that("a carried linCmt() fit equals its ODE twin under locf, midpoint and n
     expect_equal(.lin$etaObf$OBJI, .ode$etaObf$OBJI, tolerance = 1e-6, label = .i)
   }
 })
+
+# the covariate model declaring wt's own interpolation (nocb), as linCmt()
+# and as ODEs
+.carryDeclLin <- function() {
+  ini({
+    tcl <- log(2)
+    tv <- log(20)
+    eta.cl ~ 0.1
+    add.sd <- 0.5
+  })
+  model({
+    nocb(wt)
+    cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+    v <- exp(tv)
+    cp <- linCmt()
+    cp ~ add(add.sd)
+  })
+}
+
+.carryDeclOde <- function() {
+  ini({
+    tcl <- log(2)
+    tv <- log(20)
+    eta.cl ~ 0.1
+    add.sd <- 0.5
+  })
+  model({
+    nocb(wt)
+    cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+    v <- exp(tv)
+    d / dt(central) <- -cl / v * central
+    cp <- central / v
+    cp ~ add(add.sd)
+  })
+}
+
+# a focei fit at the initial thetas under the default (locf) interpolation
+.carryDeclFit <- function(mod, data) {
+  suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    mod,
+    data,
+    "focei",
+    control = nlmixr2est::foceiControl(
+      print = 0,
+      maxOuterIterations = 0L,
+      covMethod = "",
+      rxControl = rxode2::rxControl(atol = 1e-10, rtol = 1e-10)
+    )
+  )))
+}
+
+test_that("a covariate's own interpolation declaration is the one the carry reads", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  .d <- .carryFitDat()
+  .obs <- .d$evid == 0
+  .d$dv <- 0
+  .d$dv[.obs] <- 2 + 0.25 * (seq_len(sum(.obs)) %% 4)
+  # wt declared nocb under the default locf
+  .lin <- .carryDeclFit(.carryDeclLin, .d)
+  .ode <- .carryDeclFit(.carryDeclOde, .d)
+  expect_equal(.lin$objf, .ode$objf, tolerance = 1e-6)
+  expect_equal(.lin$eta$eta.cl, .ode$eta$eta.cl, tolerance = 1e-5)
+})
+
+# .carryFitDat() with records that carry no wt of their own, or with wt
+# changing at every record (as .carryMidEv()), and observed values
+.carryMidFitDat <- function(kind) {
+  .d <- .carryFitDat()
+  if (kind == "infusion") {
+    .d$rate <- ifelse(.d$evid == 1, .d$amt / 2, 0)
+  } else if (kind == "addl") {
+    .d$ii <- ifelse(.d$evid == 1, 12, 0)
+    .d$addl <- ifelse(.d$evid == 1, 1L, 0L)
+  } else if (kind == "na") {
+    .d$wt[c(4, 12, 20)] <- NA
+  } else if (kind == "every") {
+    .d$wt <- 60 + 3 * stats::ave(.d$time, .d$id, FUN = seq_along)
+  }
+  .obs <- .d$evid == 0
+  .d$dv <- 0
+  .d$dv[.obs] <- 2 + 0.25 * (seq_len(sum(.obs)) %% 4)
+  .d
+}
+
+# a focei fit at the initial thetas under midpoint
+.carryMidFit <- function(mod, data) {
+  suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    mod,
+    data,
+    "focei",
+    control = nlmixr2est::foceiControl(
+      print = 0,
+      maxOuterIterations = 0L,
+      covMethod = "",
+      rxControl = rxode2::rxControl(covsInterpolation = "midpoint", atol = 1e-10, rtol = 1e-10)
+    )
+  )))
+}
+
+test_that("under midpoint a carried fit equals its ODE twin where records carry no covariate", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  .ode <- rxode2::linToOde(rxode2::rxode2(.carryModCov))
+  for (.kind in c("infusion", "addl", "na", "every")) {
+    .d <- .carryMidFitDat(.kind)
+    .lin <- .carryMidFit(.carryModCov, .d)
+    .ref <- .carryMidFit(.ode, .d)
+    expect_equal(.lin$objf, .ref$objf, tolerance = 1e-6, label = .kind)
+    expect_equal(.lin$eta$eta.cl, .ref$eta$eta.cl, tolerance = 1e-5, label = .kind)
+  }
+})

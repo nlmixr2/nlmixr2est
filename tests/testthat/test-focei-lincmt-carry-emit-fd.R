@@ -97,3 +97,19 @@ test_that("proportional error chains d(rx_r_)/d(eta) through the carried sensiti
     (2 * .h)
   expect_lt(.carryRelErr(.r0$rx__sens_rx_r__BY_ETA_1___, .fdR), 1e-6)
 })
+
+test_that("each interpolation's carry matches FD where records carry no covariate of their own", {
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  .pars <- c(
+    `THETA[1]` = log(2),
+    `THETA[2]` = log(20),
+    `THETA[3]` = 0.5,
+    `ETA[1]` = 0.3
+  )
+  for (.kind in c("infusion", "addl", "na", "every")) {
+    for (.i in c("nocb", "locf", "midpoint")) {
+      .r <- suppressWarnings(.carryJumpFd(.carryModCov, .pars, .carryMidEv(.kind), interp = .i))
+      expect_lt(max(.r$err), 1e-6, label = paste(.kind, .i))
+    }
+  }
+})
