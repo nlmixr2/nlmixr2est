@@ -161,7 +161,7 @@
   if (is.null(.eta) || is.null(colnames(.eta))) {
     return(invisible())
   }
-  .pseudo <- grep("^rx[.]eta[.]", colnames(.eta), value = TRUE)
+  .pseudo <- intersect(env$saemPseudoEtas, colnames(.eta))
   for (.e in .pseudo) {
     .t <- sub("^rx[.]eta[.]", "", .e)
     if (paste0("rxBoundedTr.", .t) %in% names(env$fullTheta)) {
@@ -181,15 +181,29 @@
   invisible()
 }
 
+#' Names of saem's temporary etas
+#'
+#' Read off the transforms that created them rather than matched on
+#' `rx.eta.`, which other rewrites produce too: the IOV rewrite names the
+#' occasion columns of `eta.ka.occ` `rx.eta.ka.occ.<k>` (#1233).
+#'
+#' @param transforms transform specs; those flagged `pseudoEta` are saem's
+#' @return `rx.eta.<theta>` for each temporary eta
+#' @noRd
+.saemPseudoEtaRecord <- function(transforms) {
+  .tr <- Filter(function(tr) isTRUE(tr$pseudoEta), transforms)
+  paste0("rx.eta.", vapply(.tr, function(tr) tr$name, character(1)))
+}
+
 #' Internal theta names that carry a temporary eta
 #'
 #' @param ui rxode2 ui
+#' @param etas saem's temporary etas (`.saemPseudoEtaRecord()`)
 #' @return `rxBoundedTr.<name>` for each `rx.eta.<name>` in the model
 #' @noRd
-.saemPseudoEtaThetaNames <- function(ui) {
-  .n <- ui$iniDf$name
-  .t <- paste0("rxBoundedTr.", sub("^rx[.]eta[.]", "", grep("^rx[.]eta[.]", .n, value = TRUE)))
-  .t[.t %in% .n]
+.saemPseudoEtaThetaNames <- function(ui, etas = .saemPseudoEtaRecord(ui$boundedTransforms)) {
+  .t <- paste0("rxBoundedTr.", sub("^rx[.]eta[.]", "", etas))
+  .t[.t %in% ui$iniDf$name]
 }
 
 #' Kernel phi1 columns (0-based) whose theta carries a temporary eta
@@ -197,10 +211,11 @@
 #' Uses the phi1 order of `.saemPhi1TargetMap()`; `ui$saemInit` carries no theta names.
 #'
 #' @param ui rxode2 ui
+#' @param etas saem's temporary etas (`.saemPseudoEtaRecord()`)
 #' @return integer vector
 #' @noRd
-.saemPseudoPhi1Ix <- function(ui) {
+.saemPseudoPhi1Ix <- function(ui, etas = .saemPseudoEtaRecord(ui$boundedTransforms)) {
   .pars <- rxUiGet.saemParamsToEstimateCov(list(ui))
   .phi1 <- .pars[.pars %in% ui$muRefDataFrame$theta]
-  which(.phi1 %in% .saemPseudoEtaThetaNames(ui)) - 1L
+  which(.phi1 %in% .saemPseudoEtaThetaNames(ui, etas)) - 1L
 }
