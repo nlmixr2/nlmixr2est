@@ -78,6 +78,16 @@
   `"locf"` and 325.7027 under `"midpoint"`, against 318.8375 and 324.3126
   for the ODE model; they are now equal (`"nocb"` was equal already).
 
+- FOCEi (and nlm/nls) now fits a `linCmt()` model whose time-varying
+  covariate is interpolated `"linear"`, set globally
+  (`rxControl(covsInterpolation = "linear")`) or declared (`linear(wt)`).
+  Under the global setting the fit stopped with "'linear' cannot be
+  represented by the linCmt() solution".  `linCmt()` holds each interval at
+  the covariate's value at the interval's middle, so it approximates a
+  linear ramp by that midpoint value and differs slightly from the ODE model
+  by design; the sensitivity carry differentiates that solution, as it does
+  under the other interpolations.
+
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not
