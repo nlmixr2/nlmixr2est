@@ -282,10 +282,11 @@
 ### Documentation
 
 - `?augPred` says that its curves for a `linCmt()` model with
-  time-varying covariates are approximate: under the default `"locf"`
-  interpolation, rxode2's `linCmt()` takes a covariate's value at the end
-  of each interval, so the times `augPred()` adds move where a change takes
-  effect.
+  time-varying covariates are approximate with rxode2 5.1.8 or earlier:
+  under the default `"locf"` interpolation that rxode2's `linCmt()` took a
+  covariate's value at the end of each interval, so the times `augPred()`
+  adds moved where a change takes effect.  Later rxode2 versions solve such
+  a model as the equivalent ODE model does.
 - `addNpde()` and `addTable()` now work on a fit with inter-occasion
   variability, including one run with `calcTables = FALSE`.  They stopped
   with "The following parameter(s) are required for solving: occ, ..."

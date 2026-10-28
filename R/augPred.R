@@ -406,11 +406,12 @@
 #' (locf, in the fit's record order where records tie) whatever the covariate
 #' interpolation, as the fit steps its occasion.
 #'
-#' For a `linCmt()` model with time-varying covariates or occasions the
-#' curves are approximate: under the default `"locf"` interpolation,
-#' rxode2's `linCmt()` takes a covariate's value at the end of each interval,
-#' as `"nocb"` does, so the times `augPred()` adds move where a change takes
-#' effect.
+#' For a `linCmt()` model with time-varying covariates or occasions, the
+#' curves are approximate with rxode2 5.1.8 or earlier: under the default
+#' `"locf"` interpolation that rxode2's `linCmt()` took a covariate's value at
+#' the end of each interval, as `"nocb"` does, so the times `augPred()` adds
+#' moved where a change takes effect.  Later rxode2 versions solve such a
+#' model as the equivalent ODE model does.
 #'
 #' @return Stacked data.frame with observations, individual/population predictions.
 #' @author Matthew L. Fidler
