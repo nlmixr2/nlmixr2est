@@ -64,6 +64,14 @@
 
 ### Estimation
 
+- `foceiControl(fast = TRUE)` now falls back to `fast = FALSE` for an
+  `ar()` residual whose correlation is fixed (`ar1.cor <- fix(0.9)`) or
+  modeled (`ar(corv)`), as it already did for an estimated one.  Such a fit
+  stopped with "The following parameter(s) are required for solving:
+  rx_arNf_cp, rx_arEp_cp, rx_arT_cp": the check for an `ar()` residual
+  looked only at the estimated correlations, so the analytic gradient was
+  built without the AR(1) lines.
+
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not
