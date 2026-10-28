@@ -107,9 +107,29 @@ test_that("each interpolation's carry matches FD where records carry no covariat
     `ETA[1]` = 0.3
   )
   for (.kind in c("infusion", "addl", "na", "every")) {
-    for (.i in c("nocb", "locf", "midpoint")) {
+    for (.i in c("nocb", "locf", "midpoint", "linear")) {
       .r <- suppressWarnings(.carryJumpFd(.carryModCov, .pars, .carryMidEv(.kind), interp = .i))
       expect_lt(max(.r$err), 1e-6, label = paste(.kind, .i))
     }
+  }
+})
+
+# under linear the carry reads the mean of the covariate at the interval's
+# two records, which is the midpoint value linCmt() holds the interval at
+test_that("a declared linear() covariate's carry matches FD under the global locf", {
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  .pars <- c(
+    `THETA[1]` = log(2),
+    `THETA[2]` = log(20),
+    `THETA[3]` = 0.5,
+    `ETA[1]` = 0.3
+  )
+  for (.kind in c("infusion", "addl", "na", "every")) {
+    .r <- suppressWarnings(.carryJumpFd(.carryModCovLinear, .pars, .carryMidEv(.kind), interp = "locf"))
+    expect_true(grepl("rx_lcCovI_wt_", .r$txt, fixed = TRUE), label = .kind)
+    expect_lt(max(.r$err), 1e-6, label = .kind)
+    # without the carry the gradient is the naive one
+    .n <- suppressWarnings(.carryJumpFd(.carryModCovLinear, .pars, .carryMidEv(.kind), carry = "none", interp = "locf"))
+    expect_gt(max(.n$err), 1e-3, label = .kind)
   }
 })

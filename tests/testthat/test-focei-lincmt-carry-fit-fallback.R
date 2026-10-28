@@ -1,5 +1,5 @@
 # Phase 3b.5/3b.6: the linCmt() sensitivity carry through real fits --
-# data-aware fallbacks (ss, evid=2, linear interpolation), the runtime
+# data-aware fallbacks (ss, evid=2), linear interpolation, the runtime
 # constant-theta fast path, CWRES inheritance and fast=TRUE.  The reference
 # comparison and the config sweep are in test-focei-lincmt-carry-fit.R;
 # shared fixtures in helper-lincmt-carry.R.
@@ -53,32 +53,34 @@ test_that("evid=2 rows fall back to the standard gradient with a runInfo note", 
   expect_false(grepl("rx_lcCarry", .carryInnerTxt(fit)))
 })
 
-test_that("linear covariate interpolation on a varying eligible covariate is an error", {
+# linCmt() holds each interval at the covariate's midpoint value, so under
+# linear the fit is carried like the other interpolations
+test_that("a varying covariate under linear interpolation is carried", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   d <- .carryFitDat(2L)
   d$dv <- ifelse(d$evid == 0, 3, 0)
-  ctlLin <- nlmixr2est::foceiControl(
-    print = 0,
-    maxOuterIterations = 0L,
-    covMethod = "",
-    calcTables = FALSE,
-    rxControl = rxode2::rxControl(covsInterpolation = "linear")
-  )
-  expect_error(
-    suppressWarnings(suppressMessages(
-      nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = ctlLin)
-    )),
-    "linear"
-  )
-  # a covariate that is constant within every subject is fine under linear
-  dc <- d
-  dc$wt <- 70
+  .ctlLin <- function(carry) {
+    nlmixr2est::foceiControl(
+      print = 0,
+      maxOuterIterations = 0L,
+      covMethod = "",
+      calcTables = FALSE,
+      linCmtSensCarry = carry,
+      rxControl = rxode2::rxControl(covsInterpolation = "linear")
+    )
+  }
   fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.carryModCov, dc, est = "focei", control = ctlLin)
+    nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = .ctlLin("auto"))
   ))
-  expect_true(inherits(fit, "nlmixr2FitCore"))
-  expect_false(grepl("rx_lcCarry", .carryInnerTxt(fit)))
+  expect_true(grepl("rx_lcCarry", .carryInnerTxt(fit)))
+  expect_true(grepl("rx_lcCovI_wt_", .carryInnerTxt(fit)))
+  fitN <- suppressWarnings(suppressMessages(
+    nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = .ctlLin("none"))
+  ))
+  expect_false(grepl("rx_lcCarry", .carryInnerTxt(fitN)))
+  # the carried and the naive gradients give different objectives on varying wt
+  expect_gt(abs(fit$objf - fitN$objf), 1e-3)
 })
 
 test_that("runtime constant-theta fast path engages per subject and is equivalent", {
