@@ -29,11 +29,11 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
     })
   }
 
-  buildTxt <- function(mod, carry, method = "nlm") {
+  buildTxt <- function(mod, carry, method = "nlm", interp = "nocb") {
     ui <- suppressMessages(nlmixr2est::nlmixr2(mod))
     u <- rxode2::.copyUi(ui)
-    # built for the nocb solve below
-    .rc <- rxode2::rxControl(covsInterpolation = "nocb")
+    # built for the interpolation it is solved with
+    .rc <- rxode2::rxControl(covsInterpolation = interp)
     ctl <- if (method == "nlm") {
       nlmixr2est::nlmControl(linCmtSensCarry = carry, rxControl = .rc)
     } else {
@@ -58,10 +58,10 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   ev <- .carryEv()
   ev$dv <- ifelse(ev$evid == 0, c(0, 2, 0, 1.5, 0, 1.2, 0, 0.9)[seq_len(nrow(ev))], 0)
   pars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5)
-  fdErr <- function(txt) {
+  fdErr <- function(txt, interp = "nocb") {
     m <- suppressWarnings(rxode2::rxode2(txt))
     slv <- function(q) {
-      rxode2::rxSolve(m, params = q, events = ev, returnType = "data.frame", covsInterpolation = "nocb")
+      rxode2::rxSolve(m, params = q, events = ev, returnType = "data.frame", covsInterpolation = interp)
     }
     r0 <- slv(pars)
     h <- 1e-5
@@ -94,6 +94,12 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   expect_true(any(grepl("rx_lcConc_~linCmtB", strsplit(txtCnls, "\n")[[1]])))
   errCnls <- fdErr(txtCnls)
   expect_true(all(errCnls[1:2] < 1e-6))
+
+  # locf and midpoint read the covariate over each interval
+  for (.i in c("locf", "midpoint")) {
+    expect_true(all(fdErr(buildTxt(modTheta, "auto", interp = .i), .i) < 1e-6), label = .i)
+    expect_true(all(fdErr(buildTxt(modTheta, "auto", "nls", .i), .i)[1:2] < 1e-6), label = paste("nls", .i))
+  }
 })
 
 test_that("theta-side carry eligibility keeps bias-to-false rules", {
