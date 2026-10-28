@@ -17,3 +17,58 @@ test_that(".stripFastmatchItem() keeps a list's own attributes", {
   expect_identical(.stripFastmatchItem(list(a = .m)), list(a = .clean))
   expect_identical(.stripFastmatchItem(.m), .clean)
 })
+
+# a .foceiLagTxt() that stops at the first d(pred)/d(eta) row, and one that
+# stops at the first d(R)/d(eta) row, as a row of the build that fails does
+.foceiOrigLagTxt <- .foceiLagTxt
+.foceiStopPredRow <- function(lag, d, dfe) {
+  stop("the d(pred)/d(eta) row stopped", call. = FALSE)
+}
+.foceiStopRRow <- function(lag, d, dfe) {
+  if (grepl("rx_r__BY_", dfe, fixed = TRUE)) {
+    stop("the d(R)/d(eta) row stopped", call. = FALSE)
+  }
+  .foceiOrigLagTxt(lag, d, dfe)
+}
+
+.foceiProgressModel <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    prop.sd <- 0.1
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv)
+    d / dt(depot) <- -ka * depot
+    d / dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ prop(prop.sd)
+  })
+}
+
+# both builds show a progress bar; the error that stops a row reaches the
+# caller, not the bar's generic abort message
+test_that("an error in the d(pred)/d(eta) build is the one raised", {
+  .ui <- rxode2::rxode2(.foceiProgressModel)
+  local_mocked_bindings(.foceiLagTxt = .foceiStopPredRow)
+  expect_error(
+    suppressMessages(rxUiGet.foceiHdEta(list(.ui))),
+    "the d(pred)/d(eta) row stopped",
+    fixed = TRUE
+  )
+})
+
+test_that("an error in the d(R)/d(eta) build is the one raised", {
+  .ui <- rxode2::rxode2(.foceiProgressModel)
+  local_mocked_bindings(.foceiLagTxt = .foceiStopRRow)
+  expect_error(
+    suppressMessages(rxUiGet.foceiEnv(list(.ui))),
+    "the d(R)/d(eta) row stopped",
+    fixed = TRUE
+  )
+})
