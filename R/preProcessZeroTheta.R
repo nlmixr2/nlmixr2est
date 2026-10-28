@@ -11,7 +11,8 @@
 #' @return named list of factor expressions (only the names found)
 #' @noRd
 .zeroThetaCovFactors <- function(lst, names, covs) {
-  .found <- list()
+  .acc <- new.env(parent = emptyenv())
+  .acc$found <- list()
   .isChain <- function(e) {
     is.call(e) && as.character(e[[1]]) %in% c("*", "/") && length(e) == 3L
   }
@@ -30,7 +31,7 @@
     list(list(e = e, num = inNum))
   }
   .walk <- function(e) {
-    if (!is.call(e) || length(.found) == length(names)) {
+    if (!is.call(e) || length(.acc$found) == length(names)) {
       return(invisible())
     }
     if (!.isChain(e)) {
@@ -42,11 +43,11 @@
     .lv <- .leaves(e, TRUE)
     for (.l in .lv) {
       .n <- if (is.name(.l$e)) as.character(.l$e) else ""
-      if (.l$num && .n %in% names && is.null(.found[[.n]])) {
+      if (.l$num && .n %in% names && is.null(.acc$found[[.n]])) {
         .f <- do.call(substitute, list(e, stats::setNames(list(1), .n)))
         .v <- all.vars(.f)
         if (length(.v) > 0L && all(.v %in% covs)) {
-          .found[[.n]] <<- .f
+          .acc$found[[.n]] <- .f
         }
       }
     }
@@ -59,7 +60,7 @@
   for (.e in lst) {
     .walk(.e)
   }
-  .found
+  .acc$found
 }
 
 #' 1/sd() of a covariate expression in the data, or 1

@@ -6443,7 +6443,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("mixProb") = saem.get_mixProb(),
     Named("mixWeights") = saem.get_mixWeights(),
     Named("etaMode") = saem.get_etaMode(),
-    Named("etaModeConv") = wrap(saem.get_etaModeConv())
+    Named("etaModeConv") = saem.get_etaModeConv()
   );
   current_saem_state = nullptr;
   int nModeFail = (int)accu(saem.get_etaModeConv() < 0);
