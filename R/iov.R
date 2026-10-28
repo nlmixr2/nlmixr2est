@@ -923,8 +923,10 @@ nlmixr2iovVarSd <- function(val) {
       }
       .lst
     })
-    .uiIovEnv$lines <- do.call(`c`, .lines)
-    .lines <- c(.iovLocfLines(ui, names(.lvls)), .uiIovEnv$lines, .ui$lstExpr)
+    # the locf() lines are the rewrite's own, so .uiFinalizeIov() strips them
+    # with the others; a model's own locf(occ) gets none and stays
+    .uiIovEnv$lines <- c(.iovLocfLines(ui, names(.lvls)), do.call(`c`, .lines))
+    .lines <- c(.uiIovEnv$lines, .ui$lstExpr)
     .ui <- rxode2::rxUiDecompress(.ui)
     # Now the lines can be added to the model
     assign("iniDf", rbind(.env$thetas, .env$etas), envir = .ui)
