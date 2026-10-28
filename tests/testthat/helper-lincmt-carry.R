@@ -171,11 +171,17 @@
   `ETA[3]` = 0.1
 )
 
-# max relative error of every eta's substituted gradient vs central FD
+# max relative error of every eta's substituted gradient vs central FD; the
+# inner model is built for the interpolation it is solved with, since the
+# carry reads each covariate over the interval that interpolation gives
 .carryJumpFd <- function(mod, pars, ev, carry = "auto", interp = "nocb") {
   ui <- suppressMessages(nlmixr2est::nlmixr2(mod))
   u <- rxode2::.copyUi(ui)
-  assign("control", nlmixr2est::foceiControl(linCmtSensCarry = carry), envir = u)
+  .ctl <- nlmixr2est::foceiControl(
+    linCmtSensCarry = carry,
+    rxControl = rxode2::rxControl(covsInterpolation = interp)
+  )
+  assign("control", .ctl, envir = u)
   txt <- suppressMessages(u$foceiEnv)$..inner
   m <- suppressWarnings(rxode2::rxode2(txt))
   slv <- function(q) {
