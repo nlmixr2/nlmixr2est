@@ -65,18 +65,18 @@
 ### Estimation
 
 - A `linCmt()` model with a time-varying covariate on a compartment
-  parameter is now fitted by FOCEi as its ODE twin is under every
-  `covsInterpolation`.  rxode2 advances each interval with that interval's
-  covariates (the start record's under `"locf"`, their mean under
+  parameter is now fitted by FOCEi as its ODE twin is, under every
+  `covsInterpolation` and every covariate's own declaration (`nocb(wt)`).
+  rxode2 advances each interval with that interval's covariates (the start
+  record's under `"locf"`, the mean of the records on either side under
   `"midpoint"`), but the sensitivity carry added in 7.1.0 read the
   covariates of the record ending the interval, as `"nocb"` does, so the
   analytic gradient, and with it the objective, did not match the model
-  rxode2 solves.
-  The carry, its `f()` and `alag()` terms included, now reads them over the
-  interval.  On theo_sd with a covariate step at 6 h, focei's objective at
-  the initial estimates was 515.2280 under `"locf"` and 532.2044 under
-  `"midpoint"`, against 512.5659 and 530.7510 for the ODE model; they are
-  now equal (`"nocb"` was equal already).
+  rxode2 solves.  The carry, its `f()` and `alag()` terms included, now
+  reads them over the interval.  On theo_sd (nlmixr2data 2.0.10) with a
+  covariate step at 6 h, focei at the initial thetas gave 321.4099 under
+  `"locf"` and 325.7027 under `"midpoint"`, against 318.8375 and 324.3126
+  for the ODE model; they are now equal (`"nocb"` was equal already).
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
