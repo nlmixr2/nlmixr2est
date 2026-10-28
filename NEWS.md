@@ -64,6 +64,17 @@
 
 ### Estimation
 
+- A model that reads `newind` is now estimated as rxode2 solves it: 1 at a
+  subject's first record and 2 after.  The estimators' own walks over a
+  subject's records (the FOCEi family, `saem`, `nlm`) never advanced it, so
+  the model read 1 at every record while the fit's table, from rxode2, read
+  2.  On theo_sd, with an offset after each subject's first record
+  (`if (newind > 1) e0 <- 0.5`), `focei` after two outer iterations gave an
+  objective of 287.3644 against 321.9071 for the same model reading a
+  first-record column of the data, and `saem` 247.0524 against 230.9161;
+  they are now equal.  This needs rxode2 with `setIndNewind()` in its C
+  pointer table.
+
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not

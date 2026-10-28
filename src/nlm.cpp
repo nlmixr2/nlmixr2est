@@ -538,9 +538,11 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
     curT = getTime(kk, ind);
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       int po = nlmOp.predOffset; // rx_pred_ index (intermediates may precede it)
       if (ISNA(lhs[po])) {
@@ -616,9 +618,11 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
     curT = getTime(kk, ind);
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
+      lhsWalkNewind(ind, j);
       rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
+      lhsWalkNewind(ind, j);
       rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       // read before the loop below shadows kk
       NlmCensObs censObs = nlmCensObs(ind, kk, nlmOp.gradNuOffset);
