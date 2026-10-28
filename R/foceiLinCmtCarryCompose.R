@@ -103,12 +103,10 @@
 #' The lag is taken from a model copy (`copies`, real lhs ahead of
 #' rx_pred_, as lag() needs), not from the column: a record with no value of
 #' its own holds NA, which lag0() turns into 0, where the model evaluation
-#' fills it as rxode2 fills any NA covariate.  A subject's first record has
-#' no previous one and an empty interval; its own value stands in (newind is
-#' 1 only there).  lag0() reads the last lhs computed, which at a subject's
-#' first record is NA only in a fresh solve: FOCEi solves a subject again for
-#' each eta, and there it holds the previous pass's last record, so the first
-#' record ignores it.
+#' fills it as rxode2 fills any NA covariate.  A subject's first record ends
+#' an empty interval, so the carry there does not depend on the lag, which is
+#' 0 in a fresh solve and the previous pass's last record when FOCEi solves
+#' the subject again for another eta.
 #'
 #' @param covs the model's covariates
 #' @param interp `.rxFoceiLinCmtCarryInterp()`, named by covariate
@@ -138,7 +136,7 @@
     )
     .lines <- c(
       .lines,
-      paste0(.lag, "~lag0(", .copy, ")*(newind!=1)+", .src, "*(newind==1)"),
+      paste0(.lag, "~lag0(", .copy, ")"),
       switch(
         interp[[.c]],
         locf = paste0(.int, "~", .lag),
