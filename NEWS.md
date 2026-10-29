@@ -167,6 +167,11 @@
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
 
+- An interrupt (or another C++ error) during an `est = "lbfgsb3c"` fit no
+  longer leaves R's error handling broken.  The error passed through R's own
+  frames while it unwound, and the next R error could crash the session; it
+  is now held until those frames have returned.
+
 ### NPDE
 
 - NPDE of censored observations now draws each censored value from the
@@ -185,6 +190,7 @@
 
 - NPDE's back-transformation of EPRED and DV now uses each observation's own
   transform; it used the first subject's rows for every subject.
+
 ### Tables
 
 - `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a

@@ -1072,27 +1072,71 @@ extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
   }
 }
 
+// Runs `f` under Rcpp::unwindProtect(), which turns an R error (a longjmp)
+// inside it into an Rcpp::LongjumpException thrown from here.  A C++ exception
+// from `f`, such as checkUserInterrupt()'s on an interrupt, must not unwind
+// through R_UnwindProtect()'s C frames: that skips its endcontext() and leaves
+// R's context stack pointing at a dead frame.  It is caught inside and
+// rethrown once unwindProtect() has returned.
+template <class F>
+static inline void nlmUnwindProtect(F &&f) {
+  std::exception_ptr err = nullptr;
+  Rcpp::unwindProtect([&]() -> SEXP {
+    try {
+      f();
+    } catch (...) {
+      err = std::current_exception();
+    }
+    return R_NilValue;
+  });
+  if (err) std::rethrow_exception(err);
+}
+
+// nlmUnwindProtect() for unit tests: `mode` 1 throws Rcpp::stop() inside it,
+// 2 raises an R error (a longjmp) inside it, anything else returns 0.
+//[[Rcpp::export]]
+int nlmUnwindProtectTest(int mode) {
+  nlmUnwindProtect([&]() {
+    if (mode == 1) Rcpp::stop("thrown inside unwindProtect()");
+    if (mode == 2) Rf_error("R error inside unwindProtect()");
+  });
+  return 0;
+}
+
 // est="lbfgsb3c": value and gradient come from one sensitivity solve, cached
 // by theta, so the paired fn/gr calls at a point cost one solve.  Any error
 // (including an R longjmp, turned into an exception by unwindProtect) is held
 // and rethrown after lbfgsb3Cts returns, so nothing unwinds through it.
 static std::exception_ptr nlmLbfgsErr = nullptr;
 
+// Test hook: when > 0, counts down the protected solves of nlmLbfgsFill() and
+// throws a C++ exception inside the one that reaches 0.
+static int nlmLbfgsThrowAt = 0;
+
+// Sets nlmLbfgsFill()'s throw countdown (0 turns it off); returns the old one.
+//[[Rcpp::export]]
+int nlmLbfgsThrowTest(int at) {
+  int old = nlmLbfgsThrowAt;
+  nlmLbfgsThrowAt = at;
+  return old;
+}
+
 static bool nlmLbfgsFill(int n, double *x) {
   if (nlmLbfgsErr) return false;
   try {
     arma::vec theta(x, n);
     if (!isThetaSame(theta)) {
-      Rcpp::unwindProtect([&]() -> SEXP {
+      nlmUnwindProtect([&]() {
+        if (nlmLbfgsThrowAt > 0 && --nlmLbfgsThrowAt == 0) {
+          Rcpp::stop("thrown inside the lbfgsb3c solve");
+        }
         arma::mat ret0 = nlmSolveGrad(theta);
         arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
         saveVec = (arma::sum(ret0, 0)).t();
         saveTheta(theta);
         scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
         scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
-        return R_NilValue;
       });
-      // outside unwindProtect(): an exception must not cross its C frames
       arma::vec saved(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
       nlmStopNonFiniteGrad(saved);
     }
