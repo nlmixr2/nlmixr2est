@@ -791,4 +791,76 @@ nmTest({
     # the other components' etas at 0 for the whole fit
     expect_true(all(.m == 1))
   })
+
+  test_that("a mixture model that declares a covariate's interpolation fits with focei", {
+    # the declaration is in the pruned model the mixture's EBE model compiles
+    # and in that model's prologue; it must be declared once.  ODEs, so the
+    # interpolation matters whatever linCmt() does with it
+    .modLocf <- function() {
+      ini({ tka <- 0.45; tcl1 <- log(2); tcl2 <- log(4); tv <- 3.45; p1 <- 0.5; add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ locf(WT)
+        ka <- exp(tka + eta.ka); cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl)) * (WT / 70)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) })
+    }
+    .modNocb <- function() {
+      ini({ tka <- 0.45; tcl1 <- log(2); tcl2 <- log(4); tv <- 3.45; p1 <- 0.5; add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ nocb(WT)
+        ka <- exp(tka + eta.ka); cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl)) * (WT / 70)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) })
+    }
+    .modNone <- function() {
+      ini({ tka <- 0.45; tcl1 <- log(2); tcl2 <- log(4); tv <- 3.45; p1 <- 0.5; add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl)) * (WT / 70)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd) })
+    }
+    .d <- nlmixr2data::theo_md
+    .d$WT <- .d$WT + 5 * (.d$TIME >= 144)
+    .objf <- c(locf = NA_real_, nocb = NA_real_)
+    for (.case in list(list(.modLocf, "locf"), list(.modNocb, "nocb"))) {
+      # the same solver tolerances in both; rxode2's default (locf) for the
+      # model that declares its own
+      .own <- suppressWarnings(suppressMessages(nlmixr2(
+        .case[[1]],
+        .d,
+        "focei",
+        control = foceiControl(
+          print = 0L,
+          maxOuterIterations = 0L,
+          covMethod = "",
+          rxControl = rxode2::rxControl(atol = 1e-10, rtol = 1e-10)
+        )
+      )))
+      .glob <- suppressWarnings(suppressMessages(nlmixr2(
+        .modNone,
+        .d,
+        "focei",
+        control = foceiControl(
+          print = 0L,
+          maxOuterIterations = 0L,
+          covMethod = "",
+          rxControl = rxode2::rxControl(covsInterpolation = .case[[2]], atol = 1e-10, rtol = 1e-10)
+        )
+      )))
+      # the model's own declaration acts as the global setting does
+      expect_equal(.own$objf, .glob$objf, tolerance = 1e-8, label = .case[[2]])
+      .objf[[.case[[2]]]] <- .own$objf
+    }
+    # and the two declarations differ, since WT steps at 144 h
+    expect_gt(abs(.objf[["locf"]] - .objf[["nocb"]]), 1e-4)
+  })
 })

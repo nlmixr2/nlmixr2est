@@ -75,6 +75,11 @@
   `maxOuterIterations` function evaluations, as `outerOpt = "uobyqa"` and
   `"bobyqa"` do; it used to ignore the limit and run NEWUOA to convergence.
 
+- A mixture (`mix()`) model that declares a covariate's interpolation, such
+  as `locf(WT)`, now fits with `focei`; it stopped with "syntax errors" and
+  "'WT' cannot have more than one interpolation method", since the
+  declaration reached its EBE model twice.
+
 - `saem` now reports the non-mu-referenced thetas it actually used.  With
   `nonMuTheta = "regress"` (the default) the model ran at the directly
   optimized values, but `$theta` showed the regression estimate taken before
