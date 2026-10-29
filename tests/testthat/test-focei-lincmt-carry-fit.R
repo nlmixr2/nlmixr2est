@@ -443,6 +443,18 @@ test_that("under midpoint a carried fit equals its ODE twin where records carry 
   .d
 }
 
+# .carryResetFitDat() with an observation at 22 h, after wt's step at 20 h:
+# under locf the interval that ends at the reset reads the new wt
+.carryResetFitDatLocf <- function(evid) {
+  .d <- .carryResetFitDat(evid)
+  .add <- .d[.d$evid == 0 & abs(.d$time - (15 + (.d$id - 1) * 0.5)) < 1e-9, ]
+  .add$time <- .add$time + 7
+  .add$wt <- .add$wt + 15
+  .add$dv <- 2.5
+  .d <- rbind(.d, .add)
+  .d[order(.d$id, .d$time), ]
+}
+
 # a focei fit at the initial thetas under covsInterpolation `interp`
 .carryResetFit <- function(mod, data, interp) {
   suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
@@ -459,8 +471,7 @@ test_that("under midpoint a carried fit equals its ODE twin where records carry 
 }
 
 # a reset zeroes the compartments, so the carried sensitivities restart
-# from 0 there; with wt stepping across the reset the carry otherwise kept
-# its value from before it (up to 0.063 off under nocb)
+# from 0 there rather than keep their values from before it
 test_that("a carried fit with a reset equals its ODE twin", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
@@ -474,5 +485,32 @@ test_that("a carried fit with a reset equals its ODE twin", {
       expect_equal(.lin$objf, .ref$objf, tolerance = 1e-6, label = .lab)
       expect_equal(.lin$eta$eta.cl, .ref$eta$eta.cl, tolerance = 1e-5, label = .lab)
     }
+  }
+})
+
+test_that("a carried fit with a reset after a locf covariate step equals its ODE twin", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  .ode <- rxode2::linToOde(rxode2::rxode2(.carryModCov))
+  for (.evid in c(3L, 4L)) {
+    .d <- .carryResetFitDatLocf(.evid)
+    .lin <- .carryResetFit(.carryModCov, .d, "locf")
+    .ref <- .carryResetFit(.ode, .d, "locf")
+    .lab <- paste("evid", .evid)
+    expect_equal(.lin$objf, .ref$objf, tolerance = 1e-6, label = .lab)
+    expect_equal(.lin$eta$eta.cl, .ref$eta$eta.cl, tolerance = 1e-5, label = .lab)
+  }
+})
+
+test_that("a carried f() and alag() fit with a reset equals its ODE twin", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  .ode <- rxode2::linToOde(rxode2::rxode2(.carryModJump))
+  .d <- .carryResetFitDat(3L)
+  .lin <- .carryResetFit(.carryModJump, .d, "locf")
+  .ref <- .carryResetFit(.ode, .d, "locf")
+  expect_equal(.lin$objf, .ref$objf, tolerance = 1e-6)
+  for (.e in c("eta.cl", "eta.f", "eta.lag")) {
+    expect_equal(.lin$eta[[.e]], .ref$eta[[.e]], tolerance = 1e-5, label = .e)
   }
 })
