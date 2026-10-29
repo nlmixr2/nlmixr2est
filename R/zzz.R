@@ -49,6 +49,12 @@
   .Call(`_nlmixr2est_iniRxodePtrs`, rxode2::.rxode2ptrs(), PACKAGE = "nlmixr2est")
 }
 
+# The installed rxode2's version, which test-dependency-workarounds.R compares
+# with the version each work-around waits for
+.rxode2Version <- function() {
+  utils::packageVersion("rxode2")
+}
+
 .iniN1qn1ptr <- function() {
   .Call(`_nlmixr2est_iniN1qn1cPtrs`, n1qn1::.n1qn1ptr(), PACKAGE = "nlmixr2est")
 }

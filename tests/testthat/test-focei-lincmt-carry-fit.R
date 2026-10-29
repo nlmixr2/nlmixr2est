@@ -278,7 +278,7 @@ test_that("a carried linCmt() fit equals its ODE twin under locf, midpoint and n
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   # cl's eta is carried
   expect_identical(nrow(.foceiLinCmtCarryPairs(suppressMessages(nlmixr2est::nlmixr2(.carryA2Lin)))), 1L)
-  for (.i in c("locf", "midpoint", "nocb")) {
+  for (.i in .carryTwinInterps()) {
     .lin <- .carryA2Fit(.carryA2Lin, .i)
     .ode <- .carryA2Fit(.carryA2Ode, .i)
     expect_equal(.lin$objf, .ode$objf, tolerance = 1e-6, label = .i)
@@ -305,6 +305,9 @@ test_that("a carried linCmt() fit equals its ODE twin under locf, midpoint and n
 test_that("foce, fo and posthoc of a carried linCmt() fit equal its ODE twin", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # the covariate copies exist only with an rxode2 that advances an interval
+  # with its own covariates
+  skip_if_not(.rxFoceiLinCmtIntervalCovs(), "rxode2 advances linCmt() with the end record's covariates")
   # under locf and midpoint the carry's covariate copies precede rx_pred_ in
   # the inner model, so its rx_r_ is not column neta + 1
   for (.est in c("foce", "fo", "posthoc")) {
@@ -421,6 +424,7 @@ test_that("a covariate's own interpolation declaration is the one the carry read
 test_that("under midpoint a carried fit equals its ODE twin where records carry no covariate", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtIntervalCovs(), "rxode2 advances linCmt() with the end record's covariates")
   .ode <- rxode2::linToOde(rxode2::rxode2(.carryModCov))
   for (.kind in c("infusion", "addl", "na", "every")) {
     .d <- .carryMidFitDat(.kind)
