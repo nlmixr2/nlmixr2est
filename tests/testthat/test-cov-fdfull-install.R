@@ -198,3 +198,34 @@ test_that("a no-op install caches nothing", {
   expect_false(.foceiInstallFdFullCov(.e))
   expect_false(exists("covList", envir = .e, inherits = FALSE))
 })
+
+test_that("the record and warnings describe the full install, not the native walk (#1217)", {
+  # the native walk found the sandwich doubtful and chose "r"; the requested "r,s" is
+  # installed from the full stage
+  .e <- .mkFdEnv("r", .Rinv, .S)
+  .e$ui <- new.env(parent = emptyenv())
+  .e$ui$control <- list(covMethod = 1L, covType = "fd")
+  .e$covTried <- data.frame(method = c("r,s", "r"), outcome = c("sandwich doubtful", "used"))
+  .e$.covSelectWarn <- "\"r,s\" not usable (sandwich doubtful); installed \"r\""
+  expect_silent(.foceiInstallFdFullCov(.e))
+  expect_identical(.e$covMethod, "r,s (full)")
+  expect_identical(.e$covTried, data.frame(method = "r,s", outcome = "used"))
+  expect_false(exists(".covSelectWarn", envir = .e, inherits = FALSE))
+  # a declined analytic covariance still heads the record
+  .e <- .mkFdEnv("r", .Rinv, .S)
+  .e$ui <- new.env(parent = emptyenv())
+  .e$ui$control <- list(covMethod = 1L, covType = "fd")
+  .e$covTried <- data.frame(method = c("analytic", "r,s", "r"), outcome = c("why", "sandwich doubtful", "used"))
+  .foceiInstallFdFullCov(.e)
+  expect_identical(.e$covTried, data.frame(method = c("analytic", "r,s"), outcome = c("why", "used")))
+  # an indefinite full R records why the sandwich was not installed
+  .e <- .mkFdEnv("r,s", matrix(c(4, 3, 3, -1), 2), .S)
+  .e$covTried <- data.frame(method = "r,s", outcome = "used")
+  expect_warning(.foceiInstallFdFullCov(.e), "using s (full)", fixed = TRUE)
+  expect_identical(.e$covTried, data.frame(method = c("r,s", "s"), outcome = c("R not PD", "used")))
+  # the native choice kept: its held warnings are given
+  .e <- .mkFdEnv("r,s", .Rinv) # no S, so the native covariance stays
+  .e$.covSelectWarn <- "held"
+  expect_warning(.foceiInstallFdFullCov(.e), "held", fixed = TRUE)
+  expect_false(exists(".covSelectWarn", envir = .e, inherits = FALSE))
+})

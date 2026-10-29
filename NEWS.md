@@ -27,6 +27,12 @@
 
 ### Covariance
 
+- When `covFull = TRUE` installed the full covariance over a different native
+  theta-only choice, `fit$env$covTried` and the fallback warning still described
+  the native choice (e.g. `"r,s" not usable (sandwich doubtful); installed "s"`
+  beside `fit$covMethod` `"r,s (full)"`); they now describe what was installed
+  (#1217).
+
 - `covMethod = "analytic"` now keeps the analytic covariance when a record that
   is not an observation (an EVID 2 record, or an EVID 0 record with a missing DV
   or `MDV = 1`) shares the time of one of a subject's observations; it used to

@@ -373,3 +373,17 @@ test_that("a declined analytic covariance heads covTried in full and is named in
   )
   expect_true(all(nchar(.r$warnings) < 75L))
 })
+
+test_that("with a merged full stage the walk's warnings wait for its install (#1217)", {
+  .e <- .covSelectEnv()
+  .e$.fdFullCov <- diag(2)
+  .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 2L, 1L, "r", "s", FALSE, FALSE, 1e-5))
+  expect_identical(.r$value$label, "s")
+  expect_identical(.r$warnings, character(0))
+  expect_identical(.e$.covSelectWarn, "\"r,s\" not usable (R not PD); installed \"s\"")
+  .e <- .covSelectEnv()
+  .e$.fdFullCov <- diag(2)
+  .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 2L, 2L, "r", "s", FALSE, FALSE, 1e-5))
+  expect_identical(.r$warnings, character(0))
+  expect_identical(.e$.covSelectWarn[2], "covariance step failed")
+})

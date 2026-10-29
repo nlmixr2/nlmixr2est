@@ -78,6 +78,8 @@
 #' @return invisibly TRUE when the full covariance was installed
 #' @noRd
 .foceiInstallFdFullCov <- function(.ret) {
+  .installed <- FALSE
+  on.exit(.covSelectWarnFlush(.ret, !.installed))
   if (!exists(".fdFullCov", envir = .ret, inherits = FALSE)) {
     return(invisible(FALSE))
   }
@@ -98,9 +100,11 @@
   if (.type != "r" && is.null(.S) && .full$r$ok) {
     return(invisible(FALSE))
   } # no S computed -> keep native
+  .tried <- list()
   # an indefinite R is not a minimum; fall back to S like the native step does (#1152)
   if (.type == "r,s" && !.full$r$ok && .full$s$ok) {
     warning("full R matrix non-positive definite; using s (full)", call. = FALSE)
+    .tried <- list(data.frame(method = "r,s", outcome = "R not PD"))
     .type <- "s"
   }
   # the native theta-only pieces, cached so setCov() can swap to that shape without
@@ -125,6 +129,10 @@
       stash = FALSE,
       refresh = "none"
     )
+    # the record describes what was installed, not a native walk that chose otherwise (#1217)
+    if (!identical(.type, .envType) || length(.tried) > 0L) {
+      .covTriedFull(.ret, c(.tried, list(data.frame(method = .type, outcome = "used"))))
+    }
     for (.n in names(.full)) {
       .slot <- c(r = "covR", s = "covS", "r,s" = "covRS")[[.n]]
       if (.full[[.n]]$ok) {
@@ -149,4 +157,40 @@
   # covariance describe a matrix that is no longer $cov, so the caller must
   # refresh the parameter table.
   invisible(.installed)
+}
+
+#' Replace the native walk's rows of `covTried` with the full stage's
+#'
+#' A declined analytic covariance's row (it heads the record) is kept.
+#' @param env focei fit environment
+#' @param rows list of `data.frame(method, outcome)` rows from the full stage
+#' @return invisibly `env`
+#' @noRd
+.covTriedFull <- function(env, rows) {
+  .old <- get0("covTried", envir = env, inherits = FALSE)
+  .keep <- if (is.data.frame(.old)) list(.old[.old$method == "analytic", , drop = FALSE]) else list()
+  .new <- do.call(rbind, c(.keep, rows))
+  rownames(.new) <- NULL
+  assign("covTried", .new, envir = env)
+  invisible(env)
+}
+
+#' Give or drop the warnings `.covSelectFocei()` held for a merged full stage
+#'
+#' @param env focei fit environment
+#' @param emit whether the native choice they describe was kept
+#' @return invisibly `NULL`
+#' @noRd
+.covSelectWarnFlush <- function(env, emit) {
+  .w <- get0(".covSelectWarn", envir = env, inherits = FALSE)
+  if (is.null(.w)) {
+    return(invisible(NULL))
+  }
+  rm(list = ".covSelectWarn", envir = env)
+  if (emit) {
+    for (.x in .w) {
+      warning(.x, call. = FALSE)
+    }
+  }
+  invisible(NULL)
 }

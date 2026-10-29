@@ -267,6 +267,16 @@
   }
   .tried <- do.call(rbind, .acc$tried)
   assign("covTried", .tried, envir = env)
+  # a merged full stage (covFull) installs over this choice, so its warnings wait for
+  # .foceiInstallFdFullCov() to say whether this choice is the one kept
+  .defer <- exists(".fdFullCov", envir = env, inherits = FALSE)
+  .warn <- function(w) {
+    if (.defer) {
+      assign(".covSelectWarn", c(get0(".covSelectWarn", envir = env, inherits = FALSE), w), envir = env)
+    } else {
+      warning(w, call. = FALSE)
+    }
+  }
   # the warning names the analytic step alone; covTried keeps what it said in full
   .triedW <- .tried
   if (!is.null(.short)) {
@@ -275,9 +285,9 @@
   if (.cur == 0L) {
     .w <- .covTriedSummary(.request, .triedW, NULL)
     if (!is.null(.w)) {
-      warning(.w, call. = FALSE)
+      .warn(.w)
     }
-    warning("covariance step failed", call. = FALSE)
+    .warn("covariance step failed")
     return(list(slot = 0L, label = "failed"))
   }
   if (sHasZero) {
@@ -312,7 +322,7 @@
   }
   .w <- .covTriedSummary(.request, .triedW, .label)
   if (!is.null(.w)) {
-    warning(.w, call. = FALSE)
+    .warn(.w)
   }
   assign("covMethod", .label, envir = env)
   list(slot = .cur, label = .label)
