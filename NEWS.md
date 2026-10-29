@@ -72,7 +72,9 @@
   ending each interval, while rxode2 advances the interval with its own: on
   theo_sd with a covariate step at 6 h, focei at the initial thetas gave
   321.4099 (`"locf"`) and 325.7027 (`"midpoint"`) against the ODE model's
-  318.8375 and 324.3126.  They are now equal.
+  318.8375 and 324.3126.  They are now equal.  With an rxode2 that advances
+  every interval with the end record's covariates, as rxode2 5.1.8 does,
+  the carry reads them the same way.
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
