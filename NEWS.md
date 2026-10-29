@@ -92,6 +92,8 @@
   than the sampled-mean update.
 - `saem` now uses censoring (M2/M3/M4) for `dnorm()`, `t()` and `cauchy()`
   endpoints; it scored a censored observation by its density at the limit.
+- Building the `saem` model from a compressed ui (as `rxUiGet.saemModel()`
+  receives outside a fit) no longer stops with "invalid 'envir' argument".
 - M2 censoring (`CENS = 0` with a finite `LIMIT`) now conditions on the side
   of the limit the observation is on, not the prediction.  Before, the
   objective had a kink wherever a prediction crossed the limit, and an
