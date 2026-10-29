@@ -5585,6 +5585,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     if (is.null(.rd)) {
       return(invisible(NULL))
     }
+    if (.rxFoceiLinCmtCarryLinearRefused(ui)) {
+      .rxFoceiLinCmtCarryLinearRefuse(ui, .rd)
+      return(invisible(NULL))
+    }
     .rdUp <- .rd
     names(.rdUp) <- toupper(names(.rdUp))
     .bad <- ("SS" %in% names(.rdUp) && any(.rdUp[["SS"]] > 0, na.rm = TRUE)) ||

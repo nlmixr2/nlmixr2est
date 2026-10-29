@@ -75,7 +75,8 @@
   if (!.rxFoceiLinCmtCarryCapable()) {
     return(FALSE)
   }
-  !identical(rxode2::rxGetControl(ui, "linCmtSensCarry", "auto"), "none")
+  !identical(rxode2::rxGetControl(ui, "linCmtSensCarry", "auto"), "none") &&
+    !.rxFoceiLinCmtCarryLinearRefused(ui)
 }
 
 #' Run the eligibility detection without rendering; a failure warns and

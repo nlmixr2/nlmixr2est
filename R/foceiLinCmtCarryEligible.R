@@ -238,3 +238,47 @@
   }
   unique(.why)
 }
+
+#' Is a "linear" control interpolation outside what the carry can follow?
+#'
+#' An rxode2 that advances every linCmt() interval with the end record's
+#' covariates (no `.rxFoceiLinCmtIntervalCovs()`) has no linCmt() solution
+#' for a covariate interpolated linearly; there the carry is off under the
+#' control's "linear", and a fit with a varying covariate on an eligible pair
+#' stops.  Remove with test-dependency-workarounds.R's interval-covariate
+#' block.
+#' @param ui rxode2 ui with its control
+#' @return TRUE when the control's interpolation is "linear" and the loaded
+#'   rxode2 has no interval covariates
+#' @noRd
+.rxFoceiLinCmtCarryLinearRefused <- function(ui) {
+  identical(.rxFoceiLinCmtCarryGlobalInterp(ui), "linear") && !.rxFoceiLinCmtIntervalCovs()
+}
+
+#' Stop for a data-confirmed varying covariate on an eligible pair under a
+#' refused "linear" interpolation (`.rxFoceiLinCmtCarryLinearRefused()`)
+#' @param ui rxode2 ui
+#' @param data the fit's data
+#' @return invisible NULL when no eligible pair has a varying covariate
+#' @noRd
+.rxFoceiLinCmtCarryLinearRefuse <- function(ui, data) {
+  .s <- ui$foceiEtaS
+  .p <- .rxFoceiLinCmtCarryEligible(
+    list(ui),
+    .s,
+    paste0("ETA_", seq_len(.s$..maxEta), "_"),
+    data = data,
+    render = FALSE
+  )
+  .v <- which(vapply(.p$varying, isTRUE, logical(1)))
+  if (length(.v) > 0L) {
+    stop(
+      "time-varying covariate '",
+      gsub(",", "', '", .p$covs[.v[1]], fixed = TRUE),
+      "' on a linCmt() parameter needs 'locf', 'nocb' or 'midpoint' ",
+      "interpolation; 'linear' cannot be represented by the linCmt() solution",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
+}
