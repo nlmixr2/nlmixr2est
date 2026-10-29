@@ -64,6 +64,13 @@
 
 ### Estimation
 
+- An error inside `saem`'s Gaussian-quadrature objective or its linearized
+  covariance, or while FOCEi or `nlm` builds its sensitivity model, now
+  reaches the user as itself.  Each calculation closed its progress bar in
+  a way that raised the bar's own message ("Error calculating likelihood",
+  "Error calculating covariance via linearization", "Aborted calculation")
+  in place of the error that stopped it.
+
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not

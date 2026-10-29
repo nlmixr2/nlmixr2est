@@ -2170,12 +2170,12 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   # d(f)/d(eta) as well; same pre-apply ordering as the AR(1) correction.
   .s$..predFEtaSens <- .foceiPredFEtaSens(.s, .grd)
   rxode2::rxProgress(dim(.grd)[1])
-  # Guard the abort so a clean rxProgressStop() below prevents the generic
-  # "Aborted calculation" from masking the informative error we raise here
-  # (issue #515).
+  # The bar is closed on any exit that did not stop it, without the abort's
+  # own error, so the caller gets the error that ended the loop or the one
+  # raised below (issue #515).
   .progressStopped <- FALSE
   on.exit({
-    if (!.progressStopped) rxode2::rxProgressAbort()
+    if (!.progressStopped) .nmProgressClose()
   })
   # whether any / every d(prediction)/d(ETA) is identically zero, set row by row
   .zero <- new.env(parent = emptyenv())
@@ -2830,7 +2830,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   rxode2::rxProgress(dim(.grd)[1])
   .stopped <- FALSE
   on.exit({
-    if (!.stopped) rxode2::rxProgressAbort()
+    if (!.stopped) .nmProgressClose()
   })
   .lag <- .s$..lagEta
   .ret <- apply(.grd, 1, function(x) {
