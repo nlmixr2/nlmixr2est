@@ -199,19 +199,61 @@
   startsWith(as.character(rn), .bsvCorPrefix)
 }
 
+#' The name of each eta in a BSV correlation row
+#'
+#' An eta is named by its theta only when that theta and that eta each have
+#' exactly one `muRefDataFrame` row, the rule `.updateParFixedAddBsv()` uses
+#' for the theta rows; otherwise by its own name.  Two etas can then never
+#' share a name.
+#'
+#' @param eta eta names
+#' @param muRefDataFrame `ui$muRefDataFrame`
+#' @return character vector, one name per eta
+#' @noRd
+.updateParFixedBsvCorLabel <- function(eta, muRefDataFrame) {
+  .theta <- as.character(muRefDataFrame$theta)
+  .eta <- as.character(muRefDataFrame$eta)
+  .one <- !(.theta %in% .theta[duplicated(.theta)]) & !(.eta %in% .eta[duplicated(.eta)])
+  .lab <- .theta[.one][match(eta, .eta[.one])]
+  ifelse(is.na(.lab), eta, .lab)
+}
+
+#' The `ini` data.frame whose covariances are reported as BSV correlations
+#'
+#' The model as estimated (`iniDf0`) when the fit carries it: a method whose
+#' ui was rebuilt from its estimated omega has lost any covariance estimated
+#' at exactly zero, as `lotri` drops zero off-diagonals.
+#'
+#' @param ret fit environment
+#' @param ui the ui `.updateParFixed()` reports
+#' @return data.frame
+#' @noRd
+.updateParFixedBsvCorIni <- function(ret, ui) {
+  # `ret$iniDf0` would dispatch to nmObjGet; iniDf0 can also be a compressed ui
+  .ini0 <- get0("iniDf0", envir = ret, inherits = FALSE)
+  if (is.data.frame(.ini0)) {
+    return(.ini0)
+  }
+  ui$iniDf
+}
+
 #' The subject-level correlations of a fit's omega, one per estimated covariance
 #'
 #' A pair is reported for every off-diagonal subject-level `ini()` row, even
 #' when its estimate is zero; the zeros between separate blocks have no row.
+#' A fixed covariance is the `ini()` value, so a fixed zero stays zero after
+#' the fit's omega is repaired; the variances are always the fit's.
 #'
-#' @param iniDf the `ini` data.frame of the fitted model
+#' @param iniDf the `ini` data.frame whose covariances are reported
+#'   (`.updateParFixedBsvCorIni()`)
 #' @param omega the fit's omega matrix, or the per-level list of an IOV fit
-#' @param muRefDataFrame `ui$muRefDataFrame`; a mu-referenced eta is named by
-#'   its theta
+#' @param muRefDataFrame `ui$muRefDataFrame`, naming the etas
+#'   (`.updateParFixedBsvCorLabel()`)
 #' @param exclude etas left out (the occasion etas of the IOV rewrite)
 #' @return data.frame with the row `name`, the correlation `cor` (`NA` when an
-#'   eta is absent from `omega`) and whether the covariance is `fix`ed, ordered
-#'   by the omega position of the first eta, then of the second
+#'   eta is absent from `omega` or has no variance) and whether the covariance
+#'   is `fix`ed, ordered by the omega position of the first eta, then of the
+#'   second
 #' @noRd
 .updateParFixedBsvCor <- function(iniDf, omega, muRefDataFrame, exclude = character(0)) {
   .ret <- data.frame(name = character(0), cor = numeric(0), fix = logical(0))
@@ -236,16 +278,19 @@
   .a <- .a[.keep][.ord]
   .b <- .b[.keep][.ord]
   .fix <- .off$fix[.keep][.ord] %in% TRUE
+  .cov <- .off$est[.keep][.ord]
   .om <- .omegaMatrix(omega)
   .dn <- dimnames(.om)[[1]]
+  .ia <- match(.a, .dn)
+  .ib <- match(.b, .dn)
+  .have <- !is.na(.ia) & !is.na(.ib)
+  .cov[!.fix & .have] <- .om[cbind(.ia, .ib)[!.fix & .have, , drop = FALSE]]
+  .var <- diag(.om)[.ia[.have]] * diag(.om)[.ib[.have]]
   .cor <- rep(NA_real_, length(.a))
-  .have <- .a %in% .dn & .b %in% .dn
-  if (any(.have)) {
-    .cor[.have] <- suppressWarnings(stats::cov2cor(.om))[cbind(.a[.have], .b[.have])]
-  }
-  .pair <- c(.a, .b)
-  .lab <- as.character(muRefDataFrame$theta)[match(.pair, as.character(muRefDataFrame$eta))]
-  .lab <- ifelse(is.na(.lab), .pair, .lab)
+  .cor[.have] <- .cov[.have] / sqrt(pmax(.var, 0))
+  # an eta without variance has no correlation (x / 0)
+  .cor[!is.finite(.cor)] <- NA_real_
+  .lab <- .updateParFixedBsvCorLabel(c(.a, .b), muRefDataFrame)
   .n <- length(.a)
   data.frame(
     name = paste0(.bsvCorPrefix, .lab[seq_len(.n)], " and ", .lab[.n + seq_len(.n)]),
@@ -266,6 +311,8 @@
 #' @param .muRefDataFrame `.ui$muRefDataFrame`
 #' @param .muRefCurEval `.ui$muRefCurEval`
 #' @param exclude etas whose correlations are not reported
+#' @param corIniDf the `ini` data.frame whose covariances are reported
+#'   (`.updateParFixedBsvCorIni()`)
 #' @returns A list with `popDf` (BSV column and non-mu-referenced ETA and
 #'   correlation rows appended) and `bsvFixedNames` (row names whose BSV is
 #'   fixed)
@@ -278,7 +325,8 @@
   .sigdig,
   .muRefDataFrame,
   .muRefCurEval,
-  exclude = character(0)
+  exclude = character(0),
+  corIniDf = iniDf
 ) {
   .omegaFix <- as.data.frame(iniDf)
   .omegaFix <- .omegaFix[is.na(.omegaFix$ntheta), ]
@@ -327,7 +375,7 @@
   if (length(.w) == 1) {
     names(popDf)[.w] <- ifelse(.env$.sdOnly, "BSV(SD)", ifelse(.env$.cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
   }
-  .cor <- .updateParFixedBsvCor(iniDf, omega, .muRefDataFrame, exclude)
+  .cor <- .updateParFixedBsvCor(corIniDf, omega, .muRefDataFrame, exclude)
   if (nrow(.cor) > 0L) {
     # NA rows of popDf's own column types, so a character label column stays
     # one; unnamed, as a named column would give these rows NA names
@@ -702,7 +750,8 @@
       .muRefDataFrame = .ui$muRefDataFrame,
       .muRefCurEval = .ui$muRefCurEval,
       # the IOV rewrite estimates the occasion etas as subject-level ones
-      exclude = if (is.null(.uiIovEnv$ui)) character(0) else .uiIovEnv$iovDrop
+      exclude = if (is.null(.uiIovEnv$ui)) character(0) else .uiIovEnv$iovDrop,
+      corIniDf = .updateParFixedBsvCorIni(.ret, .ui)
     )
     popDf <- .bsv$popDf
     popDf <- .updateParFixedAddShrinkage(popDf, shrink = .ret$shrink, ui = .ui)
