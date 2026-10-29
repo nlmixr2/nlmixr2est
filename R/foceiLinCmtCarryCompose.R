@@ -116,3 +116,21 @@
   }
   .fin
 }
+
+#' Render one linCmtB() model-text call for the carry lines
+#' @noRd
+.rxFoceiLinCmtCarryCall <- function(pfx, which1, which2, trans, thetas) {
+  paste0(
+    "linCmtB(",
+    pfx,
+    ",",
+    which1,
+    ",",
+    which2,
+    ",",
+    trans,
+    ",",
+    paste(thetas, collapse = ","),
+    ")"
+  )
+}
