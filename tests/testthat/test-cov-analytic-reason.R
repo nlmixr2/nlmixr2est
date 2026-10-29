@@ -107,7 +107,7 @@ nmTest({
       .r,
       .why,
       .arScope(.why),
-      warn = "\"analytic\" not usable (a residual error model the ana...); installed \"r,s\""
+      warn = "\"analytic\" not usable (a residual error model th...); installed \"s (full)\""
     )
   })
 
@@ -119,7 +119,7 @@ nmTest({
       .r,
       "a test error model",
       .arScope("a test error model"),
-      warn = "\"analytic\" not usable (a test error model); installed \"r,s\""
+      warn = "\"analytic\" not usable (a test error model); installed \"s (full)\""
     )
   })
 
@@ -202,7 +202,7 @@ nmTest({
       .r,
       "a mu-referenced occasion (IOV) eta",
       .arScope("a mu-referenced occasion (IOV) eta"),
-      warn = "\"analytic\" not usable (a mu-referenced occasion (IOV)...); installed \"r,s\""
+      warn = "\"analytic\" not usable (a mu-referenced occasion ...); installed \"s (full)\""
     )
   })
 
@@ -220,7 +220,7 @@ nmTest({
       .r,
       .why,
       .arScope(.why),
-      warn = "\"analytic\" not usable (covariance parameters the anal...); installed \"r,s\""
+      warn = "\"analytic\" not usable (covariance parameters the...); installed \"s (full)\""
     )
   })
 
@@ -233,7 +233,7 @@ nmTest({
       .r,
       .why,
       .arFailed(.why),
-      warn = "\"analytic\" not usable (an augmented model that would ...); installed \"r,s\""
+      warn = "\"analytic\" not usable (an augmented model that w...); installed \"s (full)\""
     )
   })
 
@@ -252,7 +252,7 @@ nmTest({
       .why,
       .arFailed(.why),
       "subject 1: a failed sensitivity solve",
-      warn = "\"analytic\" not usable (subject 1: a failed sensitivit...); installed \"r,s\""
+      warn = "\"analytic\" not usable (subject 1: a failed sensi...); installed \"s (full)\""
     )
   })
 
@@ -265,7 +265,7 @@ nmTest({
       .r,
       .why,
       .arFailed(.why),
-      warn = "\"analytic\" not usable (residual-error parameters the ...); installed \"r,s\""
+      warn = "\"analytic\" not usable (residual-error parameters...); installed \"s (full)\""
     )
   })
 
@@ -279,7 +279,7 @@ nmTest({
       .why,
       .arFailed(.why),
       "an observed information that would not invert",
-      warn = "\"analytic\" not usable (an observed information that w...); installed \"r,s\""
+      warn = "\"analytic\" not usable (an observed information t...); installed \"s (full)\""
     )
   })
 
@@ -299,7 +299,7 @@ nmTest({
       .why,
       .arFailed(.why),
       "a theta block of the covariance that would not invert",
-      warn = "\"analytic\" not usable (a theta block of the covarianc...); installed \"r,s\""
+      warn = "\"analytic\" not usable (a theta block of the cova...); installed \"s (full)\""
     )
   })
 
@@ -310,7 +310,7 @@ nmTest({
     expect_identical(.r$fit$env$covTried$outcome[1], "an error (a test error)")
     expect_true("analytic err1: a test error" %in% .arWarnings(.r))
     expect_true(any(grepl("covType=\"analytic\" not used (an error)", .r$out, fixed = TRUE)))
-    expect_true("\"analytic\" not usable (an error); installed \"r,s\"" %in% .arWarnings(.r))
+    expect_true("\"analytic\" not usable (an error); installed \"s (full)\"" %in% .arWarnings(.r))
     # a long, multi-line error is one line, and clipped in the warning
     local_mocked_bindings(.foceiAnalyticDirections = function(...) {
       stop(paste(rep("a long test error", 6), collapse = "\n"))
@@ -410,7 +410,7 @@ nmTest({
         .arFit(.m, est = "foce"),
         .why,
         .arFailed(.why),
-        warn = "\"analytic\" not usable (a failed eta=0 population solve;...); installed \"s\""
+        warn = "\"analytic\" not usable (a failed eta=0 population...); installed \"s (full)\""
       )
     }
   })
@@ -429,7 +429,7 @@ nmTest({
       .why,
       .arFailed(.why),
       "a failed eta=0 population solve",
-      warn = "\"analytic\" not usable (a failed eta=0 population solve;...); installed \"s\""
+      warn = "\"analytic\" not usable (a failed eta=0 population...); installed \"s (full)\""
     )
     local_mocked_bindings(.foceiAnalyticRxSolve = function(...) {
       .d <- .rx(...)
@@ -441,7 +441,7 @@ nmTest({
       .why,
       .arFailed(.why),
       "a failed eta=0 population solve",
-      warn = "\"analytic\" not usable (a failed eta=0 population solve;...); installed \"s\""
+      warn = "\"analytic\" not usable (a failed eta=0 population...); installed \"s (full)\""
     )
   })
 
@@ -468,7 +468,7 @@ nmTest({
         .why,
         .arFailed(.why),
         .short,
-        warn = "\"analytic\" not usable (subject 101: a failed sensitiv...); installed \"r,s\""
+        warn = "\"analytic\" not usable (subject 101: a failed sen...); installed \"s (full)\""
       )
     }
   })
@@ -487,7 +487,7 @@ nmTest({
           .why,
           .arFailed(.why),
           .short,
-          warn = "\"analytic\" not usable (a failed observed-information ke...); installed \"s\""
+          warn = "\"analytic\" not usable (a failed observed-informa...); installed \"s (full)\""
         )
       })
       local({
@@ -499,7 +499,7 @@ nmTest({
           .arFit(.arModC1, est = .k$est),
           .why,
           .arFailed(.why),
-          warn = "\"analytic\" not usable (a non-finite observed informatio...); installed \"s\""
+          warn = "\"analytic\" not usable (a non-finite observed inf...); installed \"s (full)\""
         )
       })
     }
@@ -514,7 +514,7 @@ nmTest({
         .arFit(data = .arData101),
         .why,
         .arFailed(.why),
-        warn = "\"analytic\" not usable (subject 101: an observed infor...); installed \"r,s\""
+        warn = "\"analytic\" not usable (subject 101: an observed ...); installed \"s (full)\""
       )
     })
     local({
@@ -524,7 +524,7 @@ nmTest({
         .arFit(data = .arData101),
         .why,
         .arFailed(.why),
-        warn = "\"analytic\" not usable (subject 101: a non-finite obse...); installed \"r,s\""
+        warn = "\"analytic\" not usable (subject 101: a non-finite...); installed \"s (full)\""
       )
     })
   })
@@ -540,7 +540,7 @@ nmTest({
       .why,
       .arFailed(.why),
       .short,
-      warn = "\"analytic\" not usable (subject 101: an observed infor...); installed \"r,s\""
+      warn = "\"analytic\" not usable (subject 101: an observed ...); installed \"s (full)\""
     )
   })
 
@@ -600,7 +600,7 @@ nmTest({
       .why,
       .arFailed(.why),
       .short,
-      warn = "\"analytic\" not usable (an augmented model that would ...); installed \"r,s\""
+      warn = "\"analytic\" not usable (an augmented model that w...); installed \"s (full)\""
     )
   })
 })

@@ -133,6 +133,7 @@
     if (!identical(.type, .envType) || length(.tried) > 0L) {
       .covTriedFull(.ret, c(.tried, list(data.frame(method = .type, outcome = "used"))))
     }
+    .covTriedWarnFull(.ret, if (nzchar(.req)) .req else .type, warned = length(.tried))
     for (.n in names(.full)) {
       .slot <- c(r = "covR", s = "covS", "r,s" = "covRS")[[.n]]
       if (.full[[.n]]$ok) {
@@ -173,6 +174,38 @@
   rownames(.new) <- NULL
   assign("covTried", .new, envir = env)
   invisible(env)
+}
+
+#' The one fallback warning for the full covariance installed, from `covTried`
+#'
+#' Replaces the warnings `.covSelectFocei()` held for the native walk.  A declined
+#' analytic covariance is the request, named with its short reason.
+#' @param env focei fit environment
+#' @param request the requested finite-difference method
+#' @param warned how many rows before the last the full stage has warned of itself
+#' @return invisibly `NULL`
+#' @noRd
+.covTriedWarnFull <- function(env, request, warned = 0L) {
+  .tried <- get0("covTried", envir = env, inherits = FALSE)
+  if (!is.data.frame(.tried)) {
+    return(invisible(NULL))
+  }
+  if (warned > 0L) {
+    .n <- nrow(.tried)
+    .tried <- .tried[-seq.int(.n - warned, .n - 1L), , drop = FALSE]
+  }
+  if (identical(.tried$method[1], "analytic")) {
+    request <- "analytic"
+    .short <- get0(".analyticReasonShort", envir = env, inherits = FALSE)
+    if (checkmate::testString(.short)) {
+      .tried$outcome[1] <- .short
+    }
+  }
+  .w <- .covTriedSummary(request, .tried, env$covMethod)
+  if (!is.null(.w)) {
+    warning(.w, call. = FALSE)
+  }
+  invisible(NULL)
 }
 
 #' Give or drop the warnings `.covSelectFocei()` held for a merged full stage

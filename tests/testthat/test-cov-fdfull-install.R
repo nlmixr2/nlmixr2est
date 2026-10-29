@@ -216,12 +216,17 @@ test_that("the record and warnings describe the full install, not the native wal
   .e$ui <- new.env(parent = emptyenv())
   .e$ui$control <- list(covMethod = 1L, covType = "fd")
   .e$covTried <- data.frame(method = c("analytic", "r,s", "r"), outcome = c("why", "sandwich doubtful", "used"))
-  .foceiInstallFdFullCov(.e)
+  .e$.analyticReasonShort <- "short why"
+  .e$.covSelectWarn <- "held"
+  expect_identical(
+    capture_warnings(.foceiInstallFdFullCov(.e)),
+    "\"analytic\" not usable (short why); installed \"r,s (full)\""
+  )
   expect_identical(.e$covTried, data.frame(method = c("analytic", "r,s"), outcome = c("why", "used")))
   # an indefinite full R records why the sandwich was not installed
   .e <- .mkFdEnv("r,s", matrix(c(4, 3, 3, -1), 2), .S)
   .e$covTried <- data.frame(method = "r,s", outcome = "used")
-  expect_warning(.foceiInstallFdFullCov(.e), "using s (full)", fixed = TRUE)
+  expect_identical(capture_warnings(.foceiInstallFdFullCov(.e)), "full R matrix non-positive definite; using s (full)")
   expect_identical(.e$covTried, data.frame(method = c("r,s", "s"), outcome = c("R not PD", "used")))
   # the native choice kept: its held warnings are given
   .e <- .mkFdEnv("r,s", .Rinv) # no S, so the native covariance stays
