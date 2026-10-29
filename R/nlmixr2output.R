@@ -215,7 +215,9 @@
     }
     .eta <- .muRefDataFrame$eta[.w]
     assign(".muRefVars", c(.env$.muRefVars, .eta), envir = .env)
-    if (.eta %in% names(.omegaFix) && isTRUE(.omegaFix[[.eta]])) {
+    # an eta the fit's omega leaves out (a variance fixed at zero is dropped
+    # before estimation) has an empty cell, not "fix()"
+    if (.eta %in% names(.omegaFix) && isTRUE(.omegaFix[[.eta]]) && .eta %in% rownames(omega)) {
       .env$.bsvFixedNames <- c(.env$.bsvFixedNames, x)
     }
     .updateParFixedGetEtaRow(.eta, .env, omega, .omegaFix, .muRefCurEval, .sigdig)
