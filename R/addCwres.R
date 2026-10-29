@@ -128,7 +128,9 @@ attr(nmObjGetData.addCwres, "desc") <- "Add CWRES to object if needed"
 #'
 #' The fit's thetas, omega and etas (`etaMat`) are kept, so the refit's tables
 #' are the fit's; `addCwres()` and the IOV route of `addNpde()`/`addTable()`
-#' use it.  Its objective row is focei/foce, not a quadrature.  The nested
+#' use it.  A saem fit with `iovMethod = "collapsed"` refits the collapsed
+#' model it estimated (`iovCollapsedRefit`).  Its objective row is focei/foce,
+#' not a quadrature.  The nested
 #' `nlmixr2()` resets the timing globals when it ends, so the caller's are put
 #' back.
 #'
@@ -144,6 +146,14 @@ attr(nmObjGetData.addCwres, "desc") <- "Add CWRES to object if needed"
   .ctl$maxOuterIterations <- 0L
   .ctl$maxInnerIterations <- 0L
   .ctl$etaMat <- fit$etaMat
+  # a saem fit with iovMethod = "collapsed" has the tables of the collapsed
+  # model it estimated, not of the user's model restored from it
+  .coll <- fit$env$iovCollapsedRefit
+  .model <- fit
+  if (!is.null(.coll)) {
+    .model <- .coll$ui
+    .ctl$etaMat <- .coll$etaMat
+  }
   .ctl$compress <- FALSE
   .ctl$covMethod <- 0L
   .ctl$nAGQ <- 0L
@@ -159,11 +169,22 @@ attr(nmObjGetData.addCwres, "desc") <- "Add CWRES to object if needed"
     ifnotfound = list(NULL)
   )
   on.exit(list2env(.timing, envir = nlmixr2global), add = TRUE)
-  .nlmixr2PriorGateBypass(
+  .ret <- .nlmixr2PriorGateBypass(
     if (is.null(table)) {
-      nlmixr2(fit, data = nlme::getData(fit), est = "focei", control = .ctl)
+      nlmixr2(.model, data = nlme::getData(fit), est = "focei", control = .ctl)
     } else {
-      nlmixr2(fit, data = nlme::getData(fit), est = "focei", control = .ctl, table = table)
+      nlmixr2(.model, data = nlme::getData(fit), est = "focei", control = .ctl, table = table)
     }
   )
+  if (!is.null(.coll)) {
+    # the collapsed model's own columns, as .saemIovFinalizeCollapsed() drops them
+    .w <- which(grepl("^rx[.]", names(.ret)))
+    if (length(.w) > 0L) {
+      .cls <- class(.ret)
+      class(.ret) <- "data.frame"
+      .ret <- .ret[, -.w]
+      class(.ret) <- .cls
+    }
+  }
+  .ret
 }

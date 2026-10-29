@@ -1146,7 +1146,6 @@ addTable <- function(
           keep = keep
         )
       } else if (.iovTables) {
-        .iovRefitAssertConsistent(object, "addTable()")
         if (!inherits(table, "tableControl")) {
           table <- do.call(tableControl, table)
         }

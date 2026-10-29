@@ -899,6 +899,24 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   }
   invisible()
 }
+#' Keep the collapsed model a fit estimated, for its tables
+#'
+#' The fit's tables are those of the collapsed model, so `.refitNoIterations()`
+#' refits it at its own etas rather than the restored user's model.
+#'
+#' @param env the fit environment, before the user's model is restored
+#' @return `NULL`, called for its side effects
+#' @noRd
+.saemIovKeepCollapsed <- function(env) {
+  if (!is.data.frame(env$ranef)) {
+    return(invisible())
+  }
+  .ini <- env$ui$iniDf
+  .eta <- as.matrix(.nmDropNonEtaCols(env$ranef))
+  .eta <- .eta[, .ini$name[which(.ini$neta1 == .ini$neta2)], drop = FALSE]
+  assign("iovCollapsedRefit", list(ui = env$ui, etaMat = .eta), envir = env)
+  invisible()
+}
 #' Restore the user's model after a collapsed (Panhard & Samson) fit
 #'
 #' Registered as a post-final hook.  The collapsed expansion replaced the user's
@@ -922,6 +940,7 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
       .om <- .om$id
     }
     .parts <- .saemIovCollapsedParts(.om, ret$env$fixef, .info)
+    .saemIovKeepCollapsed(ret$env)
     .saemIovRestoreUi(ret$env, .info, .parts)
     .saemIovRestoreEst(ret$env, .info, .parts)
     # the occasion etas are saem's own, not the rewrite's (nmObjGet.etaMat())

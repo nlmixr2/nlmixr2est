@@ -280,8 +280,9 @@
   (the parameters listed depend on the model and the method).  They refit
   with no iterations at the fit's estimates, as `addCwres()` does, and give
   the columns the fit gives itself; for an ODE model, to the solver's
-  tolerance.  A `saem` fit with `iovMethod = "collapsed"` is refused with a
-  message: ask for its tables when fitting it.
+  tolerance.  For a `saem` fit with `iovMethod = "collapsed"`, they and
+  `addCwres()` refit the collapsed model it estimated, at its own etas, so
+  its NPDE is the one the fit computes itself, draw for draw (#1243).
 
 - A fit with inter-occasion variability is now finished like any other when
   it is run with `tableControl(npde = TRUE)` or has a subject with no
