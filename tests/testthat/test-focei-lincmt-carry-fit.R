@@ -479,6 +479,7 @@ test_that("under midpoint a carried fit equals its ODE twin where records carry 
 test_that("a carried fit with a reset equals its ODE twin", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  .carrySkipReset()
   .ode <- rxode2::linToOde(rxode2::rxode2(.carryModCov))
   for (.evid in c(3L, 4L)) {
     .d <- .carryResetFitDat(.evid)
@@ -495,6 +496,7 @@ test_that("a carried fit with a reset equals its ODE twin", {
 test_that("a carried fit with a reset after a locf covariate step equals its ODE twin", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  .carrySkipReset()
   .ode <- rxode2::linToOde(rxode2::rxode2(.carryModCov))
   for (.evid in c(3L, 4L)) {
     .d <- .carryResetFitDatLocf(.evid)
@@ -509,6 +511,7 @@ test_that("a carried fit with a reset after a locf covariate step equals its ODE
 test_that("a carried f() and alag() fit with a reset equals its ODE twin", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  .carrySkipReset()
   .ode <- rxode2::linToOde(rxode2::rxode2(.carryModJump))
   .d <- .carryResetFitDat(3L)
   .lin <- .carryResetFit(.carryModJump, .d, "locf")

@@ -237,3 +237,11 @@
 .carryTwinInterps <- function(interps = c("locf", "midpoint", "nocb")) {
   if (.rxFoceiLinCmtIntervalCovs()) interps else intersect(interps, "nocb")
 }
+
+# The carry's reset twins need an rxode2lincmt that restarts the carried
+# sensitivities at a reset (rxode2lincmt PR 4), which no release has yet and
+# nothing in R tells apart; they skip.  Remove with
+# test-dependency-workarounds.R's rxode2lincmt reset block.
+.carrySkipReset <- function() {
+  testthat::skip("the carry's restart at a reset needs an rxode2lincmt release with rxode2lincmt PR 4")
+}
