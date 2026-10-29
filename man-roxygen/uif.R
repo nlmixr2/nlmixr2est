@@ -455,7 +455,9 @@
 ##'        are listed on the back-transformed parameter space.
 ##'      \item Proportional Errors are converted to %CV on the untransformed space
 ##'      \item Each estimated between-subject covariance adds a final row,
-##'        \code{BSV correlation between A and B}, with the correlation in the BSV column
+##'        \code{BSV correlation between A and B}, with the correlation in the BSV column;
+##'        \code{fix()} there marks a fixed covariance, whose correlation still moves with
+##'        estimated variances
 ##'    }
 ##'  \item Omega block (accessed by \code{fit.s$omega})
 ##'  \item The table of fit data. Please note:
