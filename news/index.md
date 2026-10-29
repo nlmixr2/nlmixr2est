@@ -6866,6 +6866,18 @@ CRAN release: 2026-08-04
 
 #### Output, tables, and printing
 
+- `est="saem"` with an estimated covariate effect on a time-varying
+  covariate inside a mu-referenced expression (for example
+  `expit(bvm + beta_F60*F60 + eta.bv)` with `F60` changing within a
+  subject) now names its thetas correctly. The estimates were right, but
+  the theta table,
+  [`fixef()`](https://rdrr.io/pkg/nlme/man/fixed.effects.html),
+  `$parFixedDf` and the parameter history put the names in the wrong
+  order, so values (including
+  [`fix()`](https://rdrr.io/r/utils/fix.html)ed ones) appeared under
+  other parameters’ names and anything later computed from the named
+  values, such as `setOfv(fit, "focei")`, used the wrong ones.
+
 - [`vpcSimExpand()`](https://nlmixr2.github.io/nlmixr2est/reference/vpcSimExpand.md)
   no longer merges the entire observed dataset into the simulation when
   a requested `extra` column is missing: a dropped filter result meant
