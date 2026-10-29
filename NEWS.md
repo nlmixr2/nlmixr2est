@@ -64,6 +64,10 @@
 
 ### Estimation
 
+- `foceiControl(mceta = n)` with `n >= 1` now optimizes every Omega draw, not
+  only the one with the best objective at its starting point, and keeps the
+  lowest converged optimum.  Ranking at the starting point could leave a
+  subject in the higher of two optima that some of the draws reach (#1242).
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not
