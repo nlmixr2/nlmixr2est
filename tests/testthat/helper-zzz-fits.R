@@ -104,15 +104,21 @@ if (!dir.exists(.fitCacheDir)) {
   fit <- fitFn()
   AIC(fit) # Force evaluation of AIC
 
-  # Save to cache
+  # Save to cache: write beside the target and move it into place, so a parallel
+  # worker or a second run never reads a partly written file
+  .tmp <- tempfile("fit-", tmpdir = .fitCacheDir, fileext = ".tmp")
   tryCatch(
     {
-      saveRDS(list(version = .fitCacheVersion, fit = fit), cachePath)
+      saveRDS(list(version = .fitCacheVersion, fit = fit), .tmp)
+      if (!file.rename(.tmp, cachePath)) {
+        stop("could not move the cache file into place", call. = FALSE)
+      }
       message(sprintf("[ok] Cached fit saved: %s", name))
     },
     error = function(e) {
       warning(sprintf("Failed to save cache for %s: %s", name, e$message))
-    }
+    },
+    finally = unlink(.tmp)
   )
 
   fit
