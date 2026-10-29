@@ -186,17 +186,15 @@
   )
 }
 
-#' Row-name prefix of the BSV correlation rows of the parameter table
-#' @noRd
-.bsvCorPrefix <- "BSV correlation between "
-
 #' Which parameter-table rows are BSV correlation rows
+#'
+#' They are named `bsvcorr(A,B)`; no theta or eta name has a parenthesis.
 #'
 #' @param rn row names of `$parFixedDf` or `$parFixed`
 #' @return logical, one per row name
 #' @noRd
 .parFixedIsBsvCor <- function(rn) {
-  startsWith(as.character(rn), .bsvCorPrefix)
+  grepl("^bsvcorr\\(", as.character(rn))
 }
 
 #' The name of each eta in a BSV correlation row
@@ -250,13 +248,14 @@
 #' @param muRefDataFrame `ui$muRefDataFrame`, naming the etas
 #'   (`.updateParFixedBsvCorLabel()`)
 #' @param exclude etas left out (the occasion etas of the IOV rewrite)
-#' @return data.frame with the row `name`, the correlation `cor` (`NA` when an
+#' @return data.frame with the row `name` (`bsvcorr(A,B)`), its `label`
+#'   (`BSV correlation between A and B`), the correlation `cor` (`NA` when an
 #'   eta is absent from `omega` or has no variance) and whether the covariance
 #'   is `fix`ed, ordered by the omega position of the first eta, then of the
 #'   second
 #' @noRd
 .updateParFixedBsvCor <- function(iniDf, omega, muRefDataFrame, exclude = character(0)) {
-  .ret <- data.frame(name = character(0), cor = numeric(0), fix = logical(0))
+  .ret <- data.frame(name = character(0), label = character(0), cor = numeric(0), fix = logical(0))
   if (is.null(omega) || is.null(iniDf)) {
     return(.ret)
   }
@@ -292,8 +291,11 @@
   .cor[!is.finite(.cor)] <- NA_real_
   .lab <- .updateParFixedBsvCorLabel(c(.a, .b), muRefDataFrame)
   .n <- length(.a)
+  .labA <- .lab[seq_len(.n)]
+  .labB <- .lab[.n + seq_len(.n)]
   data.frame(
-    name = paste0(.bsvCorPrefix, .lab[seq_len(.n)], " and ", .lab[.n + seq_len(.n)]),
+    name = paste0("bsvcorr(", .labA, ",", .labB, ")"),
+    label = paste0("BSV correlation between ", .labA, " and ", .labB),
     cor = .cor,
     fix = .fix
   )
@@ -383,6 +385,10 @@
     .corDf[] <- lapply(.corDf, unname)
     row.names(.corDf) <- .cor$name
     .corDf[[.w]] <- .cor$cor
+    # a model with labels describes the row; without them the name shows alone
+    if ("Parameter" %in% names(.corDf)) {
+      .corDf$Parameter <- .cor$label
+    }
     popDf <- rbind(popDf, .corDf)
     # an absent eta's empty cell is not wrapped as "fix()"
     .env$.bsvFixedNames <- c(.env$.bsvFixedNames, .cor$name[.cor$fix & !is.na(.cor$cor)])
@@ -444,14 +450,6 @@
   for (nm in names(ret)) {
     if (!is.character(ret[[nm]])) {
       ret[[nm]] <- formatMinWidth(ret[[nm]], digits = digits, naValue = "")
-    }
-  }
-  # a correlation row's only value is its BSV cell; the label column is
-  # character and so was not formatted above
-  .corRows <- .parFixedIsBsvCor(rownames(ret))
-  if (any(.corRows)) {
-    for (nm in names(ret)) {
-      ret[[nm]][.corRows & is.na(ret[[nm]])] <- ""
     }
   }
   if ("CI Lower" %in% names(ret)) {

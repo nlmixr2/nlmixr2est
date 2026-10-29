@@ -781,10 +781,16 @@ nmTest({
     # not the ini() values, so the correlation is read off the omega given
     .om <- .bsvCorOmega(c(0.2, -0.03, -0.03, 0.4))
     .r <- .updateParFixedBsvCor(.ui$iniDf, .om, .ui$muRefDataFrame)
-    expect_identical(.r$name, "BSV correlation between tcl and tv")
+    expect_identical(.r$name, "bsvcorr(tcl,tv)")
+    expect_identical(.r$label, "BSV correlation between tcl and tv")
     expect_equal(.r$cor, stats::cov2cor(.om)[["eta.cl", "eta.v"]], tolerance = 1e-12)
     expect_equal(.r$cor, -0.03 / sqrt(0.2 * 0.4), tolerance = 1e-12)
     expect_identical(.r$fix, FALSE)
+    # the row is found by its name
+    expect_identical(
+      .parFixedIsBsvCor(c("tcl", "eta.cl", "bsvcorr(tcl,tv)", "BSV correlation between tcl and tv")),
+      c(FALSE, FALSE, TRUE, FALSE)
+    )
   })
 
   test_that(".updateParFixedBsvCor orders the pairs of a block by the first eta, then the second", {
@@ -795,9 +801,9 @@ nmTest({
     expect_identical(
       .r$name,
       c(
-        "BSV correlation between tka and tcl",
-        "BSV correlation between tka and tv",
-        "BSV correlation between tcl and tv"
+        "bsvcorr(tka,tcl)",
+        "bsvcorr(tka,tv)",
+        "bsvcorr(tcl,tv)"
       )
     )
     expect_equal(
@@ -812,10 +818,7 @@ nmTest({
     .r4 <- .updateParFixedBsvCor(.ui4$iniDf, .ui4$omega, .ui4$muRefDataFrame)
     expect_identical(
       .r4$name,
-      paste0(
-        "BSV correlation between ",
-        c("ta and tb", "ta and tc", "ta and td", "tb and tc", "tb and td", "tc and td")
-      )
+      c("bsvcorr(ta,tb)", "bsvcorr(ta,tc)", "bsvcorr(ta,td)", "bsvcorr(tb,tc)", "bsvcorr(tb,td)", "bsvcorr(tc,td)")
     )
     .cor4 <- stats::cov2cor(.ui4$omega)
     expect_equal(
@@ -837,16 +840,16 @@ nmTest({
     .om <- .ui$omega
     .cor <- stats::cov2cor(.om)
     .r <- .updateParFixedBsvCor(.ui$iniDf, .om, .ui$muRefDataFrame)
-    expect_identical(.r$name, c("BSV correlation between tka and tcl", "BSV correlation between tv and tq"))
+    expect_identical(.r$name, c("bsvcorr(tka,tcl)", "bsvcorr(tv,tq)"))
     expect_equal(.r$cor, c(.cor[["eta.ka", "eta.cl"]], .cor[["eta.v", "eta.q"]]), tolerance = 1e-12)
     # the etas of one block left out, as the IOV rewrite's occasion etas are
     .r <- .updateParFixedBsvCor(.ui$iniDf, .om, .ui$muRefDataFrame, exclude = c("eta.v", "eta.q"))
-    expect_identical(.r$name, "BSV correlation between tka and tcl")
+    expect_identical(.r$name, "bsvcorr(tka,tcl)")
     expect_equal(.r$cor, .cor[["eta.ka", "eta.cl"]], tolerance = 1e-12)
   })
 
   test_that(".updateParFixedBsvCor has no rows without a covariance", {
-    .none <- data.frame(name = character(0), cor = numeric(0), fix = logical(0))
+    .none <- data.frame(name = character(0), label = character(0), cor = numeric(0), fix = logical(0))
     # diagonal omega
     .ui <- rxode2::rxode2(one.compartment)
     expect_identical(.updateParFixedBsvCor(.ui$iniDf, .ui$omega, .ui$muRefDataFrame), .none)
@@ -860,20 +863,20 @@ nmTest({
     expect_false("eta.ka" %in% .ui$muRefDataFrame$eta)
     .om <- .ui$omega
     .r <- .updateParFixedBsvCor(.ui$iniDf, .om, .ui$muRefDataFrame)
-    expect_identical(.r$name, "BSV correlation between eta.ka and tcl")
+    expect_identical(.r$name, "bsvcorr(eta.ka,tcl)")
     expect_equal(.r$cor, stats::cov2cor(.om)[["eta.ka", "eta.cl"]], tolerance = 1e-12)
   })
 
   test_that(".updateParFixedBsvCor flags a fixed covariance and keeps a zero estimate", {
     .ui <- rxode2::rxode2(.bsvCorFix)
     .r <- .updateParFixedBsvCor(.ui$iniDf, .ui$omega, .ui$muRefDataFrame)
-    expect_identical(.r$name, "BSV correlation between tcl and tv")
+    expect_identical(.r$name, "bsvcorr(tcl,tv)")
     expect_identical(.r$fix, TRUE)
     expect_equal(.r$cor, 0.05 / sqrt(0.3 * 0.1), tolerance = 1e-12)
     # a covariance estimated at exactly zero inside its block keeps its row
     .ui <- rxode2::rxode2(.bsvCor2)
     .r <- .updateParFixedBsvCor(.ui$iniDf, .bsvCorOmega(c(0.2, 0, 0, 0.4)), .ui$muRefDataFrame)
-    expect_identical(.r$name, "BSV correlation between tcl and tv")
+    expect_identical(.r$name, "bsvcorr(tcl,tv)")
     expect_identical(.r$cor, 0)
     .popDf <- data.frame(Estimate = c(1, 3.45, 0.7), row.names = c("tcl", "tv", "add.sd"))
     .res <- .updateParFixedAddBsv(
@@ -885,22 +888,22 @@ nmTest({
       .ui$muRefCurEval
     )
     .fmt <- .updateParFixedApplySig(.res$popDf, 3L, 0.95, character(), .res$bsvFixedNames)
-    expect_identical(.fmt["BSV correlation between tcl and tv", "BSV(CV%)"], "0")
+    expect_identical(.fmt["bsvcorr(tcl,tv)", "BSV(CV%)"], "0")
   })
 
   test_that(".updateParFixedBsvCor leaves the correlation of an eta absent from the omega empty", {
     .ui <- rxode2::rxode2(.bsvCorFix)
     .om <- matrix(0.3, 1, 1, dimnames = list("eta.cl", "eta.cl"))
     .r <- .updateParFixedBsvCor(.ui$iniDf, .om, .ui$muRefDataFrame)
-    expect_identical(.r$name, "BSV correlation between tcl and tv")
+    expect_identical(.r$name, "bsvcorr(tcl,tv)")
     expect_identical(.r$cor, NA_real_)
     expect_identical(.r$fix, TRUE)
     # an empty cell is not wrapped as fix()
     .popDf <- data.frame(Estimate = c(1, 3.45, 0.7), row.names = c("tcl", "tv", "add.sd"))
     .res <- .updateParFixedAddBsv(.popDf, .ui$iniDf, .om, 3L, .ui$muRefDataFrame, .ui$muRefCurEval)
-    expect_false("BSV correlation between tcl and tv" %in% .res$bsvFixedNames)
+    expect_false("bsvcorr(tcl,tv)" %in% .res$bsvFixedNames)
     .fmt <- .updateParFixedApplySig(.res$popDf, 3L, 0.95, character(), .res$bsvFixedNames)
-    expect_identical(.fmt["BSV correlation between tcl and tv", "BSV(CV%)"], "")
+    expect_identical(.fmt["bsvcorr(tcl,tv)", "BSV(CV%)"], "")
   })
 
   test_that(".updateParFixedBsvCor reports only the subject level of an IOV omega", {
@@ -908,18 +911,18 @@ nmTest({
     .om <- .ui$omega
     expect_true(is.list(.om))
     .r <- .updateParFixedBsvCor(.ui$iniDf, .om, .ui$muRefDataFrame)
-    expect_identical(.r$name, "BSV correlation between tcl and tv")
+    expect_identical(.r$name, "bsvcorr(tcl,tv)")
     expect_equal(.r$cor, stats::cov2cor(.om$id)[["eta.cl", "eta.v"]], tolerance = 1e-12)
   })
 
-  test_that("the BSV correlation rows end the parameter table with only their BSV cell filled", {
+  test_that("the BSV correlation rows end the parameter table with their description and BSV cell", {
     .ui <- rxode2::rxode2(.bsvCorMixed)
     .popDf <- data.frame(Estimate = c(0.45, 1, 3.45, 0.7), row.names = c("tka", "tcl", "tv", "add.sd"))
     .popDf <- .updateParFixedAddParameterLabel(.popDf, .ui$iniDf)
     .n <- c("eta.ka", "eta.cl", "eta.v")
     .om <- matrix(c(0.5, 0.02, 0, 0.02, 0.2, 0, 0, 0, 0.1), 3, 3, dimnames = list(.n, .n))
     .res <- .updateParFixedAddBsv(.popDf, .ui$iniDf, .om, 3L, .ui$muRefDataFrame, .ui$muRefCurEval)
-    .cor <- "BSV correlation between eta.ka and tcl"
+    .cor <- "bsvcorr(eta.ka,tcl)"
     # after the theta rows and the non-mu-referenced eta's row
     expect_identical(rownames(.res$popDf), c("tka", "tcl", "tv", "add.sd", "eta.ka", .cor))
     # the header is the one the variances alone choose
@@ -935,7 +938,8 @@ nmTest({
     expect_identical(rownames(.resNoCor$popDf), c("tka", "tcl", "tv", "add.sd", "eta.ka"))
     expect_identical(names(.res$popDf), names(.resNoCor$popDf))
     expect_identical(names(.res$popDf), c("Parameter", "Estimate", "BSV(CV%)"))
-    expect_identical(.res$popDf[.cor, "Parameter"], NA_character_)
+    # a model with labels describes the row in its label column
+    expect_identical(.res$popDf[.cor, "Parameter"], "BSV correlation between eta.ka and tcl")
     expect_identical(.res$popDf[.cor, "Estimate"], NA_real_)
     expect_equal(.res$popDf[.cor, "BSV(CV%)"], stats::cov2cor(.om)[["eta.ka", "eta.cl"]], tolerance = 1e-12)
     expect_equal(.res$popDf[.cor, "BSV(CV%)"], 0.02 / sqrt(0.5 * 0.2), tolerance = 1e-12)
@@ -948,7 +952,7 @@ nmTest({
     .fmt <- .updateParFixedApplySig(.sh, 3L, 0.95, character(), .res$bsvFixedNames)
     expect_identical(
       unlist(.fmt[.cor, ]),
-      c(Parameter = "", Est. = "", `BSV(CV%)` = "0.0632", `Shrink(SD)%` = "")
+      c(Parameter = "BSV correlation between eta.ka and tcl", Est. = "", `BSV(CV%)` = "0.0632", `Shrink(SD)%` = "")
     )
     # the label column of the theta rows is untouched
     expect_identical(.fmt[["Parameter"]][1:4], c("Ka", "", "", ""))
@@ -967,7 +971,7 @@ nmTest({
       check.names = FALSE
     )
     .res <- .updateParFixedAddBsv(.popDf, .ui$iniDf, .ui$omega, 3L, .ui$muRefDataFrame, .ui$muRefCurEval)
-    .cor <- "BSV correlation between tcl and tv"
+    .cor <- "bsvcorr(tcl,tv)"
     expect_identical(.res$bsvFixedNames, c("tcl", "tv", .cor))
     .fmt <- .updateParFixedApplySig(.res$popDf, 3L, 0.95, character(), .res$bsvFixedNames)
     .want <- c(
@@ -1000,7 +1004,7 @@ nmTest({
       `Back-transformed` = c(exp(1), exp(3.45), NA),
       `BSV(CV%)` = c(59.1, 32.4, 0.289),
       check.names = FALSE,
-      row.names = c("tcl", "tv", "BSV correlation between tcl and tv")
+      row.names = c("tcl", "tv", "bsvcorr(tcl,tv)")
     )
     .got <- .broomParFixedDf(list(parFixedDf = .df))
     expect_identical(rownames(.got), c("tcl", "tv"))
@@ -1012,11 +1016,13 @@ nmTest({
     skip_if_not_installed("broom.mixed")
     .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE)
     fit <- .nlmixr(.bsvCorBlockFit, theo_sd, "focei", control = .ctl)
-    .cor <- "BSV correlation between tcl and tv"
+    .cor <- "bsvcorr(tcl,tv)"
     .rows <- c("tka", "tcl", "tv", "add.sd", .cor)
     .cols <- c("Estimate", "SE", "%RSE", "Back-transformed", "CI Lower", "CI Upper", "BSV(CV%)", "Shrink(SD)%")
     expect_identical(rownames(fit$parFixedDf), .rows)
+    # no labels, so no label column: the row name alone names the row
     expect_identical(names(fit$parFixedDf), .cols)
+    expect_false("Parameter" %in% names(fit$parFixed))
     expect_equal(
       fit$parFixedDf[.cor, "BSV(CV%)"],
       stats::cov2cor(fit$omega)[["eta.cl", "eta.v"]],
@@ -1053,15 +1059,18 @@ nmTest({
   test_that("a fit puts its non-mu-referenced eta's row before the BSV correlation rows", {
     .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "")
     fit <- .nlmixr(.bsvCorMixedFit, theo_sd, "focei", control = .ctl)
-    .cor <- "BSV correlation between eta.ka and tcl"
+    .cor <- "bsvcorr(eta.ka,tcl)"
     expect_identical(rownames(fit$parFixedDf), c("tka", "tcl", "tv", "add.sd", "eta.ka", .cor))
-    expect_identical(unname(fit$parFixedDf[.cor, "Parameter"]), NA_character_)
+    # the model has labels, so the label column describes the row
+    .desc <- "BSV correlation between eta.ka and tcl"
+    expect_identical(unname(fit$parFixedDf[.cor, "Parameter"]), .desc)
     expect_equal(
       fit$parFixedDf[.cor, "BSV(CV%)"],
       stats::cov2cor(fit$omega)[["eta.ka", "eta.cl"]],
       tolerance = 1e-12
     )
-    expect_identical(fit$parFixed[.cor, "Parameter"], "")
+    expect_identical(fit$parFixed[.cor, "Parameter"], .desc)
+    expect_identical(fit$parFixed[["Parameter"]][1:4], c("Ka", "", "", ""))
     expect_identical(fit$parFixed[.cor, "BSV(CV%)"], "0.0236")
   })
 
@@ -1070,7 +1079,7 @@ nmTest({
     .d$occ <- ifelse(.d$TIME < 6, 1L, 2L)
     .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "", iovMethod = "omega")
     fit <- .nlmixr(.bsvCorIovFit, .d, "focei", control = .ctl)
-    .cor <- "BSV correlation between tcl and tv"
+    .cor <- "bsvcorr(tcl,tv)"
     expect_identical(rownames(fit$parFixedDf), c("tka", "tcl", "tv", "add.sd", "iov.cl", "iov.v", .cor))
     expect_identical(rownames(fit$parFixed), rownames(fit$parFixedDf))
     expect_equal(
@@ -1139,8 +1148,9 @@ nmTest({
     .om <- .ui$omega
     .cor <- stats::cov2cor(.om)
     .r <- .updateParFixedBsvCor(.ui$iniDf, .om, .ui$muRefDataFrame)
+    expect_identical(.r$name, c("bsvcorr(eta.cl,eta.cl2)", "bsvcorr(eta.cl,tv)", "bsvcorr(eta.cl2,tv)"))
     expect_identical(
-      .r$name,
+      .r$label,
       paste0("BSV correlation between ", c("eta.cl and eta.cl2", "eta.cl and tv", "eta.cl2 and tv"))
     )
     expect_equal(
@@ -1166,12 +1176,12 @@ nmTest({
     .popDf <- data.frame(Estimate = c(1, 3.45, 0.7), row.names = c("tcl", "tv", "add.sd"))
     .res <- .updateParFixedAddBsv(.popDf, .ui$iniDf, .om, 3L, .ui$muRefDataFrame, .ui$muRefCurEval)
     .fmt <- .updateParFixedApplySig(.res$popDf, 3L, 0.95, character(), .res$bsvFixedNames)
-    expect_identical(.fmt["BSV correlation between tcl and tv", "BSV(CV%)"], "")
+    expect_identical(.fmt["bsvcorr(tcl,tv)", "BSV(CV%)"], "")
   })
 
   test_that("a fixed covariance is its ini() value over the fit's variances", {
     .ui <- rxode2::rxode2(.bsvCorFix)
-    .cor <- "BSV correlation between tcl and tv"
+    .cor <- "bsvcorr(tcl,tv)"
     # the omega a fit returns for a covariance fixed at zero
     .om <- .bsvCorOmega(c(0.3, 1.7e-11, 1.7e-11, 0.1))
     .ini <- .ui$iniDf
@@ -1225,14 +1235,14 @@ nmTest({
       .ui$muRefCurEval,
       corIniDf = .ui$iniDf
     )
-    expect_identical(rownames(.res$popDf), c("tcl", "tv", "add.sd", "BSV correlation between tcl and tv"))
-    expect_identical(.res$popDf["BSV correlation between tcl and tv", "BSV(CV%)"], 0)
+    expect_identical(rownames(.res$popDf), c("tcl", "tv", "add.sd", "bsvcorr(tcl,tv)"))
+    expect_identical(.res$popDf["bsvcorr(tcl,tv)", "BSV(CV%)"], 0)
   })
 
   test_that("a fit with a theta mu-referenced by two correlated etas reports every pair", {
     .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "")
     fit <- .nlmixr(.bsvCorSharedFit, theo_sd, "focei", control = .ctl)
-    .rows <- paste0("BSV correlation between ", c("eta.cl and eta.cl2", "eta.cl and tv", "eta.cl2 and tv"))
+    .rows <- c("bsvcorr(eta.cl,eta.cl2)", "bsvcorr(eta.cl,tv)", "bsvcorr(eta.cl2,tv)")
     expect_identical(rownames(fit$parFixedDf), c("tcl", "tv", "add.sd", "eta.cl", "eta.cl2", .rows))
     expect_identical(rownames(fit$parFixed), rownames(fit$parFixedDf))
     .cor <- stats::cov2cor(fit$omega)
@@ -1247,7 +1257,7 @@ nmTest({
   test_that("a fit reports the copy of a repeated (same()) block as its own correlation", {
     .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "")
     fit <- .nlmixr(.bsvCorSameFit, theo_sd, "focei", control = .ctl)
-    .rows <- c("BSV correlation between tcl and tv", "BSV correlation between tq and tvp")
+    .rows <- c("bsvcorr(tcl,tv)", "bsvcorr(tq,tvp)")
     expect_identical(rownames(fit$parFixedDf), c("tka", "tcl", "tv", "tq", "tvp", "add.sd", .rows))
     .cor <- stats::cov2cor(fit$omega)
     expect_equal(
@@ -1261,7 +1271,7 @@ nmTest({
   test_that("a saem fit reports its BSV correlation, even one estimated at zero", {
     .ctl <- saemControl(print = 0, nBurn = 1, nEm = 1, nmc = 1, nu = c(1, 1, 1), calcTables = FALSE)
     fit <- .nlmixr(.bsvCorBlockFit, theo_sd, "saem", control = .ctl)
-    .row <- "BSV correlation between tcl and tv"
+    .row <- "bsvcorr(tcl,tv)"
     # two iterations leave the covariance at exactly zero; saem's ui, rebuilt
     # from that omega, has no row for it, so the row comes from iniDf0
     expect_identical(fit$omega[["eta.cl", "eta.v"]], 0)
@@ -1277,7 +1287,7 @@ nmTest({
   test_that("the BSV correlation is printed to the fit's sigdigTable", {
     .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "", sigdigTable = 5)
     fit <- .nlmixr(.bsvCorBlockFit, theo_sd, "focei", control = .ctl)
-    .row <- "BSV correlation between tcl and tv"
+    .row <- "bsvcorr(tcl,tv)"
     expect_equal(fit$control$sigdigTable, 5)
     expect_identical(fit$parFixed[.row, "BSV(CV%)"], "0.28868")
     expect_identical(fit$parFixed["tcl", "BSV(CV%)"], "59.149")

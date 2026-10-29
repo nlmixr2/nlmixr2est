@@ -455,7 +455,8 @@
 ##'        are listed on the back-transformed parameter space.
 ##'      \item Proportional Errors are converted to %CV on the untransformed space
 ##'      \item Each estimated between-subject covariance adds a final row,
-##'        \code{BSV correlation between A and B}, with the correlation in the BSV column;
+##'        \code{bsvcorr(A,B)}, with the correlation in the BSV column (described as
+##'        \code{BSV correlation between A and B} in the label column of a model with labels);
 ##'        \code{fix()} there marks a fixed covariance, whose correlation still moves with
 ##'        estimated variances
 ##'    }
