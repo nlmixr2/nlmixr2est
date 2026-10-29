@@ -52,7 +52,15 @@ you supply single subject event tables (created with
   distribution (a Gaussian copula of the simulations), conditional on its
   measured observations and truncated to its censoring interval; `"omit"`
   gives censored observations no NPDE and leaves them out of the
-  decorrelation.}
+  decorrelation.
+
+  The NPDE that `"omit"` keeps are not expected to be N(0,1) under
+  censoring, even for a true model: only the quantified observations are
+  kept, which are the high ones, while the simulations they are compared
+  with are not censored.  Their mean drifts upward as more is censored.
+  This holds for any NPDE restricted to the uncensored rows; to check a
+  model's fit with censored data, use a method that keeps the censored
+  rows, such as `"truncated-normal"`.}
 
 \item{seed}{an object specifying if and how the random number
 generator should be initialized}
