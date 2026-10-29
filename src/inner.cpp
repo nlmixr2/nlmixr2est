@@ -2652,7 +2652,8 @@ arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0,
 // FOCE (interaction==0): R must enter the inner likelihood at the eta=0
 // population prediction, held constant (the truncated Sheiner-Beal gradient
 // drops dR/deta, so eta-dependent R destabilizes the optimizer).  Solve the
-// inner model at eta=0 and read rx_r_ (lhs[neta+1]) per obs into rPop in the
+// inner model at eta=0 and read rx_r_ (lhs[predOffset+neta+1]; the linCmt()
+// carry's covariate copies can precede rx_pred_) per obs into rPop in the
 // likInner0 observation k-order.  Call BEFORE the inner solve (this overwrites
 // ind->solve; the inner solve re-establishes it).
 
@@ -2705,7 +2706,7 @@ static void getPopR(int id, arma::vec &rPop) {
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
       rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
-      rPop(k) = lhs[op_focei.neta + 1]; // inner-model rx_r_ at eta=0
+      rPop(k) = lhs[op_focei.predOffset + op_focei.neta + 1]; // inner-model rx_r_ at eta=0
       k++;
       if (k >= nObsMax) break;
     }
