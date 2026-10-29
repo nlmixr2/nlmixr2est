@@ -10,12 +10,33 @@
   return(.df)
 }
 
+#' A fit's `$parFixedDf` theta rows with broom's column names
+#'
+#' The table also has rows that are not thetas (a non-mu-referenced eta's
+#' variability, an IOV fit's occasion variability); those are not fixed
+#' effects and have no estimate to give an interval.
+#'
+#' @param x nlmixr2 fit
+#' @return data.frame of the theta rows, in the table's order; an error when
+#'   the table has rows but none is a theta of the model
+#' @noRd
+.broomParFixedDf <- function(x) {
+  .df <- x$parFixedDf
+  .ini <- x$ui$iniDf
+  .theta <- rownames(.df) %in% .ini$name[!is.na(.ini$ntheta)]
+  # every model has a theta, so a table without one is not this fit's
+  if (nrow(.df) > 0L && !any(.theta)) {
+    stop("no row of $parFixedDf is a theta of the fit's model", call. = FALSE)
+  }
+  .fixNames(.df[.theta, , drop = FALSE])
+}
+
 ##' @export
 confint.nlmixr2FitCore <- function(object, parm, level = 0.95, ...) {
   .extra <- list(...)
   .exponentiate <- ifelse(any(names(.extra) == "exponentiate"), .extra$exponentiate, FALSE)
   .ciNames <- ifelse(any(names(.extra) == "ciNames"), .extra$ciNames, TRUE)
-  .df <- .fixNames(object$parFixedDf)
+  .df <- .broomParFixedDf(object)
   if (!missing(parm)) {
     .df <- .df[parm, ]
   }
@@ -63,7 +84,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   if (.quick) {
     warning("quick does not do anything for nlmixr2 fit objects")
   }
-  .df <- .fixNames(x$parFixedDf)
+  .df <- .broomParFixedDf(x)
   .exp <- abs(exp(.df$model.est) - .df$estimate) < 1e-6
   if (is.na(.exponentiate)) {
     ## se(exp(x)) ~= exp(mu_x)*se_x
@@ -95,7 +116,9 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   if (!.shrink) {
     .df <- .df[, names(.df) != "shrink"]
   }
-  .ini <- x$ui$iniDf$err[!is.na(x$ui$iniDf$ntheta)]
+  .ini <- x$ui$iniDf
+  # a residual-error theta is a random-effect parameter
+  .err <- .ini$err[match(row.names(.df), .ini$name)]
   ## effect   group   term            estimate std.error statistic
   .df <- data.frame(
     effect = "fixed",
@@ -104,12 +127,10 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     stringsAsFactors = FALSE
   )
   if (!.ranpar) {
-    .df <- .df[is.na(x$ui$iniDf$err[!is.na(x$ui$iniDf$ntheta)]), ]
+    .df <- .df[is.na(.err), ]
   } else {
-    .tmp <- x$ui$iniDf$err[!is.na(x$ui$iniDf$ntheta)]
-    .df <- .df[!is.na(.tmp), ]
-    .tmp <- .tmp[!is.na(.tmp)]
-    .df$group <- paste0("Residual(", .tmp, ")")
+    .df <- .df[!is.na(.err), ]
+    .df$group <- paste0("Residual(", .err[!is.na(.err)], ")")
     .df$effect <- "ran_pars"
   }
   tibble::as_tibble(.df)
@@ -209,7 +230,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   .muRef <- x$ui$muRefDataFrame
   .curEval <- x$ui$muRefCurEval
   .theta <- x$theta
-  .df <- .fixNames(x$parFixedDf)
+  .df <- .broomParFixedDf(x)
   if (is.na(exponentiate)) {
     .exp <- abs(exp(.df$model.est) - .df$estimate) < 1e-6
   } else if (exponentiate) {
