@@ -62,7 +62,7 @@
     }
   }
   .rxFoceiLinCmtCarryCheckCap(.pairs)
-  .pairs
+  .rxFoceiLinCmtCarryTagCovs(.pairs, x[[1]])
 }
 
 #' Is the carry switched on for this build (capability, control, interpolation)?

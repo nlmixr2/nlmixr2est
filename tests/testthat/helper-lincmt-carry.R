@@ -175,7 +175,12 @@
 .carryJumpFd <- function(mod, pars, ev, carry = "auto", interp = "nocb") {
   ui <- suppressMessages(nlmixr2est::nlmixr2(mod))
   u <- rxode2::.copyUi(ui)
-  assign("control", nlmixr2est::foceiControl(linCmtSensCarry = carry), envir = u)
+  # the carry reads the interval's covariates the way the solve interpolates them
+  .ctl <- nlmixr2est::foceiControl(
+    linCmtSensCarry = carry,
+    rxControl = rxode2::rxControl(covsInterpolation = interp)
+  )
+  assign("control", .ctl, envir = u)
   txt <- suppressMessages(u$foceiEnv)$..inner
   m <- suppressWarnings(rxode2::rxode2(txt))
   slv <- function(q) {
