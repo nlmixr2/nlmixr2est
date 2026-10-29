@@ -81,9 +81,10 @@
   of occasion: on theo_md with IOV on `cl` and the occasion stepping at
   144 h, the objective at the initial estimates was 487.3129 against the
   ODE model's 473.1587, and `setCov(fit, "imp")` installed the repaired
-  `"|imp|"`.  They are now equal, under either `iovMethod`.  With more
-  occasions than the carry has room for, the last occasion etas keep the
-  standard gradient, with a message.
+  `"|imp|"`.  They now agree to the solver's tolerance (to 1e-7 at
+  `atol = rtol = 1e-10`; 473.1498 against 473.1587 at the defaults), under
+  either `iovMethod`.  With more occasions than the carry has room for,
+  the last occasion etas keep the standard gradient, with a message.
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
