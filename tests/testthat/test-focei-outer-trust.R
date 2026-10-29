@@ -260,10 +260,13 @@ test_that("outerTrustHessian = \"fd\" records the points the optimizer asked for
   .ph <- .fit$parHistData
   .nObj <- sum(.ph$type == "Unscaled")
   .nGrad <- sum(.ph$type %in% c("Gill83 Gradient", "Forward Difference", "Central Difference", "Mixed Gradient"))
-  # every recorded objective is the optimizer's own and is followed by its
-  # gradient; the probes (n per Hessian, plus the re-settle) were recorded too
+  # every recorded objective is the optimizer's own; the probes (n per Hessian,
+  # plus the re-settle) were recorded too.  Lazy curvature evaluates value-only
+  # at a trial that cannot be accepted, so such a point has no gradient record;
+  # every point trust can accept still gets one.
   expect_gt(.nObj, 1L)
-  expect_equal(.nObj, .nGrad)
+  expect_gte(.nObj, .nGrad)
+  expect_gt(.nGrad, 1L)
 })
 
 test_that("the trust driver hands its control through to the region and curvature", {
