@@ -1437,6 +1437,10 @@
         }
       }
 
+      if (isTRUE(ef$canVanish) && .foceiAnalyticPredVanish(e, thVals, ebes, ids, data)) {
+        return(.foceiAnalyticFallback("proportional error near a zero prediction"))
+      }
+
       # Full natural-scale observed-information R (theta + sigma + Omega), summed over
       # subjects.  startedEnv=e flags `.analyticStarted` before the augmented solve so
       # the C++ hook skips its finite-difference fallback if the assembly then fails.
@@ -1534,6 +1538,48 @@
     },
     error = .foceiAnalyticErrWarn(1L)
   )
+}
+
+#' Whether a subject's prediction nearly vanishes, from the fit's own pred-only solve
+#'
+#' The augmented solves make the same check, but only after compiling and solving
+#' the augmented model; this one plain solve declines first (#1217).
+#' @param e covariance-step environment
+#' @param thVals the thetas, in `THETA[i]` order
+#' @param ebes the EBEs, one row per subject in `ids` order
+#' @param ids subject codes of `ebes`
+#' @param data the fit's event data (`dataSav`)
+#' @return `TRUE` when some subject's smallest |prediction| is below 1e-6 of its
+#'   largest; `FALSE` when none is or the check cannot run
+#' @noRd
+.foceiAnalyticPredVanish <- function(e, thVals, ebes, ids, data) {
+  .m <- get0("model", envir = e, inherits = FALSE)$predOnly
+  if (is.null(.m)) {
+    return(FALSE)
+  }
+  .p <- matrix(
+    rep(unname(thVals), each = length(ids)),
+    nrow = length(ids),
+    dimnames = list(NULL, paste0("THETA[", seq_along(thVals), "]"))
+  )
+  .p <- cbind(.p, ebes)
+  # the solve replaces the fit's global solve; the C++ hook restores it on a decline
+  assign(".analyticStarted", TRUE, envir = e)
+  .s <- tryCatch(
+    rxode2::rxSolve(.m, params = .p, events = data, returnType = "data.frame", addDosing = FALSE),
+    error = function(err) NULL
+  )
+  if (!is.data.frame(.s) || is.null(.s$rx_pred_)) {
+    return(FALSE)
+  }
+  .id <- if (is.null(.s$id)) rep(1L, nrow(.s)) else .s$id
+  any(vapply(
+    split(abs(.s$rx_pred_), .id),
+    function(f) {
+      any(!is.finite(f)) || min(f) < 1e-6 * max(f)
+    },
+    logical(1)
+  ))
 }
 
 #' Is the rxode2 symbolic-sensitivity machinery available (scope gate)?

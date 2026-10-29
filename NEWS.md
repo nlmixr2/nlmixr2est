@@ -27,6 +27,11 @@
 
 ### Covariance
 
+- `covMethod = "analytic"` with pure proportional error now declines a model whose
+  prediction nearly vanishes (e.g. a transit chain before absorption) from one
+  prediction solve, before building the augmented sensitivity model; it used to
+  spend minutes compiling and solving that model only to fall back (#1217).
+
 - When `covFull = TRUE` installed the full covariance over a different native
   theta-only choice, `fit$env$covTried` and the fallback warning still described
   the native choice (e.g. `"r,s" not usable (sandwich doubtful); installed "s"`
