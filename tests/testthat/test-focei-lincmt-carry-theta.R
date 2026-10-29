@@ -98,7 +98,7 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   expect_true(all(errCnls[1:2] < 1e-6))
 
   # locf, midpoint and linear read the covariate over each interval
-  for (.i in c("locf", "midpoint", "linear")) {
+  for (.i in .carryInterps(c("locf", "midpoint", "linear"))) {
     expect_true(all(fdErr(buildTxt(modTheta, "auto", interp = .i), .i) < 1e-6), label = .i)
     expect_true(all(fdErr(buildTxt(modTheta, "auto", "nls", .i), .i)[1:2] < 1e-6), label = paste("nls", .i))
   }

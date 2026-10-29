@@ -27,9 +27,12 @@
   "the linCmt() carry's end-record fallback for an rxode2 without interval covariates",
   "(rxode2 PR 1517): remove R/foceiLinCmtCarryInterval.R and its calls in",
   ".rxFoceiLinCmtCarryAliasCovs() and .rxFoceiLinCmtCarryCovInterval()",
-  "(R/foceiLinCmtCarryCompose.R), .carryTwinInterps() (helper-lincmt-carry.R), the",
-  "probe's skips in test-focei-lincmt-carry-fit.R and its check in",
-  "test-focei-lincmt-carry-emit.R, and this block"
+  "(R/foceiLinCmtCarryCompose.R); the linear refusal, .rxFoceiLinCmtCarryLinearRefused()",
+  "and .rxFoceiLinCmtCarryLinearRefuse() (R/foceiLinCmtCarryEligible.R), with their calls",
+  "in R/focei.R and .rxFoceiLinCmtCarryBuildEnabled(); .carryTwinInterps() and",
+  ".carryInterps() (helper-lincmt-carry.R); the probe's skips in test-focei-lincmt-carry-fit.R,",
+  "test-focei-lincmt-carry-fit-fallback.R and test-focei-lincmt-carry-emit-fd.R and its",
+  "check in test-focei-lincmt-carry-emit.R; and this block"
 )
 
 test_that("the work-around warning is given only for a release after the development version", {

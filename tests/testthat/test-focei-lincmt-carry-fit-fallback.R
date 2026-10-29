@@ -67,9 +67,26 @@ test_that("evid=2 rows fall back to the standard gradient with a runInfo note", 
 
 # linCmt() holds each interval at the covariate's midpoint value, so under
 # linear the fit is carried like the other interpolations
+test_that("without interval covariates a varying covariate under linear stops, as on main", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  skip_if(.rxFoceiLinCmtIntervalCovs(), "rxode2 advances linCmt() with the interval's covariates")
+  d <- .carryFitDat(2L)
+  d$dv <- ifelse(d$evid == 0, 3, 0)
+  expect_error(
+    suppressWarnings(suppressMessages(
+      nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = .carryCtlLinear("auto"))
+    )),
+    "'linear' cannot be represented by the linCmt() solution",
+    fixed = TRUE
+  )
+})
+
 test_that("a varying covariate under linear interpolation is carried", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # an rxode2 without interval covariates refuses it (the test above)
+  skip_if_not(.rxFoceiLinCmtIntervalCovs(), "rxode2 advances linCmt() with the end record's covariates")
   d <- .carryFitDat(2L)
   d$dv <- ifelse(d$evid == 0, 3, 0)
   fit <- suppressWarnings(suppressMessages(

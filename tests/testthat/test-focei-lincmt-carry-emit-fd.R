@@ -107,7 +107,7 @@ test_that("each interpolation's carry matches FD where records carry no covariat
     `ETA[1]` = 0.3
   )
   for (.kind in c("infusion", "addl", "na", "every")) {
-    for (.i in c("nocb", "locf", "midpoint", "linear")) {
+    for (.i in .carryInterps(c("nocb", "locf", "midpoint", "linear"))) {
       .r <- suppressWarnings(.carryJumpFd(.carryModCov, .pars, .carryMidEv(.kind), interp = .i))
       expect_lt(max(.r$err), 1e-6, label = paste(.kind, .i))
     }
@@ -119,6 +119,8 @@ test_that("each interpolation's carry matches FD where records carry no covariat
 # interval at
 test_that("a declared linear() covariate's carry matches FD under the global locf", {
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # the interval value linCmt() holds needs an rxode2 that advances with it
+  skip_if_not(.rxFoceiLinCmtIntervalCovs(), "rxode2 advances linCmt() with the end record's covariates")
   .pars <- c(
     `THETA[1]` = log(2),
     `THETA[2]` = log(20),

@@ -255,3 +255,11 @@
 .carryTwinInterps <- function(interps = c("locf", "midpoint", "nocb")) {
   if (.rxFoceiLinCmtIntervalCovs()) interps else intersect(interps, "nocb")
 }
+
+# The control interpolations the carry follows: "linear" too with an rxode2
+# that advances an interval with its own covariates; without one the carry is
+# off under "linear", as on main.  Remove with test-dependency-workarounds.R's
+# interval-covariate block.
+.carryInterps <- function(interps) {
+  if (.rxFoceiLinCmtIntervalCovs()) interps else setdiff(interps, "linear")
+}
