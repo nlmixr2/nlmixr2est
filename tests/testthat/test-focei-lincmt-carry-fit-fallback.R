@@ -76,7 +76,8 @@ test_that("a varying covariate under linear interpolation is carried", {
     nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = .carryCtlLinear("auto"))
   ))
   expect_true(grepl("rx_lcCarry", .carryInnerTxt(fit)))
-  expect_true(grepl("rx_lcCovI_wt_", .carryInnerTxt(fit)))
+  # the interval value only with an rxode2 that advances with it
+  expect_identical(grepl("rx_lcCovI_wt_", .carryInnerTxt(fit)), .rxFoceiLinCmtIntervalCovs())
   fitN <- suppressWarnings(suppressMessages(
     nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = .carryCtlLinear("none"))
   ))
