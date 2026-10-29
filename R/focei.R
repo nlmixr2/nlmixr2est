@@ -2388,11 +2388,14 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #'
 #' The augmented outer-gradient model does not carry the AR(1) lines, whose
 #' lagged residual would also need its own sensitivity chain.
+#' `rxode2::rxHasAr()` also finds an `ar()` whose correlation is not an
+#' `ar` row of `$iniDf`: a modeled correlation, or a fixed one by the time
+#' FOCEi sees the ui.
 #' @param ui rxode2 ui
 #' @return logical
 #' @noRd
 .foceiUsesAr <- function(ui) {
-  isTRUE(any(ui$iniDf$err %in% "ar"))
+  isTRUE(rxode2::rxHasAr(ui))
 }
 
 #' Add the second-order eta expansion ([.foceiAddHdEta2]) to an inner-model symengine env
