@@ -27,6 +27,12 @@
 
 ### Covariance
 
+- A FOCEi covariance that a vae or vi fit could not compute or install is now
+  recorded in `fit$env$covTried`, under the method tried and with the condition
+  message whole, also when `.covInstall()` rejected the matrix; the warning gives
+  the first line of the message, clipped to 74 columns.  The vi fallback adds its
+  rows through the same helper.
+
 - `covMethod = "analytic"` now keeps the analytic covariance when a record that
   is not an observation (an EVID 2 record, or an EVID 0 record with a missing DV
   or `MDV = 1`) shares the time of one of a subject's observations; it used to
