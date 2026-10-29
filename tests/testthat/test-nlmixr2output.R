@@ -149,6 +149,46 @@ nmTest({
     dimnames(.d) <- list(.nm, .nm)
     expect_equal(.varCorrOmega(.d), data.frame(Variance = c(0.1, 0.2), StdDev = sqrt(c(0.1, 0.2)), row.names = .nm))
   })
+
+  test_that("a non-mu-referenced eta's row has an empty label in $parFixed, not <NA>", {
+    .popDf <- data.frame(
+      Parameter = c("Ka", "", NA),
+      Estimate = c(0.45, 0.7, NA),
+      `BSV(CV%)` = c(NA, NA, 90.7),
+      row.names = c("tka", "add.sd", "eta.ka"),
+      check.names = FALSE
+    )
+    .fmt <- .updateParFixedApplySig(.popDf, 3L, 0.95, character())
+    expect_identical(.fmt[["Parameter"]], c("Ka", "", ""))
+    expect_identical(.fmt[["Est."]], c("0.450", "0.700", ""))
+    expect_identical(.fmt[["BSV(CV%)"]], c("", "", "90.7"))
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        label("Ka")
+        tcl <- 1
+        label("Cl")
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka) * exp(eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "")
+    fit <- .nlmixr(.mod, theo_sd, est = "focei", control = .ctl)
+    expect_identical(rownames(fit$parFixed), c("tka", "tcl", "tv", "add.sd", "eta.ka"))
+    expect_identical(fit$parFixed[["Parameter"]], c("Ka", "Cl", "", "", ""))
+    # the numeric table keeps NA for the missing label
+    expect_identical(unname(fit$parFixedDf["eta.ka", "Parameter"]), NA_character_)
+    expect_false(any(grepl("<NA>", utils::capture.output(print(fit$parFixed)), fixed = TRUE)))
+  })
 })
 
 test_that("formatMinWidth", {
