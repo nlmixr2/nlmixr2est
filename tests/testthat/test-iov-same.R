@@ -651,3 +651,82 @@ test_that("three parameters over three occasions repeat correctly", {
     7L
   )
 })
+
+test_that("a repeated occasion-level block stops before the fit, naming its etas", {
+  skip_on_cran()
+  .msg <- "same() is not supported for an occasion-level block: "
+  .one <- .sameMod(
+    "iov.cl ~ 0.1 | occ\n iov.v ~ same() | occ",
+    "cl <- exp(tcl + iov.cl)\n v <- exp(tv + iov.v)"
+  )
+  # every method that handles IOV, saem's own handling included, whether or
+  # not it honours a repeated subject-level block
+  for (.est in c("focei", "saem", "imp", "laplace", "agq", "npag", "vae")) {
+    .e <- expect_error(nlmixr2(.one, .sameData(), .est, control = list(print = 0)), label = .est)
+    expect_identical(conditionMessage(.e), paste0(.msg, "'iov.v' | occ"), label = .est)
+  }
+  .e <- expect_error(nlmixr2(.one, .sameData(), "saem", control = saemControl(print = 0, iovMethod = "theta")))
+  expect_identical(conditionMessage(.e), paste0(.msg, "'iov.v' | occ"))
+  # a repeated 2x2 block names both etas
+  .two <- .sameMod(
+    "iov.cl + iov.v ~ c(0.1, 0.01, 0.1) | occ\n iov.ka + iov.q ~ same() | occ",
+    "ka <- exp(tka + eta.ka + iov.ka)\n cl <- exp(tcl + iov.cl)\n v <- exp(tv + iov.v + iov.q)"
+  )
+  .e <- expect_error(nlmixr2(.two, .sameData(), "focei", control = list(print = 0)))
+  expect_identical(conditionMessage(.e), paste0(.msg, "'iov.ka', 'iov.q' | occ"))
+  # one group per occasion column
+  .lvl <- .sameMod(
+    "iov.cl ~ 0.1 | occ\n iov.v ~ same() | occ\n iov.ka ~ 0.1 | visit\n iov.q ~ same() | visit",
+    "ka <- exp(tka + eta.ka + iov.ka)\n cl <- exp(tcl + iov.cl)\n v <- exp(tv + iov.v + iov.q)"
+  )
+  .e <- expect_error(.iovSameRefuse(rxode2::rxode2(.lvl()), "focei"))
+  expect_identical(conditionMessage(.e), paste0(.msg, "'iov.v' | occ; 'iov.q' | visit"))
+})
+
+# the nlmixr2Est methods that handle IOV: an "iov" attribute that is not FALSE
+.iovSameHandlers <- function() {
+  .m <- sub("^nlmixr2Est[.]", "", as.character(utils::methods("nlmixr2Est")))
+  Filter(.iovSameHandles, setdiff(.m, "default"))
+}
+
+.iovSameHandles <- function(est) {
+  .iov <- attr(utils::getS3method("nlmixr2Est", est, optional = TRUE), "iov")
+  !is.null(.iov) && !isFALSE(.iov)
+}
+
+test_that("every method that handles IOV refuses a repeated occasion-level block", {
+  skip_on_cran()
+  .ui <- rxode2::rxode2(.sameMod("iov.cl ~ 0.1 | occ\n iov.v ~ same() | occ", "cl <- exp(tcl + iov.cl)\n v <- exp(tv + iov.v)"))
+  .ests <- .iovSameHandlers()
+  # the fitting families, the variational and the nonparametric methods are all in
+  expect_true(all(c("focei", "saem", "imp", "laplace", "agq", "npag", "vae", "emvi", "fbvi") %in% .ests))
+  for (.est in .ests) {
+    .e <- expect_error(.iovSameRefuse(.ui, .est), label = .est)
+    expect_identical(
+      conditionMessage(.e),
+      "same() is not supported for an occasion-level block: 'iov.v' | occ",
+      label = .est
+    )
+  }
+  # a method that takes no IOV is not asked
+  expect_null(.iovSameRefuse(.ui, "nlme"))
+  expect_null(.iovSameRefuse(.ui, "rxSolve"))
+})
+
+test_that("the same() refusal leaves id-level blocks and simulation alone", {
+  skip_on_cran()
+  # eta.v repeats eta.cl at the subject level, beside an occasion eta
+  .id <- .sameMod(
+    "eta.cl ~ 0.3\n eta.v ~ same()\n iov.cl ~ 0.1 | occ",
+    "cl <- exp(tcl + eta.cl + iov.cl)\n v <- exp(tv + eta.v)"
+  )
+  expect_null(.iovSameRefuse(rxode2::rxode2(.id()), "focei"))
+  # rxSolve simulates the occasion block itself
+  .one <- .sameMod(
+    "iov.cl ~ 0.1 | occ\n iov.v ~ same() | occ",
+    "cl <- exp(tcl + iov.cl)\n v <- exp(tv + iov.v)"
+  )
+  expect_null(.iovSameRefuse(rxode2::rxode2(.one()), "rxSolve"))
+  .s <- suppressMessages(nlmixr2(.one, .sameData(), "rxSolve"))
+  expect_equal(nrow(as.data.frame(.s)), sum(.sameData()$EVID == 0))
+})
