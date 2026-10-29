@@ -97,7 +97,6 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
 #' @noRd
 #' @author Matthew L. Fidler
 .addNpdeIovRefit <- function(fit, table) {
-  .iovRefitAssertConsistent(fit, "addNpde()")
   # the refit's CWRES would be discarded
   table$cwres <- FALSE
   .newFit <- .refitNoIterations(fit, calcTables = TRUE, table = table)
@@ -110,30 +109,6 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   # a table that asks for doses the fit's table lacks gives the refit more rows
   .df <- as.data.frame(.newFit)
   .df[.npdeObsRows(.df, .newFit$idLvl), .cols, drop = FALSE]
-}
-
-#' Stop when a refit can't give an IOV fit's tables
-#'
-#' A saem fit with `iovMethod = "collapsed"` computed its tables on the
-#' collapsed model it fitted (an eta per occasion, in a compound-symmetric
-#' block), which a focei refit does not rebuild: the refit's NPDE comes from
-#' another model's simulation, and its table has eta columns the fit's lacks.
-#'
-#' @param fit nlmixr2 fit with IOV
-#' @param what the calling function, for the message
-#' @return `NULL`, invisibly; called for its error
-#' @noRd
-#' @author Matthew L. Fidler
-.iovRefitAssertConsistent <- function(fit, what) {
-  if (identical(fit$env$iovNative, "collapsed")) {
-    stop(
-      what,
-      " can't recompute the tables of a saem fit with iovMethod = \"collapsed\"; ",
-      "ask for them when fitting (`table = tableControl()`, `calcTables = TRUE`)",
-      call. = FALSE
-    )
-  }
-  invisible(NULL)
 }
 
 #' NPDE columns with one row per row of the fit

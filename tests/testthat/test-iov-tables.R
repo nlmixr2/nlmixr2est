@@ -1,6 +1,6 @@
-# The tables of a finished fit with inter-occasion variability.  Its thetas,
-# etas and data are the user's model's, so addNpde() and addTable() refit it
-# with no iterations at its etas; their columns must be the fit's own.
+# The tables of a finished fit with inter-occasion variability.  addNpde()
+# and addTable() refit it with no iterations at its etas (a saem collapsed
+# fit, the collapsed model it estimated); their columns must be the fit's own.
 
 # The fits shared by the tests below, each made once per run
 .iovTablesCache <- new.env(parent = emptyenv())
@@ -147,19 +147,34 @@ nmTest({
     }
   })
 
-  test_that("saem's collapsed IOV: addNpde() and addTable() refuse to refit", {
-    # its tables are those of the collapsed model it fitted, which the focei
-    # refit does not rebuild
-    .fit <- .iovTablesFit("saem-coll", "saem", control = list(iovMethod = "collapsed"), model = .iovFitMuMod)
-    expect_identical(.fit$env$iovNative, "collapsed")
-    .why <- paste0(
-      " can't recompute the tables of a saem fit with iovMethod = \"collapsed\"; ",
-      "ask for them when fitting (`table = tableControl()`, `calcTables = TRUE`)"
+  test_that("saem's collapsed IOV: addNpde(), addTable() and addCwres() give the fit's columns", {
+    # its tables are those of the collapsed model it fitted, which the refit
+    # solves again at the fit's collapsed etas
+    .ctl <- list(iovMethod = "collapsed")
+    .fit <- .iovTablesFit("saem-coll", "saem", control = .ctl, model = .iovFitMuMod)
+    .with <- .iovTablesFit(
+      "saem-coll-npde",
+      "saem",
+      control = .ctl,
+      model = .iovFitMuMod,
+      table = tableControl(npde = TRUE)
     )
-    .e <- expect_error(suppressMessages(addNpde(.fit, updateObject = FALSE)))
-    expect_identical(conditionMessage(.e), paste0("addNpde()", .why))
-    .e <- expect_error(suppressMessages(addTable(.fit, updateObject = FALSE)))
-    expect_identical(conditionMessage(.e), paste0("addTable()", .why))
+    expect_identical(.fit$env$iovNative, "collapsed")
+    expect_identical(colnames(.fit$env$iovCollapsedRefit$etaMat), c("eta.v", "rx.eta.cl.1", "rx.eta.cl.2"))
+    expect_identical(setdiff(names(.with), names(.fit)), .iovTablesNpdeCols)
+    .new <- suppressMessages(addNpde(.fit, updateObject = FALSE))
+    expect_setequal(names(.new), names(.with))
+    for (.c in .iovTablesNpdeCols) {
+      expect_equal(.new[[.c]], .with[[.c]], tolerance = 1e-10, label = .c)
+    }
+    .t <- suppressMessages(addTable(.fit, updateObject = FALSE))
+    expect_identical(names(.t), names(.fit))
+    for (.c in names(Filter(is.numeric, as.data.frame(.fit)))) {
+      expect_equal(.t[[.c]], .fit[[.c]], tolerance = 1e-10, label = .c)
+    }
+    .cw <- suppressMessages(addCwres(.fit, updateObject = FALSE))
+    expect_identical(setdiff(names(.cw), names(.fit)), c("WRES", "CPRED", "CRES", "CWRES"))
+    expect_true(all(is.finite(.cw$CWRES)))
   })
 
   test_that("addTable() on an IOV fit started from an etaMat refits at the fit's etas", {
