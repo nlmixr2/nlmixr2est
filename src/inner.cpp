@@ -251,6 +251,55 @@ extern "C" {
   iniLbfgsb3
 #define iniRxodePtrs _nlmixr2est_iniRxodePtrs
   iniRxode2ptr
+
+  nmSetIndNewind_t nmSetIndNewind = NULL;
+
+  // The entry points of rxode2Optional.h: the label .rxode2Optional() reports
+  // it by, its slot in rxode2's pointer table and that slot's name there
+  // (names(rxode2::.rxode2ptrs())), and the pointer it is loaded into
+  typedef struct {
+    const char *label;
+    int slot;
+    const char *name;
+    DL_FUNC *fn;
+  } rxode2OptionalSlot;
+
+  static rxode2OptionalSlot rxode2OptionalSlots[] = {
+    // remove with test-dependency-workarounds.R's slot-104 block
+    {"setIndNewind", 104, "rxode2setIndNewind", (DL_FUNC *) &nmSetIndNewind},
+  };
+  static const int rxode2OptionalN =
+    (int)(sizeof(rxode2OptionalSlots) / sizeof(rxode2OptionalSlots[0]));
+
+  // Loads each one the table `p` (rxode2::.rxode2ptrs()) has: a slot past the
+  // end of an older rxode2's table, or holding another name, leaves it NULL
+  SEXP _nlmixr2est_iniRxode2Optional(SEXP p) {
+    SEXP nm = Rf_getAttrib(p, R_NamesSymbol);
+    R_xlen_t n = TYPEOF(p) == VECSXP ? Rf_xlength(p) : 0;
+    for (int i = 0; i < rxode2OptionalN; ++i) {
+      rxode2OptionalSlot *s = &rxode2OptionalSlots[i];
+      *(s->fn) = NULL;
+      if (s->slot >= n || TYPEOF(nm) != STRSXP || Rf_xlength(nm) != n) continue;
+      if (strcmp(CHAR(STRING_ELT(nm, s->slot)), s->name) != 0) continue;
+      SEXP e = VECTOR_ELT(p, s->slot);
+      if (TYPEOF(e) != EXTPTRSXP) continue;
+      *(s->fn) = R_ExternalPtrAddrFn(e);
+    }
+    return R_NilValue;
+  }
+
+  // Which of them the installed rxode2 has, as a named logical vector
+  SEXP _nlmixr2est_rxode2Optional(void) {
+    SEXP ret = PROTECT(Rf_allocVector(LGLSXP, rxode2OptionalN));
+    SEXP nms = PROTECT(Rf_allocVector(STRSXP, rxode2OptionalN));
+    for (int i = 0; i < rxode2OptionalN; ++i) {
+      LOGICAL(ret)[i] = *(rxode2OptionalSlots[i].fn) != NULL;
+      SET_STRING_ELT(nms, i, Rf_mkChar(rxode2OptionalSlots[i].label));
+    }
+    Rf_setAttrib(ret, R_NamesSymbol, nms);
+    UNPROTECT(2);
+    return ret;
+  }
 #define iniN1qn1cPtrs _nlmixr2est_iniN1qn1cPtrs
   iniN1qn1c
 #define iniRcppTrustPtrs _nlmixr2est_iniRcppTrustPtrs
