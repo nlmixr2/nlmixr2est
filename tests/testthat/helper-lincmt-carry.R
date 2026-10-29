@@ -246,3 +246,12 @@
   }
   .ev
 }
+
+# The interpolations under which a carried linCmt() fit equals its ODE twin:
+# all of `interps` with an rxode2 that advances an interval with its own
+# covariates, else nocb alone, the one an older rxode2's linCmt() and ODEs
+# share.  Remove with test-dependency-workarounds.R's interval-covariate
+# block.
+.carryTwinInterps <- function(interps = c("locf", "midpoint", "nocb")) {
+  if (.rxFoceiLinCmtIntervalCovs()) interps else intersect(interps, "nocb")
+}
