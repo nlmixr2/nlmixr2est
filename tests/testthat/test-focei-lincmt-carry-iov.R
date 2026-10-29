@@ -166,6 +166,9 @@ test_that("occasion etas sharing a slot with eta.cl and wt match FD", {
 test_that("a carried linCmt() IOV fit equals its ODE twin in both IOV expansions", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # an occasion is a time-varying covariate, which only an rxode2 that advances
+  # an interval with its own covariates solves as the ODE twin does
+  skip_if_not(.rxFoceiLinCmtIntervalCovs(), "rxode2 advances linCmt() with the end record's covariates")
   .d <- .carryIovDat()
   for (.m in c("theta", "omega")) {
     # etas held at 0 (the occasion etas' g still steps at 144 h) and estimated
@@ -184,6 +187,9 @@ test_that("a carried linCmt() IOV fit equals its ODE twin in both IOV expansions
 test_that("occasions and a time-varying covariate in one slot fit as the ODE twin", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # an occasion is a time-varying covariate, which only an rxode2 that advances
+  # an interval with its own covariates solves as the ODE twin does
+  skip_if_not(.rxFoceiLinCmtIntervalCovs(), "rxode2 advances linCmt() with the end record's covariates")
   .d <- .carryIovDat()
   for (.i in c("locf", "nocb")) {
     .lin <- .carryIovFit(.carryIovWtLin, .d, interp = .i)
@@ -206,6 +212,9 @@ test_that("occasions and a time-varying covariate in one slot fit as the ODE twi
 test_that("occasion etas inside a larger product of cl's slot fit as the ODE twin", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # an occasion is a time-varying covariate, which only an rxode2 that advances
+  # an interval with its own covariates solves as the ODE twin does
+  skip_if_not(.rxFoceiLinCmtIntervalCovs(), "rxode2 advances linCmt() with the end record's covariates")
   .d <- .carryIovDat()
   for (.nm in names(.carryIovForms)) {
     .lin <- .carryIovFit(suppressMessages(do.call(rxode2::model, list(.carryIovLin, .carryIovForms[[.nm]]))), .d)
@@ -236,6 +245,9 @@ test_that("occasion etas inside a larger product of cl's slot fit as the ODE twi
 test_that("an eta added to a covariate's exponent fits as the ODE twin", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # an occasion is a time-varying covariate, which only an rxode2 that advances
+  # an interval with its own covariates solves as the ODE twin does
+  skip_if_not(.rxFoceiLinCmtIntervalCovs(), "rxode2 advances linCmt() with the end record's covariates")
   .d <- .carryFitDat(6L)
   .d$dv <- ifelse(.d$evid == 0, 3, 0)
   .ui <- suppressMessages(nlmixr2est::nlmixr2(.carryCovExpMod))
