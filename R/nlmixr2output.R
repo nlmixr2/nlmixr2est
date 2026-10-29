@@ -186,7 +186,125 @@
   )
 }
 
+#' Which parameter-table rows are BSV correlation rows
+#'
+#' They are named `bsvcorr(A,B)`; no theta or eta name has a parenthesis.
+#'
+#' @param rn row names of `$parFixedDf` or `$parFixed`
+#' @return logical, one per row name
+#' @noRd
+.parFixedIsBsvCor <- function(rn) {
+  grepl("^bsvcorr\\(", as.character(rn))
+}
+
+#' The name of each eta in a BSV correlation row
+#'
+#' An eta is named by its theta only when that theta and that eta each have
+#' exactly one `muRefDataFrame` row, the rule `.updateParFixedAddBsv()` uses
+#' for the theta rows; otherwise by its own name.  Two etas can then never
+#' share a name.
+#'
+#' @param eta eta names
+#' @param muRefDataFrame `ui$muRefDataFrame`
+#' @return character vector, one name per eta
+#' @noRd
+.updateParFixedBsvCorLabel <- function(eta, muRefDataFrame) {
+  .theta <- as.character(muRefDataFrame$theta)
+  .eta <- as.character(muRefDataFrame$eta)
+  .one <- !(.theta %in% .theta[duplicated(.theta)]) & !(.eta %in% .eta[duplicated(.eta)])
+  .lab <- .theta[.one][match(eta, .eta[.one])]
+  ifelse(is.na(.lab), eta, .lab)
+}
+
+#' The `ini` data.frame whose covariances are reported as BSV correlations
+#'
+#' The model as estimated (`iniDf0`) when the fit carries it: a method whose
+#' ui was rebuilt from its estimated omega has lost any covariance estimated
+#' at exactly zero, as `lotri` drops zero off-diagonals.
+#'
+#' @param ret fit environment
+#' @param ui the ui `.updateParFixed()` reports
+#' @return data.frame
+#' @noRd
+.updateParFixedBsvCorIni <- function(ret, ui) {
+  # `ret$iniDf0` would dispatch to nmObjGet; iniDf0 can also be a compressed ui
+  .ini0 <- get0("iniDf0", envir = ret, inherits = FALSE)
+  if (is.data.frame(.ini0)) {
+    return(.ini0)
+  }
+  ui$iniDf
+}
+
+#' The subject-level correlations of a fit's omega, one per estimated covariance
+#'
+#' A pair is reported for every off-diagonal subject-level `ini()` row, even
+#' when its estimate is zero; the zeros between separate blocks have no row.
+#' A fixed covariance is the `ini()` value, so a fixed zero stays zero after
+#' the fit's omega is repaired; the variances are always the fit's.
+#'
+#' @param iniDf the `ini` data.frame whose covariances are reported
+#'   (`.updateParFixedBsvCorIni()`)
+#' @param omega the fit's omega matrix, or the per-level list of an IOV fit
+#' @param muRefDataFrame `ui$muRefDataFrame`, naming the etas
+#'   (`.updateParFixedBsvCorLabel()`)
+#' @param exclude etas left out (the occasion etas of the IOV rewrite)
+#' @return data.frame with the row `name` (`bsvcorr(A,B)`), its `label`
+#'   (`BSV correlation between A and B`), the correlation `cor` (`NA` when an
+#'   eta is absent from `omega` or has no variance) and whether the covariance
+#'   is `fix`ed, ordered by the omega position of the first eta, then of the
+#'   second
+#' @noRd
+.updateParFixedBsvCor <- function(iniDf, omega, muRefDataFrame, exclude = character(0)) {
+  .ret <- data.frame(name = character(0), label = character(0), cor = numeric(0), fix = logical(0))
+  if (is.null(omega) || is.null(iniDf)) {
+    return(.ret)
+  }
+  .etaDf <- as.data.frame(iniDf)
+  .etaDf <- .etaDf[!is.na(.etaDf$neta1), , drop = FALSE]
+  .diag <- .etaDf[.etaDf$neta1 == .etaDf$neta2, , drop = FALSE]
+  .off <- .etaDf[.etaDf$neta1 != .etaDf$neta2, , drop = FALSE]
+  # a repeated (same()) block's condition is "id:same:<master>"
+  .off <- .off[lotri::lotriBaseCondition(.off$condition) %in% "id", , drop = FALSE]
+  .first <- pmin(.off$neta1, .off$neta2)
+  .second <- pmax(.off$neta1, .off$neta2)
+  .a <- .diag$name[match(.first, .diag$neta1)]
+  .b <- .diag$name[match(.second, .diag$neta1)]
+  .keep <- !(.a %in% exclude | .b %in% exclude)
+  if (!any(.keep)) {
+    return(.ret)
+  }
+  .ord <- order(.first[.keep], .second[.keep])
+  .a <- .a[.keep][.ord]
+  .b <- .b[.keep][.ord]
+  .fix <- .off$fix[.keep][.ord] %in% TRUE
+  .cov <- .off$est[.keep][.ord]
+  .om <- .omegaMatrix(omega)
+  .dn <- dimnames(.om)[[1]]
+  .ia <- match(.a, .dn)
+  .ib <- match(.b, .dn)
+  .have <- !is.na(.ia) & !is.na(.ib)
+  .cov[!.fix & .have] <- .om[cbind(.ia, .ib)[!.fix & .have, , drop = FALSE]]
+  .var <- diag(.om)[.ia[.have]] * diag(.om)[.ib[.have]]
+  .cor <- rep(NA_real_, length(.a))
+  .cor[.have] <- .cov[.have] / sqrt(pmax(.var, 0))
+  # an eta without variance has no correlation (x / 0)
+  .cor[!is.finite(.cor)] <- NA_real_
+  .lab <- .updateParFixedBsvCorLabel(c(.a, .b), muRefDataFrame)
+  .n <- length(.a)
+  .labA <- .lab[seq_len(.n)]
+  .labB <- .lab[.n + seq_len(.n)]
+  data.frame(
+    name = paste0("bsvcorr(", .labA, ",", .labB, ")"),
+    label = paste0("BSV correlation between ", .labA, " and ", .labB),
+    cor = .cor,
+    fix = .fix
+  )
+}
+
 #' Add the between-subject variability column to the popDf data.frame (mu-ref and non-mu-ref ETAs)
+#'
+#' The correlation of each estimated covariance is appended as a final row
+#' (`.updateParFixedBsvCor()`), its value in the BSV column.
 #'
 #' @param popDf data.frame of parameter estimates (numeric)
 #' @param iniDf The `ini` data.frame from the rxUi object
@@ -194,11 +312,24 @@
 #' @param .sigdig Number of significant digits for the character representation
 #' @param .muRefDataFrame `.ui$muRefDataFrame`
 #' @param .muRefCurEval `.ui$muRefCurEval`
-#' @returns A list with `popDf` (BSV column and non-mu-referenced ETA rows appended) and
-#'   `bsvFixedNames` (row names whose BSV is fixed)
+#' @param exclude etas whose correlations are not reported
+#' @param corIniDf the `ini` data.frame whose covariances are reported
+#'   (`.updateParFixedBsvCorIni()`)
+#' @returns A list with `popDf` (BSV column and non-mu-referenced ETA and
+#'   correlation rows appended) and `bsvFixedNames` (row names whose BSV is
+#'   fixed)
 #' @author Matthew L. Fidler
 #' @noRd
-.updateParFixedAddBsv <- function(popDf, iniDf, omega, .sigdig, .muRefDataFrame, .muRefCurEval) {
+.updateParFixedAddBsv <- function(
+  popDf,
+  iniDf,
+  omega,
+  .sigdig,
+  .muRefDataFrame,
+  .muRefCurEval,
+  exclude = character(0),
+  corIniDf = iniDf
+) {
   .omegaFix <- as.data.frame(iniDf)
   .omegaFix <- .omegaFix[is.na(.omegaFix$ntheta), ]
   .omegaFix <- setNames(.omegaFix$fix, paste(.omegaFix$name))
@@ -245,6 +376,22 @@
   .w <- which(names(popDf) == "BSD")
   if (length(.w) == 1) {
     names(popDf)[.w] <- ifelse(.env$.sdOnly, "BSV(SD)", ifelse(.env$.cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
+  }
+  .cor <- .updateParFixedBsvCor(corIniDf, omega, .muRefDataFrame, exclude)
+  if (nrow(.cor) > 0L) {
+    # NA rows of popDf's own column types, so a character label column stays
+    # one; unnamed, as a named column would give these rows NA names
+    .corDf <- popDf[rep(NA_integer_, nrow(.cor)), , drop = FALSE]
+    .corDf[] <- lapply(.corDf, unname)
+    row.names(.corDf) <- .cor$name
+    .corDf[[.w]] <- .cor$cor
+    # a model with labels describes the row; without them the name shows alone
+    if ("Parameter" %in% names(.corDf)) {
+      .corDf$Parameter <- .cor$label
+    }
+    popDf <- rbind(popDf, .corDf)
+    # an absent eta's empty cell is not wrapped as "fix()"
+    .env$.bsvFixedNames <- c(.env$.bsvFixedNames, .cor$name[.cor$fix & !is.na(.cor$cor)])
   }
   list(popDf = popDf, bsvFixedNames = .env$.bsvFixedNames)
 }
@@ -599,7 +746,10 @@
       omega = .ret$omega,
       .sigdig = .parFixedDigits,
       .muRefDataFrame = .ui$muRefDataFrame,
-      .muRefCurEval = .ui$muRefCurEval
+      .muRefCurEval = .ui$muRefCurEval,
+      # the IOV rewrite estimates the occasion etas as subject-level ones
+      exclude = if (is.null(.uiIovEnv$ui)) character(0) else .uiIovEnv$iovDrop,
+      corIniDf = .updateParFixedBsvCorIni(.ret, .ui)
     )
     popDf <- .bsv$popDf
     popDf <- .updateParFixedAddShrinkage(popDf, shrink = .ret$shrink, ui = .ui)
@@ -732,6 +882,18 @@
 }
 
 
+#' A fit's omega as one matrix
+#'
+#' @param omega omega matrix, or the per-level list of an IOV fit
+#' @return the matrix; the levels of a list are its diagonal blocks
+#' @noRd
+.omegaMatrix <- function(omega) {
+  if (is.list(omega)) {
+    return(lotri::lotriMat(omega))
+  }
+  omega
+}
+
 #' Variances, standard deviations and correlations of a fit's omega
 #'
 #' @param omega omega matrix, or the per-level list of an IOV fit
@@ -741,9 +903,7 @@
 #'   triangle, as `nlme::VarCorr()` prints it); the other cells are `NA`.
 #' @noRd
 .varCorrOmega <- function(omega) {
-  if (is.list(omega)) {
-    omega <- lotri::lotriMat(omega)
-  }
+  omega <- .omegaMatrix(omega)
   .var <- diag(omega)
   .ret <- data.frame(
     Variance = .var,
