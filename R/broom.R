@@ -17,12 +17,18 @@
 #' effects and have no estimate to give an interval.
 #'
 #' @param x nlmixr2 fit
-#' @return data.frame of the theta rows, in the table's order
+#' @return data.frame of the theta rows, in the table's order; an error when
+#'   the table has rows but none is a theta of the model
 #' @noRd
 .broomParFixedDf <- function(x) {
   .df <- x$parFixedDf
   .ini <- x$ui$iniDf
-  .fixNames(.df[rownames(.df) %in% .ini$name[!is.na(.ini$ntheta)], , drop = FALSE])
+  .theta <- rownames(.df) %in% .ini$name[!is.na(.ini$ntheta)]
+  # every model has a theta, so a table without one is not this fit's
+  if (nrow(.df) > 0L && !any(.theta)) {
+    stop("no row of $parFixedDf is a theta of the fit's model", call. = FALSE)
+  }
+  .fixNames(.df[.theta, , drop = FALSE])
 }
 
 ##' @export

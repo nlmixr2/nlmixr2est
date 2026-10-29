@@ -639,8 +639,8 @@ nmTest({
     expect_identical(rownames(.ci), .all)
     expect_equal(.ci[["2.5 %"]], .lo)
     expect_equal(.ci[["97.5 %"]], .hi)
-    # exponentiate = NA back-transforms the exp() thetas; the eta row's NA used
-    # to stop it ("NAs are not allowed in subscripted assignments")
+    # exponentiate = NA back-transforms the exp() thetas over the theta rows
+    # only; the eta row, with no estimate, is not among them
     .isExp <- c(TRUE, TRUE, TRUE, FALSE)
     .ciE <- confint(fit, exponentiate = NA)
     expect_identical(rownames(.ciE), .all)
@@ -662,5 +662,25 @@ nmTest({
     .fx <- as.data.frame(broom.mixed::tidy(fit, effects = "fixed"))
     expect_identical(.fx$term, c("tka", "tcl", "tv"))
     expect_identical(rownames(confint(fit)), c("tka", "tcl", "tv", "add.sd"))
+  })
+
+  test_that("broom's theta rows come from the model's thetas, and none is an error", {
+    .ui <- rxode2::rxode2(.broomEtaRowMod)
+    .df <- data.frame(
+      Estimate = c(0.45, 0.7, NA),
+      SE = c(0.1, 0.05, NA),
+      row.names = c("tka", "add.sd", "eta.ka")
+    )
+    .got <- .broomParFixedDf(list(parFixedDf = .df, ui = .ui))
+    expect_identical(rownames(.got), c("tka", "add.sd"))
+    expect_identical(names(.got), c("model.est", "std.error"))
+    # a table whose rows name no theta of the model is not a fit's table
+    expect_error(
+      .broomParFixedDf(list(parFixedDf = .df["eta.ka", , drop = FALSE], ui = .ui)),
+      "no row of $parFixedDf is a theta of the fit's model",
+      fixed = TRUE
+    )
+    # an empty table has nothing to report
+    expect_identical(nrow(.broomParFixedDf(list(parFixedDf = .df[0, , drop = FALSE], ui = .ui))), 0L)
   })
 })
