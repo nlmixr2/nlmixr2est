@@ -254,165 +254,11 @@ test_that("each .covWarn() site clips an 80-character label to 74 columns", {
   .w <- capture_warnings(.foceiWarnConditionalCov(.e, list(maxInnerIterations = 0L)))
   expect_identical(.w, paste0("\"", strrep("m", 70), "..."))
   expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
-})
-
-test_that("the long-label test drives every .covWarn() caller", {
-  .ns <- asNamespace("nlmixr2est")
-  .callers <- Filter(
-    function(.f) is.function(.ns[[.f]]) && ".covWarn" %in% all.names(body(.ns[[.f]])),
-    ls(.ns, all.names = TRUE)
-  )
-  # a new caller needs a case above and in the real-label test below
-  expect_setequal(
-    .callers,
-    c(".covInstall", ".covRejectWarn", ".covRepairWarn", ".foceiWarnConditionalCov", ".setCovFd")
-  )
-})
-
-# .covRejectWarn()'s text for `what` rejected for `reason`, with `kept` installed
-# (NA: none)
-.covRejText <- function(what, reason, kept) {
-  .e <- new.env(parent = emptyenv())
-  if (!is.na(kept)) {
-    .e$cov <- diag(2)
-    .e$covMethod <- kept
-  }
-  tryCatch(.covRejectWarn(.e, what, reason), warning = conditionMessage)
-}
-
-# .covNotUsableMsg()'s tails: no covariance, or one of `labels` installed
-.covNotUsableTails <- function(labels) c("no covariance", sprintf("installed \"%s\"", labels))
-
-test_that("every covariance warning stays whole for every real method label", {
-  # slow: the .covRejectWarn() grid has thousands of label combinations
-  skip_on_cran()
-  # the labels the code gives a covariance: the finite-difference ones
-  # (.covFdType()'s decorations), with and without " (full)"; a rejected analytic
-  # install's native "r" label with " (analytic)"; and the other methods
-  .fdBase <- c(
-    "r",
-    "r+",
-    "|r|",
-    "s",
-    "s+",
-    "|s|",
-    as.vector(outer(c("r", "r+", "|r|"), c("s", "s+", "|s|"), paste, sep = ","))
-  )
-  .fd <- c(.fdBase, paste0(.fdBase, " (full)"))
-  .anaKept <- paste0(c("r", "r+", "|r|", "r (full)", "r+ (full)", "|r| (full)"), " (analytic)")
-  .other <- c(
-    "analytic",
-    "analytic (full)",
-    "linFim",
-    "linFim (full)",
-    "|linFim|",
-    "Ha",
-    "|Ha|",
-    "sa",
-    "imp",
-    "|imp|",
-    "nlme",
-    "vi"
-  )
-  .guard <- c("could not be computed", "is not finite", "is not symmetric", "is not positive definite")
-  .by <- list()
-  # .covInstall()'s guard: any label rejected, any one kept (NA: none installed)
-  .g <- expand.grid(
-    what = c(.fd, .other),
-    reason = .guard,
-    kept = c(.fd, .anaKept, .other, NA),
-    stringsAsFactors = FALSE
-  )
-  .by$reject <- c(.by$reject, mapply(.covRejText, .g$what, .g$reason, .g$kept))
-  # the full finite-difference step; the SAEM "Ha" block
-  .g <- expand.grid(
-    what = c("r (full)", "s (full)", "r,s (full)"),
-    reason = "needs a positive-definite R",
-    kept = .fd,
-    stringsAsFactors = FALSE
-  )
-  .by$reject <- c(.by$reject, mapply(.covRejText, .g$what, .g$reason, .g$kept))
-  .g <- expand.grid(
-    what = "Ha",
-    reason = c("has information rows not matching the thetas", "has no estimated mu-referenced theta", .guard),
-    kept = c("linFim", "|linFim|", "linFim (full)", NA),
-    stringsAsFactors = FALSE
-  )
-  .by$reject <- c(.by$reject, mapply(.covRejText, .g$what, .g$reason, .g$kept))
-  # .covInstall(): a label installed instead of the one requested
-  .requests <- c(
-    "r,s",
-    "r",
-    "s",
-    "r,s (full)",
-    "r (full)",
-    "s (full)",
-    "analytic",
-    "analytic (full)",
-    "linFim",
-    "linFim (full)",
-    "sa",
-    "imp",
-    "nlme",
-    "vi",
-    "Ha"
-  )
-  for (.l in c(.fd, .other)) {
-    for (.w in .requests) {
-      .by$install <- c(.by$install, capture_warnings(.covInstall(.fakeFitEnv(), .pdCov(), .l, what = .w)))
-    }
-  }
-  # .setCovFd(): a refit's finite-difference label for the finite-difference request
-  .g <- expand.grid(label = .fd, what = .requests[1:6], stringsAsFactors = FALSE)
-  .by$setCovFd <- c(.by$setCovFd, mapply(.covInsteadMsg, .g$label, .g$what))
-  # the sqrtm repairs of the covariances that are repaired
-  for (.p in list(
-    c("imp", "|imp|"),
-    c("linFim", "|linFim|"),
-    c("sa", "|sa|"),
-    c("Ha", "|Ha|"),
-    c("imp (full)", "|imp| (full)")
-  )) {
-    .by$repair <- c(.by$repair, capture_warnings(.covRepairWarn(.p[1], .p[2])))
-  }
-  # a finite-difference covariance whose ETAs were held
-  for (.l in .fd) {
-    .e <- new.env(parent = emptyenv())
-    .e$etaObf <- 1
-    .e$cov <- diag(2)
-    .e$covMethod <- .l
-    .by$conditional <- c(.by$conditional, capture_warnings(.foceiWarnConditionalCov(.e, list(maxInnerIterations = 0L))))
-  }
-  # .covNotUsableMsg() over the domain .covTriedSummary() reaches from FOCEi's walk
-  # (.covSelectFocei()): its requests, one reason at a time, and its installs.
-  # Several reasons joined by "; " can pass 74 columns and are clipped by design
-  # (covTried has them in full), as is the analytic reason, which
-  # test-covSelect.R pins; the analytic paths' own calls give only that reason.
-  .g <- expand.grid(
-    r = c("r,s", "r", "s", "analytic"),
-    why = c(
-      "R not computed",
-      "R not PD",
-      "R failed",
-      "S not computed",
-      "S not PD",
-      "S failed",
-      "sandwich doubtful",
-      "all variances < 1e-7"
-    ),
-    tail = .covNotUsableTails(.fdBase),
-    stringsAsFactors = FALSE
-  )
-  .by$notUsable <- c(.by$notUsable, mapply(.covNotUsableMsg, .g$r, .g$why, .g$tail))
-  .lines <- unlist(.by, use.names = FALSE)
-  .cut <- unique(.lines[endsWith(.lines, "...") | cli::ansi_nchar(.lines, type = "width") > 74L])
-  expect_identical(.cut, character(0))
-  # the lines from each site, so a change shows which grid moved
-  expect_identical(
-    lengths(.by),
-    c(reject = 8346L, install = 557L, setCovFd = 180L, repair = 5L, conditional = 30L, notUsable = 512L)
-  )
-  expect_identical(length(.lines), 9630L)
+  # a long condition message of the FOCEi covariance a vae or vi fit tries; it
+  # names no label, so the real-label test has no case for it
+  .w <- capture_warnings(.foceiOwnEtaCovFail(new.env(parent = emptyenv()), "r,s", "computed", simpleError(.long)))
+  expect_identical(.w, paste0("FOCEi covariance not computed (", strrep("m", 40), "..."))
+  expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
 })
 
 test_that(".covInstall() says when what it installed is not what was asked for", {
@@ -800,22 +646,78 @@ test_that("a vae or vi FOCEi covariance that fails leaves the fit without one, w
     .foceiRecomputeCov = function(...) stop("no solve"),
     .package = "nlmixr2est"
   )
-  expect_warning(
-    .r <- .foceiInstallOwnEtaCov(.e, foceiControl()),
-    "FOCEi covariance not computed (no solve)",
-    fixed = TRUE
+  expect_identical(
+    .covSite(".foceiOwnEtaCovFail", capture_warnings(.r <- .foceiInstallOwnEtaCov(.e, foceiControl()))),
+    "FOCEi covariance not computed (no solve)"
   )
   expect_false(.r)
+  # the covariance the control asked for is the method tried
+  expect_identical(.covMethodFromSlot(foceiControl()$covMethod, foceiControl()$covType), "r,s")
+  expect_identical(.e$covTried, data.frame(method = "r,s", outcome = "not computed (no solve)"))
   local_mocked_bindings(
     .foceiRecomputeCov = function(...) list(cov = diag(2), covMethod = "r", what = "r", extras = list()),
     .covInstall = function(...) stop("no table"),
     .package = "nlmixr2est"
   )
-  expect_warning(
-    .r <- .foceiInstallOwnEtaCov(.e, foceiControl()),
-    "FOCEi covariance not installed (no table)",
-    fixed = TRUE
+  expect_identical(
+    capture_warnings(.r <- .foceiInstallOwnEtaCov(.e, foceiControl())),
+    "FOCEi covariance not installed (no table)"
   )
   expect_false(.r)
   expect_false(exists("cov", envir = .e, inherits = FALSE))
+  expect_identical(
+    .e$covTried,
+    data.frame(method = c("r,s", "r"), outcome = c("not computed (no solve)", "not installed (no table)"))
+  )
+})
+
+test_that("a FOCEi covariance that .covInstall() rejects is in covTried too", {
+  .e <- new.env(parent = emptyenv())
+  local_mocked_bindings(
+    .setCovEnv = function(fit) .e,
+    .foceiRecomputeCov = function(...) {
+      list(cov = matrix(c(1, 2, 2, 1), 2), covMethod = "r", what = "r,s", extras = list())
+    },
+    .package = "nlmixr2est"
+  )
+  expect_identical(
+    capture_warnings(.r <- .foceiInstallOwnEtaCov(.e, foceiControl())),
+    "\"r,s\" is not positive definite; none installed"
+  )
+  expect_false(.r)
+  expect_identical(.e$covTried, data.frame(method = "r,s", outcome = "not installed (is not positive definite)"))
+  # a second failure joins the first
+  .e$covTried <- data.frame(method = "analytic", outcome = "not usable")
+  suppressWarnings(.foceiInstallOwnEtaCov(.e, foceiControl()))
+  expect_identical(
+    .e$covTried,
+    data.frame(
+      method = c("analytic", "r,s"),
+      outcome = c("not usable", "not installed (is not positive definite)")
+    )
+  )
+})
+
+test_that("a long or multi-line FOCEi covariance failure is clipped in the warning, whole in covTried", {
+  .e <- new.env(parent = emptyenv())
+  .msg <- paste0("first line\n  ", strrep("m", 80))
+  .one <- paste0("first line ", strrep("m", 80))
+  local_mocked_bindings(
+    .setCovEnv = function(fit) .e,
+    .foceiRecomputeCov = function(...) stop(.msg),
+    .package = "nlmixr2est"
+  )
+  .w <- capture_warnings(.foceiInstallOwnEtaCov(.e, foceiControl()))
+  expect_identical(.w, paste0("FOCEi covariance not computed (first line ", strrep("m", 29), "..."))
+  expect_identical(cli::ansi_nchar(.w, type = "width"), .covWarnWidth)
+  expect_identical(.e$covTried, data.frame(method = "r,s", outcome = paste0("not computed (", .one, ")")))
+  local_mocked_bindings(
+    .foceiRecomputeCov = function(...) list(cov = diag(2), covMethod = "r", what = "r", extras = list()),
+    .covInstall = function(...) stop(.msg),
+    .package = "nlmixr2est"
+  )
+  .w <- capture_warnings(.foceiInstallOwnEtaCov(.e, foceiControl()))
+  expect_identical(.w, paste0("FOCEi covariance not installed (first line ", strrep("m", 28), "..."))
+  expect_identical(cli::ansi_nchar(.w, type = "width"), .covWarnWidth)
+  expect_identical(.e$covTried$outcome[2L], paste0("not installed (", .one, ")"))
 })

@@ -340,15 +340,10 @@
     ) {
       message("covMethod=\"", .control$covMethod, "\" covariance was not available; using the variational covariance")
       .adviInstallVarCov(.fit, res)
-      .tried <- if (is.data.frame(.e$covTried)) {
-        .e$covTried
-      } else {
-        data.frame(method = .control$covMethod, outcome = "not usable")
+      if (!is.data.frame(.e$covTried)) {
+        .covTriedNote(.e, .control$covMethod, "not usable")
       }
-      .e$covTried <- rbind(
-        .tried,
-        data.frame(method = "vi", outcome = if (identical(.e$covMethod, "vi")) "used" else "not usable")
-      )
+      .covTriedNote(.e, "vi", if (identical(.e$covMethod, "vi")) "used" else "not usable")
     }
   }
   .e$viState <- .st

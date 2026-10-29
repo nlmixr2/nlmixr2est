@@ -92,7 +92,10 @@ test_that("an indefinite full R installs s (full), not a PD-looking sandwich (#1
   # native theta-only pieces must not survive beside the full cov
   .e$covR <- matrix(1)
   .e$covRS <- matrix(2)
-  expect_warning(.foceiInstallFdFullCov(.e), "using s (full)", fixed = TRUE)
+  expect_identical(
+    capture_warnings(.foceiInstallFdFullCov(.e)),
+    "\"r,s (full)\" needs a positive-definite R; using \"s (full)\""
+  )
   expect_identical(.e$covMethod, "s (full)")
   expect_equal(unname(.e$cov), unname(solve(.S)))
   expect_false(exists("covR", envir = .e, inherits = FALSE))

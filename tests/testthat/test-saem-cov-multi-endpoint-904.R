@@ -94,6 +94,19 @@ nmTest({
       attr(suppressWarnings(calc.COV(.s)), "varCov")
     }
     .vcJoint <- .getVarCov(.fJoint)
+    # a residual parameter whose endpoint cannot be placed drops the whole variance
+    # block, with one warning line
+    .sJoint <- .fJoint$saem
+    attr(.sJoint, "env") <- .fJoint$env
+    .wDrop <- .covSite(
+      "calc.COV",
+      with_mocked_bindings(
+        capture_warnings(.cmDrop <- calc.COV(.sJoint)),
+        .saemResEndpointIdx = function(...) NA_integer_
+      )
+    )
+    expect_true("covFull variance block dropped; residual parameter endpoint unknown" %in% .wDrop)
+    expect_null(attr(.cmDrop, "varCov"))
     .vcCp <- .getVarCov(.fCp)
     .vcBio <- .getVarCov(.fBio)
 

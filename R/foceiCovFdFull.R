@@ -100,7 +100,7 @@
   } # no S computed -> keep native
   # an indefinite R is not a minimum; fall back to S like the native step does (#1152)
   if (.type == "r,s" && !.full$r$ok && .full$s$ok) {
-    warning("full R matrix non-positive definite; using s (full)", call. = FALSE)
+    .covWarn(sprintf("\"%s\" needs a positive-definite R; using \"%s\"", .covFullName("r,s"), .covFullName("s")))
     .type <- "s"
   }
   # the native theta-only pieces, cached so setCov() can swap to that shape without

@@ -176,15 +176,20 @@ nmTest({
     # bound.  A posthoc fit never scales its bounds, so the covariance step
     # compares tcl with them as they are.
     .m <- .mod |> rxode2::ini(tcl = c(1.0999, 1.1, 5))
-    .f <- suppressMessages(suppressWarnings(nlmixr(
-      .m,
-      theo_sd,
-      "focei",
-      control = foceiControl(print = 0, calcTables = FALSE, maxOuterIterations = 0L)
-    )))
+    .f <- .covSite(
+      ".covBoundaryWarn",
+      suppressMessages(suppressWarnings(nlmixr(
+        .m,
+        theo_sd,
+        "focei",
+        control = foceiControl(print = 0, calcTables = FALSE, maxOuterIterations = 0L)
+      )))
+    )
     expect_equal(fixef(.f)[["tcl"]], 1.1)
     expect_match(.f$covMethod, "^Boundary issue")
     expect_match(.f$covMethod, "\"tcl\"")
+    # one line in $runInfo; covMethod names every theta
+    expect_true("\"tcl\" near boundary; covariance not calculated" %in% .f$runInfo)
   })
 
   .agqObjf <- function(scaleC) {
