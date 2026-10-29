@@ -48,8 +48,9 @@
 #   interval's parameters at the covariates' values at the interval's
 #   middle, so a linear covariate ramp is approximated by its midpoint
 #   value and the fit differs slightly from the ODE model by design.  The
-#   carry differentiates that solution: the midpoint value is the mean of
-#   the covariate at the interval's two records.
+#   carry differentiates that solution: the midpoint value is the covariate
+#   interpolated at the interval's middle between the two records that
+#   carry it, by their times.
 # - Jump channels need every dose to enter the modified compartment, and
 #   an alag() or covariate-driven f() channel a bolus-only regimen (checked
 #   against the data in .foceiFamilyReturn); modeled rate()/dur() are not

@@ -114,8 +114,9 @@ test_that("each interpolation's carry matches FD where records carry no covariat
   }
 })
 
-# under linear the carry reads the mean of the covariate at the interval's
-# two records, which is the midpoint value linCmt() holds the interval at
+# under linear the carry reads the covariate interpolated at the interval's
+# middle between the two records that carry it, the value linCmt() holds the
+# interval at
 test_that("a declared linear() covariate's carry matches FD under the global locf", {
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   .pars <- c(

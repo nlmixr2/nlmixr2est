@@ -53,6 +53,18 @@ test_that("evid=2 rows fall back to the standard gradient with a runInfo note", 
   expect_false(grepl("rx_lcCarry", .carryInnerTxt(fit)))
 })
 
+# focei at the initial estimates under linear, the carry on or off
+.carryCtlLinear <- function(carry) {
+  nlmixr2est::foceiControl(
+    print = 0,
+    maxOuterIterations = 0L,
+    covMethod = "",
+    calcTables = FALSE,
+    linCmtSensCarry = carry,
+    rxControl = rxode2::rxControl(covsInterpolation = "linear")
+  )
+}
+
 # linCmt() holds each interval at the covariate's midpoint value, so under
 # linear the fit is carried like the other interpolations
 test_that("a varying covariate under linear interpolation is carried", {
@@ -60,23 +72,13 @@ test_that("a varying covariate under linear interpolation is carried", {
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   d <- .carryFitDat(2L)
   d$dv <- ifelse(d$evid == 0, 3, 0)
-  .ctlLin <- function(carry) {
-    nlmixr2est::foceiControl(
-      print = 0,
-      maxOuterIterations = 0L,
-      covMethod = "",
-      calcTables = FALSE,
-      linCmtSensCarry = carry,
-      rxControl = rxode2::rxControl(covsInterpolation = "linear")
-    )
-  }
   fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = .ctlLin("auto"))
+    nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = .carryCtlLinear("auto"))
   ))
   expect_true(grepl("rx_lcCarry", .carryInnerTxt(fit)))
   expect_true(grepl("rx_lcCovI_wt_", .carryInnerTxt(fit)))
   fitN <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = .ctlLin("none"))
+    nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = .carryCtlLinear("none"))
   ))
   expect_false(grepl("rx_lcCarry", .carryInnerTxt(fitN)))
   # the carried and the naive gradients give different objectives on varying wt
