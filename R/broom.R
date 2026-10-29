@@ -223,9 +223,10 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   if (is.list(.omegaR)) {
     .omegaR <- .omegaR$id
   }
-  .d <- dim(.omegaR)
-  if (.d[1] == 0) {
-    return(NULL)
+  # a fit without subject-level etas (omegaR NULL or 0 x 0) has no
+  # coefficients: the same columns, no rows
+  if (NROW(.omegaR) == 0L) {
+    return(tibble::tibble(group = character(0), level = factor(), term = factor(), estimate = numeric(0)))
   }
   .muRef <- x$ui$muRefDataFrame
   .curEval <- x$ui$muRefCurEval
@@ -270,7 +271,8 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
       return(eta)
     })
   )
-  .tmp <- stack(.x[, -1])
+  # one eta is one column, which must stay a data.frame for stack()
+  .tmp <- stack(.x[, -1, drop = FALSE])
   .df <- data.frame(group = "ID", level = .x$ID, term = .tmp$ind, estimate = .tmp$values)
   return(tibble::as_tibble(.df))
 }

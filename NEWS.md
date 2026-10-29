@@ -203,6 +203,12 @@
   before it in the data (the next subject, when it was the first) with CWRES,
   CRES and CPRED computed from another subject's etas (or none), since
   nlmixr2est 2.1.0.  Each row now takes its own subject's.
+
+- `tidy(effects = "ran_coef")` now works for a fit with one subject-level eta
+  (such as an IOV fit whose only subject eta is on one parameter), which
+  stopped with "invalid 'times' value", and gives an empty table with the
+  same columns for a fit without subject-level etas, which stopped with
+  "argument is of length zero".  Both happened whatever `exponentiate` was.
 - A finite-difference gradient or Hessian no longer takes a slope of 0 where
   its differences do not solve.
   - When the steps on one side of a parameter never solve, the step search

@@ -655,6 +655,73 @@ nmTest({
     expect_equal(.fxC$conf.high, .hi[1:3])
   })
 
+  test_that("tidy(effects = 'ran_coef') works with one subject-level eta, and none", {
+    skip_if_not_installed("broom.mixed")
+    .oneEta <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.cl ~ 0.3
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "")
+    # an IOV fit's only subject-level eta is eta.v; a plain fit's is eta.cl
+    .fits <- list(
+      list(
+        fit = .iovFit("focei", control = list(maxOuterIterations = 0, calcTables = FALSE)),
+        eta = "eta.v",
+        theta = "tv"
+      ),
+      list(fit = .nlmixr(.oneEta, theo_sd, est = "focei", control = .ctl), eta = "eta.cl", theta = "tcl")
+    )
+    for (.f in .fits) {
+      .mu <- .f$fit$eta[[.f$eta]] + unname(.f$fit$theta[.f$theta])
+      for (.e in list(FALSE, NA, TRUE)) {
+        .td <- as.data.frame(broom.mixed::tidy(.f$fit, effects = "ran_coef", exponentiate = .e))
+        .label <- paste(.f$eta, .e)
+        expect_identical(.td$group, rep("ID", length(.mu)), label = .label)
+        expect_identical(.td$level, .f$fit$eta$ID, label = .label)
+        expect_identical(as.character(.td$term), rep(.f$theta, length(.mu)), label = .label)
+        # the theta is exp() back-transformed, so NA exponentiates it too
+        expect_equal(.td$estimate, if (isFALSE(.e)) .mu else exp(.mu), label = .label)
+      }
+    }
+    # without subject-level etas: the columns of a ran_coef table, no rows
+    .noEta <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fn <- .nlmixr(.noEta, theo_sd, est = "focei", control = .ctl)
+    for (.e in list(FALSE, NA, TRUE)) {
+      .td <- broom.mixed::tidy(.fn, effects = "ran_coef", exponentiate = .e)
+      expect_s3_class(.td, "tbl_df")
+      expect_identical(nrow(.td), 0L)
+      expect_identical(names(.td), c("effect", "group", "level", "term", "estimate"))
+      expect_identical(
+        vapply(.td, function(.c) class(.c)[1], character(1), USE.NAMES = FALSE),
+        c("character", "character", "factor", "factor", "numeric")
+      )
+    }
+  })
+
   test_that("tidy() and confint() leave out an IOV fit's occasion variability row", {
     skip_if_not_installed("broom.mixed")
     fit <- .iovFit("focei", control = list(maxOuterIterations = 0, calcTables = FALSE))
