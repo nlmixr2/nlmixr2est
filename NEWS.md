@@ -267,6 +267,14 @@
   covariate interpolation and record order, and its population curve sets
   every eta, of every level, to zero.
 
+- A model whose only random effects are occasion ones (`iov.cl ~ 0.1 | occ`
+  with no subject-level eta) now fits with `focei`, `foce`, `saem`,
+  `laplace`, `agq`, `imp` and `npag` (`focei` and `foce` in either IOV
+  expansion).  It used to stop with "missing value where TRUE/FALSE needed"
+  or "arguments imply differing number of rows": the IOV rewrite copied its
+  template rows from an eta that was not there, and its output step lost the
+  shape of tables left with one column.
+
 ### Documentation
 
 - `?augPred` says that its curves for a `linCmt()` model with
