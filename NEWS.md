@@ -167,6 +167,11 @@
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
 
+- Building the `saem` model text from a compressed ui, as
+  `rxUiGet.saemModel()` is called with one, no longer stops with
+  `invalid 'envir' argument`; the censoring outputs of a general-likelihood
+  fit are only looked for on the fit's own ui environment.
+
 ### NPDE
 
 - NPDE of censored observations now draws each censored value from the
