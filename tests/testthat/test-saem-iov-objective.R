@@ -1,7 +1,9 @@
 # A saem fit's objective is computed after the fit (saemControl(logLik =
 # FALSE)), by Gaussian quadrature on the kernel's event matrix.  For an IOV fit
 # the occasion column is a covariate only of the IOV-rewritten model, so that
-# matrix has to be the fit's own, not one rebuilt from the data.
+# matrix has to be the fit's own, not one rebuilt from the data.  The IOV
+# model is an ODE model: the occasion steps within a subject, and how
+# linCmt() reads a covariate over an interval depends on the rxode2 version.
 .saemIovObjMod <- function() {
   ini({
     tka <- 0.45
@@ -15,7 +17,10 @@
     ka <- exp(tka)
     cl <- exp(tcl + iov.cl)
     v <- exp(tv + eta.v)
-    linCmt() ~ add(add.sd)
+    d / dt(depot) <- -ka * depot
+    d / dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
   })
 }
 
@@ -56,7 +61,7 @@ nmTest({
       .r <- .saemIovObj(.saemIovObjMod, .m)
       expect_identical(.r$ofvType, "gauss3_1.6", label = .m)
       expect_false(.r$fellBack, label = .m)
-      expect_equal(.r$objf, 204.62237, tolerance = 1e-6, label = .m)
+      expect_equal(.r$objf, 202.787325, tolerance = 1e-6, label = .m)
     }
     # a fit without IOV is unchanged
     .r <- .saemIovObj(.saemNoIovObjMod)
