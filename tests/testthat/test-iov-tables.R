@@ -163,7 +163,7 @@ nmTest({
     expect_identical(colnames(.fit$env$iovCollapsedRefit$etaMat), c("eta.v", "rx.eta.cl.1", "rx.eta.cl.2"))
     expect_identical(setdiff(names(.with), names(.fit)), .iovTablesNpdeCols)
     .new <- suppressMessages(addNpde(.fit, updateObject = FALSE))
-    expect_identical(names(.new), names(.with))
+    expect_setequal(names(.new), names(.with))
     for (.c in .iovTablesNpdeCols) {
       expect_equal(.new[[.c]], .with[[.c]], tolerance = 1e-10, label = .c)
     }

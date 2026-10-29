@@ -182,7 +182,7 @@ attr(nmObjGetData.addCwres, "desc") <- "Add CWRES to object if needed"
     if (length(.w) > 0L) {
       .cls <- class(.ret)
       class(.ret) <- "data.frame"
-      .ret <- .ret[, -.w]
+      .ret <- .ret[, -.w, drop = FALSE]
       class(.ret) <- .cls
     }
   }
