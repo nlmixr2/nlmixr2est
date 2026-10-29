@@ -247,6 +247,8 @@ nmTest({
         "nls has 0 residual degrees of freedom, no residual variance; covariance step failed" %in% .fit$runInfo,
         info = .alg
       )
+      # the failed step is the only thing said about the covariance
+      expect_false(any(grepl("proper form", .fit$runInfo, fixed = TRUE)), info = .alg)
     }
   })
 
