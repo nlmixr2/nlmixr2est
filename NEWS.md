@@ -239,6 +239,10 @@
   stores (`eventType` 2 and 3, the Hessian types 1 and 3) are accepted as
   before.
 
+- A fixed eta that estimation leaves out, such as `eta.v ~ fix(0)`, no longer
+  prints `fix()` in the BSV column of `$parFixed` when the model also has a
+  fixed theta; the cell is empty, as it is without one.
+
 ### Inter-occasion variability
 
 - A fit with inter-occasion variability keeps its `omega` as the nested

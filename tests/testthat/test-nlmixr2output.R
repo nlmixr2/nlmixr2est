@@ -98,6 +98,67 @@ nmTest({
     expect_equal(fmt[["BSV(CV%)"]], c("", "59.1", "32.4", ""))
   })
 
+  test_that("a fixed eta the fit's omega leaves out has an empty BSV cell, not fix()", {
+    .modFixTheta <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- fix(1)
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ fix(0)
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(.modFixTheta)
+    .popDf <- data.frame(Estimate = c(0.45, 1, 3.45, 0.7), row.names = c("tka", "tcl", "tv", "add.sd"))
+    .n2 <- c("eta.ka", "eta.cl")
+    .om2 <- matrix(c(0.6, 0, 0, 0.3), 2, 2, dimnames = list(.n2, .n2))
+    .res <- .updateParFixedAddBsv(.popDf, .ui$iniDf, .om2, 3L, .ui$muRefDataFrame, .ui$muRefCurEval)
+    expect_identical(.res$bsvFixedNames, character(0))
+    .fmt <- .updateParFixedApplySig(.res$popDf, 3L, 0.95, character(), .res$bsvFixedNames)
+    expect_identical(.fmt[["BSV(CV%)"]], c("90.7", "59.1", "", ""))
+    # an omega that has the fixed eta keeps its fix()
+    .n3 <- c("eta.ka", "eta.cl", "eta.v")
+    .om3 <- matrix(c(0.6, 0, 0, 0, 0.3, 0, 0, 0, 0.1), 3, 3, dimnames = list(.n3, .n3))
+    .res <- .updateParFixedAddBsv(.popDf, .ui$iniDf, .om3, 3L, .ui$muRefDataFrame, .ui$muRefCurEval)
+    expect_identical(.res$bsvFixedNames, "tv")
+    .fmt <- .updateParFixedApplySig(.res$popDf, 3L, 0.95, character(), .res$bsvFixedNames)
+    expect_identical(.fmt[["BSV(CV%)"]], c("90.7", "59.1", "fix(32.4)", ""))
+    # through a fit: the zero variance is dropped before estimation.  The fixed
+    # theta makes the table report the model before the literal fix, which still
+    # has eta.v; the cell must read as it does without a fixed theta.
+    .modFreeTheta <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ fix(0)
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "")
+    for (.mod in list(.modFixTheta, .modFreeTheta)) {
+      fit <- .nlmixr(.mod, theo_sd, est = "focei", control = .ctl)
+      expect_identical(fit$parFixed[["BSV(CV%)"]], c("90.7", "59.1", "", ""))
+      expect_identical(unname(fit$parFixedDf["tv", "BSV(CV%)"]), NA_real_)
+    }
+  })
+
   test_that("VarCorr() reports the omega correlations of a non-nlme fit (issue 1140)", {
     one.compartment.block <- function() {
       ini({
