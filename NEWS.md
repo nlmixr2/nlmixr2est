@@ -5644,6 +5644,15 @@
 
 ### Output, tables, and printing
 
+- `est="saem"` with an estimated covariate effect on a time-varying covariate
+  inside a mu-referenced expression (for example `expit(bvm + beta_F60*F60 +
+  eta.bv)` with `F60` changing within a subject) now names its thetas
+  correctly.  The estimates were right, but the theta table, `fixef()`,
+  `$parFixedDf` and the parameter history put the names in the wrong order,
+  so values (including `fix()`ed ones) appeared under other parameters' names
+  and anything later computed from the named values, such as
+  `setOfv(fit, "focei")`, used the wrong ones.
+
 - `vpcSimExpand()` no longer merges the entire observed dataset into the
   simulation when a requested `extra` column is missing: a dropped filter
   result meant an unknown column (e.g. a misspelled `stratify` in
