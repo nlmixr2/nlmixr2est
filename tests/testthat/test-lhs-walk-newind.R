@@ -56,8 +56,29 @@
   expect_equal(.new$IPRED, .flag$IPRED, tolerance = 1e-8, label = label)
 }
 
+test_that(".rxode2Optional() reports setIndNewind from rxode2's pointer table", {
+  .p <- rxode2::.rxode2ptrs()
+  .has <- length(.p) > 104L && names(.p)[105L] == "rxode2setIndNewind"
+  expect_identical(.rxode2Optional(), c(setIndNewind = .has))
+  on.exit(.Call(`_nlmixr2est_iniRxode2Optional`, .p, PACKAGE = "nlmixr2est"), add = TRUE)
+  # a table that ends before slot 104, or names another entry there, loads none
+  .Call(`_nlmixr2est_iniRxode2Optional`, .p[1:99], PACKAGE = "nlmixr2est")
+  expect_identical(.rxode2Optional(), c(setIndNewind = FALSE))
+  if (.has) {
+    .q <- .p
+    names(.q)[105L] <- "rxode2other"
+    .Call(`_nlmixr2est_iniRxode2Optional`, .q, PACKAGE = "nlmixr2est")
+    expect_identical(.rxode2Optional(), c(setIndNewind = FALSE))
+    .Call(`_nlmixr2est_iniRxode2Optional`, .p, PACKAGE = "nlmixr2est")
+    expect_identical(.rxode2Optional(), c(setIndNewind = TRUE))
+  }
+})
+
 nmTest({
   test_that("a model reading newind fits as one reading the first-record flag", {
+    # rxode2's setIndNewind() (slot 104) sets the newind the walks give; the
+    # skip goes with test-dependency-workarounds.R's slot-104 block
+    skip_if_not(.rxode2Optional()[["setIndNewind"]], "the installed rxode2 has no setIndNewind()")
     .ests <- list(
       list("focei", foceiControl(print = 0, covMethod = "", maxOuterIterations = 2L), "focei"),
       list("foce", foceControl(print = 0, covMethod = "", maxOuterIterations = 2L), "foce"),
