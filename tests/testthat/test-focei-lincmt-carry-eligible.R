@@ -85,6 +85,7 @@ test_that("eta on a parameter without the covariate: not eligible", {
 })
 
 test_that("non-separable (eta inside the exponent) biases to false", {
+  # d(cl)/d(eta) / cl = 0.75 exp(eta) log(wt / 70) still reads the eta
   .nonSep <- function() {
     ini({
       tcl <- log(0.1)
@@ -93,7 +94,7 @@ test_that("non-separable (eta inside the exponent) biases to false", {
       add.sd <- 0.5
     })
     model({
-      cl <- exp(tcl) * (wt / 70)^(0.75 + eta.cl)
+      cl <- exp(tcl) * (wt / 70)^(0.75 * exp(eta.cl))
       v <- exp(tv)
       cp <- linCmt()
       cp ~ add(add.sd)
@@ -231,4 +232,58 @@ test_that("an occasion eta alone on its slot is dropped", {
   }
   .p <- suppressMessages(suppressWarnings(.foceiLinCmtCarryPairs(.iov)))
   expect_identical(.p$etaName, "eta.cl")
+})
+
+# cl's slot written as the IOV rewrite leaves it, for the forms that put the
+# occasion etas inside a larger product
+.carryOccSlotMod <- function() {
+  ini({
+    tcl <- 1
+    tv <- 3
+    iovsd <- 0.2
+    add.sd <- 0.5
+    eta.cl ~ 0.1
+    eta.o1 ~ 0.1
+    eta.o2 ~ 0.1
+  })
+  model({
+    cl <- exp(tcl + eta.cl + iovsd * (eta.o1 * (occ == 1) + eta.o2 * (occ == 2)))
+    v <- exp(tv)
+    cp <- linCmt()
+    cp ~ add(add.sd)
+  })
+}
+
+.carryOccSlotForms <- list(
+  quote(cl <- exp(tcl + eta.cl + iovsd * (eta.o1 * (occ == 1) + eta.o2 * (occ == 2))) * (wt / 70)^0.75),
+  quote(cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl + iovsd * (eta.o1 * (occ == 1) + eta.o2 * (occ == 2)))),
+  quote(cl <- exp(tcl + eta.cl + iovsd * (eta.o1 * (occ == 1) + eta.o2 * (occ == 2))) * wt / 70),
+  quote(cl <- tcl * (1 + 0.01 * (wt - 70)) * exp(eta.cl + iovsd * (eta.o1 * (occ == 1) + eta.o2 * (occ == 2)))),
+  quote(cl <- exp(tcl + eta.cl + iovsd * (eta.o1 * (occ == 1) + eta.o2 * (occ == 2))) * 2)
+)
+
+test_that("occasion etas inside a larger product of their slot are multCov pairs", {
+  for (.f in .carryOccSlotForms) {
+    .ui <- suppressWarnings(suppressMessages(do.call(rxode2::model, list(.carryOccSlotMod, .f))))
+    .p <- suppressMessages(suppressWarnings(.foceiLinCmtCarryPairs(.ui)))
+    .lab <- deparse1(.f)
+    expect_identical(.p$etaName, c("eta.cl", "eta.o1", "eta.o2"), label = .lab)
+    expect_identical(.p$shape, c("mult", "multCov", "multCov"), label = .lab)
+  }
+  # an occasion eta whose d(slot)/d(eta) / slot still reads it is dropped
+  .ui <- suppressWarnings(suppressMessages(do.call(
+    rxode2::model,
+    list(
+      .carryOccSlotMod,
+      quote(cl <- exp(tcl + eta.cl + iovsd * (eta.o1^2 * (occ == 1) + eta.o2 * (occ == 2))) * wt / 70)
+    )
+  )))
+  .p <- suppressMessages(suppressWarnings(.foceiLinCmtCarryPairs(.ui)))
+  expect_identical(.p$etaName, c("eta.cl", "eta.o2"))
+})
+
+test_that("an eta added to a covariate's exponent is a multCov pair", {
+  .p <- suppressMessages(.foceiLinCmtCarryPairs(.carryCovExpMod))
+  expect_identical(.p$etaName, "eta.cl")
+  expect_identical(.p$shape, "multCov")
 })

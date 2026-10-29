@@ -141,6 +141,7 @@
 }
 
 test_that("occasion etas sharing a slot with eta.cl and wt match FD", {
+  skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   .pars <- c(
     `THETA[1]` = log(2),
@@ -189,6 +190,62 @@ test_that("occasions and a time-varying covariate in one slot fit as the ODE twi
     .ode <- .carryIovFit(.carryIovWtOde, .d, interp = .i)
     expect_equal(.lin$objf, .ode$objf, tolerance = 1e-6, label = .i)
     expect_equal(.lin$eta$eta.cl, .ode$eta$eta.cl, tolerance = 1e-5, label = .i)
+  }
+})
+
+# cl's slot with the occasion etas inside a larger product: the IOV rewrite
+# keeps the factors around exp(eta.cl + iov.cl)
+.carryIovForms <- list(
+  "exp(.) * (wt/70)^0.75" = quote(cl <- exp(tcl + eta.cl + iov.cl) * (wt / 70)^0.75),
+  "exp(tcl) * (wt/70)^0.75 * exp(.)" = quote(cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl + iov.cl)),
+  "exp(.) * wt/70" = quote(cl <- exp(tcl + eta.cl + iov.cl) * wt / 70),
+  "tcl * (1 + 0.01*(wt - 70)) * exp(.)" = quote(cl <- tcl * (1 + 0.01 * (wt - 70)) * exp(eta.cl + iov.cl)),
+  "exp(.) * 2" = quote(cl <- exp(tcl + eta.cl + iov.cl) * 2)
+)
+
+test_that("occasion etas inside a larger product of cl's slot fit as the ODE twin", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  .d <- .carryIovDat()
+  for (.nm in names(.carryIovForms)) {
+    .lin <- .carryIovFit(suppressMessages(do.call(rxode2::model, list(.carryIovLin, .carryIovForms[[.nm]]))), .d)
+    .ode <- .carryIovFit(suppressMessages(do.call(rxode2::model, list(.carryIovOde, .carryIovForms[[.nm]]))), .d)
+    expect_true(grepl("rx_lcCarryS2r", .carryIovInnerTxt(.lin), fixed = TRUE), label = .nm)
+    expect_equal(.lin$objf, .ode$objf, tolerance = 1e-6, label = .nm)
+    expect_equal(.lin$etaObf$OBJI, .ode$etaObf$OBJI, tolerance = 1e-6, label = .nm)
+    expect_equal(.lin$eta$rx.iov.cl.2, .ode$eta$rx.iov.cl.2, tolerance = 1e-5, label = .nm)
+  }
+})
+
+# focei at the initial estimates on the carry's fit data
+.carryCovExpFit <- function(ui, data, interp) {
+  suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    ui,
+    data,
+    "focei",
+    control = nlmixr2est::foceiControl(
+      print = 0L,
+      maxOuterIterations = 0L,
+      covMethod = "",
+      calcTables = FALSE,
+      rxControl = rxode2::rxControl(covsInterpolation = interp, atol = 1e-10, rtol = 1e-10)
+    )
+  )))
+}
+
+test_that("an eta added to a covariate's exponent fits as the ODE twin", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  .d <- .carryFitDat(6L)
+  .d$dv <- ifelse(.d$evid == 0, 3, 0)
+  .ui <- suppressMessages(nlmixr2est::nlmixr2(.carryCovExpMod))
+  .ode <- rxode2::linToOde(.ui)
+  for (.i in c("locf", "nocb", "midpoint")) {
+    .fl <- .carryCovExpFit(.ui, .d, .i)
+    .fo <- .carryCovExpFit(.ode, .d, .i)
+    expect_true(grepl("rx_lcCarry", .carryIovInnerTxt(.fl), fixed = TRUE), label = .i)
+    expect_equal(.fl$objf, .fo$objf, tolerance = 1e-6, label = .i)
+    expect_equal(.fl$etaObf$OBJI, .fo$etaObf$OBJI, tolerance = 1e-6, label = .i)
   }
 })
 

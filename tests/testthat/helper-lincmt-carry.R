@@ -96,6 +96,22 @@
 # nolint end
 # (the ll() endpoint fixtures live in helper-lincmt-carry-ll.R)
 
+# d(cl)/d(eta) = cl * log(wt / 70): the multCov shape
+.carryCovExpMod <- function() {
+  ini({
+    tcl <- log(0.1)
+    tv <- log(2)
+    eta.cl ~ 0.1
+    add.sd <- 0.5
+  })
+  model({
+    cl <- exp(tcl) * (wt / 70)^(0.75 + eta.cl)
+    v <- exp(tv)
+    cp <- linCmt()
+    cp ~ add(add.sd)
+  })
+}
+
 .carryUiCov <- function() nlmixr2est::nlmixr2(.carryModCov)
 .carryUiTwoPair <- function() nlmixr2est::nlmixr2(.carryModTwoPair)
 .carryUiNoCov <- function() nlmixr2est::nlmixr2(.carryModNoCov)
