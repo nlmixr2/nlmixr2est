@@ -67,12 +67,11 @@
 - A `linCmt()` model with a time-varying covariate on a compartment
   parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,
   under `"locf"`, `"midpoint"` and `"nocb"` and a covariate's own declaration
-  of one of them (`nocb(wt)`); a declared `linear()` is carried as the mean of
-  its two records.  The sensitivity carry read the covariates of the record
-  ending each interval, while rxode2 advances the interval with its own: on
-  theo_sd with a covariate step at 6 h, focei at the initial thetas gave
-  321.4099 (`"locf"`) and 325.7027 (`"midpoint"`) against the ODE model's
-  318.8375 and 324.3126.  They are now equal.
+  of one of them (`nocb(wt)`).  The sensitivity carry read the covariates of
+  the record ending each interval, while rxode2 advances the interval with
+  its own: on theo_sd with a covariate step at 6 h, focei at the initial
+  thetas gave 321.4099 (`"locf"`) and 325.7027 (`"midpoint"`) against the
+  ODE model's 318.8375 and 324.3126.  They are now equal.
 
 - FOCEi (and nlm/nls) now fits a `linCmt()` model whose time-varying
   covariate is interpolated `"linear"`, set globally
@@ -81,8 +80,9 @@
   represented by the linCmt() solution".  `linCmt()` holds each interval at
   the covariate's value at the interval's middle, so it approximates a
   linear ramp by that midpoint value and differs slightly from the ODE model
-  by design; the sensitivity carry differentiates that solution, as it does
-  under the other interpolations.
+  by design, more so the further apart the records are (6.3e-5 relative on
+  the test data, 7.2e-4 with records 7 days apart); the sensitivity carry
+  differentiates that solution, as it does under the other interpolations.
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
