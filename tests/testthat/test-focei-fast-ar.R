@@ -41,6 +41,16 @@
   })
 }
 
+# the ui as a focei fit builds from it, after literalFixRes writes a fixed
+# residual parameter's value into the model
+.arUiAsFit <- function(mod) {
+  .ui <- if (is.function(mod)) rxode2::rxode2(mod) else mod
+  .env <- nlmixr2global$nlmixr2EstEnv
+  .old <- .env$uiUnfix
+  on.exit(assign("uiUnfix", .old, envir = .env))
+  .nlmixrPreprocessLiteralFix(.ui, "focei", NULL, foceiControl())$ui
+}
+
 nmTest({
   # ar() residuals are out of analytic outer-gradient scope (#1195)
   .arMod <- function() {
@@ -69,6 +79,19 @@ nmTest({
     expect_false(.foceiUsesAr(rxode2::rxode2(.arMod) |> rxode2::model(cp ~ add(add.sd))))
     expect_null(.foceiOuterDirs(.ui, "focei"))
     expect_false(.foceiLLGradInScope(.ui, "focei"))
+  })
+
+  test_that(".foceiUsesAr() sees every ar() residual on the ui the fit builds from", {
+    .none <- rxode2::rxode2(.arMod) |> rxode2::model(cp ~ add(add.sd))
+    expect_false(.foceiUsesAr(.arUiAsFit(.none)))
+    expect_true(.foceiUsesAr(.arUiAsFit(.arMod)))
+    # a fixed or modeled correlation is no "ar" row of $iniDf
+    .fixed <- .arUiAsFit(.arModFixedCor)
+    expect_false("ar" %in% .fixed$iniDf$err)
+    expect_true(.foceiUsesAr(.fixed))
+    .modeled <- .arUiAsFit(.arModModeledCor)
+    expect_false("ar" %in% .modeled$iniDf$err)
+    expect_true(.foceiUsesAr(.modeled))
   })
 
   test_that("fast = TRUE and the analytic covariance fall back to finite differences for ar()", {
