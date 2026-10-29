@@ -70,7 +70,12 @@
   stopped with "The following parameter(s) are required for solving:
   rx_arNf_cp, rx_arEp_cp, rx_arT_cp": the check for an `ar()` residual
   looked only at the estimated correlations, so the analytic gradient was
-  built without the AR(1) lines.
+  built without the AR(1) lines.  For the same reason `covMethod =
+  "analytic"` now declines such a fit up front with the `ar()` reason ("an
+  ar() residual is out of analytic-covariance scope") and uses the
+  finite-difference covariance; for a modeled correlation it used to try the
+  analytic one and fall back only when its information matrix would not
+  invert.
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
