@@ -303,6 +303,9 @@
   for (nm in names(ret)) {
     if (!is.character(ret[[nm]])) {
       ret[[nm]] <- formatMinWidth(ret[[nm]], digits = digits, naValue = "")
+    } else {
+      # the label column: a row without a label (an eta's) prints empty
+      ret[[nm]][is.na(ret[[nm]])] <- ""
     }
   }
   if ("CI Lower" %in% names(ret)) {

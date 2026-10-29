@@ -192,6 +192,9 @@
   That subject's NPDE columns are `NA`, as its other table columns are.
   The NPDE of a fit with a single subject no longer fails either.
 
+- In a model with labels, the `Parameter` column of `$parFixed` is now empty
+  for a non-mu-referenced eta's row; it printed `<NA>`.
+
 - In a model with a normal and a non-normal endpoint (such as `dpois()`), a
   subject with no observations of the normal endpoint left every subject
   before it in the data (the next subject, when it was the first) with CWRES,
