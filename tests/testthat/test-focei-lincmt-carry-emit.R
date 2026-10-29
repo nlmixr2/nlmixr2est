@@ -142,3 +142,25 @@ test_that("an eta that also drives a modeled alag() is carried with a lag channe
   # eta.v (ETA_2_) is carried as before
   expect_true(any(grepl("rx_lcCarry", l2)))
 })
+
+# the inner model text of the covariate carry model under `interp`
+.carryInnerTxt <- function(interp) {
+  .ui <- rxode2::.copyUi(.carryUiCov())
+  .ctl <- nlmixr2est::foceiControl(rxControl = rxode2::rxControl(covsInterpolation = interp))
+  assign("control", .ctl, envir = .ui)
+  .ui$foceiEnv$..inner
+}
+
+test_that("the advance reads the interval's covariates as the loaded rxode2 solves them", {
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # an rxode2 with interval covariates (rxode2 PR 1517) advances an interval
+  # with its own covariates; an older one with the end record's under every
+  # interpolation, which the carry then reads
+  .own <- .rxFoceiLinCmtIntervalCovs()
+  expect_identical(grepl("rx_lcCovI_wt_~rx_lcLag_wt_", .carryInnerTxt("locf"), fixed = TRUE), .own)
+  expect_identical(
+    grepl("rx_lcCovI_wt_~0.5*(rx_lcLag_wt_+rx_lcN_wt)", .carryInnerTxt("midpoint"), fixed = TRUE),
+    .own
+  )
+  expect_false(grepl("rx_lcCovI", .carryInnerTxt("nocb"), fixed = TRUE))
+})

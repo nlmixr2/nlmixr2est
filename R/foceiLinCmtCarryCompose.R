@@ -58,11 +58,13 @@
 #'
 #' @param ui rxode2 ui with its control
 #' @return the covariates under midpoint, by the control or by their own
-#'   declaration, of a `linCmt()` model the carry is on for; `character(0)`
-#'   otherwise
+#'   declaration, of a `linCmt()` model the carry is on for, with an rxode2
+#'   that advances an interval with its own covariates
+#'   (`.rxFoceiLinCmtIntervalCovs()`); `character(0)` otherwise
 #' @noRd
 .rxFoceiLinCmtCarryMidCovs <- function(ui) {
-  if (!.foceiUsesLinCmt(ui) || !.rxFoceiLinCmtCarryBuildEnabled(ui)) {
+  if (!.foceiUsesLinCmt(ui) || !.rxFoceiLinCmtCarryBuildEnabled(ui) ||
+        !.rxFoceiLinCmtIntervalCovs()) {
     return(character(0))
   }
   .covs <- ui$allCovs
@@ -111,11 +113,16 @@
 #' @param covs the model's covariates
 #' @param interp `.rxFoceiLinCmtCarryInterp()`, named by covariate
 #' @return NULL when every covariate's record value is its interval's (nocb,
-#'   or no covariates), else list(copies = the copy and declaration lines, to
-#'   go ahead of rx_pred_, lines = the lines defining each interval value, map
-#'   = covariate -> the symbol holding its interval value)
+#'   no covariates, or an rxode2 that advances every interval with the end
+#'   record's covariates, `.rxFoceiLinCmtIntervalCovs()`), else list(copies =
+#'   the copy and declaration lines, to go ahead of rx_pred_, lines = the lines
+#'   defining each interval value, map = covariate -> the symbol holding its
+#'   interval value)
 #' @noRd
 .rxFoceiLinCmtCarryCovInterval <- function(covs, interp) {
+  if (!.rxFoceiLinCmtIntervalCovs()) {
+    return(NULL)
+  }
   covs <- covs[interp[covs] %in% c("locf", "midpoint", "linear")]
   if (length(covs) == 0L) {
     return(NULL)
