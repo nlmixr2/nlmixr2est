@@ -287,6 +287,38 @@ test_that("a carried linCmt() fit equals its ODE twin under locf, midpoint and n
   }
 })
 
+# the A2 fit by `est` at the initial estimates, with that estimator's own
+# control
+.carryA2FitEst <- function(mod, est, interp) {
+  .d <- nlmixr2data::theo_sd
+  .d$cv <- ifelse(.d$TIME < 6, 0, 1)
+  .rx <- rxode2::rxControl(covsInterpolation = interp, atol = 1e-10, rtol = 1e-10)
+  .ctl <- switch(
+    est,
+    foce = nlmixr2est::foceControl(print = 0, covMethod = "", maxOuterIterations = 0L, rxControl = .rx),
+    fo = nlmixr2est::foControl(print = 0, covMethod = "", maxOuterIterations = 0L, rxControl = .rx),
+    posthoc = nlmixr2est::posthocControl(print = 0, covMethod = "", rxControl = .rx)
+  )
+  suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(mod, .d, est, control = .ctl)))
+}
+
+test_that("foce, fo and posthoc of a carried linCmt() fit equal its ODE twin", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # under locf and midpoint the carry's covariate copies precede rx_pred_ in
+  # the inner model, so its rx_r_ is not column neta + 1
+  for (.est in c("foce", "fo", "posthoc")) {
+    for (.i in c("locf", "midpoint")) {
+      .lab <- paste(.est, .i)
+      .lin <- .carryA2FitEst(.carryA2Lin, .est, .i)
+      .ode <- .carryA2FitEst(.carryA2Ode, .est, .i)
+      expect_equal(.lin$objf, .ode$objf, tolerance = 1e-6, label = .lab)
+      expect_equal(.lin$etaObf$OBJI, .ode$etaObf$OBJI, tolerance = 1e-6, label = .lab)
+      expect_equal(.lin$eta$eta.cl, .ode$eta$eta.cl, tolerance = 1e-5, label = .lab)
+    }
+  }
+})
+
 # the covariate model declaring wt's own interpolation (nocb), as linCmt()
 # and as ODEs
 .carryDeclLin <- function() {
