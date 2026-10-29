@@ -222,6 +222,7 @@
     }
   }
   .lines <- c(
+    .iovLocfLines(ui, info$occVar),
     lapply(seq_along(.nm), function(.i) {
       str2lang(paste0(
         "rx.",
@@ -745,7 +746,7 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   .built <- lapply(seq_along(info$pars$iov), function(.i) {
     .saemIovCollapsedOne(.ui, .lst, info, .i, .lvl, .thetaTpl, .etaTpl)
   })
-  .newLines <- do.call(`c`, lapply(.built, function(b) b$lines))
+  .newLines <- c(.iovLocfLines(ui, info$occVar), do.call(`c`, lapply(.built, function(b) b$lines)))
   .dropTheta <- vapply(.built, function(b) b$dropTheta, character(1))
   .dropEta <- unlist(lapply(.built, function(b) b$dropEta), use.names = FALSE)
   .addTheta <- do.call(rbind, lapply(.built, function(b) b$theta))

@@ -310,11 +310,9 @@ attr(nlmixr2Est.predict, "random") <- TRUE
 #' For a fit with inter-occasion variability, individual predictions take
 #' each record's occasion etas from the fit's estimates, by subject and
 #' occasion, so `newdata` needs the occasion columns.  A subject or occasion
-#' the fit did not estimate gets occasion etas of 0, with a warning.  Under
-#' `"midpoint"` or `"linear"` covariate interpolation they differ from the
-#' fit's own predictions after an occasion changes: the fit compares the
-#' interpolated occasion with each occasion's value, so between records of
-#' two occasions its occasion etas are 0.
+#' the fit did not estimate gets occasion etas of 0, with a warning.  The
+#' occasion etas step at each occasion's first record, as the fit's occasion
+#' does, whatever the covariate interpolation.
 #'
 #' @return A data frame with predictions
 #'
@@ -416,15 +414,19 @@ predict.nlmixr2FitCore <- function(object, ..., level = c("population", "individ
   }
   if (.est == "ipred") {
     .params <- .nlmixrGetIpredParams(object)
+    .solve <- object
     if (length(object$env$iov) > 0L) {
       # the occasion etas are the fit's estimates, by subject and occasion;
       # with the subject etas in `.params`, no eta is simulated
       .data <- .nlmixrIovEtaData(object, .data)
-      .rxControl$omega <- NA
+      # the bare simulation model has no omega to simulate from (rxode2 refuses
+      # omega = NA for one); its occasion etas step, as the fit's occasion does
+      .rxControl$omega <- NULL
+      .solve <- .iovLocfSimModel(object)
     }
     do.call(
       rxode2::rxSolve,
-      c(list(object, .params, .data), .rxControl)
+      c(list(.solve, .params, .data), .rxControl)
     )
   } else {
     nlmixr2(
