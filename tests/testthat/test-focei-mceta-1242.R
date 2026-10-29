@@ -28,12 +28,15 @@ nmTest({
   .ffData <- function() {
     .t <- c(0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24)
     .c <- 100 / (10 * (1 - 0.2)) * (exp(-0.2 * .t) - exp(-.t))
-    do.call(rbind, lapply(1:12, function(id) {
-      rbind(
-        data.frame(ID = id, TIME = 0, DV = NA, EVID = 1, AMT = 100),
-        data.frame(ID = id, TIME = .t, DV = .c, EVID = 0, AMT = 0)
-      )
-    }))
+    do.call(
+      rbind,
+      lapply(1:12, function(id) {
+        rbind(
+          data.frame(ID = id, TIME = 0, DV = NA, EVID = 1, AMT = 100),
+          data.frame(ID = id, TIME = .t, DV = .c, EVID = 0, AMT = 0)
+        )
+      })
+    )
   }
 
   .ffFit <- function(dat, mceta, etaMat = NULL) {
