@@ -160,7 +160,7 @@
   if (is.null(.d) || .rxFoceiCarryIsZero(.d)) {
     return(NULL)
   }
-  .shape <- .rxFoceiCarryShape(.expr, .d, allCovs, etaVars, multCov = iov)
+  .shape <- .rxFoceiCarryShape(.expr, .d, allCovs, etaVars, multCov = iov, eta = eta)
   if (is.null(.shape)) {
     return(NULL)
   }
@@ -173,10 +173,41 @@
   )
 }
 
+#' d log(f) / d eta, factor by factor
+#'
+#' A product contributes the sum over its factors and a power b^p contributes
+#' D(p) log(b) + p d log(b), so an exp(u) never appears divided by itself:
+#' symengine does not cancel that quotient (it keeps exp(u - u)), nor match a
+#' sub-product of a flattened product.  Any other factor that reads the eta
+#' contributes D(f) / f as it is.
+#' @param f symengine expression
+#' @param eta the eta's symbol name
+#' @return symengine expression
+#' @noRd
+.rxFoceiCarryDLog <- function(f, eta) {
+  if (!(eta %in% .rxFoceiCarryFreeSyms(f))) {
+    return(symengine::S("0"))
+  }
+  .args <- symengine::get_args(f)
+  switch(
+    symengine::get_type(f),
+    Mul = {
+      .ret <- symengine::S("0")
+      for (.i in seq_along(.args)) {
+        .ret <- .ret + .rxFoceiCarryDLog(.args[[.i]], eta)
+      }
+      .ret
+    },
+    Pow = symengine::D(.args[[2]], symengine::S(eta)) * log(.args[[1]]) +
+      .args[[2]] * .rxFoceiCarryDLog(.args[[1]], eta),
+    symengine::D(f, symengine::S(eta)) / f
+  )
+}
+
 #' "mult" / "add" / "multCov" (when `multCov`) when the eta enters
 #' separably, else NULL
 #' @noRd
-.rxFoceiCarryShape <- function(expr, d, allCovs, etaVars, multCov = FALSE) {
+.rxFoceiCarryShape <- function(expr, d, allCovs, etaVars, multCov = FALSE, eta = NULL) {
   if (.rxFoceiCarryIsZero(symengine::expand(d - expr))) {
     return("mult")
   }
@@ -187,17 +218,14 @@
   if (!multCov) {
     return(NULL)
   }
-  # d = expr * k, with k a function of covariates and thetas only: with the
-  # slot expression as a placeholder p, d is p * k (symengine does not
-  # cancel exp(u) / exp(u) once u is expanded)
-  .ph <- symengine::S("rx_lcCarryShapePh_")
-  .dP <- try(symengine::subs(d, expr, .ph), silent = TRUE)
-  if (inherits(.dP, "try-error")) {
+  # d = expr * k with k = d log(expr) / d eta, which must be a function of
+  # covariates and thetas only
+  if (is.null(eta)) {
     return(NULL)
   }
-  .k <- symengine::D(.dP, .ph)
+  .k <- try(.rxFoceiCarryDLog(expr, eta), silent = TRUE)
   if (
-    .rxFoceiCarryIsZero(symengine::expand(.dP - .ph * .k)) &&
+    !inherits(.k, "try-error") &&
       length(intersect(.rxFoceiCarryFreeSyms(.k), c(etaVars, .rxFoceiCarryTimeSyms))) == 0L
   ) {
     return("multCov")
