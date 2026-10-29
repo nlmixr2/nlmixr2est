@@ -187,6 +187,12 @@
   transform; it used the first subject's rows for every subject.
 ### Tables
 
+- `tidy()` and `confint()` now report only the model's thetas.  A
+  non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
+  variability row) used to be listed as a fixed effect or interval of `NA`s,
+  and `confint(exponentiate = NA)` and `tidy(exponentiate = NA)` stopped on
+  it ("NAs are not allowed in subscripted assignments").
+
 - `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
   subject has no observations ("Col::subvec(): indices out of bounds").
   That subject's NPDE columns are `NA`, as its other table columns are.

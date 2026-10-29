@@ -591,3 +591,76 @@ nmTest({
     expect_equal(td2, td3, tolerance = tol)
   })
 })
+
+# eta.ka is not mu-referenced, so $parFixedDf carries a row for it after the
+# thetas; tcl is fixed and two thetas are labelled
+.broomEtaRowMod <- function() {
+  ini({
+    tka <- 0.45
+    label("Ka")
+    tcl <- fix(1)
+    label("Cl")
+    tv <- 3.45
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka) * exp(eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+nmTest({
+  test_that("tidy() and confint() report the thetas only, not a non-mu-referenced eta's row", {
+    skip_if_not_installed("broom.mixed")
+    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE)
+    fit <- .nlmixr(.broomEtaRowMod, theo_sd, est = "focei", control = .ctl)
+    .pf <- fit$parFixedDf
+    expect_identical(rownames(.pf), c("tka", "tcl", "tv", "add.sd", "eta.ka"))
+    expect_identical(.pf$Parameter[1:4], c("Ka", "Cl", "", ""))
+    .th <- c("tka", "tcl", "tv")
+    .fx <- as.data.frame(broom.mixed::tidy(fit, effects = "fixed"))
+    expect_identical(.fx$term, .th)
+    expect_equal(.fx$estimate, unname(.pf[.th, "Estimate"]))
+    expect_equal(.fx$std.error, unname(.pf[.th, "SE"]))
+    .rp <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_pars"))
+    expect_identical(.rp$term, c("sd__eta.ka", "sd__eta.cl", "sd__eta.v", "add.sd"))
+    expect_identical(.rp$group, c("ID", "ID", "ID", "Residual(add)"))
+    expect_equal(.rp$estimate[4], unname(.pf["add.sd", "Estimate"]))
+    .all <- c(.th, "add.sd")
+    .z <- stats::qnorm(0.975)
+    .lo <- unname(.pf[.all, "Estimate"] - .z * .pf[.all, "SE"])
+    .hi <- unname(.pf[.all, "Estimate"] + .z * .pf[.all, "SE"])
+    .ci <- confint(fit)
+    expect_identical(rownames(.ci), .all)
+    expect_equal(.ci[["2.5 %"]], .lo)
+    expect_equal(.ci[["97.5 %"]], .hi)
+    # exponentiate = NA back-transforms the exp() thetas; the eta row's NA used
+    # to stop it ("NAs are not allowed in subscripted assignments")
+    .isExp <- c(TRUE, TRUE, TRUE, FALSE)
+    .ciE <- confint(fit, exponentiate = NA)
+    expect_identical(rownames(.ciE), .all)
+    expect_equal(.ciE[["2.5 %"]], ifelse(.isExp, exp(.lo), .lo))
+    expect_equal(.ciE[["97.5 %"]], ifelse(.isExp, exp(.hi), .hi))
+    .fxE <- as.data.frame(broom.mixed::tidy(fit, effects = "fixed", exponentiate = NA))
+    expect_identical(.fxE$term, .th)
+    expect_equal(.fxE$std.error, unname(exp(.pf[.th, "Estimate"]) * .pf[.th, "SE"]))
+    .fxC <- as.data.frame(broom.mixed::tidy(fit, effects = "fixed", conf.int = TRUE))
+    expect_identical(.fxC$term, .th)
+    expect_equal(.fxC$conf.low, .lo[1:3])
+    expect_equal(.fxC$conf.high, .hi[1:3])
+  })
+
+  test_that("tidy() and confint() leave out an IOV fit's occasion variability row", {
+    skip_if_not_installed("broom.mixed")
+    fit <- .iovFit("focei", control = list(maxOuterIterations = 0, calcTables = FALSE))
+    expect_identical(rownames(fit$parFixedDf), c("tka", "tcl", "tv", "add.sd", "iov.cl"))
+    .fx <- as.data.frame(broom.mixed::tidy(fit, effects = "fixed"))
+    expect_identical(.fx$term, c("tka", "tcl", "tv"))
+    expect_identical(rownames(confint(fit)), c("tka", "tcl", "tv", "add.sd"))
+  })
+})
