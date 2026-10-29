@@ -456,12 +456,30 @@ nmTest({
         cp <- center / v
         cp ~ prop(prop.sd) })
     }
+    # the pred-only pre-check declines before the augmented model is built (#1217)
+    .vanish <- NULL
+    .aug <- 0L
+    .origVanish <- .foceiAnalyticPredVanish
+    .origAug <- .foceiAnalyticAugModelDirs
+    local_mocked_bindings(
+      .foceiAnalyticPredVanish = function(...) {
+        .vanish <<- c(.vanish, .origVanish(...))
+        .vanish[length(.vanish)]
+      },
+      .foceiAnalyticAugModelDirs = function(...) {
+        .aug <<- .aug + 1L
+        .origAug(...)
+      }
+    )
     fit <- suppressWarnings(suppressMessages(nlmixr(
       pm,
       nlmixr2data::theo_sd,
       "focei",
       foceiControl(sigdig = 4, print = 0L, covMethod = "analytic")
     )))
+    expect_identical(.vanish, TRUE)
+    expect_identical(.aug, 0L)
+    expect_identical(fit$env$covTried$outcome[1], "proportional error near a zero prediction")
     expect_true(is.matrix(fit$cov))
     # the near-zero-prediction guard drops to the finite-difference fallback
     expect_false(identical(.covBaseName(fit$covMethod), "analytic"))
