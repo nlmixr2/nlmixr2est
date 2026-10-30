@@ -29,10 +29,6 @@
   .anyJump <- any(!is.na(pairs$fD) | !is.na(pairs$lagD))
   .anyLag <- any(!is.na(pairs$lagD))
   .m <- .ncmt + .oral0
-  .slotExpr <- lapply(1:7, function(k) .a[[k + 8L]])
-  .gExpr <- lapply(pairs$dEtaFormula[!is.na(pairs$dEtaFormula)], symengine::S)
-  .ci <- .rxFoceiLinCmtCarryCovInterval(pairs, c(.slotExpr, .gExpr))
-  .slotExprI <- lapply(.slotExpr, .ci$sub)
   list(
     ncmt = .ncmt,
     oral0 = .oral0,
@@ -47,19 +43,7 @@
     anyLag = .anyLag,
     aCol = 2L * .nP,
     lCol = 2L * .nP + 1L,
-    slotExpr = .slotExpr,
-    # the interval's parameters, which the advance and its kernel run on
-    covLines = .ci$lines,
-    covSub = .ci$sub,
-    slotExprI = .slotExprI,
-    thetasI = vapply(
-      .slotExprI,
-      function(e) {
-        .r <- paste(e)
-        rxode2::rxFromSE(.r)
-      },
-      character(1)
-    ),
+    slotExpr = lapply(1:7, function(k) .a[[k + 8L]]),
     rows = seq_len(.m) - 1L,
     # an ll() endpoint embeds the concentration call in a larger
     # expression (#1004): the carry differentiates the concentration,

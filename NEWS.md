@@ -170,13 +170,6 @@
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
 
-- The `linCmt()` sensitivity carry follows an rxode2 that advances each
-  interval with that interval's covariates (rxode2#1483).  Under `"locf"` and
-  `"midpoint"` interpolation, the analytic gradient of a `linCmt()` parameter
-  with a time-varying covariate was up to 13% off there, and a `setCov()`
-  on such a fit could need a repair.  An older rxode2 gives the same
-  gradient as before.
-
 ### NPDE
 
 - NPDE of censored observations now draws each censored value from the

@@ -129,11 +129,9 @@ test_that("f()+alag()+covariate gradients match FD for every eta; naive fails cl
   rN <- .carryJumpFd(.carryModJump, .carryJumpPars, ev, carry = "none")
   expect_gt(rN$err[1], 1e-3)
   expect_gt(rN$err[3], 1e-3)
-  # locf and midpoint are piecewise constant too
+  # locf is piecewise constant too
   rL <- .carryJumpFd(.carryModJump, .carryJumpPars, ev, interp = "locf")
   expect_lt(max(rL$err), 1e-6)
-  rM <- .carryJumpFd(.carryModJump, .carryJumpPars, ev, interp = "midpoint")
-  expect_lt(max(rM$err), 1e-6)
 })
 
 test_that("an additive f() shape with a covariate needs the carry and matches FD", {

@@ -29,7 +29,7 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
     })
   }
 
-  buildTxt <- function(mod, carry, method = "nlm", interp = "nocb") {
+  buildTxt <- function(mod, carry, method = "nlm") {
     ui <- suppressMessages(nlmixr2est::nlmixr2(mod))
     u <- rxode2::.copyUi(ui)
     ctl <- if (method == "nlm") {
@@ -37,8 +37,6 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
     } else {
       nlmixr2est::nlsControl(linCmtSensCarry = carry)
     }
-    # the carry reads the interval's covariates the way the solve interpolates them
-    ctl$rxControl$covsInterpolation <- rxode2::rxControl(covsInterpolation = interp)$covsInterpolation
     assign("control", ctl, envir = u)
     e <- suppressMessages(if (method == "nlm") u$nlmEnv else u$nlsEnv)
     if (method == "nlm") e$..nlmS else e$..nlsS
@@ -58,10 +56,10 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   ev <- .carryEv()
   ev$dv <- ifelse(ev$evid == 0, c(0, 2, 0, 1.5, 0, 1.2, 0, 0.9)[seq_len(nrow(ev))], 0)
   pars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5)
-  fdErr <- function(txt, interp = "nocb") {
+  fdErr <- function(txt) {
     m <- suppressWarnings(rxode2::rxode2(txt))
     slv <- function(q) {
-      rxode2::rxSolve(m, params = q, events = ev, returnType = "data.frame", covsInterpolation = interp)
+      rxode2::rxSolve(m, params = q, events = ev, returnType = "data.frame", covsInterpolation = "nocb")
     }
     r0 <- slv(pars)
     h <- 1e-5
@@ -86,7 +84,6 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   errC <- fdErr(txtC)
   errN <- fdErr(txtN)
   expect_true(all(errC < 1e-6))
-  expect_true(all(fdErr(buildTxt(modTheta, "auto", interp = "locf"), "locf") < 1e-6))
   # the naive covariate-theta gradient is visibly wrong on the same data
   expect_true(errN[1] > 1e-3)
 

@@ -14,10 +14,8 @@
 #   s_i = M_i s_{i-1} + g_i J_local_i(:, k) + jump_i
 #
 # using ONLY quantities the generated model can read back per row:
-#   - M_i s_{i-1}: the which1=-5 advance (applies the interval's transition
-#     matrix to every carry column at once; emitted once per row).  The
-#     interval's covariates are the end record's, or with rxode2#1483 the
-#     interval's own (foceiLinCmtCarryInterval.R).
+#   - M_i s_{i-1}: the which1=-5 advance (applies this row's transition
+#     matrix to every carry column at once; emitted once per row).
 #   - J_local_i(:, k) = J_i(:, k) - M_i J_{i-1}(:, k): the production
 #     cumulative amount Jacobian satisfies this identity BY CONSTRUCTION of
 #     its constant-theta reconstruction, so the local Jacobian is recovered
@@ -91,16 +89,9 @@
   .lg <- paste0("rx_lcCarryLg", .p, "_")
   # the stored reprs (render=FALSE) are rendered here; rxFromSE() deparses
   # its argument EXPRESSION, so it must see a bare symbol bound to the string
-  # the kernel term takes the interval's g; the final dVc term the record's
-  .gK <- .g
   if (.hasSlot) {
     .gRepr <- pairs$dEtaFormula[w]
     .l <- c(.l, paste0(.g, "~", rxode2::rxFromSE(.gRepr)))
-    .giRepr <- paste(cx$covSub(symengine::S(.gRepr)))
-    if (!identical(.giRepr, paste(symengine::S(.gRepr)))) {
-      .gK <- paste0("rx_lcCarryGI", .p, "_")
-      .l <- c(.l, paste0(.gK, "~", rxode2::rxFromSE(.giRepr)))
-    }
   }
   if (!is.na(pairs$fD[w])) {
     .fRepr <- pairs$fD[w]
@@ -133,7 +124,7 @@
           )
         )
       )
-      .terms <- c(.terms, paste0(.gK, "*", .dloc))
+      .terms <- c(.terms, paste0(.g, "*", .dloc))
     }
     if (!is.na(pairs$fD[w])) {
       .terms <- c(.terms, paste0("rx_lcCarryD", .r, "_*", .f))

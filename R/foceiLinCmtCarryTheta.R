@@ -153,7 +153,7 @@
     return(NULL)
   }
   .rxFoceiLinCmtCarryCheckCap(.pairs)
-  list(pairs = .rxFoceiLinCmtCarryTagCovs(.pairs, x[[1]]), fp = .fp)
+  list(pairs = .pairs, fp = .fp)
 }
 
 #' The factored call when the model/control can carry at all, else NULL
