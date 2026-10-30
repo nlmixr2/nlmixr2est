@@ -289,6 +289,20 @@ test_that("the carry-cap warning names the first eta and fits a runInfo line", {
   .many <- .rxFoceiLinCmtCarryCapMsg(paste0("rx.iov.cl.", 23:41), 32L)
   expect_identical(.many, "rx.iov.cl.23 and 18 more keep the standard gradient (32 carry columns)")
   expect_lt(nchar(.many), 75L)
+  # names too long for the line give the count alone
+  .long <- strrep("x", 30L)
+  expect_identical(
+    .rxFoceiLinCmtCarryCapMsg(.long, 32L),
+    "1 eta keeps the standard gradient (32 carry columns)"
+  )
+  expect_identical(
+    .rxFoceiLinCmtCarryCapMsg(c(.long, "b"), 32L),
+    "2 etas keep the standard gradient (32 carry columns)"
+  )
+  for (.n in c(1L, 13L, 27L, 80L)) {
+    expect_lt(nchar(.rxFoceiLinCmtCarryCapMsg(strrep("z", .n), 32L)), 75L, label = .n)
+    expect_lt(nchar(.rxFoceiLinCmtCarryCapMsg(rep(strrep("z", .n), 99L), 32L)), 75L, label = .n)
+  }
 })
 
 test_that("occasion etas within the loaded rxode2's carry columns are all carried", {

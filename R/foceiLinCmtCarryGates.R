@@ -53,13 +53,24 @@
 #' @param cap the carry columns the loaded rxode2 has
 #' @noRd
 .rxFoceiLinCmtCarryCapMsg <- function(etas, cap) {
-  if (length(etas) == 1L) {
-    return(sprintf("%s keeps the standard gradient (%d carry columns)", etas, cap))
+  .msg <- if (length(etas) == 1L) {
+    sprintf("%s keeps the standard gradient (%d carry columns)", etas, cap)
+  } else {
+    sprintf(
+      "%s and %d more keep the standard gradient (%d carry columns)",
+      etas[1L],
+      length(etas) - 1L,
+      cap
+    )
   }
+  if (nchar(.msg) < 75L) {
+    return(.msg)
+  }
+  # a long eta name: the count alone
   sprintf(
-    "%s and %d more keep the standard gradient (%d carry columns)",
-    etas[1L],
-    length(etas) - 1L,
+    "%d %s the standard gradient (%d carry columns)",
+    length(etas),
+    if (length(etas) == 1L) "eta keeps" else "etas keep",
     cap
   )
 }
