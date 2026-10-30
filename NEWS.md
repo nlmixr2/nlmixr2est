@@ -64,6 +64,20 @@
 
 ### Estimation
 
+- `fast = TRUE` FOCEi fits now solve the inner model with its own state stride
+  and matching event-sensitivity callbacks when the augmented outer model sizes
+  the shared solve pool.  This prevents failed inner solves and penalty-only
+  objectives for infusion models such as the `wbc` vignette model and models
+  with parameter-dependent initial conditions (#1115, #1133).
+- Large analytic FOCEi sensitivity models now reuse common expressions across
+  all derivative directions.  This substantially reduces model translation and
+  augmented-solve time for nonlinear models such as `nimo` (#1133).
+- Cached FOCEi models now restore their compiled objects directly instead of
+  reparsing normalized model text, and gradient setup reuses that restored
+  model instead of generating it again.  This avoids minutes of setup for large
+  augmented sensitivity models; the cache format bump also rebuilds models
+  cached before the expression optimization above (#1133).
+
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not

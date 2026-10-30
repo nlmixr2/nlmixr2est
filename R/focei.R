@@ -3571,7 +3571,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## sensitivity model in "fd" mode -- silently zeroing the dosing-parameter
   ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
   ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
-  .cacheFormat <- 3L
+  ## Version 4: keep compiled models for fast restoration and rebuild augmented
+  ## models whose expression optimization changed without a package-version change.
+  .cacheFormat <- 4L
   .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
@@ -3611,21 +3613,19 @@ rxUiGet.foceiModelCache <- function(x, ...) {
 # attr(rxUiGet.foceiModelCache, "desc") <- "Get the focei cache file for a model"
 attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 
-#' Cached-model bundle element -> storable form: an rxode2 model is stored
-#' as its normalized model TEXT (rxode2::rxNorm()), not a serialized model
-#' object -- the text is small and rebuilding from it hits rxode2's own
-#' compiled-model cache, so rehydration loads the cached dll rather than
-#' compiling
+#' Cached-model bundle element -> storable form.  Keep the compiled object for
+#' fast restoration with rxLoad(); normalized text remains as a backwards-
+#' compatible fallback.  Reparsing a large augmented sensitivity model can take
+#' minutes even when its shared library is already cached.
 #'
-#' The event-sensitivity mode is stored ALONGSIDE the text.  It is not part of
-#' rxNorm()'s output and cannot be read back off a compiled model, so a bundle
-#' rehydrated from the text alone silently loses it -- see
+#' The event-sensitivity mode is stored alongside both forms.  It is not part of
+#' rxNorm()'s output and cannot be read back off normalized text alone -- see
 #' .foceiModelCacheInflate().
 #' @noRd
 .foceiModelCacheDeflate <- function(el) {
   if (inherits(el, "rxode2")) {
     return(structure(
-      list(norm = rxode2::rxNorm(el), eventSens = attr(el, "nlmixr2estEventSens")),
+      list(norm = rxode2::rxNorm(el), eventSens = attr(el, "nlmixr2estEventSens"), model = el),
       class = "nlmixr2estFoceiNorm"
     ))
   }
@@ -3649,6 +3649,11 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 .foceiModelCacheInflate <- function(el) {
   if (inherits(el, "nlmixr2estFoceiNorm")) {
     .es <- el$eventSens
+    if (inherits(el$model, "rxode2") &&
+          identical(.es, attr(el$model, "nlmixr2estEventSens"))) {
+      rxode2::rxLoad(el$model)
+      return(el$model)
+    }
     # rxode2() latches suppressMessages() into its C print flag, which would
     # silence the rest of the fit's progress output; restore it for the caller
     on.exit(rxode2::rxSuppressMsg(), add = TRUE)
@@ -3668,7 +3673,8 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
     return(.mod)
   }
   if (inherits(el, "rxode2")) {
-    return(rxode2::rxLoad(el))
+    rxode2::rxLoad(el)
+    return(el)
   }
   el
 }

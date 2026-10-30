@@ -633,6 +633,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
                                  scale->useColor && scale->ncol + i > scale->npars);
     }
     scalePrintRowEnd(finalize, i, scale->ncol, scale->useColor);
+    R_FlushConsole();
     if (!scale->simple && !skipU) {
       if (scale->showOfv) RSprintf("|    U|               |");
       else                RSprintf("|    U|");

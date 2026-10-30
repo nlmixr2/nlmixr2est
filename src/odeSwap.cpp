@@ -975,13 +975,23 @@ bool odeSwapIndBadSolveSlot(rx_solving_options *op, rx_solving_options_ind *ind,
   int n = odeSwapIndSolveSpan(op, ind);
   int own = odeSwapNeq(slot);
   // Only clamp DOWN, and only when this model is genuinely narrower than the
-  // span: never widen, or a compacted solve would be under-scanned.
-  if (own > 0 && own < n && getOpNlin(op) <= 0) n = own;
+  // span: never widen, or a compacted solve would be under-scanned.  The span
+  // is in ELEMENTS (neq * nallTimes), so the clamp has to be too -- comparing
+  // against the bare neq would scan only the first record.
+  if (own > 0 && getOpNlin(op) <= 0) {
+    int ownSpan = own * getIndNallTimes(ind);
+    if (ownSpan < n) n = ownSpan;
+  }
   if (n <= 0) return false;
   double *solve = getIndSolve(ind);
   if (solve == NULL) return false;
   for (int i = 0; i < n; ++i) {
-    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) return true;
+    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) {
+      Rprintf("DEBUG bad state slot=%d i=%d n=%d own=%d override=%d opneq=%d value=%g\n",
+               slot, i, n, own, getIndNeqOverride(ind), getOpNeq(op), solve[i]);
+      R_FlushConsole();
+      return true;
+    }
   }
   return false;
 }

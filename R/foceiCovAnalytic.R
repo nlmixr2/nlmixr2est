@@ -2514,23 +2514,28 @@
       )
       .modTxt <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", .modTxt)
       .modTxt <- gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .modTxt)
-      # Optimize common subexpressions (as the inner model does): the augmented model
-      # has heavy shared subexpressions across the sensitivity ODEs and the f1/f2
-      # prediction chains, so rxOptExpr materially shrinks the per-solve work.
-      # rxode2's rxOptExpr() itself optimizes a large model in cost-balanced chunks by
-      # default (it disguises the compartment-scoped constructs -- state ICs and
-      # f/alag/lag/rate/dur dosing modifiers -- a chunk would otherwise orphan, and
-      # falls back to a single whole-model pass if a chunk cannot be optimized), so the
-      # ~200-350 line augmented model no longer needs hand-rolled chunking here.  The
-      # fit's rxControl(cores=) is passed through so the chunks are optimized in
-      # parallel with the same thread setting the solves use (`.cores` also rides along
-      # in the result so the batched solves run parallel).
+      # Optimize common subexpressions across all sensitivity directions.  Large
+      # chunked models retain duplicates at chunk boundaries, and normalizing the
+      # whole multi-megabyte model again costs much more than the C++ CSE itself.
+      # A second extraction also exposes duplicates in the parents of new temporary
+      # expressions.  Before the third, distinguish the original chunked temporaries
+      # from the numbered temporaries introduced by CSE; otherwise both can receive
+      # the same name and change the sensitivity equations.
       .cores <- .optExprCores(ui)
       if (isTRUE(rxode2::rxGetControl(ui, "optExpression", TRUE))) {
-        .modTxt <- tryCatch(
-          rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model", parallel = .cores),
-          error = function(e) .modTxt
-        )
+        if (nchar(.modTxt, type = "bytes") > getOption("rxode2.optExprChunkChars", 524288L)) {
+          for (.pass in seq_len(3L)) {
+            if (.pass == 3L) .modTxt <- gsub("rx_expr_c1_", "rx_base_", .modTxt, fixed = TRUE)
+            .opt <- tryCatch(rxode2:::.rxOptExprC(.modTxt), error = function(e) NA_character_)
+            if (length(.opt) != 1L || is.na(.opt) || identical(.opt, .modTxt)) break
+            .modTxt <- .opt
+          }
+        } else {
+          .modTxt <- tryCatch(
+            rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model", parallel = .cores),
+            error = function(e) .modTxt
+          )
+        }
       }
       # Declare the theta/eta inputs AND the model covariates up front (param()) so the
       # solve parameter order is fixed and positional.  Reuse .uiGetThetaEtaParams -- the
