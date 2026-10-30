@@ -2281,7 +2281,7 @@ public:
   // @param i subject
   // @param yt transformed observations
   // @param IG inverse of Omega over the realIx columns
-  // @param realIx phi1 columns of the reported etas (all but temporary etas)
+  // @param realIx phi1 columns in the prior: reported etas with nonzero variance
   // @param sd Omega sd of each phi1 column
   // @param ue uninformative-eta mask
   // @param doParam which model parameters phi fills
@@ -2339,6 +2339,21 @@ public:
     etaModeConv(i) = conv;
   }
 
+  // phi1 columns in the mode prior: reported etas with nonzero variance
+  //
+  // A collapsed (zero-variance) eta is held, not free (modeFreeCols), so it
+  // only adds a constant to the prior; leave it out or Greal is singular (#1270).
+  // @param G reported Omega
+  // @return the prior's phi1 columns
+  // @noRd
+  uvec modePriorCols(const mat &G) {
+    std::vector<uword> realC;
+    for (int c = 0; c < nphi1; ++c) {
+      if (!any(pseudoIx1 == (uword)c) && G(c, c) > 0.0) realC.push_back((uword)c);
+    }
+    return uvec(realC);
+  }
+
   // Conditional mode (EBE) of every subject at the final estimates
   //
   // Runs after the last SAEM iteration, in parallel over subjects, when
@@ -2356,15 +2371,11 @@ public:
     }
     rx_solving_options *op = getSolvingOptions(_rx);
     vec yt = modeResidSetup();
-    std::vector<uword> realC;
-    for (int c = 0; c < nphi1; ++c) {
-      if (!any(pseudoIx1 == (uword)c)) realC.push_back((uword)c);
-    }
-    uvec realIx(realC);
     // the reported Omega (before the variance floor), as the fit's model has
     mat G = get_Gamma2_phi1Report();
+    uvec realIx = modePriorCols(G);
     mat Greal = G.submat(realIx, realIx);
-    mat IG = invSympdNearPd(Greal, "Gamma2_phi1 (Omega)");
+    mat IG = Greal.n_elem == 0 ? Greal : invSympdNearPd(Greal, "Gamma2_phi1 (Omega)");
     vec sd = sqrt(G.diag());
     std::vector<int> doParam;
     if (!_saemPhi1PoolActive) {

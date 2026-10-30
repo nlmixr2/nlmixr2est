@@ -64,6 +64,9 @@
 
 ### Estimation
 
+- `saem` with `ebe = "mode"` no longer stops with "inv(): matrix is singular"
+  when an eta's estimated variance collapses to zero (#1270).
+
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not
