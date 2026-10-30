@@ -1,6 +1,7 @@
 # Phase 3b.5/3b.6: the linCmt() sensitivity carry through real fits --
-# data-aware fallbacks (ss, evid=2, linear interpolation), the runtime
-# constant-theta fast path, CWRES inheritance and fast=TRUE.  The reference
+# data-aware fallbacks (ss, linear interpolation; evid=2 rows keep the
+# carry), the runtime constant-theta fast path, CWRES inheritance and
+# fast=TRUE.  The reference
 # comparison and the config sweep are in test-focei-lincmt-carry-fit.R;
 # shared fixtures in helper-lincmt-carry.R.
 #
@@ -33,24 +34,51 @@ test_that("ss dose rows fall back to the standard gradient with a runInfo note",
   expect_true(any(grepl("carry gradient off", unlist(fit$runInfo))))
 })
 
-test_that("evid=2 rows fall back to the standard gradient with a runInfo note", {
+# .carryFitDat() with an EVID 2 record (a wt step at 19 h, no dose) in
+# every subject
+.carryEvid2Dat <- function() {
+  .d <- .carryFitDat()
+  .obs <- .d$evid == 0
+  .d$dv <- 0
+  .d$dv[.obs] <- 2 + 0.25 * (seq_len(sum(.obs)) %% 4)
+  .add <- .d[.d$evid == 0 & abs(.d$time - (15 + (.d$id - 1) * 0.5)) < 1e-9, ]
+  .add$time <- .add$time + 4
+  .add$evid <- 2
+  .add$wt <- .add$wt + 7
+  .d <- rbind(.d, .add)
+  .d[order(.d$id, .d$time), ]
+}
+
+# focei at the initial thetas under nocb, the one interpolation in which a
+# linCmt() model and its ODE twin agree on every rxode2
+.carryEvid2Fit <- function(mod, data, carry) {
+  suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    mod,
+    data,
+    "focei",
+    control = nlmixr2est::foceiControl(
+      print = 0,
+      maxOuterIterations = 0L,
+      covMethod = "",
+      linCmtSensCarry = carry,
+      rxControl = rxode2::rxControl(covsInterpolation = "nocb", atol = 1e-10, rtol = 1e-10)
+    )
+  )))
+}
+
+test_that("evid=2 rows keep the carry, and the fit equals its ODE twin", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
-  d <- data.frame(
-    id = 1,
-    time = c(0, 3, 5, 7, 15, 24, 30),
-    amt = c(100, 0, 0, 100, 0, 100, 0),
-    evid = c(1, 0, 2, 1, 0, 1, 0),
-    cmt = 1
-  )
-  d$wt <- ifelse(d$time < 20, 70, 85)
-  d$dv <- c(0, 3.2, 0, 0, 2.5, 0, 2.2)
-  fit <- suppressWarnings(suppressMessages(
-    nlmixr2est::nlmixr2(.carryModCov, d, est = "focei", control = .carryFitCtl("auto"))
-  ))
-  expect_identical(fit$foceiControl$linCmtSensCarry, "none")
-  expect_true(any(grepl("carry gradient off", unlist(fit$runInfo))))
-  expect_false(grepl("rx_lcCarry", .carryInnerTxt(fit)))
+  .d <- .carryEvid2Dat()
+  .fit <- .carryEvid2Fit(.carryModCov, .d, "auto")
+  .ode <- .carryEvid2Fit(rxode2::linToOde(rxode2::rxode2(.carryModCov)), .d, "none")
+  .naive <- .carryEvid2Fit(.carryModCov, .d, "none")
+  expect_identical(.fit$foceiControl$linCmtSensCarry, "auto")
+  expect_false(any(grepl("carry gradient off", unlist(.fit$runInfo))))
+  expect_true(grepl("rx_lcCarry", .carryInnerTxt(.fit)))
+  expect_equal(.fit$objf, .ode$objf, tolerance = 1e-6)
+  # the standard gradient is off here, which is what the carry is for
+  expect_gt(abs(.naive$objf - .ode$objf), 0.05)
 })
 
 test_that("linear covariate interpolation on a varying eligible covariate is an error", {
