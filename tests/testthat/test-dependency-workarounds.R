@@ -69,8 +69,8 @@
   "(rxode2 PR 1517): remove R/foceiLinCmtCarryInterval.R and its calls in",
   ".rxFoceiLinCmtCarryMidCovs() and .rxFoceiLinCmtCarryCovInterval()",
   "(R/foceiLinCmtCarryCompose.R), .carryTwinInterps() (helper-lincmt-carry.R), the",
-  "probe's skips in test-focei-lincmt-carry-fit.R and its check in",
-  "test-focei-lincmt-carry-emit.R, and this block"
+  "probe's skips in test-focei-lincmt-carry-fit.R and test-focei-lincmt-carry-iov.R",
+  "and its check in test-focei-lincmt-carry-emit.R, and this block"
 )
 
 # The interval-covariate block's warning for the installed rxode2
@@ -115,15 +115,6 @@ test_that("the work-around warning is given only for a release with the feature"
   expect_false(.depIsRelease("5.1.8.9000"))
 })
 
-test_that("each work-around names every file that uses its probe, skips and fallbacks", {
-  for (.b in names(.depBlocks)) {
-    .files <- .depFilesUsing(.depBlocks[[.b]]$symbols)
-    expect_gt(length(.files), 0L)
-    for (.f in .files) {
-      expect_true(grepl(.f, .depBlocks[[.b]]$remove, fixed = TRUE), label = paste(.b, "names", .f))
-    }
-  }
-})
 
 test_that("interval-covariate work-around: warns only for a release with interval covariates", {
   local_mocked_bindings(.rxode2Version = .depVersion519, .rxFoceiLinCmtIntervalCovs = .depFalse)
@@ -149,21 +140,44 @@ test_that("interval-covariate work-around: the linCmt() carry's end-record fallb
   ".rxFoceiLinCmtCarryMaxPairs() (R/foceiLinCmtCarryGates.R) call",
   "rxode2::linCmtCarryMaxPairs(), drop the skip_if() on",
   ".rxFoceiLinCmtCarryMaxPairs() < 10L in test-focei-lincmt-carry-iov.R's",
-  "nine-pair test, and remove this block and the probe test after it"
+  "nine-pair test, and remove this block, the probe test after it and the",
+  ".carryCapError() and .carryCap0() it uses (helper-lincmt-carry.R)"
+)
+
+# Does the installed rxode2 have linCmtCarryMaxPairs()?
+.depCarryCapPresent <- function() {
+  exists("linCmtCarryMaxPairs", envir = asNamespace("rxode2"), inherits = FALSE)
+}
+
+# The carry-cap block's warning for the installed rxode2
+.depCarryCapWarning <- function(present = .depCarryCapPresent()) {
+  .depWorkaroundWarning(.rxode2Version(), "5.1.8.9000", .depCarryCapRemove, present = present)
+}
+
+.depBlocks$carryCap <- list(
+  remove = .depCarryCapRemove,
+  symbols = c('exists("linCmtCarryMaxPairs"', ".rxFoceiLinCmtCarryMaxPairs() < 10L", ".carryCapError", ".carryCap0")
 )
 
 test_that("carry-cap work-around: 8 carry columns without linCmtCarryMaxPairs()", {
-  .ns <- asNamespace("rxode2")
-  .has <- exists("linCmtCarryMaxPairs", envir = .ns, inherits = FALSE)
-  if (.has) {
-    expect_identical(.rxFoceiLinCmtCarryMaxPairs(), get("linCmtCarryMaxPairs", envir = .ns)())
+  if (.depCarryCapPresent()) {
+    expect_identical(.rxFoceiLinCmtCarryMaxPairs(), get("linCmtCarryMaxPairs", envir = asNamespace("rxode2"))())
   } else {
     expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 8L)
   }
+})
+
+test_that("carry-cap work-around: warns only for a release with linCmtCarryMaxPairs()", {
+  local_mocked_bindings(.rxode2Version = .depVersion519)
+  expect_null(.depCarryCapWarning(present = FALSE))
+  expect_match(.depCarryCapWarning(present = TRUE), "rxode2 5.1.9 is a release after 5.1.8.9000", fixed = TRUE)
+  local_mocked_bindings(.rxode2Version = .depVersionDev)
+  expect_null(.depCarryCapWarning(present = TRUE))
+})
+
+test_that("carry-cap work-around: the linCmt() carry's 8-column fallback", {
   skip_on_cran()
-  # a release after the development version that still lacks the function
-  # still needs the fallback
-  .w <- if (.has) .depWorkaroundWarning(.rxode2Version(), "5.1.8.9000", .depCarryCapRemove)
+  .w <- .depCarryCapWarning()
   if (!is.null(.w)) {
     warning(.w, call. = FALSE)
   }
@@ -178,4 +192,15 @@ test_that("the carry-cap probe gives 8 when rxode2's count fails or is no count"
   expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 8L)
   local_mocked_bindings(linCmtCarryMaxPairs = .carryCap32, .package = "rxode2")
   expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 32L)
+})
+
+# after every block has added its row
+test_that("each work-around names every file that uses its probe, skips and fallbacks", {
+  for (.b in names(.depBlocks)) {
+    .files <- .depFilesUsing(.depBlocks[[.b]]$symbols)
+    expect_gt(length(.files), 0L)
+    for (.f in .files) {
+      expect_true(grepl(.f, .depBlocks[[.b]]$remove, fixed = TRUE), label = paste(.b, "names", .f))
+    }
+  }
 })
