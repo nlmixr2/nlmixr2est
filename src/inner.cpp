@@ -2938,11 +2938,7 @@ double likInner0(double *eta, int id) {
     // op->badSolve is racy under cores>1; our retry loop reads per-subject
     // indHasBadSolve() instead, this reset is just a courtesy for diagnostics.
     resetOpBadSolve(op);
-    RSprintf("DEBUG lik solve id=%d eta=%g,%g,%g fd=%d\n", id,
-             op_focei.neta > 0 ? eta[0] : NA_REAL,
-             op_focei.neta > 1 ? eta[1] : NA_REAL,
-             op_focei.neta > 2 ? eta[2] : NA_REAL, fInd->doFD);
-    R_FlushConsole();
+
     if (fInd->doFD == 0) {
       neqGuard.reset(new OdeSwapScope(odeSlotInner, ind, op));
       FoceiRetryHooks _hk;
@@ -2968,9 +2964,7 @@ double likInner0(double *eta, int id) {
     // sized the pool.  Strides are untouched; only the scan bound changes.
     bool isBadSolve = odeSwapIndBadSolveSlot(op, ind,
                                              predSolve ? odeSlotPred : odeSlotInner);
-    RSprintf("DEBUG lik solved id=%d bad=%d retry=%d sticky=%d\n",
-             id, isBadSolve ? 1 : 0, j, fInd->stickyRecalcN2);
-    R_FlushConsole();
+
     if (isBadSolve){
       return likInner0Fail(fInd);
     } else {
@@ -5950,8 +5944,7 @@ static inline void resetToZeroWithoutOpt(focei_ind *indF, int& id) {
 }
 
 static inline void innerOptId(int id) {
-  RSprintf("DEBUG innerOptId %d start\n", id);
-  R_FlushConsole();
+
   focei_ind *indF = &(inds_focei[id]);
   indF->parWarnBadHess = 0;
   indF->parErrorNoEta = 0;
@@ -5975,8 +5968,7 @@ static inline void innerOptId(int id) {
       }
     }
   }
-  RSprintf("DEBUG innerOptId %d done\n", id);
-  R_FlushConsole();
+
 }
 
 
@@ -6306,8 +6298,7 @@ static void fillEtaRestartSamples(rx_solve *rx) {
 static std::vector<double> _foceiLik0Theta;
 
 void innerOpt() {
-  RSprintf("DEBUG innerOpt start\n");
-  R_FlushConsole();
+
   _foceiLik0Theta.clear();
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
@@ -10117,7 +10108,7 @@ NumericVector foceiSetup_(const RObject &obj,
     if (_needSolveArgs) {
       storeCovSolveArgs_(_poolObj, rxControl, params, data);
     }
-    RSprintf("DEBUG before pool rxSolve_\n"); R_FlushConsole();
+
     rxode2::rxSolve_(_poolObj, rxControl,
                      R_NilValue,//const Nullable<CharacterVector> &specParams =
                      R_NilValue,//const Nullable<List> &extraArgs =
@@ -10125,7 +10116,7 @@ NumericVector foceiSetup_(const RObject &obj,
                      data,//const RObject &events =
                      R_NilValue, // inits
                      1);//const int setupOnly = 0
-    RSprintf("DEBUG after pool rxSolve_\n"); R_FlushConsole();
+
     rx = getRxSolve_();
     // a failed restore in an earlier fit's covariance step says nothing about this solve
     covFitSolveLost_ = false;
@@ -15363,10 +15354,10 @@ Environment foceiFitCpp_(Environment e){
       // the macro/solve-site audit; leaving it dead keeps main's behavior.
       op_focei.innerNeq = (odeSwapNeq(odeSlotInner) < odeSwapPlan().poolNeq) ?
         odeSwapNeq(odeSlotInner) : 0;
-      RSprintf("DEBUG before foceiSetup_\n"); R_FlushConsole();
+
       foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
-      RSprintf("DEBUG after foceiSetup_\n"); R_FlushConsole();
+
       if (_outerPoolOk && odeSwapLoaded(odeSlotOuter) &&
           model.containsElementNamed("outer")) {
         odeSwapRegister(odeSlotOuter, "outer", model["outer"], &rxVaeOuter);
@@ -18110,10 +18101,7 @@ static void outerSolveFill(int slot, rxSolveF *fns,
                         foceiOuterRetryOpts(), _ohk);
     }
     double *solve0 = getIndSolve(ind);
-    RSprintf("DEBUG outer solved id=%d slot=%d override=%d opneq=%d ownneq=%d tol=%g first=%g,%g,%g\n",
-             id, slot, getIndNeqOverride(ind), getOpNeq(op), odeSwapNeq(slot),
-             getIndTolFactor(ind), solve0[0], solve0[1], solve0[2]);
-    R_FlushConsole();
+
     // Count the observations BEFORE the bad-solve exit.  A flagged subject still needs
     // its row slot: the stacking allocates rows for it, leaves them zero, skips filling
     // them (`if (!E.ok) continue`) and takes its gradient column from the per-subject

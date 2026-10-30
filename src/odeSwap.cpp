@@ -987,9 +987,7 @@ bool odeSwapIndBadSolveSlot(rx_solving_options *op, rx_solving_options_ind *ind,
   if (solve == NULL) return false;
   for (int i = 0; i < n; ++i) {
     if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) {
-      Rprintf("DEBUG bad state slot=%d i=%d n=%d own=%d override=%d opneq=%d value=%g\n",
-               slot, i, n, own, getIndNeqOverride(ind), getOpNeq(op), solve[i]);
-      R_FlushConsole();
+
       return true;
     }
   }

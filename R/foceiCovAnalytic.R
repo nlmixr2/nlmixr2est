@@ -2518,14 +2518,14 @@
       # chunked models retain duplicates at chunk boundaries, and normalizing the
       # whole multi-megabyte model again costs much more than the C++ CSE itself.
       # A second extraction also exposes duplicates in the parents of new temporary
-      # expressions.  Before the third, distinguish the original chunked temporaries
+      # expressions.  Before each pass, distinguish existing temporaries
       # from the numbered temporaries introduced by CSE; otherwise both can receive
       # the same name and change the sensitivity equations.
       .cores <- .optExprCores(ui)
       if (isTRUE(rxode2::rxGetControl(ui, "optExpression", TRUE))) {
         if (nchar(.modTxt, type = "bytes") > getOption("rxode2.optExprChunkChars", 524288L)) {
           for (.pass in seq_len(3L)) {
-            if (.pass == 3L) .modTxt <- gsub("rx_expr_c1_", "rx_base_", .modTxt, fixed = TRUE)
+            .modTxt <- .foceiCseRename(.modTxt, .pass)
             .opt <- tryCatch(rxode2:::.rxOptExprC(.modTxt), error = function(e) NA_character_)
             if (length(.opt) != 1L || is.na(.opt) || identical(.opt, .modTxt)) break
             .modTxt <- .opt
@@ -4436,4 +4436,9 @@ foceiCovAnalytic <- function(fit) {
     .covCacheDrop(.env, .env$covMethod)
   }
   .ret
+}
+
+# Keep input temporaries distinct from the names allocated by the next CSE pass.
+.foceiCseRename <- function(text, pass) {
+  gsub("rx_expr_", paste0("rx_focei_cse", pass, "_"), text, fixed = TRUE)
 }
