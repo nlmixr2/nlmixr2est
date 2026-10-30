@@ -70,10 +70,12 @@
   ".rxFoceiLinCmtCarryAliasCovs() and .rxFoceiLinCmtCarryCovInterval()",
   "(R/foceiLinCmtCarryCompose.R); the linear refusal, .rxFoceiLinCmtCarryLinearRefused()",
   "and .rxFoceiLinCmtCarryLinearRefuse() (R/foceiLinCmtCarryEligible.R), with their calls",
-  "in R/focei.R and .rxFoceiLinCmtCarryBuildEnabled(); .carryTwinInterps() and",
-  ".carryInterps() (helper-lincmt-carry.R); the probe's skips in test-focei-lincmt-carry-fit.R,",
-  "test-focei-lincmt-carry-fit-fallback.R and test-focei-lincmt-carry-emit-fd.R and its",
-  "check in test-focei-lincmt-carry-emit.R; and this block"
+  "in R/focei.R and .rxFoceiLinCmtCarryBuildEnabled() (R/foceiLinCmtCarryGates.R);",
+  ".carryTwinInterps() and .carryInterps() (helper-lincmt-carry.R), and the loop over",
+  ".carryInterps() in test-focei-lincmt-carry-theta.R; the probe's skips in",
+  "test-focei-lincmt-carry-fit.R, test-focei-lincmt-carry-fit-fallback.R and",
+  "test-focei-lincmt-carry-emit-fd.R and its check in test-focei-lincmt-carry-emit.R;",
+  "and this block"
 )
 
 # The interval-covariate block's warning for the installed rxode2
@@ -95,7 +97,10 @@
       ".rxFoceiLinCmtIntervalCovs",
       ".rxFoceiLinCmtIntervalProbe",
       ".carryIntervalEnv",
-      ".carryTwinInterps"
+      ".carryTwinInterps",
+      ".carryInterps",
+      ".rxFoceiLinCmtCarryLinearRefused",
+      ".rxFoceiLinCmtCarryLinearRefuse"
     )
   )
 )
