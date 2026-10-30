@@ -130,6 +130,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "focei-fast-grad",
     "lincmt-ode-fit",
     "focei-lincmt-carry-fit",
+    "focei-lincmt-carry-iov",
     "focei-lincmt-carry-fit-fallback",
     "focei-lincmt-carry-jump-fit",
     "focei-lincmt-carry-ll-fit",

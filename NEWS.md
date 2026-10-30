@@ -76,6 +76,24 @@
   every interval with the end record's covariates, as rxode2 5.1.8 does,
   the carry reads them the same way.
 
+- FOCEi now fits a `linCmt()` model with inter-occasion variability whose
+  occasion changes within a subject as its ODE twin.  The sensitivity
+  carry left such models alone (the IOV rewrite puts the subject and the
+  occasion etas in one parameter), so their gradient ignored the change
+  of occasion: on theo_md with IOV on `cl` and the occasion stepping at
+  144 h, the objective at the initial estimates was 487.3129 against the
+  ODE model's 473.1587, and `setCov(fit, "imp")` installed the repaired
+  `"|imp|"`.  They now agree to the solver's tolerance (to 1e-7 at
+  `atol = rtol = 1e-10`; 473.1498 against 473.1587 at the defaults), under
+  either `iovMethod`.  The carry has as many columns as the loaded rxode2
+  provides (8 with rxode2 5.1.8; see `rxode2::linCmtCarryMaxPairs()`).
+  With more occasions than that, the last occasion etas keep the standard
+  gradient, with a warning that names the first of them; a later fit that
+  reuses the cached model gives it again.  Those etas' gradient then ignores
+  the change of occasion, which can shift the objective materially; fewer
+  occasion etas, or an rxode2 with more carry columns
+  (`rxode2::linCmtCarryMaxPairs()`), avoids it.
+
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not

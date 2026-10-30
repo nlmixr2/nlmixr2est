@@ -23,6 +23,70 @@
   isTRUE(get("linCmtCarrySentinelMax", envir = .ns)() >= 8L)
 }
 
+#' Carry columns the loaded rxode2 has
+#'
+#' rxode2's `RX_LINCMT_CARRY_MAXPAIRS`, read through its
+#' `linCmtCarryMaxPairs()`.  8 when rxode2 has no such function, or when it
+#' fails (an rxode2lincmt without `.linCmtCarryMaxPairs()` indexes 8 columns
+#' whatever rxode2 has) or gives no count; this runs inside the model
+#' digest, so it never errors.  Remove the fallback with
+#' test-dependency-workarounds.R's carry-cap block.
+#' @return integer
+#' @noRd
+.rxFoceiLinCmtCarryMaxPairs <- function() {
+  .ns <- asNamespace("rxode2")
+  if (!exists("linCmtCarryMaxPairs", envir = .ns, inherits = FALSE)) {
+    return(8L)
+  }
+  .cap <- try(get("linCmtCarryMaxPairs", envir = .ns)(), silent = TRUE)
+  if (inherits(.cap, "try-error") || length(.cap) != 1L || !is.numeric(.cap) || is.na(.cap) || .cap < 1) {
+    return(8L)
+  }
+  as.integer(.cap)
+}
+
+#' The carry-cap warning: the first eta past the cap and how many more
+#'
+#' Kept to one `$runInfo` line (under 75 characters, no method prefix); NEWS
+#' says what to do about it.
+#' @param etas the etas that keep the standard gradient
+#' @param cap the carry columns the loaded rxode2 has
+#' @noRd
+.rxFoceiLinCmtCarryCapMsg <- function(etas, cap) {
+  .msg <- if (length(etas) == 1L) {
+    sprintf("%s keeps the standard gradient (%d carry columns)", etas, cap)
+  } else {
+    sprintf(
+      "%s and %d more keep the standard gradient (%d carry columns)",
+      etas[1L],
+      length(etas) - 1L,
+      cap
+    )
+  }
+  if (nchar(.msg) < 75L) {
+    return(.msg)
+  }
+  # a long eta name: the count alone
+  sprintf(
+    "%d %s the standard gradient (%d carry columns)",
+    length(etas),
+    if (length(etas) == 1L) "eta keeps" else "etas keep",
+    cap
+  )
+}
+
+#' Record a carry-cap warning for the model being built
+#'
+#' The warning is given while the focei model builds; rxUiGet.foceiModel()
+#' stores what was recorded with the cached bundle and gives it again when a
+#' later fit reads the bundle from the cache.
+#' @param msg the warning text
+#' @noRd
+.rxFoceiLinCmtCarryCapWarn <- function(msg) {
+  nlmixr2global$carryCapWarnings <- c(nlmixr2global$carryCapWarnings, msg)
+  warning(msg, call. = FALSE)
+}
+
 #' Carry-eligible pairs, gated for actual codegen substitution
 #'
 #' Applies every build-time gate on top of `.rxFoceiLinCmtCarryEligible()`:
@@ -54,13 +118,15 @@
   if (!.rxFoceiLinCmtCarryModelOk(s)) {
     return(NULL)
   }
-  .jump <- !is.na(.pairs$fD) | !is.na(.pairs$lagD)
+  # a jump channel and a multCov pair both need the fast-path pin (-8)
+  .jump <- !is.na(.pairs$fD) | !is.na(.pairs$lagD) | .pairs$shape %in% "multCov"
   if (any(.jump) && !.rxFoceiLinCmtCarryJumpCapable()) {
     .pairs <- .pairs[!.jump, , drop = FALSE]
     if (nrow(.pairs) == 0L) {
       return(NULL)
     }
   }
+  .pairs <- .rxFoceiLinCmtCarryCapPairs(.pairs)
   .rxFoceiLinCmtCarryCheckCap(.pairs)
   attr(.pairs, "carryCovInterval") <- .rxFoceiLinCmtCarryCovInterval(
     x[[1]]$allCovs,
@@ -126,20 +192,65 @@
   !is.null(.rxFoceiCarryMicro(.sh$ncmt, .sh$oral0, .sh$trans))
 }
 
+#' Carry columns the pairs need
+#'
+#' One per pair, one tracker per slot (`.rxFoceiLinCmtCarryTrackers()`), plus
+#' one shared amounts tracker when any pair has a jump channel and one shared
+#' lag tracker when any pair has an alag() channel
 #' @noRd
-.rxFoceiLinCmtCarryCheckCap <- function(pairs) {
-  # two carry columns per pair (carry + tracker), plus one shared amounts
-  # tracker when any pair has a jump channel and one shared lag tracker when
-  # any pair has an alag() channel; RX_LINCMT_CARRY_MAXPAIRS = 8 columns
-  .need <- 2L *
-    nrow(pairs) +
+.rxFoceiLinCmtCarryColumns <- function(pairs) {
+  nrow(pairs) +
+    .rxFoceiLinCmtCarryTrackers(pairs$slot)$n +
     as.integer(any(!is.na(pairs$fD) | !is.na(pairs$lagD))) +
     as.integer(any(!is.na(pairs$lagD)))
-  if (.need > 8L) {
+}
+
+#' Drop the pairs past the carry's column cap, the newest kinds first
+#'
+#' The loaded rxode2 has `.rxFoceiLinCmtCarryMaxPairs()` carry columns.  Past
+#' them, the multCov pairs (an IOV rewrite's occasion etas), last first, and
+#' then the other pairs that share a slot keep the standard gradient, with
+#' one warning, so a model past the cap is carried no worse than without
+#' them; a model still past it stops in `.rxFoceiLinCmtCarryCheckCap()`.
+#' @param pairs the eligible pairs
+#' @return `pairs` without the dropped rows
+#' @noRd
+.rxFoceiLinCmtCarryCapPairs <- function(pairs) {
+  .cap <- .rxFoceiLinCmtCarryMaxPairs()
+  if (.rxFoceiLinCmtCarryColumns(pairs) <= .cap) {
+    return(pairs)
+  }
+  .shared <- !is.na(pairs$slot) &
+    (duplicated(pairs$slot) | duplicated(pairs$slot, fromLast = TRUE))
+  .order <- c(
+    rev(which(pairs$shape %in% "multCov")),
+    rev(which(.shared & !(pairs$shape %in% "multCov")))
+  )
+  .keep <- rep(TRUE, nrow(pairs))
+  for (.w in .order) {
+    if (.rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) <= .cap) {
+      break
+    }
+    .keep[.w] <- FALSE
+  }
+  if (any(!.keep) && .rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) <= .cap) {
+    .rxFoceiLinCmtCarryCapWarn(.rxFoceiLinCmtCarryCapMsg(pairs$etaName[!.keep], .cap))
+    pairs <- pairs[.keep, , drop = FALSE]
+  }
+  pairs
+}
+
+#' @noRd
+.rxFoceiLinCmtCarryCheckCap <- function(pairs) {
+  .need <- .rxFoceiLinCmtCarryColumns(pairs)
+  .cap <- .rxFoceiLinCmtCarryMaxPairs()
+  if (.need > .cap) {
     stop(
       "the carry-eligible (linCmt parameter, eta) pairs need ",
       .need,
-      " carry columns (8 available); reduce the model or use ",
+      " carry columns (",
+      .cap,
+      " available); reduce the model or use ",
       "foceiControl(linCmtSensCarry=\"none\")",
       call. = FALSE
     )
