@@ -268,29 +268,37 @@ test_that("occasion etas past the carry column limit keep the standard gradient"
   # are 9 pairs, and with cl's tracker they need 10 columns
   local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap8)
   .d <- .carryIovDat(every24 = TRUE)
+  .msg <- paste0(
+    "linCmt() carry: the loaded rxode2 has 8 carry columns, so rx.iov.cl.7, ",
+    "rx.iov.cl.8 keep the standard gradient, which can shift the objective ",
+    "materially; use an rxode2 with more carry columns or fewer IOV occasions"
+  )
   .fit <- .carryIovFit(.carryIovLin, .d)
   expect_true(is.finite(.fit$objf))
   # the fit collects its build warnings into runInfo (.carryIovFit()
   # muffles them at the console)
-  expect_true(any(grepl(
-    "linCmt() carry: rx.iov.cl.7, rx.iov.cl.8 keep the standard gradient (8 carry columns)",
-    .fit$runInfo,
-    fixed = TRUE
-  )))
+  expect_true(any(.fit$runInfo == .msg))
   # seven pairs are carried: eta.cl and six occasion etas
   expect_true(grepl("rx_lcCarryS6r", .carryIovInnerTxt(.fit), fixed = TRUE))
   expect_false(grepl("rx_lcCarryS7r", .carryIovInnerTxt(.fit), fixed = TRUE))
+  # a refit, here with another inner control, reads the model from the
+  # cache and gives the warning again
+  .fit2 <- .carryIovFit(.carryIovLin, .d, maxInner = 0L)
+  expect_true(any(.fit2$runInfo == .msg))
 })
 
 test_that("occasion etas within the loaded rxode2's carry columns are all carried", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   skip_if(.rxFoceiLinCmtCarryMaxPairs() < 10L, "the loaded rxode2 has fewer than 10 carry columns")
+  skip_if_not(.rxFoceiLinCmtIntervalCovs(), "rxode2 advances linCmt() with the end record's covariates")
   .d <- .carryIovDat(every24 = TRUE)
   .fit <- .carryIovFit(.carryIovLin, .d)
-  expect_true(is.finite(.fit$objf))
   expect_false(any(grepl("carry columns", .fit$runInfo, fixed = TRUE)))
   # all nine pairs are carried: eta.cl and eight occasion etas
   expect_true(grepl("rx_lcCarryS8r", .carryIovInnerTxt(.fit), fixed = TRUE))
   expect_false(grepl("rx_lcCarryS9r", .carryIovInnerTxt(.fit), fixed = TRUE))
+  # and the fit is its ODE twin's
+  .ode <- .carryIovFit(.carryIovOde, .d)
+  expect_equal(.fit$objf, .ode$objf, tolerance = 1e-6)
 })

@@ -54,20 +54,35 @@ test_that("interval-covariate work-around: the linCmt() carry's end-record fallb
   "the linCmt() carry's 8-column fallback for an rxode2 without",
   "linCmtCarryMaxPairs() (its RX_LINCMT_CARRY_MAXPAIRS of 32): have",
   ".rxFoceiLinCmtCarryMaxPairs() (R/foceiLinCmtCarryGates.R) call",
-  "rxode2::linCmtCarryMaxPairs(), and remove this block"
+  "rxode2::linCmtCarryMaxPairs(), drop the skip_if() on",
+  ".rxFoceiLinCmtCarryMaxPairs() < 10L in test-focei-lincmt-carry-iov.R's",
+  "nine-pair test, and remove this block and the probe test after it"
 )
 
 test_that("carry-cap work-around: 8 carry columns without linCmtCarryMaxPairs()", {
   .ns <- asNamespace("rxode2")
-  if (exists("linCmtCarryMaxPairs", envir = .ns, inherits = FALSE)) {
+  .has <- exists("linCmtCarryMaxPairs", envir = .ns, inherits = FALSE)
+  if (.has) {
     expect_identical(.rxFoceiLinCmtCarryMaxPairs(), get("linCmtCarryMaxPairs", envir = .ns)())
   } else {
     expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 8L)
   }
   skip_on_cran()
-  .w <- .depWorkaroundWarning(.rxode2Version(), "5.1.8.9000", .depCarryCapRemove)
+  # a release after the development version that still lacks the function
+  # still needs the fallback
+  .w <- if (.has) .depWorkaroundWarning(.rxode2Version(), "5.1.8.9000", .depCarryCapRemove)
   if (!is.null(.w)) {
     warning(.w, call. = FALSE)
   }
   succeed()
+})
+
+test_that("the carry-cap probe gives 8 when rxode2's count fails or is no count", {
+  skip_if_not(exists("linCmtCarryMaxPairs", envir = asNamespace("rxode2"), inherits = FALSE))
+  local_mocked_bindings(linCmtCarryMaxPairs = .carryCapError, .package = "rxode2")
+  expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 8L)
+  local_mocked_bindings(linCmtCarryMaxPairs = .carryCap0, .package = "rxode2")
+  expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 8L)
+  local_mocked_bindings(linCmtCarryMaxPairs = .carryCap32, .package = "rxode2")
+  expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 32L)
 })

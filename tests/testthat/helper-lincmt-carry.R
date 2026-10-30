@@ -6,6 +6,10 @@
 # local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap8)
 .carryCap8 <- function() 8L
 .carryCap32 <- function() 32L
+# an rxode2 whose rxode2lincmt has no .linCmtCarryMaxPairs(), and one with
+# no carry columns, for the probe's fallback
+.carryCapError <- function() stop("'.linCmtCarryMaxPairs' is not an exported object from 'namespace:rxode2lincmt'")
+.carryCap0 <- function() 0L
 
 # The model functions are rxode2 ini()/model() DSL blocks, which lintr's
 # object_usage cannot follow (every assignment looks unused, every covariate
