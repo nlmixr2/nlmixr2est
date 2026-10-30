@@ -85,8 +85,10 @@
   ODE model's 473.1587, and `setCov(fit, "imp")` installed the repaired
   `"|imp|"`.  They now agree to the solver's tolerance (to 1e-7 at
   `atol = rtol = 1e-10`; 473.1498 against 473.1587 at the defaults), under
-  either `iovMethod`.  With more occasions than the carry has room for,
-  the last occasion etas keep the standard gradient, with a message.
+  either `iovMethod`.  The carry has as many columns as the loaded rxode2
+  provides (8 with rxode2 5.1.8; see `rxode2::linCmtCarryMaxPairs()`).
+  With more occasions than that, the last occasion etas keep the standard
+  gradient, with a warning.
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
