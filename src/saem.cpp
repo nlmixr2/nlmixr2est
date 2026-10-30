@@ -1882,6 +1882,10 @@ public:
     return mpost_phi;
   }
 
+  NumericVector get_phiM() {
+    return phiMHist;
+  }
+
   mat get_Plambda() {
     return Plambda;
   }
@@ -2840,8 +2844,6 @@ public:
     // (mixProbMethod="regress" degeneracy fallback is decided in saem_fit AFTER
     // the initial hard classification -- see below.)
     DEBUG=as<int>(x["DEBUG"]);
-    phiMFile=as<std::vector< std::string > >(x["phiMFile"]);
-    //Rcout << phiMFile[0];
 
   }
 
@@ -2927,9 +2929,10 @@ public:
     nmSeqSeedStart(saemSeed, seedReserved);
     double double_xmin = 1.0e-200; //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
-    ofstream phiFile;
     _warnAtolRtol = false;
-    phiFile.open(phiMFile[0].c_str());
+    // kept in memory, not a temp file: cluster temp cleaners deleted it mid-fit (#1276)
+    phiMHist = NumericVector((R_xlen_t)niter * N * nmc * nphi);
+    phiMHist.attr("dim") = IntegerVector::create(N, nmc, niter, nphi);
 
     if (DEBUG>0) {
       RSprintf("initialization successful\n");
@@ -3123,7 +3126,7 @@ public:
           do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
         }
         if (DEBUG > 0) Rcout << "mcmc successful (msaem)\n";
-        if (kiter < (unsigned int)niter) phiFile << phiM;
+        if (kiter < (unsigned int)niter) savePhiM(kiter, phiM);
 
         // E-step: posterior responsibility gamma_{i,m} (softmax, see mixWeights below) from
         // the one simulated phi, plus per-hypothesis predictions for the residual term below.
@@ -3539,7 +3542,7 @@ public:
             phiM_weighted.row(row) += mixWeights(i_subj, jMix) * phiM_mix(jMix).row(row);
           }
         }
-        if (kiter < (unsigned int)niter) phiFile << phiM_weighted;
+        if (kiter < (unsigned int)niter) savePhiM(kiter, phiM_weighted);
         for (int k = 0; k < nmc; k++) {
           phi.slice(k) = phiM_weighted.rows(span(k * N, (k + 1) * N - 1));
         }
@@ -3754,7 +3757,7 @@ public:
         // close this iteration's mixing diagnostics, after the whole MCMC
         // block, so they describe the chain the M-step is about to use
         mcmcCloseIter(kiter, (unsigned int)(niter + nSaCov), phiM);
-        if (kiter < (unsigned int)niter) phiFile << phiM;
+        if (kiter < (unsigned int)niter) savePhiM(kiter, phiM);
 
         //integration
         for(int k=0; k<nmc; k++) {
@@ -4950,7 +4953,6 @@ public:
     // disagree with the fit's own per-subject probabilities (#1058).
     if (nMix > 1 && arma::accu(mixWeights) > 0.0) mixProb = mean(mixWeights, 0).t();
     nmRngGuard([&]{ computeEtaMode(); return 0; });
-    phiFile.close();
   }
 
 
@@ -5212,7 +5214,14 @@ private:
   int arNobs[MAXENDPNT];
 
   int DEBUG;
-  std::vector< std::string > phiMFile;
+  // every estimation iteration's phiM, laid out as an N x nmc x niter x nphi array
+  NumericVector phiMHist;
+
+  void savePhiM(unsigned int kiter, const mat &m) {
+    const uword nr = (uword)N * nmc;
+    mat h(phiMHist.begin(), nr * niter, nphi, false, true);
+    h.rows(kiter * nr, (kiter + 1) * nr - 1) = m;
+  }
 
   // Build fsb (predictions across all nmc chains) and ysb (observations
   // replicated nmc times) for a single endpoint b, used by the residual
@@ -6422,6 +6431,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("transMat") = saem.get_trans(),
     Named("mprior_phi") = saem.get_mprior_phi(),
     Named("mpost_phi") = saem.get_mpost_phi(),
+    Named("phiM") = saem.get_phiM(),
     Named("Gamma2_phi1") = saem.get_Gamma2_phi1(),
     Named("Gamma2_phi1Report") = saem.get_Gamma2_phi1Report(),
     Named("Plambda") = saem.get_Plambda(),

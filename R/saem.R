@@ -1812,15 +1812,10 @@
   env$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .saem <- env$saem
   .saemCfg <- attr(.saem, "saem.cfg")
-  .nphi1 <- .saemCfg$nphi1
-  .nphi0 <- .saemCfg$nphi0
-  .nphi <- .nphi0 + .nphi1
-  .phiM <- matrix(scan(.saemCfg$phiMFile, quiet = TRUE), byrow = TRUE, ncol = .nphi)
-  .N <- .saemCfg$N
-  dim(.phiM) <- c(.N, .saemCfg$nmc, .saemCfg$niter, .nphi)
-  # compresses large object
-  env$phiM <- .phiM
-  try(unlink(.saemCfg$phiMFile), silent = TRUE)
+  # N x nmc x niter x nphi, kept in memory by the C++ fit (#1276)
+  env$phiM <- .saem$phiM
+  .saem$phiM <- NULL
+  env$saem <- .saem
   .likTime <- 0
   .obf <- rxode2::rxGetControl(.ui, "logLik", FALSE)
   .nnodesGq <- rxode2::rxGetControl(.ui, "nnodesGq", 3)
