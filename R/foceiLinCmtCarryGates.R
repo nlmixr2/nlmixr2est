@@ -45,6 +45,25 @@
   as.integer(.cap)
 }
 
+#' The carry-cap warning: the first eta past the cap and how many more
+#'
+#' Kept to one `$runInfo` line (under 75 characters, no method prefix); NEWS
+#' says what to do about it.
+#' @param etas the etas that keep the standard gradient
+#' @param cap the carry columns the loaded rxode2 has
+#' @noRd
+.rxFoceiLinCmtCarryCapMsg <- function(etas, cap) {
+  if (length(etas) == 1L) {
+    return(sprintf("%s keeps the standard gradient (%d carry columns)", etas, cap))
+  }
+  sprintf(
+    "%s and %d more keep the standard gradient (%d carry columns)",
+    etas[1L],
+    length(etas) - 1L,
+    cap
+  )
+}
+
 #' Record a carry-cap warning for the model being built
 #'
 #' The warning is given while the focei model builds; rxUiGet.foceiModel()
@@ -204,15 +223,7 @@
     .keep[.w] <- FALSE
   }
   if (any(!.keep) && .rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) <= .cap) {
-    .rxFoceiLinCmtCarryCapWarn(paste0(
-      "linCmt() carry: the loaded rxode2 has ",
-      .cap,
-      " carry columns, so ",
-      paste(pairs$etaName[!.keep], collapse = ", "),
-      " keep the standard gradient, which can shift the objective ",
-      "materially; use an rxode2 with more carry columns or fewer IOV ",
-      "occasions"
-    ))
+    .rxFoceiLinCmtCarryCapWarn(.rxFoceiLinCmtCarryCapMsg(pairs$etaName[!.keep], .cap))
     pairs <- pairs[.keep, , drop = FALSE]
   }
   pairs

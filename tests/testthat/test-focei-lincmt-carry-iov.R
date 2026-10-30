@@ -268,11 +268,7 @@ test_that("occasion etas past the carry column limit keep the standard gradient"
   # are 9 pairs, and with cl's tracker they need 10 columns
   local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap8)
   .d <- .carryIovDat(every24 = TRUE)
-  .msg <- paste0(
-    "linCmt() carry: the loaded rxode2 has 8 carry columns, so rx.iov.cl.7, ",
-    "rx.iov.cl.8 keep the standard gradient, which can shift the objective ",
-    "materially; use an rxode2 with more carry columns or fewer IOV occasions"
-  )
+  .msg <- "rx.iov.cl.7 and 1 more keep the standard gradient (8 carry columns)"
   .fit <- .carryIovFit(.carryIovLin, .d)
   expect_true(is.finite(.fit$objf))
   # the fit collects its build warnings into runInfo (.carryIovFit()
@@ -285,6 +281,14 @@ test_that("occasion etas past the carry column limit keep the standard gradient"
   # cache and gives the warning again
   .fit2 <- .carryIovFit(.carryIovLin, .d, maxInner = 0L)
   expect_true(any(.fit2$runInfo == .msg))
+})
+
+test_that("the carry-cap warning names the first eta and fits a runInfo line", {
+  .one <- .rxFoceiLinCmtCarryCapMsg("rx.iov.cl.7", 8L)
+  expect_identical(.one, "rx.iov.cl.7 keeps the standard gradient (8 carry columns)")
+  .many <- .rxFoceiLinCmtCarryCapMsg(paste0("rx.iov.cl.", 23:41), 32L)
+  expect_identical(.many, "rx.iov.cl.23 and 18 more keep the standard gradient (32 carry columns)")
+  expect_lt(nchar(.many), 75L)
 })
 
 test_that("occasion etas within the loaded rxode2's carry columns are all carried", {
