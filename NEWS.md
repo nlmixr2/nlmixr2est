@@ -183,6 +183,13 @@
   leaves them out of the decorrelation.  Before, the residual step's NA
   spread through the decorrelation and the subject's NPDE were meaningless.
 
+- NPDE under `censMethod = "cdf"` now imputes censored observations the same
+  way as the other methods, so it is N(0, 1) when the model is true (#1226).
+  Before, it rescaled a decorrelated pd that had used the LOQ as the
+  observation, ignored censoring limits, and drifted negative as the censored
+  fraction grew.  Imputing each value from its own marginal distribution
+  (Nguyen et al. 2012) instead fixed the mean but over-dispersed NPDE.
+
 - NPDE's back-transformation of EPRED and DV now uses each observation's own
   transform; it used the first subject's rows for every subject.
 ### Tables
