@@ -60,8 +60,8 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   pars <- c(`THETA[1]` = log(2), `THETA[2]` = log(20), `THETA[3]` = 0.5)
   fdErr <- function(txt, interp = "nocb") {
     m <- suppressWarnings(rxode2::rxode2(txt))
-    # under midpoint the model reads wt's hidden copies too
-    .ev <- .rxFoceiLinCmtCarryAliasData(ev, if (interp == "midpoint") "wt" else character(0))
+    # under midpoint and linear the model reads wt's hidden copies too
+    .ev <- .rxFoceiLinCmtCarryAliasData(ev, if (interp %in% c("midpoint", "linear")) c(wt = interp) else character(0))
     slv <- function(q) {
       rxode2::rxSolve(m, params = q, events = .ev, returnType = "data.frame", covsInterpolation = interp)
     }
@@ -97,8 +97,8 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   errCnls <- fdErr(txtCnls)
   expect_true(all(errCnls[1:2] < 1e-6))
 
-  # locf and midpoint read the covariate over each interval
-  for (.i in c("locf", "midpoint")) {
+  # locf, midpoint and linear read the covariate over each interval
+  for (.i in .carryInterps(c("locf", "midpoint", "linear"))) {
     expect_true(all(fdErr(buildTxt(modTheta, "auto", interp = .i), .i) < 1e-6), label = .i)
     expect_true(all(fdErr(buildTxt(modTheta, "auto", "nls", .i), .i)[1:2] < 1e-6), label = paste("nls", .i))
   }

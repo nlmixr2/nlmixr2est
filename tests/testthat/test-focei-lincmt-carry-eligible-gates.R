@@ -1,10 +1,10 @@
 # Phase 3b.1: carry-eligibility detection -- the model-level gates (pure
 # linCmt() with a bare prediction, no direct time dependence) and the
-# data-level confirmation (varying NA/TRUE/FALSE, "linear" interpolation).
+# data-level confirmation (varying NA/TRUE/FALSE).
 # The structural shape/slot/eta rules are in
 # test-focei-lincmt-carry-eligible.R.
 
-test_that("data confirms or refutes a candidate; linear interpolation errors only when confirmed", {
+test_that("data confirms or refutes a candidate", {
   .mult <- function() {
     ini({
       tcl <- log(0.1)
@@ -39,20 +39,6 @@ test_that("data confirms or refutes a candidate; linear interpolation errors onl
   .p <- suppressMessages(.foceiLinCmtCarryPairs(.mult, data = .datConst))
   expect_equal(nrow(.p), 1L)
   expect_false(.p$varying)
-
-  # linear interpolation: error only when confirmed varying
-  expect_error(
-    suppressMessages(
-      .foceiLinCmtCarryPairs(.mult, data = .datVary, interpolation = "linear")
-    ),
-    "linear"
-  )
-  expect_error(
-    suppressMessages(
-      .foceiLinCmtCarryPairs(.mult, data = .datConst, interpolation = "linear")
-    ),
-    NA
-  )
 })
 
 test_that("a mixed ODE + linCmt() model is never carry-eligible", {
