@@ -47,7 +47,7 @@ you supply single subject event tables (created with
  - `"ipred"`, `"pred"` and `"epred"` replace a censored DV with the IPRED,
    PRED or EPRED in the residuals.
 
-  For NPDE, every method but `"cdf"` and `"omit"` replaces each censored
+  For NPDE, every method but `"omit"` replaces each censored
   observation by a draw from the subject's simulated predictive
   distribution (a Gaussian copula of the simulations), conditional on its
   measured observations and truncated to its censoring interval; `"omit"`
@@ -55,7 +55,9 @@ you supply single subject event tables (created with
   decorrelation.}
 
 \item{seed}{an object specifying if and how the random number
-generator should be initialized}
+generator should be initialized; when given, it takes precedence
+over an active \code{\link[rxode2:rxSetSeed]{rxSetSeed()}} stream for this solve, and the
+caller's \code{.Random.seed} is restored afterwards}
 
 \item{cholSEtol}{The tolerance for the `rxode2::choleSE` function}
 

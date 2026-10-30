@@ -22,7 +22,7 @@ nmTest({
     .sim
   }
 
-  .npdeImpute <- function(sim, dv, cens, n, limit = NULL) {
+  .npdeImpute <- function(sim, dv, cens, n, limit = NULL, censMethod = 3L) {
     .r <- .Call(
       `_nlmixr2est_npdeCalc`,
       sim,
@@ -30,7 +30,7 @@ nmTest({
       rep(0L, length(dv)),
       cens,
       limit,
-      list(censMethod = 3L, seed = 7L)
+      list(censMethod = censMethod, seed = 7L)
     )
     matrix(as.numeric(.r[[1]]), ncol = n, byrow = TRUE)
   }
@@ -53,6 +53,27 @@ nmTest({
     expect_gt(suppressWarnings(ks.test(.imp[, 2], .x[, 1])$p.value), 0.01)
     expect_gt(suppressWarnings(ks.test(.imp[, 3], .x[, 2])$p.value), 0.01)
     expect_equal(cor(.imp[, 2], .imp[, 3]), cor(.x[, 1], .x[, 2]), tolerance = 0.1)
+  })
+
+  test_that("cdf imputes like truncated-normal", {
+    set.seed(4)
+    .S <- matrix(c(1, 0.9, 0.9, 1), 2)
+    .nid <- 200
+    .sim <- .npdeSims(.S, .nid, 300)
+    # the first observation measured at 2, the second censored in (-1, 0)
+    .imp <- function(censMethod) {
+      .npdeImpute(
+        .sim,
+        rep(c(2, 0), .nid),
+        rep(c(0L, 1L), .nid),
+        2,
+        limit = rep(c(-Inf, -1), .nid),
+        censMethod = censMethod
+      )
+    }
+    .cdf <- .imp(2L)
+    expect_true(all(.cdf[, 2] >= -1 & .cdf[, 2] <= 0))
+    expect_equal(.cdf, .imp(3L))
   })
 
   test_that("a strongly correlated censored block is not underdispersed", {
