@@ -64,6 +64,16 @@
 
 ### Estimation
 
+- `est = "nlm"` and `est = "nls"` with the `linCmt()` sensitivity carry
+  (`linCmtSensCarry = "auto"`, the default) now reach the optimum.  The
+  record walk that builds their gradient started each subject from the carry
+  its solve had already advanced, so the carried theta gradient was wrong
+  (for `tcl`, -49.1 where the objective's derivative is -0.49, in a
+  one-compartment model with a time-varying weight).  nlm stopped near the
+  initial estimates (objective
+  -21.88 against -27.21 for its ODE twin under nocb) and nls short of the
+  optimum (-27.19).  Both now equal the ODE twin.
+
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not
