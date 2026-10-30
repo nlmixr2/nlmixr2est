@@ -9554,6 +9554,7 @@ NumericVector foceiSetup_(const RObject &obj,
     mvi = rxode2::rxModelVars_(obj);
   }
   rxOptionsFreeFocei();
+  _foceiLik0Theta.clear(); // a point from a previous fit cannot validate this setup
   // Register the inner model as the first peer solver.  Done here (rather than in
   // foceiSetupTheta_, which only sees the model vars) so the whole registry -- and
   // therefore the pool decision -- is known before the solve pool is built below.

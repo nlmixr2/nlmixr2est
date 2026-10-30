@@ -98,3 +98,26 @@ test_that('an exact analytic zero does not replace the selected outer optimizer'
   expect_equal(fit$env$nFDGradFast, 0)
   expect_identical(fit$message, 'exact analytic zero regression')
 })
+
+test_that('analytic point caching does not cross fits with the same theta', {
+  model <- function() {
+    ini({ level <- .2; error <- .2; eta ~ .3 })
+    model({ d/dt(dummy) <- 0; dummy(0) <- 1
+            prediction <- (level + eta) * dummy; prediction ~ add(error) })
+  }
+  for (value in c(1.6, 2)) {
+    data <- data.frame(ID=1, TIME=1:3, DV=value, AMT=0, EVID=0)
+    eta <- 3 * .3 * (value - .2) / (.2^2 + 3 * .3)
+    fit <- suppressWarnings(suppressMessages(nlmixr2(
+      model, data, 'focei', foceiControl(
+        fast=TRUE, maxOuterIterations=0, maxInnerIterations=0,
+        etaMat=matrix(eta, 1, 1), resetEtaP=0,
+        print=0, covMethod='', calcTables=FALSE
+      )
+    )))
+    expect_equal(fit$env$.gradDirectFirst[1],
+                 -2 * 3 * (value - .2) / (.2^2 + 3 * .3), tolerance=1e-7)
+    expect_gt(fit$env$nAnalyticGradDirect, 0)
+    expect_equal(fit$env$nFDGradFast, 0)
+  }
+})
