@@ -4440,5 +4440,7 @@ foceiCovAnalytic <- function(fit) {
 
 # Keep input temporaries distinct from the names allocated by the next CSE pass.
 .foceiCseRename <- function(text, pass) {
-  gsub("rx_expr_", paste0("rx_focei_cse", pass, "_"), text, fixed = TRUE)
+  prefix <- paste0("rx_focei_cse", pass, "_")
+  while (grepl(prefix, text, fixed = TRUE)) prefix <- paste0(prefix, "cse_")
+  gsub("rx_expr_", prefix, text, fixed = TRUE)
 }

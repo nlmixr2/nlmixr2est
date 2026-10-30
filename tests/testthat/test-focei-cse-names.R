@@ -39,3 +39,11 @@ test_that('outer CSE preserves a small ODE and its sensitivity', {
   expect_equal(actual[c('A', 'S', 'pred')], ref[c('A', 'S', 'pred')], tolerance=1e-8)
 })
 
+
+test_that('outer CSE renaming also avoids existing target prefixes', {
+  text <- 'rx_focei_cse1_0~17\nrx_expr_0~a+b\ny=rx_expr_0*(c+d)+(c+d)+rx_focei_cse1_0'
+  env <- list2env(list(a=2, b=3, c=7, d=11))
+  renamed <- .foceiCseRename(text, 1L)
+  eval(parse(text=gsub('~', '<-', renamed, fixed=TRUE)), env)
+  expect_equal(env$y, 125)
+})
