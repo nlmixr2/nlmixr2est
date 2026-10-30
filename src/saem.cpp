@@ -2356,15 +2356,17 @@ public:
     }
     rx_solving_options *op = getSolvingOptions(_rx);
     vec yt = modeResidSetup();
-    std::vector<uword> realC;
-    for (int c = 0; c < nphi1; ++c) {
-      if (!any(pseudoIx1 == (uword)c)) realC.push_back((uword)c);
-    }
-    uvec realIx(realC);
     // the reported Omega (before the variance floor), as the fit's model has
     mat G = get_Gamma2_phi1Report();
+    // a collapsed (zero-variance) eta is held, not free (modeFreeCols), so it
+    // only adds a constant to the prior; leave it out or Greal is singular (#1270)
+    std::vector<uword> realC;
+    for (int c = 0; c < nphi1; ++c) {
+      if (!any(pseudoIx1 == (uword)c) && G(c, c) > 0.0) realC.push_back((uword)c);
+    }
+    uvec realIx(realC);
     mat Greal = G.submat(realIx, realIx);
-    mat IG = invSympdNearPd(Greal, "Gamma2_phi1 (Omega)");
+    mat IG = Greal.n_elem == 0 ? Greal : invSympdNearPd(Greal, "Gamma2_phi1 (Omega)");
     vec sd = sqrt(G.diag());
     std::vector<int> doParam;
     if (!_saemPhi1PoolActive) {
