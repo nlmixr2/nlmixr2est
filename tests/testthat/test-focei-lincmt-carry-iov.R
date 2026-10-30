@@ -264,29 +264,33 @@ test_that("an eta added to a covariate's exponent fits as the ODE twin", {
 test_that("occasion etas past the carry column limit keep the standard gradient", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
-  # eta.cl and 8 occasion etas: 9 pairs and cl's tracker need 10 columns
+  # an rxode2 with 8 carry columns (CRAN 5.1.8): eta.cl and 8 occasion etas
+  # are 9 pairs, and with cl's tracker they need 10 columns
+  local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap8)
   .d <- .carryIovDat(every24 = TRUE)
-  .msg <- testthat::capture_messages(
-    .fit <- suppressWarnings(nlmixr2est::nlmixr2(
-      .carryIovLin,
-      .d,
-      "focei",
-      control = nlmixr2est::foceiControl(
-        print = 0L,
-        maxOuterIterations = 0L,
-        covMethod = "",
-        calcTables = FALSE,
-        rxControl = rxode2::rxControl(atol = 1e-10, rtol = 1e-10)
-      )
-    ))
-  )
+  .fit <- .carryIovFit(.carryIovLin, .d)
   expect_true(is.finite(.fit$objf))
+  # the fit collects its build warnings into runInfo (.carryIovFit()
+  # muffles them at the console)
   expect_true(any(grepl(
-    "rx.iov.cl.7, rx.iov.cl.8 keep the standard gradient (carry column limit)",
-    .msg,
+    "linCmt() carry: rx.iov.cl.7, rx.iov.cl.8 keep the standard gradient (8 carry columns)",
+    .fit$runInfo,
     fixed = TRUE
   )))
   # seven pairs are carried: eta.cl and six occasion etas
   expect_true(grepl("rx_lcCarryS6r", .carryIovInnerTxt(.fit), fixed = TRUE))
   expect_false(grepl("rx_lcCarryS7r", .carryIovInnerTxt(.fit), fixed = TRUE))
+})
+
+test_that("occasion etas within the loaded rxode2's carry columns are all carried", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  skip_if(.rxFoceiLinCmtCarryMaxPairs() < 10L, "the loaded rxode2 has fewer than 10 carry columns")
+  .d <- .carryIovDat(every24 = TRUE)
+  .fit <- .carryIovFit(.carryIovLin, .d)
+  expect_true(is.finite(.fit$objf))
+  expect_false(any(grepl("carry columns", .fit$runInfo, fixed = TRUE)))
+  # all nine pairs are carried: eta.cl and eight occasion etas
+  expect_true(grepl("rx_lcCarryS8r", .carryIovInnerTxt(.fit), fixed = TRUE))
+  expect_false(grepl("rx_lcCarryS9r", .carryIovInnerTxt(.fit), fixed = TRUE))
 })

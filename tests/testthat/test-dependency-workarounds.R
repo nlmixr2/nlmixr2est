@@ -49,3 +49,25 @@ test_that("interval-covariate work-around: the linCmt() carry's end-record fallb
   }
   succeed()
 })
+
+.depCarryCapRemove <- paste(
+  "the linCmt() carry's 8-column fallback for an rxode2 without",
+  "linCmtCarryMaxPairs() (its RX_LINCMT_CARRY_MAXPAIRS of 32): have",
+  ".rxFoceiLinCmtCarryMaxPairs() (R/foceiLinCmtCarryGates.R) call",
+  "rxode2::linCmtCarryMaxPairs(), and remove this block"
+)
+
+test_that("carry-cap work-around: 8 carry columns without linCmtCarryMaxPairs()", {
+  .ns <- asNamespace("rxode2")
+  if (exists("linCmtCarryMaxPairs", envir = .ns, inherits = FALSE)) {
+    expect_identical(.rxFoceiLinCmtCarryMaxPairs(), get("linCmtCarryMaxPairs", envir = .ns)())
+  } else {
+    expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 8L)
+  }
+  skip_on_cran()
+  .w <- .depWorkaroundWarning(.rxode2Version(), "5.1.8.9000", .depCarryCapRemove)
+  if (!is.null(.w)) {
+    warning(.w, call. = FALSE)
+  }
+  succeed()
+})

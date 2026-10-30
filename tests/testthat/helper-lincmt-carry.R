@@ -2,6 +2,11 @@
 # (test-focei-lincmt-carry-*.R): the canonical covariate models, a control
 # setter, and the non-uniform event tables.
 
+# rxode2 carry column counts (rxode2 5.1.8 has 8), for
+# local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap8)
+.carryCap8 <- function() 8L
+.carryCap32 <- function() 32L
+
 # The model functions are rxode2 ini()/model() DSL blocks, which lintr's
 # object_usage cannot follow (every assignment looks unused, every covariate
 # undefined).
