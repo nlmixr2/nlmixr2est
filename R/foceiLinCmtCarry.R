@@ -58,8 +58,25 @@
 #   second-order carry; models with eligible pairs keep the Shi21
 #   finite-difference Hessian fallback (gated in .foceiMaybeAddHdEta2).
 
-# (the per-model context, the final composition and the linCmtB() call
-# renderer live in foceiLinCmtCarryCompose.R)
+#' Render one linCmtB() model-text call for the carry lines
+#' @noRd
+.rxFoceiLinCmtCarryCall <- function(pfx, which1, which2, trans, thetas) {
+  paste0(
+    "linCmtB(",
+    pfx,
+    ",",
+    which1,
+    ",",
+    which2,
+    ",",
+    trans,
+    ",",
+    paste(thetas, collapse = ","),
+    ")"
+  )
+}
+# (the per-model context and the final composition live in
+# foceiLinCmtCarryCompose.R)
 
 #' One pair's per-row lines: g, the per-compartment J/tracker reads, the
 #' -7 carry add (kernel + jump terms) and the tracker update
