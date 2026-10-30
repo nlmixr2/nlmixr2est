@@ -4535,8 +4535,10 @@ static inline int innerOpt1(int id, int likId) {
         op_focei.etaPBase.size() == (size_t)op_focei.neta * getRxNsub(rx)) {
       double *etaP_i = &op_focei.getaP[(size_t)id * op_focei.neta * op_focei.npars];
       std::vector<double> etaNew(op_focei.neta);
-      for (int j = 0; j < op_focei.neta; j++)
+      for (int j = 0; j < op_focei.neta; j++) {
         etaNew[j] = op_focei.etaPBase[(size_t)id * op_focei.neta + j];
+        fInd->eta[j] = etaNew[j]; // the bounded fallback uses the same baseline
+      }
       for (int k = 0; k < (int)op_focei.npars; k++) {
         double dth = op_focei.theta[k] - op_focei.etaPTheta[k];
         if (dth == 0.0) continue;
