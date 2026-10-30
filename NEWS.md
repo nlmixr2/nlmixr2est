@@ -188,6 +188,11 @@
   observation, ignored censoring limits, and drifted negative as the censored
   fraction grew.
 
+- `censMethod = "cdf"` and `"epred"` now compute the residuals (RES, CWRES)
+  of censored observations from the DV the NPDE pass imputed, as documented.
+  Before, the NPDE pass's DV was handed on but never used, so those residuals
+  used the LOQ.
+
 - NPDE's back-transformation of EPRED and DV now uses each observation's own
   transform; it used the first subject's rows for every subject.
 ### Tables

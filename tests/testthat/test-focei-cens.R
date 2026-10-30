@@ -422,6 +422,24 @@ nmTest({
     }
   })
 
+  test_that("cdf and epred residuals use the NPDE pass's imputed DV", {
+    for (.cm in c("cdf", "epred")) {
+      .fit <- suppressWarnings(suppressMessages(nlmixr2(
+        .censNpdeMod,
+        .censNpdeData(),
+        "posthoc",
+        table = tableControl(npde = TRUE, censMethod = .cm)
+      )))
+      .c <- .fit$CENS == 1
+      expect_true(all(.fit$DV[.c] != 3), label = .cm)
+      expect_equal(.fit$RES[.c], .fit$DV[.c] - .fit$PRED[.c], label = .cm)
+      # the limits stay at the LOQ
+      expect_equal(.fit$upperLim[.c], rep(3, sum(.c)), label = .cm)
+      expect_equal(.fit$dataLloq, 3, label = .cm)
+      expect_true(all(is.finite(.fit$CWRES)), label = .cm)
+    }
+  })
+
   test_that("a censored fit's NPDE matches an NPDE pass on fresh predictions", {
     for (.cm in c("truncated-normal", "omit")) {
       .fit <- suppressWarnings(suppressMessages(nlmixr2(
