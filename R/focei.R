@@ -3577,7 +3577,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## sensitivity model in "fd" mode -- silently zeroing the dosing-parameter
   ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
   ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
-  .cacheFormat <- 3L
+  ## Version 4: the bundle carries its carry-cap warnings
+  ## (attr "carryCapWarnings"), which a v3 entry would never give again.
+  .cacheFormat <- 4L
   .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
@@ -3685,8 +3687,14 @@ rxUiGet.foceiModel <- function(x, ...) {
   if (file.exists(.cacheFile)) {
     .ret <- readRDS(.cacheFile)
     .ret[] <- lapply(.ret, .foceiModelCacheInflate)
+    # the build's carry-cap warnings, which a cached bundle skips
+    for (.w in attr(.ret, "carryCapWarnings")) {
+      warning(.w, call. = FALSE)
+    }
     return(.ret)
   }
+  nlmixr2global$carryCapWarnings <- NULL
+  on.exit(nlmixr2global$carryCapWarnings <- NULL, add = TRUE)
   .ui <- x[[1]]
   .iniDf <- get("iniDf", .ui)
   .ret <- if (all(is.na(.iniDf$neta1))) {
@@ -3696,6 +3704,7 @@ rxUiGet.foceiModel <- function(x, ...) {
   } else {
     rxUiGet.foce(x, ...)
   }
+  attr(.ret, "carryCapWarnings") <- nlmixr2global$carryCapWarnings
   .store <- .ret
   .store[] <- lapply(.store, .foceiModelCacheDeflate)
   saveRDS(.store, .cacheFile)

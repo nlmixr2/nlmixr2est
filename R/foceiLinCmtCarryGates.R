@@ -26,8 +26,11 @@
 #' Carry columns the loaded rxode2 has
 #'
 #' rxode2's `RX_LINCMT_CARRY_MAXPAIRS`, read through its
-#' `linCmtCarryMaxPairs()`; an rxode2 without that function has 8.  Remove
-#' the fallback with test-dependency-workarounds.R's carry-cap block.
+#' `linCmtCarryMaxPairs()`.  8 when rxode2 has no such function, or when it
+#' fails (an rxode2lincmt without `.linCmtCarryMaxPairs()` indexes 8 columns
+#' whatever rxode2 has) or gives no count; this runs inside the model
+#' digest, so it never errors.  Remove the fallback with
+#' test-dependency-workarounds.R's carry-cap block.
 #' @return integer
 #' @noRd
 .rxFoceiLinCmtCarryMaxPairs <- function() {
@@ -35,7 +38,23 @@
   if (!exists("linCmtCarryMaxPairs", envir = .ns, inherits = FALSE)) {
     return(8L)
   }
-  as.integer(get("linCmtCarryMaxPairs", envir = .ns)())
+  .cap <- try(get("linCmtCarryMaxPairs", envir = .ns)(), silent = TRUE)
+  if (inherits(.cap, "try-error") || length(.cap) != 1L || !is.numeric(.cap) || is.na(.cap) || .cap < 1) {
+    return(8L)
+  }
+  as.integer(.cap)
+}
+
+#' Record a carry-cap warning for the model being built
+#'
+#' The warning is given while the focei model builds; rxUiGet.foceiModel()
+#' stores what was recorded with the cached bundle and gives it again when a
+#' later fit reads the bundle from the cache.
+#' @param msg the warning text
+#' @noRd
+.rxFoceiLinCmtCarryCapWarn <- function(msg) {
+  nlmixr2global$carryCapWarnings <- c(nlmixr2global$carryCapWarnings, msg)
+  warning(msg, call. = FALSE)
 }
 
 #' Carry-eligible pairs, gated for actual codegen substitution
@@ -185,14 +204,15 @@
     .keep[.w] <- FALSE
   }
   if (any(!.keep) && .rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) <= .cap) {
-    warning(
-      "linCmt() carry: ",
-      paste(pairs$etaName[!.keep], collapse = ", "),
-      " keep the standard gradient (",
+    .rxFoceiLinCmtCarryCapWarn(paste0(
+      "linCmt() carry: the loaded rxode2 has ",
       .cap,
-      " carry columns)",
-      call. = FALSE
-    )
+      " carry columns, so ",
+      paste(pairs$etaName[!.keep], collapse = ", "),
+      " keep the standard gradient, which can shift the objective ",
+      "materially; use an rxode2 with more carry columns or fewer IOV ",
+      "occasions"
+    ))
     pairs <- pairs[.keep, , drop = FALSE]
   }
   pairs
