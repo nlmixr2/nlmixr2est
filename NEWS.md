@@ -64,6 +64,10 @@
 
 ### Estimation
 
+- Native analytic gradients now reuse the inner solution already evaluated by
+  the objective. Exact zero analytic components no longer trigger a spurious
+  theta reset or replacement of the selected outer optimizer with BOBYQA.
+
 - Fast FOCEi ETA extrapolation now uses the EBEs at the last analytic-gradient
   point. Line-search trials no longer compound the prediction from ETAs left
   by a different trial.

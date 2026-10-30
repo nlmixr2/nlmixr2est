@@ -8048,8 +8048,8 @@ static inline bool contribDeclineAnalyticGrad(void) {
 static bool analyticOuterGrad(double *theta, double *g) {
   if (!op_foceiUseAnalyticGrad || !op_foceiFitEnvSet) return false;
   op_focei.calcGrad = 1;
-  // Ensure the inner solutions (eta*) and omega are current at this theta.
-  foceiOfv0(theta);
+  // Reuse the objective point; another inner solve changes its ETAs.
+  foceiLik0At(theta);
   // #1051: an external likelihood contribution that changes the objective is
   // invisible to the kernel below -- the objective is right, the theta direction
   // is not, so the fit converges to a non-stationary point and reports success.
@@ -10978,7 +10978,8 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
     scalePrintGrad(&op_focei.scale, grp, gType);
   }
   for (i = 0; i < n; i++){
-    if (gr[i] == 0){
+    // An exact analytic zero is valid, not a failed finite-difference direction.
+    if (gr[i] == 0 && !op_focei.curAnalytic){
       if (op_focei.nF+op_focei.nF2 == 1) {
         if (op_focei.zeroGradFirstReset) {
           op_focei.zeroGrad=true;
