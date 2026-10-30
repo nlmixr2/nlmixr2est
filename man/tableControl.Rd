@@ -40,8 +40,7 @@ you supply single subject event tables (created with
  - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of
    the model and censoring.
 
- - `"cdf"` Compute NPDE first and use its imputed censored values (see
-   below) as the DV of the other residuals (`cwres` etc).
+ - `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)
 
  - `"omit"` omit the residuals for censoring
 
