@@ -64,6 +64,10 @@
 
 ### Estimation
 
+- Fast FOCEi ETA extrapolation now uses the EBEs at the last analytic-gradient
+  point. Line-search trials no longer compound the prediction from ETAs left
+  by a different trial.
+
 - `fast = TRUE` FOCEi fits now solve the inner model with its own state stride
   and matching event-sensitivity callbacks when the augmented outer model sizes
   the shared solve pool.  This prevents failed inner solves and penalty-only
