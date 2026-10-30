@@ -1285,8 +1285,8 @@ addTable <- function(
 #'  - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of
 #'    the model and censoring.
 #'
-#'  - `"cdf"` Use the cdf-method for censoring in the residuals other than
-#'    NPDE (`cwres` etc).
+#'  - `"cdf"` Compute NPDE first and use its imputed censored values (see
+#'    below) as the DV of the other residuals (`cwres` etc).
 #'
 #'  - `"omit"` omit the residuals for censoring
 #'

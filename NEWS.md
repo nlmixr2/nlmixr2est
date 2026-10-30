@@ -172,8 +172,7 @@
 - NPDE of censored observations now draws each censored value from the
   subject's simulated predictive distribution (a Gaussian copula of the
   simulations), conditional on its measured observations and truncated to its
-  censoring interval, for every `tableControl(censMethod =)` but "cdf" and
-  "omit".  The simulations themselves are left untruncated.
+  censoring interval, for every `tableControl(censMethod =)` but "omit".  The simulations themselves are left untruncated.
   Before, NPDE under "truncated-normal", "ipred" and "pred" used whatever the
   residual step had written into the shared DV (a draw around IPRED, or
   IPRED/PRED), and "epred" used the LOQ itself.  The residual columns are
@@ -187,8 +186,7 @@
   way as the other methods, so it is N(0, 1) when the model is true (#1226).
   Before, it rescaled a decorrelated pd that had used the LOQ as the
   observation, ignored censoring limits, and drifted negative as the censored
-  fraction grew.  Imputing each value from its own marginal distribution
-  (Nguyen et al. 2012) instead fixed the mean but over-dispersed NPDE.
+  fraction grew.
 
 - NPDE's back-transformation of EPRED and DV now uses each observation's own
   transform; it used the first subject's rows for every subject.
