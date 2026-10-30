@@ -88,11 +88,13 @@
   )
 }
 
-# Each block: what its warning names to remove, and the symbols of its
-# probe, skips and fallbacks
+# Each block: what its warning names to remove, the symbols of its probe,
+# skips and fallbacks, and a file the scan must find (anchor), so a scan run
+# from the wrong root fails instead of passing on what little it saw
 .depBlocks <- list(
   intervalCovs = list(
     remove = .depIntervalCovsRemove,
+    anchor = "foceiLinCmtCarryInterval.R",
     symbols = c(
       ".rxFoceiLinCmtIntervalCovs",
       ".rxFoceiLinCmtIntervalProbe",
@@ -124,9 +126,14 @@ test_that("the work-around warning is given only for a release with the feature"
 })
 
 test_that("each work-around names every file that uses its probe, skips and fallbacks", {
+  # tests/ alone (an installed-package check) cannot show what R/ uses
+  skip_if_not(
+    dir.exists(file.path(testthat::test_path("..", ".."), "R")),
+    "no R/ beside tests/: the file-name check needs the source tree"
+  )
   for (.b in names(.depBlocks)) {
     .files <- .depFilesUsing(.depBlocks[[.b]]$symbols)
-    expect_gt(length(.files), 0L)
+    expect_true(.depBlocks[[.b]]$anchor %in% .files, label = paste(.b, "scan finds its anchor"))
     for (.f in .files) {
       expect_true(grepl(.f, .depBlocks[[.b]]$remove, fixed = TRUE), label = paste(.b, "names", .f))
     }
