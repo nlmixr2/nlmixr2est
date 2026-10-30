@@ -88,7 +88,8 @@
   either `iovMethod`.  The carry has as many columns as the loaded rxode2
   provides (8 with rxode2 5.1.8; see `rxode2::linCmtCarryMaxPairs()`).
   With more occasions than that, the last occasion etas keep the standard
-  gradient, with a warning.
+  gradient, with a warning that names them; a later fit that reuses the
+  cached model gives it again.
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
