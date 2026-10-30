@@ -5564,10 +5564,24 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       }
     }
   })
+  # A replace or multiply record that the loaded rxode2lincmt's own
+  # Jacobian does not follow leaves every linCmt() eta gradient wrong, carry
+  # or not, and no correct one is available here (FOCEi's per-eta finite
+  # differences are not that); the fit says so.
+  local({
+    .rd <- tryCatch(as.data.frame(env$data), error = function(e) NULL)
+    if (is.null(.rd)) {
+      return(invisible(NULL))
+    }
+    names(.rd) <- toupper(names(.rd))
+    if (.rxFoceiLinCmtJacApprox(ui, .rd)) {
+      warning("replace/multiply rows: linCmt() eta gradients are approximate", call. = FALSE)
+    }
+  })
   # linCmt() sensitivity carry (3b): the carry recurrence steps once per
   # dose/observation row and does not model the steady-state fixed-point
-  # reset, and likInner0's lhs walk skips evid=2 rows (unlike the solve),
-  # so ss or evid=2 data would silently desync the carry.  Data-aware
+  # reset, nor, without the rxode2lincmt that follows them, a reset, a
+  # replace or a multiply record (.rxFoceiLinCmtCarryEventWhy()).  Data-aware
   # fallback to the standard gradient, stashed before the model build.
   local({
     if (!identical(rxode2::rxGetControl(ui, "linCmtSensCarry", "auto"), "auto")) {
@@ -5598,14 +5612,12 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     .rdUp <- .rd
     names(.rdUp) <- toupper(names(.rdUp))
-    .bad <- ("SS" %in% names(.rdUp) && any(.rdUp[["SS"]] > 0, na.rm = TRUE)) ||
-      ("EVID" %in% names(.rdUp) && any(.rdUp[["EVID"]] == 2L, na.rm = TRUE))
     # only warn when the model would actually have used the carry
     .pairs <- tryCatch(.foceiLinCmtCarryPairs(ui), error = function(e) NULL)
     if (is.null(.pairs) || nrow(.pairs) == 0L) {
       return(invisible(NULL))
     }
-    .why <- if (.bad) "ss/evid=2 rows" else NULL
+    .why <- .rxFoceiLinCmtCarryEventWhy(.rdUp)
     if (is.null(.why)) {
       # a jump (f()/alag()) channel needs every dose in the modified
       # compartment and, for alag()/covariate f(), a bolus-only regimen
