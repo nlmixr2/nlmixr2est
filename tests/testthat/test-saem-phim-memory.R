@@ -22,7 +22,9 @@ nmTest({
     }
     .before <- .phiFiles()
     fit <- .nlmixr(
-      one.cmt, theo_sd, "saem",
+      one.cmt,
+      theo_sd,
+      "saem",
       saemControl(nBurn = 5, nEm = 5, print = 0, logLik = TRUE)
     )
     expect_equal(.phiFiles(), .before)
