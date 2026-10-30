@@ -237,3 +237,42 @@
 .carryTwinInterps <- function(interps = c("locf", "midpoint", "nocb")) {
   if (.rxFoceiLinCmtIntervalCovs()) interps else intersect(interps, "nocb")
 }
+
+# The carry's reset twins need an rxode2lincmt that restarts the carried
+# sensitivities at a reset (rxode2lincmt PR 4); they skip without one.  Remove
+# with test-dependency-workarounds.R's rxode2lincmt reset block.
+.carrySkipReset <- function() {
+  if (!.carryResetRestarts()) {
+    testthat::skip("the carry's restart at a reset needs an rxode2lincmt with rxode2lincmt PR 4")
+  }
+}
+
+# Does the loaded rxode2lincmt restart the linCmt() carry at a reset
+# (rxode2lincmt PR 4)?  Found once per session by .carryResetProbe().
+.carryResetEnv <- new.env(parent = emptyenv())
+.carryResetRestarts <- function() {
+  if (is.null(.carryResetEnv$restarts)) {
+    .carryResetEnv$restarts <- isTRUE(try(.carryResetProbe(), silent = TRUE))
+  }
+  .carryResetEnv$restarts
+}
+
+# A carry column that a -7 add raises by 0.5 at every record reads the same
+# at the observation after an EVID 3 reset as at the observation after the
+# dose only when the reset restarts the carry.  The constant-theta fast path
+# is pinned on: the slow path advances the column between those rows, and
+# the reset restarts its interval, so the two reads would differ anyway.
+.carryResetProbe <- function() {
+  .fast <- rxode2::linCmtCarrySetFast(TRUE)
+  on.exit(rxode2::linCmtCarrySetFast(.fast), add = TRUE)
+  .a <- "rx__PTR__, t, 1, 1, 0, %d, %d, 1, 1, 10, 0.5, 0, 0, 0, 0"
+  .m <- suppressWarnings(suppressMessages(rxode2::rxode2(paste0(
+    "cp=linCmtB(", sprintf(.a, -1L, -1L), ")\n",
+    "ad=linCmtB(", sprintf(.a, -5L, 0L), ")\n",
+    "a0=linCmtB(", sprintf(.a, -7L, 0L), ")\n",
+    "r0=linCmtB(", sprintf(.a, -6L, 0L), ")"
+  ))))
+  .ev <- data.frame(id = 1L, time = 0:3, evid = c(1L, 0L, 3L, 0L), amt = c(100, 0, 0, 0), cmt = 1L)
+  .s <- suppressWarnings(rxode2::rxSolve(.m, .ev, returnType = "data.frame"))
+  isTRUE(all.equal(.s$r0[.s$time == 3], .s$r0[.s$time == 1]))
+}

@@ -55,6 +55,12 @@
   utils::packageVersion("rxode2")
 }
 
+# The installed rxode2lincmt's version (it comes with rxode2), for the same
+# comparison
+.rxode2lincmtVersion <- function() {
+  utils::packageVersion("rxode2lincmt")
+}
+
 .iniN1qn1ptr <- function() {
   .Call(`_nlmixr2est_iniN1qn1cPtrs`, n1qn1::.n1qn1ptr(), PACKAGE = "nlmixr2est")
 }
