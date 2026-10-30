@@ -1795,7 +1795,19 @@
   `theta + mean(eta)`, the temporary eta is removed from the fit, and
   `$runInfo` lists the thetas that received one.  These parameters were
   previously left near their initial values.
-  
+- `outerOpt="trust"` now holds a parameter on its bound when the model's step
+  keeps leaving the box through it, and releases it when the gradient at a
+  converged point pulls it back inside; `$optReturn$activeBounds` lists the
+  parameters held at the end.  `RcppTrust` is unbounded and a trial outside
+  the box was only rejected, so on an active bound every Newton step left the
+  box, every iteration was region-limited, and the run converged linearly
+  onto the bound -- where `outerTrustFterm` could be met with a large
+  gradient.  What this hit was every start with a bound active, not an
+  occasional one: over nine perturbed starts on `theo_sd`, every fit whose
+  `eta.cl` variance landed on its `diagOmegaBoundLower` floor stopped 12 to
+  596 objective units above the optimum `outerOpt="nlminb"` and `"lbfgsb3c"`
+  reach -- and reported convergence there -- while every fit whose variance
+  stayed inside the box was unaffected.  All of them now reach it.
 - Added optional full conditional inner curvature for fast Gaussian FOCEI via
   `innerHessian="conditional"`, used by inner trust and n1qn1's `warm="calc"`
   seed. The FOCEI marginal objective was unchanged.
@@ -1824,6 +1836,14 @@
   is not stationary.  Measured on one model only (`theo_sd`, a fast FOCEi fit of
   the one-compartment ODE): 116.807191 against `outerOpt="nlminb"`'s 116.808709,
   at comparable cost once the model cache is warm.
+
+- `outerOpt="trust"` evaluates the outer gradient and Hessian only at points
+  the trust region could accept.  `RcppTrust` reads the curvature at accepted
+  points only, and it accepts only a trial below the incumbent, so a trial
+  that is no improvement now gets its value alone; the incumbent is tracked by
+  replaying trust's own acceptance test.  Same optima, 1.1x-2.6x faster with
+  the analytical Hessian on the models measured (most on perturbed starts,
+  where up to two thirds of the Hessian evaluations were discarded).
 
 - Added `est="flaplace"`, `"mflaplace"`, `"iflaplace"`, `"fagq"`, `"mfagq"` and
   `"ifagq"` -- the Laplace and adaptive-quadrature methods (plus their
