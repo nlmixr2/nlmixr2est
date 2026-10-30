@@ -259,8 +259,12 @@
 
 # A carry column that a -7 add raises by 0.5 at every record reads the same
 # at the observation after an EVID 3 reset as at the observation after the
-# dose only when the reset restarts the carry
+# dose only when the reset restarts the carry.  The constant-theta fast path
+# is pinned on: the slow path advances the column between those rows, and
+# the reset restarts its interval, so the two reads would differ anyway.
 .carryResetProbe <- function() {
+  .fast <- rxode2::linCmtCarrySetFast(TRUE)
+  on.exit(rxode2::linCmtCarrySetFast(.fast), add = TRUE)
   .a <- "rx__PTR__, t, 1, 1, 0, %d, %d, 1, 1, 10, 0.5, 0, 0, 0, 0"
   .m <- suppressWarnings(suppressMessages(rxode2::rxode2(paste0(
     "cp=linCmtB(", sprintf(.a, -1L, -1L), ")\n",
