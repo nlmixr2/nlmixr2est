@@ -3548,14 +3548,17 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## combined eta+theta sensitivity build (#958) changes the inner model text
   .combSens <- isTRUE(rxode2::rxGetControl(.ui, "combSens", FALSE))
   ## linCmt() sensitivity-carry substitution (3b.3) changes the inner model
-  ## text; it depends on both the control and whether the loaded rxode2 has
-  ## the carry sentinels, so both key the cache.
+  ## text; it depends on the control, on whether the loaded rxode2 has the
+  ## carry sentinels and on how many carry columns it has (the pairs past
+  ## them keep the standard gradient), so all three key the cache.
   ## covsInterpolation gates the substitution ("linear" skips it), so it must
   ## key the cache too, else a locf build would be reused for a linear fit
   .linCmtCarry <- paste0(
     rxode2::rxGetControl(.ui, "linCmtSensCarry", "auto"),
     ",",
     .rxFoceiLinCmtCarryCapable(),
+    ",",
+    .rxFoceiLinCmtCarryMaxPairs(),
     ",",
     paste(rxode2::rxGetControl(.ui, "rxControl", NULL)$covsInterpolation, collapse = ",")
   )
