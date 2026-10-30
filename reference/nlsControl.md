@@ -501,7 +501,7 @@ fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est = "nls", nlsControl(algorithm 
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 2488
+#> → compress parHistData in nlmixr2 object, save 2496
 
 # Uses port and respect parameter boundaries
 fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est = "nls", nlsControl(algorithm = "port"))
@@ -532,7 +532,7 @@ fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est = "nls", nlsControl(algorithm 
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 2784
+#> → compress parHistData in nlmixr2 object, save 2776
 
 # You can access the underlying nls object with `$nls`
 fit2$nls
