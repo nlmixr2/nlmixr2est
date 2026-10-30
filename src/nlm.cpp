@@ -610,6 +610,11 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
   double curT;
   iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   nlmSolveNlm(id);
+  // The solve runs the model's lhs at every record (rxode2's updateSolve()),
+  // which advances the linCmt() carry to the last record.  The walk below
+  // starts from a reset subject, as rxode2's own output pass and getPopR() do,
+  // so the carry advances once per record from its start.
+  iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
