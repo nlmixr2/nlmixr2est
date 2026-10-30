@@ -300,6 +300,7 @@ nmTest({
     d <- nlmixr2data::wbcSim[nlmixr2data::wbcSim$ID == 1, ]
     ctl <- function(fast) {
       foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                   sigdig = 8, epsilon = 1e-10, trustFterm = 1e-12, trustMterm = 1e-12,
                    calcTables = FALSE, fast = fast)
     }
     ref <- suppressWarnings(suppressMessages(nlmixr2(wbc, d, "focei", ctl(FALSE))))
@@ -336,6 +337,7 @@ nmTest({
     }
     ctl <- function(fast) {
       foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                   sigdig = 8, epsilon = 1e-10, trustFterm = 1e-12, trustMterm = 1e-12,
                    calcTables = FALSE, fast = fast)
     }
     ref <- suppressWarnings(suppressMessages(
@@ -345,6 +347,9 @@ nmTest({
     expect_identical(.odeSwapInfo()$poolName, "outer")
     expect_equal(as.numeric(fast$objf), as.numeric(ref$objf), tolerance = 1e-6)
     expect_equal(as.matrix(fast$eta[-1]), as.matrix(ref$eta[-1]), tolerance = 1e-5)
+    gradient <- .foceiGradDirect(fast)
+    expect_false(is.null(gradient))
+    expect_true(all(is.finite(gradient)))
   })
 
   test_that("a parameter-dependent initial condition converges in a pooled fast fit", {
