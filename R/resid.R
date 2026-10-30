@@ -524,10 +524,12 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   checkmate::assertLogical(subsetNonmem, len = 1, any.missing = FALSE)
   checkmate::assertLogical(npde, len = 1, any.missing = FALSE)
   keep <- unique(c(keep, "nlmixrRowNums"))
-  if (!inherits(dv, "numeric")) {
+  # npde's DV (censored rows imputed) arrives as a one-column matrix
+  if (!is.numeric(dv)) {
     dv <- .prdLst$ipred$dv
     table$doSim <- TRUE
   } else {
+    dv <- as.vector(dv)
     table$doSim <- FALSE
   }
 
@@ -568,7 +570,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
         .prdLst,
         fit$omega,
         fit$eta,
-        .prdLst$ipred$dv,
+        dv,
         .prdLst$ipred$evid,
         .prdLst$ipred$cens,
         .prdLst$ipred$limit,
@@ -587,7 +589,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
         .prdLst,
         fit$omega,
         fit$eta,
-        .prdLst$ipred$dv,
+        dv,
         .prdLst$ipred$evid,
         .prdLst$ipred$cens,
         .prdLst$ipred$limit,
@@ -1285,7 +1287,8 @@ addTable <- function(
 #'  - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of
 #'    the model and censoring.
 #'
-#'  - `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)
+#'  - `"cdf"` Impute censored observations with NPDE (below) and use the
+#'    imputed values as the DV of the other residuals (`cwres` etc).
 #'
 #'  - `"omit"` omit the residuals for censoring
 #'
