@@ -1051,6 +1051,7 @@ struct focei_options {
   // scaleAdjustGradScale), the scaled theta snapshot at gradient time, and a validity flag.
   double *getaP = NULL;      // [neta * npars * nsub], indexed by id
   double *etaPTheta = NULL;  // [npars] scaled theta at the last analytic-gradient call
+  std::vector<double> etaPBase; // [nsub * neta] EBEs at that same gradient point
   int etaPValid = 0;
   int lastDeclineSite = 0;  // gradPooledCore refusal site (see declineHere)
   size_t getaPn = 0;         // allocated element count (realloc guard)
@@ -1599,6 +1600,7 @@ extern "C" void rxOptionsFreeFocei() {
   op_focei.getaP = NULL; op_focei.getaPn = 0;
   if (op_focei.etaPTheta != NULL) R_Free(op_focei.etaPTheta);
   op_focei.etaPTheta = NULL;
+  op_focei.etaPBase.clear();
   op_focei.etaPValid = 0;
 
   if (op_focei.muGroupTheta != NULL) R_Free(op_focei.muGroupTheta);
@@ -4528,10 +4530,13 @@ static inline int innerOpt1(int id, int likId) {
     // perturbation or the cov/linearization step); otherwise fall through keeping
     // the last eta (the legacy mceta=-1 behavior).
     if (!op_focei.calcGrad && op_focei.etaPValid && op_focei.getaP != NULL &&
-        op_focei.maxInnerIterations > 0) {
+        op_focei.maxInnerIterations > 0 && id >= 0 &&
+        (size_t)id < (size_t)getRxNsub(rx) &&
+        op_focei.etaPBase.size() == (size_t)op_focei.neta * getRxNsub(rx)) {
       double *etaP_i = &op_focei.getaP[(size_t)id * op_focei.neta * op_focei.npars];
       std::vector<double> etaNew(op_focei.neta);
-      for (int j = 0; j < op_focei.neta; j++) etaNew[j] = fInd->eta[j];
+      for (int j = 0; j < op_focei.neta; j++)
+        etaNew[j] = op_focei.etaPBase[(size_t)id * op_focei.neta + j];
       for (int k = 0; k < (int)op_focei.npars; k++) {
         double dth = op_focei.theta[k] - op_focei.etaPTheta[k];
         if (dth == 0.0) continue;
@@ -19787,7 +19792,7 @@ static bool gradDirectFoldFd(int npars, arma::vec &gp) {
 // etaP straight into op_focei.getaP, on the scaled optimizer parameterization.  etaP's
 // columns are in KERNEL space too, so it is sized by nKer and gathered through G.gMap.
 static void gradDirectStoreEtaP(const FoceiGradPooledSetup &G, const arma::cube &etaP,
-                                const double *theta, int nsub, int neta, int npars,
+                                const arma::mat &ebes, const double *theta, int nsub, int neta, int npars,
                                 int nKer) {
   op_focei.etaPValid = 0;
   if (op_focei.mceta != -2 && op_focei.mceta != -1) return;
@@ -19808,6 +19813,10 @@ static void gradDirectStoreEtaP(const FoceiGradPooledSetup &G, const arma::cube 
         op_focei.getaP[(size_t)j + (size_t)neta * ((size_t)k + (size_t)npars * i)] =
           etaP(j, kk, i) * sc;
   }
+  op_focei.etaPBase.resize((size_t)nsub * neta);
+  for (int i = 0; i < nsub; ++i)
+    for (int j = 0; j < neta; ++j)
+      op_focei.etaPBase[(size_t)i * neta + j] = ebes(i, j);
   std::copy(theta, theta + npars, op_focei.etaPTheta);
   op_focei.etaPValid = 1;
 }
@@ -19870,7 +19879,7 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   if (!gradDirectGather(G, gv, nKer, npars, gp)) return false;
   if (!gradDirectFinalize(npars, gp, Oi, dOiEst)) return false;
   for (int i = 0; i < npars; ++i) g[i] = gp[i] * scaleAdjustGradScale(&op_focei, 1.0, i);
-  gradDirectStoreEtaP(G, etaP, theta, nsub, neta, npars, nKer);
+  gradDirectStoreEtaP(G, etaP, ebes, theta, nsub, neta, npars, nKer);
   return true;
 }
 
