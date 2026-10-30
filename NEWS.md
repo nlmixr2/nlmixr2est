@@ -64,6 +64,19 @@
 
 ### Estimation
 
+- The `linCmt()` sensitivity carry's data gate follows what the loaded
+  rxode2lincmt does with records that modify a compartment outright.  An
+  EVID 3 or 4 reset turns the carry off, with a note in `$runInfo`, unless
+  rxode2lincmt's carry restarts there (on rxode2lincmt 0.1.0 a fit with a
+  reset was up to 0.063 further off its ODE twin with the carry than
+  without it).  A replace or multiply (EVID 5 or 6) does the same unless both
+  the carry and rxode2lincmt's own Jacobian follow the event; without the
+  Jacobian fix every `linCmt()` fit's eta gradient through such a record is
+  approximate (off its ODE twin by 1 to 3 in the objective, carry or not),
+  and the fit now says so.  EVID 2 rows no longer turn the carry off: it
+  handles them, and such a fit equals its ODE twin where the standard
+  gradient was 0.12 off.
+
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not
