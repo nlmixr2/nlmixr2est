@@ -241,6 +241,12 @@
 
 ### Inter-occasion variability
 
+- A model whose occasion-level eta name starts with `eta.` (`eta.ka.occ ~ 0.1 | OCC`)
+  now fits.  The SAEM temporary-eta cleanup took every `rx.eta.` name, including
+  the `rx.eta.ka.occ.<occ>` occasion columns, so every estimator stopped with
+  "incorrect number of dimensions".  It now removes only the temporary etas saem
+  records creating (#1233).
+
 - A fit with inter-occasion variability keeps its `omega` as the nested
   `lotri` list it is, one block per level, so `rxSolve(fit)` works; it
   stopped with "The following parameter(s) are required for solving:
