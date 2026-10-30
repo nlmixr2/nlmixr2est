@@ -2281,7 +2281,7 @@ public:
   // @param i subject
   // @param yt transformed observations
   // @param IG inverse of Omega over the realIx columns
-  // @param realIx phi1 columns of the reported etas (all but temporary etas)
+  // @param realIx phi1 columns in the prior: reported etas with nonzero variance
   // @param sd Omega sd of each phi1 column
   // @param ue uninformative-eta mask
   // @param doParam which model parameters phi fills
