@@ -1,5 +1,6 @@
 .iovDottedModel <- function(occ, err = "cp ~ add(add.sd)", ini = "") {
-  eval(str2lang(sprintf("function() {
+  eval(str2lang(sprintf(
+    "function() {
     ini({
       tka <- log(1.5); tcl <- log(2.7); tv <- log(30)
       eta.cl ~ 0.1; eta.v ~ 0.1
@@ -14,7 +15,12 @@
       cp <- center / v
       %s
     })
-  }", occ, ini, occ, err)))
+  }",
+    occ,
+    ini,
+    occ,
+    err
+  )))
 }
 
 .iovDottedData <- function() {
@@ -24,7 +30,8 @@
 }
 
 .iovDottedFit <- function(model, est) {
-  .ctl <- switch(est,
+  .ctl <- switch(
+    est,
     focei = foceiControl(maxOuterIterations = 2, covMethod = "", print = 0),
     saem = saemControl(print = 0, nBurn = 5, nEm = 5)
   )
@@ -65,4 +72,13 @@ test_that("saem drops its temporary etas and keeps a dotted occasion eta (#1233)
   expect_false(any(.tmp %in% names(.fit)))
   expect_true("OCC" %in% names(.fit$omega))
   expect_true("eta.ka.occ" %in% names(.fit$iov$OCC))
+})
+
+test_that("no pseudoEta transforms records no temporary etas (#1233)", {
+  expect_identical(.saemPseudoEtaRecord(NULL), character(0))
+  expect_identical(.saemPseudoEtaRecord(list(list(name = "ka"))), character(0))
+  expect_identical(
+    .saemPseudoEtaRecord(list(list(name = "add.sd", pseudoEta = TRUE), list(name = "ka"))),
+    "rx.eta.add.sd"
+  )
 })

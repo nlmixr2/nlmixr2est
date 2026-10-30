@@ -192,7 +192,8 @@
 #' @noRd
 .saemPseudoEtaRecord <- function(transforms) {
   .tr <- Filter(function(tr) isTRUE(tr$pseudoEta), transforms)
-  paste0("rx.eta.", vapply(.tr, function(tr) tr$name, character(1)))
+  # paste0() inside so no transforms gives character(0), not "rx.eta."
+  vapply(.tr, function(tr) paste0("rx.eta.", tr$name), character(1))
 }
 
 #' Internal theta names that carry a temporary eta
