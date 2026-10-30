@@ -433,6 +433,9 @@ nmTest({
       .c <- .fit$CENS == 1
       expect_true(all(.fit$DV[.c] != 3), label = .cm)
       expect_equal(.fit$RES[.c], .fit$DV[.c] - .fit$PRED[.c], label = .cm)
+      # the limits stay at the LOQ
+      expect_equal(.fit$upperLim[.c], rep(3, sum(.c)), label = .cm)
+      expect_equal(.fit$dataLloq, 3, label = .cm)
       expect_true(all(is.finite(.fit$CWRES)), label = .cm)
     }
   })
