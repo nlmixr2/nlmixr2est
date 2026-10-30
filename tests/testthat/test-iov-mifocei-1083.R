@@ -166,7 +166,9 @@ test_that("setCov(fit, \"imp\") installs a covariance on an IOV fit", {
 
   .ctl <- list(print = 0L, maxOuterIterations = 0L, calcTables = FALSE)
   .fit <- suppressMessages(suppressWarnings(nlmixr2(one.cmt, theoIov, est = "focei", control = .ctl)))
-  suppressMessages(setCov(.fit, "imp"))
-  expect_equal(.fit$covMethod, "imp")
+  suppressMessages(suppressWarnings(setCov(.fit, "imp")))
+  # an unconverged fit (no outer iterations) need not give a positive-definite
+  # covariance; "|imp|" is the same one, repaired
+  expect_true(.fit$covMethod %in% c("imp", "|imp|"))
   expect_true(is.matrix(.fit$cov))
 })
