@@ -71,7 +71,9 @@
   with parameter-dependent initial conditions (#1115, #1133).
 - Large analytic FOCEi sensitivity models now reuse common expressions across
   all derivative directions.  This substantially reduces model translation and
-  augmented-solve time for nonlinear models such as `nimo` (#1133).
+  augmented-solve time for nonlinear models such as `nimo`. Existing temporary
+  names are kept distinct between optimization passes to preserve the model
+  equations (#1133).
 - Cached FOCEi models now restore their compiled objects directly instead of
   reparsing normalized model text, and gradient setup reuses that restored
   model instead of generating it again.  This avoids minutes of setup for large
