@@ -171,11 +171,20 @@
   `ETA[3]` = 0.1
 )
 
-# max relative error of every eta's substituted gradient vs central FD
+# max relative error of every eta's substituted gradient vs central FD; the
+# inner model is built for the interpolation it is solved with, since the
+# carry reads each covariate over the interval that interpolation gives
 .carryJumpFd <- function(mod, pars, ev, carry = "auto", interp = "nocb") {
   ui <- suppressMessages(nlmixr2est::nlmixr2(mod))
   u <- rxode2::.copyUi(ui)
-  assign("control", nlmixr2est::foceiControl(linCmtSensCarry = carry), envir = u)
+  .ctl <- nlmixr2est::foceiControl(
+    linCmtSensCarry = carry,
+    rxControl = rxode2::rxControl(covsInterpolation = interp)
+  )
+  assign("control", .ctl, envir = u)
+  # the hidden copies a midpoint covariate is read through, as the fit's
+  # data step adds them
+  ev <- .rxFoceiLinCmtCarryAliasData(ev, .rxFoceiLinCmtCarryMidCovs(u))
   txt <- suppressMessages(u$foceiEnv)$..inner
   m <- suppressWarnings(rxode2::rxode2(txt))
   slv <- function(q) {
@@ -199,4 +208,32 @@
     numeric(1)
   )
   list(err = err, txt = txt)
+}
+
+# .carryEv() with records that carry no wt of their own, or with wt changing
+# at every record: "infusion" (2 h IV infusions, whose ends are pushed
+# during the solve), "addl" (one extra dose 12 h after each), "na" (a
+# missing wt) or "every"
+.carryMidEv <- function(kind) {
+  .ev <- .carryEv()
+  if (kind == "infusion") {
+    .ev$rate <- ifelse(.ev$evid == 1, .ev$amt / 2, 0)
+  } else if (kind == "addl") {
+    .ev$ii <- ifelse(.ev$evid == 1, 12, 0)
+    .ev$addl <- ifelse(.ev$evid == 1, 1L, 0L)
+  } else if (kind == "na") {
+    .ev$wt[4] <- NA
+  } else if (kind == "every") {
+    .ev$wt <- 60 + 3 * seq_len(nrow(.ev))
+  }
+  .ev
+}
+
+# The interpolations under which a carried linCmt() fit equals its ODE twin:
+# all of `interps` with an rxode2 that advances an interval with its own
+# covariates, else nocb alone, the one an older rxode2's linCmt() and ODEs
+# share.  Remove with test-dependency-workarounds.R's interval-covariate
+# block.
+.carryTwinInterps <- function(interps = c("locf", "midpoint", "nocb")) {
+  if (.rxFoceiLinCmtIntervalCovs()) interps else intersect(interps, "nocb")
 }

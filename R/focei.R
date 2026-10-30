@@ -2660,6 +2660,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
       .lagDefs,
       .s$..lagSens,
       .arEtaSens,
+      attr(.s$..linCmtCarryPairs, "carryCovInterval")$copies,
       .prd,
       .s$..HdEta,
       .r,
@@ -2695,6 +2696,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
         .lagDefs,
         .s$..lagSens,
         .arEtaSens,
+        attr(.s$..linCmtCarryPairs, "carryCovInterval")$copies,
         .prd,
         .s$..HdEta,
         .r,
@@ -2724,6 +2726,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     .lagDefs,
     .s$..lagSens,
     .arEtaSens,
+    attr(.s$..linCmtCarryPairs, "carryCovInterval")$copies,
     .prd,
     .s$..HdEta,
     .r,
@@ -4846,6 +4849,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .keepL <- .lst$keepL[[1]]
   .idLvl <- .lst$idLvl
   .dat <- cbind(as.data.frame(.et), .keepL)
+  # the linCmt() carry's hidden copies of its midpoint covariates
+  .dat <- .rxFoceiLinCmtCarryAliasData(.dat, .rxFoceiLinCmtCarryMidCovs(ui))
   # Drop subjects without an EVID==0 observation; re-inserted later in
   # addTable().  Two ways a subject loses all observations: (1) DV=NA rows
   # become EVID==2 in etTrans (rows still present, just no EVID==0), and (2)

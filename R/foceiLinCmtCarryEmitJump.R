@@ -18,13 +18,14 @@
       )
     )
   }
-  # once-per-row advance of every carry column (M depends only on this
-  # row's theta, so one call serves every pair AND every tracker)
+  # once-per-row advance of every carry column (M depends only on the
+  # interval's theta, so one call serves every pair AND every tracker)
   .l <- c(
     .l,
+    cx$covInterval$lines,
     paste0(
       "rx_lcCarryAdv_~",
-      .rxFoceiLinCmtCarryCall(cx$pfx, -5L, 0L, cx$trans, cx$thetas)
+      .rxFoceiLinCmtCarryCall(cx$pfx, -5L, 0L, cx$trans, cx$thetasInterval)
     )
   )
   if (!cx$anyJump) {
@@ -64,13 +65,17 @@
       )
     )
   }
-  # K_r P_r: the kernel's right-hand side applied to the advanced amounts
-  .kp <- .rxFoceiCarryRhsTxt(
-    cx$ncmt,
-    cx$oral0,
-    as.numeric(cx$trans),
-    cx$slotExpr,
-    paste0("rx_lcCarryPA", cx$rows, "_")
+  # K_r P_r: the kernel's right-hand side applied to the advanced amounts,
+  # with the interval's covariates, as the advance has them
+  .kp <- .rxFoceiLinCmtCarryCovSub(
+    .rxFoceiCarryRhsTxt(
+      cx$ncmt,
+      cx$oral0,
+      as.numeric(cx$trans),
+      cx$slotExpr,
+      paste0("rx_lcCarryPA", cx$rows, "_")
+    ),
+    cx$covInterval
   )
   for (.r in cx$rows) {
     .l <- c(.l, paste0("rx_lcCarryKP", .r, "_~", .kp[.r + 1L]))
