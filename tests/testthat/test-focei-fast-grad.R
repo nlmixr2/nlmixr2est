@@ -24,17 +24,17 @@ nmTest({
   }
 
   test_that("fast=TRUE control defaults: outerOpt + derivative-free downgrade", {
-    # default outer optimizer: nlminb for finite differences, lbfgsb3c for the
-    # analytic ("fast") gradient
-    expect_equal(foceiControl()$outerOpt, -1L) # nlminb -> custom (-1)
-    expect_equal(foceiControl(fast = TRUE)$outerOpt, 1L) # lbfgsb3c
-    expect_equal(foceiControl(fast = TRUE)$outerOptTxt, "lbfgsb3c")
+    expect_equal(foceiControl()$outerOpt, -1L)
+    expect_equal(foceiControl()$outerOptTxt, "bobyqa")
+    expect_equal(foceiControl(fast = TRUE)$outerOpt, -1L)
+    expect_equal(foceiControl(fast = TRUE)$outerOptTxt, "nlminb")
     expect_true(foceiControl(fast = TRUE)$fast)
     expect_false(foceiControl()$fast)
     # an explicit outerOpt still wins under fast
     expect_equal(foceiControl(fast = TRUE, outerOpt = "nlminb")$outerOpt, -1L)
+    expect_equal(foceiControl(fast = TRUE, outerOpt = "lbfgsb3c")$outerOpt, 1L)
     # a defaulted optimizer re-defaults under a *f wrapper; an explicit one is kept
-    expect_equal(.foceiFastCtl(list(foceiControl()), foceiControl)$outerOptTxt, "lbfgsb3c")
+    expect_equal(.foceiFastCtl(list(foceiControl()), foceiControl)$outerOptTxt, "nlminb")
     expect_equal(
       .foceiFastCtl(list(foceiControl(outerOpt = "nlminb")), foceiControl)$outerOptTxt,
       "nlminb"
@@ -390,7 +390,12 @@ nmTest({
       .f <- suppressMessages(nlmixr2(.fast_one_cmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = FALSE)))
       list(objf = .f$objf, fixef = unname(fixef(.f)))
     })
-    fF <- suppressMessages(nlmixr2(.fast_one_cmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
+    fF <- suppressMessages(nlmixr2(
+      .fast_one_cmt,
+      d,
+      "focei",
+      foceiControl(print = 0L, covMethod = "", sigdig = 5, fast = TRUE)
+    ))
     expect_equal(fF$objf, f0$objf, tolerance = 0.02)
     expect_equal(unname(fixef(fF)), f0$fixef, tolerance = 1e-2)
     # the analytic gradient must actually be CONSUMED by the optimizer (a fit that
@@ -405,7 +410,12 @@ nmTest({
     # the rxSymInvChol handle fallback: still analytic, same fit
     fH <- withr::with_envvar(
       c(NLMIXR2_NO_FAST_OMEGA = "1"),
-      suppressMessages(nlmixr2(.fast_one_cmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
+      suppressMessages(nlmixr2(
+        .fast_one_cmt,
+        d,
+        "focei",
+        foceiControl(print = 0L, covMethod = "", sigdig = 5, fast = TRUE)
+      ))
     )
     expect_false(identical(fH$env$omegaGradFast, 1L))
     expect_gt(sum(fH$parHistData$type == "Analytic Gradient"), 0)
@@ -660,6 +670,7 @@ nmTest({
       )
     })
     expect_equal(unname(gSt[names(base)]), unname(fd), tolerance = 0.01)
+    expect_lt(max(abs(gNo[names(base)] - fd) / pmax(abs(fd), 1)), 0.02)
   })
 
   test_that("Omega derivatives reuse the fit's rxInv only when it is at the same Omega", {

@@ -64,6 +64,27 @@
 
 ### Estimation
 
+- Per-subject FD gradient fallbacks temporarily tighten inner and ODE
+  tolerances to improve derivative accuracy.
+- Analytical FOCEi gradients include the remaining inner score when finite
+  tolerances leave the ETA mode approximate.
+- Pooled inner and second-order models use matching state layouts and event
+  sensitivities, fixing failed fast fits (#1115, #1133).
+- Fast FOCEi defaults to gradient-only `nlminb`; ordinary fits retain `bobyqa`.
+  Explicit outer optimizer choices are preserved.
+- `nlminb` curvature is opt-in through `outerTrustHessian="analytic"` or `"fd"`;
+  `"auto"` and `"bfgs"` retain its BFGS approximation.
+- FD Hessian probes capture the base gradient before moving solver state and
+  restore state after failures; unavailable curvature uses the existing fallback.
+- Analytical gradients reuse the evaluated objective point and preserve valid
+  zero components without resetting parameters or changing optimizers.
+- Fast FOCEi ETA predictions use EBEs from the last gradient evaluation,
+  making repeated line-search trials independent of ETAs left by other trials.
+- Large sensitivity models reuse shared expressions without name collisions
+  or changes to user input names, improving setup time (#1133).
+- FOCEi caches reuse compiled models to reduce setup time and keep rxode2
+  versions/builds separate to prevent bundle collisions (#1133).
+
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not

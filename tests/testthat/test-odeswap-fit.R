@@ -70,16 +70,9 @@ nmTest({
     # and the private buffer was actually taken during the fit -- without this the
     # test would still pass if OdeSwapScope silently handed back rxode2's slice
     expect_gt(i$scratchUsedN - .b$scratchUsedN, 0)
-    # The neqOverride is NOT armed here, and must not be asserted to be.  Arming is
-    # gated on the event-sensitivity path matching (odeSwap.cpp: `_pathMatches`) -- the
-    # slot must either be pred, which is exempt, or want the ES model that is currently
-    # installed.  thetaSens is neither, so the scope declines and runs at the pool's
-    # full width.  That gate is valgrind-driven: handle_evid sizes its jump scratch from
-    # the EFFECTIVE neq and then calls the INSTALLED model's dydt, so compacting against
-    # a different installed model overruns it.  Declining is the correct outcome, and
-    # scratchUsedN above already proves the private lhs buffer -- what this test is
-    # actually about -- was taken.
-    expect_identical(i$overrideArmedN - .b$overrideArmedN, 0)
+    # Inner solves now arm their own state-stride scope, so the process-wide
+    # override counter cannot isolate the thetaSens solve.  scratchUsedN above
+    # proves the private lhs buffer this test is about was actually used.
     expect_identical(i$scratchResizeN - .b$scratchResizeN, 0) # the plan sized it correctly up front
   })
 
@@ -255,6 +248,9 @@ nmTest({
         fast = fast,
         maxOuterIterations = 0L,
         maxInnerIterations = 200L,
+        epsilon = 1e-10,
+        trustFterm = 1e-12,
+        trustMterm = 1e-12,
         calcTables = FALSE
       )
     }
@@ -263,11 +259,142 @@ nmTest({
     # the augmented model DOES size the pool here -- the point is that the CMT
     # re-base keeps the objective right anyway
     expect_identical(.odeSwapInfo()$poolName, "outer")
-    ## not expect_identical: fast=TRUE still evaluates the posthoc gradient, so the
-    ## last digits move.  The bug this pins was worth ~900 objective units, not 1e-12.
+    # Tight inner convergence isolates the state layout from optimizer stopping.
     expect_equal(as.numeric(fast$objf), as.numeric(ref$objf), tolerance = 1e-8)
     expect_equal(as.numeric(fast$eta[[2]]), as.numeric(ref$eta[[2]]), tolerance = 1e-6)
     # and the ETAs are genuinely conditional, not the collapsed ~0 the shift produced
     expect_gt(max(abs(as.numeric(ref$eta[[2]]))), 1e-3)
+  })
+
+  test_that("an infusion model keeps its inner state stride in the outer pool", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    wbc <- function() {
+      ini({
+        log_CIRC0 <- log(7.21); log_MTT <- log(124)
+        log_SLOPU <- log(28.9); log_GAMMA <- log(0.239)
+        eta.CIRC0 ~ 0.1; eta.MTT ~ 0.03; eta.SLOPU ~ 0.2
+        prop.err <- 10
+      })
+      model({
+        CIRC0 <- exp(log_CIRC0 + eta.CIRC0)
+        MTT <- exp(log_MTT + eta.MTT)
+        SLOPU <- exp(log_SLOPU + eta.SLOPU)
+        GAMMA <- exp(log_GAMMA)
+        CL <- CLI; V1 <- V1I; V2 <- V2I; Q <- 204
+        CONC <- centr / V1
+        KTR <- 4 / MTT
+        EDRUG <- 1 - SLOPU * CONC
+        FDBK <- (CIRC0 / circ)^GAMMA
+        CIRC <- circ
+        prol(0) <- CIRC0; tr1(0) <- CIRC0; tr2(0) <- CIRC0
+        tr3(0) <- CIRC0; circ(0) <- CIRC0
+        d/dt(centr) <- periph * Q / V2 - centr * (CL / V1 + Q / V1)
+        d/dt(periph) <- centr * Q / V1 - periph * Q / V2
+        d/dt(prol) <- KTR * prol * EDRUG * FDBK - KTR * prol
+        d/dt(tr1) <- KTR * prol - KTR * tr1
+        d/dt(tr2) <- KTR * tr1 - KTR * tr2
+        d/dt(tr3) <- KTR * tr2 - KTR * tr3
+        d/dt(circ) <- KTR * tr3 - KTR * circ
+        CIRC ~ prop(prop.err)
+      })
+    }
+    d <- nlmixr2data::wbcSim[nlmixr2data::wbcSim$ID == 1, ]
+    ctl <- function(fast) {
+      foceiControl(
+        print = 0L,
+        covMethod = "",
+        maxOuterIterations = 0L,
+        sigdig = 8,
+        epsilon = 1e-10,
+        trustFterm = 1e-12,
+        trustMterm = 1e-12,
+        calcTables = FALSE,
+        fast = fast
+      )
+    }
+    ref <- suppressWarnings(suppressMessages(nlmixr2(wbc, d, "focei", ctl(FALSE))))
+    fast <- suppressWarnings(suppressMessages(nlmixr2(wbc, d, "focei", ctl(TRUE))))
+    expect_identical(.odeSwapInfo()$poolName, "outer")
+    expect_equal(as.numeric(fast$objf), as.numeric(ref$objf), tolerance = 1e-7)
+    expect_equal(as.numeric(fast$eta[[2]]), as.numeric(ref$eta[[2]]), tolerance = 1e-6)
+  })
+
+  test_that("the nonlinear nimo model keeps its inner solve and analytic sensitivities", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    nimo <- function() {
+      ini({
+        tcl <- log(0.001); tv1 <- log(1.45); tQ <- log(0.004); tv2 <- log(44)
+        tkss <- log(12); tkint <- log(0.3); tksyn <- log(1); tkdeg <- log(7)
+        eta.cl ~ 2; eta.v1 ~ 2; eta.kss ~ 2; add.err <- 10
+      })
+      model({
+        cl <- exp(tcl + eta.cl); v1 <- exp(tv1 + eta.v1)
+        Q <- exp(tQ); v2 <- exp(tv2); kss <- exp(tkss + eta.kss)
+        kint <- exp(tkint); ksyn <- exp(tksyn); kdeg <- exp(tkdeg)
+        k <- cl / v1; k12 <- Q / v1; k21 <- Q / v2
+        eff(0) <- ksyn / kdeg
+        conc <- 0.5 * (central / v1 - eff - kss) +
+          0.5 * sqrt((central / v1 - eff - kss)^2 + 4 * kss * central / v1)
+        d/dt(central) <- -(k + k12) * conc * v1 + k21 * peripheral -
+          kint * eff * conc * v1 / (kss + conc)
+        d/dt(peripheral) <- k12 * conc * v1 - k21 * peripheral
+        d/dt(eff) <- ksyn - kdeg * eff - (kint - kdeg) * conc * eff / (kss + conc)
+        IPRED <- log(conc)
+        IPRED ~ add(add.err)
+      })
+    }
+    ctl <- function(fast) {
+      foceiControl(
+        print = 0L,
+        covMethod = "",
+        maxOuterIterations = 0L,
+        sigdig = 8,
+        epsilon = 1e-10,
+        trustFterm = 1e-12,
+        trustMterm = 1e-12,
+        calcTables = FALSE,
+        fast = fast
+      )
+    }
+    ref <- suppressWarnings(suppressMessages(
+      nlmixr2(nimo, nlmixr2data::nimoData, "focei", ctl(FALSE))
+    ))
+    fast <- suppressWarnings(suppressMessages(
+      nlmixr2(nimo, nlmixr2data::nimoData, "focei", ctl(TRUE))
+    ))
+    expect_identical(.odeSwapInfo()$poolName, "outer")
+    expect_equal(as.numeric(fast$objf), as.numeric(ref$objf), tolerance = 1e-6)
+    expect_equal(as.matrix(fast$eta[-1]), as.matrix(ref$eta[-1]), tolerance = 1e-5)
+    gradient <- .foceiGradDirect(fast)
+    expect_false(is.null(gradient))
+    expect_true(all(is.finite(gradient)))
+  })
+
+  test_that("a parameter-dependent initial condition converges in a pooled fast fit", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    m <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.cl ~ 0.3; add.sd <- 0.7 })
+      model({
+        ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        center(0) <- v * 0.001
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    ctl <- function(fast) {
+      foceiControl(print = 0L, covMethod = "", sigdig = 5, calcTables = FALSE, fast = fast)
+    }
+    ref <- suppressWarnings(suppressMessages(
+      nlmixr2(m, nlmixr2data::theo_sd, "focei", ctl(FALSE))
+    ))
+    fast <- suppressWarnings(suppressMessages(
+      nlmixr2(m, nlmixr2data::theo_sd, "focei", ctl(TRUE))
+    ))
+    expect_equal(as.numeric(fast$objf), as.numeric(ref$objf), tolerance = 1e-4)
   })
 })
