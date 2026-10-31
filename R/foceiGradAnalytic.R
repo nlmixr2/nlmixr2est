@@ -62,15 +62,20 @@
       .isLL <- isTRUE(st$ef$isLL)
       .interaction <- as.integer(st$interaction)
       .nAGQ <- as.integer(st$nAGQ)
-      am <- tryCatch({
-        .fm <- e$model
-        if (is.null(.fm)) .fm <- ui$foceiModel
-        if (inherits(.fm$outer, "rxode2") && !is.null(.fm$outerMeta)) {
-          c(list(augMod = .fm$outer), .fm$outerMeta)
-        } else {
-          NULL
-        }
-      }, error = function(.) NULL)
+      am <- tryCatch(
+        {
+          .fm <- e$model
+          if (is.null(.fm)) {
+            .fm <- ui$foceiModel
+          }
+          if (inherits(.fm$outer, "rxode2") && !is.null(.fm$outerMeta)) {
+            c(list(augMod = .fm$outer), .fm$outerMeta)
+          } else {
+            NULL
+          }
+        },
+        error = function(.) NULL
+      )
       if (is.null(am) || !identical(am$dirs, st$dir$dirs)) {
         am <- .foceiAnalyticAugModelDirs(ui, st$dir$dirs)
       }

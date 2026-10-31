@@ -64,6 +64,18 @@
 
 ### Estimation
 
+- Per-subject gradient fallbacks now tighten the inner optimizer's tolerance
+  and ODE solver tolerances during finite differences, so solve error is not
+  amplified into a wrong derivative. The fit's settings are restored afterward.
+- Analytic FOCEi gradients now retain the likelihood contribution from the
+  remaining inner score when finite tolerances leave the ETA mode approximate.
+  This term was already present in the FOCE and AGQ kernels.
+- Second-order inner models now solve and read through their matching model
+  and event-sensitivity role instead of inheriting the wider outer pool stride.
+- Fast FOCEi now defaults to gradient-only `nlminb`; explicit outer optimizers
+  remain available and the ordinary `bobyqa` default is unchanged. For fast
+  `nlminb`, outer curvature is opt-in through `outerTrustHessian="analytic"`
+  or `"fd"`; `"auto"` and `"bfgs"` use its BFGS approximation.
 - Native analytic gradients now reuse the inner solution already evaluated by
   the objective. Exact zero analytic components no longer trigger a spurious
   theta reset or replacement of the selected outer optimizer with BOBYQA.

@@ -369,7 +369,9 @@ is.latex <- function() {
   .state$calls <- 0L
   .state$failed <- FALSE
   hessian <- NULL
-  if (isTRUE(control$fast) && is.function(control$hessian)) {
+  .curvature <- control$outerTrustHessian
+  .useHessian <- is.null(.curvature) || identical(.curvature, "analytic") || identical(.curvature, "fd")
+  if (isTRUE(control$fast) && .useHessian && is.function(control$hessian)) {
     hessian <- function(x) {
       .state$calls <- .state$calls + 1L
       tryCatch(control$hessian(x), error = function(e) {
@@ -2353,15 +2355,14 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 
 #' Turn off `fast` after the control was built
 #'
-#' A defaulted outer optimizer was picked for `fast=TRUE` (`lbfgsb3c`); with
-#' finite-difference gradients it stalls, so re-default it to `bobyqa` as
-#' `foceiControl(fast=FALSE)` would.  An explicit `outerOpt` is kept.
+#' Restore the ordinary default after disabling an automatically selected fast
+#' optimizer, matching `foceiControl(fast=FALSE)`.  An explicit `outerOpt` is kept.
 #' @param control focei control list
 #' @return control with `fast = FALSE`
 #' @noRd
 .foceiDowngradeFast <- function(control) {
   control$fast <- FALSE
-  if (isTRUE(control$outerOptDefault) && identical(control$outerOptTxt, "lbfgsb3c")) {
+  if (isTRUE(control$outerOptDefault)) {
     control$outerOpt <- -1L
     control$outerOptFun <- .bobyqa
     control$outerOptTxt <- "bobyqa"
@@ -3649,8 +3650,10 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 .foceiModelCacheInflate <- function(el) {
   if (inherits(el, "nlmixr2estFoceiNorm")) {
     .es <- el$eventSens
-    if (inherits(el$model, "rxode2") &&
-          identical(.es, attr(el$model, "nlmixr2estEventSens"))) {
+    if (
+      inherits(el$model, "rxode2") &&
+        identical(.es, attr(el$model, "nlmixr2estEventSens"))
+    ) {
       rxode2::rxLoad(el$model)
       return(el$model)
     }

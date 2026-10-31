@@ -31,7 +31,7 @@ nmTest({
     expect_true(getValidNlmixrCtl.magqf(list(magqControl()))$fast)
     expect_true(getValidNlmixrCtl.iagqf(list(iagqControl()))$fast)
     # a defaulted outer optimizer re-defaults under fast; an explicit one is kept
-    expect_equal(getValidNlmixrCtl.agqf(list(agqControl()))$outerOptTxt, "lbfgsb3c")
+    expect_equal(getValidNlmixrCtl.agqf(list(agqControl()))$outerOptTxt, "nlminb")
     expect_equal(getValidNlmixrCtl.agqf(list(agqControl(outerOpt = "nlminb")))$outerOptTxt, "nlminb")
     # agqControl forwards ... to foceiControl, so fast is accepted directly too
     expect_true(agqControl(fast = TRUE)$fast)
@@ -130,7 +130,7 @@ nmTest({
   test_that("fast=TRUE AGQ fit matches the finite-difference fit", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    # outerOpt forced on BOTH arms: fast=TRUE otherwise re-defaults nlminb -> lbfgsb3c,
+    # outerOpt forced on BOTH arms: fast=TRUE otherwise re-defaults bobyqa -> nlminb,
     # which would make this compare optimizers rather than gradients.
     .fit <- function(fast) {
       suppressMessages(suppressWarnings(nlmixr2(

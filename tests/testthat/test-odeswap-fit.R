@@ -248,6 +248,9 @@ nmTest({
         fast = fast,
         maxOuterIterations = 0L,
         maxInnerIterations = 200L,
+        epsilon = 1e-10,
+        trustFterm = 1e-12,
+        trustMterm = 1e-12,
         calcTables = FALSE
       )
     }
@@ -256,8 +259,7 @@ nmTest({
     # the augmented model DOES size the pool here -- the point is that the CMT
     # re-base keeps the objective right anyway
     expect_identical(.odeSwapInfo()$poolName, "outer")
-    ## not expect_identical: fast=TRUE still evaluates the posthoc gradient, so the
-    ## last digits move.  The bug this pins was worth ~900 objective units, not 1e-12.
+    # Tight inner convergence isolates the state layout from optimizer stopping.
     expect_equal(as.numeric(fast$objf), as.numeric(ref$objf), tolerance = 1e-8)
     expect_equal(as.numeric(fast$eta[[2]]), as.numeric(ref$eta[[2]]), tolerance = 1e-6)
     # and the ETAs are genuinely conditional, not the collapsed ~0 the shift produced
@@ -299,9 +301,17 @@ nmTest({
     }
     d <- nlmixr2data::wbcSim[nlmixr2data::wbcSim$ID == 1, ]
     ctl <- function(fast) {
-      foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
-                   sigdig = 8, epsilon = 1e-10, trustFterm = 1e-12, trustMterm = 1e-12,
-                   calcTables = FALSE, fast = fast)
+      foceiControl(
+        print = 0L,
+        covMethod = "",
+        maxOuterIterations = 0L,
+        sigdig = 8,
+        epsilon = 1e-10,
+        trustFterm = 1e-12,
+        trustMterm = 1e-12,
+        calcTables = FALSE,
+        fast = fast
+      )
     }
     ref <- suppressWarnings(suppressMessages(nlmixr2(wbc, d, "focei", ctl(FALSE))))
     fast <- suppressWarnings(suppressMessages(nlmixr2(wbc, d, "focei", ctl(TRUE))))
@@ -336,14 +346,24 @@ nmTest({
       })
     }
     ctl <- function(fast) {
-      foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
-                   sigdig = 8, epsilon = 1e-10, trustFterm = 1e-12, trustMterm = 1e-12,
-                   calcTables = FALSE, fast = fast)
+      foceiControl(
+        print = 0L,
+        covMethod = "",
+        maxOuterIterations = 0L,
+        sigdig = 8,
+        epsilon = 1e-10,
+        trustFterm = 1e-12,
+        trustMterm = 1e-12,
+        calcTables = FALSE,
+        fast = fast
+      )
     }
     ref <- suppressWarnings(suppressMessages(
-      nlmixr2(nimo, nlmixr2data::nimoData, "focei", ctl(FALSE))))
+      nlmixr2(nimo, nlmixr2data::nimoData, "focei", ctl(FALSE))
+    ))
     fast <- suppressWarnings(suppressMessages(
-      nlmixr2(nimo, nlmixr2data::nimoData, "focei", ctl(TRUE))))
+      nlmixr2(nimo, nlmixr2data::nimoData, "focei", ctl(TRUE))
+    ))
     expect_identical(.odeSwapInfo()$poolName, "outer")
     expect_equal(as.numeric(fast$objf), as.numeric(ref$objf), tolerance = 1e-6)
     expect_equal(as.matrix(fast$eta[-1]), as.matrix(ref$eta[-1]), tolerance = 1e-5)
@@ -367,12 +387,14 @@ nmTest({
       })
     }
     ctl <- function(fast) {
-      foceiControl(print = 0L, covMethod = "", calcTables = FALSE, fast = fast)
+      foceiControl(print = 0L, covMethod = "", sigdig = 5, calcTables = FALSE, fast = fast)
     }
     ref <- suppressWarnings(suppressMessages(
-      nlmixr2(m, nlmixr2data::theo_sd, "focei", ctl(FALSE))))
+      nlmixr2(m, nlmixr2data::theo_sd, "focei", ctl(FALSE))
+    ))
     fast <- suppressWarnings(suppressMessages(
-      nlmixr2(m, nlmixr2data::theo_sd, "focei", ctl(TRUE))))
+      nlmixr2(m, nlmixr2data::theo_sd, "focei", ctl(TRUE))
+    ))
     expect_equal(as.numeric(fast$objf), as.numeric(ref$objf), tolerance = 1e-4)
   })
 })

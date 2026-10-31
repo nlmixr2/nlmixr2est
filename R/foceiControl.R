@@ -329,7 +329,7 @@
 #'     \code{nAGQ > 1}; those fall back to the finite-difference gradient with
 #'     a message (linCmt() and out-of-scope log-likelihood models downgrade to
 #'     \code{fast=FALSE} up front).  When unspecified,
-#'     the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"bobyqa"} for
+#'     the outer optimizer defaults to \code{"nlminb"} (vs \code{"bobyqa"} for
 #'     \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 #'     \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 #'     \code{foceif}) default this to \code{TRUE}.
@@ -604,15 +604,18 @@
 #'     Decomposition for a R or S matrix.
 #'
 #' @param outerOpt optimization method for the outer problem
-#'   Fast \code{"nlminb"} fits automatically use the analytical outer Hessian
+#'   Fast \code{"nlminb"} fits use gradients only by default. Set
+#'   \code{outerTrustHessian="analytic"} to request the analytical outer Hessian
 #'   for supported Gaussian FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
 #'   curvature is unavailable.  \code{"trust"} is a trust-region Newton method
 #'   (\pkg{RcppTrust}) built on that same Hessian; see
 #'   \code{outerTrustHessian}.  It is unbounded, so a trial point outside the
 #'   box is reported as an infinite objective and the region shrinks instead.
 #'
-#' @param outerTrustHessian Curvature source for \code{outerOpt="trust"}.
-#'   \code{"auto"} (default) uses the analytical outer Hessian when
+#' @param outerTrustHessian Curvature source for \code{outerOpt="trust"} or \code{"nlminb"}.
+#'   For \code{"nlminb"}, \code{"auto"} and \code{"bfgs"} leave curvature to
+#'   its BFGS approximation; \code{"analytic"} and \code{"fd"} request a Hessian.
+#'   For \code{"trust"}, \code{"auto"} (default) uses the analytical outer Hessian when
 #'   \code{fast=TRUE} makes it available and the damped-BFGS update otherwise,
 #'   and falls back to that update if the Hessian is refused mid-fit.
 #'   \code{"analytic"} requires \code{fast=TRUE}.  \code{"bfgs"} is the
@@ -1818,13 +1821,13 @@ foceiControl <- function(
   if (!is.null(.xtra$outerOptFun)) {
     outerOptFun <- .xtra$outerOptFun
   } else if (rxode2::rxIs(outerOpt, "character")) {
-    # Default outer optimizer (when the user did not specify one): lbfgsb3c for
-    # the analytic-gradient ("fast") methods, nlminb for the finite-difference
+    # Default outer optimizer (when the user did not specify one): nlminb for
+    # the analytic-gradient ("fast") methods, bobyqa for the ordinary
     # methods.  An explicit outerOpt (a single string) skips this;
     # outerOptDefault records that the default was taken so a *f wrapper
     # (.foceiFastCtl) can re-default a round-tripped control under fast=TRUE.
     if (missing(outerOpt)) {
-      outerOpt <- if (isTRUE(fast)) "lbfgsb3c" else "bobyqa"
+      outerOpt <- if (isTRUE(fast)) "nlminb" else "bobyqa"
       .outerOptDefault <- TRUE
     }
     outerOpt <- match.arg(outerOpt)

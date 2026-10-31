@@ -52,3 +52,23 @@ test_that("nlminb consumes fast curvature and falls back only for Hessian errors
     "objective failure"
   )
 })
+
+test_that('nlminb curvature is opt-in for normalized fast controls', {
+  objective <- function(x) sum(x^2)
+  gradient <- function(x) 2 * x
+  for (mode in c('auto', 'bfgs', 'analytic', 'fd')) {
+    calls <- 0L
+    hessian <- function(x) {
+      calls <<- calls + 1L
+      diag(2, length(x))
+    }
+    result <- .nlminb(
+      c(2, 3),
+      objective,
+      gradient,
+      control = list(fast = TRUE, outerTrustHessian = mode, hessian = hessian, maxOuterIterations = 100L)
+    )
+    expect_equal(result$x, c(0, 0), tolerance = 1e-7)
+    if (mode %in% c('auto', 'bfgs')) expect_identical(calls, 0L) else expect_gt(calls, 0L)
+  }
+})

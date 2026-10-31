@@ -2527,7 +2527,9 @@
           for (.pass in seq_len(3L)) {
             .modTxt <- .foceiCseRename(.modTxt, .pass)
             .opt <- tryCatch(rxode2:::.rxOptExprC(.modTxt), error = function(e) NA_character_)
-            if (length(.opt) != 1L || is.na(.opt) || identical(.opt, .modTxt)) break
+            if (length(.opt) != 1L || is.na(.opt) || identical(.opt, .modTxt)) {
+              break
+            }
             .modTxt <- .opt
           }
         } else {
@@ -4441,6 +4443,8 @@ foceiCovAnalytic <- function(fit) {
 # Keep input temporaries distinct from the names allocated by the next CSE pass.
 .foceiCseRename <- function(text, pass) {
   prefix <- paste0("rx_focei_cse", pass, "_")
-  while (grepl(prefix, text, fixed = TRUE)) prefix <- paste0(prefix, "cse_")
+  while (grepl(prefix, text, fixed = TRUE)) {
+    prefix <- paste0(prefix, "cse_")
+  }
   gsub("rx_expr_", prefix, text, fixed = TRUE)
 }
