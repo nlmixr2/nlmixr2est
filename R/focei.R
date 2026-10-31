@@ -480,6 +480,8 @@ is.latex <- function() {
       .was <- record(FALSE)
       on.exit(record(.was), add = TRUE)
     }
+    on.exit(fn(x), add = TRUE, after = FALSE)
+    force(g0)
     .h <- matrix(0.0, .n, .n)
     for (.j in seq_len(.n)) {
       .step <- relStep * max(abs(x[.j]), 1.0)
@@ -487,7 +489,6 @@ is.latex <- function() {
         .step <- -.step
       }
       if (x[.j] + .step < lower[.j]) {
-        fn(x)
         return(NULL)
       }
       .xp <- x
@@ -495,7 +496,9 @@ is.latex <- function() {
       fn(.xp)
       .h[, .j] <- (gr(.xp) - g0) / .step
     }
-    fn(x)
+    if (!all(is.finite(.h))) {
+      return(NULL)
+    }
     0.5 * (.h + t(.h))
   }
 }

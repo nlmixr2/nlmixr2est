@@ -109,3 +109,36 @@ test_that('nlminb FD curvature does not need the analytical Hessian', {
   expect_true(result$hessianFallback)
   expect_true(all(is.finite(result$x)))
 })
+
+test_that('nlminb FD captures the base gradient before moving the objective', {
+  point <- NULL
+  fn <- function(x) {
+    point <<- x
+    sum(x^2)
+  }
+  gr <- function(x) {
+    if (!identical(point, x)) {
+      stop('gradient point differs from objective point')
+    }
+    2 * x
+  }
+  result <- .nlminb(c(2, 3), fn, gr, control = list(outerTrustHessian = 'fd', maxOuterIterations = 100L))
+  expect_equal(result$x, c(0, 0), tolerance = 1e-7)
+  expect_gt(result$hessianEvaluations, 0L)
+  expect_false(result$hessianFallback)
+})
+
+test_that('nlminb recovers when an FD probe has a nonfinite gradient', {
+  gr <- function(x) if (x[1] > 2) c(NA_real_, NA_real_) else 2 * x
+  expect_warning(
+    result <- .nlminb(
+      c(2, 3),
+      function(x) sum(x^2),
+      gr,
+      control = list(outerTrustHessian = 'fd', maxOuterIterations = 100L)
+    ),
+    'restarting gradient-only nlminb'
+  )
+  expect_equal(result$x, c(0, 0), tolerance = 1e-7)
+  expect_true(result$hessianFallback)
+})

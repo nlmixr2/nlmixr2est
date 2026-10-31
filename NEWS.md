@@ -77,7 +77,9 @@
   `nlminb`, outer curvature is opt-in through `outerTrustHessian="analytic"`
   or `"fd"`; `"auto"` and `"bfgs"` use its BFGS approximation.
   The `"fd"` option differences gradients independently of the analytical
-  Hessian and restarts with gradients only if a probe cannot fit within bounds.
+  Hessian and restarts with gradients only if a probe fails or cannot fit within
+  bounds. FD probes capture the base gradient before moving the objective and
+  restore objective state before history recording, including on errors.
 - Native analytic gradients now reuse the inner solution already evaluated by
   the objective. Exact zero analytic components no longer trigger a spurious
   theta reset or replacement of the selected outer optimizer with BOBYQA.
