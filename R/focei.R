@@ -3604,6 +3604,8 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
     .combSens,
     .linCmtCarry,
     .pkgVersion,
+    # Compiled bundles must not collide across rxode2 runtimes sharing a cache.
+    rxode2::rxVersion(),
     .cacheFormat,
     rxode2::rxGetControl(.ui, "interaction", 1L),
     .iniDf$name,
