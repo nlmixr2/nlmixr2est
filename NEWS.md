@@ -64,6 +64,12 @@
 
 ### Estimation
 
+- `saem` now keeps each iteration's `phiM` draws in memory instead of a temp
+  file.  A temp-space cleaner (common on HPC clusters) could delete that file
+  during a long fit, which then failed after its last iteration with "cannot
+  open the connection" (#1276).  The objective also no longer uses the 4-digit
+  text copy of the draws, so it can differ slightly from earlier versions.
+
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not
