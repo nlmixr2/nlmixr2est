@@ -3574,7 +3574,8 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
   ## Version 4: keep compiled models for fast restoration and rebuild augmented
   ## models whose expression optimization changed without a package-version change.
-  .cacheFormat <- 5L
+  ## Version 6: preserve input identifiers during CSE temporary renaming.
+  .cacheFormat <- 6L
   .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(

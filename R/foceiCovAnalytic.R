@@ -4445,9 +4445,16 @@ foceiCovAnalytic <- function(fit) {
 
 # Keep input temporaries distinct from the names allocated by the next CSE pass.
 .foceiCseRename <- function(text, pass) {
+  definitions <- gregexpr("(?<![[:alnum:]_.])rx_expr_[0-9]+(?=\\s*~)", text, perl = TRUE)
+  temporaries <- unique(regmatches(text, definitions)[[1L]])
   prefix <- paste0("rx_focei_cse", pass, "_")
   while (grepl(prefix, text, fixed = TRUE)) {
     prefix <- paste0(prefix, "cse_")
   }
-  gsub("rx_expr_", prefix, text, fixed = TRUE)
+  matches <- gregexpr("(?<![[:alnum:]_.])rx_expr_[0-9]+(?![[:alnum:]_.])", text, perl = TRUE)
+  identifiers <- regmatches(text, matches)[[1L]]
+  rename <- identifiers %in% temporaries
+  identifiers[rename] <- sub("rx_expr_", prefix, identifiers[rename], fixed = TRUE)
+  regmatches(text, matches) <- list(identifiers)
+  text
 }
