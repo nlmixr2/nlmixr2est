@@ -5962,7 +5962,6 @@ static inline void resetToZeroWithoutOpt(focei_ind *indF, int& id) {
 }
 
 static inline void innerOptId(int id) {
-
   focei_ind *indF = &(inds_focei[id]);
   indF->parWarnBadHess = 0;
   indF->parErrorNoEta = 0;
@@ -5986,7 +5985,6 @@ static inline void innerOptId(int id) {
       }
     }
   }
-
 }
 
 
@@ -6316,7 +6314,6 @@ static void fillEtaRestartSamples(rx_solve *rx) {
 static std::vector<double> _foceiLik0Theta;
 
 void innerOpt() {
-
   _foceiLik0Theta.clear();
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
@@ -6602,7 +6599,6 @@ static inline double foceiLik0(double *theta) {
   }
   // Now reset the saved ETAs
   if (op_focei.neta !=0) {
-   
     std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
   }
   _foceiLik0Theta.assign(theta, theta + op_focei.npars);

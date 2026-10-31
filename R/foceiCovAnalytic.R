@@ -2526,7 +2526,10 @@
         if (nchar(.modTxt, type = "bytes") > getOption("rxode2.optExprChunkChars", 524288L)) {
           for (.pass in seq_len(3L)) {
             .modTxt <- .foceiCseRename(.modTxt, .pass)
-            .opt <- tryCatch(rxode2:::.rxOptExprC(.modTxt), error = function(e) NA_character_)
+            .opt <- tryCatch(
+              getFromNamespace(".rxOptExprC", "rxode2")(.modTxt),
+              error = function(e) NA_character_
+            )
             if (length(.opt) != 1L || is.na(.opt) || identical(.opt, .modTxt)) {
               break
             }

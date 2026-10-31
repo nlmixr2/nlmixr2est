@@ -1,4 +1,5 @@
 test_that('repeated outer CSE passes preserve existing temporaries', {
+  cse <- getFromNamespace('.rxOptExprC', 'rxode2')
   x <- 'rx_expr_0~a+b\ny=rx_expr_0*(c+d)+(c+d)'
   evaluate <- function(txt) {
     env <- list2env(list(a = 2, b = 3, c = 7, d = 11))
@@ -6,7 +7,7 @@ test_that('repeated outer CSE passes preserve existing temporaries', {
     env$y
   }
   for (pass in 1:3) {
-    out <- rxode2:::.rxOptExprC(.foceiCseRename(x, pass))
+    out <- cse(.foceiCseRename(x, pass))
     if (is.na(out)) {
       expect_gt(pass, 1L)
       break
@@ -17,6 +18,7 @@ test_that('repeated outer CSE passes preserve existing temporaries', {
 })
 
 test_that('outer CSE preserves a small ODE and its sensitivity', {
+  cse <- getFromNamespace('.rxOptExprC', 'rxode2')
   original <- paste(
     'rx_expr_0~a+b',
     'k=rx_expr_0*(c+d)+(c+d)',
@@ -29,7 +31,7 @@ test_that('outer CSE preserves a small ODE and its sensitivity', {
   )
   optimized <- original
   for (pass in 1:3) {
-    out <- rxode2:::.rxOptExprC(.foceiCseRename(optimized, pass))
+    out <- cse(.foceiCseRename(optimized, pass))
     if (is.na(out)) {
       break
     }

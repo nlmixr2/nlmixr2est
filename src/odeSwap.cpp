@@ -987,7 +987,6 @@ bool odeSwapIndBadSolveSlot(rx_solving_options *op, rx_solving_options_ind *ind,
   if (solve == NULL) return false;
   for (int i = 0; i < n; ++i) {
     if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) {
-
       return true;
     }
   }
