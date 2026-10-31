@@ -64,45 +64,26 @@
 
 ### Estimation
 
-- Per-subject gradient fallbacks now tighten the inner optimizer's tolerance
-  and ODE solver tolerances during finite differences, so solve error is not
-  amplified into a wrong derivative. The fit's settings are restored afterward.
-- Analytic FOCEi gradients now retain the likelihood contribution from the
-  remaining inner score when finite tolerances leave the ETA mode approximate.
-  This term was already present in the FOCE and AGQ kernels.
-- Second-order inner models now solve and read through their matching model
-  and event-sensitivity role instead of inheriting the wider outer pool stride.
-- Fast FOCEi now defaults to gradient-only `nlminb`; explicit outer optimizers
-  remain available and the ordinary `bobyqa` default is unchanged. For fast
-  `nlminb`, outer curvature is opt-in through `outerTrustHessian="analytic"`
-  or `"fd"`; `"auto"` and `"bfgs"` use its BFGS approximation.
-  The `"fd"` option differences gradients independently of the analytical
-  Hessian and restarts with gradients only if a probe fails or cannot fit within
-  bounds. FD probes capture the base gradient before moving the objective and
-  restore objective state before history recording, including on errors.
-- Native analytic gradients now reuse the inner solution already evaluated by
-  the objective. Exact zero analytic components no longer trigger a spurious
-  theta reset or replacement of the selected outer optimizer with BOBYQA.
-
-- Fast FOCEi ETA extrapolation now uses the EBEs at the last analytic-gradient
-  point. Line-search trials no longer compound the prediction from ETAs left
-  by a different trial.
-
-- `fast = TRUE` FOCEi fits now solve the inner model with its own state stride
-  and matching event-sensitivity callbacks when the augmented outer model sizes
-  the shared solve pool.  This prevents failed inner solves and penalty-only
-  objectives for infusion models such as the `wbc` vignette model and models
-  with parameter-dependent initial conditions (#1115, #1133).
-- Large analytic FOCEi sensitivity models now reuse common expressions across
-  all derivative directions.  This substantially reduces model translation and
-  augmented-solve time for nonlinear models such as `nimo`. Existing temporary
-  names are kept distinct between optimization passes without renaming user
-  covariates or parameters, preserving the model equations (#1133).
-- Cached FOCEi models now restore their compiled objects directly instead of
-  reparsing normalized model text, and gradient setup reuses that restored
-  model instead of generating it again.  This avoids minutes of setup for large
-  augmented sensitivity models; the cache format bump also rebuilds models
-  cached before the expression optimization above (#1133).
+- Per-subject FD gradient fallbacks temporarily tighten inner and ODE
+  tolerances to improve derivative accuracy.
+- Analytical FOCEi gradients include the remaining inner score when finite
+  tolerances leave the ETA mode approximate.
+- Pooled inner and second-order models use matching state layouts and event
+  sensitivities, fixing failed fast fits (#1115, #1133).
+- Fast FOCEi defaults to gradient-only `nlminb`; ordinary fits retain `bobyqa`.
+  Explicit outer optimizer choices are preserved.
+- `nlminb` curvature is opt-in through `outerTrustHessian="analytic"` or `"fd"`;
+  `"auto"` and `"bfgs"` retain its BFGS approximation.
+- FD Hessian probes capture the base gradient before moving solver state and
+  restore state after failures; unavailable curvature uses the existing fallback.
+- Analytical gradients reuse the evaluated objective point and preserve valid
+  zero components without resetting parameters or changing optimizers.
+- Fast FOCEi ETA predictions use EBEs from the last gradient evaluation,
+  making repeated line-search trials independent of ETAs left by other trials.
+- Large sensitivity models reuse shared expressions without name collisions
+  or changes to user input names, improving setup time (#1133).
+- FOCEi caches reuse compiled models to reduce setup time and keep rxode2
+  versions/builds separate to prevent bundle collisions (#1133).
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
