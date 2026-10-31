@@ -371,10 +371,26 @@ is.latex <- function() {
   hessian <- NULL
   .curvature <- control$outerTrustHessian
   .useHessian <- is.null(.curvature) || identical(.curvature, "analytic") || identical(.curvature, "fd")
-  if (isTRUE(control$fast) && .useHessian && is.function(control$hessian)) {
+  .source <- control$hessian
+  .useFd <- identical(.curvature, "fd")
+  if (.useFd) {
+    .step <- control$outerTrustRelStep
+    if (is.null(.step)) {
+      .step <- 1e-3
+    }
+    .fd <- .trustOuterFd(fn, gr, .step, rep_len(lower, length(par)), rep_len(upper, length(par)), control$outerRecord)
+    .source <- function(x) {
+      .h <- .fd(x, gr(x))
+      if (is.null(.h)) {
+        stop("finite-difference outer Hessian unavailable", call. = FALSE)
+      }
+      .h
+    }
+  }
+  if ((isTRUE(control$fast) || .useFd) && .useHessian && is.function(.source)) {
     hessian <- function(x) {
       .state$calls <- .state$calls + 1L
-      tryCatch(control$hessian(x), error = function(e) {
+      tryCatch(.source(x), error = function(e) {
         .state$failed <- TRUE
         stop(e)
       })
@@ -3575,7 +3591,8 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## Version 4: keep compiled models for fast restoration and rebuild augmented
   ## models whose expression optimization changed without a package-version change.
   ## Version 6: preserve input identifiers during CSE temporary renaming.
-  .cacheFormat <- 6L
+  ## Version 7: rebuild models optimized with colliding R-fallback temporaries.
+  .cacheFormat <- 7L
   .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
