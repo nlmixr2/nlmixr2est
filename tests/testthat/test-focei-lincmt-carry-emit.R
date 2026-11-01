@@ -44,7 +44,7 @@ test_that("a model with no eligible pair generates identical text with carry on 
   expect_false(grepl("rx_lcCarry", .tA))
 })
 
-test_that("the model cache digest keys covsInterpolation (linear skips the carry)", {
+test_that("the model cache digest keys covsInterpolation", {
   # runs regardless of rxode2 capability: a locf build must never be reused
   # for a linear fit of the same model, or vice versa
   .mk <- function(interp) {

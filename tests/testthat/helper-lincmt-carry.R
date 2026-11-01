@@ -21,6 +21,23 @@
   })
 }
 
+# .carryModCov with wt declared linear() under the global interpolation
+.carryModCovLinear <- function() {
+  ini({
+    tcl <- log(2)
+    tv <- log(20)
+    eta.cl ~ 0.1
+    add.sd <- 0.5
+  })
+  model({
+    linear(wt)
+    cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+    v <- exp(tv)
+    cp <- linCmt()
+    cp ~ add(add.sd)
+  })
+}
+
 .carryModTwoPair <- function() {
   ini({
     tcl <- log(2)
@@ -184,9 +201,10 @@
   assign("control", .ctl, envir = u)
   # the hidden copies a midpoint covariate is read through, as the fit's
   # data step adds them
-  ev <- .rxFoceiLinCmtCarryAliasData(ev, .rxFoceiLinCmtCarryMidCovs(u))
+  ev <- .rxFoceiLinCmtCarryAliasData(ev, .rxFoceiLinCmtCarryAliasCovs(u))
   txt <- suppressMessages(u$foceiEnv)$..inner
-  m <- suppressWarnings(rxode2::rxode2(txt))
+  # with the model's own interpolation declarations, as a fit compiles it
+  m <- suppressWarnings(rxode2::rxode2(paste(c(rxUiGet.interpLinesStr(list(u)), txt), collapse = "\n")))
   slv <- function(q) {
     rxode2::rxSolve(m, params = q, events = ev, returnType = "data.frame", covsInterpolation = interp)
   }
@@ -236,4 +254,12 @@
 # block.
 .carryTwinInterps <- function(interps = c("locf", "midpoint", "nocb")) {
   if (.rxFoceiLinCmtIntervalCovs()) interps else intersect(interps, "nocb")
+}
+
+# The control interpolations the carry follows: "linear" too with an rxode2
+# that advances an interval with its own covariates; without one the carry is
+# off under "linear", as on main.  Remove with test-dependency-workarounds.R's
+# interval-covariate block.
+.carryInterps <- function(interps) {
+  if (.rxFoceiLinCmtIntervalCovs()) interps else setdiff(interps, "linear")
 }

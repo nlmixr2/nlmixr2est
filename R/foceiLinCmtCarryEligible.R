@@ -32,10 +32,8 @@
 #   d(rx_lcConc_)/d(eta) and symengine the outer chain rule; two different
 #   calls, or none, return no pairs
 #
-# Data-confirmed variation (varying NA/TRUE/FALSE) and the "linear"
-# interpolation error live with the data helpers in foceiLinCmtCarryData.R;
-# a CONFIRMED varying covariate under linear interpolation is a clear error,
-# not a silent discretization.
+# Data-confirmed variation (varying NA/TRUE/FALSE) lives with the data
+# helpers in foceiLinCmtCarryData.R.
 
 .rxFoceiLinCmtCarrySlotNames <- c("p1", "v1", "p2", "p3", "p4", "p5", "ka")
 
@@ -61,8 +59,6 @@
 #' @param etaVars ETA_i_ names in gradient-column order
 #' @param data optional event data; when given, `varying` is confirmed
 #'   per-subject instead of reported as candidate (`NA`)
-#' @param interpolation covariate interpolation method; "linear" combined
-#'   with a confirmed-varying covariate on an eligible pair is an error
 #' @return data.frame, one row per eligible pair: `slot` (1-7 into
 #'   p1/v1/p2/p3/p4/p5/ka, `NA` for an event-only pair), `slotName`, `eta`
 #'   (ETA_n_), `etaName` (original), `covs` (comma-joined), `shape`
@@ -77,10 +73,8 @@
   s,
   etaVars,
   data = NULL,
-  interpolation = c("locf", "nocb", "midpoint", "linear"),
   render = TRUE
 ) {
-  interpolation <- match.arg(interpolation)
   .ui <- x[[1]]
   .empty <- .rxFoceiCarryEmpty()
   .allCovs <- .ui$allCovs
@@ -108,7 +102,6 @@
       .slotFree,
       .mods,
       data,
-      interpolation,
       render
     )
     if (!is.null(.row)) .ret <- rbind(.ret, .row)
@@ -199,7 +192,6 @@
   slotFree,
   mods,
   data,
-  interpolation,
   render
 ) {
   .eta <- etaVars[e]
@@ -220,15 +212,6 @@
     return(NULL)
   }
   .varying <- .rxFoceiCarryVarying(.why, data)
-  if (identical(interpolation, "linear") && isTRUE(.varying)) {
-    stop(
-      "time-varying covariate '",
-      paste(.why, collapse = "', '"),
-      "' on a linCmt() parameter needs 'locf', 'nocb' or 'midpoint' ",
-      "interpolation; 'linear' cannot be represented by the linCmt() solution",
-      call. = FALSE
-    )
-  }
   .rxFoceiCarryPairRow(
     .eta,
     etaDf$name[which(etaDf$neta1 == e)],
@@ -254,4 +237,48 @@
     .why <- c(.why, unlist(lapply(slotFree, intersect, allCovs)))
   }
   unique(.why)
+}
+
+#' Is a "linear" control interpolation outside what the carry can follow?
+#'
+#' An rxode2 that advances every linCmt() interval with the end record's
+#' covariates (no `.rxFoceiLinCmtIntervalCovs()`) has no linCmt() solution
+#' for a covariate interpolated linearly; there the carry is off under the
+#' control's "linear", and a fit with a varying covariate on an eligible pair
+#' stops.  Remove with test-dependency-workarounds.R's interval-covariate
+#' block.
+#' @param ui rxode2 ui with its control
+#' @return TRUE when the control's interpolation is "linear" and the loaded
+#'   rxode2 has no interval covariates
+#' @noRd
+.rxFoceiLinCmtCarryLinearRefused <- function(ui) {
+  identical(.rxFoceiLinCmtCarryGlobalInterp(ui), "linear") && !.rxFoceiLinCmtIntervalCovs()
+}
+
+#' Stop for a data-confirmed varying covariate on an eligible pair under a
+#' refused "linear" interpolation (`.rxFoceiLinCmtCarryLinearRefused()`)
+#' @param ui rxode2 ui
+#' @param data the fit's data
+#' @return invisible NULL when no eligible pair has a varying covariate
+#' @noRd
+.rxFoceiLinCmtCarryLinearRefuse <- function(ui, data) {
+  .s <- ui$foceiEtaS
+  .p <- .rxFoceiLinCmtCarryEligible(
+    list(ui),
+    .s,
+    paste0("ETA_", seq_len(.s$..maxEta), "_"),
+    data = data,
+    render = FALSE
+  )
+  .v <- which(vapply(.p$varying, isTRUE, logical(1)))
+  if (length(.v) > 0L) {
+    stop(
+      "time-varying covariate '",
+      gsub(",", "', '", .p$covs[.v[1]], fixed = TRUE),
+      "' on a linCmt() parameter needs 'locf', 'nocb' or 'midpoint' ",
+      "interpolation; 'linear' cannot be represented by the linCmt() solution",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
 }

@@ -287,7 +287,12 @@ doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 sensitivity-carry gradient for a `linCmt()` parameter driven by both an
 eta and a time-varying covariate (needs an rxode2 with the carry
 sentinels; silently keeps the standard gradient otherwise); `"none"`
-always keeps the standard gradient.}
+always keeps the standard gradient.  `linCmt()` holds each interval
+between records at the covariates' values at the interval's middle, by
+each covariate's interpolation; under `"linear"` that approximates a
+covariate's ramp by its midpoint value, so a `linCmt()` fit differs
+slightly from the same model written as ODEs.  The carry's gradient is
+the one of that solution.}
 
 \item{calcTables}{This boolean is to determine if the foceiFit
 will calculate tables. By default this is \code{TRUE}}
