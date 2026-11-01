@@ -4,25 +4,25 @@
 # that it is quiet.  A new work-around adds a block here, and a row to
 # .depBlocks so the files it touches are checked against what it names.
 
-# The warning a work-around's block gives, or NULL unless the block's probe
-# found the feature (`present`) and the installed version is a release after
-# `dev`, the development version that added it.  A development build
-# (x.y.z.9000 and later) is never a release, and a release without the
-# feature still needs the work-around.
-.depWorkaroundWarning <- function(installed, dev, remove, present) {
+# The warning a work-around's block gives for the installed version of `pkg`,
+# or NULL unless the block's probe found the feature (`present`) and that
+# version is a release after `dev` (the development version that added the
+# feature, or the last one without it).  A development build (x.y.z.9000 and
+# later) is never a release, and a release without the feature still needs
+# the work-around.  `raise` adds the DESCRIPTION minimum to raise.
+.depWorkaroundWarning <- function(installed, dev, remove, present, pkg = "rxode2", raise = TRUE) {
   if (!isTRUE(present) || !.depIsRelease(installed) || installed <= dev) {
     return(NULL)
   }
   paste0(
-    "rxode2 ",
+    pkg,
+    " ",
     installed,
     " is a release after ",
     dev,
     ", so this work-around can go: ",
     remove,
-    "; and raise DESCRIPTION to rxode2 (>= ",
-    installed,
-    ")"
+    if (raise) paste0("; and raise DESCRIPTION to ", pkg, " (>= ", installed, ")")
   )
 }
 
@@ -62,6 +62,8 @@
 .depVersion519 <- function() numeric_version("5.1.9")
 .depVersionDev <- function() numeric_version("5.1.9.9000")
 .depTrue <- function() TRUE
+.depLincmtVersion012 <- function() numeric_version("0.1.2")
+.depLincmtVersionDev <- function() numeric_version("0.1.1.9000")
 .depFalse <- function() FALSE
 
 .depIntervalCovsRemove <- paste(
@@ -117,6 +119,75 @@ test_that("the work-around warning is given only for a release with the feature"
   expect_false(.depIsRelease("5.1.8.9000"))
 })
 
+test_that("interval-covariate work-around: warns only for a release with interval covariates", {
+  local_mocked_bindings(.rxode2Version = .depVersion519, .rxFoceiLinCmtIntervalCovs = .depFalse)
+  expect_null(.depIntervalCovsWarning())
+  local_mocked_bindings(.rxFoceiLinCmtIntervalCovs = .depTrue)
+  expect_match(.depIntervalCovsWarning(), "rxode2 5.1.9 is a release after 5.1.8.9000", fixed = TRUE)
+  local_mocked_bindings(.rxode2Version = .depVersionDev)
+  expect_null(.depIntervalCovsWarning())
+})
+
+.depResetRemove <- paste(
+  "the linCmt() carry's reset twins wait for an rxode2lincmt that restarts the",
+  "carried sensitivities at a reset (rxode2lincmt PR 4): if this one does, remove",
+  ".carrySkipReset() and its probe, .carryResetRestarts(), .carryResetEnv and",
+  ".carryResetProbe() (helper-lincmt-carry.R), its calls in",
+  "test-focei-lincmt-carry-fit.R, and this block"
+)
+
+# The reset block's warning for the installed rxode2lincmt
+.depResetWarning <- function(present = .carryResetRestarts()) {
+  .depWorkaroundWarning(
+    .rxode2lincmtVersion(),
+    "0.1.1",
+    .depResetRemove,
+    present = present,
+    pkg = "rxode2lincmt",
+    raise = FALSE
+  )
+}
+
+.depBlocks$reset <- list(
+  remove = .depResetRemove,
+  anchor = "helper-lincmt-carry.R",
+  symbols = c(".carrySkipReset", ".carryResetRestarts", ".carryResetEnv", ".carryResetProbe")
+)
+
+test_that("the work-around warning names the package, and the minimum only when asked", {
+  expect_match(
+    .depWorkaroundWarning(numeric_version("0.1.2"), "0.1.1", "x", present = TRUE, pkg = "rxode2lincmt", raise = FALSE),
+    "^rxode2lincmt 0.1.2 is a release after 0.1.1, so this work-around can go: x$"
+  )
+})
+
+test_that("rxode2lincmt reset work-around: warns only for a release that restarts the carry", {
+  local_mocked_bindings(.rxode2lincmtVersion = .depLincmtVersion012)
+  expect_null(.depResetWarning(present = FALSE))
+  expect_match(.depResetWarning(present = TRUE), "rxode2lincmt 0.1.2 is a release after 0.1.1", fixed = TRUE)
+  local_mocked_bindings(.rxode2lincmtVersion = .depLincmtVersionDev)
+  expect_null(.depResetWarning(present = TRUE))
+})
+
+test_that("rxode2lincmt reset work-around: the carry's reset twins", {
+  skip_on_cran()
+  .w <- .depResetWarning()
+  if (!is.null(.w)) {
+    warning(.w, call. = FALSE)
+  }
+  succeed()
+})
+
+test_that("interval-covariate work-around: the linCmt() carry's end-record fallback", {
+  skip_on_cran()
+  .w <- .depIntervalCovsWarning()
+  if (!is.null(.w)) {
+    warning(.w, call. = FALSE)
+  }
+  succeed()
+})
+
+# after every block has added its row
 test_that("each work-around names every file that uses its probe, skips and fallbacks", {
   # tests/ alone (an installed-package check) cannot show what R/ uses
   skip_if_not(
@@ -130,22 +201,4 @@ test_that("each work-around names every file that uses its probe, skips and fall
       expect_true(grepl(.f, .depBlocks[[.b]]$remove, fixed = TRUE), label = paste(.b, "names", .f))
     }
   }
-})
-
-test_that("interval-covariate work-around: warns only for a release with interval covariates", {
-  local_mocked_bindings(.rxode2Version = .depVersion519, .rxFoceiLinCmtIntervalCovs = .depFalse)
-  expect_null(.depIntervalCovsWarning())
-  local_mocked_bindings(.rxFoceiLinCmtIntervalCovs = .depTrue)
-  expect_match(.depIntervalCovsWarning(), "rxode2 5.1.9 is a release after 5.1.8.9000", fixed = TRUE)
-  local_mocked_bindings(.rxode2Version = .depVersionDev)
-  expect_null(.depIntervalCovsWarning())
-})
-
-test_that("interval-covariate work-around: the linCmt() carry's end-record fallback", {
-  skip_on_cran()
-  .w <- .depIntervalCovsWarning()
-  if (!is.null(.w)) {
-    warning(.w, call. = FALSE)
-  }
-  succeed()
 })
