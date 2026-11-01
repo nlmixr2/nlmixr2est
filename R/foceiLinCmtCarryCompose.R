@@ -67,8 +67,7 @@
 #'   (`.rxFoceiLinCmtIntervalCovs()`); `character(0)` otherwise
 #' @noRd
 .rxFoceiLinCmtCarryAliasCovs <- function(ui) {
-  if (!.foceiUsesLinCmt(ui) || !.rxFoceiLinCmtCarryBuildEnabled(ui) ||
-        !.rxFoceiLinCmtIntervalCovs()) {
+  if (!.foceiUsesLinCmt(ui) || !.rxFoceiLinCmtCarryBuildEnabled(ui) || !.rxFoceiLinCmtIntervalCovs()) {
     return(character(0))
   }
   .covs <- ui$allCovs
