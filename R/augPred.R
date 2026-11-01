@@ -71,7 +71,8 @@
   if (is.null(maximum)) {
     maximum <- .range[2]
   }
-  .fs <- c(locf = 0, nocb = 1, midpoint = 0, linear = 0)
+  # midpoint is rxode2's mean of the two neighboring records over the interval
+  .fs <- c(locf = 0, nocb = 1, midpoint = 0.5, linear = 0)
   .base <- expand.grid(
     TIME = seq(minimum, maximum, length.out = length.out),
     EVID = 2,
@@ -93,22 +94,16 @@
               suppressWarnings({
                 .x <- .cur$TIME
                 .y <- .cur[[cov]]
-                if (.covsi == "midpoint" && length(.x) > 1L) {
-                  # rxode2 steps to the next value at the midpoint, it does
-                  # not average the two
-                  .o <- order(.x)
-                  .x <- .x[.o]
-                  .y <- .y[.o]
-                  .x <- c(.x[1], (.x[-1] + .x[-length(.x)]) / 2)
-                }
+                # occasions always step (locf), as rxode2 steps them
+                .ci <- if (cov %in% .occCols) "locf" else .covsi
                 # tied records keep their record order (etTrans()'s), so an
                 # occasion steps through them as rxode2 does, not to a mean
                 .fun <- stats::approxfun(
                   .x,
                   .y,
-                  method = ifelse(.covsi == "linear", "linear", "constant"),
+                  method = ifelse(.ci == "linear", "linear", "constant"),
                   rule = 2,
-                  f = .fs[.covsi],
+                  f = .fs[.ci],
                   ties = if (cov %in% .occCols) "ordered" else mean
                 )
                 .fun(.base$TIME)
@@ -372,8 +367,8 @@
 #' @details
 #'
 #' For a fit with inter-occasion variability, each time takes its subject's
-#' estimate for the occasion the fit's covariate interpolation gives that
-#' time, in the fit's record order where records tie.  Under `"midpoint"`
+#' estimate for the occasion in force at that time (occasions always step,
+#' locf), in the fit's record order where records tie.  Under `"midpoint"`
 #' or `"linear"` interpolation the individual curve differs from the fit's
 #' predictions after an occasion changes, as `predict()` does.
 #'
