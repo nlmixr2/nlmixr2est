@@ -198,7 +198,8 @@
       }
       .ret
     },
-    Pow = symengine::D(.args[[2]], symengine::S(eta)) * log(.args[[1]]) +
+    Pow = symengine::D(.args[[2]], symengine::S(eta)) *
+      log(.args[[1]]) +
       .args[[2]] * .rxFoceiCarryDLog(.args[[1]], eta),
     symengine::D(f, symengine::S(eta)) / f
   )
