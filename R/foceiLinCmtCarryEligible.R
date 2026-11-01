@@ -4,8 +4,10 @@
 # d(pred)/d(eta) wrong today (getAlastAD reconstructs the carried Alast
 # sensitivity assuming theta is constant across the subject).  The fix (the
 # which1=-5/-6/-7 carry recurrence) is only VALIDATED for formulas where the
-# eta enters separably: theta = h(cov)*exp(eta) ("mult", d(f)/d(eta) == f)
-# or theta = h(cov) + c*eta ("add", d(f)/d(eta) covariate-free).  This file
+# eta enters separably: theta = h(cov)*exp(eta) ("mult", d(f)/d(eta) == f),
+# theta = h(cov) + c*eta ("add", d(f)/d(eta) covariate-free), or
+# d(f)/d(eta) = f*k(cov, theta) with k free of etas and time ("multCov", an
+# IOV occasion eta: f*|omega|*(occ == j)).  This file
 # only DETECTS eligible (eta, channels) pairs; nothing is substituted here.
 # Every ambiguous case must come back NOT eligible: a false negative keeps
 # today's (already-shipping) behavior, a false positive would silently
@@ -20,7 +22,8 @@
 #
 # Conservative rules beyond the shape check, each biased to FALSE:
 # - an eta appearing in more than one linCmtB() argument slot is dropped
-# - a slot containing more than one eta is dropped
+# - several etas in one slot (an IOV rewrite's eta.cl and occasion etas)
+#   each make their own pair; the pairs share the slot's tracker column
 # - IOV/occasion etas (iniDf base condition != "id") are dropped
 # - a slot whose formula references time (t) directly is dropped
 # - a covariate-driven alag() is dropped (its boundary terms need the
@@ -133,8 +136,11 @@
 #' The eta's slot channel: list(k, g, shape, covs) for a single qualifying
 #' slot, list() when the eta is in no slot, NULL when it is in a slot the
 #' carry cannot represent
+#' @param iov TRUE for the eta-side carry: several etas may share the slot
+#'   and the multCov shape is accepted; FALSE (the theta side) keeps one
+#'   variable per slot and the mult/add shapes
 #' @noRd
-.rxFoceiCarryEtaSlotInfo <- function(eta, etaVars, allCovs, slotExpr, slotFree) {
+.rxFoceiCarryEtaSlotInfo <- function(eta, etaVars, allCovs, slotExpr, slotFree, iov = FALSE) {
   .inSlot <- which(vapply(slotFree, function(f) eta %in% f, logical(1)))
   if (length(.inSlot) == 0L) {
     return(list())
@@ -144,8 +150,9 @@
     return(NULL)
   }
   .free <- slotFree[[.inSlot]]
-  # exactly one eta in that slot, no direct time dependence
-  if (sum(etaVars %in% .free) != 1L || any(.rxFoceiCarryTimeSyms %in% .free)) {
+  # no direct time dependence, and one variable in the slot unless shared
+  # slots are allowed
+  if ((!iov && sum(etaVars %in% .free) != 1L) || any(.rxFoceiCarryTimeSyms %in% .free)) {
     return(NULL)
   }
   .expr <- slotExpr[[.inSlot]]
@@ -153,7 +160,7 @@
   if (is.null(.d) || .rxFoceiCarryIsZero(.d)) {
     return(NULL)
   }
-  .shape <- .rxFoceiCarryShape(.expr, .d, allCovs, etaVars)
+  .shape <- .rxFoceiCarryShape(.expr, .d, allCovs, etaVars, multCov = iov, eta = eta)
   if (is.null(.shape)) {
     return(NULL)
   }
@@ -166,15 +173,62 @@
   )
 }
 
-#' "mult" / "add" when the eta enters separably, else NULL
+#' d log(f) / d eta, factor by factor
+#'
+#' A product contributes the sum over its factors and a power b^p contributes
+#' D(p) log(b) + p d log(b), so an exp(u) never appears divided by itself:
+#' symengine does not cancel that quotient (it keeps exp(u - u)), nor match a
+#' sub-product of a flattened product.  Any other factor that reads the eta
+#' contributes D(f) / f as it is.
+#' @param f symengine expression
+#' @param eta the eta's symbol name
+#' @return symengine expression
 #' @noRd
-.rxFoceiCarryShape <- function(expr, d, allCovs, etaVars) {
+.rxFoceiCarryDLog <- function(f, eta) {
+  if (!(eta %in% .rxFoceiCarryFreeSyms(f))) {
+    return(symengine::S("0"))
+  }
+  .args <- symengine::get_args(f)
+  switch(
+    symengine::get_type(f),
+    Mul = {
+      .ret <- symengine::S("0")
+      for (.i in seq_along(.args)) {
+        .ret <- .ret + .rxFoceiCarryDLog(.args[[.i]], eta)
+      }
+      .ret
+    },
+    Pow = symengine::D(.args[[2]], symengine::S(eta)) * log(.args[[1]]) +
+      .args[[2]] * .rxFoceiCarryDLog(.args[[1]], eta),
+    symengine::D(f, symengine::S(eta)) / f
+  )
+}
+
+#' "mult" / "add" / "multCov" (when `multCov`) when the eta enters
+#' separably, else NULL
+#' @noRd
+.rxFoceiCarryShape <- function(expr, d, allCovs, etaVars, multCov = FALSE, eta = NULL) {
   if (.rxFoceiCarryIsZero(symengine::expand(d - expr))) {
     return("mult")
   }
   .dFree <- .rxFoceiCarryFreeSyms(d)
   if (length(intersect(.dFree, c(allCovs, etaVars, .rxFoceiCarryTimeSyms))) == 0L) {
     return("add")
+  }
+  if (!multCov) {
+    return(NULL)
+  }
+  # d = expr * k with k = d log(expr) / d eta, which must be a function of
+  # covariates and thetas only
+  if (is.null(eta)) {
+    return(NULL)
+  }
+  .k <- try(.rxFoceiCarryDLog(expr, eta), silent = TRUE)
+  if (
+    !inherits(.k, "try-error") &&
+      length(intersect(.rxFoceiCarryFreeSyms(.k), c(etaVars, .rxFoceiCarryTimeSyms))) == 0L
+  ) {
+    return("multCov")
   }
   NULL
 }
@@ -210,7 +264,7 @@
   if (!isTRUE(.jump$ok)) {
     return(NULL)
   }
-  .slot <- .rxFoceiCarryEtaSlotInfo(.eta, etaVars, allCovs, slotExpr, slotFree)
+  .slot <- .rxFoceiCarryEtaSlotInfo(.eta, etaVars, allCovs, slotExpr, slotFree, iov = TRUE)
   if (is.null(.slot)) {
     return(NULL)
   }
