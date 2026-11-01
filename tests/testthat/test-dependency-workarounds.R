@@ -126,10 +126,11 @@ test_that("the work-around warning is given only for a release with the feature"
 })
 
 test_that("each work-around names every file that uses its probe, skips and fallbacks", {
-  # tests/ alone (an installed-package check) cannot show what R/ uses
+  # an installed package (R CMD check, covr) has an R/ of .rdb files, not the
+  # sources, so it cannot show what R/ uses
   skip_if_not(
-    dir.exists(file.path(testthat::test_path("..", ".."), "R")),
-    "no R/ beside tests/: the file-name check needs the source tree"
+    length(list.files(file.path(testthat::test_path("..", ".."), "R"), "\\.R$")) > 0L,
+    "no R/*.R beside tests/: the file-name check needs the source tree"
   )
   for (.b in names(.depBlocks)) {
     .files <- .depFilesUsing(.depBlocks[[.b]]$symbols)
