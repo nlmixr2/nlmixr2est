@@ -190,8 +190,8 @@
 - `augPred()` under `covsInterpolation = "midpoint"` now fills its grid
   covariates with the mean of the two neighboring records, as rxode2 and
   `approxfun(method = "constant", f = 0.5)` do; it stepped at the midpoint,
-  so its curves disagreed with the fit.  Occasion columns always step (locf)
-  (#1283).
+  so its curves disagreed with the fit.  Occasion columns step at the
+  previous record (locf) under midpoint (#1283).
 
 - `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
   subject has no observations ("Col::subvec(): indices out of bounds").

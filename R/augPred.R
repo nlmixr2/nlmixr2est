@@ -94,8 +94,8 @@
               suppressWarnings({
                 .x <- .cur$TIME
                 .y <- .cur[[cov]]
-                # occasions always step (locf), as rxode2 steps them
-                .ci <- if (cov %in% .occCols) "locf" else .covsi
+                # a midpoint mean would give fractional occasions; step them
+                .ci <- if (cov %in% .occCols && .covsi == "midpoint") "locf" else .covsi
                 # tied records keep their record order (etTrans()'s), so an
                 # occasion steps through them as rxode2 does, not to a mean
                 .fun <- stats::approxfun(
@@ -367,8 +367,9 @@
 #' @details
 #'
 #' For a fit with inter-occasion variability, each time takes its subject's
-#' estimate for the occasion in force at that time (occasions always step,
-#' locf), in the fit's record order where records tie.  Under `"midpoint"`
+#' estimate for the occasion the fit's covariate interpolation gives that
+#' time (under `"midpoint"`, the previous record's), in the fit's record
+#' order where records tie.  Under `"midpoint"`
 #' or `"linear"` interpolation the individual curve differs from the fit's
 #' predictions after an occasion changes, as `predict()` does.
 #'
