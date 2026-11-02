@@ -304,6 +304,9 @@
 
 ### Documentation
 
+- `?foceiControl` now says that the ODE solver sets the FOCEi objective's
+  noise floor at fixed parameters, and that `rxControl(method = "dop853")`
+  gives a much smoother objective for a non-stiff model (#1278).
 - `?augPred` says that its curves for a `linCmt()` model with
   time-varying covariates are approximate: under the default `"locf"`
   interpolation, rxode2's `linCmt()` takes a covariate's value at the end
