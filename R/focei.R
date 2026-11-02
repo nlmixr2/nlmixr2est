@@ -3591,11 +3591,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## sensitivity model in "fd" mode -- silently zeroing the dosing-parameter
   ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
   ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
-  ## Version 4: keep compiled models for fast restoration and rebuild augmented
-  ## models whose expression optimization changed without a package-version change.
-  ## Version 6: preserve input identifiers during CSE temporary renaming.
-  ## Version 7: rebuild models optimized with colliding R-fallback temporaries.
-  .cacheFormat <- 7L
+  ## Version 8: the bundle keeps the compiled model, and the augmented model is
+  ## optimized in a single rxOptExpr() pass (earlier dev versions used 4-7).
+  .cacheFormat <- 8L
   .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(

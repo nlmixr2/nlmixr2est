@@ -80,11 +80,10 @@
   zero components without resetting parameters or changing optimizers.
 - Fast FOCEi ETA predictions use EBEs from the last gradient evaluation,
   making repeated line-search trials independent of ETAs left by other trials.
-- Large sensitivity models reuse shared expressions without name collisions
-  or changes to user input names, improving setup time (#1133).
+- The fast FOCEi augmented sensitivity model is optimized in a single
+  `rxOptExpr()` pass, so its CSE temporaries no longer collide (#1133).
 - FOCEi caches reuse compiled models to reduce setup time and keep rxode2
   versions/builds separate to prevent bundle collisions (#1133).
-
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
   reported a FOCEi objective in its place, so its AIC and BIC were not
