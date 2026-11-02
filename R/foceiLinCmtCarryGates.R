@@ -126,7 +126,13 @@
       return(NULL)
     }
   }
-  .pairs <- .rxFoceiLinCmtCarryCapPairs(.pairs)
+  .pairs <- .rxFoceiLinCmtCarryCapPairs(
+    .pairs,
+    rxode2::rxGetControl(x[[1]], "foceiConstCovs", NULL)
+  )
+  if (nrow(.pairs) == 0L) {
+    return(NULL)
+  }
   .rxFoceiLinCmtCarryCheckCap(.pairs)
   attr(.pairs, "carryCovInterval") <- .rxFoceiLinCmtCarryCovInterval(
     x[[1]]$allCovs,
@@ -208,17 +214,31 @@
 #' Drop the pairs past the carry's column cap, the newest kinds first
 #'
 #' The loaded rxode2 has `.rxFoceiLinCmtCarryMaxPairs()` carry columns.  Past
-#' them, the multCov pairs (an IOV rewrite's occasion etas), last first, and
+#' them, the pairs whose covariates are all constant within every subject of
+#' the fit's data go first: their standard gradient is exact.  Then the multCov pairs (an IOV rewrite's occasion etas), last first, and
 #' then the other pairs that share a slot keep the standard gradient, with
 #' one warning, so a model past the cap is carried no worse than without
 #' them; a model still past it stops in `.rxFoceiLinCmtCarryCheckCap()`.
 #' @param pairs the eligible pairs
+#' @param constCovs covariates constant within every subject of the data
+#'   (`foceiConstCovs`, part of the focei model cache key), or `NULL`
 #' @return `pairs` without the dropped rows
 #' @noRd
-.rxFoceiLinCmtCarryCapPairs <- function(pairs) {
+.rxFoceiLinCmtCarryCapPairs <- function(pairs, constCovs = NULL) {
   .cap <- .rxFoceiLinCmtCarryMaxPairs()
   if (.rxFoceiLinCmtCarryColumns(pairs) <= .cap) {
     return(pairs)
+  }
+  if (length(constCovs) > 0L) {
+    .const <- vapply(
+      strsplit(pairs$covs, ",", fixed = TRUE),
+      function(.c) all(.c %in% constCovs),
+      logical(1)
+    )
+    pairs <- pairs[!.const, , drop = FALSE]
+    if (.rxFoceiLinCmtCarryColumns(pairs) <= .cap) {
+      return(pairs)
+    }
   }
   .shared <- !is.na(pairs$slot) &
     (duplicated(pairs$slot) | duplicated(pairs$slot, fromLast = TRUE))
