@@ -8,11 +8,11 @@
 # Everything here needs an rxode2 with the carry sentinels and skips
 # cleanly on a released rxode2 without them.
 #
-# The ODE reference is generated semantics-matched: linCmt() evaluates each
-# inter-row interval at the row-END covariate value (nocb), so the matched
-# d/dt() reference must integrate under covsInterpolation="nocb" (verified
-# against a real integrator, useLinCmt=FALSE at atol/rtol=1e-12: predictions
-# agree to ~1e-11 under nocb, differ ~2.5% under locf).
+# The ODE reference of the first test integrates under
+# covsInterpolation = "nocb", as its fits are run.  linCmt() advances each
+# interval with that interval's covariates under every interpolation, as an
+# ODE solver does, and the carry reads them the same way; the A2 test below
+# compares the two models' fits under locf, midpoint and nocb.
 #
 # Independence of the reference: rxSolve() on a UI auto-routes a linear
 # d/dt() system back through linCmt() (useLinCmt=TRUE default), but the fit's
@@ -216,4 +216,221 @@ test_that("carry gradient matches FD across compartment configs; naive fails all
     ),
     mkEv()
   )
+})
+
+# the A2 model, oral one-compartment with cl stepping with a covariate at
+# 6 h, as linCmt() and as ODEs
+.carryA2Lin <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    bcv <- 0.5
+    add.sd <- 0.7
+    eta.cl ~ 0.1
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + eta.cl + bcv * cv)
+    v <- exp(tv)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+.carryA2Ode <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    bcv <- 0.5
+    add.sd <- 0.7
+    eta.cl ~ 0.1
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + eta.cl + bcv * cv)
+    v <- exp(tv)
+    d / dt(depot) <- -ka * depot
+    d / dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+  })
+}
+
+.carryA2Fit <- function(mod, interp) {
+  .d <- nlmixr2data::theo_sd
+  .d$cv <- ifelse(.d$TIME < 6, 0, 1)
+  suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    mod,
+    .d,
+    "focei",
+    control = nlmixr2est::foceiControl(
+      print = 0,
+      covMethod = "",
+      maxOuterIterations = 0L,
+      rxControl = rxode2::rxControl(covsInterpolation = interp, atol = 1e-10, rtol = 1e-10)
+    )
+  )))
+}
+
+test_that("a carried linCmt() fit equals its ODE twin under locf, midpoint and nocb", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # cl's eta is carried
+  expect_identical(nrow(.foceiLinCmtCarryPairs(suppressMessages(nlmixr2est::nlmixr2(.carryA2Lin)))), 1L)
+  for (.i in .carryTwinInterps()) {
+    .lin <- .carryA2Fit(.carryA2Lin, .i)
+    .ode <- .carryA2Fit(.carryA2Ode, .i)
+    expect_equal(.lin$objf, .ode$objf, tolerance = 1e-6, label = .i)
+    expect_equal(.lin$eta$eta.cl, .ode$eta$eta.cl, tolerance = 1e-5, label = .i)
+    expect_equal(.lin$etaObf$OBJI, .ode$etaObf$OBJI, tolerance = 1e-6, label = .i)
+  }
+})
+
+# the A2 fit by `est` at the initial estimates, with that estimator's own
+# control
+.carryA2FitEst <- function(mod, est, interp) {
+  .d <- nlmixr2data::theo_sd
+  .d$cv <- ifelse(.d$TIME < 6, 0, 1)
+  .rx <- rxode2::rxControl(covsInterpolation = interp, atol = 1e-10, rtol = 1e-10)
+  .ctl <- switch(
+    est,
+    foce = nlmixr2est::foceControl(print = 0, covMethod = "", maxOuterIterations = 0L, rxControl = .rx),
+    fo = nlmixr2est::foControl(print = 0, covMethod = "", maxOuterIterations = 0L, rxControl = .rx),
+    posthoc = nlmixr2est::posthocControl(print = 0, covMethod = "", rxControl = .rx)
+  )
+  suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(mod, .d, est, control = .ctl)))
+}
+
+test_that("foce, fo and posthoc of a carried linCmt() fit equal its ODE twin", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # the covariate copies exist only with an rxode2 that advances an interval
+  # with its own covariates
+  skip_if_not(.rxFoceiLinCmtIntervalCovs(), "rxode2 advances linCmt() with the end record's covariates")
+  # under locf and midpoint the carry's covariate copies precede rx_pred_ in
+  # the inner model, so its rx_r_ is not column neta + 1
+  for (.est in c("foce", "fo", "posthoc")) {
+    for (.i in c("locf", "midpoint")) {
+      .lab <- paste(.est, .i)
+      .lin <- .carryA2FitEst(.carryA2Lin, .est, .i)
+      .ode <- .carryA2FitEst(.carryA2Ode, .est, .i)
+      expect_equal(.lin$objf, .ode$objf, tolerance = 1e-6, label = .lab)
+      expect_equal(.lin$etaObf$OBJI, .ode$etaObf$OBJI, tolerance = 1e-6, label = .lab)
+      expect_equal(.lin$eta$eta.cl, .ode$eta$eta.cl, tolerance = 1e-5, label = .lab)
+    }
+  }
+})
+
+# the covariate model declaring wt's own interpolation (nocb), as linCmt()
+# and as ODEs
+.carryDeclLin <- function() {
+  ini({
+    tcl <- log(2)
+    tv <- log(20)
+    eta.cl ~ 0.1
+    add.sd <- 0.5
+  })
+  model({
+    nocb(wt)
+    cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+    v <- exp(tv)
+    cp <- linCmt()
+    cp ~ add(add.sd)
+  })
+}
+
+.carryDeclOde <- function() {
+  ini({
+    tcl <- log(2)
+    tv <- log(20)
+    eta.cl ~ 0.1
+    add.sd <- 0.5
+  })
+  model({
+    nocb(wt)
+    cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+    v <- exp(tv)
+    d / dt(central) <- -cl / v * central
+    cp <- central / v
+    cp ~ add(add.sd)
+  })
+}
+
+# a focei fit at the initial thetas under the default (locf) interpolation
+.carryDeclFit <- function(mod, data) {
+  suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    mod,
+    data,
+    "focei",
+    control = nlmixr2est::foceiControl(
+      print = 0,
+      maxOuterIterations = 0L,
+      covMethod = "",
+      rxControl = rxode2::rxControl(atol = 1e-10, rtol = 1e-10)
+    )
+  )))
+}
+
+test_that("a covariate's own interpolation declaration is the one the carry reads", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  .d <- .carryFitDat()
+  .obs <- .d$evid == 0
+  .d$dv <- 0
+  .d$dv[.obs] <- 2 + 0.25 * (seq_len(sum(.obs)) %% 4)
+  # wt declared nocb under the default locf
+  .lin <- .carryDeclFit(.carryDeclLin, .d)
+  .ode <- .carryDeclFit(.carryDeclOde, .d)
+  expect_equal(.lin$objf, .ode$objf, tolerance = 1e-6)
+  expect_equal(.lin$eta$eta.cl, .ode$eta$eta.cl, tolerance = 1e-5)
+})
+
+# .carryFitDat() with records that carry no wt of their own, or with wt
+# changing at every record (as .carryMidEv()), and observed values
+.carryMidFitDat <- function(kind) {
+  .d <- .carryFitDat()
+  if (kind == "infusion") {
+    .d$rate <- ifelse(.d$evid == 1, .d$amt / 2, 0)
+  } else if (kind == "addl") {
+    .d$ii <- ifelse(.d$evid == 1, 12, 0)
+    .d$addl <- ifelse(.d$evid == 1, 1L, 0L)
+  } else if (kind == "na") {
+    .d$wt[c(4, 12, 20)] <- NA
+  } else if (kind == "every") {
+    .d$wt <- 60 + 3 * stats::ave(.d$time, .d$id, FUN = seq_along)
+  }
+  .obs <- .d$evid == 0
+  .d$dv <- 0
+  .d$dv[.obs] <- 2 + 0.25 * (seq_len(sum(.obs)) %% 4)
+  .d
+}
+
+# a focei fit at the initial thetas under midpoint
+.carryMidFit <- function(mod, data) {
+  suppressWarnings(suppressMessages(nlmixr2est::nlmixr2(
+    mod,
+    data,
+    "focei",
+    control = nlmixr2est::foceiControl(
+      print = 0,
+      maxOuterIterations = 0L,
+      covMethod = "",
+      rxControl = rxode2::rxControl(covsInterpolation = "midpoint", atol = 1e-10, rtol = 1e-10)
+    )
+  )))
+}
+
+test_that("under midpoint a carried fit equals its ODE twin where records carry no covariate", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtIntervalCovs(), "rxode2 advances linCmt() with the end record's covariates")
+  .ode <- rxode2::linToOde(rxode2::rxode2(.carryModCov))
+  for (.kind in c("infusion", "addl", "na", "every")) {
+    .d <- .carryMidFitDat(.kind)
+    .lin <- .carryMidFit(.carryModCov, .d)
+    .ref <- .carryMidFit(.ode, .d)
+    expect_equal(.lin$objf, .ref$objf, tolerance = 1e-6, label = .kind)
+    expect_equal(.lin$eta$eta.cl, .ref$eta$eta.cl, tolerance = 1e-5, label = .kind)
+  }
 })
