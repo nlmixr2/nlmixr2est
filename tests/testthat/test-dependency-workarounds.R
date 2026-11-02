@@ -62,8 +62,8 @@
 .depVersion519 <- function() numeric_version("5.1.9")
 .depVersionDev <- function() numeric_version("5.1.9.9000")
 .depTrue <- function() TRUE
-.depLincmtVersion012 <- function() numeric_version("0.1.2")
-.depLincmtVersionDev <- function() numeric_version("0.1.1.9000")
+.depLincmtVersion011 <- function() numeric_version("0.1.1")
+.depLincmtVersion010 <- function() numeric_version("0.1.0")
 .depFalse <- function() FALSE
 
 .depIntervalCovsRemove <- paste(
@@ -136,11 +136,21 @@ test_that("interval-covariate work-around: warns only for a release with interva
   "test-focei-lincmt-carry-fit.R, and this block"
 )
 
-# The reset block's warning for the installed rxode2lincmt
-.depResetWarning <- function(present = .carryResetRestarts()) {
+# Was `pkg` installed from CRAN?  rxode2lincmt's development builds carry no
+# .9000 suffix, so its version alone cannot tell a release.
+.depFromCran <- function(pkg) {
+  identical(utils::packageDescription(pkg)$Repository, "CRAN")
+}
+
+# The reset block's warning for the installed rxode2lincmt: only a CRAN
+# release after 0.1.0, the last one without the restart
+.depResetWarning <- function(present = .carryResetRestarts(), cran = .depFromCran("rxode2lincmt")) {
+  if (!isTRUE(cran)) {
+    return(NULL)
+  }
   .depWorkaroundWarning(
     .rxode2lincmtVersion(),
-    "0.1.1",
+    "0.1.0",
     .depResetRemove,
     present = present,
     pkg = "rxode2lincmt",
@@ -161,12 +171,18 @@ test_that("the work-around warning names the package, and the minimum only when 
   )
 })
 
-test_that("rxode2lincmt reset work-around: warns only for a release that restarts the carry", {
-  local_mocked_bindings(.rxode2lincmtVersion = .depLincmtVersion012)
-  expect_null(.depResetWarning(present = FALSE))
-  expect_match(.depResetWarning(present = TRUE), "rxode2lincmt 0.1.2 is a release after 0.1.1", fixed = TRUE)
-  local_mocked_bindings(.rxode2lincmtVersion = .depLincmtVersionDev)
-  expect_null(.depResetWarning(present = TRUE))
+test_that("rxode2lincmt reset work-around: warns only for a CRAN release that restarts the carry", {
+  local_mocked_bindings(.rxode2lincmtVersion = .depLincmtVersion011)
+  expect_null(.depResetWarning(present = FALSE, cran = TRUE))
+  expect_match(
+    .depResetWarning(present = TRUE, cran = TRUE),
+    "rxode2lincmt 0.1.1 is a release after 0.1.0",
+    fixed = TRUE
+  )
+  # a development build of the same version
+  expect_null(.depResetWarning(present = TRUE, cran = FALSE))
+  local_mocked_bindings(.rxode2lincmtVersion = .depLincmtVersion010)
+  expect_null(.depResetWarning(present = TRUE, cran = TRUE))
 })
 
 test_that("rxode2lincmt reset work-around: the carry's reset twins", {

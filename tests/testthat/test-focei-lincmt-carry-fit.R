@@ -511,6 +511,7 @@ test_that("a carried fit with a reset after a locf covariate step equals its ODE
 test_that("a carried f() and alag() fit with a reset equals its ODE twin", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  skip_if_not(.rxFoceiLinCmtCarryJumpCapable())
   .carrySkipReset()
   .ode <- rxode2::linToOde(rxode2::rxode2(.carryModJump))
   .d <- .carryResetFitDat(3L)
