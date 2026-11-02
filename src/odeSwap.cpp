@@ -983,7 +983,7 @@ bool odeSwapIndBadSolveSlot(rx_solving_options *op, rx_solving_options_ind *ind,
   int stride = eff, width = eff;
   if (own > 0 && own < eff && getOpNlin(op) <= 0) width = own;
   if (width == stride) {
-    for (int i = 0; i < n; ++i) {
+    for (size_t i = 0; i < (size_t)n; ++i) {
       if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) return true;
     }
     return false;

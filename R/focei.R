@@ -480,7 +480,8 @@ is.latex <- function() {
       .was <- record(FALSE)
       on.exit(record(.was), add = TRUE)
     }
-    on.exit(fn(x), add = TRUE, after = FALSE)
+    # best-effort re-settle: a failing restore must not mask the probe's own error
+    on.exit(tryCatch(fn(x), error = function(e) NULL), add = TRUE, after = FALSE)
     force(g0)
     .h <- matrix(0.0, .n, .n)
     for (.j in seq_len(.n)) {
