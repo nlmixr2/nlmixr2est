@@ -325,27 +325,27 @@ print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -718.8698 1125.007 1139.731      -559.5036        152.9331        46.86311
+#> lPop -732.2583 1111.619 1126.342      -552.8094        291.4757        60.66259
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.8355768 0.8170739  1.546e-05      0.046       0.011 0.033    0.001
+#> elapsed 0.8195632 0.8080092 1.5018e-05      0.046       0.012 0.032    0.001
 #>              other
-#> elapsed 0.09733377
+#> elapsed 0.09541258
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>       Est.    SE  %RSE Back-transformed(95%CI)
-#> E0  -0.807 0.139  17.2  -0.807 (-1.08, -0.534)
-#> Em    4.57 0.679  14.9       4.57 (3.24, 5.90)
-#> E50   2.07 0.388  18.7       2.07 (1.31, 2.83)
+#> E0  -0.897 0.131  14.6  -0.897 (-1.15, -0.640)
+#> Em    5.50  1.00  18.2       5.50 (3.54, 7.47)
+#> E50   2.50 0.490  19.6       2.50 (1.54, 3.46)
 #> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Some strong fixed parameter correlations exist ($cor) :
 #>      cor:Em,E0 cor:E50,E0 cor:E50,Em 
-#>     0.278       0.665      0.846  
+#>     0.349      0.643      0.900  
 #>  
 #> 
 #>   Censoring ($censInformation): No censoring
@@ -354,16 +354,16 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0245     0 -0.369 -0.806
-#> 2 1     0.0449     0 -0.370 -0.804
-#> 3 1     0.0596     1 -1.17  -0.803
+#> 1 1     0.0529     0 -0.343 -0.895
+#> 2 1     0.0603     0 -0.343 -0.894
+#> 3 1     0.0632     0 -0.343 -0.894
 #> # ℹ 997 more rows
 
 # you can also get the bobyqa output with
 
 fit2$bobyqa
-#> parameter estimates: -0.80651426758179, 4.56559161847211, 2.0728529509789 
-#> objective: 559.50363989729 
-#> number of function evaluations: 131 
+#> parameter estimates: -0.897114087376422, 5.50230250146206, 2.50361799786001 
+#> objective: 552.809397819309 
+#> number of function evaluations: 165 
 # }
 ```
