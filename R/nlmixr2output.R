@@ -200,9 +200,8 @@
 #' The name of each eta in a BSV correlation row
 #'
 #' An eta is named by its theta only when that theta and that eta each have
-#' exactly one `muRefDataFrame` row, the rule `.updateParFixedAddBsv()` uses
-#' for the theta rows; otherwise by its own name.  Two etas can then never
-#' share a name.
+#' exactly one `muRefDataFrame` row (`.updateParFixedAddBsv()` checks only the
+#' theta); otherwise by its own name.  Two etas can then never share a name.
 #'
 #' @param eta eta names
 #' @param muRefDataFrame `ui$muRefDataFrame`

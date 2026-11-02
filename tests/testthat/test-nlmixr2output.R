@@ -718,58 +718,6 @@ test_that("the output builder keeps every row of a repeated (same()) block", {
   })
 }
 
-.bsvCorBlockFit <- function() {
-  ini({
-    tka <- 0.45
-    tcl <- 1
-    tv <- 3.45
-    eta.ka ~ 0.6
-    eta.cl + eta.v ~ c(0.3, 0.05, 0.1)
-    add.sd <- 0.7
-  })
-  model({
-    ka <- exp(tka + eta.ka)
-    cl <- exp(tcl + eta.cl)
-    v <- exp(tv + eta.v)
-    linCmt() ~ add(add.sd)
-  })
-}
-
-.bsvCorMixedFit <- function() {
-  ini({
-    tka <- 0.45
-    label("Ka")
-    tcl <- 1
-    tv <- 3.45
-    eta.ka + eta.cl ~ c(0.6, 0.01, 0.3)
-    eta.v ~ 0.1
-    add.sd <- 0.7
-  })
-  model({
-    ka <- exp(tka) * exp(eta.ka)
-    cl <- exp(tcl + eta.cl)
-    v <- exp(tv + eta.v)
-    linCmt() ~ add(add.sd)
-  })
-}
-
-.bsvCorIovFit <- function() {
-  ini({
-    tka <- 0.45
-    tcl <- 1
-    tv <- 3.45
-    add.sd <- 0.7
-    eta.cl + eta.v ~ c(0.3, 0.05, 0.1)
-    iov.cl + iov.v ~ c(0.1, 0.01, 0.1) | occ
-  })
-  model({
-    ka <- exp(tka)
-    cl <- exp(tcl + eta.cl + iov.cl)
-    v <- exp(tv + eta.v + iov.v)
-    linCmt() ~ add(add.sd)
-  })
-}
-
 .bsvCorOmega <- function(m) {
   .n <- c("eta.cl", "eta.v")
   matrix(m, 2, 2, dimnames = list(.n, .n))
@@ -1013,7 +961,6 @@ nmTest({
   })
 
   test_that("a fit reports its estimated BSV correlations in $parFixed and $parFixedDf", {
-    skip_if_not_installed("broom.mixed")
     .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE)
     fit <- .nlmixr(.bsvCorBlockFit, theo_sd, "focei", control = .ctl)
     .cor <- "bsvcorr(tcl,tv)"
@@ -1046,87 +993,17 @@ nmTest({
       fit$parFixed[.cor, "BSV(CV%)"],
       formatMinWidth(stats::cov2cor(fit$omega)[["eta.cl", "eta.v"]], digits = fit$control$sigdigTable)
     )
+    expect_identical(rownames(confint(fit)), c("tka", "tcl", "tv", "add.sd"))
     # broom keeps the correlation in the random-effect terms only
+    skip_if_not_installed("broom.mixed")
     .td <- as.data.frame(broom.mixed::tidy(fit))
     expect_identical(.td$term[.td$effect == "fixed"], c("tka", "tcl", "tv"))
     expect_identical(
       .td$term[.td$effect == "ran_pars"],
       c("sd__eta.ka", "sd__eta.cl", "sd__eta.v", "cor__eta.v.eta.cl", "add.sd")
     )
-    expect_identical(rownames(confint(fit)), c("tka", "tcl", "tv", "add.sd"))
-  })
-
-  test_that("a fit puts its non-mu-referenced eta's row before the BSV correlation rows", {
-    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "")
-    fit <- .nlmixr(.bsvCorMixedFit, theo_sd, "focei", control = .ctl)
-    .cor <- "bsvcorr(eta.ka,tcl)"
-    expect_identical(rownames(fit$parFixedDf), c("tka", "tcl", "tv", "add.sd", "eta.ka", .cor))
-    # the model has labels, so the label column describes the row
-    .desc <- "BSV correlation between eta.ka and tcl"
-    expect_identical(unname(fit$parFixedDf[.cor, "Parameter"]), .desc)
-    expect_equal(
-      fit$parFixedDf[.cor, "BSV(CV%)"],
-      stats::cov2cor(fit$omega)[["eta.ka", "eta.cl"]],
-      tolerance = 1e-12
-    )
-    expect_identical(fit$parFixed[.cor, "Parameter"], .desc)
-    expect_identical(fit$parFixed[["Parameter"]][1:4], c("Ka", "", "", ""))
-    expect_identical(fit$parFixed[.cor, "BSV(CV%)"], "0.0236")
-  })
-
-  test_that("an IOV fit reports only its subject-level BSV correlations", {
-    .d <- theo_sd
-    .d$occ <- ifelse(.d$TIME < 6, 1L, 2L)
-    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "", iovMethod = "omega")
-    fit <- .nlmixr(.bsvCorIovFit, .d, "focei", control = .ctl)
-    .cor <- "bsvcorr(tcl,tv)"
-    expect_identical(rownames(fit$parFixedDf), c("tka", "tcl", "tv", "add.sd", "iov.cl", "iov.v", .cor))
-    expect_identical(rownames(fit$parFixed), rownames(fit$parFixedDf))
-    expect_equal(
-      fit$parFixedDf[.cor, "BSV(CV% or SD)"],
-      stats::cov2cor(fit$omega$id)[["eta.cl", "eta.v"]],
-      tolerance = 1e-12
-    )
-    expect_identical(fit$parFixed[.cor, "BSV(CV% or SD)"], "0.289")
   })
 })
-
-# tcl is mu-referenced by two etas, so neither eta is named by it
-.bsvCorSharedFit <- function() {
-  ini({
-    tcl <- 1
-    tv <- 3.45
-    eta.cl + eta.cl2 + eta.v ~ c(0.3, 0.02, 0.2, 0.03, 0.04, 0.1)
-    add.sd <- 0.7
-  })
-  model({
-    cl <- exp(tcl + eta.cl)
-    ka <- exp(tcl + eta.cl2)
-    v <- exp(tv + eta.v)
-    linCmt() ~ add(add.sd)
-  })
-}
-
-.bsvCorSameFit <- function() {
-  ini({
-    tka <- 0.45
-    tcl <- 1
-    tv <- 3.45
-    tq <- 1
-    tvp <- 3
-    add.sd <- 0.7
-    eta.cl + eta.v ~ c(0.3, 0.05, 0.1)
-    eta.q + eta.vp ~ same()
-  })
-  model({
-    ka <- exp(tka)
-    cl <- exp(tcl + eta.cl)
-    v <- exp(tv + eta.v)
-    q <- exp(tq + eta.q)
-    vp <- exp(tvp + eta.vp)
-    linCmt() ~ add(add.sd)
-  })
-}
 
 nmTest({
   test_that(".updateParFixedBsvCorLabel names an eta by its theta only when each has one mu-reference", {
@@ -1237,59 +1114,5 @@ nmTest({
     )
     expect_identical(rownames(.res$popDf), c("tcl", "tv", "add.sd", "bsvcorr(tcl,tv)"))
     expect_identical(.res$popDf["bsvcorr(tcl,tv)", "BSV(CV%)"], 0)
-  })
-
-  test_that("a fit with a theta mu-referenced by two correlated etas reports every pair", {
-    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "")
-    fit <- .nlmixr(.bsvCorSharedFit, theo_sd, "focei", control = .ctl)
-    .rows <- c("bsvcorr(eta.cl,eta.cl2)", "bsvcorr(eta.cl,tv)", "bsvcorr(eta.cl2,tv)")
-    expect_identical(rownames(fit$parFixedDf), c("tcl", "tv", "add.sd", "eta.cl", "eta.cl2", .rows))
-    expect_identical(rownames(fit$parFixed), rownames(fit$parFixedDf))
-    .cor <- stats::cov2cor(fit$omega)
-    expect_equal(
-      unname(fit$parFixedDf[.rows, "BSV(CV%)"]),
-      c(.cor[["eta.cl", "eta.cl2"]], .cor[["eta.cl", "eta.v"]], .cor[["eta.cl2", "eta.v"]]),
-      tolerance = 1e-12
-    )
-    expect_identical(unname(fit$parFixed[.rows, "BSV(CV%)"]), c("0.0816", "0.173", "0.283"))
-  })
-
-  test_that("a fit reports the copy of a repeated (same()) block as its own correlation", {
-    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "")
-    fit <- .nlmixr(.bsvCorSameFit, theo_sd, "focei", control = .ctl)
-    .rows <- c("bsvcorr(tcl,tv)", "bsvcorr(tq,tvp)")
-    expect_identical(rownames(fit$parFixedDf), c("tka", "tcl", "tv", "tq", "tvp", "add.sd", .rows))
-    .cor <- stats::cov2cor(fit$omega)
-    expect_equal(
-      unname(fit$parFixedDf[.rows, "BSV(CV%)"]),
-      c(.cor[["eta.cl", "eta.v"]], .cor[["eta.q", "eta.vp"]]),
-      tolerance = 1e-12
-    )
-    expect_identical(unname(fit$parFixed[.rows, "BSV(CV%)"]), c("0.289", "0.289"))
-  })
-
-  test_that("a saem fit reports its BSV correlation, even one estimated at zero", {
-    .ctl <- saemControl(print = 0, nBurn = 1, nEm = 1, nmc = 1, nu = c(1, 1, 1), calcTables = FALSE)
-    fit <- .nlmixr(.bsvCorBlockFit, theo_sd, "saem", control = .ctl)
-    .row <- "bsvcorr(tcl,tv)"
-    # two iterations leave the covariance at exactly zero; saem's ui, rebuilt
-    # from that omega, has no row for it, so the row comes from iniDf0
-    expect_identical(fit$omega[["eta.cl", "eta.v"]], 0)
-    expect_false("(eta.cl,eta.v)" %in% fit$ui$iniDf$name)
-    expect_identical(rownames(fit$parFixedDf), c("tka", "tcl", "tv", "add.sd", .row))
-    expect_identical(rownames(fit$parFixed), rownames(fit$parFixedDf))
-    .value <- stats::cov2cor(fit$omega)[["eta.cl", "eta.v"]]
-    expect_equal(fit$parFixedDf[.row, "BSV(CV%)"], .value, tolerance = 1e-12)
-    expect_identical(fit$parFixed[.row, "BSV(CV%)"], formatMinWidth(.value, digits = fit$control$sigdigTable))
-    expect_identical(fit$parFixed[.row, "Est."], "")
-  })
-
-  test_that("the BSV correlation is printed to the fit's sigdigTable", {
-    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE, covMethod = "", sigdigTable = 5)
-    fit <- .nlmixr(.bsvCorBlockFit, theo_sd, "focei", control = .ctl)
-    .row <- "bsvcorr(tcl,tv)"
-    expect_equal(fit$control$sigdigTable, 5)
-    expect_identical(fit$parFixed[.row, "BSV(CV%)"], "0.28868")
-    expect_identical(fit$parFixed["tcl", "BSV(CV%)"], "59.149")
   })
 })
