@@ -106,7 +106,6 @@
   the change of occasion, which can shift the objective materially; fewer
   occasion etas, or an rxode2 with more carry columns
   (`rxode2::linCmtCarryMaxPairs()`), avoids it.
->>>>>>> origin/main
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
