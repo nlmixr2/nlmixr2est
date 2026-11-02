@@ -62,8 +62,21 @@ test_that("the model cache digest keys covsInterpolation (linear skips the carry
   expect_identical(.mk("locf")$foceiModelDigest, .mk("locf")$foceiModelDigest)
 })
 
+test_that("the model cache digest keys the carry column count", {
+  # pairs past the loaded rxode2's columns keep the standard gradient, so an
+  # 8-column build must never be reused under a 32-column rxode2
+  local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap8)
+  .d8 <- .carryUiCov()$foceiModelDigest
+  local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap32)
+  .d32 <- .carryUiCov()$foceiModelDigest
+  expect_false(identical(.d8, .d32))
+  expect_identical(.carryUiCov()$foceiModelDigest, .d32)
+})
+
 test_that("more than four carry-eligible pairs fails loudly at model build", {
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # five pairs and their five trackers need 10 of an 8-column rxode2's
+  local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap8)
   five <- function() {
     ini({
       tcl <- log(2)
@@ -101,7 +114,8 @@ test_that("more than four carry-eligible pairs fails loudly at model build", {
       s,
       paste0("ETA_", seq_len(s$..maxEta), "_")
     ),
-    "carry columns"
+    "need 10 carry columns (8 available)",
+    fixed = TRUE
   )
   # (inside the HdEta build the error is re-raised by the progress abort as
   # "Aborted calculation", which escapes expect_error -- the direct call
