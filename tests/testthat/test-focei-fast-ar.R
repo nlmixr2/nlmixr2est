@@ -135,7 +135,7 @@ nmTest({
   # the fixed correlation is no "ar" row of the ui FOCEi builds from; the
   # fast gradient used to be built anyway, without the AR(1) lines, and the
   # fit stopped ("required for solving: rx_arNf_cp, rx_arEp_cp, rx_arT_cp")
-  test_that("fast = TRUE falls back for an ar() with a fixed or a modeled correlation", {
+  test_that("fast = TRUE and the analytic covariance fall back for a fixed or a modeled ar() correlation", {
     skip_on_cran()
     for (.m in list(fixed = .arModFixedCor, modeled = .arModModeledCor)) {
       .msg <- testthat::capture_messages(
@@ -143,11 +143,13 @@ nmTest({
           .m,
           nlmixr2data::theo_sd,
           "focei",
-          foceiControl(fast = TRUE, print = 0L, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE)
+          foceiControl(fast = TRUE, print = 0L, maxOuterIterations = 2L, covMethod = "analytic", calcTables = FALSE)
         ))
       )
       expect_true(is.finite(.fit$objf))
       expect_true(any(grepl("ar() residual: the analytic 'fast' gradient does not apply", .msg, fixed = TRUE)))
+      expect_true(any(grepl("an ar() residual is out of analytic-covariance scope", .msg, fixed = TRUE)))
+      expect_false(.covBaseName(.fit$covMethod) == "analytic")
       expect_false(isTRUE(.fit$foceiControl$fast))
     }
   })
