@@ -967,6 +967,9 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
       .lambda,
       .hi,
       .low,
+      # the carry's covariate copies are lagged, so they are real lhs ahead of
+      # rx_pred_ (looked up by name)
+      attr(.s$..linCmtCarryThetaPairs, "carryCovInterval")$copies,
       .prd,
       .s$..HdTheta,
       .fr$f_line,
