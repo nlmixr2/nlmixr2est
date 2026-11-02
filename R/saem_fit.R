@@ -553,6 +553,8 @@
   wh <- fixed[, i0][mcov[, i0] == 1]
   len <- length(wh)
   fixed.i0 <- (1:len)[wh] - 1
+  # phi0 columns with every coefficient fixed: held, never sampled per subject
+  hold.i0 <- which(vapply(i0, function(j) all(fixed[mcov[, j] == 1, j]), logical(1))) - 1L
 
   jlog1 <- grep(TRUE, model$log.eta)
   covstruct1 <- covstruct[i1, i1]
@@ -655,7 +657,10 @@
 
   # threefry-engine draw (seeded by the rxWithSeed wrapper), so saem's RNG no
   # longer depends on R's set.seed -- all deviates come from the rxode2 engine
-  .mat2 <- matrix(rxode2::rxnorm(n = length(phiM)), dim(phiM))
+  # held (fixed) phi0 columns start at their value and take no draws
+  .free <- setdiff(seq_len(nphi), i0[hold.i0 + 1L])
+  .mat2 <- matrix(0, nrow(phiM), ncol(phiM))
+  .mat2[, .free] <- rxode2::rxnorm(n = nrow(phiM) * length(.free))
   .ue <- .ue[rep(1:N, nmc), , drop = FALSE] * 1.0
   .mat2 <- .mat2 * .ue
   phiM <- phiM + .mat2 %*% .tmp
@@ -820,6 +825,7 @@
     seed = seed,
     fixed.i1 = fixed.i1,
     fixed.i0 = fixed.i0,
+    hold.i0 = as.integer(hold.i0),
     # temporary-eta phi1 columns keep saem's own mean update (see refinePhi1Lik)
     pseudo.i1 = as.integer(pseudoI1),
     ilambda1 = as.integer(ilambda1),
