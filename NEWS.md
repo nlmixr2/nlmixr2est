@@ -234,6 +234,11 @@
   the theta moves during the fit and arrives at its fixed value, is kept as
   `saemControl(fixedNoEta = "converge")` (#1287).
 
+- `setOfv(fit, "focei")` (and `"foce"`/`"fo"`) now substitutes the fit's
+  fixed thetas before evaluating the objective.  A `linCmt()` SAEM fit whose
+  time-varying covariate entered only through a fixed theta could need more
+  sensitivity-carry columns than rxode2 provides and stopped (#1287).
+
 - A `linCmt()` model with a time-varying covariate on a compartment
   parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,
   under `"locf"`, `"midpoint"` and `"nocb"` and a covariate's own declaration
