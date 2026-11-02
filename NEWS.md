@@ -167,6 +167,13 @@
   with enough subjects that read another subject's values, without changing
   the fit.
 
+- SAEM no longer samples a `fix()`ed theta without an eta (such as a fixed
+  allometric exponent or a covariate effect fixed at 0) per subject.  Its
+  starting jitter and MCMC draws made it act as an extra random effect during
+  burn-in, so a covariate term fixed at 0 gave a different fit from the model
+  without it.  Such a model now fits exactly like the model without the term
+  and like `saemControl(literalFix = TRUE)` (#1287).
+
 - A `linCmt()` model with a time-varying covariate on a compartment
   parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,
   under `"locf"`, `"midpoint"` and `"nocb"` and a covariate's own declaration
