@@ -229,7 +229,7 @@ nlmixr2Est.predict <- function(env, ...) {
   .rxControl <- .rxSolveGetControlForNlmixr(env)
   .rxControl$omega <- NA
   .rxControl$sigma <- NA
-  .events <- get("data", envir = env)
+  .events <- .predictZeroNestedEtas(get("ui", envir = env), get("data", envir = env))
   if (is.na(.rxControl$simVariability)) {
     .rxControl$simVariability <- FALSE
   }
@@ -243,6 +243,29 @@ nlmixr2Est.predict <- function(env, ...) {
 attr(nlmixr2Est.predict, "covPresent") <- TRUE
 attr(nlmixr2Est.predict, "unbounded") <- FALSE
 attr(nlmixr2Est.predict, "random") <- TRUE
+
+#' Population-prediction data with a nested omega's etas set to zero
+#'
+#' rxode2 sets the etas of a matrix omega to zero for a solve with
+#' `omega = NA`; with a nested (per-level) omega, as a fit with IOV has,
+#' it may not, so each eta is given as a zero column.
+#'
+#' @param ui rxode2 ui of the fit
+#' @param data data to predict
+#' @return `data`, with a zero column per eta when the omega is nested
+#' @noRd
+#' @author Matthew L. Fidler
+.predictZeroNestedEtas <- function(ui, data) {
+  .omega <- ui$omega
+  if (!is.list(.omega)) {
+    return(data)
+  }
+  .d <- as.data.frame(data)
+  for (.eta in dimnames(lotri::lotriMat(.omega))[[2]]) {
+    .d[[.eta]] <- 0
+  }
+  .d
+}
 
 #' Get new data
 #'
@@ -281,6 +304,17 @@ attr(nlmixr2Est.predict, "random") <- TRUE
 #'
 #' @param level the prediction level; one of `"population"` (default) or
 #'  `"individual"`; numeric values `0` and `1` are also accepted
+#'
+#' @details
+#'
+#' For a fit with inter-occasion variability, individual predictions take
+#' each record's occasion etas from the fit's estimates, by subject and
+#' occasion, so `newdata` needs the occasion columns.  A subject or occasion
+#' the fit did not estimate gets occasion etas of 0, with a warning.  Under
+#' `"midpoint"` or `"linear"` covariate interpolation they differ from the
+#' fit's own predictions after an occasion changes: the fit compares the
+#' interpolated occasion with each occasion's value, so between records of
+#' two occasions its occasion etas are 0.
 #'
 #' @return A data frame with predictions
 #'
@@ -382,6 +416,12 @@ predict.nlmixr2FitCore <- function(object, ..., level = c("population", "individ
   }
   if (.est == "ipred") {
     .params <- .nlmixrGetIpredParams(object)
+    if (length(object$env$iov) > 0L) {
+      # the occasion etas are the fit's estimates, by subject and occasion;
+      # with the subject etas in `.params`, no eta is simulated
+      .data <- .nlmixrIovEtaData(object, .data)
+      .rxControl$omega <- NA
+    }
     do.call(
       rxode2::rxSolve,
       c(list(object, .params, .data), .rxControl)
