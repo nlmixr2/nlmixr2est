@@ -1,5 +1,5 @@
 # saem's prediction walk reads a lagged dose's time through the lag of the
-# subject it walks.  With fewer chain-subjects (subjects x nmc) than model
+# subject it walks.  With no more chain-subjects (subjects x nmc) than model
 # states, the walk read the lag of a subject past the end of the solve's
 # subjects, which crashed R.
 .saemWalkLagModel <- function() {
@@ -25,7 +25,7 @@
 }
 
 nmTest({
-  test_that("saem fits a lagged-dose model with fewer chain-subjects than states", {
+  test_that("saem fits a lagged-dose model with as many chain-subjects as states", {
     .d <- nlmixr2data::theo_sd[nlmixr2data::theo_sd$ID %in% 1:2, ]
     .ctl <- saemControl(nBurn = 10, nEm = 10, nmc = 1, print = 0, seed = 1L, covMethod = "", calcTables = FALSE)
     .fit <- .nlmixr(.saemWalkLagModel, .d, est = "saem", control = .ctl)

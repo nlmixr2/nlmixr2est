@@ -65,7 +65,7 @@
 ### Estimation
 
 - `saem` no longer crashes R on a model with a lagged dose (`alag()`) or a
-  modeled infusion duration when the data has fewer subjects times chains
+  modeled infusion duration when the data has no more subjects times chains
   (`nmc`) than the model has states.  Its prediction walk, and the search
   for each subject's conditional mode, read the lag or duration from the
   subject numbered by the state count rather than from the subject walked;
