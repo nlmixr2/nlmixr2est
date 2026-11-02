@@ -310,6 +310,8 @@ nmTest({
         trustFterm = 1e-12,
         trustMterm = 1e-12,
         calcTables = FALSE,
+        # the pooled solve integrates more states, so compare at solver precision
+        rxControl = rxode2::rxControl(atol = 1e-10, rtol = 1e-10, maxsteps = 100000L),
         fast = fast
       )
     }
