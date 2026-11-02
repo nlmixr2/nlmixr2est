@@ -2299,16 +2299,7 @@ arma::vec getCurEta(int cid) {
   return eta;
 }
 
-static inline int foceiInnerSolveSlot() {
-  const bool needsHess2 = op_focei.predHess2Offset >= 0 ||
-    (op_focei.conditionalHess2Offset >= 0 &&
-     (op_focei.conditionalHessianRequested || op_focei.conditionalDetRequested));
-  return needsHess2 && odeSwapLoaded(odeSlotHess2) ? odeSlotHess2 : odeSlotInner;
-}
-
 arma::mat grabRFmatFromInner(int id, bool predSolve) {
-  const int innerSlot = foceiInnerSolveSlot();
-  rxSolveF &innerFns = innerSlot == odeSlotHess2 ? rxHess2 : rxInner;
   // pooled table -> this reader's CMT basis (no-op unless a larger peer pooled)
   int _rxId = getRxId(id); // base subject index for rxode2
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, _rxId);
@@ -2321,23 +2312,25 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
   int kk, k=0;
   double curT;
   // pooled table -> this reader's own CMT basis (no-op unless a larger peer pooled)
-  OdeSwapCmtScope _cmtScope(predSolve ? odeSlotPred : innerSlot, op, ind);
+  // likInner0 solved under this slot's stride scope; read the buffer with the same one
+  OdeSwapScope _neqScope(predSolve ? odeSlotPred : odeSlotInner, ind, op);
+  OdeSwapCmtScope _cmtScope(predSolve ? odeSlotPred : odeSlotInner, op, ind);
   if (predSolve) {
     iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
   } else {
-    iniSubjectE(_rxId, 1, ind, op, rx, innerFns.update_inis);
+    iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
   }
   iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
-    double *lhs = getIndLhs(ind);
+    double *lhs = _neqScope.lhs();
     if (isDose(getIndEvid(ind, kk))) {
       if (predSolve) {
         rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       } else {
-        innerFns.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
+        rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       }
       continue;
     }
@@ -2347,7 +2340,7 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
       retF(k) = lhs[op_focei.predNoLhsOffset];
       retR(k) = lhs[op_focei.predNoLhsOffset + 1];
     } else {
-      innerFns.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
+      rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       retF(k) = lhs[op_focei.predOffset];
       retR(k) = lhs[op_focei.predOffset + op_focei.neta + 1];
     }
@@ -2680,26 +2673,10 @@ static void getPopR(int id, arma::vec &rPop) {
   // pointer with the inner model, so solving it here would corrupt the next
   // inner linCmt gradient.  At eta=0 the inner model's states are population,
   // so its rx_r_ is the genuine eta=0 R for both ODE and linCmt.
-  // NOT scoped/compacted here, and this is load bearing.  Arming an override
-  // makes rxode2's event path size a scratch buffer from the EFFECTIVE neq while
-  // the dydt it then invokes belongs to whichever model rxode2's globals point
-  // at.  Under foceiControl(fast=TRUE) those disagree -- the override is the
-  // inner model's 8 states, the dydt is the augmented outer model's 26 -- and
-  // handle_evid callocs 8 doubles (rxode2parseHandleEvid.h:1705) which the dydt
-  // overruns three lines later (:1708).  Valgrind, minimal FOCE "nonmem" +
-  // fast=TRUE reproducer:
-  //
-  //   Invalid write of size 8
-  //     at  rx_6afe1706...__dydt        <- augmented outer model, 26 states
-  //     by  handle_evid ... ind_solve
-  //     by  getPopR (inner.cpp)
-  //   Address is 0 bytes after a block of size 64 alloc'd   <- 8 doubles
-  //     by  handle_evid                                     <- sized from the override
-  //
-  // A solve may only be compacted where rxode2's event-path globals describe the
-  // SAME model.  Running at the pool's neq wastes unused states but keeps the
-  // sizing and the dydt consistent, which is what correctness requires.
+  // The scope compacts only when the inner event-sensitivity shape is installed
+  // (otherwise it runs at the pool's full width) and spans the reads.
   setIndSolve(ind, -1);
+  OdeSwapScope _neqScope(odeSlotInner, ind, op);
   odeSwapSolveInd(odeSlotInner, _rxId); // solve the inner model at eta=0
   // Pooled table: re-base CMT to the inner model's basis for its calc_lhs reads
   OdeSwapCmtScope _cmtScope(odeSlotInner, op, ind);
@@ -2710,7 +2687,7 @@ static void getPopR(int id, arma::vec &rPop) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
-    double *lhs = getIndLhs(ind);
+    double *lhs = _neqScope.lhs();
     if (isDose(getIndEvid(ind, kk))) {
       rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
@@ -2870,8 +2847,6 @@ static inline double likInner0Fail(focei_ind *fInd) {
 }
 
 double likInner0(double *eta, int id) {
-  const int innerSlot = foceiInnerSolveSlot();
-  rxSolveF &innerFns = innerSlot == odeSlotHess2 ? rxHess2 : rxInner;
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
   rx_solving_options *op = getSolvingOptions(rx);
@@ -2953,10 +2928,10 @@ double likInner0(double *eta, int id) {
     resetOpBadSolve(op);
 
     if (fInd->doFD == 0) {
-      neqGuard.reset(new OdeSwapScope(innerSlot, ind, op));
+      neqGuard.reset(new OdeSwapScope(odeSlotInner, ind, op));
       FoceiRetryHooks _hk;
       j = odeSwapSolveRetry(op, ind, fInd->stickyRecalcN2,
-                            [&]{ odeSwapSolveInd(innerSlot, _rxId); },
+                            [&]{ odeSwapSolveInd(odeSlotInner, _rxId); },
                             foceiRetryOpts(odeRelaxGlobal), _hk);
     } else {
       // Inner sensitivity solve failed; fall back to perturbing the simpler
@@ -2976,7 +2951,7 @@ double likInner0(double *eta, int id) {
     // the EBEs, so the same fit answered differently depending on which peer
     // sized the pool.  Strides are untouched; only the scan bound changes.
     bool isBadSolve = odeSwapIndBadSolveSlot(op, ind,
-                                             predSolve ? odeSlotPred : innerSlot);
+                                             predSolve ? odeSlotPred : odeSlotInner);
 
     if (isBadSolve){
       return likInner0Fail(fInd);
@@ -3194,7 +3169,7 @@ double likInner0(double *eta, int id) {
       if (predSolve) {
         iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
       } else {
-        iniSubjectE(_rxId, 1, ind, op, rx, innerFns.update_inis);
+        iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
       }
       // dist is set per OBSERVATION below, before every use; normal rather than the
       // old "unset" 0 so a subject with only dose rows carries a meaningful value.
@@ -3208,7 +3183,7 @@ double likInner0(double *eta, int id) {
       // Pooled table: re-base CMT to the basis of whichever model is about to be
       // read, so its endpoint switch (and rx_yj_) resolve as they would on that
       // model's own translated table.  Restored on every exit path below.
-      OdeSwapCmtScope _cmtScope(predSolve ? odeSlotPred : innerSlot, op, ind);
+      OdeSwapCmtScope _cmtScope(predSolve ? odeSlotPred : odeSlotInner, op, ind);
       for (j = 0; j < getIndNallTimes(ind); ++j) {
         setIndIdx(ind, j);
         kk = getIndIx(ind, j);
@@ -3230,7 +3205,7 @@ double likInner0(double *eta, int id) {
             lhs[op_focei.predOffset + op_focei.neta + 1] = _pr;
           }
           else {
-            innerFns.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
+            rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
           }
         } else if (getIndEvid(ind, kk) == 0) {
           if (predSolve) {
@@ -3241,7 +3216,7 @@ double likInner0(double *eta, int id) {
             lhs[op_focei.predOffset] = _pf;
             lhs[op_focei.predOffset + op_focei.neta + 1] = _pr;
           } else {
-            innerFns.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
+            rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
           }
           // Read the endpoint's distribution/transform AFTER calc_lhs: rx_yj_ (and
           // rx_lambda_/rx_hi_/rx_low_) are model assignments, so ind->yj describes THIS
@@ -6320,7 +6295,7 @@ void innerOpt() {
   // Inner solves can follow an augmented outer solve in the same objective.
   // Install the inner event-sensitivity shape before any per-subject workers
   // start; the shape and its dydt callback are process-global.
-  OdeSwapEsBatch esBatch(foceiInnerSolveSlot());
+  OdeSwapEsBatch esBatch(odeSlotInner);
   int cores = getOpCores(op);
   if (op_focei.neta > 0 && !op_focei.covFdDirect) {   // covFdDirect: keep the FD-perturbed Omega
     foceiOmegaEnvSyncFromTail(); // fast omega path leaves the env theta stale
@@ -17604,7 +17579,7 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
   }
   // The inner problem's event-sensitivity shape, installed once for the whole phase --
   // outside any parallel region, as OdeSwapEsBatch requires.
-  OdeSwapEsBatch esBatch(foceiInnerSolveSlot());
+  OdeSwapEsBatch esBatch(odeSlotInner);
   // Profile differences need tighter inner solves so stopping error does not dominate the slope.
   InnerTolGuard innerTolGuard;
   // A profile derivative is only defined with the inner problem SOLVED at each perturbed
@@ -22650,7 +22625,7 @@ extern "C" int nlmixr2FoceiCondBatch(const double *etaIn, int nid, int neta,
       // the jump injection into the eta-sensitivity states, and the shape is
       // a process global whose installer calls into R -- so it must bracket
       // the parallel region.
-      OdeSwapEsBatch esBatch(foceiInnerSolveSlot());
+      OdeSwapEsBatch esBatch(odeSlotInner);
       NpInnerParallelScope npScope(rx, doParallel);
       // components serial-outer (they share the physical subjects' solve
       // slots), subjects parallel-inner; nMix == 1 reduces to the plain loop
@@ -22942,7 +22917,7 @@ extern "C" int nlmixr2FoceiCondBatchThetaGrad(const double *etaIn, int nid,
     {
       // ONE event-sensitivity shape for the whole fused batch: the combined
       // model owns both the eta and theta jump sensitivities
-      OdeSwapEsBatch esBatch(foceiInnerSolveSlot());
+      OdeSwapEsBatch esBatch(odeSlotInner);
       NpInnerParallelScope npScope(rx, doParallel);
       const int nsub = (int)getRxNsub(rx);
       const int nMix = op_focei.mixIdxN + 1;

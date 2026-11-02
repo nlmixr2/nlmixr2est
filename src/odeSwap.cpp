@@ -973,21 +973,26 @@ int odeSwapIndSolveSpan(rx_solving_options *op, rx_solving_options_ind *ind) {
 bool odeSwapIndBadSolveSlot(rx_solving_options *op, rx_solving_options_ind *ind,
                             int slot) {
   int n = odeSwapIndSolveSpan(op, ind);
-  int own = odeSwapNeq(slot);
-  // Only clamp DOWN, and only when this model is genuinely narrower than the
-  // span: never widen, or a compacted solve would be under-scanned.  The span
-  // is in ELEMENTS (neq * nallTimes), so the clamp has to be too -- comparing
-  // against the bare neq would scan only the first record.
-  if (own > 0 && getOpNlin(op) <= 0) {
-    int ownSpan = own * getIndNallTimes(ind);
-    if (ownSpan < n) n = ownSpan;
-  }
   if (n <= 0) return false;
   double *solve = getIndSolve(ind);
   if (solve == NULL) return false;
-  for (int i = 0; i < n; ++i) {
-    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) {
-      return true;
+  int own = odeSwapNeq(slot);
+  int eff = odeSwapEffNeq(ind, op);
+  // A model narrower than the solve stride (a declined scope runs at pool width)
+  // owns only the leading `own` states of each record; scan those in every record.
+  int stride = eff, width = eff;
+  if (own > 0 && own < eff && getOpNlin(op) <= 0) width = own;
+  if (width == stride) {
+    for (int i = 0; i < n; ++i) {
+      if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) return true;
+    }
+    return false;
+  }
+  int nall = getIndNallTimes(ind);
+  for (int r = 0; r < nall; ++r) {
+    double *rec = solve + (size_t)r * stride;
+    for (int i = 0; i < width; ++i) {
+      if (ISNA(rec[i]) || std::isnan(rec[i]) || std::isinf(rec[i])) return true;
     }
   }
   return false;

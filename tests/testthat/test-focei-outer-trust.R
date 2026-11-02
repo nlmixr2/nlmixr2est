@@ -1,6 +1,7 @@
 test_that("outerOpt='trust' validates its own control", {
   expect_error(foceiControl(outerOpt = "trust", outerTrustHessian = "analytic"), "requires fast")
   expect_no_error(foceiControl(outerOpt = "trust", fast = TRUE, outerTrustHessian = "analytic"))
+  expect_error(foceiControl(outerOpt = "nlminb", outerTrustHessian = "analytic"), "requires fast")
   expect_error(foceiControl(outerTrustRinit = 0), "must be > 0")
   expect_error(foceiControl(outerTrustRmax = 0), "must be > 0")
   expect_error(foceiControl(outerTrustRinit = 2, outerTrustRmax = 1), "cannot be larger")

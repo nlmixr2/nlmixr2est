@@ -3671,11 +3671,12 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 .foceiModelCacheInflate <- function(el) {
   if (inherits(el, "nlmixr2estFoceiNorm")) {
     .es <- el$eventSens
+    # a dll that cannot be loaded (or rebuilt) falls through to the text
     if (
       inherits(el$model, "rxode2") &&
-        identical(.es, attr(el$model, "nlmixr2estEventSens"))
+        identical(.es, attr(el$model, "nlmixr2estEventSens")) &&
+        isTRUE(tryCatch(rxode2::rxLoad(el$model), error = function(e) FALSE))
     ) {
-      rxode2::rxLoad(el$model)
       return(el$model)
     }
     # rxode2() latches suppressMessages() into its C print flag, which would

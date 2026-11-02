@@ -68,8 +68,8 @@
   tolerances to improve derivative accuracy.
 - Analytical FOCEi gradients include the remaining inner score when finite
   tolerances leave the ETA mode approximate.
-- Pooled inner and second-order models use matching state layouts and event
-  sensitivities, fixing failed fast fits (#1115, #1133).
+- Pooled inner and second-order models read their solves at the stride and
+  compartment basis they were solved with, fixing failed fast fits (#1115, #1133).
 - Fast FOCEi defaults to gradient-only `nlminb`; ordinary fits retain `bobyqa`.
   Explicit outer optimizer choices are preserved.
 - `nlminb` curvature is opt-in through `outerTrustHessian="analytic"` or `"fd"`;

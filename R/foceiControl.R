@@ -1919,7 +1919,7 @@ foceiControl <- function(
     stop("'outerTrustRelStep' must be > 0", call. = FALSE)
   }
   checkmate::assertIntegerish(outerTrustRestarts, lower = 0, any.missing = FALSE, len = 1)
-  if (outerTrustHessian == "analytic" && .outerOptTxt == "trust" && !isTRUE(fast)) {
+  if (outerTrustHessian == "analytic" && .outerOptTxt %in% c("trust", "nlminb") && !isTRUE(fast)) {
     stop("outerTrustHessian=\"analytic\" requires fast=TRUE", call. = FALSE)
   }
   # `fast` can still be downgraded AFTER this (a linCmt() model has no 2nd-order
