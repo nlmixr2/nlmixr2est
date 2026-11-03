@@ -1,3 +1,21 @@
+# eta.v repeats eta.cl's subject-level block ("id:same:eta.cl")
+.npdeSameMod <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    add.sd <- 0.7
+    eta.cl ~ 0.3
+    eta.v ~ same()
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
 # A one-compartment model, and theo_sd with subject 3's observations all NA,
 # so the fit drops it and its table reinserts it
 .npdeNoObsMod <- function() {
@@ -220,6 +238,19 @@ nmTest({
 
     expect_false(isTRUE(all.equal(fit$NPDE, fit$NPD)))
     expect_false(isTRUE(all.equal(fit$PDE, fit$PD)))
+  })
+
+  test_that(".uiHasIov() finds occasion etas, not repeated subject blocks", {
+    expect_true(.uiHasIov(rxode2::rxode2(.iovFitMod)))
+    expect_false(.uiHasIov(rxode2::rxode2(.npdeSameMod)))
+    # the rows: eta.cl and eta.v ("id:same:eta.cl") are subject-level, iov.cl
+    # is the occasion eta, and the thetas and add.sd have no condition or are
+    # residual
+    .iniDf <- rxode2::rxode2(.iovFitMuMod)$iniDf
+    expect_identical(.iniDf$name[.iovOccRows(.iniDf)], "iov.cl")
+    .iniDf <- rxode2::rxode2(.npdeSameMod)$iniDf
+    expect_identical(.iniDf$condition[.iniDf$name == "eta.v"], "id:same:eta.cl")
+    expect_false(any(.iovOccRows(.iniDf)))
   })
 
   test_that("addNpde() on a table with the dosing rows gives them NA, as the fit's own NPDE does", {
