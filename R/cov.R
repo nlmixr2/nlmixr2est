@@ -904,6 +904,19 @@
   invisible(env)
 }
 
+#' Warn that thetas at a boundary left the fit without a covariance
+#'
+#' The thetas are clipped to the line; `$covMethod` of the fit lists them all.
+#' @param names the thetas at a boundary
+#' @return invisibly `NULL`
+#' @noRd
+.covBoundaryWarn <- function(names) {
+  .tail <- " near boundary; covariance not calculated"
+  .names <- unique(paste0("\"", names, "\""))
+  .covWarn(paste0(.vaeTruncList(.names, prefix = .tail, budget = .covWarnWidth), .tail))
+  invisible()
+}
+
 #' Parameter tables a fit that estimates its own ETAs keeps when its FOCEi
 #' covariance is installed (`.foceiInstallOwnEtaCov()`)
 #' @noRd
