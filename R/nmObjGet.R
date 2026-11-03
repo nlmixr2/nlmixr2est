@@ -909,7 +909,11 @@ nmObjGet.saem <- function(x, ...) {
   }
   .saem <- .obj$saem0
   .saemCfg <- attr(.saem, "saem.cfg")
-  .saemCfg$evt <- .obj$saemEvt
+  # a fit saved before the kernel's event matrix was kept rebuilds it from the
+  # data, which for an IOV fit lacks the occasion column
+  if (is.null(.saemCfg$evt)) {
+    .saemCfg$evt <- .obj$saemEvt
+  }
   attr(.saem, "saem.cfg") <- .saemCfg
   .saem
 }

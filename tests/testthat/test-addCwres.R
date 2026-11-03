@@ -109,6 +109,9 @@ nmTest({
 
     fit2 <- suppressMessages(addCwres(fit, updateObject = FALSE))
     expect_true("CWRES" %in% names(fit2))
+    # the refit's nlmixr2() resets the timing globals when it ends; the
+    # caller's are put back, so addCwres()'s own time is recorded in the fit
+    expect_true("CWRES" %in% names(fit$time))
     # the objective function row is not duplicated (and not lost)
     expect_equal(sum(rownames(fit2$objDf) == "FOCEi"), 1L)
     expect_equal(fit2$objDf["FOCEi", "OBJF"], fit$objDf["FOCEi", "OBJF"])
