@@ -79,6 +79,20 @@
   with its additive sigma fixed) now gets the analytic covariance too;
   `setCov(fit, "analytic")` used to stop on it.
 
+- The other covariance warnings now stay under 75 characters too: the
+  SAEM `"linFim"` and `"Ha"` fallbacks (`"linFim" failed; trying "Ha"`
+  for `linearized FIM failed; using the SAEM information matrix`), the
+  sqrtm repair, the nls, nlm-family, sandwich and full-sandwich ones,
+  the warning for thetas at a boundary (one line naming them, where it
+  was three lines and the whole list; `$covMethod` still lists them
+  all), and
+  [`nlminbControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.md)’s
+  switch to `covMethod = "r"`. The thetas that have no standard error
+  are listed up to the line, then `+k more`, and are the `NA` rows of
+  the parameter table. A test fails for any R warning about a covariance
+  method that does not go through the one clip, and for any C++
+  covariance warning wider than one line.
+
 - A failed covariance step of an nlm-family fit (nls, nlminb, uobyqa, …)
   no longer gives
   `covariance not in proper form, can access value in $covDebug` as the
