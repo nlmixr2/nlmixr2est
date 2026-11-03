@@ -383,11 +383,12 @@
   ret$parHistData <- .parHistData
 
   .cov <- ret$cov
+  # [[ ]], not $: a list holding only covMethod would partially match $cov
   if (
     is.null(.cov) &&
-      !is.null(.nlm$cov)
+      !is.null(.nlm[["cov"]])
   ) {
-    .cov <- .nlm$cov
+    .cov <- .nlm[["cov"]]
     ret[[str]][["cov"]] <- NULL
   }
   ret$cov <- .cov
