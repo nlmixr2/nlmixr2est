@@ -64,10 +64,13 @@
 
 ### Estimation
 
-- `foceiControl(mceta = n)` with `n >= 1` now optimizes every Omega draw, not
-  only the one with the best objective at its starting point, and keeps the
-  lowest converged optimum.  Ranking at the starting point could leave a
-  subject in the higher of two optima that some of the draws reach (#1242).
+- `foceiControl(mceta = n)` with `n >= 1` again optimizes only the best
+  starting point (eta=0 or an Omega draw), as before 7.1.0; it no longer also
+  solves from eta=0 when a draw wins.  The new `mcetaOpt = TRUE` instead
+  optimizes from every draw and from eta=0 and keeps the lowest converged
+  optimum, which can find an optimum the starting objective misses (and never
+  ends above `mceta = 0`) at the cost of one inner optimization per start
+  (#1242).
 
 - `saem` no longer crashes R on a model with a lagged dose (`alag()`) or a
   modeled infusion duration when the data has no more subjects times chains

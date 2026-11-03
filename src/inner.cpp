@@ -1040,6 +1040,7 @@ struct focei_options {
   bool zeroGradBobyqaRun=false;
   int nEstOmega=0;
   int mceta= -1; // number of mc samples of ETA
+  bool mcetaOpt = false; // mceta>=1: optimize every draw, not the best start
   // Omega draws the inner restart cascade tries once the fixed nudges are
   // spent (0 = the historical nudges-only cascade), and foceiControl(seed=)
   // as the base of their threefry stream.
@@ -4584,25 +4585,50 @@ static inline int innerOpt1(int id, int likId) {
     // behavior of mceta=-1/-2 -- mceta=10 returned an objective bit-identical to
     // mceta=-2 and the extra draws never mattered.
     //
-    // EVERY candidate is optimized (#1242): the objective at a starting point
-    // does not order the optima the solves converge to, so ranking the draws
-    // there and optimizing only the winner missed a lower optimum that a fifth
-    // of the draws reach.  The passes run the draws first and eta=0 last.
-    mcetaSearch = true;
     std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
     // Subjects with no slice (empty cube) simply have no draws to try.
-    if (static_cast<arma::uword>(id) < op_focei.mcetaSamples.n_slices) {
-      nMcetaDraw = op_focei.mceta - 1;
-    }
-    if (nMcetaDraw > 0) {
-      const double *samp = op_focei.mcetaSamples.slice(id).colptr(0);
-      std::copy(samp, samp + op_focei.neta, &fInd->eta[0]);
+    bool haveSlice = static_cast<arma::uword>(id) < op_focei.mcetaSamples.n_slices;
+    if (op_focei.mcetaOpt) {
+      // mcetaOpt=TRUE optimizes EVERY draw (#1242): the objective at a starting
+      // point does not order the optima the solves converge to.  The passes run
+      // the draws first and eta=0 last.
+      mcetaSearch = true;
+      if (haveSlice) nMcetaDraw = op_focei.mceta - 1;
+      if (nMcetaDraw > 0) {
+        const double *samp = op_focei.mcetaSamples.slice(id).colptr(0);
+        std::copy(samp, samp + op_focei.neta, &fInd->eta[0]);
+      }
+    } else {
+      // The default search: only the candidate with the lowest inner
+      // objective at its starting point is optimized.
+      std::fill(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, 0.0);
+      double fcur = likInner0(fInd->tryEta, id); // eta = 0
+      if (haveSlice) {
+        for (int sampCol = 0; sampCol < op_focei.mceta - 1; sampCol++) {
+          const double *samp = op_focei.mcetaSamples.slice(id).colptr(sampCol);
+          std::copy(samp, samp + op_focei.neta, &fInd->tryEta[0]);
+          double ftry = likInner0(fInd->tryEta, id); // sampled eta
+          // An unusable eta=0 must not pin the search: take any finite candidate
+          // over a non-finite incumbent.
+          if (R_FINITE(ftry) && (!R_FINITE(fcur) || ftry < fcur)) {
+            std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
+            fcur = ftry;
+            nMcetaDraw = 1;
+          }
+        }
+      }
+      if (nMcetaDraw > 0) {
+        op_focei.nMcetaSample.fetch_add(1, std::memory_order_relaxed);
+      } else {
+        op_focei.nMcetaZero.fetch_add(1, std::memory_order_relaxed);
+      }
     }
     mcetaSampleStart = nMcetaDraw > 0;
   }
-  // An mceta>=1 start is a draw from Omega, not a carried eta, so the reset
+  // An mcetaOpt start is a draw from Omega, not a carried eta, so the reset
   // below (an escape from a bad warm start) does not apply to it.
-  if (!op_focei.calcGrad && !_covEtaStartOn && !mcetaSampleStart) {
+  if (!op_focei.calcGrad && !_covEtaStartOn &&
+      !(mcetaSampleStart && op_focei.mcetaOpt)) {
     if (op_focei.resetEtaSize <= 0) {
       if (op_focei.resetHessianAndEta){
         fInd->mode = 1;
@@ -4664,11 +4690,11 @@ static inline int innerOpt1(int id, int likId) {
     else selfInitZm(fInd);                         // "none"
     std::fill_n(&fInd->var[0], fop->neta, 0.1);
   }
-  // The n1qn1 seed just installed, kept only when the mceta eta=0 floor pass below
-  // will need to be re-seeded with it (n1qn1_ overwrites zm in place).
+  // The n1qn1 seed just installed, kept only when the mcetaOpt passes below will
+  // need to be re-seeded with it (n1qn1_ overwrites zm in place).
   std::vector<double> zmSeed;
   int zmSeedMode = fInd->mode;
-  if (n1qn1Inner && mcetaSampleStart) {
+  if (n1qn1Inner && mcetaSampleStart && op_focei.mcetaOpt) {
     zmSeed.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
   }
   int npar = fop->neta;
@@ -4740,10 +4766,10 @@ static inline int innerOpt1(int id, int likId) {
     candOk.push_back(ok ? (char)1 : (char)0);
     candPass.push_back(_innerStart);
   };
-  // Starting points this inner solve runs from.  mceta>=1 solves from each Omega
-  // draw and then from eta=0, and the best converged result is kept -- that is
-  // what makes mceta=n never end above mceta=0 (#1040), and what finds an optimum
-  // that ranking the starting points alone misses (#1242).
+  // Starting points this inner solve runs from.  The standard mceta>=1 search
+  // solves once, from the best starting point.  mcetaOpt solves from every draw
+  // (#1242) and then from eta=0, and the best converged result is kept, so it
+  // never ends above mceta=0 (#1040).
   // The loop wraps the WHOLE optimizer dispatch rather than living inside one
   // branch of it, so it holds for whichever inner optimizer is configured, and a
   // new optimizer arm gets the floor pass without being told about it.  An arm
@@ -4753,7 +4779,7 @@ static inline int innerOpt1(int id, int likId) {
   // converged -- see candOk).  On a non-finite `f` it should hand the loop
   // `_lastStart` (see the arms below) rather than returning, so a failed
   // sampled start still gets the passes after it.
-  int nInnerStart = mcetaSampleStart ? nMcetaDraw + 1 : 1;
+  int nInnerStart = (mcetaSampleStart && op_focei.mcetaOpt) ? nMcetaDraw + 1 : 1;
   for (_innerStart = 0; _innerStart < nInnerStart; _innerStart++) {
   bool _lastStart = (_innerStart + 1 == nInnerStart);
   // The running minimum is PASS-LOCAL.  restoreBest() is the recovery from a
@@ -9736,6 +9762,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.maxOuterIterations = as<int>(foceiO["maxOuterIterations"]);
   op_focei.maxInnerIterations = as<int>(foceiO["maxInnerIterations"]);
   op_focei.mceta = as<int>(foceiO["mceta"]);
+  op_focei.mcetaOpt = foceiO.containsElementNamed("mcetaOpt") &&
+    as<bool>(foceiO["mcetaOpt"]);
   // The mceta>=1 draws are per-fit (innerOpt() fills the cube once); clear them so a
   // new fit does not inherit the previous fit's starting etas.  The start counters
   // are cleared here as well as in foceiOuter(), which the EM/nonparametric methods

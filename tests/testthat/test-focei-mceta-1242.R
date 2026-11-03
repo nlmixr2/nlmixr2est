@@ -1,8 +1,8 @@
 nmTest({
-  # #1242: mceta >= 1 ranked its Omega draws by the inner objective at the
-  # STARTING point and optimized only the winner (plus eta=0), so a draw that
-  # would have converged to a lower optimum was never optimized.  Every draw is
-  # now optimized and the best converged result kept.
+  # #1242: mceta >= 1 ranks its Omega draws by the inner objective at the
+  # STARTING point and optimizes only the winner (plus eta=0), so a draw that
+  # would have converged to a lower optimum is never optimized.  With
+  # mcetaOpt = TRUE every draw is optimized and the best converged result kept.
   #
   # A flip-flop one-compartment model has two optima per subject (ka and ke
   # swap, with V rescaled).  At these parameters eta=0 converges to the higher
@@ -39,7 +39,7 @@ nmTest({
     )
   }
 
-  .ffFit <- function(dat, mceta, etaMat = NULL) {
+  .ffFit <- function(dat, mceta, etaMat = NULL, mcetaOpt = FALSE) {
     suppressWarnings(suppressMessages(
       nlmixr2(
         .ffMod,
@@ -51,13 +51,20 @@ nmTest({
           maxOuterIterations = 0L,
           calcTables = FALSE,
           mceta = mceta,
+          mcetaOpt = mcetaOpt,
           etaMat = etaMat
         )
       )
     ))
   }
 
-  test_that("mceta optimizes every draw and keeps the lowest converged optimum", {
+  test_that("mcetaOpt is off by default", {
+    expect_false(foceiControl()$mcetaOpt)
+    expect_true(foceiControl(mcetaOpt = TRUE)$mcetaOpt)
+    expect_error(foceiControl(mcetaOpt = NA))
+  })
+
+  test_that("mcetaOpt optimizes every draw and keeps the lowest converged optimum", {
     skip_on_cran()
     .dat <- .ffData()
     # Every subject started inside the lower basin.
@@ -70,11 +77,14 @@ nmTest({
     expect_true(all(.f0$eta$eta.ka < 0))
     expect_gt(.f0$objf, .fLow$objf + 1)
 
-    # Ranking the draws at their starting point left subjects in the higher
-    # optimum; optimizing each draw finds the lower one for all of them.
+    # Ranking the draws at their starting point (the default) leaves subjects
+    # in the higher optimum; optimizing each draw finds the lower one for all.
     .f10 <- .ffFit(.dat, 10L)
-    expect_true(all(.f10$eta$eta.ka > 0))
-    expect_equal(.f10$objf, .fLow$objf, tolerance = 1e-4)
-    expect_gt(.f10$env$nMcetaStart[["sample"]], 0L)
+    expect_false(all(.f10$eta$eta.ka > 0))
+    .f10opt <- .ffFit(.dat, 10L, mcetaOpt = TRUE)
+    expect_true(all(.f10opt$eta$eta.ka > 0))
+    expect_equal(.f10opt$objf, .fLow$objf, tolerance = 1e-4)
+    expect_gt(.f10$objf, .f10opt$objf + 1)
+    expect_gt(.f10opt$env$nMcetaStart[["sample"]], 0L)
   })
 })
