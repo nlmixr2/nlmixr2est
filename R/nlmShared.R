@@ -229,13 +229,7 @@
   }
   if (!is.na(.rdf) && .rdf <= 0 && (inherits(lst, "nls") || (hessianCov && .ctl$covMethod != ""))) {
     # sigma^2 = RSS / (n - p) does not exist
-    warning(
-      sprintf(
-        "nls has %d residual degrees of freedom, no residual variance; covariance step failed",
-        as.integer(.rdf)
-      ),
-      call. = FALSE
-    )
+    .covWarn(sprintf("%d residual degrees of freedom; covariance step failed", as.integer(.rdf)))
     .ret$covMethod <- "failed"
   } else if (inherits(lst, "nls")) {
     # sigma^2 (J'J)^-1, the residual variance times summary()$cov.unscaled
@@ -245,7 +239,7 @@
       .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .parScaled)
       .ret$covMethod <- "nls"
     } else {
-      warning(sprintf("nls covariance %s; covariance step failed", .g$reason), call. = FALSE)
+      .covWarn(sprintf("\"nls\" %s; covariance step failed", .g$reason))
       .ret$covMethod <- "failed"
     }
   } else if (hessianCov && .ctl$covMethod != "") {
@@ -274,7 +268,7 @@
     }
     .rc <- .nlmCovFromHessian(.r)
     if (!is.null(.rc$warning)) {
-      warning(.rc$warning, call. = FALSE)
+      .covWarn(.rc$warning)
     }
     if (is.null(.rc$r)) {
       .ret$covMethod <- "failed"
