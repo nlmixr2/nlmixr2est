@@ -62,6 +62,10 @@
   `boxCox()` with its additive sigma fixed) now gets the analytic covariance
   too; `setCov(fit, "analytic")` used to stop on it.
 
+- A failed covariance step of an nlm-family fit (nls, nlminb, uobyqa, ...) no
+  longer gives `covariance not in proper form, can access value in $covDebug` as
+  the first `$runInfo` line; `$cov` had partially matched `covMethod = "failed"`.
+
 ### Estimation
 
 - `saem` no longer crashes R on a model with a lagged dose (`alag()`) or a
