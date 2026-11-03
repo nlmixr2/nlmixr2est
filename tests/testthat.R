@@ -108,7 +108,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "saem-cov-multi-endpoint-904",
     "saem-modeled-resid-fit",
     "saem-ebe-mode-lik",
-    "nlmixr2output-same-fit"
+    "nlmixr2output-same-fit",
+    "nlmixr2output-bsvcorr-fit"
   ),
 
   # batches 4-7 -- the former batches 4 (13 files) and 5 (15 files), each split
@@ -130,6 +131,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "focei-fast-grad",
     "lincmt-ode-fit",
     "focei-lincmt-carry-fit",
+    "focei-lincmt-carry-iov",
     "focei-lincmt-carry-fit-fallback",
     "focei-lincmt-carry-jump-fit",
     "focei-lincmt-carry-ll-fit",
