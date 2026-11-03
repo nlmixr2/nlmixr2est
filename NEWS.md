@@ -23,6 +23,15 @@
   default `sqrt(rtol)`) are new inner (eta) optimizers.  `steihaugPolish` and
   `newuoaPolish` add the opt-in Newton polish that `trustPolish` gives trust.
 
+- `$parFixed` and `$parFixedDf` now end with one row per estimated
+  between-subject covariance, named `bsvcorr(A,B)`, holding the correlation in
+  the BSV column.  `A` and `B` are the thetas the etas are mu-referenced to, or
+  the eta names when a theta is mu-referenced by more than one eta.  In a model
+  with labels the `Parameter` column describes the row ("BSV correlation
+  between A and B").  `fix(...)` marks a fixed covariance; its correlation
+  still moves with estimated variances.  Occasion-level correlations are not
+  listed, and `tidy()`/`confint()` leave the rows out.
+
 ## Bug fixes
 
 ### Covariance
