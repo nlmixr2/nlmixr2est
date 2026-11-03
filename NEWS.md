@@ -62,9 +62,9 @@
   `boxCox()` with its additive sigma fixed) now gets the analytic covariance
   too; `setCov(fit, "analytic")` used to stop on it.
 
-- A failed covariance step of an nls, nlminb or other nlm-family fit no longer
-  gives `covariance not in proper form, can access value in $covDebug` as the first
-  `$runInfo` line; only the step's own message is left.
+- A failed covariance step of an nlm-family fit (nls, nlminb, uobyqa, ...) no
+  longer gives `covariance not in proper form, can access value in $covDebug` as
+  the first `$runInfo` line; `$cov` had partially matched `covMethod = "failed"`.
 
 ### Estimation
 

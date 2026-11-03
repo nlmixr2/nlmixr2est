@@ -5550,17 +5550,12 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 #'
 #' NA is accepted only for whole ill-identified parameter rows and columns (see
 #' `.nlmixr2RobustCov()`, R/cov.R); any other missingness is malformed.  The
-#' dropped matrix stays in `env$covDebug`.  A covariance step that failed leaves
-#' `"failed"` in `env$cov` and has said so already, so it is dropped silently.
+#' dropped matrix stays in `env$covDebug`.
 #' @param env fit environment
 #' @return invisibly `NULL`
 #' @noRd
 .foceiDropMalformedCov <- function(env) {
   if (is.null(env$cov)) {
-    return(invisible())
-  }
-  if (identical(env$cov, "failed")) {
-    env$cov <- NULL
     return(invisible())
   }
   .validCov <- checkmate::testMatrix(
