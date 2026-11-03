@@ -243,15 +243,55 @@ preProcessHooks <- function(name = NULL) {
 #' @noRd
 .nlmixr2EstEnvFields <- c("uiUnfix", "nlmixrPureInputUi", "vaeNonMuEtas", "saemPseudoTransforms", "zeroThetaScale")
 
+# The nlmixr2Est() methods that only solve a model, those that set
+# attr(, "random") <- TRUE; predict(level = "individual") solves through
+# rxSolve
+.preProcessHooksSimulationEst <- c("rxSolve", "simulate", "simulation", "predict")
+
+# The nlmixr2global fields the bounded-transform hook sets for an estimation
+.preProcessHookBoundedFields <- c("preProcessBoundedTransform", "postEstimationBoundedTransform", "transformMu")
+
+#' The globals the pre-process hooks set for an estimation
+#'
+#' The nlmixr2EstEnv fields, the IOV rewrite's state (`.uiIovEnv`), the
+#' mu-referencing translations (`.muRefTrans$cur`) and the bounded-transform
+#' flags, which the estimation and output steps read after the hooks ran.
+#'
+#' @return a list for `.preProcessHookStateRestore()`
+#' @noRd
+#' @author Matthew L. Fidler
+.preProcessHookState <- function() {
+  list(
+    est = mget(.nlmixr2EstEnvFields, envir = nlmixr2global$nlmixr2EstEnv, ifnotfound = list(NULL)),
+    iov = as.list(.uiIovEnv, all.names = TRUE),
+    muRef = .muRefTrans$cur,
+    bounded = mget(.preProcessHookBoundedFields, envir = nlmixr2global, ifnotfound = list(NULL))
+  )
+}
+
+#' Put the pre-process hooks' globals back as `.preProcessHookState()` had them
+#'
+#' @param state `.preProcessHookState()`'s list
+#' @return nothing
+#' @noRd
+#' @author Matthew L. Fidler
+.preProcessHookStateRestore <- function(state) {
+  list2env(state$est, envir = nlmixr2global$nlmixr2EstEnv)
+  .uiIovEnvRestore(state$iov)
+  .muRefTrans$cur <- state$muRef
+  list2env(state$bounded, envir = nlmixr2global)
+  invisible()
+}
+
 .preProcessHooksRun <- function(env, est) {
-  if (identical(est, "rxSolve")) {
-    # augPred(), vpcSim() and the simulation information of an nlmixr2() refit run
-    # the hooks on a model they only simulate.  What the hooks record for an
-    # estimation -- the model before its fixed thetas were substituted, ... -- is
-    # read from nlmixr2global by the estimation and output steps that follow,
-    # so a simulation leaves it as it found it.
-    .estState <- mget(.nlmixr2EstEnvFields, envir = nlmixr2global$nlmixr2EstEnv, ifnotfound = list(NULL))
-    on.exit(list2env(.estState, envir = nlmixr2global$nlmixr2EstEnv), add = TRUE)
+  if (isTRUE(est %in% .preProcessHooksSimulationEst)) {
+    # augPred(), vpcSim(), predict() and the simulation information of an
+    # nlmixr2() refit run the hooks on a model they only simulate, also inside
+    # a fit's table step.  What the hooks record for an estimation is read by
+    # the estimation and output steps that follow, so a simulation leaves it
+    # as it found it.
+    .state <- .preProcessHookState()
+    on.exit(.preProcessHookStateRestore(.state), add = TRUE)
   }
   nlmixr2global$preProcessHookWarnings <- character(0)
   .ret <- .collectWarn(

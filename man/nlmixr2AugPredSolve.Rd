@@ -57,6 +57,19 @@ Stacked data.frame with observations, individual/population predictions.
 \description{
 Augmented Prediction for nlmixr2 fit
 }
+\details{
+For a fit with inter-occasion variability, each time takes its subject's
+estimate for the occasion the fit's covariate interpolation gives that
+time, in the fit's record order where records tie.  Under `"midpoint"`
+or `"linear"` interpolation the individual curve differs from the fit's
+predictions after an occasion changes, as `predict()` does.
+
+For a `linCmt()` model with time-varying covariates or occasions the
+curves are approximate: under the default `"locf"` interpolation,
+rxode2's `linCmt()` takes a covariate's value at the end of each interval,
+as `"nocb"` does, so the times `augPred()` adds move where a change takes
+effect.
+}
 \author{
 Matthew L. Fidler
 }

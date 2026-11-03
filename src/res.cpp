@@ -241,7 +241,9 @@ extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   arma::vec predt(REAL(predL[getDfColIndex(predL, "rx_pred_")]), ncalc, false, true);
   arma::vec pred(predt.size());
 
-  arma::vec dv(REAL(dvIn), ncalc, false, true);
+  // a copy: the rows below write NA and imputed values into it, and the
+  // caller's DV is shared (.calcTables() hands the same predictions to NPDE)
+  arma::vec dv(REAL(dvIn), ncalc);
   arma::vec dvt(ncalc);
 
   arma::vec rpv(REAL(predL[getDfColIndex(predL, "rx_r_")]), ncalc, false, true);
