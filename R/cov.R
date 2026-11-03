@@ -754,7 +754,10 @@
     )),
     silent = TRUE
   )
-  if (inherits(.fit2, "try-error") || is.null(.fit2$cov)) {
+  if (inherits(.fit2, "try-error")) {
+    return(list(what = .what, error = conditionMessage(attr(.fit2, "condition"))))
+  }
+  if (is.null(.fit2$cov)) {
     return(list(what = .what))
   }
   .env2 <- .fit2$env
@@ -790,7 +793,13 @@
   )) {
     if (exists(.n, envir = .env2, inherits = FALSE)) .extras[[.n]] <- get(.n, envir = .env2)
   }
-  list(cov = .fit2$cov, covMethod = .fit2$covMethod, extras = .extras, what = .what)
+  list(
+    cov = .fit2$cov,
+    covMethod = .fit2$covMethod,
+    extras = .extras,
+    what = .what,
+    covTried = if (is.data.frame(.env2$covTried)) .env2$covTried
+  )
 }
 
 #' Install the FOCEi covariance a method that estimates its own ETAs asked for
@@ -815,17 +824,28 @@
   if (!is.environment(.env)) {
     return(invisible(FALSE))
   }
+  .asked <- .covMethodFromSlot(control$covMethod, control$covType)
   .r <- tryCatch(.foceiRecomputeCov(fit, "focei", control), error = function(e) e)
   if (inherits(.r, "error")) {
-    .asked <- .covMethodFromSlot(control$covMethod, control$covType)
     .foceiOwnEtaCovFail(.env, if (nzchar(.asked)) .asked else "focei", "computed", .r)
     return(invisible(FALSE))
   }
   if (is.null(.r)) {
     return(invisible(FALSE))
   }
+  .tried <- if (.covIsName(.r$what)) {
+    .r$what
+  } else if (.covIsName(.r$covMethod)) {
+    .r$covMethod
+  } else {
+    "focei"
+  }
+  if (!is.null(.r$error)) {
+    # the refit stopped; keep its message rather than a bare "could not be computed"
+    .foceiOwnEtaCovFail(.env, .tried, "computed", simpleError(.r$error))
+    return(invisible(FALSE))
+  }
   .extras <- .r$extras[setdiff(names(.r$extras), .covOwnTables)]
-  .tried <- if (.covIsName(.r$what)) .r$what else .r$covMethod
   # the fit is complete; a failed install leaves it without a covariance, not without
   # its estimates
   .ok <- tryCatch(
@@ -839,14 +859,17 @@
   if (!isTRUE(.ok)) {
     # .covInstall() warned that the matrix was rejected
     .covTriedNote(.env, .tried, paste0("not installed (", attr(.ok, "reason"), ")"))
+  } else if (is.data.frame(.r$covTried)) {
+    # the refit's own choice, e.g. why "r" was installed instead of "r,s"
+    .env$covTried <- if (is.data.frame(.env$covTried)) rbind(.env$covTried, .r$covTried) else .r$covTried
   }
   invisible(.ok)
 }
 
 #' Warn that the FOCEi covariance of a completed fit was not computed or installed
 #'
-#' The warning clips the condition message to one line; the fit's covariance
-#' history (`covTried`) keeps it whole.
+#' The warning clips the condition message; the fit's covariance history
+#' (`covTried`) keeps it unclipped, on one line.
 #' @param env fit environment
 #' @param method the covariance method that was tried
 #' @param what "computed" or "installed"
