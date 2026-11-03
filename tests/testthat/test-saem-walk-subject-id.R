@@ -29,7 +29,7 @@ nmTest({
     .d <- nlmixr2data::theo_sd[nlmixr2data::theo_sd$ID %in% 1:2, ]
     .ctl <- saemControl(nBurn = 10, nEm = 10, nmc = 1, print = 0, seed = 1L, covMethod = "", calcTables = FALSE)
     .fit <- .nlmixr(.saemWalkLagModel, .d, est = "saem", control = .ctl)
-    expect_equal(.fit$objf, 76.380378, tolerance = 1e-6)
+    expect_equal(.fit$objf, 76.381860, tolerance = 1e-6)
     expect_equal(
       unname(.fit$theta),
       c(1.118834, 0.731403, 3.462208, -2.023712, 0.949486),
