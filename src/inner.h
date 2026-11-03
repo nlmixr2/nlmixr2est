@@ -42,8 +42,9 @@ extern rx_solve *rx;
 #include "rxode2Optional.h"
 
 // A model reads `newind` as 1 at a subject's first record and 2 after it.
-// rxode2's own walk over the records (rxode2_df.cpp) leaves it at 1 until it
-// has passed a record other than an EVID 9 one.  Every lhs walk here calls this
+// rxode2's own walk over the records for the fit's table (rxode2_df.cpp,
+// addDosing = FALSE) leaves it at 1 until it has passed a record other than an
+// EVID 9 one.  Every lhs walk here calls this
 // before a record's calc_lhs, with the record's index j, so a walk that skips
 // some records gives each the value rxode2's output would.  An rxode2 without
 // setIndNewind() leaves the walks' newind as it was (the NULL check goes with

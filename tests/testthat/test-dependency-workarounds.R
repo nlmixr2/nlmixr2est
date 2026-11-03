@@ -202,7 +202,7 @@ test_that("the carry-cap probe gives 8 when rxode2's count fails or is no count"
   "and its row of rxode2OptionalSlots in src/inner.cpp, the NULL check in lhsWalkNewind()",
   "(src/inner.h, which then calls setIndNewind()), the skip in test-lhs-walk-newind.R,",
   "and this block; if no entry is left, also the rest of the rxode2Optional machinery:",
-  "src/rxode2Optional.h, iniRxode2Optional() and rxode2Optional() in src/inner.cpp,",
+  "src/rxode2Optional.h (and its entry in src/Makevars.in HEADERS), iniRxode2Optional() and rxode2Optional() in src/inner.cpp,",
   "their registration in src/init.c, .rxode2Optional() in R/zzz.R and its tests in",
   "test-lhs-walk-newind.R"
 )
