@@ -139,7 +139,7 @@ nmTest({
   })
 
   test_that("the mceta eta=0 floor pass keeps the warm='save' seed (#1043)", {
-    # mceta>=1 runs a second, eta=0 "floor" pass whose job is to be exactly the
+    # mcetaOpt runs an eta=0 "floor" pass whose job is to be exactly the
     # run mceta=0 would have made.  n1qn1 overwrites zm in place, so that pass
     # has to be handed the seed the first pass got back; it used to self-init
     # while the mceta=0 run it must reproduce got the saved curvature.
@@ -157,7 +157,8 @@ nmTest({
           print = 0,
           innerOpt = "n1qn1",
           warm = "save",
-          mceta = 5L
+          mceta = 5L,
+          mcetaOpt = TRUE
         )
       )
     ))
