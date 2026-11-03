@@ -2094,9 +2094,8 @@ public:
       if (doParam[j] == 1) setIndParPtr(ind, (int)j, phi(k++));
     }
     if (!modeRowSolveInd(i, op, ind)) return false;
-    int neq = getOpNeq(op);
     double *lhs = getIndLhs(ind);
-    iniSubjectE(neq, 1, ind, op, _rx, saem_inis);
+    iniSubjectE(i, 1, ind, op, _rx, saem_inis);
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
       setIndIdx(ind, j);
       int kk = getIndIx(ind, getIndIdx(ind));
@@ -6212,7 +6211,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   for (int id = 0; id < _Nnlmixr2; ++id) {
     ind = getSolvingOptionsInd(_rx, id);
     double *lhs = getIndLhs(ind);
-    iniSubjectE(getOpNeq(op), 1, ind, op, _rx, saem_inis);
+    iniSubjectE(id, 1, ind, op, _rx, saem_inis);
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
       setIndIdx(ind, j);
       int kk = getIndIx(ind, getIndIdx(ind));
