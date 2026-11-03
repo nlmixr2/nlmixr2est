@@ -27,6 +27,12 @@
 
 ### Covariance
 
+- A FOCEi covariance that a vae or vi fit could not compute or install is now
+  recorded in `fit$env$covTried`, under the method tried and with the condition
+  message unclipped on one line (the refit's own error included), also when
+  `.covInstall()` rejected the matrix; the warning clips the message to 74
+  columns.  An installed one keeps the refit's `covTried` rows.
+
 - `covMethod = "analytic"` now keeps the analytic covariance when a record that
   is not an observation (an EVID 2 record, or an EVID 0 record with a missing DV
   or `MDV = 1`) shares the time of one of a subject's observations; it used to
@@ -62,7 +68,49 @@
   `boxCox()` with its additive sigma fixed) now gets the analytic covariance
   too; `setCov(fit, "analytic")` used to stop on it.
 
+- A failed covariance step of an nlm-family fit (nls, nlminb, uobyqa, ...) no
+  longer gives `covariance not in proper form, can access value in $covDebug` as
+  the first `$runInfo` line; `$cov` had partially matched `covMethod = "failed"`.
+
 ### Estimation
+
+- `saem` no longer crashes R on a model with a lagged dose (`alag()`) or a
+  modeled infusion duration when the data has no more subjects times chains
+  (`nmc`) than the model has states.  Its prediction walk, and the search
+  for each subject's conditional mode, read the lag or duration from the
+  subject numbered by the state count rather than from the subject walked;
+  with enough subjects that read another subject's values, without changing
+  the fit.
+
+- A `linCmt()` model with a time-varying covariate on a compartment
+  parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,
+  under `"locf"`, `"midpoint"` and `"nocb"` and a covariate's own declaration
+  of one of them (`nocb(wt)`); a declared `linear()` is carried as the mean of
+  its two records.  The sensitivity carry read the covariates of the record
+  ending each interval, while rxode2 advances the interval with its own: on
+  theo_sd with a covariate step at 6 h, focei at the initial thetas gave
+  321.4099 (`"locf"`) and 325.7027 (`"midpoint"`) against the ODE model's
+  318.8375 and 324.3126.  They are now equal.  With an rxode2 that advances
+  every interval with the end record's covariates, as rxode2 5.1.8 does,
+  the carry reads them the same way.
+
+- FOCEi now fits a `linCmt()` model with inter-occasion variability whose
+  occasion changes within a subject as its ODE twin.  The sensitivity
+  carry left such models alone (the IOV rewrite puts the subject and the
+  occasion etas in one parameter), so their gradient ignored the change
+  of occasion: on theo_md with IOV on `cl` and the occasion stepping at
+  144 h, the objective at the initial estimates was 487.3129 against the
+  ODE model's 473.1587, and `setCov(fit, "imp")` installed the repaired
+  `"|imp|"`.  They now agree to the solver's tolerance (to 1e-7 at
+  `atol = rtol = 1e-10`; 473.1498 against 473.1587 at the defaults), under
+  either `iovMethod`.  The carry has as many columns as the loaded rxode2
+  provides (8 with rxode2 5.1.8; see `rxode2::linCmtCarryMaxPairs()`).
+  With more occasions than that, the last occasion etas keep the standard
+  gradient, with a warning that names the first of them; a later fit that
+  reuses the cached model gives it again.  Those etas' gradient then ignores
+  the change of occasion, which can shift the objective materially; fewer
+  occasion etas, or an rxode2 with more carry columns
+  (`rxode2::linCmtCarryMaxPairs()`), avoids it.
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
@@ -123,8 +171,11 @@
   FOCEi's translated data keeps as observations, so an EVID 0 record with a
   missing DV, `MDV = 1`, a missing TIME or a compartment-off (negative) CMT is
   not one; with a missing DV at an observation time `est = "vae"` stopped on
-  missing values.  `est = "vae"` also gives data without an EVID column the EVID
-  FOCEi gives it, taken from an MDV column when the data has an AMT column.
+  missing values.  The three also give data without an EVID column the EVID
+  FOCEi gives it: with an AMT column, an MDV column stands for the EVID, and
+  without one a NaN AMT is a dose, which all three used to read as no dose;
+  with no AMT column (for example ID, TIME and DV only) every record is EVID 0,
+  where `"emvi"` and `"fbvi"` used to stop with "replacement has 0 rows".
   These estimators and the benchmark observation count now stop with FOCEi's
   message, and in FOCEi's order, on an EVID, MDV or AMT column not stored as
   numbers, an infinite TIME or a missing ID, instead of reading the data anyway;
@@ -171,6 +222,11 @@
   repeats another's (`same()`) was left out of the sensitivity carry added in
   7.1.0, so its analytic gradient took the parameter as constant within a
   subject; it now gets the carry like any other subject-level eta.
+
+- An interrupt (or another C++ error) during an `est = "lbfgsb3c"` fit no
+  longer leaves R's error handling broken.  The error passed through R's own
+  frames while it unwound, and the next R error could crash the session; it
+  is now held until those frames have returned.
 
 ### NPDE
 
@@ -5659,6 +5715,15 @@
   instead of erroring with `Index out of bounds: [index='iterPrintControl']`.
 
 ### Output, tables, and printing
+
+- `est="saem"` with an estimated covariate effect on a time-varying covariate
+  inside a mu-referenced expression (for example `expit(bvm + beta_F60*F60 +
+  eta.bv)` with `F60` changing within a subject) now names its thetas
+  correctly.  The estimates were right, but the theta table, `fixef()`,
+  `$parFixedDf` and the parameter history put the names in the wrong order,
+  so values (including `fix()`ed ones) appeared under other parameters' names
+  and anything later computed from the named values, such as
+  `setOfv(fit, "focei")`, used the wrong ones.
 
 - `vpcSimExpand()` no longer merges the entire observed dataset into the
   simulation when a requested `extra` column is missing: a dropped filter

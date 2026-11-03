@@ -62,8 +62,21 @@ test_that("the model cache digest keys covsInterpolation (linear skips the carry
   expect_identical(.mk("locf")$foceiModelDigest, .mk("locf")$foceiModelDigest)
 })
 
+test_that("the model cache digest keys the carry column count", {
+  # pairs past the loaded rxode2's columns keep the standard gradient, so an
+  # 8-column build must never be reused under a 32-column rxode2
+  local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap8)
+  .d8 <- .carryUiCov()$foceiModelDigest
+  local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap32)
+  .d32 <- .carryUiCov()$foceiModelDigest
+  expect_false(identical(.d8, .d32))
+  expect_identical(.carryUiCov()$foceiModelDigest, .d32)
+})
+
 test_that("more than four carry-eligible pairs fails loudly at model build", {
   skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # five pairs and their five trackers need 10 of an 8-column rxode2's
+  local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap8)
   five <- function() {
     ini({
       tcl <- log(2)
@@ -101,7 +114,8 @@ test_that("more than four carry-eligible pairs fails loudly at model build", {
       s,
       paste0("ETA_", seq_len(s$..maxEta), "_")
     ),
-    "carry columns"
+    "need 10 carry columns (8 available)",
+    fixed = TRUE
   )
   # (inside the HdEta build the error is re-raised by the progress abort as
   # "Aborted calculation", which escapes expect_error -- the direct call
@@ -141,4 +155,26 @@ test_that("an eta that also drives a modeled alag() is carried with a lag channe
   expect_true(any(grepl("rx__sens_rx_pred__BY_ETA_1___=rx_lcCarryS0r1_/", l1)))
   # eta.v (ETA_2_) is carried as before
   expect_true(any(grepl("rx_lcCarry", l2)))
+})
+
+# the inner model text of the covariate carry model under `interp`
+.carryInnerTxt <- function(interp) {
+  .ui <- rxode2::.copyUi(.carryUiCov())
+  .ctl <- nlmixr2est::foceiControl(rxControl = rxode2::rxControl(covsInterpolation = interp))
+  assign("control", .ctl, envir = .ui)
+  .ui$foceiEnv$..inner
+}
+
+test_that("the advance reads the interval's covariates as the loaded rxode2 solves them", {
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  # an rxode2 with interval covariates (rxode2 PR 1517) advances an interval
+  # with its own covariates; an older one with the end record's under every
+  # interpolation, which the carry then reads
+  .own <- .rxFoceiLinCmtIntervalCovs()
+  expect_identical(grepl("rx_lcCovI_wt_~rx_lcLag_wt_", .carryInnerTxt("locf"), fixed = TRUE), .own)
+  expect_identical(
+    grepl("rx_lcCovI_wt_~0.5*(rx_lcLag_wt_+rx_lcN_wt)", .carryInnerTxt("midpoint"), fixed = TRUE),
+    .own
+  )
+  expect_false(grepl("rx_lcCovI", .carryInnerTxt("nocb"), fixed = TRUE))
 })
