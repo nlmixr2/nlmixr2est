@@ -164,6 +164,11 @@
   and `"bobyqa"` do; it used to ignore the limit and run NEWUOA to
   convergence.
 
+- A mixture (`mix()`) model that declares a covariate’s interpolation,
+  such as `locf(WT)`, now fits with `focei`; it stopped with “syntax
+  errors” and “‘WT’ cannot have more than one interpolation method”,
+  since the declaration reached its EBE model twice.
+
 - `saem` now reports the non-mu-referenced thetas it actually used. With
   `nonMuTheta = "regress"` (the default) the model ran at the directly
   optimized values, but `$theta` showed the regression estimate taken
@@ -363,6 +368,23 @@
 
 #### Inter-occasion variability
 
+- The occasion of an IOV model now steps at its first record (locf)
+  under every `covsInterpolation`, as rxode2 steps the occasion
+  variables of a nested omega. The IOV rewrite read the occasion as a
+  covariate, so under `"nocb"` an occasion’s etas took effect from the
+  record before, and under `"midpoint"` or `"linear"` a fractional
+  occasion between two took neither occasion’s etas. Fits of IOV models
+  under those interpolations change: on theo_sd with an occasion change
+  at 5 h, focei’s objective at the initial estimates was 136.2144 under
+  `"nocb"` and 140.5934 under `"midpoint"`; it is now 132.0456, as under
+  `"locf"`. Individual
+  [`predict()`](https://rdrr.io/r/stats/predict.html) and
+  [`augPred()`](https://rdrr.io/pkg/nlme/man/augPred.html) step the
+  occasion etas the same way, so they equal the fit’s IPRED under every
+  interpolation. A model that declares `nocb()`, `linear()` or
+  `midpoint()` for an occasion variable stops: “occasion variable(s)
+  ‘occ’ (nocb) must use ‘locf’ interpolation”.
+
 - A fit with inter-occasion variability keeps its `omega` as the nested
   `lotri` list it is, one block per level, so `rxSolve(fit)` works; it
   stopped with “The following parameter(s) are required for solving:
@@ -373,12 +395,9 @@
 - `predict(fit, level = "individual")` now works on a fit with
   inter-occasion variability; it stopped with “attempt access index 0/0
   in VECTOR_ELT”. Each record takes its subject’s estimates, joined on
-  the subject and its occasion, so under `"locf"` or `"nocb"` covariate
-  interpolation the predictions are the fit’s IPRED, in any row order of
-  `newdata`. A subject or occasion the fit did not estimate gets etas of
-  0, with a warning. Under `"midpoint"` or `"linear"` interpolation they
-  differ from IPRED after an occasion changes
-  ([`?predict.nlmixr2FitCore`](https://nlmixr2.github.io/nlmixr2est/reference/predict.nlmixr2FitCore.md)).
+  the subject and its occasion, so the predictions are the fit’s IPRED,
+  in any row order of `newdata`. A subject or occasion the fit did not
+  estimate gets etas of 0, with a warning.
 
 - Population [`predict()`](https://rdrr.io/r/stats/predict.html) of a
   fit with inter-occasion variability now works, and gives its PRED; it
@@ -388,18 +407,20 @@
 - [`augPred()`](https://rdrr.io/pkg/nlme/man/augPred.html) now works on
   a fit with inter-occasion variability; it stopped with “The following
   parameter(s) are required for solving: iov.cl”. Its individual curve
-  takes each time’s occasion from the fit’s covariate interpolation and
-  record order, and its population curve sets every eta, of every level,
-  to zero.
+  carries each occasion from its first record (locf, in the fit’s record
+  order), and its population curve sets every eta, of every level, to
+  zero.
 
 #### Documentation
 
 - [`?augPred`](https://rdrr.io/pkg/nlme/man/augPred.html) says that its
   curves for a `linCmt()` model with time-varying covariates are
-  approximate: under the default `"locf"` interpolation, rxode2’s
-  `linCmt()` takes a covariate’s value at the end of each interval, so
-  the times [`augPred()`](https://rdrr.io/pkg/nlme/man/augPred.html)
-  adds move where a change takes effect.
+  approximate with rxode2 5.1.8 or earlier: under the default `"locf"`
+  interpolation that rxode2’s `linCmt()` took a covariate’s value at the
+  end of each interval, so the times
+  [`augPred()`](https://rdrr.io/pkg/nlme/man/augPred.html) adds moved
+  where a change takes effect. Later rxode2 versions solve such a model
+  as the equivalent ODE model does.
 
 - [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md)
   and
