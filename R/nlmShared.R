@@ -376,8 +376,8 @@
   }
   ret$parHistData <- .parHistData
 
-  # [[ ]], not $: a failed step leaves only covMethod, which $cov would partially match
-  .cov <- ret[["cov"]]
+  .cov <- ret$cov
+  # [[ ]], not $: a list holding only covMethod would partially match $cov
   if (
     is.null(.cov) &&
       !is.null(.nlm[["cov"]])

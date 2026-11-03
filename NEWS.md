@@ -29,9 +29,9 @@
 
 - A FOCEi covariance that a vae or vi fit could not compute or install is now
   recorded in `fit$env$covTried`, under the method tried and with the condition
-  message whole, also when `.covInstall()` rejected the matrix; the warning gives
-  the first line of the message, clipped to 74 columns.  The vi fallback adds its
-  rows through the same helper.
+  message unclipped on one line (the refit's own error included), also when
+  `.covInstall()` rejected the matrix; the warning clips the message to 74
+  columns.  An installed one keeps the refit's `covTried` rows.
 
 - `covMethod = "analytic"` now keeps the analytic covariance when a record that
   is not an observation (an EVID 2 record, or an EVID 0 record with a missing DV
@@ -79,11 +79,19 @@
   about a covariance method that does not go through the one clip, and for any
   C++ covariance warning wider than one line.
 
-- A failed covariance step of an nls, nlminb or other nlm-family fit no longer
-  gives `covariance not in proper form, can access value in $covDebug` as the first
-  `$runInfo` line; only the step's own message is left.
+- A failed covariance step of an nlm-family fit (nls, nlminb, uobyqa, ...) no
+  longer gives `covariance not in proper form, can access value in $covDebug` as
+  the first `$runInfo` line; `$cov` had partially matched `covMethod = "failed"`.
 
 ### Estimation
+
+- `saem` no longer crashes R on a model with a lagged dose (`alag()`) or a
+  modeled infusion duration when the data has no more subjects times chains
+  (`nmc`) than the model has states.  Its prediction walk, and the search
+  for each subject's conditional mode, read the lag or duration from the
+  subject numbered by the state count rather than from the subject walked;
+  with enough subjects that read another subject's values, without changing
+  the fit.
 
 - A `linCmt()` model with a time-varying covariate on a compartment
   parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,

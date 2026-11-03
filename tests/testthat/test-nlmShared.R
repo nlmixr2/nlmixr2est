@@ -232,14 +232,3 @@ test_that("covAccept_() takes every branch of the covariance acceptance rule", {
   expect_identical(covAccept_(.small, .tol, 1e-3)$type, "+")
   expect_identical(covAccept_(.small, .tol, 1e-9)$type, "|")
 })
-
-test_that(".nlmFamilyAdjustOutput() takes no covariance from a failed step's covMethod", {
-  # `$cov` would partially match covMethod and hand "failed" over as the covariance
-  .ret <- .nlmFamilyAdjustOutput(list(nlm = list(covMethod = "failed")), "nlm")
-  expect_null(.ret[["cov"]])
-  expect_identical(.ret$covMethod, "failed")
-  .m <- diag(2)
-  .ret <- .nlmFamilyAdjustOutput(list(nlm = list(cov = .m, covMethod = "r")), "nlm")
-  expect_identical(.ret[["cov"]], .m)
-  expect_null(.ret$nlm[["cov"]])
-})

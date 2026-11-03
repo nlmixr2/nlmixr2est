@@ -698,7 +698,7 @@ test_that("a FOCEi covariance that .covInstall() rejects is in covTried too", {
   )
 })
 
-test_that("a long or multi-line FOCEi covariance failure is clipped in the warning, whole in covTried", {
+test_that("a long or multi-line FOCEi covariance failure is clipped in the warning, unclipped in covTried", {
   .e <- new.env(parent = emptyenv())
   .msg <- paste0("first line\n  ", strrep("m", 80))
   .one <- paste0("first line ", strrep("m", 80))
@@ -720,4 +720,37 @@ test_that("a long or multi-line FOCEi covariance failure is clipped in the warni
   expect_identical(.w, paste0("FOCEi covariance not installed (first line ", strrep("m", 28), "..."))
   expect_identical(cli::ansi_nchar(.w, type = "width"), .covWarnWidth)
   expect_identical(.e$covTried$outcome[2L], paste0("not installed (", .one, ")"))
+})
+
+test_that("a FOCEi covariance refit that stopped keeps its message in covTried", {
+  .e <- new.env(parent = emptyenv())
+  local_mocked_bindings(
+    .setCovEnv = function(fit) .e,
+    .foceiRecomputeCov = function(...) list(what = "r,s", error = "solve\n  failed"),
+    .package = "nlmixr2est"
+  )
+  expect_identical(
+    capture_warnings(.r <- .foceiInstallOwnEtaCov(.e, foceiControl())),
+    "FOCEi covariance not computed (solve failed)"
+  )
+  expect_false(.r)
+  expect_identical(.e$covTried, data.frame(method = "r,s", outcome = "not computed (solve failed)"))
+})
+
+test_that("an installed FOCEi covariance keeps the refit's covTried rows", {
+  .e <- new.env(parent = emptyenv())
+  .refit <- data.frame(method = c("r,s", "r"), outcome = c("R not positive definite", "used"))
+  local_mocked_bindings(
+    .setCovEnv = function(fit) .e,
+    .foceiRecomputeCov = function(...) {
+      list(cov = diag(2), covMethod = "r", what = "r,s", extras = list(), covTried = .refit)
+    },
+    .covInstall = function(...) invisible(TRUE),
+    .package = "nlmixr2est"
+  )
+  expect_true(.foceiInstallOwnEtaCov(.e, foceiControl()))
+  expect_identical(.e$covTried, .refit)
+  .e$covTried <- data.frame(method = "analytic", outcome = "not usable")
+  .foceiInstallOwnEtaCov(.e, foceiControl())
+  expect_identical(.e$covTried, rbind(data.frame(method = "analytic", outcome = "not usable"), .refit))
 })
