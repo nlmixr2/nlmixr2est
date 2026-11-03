@@ -28,6 +28,17 @@
   and `newuoaPolish` add the opt-in Newton polish that `trustPolish`
   gives trust.
 
+- `$parFixed` and `$parFixedDf` now end with one row per estimated
+  between-subject covariance, named `bsvcorr(A,B)`, holding the
+  correlation in the BSV column. `A` and `B` are the thetas the etas are
+  mu-referenced to, or the eta names when a theta is mu-referenced by
+  more than one eta. In a model with labels the `Parameter` column
+  describes the row (“BSV correlation between A and B”). `fix(...)`
+  marks a fixed covariance; its correlation still moves with estimated
+  variances. Occasion-level correlations are not listed, and
+  `tidy()`/[`confint()`](https://rdrr.io/r/stats/confint.html) leave the
+  rows out.
+
 ### Bug fixes
 
 #### Covariance
@@ -100,6 +111,38 @@
   `covMethod = "failed"`.
 
 #### Estimation
+
+- `foceiControl(fast = TRUE)` now falls back to `fast = FALSE` for an
+  [`ar()`](https://rdrr.io/r/stats/ar.html) residual whose correlation
+  is fixed (`ar1.cor <- fix(0.9)`) or modeled (`ar(corv)`), as it
+  already did for an estimated one. Such a fit stopped with “The
+  following parameter(s) are required for solving: rx_arNf_cp,
+  rx_arEp_cp, rx_arT_cp”: the check for an
+  [`ar()`](https://rdrr.io/r/stats/ar.html) residual looked only at the
+  estimated correlations, so the analytic gradient was built without the
+  AR(1) lines. For the same reason `covMethod = "analytic"` now declines
+  such a fit up front with the [`ar()`](https://rdrr.io/r/stats/ar.html)
+  reason (“an ar() residual is out of analytic-covariance scope”) and
+  uses the finite-difference covariance; for a modeled correlation it
+  used to try the analytic one and fall back only when its information
+  matrix would not invert.
+
+- `saem` now keeps each iteration’s `phiM` draws in memory instead of a
+  temp file. A temp-space cleaner (common on HPC clusters) could delete
+  that file during a long fit, which then failed after its last
+  iteration with “cannot open the connection”
+  ([\#1276](https://github.com/nlmixr2/nlmixr2est/issues/1276)). The
+  objective also no longer uses the 4-digit text copy of the draws, so
+  it can differ slightly from earlier versions.
+
+- `foceiControl(mceta = n)` with `n >= 1` again optimizes only the best
+  starting point (eta=0 or an Omega draw), as before 7.1.0; it no longer
+  also solves from eta=0 when a draw wins. The new `mcetaOpt = TRUE`
+  instead optimizes from every draw and from eta=0 and keeps the lowest
+  converged optimum, which can find an optimum the starting objective
+  misses (and never ends above `mceta = 0`) at the cost of one inner
+  optimization per start
+  ([\#1242](https://github.com/nlmixr2/nlmixr2est/issues/1242)).
 
 - A model that reads `newind` is now estimated as rxode2 solves it: 1 at
   a subject’s first record and 2 after. The estimators’ own walks over a
@@ -193,6 +236,10 @@
   [`dnorm()`](https://rdrr.io/r/stats/Normal.html),
   [`t()`](https://rdrr.io/r/base/t.html) and `cauchy()` endpoints; it
   scored a censored observation by its density at the limit.
+
+- Building the `saem` model from a compressed ui (as
+  `rxUiGet.saemModel()` receives outside a fit) no longer stops with
+  “invalid ‘envir’ argument”.
 
 - M2 censoring (`CENS = 0` with a finite `LIMIT`) now conditions on the
   side of the limit the observation is on, not the prediction. Before,

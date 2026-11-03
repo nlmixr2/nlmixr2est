@@ -348,7 +348,7 @@ magqControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5606fb7e3798>
+#> <bytecode: 0x5642e2f9cdd0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1125,6 +1125,9 @@ magqControl()
 #> 
 #> $mceta
 #> [1] -2
+#> 
+#> $mcetaOpt
+#> [1] FALSE
 #> 
 #> $warm
 #> [1] 1

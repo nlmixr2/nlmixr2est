@@ -574,6 +574,11 @@ estimation routines, the outputs currently have a unified structure.</p>
 <li><p>The Untransformed parameter takes log-space parameters and back-transforms them to normal parameters.  Not the CIs
        are listed on the back-transformed parameter space.</p></li>
 <li><p>Proportional Errors are converted to <!-- %CV on the untransformed space --></p></li>
+<li><p>Each estimated between-subject covariance adds a final row,
+       <code>bsvcorr(A,B)</code>, with the correlation in the BSV column (described as
+       <code>BSV correlation between A and B</code> in the label column of a model with labels);
+       <code><a href="https://rdrr.io/r/utils/fix.html" class="external-link">fix()</a></code> there marks a fixed covariance, whose correlation still moves with
+       estimated variances</p></li>
 </ul></li>
 <li><p>Omega block (accessed by <code>fit.s$omega</code>)</p></li>
 <li><p>The table of fit data. Please note:</p><ul><li><p>A nlmixr fit object is actually a data frame.  Saving it as a Rdata object and then loading it
@@ -671,7 +676,7 @@ few additional that may be helpful for the modeler:</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 6584</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 9944</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress phiM in nlmixr2 object, save 443152</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress phiM in nlmixr2 object, save 71976</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 <span class="r-in"><span></span></span>

@@ -660,6 +660,13 @@ elements of the fit are:
 
   - Proportional Errors are converted to
 
+  - Each estimated between-subject covariance adds a final row,
+    `bsvcorr(A,B)`, with the correlation in the BSV column (described as
+    `BSV correlation between A and B` in the label column of a model
+    with labels); [`fix()`](https://rdrr.io/r/utils/fix.html) there
+    marks a fixed covariance, whose correlation still moves with
+    estimated variances
+
 - Omega block (accessed by `fit.s$omega`)
 
 - The table of fit data. Please note:
@@ -783,7 +790,7 @@ fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 9944
-#> → compress phiM in nlmixr2 object, save 443152
+#> → compress phiM in nlmixr2 object, save 71976
 
 # }
 ```
