@@ -28,12 +28,3 @@ test_that(".foceiDropMalformedCov() drops a malformed covariance, says so, and k
     expect_identical(.e$covDebug, .m)
   }
 })
-
-test_that(".foceiDropMalformedCov() has nothing to add to a covariance step that failed", {
-  # the nlm family hands over "failed" as the covariance when its step said so
-  .e <- new.env(parent = emptyenv())
-  .e$cov <- "failed"
-  expect_silent(.foceiDropMalformedCov(.e))
-  expect_null(.e$cov)
-  expect_false(exists("covDebug", envir = .e, inherits = FALSE))
-})

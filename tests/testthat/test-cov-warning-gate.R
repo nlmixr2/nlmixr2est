@@ -4,17 +4,17 @@
 # here.
 
 # A warning whose text is about a covariance method has one of these in it, in any
-# case.  The words of the label-only style (a quoted method name, "kept",
+# case except the acronyms and matrix names, which must match their case.  The words of the label-only style (a quoted method name, "kept",
 # "installed", "not usable") are here because the covariance warnings no longer
 # name a covariance.
 .covGatePattern <- paste(
   "covariance",
-  "\\bFIM\\b",
+  "(?-i:\\bFIM\\b)",
   "sandwich",
-  "\\b[RS] matrix",
+  "(?-i:\\b[RS] matrix)",
   "\\$cov[A-Z]",
   "\\bcov(Full|Method)\\b",
-  "\\bSE\\b",
+  "(?-i:\\bSE\\b)",
   "\\banalytic err[0-9]",
   "standard error",
   "information matrix",
@@ -23,7 +23,7 @@
   "\\binstalled\\b",
   "not usable",
   "linFim",
-  "\\bHa\\b",
+  "(?-i:\\bHa\\b)",
   "^\"",
   sep = "|"
 )
@@ -49,7 +49,7 @@
     for (.call in .calls) {
       .own <- .covGateStrings(.call)
       .txt <- if (length(.own) > 0L) .own else .covGateFnStrings(fns[[.n]])
-      if (any(grepl(pattern, .txt, ignore.case = TRUE))) {
+      if (any(grepl(pattern, .txt, ignore.case = TRUE, perl = TRUE))) {
         .hit <- c(.hit, .n)
       }
     }
@@ -274,6 +274,8 @@ test_that("the gate lets a covariance warning through .covWarn() and other warni
     covariate = function() warning("covariate selection pinned to model-specified covariates"),
     covariates = function() warning("time-varying covariate(s) were excluded"),
     other = function() warning("outer bobyqa search stalled"),
+    # the acronyms match only in their own case
+    lowerCase = function() warning("ha, the se column of a fim or s matrix"),
     hessian = function() warning("Outer Hessian unavailable; restarting gradient-only nlminb"),
     passOn = function(w) {
       .why <- "omega block zero"

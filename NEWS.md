@@ -75,9 +75,9 @@
   (one line naming them, where it was three lines and the whole list; `$covMethod`
   still lists them all), and `nlminbControl()`'s switch to `covMethod = "r"`.  The
   thetas that have no standard error are listed up to the line, then `+k more`,
-  and are the `NA` rows of the parameter table.  A test fails for any warning
-  about a covariance method, in the R code or in the C++ sources, that does not
-  go through the one clip.
+  and are the `NA` rows of the parameter table.  A test fails for any R warning
+  about a covariance method that does not go through the one clip, and for any
+  C++ covariance warning wider than one line.
 
 - A failed covariance step of an nls, nlminb or other nlm-family fit no longer
   gives `covariance not in proper form, can access value in $covDebug` as the first

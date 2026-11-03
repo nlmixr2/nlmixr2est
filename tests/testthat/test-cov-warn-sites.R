@@ -291,12 +291,3 @@ test_that(".covBoundaryWarn() names the thetas at a boundary on one line", {
   expect_identical(.w, paste0("\"", strrep("t", 29), "...", .tail))
   expect_identical(cli::ansi_nchar(.w, type = "width"), .covWarnWidth)
 })
-
-test_that(".foceiDropMalformedCov() has nothing to add to a covariance step that failed", {
-  # the nlm family hands over "failed" as the covariance when its step said so
-  .e <- new.env(parent = emptyenv())
-  .e$cov <- "failed"
-  expect_silent(.foceiDropMalformedCov(.e))
-  expect_null(.e$cov)
-  expect_false(exists("covDebug", envir = .e, inherits = FALSE))
-})

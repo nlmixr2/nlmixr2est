@@ -376,12 +376,13 @@
   }
   ret$parHistData <- .parHistData
 
-  .cov <- ret$cov
+  # [[ ]], not $: a failed step leaves only covMethod, which $cov would partially match
+  .cov <- ret[["cov"]]
   if (
     is.null(.cov) &&
-      !is.null(.nlm$cov)
+      !is.null(.nlm[["cov"]])
   ) {
-    .cov <- .nlm$cov
+    .cov <- .nlm[["cov"]]
     ret[[str]][["cov"]] <- NULL
   }
   ret$cov <- .cov
