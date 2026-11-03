@@ -581,7 +581,7 @@ nmTest({
   test_that("mceta's mixed candidate set drops the failed attempts (#1044)", {
     skip_on_cran()
     # The re-rank only has something to choose between when the restarts
-    # produce several candidates, and mceta >= 1 is what makes that ordinary.
+    # produce several candidates, and mcetaOpt is what makes that ordinary.
     # maxInnerIterations=2 makes some of those attempts genuinely fail, so the
     # candidate set is mixed -- which is the case the rule exists for.
     .mc <- suppressWarnings(suppressMessages(
@@ -594,6 +594,7 @@ nmTest({
           maxOuterIterations = 5,
           maxInnerIterations = 2,
           mceta = 5L,
+          mcetaOpt = TRUE,
           covMethod = "",
           calcTables = FALSE,
           print = 0
@@ -616,6 +617,7 @@ nmTest({
           innerOpt = "trust",
           maxOuterIterations = 5,
           mceta = 5L,
+          mcetaOpt = TRUE,
           covMethod = "",
           calcTables = FALSE,
           print = 0
