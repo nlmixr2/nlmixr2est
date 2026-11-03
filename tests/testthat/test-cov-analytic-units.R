@@ -73,7 +73,7 @@ nmTest({
     # unreachable while every decline records a reason; mocked to pin the wording
     local_mocked_bindings(.foceiCalcRanalyticAssemble = function(e) NULL)
     .e <- new.env(parent = emptyenv())
-    expect_null(.foceiCalcRanalytic(.e))
+    expect_null(.covSite(".foceiCalcRanalytic", .foceiCalcRanalytic(.e)))
     expect_identical(.e$.analyticReason, .foceiAnalyticNoReason)
     expect_identical(.e$.analyticReason, "an internal error (please report it)")
     expect_identical(.e$.analyticReasonShort, "an internal error (please report it)")
