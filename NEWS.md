@@ -27,6 +27,12 @@
 
 ### Covariance
 
+- A FOCEi covariance that a vae or vi fit could not compute or install is now
+  recorded in `fit$env$covTried`, under the method tried and with the condition
+  message unclipped on one line (the refit's own error included), also when
+  `.covInstall()` rejected the matrix; the warning clips the message to 74
+  columns.  An installed one keeps the refit's `covTried` rows.
+
 - `covMethod = "analytic"` now keeps the analytic covariance when a record that
   is not an observation (an EVID 2 record, or an EVID 0 record with a missing DV
   or `MDV = 1`) shares the time of one of a subject's observations; it used to
@@ -62,6 +68,10 @@
   `boxCox()` with its additive sigma fixed) now gets the analytic covariance
   too; `setCov(fit, "analytic")` used to stop on it.
 
+- A failed covariance step of an nlm-family fit (nls, nlminb, uobyqa, ...) no
+  longer gives `covariance not in proper form, can access value in $covDebug` as
+  the first `$runInfo` line; `$cov` had partially matched `covMethod = "failed"`.
+
 ### Estimation
 
 - `foceiControl(mceta = n)` with `n >= 1` again optimizes only the best
@@ -71,6 +81,15 @@
   optimum, which can find an optimum the starting objective misses (and never
   ends above `mceta = 0`) at the cost of one inner optimization per start
   (#1242).
+
+- A model that reads `newind` is now estimated as rxode2 solves it: 1 at a
+  subject's first record and 2 after.  The estimators' own walks over a
+  subject's records (the FOCEi family, `saem`, `nlm`) never advanced it, so
+  the model read 1 at every record while the fit's table, from rxode2, read
+  2, and the fit differed from the same model reading a first-record column
+  of the data.  This takes effect with an rxode2 that has `setIndNewind()`
+  in its C pointer table; with an older rxode2 the estimators read
+  `newind` as before.
 
 - `saem` no longer crashes R on a model with a lagged dose (`alag()`) or a
   modeled infusion duration when the data has no more subjects times chains
