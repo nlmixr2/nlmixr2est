@@ -127,6 +127,22 @@ nlmixr2iovVarSd <- function(val) {
 # in nlmixr2 fits
 .uiIovEnv <- new.env(parent = emptyenv())
 .uiIovEnv$iovVars <- NULL
+
+#' Put .uiIovEnv back as a snapshot had it
+#'
+#' A simulation's pre-process hooks clear the rewrite's state;
+#' `.preProcessHookStateRestore()` puts it back after one run inside a fit,
+#' so the fit's `.uiFinalizeIov()` still sees its own rewrite.
+#'
+#' @param state `as.list(.uiIovEnv, all.names = TRUE)`, taken before
+#' @return nothing
+#' @noRd
+#' @author Matthew L. Fidler
+.uiIovEnvRestore <- function(state) {
+  rm(list = ls(.uiIovEnv, all.names = TRUE), envir = .uiIovEnv)
+  list2env(state, envir = .uiIovEnv)
+  invisible()
+}
 #' Estimation methods that honour a repeated (`same()`) omega block
 #'
 #' `iovMethod="omega"` only means anything for a method that actually

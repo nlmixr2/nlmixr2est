@@ -15,7 +15,9 @@ BEGIN_RCPP
   arma::vec ipredt(REAL(ipredL[npred]), ncalc, false, true);
   arma::vec ipred(ipredt.size());
 
-  arma::vec dv(REAL(dvIn), ncalc, false, true);
+  // a copy: the rows below write NA and imputed values into it, and the
+  // caller's DV is shared (.calcTables() hands the same predictions to NPDE)
+  arma::vec dv(REAL(dvIn), ncalc);
   arma::vec dvt(ncalc);
 
   arma::vec riv(REAL(ipredL[getDfColIndex(ipredL, "rx_r_")]), ncalc, false, true);

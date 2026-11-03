@@ -163,6 +163,23 @@ test_that("popResFinal keeps every column when a GC runs at every allocation", {
   )
 })
 
+nmTest({
+  test_that("addTable() takes the table's keep and drop as its arguments", {
+    # as a fit's own table step does.  It solves the fit's processed data
+    # (`dataSav`), which has only the model's columns, so rxode2 warns that a
+    # data column can't be kept; the IOV route refits from the data, so it can
+    .fit <- one.compartment.fit.focei
+    expect_true("IWRES" %in% names(.fit))
+    .tab <- tableControl(keep = "WT", drop = "IWRES")
+    .w <- capture_warnings(.t <- suppressMessages(addTable(.fit, updateObject = FALSE, table = .tab)))
+    expect_identical(unique(.w), "Cannot keep missing columns: WT")
+    expect_false("IWRES" %in% names(.t))
+    .w <- capture_warnings(.t <- suppressMessages(addTable(.fit, updateObject = FALSE, keep = "WT", drop = "IWRES")))
+    expect_identical(unique(.w), "Cannot keep missing columns: WT")
+    expect_false("IWRES" %in% names(.t))
+  })
+})
+
 # The arguments .calcCwres0() hands resCalc() (cwres = FALSE) or cwresCalc()
 # (cwres = TRUE), with `eta` as the eta table
 .residCall <- function(fit, eta, cwres) {
