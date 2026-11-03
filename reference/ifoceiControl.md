@@ -337,7 +337,7 @@ ifoceiControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x559a986d41c0>
+#> <bytecode: 0x563cec82f170>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
