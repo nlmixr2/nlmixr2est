@@ -85,6 +85,14 @@
 
 ### Estimation
 
+- `foceiControl(mceta = n)` with `n >= 1` again optimizes only the best
+  starting point (eta=0 or an Omega draw), as before 7.1.0; it no longer also
+  solves from eta=0 when a draw wins.  The new `mcetaOpt = TRUE` instead
+  optimizes from every draw and from eta=0 and keeps the lowest converged
+  optimum, which can find an optimum the starting objective misses (and never
+  ends above `mceta = 0`) at the cost of one inner optimization per start
+  (#1242).
+
 - A model that reads `newind` is now estimated as rxode2 solves it: 1 at a
   subject's first record and 2 after.  The estimators' own walks over a
   subject's records (the FOCEi family, `saem`, `nlm`) never advanced it, so
