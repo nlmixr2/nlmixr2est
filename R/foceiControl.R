@@ -1159,18 +1159,27 @@
 #'   out of bound); `-1` jumps between the extrapolated eta and eta=0, keeping
 #'   the better; both `-2` and `-1` fall back to keeping the last eta when no
 #'   analytic `d eta*/d theta` is available (`fast = FALSE`).  `0` uses eta=0
-#'   for each inner optimization; for `n>0`, eta=0 and n-1 etas sampled from
-#'   omega are each evaluated and the best (by inner objective) starts the
-#'   inner optimization.  The carried last eta is deliberately not one of the
-#'   `n>0` candidates -- it is the previous iteration's converged conditional
-#'   mode, so it would win for every subject and `n>0` would reduce to the
-#'   keep-last behavior of `-1`/`-2`.  When a sampled eta wins, the inner
-#'   problem is also solved from eta=0 and the better converged result kept --
-#'   compared on the marginal objective the fit reports, which carries the
-#'   Laplace `log|H|` term, not on the inner objective the optimizer minimizes --
-#'   so no inner solve ends above the one `0` would have reached.  The search is
-#'   skipped while the outer gradient is being differenced, where the eta is
-#'   pinned to the central evaluation's mode.
+#'   for each inner optimization, as NONMEM does; the default `-2` differs from
+#'   NONMEM here, since it starts from the last (or extrapolated) eta rather
+#'   than eta=0.  For `n>0`, eta=0 and n-1 etas sampled from omega are each
+#'   evaluated and the best (by inner objective) starts the inner
+#'   optimization.  A start that is lowest before optimization need not
+#'   reach the lowest optimum, so a subject can converge to a worse local
+#'   optimum than eta=0 would have reached and the objective can end above that
+#'   of `mceta = 0`; `mcetaOpt = TRUE` avoids this.  The carried last eta is
+#'   deliberately not one of the `n>0` candidates -- it is the previous
+#'   iteration's converged conditional mode, so it would win for every subject
+#'   and `n>0` would reduce to the keep-last behavior of `-1`/`-2`.  The search
+#'   is skipped while the outer
+#'   gradient is being differenced, where the eta is pinned to the central
+#'   evaluation's mode.
+#'
+#' @param mcetaOpt When `TRUE` and `mceta >= 1`, the inner problem is solved
+#'   from every sampled eta and then from eta=0, and the lowest converged
+#'   optimum is kept (compared on the marginal objective the fit reports), so
+#'   the objective never ends above that of `mceta = 0`.  It costs one inner
+#'   optimization per start instead of one per subject, so it is off by
+#'   default; `FALSE` optimizes only the best starting point.
 #'
 #' @param seed Integer seed (default `42`) used to make a FOCEi fit
 #'   reproducible and self-contained.  The fit (including the `mceta`
@@ -1484,6 +1493,7 @@ foceiControl <- function(
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
   mceta = -2L,
+  mcetaOpt = FALSE,
   warm = c("calc", "save", "none"),
   nAGQ = 0,
   agqLow = -Inf,
@@ -2136,6 +2146,7 @@ foceiControl <- function(
     stop("'shi21hMax' must be greater than 'shi21hMin'", call. = FALSE)
   }
   checkmate::assertIntegerish(mceta, lower = -2, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(mcetaOpt, len = 1, any.missing = FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing = FALSE, lower = 0, upper = 1, len = 1)
   checkmate::assertIntegerish(nAGQ, lower = 0, len = 1, any.missing = FALSE)
@@ -2334,6 +2345,7 @@ foceiControl <- function(
     zeroGradRunReset = zeroGradRunReset,
     zeroGradBobyqa = zeroGradBobyqa,
     mceta = as.integer(mceta),
+    mcetaOpt = mcetaOpt,
     warm = warm,
     nAGQ = as.integer(nAGQ),
     agqHi = as.double(agqHi),
