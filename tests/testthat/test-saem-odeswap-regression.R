@@ -30,7 +30,7 @@ nmTest({
     f <- suppressWarnings(suppressMessages(
       .nlmixr(mod, nlmixr2data::theo_sd, est = "saem", control = .ctl)
     ))
-    expect_equal(f$objf, 115.036204209671894, tolerance = 1e-8)
+    expect_equal(f$objf, 115.035381307278, tolerance = 1e-8)
     .fx <- unname(fixef(f))
     expect_equal(.fx, c(0.454331063367426, 1.011629400082714, 3.456416552020142, 0.702842211703013), tolerance = 1e-8)
   })

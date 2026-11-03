@@ -94,6 +94,11 @@
 
 ### Estimation
 
+- `saem` now keeps each iteration's `phiM` draws in memory instead of a temp
+  file.  A temp-space cleaner (common on HPC clusters) could delete that file
+  during a long fit, which then failed after its last iteration with "cannot
+  open the connection" (#1276).  The objective also no longer uses the 4-digit
+  text copy of the draws, so it can differ slightly from earlier versions.
 - `foceiControl(mceta = n)` with `n >= 1` again optimizes only the best
   starting point (eta=0 or an Omega draw), as before 7.1.0; it no longer also
   solves from eta=0 when a draw wins.  The new `mcetaOpt = TRUE` instead
