@@ -173,7 +173,7 @@
 #' @return invisibly `acc`
 #' @noRd
 .covTriedAdd <- function(acc, method, outcome) {
-  acc$tried[[length(acc$tried) + 1L]] <- data.frame(method = method, outcome = outcome)
+  acc$tried[[length(acc$tried) + 1L]] <- .covTriedRow(method, outcome)
   invisible(acc)
 }
 

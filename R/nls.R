@@ -820,8 +820,8 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~ nlmixr2est::.nlmixrNlsFunValGrad(
       paste0(" with ", crayon::bold$yellow(.control$algorithm), " algorithm")
     },
     postSetup = function(.ret, .ui, .fit) {
-      if (!is.null(.ret$nls$cov)) {
-        .ret$cov <- .ret$nls$cov
+      if (!is.null(.ret$nls[["cov"]])) {
+        .ret$cov <- .ret$nls[["cov"]]
       }
       .ret$covMethod <- .ret$nls$covMethod
       if (inherits(.ret$nls, "nls.lm")) {
