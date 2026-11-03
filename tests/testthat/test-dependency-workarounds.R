@@ -197,6 +197,44 @@ test_that("the carry-cap probe gives 8 when rxode2's count fails or is no count"
   expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 32L)
 })
 
+.depSlot104Remove <- paste(
+  "rxode2's setIndNewind() (slot 104): remove nmSetIndNewind from src/rxode2Optional.h",
+  "and its row of rxode2OptionalSlots in src/inner.cpp, the NULL check in lhsWalkNewind()",
+  "(src/inner.h, which then calls setIndNewind()), the skip in test-lhs-walk-newind.R,",
+  "and this block; if no entry is left, also the rest of the rxode2Optional machinery:",
+  "src/rxode2Optional.h (and its entry in src/Makevars.in HEADERS), iniRxode2Optional() and rxode2Optional() in src/inner.cpp,",
+  "their registration in src/init.c, .rxode2Optional() in R/zzz.R and its tests in",
+  "test-lhs-walk-newind.R"
+)
+
+# The slot-104 block's warning for the installed rxode2
+.depSlot104Warning <- function(present = .rxode2Optional()[["setIndNewind"]]) {
+  .depWorkaroundWarning(.rxode2Version(), "5.1.8.9000", .depSlot104Remove, present = present)
+}
+
+.depBlocks$slot104 <- list(
+  remove = .depSlot104Remove,
+  anchor = "zzz.R",
+  symbols = c("nmSetIndNewind", "rxode2Optional")
+)
+
+test_that("slot-104 work-around: warns only for a release with setIndNewind()", {
+  local_mocked_bindings(.rxode2Version = .depVersion519)
+  expect_null(.depSlot104Warning(present = FALSE))
+  expect_match(.depSlot104Warning(present = TRUE), "rxode2 5.1.9 is a release after 5.1.8.9000", fixed = TRUE)
+  local_mocked_bindings(.rxode2Version = .depVersionDev)
+  expect_null(.depSlot104Warning(present = TRUE))
+})
+
+test_that("slot-104 work-around: rxode2's setIndNewind()", {
+  skip_on_cran()
+  .w <- .depSlot104Warning()
+  if (!is.null(.w)) {
+    warning(.w, call. = FALSE)
+  }
+  succeed()
+})
+
 # after every block has added its row
 test_that("each work-around names every file that uses its probe, skips and fallbacks", {
   # an installed package (R CMD check, covr) has an R/ of .rdb files, not the
