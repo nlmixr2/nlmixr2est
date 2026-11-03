@@ -73,6 +73,14 @@
   in its C pointer table; with an older rxode2 the estimators read
   `newind` as before.
 
+- `saem` no longer crashes R on a model with a lagged dose (`alag()`) or a
+  modeled infusion duration when the data has no more subjects times chains
+  (`nmc`) than the model has states.  Its prediction walk, and the search
+  for each subject's conditional mode, read the lag or duration from the
+  subject numbered by the state count rather than from the subject walked;
+  with enough subjects that read another subject's values, without changing
+  the fit.
+
 - A `linCmt()` model with a time-varying covariate on a compartment
   parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,
   under `"locf"`, `"midpoint"` and `"nocb"` and a covariate's own declaration
