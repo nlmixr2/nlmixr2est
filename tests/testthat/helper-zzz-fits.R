@@ -53,6 +53,14 @@ if (!dir.exists(.fitCacheDir)) {
   dir.create(.fitCacheDir, recursive = TRUE)
 }
 
+# Drop temp files a killed worker left mid-write; the age gate spares a live
+# worker's file that is still being written
+local({
+  .stale <- list.files(.fitCacheDir, pattern = "^fit-.*[.]tmp$", full.names = TRUE)
+  .age <- difftime(Sys.time(), file.mtime(.stale), units = "hours")
+  unlink(.stale[!is.na(.age) & .age > 6])
+})
+
 # On CRAN every consumer of these fixtures skips (they are all wrapped in
 # nmTest(), i.e. nlmixr2Validate, which returns early unless NOT_CRAN=="true"),
 # AND the shipped .rds cache never matches on CRAN anyway: the cache key hashes
@@ -104,15 +112,21 @@ if (!dir.exists(.fitCacheDir)) {
   fit <- fitFn()
   AIC(fit) # Force evaluation of AIC
 
-  # Save to cache
+  # Save to cache: write beside the target and move it into place, so a parallel
+  # worker or a second run never reads a partly written file
+  .tmp <- tempfile("fit-", tmpdir = .fitCacheDir, fileext = ".tmp")
   tryCatch(
     {
-      saveRDS(list(version = .fitCacheVersion, fit = fit), cachePath)
+      saveRDS(list(version = .fitCacheVersion, fit = fit), .tmp)
+      if (!file.rename(.tmp, cachePath)) {
+        stop("could not move the cache file into place", call. = FALSE)
+      }
       message(sprintf("[ok] Cached fit saved: %s", name))
     },
     error = function(e) {
       warning(sprintf("Failed to save cache for %s: %s", name, e$message))
-    }
+    },
+    finally = unlink(.tmp)
   )
 
   fit
