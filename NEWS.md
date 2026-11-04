@@ -94,6 +94,8 @@
 
 ### Estimation
 
+- Importance-sampling fits install the matching event callbacks for inner and
+  theta-sensitivity solves, preventing heap corruption with separate models.
 - Per-subject FD gradient fallbacks temporarily tighten inner and ODE
   tolerances to improve derivative accuracy.
 - Analytical FOCEi gradients include the remaining inner score when finite
