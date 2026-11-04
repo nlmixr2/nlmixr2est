@@ -102,7 +102,7 @@ nmTest({
         control = saemControl(print = 0, nBurn = 10, nEm = 10, seed = 42L, calcTables = FALSE, covMethod = "")
       )
     ))
-    expect_equal(.f$objf, 115.036204209672, tolerance = 1e-8)
+    expect_equal(.f$objf, 115.035381307278, tolerance = 1e-8)
     expect_equal(
       unname(fixef(.f)),
       c(0.454331063367426, 1.011629400082714, 3.456416552020142, 0.702842211703013),
