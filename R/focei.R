@@ -409,9 +409,9 @@ is.latex <- function() {
 #' `trust_solve_c()` calls the objective at every TRIAL point, accepted or not,
 #' so the secant pair is consecutive CALLS -- the same convention
 #' `nlmTrustObjfun()` uses for the analogous outer problem (`src/nlm.cpp`).
-#' Lazy curvature narrows the calls that ask for curvature to the trials that
-#' improve on the incumbent, so in that mode the pair is consecutive improving
-#' points.  The update is `trustHessianUpdate()`'s (`src/trustHessianUpdate.h`).
+#' Lazy curvature asks for curvature only on improving trials and proposed
+#' bound holds, so the pair is consecutive calls that supply curvature.
+#' The update is `trustHessianUpdate()`'s (`src/trustHessianUpdate.h`).
 #' @param state environment holding the estimate `b` and the previous call's
 #'   `xPrev` and `gPrev`, which this updates
 #' @param x,g the point and its gradient
