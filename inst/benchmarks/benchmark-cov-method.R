@@ -4,14 +4,15 @@
 # fitted with maxOuterIterations = 0, so both methods run at the same point and
 # only the covariance step differs.
 #
-#   OMP_NUM_THREADS=1 taskset -c 2 Rscript inst/benchmarks/benchmark-cov-method.R [out.csv] [grid]
+#   OMP_NUM_THREADS=1 taskset -c 2 Rscript inst/benchmarks/benchmark-cov-method.R [out.csv] [grid] [arms]
 #
 # `grid` is "axes" (one axis at a time from a base, the default), "large", "ode"
 # (transit chains with combined error), "cross" (long chains with few parameters, where
 # the analytic step is closest to losing), "grad" (r,s with R from differences of the
 # analytic gradient, fast = TRUE, against both) or "all".  `cpu` is the fit's process CPU
 # time, compiler children included, so it holds up on a loaded machine; the
-# covariance cost is its difference from the covMethod = "" fit.
+# covariance cost is its difference from the covMethod = "" fit.  `arms`, separated by
+# ";" (e.g. "fast;fast;r,s grad"), runs only those.
 # library(nlmixr2est) loads the INSTALLED package: install the tree first.
 suppressPackageStartupMessages({
   library(nlmixr2est)
@@ -22,6 +23,7 @@ setRxThreads(1L)
 .args <- commandArgs(trailingOnly = TRUE)
 .out <- if (length(.args) >= 1L) .args[1] else "cov-method-benchmark.csv"
 .grid <- if (length(.args) >= 2L) .args[2] else "axes"
+.arms <- if (length(.args) >= 3L) strsplit(.args[3], ";", fixed = TRUE)[[1]] else NULL
 
 # A depot -> nTransit transit states -> central (+ nPeriph peripherals) linear model, or
 # Michaelis-Menten elimination (mm).  Structural parameters in order: ka, cl, v, ktr,
@@ -277,6 +279,7 @@ for (.c in .covBenchCases(.grid)) {
     grad = c("", "r,s", "analytic", "fast", "fast", "r,s grad"),
     c("", "r,s", "analytic", "analytic")
   )
+  if (!is.null(.arms)) .ms <- .arms
   for (.i in seq_along(.ms)) {
     .m <- .ms[.i]
     .r <- .covBenchOne(.case, .mod, .dat, .m)
