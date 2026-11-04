@@ -3,7 +3,7 @@
 # ratio of the analytic to the "r,s" covariance-step cost is
 # .covAutoCoef[1] + .covAutoCoef[2] * log(ODE states) + .covAutoCoef[3] * log(etas) +
 # .covAutoCoef[4] * log(estimated thetas, sigmas included).
-.covAutoCoef <- c(0, 0, 0, 0)
+.covAutoCoef <- c(0.248, 0.115, -0.418, -0.389)
 
 #' Predicted analytic / "r,s" covariance-step cost of a model
 #' @param nState ODE states
