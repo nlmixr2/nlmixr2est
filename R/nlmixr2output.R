@@ -345,7 +345,9 @@
     }
     .eta <- .muRefDataFrame$eta[.w]
     assign(".muRefVars", c(.env$.muRefVars, .eta), envir = .env)
-    if (.eta %in% names(.omegaFix) && isTRUE(.omegaFix[[.eta]])) {
+    # an eta the fit's omega leaves out (a variance fixed at zero is dropped
+    # before estimation) has an empty cell, not "fix()"
+    if (.eta %in% names(.omegaFix) && isTRUE(.omegaFix[[.eta]]) && .eta %in% rownames(omega)) {
       .env$.bsvFixedNames <- c(.env$.bsvFixedNames, x)
     }
     .updateParFixedGetEtaRow(.eta, .env, omega, .omegaFix, .muRefCurEval, .sigdig)
@@ -449,6 +451,9 @@
   for (nm in names(ret)) {
     if (!is.character(ret[[nm]])) {
       ret[[nm]] <- formatMinWidth(ret[[nm]], digits = digits, naValue = "")
+    } else {
+      # the label column: a row without a label (an eta's) prints empty
+      ret[[nm]][is.na(ret[[nm]])] <- ""
     }
   }
   if ("CI Lower" %in% names(ret)) {
