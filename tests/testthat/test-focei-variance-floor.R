@@ -106,8 +106,12 @@ nmTest({
     )
     # the proportional design must cross the old floor
     expect_true(any((0.1 * d$DV)^2 < sqrt(.Machine$double.eps)))
-    ofv <- function(m, c, est) {
+    ofv <- function(m, c, est, m2 = FALSE) {
       d$DV <- d$DV * c
+      # M2: a lower limit near each observation exercises the censored d(R)/d(eta) term
+      if (m2) {
+        d$LIMIT <- 0.8 * d$DV
+      }
       ctl <- foceiControl(print = 0, covMethod = "", calcTables = FALSE, maxOuterIterations = 0)
       v <- list(m, lf = log(c))
       if (identical(m, mAdd)) {
@@ -121,6 +125,11 @@ nmTest({
         expect_equal(ofv(m, 1e-6, est) - ofv(m, 1e6, est), -2 * nrow(d) * log(1e12), tolerance = 1e-6)
       }
     }
+    expect_equal(
+      ofv(mProp, 1e-6, "focei", TRUE) - ofv(mProp, 1e6, "focei", TRUE),
+      -2 * nrow(d) * log(1e12),
+      tolerance = 1e-6
+    )
   })
 
   # A proportional-error design whose late predictions floor the variance.
