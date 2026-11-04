@@ -165,6 +165,10 @@
   the change of occasion, which can shift the objective materially; fewer
   occasion etas, or an rxode2 with more carry columns
   (`rxode2::linCmtCarryMaxPairs()`), avoids it.
+- `vaeControl(nonMuTheta = "eta")` and `"fix"` now inject the temporary eta
+  without changing the model when the theta sits under `*`, `/`, `^` or a unary
+  minus: `exp(e_cov_f * COV)` becomes `exp((e_cov_f + eta.e_cov_f) * COV)`, not
+  `exp(e_cov_f + eta.e_cov_f * COV)` (#1234).
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
