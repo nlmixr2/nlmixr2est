@@ -10868,9 +10868,13 @@ static double foceiFinalBestEta(double *x, double fmin) {
     }
     std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
   };
+  // a subject's likelihood as foceiLik0() sums it
+  auto likOf = [](double l) {
+    return (ISNA(l) || !R_FINITE(l)) ? -op_focei.badSolveObjfAdj : l;
+  };
   for (int i = 0; i < nsub; ++i) {
     std::copy(inds_focei[i].eta, inds_focei[i].eta + neta, &etaW[(size_t)i * neta]);
-    likW[i] = inds_focei[i].lik[0];
+    likW[i] = likOf(inds_focei[i].lik[0]);
   }
   // Start exactly where the best evaluation left each ETA.
   const int etaPValid = op_focei.etaPValid;
@@ -10879,18 +10883,18 @@ static double foceiFinalBestEta(double *x, double fmin) {
   double fB = foceiOfv0(x);
   for (int i = 0; i < nsub; ++i) {
     std::copy(inds_focei[i].eta, inds_focei[i].eta + neta, &etaB[(size_t)i * neta]);
-    likB[i] = inds_focei[i].lik[0];
+    likB[i] = likOf(inds_focei[i].lik[0]);
   }
   int nMoved = 0;
   std::vector<double> etaC = etaW;
   for (int i = 0; i < nsub; ++i) {
-    if (R_FINITE(likB[i]) && (!R_FINITE(likW[i]) || likB[i] > likW[i])) {
+    if (likB[i] > likW[i]) {
       std::copy(&etaB[(size_t)i * neta], &etaB[(size_t)(i + 1) * neta], &etaC[(size_t)i * neta]);
       nMoved++;
     }
   }
   double ret = fB;
-  if (nMoved != nsub || !R_FINITE(fB)) {
+  if (nMoved != nsub || !R_FINITE(fB) || !(fB < fmin)) {
     // Keep the lowest of the final (W), best-started (B) and per-subject mix
     // (C) states; the state left behind must be the one reported.
     double fC = R_PosInf;
@@ -11397,6 +11401,8 @@ static void foceiZeroThetaOneStep(Environment e) {
   if (!atNat) zeroThetaOfv(nat, x);
   op_focei.derivMethod = derivMethod;
   e["zeroThetaStart"] = moved;
+  // initPar (the scaling center) moved, so earlier scaled snapshots are stale
+  foceiBestEvalReset();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
