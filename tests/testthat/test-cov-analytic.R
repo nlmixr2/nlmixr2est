@@ -1279,10 +1279,10 @@ nmTest({
     expect_identical(foceiControl(covMethod = "s")$covMethod, 3L)
     expect_identical(foceiControl(covMethod = "r")$covType, "fd")
     expect_identical(foceiControl(covMethod = "")$covMethod, 0L) # "" skips the covariance step
-    # the r,s sandwich is the default (integer slot 1, finite-difference)
+    # "auto" is the default: the r,s slot until the fit resolves it (#1217)
     .cd <- foceiControl()
     expect_identical(.cd$covMethod, 1L)
-    expect_identical(.cd$covType, "fd")
+    expect_identical(.cd$covType, "auto")
   })
 
   test_that("covMethod='analytic' covFull=FALSE respects skipCov (matches the FD shape)", {

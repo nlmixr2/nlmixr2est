@@ -239,7 +239,7 @@
 # quantity than the analytic R differentiates.  (cholSEOpt is the OPTIMIZATION-phase flag
 # and does not affect the cov step.)
 .foceiCholSECovReason <- "cholSECov=TRUE (the covariance step re-factors the eta Hessian)"
-.foceiCholSECovActive <- function(ui) isTRUE(rxode2::rxGetControl(ui, "cholSECov", FALSE))
+.foceiCholSECovActive <- function(ui) isTRUE(as.logical(rxode2::rxGetControl(ui, "cholSECov", FALSE)))
 
 #' Transform the observed DV onto the rx_pred_ (transformed) scale for a both-sides
 #' transform, using the solved per-observation transform parameters `trans`

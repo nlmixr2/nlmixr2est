@@ -608,13 +608,13 @@ nmTest({
       .quietOneCmt,
       theo_sd,
       "focei",
-      foceiControl(print = 0, calcTables = FALSE, rxControl = rxode2::rxControl(atol = 1e-11, rtol = 1e-11))
+      foceiControl(print = 0, calcTables = FALSE, covMethod = "r,s", rxControl = rxode2::rxControl(atol = 1e-11, rtol = 1e-11))
     )
     .ref <- .nlmixr(
       .quietOneCmt,
       theo_sd,
       "focei",
-      foceiControl(print = 0, calcTables = FALSE, rxControl = rxode2::rxControl(atol = 1e-9, rtol = 1e-9))
+      foceiControl(print = 0, calcTables = FALSE, covMethod = "r,s", rxControl = rxode2::rxControl(atol = 1e-9, rtol = 1e-9))
     )
     expect_identical(.tight$covMethod, "r,s (full)")
     expect_identical(.ref$covMethod, "r,s (full)")
@@ -627,7 +627,7 @@ nmTest({
     # the covariance step that follows tightens its solves and inner problems only for
     # itself.
     .none <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, covMethod = ""))
-    .cov <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0))
+    .cov <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, covMethod = "r,s"))
     expect_identical(.cov$objf, .none$objf)
     expect_identical(.cov$theta, .none$theta)
     expect_identical(.cov$omega, .none$omega)
@@ -664,7 +664,7 @@ nmTest({
     # gillKcov = 0 keeps the full stage separate from the theta-only one (no merge).
     .fit <- function(reuse, ...) {
       withr::local_envvar(NLMIXR2EST_COV_NO_REUSE = if (reuse) "" else "1")
-      .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, ...))
+      .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covMethod = "r,s", ...))
     }
     .on <- .fit(TRUE, gillKcov = 0L)
     .off <- .fit(FALSE, gillKcov = 0L)
@@ -689,7 +689,7 @@ nmTest({
     # takes smaller S steps, which the stencil does not have
     .fit <- function(reuse, ...) {
       withr::local_envvar(NLMIXR2EST_COV_NO_REUSE = if (reuse) "" else "1")
-      .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covFull = FALSE, ...))
+      .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covMethod = "r,s", covFull = FALSE, ...))
     }
     .on <- .fit(TRUE, smatNorm = FALSE)
     .off <- .fit(FALSE, smatNorm = FALSE)
@@ -721,7 +721,7 @@ nmTest({
       "focei",
       foceiControl(print = 0, calcTables = FALSE, covMethod = "analytic", covFull = FALSE)
     )
-    .f <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE))
+    .f <- .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covMethod = "r,s"))
     expect_identical(unname(.f$env$covEvals[c("gill", "r", "s")]), rep(0L, 3))
     expect_gt(.f$env$covEvals[["fullR"]], 0L)
     .nm <- c("tka", "tcl", "tv", "add.sd")

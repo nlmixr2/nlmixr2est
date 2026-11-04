@@ -14,9 +14,9 @@ test_that("per-family covMethod defaults", {
   ## with analytic second
   expect_identical(emviControl()$covMethod, "vi")
   expect_identical(emviControl(covMethod = "analytic")$covMethod, "analytic")
-  ## focei now defaults to the r,s sandwich (integer slot 1, finite-difference)
+  ## focei defaults to "auto": the r,s slot, resolved per model at the fit
   expect_identical(foceiControl()$covMethod, 1L)
-  expect_identical(foceiControl()$covType, "fd")
+  expect_identical(foceiControl()$covType, "auto")
   expect_identical(foceiControl(covMethod = "analytic")$covMethod, 2L)
   ## imp family keeps the importance-sampling default (maps to the analytic slot
   ## internally, with the MC covariance driven by the impCov flag)

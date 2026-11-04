@@ -55,7 +55,7 @@ nmTest({
       .pheno,
       nlmixr2data::pheno_sd,
       est = "focei",
-      control = foceiControl(print = 0, calcTables = FALSE, trustPolish = TRUE)
+      control = foceiControl(print = 0, calcTables = FALSE, covMethod = "r,s", trustPolish = TRUE)
     )))
     .cnt <- .fit$env$nTrustInner
     expect_gt(.cnt[["calls"]], 0L)
