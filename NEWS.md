@@ -365,6 +365,12 @@
 
 ### Inter-occasion variability
 
+- A model whose occasion-level eta name starts with `eta.` (`eta.ka.occ ~ 0.1 | OCC`)
+  now fits.  The SAEM temporary-eta cleanup took every `rx.eta.` name, including
+  the `rx.eta.ka.occ.<occ>` occasion columns, so every estimator stopped with
+  "incorrect number of dimensions".  It now removes only the temporary etas saem
+  records creating (#1233).
+
 - The occasion of an IOV model now steps at its first record (locf) under
   every `covsInterpolation`, as rxode2 steps the occasion variables of a
   nested omega.  The IOV rewrite read the occasion as a covariate, so under
