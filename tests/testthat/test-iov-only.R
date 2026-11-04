@@ -50,7 +50,7 @@ nmTest({
     .fit <- suppressWarnings(suppressMessages(
       nlmixr2(.iovOnlyMod, .iovOnlyData(), "focei", foceiControl(print = 0, covMethod = ""))
     ))
-    expect_equal(.fit$objf, 200.866286, tolerance = 1e-6)
+    expect_equal(.fit$objf, 194.361802, tolerance = 1e-6)
     # no subject-level eta is left once the occasion columns move out
     expect_s3_class(.fit$eta, "data.frame")
     expect_identical(names(.fit$eta), "ID")

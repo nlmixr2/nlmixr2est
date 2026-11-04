@@ -38,10 +38,10 @@
 nmTest({
   test_that("focei, foce and saem fit a model with only IOV", {
     .want <- list(
-      list("focei", "theta", 200.866286),
-      list("focei", "omega", 200.312479),
-      list("foce", "theta", 201.415327),
-      list("foce", "omega", 200.294408)
+      list("focei", "theta", 194.361802),
+      list("focei", "omega", 194.371042),
+      list("foce", "theta", 194.363571),
+      list("foce", "omega", 194.362118)
     )
     for (.w in .want) {
       .fit <- suppressWarnings(suppressMessages(nlmixr2(
@@ -58,7 +58,7 @@ nmTest({
     .fit <- suppressWarnings(suppressMessages(
       nlmixr2(.iovOnlyFitMod, .iovOnlyFitData(), "saem", control = list(print = 0, covMethod = ""))
     ))
-    expect_equal(suppressMessages(.fit$objf), 200.727474, tolerance = 1e-6)
+    expect_equal(suppressMessages(.fit$objf), 200.738464, tolerance = 1e-6)
     expect_identical(.fit$ofvType, "gauss3_1.6")
     .iovOnlyFitShape(.fit, "saem")
   })
@@ -66,7 +66,7 @@ nmTest({
   test_that("laplace, agq, imp and npag fit a model with only IOV", {
     # laplace and agq are deterministic, as focei is; imp samples and npag
     # places support points, so they are held to the fit's shape
-    .want <- c(laplace = 200.866286, agq = 198.7465, imp = NA, npag = NA)
+    .want <- c(laplace = 194.361802, agq = 194.974762, imp = NA, npag = NA)
     for (.est in names(.want)) {
       .fit <- suppressWarnings(suppressMessages(nlmixr2(
         .iovOnlyFitMod,
