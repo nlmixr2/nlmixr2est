@@ -6,13 +6,18 @@ nmTest({
   .tols <- function(rx) {
     vapply(
       c("rtol", "atol", "rtolSens", "atolSens", "ssRtol", "ssAtol"),
-      function(f) max(rx[[f]]), numeric(1)
+      function(f) max(rx[[f]]),
+      numeric(1)
     )
   }
   .expected <- function(rtol) {
     c(
-      rtol = rtol, atol = rtol / 100, rtolSens = rtol, atolSens = rtol / 100,
-      ssRtol = 10 * rtol, ssAtol = rtol / 10
+      rtol = rtol,
+      atol = rtol / 100,
+      rtolSens = rtol,
+      atolSens = rtol / 100,
+      ssRtol = 10 * rtol,
+      ssAtol = rtol / 10
     )
   }
 
