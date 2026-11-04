@@ -60,11 +60,11 @@ nmTest({
     expect_equal(below, objFloor(etaCross - 1e-4), tolerance = 1e-4)
   })
 
-  # #1285: proportional error is scale-equivariant, so scaling every DV and
-  # prediction by c moves the exact -2LL by 2 * nObs * log(c).  The old sqrt(eps)
-  # floor broke this for predictions below ~1e-3.
-  test_that("focei objective is scale-equivariant for small proportional predictions", {
-    m <- function() {
+  # #1285: scaling every DV, prediction and residual SD by c moves the exact -2LL
+  # by 2 * nObs * log(c).  The old sqrt(eps) floor broke this for small variances,
+  # and so did the unscaled stand-in for an additive model's zero d(R)/d(eta).
+  test_that("focei objective is scale-equivariant for small residual variances", {
+    mProp <- function() {
       ini({
         lf <- 0
         lk <- log(0.2)
@@ -75,6 +75,19 @@ nmTest({
       model({
         ipred <- exp(lf + eta.f) * exp(-exp(lk + eta.k) * TIME)
         ipred ~ prop(prop.sd)
+      })
+    }
+    mAdd <- function() {
+      ini({
+        lf <- 0
+        lk <- log(0.2)
+        eta.f ~ 0.1
+        eta.k ~ 0.1
+        add.sd <- 0.01
+      })
+      model({
+        ipred <- exp(lf + eta.f) * exp(-exp(lk + eta.k) * TIME)
+        ipred ~ add(add.sd)
       })
     }
     .testSeed(1285)
@@ -91,16 +104,22 @@ nmTest({
         )
       })
     )
-    # the design must cross the old floor
+    # the proportional design must cross the old floor
     expect_true(any((0.1 * d$DV)^2 < sqrt(.Machine$double.eps)))
-    ofv <- function(c, est) {
+    ofv <- function(m, c, est) {
       d$DV <- d$DV * c
       ctl <- foceiControl(print = 0, covMethod = "", calcTables = FALSE, maxOuterIterations = 0)
-      ui <- do.call(rxode2::ini, list(m, lf = log(c)))
+      v <- list(m, lf = log(c))
+      if (identical(m, mAdd)) {
+        v$add.sd <- 0.01 * c
+      }
+      ui <- do.call(rxode2::ini, v)
       suppressMessages(suppressWarnings(nlmixr2(ui, d, est, ctl)))$objf
     }
-    for (est in c("focei", "foce")) {
-      expect_equal(ofv(1e-6, est) - ofv(1e6, est), -2 * nrow(d) * log(1e12), tolerance = 1e-6)
+    for (m in list(mProp, mAdd)) {
+      for (est in c("focei", "foce")) {
+        expect_equal(ofv(m, 1e-6, est) - ofv(m, 1e6, est), -2 * nrow(d) * log(1e12), tolerance = 1e-6)
+      }
     }
   })
 

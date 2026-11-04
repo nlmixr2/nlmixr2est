@@ -3477,13 +3477,14 @@ double likInner0(double *eta, int id) {
                 // The FOCEi (f, R) kernel keeps an exactly-zero d(f)/d(eta) and d(R)/d(eta)
                 // off zero.  A log-density row has no (f, R): fpm IS d(log-density)/d(eta)
                 // and is summed into lp as it stands, so a row the eta does not reach
-                // adds exactly 0 to the eta gradient.
+                // adds exactly 0 to the eta gradient.  The stand-ins scale with r so their
+                // fpm^2/r and (rp/r)^2 Hessian terms stay O(eps) at any data scale (#1285).
                 if (dist == rxDistributionNorm) {
                   if (fpm == 0.0) {
-                    a(k, i) = fpm = sqrt(DBL_EPSILON);
+                    a(k, i) = fpm = sqrt(DBL_EPSILON * r);
                   }
                   if (rp == 0.0) {
-                    rp = sqrt(DBL_EPSILON);
+                    rp = sqrt(DBL_EPSILON) * r;
                   }
                 }
                 if (rFloored) rp = 0.0;   // a floored R is flat in eta
@@ -3700,10 +3701,10 @@ static void conditionalInnerScore(FoceiInnerResult &result, double value,
   result.value += value;
   int p = op_focei.predOffset;
   for (int j = 0; j < ne; ++j) {
-    double fj = lhs[p+j+1], rj = lhs[p+ne+j+2];
+    double fj = lhs[p+j+1], rj = lhs[p+ne+j+2], v = lhs[p+ne+1];
     // Match the ordinary inner score's zero-sensitivity convention.
-    if (fj == 0) fj = std::sqrt(DBL_EPSILON);
-    if (rj == 0) rj = std::sqrt(DBL_EPSILON);
+    if (fj == 0) fj = std::sqrt(DBL_EPSILON * v);
+    if (rj == 0) rj = std::sqrt(DBL_EPSILON) * v;
     result.gradient[j] += cp[0]*fj+cp[1]*rj;
   }
 }
