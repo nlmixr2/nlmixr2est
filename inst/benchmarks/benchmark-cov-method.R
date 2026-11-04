@@ -130,16 +130,19 @@ setRxThreads(1L)
 }
 
 # each arm's control: "fast" is the fast = TRUE baseline "r,s grad" is measured from
-.covBenchArms <- list(
-  "" = list(covMethod = ""),
-  "r,s" = list(covMethod = "r,s"),
-  analytic = list(covMethod = "analytic"),
-  fast = list(covMethod = "", fast = TRUE),
-  "r,s grad" = list(covMethod = "r,s", fast = TRUE)
+.covBenchArms <- stats::setNames(
+  list(
+    list(covMethod = ""),
+    list(covMethod = "r,s"),
+    list(covMethod = "analytic"),
+    list(covMethod = "", fast = TRUE),
+    list(covMethod = "r,s", fast = TRUE)
+  ),
+  c("", "r,s", "analytic", "fast", "r,s grad")
 )
 
 .covBenchOne <- function(case, mod, dat, covMethod) {
-  .ctl <- do.call(foceiControl, c(list(print = 0L, maxOuterIterations = 0L), .covBenchArms[[covMethod]]))
+  .ctl <- do.call(foceiControl, c(list(print = 0L, maxOuterIterations = 0L), .covBenchArms[[match(covMethod, names(.covBenchArms))]]))
   .w <- character(0)
   .cpu <- function() sum(proc.time()[c("user.self", "sys.self", "user.child", "sys.child")], na.rm = TRUE)
   .t0 <- proc.time()[["elapsed"]]
