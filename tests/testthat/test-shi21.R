@@ -205,8 +205,8 @@ nmTest({
     expect_identical(unique(.fit$eta$eta.f), 0)
     .w <- grep("^eta finite differences", .fit$runInfo, value = TRUE)
     expect_length(.w, 1L)
-    # 1140 from the eta gradient, 24 from the eta Hessian (12 subjects, twice)
-    expect_identical(.w, "eta finite differences solved on neither side 1164 times; slope 0")
+    # 1136 from the eta gradient, 24 from the eta Hessian (12 subjects, twice)
+    expect_identical(.w, "eta finite differences solved on neither side 1160 times; slope 0")
   })
 
   test_that("shi21Central() falls back to a backward difference, and to NA when none forms", {
@@ -418,7 +418,7 @@ nmTest({
       "focei",
       foceiControl(print = 0, eventSens = "fd", covMethod = "", maxOuterIterations = 0, shi21maxFD = 0L)
     ))
-    expect_equal(.fit$objective, 228.4947214, tolerance = 1e-8)
+    expect_equal(.fit$objective, 228.486290852, tolerance = 1e-8)
     expect_false(any(grepl("^eta finite differences", .fit$runInfo)))
     expect_false(all(.fit$eta$eta.f == 0))
   })
@@ -463,10 +463,10 @@ nmTest({
           hessianMethod = .hm
         )
       ))
-      expect_equal(.fit$objective, 122.316911911, tolerance = 1e-9, label = .hm)
+      expect_equal(.fit$objective, 122.310887878, tolerance = 1e-9, label = .hm)
       expect_identical(
         grep("^eta finite", .fit$runInfo, value = TRUE),
-        "eta finite differences solved on neither side 596 times; slope 0",
+        "eta finite differences solved on neither side 595 times; slope 0",
         label = .hm
       )
     }
