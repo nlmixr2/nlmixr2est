@@ -387,3 +387,14 @@ test_that("with a merged full stage the walk's warnings wait for its install (#1
   expect_identical(.r$warnings, character(0))
   expect_identical(.e$.covSelectWarn[2], "covariance step failed")
 })
+
+test_that("with covFull the walk's warnings wait for a full stage run after it (#1217)", {
+  .e <- .covSelectEnv()
+  .e$control <- list(covFull = TRUE)
+  .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 2L, 1L, "r", "s", FALSE, FALSE, 1e-5))
+  expect_identical(.r$warnings, character(0))
+  expect_identical(.e$.covSelectWarn, "\"r,s\" not usable (R not PD); installed \"s\"")
+  # no full covariance to install: the install step gives them as they were
+  .r <- .covSelectWarnings(.foceiInstallFdFullCov(.e))
+  expect_identical(.r$warnings, "\"r,s\" not usable (R not PD); installed \"s\"")
+})

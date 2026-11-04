@@ -267,9 +267,10 @@
   }
   .tried <- do.call(rbind, .acc$tried)
   assign("covTried", .tried, envir = env)
-  # a merged full stage (covFull) installs over this choice, so its warnings wait for
-  # .foceiInstallFdFullCov() to say whether this choice is the one kept
-  .defer <- exists(".fdFullCov", envir = env, inherits = FALSE)
+  # a full stage (covFull, merged or run after this walk) installs over this choice, so
+  # its warnings wait for .foceiInstallFdFullCov() to say whether this choice is kept
+  .defer <- exists(".fdFullCov", envir = env, inherits = FALSE) ||
+    isTRUE(get0("control", envir = env, inherits = FALSE)$covFull)
   .warn <- function(w) {
     if (.defer) {
       assign(".covSelectWarn", c(get0(".covSelectWarn", envir = env, inherits = FALSE), w), envir = env)
