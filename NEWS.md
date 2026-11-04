@@ -309,6 +309,9 @@
   That subject's NPDE columns are `NA`, as its other table columns are.
   The NPDE of a fit with a single subject no longer fails either.
 
+- In a model with labels, the `Parameter` column of `$parFixed` is now empty
+  for a non-mu-referenced eta's row; it printed `<NA>`.
+
 - In a model with a normal and a non-normal endpoint (such as `dpois()`), a
   subject with no observations of the normal endpoint left every subject
   before it in the data (the next subject, when it was the first) with CWRES,
@@ -355,6 +358,10 @@
   type 2 gave a Hessian of zeros.  The names and the codes the control
   stores (`eventType` 2 and 3, the Hessian types 1 and 3) are accepted as
   before.
+
+- A fixed eta that estimation leaves out, such as `eta.v ~ fix(0)`, no longer
+  prints `fix()` in the BSV column of `$parFixed` when the model also has a
+  fixed theta; the cell is empty, as it is without one.
 
 ### Inter-occasion variability
 
