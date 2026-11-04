@@ -290,6 +290,7 @@
   variances apart, dropping the tie.  A repeated subject-level block
   (`eta.v ~ same()`) is not affected, and `rxSolve` still simulates the
   model.
+
 - An interrupt (or another C++ error) during an `est = "lbfgsb3c"` fit no
   longer leaves R's error handling broken.  The error passed through R's own
   frames while it unwound, and the next R error could crash the session; it
