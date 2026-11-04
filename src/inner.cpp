@@ -407,7 +407,8 @@ void restoreFromEnvironment(Environment e);
 //#define _safe_zero(a) (a)
 // Residual-variance floor shared by the objective and the analytic outer gradient
 // (#1132): below it R is constant, so both must treat its derivatives as zero.
-static const double foceiRFloor = std::sqrt(DBL_EPSILON);
+// DBL_MIN^(1/4) keeps R^-4 finite while leaving any real prediction unfloored (#1285).
+static const double foceiRFloor = std::pow(DBL_MIN, 0.25);
 #define _safe_sqrt(a) ((a) <= 0 ? sqrt(DBL_EPSILON) : sqrt(a))
 //#define _safe_sqrt(a) sqrt(a)
 #define _as_dbleps(a) (fabs(a) < sqrt(DBL_EPSILON) ? ((a) < 0 ? -sqrt(DBL_EPSILON)  : sqrt(DBL_EPSILON)) : a)
@@ -3676,7 +3677,7 @@ static bool conditionalInnerPartials(rx_solving_options_ind *ind, int kk2,
                                      int ne, const double *lhs, double *cp, double &value) {
   int p = op_focei.predOffset;
   double f = lhs[p], variance = lhs[p+ne+1];
-  if (!R_FINITE(variance) || variance <= std::sqrt(DBL_EPSILON)) return false;
+  if (!R_FINITE(variance) || variance <= foceiRFloor) return false;
   double y = tbs(getIndDv(ind, kk2));
   double limit = hasRxLimit(rx) ? getIndLimit(ind, kk2) : R_NegInf;
   if (ISNA(limit)) limit = R_NegInf;
@@ -19247,7 +19248,7 @@ struct FoceiHessianProbes {
 };
 
 static bool foceiHessianExpand(VaeOuterE &e, const FoceiGradPooledSetup &g, bool checkVariance = true) {
-  if (!e.ok || e.nobs <= 0 || (checkVariance && e.R.min() <= std::sqrt(DBL_EPSILON))) return false;
+  if (!e.ok || e.nobs <= 0 || (checkVariance && e.R.min() <= foceiRFloor)) return false;
   if (g.nsg == 0) return true;
   int nd = g.nd, nc = nd+g.nsg, no = e.nobs;
   arma::mat a(no,nc,arma::fill::zeros), ar(no,nc,arma::fill::zeros);
@@ -19389,7 +19390,7 @@ struct FoceiHessianModel {
   bool population(std::vector<VaeOuterE> &e) {
     arma::mat zero(getRxNsub(rx),g.neta,arma::fill::zeros);
     if (!solve(zero,e)) return false;
-    for (const auto &one : e) if (one.R.min() <= std::sqrt(DBL_EPSILON)) return false;
+    for (const auto &one : e) if (one.R.min() <= foceiRFloor) return false;
     return true;
   }
 };

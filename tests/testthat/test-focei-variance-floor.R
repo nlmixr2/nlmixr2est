@@ -1,8 +1,10 @@
 nmTest({
-  # #1132: a residual variance below sqrt(eps) used to be REPLACED by 1, putting a
-  # ~+16 cliff per observation in the FOCEi objective where a proportional-error
-  # prediction crossed ~1.2e-3.  It is now floored, leaving only a small log|H| step.
-  test_that("focei objective is continuous where the variance crosses sqrt(eps)", {
+  # #1132: a residual variance below the floor used to be REPLACED by 1, putting a
+  # ~+16 cliff per observation in the FOCEi objective.  It is now floored, leaving
+  # only a small log|H| step.  The floor is DBL_MIN^(1/4) (#1285), so the designs
+  # below scale every prediction by .fs to cross it where sqrt(eps) was crossed.
+  .fs <- 2.863e-35
+  test_that("focei objective is continuous where the variance crosses the floor", {
     m <- function() {
       ini({
         lf <- log(0.0012)
@@ -10,16 +12,16 @@ nmTest({
         prop.sd <- 0.1
       })
       model({
-        ipred <- exp(lf + eta.f)
+        ipred <- 2.863e-35 * exp(lf + eta.f)
         ipred ~ prop(prop.sd)
       })
     }
-    d <- data.frame(ID = 1, TIME = c(1, 2), DV = c(0.0012, 0.0011), EVID = 0, AMT = 0)
+    d <- data.frame(ID = 1, TIME = c(1, 2), DV = .fs * c(0.0012, 0.0011), EVID = 0, AMT = 0)
     sd <- 0.1
     omega <- 0.1
-    # eta at which the prediction's variance (sd * f)^2 equals sqrt(eps)
-    fCross <- sqrt(sqrt(.Machine$double.eps)) / sd
-    etaCross <- log(fCross / 0.0012)
+    # eta at which the prediction's variance (sd * f)^2 equals the floor
+    fCross <- sqrt(.foceiRFloor) / sd
+    etaCross <- log(fCross / (.fs * 0.0012))
 
     objAt <- function(eta) {
       ctl <- foceiControl(
@@ -34,16 +36,16 @@ nmTest({
     }
     # R-side FOCEi objective: df/deta = f, dR/deta = 2R
     objR <- function(eta) {
-      f <- 0.0012 * exp(eta)
+      f <- .fs * 0.0012 * exp(eta)
       r <- (sd * f)^2
       h <- 1 / omega + nrow(d) * (f^2 / r + 0.5 * (2 * r)^2 / r^2)
       sum(log(r) + (d$DV - f)^2 / r) + eta^2 / omega + log(omega) + log(h)
     }
 
-    # floored side: R is held at sqrt(eps), so dR/deta = 0
+    # floored side: R is held at the floor, so dR/deta = 0
     objFloor <- function(eta) {
-      f <- 0.0012 * exp(eta)
-      r <- sqrt(.Machine$double.eps)
+      f <- .fs * 0.0012 * exp(eta)
+      r <- .foceiRFloor
       h <- 1 / omega + nrow(d) * f^2 / r
       sum(log(r) + (d$DV - f)^2 / r) + eta^2 / omega + log(omega) + log(h)
     }
@@ -58,6 +60,50 @@ nmTest({
     expect_equal(below, objFloor(etaCross - 1e-4), tolerance = 1e-4)
   })
 
+  # #1285: proportional error is scale-equivariant, so scaling every DV and
+  # prediction by c moves the exact -2LL by 2 * nObs * log(c).  The old sqrt(eps)
+  # floor broke this for predictions below ~1e-3.
+  test_that("focei objective is scale-equivariant for small proportional predictions", {
+    m <- function() {
+      ini({
+        lf <- 0
+        lk <- log(0.2)
+        eta.f ~ 0.1
+        eta.k ~ 0.1
+        prop.sd <- 0.1
+      })
+      model({
+        ipred <- exp(lf + eta.f) * exp(-exp(lk + eta.k) * TIME)
+        ipred ~ prop(prop.sd)
+      })
+    }
+    .testSeed(1285)
+    obsT <- c(1, 4, 24, 48, 72)
+    d <- do.call(
+      rbind,
+      lapply(1:6, function(i) {
+        data.frame(
+          ID = i,
+          TIME = obsT,
+          AMT = 0,
+          EVID = 0,
+          DV = exp(-0.2 * obsT) * exp(rnorm(1, 0, 0.3)) * (1 + 0.1 * rnorm(5))
+        )
+      })
+    )
+    # the design must cross the old floor
+    expect_true(any((0.1 * d$DV)^2 < sqrt(.Machine$double.eps)))
+    ofv <- function(c, est) {
+      d$DV <- d$DV * c
+      ctl <- foceiControl(print = 0, covMethod = "", calcTables = FALSE, maxOuterIterations = 0)
+      ui <- do.call(rxode2::ini, list(m, lf = log(c)))
+      suppressMessages(suppressWarnings(nlmixr2(ui, d, est, ctl)))$objf
+    }
+    for (est in c("focei", "foce")) {
+      expect_equal(ofv(1, est) - ofv(1e6, est), -2 * nrow(d) * log(1e6), tolerance = 1e-6)
+    }
+  })
+
   # A proportional-error design whose late predictions floor the variance.
   .floorMod <- function() {
     ini({
@@ -68,7 +114,7 @@ nmTest({
       prop.sd <- 0.1
     })
     model({
-      ipred <- exp(lf + eta.f) * exp(-exp(lk + eta.k) * TIME)
+      ipred <- 2.863e-35 * exp(lf + eta.f) * exp(-exp(lk + eta.k) * TIME)
       ipred ~ prop(prop.sd)
     })
   }
@@ -83,7 +129,7 @@ nmTest({
           TIME = obsT,
           AMT = 0,
           EVID = 0,
-          DV = exp(-0.2 * obsT) * exp(rnorm(1, 0, 0.3)) * (1 + 0.1 * rnorm(6))
+          DV = .fs * exp(-0.2 * obsT) * exp(rnorm(1, 0, 0.3)) * (1 + 0.1 * rnorm(6))
         )
       })
     )
@@ -112,7 +158,7 @@ nmTest({
     d <- .floorData()
     fit <- suppressMessages(suppressWarnings(nlmixr2(.floorMod, d, "focei", .floorCtl(TRUE))))
     # the design must actually exercise the floor
-    expect_true(any((0.1 * fit$IPRED)^2 < sqrt(.Machine$double.eps)))
+    expect_true(any((0.1 * fit$IPRED)^2 < .foceiRFloor))
     g <- .foceiGradDirect(fit)
     expect_false(is.null(g))
     expect_gt(fit$env$nAnalyticGradDirect, 0)
@@ -139,7 +185,7 @@ nmTest({
       nlmixr2(.floorMod, d, "focei", .floorCtl(sigdig = 6, maxOuterIterations = 1000L))
     ))
     base <- fixef(fit)
-    expect_true(any((base[["prop.sd"]] * fit$IPRED)^2 < sqrt(.Machine$double.eps)))
+    expect_true(any((base[["prop.sd"]] * fit$IPRED)^2 < .foceiRFloor))
     nm <- names(base)
     .rfr <- new.env()
     .rfr$n <- 0L
@@ -188,7 +234,7 @@ nmTest({
           TIME = obsT,
           AMT = 0,
           EVID = 0,
-          DV = exp(-0.2 * obsT) * exp(rnorm(1, 0, 0.3)) * (1 + 0.1 * rnorm(6))
+          DV = .fs * exp(-0.2 * obsT) * exp(rnorm(1, 0, 0.3)) * (1 + 0.1 * rnorm(6))
         )
       })
     )
@@ -196,7 +242,7 @@ nmTest({
       nlmixr2(.floorMod, d, "agq", foceiControl(print = 0L, covMethod = "", nAGQ = 3, maxOuterIterations = 0L))
     ))
     # eta-hat stays above the floor, so only the node check can see it
-    expect_true(all((0.1 * fit$IPRED)^2 > sqrt(.Machine$double.eps)))
+    expect_true(all((0.1 * fit$IPRED)^2 > .foceiRFloor))
     expect_message(r <- foceiCovAnalytic(fit), "floored residual variance")
     expect_null(r)
   })
@@ -254,9 +300,9 @@ nmTest({
     skip_on_cran()
     d <- .floorData()
     d$CENS <- ifelse(d$TIME == 48, 1L, 0L)
-    d$DV[d$CENS == 1L] <- 1e-4
+    d$DV[d$CENS == 1L] <- .fs * 1e-4
     fit <- suppressMessages(suppressWarnings(nlmixr2(.floorMod, d, "focei", .floorCtl(TRUE))))
-    expect_true(all((0.1 * fit$IPRED[fit$TIME == 48])^2 < sqrt(.Machine$double.eps)))
+    expect_true(all((0.1 * fit$IPRED[fit$TIME == 48])^2 < .foceiRFloor))
     g <- .foceiGradDirect(fit)
     expect_false(is.null(g))
     expect_gt(fit$env$nAnalyticGradDirect, 0)
