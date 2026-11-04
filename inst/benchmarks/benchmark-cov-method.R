@@ -8,7 +8,8 @@
 #
 # `grid` is "axes" (one axis at a time from a base, the default), "large", "ode"
 # (transit chains with combined error), "cross" (long chains with few parameters, where
-# the analytic step is closest to losing) or "all".  `cpu` is the fit's process CPU
+# the analytic step is closest to losing), "grad" (r,s with R from differences of the
+# analytic gradient, fast = TRUE, against both) or "all".  `cpu` is the fit's process CPU
 # time, compiler children included, so it holds up on a loaded machine; the
 # covariance cost is its difference from the covMethod = "" fit.
 # library(nlmixr2est) loads the INSTALLED package: install the tree first.
@@ -128,8 +129,17 @@ setRxThreads(1L)
   .d
 }
 
+# each arm's control: "fast" is the fast = TRUE baseline "r,s grad" is measured from
+.covBenchArms <- list(
+  "" = list(covMethod = ""),
+  "r,s" = list(covMethod = "r,s"),
+  analytic = list(covMethod = "analytic"),
+  fast = list(covMethod = "", fast = TRUE),
+  "r,s grad" = list(covMethod = "r,s", fast = TRUE)
+)
+
 .covBenchOne <- function(case, mod, dat, covMethod) {
-  .ctl <- foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = covMethod)
+  .ctl <- do.call(foceiControl, c(list(print = 0L, maxOuterIterations = 0L), .covBenchArms[[covMethod]]))
   .w <- character(0)
   .cpu <- function() sum(proc.time()[c("user.self", "sys.self", "user.child", "sys.child")], na.rm = TRUE)
   .t0 <- proc.time()[["elapsed"]]
@@ -156,6 +166,7 @@ setRxThreads(1L)
       estTime = NA_real_,
       installed = paste("error:", conditionMessage(.fit)),
       evals = NA_integer_,
+      grad = NA,
       se = I(list(NULL))
     ))
   }
@@ -171,6 +182,7 @@ setRxThreads(1L)
     estTime = sum(unlist(.tm[setdiff(names(.tm), c("covariance", "table"))])),
     installed = if (length(.fit$covMethod)) as.character(.fit$covMethod)[1] else NA_character_,
     evals = if (is.null(.ev)) NA_integer_ else sum(.ev),
+    grad = isTRUE(.fit$env$covGrad),
     se = I(list(if (is.matrix(.cov)) sqrt(diag(.cov)) else NULL))
   )
 }
@@ -214,13 +226,24 @@ setRxThreads(1L)
     .vary(nTransit = c(30L, 45L, 60L), nSigma = 2L, nEta = 3L),
     .vary(nTransit = c(30L, 60L), nSigma = 2L, nEta = 2L, nPeriph = 1L, mm = TRUE)
   )
+  .grad <- c(
+    list(.base),
+    .vary(nCov = 8L),
+    .vary(mm = TRUE, nEta = 4L),
+    .vary(nEta = 6L, nTransit = 1L, nPeriph = 2L),
+    .vary(nTransit = c(10L, 30L), nSigma = 2L),
+    .vary(nTransit = 10L, nSigma = 2L, nEta = 4L, nCov = 8L),
+    .large[1],
+    .vary(nTransit = 45L, nSigma = 2L, nEta = 1L)
+  )
   switch(
     grid,
     axes = .axes,
     large = .large,
     ode = .ode,
     cross = .cross,
-    all = c(.axes, .large, .ode, .cross),
+    grad = .grad,
+    all = c(.axes, .large, .ode, .cross, .grad),
     stop("unknown grid")
   )
 }
@@ -243,8 +266,14 @@ for (.c in .covBenchCases(.grid)) {
   # one warm-up compiles both models before either is timed; a second covMethod = ""
   # fit is the CPU baseline the covariance cost is measured from
   invisible(.covBenchOne(.case, .mod, .dat, ""))
-  # the analytic augmented model compiles on its first use: run it cold, then warm
-  .ms <- c("", "r,s", "analytic", if (.grid != "cross") "analytic")
+  # the analytic augmented model compiles on its first use: run it cold, then warm; so
+  # does fast = TRUE's outer model, whose warm run is the baseline of "r,s grad"
+  .ms <- switch(
+    .grid,
+    cross = c("", "r,s", "analytic"),
+    grad = c("", "r,s", "analytic", "fast", "fast", "r,s grad"),
+    c("", "r,s", "analytic", "analytic")
+  )
   for (.i in seq_along(.ms)) {
     .m <- .ms[.i]
     .r <- .covBenchOne(.case, .mod, .dat, .m)

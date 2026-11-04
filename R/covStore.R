@@ -54,7 +54,8 @@
   "covSolveTol",
   "covInnerTol",
   "covPrecursor",
-  "covShortcut"
+  "covShortcut",
+  "covGrad"
 )
 
 #' Key of a covariance step in the fit's covariance store

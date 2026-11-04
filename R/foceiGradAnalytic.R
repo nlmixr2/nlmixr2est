@@ -164,7 +164,8 @@
         dependsF0 = isTRUE(st$ef$dependsF0),
         canVanish = isTRUE(st$ef$canVanish),
         thPos = .thPos,
-        gMap = .gMap
+        gMap = .gMap,
+        kernelTh = c(st$dir$thStruct, st$ef$sgName)
       )
     },
     error = function(e) NULL

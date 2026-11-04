@@ -9051,6 +9051,9 @@ struct OdeSolveTolGuard {
 // shift earlier in the fit cannot leak in -- this is a RESET, not an override.  The
 // fit's values are captured on the first call, before anything on this path can have
 // moved them.
+// Set while the covariance step differences analytic gradients: those solves keep the
+// covariance step's tighter tolerances instead of the fit's.
+static bool _odeFitTolKeep = false;
 struct OdeFitTolGuard {
   bool active = false;
   double savAtol = NA_REAL, savRtol = NA_REAL;
@@ -9058,6 +9061,7 @@ struct OdeFitTolGuard {
     rxGetSolveAtolRtol(&savAtol, &savRtol);
     if (!R_FINITE(savAtol) || !R_FINITE(savRtol)) return;    // no live solve
     foceiNoteFitTol(savAtol, savRtol);
+    if (_odeFitTolKeep) return;
     rxSetSolveAtolRtol(op_focei.fitAtol, op_focei.fitRtol);
     active = true;
   }
@@ -12939,7 +12943,7 @@ NumericMatrix foceiCalcCov(Environment e){
 // full sandwich Rinv*S*Rinv (not just the Hessian inverse Rinv).  Both are stashed for the
 // R-side install (.foceiInstallFdFullCov).  Split into small helpers below; the orchestrator
 // is foceiCalcRFdFull. ---
-struct FdFullCtx { IntegerVector thPos, omA, omB; arma::mat Om0; int nth = 0, nom = 0; };
+struct FdFullCtx { IntegerVector thPos, omA, omB, gradTh; arma::mat Om0; int nth = 0, nom = 0; };
 
 // set op_focei Omega state from a variance-covariance Omega; false if it is not PD.
 static bool foceiFdSetOmega(const arma::mat &Om) {
@@ -13080,6 +13084,73 @@ static bool foceiFdSFull(const FdFullCtx &c, const std::vector<double> &x0,
   return true;
 }
 
+// --- covGrad: R from central differences of the analytic outer gradient, 2p gradient
+// evaluations in place of the objective stencil's ~2p(p+1) (#1217).  The kernel takes
+// each Omega direction as d(Omega^-1) and 0.5 tr(d(Omega^-1) Omega), so the stage's
+// natural variance-covariance directions go in as they are.
+static bool gradDirectEbes(int nsub, int neta, arma::mat &ebes);
+static bool gradDirectKernel(const FoceiGradPooledSetup &G, const std::vector<double> &thv,
+                             const arma::mat &ebes, const arma::mat &Oi,
+                             const arma::cube &dOiEst, const arma::vec &tr28,
+                             int cores, int nKer, arma::vec &gv, arma::cube &etaP);
+
+// foceiControl(covGrad=)
+static bool foceiCovGradOn(Environment e) {
+  if (!e.exists("control")) return false;
+  List ctl = as<List>(e["control"]);
+  if (!ctl.containsElementNamed("covGrad")) return false;
+  RObject v = ctl["covGrad"];
+  return TYPEOF(v) == LGLSXP && Rf_length(v) == 1 && LOGICAL(v)[0] == TRUE;
+}
+
+// Each stage parameter's kernel slot: a theta's by name (c.gradTh), Omega element q at
+// nth + nsg + q.  False when the loaded gradient does not cover the stage.
+static bool foceiFdGradSlots(const FdFullCtx &c, std::vector<int> &slot) {
+  const FoceiGradPooledSetup &G = _gradPooled;
+  if (!G.ok || G.isLL || G.nom != c.nom || G.neta != op_focei.neta ||
+      (int)c.gradTh.size() != c.nth) return false;
+  slot.assign((size_t)(c.nth + c.nom), -1);
+  for (int i = 0; i < c.nth; ++i) {
+    slot[(size_t)i] = c.gradTh[i];
+    if (slot[(size_t)i] < 0 || slot[(size_t)i] >= G.nth + G.nsg) return false;
+  }
+  for (int q = 0; q < c.nom; ++q) slot[(size_t)(c.nth + q)] = G.nth + G.nsg + q;
+  return true;
+}
+
+// The objective's natural-scale gradient over the stage at x; false on a decline, a
+// non-PD Omega or a subject the kernel could not solve.
+static bool foceiFdGradAt(const FdFullCtx &c, const std::vector<int> &slot,
+                          const double *x, arma::vec &g) {
+  if (!R_FINITE(foceiFdObjAt(c, x)) || nlmixrContribBreaksAnalyticGrad()) return false;
+  const FoceiGradPooledSetup &G = _gradPooled;
+  rx = getRxSolve_();
+  const int nsub = (int)getRxNsub(rx), neta = G.neta;
+  arma::mat ebes, Om;
+  if (!gradDirectEbes(nsub, neta, ebes)) return false;
+  const arma::mat Oi = op_focei.omegaInv;
+  if (!arma::inv_sympd(Om, Oi)) return false;
+  arma::cube dOi(neta, neta, std::max(c.nom, 1), arma::fill::zeros);
+  arma::vec tr28(c.nom);
+  for (int q = 0; q < c.nom; ++q) {
+    arma::mat E(neta, neta, arma::fill::zeros);
+    E(c.omA[q] - 1, c.omB[q] - 1) = 1.0;
+    E(c.omB[q] - 1, c.omA[q] - 1) = 1.0;
+    dOi.slice(q) = -Oi * E * Oi;
+    tr28[q] = 0.5 * arma::trace(dOi.slice(q) * Om);
+  }
+  std::vector<double> thv(op_focei.fullTheta, op_focei.fullTheta + op_focei.ntheta);
+  op_focei.outerFdIds.clear();
+  arma::vec gv;
+  arma::cube etaP;
+  if (!gradDirectKernel(G, thv, ebes, Oi, dOi, tr28, getOpCores(getSolvingOptions(rx)),
+                        G.nth + G.nsg + G.nom, gv, etaP)) return false;
+  if (!op_focei.outerFdIds.empty()) return false;
+  g.set_size(slot.size());
+  for (size_t i = 0; i < slot.size(); ++i) g[i] = gv[(unsigned int)slot[i]];
+  return g.is_finite();
+}
+
 // enumeration/names from the R helper .foceiFdFullParams(e); false if nothing to do.
 static bool foceiFdParams(Environment e, FdFullCtx &c, CharacterVector &nm) {
   Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
@@ -13096,6 +13167,7 @@ static bool foceiFdParams(Environment e, FdFullCtx &c, CharacterVector &nm) {
     throw;
   } catch (...) { return false; }
   c.thPos = pl["thPos"]; c.omA = pl["omA"]; c.omB = pl["omB"]; nm = pl["names"];
+  if (pl.containsElementNamed("gradTh")) c.gradTh = pl["gradTh"];
   c.nth = c.thPos.size(); c.nom = c.omA.size();
   return (c.nth + c.nom) > 0;
 }
@@ -13138,7 +13210,61 @@ struct FdFullResult {
   bool okS = false;
   std::string precursor, shortcut;
   arma::mat checks;
+  bool grad = false;
 };
+
+// R = H/2 from the gradient at x0 +/- h, with h relative to each parameter's scale at
+// cbrt(rtol) of the covariance solves; S from each subject's -2LL at the same probes.
+// res.c and res.x0 are set; false leaves the objective stencil to run.
+static bool foceiFdFullGrad(Environment e, bool needS, FdFullResult &res) {
+  const FdFullCtx &c = res.c;
+  std::vector<int> slot;
+  if (!foceiCovGradOn(e) || op_focei.priorSpec != NULL || op_focei.mixIdxN != 0 ||
+      !foceiFdGradSlots(c, slot)) return false;
+  const int np = c.nth + c.nom;
+  double atol = NA_REAL, rtol = NA_REAL;
+  rxGetSolveAtolRtol(&atol, &rtol);
+  double rel = (R_FINITE(rtol) && rtol > 0) ? std::cbrt(rtol) : 1e-3;
+  rel = std::min(std::max(rel, 1e-4), 1e-2);
+  const std::vector<double> &x0 = res.x0;
+  std::vector<double> h((size_t)np);
+  for (int i = 0; i < c.nth; ++i) h[(size_t)i] = rel * std::max(std::fabs(x0[(size_t)i]), 0.1);
+  for (int q = 0; q < c.nom; ++q) {
+    const int a = c.omA[q] - 1, b = c.omB[q] - 1;
+    h[(size_t)(c.nth + q)] = rel * std::sqrt(c.Om0(a, a) * c.Om0(b, b));
+  }
+  ScopedRestore<int> calcGrad(op_focei.calcGrad);
+  ScopedRestore<bool> keepTol(_odeFitTolKeep);
+  op_focei.calcGrad = 1;
+  _odeFitTolKeep = true;
+  CovStageScope _st(covStFullR);
+  arma::mat H((unsigned int)np, (unsigned int)np), G;
+  arma::vec gp, gm, lp, lm;
+  bool okS = needS;
+  for (int j = 0; j < np; ++j) {
+    std::vector<double> x = x0;
+    x[(size_t)j] = x0[(size_t)j] + h[(size_t)j];
+    if (!foceiFdGradAt(c, slot, x.data(), gp)) return false;
+    okS = okS && foceiFdLikById(lp);
+    x[(size_t)j] = x0[(size_t)j] - h[(size_t)j];
+    if (!foceiFdGradAt(c, slot, x.data(), gm)) return false;
+    okS = okS && foceiFdLikById(lm) && lp.n_elem == lm.n_elem;
+    H.col((unsigned int)j) = (gp - gm) / (2.0 * h[(size_t)j]);
+    if (okS) {
+      if (G.n_rows == 0) G.zeros(lp.n_elem, (unsigned int)np);
+      okS = lp.n_elem == G.n_rows;
+      if (okS) G.col((unsigned int)j) = (lp - lm) / (2.0 * h[(size_t)j]);
+    }
+  }
+  arma::mat R = 0.25 * (H + H.t());
+  if (!R.is_finite()) return false;
+  res.R = R;
+  res.h = h;
+  res.okS = okS;
+  if (okS) res.S = 0.25 * (G.t() * G);
+  res.grad = true;
+  return true;
+}
 
 // The hint for the full stage, from e[".fdFullHint"] (set by setCov()'s refit when the
 // control's covPrecursor names a source the fit holds): list(R, source, shortcut), R
@@ -13216,6 +13342,7 @@ static bool foceiFdFullCompute(Environment e, bool covKnobs, bool needS, FdFullR
     f0 = foceiFdObjAt(c, x0.data());
   }
   bool ok = R_FINITE(f0);
+  if (ok && foceiFdFullGrad(e, needS, res)) return true;
   // A hint R0 seeds each step search with its diagonal (the objective's Hessian is 2 R0).
   // With covShortcut, the full R it predicts from the measured diagonal D and its own
   // correlations, D^1/2 rho0 D^1/2, is checked along fixed directions after the
@@ -13345,6 +13472,8 @@ static bool foceiFdFullStash(Environment e, const FdFullResult &res) {
   e[".fdFullR"] = Rout;
   e[".fdFullH"] = NumericVector(res.h.begin(), res.h.end());
   e[".fdFullX0"] = NumericVector(res.x0.begin(), res.x0.end());
+  // R from differences of the analytic gradient (covGrad) rather than of the objective
+  if (res.grad) e["covGrad"] = true;
   // how a hint served, for the fit's record (.covPrecursorRecord)
   if (!res.precursor.empty()) {
     List rec = List::create(_["source"] = res.precursor, _["shortcut"] = res.shortcut);

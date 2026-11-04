@@ -26,15 +26,22 @@
   }
   thPos <- as.integer(ini$ntheta[thRows] - 1L) # 0-based position in fullTheta
   thNames <- ini$name[thRows]
+  # each theta's slot in the analytic gradient's output (covGrad), -1 when absent
+  .gp <- get0(".foceiGradPooledSetup", envir = e, inherits = FALSE)
+  gradTh <- match(thNames, .gp$kernelTh) - 1L
+  gradTh[is.na(gradTh)] <- -1L
   Om <- get("omega", e)
   pairs <- .foceiOmegaPairs(Om, ini) # free Omega lower-triangle (a>=b)
   if (is.null(pairs) || nrow(pairs) == 0L) {
-    return(list(thPos = thPos, omA = integer(0), omB = integer(0), names = thNames))
+    return(list(thPos = thPos, omA = integer(0), omB = integer(0), names = thNames, gradTh = gradTh))
   }
   map <- .foceiEtaThetaMap(ui)
   onm <- map$etaNames # Omega named by the eta
   omNames <- .foceiOmegaCovNames(pairs, onm)
-  list(thPos = thPos, omA = as.integer(pairs[, 1]), omB = as.integer(pairs[, 2]), names = c(thNames, omNames))
+  list(
+    thPos = thPos, omA = as.integer(pairs[, 1]), omB = as.integer(pairs[, 2]),
+    names = c(thNames, omNames), gradTh = gradTh
+  )
 }
 
 #' The three FD-full covariances, each checked by `.covGuard()`

@@ -229,6 +229,13 @@
 #'     says "accepted"); otherwise they are measured as usual ("fell back").
 #'     \code{FALSE} (default) always measures them.
 #'
+#' @param covGrad when the fit has the analytic outer gradient
+#'     (\code{fast=TRUE}), build the full R from central differences of that
+#'     gradient (2p gradients) instead of second differences of the objective,
+#'     and S from the same probes; \code{fit$env$covGrad} is \code{TRUE} when
+#'     it was used.  Falls back to the objective stencil when the gradient
+#'     declines.  Default \code{TRUE}.
+#'
 #' @param covFull shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 #'     full theta + residual sigma + Omega covariance (assembled analytically for
 #'     \code{covMethod="analytic"}, or by central finite differences over the same
@@ -1307,6 +1314,7 @@ foceiControl <- function(
   covPrecursor = c("fd", "analytic"),
   covShortcut = FALSE,
   covFull = TRUE, #
+  covGrad = TRUE, #
   fast = FALSE, #
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"), #
   fdOutlierZ = 3.5, #
@@ -1808,6 +1816,7 @@ foceiControl <- function(
   covPrecursor <- .covPrecursorCheck(covPrecursor)
   checkmate::assertFlag(covShortcut)
   checkmate::assertFlag(covFull)
+  checkmate::assertFlag(covGrad)
   checkmate::assertFlag(fast)
   priorMethod <- match.arg(priorMethod)
   .xtra <- list(...)
@@ -2171,6 +2180,7 @@ foceiControl <- function(
     covPrecursor = covPrecursor,
     covShortcut = covShortcut,
     covFull = covFull,
+    covGrad = covGrad,
     fast = fast,
     priorMethod = priorMethod,
     fdOutlierZ = as.double(fdOutlierZ),
