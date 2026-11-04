@@ -112,6 +112,18 @@
 
 #### Estimation
 
+- `saem` with `ebe = "mode"` no longer stops with “inv(): matrix is
+  singular” when an eta’s estimated variance collapses to zero
+  ([\#1270](https://github.com/nlmixr2/nlmixr2est/issues/1270)).
+
+- An error inside `saem`’s Gaussian-quadrature objective or its
+  linearized covariance, or while FOCEi or `nlm` builds its sensitivity
+  model, now reaches the user as itself. Each calculation closed its
+  progress bar in a way that raised the bar’s own message (“Error
+  calculating likelihood”, “Error calculating covariance via
+  linearization”, “Aborted calculation”) in place of the error that
+  stopped it.
+
 - `foceiControl(fast = TRUE)` now falls back to `fast = FALSE` for an
   [`ar()`](https://rdrr.io/r/stats/ar.html) residual whose correlation
   is fixed (`ar1.cor <- fix(0.9)`) or modeled (`ar(corv)`), as it
@@ -192,6 +204,13 @@
   occasion, which can shift the objective materially; fewer occasion
   etas, or an rxode2 with more carry columns
   (`rxode2::linCmtCarryMaxPairs()`), avoids it.
+
+- `vaeControl(nonMuTheta = "eta")` and `"fix"` now inject the temporary
+  eta without changing the model when the theta sits under `*`, `/`, `^`
+  or a unary minus: `exp(e_cov_f * COV)` becomes
+  `exp((e_cov_f + eta.e_cov_f) * COV)`, not
+  `exp(e_cov_f + eta.e_cov_f * COV)`
+  ([\#1234](https://github.com/nlmixr2/nlmixr2est/issues/1234)).
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective. Since IOV arrived (6.0.0), every such
@@ -475,6 +494,14 @@
   zero.
 
 #### Documentation
+
+- [`?tableControl`](https://nlmixr2.github.io/nlmixr2est/reference/tableControl.md)
+  now says that NPDE under `censMethod = "omit"` are not expected to be
+  N(0,1) once observations are censored: below a lower limit the
+  quantified observations it keeps are the high ones, so their mean
+  drifts upward as more is censored. It points to `"truncated-normal"`,
+  which keeps the censored rows
+  ([\#1227](https://github.com/nlmixr2/nlmixr2est/issues/1227)).
 
 - [`?augPred`](https://rdrr.io/pkg/nlme/man/augPred.html) says that its
   curves for a `linCmt()` model with time-varying covariates are
