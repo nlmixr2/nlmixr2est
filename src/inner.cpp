@@ -407,8 +407,9 @@ void restoreFromEnvironment(Environment e);
 //#define _safe_zero(a) (a)
 // Residual-variance floor shared by the objective and the analytic outer gradient
 // (#1132): below it R is constant, so both must treat its derivatives as zero.
-// DBL_MIN^(1/4) keeps R^-4 finite while leaving any real prediction unfloored (#1285).
-static const double foceiRFloor = std::pow(DBL_MIN, 0.25);
+// DBL_MIN^(1/8) keeps the censored partials' R^-5.5 finite yet floors no real
+// prediction (#1285).
+static const double foceiRFloor = std::pow(DBL_MIN, 0.125);
 #define _safe_sqrt(a) ((a) <= 0 ? sqrt(DBL_EPSILON) : sqrt(a))
 //#define _safe_sqrt(a) sqrt(a)
 #define _as_dbleps(a) (fabs(a) < sqrt(DBL_EPSILON) ? ((a) < 0 ? -sqrt(DBL_EPSILON)  : sqrt(DBL_EPSILON)) : a)

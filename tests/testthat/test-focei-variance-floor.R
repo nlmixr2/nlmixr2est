@@ -1,9 +1,9 @@
 nmTest({
   # #1132: a residual variance below the floor used to be REPLACED by 1, putting a
   # ~+16 cliff per observation in the FOCEi objective.  It is now floored, leaving
-  # only a small log|H| step.  The floor is DBL_MIN^(1/4) (#1285), so the designs
+  # only a small log|H| step.  The floor is DBL_MIN^(1/8) (#1285), so the designs
   # below scale every prediction by .fs to cross it where sqrt(eps) was crossed.
-  .fs <- 2.863e-35
+  .fs <- 4.843e-16
   test_that("focei objective is continuous where the variance crosses the floor", {
     m <- function() {
       ini({
@@ -12,7 +12,7 @@ nmTest({
         prop.sd <- 0.1
       })
       model({
-        ipred <- 2.863e-35 * exp(lf + eta.f)
+        ipred <- 4.843e-16 * exp(lf + eta.f)
         ipred ~ prop(prop.sd)
       })
     }
@@ -133,7 +133,7 @@ nmTest({
       prop.sd <- 0.1
     })
     model({
-      ipred <- 2.863e-35 * exp(lf + eta.f) * exp(-exp(lk + eta.k) * TIME)
+      ipred <- 4.843e-16 * exp(lf + eta.f) * exp(-exp(lk + eta.k) * TIME)
       ipred ~ prop(prop.sd)
     })
   }
@@ -240,9 +240,7 @@ nmTest({
   })
 
   # AGQ quadrature nodes can floor R where eta-hat does not; the (f,R) assembler has
-  # no nodes, so such a fit falls back to finite differences.  Subject 1 is dropped so
-  # the first subject assembled sits near the floor: at this scale a subject whose
-  # nodes stay above it overflows the add/prop f-derivatives and falls back first.
+  # no nodes, so such a fit falls back to finite differences.
   test_that("AGQ analytic covariance falls back when only a node floors R", {
     skip_on_cran()
     .testSeed(1132)
@@ -259,7 +257,6 @@ nmTest({
         )
       })
     )
-    d <- d[d$ID != 1, ]
     fit <- suppressMessages(suppressWarnings(
       nlmixr2(.floorMod, d, "agq", foceiControl(print = 0L, covMethod = "", nAGQ = 3, maxOuterIterations = 0L))
     ))

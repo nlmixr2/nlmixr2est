@@ -94,7 +94,7 @@
 
 ### Estimation
 
-- The FOCEi residual-variance floor is now `DBL_MIN^(1/4)` (about 1.2e-77)
+- The FOCEi residual-variance floor is now `DBL_MIN^(1/8)` (about 3.5e-39)
   instead of `sqrt(.Machine$double.eps)`.  A proportional-error prediction
   below about 6e-4 (at a 0.2 SD) is no longer floored; the floor had biased
   -2LL upward, more the smaller the prediction, and broken scale invariance
