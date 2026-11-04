@@ -66,7 +66,7 @@
   .ui <- rxode2::rxUiDecompress(.ui)
   .iniDf <- .ui$iniDf
   .used <- unique(unlist(lapply(.ui$lstExpr, all.vars)))
-  .rm <- grepl("^rx[.]eta[.]", .iniDf$name) & !(.iniDf$name %in% .used)
+  .rm <- .iniDf$name %in% env$saemPseudoEtas & !(.iniDf$name %in% .used)
   if (!any(.rm)) {
     return(invisible())
   }
@@ -95,13 +95,12 @@
   if (!is.environment(ret$env)) {
     return(ret)
   }
-  .saemPseudoEtaCleanUi(ret$env)
-  # the ui is already back-transformed here, so read the etas off the fit
-  .ranef <- get0("ranef", envir = ret$env, inherits = FALSE)
-  .pseudo <- unique(grep("^rx[.]eta[.]", c(names(.ranef), names(ret)), value = TRUE))
+  # saem records the temporary etas it creates (.saemFamilyFit())
+  .pseudo <- get0("saemPseudoEtas", envir = ret$env, inherits = FALSE)
   if (length(.pseudo) == 0L) {
     return(ret)
   }
+  .saemPseudoEtaCleanUi(ret$env)
   .thetas <- sub("^rx[.]eta[.]", "", .pseudo)
   .drop <- c(.pseudo, paste0("rx.l.", .thetas), .thetas)
   .saemPseudoEtaDropSlots(ret$env, .drop)
