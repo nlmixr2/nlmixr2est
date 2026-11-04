@@ -79,6 +79,8 @@ nmTest({
         .m != "theta",
         label = .m
       )
+      # the magnitude's bound is the rewrite's own, so saem has none to report
+      expect_false(any(grepl("user-defined boundaries", .fit$runInfo, fixed = TRUE)), label = .m)
       .iovOnlyFitShape(.fit, paste("saem", .m))
     }
   })

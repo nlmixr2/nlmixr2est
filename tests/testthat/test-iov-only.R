@@ -45,6 +45,19 @@ nmTest({
     expect_identical(.eta$est, c(0.1, 0.1))
   })
 
+  test_that("saem warns only about the bounds the user wrote", {
+    .ui <- rxode2::rxode2(.iovOnlyMod)
+    .rw <- suppressMessages(.uiApplyIov(.ui, "saem", .iovOnlyData(), saemControl(iovMethod = "theta")))$ui
+    # the rewrite bounds the magnitude; saem keeps it and does not report it
+    expect_identical(.rw$iniDf$lower[.rw$iniDf$name == "iov.cl"], 0)
+    expect_no_warning(.saemWarnBounded(.rw))
+    expect_identical(.rw$iniDf$lower[.rw$iniDf$name == "iov.cl"], 0)
+    # a bound of the user's own is still reported
+    .ub <- .ui |> rxode2::ini(tka = c(0, 0.45))
+    .rw <- suppressMessages(.uiApplyIov(.ub, "saem", .iovOnlyData(), saemControl(iovMethod = "theta")))$ui
+    expect_warning(.saemWarnBounded(.rw), "boundaries: tka which are ignored in 'saem'")
+  })
+
   test_that("a focei fit with only IOV keeps its eta and shrinkage tables", {
     skip_on_cran()
     .fit <- suppressWarnings(suppressMessages(

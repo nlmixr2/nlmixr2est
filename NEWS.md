@@ -431,6 +431,10 @@
   template rows from an eta that was not there, and its output step lost the
   shape of tables left with one column.
 
+- A `saem` IOV fit no longer warns that `iov.cl` "has the following
+  user-defined boundaries": the bound was the IOV rewrite's own, not the
+  user's.
+
 ### Documentation
 
 - `?tableControl` now says that NPDE under `censMethod = "omit"` are not
