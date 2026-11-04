@@ -407,12 +407,20 @@
 - `addNpde()` and `addTable()` now work on a fit with inter-occasion
   variability, including one run with `calcTables = FALSE`.  They stopped
   with "The following parameter(s) are required for solving: occ, ..."
-  (the parameters listed depend on the model and the method).  They refit
-  with no iterations at the fit's estimates, as `addCwres()` does, and give
-  the columns the fit gives itself; for an ODE model, to the solver's
-  tolerance.  For a `saem` fit with `iovMethod = "collapsed"`, they and
-  `addCwres()` refit the collapsed model it estimated, at its own etas, so
-  its NPDE is the one the fit computes itself, draw for draw (#1243).
+  (the parameters listed depend on the model and the method).  A fit with
+  inter-occasion variability now keeps the model it estimated (the occasion
+  rewrite, or `saem`'s two-level or collapsed model) with its thetas and
+  etas, and they, `addCwres()` and `setOfv()` evaluate that model, without
+  refitting it.  They give the columns and NPDE the fit computes itself,
+  also for `iovMethod = "collapsed"` (#1243).
+- `addCwres()` no longer refits the model with no iterations.  Its columns
+  come from the fit's own table step, with the fit's table settings (such as
+  `addDosing`), and its objective from `setOfv()`.
+- `addTable()` and `addCwres()` now work on a fit with mu-referenced
+  covariates (such as `log(WT/70)`).  The fit's compiled models read the
+  internal `nlmixrMuDerCov#` columns, so they stopped with "The following
+  parameter(s) are required for solving: nlmixrMuDerCov1"; they are now
+  rebuilt from the user's model when needed.
 
 - A fit with inter-occasion variability is now finished like any other when
   it is run with `tableControl(npde = TRUE)` or has a subject with no

@@ -72,8 +72,9 @@ addCwres <- function(fit, focei = TRUE, updateObject = TRUE, envir = parent.fram
   assertNlmixrFitData(fit)
   checkmate::assertLogical(updateObject, len = 1, any.missing = FALSE)
   checkmate::assertLogical(focei, len = 1, any.missing = FALSE)
-  ## event bus: `fit` is forced above, outside the scope; the internal refit
-  ## below is silent and one fitUpdate is emitted on exit (see rxEvents.R)
+  ## event bus: `fit` is forced above, outside the scope; the internal table
+  ## and objective below are silent and one fitUpdate is emitted on exit (see
+  ## rxEvents.R)
   .nlmixr2EventEnter()
   .evOrig <- fit
   .evName <- .nlmixr2EventObjName(substitute(fit))
@@ -88,26 +89,18 @@ addCwres <- function(fit, focei = TRUE, updateObject = TRUE, envir = parent.fram
     "CWRES",
     {
       .objName <- as.character(substitute(fit))
-      .newFit <- .refitNoIterations(fit, interaction = focei)
-      .extra <- setdiff(names(.newFit), names(fit))
-      .extra <- as.data.frame(.newFit)[, .extra]
-      .origFitEnv <- fit$env
-      .fit <- nlmixrClone(fit)
-      .new <- nlmixrCbind(.fit, .extra)
-      .env <- .new$env
-      .addFoceiInfoToFit(.env, .newFit)
-      .objDf <- .newFit$objDf
-      .type <- rownames(.objDf)
-      .curObjDf <- .new$objDf
-      # A fit that already reports this objective function (an estimation method
-      # whose own objective function is the focei/foce one) only needs the columns;
-      # asking for the row again is an error.  An uncalculated row is replaced.
-      if (
-        !any(rownames(.curObjDf) == .type) ||
-          (nrow(.curObjDf) == 1L && is.na(.curObjDf$OBJF[[1]]))
-      ) {
-        nlmixrAddObjectiveFunctionDataFrame(.new, .objDf, .type)
+      # the fit's own table with CWRES, then the objective setOfv() adds
+      .table <- fit$table
+      if (!inherits(.table, "tableControl")) {
+        .table <- do.call(tableControl, as.list(.table))
       }
+      .table$cwres <- TRUE
+      .tab <- .nlmixr2EventScope(addTable(fit, updateObject = FALSE, table = .table))
+      .extra <- setdiff(names(.tab), names(fit))
+      .extra <- as.data.frame(.tab)[, .extra, drop = FALSE]
+      .origFitEnv <- fit$env
+      .new <- nlmixrCbind(nlmixrClone(fit), .extra)
+      .setOfvFo(.new, if (focei) "focei" else "foce")
       if (updateObject) {
         .evRebound <- nlmixrUpdateObject(.new, .objName, envir, .origFitEnv)
       }
@@ -123,68 +116,3 @@ nmObjGetData.addCwres <- function(x, ...) {
   .nlmixr2EventScope(addCwres(x[[1]], updateObject = FALSE, envir = parent.frame(2)))
 }
 attr(nmObjGetData.addCwres, "desc") <- "Add CWRES to object if needed"
-
-#' A focei refit of a fit with no iterations, at its etas
-#'
-#' The fit's thetas, omega and etas (`etaMat`) are kept, so the refit's tables
-#' are the fit's; `addCwres()` and the IOV route of `addNpde()`/`addTable()`
-#' use it.  A saem fit with `iovMethod = "collapsed"` refits the collapsed
-#' model it estimated (`iovCollapsedRefit`).  Its objective row is focei/foce,
-#' not a quadrature.  The nested
-#' `nlmixr2()` resets the timing globals when it ends, so the caller's are put
-#' back.
-#'
-#' @param fit nlmixr2 fit
-#' @param interaction `foceiControl(interaction =)`, or NULL for the fit's
-#' @param calcTables `foceiControl(calcTables =)`, or NULL for the fit's
-#' @param table `tableControl()` for the refit, or NULL for the fit's
-#' @return the refit
-#' @noRd
-#' @author Matthew L. Fidler
-.refitNoIterations <- function(fit, interaction = NULL, calcTables = NULL, table = NULL) {
-  .ctl <- fit$foceiControl
-  .ctl$maxOuterIterations <- 0L
-  .ctl$maxInnerIterations <- 0L
-  .ctl$etaMat <- fit$etaMat
-  # a saem fit with iovMethod = "collapsed" has the tables of the collapsed
-  # model it estimated, not of the user's model restored from it
-  .coll <- fit$env$iovCollapsedRefit
-  .model <- fit
-  if (!is.null(.coll)) {
-    .model <- .coll$ui
-    .ctl$etaMat <- .coll$etaMat
-  }
-  .ctl$compress <- FALSE
-  .ctl$covMethod <- 0L
-  .ctl$nAGQ <- 0L
-  if (!is.null(interaction)) {
-    .ctl$interaction <- interaction
-  }
-  if (!is.null(calcTables)) {
-    .ctl$calcTables <- calcTables
-  }
-  .timing <- mget(
-    c("nlmixr2Time", "currentTimingEnvironment", "extraTimingTable", "timingStack"),
-    envir = nlmixr2global,
-    ifnotfound = list(NULL)
-  )
-  on.exit(list2env(.timing, envir = nlmixr2global), add = TRUE)
-  .ret <- .nlmixr2PriorGateBypass(
-    if (is.null(table)) {
-      nlmixr2(.model, data = nlme::getData(fit), est = "focei", control = .ctl)
-    } else {
-      nlmixr2(.model, data = nlme::getData(fit), est = "focei", control = .ctl, table = table)
-    }
-  )
-  if (!is.null(.coll)) {
-    # the collapsed model's own columns, as .saemIovFinalizeCollapsed() drops them
-    .w <- which(grepl("^rx[.]", names(.ret)))
-    if (length(.w) > 0L) {
-      .cls <- class(.ret)
-      class(.ret) <- "data.frame"
-      .ret <- .ret[, -.w, drop = FALSE]
-      class(.ret) <- .cls
-    }
-  }
-  .ret
-}

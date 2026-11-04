@@ -1089,8 +1089,8 @@ addTable <- function(
   ## emitted on exit.  updateObject = TRUE keeps (and modifies) the shared
   ## environment, so "in place" is environment identity here (see rxEvents.R)
   force(object)
-  # a finished fit with IOV gets its tables from a refit
-  # (.refitNoIterations()); the fit's own table step calls addTable() with
+  # a finished fit with IOV gets its tables from the model it estimated
+  # (.iovTablesFit()); the fit's own table step calls addTable() with
   # updateObject = "no"
   .iovTables <- missing(data) &&
     missing(thetaEtaParameters) &&
@@ -1115,7 +1115,7 @@ addTable <- function(
     "table",
     {
       # the table's keep and drop count as the arguments do, as in the fit's
-      # own table step and in the IOV route's refit
+      # own table step
       keep <- unique(c(keep, table$keep, "nlmixrRowNums"))
       drop <- unique(c(drop, table$drop))
       .malert("Calculating residuals/tables")
@@ -1132,9 +1132,6 @@ addTable <- function(
       } else {
         .control <- foceiControl()
       }
-      # the IOV route's refit has already finished its table: subject labels,
-      # factors and reinserted subjects
-      .finished <- FALSE
       if (is.null(.fit$omega)) {
         .df <- .calcIres(
           .fit,
@@ -1146,30 +1143,16 @@ addTable <- function(
           keep = keep
         )
       } else if (.iovTables) {
-        if (!inherits(table, "tableControl")) {
-          table <- do.call(tableControl, table)
-        }
-        # CWRES as .calcTables() decides it for this fit, not for the focei refit
-        if (is.null(table$cwres)) {
-          table$cwres <- !is.null(.fit$innerModel) || .foceiObjfWithoutCwres(.fit)
-        }
-        .keep <- setdiff(keep, "nlmixrRowNums")
-        if (length(.keep) > 0L) {
-          table$keep <- .keep
-        }
-        .newFit <- .refitNoIterations(object, calcTables = TRUE, table = table)
-        assign("shrink", .newFit$shrink, .fit)
-        .df <- as.data.frame(.newFit)
-        .rownum <- .newFit$env$.rownum
-        .finished <- TRUE
+        # the fit's shrinkage is already the user's model's
+        .tabObj <- .iovTablesFit(object, keep)
+        .tabs <- .calcTables(.tabObj, table = table, keep = keep)
+        .df <- .iovTablesFinish(.tabs$resid, object)
       } else {
         .tabs <- .calcTables(.fit, data = data, table = table, keep = keep)
         assign("shrink", .mixOwnedEtaShrink(.tabs$shrink, .fit), .fit)
         .df <- .tabs$resid
       }
-      if (!.finished) {
-        .rownum <- as.integer(.df$nlmixrRowNums)
-      }
+      .rownum <- as.integer(.df$nlmixrRowNums)
       assign(".rownum", .rownum, envir = .fit)
       drop <- c(
         drop,
@@ -1201,25 +1184,27 @@ addTable <- function(
         .df <- .df[, .w, drop = FALSE]
       }
       class(.df) <- "data.frame"
-      if (!.finished) {
-        .id <- .df$ID
-        if (is.null(.id)) {
-          .df$ID <- 1L
-        } else {
-          attr(.id, "levels") <- object$idLvl
-          class(.id) <- "factor"
-          .df$ID <- .id
-        }
-        .covLvl <- object$covLvl
-        for (.v in names(.covLvl)) {
-          .l <- as.integer(.df[[.v]])
-          attr(.l, "levels") <- .covLvl[[.v]]
-          class(.l) <- "factor"
-          .df[[.v]] <- .l
-        }
-        # re-insert subjects dropped for having no usable observation
-        .df <- .reinsertNoObsSubjects(.df, object, table)
+      # the subjects, factors and covariates of the model the table comes from
+      if (!.iovTables) {
+        .tabObj <- object
       }
+      .id <- .df$ID
+      if (is.null(.id)) {
+        .df$ID <- 1L
+      } else {
+        attr(.id, "levels") <- .tabObj$idLvl
+        class(.id) <- "factor"
+        .df$ID <- .id
+      }
+      .covLvl <- .tabObj$covLvl
+      for (.v in names(.covLvl)) {
+        .l <- as.integer(.df[[.v]])
+        attr(.l, "levels") <- .covLvl[[.v]]
+        class(.l) <- "factor"
+        .df[[.v]] <- .l
+      }
+      # re-insert subjects dropped for having no usable observation
+      .df <- .reinsertNoObsSubjects(.df, .tabObj, table)
       .isDplyr <- requireNamespace("tibble", quietly = TRUE)
       if (!.isDplyr) {
         .isDataTable <- requireNamespace("data.table", quietly = TRUE)
