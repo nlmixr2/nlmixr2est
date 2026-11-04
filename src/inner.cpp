@@ -7142,15 +7142,24 @@ static inline void foceiBestEvalReset() {
   _bestEvalEta.clear();
 }
 
+// Whether this kind of fit keeps the snapshot at all.  Not for a mu model,
+// whose profiled thetas the snapshot would not carry, nor a mixture, nor a
+// cold (mceta >= 0) or fixed (maxInnerIterations = 0) inner start.
+static inline bool foceiBestEvalFitOk() {
+  return op_focei.muModel == 0 && op_focei.neta != 0 && op_focei.mixIdxN == 0 &&
+    op_focei.mceta < 0 && op_focei.maxInnerIterations > 0 &&
+    R_FINITE(op_focei.finalEtaTol) && inds_focei != NULL;
+}
+
+// Whether this evaluation is an outer-search objective evaluation; not the
+// final re-evaluations, which compare against the snapshot.
+static inline bool foceiBestEvalCallOk() {
+  return foceiOuterActive && !_finalObfCalc && !op_focei.calcGrad && _covStage < 0;
+}
+
 static inline void foceiBestEvalKeep(const double *theta, double ret) {
-  // Not during the final re-evaluations, which compare against it; and not for
-  // a mu model, whose profiled thetas the snapshot would not carry.
-  if (!foceiOuterActive || _finalObfCalc || op_focei.calcGrad || _covStage >= 0 ||
-      op_focei.muModel != 0 ||
-      op_focei.neta == 0 || op_focei.mixIdxN != 0 || op_focei.mceta >= 0 ||
-      op_focei.maxInnerIterations <= 0 ||
-      !R_FINITE(op_focei.finalEtaTol) || inds_focei == NULL ||
-      !R_FINITE(ret) || ret >= 5e100 || ret >= _bestEvalF) return;
+  if (!R_FINITE(ret) || ret >= 5e100 || ret >= _bestEvalF) return;
+  if (!foceiBestEvalCallOk() || !foceiBestEvalFitOk()) return;
   const int nsub = (int)getRxNsub(rx);
   if (nsub <= 0 || nIndsFocei < nsub) return;
   _bestEvalF = ret;
@@ -10848,6 +10857,90 @@ static inline double foceiNatOfv(double f) {
   return op_focei.scaleObjective ? f * op_focei.initObjective / op_focei.scaleObjectiveTo : f;
 }
 
+// The per-subject state foceiFinalBestEta() moves between.
+struct FinalEtaState {
+  int nsub, neta;
+  std::vector<double> eta, lik;
+  FinalEtaState(int ns, int ne) : nsub(ns), neta(ne), eta((size_t)ns * ne), lik(ns) {}
+  // a subject's likelihood as foceiLik0() sums it
+  static double likOf(double l) {
+    return (ISNA(l) || !R_FINITE(l)) ? -op_focei.badSolveObjfAdj : l;
+  }
+  void read() {
+    for (int i = 0; i < nsub; ++i) {
+      std::copy(inds_focei[i].eta, inds_focei[i].eta + neta, &eta[(size_t)i * neta]);
+      lik[i] = likOf(inds_focei[i].lik[0]);
+    }
+  }
+};
+
+// Put these ETAs in as every subject's inner start, forcing a fresh solve.
+static void finalEtaSet(const double *src, int nsub, int neta) {
+  for (int i = 0; i < nsub; ++i) {
+    focei_ind *fInd = &inds_focei[i];
+    std::copy(src + (size_t)i * neta, src + (size_t)(i + 1) * neta, fInd->eta);
+    fInd->mode = 1;
+    fInd->uzm = 1;
+  }
+  std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
+}
+
+// Evaluate at x from the given ETAs; the state read back is left in place.
+static double finalEtaEval(double *x, const double *src, FinalEtaState &st) {
+  finalEtaSet(src, st.nsub, st.neta);
+  double f = foceiOfv0(x);
+  st.read();
+  return f;
+}
+
+// Keep the lowest of the final (W), best-started (B) and per-subject mix (C)
+// states, leaving that state in place.  nMoved is the subjects taken from B.
+static double finalEtaChoose(double *x, double fmin, double fB, const FinalEtaState &W,
+                             const FinalEtaState &B, int &nMoved) {
+  const int nsub = W.nsub, neta = W.neta;
+  std::vector<double> etaC = W.eta;
+  nMoved = 0;
+  for (int i = 0; i < nsub; ++i) {
+    if (B.lik[i] > W.lik[i]) {
+      std::copy(&B.eta[(size_t)i * neta], &B.eta[(size_t)(i + 1) * neta], &etaC[(size_t)i * neta]);
+      nMoved++;
+    }
+  }
+  const bool bLower = R_FINITE(fB) && fB < fmin;
+  if (nMoved == nsub && bLower) return fB;
+  double fC = R_PosInf;
+  if (nMoved > 0) {
+    finalEtaSet(&etaC[0], nsub, neta);
+    fC = foceiOfv0(x);
+  }
+  if (R_FINITE(fC) && fC <= (bLower ? fB : fmin)) return fC;
+  nMoved = bLower ? nsub : 0;
+  finalEtaSet(bLower ? &B.eta[0] : &W.eta[0], nsub, neta);
+  return foceiOfv0(x);
+}
+
+// Score the best evaluation's own theta from its ETAs; report it if lower.
+static double finalEtaBestX(double *x, double ret, int &nMoved) {
+  const int nsub = (int)getRxNsub(rx), neta = op_focei.neta;
+  FinalEtaState cur(nsub, neta);
+  cur.read();
+  std::vector<double> xBest = _bestEvalX;
+  finalEtaSet(&_bestEvalEta[0], nsub, neta);
+  double fX = foceiOfv0(&xBest[0]);
+  if (R_FINITE(fX) && fX < ret) {
+    std::copy(xBest.begin(), xBest.end(), x);
+    nMoved = 0; // counted at the discarded point
+    op_focei.finalBestX = 1;
+    return fX;
+  }
+  finalEtaSet(&cur.eta[0], nsub, neta);
+  return foceiOfv0(x);
+}
+
+static inline bool finalEtaGapOver(double f) {
+  return foceiNatOfv(f) - foceiNatOfv(_bestEvalF) > op_focei.finalEtaTol;
+}
+
 // Re-evaluate the final ETAs from those of the lowest evaluation (#1286).  Each
 // subject keeps whichever start gives the larger individual likelihood, so the
 // reported objective is never worse for it.  Runs only when the final objective
@@ -10857,83 +10950,16 @@ static double foceiFinalBestEta(double *x, double fmin) {
       _bestEvalEta.empty() || _nnOuterFn != NULL || inds_focei == NULL) return fmin;
   const int nsub = (int)getRxNsub(rx), neta = op_focei.neta;
   if (nsub <= 0 || (size_t)nsub * neta != _bestEvalEta.size()) return fmin;
-  if (!(foceiNatOfv(fmin) - foceiNatOfv(_bestEvalF) > op_focei.finalEtaTol)) return fmin;
-  std::vector<double> etaW((size_t)nsub * neta), likW(nsub), likB(nsub), etaB((size_t)nsub * neta);
-  auto setEtas = [&](const double *src) {
-    for (int i = 0; i < nsub; ++i) {
-      focei_ind *fInd = &inds_focei[i];
-      std::copy(src + (size_t)i * neta, src + (size_t)(i + 1) * neta, fInd->eta);
-      fInd->mode = 1;
-      fInd->uzm = 1;
-    }
-    std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
-  };
-  // a subject's likelihood as foceiLik0() sums it
-  auto likOf = [](double l) {
-    return (ISNA(l) || !R_FINITE(l)) ? -op_focei.badSolveObjfAdj : l;
-  };
-  for (int i = 0; i < nsub; ++i) {
-    std::copy(inds_focei[i].eta, inds_focei[i].eta + neta, &etaW[(size_t)i * neta]);
-    likW[i] = likOf(inds_focei[i].lik[0]);
-  }
-  // Start exactly where the best evaluation left each ETA.
+  if (!finalEtaGapOver(fmin)) return fmin;
   const int etaPValid = op_focei.etaPValid;
-  op_focei.etaPValid = 0;
-  setEtas(&_bestEvalEta[0]);
-  double fB = foceiOfv0(x);
-  for (int i = 0; i < nsub; ++i) {
-    std::copy(inds_focei[i].eta, inds_focei[i].eta + neta, &etaB[(size_t)i * neta]);
-    likB[i] = likOf(inds_focei[i].lik[0]);
-  }
+  op_focei.etaPValid = 0; // start exactly where the best evaluation left each ETA
+  FinalEtaState W(nsub, neta), B(nsub, neta);
+  W.read();
+  const double fB = finalEtaEval(x, &_bestEvalEta[0], B);
   int nMoved = 0;
-  std::vector<double> etaC = etaW;
-  for (int i = 0; i < nsub; ++i) {
-    if (likB[i] > likW[i]) {
-      std::copy(&etaB[(size_t)i * neta], &etaB[(size_t)(i + 1) * neta], &etaC[(size_t)i * neta]);
-      nMoved++;
-    }
-  }
-  double ret = fB;
-  if (nMoved != nsub || !R_FINITE(fB) || !(fB < fmin)) {
-    // Keep the lowest of the final (W), best-started (B) and per-subject mix
-    // (C) states; the state left behind must be the one reported.
-    double fC = R_PosInf;
-    if (nMoved > 0) {
-      setEtas(&etaC[0]);
-      fC = foceiOfv0(x);
-    }
-    const double lowWB = (R_FINITE(fB) && fB < fmin) ? fB : fmin;
-    if (R_FINITE(fC) && fC <= lowWB) {
-      ret = fC;
-    } else if (R_FINITE(fB) && fB < fmin) {
-      setEtas(&etaB[0]);
-      ret = foceiOfv0(x);
-      nMoved = nsub;
-    } else {
-      setEtas(&etaW[0]);
-      ret = foceiOfv0(x);
-      nMoved = 0;
-    }
-  }
-  // Still above it: score the best evaluation's own theta from its ETAs, and
-  // report that point when it is lower.
-  if (foceiNatOfv(ret) - foceiNatOfv(_bestEvalF) > op_focei.finalEtaTol &&
-      !std::equal(_bestEvalX.begin(), _bestEvalX.end(), x)) {
-    std::vector<double> etaCur((size_t)nsub * neta), xBest = _bestEvalX;
-    for (int i = 0; i < nsub; ++i) {
-      std::copy(inds_focei[i].eta, inds_focei[i].eta + neta, &etaCur[(size_t)i * neta]);
-    }
-    setEtas(&_bestEvalEta[0]);
-    double fX = foceiOfv0(&xBest[0]);
-    if (R_FINITE(fX) && fX < ret) {
-      std::copy(xBest.begin(), xBest.end(), x);
-      ret = fX;
-      nMoved = 0; // counted at the discarded point
-      op_focei.finalBestX = 1;
-    } else {
-      setEtas(&etaCur[0]);
-      ret = foceiOfv0(x);
-    }
+  double ret = finalEtaChoose(x, fmin, fB, W, B, nMoved);
+  if (finalEtaGapOver(ret) && !std::equal(_bestEvalX.begin(), _bestEvalX.end(), x)) {
+    ret = finalEtaBestX(x, ret, nMoved);
   }
   op_focei.etaPValid = etaPValid;
   op_focei.nFinalEtaMoved = nMoved;
