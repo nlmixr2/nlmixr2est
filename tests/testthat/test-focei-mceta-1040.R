@@ -2,8 +2,9 @@ nmTest({
   # #1040: with mceta >= 1 the candidate set included the carried "last eta",
   # whose inner objective is essentially always the lowest, so mceta=n picked it
   # for every subject and returned the keep-last objective of mceta=-1/-2.  The
-  # candidates are now eta=0 plus the (mceta-1) omega draws, and the converged
-  # eta=0 solve is kept as a floor so mceta=n cannot end worse than mceta=0.
+  # candidates are now eta=0 plus the (mceta-1) omega draws.  With
+  # mcetaOpt = TRUE the converged eta=0 solve is kept as a floor, so mceta=n
+  # cannot end worse than mceta=0.
   #
   # The model needs curvature the inner problem can get lost in: two etas with a
   # FIXED unit omega entering through an inverse CDF, alongside an ordinary
@@ -67,7 +68,8 @@ nmTest({
     .dat <- .mcetaData()
     .f0 <- .mcetaFit(.dat, 0L)
     .f1 <- .mcetaFit(.dat, 1L)
-    .f5 <- .mcetaFit(.dat, 5L)
+    .f5 <- .mcetaFit(.dat, 5L, mcetaOpt = TRUE)
+    .f5std <- .mcetaFit(.dat, 5L)
 
     # The counter is what shows the draws were USED.  Matching (or differing)
     # objectives cannot tell "explored and eta=0 won" from "never explored" --
@@ -75,6 +77,7 @@ nmTest({
     expect_true(is.integer(.f5$env$nMcetaStart))
     expect_equal(sort(names(.f5$env$nMcetaStart)), c("sample", "zero"))
     expect_gt(.f5$env$nMcetaStart[["sample"]], 0L)
+    expect_gt(.f5std$env$nMcetaStart[["sample"]], 0L)
 
     # The floor comparison has to be made on the objective the fit REPORTS --
     # the marginal one, which carries the Laplace log|H| term -- not on the
@@ -87,9 +90,9 @@ nmTest({
     # A single candidate is not ranked at all, so mceta=0 pays nothing for this.
     expect_equal(.f0$env$nInnerRerank[["ranked"]], 0L)
 
-    # Every inner problem has eta=0 among its candidates and keeps the converged
-    # eta=0 solve as a floor, so at fixed parameters the objective cannot come
-    # out above mceta=0.
+    # With mcetaOpt every inner problem keeps the converged eta=0 solve as a
+    # floor, so at fixed parameters the objective cannot come out above
+    # mceta=0.
     expect_lte(.f5$objf, .f0$objf + 1e-4)
     # ... and on this model it is strictly better, which is what "the extra
     # candidates are not being used" hid.
