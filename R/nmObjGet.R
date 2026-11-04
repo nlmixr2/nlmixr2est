@@ -1098,6 +1098,7 @@ nmObjGetEstimationModel.saem <- function(x) {
 #' @export
 nmObjGetEstimationModel.default <- function(x) {
   .env <- x[[1]]
+  .mu2FitModels(.env)
   .model <- NULL
   if (exists("foceiModel", envir = .env, inherits = FALSE)) {
     .model <- get("foceiModel", envir = .env, inherits = FALSE)
