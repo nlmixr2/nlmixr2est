@@ -102,6 +102,8 @@
   # TRUE when the outer optimizer was defaulted (not user
   # specified); lets *f wrappers re-default under fast=TRUE
   "outerOptDefault",
+  # TRUE when rel.tol was defaulted, so it follows fast=TRUE
+  "relTolDefault",
   # the built rx_prior_spec_t* external pointer
   # (.nlmixr2BuildPriorSpec(), R/priors.R); not a formal
   # argument, not deparseable/comparable, and rebuilt fresh
@@ -881,6 +883,8 @@
 #' @param iter.max Maximum number of iterations allowed (nlmimb)
 #'
 #' @param rel.tol Relative tolerance before nlminb stops (nlmimb).
+#'   `NULL` (default) uses `10^(-sigdig)`, or `10^(-sigdig-2)` with
+#'   `fast=TRUE`, whose analytic gradient can resolve the tighter optimum.
 #'
 #' @param x.tol X tolerance for nlmixr2 optimizer
 #'
@@ -1507,6 +1511,11 @@ foceiControl <- function(
   ## sensMethod: forward (variational) ODE parameter sensitivities.
   sensMethod <- match.arg(sensMethod)
   linCmtSensCarry <- match.arg(linCmtSensCarry)
+  # a defaulted rel.tol is recomputed when a built control is rebuilt (e.g. under fast=TRUE)
+  .relTolDefault <- is.null(rel.tol) || isTRUE(list(...)$relTolDefault)
+  if (.relTolDefault) {
+    rel.tol <- NULL
+  }
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
     if (is.null(boundTol)) {
@@ -1566,7 +1575,9 @@ foceiControl <- function(
       innerLbfgsReltol <- 10^(-sigdig - 2)
     }
     if (is.null(rel.tol)) {
-      rel.tol <- 10^(-sigdig)
+      # relative convergence at 10^-sigdig stops an analytic-gradient nlminb
+      # fit ~0.05 OFV short of the optimum; two orders tighter, as lbfgsFactr
+      rel.tol <- if (isTRUE(fast)) 10^(-sigdig - 2) else 10^(-sigdig)
     }
     if (is.null(x.tol)) {
       x.tol <- 10^(-sigdig)
@@ -2293,6 +2304,7 @@ foceiControl <- function(
     scaleC0 = as.double(scaleC0),
     outerOptTxt = .outerOptTxt,
     outerOptDefault = .outerOptDefault,
+    relTolDefault = .relTolDefault,
     rmatNorm = rmatNorm,
     rmatNormLlik = rmatNormLlik,
     smatNorm = smatNorm,
@@ -2476,6 +2488,10 @@ foceiControl <- function(
   # an rxControl that was supplied, even one equal to the generated one
   if (!identical(object[["genRxControl"]], .ret[["genRxControl"]])) {
     .w <- union(.w, which(names(.ret) == "rxControl"))
+  }
+  # a defaulted rel.tol is rebuilt from sigdig and fast
+  if (isTRUE(object$relTolDefault)) {
+    .w <- setdiff(.w, which(names(.ret) == "rel.tol"))
   }
   # print is kept only as iterPrintControl, which is otherwise internal
   if (!identical(object$iterPrintControl, .ret$iterPrintControl)) {

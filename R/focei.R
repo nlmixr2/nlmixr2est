@@ -2399,6 +2399,9 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' @noRd
 .foceiDowngradeFast <- function(control) {
   control$fast <- FALSE
+  if (isTRUE(control$relTolDefault) && is.numeric(control$sigdig)) {
+    control$rel.tol <- 10^(-control$sigdig)
+  }
   if (isTRUE(control$outerOptDefault)) {
     control$outerOpt <- -1L
     control$outerOptFun <- .bobyqa

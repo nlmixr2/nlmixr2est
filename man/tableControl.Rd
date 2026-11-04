@@ -64,7 +64,10 @@ you supply single subject event tables (created with
   rows, such as `"truncated-normal"`.}
 
 \item{seed}{an object specifying if and how the random number
-generator should be initialized}
+generator should be initialized; when given, it takes precedence
+over an active \code{\link[rxode2:rxSetSeed]{rxSetSeed()}} stream for this solve, and the
+caller's \code{.Random.seed} is restored afterwards.  \code{\link[rxode2:rxControl]{rxControl()}} only
+stores it; the seed is applied when the control is used by a solve}
 
 \item{cholSEtol}{The tolerance for the `rxode2::choleSE` function}
 

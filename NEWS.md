@@ -104,6 +104,8 @@
   compartment basis they were solved with, fixing failed fast fits (#1115, #1133).
 - Fast FOCEi defaults to gradient-only `nlminb`; ordinary fits retain `bobyqa`.
   Explicit outer optimizer choices are preserved.
+- Fast fits default `nlminb`'s `rel.tol` to `10^(-sigdig-2)`; at `10^(-sigdig)`
+  relative convergence stopped short of the optimum.
 - `nlminb` curvature is opt-in through `outerTrustHessian="analytic"` or `"fd"`;
   `"auto"` and `"bfgs"` retain its BFGS approximation.
 - FD Hessian probes capture the base gradient before moving solver state and

@@ -960,7 +960,9 @@ a minimum; re-entering restores the initial radius.
 objective; must be in `[n+2, (n+1)(n+2)/2]`. Defaults to `2*n + 1`.
 (bobyqa)}
 
-\item{rel.tol}{Relative tolerance before nlminb stops (nlmimb).}
+\item{rel.tol}{Relative tolerance before nlminb stops (nlmimb).
+`NULL` (default) uses `10^(-sigdig)`, or `10^(-sigdig-2)` with
+`fast=TRUE`, whose analytic gradient can resolve the tighter optimum.}
 
 \item{x.tol}{X tolerance for nlmixr2 optimizer}
 

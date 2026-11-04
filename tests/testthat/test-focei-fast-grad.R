@@ -33,6 +33,13 @@ nmTest({
     # an explicit outerOpt still wins under fast
     expect_equal(foceiControl(fast = TRUE, outerOpt = "nlminb")$outerOpt, -1L)
     expect_equal(foceiControl(fast = TRUE, outerOpt = "lbfgsb3c")$outerOpt, 1L)
+    # a defaulted rel.tol tightens under fast, follows a *f wrapper and a downgrade
+    expect_equal(foceiControl()$rel.tol, 1e-3)
+    expect_equal(foceiControl(fast = TRUE)$rel.tol, 1e-5)
+    expect_equal(foceiControl(fast = TRUE, rel.tol = 1e-4)$rel.tol, 1e-4)
+    expect_equal(.foceiFastCtl(list(foceiControl()), foceiControl)$rel.tol, 1e-5)
+    expect_equal(.foceiFastCtl(list(foceiControl(rel.tol = 1e-3)), foceiControl)$rel.tol, 1e-3)
+    expect_equal(.foceiDowngradeFast(foceiControl(fast = TRUE))$rel.tol, 1e-3)
     # a defaulted optimizer re-defaults under a *f wrapper; an explicit one is kept
     expect_equal(.foceiFastCtl(list(foceiControl()), foceiControl)$outerOptTxt, "nlminb")
     expect_equal(
