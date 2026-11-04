@@ -94,6 +94,14 @@
 
 ### Estimation
 
+- `saem` with `ebe = "mode"` no longer stops with "inv(): matrix is singular"
+  when an eta's estimated variance collapses to zero (#1270).
+- An error inside `saem`'s Gaussian-quadrature objective or its linearized
+  covariance, or while FOCEi or `nlm` builds its sensitivity model, now
+  reaches the user as itself.  Each calculation closed its progress bar in
+  a way that raised the bar's own message ("Error calculating likelihood",
+  "Error calculating covariance via linearization", "Aborted calculation")
+  in place of the error that stopped it.
 - `foceiControl(fast = TRUE)` now falls back to `fast = FALSE` for an
   `ar()` residual whose correlation is fixed (`ar1.cor <- fix(0.9)`) or
   modeled (`ar(corv)`), as it already did for an estimated one.  Such a fit
@@ -165,6 +173,10 @@
   the change of occasion, which can shift the objective materially; fewer
   occasion etas, or an rxode2 with more carry columns
   (`rxode2::linCmtCarryMaxPairs()`), avoids it.
+- `vaeControl(nonMuTheta = "eta")` and `"fix"` now inject the temporary eta
+  without changing the model when the theta sits under `*`, `/`, `^` or a unary
+  minus: `exp(e_cov_f * COV)` becomes `exp((e_cov_f + eta.e_cov_f) * COV)`, not
+  `exp(e_cov_f + eta.e_cov_f * COV)` (#1234).
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
@@ -365,6 +377,12 @@
 
 ### Inter-occasion variability
 
+- A model whose occasion-level eta name starts with `eta.` (`eta.ka.occ ~ 0.1 | OCC`)
+  now fits.  The SAEM temporary-eta cleanup took every `rx.eta.` name, including
+  the `rx.eta.ka.occ.<occ>` occasion columns, so every estimator stopped with
+  "incorrect number of dimensions".  It now removes only the temporary etas saem
+  records creating (#1233).
+
 - The occasion of an IOV model now steps at its first record (locf) under
   every `covsInterpolation`, as rxode2 steps the occasion variables of a
   nested omega.  The IOV rewrite read the occasion as a covariate, so under
@@ -412,6 +430,12 @@
   shape of tables left with one column.
 
 ### Documentation
+
+- `?tableControl` now says that NPDE under `censMethod = "omit"` are not
+  expected to be N(0,1) once observations are censored: below a lower limit
+  the quantified observations it keeps are the high ones, so their mean
+  drifts upward as more is censored.  It points to `"truncated-normal"`,
+  which keeps the censored rows (#1227).
 
 - `?augPred` says that its curves for a `linCmt()` model with
   time-varying covariates are approximate with rxode2 5.1.8 or earlier:

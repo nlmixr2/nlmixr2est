@@ -442,3 +442,38 @@ nmTest({
     expect_equal(sqrt(diag(.own$cov)), sqrt(diag(.r$cov)), tolerance = 0.01)
   })
 })
+
+# a d(f)/d(theta) row that stops, as a row of the build that fails does
+.nlmStopThetaRow <- function(...) {
+  stop("the d(f)/d(theta) row stopped", call. = FALSE)
+}
+
+.nlmProgressModel <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl)
+    v <- exp(tv)
+    d / dt(depot) <- -ka * depot
+    d / dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+  })
+}
+
+# the build shows a progress bar; the error that stops a row reaches the
+# caller, not the bar's generic abort message
+test_that("an error in the nlm d(f)/d(theta) build is the one raised", {
+  .ui <- rxode2::rxode2(.nlmProgressModel)
+  local_mocked_bindings(.nlmFamilyHdThetaLine = .nlmStopThetaRow)
+  expect_error(
+    suppressMessages(.nlmFamilyHdTheta(list(.ui), "nlm")),
+    "the d(f)/d(theta) row stopped",
+    fixed = TRUE
+  )
+})
