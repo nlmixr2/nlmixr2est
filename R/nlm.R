@@ -810,9 +810,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .malert("calculate d(f)/d(theta)")
   }
   rxode2::rxProgress(dim(.grd)[1])
-  on.exit({
-    rxode2::rxProgressAbort()
-  })
+  on.exit(.nmProgressClose())
   .zero <- new.env(parent = emptyenv())
   .zero$any <- FALSE
   .zero$all <- TRUE
@@ -967,6 +965,9 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
       .lambda,
       .hi,
       .low,
+      # the carry's covariate copies are lagged, so they are real lhs ahead of
+      # rx_pred_ (looked up by name)
+      attr(.s$..linCmtCarryThetaPairs, "carryCovInterval")$copies,
       .prd,
       .s$..HdTheta,
       .fr$f_line,

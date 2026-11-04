@@ -144,19 +144,18 @@ nmTest({
     expect_identical(.early$iov.cl, .iov$iov.cl[.k])
   })
 
-  test_that("under midpoint interpolation, IOV predictions are the fit's until an occasion changes", {
-    # the fit compares the interpolated occasion with each occasion's value,
-    # so its occasion etas are 0 between records of two occasions; the
-    # solves of the user's model interpolate the etas there instead
+  test_that("under midpoint interpolation, IOV predictions are the fit's throughout", {
+    # the fit steps its occasion (locf) whatever the interpolation, and so do
+    # the occasion etas of the solves of the user's model
     .fit <- .iovPredictFit("focei-midpoint", "focei", interpolation = "midpoint")
     .obs <- as.data.frame(.fit)
-    .before <- .obs$TIME < 5
+    expect_true(any(.obs$TIME >= 5))
     .p <- suppressMessages(predict(.fit, level = "individual"))
-    expect_equal(.p$sim[.before], .obs$IPRED[.before], tolerance = 1e-8)
+    expect_equal(.p$sim, .obs$IPRED, tolerance = 1e-8)
     .a <- as.data.frame(suppressWarnings(suppressMessages(augPred(.fit))))
     .ind <- .a[.a$ind == "Individual", ]
-    .k <- match(paste(.obs$ID, .obs$TIME)[.before], paste(.ind$id, .ind$time))
-    expect_equal(.ind$values[.k], .obs$IPRED[.before], tolerance = 1e-5)
+    .k <- match(paste(.obs$ID, .obs$TIME), paste(.ind$id, .ind$time))
+    expect_equal(.ind$values[.k], .obs$IPRED, tolerance = 1e-5)
     expect_equal(suppressMessages(predict(.fit))$pred, .obs$PRED, tolerance = 1e-8)
   })
 })

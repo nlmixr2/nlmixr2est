@@ -754,7 +754,7 @@
   if (length(.p) == 0L || !any(.p < 0.01 | .p > 0.99)) {
     return(invisible(NULL))
   }
-  warning("mixture proportion near 0/1; its SE is shrunk by the p(1-p) scale", call. = FALSE)
+  .covWarn("mixture proportion near 0/1; its SE is shrunk by the p(1-p) scale")
   invisible(NULL)
 }
 
@@ -916,7 +916,7 @@
     # does NOT work: the later table assembly overwrites it.  Kept under 75
     # characters so it renders on one line, and unprefixed (the fit already
     # reports which method was run).
-    warning("mixture proportion SE skipped; not at the score-zero point", call. = FALSE)
+    .covWarn("mixture proportion SE skipped; not at the score-zero point")
     return(invisible(NULL))
   }
   .blk <- .mixProbCovBlock(.r[, .free, drop = FALSE], .pi[.free])

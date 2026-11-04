@@ -577,7 +577,8 @@ attr(rxUiGet.saemModel, "rstudio") <- "params(tcl)"
 #' @return model lines (`rx_cx_=...`, ...), or character(0)
 #' @noRd
 .saemCensOutLines <- function(ui, s) {
-  .out <- get0(".saemCensOut", envir = ui, inherits = FALSE)
+  # a compressed ui (a list) never carries the staged flag
+  .out <- if (is.environment(ui)) get0(".saemCensOut", envir = ui, inherits = FALSE)
   if (is.null(.out) || !exists("rx_cnu_", envir = s, inherits = FALSE)) {
     return(character(0))
   }
