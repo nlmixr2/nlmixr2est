@@ -7143,7 +7143,10 @@ static inline void foceiBestEvalReset() {
 }
 
 static inline void foceiBestEvalKeep(const double *theta, double ret) {
-  if (!foceiOuterActive || op_focei.calcGrad || _covStage >= 0 ||
+  // Not during the final re-evaluations, which compare against it; and not for
+  // a mu model, whose profiled thetas the snapshot would not carry.
+  if (!foceiOuterActive || _finalObfCalc || op_focei.calcGrad || _covStage >= 0 ||
+      op_focei.muModel != 0 ||
       op_focei.neta == 0 || op_focei.mixIdxN != 0 || op_focei.mceta >= 0 ||
       op_focei.maxInnerIterations <= 0 ||
       !R_FINITE(op_focei.finalEtaTol) || inds_focei == NULL ||
@@ -10886,17 +10889,26 @@ static double foceiFinalBestEta(double *x, double fmin) {
       nMoved++;
     }
   }
-  double ret = fmin;
-  if (nMoved == nsub && R_FINITE(fB)) {
-    ret = fB;
-  } else {
-    setEtas(&etaC[0]);
-    ret = foceiOfv0(x);
-    if (nMoved == 0 || !R_FINITE(ret) || foceiNatOfv(ret) > foceiNatOfv(fmin)) {
-      // nothing gained (or the mix lost): put the original final state back
-      if (nMoved != 0) nMoved = 0;
+  double ret = fB;
+  if (nMoved != nsub || !R_FINITE(fB)) {
+    // Keep the lowest of the final (W), best-started (B) and per-subject mix
+    // (C) states; the state left behind must be the one reported.
+    double fC = R_PosInf;
+    if (nMoved > 0) {
+      setEtas(&etaC[0]);
+      fC = foceiOfv0(x);
+    }
+    const double lowWB = (R_FINITE(fB) && fB < fmin) ? fB : fmin;
+    if (R_FINITE(fC) && fC <= lowWB) {
+      ret = fC;
+    } else if (R_FINITE(fB) && fB < fmin) {
+      setEtas(&etaB[0]);
+      ret = foceiOfv0(x);
+      nMoved = nsub;
+    } else {
       setEtas(&etaW[0]);
       ret = foceiOfv0(x);
+      nMoved = 0;
     }
   }
   // Still above it: score the best evaluation's own theta from its ETAs, and
@@ -10912,6 +10924,7 @@ static double foceiFinalBestEta(double *x, double fmin) {
     if (R_FINITE(fX) && fX < ret) {
       std::copy(xBest.begin(), xBest.end(), x);
       ret = fX;
+      nMoved = 0; // counted at the discarded point
       op_focei.finalBestX = 1;
     } else {
       setEtas(&etaCur[0]);
@@ -11311,7 +11324,8 @@ void foceiCustomFun(Environment e){
   List ret = as<List>(opt(_["par"]=x, _["fn"]=f, _["gr"]=g, _["lower"]=lower,
                           _["upper"]=upper,_["control"]=ctl));
   foceiOuterHold_(false);
-  x = ret["x"];
+  // a copy: the final evaluation may replace x, and optReturn keeps the optimizer's
+  x = clone(as<NumericVector>(ret["x"]));
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
   // Otherwise ETAs may be off
   if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
