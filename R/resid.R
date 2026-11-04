@@ -1299,6 +1299,15 @@ addTable <- function(
 #'   gives censored observations no NPDE and leaves them out of the
 #'   decorrelation.
 #'
+#'   The NPDE that `"omit"` keeps are not expected to be N(0,1) under
+#'   censoring, even for a true model: only the quantified observations are
+#'   kept, while the simulations they are compared with are not censored.
+#'   Below a lower limit the kept observations are the high ones, so their
+#'   mean drifts upward as more is censored (downward above an upper limit).
+#'   This holds for any NPDE restricted to the uncensored rows; to check a
+#'   model's fit with censored data, use a method that keeps the censored
+#'   rows, such as `"truncated-normal"`.
+#'
 #' @param ties When `TRUE` jitter prediction-discrepancy points to discourage ties in cdf.
 #'
 #' @param cholSEtol The tolerance for the `rxode2::choleSE` function
