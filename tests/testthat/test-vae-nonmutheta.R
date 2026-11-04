@@ -52,6 +52,23 @@ nmTest({
     expect_true(any(p$zPopFix))
   })
 
+  test_that("nonMuTheta='eta' keeps operator precedence around the theta (#1234)", {
+    .covf <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; e_cov_f <- 0.1
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        f(depot) <- exp(e_cov_f * COV)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v; cp ~ add(add.sd) })
+    }
+    r <- suppressWarnings(suppressMessages(
+      .preProcessVaeNonMuTheta(rxode2::assertRxUi(.covf()), "vae", NULL, vaeControl(nonMuTheta = "eta"))
+    ))
+    .txt <- vapply(r$ui$lstExpr, deparse1, character(1))
+    expect_true("f(depot) <- exp((e_cov_f + eta.e_cov_f) * COV)" %in% .txt)
+  })
+
   test_that("nonMuTheta='none' injects nothing", {
     ui <- rxode2::assertRxUi(.nmt())
     expect_null(.preProcessVaeNonMuTheta(ui, "vae", NULL, vaeControl(nonMuTheta = "none")))
