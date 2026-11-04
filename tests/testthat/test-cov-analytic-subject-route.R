@@ -166,7 +166,7 @@ nmTest({
 
   .srCase <- list(
     addFocei = list(model = .srBase, est = "focei", label = "analytic (full)"),
-    addPropFoce = list(model = .srAddProp, est = "foce", label = "|r| (analytic)"),
+    addPropFoce = list(model = .srAddProp, est = "foce", label = "analytic (full)"),
     generalFocei = list(model = .srC1, est = "focei", label = "analytic (full)"),
     generalFoce = list(model = .srC1, est = "foce", label = "analytic (full)"),
     generalFocePlus = list(model = .srC1, est = "foce", ctl = list(foce = "foce+"), label = "analytic (full)"),
