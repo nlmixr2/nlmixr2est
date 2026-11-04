@@ -286,7 +286,7 @@ getValidNlmixrCtl.uobyqa <- function(control) .getValidCtl(control, "uobyqaContr
     postSetup = function(.ret, .ui, .fit) {
       .ret$parHistData <- .ret$uobyqa$parHistData
       .ret$uobyqa$parHistData <- NULL
-      .ret$cov <- .ret$uobyqa$cov
+      .ret$cov <- .ret$uobyqa[["cov"]]
       .ret$covMethod <- .ret$uobyqa$covMethod
       .ret
     }
