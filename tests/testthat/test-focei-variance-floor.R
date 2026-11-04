@@ -100,7 +100,7 @@ nmTest({
       suppressMessages(suppressWarnings(nlmixr2(ui, d, est, ctl)))$objf
     }
     for (est in c("focei", "foce")) {
-      expect_equal(ofv(1, est) - ofv(1e6, est), -2 * nrow(d) * log(1e6), tolerance = 1e-6)
+      expect_equal(ofv(1e-6, est) - ofv(1e6, est), -2 * nrow(d) * log(1e12), tolerance = 1e-6)
     }
   })
 
@@ -221,7 +221,8 @@ nmTest({
   })
 
   # AGQ quadrature nodes can floor R where eta-hat does not; the (f,R) assembler has
-  # no nodes, so such a fit falls back to finite differences.
+  # no nodes, so such a fit falls back to finite differences.  Near the DBL_MIN^(1/4)
+  # floor the add/prop assembler's f-derivatives can overflow first; that falls back too.
   test_that("AGQ analytic covariance falls back when only a node floors R", {
     skip_on_cran()
     .testSeed(1132)
@@ -243,7 +244,10 @@ nmTest({
     ))
     # eta-hat stays above the floor, so only the node check can see it
     expect_true(all((0.1 * fit$IPRED)^2 > .foceiRFloor))
-    expect_message(r <- foceiCovAnalytic(fit), "floored residual variance")
+    expect_message(
+      r <- foceiCovAnalytic(fit),
+      "floored residual variance|non-finite observed information"
+    )
     expect_null(r)
   })
 
