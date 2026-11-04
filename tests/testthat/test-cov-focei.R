@@ -662,9 +662,9 @@ nmTest({
     # R stencil already evaluated, and an analytic R needs no step search; with reuse
     # switched off (NLMIXR2EST_COV_NO_REUSE) every covariance is the same, bit for bit.
     # gillKcov = 0 keeps the full stage separate from the theta-only one (no merge).
-    .fit <- function(reuse, ...) {
+    .fit <- function(reuse, covMethod = "r,s", ...) {
       withr::local_envvar(NLMIXR2EST_COV_NO_REUSE = if (reuse) "" else "1")
-      .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covMethod = "r,s", ...))
+      .nlmixr(.quietOneCmt, theo_sd, "focei", foceiControl(print = 0, calcTables = FALSE, covMethod = covMethod, ...))
     }
     .on <- .fit(TRUE, gillKcov = 0L)
     .off <- .fit(FALSE, gillKcov = 0L)
@@ -735,7 +735,7 @@ nmTest({
       .quietOneCmt,
       theo_sd,
       "focei",
-      foceiControl(print = 0, calcTables = FALSE, covDerivMethod = "forward")
+      foceiControl(print = 0, calcTables = FALSE, covMethod = "r,s", covDerivMethod = "forward")
     )
     expect_true(all(.fw$env$covEvals[c("gill", "r", "s", "fullR")] > 0L))
   })
