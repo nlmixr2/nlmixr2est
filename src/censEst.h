@@ -23,7 +23,6 @@
 
 #define _safe_zero(a) ((a) == 0 ? DBL_EPSILON : (a))
 #define _safe_sqrt(a) ((a) <= 0 ? sqrt(DBL_EPSILON) : sqrt(a))
-#define _as_dbleps(a) (fabs(a) < sqrt(DBL_EPSILON) ? ((a) < 0 ? -sqrt(DBL_EPSILON)  : sqrt(DBL_EPSILON)) : a)
 
 
 #define censFlagM2 1
@@ -790,7 +789,6 @@ static inline void censNormalDvPartials(double cens, double limDv, double lim,
 #undef PHI
 #undef _safe_zero
 #undef _safe_sqrt
-#undef _as_dbleps
 
 #undef censFlagM2
 #undef censFlagM3
