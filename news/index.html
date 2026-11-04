@@ -96,6 +96,7 @@
 <li><p>NPDE under <code>censMethod = "omit"</code> now gives censored observations NA and leaves them out of the decorrelation. Before, the residual step’s NA spread through the decorrelation and the subject’s NPDE were meaningless.</p></li>
 <li><p>NPDE’s back-transformation of EPRED and DV now uses each observation’s own transform; it used the first subject’s rows for every subject. ### Tables</p></li>
 <li><p><code>tableControl(npde = TRUE)</code> and <code><a href="../reference/addNpde.html">addNpde()</a></code> no longer abort R when a subject has no observations (“Col::subvec(): indices out of bounds”). That subject’s NPDE columns are <code>NA</code>, as its other table columns are. The NPDE of a fit with a single subject no longer fails either.</p></li>
+<li><p>In a model with labels, the <code>Parameter</code> column of <code>$parFixed</code> is now empty for a non-mu-referenced eta’s row; it printed <code>&lt;NA&gt;</code>.</p></li>
 <li><p>In a model with a normal and a non-normal endpoint (such as <code><a href="https://rdrr.io/r/stats/Poisson.html" class="external-link">dpois()</a></code>), a subject with no observations of the normal endpoint left every subject before it in the data (the next subject, when it was the first) with CWRES, CRES and CPRED computed from another subject’s etas (or none), since nlmixr2est 2.1.0. Each row now takes its own subject’s.</p></li>
 <li>
 <p>A finite-difference gradient or Hessian no longer takes a slope of 0 where its differences do not solve.</p>
@@ -107,6 +108,7 @@
 </ul><p>Fits whose differences solve are unchanged, apart from that last case.</p>
 </li>
 <li><p><code><a href="../reference/foceiControl.html">foceiControl()</a></code> now rejects the integer codes it has no case for, <code>eventType = 1</code> and <code>optimHessType = 2</code> or <code>optimHessCovType = 2</code>, with an error that names the accepted values. They used to be accepted: <code>eventType = 1</code> left the finite-difference eta gradient at 0, and Hessian type 2 gave a Hessian of zeros. The names and the codes the control stores (<code>eventType</code> 2 and 3, the Hessian types 1 and 3) are accepted as before.</p></li>
+<li><p>A fixed eta that estimation leaves out, such as <code>eta.v ~ fix(0)</code>, no longer prints <code><a href="https://rdrr.io/r/utils/fix.html" class="external-link">fix()</a></code> in the BSV column of <code>$parFixed</code> when the model also has a fixed theta; the cell is empty, as it is without one.</p></li>
 </ul></div>
 <div class="section level4">
 <h4 id="inter-occasion-variability-development-version">Inter-occasion variability<a class="anchor" aria-label="anchor" href="#inter-occasion-variability-development-version"></a></h4>
