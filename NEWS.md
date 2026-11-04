@@ -8,6 +8,12 @@
   estimated parameters; otherwise, or when the analytic step declines, the fit runs
   `"r,s"` as before, quietly.  The choice is in `fit$env$covAuto` (#1217).
 
+- `foceiControl(covGrad = TRUE)` (default): when the fit has the analytic outer
+  gradient (`fast = TRUE`), the finite-difference covariance builds its full R from
+  central differences of that gradient (2p gradients, no step search) instead of
+  second differences of the objective, and S from the same probes.  It is faster
+  and closer to the analytic R; `fit$env$covGrad` records its use (#1217).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the
