@@ -1,5 +1,17 @@
 # nlmixr2est (development version)
 
+## Changed defaults
+
+- `sigdig` now sets the ODE tolerances to `rtol = 10^(-2*sigdig)` and
+  `atol = rtol/100` (floored at `rtol = 1e-12`) instead of
+  `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`.  At the default
+  `sigdig = 3` every `sigdig`-scaled method (FOCEi and its family, the nlm
+  family, vae, emvi, nlme, ...) now solves at rxode2's own `rtol = 1e-6`,
+  `atol = 1e-8` rather than `1e-3`/`1e-6`, which biased the FOCEi objective
+  of an ODE model by up to several units against its `linCmt()` twin
+  (#1131).  `est = "nls"` no longer adds three orders on top (`1e-8` at its
+  `sigdig = 4`).  Fits of ODE models are slower and their objectives change.
+
 ## New features
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
