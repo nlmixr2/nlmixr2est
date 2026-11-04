@@ -2433,8 +2433,10 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
 // Physical subjects only -- see nnOuterUsable(), which refuses a mixture fit.
 static Rcpp::NumericMatrix assembleNnOuterMatrix() {
   rx_solving_options *op = getSolvingOptions(rx);
-  int neq = getOpNeq(op);
-  int nlhs = getRxNlhs(rx);
+  // the inner model's own layout, not a wider pool peer's
+  const bool innerReg = odeSwapLoaded(odeSlotInner);
+  int neq = innerReg ? odeSwapNeq(odeSlotInner) : getOpNeq(op);
+  int nlhs = innerReg ? odeSwapNlhs(odeSlotInner) : getRxNlhs(rx);
   int nsub = (int) getRxNsub(rx);
   // count observations (evid == 0)
   int nobs = 0;
@@ -2451,12 +2453,15 @@ static Rcpp::NumericMatrix assembleNnOuterMatrix() {
   for (int id = 0; id < nsub; id++) {
     int _rxId = getRxId(id);
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+    // read at the stride and CMT basis likInner0 solved the inner model with
+    OdeSwapScope _neqScope(odeSlotInner, ind, op);
+    OdeSwapCmtScope _cmtScope(odeSlotInner, op, ind);
     iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
       setIndIdx(ind, j);
       int kk = getIndIx(ind, j);
       double curT = getTime(kk, ind);
-      double *lhs = getIndLhs(ind);
+      double *lhs = _neqScope.lhs();
       double *st = getOpIndSolve(op, ind, j);
       lhsWalkNewind(ind, j);
       rxInner.calc_lhs(_rxId, curT, st, lhs); // advance lhs for dose + obs records
@@ -3715,6 +3720,13 @@ static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
   // for this subject to re-solve the inner model (do not let the eta*-unchanged short-circuit
   // read the rxHess2 buffer as the inner solve) -- mirrors impThetaSensCollect.
   fInd->setup = 0;
+  // hess2 carries its own dose-event sensitivities: solving it under the inner
+  // model's installed shape drops its second-order jumps.  nmForceSerial keeps
+  // this outside any parallel region, where the shape can be swapped in.
+  std::unique_ptr<OdeSwapEsBatch> _h2Es;
+  if (odeSwapHasEs(odeSlotHess2) && !omp_in_parallel()) {
+    _h2Es.reset(new OdeSwapEsBatch(odeSlotHess2));
+  }
   OdeSwapScope _h2Guard(odeSlotHess2, ind, op);
   for (int j = 0; j < ne; ++j) setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
   setIndSolve(ind, -1);
@@ -10199,7 +10211,6 @@ NumericVector foceiSetup_(const RObject &obj,
     if (_needSolveArgs) {
       storeCovSolveArgs_(_poolObj, rxControl, params, data);
     }
-
     rxode2::rxSolve_(_poolObj, rxControl,
                      R_NilValue,//const Nullable<CharacterVector> &specParams =
                      R_NilValue,//const Nullable<List> &extraArgs =
@@ -10207,7 +10218,6 @@ NumericVector foceiSetup_(const RObject &obj,
                      data,//const RObject &events =
                      R_NilValue, // inits
                      1);//const int setupOnly = 0
-
     rx = getRxSolve_();
     // a failed restore in an earlier fit's covariance step says nothing about this solve
     covFitSolveLost_ = false;
@@ -11434,6 +11444,8 @@ Environment foceiOuter(Environment e){
       }
       op_foceiUseAnalyticGrad = false;
       op_focei.calcGrad = 0;
+      // the eta predictor is anchored to the EBEs this evaluation moved; drop it too
+      op_focei.etaPValid = 0;
     }
     foceiOuterFinal(x.begin(), e);
     if (op_focei.maxInnerIterations == 0){
@@ -15365,6 +15377,11 @@ Environment foceiFitCpp_(Environment e){
   // pool from the PREVIOUS fit's, which is exactly what resetting _impPoolModel
   // around foceiSetup_ used to prevent.
   odeSwapClearAll();
+  // set per fit once hess2 is registered; never outlives the fit
+  nmForceSerial = false;
+  struct NmForceSerialReset {
+    ~NmForceSerialReset() { nmForceSerial = false; }
+  } _nmForceSerialReset;
   // Same reason: globalCensFlag accumulates which censoring methods a fit used
   // and is only cleared once foceiFinalizeTables() has READ it, so a fit that
   // never reaches there leaves it set and the NEXT fit reports the previous
@@ -15455,10 +15472,8 @@ Environment foceiFitCpp_(Environment e){
       // the macro/solve-site audit; leaving it dead keeps main's behavior.
       op_focei.innerNeq = (odeSwapNeq(odeSlotInner) < odeSwapPlan().poolNeq) ?
         odeSwapNeq(odeSlotInner) : 0;
-
       foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
-
       if (_outerPoolOk && odeSwapLoaded(odeSlotOuter) &&
           model.containsElementNamed("outer")) {
         odeSwapRegister(odeSlotOuter, "outer", model["outer"], &rxVaeOuter);
@@ -15596,6 +15611,9 @@ Environment foceiFitCpp_(Environment e){
               (hasRxCens(getRxSolve_()) || hasRxLimit(getRxSolve_()))) {
             op_focei.predHess2Offset = -1;
           }
+          // inner-loop hess2 solves swap in their own event-sensitivity shape
+          nmForceSerial = odeSwapHasEs(odeSlotHess2) &&
+            (op_focei.predHess2Offset >= 0 || op_focei.conditionalHess2Offset >= 0);
           // pin the 1st-order inner Newton solves to innerNeq (pool sized for rxHess2)
           if ((op_focei.predHess2Offset >= 0 || op_focei.conditionalHess2Offset >= 0) && op_focei.innerNeq > 0) {
             impSetInnerNeqOverride();
@@ -16108,6 +16126,7 @@ RObject vaeInnerSetup_(Environment e) {
   // Same reason as foceiFitCpp_: the registry outlives a fit, so clear it before
   // declaring this fit's peers.
   odeSwapClearAll();
+  nmForceSerial = false;
   op_focei.innerNeq = 0;
   op_focei.canDoFD = false;
   op_focei.nEstOmega = e.exists("nEstOmega") ? as<int>(e["nEstOmega"]) : 0;
@@ -18210,7 +18229,6 @@ static void outerSolveFill(int slot, rxSolveF *fns,
                         foceiOuterRetryOpts(), _ohk);
     }
     double *solve0 = getIndSolve(ind);
-
     // Count the observations BEFORE the bad-solve exit.  A flagged subject still needs
     // its row slot: the stacking allocates rows for it, leaves them zero, skips filling
     // them (`if (!E.ok) continue`) and takes its gradient column from the per-subject

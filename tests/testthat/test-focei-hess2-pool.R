@@ -197,4 +197,52 @@ nmTest({
     expect_equal(as.numeric(conditional$eta[[2]]), as.numeric(reference$eta[[2]]), tolerance = 1e-4)
     expect_equal(conditional$objf, reference$objf, tolerance = 1e-4)
   })
+
+  test_that('a conditional Hessian keeps its own second-order dose jumps', {
+    # One dose into a linear model: f(depot) scales the whole profile, so moving it
+    # into the prediction gives the same likelihood with no dose-event sensitivity.
+    dosed <- function() {
+      ini({ tka <- log(1); tkel <- log(.2); lf <- 0; error <- .2; eta.ka ~ .1; eta.f ~ .1 })
+      model({ ka <- exp(tka + eta.ka); kel <- exp(tkel)
+            d/dt(depot) <- -ka * depot; f(depot) <- exp(lf + eta.f)
+            d/dt(central) <- ka * depot - kel * central
+            cp <- central / 10; cp ~ prop(error) })
+    }
+    scaled <- function() {
+      ini({ tka <- log(1); tkel <- log(.2); lf <- 0; error <- .2; eta.ka ~ .1; eta.f ~ .1 })
+      model({ ka <- exp(tka + eta.ka); kel <- exp(tkel)
+            d/dt(depot) <- -ka * depot
+            d/dt(central) <- ka * depot - kel * central
+            cp <- exp(lf + eta.f) * central / 10; cp ~ prop(error) })
+    }
+    times <- c(.5, 1, 2, 4, 8)
+    data <- rbind(
+      data.frame(ID = 1:3, TIME = 0, DV = NA, AMT = 100, EVID = 1),
+      data.frame(ID = rep(1:3, each = 5), TIME = rep(times, 3), DV = NA, AMT = 0, EVID = 0)
+    )
+    data <- data[order(data$ID, data$TIME), ]
+    data$DV[data$EVID == 0] <- c(4, 6, 7, 6, 3, 5, 7, 8, 7, 4, 3, 5, 6, 5, 3)
+    fit <- function(model) {
+      suppressWarnings(suppressMessages(nlmixr2(
+        model,
+        data,
+        'focei',
+        foceiControl(
+          fast = TRUE,
+          innerOpt = 'trust',
+          innerHessian = 'conditional',
+          detHessian = 'conditional',
+          maxOuterIterations = 0,
+          print = 0,
+          covMethod = '',
+          calcTables = FALSE,
+          rxControl = rxode2::rxControl(atol = 1e-12, rtol = 1e-12, maxsteps = 500000L)
+        )
+      )))
+    }
+    fD <- fit(dosed)
+    fS <- fit(scaled)
+    expect_gt(fD$env$nConditionalInnerHessian, 0)
+    expect_equal(fD$objf, fS$objf, tolerance = 1e-6)
+  })
 })

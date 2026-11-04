@@ -102,6 +102,10 @@
   tolerances leave the ETA mode approximate.
 - Pooled inner and second-order models read their solves at the stride and
   compartment basis they were solved with, fixing failed fast fits (#1115, #1133).
+- A conditional (`innerHessian`/`detHessian = "conditional"`) or fast `ll()`
+  Hessian now solves its model under its own dose-event sensitivities, so an eta
+  in `f()`, `alag()`, `rate()` or `dur()` gets its second-order dose jumps.  Such
+  fits run their subject loops serially.
 - Fast FOCEi defaults to gradient-only `nlminb`; ordinary fits retain `bobyqa`.
   Explicit outer optimizer choices are preserved.
 - Fast fits default `nlminb`'s `rel.tol` to `10^(-sigdig-2)`; at `10^(-sigdig)`
@@ -114,6 +118,11 @@
   zero components without resetting parameters or changing optimizers.
 - Fast FOCEi ETA predictions use EBEs from the last gradient evaluation,
   making repeated line-search trials independent of ETAs left by other trials.
+- A zero-iteration fast fit again reports the same ETAs, objective and
+  covariance as `fast = FALSE`; its diagnostic gradient no longer seeds the final
+  inner problem through the ETA predictor (#1057).
+- The NN outer-training matrix reads the inner solve at the inner model's own
+  stride and compartment basis in a pooled fit.
 - The fast FOCEi augmented sensitivity model is optimized in a single
   `rxOptExpr()` pass, so its CSE temporaries no longer collide (#1133).
 - FOCEi caches reuse compiled models to reduce setup time and keep rxode2

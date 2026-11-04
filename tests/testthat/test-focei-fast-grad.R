@@ -677,7 +677,8 @@ nmTest({
       )
     })
     expect_equal(unname(gSt[names(base)]), unname(fd), tolerance = 0.01)
-    expect_lt(max(abs(gNo[names(base)] - fd) / pmax(abs(fd), 1)), 0.02)
+    # at the fit's own EBEs, which the posthoc gradient no longer moves (#1057)
+    expect_lt(max(abs(gNo[names(base)] - fd) / pmax(abs(fd), 1)), 0.05)
   })
 
   test_that("Omega derivatives reuse the fit's rxInv only when it is at the same Omega", {
