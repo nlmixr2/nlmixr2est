@@ -2,6 +2,12 @@
 
 ## New features
 
+- `foceiControl(covMethod = "auto")` is the new default.  It installs the analytic
+  covariance when the model is in its scope and the analytic step is predicted to
+  cost less than the finite-difference `"r,s"`, from the model's ODE states, etas and
+  estimated parameters; otherwise, or when the analytic step declines, the fit runs
+  `"r,s"` as before, quietly.  The choice is in `fit$env$covAuto` (#1217).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the

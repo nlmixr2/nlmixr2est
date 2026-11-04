@@ -7,7 +7,10 @@
 #   OMP_NUM_THREADS=1 taskset -c 2 Rscript inst/benchmarks/benchmark-cov-method.R [out.csv] [grid]
 #
 # `grid` is "axes" (one axis at a time from a base, the default), "large", "ode"
-# (transit chains with combined error) or "all".
+# (transit chains with combined error), "cross" (long chains with few parameters, where
+# the analytic step is closest to losing) or "all".  `cpu` is the fit's process CPU
+# time, compiler children included, so it holds up on a loaded machine; the
+# covariance cost is its difference from the covMethod = "" fit.
 # library(nlmixr2est) loads the INSTALLED package: install the tree first.
 suppressPackageStartupMessages({
   library(nlmixr2est)
@@ -128,7 +131,9 @@ setRxThreads(1L)
 .covBenchOne <- function(case, mod, dat, covMethod) {
   .ctl <- foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = covMethod)
   .w <- character(0)
+  .cpu <- function() sum(proc.time()[c("user.self", "sys.self", "user.child", "sys.child")], na.rm = TRUE)
   .t0 <- proc.time()[["elapsed"]]
+  .c0 <- .cpu()
   .fit <- withCallingHandlers(
     tryCatch(
       suppressMessages(nlmixr2(mod, dat, "focei", control = .ctl)),
@@ -140,11 +145,13 @@ setRxThreads(1L)
     }
   )
   .wall <- proc.time()[["elapsed"]] - .t0
+  .cpuT <- .cpu() - .c0
   if (inherits(.fit, "error")) {
     return(data.frame(
       case,
       covMethod = covMethod,
       wall = .wall,
+      cpu = .cpuT,
       covTime = NA_real_,
       estTime = NA_real_,
       installed = paste("error:", conditionMessage(.fit)),
@@ -159,6 +166,7 @@ setRxThreads(1L)
     case,
     covMethod = covMethod,
     wall = .wall,
+    cpu = .cpuT,
     covTime = if ("covariance" %in% names(.tm)) .tm$covariance else NA_real_,
     estTime = sum(unlist(.tm[setdiff(names(.tm), c("covariance", "table"))])),
     installed = if (length(.fit$covMethod)) as.character(.fit$covMethod)[1] else NA_character_,
@@ -201,7 +209,20 @@ setRxThreads(1L)
     .vary(nTransit = c(3L, 6L, 10L, 16L, 30L), nSigma = 2L),
     .vary(nTransit = c(10L, 30L), nSigma = 2L, nEta = 4L, nCov = 8L)
   )
-  switch(grid, axes = .axes, large = .large, ode = .ode, all = c(.axes, .large, .ode), stop("unknown grid"))
+  .cross <- c(
+    .vary(nTransit = c(30L, 45L, 60L), nSigma = 2L, nEta = 1L),
+    .vary(nTransit = c(30L, 45L, 60L), nSigma = 2L, nEta = 3L),
+    .vary(nTransit = c(30L, 60L), nSigma = 2L, nEta = 2L, nPeriph = 1L, mm = TRUE)
+  )
+  switch(
+    grid,
+    axes = .axes,
+    large = .large,
+    ode = .ode,
+    cross = .cross,
+    all = c(.axes, .large, .ode, .cross),
+    stop("unknown grid")
+  )
 }
 
 .res <- list()
@@ -219,16 +240,18 @@ for (.c in .covBenchCases(.grid)) {
     mm = .c$mm,
     nObs = sum(.dat$EVID == 0)
   )
-  # one warm-up compiles both models before either is timed
+  # one warm-up compiles both models before either is timed; a second covMethod = ""
+  # fit is the CPU baseline the covariance cost is measured from
   invisible(.covBenchOne(.case, .mod, .dat, ""))
   # the analytic augmented model compiles on its first use: run it cold, then warm
-  for (.i in seq_along(.ms <- c("r,s", "analytic", "analytic"))) {
+  .ms <- c("", "r,s", "analytic", if (.grid != "cross") "analytic")
+  for (.i in seq_along(.ms)) {
     .m <- .ms[.i]
     .r <- .covBenchOne(.case, .mod, .dat, .m)
     .r$run <- sum(.ms[seq_len(.i)] == .m)
     .res[[length(.res) + 1L]] <- .r
     message(sprintf(
-      "nOde=%d nEta=%d nTheta=%d nSigma=%d mm=%s %-8s run %d cov=%.2fs est=%.2fs %s",
+      "nOde=%d nEta=%d nTheta=%d nSigma=%d mm=%s %-8s run %d cov=%.2fs est=%.2fs cpu=%.2fs %s",
       .case$nOde,
       .case$nEta,
       .case$nTheta,
@@ -238,6 +261,7 @@ for (.c in .covBenchCases(.grid)) {
       .r$run,
       .r$covTime,
       .r$estTime,
+      .r$cpu,
       .r$installed
     ))
   }

@@ -11920,6 +11920,14 @@ static bool foceiCovTypeAnalytic(Environment e) {
   return _ctl.containsElementNamed("covType") && as<std::string>(_ctl["covType"]) == "analytic";
 }
 
+// Whether covMethod = "auto" chose the analytic covariance; its decline (which reset the
+// control to "r,s") goes on quietly as a plain "r,s" fit.
+static bool foceiCovAuto(Environment e) {
+  if (!e.exists("control")) return false;
+  List _ctl = as<List>(e["control"]);
+  return _ctl.containsElementNamed("covAuto") && as<bool>(_ctl["covAuto"]);
+}
+
 // covType="analytic": the exact analytic observed-information R-matrix while the
 // optimizer is live; `.foceiCalcRanalytic` returns the npars x npars R or NULL.
 // Returns 1 when R.0 is installed, 0 when the step must be abandoned (covMethod
@@ -11953,6 +11961,10 @@ static int foceiCalcRAnalytic(Environment e) {
       op_focei.covMethod = 0;
       return 0;
     }
+  }
+  if (foceiCovAuto(e)) {
+    op_focei.covMethod = 1;
+    return -1;
   }
   // analytic declined: the first method covFallback$analytic lists (the finite-difference
   // sandwich "r,s" by default); none listed fails the step.  RSprintf is the visible

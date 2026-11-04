@@ -168,13 +168,15 @@
 # Why the analytic attempt in progress declined: `reason` is what the caller records
 # in full (fit$env$covTried, setCov(), the message), `short` the step alone for the
 # warning and printed line, `detail` what a solve or model build said before the step
-# that called it gave up.  Each entry point clears them with .foceiAnalyticWhyReset().
+# that called it gave up; `quiet` drops the message for covMethod = "auto".  Each entry
+# point clears them with .foceiAnalyticWhyReset().
 .foceiAnalyticWhy <- new.env(parent = emptyenv())
 
-.foceiAnalyticWhyReset <- function() {
+.foceiAnalyticWhyReset <- function(quiet = FALSE) {
   .foceiAnalyticWhy$reason <- NULL
   .foceiAnalyticWhy$short <- NULL
   .foceiAnalyticWhy$detail <- NULL
+  .foceiAnalyticWhy$quiet <- quiet
   invisible()
 }
 
@@ -218,12 +220,14 @@
   }
   .foceiAnalyticWhy$detail <- NULL
   .foceiAnalyticWhy$reason <- reason
-  message(
-    "covType=\"analytic\": ",
-    reason,
-    if (scope) " is out of analytic-covariance scope",
-    "; using the finite-difference covariance instead"
-  )
+  if (!isTRUE(.foceiAnalyticWhy$quiet)) {
+    message(
+      "covType=\"analytic\": ",
+      reason,
+      if (scope) " is out of analytic-covariance scope",
+      "; using the finite-difference covariance instead"
+    )
+  }
   NULL
 }
 
@@ -1131,13 +1135,32 @@
 #' the native SE path -- or `NULL` to fall back to the FD Hessian.  A decline
 #' leaves its reason in `e$covTried` and `e$.analyticReason` (in full), and in
 #' `e$.analyticReasonShort` and `e$.analyticWarnNoFallback` (the step alone, for the
-#' line and the warning the C++ hook gives).
+#' line and the warning the C++ hook gives).  Under covMethod = "auto" a decline
+#' is no failed request: it is only noted in `e$covAuto`, and the fit goes on as a
+#' plain "r,s" one.
 #' @noRd
 .foceiCalcRanalytic <- function(e) {
-  .foceiAnalyticWhyReset()
+  .auto <- isTRUE(tryCatch(rxode2::rxGetControl(get("ui", e), "covAuto", FALSE), error = function(err) FALSE))
+  .foceiAnalyticWhyReset(quiet = .auto)
+  on.exit(.foceiAnalyticWhy$quiet <- FALSE)
   .rm <- c(".analyticReason", ".analyticReasonShort", ".analyticWarnNoFallback")
   rm(list = .rm[vapply(.rm, exists, logical(1), envir = e, inherits = FALSE)], envir = e)
   .R0 <- .foceiCalcRanalyticAssemble(e)
+  if (is.null(.R0) && .auto) {
+    .why <- .foceiAnalyticWhy$reason
+    assign("covAuto", paste0("r,s: analytic declined (", if (is.null(.why)) .foceiAnalyticNoReason else .why, ")"), envir = e)
+    # the rest of the step, in C++ and R, then reads a plain "r,s" request
+    .ctl <- get("control", e)
+    .ctl$covType <- "fd"
+    .ctl$covMethod <- 1L
+    assign("control", .ctl, envir = e)
+    rxode2::rxAssignControlValue(get("ui", e), "covType", "fd")
+    rxode2::rxAssignControlValue(get("ui", e), "covMethod", 1L)
+    return(NULL)
+  }
+  if (.auto) {
+    assign("covAuto", "analytic", envir = e)
+  }
   if (is.null(.R0)) {
     .why <- .foceiAnalyticWhy$reason
     .short <- .foceiAnalyticWhy$short

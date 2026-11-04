@@ -83,6 +83,9 @@
   # derived from covMethod ("analytic" vs the finite-difference
   # formulas); kept internal so a built control round-trips.
   "covType",
+  # covMethod = "auto" resolved at the fit: the covType it chose is no
+  # user request, so a declined analytic step falls back silently
+  "covAuto",
   # foreign covariance ("sa"/"imp") deferred to a post-fit
   # recompute; internal so a built control round-trips.
   "covMethodDeferred",
@@ -152,8 +155,12 @@
 #'     derivatives while calculating the covariance components
 #'     (Hessian and S).
 #'
-#' @param covMethod Method for calculating the covariance.  \code{"r,s"} (the
-#'     default) is the sandwich estimator (see below).  \code{"analytic"}
+#' @param covMethod Method for calculating the covariance.  \code{"auto"} (the
+#'     default) uses \code{"analytic"} when the model is in its scope and its
+#'     augmented sensitivity model is predicted to cost less than the
+#'     finite-difference \code{"r,s"}, which runs otherwise (and, quietly, when the
+#'     analytic step declines); the choice is in \code{fit$env$covAuto}.
+#'     \code{"r,s"} is the sandwich estimator (see below).  \code{"analytic"}
 #'     uses the exact analytic observed-information R-matrix (reported as
 #'     \eqn{R^{-1}}) and additionally returns the residual and \code{Omega} standard
 #'     errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
@@ -1294,7 +1301,7 @@ foceiControl <- function(
   derivMethod = c("switch", "forward", "central"), #
   derivSwitchTol = NULL, #
   covDerivMethod = c("central", "forward"), #
-  covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""), #
+  covMethod = c("auto", "r,s", "analytic", "r", "s", "sa", "imp", ""), #
   covSolveTol = NULL, #
   covFallback = list("r,s" = c("r", "s"), r = "s", s = character(0), analytic = c("r,s", "r", "s")),
   covPrecursor = c("fd", "analytic"),
@@ -1759,7 +1766,7 @@ foceiControl <- function(
     covDerivMethod <- match.arg(covDerivMethod)
     covDerivMethod <- setNames(.methodIdx[covDerivMethod], NULL)
   }
-  # covMethod folds in the R-matrix (Hessian) source: "analytic" (the default) uses the
+  # covMethod folds in the R-matrix (Hessian) source: "analytic" uses the
   # exact analytic observed-information R-matrix, reported with the observed-information
   # "r" formula; "r,s"/"r"/"s" use the finite-difference Hessian with that formula; ""
   # skips the covariance step.  The analytic-vs-finite-difference choice is carried to the
@@ -1772,7 +1779,7 @@ foceiControl <- function(
   if (checkmate::testIntegerish(covMethod, len = 1, any.missing = FALSE)) {
     covMethod <- .covMethodSlotArg(covMethod)
     .ct <- list(...)$covType
-    if (!is.null(.ct)) covType <- match.arg(.ct, c("analytic", "fd"))
+    if (!is.null(.ct)) covType <- match.arg(.ct, c("analytic", "fd", "auto"))
   } else if (!rxode2::rxIs(covMethod, "character")) {
     stop("'covMethod' must be a covariance method name or a foceiControl() slot (0 to 3)", call. = FALSE)
   } else {
@@ -1782,6 +1789,10 @@ foceiControl <- function(
     } else if (covMethod == "analytic") {
       covType <- "analytic"
       covMethod <- "r"
+    } else if (covMethod == "auto") {
+      # resolved per model by .foceiCovAuto(); "r,s" is the slot when it is not analytic
+      covType <- "auto"
+      covMethod <- "r,s"
     }
     # "" and the deferred "sa"/"imp" run no covariance step in the kernel
     covMethod <- if (covMethod %in% names(.covMethodSlot)) .covMethodSlot[[covMethod]] else 0L
@@ -2153,6 +2164,7 @@ foceiControl <- function(
     covDerivMethod = covDerivMethod,
     covMethod = covMethod,
     covType = covType,
+    covAuto = isTRUE(list(...)$covAuto),
     covMethodDeferred = covMethodDeferred,
     covSolveTol = covSolveTol,
     covFallback = covFallback,
@@ -2381,7 +2393,7 @@ foceiControl <- function(
 #' covMethodDeferred, with slot 0) into a single name; neither internal field is
 #' deparsed on its own.
 #' @param o the control
-#' @return "sa", "imp", "analytic", "r,s", "r", "s", or "" for no covariance
+#' @return "sa", "imp", "auto", "analytic", "r,s", "r", "s", or "" for no covariance
 #' @noRd
 .foceiControlCovMethodName <- function(o) {
   # an impmapControl() runs the importance-sampling covariance in its kernel
@@ -2394,6 +2406,9 @@ foceiControl <- function(
     return(.deferred)
   }
   .slot <- as.integer(o$covMethod)
+  if (!identical(.slot, 0L) && (identical(o$covType, "auto") || isTRUE(o$covAuto))) {
+    return("auto")
+  }
   if (!identical(.slot, 0L) && identical(o$covType, "analytic")) {
     return("analytic")
   }

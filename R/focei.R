@@ -5357,6 +5357,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # non-"auto" choice that the model's priors cannot express under it (e.g.
   # priorMethod="tnpri" on an invWishart() prior) errors out of
   # rxPriorBuildSpec() itself, here, before any estimation starts.
+  .control <- .foceiCovAuto(.ui, .control)
   .priorMethod <- .control$priorMethod
   if (is.null(.priorMethod)) {
     .priorMethod <- "auto"
@@ -5391,7 +5392,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     # objective the fit actually reports rather than silently describing a
     # different function.
     if (identical(.control$covType, "analytic")) {
-      .minfo("prior distribution(s): analytic covariance does not apply yet -- using covMethod = \"r,s\"")
+      if (!isTRUE(.control$covAuto)) {
+        .minfo("prior distribution(s): analytic covariance does not apply yet -- using covMethod = \"r,s\"")
+      }
       .control$covType <- "fd"
       .control$covMethod <- 1L
     }
@@ -5739,6 +5742,11 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     ui <- rxode2::rxUiCompress(ui)
     .ret$ui <- ui
+    # covMethod = "auto" that never tried the analytic step (the hook records its own)
+    if (isTRUE(.control$covAuto) && !exists("covAuto", envir = .ret, inherits = FALSE) &&
+      identical(.control$covType, "fd") && !identical(as.integer(.control$covMethod), 0L)) {
+      .ret$covAuto <- "r,s: out of analytic scope or predicted to cost more"
+    }
     # the C++ side reported the repaired omega the evaluation needed; the fit
     # reports the estimate (.foceiOptEnvSetupBounds())
     if (exists("omegaUnrepaired", envir = .ret, inherits = FALSE)) {
