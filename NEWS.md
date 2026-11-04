@@ -106,6 +106,8 @@
 
 ### Estimation
 
+- `saem` with `ebe = "mode"` no longer stops with "inv(): matrix is singular"
+  when an eta's estimated variance collapses to zero (#1270).
 - An error inside `saem`'s Gaussian-quadrature objective or its linearized
   covariance, or while FOCEi or `nlm` builds its sensitivity model, now
   reaches the user as itself.  Each calculation closed its progress bar in
