@@ -13241,33 +13241,43 @@ static bool foceiFdGradPass(const FdFullCtx &c, const std::vector<int> &slot,
   return R.is_finite();
 }
 
-// The diagonal of R from forward differences of the gradient at steps h (p + 1
-// gradients); NA where the probe gave no curvature.
-static bool foceiFdGradDiag(const FdFullCtx &c, const std::vector<int> &slot,
-                            const std::vector<double> &x0, const std::vector<double> &h,
-                            std::vector<double> &d) {
-  const int np = c.nth + c.nom;
+// Each theta's step of covGradSe standard errors, 1/sqrt(2 R_jj), with R_jj from a
+// forward difference of the gradient, repeated at the new step until the step moves
+// by less than 3x (a step too small for the noise misreads R_jj; a curvature that is not
+// positive grows it 10x).  Up to covGradRounds probes per theta.
+static const double covGradSe = 0.3;
+static const int covGradRounds = 4;
+static bool foceiFdGradSteps(const FdFullCtx &c, const std::vector<int> &slot,
+                             const std::vector<double> &x0, std::vector<double> &h) {
   arma::vec g0, g1;
   if (!foceiFdGradAt(c, slot, x0.data(), g0)) return false;
-  d.assign((size_t)np, NA_REAL);
-  for (int j = 0; j < np; ++j) {
-    std::vector<double> x = x0;
-    x[(size_t)j] += h[(size_t)j];
-    if (!foceiFdGradAt(c, slot, x.data(), g1)) return false;
-    double r = 0.5 * (g1[(unsigned int)j] - g0[(unsigned int)j]) / h[(size_t)j];
-    if (R_FINITE(r) && r > 0) d[(size_t)j] = r;
+  for (int j = 0; j < c.nth; ++j) {
+    double hj = h[(size_t)j];
+    for (int k = 0; k < covGradRounds; ++k) {
+      std::vector<double> x = x0;
+      x[(size_t)j] += hj;
+      if (!foceiFdGradAt(c, slot, x.data(), g1)) return false;
+      const double r = 0.5 * (g1[(unsigned int)j] - g0[(unsigned int)j]) / hj;
+      if (!R_FINITE(r) || r <= 0) {
+        hj *= 10.0;
+        continue;
+      }
+      const double hn = covGradSe / std::sqrt(2.0 * r), dh = hn / hj;
+      hj = hn;
+      if (dh < 3.0 && dh > 1.0 / 3.0) break;
+    }
+    h[(size_t)j] = hj;
   }
   return true;
 }
 
 // R = H/2 from central differences of the gradient, and S from each subject's -2LL at
-// the same probes.  The gradient carries the inner ETAs' convergence error at first
-// order, so no step relative to the parameter's size suits every parameter: a first
-// pass (steps cbrt(rtol) of the parameter's scale) reads the diagonal of R, and the
-// second steps covGradSe standard errors, 1/sqrt(2 R_jj), along each.  An Omega step is
-// held to half its scale so the probe stays positive definite.  3p + 1 gradients.
+// the same probes, at steps cbrt(rtol) of each parameter's scale.  A theta's gradient
+// carries the inner ETAs' convergence error at first order, so a step relative to the
+// theta's size can drown in it, and each theta steps a fraction of its standard error
+// instead (foceiFdGradSteps).  Omega enters in closed form given the ETAs and keeps its
+// relative step.  2p + 1 gradients plus the theta step probes.
 // res.c and res.x0 are set; false leaves the objective stencil to run.
-static const double covGradSe = 0.3;
 static bool foceiFdFullGrad(Environment e, bool needS, FdFullResult &res) {
   const FdFullCtx &c = res.c;
   std::vector<int> slot;
@@ -13279,24 +13289,18 @@ static bool foceiFdFullGrad(Environment e, bool needS, FdFullResult &res) {
   double rel = (R_FINITE(rtol) && rtol > 0) ? std::cbrt(rtol) : 1e-3;
   rel = std::min(std::max(rel, 1e-4), 1e-2);
   const std::vector<double> &x0 = res.x0;
-  std::vector<double> h((size_t)np), hMax((size_t)np, R_PosInf);
+  std::vector<double> h((size_t)np);
   for (int i = 0; i < c.nth; ++i) h[(size_t)i] = rel * std::max(std::fabs(x0[(size_t)i]), 0.1);
   for (int q = 0; q < c.nom; ++q) {
     const int a = c.omA[q] - 1, b = c.omB[q] - 1;
-    const double sc = std::sqrt(c.Om0(a, a) * c.Om0(b, b));
-    h[(size_t)(c.nth + q)] = rel * sc;
-    hMax[(size_t)(c.nth + q)] = 0.5 * sc;
+    h[(size_t)(c.nth + q)] = rel * std::sqrt(c.Om0(a, a) * c.Om0(b, b));
   }
   ScopedRestore<int> calcGrad(op_focei.calcGrad);
   ScopedRestore<bool> keepTol(_odeFitTolKeep);
   op_focei.calcGrad = 1;
   _odeFitTolKeep = true;
   CovStageScope _st(covStFullR);
-  std::vector<double> d;
-  if (!foceiFdGradDiag(c, slot, x0, h, d)) return false;
-  for (int j = 0; j < np; ++j) {
-    if (R_FINITE(d[(size_t)j])) h[(size_t)j] = std::min(covGradSe / std::sqrt(2.0 * d[(size_t)j]), hMax[(size_t)j]);
-  }
+  if (!foceiFdGradSteps(c, slot, x0, h)) return false;
   arma::mat R, G;
   bool okS = needS;
   if (!foceiFdGradPass(c, slot, x0, h, okS, R, G)) return false;
