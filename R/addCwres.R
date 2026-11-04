@@ -95,11 +95,13 @@ addCwres <- function(fit, focei = TRUE, updateObject = TRUE, envir = parent.fram
         .table <- do.call(tableControl, as.list(.table))
       }
       .table$cwres <- TRUE
-      .tab <- .nlmixr2EventScope(addTable(fit, updateObject = FALSE, table = .table))
+      # addTable() updates the environment of the fit it is given
+      .new <- nlmixrClone(fit)
+      .tab <- .nlmixr2EventScope(addTable(.new, updateObject = FALSE, table = .table))
       .extra <- setdiff(names(.tab), names(fit))
       .extra <- as.data.frame(.tab)[, .extra, drop = FALSE]
       .origFitEnv <- fit$env
-      .new <- nlmixrCbind(nlmixrClone(fit), .extra)
+      .new <- nlmixrCbind(.new, .extra)
       .setOfvFo(.new, if (focei) "focei" else "foce")
       if (updateObject) {
         .evRebound <- nlmixrUpdateObject(.new, .objName, envir, .origFitEnv)
