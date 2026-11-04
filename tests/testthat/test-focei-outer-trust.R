@@ -449,13 +449,74 @@ test_that("the outer gradient and Hessian are skipped on a trial that cannot be 
   )
 })
 
+test_that("a bound outside the objective's domain is not used to restart trust", {
+  .control <- list(
+    fast = TRUE,
+    maxOuterIterations = 100L,
+    outerTrustRinit = 10,
+    outerTrustRmax = 100,
+    outerTrustFterm = 1e-10,
+    outerTrustMterm = 1e-10,
+    hessian = function(x, relStep) matrix(2 * (1 - log(x)) / x^2, 1, 1)
+  )
+  .ret <- .trustOuter(
+    2,
+    fn = function(x) if (x <= 0) Inf else log(x)^2,
+    gr = function(x) 2 * log(x) / x,
+    lower = 0,
+    upper = Inf,
+    control = .control
+  )
+  expect_equal(.ret$x, 1, tolerance = 1e-5)
+  expect_identical(.ret$convergence, 0L)
+  expect_identical(.ret$activeBounds, integer(0))
+
+  # A finite value at the bound is insufficient when its gradient is infinite.
+  .control$hessian <- function(x, relStep) matrix(0.5 / x^1.5, 1, 1)
+  .ret <- .trustOuter(
+    4,
+    fn = function(x) if (x < 0) Inf else (sqrt(x) - 1)^2,
+    gr = function(x) 1 - 1 / sqrt(x),
+    lower = 0,
+    upper = Inf,
+    control = .control
+  )
+  expect_equal(.ret$x, 1, tolerance = 1e-5)
+  expect_identical(.ret$convergence, 0L)
+  expect_identical(.ret$activeBounds, integer(0))
+})
+
+test_that("a release cut short by the iteration budget is not convergence", {
+  .region <- .trustOuterRegion(c(0, 0), list(outerTrustFterm = 1e-11, outerTrustMterm = 1e-11))
+  .lower <- c(-Inf, 0)
+  .upper <- c(Inf, Inf)
+  .state <- .trustOuterState(.lower, .upper)
+  # Re-enter with x2 held at zero: x1 is optimal, but x2 wants back inside.
+  .state$held[2] <- TRUE
+  .state$heldAt[2] <- 0
+  .objfun <- .trustOuterObjfun(
+    function(x) x[1]^2 + (x[2] - 1)^2,
+    function(x) c(2 * x[1], 2 * (x[2] - 1)),
+    list(hessian = function(x, g) diag(c(2, 2))),
+    .lower,
+    .upper,
+    .region,
+    .state
+  )
+  .ret <- .trustOuterRun(.objfun, c(0, 0), .region, 1L, 0L, .state)
+  expect_identical(.ret$activeBounds, integer(0))
+  expect_false(.ret$converged)
+  expect_true(.ret$underConverged)
+  expect_equal(.ret$newtonDecrement, 1)
+})
+
 test_that("a run that ends away from the incumbent refuses to vouch for its curvature", {
   # The value-only shortcut answers a trial with the INCUMBENT's gradient and
   # Hessian, which is only sound while that incumbent is the point trust
-  # accepted.  The two agree by construction (trust accepts at rho >= 1/4, the
-  # replay at rho > 1/4) and no randomized run has separated them -- but if
-  # they ever did separate, the curvature reported at the end would belong to
-  # another point.  Poison the incumbent to stand in for that: a value below
+  # accepted.  Both accept at rho >= 1/4 and no randomized run has separated
+  # them -- but if floating-point differences ever separated them, the curvature
+  # reported at the end would belong to another point.  Poison the incumbent to
+  # stand in for that: a value below
   # anything reachable makes the shortcut fire on every trial, so trust ends
   # somewhere the incumbent does not name.
   .region <- .trustOuterRegion(c(1, 1), list(outerTrustFterm = 1e-11, outerTrustMterm = 1e-11))

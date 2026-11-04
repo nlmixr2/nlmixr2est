@@ -630,11 +630,13 @@ is.latex <- function() {
         .m <- .trustOuterMask(.inc$gradient, .inc$hessian, state$held)
         state$inc$gm <- .m$gradient
         state$inc$hm <- .m$hessian
+        .inc <- state$inc
         state$activeChanges <- state$activeChanges + 1L
         if (state$activeChanges <= .maxActive && .left >= 1L) {
           .x <- .inc$x
           next
         }
+        .ret$converged <- FALSE
       }
     }
     if (.atInc) {
@@ -817,10 +819,8 @@ is.latex <- function() {
   # would be discarded.  One below the incumbent is still evaluated in full: it is
   # the ones trust CAN accept that are cheap to get wrong.  The incumbent is tracked
   # by replaying trust's own acceptance test (same preddiff, fterm/mterm; no
-  # parscale, minimize = TRUE), strictly at `rho > 1/4` where trust takes `>=`:
-  # a replay that errs toward "rejected" leaves the incumbent ABOVE trust's own
-  # value, which only makes the shortcut harder to reach, so it costs an evaluation
-  # rather than handing trust curvature from the wrong point.
+  # parscale, minimize = TRUE).  If floating-point differences separate the two
+  # incumbents, the run loop refuses to vouch for the resulting curvature.
   .fterm <- if (is.null(region$fterm)) 0 else region$fterm
   .mterm <- if (is.null(region$mterm)) 0 else region$mterm
   function(x) {
@@ -832,21 +832,24 @@ is.latex <- function() {
       ))
     }
     .out <- !state$held & (x < lower | x > upper)
+    .snap <- FALSE
     if (any(.out)) {
       if (!is.null(state$inc)) {
         state$infeasibleRun <- state$infeasibleRun + 1L
         if (state$infeasibleRun >= 2L) {
-          state$held[.out] <- TRUE
-          state$heldAt[.out] <- ifelse(x[.out] < lower[.out], lower[.out], upper[.out])
-          state$snapNew <- .out
-          state$snapPending <- TRUE
+          .bound <- ifelse(x[.out] < lower[.out], lower[.out], upper[.out])
+          x <- state$inc$x
+          x[.out] <- .bound
+          .snap <- TRUE
         }
       }
-      return(.reject)
+      if (!.snap) {
+        return(.reject)
+      }
     }
     x[state$held] <- state$heldAt[state$held]
     .inc <- state$inc
-    if (!is.null(.inc) && isTRUE(all(x == .inc$x))) {
+    if (!.snap && !is.null(.inc) && isTRUE(all(x == .inc$x))) {
       # a (re)start at the incumbent: already known
       return(list(value = .inc$value, gradient = .inc$gm, hessian = .inc$hm))
     }
@@ -854,7 +857,7 @@ is.latex <- function() {
     if (!is.finite(.v)) {
       return(.reject)
     }
-    if (!is.null(.inc) && .v >= .inc$value) {
+    if (!.snap && !is.null(.inc) && .v >= .inc$value) {
       # cannot be accepted: value only
       return(list(value = .v, gradient = .inc$gm, hessian = .inc$hm))
     }
@@ -864,6 +867,14 @@ is.latex <- function() {
     }
     .h <- curvature$hessian(x, .g)
     if (is.null(.h) || !all(is.finite(.h))) {
+      return(.reject)
+    }
+    if (.snap) {
+      # A legal box bound can still be outside the objective's domain.
+      state$held[.out] <- TRUE
+      state$heldAt[.out] <- .bound
+      state$snapNew <- .out
+      state$snapPending <- TRUE
       return(.reject)
     }
     .m <- .trustOuterMask(.g, .h, state$held)

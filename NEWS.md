@@ -1807,7 +1807,9 @@
   `eta.cl` variance landed on its `diagOmegaBoundLower` floor stopped 12 to
   596 objective units above the optimum `outerOpt="nlminb"` and `"lbfgsb3c"`
   reach -- and reported convergence there -- while every fit whose variance
-  stayed inside the box was unaffected.  All of them now reach it.
+  stayed inside the box was unaffected.  All of them now reach it.  A bound
+  released at the iteration limit correctly reports non-convergence.  Bounds
+  outside the objective's domain are rejected instead of used as restart points.
 - Added optional full conditional inner curvature for fast Gaussian FOCEI via
   `innerHessian="conditional"`, used by inner trust and n1qn1's `warm="calc"`
   seed. The FOCEI marginal objective was unchanged.
