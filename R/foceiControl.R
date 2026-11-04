@@ -231,7 +231,7 @@
 #'
 #' @param covGrad when the fit has the analytic outer gradient
 #'     (\code{fast=TRUE}), build the full R from central differences of that
-#'     gradient (2p gradients) instead of second differences of the objective,
+#'     gradient (3p + 1 gradients) instead of second differences of the objective,
 #'     and S from the same probes; \code{fit$env$covGrad} is \code{TRUE} when
 #'     it was used.  Falls back to the objective stencil when the gradient
 #'     declines.  Default \code{TRUE}.

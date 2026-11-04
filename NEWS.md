@@ -10,7 +10,7 @@
 
 - `foceiControl(covGrad = TRUE)` (default): when the fit has the analytic outer
   gradient (`fast = TRUE`), the finite-difference covariance builds its full R from
-  central differences of that gradient (2p gradients, no step search) instead of
+  central differences of that gradient (3p + 1 gradients, no step search) instead of
   second differences of the objective, and S from the same probes.  It is faster
   and closer to the analytic R; `fit$env$covGrad` records its use (#1217).
 

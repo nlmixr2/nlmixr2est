@@ -13213,34 +13213,15 @@ struct FdFullResult {
   bool grad = false;
 };
 
-// R = H/2 from the gradient at x0 +/- h, with h relative to each parameter's scale at
-// cbrt(rtol) of the covariance solves; S from each subject's -2LL at the same probes.
-// res.c and res.x0 are set; false leaves the objective stencil to run.
-static bool foceiFdFullGrad(Environment e, bool needS, FdFullResult &res) {
-  const FdFullCtx &c = res.c;
-  std::vector<int> slot;
-  if (!foceiCovGradOn(e) || op_focei.priorSpec != NULL || op_focei.mixIdxN != 0 ||
-      !foceiFdGradSlots(c, slot)) return false;
+// One central-difference pass of the gradient at steps h: R = H/2, and with okS each
+// subject's -2LL slopes G (okS goes false when they are unavailable).
+static bool foceiFdGradPass(const FdFullCtx &c, const std::vector<int> &slot,
+                            const std::vector<double> &x0, const std::vector<double> &h,
+                            bool &okS, arma::mat &R, arma::mat &G) {
   const int np = c.nth + c.nom;
-  double atol = NA_REAL, rtol = NA_REAL;
-  rxGetSolveAtolRtol(&atol, &rtol);
-  double rel = (R_FINITE(rtol) && rtol > 0) ? std::cbrt(rtol) : 1e-3;
-  rel = std::min(std::max(rel, 1e-4), 1e-2);
-  const std::vector<double> &x0 = res.x0;
-  std::vector<double> h((size_t)np);
-  for (int i = 0; i < c.nth; ++i) h[(size_t)i] = rel * std::max(std::fabs(x0[(size_t)i]), 0.1);
-  for (int q = 0; q < c.nom; ++q) {
-    const int a = c.omA[q] - 1, b = c.omB[q] - 1;
-    h[(size_t)(c.nth + q)] = rel * std::sqrt(c.Om0(a, a) * c.Om0(b, b));
-  }
-  ScopedRestore<int> calcGrad(op_focei.calcGrad);
-  ScopedRestore<bool> keepTol(_odeFitTolKeep);
-  op_focei.calcGrad = 1;
-  _odeFitTolKeep = true;
-  CovStageScope _st(covStFullR);
-  arma::mat H((unsigned int)np, (unsigned int)np), G;
+  arma::mat H((unsigned int)np, (unsigned int)np);
   arma::vec gp, gm, lp, lm;
-  bool okS = needS;
+  G.reset();
   for (int j = 0; j < np; ++j) {
     std::vector<double> x = x0;
     x[(size_t)j] = x0[(size_t)j] + h[(size_t)j];
@@ -13256,8 +13237,69 @@ static bool foceiFdFullGrad(Environment e, bool needS, FdFullResult &res) {
       if (okS) G.col((unsigned int)j) = (lp - lm) / (2.0 * h[(size_t)j]);
     }
   }
-  arma::mat R = 0.25 * (H + H.t());
-  if (!R.is_finite()) return false;
+  R = 0.25 * (H + H.t());
+  return R.is_finite();
+}
+
+// The diagonal of R from forward differences of the gradient at steps h (p + 1
+// gradients); NA where the probe gave no curvature.
+static bool foceiFdGradDiag(const FdFullCtx &c, const std::vector<int> &slot,
+                            const std::vector<double> &x0, const std::vector<double> &h,
+                            std::vector<double> &d) {
+  const int np = c.nth + c.nom;
+  arma::vec g0, g1;
+  if (!foceiFdGradAt(c, slot, x0.data(), g0)) return false;
+  d.assign((size_t)np, NA_REAL);
+  for (int j = 0; j < np; ++j) {
+    std::vector<double> x = x0;
+    x[(size_t)j] += h[(size_t)j];
+    if (!foceiFdGradAt(c, slot, x.data(), g1)) return false;
+    double r = 0.5 * (g1[(unsigned int)j] - g0[(unsigned int)j]) / h[(size_t)j];
+    if (R_FINITE(r) && r > 0) d[(size_t)j] = r;
+  }
+  return true;
+}
+
+// R = H/2 from central differences of the gradient, and S from each subject's -2LL at
+// the same probes.  The gradient carries the inner ETAs' convergence error at first
+// order, so no step relative to the parameter's size suits every parameter: a first
+// pass (steps cbrt(rtol) of the parameter's scale) reads the diagonal of R, and the
+// second steps covGradSe standard errors, 1/sqrt(2 R_jj), along each.  An Omega step is
+// held to half its scale so the probe stays positive definite.  3p + 1 gradients.
+// res.c and res.x0 are set; false leaves the objective stencil to run.
+static const double covGradSe = 0.3;
+static bool foceiFdFullGrad(Environment e, bool needS, FdFullResult &res) {
+  const FdFullCtx &c = res.c;
+  std::vector<int> slot;
+  if (!foceiCovGradOn(e) || op_focei.priorSpec != NULL || op_focei.mixIdxN != 0 ||
+      !foceiFdGradSlots(c, slot)) return false;
+  const int np = c.nth + c.nom;
+  double atol = NA_REAL, rtol = NA_REAL;
+  rxGetSolveAtolRtol(&atol, &rtol);
+  double rel = (R_FINITE(rtol) && rtol > 0) ? std::cbrt(rtol) : 1e-3;
+  rel = std::min(std::max(rel, 1e-4), 1e-2);
+  const std::vector<double> &x0 = res.x0;
+  std::vector<double> h((size_t)np), hMax((size_t)np, R_PosInf);
+  for (int i = 0; i < c.nth; ++i) h[(size_t)i] = rel * std::max(std::fabs(x0[(size_t)i]), 0.1);
+  for (int q = 0; q < c.nom; ++q) {
+    const int a = c.omA[q] - 1, b = c.omB[q] - 1;
+    const double sc = std::sqrt(c.Om0(a, a) * c.Om0(b, b));
+    h[(size_t)(c.nth + q)] = rel * sc;
+    hMax[(size_t)(c.nth + q)] = 0.5 * sc;
+  }
+  ScopedRestore<int> calcGrad(op_focei.calcGrad);
+  ScopedRestore<bool> keepTol(_odeFitTolKeep);
+  op_focei.calcGrad = 1;
+  _odeFitTolKeep = true;
+  CovStageScope _st(covStFullR);
+  std::vector<double> d;
+  if (!foceiFdGradDiag(c, slot, x0, h, d)) return false;
+  for (int j = 0; j < np; ++j) {
+    if (R_FINITE(d[(size_t)j])) h[(size_t)j] = std::min(covGradSe / std::sqrt(2.0 * d[(size_t)j]), hMax[(size_t)j]);
+  }
+  arma::mat R, G;
+  bool okS = needS;
+  if (!foceiFdGradPass(c, slot, x0, h, okS, R, G)) return false;
   res.R = R;
   res.h = h;
   res.okS = okS;
