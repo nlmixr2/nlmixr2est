@@ -1095,6 +1095,11 @@ struct focei_options {
   // as the base of their threefry stream.
   int nEtaRestart = 0;
   uint32_t etaRestartSeed = 42u;
+  // foceiControl(finalEtaTol=): see foceiFinalBestEta()
+  double finalEtaTol = R_PosInf;
+  int nFinalEtaMoved = 0;
+  int finalBestX = 0; // the final estimates were replaced by the best evaluation's
+  double finalBestGap = NA_REAL; // final minus best evaluated objective (natural scale)
 
   // Almquist Eq-48 warm-start extrapolation (fast=TRUE): per-subject d eta*/d(theta)
   // in the SCALED optimizer parameterization (etaP columns pre-multiplied by
@@ -7124,6 +7129,36 @@ struct CovStageScope {
   ~CovStageScope() { _covStage = saved; }
 };
 
+static bool foceiOuterActive = false;
+// The lowest objective the outer search evaluated, with its theta and ETAs
+// (#1286).  A warm-started ETA can fall into a secondary mode during the search
+// and stay there, so the final point can score above this evaluation.
+static double _bestEvalF = R_PosInf;
+static std::vector<double> _bestEvalX, _bestEvalEta;
+
+static inline void foceiBestEvalReset() {
+  _bestEvalF = R_PosInf;
+  _bestEvalX.clear();
+  _bestEvalEta.clear();
+}
+
+static inline void foceiBestEvalKeep(const double *theta, double ret) {
+  if (!foceiOuterActive || op_focei.calcGrad || _covStage >= 0 ||
+      op_focei.neta == 0 || op_focei.mixIdxN != 0 || op_focei.mceta >= 0 ||
+      op_focei.maxInnerIterations <= 0 ||
+      !R_FINITE(op_focei.finalEtaTol) || inds_focei == NULL ||
+      !R_FINITE(ret) || ret >= 5e100 || ret >= _bestEvalF) return;
+  const int nsub = (int)getRxNsub(rx);
+  if (nsub <= 0 || nIndsFocei < nsub) return;
+  _bestEvalF = ret;
+  _bestEvalX.assign(theta, theta + op_focei.npars);
+  _bestEvalEta.resize((size_t)nsub * op_focei.neta);
+  for (int i = 0; i < nsub; ++i) {
+    std::copy(inds_focei[i].eta, inds_focei[i].eta + op_focei.neta,
+              &_bestEvalEta[(size_t)i * op_focei.neta]);
+  }
+}
+
 static inline double foceiOfv0(double *theta){
   if (_covStage >= 0) _covEvals[_covStage]++;
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
@@ -7212,6 +7247,7 @@ static inline double foceiOfv0(double *theta){
     op_focei.lastOfv = ret;
   }
   nnOuterStep(ret);
+  foceiBestEvalKeep(theta, ret);
   return ret;
 }
 
@@ -7362,7 +7398,6 @@ Environment gillRfnE_;
 Environment op_foceiFitEnv;
 bool op_foceiFitEnvSet = false;
 bool op_foceiUseAnalyticGrad = false;
-static bool foceiOuterActive = false;
 extern "C" int nlmixr2FoceiOuterHessian(const double*, int, double, double*);
 Environment baseEnv = Environment::base_env();
 Function doCall = baseEnv["do.call"];
@@ -10315,6 +10350,8 @@ NumericVector foceiSetup_(const RObject &obj,
   }
   op_focei.nEtaRestart = foceiO.containsElementNamed("etaRestart") ?
     as<int>(foceiO["etaRestart"]) : 0;
+  op_focei.finalEtaTol = foceiO.containsElementNamed("finalEtaTol") ?
+    as<double>(foceiO["finalEtaTol"]) : R_PosInf;
   // The base of the restart draws' threefry stream.  Taken from
   // foceiControl(seed=) rather than rxode2's getRxSeed1(): that is NOT a
   // getter -- it advances rxode2's global rxSeed by its argument on every
@@ -10803,6 +10840,90 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
   }
 }
 
+// The natural-scale objective of a (possibly scaled) foceiOfv0() value.
+static inline double foceiNatOfv(double f) {
+  return op_focei.scaleObjective ? f * op_focei.initObjective / op_focei.scaleObjectiveTo : f;
+}
+
+// Re-evaluate the final ETAs from those of the lowest evaluation (#1286).  Each
+// subject keeps whichever start gives the larger individual likelihood, so the
+// reported objective is never worse for it.  Runs only when the final objective
+// is more than finalEtaTol above that evaluation; a healthy fit is untouched.
+static double foceiFinalBestEta(double *x, double fmin) {
+  if (!R_FINITE(op_focei.finalEtaTol) || op_focei.maxOuterIterations <= 0 ||
+      _bestEvalEta.empty() || _nnOuterFn != NULL || inds_focei == NULL) return fmin;
+  const int nsub = (int)getRxNsub(rx), neta = op_focei.neta;
+  if (nsub <= 0 || (size_t)nsub * neta != _bestEvalEta.size()) return fmin;
+  if (!(foceiNatOfv(fmin) - foceiNatOfv(_bestEvalF) > op_focei.finalEtaTol)) return fmin;
+  std::vector<double> etaW((size_t)nsub * neta), likW(nsub), likB(nsub), etaB((size_t)nsub * neta);
+  auto setEtas = [&](const double *src) {
+    for (int i = 0; i < nsub; ++i) {
+      focei_ind *fInd = &inds_focei[i];
+      std::copy(src + (size_t)i * neta, src + (size_t)(i + 1) * neta, fInd->eta);
+      fInd->mode = 1;
+      fInd->uzm = 1;
+    }
+    std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
+  };
+  for (int i = 0; i < nsub; ++i) {
+    std::copy(inds_focei[i].eta, inds_focei[i].eta + neta, &etaW[(size_t)i * neta]);
+    likW[i] = inds_focei[i].lik[0];
+  }
+  // Start exactly where the best evaluation left each ETA.
+  const int etaPValid = op_focei.etaPValid;
+  op_focei.etaPValid = 0;
+  setEtas(&_bestEvalEta[0]);
+  double fB = foceiOfv0(x);
+  for (int i = 0; i < nsub; ++i) {
+    std::copy(inds_focei[i].eta, inds_focei[i].eta + neta, &etaB[(size_t)i * neta]);
+    likB[i] = inds_focei[i].lik[0];
+  }
+  int nMoved = 0;
+  std::vector<double> etaC = etaW;
+  for (int i = 0; i < nsub; ++i) {
+    if (R_FINITE(likB[i]) && (!R_FINITE(likW[i]) || likB[i] > likW[i])) {
+      std::copy(&etaB[(size_t)i * neta], &etaB[(size_t)(i + 1) * neta], &etaC[(size_t)i * neta]);
+      nMoved++;
+    }
+  }
+  double ret = fmin;
+  if (nMoved == nsub && R_FINITE(fB)) {
+    ret = fB;
+  } else {
+    setEtas(&etaC[0]);
+    ret = foceiOfv0(x);
+    if (nMoved == 0 || !R_FINITE(ret) || foceiNatOfv(ret) > foceiNatOfv(fmin)) {
+      // nothing gained (or the mix lost): put the original final state back
+      if (nMoved != 0) nMoved = 0;
+      setEtas(&etaW[0]);
+      ret = foceiOfv0(x);
+    }
+  }
+  // Still above it: score the best evaluation's own theta from its ETAs, and
+  // report that point when it is lower.
+  if (foceiNatOfv(ret) - foceiNatOfv(_bestEvalF) > op_focei.finalEtaTol &&
+      !std::equal(_bestEvalX.begin(), _bestEvalX.end(), x)) {
+    std::vector<double> etaCur((size_t)nsub * neta), xBest = _bestEvalX;
+    for (int i = 0; i < nsub; ++i) {
+      std::copy(inds_focei[i].eta, inds_focei[i].eta + neta, &etaCur[(size_t)i * neta]);
+    }
+    setEtas(&_bestEvalEta[0]);
+    double fX = foceiOfv0(&xBest[0]);
+    if (R_FINITE(fX) && fX < ret) {
+      std::copy(xBest.begin(), xBest.end(), x);
+      ret = fX;
+      op_focei.finalBestX = 1;
+    } else {
+      setEtas(&etaCur[0]);
+      ret = foceiOfv0(x);
+    }
+  }
+  op_focei.etaPValid = etaPValid;
+  op_focei.nFinalEtaMoved = nMoved;
+  op_focei.finalBestGap = foceiNatOfv(ret) - foceiNatOfv(_bestEvalF);
+  return ret;
+}
+
 void foceiOuterFinal(double *x, Environment e){
   // reset the optimal step size to have reproducible likelihoods with
   // generalized log-likelihood focei
@@ -10828,6 +10949,7 @@ void foceiOuterFinal(double *x, Environment e){
   op_focei.calcGrad = 0;
   _finalObfCalc = true;
   double fmin = foceiOfv0(x);
+  fmin = foceiFinalBestEta(x, fmin);
   _finalObfCalc = false;
   // Natural-scale final objective for the worse-than-initial guard; the same
   // un-scaling nlmixr2EnvSetup() applies before reporting.
@@ -11276,6 +11398,10 @@ Environment foceiOuter(Environment e){
   op_focei.nF=0;
   op_focei.nG=0;
   op_focei.recordOuter = true;
+  foceiBestEvalReset();
+  op_focei.nFinalEtaMoved = 0;
+  op_focei.finalBestX = 0;
+  op_focei.finalBestGap = NA_REAL;
   op_focei.curAnalytic=0;
   op_focei.nAnalyticGrad=0;
   op_focei.nAnalyticGradDirect=0;
@@ -15821,6 +15947,21 @@ Environment foceiFitCpp_(Environment e){
         // ~2e244 against a starting 824 with every theta untouched and no message.
         warning(_("the final objective function (%g) is worse than the initial objective function (%g); the estimates are not reliable.\nThe outer optimizer did not improve on the initial estimates or the inner (eta) optimization did not converge at the final estimates; check the initial estimates and the scaling (foceiControl(scaleType=, normType=))"),
                 op_focei.finalOfv, op_focei.initOfv);
+      }
+    }
+    if (!doPredOnly && !op_focei.isImpmap && !op_focei.isNpag && !op_focei.isNpb) {
+      e["finalEtaMoved"] = op_focei.nFinalEtaMoved;
+      e["finalBestX"] = (bool)op_focei.finalBestX;
+      if (op_focei.finalBestX) {
+        warning(_("final estimates replaced by the lowest evaluated point"));
+      }
+      if (op_focei.nFinalEtaMoved > 0) {
+        warning(_("final ETAs of %d subjects re-solved from the best iterate's"),
+                op_focei.nFinalEtaMoved);
+      }
+      if (R_FINITE(op_focei.finalBestGap) && op_focei.finalBestGap > op_focei.finalEtaTol) {
+        warning(_("final objective is %.2f above the best evaluated; not converged"),
+                op_focei.finalBestGap);
       }
     }
     if (op_focei.didHessianReset==1){
