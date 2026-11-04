@@ -424,7 +424,9 @@
 - A model whose only random effects are occasion ones (`iov.cl ~ 0.1 | occ`
   with no subject-level eta) now fits with `focei`, `foce`, `saem`,
   `laplace`, `agq`, `imp` and `npag` (`focei` and `foce` in either IOV
-  expansion).  It used to stop with "missing value where TRUE/FALSE needed"
+  expansion; `saem`'s `"twoLevel"` and `"collapsed"` IOV methods, which
+  need a subject-level eta on the same parameter, fall back to `"theta"`).
+  It used to stop with "missing value where TRUE/FALSE needed"
   or "arguments imply differing number of rows": the IOV rewrite copied its
   template rows from an eta that was not there, and its output step lost the
   shape of tables left with one column.
