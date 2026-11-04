@@ -1603,6 +1603,23 @@ attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
   paste(c(.lines[seq_len(.i)], .m, .lines[-seq_len(.i)]), collapse = "\n")
 }
 
+#' Model text without its interpolation declarations
+#'
+#' A generated model's prologue (`nlmixr2global$toRxParam`) carries the ui's
+#' interpolation lines (`ui$interpLinesStr`).  Model text compiled after it
+#' that keeps its own, such as a mixture's pruned model, would declare them
+#' twice, which rxode2 refuses ("cannot have more than one interpolation
+#' method").
+#'
+#' @param txt model text, one statement per line
+#' @return `txt` without its `linear()`, `locf()`, `nocb()` and `midpoint()`
+#'   lines
+#' @noRd
+.dropInterpLines <- function(txt) {
+  .lines <- unlist(strsplit(paste(txt, collapse = "\n"), "\n", fixed = TRUE))
+  paste(.lines[!grepl("^[ \t]*(linear|locf|nocb|midpoint)[ \t]*\\(", .lines)], collapse = "\n")
+}
+
 #' Append the model prologue lines that are not always present
 #'
 #' @param cmt compartment/parameter prologue built so far
@@ -2409,11 +2426,14 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #'
 #' The augmented outer-gradient model does not carry the AR(1) lines, whose
 #' lagged residual would also need its own sensitivity chain.
+#' `rxode2::rxHasAr()` also finds an `ar()` whose correlation is not an
+#' `ar` row of `$iniDf`: a modeled correlation, or a fixed one by the time
+#' FOCEi sees the ui.
 #' @param ui rxode2 ui
 #' @return logical
 #' @noRd
 .foceiUsesAr <- function(ui) {
-  isTRUE(any(ui$iniDf$err %in% "ar"))
+  isTRUE(rxode2::rxHasAr(ui))
 }
 
 #' Add the second-order eta expansion ([.foceiAddHdEta2]) to an inner-model symengine env
@@ -3303,7 +3323,11 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   .mixProbs <- try(ui$mixProbs, silent = TRUE)
   .hasMix <- !inherits(.mixProbs, "try-error") && length(.mixProbs) > 0L
   .predOnly <- if (.hasMix) {
-    .prunedStr <- paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""), collapse = "\n")
+    # the prologue declares the interpolation, so the pruned text's own
+    # declarations go
+    .prunedStr <- .dropInterpLines(
+      paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""), collapse = "\n")
+    )
     .toRx(
       .prunedStr,
       role = "rxPredPruned",
@@ -5578,6 +5602,41 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   ret
 }
 
+#' Drop a covariance that is not a matrix of the proper form
+#'
+#' NA is accepted only for whole ill-identified parameter rows and columns (see
+#' `.nlmixr2RobustCov()`, R/cov.R); any other missingness is malformed.  The
+#' dropped matrix stays in `env$covDebug`.
+#' @param env fit environment
+#' @return invisibly `NULL`
+#' @noRd
+.foceiDropMalformedCov <- function(env) {
+  if (is.null(env$cov)) {
+    return(invisible())
+  }
+  .validCov <- checkmate::testMatrix(
+    env$cov,
+    min.rows = 1,
+    row.names = "strict",
+    col.names = "strict"
+  )
+  if (.validCov && anyNA(env$cov)) {
+    .bad <- which(is.na(diag(env$cov)))
+    .good <- setdiff(seq_len(nrow(env$cov)), .bad)
+    .validCov <- length(.bad) > 0 &&
+      all(is.na(env$cov[.bad, , drop = FALSE])) &&
+      all(is.na(env$cov[, .bad, drop = FALSE])) &&
+      !anyNA(env$cov[.good, .good, drop = FALSE])
+  }
+  if (!.validCov) {
+    env$covDebug <- env$cov
+    .minfo(paste0("covariance not in proper form, can access value in ", crayon::bold$blue("$covDebug")))
+    .covWarn("covariance not in proper form, can access value in $covDebug")
+    env$cov <- NULL
+  }
+  invisible()
+}
+
 .foceiFamilyReturn <- function(env, ui, ..., method = NULL, est = "none") {
   .control <- ui$control
   .control$est <- est
@@ -5702,30 +5761,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .env[["control"]] <- .ctl
     }
   }
-  if (!is.null(.env$cov)) {
-    # Accept NA only for whole ill-identified parameter rows/columns (see
-    # .nlmixr2RobustCov(), R/cov.R); any other missingness is malformed.
-    .validCov <- checkmate::testMatrix(
-      .env$cov,
-      min.rows = 1, # .var.name="env$cov",
-      row.names = "strict",
-      col.names = "strict"
-    )
-    if (.validCov && anyNA(.env$cov)) {
-      .bad <- which(is.na(diag(.env$cov)))
-      .good <- setdiff(seq_len(nrow(.env$cov)), .bad)
-      .validCov <- length(.bad) > 0 &&
-        all(is.na(.env$cov[.bad, , drop = FALSE])) &&
-        all(is.na(.env$cov[, .bad, drop = FALSE])) &&
-        !anyNA(.env$cov[.good, .good, drop = FALSE])
-    }
-    if (!.validCov) {
-      .env$covDebug <- .env$cov
-      .minfo(paste0("covariance not in proper form, can access value in ", crayon::bold$blue("$covDebug")))
-      warning(paste0("covariance not in proper form, can access value in $covDebug"))
-      .env$cov <- NULL
-    }
-  }
+  .foceiDropMalformedCov(.env)
   if (.control$nAGQ > 0) {
     .ag <- .agq(length(ui$eta), .control$nAGQ)
     .env$aqn <- as.integer(.ag$n)

@@ -132,7 +132,7 @@
   #   err1 = live-fit .foceiCalcRanalytic   err2 = standalone foceiCovAnalytic
   function(e) {
     .m <- .foceiAnalyticOneLine(conditionMessage(e))
-    warning(sprintf("analytic err%d: %s", site, .foceiAnalyticClip(.m)), call. = FALSE)
+    .covWarn(sprintf("analytic err%d: %s", site, .foceiAnalyticClip(.m)))
     .foceiAnalyticWhy$reason <- paste0("an error (", .m, ")")
     .foceiAnalyticWhy$short <- "an error"
     NULL

@@ -23,9 +23,24 @@
   default `sqrt(rtol)`) are new inner (eta) optimizers.  `steihaugPolish` and
   `newuoaPolish` add the opt-in Newton polish that `trustPolish` gives trust.
 
+- `$parFixed` and `$parFixedDf` now end with one row per estimated
+  between-subject covariance, named `bsvcorr(A,B)`, holding the correlation in
+  the BSV column.  `A` and `B` are the thetas the etas are mu-referenced to, or
+  the eta names when a theta is mu-referenced by more than one eta.  In a model
+  with labels the `Parameter` column describes the row ("BSV correlation
+  between A and B").  `fix(...)` marks a fixed covariance; its correlation
+  still moves with estimated variances.  Occasion-level correlations are not
+  listed, and `tidy()`/`confint()` leave the rows out.
+
 ## Bug fixes
 
 ### Covariance
+
+- A FOCEi covariance that a vae or vi fit could not compute or install is now
+  recorded in `fit$env$covTried`, under the method tried and with the condition
+  message unclipped on one line (the refit's own error included), also when
+  `.covInstall()` rejected the matrix; the warning clips the message to 74
+  columns.  An installed one keeps the refit's `covTried` rows.
 
 - `covMethod = "analytic"` now keeps the analytic covariance when a record that
   is not an observation (an EVID 2 record, or an EVID 0 record with a missing DV
@@ -62,6 +77,21 @@
   `boxCox()` with its additive sigma fixed) now gets the analytic covariance
   too; `setCov(fit, "analytic")` used to stop on it.
 
+- The other covariance warnings now stay under 75 characters too: the SAEM
+  `"linFim"` and `"Ha"` fallbacks (`"linFim" failed; trying "Ha"` for `linearized
+  FIM failed; using the SAEM information matrix`), the sqrtm repair, the nls,
+  nlm-family, sandwich and full-sandwich ones, the warning for thetas at a boundary
+  (one line naming them, where it was three lines and the whole list; `$covMethod`
+  still lists them all), and `nlminbControl()`'s switch to `covMethod = "r"`.  The
+  thetas that have no standard error are listed up to the line, then `+k more`,
+  and are the `NA` rows of the parameter table.  A test fails for any R warning
+  about a covariance method that does not go through the one clip, and for any
+  C++ covariance warning wider than one line.
+
+- A failed covariance step of an nlm-family fit (nls, nlminb, uobyqa, ...) no
+  longer gives `covariance not in proper form, can access value in $covDebug` as
+  the first `$runInfo` line; `$cov` had partially matched `covMethod = "failed"`.
+
 ### Estimation
 
 - Per-subject FD gradient fallbacks temporarily tighten inner and ODE
@@ -84,6 +114,48 @@
   `rxOptExpr()` pass, so its CSE temporaries no longer collide (#1133).
 - FOCEi caches reuse compiled models to reduce setup time and keep rxode2
   versions/builds separate to prevent bundle collisions (#1133).
+- `foceiControl(fast = TRUE)` now falls back to `fast = FALSE` for an
+  `ar()` residual whose correlation is fixed (`ar1.cor <- fix(0.9)`) or
+  modeled (`ar(corv)`), as it already did for an estimated one.  Such a fit
+  stopped with "The following parameter(s) are required for solving:
+  rx_arNf_cp, rx_arEp_cp, rx_arT_cp": the check for an `ar()` residual
+  looked only at the estimated correlations, so the analytic gradient was
+  built without the AR(1) lines.  For the same reason `covMethod =
+  "analytic"` now declines such a fit up front with the `ar()` reason ("an
+  ar() residual is out of analytic-covariance scope") and uses the
+  finite-difference covariance; for a modeled correlation it used to try the
+  analytic one and fall back only when its information matrix would not
+  invert.
+- `saem` now keeps each iteration's `phiM` draws in memory instead of a temp
+  file.  A temp-space cleaner (common on HPC clusters) could delete that file
+  during a long fit, which then failed after its last iteration with "cannot
+  open the connection" (#1276).  The objective also no longer uses the 4-digit
+  text copy of the draws, so it can differ slightly from earlier versions.
+- `foceiControl(mceta = n)` with `n >= 1` again optimizes only the best
+  starting point (eta=0 or an Omega draw), as before 7.1.0; it no longer also
+  solves from eta=0 when a draw wins.  The new `mcetaOpt = TRUE` instead
+  optimizes from every draw and from eta=0 and keeps the lowest converged
+  optimum, which can find an optimum the starting objective misses (and never
+  ends above `mceta = 0`) at the cost of one inner optimization per start
+  (#1242).
+
+- A model that reads `newind` is now estimated as rxode2 solves it: 1 at a
+  subject's first record and 2 after.  The estimators' own walks over a
+  subject's records (the FOCEi family, `saem`, `nlm`) never advanced it, so
+  the model read 1 at every record while the fit's table, from rxode2, read
+  2, and the fit differed from the same model reading a first-record column
+  of the data.  This takes effect with an rxode2 that has `setIndNewind()`
+  in its C pointer table; with an older rxode2 the estimators read
+  `newind` as before.
+
+- `saem` no longer crashes R on a model with a lagged dose (`alag()`) or a
+  modeled infusion duration when the data has no more subjects times chains
+  (`nmc`) than the model has states.  Its prediction walk, and the search
+  for each subject's conditional mode, read the lag or duration from the
+  subject numbered by the state count rather than from the subject walked;
+  with enough subjects that read another subject's values, without changing
+  the fit.
+
 - A `linCmt()` model with a time-varying covariate on a compartment
   parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,
   under `"locf"`, `"midpoint"` and `"nocb"` and a covariate's own declaration
@@ -125,6 +197,11 @@
   `maxOuterIterations` function evaluations, as `outerOpt = "uobyqa"` and
   `"bobyqa"` do; it used to ignore the limit and run NEWUOA to convergence.
 
+- A mixture (`mix()`) model that declares a covariate's interpolation, such
+  as `locf(WT)`, now fits with `focei`; it stopped with "syntax errors" and
+  "'WT' cannot have more than one interpolation method", since the
+  declaration reached its EBE model twice.
+
 - `saem` now reports the non-mu-referenced thetas it actually used.  With
   `nonMuTheta = "regress"` (the default) the model ran at the directly
   optimized values, but `$theta` showed the regression estimate taken before
@@ -142,6 +219,8 @@
   than the sampled-mean update.
 - `saem` now uses censoring (M2/M3/M4) for `dnorm()`, `t()` and `cauchy()`
   endpoints; it scored a censored observation by its density at the limit.
+- Building the `saem` model from a compressed ui (as `rxUiGet.saemModel()`
+  receives outside a fit) no longer stops with "invalid 'envir' argument".
 - M2 censoring (`CENS = 0` with a finite `LIMIT`) now conditions on the side
   of the limit the observation is on, not the prediction.  Before, the
   objective had a kink wherever a prediction crossed the limit, and an
@@ -168,8 +247,11 @@
   FOCEi's translated data keeps as observations, so an EVID 0 record with a
   missing DV, `MDV = 1`, a missing TIME or a compartment-off (negative) CMT is
   not one; with a missing DV at an observation time `est = "vae"` stopped on
-  missing values.  `est = "vae"` also gives data without an EVID column the EVID
-  FOCEi gives it, taken from an MDV column when the data has an AMT column.
+  missing values.  The three also give data without an EVID column the EVID
+  FOCEi gives it: with an AMT column, an MDV column stands for the EVID, and
+  without one a NaN AMT is a dose, which all three used to read as no dose;
+  with no AMT column (for example ID, TIME and DV only) every record is EVID 0,
+  where `"emvi"` and `"fbvi"` used to stop with "replacement has 0 rows".
   These estimators and the benchmark observation count now stop with FOCEi's
   message, and in FOCEi's order, on an EVID, MDV or AMT column not stored as
   numbers, an infinite TIME or a missing ID, instead of reading the data anyway;
@@ -247,6 +329,9 @@
   That subject's NPDE columns are `NA`, as its other table columns are.
   The NPDE of a fit with a single subject no longer fails either.
 
+- In a model with labels, the `Parameter` column of `$parFixed` is now empty
+  for a non-mu-referenced eta's row; it printed `<NA>`.
+
 - In a model with a normal and a non-normal endpoint (such as `dpois()`), a
   subject with no observations of the normal endpoint left every subject
   before it in the data (the next subject, when it was the first) with CWRES,
@@ -294,7 +379,25 @@
   stores (`eventType` 2 and 3, the Hessian types 1 and 3) are accepted as
   before.
 
+- A fixed eta that estimation leaves out, such as `eta.v ~ fix(0)`, no longer
+  prints `fix()` in the BSV column of `$parFixed` when the model also has a
+  fixed theta; the cell is empty, as it is without one.
+
 ### Inter-occasion variability
+
+- The occasion of an IOV model now steps at its first record (locf) under
+  every `covsInterpolation`, as rxode2 steps the occasion variables of a
+  nested omega.  The IOV rewrite read the occasion as a covariate, so under
+  `"nocb"` an occasion's etas took effect from the record before, and under
+  `"midpoint"` or `"linear"` a fractional occasion between two took neither
+  occasion's etas.  Fits of IOV models under those interpolations change: on
+  theo_sd with an occasion change at 5 h, focei's objective at the initial
+  estimates was 136.2144 under `"nocb"` and 140.5934 under `"midpoint"`; it
+  is now 132.0456, as under `"locf"`.  Individual `predict()` and `augPred()`
+  step the occasion etas the same way, so they equal the fit's IPRED under
+  every interpolation.  A model that declares `nocb()`,
+  `linear()` or `midpoint()` for an occasion variable stops: "occasion
+  variable(s) 'occ' (nocb) must use 'locf' interpolation".
 
 - A fit with inter-occasion variability keeps its `omega` as the nested
   `lotri` list it is, one block per level, so `rxSolve(fit)` works; it
@@ -306,11 +409,9 @@
 - `predict(fit, level = "individual")` now works on a fit with
   inter-occasion variability; it stopped with "attempt access index 0/0 in
   VECTOR_ELT".  Each record takes its subject's estimates, joined on the
-  subject and its occasion, so under `"locf"` or `"nocb"` covariate
-  interpolation the predictions are the fit's IPRED, in any row order of
-  `newdata`.  A subject or occasion the fit did not estimate gets etas of
-  0, with a warning.  Under `"midpoint"` or `"linear"` interpolation they
-  differ from IPRED after an occasion changes (`?predict.nlmixr2FitCore`).
+  subject and its occasion, so the predictions are the fit's IPRED, in any
+  row order of `newdata`.  A subject or occasion the fit did not estimate
+  gets etas of 0, with a warning.
 
 - Population `predict()` of a fit with inter-occasion variability now
   works, and gives its PRED; it stopped with "The following parameter(s)
@@ -318,17 +419,18 @@
 
 - `augPred()` now works on a fit with inter-occasion variability; it
   stopped with "The following parameter(s) are required for solving:
-  iov.cl".  Its individual curve takes each time's occasion from the fit's
-  covariate interpolation and record order, and its population curve sets
+  iov.cl".  Its individual curve carries each occasion from its first
+  record (locf, in the fit's record order), and its population curve sets
   every eta, of every level, to zero.
 
 ### Documentation
 
 - `?augPred` says that its curves for a `linCmt()` model with
-  time-varying covariates are approximate: under the default `"locf"`
-  interpolation, rxode2's `linCmt()` takes a covariate's value at the end
-  of each interval, so the times `augPred()` adds move where a change takes
-  effect.
+  time-varying covariates are approximate with rxode2 5.1.8 or earlier:
+  under the default `"locf"` interpolation that rxode2's `linCmt()` took a
+  covariate's value at the end of each interval, so the times `augPred()`
+  adds moved where a change takes effect.  Later rxode2 versions solve such
+  a model as the equivalent ODE model does.
 - `addNpde()` and `addTable()` now work on a fit with inter-occasion
   variability, including one run with `calcTables = FALSE`.  They stopped
   with "The following parameter(s) are required for solving: occ, ..."

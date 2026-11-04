@@ -1546,7 +1546,7 @@
   nlmixrWithTiming("covariance", {
     .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
     if (identical(m, "linFim") && length(.tn) == 0) {
-      warning("no population parameters in the model, no covariance matrix calculated", call. = FALSE)
+      .covWarn("no population parameters in the model, no covariance matrix calculated")
       env$cov <- NULL
       env$covMethod <- "none"
       .done <- TRUE
@@ -1596,6 +1596,15 @@
   list(ok = .g$ok, cov = cov, reason = .g$reason)
 }
 
+#' Warn that the linearized-FIM covariance was not used
+#' @param why what happened to it
+#' @param nxt the method the walk tries next, `NA` for none
+#' @return invisibly `NULL`
+#' @noRd
+.saemLinFimWarn <- function(why, nxt) {
+  .covWarn(sprintf("\"linFim\" %s; %s", why, if (is.na(nxt)) "none installed" else sprintf("trying \"%s\"", nxt)))
+}
+
 #' The SAEM linearized-FIM covariance (`calc.COV()`), if it is usable
 #'
 #' Warns when it is not, in which case the caller falls back to
@@ -1612,7 +1621,7 @@
   ## information matrix rather than aborting the whole fit.
   .covm <- try(calc.COV(.saem), silent = TRUE)
   if (inherits(.covm, "try-error")) {
-    warning(sprintf("linearized FIM failed; using %s", .saemCovNextText(nxt)), call. = FALSE)
+    .saemLinFimWarn("failed", nxt)
     return(NULL)
   }
   # .covm may have NA rows/columns for ill-identified parameters; validate only
@@ -1620,7 +1629,7 @@
   .rep <- if (identical(dim(.covm), rep(length(tn), 2L))) .saemCovRepair(.covm, partial = TRUE) else NULL
   .g <- if (!is.null(.rep)) .saemCovGuard(.rep$mat) else NULL
   if (!isTRUE(.g$ok)) {
-    warning("linearization of FIM could not be used to calculate covariance", call. = FALSE)
+    .saemLinFimWarn("not usable", nxt)
     return(NULL)
   }
   .cov <- .g$cov
@@ -1708,21 +1717,12 @@
     assign(".saemCovMethod", r$label, envir = env)
   }
   if (length(r$phi0) > 0L) {
-    warning(
-      sprintf(
-        "no \"%s\" SE for non-mu-referenced theta(s) %s",
-        r$label,
-        paste(r$phi0, collapse = ", ")
-      ),
-      call. = FALSE
-    )
+    # the thetas without an SE are the NA rows of the parameter table
+    .pre <- sprintf("no \"%s\" SE for non-mu-referenced theta(s) ", r$label)
+    .covWarn(paste0(.pre, .vaeTruncList(r$phi0, prefix = .pre, budget = .covWarnWidth)))
   }
   if (r$label %in% c("|linFim|", .saemHaThetaRepairedName)) {
-    .m <- if (identical(r$label, "|linFim|")) "linFim" else "Ha"
-    warning(
-      sprintf("covariance not positive definite; used sqrtm(%s %%*%% %s)", .m, .m),
-      call. = FALSE
-    )
+    .covRepairWarn(.covUnrepaired(r$label), r$label)
   }
   invisible()
 }
@@ -1812,15 +1812,10 @@
   env$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .saem <- env$saem
   .saemCfg <- attr(.saem, "saem.cfg")
-  .nphi1 <- .saemCfg$nphi1
-  .nphi0 <- .saemCfg$nphi0
-  .nphi <- .nphi0 + .nphi1
-  .phiM <- matrix(scan(.saemCfg$phiMFile, quiet = TRUE), byrow = TRUE, ncol = .nphi)
-  .N <- .saemCfg$N
-  dim(.phiM) <- c(.N, .saemCfg$nmc, .saemCfg$niter, .nphi)
-  # compresses large object
-  env$phiM <- .phiM
-  try(unlink(.saemCfg$phiMFile), silent = TRUE)
+  # N x nmc x niter x nphi, kept in memory by the C++ fit (#1276)
+  env$phiM <- .saem$phiM
+  .saem$phiM <- NULL
+  env$saem <- .saem
   .likTime <- 0
   .obf <- rxode2::rxGetControl(.ui, "logLik", FALSE)
   .nnodesGq <- rxode2::rxGetControl(.ui, "nnodesGq", 3)
