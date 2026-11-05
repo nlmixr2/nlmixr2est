@@ -8,8 +8,10 @@
 #' @noRd
 .rxFoceiLinCmtCarryPrelude <- function(cx) {
   .l <- character(0)
-  if (cx$anyJump) {
-    # pin the full -5 advance: a jump contribution does not telescope
+  if (cx$anyJump || cx$anyMultCov) {
+    # pin the full -5 advance: a jump contribution does not telescope, nor
+    # does a multCov pair's g, which moves with its covariates while the
+    # linCmt() parameters can stay the same (an occasion eta at 0)
     .l <- c(
       .l,
       paste0(

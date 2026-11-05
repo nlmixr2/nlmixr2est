@@ -69,8 +69,9 @@ nmTest({
     expect_identical(s$tka, u$tka)
     expect_equal(exp(u$tka), b$tka)
     expect_true(all(is.finite(u$tka)))
-    # final recorded mu values are the fitted thetas
-    expect_equal(unname(u$tcl[nrow(u)]), unname(fitM$theta[["tcl"]]), tolerance = 1e-6)
+    # final recorded mu values are the fitted thetas (to the inner solve's
+    # precision, which varies by platform)
+    expect_equal(unname(u$tcl[nrow(u)]), unname(fitM$theta[["tcl"]]), tolerance = 1e-5)
 
     # console: standard columns, no bolt-on |mu| row, key note, blank grad cells
     expect_false(any(grepl("^\\|   mu\\|", out)))

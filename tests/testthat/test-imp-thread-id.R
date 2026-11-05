@@ -60,7 +60,7 @@ nmTest(
       skip_if(.impThreadMiss()[["openmp"]] == 0L, "nlmixr2est has no OpenMP")
       .wasOn <- .impThreadTrack(TRUE)
       withr::defer(.impThreadTrack(.wasOn))
-      .want <- c(imp = 18.5322024276, impmap = 18.5303802572)
+      .want <- c(imp = 18.5313575158, impmap = 18.5294719003)
       for (.est in names(.want)) {
         .one <- .impThreadFit(.est, 1L)
         .impThreadMiss(TRUE)

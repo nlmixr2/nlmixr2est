@@ -114,16 +114,14 @@
 #' @param sigdig Optimization significant digits.  One value drives, with a single
 #'   consistent formula, the inner/outer optimizer convergence tolerance
 #'   (\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
-#'   and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
-#'   \code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
-#'   \code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-#'   auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
-#'   tolerances match the main solve (the outer gradient and covariance are built
-#'   from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
-#'   order looser.
-#'   Keying the optimizer to the same \code{10^-sigdig} means it converges to
-#'   exactly the precision the solve supports.  At the default \code{sigdig = 3}
-#'   this is \code{atol = 1e-6}, \code{rtol = 1e-3}.
+#'   and the ODE solver tolerances \code{rtol = max(10^(-2*sigdig), 1e-12)},
+#'   \code{atol = rtol/100} for every solver.  An objective solved to relative
+#'   error \code{rtol} locates its minimum only to about \code{sqrt(rtol)}, so
+#'   this is the solve a \code{10^-sigdig} optimizer needs.  The sensitivity
+#'   (\code{atolSens}/\code{rtolSens}) tolerances match the main solve; the
+#'   steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+#'   At the default \code{sigdig = 3} this is \code{atol = 1e-8},
+#'   \code{rtol = 1e-6}.
 #'
 #' @param sigdigTable Significant digits in the final output table.
 #'   If not specified (`NULL`), it defaults to `sigdig`.
@@ -179,7 +177,7 @@
 #'     solves behind \code{covMethod="analytic"}.  \code{NULL} (default) derives
 #'     them from the fit's own tolerances: the finite-difference solves use
 #'     \code{atol} and \code{rtol} each times 1e-3, capped at 1e-7 (at the default
-#'     \code{sigdig = 3}, \code{rtol = 1e-7} and \code{atol = 1e-9}), and the
+#'     \code{sigdig = 3}, \code{rtol = 1e-9} and \code{atol = 1e-11}), and the
 #'     analytic augmented solves use \code{max(1e-12, min(1e-8, 10^-(sigdig + 6)))}.  The
 #'     inner problems of the finite-difference probes are tightened the same way,
 #'     whichever \code{innerOpt} runs them: \code{trustFterm} and
@@ -1040,6 +1038,13 @@
 #'   which reports a convergence verdict per solve.  `n1qn1` reports none, so
 #'   its own restart cascade is unchanged.
 #'
+#' @param finalEtaTol When the final objective is more than this above the
+#'   lowest objective the outer optimizer evaluated, the final ETAs are
+#'   re-solved from that evaluation's ETAs, keeping per subject whichever
+#'   start gives the lower objective.  Warm-started ETAs can fall into a
+#'   secondary mode during the search and stay there.  Only applies with a
+#'   warm start (`mceta < 0`).  Use `Inf` to disable.
+#'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
 #'     ODE solve.
@@ -1121,7 +1126,11 @@
 #' @param odeRecalcFactor The ODE recalculation factor when ODE
 #'   solving goes bad, this is the factor the rtol/atol is reduced
 #'
-#' @param rxControl `rxode2` ODE solving options during fitting, created with `rxControl()`
+#' @param rxControl `rxode2` ODE solving options during fitting, created with `rxControl()`.
+#'     The solver's adaptive steps set the objective's noise floor, which
+#'     grows with `rtol` and the number of observations.  For a non-stiff
+#'     model, `rxControl(method = "dop853")` gives a much smoother objective
+#'     than the default `"liblsoda"` at the same `rtol`.
 #'
 #' @param fallbackFD Fallback to the finite differences if the
 #'   sensitivity equations do not solve.
@@ -1155,18 +1164,27 @@
 #'   out of bound); `-1` jumps between the extrapolated eta and eta=0, keeping
 #'   the better; both `-2` and `-1` fall back to keeping the last eta when no
 #'   analytic `d eta*/d theta` is available (`fast = FALSE`).  `0` uses eta=0
-#'   for each inner optimization; for `n>0`, eta=0 and n-1 etas sampled from
-#'   omega are each evaluated and the best (by inner objective) starts the
-#'   inner optimization.  The carried last eta is deliberately not one of the
-#'   `n>0` candidates -- it is the previous iteration's converged conditional
-#'   mode, so it would win for every subject and `n>0` would reduce to the
-#'   keep-last behavior of `-1`/`-2`.  When a sampled eta wins, the inner
-#'   problem is also solved from eta=0 and the better converged result kept --
-#'   compared on the marginal objective the fit reports, which carries the
-#'   Laplace `log|H|` term, not on the inner objective the optimizer minimizes --
-#'   so no inner solve ends above the one `0` would have reached.  The search is
-#'   skipped while the outer gradient is being differenced, where the eta is
-#'   pinned to the central evaluation's mode.
+#'   for each inner optimization, as NONMEM does; the default `-2` differs from
+#'   NONMEM here, since it starts from the last (or extrapolated) eta rather
+#'   than eta=0.  For `n>0`, eta=0 and n-1 etas sampled from omega are each
+#'   evaluated and the best (by inner objective) starts the inner
+#'   optimization.  A start that is lowest before optimization need not
+#'   reach the lowest optimum, so a subject can converge to a worse local
+#'   optimum than eta=0 would have reached and the objective can end above that
+#'   of `mceta = 0`; `mcetaOpt = TRUE` avoids this.  The carried last eta is
+#'   deliberately not one of the `n>0` candidates -- it is the previous
+#'   iteration's converged conditional mode, so it would win for every subject
+#'   and `n>0` would reduce to the keep-last behavior of `-1`/`-2`.  The search
+#'   is skipped while the outer
+#'   gradient is being differenced, where the eta is pinned to the central
+#'   evaluation's mode.
+#'
+#' @param mcetaOpt When `TRUE` and `mceta >= 1`, the inner problem is solved
+#'   from every sampled eta and then from eta=0, and the lowest converged
+#'   optimum is kept (compared on the marginal objective the fit reports), so
+#'   the objective never ends above that of `mceta = 0`.  It costs one inner
+#'   optimization per start instead of one per subject, so it is off by
+#'   default; `FALSE` optimizes only the best starting point.
 #'
 #' @param seed Integer seed (default `42`) used to make a FOCEi fit
 #'   reproducible and self-contained.  The fit (including the `mceta`
@@ -1462,6 +1480,7 @@ foceiControl <- function(
   etaNudge = qnorm(1 - 0.05 / 2) / sqrt(3), #
   etaNudge2 = qnorm(1 - 0.05 / 2) * sqrt(3 / 5), #
   etaRestart = 4L, #
+  finalEtaTol = 1, #
   nRetries = 3, #
   seed = 42, #
   resetThetaCheckPer = 0.1, #
@@ -1485,6 +1504,7 @@ foceiControl <- function(
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
   mceta = -2L,
+  mcetaOpt = FALSE,
   warm = c("calc", "save", "none"),
   nAGQ = 0,
   agqLow = -Inf,
@@ -2104,6 +2124,7 @@ foceiControl <- function(
   checkmate::assertNumeric(etaNudge, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(etaNudge2, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
   checkmate::assertIntegerish(etaRestart, len = 1, lower = 0, any.missing = FALSE)
+  checkmate::assertNumber(finalEtaTol, lower = 0)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2137,6 +2158,7 @@ foceiControl <- function(
     stop("'shi21hMax' must be greater than 'shi21hMin'", call. = FALSE)
   }
   checkmate::assertIntegerish(mceta, lower = -2, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(mcetaOpt, len = 1, any.missing = FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing = FALSE, lower = 0, upper = 1, len = 1)
   checkmate::assertIntegerish(nAGQ, lower = 0, len = 1, any.missing = FALSE)
@@ -2301,6 +2323,7 @@ foceiControl <- function(
     etaNudge = as.double(etaNudge),
     etaNudge2 = as.double(etaNudge2),
     etaRestart = as.integer(etaRestart),
+    finalEtaTol = as.double(finalEtaTol),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,
@@ -2335,6 +2358,7 @@ foceiControl <- function(
     zeroGradRunReset = zeroGradRunReset,
     zeroGradBobyqa = zeroGradBobyqa,
     mceta = as.integer(mceta),
+    mcetaOpt = mcetaOpt,
     warm = warm,
     nAGQ = as.integer(nAGQ),
     agqHi = as.double(agqHi),

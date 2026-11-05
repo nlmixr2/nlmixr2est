@@ -160,6 +160,7 @@ foceiControl(
   etaNudge = qnorm(1 - 0.05/2)/sqrt(3),
   etaNudge2 = qnorm(1 - 0.05/2) * sqrt(3/5),
   etaRestart = 4L,
+  finalEtaTol = 1,
   nRetries = 3,
   seed = 42,
   resetThetaCheckPer = 0.1,
@@ -183,6 +184,7 @@ foceiControl(
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
   mceta = -2L,
+  mcetaOpt = FALSE,
   warm = c("calc", "save", "none"),
   nAGQ = 0,
   agqLow = -Inf,
@@ -1151,6 +1153,13 @@ qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
   which reports a convergence verdict per solve.  `n1qn1` reports none, so
   its own restart cascade is unchanged.}
 
+\item{finalEtaTol}{When the final objective is more than this above the
+lowest objective the outer optimizer evaluated, the final ETAs are
+re-solved from that evaluation's ETAs, keeping per subject whichever
+start gives the lower objective.  Warm-started ETAs can fall into a
+secondary mode during the search and stay there.  Only applies with a
+warm start (`mceta < 0`).  Use `Inf` to disable.}
+
 \item{nRetries}{If FOCEi doesn't fit with the current parameter
 estimates, randomly sample new parameter estimates and restart
 the problem.  This is similar to 'PsN' resampling.}
@@ -1217,7 +1226,11 @@ solve.}
 
 \item{compress}{Should the object have compressed items}
 
-\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified (`NULL`), it defaults to `sigdig`.}
@@ -1254,18 +1267,27 @@ reset bound (else keeping the last eta, or resetting to 0 when that is also
 out of bound); `-1` jumps between the extrapolated eta and eta=0, keeping
 the better; both `-2` and `-1` fall back to keeping the last eta when no
 analytic `d eta*/d theta` is available (`fast = FALSE`).  `0` uses eta=0
-for each inner optimization; for `n>0`, eta=0 and n-1 etas sampled from
-omega are each evaluated and the best (by inner objective) starts the
-inner optimization.  The carried last eta is deliberately not one of the
-`n>0` candidates -- it is the previous iteration's converged conditional
-mode, so it would win for every subject and `n>0` would reduce to the
-keep-last behavior of `-1`/`-2`.  When a sampled eta wins, the inner
-problem is also solved from eta=0 and the better converged result kept --
-compared on the marginal objective the fit reports, which carries the
-Laplace `log|H|` term, not on the inner objective the optimizer minimizes --
-so no inner solve ends above the one `0` would have reached.  The search is
-skipped while the outer gradient is being differenced, where the eta is
-pinned to the central evaluation's mode.}
+for each inner optimization, as NONMEM does; the default `-2` differs from
+NONMEM here, since it starts from the last (or extrapolated) eta rather
+than eta=0.  For `n>0`, eta=0 and n-1 etas sampled from omega are each
+evaluated and the best (by inner objective) starts the inner
+optimization.  A start that is lowest before optimization need not
+reach the lowest optimum, so a subject can converge to a worse local
+optimum than eta=0 would have reached and the objective can end above that
+of `mceta = 0`; `mcetaOpt = TRUE` avoids this.  The carried last eta is
+deliberately not one of the `n>0` candidates -- it is the previous
+iteration's converged conditional mode, so it would win for every subject
+and `n>0` would reduce to the keep-last behavior of `-1`/`-2`.  The search
+is skipped while the outer
+gradient is being differenced, where the eta is pinned to the central
+evaluation's mode.}
+
+\item{mcetaOpt}{When `TRUE` and `mceta >= 1`, the inner problem is solved
+from every sampled eta and then from eta=0, and the lowest converged
+optimum is kept (compared on the marginal objective the fit reports), so
+the objective never ends above that of `mceta = 0`.  It costs one inner
+optimization per start instead of one per subject, so it is off by
+default; `FALSE` optimizes only the best starting point.}
 
 \item{warm}{Seeding of the n1qn1 inner-optimization Hessian:
 `"calc"` (default) warm-starts each inner problem with the eta

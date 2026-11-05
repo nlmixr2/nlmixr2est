@@ -4,25 +4,25 @@
 # that it is quiet.  A new work-around adds a block here, and a row to
 # .depBlocks so the files it touches are checked against what it names.
 
-# The warning a work-around's block gives, or NULL unless the block's probe
-# found the feature (`present`) and the installed version is a release after
-# `dev`, the development version that added it.  A development build
-# (x.y.z.9000 and later) is never a release, and a release without the
-# feature still needs the work-around.
-.depWorkaroundWarning <- function(installed, dev, remove, present) {
+# The warning a work-around's block gives for the installed version of `pkg`,
+# or NULL unless the block's probe found the feature (`present`) and that
+# version is a release after `dev` (the development version that added the
+# feature, or the last one without it).  A development build (x.y.z.9000 and
+# later) is never a release, and a release without the feature still needs
+# the work-around.  `raise` adds the DESCRIPTION minimum to raise.
+.depWorkaroundWarning <- function(installed, dev, remove, present, pkg = "rxode2", raise = TRUE) {
   if (!isTRUE(present) || !.depIsRelease(installed) || installed <= dev) {
     return(NULL)
   }
   paste0(
-    "rxode2 ",
+    pkg,
+    " ",
     installed,
     " is a release after ",
     dev,
     ", so this work-around can go: ",
     remove,
-    "; and raise DESCRIPTION to rxode2 (>= ",
-    installed,
-    ")"
+    if (raise) paste0("; and raise DESCRIPTION to ", pkg, " (>= ", installed, ")")
   )
 }
 
@@ -62,6 +62,8 @@
 .depVersion519 <- function() numeric_version("5.1.9")
 .depVersionDev <- function() numeric_version("5.1.9.9000")
 .depTrue <- function() TRUE
+.depLincmtVersion011 <- function() numeric_version("0.1.1")
+.depLincmtVersion010 <- function() numeric_version("0.1.0")
 .depFalse <- function() FALSE
 
 .depIntervalCovsRemove <- paste(
@@ -73,8 +75,8 @@
   "in R/focei.R and .rxFoceiLinCmtCarryBuildEnabled() (R/foceiLinCmtCarryGates.R);",
   ".carryTwinInterps() and .carryInterps() (helper-lincmt-carry.R), and the loop over",
   ".carryInterps() in test-focei-lincmt-carry-theta.R; the probe's skips in",
-  "test-focei-lincmt-carry-fit.R, test-focei-lincmt-carry-fit-fallback.R and",
-  "test-focei-lincmt-carry-emit-fd.R and its check in test-focei-lincmt-carry-emit.R;",
+  "test-focei-lincmt-carry-fit.R, test-focei-lincmt-carry-fit-fallback.R,",
+  "test-focei-lincmt-carry-iov.R and test-focei-lincmt-carry-emit-fd.R and its check in test-focei-lincmt-carry-emit.R;",
   "and this block"
 )
 
@@ -125,6 +127,190 @@ test_that("the work-around warning is given only for a release with the feature"
   expect_false(.depIsRelease("5.1.8.9000"))
 })
 
+test_that("interval-covariate work-around: warns only for a release with interval covariates", {
+  local_mocked_bindings(.rxode2Version = .depVersion519, .rxFoceiLinCmtIntervalCovs = .depFalse)
+  expect_null(.depIntervalCovsWarning())
+  local_mocked_bindings(.rxFoceiLinCmtIntervalCovs = .depTrue)
+  expect_match(.depIntervalCovsWarning(), "rxode2 5.1.9 is a release after 5.1.8.9000", fixed = TRUE)
+  local_mocked_bindings(.rxode2Version = .depVersionDev)
+  expect_null(.depIntervalCovsWarning())
+})
+
+.depResetRemove <- paste(
+  "the linCmt() carry's reset twins wait for an rxode2lincmt that restarts the",
+  "carried sensitivities at a reset (rxode2lincmt PR 4): if this one does, remove",
+  ".carrySkipReset() and its probe, .carryResetRestarts(), .carryResetEnv and",
+  ".carryResetProbe() (helper-lincmt-carry.R), its calls in",
+  "test-focei-lincmt-carry-fit.R, and this block"
+)
+
+# Was `pkg` installed from CRAN?  rxode2lincmt's development builds carry no
+# .9000 suffix, so its version alone cannot tell a release.
+.depFromCran <- function(pkg) {
+  identical(utils::packageDescription(pkg)$Repository, "CRAN")
+}
+
+# The reset block's warning for the installed rxode2lincmt: only a CRAN
+# release after 0.1.0, the last one without the restart
+.depResetWarning <- function(present = .carryResetRestarts(), cran = .depFromCran("rxode2lincmt")) {
+  if (!isTRUE(cran)) {
+    return(NULL)
+  }
+  .depWorkaroundWarning(
+    .rxode2lincmtVersion(),
+    "0.1.0",
+    .depResetRemove,
+    present = present,
+    pkg = "rxode2lincmt",
+    raise = FALSE
+  )
+}
+
+.depBlocks$reset <- list(
+  remove = .depResetRemove,
+  anchor = "helper-lincmt-carry.R",
+  symbols = c(".carrySkipReset", ".carryResetRestarts", ".carryResetEnv", ".carryResetProbe")
+)
+
+test_that("the work-around warning names the package, and the minimum only when asked", {
+  expect_match(
+    .depWorkaroundWarning(numeric_version("0.1.2"), "0.1.1", "x", present = TRUE, pkg = "rxode2lincmt", raise = FALSE),
+    "^rxode2lincmt 0.1.2 is a release after 0.1.1, so this work-around can go: x$"
+  )
+})
+
+test_that("rxode2lincmt reset work-around: warns only for a CRAN release that restarts the carry", {
+  local_mocked_bindings(.rxode2lincmtVersion = .depLincmtVersion011)
+  expect_null(.depResetWarning(present = FALSE, cran = TRUE))
+  expect_match(
+    .depResetWarning(present = TRUE, cran = TRUE),
+    "rxode2lincmt 0.1.1 is a release after 0.1.0",
+    fixed = TRUE
+  )
+  # a development build of the same version
+  expect_null(.depResetWarning(present = TRUE, cran = FALSE))
+  local_mocked_bindings(.rxode2lincmtVersion = .depLincmtVersion010)
+  expect_null(.depResetWarning(present = TRUE, cran = TRUE))
+})
+
+test_that("rxode2lincmt reset work-around: the carry's reset twins", {
+  skip_on_cran()
+  .w <- .depResetWarning()
+  if (!is.null(.w)) {
+    warning(.w, call. = FALSE)
+  }
+  succeed()
+})
+
+test_that("interval-covariate work-around: the linCmt() carry's end-record fallback", {
+  skip_on_cran()
+  .w <- .depIntervalCovsWarning()
+  if (!is.null(.w)) {
+    warning(.w, call. = FALSE)
+  }
+  succeed()
+})
+
+.depCarryCapRemove <- paste(
+  "the linCmt() carry's 8-column fallback for an rxode2 without",
+  "linCmtCarryMaxPairs() (its RX_LINCMT_CARRY_MAXPAIRS of 32): have",
+  ".rxFoceiLinCmtCarryMaxPairs() (R/foceiLinCmtCarryGates.R) call",
+  "rxode2::linCmtCarryMaxPairs(), drop the skip_if() on",
+  ".rxFoceiLinCmtCarryMaxPairs() < 10L in test-focei-lincmt-carry-iov.R's",
+  "nine-pair test, and remove this block, the probe test after it and the",
+  ".carryCapError() and .carryCap0() it uses (helper-lincmt-carry.R)"
+)
+
+# Does the installed rxode2 have linCmtCarryMaxPairs()?
+.depCarryCapPresent <- function() {
+  exists("linCmtCarryMaxPairs", envir = asNamespace("rxode2"), inherits = FALSE)
+}
+
+# The carry-cap block's warning for the installed rxode2
+.depCarryCapWarning <- function(present = .depCarryCapPresent()) {
+  .depWorkaroundWarning(.rxode2Version(), "5.1.8.9000", .depCarryCapRemove, present = present)
+}
+
+.depBlocks$carryCap <- list(
+  remove = .depCarryCapRemove,
+  anchor = "foceiLinCmtCarryGates.R",
+  symbols = c('exists("linCmtCarryMaxPairs"', ".rxFoceiLinCmtCarryMaxPairs() < 10L", ".carryCapError", ".carryCap0")
+)
+
+test_that("carry-cap work-around: 8 carry columns without linCmtCarryMaxPairs()", {
+  if (.depCarryCapPresent()) {
+    expect_identical(.rxFoceiLinCmtCarryMaxPairs(), get("linCmtCarryMaxPairs", envir = asNamespace("rxode2"))())
+  } else {
+    expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 8L)
+  }
+})
+
+test_that("carry-cap work-around: warns only for a release with linCmtCarryMaxPairs()", {
+  local_mocked_bindings(.rxode2Version = .depVersion519)
+  expect_null(.depCarryCapWarning(present = FALSE))
+  expect_match(.depCarryCapWarning(present = TRUE), "rxode2 5.1.9 is a release after 5.1.8.9000", fixed = TRUE)
+  local_mocked_bindings(.rxode2Version = .depVersionDev)
+  expect_null(.depCarryCapWarning(present = TRUE))
+})
+
+test_that("carry-cap work-around: the linCmt() carry's 8-column fallback", {
+  skip_on_cran()
+  .w <- .depCarryCapWarning()
+  if (!is.null(.w)) {
+    warning(.w, call. = FALSE)
+  }
+  succeed()
+})
+
+test_that("the carry-cap probe gives 8 when rxode2's count fails or is no count", {
+  skip_if_not(exists("linCmtCarryMaxPairs", envir = asNamespace("rxode2"), inherits = FALSE))
+  local_mocked_bindings(linCmtCarryMaxPairs = .carryCapError, .package = "rxode2")
+  expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 8L)
+  local_mocked_bindings(linCmtCarryMaxPairs = .carryCap0, .package = "rxode2")
+  expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 8L)
+  local_mocked_bindings(linCmtCarryMaxPairs = .carryCap32, .package = "rxode2")
+  expect_identical(.rxFoceiLinCmtCarryMaxPairs(), 32L)
+})
+
+.depSlot104Remove <- paste(
+  "rxode2's setIndNewind() (slot 104): remove nmSetIndNewind from src/rxode2Optional.h",
+  "and its row of rxode2OptionalSlots in src/inner.cpp, the NULL check in lhsWalkNewind()",
+  "(src/inner.h, which then calls setIndNewind()), the skip in test-lhs-walk-newind.R,",
+  "and this block; if no entry is left, also the rest of the rxode2Optional machinery:",
+  "src/rxode2Optional.h (and its entry in src/Makevars.in HEADERS), iniRxode2Optional() and rxode2Optional() in src/inner.cpp,",
+  "their registration in src/init.c, .rxode2Optional() in R/zzz.R and its tests in",
+  "test-lhs-walk-newind.R"
+)
+
+# The slot-104 block's warning for the installed rxode2
+.depSlot104Warning <- function(present = .rxode2Optional()[["setIndNewind"]]) {
+  .depWorkaroundWarning(.rxode2Version(), "5.1.8.9000", .depSlot104Remove, present = present)
+}
+
+.depBlocks$slot104 <- list(
+  remove = .depSlot104Remove,
+  anchor = "zzz.R",
+  symbols = c("nmSetIndNewind", "rxode2Optional")
+)
+
+test_that("slot-104 work-around: warns only for a release with setIndNewind()", {
+  local_mocked_bindings(.rxode2Version = .depVersion519)
+  expect_null(.depSlot104Warning(present = FALSE))
+  expect_match(.depSlot104Warning(present = TRUE), "rxode2 5.1.9 is a release after 5.1.8.9000", fixed = TRUE)
+  local_mocked_bindings(.rxode2Version = .depVersionDev)
+  expect_null(.depSlot104Warning(present = TRUE))
+})
+
+test_that("slot-104 work-around: rxode2's setIndNewind()", {
+  skip_on_cran()
+  .w <- .depSlot104Warning()
+  if (!is.null(.w)) {
+    warning(.w, call. = FALSE)
+  }
+  succeed()
+})
+
+# after every block has added its row
 test_that("each work-around names every file that uses its probe, skips and fallbacks", {
   # an installed package (R CMD check, covr) has an R/ of .rdb files, not the
   # sources, so it cannot show what R/ uses
@@ -139,22 +325,4 @@ test_that("each work-around names every file that uses its probe, skips and fall
       expect_true(grepl(.f, .depBlocks[[.b]]$remove, fixed = TRUE), label = paste(.b, "names", .f))
     }
   }
-})
-
-test_that("interval-covariate work-around: warns only for a release with interval covariates", {
-  local_mocked_bindings(.rxode2Version = .depVersion519, .rxFoceiLinCmtIntervalCovs = .depFalse)
-  expect_null(.depIntervalCovsWarning())
-  local_mocked_bindings(.rxFoceiLinCmtIntervalCovs = .depTrue)
-  expect_match(.depIntervalCovsWarning(), "rxode2 5.1.9 is a release after 5.1.8.9000", fixed = TRUE)
-  local_mocked_bindings(.rxode2Version = .depVersionDev)
-  expect_null(.depIntervalCovsWarning())
-})
-
-test_that("interval-covariate work-around: the linCmt() carry's end-record fallback", {
-  skip_on_cran()
-  .w <- .depIntervalCovsWarning()
-  if (!is.null(.w)) {
-    warning(.w, call. = FALSE)
-  }
-  succeed()
 })
