@@ -2986,13 +2986,20 @@ public:
       unsigned int col0 = i0(mixOwn0(o)), colE = i1(mixOwnEta1(o));
       // regress solves every subject in chain 0 under its own component
       mat &ch = phiM_mix(mixProbRegress ? 0 : j);
-      double sw = 0.0, se = 0.0;
+      // the mean shift that maximizes the eta prior, Omega's correlations
+      // included: (Omega^-1 dbar)_e / (Omega^-1)_ee
+      double sw = 0.0;
+      rowvec dbar(nphi1, fill::zeros);
       for (int row = 0; row < N * nmc; row++) {
         double w = mixWeights(row % N, j);
+        if (w <= 0.0) continue;
         sw += w;
-        se += w * ch(row, colE);
+        uvec r1(1); r1(0) = (uword)row;
+        dbar += w * (ch.submat(r1, i1) - mprior_phi1.row(row % N));
       }
-      double m = (sw > 0.0) ? gain * se / sw : 0.0;
+      unsigned int e = mixOwnEta1(o);
+      double m = (sw > 0.0 && IGamma2_phi1(e, e) > 0.0) ?
+        gain * dot(IGamma2_phi1.row(e), dbar / sw) / IGamma2_phi1(e, e) : 0.0;
       if (!std::isfinite(m)) m = 0.0;
       for (unsigned int jj = 0; jj < (unsigned int)nMix; jj++) {
         mat &cj = phiM_mix(jj);
