@@ -278,9 +278,14 @@ test_that("soft-EM responsibilities score each chain's kept state (#1296)", {
     })
   }
   fit <- suppressWarnings(nlmixr2(
-    mixMod, .d$data, est = "saem",
+    mixMod,
+    .d$data,
+    est = "saem",
     saemControl(
-      print = 0, seed = 1296, calcTables = FALSE, covMethod = "",
+      print = 0,
+      seed = 1296,
+      calcTables = FALSE,
+      covMethod = "",
       mixProbMethod = "regularized"
     )
   ))
