@@ -61,8 +61,8 @@ tableControl(
   \- \`"ipred"\`, \`"pred"\` and \`"epred"\` replace a censored DV with
   the IPRED, PRED or EPRED in the residuals.
 
-  For NPDE, every method but \`"cdf"\` and \`"omit"\` replaces each
-  censored observation by a draw from the subject's simulated predictive
+  For NPDE, every method but \`"omit"\` replaces each censored
+  observation by a draw from the subject's simulated predictive
   distribution (a Gaussian copula of the simulations), conditional on
   its measured observations and truncated to its censoring interval;
   \`"omit"\` gives censored observations no NPDE and leaves them out of
@@ -80,7 +80,10 @@ tableControl(
 - seed:
 
   an object specifying if and how the random number generator should be
-  initialized
+  initialized; when given, it takes precedence over an active
+  [`rxSetSeed()`](https://nlmixr2.github.io/rxode2/reference/rxSetSeed.html)
+  stream for this solve, and the caller's `.Random.seed` is restored
+  afterwards
 
 - cholSEtol:
 

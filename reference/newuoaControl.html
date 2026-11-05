@@ -210,7 +210,11 @@ By default this is 1.  When zero or below, no scaling is performed.</p></dd>
 
 
 <dt id="arg-rxcontrol">rxControl<a class="anchor" aria-label="anchor" href="#arg-rxcontrol"></a></dt>
-<dd><p>`rxode2` ODE solving options during fitting, created with `rxControl()`</p></dd>
+<dd><p>`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.</p></dd>
 
 
 <dt id="arg-optexpression">optExpression<a class="anchor" aria-label="anchor" href="#arg-optexpression"></a></dt>
@@ -387,9 +391,9 @@ doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1643826 0.2975681 2.6599e-05      0.055       0.009 0.029    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1077649 0.1838063 1.1948e-05      0.037       0.006  0.02        0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09302271</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.06341683</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

@@ -199,6 +199,7 @@
 <span>  etaNudge <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">qnorm</a></span><span class="op">(</span><span class="fl">1</span> <span class="op">-</span> <span class="fl">0.05</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span><span class="op">/</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="fl">3</span><span class="op">)</span>,</span>
 <span>  etaNudge2 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">qnorm</a></span><span class="op">(</span><span class="fl">1</span> <span class="op">-</span> <span class="fl">0.05</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="fl">3</span><span class="op">/</span><span class="fl">5</span><span class="op">)</span>,</span>
 <span>  etaRestart <span class="op">=</span> <span class="fl">4L</span>,</span>
+<span>  finalEtaTol <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  nRetries <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  seed <span class="op">=</span> <span class="fl">42</span>,</span>
 <span>  resetThetaCheckPer <span class="op">=</span> <span class="fl">0.1</span>,</span>
@@ -1470,6 +1471,15 @@ qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
   its own restart cascade is unchanged.</p></dd>
 
 
+<dt id="arg-finaletatol">finalEtaTol<a class="anchor" aria-label="anchor" href="#arg-finaletatol"></a></dt>
+<dd><p>When the final objective is more than this above the
+lowest objective the outer optimizer evaluated, the final ETAs are
+re-solved from that evaluation's ETAs, keeping per subject whichever
+start gives the lower objective.  Warm-started ETAs can fall into a
+secondary mode during the search and stay there.  Only applies with a
+warm start (`mceta &lt; 0`).  Use `Inf` to disable.</p></dd>
+
+
 <dt id="arg-nretries">nRetries<a class="anchor" aria-label="anchor" href="#arg-nretries"></a></dt>
 <dd><p>If FOCEi doesn't fit with the current parameter
 estimates, randomly sample new parameter estimates and restart
@@ -1565,7 +1575,11 @@ solve.</p></dd>
 
 
 <dt id="arg-rxcontrol">rxControl<a class="anchor" aria-label="anchor" href="#arg-rxcontrol"></a></dt>
-<dd><p>`rxode2` ODE solving options during fitting, created with `rxControl()`</p></dd>
+<dd><p>`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.</p></dd>
 
 
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>

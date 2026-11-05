@@ -221,10 +221,10 @@ fbviControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-06
+#> [1] 1e-08
 #> 
 #> $rtol
-#> [1] 0.001
+#> [1] 1e-06
 #> 
 #> $maxsteps
 #> [1] 70000
@@ -430,10 +430,10 @@ fbviControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 1e-05
+#> [1] 1e-07
 #> 
 #> $ssRtol
-#> [1] 0.01
+#> [1] 1e-05
 #> 
 #> $safeZero
 #> [1] 1
@@ -459,16 +459,16 @@ fbviControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-06
+#> [1] 1e-08
 #> 
 #> $rtolSens
-#> [1] 0.001
+#> [1] 1e-06
 #> 
 #> $ssAtolSens
-#> [1] 1e-05
+#> [1] 1e-07
 #> 
 #> $ssRtolSens
-#> [1] 0.01
+#> [1] 1e-05
 #> 
 #> $simVariability
 #> [1] NA

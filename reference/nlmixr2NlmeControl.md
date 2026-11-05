@@ -225,7 +225,11 @@ nlmeControl(
 - rxControl:
 
   \`rxode2\` ODE solving options during fitting, created with
-  \`rxControl()\`
+  \`rxControl()\`. The solver's adaptive steps set the objective's noise
+  floor, which grows with \`rtol\` and the number of observations. For a
+  non-stiff model, \`rxControl(method = "dop853")\` gives a much
+  smoother objective than the default \`"liblsoda"\` at the same
+  \`rtol\`.
 
 - method:
 
@@ -475,10 +479,10 @@ nlmeControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-06
+#> [1] 1e-08
 #> 
 #> $rtol
-#> [1] 0.001
+#> [1] 1e-06
 #> 
 #> $maxsteps
 #> [1] 70000
@@ -684,10 +688,10 @@ nlmeControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 1e-05
+#> [1] 1e-07
 #> 
 #> $ssRtol
-#> [1] 0.01
+#> [1] 1e-05
 #> 
 #> $safeZero
 #> [1] 1
@@ -713,16 +717,16 @@ nlmeControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-06
+#> [1] 1e-08
 #> 
 #> $rtolSens
-#> [1] 0.001
+#> [1] 1e-06
 #> 
 #> $ssAtolSens
-#> [1] 1e-05
+#> [1] 1e-07
 #> 
 #> $ssRtolSens
-#> [1] 0.01
+#> [1] 1e-05
 #> 
 #> $simVariability
 #> [1] NA
@@ -1037,10 +1041,10 @@ nlmixr2NlmeControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-06
+#> [1] 1e-08
 #> 
 #> $rtol
-#> [1] 0.001
+#> [1] 1e-06
 #> 
 #> $maxsteps
 #> [1] 70000
@@ -1246,10 +1250,10 @@ nlmixr2NlmeControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 1e-05
+#> [1] 1e-07
 #> 
 #> $ssRtol
-#> [1] 0.01
+#> [1] 1e-05
 #> 
 #> $safeZero
 #> [1] 1
@@ -1275,16 +1279,16 @@ nlmixr2NlmeControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-06
+#> [1] 1e-08
 #> 
 #> $rtolSens
-#> [1] 0.001
+#> [1] 1e-06
 #> 
 #> $ssAtolSens
-#> [1] 1e-05
+#> [1] 1e-07
 #> 
 #> $ssRtolSens
-#> [1] 0.01
+#> [1] 1e-05
 #> 
 #> $simVariability
 #> [1] NA

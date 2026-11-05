@@ -327,7 +327,7 @@ laplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x557f32012820>
+#> <bytecode: 0x560eeaa9f128>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -388,7 +388,7 @@ laplaceControl()
 #> [1] FALSE
 #> 
 #> $newuoaRhoend
-#> [1] 0.03162278
+#> [1] 0.001
 #> 
 #> $bobyqaStationary
 #> [1] TRUE
@@ -558,6 +558,9 @@ laplaceControl()
 #> $etaRestart
 #> [1] 4
 #> 
+#> $finalEtaTol
+#> [1] 1
+#> 
 #> $maxOdeRecalc
 #> [1] 5
 #> 
@@ -621,10 +624,10 @@ laplaceControl()
 #>        2 
 #> 
 #> $atol
-#> [1] 1e-06
+#> [1] 1e-08
 #> 
 #> $rtol
-#> [1] 0.001
+#> [1] 1e-06
 #> 
 #> $maxsteps
 #> [1] 500000
@@ -830,10 +833,10 @@ laplaceControl()
 #> [1] TRUE
 #> 
 #> $ssAtol
-#> [1] 1e-05
+#> [1] 1e-07
 #> 
 #> $ssRtol
-#> [1] 0.01
+#> [1] 1e-05
 #> 
 #> $safeZero
 #> [1] 1
@@ -859,16 +862,16 @@ laplaceControl()
 #> [1] 0
 #> 
 #> $atolSens
-#> [1] 1e-06
+#> [1] 1e-08
 #> 
 #> $rtolSens
-#> [1] 0.001
+#> [1] 1e-06
 #> 
 #> $ssAtolSens
-#> [1] 1e-05
+#> [1] 1e-07
 #> 
 #> $ssRtolSens
-#> [1] 0.01
+#> [1] 1e-05
 #> 
 #> $simVariability
 #> [1] NA

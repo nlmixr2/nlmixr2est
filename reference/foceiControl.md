@@ -161,6 +161,7 @@ foceiControl(
   etaNudge = qnorm(1 - 0.05/2)/sqrt(3),
   etaNudge2 = qnorm(1 - 0.05/2) * sqrt(3/5),
   etaRestart = 4L,
+  finalEtaTol = 1,
   nRetries = 3,
   seed = 42,
   resetThetaCheckPer = 0.1,
@@ -1425,6 +1426,15 @@ foceiControl(
   endpoint), which reports a convergence verdict per solve. \`n1qn1\`
   reports none, so its own restart cascade is unchanged.
 
+- finalEtaTol:
+
+  When the final objective is more than this above the lowest objective
+  the outer optimizer evaluated, the final ETAs are re-solved from that
+  evaluation's ETAs, keeping per subject whichever start gives the lower
+  objective. Warm-started ETAs can fall into a secondary mode during the
+  search and stay there. Only applies with a warm start (\`mceta \<
+  0\`). Use \`Inf\` to disable.
+
 - nRetries:
 
   If FOCEi doesn't fit with the current parameter estimates, randomly
@@ -1517,7 +1527,11 @@ foceiControl(
 - rxControl:
 
   \`rxode2\` ODE solving options during fitting, created with
-  \`rxControl()\`
+  \`rxControl()\`. The solver's adaptive steps set the objective's noise
+  floor, which grows with \`rtol\` and the number of observations. For a
+  non-stiff model, \`rxControl(method = "dop853")\` gives a much
+  smoother objective than the default \`"liblsoda"\` at the same
+  \`rtol\`.
 
 - sigdigTable:
 

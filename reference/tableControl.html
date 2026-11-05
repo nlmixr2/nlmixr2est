@@ -94,7 +94,7 @@ you supply single subject event tables (created with
 <p>- `"omit"` omit the residuals for censoring</p>
 <p>- `"ipred"`, `"pred"` and `"epred"` replace a censored DV with the IPRED,
    PRED or EPRED in the residuals.</p>
-<p>For NPDE, every method but `"cdf"` and `"omit"` replaces each censored
+<p>For NPDE, every method but `"omit"` replaces each censored
   observation by a draw from the subject's simulated predictive
   distribution (a Gaussian copula of the simulations), conditional on its
   measured observations and truncated to its censoring interval; `"omit"`
@@ -112,7 +112,9 @@ you supply single subject event tables (created with
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
 <dd><p>an object specifying if and how the random number
-generator should be initialized</p></dd>
+generator should be initialized; when given, it takes precedence
+over an active <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSetSeed.html" class="external-link">rxSetSeed()</a></code> stream for this solve, and the
+caller's <code>.Random.seed</code> is restored afterwards</p></dd>
 
 
 <dt id="arg-cholsetol">cholSEtol<a class="anchor" aria-label="anchor" href="#arg-cholsetol"></a></dt>

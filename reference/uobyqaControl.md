@@ -167,7 +167,11 @@ uobyqaControl(
 - rxControl:
 
   \`rxode2\` ODE solving options during fitting, created with
-  \`rxControl()\`
+  \`rxControl()\`. The solver's adaptive steps set the objective's noise
+  floor, which grows with \`rtol\` and the number of observations. For a
+  non-stiff model, \`rxControl(method = "dop853")\` gives a much
+  smoother objective than the default \`"liblsoda"\` at the same
+  \`rtol\`.
 
 - optExpression:
 
@@ -342,9 +346,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1551459 0.1665191 2.3175e-05      0.069       0.009  0.03    0.001
-#>             other
-#> elapsed 0.1023118
+#> elapsed 0.1200254 0.1187922 1.9659e-05       0.04       0.006 0.022    0.001
+#>              other
+#> elapsed 0.08116272
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
