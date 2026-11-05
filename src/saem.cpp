@@ -2511,6 +2511,10 @@ public:
       priorWeights.zeros(N, nMix);
       mixProbMethod = x.containsElementNamed("mixProbMethod") ? as<int>(x["mixProbMethod"]) : 0;
       pasMix = x.containsElementNamed("pasMix") ? as<vec>(x["pasMix"]) : pas;
+      // zero gain over the SA covariance phase, like pas/pash (#1297)
+      if (pasMix.n_elem < pas.n_elem) {
+        pasMix = join_cols(pasMix, zeros<vec>(pas.n_elem - pasMix.n_elem));
+      }
       mixProbPriorN = x.containsElementNamed("mixProbPriorN") ? as<double>(x["mixProbPriorN"]) : 0.0;
       mixSampleMethod = x.containsElementNamed("mixSampleMethod") ? as<int>(x["mixSampleMethod"]) : 0;
     } else {
