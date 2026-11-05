@@ -321,7 +321,11 @@ getValidNlmixrCtl.default <- function(control) {
   .user <- .fields[
     !vapply(
       .fields,
-      function(.f) isTRUE(all.equal(unname(rxControl[[.f]]), unname(.def[[.f]]))),
+      function(.f) {
+        .x <- unname(rxControl[[.f]])
+        .d <- unname(.def[[.f]])
+        length(.x) == length(.d) && all(abs(.x - .d) <= 1e-8 * abs(.d))
+      },
       logical(1)
     )
   ]
