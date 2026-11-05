@@ -149,6 +149,13 @@
   `rxOptExpr()` pass, so its CSE temporaries no longer collide (#1133).
 - FOCEi caches reuse compiled models to reduce setup time and keep rxode2
   versions/builds separate to prevent bundle collisions (#1133).
+- `saemControl(mixProbMethod = "regress")` now classifies each subject at its
+  own eta mode under every mixture component, with the residual re-estimated
+  from the classified fits, instead of at the initial eta draws.  Under
+  proportional error the old classification put many subjects in whichever
+  component over-predicted.  Split-eta mixtures now keep fixed membership
+  instead of always falling back to `"regularized"` (#1296).
+
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
   the final ETAs from that evaluation's ETAs, keeping per subject the lower
