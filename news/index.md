@@ -493,6 +493,21 @@
   order), and its population curve sets every eta, of every level, to
   zero.
 
+- A model whose only random effects are occasion ones
+  (`iov.cl ~ 0.1 | occ` with no subject-level eta) now fits with
+  `focei`, `foce`, `saem`, `laplace`, `agq`, `imp` and `npag` (`focei`
+  and `foce` in either IOV expansion; `saem`’s `"twoLevel"` and
+  `"collapsed"` IOV methods, which need a subject-level eta on the same
+  parameter, fall back to `"theta"`). It used to stop with “missing
+  value where TRUE/FALSE needed” or “arguments imply differing number of
+  rows”: the IOV rewrite copied its template rows from an eta that was
+  not there, and its output step lost the shape of tables left with one
+  column.
+
+- A `saem` IOV fit no longer warns that `iov.cl` “has the following
+  user-defined boundaries”: the bound was the IOV rewrite’s own, not the
+  user’s.
+
 #### Documentation
 
 - [`?tableControl`](https://nlmixr2.github.io/nlmixr2est/reference/tableControl.md)
