@@ -2946,13 +2946,16 @@ public:
         int p = (int)i0(c0);
         int j = mixShiftComp(p), e = mixShiftEta(p) - 1;
         uvec e1 = find(i1 == (unsigned int)std::max(e, 0));
+        uvec l0 = find(LCOV0.col(c0) == 1);
+        // a held (fixed) theta keeps its value, so it keeps the phi0 path
+        bool fixed0 = l0.n_elem == 1 && any(fixedIx0 == l0(0));
         if (j >= 1 && j <= nMix && e >= 0 && e1.n_elem == 1 &&
-            accu(LCOV0.col(c0)) == 1.0) {
+            l0.n_elem == 1 && !fixed0) {
           owned = true;
           own0.push_back((unsigned int)c0);
           comp.push_back((unsigned int)(j - 1));
           eta1.push_back(e1(0));
-          lam0.push_back(as_scalar(find(LCOV0.col(c0) == 1, 1)));
+          lam0.push_back(l0(0));
         }
       }
       if (!owned) free0.push_back((unsigned int)c0);
