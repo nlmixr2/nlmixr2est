@@ -601,9 +601,6 @@ is.latex <- function() {
         # left the box -- give back the incumbent, the best feasible point
         state$held[state$snapNew] <- FALSE
         state$heldAt[state$snapNew] <- NA_real_
-        if (!is.null(state$best) && isTRUE(state$best$value < state$inc$value)) {
-          state$inc <- state$best
-        }
         if (!is.null(state$inc)) {
           .ret$argument <- state$inc$x
           .ret$value <- state$inc$value
@@ -688,6 +685,16 @@ is.latex <- function() {
     }
     .x <- .ret$argument
     .nRestart <- .nRestart + 1L
+  }
+  if (!state$noSnap && isTRUE(state$best$value < .ret$value)) {
+    # out of budget before a return to the best point: report it, unconverged
+    .ret$argument <- state$best$x
+    .ret$value <- state$best$value
+    .ret$gradient <- state$best$gradient
+    .ret$hessian <- state$best$hessian
+    .ret$converged <- FALSE
+    .decr <- NA_real_
+    .under <- TRUE
   }
   .ret$iterations <- .used
   .ret$restarts <- .nRestart
