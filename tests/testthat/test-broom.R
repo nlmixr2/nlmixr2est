@@ -697,6 +697,18 @@ nmTest({
     expect_identical(.ranParSe(list(cov = .cov[1, 1, drop = FALSE]), .om, .omR), rep(NA_real_, 4))
   })
 
+  test_that("ran_pars intervals use log(sd) and atanh(cor), with an SD above 1", {
+    .z <- stats::qnorm(0.975)
+    # an SD above 1 must not reach atanh()
+    .ci <- withr::with_options(
+      list(warn = 2),
+      .ranParCi(c(2, 1, 0.5), c(0.4, 0.1, 0.2), c(TRUE, TRUE, FALSE), 0.95)
+    )
+    expect_equal(.ci$low, c(2 * exp(-.z * 0.2), exp(-.z * 0.1), tanh(atanh(0.5) - .z * 0.2 / 0.75)))
+    expect_equal(.ci$high, c(2 * exp(.z * 0.2), exp(.z * 0.1), tanh(atanh(0.5) + .z * 0.2 / 0.75)))
+    expect_identical(.ranParCi(1, NA_real_, TRUE, 0.95)$low, NA_real_)
+  })
+
   test_that("tidy() and confint() leave out an IOV fit's occasion variability row", {
     skip_if_not_installed("broom.mixed")
     fit <- .iovFit("focei", control = list(maxOuterIterations = 0, calcTables = FALSE))

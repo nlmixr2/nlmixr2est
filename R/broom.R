@@ -199,6 +199,28 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   )
 }
 
+#' Wald intervals of `sd__`/`cor__` terms on the log(sd) and atanh(cor)
+#' scales, as nlme::intervals(), so each stays in range
+#'
+#' @param pars term estimates
+#' @param se their SEs
+#' @param isSd which terms are SDs (the rest are correlations)
+#' @param level confidence level
+#' @return list of `low` and `high`
+#' @noRd
+.ranParCi <- function(pars, se, isSd, level) {
+  .zse <- qnorm(1 - (1 - level) / 2) * se
+  .low <- .high <- rep(NA_real_, length(pars))
+  .s <- pars[isSd]
+  .low[isSd] <- .s * exp(-.zse[isSd] / .s)
+  .high[isSd] <- .s * exp(.zse[isSd] / .s)
+  .r <- pars[!isSd]
+  .d <- .zse[!isSd] / (1 - .r^2)
+  .low[!isSd] <- tanh(atanh(.r) - .d)
+  .high[!isSd] <- tanh(atanh(.r) + .d)
+  list(low = .low, high = .high)
+}
+
 .nlmixr2TidyRandomPar <- function(x, ...) {
   rxode2::rxReq("tibble")
   .omegaR <- x$omegaR
@@ -223,12 +245,9 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     .extra <- list(...)
     if (isTRUE(.extra$conf.int) || (is.null(.extra$conf.int) && !is.null(.extra$conf.level))) {
       .level <- if (is.null(.extra$conf.level)) 0.95 else .extra$conf.level
-      .zse <- qnorm(1 - (1 - .level) / 2) * .se
-      .isSd <- seq_along(.pars) <= nrow(.omega)
-      # Wald on log(sd) and atanh(cor), as nlme::intervals(), so the
-      # interval stays in range
-      .p1$conf.low <- ifelse(.isSd, .pars * exp(-.zse / .pars), tanh(atanh(.pars) - .zse / (1 - .pars^2)))
-      .p1$conf.high <- ifelse(.isSd, .pars * exp(.zse / .pars), tanh(atanh(.pars) + .zse / (1 - .pars^2)))
+      .ci <- .ranParCi(.pars, .se, seq_along(.pars) <= nrow(.omega), .level)
+      .p1$conf.low <- .ci$low
+      .p1$conf.high <- .ci$high
     }
     .p1 <- .reorderCols(.p1)
     # broom.mixed exponentiates fixed effects only
