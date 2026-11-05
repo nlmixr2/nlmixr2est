@@ -209,7 +209,9 @@ test_that("regress classifies at each subject's own etas under proportional erro
     })
   }
   fit <- suppressWarnings(nlmixr2(
-    mixMod, .d$data, est = "saem",
+    mixMod,
+    .d$data,
+    est = "saem",
     saemControl(print = 0, seed = 1296, calcTables = FALSE, covMethod = "")
   ))
   th <- fixef(fit)
