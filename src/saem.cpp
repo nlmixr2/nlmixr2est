@@ -3544,12 +3544,11 @@ public:
               }
             }
             for (int k = 0; k < nmc; k++) {
-              // Observation loss for this MCMC sample (rows i + k*N for each subject)
+              // Observation loss of this MCMC sample (rows i + k*N for each
+              // subject).  do_mcmc leaves the LAST candidate's loss in cur_DYF
+              // for every row, accepted or not; U_y is the kept state's (#1296).
               for (int i = 0; i < N; i++) {
-                joint_nll(i + k * N) = 0.0;
-                for (int m = 0; m < mlen; m++) {
-                  joint_nll(i + k * N) += cur_DYF(m, i + k * N);
-                }
+                joint_nll(i + k * N) = U_y(i + k * N);
               }
               // mprior_phiM is already restricted to i1/i0 columns (see set_mcmcphi()), so it
               // must not be column-indexed again; slice the k-th row-block via .rows() to avoid
