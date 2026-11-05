@@ -129,6 +129,14 @@
   )
   .lines <- strsplit(.txt, "\n", fixed = TRUE)[[1]]
   .w <- which(grepl("^[ \t]*params?[ \t]*\\(", .lines))
-  .at <- if (length(.w) > 0L) .w[1] else 0L
+  .at <- 0L
+  if (length(.w) > 0L) {
+    # after the line that closes params(), which may span lines
+    .n <- function(ch) lengths(regmatches(.lines, gregexpr(ch, .lines, fixed = TRUE)))
+    .depth <- cumsum(.n("(") - .n(")"))
+    .before <- c(0L, .depth)[.w[1]]
+    .close <- which(seq_along(.lines) >= .w[1] & .depth <= .before)
+    .at <- if (length(.close) > 0L) .close[1] else .w[1]
+  }
   paste(append(.lines, .seed, after = .at), collapse = "\n")
 }
