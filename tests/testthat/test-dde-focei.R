@@ -123,5 +123,8 @@ nmTest({
     .rc <- .rxControlDelayLagTol(foceiControl(rxControl = list(rtol = 1e-5))$rxControl, 3)
     expect_equal(.rc$rtol, 1e-5)
     expect_equal(.rc$atol, 1e-11)
+    .rc <- .rxControlDelayLagTol(foceiControl(rxControl = list(atol = 1e-14))$rxControl, 3)
+    expect_equal(.rc$atol, 1e-14)
+    expect_equal(.rc$rtol, 1e-9)
   })
 })
