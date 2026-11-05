@@ -237,6 +237,9 @@ test_that(".ipredIdLabels() matches a numeric ID to the fit's label by value", {
   # text and factor IDs match by their text
   expect_identical(.ipredIdLabels(.fit, c("1e+05", "100000")), c("1e+05", "100000"))
   expect_identical(.ipredIdLabels(.fit, factor("2")), "2")
+  # an unseen ID keeps every digit, so it cannot take a nearby subject's label
+  .fit$eta$ID <- factor("1e+15")
+  expect_identical(.ipredIdLabels(.fit, 1e15 + 1), "1000000000000001")
 })
 
 test_that(".ipredHasId() looks for a subject column in the data frame", {

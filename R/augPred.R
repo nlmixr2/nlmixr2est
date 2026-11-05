@@ -410,7 +410,7 @@
   .lab <- unique(.lab)
   .ret <- .lab[match(id, suppressWarnings(as.numeric(.lab)))]
   .new <- is.na(.ret)
-  .ret[.new] <- sprintf("%.15g", id[.new])
+  .ret[.new] <- sprintf("%.17g", id[.new])
   .ret
 }
 
