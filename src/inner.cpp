@@ -251,6 +251,55 @@ extern "C" {
   iniLbfgsb3
 #define iniRxodePtrs _nlmixr2est_iniRxodePtrs
   iniRxode2ptr
+
+  nmSetIndNewind_t nmSetIndNewind = NULL;
+
+  // The entry points of rxode2Optional.h: the label .rxode2Optional() reports
+  // it by, its slot in rxode2's pointer table and that slot's name there
+  // (names(rxode2::.rxode2ptrs())), and the pointer it is loaded into
+  typedef struct {
+    const char *label;
+    int slot;
+    const char *name;
+    DL_FUNC *fn;
+  } rxode2OptionalSlot;
+
+  static rxode2OptionalSlot rxode2OptionalSlots[] = {
+    // remove with test-dependency-workarounds.R's slot-104 block
+    {"setIndNewind", 104, "rxode2setIndNewind", (DL_FUNC *) &nmSetIndNewind},
+  };
+  static const int rxode2OptionalN =
+    (int)(sizeof(rxode2OptionalSlots) / sizeof(rxode2OptionalSlots[0]));
+
+  // Loads each one the table `p` (rxode2::.rxode2ptrs()) has: a slot past the
+  // end of an older rxode2's table, or holding another name, leaves it NULL
+  SEXP _nlmixr2est_iniRxode2Optional(SEXP p) {
+    SEXP nm = Rf_getAttrib(p, R_NamesSymbol);
+    R_xlen_t n = TYPEOF(p) == VECSXP ? Rf_xlength(p) : 0;
+    for (int i = 0; i < rxode2OptionalN; ++i) {
+      rxode2OptionalSlot *s = &rxode2OptionalSlots[i];
+      *(s->fn) = NULL;
+      if (s->slot >= n || TYPEOF(nm) != STRSXP || Rf_xlength(nm) != n) continue;
+      if (strcmp(CHAR(STRING_ELT(nm, s->slot)), s->name) != 0) continue;
+      SEXP e = VECTOR_ELT(p, s->slot);
+      if (TYPEOF(e) != EXTPTRSXP) continue;
+      *(s->fn) = R_ExternalPtrAddrFn(e);
+    }
+    return R_NilValue;
+  }
+
+  // Which of them the installed rxode2 has, as a named logical vector
+  SEXP _nlmixr2est_rxode2Optional(void) {
+    SEXP ret = PROTECT(Rf_allocVector(LGLSXP, rxode2OptionalN));
+    SEXP nms = PROTECT(Rf_allocVector(STRSXP, rxode2OptionalN));
+    for (int i = 0; i < rxode2OptionalN; ++i) {
+      LOGICAL(ret)[i] = *(rxode2OptionalSlots[i].fn) != NULL;
+      SET_STRING_ELT(nms, i, Rf_mkChar(rxode2OptionalSlots[i].label));
+    }
+    Rf_setAttrib(ret, R_NamesSymbol, nms);
+    UNPROTECT(2);
+    return ret;
+  }
 #define iniN1qn1cPtrs _nlmixr2est_iniN1qn1cPtrs
   iniN1qn1c
 #define iniRcppTrustPtrs _nlmixr2est_iniRcppTrustPtrs
@@ -1040,11 +1089,17 @@ struct focei_options {
   bool zeroGradBobyqaRun=false;
   int nEstOmega=0;
   int mceta= -1; // number of mc samples of ETA
+  bool mcetaOpt = false; // mceta>=1: optimize every draw, not the best start
   // Omega draws the inner restart cascade tries once the fixed nudges are
   // spent (0 = the historical nudges-only cascade), and foceiControl(seed=)
   // as the base of their threefry stream.
   int nEtaRestart = 0;
   uint32_t etaRestartSeed = 42u;
+  // foceiControl(finalEtaTol=): see foceiFinalBestEta()
+  double finalEtaTol = R_PosInf;
+  int nFinalEtaMoved = 0;
+  int finalBestX = 0; // the final estimates were replaced by the best evaluation's
+  double finalBestGap = NA_REAL; // final minus best evaluated objective (natural scale)
 
   // Almquist Eq-48 warm-start extrapolation (fast=TRUE): per-subject d eta*/d(theta)
   // in the SCALED optimizer parameterization (etaP columns pre-multiplied by
@@ -2324,18 +2379,22 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
       if (predSolve) {
+        lhsWalkNewind(ind, j);
         rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       } else {
+        lhsWalkNewind(ind, j);
         rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       }
       continue;
     }
     fInd->nObs++;
     if (predSolve) {
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       retF(k) = lhs[op_focei.predNoLhsOffset];
       retR(k) = lhs[op_focei.predNoLhsOffset + 1];
     } else {
+      lhsWalkNewind(ind, j);
       rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       retF(k) = lhs[op_focei.predOffset];
       retR(k) = lhs[op_focei.predOffset + op_focei.neta + 1];
@@ -2400,6 +2459,7 @@ static Rcpp::NumericMatrix assembleNnOuterMatrix() {
       double curT = getTime(kk, ind);
       double *lhs = getIndLhs(ind);
       double *st = getOpIndSolve(op, ind, j);
+      lhsWalkNewind(ind, j);
       rxInner.calc_lhs(_rxId, curT, st, lhs); // advance lhs for dose + obs records
       if (getIndEvid(ind, kk) != 0) continue;
       mat(row, 0) = lhs[op_focei.predOffset];             // rx_pred_ (predicted f)
@@ -2467,9 +2527,11 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
     curT = getTime(kk, ind);
     double *lhs = neqGuard.lhs();   // scope decides the buffer, not this loop
     if (isDose(getIndEvid(ind, kk))) {
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     }
+    lhsWalkNewind(ind, j);
     rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
     // rx_pred_ (w=0) / rx_r_ (w=1) may be preceded by other lhs outputs in the
     // pred model (AR(1) lag defs, etc.), so index from predNoLhsOffset -- matching
@@ -2522,9 +2584,11 @@ arma::vec shi21ThetaGeneral(arma::vec &theta, int id, int w) {
     curT = getTime(kk, ind);
     double *lhs = neqGuard.lhs();   // scope decides the buffer, not this loop
     if (isDose(getIndEvid(ind, kk))) {
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     }
+    lhsWalkNewind(ind, j);
     rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
     if (k < nObs) ret(k) = lhs[op_focei.predNoLhsOffset + w];
     k++;
@@ -2652,7 +2716,8 @@ arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0,
 // FOCE (interaction==0): R must enter the inner likelihood at the eta=0
 // population prediction, held constant (the truncated Sheiner-Beal gradient
 // drops dR/deta, so eta-dependent R destabilizes the optimizer).  Solve the
-// inner model at eta=0 and read rx_r_ (lhs[neta+1]) per obs into rPop in the
+// inner model at eta=0 and read rx_r_ (lhs[predOffset+neta+1]; the linCmt()
+// carry's covariate copies can precede rx_pred_) per obs into rPop in the
 // likInner0 observation k-order.  Call BEFORE the inner solve (this overwrites
 // ind->solve; the inner solve re-establishes it).
 
@@ -2701,11 +2766,13 @@ static void getPopR(int id, arma::vec &rPop) {
     curT = getTime(kk, ind);
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
+      lhsWalkNewind(ind, j);
       rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
+      lhsWalkNewind(ind, j);
       rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
-      rPop(k) = lhs[op_focei.neta + 1]; // inner-model rx_r_ at eta=0
+      rPop(k) = lhs[op_focei.predOffset + op_focei.neta + 1]; // inner-model rx_r_ at eta=0
       k++;
       if (k >= nObsMax) break;
     }
@@ -3206,6 +3273,7 @@ double likInner0(double *eta, int id) {
           llikObs[kk] = NA_REAL;
           // Need to calculate for advan sensitivities
           if (predSolve) {
+            lhsWalkNewind(ind, j);
             rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
             // Normalize the predNoLhs layout into the inner offset layout so the
             // shared reads below use op_focei.predOffset uniformly.
@@ -3215,10 +3283,12 @@ double likInner0(double *eta, int id) {
             lhs[op_focei.predOffset + op_focei.neta + 1] = _pr;
           }
           else {
+            lhsWalkNewind(ind, j);
             rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
           }
         } else if (getIndEvid(ind, kk) == 0) {
           if (predSolve) {
+            lhsWalkNewind(ind, j);
             rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
             // Normalize the predNoLhs layout into the inner offset layout.
             double _pf = lhs[op_focei.predNoLhsOffset];
@@ -3226,6 +3296,7 @@ double likInner0(double *eta, int id) {
             lhs[op_focei.predOffset] = _pf;
             lhs[op_focei.predOffset + op_focei.neta + 1] = _pr;
           } else {
+            lhsWalkNewind(ind, j);
             rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
           }
           // Read the endpoint's distribution/transform AFTER calc_lhs: rx_yj_ (and
@@ -3673,6 +3744,7 @@ static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
     int kk2 = getIndIx(ind, jj);
     if (getIndEvid(ind, kk2) != 0) continue;              // observations only
     double curT2 = getTime(kk2, ind);
+    lhsWalkNewind(ind, jj);
     rxHess2.calc_lhs(_rxId, curT2, getOpIndSolve(op, ind, jj), lhs);
     double cp[9] = {};
     if (conditional) {
@@ -4509,8 +4581,11 @@ static inline int innerOpt1(int id, int likId) {
   }
   bool trustInner = innerOptTrustFamily(op_focei.innerOpt);
   bool n1qn1Inner = !trustInner && op_focei.innerOpt != 2;
-  // mceta>=1: true when a sampled eta (not eta=0) was chosen as the starting point.
+  // mceta>=1: the number of Omega draws optimized before the eta=0 pass, and
+  // whether there are any (the first pass then starts at a draw, not eta=0).
+  int nMcetaDraw = 0;
   bool mcetaSampleStart = false;
+  bool mcetaSearch = false;
   // Use eta
   // Convert Zm to Hessian, if applicable.
   mat etaMat(fop->neta, 1, fill::zeros);
@@ -4579,34 +4654,51 @@ static inline int innerOpt1(int id, int likId) {
     // with the last eta for every subject, collapsing mceta>0 onto the keep-last
     // behavior of mceta=-1/-2 -- mceta=10 returned an objective bit-identical to
     // mceta=-2 and the extra draws never mattered.
-    std::fill(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, 0.0);
-    double fcur = likInner0(fInd->tryEta, id); // eta = 0
-    std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
-    bool sampleWon = false;
+    //
+    std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
     // Subjects with no slice (empty cube) simply have no draws to try.
-    if (static_cast<arma::uword>(id) < op_focei.mcetaSamples.n_slices) {
-      int nmc = op_focei.mceta - 1;
-      for (int sampCol = 0; sampCol < nmc; sampCol++) {
-        arma::vec samp = op_focei.mcetaSamples.slice(id).col(sampCol);
-        std::copy(samp.begin(), samp.end(), &fInd->tryEta[0]);
-        double ftry = likInner0(fInd->tryEta, id); // sampled eta
-        // An unusable eta=0 must not pin the search: take any finite candidate
-        // over a non-finite incumbent.
-        if (R_FINITE(ftry) && (!R_FINITE(fcur) || ftry < fcur)) {
-          std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
-          fcur = ftry;
-          sampleWon = true;
+    bool haveSlice = static_cast<arma::uword>(id) < op_focei.mcetaSamples.n_slices;
+    if (op_focei.mcetaOpt) {
+      // mcetaOpt=TRUE optimizes EVERY draw (#1242): the objective at a starting
+      // point does not order the optima the solves converge to.  The passes run
+      // the draws first and eta=0 last.
+      mcetaSearch = true;
+      if (haveSlice) nMcetaDraw = op_focei.mceta - 1;
+      if (nMcetaDraw > 0) {
+        const double *samp = op_focei.mcetaSamples.slice(id).colptr(0);
+        std::copy(samp, samp + op_focei.neta, &fInd->eta[0]);
+      }
+    } else {
+      // The default search: only the candidate with the lowest inner
+      // objective at its starting point is optimized.
+      std::fill(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, 0.0);
+      double fcur = likInner0(fInd->tryEta, id); // eta = 0
+      if (haveSlice) {
+        for (int sampCol = 0; sampCol < op_focei.mceta - 1; sampCol++) {
+          const double *samp = op_focei.mcetaSamples.slice(id).colptr(sampCol);
+          std::copy(samp, samp + op_focei.neta, &fInd->tryEta[0]);
+          double ftry = likInner0(fInd->tryEta, id); // sampled eta
+          // An unusable eta=0 must not pin the search: take any finite candidate
+          // over a non-finite incumbent.
+          if (R_FINITE(ftry) && (!R_FINITE(fcur) || ftry < fcur)) {
+            std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
+            fcur = ftry;
+            nMcetaDraw = 1;
+          }
         }
       }
+      if (nMcetaDraw > 0) {
+        op_focei.nMcetaSample.fetch_add(1, std::memory_order_relaxed);
+      } else {
+        op_focei.nMcetaZero.fetch_add(1, std::memory_order_relaxed);
+      }
     }
-    mcetaSampleStart = sampleWon;
-    if (sampleWon) {
-      op_focei.nMcetaSample.fetch_add(1, std::memory_order_relaxed);
-    } else {
-      op_focei.nMcetaZero.fetch_add(1, std::memory_order_relaxed);
-    }
+    mcetaSampleStart = nMcetaDraw > 0;
   }
-  if (!op_focei.calcGrad && !_covEtaStartOn) {
+  // An mcetaOpt start is a draw from Omega, not a carried eta, so the reset
+  // below (an escape from a bad warm start) does not apply to it.
+  if (!op_focei.calcGrad && !_covEtaStartOn &&
+      !(mcetaSampleStart && op_focei.mcetaOpt)) {
     if (op_focei.resetEtaSize <= 0) {
       if (op_focei.resetHessianAndEta){
         fInd->mode = 1;
@@ -4668,11 +4760,11 @@ static inline int innerOpt1(int id, int likId) {
     else selfInitZm(fInd);                         // "none"
     std::fill_n(&fInd->var[0], fop->neta, 0.1);
   }
-  // The n1qn1 seed just installed, kept only when the mceta eta=0 floor pass below
-  // will need to be re-seeded with it (n1qn1_ overwrites zm in place).
+  // The n1qn1 seed just installed, kept only when the mcetaOpt passes below will
+  // need to be re-seeded with it (n1qn1_ overwrites zm in place).
   std::vector<double> zmSeed;
   int zmSeedMode = fInd->mode;
-  if (n1qn1Inner && mcetaSampleStart) {
+  if (n1qn1Inner && mcetaSampleStart && op_focei.mcetaOpt) {
     zmSeed.assign(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm);
   }
   int npar = fop->neta;
@@ -4724,26 +4816,30 @@ static inline int innerOpt1(int id, int likId) {
   // computed at a point the objective never actually descended to and can come
   // out larger.  mceta>=1 is where a mixed candidate set is common (#1044).
   std::vector<char> candOk;
-  // The three vectors are read by index against each other, so they must never
-  // end up ragged.  Everything that can allocate -- the eta copy and all three
+  // The starting-point pass each candidate came from (see the loop below).
+  std::vector<int> candPass;
+  int _innerStart = 0;
+  // The four vectors are read by index against each other, so they must never
+  // end up ragged.  Everything that can allocate -- the eta copy and all four
   // reserves -- is done FIRST, so a std::bad_alloc (which the trust arm's own
   // catch swallows, letting the selection below still run) leaves nothing
-  // pushed; the three push_backs that follow allocate nothing and cannot throw.
+  // pushed; the four push_backs that follow allocate nothing and cannot throw.
   auto keepCand = [&](bool ok) {
     if (!R_FINITE(f)) return;
     std::vector<double> eta(fInd->x, fInd->x + fop->neta);
     candEta.reserve(candEta.size() + 1);
     candF.reserve(candF.size() + 1);
     candOk.reserve(candOk.size() + 1);
+    candPass.reserve(candPass.size() + 1);
     candEta.push_back(std::move(eta));
     candF.push_back(f);
     candOk.push_back(ok ? (char)1 : (char)0);
+    candPass.push_back(_innerStart);
   };
-  // Starting points this inner solve runs from.  mceta>=1 picks its start by the
-  // objective AT that point, which does not order the points the optimization
-  // converges to, so a sampled start is followed by a second solve from eta=0 and
-  // the better converged result is kept -- that is what makes mceta=n never end
-  // above mceta=0 (#1040), which ranking starting points alone cannot deliver.
+  // Starting points this inner solve runs from.  The standard mceta>=1 search
+  // solves once, from the best starting point.  mcetaOpt solves from every draw
+  // (#1242) and then from eta=0, and the best converged result is kept, so it
+  // never ends above mceta=0 (#1040).
   // The loop wraps the WHOLE optimizer dispatch rather than living inside one
   // branch of it, so it holds for whichever inner optimizer is configured, and a
   // new optimizer arm gets the floor pass without being told about it.  An arm
@@ -4752,9 +4848,9 @@ static inline int innerOpt1(int id, int likId) {
   // re-rank below chooses from, with `ok` saying whether that attempt actually
   // converged -- see candOk).  On a non-finite `f` it should hand the loop
   // `_lastStart` (see the arms below) rather than returning, so a failed
-  // sampled start still gets its eta=0 pass.
-  int nInnerStart = mcetaSampleStart ? 2 : 1;
-  for (int _innerStart = 0; _innerStart < nInnerStart; _innerStart++) {
+  // sampled start still gets the passes after it.
+  int nInnerStart = (mcetaSampleStart && op_focei.mcetaOpt) ? nMcetaDraw + 1 : 1;
+  for (_innerStart = 0; _innerStart < nInnerStart; _innerStart++) {
   bool _lastStart = (_innerStart + 1 == nInnerStart);
   // The running minimum is PASS-LOCAL.  restoreBest() is the recovery from a
   // failed restart inside this pass's nudge cascade, so it must put back an eta
@@ -4764,9 +4860,14 @@ static inline int innerOpt1(int id, int likId) {
   fBest = std::numeric_limits<double>::infinity();
   haveBest = false;
   if (_innerStart > 0) {
-    // The eta=0 floor: re-seed exactly as mceta=0 would have, so this pass is
-    // the run it must not come out above.
-    std::fill(&fInd->eta[0], &fInd->eta[0] + fop->neta, 0.0);
+    // The next draw, or (last) the eta=0 floor, seeded exactly as mceta=0 would
+    // have been, so the floor is the run the result must not come out above.
+    if (_innerStart < nMcetaDraw) {
+      const double *samp = op_focei.mcetaSamples.slice(id).colptr(_innerStart);
+      std::copy(samp, samp + fop->neta, &fInd->eta[0]);
+    } else {
+      std::fill(&fInd->eta[0], &fInd->eta[0] + fop->neta, 0.0);
+    }
     if (op_focei.warm == 1) warmZm(fInd, id);
     else if (!zmSeed.empty()) {
       // Put back the seed the FIRST pass was given.  n1qn1 overwrote zm with its own
@@ -4775,11 +4876,13 @@ static inline int innerOpt1(int id, int likId) {
       std::copy(zmSeed.begin(), zmSeed.end(), &fInd->zm[0]);
       fInd->mode = zmSeedMode;
       fInd->uzm = 1;
-      if (zmSeedMode == 2) op_focei.nWarmSaveFloor.fetch_add(1, std::memory_order_relaxed);
+      if (zmSeedMode == 2 && _lastStart) {
+        op_focei.nWarmSaveFloor.fetch_add(1, std::memory_order_relaxed);
+      }
     } else { fInd->mode = 1; fInd->uzm = 1; }
     mode = fInd->mode;
     std::fill_n(&fInd->var[0], fop->neta, 0.1);
-    std::fill_n(fInd->x, fop->neta, 0.0);
+    std::copy(&fInd->eta[0], &fInd->eta[0] + fop->neta, fInd->x);
     // n1qn1_ takes these BY POINTER and writes back what it used (see the note
     // where they are declared), so the floor pass has to be handed a fresh
     // budget -- otherwise it inherits the first pass's spent iteration and
@@ -4799,8 +4902,7 @@ static inline int innerOpt1(int id, int likId) {
       if (haveBest) { restoreBest(); break; }
       // No usable result in THIS pass; an earlier one may still have a
       // candidate, and the selection below will take it.
-      if (!candEta.empty()) break;
-      if (_lastStart) return 0;
+      if (_lastStart && candEta.empty()) return 0;
       continue;
     }
     keepBest(); keepCand(fInd->badSolve == 0);
@@ -4850,8 +4952,7 @@ static inline int innerOpt1(int id, int likId) {
             // Nothing usable in THIS pass.  haveBest is pass-local, so that is
             // not "nothing usable for this subject": an earlier starting point
             // may already have a candidate the selection will take (#1044).
-            if (!candEta.empty()) break;
-            if (_lastStart) return 0;
+            if (_lastStart && candEta.empty()) return 0;
             continue;
           }
           restoreBest();
@@ -4888,8 +4989,7 @@ static inline int innerOpt1(int id, int likId) {
               // Nothing usable in THIS pass.  haveBest is pass-local, so that is
               // not "nothing usable for this subject": an earlier starting point
               // may already have a candidate the selection will take (#1044).
-              if (!candEta.empty()) break;
-              if (_lastStart) return 0;
+              if (_lastStart && candEta.empty()) return 0;
               continue;
             }
             restoreBest();
@@ -4922,8 +5022,7 @@ static inline int innerOpt1(int id, int likId) {
                 // Nothing usable in THIS pass.  haveBest is pass-local, so that is
                 // not "nothing usable for this subject": an earlier starting point
                 // may already have a candidate the selection will take (#1044).
-                if (!candEta.empty()) break;
-                if (_lastStart) return 0;
+                if (_lastStart && candEta.empty()) return 0;
                 continue;
               }
               restoreBest();
@@ -4956,8 +5055,7 @@ static inline int innerOpt1(int id, int likId) {
                   // Nothing usable in THIS pass.  haveBest is pass-local, so that is
                   // not "nothing usable for this subject": an earlier starting point
                   // may already have a candidate the selection will take (#1044).
-                  if (!candEta.empty()) break;
-                  if (_lastStart) return 0;
+                  if (_lastStart && candEta.empty()) return 0;
                   continue;
                 }
                 restoreBest();
@@ -4988,8 +5086,7 @@ static inline int innerOpt1(int id, int likId) {
                     // Nothing usable in THIS pass.  haveBest is pass-local, so that is
                     // not "nothing usable for this subject": an earlier starting point
                     // may already have a candidate the selection will take (#1044).
-                    if (!candEta.empty()) break;
-                    if (_lastStart) return 0;
+                    if (_lastStart && candEta.empty()) return 0;
                     continue;
                   }
                   restoreBest();
@@ -5326,8 +5423,7 @@ static inline int innerOpt1(int id, int likId) {
     // have a converged candidate, and returning 0 here would throw it away and
     // fail the subject.  Same three-way exit the n1qn1 arm takes (#1044).
     if (!haveBest) {
-      if (!candEta.empty()) break;
-      if (_lastStart) return 0;
+      if (_lastStart && candEta.empty()) return 0;
       continue;
     }
     } catch (const std::bad_alloc &) {
@@ -5338,8 +5434,7 @@ static inline int innerOpt1(int id, int likId) {
       // innerOpt1() return value already signals the failure on its own.
       fInd->badSolve = 1;
       if (!haveBest) {
-        if (!candEta.empty()) break;
-        if (_lastStart) return 0;
+        if (_lastStart && candEta.empty()) return 0;
         continue;
       }
     } catch (...) {
@@ -5348,8 +5443,7 @@ static inline int innerOpt1(int id, int likId) {
       // crosses the OpenMP boundary uncaught.
       fInd->badSolve = 1;
       if (!haveBest) {
-        if (!candEta.empty()) break;
-        if (_lastStart) return 0;
+        if (_lastStart && candEta.empty()) return 0;
         continue;
       }
     }
@@ -5358,11 +5452,10 @@ static inline int innerOpt1(int id, int likId) {
     // arm, no exception may cross this OpenMP loop body.  The eta bounds are
     // inactive (nbdInner is all 0).
     // Where a failed attempt leaves the starting-point loop, mirroring the n1qn1 arm:
-    // 1 = break, 2 = continue, 3 = return 0.
+    // 2 = continue, 3 = return 0.
     int lbfgsExit = 0;
     auto lbfgsFailExit = [&]() -> int {
-      if (!candEta.empty()) return 1;
-      return _lastStart ? 3 : 2;
+      return (_lastStart && candEta.empty()) ? 3 : 2;
     };
     // One solve from fInd->x; true when it converged without a bad solve.
     auto lbfgsSolve = [&]() -> bool {
@@ -5423,7 +5516,6 @@ static inline int innerOpt1(int id, int likId) {
       if (haveBest) restoreBest();
       else lbfgsExit = lbfgsFailExit();
     }
-    if (lbfgsExit == 1) break;
     if (lbfgsExit == 2) continue;
     if (lbfgsExit == 3) return 0;
   }
@@ -5522,6 +5614,14 @@ static inline int innerOpt1(int id, int likId) {
     if (bestK < 0) bestK = bestInnerK;
     std::copy(candEta[(size_t)bestK].begin(), candEta[(size_t)bestK].end(), fInd->x);
     f = candF[(size_t)bestK];
+    if (mcetaSearch) {
+      // Which start the kept eta came from: a draw, or the eta=0 floor.
+      if (candPass[(size_t)bestK] < nMcetaDraw) {
+        op_focei.nMcetaSample.fetch_add(1, std::memory_order_relaxed);
+      } else {
+        op_focei.nMcetaZero.fetch_add(1, std::memory_order_relaxed);
+      }
+    }
   } else if (haveBest && (!R_FINITE(f) || fBest < f)) {
     restoreBest();
   }
@@ -7029,6 +7129,48 @@ struct CovStageScope {
   ~CovStageScope() { _covStage = saved; }
 };
 
+static bool foceiOuterActive = false;
+// The lowest objective the outer search evaluated, with its theta and ETAs
+// (#1286).  A warm-started ETA can fall into a secondary mode during the search
+// and stay there, so the final point can score above this evaluation.
+static double _bestEvalF = R_PosInf;
+static std::vector<double> _bestEvalX, _bestEvalEta;
+
+static inline void foceiBestEvalReset() {
+  _bestEvalF = R_PosInf;
+  _bestEvalX.clear();
+  _bestEvalEta.clear();
+}
+
+// Whether this kind of fit keeps the snapshot at all.  Not for a mu model,
+// whose profiled thetas the snapshot would not carry, nor a mixture, nor a
+// cold (mceta >= 0) or fixed (maxInnerIterations = 0) inner start.
+static inline bool foceiBestEvalFitOk() {
+  return op_focei.muModel == 0 && op_focei.neta != 0 && op_focei.mixIdxN == 0 &&
+    op_focei.mceta < 0 && op_focei.maxInnerIterations > 0 &&
+    R_FINITE(op_focei.finalEtaTol) && inds_focei != NULL;
+}
+
+// Whether this evaluation is an outer-search objective evaluation; not the
+// final re-evaluations, which compare against the snapshot.
+static inline bool foceiBestEvalCallOk() {
+  return foceiOuterActive && !_finalObfCalc && !op_focei.calcGrad && _covStage < 0;
+}
+
+static inline void foceiBestEvalKeep(const double *theta, double ret) {
+  if (!R_FINITE(ret) || ret >= 5e100 || ret >= _bestEvalF) return;
+  if (!foceiBestEvalCallOk() || !foceiBestEvalFitOk()) return;
+  const int nsub = (int)getRxNsub(rx);
+  if (nsub <= 0 || nIndsFocei < nsub) return;
+  _bestEvalF = ret;
+  _bestEvalX.assign(theta, theta + op_focei.npars);
+  _bestEvalEta.resize((size_t)nsub * op_focei.neta);
+  for (int i = 0; i < nsub; ++i) {
+    std::copy(inds_focei[i].eta, inds_focei[i].eta + op_focei.neta,
+              &_bestEvalEta[(size_t)i * op_focei.neta]);
+  }
+}
+
 static inline double foceiOfv0(double *theta){
   if (_covStage >= 0) _covEvals[_covStage]++;
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
@@ -7117,6 +7259,7 @@ static inline double foceiOfv0(double *theta){
     op_focei.lastOfv = ret;
   }
   nnOuterStep(ret);
+  foceiBestEvalKeep(theta, ret);
   return ret;
 }
 
@@ -7267,7 +7410,6 @@ Environment gillRfnE_;
 Environment op_foceiFitEnv;
 bool op_foceiFitEnvSet = false;
 bool op_foceiUseAnalyticGrad = false;
-static bool foceiOuterActive = false;
 extern "C" int nlmixr2FoceiOuterHessian(const double*, int, double, double*);
 Environment baseEnv = Environment::base_env();
 Function doCall = baseEnv["do.call"];
@@ -9732,6 +9874,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.maxOuterIterations = as<int>(foceiO["maxOuterIterations"]);
   op_focei.maxInnerIterations = as<int>(foceiO["maxInnerIterations"]);
   op_focei.mceta = as<int>(foceiO["mceta"]);
+  op_focei.mcetaOpt = foceiO.containsElementNamed("mcetaOpt") &&
+    as<bool>(foceiO["mcetaOpt"]);
   // The mceta>=1 draws are per-fit (innerOpt() fills the cube once); clear them so a
   // new fit does not inherit the previous fit's starting etas.  The start counters
   // are cleared here as well as in foceiOuter(), which the EM/nonparametric methods
@@ -10218,6 +10362,8 @@ NumericVector foceiSetup_(const RObject &obj,
   }
   op_focei.nEtaRestart = foceiO.containsElementNamed("etaRestart") ?
     as<int>(foceiO["etaRestart"]) : 0;
+  op_focei.finalEtaTol = foceiO.containsElementNamed("finalEtaTol") ?
+    as<double>(foceiO["finalEtaTol"]) : R_PosInf;
   // The base of the restart draws' threefry stream.  Taken from
   // foceiControl(seed=) rather than rxode2's getRxSeed1(): that is NOT a
   // getter -- it advances rxode2's global rxSeed by its argument on every
@@ -10706,6 +10852,121 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
   }
 }
 
+// The natural-scale objective of a (possibly scaled) foceiOfv0() value.
+static inline double foceiNatOfv(double f) {
+  return op_focei.scaleObjective ? f * op_focei.initObjective / op_focei.scaleObjectiveTo : f;
+}
+
+// The per-subject state foceiFinalBestEta() moves between.
+struct FinalEtaState {
+  int nsub, neta;
+  std::vector<double> eta, lik;
+  FinalEtaState(int ns, int ne) : nsub(ns), neta(ne), eta((size_t)ns * ne), lik(ns) {}
+  // a subject's likelihood as foceiLik0() sums it
+  static double likOf(double l) {
+    return (ISNA(l) || !R_FINITE(l)) ? -op_focei.badSolveObjfAdj : l;
+  }
+  void read() {
+    for (int i = 0; i < nsub; ++i) {
+      std::copy(inds_focei[i].eta, inds_focei[i].eta + neta, &eta[(size_t)i * neta]);
+      lik[i] = likOf(inds_focei[i].lik[0]);
+    }
+  }
+};
+
+// Put these ETAs in as every subject's inner start, forcing a fresh solve.
+static void finalEtaSet(const double *src, int nsub, int neta) {
+  for (int i = 0; i < nsub; ++i) {
+    focei_ind *fInd = &inds_focei[i];
+    std::copy(src + (size_t)i * neta, src + (size_t)(i + 1) * neta, fInd->eta);
+    fInd->mode = 1;
+    fInd->uzm = 1;
+  }
+  std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
+}
+
+// Evaluate at x from the given ETAs; the state read back is left in place.
+static double finalEtaEval(double *x, const double *src, FinalEtaState &st) {
+  finalEtaSet(src, st.nsub, st.neta);
+  double f = foceiOfv0(x);
+  st.read();
+  return f;
+}
+
+// Keep the lowest of the final (W), best-started (B) and per-subject mix (C)
+// states, leaving that state in place.  nMoved is the subjects taken from B.
+static double finalEtaChoose(double *x, double fmin, double fB, const FinalEtaState &W,
+                             const FinalEtaState &B, int &nMoved) {
+  const int nsub = W.nsub, neta = W.neta;
+  std::vector<double> etaC = W.eta;
+  nMoved = 0;
+  for (int i = 0; i < nsub; ++i) {
+    if (B.lik[i] > W.lik[i]) {
+      std::copy(&B.eta[(size_t)i * neta], &B.eta[(size_t)(i + 1) * neta], &etaC[(size_t)i * neta]);
+      nMoved++;
+    }
+  }
+  const bool bLower = R_FINITE(fB) && fB < fmin;
+  if (nMoved == nsub && bLower) return fB;
+  double fC = R_PosInf;
+  if (nMoved > 0) {
+    finalEtaSet(&etaC[0], nsub, neta);
+    fC = foceiOfv0(x);
+  }
+  if (R_FINITE(fC) && fC <= (bLower ? fB : fmin)) return fC;
+  nMoved = bLower ? nsub : 0;
+  finalEtaSet(bLower ? &B.eta[0] : &W.eta[0], nsub, neta);
+  return foceiOfv0(x);
+}
+
+// Score the best evaluation's own theta from its ETAs; report it if lower.
+static double finalEtaBestX(double *x, double ret, int &nMoved) {
+  const int nsub = (int)getRxNsub(rx), neta = op_focei.neta;
+  FinalEtaState cur(nsub, neta);
+  cur.read();
+  std::vector<double> xBest = _bestEvalX;
+  finalEtaSet(&_bestEvalEta[0], nsub, neta);
+  double fX = foceiOfv0(&xBest[0]);
+  if (R_FINITE(fX) && fX < ret) {
+    std::copy(xBest.begin(), xBest.end(), x);
+    nMoved = 0; // counted at the discarded point
+    op_focei.finalBestX = 1;
+    return fX;
+  }
+  finalEtaSet(&cur.eta[0], nsub, neta);
+  return foceiOfv0(x);
+}
+
+static inline bool finalEtaGapOver(double f) {
+  return foceiNatOfv(f) - foceiNatOfv(_bestEvalF) > op_focei.finalEtaTol;
+}
+
+// Re-evaluate the final ETAs from those of the lowest evaluation (#1286).  Each
+// subject keeps whichever start gives the larger individual likelihood, so the
+// reported objective is never worse for it.  Runs only when the final objective
+// is more than finalEtaTol above that evaluation; a healthy fit is untouched.
+static double foceiFinalBestEta(double *x, double fmin) {
+  if (!R_FINITE(op_focei.finalEtaTol) || op_focei.maxOuterIterations <= 0 ||
+      _bestEvalEta.empty() || _nnOuterFn != NULL || inds_focei == NULL) return fmin;
+  const int nsub = (int)getRxNsub(rx), neta = op_focei.neta;
+  if (nsub <= 0 || (size_t)nsub * neta != _bestEvalEta.size()) return fmin;
+  if (!finalEtaGapOver(fmin)) return fmin;
+  const int etaPValid = op_focei.etaPValid;
+  op_focei.etaPValid = 0; // start exactly where the best evaluation left each ETA
+  FinalEtaState W(nsub, neta), B(nsub, neta);
+  W.read();
+  const double fB = finalEtaEval(x, &_bestEvalEta[0], B);
+  int nMoved = 0;
+  double ret = finalEtaChoose(x, fmin, fB, W, B, nMoved);
+  if (finalEtaGapOver(ret) && !std::equal(_bestEvalX.begin(), _bestEvalX.end(), x)) {
+    ret = finalEtaBestX(x, ret, nMoved);
+  }
+  op_focei.etaPValid = etaPValid;
+  op_focei.nFinalEtaMoved = nMoved;
+  op_focei.finalBestGap = foceiNatOfv(ret) - foceiNatOfv(_bestEvalF);
+  return ret;
+}
+
 void foceiOuterFinal(double *x, Environment e){
   // reset the optimal step size to have reproducible likelihoods with
   // generalized log-likelihood focei
@@ -10731,6 +10992,7 @@ void foceiOuterFinal(double *x, Environment e){
   op_focei.calcGrad = 0;
   _finalObfCalc = true;
   double fmin = foceiOfv0(x);
+  fmin = foceiFinalBestEta(x, fmin);
   _finalObfCalc = false;
   // Natural-scale final objective for the worse-than-initial guard; the same
   // un-scaling nlmixr2EnvSetup() applies before reporting.
@@ -11092,7 +11354,8 @@ void foceiCustomFun(Environment e){
   List ret = as<List>(opt(_["par"]=x, _["fn"]=f, _["gr"]=g, _["lower"]=lower,
                           _["upper"]=upper,_["control"]=ctl));
   foceiOuterHold_(false);
-  x = ret["x"];
+  // a copy: the final evaluation may replace x, and optReturn keeps the optimizer's
+  x = clone(as<NumericVector>(ret["x"]));
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
   // Otherwise ETAs may be off
   if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
@@ -11164,6 +11427,8 @@ static void foceiZeroThetaOneStep(Environment e) {
   if (!atNat) zeroThetaOfv(nat, x);
   op_focei.derivMethod = derivMethod;
   e["zeroThetaStart"] = moved;
+  // initPar (the scaling center) moved, so earlier scaled snapshots are stale
+  foceiBestEvalReset();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -11179,6 +11444,10 @@ Environment foceiOuter(Environment e){
   op_focei.nF=0;
   op_focei.nG=0;
   op_focei.recordOuter = true;
+  foceiBestEvalReset();
+  op_focei.nFinalEtaMoved = 0;
+  op_focei.finalBestX = 0;
+  op_focei.finalBestGap = NA_REAL;
   op_focei.curAnalytic=0;
   op_focei.nAnalyticGrad=0;
   op_focei.nAnalyticGradDirect=0;
@@ -12503,6 +12772,7 @@ static int foceiCovSelect(Environment e, int req, int rState, int sState,
 
 NumericMatrix foceiCalcCov(Environment e){
   std::string boundStr = "";
+  std::vector<std::string> boundNames;
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
   // covType="analytic" stashes the fit's solve args (foceiSetup_); restoreFitSolve_
   // needs them for the whole cov step (incl. foceiCalcR below), so release only on
@@ -12579,12 +12849,14 @@ NumericMatrix foceiCalcCov(Environment e){
                 (std::fabs((cur-op_focei.lower[k])/cur) < op_focei.boundTol)) {
               boundary = true;
               boundStr += "\"" + thetaNames[j] + "\" ";
+              boundNames.push_back(as<std::string>(thetaNames[j]));
             }
             if (checkUpperBound &&
                 j < thetaNames.size() &&
                 (std::fabs((op_focei.upper[k]-cur)/cur) < op_focei.boundTol)) {
               boundary = true;
               boundStr += "\"" + thetaNames[j] + "\" ";
+              boundNames.push_back(as<std::string>(thetaNames[j]));
             }
           }
         }
@@ -12897,8 +13169,10 @@ NumericMatrix foceiCalcCov(Environment e){
         return ret;
       } else {
         if (op_focei.covMethod && boundary){
-          warning(_("parameter estimate near boundary; covariance not calculated:\n   ") + boundStr +
-                  _("\n use 'getVarCov' to calculate anyway"));
+          // clipped to one line in R; covMethod keeps every name
+          Environment nlmixr2est = Environment::namespace_env("nlmixr2est");
+          Function boundWarn = as<Function>(nlmixr2est[".covBoundaryWarn"]);
+          boundWarn(wrap(boundNames));
           e["covMethod"] = "Boundary issue; Get SEs with `getVarCov()`: " + boundStr;
         }
         NumericMatrix ret;
@@ -13948,7 +14222,7 @@ void foceiFinalizeTables(Environment e){
       e["method"] = "FOCE";
     }
   }
-  // Which mceta candidate each inner solve started from.  Not gated on `fast`
+  // Which mceta start each inner solve kept its eta from.  Not gated on `fast`
   // (mceta>=1 is independent of the analytic gradient) and deliberately OUTSIDE
   // the `extra` block below: est="imp"/"impmap" takes that block's isImpmap
   // branch, which appends nothing, so every counter written inside its `else`
@@ -14930,9 +15204,11 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out,
       for (int jj = 0; jj < getIndNallTimes(ind) && ko < nobs; ++jj) {
         setIndIdx(ind, jj); kk = getIndIx(ind, jj); curT = getTime(kk, ind);
         if (isDose(getIndEvid(ind, kk))) {
+          lhsWalkNewind(ind, jj);
           tsModel.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
           continue;
         } else if (getIndEvid(ind, kk) == 0) {
+          lhsWalkNewind(ind, jj);
           tsModel.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
           // ind->yj / ind->lambda now describe THIS row -- the only point in the
           // subject where that is true, so take the per-obs DV transform and
@@ -14979,6 +15255,7 @@ void impThetaSensCollect(int id, const arma::mat& S, impThetaSensData& out,
     for (int jj = 0; jj < getIndNallTimes(ind) && ko < nobs; ++jj) {
       setIndIdx(ind, jj); kk = getIndIx(ind, jj); curT = getTime(kk, ind);
       if (!isDose(getIndEvid(ind, kk)) && getIndEvid(ind, kk) != 0) continue;
+      lhsWalkNewind(ind, jj);
       tsModel.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
       if (getIndEvid(ind, kk) == 0) {
         rowInfoAt(ko, lhs);
@@ -15716,6 +15993,21 @@ Environment foceiFitCpp_(Environment e){
         // ~2e244 against a starting 824 with every theta untouched and no message.
         warning(_("the final objective function (%g) is worse than the initial objective function (%g); the estimates are not reliable.\nThe outer optimizer did not improve on the initial estimates or the inner (eta) optimization did not converge at the final estimates; check the initial estimates and the scaling (foceiControl(scaleType=, normType=))"),
                 op_focei.finalOfv, op_focei.initOfv);
+      }
+    }
+    if (!doPredOnly && !op_focei.isImpmap && !op_focei.isNpag && !op_focei.isNpb) {
+      e["finalEtaMoved"] = op_focei.nFinalEtaMoved;
+      e["finalBestX"] = (bool)op_focei.finalBestX;
+      if (op_focei.finalBestX) {
+        warning(_("final estimates replaced by the lowest evaluated point"));
+      }
+      if (op_focei.nFinalEtaMoved > 0) {
+        warning(_("final ETAs of %d subjects re-solved from the best iterate's"),
+                op_focei.nFinalEtaMoved);
+      }
+      if (R_FINITE(op_focei.finalBestGap) && op_focei.finalBestGap > op_focei.finalEtaTol) {
+        warning(_("final objective is %.2f above the best evaluated; not converged"),
+                op_focei.finalBestGap);
       }
     }
     if (op_focei.didHessianReset==1){
@@ -18131,6 +18423,7 @@ static void outerSolveFill(int slot, rxSolveF *fns,
       setIndIdx(ind, q);
       int kk = getIndIx(ind, q);
       double curT = getTime(kk, ind);
+      lhsWalkNewind(ind, q);
       fns->calc_lhs(_rxId, curT, getOpIndSolve(op, ind, q), lhs);
       if (getIndEvid(ind, kk) != 0) continue;   // dose rows: solve advanced, no output
       E.f[ko] = lhs[predf];
@@ -18691,6 +18984,7 @@ static bool llHblockFill(bool useHess2, const FoceiGradPooledSetup &G,
       setIndIdx(ind, q);
       int kk = getIndIx(ind, q);
       double curT = getTime(kk, ind);
+      lhsWalkNewind(ind, q);
       rxHess2.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, q), lhs);
       if (getIndEvid(ind, kk) != 0) continue;            // dose rows: solve advanced only
       int r = 0;                                         // rx__d2pred_ order: j outer, i<=j

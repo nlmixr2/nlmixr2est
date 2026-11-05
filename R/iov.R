@@ -480,6 +480,35 @@ nlmixr2iovVarSd <- function(val) {
   length(.uiIovNames(ui)) > 0L
 }
 
+#' `locf()` for each occasion variable of the IOV rewrite
+#'
+#' The rewrite reads an occasion variable as a covariate (`occ == 1`), which
+#' `covsInterpolation` would interpolate.  rxode2 steps an occasion variable
+#' whatever the interpolation, declaring `locf()` in its nesting expansion
+#' (`rxExpandNestingLocf()` in rxode2's src/expandGrid.cpp), so the rewrite
+#' declares it too.  A variable the model already declares `locf()` needs no
+#' line; any other declared interpolation stops, with rxode2's message.
+#'
+#' @param ui the user's rxode2 ui, before the rewrite
+#' @param lvls occasion variable names
+#' @return list of `locf(<occ>)` calls
+#' @noRd
+.iovLocfLines <- function(ui, lvls) {
+  .interp <- ui$mv0$interp
+  .cur <- if (is.factor(.interp)) as.character(.interp[lvls]) else rep(NA_character_, length(lvls))
+  .cur[is.na(.cur)] <- "default"
+  .bad <- !(.cur %in% c("default", "locf"))
+  if (any(.bad)) {
+    stop(
+      "occasion variable(s) ",
+      paste0("'", lvls[.bad], "' (", .cur[.bad], ")", collapse = ", "),
+      " must use 'locf' interpolation",
+      call. = FALSE
+    )
+  }
+  lapply(sprintf("locf(%s)", lvls[.cur == "default"]), str2lang)
+}
+
 #' This applies the IOV method to the model based on the data used
 #'
 #' @return nothing, called for side effects
@@ -659,6 +688,9 @@ nlmixr2iovVarSd <- function(val) {
     .eta1$fix <- TRUE
     .eta1$neta1 <- .eta1$neta2 <- 0
     .eta1$est <- 1
+    # the occasion etas are subject-level etas; with no subject-level eta in
+    # the model the row copied is an occasion eta's own
+    .eta1$condition <- "id"
     # Both rows are COPIES of an unrelated parameter's row used as a
     # template; a `prior` carried over from it belongs to that parameter,
     # not to the IOV magnitude / occasion eta this becomes.  The magnitude
@@ -686,7 +718,6 @@ nlmixr2iovVarSd <- function(val) {
       .maxeta <- max(.etas$neta1, na.rm = TRUE)
     } else {
       .maxeta <- 0L
-      .theta1 <- .etas[1, ]
     }
 
     .data <- data
@@ -894,7 +925,9 @@ nlmixr2iovVarSd <- function(val) {
       }
       .lst
     })
-    .uiIovEnv$lines <- do.call(`c`, .lines)
+    # the locf() lines are the rewrite's own, so .uiFinalizeIov() strips them
+    # with the others; a model's own locf(occ) gets none and stays
+    .uiIovEnv$lines <- c(.iovLocfLines(ui, names(.lvls)), do.call(`c`, .lines))
     .lines <- c(.uiIovEnv$lines, .ui$lstExpr)
     .ui <- rxode2::rxUiDecompress(.ui)
     # Now the lines can be added to the model
@@ -1151,7 +1184,7 @@ nlmixr2iovVarSd <- function(val) {
       # Fix shrinkage, now split out by iov variable
       .shrink <- ret$env$shrink
       .w <- which(names(.shrink) %in% .uiIovEnv$iovDrop)
-      .shrink0 <- .shrink[, -.w]
+      .shrink0 <- .shrink[, -.w, drop = FALSE]
       .shrinkN <- cbind(data.frame(type = row.names(.shrink0)), .shrink)
       .shrink1 <- lapply(.n, function(var) {
         .cur <- .omega[[var]]
@@ -1219,7 +1252,7 @@ nlmixr2iovVarSd <- function(val) {
 
       .w <- which(names(.ranef) %in% .uiIovEnv$iovDrop)
       .iov <- .ranef
-      .ranef <- .ranef[, -.w]
+      .ranef <- .ranef[, -.w, drop = FALSE]
       assign("ranef", .ranef, envir = ret$env)
 
       .w <- which(names(.iov) %in% c(.uiIovEnv$iovDrop, "ID"))
