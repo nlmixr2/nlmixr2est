@@ -54,4 +54,15 @@ nmTest({
     expect_length(.dl$eta, 0L)
     expect_length(.dl$theta, 0L)
   })
+
+  test_that("an estimated delay() duration tightens the sigdig tolerances", {
+    .rc <- .rxControlDelayLagTol(foceiControl()$rxControl, 3)
+    expect_equal(.rc$rtol, 1e-9)
+    expect_equal(.rc$atol, 1e-11)
+    expect_equal(.rc$rtolSens, 1e-9)
+    # a tolerance the user set is kept
+    .rc <- .rxControlDelayLagTol(foceiControl(rxControl = list(rtol = 1e-5))$rxControl, 3)
+    expect_equal(.rc$rtol, 1e-5)
+    expect_equal(.rc$atol, 1e-11)
+  })
 })
