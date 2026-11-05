@@ -189,7 +189,11 @@
   .thetas <- .iniDf$name[!is.na(.iniDf$ntheta) & !.iniDf$fix]
   .count <- table(unlist(lapply(ui$lstExpr, function(e) {
     .walk <- function(x) {
-      if (is.name(x)) as.character(x) else if (is.call(x)) unlist(lapply(as.list(x)[-1], .walk))
+      if (is.name(x)) {
+        as.character(x)
+      } else if (is.call(x)) {
+        unlist(lapply(as.list(x)[-1], .walk))
+      }
     }
     .walk(e)
   })))
@@ -200,11 +204,17 @@
       for (.sum in .mixSumChains(.comps[[.j]])) {
         .e <- intersect(.sum, .shared)
         .t <- intersect(.sum, .thetas)
-        if (length(.e) != 1L || length(.t) != 1L) next
-        if (!identical(as.integer(.count[[.t]]), 1L)) next
+        if (length(.e) != 1L || length(.t) != 1L) {
+          next
+        }
+        if (!identical(as.integer(.count[[.t]]), 1L)) {
+          next
+        }
         .p <- match(.t, pars)
         .pe <- match(.e, pars)
-        if (is.na(.p) || is.na(.pe)) next
+        if (is.na(.p) || is.na(.pe)) {
+          next
+        }
         .comp[.p] <- .j
         .eta[.p] <- .pe
       }
