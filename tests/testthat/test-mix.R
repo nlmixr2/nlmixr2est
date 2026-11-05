@@ -649,6 +649,21 @@ nmTest({
     }
     .ui <- rxode2::rxode2(etaOutside)
     expect_true(all(.mixSharedEtaShift(.ui, .ui$saemParamsToEstimate)$comp == 0L))
+
+    # two thetas of one component sharing the eta cannot both take its mean
+    twoPerComp <- function() {
+      ini({
+        a1 <- log(1); a2 <- log(8); b1 <- log(20); b2 <- log(30); p1 <- 0.5
+        eta.cl ~ 0.1; add.sd <- 0.1
+      })
+      model({
+        cl <- mix(exp(a1 + eta.cl), p1, exp(a2 + eta.cl))
+        v <- mix(exp(b1 + eta.cl), p1, exp(b2 + eta.cl))
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(twoPerComp)
+    expect_true(all(.mixSharedEtaShift(.ui, .ui$saemParamsToEstimate)$comp == 0L))
   })
 
   test_that("a component-owned eta's shrinkage is taken over its own component", {

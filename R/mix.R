@@ -222,10 +222,15 @@
       }
     }
   }
-  # recentering shifts the eta, so every use of it must be a paired sum
+  # recentering shifts the eta, so every use of it must be a paired sum, and
+  # one theta per component takes the shift
   for (.e in names(.pairs)) {
-    if (!identical(as.integer(.count[[.e]]), .pairs[[.e]])) {
-      .w <- .eta == match(.e, pars)
+    .pe <- match(.e, pars)
+    if (
+      !identical(as.integer(.count[[.e]]), .pairs[[.e]]) ||
+        anyDuplicated(.comp[.eta == .pe]) > 0L
+    ) {
+      .w <- .eta == .pe
       .comp[.w] <- 0L
       .eta[.w] <- 0L
     }
