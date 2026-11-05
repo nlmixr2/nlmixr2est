@@ -120,3 +120,28 @@ test_that("the full conditional Laplace does not need fast=TRUE (#1301)", {
   expect_equal(slow$objf, fast$objf, tolerance = 1e-3)
   expect_equal(fixef(slow), fixef(fast), tolerance = 1e-2)
 })
+
+test_that("the conditional Hessian floors a zero proportional variance (#1301)", {
+  skip_on_cran()
+  # theo_sd observes at time 0, where the prediction and so R are exactly zero
+  model <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
+          eta.ka ~ 0.6; eta.cl ~ 0.3; prop.sd <- 0.2 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+            d/dt(depot) <- -ka * depot
+            d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v
+            cp ~ prop(prop.sd) })
+  }
+  d <- nlmixr2data::theo_sd
+  .ctl <- function(...) {
+    laplaceControl(print = 0L, calcTables = FALSE, covMethod = "", maxOuterIterations = 0L, ...)
+  }
+  full <- .nlmixr(model, d, "laplace", .ctl(innerHessian = "conditional", detHessian = "conditional"))
+  # the numeric Hessian of the log-likelihood is the same curvature
+  numeric <- .nlmixr(model |> rxode2::model(cp ~ prop(prop.sd) + dnorm()), d, "laplace", .ctl())
+  expect_gt(full$env$nConditionalInnerHessian, 0L)
+  expect_true(any(full$eta$eta.ka != 0))
+  expect_equal(full$objf, numeric$objf, tolerance = 1e-4)
+  expect_equal(full$eta$eta.cl, numeric$eta$eta.cl, tolerance = 1e-3)
+})

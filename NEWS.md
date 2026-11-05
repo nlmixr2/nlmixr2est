@@ -111,6 +111,11 @@
 
 ### Estimation
 
+- The full conditional inner Hessian (`est = "flaplace"`/`"fagq"`) now
+  floors a zero or tiny residual variance the way FOCEi does, instead of
+  failing every subject with a proportional-error observation at a zero
+  prediction (objective 2400, all etas at zero) (#1301).
+
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
   the final ETAs from that evaluation's ETAs, keeping per subject the lower

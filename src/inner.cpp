@@ -3681,7 +3681,16 @@ static bool conditionalInnerPartials(rx_solving_options_ind *ind, int kk2,
                                      int ne, const double *lhs, double *cp, double &value) {
   int p = op_focei.predOffset;
   double f = lhs[p], variance = lhs[p+ne+1];
-  if (!R_FINITE(variance) || variance <= std::sqrt(DBL_EPSILON)) return false;
+  if (!R_FINITE(variance)) return false;
+  // Floor R exactly as likInner0 does, so a zero prediction under proportional
+  // error does not fail the whole subject; a floored R is flat in eta.
+  bool rFloored = false;
+  if (variance <= 0.0) {
+    variance = 1.0;
+  } else if (variance < foceiRFloor) {
+    variance = foceiRFloor;
+    rFloored = true;
+  }
   double y = tbs(getIndDv(ind, kk2));
   double limit = hasRxLimit(rx) ? getIndLimit(ind, kk2) : R_NegInf;
   if (ISNA(limit)) limit = R_NegInf;
@@ -3696,6 +3705,7 @@ static bool conditionalInnerPartials(rx_solving_options_ind *ind, int kk2,
   cp[3] = -err/(variance*variance);
   cp[4] = -0.5/(variance*variance)+err*err/(variance*variance*variance);
   if (cens != 0 || R_FINITE(limit)) censNormalPartials(cens,y,limit,f,variance,2,cp);
+  if (rFloored) cp[1] = cp[3] = cp[4] = 0.0;
   return true;
 }
 
