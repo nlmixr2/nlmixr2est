@@ -106,7 +106,7 @@ nmTest({
       .stdErr[1:3],
       tolerance = tol
     )
-    expect_equal(exp(td$conf.low), .confLow, tolerance = tol)
+    expect_equal(exp(td$conf.low[1:3]), .confLow[1:3], tolerance = tol)
 
     for (ef in c("ran_vals", "random")) {
       td <- broom.mixed::tidy(fitS, effects = ef, exponentiate = NA)
@@ -220,7 +220,7 @@ nmTest({
       expect_equal(td$estimate[1:3], log(.est)[1:3], tolerance = tol)
       expect_equal(td$estimate[-(1:3)], .est[-(1:3)], tolerance = tol)
       expect_equal(setNames(exp(td$estimate[1:3]) * td$std.error[1:3], NULL), .stdErr[1:3], tolerance = tol)
-      expect_equal(exp(td$conf.low), .confLow, tolerance = tol)
+      expect_equal(exp(td$conf.low[1:3]), .confLow[1:3], tolerance = tol)
 
       for (ef in c("ran_vals", "random")) {
         td <- broom.mixed::tidy(fitF, effects = ef, exponentiate = NA)
@@ -330,7 +330,7 @@ nmTest({
       expect_equal(td$estimate[-(1:3)], .est[-(1:3)], tolerance = tol)
       ## exp(.df$model.est[.exp])*.df$std.error[.exp]
       expect_equal(setNames(exp(td$estimate[1:3]) * td$std.error[1:3], NULL), .stdErr[1:3], tolerance = tol)
-      expect_equal(exp(td$conf.low), .confLow, tolerance = tol)
+      expect_equal(exp(td$conf.low[1:3]), .confLow[1:3], tolerance = tol)
       for (ef in c("ran_vals", "random")) {
         td <- broom.mixed::tidy(fitF, effects = ef, exponentiate = NA)
         td1 <- td$estimate
@@ -653,6 +653,48 @@ nmTest({
     expect_identical(.fxC$term, .th)
     expect_equal(.fxC$conf.low, .lo[1:3])
     expect_equal(.fxC$conf.high, .hi[1:3])
+    # the residual-error row keeps its interval under ran_pars
+    .rpC <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_pars", conf.int = TRUE))
+    expect_equal(.rpC$conf.low[4], .lo[4])
+    expect_equal(.rpC$conf.high[4], .hi[4])
+    # broom.mixed's spelling, ran_coefs, gives the same coefficients
+    expect_warning(
+      .rc <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_coefs")),
+      "not mu-referenced"
+    )
+    expect_warning(
+      .rc0 <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_coef")),
+      "not mu-referenced"
+    )
+    expect_identical(unique(.rc$effect), "ran_coefs")
+    expect_equal(.rc$estimate, .rc0$estimate)
+  })
+
+  test_that("ran_pars SEs are the delta method over the Omega rows of $cov", {
+    .om <- matrix(c(0.4, 0, 0, 0, 0.09, 0.02, 0, 0.02, 0.05), 3, 3, dimnames = list(c("a", "b", "c"), c("a", "b", "c")))
+    .cn <- c("tka", "om.a", "om.b", "cov.c.b", "om.c")
+    .cov <- matrix(0.001, 5, 5, dimnames = list(.cn, .cn))
+    diag(.cov) <- c(0.01, 0.02, 0.003, 0.0005, 0.002)
+    .omR <- .corFromCov(.om)
+    .terms <- function(v) {
+      .s <- sqrt(v[c(1, 2, 4)])
+      c(.s, v[3] / (.s[2] * .s[3]))
+    }
+    .v0 <- c(0.4, 0.09, 0.02, 0.05)
+    .h <- 1e-6
+    .J <- vapply(
+      1:4,
+      function(k) {
+        .d <- replace(numeric(4), k, .h)
+        (.terms(.v0 + .d) - .terms(.v0 - .d)) / (2 * .h)
+      },
+      numeric(4)
+    )
+    .vc <- .cov[-1, -1]
+    expect_identical(names(.getR(.omR, TRUE)), c("sd__a", "sd__b", "sd__c", "cor__c.b"))
+    expect_equal(.ranParSe(list(cov = .cov), .om, .omR), sqrt(diag(.J %*% .vc %*% t(.J))), tolerance = 1e-6)
+    # a theta-only $cov has no Omega rows to give an SE
+    expect_identical(.ranParSe(list(cov = .cov[1, 1, drop = FALSE]), .om, .omR), rep(NA_real_, 4))
   })
 
   test_that("tidy() and confint() leave out an IOV fit's occasion variability row", {

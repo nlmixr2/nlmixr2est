@@ -152,26 +152,88 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   }
 }
 
+#' Delta-method SEs of the `sd__`/`cor__` terms from a fit's Omega covariance
+#'
+#' @param x nlmixr2 fit
+#' @param omega the subject-level Omega (variance scale)
+#' @param omegaR the same Omega as `$omegaR` gives it (SDs and correlations)
+#' @return SEs in `.getR(omegaR, TRUE)` order; `NA` where `x$cov` has no
+#'   `om.`/`cov.` row for the term
+#' @noRd
+.ranParSe <- function(x, omega, omegaR) {
+  .nm <- dimnames(omega)[[2]]
+  .cov <- x$cov
+  .cn <- if (is.matrix(.cov)) rownames(.cov) else character(0)
+  .vn <- paste0("om.", .nm)
+  .pairs <- which(lower.tri(omega), arr.ind = TRUE)
+  # the same rows .getR() keeps
+  .pairs <- .pairs[omegaR[lower.tri(omegaR)] != 0, , drop = FALSE]
+  .sd <- sqrt(diag(omega))
+  # each term is a function of these Omega elements: d term / d element
+  .terms <- c(
+    lapply(seq_along(.nm), function(i) {
+      list(n = .vn[i], g = 1 / (2 * .sd[i]))
+    }),
+    lapply(seq_len(nrow(.pairs)), function(k) {
+      .i <- .pairs[k, 1]
+      .j <- .pairs[k, 2]
+      .c <- c(paste0("cov.", .nm[.i], ".", .nm[.j]), paste0("cov.", .nm[.j], ".", .nm[.i]))
+      .c <- .c[.c %in% .cn][1]
+      .r <- omega[.i, .j] / (.sd[.i] * .sd[.j])
+      list(
+        n = c(.c, .vn[.i], .vn[.j]),
+        g = c(1 / (.sd[.i] * .sd[.j]), -.r / (2 * omega[.i, .i]), -.r / (2 * omega[.j, .j]))
+      )
+    })
+  )
+  vapply(
+    .terms,
+    function(t) {
+      if (!all(t$n %in% .cn)) {
+        return(NA_real_)
+      }
+      .v <- drop(t$g %*% .cov[t$n, t$n, drop = FALSE] %*% t$g)
+      if (is.finite(.v) && .v >= 0) sqrt(.v) else NA_real_
+    },
+    numeric(1)
+  )
+}
+
 .nlmixr2TidyRandomPar <- function(x, ...) {
   rxode2::rxReq("tibble")
   .omegaR <- x$omegaR
+  .omega <- x$omega
   if (is.list(.omegaR)) {
     .omegaR <- .omegaR$id
+    .omega <- .omega$id
   }
   .pars <- .getR(.omegaR, TRUE)
   if (length(.pars) > 0) {
+    .se <- .ranParSe(x, .omega, .omegaR)
     .p1 <- data.frame(
       effect = "ran_pars",
       group = "ID",
       term = names(.pars),
       estimate = .pars,
-      std.error = NA_real_,
+      std.error = .se,
       statistic = NA_real_,
       p.value = NA_real_,
       stringsAsFactors = FALSE
-    ) |>
-      .reorderCols()
-    .p2 <- data.frame(.nlmixr2TidyFixed(x, .ranpar = TRUE), stringsAsFactors = FALSE) |>
+    )
+    .extra <- list(...)
+    if (isTRUE(.extra$conf.int) || (is.null(.extra$conf.int) && !is.null(.extra$conf.level))) {
+      .level <- if (is.null(.extra$conf.level)) 0.95 else .extra$conf.level
+      .zse <- qnorm(1 - (1 - .level) / 2) * .se
+      .isSd <- seq_along(.pars) <= nrow(.omega)
+      # Wald on log(sd) and atanh(cor), as nlme::intervals(), so the
+      # interval stays in range
+      .p1$conf.low <- ifelse(.isSd, .pars * exp(-.zse / .pars), tanh(atanh(.pars) - .zse / (1 - .pars^2)))
+      .p1$conf.high <- ifelse(.isSd, .pars * exp(.zse / .pars), tanh(atanh(.pars) + .zse / (1 - .pars^2)))
+    }
+    .p1 <- .reorderCols(.p1)
+    # broom.mixed exponentiates fixed effects only
+    .args <- c(list(x), .extra[names(.extra) != "exponentiate"], list(.ranpar = TRUE))
+    .p2 <- data.frame(do.call(.nlmixr2TidyFixed, .args), stringsAsFactors = FALSE) |>
       .reorderCols()
     .df <- rbind(.p1, .p2)
     for (.v in c("statistic", "p.value", "std.error")) {
@@ -288,7 +350,11 @@ tidy.nlmixr2FitCore <- function(x, ...) {
       .effects <- c("fixed", "ran_pars")
     }
   }
-  .effects <- match.arg(.effects, c("fixed", "random", "ran_vals", "ran_pars", "ran_coef"), several.ok = TRUE)
+  .effects <- match.arg(
+    .effects,
+    c("fixed", "random", "ran_vals", "ran_pars", "ran_coef", "ran_coefs"),
+    several.ok = TRUE
+  )
   .ret <- list()
   if (any(.effects == "fixed")) {
     .ret$fixed <- .nlmixr2TidyFixed(x, ...)
@@ -299,8 +365,9 @@ tidy.nlmixr2FitCore <- function(x, ...) {
   if (any(.effects == "ran_pars")) {
     .ret$ran_pars <- .nlmixr2TidyRandomPar(x, ...)
   }
-  if (any(.effects == "ran_coef")) {
-    .ret$ran_coef <- .coefPar(x, ...)
+  # broom.mixed spells it ran_coefs; ran_coef is kept for older code
+  for (.e in intersect(c("ran_coef", "ran_coefs"), .effects)) {
+    .ret[[.e]] <- .coefPar(x, ...)
   }
   if (all(unlist(lapply(seq_along(.ret), is.null)))) {
     return(NULL)
