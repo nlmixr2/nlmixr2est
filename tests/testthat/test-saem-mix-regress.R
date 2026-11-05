@@ -242,7 +242,9 @@ test_that("a shared eta's component thetas are its per-component means (#1296)",
     })
   }
   fit <- suppressWarnings(nlmixr2(
-    mixMod, .d$data, est = "saem",
+    mixMod,
+    .d$data,
+    est = "saem",
     saemControl(print = 0, seed = 1296, calcTables = FALSE)
   ))
   th <- fixef(fit)
