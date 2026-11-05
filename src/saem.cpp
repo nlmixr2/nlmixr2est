@@ -2962,6 +2962,7 @@ public:
     mixOwnEta1 = conv_to<uvec>::from(eta1);
     mixFree0 = conv_to<uvec>::from(free0);
     mixOwnLam0 = conv_to<uvec>::from(lam0);
+    mixOwnTheta.set_size(mixOwn0.n_elem);
     // the initial phiM draws carry the phi0 search variance; an owned column is
     // never resampled, so start it at the population value
     for (unsigned int o = 0; o < mixOwn0.n_elem; o++) {
@@ -2971,10 +2972,12 @@ public:
   }
 
   // Shared-eta mixture (#1296): component j's own theta enters as theta_j + eta,
-  // so move the eta's weighted mean in component j's chain into theta_j and
-  // shift those etas back.  Every prediction is unchanged; this is the M-step
+  // so move gain * the eta's weighted mean in component j's chain into theta_j
+  // and shift those etas back.  Every prediction is unchanged; this is the M-step
   // mu-referencing gives a split eta, and keeps eta mean-zero per component.
-  void mixShiftRecenter() {
+  // The theta column moves in every chain (only component j reads it), and the
+  // M-step takes the theta from mixOwnTheta, so state and estimate agree.
+  void mixShiftRecenter(double gain) {
     for (unsigned int o = 0; o < mixOwn0.n_elem; o++) {
       unsigned int j = mixOwnComp(o);
       unsigned int col0 = i0(mixOwn0(o)), colE = i1(mixOwnEta1(o));
@@ -2986,19 +2989,20 @@ public:
         sw += w;
         se += w * ch(row, colE);
       }
-      if (sw <= 0.0) continue;
-      double m = se / sw;
-      if (!std::isfinite(m)) continue;
+      double m = (sw > 0.0) ? gain * se / sw : 0.0;
+      if (!std::isfinite(m)) m = 0.0;
       for (unsigned int jj = 0; jj < (unsigned int)nMix; jj++) {
-        if (!mixProbRegress && jj != j) continue;
         mat &cj = phiM_mix(jj);
-        for (int row = 0; row < N * nmc; row++) {
-          // in regress, only component j's subjects carry theta_j + eta
-          if (mixProbRegress && mixWeights(row % N, j) <= 0.0) continue;
-          cj(row, colE) -= m;
+        if (mixProbRegress || jj == j) {
+          for (int row = 0; row < N * nmc; row++) {
+            // in regress, only component j's subjects carry theta_j + eta
+            if (mixProbRegress && mixWeights(row % N, j) <= 0.0) continue;
+            cj(row, colE) -= m;
+          }
         }
         cj.col(col0) += m;
       }
+      mixOwnTheta(o) = mprior_phi0(0, mixOwn0(o)) + m;
     }
   }
 
@@ -3624,7 +3628,7 @@ public:
         }
         }
 
-        if (mixOwn0.n_elem > 0) mixShiftRecenter();
+        if (mixOwn0.n_elem > 0) mixShiftRecenter(pas(kiter));
         if (DEBUG > 0) Rcout << "mcmc successful (mixture)\n";
 
         mat phiM_weighted(N * nmc, nphi, fill::zeros);
@@ -4067,6 +4071,11 @@ public:
         Plambda0=inv_sympd(CGamma20)*sum((D1Gamma20%(COV0.t()*statphi01)),1);
         if (fixedIx0.n_elem>0) {
           Plambda0(fixedIx0) = MCOV0(jcov0(fixedIx0));
+        }
+        // the shared-eta component thetas follow their recentering exactly
+        for (unsigned int o = 0; o < mixOwn0.n_elem; o++) {
+          Plambda0(mixOwnLam0(o)) = mixOwnTheta(o);
+          statphi01.col(mixOwn0(o)).fill(mixOwnTheta(o));
         }
         MCOV0(jcov0)=Plambda0;
       }
@@ -5290,6 +5299,7 @@ private:
   // the same, resolved to local phi0 / phi1 indices; mixFree0 are the phi0
   // columns the MCMC still samples
   uvec mixOwn0, mixOwnComp, mixOwnEta1, mixFree0, mixOwnLam0;
+  vec mixOwnTheta;
   // Two-level (IOV) models: phi1 columns sharing a non-zero group id are one
   // occasion parameter observed at different levels, so they estimate ONE
   // variance (Psi).  0 means the column has its own.  See R/saemIov.R.
