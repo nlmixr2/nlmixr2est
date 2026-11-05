@@ -132,47 +132,6 @@ arma::mat decorrelateNpdeMat(arma::mat& varsim, unsigned int& warn, unsigned int
 
 
 
-// Like a truncated normal but without needing to back-calculate the simulated DV value.
-static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::Col<int> &cens, arma::vec &limit,
-                                     int &censMethod, bool &doLimit,
-                                     unsigned int i, arma::vec &ru2,  arma::vec &ru3, unsigned int& K, bool &ties) {
-  if (censMethod != CENS_CDF) return;
-  // pd already holds the below-limit probability (left cens) or 1-pd (right cens);
-  // replace with runif over that range, then back-calculate EPRED from sorted tcomp.
-  arma::vec curRow;
-  unsigned int j2;
-  double low2, hi2;
-  switch (cens[i]) {
-  case 1:
-    curRow = sort(trans(ret.matsim.row(i)));
-    ret.pd[i] = ru2[i]*ret.pd[i];
-    ret.pd2[i] = ru2[i]*ret.pd2[i];
-    break;
-  case -1:
-    curRow = sort(trans(ret.matsim.row(i)));
-    ret.pd[i] = 1-ru2[i]*ret.pd[i];
-    ret.pd2[i] = 1-ru2[i]*ret.pd2[i];
-    break;
-  default:
-    return;
-  }
-  // Back-calculate the imputed transformed observation from the marginal (npd)
-  // percentile pd2; yobst is a single value shared by both the npde and npd
-  // tracks, so only the marginal percentile (which indexes the sorted simulated
-  // row curRow) is meaningful here.
-  j2 = trunc(ret.pd2[i]*K);
-  // pd2 can round to 1.0; clamp to keep curRow indices in bounds
-  if (j2 >= K) j2 = K - 1;
-  low2 = curRow[j2];
-  if (j2+1 >= K) hi2 = (j2 > 0) ? (2*low2 - curRow[j2-1]) : low2;
-  else hi2 = curRow[j2+1];
-  // Use npd instead of npde as suggested by Nguyen2017; toggled by npdeControl()
-  if (ties) {
-    ret.yobst[i] = hi2;
-  }
-  else ret.yobst[i] = low2 + (hi2 - low2)*ru3[i];
-}
-
 static inline void handleNpdeNAandCalculateEpred(calcNpdeInfoId& ret, unsigned int& K) {
   ret.namat = umat(ret.matsim.n_rows, ret.matsim.n_cols);
   // Replace NA with zeros
@@ -224,14 +183,13 @@ static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned i
   ret.pd2.rows(ret.obs) = pdObs2;
 }
 
-static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, arma::Col<int> &cens, arma::vec &limit, int &censMethod, bool &doLimit,
-                                       unsigned int &K, bool &ties, arma::vec &ru, arma::vec &ru2, arma::vec& ru3) {
+static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, unsigned int &K, bool &ties,
+                                       arma::vec &ru, arma::vec &ru2) {
   ret.npde = arma::mat(ret.pd.n_rows, 1);
   ret.npd = arma::mat(ret.pd.n_rows, 1);
   if (ties){
     // Ties are allowed
     for (unsigned int j = ret.pd.n_rows; j--;) {
-      handleCensNpdeCdf(ret, cens, limit, censMethod, doLimit, j, ru2, ru3, K, ties);
       if (fabs(ret.pd[j]) < DBL_EPSILON){
         ret.pd[j] = 1 / (2.0 * K);
       } else if (fabs(1-ret.pd[j]) < DBL_EPSILON){
@@ -248,7 +206,6 @@ static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, arma::Col<int> &cens
   } else {
     // Ties are discouraged with jitter
     for (unsigned int j = ret.pd.n_rows; j--;) {
-      handleCensNpdeCdf(ret, cens, limit, censMethod, doLimit, j, ru2, ru3, K, ties);
       if (fabs(ret.pd[j]) < DBL_EPSILON){
         ret.pd[j] = ru[j] / K;
       } else if (fabs(1-ret.pd[j]) < DBL_EPSILON){
@@ -484,10 +441,10 @@ static inline void imputeCensNpde(calcNpdeInfoId &ret, arma::Col<int> &cens, arm
 
 calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
                           arma::vec &dvt, arma::Col<int> &evidIn, arma::Col<int> &censIn, arma::vec &limitIn,
-                          int &censMethod, bool &doLimit,
+                          int &censMethod,
                           unsigned int& id,
                           unsigned int& K, double &tolChol, bool &ties,
-                          arma::vec &ruIn, arma::vec &ru2In, arma::vec &ru3In,
+                          arma::vec &ruIn, arma::vec &ru2In,
                           arma::vec &lambda, arma::vec &yj, arma::vec &hi, arma::vec &low,
                           int seed, int nObs) {
   calcNpdeInfoId ret;
@@ -496,7 +453,6 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
   ret.yobst = dvt(span(idLoc[id], idLoc[id+1]-1));
   arma::vec ru = ruIn(span(idLoc[id], idLoc[id+1]-1));
   arma::vec ru2 = ru2In(span(idLoc[id], idLoc[id+1]-1));
-  arma::vec ru3 = ru3In(span(idLoc[id], idLoc[id+1]-1));
   arma::Col<int> cens = censIn(span(idLoc[id], idLoc[id+1]-1));
   arma::vec limit = limitIn(span(idLoc[id], idLoc[id+1]-1));
   arma::Col<int> evid = evidIn(span(idLoc[id], idLoc[id+1]-1));
@@ -507,12 +463,10 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
     ret.obs = find(evid == 0 && cens == 0);
   } else {
     ret.obs = find(evid == 0);
-    if (censMethod != CENS_CDF) {
-      imputeCensNpde(ret, cens, limit, lambda, yj, low, hi, row0, seed, nObs);
-    }
+    imputeCensNpde(ret, cens, limit, lambda, yj, low, hi, row0, seed, nObs);
   }
   calculatePD(ret, id, K, tolChol);
-  calculateNPDEfromPD(ret, cens, limit, censMethod, doLimit, K, ties, ru, ru2, ru3);
+  calculateNPDEfromPD(ret, K, ties, ru, ru2);
   ret.epred = arma::vec(ret.yobst.size());
   ret.yobs = arma::vec(ret.yobst.size());
   ret.eres = arma::vec(ret.yobst.size());
@@ -623,43 +577,19 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   } else {
     evid = as<arma::Col<int>>(evidIn);
   }
-  bool doLimit = false;
-
   arma::vec limit;
   int hasLimit=0;
   getLimitFromInput(limitIn, dvLen, limit, hasLimit);
-
-  if (hasLimit && censMethod == CENS_CDF) {
-    for (unsigned int i = 0; i < cens.size(); ++i) {
-      switch(cens[i]){
-      case 1:
-        if (R_FINITE(limit[i])) {
-          warning("limits are ignored for npde back-transformation with 'cdf' method");
-          i= cens.size();
-        }
-        break;
-      case -1:
-        if (R_FINITE(limit[i])) {
-          warning("limits are ignored for npde back-transformation with 'cdf' method");
-          i= cens.size();
-        }
-        break;
-      case 0:
-        break;
-      }
-    }
-  }
 
   // threefry uniforms, one seed per observation (tableControl(seed=) + row),
   // drawn serially before the parallel per-subject loop
   const int npdeSeed = opt.containsElementNamed("seed") ? as<int>(opt["seed"]) : 1009;
   const int nObs = idLoc[idLoc.size() - 1];
-  arma::vec ru(nObs), ru2(nObs), ru3(nObs);
+  arma::vec ru(nObs), ru2(nObs);
   for (int i = 0; i < nObs; ++i) {
     nmSeqSeedSet(npdeSeed, 0u, (uint64_t)i);
     ru[i] = rxUnifEng(0.0, 1.0);
     ru2[i] = rxUnifEng(0.0, 1.0);
-    ru3[i] = rxUnifEng(0.0, 1.0);
   }
   setRxThreadId(-1);
 
@@ -705,7 +635,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
       // degenerate simulated covariance) is caught here and that subject's npde
       // is set NA instead.
       try {
-        calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
+        calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, curid, K, tolChol, ties, ru, ru2,
                                            lambda, yj, hi, low, npdeSeed, nObs);
         npde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npde;
         npd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npd;
