@@ -24,7 +24,7 @@
   message("Clear testing model cache")
   .fitCacheDir <- file.path(testthat::test_path(), "fixtures")
   if (dir.exists(.fitCacheDir)) {
-    unlink(list.files(.fitCacheDir, pattern = ".rds$", full.names = TRUE))
+    unlink(list.files(.fitCacheDir, pattern = "[.](rds|tmp)$", full.names = TRUE))
   }
   message("done")
   invisible("")

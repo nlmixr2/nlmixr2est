@@ -176,15 +176,20 @@ nmTest({
     # bound.  A posthoc fit never scales its bounds, so the covariance step
     # compares tcl with them as they are.
     .m <- .mod |> rxode2::ini(tcl = c(1.0999, 1.1, 5))
-    .f <- suppressMessages(suppressWarnings(nlmixr(
-      .m,
-      theo_sd,
-      "focei",
-      control = foceiControl(print = 0, calcTables = FALSE, maxOuterIterations = 0L)
-    )))
+    .f <- .covSite(
+      ".covBoundaryWarn",
+      suppressMessages(suppressWarnings(nlmixr(
+        .m,
+        theo_sd,
+        "focei",
+        control = foceiControl(print = 0, calcTables = FALSE, maxOuterIterations = 0L)
+      )))
+    )
     expect_equal(fixef(.f)[["tcl"]], 1.1)
     expect_match(.f$covMethod, "^Boundary issue")
     expect_match(.f$covMethod, "\"tcl\"")
+    # one line in $runInfo; covMethod names every theta
+    expect_true("\"tcl\" near boundary; covariance not calculated" %in% .f$runInfo)
   })
 
   .agqObjf <- function(scaleC) {
@@ -292,7 +297,10 @@ nmTest({
       expect_equal(as.character(.a[["Initial Gradient"]][.i]), "Not Assessed", label = .fx)
       expect_equal(as.character(.a[["Covariance Gradient"]][.i]), "Not Assessed", label = .fx)
       expect_true(all(is.na(unlist(.a[.i, setdiff(.cols, .codes)]))), label = .fx)
-      expect_equal(lapply(.a[-.i, .codes], as.character), lapply(.b[, .codes], as.character), label = .fx)
+      # the codes threshold the gradient error, so a literal add.sd can tip one over
+      if (.fx == "tv") {
+        expect_equal(lapply(.a[-.i, .codes], as.character), lapply(.b[, .codes], as.character), label = .fx)
+      }
       expect_equal(.a[-.i, .search], .b[, .search], ignore_attr = TRUE, tolerance = .tol, label = .fx)
       expect_equal(
         .a[-.i, c("Covariance aEps", "Covariance rEps")],

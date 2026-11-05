@@ -290,6 +290,21 @@
   )
 }
 
+#' Close a progress bar that an error left open, for `on.exit()`
+#'
+#' `rxode2::rxProgressAbort()` raises its message as an error when the bar
+#' did not finish.  Run from `on.exit()` while an error unwinds, that error
+#' replaces the one that stopped the calculation, so it is dropped here.
+#' After `rxode2::rxProgressStop()` the bar has finished and the call does
+#' nothing.
+#'
+#' @return `NULL`, invisibly
+#' @noRd
+.nmProgressClose <- function() {
+  try(rxode2::rxProgressAbort(), silent = TRUE)
+  invisible(NULL)
+}
+
 #' Cox Box, Yeo Johnson and inverse transformation
 #'
 #' @param x data to transform

@@ -2187,12 +2187,12 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   # d(f)/d(eta) as well; same pre-apply ordering as the AR(1) correction.
   .s$..predFEtaSens <- .foceiPredFEtaSens(.s, .grd)
   rxode2::rxProgress(dim(.grd)[1])
-  # Guard the abort so a clean rxProgressStop() below prevents the generic
-  # "Aborted calculation" from masking the informative error we raise here
-  # (issue #515).
+  # The bar is closed on any exit that did not stop it, without the abort's
+  # own error, so the caller gets the error that ended the loop or the one
+  # raised below (issue #515).
   .progressStopped <- FALSE
   on.exit({
-    if (!.progressStopped) rxode2::rxProgressAbort()
+    if (!.progressStopped) .nmProgressClose()
   })
   # whether any / every d(prediction)/d(ETA) is identically zero, set row by row
   .zero <- new.env(parent = emptyenv())
@@ -2405,11 +2405,14 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #'
 #' The augmented outer-gradient model does not carry the AR(1) lines, whose
 #' lagged residual would also need its own sensitivity chain.
+#' `rxode2::rxHasAr()` also finds an `ar()` whose correlation is not an
+#' `ar` row of `$iniDf`: a modeled correlation, or a fixed one by the time
+#' FOCEi sees the ui.
 #' @param ui rxode2 ui
 #' @return logical
 #' @noRd
 .foceiUsesAr <- function(ui) {
-  isTRUE(any(ui$iniDf$err %in% "ar"))
+  isTRUE(rxode2::rxHasAr(ui))
 }
 
 #' Add the second-order eta expansion ([.foceiAddHdEta2]) to an inner-model symengine env
@@ -2677,6 +2680,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
       .lagDefs,
       .s$..lagSens,
       .arEtaSens,
+      attr(.s$..linCmtCarryPairs, "carryCovInterval")$copies,
       .prd,
       .s$..HdEta,
       .r,
@@ -2712,6 +2716,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
         .lagDefs,
         .s$..lagSens,
         .arEtaSens,
+        attr(.s$..linCmtCarryPairs, "carryCovInterval")$copies,
         .prd,
         .s$..HdEta,
         .r,
@@ -2741,6 +2746,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     .lagDefs,
     .s$..lagSens,
     .arEtaSens,
+    attr(.s$..linCmtCarryPairs, "carryCovInterval")$copies,
     .prd,
     .s$..HdEta,
     .r,
@@ -2847,7 +2853,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   rxode2::rxProgress(dim(.grd)[1])
   .stopped <- FALSE
   on.exit({
-    if (!.stopped) rxode2::rxProgressAbort()
+    if (!.stopped) .nmProgressClose()
   })
   .lag <- .s$..lagEta
   .ret <- apply(.grd, 1, function(x) {
@@ -3566,14 +3572,17 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## combined eta+theta sensitivity build (#958) changes the inner model text
   .combSens <- isTRUE(rxode2::rxGetControl(.ui, "combSens", FALSE))
   ## linCmt() sensitivity-carry substitution (3b.3) changes the inner model
-  ## text; it depends on both the control and whether the loaded rxode2 has
-  ## the carry sentinels, so both key the cache.
+  ## text; it depends on the control, on whether the loaded rxode2 has the
+  ## carry sentinels and on how many carry columns it has (the pairs past
+  ## them keep the standard gradient), so all three key the cache.
   ## covsInterpolation gates the substitution ("linear" skips it), so it must
   ## key the cache too, else a locf build would be reused for a linear fit
   .linCmtCarry <- paste0(
     rxode2::rxGetControl(.ui, "linCmtSensCarry", "auto"),
     ",",
     .rxFoceiLinCmtCarryCapable(),
+    ",",
+    .rxFoceiLinCmtCarryMaxPairs(),
     ",",
     paste(rxode2::rxGetControl(.ui, "rxControl", NULL)$covsInterpolation, collapse = ",")
   )
@@ -3592,7 +3601,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## sensitivity model in "fd" mode -- silently zeroing the dosing-parameter
   ## sensitivities.  Version 2: .foceiModelCacheDeflate() stores eventSens.
   ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
-  .cacheFormat <- 3L
+  ## Version 4: the bundle carries its carry-cap warnings
+  ## (attr "carryCapWarnings"), which a v3 entry would never give again.
+  .cacheFormat <- 4L
   .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
@@ -3700,8 +3711,14 @@ rxUiGet.foceiModel <- function(x, ...) {
   if (file.exists(.cacheFile)) {
     .ret <- readRDS(.cacheFile)
     .ret[] <- lapply(.ret, .foceiModelCacheInflate)
+    # the build's carry-cap warnings, which a cached bundle skips
+    for (.w in attr(.ret, "carryCapWarnings")) {
+      warning(.w, call. = FALSE)
+    }
     return(.ret)
   }
+  nlmixr2global$carryCapWarnings <- NULL
+  on.exit(nlmixr2global$carryCapWarnings <- NULL, add = TRUE)
   .ui <- x[[1]]
   .iniDf <- get("iniDf", .ui)
   .ret <- if (all(is.na(.iniDf$neta1))) {
@@ -3711,6 +3728,7 @@ rxUiGet.foceiModel <- function(x, ...) {
   } else {
     rxUiGet.foce(x, ...)
   }
+  attr(.ret, "carryCapWarnings") <- nlmixr2global$carryCapWarnings
   .store <- .ret
   .store[] <- lapply(.store, .foceiModelCacheDeflate)
   saveRDS(.store, .cacheFile)
@@ -4867,6 +4885,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .keepL <- .lst$keepL[[1]]
   .idLvl <- .lst$idLvl
   .dat <- cbind(as.data.frame(.et), .keepL)
+  # the linCmt() carry's hidden copies of its midpoint covariates
+  .dat <- .rxFoceiLinCmtCarryAliasData(.dat, .rxFoceiLinCmtCarryMidCovs(ui))
   # Drop subjects without an EVID==0 observation; re-inserted later in
   # addTable().  Two ways a subject loses all observations: (1) DV=NA rows
   # become EVID==2 in etTrans (rows still present, just no EVID==0), and (2)
@@ -5550,6 +5570,41 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   ret
 }
 
+#' Drop a covariance that is not a matrix of the proper form
+#'
+#' NA is accepted only for whole ill-identified parameter rows and columns (see
+#' `.nlmixr2RobustCov()`, R/cov.R); any other missingness is malformed.  The
+#' dropped matrix stays in `env$covDebug`.
+#' @param env fit environment
+#' @return invisibly `NULL`
+#' @noRd
+.foceiDropMalformedCov <- function(env) {
+  if (is.null(env$cov)) {
+    return(invisible())
+  }
+  .validCov <- checkmate::testMatrix(
+    env$cov,
+    min.rows = 1,
+    row.names = "strict",
+    col.names = "strict"
+  )
+  if (.validCov && anyNA(env$cov)) {
+    .bad <- which(is.na(diag(env$cov)))
+    .good <- setdiff(seq_len(nrow(env$cov)), .bad)
+    .validCov <- length(.bad) > 0 &&
+      all(is.na(env$cov[.bad, , drop = FALSE])) &&
+      all(is.na(env$cov[, .bad, drop = FALSE])) &&
+      !anyNA(env$cov[.good, .good, drop = FALSE])
+  }
+  if (!.validCov) {
+    env$covDebug <- env$cov
+    .minfo(paste0("covariance not in proper form, can access value in ", crayon::bold$blue("$covDebug")))
+    .covWarn("covariance not in proper form, can access value in $covDebug")
+    env$cov <- NULL
+  }
+  invisible()
+}
+
 .foceiFamilyReturn <- function(env, ui, ..., method = NULL, est = "none") {
   .control <- ui$control
   .control$est <- est
@@ -5674,30 +5729,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .env[["control"]] <- .ctl
     }
   }
-  if (!is.null(.env$cov)) {
-    # Accept NA only for whole ill-identified parameter rows/columns (see
-    # .nlmixr2RobustCov(), R/cov.R); any other missingness is malformed.
-    .validCov <- checkmate::testMatrix(
-      .env$cov,
-      min.rows = 1, # .var.name="env$cov",
-      row.names = "strict",
-      col.names = "strict"
-    )
-    if (.validCov && anyNA(.env$cov)) {
-      .bad <- which(is.na(diag(.env$cov)))
-      .good <- setdiff(seq_len(nrow(.env$cov)), .bad)
-      .validCov <- length(.bad) > 0 &&
-        all(is.na(.env$cov[.bad, , drop = FALSE])) &&
-        all(is.na(.env$cov[, .bad, drop = FALSE])) &&
-        !anyNA(.env$cov[.good, .good, drop = FALSE])
-    }
-    if (!.validCov) {
-      .env$covDebug <- .env$cov
-      .minfo(paste0("covariance not in proper form, can access value in ", crayon::bold$blue("$covDebug")))
-      warning(paste0("covariance not in proper form, can access value in $covDebug"))
-      .env$cov <- NULL
-    }
-  }
+  .foceiDropMalformedCov(.env)
   if (.control$nAGQ > 0) {
     .ag <- .agq(length(ui$eta), .control$nAGQ)
     .env$aqn <- as.integer(.ag$n)
