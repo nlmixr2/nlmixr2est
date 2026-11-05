@@ -45,10 +45,21 @@ nmTest({
     }
   })
 
-  test_that("rxUiGet.saemModel() builds the model text from a compressed ui", {
-    .txt <- rxUiGet.saemModel(list(.mkUi()))
-    expect_type(.txt, "character")
-    expect_length(.txt, 1L)
-    expect_match(.txt, "rx_pred_=", fixed = TRUE)
+  test_that(".saemCensOutLines() emits the censoring outputs a flag asks for", {
+    .ui <- rxode2::rxUiDecompress(.mkUi())
+    .s <- new.env()
+    for (.v in c("rx_cx_", "rx_cmu_", "rx_csd_", "rx_cnu_", "rx_clim_")) {
+      assign(.v, symengine::S("cp"), envir = .s)
+    }
+    assign(".saemCensOut", 1L, envir = .ui)
+    expect_identical(
+      .saemCensOutLines(.ui, .s),
+      c("rx_cx_=cp", "rx_cmu_=cp", "rx_csd_=cp", "rx_cnu_=cp")
+    )
+    assign(".saemCensOut", 2L, envir = .ui)
+    expect_identical(
+      .saemCensOutLines(.ui, .s),
+      c("rx_cx_=cp", "rx_cmu_=cp", "rx_csd_=cp", "rx_cnu_=cp", "rx_clim_=cp")
+    )
   })
 })
