@@ -126,5 +126,10 @@ nmTest({
     .rc <- .rxControlDelayLagTol(foceiControl(rxControl = list(atol = 1e-14))$rxControl, 3)
     expect_equal(.rc$atol, 1e-14)
     expect_equal(.rc$rtol, 1e-9)
+    # an explicit tolerance equal to the sigdig value, and a full rxControl(), are kept
+    .rc <- .rxControlDelayLagTol(foceiControl(rxControl = list(rtol = 1e-6))$rxControl, 3)
+    expect_equal(.rc$rtol, 1e-6)
+    .rc <- .rxControlDelayLagTol(foceiControl(rxControl = rxode2::rxControl(rtol = 1e-6))$rxControl, 3)
+    expect_equal(.rc$rtol, 1e-6)
   })
 })

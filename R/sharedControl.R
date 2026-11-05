@@ -302,32 +302,24 @@ getValidNlmixrCtl.default <- function(control) {
   rxControl
 }
 
+# ODE tolerance fields `sigdig` sets
+.rxControlTolFields <- c("rtol", "atol", "rtolSens", "atolSens", "ssRtol", "ssAtol", "ssRtolSens", "ssAtolSens")
+
 #' Tighten the sigdig ODE tolerances for an estimated delay() duration
 #'
 #' Doses make `delay()` jump at `t_dose + tau`; the solver steps over these
 #' moving breaking points, so the objective is jagged in `tau` at the usual
-#' tolerance (#1300).  Three orders tighter smooths it at little cost.  A
-#' tolerance that is not the `sigdig` value was set by the user and is kept.
+#' tolerance (#1300).  Three orders tighter smooths it at little cost.  Only the
+#' fields `foceiControl()` derived from `sigdig` (attribute
+#' `nlmixr2estSigdigTol`) change; a tolerance the user gave is kept.
 #' @param rxControl an `rxode2::rxControl()` object
 #' @param sigdig optimization significant digits (`NULL` leaves `rxControl`)
 #' @return `rxControl` with the tightened tolerances
 #' @noRd
 .rxControlDelayLagTol <- function(rxControl, sigdig) {
-  if (is.null(sigdig) || is.null(rxControl)) {
+  .sig <- attr(rxControl, "nlmixr2estSigdigTol")
+  if (is.null(sigdig) || is.null(.sig)) {
     return(rxControl)
   }
-  .def <- .rxControlScaleSigdig(rxControl, sigdig)
-  .fields <- c("rtol", "atol", "rtolSens", "atolSens", "ssRtol", "ssAtol", "ssRtolSens", "ssAtolSens")
-  .user <- .fields[
-    !vapply(
-      .fields,
-      function(.f) {
-        .x <- unname(rxControl[[.f]])
-        .d <- unname(.def[[.f]])
-        length(.x) == length(.d) && all(abs(.x - .d) <= 1e-8 * abs(.d))
-      },
-      logical(1)
-    )
-  ]
-  .rxControlScaleSigdig(rxControl, sigdig + 1.5, skip = .user)
+  .rxControlScaleSigdig(rxControl, sigdig + 1.5, skip = setdiff(.rxControlTolFields, .sig))
 }
