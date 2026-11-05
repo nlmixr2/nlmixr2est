@@ -1292,7 +1292,7 @@ addTable <- function(
 #'  - `"ipred"`, `"pred"` and `"epred"` replace a censored DV with the IPRED,
 #'    PRED or EPRED in the residuals.
 #'
-#'   For NPDE, every method but `"cdf"` and `"omit"` replaces each censored
+#'   For NPDE, every method but `"omit"` replaces each censored
 #'   observation by a draw from the subject's simulated predictive
 #'   distribution (a Gaussian copula of the simulations), conditional on its
 #'   measured observations and truncated to its censoring interval; `"omit"`
