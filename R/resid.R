@@ -1212,7 +1212,8 @@ addTable <- function(
           .df$ID <- .id
         }
         .covLvl <- object$covLvl
-        for (.v in names(.covLvl)) {
+        # a covariate the table solve did not return has nothing to relabel
+        for (.v in intersect(names(.covLvl), names(.df))) {
           .l <- as.integer(.df[[.v]])
           attr(.l, "levels") <- .covLvl[[.v]]
           class(.l) <- "factor"
