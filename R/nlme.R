@@ -302,7 +302,7 @@ nlmeControl <- nlmixr2NlmeControl
 
 .nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates) {
   .nlmeFitDataSetup(dataSav)
-  nlmixr2global$nlmeFitRxModel <- .nlmixr2estRxode2(ui$nlmeRxModel, "rxNlme")
+  nlmixr2global$nlmeFitRxModel <- .nlmixr2estRxode2(ui$nlmeRxModel, "rxNlme", ui = ui)
   # read once, not per objective evaluation (see .nlmixrNlmeFun())
   nlmixr2global$nlmeFitHasMtime <-
     tryCatch(rxode2::rxModelVars(nlmixr2global$nlmeFitRxModel)$nMtime > 0L, error = function(e) FALSE)

@@ -746,7 +746,8 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   list(
     predOnly = .nlmixr2estRxode2(
       paste(c(.spec$params(x, ...), .cmt, .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse = "\n"),
-      paste0("rx", .spec$role, "PredOnly")
+      paste0("rx", .spec$role, "PredOnly"),
+      ui = x[[1]]
     ),
     eventTheta = .eventTheta
   )
@@ -1087,9 +1088,10 @@ rxUiGet.nlmSensModel <- function(x, ...) {
     thetaGrad = .nlmixr2estRxode2(
       get(paste0("..", type, "S"), envir = .s),
       paste0("rx", .role, "Grad"),
-      eventSens = .eventSens
+      eventSens = .eventSens,
+      ui = x[[1]]
     ),
-    predOnly = .nlmixr2estRxode2(.s$..pred.nolhs, paste0("rx", .role, "Pred")),
+    predOnly = .nlmixr2estRxode2(.s$..pred.nolhs, paste0("rx", .role, "Pred"), ui = x[[1]]),
     eventTheta = .s$.eventTheta
   )
 }
