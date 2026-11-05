@@ -4928,9 +4928,18 @@ public:
         // a shared-eta component theta's information is its eta's, over the
         // component's (weighted) subjects, not the phi0 search variance's
         for (unsigned int o = 0; o < mixOwn0.n_elem; o++) {
-          unsigned int l0 = nl1 + mixOwnLam0(o);
-          DDa(l0, l0) += accu(mixWeights.col(mixOwnComp(o))) *
-            IGamma2_phi1(mixOwnEta1(o), mixOwnEta1(o)) - CGamma20(mixOwnLam0(o), mixOwnLam0(o));
+          unsigned int l0 = nl1 + mixOwnLam0(o), e = mixOwnEta1(o);
+          const vec w = mixWeights.col(mixOwnComp(o));
+          DDa(l0, l0) += accu(w) * IGamma2_phi1(e, e) - CGamma20(mixOwnLam0(o), mixOwnLam0(o));
+          // cross-information with the mu-referenced thetas, through Omega's
+          // correlations with the shared eta
+          for (unsigned int l = 0; l < nl1; l++) {
+            uvec c = find(LCOV1.row(l) == 1, 1);
+            if (c.n_elem == 0) continue;
+            double x = IGamma2_phi1(e, c(0)) * dot(w, COV1.col(l));
+            DDa(l0, l) += x;
+            DDa(l, l0) += x;
+          }
         }
       }
       L=L+pash(kiter)*(D1/nmc-L);
