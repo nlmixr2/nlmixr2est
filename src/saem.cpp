@@ -5792,7 +5792,10 @@ private:
     field<mat> mode(nMix);
     field<vec> fMode(nMix);
     for (int mHyp = 0; mHyp < nMix; mHyp++) mode(mHyp) = basePhi;
-    const double steps[4] = {2.0, 1.0, 0.5, 0.25};
+    // halving steps, in eta SDs, down to 2^-10 so a tight residual still finds
+    // each hypothesis' mode
+    std::vector<double> steps;
+    for (double st = 2.0; st >= 1.0 / 1024.0; st /= 2.0) steps.push_back(st);
     uvec cls(N, fill::zeros);
     for (int round = 0; round < 3; round++) {
       mat lossByHyp(N, nMix, fill::zeros);
@@ -5800,7 +5803,7 @@ private:
         mat &cur = mode(mHyp);
         vec curL = jointLoss(cur, mHyp, nullptr);
         for (int pass = 0; pass < (round == 0 ? 2 : 1); pass++) {
-          for (int si = (round == 0 ? 0 : 2); si < 4; si++) {
+          for (size_t si = (round == 0 ? 0 : 2); si < steps.size(); si++) {
             for (int c = 0; c < nphi1; c++) {
               if (sdCol(c) <= 0) continue;
               uvec colIx(1); colIx(0) = i1(c);
