@@ -63,3 +63,28 @@ test_that("focei string-compared covariates are not permuted (#1299)", {
   .pred <- .th["b0"] + c(0, .th[c("b1", "b2", "b3", "b24")])[as.integer(.d$tnom)]
   expect_equal(.fit$PRED, unname(.pred), tolerance = 1e-4)
 })
+
+test_that("fixed-effect string-compared covariates complete the table step (#1299)", {
+  skip_on_cran()
+  .d <- .issue1299Data()
+  .m <- function() {
+    ini({
+      b0 <- 1
+      b1 <- 1
+      b2 <- 1
+      b3 <- 1
+      b24 <- 1
+      addSd <- 1
+    })
+    model({
+      v <- b0 + b1 * (tnom == "1") + b2 * (tnom == "2") +
+        b3 * (tnom == "3") + b24 * (tnom == "24")
+      v ~ add(addSd)
+    })
+  }
+  .fit <- suppressMessages(nlmixr2(.m, .d, est = "focei", control = foceiControl(print = 0)))
+  expect_s3_class(.fit, "nlmixr2FitData")
+  .th <- .fit$theta
+  .pred <- .th["b0"] + c(0, .th[c("b1", "b2", "b3", "b24")])[as.integer(.d$tnom)]
+  expect_equal(.fit$IPRED, unname(.pred), tolerance = 1e-4)
+})
