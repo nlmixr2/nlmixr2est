@@ -740,7 +740,7 @@
 #'     narrow valley short of the minimum (#1196); `FALSE` skips the check.
 #'
 #' @param innerHessian Inner optimization curvature: `"focei"` (default) or
-#'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
+#'   `"conditional"`. Full conditional curvature requires Gaussian FOCEI.
 #'   Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
 #'   Value, gradient and full curvature share one sensitivity solve.
 #'   The marginal objective's FOCEI curvature is unchanged.  It is not
@@ -749,7 +749,7 @@
 #'   log-determinant: `"focei"` (default), the Gauss-Newton expected
 #'   information, or `"conditional"`, the full conditional Hessian (the
 #'   observed information at the conditional mode, as NONMEM's LAPLACE).
-#'   `"conditional"` requires fast Gaussian FOCEI; the analytic outer
+#'   `"conditional"` requires Gaussian FOCEI; under `fast=TRUE` the analytic outer
 #'   gradient then carries the matching third-order terms, and the
 #'   analytic covariance falls back to finite differences.
 #' @param hessianMethod For a non-normal-endpoint model (any distribution
@@ -1996,15 +1996,15 @@ foceiControl <- function(
   # innerOpt="auto" resolves in C++ (needOptimHess ? n1qn1 : trust) and conditional
   # curvature already rejects needOptimHess, so auto cannot land on n1qn1 here.
   if (innerHessian == "conditional") {
-    if (!isTRUE(fast) || !isTRUE(as.logical(interaction)) || !(innerOpt %in% c(1L, 3L, 4L))) {
-      stop("Conditional inner Hessian requires fast FOCEI with trust or n1qn1", call. = FALSE)
+    if (!isTRUE(as.logical(interaction)) || !(innerOpt %in% c(1L, 3L, 4L))) {
+      stop("Conditional inner Hessian requires FOCEI with trust or n1qn1", call. = FALSE)
     }
     if (innerOpt == 1L && warm != 1L) {
       stop("innerHessian=\"conditional\" with innerOpt=\"n1qn1\" requires warm=\"calc\"", call. = FALSE)
     }
   }
-  if (detHessian == "conditional" && (!isTRUE(fast) || !isTRUE(as.logical(interaction)))) {
-    stop("detHessian=\"conditional\" requires fast FOCEI", call. = FALSE)
+  if (detHessian == "conditional" && !isTRUE(as.logical(interaction))) {
+    stop("detHessian=\"conditional\" requires FOCEI (interaction=TRUE)", call. = FALSE)
   }
   if (!is.null(.xtra$resetEtaSize)) {
     .resetEtaSize <- .xtra$resetEtaSize

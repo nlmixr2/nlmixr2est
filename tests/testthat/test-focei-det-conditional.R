@@ -1,6 +1,7 @@
 test_that("detHessian='conditional' validates its control", {
-  expect_error(foceiControl(detHessian = "conditional"), "requires fast")
-  expect_error(foceiControl(fast = TRUE, interaction = FALSE, detHessian = "conditional"), "requires fast")
+  expect_no_error(foceiControl(detHessian = "conditional"))
+  expect_error(foceiControl(fast = TRUE, interaction = FALSE, detHessian = "conditional"), "requires FOCEI")
+  expect_error(foceiControl(interaction = FALSE, detHessian = "conditional"), "requires FOCEI")
   expect_no_error(foceiControl(fast = TRUE, detHessian = "conditional"))
   expect_identical(foceiControl(fast = TRUE, detHessian = "conditional")$detHessian, "conditional")
   expect_identical(foceiControl()$detHessian, "focei")

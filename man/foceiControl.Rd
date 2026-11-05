@@ -200,16 +200,14 @@ foceiControl(
 \item{sigdig}{Optimization significant digits.  One value drives, with a single
 consistent formula, the inner/outer optimizer convergence tolerance
 (\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
-and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
-\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
-\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
-tolerances match the main solve (the outer gradient and covariance are built
-from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
-order looser.
-Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 3}
-this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
+and the ODE solver tolerances \code{rtol = max(10^(-2*sigdig), 1e-12)},
+\code{atol = rtol/100} for every solver.  An objective solved to relative
+error \code{rtol} locates its minimum only to about \code{sqrt(rtol)}, so
+this is the solve a \code{10^-sigdig} optimizer needs.  The sensitivity
+(\code{atolSens}/\code{rtolSens}) tolerances match the main solve; the
+steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+At the default \code{sigdig = 3} this is \code{atol = 1e-8},
+\code{rtol = 1e-6}.}
 
 \item{...}{Ignored parameters}
 
@@ -327,7 +325,7 @@ the stencil centre it is compared against) and the augmented-sensitivity
 solves behind \code{covMethod="analytic"}.  \code{NULL} (default) derives
 them from the fit's own tolerances: the finite-difference solves use
 \code{atol} and \code{rtol} each times 1e-3, capped at 1e-7 (at the default
-\code{sigdig = 3}, \code{rtol = 1e-7} and \code{atol = 1e-9}), and the
+\code{sigdig = 3}, \code{rtol = 1e-9} and \code{atol = 1e-11}), and the
 analytic augmented solves use \code{max(1e-12, min(1e-8, 10^-(sigdig + 6)))}.  The
 inner problems of the finite-difference probes are tightened the same way,
 whichever \code{innerOpt} runs them: \code{trustFterm} and
@@ -787,7 +785,7 @@ box is reported as an infinite objective and the region shrinks instead.}
     everything else `"trust"` is typically the faster of the two.}
 
 \item{innerHessian}{Inner optimization curvature: `"focei"` (default) or
-`"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
+`"conditional"`. Full conditional curvature requires Gaussian FOCEI.
 Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
 Value, gradient and full curvature share one sensitivity solve.
 The marginal objective's FOCEI curvature is unchanged.  It is not
@@ -797,7 +795,7 @@ supported with registered external likelihood contributions.}
 log-determinant: `"focei"` (default), the Gauss-Newton expected
 information, or `"conditional"`, the full conditional Hessian (the
 observed information at the conditional mode, as NONMEM's LAPLACE).
-`"conditional"` requires fast Gaussian FOCEI; the analytic outer
+`"conditional"` requires Gaussian FOCEI; under `fast=TRUE` the analytic outer
 gradient then carries the matching third-order terms, and the
 analytic covariance falls back to finite differences.}
 

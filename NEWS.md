@@ -14,6 +14,11 @@
 
 ## New features
 
+- `foceiControl(innerHessian = "conditional")` and
+  `foceiControl(detHessian = "conditional")` (the full conditional Laplace)
+  no longer require `fast = TRUE`; without it the outer gradient is a finite
+  difference (#1301).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the

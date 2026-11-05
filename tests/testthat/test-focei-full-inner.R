@@ -82,3 +82,41 @@ test_that("the full conditional inner Hessian refuses a generalized likelihood",
     "Gaussian endpoints"
   )
 })
+
+test_that("the full conditional Laplace does not need fast=TRUE (#1301)", {
+  skip_on_cran()
+  model <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
+          eta.cl ~ 0.3; add.sd <- 0.7 })
+    model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+            d/dt(depot) <- -ka * depot
+            d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v
+            cp ~ add(add.sd) })
+  }
+  d <- nlmixr2data::theo_sd
+  .ctl <- function(fast, ...) {
+    laplaceControl(
+      print = 0L,
+      calcTables = FALSE,
+      covMethod = "",
+      fast = fast,
+      innerHessian = "conditional",
+      detHessian = "conditional",
+      ...
+    )
+  }
+  fast0 <- .nlmixr(model, d, "laplace", .ctl(TRUE, maxOuterIterations = 0L))
+  slow0 <- .nlmixr(model, d, "laplace", .ctl(FALSE, maxOuterIterations = 0L))
+  expect_false(slow0$control$fast)
+  expect_identical(slow0$method, "Full Laplace")
+  expect_gt(slow0$env$nConditionalInnerHessian, 0L)
+  expect_equal(slow0$objf, fast0$objf, tolerance = 1e-8)
+  expect_equal(slow0$eta, fast0$eta, tolerance = 1e-6)
+
+  # the finite-difference outer gradient reaches the same optimum
+  fast <- .nlmixr(model, d, "laplace", .ctl(TRUE))
+  slow <- .nlmixr(model, d, "laplace", .ctl(FALSE))
+  expect_equal(slow$objf, fast$objf, tolerance = 1e-3)
+  expect_equal(fixef(slow), fixef(fast), tolerance = 1e-2)
+})
