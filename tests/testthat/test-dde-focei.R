@@ -131,5 +131,13 @@ nmTest({
     expect_equal(.rc$rtol, 1e-6)
     .rc <- .rxControlDelayLagTol(foceiControl(rxControl = rxode2::rxControl(rtol = 1e-6))$rxControl, 3)
     expect_equal(.rc$rtol, 1e-6)
+    # a generated rxControl the user changed and passed back keeps the change
+    .rc0 <- foceiControl()$rxControl
+    .rc0$rtol <- 1e-12
+    .rc <- .rxControlDelayLagTol(foceiControl(rxControl = .rc0)$rxControl, 3)
+    expect_equal(.rc$rtol, 1e-12)
+    .rc0 <- foceiControl()$rxControl
+    .rc0$rtol <- 1e-12
+    expect_equal(.rxControlDelayLagTol(.rc0, 3)$rtol, 1e-12)
   })
 })

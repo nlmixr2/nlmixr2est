@@ -321,5 +321,16 @@ getValidNlmixrCtl.default <- function(control) {
   if (is.null(sigdig) || is.null(.sig)) {
     return(rxControl)
   }
+  # a tagged field changed since still counts as the user's
+  .def <- .rxControlScaleSigdig(rxControl, sigdig)
+  .sig <- .sig[vapply(
+    .sig,
+    function(.f) {
+      .x <- unname(rxControl[[.f]])
+      .d <- unname(.def[[.f]])
+      length(.x) == length(.d) && all(abs(.x - .d) <= 1e-8 * abs(.d))
+    },
+    logical(1)
+  )]
   .rxControlScaleSigdig(rxControl, sigdig + 1.5, skip = setdiff(.rxControlTolFields, .sig))
 }
