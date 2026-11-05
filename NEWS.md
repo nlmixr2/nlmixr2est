@@ -94,14 +94,25 @@
 
 ### Estimation
 
+- A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
+  (default 1) above the lowest objective its search evaluated now re-solves
+  the final ETAs from that evaluation's ETAs, keeping per subject the lower
+  objective, and reports the lowest point if it is still lower (#1286).
+  Warm-started ETAs could fall into a secondary mode during the search and
+  stay there, so a fit could end tens of points above an earlier iterate at
+  nearly the same estimates.  A remaining gap now warns that the fit did not
+  converge.
+
 - `saem` with `ebe = "mode"` no longer stops with "inv(): matrix is singular"
   when an eta's estimated variance collapses to zero (#1270).
+
 - An error inside `saem`'s Gaussian-quadrature objective or its linearized
   covariance, or while FOCEi or `nlm` builds its sensitivity model, now
   reaches the user as itself.  Each calculation closed its progress bar in
   a way that raised the bar's own message ("Error calculating likelihood",
   "Error calculating covariance via linearization", "Aborted calculation")
   in place of the error that stopped it.
+
 - `foceiControl(fast = TRUE)` now falls back to `fast = FALSE` for an
   `ar()` residual whose correlation is fixed (`ar1.cor <- fix(0.9)`) or
   modeled (`ar(corv)`), as it already did for an estimated one.  Such a fit

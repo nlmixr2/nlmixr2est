@@ -229,7 +229,14 @@ nmTest({
       .m1114,
       .d1114,
       est = "focei",
-      control = foceiControl(print = 0, outerOpt = .badOuter, covMethod = "", calcTables = FALSE)
+      # finalEtaTol = Inf: otherwise the lower starting point is reported (#1286)
+      control = foceiControl(
+        print = 0,
+        outerOpt = .badOuter,
+        covMethod = "",
+        calcTables = FALSE,
+        finalEtaTol = Inf
+      )
     )
     expect_gt(.seen$f1, .seen$f0)
     expect_equal(sum(grepl(.worseRegex, .r$w)), 1L)
