@@ -621,6 +621,18 @@ is.latex <- function() {
     .arg <- .ret$argument
     .arg[state$held] <- state$heldAt[state$held]
     .atInc <- !is.null(.inc) && isTRUE(all(.arg == .inc$x))
+    .end <- if (.atInc) .inc$value else .ret$value
+    if (!state$noSnap && .left >= 1L && isTRUE(state$best$value < .end)) {
+      # a hold ended above a point already accepted: return to it and finish
+      # as plain trust, without holds (checked before any release, which
+      # could otherwise alternate holds between worse points)
+      state$noSnap <- TRUE
+      state$held[] <- FALSE
+      state$heldAt[] <- NA_real_
+      state$inc <- NULL
+      .x <- state$best$x
+      next
+    }
     if (.atInc && isTRUE(.ret$converged)) {
       # an equal-bound coordinate has no inside to return to
       .inward <- state$held &
@@ -665,21 +677,6 @@ is.latex <- function() {
       .nRestart < restarts &&
       .left >= 1L &&
       max(abs(.ret$argument - .x)) > 0
-    if (
-      !.again &&
-        !state$noSnap &&
-        .left >= 1L &&
-        isTRUE(state$best$value < .ret$value)
-    ) {
-      # a hold ended above a point already accepted: return to it and finish
-      # as plain trust, without holds
-      state$noSnap <- TRUE
-      state$held[] <- FALSE
-      state$heldAt[] <- NA_real_
-      state$inc <- NULL
-      .x <- state$best$x
-      next
-    }
     if (!.again) {
       break
     }

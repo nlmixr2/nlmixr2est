@@ -461,6 +461,31 @@ test_that("a worsening hold cut short by the budget returns the best point", {
   expect_equal(.ret$value, .fn(.ret$x))
 })
 
+test_that("holds released from a worse point do not alternate across the box", {
+  # From 2 a long first step snaps x to -1, then to 2 (worse), and so on
+  .ret <- .trustOuter(
+    2,
+    fn = function(x) sqrt(1 + 100 * x^2),
+    gr = function(x) 100 * x / sqrt(1 + 100 * x^2),
+    lower = -1,
+    upper = 2,
+    control = list(
+      fast = TRUE,
+      sigdig = 3,
+      maxOuterIterations = 200L,
+      outerTrustHessian = "analytic",
+      outerTrustRinit = 16,
+      outerTrustRmax = 16,
+      outerTrustRestarts = 2L,
+      outerTrustFterm = 1e-11,
+      outerTrustMterm = 1e-11,
+      hessian = function(x, relStep) matrix(100 / (1 + 100 * x^2)^1.5, 1, 1)
+    )
+  )
+  expect_equal(.ret$x, 0, tolerance = 1e-5)
+  expect_equal(.ret$convergence, 0L)
+})
+
 test_that("the outer gradient and Hessian are skipped on a trial that cannot be accepted", {
   # The saving is the whole point of the lazy path, and no assertion on the
   # answer can see it: a build that evaluated gr() and the Hessian at every
