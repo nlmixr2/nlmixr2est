@@ -409,6 +409,33 @@ test_that("a coordinate held on equal bounds is not released", {
   expect_identical(.ret$activeChanges, 1L)
 })
 
+test_that("a bound worse than the incumbent is not held", {
+  # From x = 1 (f = -2) the steps leave the box below 0, where f = 0.  Held on
+  # 0 the run ends worse than its start, so it returns to x = 1 without holds.
+  .ret <- .trustOuter(
+    1,
+    fn = function(x) 2 * x - 77 * x^2 + 120 * x^3 - 47 * x^4,
+    gr = function(x) 2 - 154 * x + 360 * x^2 - 188 * x^3,
+    lower = 0,
+    upper = 1,
+    control = list(
+      fast = TRUE,
+      sigdig = 3,
+      maxOuterIterations = 100L,
+      outerTrustHessian = "analytic",
+      outerTrustRinit = 8,
+      outerTrustRmax = 8,
+      outerTrustRestarts = 2L,
+      outerTrustFterm = 1e-11,
+      outerTrustMterm = 1e-11,
+      hessian = function(x, relStep) matrix(-154 + 720 * x - 564 * x^2, 1, 1)
+    )
+  )
+  expect_equal(.ret$x, 0.6186842, tolerance = 1e-4)
+  expect_lt(.ret$value, -6.7)
+  expect_identical(.ret$activeBounds, integer(0))
+})
+
 test_that("the outer gradient and Hessian are skipped on a trial that cannot be accepted", {
   # The saving is the whole point of the lazy path, and no assertion on the
   # answer can see it: a build that evaluated gr() and the Hessian at every

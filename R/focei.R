@@ -601,6 +601,9 @@ is.latex <- function() {
         # left the box -- give back the incumbent, the best feasible point
         state$held[state$snapNew] <- FALSE
         state$heldAt[state$snapNew] <- NA_real_
+        if (!is.null(state$best) && isTRUE(state$best$value < state$inc$value)) {
+          state$inc <- state$best
+        }
         if (!is.null(state$inc)) {
           .ret$argument <- state$inc$x
           .ret$value <- state$inc$value
@@ -665,6 +668,21 @@ is.latex <- function() {
       .nRestart < restarts &&
       .left >= 1L &&
       max(abs(.ret$argument - .x)) > 0
+    if (
+      !.again &&
+        !state$noSnap &&
+        .left >= 1L &&
+        isTRUE(state$best$value < .ret$value)
+    ) {
+      # a hold ended above a point already accepted: return to it and finish
+      # as plain trust, without holds
+      state$noSnap <- TRUE
+      state$held[] <- FALSE
+      state$heldAt[] <- NA_real_
+      state$inc <- NULL
+      .x <- state$best$x
+      next
+    }
     if (!.again) {
       break
     }
@@ -775,7 +793,8 @@ is.latex <- function() {
 #' `inc` is the incumbent (`x`, `value`, unmasked `gradient`/`hessian` and the
 #' masked `gm`/`hm` trust was given); `held`/`heldAt` the coordinates on a
 #' bound; `snapPending` asks the run loop to re-enter with a new hold, and
-#' `snapNew` marks the coordinates that hold covers.
+#' `snapNew` marks the coordinates that hold covers.  `best` is the lowest
+#' accepted incumbent; `noSnap` turns holds off once a run has to return to it.
 #' @param lower,upper box the outer problem optimizes in
 #' @return an environment
 #' @noRd
@@ -787,6 +806,8 @@ is.latex <- function() {
   .s$held <- rep(FALSE, length(lower))
   .s$heldAt <- rep(NA_real_, length(lower))
   .s$infeasibleRun <- 0L
+  .s$best <- NULL
+  .s$noSnap <- FALSE
   .s$snapPending <- FALSE
   .s$snapNew <- rep(FALSE, length(lower))
   .s$activeChanges <- 0L
@@ -838,7 +859,7 @@ is.latex <- function() {
     if (any(.out)) {
       if (!is.null(state$inc)) {
         state$infeasibleRun <- state$infeasibleRun + 1L
-        if (state$infeasibleRun >= 2L) {
+        if (state$infeasibleRun >= 2L && !state$noSnap) {
           .bound <- ifelse(x[.out] < lower[.out], lower[.out], upper[.out])
           x <- state$inc$x
           x[.out] <- .bound
@@ -904,6 +925,9 @@ is.latex <- function() {
         hm = .m$hessian
       )
       state$infeasibleRun <- 0L
+      if (is.null(state$best) || .v < state$best$value) {
+        state$best <- state$inc
+      }
     }
     list(value = .v, gradient = .m$gradient, hessian = .m$hessian)
   }
