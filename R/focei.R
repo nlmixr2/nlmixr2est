@@ -622,7 +622,9 @@ is.latex <- function() {
     .arg[state$held] <- state$heldAt[state$held]
     .atInc <- !is.null(.inc) && isTRUE(all(.arg == .inc$x))
     if (.atInc && isTRUE(.ret$converged)) {
+      # an equal-bound coordinate has no inside to return to
       .inward <- state$held &
+        state$lower < state$upper &
         ifelse(state$heldAt == state$lower, .inc$gradient < 0, .inc$gradient > 0)
       if (any(.inward)) {
         # a held coordinate wants back in: same point, wider model

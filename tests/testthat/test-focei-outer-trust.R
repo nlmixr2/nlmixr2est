@@ -383,6 +383,32 @@ test_that("a bound the minimum does not sit on is held and then released", {
   expect_identical(.ret$activeChanges, 2L)
 })
 
+test_that("a coordinate held on equal bounds is not released", {
+  # x2 in [0, 0]: the gradient there points toward the upper bound, which is
+  # the same point, so a release could only re-hold it until the budget ran out
+  .ret <- .trustOuter(
+    c(0, 0),
+    fn = function(x) sum((x - 1)^2),
+    gr = function(x) 2 * (x - 1),
+    lower = c(-Inf, 0),
+    upper = c(Inf, 0),
+    control = list(
+      fast = TRUE,
+      sigdig = 3,
+      maxOuterIterations = 100L,
+      outerTrustHessian = "analytic",
+      outerTrustRestarts = 2L,
+      outerTrustFterm = 1e-11,
+      outerTrustMterm = 1e-11,
+      hessian = function(x, relStep) diag(2, 2)
+    )
+  )
+  expect_equal(.ret$x, c(1, 0), tolerance = 1e-6)
+  expect_equal(.ret$convergence, 0L)
+  expect_identical(.ret$activeBounds, 2L)
+  expect_identical(.ret$activeChanges, 1L)
+})
+
 test_that("the outer gradient and Hessian are skipped on a trial that cannot be accepted", {
   # The saving is the whole point of the lazy path, and no assertion on the
   # answer can see it: a build that evaluated gr() and the Hessian at every
