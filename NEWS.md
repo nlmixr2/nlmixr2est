@@ -448,12 +448,14 @@
 
 ### Documentation
 
+- `?foceiControl` now says that the ODE solver sets the FOCEi objective's
+  noise floor at fixed parameters, and that `rxControl(method = "dop853")`
+  gives a much smoother objective for a non-stiff model (#1278).
 - `?tableControl` now says that NPDE under `censMethod = "omit"` are not
   expected to be N(0,1) once observations are censored: below a lower limit
   the quantified observations it keeps are the high ones, so their mean
   drifts upward as more is censored.  It points to `"truncated-normal"`,
   which keeps the censored rows (#1227).
-
 - `?augPred` says that its curves for a `linCmt()` model with
   time-varying covariates are approximate with rxode2 5.1.8 or earlier:
   under the default `"locf"` interpolation that rxode2's `linCmt()` took a
