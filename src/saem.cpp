@@ -4940,6 +4940,14 @@ public:
             DDa(l0, l) += x;
             DDa(l, l0) += x;
           }
+          // ... and with the same component's other shared-eta thetas
+          for (unsigned int o2 = o + 1; o2 < mixOwn0.n_elem; o2++) {
+            if (mixOwnComp(o2) != mixOwnComp(o)) continue;
+            unsigned int l2 = nl1 + mixOwnLam0(o2);
+            double x = accu(w) * IGamma2_phi1(e, mixOwnEta1(o2));
+            DDa(l0, l2) += x;
+            DDa(l2, l0) += x;
+          }
         }
       }
       L=L+pash(kiter)*(D1/nmc-L);
