@@ -1,5 +1,17 @@
 # nlmixr2est (development version)
 
+## Changed defaults
+
+- `sigdig` now sets the ODE tolerances to `rtol = 10^(-2*sigdig)` and
+  `atol = rtol/100` (floored at `rtol = 1e-12`) instead of
+  `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`.  At the default
+  `sigdig = 3` every `sigdig`-scaled method (FOCEi and its family, the nlm
+  family, vae, emvi, nlme, ...) now solves at rxode2's own `rtol = 1e-6`,
+  `atol = 1e-8` rather than `1e-3`/`1e-6`, which biased the FOCEi objective
+  of an ODE model by up to several units against its `linCmt()` twin
+  (#1131).  `est = "nls"` no longer adds three orders on top (`1e-8` at its
+  `sigdig = 4`).  Fits of ODE models are slower and their objectives change.
+
 ## New features
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
@@ -94,6 +106,25 @@
 
 ### Estimation
 
+- A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
+  (default 1) above the lowest objective its search evaluated now re-solves
+  the final ETAs from that evaluation's ETAs, keeping per subject the lower
+  objective, and reports the lowest point if it is still lower (#1286).
+  Warm-started ETAs could fall into a secondary mode during the search and
+  stay there, so a fit could end tens of points above an earlier iterate at
+  nearly the same estimates.  A remaining gap now warns that the fit did not
+  converge.
+
+- `saem` with `ebe = "mode"` no longer stops with "inv(): matrix is singular"
+  when an eta's estimated variance collapses to zero (#1270).
+
+- An error inside `saem`'s Gaussian-quadrature objective or its linearized
+  covariance, or while FOCEi or `nlm` builds its sensitivity model, now
+  reaches the user as itself.  Each calculation closed its progress bar in
+  a way that raised the bar's own message ("Error calculating likelihood",
+  "Error calculating covariance via linearization", "Aborted calculation")
+  in place of the error that stopped it.
+
 - `foceiControl(fast = TRUE)` now falls back to `fast = FALSE` for an
   `ar()` residual whose correlation is fixed (`ar1.cor <- fix(0.9)`) or
   modeled (`ar(corv)`), as it already did for an estimated one.  Such a fit
@@ -165,6 +196,10 @@
   the change of occasion, which can shift the objective materially; fewer
   occasion etas, or an rxode2 with more carry columns
   (`rxode2::linCmtCarryMaxPairs()`), avoids it.
+- `vaeControl(nonMuTheta = "eta")` and `"fix"` now inject the temporary eta
+  without changing the model when the theta sits under `*`, `/`, `^` or a unary
+  minus: `exp(e_cov_f * COV)` becomes `exp((e_cov_f + eta.e_cov_f) * COV)`, not
+  `exp(e_cov_f + eta.e_cov_f * COV)` (#1234).
 
 - A `saem` fit with inter-occasion variability now reports its
   Gaussian-quadrature objective.  Since IOV arrived (6.0.0), every such fit
@@ -289,8 +324,7 @@
 - NPDE of censored observations now draws each censored value from the
   subject's simulated predictive distribution (a Gaussian copula of the
   simulations), conditional on its measured observations and truncated to its
-  censoring interval, for every `tableControl(censMethod =)` but "cdf" and
-  "omit".  The simulations themselves are left untruncated.
+  censoring interval, for every `tableControl(censMethod =)` but "omit".  The simulations themselves are left untruncated.
   Before, NPDE under "truncated-normal", "ipred" and "pred" used whatever the
   residual step had written into the shared DV (a draw around IPRED, or
   IPRED/PRED), and "epred" used the LOQ itself.  The residual columns are
@@ -300,9 +334,21 @@
   leaves them out of the decorrelation.  Before, the residual step's NA
   spread through the decorrelation and the subject's NPDE were meaningless.
 
+- NPDE under `censMethod = "cdf"` now imputes censored observations the same
+  way as the other methods, so it is N(0, 1) when the model is true (#1226).
+  Before, it rescaled a decorrelated pd that had used the LOQ as the
+  observation, ignored censoring limits, and drifted negative as the censored
+  fraction grew.
+
 - NPDE's back-transformation of EPRED and DV now uses each observation's own
   transform; it used the first subject's rows for every subject.
 ### Tables
+
+- `augPred()` under `covsInterpolation = "midpoint"` now fills its grid
+  covariates with the mean of the two neighboring records, as rxode2 and
+  `approxfun(method = "constant", f = 0.5)` do; it stepped at the midpoint,
+  so its curves disagreed with the fit.  Occasion columns step at the
+  previous record (locf) under midpoint (#1283).
 
 - `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
   subject has no observations ("Col::subvec(): indices out of bounds").
@@ -365,6 +411,12 @@
 
 ### Inter-occasion variability
 
+- A model whose occasion-level eta name starts with `eta.` (`eta.ka.occ ~ 0.1 | OCC`)
+  now fits.  The SAEM temporary-eta cleanup took every `rx.eta.` name, including
+  the `rx.eta.ka.occ.<occ>` occasion columns, so every estimator stopped with
+  "incorrect number of dimensions".  It now removes only the temporary etas saem
+  records creating (#1233).
+
 - The occasion of an IOV model now steps at its first record (locf) under
   every `covsInterpolation`, as rxode2 steps the occasion variables of a
   nested omega.  The IOV rewrite read the occasion as a covariate, so under
@@ -403,8 +455,30 @@
   record (locf, in the fit's record order), and its population curve sets
   every eta, of every level, to zero.
 
+- A model whose only random effects are occasion ones (`iov.cl ~ 0.1 | occ`
+  with no subject-level eta) now fits with `focei`, `foce`, `saem`,
+  `laplace`, `agq`, `imp` and `npag` (`focei` and `foce` in either IOV
+  expansion; `saem`'s `"twoLevel"` and `"collapsed"` IOV methods, which
+  need a subject-level eta on the same parameter, fall back to `"theta"`).
+  It used to stop with "missing value where TRUE/FALSE needed"
+  or "arguments imply differing number of rows": the IOV rewrite copied its
+  template rows from an eta that was not there, and its output step lost the
+  shape of tables left with one column.
+
+- A `saem` IOV fit no longer warns that `iov.cl` "has the following
+  user-defined boundaries": the bound was the IOV rewrite's own, not the
+  user's.
+
 ### Documentation
 
+- `?foceiControl` now says that the ODE solver sets the FOCEi objective's
+  noise floor at fixed parameters, and that `rxControl(method = "dop853")`
+  gives a much smoother objective for a non-stiff model (#1278).
+- `?tableControl` now says that NPDE under `censMethod = "omit"` are not
+  expected to be N(0,1) once observations are censored: below a lower limit
+  the quantified observations it keeps are the high ones, so their mean
+  drifts upward as more is censored.  It points to `"truncated-normal"`,
+  which keeps the censored rows (#1227).
 - `?augPred` says that its curves for a `linCmt()` model with
   time-varying covariates are approximate with rxode2 5.1.8 or earlier:
   under the default `"locf"` interpolation that rxode2's `linCmt()` took a

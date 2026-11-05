@@ -191,10 +191,11 @@
 #' @param ui rxode2 ui
 #' @param data nlmixr data
 #' @param timeVaryingCovariates Time varying covarites in the data
+#' @param pseudoEtas saem's temporary etas (`.saemPseudoEtaRecord()`)
 #' @return lower level saem fit
 #' @author Matthew L. Fidler
 #' @noRd
-.saemFitModel <- function(ui, data, timeVaryingCovariates = character(0)) {
+.saemFitModel <- function(ui, data, timeVaryingCovariates = character(0), pseudoEtas = character(0)) {
   # Stage the time-varying/non-time-varying mu-ref covariate split so
   # $saemModel0 collapses to the phi + timeVaryingCovariate*beta model (shared
   # with the mu-referenced focei family, see .nlmixrSetMuRefTimeVarying).
@@ -286,7 +287,7 @@
           if (is.null(.oi)) matrix(integer(0), ncol = 2L) else .oi$pairs
         },
         seed = rxode2::rxGetControl(ui, "seed", 99),
-        pseudoI1 = .saemPseudoPhi1Ix(ui),
+        pseudoI1 = .saemPseudoPhi1Ix(ui, pseudoEtas),
         DEBUG = rxode2::rxGetControl(ui, "DEBUG", 0),
         tol = rxode2::rxGetControl(ui, "tol", 1e-6),
         itmax = rxode2::rxGetControl(ui, "itmax", 30),
@@ -2072,12 +2073,14 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .data <- env$data
   .ret <- new.env(parent = emptyenv())
   .ret$table <- env$table
+  # the fold and the finalizer remove exactly these (.saemPseudoEtaRecord())
+  .ret$saemPseudoEtas <- .saemPseudoEtaRecord(env$saemPseudoTransforms)
   nlmixrWithTiming("setup", {
     .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
     .tv <- .nlmixrTimeVaryingCovariates(.ret$dataSav, .ui, .control$rxControl)
   })
 
-  .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates = .tv)
+  .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates = .tv, pseudoEtas = .ret$saemPseudoEtas)
   # Re-stage the mu-ref time-varying split for the post-processing: the theta
   # table and parameter history are named from saemParamsToEstimate/
   # saemParHistNames, which only put a time-varying covariate in the correct
@@ -2142,6 +2145,27 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .ret
 }
 
+#' Warn about the bounds saem ignores
+#'
+#' The IOV rewrite's magnitude thetas carry a lower bound the user did not
+#' write, so they are left out of the warning (the fit keeps the bound).
+#'
+#' @param ui rxode2 ui
+#' @return nothing, called for the warning
+#' @noRd
+.saemWarnBounded <- function(ui) {
+  .iniDf <- ui$iniDf
+  .iov <- !is.na(.iniDf$ntheta) & !is.na(.iniDf$backTransform) & grepl("^nlmixr2iov", .iniDf$backTransform)
+  .uiW <- ui
+  if (any(.iov)) {
+    .iniDf$lower[.iov] <- -Inf
+    .iniDf$upper[.iov] <- Inf
+    # re-parsing the copy repeats the rewrite's own parse notes
+    suppressWarnings(rxode2::ini(.uiW) <- .iniDf)
+  }
+  rxode2::warnRxBounded(.uiW, " which are ignored in 'saem'", .var.name = ui$modelName)
+}
+
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
@@ -2155,7 +2179,7 @@ nlmixr2Est.saem <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'", .var.name = .ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("saem"), .var.name = .ui$modelName)
   .saemAssertEtaPhi(.ui)
-  rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name = .ui$modelName)
+  .saemWarnBounded(.ui)
   if (length(.ui$mixProbs) > 0) {
     message("mixture SAEM computation scales with the number of sub-populations")
   }

@@ -180,7 +180,11 @@ multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
-\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.}
 
 \item{method}{a character string.  If \code{"REML"} the model is fit by
    maximizing the restricted log-likelihood.  If \code{"ML"} the

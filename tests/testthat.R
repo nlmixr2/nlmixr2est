@@ -109,6 +109,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "saem-modeled-resid-fit",
     "saem-ebe-mode-lik",
     "nlmixr2output-same-fit",
+    "iov-only-fit",
     "nlmixr2output-bsvcorr-fit"
   ),
 

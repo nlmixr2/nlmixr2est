@@ -71,7 +71,8 @@
   if (is.null(maximum)) {
     maximum <- .range[2]
   }
-  .fs <- c(locf = 0, nocb = 1, midpoint = 0, linear = 0)
+  # midpoint is rxode2's mean of the two neighboring records over the interval
+  .fs <- c(locf = 0, nocb = 1, midpoint = 0.5, linear = 0)
   .base <- expand.grid(
     TIME = seq(minimum, maximum, length.out = length.out),
     EVID = 2,
@@ -96,14 +97,6 @@
                 # an occasion steps (locf), as the fit steps it, whatever the
                 # interpolation
                 .ci <- if (cov %in% .occCols) "locf" else .covsi
-                if (.ci == "midpoint" && length(.x) > 1L) {
-                  # rxode2 steps to the next value at the midpoint, it does
-                  # not average the two
-                  .o <- order(.x)
-                  .x <- .x[.o]
-                  .y <- .y[.o]
-                  .x <- c(.x[1], (.x[-1] + .x[-length(.x)]) / 2)
-                }
                 # tied records keep their record order (etTrans()'s), so an
                 # occasion steps through them as rxode2 does, not to a mean
                 .fun <- stats::approxfun(
