@@ -2079,6 +2079,7 @@ foceiControl <- function(
     } else if (inherits(rxControl, "rxControl")) {
       # a fully-formed rxControl object is the user's explicit solving spec; leave
       # it untouched so any atol/rtol it carries is respected
+      attr(rxControl, "nlmixr2estSigdigTol") <- NULL
     } else if (is.list(rxControl)) {
       .user <- names(rxControl)
       rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = .user)
