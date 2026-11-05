@@ -2572,7 +2572,7 @@
       # precomputes solve-output column names/index maps; `cores` carries the fit's rxControl thread
       # count so the batched solves run parallel; `key` seeds the per-fit event-table reuse cache.
       list(
-        augMod = .nlmixr2estRxode2(.modTxt, "rxOuter", eventSens = "jump"),
+        augMod = .nlmixr2estRxode2(.modTxt, "rxOuter", eventSens = "jump", ui = ui),
         dirs = dirs,
         ndir = length(dirs),
         fDirs = .fDirs,

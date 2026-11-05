@@ -2968,7 +2968,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 # attr(rxUiGet.getEBEEnv, "desc") <- "Get the EBE environment"
 attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
 
-.toRx <- function(x, msg, eventSens = "fd", role = NULL) {
+.toRx <- function(x, msg, eventSens = "fd", role = NULL, ui = NULL) {
   if (is.null(x)) {
     return(NULL)
   }
@@ -2987,7 +2987,7 @@ attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
   ## cached as model TEXT, so .nlmixr2estRxode2() tags the model and
   ## .foceiModelCacheInflate() replays the tag.
   .txt <- paste(nlmixr2global$toRxParam, x, nlmixr2global$toRxDvidCmt)
-  .ret <- .nlmixr2estRxode2(.txt, role, eventSens = eventSens)
+  .ret <- .nlmixr2estRxode2(.txt, role, eventSens = eventSens, ui = ui)
   .msuccess("done")
   .ret
 }
@@ -3252,10 +3252,10 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
   ## method.  "jump" enables rxode2's analytic dosing-parameter sensitivities.
-  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .compileEventSens, role = "rxInner")
+  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .compileEventSens, role = "rxInner", ui = ui)
   # fast=TRUE ll(): the separate 2nd-order inner model (exact-Hessian re-solve at eta*).
   innerHess2 <- if (!is.null(s$..innerHess2)) {
-    .toRx(s$..innerHess2, "compiling inner Hessian model...", eventSens = .compileEventSens, role = "rxHess2")
+    .toRx(s$..innerHess2, "compiling inner Hessian model...", eventSens = .compileEventSens, role = "rxHess2", ui = ui)
   } else {
     NULL
   }
@@ -3310,12 +3310,14 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     .toRx(
       .prunedStr,
       role = "rxPredPruned",
+      ui = ui,
       ifelse(.getRxPredLlikOption(), "compiling Llik EBE model (mixture)...", "compiling EBE model (mixture)...")
     )
   } else {
     .toRx(
       s$..pred,
       role = "rxPredOnly",
+      ui = ui,
       ifelse(.getRxPredLlikOption(), "compiling Llik EBE model...", "compiling EBE model...")
     )
   }
@@ -3343,7 +3345,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     # analytic gradient for a whole fit.  Event sensitivities stay ON for every
     # sensitivity (inner/outer) model so only one variant per text is ever built.
     outer = if (is.null(.outerAm)) {
-      .toRx(s$..outer, "compiling outer model...", eventSens = "jump", role = "rxOuterFb")
+      .toRx(s$..outer, "compiling outer model...", eventSens = "jump", role = "rxOuterFb", ui = ui)
     } else {
       .outerAm$augMod
     },
@@ -3395,6 +3397,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     predNoLhs = .toRx(
       pred.opt,
       role = "rxPredNoLhs",
+      ui = ui,
       ifelse(.getRxPredLlikOption(), "compiling events Llik FD model...", "compiling events FD model...")
     ),
     theta = NULL,
