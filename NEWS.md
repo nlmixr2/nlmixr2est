@@ -182,6 +182,12 @@
   thetas between iterations no longer leaves a stale likelihood that froze the
   chain at a state that no longer fit (#1298).
 
+- `saem` now estimates the component thetas of an eta shared by several
+  `mix()` components (`mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))`) as
+  that eta's mean within each component.  They used to be fixed-effect-only
+  search parameters, so the components drifted apart while the shared eta's
+  variance absorbed the split; they also get an SA covariance SE now (#1296).
+
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
   the final ETAs from that evaluation's ETAs, keeping per subject the lower
