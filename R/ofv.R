@@ -1,3 +1,22 @@
+#' Evaluate a nested `nlmixr2()` call, keeping the caller's timing
+#'
+#' The nested `nlmixr2()` resets the timing globals when it ends, which drops
+#' the caller's own entry (`"CWRES"`, ...) from the fit's time table.
+#'
+#' @param expr expression running `nlmixr2()`
+#' @return the value of `expr`
+#' @noRd
+#' @author Matthew L. Fidler
+.nlmixr2KeepTiming <- function(expr) {
+  .timing <- mget(
+    c("nlmixr2Time", "currentTimingEnvironment", "extraTimingTable", "timingStack"),
+    envir = nlmixr2global,
+    ifnotfound = list(NULL)
+  )
+  on.exit(list2env(.timing, envir = nlmixr2global), add = TRUE)
+  expr
+}
+
 .setOfvFo <- function(fit, type = c("focei", "foce", "fo")) {
   .type <- match.arg(type)
   nlmixrWithTiming(
@@ -5,6 +24,12 @@
     {
       .foceiControl <- fit$foceiControl
       .foceiControl$etaMat <- fit$etaMat
+      # an IOV fit is evaluated on the model it estimated, at its etas
+      .model <- fit
+      if (!is.null(get0("iovTables", envir = fit$env, inherits = FALSE))) {
+        .model <- fit$env$iovTables$ui
+        .foceiControl$etaMat <- .iovTablesEtaMat(fit)
+      }
       .foceiControl$fo <- FALSE
       .foceiControl$maxOuterIterations <- 0L
       .foceiControl$maxInnerIterations <- 0L
@@ -28,9 +53,9 @@
         return(fit)
       }
       .foceiControl <- do.call(foceiControl, .foceiControl)
-      .newFit <- .nlmixr2PriorGateBypass(
-        nlmixr2(fit, nlme::getData(fit), "focei", control = .foceiControl)
-      )
+      .newFit <- .nlmixr2KeepTiming(.nlmixr2PriorGateBypass(
+        nlmixr2(.model, nlme::getData(fit), "focei", control = .foceiControl)
+      ))
       .env <- fit$env
       .addFoceiInfoToFit(.env, .newFit)
       .ob1 <- .newFit$objDf
