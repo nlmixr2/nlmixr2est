@@ -157,8 +157,10 @@ test_that("est='nlm''s carried theta gradient is the derivative of its objective
   f0 <- .nlmixrNlmFunC(p)
   fd <- vapply(seq_along(p), .carryThetaNlmCentral, numeric(1), p = p)
   expect_equal(attr(f0, "gradient"), fd, tolerance = 1e-6)
-  # an evaluation does not depend on the ones before it
-  expect_identical(as.numeric(.nlmixrNlmFunC(p)), as.numeric(f0))
+  # an evaluation (value and gradient) does not depend on the ones before it
+  f1 <- .nlmixrNlmFunC(p)
+  expect_identical(as.numeric(f1), as.numeric(f0))
+  expect_identical(attr(f1, "gradient"), attr(f0, "gradient"))
 })
 
 test_that("theta-side carry through a real est='nls' fit reaches its ODE twin", {
