@@ -322,11 +322,9 @@ attr(nlmixr2Est.predict, "random") <- TRUE
 #' occasion, so `newdata` needs the occasion columns.  A subject or occasion
 #' the fit did not estimate gets occasion etas of 0, with a warning.  A
 #' record whose occasion is missing (`NA`) takes a missing occasion eta,
-#' which rxode2 fills as it fills a missing covariate.  Under
-#' `"midpoint"` or `"linear"` covariate interpolation they differ from the
-#' fit's own predictions after an occasion changes: the fit compares the
-#' interpolated occasion with each occasion's value, so between records of
-#' two occasions its occasion etas are 0.
+#' which rxode2 fills as it fills a missing covariate.  The occasion etas
+#' step at each occasion's first record, as the fit's occasion does,
+#' whatever the covariate interpolation.
 #'
 #' @return A data frame with predictions
 #'
@@ -435,13 +433,20 @@ predict.nlmixr2FitCore <- function(object, ..., level = c("population", "individ
     .byId <- !is.null(object$omega) &&
       (length(object$env$iov) > 0L || .ipredHasId(.data))
     .params <- .nlmixrGetIpredParams(object, etas = !.byId)
+    .solve <- object
     if (.byId) {
       .data <- .nlmixrIpredEtaData(object, .data)
       .rxControl$omega <- NA
     }
+    if (length(object$env$iov) > 0L) {
+      # the bare simulation model has no omega to simulate from (rxode2 refuses
+      # omega = NA for one); its occasion etas step, as the fit's occasion does
+      .rxControl$omega <- NULL
+      .solve <- .iovLocfSimModel(object)
+    }
     do.call(
       rxode2::rxSolve,
-      c(list(object, .params, .data), .rxControl)
+      c(list(.solve, .params, .data), .rxControl)
     )
   } else {
     nlmixr2(

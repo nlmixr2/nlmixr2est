@@ -1292,12 +1292,21 @@ addTable <- function(
 #'  - `"ipred"`, `"pred"` and `"epred"` replace a censored DV with the IPRED,
 #'    PRED or EPRED in the residuals.
 #'
-#'   For NPDE, every method but `"cdf"` and `"omit"` replaces each censored
+#'   For NPDE, every method but `"omit"` replaces each censored
 #'   observation by a draw from the subject's simulated predictive
 #'   distribution (a Gaussian copula of the simulations), conditional on its
 #'   measured observations and truncated to its censoring interval; `"omit"`
 #'   gives censored observations no NPDE and leaves them out of the
 #'   decorrelation.
+#'
+#'   The NPDE that `"omit"` keeps are not expected to be N(0,1) under
+#'   censoring, even for a true model: only the quantified observations are
+#'   kept, while the simulations they are compared with are not censored.
+#'   Below a lower limit the kept observations are the high ones, so their
+#'   mean drifts upward as more is censored (downward above an upper limit).
+#'   This holds for any NPDE restricted to the uncensored rows; to check a
+#'   model's fit with censored data, use a method that keeps the censored
+#'   rows, such as `"truncated-normal"`.
 #'
 #' @param ties When `TRUE` jitter prediction-discrepancy points to discourage ties in cdf.
 #'

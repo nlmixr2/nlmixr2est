@@ -39,11 +39,9 @@ each record's occasion etas from the fit's estimates, by subject and
 occasion, so `newdata` needs the occasion columns.  A subject or occasion
 the fit did not estimate gets occasion etas of 0, with a warning.  A
 record whose occasion is missing (`NA`) takes a missing occasion eta,
-which rxode2 fills as it fills a missing covariate.  Under
-`"midpoint"` or `"linear"` covariate interpolation they differ from the
-fit's own predictions after an occasion changes: the fit compares the
-interpolated occasion with each occasion's value, so between records of
-two occasions its occasion etas are 0.
+which rxode2 fills as it fills a missing covariate.  The occasion etas
+step at each occasion's first record, as the fit's occasion does,
+whatever the covariate interpolation.
 }
 \examples{
 \donttest{
