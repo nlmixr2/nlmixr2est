@@ -186,7 +186,10 @@ nmTest({
     expect_false(isTRUE(all.equal(unname(.theta[["emax_scale"]]), 5)))
     expect_false(isTRUE(all.equal(unname(.theta[["let50"]]), log(47))))
     expect_false(isTRUE(all.equal(unname(.theta[["add.sd"]]), 0.9)))
-    expect_equal(unname(.theta[["let50"]]), 3.913, tolerance = 0.05)
+    # R 4.6.2 fixed nlminb with bounds (PR#19086), which moves where this
+    # false convergence stops along the ridge
+    .let50 <- if (getRversion() >= "4.6.2") 4.15 else 3.913
+    expect_equal(unname(.theta[["let50"]]), .let50, tolerance = 0.05)
     expect_equal(unname(.theta[["add.sd"]]), 0.9079, tolerance = 0.05)
   })
 
@@ -226,7 +229,14 @@ nmTest({
       .m1114,
       .d1114,
       est = "focei",
-      control = foceiControl(print = 0, outerOpt = .badOuter, covMethod = "", calcTables = FALSE)
+      # finalEtaTol = Inf: otherwise the lower starting point is reported (#1286)
+      control = foceiControl(
+        print = 0,
+        outerOpt = .badOuter,
+        covMethod = "",
+        calcTables = FALSE,
+        finalEtaTol = Inf
+      )
     )
     expect_gt(.seen$f1, .seen$f0)
     expect_equal(sum(grepl(.worseRegex, .r$w)), 1L)

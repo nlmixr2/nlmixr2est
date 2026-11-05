@@ -10,12 +10,25 @@
   return(.df)
 }
 
+#' A fit's `$parFixedDf` with broom's column names
+#'
+#' The BSV correlation rows are left out: `tidy()` reports the correlations as
+#' `cor__` random-effect terms, and they have no estimate to give an interval.
+#'
+#' @param x nlmixr2 fit
+#' @return data.frame
+#' @noRd
+.broomParFixedDf <- function(x) {
+  .df <- x$parFixedDf
+  .fixNames(.df[!.parFixedIsBsvCor(rownames(.df)), , drop = FALSE])
+}
+
 ##' @export
 confint.nlmixr2FitCore <- function(object, parm, level = 0.95, ...) {
   .extra <- list(...)
   .exponentiate <- ifelse(any(names(.extra) == "exponentiate"), .extra$exponentiate, FALSE)
   .ciNames <- ifelse(any(names(.extra) == "ciNames"), .extra$ciNames, TRUE)
-  .df <- .fixNames(object$parFixedDf)
+  .df <- .broomParFixedDf(object)
   if (!missing(parm)) {
     .df <- .df[parm, ]
   }
@@ -63,7 +76,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   if (.quick) {
     warning("quick does not do anything for nlmixr2 fit objects")
   }
-  .df <- .fixNames(x$parFixedDf)
+  .df <- .broomParFixedDf(x)
   .exp <- abs(exp(.df$model.est) - .df$estimate) < 1e-6
   if (is.na(.exponentiate)) {
     ## se(exp(x)) ~= exp(mu_x)*se_x
@@ -209,7 +222,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   .muRef <- x$ui$muRefDataFrame
   .curEval <- x$ui$muRefCurEval
   .theta <- x$theta
-  .df <- .fixNames(x$parFixedDf)
+  .df <- .broomParFixedDf(x)
   if (is.na(exponentiate)) {
     .exp <- abs(exp(.df$model.est) - .df$estimate) < 1e-6
   } else if (exponentiate) {

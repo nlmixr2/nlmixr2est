@@ -172,10 +172,7 @@ nlminbControl <- function(
     covMethod <- .nlmCtlCovMethod(covMethod, match.arg(covMethod))
   }
   if (covMethod == "nlminb" && !any(solveType == 2:3)) {
-    warning(
-      "using the Hessian function used during nlminb optimization requires a hessian or gradient solving type\n",
-      "switching to covMethod='r'"
-    )
+    .covWarn("covMethod=\"nlminb\" needs solveType \"grad\" or \"hessian\"; using \"r\"")
     covMethod <- "r"
   }
 

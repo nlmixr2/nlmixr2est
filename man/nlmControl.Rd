@@ -227,7 +227,11 @@ By default this is 1.  When zero or below, no scaling is performed.}
 before optimizing.  This only works with
 scaleType="nlmixr2".}
 
-\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.}
 
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}

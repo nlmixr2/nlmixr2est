@@ -901,7 +901,6 @@
   )
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG
-  cfg$phiMFile <- tempfile("phi-", rxode2::rxTempDir(), ".phi")
   cfg$tol <- tol
   cfg$itmax <- itmax
   cfg$type <- type
