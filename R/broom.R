@@ -13,8 +13,8 @@
 #' A fit's `$parFixedDf` theta rows with broom's column names
 #'
 #' The table also has rows that are not thetas (a non-mu-referenced eta's
-#' variability, an IOV fit's occasion variability); those are not fixed
-#' effects and have no estimate to give an interval.
+#' variability, an IOV fit's occasion variability, a `bsvcorr()` row); those
+#' are not fixed effects and have no estimate to give an interval.
 #'
 #' @param x nlmixr2 fit
 #' @return data.frame of the theta rows, in the table's order; an error when

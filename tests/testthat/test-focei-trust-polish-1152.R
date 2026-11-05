@@ -60,9 +60,9 @@ nmTest({
     .cnt <- .fit$env$nTrustInner
     expect_gt(.cnt[["calls"]], 0L)
     expect_gt(.cnt[["polish"]], 0L)
-    # innerOpt="n1qn1" reaches 730.866 here; the default (unpolished) trust fit
-    # stops at 730.891 with omega^2 CL 0.122-0.126
-    expect_lt(.fit$objf, 730.875)
+    # innerOpt="n1qn1" reaches 730.8946 here, and 730.8948 at rtol = 1e-10 (the
+    # 730.866 it gave at the former rtol = 1e-3 was solve bias, #1131)
+    expect_lt(.fit$objf, 730.897)
     expect_lt(.fit$omega["eta.cl", "eta.cl"], 0.117)
     expect_equal(.fit$covMethod, "r,s (full)")
     .R <- solve(.fit$env$.fdFullCov)

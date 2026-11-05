@@ -90,6 +90,36 @@ test_that("saem ebe='mode' handles a single eta (1-D search)", {
   expect_false(isTRUE(all.equal(fit$eta$eta.cl, fit$etaSaem$eta.cl)))
 })
 
+test_that("saem ebe='mode' survives an omega that collapses to zero (#1270)", {
+  skip_on_cran()
+
+  # nolint start: object_usage_linter.
+  .mod <- function() {
+    ini({
+      tbio <- 5
+      eta.bio ~ 0.25
+      pdadd.sd <- 0.15
+    })
+    model({
+      bio <- tbio + eta.bio
+      bio ~ prop(pdadd.sd)
+    })
+  }
+  # nolint end
+
+  # no between-subject variability, so eta.bio's reported variance reaches 0
+  .d <- expand.grid(time = seq(0.5, 24, by = 3), id = 1:30)
+  .d$dv <- 5
+  fit <- .nlmixr(
+    .mod,
+    .d,
+    est = "saem",
+    control = saemControl(print = 0, nBurn = 50, nEm = 50, calcTables = FALSE, covMethod = "")
+  )
+  expect_equal(fit$omega[1, 1], 0)
+  expect_true(all(fit$eta$eta.bio == 0))
+})
+
 test_that("saem ebeTol must be positive", {
   # a zero tolerance never stops the 1-D search
   expect_error(saemControl(ebeTol = 0), "ebeTol")

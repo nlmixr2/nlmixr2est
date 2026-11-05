@@ -1351,6 +1351,7 @@ public:
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       double curT = getTime(kk, ind);
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       pred += lhs[_saemPhi1PredOffset];
     }
@@ -1377,6 +1378,7 @@ public:
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       double curT = getTime(kk, ind);
+      lhsWalkNewind(ind, j);
       rxHess2.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       rowPred += lhs[_saemPhi1H2PredOffset];
       int r = 0;
@@ -1882,6 +1884,10 @@ public:
     return mpost_phi;
   }
 
+  NumericVector get_phiM() {
+    return phiMHist;
+  }
+
   mat get_Plambda() {
     return Plambda;
   }
@@ -2025,6 +2031,7 @@ public:
       setIndIdx(ind, j);
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(i, getTime(kk, ind), getOpIndSolve(op, ind, j), lhs);
       // FOCEi's log-density leaves out the transform's log-Jacobian, as in
       // saemReadRowsPooled()
@@ -2094,16 +2101,17 @@ public:
       if (doParam[j] == 1) setIndParPtr(ind, (int)j, phi(k++));
     }
     if (!modeRowSolveInd(i, op, ind)) return false;
-    int neq = getOpNeq(op);
     double *lhs = getIndLhs(ind);
-    iniSubjectE(neq, 1, ind, op, _rx, saem_inis);
+    iniSubjectE(i, 1, ind, op, _rx, saem_inis);
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
       setIndIdx(ind, j);
       int kk = getIndIx(ind, getIndIdx(ind));
       double curT = getTime(kk, ind);
       if (isDose(getIndEvid(ind, kk))) {
+        lhsWalkNewind(ind, j);
         saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       } else if (getIndEvid(ind, kk) == 0) {
+        lhsWalkNewind(ind, j);
         saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
         double ll = saemGenLikCens(lhs, hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0,
                                    hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf,
@@ -2281,7 +2289,7 @@ public:
   // @param i subject
   // @param yt transformed observations
   // @param IG inverse of Omega over the realIx columns
-  // @param realIx phi1 columns of the reported etas (all but temporary etas)
+  // @param realIx phi1 columns in the prior: reported etas with nonzero variance
   // @param sd Omega sd of each phi1 column
   // @param ue uninformative-eta mask
   // @param doParam which model parameters phi fills
@@ -2339,6 +2347,21 @@ public:
     etaModeConv(i) = conv;
   }
 
+  // phi1 columns in the mode prior: reported etas with nonzero variance
+  //
+  // A collapsed (zero-variance) eta is held, not free (modeFreeCols), so it
+  // only adds a constant to the prior; leave it out or Greal is singular (#1270).
+  // @param G reported Omega
+  // @return the prior's phi1 columns
+  // @noRd
+  uvec modePriorCols(const mat &G) {
+    std::vector<uword> realC;
+    for (int c = 0; c < nphi1; ++c) {
+      if (!any(pseudoIx1 == (uword)c) && G(c, c) > 0.0) realC.push_back((uword)c);
+    }
+    return uvec(realC);
+  }
+
   // Conditional mode (EBE) of every subject at the final estimates
   //
   // Runs after the last SAEM iteration, in parallel over subjects, when
@@ -2356,15 +2379,11 @@ public:
     }
     rx_solving_options *op = getSolvingOptions(_rx);
     vec yt = modeResidSetup();
-    std::vector<uword> realC;
-    for (int c = 0; c < nphi1; ++c) {
-      if (!any(pseudoIx1 == (uword)c)) realC.push_back((uword)c);
-    }
-    uvec realIx(realC);
     // the reported Omega (before the variance floor), as the fit's model has
     mat G = get_Gamma2_phi1Report();
+    uvec realIx = modePriorCols(G);
     mat Greal = G.submat(realIx, realIx);
-    mat IG = invSympdNearPd(Greal, "Gamma2_phi1 (Omega)");
+    mat IG = Greal.n_elem == 0 ? Greal : invSympdNearPd(Greal, "Gamma2_phi1 (Omega)");
     vec sd = sqrt(G.diag());
     std::vector<int> doParam;
     if (!_saemPhi1PoolActive) {
@@ -2840,8 +2859,6 @@ public:
     // (mixProbMethod="regress" degeneracy fallback is decided in saem_fit AFTER
     // the initial hard classification -- see below.)
     DEBUG=as<int>(x["DEBUG"]);
-    phiMFile=as<std::vector< std::string > >(x["phiMFile"]);
-    //Rcout << phiMFile[0];
 
   }
 
@@ -2927,9 +2944,10 @@ public:
     nmSeqSeedStart(saemSeed, seedReserved);
     double double_xmin = 1.0e-200; //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
-    ofstream phiFile;
     _warnAtolRtol = false;
-    phiFile.open(phiMFile[0].c_str());
+    // kept in memory, not a temp file: cluster temp cleaners deleted it mid-fit (#1276)
+    phiMHist = NumericVector((R_xlen_t)niter * N * nmc * nphi);
+    phiMHist.attr("dim") = IntegerVector::create(N, nmc, niter, nphi);
 
     if (DEBUG>0) {
       RSprintf("initialization successful\n");
@@ -3123,7 +3141,7 @@ public:
           do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
         }
         if (DEBUG > 0) Rcout << "mcmc successful (msaem)\n";
-        if (kiter < (unsigned int)niter) phiFile << phiM;
+        if (kiter < (unsigned int)niter) savePhiM(kiter, phiM);
 
         // E-step: posterior responsibility gamma_{i,m} (softmax, see mixWeights below) from
         // the one simulated phi, plus per-hypothesis predictions for the residual term below.
@@ -3539,7 +3557,7 @@ public:
             phiM_weighted.row(row) += mixWeights(i_subj, jMix) * phiM_mix(jMix).row(row);
           }
         }
-        if (kiter < (unsigned int)niter) phiFile << phiM_weighted;
+        if (kiter < (unsigned int)niter) savePhiM(kiter, phiM_weighted);
         for (int k = 0; k < nmc; k++) {
           phi.slice(k) = phiM_weighted.rows(span(k * N, (k + 1) * N - 1));
         }
@@ -3754,7 +3772,7 @@ public:
         // close this iteration's mixing diagnostics, after the whole MCMC
         // block, so they describe the chain the M-step is about to use
         mcmcCloseIter(kiter, (unsigned int)(niter + nSaCov), phiM);
-        if (kiter < (unsigned int)niter) phiFile << phiM;
+        if (kiter < (unsigned int)niter) savePhiM(kiter, phiM);
 
         //integration
         for(int k=0; k<nmc; k++) {
@@ -4950,7 +4968,6 @@ public:
     // disagree with the fit's own per-subject probabilities (#1058).
     if (nMix > 1 && arma::accu(mixWeights) > 0.0) mixProb = mean(mixWeights, 0).t();
     nmRngGuard([&]{ computeEtaMode(); return 0; });
-    phiFile.close();
   }
 
 
@@ -5212,7 +5229,14 @@ private:
   int arNobs[MAXENDPNT];
 
   int DEBUG;
-  std::vector< std::string > phiMFile;
+  // every estimation iteration's phiM, laid out as an N x nmc x niter x nphi array
+  NumericVector phiMHist;
+
+  void savePhiM(unsigned int kiter, const mat &m) {
+    const uword nr = (uword)N * nmc;
+    mat h(phiMHist.begin(), nr * niter, nphi, false, true);
+    h.rows(kiter * nr, (kiter + 1) * nr - 1) = m;
+  }
 
   // Build fsb (predictions across all nmc chains) and ysb (observations
   // replicated nmc times) for a single endpoint b, used by the residual
@@ -6064,6 +6088,7 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
       int kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) != 0) continue;
       double curT = getTime(kk, ind);
+      lhsWalkNewind(ind, j);
       rxPred.calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
       double cur = lhs[_saemPhi1PredOffset];
       // The pooled pred model is FOCEi's, whose log-density leaves the transform's
@@ -6212,16 +6237,18 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   for (int id = 0; id < _Nnlmixr2; ++id) {
     ind = getSolvingOptionsInd(_rx, id);
     double *lhs = getIndLhs(ind);
-    iniSubjectE(getOpNeq(op), 1, ind, op, _rx, saem_inis);
+    iniSubjectE(id, 1, ind, op, _rx, saem_inis);
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
       setIndIdx(ind, j);
       int kk = getIndIx(ind, getIndIdx(ind));
       double curT = getTime(kk, ind);
       if (isDose(getIndEvid(ind, kk))) {
         // Need to calculate for advan sensitivities
+        lhsWalkNewind(ind, j);
         saem_lhs((int)id, curT,
                  getOpIndSolve(op, ind, j), lhs);
       } else if (getIndEvid(ind,kk) == 0) {
+        lhsWalkNewind(ind, j);
         saem_lhs((int)id, curT,
                  getOpIndSolve(op, ind, j), lhs);
         double cur = saemGenLikCens(lhs, hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0,
@@ -6422,6 +6449,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("transMat") = saem.get_trans(),
     Named("mprior_phi") = saem.get_mprior_phi(),
     Named("mpost_phi") = saem.get_mpost_phi(),
+    Named("phiM") = saem.get_phiM(),
     Named("Gamma2_phi1") = saem.get_Gamma2_phi1(),
     Named("Gamma2_phi1Report") = saem.get_Gamma2_phi1Report(),
     Named("Plambda") = saem.get_Plambda(),
