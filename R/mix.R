@@ -197,6 +197,7 @@
     }
     .walk(e)
   })))
+  .pairs <- integer(0)
   for (.mc in .mixCalls) {
     .args <- as.list(.mc)[-1]
     .comps <- .args[seq(1, length(.args), by = 2)]
@@ -217,7 +218,16 @@
         }
         .comp[.p] <- .j
         .eta[.p] <- .pe
+        .pairs[.e] <- sum(.pairs[.e], 1L, na.rm = TRUE)
       }
+    }
+  }
+  # recentering shifts the eta, so every use of it must be a paired sum
+  for (.e in names(.pairs)) {
+    if (!identical(as.integer(.count[[.e]]), .pairs[[.e]])) {
+      .w <- .eta == match(.e, pars)
+      .comp[.w] <- 0L
+      .eta[.w] <- 0L
     }
   }
   list(comp = .comp, eta = .eta)
