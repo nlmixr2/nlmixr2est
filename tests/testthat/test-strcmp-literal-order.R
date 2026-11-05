@@ -10,6 +10,9 @@ test_that("generated models number string literals like the data (#1299)", {
   # the params() statement still fixes the parameter order
   expect_equal(.mv$params, c("b0", "b2", "b24", "tnom"))
   expect_length(.nlmixr2estStrCmpBad(.mv, .strCmp), 0L)
+  # a params() statement spanning lines stays whole
+  .multi <- .nlmixr2estStrCmpSeed(sub("b2, ", "b2,\n  ", .txt, fixed = TRUE), .strCmp)
+  expect_equal(levels(rxode2::rxModelVars(.multi)$strCmpParams$tnom), c("1", "2", "24"))
   # already-matching text is left alone
   expect_identical(.nlmixr2estStrCmpSeed(.seeded, .strCmp), .seeded)
 })
