@@ -3438,7 +3438,9 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     eventTheta = .eventTheta,
     eventEta = .eventEta,
     ## which etas enter a dosing expression, regardless of eventSens mode (#1016)
-    eventEtaAll = .eventEtaAll
+    eventEtaAll = .eventEtaAll,
+    ## an estimated parameter reaches a delay() duration (#1300)
+    delayLag = length(.delayLag$eta) + length(.delayLag$theta) > 0L
     ## ,
     ## cache.file=cache.file
   )
@@ -3845,6 +3847,11 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
       .rxControl2$method <- 0L
       .rxControl2$stiff2 <- 13L
       .rxControl2$dense <- TRUE
+      rxode2::rxAssignControlValue(ui, "rxControl", .rxControl2)
+    }
+    if (isTRUE(env$model$delayLag)) {
+      .rxControl2 <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+      .rxControl2 <- .rxControlDelayLagTol(.rxControl2, rxode2::rxGetControl(ui, "sigdig", NULL))
       rxode2::rxAssignControlValue(ui, "rxControl", .rxControl2)
     }
   }
