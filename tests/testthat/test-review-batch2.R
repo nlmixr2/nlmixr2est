@@ -1,5 +1,5 @@
 nmTest({
-  ## D2: guard against OOB curRow read in handleCensNpdeCdf when pd rounds to 1.0
+  ## D2: cdf censoring on BLQ data gives finite NPDE
   test_that("npde cdf censoring on BLQ data yields finite NPDE (D2 OOB regression)", {
     d <- theo_sd
     lloq <- 2.0

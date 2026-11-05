@@ -623,6 +623,11 @@ This example shows what is typical printout of a nlmixr fit object.  The element
      \item The Untransformed parameter takes log-space parameters and back-transforms them to normal parameters.  Not the CIs
        are listed on the back-transformed parameter space.
      \item Proportional Errors are converted to %CV on the untransformed space
+     \item Each estimated between-subject covariance adds a final row,
+       \code{bsvcorr(A,B)}, with the correlation in the BSV column (described as
+       \code{BSV correlation between A and B} in the label column of a model with labels);
+       \code{fix()} there marks a fixed covariance, whose correlation still moves with
+       estimated variances
    }
  \item Omega block (accessed by \code{fit.s$omega})
  \item The table of fit data. Please note:
