@@ -161,6 +161,9 @@
   the data was coded once in the model's order; the generated models now use
   the data's order, and a mismatch is an error (#1299).
 
+- A model without etas whose covariate is compared to string literals no
+  longer fails the table step ("error calculating tables") (#1299).
+
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
   the final ETAs from that evaluation's ETAs, keeping per subject the lower
