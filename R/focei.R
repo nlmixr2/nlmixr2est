@@ -798,7 +798,8 @@ is.latex <- function() {
 #' masked `gm`/`hm` trust was given); `held`/`heldAt` the coordinates on a
 #' bound; `snapPending` asks the run loop to re-enter with a new hold, and
 #' `snapNew` marks the coordinates that hold covers.  `best` is the lowest
-#' accepted incumbent; `noSnap` turns holds off once a run has to return to it.
+#' accepted incumbent; `noSnap` turns holds off once a run has to return to it;
+#' `snapSeen` the points already held at.
 #' @param lower,upper box the outer problem optimizes in
 #' @return an environment
 #' @noRd
@@ -812,6 +813,7 @@ is.latex <- function() {
   .s$infeasibleRun <- 0L
   .s$best <- NULL
   .s$noSnap <- FALSE
+  .s$snapSeen <- list()
   .s$snapPending <- FALSE
   .s$snapNew <- rep(FALSE, length(lower))
   .s$activeChanges <- 0L
@@ -865,9 +867,13 @@ is.latex <- function() {
         state$infeasibleRun <- state$infeasibleRun + 1L
         if (state$infeasibleRun >= 2L && !state$noSnap) {
           .bound <- ifelse(x[.out] < lower[.out], lower[.out], upper[.out])
-          x <- state$inc$x
-          x[.out] <- .bound
-          .snap <- TRUE
+          .to <- state$inc$x
+          .to[.out] <- .bound
+          # never hold at a point already held at: that only cycles
+          if (!any(vapply(state$snapSeen, identical, NA, .to))) {
+            x <- .to
+            .snap <- TRUE
+          }
         }
       }
       if (!.snap) {
@@ -901,6 +907,7 @@ is.latex <- function() {
       state$held[.out] <- TRUE
       state$heldAt[.out] <- .bound
       state$snapNew <- .out
+      state$snapSeen <- c(state$snapSeen, list(x))
       state$snapPending <- TRUE
       return(.reject)
     }
