@@ -573,6 +573,9 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
   } else {
     .eventTheta <- integer(0)
   }
+  ## a delay() duration's thetas are finite-differenced in every mode (#1300)
+  .dl <- .foceiDelayLagParams(s)$theta
+  .eventTheta[.dl[.dl <= length(.eventTheta)]] <- 1L
   if (!flag) {
     return(.eventTheta)
   }
