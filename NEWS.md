@@ -106,6 +106,12 @@
 
 ### Estimation
 
+- The FOCEi residual-variance floor is now `DBL_MIN^(1/8)` (about 3.5e-39)
+  instead of `sqrt(.Machine$double.eps)`.  A proportional-error prediction
+  below about 6e-4 (at a 0.2 SD) is no longer floored; the floor had biased
+  -2LL upward, more the smaller the prediction, and broken scale invariance
+  (#1285).
+
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
   the final ETAs from that evaluation's ETAs, keeping per subject the lower

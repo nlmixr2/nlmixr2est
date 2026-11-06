@@ -410,11 +410,14 @@
   Es
 }
 
+# FOCEi residual-variance floor; mirrors `foceiRFloor` in src/inner.cpp (#1285)
+.foceiRFloor <- .Machine$double.xmin^0.125
+
 #' Floor a tiny residual variance the way the FOCEi objective does (#1132): a floored
 #' (or zero -> 1) R is constant, so its sensitivities are zero too.
 #' @noRd
 .foceiFloorRvar <- function(E) {
-  .fl <- sqrt(.Machine$double.eps)
+  .fl <- .foceiRFloor
   .w <- which(E$R < .fl)
   if (length(.w) == 0L) {
     return(E)

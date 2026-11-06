@@ -407,10 +407,11 @@ void restoreFromEnvironment(Environment e);
 //#define _safe_zero(a) (a)
 // Residual-variance floor shared by the objective and the analytic outer gradient
 // (#1132): below it R is constant, so both must treat its derivatives as zero.
-static const double foceiRFloor = std::sqrt(DBL_EPSILON);
+// DBL_MIN^(1/8) keeps the censored partials' R^-5.5 finite yet floors no real
+// prediction (#1285).
+static const double foceiRFloor = std::pow(DBL_MIN, 0.125);
 #define _safe_sqrt(a) ((a) <= 0 ? sqrt(DBL_EPSILON) : sqrt(a))
 //#define _safe_sqrt(a) sqrt(a)
-#define _as_dbleps(a) (fabs(a) < sqrt(DBL_EPSILON) ? ((a) < 0 ? -sqrt(DBL_EPSILON)  : sqrt(DBL_EPSILON)) : a)
 
 #define expit(alpha, low, high) _powerDi(alpha, 1.0, 4, low, high)
 #define probitInv(alpha, low, high) _powerDi(alpha, 1.0, 6, low, high)
@@ -3481,13 +3482,14 @@ double likInner0(double *eta, int id) {
                 // The FOCEi (f, R) kernel keeps an exactly-zero d(f)/d(eta) and d(R)/d(eta)
                 // off zero.  A log-density row has no (f, R): fpm IS d(log-density)/d(eta)
                 // and is summed into lp as it stands, so a row the eta does not reach
-                // adds exactly 0 to the eta gradient.
+                // adds exactly 0 to the eta gradient.  The stand-ins scale with r so their
+                // fpm^2/r and (rp/r)^2 Hessian terms stay O(eps) at any data scale (#1285).
                 if (dist == rxDistributionNorm) {
                   if (fpm == 0.0) {
-                    a(k, i) = fpm = sqrt(DBL_EPSILON);
+                    a(k, i) = fpm = sqrt(DBL_EPSILON * r);
                   }
                   if (rp == 0.0) {
-                    rp = sqrt(DBL_EPSILON);
+                    rp = sqrt(DBL_EPSILON) * r;
                   }
                 }
                 if (rFloored) rp = 0.0;   // a floored R is flat in eta
@@ -3681,7 +3683,7 @@ static bool conditionalInnerPartials(rx_solving_options_ind *ind, int kk2,
                                      int ne, const double *lhs, double *cp, double &value) {
   int p = op_focei.predOffset;
   double f = lhs[p], variance = lhs[p+ne+1];
-  if (!R_FINITE(variance) || variance <= std::sqrt(DBL_EPSILON)) return false;
+  if (!R_FINITE(variance) || variance <= foceiRFloor) return false;
   double y = tbs(getIndDv(ind, kk2));
   double limit = hasRxLimit(rx) ? getIndLimit(ind, kk2) : R_NegInf;
   if (ISNA(limit)) limit = R_NegInf;
@@ -3704,10 +3706,10 @@ static void conditionalInnerScore(FoceiInnerResult &result, double value,
   result.value += value;
   int p = op_focei.predOffset;
   for (int j = 0; j < ne; ++j) {
-    double fj = lhs[p+j+1], rj = lhs[p+ne+j+2];
+    double fj = lhs[p+j+1], rj = lhs[p+ne+j+2], v = lhs[p+ne+1];
     // Match the ordinary inner score's zero-sensitivity convention.
-    if (fj == 0) fj = std::sqrt(DBL_EPSILON);
-    if (rj == 0) rj = std::sqrt(DBL_EPSILON);
+    if (fj == 0) fj = std::sqrt(DBL_EPSILON * v);
+    if (rj == 0) rj = std::sqrt(DBL_EPSILON) * v;
     result.gradient[j] += cp[0]*fj+cp[1]*rj;
   }
 }
@@ -19434,7 +19436,7 @@ struct FoceiHessianProbes {
 };
 
 static bool foceiHessianExpand(VaeOuterE &e, const FoceiGradPooledSetup &g, bool checkVariance = true) {
-  if (!e.ok || e.nobs <= 0 || (checkVariance && e.R.min() <= std::sqrt(DBL_EPSILON))) return false;
+  if (!e.ok || e.nobs <= 0 || (checkVariance && e.R.min() <= foceiRFloor)) return false;
   if (g.nsg == 0) return true;
   int nd = g.nd, nc = nd+g.nsg, no = e.nobs;
   arma::mat a(no,nc,arma::fill::zeros), ar(no,nc,arma::fill::zeros);
@@ -19576,7 +19578,7 @@ struct FoceiHessianModel {
   bool population(std::vector<VaeOuterE> &e) {
     arma::mat zero(getRxNsub(rx),g.neta,arma::fill::zeros);
     if (!solve(zero,e)) return false;
-    for (const auto &one : e) if (one.R.min() <= std::sqrt(DBL_EPSILON)) return false;
+    for (const auto &one : e) if (one.R.min() <= foceiRFloor) return false;
     return true;
   }
 };

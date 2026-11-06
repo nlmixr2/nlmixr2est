@@ -1035,7 +1035,7 @@
     # assembler reads the floored solve, so the caller reroutes there
     if (!is.null(ef$rvar)) {
       .rv <- ef$ev(ef$rvar, if (.needF0) E0$f else E$f, NA_real_)
-      if (any(.rv < sqrt(.Machine$double.eps))) {
+      if (any(.rv < .foceiRFloor)) {
         return(structure(list(), class = "foceiFlooredR"))
       }
     }
@@ -1078,7 +1078,7 @@
       function(etak) {
         .Ek <- .foceiAnalyticSolveFA(am, c(th, setNames(etak, etav)), s$ev, s$times, tol = solveTol)
         # a node can floor R while eta-hat does not; stop and report it like eta-hat
-        if (!is.null(.Ek) && !is.null(ef$rvar) && any(ef$ev(ef$rvar, .Ek$f, NA_real_) < sqrt(.Machine$double.eps))) {
+        if (!is.null(.Ek) && !is.null(ef$rvar) && any(ef$ev(ef$rvar, .Ek$f, NA_real_) < .foceiRFloor)) {
           .nodeState$floored <- TRUE
           return(NULL)
         }
