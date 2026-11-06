@@ -720,7 +720,7 @@ nmTest({
 
   test_that("a fixed Omega element gives its terms no interval", {
     .fx <- function(ui) {
-      .ranParFixed(list(ui = ui), ui$omega, .ranParPairs(ui$iniDf, dimnames(ui$omega)[[2]]))
+      .ranParFixed(ui$iniDf, ui$omega, .ranParPairs(ui$iniDf, dimnames(ui$omega)[[2]]))
     }
     .ui <- rxode2::rxode2(.bsvCorBlockFit)
     # sd__eta.ka, sd__eta.cl, sd__eta.v, cor__eta.v.eta.cl
@@ -757,6 +757,17 @@ nmTest({
     .t <- .ranParTable(.x)
     expect_identical(.t$term, c("sd__eta.ka", "sd__eta.cl", "sd__eta.v", "cor__eta.v.eta.cl"))
     expect_identical(.t$estimate[4], 0)
+    # a ui rebuilt from that omega has lost the covariance row; the model as
+    # estimated (iniDf0) still has it
+    .rebuilt <- rxode2::rxode2(.ui)
+    .rebuilt$iniDf <- .ui$iniDf[.ui$iniDf$name != "(eta.cl,eta.v)", , drop = FALSE]
+    .env <- new.env(parent = emptyenv())
+    .env$iniDf0 <- .ui$iniDf
+    .x$ui <- .rebuilt
+    expect_identical(.ranParTable(.x)$term[1:3], c("sd__eta.ka", "sd__eta.cl", "sd__eta.v"))
+    expect_length(.ranParTable(.x)$term, 3L)
+    .x$env <- .env
+    expect_identical(.ranParTable(.x)$term[4], "cor__eta.v.eta.cl")
     # an undeclared pair (eta.ka with eta.cl) is not a term
     expect_identical(.ranParPairs(.ui$iniDf, c("eta.ka", "eta.cl", "eta.v")), cbind(row = 3L, col = 2L))
   })

@@ -266,12 +266,13 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 
 #' Which `sd__`/`cor__` terms involve a fixed Omega element
 #'
+#' @param iniDf the model's `iniDf`
 #' @inheritParams .ranParSe
 #' @return logical, the SDs then `pairs`' correlations
 #' @noRd
-.ranParFixed <- function(x, omega, pairs) {
+.ranParFixed <- function(iniDf, omega, pairs) {
   .nm <- dimnames(omega)[[2]]
-  .ini <- x$ui$iniDf
+  .ini <- iniDf
   .ini <- .ini[!is.na(.ini$neta1), , drop = FALSE]
   .idx <- .ini$neta1[match(.nm, .ini$name)]
   .fix <- function(a, b) {
@@ -341,7 +342,10 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     return(NULL)
   }
   .nm <- dimnames(.omega)[[2]]
-  .pairs <- .ranParPairs(x$ui$iniDf, .nm)
+  # the model as estimated, as $parFixed reports its correlations: a ui
+  # rebuilt from the estimated omega has lost a covariance estimated at zero
+  .ini <- if (is.environment(x$env)) .updateParFixedBsvCorIni(x$env, x$ui) else x$ui$iniDf
+  .pairs <- .ranParPairs(.ini, .nm)
   .sep1 <- getOption("broom.mixed.sep1", "__")
   .sep2 <- getOption("broom.mixed.sep2", ".")
   .pars <- c(
@@ -366,7 +370,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     stringsAsFactors = FALSE
   )
   # a fixed Omega element is not estimated, nor is any under est="posthoc"
-  .fix <- .ranParFixed(x, .omega, .pairs) | identical(x$est, "posthoc")
+  .fix <- .ranParFixed(.ini, .omega, .pairs) | identical(x$est, "posthoc")
   .df[.fix, c("std.error", "conf.low", "conf.high")] <- NA_real_
   .df$method[.fix | is.na(.df$std.error)] <- NA_character_
   .df
