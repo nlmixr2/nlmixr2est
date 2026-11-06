@@ -14,6 +14,10 @@
 
 ## New features
 
+- `outerOpt="trust"` evaluates the outer gradient and Hessian only at trial
+  points the trust region could accept, so a trial that is no improvement gets
+  its value alone (1.1x-2.6x faster with the analytical Hessian).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the
@@ -105,6 +109,12 @@
   the first `$runInfo` line; `$cov` had partially matched `covMethod = "failed"`.
 
 ### Estimation
+
+- `outerOpt="trust"` now holds a parameter on its bound when its steps keep
+  leaving the box there, and releases it when the gradient pulls it back
+  inside; `$optReturn$activeBounds` lists the held parameters.  Fits with an
+  active bound previously stopped well above the optimum while reporting
+  convergence.
 
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
