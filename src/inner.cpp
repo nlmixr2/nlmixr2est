@@ -13174,7 +13174,7 @@ NumericMatrix foceiCalcCov(Environment e){
           // clipped to one line in R; covMethod keeps every name
           Environment nlmixr2est = Environment::namespace_env("nlmixr2est");
           Function boundWarn = as<Function>(nlmixr2est[".covBoundaryWarn"]);
-          boundWarn(wrap(boundNames));
+          boundWarn(boundNames);
           e["covMethod"] = "Boundary issue; Get SEs with `getVarCov()`: " + boundStr;
         }
         NumericMatrix ret;
