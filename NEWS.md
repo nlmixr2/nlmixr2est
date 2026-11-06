@@ -106,6 +106,12 @@
 
 ### Estimation
 
+- A covariate compared to string literals (`b2 * (tnom == "2")`) no longer
+  gets permuted estimates or `PRED`.  Each generated model (inner, pred,
+  outer, saem, nlm, nlme, ...) numbered the literals in its own order while
+  the data was coded once in the model's order; the generated models now use
+  the data's order, and a mismatch is an error (#1299).
+
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
   the final ETAs from that evaluation's ETAs, keeping per subject the lower
