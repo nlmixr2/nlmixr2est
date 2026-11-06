@@ -701,9 +701,10 @@ nmTest({
     )
     .vc <- .cov[-1, -1]
     expect_identical(names(.getR(.omR, TRUE)), c("sd__a", "sd__b", "sd__c", "cor__c.b"))
-    expect_equal(.ranParSe(list(cov = .cov), .om, .omR), sqrt(diag(.J %*% .vc %*% t(.J))), tolerance = 1e-6)
+    .pr <- cbind(row = 3L, col = 2L)
+    expect_equal(.ranParSe(list(cov = .cov), .om, .pr), sqrt(diag(.J %*% .vc %*% t(.J))), tolerance = 1e-6)
     # a theta-only $cov has no Omega rows to give an SE
-    expect_identical(.ranParSe(list(cov = .cov[1, 1, drop = FALSE]), .om, .omR), rep(NA_real_, 4))
+    expect_identical(.ranParSe(list(cov = .cov[1, 1, drop = FALSE]), .om, .pr), rep(NA_real_, 4))
   })
 
   test_that("Wishart ran_pars intervals: scaled chi-square SDs, Fisher-z correlations", {
@@ -718,7 +719,9 @@ nmTest({
   })
 
   test_that("a fixed Omega element gives its terms no interval", {
-    .fx <- function(ui) .ranParFixed(list(ui = ui), ui$omega, .corFromCov(ui$omega))
+    .fx <- function(ui) {
+      .ranParFixed(list(ui = ui), ui$omega, .ranParPairs(ui$iniDf, dimnames(ui$omega)[[2]]))
+    }
     .ui <- rxode2::rxode2(.bsvCorBlockFit)
     # sd__eta.ka, sd__eta.cl, sd__eta.v, cor__eta.v.eta.cl
     expect_identical(.fx(.ui), c(FALSE, FALSE, FALSE, FALSE))
@@ -744,6 +747,18 @@ nmTest({
     # a posthoc fit takes Omega from ini(); nothing about it was estimated
     .x$est <- "posthoc"
     expect_identical(.ranParTable(.x)$std.error, rep(NA_real_, 4))
+  })
+
+  test_that("a declared covariance estimated at zero keeps its cor__ term", {
+    .ui <- rxode2::rxode2(.bsvCorBlockFit)
+    .om <- .ui$omega
+    .om["eta.cl", "eta.v"] <- .om["eta.v", "eta.cl"] <- 0
+    .x <- list(ui = .ui, omega = .om, omegaR = .corFromCov(.om), cov = NULL, eta = data.frame(ID = 1:12), est = "focei")
+    .t <- .ranParTable(.x)
+    expect_identical(.t$term, c("sd__eta.ka", "sd__eta.cl", "sd__eta.v", "cor__eta.v.eta.cl"))
+    expect_identical(.t$estimate[4], 0)
+    # an undeclared pair (eta.ka with eta.cl) is not a term
+    expect_identical(.ranParPairs(.ui$iniDf, c("eta.ka", "eta.cl", "eta.v")), cbind(row = 3L, col = 2L))
   })
 
   test_that("ran_pars intervals use log(sd) and atanh(cor), with an SD above 1", {

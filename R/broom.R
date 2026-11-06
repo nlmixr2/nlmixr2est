@@ -175,22 +175,42 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   }
 }
 
+#' The correlation terms the model declares among the subject-level etas
+#'
+#' A declared covariance is a term even when it is estimated at zero, as
+#' `$parFixed`'s `bsvcorr()` rows are.
+#'
+#' @param iniDf the model's `iniDf`
+#' @param nm the eta names, in Omega's order
+#' @return two-column index matrix into Omega (later eta, earlier eta),
+#'   ordered as `which(lower.tri(), arr.ind = TRUE)`
+#' @noRd
+.ranParPairs <- function(iniDf, nm) {
+  .eta <- iniDf[!is.na(iniDf$neta1), , drop = FALSE]
+  .dn <- .eta$name[.eta$neta1 == .eta$neta2]
+  .dn <- .dn[order(.eta$neta1[.eta$neta1 == .eta$neta2])]
+  .off <- .eta[.eta$neta1 != .eta$neta2, , drop = FALSE]
+  .i <- match(.dn[.off$neta1], nm)
+  .j <- match(.dn[.off$neta2], nm)
+  .k <- !is.na(.i) & !is.na(.j)
+  .p <- cbind(row = pmax(.i, .j)[.k], col = pmin(.i, .j)[.k])
+  .p[order(.p[, "col"], .p[, "row"]), , drop = FALSE]
+}
+
 #' Delta-method SEs of the `sd__`/`cor__` terms from a fit's Omega covariance
 #'
 #' @param x nlmixr2 fit
 #' @param omega the subject-level Omega (variance scale)
-#' @param omegaR the same Omega as `$omegaR` gives it (SDs and correlations)
-#' @return SEs in `.getR(omegaR, TRUE)` order; `NA` where `x$cov` has no
-#'   `om.`/`cov.` row for the term
+#' @param pairs the correlation terms, from `.ranParPairs()`
+#' @return SEs of the SDs then of `pairs`' correlations; `NA` where `x$cov`
+#'   has no `om.`/`cov.` row for the term
 #' @noRd
-.ranParSe <- function(x, omega, omegaR) {
+.ranParSe <- function(x, omega, pairs) {
   .nm <- dimnames(omega)[[2]]
   .cov <- x$cov
   .cn <- if (is.matrix(.cov)) rownames(.cov) else character(0)
   .vn <- paste0("om.", .nm)
-  .pairs <- which(lower.tri(omega), arr.ind = TRUE)
-  # the same rows .getR() keeps
-  .pairs <- .pairs[omegaR[lower.tri(omegaR)] != 0, , drop = FALSE]
+  .pairs <- pairs
   .sd <- sqrt(diag(omega))
   # each term is a function of these Omega elements: d term / d element
   .terms <- c(
@@ -247,9 +267,9 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 #' Which `sd__`/`cor__` terms involve a fixed Omega element
 #'
 #' @inheritParams .ranParSe
-#' @return logical in `.getR(omegaR, TRUE)` order
+#' @return logical, the SDs then `pairs`' correlations
 #' @noRd
-.ranParFixed <- function(x, omega, omegaR) {
+.ranParFixed <- function(x, omega, pairs) {
   .nm <- dimnames(omega)[[2]]
   .ini <- x$ui$iniDf
   .ini <- .ini[!is.na(.ini$neta1), , drop = FALSE]
@@ -258,8 +278,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     .w <- which(.ini$neta1 == max(a, b) & .ini$neta2 == min(a, b))
     length(.w) == 1L && isTRUE(.ini$fix[.w])
   }
-  .pairs <- which(lower.tri(omega), arr.ind = TRUE)
-  .pairs <- .pairs[omegaR[lower.tri(omegaR)] != 0, , drop = FALSE]
+  .pairs <- pairs
   c(
     vapply(.idx, function(i) .fix(i, i), logical(1)),
     vapply(
@@ -318,12 +337,22 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     .omegaR <- .omegaR$id
     .omega <- .omega$id
   }
-  .pars <- .getR(.omegaR, TRUE)
-  if (length(.pars) == 0) {
+  if (is.null(.omega) || nrow(.omega) == 0) {
     return(NULL)
   }
+  .nm <- dimnames(.omega)[[2]]
+  .pairs <- .ranParPairs(x$ui$iniDf, .nm)
+  .sep1 <- getOption("broom.mixed.sep1", "__")
+  .sep2 <- getOption("broom.mixed.sep2", ".")
+  .pars <- c(
+    setNames(diag(.omegaR), paste0("sd", .sep1, .nm)),
+    setNames(
+      .omegaR[.pairs],
+      if (nrow(.pairs) == 0) character(0) else paste0("cor", .sep1, .nm[.pairs[, 1]], .sep2, .nm[.pairs[, 2]])
+    )
+  )
   .isSd <- seq_along(.pars) <= nrow(.omega)
-  .cse <- if (method == "wishart") rep(NA_real_, length(.pars)) else .ranParSe(x, .omega, .omegaR)
+  .cse <- if (method == "wishart") rep(NA_real_, length(.pars)) else .ranParSe(x, .omega, .pairs)
   .ci <- .ranParCi(.pars, .cse, .isSd, level)
   .useW <- if (method == "cov") rep(FALSE, length(.pars)) else is.na(.cse)
   .w <- .ranParWishart(.pars, .isSd, nrow(x$eta), level)
@@ -337,7 +366,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     stringsAsFactors = FALSE
   )
   # a fixed Omega element is not estimated, nor is any under est="posthoc"
-  .fix <- .ranParFixed(x, .omega, .omegaR) | identical(x$est, "posthoc")
+  .fix <- .ranParFixed(x, .omega, .pairs) | identical(x$est, "posthoc")
   .df[.fix, c("std.error", "conf.low", "conf.high")] <- NA_real_
   .df$method[.fix | is.na(.df$std.error)] <- NA_character_
   .df
