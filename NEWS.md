@@ -106,6 +106,14 @@
 
 ### Estimation
 
+- A parameter in a `delay()` duration (for example `delay(central, TR)` with
+  `TR <- exp(lTR + eta.TR)`) is now finite-differenced in FOCEi, its family
+  and the nlm family.  Its symbolic sensitivity was zero (the lag's own term
+  and the jump each dose makes at `t + TR` were missing), so the fit left the
+  delay at its initial estimate.  The analytic covariance, the analytic outer
+  gradient and the theta-sensitivity models fall back for such a model
+  (#1300).
+
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
   the final ETAs from that evaluation's ETAs, keeping per subject the lower

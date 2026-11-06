@@ -83,6 +83,10 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   if (!exists("..maxTheta", .s)) {
     return(NULL)
   }
+  .dl <- .foceiDelayLagParams(.s)
+  if (length(.dl$theta) + length(.dl$eta) > 0L) {
+    return(NULL) # #1300: the symbolic sensitivities miss a delay() lag's term
+  }
   .stateVars <- .rxode2stateOdeNoOutput(.s)
   # State sensitivities only for the structural thetas.
   # paste0 recycles a zero-length struct index to "" (R >= 4.0), which
