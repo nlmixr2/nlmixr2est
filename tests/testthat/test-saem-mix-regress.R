@@ -220,3 +220,40 @@ test_that("regress classifies at each subject's own etas under proportional erro
   expect_equal(th[["p1"]], mean(.d$comp == 1), tolerance = 0.1)
   expect_gt(mean(fit$mixNum$mixnum == .d$comp), 0.9)
 })
+
+test_that("a shared eta's component thetas are its per-component means (#1296)", {
+  skip_on_cran()
+  .testSeed(2026)
+  .d <- .mix1296Data()
+
+  # one eta shared by both components: tcl1/tcl2 have no eta of their own, so
+  # SAEM carried them as fixed-effect-only search parameters and the shared
+  # eta's variance absorbed the component split
+  mixMod <- function() {
+    ini({
+      tka <- log(1); tcl1 <- log(8); tcl2 <- log(2); tv <- log(50); p1 <- 0.6
+      eta.ka ~ 0.1; eta.cl ~ 0.1; eta.v ~ 0.1; prop.sd <- 0.2
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+      v <- exp(tv + eta.v)
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  fit <- suppressWarnings(nlmixr2(
+    mixMod,
+    .d$data,
+    est = "saem",
+    saemControl(print = 0, seed = 1296, calcTables = FALSE)
+  ))
+  th <- fixef(fit)
+  expect_equal(exp(th[["tcl1"]]), 10, tolerance = 0.1)
+  expect_equal(exp(th[["tcl2"]]), 2.5, tolerance = 0.1)
+  expect_equal(th[["p1"]], mean(.d$comp == 1), tolerance = 0.1)
+  expect_gt(mean(fit$mixNum$mixnum == .d$comp), 0.9)
+  # the shared eta keeps the within-component BSV (0.06), not the split
+  expect_lt(fit$omega["eta.cl", "eta.cl"], 0.15)
+  # the component thetas get an SE from their eta's information
+  expect_true(all(is.finite(fit$parFixedDf[c("tcl1", "tcl2"), "SE"])))
+})

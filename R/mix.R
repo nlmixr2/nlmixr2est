@@ -132,6 +132,112 @@
   .ret
 }
 
+#' Summands of the outermost `+` chains in an expression
+#'
+#' @param expr parsed expression
+#' @return list of character vectors, the symbol summands of each `+` chain
+#' @noRd
+#' @author Matthew L. Fidler
+.mixSumChains <- function(expr) {
+  if (!is.call(expr)) {
+    return(NULL)
+  }
+  if (identical(expr[[1]], quote(`+`)) && length(expr) == 3L) {
+    .terms <- list()
+    .flat <- function(e) {
+      if (is.call(e) && identical(e[[1]], quote(`+`)) && length(e) == 3L) {
+        .flat(e[[2]])
+        .flat(e[[3]])
+      } else {
+        .terms[[length(.terms) + 1L]] <<- e
+      }
+    }
+    .flat(expr)
+    .syms <- vapply(.terms, function(e) if (is.name(e)) as.character(e) else "", character(1))
+    return(c(list(.syms[.syms != ""]), do.call(c, lapply(.terms, .mixSumChains))))
+  }
+  do.call(c, lapply(as.list(expr)[-1], .mixSumChains))
+}
+
+#' Component thetas that sum with a shared eta (#1296)
+#'
+#' A theta used once in the model, inside one `mix()` component, as
+#' `theta + eta` with an eta shared by several components, is that
+#' component's mean of the eta.  SAEM estimates it by recentering the eta
+#' per component instead of as a fixed-effect-only parameter.
+#'
+#' @param ui rxode2 ui
+#' @param pars SAEM parameter (phi) names, in phi order
+#' @return list with integer `comp` (owning component, 0 if none) and `eta`
+#'   (1-based phi index of the partner eta, 0 if none), both along `pars`
+#' @noRd
+#' @author Matthew L. Fidler
+.mixSharedEtaShift <- function(ui, pars) {
+  .comp <- integer(length(pars))
+  .eta <- integer(length(pars))
+  .ret <- list(comp = .comp, eta = .eta)
+  if (length(ui$mixProbs) == 0L) {
+    return(.ret)
+  }
+  .own <- .mixEtaOwner(ui)
+  .shared <- names(.own)[.own == 0L]
+  .mixCalls <- do.call(c, lapply(ui$lstExpr, .findMixCalls))
+  if (length(.shared) == 0L || length(.mixCalls) == 0L) {
+    return(.ret)
+  }
+  .iniDf <- ui$iniDf
+  .thetas <- .iniDf$name[!is.na(.iniDf$ntheta) & !.iniDf$fix]
+  .count <- table(unlist(lapply(ui$lstExpr, function(e) {
+    .walk <- function(x) {
+      if (is.name(x)) {
+        as.character(x)
+      } else if (is.call(x)) {
+        unlist(lapply(as.list(x)[-1], .walk))
+      }
+    }
+    .walk(e)
+  })))
+  .pairs <- integer(0)
+  for (.mc in .mixCalls) {
+    .args <- as.list(.mc)[-1]
+    .comps <- .args[seq(1, length(.args), by = 2)]
+    for (.j in seq_along(.comps)) {
+      for (.sum in .mixSumChains(.comps[[.j]])) {
+        .e <- intersect(.sum, .shared)
+        .t <- intersect(.sum, .thetas)
+        if (length(.e) != 1L || length(.t) != 1L) {
+          next
+        }
+        if (!identical(as.integer(.count[[.t]]), 1L)) {
+          next
+        }
+        .p <- match(.t, pars)
+        .pe <- match(.e, pars)
+        if (is.na(.p) || is.na(.pe)) {
+          next
+        }
+        .comp[.p] <- .j
+        .eta[.p] <- .pe
+        .pairs[.e] <- sum(.pairs[.e], 1L, na.rm = TRUE)
+      }
+    }
+  }
+  # recentering shifts the eta, so every use of it must be a paired sum, and
+  # one theta per component takes the shift
+  for (.e in names(.pairs)) {
+    .pe <- match(.e, pars)
+    if (
+      !identical(as.integer(.count[[.e]]), .pairs[[.e]]) ||
+        anyDuplicated(.comp[.eta == .pe]) > 0L
+    ) {
+      .w <- .eta == .pe
+      .comp[.w] <- 0L
+      .eta[.w] <- 0L
+    }
+  }
+  list(comp = .comp, eta = .eta)
+}
+
 #' Shrinkage of component-owned etas over their own component's subjects
 #'
 #' A component-owned eta is 0 for subjects of the other components, so its

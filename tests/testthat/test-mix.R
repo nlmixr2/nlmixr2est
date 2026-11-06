@@ -600,6 +600,72 @@ nmTest({
     expect_equal(.outside$saemOmegaShareSubpop[.outside$saemEtaNames == "eta.cl2"], 2L)
   })
 
+  test_that("saem pairs each component's own theta with a shared eta (#1296)", {
+    sharedEta <- function() {
+      ini({
+        tcl1 <- log(1); tcl2 <- log(8); tv <- log(20); tka <- log(1.1); p1 <- 0.5
+        eta.cl ~ 0.1; eta.v ~ 0.1; add.sd <- 0.1
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(sharedEta)
+    .pars <- .ui$saemParamsToEstimate
+    .s <- .mixSharedEtaShift(.ui, .pars)
+    expect_equal(.s$comp[match(c("tcl1", "tcl2"), .pars)], c(1L, 2L))
+    expect_equal(.s$eta[match(c("tcl1", "tcl2"), .pars)], rep(match("eta.cl", .pars), 2L))
+    expect_equal(sum(.s$comp > 0L), 2L)
+
+    # a theta used outside its component, or with an owned eta, is not paired
+    reused <- function() {
+      ini({
+        tcl1 <- log(1); tcl2 <- log(8); tv <- log(20); p1 <- 0.5
+        eta.cl ~ 0.1; eta.cl2 ~ 0.1; add.sd <- 0.1
+      })
+      model({
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl2))
+        v <- exp(tv + tcl1)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(reused)
+    expect_true(all(.mixSharedEtaShift(.ui, .ui$saemParamsToEstimate)$comp == 0L))
+
+    # recentering shifts the eta, so it must not be used anywhere else
+    etaOutside <- function() {
+      ini({
+        tcl1 <- log(1); tcl2 <- log(8); tv <- log(20); p1 <- 0.5
+        eta.cl ~ 0.1; add.sd <- 0.1
+      })
+      model({
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + 0.1 * eta.cl)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(etaOutside)
+    expect_true(all(.mixSharedEtaShift(.ui, .ui$saemParamsToEstimate)$comp == 0L))
+
+    # two thetas of one component sharing the eta cannot both take its mean
+    twoPerComp <- function() {
+      ini({
+        a1 <- log(1); a2 <- log(8); b1 <- log(20); b2 <- log(30); p1 <- 0.5
+        eta.cl ~ 0.1; add.sd <- 0.1
+      })
+      model({
+        cl <- mix(exp(a1 + eta.cl), p1, exp(a2 + eta.cl))
+        v <- mix(exp(b1 + eta.cl), p1, exp(b2 + eta.cl))
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui <- rxode2::rxode2(twoPerComp)
+    expect_true(all(.mixSharedEtaShift(.ui, .ui$saemParamsToEstimate)$comp == 0L))
+  })
+
   test_that("a component-owned eta's shrinkage is taken over its own component", {
     splitEta <- function() {
       ini({
