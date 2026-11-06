@@ -350,11 +350,17 @@
   and `confint(exponentiate = NA)` and `tidy(exponentiate = NA)` stopped on
   it ("NAs are not allowed in subscripted assignments").
 
-- `tidy(effects = "ran_pars")` now gives the `sd__`/`cor__` rows delta-method
-  standard errors when `$cov` includes Omega, and with `conf.int = TRUE`
-  intervals on the log-SD and Fisher-z scales.  The residual-error rows kept
-  their `conf.int` interval; it was `NA`.  `tidy()` also accepts broom.mixed's
-  `effects = "ran_coefs"`.
+- `confint()` now lists the subject-level variability after the thetas, as
+  lme4 lists its variance components: one `sd__<eta>` row per eta and one
+  `cor__<eta>.<eta>` row per estimated correlation, with the same values
+  `tidy(effects = "ran_pars")` reports.  Their intervals (`method=` in
+  `confint()`, `conf.method=` in `tidy()`) come from the Omega rows of `$cov`
+  (delta method, Wald on log(SD) and Fisher z) when present, otherwise from
+  the Wishart distribution of Omega over the subjects (`"auto"`, the
+  default; or `"cov"`/`"wishart"`).  A fixed Omega element, or any under
+  `est = "posthoc"`, has no interval.  The residual-error rows of `tidy()`
+  kept their `conf.int` interval; it was `NA`.  `tidy()` also accepts
+  broom.mixed's `effects = "ran_coefs"`.
 
 - `augPred()` under `covsInterpolation = "midpoint"` now fills its grid
   covariates with the mean of the two neighboring records, as rxode2 and

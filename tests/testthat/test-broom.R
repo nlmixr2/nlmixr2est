@@ -636,16 +636,25 @@ nmTest({
     .lo <- unname(.pf[.all, "Estimate"] - .z * .pf[.all, "SE"])
     .hi <- unname(.pf[.all, "Estimate"] + .z * .pf[.all, "SE"])
     .ci <- confint(fit)
-    expect_identical(rownames(.ci), .all)
-    expect_equal(.ci[["2.5 %"]], .lo)
-    expect_equal(.ci[["97.5 %"]], .hi)
-    # exponentiate = NA back-transforms the exp() thetas over the theta rows
-    # only; the eta row, with no estimate, is not among them
+    .sd <- c("sd__eta.ka", "sd__eta.cl", "sd__eta.v")
+    # the variability terms follow the thetas, as lme4 lists them
+    expect_identical(rownames(.ci), c(.all, .sd))
+    expect_equal(.ci[.all, "2.5 %"], .lo)
+    expect_equal(.ci[.all, "97.5 %"], .hi)
+    .rpt <- .ranParTable(fit)
+    expect_identical(.rpt$term, .sd)
+    expect_equal(.ci[.sd, "estimate"], .rpt$estimate)
+    expect_equal(.ci[.sd, "2.5 %"], .rpt$conf.low)
+    expect_equal(.ci[.sd, "97.5 %"], .rpt$conf.high)
+    expect_identical(rownames(confint(fit, parm = c("tv", "sd__eta.v"))), c("tv", "sd__eta.v"))
+    # exponentiate = NA back-transforms the exp() thetas only; the eta.ka row
+    # of $parFixedDf, with no estimate, is not among them
     .isExp <- c(TRUE, TRUE, TRUE, FALSE)
     .ciE <- confint(fit, exponentiate = NA)
-    expect_identical(rownames(.ciE), .all)
-    expect_equal(.ciE[["2.5 %"]], ifelse(.isExp, exp(.lo), .lo))
-    expect_equal(.ciE[["97.5 %"]], ifelse(.isExp, exp(.hi), .hi))
+    expect_identical(rownames(.ciE), c(.all, .sd))
+    expect_equal(.ciE[.all, "2.5 %"], ifelse(.isExp, exp(.lo), .lo))
+    expect_equal(.ciE[.all, "97.5 %"], ifelse(.isExp, exp(.hi), .hi))
+    expect_equal(.ciE[.sd, "2.5 %"], .rpt$conf.low)
     .fxE <- as.data.frame(broom.mixed::tidy(fit, effects = "fixed", exponentiate = NA))
     expect_identical(.fxE$term, .th)
     expect_equal(.fxE$std.error, unname(exp(.pf[.th, "Estimate"]) * .pf[.th, "SE"]))
@@ -697,6 +706,46 @@ nmTest({
     expect_identical(.ranParSe(list(cov = .cov[1, 1, drop = FALSE]), .om, .omR), rep(NA_real_, 4))
   })
 
+  test_that("Wishart ran_pars intervals: scaled chi-square SDs, Fisher-z correlations", {
+    .w <- .ranParWishart(c(0.5, 0.3), c(TRUE, FALSE), 20, 0.9)
+    expect_equal(.w$low[1], 0.5 * sqrt(20 / stats::qchisq(0.95, 20)))
+    expect_equal(.w$high[1], 0.5 * sqrt(20 / stats::qchisq(0.05, 20)))
+    expect_equal(.w$se, c(0.5 / sqrt(40), (1 - 0.09) / sqrt(20)))
+    expect_equal(.w$low[2], tanh(atanh(0.3) - stats::qnorm(0.95) / sqrt(17)))
+    expect_equal(.w$high[2], tanh(atanh(0.3) + stats::qnorm(0.95) / sqrt(17)))
+    # three subjects give no Fisher-z interval
+    expect_identical(.ranParWishart(0.3, FALSE, 3, 0.9)$low, NA_real_)
+  })
+
+  test_that("a fixed Omega element gives its terms no interval", {
+    .fx <- function(ui) .ranParFixed(list(ui = ui), ui$omega, .corFromCov(ui$omega))
+    .ui <- rxode2::rxode2(.bsvCorBlockFit)
+    # sd__eta.ka, sd__eta.cl, sd__eta.v, cor__eta.v.eta.cl
+    expect_identical(.fx(.ui), c(FALSE, FALSE, FALSE, FALSE))
+    expect_identical(.fx(rxode2::ini(.ui, eta.ka ~ fix(0.6))), c(TRUE, FALSE, FALSE, FALSE))
+    expect_identical(.fx(rxode2::ini(.ui, eta.cl + eta.v ~ fix(0.3, 0.05, 0.1))), c(FALSE, TRUE, TRUE, TRUE))
+  })
+
+  test_that("auto ran_pars intervals use $cov when it has Omega, else Wishart", {
+    .ui <- rxode2::rxode2(.bsvCorBlockFit)
+    .om <- .ui$omega
+    .cn <- c("tka", "om.eta.ka", "om.eta.cl", "cov.eta.v.eta.cl", "om.eta.v")
+    .cov <- diag(c(0.01, 0.02, 0.003, 0.0005, 0.002))
+    dimnames(.cov) <- list(.cn, .cn)
+    .x <- list(ui = .ui, omega = .om, omegaR = .corFromCov(.om), cov = .cov, eta = data.frame(ID = 1:12), est = "focei")
+    expect_identical(.ranParTable(.x)$method, rep("cov", 4))
+    expect_identical(.ranParTable(.x, method = "wishart")$method, rep("wishart", 4))
+    .w <- .ranParWishart(.ranParTable(.x)$estimate, c(TRUE, TRUE, TRUE, FALSE), 12, 0.95)
+    .x$cov <- .cov[1, 1, drop = FALSE]
+    .t <- .ranParTable(.x)
+    expect_identical(.t$method, rep("wishart", 4))
+    expect_equal(.t$conf.low, .w$low)
+    expect_identical(.ranParTable(.x, method = "cov")$conf.low, rep(NA_real_, 4))
+    # a posthoc fit takes Omega from ini(); nothing about it was estimated
+    .x$est <- "posthoc"
+    expect_identical(.ranParTable(.x)$std.error, rep(NA_real_, 4))
+  })
+
   test_that("ran_pars intervals use log(sd) and atanh(cor), with an SD above 1", {
     .z <- stats::qnorm(0.975)
     # an SD above 1 must not reach atanh()
@@ -715,7 +764,10 @@ nmTest({
     expect_identical(rownames(fit$parFixedDf), c("tka", "tcl", "tv", "add.sd", "iov.cl"))
     .fx <- as.data.frame(broom.mixed::tidy(fit, effects = "fixed"))
     expect_identical(.fx$term, c("tka", "tcl", "tv"))
-    expect_identical(rownames(confint(fit)), c("tka", "tcl", "tv", "add.sd"))
+    # only the subject-level variability is listed
+    .rn <- rownames(confint(fit))
+    expect_identical(.rn, c("tka", "tcl", "tv", "add.sd", .ranParTable(fit)$term))
+    expect_false(any(grepl("iov", .rn)))
   })
 
   test_that("broom's theta rows come from the model's thetas, and none is an error", {

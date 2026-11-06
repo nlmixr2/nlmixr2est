@@ -1089,7 +1089,10 @@ nmTest({
       fit$parFixed[.cor, "BSV(CV%)"],
       formatMinWidth(stats::cov2cor(fit$omega)[["eta.cl", "eta.v"]], digits = fit$control$sigdigTable)
     )
-    expect_identical(rownames(confint(fit)), c("tka", "tcl", "tv", "add.sd"))
+    expect_identical(
+      rownames(confint(fit)),
+      c("tka", "tcl", "tv", "add.sd", "sd__eta.ka", "sd__eta.cl", "sd__eta.v", "cor__eta.v.eta.cl")
+    )
     # broom keeps the correlation in the random-effect terms only
     skip_if_not_installed("broom.mixed")
     .td <- as.data.frame(broom.mixed::tidy(fit))

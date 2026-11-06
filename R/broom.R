@@ -36,10 +36,9 @@ confint.nlmixr2FitCore <- function(object, parm, level = 0.95, ...) {
   .extra <- list(...)
   .exponentiate <- ifelse(any(names(.extra) == "exponentiate"), .extra$exponentiate, FALSE)
   .ciNames <- ifelse(any(names(.extra) == "ciNames"), .extra$ciNames, TRUE)
+  .ranPars <- !isFALSE(.extra$ranPars)
+  .method <- if (is.null(.extra$method)) "auto" else .extra$method
   .df <- .broomParFixedDf(object)
-  if (!missing(parm)) {
-    .df <- .df[parm, ]
-  }
   .zv <- qnorm(1 - (1 - level) / 2)
   .low <- .df$model.est - .df$std.error * .zv
   .hi <- .df$model.est + .df$std.error * .zv
@@ -58,6 +57,24 @@ confint.nlmixr2FitCore <- function(object, parm, level = 0.95, ...) {
     conf.high = .hi,
     row.names = rownames(.df)
   )
+  # the variability terms follow the thetas, as lme4 lists its variance
+  # components; they are on the SD/correlation scale and never exponentiated
+  .rp <- if (.ranPars) .ranParTable(object, level, .method)
+  if (!is.null(.rp)) {
+    .df <- rbind(
+      .df,
+      data.frame(
+        model.est = .rp$estimate,
+        estimate = .rp$estimate,
+        conf.low = .rp$conf.low,
+        conf.high = .rp$conf.high,
+        row.names = .rp$term
+      )
+    )
+  }
+  if (!missing(parm)) {
+    .df <- .df[parm, , drop = FALSE]
+  }
   if (.ciNames) {
     names(.df)[3:4] <- paste(c((1 - level) / 2, (1 - (1 - level) / 2)) * 100, "%")
   }
@@ -101,7 +118,13 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   .df$statistic <- .df$estimate / .df$std.error
   .df$p.value <- stats::pt(.df$statistic, nobs(x) - attr(logLik(x), "df"), lower.tail = FALSE)
   if (.conf.int) {
-    .ci <- confint.nlmixr2FitCore(x, level = .conf.level, ciNames = FALSE, exponentiate = .exponentiate)
+    .ci <- confint.nlmixr2FitCore(
+      x,
+      level = .conf.level,
+      ciNames = FALSE,
+      exponentiate = .exponentiate,
+      ranPars = FALSE
+    )
     .df$conf.low <- .ci$conf.low
     .df$conf.high <- .ci$conf.high
   } else {
@@ -221,8 +244,74 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   list(low = .low, high = .high)
 }
 
-.nlmixr2TidyRandomPar <- function(x, ...) {
-  rxode2::rxReq("tibble")
+#' Which `sd__`/`cor__` terms involve a fixed Omega element
+#'
+#' @inheritParams .ranParSe
+#' @return logical in `.getR(omegaR, TRUE)` order
+#' @noRd
+.ranParFixed <- function(x, omega, omegaR) {
+  .nm <- dimnames(omega)[[2]]
+  .ini <- x$ui$iniDf
+  .ini <- .ini[!is.na(.ini$neta1), , drop = FALSE]
+  .idx <- .ini$neta1[match(.nm, .ini$name)]
+  .fix <- function(a, b) {
+    .w <- which(.ini$neta1 == max(a, b) & .ini$neta2 == min(a, b))
+    length(.w) == 1L && isTRUE(.ini$fix[.w])
+  }
+  .pairs <- which(lower.tri(omega), arr.ind = TRUE)
+  .pairs <- .pairs[omegaR[lower.tri(omegaR)] != 0, , drop = FALSE]
+  c(
+    vapply(.idx, function(i) .fix(i, i), logical(1)),
+    vapply(
+      seq_len(nrow(.pairs)),
+      function(k) {
+        .i <- .idx[.pairs[k, 1]]
+        .j <- .idx[.pairs[k, 2]]
+        .fix(.i, .j) || .fix(.i, .i) || .fix(.j, .j)
+      },
+      logical(1)
+    )
+  )
+}
+
+#' SEs and intervals of `sd__`/`cor__` terms from the Wishart distribution
+#'
+#' Omega estimated from `n` subjects' etas is taken as Wishart with `n`
+#' degrees of freedom: each variance is a scaled chi-square and each
+#' correlation uses Fisher's z with SE `1/sqrt(n - 3)`.
+#'
+#' @inheritParams .ranParCi
+#' @param n number of subjects
+#' @return list of `se`, `low` and `high`
+#' @noRd
+.ranParWishart <- function(pars, isSd, n, level) {
+  .a <- (1 - level) / 2
+  .se <- .low <- .high <- rep(NA_real_, length(pars))
+  .s <- pars[isSd]
+  .se[isSd] <- .s / sqrt(2 * n)
+  .low[isSd] <- .s * sqrt(n / stats::qchisq(1 - .a, n))
+  .high[isSd] <- .s * sqrt(n / stats::qchisq(.a, n))
+  .r <- pars[!isSd]
+  .se[!isSd] <- (1 - .r^2) / sqrt(n)
+  if (n > 3) {
+    .d <- stats::qnorm(1 - .a) / sqrt(n - 3)
+    .low[!isSd] <- tanh(atanh(.r) - .d)
+    .high[!isSd] <- tanh(atanh(.r) + .d)
+  }
+  list(se = .se, low = .low, high = .high)
+}
+
+#' The fit's `sd__`/`cor__` terms with SEs and intervals
+#'
+#' @param x nlmixr2 fit
+#' @param level confidence level
+#' @param method `"auto"` (the Omega rows of `$cov` when present, else
+#'   Wishart), `"cov"` or `"wishart"`
+#' @return data.frame of `term`, `estimate`, `std.error`, `conf.low`,
+#'   `conf.high`, `method`; `NULL` when the model has no etas
+#' @noRd
+.ranParTable <- function(x, level = 0.95, method = c("auto", "cov", "wishart")) {
+  method <- match.arg(method)
   .omegaR <- x$omegaR
   .omega <- x$omega
   if (is.list(.omegaR)) {
@@ -230,24 +319,50 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     .omega <- .omega$id
   }
   .pars <- .getR(.omegaR, TRUE)
-  if (length(.pars) > 0) {
-    .se <- .ranParSe(x, .omega, .omegaR)
+  if (length(.pars) == 0) {
+    return(NULL)
+  }
+  .isSd <- seq_along(.pars) <= nrow(.omega)
+  .cse <- if (method == "wishart") rep(NA_real_, length(.pars)) else .ranParSe(x, .omega, .omegaR)
+  .ci <- .ranParCi(.pars, .cse, .isSd, level)
+  .useW <- if (method == "cov") rep(FALSE, length(.pars)) else is.na(.cse)
+  .w <- .ranParWishart(.pars, .isSd, nrow(x$eta), level)
+  .df <- data.frame(
+    term = names(.pars),
+    estimate = unname(.pars),
+    std.error = ifelse(.useW, .w$se, .cse),
+    conf.low = ifelse(.useW, .w$low, .ci$low),
+    conf.high = ifelse(.useW, .w$high, .ci$high),
+    method = ifelse(.useW, "wishart", "cov"),
+    stringsAsFactors = FALSE
+  )
+  # a fixed Omega element is not estimated, nor is any under est="posthoc"
+  .fix <- .ranParFixed(x, .omega, .omegaR) | identical(x$est, "posthoc")
+  .df[.fix, c("std.error", "conf.low", "conf.high")] <- NA_real_
+  .df$method[.fix | is.na(.df$std.error)] <- NA_character_
+  .df
+}
+
+.nlmixr2TidyRandomPar <- function(x, ...) {
+  rxode2::rxReq("tibble")
+  .extra <- list(...)
+  .level <- if (is.null(.extra$conf.level)) 0.95 else .extra$conf.level
+  .method <- if (is.null(.extra$conf.method)) "auto" else .extra$conf.method
+  .rp <- .ranParTable(x, .level, .method)
+  if (!is.null(.rp)) {
     .p1 <- data.frame(
       effect = "ran_pars",
       group = "ID",
-      term = names(.pars),
-      estimate = .pars,
-      std.error = .se,
+      term = .rp$term,
+      estimate = .rp$estimate,
+      std.error = .rp$std.error,
       statistic = NA_real_,
       p.value = NA_real_,
       stringsAsFactors = FALSE
     )
-    .extra <- list(...)
     if (isTRUE(.extra$conf.int) || (is.null(.extra$conf.int) && !is.null(.extra$conf.level))) {
-      .level <- if (is.null(.extra$conf.level)) 0.95 else .extra$conf.level
-      .ci <- .ranParCi(.pars, .se, seq_along(.pars) <= nrow(.omega), .level)
-      .p1$conf.low <- .ci$low
-      .p1$conf.high <- .ci$high
+      .p1$conf.low <- .rp$conf.low
+      .p1$conf.high <- .rp$conf.high
     }
     .p1 <- .reorderCols(.p1)
     # broom.mixed exponentiates fixed effects only
