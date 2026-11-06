@@ -106,6 +106,10 @@
 
 ### Estimation
 
+- `saem` mixture fits with `saemControl(mixProbMethod = "annealed")` no
+  longer error with "Mat::operator(): index out of bounds" when entering the
+  SA covariance phase (#1297).
+
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
   the final ETAs from that evaluation's ETAs, keeping per subject the lower

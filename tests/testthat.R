@@ -162,6 +162,7 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "iov-zero-eta",
     "saem-mix",
     "saem-mix-regress",
+    "saem-mix-methods",
     "posthoc",
     "ar-est",
     "mu-family",
