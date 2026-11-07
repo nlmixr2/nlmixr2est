@@ -854,6 +854,23 @@ nmTest({
     expect_identical(.ranParTable(fit)$method, c("wishart", "wishart"))
   })
 
+  test_that("an IOV fit's rx.<eta> declarations name the occasion etas", {
+    .ini0 <- data.frame(
+      name = c("tcl", "eta.cl", "rx.iov.cl", "(rx.iov.cl,rx.iov.v)", "rx.iov.v"),
+      ntheta = c(1L, NA, NA, NA, NA),
+      neta1 = c(NA, 1L, 2L, 3L, 3L),
+      neta2 = c(NA, 1L, 2L, 2L, 3L),
+      fix = FALSE
+    )
+    .got <- .ranParIni(.ini0, c("iov.cl", "iov.v"), NULL)
+    expect_identical(.got$name, c("tcl", "eta.cl", "iov.cl", "(rx.iov.cl,rx.iov.v)", "iov.v"))
+    # the declared occasion covariance is a term even at zero
+    .om <- matrix(c(0.1, 0, 0, 0.05), 2, 2, dimnames = rep(list(c("iov.cl", "iov.v")), 2))
+    expect_identical(.ranParTerms(.got, .om, .corFromCov(.om))$term, c("sd__iov.cl", "sd__iov.v", "cor__iov.v.iov.cl"))
+    # names it cannot supply come from the final ui
+    expect_identical(.ranParIni(.ini0, "eta.q", "ui"), "ui")
+  })
+
   test_that("an IOV level takes its SE from $cov's SD-scale magnitude row, not occasion copies", {
     .ui <- rxode2::rxode2(.iovFitMuMod)
     .nm <- c("eta.cl", "eta.v")

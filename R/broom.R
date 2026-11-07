@@ -407,9 +407,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     if (is.null(.om) || nrow(.om) == 0) {
       return(NULL)
     }
-    # an IOV fit's estimated model names its occasion etas rx.<eta>; the
-    # final ui names them as $omega does
-    .ini <- if (all(dimnames(.om)[[2]] %in% .ini0$name[!is.na(.ini0$neta1)])) .ini0 else x$ui$iniDf
+    .ini <- .ranParIni(.ini0, dimnames(.om)[[2]], x$ui$iniDf)
     # the number of subjects, or of subject-occasions for an IOV level
     .n <- if (.lvl == "id") {
       nrow(x$eta)
@@ -427,6 +425,25 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   }
   rownames(.ret) <- NULL
   .ret
+}
+
+#' The `iniDf` to read a level's etas from
+#'
+#' An IOV fit's estimated model (`iniDf0`) names its occasion etas
+#' `rx.<eta>`, while `$omega` names them `<eta>`; renaming them keeps
+#' `iniDf0`'s declared covariances, which a rebuilt ui may have lost.
+#'
+#' @param ini0 the model as estimated
+#' @param nm the level's eta names, as `$omega` gives them
+#' @param ini the final ui's `iniDf`, when `ini0` still lacks a name
+#' @return data.frame
+#' @noRd
+.ranParIni <- function(ini0, nm, ini) {
+  .eta <- !is.na(ini0$neta1)
+  .bare <- sub("^rx[.]", "", ini0$name)
+  .map <- .eta & !(ini0$name %in% nm) & .bare %in% nm
+  ini0$name[.map] <- .bare[.map]
+  if (all(nm %in% ini0$name[.eta])) ini0 else ini
 }
 
 #' One Omega level's terms for `.ranParTable()`
