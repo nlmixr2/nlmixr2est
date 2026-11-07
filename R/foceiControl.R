@@ -116,16 +116,14 @@
 #' @param sigdig Optimization significant digits.  One value drives, with a single
 #'   consistent formula, the inner/outer optimizer convergence tolerance
 #'   (\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
-#'   and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
-#'   \code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
-#'   \code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-#'   auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
-#'   tolerances match the main solve (the outer gradient and covariance are built
-#'   from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
-#'   order looser.
-#'   Keying the optimizer to the same \code{10^-sigdig} means it converges to
-#'   exactly the precision the solve supports.  At the default \code{sigdig = 3}
-#'   this is \code{atol = 1e-6}, \code{rtol = 1e-3}.
+#'   and the ODE solver tolerances \code{rtol = max(10^(-2*sigdig), 1e-12)},
+#'   \code{atol = rtol/100} for every solver.  An objective solved to relative
+#'   error \code{rtol} locates its minimum only to about \code{sqrt(rtol)}, so
+#'   this is the solve a \code{10^-sigdig} optimizer needs.  The sensitivity
+#'   (\code{atolSens}/\code{rtolSens}) tolerances match the main solve; the
+#'   steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+#'   At the default \code{sigdig = 3} this is \code{atol = 1e-8},
+#'   \code{rtol = 1e-6}.
 #'
 #' @param sigdigTable Significant digits in the final output table.
 #'   If not specified (`NULL`), it defaults to `sigdig`.
@@ -181,7 +179,7 @@
 #'     solves behind \code{covMethod="analytic"}.  \code{NULL} (default) derives
 #'     them from the fit's own tolerances: the finite-difference solves use
 #'     \code{atol} and \code{rtol} each times 1e-3, capped at 1e-7 (at the default
-#'     \code{sigdig = 3}, \code{rtol = 1e-7} and \code{atol = 1e-9}), and the
+#'     \code{sigdig = 3}, \code{rtol = 1e-9} and \code{atol = 1e-11}), and the
 #'     analytic augmented solves use \code{max(1e-12, min(1e-8, 10^-(sigdig + 6)))}.  The
 #'     inner problems of the finite-difference probes are tightened the same way,
 #'     whichever \code{innerOpt} runs them: \code{trustFterm} and
@@ -1047,6 +1045,13 @@
 #'   which reports a convergence verdict per solve.  `n1qn1` reports none, so
 #'   its own restart cascade is unchanged.
 #'
+#' @param finalEtaTol When the final objective is more than this above the
+#'   lowest objective the outer optimizer evaluated, the final ETAs are
+#'   re-solved from that evaluation's ETAs, keeping per subject whichever
+#'   start gives the lower objective.  Warm-started ETAs can fall into a
+#'   secondary mode during the search and stay there.  Only applies with a
+#'   warm start (`mceta < 0`).  Use `Inf` to disable.
+#'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
 #'     ODE solve.
@@ -1128,7 +1133,11 @@
 #' @param odeRecalcFactor The ODE recalculation factor when ODE
 #'   solving goes bad, this is the factor the rtol/atol is reduced
 #'
-#' @param rxControl `rxode2` ODE solving options during fitting, created with `rxControl()`
+#' @param rxControl `rxode2` ODE solving options during fitting, created with `rxControl()`.
+#'     The solver's adaptive steps set the objective's noise floor, which
+#'     grows with `rtol` and the number of observations.  For a non-stiff
+#'     model, `rxControl(method = "dop853")` gives a much smoother objective
+#'     than the default `"liblsoda"` at the same `rtol`.
 #'
 #' @param fallbackFD Fallback to the finite differences if the
 #'   sensitivity equations do not solve.
@@ -1473,6 +1482,7 @@ foceiControl <- function(
   etaNudge = qnorm(1 - 0.05 / 2) / sqrt(3), #
   etaNudge2 = qnorm(1 - 0.05 / 2) * sqrt(3 / 5), #
   etaRestart = 4L, #
+  finalEtaTol = 1, #
   nRetries = 3, #
   seed = 42, #
   resetThetaCheckPer = 0.1, #
@@ -2123,6 +2133,7 @@ foceiControl <- function(
   checkmate::assertNumeric(etaNudge, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
   checkmate::assertNumeric(etaNudge2, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
   checkmate::assertIntegerish(etaRestart, len = 1, lower = 0, any.missing = FALSE)
+  checkmate::assertNumber(finalEtaTol, lower = 0)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2322,6 +2333,7 @@ foceiControl <- function(
     etaNudge = as.double(etaNudge),
     etaNudge2 = as.double(etaNudge2),
     etaRestart = as.integer(etaRestart),
+    finalEtaTol = as.double(finalEtaTol),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,
