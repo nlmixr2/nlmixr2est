@@ -189,8 +189,9 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 #'   `var__`/`cov__` terms, as broom.mixed's `scales`
 #' @return list of `term`, `estimate`, `isSd` (a diagonal term), `fix` (a
 #'   fixed element is involved), `jac` (terms by `om.`/`cov.` elements, the
-#'   names `$cov` uses), `dep` (which elements each term is a function of) and
-#'   `varPair` (each term's two variances, for an off-diagonal term)
+#'   names `$cov` uses), `alt` (each element's name with its etas swapped),
+#'   `dep` (which elements each term is a function of) and `varPair` (each
+#'   term's two variances, for an off-diagonal term)
 #' @noRd
 .ranParTerms <- function(iniDf, omega, omegaR, scales = "sdcor") {
   .nm <- dimnames(omega)[[2]]
@@ -225,6 +226,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   .dep <- .jac != 0
   .sd <- sqrt(diag(omega))
   .varPair <- rbind(cbind(diag(omega), diag(omega)), cbind(diag(omega)[.a], diag(omega)[.b]))
+  .alt <- .foceiOmegaCovNames(.el[, 2:1, drop = FALSE], .etaNm)
   if (scales == "vcov") {
     # the terms are the elements themselves
     .e <- c(.sdE, .offE)
@@ -236,6 +238,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
       fix = .elFix[.e],
       jac = .jac,
       dep = .jac != 0,
+      alt = .alt,
       varPair = .varPair
     ))
   }
@@ -261,6 +264,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     fix = as.vector(.dep %*% .elFix > 0),
     jac = .jac,
     dep = .dep,
+    alt = .alt,
     varPair = .varPair
   )
 }
@@ -274,15 +278,25 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 #' @noRd
 .ranParSe <- function(x, terms) {
   .cov <- x$cov
+  .rn <- if (is.matrix(.cov)) rownames(.cov)
   .cn <- colnames(terms$jac)
-  .av <- if (is.matrix(.cov) && !is.null(rownames(.cov))) .cn %in% rownames(.cov) else rep(FALSE, length(.cn))
-  .ok <- rowSums(terms$dep[, !.av, drop = FALSE]) == 0
-  if (!any(.ok)) {
-    return(rep(NA_real_, length(.ok)))
-  }
-  .c <- .cn[.av]
-  .v <- diag(.covJacobian(.cov[.c, .c, drop = FALSE], terms$jac[, .av, drop = FALSE]))
-  unname(ifelse(.ok & is.finite(.v) & .v >= 0, sqrt(pmax(.v, 0)), NA_real_))
+  # each element as $cov names it, in either eta order
+  .use <- ifelse(.cn %in% .rn, .cn, ifelse(terms$alt %in% .rn, terms$alt, NA_character_))
+  # one term at a time over its own elements, so an NA row of a partial
+  # (rank-deficient) $cov reaches only the terms that use it
+  .v <- vapply(
+    seq_len(nrow(terms$jac)),
+    function(k) {
+      .d <- terms$dep[k, ]
+      if (anyNA(.use[.d])) {
+        return(NA_real_)
+      }
+      .c <- .use[.d]
+      .covJacobian(.cov[.c, .c, drop = FALSE], terms$jac[k, .d, drop = FALSE], NULL)[1, 1]
+    },
+    numeric(1)
+  )
+  ifelse(is.finite(.v) & .v >= 0, sqrt(pmax(.v, 0)), NA_real_)
 }
 
 #' Wald intervals of the variability terms

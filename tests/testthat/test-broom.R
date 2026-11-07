@@ -719,6 +719,16 @@ nmTest({
     expect_equal(.covJacobian(.vc, .t$jac), .t$jac %*% .vc %*% t(.t$jac))
     # a theta-only $cov has no Omega rows to give an SE
     expect_identical(.ranParSe(list(cov = .cov[1, 1, drop = FALSE]), .t), rep(NA_real_, 4))
+    # a covariance named with its etas the other way round is the same element
+    .cov2 <- .cov
+    dimnames(.cov2) <- rep(list(sub("cov.eta.v.eta.cl", "cov.eta.cl.eta.v", .cn, fixed = TRUE)), 2)
+    expect_equal(.ranParSe(list(cov = .cov2), .t), .ranParSe(list(cov = .cov), .t))
+    # an NA row of a rank-deficient $cov reaches only the terms that use it
+    .cov3 <- .cov
+    .cov3["om.eta.ka", ] <- .cov3[, "om.eta.ka"] <- NA_real_
+    .se3 <- .ranParSe(list(cov = .cov3), .t)
+    expect_identical(is.na(.se3), c(TRUE, FALSE, FALSE, FALSE))
+    expect_equal(.se3[-1], .ranParSe(list(cov = .cov), .t)[-1])
   })
 
   test_that("Wishart ran_pars intervals: scaled chi-square SDs, Fisher-z correlations", {
