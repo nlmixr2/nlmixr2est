@@ -190,6 +190,8 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 #' @return list of `term`, `estimate`, `isSd` (a diagonal term), `fix` (a
 #'   fixed element is involved), `jac` (terms by `om.`/`cov.` elements, the
 #'   names `$cov` uses), `alt` (each element's name with its etas swapped),
+#'   `sdName`/`elVar` (a variance element's eta name and value, for a `$cov`
+#'   that carries it on the SD scale under the eta's own name),
 #'   `dep` (which elements each term is a function of) and `varPair` (each
 #'   term's two variances, for an off-diagonal term)
 #' @noRd
@@ -227,6 +229,8 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   .sd <- sqrt(diag(omega))
   .varPair <- rbind(cbind(diag(omega), diag(omega)), cbind(diag(omega)[.a], diag(omega)[.b]))
   .alt <- .foceiOmegaCovNames(.el[, 2:1, drop = FALSE], .etaNm)
+  .sdName <- ifelse(.diag, .etaNm[.el[, 1]], NA_character_)
+  .elVar <- ifelse(.diag, diag(omega)[.i], NA_real_)
   if (scales == "vcov") {
     # the terms are the elements themselves
     .e <- c(.sdE, .offE)
@@ -239,6 +243,8 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
       jac = .jac,
       dep = .jac != 0,
       alt = .alt,
+      sdName = .sdName,
+      elVar = .elVar,
       varPair = .varPair
     ))
   }
@@ -265,6 +271,8 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     jac = .jac,
     dep = .dep,
     alt = .alt,
+    sdName = .sdName,
+    elVar = .elVar,
     varPair = .varPair
   )
 }
@@ -280,19 +288,23 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   .cov <- x$cov
   .rn <- if (is.matrix(.cov)) rownames(.cov)
   .cn <- colnames(terms$jac)
-  # each element as $cov names it, in either eta order
+  # each element as $cov names it: om./cov. in either eta order, or (FOCEi's
+  # IOV magnitude) the eta's own name on the SD scale, d var / d sd = 2 sd
   .use <- ifelse(.cn %in% .rn, .cn, ifelse(terms$alt %in% .rn, terms$alt, NA_character_))
+  .sdRow <- is.na(.use) & terms$sdName %in% .rn
+  .use[.sdRow] <- terms$sdName[.sdRow]
+  .fac <- ifelse(.sdRow, 2 * sqrt(terms$elVar), 1)
   # one term at a time over its own elements, so an NA row of a partial
   # (rank-deficient) $cov reaches only the terms that use it
   .v <- vapply(
     seq_len(nrow(terms$jac)),
     function(k) {
       .d <- terms$dep[k, ]
-      if (anyNA(.use[.d])) {
+      if (!any(.d) || anyNA(.use[.d])) {
         return(NA_real_)
       }
       .c <- .use[.d]
-      .covJacobian(.cov[.c, .c, drop = FALSE], terms$jac[k, .d, drop = FALSE], NULL)[1, 1]
+      .covJacobian(.cov[.c, .c, drop = FALSE], terms$jac[k, .d, drop = FALSE] * .fac[.d], NULL)[1, 1]
     },
     numeric(1)
   )
@@ -358,7 +370,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     .high[!isSd] <- .r + stats::qnorm(1 - .a) * .se[!isSd]
   } else {
     .se[!isSd] <- (1 - .r^2) / sqrt(n)
-    if (n > 3) {
+    if (isTRUE(n > 3)) {
       .d <- stats::qnorm(1 - .a) / sqrt(n - 3)
       .low[!isSd] <- tanh(atanh(.r) - .d)
       .high[!isSd] <- tanh(atanh(.r) + .d)
@@ -374,31 +386,65 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 #' @param method `"auto"` (the Omega rows of `$cov` when present, else
 #'   Wishart), `"cov"` or `"wishart"`
 #' @param scales `"sdcor"` or `"vcov"` (`.ranParTerms()`)
-#' @return data.frame of `term`, `estimate`, `std.error`, `conf.low`,
-#'   `conf.high`, `method`; `NULL` when the model has no etas
+#' @return data.frame of `group` (`"ID"`, or an IOV level's occasion
+#'   variable), `term`, `estimate`, `std.error`, `conf.low`, `conf.high`,
+#'   `method`; `NULL` when the model has no etas
 #' @noRd
 .ranParTable <- function(x, level = 0.95, method = c("auto", "cov", "wishart"), scales = c("sdcor", "vcov")) {
   method <- match.arg(method)
   scales <- match.arg(scales)
-  .omegaR <- x$omegaR
   .omega <- x$omega
-  if (is.list(.omegaR)) {
-    .omegaR <- .omegaR$id
-    .omega <- .omega$id
-  }
-  if (is.null(.omega) || nrow(.omega) == 0) {
-    return(NULL)
+  .omegaR <- x$omegaR
+  if (!is.list(.omega)) {
+    .omega <- list(id = .omega)
+    .omegaR <- list(id = .omegaR)
   }
   # the model as estimated, as $parFixed reports its correlations: a ui
   # rebuilt from the estimated omega has lost a covariance estimated at zero
-  .ini <- if (is.environment(x$env)) .updateParFixedBsvCorIni(x$env, x$ui) else x$ui$iniDf
-  .t <- .ranParTerms(.ini, .omega, .omegaR, scales)
+  .ini0 <- if (is.environment(x$env)) .updateParFixedBsvCorIni(x$env, x$ui) else x$ui$iniDf
+  .ret <- lapply(names(.omega), function(.lvl) {
+    .om <- .omega[[.lvl]]
+    if (is.null(.om) || nrow(.om) == 0) {
+      return(NULL)
+    }
+    # an IOV fit's estimated model names its occasion etas rx.<eta>; the
+    # final ui names them as $omega does
+    .ini <- if (all(dimnames(.om)[[2]] %in% .ini0$name[!is.na(.ini0$neta1)])) .ini0 else x$ui$iniDf
+    # the number of subjects, or of subject-occasions for an IOV level
+    .n <- if (.lvl == "id") {
+      nrow(x$eta)
+    } else if (is.environment(x$env) && is.data.frame(x$env$iov[[.lvl]])) {
+      nrow(x$env$iov[[.lvl]])
+    } else {
+      NA_integer_
+    }
+    .df <- .ranParLevel(x, .ini, .om, .omegaR[[.lvl]], .n, level, method, scales)
+    data.frame(group = if (.lvl == "id") "ID" else .lvl, .df, stringsAsFactors = FALSE)
+  })
+  .ret <- do.call(rbind, .ret)
+  if (is.null(.ret) || nrow(.ret) == 0) {
+    return(NULL)
+  }
+  rownames(.ret) <- NULL
+  .ret
+}
+
+#' One Omega level's terms for `.ranParTable()`
+#'
+#' @inheritParams .ranParTable
+#' @param ini the model's `iniDf`
+#' @param omega,omegaR the level's Omega and its SD/correlation form
+#' @param n subjects (or subject-occasions) for the Wishart intervals
+#' @return data.frame as `.ranParTable()`, without `group`
+#' @noRd
+.ranParLevel <- function(x, ini, omega, omegaR, n, level, method, scales) {
+  .t <- .ranParTerms(ini, omega, omegaR, scales)
   .pars <- setNames(.t$estimate, .t$term)
   .isSd <- .t$isSd
   .cse <- if (method == "wishart") rep(NA_real_, length(.pars)) else .ranParSe(x, .t)
   .ci <- .ranParCi(.pars, .cse, .isSd, level, scales)
   .useW <- if (method == "cov") rep(FALSE, length(.pars)) else is.na(.cse)
-  .w <- .ranParWishart(.pars, .isSd, nrow(x$eta), level, scales, .t$varPair)
+  .w <- .ranParWishart(.pars, .isSd, n, level, scales, .t$varPair)
   .df <- data.frame(
     term = names(.pars),
     estimate = unname(.pars),
@@ -425,7 +471,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   if (!is.null(.rp)) {
     .p1 <- data.frame(
       effect = "ran_pars",
-      group = "ID",
+      group = .rp$group,
       term = .rp$term,
       estimate = .rp$estimate,
       std.error = .rp$std.error,

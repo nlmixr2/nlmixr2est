@@ -835,16 +835,54 @@ nmTest({
     expect_identical(.ranParCi(1, NA_real_, TRUE, 0.95)$low, NA_real_)
   })
 
-  test_that("tidy() and confint() leave out an IOV fit's occasion variability row", {
+  test_that("tidy() and confint() list an IOV fit's occasion variability under its occasion", {
     skip_if_not_installed("broom.mixed")
     fit <- .iovFit("focei", control = list(maxOuterIterations = 0, calcTables = FALSE))
     expect_identical(rownames(fit$parFixedDf), c("tka", "tcl", "tv", "add.sd", "iov.cl"))
     .fx <- as.data.frame(broom.mixed::tidy(fit, effects = "fixed"))
     expect_identical(.fx$term, c("tka", "tcl", "tv"))
-    # only the subject-level variability is listed
-    .rn <- rownames(confint(fit))
-    expect_identical(.rn, c("tka", "tcl", "tv", "add.sd", .ranParTable(fit)$term))
-    expect_false(any(grepl("iov", .rn)))
+    # the occasion level follows the subject level
+    .rp <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_pars", conf.int = TRUE))
+    expect_identical(.rp$term, c("sd__eta.v", "sd__iov.cl", "add.sd"))
+    expect_identical(.rp$group, c("ID", "occ", "Residual(add)"))
+    expect_equal(.rp$estimate[2], sqrt(fit$omega$occ[["iov.cl", "iov.cl"]]))
+    expect_identical(rownames(confint(fit)), c("tka", "tcl", "tv", "add.sd", "sd__eta.v", "sd__iov.cl"))
+    # no $cov (covMethod = ""): Wishart over the subject-occasions
+    .w <- .ranParWishart(.rp$estimate[2], TRUE, nrow(fit$env$iov$occ), 0.95)
+    expect_equal(.rp$conf.low[2], .w$low)
+    expect_equal(.rp$conf.high[2], .w$high)
+    expect_identical(.ranParTable(fit)$method, c("wishart", "wishart"))
+  })
+
+  test_that("an IOV level takes its SE from $cov's SD-scale magnitude row, not occasion copies", {
+    .ui <- rxode2::rxode2(.iovFitMuMod)
+    .nm <- c("eta.cl", "eta.v")
+    .om <- list(
+      id = matrix(c(0.3, 0, 0, 0.1), 2, 2, dimnames = list(.nm, .nm)),
+      occ = matrix(0.1, 1, 1, dimnames = list("iov.cl", "iov.cl"))
+    )
+    .omR <- lapply(.om, .corFromCov)
+    .cn <- c("tka", "iov.cl", "om.eta.cl", "om.eta.v")
+    .cov <- diag(c(0.01, 0.0144, 0.002, 0.0002))
+    dimnames(.cov) <- list(.cn, .cn)
+    .x <- list(ui = .ui, omega = .om, omegaR = .omR, cov = .cov, eta = data.frame(ID = 1:12), est = "focei")
+    .t <- .ranParTable(.x)
+    expect_identical(.t$group, c("ID", "ID", "occ"))
+    expect_identical(.t$term, c("sd__eta.cl", "sd__eta.v", "sd__iov.cl"))
+    # the row is the SD itself: its SE is the SD's
+    expect_equal(.t$std.error[3], 0.12)
+    expect_identical(.t$method[3], "cov")
+    # on the variance scale, d var / d sd = 2 sd
+    .v <- .ranParTable(.x, scales = "vcov")
+    expect_equal(.v$std.error[3], 2 * sqrt(0.1) * 0.12)
+    # untied per-occasion copies are a different model; they give no SE
+    .cn2 <- c("tka", "om.rx.iov.cl.1", "om.rx.iov.cl.2", "om.eta.cl", "om.eta.v")
+    .cov2 <- diag(c(0.01, 0.003, 0.004, 0.002, 0.0002))
+    dimnames(.cov2) <- list(.cn2, .cn2)
+    .x$cov <- .cov2
+    expect_identical(.ranParTable(.x, method = "cov")$std.error[3], NA_real_)
+    # nor does a level whose occasion count is unknown fall back to Wishart
+    expect_identical(.ranParTable(.x)$method[3], NA_character_)
   })
 
   test_that("broom's theta rows come from the model's thetas, and none is an error", {

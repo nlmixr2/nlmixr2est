@@ -361,7 +361,9 @@
   `est = "posthoc"`, has no interval.  `tidy(scales = "vcov")` (one value
   per element of `effects`, as broom.mixed) and `confint(scales = "vcov")`
   report the same terms as `var__`/`cov__` variances and covariances, as
-  broom.mixed does for lme4.  The residual-error rows of `tidy()`
+  broom.mixed does for lme4.  An IOV fit's occasion variability follows,
+  grouped under its occasion variable (e.g. `occ`); its Wishart interval
+  counts subject-occasions.  The residual-error rows of `tidy()`
   kept their `conf.int` interval; it was `NA`.  `tidy()` also accepts
   broom.mixed's `effects = "ran_coefs"`.
 
