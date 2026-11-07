@@ -666,6 +666,16 @@ nmTest({
     .rpC <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_pars", conf.int = TRUE))
     expect_equal(.rpC$conf.low[4], .lo[4])
     expect_equal(.rpC$conf.high[4], .hi[4])
+    # scales, one per effect as in broom.mixed
+    .rpV <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_pars", scales = "vcov"))
+    expect_identical(.rpV$term, c("var__eta.ka", "var__eta.cl", "var__eta.v", "add.sd"))
+    expect_equal(.rpV$estimate[1:3], .rp$estimate[1:3]^2)
+    expect_identical(
+      as.data.frame(broom.mixed::tidy(fit, effects = c("fixed", "ran_pars"), scales = c(NA, "vcov")))$term[4],
+      "var__eta.ka"
+    )
+    expect_error(broom.mixed::tidy(fit, effects = c("fixed", "ran_pars"), scales = "vcov"), "one value")
+    expect_identical(rownames(confint(fit, scales = "vcov"))[5], "var__eta.ka")
     # broom.mixed's spelling, ran_coefs, gives the same coefficients
     expect_warning(
       .rc <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_coefs")),
@@ -679,32 +689,36 @@ nmTest({
     expect_equal(.rc$estimate, .rc0$estimate)
   })
 
-  test_that("ran_pars SEs are the delta method over the Omega rows of $cov", {
-    .om <- matrix(c(0.4, 0, 0, 0, 0.09, 0.02, 0, 0.02, 0.05), 3, 3, dimnames = list(c("a", "b", "c"), c("a", "b", "c")))
-    .cn <- c("tka", "om.a", "om.b", "cov.c.b", "om.c")
+  test_that("ran_pars SEs are J cov J' over the Omega rows of $cov", {
+    .ui <- rxode2::rxode2(.bsvCorBlockFit)
+    .om <- .ui$omega
+    .cn <- c("tka", "om.eta.ka", "om.eta.cl", "cov.eta.v.eta.cl", "om.eta.v")
     .cov <- matrix(0.001, 5, 5, dimnames = list(.cn, .cn))
     diag(.cov) <- c(0.01, 0.02, 0.003, 0.0005, 0.002)
-    .omR <- .corFromCov(.om)
-    .terms <- function(v) {
+    .t <- .ranParTerms(.ui$iniDf, .om, .corFromCov(.om))
+    expect_identical(.t$term, names(.getR(.corFromCov(.om), TRUE)))
+    expect_identical(colnames(.t$jac), .cn[-1])
+    # the Jacobian of (sd, sd, sd, cor) over (om.ka, om.cl, cov.v.cl, om.v)
+    .f <- function(v) {
       .s <- sqrt(v[c(1, 2, 4)])
       c(.s, v[3] / (.s[2] * .s[3]))
     }
-    .v0 <- c(0.4, 0.09, 0.02, 0.05)
+    .v0 <- c(0.6, 0.3, 0.05, 0.1)
     .h <- 1e-6
     .J <- vapply(
       1:4,
       function(k) {
         .d <- replace(numeric(4), k, .h)
-        (.terms(.v0 + .d) - .terms(.v0 - .d)) / (2 * .h)
+        (.f(.v0 + .d) - .f(.v0 - .d)) / (2 * .h)
       },
       numeric(4)
     )
+    expect_equal(unname(.t$jac), .J, tolerance = 1e-6)
     .vc <- .cov[-1, -1]
-    expect_identical(names(.getR(.omR, TRUE)), c("sd__a", "sd__b", "sd__c", "cor__c.b"))
-    .pr <- cbind(row = 3L, col = 2L)
-    expect_equal(.ranParSe(list(cov = .cov), .om, .pr), sqrt(diag(.J %*% .vc %*% t(.J))), tolerance = 1e-6)
+    expect_equal(.ranParSe(list(cov = .cov), .t), sqrt(diag(.J %*% .vc %*% t(.J))), tolerance = 1e-6)
+    expect_equal(.covJacobian(.vc, .t$jac), .t$jac %*% .vc %*% t(.t$jac))
     # a theta-only $cov has no Omega rows to give an SE
-    expect_identical(.ranParSe(list(cov = .cov[1, 1, drop = FALSE]), .om, .pr), rep(NA_real_, 4))
+    expect_identical(.ranParSe(list(cov = .cov[1, 1, drop = FALSE]), .t), rep(NA_real_, 4))
   })
 
   test_that("Wishart ran_pars intervals: scaled chi-square SDs, Fisher-z correlations", {
@@ -719,9 +733,7 @@ nmTest({
   })
 
   test_that("a fixed Omega element gives its terms no interval", {
-    .fx <- function(ui) {
-      .ranParFixed(ui$iniDf, ui$omega, .ranParPairs(ui$iniDf, dimnames(ui$omega)[[2]]))
-    }
+    .fx <- function(ui) .ranParTerms(ui$iniDf, ui$omega, .corFromCov(ui$omega))$fix
     .ui <- rxode2::rxode2(.bsvCorBlockFit)
     # sd__eta.ka, sd__eta.cl, sd__eta.v, cor__eta.v.eta.cl
     expect_identical(.fx(.ui), c(FALSE, FALSE, FALSE, FALSE))
@@ -769,7 +781,36 @@ nmTest({
     .x$env <- .env
     expect_identical(.ranParTable(.x)$term[4], "cor__eta.v.eta.cl")
     # an undeclared pair (eta.ka with eta.cl) is not a term
-    expect_identical(.ranParPairs(.ui$iniDf, c("eta.ka", "eta.cl", "eta.v")), cbind(row = 3L, col = 2L))
+    expect_false(any(grepl("eta.ka", .ranParTable(.x)$term[-1])))
+  })
+
+  test_that("scales = \"vcov\" gives var__/cov__ terms, as broom.mixed does for lme4", {
+    .ui <- rxode2::rxode2(.bsvCorBlockFit)
+    .om <- .ui$omega
+    .cn <- c("tka", "om.eta.ka", "om.eta.cl", "cov.eta.v.eta.cl", "om.eta.v")
+    .cov <- matrix(0.001, 5, 5, dimnames = list(.cn, .cn))
+    diag(.cov) <- c(0.01, 0.02, 0.003, 0.0005, 0.002)
+    .x <- list(ui = .ui, omega = .om, omegaR = .corFromCov(.om), cov = .cov, eta = data.frame(ID = 1:12), est = "focei")
+    .t <- .ranParTable(.x, scales = "vcov")
+    expect_identical(.t$term, c("var__eta.ka", "var__eta.cl", "var__eta.v", "cov__eta.v.eta.cl"))
+    expect_equal(.t$estimate, c(0.6, 0.3, 0.1, 0.05))
+    # the elements' own SEs, in the term order
+    .se <- sqrt(diag(.cov))[c("om.eta.ka", "om.eta.cl", "om.eta.v", "cov.eta.v.eta.cl")]
+    expect_equal(.t$std.error, unname(.se))
+    .z <- stats::qnorm(0.975)
+    expect_equal(
+      .t$conf.low,
+      c(c(0.6, 0.3, 0.1) * exp(-.z * .se[1:3] / c(0.6, 0.3, 0.1)), 0.05 - .z * .se[4]),
+      ignore_attr = TRUE
+    )
+    # Wishart: chi-square variances; a covariance's variance is (w_ab^2 + w_aa w_bb) / n
+    .w <- .ranParTable(.x, method = "wishart", scales = "vcov")
+    expect_equal(.w$conf.low[1], 0.6 * 12 / stats::qchisq(0.975, 12))
+    expect_equal(.w$std.error[4], sqrt((0.05^2 + 0.3 * 0.1) / 12))
+    # the vcov terms are the sdcor terms transformed
+    .sd <- .ranParTable(.x)
+    expect_equal(.sd$estimate[1:3]^2, .t$estimate[1:3])
+    expect_equal(.sd$estimate[4] * sqrt(0.3 * 0.1), .t$estimate[4])
   })
 
   test_that("ran_pars intervals use log(sd) and atanh(cor), with an SD above 1", {

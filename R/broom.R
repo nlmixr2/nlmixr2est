@@ -38,6 +38,7 @@ confint.nlmixr2FitCore <- function(object, parm, level = 0.95, ...) {
   .ciNames <- ifelse(any(names(.extra) == "ciNames"), .extra$ciNames, TRUE)
   .ranPars <- !isFALSE(.extra$ranPars)
   .method <- if (is.null(.extra$method)) "auto" else .extra$method
+  .scales <- if (is.null(.extra$scales)) "sdcor" else .extra$scales
   .df <- .broomParFixedDf(object)
   .zv <- qnorm(1 - (1 - level) / 2)
   .low <- .df$model.est - .df$std.error * .zv
@@ -59,7 +60,7 @@ confint.nlmixr2FitCore <- function(object, parm, level = 0.95, ...) {
   )
   # the variability terms follow the thetas, as lme4 lists its variance
   # components; they are on the SD/correlation scale and never exponentiated
-  .rp <- if (.ranPars) .ranParTable(object, level, .method)
+  .rp <- if (.ranPars) .ranParTable(object, level, .method, .scales)
   if (!is.null(.rp)) {
     .df <- rbind(
       .df,
@@ -175,148 +176,179 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   }
 }
 
-#' The correlation terms the model declares among the subject-level etas
+#' The fit's `sd__`/`cor__` terms and their Jacobian over the Omega elements
 #'
-#' A declared covariance is a term even when it is estimated at zero, as
+#' One SD per subject-level eta, then one correlation per covariance the model
+#' declares (`.omegaDeclaredPairs()`), even one estimated at zero, as
 #' `$parFixed`'s `bsvcorr()` rows are.
 #'
 #' @param iniDf the model's `iniDf`
-#' @param nm the eta names, in Omega's order
-#' @return two-column index matrix into Omega (later eta, earlier eta),
-#'   ordered as `which(lower.tri(), arr.ind = TRUE)`
+#' @param omega the subject-level Omega (variance scale)
+#' @param omegaR the same Omega as `$omegaR` gives it (SDs and correlations)
+#' @param scales `"sdcor"` for `sd__`/`cor__` terms or `"vcov"` for
+#'   `var__`/`cov__` terms, as broom.mixed's `scales`
+#' @return list of `term`, `estimate`, `isSd` (a diagonal term), `fix` (a
+#'   fixed element is involved), `jac` (terms by `om.`/`cov.` elements, the
+#'   names `$cov` uses), `dep` (which elements each term is a function of) and
+#'   `varPair` (each term's two variances, for an off-diagonal term)
 #' @noRd
-.ranParPairs <- function(iniDf, nm) {
-  .eta <- iniDf[!is.na(iniDf$neta1), , drop = FALSE]
-  .dn <- .eta$name[.eta$neta1 == .eta$neta2]
-  .dn <- .dn[order(.eta$neta1[.eta$neta1 == .eta$neta2])]
-  .off <- .eta[.eta$neta1 != .eta$neta2, , drop = FALSE]
-  .i <- match(.dn[.off$neta1], nm)
-  .j <- match(.dn[.off$neta2], nm)
-  .k <- !is.na(.i) & !is.na(.j)
-  .p <- cbind(row = pmax(.i, .j)[.k], col = pmin(.i, .j)[.k])
-  .p[order(.p[, "col"], .p[, "row"]), , drop = FALSE]
+.ranParTerms <- function(iniDf, omega, omegaR, scales = "sdcor") {
+  .nm <- dimnames(omega)[[2]]
+  .d <- iniDf[!is.na(iniDf$neta1) & iniDf$neta1 == iniDf$neta2, , drop = FALSE]
+  .etaNm <- character(max(c(0L, .d$neta1)))
+  .etaNm[.d$neta1] <- .d$name
+  # in eta-number space; Om only sizes the blocks
+  .el <- .omegaDeclaredPairs(diag(length(.etaNm)), iniDf)
+  .i <- match(.etaNm[.el[, 1]], .nm)
+  .j <- match(.etaNm[.el[, 2]], .nm)
+  # an IOV fit's occasion etas are not in the subject-level omega
+  .keep <- !is.na(.i) & !is.na(.j)
+  .el <- .el[.keep, , drop = FALSE]
+  .i <- .i[.keep]
+  .j <- .j[.keep]
+  .elFix <- .omegaFixed(iniDf, .el)
+  .diag <- .i == .j
+  .sdE <- match(seq_along(.nm), ifelse(.diag, .i, NA_integer_))
+  .offE <- which(!.diag)
+  .offE <- .offE[order(pmin(.i[.offE], .j[.offE]), pmax(.i[.offE], .j[.offE]))]
+  .a <- pmax(.i[.offE], .j[.offE])
+  .b <- pmin(.i[.offE], .j[.offE])
+  .sep1 <- getOption("broom.mixed.sep1", "__")
+  .sep2 <- getOption("broom.mixed.sep2", ".")
+  .pre <- if (scales == "vcov") c("var", "cov") else c("sd", "cor")
+  .term <- c(
+    paste0(.pre[1], .sep1, .nm),
+    if (length(.offE) == 0) character(0) else paste0(.pre[2], .sep1, .nm[.a], .sep2, .nm[.b])
+  )
+  .nSd <- length(.nm)
+  .jac <- matrix(0, length(.term), nrow(.el), dimnames = list(.term, .foceiOmegaCovNames(.el, .etaNm)))
+  .dep <- .jac != 0
+  .sd <- sqrt(diag(omega))
+  .varPair <- rbind(cbind(diag(omega), diag(omega)), cbind(diag(omega)[.a], diag(omega)[.b]))
+  if (scales == "vcov") {
+    # the terms are the elements themselves
+    .e <- c(.sdE, .offE)
+    .jac[cbind(seq_along(.e), .e)] <- 1
+    return(list(
+      term = .term,
+      estimate = c(diag(omega), omega[cbind(.a, .b)]),
+      isSd = seq_along(.term) <= .nSd,
+      fix = .elFix[.e],
+      jac = .jac,
+      dep = .jac != 0,
+      varPair = .varPair
+    ))
+  }
+  for (.k in seq_len(.nSd)) {
+    .jac[.k, .sdE[.k]] <- 1 / (2 * .sd[.k])
+    .dep[.k, .sdE[.k]] <- TRUE
+  }
+  for (.m in seq_along(.offE)) {
+    .k <- .nSd + .m
+    .r <- omega[.a[.m], .b[.m]] / (.sd[.a[.m]] * .sd[.b[.m]])
+    .e <- c(.offE[.m], .sdE[.a[.m]], .sdE[.b[.m]])
+    .jac[.k, .e] <- c(
+      1 / (.sd[.a[.m]] * .sd[.b[.m]]),
+      -.r / (2 * omega[.a[.m], .a[.m]]),
+      -.r / (2 * omega[.b[.m], .b[.m]])
+    )
+    .dep[.k, .e] <- TRUE
+  }
+  list(
+    term = .term,
+    estimate = c(diag(omegaR), omegaR[cbind(.a, .b)]),
+    isSd = seq_along(.term) <= .nSd,
+    fix = as.vector(.dep %*% .elFix > 0),
+    jac = .jac,
+    dep = .dep,
+    varPair = .varPair
+  )
 }
 
-#' Delta-method SEs of the `sd__`/`cor__` terms from a fit's Omega covariance
+#' SEs of the `sd__`/`cor__` terms from a fit's Omega covariance
 #'
 #' @param x nlmixr2 fit
-#' @param omega the subject-level Omega (variance scale)
-#' @param pairs the correlation terms, from `.ranParPairs()`
-#' @return SEs of the SDs then of `pairs`' correlations; `NA` where `x$cov`
-#'   has no `om.`/`cov.` row for the term
+#' @param terms `.ranParTerms()`
+#' @return SEs, the square root of the diagonal of `J cov J'`; `NA` where
+#'   `x$cov` lacks an element the term is a function of
 #' @noRd
-.ranParSe <- function(x, omega, pairs) {
-  .nm <- dimnames(omega)[[2]]
+.ranParSe <- function(x, terms) {
   .cov <- x$cov
-  .cn <- if (is.matrix(.cov)) rownames(.cov) else character(0)
-  .vn <- paste0("om.", .nm)
-  .pairs <- pairs
-  .sd <- sqrt(diag(omega))
-  # each term is a function of these Omega elements: d term / d element
-  .terms <- c(
-    lapply(seq_along(.nm), function(i) {
-      list(n = .vn[i], g = 1 / (2 * .sd[i]))
-    }),
-    lapply(seq_len(nrow(.pairs)), function(k) {
-      .i <- .pairs[k, 1]
-      .j <- .pairs[k, 2]
-      .c <- c(paste0("cov.", .nm[.i], ".", .nm[.j]), paste0("cov.", .nm[.j], ".", .nm[.i]))
-      .c <- .c[.c %in% .cn][1]
-      .r <- omega[.i, .j] / (.sd[.i] * .sd[.j])
-      list(
-        n = c(.c, .vn[.i], .vn[.j]),
-        g = c(1 / (.sd[.i] * .sd[.j]), -.r / (2 * omega[.i, .i]), -.r / (2 * omega[.j, .j]))
-      )
-    })
-  )
-  vapply(
-    .terms,
-    function(t) {
-      if (!all(t$n %in% .cn)) {
-        return(NA_real_)
-      }
-      .v <- drop(t$g %*% .cov[t$n, t$n, drop = FALSE] %*% t$g)
-      if (is.finite(.v) && .v >= 0) sqrt(.v) else NA_real_
-    },
-    numeric(1)
-  )
+  .cn <- colnames(terms$jac)
+  .av <- if (is.matrix(.cov) && !is.null(rownames(.cov))) .cn %in% rownames(.cov) else rep(FALSE, length(.cn))
+  .ok <- rowSums(terms$dep[, !.av, drop = FALSE]) == 0
+  if (!any(.ok)) {
+    return(rep(NA_real_, length(.ok)))
+  }
+  .c <- .cn[.av]
+  .v <- diag(.covJacobian(.cov[.c, .c, drop = FALSE], terms$jac[, .av, drop = FALSE]))
+  unname(ifelse(.ok & is.finite(.v) & .v >= 0, sqrt(pmax(.v, 0)), NA_real_))
 }
 
-#' Wald intervals of `sd__`/`cor__` terms on the log(sd) and atanh(cor)
-#' scales, as nlme::intervals(), so each stays in range
+#' Wald intervals of the variability terms
+#'
+#' SDs and variances on the log scale and correlations on atanh, as
+#' nlme::intervals(), so each stays in range; covariances on their own scale.
 #'
 #' @param pars term estimates
 #' @param se their SEs
-#' @param isSd which terms are SDs (the rest are correlations)
+#' @param isSd which terms are diagonal (SDs or variances)
 #' @param level confidence level
+#' @param scales `"sdcor"` or `"vcov"`
 #' @return list of `low` and `high`
 #' @noRd
-.ranParCi <- function(pars, se, isSd, level) {
+.ranParCi <- function(pars, se, isSd, level, scales = "sdcor") {
   .zse <- qnorm(1 - (1 - level) / 2) * se
   .low <- .high <- rep(NA_real_, length(pars))
   .s <- pars[isSd]
   .low[isSd] <- .s * exp(-.zse[isSd] / .s)
   .high[isSd] <- .s * exp(.zse[isSd] / .s)
   .r <- pars[!isSd]
-  .d <- .zse[!isSd] / (1 - .r^2)
-  .low[!isSd] <- tanh(atanh(.r) - .d)
-  .high[!isSd] <- tanh(atanh(.r) + .d)
+  if (scales == "vcov") {
+    .low[!isSd] <- .r - .zse[!isSd]
+    .high[!isSd] <- .r + .zse[!isSd]
+  } else {
+    .d <- .zse[!isSd] / (1 - .r^2)
+    .low[!isSd] <- tanh(atanh(.r) - .d)
+    .high[!isSd] <- tanh(atanh(.r) + .d)
+  }
   list(low = .low, high = .high)
 }
 
-#' Which `sd__`/`cor__` terms involve a fixed Omega element
-#'
-#' @param iniDf the model's `iniDf`
-#' @inheritParams .ranParSe
-#' @return logical, the SDs then `pairs`' correlations
-#' @noRd
-.ranParFixed <- function(iniDf, omega, pairs) {
-  .nm <- dimnames(omega)[[2]]
-  .ini <- iniDf
-  .ini <- .ini[!is.na(.ini$neta1), , drop = FALSE]
-  .idx <- .ini$neta1[match(.nm, .ini$name)]
-  .fix <- function(a, b) {
-    .w <- which(.ini$neta1 == max(a, b) & .ini$neta2 == min(a, b))
-    length(.w) == 1L && isTRUE(.ini$fix[.w])
-  }
-  .pairs <- pairs
-  c(
-    vapply(.idx, function(i) .fix(i, i), logical(1)),
-    vapply(
-      seq_len(nrow(.pairs)),
-      function(k) {
-        .i <- .idx[.pairs[k, 1]]
-        .j <- .idx[.pairs[k, 2]]
-        .fix(.i, .j) || .fix(.i, .i) || .fix(.j, .j)
-      },
-      logical(1)
-    )
-  )
-}
-
-#' SEs and intervals of `sd__`/`cor__` terms from the Wishart distribution
+#' SEs and intervals of the variability terms from the Wishart distribution
 #'
 #' Omega estimated from `n` subjects' etas is taken as Wishart with `n`
-#' degrees of freedom: each variance is a scaled chi-square and each
-#' correlation uses Fisher's z with SE `1/sqrt(n - 3)`.
+#' degrees of freedom: each variance is a scaled chi-square, each correlation
+#' uses Fisher's z with SE `1/sqrt(n - 3)` and each covariance `w_ab` has
+#' variance `(w_ab^2 + w_aa w_bb) / n`.
 #'
 #' @inheritParams .ranParCi
 #' @param n number of subjects
+#' @param varPair each term's two variances (`.ranParTerms()`), for `"vcov"`
 #' @return list of `se`, `low` and `high`
 #' @noRd
-.ranParWishart <- function(pars, isSd, n, level) {
+.ranParWishart <- function(pars, isSd, n, level, scales = "sdcor", varPair = NULL) {
   .a <- (1 - level) / 2
   .se <- .low <- .high <- rep(NA_real_, length(pars))
   .s <- pars[isSd]
-  .se[isSd] <- .s / sqrt(2 * n)
-  .low[isSd] <- .s * sqrt(n / stats::qchisq(1 - .a, n))
-  .high[isSd] <- .s * sqrt(n / stats::qchisq(.a, n))
+  # the chi-square interval of a variance, on the term's own scale
+  .pw <- if (scales == "vcov") 1 else 0.5
+  .se[isSd] <- if (scales == "vcov") .s * sqrt(2 / n) else .s / sqrt(2 * n)
+  .low[isSd] <- .s * (n / stats::qchisq(1 - .a, n))^.pw
+  .high[isSd] <- .s * (n / stats::qchisq(.a, n))^.pw
   .r <- pars[!isSd]
-  .se[!isSd] <- (1 - .r^2) / sqrt(n)
-  if (n > 3) {
-    .d <- stats::qnorm(1 - .a) / sqrt(n - 3)
-    .low[!isSd] <- tanh(atanh(.r) - .d)
-    .high[!isSd] <- tanh(atanh(.r) + .d)
+  if (scales == "vcov") {
+    .vp <- varPair[!isSd, , drop = FALSE]
+    .se[!isSd] <- sqrt((.r^2 + .vp[, 1] * .vp[, 2]) / n)
+    .low[!isSd] <- .r - stats::qnorm(1 - .a) * .se[!isSd]
+    .high[!isSd] <- .r + stats::qnorm(1 - .a) * .se[!isSd]
+  } else {
+    .se[!isSd] <- (1 - .r^2) / sqrt(n)
+    if (n > 3) {
+      .d <- stats::qnorm(1 - .a) / sqrt(n - 3)
+      .low[!isSd] <- tanh(atanh(.r) - .d)
+      .high[!isSd] <- tanh(atanh(.r) + .d)
+    }
   }
   list(se = .se, low = .low, high = .high)
 }
@@ -327,11 +359,13 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 #' @param level confidence level
 #' @param method `"auto"` (the Omega rows of `$cov` when present, else
 #'   Wishart), `"cov"` or `"wishart"`
+#' @param scales `"sdcor"` or `"vcov"` (`.ranParTerms()`)
 #' @return data.frame of `term`, `estimate`, `std.error`, `conf.low`,
 #'   `conf.high`, `method`; `NULL` when the model has no etas
 #' @noRd
-.ranParTable <- function(x, level = 0.95, method = c("auto", "cov", "wishart")) {
+.ranParTable <- function(x, level = 0.95, method = c("auto", "cov", "wishart"), scales = c("sdcor", "vcov")) {
   method <- match.arg(method)
+  scales <- match.arg(scales)
   .omegaR <- x$omegaR
   .omega <- x$omega
   if (is.list(.omegaR)) {
@@ -341,25 +375,16 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   if (is.null(.omega) || nrow(.omega) == 0) {
     return(NULL)
   }
-  .nm <- dimnames(.omega)[[2]]
   # the model as estimated, as $parFixed reports its correlations: a ui
   # rebuilt from the estimated omega has lost a covariance estimated at zero
   .ini <- if (is.environment(x$env)) .updateParFixedBsvCorIni(x$env, x$ui) else x$ui$iniDf
-  .pairs <- .ranParPairs(.ini, .nm)
-  .sep1 <- getOption("broom.mixed.sep1", "__")
-  .sep2 <- getOption("broom.mixed.sep2", ".")
-  .pars <- c(
-    setNames(diag(.omegaR), paste0("sd", .sep1, .nm)),
-    setNames(
-      .omegaR[.pairs],
-      if (nrow(.pairs) == 0) character(0) else paste0("cor", .sep1, .nm[.pairs[, 1]], .sep2, .nm[.pairs[, 2]])
-    )
-  )
-  .isSd <- seq_along(.pars) <= nrow(.omega)
-  .cse <- if (method == "wishart") rep(NA_real_, length(.pars)) else .ranParSe(x, .omega, .pairs)
-  .ci <- .ranParCi(.pars, .cse, .isSd, level)
+  .t <- .ranParTerms(.ini, .omega, .omegaR, scales)
+  .pars <- setNames(.t$estimate, .t$term)
+  .isSd <- .t$isSd
+  .cse <- if (method == "wishart") rep(NA_real_, length(.pars)) else .ranParSe(x, .t)
+  .ci <- .ranParCi(.pars, .cse, .isSd, level, scales)
   .useW <- if (method == "cov") rep(FALSE, length(.pars)) else is.na(.cse)
-  .w <- .ranParWishart(.pars, .isSd, nrow(x$eta), level)
+  .w <- .ranParWishart(.pars, .isSd, nrow(x$eta), level, scales, .t$varPair)
   .df <- data.frame(
     term = names(.pars),
     estimate = unname(.pars),
@@ -370,7 +395,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     stringsAsFactors = FALSE
   )
   # a fixed Omega element is not estimated, nor is any under est="posthoc"
-  .fix <- .ranParFixed(.ini, .omega, .pairs) | identical(x$est, "posthoc")
+  .fix <- .t$fix | identical(x$est, "posthoc")
   .df[.fix, c("std.error", "conf.low", "conf.high")] <- NA_real_
   .df$method[.fix | is.na(.df$std.error)] <- NA_character_
   .df
@@ -381,7 +406,8 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   .extra <- list(...)
   .level <- if (is.null(.extra$conf.level)) 0.95 else .extra$conf.level
   .method <- if (is.null(.extra$conf.method)) "auto" else .extra$conf.method
-  .rp <- .ranParTable(x, .level, .method)
+  .scales <- if (is.null(.extra$.ranScale)) "sdcor" else .extra$.ranScale
+  .rp <- .ranParTable(x, .level, .method, .scales)
   if (!is.null(.rp)) {
     .p1 <- data.frame(
       effect = "ran_pars",
@@ -522,6 +548,18 @@ tidy.nlmixr2FitCore <- function(x, ...) {
     c("fixed", "random", "ran_vals", "ran_pars", "ran_coef", "ran_coefs"),
     several.ok = TRUE
   )
+  # one scale per effect, as broom.mixed; only ran_pars has one
+  .scales <- .extra$scales
+  .ranScale <- "sdcor"
+  if (!is.null(.scales)) {
+    if (length(.scales) != length(.effects)) {
+      stop("'scales' needs one value (or NA) per element of 'effects'", call. = FALSE)
+    }
+    .s <- .scales[.effects == "ran_pars"]
+    if (length(.s) == 1L && !is.na(.s)) {
+      .ranScale <- match.arg(.s, c("sdcor", "vcov"))
+    }
+  }
   .ret <- list()
   if (any(.effects == "fixed")) {
     .ret$fixed <- .nlmixr2TidyFixed(x, ...)
@@ -530,7 +568,7 @@ tidy.nlmixr2FitCore <- function(x, ...) {
     .ret$ran_vals <- .nlmixr2TidyRandom(x, ...)
   }
   if (any(.effects == "ran_pars")) {
-    .ret$ran_pars <- .nlmixr2TidyRandomPar(x, ...)
+    .ret$ran_pars <- .nlmixr2TidyRandomPar(x, ..., .ranScale = .ranScale)
   }
   # broom.mixed spells it ran_coefs; ran_coef is kept for older code
   for (.e in intersect(c("ran_coef", "ran_coefs"), .effects)) {

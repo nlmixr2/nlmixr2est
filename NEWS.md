@@ -358,7 +358,10 @@
   (delta method, Wald on log(SD) and Fisher z) when present, otherwise from
   the Wishart distribution of Omega over the subjects (`"auto"`, the
   default; or `"cov"`/`"wishart"`).  A fixed Omega element, or any under
-  `est = "posthoc"`, has no interval.  The residual-error rows of `tidy()`
+  `est = "posthoc"`, has no interval.  `tidy(scales = "vcov")` (one value
+  per element of `effects`, as broom.mixed) and `confint(scales = "vcov")`
+  report the same terms as `var__`/`cov__` variances and covariances, as
+  broom.mixed does for lme4.  The residual-error rows of `tidy()`
   kept their `conf.int` interval; it was `NA`.  `tidy()` also accepts
   broom.mixed's `effects = "ran_coefs"`.
 
