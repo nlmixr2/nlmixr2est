@@ -835,11 +835,6 @@ nmTest({
     expect_equal(.r$cor, stats::cov2cor(.om)[["eta.cl", "eta.v"]], tolerance = 1e-12)
     expect_equal(.r$cor, -0.03 / sqrt(0.2 * 0.4), tolerance = 1e-12)
     expect_identical(.r$fix, FALSE)
-    # the row is found by its name
-    expect_identical(
-      .parFixedIsBsvCor(c("tcl", "eta.cl", "bsvcorr(tcl,tv)", "BSV correlation between tcl and tv")),
-      c(FALSE, FALSE, TRUE, FALSE)
-    )
   })
 
   test_that(".updateParFixedBsvCor orders the pairs of a block by the first eta, then the second", {
@@ -1055,7 +1050,7 @@ nmTest({
       check.names = FALSE,
       row.names = c("tcl", "tv", "bsvcorr(tcl,tv)")
     )
-    .got <- .broomParFixedDf(list(parFixedDf = .df))
+    .got <- .broomParFixedDf(list(parFixedDf = .df, ui = rxode2::rxode2(.bsvCor2)))
     expect_identical(rownames(.got), c("tcl", "tv"))
     expect_identical(names(.got), c("model.est", "std.error", "estimate", "bsv"))
     expect_identical(.got$model.est, c(1, 3.45))
@@ -1094,7 +1089,10 @@ nmTest({
       fit$parFixed[.cor, "BSV(CV%)"],
       formatMinWidth(stats::cov2cor(fit$omega)[["eta.cl", "eta.v"]], digits = fit$control$sigdigTable)
     )
-    expect_identical(rownames(confint(fit)), c("tka", "tcl", "tv", "add.sd"))
+    expect_identical(
+      rownames(confint(fit)),
+      c("tka", "tcl", "tv", "add.sd", "sd__eta.ka", "sd__eta.cl", "sd__eta.v", "cor__eta.v.eta.cl")
+    )
     # broom keeps the correlation in the random-effect terms only
     skip_if_not_installed("broom.mixed")
     .td <- as.data.frame(broom.mixed::tidy(fit))

@@ -106,7 +106,7 @@ nmTest({
       .stdErr[1:3],
       tolerance = tol
     )
-    expect_equal(exp(td$conf.low), .confLow, tolerance = tol)
+    expect_equal(exp(td$conf.low[1:3]), .confLow[1:3], tolerance = tol)
 
     for (ef in c("ran_vals", "random")) {
       td <- broom.mixed::tidy(fitS, effects = ef, exponentiate = NA)
@@ -220,7 +220,7 @@ nmTest({
       expect_equal(td$estimate[1:3], log(.est)[1:3], tolerance = tol)
       expect_equal(td$estimate[-(1:3)], .est[-(1:3)], tolerance = tol)
       expect_equal(setNames(exp(td$estimate[1:3]) * td$std.error[1:3], NULL), .stdErr[1:3], tolerance = tol)
-      expect_equal(exp(td$conf.low), .confLow, tolerance = tol)
+      expect_equal(exp(td$conf.low[1:3]), .confLow[1:3], tolerance = tol)
 
       for (ef in c("ran_vals", "random")) {
         td <- broom.mixed::tidy(fitF, effects = ef, exponentiate = NA)
@@ -330,7 +330,7 @@ nmTest({
       expect_equal(td$estimate[-(1:3)], .est[-(1:3)], tolerance = tol)
       ## exp(.df$model.est[.exp])*.df$std.error[.exp]
       expect_equal(setNames(exp(td$estimate[1:3]) * td$std.error[1:3], NULL), .stdErr[1:3], tolerance = tol)
-      expect_equal(exp(td$conf.low), .confLow, tolerance = tol)
+      expect_equal(exp(td$conf.low[1:3]), .confLow[1:3], tolerance = tol)
       for (ef in c("ran_vals", "random")) {
         td <- broom.mixed::tidy(fitF, effects = ef, exponentiate = NA)
         td1 <- td$estimate
@@ -589,5 +589,336 @@ nmTest({
 
     expect_equal(td1, td2, tolerance = tol)
     expect_equal(td2, td3, tolerance = tol)
+  })
+})
+
+# eta.ka is not mu-referenced, so $parFixedDf carries a row for it after the
+# thetas; tcl is fixed and two thetas are labelled
+.broomEtaRowMod <- function() {
+  ini({
+    tka <- 0.45
+    label("Ka")
+    tcl <- fix(1)
+    label("Cl")
+    tv <- 3.45
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka) * exp(eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+nmTest({
+  test_that("tidy() and confint() report the thetas only, not a non-mu-referenced eta's row", {
+    skip_if_not_installed("broom.mixed")
+    .ctl <- foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE)
+    fit <- .nlmixr(.broomEtaRowMod, theo_sd, est = "focei", control = .ctl)
+    .pf <- fit$parFixedDf
+    expect_identical(rownames(.pf), c("tka", "tcl", "tv", "add.sd", "eta.ka"))
+    expect_identical(.pf$Parameter[1:4], c("Ka", "Cl", "", ""))
+    .th <- c("tka", "tcl", "tv")
+    .fx <- as.data.frame(broom.mixed::tidy(fit, effects = "fixed"))
+    expect_identical(.fx$term, .th)
+    expect_equal(.fx$estimate, unname(.pf[.th, "Estimate"]))
+    expect_equal(.fx$std.error, unname(.pf[.th, "SE"]))
+    .rp <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_pars"))
+    expect_identical(.rp$term, c("sd__eta.ka", "sd__eta.cl", "sd__eta.v", "add.sd"))
+    expect_identical(.rp$group, c("ID", "ID", "ID", "Residual(add)"))
+    expect_equal(.rp$estimate[4], unname(.pf["add.sd", "Estimate"]))
+    .all <- c(.th, "add.sd")
+    .z <- stats::qnorm(0.975)
+    .lo <- unname(.pf[.all, "Estimate"] - .z * .pf[.all, "SE"])
+    .hi <- unname(.pf[.all, "Estimate"] + .z * .pf[.all, "SE"])
+    .ci <- confint(fit)
+    .sd <- c("sd__eta.ka", "sd__eta.cl", "sd__eta.v")
+    # the variability terms follow the thetas, as lme4 lists them
+    expect_identical(rownames(.ci), c(.all, .sd))
+    expect_equal(.ci[.all, "2.5 %"], .lo)
+    expect_equal(.ci[.all, "97.5 %"], .hi)
+    .rpt <- .ranParTable(fit)
+    expect_identical(.rpt$term, .sd)
+    expect_equal(.ci[.sd, "estimate"], .rpt$estimate)
+    expect_equal(.ci[.sd, "2.5 %"], .rpt$conf.low)
+    expect_equal(.ci[.sd, "97.5 %"], .rpt$conf.high)
+    expect_identical(rownames(confint(fit, parm = c("tv", "sd__eta.v"))), c("tv", "sd__eta.v"))
+    # exponentiate = NA back-transforms the exp() thetas only; the eta.ka row
+    # of $parFixedDf, with no estimate, is not among them
+    .isExp <- c(TRUE, TRUE, TRUE, FALSE)
+    .ciE <- confint(fit, exponentiate = NA)
+    expect_identical(rownames(.ciE), c(.all, .sd))
+    expect_equal(.ciE[.all, "2.5 %"], ifelse(.isExp, exp(.lo), .lo))
+    expect_equal(.ciE[.all, "97.5 %"], ifelse(.isExp, exp(.hi), .hi))
+    expect_equal(.ciE[.sd, "2.5 %"], .rpt$conf.low)
+    .fxE <- as.data.frame(broom.mixed::tidy(fit, effects = "fixed", exponentiate = NA))
+    expect_identical(.fxE$term, .th)
+    expect_equal(.fxE$std.error, unname(exp(.pf[.th, "Estimate"]) * .pf[.th, "SE"]))
+    .fxC <- as.data.frame(broom.mixed::tidy(fit, effects = "fixed", conf.int = TRUE))
+    expect_identical(.fxC$term, .th)
+    expect_equal(.fxC$conf.low, .lo[1:3])
+    expect_equal(.fxC$conf.high, .hi[1:3])
+    # the residual-error row keeps its interval under ran_pars
+    .rpC <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_pars", conf.int = TRUE))
+    expect_equal(.rpC$conf.low[4], .lo[4])
+    expect_equal(.rpC$conf.high[4], .hi[4])
+    # scales, one per effect as in broom.mixed
+    .rpV <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_pars", scales = "vcov"))
+    expect_identical(.rpV$term, c("var__eta.ka", "var__eta.cl", "var__eta.v", "add.sd"))
+    expect_equal(.rpV$estimate[1:3], .rp$estimate[1:3]^2)
+    expect_identical(
+      as.data.frame(broom.mixed::tidy(fit, effects = c("fixed", "ran_pars"), scales = c(NA, "vcov")))$term[4],
+      "var__eta.ka"
+    )
+    expect_error(broom.mixed::tidy(fit, effects = c("fixed", "ran_pars"), scales = "vcov"), "one value")
+    expect_identical(rownames(confint(fit, scales = "vcov"))[5], "var__eta.ka")
+    # broom.mixed's spelling, ran_coefs, gives the same coefficients
+    expect_warning(
+      .rc <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_coefs")),
+      "not mu-referenced"
+    )
+    expect_warning(
+      .rc0 <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_coef")),
+      "not mu-referenced"
+    )
+    expect_identical(unique(.rc$effect), "ran_coefs")
+    expect_equal(.rc$estimate, .rc0$estimate)
+  })
+
+  test_that("ran_pars SEs are J cov J' over the Omega rows of $cov", {
+    .ui <- rxode2::rxode2(.bsvCorBlockFit)
+    .om <- .ui$omega
+    .cn <- c("tka", "om.eta.ka", "om.eta.cl", "cov.eta.v.eta.cl", "om.eta.v")
+    .cov <- matrix(0.001, 5, 5, dimnames = list(.cn, .cn))
+    diag(.cov) <- c(0.01, 0.02, 0.003, 0.0005, 0.002)
+    .t <- .ranParTerms(.ui$iniDf, .om, .corFromCov(.om))
+    expect_identical(.t$term, names(.getR(.corFromCov(.om), TRUE)))
+    expect_identical(colnames(.t$jac), .cn[-1])
+    # the Jacobian of (sd, sd, sd, cor) over (om.ka, om.cl, cov.v.cl, om.v)
+    .f <- function(v) {
+      .s <- sqrt(v[c(1, 2, 4)])
+      c(.s, v[3] / (.s[2] * .s[3]))
+    }
+    .v0 <- c(0.6, 0.3, 0.05, 0.1)
+    .h <- 1e-6
+    .J <- vapply(
+      1:4,
+      function(k) {
+        .d <- replace(numeric(4), k, .h)
+        (.f(.v0 + .d) - .f(.v0 - .d)) / (2 * .h)
+      },
+      numeric(4)
+    )
+    expect_equal(unname(.t$jac), .J, tolerance = 1e-6)
+    .vc <- .cov[-1, -1]
+    expect_equal(.ranParSe(list(cov = .cov), .t), sqrt(diag(.J %*% .vc %*% t(.J))), tolerance = 1e-6)
+    expect_equal(.covJacobian(.vc, .t$jac), .t$jac %*% .vc %*% t(.t$jac))
+    # a theta-only $cov has no Omega rows to give an SE
+    expect_identical(.ranParSe(list(cov = .cov[1, 1, drop = FALSE]), .t), rep(NA_real_, 4))
+    # a covariance named with its etas the other way round is the same element
+    .cov2 <- .cov
+    dimnames(.cov2) <- rep(list(sub("cov.eta.v.eta.cl", "cov.eta.cl.eta.v", .cn, fixed = TRUE)), 2)
+    expect_equal(.ranParSe(list(cov = .cov2), .t), .ranParSe(list(cov = .cov), .t))
+    # an NA row of a rank-deficient $cov reaches only the terms that use it
+    .cov3 <- .cov
+    .cov3["om.eta.ka", ] <- .cov3[, "om.eta.ka"] <- NA_real_
+    .se3 <- .ranParSe(list(cov = .cov3), .t)
+    expect_identical(is.na(.se3), c(TRUE, FALSE, FALSE, FALSE))
+    expect_equal(.se3[-1], .ranParSe(list(cov = .cov), .t)[-1])
+  })
+
+  test_that("Wishart ran_pars intervals: scaled chi-square SDs, Fisher-z correlations", {
+    .w <- .ranParWishart(c(0.5, 0.3), c(TRUE, FALSE), 20, 0.9)
+    expect_equal(.w$low[1], 0.5 * sqrt(20 / stats::qchisq(0.95, 20)))
+    expect_equal(.w$high[1], 0.5 * sqrt(20 / stats::qchisq(0.05, 20)))
+    expect_equal(.w$se, c(0.5 / sqrt(40), (1 - 0.09) / sqrt(20)))
+    expect_equal(.w$low[2], tanh(atanh(0.3) - stats::qnorm(0.95) / sqrt(17)))
+    expect_equal(.w$high[2], tanh(atanh(0.3) + stats::qnorm(0.95) / sqrt(17)))
+    # three subjects give no Fisher-z interval
+    expect_identical(.ranParWishart(0.3, FALSE, 3, 0.9)$low, NA_real_)
+  })
+
+  test_that("a fixed Omega element gives its terms no interval", {
+    .fx <- function(ui) .ranParTerms(ui$iniDf, ui$omega, .corFromCov(ui$omega))$fix
+    .ui <- rxode2::rxode2(.bsvCorBlockFit)
+    # sd__eta.ka, sd__eta.cl, sd__eta.v, cor__eta.v.eta.cl
+    expect_identical(.fx(.ui), c(FALSE, FALSE, FALSE, FALSE))
+    expect_identical(.fx(rxode2::ini(.ui, eta.ka ~ fix(0.6))), c(TRUE, FALSE, FALSE, FALSE))
+    expect_identical(.fx(rxode2::ini(.ui, eta.cl + eta.v ~ fix(0.3, 0.05, 0.1))), c(FALSE, TRUE, TRUE, TRUE))
+  })
+
+  test_that("auto ran_pars intervals use $cov when it has Omega, else Wishart", {
+    .ui <- rxode2::rxode2(.bsvCorBlockFit)
+    .om <- .ui$omega
+    .cn <- c("tka", "om.eta.ka", "om.eta.cl", "cov.eta.v.eta.cl", "om.eta.v")
+    .cov <- diag(c(0.01, 0.02, 0.003, 0.0005, 0.002))
+    dimnames(.cov) <- list(.cn, .cn)
+    .x <- list(ui = .ui, omega = .om, omegaR = .corFromCov(.om), cov = .cov, eta = data.frame(ID = 1:12), est = "focei")
+    expect_identical(.ranParTable(.x)$method, rep("cov", 4))
+    expect_identical(.ranParTable(.x, method = "wishart")$method, rep("wishart", 4))
+    .w <- .ranParWishart(.ranParTable(.x)$estimate, c(TRUE, TRUE, TRUE, FALSE), 12, 0.95)
+    .x$cov <- .cov[1, 1, drop = FALSE]
+    .t <- .ranParTable(.x)
+    expect_identical(.t$method, rep("wishart", 4))
+    expect_equal(.t$conf.low, .w$low)
+    expect_identical(.ranParTable(.x, method = "cov")$conf.low, rep(NA_real_, 4))
+    # a posthoc fit takes Omega from ini(); nothing about it was estimated
+    .x$est <- "posthoc"
+    expect_identical(.ranParTable(.x)$std.error, rep(NA_real_, 4))
+  })
+
+  test_that("a declared covariance estimated at zero keeps its cor__ term", {
+    .ui <- rxode2::rxode2(.bsvCorBlockFit)
+    .om <- .ui$omega
+    .om["eta.cl", "eta.v"] <- .om["eta.v", "eta.cl"] <- 0
+    .x <- list(ui = .ui, omega = .om, omegaR = .corFromCov(.om), cov = NULL, eta = data.frame(ID = 1:12), est = "focei")
+    .t <- .ranParTable(.x)
+    expect_identical(.t$term, c("sd__eta.ka", "sd__eta.cl", "sd__eta.v", "cor__eta.v.eta.cl"))
+    expect_identical(.t$estimate[4], 0)
+    # a ui rebuilt from that omega has lost the covariance row; the model as
+    # estimated (iniDf0) still has it
+    .rebuilt <- rxode2::rxode2(.ui)
+    .rebuilt$iniDf <- .ui$iniDf[.ui$iniDf$name != "(eta.cl,eta.v)", , drop = FALSE]
+    .env <- new.env(parent = emptyenv())
+    .env$iniDf0 <- .ui$iniDf
+    .x$ui <- .rebuilt
+    expect_identical(.ranParTable(.x)$term[1:3], c("sd__eta.ka", "sd__eta.cl", "sd__eta.v"))
+    expect_length(.ranParTable(.x)$term, 3L)
+    .x$env <- .env
+    expect_identical(.ranParTable(.x)$term[4], "cor__eta.v.eta.cl")
+    # an undeclared pair (eta.ka with eta.cl) is not a term
+    expect_false(any(grepl("eta.ka", .ranParTable(.x)$term[-1])))
+  })
+
+  test_that("scales = \"vcov\" gives var__/cov__ terms, as broom.mixed does for lme4", {
+    .ui <- rxode2::rxode2(.bsvCorBlockFit)
+    .om <- .ui$omega
+    .cn <- c("tka", "om.eta.ka", "om.eta.cl", "cov.eta.v.eta.cl", "om.eta.v")
+    .cov <- matrix(0.001, 5, 5, dimnames = list(.cn, .cn))
+    diag(.cov) <- c(0.01, 0.02, 0.003, 0.0005, 0.002)
+    .x <- list(ui = .ui, omega = .om, omegaR = .corFromCov(.om), cov = .cov, eta = data.frame(ID = 1:12), est = "focei")
+    .t <- .ranParTable(.x, scales = "vcov")
+    expect_identical(.t$term, c("var__eta.ka", "var__eta.cl", "var__eta.v", "cov__eta.v.eta.cl"))
+    expect_equal(.t$estimate, c(0.6, 0.3, 0.1, 0.05))
+    # the elements' own SEs, in the term order
+    .se <- sqrt(diag(.cov))[c("om.eta.ka", "om.eta.cl", "om.eta.v", "cov.eta.v.eta.cl")]
+    expect_equal(.t$std.error, unname(.se))
+    .z <- stats::qnorm(0.975)
+    expect_equal(
+      .t$conf.low,
+      c(c(0.6, 0.3, 0.1) * exp(-.z * .se[1:3] / c(0.6, 0.3, 0.1)), 0.05 - .z * .se[4]),
+      ignore_attr = TRUE
+    )
+    # Wishart: chi-square variances; a covariance's variance is (w_ab^2 + w_aa w_bb) / n
+    .w <- .ranParTable(.x, method = "wishart", scales = "vcov")
+    expect_equal(.w$conf.low[1], 0.6 * 12 / stats::qchisq(0.975, 12))
+    expect_equal(.w$std.error[4], sqrt((0.05^2 + 0.3 * 0.1) / 12))
+    # the vcov terms are the sdcor terms transformed
+    .sd <- .ranParTable(.x)
+    expect_equal(.sd$estimate[1:3]^2, .t$estimate[1:3])
+    expect_equal(.sd$estimate[4] * sqrt(0.3 * 0.1), .t$estimate[4])
+  })
+
+  test_that("ran_pars intervals use log(sd) and atanh(cor), with an SD above 1", {
+    .z <- stats::qnorm(0.975)
+    # an SD above 1 must not reach atanh()
+    .ci <- withr::with_options(
+      list(warn = 2),
+      .ranParCi(c(2, 1, 0.5), c(0.4, 0.1, 0.2), c(TRUE, TRUE, FALSE), 0.95)
+    )
+    expect_equal(.ci$low, c(2 * exp(-.z * 0.2), exp(-.z * 0.1), tanh(atanh(0.5) - .z * 0.2 / 0.75)))
+    expect_equal(.ci$high, c(2 * exp(.z * 0.2), exp(.z * 0.1), tanh(atanh(0.5) + .z * 0.2 / 0.75)))
+    expect_identical(.ranParCi(1, NA_real_, TRUE, 0.95)$low, NA_real_)
+  })
+
+  test_that("tidy() and confint() list an IOV fit's occasion variability under its occasion", {
+    skip_if_not_installed("broom.mixed")
+    fit <- .iovFit("focei", control = list(maxOuterIterations = 0, calcTables = FALSE))
+    expect_identical(rownames(fit$parFixedDf), c("tka", "tcl", "tv", "add.sd", "iov.cl"))
+    .fx <- as.data.frame(broom.mixed::tidy(fit, effects = "fixed"))
+    expect_identical(.fx$term, c("tka", "tcl", "tv"))
+    # the occasion level follows the subject level
+    .rp <- as.data.frame(broom.mixed::tidy(fit, effects = "ran_pars", conf.int = TRUE))
+    expect_identical(.rp$term, c("sd__eta.v", "sd__iov.cl", "add.sd"))
+    expect_identical(.rp$group, c("ID", "occ", "Residual(add)"))
+    expect_equal(.rp$estimate[2], sqrt(fit$omega$occ[["iov.cl", "iov.cl"]]))
+    expect_identical(rownames(confint(fit)), c("tka", "tcl", "tv", "add.sd", "sd__eta.v", "sd__iov.cl"))
+    # no $cov (covMethod = ""): Wishart over the subject-occasions
+    .w <- .ranParWishart(.rp$estimate[2], TRUE, nrow(fit$env$iov$occ), 0.95)
+    expect_equal(.rp$conf.low[2], .w$low)
+    expect_equal(.rp$conf.high[2], .w$high)
+    expect_identical(.ranParTable(fit)$method, c("wishart", "wishart"))
+  })
+
+  test_that("an IOV fit's rx.<eta> declarations name the occasion etas", {
+    .ini0 <- data.frame(
+      name = c("tcl", "eta.cl", "rx.iov.cl", "(rx.iov.cl,rx.iov.v)", "rx.iov.v"),
+      ntheta = c(1L, NA, NA, NA, NA),
+      neta1 = c(NA, 1L, 2L, 3L, 3L),
+      neta2 = c(NA, 1L, 2L, 2L, 3L),
+      fix = FALSE
+    )
+    .got <- .ranParIni(.ini0, c("iov.cl", "iov.v"), NULL)
+    expect_identical(.got$name, c("tcl", "eta.cl", "iov.cl", "(rx.iov.cl,rx.iov.v)", "iov.v"))
+    # the declared occasion covariance is a term even at zero
+    .om <- matrix(c(0.1, 0, 0, 0.05), 2, 2, dimnames = rep(list(c("iov.cl", "iov.v")), 2))
+    expect_identical(.ranParTerms(.got, .om, .corFromCov(.om))$term, c("sd__iov.cl", "sd__iov.v", "cor__iov.v.iov.cl"))
+    # names it cannot supply come from the final ui
+    expect_identical(.ranParIni(.ini0, "eta.q", "ui"), "ui")
+  })
+
+  test_that("an IOV level takes its SE from $cov's SD-scale magnitude row, not occasion copies", {
+    .ui <- rxode2::rxode2(.iovFitMuMod)
+    .nm <- c("eta.cl", "eta.v")
+    .om <- list(
+      id = matrix(c(0.3, 0, 0, 0.1), 2, 2, dimnames = list(.nm, .nm)),
+      occ = matrix(0.1, 1, 1, dimnames = list("iov.cl", "iov.cl"))
+    )
+    .omR <- lapply(.om, .corFromCov)
+    .cn <- c("tka", "iov.cl", "om.eta.cl", "om.eta.v")
+    .cov <- diag(c(0.01, 0.0144, 0.002, 0.0002))
+    dimnames(.cov) <- list(.cn, .cn)
+    .x <- list(ui = .ui, omega = .om, omegaR = .omR, cov = .cov, eta = data.frame(ID = 1:12), est = "focei")
+    .t <- .ranParTable(.x)
+    expect_identical(.t$group, c("ID", "ID", "occ"))
+    expect_identical(.t$term, c("sd__eta.cl", "sd__eta.v", "sd__iov.cl"))
+    # the row is the SD itself: its SE is the SD's
+    expect_equal(.t$std.error[3], 0.12)
+    expect_identical(.t$method[3], "cov")
+    # on the variance scale, d var / d sd = 2 sd
+    .v <- .ranParTable(.x, scales = "vcov")
+    expect_equal(.v$std.error[3], 2 * sqrt(0.1) * 0.12)
+    # untied per-occasion copies are a different model; they give no SE
+    .cn2 <- c("tka", "om.rx.iov.cl.1", "om.rx.iov.cl.2", "om.eta.cl", "om.eta.v")
+    .cov2 <- diag(c(0.01, 0.003, 0.004, 0.002, 0.0002))
+    dimnames(.cov2) <- list(.cn2, .cn2)
+    .x$cov <- .cov2
+    expect_identical(.ranParTable(.x, method = "cov")$std.error[3], NA_real_)
+    # nor does a level whose occasion count is unknown fall back to Wishart
+    expect_identical(.ranParTable(.x)$method[3], NA_character_)
+  })
+
+  test_that("broom's theta rows come from the model's thetas, and none is an error", {
+    .ui <- rxode2::rxode2(.broomEtaRowMod)
+    .df <- data.frame(
+      Estimate = c(0.45, 0.7, NA),
+      SE = c(0.1, 0.05, NA),
+      row.names = c("tka", "add.sd", "eta.ka")
+    )
+    .got <- .broomParFixedDf(list(parFixedDf = .df, ui = .ui))
+    expect_identical(rownames(.got), c("tka", "add.sd"))
+    expect_identical(names(.got), c("model.est", "std.error"))
+    # a table whose rows name no theta of the model is not a fit's table
+    expect_error(
+      .broomParFixedDf(list(parFixedDf = .df["eta.ka", , drop = FALSE], ui = .ui)),
+      "no row of $parFixedDf is a theta of the fit's model",
+      fixed = TRUE
+    )
+    # an empty table has nothing to report
+    expect_identical(nrow(.broomParFixedDf(list(parFixedDf = .df[0, , drop = FALSE], ui = .ui))), 0L)
   })
 })
