@@ -53,8 +53,8 @@ tableControl(
   \- \`"truncated-normal"\` Simulates from a truncated normal
   distribution under the assumption of the model and censoring.
 
-  \- \`"cdf"\` Use the cdf-method for censoring with npde and use this
-  for any other residuals (\`cwres\` etc)
+  \- \`"cdf"\` Impute censored observations with NPDE (below) and use
+  the imputed values as the DV of the other residuals (\`cwres\` etc).
 
   \- \`"omit"\` omit the residuals for censoring
 
@@ -86,7 +86,10 @@ tableControl(
   afterwards.
   [`rxControl()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
   only stores it; the seed is applied when the control is used by a
-  solve
+  solve. Re-solving a result by assignment (eg `s$params <- p`)
+  reapplies its seed, while
+  [`update()`](https://rdrr.io/r/stats/update.html) uses only a `seed`
+  it is given
 
 - cholSEtol:
 

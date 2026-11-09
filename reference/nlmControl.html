@@ -414,16 +414,14 @@ function.  By default this is <code>TRUE</code></p></dd>
 <dd><p>Optimization significant digits.  One value drives, with a single
 consistent formula, the inner/outer optimizer convergence tolerance
 (<code>10^-sigdig</code>), the boundary check tolerance (<code>5*10^(-sigdig+1)</code>),
-and the ODE solver tolerances: the <code>rtol</code> exponent IS <code>sigdig</code> and
-<code>atol</code> sits three orders below, so <code>rtol = 10^-sigdig</code>,
-<code>atol = 10^(-sigdig-3)</code> for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (<code>atolSens</code>/<code>rtolSens</code>)
-tolerances match the main solve (the outer gradient and covariance are built
-from them); the steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one
-order looser.
-Keying the optimizer to the same <code>10^-sigdig</code> means it converges to
-exactly the precision the solve supports.  At the default <code>sigdig = 3</code>
-this is <code>atol = 1e-6</code>, <code>rtol = 1e-3</code>.</p></dd>
+and the ODE solver tolerances <code>rtol = max(10^(-2*sigdig), 1e-12)</code>,
+<code>atol = rtol/100</code> for every solver.  An objective solved to relative
+error <code>rtol</code> locates its minimum only to about <code>sqrt(rtol)</code>, so
+this is the solve a <code>10^-sigdig</code> optimizer needs.  The sensitivity
+(<code>atolSens</code>/<code>rtolSens</code>) tolerances match the main solve; the
+steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one order looser.
+At the default <code>sigdig = 3</code> this is <code>atol = 1e-8</code>,
+<code>rtol = 1e-6</code>.</p></dd>
 
 
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
@@ -512,10 +510,10 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1355074 0.2141306 1.1271e-05      0.049       0.008 0.026    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              setup  optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.08221291 0.1285826  1.338e-05       0.03       0.004 0.015        0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09035075</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.05719112</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

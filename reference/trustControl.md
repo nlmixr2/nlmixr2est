@@ -352,15 +352,13 @@ trustControl(
   Optimization significant digits. One value drives, with a single
   consistent formula, the inner/outer optimizer convergence tolerance
   (`10^-sigdig`), the boundary check tolerance (`5*10^(-sigdig+1)`), and
-  the ODE solver tolerances: the `rtol` exponent IS `sigdig` and `atol`
-  sits three orders below, so `rtol = 10^-sigdig`,
-  `atol = 10^(-sigdig-3)` for every solver (stiff, non-stiff or
-  auto-switching). The sensitivity (`atolSens`/`rtolSens`) tolerances
-  match the main solve (the outer gradient and covariance are built from
-  them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
-  looser. Keying the optimizer to the same `10^-sigdig` means it
-  converges to exactly the precision the solve supports. At the default
-  `sigdig = 3` this is `atol = 1e-6`, `rtol = 1e-3`.
+  the ODE solver tolerances `rtol = max(10^(-2*sigdig), 1e-12)`,
+  `atol = rtol/100` for every solver. An objective solved to relative
+  error `rtol` locates its minimum only to about `sqrt(rtol)`, so this
+  is the solve a `10^-sigdig` optimizer needs. The sensitivity
+  (`atolSens`/`rtolSens`) tolerances match the main solve; the
+  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser. At
+  the default `sigdig = 3` this is `atol = 1e-8`, `rtol = 1e-6`.
 
 - sigdigTable:
 
@@ -445,14 +443,14 @@ print(fit)
 #> ── nlmixr² log-likelihood trust ──
 #> 
 #>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -679.7168 1164.16 1178.884      -579.0801        407.0783        67.95134
+#> lPop -679.7168 1164.16 1178.884      -579.0801        407.0784        67.95138
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1528686 0.2032096 1.4588e-05       0.05       0.009 0.027    0.001
+#>           setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.09741 0.1163216 1.4963e-05      0.031       0.005 0.016        0
 #>              other
-#> elapsed 0.09990724
+#> elapsed 0.06625341
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -509,19 +507,19 @@ fit$trust
 #> 
 #> $hessian
 #>            E0        Em       E50
-#> E0  800.34749 110.81271 -73.28628
+#> E0  800.34746 110.81271 -73.28628
 #> Em  110.81271  33.38968 -18.02407
 #> E50 -73.28628 -18.02407  10.79471
 #> 
 #> $cov.scaled
-#>              E0         Em       E50
-#> E0  0.003812745 0.01337146 0.0482116
-#> Em  0.013371457 0.35041798 0.6758779
-#> E50 0.048211599 0.67587793 1.5484740
+#>              E0         Em        E50
+#> E0  0.003812746 0.01337147 0.04821163
+#> Em  0.013371468 0.35041813 0.67587828
+#> E50 0.048211626 0.67587828 1.54847482
 #> 
 #> $r
 #>            E0        Em       E50
-#> E0  800.34749 110.81271 -73.28628
+#> E0  800.34746 110.81271 -73.28628
 #> Em  110.81271  33.38968 -18.02407
 #> E50 -73.28628 -18.02407  10.79471
 #> 

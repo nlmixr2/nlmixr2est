@@ -90,7 +90,8 @@ you supply single subject event tables (created with
 <dd><p>Handle censoring method:</p>
 <p>- `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of
    the model and censoring.</p>
-<p>- `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)</p>
+<p>- `"cdf"` Impute censored observations with NPDE (below) and use the
+   imputed values as the DV of the other residuals (`cwres` etc).</p>
 <p>- `"omit"` omit the residuals for censoring</p>
 <p>- `"ipred"`, `"pred"` and `"epred"` replace a censored DV with the IPRED,
    PRED or EPRED in the residuals.</p>
@@ -115,8 +116,9 @@ you supply single subject event tables (created with
 generator should be initialized; when given, it takes precedence
 over an active <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSetSeed.html" class="external-link">rxSetSeed()</a></code> stream for this solve, and the
 caller's <code>.Random.seed</code> is restored afterwards.  <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxControl()</a></code> only
-stores it; the seed is applied when the control is used by a solve</p></dd>
-
+stores it; the seed is applied when the control is used by a solve.
+Re-solving a result by assignment (eg <code>s$params &lt;- p</code>) reapplies its
+seed, while <code><a href="https://rdrr.io/r/stats/update.html" class="external-link">update()</a></code> uses only a <code>seed</code> it is given</p></dd>
 
 
 <dt id="arg-cholsetol">cholSEtol<a class="anchor" aria-label="anchor" href="#arg-cholsetol"></a></dt>

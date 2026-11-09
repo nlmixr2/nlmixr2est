@@ -419,16 +419,14 @@ function.  By default this is <code>TRUE</code></p></dd>
 <dd><p>Optimization significant digits.  One value drives, with a single
 consistent formula, the inner/outer optimizer convergence tolerance
 (<code>10^-sigdig</code>), the boundary check tolerance (<code>5*10^(-sigdig+1)</code>),
-and the ODE solver tolerances: the <code>rtol</code> exponent IS <code>sigdig</code> and
-<code>atol</code> sits three orders below, so <code>rtol = 10^-sigdig</code>,
-<code>atol = 10^(-sigdig-3)</code> for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (<code>atolSens</code>/<code>rtolSens</code>)
-tolerances match the main solve (the outer gradient and covariance are built
-from them); the steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one
-order looser.
-Keying the optimizer to the same <code>10^-sigdig</code> means it converges to
-exactly the precision the solve supports.  At the default <code>sigdig = 3</code>
-this is <code>atol = 1e-6</code>, <code>rtol = 1e-3</code>.</p></dd>
+and the ODE solver tolerances <code>rtol = max(10^(-2*sigdig), 1e-12)</code>,
+<code>atol = rtol/100</code> for every solver.  An objective solved to relative
+error <code>rtol</code> locates its minimum only to about <code>sqrt(rtol)</code>, so
+this is the solve a <code>10^-sigdig</code> optimizer needs.  The sensitivity
+(<code>atolSens</code>/<code>rtolSens</code>) tolerances match the main solve; the
+steady-state (<code>ssAtol</code>/<code>ssRtol</code>) tolerances run one order looser.
+At the default <code>sigdig = 3</code> this is <code>atol = 1e-8</code>,
+<code>rtol = 1e-6</code>.</p></dd>
 
 
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
@@ -514,14 +512,14 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> log-likelihood </span><span style="color: #BBBB00; font-weight: bold;">trust</span><span style="font-weight: bold;"> ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -679.7168 1164.16 1178.884      -579.0801        407.0783        67.95134</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -679.7168 1164.16 1178.884      -579.0801        407.0784        67.95138</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1528686 0.2032096 1.4588e-05       0.05       0.009 0.027    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           setup  optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09741 0.1163216 1.4963e-05      0.031       0.005 0.016        0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09990724</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.06625341</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -578,19 +576,19 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $hessian</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>            E0        Em       E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0  800.34749 110.81271 -73.28628</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0  800.34746 110.81271 -73.28628</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Em  110.81271  33.38968 -18.02407</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> E50 -73.28628 -18.02407  10.79471</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $cov.scaled</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              E0         Em       E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0  0.003812745 0.01337146 0.0482116</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Em  0.013371457 0.35041798 0.6758779</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 0.048211599 0.67587793 1.5484740</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              E0         Em        E50</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0  0.003812746 0.01337147 0.04821163</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Em  0.013371468 0.35041813 0.67587828</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 0.048211626 0.67587828 1.54847482</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $r</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>            E0        Em       E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0  800.34749 110.81271 -73.28628</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0  800.34746 110.81271 -73.28628</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Em  110.81271  33.38968 -18.02407</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> E50 -73.28628 -18.02407  10.79471</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

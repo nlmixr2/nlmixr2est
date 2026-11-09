@@ -384,15 +384,13 @@ optimControl(
   Optimization significant digits. One value drives, with a single
   consistent formula, the inner/outer optimizer convergence tolerance
   (`10^-sigdig`), the boundary check tolerance (`5*10^(-sigdig+1)`), and
-  the ODE solver tolerances: the `rtol` exponent IS `sigdig` and `atol`
-  sits three orders below, so `rtol = 10^-sigdig`,
-  `atol = 10^(-sigdig-3)` for every solver (stiff, non-stiff or
-  auto-switching). The sensitivity (`atolSens`/`rtolSens`) tolerances
-  match the main solve (the outer gradient and covariance are built from
-  them); the steady-state (`ssAtol`/`ssRtol`) tolerances run one order
-  looser. Keying the optimizer to the same `10^-sigdig` means it
-  converges to exactly the precision the solve supports. At the default
-  `sigdig = 3` this is `atol = 1e-6`, `rtol = 1e-3`.
+  the ODE solver tolerances `rtol = max(10^(-2*sigdig), 1e-12)`,
+  `atol = rtol/100` for every solver. An objective solved to relative
+  error `rtol` locates its minimum only to about `sqrt(rtol)`, so this
+  is the solve a `10^-sigdig` optimizer needs. The sensitivity
+  (`atolSens`/`rtolSens`) tolerances match the main solve; the
+  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser. At
+  the default `sigdig = 3` this is `atol = 1e-8`, `rtol = 1e-6`.
 
 - sigdigTable:
 
@@ -479,10 +477,10 @@ fit2
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.1586154 0.1924089 1.3084e-05       0.05       0.009 0.027    0.001
+#>              setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.09919471 0.1145279 1.4091e-05      0.031       0.005 0.017    0.001
 #>              other
-#> elapsed 0.08396266
+#> elapsed 0.05226329
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 
