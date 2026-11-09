@@ -13,7 +13,7 @@ nmTest({
   .scaleLinear <- function(mod, ...) {
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mod))
     .ctl <- foceiControl(...)
-    for (.n in c("scaleCband", "scaleLinear")) {
+    for (.n in c("scaleCband", "scaleLinear", "scaleC")) {
       rxode2::rxAssignControlValue(.ui, .n, .ctl[[.n]])
     }
     .ui$scaleCtheta
@@ -35,6 +35,24 @@ nmTest({
     expect_equal(.sc[seq_along(.inits)], .inits)
     # the residual error keeps its own 0.5 * |init|
     expect_equal(.sc[length(.sc)], 0.5)
+  })
+
+  test_that("scaleLinear = 'abs' takes |init| of a negative init, 1 at 0, and keeps a given scaleC", {
+    .mod <- function() {
+      ini({
+        a <- -50
+        b <- 0
+        c <- 3
+        eta.k ~ 0.1
+        add.sd <- 0.3
+      })
+      model({
+        y <- eta.k + a * x1 + b * x2 + c * x3
+        y ~ add(add.sd)
+      })
+    }
+    expect_equal(.scaleLinear(.mod, scaleLinear = "abs"), c(50, 1, 3, 0.15))
+    expect_equal(.scaleLinear(.mod, scaleLinear = "abs", scaleC = c(NA, NA, 7)), c(50, 1, 7, 0.15))
   })
 
   test_that("scaleLinear = 'abs' leaves mu-referenced thetas alone", {
