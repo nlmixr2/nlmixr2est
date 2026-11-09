@@ -1,17 +1,6 @@
-#' Estimation methods that add sensitivity compartments to the solved model
-#'
-#' The FOCEi family (the callers of `.foceiFamilyControl()`) gains
-#' `rx__sens_<state>_BY_ETA_#___` states; the nlm family (the callers of
-#' `.nlmSetupEnv()`) gains `rx__sens_<state>_BY_THETA_#___` states when it uses
-#' analytic derivatives.  Both push the `linCmt()` compartments off the numbers
-#' the data was translated against.  The nlm family is listed whatever its
-#' `solveType` is: only a derivative-free solve escapes the shift, and the
-#' translation is equivalent (just solved numerically) in that case anyway.
-#' Keep in sync with the callers of those two functions.
-#'
+#' The FOCEi family -- the callers of `.foceiFamilyControl()`
 #' @noRd
-.linCmtOdeEstFamily <- c(
-  # FOCEi family -- .foceiFamilyControl()
+.linCmtFoceiEstFamily <- c(
   "focei",
   "foce",
   "focep",
@@ -49,8 +38,12 @@
   "mfocepf",
   "ifoceif",
   "ifocef",
-  "ifocepf",
-  # nlm family -- .nlmSetupEnv()
+  "ifocepf"
+)
+
+#' The nlm family -- the callers of `.nlmSetupEnv()`
+#' @noRd
+.linCmtNlmEstFamily <- c(
   "nlm",
   "nlminb",
   "bobyqa",
@@ -62,6 +55,20 @@
   "nls",
   "trust"
 )
+
+#' Estimation methods that add sensitivity compartments to the solved model
+#'
+#' The FOCEi family (the callers of `.foceiFamilyControl()`) gains
+#' `rx__sens_<state>_BY_ETA_#___` states; the nlm family (the callers of
+#' `.nlmSetupEnv()`) gains `rx__sens_<state>_BY_THETA_#___` states when it uses
+#' analytic derivatives.  Both push the `linCmt()` compartments off the numbers
+#' the data was translated against.  The nlm family is listed whatever its
+#' `solveType` is: only a derivative-free solve escapes the shift, and the
+#' translation is equivalent (just solved numerically) in that case anyway.
+#' Keep in sync with the callers of those two functions.
+#'
+#' @noRd
+.linCmtOdeEstFamily <- c(.linCmtFoceiEstFamily, .linCmtNlmEstFamily)
 
 #' Does this model mix `linCmt()` with ODE states?
 #'

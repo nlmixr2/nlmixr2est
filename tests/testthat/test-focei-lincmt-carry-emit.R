@@ -63,7 +63,7 @@ test_that("the model cache digest keys covsInterpolation (linear skips the carry
 })
 
 test_that("the model cache digest keys the carry column count", {
-  # pairs past the loaded rxode2's columns keep the standard gradient, so an
+  # pairs past the loaded rxode2's columns are dropped by a direct build, so an
   # 8-column build must never be reused under a 32-column rxode2
   local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap8)
   .d8 <- .carryUiCov()$foceiModelDigest

@@ -1263,7 +1263,8 @@
 #' @param linCmtSensCarry `"auto"` (default) substitutes the exact
 #'   sensitivity-carry gradient for a `linCmt()` parameter driven by both an
 #'   eta and a time-varying covariate (needs an rxode2 with the carry
-#'   sentinels; silently keeps the standard gradient otherwise); `"none"`
+#'   sentinels; silently keeps the standard gradient otherwise).  A model
+#'   needing more carry columns than rxode2 has is solved as ODEs.  `"none"`
 #'   always keeps the standard gradient.
 #'
 #' @inheritParams rxode2::rxSolve
