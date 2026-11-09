@@ -186,17 +186,6 @@
   )
 }
 
-#' Which parameter-table rows are BSV correlation rows
-#'
-#' They are named `bsvcorr(A,B)`; no theta or eta name has a parenthesis.
-#'
-#' @param rn row names of `$parFixedDf` or `$parFixed`
-#' @return logical, one per row name
-#' @noRd
-.parFixedIsBsvCor <- function(rn) {
-  grepl("^bsvcorr\\(", as.character(rn))
-}
-
 #' The name of each eta in a BSV correlation row
 #'
 #' An eta is named by its theta only when that theta and that eta each have

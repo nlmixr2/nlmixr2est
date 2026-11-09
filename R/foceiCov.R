@@ -38,18 +38,25 @@
   unname(split(seq_len(n), comp))
 }
 
-#' Free (non-fixed) Omega variance/covariance element pairs (each row `c(a, b)`,
-#' `a >= b`): the lower triangle of every DECLARED Omega block, minus the fixed
-#' elements.  Shared by both analytic-cov callers.
+#' Omega variance/covariance element pairs (each row `c(a, b)`, `a >= b`): the
+#' lower triangle of every DECLARED Omega block, fixed elements included.
 #' @noRd
-.foceiOmegaPairs <- function(Om, ini) {
+.omegaDeclaredPairs <- function(Om, ini) {
   blocks <- .omegaBlocks(Om, ini)
-  pairs <- do.call(
+  do.call(
     rbind,
     lapply(blocks, function(b) {
       do.call(rbind, lapply(seq_along(b), function(a) cbind(b[a], b[seq_len(a)])))
     })
   )
+}
+
+#' Free (non-fixed) Omega variance/covariance element pairs: the
+#' `.omegaDeclaredPairs()` minus the fixed elements.  Shared by both
+#' analytic-cov callers.
+#' @noRd
+.foceiOmegaPairs <- function(Om, ini) {
+  pairs <- .omegaDeclaredPairs(Om, ini)
   pairs[!.omegaFixed(ini, pairs), , drop = FALSE]
 }
 

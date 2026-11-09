@@ -102,6 +102,8 @@
   # TRUE when the outer optimizer was defaulted (not user
   # specified); lets *f wrappers re-default under fast=TRUE
   "outerOptDefault",
+  # TRUE when rel.tol was defaulted, so it follows fast=TRUE
+  "relTolDefault",
   # the built rx_prior_spec_t* external pointer
   # (.nlmixr2BuildPriorSpec(), R/priors.R); not a formal
   # argument, not deparseable/comparable, and rebuilt fresh
@@ -327,7 +329,7 @@
 #'     \code{nAGQ > 1}; those fall back to the finite-difference gradient with
 #'     a message (linCmt() and out-of-scope log-likelihood models downgrade to
 #'     \code{fast=FALSE} up front).  When unspecified,
-#'     the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"bobyqa"} for
+#'     the outer optimizer defaults to \code{"nlminb"} (vs \code{"bobyqa"} for
 #'     \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 #'     \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 #'     \code{foceif}) default this to \code{TRUE}.
@@ -602,15 +604,18 @@
 #'     Decomposition for a R or S matrix.
 #'
 #' @param outerOpt optimization method for the outer problem
-#'   Fast \code{"nlminb"} fits automatically use the analytical outer Hessian
+#'   Fast \code{"nlminb"} fits use gradients only by default. Set
+#'   \code{outerTrustHessian="analytic"} to request the analytical outer Hessian
 #'   for supported Gaussian FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
 #'   curvature is unavailable.  \code{"trust"} is a trust-region Newton method
 #'   (\pkg{RcppTrust}) built on that same Hessian; see
 #'   \code{outerTrustHessian}.  It is unbounded, so a trial point outside the
 #'   box is reported as an infinite objective and the region shrinks instead.
 #'
-#' @param outerTrustHessian Curvature source for \code{outerOpt="trust"}.
-#'   \code{"auto"} (default) uses the analytical outer Hessian when
+#' @param outerTrustHessian Curvature source for \code{outerOpt="trust"} or \code{"nlminb"}.
+#'   For \code{"nlminb"}, \code{"auto"} and \code{"bfgs"} leave curvature to
+#'   its BFGS approximation; \code{"analytic"} and \code{"fd"} request a Hessian.
+#'   For \code{"trust"}, \code{"auto"} (default) uses the analytical outer Hessian when
 #'   \code{fast=TRUE} makes it available and the damped-BFGS update otherwise,
 #'   and falls back to that update if the Hessian is refused mid-fit.
 #'   \code{"analytic"} requires \code{fast=TRUE}.  \code{"bfgs"} is the
@@ -876,6 +881,8 @@
 #' @param iter.max Maximum number of iterations allowed (nlmimb)
 #'
 #' @param rel.tol Relative tolerance before nlminb stops (nlmimb).
+#'   `NULL` (default) uses `10^(-sigdig)`, or `10^(-sigdig-2)` with
+#'   `fast=TRUE`, whose analytic gradient can resolve the tighter optimum.
 #'
 #' @param x.tol X tolerance for nlmixr2 optimizer
 #'
@@ -1514,6 +1521,11 @@ foceiControl <- function(
   ## sensMethod: forward (variational) ODE parameter sensitivities.
   sensMethod <- match.arg(sensMethod)
   linCmtSensCarry <- match.arg(linCmtSensCarry)
+  # a defaulted rel.tol is recomputed when a built control is rebuilt (e.g. under fast=TRUE)
+  .relTolDefault <- is.null(rel.tol) || isTRUE(list(...)$relTolDefault)
+  if (.relTolDefault) {
+    rel.tol <- NULL
+  }
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
     if (is.null(boundTol)) {
@@ -1573,7 +1585,9 @@ foceiControl <- function(
       innerLbfgsReltol <- 10^(-sigdig - 2)
     }
     if (is.null(rel.tol)) {
-      rel.tol <- 10^(-sigdig)
+      # relative convergence at 10^-sigdig stops an analytic-gradient nlminb
+      # fit ~0.05 OFV short of the optimum; two orders tighter, as lbfgsFactr
+      rel.tol <- if (isTRUE(fast)) 10^(-sigdig - 2) else 10^(-sigdig)
     }
     if (is.null(x.tol)) {
       x.tol <- 10^(-sigdig)
@@ -1838,13 +1852,13 @@ foceiControl <- function(
   if (!is.null(.xtra$outerOptFun)) {
     outerOptFun <- .xtra$outerOptFun
   } else if (rxode2::rxIs(outerOpt, "character")) {
-    # Default outer optimizer (when the user did not specify one): lbfgsb3c for
-    # the analytic-gradient ("fast") methods, nlminb for the finite-difference
+    # Default outer optimizer (when the user did not specify one): nlminb for
+    # the analytic-gradient ("fast") methods, bobyqa for the ordinary
     # methods.  An explicit outerOpt (a single string) skips this;
     # outerOptDefault records that the default was taken so a *f wrapper
     # (.foceiFastCtl) can re-default a round-tripped control under fast=TRUE.
     if (missing(outerOpt)) {
-      outerOpt <- if (isTRUE(fast)) "lbfgsb3c" else "bobyqa"
+      outerOpt <- if (isTRUE(fast)) "nlminb" else "bobyqa"
       .outerOptDefault <- TRUE
     }
     outerOpt <- match.arg(outerOpt)
@@ -1936,7 +1950,7 @@ foceiControl <- function(
     stop("'outerTrustRelStep' must be > 0", call. = FALSE)
   }
   checkmate::assertIntegerish(outerTrustRestarts, lower = 0, any.missing = FALSE, len = 1)
-  if (outerTrustHessian == "analytic" && .outerOptTxt == "trust" && !isTRUE(fast)) {
+  if (outerTrustHessian == "analytic" && .outerOptTxt %in% c("trust", "nlminb") && !isTRUE(fast)) {
     stop("outerTrustHessian=\"analytic\" requires fast=TRUE", call. = FALSE)
   }
   # `fast` can still be downgraded AFTER this (a linCmt() model has no 2nd-order
@@ -2301,6 +2315,7 @@ foceiControl <- function(
     scaleC0 = as.double(scaleC0),
     outerOptTxt = .outerOptTxt,
     outerOptDefault = .outerOptDefault,
+    relTolDefault = .relTolDefault,
     rmatNorm = rmatNorm,
     rmatNormLlik = rmatNormLlik,
     smatNorm = smatNorm,
@@ -2485,6 +2500,10 @@ foceiControl <- function(
   # an rxControl that was supplied, even one equal to the generated one
   if (!identical(object[["genRxControl"]], .ret[["genRxControl"]])) {
     .w <- union(.w, which(names(.ret) == "rxControl"))
+  }
+  # a defaulted rel.tol is rebuilt from sigdig and fast
+  if (isTRUE(object$relTolDefault)) {
+    .w <- setdiff(.w, which(names(.ret) == "rel.tol"))
   }
   # print is kept only as iterPrintControl, which is otherwise internal
   if (!identical(object$iterPrintControl, .ret$iterPrintControl)) {

@@ -18,6 +18,8 @@ nmTest({
     expect_false(is.environment(.ui))
     .txt <- rxUiGet.saemModel(list(.ui))
     expect_type(.txt, "character")
+    expect_length(.txt, 1L)
+    expect_match(.txt, "rx_pred_=", fixed = TRUE)
     expect_false(any(grepl("rx_cx_", .txt, fixed = TRUE)))
     expect_true(is.character(rxUiGet.saemModel(list(rxode2::rxUiDecompress(.ui)))))
   })
