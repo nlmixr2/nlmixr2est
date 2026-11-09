@@ -3356,8 +3356,18 @@ public:
           mat &cur_DYF = DYF_mix(jMix);
           cur_DYF.zeros(mlen, nM);
 
+          // Re-solve the chain's current state: the M-step resets the phi0
+          // columns to the population value (and regress solves each subject
+          // under its own component), so the cached predictions are stale and
+          // a stale U_y can freeze the chain at a state that no longer fits.
+          {
+            mat curMat = user_fn(cur_phiM, mixProbRegress ? mx.evtM : evt,
+                                 mixProbRegress ? mx.optM : optM);
+            cur_fsave = curMat.col(0);
+            cur_cens = curMat.col(1);
+            cur_limit = curMat.col(2);
+          }
           vec f = cur_fsave;
-          cur_fsave = f;
 
           if (distribution == 1) {
             vec yt = hasFixedObsTransform ? yTrans : y;
