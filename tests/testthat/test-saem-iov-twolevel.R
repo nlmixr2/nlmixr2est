@@ -176,6 +176,14 @@ test_that(".saemIovCollapseCov ties the pooled occasion columns", {
   expect_equal(.out3["om.iov.cl", "om.iov.cl"], 10)
   expect_equal(.out3["tka", "om.iov.cl"], 2)
 
+  # an unidentified (NA) theta stays NA and leaves the rest finite
+  .cv4 <- .cv2
+  .cv4[1, ] <- NA_real_
+  .cv4[, 1] <- NA_real_
+  .out4 <- .saemIovCollapseCov(.cv4, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2", "rx.iov.cl.3")))
+  expect_true(all(is.na(.out4["tka", ])))
+  expect_equal(.out4[-1, -1], .out2[-1, -1])
+
   # a matrix with nothing to pool, and an empty group list, are both untouched
   expect_identical(.saemIovCollapseCov(.cv, list()), .cv)
   expect_identical(.saemIovCollapseCov(.cv, list(iov.v = "rx.iov.v.1")), .cv)
