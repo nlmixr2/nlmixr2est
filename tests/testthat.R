@@ -169,7 +169,8 @@ if (identical(Sys.info()[["sysname"]], "Darwin")) {
     "saem-iov-twolevel-fit",
     "saem-iov-objective",
     "iov-loglik-1000",
-    "iov-same-fit"
+    "iov-same-fit",
+    "foceiCovFdFull-iov"
   ),
   # batch 7
   c(

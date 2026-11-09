@@ -77,3 +77,44 @@ test_that("the installed full covariance refreshes the condition numbers", {
   expect_equal(.e$conditionNumberCov, max(.ev) / min(.ev))
   expect_equal(unname(.e$fullCor), unname(.cov2cor(.R)))
 })
+
+test_that("same() copies move with their master in the full FD stage (#1316)", {
+  # eta.cl, eta.v, then three occasions of a correlated iov.cl/iov.v block
+  .onm <- c("eta.cl", "eta.v", paste0("rx.", c("iov.cl", "iov.v"), ".", rep(1:3, each = 2)))
+  .same <- c(0L, 0L, 0L, 0L, 3L, 4L, 3L, 4L)
+  .pairs <- .omegaDeclaredPairs(
+    diag(8),
+    data.frame(
+      name = c(.onm[1:2], .onm[3], "(c1)", .onm[4], .onm[5], "(c2)", .onm[6], .onm[7], "(c3)", .onm[8]),
+      neta1 = c(1, 2, 3, 4, 4, 5, 6, 6, 7, 8, 8),
+      neta2 = c(1, 2, 3, 3, 4, 5, 5, 6, 7, 7, 8),
+      fix = FALSE
+    )
+  )
+  .tie <- .foceiFdFullSameTie(.pairs, .same, .onm)
+  expect_identical(sum(.tie$free), 5L)
+  expect_identical(.tie$cpA, c(5L, 6L, 6L, 7L, 8L, 8L))
+  expect_identical(.tie$cpB, c(5L, 5L, 6L, 7L, 7L, 8L))
+  # each copy points at its master element among the free pairs
+  .free <- .pairs[.tie$free, , drop = FALSE]
+  expect_identical(.free[.tie$cpOf + 1L, , drop = FALSE], .pairs[c(3, 4, 5, 3, 4, 5), , drop = FALSE])
+  expect_identical(
+    .foceiOmegaCovNames(.free, .tie$onm),
+    c("om.eta.cl", "om.eta.v", "om.iov.cl", "cov.iov.v.iov.cl", "om.iov.v")
+  )
+  # no same() map: untouched
+  expect_true(all(.foceiFdFullSameTie(.pairs, NULL, .onm)$free))
+})
+
+test_that("a same() group is named by the parameter it repeats", {
+  .old <- .uiIovEnv$iovMaster
+  on.exit(.uiIovEnv$iovMaster <- .old)
+  .uiIovEnv$iovMaster <- list()
+  # occasion levels sharing a prefix
+  expect_identical(.foceiSameGroupName("rx.iov.cl.1", c("rx.iov.cl.10", "rx.iov.cl.2")), "iov.cl")
+  # a user's own same() block keeps its master's name
+  expect_identical(.foceiSameGroupName("eta.cl", "eta.v"), "eta.cl")
+  # the expansion's record wins over the name
+  .uiIovEnv$iovMaster <- list(iov.cl = "rx.iov.cl.a.b")
+  expect_identical(.foceiSameGroupName("rx.iov.cl.a.b", "rx.iov.cl.a.c"), "iov.cl")
+})

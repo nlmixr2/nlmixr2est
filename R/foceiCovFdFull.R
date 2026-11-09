@@ -7,7 +7,9 @@
 #'
 #' From the cov-step environment `e`, the free structural+residual theta positions
 #' (0-based) and free `Omega` lower-triangle elements (1-based), plus matching
-#' `om.<theta>` / `cov.<theta>.<theta>` names.  `NULL` if there is nothing to do.
+#' `om.<theta>` / `cov.<theta>.<theta>` names.  `same()` copies are not parameters:
+#' `cpA`/`cpB`/`cpOf` list them with the element they move with.  `NULL` if there is
+#' nothing to do.
 #' @param e focei cov-step environment
 #' @noRd
 .foceiFdFullParams <- function(e) {
@@ -33,8 +35,85 @@
   }
   map <- .foceiEtaThetaMap(ui)
   onm <- map$etaNames # Omega named by the eta
-  omNames <- .foceiOmegaCovNames(pairs, onm)
-  list(thPos = thPos, omA = as.integer(pairs[, 1]), omB = as.integer(pairs[, 2]), names = c(thNames, omNames))
+  tie <- .foceiFdFullSameTie(pairs, ui$omegaSameMap, onm)
+  pairs <- pairs[tie$free, , drop = FALSE]
+  omNames <- .foceiOmegaCovNames(pairs, tie$onm)
+  list(
+    thPos = thPos,
+    omA = as.integer(pairs[, 1]),
+    omB = as.integer(pairs[, 2]),
+    cpA = tie$cpA,
+    cpB = tie$cpB,
+    cpOf = tie$cpOf,
+    names = c(thNames, omNames)
+  )
+}
+
+#' Tie `same()` Omega copies to the element they repeat
+#'
+#' A `same()` block (an IOV occasion's copy) shares its master's parameters, so it
+#' gets no direction of its own: the FD stage moves each copy with its master.
+#' @param pairs free Omega element pairs (`.foceiOmegaPairs()`)
+#' @param same `omegaSameMap` (each eta's master eta, 0 for none), or `NULL`
+#' @param onm eta names
+#' @return list: `free` (rows of `pairs` that are parameters), `cpA`/`cpB` (the
+#'   copies) with `cpOf` (0-based index of their parameter among the free
+#'   pairs), and `onm` with each master named by its IOV parameter
+#' @noRd
+.foceiFdFullSameTie <- function(pairs, same, onm) {
+  .none <- list(free = rep(TRUE, nrow(pairs)), cpA = integer(0), cpB = integer(0), cpOf = integer(0), onm = onm)
+  if (length(same) != length(onm) || !any(same > 0L)) {
+    return(.none)
+  }
+  .ma <- same[pairs[, 1]]
+  .mb <- same[pairs[, 2]]
+  .isCp <- .ma > 0L & .mb > 0L
+  .free <- !.isCp
+  .key <- function(a, b) paste(pmax(a, b), pmin(a, b))
+  .of <- match(.key(.ma, .mb)[.isCp], .key(pairs[.free, 1], pairs[.free, 2]))
+  if (anyNA(.of)) {
+    # a copy whose master is not free; leave the matrix untied rather than guess
+    return(.none)
+  }
+  for (.m in unique(same[same > 0L])) {
+    onm[.m] <- .foceiSameGroupName(onm[.m], onm[same == .m])
+  }
+  list(
+    free = .free,
+    cpA = as.integer(pairs[.isCp, 1]),
+    cpB = as.integer(pairs[.isCp, 2]),
+    cpOf = as.integer(.of - 1L),
+    onm = onm
+  )
+}
+
+#' The IOV parameter a `same()` group repeats
+#'
+#' Occasion copies are named `rx.<iov>.<level>`; the group takes `<iov>`.  Any
+#' other `same()` group keeps its master's name.
+#' @param master master eta name
+#' @param copies its copies' eta names
+#' @return name
+#' @noRd
+.foceiSameGroupName <- function(master, copies) {
+  .iov <- names(.uiIovEnv$iovMaster)[vapply(.uiIovEnv$iovMaster, identical, logical(1), master)]
+  if (length(.iov) == 1L) {
+    return(.iov)
+  }
+  .nm <- c(master, copies)
+  if (!all(startsWith(.nm, "rx."))) {
+    return(master)
+  }
+  .bare <- substring(.nm, 4L)
+  .parts <- strsplit(.bare[1], ".", fixed = TRUE)[[1]]
+  # the longest dotted prefix every copy shares, levels removed
+  for (.k in rev(seq_len(length(.parts) - 1L))) {
+    .p <- paste(.parts[seq_len(.k)], collapse = ".")
+    if (all(startsWith(.bare, paste0(.p, ".")))) {
+      return(.p)
+    }
+  }
+  master
 }
 
 #' The three FD-full covariances, each checked by `.covGuard()`

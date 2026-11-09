@@ -13220,7 +13220,8 @@ NumericMatrix foceiCalcCov(Environment e){
 // full sandwich Rinv*S*Rinv (not just the Hessian inverse Rinv).  Both are stashed for the
 // R-side install (.foceiInstallFdFullCov).  Split into small helpers below; the orchestrator
 // is foceiCalcRFdFull. ---
-struct FdFullCtx { IntegerVector thPos, omA, omB; arma::mat Om0; int nth = 0, nom = 0; };
+// cpA/cpB: `same()` copies, each moved with Omega parameter cpOf (0-based, of omA/omB)
+struct FdFullCtx { IntegerVector thPos, omA, omB, cpA, cpB, cpOf; arma::mat Om0; int nth = 0, nom = 0; };
 
 // set op_focei Omega state from a variance-covariance Omega; false if it is not PD.
 static bool foceiFdSetOmega(const arma::mat &Om) {
@@ -13239,6 +13240,10 @@ static double foceiFdObjAt(const FdFullCtx &c, const double *x) {
   arma::mat Om = c.Om0;
   for (int q = 0; q < c.nom; ++q) {
     Om(c.omA[q]-1, c.omB[q]-1) = x[c.nth+q]; Om(c.omB[q]-1, c.omA[q]-1) = x[c.nth+q];
+  }
+  for (int k = 0; k < c.cpA.size(); ++k) {
+    double v = x[c.nth + c.cpOf[k]];
+    Om(c.cpA[k]-1, c.cpB[k]-1) = v; Om(c.cpB[k]-1, c.cpA[k]-1) = v;
   }
   if (!foceiFdSetOmega(Om)) return NA_REAL;
   // foceiOfv0() reports a failed evaluation as 5e100, which must not enter a difference
@@ -13377,6 +13382,9 @@ static bool foceiFdParams(Environment e, FdFullCtx &c, CharacterVector &nm) {
     throw;
   } catch (...) { return false; }
   c.thPos = pl["thPos"]; c.omA = pl["omA"]; c.omB = pl["omB"]; nm = pl["names"];
+  if (pl.containsElementNamed("cpA")) {
+    c.cpA = pl["cpA"]; c.cpB = pl["cpB"]; c.cpOf = pl["cpOf"];
+  }
   c.nth = c.thPos.size(); c.nom = c.omA.size();
   return (c.nth + c.nom) > 0;
 }

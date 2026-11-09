@@ -48,6 +48,13 @@
 
 ### Covariance
 
+- The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a
+  `same()` block's copies with the block they repeat, so a correlated IOV
+  block contributes one shared occasion Omega (`om.iov.cl`,
+  `cov.iov.v.iov.cl`) rather than one free copy per occasion.  The occasion
+  SEs were about the square root of the number of occasions too large, and
+  `tidy()`/`confint()` now take them from `$cov` (#1316).
+
 - A FOCEi covariance that a vae or vi fit could not compute or install is now
   recorded in `fit$env$covTried`, under the method tried and with the condition
   message unclipped on one line (the refit's own error included), also when
