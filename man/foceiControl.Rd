@@ -875,9 +875,9 @@ coupling these parameters exist to remove. Has no effect unless
 solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
 This makes the objective less dependent on the warm-start ETAs and can
 help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
-outer search then also restarts once from where it stops, which costs
-about twice the outer evaluations.  `FALSE` (default) keeps the plain
-trust solve and a single outer search.}
+outer search then also restarts once from where it stops and keeps any
+decrease, even with `bobyqaStationary = FALSE`.  `FALSE` (default)
+keeps the plain trust solve.}
 
 \item{steihaugPolish, newuoaPolish}{logical; the `trustPolish` Newton
 polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
@@ -889,11 +889,18 @@ solve.  `FALSE` (default) keeps the plain solve.}
 solve can resolve a minimum to.}
 
 \item{bobyqaStationary}{logical; when `TRUE` (default), a normal exit of
-the `"bobyqa"` outer search is checked with a central-difference
-gradient and a downhill probe.  If the probe lowers the objective by
-more than `10^(1-sigdig)`, bobyqa restarts from there (up to 3 times,
-within `maxOuterIterations`).  This catches a search that stops in a
-narrow valley short of the minimum (#1196); `FALSE` skips the check.}
+the `"bobyqa"` outer search is followed by one restart from where it
+stopped, with a fresh trust region, kept when it lowers the objective
+by more than `10^(1-sigdig)`; the fit's `$optReturn` has
+`nExitRestart` (1 when the restart ran) and `exitRestartDecrease` (how
+much the kept result lowered the objective, 0 when the restart was not
+kept).  The result is then checked with a central-difference gradient
+and a downhill probe.  If the probe lowers the objective by more than
+`10^(1-sigdig)`, bobyqa restarts from there (up to 3 times, within
+`maxOuterIterations`).  Both catch a search that stops in a narrow
+valley short of the minimum (#1196); `FALSE` skips both.  With
+`trustPolish = TRUE` the restart runs either way and keeps any
+decrease.}
 
 \item{innerLbfgsLmm}{number of BFGS updates retained by the
 `innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.

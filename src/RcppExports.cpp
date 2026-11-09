@@ -389,13 +389,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // foceiOuterHold_
-bool foceiOuterHold_(bool hold);
-RcppExport SEXP _nlmixr2est_foceiOuterHold_(SEXP holdSEXP) {
+bool foceiOuterHold_(bool hold, bool probe);
+RcppExport SEXP _nlmixr2est_foceiOuterHold_(SEXP holdSEXP, SEXP probeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< bool >::type hold(holdSEXP);
-    rcpp_result_gen = Rcpp::wrap(foceiOuterHold_(hold));
+    Rcpp::traits::input_parameter< bool >::type probe(probeSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiOuterHold_(hold, probe));
     return rcpp_result_gen;
 END_RCPP
 }

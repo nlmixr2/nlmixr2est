@@ -10877,16 +10877,20 @@ bool foceiOuterRecord_(bool record) {
   return was;
 }
 
-// The inner state held across outer evaluations the optimizer did not ask for
-// (.bobyqaStationary's probe), so a probe that finds nothing leaves the fit as the
-// search did (#1196), the way the fast= posthoc gradient's guards do (#1057).
+// The inner state held across outer evaluations whose result may be dropped
+// (.bobyqaStationary's probe, the restart after a normal bobyqa exit), so one that
+// finds nothing leaves the fit as the search did (#1196), the way the fast= posthoc
+// gradient's guards do (#1057).
 static std::vector< std::unique_ptr<FdInnerStateGuard> > _outerHoldInner;
 static std::unique_ptr<FdPhaseStateGuard> _outerHoldPhase;
 
 // hold=TRUE saves the per-subject inner state and the fit-wide eta statistics;
-// hold=FALSE puts them back.  Returns whether a hold was released.
+// hold=FALSE puts them back.  Returns whether a hold was released.  With probe=TRUE
+// the held evaluations run as a differencing phase does (_innerParallel at 1, see
+// FdPhaseStateGuard); probe=FALSE keeps them ordinary outer evaluations, as a
+// restart of the outer search needs.
 //[[Rcpp::export(".foceiOuterHold")]]
-bool foceiOuterHold_(bool hold) {
+bool foceiOuterHold_(bool hold, bool probe = true) {
   const bool was = (_outerHoldPhase != nullptr);
   const int nHeld = (int)_outerHoldInner.size();
   _outerHoldInner.clear();
@@ -10903,6 +10907,7 @@ bool foceiOuterHold_(bool hold) {
   rx = getRxSolve_();
   const int ns = (rx == NULL || inds_focei == NULL || getRxNsub(rx) <= 0) ? 0 : nIndsFocei;
   _outerHoldPhase.reset(new FdPhaseStateGuard());
+  if (!probe) _innerParallel.store(_outerHoldPhase->innerPar, std::memory_order_release);
   _outerHoldInner.reserve((size_t)ns);
   for (int i = 0; i < ns; ++i) {
     _outerHoldInner.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(i)));

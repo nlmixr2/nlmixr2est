@@ -75,6 +75,17 @@
   `maxOuterIterations` function evaluations, as `outerOpt = "uobyqa"` and
   `"bobyqa"` do; it used to ignore the limit and run NEWUOA to convergence.
 
+- The default FOCEi outer search (`outerOpt = "bobyqa"`) now restarts once
+  from a normal exit with a fresh trust region and keeps the restart when it
+  lowers the objective by more than `10^(1-sigdig)`.  bobyqa can shrink its
+  trust region in a narrow valley and exit short of the minimum where the
+  stationarity probe (#1196) finds too little slope to act on: an `ar()`
+  residual fit exited 3.5 objective points above its minimum.  A restart
+  that is not kept leaves the fit as the search did, at the cost of its
+  evaluations.  `fit$optReturn` reports `nExitRestart` and
+  `exitRestartDecrease`; `foceiControl(bobyqaStationary = FALSE)` turns the
+  restart off together with the probe.
+
 - `saem` now reports the non-mu-referenced thetas it actually used.  With
   `nonMuTheta = "regress"` (the default) the model ran at the directly
   optimized values, but `$theta` showed the regression estimate taken before

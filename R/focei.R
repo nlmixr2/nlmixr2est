@@ -127,14 +127,18 @@ is.latex <- function() {
 #' objective is still falling (#1152).  A restart rebuilds the interpolation
 #' model at the full `rhobeg` from the stopping point.  The restart keeps to
 #' what is left of the evaluation budget, and its result is kept only when it
-#' is lower.
+#' is lower by more than `tol`.
 #' @param fn objective
 #' @param lower,upper bounds
 #' @param ctl `RcppTrust::bobyqa()` control
 #' @param ret the first search's `RcppTrust::bobyqa()` result
+#' @param tol objective decrease the restart must beat to be kept
+#' @param hold `.foceiOuterHold()`, or `NULL`; with it the fit's inner state is
+#'   put back after the restart, so a restart that is not kept leaves the fit
+#'   as the search did
 #' @return a `RcppTrust::bobyqa()`-shaped list
 #' @noRd
-.bobyqaRestart <- function(fn, lower, upper, ctl, ret) {
+.bobyqaRestart <- function(fn, lower, upper, ctl, ret, tol = 0, hold = NULL) {
   if (!identical(as.integer(ret$ierr), 0L)) {
     return(ret)
   }
@@ -144,8 +148,12 @@ is.latex <- function() {
       return(ret)
     }
   }
+  if (is.function(hold)) {
+    hold(TRUE, FALSE)
+    on.exit(hold(FALSE), add = TRUE)
+  }
   .ret2 <- RcppTrust::bobyqa(ret$par, fn, control = ctl, lower = lower, upper = upper)
-  if (is.finite(.ret2$fval) && .ret2$fval < ret$fval) {
+  if (isTRUE(is.finite(.ret2$fval) && ret$fval - .ret2$fval > tol)) {
     .ret2$feval <- .ret2$feval + ret$feval
     return(.ret2)
   }
@@ -277,11 +285,21 @@ is.latex <- function() {
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
   .ret <- RcppTrust::bobyqa(par, fn, control = .ctl, lower = lower, upper = upper)
   .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, .ret)
-  if (isTRUE(control$trustPolish)) {
-    .ret <- .bobyqaRestart(fn, lower, upper, .ctl, .ret)
+  .stationary <- isTRUE(control$bobyqaStationary) && !is.null(.ctl$rhobeg)
+  .tol <- if (is.null(control$sigdig)) 0.01 else 10^(1 - control$sigdig)
+  if (isTRUE(control$trustPolish) || .stationary) {
+    # one restart from a normal exit with a fresh trust region; trustPolish
+    # keeps any decrease, the default only one larger than the probe's tol
+    .polish <- isTRUE(control$trustPolish)
+    .f0 <- .ret$fval
+    .fe0 <- .ret$feval
+    .ret <- .bobyqaRestart(fn, lower, upper, .ctl, .ret,
+                           tol = if (.polish) 0 else .tol,
+                           hold = if (.polish) NULL else control$outerHold)
+    .ret$nExitRestart <- as.integer(.ret$feval > .fe0)
+    .ret$exitRestartDecrease <- .f0 - .ret$fval
   }
-  if (isTRUE(control$bobyqaStationary) && !is.null(.ctl$rhobeg)) {
-    .tol <- if (is.null(control$sigdig)) 0.01 else 10^(1 - control$sigdig)
+  if (.stationary) {
     .ret <- .bobyqaStationary(
       fn,
       lower,

@@ -5,6 +5,80 @@ nmTest({
   .ctl <- list(npt = 5, rhobeg = 0.2, rhoend = 1e-6, iprint = 0L, maxfun = 5000)
   .lo <- c(-5, -5)
   .hi <- c(5, 5)
+  # with rhoend = 0.1 bobyqa exits normally on the 4-d Rosenbrock function at
+  # f = 5.14, far from the minimum at 0; a restart from there lowers it by 1.5
+  .rosen4 <- function(x) sum(100 * (x[-1] - x[-4]^2)^2 + (1 - x[-4])^2)
+  .p4 <- c(-1.2, 1, -1.2, 1)
+  .lo4 <- rep(-5, 4)
+  .hi4 <- rep(5, 4)
+  .ctl4 <- list(npt = 9, rhobeg = 0.2, rhoend = 0.1, iprint = 0L, maxfun = 5000)
+  .first4 <- RcppTrust::bobyqa(.p4, .rosen4, control = .ctl4, lower = .lo4, upper = .hi4)
+  .again4 <- RcppTrust::bobyqa(.first4$par, .rosen4, control = .ctl4, lower = .lo4, upper = .hi4)
+  .base4 <- list(rhobeg = 0.2, rhoend = 0.1, maxfun = 5000, sigdig = 3)
+
+  test_that("a normal exit short of the minimum is restarted once from where it stopped", {
+    expect_identical(.first4$ierr, 0L)
+    expect_equal(.first4$fval, 5.13909, tolerance = 1e-5)
+    .on <- .bobyqa(.p4, .rosen4, lower = .lo4, upper = .hi4, control = c(.base4, bobyqaStationary = TRUE))
+    expect_identical(.on$nExitRestart, 1L)
+    expect_equal(.on$exitRestartDecrease, .first4$fval - .again4$fval)
+    expect_equal(.on$exitRestartDecrease, 1.49877, tolerance = 1e-5)
+    expect_lte(.on$fval, .again4$fval)
+  })
+
+  test_that("bobyqaStationary = FALSE is the bobyqa search alone", {
+    .off <- .bobyqa(.p4, .rosen4, lower = .lo4, upper = .hi4, control = c(.base4, bobyqaStationary = FALSE))
+    expect_identical(unclass(.off)[names(.first4)], unclass(.first4))
+    expect_null(.off$nExitRestart)
+    expect_null(.off$exitRestartDecrease)
+    expect_null(.off$nStationaryRestart)
+  })
+
+  test_that("the exit restart is kept only when it lowers the objective by more than tol", {
+    .kept <- .bobyqaRestart(.rosen4, .lo4, .hi4, .ctl4, .first4, tol = 1.4)
+    expect_identical(.kept$par, .again4$par)
+    expect_identical(.kept$fval, .again4$fval)
+    expect_identical(.kept$feval, .first4$feval + .again4$feval)
+    .left <- .bobyqaRestart(.rosen4, .lo4, .hi4, .ctl4, .first4, tol = 1.6)
+    expect_identical(.left$par, .first4$par)
+    expect_identical(.left$fval, .first4$fval)
+    expect_identical(.left$feval, .first4$feval + .again4$feval)
+    # .bobyqa() takes tol from sigdig (10^(1-sigdig)); trustPolish keeps any decrease
+    .ctlTol <- replace(.base4, "sigdig", 0)
+    .tolOn <- .bobyqa(.p4, .rosen4, lower = .lo4, upper = .hi4, control = c(.ctlTol, bobyqaStationary = TRUE))
+    expect_identical(.tolOn$nExitRestart, 1L)
+    expect_identical(.tolOn$exitRestartDecrease, 0)
+    expect_identical(.tolOn$par, .first4$par)
+    .polish <- .bobyqa(.p4, .rosen4, lower = .lo4, upper = .hi4,
+                       control = c(.ctlTol, bobyqaStationary = FALSE, trustPolish = TRUE))
+    expect_identical(.polish$nExitRestart, 1L)
+    expect_equal(.polish$exitRestartDecrease, .first4$fval - .again4$fval)
+    expect_identical(.polish$par, .again4$par)
+  })
+
+  test_that("the exit restart runs held and puts the inner state back", {
+    .acc <- new.env(parent = emptyenv())
+    .acc$log <- character(0)
+    .hold <- function(hold, probe = TRUE) {
+      .acc$log <- c(.acc$log, paste0("hold", hold, if (hold) probe))
+      FALSE
+    }
+    .fn <- function(x) {
+      .acc$log <- c(.acc$log, "fn")
+      .rosen4(x)
+    }
+    .kept <- .bobyqaRestart(.fn, .lo4, .hi4, .ctl4, .first4, tol = 0.01, hold = .hold)
+    expect_identical(.kept$par, .again4$par)
+    # the restart's evaluations are ordinary ones (probe = FALSE), between the hold and its release
+    .n <- length(.acc$log)
+    expect_gt(.n, 2L)
+    expect_identical(.acc$log[c(1, .n)], c("holdTRUEFALSE", "holdFALSE"))
+    expect_true(all(.acc$log[-c(1, .n)] == "fn"))
+    # no hold when nothing is restarted
+    .acc$log <- character(0)
+    .bobyqaRestart(.fn, .lo4, .hi4, .ctl4, replace(.first4, "ierr", 1L), hold = .hold)
+    expect_identical(.acc$log, character(0))
+  })
 
   test_that("bobyqaStationary is on by default and round-trips", {
     expect_true(foceiControl()$bobyqaStationary)
@@ -237,8 +311,11 @@ nmTest({
     .off <- .fit(FALSE)
     .o <- .on$env$optReturn
     expect_identical(.o$nStationaryRestart, 0L)
-    # the probe ran (2n + 4 evaluations) and left the inner state as the search did
-    expect_equal(.o$feval - .off$env$optReturn$feval, 2 * length(.o$par) + 4)
+    expect_identical(.o$nExitRestart, 1L)
+    expect_identical(.o$exitRestartDecrease, 0)
+    # the exit restart and the probe (2n + 4 evaluations) ran, were not kept and
+    # left the inner state as the search did
+    expect_gt(.o$feval - .off$env$optReturn$feval, 2 * length(.o$par) + 4)
     expect_identical(.on$objf, .off$objf)
     expect_identical(.on$theta, .off$theta)
     expect_identical(.on$eta, .off$eta)
