@@ -2868,8 +2868,8 @@ public:
   // on the transform-both-sides scale.  Only seeds the scale(s) an endpoint's
   // error model actually uses; a combined (add+prop) endpoint splits the
   // variance half/half as a warm start.  fsaveFull is chain-major f (>= ntotal).
-  void warmStartResid(const vec &fsaveFull) {
-    if (!residWarmStart || distribution == 4) return;
+  void warmStartResid(const vec &fsaveFull, bool force = false) {
+    if ((!residWarmStart && !force) || distribution == 4) return;
     if ((int)fsaveFull.n_elem < ntotal) return;
     vec fk = fsaveFull.subvec(0, ntotal - 1);
     fk = fk(ix_sorting);
@@ -2984,25 +2984,18 @@ public:
       // indicator, so the existing responsibility-weighted machinery (arResk,
       // sufficient stats, phiM_weighted) collapses to a hard assignment.  The
       // soft-EM E-step and the mixProb SA update are skipped below.
-      mixFixedAssign = mixNaiveClassify(0.0);
-      // Fall back to soft-EM (regularized) when fixed membership cannot work:
-      //  (a) SPLIT-ETA mixtures -- each component owns a distinct eta, so
-      //      omegaShareSubpop has >= 2 distinct non-zero subpop values (a
-      //      shared-eta mixture has none).  Components start identical and
-      //      must differentiate during the fit; a hard split at the symmetric
-      //      init is arbitrary and never separates.
-      //  (b) a degenerate classification that leaves a component empty (its
-      //      theta would be unconstrained).
-      uvec _nzSub = omegaShareSubpop.elem(find(omegaShareSubpop > 0));
-      uvec _uniqSub = unique(_nzSub);
-      bool isSplitEta = (_uniqSub.n_elem >= 2);
+      mixFixedAssign = mixModeClassify();
+      // Fall back to soft-EM (regularized) when the classification leaves a
+      // component empty (its theta would be unconstrained) -- which is also what a
+      // split-ETA mixture with symmetric initial estimates gives, since its
+      // hypotheses tie and every subject goes to component 1.
       bool allPop = true;
       for (int j = 0; j < nMix; j++) {
         int cnt = 0;
         for (int i = 0; i < N; i++) if ((int)mixFixedAssign(i) == j + 1) cnt++;
         if (cnt == 0) { allPop = false; break; }
       }
-      if (isSplitEta || !allPop) {
+      if (!allPop) {
         mixProbRegress = 0;
         mixProbMethod = 1; // regularized
       } else {
@@ -5657,14 +5650,72 @@ private:
     return result;
   }
 
-  // Model-aware naive classification, used for mixProbMethod="regress" membership and for
-  // MSAEM's stratified init (both run once before iteration 1): for each
-  // subject/hypothesis, shift phi1's owned columns toward/away from that hypothesis
-  // (pertSd BSV-SD) and evaluate the compiled model's actual fit.  Returns the
-  // per-subject argmin-hypothesis classification (1-indexed).
-  uvec mixNaiveClassify(double pertSd) {
+  // Per-row (subject x chain) observation loss of phi matrix cand under
+  // mixture hypothesis mHyp (0-indexed); leaves _saemMixest at 0.
+  vec mixHypRowLoss(const mat &cand, int mHyp, vec *fOut = nullptr) {
     double double_xmin = 1.0e-200;
     double xmax = 1e300;
+    current_saem_state->_saemMixest = mHyp + 1;
+    mat hypMat = user_fn(cand, evt, optM);
+    vec fHyp = hypMat.col(0);
+    if (fOut) *fOut = fHyp;
+    vec censHyp = hypMat.col(1);
+    vec limitHyp = hypMat.col(2);
+    mat DYFhyp = zeros<mat>(mlen, nM);
+    if (distribution == 1) {
+      vec yt = hasFixedObsTransform ? yTrans : y;
+      if (!hasFixedObsTransform) {
+        for (int i = ntotal; i--;) {
+          int cur = ix_endpnt(i);
+          yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+        }
+      }
+      const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+      for (int k = 0; k < nmc; k++) {
+        int obs_start = k * ntotal;
+        vec fk = fHyp.subvec(obs_start, obs_start + ntotal - 1);
+        const vec censk = censHyp.subvec(obs_start, obs_start + ntotal - 1);
+        const vec limitk = limitHyp.subvec(obs_start, obs_start + ntotal - 1);
+        _scratch_ft = fk;
+        _scratch_limitT = limitk;
+        for (int i = ntotal; i--;) {
+          int cur = ix_endpnt(i);
+          _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
+        }
+        saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
+        _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
+        _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
+        _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
+        _scratch_indio = indio + (arma::uword)k * stride;
+        DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
+        applyCensLoss(DYFhyp, _scratch_indio, censk, yt, _scratch_limitT,
+                      _scratch_ftAr, _scratch_gAr);
+      }
+    } else if (distribution == 2) {
+      for (int k = 0; k < nmc; k++) {
+        vec fk = fHyp.subvec(k * ntotal, (k + 1) * ntotal - 1);
+        uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+        DYFhyp(indio_k) = -y % log(fk) + fk;
+      }
+    } else if (distribution == 3) {
+      for (int k = 0; k < nmc; k++) {
+        vec fk = fHyp.subvec(k * ntotal, (k + 1) * ntotal - 1);
+        uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+        DYFhyp(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
+      }
+    }
+    current_saem_state->_saemMixest = 0;
+    return sum(DYFhyp, 0).t();
+  }
+
+  // Model-aware naive classification, used for MSAEM's stratified init (once
+  // before iteration 1): for each subject/hypothesis, shift phi1's owned columns
+  // toward/away from that hypothesis (pertSd BSV-SD) and evaluate the compiled
+  // model's actual fit.  Returns the per-subject argmin-hypothesis
+  // classification (1-indexed).
+  uvec mixNaiveClassify(double pertSd) {
     mat lossByHyp(N, nMix, fill::zeros);
     // phi0 columns (fixed-effect-only parameters) carry a search variance of 1 in
     // phiM, not a real BSV, so a subject's draw sits e-fold off the population value
@@ -5685,65 +5736,17 @@ private:
           cand.col(i1(c)) += shift;
         }
       }
-      current_saem_state->_saemMixest = mHyp + 1;
-      mat hypMat = user_fn(cand, evt, optM);
-      vec fHyp = hypMat.col(0);
-      vec censHyp = hypMat.col(1);
-      vec limitHyp = hypMat.col(2);
-      mat DYFhyp = zeros<mat>(mlen, nM);
-      if (distribution == 1) {
-        vec yt = hasFixedObsTransform ? yTrans : y;
-        if (!hasFixedObsTransform) {
-          for (int i = ntotal; i--;) {
-            int cur = ix_endpnt(i);
-            yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          }
-        }
-        const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
-        for (int k = 0; k < nmc; k++) {
-          int obs_start = k * ntotal;
-          vec fk = fHyp.subvec(obs_start, obs_start + ntotal - 1);
-          const vec censk = censHyp.subvec(obs_start, obs_start + ntotal - 1);
-          const vec limitk = limitHyp.subvec(obs_start, obs_start + ntotal - 1);
-          _scratch_ft = fk;
-          _scratch_limitT = limitk;
-          for (int i = ntotal; i--;) {
-            int cur = ix_endpnt(i);
-            _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-            _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-            _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
-          }
-          saemFormG(_scratch_g, vecares, vecbres, _scratch_ftT, veccres, vecaddProp);
-          _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
-          _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
-          _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
-          _scratch_indio = indio + (arma::uword)k * stride;
-          DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
-          applyCensLoss(DYFhyp, _scratch_indio, censk, yt, _scratch_limitT,
-                        _scratch_ftAr, _scratch_gAr);
-        }
-      } else if (distribution == 2) {
-        for (int k = 0; k < nmc; k++) {
-          vec fk = fHyp.subvec(k * ntotal, (k + 1) * ntotal - 1);
-          uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
-          DYFhyp(indio_k) = -y % log(fk) + fk;
-        }
-      } else if (distribution == 3) {
-        for (int k = 0; k < nmc; k++) {
-          vec fk = fHyp.subvec(k * ntotal, (k + 1) * ntotal - 1);
-          uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
-          DYFhyp(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
-        }
-      }
-      vec U_y_hyp = sum(DYFhyp, 0).t();
+      vec U_y_hyp = mixHypRowLoss(cand, mHyp);
       for (int i = 0; i < N; i++) {
         double sumL = 0.0;
         for (int k = 0; k < nmc; k++) sumL += U_y_hyp(i + k * N);
         lossByHyp(i, mHyp) = sumL / nmc;
       }
     }
-    current_saem_state->_saemMixest = 0;
+    return mixArgminClass(lossByHyp);
+  }
 
+  uvec mixArgminClass(const mat &lossByHyp) {
     uvec cls(N);
     for (int i = 0; i < N; i++) {
       unsigned int best = 0;
@@ -5753,6 +5756,96 @@ private:
       }
       cls(i) = best + 1;
     }
+    return cls;
+  }
+
+  // mixProbMethod="regress" membership (#1296): MAP classification at each
+  // subject's own etas.  Judging every hypothesis at the initial draws (and the
+  // initial residual) lets whichever hypothesis over-predicts win, so each
+  // hypothesis gets its own per-subject eta mode (deterministic coordinate
+  // pattern search on the joint loss, phi0 at the population value) and the
+  // residual is re-estimated from the classified mode fits between rounds.
+  uvec mixModeClassify() {
+    const vec aresSav = ares, bresSav = bres, vecaresSav = vecares, vecbresSav = vecbres;
+    mat basePhi = phiM;
+    if (nphi1 > 0) basePhi.cols(i1) = repmat(mprior_phi1, nmc, 1);
+    if (nphi0 > 0) basePhi.cols(i0) = repmat(mprior_phi0, nmc, 1);
+    mat priorPhi1 = repmat(mprior_phi1, nmc, 1);
+    mat igam;
+    if (nphi1 > 0 && !inv_sympd(igam, Gamma2_phi1)) {
+      igam = diagmat(1.0 / Gamma2_phi1.diag());
+    }
+    vec sdCol(nphi1, fill::zeros);
+    for (int c = 0; c < nphi1; c++) {
+      double v = Gamma2_phi1(c, c);
+      if (std::isfinite(v) && v > 0 && std::isfinite(igam(c, c))) sdCol(c) = std::sqrt(v);
+    }
+    auto jointLoss = [&](const mat &cand, int mHyp, vec *fOut) -> vec {
+      vec L = mixHypRowLoss(cand, mHyp, fOut);
+      if (nphi1 > 0) {
+        mat d = cand.cols(i1) - priorPhi1;
+        L += 0.5 * sum(d % (d * igam), 1);
+      }
+      L.elem(find_nonfinite(L)).fill(1e300);
+      return L;
+    };
+    field<mat> mode(nMix);
+    field<vec> fMode(nMix);
+    for (int mHyp = 0; mHyp < nMix; mHyp++) mode(mHyp) = basePhi;
+    // halving steps, in eta SDs, down to 2^-10 so a tight residual still finds
+    // each hypothesis' mode
+    std::vector<double> steps;
+    for (double st = 2.0; st >= 1.0 / 1024.0; st /= 2.0) steps.push_back(st);
+    uvec cls(N, fill::zeros);
+    for (int round = 0; round < 3; round++) {
+      mat lossByHyp(N, nMix, fill::zeros);
+      for (int mHyp = 0; mHyp < nMix; mHyp++) {
+        mat &cur = mode(mHyp);
+        vec curL = jointLoss(cur, mHyp, nullptr);
+        for (int pass = 0; pass < (round == 0 ? 2 : 1); pass++) {
+          for (size_t si = (round == 0 ? 0 : 2); si < steps.size(); si++) {
+            for (int c = 0; c < nphi1; c++) {
+              if (sdCol(c) <= 0) continue;
+              uvec colIx(1); colIx(0) = i1(c);
+              for (int rep = 0; rep < 3; rep++) {
+                bool moved = false;
+                for (int dir = -1; dir <= 1; dir += 2) {
+                  mat cand = cur;
+                  cand.col(i1(c)) += dir * steps[si] * sdCol(c);
+                  vec candL = jointLoss(cand, mHyp, nullptr);
+                  uvec better = find(candL < curL);
+                  if (better.n_elem == 0) continue;
+                  moved = true;
+                  cur.submat(better, colIx) = cand.submat(better, colIx);
+                  curL(better) = candL(better);
+                }
+                if (!moved) break;
+              }
+            }
+          }
+        }
+        // the same residual for every hypothesis this round, so the final
+        // call for the predictions also gives the loss
+        curL = jointLoss(cur, mHyp, &fMode(mHyp));
+        double lp = (mixProb(mHyp) > 0) ? std::log(mixProb(mHyp)) : -1e300;
+        for (int i = 0; i < N; i++) {
+          double sumL = 0.0;
+          for (int k = 0; k < nmc; k++) sumL += curL(i + k * N);
+          lossByHyp(i, mHyp) = sumL / nmc - lp;
+        }
+      }
+      uvec newCls = mixArgminClass(lossByHyp);
+      if (round > 0 && all(newCls == cls)) break;
+      cls = newCls;
+      if (distribution != 1) break;
+      // residual from each subject's own-hypothesis mode fit (chain 0)
+      vec fBest = fMode(0).subvec(0, ntotal - 1);
+      for (int idx = 0; idx < ntotal; idx++) {
+        fBest(idx) = fMode(cls(obs_subject(idx)) - 1)(idx);
+      }
+      warmStartResid(fBest, true);
+    }
+    ares = aresSav; bres = bresSav; vecares = vecaresSav; vecbres = vecbresSav;
     return cls;
   }
 
