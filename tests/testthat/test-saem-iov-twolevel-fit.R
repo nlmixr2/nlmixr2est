@@ -369,3 +369,22 @@ test_that("a model the two-level handling declines fits with pooled occasion var
   )
   expect_true(all(c("ID", "occ2", "iov.v") %in% names(.f$iov$occ2)))
 })
+
+test_that("the default saem covariance and history name a pooled IOV variance once (#1319)", {
+  skip_on_cran()
+  for (.m in c("twoLevel", "theta")) {
+    .f <- suppressWarnings(nlmixr2(
+      .twoLevelFitModel(),
+      .twoLevelFitData(),
+      est = "saem",
+      control = .twoLevelCtl(covMethod = "sa", iovMethod = .m)
+    ))
+    expect_length(grep("rx[.]iov", names(.f$parHistData)), 0L)
+    expect_true("V(iov.cl)" %in% names(.f$parHistData), label = .m)
+    .cv <- .f$cov
+    if (is.matrix(.cv)) {
+      expect_length(grep("^om[.]rx[.]", rownames(.cv)), 0L)
+      expect_true("om.iov.cl" %in% rownames(.cv), label = .m)
+    }
+  }
+})
