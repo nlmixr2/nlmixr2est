@@ -524,10 +524,12 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   checkmate::assertLogical(subsetNonmem, len = 1, any.missing = FALSE)
   checkmate::assertLogical(npde, len = 1, any.missing = FALSE)
   keep <- unique(c(keep, "nlmixrRowNums"))
-  if (!inherits(dv, "numeric")) {
+  # npde's DV (censored rows imputed) arrives as a one-column matrix
+  if (!is.numeric(dv)) {
     dv <- .prdLst$ipred$dv
     table$doSim <- TRUE
   } else {
+    dv <- as.vector(dv)
     table$doSim <- FALSE
   }
 
@@ -563,12 +565,12 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$ipred)), .state)
       .params <- setdiff(intersect(names(fit$dataSav), fit$predOnlyModel$params), c("CMT", "cmt", "Cmt", .state, .lhs))
-      .Call(
+      .ret <- .Call(
         `_nlmixr2est_resCalc`,
         .prdLst,
         fit$omega,
         fit$eta,
-        .prdLst$ipred$dv,
+        dv,
         .prdLst$ipred$evid,
         .prdLst$ipred$cens,
         .prdLst$ipred$limit,
@@ -582,12 +584,12 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$predOnly)), .state)
       .params <- setdiff(intersect(names(fit$dataSav), fit$predOnlyModel$params), c("CMT", "cmt", "Cmt", .state, .lhs))
-      .Call(
+      .ret <- .Call(
         `_nlmixr2est_cwresCalc`,
         .prdLst,
         fit$omega,
         fit$eta,
-        .prdLst$ipred$dv,
+        dv,
         .prdLst$ipred$evid,
         .prdLst$ipred$cens,
         .prdLst$ipred$limit,
@@ -598,7 +600,32 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
         table
       )
     }
+    if (!table$doSim) {
+      .ret[[3]] <- .residCensLimits(.ret[[3]], dv, .prdLst$ipred)
+    }
+    .ret
   }
+}
+
+#' Put the censoring limits back to the data's DV
+#'
+#' The residual pass takes a censored row's LOQ limit from the DV it is given,
+#' which is npde's imputed value when one is handed on.
+#'
+#' @param df residual table with `lowerLim`/`upperLim` columns
+#' @param dv DV the residuals were computed from
+#' @param ipred predictions holding the data's `dv` and `cens`
+#' @return `df` with the limits taken from the data's DV
+#' @noRd
+.residCensLimits <- function(df, dv, ipred) {
+  if (is.null(df$upperLim) || is.null(ipred$cens)) {
+    return(df)
+  }
+  .w <- which(ipred$cens == 1 & df$upperLim == dv)
+  df$upperLim[.w] <- ipred$dv[.w]
+  .w <- which(ipred$cens == -1 & df$lowerLim == dv)
+  df$lowerLim[.w] <- ipred$dv[.w]
+  df
 }
 
 .calcCwres <- function(
@@ -1285,7 +1312,8 @@ addTable <- function(
 #'  - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of
 #'    the model and censoring.
 #'
-#'  - `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)
+#'  - `"cdf"` Impute censored observations with NPDE (below) and use the
+#'    imputed values as the DV of the other residuals (`cwres` etc).
 #'
 #'  - `"omit"` omit the residuals for censoring
 #'
