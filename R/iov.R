@@ -1030,6 +1030,55 @@ nlmixr2iovVarSd <- function(val) {
   )
 }
 
+#' Parameters the expanded model counts beyond the pooled variances
+#'
+#' The K per-occasion etas of an estimated pool are one parameter, so the
+#' expanded model's count is K - 1 too high for each.
+#'
+#' @param groups named list, occasion parameter -> its per-occasion eta names
+#' @param iniDf the user's `iniDf`, before the rewrite
+#' @return integer count
+#' @noRd
+.iovPoolExtraDf <- function(groups, iniDf) {
+  .k <- 0L
+  for (.v in names(groups)) {
+    .fix <- iniDf$fix[iniDf$name == .v & !is.na(iniDf$neta1)]
+    if (!isTRUE(any(.fix))) {
+      .k <- .k + length(groups[[.v]]) - 1L
+    }
+  }
+  .k
+}
+
+#' Take pooled-variance duplicates out of a fit's df, AIC and BIC
+#'
+#' @param env fit environment
+#' @param k parameters to remove
+#' @return nothing, called for side effects
+#' @noRd
+.iovPoolAdjustDf <- function(env, k) {
+  .l <- env$logLik
+  if (k <= 0L || is.null(attr(.l, "df"))) {
+    return(invisible())
+  }
+  attr(.l, "df") <- attr(.l, "df") - k
+  assign("logLik", .l, envir = env)
+  .n <- attr(.l, "nobs")
+  if (is.numeric(env$AIC)) {
+    assign("AIC", env$AIC - 2 * k, envir = env)
+  }
+  if (is.numeric(env$BIC)) {
+    assign("BIC", env$BIC - log(.n) * k, envir = env)
+  }
+  .o <- env$objDf
+  if (is.data.frame(.o)) {
+    .o$AIC <- .o$AIC - 2 * k
+    .o$BIC <- .o$BIC - log(.n) * k
+    assign("objDf", .o, envir = env)
+  }
+  invisible()
+}
+
 #' Finalizes IOV model
 #'
 #' @param ret data frame with some iov information dropped
@@ -1485,6 +1534,7 @@ nlmixr2iovVarSd <- function(val) {
       }
       .parFixed <- .parFixed[!grepl("^rx[.]", rownames(.parFixed)), ]
       assign("parFixed", .parFixed, envir = ret$env)
+      .iovPoolAdjustDf(ret$env, .iovPoolExtraDf(.uiIovEnv$iovTwoLevel, .uiIovEnv$ui$iniDf))
     }
     # In this approach the model is simply kept,
     # but the data drops the iovDrop

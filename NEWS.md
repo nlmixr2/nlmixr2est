@@ -495,7 +495,8 @@
   now gives each occasion level an eta, all sharing one variance with a
   closed-form update, instead of a magnitude theta moved as a fixed effect
   (#1319).  The parameter table keeps an `iov.x` row with its CV (or SD),
-  which `"twoLevel"` fits now get too.
+  which `"twoLevel"` fits now get too, and `logLik()`, AIC and BIC count a
+  pooled variance once instead of once per occasion.
 
 - saem refuses a `prior()` on an occasion variance again; the IOV rewrite
   dropped it before the prior check ran, so the fit ignored it (#1319).
