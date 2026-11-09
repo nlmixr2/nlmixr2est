@@ -331,3 +331,39 @@ test_that(".saemIovInfo takes the occasion level from the base condition", {
   expect_identical(.i$pars$iov, "iov.cl")
   expect_identical(.i$etaNames$iov.cl, c("rx.iov.cl.1", "rx.iov.cl.2"))
 })
+
+test_that("saem refuses a prior on an occasion variance before the IOV rewrite drops it (#1319)", {
+  # nolint start: object_usage_linter. rxode2 ini()/model() are NSE blocks.
+  .pr <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      iov.cl ~ 0.1 | occ
+      prior(iov.cl) ~ dcauchy(0, 1)
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # nolint end
+  .ui <- rxode2::rxUiDecompress(.pr())
+  expect_error(.nlmixr0preProcessAssertNoPriors(.ui, "saem", .twoLevelData(), saemControl()), "iov.cl")
+  # a method that takes theta priors may keep the rewrite's magnitude theta
+  expect_null(.nlmixr0preProcessAssertNoPriors(.ui, "focei", .twoLevelData(), foceiControl()))
+  # simulating a model is not estimating it
+  expect_null(.nlmixr0preProcessAssertNoPriors(.ui, "rxSolve", .twoLevelData(), NULL))
+  for (.m in c("theta", "twoLevel", "collapsed")) {
+    expect_error(
+      suppressWarnings(nlmixr2(.pr(), .twoLevelData(), "saem", saemControl(print = 0, iovMethod = .m))),
+      "prior",
+      label = .m
+    )
+  }
+})
