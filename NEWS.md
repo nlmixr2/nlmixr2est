@@ -155,6 +155,11 @@
   proportional error the old classification put many subjects in whichever
   component over-predicted.  Split-eta mixtures now keep fixed membership
   instead of always falling back to `"regularized"` (#1296).
+- A `saem` mixture fit no longer diverges (residual SD near 1e40, omega in
+  the thousands) under some seeds.  Each mixture chain's current state is
+  re-solved before its MCMC step, so the population reset of fixed-effect-only
+  thetas between iterations no longer leaves a stale likelihood that froze the
+  chain at a state that no longer fit (#1298).
 
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
