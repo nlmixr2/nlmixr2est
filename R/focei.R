@@ -280,7 +280,8 @@ is.latex <- function() {
 #' @return list: `scale`, one marginal standard error per coordinate
 #'   (`sqrt(2/H_ii)` for a -2LL objective, `NA` without positive curvature),
 #'   `dec`, the decrease predicted by a Newton step kept inside the bounds (or,
-#'   without positive curvature, the decrease a probe found), and `nEval`
+#'   without positive curvature, the decrease a probe found), `nEval`, and the
+#'   lowest probe `bestX` (`NULL` when none beat `fx`) with its `bestF`
 #' @noRd
 .bobyqaCurvature <- function(fn, x, fx, h, lower, upper) {
   .np <- length(x)
@@ -290,6 +291,8 @@ is.latex <- function() {
   .scale <- rep(NA_real_, .np)
   .dec <- 0
   .nEval <- 0L
+  .bestF <- fx
+  .bestX <- NULL
   for (i in seq_len(.np)) {
     .short <- h[i] / 10
     .up <- min(h[i], upper[i] - x[i])
@@ -305,6 +308,13 @@ is.latex <- function() {
     }
     .f <- vapply(.off, function(o) fn(replace(x, i, x[i] + o)), double(1))
     .nEval <- .nEval + 2L
+    # foceiOfv0() reports a failed evaluation as 5e100
+    .f[.f >= 1e100] <- NA_real_
+    .j <- which.min(.f)
+    if (length(.j) == 1L && .f[.j] < .bestF) {
+      .bestF <- .f[.j]
+      .bestX <- replace(x, i, x[i] + .off[.j])
+    }
     .d <- .f - fx
     .a <- .off[1]
     .b <- .off[2]
@@ -320,7 +330,7 @@ is.latex <- function() {
       .dec <- .dec + .seen
     }
   }
-  list(scale = .scale, dec = .dec, nEval = .nEval)
+  list(scale = .scale, dec = .dec, nEval = .nEval, bestX = .bestX, bestF = .bestF)
 }
 
 #' Restart bobyqa on a scale adapted to the curvature where it stopped
@@ -358,14 +368,15 @@ is.latex <- function() {
     if (.left <= 2L * .np + ctl$npt + 3L) {
       break
     }
-    if (is.function(hold)) {
-      hold(TRUE)
-    }
     if (is.function(record)) {
       .was <- record(FALSE)
     }
-    # the probes' own centre, so all three share the held inner state
+    # the probes' centre, evaluated before the hold so the hold puts the
+    # inner state back at the point kept
     .fx <- fn(ret$par)
+    if (is.function(hold)) {
+      hold(TRUE)
+    }
     # probe half a trust radius in the scale of the last search
     .c <- .bobyqaCurvature(fn, ret$par, .fx, .sLast * ctl$rhobeg / 2, .lower, .upper)
     .release()
@@ -403,8 +414,13 @@ is.latex <- function() {
     .n <- .n + 1L
     ret$feval <- ret$feval + .r2$feval
     .gain <- ret$fval - .r2$fval
-    if (is.finite(.r2$fval) && .gain > 0) {
-      ret$par <- .x0 + .s * .r2$par
+    if (!is.null(.c$bestX) && .c$bestF < min(ret$fval, .r2$fval, na.rm = TRUE)) {
+      # a probe beat the restart
+      .gain <- ret$fval - .c$bestF
+      ret$par <- .c$bestX
+      ret$fval <- .c$bestF
+    } else if (is.finite(.r2$fval) && .gain > 0) {
+      ret$par <- pmin(pmax(.x0 + .s * .r2$par, .lower), .upper)
       ret$fval <- .r2$fval
       ret$ierr <- .r2$ierr
       ret$msg <- .r2$msg
