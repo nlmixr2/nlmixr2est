@@ -1327,6 +1327,14 @@ nlmixr2iovVarSd <- function(val) {
       .bsv <- which(grepl("BSV", names(.parFixedDf)))
       .est <- which(grepl("Est", names(.parFixedDf)))
 
+      # the two-level path has no magnitude theta, so give each occasion
+      # parameter the row the shared rewrite's theta would have had
+      .parFixed <- ret$env$parFixed
+      if (!is.null(.uiIovEnv$iovTwoLevel)) {
+        .tl <- .iovTwoLevelParFixed(.parFixedDf, .parFixed, ret$env, .uiIovEnv$iovVars, ret$control$sigdig)
+        .parFixedDf <- .tl$df
+        .parFixed <- .tl$chr
+      }
       .hasIovTheta <- all(.uiIovEnv$iovVars %in% rownames(.parFixedDf))
       .valCharPrep <- NULL
       if (.hasIovTheta) {
@@ -1368,7 +1376,6 @@ nlmixr2iovVarSd <- function(val) {
       .parFixedDf <- .parFixedDf[!grepl("^rx[.]", rownames(.parFixedDf)), ]
       assign("parFixedDf", .parFixedDf, envir = ret$env)
 
-      .parFixed <- ret$env$parFixed
       .bck2 <- which(grepl("Back", names(.parFixed)))
       .bsv2 <- which(grepl("BSV", names(.parFixed)))
       .est2 <- which(grepl("Est", names(.parFixed)))
@@ -1414,6 +1421,68 @@ nlmixr2iovVarSd <- function(val) {
     .stripFastmatchHash(ret$env)
   }
   ret
+}
+
+#' Add the two-level IOV occasion parameters' rows to the parameter tables
+#'
+#' Mirrors the row `iovMethod = "theta"` reports for its magnitude theta: no
+#' estimate, the SE of the occasion SD (delta method on the `om.<iov>` row of
+#' `$cov`) and the CV in `Back-transformed`, which the caller moves under BSV.
+#'
+#' @param df numeric `$parFixedDf`
+#' @param chr formatted `$parFixed`
+#' @param env fit environment
+#' @param vars occasion parameter names
+#' @param sigdig significant digits of the formatted table
+#' @return list(df, chr) with the rows appended
+#' @noRd
+.iovTwoLevelParFixed <- function(df, chr, env, vars, sigdig) {
+  vars <- setdiff(vars, rownames(df))
+  if (length(vars) == 0L || !is.data.frame(df) || nrow(df) == 0L) {
+    return(list(df = df, chr = chr))
+  }
+  .ini <- env$ui$iniDf
+  # saem installs its full covariance after this hook runs, so read the stash
+  .cv <- get0(".saemFullCov", envir = env, inherits = FALSE)
+  if (!is.matrix(.cv)) {
+    .cv <- env$cov
+  }
+  .var <- vapply(
+    vars,
+    function(.v) {
+      .w <- which(.ini$name == .v & !is.na(.ini$neta1) & .ini$neta1 == .ini$neta2)
+      if (length(.w) == 1L) .ini$est[.w] else NA_real_
+    },
+    double(1)
+  )
+  .seVar <- vapply(
+    vars,
+    function(.v) {
+      .n <- paste0("om.", .v)
+      if (is.matrix(.cv) && .n %in% rownames(.cv)) sqrt(.cv[.n, .n]) else NA_real_
+    },
+    double(1)
+  )
+  .seSd <- .seVar / (2 * sqrt(.var))
+  .rows <- df[rep(1L, length(vars)), , drop = FALSE]
+  .rows[] <- lapply(.rows, function(x) x[NA_integer_])
+  rownames(.rows) <- vars
+  .rows[["SE"]] <- unname(.seSd)
+  .bck <- which(grepl("Back", names(.rows)))
+  if (length(.bck) == 1L) {
+    .rows[[.bck]] <- unname(nlmixr2iovSdCv(sqrt(.var)))
+  }
+  df <- rbind(df, .rows)
+  if (is.data.frame(chr) && nrow(chr) > 0L) {
+    .r <- chr[rep(1L, length(vars)), , drop = FALSE]
+    .r[] <- lapply(.r, function(x) rep("", length(x)))
+    rownames(.r) <- vars
+    if ("SE" %in% names(.r)) {
+      .r[["SE"]] <- formatMinWidth(unname(.seSd), digits = sigdig, naValue = "")
+    }
+    chr <- rbind(chr, .r)
+  }
+  list(df = df, chr = chr)
 }
 
 preProcessHooksAdd(".nlmixr0preProcessAssertSameBlock", .nlmixr0preProcessAssertSameBlock)
