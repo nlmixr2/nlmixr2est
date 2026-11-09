@@ -952,7 +952,7 @@ impmapControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55dc21f04458>
+#> <bytecode: 0x55f34adc7130>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1684,6 +1684,9 @@ impmapControl()
 #> 
 #> $nonmem
 #> [1] FALSE
+#> 
+#> $tieOrder
+#> [1] "evid"
 #> 
 #> attr(,"class")
 #> [1] "rxControl"

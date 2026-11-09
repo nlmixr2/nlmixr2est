@@ -405,6 +405,32 @@
   own transform; it used the first subject’s rows for every subject.
   \### Tables
 
+- `tidy()` and [`confint()`](https://rdrr.io/r/stats/confint.html) now
+  report only the model’s thetas. A non-mu-referenced eta’s row of
+  `$parFixedDf` (and an IOV fit’s occasion variability row) used to be
+  listed as a fixed effect or interval of `NA`s, and
+  `confint(exponentiate = NA)` and `tidy(exponentiate = NA)` stopped on
+  it (“NAs are not allowed in subscripted assignments”).
+
+- [`confint()`](https://rdrr.io/r/stats/confint.html) now lists the
+  subject-level variability after the thetas, as lme4 lists its variance
+  components: one `sd__<eta>` row per eta and one `cor__<eta>.<eta>` row
+  per estimated correlation, with the same values
+  `tidy(effects = "ran_pars")` reports. Their intervals (`method=` in
+  [`confint()`](https://rdrr.io/r/stats/confint.html), `conf.method=` in
+  `tidy()`) come from the Omega rows of `$cov` (delta method, Wald on
+  log(SD) and Fisher z) when present, otherwise from the Wishart
+  distribution of Omega over the subjects (`"auto"`, the default; or
+  `"cov"`/`"wishart"`). A fixed Omega element, or any under
+  `est = "posthoc"`, has no interval. `tidy(scales = "vcov")` (one value
+  per element of `effects`, as broom.mixed) and
+  `confint(scales = "vcov")` report the same terms as `var__`/`cov__`
+  variances and covariances, as broom.mixed does for lme4. An IOV fit’s
+  occasion variability follows, grouped under its occasion variable
+  (e.g. `occ`); its Wishart interval counts subject-occasions. The
+  residual-error rows of `tidy()` kept their `conf.int` interval; it was
+  `NA`. `tidy()` also accepts broom.mixed’s `effects = "ran_coefs"`.
+
 - [`augPred()`](https://rdrr.io/pkg/nlme/man/augPred.html) under
   `covsInterpolation = "midpoint"` now fills its grid covariates with
   the mean of the two neighboring records, as rxode2 and
