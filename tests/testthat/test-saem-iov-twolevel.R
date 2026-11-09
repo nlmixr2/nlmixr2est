@@ -192,7 +192,26 @@ test_that("saem's shared rewrite pools a model the two-level handling declines (
   )
 })
 
-test_that(".saemIovCollapseCov contracts the pooled occasion columns", {
+test_that(".saemIovCollapseCov restricts the information to one pooled variance", {
+  .nm <- c("tka", "om.rx.iov.cl.1", "om.rx.iov.cl.2")
+  # unbalanced occasions: 100 observations' worth of information on one, 10 on
+  # the other.  Pooled, the information adds; averaging the inverse would not.
+  .cv <- diag(c(0.5, 8 / 100, 8 / 10))
+  dimnames(.cv) <- list(.nm, .nm)
+  .out <- .saemIovCollapseCov(.cv, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2")))
+  expect_equal(rownames(.out), c("tka", "om.iov.cl"))
+  expect_equal(.out["om.iov.cl", "om.iov.cl"], 1 / (100 / 8 + 10 / 8))
+  expect_equal(.out["tka", "tka"], 0.5)
+  # balanced, correlated with a theta: the general (B' C^-1 B)^-1
+  .cv <- matrix(c(2, 0.3, 0.3, 0.3, 1, 0.2, 0.3, 0.2, 1), 3, dimnames = list(.nm, .nm))
+  .b <- cbind(c(1, 0, 0), c(0, 1, 1))
+  .want <- solve(t(.b) %*% solve(.cv) %*% .b)
+  .out <- .saemIovCollapseCov(.cv, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2")))
+  expect_equal(unname(.out), unname(.want))
+  expect_equal(.out, t(.out))
+})
+
+test_that(".saemIovCollapseCov falls back to averaging a matrix it cannot invert", {
   # the K per-occasion columns estimate ONE variance, so the covariance matrix
   # has to carry one row for them -- Var(mean(v_1..v_K)), not Var(v_1)
   .nm <- c("tka", "om.eta.ka", "om.rx.iov.cl.1", "om.rx.iov.cl.2")
