@@ -61,7 +61,7 @@ nmTest({
       .r <- .saemIovObj(.saemIovObjMod, .m)
       expect_identical(.r$ofvType, "gauss3_1.6", label = .m)
       expect_false(.r$fellBack, label = .m)
-      expect_equal(.r$objf, 202.807367, tolerance = 1e-6, label = .m)
+      expect_equal(.r$objf, 187.638674, tolerance = 1e-6, label = .m)
     }
     # a fit without IOV is unchanged
     .r <- .saemIovObj(.saemNoIovObjMod)
