@@ -38,6 +38,14 @@ nmTest({
     # a failed probe does not hide the decrease the other one found
     .cliff <- function(x) if (x < -0.05) Inf else (x - 10)^2
     expect_gt(.bobyqaCurvature(.cliff, 0, 100, 0.1, -Inf, Inf)$dec, 1)
+    # so does FOCEi's 5e100 for a failed evaluation, and the lower probe is kept
+    .bad <- function(x) if (x < -0.05) 5e100 else (x - 10)^2
+    .c <- .bobyqaCurvature(.bad, 0, 100, 0.1, -Inf, Inf)
+    expect_true(is.na(.c$scale))
+    expect_gt(.c$dec, 1)
+    expect_equal(.c$bestX, 0.1)
+    expect_equal(.c$bestF, 9.9^2)
+    expect_null(.bobyqaCurvature(.fn, .mu, 0, 0.1, -Inf, Inf)$bestX)
     # a narrow open side is still probed, and scalar bounds recycle
     .c <- .bobyqaCurvature(.flat, 0, 1, 0.1, 0, 0.015)
     expect_equal(.c$nEval, 2L)
@@ -88,6 +96,16 @@ nmTest({
     expect_equal(.r$par[2], 20, tolerance = 1e-3)
   })
 
+  test_that(".bobyqaAdapt keeps a probe that beats the restart", {
+    # a dip only the probe at +0.1 finds; one evaluation left for the restart
+    .dip <- function(x) if (abs(x[1] - 0.1) < 0.01 && abs(x[2]) < 0.01) 5 else 10 + sum(x^2)
+    .st <- list(par = c(0, 0), fval = 10, feval = 1L, ierr = 0L, msg = "stopped")
+    .ctl <- list(rhobeg = 0.2, rhoend = 1e-4, npt = 5L, maxfun = 15L, iprint = 0L)
+    .r <- suppressWarnings(.bobyqaAdapt(.dip, -Inf, Inf, .ctl, .st, tol = 0.01, maxLeg = 1L))
+    expect_equal(.r$fval, 5)
+    expect_equal(.r$par, c(0.1, 0))
+  })
+
   test_that(".bobyqaAdapt stays inside the evaluation budget", {
     .n <- 0L
     .f <- function(x) {
@@ -121,7 +139,7 @@ nmTest({
     .done <- list(par = .mu, fval = 0, feval = 1L, ierr = 0L, msg = "done")
     .ctl <- list(rhobeg = 0.2, rhoend = 1e-6, npt = 7L, maxfun = 2000L, iprint = 0L)
     .bobyqaAdapt(.fn, -Inf, Inf, .ctl, .done, tol = 0.01, maxLeg = 3L, record = .rec, hold = .hold)
-    expect_equal(.log, c("holdTRUE", "recordFALSE", "holdFALSE", "recordTRUE", "holdFALSE"))
+    expect_equal(.log, c("recordFALSE", "holdTRUE", "holdFALSE", "recordTRUE", "holdFALSE"))
     # with restarts, every probe is held and unrecorded, and both are released
     .log <- character(0)
     .st <- list(par = c(0, 0, 0), fval = .fn(c(0, 0, 0)), feval = 1L, ierr = 0L, msg = "stopped")
