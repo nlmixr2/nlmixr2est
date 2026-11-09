@@ -78,7 +78,8 @@ nmTest({
       })
     }
     .f <- suppressMessages(suppressWarnings(nlmixr2(
-      .mod, .d,
+      .mod,
+      .d,
       est = "focei",
       control = foceiControl(print = 0, covMethod = "", calcTables = FALSE, scaleAdapt = 3L)
     )))
