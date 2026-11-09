@@ -231,6 +231,12 @@ test_that("two-level IOV parameter-table rows report a CV or an SD by transform"
   expect_true(is.na(.env$parFixedDf["iov.v", "SE"]))
   expect_equal(.env$parFixed["iov.v", "BSV(CV% or SD)"], "0.200")
   expect_equal(.env$parFixed["iov.v", "SE"], "")
+
+  # a parameter missing from $cov (e.g. a fixed one) does not hide the others
+  .env$cov <- .env$cov[1:2, 1:2]
+  .iovTwoLevelSe(.env)
+  expect_equal(.env$parFixedDf["iov.cl", "SE"], 0.04 / (2 * 0.3))
+  expect_true(is.na(.env$parFixedDf["iov.v", "SE"]))
 })
 
 test_that(".saemGqNodes keeps the -2LL grid affordable", {

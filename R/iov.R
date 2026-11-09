@@ -1494,7 +1494,11 @@ nlmixr2iovVarSd <- function(val) {
   }
   .cv <- env$cov
   .omN <- paste0("om.", .vars)
-  .var <- if (is.matrix(.cv) && all(.omN %in% rownames(.cv))) diag(.cv)[.omN] else rep(NA_real_, length(.vars))
+  .var <- rep(NA_real_, length(.vars))
+  if (is.matrix(.cv) && !is.null(rownames(.cv))) {
+    .w <- match(.omN, rownames(.cv))
+    .var[!is.na(.w)] <- diag(.cv)[.w[!is.na(.w)]]
+  }
   .ini <- env$ui$iniDf
   .psi <- vapply(
     .vars,
