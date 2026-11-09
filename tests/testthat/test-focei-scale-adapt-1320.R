@@ -18,10 +18,23 @@ nmTest({
     expect_equal(.c$nEval, 6L)
     # a quadratic's diagonal Newton decrement is the whole decrease here
     expect_equal(.c$dec, .fn(.x), tolerance = 1e-8)
-    # one-sided at a bound, no curvature on a flat coordinate
+    # an asymmetric step near a bound; no curvature on a flat coordinate
     .flat <- function(x) (x[1] - 1)^2
     .c <- .bobyqaCurvature(.flat, c(0, 0), 1, 0.1, c(-0.05, -Inf), c(Inf, Inf))
-    expect_equal(.c$scale, c(sqrt(2 / 2), NA))
+    expect_equal(.c$scale, c(1, NA))
+    # at a bound both probes go to the open side
+    .c <- .bobyqaCurvature(.flat, 0, 1, 0.1, 0, Inf)
+    expect_equal(.c$scale, 1)
+    expect_equal(.c$dec, 1)
+    # a Newton step that leaves the box predicts only the decrease inside it
+    .wall <- function(x) (x + 5)^2
+    .c <- .bobyqaCurvature(.wall, 1e-5, .wall(1e-5), 0.1, 0, Inf)
+    expect_lt(.c$dec, 1e-3)
+    # no positive curvature: the decrease a probe saw still counts
+    .bump <- function(x) -10 * exp(-((x - 50) / 20)^2)
+    .c <- .bobyqaCurvature(.bump, 0, .bump(0), 0.1, -Inf, Inf)
+    expect_true(is.na(.c$scale))
+    expect_gt(.c$dec, 0)
   })
 
   test_that(".bobyqaAdapt restarts from a stopped search to the minimum", {
@@ -37,8 +50,65 @@ nmTest({
     .r <- .bobyqaAdapt(.fn, -Inf, Inf, .ctl, .done, tol = 0.01, maxLeg = 3L)
     expect_equal(.r$nScaleAdapt, 0L)
     expect_equal(.r$par, .mu)
+    # a stop on a concave flank still restarts
+    .flank <- function(x) x[1]^2 - 10 * exp(-((x[2] - 50) / 20)^2)
+    .st <- list(par = c(0, 0), fval = .flank(c(0, 0)), feval = 1L, ierr = 0L, msg = "stopped")
+    .r <- .bobyqaAdapt(.flank, -Inf, Inf, .ctl, .st, tol = 1e-4, maxLeg = 3L)
+    expect_gte(.r$nScaleAdapt, 1L)
+    expect_lt(.r$fval, .st$fval)
     # maxLeg = 0 never restarts
     expect_equal(.bobyqaAdapt(.fn, -Inf, Inf, .ctl, .stopped, tol = 0.01, maxLeg = 0L)$nScaleAdapt, 0L)
+  })
+
+  test_that(".bobyqaAdapt keeps bobyqa's box and start with finite bounds", {
+    .ctl <- list(rhobeg = 0.2, rhoend = 1e-6, npt = 5L, maxfun = 2000L, iprint = 0L)
+    .fn2 <- function(x) ((x[1] - 1) / 500)^2 + ((x[2] - 20) / 30)^2
+    .st <- list(par = c(0, 0), fval = .fn2(c(0, 0)), feval = 1L, ierr = 0L, msg = "stopped")
+    .seen <- NULL
+    .f <- function(x) {
+      .seen <<- rbind(.seen, x)
+      .fn2(x)
+    }
+    expect_no_warning(.r <- .bobyqaAdapt(.f, c(-5, 0), c(5, Inf), .ctl, .st, tol = 0.01, maxLeg = 3L))
+    expect_true(all(.seen[, 1] >= -5 & .seen[, 1] <= 5 & .seen[, 2] >= 0))
+    expect_lt(.r$fval, .st$fval)
+    expect_equal(.r$par[2], 20, tolerance = 1e-3)
+  })
+
+  test_that(".bobyqaAdapt stays inside the evaluation budget", {
+    .n <- 0L
+    .f <- function(x) {
+      .n <<- .n + 1L
+      .fn(x)
+    }
+    .x <- c(0, 0, 0)
+    .st <- list(par = .x, fval = .fn(.x), feval = 1L, ierr = 0L, msg = "stopped")
+    .ctl <- list(rhobeg = 0.2, rhoend = 1e-6, npt = 7L, maxfun = 60L, iprint = 0L)
+    .r <- .bobyqaAdapt(.f, -Inf, Inf, .ctl, .st, tol = 0.01, maxLeg = 3L)
+    expect_lte(.r$feval, 60L)
+    expect_equal(.r$feval - 1L, .n)
+    # too little budget left for a probe and a restart: nothing runs
+    .n <- 0L
+    .ctl$maxfun <- 2L * 3L + 7L + 3L
+    .r <- .bobyqaAdapt(.f, -Inf, Inf, .ctl, .st, tol = 0.01, maxLeg = 3L)
+    expect_equal(.n, 0L)
+    expect_equal(.r$nScaleAdapt, 0L)
+  })
+
+  test_that(".bobyqaAdapt keeps its probes out of the history and the inner state", {
+    .log <- character(0)
+    .rec <- function(on) {
+      .log <<- c(.log, paste0("record", on))
+      TRUE
+    }
+    .hold <- function(on) {
+      .log <<- c(.log, paste0("hold", on))
+      TRUE
+    }
+    .done <- list(par = .mu, fval = 0, feval = 1L, ierr = 0L, msg = "done")
+    .ctl <- list(rhobeg = 0.2, rhoend = 1e-6, npt = 7L, maxfun = 2000L, iprint = 0L)
+    .bobyqaAdapt(.fn, -Inf, Inf, .ctl, .done, tol = 0.01, maxLeg = 3L, record = .rec, hold = .hold)
+    expect_equal(.log, c("holdTRUE", "recordFALSE", "holdFALSE", "recordTRUE", "holdFALSE"))
   })
 
   test_that("scaleAdapt takes the #1320 Emax fit past the default scale's stop", {
