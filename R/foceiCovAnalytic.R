@@ -2514,17 +2514,9 @@
       )
       .modTxt <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", .modTxt)
       .modTxt <- gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .modTxt)
-      # Optimize common subexpressions (as the inner model does): the augmented model
-      # has heavy shared subexpressions across the sensitivity ODEs and the f1/f2
-      # prediction chains, so rxOptExpr materially shrinks the per-solve work.
-      # rxode2's rxOptExpr() itself optimizes a large model in cost-balanced chunks by
-      # default (it disguises the compartment-scoped constructs -- state ICs and
-      # f/alag/lag/rate/dur dosing modifiers -- a chunk would otherwise orphan, and
-      # falls back to a single whole-model pass if a chunk cannot be optimized), so the
-      # ~200-350 line augmented model no longer needs hand-rolled chunking here.  The
-      # fit's rxControl(cores=) is passed through so the chunks are optimized in
-      # parallel with the same thread setting the solves use (`.cores` also rides along
-      # in the result so the batched solves run parallel).
+      # Optimize common subexpressions exactly once: the augmented text is built from
+      # symengine (no rx_expr_ temporaries), and re-optimizing optimized text can
+      # make old and new temporaries collide.  rxOptExpr() chunks large models.
       .cores <- .optExprCores(ui)
       if (isTRUE(rxode2::rxGetControl(ui, "optExpression", TRUE))) {
         .modTxt <- tryCatch(

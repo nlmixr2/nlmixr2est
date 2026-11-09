@@ -84,8 +84,15 @@ nmTest({
     skip_on_cran()
     .inner <- .evEtaBundle("jump")$inner
     expect_equal(attr(.inner, "nlmixr2estEventSens"), "jump")
-    # deflate/inflate is what every fit after the first one does
-    .rt <- .foceiModelCacheInflate(.foceiModelCacheDeflate(.inner))
+    # Serialize the stored form too: large augmented models must restore the
+    # compiled object directly instead of reparsing their normalized text.
+    .cache <- tempfile(fileext = ".rds")
+    on.exit(unlink(.cache), add = TRUE)
+    saveRDS(.foceiModelCacheDeflate(.inner), .cache)
+    .stored <- readRDS(.cache)
+    expect_true(inherits(.stored$model, "rxode2"))
+    .rt <- .foceiModelCacheInflate(.stored)
+    expect_s3_class(.rt, "rxode2")
     expect_equal(attr(.rt, "nlmixr2estEventSens"), "jump")
     # and it round trips again -- an inflated bundle must not deflate to NULL
     .rt2 <- .foceiModelCacheInflate(.foceiModelCacheDeflate(.rt))
