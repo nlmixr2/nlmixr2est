@@ -252,4 +252,5 @@ test_that("a shared-eta mixture does not diverge under another seed (#1298)", {
   expect_lt(fit$omega["eta.cl", "eta.cl"], 1)
   expect_true(is.finite(fit$objf))
   expect_lt(fit$objf, 0)
+  expect_false(any(grepl("estimates diverged", fit$runInfo, fixed = TRUE)))
 })
