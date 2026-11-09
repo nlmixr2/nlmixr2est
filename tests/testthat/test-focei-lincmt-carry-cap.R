@@ -157,9 +157,30 @@ test_that("a numeric cmt keeps naming the same compartment after linToOde()", {
     .linCmtCarryCmtNames(.ui)[abs(.d$CMT)]
   )
   expect_identical(.r$CMT[5], -1)
+  expect_identical(.r$CMT, c(1, 2, 4, 5, -1))
   # a named cmt is left alone
   .d$CMT <- c("depot", "central", "cp", "ef", "depot")
   expect_identical(.linCmtCarryRemapCmt(.d, .ui, .ode), .d)
+  # a bare linCmt() endpoint is renamed by linToOde() but keeps its place
+  body(.f)[[3]][[2]][[7]] <- quote(linCmt() ~ add(add.sd))
+  body(.f)[[3]][[2]][[8]] <- NULL
+  .bare <- suppressMessages(rxode2::rxode2(.f))
+  .d$CMT <- c(1, 2, 3, 4, -1)
+  expect_identical(
+    .linCmtCarryRemapCmt(.d, .bare, suppressMessages(rxode2::linToOde(.bare)))$CMT,
+    c(1, 2, 4, 5, -1)
+  )
+})
+
+test_that("a covariate the data cannot settle may vary", {
+  .d <- data.frame(ID = c(1, 1, 2, 2), occ = c(1, 1, 2, 2), WT = c(70, 80, 65, 75))
+  # matched whatever its case
+  expect_true(.linCmtCarryMayVary(c("wt", "occ"), .d))
+  .d$WT <- c(70, 70, 65, 65)
+  expect_false(.linCmtCarryMayVary(c("wt", "occ"), .d))
+  # a column the data lacks
+  expect_true(.linCmtCarryMayVary(c("sex", "occ"), .d))
+  expect_true(.linCmtCarryMayVary("occ", NULL))
 })
 
 test_that("pairs dropped past the cap warn that their gradient is approximate", {

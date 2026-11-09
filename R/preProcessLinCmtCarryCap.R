@@ -41,15 +41,47 @@
   }
   .vary <- vapply(
     strsplit(.pairs$covs[!.keep], ",", fixed = TRUE),
-    function(.c) !isFALSE(.rxFoceiCarryVarying(.c, data)),
-    logical(1)
+    .linCmtCarryMayVary,
+    logical(1),
+    data = data
   )
   if (any(.vary)) .need else 0L
 }
 
+#' Could any of these covariates vary within a subject in the data?
+#'
+#' A covariate the data cannot settle (no data, or no matching column) may.
+#' @param covs covariate names
+#' @param data the fit's data, or NULL
+#' @return logical
+#' @noRd
+#' @author Matthew L. Fidler
+.linCmtCarryMayVary <- function(covs, data) {
+  if (!is.data.frame(data)) {
+    return(TRUE)
+  }
+  .n <- names(data)
+  any(vapply(
+    covs,
+    function(.cv) {
+      .col <- .n[.n == .cv]
+      if (length(.col) != 1L) {
+        .col <- .n[tolower(.n) == tolower(.cv)]
+      }
+      if (length(.col) != 1L) {
+        return(TRUE)
+      }
+      !isFALSE(.rxFoceiCarryCovVaries(data, .col))
+    },
+    logical(1)
+  ))
+}
+
 #' The compartment each number names, in a ui's numbering
 #'
-#' States first, then the endpoints that are not states (`ui$predDf$cmt`).
+#' States by name, then the endpoints that are not states by their position
+#' in `ui$predDf` (`linToOde()` keeps their order but renames a bare
+#' `linCmt()` endpoint).
 #' @param ui rxode2 ui
 #' @return character, indexed by compartment number (NA where unnamed)
 #' @noRd
@@ -58,7 +90,7 @@
   .state <- rxode2::rxModelVars(ui)$state
   .pd <- ui$predDf
   .ret <- rep(NA_character_, max(c(length(.state), .pd$cmt)))
-  .ret[.pd$cmt] <- as.character(.pd$cond)
+  .ret[.pd$cmt] <- paste0("(endpoint ", seq_len(nrow(.pd)), ")")
   .ret[seq_along(.state)] <- .state
   .ret
 }
