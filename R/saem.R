@@ -735,6 +735,32 @@
   invisible()
 }
 
+#' Note diverged final SAEM estimates in the fit's $runInfo
+#'
+#' A diverged fit (a residual SD of 1e38, an exploding omega) otherwise
+#' returns as an ordinary fit with only a covariance failure noted (#1298).
+#'
+#' @param theta final SAEM thetas (named)
+#' @param omega final SAEM omega
+#' @param fixed names of fixed parameters (not checked)
+#' @param bound magnitude above which an estimate counts as diverged
+#' @return Nothing, called for the warning side effect
+#' @author Matthew L. Fidler
+#' @noRd
+.saemWarnDiverged <- function(theta, omega, fixed = character(0), bound = 1e10) {
+  .x <- theta
+  if (is.matrix(omega) && nrow(omega) > 0L) {
+    .x <- c(.x, setNames(diag(omega), rownames(omega)))
+  }
+  .x <- .x[!(names(.x) %in% fixed)]
+  .bad <- names(.x)[!is.finite(.x) | abs(.x) > bound]
+  if (length(.bad) > 0L) {
+    .pre <- "estimates diverged: "
+    warning(paste0(.pre, .vaeTruncList(.bad, prefix = .pre)), call. = FALSE)
+  }
+  invisible()
+}
+
 #' Random effects that saem has no population parameter for
 #'
 #' saem parameterizes a random effect by the phi (population) parameter it is
@@ -2102,6 +2128,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
+    .saemWarnDiverged(.ret$fullTheta, .ret$omega, fixed = .ui$iniDf$name[.ui$iniDf$fix])
     .saemFoldPseudoEtas(.ret)
     # Must run before .saemMixFix(), or ui$theta silently falls back to ini()
     # values for every param.
