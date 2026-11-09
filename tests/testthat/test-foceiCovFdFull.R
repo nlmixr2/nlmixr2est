@@ -163,6 +163,10 @@ test_that("chained, fixed and malformed same() maps tie as expected (#1316)", {
   expect_true(all(.foceiFdFullSameTie(.p5, rep(FALSE, nrow(.p5)), .s5, paste0("e", 1:6))$free))
   .p6 <- rbind(c(1L, 1L), c(2L, 1L), c(2L, 2L), c(3L, 3L), c(4L, 4L))
   expect_true(all(.foceiFdFullSameTie(.p6, rep(FALSE, 5), c(0L, 0L, 1L, 2L), paste0("e", 1:4))$free))
+  # a copy of half a correlated block, and a copy ahead of its master
+  .p7 <- rbind(c(1L, 1L), c(2L, 1L), c(2L, 2L), c(3L, 3L))
+  expect_true(all(.foceiFdFullSameTie(.p7, rep(FALSE, 4), c(0L, 0L, 1L), .onm)$free))
+  expect_true(all(.foceiFdFullSameTie(.p7, rep(FALSE, 4), c(2L, 0L, 0L), .onm)$free))
   # a 2x2 master with its first variance fixed: copies index the free pairs
   .p4 <- rbind(c(1L, 1L), c(2L, 1L), c(2L, 2L), c(3L, 3L), c(4L, 3L), c(4L, 4L))
   .tie <- .foceiFdFullSameTie(.p4, c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE), c(0L, 0L, 1L, 2L), paste0("e", 1:4))

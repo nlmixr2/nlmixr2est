@@ -132,8 +132,13 @@
     for (.k in which(.m)) {
       .i <- pairs[.k, 1] + .d
       .j <- pairs[.k, 2] + .d
-      .in <- .i <= length(same) && .j <= length(same) && same[.i] == pairs[.k, 1] && same[.j] == pairs[.k, 2]
-      if (.in && !(paste(.i, .j) %in% .key)) {
+      .in <- .i >= 1L &&
+        .j >= 1L &&
+        .i <= length(same) &&
+        .j <= length(same) &&
+        same[.i] == pairs[.k, 1] &&
+        same[.j] == pairs[.k, 2]
+      if (!.in || !(paste(.i, .j) %in% .key)) {
         return(FALSE)
       }
     }
