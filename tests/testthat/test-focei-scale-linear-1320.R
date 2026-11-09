@@ -1,13 +1,15 @@
 nmTest({
   # one linear theta per initial value, across both edges of scaleCband
   .inits <- c(0.05, 0.1, 0.5, 5, 10, 20)
-  .sweep <- eval(parse(text = paste0(
-    "function() {\n ini({\n",
-    paste0("  a", seq_along(.inits), " <- ", .inits, collapse = "\n"),
-    "\n  eta.k ~ 0.1\n  sdw <- 1\n })\n model({\n  y <- eta.k + ",
-    paste0("a", seq_along(.inits), " * x", seq_along(.inits), collapse = " + "),
-    "\n  y ~ add(sdw)\n })\n}\n"
-  )))
+  .sweep <- eval(parse(
+    text = paste0(
+      "function() {\n ini({\n",
+      paste0("  a", seq_along(.inits), " <- ", .inits, collapse = "\n"),
+      "\n  eta.k ~ 0.1\n  sdw <- 1\n })\n model({\n  y <- eta.k + ",
+      paste0("a", seq_along(.inits), " * x", seq_along(.inits), collapse = " + "),
+      "\n  y ~ add(sdw)\n })\n}\n"
+    )
+  ))
   .scaleLinear <- function(mod, ...) {
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(mod))
     .ctl <- foceiControl(...)
