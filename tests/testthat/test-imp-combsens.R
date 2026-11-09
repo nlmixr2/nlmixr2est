@@ -201,11 +201,13 @@ nmTest({
     expect_true(all(is.finite(fixef(.fh))))
     expect_true(.harvestN() > .n0)
 
+    # A separate theta model must not leave its event callbacks on the inner solves.
     rxode2::rxSetSeed(42)
     .fs <- suppressWarnings(
       nlmixr2(mmix, .d, "impmap", impmapControl(print = 0L, nIter = 8L, isample = 40L, combSens = FALSE))
     )
     expect_true(inherits(.fs, "nlmixr2FitCore"))
+    expect_true(is.finite(as.numeric(.fs$objf)))
     # A misaligned i+j*nsub mapping would scramble which component's samples
     # feed which component's Newton step -- the two components' clearances
     # (tcl1 low, tcl2 high) would no longer track between the harvested and
@@ -281,5 +283,50 @@ nmTest({
     expect_true(nrow(.inner) == 1L && isTRUE(.inner$ndiffSet) && .inner$ndiff > 0L)
     expect_true(nrow(.pred) == 1L && isTRUE(.pred$ndiffSet))
     expect_false(isTRUE(.pred$ndiff == .inner$ndiff))
+  })
+
+  test_that("separate theta solves use their dosing sensitivities and restore the inner callbacks", {
+    model <- function() {
+      ini({ lf <- 0; eta.cl ~ fix(.1); error <- fix(.2) })
+      model({
+        kel <- .2 * exp(eta.cl)
+        d/dt(depot) <- -depot
+        f(depot) <- exp(lf)
+        d/dt(central) <- depot - kel * central
+        cp <- central / 10
+        cp ~ add(error)
+      })
+    }
+    data <- data.frame(
+      ID = rep(1:3, each = 4),
+      TIME = rep(c(0, 1, 2, 4), 3),
+      EVID = rep(c(1, 0, 0, 0), 3),
+      AMT = rep(c(100, 0, 0, 0), 3),
+      DV = c(NA, 5, 6, 5, NA, 6, 7, 6, NA, 4, 5, 4)
+    )
+    fit <- function(combSens) {
+      rxode2::rxSetSeed(42)
+      suppressWarnings(suppressMessages(nlmixr2(
+        model,
+        data,
+        "impmap",
+        impmapControl(
+          print = 0L,
+          nIter = 2L,
+          isample = 50L,
+          sigdig = 6,
+          rxControl = rxode2::rxControl(atol = 1e-10, rtol = 1e-10),
+          covMethod = "",
+          auto = FALSE,
+          gammaRule = "floor",
+          combSens = combSens
+        )
+      )))
+    }
+    fused <- fit(TRUE)
+    separate <- fit(FALSE)
+    expect_true(is.finite(as.numeric(separate$objf)))
+    expect_equal(unname(fixef(separate)), unname(fixef(fused)), tolerance = 1e-4)
+    expect_equal(as.numeric(separate$objf), as.numeric(fused$objf), tolerance = 1e-4)
   })
 })

@@ -28,7 +28,7 @@
   .ctl <- control[[1]]
   .l <- if (is.null(.ctl)) list() else unclass(.ctl)
   # a defaulted (not user-chosen) outer optimizer re-defaults under fast=TRUE
-  # (nlminb -> lbfgsb3c); an explicit outerOpt is kept as given
+  # (bobyqa -> nlminb); an explicit outerOpt is kept as given
   if (isTRUE(.l$outerOptDefault)) {
     .l$outerOpt <- NULL
     .l$outerOptTxt <- NULL
