@@ -268,8 +268,10 @@ is.latex <- function() {
   ret
 }
 
-#' Probe each optimizer coordinate's curvature by central differences
+#' Probe each optimizer coordinate's curvature
 #'
+#' Fits a quadratic through `x` and two probes per coordinate, `h` either side
+#' or, when a bound is closer than `h/10`, `h` and `2h` on the open side.
 #' @param fn objective
 #' @param x point
 #' @param fx objective at `x`
@@ -277,30 +279,44 @@ is.latex <- function() {
 #' @param lower,upper bounds
 #' @return list: `scale`, one marginal standard error per coordinate
 #'   (`sqrt(2/H_ii)` for a -2LL objective, `NA` without positive curvature),
-#'   `dec`, the diagonal Newton decrement, and `nEval`
+#'   `dec`, the decrease predicted by a Newton step kept inside the bounds (or,
+#'   without positive curvature, the decrease a probe found), and `nEval`
 #' @noRd
 .bobyqaCurvature <- function(fn, x, fx, h, lower, upper) {
   .np <- length(x)
   .scale <- rep(NA_real_, .np)
   .dec <- 0
   .nEval <- 0L
+  .short <- h / 10
   for (i in seq_len(.np)) {
     .up <- min(h, upper[i] - x[i])
     .dn <- min(h, x[i] - lower[i])
-    if (.up <= 0 || .dn <= 0) {
+    if (.up >= .short && .dn >= .short) {
+      .off <- c(.up, -.dn)
+    } else if (.up >= .short) {
+      .off <- min(h, (upper[i] - x[i]) / 2) * c(1, 2)
+    } else if (.dn >= .short) {
+      .off <- -min(h, (x[i] - lower[i]) / 2) * c(1, 2)
+    } else {
       next
     }
-    .fu <- fn(replace(x, i, x[i] + .up))
-    .fd <- fn(replace(x, i, x[i] - .dn))
+    if (min(abs(.off)) < .short) {
+      next
+    }
+    .f <- vapply(.off, function(o) fn(replace(x, i, x[i] + o)), double(1))
     .nEval <- .nEval + 2L
-    .w <- .up * .dn * (.up + .dn)
-    .h <- 2 * (.up * .fd + .dn * .fu - (.up + .dn) * fx) / .w
-    .g <- (.up^2 * .fu - .dn^2 * .fd - (.up^2 - .dn^2) * fx) / .w
-    if (is.finite(.h) && .h > 0) {
+    .d <- .f - fx
+    .a <- .off[1]
+    .b <- .off[2]
+    .h <- 2 * (.d[1] * .b - .d[2] * .a) / (.a * .b * (.a - .b))
+    .g <- (.d[1] - .h * .a^2 / 2) / .a
+    .seen <- if (all(is.finite(.f))) max(0, -min(.d)) else 0
+    if (is.finite(.h) && .h > 0 && is.finite(.g)) {
       .scale[i] <- sqrt(2 / .h)
-      if (is.finite(.g)) {
-        .dec <- .dec + .g^2 / (2 * .h)
-      }
+      .st <- min(max(-.g / .h, lower[i] - x[i]), upper[i] - x[i])
+      .dec <- .dec + max(-(.g * .st + .h * .st^2 / 2), .seen)
+    } else {
+      .dec <- .dec + .seen
     }
   }
   list(scale = .scale, dec = .dec, nEval = .nEval)
@@ -337,7 +353,7 @@ is.latex <- function() {
   on.exit(.release(), add = TRUE)
   while (.n < maxLeg && is.finite(ret$fval)) {
     .left <- if (is.null(ctl$maxfun)) Inf else ctl$maxfun - ret$feval
-    if (.left <= 2L * .np + ctl$npt + 2L) {
+    if (.left <= 2L * .np + ctl$npt + 3L) {
       break
     }
     if (is.function(hold)) {
@@ -346,8 +362,11 @@ is.latex <- function() {
     if (is.function(record)) {
       .was <- record(FALSE)
     }
-    .c <- .bobyqaCurvature(fn, ret$par, ret$fval, ctl$rhobeg / 2, .lower, .upper)
+    # the probes' own centre, so all three share the held inner state
+    .fx <- fn(ret$par)
+    .c <- .bobyqaCurvature(fn, ret$par, .fx, ctl$rhobeg / 2, .lower, .upper)
     .release()
+    .c$nEval <- .c$nEval + 1L
     ret$feval <- ret$feval + .c$nEval
     if (.c$dec <= tol) {
       break
@@ -356,6 +375,14 @@ is.latex <- function() {
     .s[!is.finite(.s)] <- 1
     .s <- pmin(pmax(.s, 1e-3), 1e3)
     .x0 <- ret$par
+    # keep bobyqa's 2*rhobeg box width and its start, which it moves when a
+    # bound is within rhobeg
+    .rb <- ctl$rhobeg
+    .s <- pmin(.s, (.upper - .lower) / (2 * .rb))
+    .dl <- .x0 - .lower
+    .du <- .upper - .x0
+    .s <- ifelse(.dl > 0, pmin(.s, .dl / .rb), .s)
+    .s <- ifelse(.du > 0, pmin(.s, .du / .rb), .s)
     .ctl2 <- ctl
     if (!is.null(.ctl2$maxfun)) {
       .ctl2$maxfun <- .left - .c$nEval
