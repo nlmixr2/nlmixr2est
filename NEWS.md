@@ -2,6 +2,16 @@
 
 ## Changed defaults
 
+- FOCEi-family fits now scale a linear `theta` by its `|init|`
+  (`foceiControl(scaleLinear = "abs")`, as NONMEM does) instead of
+  `1/|init|` inside `scaleCband`.  When a model has such a `theta`, the
+  `"bobyqa"` outer search also restarts up to 3 times on a curvature-adapted
+  scale (`scaleAdapt = NULL`); models whose thetas are all `exp()`-scaled are
+  unchanged.  On a 36-case simulated PK corpus with linear thetas this ended
+  below the old default on 78 of 180 fits and never above the generating
+  values' objective.  `scaleLinear = "inverse"` and `scaleAdapt = 0` restore
+  the old behavior (#1320).
+
 - `sigdig` now sets the ODE tolerances to `rtol = 10^(-2*sigdig)` and
   `atol = rtol/100` (floored at `rtol = 1e-12`) instead of
   `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`.  At the default
