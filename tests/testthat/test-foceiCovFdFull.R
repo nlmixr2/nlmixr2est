@@ -114,6 +114,11 @@ test_that("a same() group is named by the parameter it repeats", {
   # a user's own same() block keeps its master's name
   expect_identical(.foceiSameGroupName("eta.cl", "eta.v", .th), "eta.cl")
   expect_identical(.foceiSameGroupName("rx.eta.cl", "rx.eta.v", .th), "rx.eta.cl")
+  # occasion levels that read as another theta: the expansion's record decides
+  .old <- .uiIovEnv$iovMaster
+  on.exit(.uiIovEnv$iovMaster <- .old)
+  .uiIovEnv$iovMaster <- list(iov = "rx.iov.cl.1")
+  expect_identical(.foceiSameGroupName("rx.iov.cl.1", "rx.iov.cl.2", .th), "iov")
 })
 
 test_that("chained, fixed and malformed same() maps tie as expected (#1316)", {
@@ -137,9 +142,20 @@ test_that("chained, fixed and malformed same() maps tie as expected (#1316)", {
   for (.s in list(c(0L, 5L, 0L), c(2L, 1L, 0L), c(1L, 0L, 0L), c(0L, -1L, 1L))) {
     expect_identical(.foceiFdFullSameTie(.pairs, .ok, .s, .onm)$free, !.ok)
   }
-  # two copies of one eta correlated inside a block
+  # two copies of one eta correlated inside a block; a copy correlated with a non-copy
   .p2 <- rbind(c(1L, 1L), c(2L, 2L), c(3L, 2L), c(3L, 3L))
   expect_identical(.foceiFdFullSameTie(.p2, rep(FALSE, 4), c(0L, 1L, 1L), .onm)$free, rep(TRUE, 4))
+  expect_identical(.foceiFdFullSameTie(.p2, rep(FALSE, 4), c(0L, 0L, 1L), .onm)$free, rep(TRUE, 4))
+  # a copy covariance its (uncorrelated) master does not declare
+  .p3 <- rbind(c(1L, 1L), c(2L, 2L), c(3L, 3L), c(4L, 3L), c(4L, 4L))
+  expect_identical(.foceiFdFullSameTie(.p3, rep(FALSE, 5), c(0L, 0L, 1L, 2L), paste0("e", 1:4))$free, rep(TRUE, 5))
+  # a 2x2 master with its first variance fixed: copies index the free pairs
+  .p4 <- rbind(c(1L, 1L), c(2L, 1L), c(2L, 2L), c(3L, 3L), c(4L, 3L), c(4L, 4L))
+  .tie <- .foceiFdFullSameTie(.p4, c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE), c(0L, 0L, 1L, 2L), paste0("e", 1:4))
+  expect_identical(.tie$free, c(FALSE, TRUE, TRUE, FALSE, FALSE, FALSE))
+  expect_identical(.tie$cpA, c(4L, 4L))
+  expect_identical(.tie$cpB, c(3L, 4L))
+  expect_identical(.tie$cpOf, c(0L, 1L))
 })
 
 test_that(".foceiFdFullParams() ties a user's same() blocks (#1316)", {

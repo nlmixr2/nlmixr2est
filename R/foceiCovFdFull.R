@@ -90,11 +90,18 @@
   .ma <- same[pairs[, 1]]
   .mb <- same[pairs[, 2]]
   .isCp <- .ma > 0L & .mb > 0L
-  if (any(.isCp & (pairs[, 1] == pairs[, 2]) != (.ma == .mb))) {
-    return(.none) # two copies of one eta inside a block
+  .key <- function(a, b) paste(pmax(a, b), pmin(a, b))
+  .at <- match(.key(.ma, .mb), .key(pairs[, 1], pairs[, 2]))
+  # what same() cannot produce: a copy correlated with a non-copy, a copy
+  # element its master block does not declare, or two copies of one eta
+  if (
+    any((.ma > 0L) != (.mb > 0L)) ||
+      any(.isCp & is.na(.at)) ||
+      any(.isCp & (pairs[, 1] == pairs[, 2]) != (.ma == .mb))
+  ) {
+    return(.none)
   }
   .free <- !.isCp & !fixed
-  .key <- function(a, b) paste(pmax(a, b), pmin(a, b))
   .of <- match(.key(.ma, .mb), .key(pairs[.free, 1], pairs[.free, 2]))
   # a copy moves with a free master; a fixed master's copy stays put
   .mv <- .isCp & !is.na(.of)
@@ -123,6 +130,11 @@
 .foceiSameGroupName <- function(master, copies, thetas) {
   .nm <- c(master, copies)
   .hit <- vapply(thetas, function(v) all(startsWith(.nm, paste0("rx.", v, "."))), logical(1))
+  # the expansion's own record, when it is this model's
+  .rec <- names(.uiIovEnv$iovMaster)[vapply(.uiIovEnv$iovMaster, identical, logical(1), master)]
+  if (length(.rec) == 1L && .rec %in% thetas[.hit]) {
+    return(.rec)
+  }
   if (!any(.hit)) {
     return(master)
   }
