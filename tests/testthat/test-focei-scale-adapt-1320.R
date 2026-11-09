@@ -35,6 +35,18 @@ nmTest({
     .c <- .bobyqaCurvature(.bump, 0, .bump(0), 0.1, -Inf, Inf)
     expect_true(is.na(.c$scale))
     expect_gt(.c$dec, 0)
+    # a failed probe does not hide the decrease the other one found
+    .cliff <- function(x) if (x < -0.05) Inf else (x - 10)^2
+    expect_gt(.bobyqaCurvature(.cliff, 0, 100, 0.1, -Inf, Inf)$dec, 1)
+    # a narrow open side is still probed, and scalar bounds recycle
+    .c <- .bobyqaCurvature(.flat, 0, 1, 0.1, 0, 0.015)
+    expect_equal(.c$nEval, 2L)
+    expect_equal(.c$scale, 1)
+    .c <- .bobyqaCurvature(function(x) sum(x^2), c(0, 0), 0, 0.1, -Inf, Inf)
+    expect_equal(.c$scale, c(1, 1))
+    # a step per coordinate
+    .c <- .bobyqaCurvature(.fn, c(0, 0, 0), .fn(c(0, 0, 0)), c(1e-3, 0.1, 5), -Inf, Inf)
+    expect_equal(.c$scale, .se, tolerance = 1e-8)
   })
 
   test_that(".bobyqaAdapt restarts from a stopped search to the minimum", {
@@ -63,7 +75,8 @@ nmTest({
   test_that(".bobyqaAdapt keeps bobyqa's box and start with finite bounds", {
     .ctl <- list(rhobeg = 0.2, rhoend = 1e-6, npt = 5L, maxfun = 2000L, iprint = 0L)
     .fn2 <- function(x) ((x[1] - 1) / 500)^2 + ((x[2] - 20) / 30)^2
-    .st <- list(par = c(0, 0), fval = .fn2(c(0, 0)), feval = 1L, ierr = 0L, msg = "stopped")
+    # stopped just off the lower bound of x[2]
+    .st <- list(par = c(0, 1e-12), fval = .fn2(c(0, 1e-12)), feval = 1L, ierr = 0L, msg = "stopped")
     .seen <- NULL
     .f <- function(x) {
       .seen <<- rbind(.seen, x)
@@ -109,6 +122,14 @@ nmTest({
     .ctl <- list(rhobeg = 0.2, rhoend = 1e-6, npt = 7L, maxfun = 2000L, iprint = 0L)
     .bobyqaAdapt(.fn, -Inf, Inf, .ctl, .done, tol = 0.01, maxLeg = 3L, record = .rec, hold = .hold)
     expect_equal(.log, c("holdTRUE", "recordFALSE", "holdFALSE", "recordTRUE", "holdFALSE"))
+    # with restarts, every probe is held and unrecorded, and both are released
+    .log <- character(0)
+    .st <- list(par = c(0, 0, 0), fval = .fn(c(0, 0, 0)), feval = 1L, ierr = 0L, msg = "stopped")
+    .r <- .bobyqaAdapt(.fn, -Inf, Inf, .ctl, .st, tol = 0.01, maxLeg = 3L, record = .rec, hold = .hold)
+    expect_gte(.r$nScaleAdapt, 1L)
+    expect_equal(sum(.log == "holdTRUE"), sum(.log == "recordFALSE"))
+    expect_equal(sum(.log == "recordFALSE"), sum(.log == "recordTRUE"))
+    expect_equal(tail(.log[startsWith(.log, "hold")], 1), "holdFALSE")
   })
 
   test_that("scaleAdapt takes the #1320 Emax fit past the default scale's stop", {
