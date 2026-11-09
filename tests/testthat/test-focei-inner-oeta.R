@@ -5,7 +5,7 @@ test_that("innerOeta is optimized on demand, once (#1321)", {
       tka <- 0.45
       tcl <- 1
       tv <- 3.45
-      add.sd <- 0.7
+      prop.sd <- 0.1
       eta.ka ~ 0.6
       eta.cl ~ 0.3
     })
@@ -13,8 +13,10 @@ test_that("innerOeta is optimized on demand, once (#1321)", {
       ka <- exp(tka + eta.ka)
       cl <- exp(tcl + eta.cl)
       v <- exp(tv)
-      cp <- 100 * ka / (v * (ka - cl / v)) * (exp(-cl / v * t) - exp(-ka * t))
-      cp ~ add(add.sd)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v + 0 * t
+      cp ~ prop(prop.sd)
     })
   }
   ui <- list(rxode2::.copyUi(suppressMessages(nlmixr2(model))))
@@ -46,26 +48,32 @@ test_that("innerOeta is optimized on demand, once (#1321)", {
 
   oeta <- rxUiGet.foceiInnerOeta(ui)
   expect_equal(nOpt, 1L)
-  expect_null(attr(oeta, "nlmixr2estOptimize"))
-  expect_null(attr(readRDS(cacheFile)$innerOeta, "nlmixr2estOptimize"))
+  expect_null(attributes(oeta))
+  expect_null(attributes(readRDS(cacheFile)$innerOeta))
 
   # a second request (and a reloaded bundle) reuses the stored text
   expect_identical(rxUiGet.foceiInnerOeta(ui), oeta)
   expect_equal(nOpt, 1L)
 
+  # solvable as is, with the inner model's compartment order
+  oetaMod <- rxode2::rxode2(oeta)
+  expect_identical(rxode2::rxModelVars(oetaMod)$state, rxode2::rxModelVars(m$inner)$state)
+
   # the optimized and raw text solve to the same outputs
-  d <- data.frame(id = 1, time = c(0.5, 1, 2, 4, 8), dv = 1)
+  wrap <- attr(raw, "nlmixr2estWrap")
+  rawMod <- rxode2::rxode2(paste(c(wrap[1], raw, wrap[2]), collapse = "\n"))
+  ev <- rxode2::et(amt = 100, cmt = "depot")
+  ev <- rxode2::et(ev, c(0.5, 1, 2, 4, 8))
   p <- c(
     "THETA[1]" = 0.45,
     "THETA[2]" = 1,
     "THETA[3]" = 3.45,
-    "THETA[4]" = 0.7,
+    "THETA[4]" = 0.1,
     "ETA[1]" = 0.1,
     "ETA[2]" = -0.2
   )
-  rawTxt <- .addMtimeLines(raw, list(..mtime = attr(raw, "nlmixr2estMtime")))
-  s1 <- as.data.frame(rxode2::rxSolve(rxode2::rxode2(rawTxt), d, p))
-  s2 <- as.data.frame(rxode2::rxSolve(rxode2::rxode2(oeta), d, p))
+  s1 <- as.data.frame(rxode2::rxSolve(rawMod, ev, p))
+  s2 <- as.data.frame(rxode2::rxSolve(oetaMod, ev, p))
   cols <- c(
     "rx_pred_",
     "rx_r_",
@@ -76,4 +84,5 @@ test_that("innerOeta is optimized on demand, once (#1321)", {
   )
   expect_equal(s1[, cols], s2[, cols], tolerance = 1e-8)
   expect_equal(s1$rx__ETA1, rep(0.1, 5))
+  expect_true(all(s2$rx_pred_ > 0))
 })

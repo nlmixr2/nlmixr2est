@@ -2784,8 +2784,6 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # Only nlmixr2extra's linearize() reads innerOeta, so it is optimized on
   # demand by rxUiGet.foceiInnerOeta() rather than on every build (#1321).
   attr(.s$..innerOeta, "nlmixr2estOptimize") <- c(sumProd = sum.prod, optExpression = optExpression)
-  # rxOptExpr() cannot take mtime() lines, so they are spliced in afterwards
-  attr(.s$..innerOeta, "nlmixr2estMtime") <- .s$..mtime
   if (sum.prod) {
     .malert("stabilizing round off errors in inner problem...")
     .s$..inner <- rxode2::rxSumProdModel(.s$..inner)
@@ -3281,6 +3279,11 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     NULL
   }
   innerOeta <- s$..innerOeta
+  if (!is.null(innerOeta)) {
+    # the inner model's own prologue (param(), cmt(), mtime()) and endpoint
+    # lines, added after rxOptExpr() by rxUiGet.foceiInnerOeta()
+    attr(innerOeta, "nlmixr2estWrap") <- c(nlmixr2global$toRxParam, nlmixr2global$toRxDvidCmt)
+  }
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(ui, "optExpression", TRUE)
   if (isTRUE(s$..matExpNative)) {
@@ -3776,7 +3779,7 @@ rxUiGet.foceiInnerOeta <- function(x, ...) {
   if (is.null(.opt)) {
     return(.oeta)
   }
-  .mtime <- attr(.oeta, "nlmixr2estMtime")
+  .wrap <- attr(.oeta, "nlmixr2estWrap")
   if (.opt[["sumProd"]]) {
     .oeta <- rxode2::rxSumProdModel(.oeta)
   }
@@ -3787,8 +3790,7 @@ rxUiGet.foceiInnerOeta <- function(x, ...) {
       parallel = .optExprCores(x[[1]])
     ))
   }
-  .oeta <- .addMtimeLines(.oeta, list(..mtime = .mtime))
-  attributes(.oeta) <- NULL
+  .oeta <- paste(c(.wrap[1], .oeta, .wrap[2]), collapse = "\n")
   # store the optimized text so later calls (and sessions) skip the pass
   .cacheFile <- rxUiGet.foceiModelCache(x, ...)
   if (file.exists(.cacheFile)) {

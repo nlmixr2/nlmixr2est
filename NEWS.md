@@ -16,8 +16,8 @@
 
 - FOCEi model builds no longer optimize the `innerOeta` model, which only
   `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on
-  first use, caches it and includes the model's `mtime()` lines so it can
-  be solved directly (#1321).
+  first use, caches it and adds the inner model's `param()`/`cmt()`/`mtime()`
+  prologue so it can be solved directly (#1321).
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
