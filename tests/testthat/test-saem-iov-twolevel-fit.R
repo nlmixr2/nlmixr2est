@@ -316,3 +316,42 @@ test_that("a two-level or collapsed fit's $etaMat has the occasion etas a focei 
     expect_equal(.g$iov$occ$iov.cl, .iov$iov.cl, tolerance = 1e-6)
   }
 })
+
+test_that("a model the two-level handling declines fits with pooled occasion variances (#1319)", {
+  skip_on_cran()
+  .d <- .twoLevelFitData()
+  .d$occ2 <- ifelse(.d$TIME %% 2 < 1, 1, 2)
+  # nolint start: object_usage_linter. rxode2 ini()/model() are NSE blocks.
+  .nonMu <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      iov.cl ~ fix(0.1) | occ
+      iov.v ~ 0.2 | occ2
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- tcl * exp(eta.cl + iov.cl)
+      v <- exp(tv + iov.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # nolint end
+  .f <- suppressWarnings(nlmixr2(.nonMu(), .d, est = "saem", control = .twoLevelCtl(covMethod = "linFim")))
+  expect_true(any(grepl("used iovMethod='theta'", .f$runInfo, fixed = TRUE)))
+  # the fixed variance stays put and is not reported as estimated
+  expect_equal(.f$omega$occ[1, 1], 0.1)
+  expect_false(any(grepl("iov[.]cl", rownames(.f$cov))))
+  # the other occasion variance is estimated, not collapsed to zero
+  expect_true(.f$omega$occ2[1, 1] > 1e-3)
+  expect_false(any(c("iov.cl", "iov.v") %in% names(.f$fixef)))
+  expect_equal(
+    colnames(.f$etaMat),
+    c("eta.ka", "eta.cl", "rx.iov.cl.1", "rx.iov.cl.2", "rx.iov.v.1", "rx.iov.v.2")
+  )
+  expect_true(all(c("ID", "occ2", "iov.v") %in% names(.f$iov$occ2)))
+})
