@@ -568,7 +568,8 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 #' (`poolOmegaGroups`, src/saem.cpp) -- so tie them: with `J` mapping the shared
 #' parameters onto the copies, the tied information is `J' I J` (`I` the
 #' inverse of `cv`).  A `cv` that cannot be inverted is contracted by averaging
-#' the copies instead (the delta method for `mean(v_1, ..., v_K)`).
+#' the copies instead (the delta method for `mean(v_1, ..., v_K)`).  Rows with a
+#' non-finite variance are left out of both and come back NA.
 #'
 #' The collapsed row keeps the position of the group's first member so the rest
 #' of the matrix keeps its order.
@@ -595,17 +596,24 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   for (.k in seq_along(.rows)) {
     .j[.rows[[.k]]$idx, .k] <- 1
   }
-  .out <- tryCatch(
+  # an unidentified (NA) row stays NA without spoiling the rest
+  .ok <- is.finite(diag(cv))
+  .oo <- colSums(.j[!.ok, , drop = FALSE]) == 0
+  .out <- matrix(NA_real_, length(.rows), length(.rows))
+  .cvo <- cv[.ok, .ok, drop = FALSE]
+  .jo <- .j[.ok, .oo, drop = FALSE]
+  .sub <- tryCatch(
     {
-      .tied <- solve(crossprod(.j, solve(cv, .j)))
+      .tied <- solve(crossprod(.jo, solve(.cvo, .jo)))
       (.tied + t(.tied)) / 2
     },
     error = function(e) NULL
   )
-  if (is.null(.out) || !all(is.finite(.out))) {
-    .a <- t(.j) / colSums(.j)
-    .out <- .a %*% cv %*% t(.a)
+  if (is.null(.sub) || !all(is.finite(.sub))) {
+    .a <- t(.jo) / colSums(.jo)
+    .sub <- .a %*% .cvo %*% t(.a)
   }
+  .out[.oo, .oo] <- .sub
   .rn <- vapply(.rows, function(r) r$nm, character(1))
   dimnames(.out) <- list(.rn, .rn)
   .out
