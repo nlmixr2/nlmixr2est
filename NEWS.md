@@ -117,6 +117,11 @@
   `|init|`, as NONMEM does, instead of the default `1/|init|` inside
   `scaleCband`.  The default `"inverse"` is unchanged (#1320).
 
+- `foceiControl(scaleAdapt = n)` restarts the `"bobyqa"` outer search up to
+  `n` times on a scale adapted to the curvature where it stopped, one unit per
+  marginal standard error.  It recovers fits whose starting scale left bobyqa
+  stopping short of the minimum.  Off by default (#1320).
+
 - A fit whose IWRES sd shrinkage is below -5% now notes it in `$runInfo`
   ("IWRES shrinkage is strongly negative; check the residual model"); the
   raw value in `$shrink` is unchanged (#1376).
