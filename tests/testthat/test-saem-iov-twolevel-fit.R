@@ -151,6 +151,14 @@ test_that("a two-level fit's covariance carries one row for the occasion varianc
     expect_equal(rownames(.cv), colnames(.cv))
     expect_true(is.finite(.cv["om.iov.cl", "om.iov.cl"]))
     expect_true(.cv["om.iov.cl", "om.iov.cl"] > 0)
+    # the parameter table reports the occasion SD's SE, like iovMethod="theta"
+    .pf <- .f$parFixedDf
+    expect_true("iov.cl" %in% rownames(.pf))
+    .psi <- .f$omega$occ[["iov.cl", "iov.cl"]]
+    expect_equal(unname(.pf["iov.cl", "SE"]), sqrt(.cv["om.iov.cl", "om.iov.cl"]) / (2 * sqrt(.psi)))
+    expect_equal(unname(.pf["iov.cl", "Back-transformed"]), nlmixr2iovSdCv(sqrt(.psi)))
+    expect_true(is.na(.pf["iov.cl", "Estimate"]))
+    expect_false(.f$parFixed["iov.cl", "SE"] == "")
   }
 })
 
