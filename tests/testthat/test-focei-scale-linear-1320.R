@@ -41,13 +41,13 @@ nmTest({
     .mod <- function() {
       ini({
         a <- -50
-        b <- 0
+        bZero1320 <- 0
         c <- 3
         eta.k ~ 0.1
         add.sd <- 0.3
       })
       model({
-        y <- eta.k + a * x1 + b * x2 + c * x3
+        y <- eta.k + a * x1 + bZero1320 * x2 + c * x3
         y ~ add(add.sd)
       })
     }
