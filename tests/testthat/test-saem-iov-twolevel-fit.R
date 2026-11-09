@@ -83,6 +83,13 @@ test_that("iovMethod='theta' estimates the occasion variance the way twoLevel do
   # and gets the same closed-form M-step
   expect_false("iov.cl" %in% names(.f0$fixef))
   expect_equal(.iov0, .iov2, tolerance = 0.2)
+  # the two per-occasion etas are ONE variance: 4 thetas + 3 IIV + 1 IOV
+  for (.f in list(.f0, .f2)) {
+    .l <- suppressMessages(logLik(.f))
+    expect_equal(attr(.l, "df"), 8)
+    expect_equal(suppressMessages(AIC(.f)), -2 * as.numeric(.l) + 2 * 8)
+    expect_equal(suppressMessages(BIC(.f)), -2 * as.numeric(.l) + log(attr(.l, "nobs")) * 8)
+  }
   # the parameter table still carries the occasion variability, as a CV
   for (.f in list(.f0, .f2)) {
     .bck <- grep("Back", names(.f$parFixedDf))
