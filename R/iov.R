@@ -1002,6 +1002,34 @@ nlmixr2iovVarSd <- function(val) {
     NULL
   }
 }
+#' The reported variability of pooled occasion variances
+#'
+#' A CV for a parameter that enters exponentially, otherwise the SD, the same
+#' choice the theta expansion makes for its magnitude's back-transform.
+#'
+#' @param vars occasion parameter names
+#' @param iniDf final `iniDf`, with the occasion variances restored
+#' @param ui the user's ui, before the rewrite
+#' @return numeric vector, one per `vars`
+#' @noRd
+.iovPoolBack <- function(vars, iniDf, ui) {
+  .ce <- ui$muRefCurEval
+  vapply(
+    vars,
+    function(.v) {
+      .wv <- which(iniDf$name == .v & !is.na(iniDf$neta1) & iniDf$neta1 == iniDf$neta2)
+      if (length(.wv) != 1L) {
+        return(NA_real_)
+      } # nocov
+      .sd <- sqrt(iniDf$est[.wv])
+      .w <- which(.ce$parameter == .v)
+      if (length(.w) == 1L && identical(.ce$curEval[.w], "exp")) nlmixr2iovSdCv(.sd) else .sd
+    },
+    double(1),
+    USE.NAMES = FALSE
+  )
+}
+
 #' Finalizes IOV model
 #'
 #' @param ret data frame with some iov information dropped
@@ -1383,6 +1411,15 @@ nlmixr2iovVarSd <- function(val) {
       .bsv <- which(grepl("BSV", names(.parFixedDf)))
       .est <- which(grepl("Est", names(.parFixedDf)))
 
+      # a pooled variance has no magnitude theta row, so give it one carrying
+      # its CV (or SD), the way the theta expansion's row does
+      .poolVars <- setdiff(names(.uiIovEnv$iovTwoLevel), rownames(.parFixedDf))
+      if (length(.poolVars) > 0L) {
+        .add <- .parFixedDf[rep(NA_integer_, length(.poolVars)), , drop = FALSE]
+        rownames(.add) <- .poolVars
+        .add[, .bck] <- .iovPoolBack(.poolVars, ret$env$ui$iniDf, .uiIovEnv$ui)
+        .parFixedDf <- rbind(.parFixedDf, .add)
+      }
       .hasIovTheta <- all(.uiIovEnv$iovVars %in% rownames(.parFixedDf))
       .valCharPrep <- NULL
       if (.hasIovTheta) {
@@ -1430,6 +1467,12 @@ nlmixr2iovVarSd <- function(val) {
       .est2 <- which(grepl("Est", names(.parFixed)))
 
       .sigdig <- ret$control$sigdig
+      if (length(.poolVars) > 0L) {
+        .addc <- .parFixed[rep(1L, length(.poolVars)), , drop = FALSE]
+        .addc[] <- ""
+        rownames(.addc) <- .poolVars
+        .parFixed <- rbind(.parFixed, .addc)
+      }
       if (.hasIovTheta) {
         .parFixed[.uiIovEnv$iovVars, .bck2] <- ""
         .parFixed[.uiIovEnv$iovVars, .est2] <- ""

@@ -83,6 +83,13 @@ test_that("iovMethod='theta' estimates the occasion variance the way twoLevel do
   # and gets the same closed-form M-step
   expect_false("iov.cl" %in% names(.f0$fixef))
   expect_equal(.iov0, .iov2, tolerance = 0.2)
+  # the parameter table still carries the occasion variability, as a CV
+  for (.f in list(.f0, .f2)) {
+    .bck <- grep("Back", names(.f$parFixedDf))
+    expect_true("iov.cl" %in% rownames(.f$parFixedDf))
+    expect_equal(.f$parFixedDf["iov.cl", .bck], 100 * sqrt(exp(.f$omega$occ[1, 1]) - 1))
+    expect_true(nzchar(.f$parFixed["iov.cl", grep("BSV", names(.f$parFixed))]))
+  }
 
   # the structural parameters are unaffected -- this is the same model, fitted
   # better, not a different one
