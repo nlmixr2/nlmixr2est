@@ -216,7 +216,8 @@
 #'
 #' The loaded rxode2 has `.rxFoceiLinCmtCarryMaxPairs()` carry columns.  Past
 #' them, the pairs whose covariates are all constant within every subject of
-#' the fit's data go first: their standard gradient is exact.  Then the multCov pairs (an IOV rewrite's occasion etas), last first, and
+#' the fit's data go first: their standard gradient is exact.  Then the
+#' multCov pairs (an IOV rewrite's occasion etas), last first, and
 #' then the other pairs that share a slot keep the standard gradient, with
 #' one warning, so a model past the cap is carried no worse than without
 #' them; a model still past it stops in `.rxFoceiLinCmtCarryCheckCap()`.
