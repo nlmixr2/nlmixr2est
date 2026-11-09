@@ -565,11 +565,10 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 #' `$cov` carries one row/column per phi1 column, so the K per-occasion columns
 #' of a two-level parameter appear K times under their internal `om.rx.<iov>.<k>`
 #' names.  They estimate ONE variance -- the M-step pins them equal
-#' (`poolOmegaGroups`, src/saem.cpp) -- so contract them by averaging, which is
-#' the delta method for `Psi = mean(v_1, ..., v_K)`.  Note this contracts the
-#' LINEARIZED (unconstrained) covariance rather than computing a constrained
-#' Fisher information, so it is an approximation, but a named one: the reported
-#' variance is `Var(mean(v_k))`, not `Var(v_1)`.
+#' (`poolOmegaGroups`, src/saem.cpp) -- so tie them: with `J` mapping the shared
+#' parameters onto the copies, the tied information is `J' I J` (`I` the
+#' inverse of `cv`).  A `cv` that cannot be inverted is contracted by averaging
+#' the copies instead (the delta method for `mean(v_1, ..., v_K)`).
 #'
 #' The collapsed row keeps the position of the group's first member so the rest
 #' of the matrix keeps its order.
@@ -592,11 +591,21 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
     return(cv)
   }
   .rows <- .saemIovCovRows(.nm, .grp)
-  .a <- matrix(0, nrow = length(.rows), ncol = length(.nm))
+  .j <- matrix(0, nrow = length(.nm), ncol = length(.rows))
   for (.k in seq_along(.rows)) {
-    .a[.k, .rows[[.k]]$idx] <- 1 / length(.rows[[.k]]$idx)
+    .j[.rows[[.k]]$idx, .k] <- 1
   }
-  .out <- .a %*% cv %*% t(.a)
+  .out <- tryCatch(
+    {
+      .tied <- solve(crossprod(.j, solve(cv, .j)))
+      (.tied + t(.tied)) / 2
+    },
+    error = function(e) NULL
+  )
+  if (is.null(.out) || !all(is.finite(.out))) {
+    .a <- t(.j) / colSums(.j)
+    .out <- .a %*% cv %*% t(.a)
+  }
   .rn <- vapply(.rows, function(r) r$nm, character(1))
   dimnames(.out) <- list(.rn, .rn)
   .out
