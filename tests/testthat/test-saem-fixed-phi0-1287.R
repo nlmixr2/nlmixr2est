@@ -51,7 +51,7 @@ nmTest({
     .nphi <- dim(.phiM)[4]
     # wt.cl and b.cl are the last two phi columns
     for (.j in c(.nphi - 1L, .nphi)) {
-      expect_equal(unique(as.vector(.phiM[, , , .j])), c(0.75, 0)[.j - .nphi + 2L])
+      expect_equal(unique(as.vector(.phiM[,,, .j])), c(0.75, 0)[.j - .nphi + 2L])
     }
     expect_equal(.fitFlag0$theta[["b.cl"]], 0)
     expect_equal(.fitFlag0$theta[["wt.cl"]], 0.75)
