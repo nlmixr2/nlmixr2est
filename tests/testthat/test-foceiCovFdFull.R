@@ -91,7 +91,7 @@ test_that("same() copies move with their master in the full FD stage (#1316)", {
       fix = FALSE
     )
   )
-  .tie <- .foceiFdFullSameTie(.pairs, .same, .onm)
+  .tie <- .foceiFdFullSameTie(.pairs, rep(FALSE, nrow(.pairs)), .same, .onm)
   expect_identical(sum(.tie$free), 5L)
   expect_identical(.tie$cpA, c(5L, 6L, 6L, 7L, 8L, 8L))
   expect_identical(.tie$cpB, c(5L, 5L, 6L, 7L, 7L, 8L))
@@ -103,7 +103,7 @@ test_that("same() copies move with their master in the full FD stage (#1316)", {
     c("om.eta.cl", "om.eta.v", "om.iov.cl", "cov.iov.v.iov.cl", "om.iov.v")
   )
   # no same() map: untouched
-  expect_true(all(.foceiFdFullSameTie(.pairs, NULL, .onm)$free))
+  expect_true(all(.foceiFdFullSameTie(.pairs, rep(FALSE, nrow(.pairs)), NULL, .onm)$free))
 })
 
 test_that("a same() group is named by the parameter it repeats", {
@@ -119,18 +119,27 @@ test_that("a same() group is named by the parameter it repeats", {
   expect_identical(.foceiSameGroupName("rx.iov.cl.a.b", "rx.iov.cl.a.c"), "iov.cl")
 })
 
-test_that("a chained same() map and a fixed master tie as expected (#1316)", {
+test_that("chained, fixed and malformed same() maps tie as expected (#1316)", {
   .pairs <- cbind(1:3, 1:3)
   .onm <- c("eta.a", "eta.b", "eta.c")
+  .ok <- rep(FALSE, 3)
   # eta.c repeats eta.b, which repeats eta.a
-  .tie <- .foceiFdFullSameTie(.pairs, c(0L, 1L, 2L), .onm)
+  .tie <- .foceiFdFullSameTie(.pairs, .ok, c(0L, 1L, 2L), .onm)
   expect_identical(.tie$free, c(TRUE, FALSE, FALSE))
   expect_identical(.tie$cpA, 2:3)
   expect_identical(.tie$cpOf, c(0L, 0L))
-  # the master is fixed (not among the pairs): its copy is not a parameter and does not move
-  .tie <- .foceiFdFullSameTie(cbind(c(2L, 3L), c(2L, 3L)), c(0L, 0L, 1L), .onm)
-  expect_identical(.tie$free, c(TRUE, FALSE))
+  # a fixed master's copies stay put; a fixed copy of a free master moves with it
+  .tie <- .foceiFdFullSameTie(.pairs, c(TRUE, FALSE, FALSE), c(0L, 0L, 1L), .onm)
+  expect_identical(.tie$free, c(FALSE, TRUE, FALSE))
   expect_length(.tie$cpA, 0L)
+  .tie <- .foceiFdFullSameTie(.pairs, c(FALSE, FALSE, TRUE), c(0L, 0L, 1L), .onm)
+  expect_identical(.tie$free, c(TRUE, TRUE, FALSE))
+  expect_identical(.tie$cpA, 3L)
+  expect_identical(.tie$cpOf, 0L)
+  # a map rxode2 would not produce leaves the matrix untied
+  for (.s in list(c(0L, 5L, 0L), c(2L, 1L, 0L), c(1L, 0L, 0L))) {
+    expect_identical(.foceiFdFullSameTie(.pairs, .ok, .s, .onm)$free, !.ok)
+  }
 })
 
 test_that(".foceiFdFullParams() ties a user's same() blocks (#1316)", {
@@ -151,11 +160,64 @@ test_that(".foceiFdFullParams() ties a user's same() blocks (#1316)", {
   .e <- new.env(parent = emptyenv())
   .e$ui <- .ui
   .e$omega <- .ui$omega
-  .p <- .foceiFdFullParams(.e)
+  .p <- suppressWarnings(.foceiFdFullParams(.e))
   expect_identical(.p$names, c("tcl", "add.sd", "om.eta.a", "cov.eta.b.eta.a", "om.eta.b"))
   expect_identical(.p$omA, c(1L, 2L, 2L))
   expect_identical(.p$omB, c(1L, 1L, 2L))
   expect_identical(.p$cpA, c(3L, 4L, 4L, 5L, 6L, 6L))
   expect_identical(.p$cpB, c(3L, 3L, 4L, 5L, 5L, 6L))
   expect_identical(.p$cpOf, c(0L, 1L, 2L, 0L, 1L, 2L))
+  # every master fixed: no Omega parameter, and the names stay a character vector
+  .ui2 <- .ui
+  .idf <- .ui2$iniDf
+  .idf$fix[!is.na(.idf$neta1) & .idf$neta1 <= 2] <- TRUE
+  suppressWarnings(suppressMessages(.ui2$iniDf <- .idf))
+  .e$ui <- .ui2
+  .p <- suppressWarnings(.foceiFdFullParams(.e))
+  expect_identical(.p$names, c("tcl", "add.sd"))
+  expect_length(.p$omA, 0L)
+})
+
+test_that("the full FD stage moves a same() copy with its master (#1316)", {
+  skip_on_cran()
+  .f <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.cl ~ 0.3
+      eta.v ~ same()
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .fit <- suppressWarnings(suppressMessages(
+    nlmixr2(.f, nlmixr2data::theo_sd, "focei", control = foceiControl(print = 0, calcTables = FALSE))
+  ))
+  .R <- .fit$env$.fdFullR
+  expect_identical(rownames(.R), c("tka", "tcl", "tv", "add.sd", "om.eta.cl"))
+  # its curvature is the objective's when eta.cl and eta.v move together
+  .ofv <- function(v) {
+    .ui <- suppressMessages(eval(bquote(rxode2::ini(.fit$finalUi, eta.cl ~ .(v)))))
+    suppressWarnings(suppressMessages(nlmixr2(
+      .ui,
+      nlmixr2data::theo_sd,
+      "focei",
+      control = foceiControl(
+        print = 0,
+        calcTables = FALSE,
+        maxOuterIterations = 0,
+        covMethod = ""
+      )
+    )))$objf
+  }
+  .x0 <- .fit$env$.fdFullX0[5]
+  .h <- .fit$env$.fdFullH[5]
+  .r <- 0.5 * (.ofv(.x0 + .h) - 2 * .ofv(.x0) + .ofv(.x0 - .h)) / .h^2
+  expect_equal(.R[5, 5], .r, tolerance = 0.03)
 })

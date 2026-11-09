@@ -29,15 +29,16 @@
   thPos <- as.integer(ini$ntheta[thRows] - 1L) # 0-based position in fullTheta
   thNames <- ini$name[thRows]
   Om <- get("omega", e)
-  pairs <- .foceiOmegaPairs(Om, ini) # free Omega lower-triangle (a>=b)
-  if (is.null(pairs) || nrow(pairs) == 0L) {
-    return(list(thPos = thPos, omA = integer(0), omB = integer(0), names = thNames))
+  pairs <- .omegaDeclaredPairs(Om, ini) # Omega lower-triangle (a>=b)
+  if (is.null(pairs)) {
+    pairs <- matrix(integer(0), 0L, 2L)
   }
   map <- .foceiEtaThetaMap(ui)
-  onm <- map$etaNames # Omega named by the eta
-  tie <- .foceiFdFullSameTie(pairs, ui$omegaSameMap, onm)
+  tie <- .foceiFdFullSameTie(pairs, .omegaFixed(ini, pairs), ui$omegaSameMap, map$etaNames)
   pairs <- pairs[tie$free, , drop = FALSE]
-  omNames <- .foceiOmegaCovNames(pairs, tie$onm)
+  if (nrow(pairs) == 0L) {
+    return(list(thPos = thPos, omA = integer(0), omB = integer(0), names = thNames))
+  }
   list(
     thPos = thPos,
     omA = as.integer(pairs[, 1]),
@@ -45,7 +46,7 @@
     cpA = tie$cpA,
     cpB = tie$cpB,
     cpOf = tie$cpOf,
-    names = c(thNames, omNames)
+    names = c(thNames, .foceiOmegaCovNames(pairs, tie$onm))
   )
 }
 
@@ -53,20 +54,22 @@
 #'
 #' A `same()` block (an IOV occasion's copy) shares its master's parameters, so it
 #' gets no direction of its own: the FD stage moves each copy with its master.
-#' @param pairs free Omega element pairs (`.foceiOmegaPairs()`)
+#' @param pairs declared Omega element pairs (`.omegaDeclaredPairs()`)
+#' @param fixed which `pairs` are fixed
 #' @param same `omegaSameMap` (each eta's master eta, 0 for none), or `NULL`
 #' @param onm eta names
 #' @return list: `free` (rows of `pairs` that are parameters), `cpA`/`cpB` (the
-#'   copies) with `cpOf` (0-based index of their parameter among the free
-#'   pairs), and `onm` with each master named by its IOV parameter
+#'   copies of a free element) with `cpOf` (0-based index of their parameter
+#'   among the free pairs), and `onm` with each master named by its IOV parameter
 #' @noRd
-.foceiFdFullSameTie <- function(pairs, same, onm) {
-  .none <- list(free = rep(TRUE, nrow(pairs)), cpA = integer(0), cpB = integer(0), cpOf = integer(0), onm = onm)
-  if (length(same) != length(onm) || !any(same > 0L)) {
+.foceiFdFullSameTie <- function(pairs, fixed, same, onm) {
+  .none <- list(free = !fixed, cpA = integer(0), cpB = integer(0), cpOf = integer(0), onm = onm)
+  same <- as.integer(same)
+  same[is.na(same)] <- 0L
+  if (length(same) != length(onm) || !any(same > 0L) || any(same > length(same))) {
     return(.none)
   }
   # follow a chained map to the block every copy repeats
-  same <- as.integer(same)
   for (.i in seq_along(same)) {
     .c <- same > 0L & same[pmax(same, 1L)] > 0L
     if (!any(.c)) {
@@ -74,13 +77,16 @@
     }
     same[.c] <- same[same[.c]]
   }
+  if (any(same > 0L & same[pmax(same, 1L)] > 0L)) {
+    return(.none) # a cycle
+  }
   .ma <- same[pairs[, 1]]
   .mb <- same[pairs[, 2]]
   .isCp <- .ma > 0L & .mb > 0L
-  .free <- !.isCp
+  .free <- !.isCp & !fixed
   .key <- function(a, b) paste(pmax(a, b), pmin(a, b))
   .of <- match(.key(.ma, .mb), .key(pairs[.free, 1], pairs[.free, 2]))
-  # a copy of a fixed element is fixed with it: neither a parameter nor moved
+  # a copy moves with a free master; a fixed master's copy stays put
   .mv <- .isCp & !is.na(.of)
   for (.m in unique(same[same > 0L])) {
     onm[.m] <- .foceiSameGroupName(onm[.m], onm[same == .m])
@@ -103,13 +109,13 @@
 #' @return name
 #' @noRd
 .foceiSameGroupName <- function(master, copies) {
-  .iov <- names(.uiIovEnv$iovMaster)[vapply(.uiIovEnv$iovMaster, identical, logical(1), master)]
-  if (length(.iov) == 1L) {
-    return(.iov)
-  }
   .nm <- c(master, copies)
   if (!all(startsWith(.nm, "rx."))) {
     return(master)
+  }
+  .iov <- names(.uiIovEnv$iovMaster)[vapply(.uiIovEnv$iovMaster, identical, logical(1), master)]
+  if (length(.iov) == 1L) {
+    return(.iov)
   }
   .bare <- substring(.nm, 4L)
   .parts <- strsplit(.bare[1], ".", fixed = TRUE)[[1]]

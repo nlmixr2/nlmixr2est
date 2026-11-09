@@ -13371,26 +13371,32 @@ static bool foceiFdParams(Environment e, FdFullCtx &c, CharacterVector &nm) {
   Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
   if (!nlmixr2.exists(".foceiFdFullParams")) return false;
   Function pf = as<Function>(nlmixr2[".foceiFdFullParams"]);
-  List pl;
   try {
     RObject plo = pf(e);
     if (Rf_isNull(plo)) return false;
-    pl = as<List>(plo);
+    List pl = as<List>(plo);
+    c.thPos = pl["thPos"]; c.omA = pl["omA"]; c.omB = pl["omB"]; nm = pl["names"];
+    if (pl.containsElementNamed("cpA")) {
+      c.cpA = pl["cpA"]; c.cpB = pl["cpB"]; c.cpOf = pl["cpOf"];
+    }
   } catch (Rcpp::internal::InterruptedException&) {
     throw;
   } catch (Rcpp::LongjumpException&) {
     throw;
   } catch (...) { return false; }
-  c.thPos = pl["thPos"]; c.omA = pl["omA"]; c.omB = pl["omB"]; nm = pl["names"];
-  if (pl.containsElementNamed("cpA")) {
-    c.cpA = pl["cpA"]; c.cpB = pl["cpB"]; c.cpOf = pl["cpOf"];
-  }
   c.nth = c.thPos.size(); c.nom = c.omA.size();
   int neta = op_focei.neta;
+  auto etaOk = [neta](int a) { return a >= 1 && a <= neta; };
+  if (c.omB.size() != c.nom || nm.size() != c.nth + c.nom) return false;
   if (c.cpB.size() != c.cpA.size() || c.cpOf.size() != c.cpA.size()) return false;
+  for (int i = 0; i < c.nth; ++i) {
+    if (c.thPos[i] < 0 || c.thPos[i] >= (int)op_focei.ntheta) return false;
+  }
+  for (int q = 0; q < c.nom; ++q) {
+    if (!etaOk(c.omA[q]) || !etaOk(c.omB[q])) return false;
+  }
   for (int k = 0; k < c.cpA.size(); ++k) {
-    if (c.cpOf[k] < 0 || c.cpOf[k] >= c.nom || c.cpA[k] < 1 || c.cpA[k] > neta ||
-        c.cpB[k] < 1 || c.cpB[k] > neta) return false;
+    if (c.cpOf[k] < 0 || c.cpOf[k] >= c.nom || !etaOk(c.cpA[k]) || !etaOk(c.cpB[k])) return false;
   }
   return (c.nth + c.nom) > 0;
 }
