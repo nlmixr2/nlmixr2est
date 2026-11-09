@@ -55,22 +55,25 @@ nmTest({
     expect_equal(.scaleLinear(.mod, scaleLinear = "abs", scaleC = 9), c(9, 1, 3, 0.15))
   })
 
-  test_that("scaleLinear = 'abs' leaves mu-referenced thetas alone", {
+  test_that("scaleLinear = 'abs' leaves exp() thetas alone and scales linear mu-referenced ones", {
     .mod <- function() {
       ini({
         tcl <- 1.5
         b <- 2.5
+        te0 <- 4
         eta.cl ~ 0.1
+        eta.e0 ~ 0.1
         add.sd <- 0.3
       })
       model({
         cl <- exp(tcl + eta.cl)
-        y <- cl + b * x
+        e0 <- te0 + eta.e0
+        y <- cl + b * x + e0
         y ~ add(add.sd)
       })
     }
-    expect_equal(.scaleLinear(.mod), c(1, 0.4, 0.15))
-    expect_equal(.scaleLinear(.mod, scaleLinear = "abs"), c(1, 2.5, 0.15))
+    expect_equal(.scaleLinear(.mod), c(1, 0.4, 0.25, 0.15))
+    expect_equal(.scaleLinear(.mod, scaleLinear = "abs"), c(1, 2.5, 4, 0.15))
   })
 
   test_that("scaleLinear = 'abs' moves the stalled linear thetas of #1320", {
