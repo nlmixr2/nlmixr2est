@@ -38,7 +38,17 @@
   "mfocepf",
   "ifoceif",
   "ifocef",
-  "ifocepf"
+  "ifocepf",
+  "agqf",
+  "magqf",
+  "iagqf",
+  "flaplace",
+  "mflaplace",
+  "iflaplace",
+  "fagq",
+  "mfagq",
+  "ifagq",
+  "vae"
 )
 
 #' The nlm family -- the callers of `.nlmSetupEnv()`

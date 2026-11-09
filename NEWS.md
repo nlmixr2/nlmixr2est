@@ -244,7 +244,12 @@
   as ODEs, with a warning, rather than giving the etas past the cap the
   standard gradient: that made the objective depend on the order the etas
   were declared in, and match neither the ODE model nor
-  `linCmtSensCarry = "none"` (#1318).
+  `linCmtSensCarry = "none"` (#1318).  A model is translated only when the
+  pairs past the cap have a covariate that varies within a subject in the
+  data (or the build would otherwise stop), and a numeric `cmt` in the data
+  keeps naming the same compartment.  The `agqf`, `fagq`, `flaplace` (and
+  their `m`/`i` variants) and `vae` methods now also get the ODE translation
+  of a mixed `linCmt()`/ODE model that the rest of the FOCEi family gets.
 - `vaeControl(nonMuTheta = "eta")` and `"fix"` now inject the temporary eta
   without changing the model when the theta sits under `*`, `/`, `^` or a unary
   minus: `exp(e_cov_f * COV)` becomes `exp((e_cov_f + eta.e_cov_f) * COV)`, not

@@ -1,15 +1,21 @@
-#' Carry columns a `linCmt()` model's eta-gradient carry needs
+#' Carry columns a `linCmt()` model's eta-gradient carry would get wrong
 #'
-#' Zero when the model cannot have more than `cap` (no `linCmt()`, no
-#' covariate, or too few etas to fill the columns), so only a model that may
-#' be past the cap pays for the symbolic eligibility check.
+#' Zero when the model cannot be past `cap` (no `linCmt()`, no covariate, or
+#' too few etas to fill the columns), so only a model that may be past the
+#' cap pays for the symbolic eligibility check.  Past the cap, the build
+#' either stops or drops pairs (`.rxFoceiLinCmtCarryCapKeep()`); a dropped
+#' pair whose covariates are constant within every subject keeps an exact
+#' standard gradient, so only a dropped pair the data shows (or may show)
+#' varying makes the model need the ODE translation.
 #'
 #' @param ui rxode2 ui
 #' @param cap the carry columns the loaded rxode2 has
-#' @return integer, the columns needed
+#' @param data the fit's data, or NULL
+#' @return integer, the columns the carry needs when the build would stop or
+#'   approximate a varying pair, else 0
 #' @noRd
 #' @author Matthew L. Fidler
-.rxFoceiLinCmtCarryColumnsNeeded <- function(ui, cap) {
+.rxFoceiLinCmtCarryColumnsNeeded <- function(ui, cap, data = NULL) {
   if (rxode2::.rxLinNcmt(ui)["numLin"] <= 0L || length(ui$allCovs) == 0L) {
     return(0L)
   }
@@ -21,11 +27,67 @@
     return(0L)
   }
   .pairs <- tryCatch(.foceiLinCmtCarryPairs(ui), error = function(e) NULL)
+  if (isFALSE(attr(.pairs, "modelOk"))) {
+    return(0L)
+  }
   .pairs <- .rxFoceiLinCmtCarryJumpFilter(.pairs)
   if (is.null(.pairs)) {
     return(0L)
   }
-  as.integer(.rxFoceiLinCmtCarryColumns(.pairs))
+  .need <- as.integer(.rxFoceiLinCmtCarryColumns(.pairs))
+  .keep <- .rxFoceiLinCmtCarryCapKeep(.pairs, cap)
+  if (is.null(.keep)) {
+    return(.need)
+  }
+  .vary <- vapply(
+    strsplit(.pairs$covs[!.keep], ",", fixed = TRUE),
+    function(.c) !isFALSE(.rxFoceiCarryVarying(.c, data)),
+    logical(1)
+  )
+  if (any(.vary)) .need else 0L
+}
+
+#' The compartment each number names, in a ui's numbering
+#'
+#' States first, then the endpoints that are not states (`ui$predDf$cmt`).
+#' @param ui rxode2 ui
+#' @return character, indexed by compartment number (NA where unnamed)
+#' @noRd
+#' @author Matthew L. Fidler
+.linCmtCarryCmtNames <- function(ui) {
+  .state <- rxode2::rxModelVars(ui)$state
+  .pd <- ui$predDf
+  .ret <- rep(NA_character_, max(c(length(.state), .pd$cmt)))
+  .ret[.pd$cmt] <- as.character(.pd$cond)
+  .ret[seq_along(.state)] <- .state
+  .ret
+}
+
+#' Renumber a numeric `cmt` data column from one ui's numbering to another's
+#'
+#' `linToOde()` puts the peripheral compartments right after depot/central,
+#' ahead of the endpoints, so a numeric `cmt` naming an endpoint would point
+#' at a peripheral compartment.
+#' @param data the fit's data
+#' @param from the ui the data was written against
+#' @param to the translated ui
+#' @return `data` with its numeric `cmt` column renumbered
+#' @noRd
+#' @author Matthew L. Fidler
+.linCmtCarryRemapCmt <- function(data, from, to) {
+  .w <- which(tolower(names(data)) == "cmt")
+  if (length(.w) != 1L || !is.numeric(data[[.w]])) {
+    return(data)
+  }
+  .from <- .linCmtCarryCmtNames(from)
+  .to <- .linCmtCarryCmtNames(to)
+  .c <- data[[.w]]
+  .k <- abs(.c)
+  .new <- match(.from[.k], .to)
+  .ok <- !is.na(.c) & .k >= 1L & .k <= length(.from) & !is.na(.new)
+  .c[.ok] <- sign(.c[.ok]) * .new[.ok]
+  data[[.w]] <- .c
+  data
 }
 
 #' Solve a `linCmt()` model past the carry cap as ODEs
@@ -35,14 +97,15 @@
 #' covariate changes a `linCmt()` parameter within a subject and makes the
 #' objective depend on the order the etas are declared in (#1318).  The ODE
 #' translation has exact sensitivities for every eta.  Named to run after
-#' `.uiApplyIov()`, whose occasion etas count toward the cap.
+#' `.uiApplyIov()` and `.uiApplyMu2()`, so it sees the model the build does.
 #'
 #' @param ui rxode2 ui
 #' @inheritParams nlmixr2
-#' @return list with the translated ui, or `NULL` when nothing to do
+#' @return list with the translated ui and renumbered data, or `NULL` when
+#'   nothing to do
 #' @export
 #' @author Matthew L. Fidler
-.uiApplyLinCmtCarryCap <- function(ui, est, data, control) {
+.uiApplyOdeLinCmtCarryCap <- function(ui, est, data, control) {
   if (!(est %in% .linCmtFoceiEstFamily)) {
     return(NULL)
   }
@@ -59,7 +122,7 @@
     return(NULL)
   }
   .cap <- .rxFoceiLinCmtCarryMaxPairs()
-  .need <- .rxFoceiLinCmtCarryColumnsNeeded(ui, .cap)
+  .need <- .rxFoceiLinCmtCarryColumnsNeeded(ui, .cap, data)
   if (.need <= .cap) {
     return(NULL)
   }
@@ -71,7 +134,11 @@
     sprintf("linCmt() solved as ODEs: etas need %d of %d carry columns", .need, .cap),
     call. = FALSE
   )
-  list(ui = .ui)
+  if (is.data.frame(data)) {
+    list(ui = .ui, data = .linCmtCarryRemapCmt(data, ui, .ui))
+  } else {
+    list(ui = .ui)
+  }
 }
 
-preProcessHooksAdd(".uiApplyLinCmtCarryCap", .uiApplyLinCmtCarryCap)
+preProcessHooksAdd(".uiApplyOdeLinCmtCarryCap", .uiApplyOdeLinCmtCarryCap)

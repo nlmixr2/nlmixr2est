@@ -232,7 +232,7 @@
 
 #' Drop the pairs past the carry's column cap, the newest kinds first
 #'
-#' A fit never gets here past the cap: `.uiApplyLinCmtCarryCap()` solves
+#' A fit never gets here past the cap: `.uiApplyOdeLinCmtCarryCap()` solves
 #' such a model as ODEs.  A build that does (a direct `ui$foceiModel`, or a
 #' model `linToOde()` cannot translate) drops the multCov pairs (an IOV
 #' rewrite's occasion etas), last first, and then the other pairs that share
@@ -245,8 +245,25 @@
 #' @noRd
 .rxFoceiLinCmtCarryCapPairs <- function(pairs) {
   .cap <- .rxFoceiLinCmtCarryMaxPairs()
-  if (.rxFoceiLinCmtCarryColumns(pairs) <= .cap) {
-    return(pairs)
+  .keep <- .rxFoceiLinCmtCarryCapKeep(pairs, .cap)
+  if (!is.null(.keep) && any(!.keep)) {
+    .rxFoceiLinCmtCarryCapWarn(.rxFoceiLinCmtCarryCapMsg(pairs$etaName[!.keep], .cap))
+    pairs <- pairs[.keep, , drop = FALSE]
+  }
+  pairs
+}
+
+#' The pairs a build keeps within the cap
+#'
+#' @param pairs the eligible pairs
+#' @param cap the carry columns the loaded rxode2 has
+#' @return logical, one per pair (all `TRUE` within the cap), or NULL when
+#'   dropping every droppable pair still leaves the model past the cap
+#' @noRd
+.rxFoceiLinCmtCarryCapKeep <- function(pairs, cap) {
+  .keep <- rep(TRUE, nrow(pairs))
+  if (.rxFoceiLinCmtCarryColumns(pairs) <= cap) {
+    return(.keep)
   }
   .shared <- !is.na(pairs$slot) &
     (duplicated(pairs$slot) | duplicated(pairs$slot, fromLast = TRUE))
@@ -254,18 +271,16 @@
     rev(which(pairs$shape %in% "multCov")),
     rev(which(.shared & !(pairs$shape %in% "multCov")))
   )
-  .keep <- rep(TRUE, nrow(pairs))
   for (.w in .order) {
-    if (.rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) <= .cap) {
+    if (.rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) <= cap) {
       break
     }
     .keep[.w] <- FALSE
   }
-  if (any(!.keep) && .rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) <= .cap) {
-    .rxFoceiLinCmtCarryCapWarn(.rxFoceiLinCmtCarryCapMsg(pairs$etaName[!.keep], .cap))
-    pairs <- pairs[.keep, , drop = FALSE]
+  if (.rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) > cap) {
+    return(NULL)
   }
-  pairs
+  .keep
 }
 
 #' @noRd
