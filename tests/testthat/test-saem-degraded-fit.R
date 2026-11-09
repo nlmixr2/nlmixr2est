@@ -153,6 +153,12 @@ nmTest({
     expect_warning(.saemWarnDiverged(c(tka = NaN), .om(c(0.1, 0, 0, 0.2))), "estimates diverged: tka")
     expect_warning(.saemWarnDiverged(.th, .om(c(0.1, 0, 0, 0.2)), fixed = "prop.sd"), NA)
     expect_warning(.saemWarnDiverged(c(tka = 0.2), .om(c(0.1, 0, 0, 0.2))), NA)
+    # inside exp() a value past log(.Machine$double.xmax) back-transforms to Inf
+    .big <- .om(c(0.1, 0, 0, 5923))
+    expect_warning(.saemWarnDiverged(c(tka = 0.2), .big, expNames = "eta.cl"), "estimates diverged: eta.cl")
+    expect_warning(.saemWarnDiverged(c(tka = 0.2), .big), NA)
+    expect_warning(.saemWarnDiverged(c(tcl = 1000), .om(0.1), expNames = "tcl"), "estimates diverged: tcl")
+    expect_warning(.saemWarnDiverged(c(tv = 1000), .om(0.1), expNames = "tcl"), NA)
   })
 
   test_that("a diverged saem fit says so in $runInfo (#1298)", {
