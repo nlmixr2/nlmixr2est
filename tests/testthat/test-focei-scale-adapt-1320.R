@@ -5,7 +5,9 @@ nmTest({
   .fn <- function(x) sum(((x - .mu) / .se)^2)
 
   test_that("scaleAdapt validates and round-trips", {
-    expect_equal(foceiControl()$scaleAdapt, 0L)
+    expect_true(is.na(foceiControl()$scaleAdapt))
+    expect_true(is.na(foceiControl(scaleAdapt = NA)$scaleAdapt))
+    expect_equal(foceiControl(scaleAdapt = 0)$scaleAdapt, 0L)
     expect_equal(foceiControl(scaleAdapt = 3)$scaleAdapt, 3L)
     expect_error(foceiControl(scaleAdapt = -1))
     expect_error(foceiControl(scaleAdapt = 1.5))
@@ -190,9 +192,9 @@ nmTest({
       .mod,
       .d,
       est = "focei",
-      control = foceiControl(print = 0, covMethod = "", calcTables = FALSE, scaleAdapt = 3L)
+      control = foceiControl(print = 0, covMethod = "", calcTables = FALSE, scaleAdapt = 3L, scaleLinear = "inverse")
     )))
-    # the default scale's first search is unchanged; a rescaled restart ran
+    # the 1/|init| scale is used as given; a rescaled restart ran
     expect_equal(.f$scaleInfo$scaleC[1:2], c(1 / 9, 1 / 6))
     expect_gte(.f$env$optReturn$nScaleAdapt, 1L)
     # and reached the optimum FeRx and |init| scaling agree on (161.24)
