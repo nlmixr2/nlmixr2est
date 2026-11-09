@@ -268,6 +268,122 @@ is.latex <- function() {
   ret
 }
 
+#' Probe each optimizer coordinate's curvature by central differences
+#'
+#' @param fn objective
+#' @param x point
+#' @param fx objective at `x`
+#' @param h probe step
+#' @param lower,upper bounds
+#' @return list: `scale`, one marginal standard error per coordinate
+#'   (`sqrt(2/H_ii)` for a -2LL objective, `NA` without positive curvature),
+#'   `dec`, the diagonal Newton decrement, and `nEval`
+#' @noRd
+.bobyqaCurvature <- function(fn, x, fx, h, lower, upper) {
+  .np <- length(x)
+  .scale <- rep(NA_real_, .np)
+  .dec <- 0
+  .nEval <- 0L
+  for (i in seq_len(.np)) {
+    .up <- min(h, upper[i] - x[i])
+    .dn <- min(h, x[i] - lower[i])
+    if (.up <= 0 || .dn <= 0) {
+      next
+    }
+    .fu <- fn(replace(x, i, x[i] + .up))
+    .fd <- fn(replace(x, i, x[i] - .dn))
+    .nEval <- .nEval + 2L
+    .w <- .up * .dn * (.up + .dn)
+    .h <- 2 * (.up * .fd + .dn * .fu - (.up + .dn) * fx) / .w
+    .g <- (.up^2 * .fu - .dn^2 * .fd - (.up^2 - .dn^2) * fx) / .w
+    if (is.finite(.h) && .h > 0) {
+      .scale[i] <- sqrt(2 / .h)
+      if (is.finite(.g)) {
+        .dec <- .dec + .g^2 / (2 * .h)
+      }
+    }
+  }
+  list(scale = .scale, dec = .dec, nEval = .nEval)
+}
+
+#' Restart bobyqa on a scale adapted to the curvature where it stopped
+#'
+#' The starting scale comes from each parameter's initial estimate, and a
+#' poorly scaled parameter can leave bobyqa stopping far from the minimum
+#' (#1320).  After the search stops this measures each coordinate's
+#' curvature, rescales so one unit is one marginal standard error, and
+#' restarts bobyqa from the stopping point.  Restarts repeat until one gains
+#' less than `tol`, the predicted decrease is below `tol`, `maxLeg` is
+#' reached or the budget runs out.
+#' @inheritParams .bobyqaStationary
+#' @param maxLeg maximum number of rescaled restarts
+#' @return a `RcppTrust::bobyqa()`-shaped list with `nScaleAdapt` added
+#' @noRd
+.bobyqaAdapt <- function(fn, lower, upper, ctl, ret, tol, maxLeg, record = NULL, hold = NULL) {
+  .np <- length(ret$par)
+  .lower <- rep_len(lower, .np)
+  .upper <- rep_len(upper, .np)
+  .n <- 0L
+  .was <- NULL
+  .release <- function() {
+    if (is.function(hold)) {
+      hold(FALSE)
+    }
+    if (!is.null(.was)) {
+      record(.was)
+      .was <<- NULL
+    }
+  }
+  on.exit(.release(), add = TRUE)
+  while (.n < maxLeg && is.finite(ret$fval)) {
+    .left <- if (is.null(ctl$maxfun)) Inf else ctl$maxfun - ret$feval
+    if (.left <= 2L * .np + ctl$npt + 2L) {
+      break
+    }
+    if (is.function(hold)) {
+      hold(TRUE)
+    }
+    if (is.function(record)) {
+      .was <- record(FALSE)
+    }
+    .c <- .bobyqaCurvature(fn, ret$par, ret$fval, ctl$rhobeg / 2, .lower, .upper)
+    .release()
+    ret$feval <- ret$feval + .c$nEval
+    if (.c$dec <= tol) {
+      break
+    }
+    .s <- .c$scale
+    .s[!is.finite(.s)] <- 1
+    .s <- pmin(pmax(.s, 1e-3), 1e3)
+    .x0 <- ret$par
+    .ctl2 <- ctl
+    if (!is.null(.ctl2$maxfun)) {
+      .ctl2$maxfun <- .left - .c$nEval
+    }
+    .r2 <- RcppTrust::bobyqa(
+      rep(0, .np),
+      function(z) fn(.x0 + .s * z),
+      control = .ctl2,
+      lower = (.lower - .x0) / .s,
+      upper = (.upper - .x0) / .s
+    )
+    .n <- .n + 1L
+    ret$feval <- ret$feval + .r2$feval
+    .gain <- ret$fval - .r2$fval
+    if (is.finite(.r2$fval) && .gain > 0) {
+      ret$par <- .x0 + .s * .r2$par
+      ret$fval <- .r2$fval
+      ret$ierr <- .r2$ierr
+      ret$msg <- .r2$msg
+    }
+    if (!isTRUE(.gain > tol)) {
+      break
+    }
+  }
+  ret$nScaleAdapt <- .n
+  ret
+}
+
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) {
@@ -289,6 +405,20 @@ is.latex <- function() {
       .ctl,
       .ret,
       tol = .tol,
+      record = control$outerRecord,
+      hold = control$outerHold
+    )
+  }
+  if (isTRUE(control$scaleAdapt > 0L) && !is.null(.ctl$rhobeg)) {
+    .tol <- if (is.null(control$sigdig)) 0.01 else 10^(1 - control$sigdig)
+    .ret <- .bobyqaAdapt(
+      fn,
+      lower,
+      upper,
+      .ctl,
+      .ret,
+      tol = .tol,
+      maxLeg = control$scaleAdapt,
       record = control$outerRecord,
       hold = control$outerHold
     )

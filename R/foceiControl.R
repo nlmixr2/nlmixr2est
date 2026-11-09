@@ -753,6 +753,11 @@
 #'     within `maxOuterIterations`).  This catches a search that stops in a
 #'     narrow valley short of the minimum (#1196); `FALSE` skips the check.
 #'
+#' @param scaleAdapt maximum number of times the `"bobyqa"` outer search
+#'     restarts on a scale adapted to the curvature where it stopped, one
+#'     unit per marginal standard error.  It restarts while each restart gains
+#'     more than `10^(1-sigdig)`.  `0` (default) turns this off.
+#'
 #' @param innerHessian Inner optimization curvature: `"focei"` (default) or
 #'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
 #'   Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
@@ -1448,6 +1453,7 @@ foceiControl <- function(
   newuoaPolish = FALSE,
   newuoaRhoend = NULL, # NULL -> sqrt(rtol) of the ODE solve
   bobyqaStationary = TRUE,
+  scaleAdapt = 0L,
   ## innerOpt="lbfgsb3c" (lbfgsb3c's thread-safe L-BFGS-B)
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL, # NULL -> 10^(-sigdig-2)/eps
@@ -2042,6 +2048,8 @@ foceiControl <- function(
   checkmate::assertFlag(newuoaPolish)
   bobyqaStationary <- as.logical(bobyqaStationary)
   checkmate::assertFlag(bobyqaStationary)
+  checkmate::assertIntegerish(scaleAdapt, lower = 0, len = 1, any.missing = FALSE)
+  scaleAdapt <- as.integer(scaleAdapt)
   checkmate::assertIntegerish(innerLbfgsLmm, lower = 1L, any.missing = FALSE, len = 1)
   innerLbfgsLmm <- as.integer(innerLbfgsLmm)
   checkmate::assertNumeric(innerLbfgsFactr, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
@@ -2336,6 +2344,7 @@ foceiControl <- function(
     newuoaPolish = newuoaPolish,
     newuoaRhoend = newuoaRhoend,
     bobyqaStationary = bobyqaStationary,
+    scaleAdapt = scaleAdapt,
     innerLbfgsLmm = innerLbfgsLmm,
     innerLbfgsFactr = as.double(innerLbfgsFactr),
     innerLbfgsPgtol = as.double(innerLbfgsPgtol),
