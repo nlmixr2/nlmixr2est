@@ -529,6 +529,25 @@
   NULL
 }
 
+#' Significant digits of a fit's formatted parameter table
+#'
+#' @param env fit environment
+#' @return `sigdigTable` from the fit's control, else the ui's, else 3
+#' @noRd
+.parFixedSigdigTable <- function(env) {
+  tryCatch(
+    {
+      .v <- env$control[["sigdigTable"]]
+      if (length(.v) == 1L && is.finite(.v)) {
+        .v
+      } else {
+        rxode2::rxGetControl(env$ui, "sigdigTable", 3L)
+      }
+    },
+    error = function(e) 3L
+  )
+}
+
 #' Refresh a fit's parameter-table SEs from an installed covariance
 #'
 #' Updates the numeric `$parFixedDf` and regenerates the formatted `$parFixed`
@@ -554,6 +573,8 @@
   if (!is.matrix(cov) || is.null(rownames(cov)) || !is.data.frame(.pf) || !("SE" %in% names(.pf))) {
     return(invisible())
   }
+  # a two-level IOV row's SE is not a diagonal of `cov`; refresh it last
+  on.exit(.iovTwoLevelSe(env), add = TRUE)
   .se <- sqrt(diag(cov))
   # Resolve ci the way .updateParFixed does -- the fit's control first, then the
   # ui.  The ui's control slot can still hold the default when the fit ran with
@@ -631,17 +652,7 @@
     } else {
       character()
     }
-    .digits <- tryCatch(
-      {
-        .v <- env$control[["sigdigTable"]]
-        if (length(.v) == 1L && is.finite(.v)) {
-          .v
-        } else {
-          rxode2::rxGetControl(env$ui, "sigdigTable", 3L)
-        }
-      },
-      error = function(e) 3L
-    )
+    .digits <- .parFixedSigdigTable(env)
     .new <- .updateParFixedApplySig(
       .pf,
       digits = .digits,
