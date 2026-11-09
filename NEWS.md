@@ -489,6 +489,13 @@
 
 ### Inter-occasion variability
 
+- `saemControl(iovMethod = "theta")`, also the automatic fallback for models
+  `"twoLevel"` does not cover, no longer underestimates the occasion
+  variances 4-6 fold (one collapsed to zero).  For saem, the shared rewrite
+  now gives each occasion level an eta, all sharing one variance with a
+  closed-form update, instead of a magnitude theta moved as a fixed effect
+  (#1319).
+
 - A model whose occasion-level eta name starts with `eta.` (`eta.ka.occ ~ 0.1 | OCC`)
   now fits.  The SAEM temporary-eta cleanup took every `rx.eta.` name, including
   the `rx.eta.ka.occ.<occ>` occasion columns, so every estimator stopped with
