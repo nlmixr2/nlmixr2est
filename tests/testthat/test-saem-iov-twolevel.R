@@ -353,6 +353,10 @@ test_that("saem refuses a prior on an occasion variance before the IOV rewrite d
     })
   }
   # nolint end
+  .h <- preProcessHooks()
+  expect_true(
+    which(.h == ".nlmixr0preProcessAssertNoPriors") < min(which(.h %in% c(".uiApplyIov", ".uiApplyIovTwoLevel")))
+  )
   .ui <- rxode2::rxUiDecompress(.pr())
   expect_error(.nlmixr0preProcessAssertNoPriors(.ui, "saem", .twoLevelData(), saemControl()), "iov.cl")
   # a method that takes theta priors may keep the rewrite's magnitude theta
