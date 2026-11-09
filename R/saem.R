@@ -874,6 +874,7 @@
     check.names = FALSE
   )
   names(.ph) <- c("iter", .allThetaNames, "type")
+  .ph <- .saemIovCollapseParHist(.ph, .uiIovEnv$iovTwoLevel)
   .cls <- class(.ph)
   attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
   class(.ph) <- .cls
@@ -1529,6 +1530,8 @@
       # finalization needs a structural-theta cov; stash the full matrix and install
       # it after the fit is built (.saemInstallFullCov).  The control covMethod is reset
       # to its default during finalization, so record the intended label separately.
+      # the K per-occasion columns of a pooled IOV variance are one parameter
+      .cov <- .saemIovCollapseCov(.cov, .uiIovEnv$iovTwoLevel)
       .rn <- rownames(.cov)
       .keep <- !grepl("^om\\.|^cov\\.", .rn) & !(.rn %in% .ui$iniDf$name[!is.na(.ui$iniDf$err)])
       env$cov <- .cov[.rn[.keep], .rn[.keep], drop = FALSE]

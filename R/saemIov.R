@@ -558,6 +558,30 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   }
   NULL
 }
+#' Collapse the pooled occasion columns of a saem parameter history
+#'
+#' The K per-occasion variances move together (`poolOmegaGroups`), so the
+#' history keeps one `V(<iov>)` column for them instead of K internal
+#' `V(rx.<iov>.<k>)` copies.
+#'
+#' @param ph parameter history data frame
+#' @param groups named list, user IOV parameter -> its per-occasion eta names
+#' @return the collapsed data frame
+#' @noRd
+.saemIovCollapseParHist <- function(ph, groups) {
+  for (.v in names(groups)) {
+    .w <- which(names(ph) %in% paste0("V(", groups[[.v]], ")"))
+    if (length(.w) == 0L) {
+      next
+    }
+    names(ph)[.w[1]] <- paste0("V(", .v, ")")
+    if (length(.w) > 1L) {
+      ph <- ph[, -.w[-1], drop = FALSE]
+    }
+  }
+  ph
+}
+
 #' Contract the pooled occasion columns of a covariance matrix
 #'
 #' `$cov` carries one row/column per phi1 column, so the K per-occasion columns
@@ -585,7 +609,8 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
     .w <- match(paste0("om.", g), .nm)
     .w[!is.na(.w)]
   })
-  .grp <- .grp[vapply(.grp, length, integer(1)) >= 2L]
+  # a single observed level is a group of one: still renamed to `om.<iov>`
+  .grp <- .grp[vapply(.grp, length, integer(1)) >= 1L]
   if (length(.grp) == 0L) {
     return(cv)
   }
@@ -606,7 +631,7 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 #' of its first member, so the rest of the matrix keeps its order.
 #'
 #' @param nm rownames of the input matrix
-#' @param grp named list of pooled index vectors, each of length >= 2
+#' @param grp named list of pooled index vectors, each of length >= 1
 #' @return list of `list(idx, nm)`
 #' @noRd
 .saemIovCovRows <- function(nm, grp) {

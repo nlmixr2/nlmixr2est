@@ -215,6 +215,28 @@ test_that(".saemIovCollapseCov contracts the pooled occasion columns", {
   # a matrix with nothing to pool, and an empty group list, are both untouched
   expect_identical(.saemIovCollapseCov(.cv, list()), .cv)
   expect_identical(.saemIovCollapseCov(.cv, list(iov.v = "rx.iov.v.1")), .cv)
+
+  # a single observed level is still renamed off its internal name
+  .one <- .saemIovCollapseCov(.cv[1:3, 1:3], list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2")))
+  expect_equal(rownames(.one), c("tka", "om.eta.ka", "om.iov.cl"))
+  expect_equal(unname(.one), unname(.cv[1:3, 1:3]))
+})
+
+test_that(".saemIovCollapseParHist keeps one column per pooled variance", {
+  .ph <- data.frame(
+    iter = 1:2,
+    tka = c(1, 2),
+    `V(eta.ka)` = c(3, 4),
+    `V(rx.iov.cl.1)` = c(5, 6),
+    `V(rx.iov.cl.2)` = c(5, 6),
+    type = "Unscaled",
+    check.names = FALSE
+  )
+  .out <- .saemIovCollapseParHist(.ph, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2")))
+  expect_equal(names(.out), c("iter", "tka", "V(eta.ka)", "V(iov.cl)", "type"))
+  expect_equal(.out[["V(iov.cl)"]], c(5, 6))
+  # nothing pooled, nothing changed
+  expect_identical(.saemIovCollapseParHist(.ph, NULL), .ph)
 })
 
 test_that(".saemGqNodes keeps the -2LL grid affordable", {
