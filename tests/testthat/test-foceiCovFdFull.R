@@ -91,7 +91,7 @@ test_that("same() copies move with their master in the full FD stage (#1316)", {
       fix = FALSE
     )
   )
-  .tie <- .foceiFdFullSameTie(.pairs, rep(FALSE, nrow(.pairs)), .same, .onm)
+  .tie <- .foceiFdFullSameTie(.pairs, rep(FALSE, nrow(.pairs)), .same, .onm, c("tcl", "iov.cl", "iov.v"))
   expect_identical(sum(.tie$free), 5L)
   expect_identical(.tie$cpA, c(5L, 6L, 6L, 7L, 8L, 8L))
   expect_identical(.tie$cpB, c(5L, 5L, 6L, 7L, 7L, 8L))
@@ -107,16 +107,13 @@ test_that("same() copies move with their master in the full FD stage (#1316)", {
 })
 
 test_that("a same() group is named by the parameter it repeats", {
-  .old <- .uiIovEnv$iovMaster
-  on.exit(.uiIovEnv$iovMaster <- .old)
-  .uiIovEnv$iovMaster <- list()
-  # occasion levels sharing a prefix
-  expect_identical(.foceiSameGroupName("rx.iov.cl.1", c("rx.iov.cl.10", "rx.iov.cl.2")), "iov.cl")
+  .th <- c("tcl", "iov.cl", "iov")
+  # occasion levels sharing a prefix, or holding a dot
+  expect_identical(.foceiSameGroupName("rx.iov.cl.1", c("rx.iov.cl.10", "rx.iov.cl.2"), .th), "iov.cl")
+  expect_identical(.foceiSameGroupName("rx.iov.cl.day.1", "rx.iov.cl.day.2", .th), "iov.cl")
   # a user's own same() block keeps its master's name
-  expect_identical(.foceiSameGroupName("eta.cl", "eta.v"), "eta.cl")
-  # the expansion's record wins over the name
-  .uiIovEnv$iovMaster <- list(iov.cl = "rx.iov.cl.a.b")
-  expect_identical(.foceiSameGroupName("rx.iov.cl.a.b", "rx.iov.cl.a.c"), "iov.cl")
+  expect_identical(.foceiSameGroupName("eta.cl", "eta.v", .th), "eta.cl")
+  expect_identical(.foceiSameGroupName("rx.eta.cl", "rx.eta.v", .th), "rx.eta.cl")
 })
 
 test_that("chained, fixed and malformed same() maps tie as expected (#1316)", {
@@ -137,9 +134,12 @@ test_that("chained, fixed and malformed same() maps tie as expected (#1316)", {
   expect_identical(.tie$cpA, 3L)
   expect_identical(.tie$cpOf, 0L)
   # a map rxode2 would not produce leaves the matrix untied
-  for (.s in list(c(0L, 5L, 0L), c(2L, 1L, 0L), c(1L, 0L, 0L))) {
+  for (.s in list(c(0L, 5L, 0L), c(2L, 1L, 0L), c(1L, 0L, 0L), c(0L, -1L, 1L))) {
     expect_identical(.foceiFdFullSameTie(.pairs, .ok, .s, .onm)$free, !.ok)
   }
+  # two copies of one eta correlated inside a block
+  .p2 <- rbind(c(1L, 1L), c(2L, 2L), c(3L, 2L), c(3L, 3L))
+  expect_identical(.foceiFdFullSameTie(.p2, rep(FALSE, 4), c(0L, 1L, 1L), .onm)$free, rep(TRUE, 4))
 })
 
 test_that(".foceiFdFullParams() ties a user's same() blocks (#1316)", {

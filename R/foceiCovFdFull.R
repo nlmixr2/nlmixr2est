@@ -34,7 +34,13 @@
     pairs <- matrix(integer(0), 0L, 2L)
   }
   map <- .foceiEtaThetaMap(ui)
-  tie <- .foceiFdFullSameTie(pairs, .omegaFixed(ini, pairs), ui$omegaSameMap, map$etaNames)
+  tie <- .foceiFdFullSameTie(
+    pairs,
+    .omegaFixed(ini, pairs),
+    ui$omegaSameMap,
+    map$etaNames,
+    ini$name[!is.na(ini$ntheta)]
+  )
   pairs <- pairs[tie$free, , drop = FALSE]
   if (nrow(pairs) == 0L) {
     return(list(thPos = thPos, omA = integer(0), omB = integer(0), names = thNames))
@@ -58,15 +64,16 @@
 #' @param fixed which `pairs` are fixed
 #' @param same `omegaSameMap` (each eta's master eta, 0 for none), or `NULL`
 #' @param onm eta names
+#' @param thetas the model's theta names, to name an IOV group
 #' @return list: `free` (rows of `pairs` that are parameters), `cpA`/`cpB` (the
 #'   copies of a free element) with `cpOf` (0-based index of their parameter
 #'   among the free pairs), and `onm` with each master named by its IOV parameter
 #' @noRd
-.foceiFdFullSameTie <- function(pairs, fixed, same, onm) {
+.foceiFdFullSameTie <- function(pairs, fixed, same, onm, thetas = character(0)) {
   .none <- list(free = !fixed, cpA = integer(0), cpB = integer(0), cpOf = integer(0), onm = onm)
   same <- as.integer(same)
   same[is.na(same)] <- 0L
-  if (length(same) != length(onm) || !any(same > 0L) || any(same > length(same))) {
+  if (length(same) != length(onm) || !any(same > 0L) || any(same < 0L | same > length(same))) {
     return(.none)
   }
   # follow a chained map to the block every copy repeats
@@ -83,13 +90,16 @@
   .ma <- same[pairs[, 1]]
   .mb <- same[pairs[, 2]]
   .isCp <- .ma > 0L & .mb > 0L
+  if (any(.isCp & (pairs[, 1] == pairs[, 2]) != (.ma == .mb))) {
+    return(.none) # two copies of one eta inside a block
+  }
   .free <- !.isCp & !fixed
   .key <- function(a, b) paste(pmax(a, b), pmin(a, b))
   .of <- match(.key(.ma, .mb), .key(pairs[.free, 1], pairs[.free, 2]))
   # a copy moves with a free master; a fixed master's copy stays put
   .mv <- .isCp & !is.na(.of)
   for (.m in unique(same[same > 0L])) {
-    onm[.m] <- .foceiSameGroupName(onm[.m], onm[same == .m])
+    onm[.m] <- .foceiSameGroupName(onm[.m], onm[same == .m], thetas)
   }
   list(
     free = .free,
@@ -102,31 +112,22 @@
 
 #' The IOV parameter a `same()` group repeats
 #'
-#' Occasion copies are named `rx.<iov>.<level>`; the group takes `<iov>`.  Any
-#' other `same()` group keeps its master's name.
+#' Occasion copies are named `rx.<iov>.<level>`, and the expanded model keeps
+#' `<iov>` as its magnitude theta; the group takes the longest such theta every
+#' copy is named after.  Any other `same()` group keeps its master's name.
 #' @param master master eta name
 #' @param copies its copies' eta names
+#' @param thetas the model's theta names
 #' @return name
 #' @noRd
-.foceiSameGroupName <- function(master, copies) {
+.foceiSameGroupName <- function(master, copies, thetas) {
   .nm <- c(master, copies)
-  if (!all(startsWith(.nm, "rx."))) {
+  .hit <- vapply(thetas, function(v) all(startsWith(.nm, paste0("rx.", v, "."))), logical(1))
+  if (!any(.hit)) {
     return(master)
   }
-  .iov <- names(.uiIovEnv$iovMaster)[vapply(.uiIovEnv$iovMaster, identical, logical(1), master)]
-  if (length(.iov) == 1L) {
-    return(.iov)
-  }
-  .bare <- substring(.nm, 4L)
-  .parts <- strsplit(.bare[1], ".", fixed = TRUE)[[1]]
-  # the longest dotted prefix every copy shares, levels removed
-  for (.k in rev(seq_len(length(.parts) - 1L))) {
-    .p <- paste(.parts[seq_len(.k)], collapse = ".")
-    if (all(startsWith(.bare, paste0(.p, ".")))) {
-      return(.p)
-    }
-  }
-  master
+  .v <- thetas[.hit]
+  .v[which.max(nchar(.v))]
 }
 
 #' The three FD-full covariances, each checked by `.covGuard()`
