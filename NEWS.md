@@ -48,6 +48,11 @@
 
 ### Covariance
 
+- SAEM's `iovMethod = "twoLevel"` `$cov` now has one `om.<iov>` row per
+  occasion parameter, tying the per-occasion copies through their information
+  (`J' I J`); under the default `sa`/analytic covariance it used to carry one
+  untied `om.rx.<iov>.<k>` row per occasion (#1317).
+
 - A FOCEi covariance that a vae or vi fit could not compute or install is now
   recorded in `fit$env$covTried`, under the method tried and with the condition
   message unclipped on one line (the refit's own error included), also when
