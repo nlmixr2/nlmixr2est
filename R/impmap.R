@@ -1406,8 +1406,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
     .j[.nTh + seq_len(.nOm), .nTh + .m] <- as.matrix(dOm[[.m]])[.pairs]
   }
   .nm <- c(thetaNames[thetaIdx], .foceiOmegaCovNames(.pairs, etaNames))
-  .cov <- .j %*% cov %*% t(.j)
-  dimnames(.cov) <- list(.nm, .nm)
+  .cov <- .covJacobian(cov, .j, .nm)
   rownames(.j) <- .nm
   list(cov = .cov, jacobian = .j)
 }

@@ -80,9 +80,9 @@ nmTest({
     fRef <- suppressMessages(nlmixr2(.fastm_one_cmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
     expect_equal(fF$objf, fRef$objf, tolerance = 0.02)
     expect_equal(unname(fixef(fF)), unname(fixef(fRef)), tolerance = 1e-2)
-    # both consumed the analytic gradient and default to lbfgsb3c
-    expect_match(fF$extra, "outer: lbfgsb3c; grad: analytic")
-    expect_match(fRef$extra, "outer: lbfgsb3c; grad: analytic")
+    # both consumed the analytic gradient and default to gradient-only nlminb
+    expect_match(fF$extra, "outer: nlminb; grad: analytic")
+    expect_match(fRef$extra, "outer: nlminb; grad: analytic")
   })
 
   test_that("all-residual-fixed fast fits use the analytic gradient (omega-only outer)", {
