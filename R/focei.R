@@ -387,12 +387,20 @@ is.latex <- function() {
     if (!is.null(.ctl2$maxfun)) {
       .ctl2$maxfun <- .left - .c$nEval
     }
-    .r2 <- RcppTrust::bobyqa(
-      rep(0, .np),
-      function(z) fn(.x0 + .s * z),
-      control = .ctl2,
-      lower = (.lower - .x0) / .s,
-      upper = (.upper - .x0) / .s
+    # what is left of the budget is often below bobyqa's advised 10*np^2
+    .r2 <- withCallingHandlers(
+      RcppTrust::bobyqa(
+        rep(0, .np),
+        function(z) fn(.x0 + .s * z),
+        control = .ctl2,
+        lower = (.lower - .x0) / .s,
+        upper = (.upper - .x0) / .s
+      ),
+      warning = function(w) {
+        if (grepl("maxfun < 10", conditionMessage(w), fixed = TRUE)) {
+          invokeRestart("muffleWarning")
+        }
+      }
     )
     .n <- .n + 1L
     ret$feval <- ret$feval + .r2$feval
