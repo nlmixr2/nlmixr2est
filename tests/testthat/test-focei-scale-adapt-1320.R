@@ -53,7 +53,7 @@ nmTest({
     # a stop on a concave flank still restarts
     .flank <- function(x) x[1]^2 - 10 * exp(-((x[2] - 50) / 20)^2)
     .st <- list(par = c(0, 0), fval = .flank(c(0, 0)), feval = 1L, ierr = 0L, msg = "stopped")
-    .r <- .bobyqaAdapt(.flank, -Inf, Inf, .ctl, .st, tol = 1e-4, maxLeg = 3L)
+    .r <- .bobyqaAdapt(.flank, -Inf, Inf, replace(.ctl, "npt", list(5L)), .st, tol = 1e-4, maxLeg = 3L)
     expect_gte(.r$nScaleAdapt, 1L)
     expect_lt(.r$fval, .st$fval)
     # maxLeg = 0 never restarts
