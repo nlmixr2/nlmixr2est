@@ -52,7 +52,7 @@ nmTest({
       })
     }
     expect_equal(.scaleLinear(.mod, scaleLinear = "abs"), c(50, 1, 3, 0.15))
-    expect_equal(.scaleLinear(.mod, scaleLinear = "abs", scaleC = c(NA, NA, 7)), c(50, 1, 7, 0.15))
+    expect_equal(.scaleLinear(.mod, scaleLinear = "abs", scaleC = 9), c(9, 1, 3, 0.15))
   })
 
   test_that("scaleLinear = 'abs' leaves mu-referenced thetas alone", {
