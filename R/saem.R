@@ -2128,8 +2128,8 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
-    .saemWarnDiverged(.ret$fullTheta, .ret$omega, fixed = .ui$iniDf$name[.ui$iniDf$fix])
     .saemFoldPseudoEtas(.ret)
+    .saemWarnDiverged(.ret$fullTheta, .ret$omega, fixed = .ui$iniDf$name[.ui$iniDf$fix])
     # Must run before .saemMixFix(), or ui$theta silently falls back to ini()
     # values for every param.
     .nlmixr2FitUpdateParams(.ret)
