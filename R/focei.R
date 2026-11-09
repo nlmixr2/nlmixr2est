@@ -3774,11 +3774,15 @@ rxUiGet.foceiModel <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiInnerOeta <- function(x, ...) {
-  .oeta <- rxUiGet.foceiModel(x, ...)$innerOeta
-  .opt <- attr(.oeta, "nlmixr2estOptimize")
-  if (is.null(.opt)) {
-    return(.oeta)
+  .m <- rxUiGet.foceiModel(x, ...)
+  if (!is.null(.m$innerOetaOpt)) {
+    return(.m$innerOetaOpt)
   }
+  .oeta <- .m$innerOeta
+  if (is.null(.oeta)) {
+    return(NULL)
+  }
+  .opt <- attr(.oeta, "nlmixr2estOptimize")
   .wrap <- attr(.oeta, "nlmixr2estWrap")
   if (.opt[["sumProd"]]) {
     .oeta <- rxode2::rxSumProdModel(.oeta)
@@ -3791,11 +3795,12 @@ rxUiGet.foceiInnerOeta <- function(x, ...) {
     ))
   }
   .oeta <- paste(c(.wrap[1], .oeta, .wrap[2]), collapse = "\n")
-  # store the optimized text so later calls (and sessions) skip the pass
+  # stored in its own slot (innerOeta keeps the raw text) so later calls
+  # and sessions skip the pass
   .cacheFile <- rxUiGet.foceiModelCache(x, ...)
   if (file.exists(.cacheFile)) {
     .store <- readRDS(.cacheFile)
-    .store$innerOeta <- .oeta
+    .store$innerOetaOpt <- .oeta
     saveRDS(.store, .cacheFile)
   }
   .oeta

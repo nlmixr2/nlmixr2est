@@ -49,7 +49,9 @@ test_that("innerOeta is optimized on demand, once (#1321)", {
   oeta <- rxUiGet.foceiInnerOeta(ui)
   expect_equal(nOpt, 1L)
   expect_null(attributes(oeta))
-  expect_null(attributes(readRDS(cacheFile)$innerOeta))
+  expect_identical(readRDS(cacheFile)$innerOetaOpt, oeta)
+  # the raw innerOeta the bundle already carried is left alone
+  expect_identical(suppressMessages(rxUiGet.foceiModel(ui))$innerOeta, raw)
 
   # a second request (and a reloaded bundle) reuses the stored text
   expect_identical(rxUiGet.foceiInnerOeta(ui), oeta)
@@ -85,4 +87,34 @@ test_that("innerOeta is optimized on demand, once (#1321)", {
   expect_equal(s1[, cols], s2[, cols], tolerance = 1e-8)
   expect_equal(s1$rx__ETA1, rep(0.1, 5))
   expect_true(all(s2$rx_pred_ > 0))
+})
+
+test_that("foceiInnerOeta keeps the model's mtime() lines (#1321)", {
+  skip_on_cran()
+  model <- function() {
+    ini({
+      tke <- -1
+      tt1 <- log(2)
+      add.sd <- 0.1
+      eta.ke ~ 0.1
+    })
+    model({
+      ke <- exp(tke + eta.ke)
+      mtime(t1) <- exp(tt1)
+      cp <- 10 * exp(-ke * t)
+      if (t >= t1) cp <- 5 * exp(-ke * t)
+      cp ~ add(add.sd)
+    })
+  }
+  ui <- list(rxode2::.copyUi(suppressMessages(nlmixr2(model))))
+  cacheFile <- rxUiGet.foceiModelCache(ui)
+  unlink(cacheFile)
+  on.exit(unlink(cacheFile), add = TRUE)
+  oeta <- suppressMessages(rxUiGet.foceiInnerOeta(ui))
+  expect_match(oeta, "mtime(t1)", fixed = TRUE)
+  oetaMod <- rxode2::rxode2(oeta)
+  p <- c("THETA[1]" = -1, "THETA[2]" = log(2), "THETA[3]" = 0.1, "ETA[1]" = 0)
+  s <- as.data.frame(rxode2::rxSolve(oetaMod, rxode2::et(c(1, 3)), p))
+  s <- s[s$time %in% c(1, 3), ]
+  expect_equal(s$rx_pred_, c(10 * exp(-exp(-1)), 5 * exp(-3 * exp(-1))), tolerance = 1e-6)
 })
