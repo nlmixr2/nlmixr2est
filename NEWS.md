@@ -54,7 +54,8 @@
   untied `om.rx.<iov>.<k>` row per occasion (#1317).
 
 - SAEM's `iovMethod = "twoLevel"` `$parFixedDf` now has an `iov.<x>` row per
-  occasion parameter, with the SE of the occasion SD and its CV, the way
+  occasion parameter, with the SE of the occasion SD and its CV (an SD when
+  the parameter is not `exp()`-transformed), the way
   `iovMethod = "theta"` reports it; it used to have no IOV rows (#1317).
 
 - A FOCEi covariance that a vae or vi fit could not compute or install is now
