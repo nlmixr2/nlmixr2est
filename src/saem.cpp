@@ -3412,16 +3412,6 @@ public:
               uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
               cur_DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
             }
-          } else if (distribution == 4) {
-            // general log-likelihood: the prediction is the per-obs loglik,
-            // clamped the way do_mcmc() scores its proposals
-            for (int k = 0; k < nmc; k++) {
-              vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
-              fk.elem(find(fk >= 1.0e99)).fill(_saemGenLikBadSolvePenalty);
-              fk.elem(find(fk > _saemGenLikCeiling)).fill(_saemGenLikCeiling);
-              uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
-              cur_DYF(indio_k) = -fk;
-            }
           }
 
           vec U_y = sum(cur_DYF, 0).t();
