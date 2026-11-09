@@ -13366,22 +13366,28 @@ static bool foceiFdSFull(const FdFullCtx &c, const std::vector<double> &x0,
   return true;
 }
 
+static bool foceiFdEtaOk(int a) { return a >= 1 && a <= op_focei.neta; }
+
+// The omega pairs and same() copies index real etas and free omega slots.
+static bool foceiFdEtasOk(const FdFullCtx &c) {
+  for (int q = 0; q < c.nom; ++q) {
+    if (!foceiFdEtaOk(c.omA[q]) || !foceiFdEtaOk(c.omB[q])) return false;
+  }
+  for (int k = 0; k < c.cpA.size(); ++k) {
+    if (c.cpOf[k] < 0 || c.cpOf[k] >= c.nom) return false;
+    if (!foceiFdEtaOk(c.cpA[k]) || !foceiFdEtaOk(c.cpB[k])) return false;
+  }
+  return true;
+}
+
 // Every index .foceiFdFullParams(e) returned is in range for this fit.
 static bool foceiFdParamsOk(const FdFullCtx &c, const CharacterVector &nm) {
-  int neta = op_focei.neta;
-  auto etaOk = [neta](int a) { return a >= 1 && a <= neta; };
   if (c.omB.size() != c.nom || nm.size() != c.nth + c.nom) return false;
   if (c.cpB.size() != c.cpA.size() || c.cpOf.size() != c.cpA.size()) return false;
   for (int i = 0; i < c.nth; ++i) {
     if (c.thPos[i] < 0 || c.thPos[i] >= (int)op_focei.ntheta) return false;
   }
-  for (int q = 0; q < c.nom; ++q) {
-    if (!etaOk(c.omA[q]) || !etaOk(c.omB[q])) return false;
-  }
-  for (int k = 0; k < c.cpA.size(); ++k) {
-    if (c.cpOf[k] < 0 || c.cpOf[k] >= c.nom || !etaOk(c.cpA[k]) || !etaOk(c.cpB[k])) return false;
-  }
-  return true;
+  return foceiFdEtasOk(c);
 }
 
 // enumeration/names from the R helper .foceiFdFullParams(e); false if nothing to do.
