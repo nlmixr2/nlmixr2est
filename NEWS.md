@@ -496,6 +496,9 @@
   closed-form update, instead of a magnitude theta moved as a fixed effect
   (#1319).
 
+- saem refuses a `prior()` on an occasion variance again; the IOV rewrite
+  dropped it before the prior check ran, so the fit ignored it (#1319).
+
 - A model whose occasion-level eta name starts with `eta.` (`eta.ka.occ ~ 0.1 | OCC`)
   now fits.  The SAEM temporary-eta cleanup took every `rx.eta.` name, including
   the `rx.eta.ka.occ.<occ>` occasion columns, so every estimator stopped with
