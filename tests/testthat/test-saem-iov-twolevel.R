@@ -140,10 +140,56 @@ test_that("saemOmegaPool groups the occasion etas, and only those", {
   expect_equal(.exp$saemEtaNames, c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
   expect_equal(rxUiGet.saemOmegaPool(list(.exp)), c(0L, 0L, 0L, 1L, 1L))
 
-  # the shared rewrite's line is a PRODUCT (magnitude * sum), so it must not be
-  # picked up as a pool
+  # the shared rewrite pools them too for saem (#1319) ...
   .legacy <- .uiApplyIov(.ui, "saem", .twoLevelData(), saemControl(iovMethod = "theta"))$ui
-  expect_true(all(rxUiGet.saemOmegaPool(list(.legacy)) == 0L))
+  expect_equal(rxUiGet.saemOmegaPool(list(.legacy)), c(0L, 0L, 0L, 1L, 1L))
+  # ... but its focei line is a PRODUCT (magnitude * sum), never a pool
+  .focei <- suppressMessages(.uiApplyIov(.ui, "focei", .twoLevelData(), foceiControl(iovMethod = "theta")))$ui
+  expect_true(all(rxUiGet.saemOmegaPool(list(.focei)) == 0L))
+})
+
+test_that("saem's shared rewrite pools a model the two-level handling declines (#1319)", {
+  # nolint start: object_usage_linter. rxode2 ini()/model() are NSE blocks.
+  .nonMu <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      iov.cl ~ fix(0.1) | occ
+      iov.v ~ 0.2 | occ2
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- tcl * exp(eta.cl + iov.cl)
+      v <- exp(tv + iov.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # nolint end
+  .d <- .twoLevelData()
+  .d$occ2 <- ifelse(.d$TIME %% 2 < 1, 1, 2)
+  .ui <- rxode2::rxUiDecompress(.nonMu())
+  expect_true(is.character(.saemIovInfo(.ui, .d)))
+  .rw <- suppressWarnings(.uiApplyIov(.ui, "saem", .d, saemControl(iovMethod = "twoLevel")))$ui
+  .ini <- .rw$iniDf
+  # no magnitude theta: the declared variances start the per-occasion etas
+  expect_false(any(c("iov.cl", "iov.v") %in% .ini$name))
+  expect_equal(.ini$est[.ini$name %in% c("rx.iov.cl.1", "rx.iov.cl.2")], c(0.1, 0.1))
+  expect_true(all(.ini$fix[.ini$name %in% c("rx.iov.cl.1", "rx.iov.cl.2")]))
+  expect_equal(.ini$est[.ini$name %in% c("rx.iov.v.1", "rx.iov.v.2")], c(0.2, 0.2))
+  # one pool per occasion parameter, so each gets a closed-form variance
+  .pool <- rxUiGet.saemOmegaPool(list(.rw))
+  .nm <- .rw$saemEtaNames
+  expect_equal(.pool[.nm %in% c("rx.iov.cl.1", "rx.iov.cl.2")], c(1L, 1L))
+  expect_equal(.pool[.nm %in% c("rx.iov.v.1", "rx.iov.v.2")], c(2L, 2L))
+  expect_true(all(.pool[!grepl("^rx[.]iov", .nm)] == 0L))
+  expect_equal(
+    .uiIovEnv$iovTwoLevel,
+    list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2"), iov.v = c("rx.iov.v.1", "rx.iov.v.2"))
+  )
 })
 
 test_that(".saemIovCollapseCov contracts the pooled occasion columns", {

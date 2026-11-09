@@ -5,12 +5,10 @@
 # occasion term to the code here instead.
 #
 # The shared rewrite (.uiApplyIov(), R/iov.R) carries the occasion magnitude as
-# a population parameter multiplying per-occasion unit-variance etas.  That
-# makes the magnitude non-mu-referenced, so saem estimates a VARIANCE through
-# its fixed-effect-only (phi0) path -- a stochastic sampled mean over draws
-# whose pseudo-variance is deliberately annealed, then a bounded direct
-# optimization -- while every other variance component in the algorithm gets a
-# closed-form M-step.  On theo_md that estimate collapses toward zero.
+# a population parameter multiplying per-occasion unit-variance etas.  saem
+# would move that VARIANCE through its fixed-effect-only (phi0) path and shrink
+# it toward zero, so for saem (the "iovPool" attribute) the rewrite emits the
+# same pooled per-occasion etas as below instead (#1319).
 #
 # Panhard X, Samson A (2009), "Extension of the SAEM algorithm for nonlinear
 # mixed effects models with two levels of random effects", Biostatistics 10(1),

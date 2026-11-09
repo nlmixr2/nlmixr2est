@@ -65,7 +65,7 @@ test_that("iovMethod='twoLevel' estimates one occasion variance in closed form",
   expect_length(grep("^rx[.]", names(.f2)), 0L)
 })
 
-test_that("the two-level occasion variance does not collapse the way the shared rewrite's does", {
+test_that("iovMethod='theta' estimates the occasion variance the way twoLevel does (#1319)", {
   skip_on_cran()
   .d <- .twoLevelFitData()
   .f0 <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem", control = .twoLevelCtl(iovMethod = "theta")))
@@ -78,9 +78,11 @@ test_that("the two-level occasion variance does not collapse the way the shared 
   .iov0 <- .f0$omega$occ[1, 1]
   .iov2 <- .f2$omega$occ[1, 1]
 
-  # the shared rewrite estimates this variance through the annealed phi0 path
-  # and drives it toward zero; the closed-form M-step does not
-  expect_true(.iov2 > 2 * .iov0)
+  # the shared rewrite used to carry this variance as a magnitude theta, which
+  # saem's annealed phi0 path drove toward zero; it now pools per-occasion etas
+  # and gets the same closed-form M-step
+  expect_false("iov.cl" %in% names(.f0$fixef))
+  expect_equal(.iov0, .iov2, tolerance = 0.2)
 
   # the structural parameters are unaffected -- this is the same model, fitted
   # better, not a different one
@@ -128,6 +130,10 @@ test_that("a model outside the two-level scope falls back to the shared rewrite"
   expect_true(any(grepl("two-level IOV needs one occasion variable", .f$runInfo)))
   expect_true(is.list(.f$omega))
   expect_true(all(c("occ", "occ2") %in% names(.f$omega)))
+  # each occasion variable's etas share one pooled variance (#1319)
+  expect_true(.f$omega$occ[1, 1] > 1e-4)
+  expect_true(.f$omega$occ2[1, 1] > 1e-4)
+  expect_false(any(c("iov.cl", "iov.v") %in% names(.f$fixef)))
 })
 
 test_that("a two-level fit's covariance carries one row for the occasion variance", {
