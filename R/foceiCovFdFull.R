@@ -39,7 +39,7 @@
     .omegaFixed(ini, pairs),
     ui$omegaSameMap,
     map$etaNames,
-    ini$name[!is.na(ini$ntheta)]
+    ini$name[!is.na(ini$ntheta) & isFix]
   )
   pairs <- pairs[tie$free, , drop = FALSE]
   if (nrow(pairs) == 0L) {
@@ -64,7 +64,7 @@
 #' @param fixed which `pairs` are fixed
 #' @param same `omegaSameMap` (each eta's master eta, 0 for none), or `NULL`
 #' @param onm eta names
-#' @param thetas the model's theta names, to name an IOV group
+#' @param thetas the model's fixed theta names, to name an IOV group
 #' @return list: `free` (rows of `pairs` that are parameters), `cpA`/`cpB` (the
 #'   copies of a free element) with `cpOf` (0-based index of their parameter
 #'   among the free pairs), and `onm` with each master named by its IOV parameter
@@ -93,11 +93,13 @@
   .key <- function(a, b) paste(pmax(a, b), pmin(a, b))
   .at <- match(.key(.ma, .mb), .key(pairs[, 1], pairs[, 2]))
   # what same() cannot produce: a copy correlated with a non-copy, a copy
-  # element its master block does not declare, or two copies of one eta
+  # element its master block does not declare, one spanning two copies, or a
+  # copy block missing one of its master's elements
   if (
     any((.ma > 0L) != (.mb > 0L)) ||
       any(.isCp & is.na(.at)) ||
-      any(.isCp & (pairs[, 1] == pairs[, 2]) != (.ma == .mb))
+      any(.isCp & (pairs[, 1] - pairs[, 2]) != (.ma - .mb)) ||
+      !.foceiSameBlocksComplete(pairs, same)
   ) {
     return(.none)
   }
@@ -117,14 +119,36 @@
   )
 }
 
+#' Whether every copy block declares each element of the block it repeats
+#' @param pairs declared Omega element pairs
+#' @param same resolved `omegaSameMap`
+#' @return logical
+#' @noRd
+.foceiSameBlocksComplete <- function(pairs, same) {
+  .key <- paste(pairs[, 1], pairs[, 2])
+  for (.a in which(same > 0L)) {
+    .d <- .a - same[.a] # this copy block's offset from its master
+    .m <- pairs[, 1] == same[.a] | pairs[, 2] == same[.a]
+    for (.k in which(.m)) {
+      .i <- pairs[.k, 1] + .d
+      .j <- pairs[.k, 2] + .d
+      .in <- .i <= length(same) && .j <= length(same) && same[.i] == pairs[.k, 1] && same[.j] == pairs[.k, 2]
+      if (.in && !(paste(.i, .j) %in% .key)) {
+        return(FALSE)
+      }
+    }
+  }
+  TRUE
+}
+
 #' The IOV parameter a `same()` group repeats
 #'
 #' Occasion copies are named `rx.<iov>.<level>`, and the expanded model keeps
-#' `<iov>` as its magnitude theta; the group takes the longest such theta every
+#' `<iov>` as its magnitude theta, fixed at one; the group takes the longest such theta every
 #' copy is named after.  Any other `same()` group keeps its master's name.
 #' @param master master eta name
 #' @param copies its copies' eta names
-#' @param thetas the model's theta names
+#' @param thetas the model's fixed theta names
 #' @return name
 #' @noRd
 .foceiSameGroupName <- function(master, copies, thetas) {

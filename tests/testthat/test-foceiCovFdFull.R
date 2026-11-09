@@ -149,6 +149,20 @@ test_that("chained, fixed and malformed same() maps tie as expected (#1316)", {
   # a copy covariance its (uncorrelated) master does not declare
   .p3 <- rbind(c(1L, 1L), c(2L, 2L), c(3L, 3L), c(4L, 3L), c(4L, 4L))
   expect_identical(.foceiFdFullSameTie(.p3, rep(FALSE, 5), c(0L, 0L, 1L, 2L), paste0("e", 1:4))$free, rep(TRUE, 5))
+  # an element spanning two copy blocks; a copy block missing its master's covariance
+  .p5 <- .omegaDeclaredPairs(
+    diag(6),
+    data.frame(
+      name = paste0("x", 1:10),
+      neta1 = c(1L, 2L, 2L, 3L, 4L, 4L, 5L, 5L, 6L, 6L),
+      neta2 = c(1L, 1L, 2L, 3L, 3L, 4L, 4L, 5L, 5L, 6L),
+      fix = FALSE
+    )
+  )
+  .s5 <- c(0L, 0L, 1L, 2L, 1L, 2L)
+  expect_true(all(.foceiFdFullSameTie(.p5, rep(FALSE, nrow(.p5)), .s5, paste0("e", 1:6))$free))
+  .p6 <- rbind(c(1L, 1L), c(2L, 1L), c(2L, 2L), c(3L, 3L), c(4L, 4L))
+  expect_true(all(.foceiFdFullSameTie(.p6, rep(FALSE, 5), c(0L, 0L, 1L, 2L), paste0("e", 1:4))$free))
   # a 2x2 master with its first variance fixed: copies index the free pairs
   .p4 <- rbind(c(1L, 1L), c(2L, 1L), c(2L, 2L), c(3L, 3L), c(4L, 3L), c(4L, 4L))
   .tie <- .foceiFdFullSameTie(.p4, c(TRUE, FALSE, FALSE, FALSE, FALSE, FALSE), c(0L, 0L, 1L, 2L), paste0("e", 1:4))
