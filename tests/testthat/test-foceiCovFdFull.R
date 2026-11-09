@@ -118,3 +118,44 @@ test_that("a same() group is named by the parameter it repeats", {
   .uiIovEnv$iovMaster <- list(iov.cl = "rx.iov.cl.a.b")
   expect_identical(.foceiSameGroupName("rx.iov.cl.a.b", "rx.iov.cl.a.c"), "iov.cl")
 })
+
+test_that("a chained same() map and a fixed master tie as expected (#1316)", {
+  .pairs <- cbind(1:3, 1:3)
+  .onm <- c("eta.a", "eta.b", "eta.c")
+  # eta.c repeats eta.b, which repeats eta.a
+  .tie <- .foceiFdFullSameTie(.pairs, c(0L, 1L, 2L), .onm)
+  expect_identical(.tie$free, c(TRUE, FALSE, FALSE))
+  expect_identical(.tie$cpA, 2:3)
+  expect_identical(.tie$cpOf, c(0L, 0L))
+  # the master is fixed (not among the pairs): its copy is not a parameter and does not move
+  .tie <- .foceiFdFullSameTie(cbind(c(2L, 3L), c(2L, 3L)), c(0L, 0L, 1L), .onm)
+  expect_identical(.tie$free, c(TRUE, FALSE))
+  expect_length(.tie$cpA, 0L)
+})
+
+test_that(".foceiFdFullParams() ties a user's same() blocks (#1316)", {
+  .f <- function() {
+    ini({
+      tcl <- 1
+      add.sd <- 1
+      eta.a + eta.b ~ c(0.3, 0.1, 0.2)
+      eta.c + eta.d ~ same()
+      eta.e + eta.f ~ same()
+    })
+    model({
+      cl <- tcl * exp(eta.a + eta.b + eta.c + eta.d + eta.e + eta.f)
+      cl ~ add(add.sd)
+    })
+  }
+  .ui <- suppressWarnings(suppressMessages(rxode2::rxode2(.f)))
+  .e <- new.env(parent = emptyenv())
+  .e$ui <- .ui
+  .e$omega <- .ui$omega
+  .p <- .foceiFdFullParams(.e)
+  expect_identical(.p$names, c("tcl", "add.sd", "om.eta.a", "cov.eta.b.eta.a", "om.eta.b"))
+  expect_identical(.p$omA, c(1L, 2L, 2L))
+  expect_identical(.p$omB, c(1L, 1L, 2L))
+  expect_identical(.p$cpA, c(3L, 4L, 4L, 5L, 6L, 6L))
+  expect_identical(.p$cpB, c(3L, 3L, 4L, 5L, 5L, 6L))
+  expect_identical(.p$cpOf, c(0L, 1L, 2L, 0L, 1L, 2L))
+})

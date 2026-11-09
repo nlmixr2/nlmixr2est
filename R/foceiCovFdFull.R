@@ -65,24 +65,31 @@
   if (length(same) != length(onm) || !any(same > 0L)) {
     return(.none)
   }
+  # follow a chained map to the block every copy repeats
+  same <- as.integer(same)
+  for (.i in seq_along(same)) {
+    .c <- same > 0L & same[pmax(same, 1L)] > 0L
+    if (!any(.c)) {
+      break
+    }
+    same[.c] <- same[same[.c]]
+  }
   .ma <- same[pairs[, 1]]
   .mb <- same[pairs[, 2]]
   .isCp <- .ma > 0L & .mb > 0L
   .free <- !.isCp
   .key <- function(a, b) paste(pmax(a, b), pmin(a, b))
-  .of <- match(.key(.ma, .mb)[.isCp], .key(pairs[.free, 1], pairs[.free, 2]))
-  if (anyNA(.of)) {
-    # a copy whose master is not free; leave the matrix untied rather than guess
-    return(.none)
-  }
+  .of <- match(.key(.ma, .mb), .key(pairs[.free, 1], pairs[.free, 2]))
+  # a copy of a fixed element is fixed with it: neither a parameter nor moved
+  .mv <- .isCp & !is.na(.of)
   for (.m in unique(same[same > 0L])) {
     onm[.m] <- .foceiSameGroupName(onm[.m], onm[same == .m])
   }
   list(
     free = .free,
-    cpA = as.integer(pairs[.isCp, 1]),
-    cpB = as.integer(pairs[.isCp, 2]),
-    cpOf = as.integer(.of - 1L),
+    cpA = as.integer(pairs[.mv, 1]),
+    cpB = as.integer(pairs[.mv, 2]),
+    cpOf = as.integer(.of[.mv] - 1L),
     onm = onm
   )
 }

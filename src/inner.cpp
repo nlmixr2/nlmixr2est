@@ -13386,6 +13386,12 @@ static bool foceiFdParams(Environment e, FdFullCtx &c, CharacterVector &nm) {
     c.cpA = pl["cpA"]; c.cpB = pl["cpB"]; c.cpOf = pl["cpOf"];
   }
   c.nth = c.thPos.size(); c.nom = c.omA.size();
+  int neta = op_focei.neta;
+  if (c.cpB.size() != c.cpA.size() || c.cpOf.size() != c.cpA.size()) return false;
+  for (int k = 0; k < c.cpA.size(); ++k) {
+    if (c.cpOf[k] < 0 || c.cpOf[k] >= c.nom || c.cpA[k] < 1 || c.cpA[k] > neta ||
+        c.cpB[k] < 1 || c.cpB[k] > neta) return false;
+  }
   return (c.nth + c.nom) > 0;
 }
 
