@@ -127,6 +127,83 @@
 
 #### Estimation
 
+- `est = "nlm"` and `est = "nls"` with the `linCmt()` sensitivity carry
+  (`linCmtSensCarry = "auto"`, the default) now reach the optimum. The
+  record walk that builds their gradient started each subject from the
+  carry its solve had already advanced, so the carried theta gradient
+  was wrong (for `tcl`, -49.1 where the objective’s derivative is -0.49,
+  in a one-compartment model with a time-varying weight). nlm stopped
+  near the initial estimates (objective -21.88 against -27.21 for its
+  ODE twin under nocb) and nls short of the optimum (-27.19). Both now
+  equal the ODE twin.
+
+- Importance-sampling fits install the matching event callbacks for
+  inner and theta-sensitivity solves, preventing heap corruption with
+  separate models.
+
+- Per-subject FD gradient fallbacks temporarily tighten inner and ODE
+  tolerances to improve derivative accuracy.
+
+- Analytical FOCEi gradients include the remaining inner score when
+  finite tolerances leave the ETA mode approximate.
+
+- Pooled inner and second-order models read their solves at the stride
+  and compartment basis they were solved with, fixing failed fast fits
+  ([\#1115](https://github.com/nlmixr2/nlmixr2est/issues/1115),
+  [\#1133](https://github.com/nlmixr2/nlmixr2est/issues/1133)).
+
+- A conditional (`innerHessian`/`detHessian = "conditional"`) or fast
+  `ll()` Hessian now solves its model under its own dose-event
+  sensitivities, so an eta in `f()`, `alag()`, `rate()` or `dur()` gets
+  its second-order dose jumps. Such fits run their subject loops
+  serially.
+
+- Fast FOCEi defaults to gradient-only `nlminb`; ordinary fits retain
+  `bobyqa`. Explicit outer optimizer choices are preserved.
+
+- Fast fits default `nlminb`’s `rel.tol` to `10^(-sigdig-2)`; at
+  `10^(-sigdig)` relative convergence stopped short of the optimum.
+
+- `nlminb` curvature is opt-in through `outerTrustHessian="analytic"` or
+  `"fd"`; `"auto"` and `"bfgs"` retain its BFGS approximation.
+
+- FD Hessian probes capture the base gradient before moving solver state
+  and restore state after failures; unavailable curvature uses the
+  existing fallback.
+
+- Analytical gradients reuse the evaluated objective point and preserve
+  valid zero components without resetting parameters or changing
+  optimizers.
+
+- Fast FOCEi ETA predictions use EBEs from the last gradient evaluation,
+  making repeated line-search trials independent of ETAs left by other
+  trials.
+
+- A zero-iteration fast fit again reports the same ETAs, objective and
+  covariance as `fast = FALSE`; its diagnostic gradient no longer seeds
+  the final inner problem through the ETA predictor
+  ([\#1057](https://github.com/nlmixr2/nlmixr2est/issues/1057)).
+
+- The NN outer-training matrix reads the inner solve at the inner
+  model’s own stride and compartment basis in a pooled fit.
+
+- The fast FOCEi augmented sensitivity model is optimized in a single
+  `rxOptExpr()` pass, so its CSE temporaries no longer collide
+  ([\#1133](https://github.com/nlmixr2/nlmixr2est/issues/1133)).
+
+- FOCEi caches reuse compiled models to reduce setup time and keep
+  rxode2 versions/builds separate to prevent bundle collisions
+  ([\#1133](https://github.com/nlmixr2/nlmixr2est/issues/1133)).
+
+- `saemControl(mixProbMethod = "regress")` now classifies each subject
+  at its own eta mode under every mixture component, with the residual
+  re-estimated from the classified fits, instead of at the initial eta
+  draws. Under proportional error the old classification put many
+  subjects in whichever component over-predicted. Split-eta mixtures now
+  keep fixed membership instead of always falling back to
+  `"regularized"`
+  ([\#1296](https://github.com/nlmixr2/nlmixr2est/issues/1296)).
+
 - A FOCEi fit whose final objective is more than
   `foceiControl(finalEtaTol=)` (default 1) above the lowest objective
   its search evaluated now re-solves the final ETAs from that

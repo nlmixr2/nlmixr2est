@@ -411,7 +411,7 @@ npbControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55f34adc7130>
+#> <bytecode: 0x5604607bfed0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -589,6 +589,9 @@ npbControl()
 #> [1] "bobyqa"
 #> 
 #> $outerOptDefault
+#> [1] TRUE
+#> 
+#> $relTolDefault
 #> [1] TRUE
 #> 
 #> $rmatNorm

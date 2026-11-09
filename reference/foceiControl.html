@@ -503,7 +503,7 @@ and (for the non-Gaussian path) multiple endpoints, censoring or
 <code>nAGQ &gt; 1</code>; those fall back to the finite-difference gradient with
 a message (linCmt() and out-of-scope log-likelihood models downgrade to
 <code>fast=FALSE</code> up front).  When unspecified,
-the outer optimizer defaults to <code>"lbfgsb3c"</code> (vs <code>"bobyqa"</code> for
+the outer optimizer defaults to <code>"nlminb"</code> (vs <code>"bobyqa"</code> for
 <code>fast=FALSE</code>); pairing <code>fast=TRUE</code> with a derivative-free
 <code>outerOpt</code> reverts to <code>fast=FALSE</code>.  The <code>*f</code> methods (e.g.
 <code>foceif</code>) default this to <code>TRUE</code>.</p></dd>
@@ -945,7 +945,8 @@ the Hessian on the unscaled parameter space.</p></dd>
 
 <dt id="arg-outeropt">outerOpt<a class="anchor" aria-label="anchor" href="#arg-outeropt"></a></dt>
 <dd><p>optimization method for the outer problem
-Fast <code>"nlminb"</code> fits automatically use the analytical outer Hessian
+Fast <code>"nlminb"</code> fits use gradients only by default. Set
+<code>outerTrustHessian="analytic"</code> to request the analytical outer Hessian
 for supported Gaussian FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
 curvature is unavailable.  <code>"trust"</code> is a trust-region Newton method
 (<span class="pkg">RcppTrust</span>) built on that same Hessian; see
@@ -1128,8 +1129,10 @@ of each solve.</p></dd>
 
 
 <dt id="arg-outertrusthessian">outerTrustHessian<a class="anchor" aria-label="anchor" href="#arg-outertrusthessian"></a></dt>
-<dd><p>Curvature source for <code>outerOpt="trust"</code>.
-<code>"auto"</code> (default) uses the analytical outer Hessian when
+<dd><p>Curvature source for <code>outerOpt="trust"</code> or <code>"nlminb"</code>.
+For <code>"nlminb"</code>, <code>"auto"</code> and <code>"bfgs"</code> leave curvature to
+its BFGS approximation; <code>"analytic"</code> and <code>"fd"</code> request a Hessian.
+For <code>"trust"</code>, <code>"auto"</code> (default) uses the analytical outer Hessian when
 <code>fast=TRUE</code> makes it available and the damped-BFGS update otherwise,
 and falls back to that update if the Hessian is refused mid-fit.
 <code>"analytic"</code> requires <code>fast=TRUE</code>.  <code>"bfgs"</code> is the
@@ -1188,7 +1191,9 @@ objective; must be in `[n+2, (n+1)(n+2)/2]`. Defaults to `2*n + 1`.
 
 
 <dt id="arg-rel-tol">rel.tol<a class="anchor" aria-label="anchor" href="#arg-rel-tol"></a></dt>
-<dd><p>Relative tolerance before nlminb stops (nlmimb).</p></dd>
+<dd><p>Relative tolerance before nlminb stops (nlmimb).
+`NULL` (default) uses `10^(-sigdig)`, or `10^(-sigdig-2)` with
+`fast=TRUE`, whose analytic gradient can resolve the tighter optimum.</p></dd>
 
 
 <dt id="arg-x-tol">x.tol<a class="anchor" aria-label="anchor" href="#arg-x-tol"></a></dt>

@@ -460,7 +460,7 @@ foceiControl(
   non-Gaussian path) multiple endpoints, censoring or `nAGQ > 1`; those
   fall back to the finite-difference gradient with a message (linCmt()
   and out-of-scope log-likelihood models downgrade to `fast=FALSE` up
-  front). When unspecified, the outer optimizer defaults to `"lbfgsb3c"`
+  front). When unspecified, the outer optimizer defaults to `"nlminb"`
   (vs `"bobyqa"` for `fast=FALSE`); pairing `fast=TRUE` with a
   derivative-free `outerOpt` reverts to `fast=FALSE`. The `*f` methods
   (e.g. `foceif`) default this to `TRUE`.
@@ -907,8 +907,9 @@ foceiControl(
 
 - outerOpt:
 
-  optimization method for the outer problem Fast `"nlminb"` fits
-  automatically use the analytical outer Hessian for supported Gaussian
+  optimization method for the outer problem Fast `"nlminb"` fits use
+  gradients only by default. Set `outerTrustHessian="analytic"` to
+  request the analytical outer Hessian for supported Gaussian
   FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
   curvature is unavailable. `"trust"` is a trust-region Newton method
   (RcppTrust) built on that same Hessian; see `outerTrustHessian`. It is
@@ -1094,12 +1095,14 @@ foceiControl(
 
 - outerTrustHessian:
 
-  Curvature source for `outerOpt="trust"`. `"auto"` (default) uses the
-  analytical outer Hessian when `fast=TRUE` makes it available and the
-  damped-BFGS update otherwise, and falls back to that update if the
-  Hessian is refused mid-fit. `"analytic"` requires `fast=TRUE`.
-  `"bfgs"` is the damped BFGS update (Nocedal & Wright, Numerical
-  Optimization 2nd ed., Procedure 18.2) built from consecutive
+  Curvature source for `outerOpt="trust"` or `"nlminb"`. For `"nlminb"`,
+  `"auto"` and `"bfgs"` leave curvature to its BFGS approximation;
+  `"analytic"` and `"fd"` request a Hessian. For `"trust"`, `"auto"`
+  (default) uses the analytical outer Hessian when `fast=TRUE` makes it
+  available and the damped-BFGS update otherwise, and falls back to that
+  update if the Hessian is refused mid-fit. `"analytic"` requires
+  `fast=TRUE`. `"bfgs"` is the damped BFGS update (Nocedal & Wright,
+  Numerical Optimization 2nd ed., Procedure 18.2) built from consecutive
   gradients, so it adds no evaluations. `"fd"` differences the outer
   gradient, costing one extra population gradient per parameter per
   iteration.
@@ -1152,7 +1155,9 @@ foceiControl(
 
 - rel.tol:
 
-  Relative tolerance before nlminb stops (nlmimb).
+  Relative tolerance before nlminb stops (nlmimb). \`NULL\` (default)
+  uses \`10^(-sigdig)\`, or \`10^(-sigdig-2)\` with \`fast=TRUE\`, whose
+  analytic gradient can resolve the tighter optimum.
 
 - x.tol:
 

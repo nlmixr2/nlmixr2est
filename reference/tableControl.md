@@ -83,7 +83,10 @@ tableControl(
   initialized; when given, it takes precedence over an active
   [`rxSetSeed()`](https://nlmixr2.github.io/rxode2/reference/rxSetSeed.html)
   stream for this solve, and the caller's `.Random.seed` is restored
-  afterwards
+  afterwards.
+  [`rxControl()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
+  only stores it; the seed is applied when the control is used by a
+  solve
 
 - cholSEtol:
 
