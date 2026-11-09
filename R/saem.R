@@ -743,17 +743,20 @@
 #' @param theta final SAEM thetas (named)
 #' @param omega final SAEM omega
 #' @param fixed names of fixed parameters (not checked)
-#' @param bound magnitude above which an estimate counts as diverged
+#' @param expNames thetas and etas inside `exp()`, whose back-transformed
+#'   value (or CV%) overflows above `log(.Machine$double.xmax)`
+#' @param bound magnitude above which any other estimate counts as diverged
 #' @return Nothing, called for the warning side effect
 #' @author Matthew L. Fidler
 #' @noRd
-.saemWarnDiverged <- function(theta, omega, fixed = character(0), bound = 1e10) {
+.saemWarnDiverged <- function(theta, omega, fixed = character(0), expNames = character(0), bound = 1e10) {
   .x <- theta
   if (is.matrix(omega) && nrow(omega) > 0L) {
     .x <- c(.x, setNames(diag(omega), rownames(omega)))
   }
   .x <- .x[!(names(.x) %in% fixed)]
-  .bad <- names(.x)[!is.finite(.x) | abs(.x) > bound]
+  .lim <- ifelse(names(.x) %in% expNames, log(.Machine$double.xmax), bound)
+  .bad <- names(.x)[!is.finite(.x) | abs(.x) > .lim]
   if (length(.bad) > 0L) {
     .pre <- "estimates diverged: "
     warning(paste0(.pre, .vaeTruncList(.bad, prefix = .pre)), call. = FALSE)
@@ -2129,7 +2132,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
     .saemFoldPseudoEtas(.ret)
-    .saemWarnDiverged(.ret$fullTheta, .ret$omega, fixed = .ui$iniDf$name[.ui$iniDf$fix])
+    .mre <- .ui$muRefCurEval
+    .saemWarnDiverged(
+      .ret$fullTheta,
+      .ret$omega,
+      fixed = .ui$iniDf$name[.ui$iniDf$fix],
+      expNames = .mre$parameter[.mre$curEval == "exp"]
+    )
     # Must run before .saemMixFix(), or ui$theta silently falls back to ini()
     # values for every param.
     .nlmixr2FitUpdateParams(.ret)

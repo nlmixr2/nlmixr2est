@@ -160,8 +160,9 @@
   re-solved before its MCMC step, so the population reset of fixed-effect-only
   thetas between iterations no longer leaves a stale likelihood that froze the
   chain at a state that no longer fit (#1298).
-- A `saem` fit whose estimates diverge (a non-finite value, or a theta or
-  omega variance above 1e10 in magnitude) now says so in `$runInfo`
+- A `saem` fit whose estimates diverge (a non-finite value, a theta or omega
+  variance above 1e10 in magnitude, or one inside `exp()` large enough that
+  its back-transform or CV% overflows) now says so in `$runInfo`
   ("estimates diverged: ...") instead of returning as an ordinary fit with
   only a covariance failure noted (#1298).
 
