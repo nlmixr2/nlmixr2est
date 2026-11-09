@@ -7,9 +7,10 @@
   `1/|init|` inside `scaleCband`.  When a model has such a `theta`, the
   `"bobyqa"` outer search also restarts up to 3 times on a curvature-adapted
   scale (`scaleAdapt = NULL`); models whose thetas are all `exp()`-scaled are
-  unchanged.  On a 36-case simulated PK corpus with linear thetas this ended
-  below the old default on 78 of 180 fits and never above the generating
-  values' objective.  `scaleLinear = "inverse"` and `scaleAdapt = 0` restore
+  unchanged.  On a 36-case simulated PK corpus with linear thetas this
+  ended more than 0.1 below the old default on 87 of 180 fits, more than 0.1
+  above it on 1 (by 0.15), and never above the generating values' objective
+  (the old default did on 2).  `scaleLinear = "inverse"` and `scaleAdapt = 0` restore
   the old behavior (#1320).
 
 - `sigdig` now sets the ODE tolerances to `rtol = 10^(-2*sigdig)` and
