@@ -6209,6 +6209,63 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
   }
 }
 
+// Read the predictions back from the bulk par_solve(): ONE g row per evid==0
+// observation, in subject then record order.  Each subject's rows start at a
+// fixed offset (the observations of the subjects before it), so the subjects
+// are read in parallel, as they were solved, and g does not depend on the
+// thread count or the schedule.  A dose record evaluates lhs too (for the
+// advan sensitivities) but adds no row; evid==2 records are skipped.
+static void saemReadRows(mat &g, int &elt, bool &hasNan, int nInd) {
+  rx_solving_options *op = getSolvingOptions(_rx);
+  int cores = getOpCores(op);
+  bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
+  bool hasCens = hasRxCens(_rx), hasLimit = hasRxLimit(_rx);
+  std::vector<int> start((size_t)nInd + 1, 0);
+  for (int i = 0; i < nInd; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, i);
+    int nObs = 0;
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      if (getIndEvid(ind, getIndIx(ind, j)) == 0) nObs++;
+    }
+    start[(size_t)i + 1] = start[(size_t)i] + nObs;
+  }
+  std::vector<int> rowNan((size_t)nInd, 0);
+  nmForEachSubject(_rx, nInd, cores, doParallel, [&](int id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, id);
+    // iniSubjectE() points ind->lhs at this thread's slice, so read it after
+    iniSubjectE(id, 1, ind, op, _rx, saem_inis);
+    double *lhs = getIndLhs(ind);
+    int row = elt + start[(size_t)id];
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, getIndIdx(ind));
+      double curT = getTime(kk, ind);
+      if (isDose(getIndEvid(ind, kk))) {
+        lhsWalkNewind(ind, j);
+        saem_lhs((int)id, curT, getOpIndSolve(op, ind, j), lhs);
+      } else if (getIndEvid(ind, kk) == 0) {
+        lhsWalkNewind(ind, j);
+        saem_lhs((int)id, curT, getOpIndSolve(op, ind, j), lhs);
+        double cur = saemGenLikCens(lhs, hasCens ? getIndCens(ind, kk) : 0.0,
+                                    hasLimit ? getIndLimit(ind, kk) : R_NegInf,
+                                    lhs[0]);
+        if (std::isnan(cur)) {
+          cur = 1.0e99;
+          rowNan[(size_t)id] = 1;
+        }
+        g(row, 0) = cur;
+        g(row, 1) = hasCens ? getIndCens(ind, kk) : 0.0;
+        g(row, 2) = hasLimit ? getIndLimit(ind, kk) : R_NegInf;
+        row++;
+      }
+    }
+  });
+  elt += start[(size_t)nInd];
+  for (int i = 0; i < nInd; ++i) {
+    if (rowNan[(size_t)i]) hasNan = true;
+  }
+}
+
 mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // The solve below re-seeds this thread's threefry engine once per subject
   // (rxode2's par_*() loops do setSeedEng1(getRxSeed1() + id)), so on return the
@@ -6327,45 +6384,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   if (_saemPhi1PoolActive) {
     saemReadRowsPooled(g, elt, hasNan, _Nnlmixr2);
   } else {
-  for (int id = 0; id < _Nnlmixr2; ++id) {
-    ind = getSolvingOptionsInd(_rx, id);
-    double *lhs = getIndLhs(ind);
-    iniSubjectE(id, 1, ind, op, _rx, saem_inis);
-    for (int j = 0; j < getIndNallTimes(ind); ++j) {
-      setIndIdx(ind, j);
-      int kk = getIndIx(ind, getIndIdx(ind));
-      double curT = getTime(kk, ind);
-      if (isDose(getIndEvid(ind, kk))) {
-        // Need to calculate for advan sensitivities
-        lhsWalkNewind(ind, j);
-        saem_lhs((int)id, curT,
-                 getOpIndSolve(op, ind, j), lhs);
-      } else if (getIndEvid(ind,kk) == 0) {
-        lhsWalkNewind(ind, j);
-        saem_lhs((int)id, curT,
-                 getOpIndSolve(op, ind, j), lhs);
-        double cur = saemGenLikCens(lhs, hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0,
-                                    hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf,
-                                    lhs[0]);
-        if (std::isnan(cur)) {
-          cur = 1.0e99;
-          hasNan = true;
-        }
-        g(elt, 0) = cur;
-        if (hasRxCens(_rx)) {
-          g(elt, 1) = getIndCens(ind, kk);
-        } else {
-          g(elt, 1) = 0;
-        }
-        if (hasRxLimit(_rx)) {
-          g(elt, 2) = getIndLimit(ind, kk);
-        } else {
-          g(elt, 2) = R_NegInf;
-        }
-        elt++;
-      } // evid=2 does not need to be calculated
-    }
-  }
+    saemReadRows(g, elt, hasNan, _Nnlmixr2);
   }
   if (solveMethodThreadSafe(op)) { // liblsoda
     // Order by the overall solve time
