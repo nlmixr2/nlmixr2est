@@ -323,9 +323,17 @@ nmTest({
     .fit <- nlmixr2(.mk(TRUE), .theo, est = "nlme", control = .ctl)
     expect_true(inherits(.fit, "nlmixr2FitData"))
     expect_equal(nrow(as.data.frame(.fit)), .nObs)
-    # and the modeled time has not moved the answer much off the plain model
-    .ref <- nlmixr2(.mk(FALSE), .theo, est = "nlme", control = .ctl)
-    expect_equal(.fit$objf, .ref$objf, tolerance = 1e-2)
+    # mtime(t5) changes nothing in the model, so the plain model solved at the
+    # fit's estimates gives the fit's individual predictions, to within the
+    # solver tolerance.  The objectives of two nlme fits do not measure this:
+    # five nlme iterations turn a tolerance-level change in the predictions
+    # into several percent of the objective.  rxSolve() warns that the
+    # subjects come without an omega; their etas are the fit's.
+    .par <- data.frame(id = .fit$ranef$ID, as.list(.fit$fixef), .fit$ranef[, -1])
+    .plain <- suppressWarnings(
+      rxode2::rxSolve(.mk(FALSE), .par, .theo, returnType = "data.frame")
+    )
+    expect_equal(.plain$cp, .fit$IPRED, tolerance = 1e-4)
   })
 
   test_that("a moving boundary: mtime() sensitivities match the in-place switch", {
