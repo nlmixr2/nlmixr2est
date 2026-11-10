@@ -43,7 +43,9 @@ nmTest({
         calcTables = FALSE,
         outerOpt = opt,
         finalEtaTol = tol,
-        resetEtaP = 1e-10
+        resetEtaP = 1e-10,
+        # the jump is 0.5 on the 1/|init| scale: cc moves by 2.5
+        scaleLinear = "inverse"
       )
     ))
   }
