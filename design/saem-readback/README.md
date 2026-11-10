@@ -43,9 +43,9 @@ error, 3 states, 200 simulated subjects with 3 doses and 12 samples each;
 | main | 116.5 s | 106.8-127.8 s |
 | readback in the workers | 115.8 s | 106.0-117.8 s |
 
-The difference is within the noise. `covMethod = ""` keeps the default
-covariance step (`linFim`), which took about 685 s of the 200-subject fit on
-one thread, out of the comparison.
+The difference is within the noise. `covMethod = ""` skips the covariance
+step (default `linFim`), which took about 685 s of the 200-subject fit on one
+thread, so it is out of the comparison.
 
 ## Conclusion
 
@@ -60,6 +60,7 @@ the nlmixr2est branch `park/saem-readback-workers` at
 Rscript design/saem-readback/bench.R main 4 1 200 60 60
 ```
 
-Interleave the builds, one fit at a time, and compare the medians. The
+This runs one fit (`nrep` = 1). The table above came from 5 such runs per
+build, alternating the builds one fit at a time; compare the medians. The
 fingerprint printed with each run must be the same for every build and every
 thread count.
