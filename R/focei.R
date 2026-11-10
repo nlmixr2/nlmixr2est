@@ -359,7 +359,6 @@ is.latex <- function() {
     }
     if (!is.null(.was)) {
       record(.was)
-      .was <<- NULL
     }
   }
   on.exit(.release(), add = TRUE)
