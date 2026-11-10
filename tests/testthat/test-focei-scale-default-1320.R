@@ -41,6 +41,32 @@ nmTest({
     expect_equal(.nLinear(.mixed), 1L)
   })
 
+  test_that("a mixture proportion is scaled as a log-odds and is not linear", {
+    .mix <- function() {
+      ini({
+        tcl1 <- log(1)
+        tcl2 <- log(6)
+        p1 <- 0.25
+        eta.cl ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        y <- cl * x
+        y ~ add(add.sd)
+      })
+    }
+    .sc <- function(sl) {
+      .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.mix))
+      rxode2::rxAssignControlValue(.ui, "scaleLinear", sl)
+      .ui$scaleCtheta
+    }
+    expect_equal(.sc("abs")[3], 1)
+    # the old rule is kept under "inverse"
+    expect_equal(.sc("inverse")[3], 4)
+    expect_equal(.nLinear(.mix), 0L)
+  })
+
   test_that("by default FOCEi adapts the scale only when a theta is linear", {
     skip_on_cran()
     rxode2::setRxThreads(1L)
