@@ -143,16 +143,14 @@
     return(NULL)
   }
   if (identical(expr[[1]], quote(`+`)) && length(expr) == 3L) {
-    .terms <- list()
     .flat <- function(e) {
       if (is.call(e) && identical(e[[1]], quote(`+`)) && length(e) == 3L) {
-        .flat(e[[2]])
-        .flat(e[[3]])
+        c(.flat(e[[2]]), .flat(e[[3]]))
       } else {
-        .terms[[length(.terms) + 1L]] <<- e
+        list(e)
       }
     }
-    .flat(expr)
+    .terms <- .flat(expr)
     .syms <- vapply(.terms, function(e) if (is.name(e)) as.character(e) else "", character(1))
     return(c(list(.syms[.syms != ""]), do.call(c, lapply(.terms, .mixSumChains))))
   }
