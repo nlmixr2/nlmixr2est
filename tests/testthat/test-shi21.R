@@ -463,6 +463,7 @@ nmTest({
           hessianMethod = .hm
         )
       ))
+      # the objective comes from an ODE solve at the default tolerances
       expect_equal(.fit$objective, 122.310887878, tolerance = 1e-8, label = .hm)
       expect_identical(
         grep("^eta finite", .fit$runInfo, value = TRUE),
