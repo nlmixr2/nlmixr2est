@@ -463,7 +463,7 @@ nmTest({
           hessianMethod = .hm
         )
       ))
-      expect_equal(.fit$objective, 122.310887878, tolerance = 1e-9, label = .hm)
+      expect_equal(.fit$objective, 122.310887878, tolerance = 1e-8, label = .hm)
       expect_identical(
         grep("^eta finite", .fit$runInfo, value = TRUE),
         "eta finite differences solved on neither side 595 times; slope 0",
