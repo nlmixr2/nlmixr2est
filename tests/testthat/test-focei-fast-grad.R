@@ -626,7 +626,8 @@ nmTest({
         foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L, maxInnerIterations = 300L, ...)
       )))
     }
-    .ok <- .at(fast = TRUE) # default tolerance: no stall
+    # a target the solve reaches (the 1e-9 default can sit at its noise floor)
+    .ok <- .at(fast = TRUE, foceEbeTol = 1e-7) # no stall
     .st <- .at(fast = TRUE, foceEbeTol = 1e-13) # unreachable target: stalls, accepted
     .no <- .at(fast = TRUE, foceEbeTol = 1e-30) # ...and a decrement bound nothing meets
     expect_equal(unname(.ok$env$nNewtonStall), 0L)

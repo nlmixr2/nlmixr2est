@@ -106,6 +106,12 @@
 
 ### Estimation
 
+- A `fast = TRUE` control converted to another FOCEi-family method (for
+  example a `foceControl()` given to `est = "mfoce"`) no longer fails with
+  "Expecting a single value"; its `outerOpt` was left unresolved.
+- `est = "vae"` with `nonMuTheta = "grad"` again takes the gradient at the
+  encoder's etas without the inner-mode score correction, which moved it
+  away from the optimum.
 - `est = "nlm"` and `est = "nls"` with the `linCmt()` sensitivity carry
   (`linCmtSensCarry = "auto"`, the default) now reach the optimum.  The
   record walk that builds their gradient started each subject from the carry
