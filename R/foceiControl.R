@@ -946,7 +946,7 @@
 #'   `scaleType = "nlmixr2"`.  `"abs"` (default) uses `|init|`, as NONMEM
 #'   does; `"inverse"` uses `1/|init|` when it lands inside `scaleCband` and
 #'   `|init|` otherwise.  A `theta` starting at 0 keeps its zero-theta scale
-#'   either way.
+#'   either way; under `"abs"` a mixture proportion (a log-odds) uses 1.
 #'
 #' @param normType Parameter normalization/scaling used to get scaled
 #'     initial values for \code{scaleType}, of the form

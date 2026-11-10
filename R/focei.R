@@ -4631,6 +4631,7 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   .zero <- nlmixr2global$nlmixr2EstEnv$zeroThetaScale
   .zeroIdx <- integer(0)
   .nLinear <- 0L
+  .mixProbs <- tryCatch(ui$mixProbs, error = function(e) character(0))
   for (.k in seq_len(nrow(.thetaIni))) {
     .nt <- .thetaIni$ntheta[.k]
     if (.nt <= length(.scaleC) && is.na(.scaleC[.nt]) && !.thetaIni$fix[.k]) {
@@ -4641,14 +4642,17 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
         .zeroIdx <- c(.zeroIdx, as.integer(.nt))
         next
       }
+      # a mixture proportion is estimated as a log-odds, not linearly
+      .isMix <- .thetaIni$name[.k] %in% .mixProbs
       if (identical(.scLinear, "abs")) {
-        .scaleC[.nt] <- if (.init == 0) 1 else abs(.init)
-        .nLinear <- .nLinear + 1L
+        # log-odds take the exp() thetas' 1
+        .scaleC[.nt] <- if (.isMix || .init == 0) 1 else abs(.init)
+        .nLinear <- .nLinear + !.isMix
         next
       }
       .raw <- if (.init == 0) Inf else 1 / abs(.init)
       .scaleC[.nt] <- .guardScaleC(.raw, .init, .scLo, .scHi)
-      .nLinear <- .nLinear + 1L
+      .nLinear <- .nLinear + !.isMix
     }
   }
   env$scaleC <- .scaleC

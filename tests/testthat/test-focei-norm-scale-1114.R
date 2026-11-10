@@ -193,12 +193,12 @@ nmTest({
     expect_equal(unname(.theta[["add.sd"]]), 0.9079, tolerance = 0.05)
   })
 
-  test_that("issue 1114: the default scaling path is unchanged", {
+  test_that("issue 1114: the 1/|init| scaling path is unchanged", {
     .r <- .fitCollectWarnings(
       .m1114,
       .d1114,
       est = "focei",
-      control = foceiControl(print = 0, outerOpt = "nlminb")
+      control = foceiControl(print = 0, outerOpt = "nlminb", scaleLinear = "inverse")
     )
     fitDefault <- .r$fit
     expect_false(any(grepl(.worseRegex, .r$w)))
