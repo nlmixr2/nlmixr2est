@@ -323,17 +323,18 @@ nmTest({
     .fit <- nlmixr2(.mk(TRUE), .theo, est = "nlme", control = .ctl)
     expect_true(inherits(.fit, "nlmixr2FitData"))
     expect_equal(nrow(as.data.frame(.fit)), .nObs)
-    # mtime(t5) changes nothing in the model, so the plain model solved at the
-    # fit's estimates gives the fit's individual predictions, to within the
-    # solver tolerance.  The objectives of two nlme fits do not measure this:
-    # five nlme iterations turn a tolerance-level change in the predictions
-    # into several percent of the objective.  rxSolve() warns that the
-    # subjects come without an omega; their etas are the fit's.
+    # mtime(t5) is a no-op, so the plain model at the fit's estimates gives the
+    # fit's IPRED; the etas come from the fit, so the missing omega is expected
     .par <- data.frame(id = .fit$ranef$ID, as.list(.fit$fixef), .fit$ranef[, -1])
-    .plain <- suppressWarnings(
-      rxode2::rxSolve(.mk(FALSE), .par, .theo, returnType = "data.frame")
+    .plain <- withCallingHandlers(
+      rxode2::rxSolve(.mk(FALSE), .par, .theo, returnType = "data.frame"),
+      warning = function(w) {
+        if (grepl("without 'omega'", conditionMessage(w), fixed = TRUE)) {
+          invokeRestart("muffleWarning")
+        }
+      }
     )
-    expect_equal(.plain$cp, .fit$IPRED, tolerance = 1e-4)
+    expect_equal(.plain$cp, .fit$IPRED, tolerance = 1e-6)
   })
 
   test_that("a moving boundary: mtime() sensitivities match the in-place switch", {
