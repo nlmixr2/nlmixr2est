@@ -239,8 +239,10 @@
   mixSampleMethod = c("parallel", "msaem"),
   omegaShareSubpop = integer(0),
   omegaPool = integer(0),
-  omegaPoolMean = 0L
+  omegaPoolMean = 0L,
+  fixedNoEta = c("hold", "converge")
 ) {
+  fixedNoEta <- match.arg(fixedNoEta)
   if (is.null(fixedOmega)) {
     stop("requires fixedOmega", call. = FALSE)
   }
@@ -554,7 +556,12 @@
   len <- length(wh)
   fixed.i0 <- (1:len)[wh] - 1
   # phi0 columns with every coefficient fixed: held, never sampled per subject
-  hold.i0 <- which(vapply(i0, function(j) all(fixed[mcov[, j] == 1, j]), logical(1))) - 1L
+  # ("converge" samples them and lets them arrive at the fixed value)
+  hold.i0 <- if (fixedNoEta == "hold") {
+    which(vapply(i0, function(j) all(fixed[mcov[, j] == 1, j]), logical(1))) - 1L
+  } else {
+    integer(0)
+  }
 
   jlog1 <- grep(TRUE, model$log.eta)
   covstruct1 <- covstruct[i1, i1]

@@ -230,7 +230,9 @@
   starting jitter and MCMC draws made it act as an extra random effect during
   burn-in, so a covariate term fixed at 0 gave a different fit from the model
   without it.  Such a model now fits exactly like the model without the term
-  and like `saemControl(literalFix = TRUE)` (#1287).
+  and like `saemControl(literalFix = TRUE)`.  The earlier behavior, where
+  the theta moves during the fit and arrives at its fixed value, is kept as
+  `saemControl(fixedNoEta = "converge")` (#1287).
 
 - A `linCmt()` model with a time-varying covariate on a compartment
   parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,

@@ -29,7 +29,7 @@ nmTest({
     model(cl <- exp(tcl + wt.cl * lwt + b.cl * SW + eta.cl)) |>
     ini(b.cl = fix(0), append = "wt.cl")
 
-  .ctl <- function(literalFix = FALSE) {
+  .ctl <- function(literalFix = FALSE, fixedNoEta = "hold") {
     saemControl(
       nBurn = 10,
       nEm = 10,
@@ -37,7 +37,8 @@ nmTest({
       print = 0,
       covMethod = "",
       calcTables = FALSE,
-      literalFix = literalFix
+      literalFix = literalFix,
+      fixedNoEta = fixedNoEta
     )
   }
   .est <- function(fit) c(fit$theta[c("tka", "tcl", "tv", "add.sd")], diag(fit$omega))
@@ -63,5 +64,18 @@ nmTest({
 
   test_that("held fixed thetas fit the same as literally substituted ones", {
     expect_equal(.est(.fitLit), .est(.fitBase))
+  })
+
+  test_that("fixedNoEta = 'converge' samples fixed phi0 thetas and ends at their value", {
+    .fitConv <- suppressMessages(
+      nlmixr2(.flag0, .d, est = "saem", control = .ctl(fixedNoEta = "converge"))
+    )
+    .phiM <- .fitConv$phiM
+    .nphi <- dim(.phiM)[4]
+    expect_gt(length(unique(as.vector(.phiM[,,, .nphi - 1L]))), 1L)
+    expect_gt(length(unique(as.vector(.phiM[,,, .nphi]))), 1L)
+    expect_equal(.fitConv$theta[["b.cl"]], 0)
+    expect_equal(.fitConv$theta[["wt.cl"]], 0.75)
+    expect_error(saemControl(fixedNoEta = "free"))
   })
 })
