@@ -162,6 +162,11 @@
   search parameters, so the components drifted apart while the shared eta's
   variance absorbed the split; they also get an SA covariance SE now (#1296).
 
+- `saem`'s soft-EM mixture methods (`mixProbMethod = "regularized"` and
+  `"annealed"`) now weigh each component by the likelihood of the state its
+  chain kept.  They used the last rejected proposal's, so the
+  responsibilities were noise and the components merged into one (#1296).
+
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
   the final ETAs from that evaluation's ETAs, keeping per subject the lower

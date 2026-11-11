@@ -257,3 +257,42 @@ test_that("a shared eta's component thetas are its per-component means (#1296)",
   # the component thetas get an SE from their eta's information
   expect_true(all(is.finite(fit$parFixedDf[c("tcl1", "tcl2"), "SE"])))
 })
+
+test_that("soft-EM responsibilities score each chain's kept state (#1296)", {
+  skip_on_cran()
+  .testSeed(2026)
+  .d <- .mix1296Data()
+
+  # the E-step read the last REJECTED proposal's loss for most rows, so the
+  # responsibilities were noise and the components merged
+  mixMod <- function() {
+    ini({
+      tka <- log(1); tcl1 <- log(8); tcl2 <- log(2); tv <- log(50); p1 <- 0.6
+      eta.ka ~ 0.1; eta.cl ~ 0.1; eta.v ~ 0.1; prop.sd <- 0.2
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+      v <- exp(tv + eta.v)
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  fit <- suppressWarnings(nlmixr2(
+    mixMod,
+    .d$data,
+    est = "saem",
+    saemControl(
+      print = 0,
+      seed = 1296,
+      calcTables = FALSE,
+      covMethod = "",
+      mixProbMethod = "regularized"
+    )
+  ))
+  th <- fixef(fit)
+  expect_equal(exp(th[["tcl1"]]), 10, tolerance = 0.1)
+  expect_equal(exp(th[["tcl2"]]), 2.5, tolerance = 0.1)
+  expect_equal(th[["p1"]], mean(.d$comp == 1), tolerance = 0.1)
+  expect_gt(mean(fit$mixNum$mixnum == .d$comp), 0.9)
+  expect_lt(fit$omega["eta.cl", "eta.cl"], 0.15)
+})
