@@ -307,12 +307,24 @@ attr(nlmixr2Est.predict, "random") <- TRUE
 #'
 #' @details
 #'
+#' Individual predictions take each subject's etas from the fit's
+#' estimates, joined on its ID, so `newdata` may hold the subjects in any
+#' order, or only some of them.  A subject the fit did not estimate gets
+#' etas of 0, its population prediction, with a warning.  A subject with no
+#' observation record is not predicted, so it gives no warning; a fit has no
+#' etas for such a subject in its own data.  A numeric ID matches the fit's
+#' by value.  `newdata` without an ID column, such as an event table of one
+#' subject, is predicted once for each fitted subject, with that subject's
+#' etas.
+#'
 #' For a fit with inter-occasion variability, individual predictions take
 #' each record's occasion etas from the fit's estimates, by subject and
 #' occasion, so `newdata` needs the occasion columns.  A subject or occasion
-#' the fit did not estimate gets occasion etas of 0, with a warning.  The
-#' occasion etas step at each occasion's first record, as the fit's occasion
-#' does, whatever the covariate interpolation.
+#' the fit did not estimate gets occasion etas of 0, with a warning.  A
+#' record whose occasion is missing (`NA`) takes a missing occasion eta,
+#' which rxode2 fills as it fills a missing covariate.  The occasion etas
+#' step at each occasion's first record, as the fit's occasion does,
+#' whatever the covariate interpolation.
 #'
 #' @return A data frame with predictions
 #'
@@ -413,12 +425,20 @@ predict.nlmixr2FitCore <- function(object, ..., level = c("population", "individ
     .data <- .both$rest$newdata
   }
   if (.est == "ipred") {
-    .params <- .nlmixrGetIpredParams(object)
+    # each record takes its own subject's etas (and occasion etas), joined
+    # on the subject, as data columns; the parameters are the thetas, so no
+    # eta is simulated and the data may hold the subjects in any order.
+    # Data without an ID column is solved once per fitted subject, each row
+    # of the parameters with that subject's etas.
+    .byId <- !is.null(object$omega) &&
+      (length(object$env$iov) > 0L || .ipredHasId(.data))
+    .params <- .nlmixrGetIpredParams(object, etas = !.byId)
     .solve <- object
+    if (.byId) {
+      .data <- .nlmixrIpredEtaData(object, .data)
+      .rxControl$omega <- NA
+    }
     if (length(object$env$iov) > 0L) {
-      # the occasion etas are the fit's estimates, by subject and occasion;
-      # with the subject etas in `.params`, no eta is simulated
-      .data <- .nlmixrIovEtaData(object, .data)
       # the bare simulation model has no omega to simulate from (rxode2 refuses
       # omega = NA for one); its occasion etas step, as the fit's occasion does
       .rxControl$omega <- NULL
