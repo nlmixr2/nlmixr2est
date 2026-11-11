@@ -1327,6 +1327,14 @@ nlmixr2iovVarSd <- function(val) {
       .bsv <- which(grepl("BSV", names(.parFixedDf)))
       .est <- which(grepl("Est", names(.parFixedDf)))
 
+      # the two-level path has no magnitude theta, so give each occasion
+      # parameter the row the shared rewrite's theta would have had
+      .parFixed <- ret$env$parFixed
+      if (!is.null(.uiIovEnv$iovTwoLevel)) {
+        .tl <- .iovTwoLevelParFixed(.parFixedDf, .parFixed, ret$env, .uiIovEnv$iovVars, .uiIovEnv$ui)
+        .parFixedDf <- .tl$df
+        .parFixed <- .tl$chr
+      }
       .hasIovTheta <- all(.uiIovEnv$iovVars %in% rownames(.parFixedDf))
       .valCharPrep <- NULL
       if (.hasIovTheta) {
@@ -1368,7 +1376,6 @@ nlmixr2iovVarSd <- function(val) {
       .parFixedDf <- .parFixedDf[!grepl("^rx[.]", rownames(.parFixedDf)), ]
       assign("parFixedDf", .parFixedDf, envir = ret$env)
 
-      .parFixed <- ret$env$parFixed
       .bck2 <- which(grepl("Back", names(.parFixed)))
       .bsv2 <- which(grepl("BSV", names(.parFixed)))
       .est2 <- which(grepl("Est", names(.parFixed)))
@@ -1386,6 +1393,7 @@ nlmixr2iovVarSd <- function(val) {
       }
       .parFixed <- .parFixed[!grepl("^rx[.]", rownames(.parFixed)), ]
       assign("parFixed", .parFixed, envir = ret$env)
+      .iovTwoLevelSe(ret$env)
     }
     # In this approach the model is simply kept,
     # but the data drops the iovDrop
@@ -1414,6 +1422,114 @@ nlmixr2iovVarSd <- function(val) {
     .stripFastmatchHash(ret$env)
   }
   ret
+}
+
+#' Add the two-level IOV occasion parameters' rows to the parameter tables
+#'
+#' Mirrors the row `iovMethod = "theta"` reports for its magnitude theta: no
+#' estimate, the occasion CV (an `exp()`-transformed parameter) or SD in
+#' `Back-transformed`, which the caller moves under BSV.  The SE is filled in
+#' by `.iovTwoLevelSe()` once a covariance is installed.
+#'
+#' @param df numeric `$parFixedDf`
+#' @param chr formatted `$parFixed`
+#' @param env fit environment
+#' @param vars occasion parameter names
+#' @param ui the user's ui, before the IOV rewrite
+#' @return list(df, chr) with the rows appended
+#' @noRd
+.iovTwoLevelParFixed <- function(df, chr, env, vars, ui) {
+  vars <- setdiff(vars, rownames(df))
+  if (length(vars) == 0L || !is.data.frame(df) || nrow(df) == 0L) {
+    return(list(df = df, chr = chr))
+  }
+  .ini <- env$ui$iniDf
+  .ce <- ui$muRefCurEval
+  .bt <- vapply(
+    vars,
+    function(.v) {
+      .w <- which(.ini$name == .v & !is.na(.ini$neta1) & .ini$neta1 == .ini$neta2)
+      if (length(.w) != 1L) {
+        return(NA_real_)
+      }
+      .sd <- sqrt(.ini$est[.w])
+      .e <- .ce$curEval[.ce$parameter == .v]
+      if (length(.e) == 1L && .e == "exp") nlmixr2iovSdCv(.sd) else nlmixr2iovSdSd(.sd)
+    },
+    double(1)
+  )
+  .rows <- df[rep(1L, length(vars)), , drop = FALSE]
+  .rows[] <- lapply(.rows, function(x) x[NA_integer_])
+  rownames(.rows) <- vars
+  .bck <- which(grepl("Back", names(.rows)))
+  if (length(.bck) == 1L) {
+    .rows[[.bck]] <- unname(.bt)
+  }
+  df <- rbind(df, .rows)
+  if (is.data.frame(chr) && nrow(chr) > 0L) {
+    .r <- chr[rep(1L, length(vars)), , drop = FALSE]
+    .r[] <- lapply(.r, function(x) rep("", length(x)))
+    rownames(.r) <- vars
+    chr <- rbind(chr, .r)
+  }
+  assign("iovTwoLevelVars", vars, envir = env)
+  list(df = df, chr = chr)
+}
+
+#' Fill the two-level IOV rows of the parameter tables from `$cov`
+#'
+#' The SE of the occasion SD, by the delta method on the `om.<iov>` row of the
+#' installed covariance; NA when it has none.  Also puts the formatted row back
+#' the way `.uiFinalizeIov()` lays it out (CV/SD under BSV), since regenerating
+#' `$parFixed` from `$parFixedDf` loses that.
+#'
+#' @param env fit environment
+#' @return nothing, called for side effects
+#' @noRd
+.iovTwoLevelSe <- function(env) {
+  .vars <- get0("iovTwoLevelVars", envir = env, inherits = FALSE)
+  .pf <- get0("parFixedDf", envir = env, inherits = FALSE)
+  if (length(.vars) == 0L || !is.data.frame(.pf) || !all(.vars %in% rownames(.pf))) {
+    return(invisible())
+  }
+  .cv <- env$cov
+  .omN <- paste0("om.", .vars)
+  .var <- rep(NA_real_, length(.vars))
+  if (is.matrix(.cv) && !is.null(rownames(.cv))) {
+    .w <- match(.omN, rownames(.cv))
+    .var[!is.na(.w)] <- diag(.cv)[.w[!is.na(.w)]]
+  }
+  .ini <- env$ui$iniDf
+  .psi <- vapply(
+    .vars,
+    function(.v) {
+      .w <- which(.ini$name == .v & !is.na(.ini$neta1) & .ini$neta1 == .ini$neta2)
+      if (length(.w) == 1L) .ini$est[.w] else NA_real_
+    },
+    double(1)
+  )
+  .se <- ifelse(
+    is.finite(.var) & .var > 0 & is.finite(.psi) & .psi > 0,
+    sqrt(pmax(.var, 0)) / (2 * sqrt(.psi)),
+    NA_real_
+  )
+  .pf[.vars, "SE"] <- unname(.se)
+  env$parFixedDf <- .pf
+  .chr <- get0("parFixed", envir = env, inherits = FALSE)
+  if (!is.data.frame(.chr) || !all(.vars %in% rownames(.chr))) {
+    return(invisible())
+  }
+  .digits <- .parFixedSigdigTable(env)
+  .bck <- which(startsWith(names(.chr), "Back"))
+  .bsv <- which(startsWith(names(.chr), "BSV("))
+  .bt <- .pf[.vars, which(startsWith(names(.pf), "Back"))[1]]
+  .chr[.vars, "SE"] <- formatMinWidth(unname(.se), digits = .digits, naValue = "")
+  .chr[.vars, .bck] <- ""
+  if (length(.bsv) == 1L) {
+    .chr[.vars, .bsv] <- formatMinWidth(unname(.bt), digits = .digits, naValue = "")
+  }
+  env$parFixed <- .chr
+  invisible()
 }
 
 preProcessHooksAdd(".nlmixr0preProcessAssertSameBlock", .nlmixr0preProcessAssertSameBlock)

@@ -189,6 +189,56 @@ test_that(".saemIovCollapseCov ties the pooled occasion columns", {
   expect_identical(.saemIovCollapseCov(.cv, list(iov.v = "rx.iov.v.1")), .cv)
 })
 
+test_that("two-level IOV parameter-table rows report a CV or an SD by transform", {
+  .ui <- rxode2::rxode2(function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      add.sd <- 0.7
+      iov.cl ~ 0.09 | occ
+      iov.v ~ 0.04 | occ
+    })
+    model({
+      cl <- exp(tcl + iov.cl)
+      v <- tv + iov.v
+      linCmt() ~ add(add.sd)
+    })
+  })
+  .env <- new.env(parent = emptyenv())
+  .env$ui <- .ui
+  .df <- data.frame(Estimate = 1, SE = 0.1, "Back-transformed" = 2.7, check.names = FALSE, row.names = "tcl")
+  .chr <- data.frame(
+    Est. = "1",
+    SE = "0.1",
+    "Back-transformed(95%CI)" = "2.7",
+    "BSV(CV% or SD)" = "",
+    check.names = FALSE,
+    row.names = "tcl"
+  )
+  .r <- .iovTwoLevelParFixed(.df, .chr, .env, c("iov.cl", "iov.v"), .ui)
+  expect_equal(rownames(.r$df), c("tcl", "iov.cl", "iov.v"))
+  expect_equal(.r$df["iov.cl", "Back-transformed"], nlmixr2iovSdCv(0.3))
+  expect_equal(.r$df["iov.v", "Back-transformed"], 0.2)
+  expect_true(all(is.na(.r$df[c("iov.cl", "iov.v"), "SE"])))
+
+  # the SE comes from the installed $cov; a non-positive variance gives none
+  .env$parFixedDf <- .r$df
+  .env$parFixed <- .r$chr
+  .env$cov <- diag(c(0.01, 0.0016, -1))
+  dimnames(.env$cov) <- rep(list(c("tcl", "om.iov.cl", "om.iov.v")), 2)
+  .iovTwoLevelSe(.env)
+  expect_equal(.env$parFixedDf["iov.cl", "SE"], 0.04 / (2 * 0.3))
+  expect_true(is.na(.env$parFixedDf["iov.v", "SE"]))
+  expect_equal(.env$parFixed["iov.v", "BSV(CV% or SD)"], "0.200")
+  expect_equal(.env$parFixed["iov.v", "SE"], "")
+
+  # a parameter missing from $cov (e.g. a fixed one) does not hide the others
+  .env$cov <- .env$cov[1:2, 1:2]
+  .iovTwoLevelSe(.env)
+  expect_equal(.env$parFixedDf["iov.cl", "SE"], 0.04 / (2 * 0.3))
+  expect_true(is.na(.env$parFixedDf["iov.v", "SE"]))
+})
+
 test_that(".saemGqNodes keeps the -2LL grid affordable", {
   # the grid is nnodes^nphi1 whole-population solves, and nphi1 grows by one per
   # occasion level per IOV parameter
