@@ -65,7 +65,7 @@ test_that("iovMethod='twoLevel' estimates one occasion variance in closed form",
   expect_length(grep("^rx[.]", names(.f2)), 0L)
 })
 
-test_that("the two-level occasion variance does not collapse the way the shared rewrite's does", {
+test_that("iovMethod='theta' estimates the occasion variance the way twoLevel does (#1319)", {
   skip_on_cran()
   .d <- .twoLevelFitData()
   .f0 <- suppressWarnings(nlmixr2(.twoLevelFitModel(), .d, est = "saem", control = .twoLevelCtl(iovMethod = "theta")))
@@ -78,9 +78,25 @@ test_that("the two-level occasion variance does not collapse the way the shared 
   .iov0 <- .f0$omega$occ[1, 1]
   .iov2 <- .f2$omega$occ[1, 1]
 
-  # the shared rewrite estimates this variance through the annealed phi0 path
-  # and drives it toward zero; the closed-form M-step does not
-  expect_true(.iov2 > 2 * .iov0)
+  # the shared rewrite used to carry this variance as a magnitude theta, which
+  # saem's annealed phi0 path drove toward zero; it now pools per-occasion etas
+  # and gets the same closed-form M-step
+  expect_false("iov.cl" %in% names(.f0$fixef))
+  expect_equal(.iov0, .iov2, tolerance = 0.2)
+  # the two per-occasion etas are ONE variance: 4 thetas + 3 IIV + 1 IOV
+  for (.f in list(.f0, .f2)) {
+    .l <- suppressMessages(logLik(.f))
+    expect_equal(attr(.l, "df"), 8)
+    expect_equal(suppressMessages(AIC(.f)), -2 * as.numeric(.l) + 2 * 8)
+    expect_equal(suppressMessages(BIC(.f)), -2 * as.numeric(.l) + log(attr(.l, "nobs")) * 8)
+  }
+  # the parameter table still carries the occasion variability, as a CV
+  for (.f in list(.f0, .f2)) {
+    .bck <- grep("Back", names(.f$parFixedDf))
+    expect_true("iov.cl" %in% rownames(.f$parFixedDf))
+    expect_equal(.f$parFixedDf["iov.cl", .bck], 100 * sqrt(exp(.f$omega$occ[1, 1]) - 1))
+    expect_true(nzchar(.f$parFixed["iov.cl", grep("BSV", names(.f$parFixed))]))
+  }
 
   # the structural parameters are unaffected -- this is the same model, fitted
   # better, not a different one
@@ -128,6 +144,10 @@ test_that("a model outside the two-level scope falls back to the shared rewrite"
   expect_true(any(grepl("two-level IOV needs one occasion variable", .f$runInfo)))
   expect_true(is.list(.f$omega))
   expect_true(all(c("occ", "occ2") %in% names(.f$omega)))
+  # each occasion variable's etas share one pooled variance (#1319)
+  expect_true(.f$omega$occ[1, 1] > 1e-4)
+  expect_true(.f$omega$occ2[1, 1] > 1e-4)
+  expect_false(any(c("iov.cl", "iov.v") %in% names(.f$fixef)))
 })
 
 test_that("a two-level fit's covariance carries one row for the occasion variance", {
@@ -309,4 +329,43 @@ test_that("a two-level or collapsed fit's $etaMat has the occasion etas a focei 
     )))
     expect_equal(.g$iov$occ$iov.cl, .iov$iov.cl, tolerance = 1e-6)
   }
+})
+
+test_that("a model the two-level handling declines fits with pooled occasion variances (#1319)", {
+  skip_on_cran()
+  .d <- .twoLevelFitData()
+  .d$occ2 <- ifelse(.d$TIME %% 2 < 1, 1, 2)
+  # nolint start: object_usage_linter. rxode2 ini()/model() are NSE blocks.
+  .nonMu <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      iov.cl ~ fix(0.1) | occ
+      iov.v ~ 0.2 | occ2
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- tcl * exp(eta.cl + iov.cl)
+      v <- exp(tv + iov.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # nolint end
+  .f <- suppressWarnings(nlmixr2(.nonMu(), .d, est = "saem", control = .twoLevelCtl(covMethod = "linFim")))
+  expect_true(any(grepl("used iovMethod='theta'", .f$runInfo, fixed = TRUE)))
+  # the fixed variance stays put and is not reported as estimated
+  expect_equal(.f$omega$occ[1, 1], 0.1)
+  expect_false(any(grepl("iov[.]cl", rownames(.f$cov))))
+  # the other occasion variance is estimated, not collapsed to zero
+  expect_true(.f$omega$occ2[1, 1] > 1e-3)
+  expect_false(any(c("iov.cl", "iov.v") %in% names(.f$fixef)))
+  expect_equal(
+    colnames(.f$etaMat),
+    c("eta.ka", "eta.cl", "rx.iov.cl.1", "rx.iov.cl.2", "rx.iov.v.1", "rx.iov.v.2")
+  )
+  expect_true(all(c("ID", "occ2", "iov.v") %in% names(.f$iov$occ2)))
 })

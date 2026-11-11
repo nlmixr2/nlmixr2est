@@ -374,9 +374,10 @@
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams foceiControl
 #' @param iovMethod How inter-occasion variability (`iov.x ~ v | occ`) is
-#'   estimated.  \code{"theta"} uses the shared pre-processing rewrite, which
-#'   carries the magnitude as a population parameter multiplying per-occasion
-#'   unit-variance etas (the form every other estimation method uses).
+#'   estimated.  \code{"theta"} uses the shared pre-processing rewrite; for
+#'   saem it gives each occasion level its own eta, all sharing one variance
+#'   estimated in closed form, and so covers models \code{"twoLevel"} does not
+#'   (a non-mu-referenced parameter, several occasion variables).
 #'   \code{"twoLevel"} (the default) keeps the occasion term as a second
 #'   variance component and estimates it with the closed-form updates of Panhard
 #'   and Samson (2009), which is what the SAEM kernel is built around for every

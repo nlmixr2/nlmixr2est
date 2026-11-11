@@ -290,7 +290,10 @@ test_that("the refusal asks nothing of an est with no method, or an eta row with
 
 test_that("the refusal runs before the IOV hooks and reaches the user", {
   skip_on_cran()
-  expect_identical(preProcessHooks()[1], ".nlmixr0preProcessAssertSameBlock")
+  .h <- preProcessHooks()
+  expect_true(
+    which(.h == ".nlmixr0preProcessAssertSameBlock") < min(which(.h %in% c(".uiApplyIov", ".uiApplyIovTwoLevel")))
+  )
   expect_identical(
     .errMsg(suppressMessages(nlmixr2est::nlmixr2(.idSameMod(), .sameData(), "saem", saemControl(print = 0)))),
     .sameRefusal("saem")

@@ -2206,6 +2206,9 @@ attr(nlmixr2Est.saem, "iov") <- function(control) {
   !(identical(control$iovMethod, "twoLevel") ||
     identical(control$iovMethod, "collapsed"))
 }
+# The shared rewrite gives saem pooled per-occasion etas rather than a magnitude
+# theta, so the occasion variance gets the closed-form M-step (#1319).
+attr(nlmixr2Est.saem, "iovPool") <- TRUE
 # Models the two-level handling cannot take; a reason here sends the model back
 # to the shared rewrite (iovMethod="theta") instead of failing.
 attr(nlmixr2Est.saem, "iovNativeScope") <- function(ui, data, control) {
