@@ -369,10 +369,28 @@ is.latex <- function() {
   .state$calls <- 0L
   .state$failed <- FALSE
   hessian <- NULL
-  if (isTRUE(control$fast) && is.function(control$hessian)) {
+  .curvature <- control$outerTrustHessian
+  .useHessian <- is.null(.curvature) || identical(.curvature, "analytic") || identical(.curvature, "fd")
+  .source <- control$hessian
+  .useFd <- identical(.curvature, "fd")
+  if (.useFd) {
+    .step <- control$outerTrustRelStep
+    if (is.null(.step)) {
+      .step <- 1e-3
+    }
+    .fd <- .trustOuterFd(fn, gr, .step, rep_len(lower, length(par)), rep_len(upper, length(par)), control$outerRecord)
+    .source <- function(x) {
+      .h <- .fd(x, gr(x))
+      if (is.null(.h)) {
+        stop("finite-difference outer Hessian unavailable", call. = FALSE)
+      }
+      .h
+    }
+  }
+  if ((isTRUE(control$fast) || .useFd) && .useHessian && is.function(.source)) {
     hessian <- function(x) {
       .state$calls <- .state$calls + 1L
-      tryCatch(control$hessian(x), error = function(e) {
+      tryCatch(.source(x), error = function(e) {
         .state$failed <- TRUE
         stop(e)
       })
@@ -464,6 +482,9 @@ is.latex <- function() {
       .was <- record(FALSE)
       on.exit(record(.was), add = TRUE)
     }
+    # best-effort re-settle: a failing restore must not mask the probe's own error
+    on.exit(tryCatch(fn(x), error = function(e) NULL), add = TRUE, after = FALSE)
+    force(g0)
     .h <- matrix(0.0, .n, .n)
     for (.j in seq_len(.n)) {
       .step <- relStep * max(abs(x[.j]), 1.0)
@@ -471,7 +492,6 @@ is.latex <- function() {
         .step <- -.step
       }
       if (x[.j] + .step < lower[.j]) {
-        fn(x)
         return(NULL)
       }
       .xp <- x
@@ -479,7 +499,9 @@ is.latex <- function() {
       fn(.xp)
       .h[, .j] <- (gr(.xp) - g0) / .step
     }
-    fn(x)
+    if (!all(is.finite(.h))) {
+      return(NULL)
+    }
     0.5 * (.h + t(.h))
   }
 }
@@ -2617,15 +2639,17 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 
 #' Turn off `fast` after the control was built
 #'
-#' A defaulted outer optimizer was picked for `fast=TRUE` (`lbfgsb3c`); with
-#' finite-difference gradients it stalls, so re-default it to `bobyqa` as
-#' `foceiControl(fast=FALSE)` would.  An explicit `outerOpt` is kept.
+#' Restore the ordinary default after disabling an automatically selected fast
+#' optimizer, matching `foceiControl(fast=FALSE)`.  An explicit `outerOpt` is kept.
 #' @param control focei control list
 #' @return control with `fast = FALSE`
 #' @noRd
 .foceiDowngradeFast <- function(control) {
   control$fast <- FALSE
-  if (isTRUE(control$outerOptDefault) && identical(control$outerOptTxt, "lbfgsb3c")) {
+  if (isTRUE(control$relTolDefault) && is.numeric(control$sigdig)) {
+    control$rel.tol <- 10^(-control$sigdig)
+  }
+  if (isTRUE(control$outerOptDefault)) {
     control$outerOpt <- -1L
     control$outerOptFun <- .bobyqa
     control$outerOptTxt <- "bobyqa"
@@ -3850,7 +3874,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## Version 3: the bundle gained eventEtaAll (#1016), which a v2 entry lacks.
   ## Version 4: the bundle carries its carry-cap warnings
   ## (attr "carryCapWarnings"), which a v3 entry would never give again.
-  .cacheFormat <- 4L
+  ## Version 9: the bundle keeps the compiled model, and the augmented model is
+  ## optimized in a single rxOptExpr() pass (unreleased dev bundles used 4-8).
+  .cacheFormat <- 9L
   .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
@@ -3859,6 +3885,8 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
     .combSens,
     .linCmtCarry,
     .pkgVersion,
+    # Compiled bundles must not collide across rxode2 runtimes sharing a cache.
+    rxode2::rxVersion(),
     .cacheFormat,
     rxode2::rxGetControl(.ui, "interaction", 1L),
     .iniDf$name,
@@ -3890,21 +3918,19 @@ rxUiGet.foceiModelCache <- function(x, ...) {
 # attr(rxUiGet.foceiModelCache, "desc") <- "Get the focei cache file for a model"
 attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 
-#' Cached-model bundle element -> storable form: an rxode2 model is stored
-#' as its normalized model TEXT (rxode2::rxNorm()), not a serialized model
-#' object -- the text is small and rebuilding from it hits rxode2's own
-#' compiled-model cache, so rehydration loads the cached dll rather than
-#' compiling
+#' Cached-model bundle element -> storable form.  Keep the compiled object for
+#' fast restoration with rxLoad(); normalized text remains as a backwards-
+#' compatible fallback.  Reparsing a large augmented sensitivity model can take
+#' minutes even when its shared library is already cached.
 #'
-#' The event-sensitivity mode is stored ALONGSIDE the text.  It is not part of
-#' rxNorm()'s output and cannot be read back off a compiled model, so a bundle
-#' rehydrated from the text alone silently loses it -- see
+#' The event-sensitivity mode is stored alongside both forms.  It is not part of
+#' rxNorm()'s output and cannot be read back off normalized text alone -- see
 #' .foceiModelCacheInflate().
 #' @noRd
 .foceiModelCacheDeflate <- function(el) {
   if (inherits(el, "rxode2")) {
     return(structure(
-      list(norm = rxode2::rxNorm(el), eventSens = attr(el, "nlmixr2estEventSens")),
+      list(norm = rxode2::rxNorm(el), eventSens = attr(el, "nlmixr2estEventSens"), model = el),
       class = "nlmixr2estFoceiNorm"
     ))
   }
@@ -3928,6 +3954,14 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 .foceiModelCacheInflate <- function(el) {
   if (inherits(el, "nlmixr2estFoceiNorm")) {
     .es <- el$eventSens
+    # a dll that cannot be loaded (or rebuilt) falls through to the text
+    if (
+      inherits(el$model, "rxode2") &&
+        identical(.es, attr(el$model, "nlmixr2estEventSens")) &&
+        isTRUE(tryCatch(rxode2::rxLoad(el$model), error = function(e) FALSE))
+    ) {
+      return(el$model)
+    }
     # rxode2() latches suppressMessages() into its C print flag, which would
     # silence the rest of the fit's progress output; restore it for the caller
     on.exit(rxode2::rxSuppressMsg(), add = TRUE)
@@ -3947,7 +3981,8 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
     return(.mod)
   }
   if (inherits(el, "rxode2")) {
-    return(rxode2::rxLoad(el))
+    rxode2::rxLoad(el)
+    return(el)
   }
   el
 }

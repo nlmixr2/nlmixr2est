@@ -970,20 +970,36 @@ int odeSwapIndSolveSpan(rx_solving_options *op, rx_solving_options_ind *ind) {
   return n * getIndNallTimes(ind);
 }
 
+static inline bool odeSwapNonFinite(double x) {
+  return ISNA(x) || std::isnan(x) || std::isinf(x);
+}
+
+// True when any of the leading `width` values of `nrec` records spaced `stride` apart
+// is non-finite.
+static bool odeSwapBadRecords(const double *solve, size_t nrec, int stride, int width) {
+  for (size_t r = 0; r < nrec; ++r) {
+    const double *rec = solve + r * (size_t)stride;
+    for (int i = 0; i < width; ++i) {
+      if (odeSwapNonFinite(rec[i])) return true;
+    }
+  }
+  return false;
+}
+
 bool odeSwapIndBadSolveSlot(rx_solving_options *op, rx_solving_options_ind *ind,
                             int slot) {
   int n = odeSwapIndSolveSpan(op, ind);
-  int own = odeSwapNeq(slot);
-  // Only clamp DOWN, and only when this model is genuinely narrower than the
-  // span: never widen, or a compacted solve would be under-scanned.
-  if (own > 0 && own < n && getOpNlin(op) <= 0) n = own;
   if (n <= 0) return false;
   double *solve = getIndSolve(ind);
   if (solve == NULL) return false;
-  for (int i = 0; i < n; ++i) {
-    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) return true;
+  int own = odeSwapNeq(slot);
+  int eff = odeSwapEffNeq(ind, op);
+  // A model narrower than the solve stride (a declined scope runs at pool width)
+  // owns only the leading `own` states of each record; scan those in every record.
+  if (own > 0 && own < eff && getOpNlin(op) <= 0) {
+    return odeSwapBadRecords(solve, (size_t)getIndNallTimes(ind), eff, own);
   }
-  return false;
+  return odeSwapBadRecords(solve, 1, n, n);
 }
 
 bool odeSwapIndBadSolve(rx_solving_options *op, rx_solving_options_ind *ind) {
@@ -991,10 +1007,7 @@ bool odeSwapIndBadSolve(rx_solving_options *op, rx_solving_options_ind *ind) {
   if (n <= 0) return false;
   double *solve = getIndSolve(ind);
   if (solve == NULL) return false;
-  for (int i = 0; i < n; ++i) {
-    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) return true;
-  }
-  return false;
+  return odeSwapBadRecords(solve, 1, n, n);
 }
 
 // ---- R introspection ----------------------------------------------------

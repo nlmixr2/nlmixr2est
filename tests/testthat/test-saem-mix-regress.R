@@ -161,3 +161,62 @@ test_that("saem's mixture proportion equals its own responsibilities and the dat
   expect_equal(sum(fitSa$env$mixList[[1]]$prob - .pSa), 0, tolerance = 1e-6)
   expect_equal(unname(.pSa), pTrue, tolerance = 0.05)
 })
+
+# Two well-separated clearance components (10 vs 2.5 L/h) under proportional
+# error, from #1296; returns the data and each subject's simulated component.
+.mix1296Data <- function() {
+  sim <- function() {
+    ini({
+      tka <- log(1.2); tcl1 <- log(10); tcl2 <- log(2.5); tv <- log(70); p1 <- 0.7
+      eta.ka ~ 0.09; eta.cl ~ 0.06; eta.v ~ 0.04; prop.sd <- 0.12
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+      v <- exp(tv + eta.v)
+      pheno <- mixest
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  ev <- rxode2::et(amt = 100) |>
+    rxode2::et(c(0.5, 1, 2, 3, 4, 6, 8, 12, 24, 36, 48)) |>
+    rxode2::et(id = 1:80)
+  s <- rxode2::rxSolve(sim, ev, addDosing = TRUE)
+  d <- as.data.frame(s)[, c("id", "time", "evid", "amt", "sim", "pheno")]
+  names(d)[names(d) == "sim"] <- "dv"
+  d$dv[d$evid == 1] <- NA
+  d <- d[d$evid == 1 | d$dv >= 0.01, ]
+  list(data = d[, c("id", "time", "evid", "amt", "dv")], comp = d$pheno[!duplicated(d$id)])
+}
+
+test_that("regress classifies at each subject's own etas under proportional error (#1296)", {
+  skip_on_cran()
+  .testSeed(2026)
+  .d <- .mix1296Data()
+
+  # split etas, initial estimates away from the truth; judging each component
+  # at the initial eta draws put a third of component 1 into component 2
+  mixMod <- function() {
+    ini({
+      tka <- log(1); tcl1 <- log(8); tcl2 <- log(2); tv <- log(50); p1 <- 0.6
+      eta.ka ~ 0.1; eta.cl1 ~ 0.1; eta.cl2 ~ 0.1; eta.v ~ 0.1; prop.sd <- 0.2
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))
+      v <- exp(tv + eta.v)
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  fit <- suppressWarnings(nlmixr2(
+    mixMod,
+    .d$data,
+    est = "saem",
+    saemControl(print = 0, seed = 1296, calcTables = FALSE, covMethod = "")
+  ))
+  th <- fixef(fit)
+  expect_equal(exp(th[["tcl1"]]), 10, tolerance = 0.1)
+  expect_equal(exp(th[["tcl2"]]), 2.5, tolerance = 0.1)
+  expect_equal(th[["p1"]], mean(.d$comp == 1), tolerance = 0.1)
+  expect_gt(mean(fit$mixNum$mixnum == .d$comp), 0.9)
+})
