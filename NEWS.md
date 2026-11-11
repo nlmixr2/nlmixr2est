@@ -501,6 +501,13 @@
 - saem refuses a `prior()` on an occasion variance again; the IOV rewrite
   dropped it before the prior check ran, so the fit ignored it (#1319).
 
+- A saem fit with pooled occasion variances (`iovMethod = "twoLevel"` or
+  `"theta"`) now reports each one once, as `om.iov.x` in `$cov` and
+  `V(iov.x)` in `$parHistData`, under every `covMethod` and with a single
+  occasion level.  Its standard error comes from the information restricted
+  to one shared variance, rather than the average of the per-occasion
+  covariances, which overstated it for unbalanced occasions (#1319).
+
 - A model whose occasion-level eta name starts with `eta.` (`eta.ka.occ ~ 0.1 | OCC`)
   now fits.  The SAEM temporary-eta cleanup took every `rx.eta.` name, including
   the `rx.eta.ka.occ.<occ>` occasion columns, so every estimator stopped with

@@ -558,16 +558,38 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
   }
   NULL
 }
+#' Collapse the pooled occasion columns of a saem parameter history
+#'
+#' The K per-occasion variances move together (`poolOmegaGroups`), so the
+#' history keeps one `V(<iov>)` column for them instead of K internal
+#' `V(rx.<iov>.<k>)` copies.
+#'
+#' @param ph parameter history data frame
+#' @param groups named list, user IOV parameter -> its per-occasion eta names
+#' @return the collapsed data frame
+#' @noRd
+.saemIovCollapseParHist <- function(ph, groups) {
+  for (.v in names(groups)) {
+    .w <- which(names(ph) %in% paste0("V(", groups[[.v]], ")"))
+    if (length(.w) == 0L) {
+      next
+    }
+    names(ph)[.w[1]] <- paste0("V(", .v, ")")
+    if (length(.w) > 1L) {
+      ph <- ph[, -.w[-1], drop = FALSE]
+    }
+  }
+  ph
+}
+
 #' Contract the pooled occasion columns of a covariance matrix
 #'
 #' `$cov` carries one row/column per phi1 column, so the K per-occasion columns
 #' of a two-level parameter appear K times under their internal `om.rx.<iov>.<k>`
 #' names.  They estimate ONE variance -- the M-step pins them equal
-#' (`poolOmegaGroups`, src/saem.cpp) -- so contract them by averaging, which is
-#' the delta method for `Psi = mean(v_1, ..., v_K)`.  Note this contracts the
-#' LINEARIZED (unconstrained) covariance rather than computing a constrained
-#' Fisher information, so it is an approximation, but a named one: the reported
-#' variance is `Var(mean(v_k))`, not `Var(v_1)`.
+#' (`poolOmegaGroups`, src/saem.cpp) -- so the information is restricted to
+#' `v_k = Psi` before inverting.  A matrix that is not positive definite falls
+#' back to `Var(mean(v_k))`, which agrees for balanced occasions.
 #'
 #' The collapsed row keeps the position of the group's first member so the rest
 #' of the matrix keeps its order.
@@ -585,16 +607,29 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
     .w <- match(paste0("om.", g), .nm)
     .w[!is.na(.w)]
   })
-  .grp <- .grp[vapply(.grp, length, integer(1)) >= 2L]
+  # a single observed level is a group of one: still renamed to `om.<iov>`
+  .grp <- .grp[vapply(.grp, length, integer(1)) >= 1L]
   if (length(.grp) == 0L) {
     return(cv)
   }
   .rows <- .saemIovCovRows(.nm, .grp)
-  .a <- matrix(0, nrow = length(.rows), ncol = length(.nm))
+  # B maps the reduced parameters onto the full ones (v_k = Psi), so the
+  # constrained covariance is (B' C^-1 B)^-1; averaging is only right for
+  # balanced occasions, and is the fallback when C is not positive definite
+  .b <- matrix(0, nrow = length(.nm), ncol = length(.rows))
   for (.k in seq_along(.rows)) {
-    .a[.k, .rows[[.k]]$idx] <- 1 / length(.rows[[.k]]$idx)
+    .b[.rows[[.k]]$idx, .k] <- 1
   }
-  .out <- .a %*% cv %*% t(.a)
+  .out <- tryCatch(
+    {
+      .o <- chol2inv(chol(crossprod(.b, chol2inv(chol(cv)) %*% .b)))
+      (.o + t(.o)) / 2
+    },
+    error = function(e) {
+      .a <- t(.b) / colSums(.b)
+      .a %*% cv %*% t(.a)
+    }
+  )
   .rn <- vapply(.rows, function(r) r$nm, character(1))
   dimnames(.out) <- list(.rn, .rn)
   .out
@@ -606,7 +641,7 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 #' of its first member, so the rest of the matrix keeps its order.
 #'
 #' @param nm rownames of the input matrix
-#' @param grp named list of pooled index vectors, each of length >= 2
+#' @param grp named list of pooled index vectors, each of length >= 1
 #' @return list of `list(idx, nm)`
 #' @noRd
 .saemIovCovRows <- function(nm, grp) {
