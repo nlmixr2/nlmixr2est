@@ -7,7 +7,9 @@
 #'
 #' From the cov-step environment `e`, the free structural+residual theta positions
 #' (0-based) and free `Omega` lower-triangle elements (1-based), plus matching
-#' `om.<theta>` / `cov.<theta>.<theta>` names.  `NULL` if there is nothing to do.
+#' `om.<theta>` / `cov.<theta>.<theta>` names.  `same()` copies are not parameters:
+#' `cpA`/`cpB`/`cpOf` list them with the element they move with.  `NULL` if there is
+#' nothing to do.
 #' @param e focei cov-step environment
 #' @noRd
 .foceiFdFullParams <- function(e) {
@@ -27,14 +29,146 @@
   thPos <- as.integer(ini$ntheta[thRows] - 1L) # 0-based position in fullTheta
   thNames <- ini$name[thRows]
   Om <- get("omega", e)
-  pairs <- .foceiOmegaPairs(Om, ini) # free Omega lower-triangle (a>=b)
-  if (is.null(pairs) || nrow(pairs) == 0L) {
-    return(list(thPos = thPos, omA = integer(0), omB = integer(0), names = thNames))
+  pairs <- .omegaDeclaredPairs(Om, ini) # Omega lower-triangle (a>=b)
+  if (is.null(pairs)) {
+    pairs <- matrix(integer(0), 0L, 2L)
   }
   map <- .foceiEtaThetaMap(ui)
-  onm <- map$etaNames # Omega named by the eta
-  omNames <- .foceiOmegaCovNames(pairs, onm)
-  list(thPos = thPos, omA = as.integer(pairs[, 1]), omB = as.integer(pairs[, 2]), names = c(thNames, omNames))
+  tie <- .foceiFdFullSameTie(
+    pairs,
+    .omegaFixed(ini, pairs),
+    ui$omegaSameMap,
+    map$etaNames,
+    ini$name[!is.na(ini$ntheta) & isFix]
+  )
+  pairs <- pairs[tie$free, , drop = FALSE]
+  if (nrow(pairs) == 0L) {
+    return(list(thPos = thPos, omA = integer(0), omB = integer(0), names = thNames))
+  }
+  list(
+    thPos = thPos,
+    omA = as.integer(pairs[, 1]),
+    omB = as.integer(pairs[, 2]),
+    cpA = tie$cpA,
+    cpB = tie$cpB,
+    cpOf = tie$cpOf,
+    names = c(thNames, .foceiOmegaCovNames(pairs, tie$onm))
+  )
+}
+
+#' Tie `same()` Omega copies to the element they repeat
+#'
+#' A `same()` block (an IOV occasion's copy) shares its master's parameters, so it
+#' gets no direction of its own: the FD stage moves each copy with its master.
+#' @param pairs declared Omega element pairs (`.omegaDeclaredPairs()`)
+#' @param fixed which `pairs` are fixed
+#' @param same `omegaSameMap` (each eta's master eta, 0 for none), or `NULL`
+#' @param onm eta names
+#' @param thetas the model's fixed theta names, to name an IOV group
+#' @return list: `free` (rows of `pairs` that are parameters), `cpA`/`cpB` (the
+#'   copies of a free element) with `cpOf` (0-based index of their parameter
+#'   among the free pairs), and `onm` with each master named by its IOV parameter
+#' @noRd
+.foceiFdFullSameTie <- function(pairs, fixed, same, onm, thetas = character(0)) {
+  .none <- list(free = !fixed, cpA = integer(0), cpB = integer(0), cpOf = integer(0), onm = onm)
+  same <- as.integer(same)
+  same[is.na(same)] <- 0L
+  if (length(same) != length(onm) || !any(same > 0L) || any(same < 0L | same > length(same))) {
+    return(.none)
+  }
+  # follow a chained map to the block every copy repeats
+  for (.i in seq_along(same)) {
+    .c <- same > 0L & same[pmax(same, 1L)] > 0L
+    if (!any(.c)) {
+      break
+    }
+    same[.c] <- same[same[.c]]
+  }
+  if (any(same > 0L & same[pmax(same, 1L)] > 0L)) {
+    return(.none) # a cycle
+  }
+  .ma <- same[pairs[, 1]]
+  .mb <- same[pairs[, 2]]
+  .isCp <- .ma > 0L & .mb > 0L
+  .key <- function(a, b) paste(pmax(a, b), pmin(a, b))
+  .at <- match(.key(.ma, .mb), .key(pairs[, 1], pairs[, 2]))
+  # what same() cannot produce: a copy correlated with a non-copy, a copy
+  # element its master block does not declare, one spanning two copies, or a
+  # copy block missing one of its master's elements
+  if (
+    any((.ma > 0L) != (.mb > 0L)) ||
+      any(.isCp & is.na(.at)) ||
+      any(.isCp & (pairs[, 1] - pairs[, 2]) != (.ma - .mb)) ||
+      !.foceiSameBlocksComplete(pairs, same)
+  ) {
+    return(.none)
+  }
+  .free <- !.isCp & !fixed
+  .of <- match(.key(.ma, .mb), .key(pairs[.free, 1], pairs[.free, 2]))
+  # a copy moves with a free master; a fixed master's copy stays put
+  .mv <- .isCp & !is.na(.of)
+  for (.m in unique(same[same > 0L])) {
+    onm[.m] <- .foceiSameGroupName(onm[.m], onm[same == .m], thetas)
+  }
+  list(
+    free = .free,
+    cpA = as.integer(pairs[.mv, 1]),
+    cpB = as.integer(pairs[.mv, 2]),
+    cpOf = as.integer(.of[.mv] - 1L),
+    onm = onm
+  )
+}
+
+#' Whether every copy block declares each element of the block it repeats
+#' @param pairs declared Omega element pairs
+#' @param same resolved `omegaSameMap`
+#' @return logical
+#' @noRd
+.foceiSameBlocksComplete <- function(pairs, same) {
+  .key <- paste(pairs[, 1], pairs[, 2])
+  for (.a in which(same > 0L)) {
+    .d <- .a - same[.a] # this copy block's offset from its master
+    .m <- pairs[, 1] == same[.a] | pairs[, 2] == same[.a]
+    for (.k in which(.m)) {
+      .i <- pairs[.k, 1] + .d
+      .j <- pairs[.k, 2] + .d
+      .in <- .i >= 1L &&
+        .j >= 1L &&
+        .i <= length(same) &&
+        .j <= length(same) &&
+        same[.i] == pairs[.k, 1] &&
+        same[.j] == pairs[.k, 2]
+      if (!.in || !(paste(.i, .j) %in% .key)) {
+        return(FALSE)
+      }
+    }
+  }
+  TRUE
+}
+
+#' The IOV parameter a `same()` group repeats
+#'
+#' Occasion copies are named `rx.<iov>.<level>`, and the expanded model keeps
+#' `<iov>` as its magnitude theta, fixed at one; the group takes the longest such theta every
+#' copy is named after.  Any other `same()` group keeps its master's name.
+#' @param master master eta name
+#' @param copies its copies' eta names
+#' @param thetas the model's fixed theta names
+#' @return name
+#' @noRd
+.foceiSameGroupName <- function(master, copies, thetas) {
+  .nm <- c(master, copies)
+  .hit <- vapply(thetas, function(v) all(startsWith(.nm, paste0("rx.", v, "."))), logical(1))
+  # the expansion's own record, when it is this model's
+  .rec <- names(.uiIovEnv$iovMaster)[vapply(.uiIovEnv$iovMaster, identical, logical(1), master)]
+  if (length(.rec) == 1L && .rec %in% thetas[.hit]) {
+    return(.rec)
+  }
+  if (!any(.hit)) {
+    return(master)
+  }
+  .v <- thetas[.hit]
+  .v[which.max(nchar(.v))]
 }
 
 #' The three FD-full covariances, each checked by `.covGuard()`
