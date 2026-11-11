@@ -530,12 +530,16 @@ rxUiGet.saemModel <- function(x, ...) {
     }
     .preLhs <- sub("^([^=]+)=", "\\1~", .lhs)
   }
+  # a tte() endpoint's lag0()-carried variables need their definitions, which
+  # the symengine prune drops (as for nlm, see .foceiLagDefs())
+  .lagDefs <- if (.nlmixr2estUiHasTte(x[[1]])) .foceiLagDefs(.s) else character(0)
   .ret <- paste(
     c(
       #.s$..stateInfo["state"],
       #.lhs0,
       .preLhs,
       .ddt,
+      .lagDefs,
       ## DDE non-constant delay() pre-history: base past(state,tau)<-expr.  SAEM is
       ## gradient-free and builds .s without sensitivities, so re-inject the history
       ## (which the symengine interception dropped) from the stored rx__pastRhs_.
@@ -773,11 +777,19 @@ rxUiGet.saemModelPred <- function(x, ...) {
     .ddt <- ""
   }
 
+  # a tte() endpoint's lag0()-carried variables are defined before rx_pred_
+  .lhs <- .s$..lhs
+  .lagDefs <- character(0)
+  if (.nlmixr2estUiHasTte(x[[1]]) && length(.lhs) > 0L) {
+    .lagDefs <- .foceiLagDefs(.s)
+    .lhs <- .lhs[!(.lhs %in% .lagDefs)]
+  }
   .ret <- paste(
     c(
       .ddt,
       ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
       rxode2::.rxPastBaseLinesFromEnv(.s),
+      .lagDefs,
       #.yj,
       #.lambda,
       #.hi,
@@ -793,7 +805,7 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   .ret0 <- c(.yj, .lambda, .hi, .low)
-  .ret2 <- c(.r, .s$..lhs, "tad=tad()", "dosenum=dosenum()")
+  .ret2 <- c(.r, .lhs, "tad=tad()", "dosenum=dosenum()")
 
   if (.sumProd) {
     .malert("stabilizing round off errors in saem predOnly model...")
