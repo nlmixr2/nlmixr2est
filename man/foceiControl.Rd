@@ -20,6 +20,7 @@ foceiControl(
   scaleCmax = 1e+05,
   scaleCmin = 1e-05,
   scaleCband = c(0.1, 10),
+  scaleLinear = c("inverse", "abs"),
   scaleC = NULL,
   scaleC0 = 1e+05,
   derivEps = rep(20 * sqrt(.Machine$double.eps), 2),
@@ -272,6 +273,12 @@ transform, which catch `log()` at init `1`, `logit` at the interval
 midpoint and `factorial`/`gamma` at a digamma zero.  The constants of
 residual-error parameters and those given in `scaleC` are used as
 they are.}
+
+\item{scaleLinear}{How a linear (untransformed) `theta` is scaled under
+`scaleType = "nlmixr2"`.  `"inverse"` (default) uses `1/|init|` when it
+lands inside `scaleCband` and `|init|` otherwise; `"abs"` always uses
+`|init|`, as NONMEM does.  A `theta` starting at 0 keeps its zero-theta
+scale either way.}
 
 \item{scaleC}{Scaling constant used with \code{scaleType="nlmixr2"};
 when not specified, chosen by parameter type to keep gradient sizes
