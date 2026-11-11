@@ -113,4 +113,31 @@ nmTest({
     expect_length(.dl$eta, 0L)
     expect_length(.dl$theta, 0L)
   })
+
+  test_that("an estimated delay() duration tightens the sigdig tolerances", {
+    .rc <- .rxControlDelayLagTol(foceiControl()$rxControl, 3)
+    expect_equal(.rc$rtol, 1e-9)
+    expect_equal(.rc$atol, 1e-11)
+    expect_equal(.rc$rtolSens, 1e-9)
+    # a tolerance the user set is kept
+    .rc <- .rxControlDelayLagTol(foceiControl(rxControl = list(rtol = 1e-5))$rxControl, 3)
+    expect_equal(.rc$rtol, 1e-5)
+    expect_equal(.rc$atol, 1e-11)
+    .rc <- .rxControlDelayLagTol(foceiControl(rxControl = list(atol = 1e-14))$rxControl, 3)
+    expect_equal(.rc$atol, 1e-14)
+    expect_equal(.rc$rtol, 1e-9)
+    # an explicit tolerance equal to the sigdig value, and a full rxControl(), are kept
+    .rc <- .rxControlDelayLagTol(foceiControl(rxControl = list(rtol = 1e-6))$rxControl, 3)
+    expect_equal(.rc$rtol, 1e-6)
+    .rc <- .rxControlDelayLagTol(foceiControl(rxControl = rxode2::rxControl(rtol = 1e-6))$rxControl, 3)
+    expect_equal(.rc$rtol, 1e-6)
+    # a generated rxControl the user changed and passed back keeps the change
+    .rc0 <- foceiControl()$rxControl
+    .rc0$rtol <- 1e-12
+    .rc <- .rxControlDelayLagTol(foceiControl(rxControl = .rc0)$rxControl, 3)
+    expect_equal(.rc$rtol, 1e-12)
+    .rc0 <- foceiControl()$rxControl
+    .rc0$rtol <- 1e-12
+    expect_equal(.rxControlDelayLagTol(.rc0, 3)$rtol, 1e-12)
+  })
 })

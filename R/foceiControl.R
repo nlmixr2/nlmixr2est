@@ -2074,12 +2074,16 @@ foceiControl <- function(
         ),
         sigdig
       )
+      attr(rxControl, "nlmixr2estSigdigTol") <- .rxControlTolFields
       genRxControl <- TRUE
     } else if (inherits(rxControl, "rxControl")) {
       # a fully-formed rxControl object is the user's explicit solving spec; leave
       # it untouched so any atol/rtol it carries is respected
+      attr(rxControl, "nlmixr2estSigdigTol") <- NULL
     } else if (is.list(rxControl)) {
-      rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
+      .user <- names(rxControl)
+      rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = .user)
+      attr(rxControl, "nlmixr2estSigdigTol") <- setdiff(.rxControlTolFields, .user)
     }
     if (!inherits(rxControl, "rxControl")) {
       stop("rxControl needs to be ode solving options from rxode2::rxControl()", call. = FALSE)
