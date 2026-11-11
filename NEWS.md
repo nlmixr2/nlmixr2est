@@ -106,6 +106,10 @@
 
 ### Estimation
 
+- `saem` mixture fits with `saemControl(mixProbMethod = "annealed")` no
+  longer error with "Mat::operator(): index out of bounds" when entering the
+  SA covariance phase (#1297).
+
 - `est = "nlm"` and `est = "nls"` with the `linCmt()` sensitivity carry
   (`linCmtSensCarry = "auto"`, the default) now reach the optimum.  The
   record walk that builds their gradient started each subject from the carry
