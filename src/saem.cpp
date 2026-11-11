@@ -790,7 +790,6 @@ class SAEM {
   typedef mat (*user_funct) (const mat&, const mat&, const List&);
 
 public:
-
   SAEM() {
     user_fn = NULL;
   }
@@ -2859,7 +2858,6 @@ public:
     // (mixProbMethod="regress" degeneracy fallback is decided in saem_fit AFTER
     // the initial hard classification -- see below.)
     DEBUG=as<int>(x["DEBUG"]);
-
   }
 
   // Warm-start the residual-error parameters (ares/bres) from the observed
@@ -3356,8 +3354,18 @@ public:
           mat &cur_DYF = DYF_mix(jMix);
           cur_DYF.zeros(mlen, nM);
 
+          // Re-solve the chain's current state: the M-step resets the phi0
+          // columns to the population value (and regress solves each subject
+          // under its own component), so the cached predictions are stale and
+          // a stale U_y can freeze the chain at a state that no longer fits.
+          {
+            mat curMat = user_fn(cur_phiM, mixProbRegress ? mx.evtM : evt,
+                                 mixProbRegress ? mx.optM : optM);
+            cur_fsave = curMat.col(0);
+            cur_cens = curMat.col(1);
+            cur_limit = curMat.col(2);
+          }
           vec f = cur_fsave;
-          cur_fsave = f;
 
           if (distribution == 1) {
             vec yt = hasFixedObsTransform ? yTrans : y;
@@ -3487,9 +3495,8 @@ public:
             }
             U_y_mix(jMix) = joint_nll;
           }
-          if (!mixProbRegress) current_saem_state->_saemMixest = jMix + 1;
-          cur_fsave = user_fn(cur_phiM, mixProbRegress ? mx.evtM : evt,
-                              mixProbRegress ? mx.optM : optM).col(0);
+          // cur_fsave already tracks cur_phiM: do_mcmc() copies each accepted
+          // proposal's predictions, and the state was re-solved above
         }
         current_saem_state->_saemMixest = 0;
 
@@ -4965,7 +4972,6 @@ public:
 
 
 private:
-
   user_funct user_fn;
 
   uvec nu;
