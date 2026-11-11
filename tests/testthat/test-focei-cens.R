@@ -397,6 +397,22 @@ nmTest({
     ))
     ct(f.saemAr, "M3 censoring")
     expect_equal(f.saemAr$objf, -4.8120262756, tolerance = 1e-4)
+    # fixedNoEta = "converge" keeps the earlier sampled-then-fixed behavior
+    f.saemArConv <- suppressWarnings(suppressMessages(
+      nlmixr(
+        .mFix,
+        datAr,
+        "saem",
+        control = saemControl(
+          nBurn = 50,
+          nEm = 0,
+          print = 0,
+          seed = 42,
+          fixedNoEta = "converge"
+        )
+      )
+    ))
+    expect_equal(f.saemArConv$objf, -4.6970347829, tolerance = 1e-4)
   })
 })
 
