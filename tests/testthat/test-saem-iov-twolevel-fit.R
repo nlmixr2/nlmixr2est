@@ -133,21 +133,25 @@ test_that("a model outside the two-level scope falls back to the shared rewrite"
 test_that("a two-level fit's covariance carries one row for the occasion variance", {
   skip_on_cran()
   .d <- .twoLevelFitData()
-  .f <- suppressWarnings(nlmixr2(
-    .twoLevelFitModel(),
-    .d,
-    est = "saem",
-    control = .twoLevelCtl(covMethod = "linFim", iovMethod = "twoLevel")
-  ))
-  .cv <- .f$cov
-  skip_if(is.null(.cv) || !is.matrix(.cv))
-  # the K per-occasion columns are ONE parameter; they must not appear
-  # separately, and certainly not under their internal names
-  expect_length(grep("^om[.]rx[.]", rownames(.cv)), 0L)
-  expect_true("om.iov.cl" %in% rownames(.cv))
-  expect_equal(rownames(.cv), colnames(.cv))
-  expect_true(is.finite(.cv["om.iov.cl", "om.iov.cl"]))
-  expect_true(.cv["om.iov.cl", "om.iov.cl"] > 0)
+  # both stash paths: linFim's, and the sa/analytic one (the default, #1317)
+  for (.m in c("linFim", "sa")) {
+    .f <- suppressWarnings(nlmixr2(
+      .twoLevelFitModel(),
+      .d,
+      est = "saem",
+      control = .twoLevelCtl(covMethod = .m, iovMethod = "twoLevel")
+    ))
+    expect_equal(.f$covMethod, .m)
+    .cv <- .f$cov
+    expect_true(is.matrix(.cv))
+    # the K per-occasion columns are ONE parameter; they must not appear
+    # separately, and certainly not under their internal names
+    expect_length(grep("rx[.]", rownames(.cv)), 0L)
+    expect_true("om.iov.cl" %in% rownames(.cv))
+    expect_equal(rownames(.cv), colnames(.cv))
+    expect_true(is.finite(.cv["om.iov.cl", "om.iov.cl"]))
+    expect_true(.cv["om.iov.cl", "om.iov.cl"] > 0)
+  }
 })
 
 test_that("iovMethod='collapsed' imposes both constraints exactly", {
