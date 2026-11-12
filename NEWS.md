@@ -106,6 +106,14 @@
 
 ### Estimation
 
+- The `linCmt()` FOCEi sensitivity carry follows rxode2's lagged-dose
+  covariates (nlmixr2/rxode2#1584).  With `addlKeepsCov = FALSE` rxode2
+  imputes an `alag()` dose's covariates at its arrival and keeps its data time
+  as an interpolation knot, which the carry missed, so the gradient was off
+  for a time-varying covariate under nocb or midpoint, and under locf when the
+  lag passed the next record.  The carry now splits each interval at that
+  knot and matches finite differences again.
+
 - `est = "nlm"` and `est = "nls"` with the `linCmt()` sensitivity carry
   (`linCmtSensCarry = "auto"`, the default) now reach the optimum.  The
   record walk that builds their gradient started each subject from the carry

@@ -141,6 +141,24 @@ test_that("f()+alag()+covariate gradients match FD for every eta; naive fails cl
   }
 })
 
+test_that("a lagged dose's data time splits its intervals as rxode2 reads them", {
+  skip_if_not(.carryJumpCapable())
+  # rxode2 imputes a lagged dose's covariates at its arrival and keeps its
+  # data time as a knot (#1584); a lag past the next record puts that knot
+  # inside an interval that ends at an observation
+  evObs <- .carryEv()
+  evObs$cmt <- 1
+  evObs$wt <- ifelse(evObs$time < 10, 70, ifelse(evObs$time < 27, 85, 100))
+  for (.lag in c(0.5, 10)) {
+    .p <- .carryJumpPars
+    .p["THETA[5]"] <- log(.lag)
+    for (.i in c("nocb", "locf", "midpoint")) {
+      rL <- .carryJumpFd(.carryModJump, .p, evObs, interp = .i)
+      expect_lt(max(rL$err), 1e-6, label = paste(.i, "lag", .lag))
+    }
+  }
+})
+
 test_that("an additive f() shape with a covariate needs the carry and matches FD", {
   skip_if_not(.carryJumpCapable())
   mod <- function() {

@@ -3608,7 +3608,10 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
     ",",
     .rxFoceiLinCmtCarryMaxPairs(),
     ",",
-    paste(rxode2::rxGetControl(.ui, "rxControl", NULL)$covsInterpolation, collapse = ",")
+    paste(rxode2::rxGetControl(.ui, "rxControl", NULL)$covsInterpolation, collapse = ","),
+    ",",
+    # a lagged dose's data time is a knot of the carry's intervals
+    .rxFoceiLinCmtCarryLagKnot(.ui)
   )
   ## The persisted cache lives in rxode2's user cache directory, so it OUTLIVES
   ## the session (and the installed package) whenever `rxCreateCache()` has been
