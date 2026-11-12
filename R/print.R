@@ -42,12 +42,12 @@
 }
 
 .getCorPrint <- function(x) {
-  .op <- options()
-  on.exit(options(.op))
-  options(
+  # the returned old values (NULL when unset) restore and unset cleanly
+  .op <- options(
     "broom.mixed.sep1" = ":",
     "broom.mixed.sep2" = ","
   )
+  on.exit(options(.op))
   .strong <- getOption("nlmixr2.strong.corr", 0.7)
   .moderate <- getOption("nlmixr2.moderate.corr", 0.3)
   .lt <- .getR(x)
