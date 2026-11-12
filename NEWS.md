@@ -404,6 +404,9 @@
   transform; it used the first subject's rows for every subject.
 ### Tables
 
+- Printing a fit with estimated correlations no longer leaves the
+  `broom.mixed.sep1`/`sep2` options set, which renamed later `confint()` and
+  `tidy()` terms to `sd:eta`/`cor:eta.v,eta.cl`.
 - `tidy()` and `confint()` now report only the model's thetas.  A
   non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
   variability row) used to be listed as a fixed effect or interval of `NA`s,
