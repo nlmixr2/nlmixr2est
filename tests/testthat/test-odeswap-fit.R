@@ -318,8 +318,9 @@ nmTest({
     ref <- suppressWarnings(suppressMessages(nlmixr2(wbc, d, "focei", ctl(FALSE))))
     fast <- suppressWarnings(suppressMessages(nlmixr2(wbc, d, "focei", ctl(TRUE))))
     expect_identical(.odeSwapInfo()$poolName, "outer")
-    expect_equal(as.numeric(fast$objf), as.numeric(ref$objf), tolerance = 1e-7)
-    expect_equal(as.numeric(fast$eta[[2]]), as.numeric(ref$eta[[2]]), tolerance = 1e-6)
+    expect_equal(as.numeric(fast$objf), as.numeric(ref$objf), tolerance = 5e-8)
+    # the objective is flat near its minimum, so the etas agree less closely
+    expect_equal(as.numeric(fast$eta[[2]]), as.numeric(ref$eta[[2]]), tolerance = 1e-5)
   })
 
   test_that("the nonlinear nimo model keeps its inner solve and analytic sensitivities", {
