@@ -202,7 +202,9 @@
     .copy <- paste0("rx_lcCov_", .c, "_")
     .lag <- paste0("rx_lcLag_", .c, "_")
     .int <- paste0("rx_lcCovI_", .c, "_")
-    .two <- knot || interp[[.c]] == "midpoint"
+    # a linear covariate keeps its own rule (a varying one is refused)
+    .knot <- knot && interp[[.c]] != "linear"
+    .two <- .knot || interp[[.c]] == "midpoint"
     # with the hidden copies the lag reads the locf copy of the column
     .src <- if (.two) paste0("rx_lcL_", .c) else .c
     .copies <- c(
@@ -211,7 +213,7 @@
       paste0(.copy, "=", .src)
     )
     .lines <- c(.lines, paste0(.lag, "~lag0(", .copy, ")"))
-    if (!knot) {
+    if (!.knot) {
       .lines <- c(
         .lines,
         switch(

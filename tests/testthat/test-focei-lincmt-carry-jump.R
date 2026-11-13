@@ -159,6 +159,14 @@ test_that("a lagged dose's data time splits its intervals as rxode2 reads them",
   }
 })
 
+test_that("a linear covariate keeps its own interval rule around lagged doses", {
+  skip_if_not(.rxFoceiLinCmtIntervalCovs())
+  ci <- .rxFoceiLinCmtCarryCovInterval(c("wt", "age"), c(wt = "linear", age = "nocb"), knot = TRUE)
+  expect_true("rx_lcCovI_wt_~0.5*(wt+rx_lcLag_wt_)" %in% ci$lines)
+  expect_false(any(grepl("rx_lc(L|N|Tn|Nl|Nn)_wt", c(ci$lines, ci$copies))))
+  expect_true(any(grepl("^rx_lcCovI_age_~ifelse\\(", ci$lines)))
+})
+
 test_that("an additive f() shape with a covariate needs the carry and matches FD", {
   skip_if_not(.carryJumpCapable())
   mod <- function() {
