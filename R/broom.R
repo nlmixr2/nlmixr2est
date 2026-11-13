@@ -31,6 +31,62 @@
   .fixNames(.df[.theta, , drop = FALSE])
 }
 
+#' The rows `confint()`'s `parm` selects
+#'
+#' `parm` takes names, or numeric or logical indices, as `stats::confint()`
+#' does (negative indices leave rows out, a shorter logical is recycled).
+#' Indexing the table directly would give a row of `NA`s for a name or index
+#' it has no row for, and no rows for an empty selection; both are errors
+#' here.
+#'
+#' @param parm parameter names, or numeric or logical indices
+#' @param pnames names of the rows `confint()` has intervals for
+#' @return the selected names
+#' @noRd
+.confintParm <- function(parm, pnames) {
+  .n <- length(pnames)
+  if (is.numeric(parm)) {
+    .bad <- parm[is.na(parm) | abs(parm) > .n]
+    if (length(.bad) > 0L) {
+      stop(
+        "parameter index out of range: ",
+        paste(.bad, collapse = ", "),
+        " (",
+        .n,
+        " parameters)",
+        call. = FALSE
+      )
+    }
+    .sel <- pnames[parm]
+  } else if (is.logical(parm)) {
+    if (anyNA(parm) || length(parm) > .n) {
+      stop(
+        "a logical 'parm' needs no NA and at most ",
+        .n,
+        " values (one per parameter)",
+        call. = FALSE
+      )
+    }
+    .sel <- pnames[parm]
+  } else {
+    .sel <- as.character(parm)
+    .unknown <- setdiff(.sel, pnames)
+    if (length(.unknown) > 0L) {
+      stop(
+        "unknown parameter",
+        if (length(.unknown) > 1L) "s",
+        ": ",
+        paste0("'", .unknown, "'", collapse = ", "),
+        call. = FALSE
+      )
+    }
+  }
+  if (length(.sel) == 0L) {
+    stop("'parm' selects no parameter", call. = FALSE)
+  }
+  .sel
+}
+
 ##' @export
 confint.nlmixr2FitCore <- function(object, parm, level = 0.95, ...) {
   .extra <- list(...)
@@ -74,7 +130,7 @@ confint.nlmixr2FitCore <- function(object, parm, level = 0.95, ...) {
     )
   }
   if (!missing(parm)) {
-    .df <- .df[parm, , drop = FALSE]
+    .df <- .df[.confintParm(parm, rownames(.df)), , drop = FALSE]
   }
   if (.ciNames) {
     names(.df)[3:4] <- paste(c((1 - level) / 2, (1 - (1 - level) / 2)) * 100, "%")

@@ -422,6 +422,12 @@
   kept their `conf.int` interval; it was `NA`.  `tidy()` also accepts
   broom.mixed's `effects = "ran_coefs"`.
 
+- `confint(parm = )` now stops on a name it has no row for ("unknown
+  parameter: 'x'"), an index out of range ("parameter index out of range:
+  99 (7 parameters)"), a logical `parm` with an `NA` or more values than
+  rows, and a selection that leaves no row.  These gave rows of `NA`s, or
+  no rows.
+
 - `augPred()` under `covsInterpolation = "midpoint"` now fills its grid
   covariates with the mean of the two neighboring records, as rxode2 and
   `approxfun(method = "constant", f = 0.5)` do; it stepped at the midpoint,

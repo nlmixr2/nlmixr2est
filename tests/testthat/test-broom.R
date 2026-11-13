@@ -922,3 +922,40 @@ nmTest({
     expect_identical(nrow(.broomParFixedDf(list(parFixedDf = .df[0, , drop = FALSE], ui = .ui))), 0L)
   })
 })
+
+nmTest({
+  test_that("confint() selects rows by name or index, and stops on one it has no row for", {
+    fit <- one.compartment.fit.focei.fast
+    .all <- confint(fit)
+    .nm <- c("tka", "tcl", "tv", "add.sd", "sd__eta.ka", "sd__eta.cl", "sd__eta.v")
+    expect_identical(rownames(.all), .nm)
+    expect_identical(confint(fit, parm = c("tv", "tka")), .all[c("tv", "tka"), ])
+    expect_identical(confint(fit, parm = "sd__eta.cl"), .all["sd__eta.cl", ])
+    expect_identical(confint(fit, parm = 2), .all["tcl", ])
+    expect_identical(confint(fit, parm = -1), .all[.nm[-1], ])
+    expect_identical(confint(fit, parm = c(TRUE, FALSE)), .all[.nm[c(1, 3, 5, 7)], ])
+    expect_error(confint(fit, parm = "nonexistent"), "unknown parameter: 'nonexistent'", fixed = TRUE)
+    expect_error(confint(fit, parm = c("tcl", "zz", "yy")), "unknown parameters: 'zz', 'yy'", fixed = TRUE)
+    # an eta's own name is not a row; its variability is sd__eta.ka
+    expect_error(confint(fit, parm = "eta.ka"), "unknown parameter: 'eta.ka'", fixed = TRUE)
+    expect_error(confint(fit, parm = NA_character_), "unknown parameter: 'NA'", fixed = TRUE)
+    expect_error(confint(fit, parm = 99), "parameter index out of range: 99 (7 parameters)", fixed = TRUE)
+    expect_error(confint(fit, parm = c(1, -8)), "parameter index out of range: -8 (7 parameters)", fixed = TRUE)
+    expect_error(confint(fit, parm = NA_real_), "parameter index out of range: NA (7 parameters)", fixed = TRUE)
+    expect_error(
+      confint(fit, parm = NA),
+      "a logical 'parm' needs no NA and at most 7 values (one per parameter)",
+      fixed = TRUE
+    )
+    expect_error(confint(fit, parm = rep(TRUE, 8)), "at most 7 values", fixed = TRUE)
+    expect_error(confint(fit, parm = 0), "'parm' selects no parameter", fixed = TRUE)
+    expect_error(confint(fit, parm = character(0)), "'parm' selects no parameter", fixed = TRUE)
+    expect_error(confint(fit, parm = rep(FALSE, 7)), "'parm' selects no parameter", fixed = TRUE)
+    # without the variability rows, the indices count the thetas only
+    expect_error(
+      confint(fit, parm = 5, ranPars = FALSE),
+      "parameter index out of range: 5 (4 parameters)",
+      fixed = TRUE
+    )
+  })
+})
