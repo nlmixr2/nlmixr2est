@@ -790,7 +790,6 @@ class SAEM {
   typedef mat (*user_funct) (const mat&, const mat&, const List&);
 
 public:
-
   SAEM() {
     user_fn = NULL;
   }
@@ -2868,7 +2867,6 @@ public:
     // (mixProbMethod="regress" degeneracy fallback is decided in saem_fit AFTER
     // the initial hard classification -- see below.)
     DEBUG=as<int>(x["DEBUG"]);
-
   }
 
   // Warm-start the residual-error parameters (ares/bres) from the observed
@@ -4980,7 +4978,6 @@ public:
 
 
 private:
-
   user_funct user_fn;
 
   uvec nu;
