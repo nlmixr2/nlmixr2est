@@ -19625,6 +19625,9 @@ static arma::ivec foceiHessianDirs(const FoceiGradPooledSetup &g) {
   return dirs;
 }
 
+// FALSE while foceiGradPooledDirect_ evaluates at caller etas that are not inner modes
+static bool gradInnerScore = true;
+
 static bool gradPooledCore(const FoceiGradPooledSetup &G,
                            const std::vector<double> &thVals, const arma::mat &ebes,
                            const arma::mat &Oi, const arma::cube &dOiEst,
@@ -19807,12 +19810,12 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
         foceiGradSubjectFullFR_(E.a, E.A, Ath[(size_t)i], E.aR, E.AR, AthR[(size_t)i],
                                 censi, limi, B.f.subvec(o0, o1), B.y.subvec(o0, o1), B.R.subvec(o0, o1),
                                 ebes.row(i).t(), Oi, dOiEst, tr28,
-                                neta, nd + nsg, nth + nsg, nom, dirP, gi, etaPi);
+                                neta, nd + nsg, nth + nsg, nom, dirP, gi, etaPi, gradInnerScore);
       } else {
         foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, censi, limi, G.censOpt,
                             B.f.subvec(o0, o1), B.y.subvec(o0, o1), B.R.subvec(o0, o1),
                             ebes.row(i).t(), Oi, dOiEst, tr28,
-                            neta, nth, nsg, nom, dirThV, sigColV, gi, etaPi);
+                            neta, nth, nsg, nom, dirThV, sigColV, gi, etaPi, gradInnerScore);
       }
       gmat.col(i) = gi; etaPOut.slice(i) = etaPi;
     } catch (...) {
@@ -20257,7 +20260,14 @@ RObject foceiGradPooledDirect_(NumericVector thVals, NumericMatrix ebes,
   }
   arma::vec gv; arma::cube etaP; double jacSum = 0.0;
   bool ok = false;
+  // The VAE's encoder etas are not inner modes: the finite-tolerance score
+  // correction would extrapolate far from them, so take the plain gradient.
+  struct InnerScoreOff {
+    InnerScoreOff() { gradInnerScore = false; }
+    ~InnerScoreOff() { gradInnerScore = true; }
+  };
   try {
+    InnerScoreOff _noScore;
     ok = gradPooledCore(G, thv, eb, oi, dOi, tr, cores, gv, etaP, jacSum);
   } catch (...) { return R_NilValue; }
   if (!ok || (int)gv.n_elem != np) return R_NilValue;

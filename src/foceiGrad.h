@@ -48,7 +48,7 @@ void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
                          const arma::cube& dOiEst, const arma::vec& tr28,
                          int neta, int nth, int nsg, int nom,
                          const arma::ivec& dirTh, const arma::ivec& sigCol,
-                         arma::vec& g_out, arma::mat& etaP_out);
+                         arma::vec& g_out, arma::mat& etaP_out, bool innerScore = true);
 
 // Per-subject FOCEI kernel for detHessian="conditional": the Laplace determinant is
 // the FULL conditional Hessian (the same H that drives etaP), so its parameter chain
@@ -62,7 +62,7 @@ void foceiGradSubjectFullFR_(const arma::mat& a, const arma::cube& A, const arma
                              const arma::vec& ehat, const arma::mat& Oi,
                              const arma::cube& dOiEst, const arma::vec& tr28,
                              int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP,
-                             arma::vec& g_out, arma::mat& etaP_out);
+                             arma::vec& g_out, arma::mat& etaP_out, bool innerScore = true);
 
 // Per-subject FOCE (frozen-R0) kernel.  aRe drives the eta block (0 for nonmem, live
 // E$aR for foce+), aRc the parameter columns; no AR cube.  fp = foce+ (1) / nonmem (0).
