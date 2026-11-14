@@ -329,7 +329,8 @@
         omegaPoolMean = as.integer(identical(
           rxode2::rxGetControl(ui, "iovMethod", "twoLevel"),
           "collapsed"
-        ))
+        )),
+        fixedNoEta = rxode2::rxGetControl(ui, "fixedNoEta", "hold")
       )
       .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
       # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
