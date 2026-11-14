@@ -4274,6 +4274,7 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   .scBand <- rxode2::rxGetControl(ui, "scaleCband", c(0.1, 10))
   .scLo <- .scBand[1]
   .scHi <- .scBand[2]
+  .scLinear <- rxode2::rxGetControl(ui, "scaleLinear", "inverse")
   .len <- length(env$lower)
   if (is.null(.controlScaleC)) {
     .scaleC <- rep(NA_real_, .len)
@@ -4446,7 +4447,8 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   # falls back to native |init|.  A theta that started at 0 has no |init| to scale
   # by (its zeroTheta nudge is not a magnitude), so it takes the typical magnitude
   # .preProcessZeroTheta recorded (#1228).  This is the only guard: FOCEi's C++
-  # side uses every value given here as it is.
+  # side uses every value given here as it is.  foceiControl(scaleLinear="abs")
+  # uses |init| instead (#1320).
   .thetaIni <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
   .zero <- nlmixr2global$nlmixr2EstEnv$zeroThetaScale
   .zeroIdx <- integer(0)
@@ -4458,6 +4460,10 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
       if (length(.z) == 1L) {
         .scaleC[.nt] <- .zero$scale[.z]
         .zeroIdx <- c(.zeroIdx, as.integer(.nt))
+        next
+      }
+      if (identical(.scLinear, "abs")) {
+        .scaleC[.nt] <- if (.init == 0) 1 else abs(.init)
         next
       }
       .raw <- if (.init == 0) Inf else 1 / abs(.init)

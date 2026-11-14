@@ -14,6 +14,10 @@
 
 ## New features
 
+- `foceiControl(scaleLinear = "abs")` scales every linear theta by its
+  `|init|`, as NONMEM does, instead of the default `1/|init|` inside
+  `scaleCband`.  The default `"inverse"` is unchanged (#1320).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the
