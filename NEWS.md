@@ -236,6 +236,13 @@
   time-varying covariate entered only through a fixed theta could need more
   sensitivity-carry columns than rxode2 provides and stopped (#1287).
 
+- A FOCEi-family `linCmt()` fit whose (parameter, eta) pairs need more
+  sensitivity-carry columns than rxode2 provides now first drops the pairs
+  whose covariates are constant within every subject of the data (their
+  standard gradient is exact) instead of stopping.  A 2-compartment oral
+  model with allometric weight on four parameters and a time-varying flag on
+  CL and F now fits (#1287).
+
 - A `linCmt()` model with a time-varying covariate on a compartment
   parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,
   under `"locf"`, `"midpoint"` and `"nocb"` and a covariate's own declaration
