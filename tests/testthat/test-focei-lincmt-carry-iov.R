@@ -261,43 +261,72 @@ test_that("an eta added to a covariate's exponent fits as the ODE twin", {
   }
 })
 
-test_that("occasion etas past the carry column limit keep the standard gradient", {
+test_that("occasion etas past the carry column limit are solved as ODEs (#1318)", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   # an rxode2 with 8 carry columns (CRAN 5.1.8): eta.cl and 8 occasion etas
   # are 9 pairs, and with cl's tracker they need 10 columns
   local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap8)
   .d <- .carryIovDat(every24 = TRUE)
-  .msg <- "rx.iov.cl.7 and 1 more keep the standard gradient (8 carry columns)"
   .fit <- .carryIovFit(.carryIovLin, .d)
-  expect_true(is.finite(.fit$objf))
-  # the fit collects its build warnings into runInfo (.carryIovFit()
-  # muffles them at the console)
-  expect_true(any(.fit$runInfo == .msg))
-  # seven pairs are carried: eta.cl and six occasion etas
-  expect_true(grepl("rx_lcCarryS6r", .carryIovInnerTxt(.fit), fixed = TRUE))
-  expect_false(grepl("rx_lcCarryS7r", .carryIovInnerTxt(.fit), fixed = TRUE))
-  # a refit, here with another inner control, reads the model from the
-  # cache and gives the warning again
-  .fit2 <- .carryIovFit(.carryIovLin, .d, maxInner = 0L)
-  expect_true(any(.fit2$runInfo == .msg))
+  expect_true(any(.fit$runInfo == "linCmt() solved as ODEs: etas need 10 of 8 carry columns"))
+  expect_false(grepl("rx_lcCarry", .carryIovInnerTxt(.fit), fixed = TRUE))
+  # every eta has its exact gradient, so the fit is its ODE twin's
+  .ode <- .carryIovFit(.carryIovOde, .d)
+  expect_equal(.fit$objf, .ode$objf, tolerance = 1e-6)
+})
+
+# eta.cl, eta.v and three occasion etas on each of cl and v, declared in the
+# order `etas`: 8 pairs and 2 trackers need 10 columns
+.carryIovOrderMod <- function(etas) {
+  .f <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl + (occ == 1) * oc1 + (occ == 2) * oc2 + (occ == 3) * oc3)
+      v <- exp(tv + eta.v + (occ == 1) * ov1 + (occ == 2) * ov2 + (occ == 3) * ov3)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .ui <- suppressMessages(nlmixr2est::nlmixr2(.f))
+  .ini <- lapply(etas, function(.e) bquote(.(as.name(.e)) ~ 0.07))
+  suppressMessages(do.call(rxode2::ini, c(list(.ui), .ini)))
+}
+
+test_that("the objective past the carry cap does not depend on eta order (#1318)", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  local_mocked_bindings(.rxFoceiLinCmtCarryMaxPairs = .carryCap8)
+  .d <- nlmixr2data::theo_md
+  .d$occ <- 1L + (.d$TIME >= 72) + (.d$TIME >= 144)
+  .a <- .carryIovOrderMod(c("eta.cl", "eta.v", "oc1", "oc2", "oc3", "ov1", "ov2", "ov3"))
+  .b <- .carryIovOrderMod(c("eta.cl", "eta.v", "oc1", "ov1", "oc2", "ov2", "oc3", "ov3"))
+  .fa <- .carryIovFit(.a, .d, maxInner = 0L)
+  .fb <- .carryIovFit(.b, .d, maxInner = 0L)
+  expect_equal(.fa$objf, .fb$objf, tolerance = 1e-8)
+  expect_equal(.fa$objf, .carryIovFit(rxode2::linToOde(.a), .d, maxInner = 0L)$objf, tolerance = 1e-8)
 })
 
 test_that("the carry-cap warning names the first eta and fits a runInfo line", {
   .one <- .rxFoceiLinCmtCarryCapMsg("rx.iov.cl.7", 8L)
-  expect_identical(.one, "rx.iov.cl.7 keeps the standard gradient (8 carry columns)")
+  expect_identical(.one, "rx.iov.cl.7 has an approximate gradient (8 carry columns)")
   .many <- .rxFoceiLinCmtCarryCapMsg(paste0("rx.iov.cl.", 23:41), 32L)
-  expect_identical(.many, "rx.iov.cl.23 and 18 more keep the standard gradient (32 carry columns)")
+  expect_identical(.many, "rx.iov.cl.23 and 18 more have an approximate gradient (32 carry columns)")
   expect_lt(nchar(.many), 75L)
   # names too long for the line give the count alone
   .long <- strrep("x", 30L)
   expect_identical(
     .rxFoceiLinCmtCarryCapMsg(.long, 32L),
-    "1 eta keeps the standard gradient (32 carry columns)"
+    "1 eta has an approximate gradient (32 carry columns)"
   )
   expect_identical(
     .rxFoceiLinCmtCarryCapMsg(c(.long, "b"), 32L),
-    "2 etas keep the standard gradient (32 carry columns)"
+    "2 etas have an approximate gradient (32 carry columns)"
   )
   for (.n in c(1L, 13L, 27L, 80L)) {
     expect_lt(nchar(.rxFoceiLinCmtCarryCapMsg(strrep("z", .n), 32L)), 75L, label = .n)

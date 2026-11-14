@@ -47,17 +47,16 @@
 
 #' The carry-cap warning: the first eta past the cap and how many more
 #'
-#' Kept to one `$runInfo` line (under 75 characters, no method prefix); NEWS
-#' says what to do about it.
+#' Kept to one `$runInfo` line (under 75 characters, no method prefix).
 #' @param etas the etas that keep the standard gradient
 #' @param cap the carry columns the loaded rxode2 has
 #' @noRd
 .rxFoceiLinCmtCarryCapMsg <- function(etas, cap) {
   .msg <- if (length(etas) == 1L) {
-    sprintf("%s keeps the standard gradient (%d carry columns)", etas, cap)
+    sprintf("%s has an approximate gradient (%d carry columns)", etas, cap)
   } else {
     sprintf(
-      "%s and %d more keep the standard gradient (%d carry columns)",
+      "%s and %d more have an approximate gradient (%d carry columns)",
       etas[1L],
       length(etas) - 1L,
       cap
@@ -68,9 +67,9 @@
   }
   # a long eta name: the count alone
   sprintf(
-    "%d %s the standard gradient (%d carry columns)",
+    "%d %s an approximate gradient (%d carry columns)",
     length(etas),
-    if (length(etas) == 1L) "eta keeps" else "etas keep",
+    if (length(etas) == 1L) "eta has" else "etas have",
     cap
   )
 }
@@ -118,13 +117,9 @@
   if (!.rxFoceiLinCmtCarryModelOk(s)) {
     return(NULL)
   }
-  # a jump channel and a multCov pair both need the fast-path pin (-8)
-  .jump <- !is.na(.pairs$fD) | !is.na(.pairs$lagD) | .pairs$shape %in% "multCov"
-  if (any(.jump) && !.rxFoceiLinCmtCarryJumpCapable()) {
-    .pairs <- .pairs[!.jump, , drop = FALSE]
-    if (nrow(.pairs) == 0L) {
-      return(NULL)
-    }
+  .pairs <- .rxFoceiLinCmtCarryJumpFilter(.pairs)
+  if (is.null(.pairs)) {
+    return(NULL)
   }
   .pairs <- .rxFoceiLinCmtCarryCapPairs(.pairs)
   .rxFoceiLinCmtCarryCheckCap(.pairs)
@@ -135,19 +130,49 @@
   .pairs
 }
 
+#' Drop the pairs a jump channel or multCov shape needs the fast-path pin
+#' (-8) for when the loaded rxode2 lacks it
+#' @param pairs the eligible pairs
+#' @return the pairs that can be carried, or NULL when none can
+#' @noRd
+.rxFoceiLinCmtCarryJumpFilter <- function(pairs) {
+  if (is.null(pairs) || nrow(pairs) == 0L) {
+    return(NULL)
+  }
+  .jump <- !is.na(pairs$fD) | !is.na(pairs$lagD) | pairs$shape %in% "multCov"
+  if (any(.jump) && !.rxFoceiLinCmtCarryJumpCapable()) {
+    pairs <- pairs[!.jump, , drop = FALSE]
+    if (nrow(pairs) == 0L) {
+      return(NULL)
+    }
+  }
+  pairs
+}
+
 #' Is the carry switched on for this build (capability, control, interpolation)?
 #' @noRd
 .rxFoceiLinCmtCarryBuildEnabled <- function(ui) {
+  # covsInterpolation rides inside control$rxControl; a bare rxGetControl()
+  # lookup never sees it
+  .rxFoceiLinCmtCarryOn(
+    rxode2::rxGetControl(ui, "linCmtSensCarry", "auto"),
+    rxode2::rxGetControl(ui, "rxControl", NULL)$covsInterpolation
+  )
+}
+
+#' Is the carry switched on for a `linCmtSensCarry` value and covariate
+#' interpolation (0=linear, 1=locf, 2=nocb, 3=midpoint)?
+#' @param carry the `linCmtSensCarry` control
+#' @param interp the `covsInterpolation` control
+#' @noRd
+.rxFoceiLinCmtCarryOn <- function(carry, interp) {
   if (!.rxFoceiLinCmtCarryCapable()) {
     return(FALSE)
   }
-  if (identical(rxode2::rxGetControl(ui, "linCmtSensCarry", "auto"), "none")) {
+  if (identical(carry, "none")) {
     return(FALSE)
   }
-  # covsInterpolation rides inside control$rxControl (0=linear, 1=locf,
-  # 2=nocb, 3=midpoint); a bare rxGetControl() lookup never sees it
-  .interp <- rxode2::rxGetControl(ui, "rxControl", NULL)$covsInterpolation
-  !(identical(as.integer(.interp), 0L) || identical(.interp, "linear"))
+  !(identical(suppressWarnings(as.integer(interp)), 0L) || identical(interp, "linear"))
 }
 
 #' Run the eligibility detection without rendering; a failure warns and
@@ -207,18 +232,38 @@
 
 #' Drop the pairs past the carry's column cap, the newest kinds first
 #'
-#' The loaded rxode2 has `.rxFoceiLinCmtCarryMaxPairs()` carry columns.  Past
-#' them, the multCov pairs (an IOV rewrite's occasion etas), last first, and
-#' then the other pairs that share a slot keep the standard gradient, with
-#' one warning, so a model past the cap is carried no worse than without
-#' them; a model still past it stops in `.rxFoceiLinCmtCarryCheckCap()`.
+#' A fit never gets here past the cap: `.uiApplyOdeLinCmtCarryCap()` solves
+#' such a model as ODEs.  A build that does (a direct `ui$foceiModel`, or a
+#' model `linToOde()` cannot translate) drops the multCov pairs (an IOV
+#' rewrite's occasion etas), last first, and then the other pairs that share
+#' a slot.  The dropped etas keep the standard gradient, which is wrong for a
+#' within-subject covariate and makes the objective depend on eta order
+#' (#1318), so the warning says it is approximate; a model still past the cap
+#' stops in `.rxFoceiLinCmtCarryCheckCap()`.
 #' @param pairs the eligible pairs
 #' @return `pairs` without the dropped rows
 #' @noRd
 .rxFoceiLinCmtCarryCapPairs <- function(pairs) {
   .cap <- .rxFoceiLinCmtCarryMaxPairs()
-  if (.rxFoceiLinCmtCarryColumns(pairs) <= .cap) {
-    return(pairs)
+  .keep <- .rxFoceiLinCmtCarryCapKeep(pairs, .cap)
+  if (!is.null(.keep) && any(!.keep)) {
+    .rxFoceiLinCmtCarryCapWarn(.rxFoceiLinCmtCarryCapMsg(pairs$etaName[!.keep], .cap))
+    pairs <- pairs[.keep, , drop = FALSE]
+  }
+  pairs
+}
+
+#' The pairs a build keeps within the cap
+#'
+#' @param pairs the eligible pairs
+#' @param cap the carry columns the loaded rxode2 has
+#' @return logical, one per pair (all `TRUE` within the cap), or NULL when
+#'   dropping every droppable pair still leaves the model past the cap
+#' @noRd
+.rxFoceiLinCmtCarryCapKeep <- function(pairs, cap) {
+  .keep <- rep(TRUE, nrow(pairs))
+  if (.rxFoceiLinCmtCarryColumns(pairs) <= cap) {
+    return(.keep)
   }
   .shared <- !is.na(pairs$slot) &
     (duplicated(pairs$slot) | duplicated(pairs$slot, fromLast = TRUE))
@@ -226,18 +271,16 @@
     rev(which(pairs$shape %in% "multCov")),
     rev(which(.shared & !(pairs$shape %in% "multCov")))
   )
-  .keep <- rep(TRUE, nrow(pairs))
   for (.w in .order) {
-    if (.rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) <= .cap) {
+    if (.rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) <= cap) {
       break
     }
     .keep[.w] <- FALSE
   }
-  if (any(!.keep) && .rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) <= .cap) {
-    .rxFoceiLinCmtCarryCapWarn(.rxFoceiLinCmtCarryCapMsg(pairs$etaName[!.keep], .cap))
-    pairs <- pairs[.keep, , drop = FALSE]
+  if (.rxFoceiLinCmtCarryColumns(pairs[.keep, , drop = FALSE]) > cap) {
+    return(NULL)
   }
-  pairs
+  .keep
 }
 
 #' @noRd

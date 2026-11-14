@@ -104,6 +104,11 @@
     .rxFoceiLinCmtCarryShape(.s)$oral0,
     error = function(e) NULL
   )
+  # whether the build can carry this parameterization at all
+  attr(.ret, "modelOk") <- tryCatch(
+    .rxFoceiLinCmtCarryModelOk(.s),
+    error = function(e) FALSE
+  )
   .foceiLinCmtCarryMemoPut(.key, .ret)
   .ret
 }
