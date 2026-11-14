@@ -746,7 +746,8 @@ nmTest({
     .b <- .fit(7L)
     expect_gt(.a$env$nTrustInner[["omegaRestart"]], 0L)
     expect_gt(.b$env$nTrustInner[["omegaRestart"]], 0L)
-    expect_false(isTRUE(all.equal(.a$objf, .b$objf)))
+    # the restarts can land within all.equal() of the same objective; the etas differ
+    expect_false(isTRUE(all.equal(.a$eta, .b$eta)))
     expect_equal(.fit(42L)$objf, .a$objf)
   })
 

@@ -106,6 +106,12 @@
 
 ### Estimation
 
+- The FOCEi residual-variance floor is now `DBL_MIN^(1/8)` (about 3.5e-39)
+  instead of `sqrt(.Machine$double.eps)`.  A proportional-error prediction
+  below about 6e-4 (at a 0.2 SD) is no longer floored; the floor had biased
+  -2LL upward, more the smaller the prediction, and broken scale invariance
+  (#1285).
+
 - `est = "nlm"` and `est = "nls"` with the `linCmt()` sensitivity carry
   (`linCmtSensCarry = "auto"`, the default) now reach the optimum.  The
   record walk that builds their gradient started each subject from the carry
