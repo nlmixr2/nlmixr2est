@@ -4951,9 +4951,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # missing amt ("'amt' value NA for dose event", issue #919).  The solving
   # models carry their own mtime() declarations (.mtimeLinesStr()), so each
   # solve regenerates them; they must not be persisted here.  EVID 9 (system
-  # init) is below the range and is kept.  EVID 8 (a lagged dose's hidden
-  # knot) is regenerated from its dose record the same way.
-  .dat <- .dat[!(.dat$EVID == 8 | (.dat$EVID >= 10 & .dat$EVID <= 99)), , drop = FALSE]
+  # init) is below the range and is kept.
+  .dat <- .dat[!(.dat$EVID >= 10 & .dat$EVID <= 99), , drop = FALSE]
   env$dataSav <- .dat
   env$idLvl <- .idLvl
   env$covLvl <- .lvls
