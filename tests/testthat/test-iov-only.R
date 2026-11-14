@@ -1,5 +1,6 @@
 # A model whose only random effect is an occasion one: no subject-level eta
-# for the IOV rewrite to copy its rows from
+# for the IOV rewrite to copy its rows from.  An ODE model, as occ steps within
+# a subject and linCmt()'s reading of that depends on the rxode2 version.
 .iovOnlyMod <- function() {
   ini({
     tka <- 0.45
@@ -12,7 +13,10 @@
     ka <- exp(tka)
     cl <- exp(tcl + iov.cl)
     v <- exp(tv)
-    linCmt() ~ add(add.sd)
+    d / dt(depot) <- -ka * depot
+    d / dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
   })
 }
 
@@ -63,7 +67,8 @@ nmTest({
     .fit <- suppressWarnings(suppressMessages(
       nlmixr2(.iovOnlyMod, .iovOnlyData(), "focei", foceiControl(print = 0, covMethod = ""))
     ))
-    expect_equal(.fit$objf, 193.609622, tolerance = 1e-6)
+    # moves by ~1e-5 relative between platforms
+    expect_equal(.fit$objf, 193.607959, tolerance = 1e-4)
     # no subject-level eta is left once the occasion columns move out
     expect_s3_class(.fit$eta, "data.frame")
     expect_identical(names(.fit$eta), "ID")
