@@ -2,6 +2,19 @@
 
 ## Changed defaults
 
+- FOCEi-family fits now scale a linear `theta` by its `|init|`
+  (`foceiControl(scaleLinear = "abs")`, as NONMEM does) instead of
+  `1/|init|` inside `scaleCband`.  When a model has such a `theta`, the
+  `"bobyqa"` outer search also restarts up to 3 times on a curvature-adapted
+  scale (`scaleAdapt = NULL`); models whose thetas are all `exp()`-scaled are
+  unchanged.  On a 36-case simulated PK corpus with linear thetas this
+  ended more than 0.1 below the old default on 87 of 180 fits, more than 0.1
+  above it on 1 (by 0.15), and never above the generating values' objective
+  (the old default did on 2).  A mixture proportion, estimated as a
+  log-odds, is scaled by 1 and does not count as linear.
+  `scaleLinear = "inverse"` and `scaleAdapt = 0` restore the old behavior
+  (#1320).
+
 - `sigdig` now sets the ODE tolerances to `rtol = 10^(-2*sigdig)` and
   `atol = rtol/100` (floored at `rtol = 1e-12`) instead of
   `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`.  At the default
@@ -14,14 +27,13 @@
 
 ## New features
 
-- `foceiControl(scaleLinear = "abs")` scales every linear theta by its
-  `|init|`, as NONMEM does, instead of the default `1/|init|` inside
-  `scaleCband`.  The default `"inverse"` is unchanged (#1320).
+- `foceiControl(scaleLinear = )` chooses between `|init|` (`"abs"`) and the
+  banded `1/|init|` (`"inverse"`) scale for linear thetas (#1320).
 
 - `foceiControl(scaleAdapt = n)` restarts the `"bobyqa"` outer search up to
   `n` times on a scale adapted to the curvature where it stopped, one unit per
   marginal standard error.  It recovers fits whose starting scale left bobyqa
-  stopping short of the minimum.  Off by default (#1320).
+  stopping short of the minimum (#1320).
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM

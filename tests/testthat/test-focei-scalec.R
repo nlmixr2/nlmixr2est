@@ -119,9 +119,9 @@ nmTest({
   test_that("a zero gradient the scaleC0 retries cannot resolve keeps its own scaleC", {
     skip_on_cran()
     # the searches with scaleC0 and 1/scaleC0 find no slope either, so beta
-    # keeps R's 1/|init| = 2, not 1/scaleC0
+    # keeps R's |init| = 0.5, not 1/scaleC0
     .f <- suppressMessages(suppressWarnings(nlmixr(.modZ, .dZ, "focei", control = .ctl(scaleC0 = 1000))))
-    expect_equal(.f$scaleInfo$scaleC[4], 2)
+    expect_equal(.f$scaleInfo$scaleC[4], 0.5)
   })
 
   test_that("a fixed theta does not shift the scaleC of the parameters after it", {
@@ -331,7 +331,7 @@ nmTest({
     # An outer optimizer whose first gradient is not at the starting values:
     # beta has moved by 1 on the optimizer's scale.  A new scaleC there would
     # move beta under the optimizer (and the search would difference about the
-    # objective at the old point), so the same point must still be beta = 2.5.
+    # objective at the old point), so the same point must still be beta = 1.
     .opt <- function(par, fn, gr, lower, upper, control, ...) {
       .p <- par
       .p[4] <- .p[4] + 1
@@ -355,7 +355,7 @@ nmTest({
     .ph <- .f$parHistData
     .beta <- .ph$beta[.ph$type == "Unscaled"]
     expect_length(.beta, 2L)
-    # beta = 0.5 + 1 * its scaleC, 1/0.5
-    expect_equal(.beta, c(2.5, 2.5))
+    # beta = 0.5 + 1 * its scaleC, |0.5|
+    expect_equal(.beta, c(1, 1))
   })
 })

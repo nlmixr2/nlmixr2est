@@ -4630,6 +4630,8 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   .thetaIni <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
   .zero <- nlmixr2global$nlmixr2EstEnv$zeroThetaScale
   .zeroIdx <- integer(0)
+  .nLinear <- 0L
+  .mixProbs <- tryCatch(ui$mixProbs, error = function(e) character(0))
   for (.k in seq_len(nrow(.thetaIni))) {
     .nt <- .thetaIni$ntheta[.k]
     if (.nt <= length(.scaleC) && is.na(.scaleC[.nt]) && !.thetaIni$fix[.k]) {
@@ -4640,15 +4642,22 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
         .zeroIdx <- c(.zeroIdx, as.integer(.nt))
         next
       }
+      # a mixture proportion is estimated as a log-odds, not linearly
+      .isMix <- .thetaIni$name[.k] %in% .mixProbs
       if (identical(.scLinear, "abs")) {
-        .scaleC[.nt] <- if (.init == 0) 1 else abs(.init)
+        # log-odds take the exp() thetas' 1
+        .scaleC[.nt] <- if (.isMix || .init == 0) 1 else abs(.init)
+        .nLinear <- .nLinear + !.isMix
         next
       }
       .raw <- if (.init == 0) Inf else 1 / abs(.init)
       .scaleC[.nt] <- .guardScaleC(.raw, .init, .scLo, .scHi)
+      .nLinear <- .nLinear + !.isMix
     }
   }
   env$scaleC <- .scaleC
+  # estimated thetas scaled by the linear rule (not the zero-theta one)
+  env$nLinearTheta <- .nLinear
   # thetas (1-based) whose start the C++ outer setup may move by one Newton step
   env$zeroThetaIdx <- .zeroIdx
 }
@@ -4884,6 +4893,10 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   env$xform <- .iterPrintXParFromUi(ui)
   .foceiSetupSkipCov(ui, env)
   env$control <- get("control", envir = ui)
+  if (length(env$control$scaleAdapt) == 1L && is.na(env$control$scaleAdapt)) {
+    # automatic: rescaled restarts only when a theta is linear (#1320)
+    env$control$scaleAdapt <- if (isTRUE(env$nLinearTheta > 0L)) 3L else 0L
+  }
   env$control$nF <- 0
   env$control$printTop <- TRUE
   env

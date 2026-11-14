@@ -20,13 +20,13 @@ nmTest({
   }
 
   test_that("scaleLinear validates and round-trips", {
-    expect_equal(foceiControl()$scaleLinear, "inverse")
-    expect_equal(foceiControl(scaleLinear = "abs")$scaleLinear, "abs")
+    expect_equal(foceiControl()$scaleLinear, "abs")
+    expect_equal(foceiControl(scaleLinear = "inverse")$scaleLinear, "inverse")
     expect_error(foceiControl(scaleLinear = "log"))
   })
 
-  test_that("scaleLinear = 'inverse' keeps the banded 1/|init| default", {
-    .sc <- .scaleLinear(.sweep)[seq_along(.inits)]
+  test_that("scaleLinear = 'inverse' keeps the banded 1/|init| rule", {
+    .sc <- .scaleLinear(.sweep, scaleLinear = "inverse")[seq_along(.inits)]
     expect_equal(.sc, c(0.05, 10, 2, 0.2, 0.1, 20))
   })
 
@@ -72,7 +72,7 @@ nmTest({
         y ~ add(add.sd)
       })
     }
-    expect_equal(.scaleLinear(.mod), c(1, 0.4, 0.25, 0.15))
+    expect_equal(.scaleLinear(.mod, scaleLinear = "inverse"), c(1, 0.4, 0.25, 0.15))
     expect_equal(.scaleLinear(.mod, scaleLinear = "abs"), c(1, 2.5, 4, 0.15))
   })
 
