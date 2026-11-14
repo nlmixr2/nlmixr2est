@@ -6,6 +6,13 @@
 # helper-lincmt-carry.R.  Every test needs an rxode2 with the carry sentinels
 # and the jump pin (which1=-8) and skips cleanly without them.
 
+# rxode2 emits a hidden record (evid 8) at an alag() dose's data time
+.carryLagKnotRecord <- function() {
+  .m <- rxode2::rxode2("alag(depot) <- 1\nd/dt(depot) <- -depot")
+  .d <- data.frame(id = 1, time = 0:1, amt = c(1, 0), evid = c(1, 0), cmt = 1)
+  any(rxode2::etTrans(.d, .m)$EVID == 8L)
+}
+
 .carryJumpCapable <- function() {
   .rxFoceiLinCmtCarryCapable() && .rxFoceiLinCmtCarryJumpCapable()
 }
@@ -143,9 +150,10 @@ test_that("f()+alag()+covariate gradients match FD for every eta; naive fails cl
 
 test_that("a lagged dose's data time splits its intervals as rxode2 reads them", {
   skip_if_not(.carryJumpCapable())
-  # rxode2 imputes a lagged dose's covariates at its arrival and keeps its
-  # data time as a knot (#1584); a lag past the next record puts that knot
-  # inside an interval that ends at an observation
+  # rxode2 keeps a lagged dose's data time as a hidden record (#1584), so
+  # the carry's intervals split there with no knot handling of its own; a
+  # lag past the next record puts it before an observation
+  skip_if_not(.carryLagKnotRecord())
   evObs <- .carryEv()
   evObs$cmt <- 1
   evObs$wt <- ifelse(evObs$time < 10, 70, ifelse(evObs$time < 27, 85, 100))
@@ -157,14 +165,6 @@ test_that("a lagged dose's data time splits its intervals as rxode2 reads them",
       expect_lt(max(rL$err), 1e-6, label = paste(.i, "lag", .lag))
     }
   }
-})
-
-test_that("a linear covariate keeps its own interval rule around lagged doses", {
-  skip_if_not(.rxFoceiLinCmtIntervalCovs())
-  ci <- .rxFoceiLinCmtCarryCovInterval(c("wt", "age"), c(wt = "linear", age = "nocb"), knot = TRUE)
-  expect_true("rx_lcCovI_wt_~0.5*(wt+rx_lcLag_wt_)" %in% ci$lines)
-  expect_false(any(grepl("rx_lc(L|N|Tn|Nl|Nn)_wt", c(ci$lines, ci$copies))))
-  expect_true(any(grepl("^rx_lcCovI_age_~ifelse\\(", ci$lines)))
 })
 
 test_that("an additive f() shape with a covariate needs the carry and matches FD", {

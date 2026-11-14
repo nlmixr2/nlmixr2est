@@ -130,8 +130,7 @@
   .rxFoceiLinCmtCarryCheckCap(.pairs)
   attr(.pairs, "carryCovInterval") <- .rxFoceiLinCmtCarryCovInterval(
     x[[1]]$allCovs,
-    .rxFoceiLinCmtCarryInterp(x[[1]], x[[1]]$allCovs),
-    .rxFoceiLinCmtCarryLagKnot(x[[1]])
+    .rxFoceiLinCmtCarryInterp(x[[1]], x[[1]]$allCovs)
   )
   .pairs
 }

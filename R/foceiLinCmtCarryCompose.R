@@ -56,27 +56,18 @@
 #' the column (`rx_lcL_<cov>`, `rx_lcN_<cov>`) that the generated models
 #' declare `locf()` and `nocb()`.
 #'
-#' Around a lagged dose (`.rxFoceiLinCmtCarryLagKnot()`) every locf, nocb
-#' and midpoint covariate is read through both copies, and through its next
-#' data knot (`.rxFoceiLinCmtCarryNextKnot()`).
-#'
 #' @param ui rxode2 ui with its control
 #' @return the covariates under midpoint, by the control or by their own
 #'   declaration, of a `linCmt()` model the carry is on for, with an rxode2
 #'   that advances an interval with its own covariates
-#'   (`.rxFoceiLinCmtIntervalCovs()`); `character(0)` otherwise.  Attribute
-#'   `knot` is `TRUE` around a lagged dose.
+#'   (`.rxFoceiLinCmtIntervalCovs()`); `character(0)` otherwise
 #' @noRd
 .rxFoceiLinCmtCarryMidCovs <- function(ui) {
   if (!.foceiUsesLinCmt(ui) || !.rxFoceiLinCmtCarryBuildEnabled(ui) || !.rxFoceiLinCmtIntervalCovs()) {
     return(character(0))
   }
   .covs <- ui$allCovs
-  .interp <- .rxFoceiLinCmtCarryInterp(ui, .covs)
-  if (.rxFoceiLinCmtCarryLagKnot(ui)) {
-    return(structure(.covs[.interp %in% c("locf", "nocb", "midpoint")], knot = TRUE))
-  }
-  .covs[.interp == "midpoint"]
+  .covs[.rxFoceiLinCmtCarryInterp(ui, .covs) == "midpoint"]
 }
 
 #' Data with the hidden copies the carry reads under midpoint
@@ -84,58 +75,12 @@
 #' @param data data frame or event table with the covariate columns
 #' @param covs `.rxFoceiLinCmtCarryMidCovs()`
 #' @return `data` with `rx_lcL_<cov>` and `rx_lcN_<cov>`, copies of each of
-#'   `covs`, and, when `covs` has `knot`, each one's next knot
-#'   (`.rxFoceiLinCmtCarryNextKnot()`)
+#'   `covs`
 #' @noRd
 .rxFoceiLinCmtCarryAliasData <- function(data, covs) {
   for (.c in covs) {
     data[[paste0("rx_lcL_", .c)]] <- data[[.c]]
     data[[paste0("rx_lcN_", .c)]] <- data[[.c]]
-  }
-  if (isTRUE(attr(covs, "knot"))) {
-    data <- .rxFoceiLinCmtCarryNextKnot(data, covs)
-  }
-  data
-}
-
-#' Each row's next data knot of each covariate
-#'
-#' A knot is a later time at which the subject has a non-missing value.  Each
-#' row gets that time (`rx_lcTn_<cov>`, a huge time past the last), the value
-#' a locf read there takes (`rx_lcNl_<cov>`, the time's last row) and the one
-#' a nocb read takes (`rx_lcNn_<cov>`, its first row).
-#'
-#' @param data data sorted by subject and time
-#' @param covs covariates
-#' @return `data` with the three columns per covariate
-#' @noRd
-.rxFoceiLinCmtCarryNextKnot <- function(data, covs) {
-  .t <- data[[intersect(c("TIME", "time"), names(data))[1]]]
-  .id <- data[[intersect(c("ID", "id"), names(data))[1]]]
-  .rows <- split(seq_along(.t), factor(.id, levels = unique(.id)))
-  for (.c in covs) {
-    .v <- data[[.c]]
-    .tn <- rep(1e300, length(.t))
-    .nl <- .v
-    .nn <- .v
-    for (.r in .rows) {
-      .ok <- .r[!is.na(.v[.r])]
-      if (length(.ok) == 0L) {
-        next
-      }
-      .kt <- unique(.t[.ok])
-      .last <- .ok[!duplicated(.t[.ok], fromLast = TRUE)]
-      .first <- .ok[!duplicated(.t[.ok])]
-      # index of the first knot strictly after each row's time
-      .k <- findInterval(.t[.r], .kt) + 1L
-      .has <- .k <= length(.kt)
-      .tn[.r[.has]] <- .kt[.k[.has]]
-      .nl[.r[.has]] <- .v[.last[.k[.has]]]
-      .nn[.r[.has]] <- .v[.first[.k[.has]]]
-    }
-    data[[paste0("rx_lcTn_", .c)]] <- .tn
-    data[[paste0("rx_lcNl_", .c)]] <- .nl
-    data[[paste0("rx_lcNn_", .c)]] <- .nn
   }
   data
 }
@@ -156,16 +101,6 @@
 #' - linear: the mean of its values at the two records, its value at the
 #'   middle of an interval between two records that carry it.
 #'
-#' With `knot` (`.rxFoceiLinCmtCarryLagKnot()`) a lagged dose's data time is
-#' a knot but not a record, so it can lie inside an interval: the one that
-#' ends at its arrival, or one that ends at a record before it.  The
-#' previous record's next knot `F` (`.rxFoceiLinCmtCarryNextKnot()`) splits
-#' an interval it lies inside: with `m` the interval's middle, `wP` the
-#' covariate's locf view at the previous record, `wN` its nocb view here and
-#' `wF` its locf (nocb) value at `F`, locf reads `m >= F ? wF : wP`, nocb
-#' `m < F ? wF : wN` and midpoint their mean.  It assumes at most one knot
-#' inside an interval (two lagged doses still to arrive at one record).
-#'
 #' The lag is taken from a model copy (`copies`, real lhs ahead of
 #' rx_pred_, as lag() needs), not from the column: a record with no value of
 #' its own holds NA, which lag0() turns into 0, where the model evaluation
@@ -176,7 +111,6 @@
 #'
 #' @param covs the model's covariates
 #' @param interp `.rxFoceiLinCmtCarryInterp()`, named by covariate
-#' @param knot `.rxFoceiLinCmtCarryLagKnot()`
 #' @return NULL when every covariate's record value is its interval's (nocb,
 #'   no covariates, or an rxode2 that advances every interval with the end
 #'   record's covariates, `.rxFoceiLinCmtIntervalCovs()`), else list(copies =
@@ -184,62 +118,36 @@
 #'   defining each interval value, map = covariate -> the symbol holding its
 #'   interval value)
 #' @noRd
-.rxFoceiLinCmtCarryCovInterval <- function(covs, interp, knot = FALSE) {
+.rxFoceiLinCmtCarryCovInterval <- function(covs, interp) {
   if (!.rxFoceiLinCmtIntervalCovs()) {
     return(NULL)
   }
-  covs <- covs[interp[covs] %in% c(if (knot) "nocb", "locf", "midpoint", "linear")]
+  covs <- covs[interp[covs] %in% c("locf", "midpoint", "linear")]
   if (length(covs) == 0L) {
     return(NULL)
   }
   .copies <- character(0)
   .lines <- character(0)
-  if (knot) {
-    .copies <- "rx_lcT_=t"
-    .lines <- c("rx_lcTp_~lag0(rx_lcT_)", "rx_lcMid_~0.5*(rx_lcTp_+t)")
-  }
   for (.c in covs) {
     .copy <- paste0("rx_lcCov_", .c, "_")
     .lag <- paste0("rx_lcLag_", .c, "_")
     .int <- paste0("rx_lcCovI_", .c, "_")
-    # a linear covariate keeps its own rule (a varying one is refused)
-    .knot <- knot && interp[[.c]] != "linear"
-    .two <- .knot || interp[[.c]] == "midpoint"
-    # with the hidden copies the lag reads the locf copy of the column
-    .src <- if (.two) paste0("rx_lcL_", .c) else .c
+    .mid <- interp[[.c]] == "midpoint"
+    # under midpoint the lag reads the locf copy of the column
+    .src <- if (.mid) paste0("rx_lcL_", .c) else .c
     .copies <- c(
       .copies,
-      if (.two) c(paste0("locf(rx_lcL_", .c, ")"), paste0("nocb(rx_lcN_", .c, ")")),
+      if (.mid) c(paste0("locf(rx_lcL_", .c, ")"), paste0("nocb(rx_lcN_", .c, ")")),
       paste0(.copy, "=", .src)
     )
-    .lines <- c(.lines, paste0(.lag, "~lag0(", .copy, ")"))
-    if (!.knot) {
-      .lines <- c(
-        .lines,
-        switch(
-          interp[[.c]],
-          locf = paste0(.int, "~", .lag),
-          midpoint = paste0(.int, "~0.5*(", .lag, "+rx_lcN_", .c, ")"),
-          linear = paste0(.int, "~0.5*(", .c, "+", .lag, ")")
-        )
-      )
-      next
-    }
-    # the previous record's next knot, and the locf/nocb values there
-    .k <- paste0(c("rx_lcTn_", "rx_lcNl_", "rx_lcNn_"), .c)
-    .kc <- paste0(.k, "C_")
-    .kp <- paste0(.k, "P_")
-    .copies <- c(.copies, paste0("locf(", .k, ")"), paste0(.kc, "=", .k))
-    .lines <- c(.lines, paste0(.kp, "~lag0(", .kc, ")"))
-    .in <- paste0(.kp[1], "<t")
-    .lo <- paste0("ifelse(", .in, "&&rx_lcMid_>=", .kp[1], ",", .kp[2], ",", .lag, ")")
-    .no <- paste0("ifelse(", .in, "&&rx_lcMid_<", .kp[1], ",", .kp[3], ",rx_lcN_", .c, ")")
     .lines <- c(
       .lines,
-      paste0(
-        .int,
-        "~",
-        switch(interp[[.c]], locf = .lo, nocb = .no, midpoint = paste0("0.5*(", .lo, "+", .no, ")"))
+      paste0(.lag, "~lag0(", .copy, ")"),
+      switch(
+        interp[[.c]],
+        locf = paste0(.int, "~", .lag),
+        midpoint = paste0(.int, "~0.5*(", .lag, "+rx_lcN_", .c, ")"),
+        linear = paste0(.int, "~0.5*(", .c, "+", .lag, ")")
       )
     )
   }
