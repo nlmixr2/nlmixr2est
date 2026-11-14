@@ -106,6 +106,11 @@
 
 ### Estimation
 
+- The `linCmt()` FOCEi sensitivity carry matches finite differences again for
+  an `alag()` dose with a time-varying covariate.  rxode2 now adds a hidden
+  record (`EVID` 8) at a lagged dose's data time, so the carry reads that
+  covariate knot like any other record (nlmixr2/rxode2#1584).
+
 - `est = "nlm"` and `est = "nls"` with the `linCmt()` sensitivity carry
   (`linCmtSensCarry = "auto"`, the default) now reach the optimum.  The
   record walk that builds their gradient started each subject from the carry

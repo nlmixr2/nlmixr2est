@@ -6,6 +6,13 @@
 # helper-lincmt-carry.R.  Every test needs an rxode2 with the carry sentinels
 # and the jump pin (which1=-8) and skips cleanly without them.
 
+# rxode2 emits a hidden record (evid 8) at an alag() dose's data time
+.carryLagKnotRecord <- function() {
+  .m <- rxode2::rxode2("alag(depot) <- 1\nd/dt(depot) <- -depot")
+  .d <- data.frame(id = 1, time = 0:1, amt = c(1, 0), evid = c(1, 0), cmt = 1)
+  any(rxode2::etTrans(.d, .m)$EVID == 8L)
+}
+
 .carryJumpCapable <- function() {
   .rxFoceiLinCmtCarryCapable() && .rxFoceiLinCmtCarryJumpCapable()
 }
@@ -138,6 +145,25 @@ test_that("f()+alag()+covariate gradients match FD for every eta; naive fails cl
     expect_lt(max(rL$err), 1e-6, label = .i)
     rL <- .carryJumpFd(.carryModJump, .carryJumpPars, evObs, interp = .i)
     expect_lt(max(rL$err), 1e-6, label = paste(.i, "wt between doses"))
+  }
+})
+
+test_that("a lagged dose's data time splits its intervals as rxode2 reads them", {
+  skip_if_not(.carryJumpCapable())
+  # rxode2 keeps a lagged dose's data time as a hidden record (#1584), so
+  # the carry's intervals split there with no knot handling of its own; a
+  # lag past the next record puts it before an observation
+  skip_if_not(.carryLagKnotRecord())
+  evObs <- .carryEv()
+  evObs$cmt <- 1
+  evObs$wt <- ifelse(evObs$time < 10, 70, ifelse(evObs$time < 27, 85, 100))
+  for (.lag in c(0.5, 10)) {
+    .p <- .carryJumpPars
+    .p["THETA[5]"] <- log(.lag)
+    for (.i in c("nocb", "locf", "midpoint")) {
+      rL <- .carryJumpFd(.carryModJump, .p, evObs, interp = .i)
+      expect_lt(max(rL$err), 1e-6, label = paste(.i, "lag", .lag))
+    }
   }
 })
 
