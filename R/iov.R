@@ -1416,6 +1416,134 @@ nlmixr2iovVarSd <- function(val) {
   ret
 }
 
+#' Keep the model an IOV fit estimated, for its tables
+#'
+#' Registered as the first post-final hook, before any finalizer restores the
+#' user's model.  The fit's own tables come from the estimated (rewritten)
+#' model, its thetas and its etas; `addTable()`, `addNpde()`, `addCwres()` and
+#' `setOfv()` evaluate the same ones (`.iovTablesFit()`).
+#'
+#' @param ret fit object
+#' @return `ret`
+#' @noRd
+#' @author Matthew L. Fidler
+.nlmixr0iovKeepTables <- function(ret) {
+  if (is.null(.uiIovEnv$ui) || !is.environment(ret$env)) {
+    return(ret)
+  }
+  .env <- ret$env
+  if (!is.data.frame(.env$ranef)) {
+    return(ret)
+  }
+  .ui <- .env$ui
+  .models <- mget(intersect(c("foceiModel", "saemModel"), ls(.env, all.names = TRUE)), envir = .env)
+  .mu2Models <- NULL
+  if (length(.muRefTrans$cur) > 0L) {
+    # the tables read the user's covariates, as .uiFinalizeMu2hook() leaves the fit
+    .ui <- .uiMu2Restore(rxode2::rxUiCompress(.ui))
+    .mu2Models <- names(.models)
+    .models <- list()
+  }
+  assign(
+    "iovTables",
+    list(
+      ui = .ui,
+      fixef = .env$fixef,
+      ranef = .env$ranef,
+      omega = .env$omega,
+      models = .models,
+      mu2Models = .mu2Models,
+      # the columns the finalizers drop from, and rename in, the fit's table
+      drop = .uiIovEnv$iovDrop,
+      dropRx = !is.null(.uiIovEnv$iovCollapsed),
+      rename = .uiIovEnv$iovVars
+    ),
+    envir = .env
+  )
+  ret
+}
+
+#' A fit's environment with the model it estimated, for its tables
+#'
+#' @param fit nlmixr2 fit with IOV
+#' @param keep data columns the table keeps
+#' @return a copy of the fit's environment with the estimated model, its
+#'   compiled models, thetas, omega and etas of `.nlmixr0iovKeepTables()`
+#' @noRd
+#' @author Matthew L. Fidler
+.iovTablesFit <- function(fit, keep = NULL) {
+  .keep <- get0("iovTables", envir = fit$env, inherits = FALSE)
+  if (is.null(.keep)) {
+    stop("this IOV fit does not keep the model it estimated; refit it", call. = FALSE)
+  }
+  .env <- .cloneEnv(fit$env)
+  # as the fit's environment is in its own table step
+  class(.env) <- "nlmixr2FitCore"
+  for (.n in c("ui", "fixef", "ranef", "omega")) {
+    assign(.n, .keep[[.n]], envir = .env)
+  }
+  # these describe the user's model, or come from it
+  .rm <- c(
+    "iov",
+    "iovNative",
+    "iovTables",
+    "dataSav",
+    "idLvl",
+    "covLvl",
+    "model",
+    "foceiModel",
+    "saemModel",
+    "mu2Models"
+  )
+  rm(list = intersect(.rm, ls(.env, all.names = TRUE)), envir = .env)
+  list2env(.keep$models, envir = .env)
+  if (length(.keep$mu2Models) > 0L) {
+    assign("mu2Models", .keep$mu2Models, envir = .env)
+  }
+  # the estimated model's data, with the columns the table keeps
+  .data <- new.env(parent = emptyenv())
+  .data$table <- list(keep = setdiff(keep, "nlmixrRowNums"))
+  .foceiPreProcessData(.env$origData, .data, rxode2::rxUiDecompress(.keep$ui), .env$control$rxControl)
+  for (.n in c("dataSav", "idLvl", "covLvl")) {
+    assign(.n, .data[[.n]], envir = .env)
+  }
+  .env
+}
+
+#' The etas of the model an IOV fit estimated, as an `etaMat`
+#'
+#' @param fit nlmixr2 fit with IOV
+#' @return eta matrix in the estimated model's eta order
+#' @noRd
+#' @author Matthew L. Fidler
+.iovTablesEtaMat <- function(fit) {
+  .keep <- fit$env$iovTables
+  .ini <- rxode2::rxUiDecompress(.keep$ui)$iniDf
+  .eta <- as.matrix(.nmDropNonEtaCols(.keep$ranef))
+  .eta[, .ini$name[which(.ini$neta1 == .ini$neta2)], drop = FALSE]
+}
+
+#' The table of an IOV fit's estimated model, as its finalizer leaves it
+#'
+#' @param df table from `.calcTables()` on `.iovTablesFit()`
+#' @param fit nlmixr2 fit with IOV
+#' @return `df` without the rewrite's occasion etas, with its occasion
+#'   variables named as the user's
+#' @noRd
+#' @author Matthew L. Fidler
+.iovTablesFinish <- function(df, fit) {
+  .keep <- fit$env$iovTables
+  .drop <- names(df) %in% .keep$drop
+  if (.keep$dropRx) {
+    .drop <- .drop | grepl("^rx[.]", names(df))
+  }
+  df <- df[, !.drop, drop = FALSE]
+  .w <- which(names(df) %in% paste0(.keep$rename, ".rx"))
+  names(df)[.w] <- sub("[.]rx$", "", names(df)[.w])
+  df
+}
+
 preProcessHooksAdd(".nlmixr0preProcessAssertSameBlock", .nlmixr0preProcessAssertSameBlock)
 preProcessHooksAdd(".uiApplyIov", .uiApplyIov)
+postFinalObjectHooksAdd(".nlmixr0iovKeepTables", .nlmixr0iovKeepTables)
 postFinalObjectHooksAdd(".uiFinalizeIov", .uiFinalizeIov)

@@ -1,6 +1,7 @@
-# The tables of a finished fit with inter-occasion variability.  Its thetas,
-# etas and data are the user's model's, so addNpde() and addTable() refit it
-# with no iterations at its etas; their columns must be the fit's own.
+# The tables of a finished fit with inter-occasion variability.  addNpde()
+# and addTable() evaluate the model it estimated (the IOV rewrite, or saem's
+# two-level or collapsed model) at its thetas and etas; their columns must be
+# the fit's own.
 
 # The fits shared by the tests below, each made once per run
 .iovTablesCache <- new.env(parent = emptyenv())
@@ -31,8 +32,7 @@ nmTest({
       expect_identical(names(.with$ranef), c("ID", "eta.v"), label = .est)
       expect_equal(.with$fixef, .fit$fixef, tolerance = 1e-10, label = .est)
       .new <- suppressMessages(addNpde(.fit, updateObject = FALSE))
-      # its time is recorded as for a fit without IOV, though the refit's
-      # nlmixr2() resets the timing globals
+      # its time is recorded as for a fit without IOV
       expect_true("NPDE" %in% names(.fit$time), label = .est)
       expect_identical(setdiff(names(.new), names(.fit)), .iovTablesNpdeCols, label = .est)
       expect_identical(nrow(.new), nrow(.fit), label = .est)
@@ -63,8 +63,8 @@ nmTest({
     )
     .fit <- .iovTablesFit("focei", "focei")
     invisible(suppressWarnings(suppressMessages(simulate(.fit))))
-    # simulate() leaves the fit's data as it was, so the refit still sees a
-    # numeric occasion
+    # simulate() leaves the fit's data as it was, so the estimated model still
+    # sees a numeric occasion
     expect_identical(.fit$origData$occ, .iovFitData()$occ)
     .new <- suppressMessages(addNpde(.fit, updateObject = FALSE))
     expect_true(all(is.finite(.new$NPDE)))
@@ -93,7 +93,7 @@ nmTest({
   test_that("an IOV fit with a subject without observations is finished, and addTable() gives its table", {
     # the fit drops subject 3 and its table reinserts it, through a
     # population predict(), whose hooks cleared the IOV rewrite's state; and
-    # addTable()'s refit already has the subject labels and reinserted rows
+    # addTable() reinserts it the same way
     for (.est in c("focei", "saem")) {
       .full <- .iovTablesFit(.est, .est)
       .fit <- .iovTablesFit(paste0(.est, "-noobs"), .est, data = .iovFitNoObsData())
@@ -147,23 +147,38 @@ nmTest({
     }
   })
 
-  test_that("saem's collapsed IOV: addNpde() and addTable() refuse to refit", {
-    # its tables are those of the collapsed model it fitted, which the focei
-    # refit does not rebuild
-    .fit <- .iovTablesFit("saem-coll", "saem", control = list(iovMethod = "collapsed"), model = .iovFitMuMod)
-    expect_identical(.fit$env$iovNative, "collapsed")
-    .why <- paste0(
-      " can't recompute the tables of a saem fit with iovMethod = \"collapsed\"; ",
-      "ask for them when fitting (`table = tableControl()`, `calcTables = TRUE`)"
+  test_that("saem's collapsed IOV: addNpde(), addTable() and addCwres() give the fit's columns", {
+    # its tables are those of the collapsed model it fitted, solved again at
+    # the fit's collapsed etas
+    .ctl <- list(iovMethod = "collapsed")
+    .fit <- .iovTablesFit("saem-coll", "saem", control = .ctl, model = .iovFitMuMod)
+    .with <- .iovTablesFit(
+      "saem-coll-npde",
+      "saem",
+      control = .ctl,
+      model = .iovFitMuMod,
+      table = tableControl(npde = TRUE)
     )
-    .e <- expect_error(suppressMessages(addNpde(.fit, updateObject = FALSE)))
-    expect_identical(conditionMessage(.e), paste0("addNpde()", .why))
-    .e <- expect_error(suppressMessages(addTable(.fit, updateObject = FALSE)))
-    expect_identical(conditionMessage(.e), paste0("addTable()", .why))
+    expect_identical(.fit$env$iovNative, "collapsed")
+    expect_identical(colnames(.iovTablesEtaMat(.fit)), c("eta.v", "rx.eta.cl.1", "rx.eta.cl.2"))
+    expect_identical(setdiff(names(.with), names(.fit)), .iovTablesNpdeCols)
+    .new <- suppressMessages(addNpde(.fit, updateObject = FALSE))
+    expect_setequal(names(.new), names(.with))
+    for (.c in .iovTablesNpdeCols) {
+      expect_equal(.new[[.c]], .with[[.c]], tolerance = 1e-10, label = .c)
+    }
+    .t <- suppressMessages(addTable(.fit, updateObject = FALSE))
+    expect_identical(names(.t), names(.fit))
+    for (.c in names(Filter(is.numeric, as.data.frame(.fit)))) {
+      expect_equal(.t[[.c]], .fit[[.c]], tolerance = 1e-10, label = .c)
+    }
+    .cw <- suppressMessages(addCwres(.fit, updateObject = FALSE))
+    expect_identical(setdiff(names(.cw), names(.fit)), c("WRES", "CPRED", "CRES", "CWRES"))
+    expect_true(all(is.finite(.cw$CWRES)))
   })
 
-  test_that("addTable() on an IOV fit started from an etaMat refits at the fit's etas", {
-    # the fit's control keeps the starting etaMat; a refit at it is off by ~4
+  test_that("addTable() on an IOV fit started from an etaMat uses the fit's etas", {
+    # the fit's control keeps the starting etaMat; tables at it are off by ~4
     .em <- .iovTablesFit("focei", "focei")$etaMat
     .em[] <- 0.4
     .fit <- .iovFit("focei", control = list(etaMat = .em))
@@ -173,7 +188,7 @@ nmTest({
   })
 
   test_that("addTable() and addNpde() on an ODE IOV fit agree with the fit to the solver's tolerance", {
-    # the refit solves the ODEs again; focei solves them to rtol = 1e-3
+    # the tables solve the ODEs again; focei solves them to rtol = 1e-3
     # (sigdig = 3), and the two solves agree to about 2e-6
     .fit <- .iovFit("focei", model = .iovFitOdeMod)
     .with <- .iovFit("focei", model = .iovFitOdeMod, table = tableControl(npde = TRUE))
