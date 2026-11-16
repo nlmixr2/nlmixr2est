@@ -51,14 +51,27 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' @author Matthew Fidler
 #' @noRd
 .foceiSolveWithId <- function(...) {
-  .ret <- .rxSolveNonmem(..., warnIdSort = FALSE)
-  if (names(.ret)[1] == "time") {
+  .residIdDv(.rxSolveNonmem(..., warnIdSort = FALSE))
+}
+
+#' The ID and dv columns of a table solve
+#'
+#' rxSolve() drops the id column for a single subject; put an `ID` of 1 back
+#' (also under `addDosing = TRUE`, where the frame starts at `evid`, not
+#' `time`), and name the dv column `dv`.  Shared by the rxSolve() and pooled
+#' table routes.
+#'
+#' @param ret solved frame
+#' @return `ret` with those columns
+#' @noRd
+.residIdDv <- function(ret) {
+  if (!any(tolower(names(ret)) == "id")) {
     ## For single subject ID is dropped.
-    .ret <- data.frame(ID = 1L, .ret)
+    ret <- data.frame(ID = 1L, ret)
   }
-  .w <- which(tolower(names(.ret)) == "dv")
-  names(.ret)[.w] <- "dv"
-  return(.ret)
+  .w <- which(tolower(names(ret)) == "dv")
+  names(ret)[.w] <- "dv"
+  ret
 }
 
 
@@ -438,7 +451,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   if (is.null(.ipredModel)) {
     predOnly <- TRUE
   }
-  .pooled <- .tablePoolPredIpredList(fit, thetaEtaParameters, .keep, predOnly, addDosing)
+  .pooled <- .tablePoolPredIpredList(fit, thetaEtaParameters, .keep, predOnly, addDosing, subsetNonmem)
   if (!is.null(.pooled)) {
     return(.pooled)
   }
@@ -562,7 +575,9 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 
   if (npde) {
     .ni <- fit$dataNormInfo
-    .sim <- vpcSim(fit, n = table$nsim, seed = table$seed, addDosing = addDosing, subsetNonmem = subsetNonmem)
+    # the npde compares observations only; addDosing just adds display rows,
+    # so it must not change the simulations
+    .sim <- vpcSim(fit, n = table$nsim, seed = table$seed, addDosing = FALSE, subsetNonmem = subsetNonmem)
     .w <- which(names(.sim) == "ipred")
     if (length(.w) == 1) {
       .sim <- .sim[, -.w]
@@ -572,20 +587,20 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .sim <- .sim[, .n0]
     .ipred <- .prdLst$ipred
     .ipred <- .ipred[.ipred$nlmixrRowNums %in% .ni$nlmixrRowNums, ]
+    if (addDosing && !is.null(.ipred$evid)) {
+      # the rows of the same table without dosing rows, which the simulation has
+      .ipred <- .ipred[.ipred$evid %in% c(0L, 2L), ]
+    }
     .ipred <- .ipred[order(.ipred$nlmixrRowNums), ]
     .sim <- .npdeSimFitSubjects(.sim, fit$idLvl, nrow(.ipred))
-    .ret <- .Call(`_nlmixr2est_npdeCalc`, .sim, .ipred$dv, .ipred$evid, .prdLst$ipred$cens, .prdLst$ipred$limit, table)
-    .df <- data.frame(nlmixrRowNums = .prdLst$ipred$nlmixrRowNums)
-    .ret1 <- .ret[[1]]
-    .ret2 <- .ret[[2]]
-    .ret2$nlmixrRowNums <- .ipred$nlmixrRowNums
-    .ret2 <- merge(.df, .ret2, all.x = TRUE, by = "nlmixrRowNums")
-    .ret2 <- .ret2[, names(.ret2) != "nlmixrRowNums"]
-    .ret1 <- as.data.frame(.ret1)
-    .ret1$nlmixrRowNums <- .ipred$nlmixrRowNums
-    .ret1 <- merge(.df, .ret1, all.x = TRUE, by = "nlmixrRowNums")
-    .ret1 <- .ret1[, names(.ret1) != "nlmixrRowNums"]
-    .ret1 <- as.matrix(.ret1)
+    .ret <- .Call(`_nlmixr2est_npdeCalc`, .sim, .ipred$dv, .ipred$evid, .ipred$cens, .ipred$limit, table)
+    # back onto the table's rows, in their order; a row with no observation
+    # (a dose under addDosing) gets NA.  merge() re-sorted by row number and
+    # multiplied the rows sharing one, so dosing tables came out misaligned.
+    .idx <- match(.prdLst$ipred$nlmixrRowNums, .ipred$nlmixrRowNums)
+    .ret2 <- .ret[[2]][.idx, , drop = FALSE]
+    rownames(.ret2) <- NULL
+    .ret1 <- as.matrix(.ret[[1]])[.idx, , drop = FALSE]
     list(.ret1, .ret2)
   } else {
     if (predOnly) {

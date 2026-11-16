@@ -9,10 +9,12 @@
 #' @param pars parameters the pool is built with (one row per subject)
 #' @param method rxode2 ODE method name
 #' @param atol,rtol ODE tolerances
+#' @param keep data columns rxode2 keeps for the rows (rxode2's walk only),
+#'   or `NULL`
 #' @return named logical: whether each model can be solved in the pool
 #' @author Matthew L. Fidler
 #' @noRd
-.tablePoolSetup <- function(fit, inner, predOnly, pars, method, atol, rtol) {
+.tablePoolSetup <- function(fit, inner, predOnly, pars, method, atol, rtol, keep = NULL) {
   # Registering binds entry points by name, so each dll must be loaded: one
   # unloaded with an earlier model object leaves stale entry points behind.
   # Loaded BEFORE the pool is built, since a load rebinds rxode2's model
@@ -42,6 +44,7 @@
     covsInterpolation = .covsi$covsInterpolation,
     naInterpolation = .covsi$naInterpolation,
     nonmem = .covsi$nonmem,
+    keep = keep,
     warnIdSort = FALSE,
     .setupOnly = 1L
   )
@@ -58,9 +61,13 @@
 #' @param sens lhs names to return as sparse triplets instead
 #' @param cov model parameters (covariates) to output, as interpolated
 #' @param tbs output `rxLambda`/`rxYj`/`rxLow`/`rxHi`
+#' @param doDose `NA` to walk the observation rows in nlmixr2est, otherwise
+#'   rxSolve()'s addDosing code for rxode2's own walk (`.tablePoolDoDose()`)
+#' @param keep read rxode2's keep columns (rxode2's walk only)
 #' @return list: `id` (subject index), `rec` (0-based record within the
 #'   subject), `evid`, `time`, `vals` (data frame of the requested columns),
-#'   `sens` (triplets) and `rowsOk`
+#'   `sens` (triplets) and `rowsOk`; with rxode2's walk also `resetno`,
+#'   `dose` (cmt, ss, amt, rate, dur, ii), `dull` and `keep`
 #' @author Matthew L. Fidler
 #' @noRd
 .tablePoolSolve <- function(
@@ -71,7 +78,9 @@
   state = character(0),
   sens = character(0),
   cov = character(0),
-  tbs = FALSE
+  tbs = FALSE,
+  doDose = NA_integer_,
+  keep = FALSE
 ) {
   .mv <- rxode2::rxModelVars(model)
   if (is.null(dim(pars))) {
@@ -94,12 +103,63 @@
     .idx(sens, .mv$lhs),
     .idx(state, .mv$state),
     .idx(cov, .mv$params),
-    tbs
+    tbs,
+    as.integer(doDose),
+    keep
   )
   .vals <- as.data.frame(.ret$vals)
   names(.vals) <- c(lhs, state, cov, if (tbs) c("rxLambda", "rxYj", "rxLow", "rxHi"))
   .ret$vals <- .vals
+  if (!is.null(.ret$dose) && ncol(.ret$dose) == 6L) {
+    colnames(.ret$dose) <- c("cmt", "ss", "amt", "rate", "dur", "ii")
+  }
   .ret
+}
+
+#' Whether rxode2 gives the pool its own output-record walk and keep columns
+#'
+#' rxode2's pointer-table slots 105-112; without them the pool walks the
+#' observation rows itself and cannot lay out dosing rows.
+#' @noRd
+.tablePoolRxWalk <- function() {
+  isTRUE(tablePoolHasRxWalk_())
+}
+
+#' rxSolve()'s output code for the table's `addDosing`/`subsetNonmem`
+#'
+#' @noRd
+.tablePoolDoDose <- function(addDosing, subsetNonmem) {
+  if (!isTRUE(addDosing)) {
+    return(0L)
+  }
+  if (isTRUE(subsetNonmem)) 3L else 2L
+}
+
+#' Add rxSolve()'s dose columns, in its order, to a table frame
+#'
+#' `addDosing = TRUE` gives evid, cmt, ss, amt, rate, dur and ii, without the
+#' ones no row uses (rxode2's dull flags); `addDosing = NA` gives evid and amt.
+#'
+#' @param df frame holding the id column
+#' @param r `.tablePoolSolve()` result through rxode2's walk
+#' @param doDose rxSolve()'s addDosing code
+#' @noRd
+.tablePoolDoseCols <- function(df, r, doDose) {
+  df$evid <- r$evid
+  if (doDose >= 2L) {
+    .d <- r$dose
+    df$cmt <- as.integer(.d[, "cmt"])
+    if (!r$dull[["ss"]]) {
+      df$ss <- as.integer(.d[, "ss"])
+    }
+    df$amt <- .d[, "amt"]
+    for (.c in c("rate", "dur", "ii")) {
+      if (!r$dull[[.c]]) df[[.c]] <- .d[, .c]
+    }
+  } else {
+    df$amt <- r$dose[, "amt"]
+  }
+  df
 }
 
 # ODE methods the pool solves; any other method takes the rxSolve() route
@@ -135,8 +195,8 @@
 #'
 #' @noRd
 .tablePoolWhyNot <- function(fit, models, keep, addDosing) {
-  if (!isFALSE(addDosing)) {
-    return("addDosing")
+  if (!isFALSE(addDosing) && !.tablePoolRxWalk()) {
+    return("rxode2")
   }
   .env <- fit
   if (!is.environment(.env) && is.environment(fit$env)) {
@@ -180,7 +240,7 @@
 #' @return list as `.foceiPredIpredList()`, or `NULL`
 #' @author Matthew L. Fidler
 #' @noRd
-.tablePoolPredIpredList <- function(fit, thetaEtaParameters, keep, predOnly, addDosing) {
+.tablePoolPredIpredList <- function(fit, thetaEtaParameters, keep, predOnly, addDosing, subsetNonmem = TRUE) {
   if (!isTRUE(getOption("nlmixr2.tablePool", TRUE))) {
     return(NULL)
   }
@@ -194,7 +254,7 @@
     return(.tablePoolDecline(.why))
   }
   .ret <- tryCatch(
-    .tablePoolPredIpredList0(fit, thetaEtaParameters, keep, .inner, .po),
+    .tablePoolPredIpredList0(fit, thetaEtaParameters, keep, .inner, .po, addDosing, subsetNonmem),
     tablePoolDecline = function(e) {
       .tablePoolDecline(conditionMessage(e))
     }
@@ -242,7 +302,7 @@
   invisible()
 }
 
-.tablePoolPredIpredList0 <- function(fit, thetaEtaParameters, keep, inner, po) {
+.tablePoolPredIpredList0 <- function(fit, thetaEtaParameters, keep, inner, po, addDosing = FALSE, subsetNonmem = TRUE) {
   on.exit(tablePoolFree_(), add = TRUE)
   .seed <- .tablePoolSeedSave()
   # solve count and per-solve seed step, updated by the closures below
@@ -257,6 +317,10 @@
   .data <- fit$dataSav
   .ipar <- thetaEtaParameters$ipred
   .ppar <- thetaEtaParameters$pred
+  # rxode2's own walk lays out the rows (and their keep columns) when this
+  # rxode2 has it; otherwise only observation rows, walked here
+  .rxWalk <- .tablePoolRxWalk()
+  .doDose <- if (.rxWalk) .tablePoolDoDose(addDosing, subsetNonmem) else NA_integer_
   .need <- c(inner = !is.null(inner), predOnly = TRUE)
   on.exit(
     {
@@ -282,7 +346,7 @@
     # a set-up-only rxSolve() advances the seed by the cores a full solve
     # takes on top of its subjects
     .s0 <- rxode2::rxGetSeed()
-    .ok <- .tablePoolSetup(fit, inner, po, .ipar, method, atol, rtol)
+    .ok <- .tablePoolSetup(fit, inner, po, .ipar, method, atol, rtol, keep = if (.rxWalk) keep)
     if (.s0 != -1) {
       .acc$step <- length(.start) + (rxode2::rxGetSeed() - .s0)
     }
@@ -309,7 +373,7 @@
       function(method, atol, rtol) {
         .acc$nsolve <- .acc$nsolve + 1L
         .ensure(method, atol, rtol)
-        .r <- .tablePoolSolve(model, slot, pars, ...)
+        .r <- .tablePoolSolve(model, slot, pars, ..., doDose = .doDose, keep = .rxWalk)
         if (!isTRUE(.r$rowsOk)) {
           .tablePoolStop("rows")
         }
@@ -324,7 +388,9 @@
   .hasEvid2 <- any(.data[[which(toupper(names(.data)) == "EVID")[1]]] == 2L)
   .frame <- function(r, keep = character(0), tbs = FALSE) {
     .df <- data.frame(id = factor(r$id, levels = seq_len(.nsub)))
-    if (.hasEvid2) {
+    if (isTRUE(.doDose > 0L)) {
+      .df <- .tablePoolDoseCols(.df, r, .doDose)
+    } else if (.hasEvid2) {
       .df$evid <- r$evid
     }
     .df$time <- r$time
@@ -333,7 +399,13 @@
     .df <- cbind(.df, .v[, setdiff(names(.v), .tbs), drop = FALSE])
     # as in rxSolve(), a kept column that is already output is not repeated
     keep <- setdiff(keep, names(.df))
-    if (length(keep) > 0L) {
+    if (!is.null(r$keep)) {
+      # rxode2's keep columns, in rxode2's order
+      .k <- names(r$keep)[names(r$keep) %in% keep]
+      if (length(.k) > 0L) {
+        .df <- cbind(.df, as.data.frame(r$keep[.k], stringsAsFactors = FALSE))
+      }
+    } else if (length(keep) > 0L) {
       .rows <- .start[r$id] + r$rec + 1L
       .df <- cbind(.df, .data[.rows, keep, drop = FALSE])
     }
@@ -341,6 +413,11 @@
       .df <- cbind(.df, .v[, .tbs, drop = FALSE])
     }
     rownames(.df) <- NULL
+    if (.nsub == 1L) {
+      # as rxSolve() lays out a single subject
+      .df$id <- NULL
+    }
+    .df <- .residIdDv(.df)
     if (length(r$sens$x) > 0L || r$sens$ncol > 0L) {
       attr(.df, "rxSens") <- r$sens
     }

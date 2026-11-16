@@ -431,6 +431,21 @@
   including the ODE method/tolerance fallback; `options(nlmixr2.tablePool =
   FALSE)` restores the old route (#1356).
 
+- With an rxode2 that exports its output-record walk, `addDosing = TRUE`
+  tables (with either `subsetNonmem`) are solved in the pool too, and the rows,
+  dose columns and kept columns come from rxode2's own walk, so they are the
+  rows `rxSolve()` gives (#1356).
+
+- `addDosing = TRUE` tables of a single subject no longer stop with "subject
+  code 0 of the solved rows has no row in the eta table": the solve has no id
+  column for one subject, and its `ID` was put back only when the frame began
+  at `time`.
+
+- `addDosing = TRUE` tables with `npde = TRUE` now give each observation the
+  NPDE of the same table without dosing rows and `NA` on dosing rows; the
+  NPDE columns were longer than the table and out of row order, and the dosing
+  rows changed the simulations.
+
 - `tidy()` and `confint()` now report only the model's thetas.  A
   non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
   variability row) used to be listed as a fixed effect or interval of `NA`s,
