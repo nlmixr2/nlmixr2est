@@ -404,6 +404,12 @@
   and only the diagonal is computed, so the table step of a large dataset no
   longer runs out of memory there (#1354, #1356).
 
+- The table step solves the fit's ipred/pred and display models in one shared
+  ODE pool over the fit's own events instead of three separate `rxSolve()`
+  setups, writing only the columns the tables use.  The tables are unchanged,
+  including the ODE method/tolerance fallback; `options(nlmixr2.tablePool =
+  FALSE)` restores the old route (#1356).
+
 - `tidy()` and `confint()` now report only the model's thetas.  A
   non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
   variability row) used to be listed as a fixed effect or interval of `NA`s,
