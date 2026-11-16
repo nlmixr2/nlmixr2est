@@ -3,7 +3,6 @@
 
 #include "../inst/include/nlmixr2est.h"
 #include "../inst/include/nlmixr2est_types.h"
-#include <RcppArmadillo.h>
 #include <RcppEigen.h>
 #include <Rcpp.h>
 #include <string>
