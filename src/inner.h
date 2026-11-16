@@ -37,6 +37,8 @@ extern void rxClearFuns(rxSolveF *inner);
 // E-step's own inner solve (no M-step re-solve).  odeSwapInfo_() exposes it as
 // $impThetaSensHarvestN; tests assert it is > 0 when combSens+harvesting engage.
 extern int impThetaSensHarvestN();
+// Completed pooled post-fit table solves (tablePool.cpp; odeSwapInfo_()$tablePoolSolveN).
+long tablePoolSolveN();
 extern rx_solve *rx;
 
 #include "rxode2Optional.h"
