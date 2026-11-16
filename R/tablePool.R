@@ -214,6 +214,14 @@
   if (!all(keep %in% names(.data))) {
     return("keep")
   }
+  # rxode2 solves a smaller model in the pool through its ODE route, which a
+  # linCmt() model does not have (a mixture's EBE model is linCmt() without
+  # the sensitivities the inner model has)
+  .neq <- vapply(models, function(m) length(rxode2::rxModelVars(m)$state), integer(1))
+  .lin <- vapply(models, function(m) isTRUE(rxode2::rxModelVars(m)$flags[["linCmt"]] > 0L), logical(1))
+  if (any(.lin & .neq < max(.neq))) {
+    return("linCmt")
+  }
   .evid <- .data[[which(toupper(names(.data)) == "EVID")[1]]]
   if (is.null(.evid) || any(.evid == 3L | (.evid >= 10L & .evid <= 99L))) {
     return("evid")

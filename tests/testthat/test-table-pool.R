@@ -367,5 +367,37 @@ nmTest({
     if (.tablePoolRxWalk()) {
       .poolExpect(.fit, table = tableControl(addDosing = TRUE))
     }
+    # a linCmt() mixture: its EBE model (linCmt() without sensitivities) is
+    # smaller than the inner one and has no ODE route, so the table takes the
+    # rxSolve() route
+    .linMix <- function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(c(0, 2.7, 100))
+        tcl2 <- log(c(0, 0.1, 120))
+        tv <- 3.45
+        p1 <- 0.3
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fit2 <- withr::with_seed(
+      42,
+      .poolFit(
+        .linMix,
+        .theo,
+        control = foceiControl(print = 0, maxOuterIterations = 5, calcTables = FALSE)
+      )
+    )
+    .poolExpect(.fit2, pooled = FALSE)
+    expect_equal(.tablePoolInfo()$lastDecline, "linCmt")
   })
 })
