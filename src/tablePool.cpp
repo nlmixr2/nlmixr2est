@@ -191,6 +191,12 @@ List tablePoolSolve_(int which, NumericMatrix parMat, IntegerVector parIdx,
       ptime[r] = curT;
       if (bad) {
         for (int k = 0; k < ncol; ++k) pv[r + (size_t)k * nr] = NA_REAL;
+        // a failed solve's sensitivities are missing, not structural zeros
+        for (int k = 0; k < nsens; ++k) {
+          sensR[(size_t)i].push_back(r);
+          sensK[(size_t)i].push_back(k);
+          sensV[(size_t)i].push_back(NA_REAL);
+        }
         r++;
         continue;
       }
