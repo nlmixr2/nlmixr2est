@@ -320,7 +320,9 @@ nmTest({
     if (occ > 1L) {
       .blk <- rep(rep(seq_len(occ), length.out = nper), nid)
       m[cbind(seq_len(n), 1L)] <- m[cbind(seq_len(n), 1L)] * (.blk == 1L)
-      for (j in seq_len(neta)[-1]) m[.blk != ((j - 1L) %% occ) + 1L, j] <- 0
+      for (j in seq_len(neta)[-1]) {
+        m[.blk != ((j - 1L) %% occ) + 1L, j] <- 0
+      }
     }
     m
   }
@@ -330,7 +332,9 @@ nmTest({
   etas <- matrix(rnorm(nid * neta, sd = 0.3), nid, neta)
   .mk <- function(f, pr, r) {
     d <- data.frame(ID = id, time = rep(seq_len(nper), nid), rx_pred_ = pr)
-    for (j in seq_len(neta)) d[[paste0("rx__sens_rx_pred__BY_ETA_", j, "___")]] <- f[, j]
+    for (j in seq_len(neta)) {
+      d[[paste0("rx__sens_rx_pred__BY_ETA_", j, "___")]] <- f[, j]
+    }
     d$rx_r_ <- r
     d$rxLambda <- 1
     d$rxYj <- 0
@@ -346,16 +350,39 @@ nmTest({
   etasDf <- data.frame(ID = seq_len(nid), etas)
   names(etasDf) <- c("ID", paste0("eta", seq_len(neta)))
   list(
-    ipred = ipred, pred = .mk(fp, pr, rp), ebe = ipred[, c("ID", "time")], om = om, etasDf = etasDf,
-    etaLst = lapply(seq_len(neta + 1), function(j) double(10)), dv = ipr + rnorm(n, sd = 0.5),
-    fp = fp, fi = fi, etas = etas, id = id, pr = pr, ipr = ipr, rp = rp, ri = ri
+    ipred = ipred,
+    pred = .mk(fp, pr, rp),
+    ebe = ipred[, c("ID", "time")],
+    om = om,
+    etasDf = etasDf,
+    etaLst = lapply(seq_len(neta + 1), function(j) double(10)),
+    dv = ipr + rnorm(n, sd = 0.5),
+    fp = fp,
+    fi = fi,
+    etas = etas,
+    id = id,
+    pr = pr,
+    ipr = ipr,
+    rp = rp,
+    ri = ri
   )
 }
 
 .cwresSynthCall <- function(s) {
   .Call(
-    `_nlmixr2est_cwresCalc`, list(s$ipred, s$pred, s$etaLst, s$ebe), s$om, s$etasDf, s$dv,
-    NULL, NULL, NULL, character(0), character(0), character(0), NULL, tableControl()
+    `_nlmixr2est_cwresCalc`,
+    list(s$ipred, s$pred, s$etaLst, s$ebe),
+    s$om,
+    s$etasDf,
+    s$dv,
+    NULL,
+    NULL,
+    NULL,
+    character(0),
+    character(0),
+    character(0),
+    NULL,
+    tableControl()
   )[[3]]
 }
 
