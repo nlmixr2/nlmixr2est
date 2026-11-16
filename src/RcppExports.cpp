@@ -1651,6 +1651,58 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// tablePoolFree_
+RObject tablePoolFree_();
+RcppExport SEXP _nlmixr2est_tablePoolFree_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(tablePoolFree_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// tablePoolDeclare_
+RObject tablePoolDeclare_(RObject inner, RObject predOnly);
+RcppExport SEXP _nlmixr2est_tablePoolDeclare_(SEXP innerSEXP, SEXP predOnlySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< RObject >::type inner(innerSEXP);
+    Rcpp::traits::input_parameter< RObject >::type predOnly(predOnlySEXP);
+    rcpp_result_gen = Rcpp::wrap(tablePoolDeclare_(inner, predOnly));
+    return rcpp_result_gen;
+END_RCPP
+}
+// tablePoolRegister_
+LogicalVector tablePoolRegister_(RObject inner, RObject predOnly);
+RcppExport SEXP _nlmixr2est_tablePoolRegister_(SEXP innerSEXP, SEXP predOnlySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< RObject >::type inner(innerSEXP);
+    Rcpp::traits::input_parameter< RObject >::type predOnly(predOnlySEXP);
+    rcpp_result_gen = Rcpp::wrap(tablePoolRegister_(inner, predOnly));
+    return rcpp_result_gen;
+END_RCPP
+}
+// tablePoolSolve_
+List tablePoolSolve_(int which, NumericMatrix parMat, IntegerVector parIdx, IntegerVector lhsIdx, IntegerVector sensIdx, IntegerVector stateIdx, IntegerVector covIdx, bool tbs);
+RcppExport SEXP _nlmixr2est_tablePoolSolve_(SEXP whichSEXP, SEXP parMatSEXP, SEXP parIdxSEXP, SEXP lhsIdxSEXP, SEXP sensIdxSEXP, SEXP stateIdxSEXP, SEXP covIdxSEXP, SEXP tbsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type which(whichSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type parMat(parMatSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type parIdx(parIdxSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type lhsIdx(lhsIdxSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type sensIdx(sensIdxSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type stateIdx(stateIdxSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type covIdx(covIdxSEXP);
+    Rcpp::traits::input_parameter< bool >::type tbs(tbsSEXP);
+    rcpp_result_gen = Rcpp::wrap(tablePoolSolve_(which, parMat, parIdx, lhsIdx, sensIdx, stateIdx, covIdx, tbs));
+    return rcpp_result_gen;
+END_RCPP
+}
 // vaeEncoderFwdBwd
 List vaeEncoderFwdBwd(arma::cube dataIn, IntegerVector lengths, arma::mat covIn, arma::mat eps, arma::mat Wih, arma::mat Whh, arma::vec bih, arma::vec bhh, arma::mat fcW, arma::vec fcB, int zDim, arma::mat gZ, arma::mat gLogSigmaDirect);
 RcppExport SEXP _nlmixr2est_vaeEncoderFwdBwd(SEXP dataInSEXP, SEXP lengthsSEXP, SEXP covInSEXP, SEXP epsSEXP, SEXP WihSEXP, SEXP WhhSEXP, SEXP bihSEXP, SEXP bhhSEXP, SEXP fcWSEXP, SEXP fcBSEXP, SEXP zDimSEXP, SEXP gZSEXP, SEXP gLogSigmaDirectSEXP) {

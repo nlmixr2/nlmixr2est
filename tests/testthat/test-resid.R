@@ -410,3 +410,108 @@ test_that("cwresCalc() never forms a dense nobs x nobs matrix", {
   expect_equal(nrow(r), 60000L)
   expect_true(all(is.finite(r$CWRES)))
 })
+
+nmTest({
+  test_that("pooled table solves equal the rxSolve() table solves (#1356)", {
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v + 0.01 * (WT - 70))
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .d <- nlmixr2data::theo_sd
+    .d$WT <- .d$WT + .d$TIME / 10
+    fit <- suppressMessages(suppressWarnings(nlmixr2(
+      one.cmt,
+      .d,
+      "focei",
+      foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE)
+    )))
+    fit$innerModelForce
+    .te <- fit$foceiThetaEtaParameters
+    .refI <- .foceiSolvePars(fit, fit$innerModel, .te$ipred, returnType = "data.frame.TBS", what = "ipred")
+    .refP <- .foceiSolvePars(fit, fit$innerModel, .te$pred, what = "pred")
+    .refE <- .foceiSolvePars(fit, fit$predOnlyModel, .te$ipred, what = "ebe", addCov = TRUE)
+
+    .ok <- .tablePoolSetup(
+      fit,
+      fit$innerModel,
+      fit$predOnlyModel,
+      .te$ipred,
+      .residOdeMethodName(fit$methodOde),
+      fit$atol[1],
+      fit$rtol[1]
+    )
+    on.exit(tablePoolFree_(), add = TRUE)
+    expect_equal(.ok, c(inner = TRUE, predOnly = TRUE))
+    .n0 <- .odeSwapInfo()$tablePoolSolveN
+
+    .mvI <- rxode2::rxModelVars(fit$innerModel)
+    .sens <- grep("^rx__sens_rx_pred__BY_ETA_", .mvI$lhs, value = TRUE)
+    .i <- .tablePoolSolve(
+      fit$innerModel,
+      "inner",
+      .te$ipred,
+      lhs = c("rx_pred_", "rx_r_"),
+      state = .mvI$state,
+      sens = .sens,
+      tbs = TRUE
+    )
+    expect_true(.i$rowsOk)
+    expect_equal(.i$time, .refI$time)
+    for (.n in names(.i$vals)) {
+      expect_equal(.i$vals[[.n]], .refI[[.n]], tolerance = 0, label = .n)
+    }
+    # the eta sensitivities come back sparse, and only their nonzero entries
+    .dense <- matrix(0, nrow(.refI), length(.sens))
+    .dense[cbind(.i$sens$i, .i$sens$k)] <- .i$sens$x
+    expect_equal(.dense, unname(as.matrix(.refI[, .sens])), tolerance = 0)
+    expect_true(all(.i$sens$x != 0))
+
+    .p <- .tablePoolSolve(fit$innerModel, "inner", .te$pred, lhs = c("rx_pred_", "rx_r_"))
+    expect_equal(.p$vals$rx_pred_, .refP$rx_pred_, tolerance = 0)
+    expect_equal(.p$vals$rx_r_, .refP$rx_r_, tolerance = 0)
+
+    .mvE <- rxode2::rxModelVars(fit$predOnlyModel)
+    .e <- .tablePoolSolve(
+      fit$predOnlyModel,
+      "predOnly",
+      .te$ipred,
+      lhs = .mvE$lhs,
+      state = .mvE$state,
+      cov = "WT"
+    )
+    for (.n in names(.e$vals)) {
+      expect_equal(.e$vals[[.n]], .refE[[.n]], tolerance = 0, label = .n)
+    }
+    # the solve's records map back onto the fit's events
+    .rows <- unlist(lapply(split(seq_len(nrow(fit$dataSav)), fit$dataSav$ID), function(.r) .r[1] - 1L))
+    expect_equal(fit$dataSav$nlmixrRowNums[.rows[.e$id] + .e$rec + 1L], .refE$nlmixrRowNums)
+    expect_equal(.odeSwapInfo()$tablePoolSolveN, .n0 + 3)
+
+    tablePoolFree_()
+    expect_equal(.odeSwapInfo()$nLoaded, 0L)
+    # a fit after the table pool is unaffected by it
+    .fit2 <- suppressMessages(suppressWarnings(nlmixr2(
+      one.cmt,
+      .d,
+      "focei",
+      foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE)
+    )))
+    expect_equal(.fit2$objf, fit$objf)
+  })
+})
