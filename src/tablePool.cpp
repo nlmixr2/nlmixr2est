@@ -391,12 +391,30 @@ static List tablePoolSolveRx(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_o
   return tablePoolRxCollect(c, subs);
 }
 
+// The factor levels rxode2 gives the output columns `names` (rxode2's
+// getDfLevels(), which rxSolve() makes a string lhs or a covariate column
+// with), NULL for a numeric one; the solve must still be set up.
+//[[Rcpp::export]]
+List tablePoolLevels_(CharacterVector names) {
+  int n = names.size();
+  List ret(n);
+  ret.names() = names;
+  rx_solve *rx = getRxSolve_();
+  if (nmDfLevels == NULL || rx == NULL) return ret;
+  for (int i = 0; i < n; ++i) {
+    SEXP t = PROTECT(nmDfLevels(CHAR(STRING_ELT(names, i)), rx, 0));
+    if (Rf_isFactor(t)) ret[i] = Rf_getAttrib(t, R_LevelsSymbol);
+    UNPROTECT(1);
+  }
+  return ret;
+}
+
 // Whether rxode2 provides the output-record walk and keep columns
 //[[Rcpp::export]]
 bool tablePoolHasRxWalk_() {
   return nmDfWalkInit != NULL && nmDfWalkStep != NULL && nmDfWalkDull != NULL &&
     nmDfKeepSetup != NULL && nmDfKeepFirst != NULL && nmDfKeepRow != NULL &&
-    nmDfKeepCols != NULL && nmSetIndNewind != NULL;
+    nmDfKeepCols != NULL && nmDfLevels != NULL && nmSetIndNewind != NULL;
 }
 
 // Solve every subject as table model `which` (0 inner, 1 predOnly) and read
