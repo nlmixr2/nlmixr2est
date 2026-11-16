@@ -240,9 +240,6 @@
   if (!isFALSE(addDosing) && !.tablePoolRxWalk()) {
     return("rxode2")
   }
-  if (!(.residOdeMethodName(fit$methodOde) %in% .tablePoolMethods)) {
-    return("method")
-  }
   if (!is.null(fit$foceiControl$rxControl$scale)) {
     return("scale")
   }
@@ -387,9 +384,6 @@
     .key <- list(method, atol, rtol)
     if (identical(.st$key, .key)) {
       return(invisible())
-    }
-    if (!(method %in% .tablePoolMethods)) {
-      .tablePoolStop("method")
     }
     if (!is.null(.st$key)) {
       .tablePoolEnv$rebuildN <- .tablePoolEnv$rebuildN + 1L
