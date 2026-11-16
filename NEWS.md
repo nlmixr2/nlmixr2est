@@ -399,6 +399,11 @@
   transform; it used the first subject's rows for every subject.
 ### Tables
 
+- CWRES/WRES no longer build two dense observations x observations matrices
+  (`F Omega F'`) to read their diagonals; the eta sensitivities are kept sparse
+  and only the diagonal is computed, so the table step of a large dataset no
+  longer runs out of memory there (#1354, #1356).
+
 - `tidy()` and `confint()` now report only the model's thetas.  A
   non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
   variability row) used to be listed as a fixed effect or interval of `NA`s,

@@ -308,3 +308,78 @@ nmTest({
     }
   })
 })
+
+# A cwresCalc() input with known sensitivities, without a fit.  `occ` > 1 makes
+# each eta active on only one block of each subject's rows, like IOV etas.
+.cwresSynth <- function(nid, nper, neta, zeroFrac = 0.5, occ = 1L) {
+  n <- nid * nper
+  id <- rep(seq_len(nid), each = nper)
+  .sens <- function() {
+    m <- matrix(rnorm(n * neta), n, neta)
+    m[runif(n * neta) < zeroFrac] <- 0
+    if (occ > 1L) {
+      .blk <- rep(rep(seq_len(occ), length.out = nper), nid)
+      m[cbind(seq_len(n), 1L)] <- m[cbind(seq_len(n), 1L)] * (.blk == 1L)
+      for (j in seq_len(neta)[-1]) m[.blk != ((j - 1L) %% occ) + 1L, j] <- 0
+    }
+    m
+  }
+  fp <- .sens()
+  fi <- .sens()
+  om <- crossprod(matrix(rnorm(neta * neta), neta)) / neta + diag(neta)
+  etas <- matrix(rnorm(nid * neta, sd = 0.3), nid, neta)
+  .mk <- function(f, pr, r) {
+    d <- data.frame(ID = id, time = rep(seq_len(nper), nid), rx_pred_ = pr)
+    for (j in seq_len(neta)) d[[paste0("rx__sens_rx_pred__BY_ETA_", j, "___")]] <- f[, j]
+    d$rx_r_ <- r
+    d$rxLambda <- 1
+    d$rxYj <- 0
+    d$rxLow <- 0
+    d$rxHi <- 1
+    d
+  }
+  pr <- rnorm(n, 10)
+  ipr <- pr + rnorm(n, sd = 0.2)
+  rp <- runif(n, 0.5, 1)
+  ri <- runif(n, 0.5, 1)
+  ipred <- .mk(fi, ipr, ri)
+  etasDf <- data.frame(ID = seq_len(nid), etas)
+  names(etasDf) <- c("ID", paste0("eta", seq_len(neta)))
+  list(
+    ipred = ipred, pred = .mk(fp, pr, rp), ebe = ipred[, c("ID", "time")], om = om, etasDf = etasDf,
+    etaLst = lapply(seq_len(neta + 1), function(j) double(10)), dv = ipr + rnorm(n, sd = 0.5),
+    fp = fp, fi = fi, etas = etas, id = id, pr = pr, ipr = ipr, rp = rp, ri = ri
+  )
+}
+
+.cwresSynthCall <- function(s) {
+  .Call(
+    `_nlmixr2est_cwresCalc`, list(s$ipred, s$pred, s$etaLst, s$ebe), s$om, s$etasDf, s$dv,
+    NULL, NULL, NULL, character(0), character(0), character(0), NULL, tableControl()
+  )[[3]]
+}
+
+test_that("cwresCalc() WRES/CWRES equal the dense F Omega F' formula", {
+  set.seed(1356)
+  for (.occ in c(1L, 3L)) {
+    s <- .cwresSynth(30, 9, 3, occ = .occ)
+    r <- .cwresSynthCall(s)
+    # rxLambda = 1, rxYj = 0 is a Box-Cox transform x - 1; predictions are on that scale
+    .vp <- diag(s$fp %*% s$om %*% t(s$fp))
+    .vi <- diag(s$fi %*% s$om %*% t(s$fi))
+    expect_equal(r$WRES, (s$dv - 1 - s$pr) / sqrt(abs(.vp + s$rp)))
+    .cp <- s$ipr - rowSums(s$fi * s$etas[s$id, ])
+    expect_equal(r$CWRES, (s$dv - 1 - .cp) / sqrt(.vi + s$ri))
+    expect_equal(r$CPRED, .cp + 1)
+  }
+})
+
+test_that("cwresCalc() never forms a dense nobs x nobs matrix", {
+  skip_on_cran()
+  set.seed(1356)
+  # 60000 observations: one dense V_fo would need ~29 GB
+  s <- .cwresSynth(6000, 10, 3, zeroFrac = 0.3)
+  r <- .cwresSynthCall(s)
+  expect_equal(nrow(r), 60000L)
+  expect_true(all(is.finite(r$CWRES)))
+})
