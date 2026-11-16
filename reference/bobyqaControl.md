@@ -327,27 +327,27 @@ print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -732.2583 1111.619 1126.342      -552.8094        291.4757        60.66258
+#> lPop -728.8943 1114.983 1129.706      -554.4914        252.9432        55.16655
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.8238384 0.8127043 2.4455e-05      0.053       0.012 0.039    0.001
-#>             other
-#> elapsed 0.1104328
+#>            setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.561634 0.5552903  2.021e-05      0.032       0.006 0.019    0.001
+#>              other
+#> elapsed 0.07205543
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>       Est.    SE  %RSE Back-transformed(95%CI)
-#> E0  -0.897 0.131  14.6  -0.897 (-1.15, -0.640)
-#> Em    5.50  1.00  18.2       5.50 (3.54, 7.47)
-#> E50   2.50 0.490  19.6       2.50 (1.54, 3.46)
+#> E0  -0.842 0.130  15.5  -0.842 (-1.10, -0.586)
+#> Em    5.30 0.928  17.5       5.30 (3.48, 7.12)
+#> E50   2.43 0.466  19.2       2.43 (1.51, 3.34)
 #> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Some strong fixed parameter correlations exist ($cor) :
 #>      cor:Em,E0 cor:E50,E0 cor:E50,Em 
-#>     0.349      0.643      0.900  
+#>     0.327      0.640      0.890  
 #>  
 #> 
 #>   Censoring ($censInformation): No censoring
@@ -356,16 +356,16 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0529     0 -0.343 -0.895
-#> 2 1     0.0603     0 -0.343 -0.894
-#> 3 1     0.0632     0 -0.343 -0.894
+#> 1 1     0.0529     0 -0.359 -0.839
+#> 2 1     0.0603     1 -1.20  -0.839
+#> 3 1     0.0632     1 -1.20  -0.838
 #> # ℹ 997 more rows
 
 # you can also get the bobyqa output with
 
 fit2$bobyqa
-#> parameter estimates: -0.897114087376422, 5.50230250146206, 2.50361799786001 
-#> objective: 552.809397819309 
-#> number of function evaluations: 165 
+#> parameter estimates: -0.842011807790335, 5.30075559675489, 2.42775264852487 
+#> objective: 554.491367351539 
+#> number of function evaluations: 168 
 # }
 ```

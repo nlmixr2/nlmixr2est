@@ -352,28 +352,28 @@ fit2 <- nlmixr(mod, dsn, est="lbfgsb3c")
 print(fit2)
 #> ── nlmixr² log-likelihood lbfgsb3c ──
 #> 
-#>          OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -685.893 1157.984 1172.707       -575.992        2501.264        135.0757
+#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -658.2519 1185.625 1200.348      -589.8126        3935.758        207.5884
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.1333307 1.540771 1.8154e-05      0.052        0.01 0.054    0.002
-#>             other
-#> elapsed 0.0858804
+#>              setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.08546713 0.9825662 1.2959e-05      0.027       0.006 0.017        0
+#>              other
+#> elapsed 0.05195373
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>       Est.    SE  %RSE Back-transformed(95%CI)
-#> E0  -0.727 0.106  14.6 -0.727 (-0.936, -0.518)
-#> Em    8.48  3.21  37.9       8.48 (2.18, 14.8)
-#> E50   4.28  1.21  28.1       4.28 (1.92, 6.65)
+#> E0  -0.520 0.110  21.1 -0.520 (-0.736, -0.305)
+#> Em    7.95  3.96  49.7      7.95 (0.202, 15.7)
+#> E50   4.38  1.63  37.1       4.38 (1.19, 7.58)
 #> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Some strong fixed parameter correlations exist ($cor) :
 #>      cor:Em,E0 cor:E50,E0 cor:E50,Em 
-#>     0.380      0.528      0.969  
+#>     0.486      0.597      0.979  
 #>  
 #> 
 #>   Censoring ($censInformation): No censoring
@@ -384,9 +384,9 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0343     0 -0.394 -0.726
-#> 2 1     0.0489     1 -1.12  -0.726
-#> 3 1     0.0501     0 -0.395 -0.726
+#> 1 1     0.0343     0 -0.467 -0.520
+#> 2 1     0.0489     1 -0.986 -0.519
+#> 3 1     0.0501     0 -0.467 -0.519
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$lbfgsb3c
@@ -394,17 +394,17 @@ print(fit2)
 fit2$lbfgsb3c
 #> $par
 #>         E0         Em        E50 
-#> -0.7269859  8.4774103  4.2831803 
+#> -0.5203094  7.9542417  4.3848589 
 #> 
 #> $grad
-#>         E0         Em        E50 
-#>  2.0478673 -0.4247566  0.1303129 
+#>          E0          Em         E50 
+#>  0.02293042  0.04393320 -0.02259589 
 #> 
 #> $value
-#> [1] 575.992
+#> [1] 589.8126
 #> 
 #> $counts
-#> [1] 18 18
+#> [1] 16 16
 #> 
 #> $convergence
 #> [1] 0
@@ -417,25 +417,25 @@ fit2$lbfgsb3c
 #> 
 #> $par.scaled
 #>        E0        Em       E50 
-#> -1.613493  2.988705  5.566361 
+#> -1.510155  2.727121  5.769718 
 #> 
 #> $hessian
 #>            E0        Em        E50
-#> E0  804.75123 57.204778 -46.344969
-#> Em   57.20478 10.373527  -7.369607
-#> E50 -46.34497 -7.369607   5.474236
+#> E0  825.47069 55.892815 -41.565402
+#> Em   55.89282 10.066091  -6.550727
+#> E50 -41.56540 -6.550727   4.409652
 #> 
 #> $cov.scaled
 #>              E0         Em        E50
-#> E0  0.002833478 0.03249043 0.06772801
-#> Em  0.032490427 2.58344608 3.75298926
-#> E50 0.067728007 3.75298926 5.80846467
+#> E0  0.003018639 0.05279949  0.1068896
+#> Em  0.052799488 3.91123200  6.3079914
+#> E50 0.106889611 6.30799141 10.6051096
 #> 
 #> $r
 #>            E0        Em        E50
-#> E0  804.75123 57.204778 -46.344969
-#> Em   57.20478 10.373527  -7.369607
-#> E50 -46.34497 -7.369607   5.474236
+#> E0  825.47069 55.892815 -41.565402
+#> Em   55.89282 10.066091  -6.550727
+#> E50 -41.56540 -6.550727   4.409652
 #> 
 
 # The nlm control has been modified slightly to include

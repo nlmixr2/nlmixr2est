@@ -494,6 +494,14 @@
   ([\#1354](https://github.com/nlmixr2/nlmixr2est/issues/1354),
   [\#1356](https://github.com/nlmixr2/nlmixr2est/issues/1356)).
 
+- The table step solves the fit’s ipred/pred and display models in one
+  shared ODE pool over the fit’s own events instead of three separate
+  [`rxSolve()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
+  setups, writing only the columns the tables use. The tables are
+  unchanged, including the ODE method/tolerance fallback;
+  `options(nlmixr2.tablePool = FALSE)` restores the old route
+  ([\#1356](https://github.com/nlmixr2/nlmixr2est/issues/1356)).
+
 - `tidy()` and [`confint()`](https://rdrr.io/r/stats/confint.html) now
   report only the model’s thetas. A non-mu-referenced eta’s row of
   `$parFixedDf` (and an IOV fit’s occasion variability row) used to be
