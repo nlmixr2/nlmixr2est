@@ -1,0 +1,124 @@
+# Test files (name without "test-" and ".R") that the fast CI tier runs on
+# every pull request with NOT_CRAN=true.  Keep a few fast, high-signal files
+# per major feature; everything else runs nightly and on /cifull.  The total
+# (see tests/ci-timings.csv) must fit the fast tier's ~15 minute budget.
+
+# UI, control and dispatch
+00-reload-ll
+ini-ui
+model
+piping
+control
+coerce
+est-type-list
+data-assert
+nlmixr2Est
+hook
+ui-est-change
+update-estimates
+muRefClassify
+muRefResetOptOut
+omega-block
+priors-assert
+priors-output
+# fit object and output
+print
+nmobj
+broom
+predict
+simulation
+ofv
+single-subject
+fix-eta
+zero-omega-restore
+timing-errors
+mu-parhist
+# FOCEi
+focei-1
+focei-inner
+focei-lag
+focei-warm
+focei-theta-reset
+focei-final-best-eta
+focei-zero-theta
+focei-cens-t
+focei-fast-ar
+focei-mix-grad
+focei-outer-hessian-api
+foceiLik
+foceiCovAnalytic
+focei-lincmt-carry-eligible
+focei-lincmt-carry-emit
+focei-lincmt-carry-jump
+odeswap
+sens-fd
+# covariance
+cov
+covControl
+cov-decouple
+cov-warn-sites
+# FO / FOCE
+fo-control
+# SAEM
+saem
+saem-aic
+saem-translate
+saem-model-text
+saem_fit_aux
+saem-funny-mu
+saem-addprop-estep
+saem-no-pop
+saem-resid-cache
+# nlm family
+nlm-ptrs
+nlminb
+n1qn1
+optim
+nlm-lik-contrib
+nlmShared
+# importance sampling
+imp-proposal
+imp-mapiter
+imp-mceta
+qrpem
+qrpem-scramble
+# IOV
+iov-only
+iov-scope
+iov-method-gate
+iov-template-copy
+# residuals and likelihood contributions
+cwres
+npde-cens-impute
+resid-ode-fallback
+lik-contrib
+# VAE / variational inference
+vae-dataprep
+vae-cov-shapes
+vae-covariate-estimate
+vae-rvar
+vi-control
+vi-dataprep
+vi-inner
+vi-grad
+# nonparametric
+np
+npInner
+npag-dispatch
+npag-grid
+npag-ipm
+# models: lag, mtime
+lag
+mtime
+simModelLag
+# regressions and safety
+issue-281
+issue-455
+issue-502
+issue-515
+issue-579
+issue-641
+gc-protect
+lint-superassign
+nearPd
+sqrtm

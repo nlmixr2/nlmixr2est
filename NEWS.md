@@ -115,6 +115,7 @@
   inside; `$optReturn$activeBounds` lists the held parameters.  Fits with an
   active bound previously stopped well above the optimum while reporting
   convergence.
+
 - `est = "nlm"` and `est = "nls"` with the `linCmt()` sensitivity carry
   (`linCmtSensCarry = "auto"`, the default) now reach the optimum.  The
   record walk that builds their gradient started each subject from the carry
@@ -407,6 +408,11 @@
 - NPDE's back-transformation of EPRED and DV now uses each observation's own
   transform; it used the first subject's rows for every subject.
 ### Tables
+
+- CWRES/WRES no longer build two dense observations x observations matrices
+  (`F Omega F'`) to read their diagonals; the eta sensitivities are kept sparse
+  and only the diagonal is computed, so the table step of a large dataset no
+  longer runs out of memory there (#1354, #1356).
 
 - `tidy()` and `confint()` now report only the model's thetas.  A
   non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
