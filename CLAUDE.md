@@ -283,32 +283,42 @@ has received a shutdown signal”):
 - **rxode2 / data.table within-solve threads**: capped to 2 on CRAN
   only; on CI and locally rxode2 manages its own threads.
 
-### Test batching (quick-core vs weekly)
+### CI tiers (`.github/workflows/ci.yaml`)
 
-Slow, multi-iteration/fit-based test files run WEEKLY, not on every
-push/PR. Push/PR CI runs the “essential” subset: every test file EXCEPT
-those listed in `.slowBatches` in `tests/testthat.R`. The weekly
-`slow-tests.yaml` workflow runs the batches one at a time via
-`NLMIXR2EST_TEST_BATCH=<n>` (its matrix must match the number of
-`.slowBatches` entries).
+Modelled on rxode2’s CI. Two tiers, chosen by the `gate` job:
 
-When adding tests for an estimation method, split them by cost:
+- **fast** (~15 min; every non-draft PR push to main, every push to
+  main, a `/ci` comment): air format + lint (changed files) +
+  CRAN-mirror `R CMD check --as-cran` on ubuntu release
+  (`NOT_CRAN=false`, so `tests/testthat.R`’s CRAN subset) + the core
+  NOT_CRAN tests listed in `tests/ci-core.txt`, sharded.
+- **full** (nightly when main moved, a `/cifull` comment, or a manual
+  dispatch): fast plus the CRAN-mirror check on
+  macOS/Windows/devel/oldrel, EVERY test file sharded over ubuntu,
+  coverage and pkgdown. A failure on main opens a
+  `ci-main-failure-<tier>` issue listing the PRs merged since the last
+  green run of that tier (the integration window) and the failing tests;
+  the next green run closes it.
 
-- **Quickest core-functionality tests always run**: leave them OUT of
-  `.slowBatches` (they run in the essential push/PR subset). Keep this
-  set small – unit tests plus one basic end-to-end fit. Example (advi):
-  `advi-control`, `advi-dataprep`, `advi-inner`, `advi-grad`, `advi-fit`
-  stay essential; the multi-iteration fit files run weekly.
-- **Everything else goes into a weekly batch**: add the file’s basename
-  (no `test-` prefix, no `.R`) to a `.slowBatches` batch, sized from
-  measured single-worker times so each batch stays well under an hour.
-- **Do NOT use `skip_on_ci()` in batched files.** The weekly runner also
-  sets `CI=true`, so `skip_on_ci()` would skip the test there too,
-  defeating the batch. Batched files rely on the `.slowBatches` filter
-  (not `skip_on_ci`) to stay out of the essential run; keep
-  `skip_on_cran()` where CRAN must not run it. Likewise, an always-run
-  core file must not call `skip_on_ci()` or it will not actually run on
-  push/PR.
+Test shards run
+[`testthat::test_dir()`](https://testthat.r-lib.org/reference/test_dir.html)
+directly (not `R CMD check`), assigned by `.github/scripts/ci-shards.R`
+from recorded per-file times in `tests/ci-timings.csv`. Refresh that
+file from a full run’s `junit-*` artifacts with
+`.github/scripts/ci-test-timings.R` when the shards drift out of
+balance.
+
+When adding tests, split them by cost:
+
+- **Core** (`tests/ci-core.txt`): only fast, high-signal files – unit
+  tests plus one basic end-to-end fit per major feature. The core list
+  must stay within the fast tier’s ~15 min budget; check its total in
+  `tests/ci-timings.csv` before adding.
+- **Everything else** needs no registration: the nightly full tier runs
+  every file.
+- **Do NOT use `skip_on_ci()`** for a slow file: every CI shard sets
+  `CI=true`, so the file would never run anywhere. Keep `skip_on_cran()`
+  where CRAN must not run it.
 
 ## Key conventions
 

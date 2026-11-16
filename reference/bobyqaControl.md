@@ -327,14 +327,14 @@ print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -732.2583 1111.619 1126.342      -552.8094        291.4757        60.66259
+#> lPop -732.2583 1111.619 1126.342      -552.8094        291.4757        60.66258
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.7050574 0.6758321 1.7346e-05      0.038       0.009 0.028    0.001
+#>           setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.79147 0.791648 2.3494e-05      0.051       0.011 0.031    0.001
 #>              other
-#> elapsed 0.08309308
+#> elapsed 0.09185846
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
