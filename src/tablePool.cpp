@@ -89,6 +89,124 @@ static bool tablePoolCanSolve(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_
 
 static inline bool tablePoolOutRow(int evid) { return evid == 0 || evid == 2; }
 
+// each subject's first output row (start[nsub] = total).  Counted by record,
+// not through ix: the time order is only sorted by the solve.
+static std::vector<int> tablePoolRowStarts(rx_solve *rx, int nsub) {
+  std::vector<int> start((size_t)nsub + 1, 0);
+  for (int i = 0; i < nsub; ++i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
+    int n = 0, nAll = getIndNallTimes(ind);
+    for (int j = 0; j < nAll; ++j) {
+      if (tablePoolOutRow(getIndEvid(ind, j))) n++;
+    }
+    start[(size_t)i + 1] = start[(size_t)i] + n;
+  }
+  return start;
+}
+
+static void tablePoolCheckIdx(IntegerVector idx, int n, const char *what) {
+  for (int k = 0; k < idx.size(); ++k) {
+    if (idx[k] < 0 || idx[k] >= n) stop("table pool %s index out of range", what);
+  }
+}
+
+// output buffers shared by every subject; each subject writes only its own rows
+struct TablePoolOut {
+  int nr, ncol, nsens;
+  int *pid, *prec, *pevid;
+  double *ptime, *pv;
+  const int *lhsIdx, *stateIdx, *covIdx, *sensIdx;
+  int nl, ns, nc;
+  bool tbs;
+  std::vector<std::vector<int> > sensR, sensK;
+  std::vector<std::vector<double> > sensV;
+};
+
+static inline void tablePoolSens(TablePoolOut &o, int i, int r, int k, double v) {
+  o.sensR[(size_t)i].push_back(r);
+  o.sensK[(size_t)i].push_back(k);
+  o.sensV[(size_t)i].push_back(v);
+}
+
+// a failed solve's values and sensitivities are missing, not structural zeros
+static void tablePoolBadRow(TablePoolOut &o, int i, int r) {
+  for (int k = 0; k < o.ncol; ++k) o.pv[r + (size_t)k * o.nr] = NA_REAL;
+  for (int k = 0; k < o.nsens; ++k) tablePoolSens(o, i, r, k, NA_REAL);
+}
+
+static void tablePoolGoodRow(TablePoolOut &o, int i, int r, rx_solving_options_ind *ind,
+                             const double *lhs, const double *solve) {
+  int c = 0;
+  double *pv = o.pv;
+  size_t nr = (size_t)o.nr;
+  for (int k = 0; k < o.nl; ++k) pv[r + (size_t)(c++) * nr] = lhs[o.lhsIdx[k]];
+  for (int k = 0; k < o.ns; ++k) pv[r + (size_t)(c++) * nr] = solve[o.stateIdx[k]];
+  for (int k = 0; k < o.nc; ++k) pv[r + (size_t)(c++) * nr] = getIndParPtr(ind, o.covIdx[k]);
+  if (o.tbs) {
+    pv[r + (size_t)(c++) * nr] = getIndLambda(ind);
+    pv[r + (size_t)(c++) * nr] = (double)getIndLambdaYj(ind);
+    pv[r + (size_t)(c++) * nr] = getIndLogitLow(ind);
+    pv[r + (size_t)(c++) * nr] = getIndLogitHi(ind);
+  }
+  for (int k = 0; k < o.nsens; ++k) {
+    double v = lhs[o.sensIdx[k]];
+    if (v != 0.0) tablePoolSens(o, i, r, k, v);
+  }
+}
+
+// walk subject i's records after its solve, writing rows [r, rEnd); returns
+// the row reached, or -1 when the subject has more output rows than counted
+static int tablePoolWalkInd(TablePoolOut &o, rxSolveF *fns, rx_solving_options *op,
+                            rx_solving_options_ind *ind, int i, int r, int rEnd,
+                            double *lhs, bool bad) {
+  int nAll = getIndNallTimes(ind);
+  for (int j = 0; j < nAll; ++j) {
+    setIndIdx(ind, j);
+    int kk = getIndIx(ind, j);
+    int ev = getIndEvid(ind, kk);
+    if (ev == 9) continue;
+    double curT = getTime(kk, ind);
+    bool out = tablePoolOutRow(ev);
+    if (!out && (ev >= 100 || ev == 3)) tablePoolTlast(&curT, ind);
+    if (out && r >= rEnd) return -1;
+    double *solve = NULL;
+    if (!bad) {
+      lhsWalkNewind(ind, j);
+      solve = getOpIndSolve(op, ind, j);
+      fns->calc_lhs(i, curT, solve, lhs);
+    }
+    if (!out) continue;
+    o.pid[r] = i + 1;
+    o.prec[r] = kk;
+    o.pevid[r] = ev;
+    o.ptime[r] = curT;
+    if (bad) {
+      tablePoolBadRow(o, i, r);
+    } else {
+      tablePoolGoodRow(o, i, r, ind, lhs, solve);
+    }
+    r++;
+  }
+  return r;
+}
+
+static List tablePoolSensList(TablePoolOut &o, int nsub) {
+  size_t nnz = 0;
+  for (int i = 0; i < nsub; ++i) nnz += o.sensV[(size_t)i].size();
+  IntegerVector si(nnz), sk(nnz);
+  NumericVector sv(nnz);
+  size_t q0 = 0;
+  for (int i = 0; i < nsub; ++i) {
+    for (size_t q = 0; q < o.sensV[(size_t)i].size(); ++q, ++q0) {
+      si[q0] = o.sensR[(size_t)i][q] + 1;
+      sk[q0] = o.sensK[(size_t)i][q] + 1;
+      sv[q0] = o.sensV[(size_t)i][q];
+    }
+  }
+  return List::create(_["i"] = si, _["k"] = sk, _["x"] = sv,
+                      _["nrow"] = o.nr, _["ncol"] = o.nsens);
+}
+
 // Solve every subject as table model `which` (0 inner, 1 predOnly) and read
 // the requested columns.
 //
@@ -115,40 +233,34 @@ List tablePoolSolve_(int which, NumericMatrix parMat, IntegerVector parIdx,
     stop("table pool parameters have %d rows for %d subjects", parMat.nrow(), nsub);
   }
   if (parMat.ncol() != parIdx.size()) stop("table pool parameter names do not match");
-  // output rows per subject, and each subject's first output row.  Counted by
-  // record, not through ix: the time order is only sorted by the solve.
-  std::vector<int> start((size_t)nsub + 1, 0);
-  for (int i = 0; i < nsub; ++i) {
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
-    int n = 0, nAll = getIndNallTimes(ind);
-    for (int j = 0; j < nAll; ++j) {
-      if (tablePoolOutRow(getIndEvid(ind, j))) n++;
-    }
-    start[(size_t)i + 1] = start[(size_t)i] + n;
-  }
+  std::vector<int> start = tablePoolRowStarts(rx, nsub);
   int nr = start[(size_t)nsub];
-  int nl = lhsIdx.size(), ns = stateIdx.size(), nc = covIdx.size(),
-    nsens = sensIdx.size(), ntbs = tbs ? 4 : 0;
-  int neqSlot = odeSwapNeq(slot);
-  for (int k = 0; k < ns; ++k) {
-    if (stateIdx[k] < 0 || stateIdx[k] >= neqSlot) stop("table pool state index out of range");
-  }
-  int nlhsSlot = odeSwapNlhs(slot);
-  for (int k = 0; k < nl; ++k) {
-    if (lhsIdx[k] < 0 || lhsIdx[k] >= nlhsSlot) stop("table pool lhs index out of range");
-  }
-  for (int k = 0; k < nsens; ++k) {
-    if (sensIdx[k] < 0 || sensIdx[k] >= nlhsSlot) stop("table pool lhs index out of range");
-  }
+  tablePoolCheckIdx(stateIdx, odeSwapNeq(slot), "state");
+  tablePoolCheckIdx(lhsIdx, odeSwapNlhs(slot), "lhs");
+  tablePoolCheckIdx(sensIdx, odeSwapNlhs(slot), "lhs");
   IntegerVector id(nr), rec(nr), evid(nr);
   NumericVector time(nr);
-  int ncol = nl + ns + nc + ntbs;
-  NumericMatrix vals(nr, ncol);
-  double *pv = REAL(vals);
-  std::vector<std::vector<int> > sensR((size_t)nsub), sensK((size_t)nsub);
-  std::vector<std::vector<double> > sensV((size_t)nsub);
-  int *pid = INTEGER(id), *prec = INTEGER(rec), *pevid = INTEGER(evid);
-  double *ptime = REAL(time);
+  TablePoolOut o;
+  o.nr = nr;
+  o.nl = lhsIdx.size();
+  o.ns = stateIdx.size();
+  o.nc = covIdx.size();
+  o.nsens = sensIdx.size();
+  o.tbs = tbs;
+  o.ncol = o.nl + o.ns + o.nc + (tbs ? 4 : 0);
+  NumericMatrix vals(nr, o.ncol);
+  o.pv = REAL(vals);
+  o.pid = INTEGER(id);
+  o.prec = INTEGER(rec);
+  o.pevid = INTEGER(evid);
+  o.ptime = REAL(time);
+  o.lhsIdx = INTEGER(lhsIdx);
+  o.stateIdx = INTEGER(stateIdx);
+  o.covIdx = INTEGER(covIdx);
+  o.sensIdx = INTEGER(sensIdx);
+  o.sensR.resize((size_t)nsub);
+  o.sensK.resize((size_t)nsub);
+  o.sensV.resize((size_t)nsub);
   const double *ppar = REAL(parMat);
   int npr = parMat.nrow(), npc = parMat.ncol();
   const int *pparIdx = INTEGER(parIdx);
@@ -167,81 +279,13 @@ List tablePoolSolve_(int which, NumericMatrix parMat, IntegerVector parIdx,
     odeSwapSolveInd(slot, i);
     bool bad = odeSwapIndBadSolveSlot(op, ind, slot);
     iniSubjectE(i, 1, ind, op, rx, fns->update_inis);
-    double *lhs = neqGuard.lhs();
-    int nAll = getIndNallTimes(ind);
-    int r = start[(size_t)i], rEnd = start[(size_t)i + 1];
-    for (int j = 0; j < nAll; ++j) {
-      setIndIdx(ind, j);
-      int kk = getIndIx(ind, j);
-      int ev = getIndEvid(ind, kk);
-      if (ev == 9) continue;
-      double curT = getTime(kk, ind);
-      if (!tablePoolOutRow(ev)) {
-        if (ev >= 100 || ev == 3) tablePoolTlast(&curT, ind);
-        if (!bad) {
-          lhsWalkNewind(ind, j);
-          fns->calc_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
-        }
-        continue;
-      }
-      if (r >= rEnd) { rowBad[(size_t)i] = 1; break; }
-      pid[r] = i + 1;
-      prec[r] = kk;
-      pevid[r] = ev;
-      ptime[r] = curT;
-      if (bad) {
-        for (int k = 0; k < ncol; ++k) pv[r + (size_t)k * nr] = NA_REAL;
-        // a failed solve's sensitivities are missing, not structural zeros
-        for (int k = 0; k < nsens; ++k) {
-          sensR[(size_t)i].push_back(r);
-          sensK[(size_t)i].push_back(k);
-          sensV[(size_t)i].push_back(NA_REAL);
-        }
-        r++;
-        continue;
-      }
-      lhsWalkNewind(ind, j);
-      double *solve = getOpIndSolve(op, ind, j);
-      fns->calc_lhs(i, curT, solve, lhs);
-      int c = 0;
-      for (int k = 0; k < nl; ++k) pv[r + (size_t)(c++) * nr] = lhs[lhsIdx[k]];
-      for (int k = 0; k < ns; ++k) pv[r + (size_t)(c++) * nr] = solve[stateIdx[k]];
-      for (int k = 0; k < nc; ++k) pv[r + (size_t)(c++) * nr] = getIndParPtr(ind, covIdx[k]);
-      if (tbs) {
-        pv[r + (size_t)(c++) * nr] = getIndLambda(ind);
-        pv[r + (size_t)(c++) * nr] = (double)getIndLambdaYj(ind);
-        pv[r + (size_t)(c++) * nr] = getIndLogitLow(ind);
-        pv[r + (size_t)(c++) * nr] = getIndLogitHi(ind);
-      }
-      for (int k = 0; k < nsens; ++k) {
-        double v = lhs[sensIdx[k]];
-        if (v != 0.0) {
-          sensR[(size_t)i].push_back(r);
-          sensK[(size_t)i].push_back(k);
-          sensV[(size_t)i].push_back(v);
-        }
-      }
-      r++;
-    }
+    int rEnd = start[(size_t)i + 1];
+    int r = tablePoolWalkInd(o, fns, op, ind, i, start[(size_t)i], rEnd, neqGuard.lhs(), bad);
     if (r != rEnd) rowBad[(size_t)i] = 1;
   });
   _tablePoolSolveN++;
   bool rowsOk = true;
   for (int i = 0; i < nsub; ++i) if (rowBad[(size_t)i]) rowsOk = false;
-  size_t nnz = 0;
-  for (int i = 0; i < nsub; ++i) nnz += sensV[(size_t)i].size();
-  IntegerVector si(nnz), sk(nnz);
-  NumericVector sv(nnz);
-  size_t o = 0;
-  for (int i = 0; i < nsub; ++i) {
-    for (size_t q = 0; q < sensV[(size_t)i].size(); ++q, ++o) {
-      si[o] = sensR[(size_t)i][q] + 1;
-      sk[o] = sensK[(size_t)i][q] + 1;
-      sv[o] = sensV[(size_t)i][q];
-    }
-  }
-  return List::create(_["rowsOk"] = rowsOk, _["id"] = id, _["rec"] = rec, _["evid"] = evid, _["time"] = time,
-                      _["vals"] = vals,
-                      _["sens"] = List::create(_["i"] = si, _["k"] = sk, _["x"] = sv,
-                                               _["nrow"] = nr, _["ncol"] = nsens));
+  return List::create(_["rowsOk"] = rowsOk, _["id"] = id, _["rec"] = rec, _["evid"] = evid,
+                      _["time"] = time, _["vals"] = vals, _["sens"] = tablePoolSensList(o, nsub));
 }
