@@ -515,3 +515,160 @@ nmTest({
     expect_equal(.fit2$objf, fit$objf)
   })
 })
+
+test_that(".residSolveWithFallback() loosens tolerances, then switches method", {
+  .fit <- list(
+    methodOde = "liblsoda",
+    atol = 1e-6,
+    rtol = 1e-6,
+    foceiControl = list(rxControl = list(maxAtolRtolFactor = 0.1), odeRecalcFactor = 10, stickyRecalcN = 2)
+  )
+  .calls <- list()
+  .solve <- function(okWhen) {
+    function(method, atol, rtol) {
+      .calls[[length(.calls) + 1L]] <<- c(method, atol)
+      list(rx_pred_ = if (okWhen(method, atol)) 1 else NA_real_)
+    }
+  }
+  # recovers after one loosening
+  expect_equal(.residSolveWithFallback(.fit, "ipred", .solve(function(m, a) a > 1e-6))$rx_pred_, 1)
+  expect_equal(.calls, list(c("liblsoda", "1e-06"), c("liblsoda", "1e-05")))
+  # the next method, with a warning naming the failed one
+  .calls <- list()
+  expect_warning(
+    .r <- .residSolveWithFallback(.fit, "pred", .solve(function(m, a) m == "dop853")),
+    "Problems solving pred with liblsoda, returning results from dop853"
+  )
+  expect_equal(.r$rx_pred_, 1)
+  expect_equal(vapply(.calls, `[`, character(1), 1), c("liblsoda", "liblsoda", "dop853"))
+  # every method fails: the first method's result, with a warning
+  expect_warning(
+    .r <- .residSolveWithFallback(.fit, "ebe", .solve(function(m, a) FALSE)),
+    "returning results from the first method"
+  )
+  expect_true(is.na(.r$rx_pred_))
+})
+
+nmTest({
+  .tablePoolModel <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl) * (WT / 70)
+      v <- exp(tv + eta.v)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  .tablePoolData <- function() {
+    .d <- nlmixr2data::theo_sd
+    .d$WT <- .d$WT + .d$TIME / 5
+    .d
+  }
+  .tablePoolFit <- function(model = .tablePoolModel, data = .tablePoolData()) {
+    suppressMessages(suppressWarnings(nlmixr2(
+      model,
+      data,
+      "focei",
+      foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE)
+    )))
+  }
+  # the table of the rxSolve() route
+  .tableOld <- function(fit, ...) {
+    withr::with_options(list(nlmixr2.tablePool = FALSE), suppressMessages(addTable(fit, ...)))
+  }
+
+  test_that("addTable() solves in the pool and equals the rxSolve() table (#1356)", {
+    fit <- .tablePoolFit()
+    .ref <- .tableOld(fit)
+    .i0 <- .tablePoolInfo()
+    .tab <- suppressMessages(addTable(fit))
+    .i1 <- .tablePoolInfo()
+    expect_equal(.i1$pooledN, .i0$pooledN + 1L)
+    expect_equal(.i1$declineN, .i0$declineN)
+    expect_equal(as.data.frame(.tab), as.data.frame(.ref), tolerance = 0)
+    # the slots are cleared after the table step
+    expect_equal(.odeSwapInfo()$nLoaded, 0L)
+    # cwres = FALSE solves only the predOnly model
+    .ref2 <- .tableOld(fit, table = tableControl(cwres = FALSE))
+    .tab2 <- suppressMessages(addTable(fit, table = tableControl(cwres = FALSE)))
+    expect_equal(as.data.frame(.tab2), as.data.frame(.ref2), tolerance = 0)
+  })
+
+  test_that("the pooled table switches ODE method like the rxSolve() table", {
+    fit <- .tablePoolFit()
+    .both <- function(...) {
+      .w1 <- character(0)
+      .old <- withCallingHandlers(.tableOld(fit), warning = function(w) {
+        .w1 <<- c(.w1, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      })
+      .w2 <- character(0)
+      .i0 <- .tablePoolInfo()
+      .new <- withCallingHandlers(suppressMessages(addTable(fit)), warning = function(w) {
+        .w2 <<- c(.w2, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      })
+      .i1 <- .tablePoolInfo()
+      expect_equal(.i1$pooledN, .i0$pooledN + 1L)
+      expect_equal(as.data.frame(.new), as.data.frame(.old), tolerance = 0)
+      expect_equal(.w2, .w1)
+      .i1$rebuildN - .i0$rebuildN
+    }
+    # liblsoda "fails" for every solve, so each one is redone with dop853
+    withr::with_options(list(nlmixr2.tableFailMethods = "liblsoda"), {
+      expect_gt(.both(), 0L)
+    })
+    # every method fails: the first method's result, with the warnings
+    withr::with_options(list(nlmixr2.tableFailMethods = c("liblsoda", "dop853")), {
+      expect_gt(.both(), 0L)
+    })
+  })
+
+  test_that("addTable() gets the right table once the fit's pool is gone", {
+    fit <- .tablePoolFit()
+    .ref <- .tableOld(fit)
+    # another model's fit and a plain rxSolve() replace the registry and the solve
+    .other <- function() {
+      ini({
+        tcl <- 1
+        tv <- 3.45
+        eta.cl ~ 0.3
+        prop.sd <- 0.2
+      })
+      model({
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        cp <- linCmt()
+        cp ~ prop(prop.sd)
+      })
+    }
+    .fit2 <- .tablePoolFit(.other, nlmixr2data::theo_sd)
+    invisible(rxode2::rxSolve(.fit2, nlmixr2data::theo_sd))
+    .tab <- suppressMessages(addTable(fit))
+    expect_equal(as.data.frame(.tab), as.data.frame(.ref), tolerance = 0)
+    # twice in a row
+    .tab2 <- suppressMessages(addTable(fit))
+    expect_equal(as.data.frame(.tab2), as.data.frame(.ref), tolerance = 0)
+    expect_equal(.odeSwapInfo()$nLoaded, 0L)
+    # a saved and reloaded fit
+    .f <- tempfile(fileext = ".rds")
+    on.exit(unlink(.f), add = TRUE)
+    saveRDS(fit, .f)
+    .fit3 <- readRDS(.f)
+    .i0 <- .tablePoolInfo()
+    .tab3 <- suppressMessages(addTable(.fit3))
+    expect_equal(.tablePoolInfo()$pooledN, .i0$pooledN + 1L)
+    expect_equal(as.data.frame(.tab3), as.data.frame(.ref), tolerance = 0)
+  })
+})
