@@ -494,4 +494,23 @@ nmTest({
     .poolExpect(.fit)
     .poolExpect(.fit, table = tableControl(addDosing = TRUE))
   })
+
+  test_that("pooled tables: a kept column the data lacks is left out, with rxode2's warning", {
+    skip_if_not(.tablePoolRxWalk(), "this rxode2 has no output-record walk")
+    .fit <- .poolFit(.poolOne(), .theo)
+    # WT is in theo_sd but not in the fit's data (the model does not use it)
+    expect_false("WT" %in% names(.fit$dataSav))
+    .old <- withr::with_options(
+      list(nlmixr2.tablePool = FALSE),
+      suppressMessages(addTable(.fit, keep = "WT"))
+    )
+    .i0 <- .tablePoolInfo()
+    expect_warning(
+      .new <- suppressMessages(addTable(.fit, keep = "WT")),
+      "Cannot keep missing columns"
+    )
+    expect_equal(.tablePoolInfo()$pooledN, .i0$pooledN + 1L)
+    expect_equal(as.data.frame(.new), as.data.frame(.old), tolerance = 0)
+    expect_false("WT" %in% names(.new))
+  })
 })
