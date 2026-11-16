@@ -67,7 +67,8 @@ test_that(".rxode2Optional() reports each entry from rxode2's pointer table", {
     dfKeepFirst = list(109L, "rxode2rxDfKeepFirst"),
     dfKeepRow = list(110L, "rxode2rxDfKeepRow"),
     dfKeepCols = list(111L, "rxode2rxDfKeepCols"),
-    dfLevels = list(112L, "rxode2getDfLevels")
+    dfLevels = list(112L, "rxode2getDfLevels"),
+    dfSolveRefused = list(113L, "rxode2rxDfSolveRefused")
   )
   .in <- function(p) {
     vapply(.slots, function(s) length(p) > s[[1]] && names(p)[s[[1]] + 1L] == s[[2]], logical(1))

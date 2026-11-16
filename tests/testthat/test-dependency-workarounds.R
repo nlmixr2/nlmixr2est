@@ -341,6 +341,42 @@ test_that("slot-105 work-around: rxode2's output-record walk", {
   succeed()
 })
 
+.depSlot113Remove <- paste(
+  "rxode2's rxDfSolveRefused() (slot 113): remove nmDfSolveRefused from src/rxode2Optional.h",
+  "and its dfSolveRefused row of rxode2OptionalSlots in src/inner.cpp; the NULL check in",
+  "tablePoolRefused() (src/tablePool.cpp); .tablePoolMethods and .tablePoolMethodOk() in",
+  "R/tablePool.R (every method pools); the method-decline expectations in",
+  "test-table-pool.R and the dfSolveRefused row in test-lhs-walk-newind.R; and this block"
+)
+
+# The slot-113 block's warning for the installed rxode2
+.depSlot113Warning <- function(present = .rxode2Optional()[["dfSolveRefused"]]) {
+  .depWorkaroundWarning(.rxode2Version(), "5.1.8.9000", .depSlot113Remove, present = present)
+}
+
+.depBlocks$slot113 <- list(
+  remove = .depSlot113Remove,
+  anchor = "tablePool.R",
+  symbols = c("nmDfSolveRefused", "dfSolveRefused", "tablePoolRefused", ".tablePoolMethodOk")
+)
+
+test_that("slot-113 work-around: warns only for a release with rxDfSolveRefused()", {
+  local_mocked_bindings(.rxode2Version = .depVersion519)
+  expect_null(.depSlot113Warning(present = FALSE))
+  expect_match(.depSlot113Warning(present = TRUE), "rxode2 5.1.9 is a release after 5.1.8.9000", fixed = TRUE)
+  local_mocked_bindings(.rxode2Version = .depVersionDev)
+  expect_null(.depSlot113Warning(present = TRUE))
+})
+
+test_that("slot-113 work-around: rxode2's rxDfSolveRefused()", {
+  skip_on_cran()
+  .w <- .depSlot113Warning()
+  if (!is.null(.w)) {
+    warning(.w, call. = FALSE)
+  }
+  succeed()
+})
+
 # after every block has added its row
 test_that("each work-around names every file that uses its probe, skips and fallbacks", {
   # an installed package (R CMD check, covr) has an R/ of .rdb files, not the

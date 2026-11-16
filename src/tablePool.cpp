@@ -36,6 +36,7 @@ static rxSolveF *tablePoolFns(int slot) {
 long tablePoolSolveN() { return _tablePoolSolveN; }
 
 static bool tablePoolCanSolve(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op);
+static int tablePoolRefused(rx_solve *rx);
 
 //[[Rcpp::export]]
 RObject tablePoolFree_() {
@@ -355,6 +356,7 @@ static List tablePoolRxCollect(const TablePoolRxCtx &c, std::vector<TablePoolRxS
   ret["dull"] = IntegerVector::create(_["rate"] = dull[0], _["dur"] = dull[1],
                                       _["ss"] = dull[2], _["ii"] = dull[3]);
   ret["keep"] = c.nkeep > 0 ? RObject(nmDfKeepCols(keep)) : RObject(R_NilValue);
+  ret["refused"] = tablePoolRefused(c.rx);
   return ret;
 }
 
@@ -409,6 +411,12 @@ List tablePoolLevels_(CharacterVector names) {
   return ret;
 }
 
+// Whether rxSolve() would refuse this solve (rxode2's RXDF_REFUSE_* code) rather
+// than return it with NA rows; 0 without rxode2's rxDfSolveRefused()
+static int tablePoolRefused(rx_solve *rx) {
+  return nmDfSolveRefused == NULL ? 0 : nmDfSolveRefused(rx);
+}
+
 // Whether rxode2 provides the output-record walk and keep columns
 //[[Rcpp::export]]
 bool tablePoolHasRxWalk_() {
@@ -443,6 +451,8 @@ List tablePoolSolve_(int which, NumericMatrix parMat, IntegerVector parIdx,
     stop("table pool slot %d is not set up", slot);
   }
   rx_solving_options *op = getSolvingOptions(rx);
+  // each solve is judged on its own failures, as each rxSolve() is
+  resetOpBadSolve(op);
   int nsub = (int)getRxNsub(rx);
   if (parMat.nrow() != 1 && parMat.nrow() != nsub) {
     stop("table pool parameters have %d rows for %d subjects", parMat.nrow(), nsub);
@@ -504,6 +514,8 @@ List tablePoolSolve_(int which, NumericMatrix parMat, IntegerVector parIdx,
   _tablePoolSolveN++;
   bool rowsOk = true;
   for (int i = 0; i < nsub; ++i) if (rowBad[(size_t)i]) rowsOk = false;
-  return List::create(_["rowsOk"] = rowsOk, _["id"] = id, _["rec"] = rec, _["evid"] = evid,
-                      _["time"] = time, _["vals"] = vals, _["sens"] = tablePoolSensList(o, nsub));
+  List ret = List::create(_["rowsOk"] = rowsOk, _["id"] = id, _["rec"] = rec, _["evid"] = evid,
+                          _["time"] = time, _["vals"] = vals, _["sens"] = tablePoolSensList(o, nsub));
+  ret["refused"] = tablePoolRefused(rx);
+  return ret;
 }

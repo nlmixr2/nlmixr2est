@@ -261,6 +261,7 @@ extern "C" {
   nmDfKeepRow_t nmDfKeepRow = NULL;
   nmDfKeepCols_t nmDfKeepCols = NULL;
   nmDfLevels_t nmDfLevels = NULL;
+  nmDfSolveRefused_t nmDfSolveRefused = NULL;
 
   // The entry points of rxode2Optional.h: the label .rxode2Optional() reports
   // it by, its slot in rxode2's pointer table and that slot's name there
@@ -284,6 +285,8 @@ extern "C" {
     {"dfKeepRow", 110, "rxode2rxDfKeepRow", (DL_FUNC *) &nmDfKeepRow},
     {"dfKeepCols", 111, "rxode2rxDfKeepCols", (DL_FUNC *) &nmDfKeepCols},
     {"dfLevels", 112, "rxode2getDfLevels", (DL_FUNC *) &nmDfLevels},
+    // remove with test-dependency-workarounds.R's slot-113 block
+    {"dfSolveRefused", 113, "rxode2rxDfSolveRefused", (DL_FUNC *) &nmDfSolveRefused},
   };
   static const int rxode2OptionalN =
     (int)(sizeof(rxode2OptionalSlots) / sizeof(rxode2OptionalSlots[0]));
