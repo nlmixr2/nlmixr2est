@@ -245,11 +245,13 @@
 .tablePoolPredIpredList0 <- function(fit, thetaEtaParameters, keep, inner, po) {
   on.exit(tablePoolFree_(), add = TRUE)
   .seed <- .tablePoolSeedSave()
-  .nsolve <- 0L
-  .step <- 0L
+  # solve count and per-solve seed step, updated by the closures below
+  .acc <- new.env(parent = emptyenv())
+  .acc$nsolve <- 0L
+  .acc$step <- 0L
   .done <- FALSE
   on.exit(
-    .tablePoolSeedAdvance(.seed, if (.done) .nsolve else 0L, .step),
+    .tablePoolSeedAdvance(.seed, if (.done) .acc$nsolve else 0L, .acc$step),
     add = TRUE
   )
   .data <- fit$dataSav
@@ -282,7 +284,7 @@
     .s0 <- rxode2::rxGetSeed()
     .ok <- .tablePoolSetup(fit, inner, po, .ipar, method, atol, rtol)
     if (.s0 != -1) {
-      .step <<- length(.start) + (rxode2::rxGetSeed() - .s0)
+      .acc$step <- length(.start) + (rxode2::rxGetSeed() - .s0)
     }
     if (!all(.ok[.need])) {
       .tablePoolStop("register")
@@ -305,7 +307,7 @@
       fit,
       what,
       function(method, atol, rtol) {
-        .nsolve <<- .nsolve + 1L
+        .acc$nsolve <- .acc$nsolve + 1L
         .ensure(method, atol, rtol)
         .r <- .tablePoolSolve(model, slot, pars, ...)
         if (!isTRUE(.r$rowsOk)) {
