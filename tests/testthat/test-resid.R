@@ -518,7 +518,9 @@ nmTest({
 
 test_that(".residSolveWithFallback() loosens tolerances, then switches method", {
   .fit <- list(
-    methodOde = "liblsoda", atol = 1e-6, rtol = 1e-6,
+    methodOde = "liblsoda",
+    atol = 1e-6,
+    rtol = 1e-6,
     foceiControl = list(rxControl = list(maxAtolRtolFactor = 0.1), odeRecalcFactor = 10, stickyRecalcN = 2)
   )
   .calls <- list()
@@ -575,7 +577,9 @@ nmTest({
   }
   .tablePoolFit <- function(model = .tablePoolModel, data = .tablePoolData()) {
     suppressMessages(suppressWarnings(nlmixr2(
-      model, data, "focei",
+      model,
+      data,
+      "focei",
       foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE)
     )))
   }

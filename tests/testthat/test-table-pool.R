@@ -31,10 +31,13 @@ nmTest({
     suppressMessages(suppressWarnings(nlmixr2(model, data, est, control)))
   }
   .poolExpect <- function(fit, ..., pooled = TRUE) {
-    .old <- rxode2::rxWithSeed(1356, withr::with_options(
-      list(nlmixr2.tablePool = FALSE),
-      suppressMessages(suppressWarnings(addTable(fit, ...)))
-    ))
+    .old <- rxode2::rxWithSeed(
+      1356,
+      withr::with_options(
+        list(nlmixr2.tablePool = FALSE),
+        suppressMessages(suppressWarnings(addTable(fit, ...)))
+      )
+    )
     .i0 <- .tablePoolInfo()
     .new <- rxode2::rxWithSeed(1356, suppressMessages(suppressWarnings(addTable(fit, ...))))
     expect_equal(.tablePoolInfo()$pooledN - .i0$pooledN, as.integer(pooled))
@@ -172,10 +175,16 @@ nmTest({
     .poolExpect(.fit)
     .poolExpect(.fit, table = tableControl(keep = "WT"))
     .poolExpect(.fit, table = tableControl(npde = TRUE))
-    .poolExpect(.poolFit(.tv, .d, control = foceiControl(
-      print = 0, maxOuterIterations = 0, calcTables = FALSE,
-      rxControl = rxode2::rxControl(covsInterpolation = "linear")
-    )))
+    .poolExpect(.poolFit(
+      .tv,
+      .d,
+      control = foceiControl(
+        print = 0,
+        maxOuterIterations = 0,
+        calcTables = FALSE,
+        rxControl = rxode2::rxControl(covsInterpolation = "linear")
+      )
+    ))
   })
 
   test_that("pooled tables: two endpoints, also once the pool is gone", {
@@ -234,10 +243,16 @@ nmTest({
     })
     # a fit solved with an ODE method outside the pool's takes the rxSolve() route
     skip_if_not("cvode" %in% names(rxode2::odeMethodToInt(NULL)))
-    .fit2 <- .poolFit(.poolOne(), .theo, control = foceiControl(
-      print = 0, maxOuterIterations = 0, calcTables = FALSE,
-      rxControl = rxode2::rxControl(method = "cvode")
-    ))
+    .fit2 <- .poolFit(
+      .poolOne(),
+      .theo,
+      control = foceiControl(
+        print = 0,
+        maxOuterIterations = 0,
+        calcTables = FALSE,
+        rxControl = rxode2::rxControl(method = "cvode")
+      )
+    )
     .poolExpect(.fit2, pooled = FALSE)
     expect_equal(.tablePoolInfo()$lastDecline, "method")
   })

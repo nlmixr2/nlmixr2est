@@ -289,8 +289,10 @@
     }
     # the inner model's event ("jump") sensitivity shape, installed after the
     # loads above (loading a model rebinds it), as .foceiFitInternal() does
-    if (!is.null(inner) &&
-      isTRUE(tryCatch(rxode2::rxEventSensLoadModel(inner), error = function(e) FALSE))) {
+    if (
+      !is.null(inner) &&
+        isTRUE(tryCatch(rxode2::rxEventSensLoadModel(inner), error = function(e) FALSE))
+    ) {
       odeSwapEsNoteInstalled_(1L)
     } else {
       odeSwapEsNoteInstalled_(-1L)
@@ -346,8 +348,14 @@
   .covP <- setdiff(intersect(.mvP$params, names(.data)), c(.mvP$state, .mvP$lhs))
   if (is.null(inner)) {
     .ipred <- .solve(
-      "ipred", po, "predOnly", .ipar,
-      lhs = .mvP$lhs, state = .mvP$state, cov = .covP, tbs = TRUE
+      "ipred",
+      po,
+      "predOnly",
+      .ipar,
+      lhs = .mvP$lhs,
+      state = .mvP$state,
+      cov = .covP,
+      tbs = TRUE
     )
     .pred <- .solve("pred", po, "predOnly", .ppar, lhs = c("rx_pred_", "rx_r_"))
     .done <- TRUE
@@ -365,8 +373,14 @@
   }
   .stI <- intersect(.mvI$state, c(.mvP$state, .mvP$stateExtra))
   .ipred <- .solve(
-    "ipred", inner, "inner", .ipar,
-    lhs = c("rx_pred_", "rx_r_"), state = .stI, sens = .sens, tbs = TRUE
+    "ipred",
+    inner,
+    "inner",
+    .ipar,
+    lhs = c("rx_pred_", "rx_r_"),
+    state = .stI,
+    sens = .sens,
+    tbs = TRUE
   )
   .pred <- .solve("pred", inner, "inner", .ppar, lhs = c("rx_pred_", "rx_r_"), sens = .sens)
   .ebe <- .solve("ebe", po, "predOnly", .ipar, lhs = .mvP$lhs, state = .mvP$state, cov = .covP)

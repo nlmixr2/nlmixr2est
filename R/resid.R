@@ -285,8 +285,68 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     }
   }
   .solveOnce <- function(method, atol, rtol) {
-  .res <- if (.iCovState$ok) {
-    tryCatch(
+    .res <- if (.iCovState$ok) {
+      tryCatch(
+        .foceiSolveWithId(
+          model,
+          pars,
+          fit$dataSav,
+          returnType = returnType,
+          atol = atol,
+          rtol = rtol,
+          maxsteps = fit$maxstepsOde,
+          hmin = fit$hmin,
+          hmax = fit$hmax,
+          hini = fit$hini,
+          maxordn = fit$maxordn,
+          maxords = fit$maxords,
+          method = rxode2::odeMethodToInt(method),
+          tolFactor = .tolFactor,
+          covsInterpolation = .covsi$covsInterpolation,
+          naInterpolation = .covsi$naInterpolation,
+          nonmem = .covsi$nonmem,
+          iCov = .iCov,
+          keep = keep,
+          addDosing = addDosing,
+          subsetNonmem = subsetNonmem,
+          addCov = addCov
+        ),
+        error = function(e) {
+          # SET_VECTOR_ELT: older rxode2 overran its covariate list when an iCov
+          # mixest came with any other covariate
+          if (grepl("iCov|mixest|mixunif|time.varying|SET_VECTOR_ELT", conditionMessage(e), ignore.case = TRUE)) {
+            .iCovState$ok <- FALSE
+            warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
+            .foceiSolveWithId(
+              model,
+              pars,
+              fit$dataSav,
+              returnType = returnType,
+              atol = atol,
+              rtol = rtol,
+              maxsteps = fit$maxstepsOde,
+              hmin = fit$hmin,
+              hmax = fit$hmax,
+              hini = fit$hini,
+              maxordn = fit$maxordn,
+              maxords = fit$maxords,
+              method = rxode2::odeMethodToInt(method),
+              tolFactor = .tolFactor,
+              covsInterpolation = .covsi$covsInterpolation,
+              naInterpolation = .covsi$naInterpolation,
+              nonmem = .covsi$nonmem,
+              iCov = NULL,
+              keep = keep,
+              addDosing = addDosing,
+              subsetNonmem = subsetNonmem,
+              addCov = addCov
+            )
+          } else {
+            stop(e)
+          }
+        }
+      )
+    } else {
       .foceiSolveWithId(
         model,
         pars,
@@ -305,73 +365,13 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
         covsInterpolation = .covsi$covsInterpolation,
         naInterpolation = .covsi$naInterpolation,
         nonmem = .covsi$nonmem,
-        iCov = .iCov,
+        iCov = NULL,
         keep = keep,
         addDosing = addDosing,
         subsetNonmem = subsetNonmem,
         addCov = addCov
-      ),
-      error = function(e) {
-        # SET_VECTOR_ELT: older rxode2 overran its covariate list when an iCov
-        # mixest came with any other covariate
-        if (grepl("iCov|mixest|mixunif|time.varying|SET_VECTOR_ELT", conditionMessage(e), ignore.case = TRUE)) {
-          .iCovState$ok <- FALSE
-          warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
-          .foceiSolveWithId(
-            model,
-            pars,
-            fit$dataSav,
-            returnType = returnType,
-            atol = atol,
-            rtol = rtol,
-            maxsteps = fit$maxstepsOde,
-            hmin = fit$hmin,
-            hmax = fit$hmax,
-            hini = fit$hini,
-            maxordn = fit$maxordn,
-            maxords = fit$maxords,
-            method = rxode2::odeMethodToInt(method),
-            tolFactor = .tolFactor,
-            covsInterpolation = .covsi$covsInterpolation,
-            naInterpolation = .covsi$naInterpolation,
-            nonmem = .covsi$nonmem,
-            iCov = NULL,
-            keep = keep,
-            addDosing = addDosing,
-            subsetNonmem = subsetNonmem,
-            addCov = addCov
-          )
-        } else {
-          stop(e)
-        }
-      }
-    )
-  } else {
-    .foceiSolveWithId(
-      model,
-      pars,
-      fit$dataSav,
-      returnType = returnType,
-      atol = atol,
-      rtol = rtol,
-      maxsteps = fit$maxstepsOde,
-      hmin = fit$hmin,
-      hmax = fit$hmax,
-      hini = fit$hini,
-      maxordn = fit$maxordn,
-      maxords = fit$maxords,
-      method = rxode2::odeMethodToInt(method),
-      tolFactor = .tolFactor,
-      covsInterpolation = .covsi$covsInterpolation,
-      naInterpolation = .covsi$naInterpolation,
-      nonmem = .covsi$nonmem,
-      iCov = NULL,
-      keep = keep,
-      addDosing = addDosing,
-      subsetNonmem = subsetNonmem,
-      addCov = addCov
-    )
-  }
+      )
+    }
     rxode2::rxSolveFree()
     .res
   }
