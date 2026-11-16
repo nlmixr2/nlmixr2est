@@ -324,4 +324,48 @@ nmTest({
     .poolExpect(.one, table = tableControl(addDosing = TRUE))
     .poolExpect(.one, table = tableControl(addDosing = TRUE, subsetNonmem = FALSE))
   })
+
+  test_that("pooled tables: a mixture, each subject in its own component", {
+    .mixMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(c(0, 2.7, 100))
+        tcl2 <- log(c(0, 0.1, 120))
+        tv <- 3.45
+        p1 <- 0.3
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    # a second group with three times the concentrations: the low clearance
+    .d2 <- .theo
+    .d2$ID <- .d2$ID + 12
+    .d2$DV <- .d2$DV * 3
+    .fit <- withr::with_seed(
+      42,
+      .poolFit(
+        .mixMod,
+        rbind(.theo, .d2),
+        control = foceiControl(print = 0, maxOuterIterations = 5, calcTables = FALSE)
+      )
+    )
+    expect_length(unique(.residMixIcov(.fit)$mixest), 2L)
+    .tab <- .poolExpect(.fit)
+    expect_setequal(unique(.tab$mixest), c(1, 2))
+    .poolExpect(.fit, table = tableControl(npde = TRUE, nsim = 100))
+    if (.tablePoolRxWalk()) {
+      .poolExpect(.fit, table = tableControl(addDosing = TRUE))
+    }
+  })
 })

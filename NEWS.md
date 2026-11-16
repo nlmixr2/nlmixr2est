@@ -436,6 +436,10 @@
   dose columns and kept columns come from rxode2's own walk, so they are the
   rows `rxSolve()` gives (#1356).
 
+- Mixture (`mix()`) fits' tables are solved in the pool as well, each subject
+  with its own mixture assignment; the two routes share the code that passes
+  the assignments to rxode2 (#1356).
+
 - `addDosing = TRUE` tables of a single subject no longer stop with "subject
   code 0 of the solved rows has no row in the eta table": the solve has no id
   column for one subject, and its `ID` was put back only when the frame began
