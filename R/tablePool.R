@@ -45,6 +45,9 @@
     naInterpolation = .covsi$naInterpolation,
     nonmem = .covsi$nonmem,
     keep = keep,
+    # addCov = TRUE would drop a kept covariate (DV of a count endpoint) from
+    # the keep columns, as the rxSolve() route's ipred solve does not
+    addCov = FALSE,
     warnIdSort = FALSE,
     .setupOnly = 1L
   )
@@ -400,7 +403,11 @@
     # as in rxSolve(), a kept column that is already output is not repeated
     keep <- setdiff(keep, names(.df))
     if (!is.null(r$keep)) {
-      # rxode2's keep columns, in rxode2's order
+      # rxode2's keep columns, in rxode2's order; one rxode2 left out (an lhs
+      # or state of the pool's model) goes to the rxSolve() route
+      if (!all(keep %in% names(r$keep))) {
+        .tablePoolStop("keep")
+      }
       .k <- names(r$keep)[names(r$keep) %in% keep]
       if (length(.k) > 0L) {
         .df <- cbind(.df, as.data.frame(r$keep[.k], stringsAsFactors = FALSE))
