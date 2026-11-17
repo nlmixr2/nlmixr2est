@@ -40,13 +40,16 @@ test_that("the shared rewrite runs, or does not, according to iovMethod", {
   }
   .ui <- rxode2::rxUiDecompress(.mod())
 
-  # "theta": iov.cl becomes a magnitude theta plus one unit-variance eta per
-  # observed occasion
+  # "theta": saem gets one estimated eta per observed occasion, all with the
+  # declared variance, and no magnitude theta (#1319)
   .rw <- .uiApplyIov(.ui, "saem", .theoIov, saemControl(iovMethod = "theta"))
   expect_true(is.list(.rw))
   .ini <- .rw$ui$iniDf
-  expect_true("iov.cl" %in% .ini$name[is.na(.ini$neta1)])
-  expect_true(all(c("rx.iov.cl.1", "rx.iov.cl.2") %in% .ini$name))
+  expect_false("iov.cl" %in% .ini$name)
+  .occ <- .ini[.ini$name %in% c("rx.iov.cl.1", "rx.iov.cl.2"), ]
+  expect_equal(nrow(.occ), 2L)
+  expect_equal(.occ$est, c(0.1, 0.1))
+  expect_false(any(.occ$fix))
 
   # "twoLevel": nothing is rewritten, so the `| occ` variance component survives
   # into the saem build
