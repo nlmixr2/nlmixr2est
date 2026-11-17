@@ -722,6 +722,22 @@ nlmixr2Parameters <- function(theta, eta) {
     .Call(`_nlmixr2est_nlmixr2Parameters`, theta, eta)
 }
 
+tablePoolFree_ <- function() {
+    .Call(`_nlmixr2est_tablePoolFree_`)
+}
+
+tablePoolDeclare_ <- function(inner, predOnly) {
+    .Call(`_nlmixr2est_tablePoolDeclare_`, inner, predOnly)
+}
+
+tablePoolRegister_ <- function(inner, predOnly) {
+    .Call(`_nlmixr2est_tablePoolRegister_`, inner, predOnly)
+}
+
+tablePoolSolve_ <- function(which, parMat, parIdx, lhsIdx, sensIdx, stateIdx, covIdx, tbs) {
+    .Call(`_nlmixr2est_tablePoolSolve_`, which, parMat, parIdx, lhsIdx, sensIdx, stateIdx, covIdx, tbs)
+}
+
 vaeEncoderFwdBwd <- function(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLogSigmaDirect) {
     .Call(`_nlmixr2est_vaeEncoderFwdBwd`, dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLogSigmaDirect)
 }

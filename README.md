@@ -5,7 +5,7 @@
 
 <!-- badges: start -->
 
-[![R-CMD-check](https://github.com/nlmixr2/nlmixr2est/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/nlmixr2/nlmixr2est/actions/workflows/R-CMD-check.yaml)
+[![CI](https://github.com/nlmixr2/nlmixr2est/actions/workflows/ci.yaml/badge.svg)](https://github.com/nlmixr2/nlmixr2est/actions/workflows/ci.yaml)
 [![CodeFactor](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est/badge)](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est)
 [![CRAN
 status](https://www.r-pkg.org/badges/version/nlmixr2est)](https://CRAN.R-project.org/package=nlmixr2est)

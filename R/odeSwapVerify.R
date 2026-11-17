@@ -48,13 +48,23 @@
 
 #' Slot names in registry order, matching the C++ `OdeSwapSlot` enum.
 #'
-#' The last three are the analytic path's augmented models: the order-2 gradient
-#' model, an order-1 model for AGQ quadrature nodes, and a covariance model over
-#' its own direction set.  They coexist for the life of a fit -- each has its own
-#' compiled entry points, and solving one calls those rather than re-registering
-#' a shared slot.
+#' `outer`, `outerNode` and `outerCov` are the analytic path's augmented models:
+#' the order-2 gradient model, an order-1 model for AGQ quadrature nodes, and a
+#' covariance model over its own direction set.  They coexist for the life of a
+#' fit -- each has its own compiled entry points, and solving one calls those
+#' rather than re-registering a shared slot.  `tablePred` is the post-fit table
+#' predOnly model (`tablePool.cpp`).
 #' @noRd
-.odeSwapSlots <- c("inner", "pred", "thetaSens", "hess2", "outer", "outerNode", "outerCov")
+.odeSwapSlots <- c(
+  "inner",
+  "pred",
+  "thetaSens",
+  "hess2",
+  "outer",
+  "outerNode",
+  "outerCov",
+  "tablePred"
+)
 
 #' Drive the shared bad-solve retry loop with stub side effects.
 #'
