@@ -187,6 +187,10 @@
 #' @keywords internal
 .nlmFreeEnv <- function() {
   .Call(`_nlmixr2est_nlmFree`)
+  if (isTRUE(nlmixr2global$likPenaltyNlmSetup)) {
+    nlmixr2global$likPenaltyNlmSetup <- NULL
+    .likPenaltyDeactivate()
+  }
   rxode2::rxSolveFree()
   ## Deactivate any event-jump sensitivity injection from .nlmSetupEnv; no-op if never activated.
   tryCatch(rxode2::rxEventSensDeactivate(), error = function(e) NULL)

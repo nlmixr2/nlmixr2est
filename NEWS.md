@@ -14,6 +14,15 @@
 
 ## New features
 
+- A C interface for likelihood penalties (`inst/include/nlmixr2estLikPenalty.h`)
+  lets compiled code, such as an `rxode2` model extension, add per-subject and
+  population terms to the objective of every estimation method (FOCEi family,
+  imp, saem, vae, the nlm family and its external drivers; npag/npb take the
+  subject term).  `nlmixr2LikPenaltySpec()`/`nlmixr2LikPenaltyAdd()` attach a
+  penalty to a model or pass it to `nlmixr2(..., likPenalty =)`; `inObjf=` sets
+  whether it is counted in the reported objective, and `fit$likPenalty` reports
+  its value.  See `vignette("likelihood-penalties")`.
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the
@@ -116,6 +125,10 @@
   the first `$runInfo` line; `$cov` had partially matched `covMethod = "failed"`.
 
 ### Estimation
+
+- `nlmixr2()` on an rxode2 ui or a fit now passes its extra arguments on to
+  estimation interceptors in `env$.nlmixr2Dots`; only a model function did
+  before.
 
 - The `linCmt()` FOCEi sensitivity carry matches finite differences again for
   an `alag()` dose with a time-varying covariate.  rxode2 now adds a hidden

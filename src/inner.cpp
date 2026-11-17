@@ -24038,6 +24038,12 @@ static void vaeDecoderPxzCore(const arma::vec& f, const arma::vec& R,
     }
     nlmixrLikContribEndSubj(id, neta, no, etaPtr);
   }
+  if (nlmixrPenNSubject() > 0 && id >= 0) {
+    std::vector<double> pDeta(neta > 0 ? neta : 1, 0.0);
+    pxz -= nlmixrPenSubjAll(id, neta, no, etaPtr, (int)op_focei.ntheta,
+                            op_focei.fullTheta, neta > 0 ? pDeta.data() : NULL);
+    for (int k = 0; k < neta; ++k) gEta[k] -= pDeta[k];
+  }
 }
 
 struct VaeDecSolve { bool ok; arma::vec f, R; arma::mat a, aR; };
