@@ -142,6 +142,79 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   rxode2::rxSolve(...)
 }
 
+#' Solve a table model, loosening tolerances and switching ODE method on failure
+#'
+#' A solve fails when any `rx_pred_` is `NA`; it is then repeated with
+#' atol/rtol multiplied by `odeRecalcFactor` (up to `stickyRecalcN` times,
+#' capped at `maxAtolRtolFactor`), then with the next method of
+#' `.residOdeFallbackMethods()`.  Shared by the rxSolve() and pooled routes.
+#'
+#' @param fit focei style fit
+#' @param what what is solved, for the warning
+#' @param solveOnce `function(method, atol, rtol)` returning the solve
+#' @param predOf `function(res)` returning its `rx_pred_`
+#' @return the solve
+#' @author Matthew L. Fidler
+#' @noRd
+.residSolveWithFallback <- function(fit, what, solveOnce, predOf = function(x) x$rx_pred_) {
+  currentOdeMethod <- .residOdeMethodName(fit$methodOde)
+  odeMethods <- .residOdeFallbackMethods(currentOdeMethod)
+  failedMethods <- character()
+  isFirstFit <- TRUE
+  recalc <- TRUE
+  maxAtolRtol <- fit$foceiControl$rxControl$maxAtolRtolFactor
+  recalcFactor <- fit$foceiControl$odeRecalcFactor
+  while (recalc && length(odeMethods) > 0) {
+    recalcN <- 0
+    currentOdeMethod <- odeMethods[[1]]
+    odeMethods <- odeMethods[-1]
+    .atol <- fit$atol[1]
+    .rtol <- fit$rtol[1]
+    while (recalc && recalcN < fit$foceiControl$stickyRecalcN) {
+      .res <- solveOnce(currentOdeMethod, .atol, .rtol)
+      # the two options make a solve fail on purpose, to test this loop
+      recalc <- any(is.na(predOf(.res))) ||
+        currentOdeMethod %in% getOption("nlmixr2.tableFailMethods", character(0)) ||
+        .atol <= getOption("nlmixr2.tableFailAtol", -Inf)
+      recalcN <- recalcN + 1
+      if (recalc) {
+        .atol <- min(.atol * recalcFactor, maxAtolRtol)
+        .rtol <- min(.rtol * recalcFactor, maxAtolRtol)
+        if (.atol == maxAtolRtol && .rtol == maxAtolRtol) {
+          recalcN <- fit$foceiControl$stickyRecalcN + 1
+        }
+      }
+    }
+    if (recalc) {
+      failedMethods <- c(failedMethods, currentOdeMethod)
+    }
+    if (isFirstFit) {
+      isFirstFit <- FALSE
+      .resFirst <- .res
+    }
+  }
+  if (recalc) {
+    .res <- .resFirst
+    warning(
+      "Problems solving ",
+      what,
+      " with ",
+      paste(failedMethods, collapse = ", "),
+      ", returning results from the first method"
+    )
+  } else if (length(failedMethods) > 0) {
+    warning(
+      "Problems solving ",
+      what,
+      " with ",
+      paste(failedMethods, collapse = ", "),
+      ", returning results from ",
+      currentOdeMethod
+    )
+  }
+  .res
+}
+
 #' Solve for pred/ipred types of calculations (including residuals)
 #'
 #' @param fit focei style fit
@@ -168,13 +241,6 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     stop("cannot solve with `model` NULL", call. = FALSE)
   }
   keep <- unique(c(keep, "nlmixrRowNums"))
-  currentOdeMethod <- .residOdeMethodName(fit$methodOde)
-  odeMethods <- .residOdeFallbackMethods(currentOdeMethod)
-  failedMethods <- character()
-  isFirstFit <- TRUE
-  recalc <- TRUE
-  maxAtolRtol <- fit$foceiControl$rxControl$maxAtolRtolFactor
-  recalcFactor <- fit$foceiControl$odeRecalcFactor
   .tolFactor <- fit$env$tolFactor
   # the table must interpolate covariates the way the fit did (#1137)
   .covsi <- .residCovsInterpolation(fit)
@@ -218,141 +284,98 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       .iCovState$ok <- FALSE
     }
   }
-  while (recalc && length(odeMethods) > 0) {
-    recalcN <- 0
-    currentOdeMethod <- odeMethods[[1]]
-    odeMethods <- odeMethods[-1]
-    .atol <- fit$atol[1]
-    .rtol <- fit$rtol[1]
-    ## message(currentOdeMethod)
-    while (recalc && recalcN < fit$foceiControl$stickyRecalcN) {
-      # Iterate up atol/rtol
-      ## message("\t", .atol, " ", .rtol)
-      .res <- if (.iCovState$ok) {
-        tryCatch(
-          .foceiSolveWithId(
-            model,
-            pars,
-            fit$dataSav,
-            returnType = returnType,
-            atol = .atol,
-            rtol = .rtol,
-            maxsteps = fit$maxstepsOde,
-            hmin = fit$hmin,
-            hmax = fit$hmax,
-            hini = fit$hini,
-            maxordn = fit$maxordn,
-            maxords = fit$maxords,
-            method = rxode2::odeMethodToInt(currentOdeMethod),
-            tolFactor = .tolFactor,
-            covsInterpolation = .covsi$covsInterpolation,
-            naInterpolation = .covsi$naInterpolation,
-            nonmem = .covsi$nonmem,
-            iCov = .iCov,
-            keep = keep,
-            addDosing = addDosing,
-            subsetNonmem = subsetNonmem,
-            addCov = addCov
-          ),
-          error = function(e) {
-            # SET_VECTOR_ELT: older rxode2 overran its covariate list when an iCov
-            # mixest came with any other covariate
-            if (grepl("iCov|mixest|mixunif|time.varying|SET_VECTOR_ELT", conditionMessage(e), ignore.case = TRUE)) {
-              .iCovState$ok <- FALSE
-              warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
-              .foceiSolveWithId(
-                model,
-                pars,
-                fit$dataSav,
-                returnType = returnType,
-                atol = .atol,
-                rtol = .rtol,
-                maxsteps = fit$maxstepsOde,
-                hmin = fit$hmin,
-                hmax = fit$hmax,
-                hini = fit$hini,
-                maxordn = fit$maxordn,
-                maxords = fit$maxords,
-                method = rxode2::odeMethodToInt(currentOdeMethod),
-                tolFactor = .tolFactor,
-                covsInterpolation = .covsi$covsInterpolation,
-                naInterpolation = .covsi$naInterpolation,
-                nonmem = .covsi$nonmem,
-                iCov = NULL,
-                keep = keep,
-                addDosing = addDosing,
-                subsetNonmem = subsetNonmem,
-                addCov = addCov
-              )
-            } else {
-              stop(e)
-            }
-          }
-        )
-      } else {
+  .solveOnce <- function(method, atol, rtol) {
+    .res <- if (.iCovState$ok) {
+      tryCatch(
         .foceiSolveWithId(
           model,
           pars,
           fit$dataSav,
           returnType = returnType,
-          atol = .atol,
-          rtol = .rtol,
+          atol = atol,
+          rtol = rtol,
           maxsteps = fit$maxstepsOde,
           hmin = fit$hmin,
           hmax = fit$hmax,
           hini = fit$hini,
           maxordn = fit$maxordn,
           maxords = fit$maxords,
-          method = rxode2::odeMethodToInt(currentOdeMethod),
+          method = rxode2::odeMethodToInt(method),
           tolFactor = .tolFactor,
           covsInterpolation = .covsi$covsInterpolation,
           naInterpolation = .covsi$naInterpolation,
           nonmem = .covsi$nonmem,
-          iCov = NULL,
+          iCov = .iCov,
           keep = keep,
           addDosing = addDosing,
           subsetNonmem = subsetNonmem,
           addCov = addCov
-        )
-      }
-      rxode2::rxSolveFree()
-      recalc <- any(is.na(.res$rx_pred_))
-      recalcN <- recalcN + 1
-      if (recalc) {
-        .atol <- min(.atol * recalcFactor, maxAtolRtol)
-        .rtol <- min(.rtol * recalcFactor, maxAtolRtol)
-        if (.atol == maxAtolRtol && .rtol == maxAtolRtol) {
-          recalcN <- fit$foceiControl$stickyRecalcN + 1
+        ),
+        error = function(e) {
+          # SET_VECTOR_ELT: older rxode2 overran its covariate list when an iCov
+          # mixest came with any other covariate
+          if (grepl("iCov|mixest|mixunif|time.varying|SET_VECTOR_ELT", conditionMessage(e), ignore.case = TRUE)) {
+            .iCovState$ok <- FALSE
+            warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
+            .foceiSolveWithId(
+              model,
+              pars,
+              fit$dataSav,
+              returnType = returnType,
+              atol = atol,
+              rtol = rtol,
+              maxsteps = fit$maxstepsOde,
+              hmin = fit$hmin,
+              hmax = fit$hmax,
+              hini = fit$hini,
+              maxordn = fit$maxordn,
+              maxords = fit$maxords,
+              method = rxode2::odeMethodToInt(method),
+              tolFactor = .tolFactor,
+              covsInterpolation = .covsi$covsInterpolation,
+              naInterpolation = .covsi$naInterpolation,
+              nonmem = .covsi$nonmem,
+              iCov = NULL,
+              keep = keep,
+              addDosing = addDosing,
+              subsetNonmem = subsetNonmem,
+              addCov = addCov
+            )
+          } else {
+            stop(e)
+          }
         }
-      }
+      )
+    } else {
+      .foceiSolveWithId(
+        model,
+        pars,
+        fit$dataSav,
+        returnType = returnType,
+        atol = atol,
+        rtol = rtol,
+        maxsteps = fit$maxstepsOde,
+        hmin = fit$hmin,
+        hmax = fit$hmax,
+        hini = fit$hini,
+        maxordn = fit$maxordn,
+        maxords = fit$maxords,
+        method = rxode2::odeMethodToInt(method),
+        tolFactor = .tolFactor,
+        covsInterpolation = .covsi$covsInterpolation,
+        naInterpolation = .covsi$naInterpolation,
+        nonmem = .covsi$nonmem,
+        iCov = NULL,
+        keep = keep,
+        addDosing = addDosing,
+        subsetNonmem = subsetNonmem,
+        addCov = addCov
+      )
     }
-    if (recalc) {
-      failedMethods <- c(failedMethods, currentOdeMethod)
-    }
-    if (isFirstFit) {
-      isFirstFit <- FALSE
-      .resFirst <- .res
-    }
+    rxode2::rxSolveFree()
+    .res
   }
-  if (recalc) {
-    .res <- .resFirst
-    warning(
-      "Problems solving ",
-      what,
-      " with ",
-      paste(failedMethods, collapse = ", "),
-      ", returning results from the first method"
-    )
-  } else if (length(failedMethods) > 0) {
-    warning(
-      "Problems solving ",
-      what,
-      " with ",
-      paste(failedMethods, collapse = ", "),
-      ", returning results from ",
-      currentOdeMethod
-    )
-  }
+  .res <- .residSolveWithFallback(fit, what, .solveOnce)
   # mtime() records are model output, not data (#919): the solve emits one extra
   # row per subject per mtime, which is not an observation and has no source row
   # in the input dataset, so it would land in the fit table as a DV=NA row.  Only
@@ -414,6 +437,10 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .ipredModel <- fit$innerModel
   if (is.null(.ipredModel)) {
     predOnly <- TRUE
+  }
+  .pooled <- .tablePoolPredIpredList(fit, thetaEtaParameters, .keep, predOnly, addDosing)
+  if (!is.null(.pooled)) {
+    return(.pooled)
   }
   if (predOnly) {
     # Use predOnlyModel (which outputs the user-defined lhs like ka/cl/v and

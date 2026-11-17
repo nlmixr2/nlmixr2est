@@ -45,6 +45,7 @@ enum OdeSwapSlot {
   odeSlotOuter,       // rxVaeOuter:     augmented outer-gradient model (order 2)
   odeSlotOuterNode,   // rxOuterNode:    same directions at order 1, for AGQ nodes
   odeSlotOuterCov,    // rxOuterCov:     covariance model over its own direction set
+  odeSlotTable,       // rxTablePred:    post-fit table predOnly model (tablePool.cpp)
   odeSlotN
 };
 
@@ -426,7 +427,10 @@ long odeSwapOverrideNeutralizedN();
 // solved leaves ind->on NULL, which generated code dereferences).  All of that is
 // handled here rather than left to the caller -- a gate that can crash instead of
 // declining is worse than no gate.
-bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op);
+// allowScratch: the caller reads only through OdeSwapScope::lhs(), so a model wider
+// than rxode2's lhs slice is probed (and read) through the private buffer.
+bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op,
+                          bool allowScratch = false);
 // Times the probe bound subject 0 (iniSubjectE) before calling calc_lhs.
 long odeSwapProbeIniN();
 // Times the probe refused to run because the pool cannot hold what the model reads.
