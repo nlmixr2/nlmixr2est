@@ -484,7 +484,8 @@
 #'     This parameterizes the magnitude theta of the \code{"theta"}
 #'     \code{iovMethod}; it has no effect under \code{"omega"}, where the
 #'     magnitude is fixed at one and the variability is carried by the
-#'     omega block itself.
+#'     omega block itself, or under saem, which estimates the occasion
+#'     variance directly.
 #'
 #' @param iovMethod How inter-occasion variability is expanded before
 #'     estimation: one of \code{"auto"} (default), \code{"theta"} or
