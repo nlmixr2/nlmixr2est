@@ -48,6 +48,12 @@
 
 ### Covariance
 
+- The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a
+  `same()` block's copies with the block they repeat, so a correlated IOV
+  block contributes one shared occasion Omega (`om.iov.cl`,
+  `cov.iov.v.iov.cl`) rather than one free copy per occasion.  The occasion
+  SEs were about the square root of the number of occasions too large, and
+  `tidy()`/`confint()` now take them from `$cov` (#1316).
 - SAEM's `iovMethod = "twoLevel"` `$cov` now has one `om.<iov>` row per
   occasion parameter, tying the per-occasion copies through their information
   (`J' I J`); under the default `sa`/analytic covariance it used to carry one
