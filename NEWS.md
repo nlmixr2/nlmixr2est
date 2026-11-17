@@ -53,6 +53,17 @@
 
 ### Covariance
 
+- The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a
+  `same()` block's copies with the block they repeat, so a correlated IOV
+  block contributes one shared occasion Omega (`om.iov.cl`,
+  `cov.iov.v.iov.cl`) rather than one free copy per occasion.  The occasion
+  SEs were about the square root of the number of occasions too large, and
+  `tidy()`/`confint()` now take them from `$cov` (#1316).
+- SAEM's `iovMethod = "twoLevel"` `$cov` now has one `om.<iov>` row per
+  occasion parameter, tying the per-occasion copies through their information
+  (`J' I J`); under the default `sa`/analytic covariance it used to carry one
+  untied `om.rx.<iov>.<k>` row per occasion (#1317).
+
 - A FOCEi covariance that a vae or vi fit could not compute or install is now
   recorded in `fit$env$covTried`, under the method tried and with the condition
   message unclipped on one line (the refit's own error included), also when
@@ -111,6 +122,11 @@
 
 ### Estimation
 
+- The `linCmt()` FOCEi sensitivity carry matches finite differences again for
+  an `alag()` dose with a time-varying covariate.  rxode2 now adds a hidden
+  record (`EVID` 8) at a lagged dose's data time, so the carry reads that
+  covariate knot like any other record (nlmixr2/rxode2#1584).
+
 - `est = "nlm"` and `est = "nls"` with the `linCmt()` sensitivity carry
   (`linCmtSensCarry = "auto"`, the default) now reach the optimum.  The
   record walk that builds their gradient started each subject from the carry
@@ -160,6 +176,11 @@
   proportional error the old classification put many subjects in whichever
   component over-predicted.  Split-eta mixtures now keep fixed membership
   instead of always falling back to `"regularized"` (#1296).
+- A `saem` mixture fit no longer diverges (residual SD near 1e40, omega in
+  the thousands) under some seeds.  Each mixture chain's current state is
+  re-solved before its MCMC step, so the population reset of fixed-effect-only
+  thetas between iterations no longer leaves a stale likelihood that froze the
+  chain at a state that no longer fit (#1298).
 
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
@@ -403,6 +424,17 @@
 - NPDE's back-transformation of EPRED and DV now uses each observation's own
   transform; it used the first subject's rows for every subject.
 ### Tables
+
+- CWRES/WRES no longer build two dense observations x observations matrices
+  (`F Omega F'`) to read their diagonals; the eta sensitivities are kept sparse
+  and only the diagonal is computed, so the table step of a large dataset no
+  longer runs out of memory there (#1354, #1356).
+
+- The table step solves the fit's ipred/pred and display models in one shared
+  ODE pool over the fit's own events instead of three separate `rxSolve()`
+  setups, writing only the columns the tables use.  The tables are unchanged,
+  including the ODE method/tolerance fallback; `options(nlmixr2.tablePool =
+  FALSE)` restores the old route (#1356).
 
 - `tidy()` and `confint()` now report only the model's thetas.  A
   non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
