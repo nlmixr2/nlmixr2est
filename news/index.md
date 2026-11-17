@@ -58,6 +58,16 @@
 
 #### Covariance
 
+- The FOCEi full finite-difference covariance (`covFull = TRUE`) now
+  moves a `same()` block’s copies with the block they repeat, so a
+  correlated IOV block contributes one shared occasion Omega
+  (`om.iov.cl`, `cov.iov.v.iov.cl`) rather than one free copy per
+  occasion. The occasion SEs were about the square root of the number of
+  occasions too large, and
+  `tidy()`/[`confint()`](https://rdrr.io/r/stats/confint.html) now take
+  them from `$cov`
+  ([\#1316](https://github.com/nlmixr2/nlmixr2est/issues/1316)).
+
 - SAEM’s `iovMethod = "twoLevel"` `$cov` now has one `om.<iov>` row per
   occasion parameter, tying the per-occasion copies through their
   information (`J' I J`); under the default `sa`/analytic covariance it
@@ -132,6 +142,12 @@
   `covMethod = "failed"`.
 
 #### Estimation
+
+- The `linCmt()` FOCEi sensitivity carry matches finite differences
+  again for an `alag()` dose with a time-varying covariate. rxode2 now
+  adds a hidden record (`EVID` 8) at a lagged dose’s data time, so the
+  carry reads that covariate knot like any other record
+  (nlmixr2/rxode2#1584).
 
 - `est = "nlm"` and `est = "nls"` with the `linCmt()` sensitivity carry
   (`linCmtSensCarry = "auto"`, the default) now reach the optimum. The
@@ -209,6 +225,13 @@
   keep fixed membership instead of always falling back to
   `"regularized"`
   ([\#1296](https://github.com/nlmixr2/nlmixr2est/issues/1296)).
+
+- A `saem` mixture fit no longer diverges (residual SD near 1e40, omega
+  in the thousands) under some seeds. Each mixture chain’s current state
+  is re-solved before its MCMC step, so the population reset of
+  fixed-effect-only thetas between iterations no longer leaves a stale
+  likelihood that froze the chain at a state that no longer fit
+  ([\#1298](https://github.com/nlmixr2/nlmixr2est/issues/1298)).
 
 - A FOCEi fit whose final objective is more than
   `foceiControl(finalEtaTol=)` (default 1) above the lowest objective
