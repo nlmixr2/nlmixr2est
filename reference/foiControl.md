@@ -323,7 +323,7 @@ foiControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5e15c02ad0f0>
+#> <bytecode: 0x5d5f27e836c8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
