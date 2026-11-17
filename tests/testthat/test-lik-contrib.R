@@ -113,19 +113,33 @@ test_that("likelihood penalties shift and shape a focei fit, then turn off", {
   f0 <- .nlmixr(one.cmt, theo_sd, est = "focei", control = .ctl)
 
   ## a constant subject log-likelihood c moves the objective by -2*N*c ...
-  f1 <- .nlmixr(one.cmt, theo_sd, est = "focei", control = .ctl,
-                likPenalty = list(nlmixr2LikPenaltySpec("etaL2", par = c(0, 1), inObjf = TRUE)))
+  f1 <- .nlmixr(
+    one.cmt,
+    theo_sd,
+    est = "focei",
+    control = .ctl,
+    likPenalty = list(nlmixr2LikPenaltySpec("etaL2", par = c(0, 1), inObjf = TRUE))
+  )
   expect_equal(f1$objf - f0$objf, -2 * .nsub, tolerance = 1e-4)
   expect_equal(f1$likPenalty$subjectLL, .nsub)
   ## ... and not at all when it is kept out of the reported objective
-  f1b <- .nlmixr(one.cmt, theo_sd, est = "focei", control = .ctl,
-                 likPenalty = list(nlmixr2LikPenaltySpec("etaL2", par = c(0, 1))))
+  f1b <- .nlmixr(
+    one.cmt,
+    theo_sd,
+    est = "focei",
+    control = .ctl,
+    likPenalty = list(nlmixr2LikPenaltySpec("etaL2", par = c(0, 1)))
+  )
   expect_equal(f1b$objf, f0$objf, tolerance = 1e-4)
 
   ## a constant population penalty P moves it by P
-  f2 <- .nlmixr(one.cmt, theo_sd, est = "focei", control = .ctl,
-                likPenalty = list(nlmixr2LikPenaltySpec("thetaL2", thetas = "tka",
-                                                        par = c(0, 0, 100), inObjf = TRUE)))
+  f2 <- .nlmixr(
+    one.cmt,
+    theo_sd,
+    est = "focei",
+    control = .ctl,
+    likPenalty = list(nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = c(0, 0, 100), inObjf = TRUE))
+  )
   expect_equal(f2$objf - f0$objf, 100, tolerance = 1e-4)
 
   ## a ridge on tka pulls it to 0; the reported objective stays unpenalized
@@ -138,15 +152,26 @@ test_that("likelihood penalties shift and shape a focei fit, then turn off", {
   expect_true(any(grepl("likelihood penalty excluded", f3$runInfo)))
 
   ## an eta shrinkage moves the etas toward 0
-  f4 <- .nlmixr(one.cmt, theo_sd, est = "focei", control = .ctl,
-                likPenalty = list(nlmixr2LikPenaltySpec("etaL2", par = 50)))
+  f4 <- .nlmixr(
+    one.cmt,
+    theo_sd,
+    est = "focei",
+    control = .ctl,
+    likPenalty = list(nlmixr2LikPenaltySpec("etaL2", par = 50))
+  )
   expect_lt(sum(f4$eta$eta.ka^2), sum(f0$eta$eta.ka^2))
 
   ## inactive between fits, and after a refused method
   expect_equal(.likPenaltyInfo()[["n"]], 0L)
-  expect_error(suppressWarnings(suppressMessages(nlmixr2(
-    .ui, theo_sd, est = "nls", control = nlsControl(print = 0L)
-  ))), "likelihood penalties")
+  expect_error(
+    suppressWarnings(suppressMessages(nlmixr2(
+      .ui,
+      theo_sd,
+      est = "nls",
+      control = nlsControl(print = 0L)
+    ))),
+    "likelihood penalties"
+  )
   expect_equal(.likPenaltyInfo()[["n"]], 0L)
   expect_null(nlmixr2global$likPenaltyActive)
 })
@@ -172,8 +197,13 @@ test_that("a population penalty keeps the analytic outer gradient exact", {
   }
   .pen <- list(nlmixr2LikPenaltySpec("thetaL2", thetas = "level", par = c(20, -0.5), inObjf = TRUE))
   .run <- function(fast) {
-    .nlmixr(mod, d, est = "focei", likPenalty = .pen,
-            control = foceiControl(print = 0L, fast = fast, calcTables = FALSE))
+    .nlmixr(
+      mod,
+      d,
+      est = "focei",
+      likPenalty = .pen,
+      control = foceiControl(print = 0L, fast = fast, calcTables = FALSE)
+    )
   }
   .t <- .run(TRUE)
   .f <- .run(FALSE)
@@ -202,9 +232,13 @@ test_that("nlm objective setup carries the model's likelihood penalty", {
   .p <- suppressMessages(nlmObjectiveSetup(pop, theo_sd))
   .v0 <- nlmSolveR(.p)
   .nlmFreeEnv()
-  .p <- suppressMessages(nlmObjectiveSetup(pop, theo_sd, likPenalty = list(
-    nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = c(0, 0, 10))
-  )))
+  .p <- suppressMessages(nlmObjectiveSetup(
+    pop,
+    theo_sd,
+    likPenalty = list(
+      nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = c(0, 0, 10))
+    )
+  ))
   .v1 <- nlmSolveR(.p)
   .nlmFreeEnv()
   ## nlm's objective is -LL, so a -2LL penalty of 10 adds 5

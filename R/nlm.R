@@ -1176,8 +1176,14 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
 #' @export
 #' @keywords internal
 #' @author Matthew L. Fidler
-nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale = c("control", "natural"),
-                              likPenalty = NULL) {
+nlmObjectiveSetup <- function(
+  ui,
+  data,
+  control = NULL,
+  gradient = FALSE,
+  scale = c("control", "natural"),
+  likPenalty = NULL
+) {
   scale <- match.arg(scale)
   ## assertRxUi accepts a model function as well as a ui; .copyUi (not
   ## rxUiDecompress) then isolates it, because decompressing an already-

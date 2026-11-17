@@ -110,7 +110,9 @@ rxUiGet.saemFunction <- function(x, ...) {
     })
     if (missing(b) && missing(c)) {
       a <- .saemLikPenaltyCfg(
-        a, .(.ui$saemParamsToEstimate), .(.penIni$name),
+        a,
+        .(.ui$saemParamsToEstimate),
+        .(.penIni$name),
         .(.penIni$est)
       )
       .ret <- .Call(`_nlmixr2est_saem_fit`, a, PACKAGE = "nlmixr2est")

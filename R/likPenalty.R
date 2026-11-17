@@ -24,13 +24,9 @@
 #' @examples
 #' # ridge penalty of 10*tka^2 (on the -2LL scale), shaping the fit only
 #' nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = 10)
-nlmixr2LikPenaltySpec <- function(ptr, thetas = character(0), par = numeric(0),
-                                  data = NULL, inObjf = NA, name = NULL) {
-  if (!(inherits(ptr, "externalptr") || is.function(ptr) ||
-    checkmate::testString(ptr))) {
-    stop("'ptr' must be an external pointer, a function or a built-in name",
-      call. = FALSE
-    )
+nlmixr2LikPenaltySpec <- function(ptr, thetas = character(0), par = numeric(0), data = NULL, inObjf = NA, name = NULL) {
+  if (!(inherits(ptr, "externalptr") || is.function(ptr) || checkmate::testString(ptr))) {
+    stop("'ptr' must be an external pointer, a function or a built-in name", call. = FALSE)
   }
   checkmate::assertCharacter(thetas, any.missing = FALSE)
   checkmate::assertNumeric(par, any.missing = FALSE)
@@ -44,8 +40,12 @@ nlmixr2LikPenaltySpec <- function(ptr, thetas = character(0), par = numeric(0),
   checkmate::assertString(name, na.ok = TRUE)
   structure(
     list(
-      ptr = ptr, thetas = thetas, par = as.double(par), data = data,
-      inObjf = inObjf, name = name
+      ptr = ptr,
+      thetas = thetas,
+      par = as.double(par),
+      data = data,
+      inObjf = inObjf,
+      name = name
     ),
     class = "nlmixr2LikPenaltySpec"
   )
@@ -55,8 +55,12 @@ nlmixr2LikPenaltySpec <- function(ptr, thetas = character(0), par = numeric(0),
 print.nlmixr2LikPenaltySpec <- function(x, ...) {
   .nm <- if (is.na(x$name)) "<compiled>" else x$name
   cat("likelihood penalty", .nm)
-  if (length(x$thetas) > 0) cat(" on", paste(x$thetas, collapse = ", "))
-  if (length(x$par) > 0) cat(" par:", paste(x$par, collapse = ", "))
+  if (length(x$thetas) > 0) {
+    cat(" on", paste(x$thetas, collapse = ", "))
+  }
+  if (length(x$par) > 0) {
+    cat(" par:", paste(x$par, collapse = ", "))
+  }
   cat(" inObjf:", x$inObjf, "\n")
   invisible(x)
 }
@@ -154,7 +158,9 @@ nlmixr2LikPenaltyAdd <- function(ui, ..., replace = FALSE) {
 .likPenaltySupport <- function(env) {
   for (.cls in class(env)) {
     .fn <- utils::getS3method("nlmixr2Est", .cls, optional = TRUE)
-    if (is.null(.fn)) next
+    if (is.null(.fn)) {
+      next
+    }
     .a <- attr(.fn, "nlmixr2LikPenalty")
     if (is.null(.a)) {
       return("none")
@@ -182,9 +188,7 @@ nlmixr2LikPenaltyAdd <- function(ui, ..., replace = FALSE) {
   }
   .level <- .likPenaltySupport(env)
   if (.level == "none") {
-    stop("this estimation method does not support likelihood penalties",
-      call. = FALSE
-    )
+    stop("this estimation method does not support likelihood penalties", call. = FALSE)
   }
   if (.level == "ignore") {
     return(FALSE)
@@ -194,16 +198,15 @@ nlmixr2LikPenaltyAdd <- function(ui, ..., replace = FALSE) {
   .sel <- lapply(.specs, function(s) {
     .w <- match(s$thetas, .thetaNames)
     if (anyNA(.w)) {
-      stop("likelihood penalty theta not in model: ",
-        paste(s$thetas[is.na(.w)], collapse = ", "),
-        call. = FALSE
-      )
+      stop("likelihood penalty theta not in model: ", paste(s$thetas[is.na(.w)], collapse = ", "), call. = FALSE)
     }
     as.integer(.w - 1L)
   })
   .ptrs <- lapply(.specs, function(s) .likPenaltyResolvePtr(s$ptr))
   .Call(
-    `_nlmixr2est_likPenaltyActivate`, .ptrs, .sel,
+    `_nlmixr2est_likPenaltyActivate`,
+    .ptrs,
+    .sel,
     lapply(.specs, function(s) s$par),
     lapply(.specs, function(s) s$data),
     vapply(.specs, function(s) if (is.na(s$inObjf)) NA_integer_ else as.integer(s$inObjf), integer(1))
@@ -259,9 +262,13 @@ nlmixr2LikPenaltyAdd <- function(ui, ..., replace = FALSE) {
   }
   .tab <- table(factor(fit$ID, levels = unique(.ids)))
   .nobs <- as.integer(.tab)
-  if (nrow(.etaM) == 0L) .etaM <- matrix(numeric(0), length(.nobs), 0)
+  if (nrow(.etaM) == 0L) {
+    .etaM <- matrix(numeric(0), length(.nobs), 0)
+  }
   .om <- fit$omega
-  if (!is.matrix(.om)) .om <- matrix(numeric(0), 0, 0)
+  if (!is.matrix(.om)) {
+    .om <- matrix(numeric(0), 0, 0)
+  }
   .r <- .Call(`_nlmixr2est_likPenaltyEval`, as.double(.thetaV), .etaM, .om, .nobs)
   .specs <- nlmixr2global$likPenaltySpecs
   .nm <- .r$name
@@ -270,7 +277,9 @@ nlmixr2LikPenaltyAdd <- function(ui, ..., replace = FALSE) {
     .nm[!is.na(.nm2)] <- .nm2[!is.na(.nm2)]
   }
   data.frame(
-    name = .nm, inObjf = .r$inObjf, population = .r$population,
+    name = .nm,
+    inObjf = .r$inObjf,
+    population = .r$population,
     subjectLL = .r$subjectLL,
     objf = .r$population - 2 * .r$subjectLL
   )
@@ -297,9 +306,7 @@ nlmixr2LikPenaltyAdd <- function(ui, ..., replace = FALSE) {
   }
   .df <- try(.likPenaltyEvalFit(fit), silent = TRUE)
   if (inherits(.df, "try-error")) {
-    warning("could not evaluate the likelihood penalty at the estimates",
-      call. = FALSE
-    )
+    warning("could not evaluate the likelihood penalty at the estimates", call. = FALSE)
     return(invisible())
   }
   assign("likPenalty", .df, envir = .env)
@@ -310,9 +317,7 @@ nlmixr2LikPenaltyAdd <- function(ui, ..., replace = FALSE) {
   if (identical(nlmixr2global$likPenaltyLevel, "subject")) {
     .delta <- .delta - sum(.df$population[.df$inObjf])
     if (any(.df$population != 0)) {
-      warning("population likelihood penalty not used by this method",
-        call. = FALSE
-      )
+      warning("population likelihood penalty not used by this method", call. = FALSE)
     }
   } else {
     .delta <- .delta + sum(.df$population[!.df$inObjf])
@@ -343,9 +348,7 @@ nlmixr2LikPenaltyAdd <- function(ui, ..., replace = FALSE) {
     assign("logLik", .ll, envir = .env)
   }
   if (any(!.df$inObjf & .df$objf != 0)) {
-    warning("likelihood penalty excluded from objective (see $likPenalty)",
-      call. = FALSE
-    )
+    warning("likelihood penalty excluded from objective (see $likPenalty)", call. = FALSE)
   }
   invisible()
 }
@@ -375,9 +378,7 @@ nlmixr2LikPenaltyAdd <- function(ui, ..., replace = FALSE) {
     return(a)
   }
   if (length(estNames) != a$nlambda1 + a$nlambda0) {
-    warning("saem fixed effects not matched to thetas; penalty not in M-step",
-      call. = FALSE
-    )
+    warning("saem fixed effects not matched to thetas; penalty not in M-step", call. = FALSE)
     return(a)
   }
   .m <- match(estNames, thetaNames) - 1L
