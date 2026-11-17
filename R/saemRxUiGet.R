@@ -98,6 +98,8 @@ rxUiGet.saemFunction <- function(x, ...) {
   .mod <- rxUiGet.saemFunctionModPredQuote(x, ...)
   .fnPred <- .mod[[2]]
   .mod <- .mod[[1]]
+  .penIni <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
+  .penIni <- .penIni[order(.penIni$ntheta), ]
   .fn <- bquote(function(a, b, c) {
     rxode2::rxLoad(.(.mod))
     rxode2::rxLock(.(.mod))
@@ -107,6 +109,10 @@ rxUiGet.saemFunction <- function(x, ...) {
       rxode2::rxSolveFree()
     })
     if (missing(b) && missing(c)) {
+      a <- .saemLikPenaltyCfg(
+        a, .(.ui$saemParamsToEstimate), .(.penIni$name),
+        .(.penIni$est)
+      )
       .ret <- .Call(`_nlmixr2est_saem_fit`, a, PACKAGE = "nlmixr2est")
       attr(.ret, "dopred") <- .(.fnPred)
       return(.ret)

@@ -57,6 +57,7 @@ nlmixr2Est.posthoc <- function(env, ...) {
   .ret <- .foceiFamilyReturn(env, .ui, ..., est = "posthoc")
   .ret
 }
+attr(nlmixr2Est.posthoc, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.posthoc, "covPresent") <- TRUE
 attr(nlmixr2Est.posthoc, "unbounded") <- FALSE
 # Like "output", posthoc does not estimate anything (maxOuterIterations=0); it

@@ -80,6 +80,7 @@ nlmixr2Est.qrpem <- function(env, ...) {
   .ui <- env$ui
   .impmapFamilyFit(env, .ui, ...)
 }
+attr(nlmixr2Est.qrpem, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.qrpem, "covPresent") <- TRUE
 attr(nlmixr2Est.qrpem, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.qrpem, "iov") <- TRUE

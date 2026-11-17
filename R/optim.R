@@ -546,6 +546,7 @@ nlmixr2Est.optim <- function(env, ...) {
   )
   .optimFamilyFit(env, ...)
 }
+attr(nlmixr2Est.optim, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.optim, "covPresent") <- TRUE
 attr(nlmixr2Est.optim, "unbounded") <- function(control) {
   if (is.null(control) || is.null(control$method)) {
@@ -579,36 +580,42 @@ attr(nlmixr2Est.optim, "unbounded") <- function(control) {
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.neldermead <- function(env, ...) .optimEstSugar(env, "Nelder-Mead", ...)
+attr(nlmixr2Est.neldermead, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.neldermead, "covPresent") <- TRUE
 attr(nlmixr2Est.neldermead, "unbounded") <- function(control) TRUE
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.bfgs <- function(env, ...) .optimEstSugar(env, "BFGS", ...)
+attr(nlmixr2Est.bfgs, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.bfgs, "covPresent") <- TRUE
 attr(nlmixr2Est.bfgs, "unbounded") <- function(control) TRUE
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.cg <- function(env, ...) .optimEstSugar(env, "CG", ...)
+attr(nlmixr2Est.cg, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.cg, "covPresent") <- TRUE
 attr(nlmixr2Est.cg, "unbounded") <- function(control) TRUE
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.lbfgsb <- function(env, ...) .optimEstSugar(env, "L-BFGS-B", ...)
+attr(nlmixr2Est.lbfgsb, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.lbfgsb, "covPresent") <- TRUE
 attr(nlmixr2Est.lbfgsb, "unbounded") <- function(control) FALSE
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.sann <- function(env, ...) .optimEstSugar(env, "SANN", ...)
+attr(nlmixr2Est.sann, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.sann, "covPresent") <- TRUE
 attr(nlmixr2Est.sann, "unbounded") <- function(control) TRUE
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.brent <- function(env, ...) .optimEstSugar(env, "Brent", ...)
+attr(nlmixr2Est.brent, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.brent, "covPresent") <- TRUE
 attr(nlmixr2Est.brent, "unbounded") <- function(control) FALSE
 

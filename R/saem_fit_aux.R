@@ -168,6 +168,8 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   .bad <- !is.finite(.sd1) | .sd1 <= 0
   .sd1[.bad] <- .priorSd[.bad]
 
+  .pen <- .saemLikPenaltyTheta(fit, saem.cfg)
+  .penNobs <- as.integer(nb_measures)
   .mix <- .saemGqMix(fit, saem.cfg)
   .nodes <- .saemGqNodes(nnodes.gq, max(vapply(.mix$active, length, integer(1))))
   if (.nodes != nnodes.gq) {
@@ -234,6 +236,10 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
       dphi1 <- phi[, i1[.act], drop = FALSE] - fit$mprior_phi[, i1[.act], drop = FALSE]
       lphi1 <- -0.5 * rowSums((dphi1 %*% .iOmegaK) * dphi1)
       ltot <- ly + lphi1
+      if (!is.null(.pen)) {
+        .penEta <- phi[, i1, drop = FALSE] - fit$mprior_phi[, i1, drop = FALSE]
+        ltot <- ltot + .Call(`_nlmixr2est_likPenaltySubjLL`, .pen, .penEta, .penNobs)
+      }
       ltot[is.na(ltot)] <- -Inf
       lQ <- .logspaceAdd(lQ, log(.w[j]) + ltot)
       rxode2::rxTick()
@@ -264,7 +270,36 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
     sum(.li) -
     .nGauss * log(2 * pi) +
     2 * .Call(`_nlmixr2est_powerL`, ysave[.g], lambda[.g], as.integer(yj[.g]), as.double(low[.g]), as.double(hi[.g]))
+  if (!is.null(.pen)) {
+    ll2 <- ll2 - .Call(`_nlmixr2est_likPenaltyPop`, .pen, as.integer(N))
+  }
   -ll2
+}
+
+#' Natural thetas for the likelihood penalty at a saem fit's estimates
+#' @param fit saem fit
+#' @param cfg saem configuration (with `penMap`/`penTheta0`)
+#' @return theta vector, or NULL when no penalty is active
+#' @noRd
+.saemLikPenaltyTheta <- function(fit, cfg) {
+  if (.likPenaltyInfo()[["n"]] == 0L) {
+    return(NULL)
+  }
+  .map <- cfg$penMap
+  .th <- cfg$penTheta0
+  if (is.null(.map)) {
+    .map <- nlmixr2global$likPenaltySaemMap
+    .th <- nlmixr2global$likPenaltySaemTheta0
+  }
+  if (is.null(.map)) {
+    return(NULL)
+  }
+  .pl <- as.vector(fit$Plambda)
+  .w <- which(.map >= 0L)
+  if (length(.pl) == length(.map)) {
+    .th[.map[.w] + 1L] <- .pl[.w]
+  }
+  .th
 }
 
 #' Mixture layout of the Gaussian-quadrature objective

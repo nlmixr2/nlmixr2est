@@ -488,5 +488,6 @@ nlmixr2Est.trust <- function(env, ...) {
   )
   .trustFamilyFit(env, ...)
 }
+attr(nlmixr2Est.trust, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.trust, "covPresent") <- TRUE
 attr(nlmixr2Est.trust, "unbounded") <- TRUE

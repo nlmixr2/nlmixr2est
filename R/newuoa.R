@@ -299,6 +299,7 @@ nlmixr2Est.newuoa <- function(env, ...) {
   )
   .newuoaFamilyFit(env, ...)
 }
+attr(nlmixr2Est.newuoa, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.newuoa, "covPresent") <- TRUE
 attr(nlmixr2Est.newuoa, "unbounded") <- TRUE
 

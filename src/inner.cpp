@@ -68,6 +68,7 @@ static std::atomic<int> _innerParallel{0};
 // threaded before solving; the arrays are read-only during the parallel solve.
 #include "../inst/include/nlmixr2estLikContrib.h"
 #include "likContribUtil.h"
+#include "likPenalty.h"
 #define NLMIXR_MAX_CONTRIB 16
 static const nlmixrLikContrib* _nlmixrContrib[NLMIXR_MAX_CONTRIB] = {NULL};
 static int _nlmixrNContrib = 0;
@@ -120,6 +121,8 @@ extern "C" int nlmixrHasLikContrib(void) { return _nlmixrNContrib; }
 // registered bundle whose obs hook has not run yet is treated as contributing:
 // declining costs speed, running it costs correctness.
 static inline bool nlmixrContribBreaksAnalyticGrad(void) {
+  // a subject penalty that wrote a value moves eta* the same way
+  if (nlmixrPenSubjChanged()) return true;
   if (_nlmixrNContrib == 0) return false;
   if (_nlmixrContribSeen.load(std::memory_order_relaxed) == 0) return true;
   return _nlmixrContribChanged.load(std::memory_order_relaxed) != 0;
@@ -144,14 +147,17 @@ extern "C" void nlmixrLikContribEnd(const nlmixrLikSubj *s) {
 // a small external-pointer table (CRAN-preferred over R_RegisterCCallable); the
 // downstream package installs them via inst/include/nlmixr2estLikContribPtr.h.
 extern "C" SEXP _nlmixr2est_likContribPtrs(void) {
-  const char *nm[5] = {"registerLikContrib", "removeLikContrib",
-                       "registerEmLik", "removeEmLik", "hasLikContrib"};
-  DL_FUNC fn[5] = {(DL_FUNC) &nlmixrRegisterLikContrib, (DL_FUNC) &nlmixrRemoveLikContrib,
+  // Append only: consumers read these by POSITION (nlmixr2estLikContribPtr.h).
+  const char *nm[7] = {"registerLikContrib", "removeLikContrib",
+                       "registerEmLik", "removeEmLik", "hasLikContrib",
+                       "registerLikPenalty", "removeLikPenalty"};
+  DL_FUNC fn[7] = {(DL_FUNC) &nlmixrRegisterLikContrib, (DL_FUNC) &nlmixrRemoveLikContrib,
                    (DL_FUNC) &nlmixrRegisterEmLik, (DL_FUNC) &nlmixrRemoveEmLik,
-                   (DL_FUNC) &nlmixrHasLikContrib};
-  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 5));
-  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 5));
-  for (int i = 0; i < 5; ++i) {
+                   (DL_FUNC) &nlmixrHasLikContrib,
+                   (DL_FUNC) &nlmixrRegisterLikPenalty, (DL_FUNC) &nlmixrRemoveLikPenalty};
+  SEXP ret  = PROTECT(Rf_allocVector(VECSXP, 7));
+  SEXP retN = PROTECT(Rf_allocVector(STRSXP, 7));
+  for (int i = 0; i < 7; ++i) {
     SET_VECTOR_ELT(ret, i, R_MakeExternalPtrFn(fn[i], R_NilValue, R_NilValue));
     SET_STRING_ELT(retN, i, Rf_mkChar(nm[i]));
   }
@@ -1446,6 +1452,7 @@ struct focei_ind {
 
   // Likilihood gradient
   double llik;
+  double penLL;   // last subject likelihood-penalty LL (likPenalty.h)
   double *a;
   double *B;
   double *c;
@@ -3572,6 +3579,23 @@ double likInner0(double *eta, int id) {
       }
       if (_nContrib > 0) {
         nlmixrLikContribEndSubj(id, op_focei.neta, fInd->nObs, eta);
+      }
+      fInd->penLL = 0.0;
+      if (nlmixrPenNSubject() > 0) {
+        // subject penalty: folded in like a contribution (LL + d(LL)/d(eta))
+        double _pDeta[64] = {0.0};
+        std::vector<double> _pDetaV;
+        double *_pD = _pDeta;
+        if (op_focei.neta > 64) {
+          _pDetaV.assign(op_focei.neta, 0.0);
+          _pD = _pDetaV.data();
+        }
+        double _pLL = nlmixrPenSubjAll(id, op_focei.neta, fInd->nObs, eta,
+                                       (int)op_focei.ntheta, op_focei.fullTheta, _pD);
+        fInd->penLL = _pLL;
+        fInd->llik += _pLL;
+        _cLLsum += _pLL;
+        for (int q = 0; q < (int)op_focei.neta; ++q) lp(q, 0) += _pD[q];
       }
       if (op_focei.neta == 0) {
         if (fInd->nNonNormal && op_focei.adjLik) {
@@ -6893,11 +6917,50 @@ static void foceiPriorOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &Oi
   }
 }
 
+// Population likelihood penalty (likPenalty.h) at the current fullTheta/Omega,
+// on the -2LL scale.  grad (natural scale, [ntheta]) is added to when non-NULL.
+static double foceiPenPopObjTerm(double *grad, int *gradOk) {
+  if (gradOk != NULL) *gradOk = 1;
+  if (nlmixrPenNPop() == 0) return 0.0;
+  arma::mat Omega;
+  if (!foceiCurrentOmega(Omega)) Omega.reset();
+  int nsub = rx == NULL ? 0 : (int)getRxNsub(rx);
+  return nlmixrPenPopAll((int)op_focei.ntheta, op_focei.fullTheta, (int)Omega.n_rows,
+                         Omega.n_rows > 0 ? Omega.memptr() : NULL, nsub, grad, gradOk);
+}
+
+// Fold the population penalty gradient into the analytic outer gradient gp
+// (optimizer index, natural scale, like foceiPriorGradAdd()).  False when the
+// gradient is unavailable or touches a theta the outer problem does not own.
+static bool foceiPenPopGradAdd(int npars, arma::vec &gp) {
+  if (nlmixrPenNPop() == 0) return true;
+  const int ntheta = (int)op_focei.ntheta;
+  std::vector<double> g((size_t)ntheta, 0.0);
+  int ok = 1;
+  foceiPenPopObjTerm(g.data(), &ok);
+  if (!ok) return false;
+  std::vector<bool> used((size_t)ntheta, false);
+  for (int i = 0; i < npars; ++i) {
+    int j = op_focei.fixedTrans[i];
+    if (j >= 0 && j < ntheta) {
+      gp[i] += g[(size_t)j];
+      used[(size_t)j] = true;
+    }
+  }
+  for (int j = 0; j < ntheta; ++j) {
+    if (used[(size_t)j] || g[(size_t)j] == 0.0) continue;
+    if (op_focei.muModel != 0 && op_focei.muGroupThetaSkip != NULL &&
+        op_focei.muGroupThetaSkip[j] != 0) return false;
+  }
+  return true;
+}
+
 // -2*log-likelihood at theta, PLUS the ini({}) prior penalty when one is
 // present.  Every caller that wants "the objective" (not just the data
 // likelihood) should call this, not -2*foceiLik0(theta) directly.
 static inline double foceiObjFromLik0(double *theta) {
-  return -2*foceiLik0(theta) + foceiPriorObjTerm();
+  double ret = -2*foceiLik0(theta) + foceiPriorObjTerm();
+  return ret + foceiPenPopObjTerm(NULL, NULL);
 }
 
 // Whole-block (invWishart(), type 3/4) piece of impPriorOmegaCorrect() --
@@ -20179,6 +20242,7 @@ static bool gradDirectFinalize(int npars, arma::vec &gp, const arma::mat &Oi,
   // gradDirectOmega() already fetched for the ordinary (non-prior) omega
   // gradient -- 0.0 when the prior has no omega-referencing term.
   foceiPriorOmegaGradAdd(npars, gp, Oi, dOiEst);
+  if (!foceiPenPopGradAdd(npars, gp)) return declineHere(120);
   if (!op_focei.firstDirectGradSet) {
     op_focei.firstDirectGrad.assign(gp.begin(), gp.end());
     op_focei.firstDirectTheta.assign(&op_focei.fullTheta[0],
@@ -20424,7 +20488,7 @@ double npEvalCondLik(double *eta, int id) {
   // llikObs per observation for npag/npb (inner.cpp:1806/1834), so the
   // transform-both-sides Jacobian is in `s` already; adding it again
   // double-counts it.
-  return s;
+  return s + fInd->penLL;   // subject likelihood penalty (likPenalty.h)
 }
 
 double npMixCondLik(double *eta, int base, int nsub, int nMix);   // fwd (defined below)

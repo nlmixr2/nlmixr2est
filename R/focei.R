@@ -6065,6 +6065,7 @@ nlmixr2Est.focei <- function(env, ...) {
   .ret <- .foceiFamilyReturn(env, .ui, ..., est = "focei")
   .ret
 }
+attr(nlmixr2Est.focei, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.focei, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
 attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
@@ -6160,6 +6161,7 @@ nlmixr2Est.output <- function(env, ...) {
   }
   .foceiFamilyReturn(env, .ui, ..., est = env$est)
 }
+attr(nlmixr2Est.output, "nlmixr2LikPenalty") <- "full"
 # "output" is not an estimation method: it takes a completed environment and
 # builds the tables/objDf for it (nlmixr2CreateOutputFromUi).  The priors were
 # already used (or refused) by whichever method actually ran, so there is

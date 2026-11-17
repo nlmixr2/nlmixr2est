@@ -20,6 +20,7 @@
 #include "solveWarnHelper.h"
 #include "truncNorm.h"
 #include "minqaC.h"
+#include "likPenalty.h"
 
 #define _(String) (String)
 
@@ -2585,6 +2586,17 @@ public:
     // estimation iteration (the "sa" recompute of a SAEM fit) reports these
     Plambda.elem(ilambda1) = MCOV1.elem(jcov1);
     if (nphi0 > 0) Plambda.elem(ilambda0) = MCOV0.elem(jcov0);
+    _penMap.clear();
+    _penTheta.clear();
+    if (x.containsElementNamed("penMap") && x.containsElementNamed("penTheta0")) {
+      IntegerVector pm = as<IntegerVector>(x["penMap"]);
+      NumericVector pt = as<NumericVector>(x["penTheta0"]);
+      if (pm.size() == nlambda) {
+        _penMap.assign(pm.begin(), pm.end());
+        _penTheta.assign(pt.begin(), pt.end());
+        penSyncTheta();
+      }
+    }
 
     DYF = zeros<mat>(mlen, nM);
     phi.set_size(N, nphi, nmc);
@@ -3071,6 +3083,7 @@ public:
       //    MCMC
       mcmcphi mphi1, mphi0;
       set_mcmcphi(mphi1, i1, nphi1, Gamma2_phi1, IGamma2_phi1, mprior_phi1);
+      _penMphi1 = &mphi1;
       set_mcmcphi(mphi0, i0, nphi0, Gamma2_phi0, IGamma2_phi0, mprior_phi0);
       mphi1.block = 0;
       mphi0.block = 1;
@@ -3413,6 +3426,7 @@ public:
           }
 
           vec U_y = sum(cur_DYF, 0).t();
+          penAddSubj(cur_phiM, U_y);
 
           if (nphi1 > 0) {
             vec U_phi;
@@ -3751,6 +3765,7 @@ public:
         }
         //U_y is a vec of subject llik; summed over obs for each subject
         vec U_y=sum(DYF, 0).t();
+        penAddSubj(phiM, U_y);
 
         if(nphi1>0) {
           vec U_phi;
@@ -3912,7 +3927,8 @@ public:
 
       // update parameters
       vec Plambda1, Plambda0;
-      Plambda1=inv_sympd(CGamma21)*sum((D1Gamma21%(COV1.t()*statphi11)),1);
+      vec rhs1 = sum((D1Gamma21%(COV1.t()*statphi11)),1);
+      Plambda1=inv_sympd(CGamma21)*rhs1;
       // Split-ETA mixture-owned columns (e.g. eta.cl1/eta.cl2): blended statphi11 dilutes each
       // column with the other component's uninformative draws, coupling tcl1/tcl2 and shrinking
       // apparent BSV. Override these columns' theta via responsibility-weighted regression
@@ -3968,14 +3984,17 @@ public:
       if (fixedIx1.n_elem>0) {
         Plambda1(fixedIx1) = MCOV1(jcov1(fixedIx1));
       }
-      MCOV1(jcov1)=Plambda1;
       if (nphi0>0) {
-        Plambda0=inv_sympd(CGamma20)*sum((D1Gamma20%(COV0.t()*statphi01)),1);
+        vec rhs0 = sum((D1Gamma20%(COV0.t()*statphi01)),1);
+        Plambda0=inv_sympd(CGamma20)*rhs0;
         if (fixedIx0.n_elem>0) {
           Plambda0(fixedIx0) = MCOV0(jcov0(fixedIx0));
         }
+        penMstep(Plambda0, CGamma20, rhs0, fixedIx0, ilambda0);
         MCOV0(jcov0)=Plambda0;
       }
+      penMstep(Plambda1, CGamma21, rhs1, fixedIx1, ilambda1);
+      MCOV1(jcov1)=Plambda1;
       // Phase 4 (SAEM general-likelihood theta plan): once the direct phi1
       // Laplace optimizer owns phi1 (kiter>=niter_phi0 -- the same
       // past-burn-in threshold phi0's own regress mode uses), do NOT
@@ -5051,6 +5070,11 @@ private:
   uvec ind_cov1, ind_cov0, jcov1, jcov0;
   vec dGamma2_phi0;
   vec Plambda;
+  // likelihood penalty (likPenalty.h): Plambda index -> ui theta (or -1), the
+  // natural ui thetas the callbacks see, and the active phi1 MCMC block
+  std::vector<int> _penMap;
+  std::vector<double> _penTheta;
+  const mcmcphi *_penMphi1 = NULL;
 
   int nlambda1, nlambda0, nlambda, nb_param;
   uvec ilambda1, ilambda0;
@@ -5376,6 +5400,117 @@ private:
     if (N > 0) mcmcAccById.zeros(N);
   }
 
+  // --- likelihood penalty (likPenalty.h) ---------------------------------------
+  void penSyncTheta() {
+    for (size_t p = 0; p < _penMap.size(); ++p) {
+      int t = _penMap[p];
+      if (t >= 0 && t < (int)_penTheta.size()) _penTheta[(size_t)t] = Plambda((arma::uword)p);
+    }
+  }
+
+  // Add the subject penalty (as a loss, -LL) for each chain row of phiMc.
+  void penAddSubj(const mat &phiMc, vec &U) {
+    if (nlmixrPenNSubject() == 0 || _penMphi1 == NULL) return;
+    const int ne = _penMphi1->nphi;
+    std::vector<double> eta((size_t)std::max(ne, 1));
+    const int nt = (int)_penTheta.size();
+    for (arma::uword ii = 0; ii < U.n_elem; ++ii) {
+      int id = (int)(ii % (arma::uword)N);
+      for (int q = 0; q < ne; ++q) {
+        eta[(size_t)q] = phiMc(ii, _penMphi1->i((arma::uword)q)) -
+          _penMphi1->mprior_phiM(ii, (arma::uword)q);
+      }
+      int nobs = ii < ix_idM.n_rows ? (int)(ix_idM(ii, 1) - ix_idM(ii, 0) + 1) : 0;
+      U(ii) -= nlmixrPenSubjAll(id, ne, nobs, eta.data(), nt,
+                                nt > 0 ? _penTheta.data() : NULL, NULL);
+    }
+  }
+
+  // Population penalty at block values b (Plambda positions ilam); g (natural,
+  // per b element) is filled when non-NULL.  Returns -2LL-scale penalty.
+  double penPopAtBlock(const vec &b, const uvec &ilam, vec *g) {
+    std::vector<double> th(_penTheta);
+    for (arma::uword j = 0; j < b.n_elem; ++j) {
+      int t = _penMap[(size_t)ilam(j)];
+      if (t >= 0) th[(size_t)t] = b(j);
+    }
+    const int nt = (int)th.size();
+    std::vector<double> gt((size_t)nt, 0.0);
+    int ok = 1;
+    double v = nlmixrPenPopAll(nt, th.data(), 0, NULL, N, g == NULL ? NULL : gt.data(), &ok);
+    if (g != NULL) {
+      g->zeros(b.n_elem);
+      for (arma::uword j = 0; j < b.n_elem; ++j) {
+        int t = _penMap[(size_t)ilam(j)];
+        if (t < 0) continue;
+        if (ok) {
+          (*g)(j) = gt[(size_t)t];
+        } else {
+          double h = 1e-6 * std::max(1.0, std::fabs(b(j)));
+          vec bp = b, bm = b;
+          bp(j) += h; bm(j) -= h;
+          (*g)(j) = (penPopAtBlock(bp, ilam, NULL) - penPopAtBlock(bm, ilam, NULL)) / (2.0 * h);
+        }
+      }
+    }
+    return v;
+  }
+
+  // Penalized M-step for one block: the closed-form update minimizes the
+  // complete-data -2LL quadratic b'Ab - 2b'r; with a population penalty P the
+  // block minimizes b'Ab - 2b'r + P(b) by damped Newton (FD Hessian of P).
+  void penMstep(vec &b, const mat &A, const vec &r, const uvec &fixedIx, const uvec &ilam) {
+    if (_penMap.empty() || nlmixrPenNPop() == 0 || b.n_elem == 0) return;
+    std::vector<arma::uword> fr;
+    for (arma::uword j = 0; j < b.n_elem; ++j) {
+      if (any(fixedIx == j)) continue;
+      if (_penMap[(size_t)ilam(j)] < 0) continue;
+      fr.push_back(j);
+    }
+    if (fr.empty()) return;
+    uvec f(fr);
+    auto obj = [&](const vec &bb) {
+      return as_scalar(bb.t() * A * bb) - 2.0 * dot(bb, r) + penPopAtBlock(bb, ilam, NULL);
+    };
+    double fcur = obj(b);
+    for (int it = 0; it < 50; ++it) {
+      vec gp;
+      penPopAtBlock(b, ilam, &gp);
+      vec g = 2.0 * (A * b - r) + gp;
+      vec gf = g(f);
+      mat H = 2.0 * A(f, f);
+      for (arma::uword a = 0; a < f.n_elem; ++a) {
+        double h = 1e-5 * std::max(1.0, std::fabs(b(f(a))));
+        vec bp = b, bm = b, gpp, gpm;
+        bp(f(a)) += h; bm(f(a)) -= h;
+        penPopAtBlock(bp, ilam, &gpp);
+        penPopAtBlock(bm, ilam, &gpm);
+        vec col = (gpp - gpm) / (2.0 * h);
+        for (arma::uword c = 0; c < f.n_elem; ++c) H(c, a) += col(f(c));
+      }
+      H = 0.5 * (H + H.t());
+      vec step;
+      if (!solve(step, H, gf) || !step.is_finite()) step = gf / std::max(1.0, norm(gf));
+      double t = 1.0;
+      bool moved = false;
+      for (int ls = 0; ls < 30; ++ls) {
+        vec bn = b;
+        bn(f) -= t * step;
+        double fn = obj(bn);
+        if (R_FINITE(fn) && fn <= fcur) {
+          b = bn; fcur = fn; moved = true;
+          break;
+        }
+        t *= 0.5;
+      }
+      if (!moved || norm(t * step) < 1e-10 * (1.0 + norm(b(f)))) break;
+    }
+    for (arma::uword j = 0; j < b.n_elem; ++j) {
+      int tt = _penMap[(size_t)ilam(j)];
+      if (tt >= 0) _penTheta[(size_t)tt] = b(j);
+    }
+  }
+
   void do_mcmc(const int method,
                const int nu,
                const mcmcaux &mx,
@@ -5526,6 +5661,7 @@ private:
         }
 
         Uc_y=sum(DYF,0).t();
+        penAddSubj(phiMc, Uc_y);
         if (method==1) {
           deltu=Uc_y-U_y;
         }
@@ -5653,6 +5789,7 @@ private:
       if (sumExp <= 0.0) sumExp = 1e-300;
       result(row) = minL - log(sumExp);
     }
+    penAddSubj(phiC, result);
     return result;
   }
 

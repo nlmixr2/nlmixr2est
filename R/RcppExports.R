@@ -429,6 +429,10 @@ nlmUnscalePar <- function(p) {
     .Call(`_nlmixr2est_nlmUnscalePar`, p)
 }
 
+nlmPenaltySetup_ <- function(map, theta) {
+    .Call(`_nlmixr2est_nlmPenaltySetup_`, map, theta)
+}
+
 nlmSolveR <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveR`, theta)
 }

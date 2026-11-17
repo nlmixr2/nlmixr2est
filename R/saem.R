@@ -2197,6 +2197,7 @@ nlmixr2Est.saem <- function(env, ...) {
   )
   .saemFamilyFit(env, ...)
 }
+attr(nlmixr2Est.saem, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.saem, "covPresent") <- TRUE
 attr(nlmixr2Est.saem, "unbounded") <- TRUE
 attr(nlmixr2Est.saem, "mu") <- TRUE
