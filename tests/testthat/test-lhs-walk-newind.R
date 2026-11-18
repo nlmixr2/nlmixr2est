@@ -56,21 +56,36 @@
   expect_equal(.new$IPRED, .flag$IPRED, tolerance = 1e-8, label = label)
 }
 
-test_that(".rxode2Optional() reports setIndNewind from rxode2's pointer table", {
+test_that(".rxode2Optional() reports each entry from rxode2's pointer table", {
+  # slot (0-based) and name of each entry of src/rxode2Optional.h
+  .slots <- list(
+    setIndNewind = list(104L, "rxode2setIndNewind"),
+    dfWalkInit = list(105L, "rxode2rxDfWalkInit"),
+    dfWalkStep = list(106L, "rxode2rxDfWalkStep"),
+    dfWalkDull = list(107L, "rxode2rxDfWalkDull"),
+    dfKeepSetup = list(108L, "rxode2rxDfKeepSetup"),
+    dfKeepFirst = list(109L, "rxode2rxDfKeepFirst"),
+    dfKeepRow = list(110L, "rxode2rxDfKeepRow"),
+    dfKeepCols = list(111L, "rxode2rxDfKeepCols"),
+    dfLevels = list(112L, "rxode2getDfLevels")
+  )
+  .in <- function(p) {
+    vapply(.slots, function(s) length(p) > s[[1]] && names(p)[s[[1]] + 1L] == s[[2]], logical(1))
+  }
   .p <- rxode2::.rxode2ptrs()
-  .has <- length(.p) > 104L && names(.p)[105L] == "rxode2setIndNewind"
-  expect_identical(.rxode2Optional(), c(setIndNewind = .has))
+  expect_identical(.rxode2Optional(), .in(.p))
   on.exit(.Call(`_nlmixr2est_iniRxode2Optional`, .p, PACKAGE = "nlmixr2est"), add = TRUE)
-  # a table that ends before slot 104, or names another entry there, loads none
+  # a table that ends before them, or names another entry in a slot, loads none
   .Call(`_nlmixr2est_iniRxode2Optional`, .p[1:99], PACKAGE = "nlmixr2est")
-  expect_identical(.rxode2Optional(), c(setIndNewind = FALSE))
-  if (.has) {
+  expect_false(any(.rxode2Optional()))
+  .has <- .in(.p)
+  if (.has[["setIndNewind"]]) {
     .q <- .p
     names(.q)[105L] <- "rxode2other"
     .Call(`_nlmixr2est_iniRxode2Optional`, .q, PACKAGE = "nlmixr2est")
-    expect_identical(.rxode2Optional(), c(setIndNewind = FALSE))
+    expect_identical(.rxode2Optional(), replace(.has, "setIndNewind", FALSE))
     .Call(`_nlmixr2est_iniRxode2Optional`, .p, PACKAGE = "nlmixr2est")
-    expect_identical(.rxode2Optional(), c(setIndNewind = TRUE))
+    expect_identical(.rxode2Optional(), .has)
   }
 })
 

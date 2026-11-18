@@ -267,7 +267,8 @@ test_that("the carry-cap probe gives 8 when rxode2's count fails or is no count"
 .depSlot104Remove <- paste(
   "rxode2's setIndNewind() (slot 104): remove nmSetIndNewind from src/rxode2Optional.h",
   "and its row of rxode2OptionalSlots in src/inner.cpp, the NULL check in lhsWalkNewind()",
-  "(src/inner.h, which then calls setIndNewind()), the skip in test-lhs-walk-newind.R,",
+  "(src/inner.h, which then calls setIndNewind()) and in tablePool.cpp's record walk,",
+  "the skip in test-lhs-walk-newind.R,",
   "and this block; if no entry is left, also the rest of the rxode2Optional machinery:",
   "src/rxode2Optional.h (and its entry in src/Makevars.in HEADERS), iniRxode2Optional() and rxode2Optional() in src/inner.cpp,",
   "their registration in src/init.c, .rxode2Optional() in R/zzz.R and its tests in",
@@ -296,6 +297,44 @@ test_that("slot-104 work-around: warns only for a release with setIndNewind()", 
 test_that("slot-104 work-around: rxode2's setIndNewind()", {
   skip_on_cran()
   .w <- .depSlot104Warning()
+  if (!is.null(.w)) {
+    warning(.w, call. = FALSE)
+  }
+  succeed()
+})
+
+.depSlot105Remove <- paste(
+  "rxode2's output-record walk and keep columns (slots 105-112): remove the nmDf* entries",
+  "from src/rxode2Optional.h and their rows of rxode2OptionalSlots in src/inner.cpp;",
+  "tablePoolHasRxWalk_() (src/tablePool.cpp, its registration in src/init.c,",
+  "src/RcppExports.cpp and R/RcppExports.R) and the walk tablePool.cpp does itself",
+  "(tablePoolRowStarts(), tablePoolWalkInd(), the doDose = NA branch); .tablePoolRxWalk()",
+  "and the legacy keep reads in R/tablePool.R; the skips in test-resid.R and",
+  "test-table-pool.R; and this block"
+)
+
+# The slot-105 block's warning for the installed rxode2
+.depSlot105Warning <- function(present = .tablePoolRxWalk()) {
+  .depWorkaroundWarning(.rxode2Version(), "5.1.8.9000", .depSlot105Remove, present = present)
+}
+
+.depBlocks$slot105 <- list(
+  remove = .depSlot105Remove,
+  anchor = "tablePool.R",
+  symbols = c("nmDfWalk", "nmDfKeep", "nmDfLevels", "tablePoolHasRxWalk_", ".tablePoolRxWalk")
+)
+
+test_that("slot-105 work-around: warns only for a release with the record walk", {
+  local_mocked_bindings(.rxode2Version = .depVersion519)
+  expect_null(.depSlot105Warning(present = FALSE))
+  expect_match(.depSlot105Warning(present = TRUE), "rxode2 5.1.9 is a release after 5.1.8.9000", fixed = TRUE)
+  local_mocked_bindings(.rxode2Version = .depVersionDev)
+  expect_null(.depSlot105Warning(present = TRUE))
+})
+
+test_that("slot-105 work-around: rxode2's output-record walk", {
+  skip_on_cran()
+  .w <- .depSlot105Warning()
   if (!is.null(.w)) {
     warning(.w, call. = FALSE)
   }
