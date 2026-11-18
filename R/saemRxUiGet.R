@@ -113,7 +113,8 @@ rxUiGet.saemFunction <- function(x, ...) {
         a,
         .(.ui$saemParamsToEstimate),
         .(.penIni$name),
-        .(.penIni$est)
+        .(.penIni$est),
+        .(.ui$saemOmegaTrans)
       )
       .ret <- .Call(`_nlmixr2est_saem_fit`, a, PACKAGE = "nlmixr2est")
       attr(.ret, "dopred") <- .(.fnPred)

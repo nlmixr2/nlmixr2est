@@ -9,6 +9,8 @@
 #include <vector>
 #include <string>
 #include <cstring>
+#include <cmath>
+#include <algorithm>
 #include "likPenalty.h"
 
 #define NLMIXR_MAX_PEN 16
@@ -29,6 +31,39 @@ static std::vector<nlmixrPenEntry> _penFit;     // per-fit specs
 static std::vector<nlmixrPenEntry> _penTable;   // flattened global + per-fit
 static int _penNSubj = 0, _penNPop = 0;
 static std::atomic<int> _penSubjChanged{0};
+// bounded-transform map: theta t is estimated on an internal scale (type 1
+// logit, 2 lower + exp, 3 upper - exp); penalties always see natural values
+static std::vector<int> _penTrType;
+static std::vector<double> _penTrLo, _penTrHi;
+
+static inline double penTrNat(int t, double x, double *d) {
+  double lo = _penTrLo[(size_t)t], hi = _penTrHi[(size_t)t];
+  switch (_penTrType[(size_t)t]) {
+  case 1: {
+    double p = 1.0 / (1.0 + exp(-x));
+    if (d != NULL) *d = (hi - lo) * p * (1.0 - p);
+    return lo + (hi - lo) * p;
+  }
+  case 2: if (d != NULL) *d = exp(x); return lo + exp(x);
+  case 3: if (d != NULL) *d = -exp(x); return hi - exp(x);
+  default: if (d != NULL) *d = 1.0; return x;
+  }
+}
+
+// natural-scale copy of theta in nat (and dnat/dx in dd when non-NULL);
+// returns theta itself when no transform applies
+static const double *penTrTheta(int ntheta, const double *theta, std::vector<double> &nat,
+                                std::vector<double> *dd) {
+  if (_penTrType.empty() || theta == NULL || ntheta <= 0) return theta;
+  nat.assign(theta, theta + ntheta);
+  if (dd != NULL) dd->assign((size_t)ntheta, 1.0);
+  int n = std::min(ntheta, (int)_penTrType.size());
+  for (int t = 0; t < n; ++t) {
+    if (_penTrType[(size_t)t] == 0) continue;
+    nat[(size_t)t] = penTrNat(t, theta[t], dd == NULL ? NULL : &(*dd)[(size_t)t]);
+  }
+  return nat.data();
+}
 
 static void penBindCtx(nlmixrPenEntry &e) {
   e.ctx.nsel = (int)e.sel.size();
@@ -98,6 +133,8 @@ static inline double penSubjOne(const nlmixrPenEntry &e, int id, int neta, int n
 extern "C" double nlmixrPenSubjAll(int id, int neta, int nobs, const double *eta,
                                    int ntheta, const double *theta, double *dLLdEta) {
   if (_penNSubj == 0) return 0.0;
+  std::vector<double> nat;
+  theta = penTrTheta(ntheta, theta, nat, NULL);
   double ll = 0.0;
   double dSave[64];
   bool track = (dLLdEta != NULL && neta > 0 && neta <= 64);
@@ -128,12 +165,23 @@ extern "C" double nlmixrPenPopAll(int ntheta, const double *theta, int neta,
                                   const double *omega, int nsub, double *grad, int *gradOk) {
   if (gradOk != NULL) *gradOk = 1;
   if (_penNPop == 0) return 0.0;
+  std::vector<double> nat, dd, gNat;
+  const double *th = penTrTheta(ntheta, theta, nat, grad == NULL ? NULL : &dd);
+  bool tr = (th != theta);
+  double *g = grad;
+  if (tr && grad != NULL) {
+    gNat.assign((size_t)ntheta, 0.0);
+    g = gNat.data();
+  }
   double ret = 0.0;
   for (size_t i = 0; i < _penTable.size(); ++i) {
     const nlmixrPenEntry &e = _penTable[i];
     if (e.pen->population == NULL) continue;
     if (grad != NULL && (e.pen->flags & NLMIXR_PEN_NO_GRAD) && gradOk != NULL) *gradOk = 0;
-    ret += penPopOne(e, ntheta, theta, neta, omega, nsub, grad);
+    ret += penPopOne(e, ntheta, th, neta, omega, nsub, g);
+  }
+  if (tr && grad != NULL) {
+    for (int t = 0; t < ntheta; ++t) grad[t] += gNat[(size_t)t] * dd[(size_t)t];
   }
   return ret;
 }
@@ -221,7 +269,21 @@ extern "C" SEXP _nlmixr2est_likPenaltyActivate(SEXP ptrs, SEXP sel, SEXP par,
   return Rf_ScalarInteger((int)_penTable.size());
 }
 
+// type: integer per theta (0 none, 1 logit, 2 lower exp, 3 upper exp); an
+// empty vector clears the map
+extern "C" SEXP _nlmixr2est_likPenaltyThetaTr(SEXP type, SEXP lo, SEXP hi) {
+  int n = Rf_length(type);
+  _penTrType.assign(INTEGER(type), INTEGER(type) + n);
+  _penTrLo.assign(REAL(lo), REAL(lo) + n);
+  _penTrHi.assign(REAL(hi), REAL(hi) + n);
+  bool any = false;
+  for (int i = 0; i < n; ++i) if (_penTrType[(size_t)i] != 0) any = true;
+  if (!any) { _penTrType.clear(); _penTrLo.clear(); _penTrHi.clear(); }
+  return R_NilValue;
+}
+
 extern "C" SEXP _nlmixr2est_likPenaltyDeactivate(void) {
+  _penTrType.clear(); _penTrLo.clear(); _penTrHi.clear();
   _penFit.clear();
   penRebuild();
   return R_NilValue;

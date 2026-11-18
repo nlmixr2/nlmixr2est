@@ -231,7 +231,9 @@ nlmixr2LikPenaltyUdf <- function(spec) {
     return(FALSE)
   }
   .specs <- .likPenaltySpecs(env)
-  if (length(.specs) == 0L) {
+  # session-wide penalties (nlmixrRegisterLikPenalty) need the same gate and
+  # bounded-theta map as per-fit ones
+  if (length(.specs) == 0L && .likPenaltyInfo()[["n"]] == 0L) {
     return(FALSE)
   }
   .level <- .likPenaltySupport(env)
@@ -241,10 +243,13 @@ nlmixr2LikPenaltyUdf <- function(spec) {
   if (.level == "ignore") {
     return(FALSE)
   }
-  .iniDf <- get("ui", envir = env)$iniDf
+  .ui <- get("ui", envir = env)
+  .iniDf <- .ui$iniDf
   .thetaNames <- .iniDf$name[!is.na(.iniDf$ntheta)][order(.iniDf$ntheta[!is.na(.iniDf$ntheta)])]
+  .tr <- .likPenaltyThetaTr(.ui, .thetaNames)
   .sel <- lapply(.specs, function(s) {
     .w <- match(s$thetas, .thetaNames)
+    .w[is.na(.w)] <- match(paste0("rxBoundedTr.", s$thetas[is.na(.w)]), .thetaNames)
     if (anyNA(.w)) {
       stop("likelihood penalty theta not in model: ", paste(s$thetas[is.na(.w)], collapse = ", "), call. = FALSE)
     }
@@ -259,10 +264,48 @@ nlmixr2LikPenaltyUdf <- function(spec) {
     lapply(.specs, function(s) s$data),
     vapply(.specs, function(s) if (is.na(s$inObjf)) NA_integer_ else as.integer(s$inObjf), integer(1))
   )
+  .Call(`_nlmixr2est_likPenaltyThetaTr`, .tr$type, .tr$lower, .tr$upper)
   nlmixr2global$likPenaltyActive <- TRUE
   nlmixr2global$likPenaltySpecs <- .specs
   nlmixr2global$likPenaltyLevel <- .level
   TRUE
+}
+
+#' Bounded-transform map of the estimated thetas
+#'
+#' Penalties are written on natural-scale thetas; an unbounded method
+#' estimates a bounded theta as `rxBoundedTr.<name>` on an internal scale.
+#' @param ui rxode2 ui (after the bounded transform hook)
+#' @param thetaNames theta names in theta order
+#' @return list of `type` (0 none, 1 logit, 2 lower exp, 3 upper exp),
+#'   `lower` and `upper`, one per theta
+#' @noRd
+.likPenaltyThetaTr <- function(ui, thetaNames) {
+  .n <- length(thetaNames)
+  .ret <- list(type = integer(.n), lower = double(.n), upper = double(.n))
+  .trs <- try(ui$boundedTransforms, silent = TRUE)
+  if (inherits(.trs, "try-error") || length(.trs) == 0L) {
+    return(.ret)
+  }
+  for (.t in .trs) {
+    .w <- match(.t$internalName, thetaNames)
+    if (is.na(.w)) {
+      next
+    }
+    .ret$type[.w] <- switch(.t$type, logit = 1L, lower_exp = 2L, upper_exp = 3L, 0L)
+    .ret$lower[.w] <- .t$lower
+    .ret$upper[.w] <- .t$upper
+  }
+  .ret
+}
+
+#' Penalties see the estimates as they are once bounded thetas are back on
+#' their natural scale
+#' @return nothing
+#' @noRd
+.likPenaltyThetaTrClear <- function() {
+  .Call(`_nlmixr2est_likPenaltyThetaTr`, integer(0), double(0), double(0))
+  invisible()
 }
 
 .likPenaltyDeactivate <- function() {
@@ -270,8 +313,6 @@ nlmixr2LikPenaltyUdf <- function(spec) {
   nlmixr2global$likPenaltyActive <- NULL
   nlmixr2global$likPenaltySpecs <- NULL
   nlmixr2global$likPenaltyLevel <- NULL
-  nlmixr2global$likPenaltySaemMap <- NULL
-  nlmixr2global$likPenaltySaemTheta0 <- NULL
   invisible()
 }
 
@@ -419,9 +460,11 @@ nlmixr2LikPenaltyUdf <- function(spec) {
 #' @param estNames names of the saem fixed effects (`Plambda` order)
 #' @param thetaNames ui theta names (theta order)
 #' @param thetaEst ui theta estimates (theta order)
-#' @return the configuration, with `penMap`/`penTheta0` when penalties are on
+#' @param omegaTrans saem phi1 slot (1-based) of each ini() eta, NA for none
+#' @return the configuration, with `penMap`/`penTheta0`/`penEtaOrd` when
+#'   penalties are on
 #' @noRd
-.saemLikPenaltyCfg <- function(a, estNames, thetaNames, thetaEst) {
+.saemLikPenaltyCfg <- function(a, estNames, thetaNames, thetaEst, omegaTrans = NULL) {
   if (.likPenaltyInfo()[["n"]] == 0L) {
     return(a)
   }
@@ -433,8 +476,10 @@ nlmixr2LikPenaltyUdf <- function(spec) {
   .m[is.na(.m)] <- -1L
   a$penMap <- as.integer(.m)
   a$penTheta0 <- as.double(thetaEst)
-  # the fit's saem.cfg is rebuilt later; the objective reads these instead
-  nlmixr2global$likPenaltySaemMap <- a$penMap
-  nlmixr2global$likPenaltySaemTheta0 <- a$penTheta0
+  if (length(omegaTrans) > 0L) {
+    .o <- as.integer(omegaTrans) - 1L
+    .o[is.na(.o)] <- -1L
+    a$penEtaOrd <- .o
+  }
   a
 }

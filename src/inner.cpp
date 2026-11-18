@@ -3847,6 +3847,26 @@ struct LikInner0OutputGuard {
   }
 };
 
+// Subject penalty curvature -d2(LL)/d(eta)^2 added to the inner Hessian H, by
+// central differences of the penalty's own eta gradient (no model solves).
+static void penEtaHessAdd(arma::mat &H, int id, double *eta, focei_ind *fInd) {
+  if (nlmixrPenNSubject() == 0) return;
+  const int ne = (int)op_focei.neta;
+  std::vector<double> e(eta, eta + ne), gp((size_t)ne), gm((size_t)ne);
+  for (int k = 0; k < ne; ++k) {
+    double h = 1e-5 * std::max(1.0, std::fabs(eta[k]));
+    std::fill(gp.begin(), gp.end(), 0.0);
+    std::fill(gm.begin(), gm.end(), 0.0);
+    e[(size_t)k] = eta[k] + h;
+    nlmixrPenSubjAll(id, ne, fInd->nObs, e.data(), (int)op_focei.ntheta, op_focei.fullTheta, gp.data());
+    e[(size_t)k] = eta[k] - h;
+    nlmixrPenSubjAll(id, ne, fInd->nObs, e.data(), (int)op_focei.ntheta, op_focei.fullTheta, gm.data());
+    e[(size_t)k] = eta[k];
+    for (int l = 0; l < ne; ++l) H(l, k) -= (gp[(size_t)l] - gm[(size_t)l]) / (2.0 * h);
+  }
+  H = 0.5 * (H + H.t());
+}
+
 bool calcEtaHessian(double *eta, int likId, int id,
                     focei_ind *fInd,
                     rx_solving_options_ind *ind,
@@ -4008,6 +4028,9 @@ bool calcEtaHessian(double *eta, int likId, int id,
       }
     }
   }
+  // the Gauss-Newton and model Hessians cover the observations only; a FD
+  // (needOptimHess) Hessian already differentiates the penalized gradient
+  if (!op_focei.needOptimHess) penEtaHessAdd(H, id, eta, fInd);
   k=0;
   if (conditional && forOptimization && innerOptTrustFamily(op_focei.innerOpt)) return H.is_finite();
   if (!H.is_sympd()) {
@@ -6255,8 +6278,12 @@ static inline double updateMuGroups() {
               A = Xf.t() * Wd * Xf;
               b = Xf.t() * Wd * yAdj;
             } else {
-              A = Xf.t() * Xf;
-              b = Xf.t() * yAdj;
+              // eta ~ N(0, omega): the data term is on the same LL scale as
+              // the prior/penalty only once weighted by eta's precision
+              double wk = curOmegaInv()(etaIdx, etaIdx);
+              if (!(wk > 0) || !R_FINITE(wk)) wk = 1.0;
+              A = wk * (Xf.t() * Xf);
+              b = wk * (Xf.t() * yAdj);
             }
             std::vector<int> idx(freePos.size());
             arma::vec beta0(freePos.size());
@@ -10791,7 +10818,7 @@ NumericVector foceiSetup_(const RObject &obj,
   // derivatives would be dropped, so inner trust would optimize a different
   // objective than the one the fit reports.
   if ((op_focei.conditionalHessianRequested || op_focei.conditionalDetRequested) &&
-      nlmixrHasLikContrib()) {
+      (nlmixrHasLikContrib() || nlmixrPenNSubject() > 0)) {
     stop("Conditional inner Hessian does not support likelihood contributions");
   }
   // innerOpt="auto" (4) resolves here, the first point where needOptimHess is
@@ -14889,8 +14916,12 @@ void impMuInterceptStep() {
       std::vector<int> idx(1, th);
       arma::vec grad0; arma::mat Hp;
       priorGradHessFor(idx, grad0, Hp);
-      double denom = (double)nsub - Hp(0, 0);
-      delta = (std::fabs(denom) > 1e-8) ? (s + grad0[0]) / denom : s / (double)nsub;
+      // the data score (s - nsub*delta) is on the LL scale once weighted by
+      // eta's precision
+      double wk = curOmegaInv()(et, et);
+      if (!(wk > 0) || !R_FINITE(wk)) wk = 1.0;
+      double denom = wk * (double)nsub - Hp(0, 0);
+      delta = (std::fabs(denom) > 1e-8) ? (wk * s + grad0[0]) / denom : s / (double)nsub;
     } else {
       delta = s / (double)nsub;
     }
@@ -20465,6 +20496,18 @@ RObject foceiGradPooledDirect_(NumericVector thVals, NumericMatrix ebes,
       if (d >= 0 && d < np) gv[d] -= 2.0 * jacSum;
     }
   }
+  // population likelihood penalty at this caller's theta (-2LL scale)
+  if (nlmixrPenNPop() > 0) {
+    const int nth = (int)op_focei.ntheta;
+    std::vector<double> gpen((size_t)nth, 0.0);
+    int penOk = 1;
+    nlmixrPenPopAll(nth, thv.data(), 0, NULL, nsubLive, gpen.data(), &penOk);
+    if (!penOk) return R_NilValue;
+    for (int i = 0; i < (int)op_focei.npars; ++i) {
+      const int ks = G.gMap[(size_t)i], jf = op_focei.fixedTrans[i];
+      if (ks >= 0 && ks < np && jf >= 0 && jf < nth) gv[ks] += gpen[(size_t)jf];
+    }
+  }
   // NOT gv.is_finite(): the omega slots are deliberately NA when a subject was
   // finite-differenced (see above).  Every other slot must still be finite.
   for (int i = 0; i < (int)gv.n_elem; ++i) {
@@ -21715,6 +21758,15 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
   return elbo;
 }
 
+static void adviPenThetaGrad(const NumericVector &theta, int ntheta, NumericVector &gTh, int N);
+
+// population likelihood penalty on the ELBO (log-likelihood) scale: -P/2
+static double adviPenElbo(const NumericVector &theta, int ntheta, int N) {
+  if (nlmixrPenNPop() == 0) return 0.0;
+  std::vector<double> th(theta.begin(), theta.end());
+  return -0.5 * nlmixrPenPopAll(ntheta, th.data(), 0, NULL, N, NULL, NULL);
+}
+
 //[[Rcpp::export]]
 List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta,
                    NumericVector logPopOmega, NumericMatrix eps,
@@ -21724,6 +21776,8 @@ List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta,
   NumericVector gTheta(ntheta), gPopLogOmega(neta);
   double elbo = adviElboGradCore(mu, omega, theta, logPopOmega, eps, muRefThetaIdx,
                                  gMu, gOmega, gTheta, gPopLogOmega, 1);
+  elbo += adviPenElbo(theta, ntheta, N);
+  adviPenThetaGrad(theta, ntheta, gTheta, N);
   return List::create(_["elbo"] = elbo, _["gMu"] = gMu, _["gOmega"] = gOmega,
                       _["gTheta"] = gTheta, _["gPopLogOmega"] = gPopLogOmega);
 }
@@ -21884,7 +21938,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     for (int p = 0; p < ntheta; ++p) gThAcc[p] *= invM;
     adviPenThetaGrad(theta, ntheta, gThAcc, N);
     for (int k = 0; k < neta; ++k) gLpoAcc[k] *= invM;
-    elboTrace[it] = elboAcc;
+    elboTrace[it] = elboAcc + adviPenElbo(theta, ntheta, N);
 
     // paper adaptive step-size (Eq 10-11); global-iteration decay so resume keeps
     // the same schedule as a fresh longer run.
@@ -22104,6 +22158,8 @@ List adviElboGradFR_(NumericMatrix mu, NumericMatrix Lpack, NumericVector theta,
   NumericVector gTheta(ntheta), gPopLogOmega(neta);
   double elbo = adviElboGradCoreFR(mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx,
                                    gMu, gL, gTheta, gPopLogOmega, 1);
+  elbo += adviPenElbo(theta, ntheta, N);
+  adviPenThetaGrad(theta, ntheta, gTheta, N);
   return List::create(_["elbo"] = elbo, _["gMu"] = gMu, _["gL"] = gL,
                       _["gTheta"] = gTheta, _["gPopLogOmega"] = gPopLogOmega);
 }
@@ -22170,7 +22226,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     for (int p = 0; p < ntheta; ++p) gThAcc[p] *= invM;
     adviPenThetaGrad(theta, ntheta, gThAcc, N);
     for (int k = 0; k < neta; ++k) gLpoAcc[k] *= invM;
-    elboTrace[it] = elboAcc;
+    elboTrace[it] = elboAcc + adviPenElbo(theta, ntheta, N);
 
     double idecay = std::pow((double)(gi + 1), -0.5 + eeps);
     for (int j = 0; j < N * neta; ++j) {
@@ -25269,6 +25325,13 @@ static inline void vaeRestoreFrozen(int id) {
 // @param p candidate residual parameters
 // @return the objective, or DBL_MAX when it is not finite
 // @noRd
+// population likelihood penalty on the -LL scale of the vae theta objectives
+static double vaePenPopLL(const arma::vec &thv) {
+  if (nlmixrPenNPop() == 0) return 0.0;
+  return 0.5 * nlmixrPenPopAll((int)thv.n_elem, thv.memptr(), 0, NULL,
+                               (int)getRxNsub(getRxSolve_()), NULL, NULL);
+}
+
 static double gVaeFreezeObj(const double *p) {
   arma::vec ac = gVaeElsA;
   arma::vec thc = gVaeRegThBase;
@@ -25296,7 +25359,7 @@ static double gVaeFreezeObj(const double *p) {
   // structural theta M-step -- and it broke the neonatal model's outer/elbo
   // identity, since that model's only optimized parameter is the residual.
   vaeInnerLikCore(gVaeFreezeEta, gVaeFreezeCores, false, false, obj, lp, pf, true);
-  double v = arma::accu(obj);
+  double v = arma::accu(obj) + vaePenPopLL(thv);
   return R_FINITE(v) ? v : std::numeric_limits<double>::max();
 }
 
@@ -25345,6 +25408,7 @@ static double gVaeThetaObj(const double *r) {
   } else {
     v = arma::accu(obj);
   }
+  v += vaePenPopLL(thv);
   return R_FINITE(v) ? v : 1e18;   // penalize a non-finite candidate
 }
 
@@ -25882,7 +25946,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (zPopFixR[k]) zPopCur[k] = zPop[k]; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
       if (!zPopCur.is_finite()) zPopCur = zPop;
       if (!omegaCur.is_finite()) omegaCur = omega;
-      vaePenZPop(zPopCur, omegaCur, N, th, zPopThetaIdx0, isFreeR, zPopFixR);
+      vaePenZPop(zPopCur, omegaCur, N, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), zPopThetaIdx0, isFreeR, zPopFixR);
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
       zPop = zPopCur; omega = omegaCur; a = aCur;  // gamma = 1
       if (omOff) {
@@ -26503,29 +26567,35 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         }
       }
       arma::vec omegaCur(zDim);
-      for (int k = 0; k < zDim; ++k) {
-        double v = 0;
-        if (omegaSuffStat) {
-          // reference form: EMA statistics, cross terms against the smoothed s1
-          double cross = 0;
-          for (int i = 0; i < N; ++i) {
-            double cz = zPopMat(i, k);
-            cross += -2.0 * cz * s1(i, k) + cz * cz;
+      auto omegaAtCenters = [&]() {
+        for (int k = 0; k < zDim; ++k) {
+          double v = 0;
+          if (omegaSuffStat) {
+            // reference form: EMA statistics, cross terms against the smoothed s1
+            double cross = 0;
+            for (int i = 0; i < N; ++i) {
+              double cz = zPopMat(i, k);
+              cross += -2.0 * cz * s1(i, k) + cz * cz;
+            }
+            v = s2[k] + cross + s3[k];
+          } else {
+            for (int i = 0; i < N; ++i) { double d = last.mu(i, k) - zPopMat(i, k); v += d * d + arma::accu(arma::square(last.L.slice(i).row(k))); }
           }
-          v = s2[k] + cross + s3[k];
-        } else {
-          for (int i = 0; i < N; ++i) { double d = last.mu(i, k) - zPopMat(i, k); v += d * d + arma::accu(arma::square(last.L.slice(i).row(k))); }
+          omegaCur[k] = v / N;
         }
-        omegaCur[k] = v / N;
-      }
+        for (int k = 0; k < zDim; ++k) if (omegaFixR[k]) omegaCur[k] = omega[k];
+        if (!omegaCur.is_finite()) omegaCur = omega;
+      };
+      omegaAtCenters();
       arma::vec aCur = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper, errCombined1);
-      for (int k = 0; k < zDim; ++k) if (omegaFixR[k]) omegaCur[k] = omega[k];
-      if (!omegaCur.is_finite()) omegaCur = omega;
-      {
-        // penalize the intercepts; each subject's center moves with them
+      if (nlmixrPenNPop() > 0) {
+        // penalize the intercepts (within their bounds); each subject's center
+        // moves with them, and omega is re-estimated about the moved centers
         arma::vec ic0 = intercept;
-        vaePenZPop(intercept, omegaCur, N, th, zPopThetaIdx0, isFreeR, zPopFixR);
+        vaePenZPop(intercept, omegaCur, N, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), zPopThetaIdx0, isFreeR, zPopFixR);
+        intercept = vaeClampVec(intercept, zPopLower, zPopUpper);
         for (int k = 0; k < zDim; ++k) zPopMat.col(k) += intercept[k] - ic0[k];
+        omegaAtCenters();
       }
       zPop = intercept;
       zPopArg = zPopMat;
@@ -26552,7 +26622,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (zPopFixR[k]) zPopCur[k] = zPop[k]; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
       if (!zPopCur.is_finite()) zPopCur = zPop;
       if (!omegaCur.is_finite()) omegaCur = omega;
-      vaePenZPop(zPopCur, omegaCur, N, th, zPopThetaIdx0, isFreeR, zPopFixR);
+      vaePenZPop(zPopCur, omegaCur, N, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), zPopThetaIdx0, isFreeR, zPopFixR);
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
       zPop = zPop + gamma * (zPopCur - zPop);
       omega = omega + gamma * (omegaCur - omega);

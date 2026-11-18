@@ -130,6 +130,11 @@
 
 ### Estimation
 
+- The mu-referenced theta M-step of `mfocei`/`ifocei` (`muModel = "lin"`) and
+  imp/impmap/qrpem now weights the data by the eta's precision when an
+  `ini()` prior or a population likelihood penalty is folded in, so the prior
+  no longer gets omega times its proper weight.
+
 - `nlmixr2()` on an rxode2 ui or a fit now passes its extra arguments on to
   estimation interceptors in `env$.nlmixr2Dots`; only a model function did
   before.

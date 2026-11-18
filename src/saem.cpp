@@ -1537,7 +1537,23 @@ public:
       total += rowScore[i];
     }
     if (!std::isfinite(total)) return 1e300;
-    return total;
+    return total + penPhi1(p);
+  }
+
+  // Population likelihood penalty (-2LL scale, summed over the chains like
+  // phi1Objective) with the intercept-only phi1 thetas at candidate values p.
+  double penPhi1(const double *p) {
+    if (_penMap.empty() || nlmixrPenNPop() == 0 || nphi1 == 0) return 0.0;
+    std::vector<double> th(_penTheta);
+    const arma::uword nr = MCOV1.n_rows;
+    for (int c = 0; c < nphi1; ++c) {
+      for (arma::uword k = 0; k < jcov1.n_elem; ++k) {
+        if (jcov1(k) != (arma::uword)c * nr) continue;
+        int t = _penMap[(size_t)ilambda1(k)];
+        if (t >= 0) th[(size_t)t] = p[c];
+      }
+    }
+    return (double)nmc * nlmixrPenPopAll((int)th.size(), th.data(), 0, NULL, N, NULL, NULL);
   }
 
   // Phase 4: bobyqa-driven refinement of phi1's mu (mirrors refinePhi0Lik's
@@ -2342,6 +2358,10 @@ public:
         vec phi1 = phi.elem(i1);
         rowvec d = phi1.elem(realIx).t() - mu1.cols(realIx);
         v = modeRowLoss(s, f, cens, lim, yt) + 0.5*as_scalar(d*IG*d.t());
+        if (nlmixrPenNSubject() > 0) {
+          vec e1 = phi1 - mu1.t();
+          v -= penSubjLL(i, e1.memptr(), (int)e1.n_elem, (int)(ix_idM(i, 1) - ix_idM(i, 0) + 1));
+        }
         if (!std::isfinite(v)) v = 1.0e300;
       }
       if (v < fBest) {
@@ -2614,6 +2634,11 @@ public:
     if (nphi0 > 0) Plambda.elem(ilambda0) = MCOV0.elem(jcov0);
     _penMap.clear();
     _penTheta.clear();
+    _penEtaOrd.clear();
+    if (x.containsElementNamed("penEtaOrd")) {
+      IntegerVector eo = as<IntegerVector>(x["penEtaOrd"]);
+      _penEtaOrd.assign(eo.begin(), eo.end());
+    }
     if (x.containsElementNamed("penMap") && x.containsElementNamed("penTheta0")) {
       IntegerVector pm = as<IntegerVector>(x["penMap"]);
       NumericVector pt = as<NumericVector>(x["penTheta0"]);
@@ -4021,10 +4046,10 @@ public:
         if (fixedIx0.n_elem>0) {
           Plambda0(fixedIx0) = MCOV0(jcov0(fixedIx0));
         }
-        penMstep(Plambda0, CGamma20, rhs0, fixedIx0, ilambda0);
         MCOV0(jcov0)=Plambda0;
       }
-      penMstep(Plambda1, CGamma21, rhs1, fixedIx1, ilambda1);
+      penMstep(Plambda1, CGamma21, fixedIx1, ilambda1);
+      if (omegaPoolMean && nlmixrPenNPop() > 0) poolLambdaGroups(Plambda1);
       MCOV1(jcov1)=Plambda1;
       // Phase 4 (SAEM general-likelihood theta plan): once the direct phi1
       // Laplace optimizer owns phi1 (kiter>=niter_phi0 -- the same
@@ -5110,6 +5135,7 @@ private:
   // likelihood penalty (likPenalty.h): Plambda index -> ui theta (or -1), the
   // natural ui thetas the callbacks see, and the active phi1 MCMC block
   std::vector<int> _penMap;
+  std::vector<int> _penEtaOrd;
   std::vector<double> _penTheta;
   const mcmcphi *_penMphi1 = NULL;
 
@@ -5445,21 +5471,64 @@ private:
     }
   }
 
-  // Add the subject penalty (as a loss, -LL) for each chain row of phiMc.
+  // Add the penalties (as a loss, -LL) for each chain row of phiMc: the
+  // subject term, and the population term at the row's phi0 values, spread
+  // over the N subjects (phi0 has no M-step curvature, so the penalty shapes
+  // its sampling target instead).
   void penAddSubj(const mat &phiMc, vec &U) {
-    if (nlmixrPenNSubject() == 0 || _penMphi1 == NULL) return;
-    const int ne = _penMphi1->nphi;
+    if (nlmixrPenNSubject() > 0 && _penMphi1 != NULL) penAddSubjEta(phiMc, U);
+    if (nlmixrPenNPop() > 0 && !_penMap.empty() && nphi0 > 0) penAddPhi0(phiMc, U);
+  }
+
+  // Subject penalty LL for subject id at phi1 deviations e1 (phi1 slot order).
+  // The ABI orders etas as ini() does: phi1 slot q holds eta k when
+  // _penEtaOrd[k] == q.
+  double penSubjLL(int id, const double *e1, int nq, int nobs) {
+    const bool reord = !_penEtaOrd.empty();
+    const int ne = reord ? (int)_penEtaOrd.size() : nq;
     std::vector<double> eta((size_t)std::max(ne, 1));
+    for (int k = 0; k < ne; ++k) {
+      int q = reord ? _penEtaOrd[(size_t)k] : k;
+      eta[(size_t)k] = (q >= 0 && q < nq) ? e1[q] : 0.0;
+    }
     const int nt = (int)_penTheta.size();
+    return nlmixrPenSubjAll(id, ne, nobs, eta.data(), nt, nt > 0 ? _penTheta.data() : NULL, NULL);
+  }
+
+  void penAddSubjEta(const mat &phiMc, vec &U) {
+    const int nq = _penMphi1->nphi;
+    std::vector<double> e1((size_t)std::max(nq, 1));
     for (arma::uword ii = 0; ii < U.n_elem; ++ii) {
       int id = (int)(ii % (arma::uword)N);
-      for (int q = 0; q < ne; ++q) {
-        eta[(size_t)q] = phiMc(ii, _penMphi1->i((arma::uword)q)) -
+      for (int q = 0; q < nq; ++q) {
+        e1[(size_t)q] = phiMc(ii, _penMphi1->i((arma::uword)q)) -
           _penMphi1->mprior_phiM(ii, (arma::uword)q);
       }
       int nobs = ii < ix_idM.n_rows ? (int)(ix_idM(ii, 1) - ix_idM(ii, 0) + 1) : 0;
-      U(ii) -= nlmixrPenSubjAll(id, ne, nobs, eta.data(), nt,
-                                nt > 0 ? _penTheta.data() : NULL, NULL);
+      U(ii) -= penSubjLL(id, e1.data(), nq, nobs);
+    }
+  }
+
+  void penAddPhi0(const mat &phiMc, vec &U) {
+    std::vector<int> tOf((size_t)nphi0, -1);
+    const arma::uword nr = MCOV0.n_rows;
+    bool any = false;
+    for (int c = 0; c < nphi0; ++c) {
+      for (arma::uword k = 0; k < jcov0.n_elem; ++k) {
+        if (jcov0(k) != (arma::uword)c * nr) continue;
+        tOf[(size_t)c] = _penMap[(size_t)ilambda0(k)];
+        if (tOf[(size_t)c] >= 0) any = true;
+      }
+    }
+    if (!any) return;
+    std::vector<double> th(_penTheta);
+    const int nt = (int)th.size();
+    for (arma::uword ii = 0; ii < U.n_elem; ++ii) {
+      for (int c = 0; c < nphi0; ++c) {
+        int t = tOf[(size_t)c];
+        if (t >= 0 && t < nt) th[(size_t)t] = phiMc(ii, i0((arma::uword)c));
+      }
+      U(ii) += 0.5 * nlmixrPenPopAll(nt, th.data(), 0, NULL, N, NULL, NULL) / (double)N;
     }
   }
 
@@ -5493,13 +5562,15 @@ private:
     return v;
   }
 
-  // Penalized M-step for one block: the closed-form update minimizes the
-  // complete-data -2LL quadratic b'Ab - 2b'r; with a population penalty P the
-  // block minimizes b'Ab - 2b'r + P(b) by damped Newton (FD Hessian of P).
-  void penMstep(vec &b, const mat &A, const vec &r, const uvec &fixedIx, const uvec &ilam) {
+  // Penalized M-step for one block: the update b0 (closed form, plus any
+  // mixture/IOV adjustment) minimizes the -2LL quadratic (b-b0)'A(b-b0); with a
+  // population penalty P the block minimizes that plus P(b) by damped Newton
+  // (FD Hessian of P).  Centering on b0 rather than A^-1 r keeps the adjustments.
+  void penMstep(vec &b, const mat &A, const uvec &fixedIx, const uvec &ilam) {
     if (_penMap.empty() || nlmixrPenNPop() == 0 || b.n_elem == 0) return;
     uvec f = penFreeIx(b.n_elem, fixedIx, ilam);
     if (f.n_elem == 0) return;
+    const vec r = A * b;
     auto obj = [&](const vec &bb) {
       return as_scalar(bb.t() * A * bb) - 2.0 * dot(bb, r) + penPopAtBlock(bb, ilam, NULL);
     };

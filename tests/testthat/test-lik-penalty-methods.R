@@ -117,3 +117,91 @@ test_that("saem penalizes a theta without a random effect", {
   )
   expect_lt(abs(fixef(.f)[["tka"]]), 0.1)
 })
+
+test_that("saem penalties: bounded thetas, ll() models, sampled phi0 and mode etas", {
+  skip_on_cran()
+  .ctl <- saemControl(print = 0L, nBurn = 100, nEm = 100, seed = 1)
+  .ridge <- list(nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = 1000))
+  ## a bounded theta is estimated as rxBoundedTr.tka; the penalty still finds it
+  ## and sees its natural value
+  .mB <- function() {
+    ini({
+      tka <- c(-5, 0.45, 5); tcl <- 1; tv <- 3.45
+      eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .f <- .nlmixr(.mB, theo_sd, est = "saem", control = .ctl, likPenalty = .ridge)
+  expect_lt(abs(fixef(.f)[["tka"]]), 0.05)
+  expect_equal(.f$likPenalty$population, 1000 * fixef(.f)[["tka"]]^2, tolerance = 1e-6)
+  ## a compiled spec carried in the model (an external pointer) survives the
+  ## bounded transform's model rebuild
+  .ui <- nlmixr2LikPenaltyAdd(
+    .mB,
+    nlmixr2LikPenaltySpec(.Call(`_nlmixr2est_likPenaltyBuiltin`, "thetaL2"), thetas = "tka", par = 1000)
+  )
+  .f <- .nlmixr(.ui, theo_sd, est = "saem", control = .ctl)
+  expect_lt(abs(fixef(.f)[["tka"]]), 0.05)
+  ## general likelihood: the pooled phi1 refinement keeps the penalty
+  .mL <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      lsd <- -0.3
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      cp <- linCmt(); sd <- exp(lsd)
+      ll(err) ~ -log(sd) - 0.5 * log(2 * pi) - 0.5 * ((DV - cp) / sd)^2
+    })
+  }
+  .f <- .nlmixr(.mL, theo_sd, est = "saem", control = .ctl, likPenalty = .ridge)
+  expect_lt(abs(fixef(.f)[["tka"]]), 0.05)
+  ## nonMuTheta = "eta": the penalty shapes the phi0 sampling target
+  .m0 <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.cl ~ 0.3; eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .ctl0 <- saemControl(print = 0L, nBurn = 100, nEm = 100, seed = 1, nonMuTheta = "eta")
+  .f0 <- .nlmixr(.m0, theo_sd, est = "saem", control = .ctl0)
+  .f1 <- .nlmixr(.m0, theo_sd, est = "saem", control = .ctl0, likPenalty = .ridge)
+  expect_lt(abs(fixef(.f1)[["tka"]]), 0.25 * abs(fixef(.f0)[["tka"]]))
+  ## the reported (mode) etas carry the subject penalty
+  .f <- .nlmixr(
+    .mB,
+    theo_sd,
+    est = "saem",
+    control = .ctl,
+    likPenalty = list(nlmixr2LikPenaltySpec("etaL2", par = c(1000, 0)))
+  )
+  expect_lt(max(abs(as.matrix(.f$eta[, -1]))), 0.05)
+})
+
+test_that("saem orders the subject penalty etas as ini() does", {
+  .m <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.v ~ 0.1; eta.cl ~ 0.3; eta.ka ~ 0.6
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .o <- rxode2::rxode2(.m)$saemOmegaTrans
+  expect_equal(unname(.o), c(3, 2, 1))
+  .e1 <- matrix(c(1, 2, 3), 1, 3)
+  expect_equal(.saemLikPenaltyEta(.e1, as.integer(.o) - 1L), matrix(c(3, 2, 1), 1, 3))
+})

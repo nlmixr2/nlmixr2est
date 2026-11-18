@@ -1219,10 +1219,20 @@ nlmObjectiveSetup <- function(
   .penEnv$ui <- .ui
   .penEnv$.nlmixr2Dots <- list(likPenalty = likPenalty)
   class(.penEnv) <- c("nlm", "nlmixr2Est")
+  .setupOk <- FALSE
   if (.likPenaltyActivate(.penEnv)) {
     nlmixr2global$likPenaltyNlmSetup <- TRUE
+    # a failed setup must not leave the penalties on for later fits
+    on.exit(
+      if (!.setupOk) {
+        nlmixr2global$likPenaltyNlmSetup <- NULL
+        .likPenaltyDeactivate()
+      },
+      add = TRUE
+    )
   }
   .env <- .nlmSetupEnv(.p, .ui, .ret$dataSav, .mi, .ctl)
+  .setupOk <- TRUE
   invisible(.env$par.ini)
 }
 

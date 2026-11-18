@@ -5952,7 +5952,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         "Mcovariables",
         "res.mod",
         "omegaShareSubpop",
-        "evt"
+        "evt",
+        "penMap",
+        "penTheta0",
+        "penEtaOrd"
       )) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }

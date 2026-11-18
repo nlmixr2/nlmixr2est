@@ -246,6 +246,56 @@ test_that("nlm objective setup carries the model's likelihood penalty", {
   expect_equal(.likPenaltyInfo()[["n"]], 0L)
 })
 
+test_that("a failed nlmObjectiveSetup() leaves no penalty active", {
+  pop <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka); cl <- exp(tcl); v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  local_mocked_bindings(.nlmSetupEnv = function(...) stop("setup failed"))
+  expect_error(
+    suppressMessages(nlmObjectiveSetup(
+      pop,
+      theo_sd,
+      likPenalty = list(nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = 10))
+    )),
+    "setup failed"
+  )
+  expect_equal(.likPenaltyInfo()[["n"]], 0L)
+  expect_null(nlmixr2global$likPenaltyNlmSetup)
+})
+
+test_that("a conditional inner Hessian refuses a subject penalty", {
+  skip_on_cran()
+  one <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  expect_error(
+    .nlmixr(
+      one,
+      theo_sd,
+      "focei",
+      control = foceiControl(print = 0L, detHessian = "conditional"),
+      likPenalty = list(nlmixr2LikPenaltySpec("etaL2", par = c(1, 0)))
+    ),
+    "likelihood contributions"
+  )
+  expect_equal(.likPenaltyInfo()[["n"]], 0L)
+})
+
 test_that("an rxode2 user function registers its penalty while it expands", {
   skip_on_cran()
   ## toy model term: penToy(WT) -> toy.WT * (WT - 70), with a ridge on toy.WT

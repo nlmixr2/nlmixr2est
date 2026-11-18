@@ -237,7 +237,7 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
       lphi1 <- -0.5 * rowSums((dphi1 %*% .iOmegaK) * dphi1)
       ltot <- ly + lphi1
       if (!is.null(.pen)) {
-        .penEta <- phi[, i1, drop = FALSE] - fit$mprior_phi[, i1, drop = FALSE]
+        .penEta <- .saemLikPenaltyEta(phi[, i1, drop = FALSE] - fit$mprior_phi[, i1, drop = FALSE], saem.cfg$penEtaOrd)
         ltot <- ltot + .Call(`_nlmixr2est_likPenaltySubjLL`, .pen, .penEta, .penNobs)
       }
       ltot[is.na(ltot)] <- -Inf
@@ -288,10 +288,6 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   .map <- cfg$penMap
   .th <- cfg$penTheta0
   if (is.null(.map)) {
-    .map <- nlmixr2global$likPenaltySaemMap
-    .th <- nlmixr2global$likPenaltySaemTheta0
-  }
-  if (is.null(.map)) {
     return(NULL)
   }
   .pl <- as.vector(fit$Plambda)
@@ -300,6 +296,21 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
     .th[.map[.w] + 1L] <- .pl[.w]
   }
   .th
+}
+
+#' Put saem phi1 etas in ini() eta order for the subject penalty
+#' @param eta1 eta matrix in phi1 (`i1`) column order
+#' @param ord 0-based phi1 slot of each ini() eta, -1 for none (NULL: as is)
+#' @return eta matrix in ini() order
+#' @noRd
+.saemLikPenaltyEta <- function(eta1, ord) {
+  if (is.null(ord)) {
+    return(eta1)
+  }
+  .ret <- matrix(0, nrow(eta1), length(ord))
+  .w <- which(ord >= 0L & ord < ncol(eta1))
+  .ret[, .w] <- eta1[, ord[.w] + 1L]
+  .ret
 }
 
 #' Mixture layout of the Gaussian-quadrature objective
