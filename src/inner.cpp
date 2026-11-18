@@ -6955,6 +6955,31 @@ static bool foceiPenPopGradAdd(int npars, arma::vec &gp) {
   return true;
 }
 
+// ini({}) prior log-density PLUS the population likelihood penalty as a
+// log-density (-P/2), with its natural-scale gradient: what the EM M-steps
+// (imp/impmap/qrpem) fold in as a MAP correction.
+static double foceiPriorPenEval(std::vector<double> &grad) {
+  double v = foceiPriorEval(grad);
+  if (nlmixrPenNPop() == 0) return v;
+  const int ntheta = (int)op_focei.ntheta;
+  std::vector<double> gp((size_t)ntheta, 0.0);
+  int ok = 1;
+  double P = foceiPenPopObjTerm(gp.data(), &ok);
+  if (!ok) {
+    for (int j = 0; j < ntheta; ++j) {
+      double x = op_focei.fullTheta[j], h = 1e-6 * std::max(1.0, std::fabs(x));
+      op_focei.fullTheta[j] = x + h;
+      double pp = foceiPenPopObjTerm(NULL, NULL);
+      op_focei.fullTheta[j] = x - h;
+      double pm = foceiPenPopObjTerm(NULL, NULL);
+      op_focei.fullTheta[j] = x;
+      gp[(size_t)j] = (pp - pm) / (2.0 * h);
+    }
+  }
+  for (int j = 0; j < ntheta; ++j) grad[(size_t)j] -= 0.5 * gp[(size_t)j];
+  return v - 0.5 * P;
+}
+
 // -2*log-likelihood at theta, PLUS the ini({}) prior penalty when one is
 // present.  Every caller that wants "the objective" (not just the data
 // likelihood) should call this, not -2*foceiLik0(theta) directly.
@@ -7081,12 +7106,12 @@ void impPriorOmegaCorrect(arma::mat &Omega, int nsub) {
 // expansion point) and a reasonable one-step Newton correction otherwise
 // (Cauchy, multiNormal).
 void impPriorStructThetaCorrect(int nsub, arma::vec &g, arma::mat &H) {
-  if (op_focei.priorSpec == NULL) return;
+  if (op_focei.priorSpec == NULL && nlmixrPenNPop() == 0) return;
   IntegerVector &idx = op_focei.impThetaSensIdx;
   int nSens = idx.size();
   if (nSens == 0 || nsub <= 0) return;
   std::vector<double> grad0;
-  foceiPriorEval(grad0);
+  foceiPriorPenEval(grad0);
   for (int s = 0; s < nSens; ++s) g[s] += grad0[(size_t)idx[s]] / (double)nsub;
   const double h = 1e-4;
   arma::mat Hp(nSens, nSens, arma::fill::zeros);
@@ -7094,9 +7119,9 @@ void impPriorStructThetaCorrect(int nsub, arma::vec &g, arma::mat &H) {
     int j = idx[sp];
     double save = op_focei.fullTheta[j];
     op_focei.fullTheta[j] = save + h;
-    std::vector<double> gp; foceiPriorEval(gp);
+    std::vector<double> gp; foceiPriorPenEval(gp);
     op_focei.fullTheta[j] = save - h;
-    std::vector<double> gm; foceiPriorEval(gm);
+    std::vector<double> gm; foceiPriorPenEval(gm);
     op_focei.fullTheta[j] = save;
     for (int s = 0; s < nSens; ++s) {
       Hp(s, sp) = (gp[(size_t)idx[s]] - gm[(size_t)idx[s]]) / (2.0 * h);
@@ -7112,6 +7137,7 @@ void impPriorStructThetaCorrect(int nsub, arma::vec &g, arma::mat &H) {
 // (overwhelmingly common) no-prior-on-this-theta case -- both are hot paths
 // and must not slow down or change results for a group/theta with no prior.
 static bool priorSpecReferencesTheta(int th) {
+  if (nlmixrPenNPop() > 0) return true;   // a penalty may touch any theta
   const rx_prior_spec_t *spec = op_focei.priorSpec;
   if (spec == NULL) return false;
   for (int t = 0; t < spec->nTerms; ++t) {
@@ -7133,18 +7159,18 @@ static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma:
   int n = (int)idx.size();
   grad.set_size(n); grad.zeros();
   Hp.set_size(n, n); Hp.zeros();
-  if (op_focei.priorSpec == NULL || n == 0) return;
+  if ((op_focei.priorSpec == NULL && nlmixrPenNPop() == 0) || n == 0) return;
   std::vector<double> grad0;
-  foceiPriorEval(grad0);
+  foceiPriorPenEval(grad0);
   for (int s = 0; s < n; ++s) grad[s] = grad0[(size_t)idx[s]];
   const double h = 1e-4;
   for (int sp = 0; sp < n; ++sp) {
     int j = idx[sp];
     double save = op_focei.fullTheta[j];
     op_focei.fullTheta[j] = save + h;
-    std::vector<double> gp; foceiPriorEval(gp);
+    std::vector<double> gp; foceiPriorPenEval(gp);
     op_focei.fullTheta[j] = save - h;
-    std::vector<double> gm; foceiPriorEval(gm);
+    std::vector<double> gm; foceiPriorPenEval(gm);
     op_focei.fullTheta[j] = save;
     for (int s = 0; s < n; ++s) Hp(s, sp) = (gp[(size_t)idx[s]] - gm[(size_t)idx[s]]) / (2.0 * h);
   }
@@ -21685,6 +21711,91 @@ List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta,
                       _["gTheta"] = gTheta, _["gPopLogOmega"] = gPopLogOmega);
 }
 
+static void penQuadRefine(arma::vec &z, const arma::vec &w, const std::vector<int> &idx,
+                          std::vector<double> th, int nsub);
+
+// Population likelihood penalty in the advi theta update: the ELBO is on the
+// log-likelihood scale, so the penalty P (-2LL scale) enters as -P/2.
+static void adviPenThetaGrad(const NumericVector &theta, int ntheta, NumericVector &gTh, int N) {
+  if (nlmixrPenNPop() == 0) return;
+  std::vector<double> th(theta.begin(), theta.end()), g((size_t)ntheta, 0.0);
+  int ok = 1;
+  nlmixrPenPopAll(ntheta, th.data(), 0, NULL, N, g.data(), &ok);
+  for (int p = 0; p < ntheta; ++p) {
+    double d = g[(size_t)p];
+    if (!ok) {
+      double x = th[(size_t)p], h = 1e-6 * std::max(1.0, std::fabs(x));
+      th[(size_t)p] = x + h;
+      double vp = nlmixrPenPopAll(ntheta, th.data(), 0, NULL, N, NULL, NULL);
+      th[(size_t)p] = x - h;
+      double vm = nlmixrPenPopAll(ntheta, th.data(), 0, NULL, N, NULL, NULL);
+      th[(size_t)p] = x;
+      d = (vp - vm) / (2.0 * h);
+    }
+    gTh[p] -= 0.5 * d;
+  }
+}
+
+// ...and in the recentering M-step: move each mu-referenced theta to the
+// penalized optimum and its etas the other way (theta + eta unchanged).
+static void adviPenRecenter(NumericVector &theta, int ntheta, const IntegerVector &thetaMuRefEta,
+                            const LogicalVector &thetaFix, const NumericVector &logPopOmega,
+                            NumericMatrix &mu, int N) {
+  if (nlmixrPenNPop() == 0) return;
+  std::vector<int> pIdx;
+  std::vector<double> zv, wv;
+  for (int p = 0; p < ntheta; ++p) {
+    int k = thetaMuRefEta[p];
+    if (k < 0 || thetaFix[p]) continue;
+    pIdx.push_back(p);
+    zv.push_back(theta[p]);
+    wv.push_back((double)N / std::exp(logPopOmega[k]));
+  }
+  if (pIdx.empty()) return;
+  arma::vec z(zv), w(wv);
+  penQuadRefine(z, w, pIdx, std::vector<double>(theta.begin(), theta.end()), N);
+  for (size_t a = 0; a < pIdx.size(); ++a) {
+    int p = pIdx[a], k = thetaMuRefEta[p];
+    double d = z[a] - theta[p];
+    theta[p] = z[a];
+    for (int i = 0; i < N; ++i) mu(i, k) -= d;
+  }
+}
+
+
+// Full-Bayes form of adviPenRecenter: the mu-referenced phi means.
+static void adviPenRecenterFB(NumericVector &mPop, const IntegerVector &phiThetaIdx,
+                              const IntegerVector &phiOmIdx, const IntegerVector &phiMuRef,
+                              const NumericVector &theta, const NumericVector &logPopOmega,
+                              NumericMatrix &mu, int N) {
+  if (nlmixrPenNPop() == 0) return;
+  std::vector<double> th(theta.begin(), theta.end());
+  std::vector<double> lpo(logPopOmega.begin(), logPopOmega.end());
+  for (int j = 0; j < mPop.size(); ++j) {
+    if (phiThetaIdx[j] >= 0) th[(size_t)phiThetaIdx[j]] = mPop[j];
+    else if (phiOmIdx[j] >= 0) lpo[(size_t)phiOmIdx[j]] = mPop[j];
+  }
+  std::vector<int> js, pIdx;
+  std::vector<double> zv, wv;
+  for (int j = 0; j < mPop.size(); ++j) {
+    int k = phiMuRef[j];
+    if (k < 0 || phiThetaIdx[j] < 0) continue;
+    js.push_back(j);
+    pIdx.push_back(phiThetaIdx[j]);
+    zv.push_back(mPop[j]);
+    wv.push_back((double)N / std::exp(lpo[(size_t)k]));
+  }
+  if (js.empty()) return;
+  arma::vec z(zv), w(wv);
+  penQuadRefine(z, w, pIdx, th, N);
+  for (size_t a = 0; a < js.size(); ++a) {
+    int j = js[a], k = phiMuRef[j];
+    double d = z[a] - mPop[j];
+    mPop[j] = z[a];
+    for (int i = 0; i < N; ++i) mu(i, k) -= d;
+  }
+}
+
 // ADVI stochastic-gradient-ascent loop (mean-field, point-estimate), 100% in
 // C++.  Each iteration draws eps from the counter-based threefry stream keyed by
 // (seed, global-iteration, mc-sample) -- so a shorter run is a bit-for-bit prefix
@@ -21754,6 +21865,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     elboAcc *= invM;
     for (int j = 0; j < N * neta; ++j) { gMuAcc[j] *= invM; gOmAcc[j] *= invM; }
     for (int p = 0; p < ntheta; ++p) gThAcc[p] *= invM;
+    adviPenThetaGrad(theta, ntheta, gThAcc, N);
     for (int k = 0; k < neta; ++k) gLpoAcc[k] *= invM;
     elboTrace[it] = elboAcc;
 
@@ -21791,6 +21903,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
       theta[p] += mbar;
       for (int i = 0; i < N; ++i) mu(i, k) -= mbar;
     }
+    adviPenRecenter(theta, ntheta, thetaMuRefEta, thetaFix, logPopOmega, mu, N);
     // Population between-subject variance M-step, EMA-DAMPED.  The undamped
     // ELBO-maximizing value is w_k = mean_i(mu_ik^2 + var_ik) (var_ik =
     // exp(2 omega_ik)) -- the vae/SAEM omega update -- but applying it every
@@ -22038,6 +22151,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     for (int j = 0; j < N * neta; ++j) gMuAcc[j] *= invM;
     for (int j = 0; j < N * nL; ++j) gLAcc[j] *= invM;
     for (int p = 0; p < ntheta; ++p) gThAcc[p] *= invM;
+    adviPenThetaGrad(theta, ntheta, gThAcc, N);
     for (int k = 0; k < neta; ++k) gLpoAcc[k] *= invM;
     elboTrace[it] = elboAcc;
 
@@ -22068,6 +22182,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
       theta[p] += mbar;
       for (int i = 0; i < N; ++i) mu(i, k) -= mbar;
     }
+    adviPenRecenter(theta, ntheta, thetaMuRefEta, thetaFix, logPopOmega, mu, N);
     // damped population variance M-step; var_ik = (L_i L_i^T)_kk = sum_{j<=k} L(k,j)^2
     double gam = 1.0 / (10.0 + (double)gi);
     for (int k = 0; k < neta; ++k) {
@@ -22218,6 +22333,11 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
       // NATURAL parameter rather than on the unconstrained one (full Bayes
       // only -- this loop is the pointEstimate=FALSE path)
       e += adviJacLogDet(theta, &gTheta);
+      // population likelihood penalty as a prior on the drawn phi
+      if (nlmixrPenNPop() > 0) {
+        e -= 0.5 * nlmixrPenPopAll(ntheta, &theta[0], 0, NULL, N, NULL, NULL);
+        adviPenThetaGrad(theta, ntheta, gTheta, N);
+      }
       elboAcc += e;
       for (int j = 0; j < N * neta; ++j) gMuAcc[j] += gMu[j];
       for (int j = 0; j < N * nScale; ++j) gScaleAcc[j] += gScale[j];
@@ -22269,6 +22389,7 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
       mPop[j] += mbar;
       for (int i = 0; i < N; ++i) mu(i, k) -= mbar;
     }
+    adviPenRecenterFB(mPop, phiThetaIdx, phiOmIdx, phiMuRef, theta, logPopOmega, mu, N);
     // record theta / popOmega at the population posterior mean mPop
     NumericVector thetaBar = clone(theta), lpoBar = clone(logPopOmega);
     for (int j = 0; j < npop; ++j) {
@@ -25199,6 +25320,82 @@ static double gVaeThetaObj(const double *r) {
   return R_FINITE(v) ? v : 1e18;   // penalize a non-finite candidate
 }
 
+// Penalized closed-form M-step: the unpenalized update m minimizes
+// sum_a w_a (z_a - m_a)^2 (-2LL scale); with a population likelihood penalty P
+// the entries minimize that plus P(theta), theta = th with th[idx_a] = z_a
+// (damped Newton, FD Hessian of P).  Used by the vae and advi M-steps.
+static void penQuadRefine(arma::vec &z, const arma::vec &w, const std::vector<int> &idx,
+                          std::vector<double> th, int nsub) {
+  const arma::uword nf = z.n_elem;
+  if (nlmixrPenNPop() == 0 || nf == 0) return;
+  const arma::vec m = z;
+  const int nt = (int)th.size();
+  auto pv = [&](const arma::vec &zz) {
+    for (arma::uword a = 0; a < nf; ++a) th[(size_t)idx[a]] = zz[a];
+    return nlmixrPenPopAll(nt, th.data(), 0, NULL, nsub, NULL, NULL);
+  };
+  auto pg = [&](const arma::vec &zz) {
+    arma::vec g(nf);
+    for (arma::uword a = 0; a < nf; ++a) {
+      double h = 1e-6 * std::max(1.0, std::fabs(zz[a]));
+      arma::vec zp = zz, zm = zz;
+      zp[a] += h; zm[a] -= h;
+      g[a] = (pv(zp) - pv(zm)) / (2.0 * h);
+    }
+    return g;
+  };
+  auto obj = [&](const arma::vec &zz) {
+    return arma::accu(w % arma::square(zz - m)) + pv(zz);
+  };
+  double fcur = obj(z);
+  for (int it = 0; it < 50; ++it) {
+    arma::vec g = 2.0 * w % (z - m) + pg(z);
+    arma::mat H = arma::diagmat(2.0 * w);
+    for (arma::uword a = 0; a < nf; ++a) {
+      double h = 1e-4 * std::max(1.0, std::fabs(z[a]));
+      arma::vec zp = z, zm = z;
+      zp[a] += h; zm[a] -= h;
+      H.col(a) += (pg(zp) - pg(zm)) / (2.0 * h);
+    }
+    H = 0.5 * (H + H.t());
+    arma::vec step;
+    if (!arma::solve(step, H, g) || !step.is_finite()) break;
+    double t = 1.0;
+    bool moved = false;
+    for (int ls = 0; ls < 30; ++ls) {
+      arma::vec zn = z - t * step;
+      double fn = obj(zn);
+      if (R_FINITE(fn) && fn <= fcur) { z = zn; fcur = fn; moved = true; break; }
+      t *= 0.5;
+    }
+    if (!moved || t * arma::norm(step) < 1e-10 * (1.0 + arma::norm(z))) break;
+  }
+}
+
+// VAE closed-form zPop update with the population likelihood penalty.
+static void vaePenZPop(arma::vec &zc, const arma::vec &omegaV, int N, const arma::vec &th,
+                       const arma::ivec &idx, const LogicalVector &isFree,
+                       const LogicalVector &zPopFix) {
+  if (nlmixrPenNPop() == 0) return;
+  std::vector<arma::uword> fr;
+  std::vector<int> ti;
+  for (arma::uword k = 0; k < zc.n_elem; ++k) {
+    if (isFree[k] || zPopFix[k]) continue;
+    if (k >= idx.n_elem || idx[k] < 0 || idx[k] >= (int)th.n_elem) continue;
+    if (!(omegaV[k] > 0)) continue;
+    fr.push_back(k);
+    ti.push_back(idx[k]);
+  }
+  if (fr.empty()) return;
+  arma::vec z(fr.size()), w(fr.size());
+  for (size_t a = 0; a < fr.size(); ++a) {
+    z[a] = zc[fr[a]];
+    w[a] = (double)N / omegaV[fr[a]];
+  }
+  penQuadRefine(z, w, ti, std::vector<double>(th.begin(), th.end()), N);
+  for (size_t a = 0; a < fr.size(); ++a) zc[fr[a]] = z[a];
+}
+
 //[[Rcpp::export]]
 List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector mixProbR,
                   int cores, NumericVector row0, CharacterVector parNames,
@@ -25657,6 +25854,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (zPopFixR[k]) zPopCur[k] = zPop[k]; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
       if (!zPopCur.is_finite()) zPopCur = zPop;
       if (!omegaCur.is_finite()) omegaCur = omega;
+      vaePenZPop(zPopCur, omegaCur, N, th, zPopThetaIdx0, isFreeR, zPopFixR);
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
       zPop = zPopCur; omega = omegaCur; a = aCur;  // gamma = 1
       if (omOff) {
@@ -26295,6 +26493,12 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       arma::vec aCur = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper, errCombined1);
       for (int k = 0; k < zDim; ++k) if (omegaFixR[k]) omegaCur[k] = omega[k];
       if (!omegaCur.is_finite()) omegaCur = omega;
+      {
+        // penalize the intercepts; each subject's center moves with them
+        arma::vec ic0 = intercept;
+        vaePenZPop(intercept, omegaCur, N, th, zPopThetaIdx0, isFreeR, zPopFixR);
+        for (int k = 0; k < zDim; ++k) zPopMat.col(k) += intercept[k] - ic0[k];
+      }
       zPop = intercept;
       zPopArg = zPopMat;
       // the reference assigns omega outright; the historic path blends it
@@ -26320,6 +26524,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (zPopFixR[k]) zPopCur[k] = zPop[k]; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
       if (!zPopCur.is_finite()) zPopCur = zPop;
       if (!omegaCur.is_finite()) omegaCur = omega;
+      vaePenZPop(zPopCur, omegaCur, N, th, zPopThetaIdx0, isFreeR, zPopFixR);
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
       zPop = zPop + gamma * (zPopCur - zPop);
       omega = omega + gamma * (omegaCur - omega);
@@ -26964,6 +27169,7 @@ static bool foceiHessianSensitivitySupport(int n) {
 static bool foceiHessianObjectiveSupport() {
   return !op_focei.fo && !op_focei.conditionalDetRequested && !op_focei.mixIdxN && !op_focei.muGroupN && !op_focei.freezeOde &&
     !op_focei.covFdDirect && op_focei.priorSpec == NULL && op_focei.npResidScale == 1 &&
+    nlmixrPenNPop() == 0 && nlmixrPenNSubject() == 0 &&
     odeSwapCanPool(odeSlotOuter) == odeDenyNone;
 }
 

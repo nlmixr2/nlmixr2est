@@ -317,7 +317,7 @@ nlmixr2LikPenaltyAdd <- function(ui, ..., replace = FALSE) {
   if (identical(nlmixr2global$likPenaltyLevel, "subject")) {
     .delta <- .delta - sum(.df$population[.df$inObjf])
     if (any(.df$population != 0)) {
-      warning("population likelihood penalty not used by this method", call. = FALSE)
+      warning("population likelihood penalty added to objective after fit", call. = FALSE)
     }
   } else {
     .delta <- .delta + sum(.df$population[!.df$inObjf])

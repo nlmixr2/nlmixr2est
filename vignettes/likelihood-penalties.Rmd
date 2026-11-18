@@ -230,11 +230,11 @@ Every method is tagged with `attr(nlmixr2Est.<est>, "nlmixr2LikPenalty")`:
 | Methods | Subject term | Population term |
 |---|---|---|
 | focei, foce, fo, foi, focep, laplace, agq (with their `i`/`m`/`f` variants), posthoc | inner problem, conditional mode and objective | objective and (analytic) outer gradient |
-| imp, impmap, qrpem | E-step through the FOCEi inner likelihood | objective |
+| imp, impmap, qrpem | E-step through the FOCEi inner likelihood | M-step of the mu-referenced thetas and objective |
 | saem | MCMC acceptance and the quadrature objective | M-step (penalized Newton refinement of the mu-referenced and fixed-effect thetas) and objective |
-| vae, emvi, fbvi | ELBO data term | objective |
+| vae, emvi, fbvi | ELBO data term | penalized M-step (vae intercepts, emvi thetas), prior on the population draw (fbvi), and objective |
 | nlm, nlminb, optim, bobyqa, newuoa, uobyqa, n1qn1, lbfgsb3c, trust | once per subject, no etas | objective and gradient |
-| npag, npb | conditional density of every support point | added to the reported objective only (a warning says so) |
+| npag, npb | conditional density of every support point | mu-referenced theta update; added to the reported objective after the fit (a warning says so) |
 | nlme, nls | not supported: the fit stops | |
 | simulation / prediction | ignored | |
 
@@ -246,6 +246,7 @@ A mu-referenced family (`mfocei` and the other `m*` methods) solves for its
 mu-referenced thetas in closed form.  A population penalty on such a theta
 therefore makes the outer gradient fall back to finite differences.  The
 penalty enters the objective, but the closed-form step itself does not see it.
+Covariate effects added by the `vae` covariate selection are not penalized.
 
 ### Adding support to a new method
 
