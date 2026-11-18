@@ -236,6 +236,57 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   })
 }
 
+#' Which rows of a table solve are mtime() records
+#'
+#' mtime() records are model output, not data (#919): the solve emits one extra
+#' row per subject per mtime, which is not an observation and has no source row
+#' in the input dataset, so it would land in the fit table as a DV=NA row.  Only
+#' looked for when the solved model actually declares an mtime.  Shared by the
+#' rxSolve() and pooled table routes.
+#'
+#' @param res solved frame
+#' @param model the model it was solved with
+#' @return logical, `TRUE` for the rows to drop (`NULL` for none)
+#' @noRd
+.residMtimeRows <- function(res, model) {
+  .hasMtime <- tryCatch(rxode2::rxModelVars(model)$nMtime > 0L, error = function(e) FALSE)
+  if (!isTRUE(.hasMtime)) {
+    return(NULL)
+  }
+  .evidW <- which(tolower(names(res)) == "evid")
+  if (length(.evidW) == 1L) {
+    # addDosing: dose rows are in the output, so the EVID is too -- use it.
+    .ev <- res[[.evidW]]
+    .drop <- !is.na(.ev) & .ev >= 10 & .ev <= 99
+  } else if (!is.null(res$nlmixrRowNums)) {
+    # No EVID column means dose rows were left out, so the only rows with no
+    # source row left are the mtime ones.  Do NOT use this when doses are kept:
+    # an ADDL-expanded dose also has no source row and must stay.
+    .drop <- is.na(res$nlmixrRowNums)
+  } else {
+    return(NULL)
+  }
+  if (!any(.drop)) {
+    return(NULL)
+  }
+  .drop
+}
+
+#' Drop a table solve's mtime() records (`.residMtimeRows()`)
+#'
+#' @inheritParams .residMtimeRows
+#' @return `res` without them
+#' @noRd
+.residDropMtimeRows <- function(res, model) {
+  .drop <- .residMtimeRows(res, model)
+  if (is.null(.drop)) {
+    return(res)
+  }
+  res <- res[!.drop, , drop = FALSE]
+  rownames(res) <- NULL
+  res
+}
+
 #' Solve a table model, loosening tolerances and switching ODE method on failure
 #'
 #' A solve fails when any `rx_pred_` is `NA`; it is then repeated with
@@ -371,31 +422,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .res
   }
   .res <- .residSolveWithFallback(fit, what, .solveOnce)
-  # mtime() records are model output, not data (#919): the solve emits one extra
-  # row per subject per mtime, which is not an observation and has no source row
-  # in the input dataset, so it would land in the fit table as a DV=NA row.  Only
-  # looked for when the solved model actually declares an mtime.
-  .hasMtime <- tryCatch(rxode2::rxModelVars(model)$nMtime > 0L, error = function(e) FALSE)
-  if (isTRUE(.hasMtime)) {
-    .evidW <- which(tolower(names(.res)) == "evid")
-    if (length(.evidW) == 1L) {
-      # addDosing: dose rows are in the output, so the EVID is too -- use it.
-      .ev <- .res[[.evidW]]
-      .drop <- !is.na(.ev) & .ev >= 10 & .ev <= 99
-    } else if (!is.null(.res$nlmixrRowNums)) {
-      # No EVID column means dose rows were left out, so the only rows with no
-      # source row left are the mtime ones.  Do NOT use this when doses are kept:
-      # an ADDL-expanded dose also has no source row and must stay.
-      .drop <- is.na(.res$nlmixrRowNums)
-    } else {
-      .drop <- FALSE
-    }
-    if (any(.drop)) {
-      .res <- .res[!.drop, , drop = FALSE]
-      rownames(.res) <- NULL
-    }
-  }
-  .res
+  .residDropMtimeRows(.res, model)
 }
 
 #' Create a ipred/pred list from the focei style model

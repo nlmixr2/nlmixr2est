@@ -115,11 +115,31 @@
   )
   .vals <- as.data.frame(.ret$vals)
   names(.vals) <- c(lhs, state, cov, if (tbs) c("rxLambda", "rxYj", "rxLow", "rxHi"))
+  if (!is.na(doDose)) {
+    # a string lhs or a covariate with levels is a factor, as rxSolve() makes it
+    .str <- c(intersect(lhs, names(.mv$lhsStr)[as.logical(.mv$lhsStr)]), cov)
+    .lv <- tablePoolLevels_(as.character(.str))
+    for (.n in names(.lv)[!vapply(.lv, is.null, logical(1))]) {
+      .vals[[.n]] <- .tablePoolFactor(.vals[[.n]], .lv[[.n]])
+    }
+  }
   .ret$vals <- .vals
   if (!is.null(.ret$dose) && ncol(.ret$dose) == 6L) {
     colnames(.ret$dose) <- c("cmt", "ss", "amt", "rate", "dur", "ii")
   }
   .ret
+}
+
+#' A level-index column as a factor, as rxSolve() writes one
+#'
+#' @param x level indices (1-based)
+#' @param levels the levels
+#' @return factor; an index outside the levels is `NA`
+#' @noRd
+.tablePoolFactor <- function(x, levels) {
+  .i <- as.integer(x)
+  .i[is.na(.i) | .i < 1L | .i > length(levels)] <- NA_integer_
+  structure(.i, levels = as.character(levels), class = "factor")
 }
 
 #' Whether rxode2 gives the pool its own output-record walk and keep columns
@@ -139,6 +159,22 @@
     return(0L)
   }
   if (isTRUE(subsetNonmem)) 3L else 2L
+}
+
+#' The sparse sensitivities of the rows kept
+#'
+#' @param sens `rxSens` triplets (1-based rows)
+#' @param keep logical, the rows kept
+#' @return the triplets of the kept rows, renumbered
+#' @noRd
+.tablePoolSensRows <- function(sens, keep) {
+  .new <- cumsum(keep)
+  .w <- keep[sens$i]
+  sens$x <- sens$x[.w]
+  sens$k <- sens$k[.w]
+  sens$i <- as.integer(.new[sens$i[.w]])
+  sens$nrow <- as.integer(sum(keep))
+  sens
 }
 
 #' Add rxSolve()'s dose columns, in its order, to a table frame
@@ -223,13 +259,20 @@
     return("linCmt")
   }
   .evid <- .data[[which(toupper(names(.data)) == "EVID")[1]]]
-  if (is.null(.evid) || any(.evid == 3L | (.evid >= 10L & .evid <= 99L))) {
+  if (is.null(.evid)) {
     return("evid")
+  }
+  # resets, mtime() records and string lhs need rxode2's own record walk
+  if (.tablePoolRxWalk()) {
+    return(NULL)
+  }
+  if (any(.evid == 3L | (.evid >= 10L & .evid <= 99L))) {
+    return("rxode2")
   }
   for (.m in models) {
     .mv <- rxode2::rxModelVars(.m)
     if (isTRUE(.mv$nMtime > 0L) || any(.mv$lhsStr != 0L) || length(.mv$strAssign) > 0L) {
-      return("model")
+      return("rxode2")
     }
   }
   NULL
@@ -397,7 +440,7 @@
   .start <- match(unique(.data$ID), .data$ID) - 1L
   .nsub <- length(.start)
   .hasEvid2 <- any(.data[[which(toupper(names(.data)) == "EVID")[1]]] == 2L)
-  .frame <- function(r, keep = character(0), tbs = FALSE) {
+  .frame <- function(r, model, keep = character(0), tbs = FALSE) {
     .df <- data.frame(id = factor(r$id, levels = seq_len(.nsub)))
     if (isTRUE(.doDose > 0L)) {
       .df <- .tablePoolDoseCols(.df, r, .doDose)
@@ -433,8 +476,15 @@
       .df$id <- NULL
     }
     .df <- .residIdDv(.df)
-    if (length(r$sens$x) > 0L || r$sens$ncol > 0L) {
-      attr(.df, "rxSens") <- r$sens
+    .sens <- r$sens
+    .drop <- .residMtimeRows(.df, model)
+    if (!is.null(.drop)) {
+      .df <- .df[!.drop, , drop = FALSE]
+      rownames(.df) <- NULL
+      .sens <- .tablePoolSensRows(.sens, !.drop)
+    }
+    if (length(.sens$x) > 0L || .sens$ncol > 0L) {
+      attr(.df, "rxSens") <- .sens
     }
     .df
   }
@@ -454,8 +504,8 @@
     .pred <- .solve("pred", po, "predOnly", .ppar, lhs = c("rx_pred_", "rx_r_"))
     .done <- TRUE
     return(list(
-      ipred = .residAdjustIpredNames(.frame(.ipred, keep, tbs = TRUE)),
-      pred = .frame(.pred),
+      ipred = .residAdjustIpredNames(.frame(.ipred, po, keep, tbs = TRUE)),
+      pred = .frame(.pred, po, "nlmixrRowNums"),
       etaLst = thetaEtaParameters$eta.lst
     ))
   }
@@ -480,9 +530,9 @@
   .ebe <- .solve("ebe", po, "predOnly", .ipar, lhs = .mvP$lhs, state = .mvP$state, cov = .covP)
   .done <- TRUE
   list(
-    ipred = .residAdjustIpredNames(.frame(.ipred, keep, tbs = TRUE)),
-    pred = .frame(.pred),
+    ipred = .residAdjustIpredNames(.frame(.ipred, inner, keep, tbs = TRUE)),
+    pred = .frame(.pred, inner, "nlmixrRowNums"),
     etaLst = thetaEtaParameters$eta.lst,
-    predOnly = .frame(.ebe, keep)
+    predOnly = .frame(.ebe, po, keep)
   )
 }

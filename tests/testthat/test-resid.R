@@ -757,6 +757,22 @@ test_that(".residMixIcovSolve() retries without the iCov rxode2 rejects, and say
   expect_error(.residMixIcovSolve(.st, function(iCov) stop("other failure")), "other failure")
 })
 
+test_that(".tablePoolSensRows() keeps the sensitivities of the kept rows, renumbered", {
+  .s <- list(i = c(1L, 2L, 3L, 3L), k = c(1L, 1L, 1L, 2L), x = c(0.1, 0.2, 0.3, 0.4), nrow = 3L, ncol = 2L)
+  .r <- .tablePoolSensRows(.s, c(TRUE, FALSE, TRUE))
+  expect_identical(.r$i, c(1L, 2L, 2L))
+  expect_identical(.r$k, c(1L, 1L, 2L))
+  expect_identical(.r$x, c(0.1, 0.3, 0.4))
+  expect_identical(.r$nrow, 2L)
+})
+
+test_that(".tablePoolFactor() writes level indices as rxSolve() writes a factor", {
+  .f <- .tablePoolFactor(c(2, 1, NA, 3, 0), c("low", "high"))
+  expect_s3_class(.f, "factor")
+  expect_identical(levels(.f), c("low", "high"))
+  expect_identical(as.character(.f), c("high", "low", NA, NA, NA))
+})
+
 test_that(".residIdDv() adds the ID a single subject's solve lacks, also with dosing rows", {
   .obs <- .residIdDv(data.frame(time = 1:2, cp = 1:2, DV = 3:4))
   expect_named(.obs, c("ID", "time", "cp", "dv"))

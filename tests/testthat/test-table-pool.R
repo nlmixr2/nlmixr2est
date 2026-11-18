@@ -400,4 +400,79 @@ nmTest({
     .poolExpect(.fit2, pooled = FALSE)
     expect_equal(.tablePoolInfo()$lastDecline, "linCmt")
   })
+
+  test_that("pooled tables: resets, mtime() records and a string lhs", {
+    skip_if_not(.tablePoolRxWalk(), "this rxode2 has no output-record walk")
+    # a reset (EVID 3) after 12 h, then a new dose
+    .reset <- do.call(
+      rbind,
+      lapply(split(.theo, .theo$ID), function(x) {
+        .rs <- x[1, ]
+        .rs$TIME <- 13
+        .rs$EVID <- 3
+        .rs$AMT <- 0
+        .rs$DV <- NA
+        .ds <- x[x$EVID != 0, ][1, ]
+        .ds$TIME <- 14
+        rbind(x[x$EVID != 0, ][1, ], x[x$EVID == 0 & x$TIME <= 12, ], .rs, .ds, x[x$EVID == 0 & x$TIME > 12, ])
+      })
+    )
+    .fit <- .poolFit(.poolOne(), .reset)
+    .poolExpect(.fit)
+    .poolExpect(.fit, table = tableControl(addDosing = TRUE))
+    # a modeled event time
+    .mt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        tmt <- log(2.5)
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        mtime(t1) <- exp(tmt)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .fit <- .poolFit(.mt, .theo)
+    .tab <- .poolExpect(.fit)
+    expect_equal(nrow(.tab), sum(.theo$EVID == 0))
+    .poolExpect(.fit, table = tableControl(addDosing = TRUE))
+    .poolExpect(.fit, table = tableControl(addDosing = TRUE, subsetNonmem = FALSE))
+    # a string lhs
+    .str <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        grp <- "low"
+        if (cp > 5) grp <- "high"
+        cp ~ add(add.sd)
+      })
+    }
+    .fit <- .poolFit(.str, .theo)
+    .poolExpect(.fit)
+    .poolExpect(.fit, table = tableControl(addDosing = TRUE))
+  })
 })
