@@ -256,4 +256,72 @@ nmTest({
     .poolExpect(.fit2, pooled = FALSE)
     expect_equal(.tablePoolInfo()$lastDecline, "method")
   })
+
+  # infusions, an addl bolus and a modeled duration, for the dosing rows
+  .doseData <- function(nid = 8) {
+    .one <- function(id) {
+      .d <- data.frame(
+        ID = id,
+        TIME = c(0, 0, 1, 2, 4, 6, 8, 12, 24, 25, 26, 30, 36, 48),
+        EVID = 0,
+        AMT = 0,
+        RATE = 0,
+        ADDL = 0,
+        II = 0,
+        CMT = 2,
+        DV = NA
+      )
+      .d$EVID[1] <- 1
+      .d$AMT[1] <- 100
+      .d$RATE[1] <- 50
+      .d$EVID[2] <- 1
+      .d$AMT[2] <- 80
+      .d$CMT[2] <- 1
+      .d$ADDL[2] <- 2
+      .d$II[2] <- 12
+      .d$EVID[9] <- 1
+      .d$AMT[9] <- 60
+      .d$RATE[9] <- -2
+      .d$DV[.d$EVID == 0] <- 2 * exp(rnorm(sum(.d$EVID == 0), 0, 0.2))
+      .d
+    }
+    do.call(rbind, lapply(seq_len(nid), .one))
+  }
+  .doseModel <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      tdur <- 0.5
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      dur(center) <- exp(tdur)
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+
+  test_that("pooled tables: dosing rows of infusions, addl and a modeled duration", {
+    skip_if_not(.tablePoolRxWalk(), "this rxode2 has no output-record walk")
+    .d <- rxode2::rxWithSeed(4, .doseData())
+    .fit <- .poolFit(.doseModel, .d)
+    for (.sn in c(TRUE, FALSE)) {
+      .poolExpect(.fit, table = tableControl(addDosing = TRUE, subsetNonmem = .sn))
+      .poolExpect(.fit, table = tableControl(addDosing = TRUE, subsetNonmem = .sn, cwres = FALSE))
+      .poolExpect(.fit, table = tableControl(addDosing = TRUE, subsetNonmem = .sn, npde = TRUE, nsim = 100))
+    }
+    # a single subject: no id column from the solve
+    .one <- .poolFit(.doseModel, .d[.d$ID == 1, ])
+    .poolExpect(.one, table = tableControl(addDosing = TRUE))
+    .poolExpect(.one, table = tableControl(addDosing = TRUE, subsetNonmem = FALSE))
+  })
 })
