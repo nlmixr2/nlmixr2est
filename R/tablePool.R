@@ -11,10 +11,11 @@
 #' @param atol,rtol ODE tolerances
 #' @param keep data columns rxode2 keeps for the rows (rxode2's walk only),
 #'   or `NULL`
+#' @param iCov each subject's mixture assignment (`.residMixIcov()`), or `NULL`
 #' @return named logical: whether each model can be solved in the pool
 #' @author Matthew L. Fidler
 #' @noRd
-.tablePoolSetup <- function(fit, inner, predOnly, pars, method, atol, rtol, keep = NULL) {
+.tablePoolSetup <- function(fit, inner, predOnly, pars, method, atol, rtol, keep = NULL, iCov = NULL) {
   # Registering binds entry points by name, so each dll must be loaded: one
   # unloaded with an earlier model object leaves stale entry points behind.
   # Loaded BEFORE the pool is built, since a load rebinds rxode2's model
@@ -48,6 +49,7 @@
     # addCov = TRUE would drop a kept covariate (DV of a count endpoint) from
     # the keep columns, as the rxSolve() route's ipred solve does not
     addCov = FALSE,
+    iCov = iCov,
     warnIdSort = FALSE,
     .setupOnly = 1L
   )
@@ -94,7 +96,8 @@
   .idx <- function(x, from) {
     .i <- match(x, from)
     if (anyNA(.i)) {
-      stop("not in the table model: ", paste(x[is.na(.i)], collapse = ", "), call. = FALSE)
+      # the rxSolve() route then gives its own answer (or error)
+      .tablePoolStop("model")
     }
     as.integer(.i - 1L)
   }
@@ -112,11 +115,31 @@
   )
   .vals <- as.data.frame(.ret$vals)
   names(.vals) <- c(lhs, state, cov, if (tbs) c("rxLambda", "rxYj", "rxLow", "rxHi"))
+  if (!is.na(doDose)) {
+    # a string lhs or a covariate with levels is a factor, as rxSolve() makes it
+    .str <- c(intersect(lhs, names(.mv$lhsStr)[as.logical(.mv$lhsStr)]), cov)
+    .lv <- tablePoolLevels_(as.character(.str))
+    for (.n in names(.lv)[!vapply(.lv, is.null, logical(1))]) {
+      .vals[[.n]] <- .tablePoolFactor(.vals[[.n]], .lv[[.n]])
+    }
+  }
   .ret$vals <- .vals
   if (!is.null(.ret$dose) && ncol(.ret$dose) == 6L) {
     colnames(.ret$dose) <- c("cmt", "ss", "amt", "rate", "dur", "ii")
   }
   .ret
+}
+
+#' A level-index column as a factor, as rxSolve() writes one
+#'
+#' @param x level indices (1-based)
+#' @param levels the levels
+#' @return factor; an index outside the levels is `NA`
+#' @noRd
+.tablePoolFactor <- function(x, levels) {
+  .i <- as.integer(x)
+  .i[is.na(.i) | .i < 1L | .i > length(levels)] <- NA_integer_
+  structure(.i, levels = as.character(levels), class = "factor")
 }
 
 #' Whether rxode2 gives the pool its own output-record walk and keep columns
@@ -136,6 +159,22 @@
     return(0L)
   }
   if (isTRUE(subsetNonmem)) 3L else 2L
+}
+
+#' The sparse sensitivities of the rows kept
+#'
+#' @param sens `rxSens` triplets (1-based rows)
+#' @param keep logical, the rows kept
+#' @return the triplets of the kept rows, renumbered
+#' @noRd
+.tablePoolSensRows <- function(sens, keep) {
+  .new <- cumsum(keep)
+  .w <- keep[sens$i]
+  sens$x <- sens$x[.w]
+  sens$k <- sens$k[.w]
+  sens$i <- as.integer(.new[sens$i[.w]])
+  sens$nrow <- as.integer(sum(keep))
+  sens
 }
 
 #' Add rxSolve()'s dose columns, in its order, to a table frame
@@ -165,8 +204,16 @@
   df
 }
 
-# ODE methods the pool solves; any other method takes the rxSolve() route
+# ODE methods the pool solves when rxode2 cannot say which solves rxSolve()
+# refuses (rxDfSolveRefused(), slot 113); with it, every method pools
 .tablePoolMethods <- c("liblsoda", "lsoda", "dop853")
+
+#' Whether the pool may solve with ODE method `method`
+#'
+#' @noRd
+.tablePoolMethodOk <- function(method) {
+  isTRUE(.rxode2Optional()[["dfSolveRefused"]]) || method %in% .tablePoolMethods
+}
 
 .tablePoolEnv <- new.env(parent = emptyenv())
 .tablePoolEnv$declineN <- 0L
@@ -201,14 +248,7 @@
   if (!isFALSE(addDosing) && !.tablePoolRxWalk()) {
     return("rxode2")
   }
-  .env <- fit
-  if (!is.environment(.env) && is.environment(fit$env)) {
-    .env <- fit$env
-  }
-  if (is.environment(.env) && exists("mixIcov", envir = .env, inherits = FALSE)) {
-    return("mixture")
-  }
-  if (!(.residOdeMethodName(fit$methodOde) %in% .tablePoolMethods)) {
+  if (!.tablePoolMethodOk(.residOdeMethodName(fit$methodOde))) {
     return("method")
   }
   if (!is.null(fit$foceiControl$rxControl$scale)) {
@@ -218,14 +258,29 @@
   if (!all(keep %in% names(.data))) {
     return("keep")
   }
+  # rxode2 solves a smaller model in the pool through its ODE route, which a
+  # linCmt() model does not have (a mixture's EBE model is linCmt() without
+  # the sensitivities the inner model has)
+  .neq <- vapply(models, function(m) length(rxode2::rxModelVars(m)$state), integer(1))
+  .lin <- vapply(models, function(m) isTRUE(rxode2::rxModelVars(m)$flags[["linCmt"]] > 0L), logical(1))
+  if (any(.lin & .neq < max(.neq))) {
+    return("linCmt")
+  }
   .evid <- .data[[which(toupper(names(.data)) == "EVID")[1]]]
-  if (is.null(.evid) || any(.evid == 3L | (.evid >= 10L & .evid <= 99L))) {
+  if (is.null(.evid)) {
     return("evid")
+  }
+  # resets, mtime() records and string lhs need rxode2's own record walk
+  if (.tablePoolRxWalk()) {
+    return(NULL)
+  }
+  if (any(.evid == 3L | (.evid >= 10L & .evid <= 99L))) {
+    return("rxode2")
   }
   for (.m in models) {
     .mv <- rxode2::rxModelVars(.m)
     if (isTRUE(.mv$nMtime > 0L) || any(.mv$lhsStr != 0L) || length(.mv$strAssign) > 0L) {
-      return("model")
+      return("rxode2")
     }
   }
   NULL
@@ -324,6 +379,8 @@
   # rxode2 has it; otherwise only observation rows, walked here
   .rxWalk <- .tablePoolRxWalk()
   .doDose <- if (.rxWalk) .tablePoolDoDose(addDosing, subsetNonmem) else NA_integer_
+  # each subject's mixture assignment, as the rxSolve() route passes it
+  .mix <- .residMixIcovState(fit, c(list(po), if (!is.null(inner)) list(inner)))
   .need <- c(inner = !is.null(inner), predOnly = TRUE)
   on.exit(
     {
@@ -339,7 +396,7 @@
     if (identical(.st$key, .key)) {
       return(invisible())
     }
-    if (!(method %in% .tablePoolMethods)) {
+    if (!.tablePoolMethodOk(method)) {
       .tablePoolStop("method")
     }
     if (!is.null(.st$key)) {
@@ -349,7 +406,9 @@
     # a set-up-only rxSolve() advances the seed by the cores a full solve
     # takes on top of its subjects
     .s0 <- rxode2::rxGetSeed()
-    .ok <- .tablePoolSetup(fit, inner, po, .ipar, method, atol, rtol, keep = if (.rxWalk) keep)
+    .ok <- .residMixIcovSolve(.mix, function(iCov) {
+      .tablePoolSetup(fit, inner, po, .ipar, method, atol, rtol, keep = if (.rxWalk) keep, iCov = iCov)
+    })
     if (.s0 != -1) {
       .acc$step <- length(.start) + (rxode2::rxGetSeed() - .s0)
     }
@@ -380,6 +439,11 @@
         if (!isTRUE(.r$rowsOk)) {
           .tablePoolStop("rows")
         }
+        # rxSolve() would stop here rather than return NA rows: let it, with
+        # its own error
+        if (isTRUE(.r$refused > 0L)) {
+          .tablePoolStop("refused")
+        }
         .r
       },
       predOf = function(x) x$vals$rx_pred_
@@ -389,7 +453,7 @@
   .start <- match(unique(.data$ID), .data$ID) - 1L
   .nsub <- length(.start)
   .hasEvid2 <- any(.data[[which(toupper(names(.data)) == "EVID")[1]]] == 2L)
-  .frame <- function(r, keep = character(0), tbs = FALSE) {
+  .frame <- function(r, model, keep = character(0), tbs = FALSE) {
     .df <- data.frame(id = factor(r$id, levels = seq_len(.nsub)))
     if (isTRUE(.doDose > 0L)) {
       .df <- .tablePoolDoseCols(.df, r, .doDose)
@@ -425,8 +489,15 @@
       .df$id <- NULL
     }
     .df <- .residIdDv(.df)
-    if (length(r$sens$x) > 0L || r$sens$ncol > 0L) {
-      attr(.df, "rxSens") <- r$sens
+    .sens <- r$sens
+    .drop <- .residMtimeRows(.df, model)
+    if (!is.null(.drop)) {
+      .df <- .df[!.drop, , drop = FALSE]
+      rownames(.df) <- NULL
+      .sens <- .tablePoolSensRows(.sens, !.drop)
+    }
+    if (length(.sens$x) > 0L || .sens$ncol > 0L) {
+      attr(.df, "rxSens") <- .sens
     }
     .df
   }
@@ -446,8 +517,8 @@
     .pred <- .solve("pred", po, "predOnly", .ppar, lhs = c("rx_pred_", "rx_r_"))
     .done <- TRUE
     return(list(
-      ipred = .residAdjustIpredNames(.frame(.ipred, keep, tbs = TRUE)),
-      pred = .frame(.pred),
+      ipred = .residAdjustIpredNames(.frame(.ipred, po, keep, tbs = TRUE)),
+      pred = .frame(.pred, po, "nlmixrRowNums"),
       etaLst = thetaEtaParameters$eta.lst
     ))
   }
@@ -472,9 +543,9 @@
   .ebe <- .solve("ebe", po, "predOnly", .ipar, lhs = .mvP$lhs, state = .mvP$state, cov = .covP)
   .done <- TRUE
   list(
-    ipred = .residAdjustIpredNames(.frame(.ipred, keep, tbs = TRUE)),
-    pred = .frame(.pred),
+    ipred = .residAdjustIpredNames(.frame(.ipred, inner, keep, tbs = TRUE)),
+    pred = .frame(.pred, inner, "nlmixrRowNums"),
     etaLst = thetaEtaParameters$eta.lst,
-    predOnly = .frame(.ebe, keep)
+    predOnly = .frame(.ebe, po, keep)
   )
 }

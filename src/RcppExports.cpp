@@ -1685,6 +1685,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// tablePoolLevels_
+List tablePoolLevels_(CharacterVector names);
+RcppExport SEXP _nlmixr2est_tablePoolLevels_(SEXP namesSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< CharacterVector >::type names(namesSEXP);
+    rcpp_result_gen = Rcpp::wrap(tablePoolLevels_(names));
+    return rcpp_result_gen;
+END_RCPP
+}
 // tablePoolHasRxWalk_
 bool tablePoolHasRxWalk_();
 RcppExport SEXP _nlmixr2est_tablePoolHasRxWalk_() {
