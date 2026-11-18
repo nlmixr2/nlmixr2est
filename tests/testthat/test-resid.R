@@ -671,4 +671,67 @@ nmTest({
     expect_equal(.tablePoolInfo()$pooledN, .i0$pooledN + 1L)
     expect_equal(as.data.frame(.tab3), as.data.frame(.ref), tolerance = 0)
   })
+
+  test_that("addDosing tables solve in the pool and equal the rxSolve() table (#1356)", {
+    skip_if_not(.tablePoolRxWalk(), "this rxode2 has no output-record walk")
+    fit <- .tablePoolFit()
+    for (.sn in c(TRUE, FALSE)) {
+      .tc <- tableControl(addDosing = TRUE, subsetNonmem = .sn)
+      .ref <- .tableOld(fit, table = .tc)
+      .i0 <- .tablePoolInfo()
+      .tab <- suppressMessages(addTable(fit, table = .tc))
+      expect_equal(.tablePoolInfo()$pooledN, .i0$pooledN + 1L)
+      expect_equal(as.data.frame(.tab), as.data.frame(.ref), tolerance = 0)
+      expect_true(any(.tab$EVID != 0))
+    }
+  })
+
+  test_that("without rxode2's record walk an addDosing table takes the rxSolve() route", {
+    fit <- .tablePoolFit()
+    .tc <- tableControl(addDosing = TRUE)
+    .ref <- .tableOld(fit, table = .tc)
+    local_mocked_bindings(.tablePoolRxWalk = function() FALSE)
+    .i0 <- .tablePoolInfo()
+    .tab <- suppressMessages(addTable(fit, table = .tc))
+    .i1 <- .tablePoolInfo()
+    expect_equal(.i1$pooledN, .i0$pooledN)
+    expect_equal(.i1$lastDecline, "rxode2")
+    expect_equal(as.data.frame(.tab), as.data.frame(.ref), tolerance = 0)
+    # a table without dosing rows still pools, through nlmixr2est's own walk
+    .ref2 <- .tableOld(fit)
+    .tab2 <- suppressMessages(addTable(fit))
+    expect_equal(.tablePoolInfo()$pooledN, .i1$pooledN + 1L)
+    expect_equal(as.data.frame(.tab2), as.data.frame(.ref2), tolerance = 0)
+  })
+
+  test_that("an addDosing npde table has the plain table's npde and NA on dosing rows", {
+    fit <- .tablePoolFit()
+    .plain <- rxode2::rxWithSeed(
+      1356,
+      suppressMessages(addTable(fit, table = tableControl(npde = TRUE, nsim = 100)))
+    )
+    .dose <- rxode2::rxWithSeed(
+      1356,
+      suppressMessages(addTable(fit, table = tableControl(npde = TRUE, nsim = 100, addDosing = TRUE)))
+    )
+    # every column as long as the table (merge() once multiplied rows)
+    expect_true(all(vapply(unclass(.dose), length, integer(1)) == nrow(.dose)))
+    .obs <- .dose[.dose$EVID == 0, ]
+    for (.c in c("NPDE", "NPD", "EPRED", "ERES", "PDE", "PD")) {
+      expect_equal(.obs[[.c]], .plain[[.c]], tolerance = 0, label = .c)
+    }
+    expect_true(all(is.na(.dose$NPDE[.dose$EVID != 0])))
+  })
+})
+
+test_that(".residIdDv() adds the ID a single subject's solve lacks, also with dosing rows", {
+  .obs <- .residIdDv(data.frame(time = 1:2, cp = 1:2, DV = 3:4))
+  expect_named(.obs, c("ID", "time", "cp", "dv"))
+  expect_equal(.obs$ID, c(1L, 1L))
+  # addDosing = TRUE starts the frame at evid
+  .dose <- .residIdDv(data.frame(evid = c(1L, 0L), time = 0:1, Dv = c(NA, 2)))
+  expect_named(.dose, c("ID", "evid", "time", "dv"))
+  # several subjects already have one
+  .many <- .residIdDv(data.frame(id = 1:2, time = 0:1))
+  expect_named(.many, c("id", "time"))
 })
