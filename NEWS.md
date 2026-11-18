@@ -282,7 +282,9 @@
   `linCmtSensCarry = "none"` (#1318).  A model is translated only when the
   pairs past the cap have a covariate that varies within a subject in the
   data (or the build would otherwise stop), and a numeric `cmt` in the data
-  keeps naming the same compartment.  The `agqf`, `fagq`, `flaplace` (and
+  keeps naming the same compartment.  Such a fit with `fix()` thetas or zero
+  omegas reports the ODE model as its `$ui`, so its data and refits
+  (`setOfv()`, `addTable()`) agree.  The `agqf`, `fagq`, `flaplace` (and
   their `m`/`i` variants) and `vae` methods now also get the ODE translation
   of a mixed `linCmt()`/ODE model that the rest of the FOCEi family gets.
 - `vaeControl(nonMuTheta = "eta")` and `"fix"` now inject the temporary eta
