@@ -25,6 +25,7 @@ saemControl(
   nsdGq = 1.6,
   optExpression = TRUE,
   literalFix = FALSE,
+  fixedNoEta = c("hold", "converge"),
   adjObf = TRUE,
   sumProd = FALSE,
   addProp = c("combined2", "combined1"),
@@ -259,6 +260,14 @@ saemControl(
 
   boolean, substitute fixed population values as literals and re-adjust
   ui and parameter estimates after optimization; Default is \`TRUE\`.
+
+- fixedNoEta:
+
+  How a \`fix()\`ed theta without an eta is handled when \`literalFix =
+  FALSE\`: \`"hold"\` (default) keeps it at its fixed value for every
+  subject throughout the fit; \`"converge"\` samples it per subject like
+  the other thetas without an eta, so it moves during the fit and only
+  arrives at the fixed value at the end (the earlier behavior).
 
 - adjObf:
 
