@@ -738,8 +738,12 @@ tablePoolRegister_ <- function(inner, predOnly) {
     .Call(`_nlmixr2est_tablePoolRegister_`, inner, predOnly)
 }
 
-tablePoolSolve_ <- function(which, parMat, parIdx, lhsIdx, sensIdx, stateIdx, covIdx, tbs) {
-    .Call(`_nlmixr2est_tablePoolSolve_`, which, parMat, parIdx, lhsIdx, sensIdx, stateIdx, covIdx, tbs)
+tablePoolHasRxWalk_ <- function() {
+    .Call(`_nlmixr2est_tablePoolHasRxWalk_`)
+}
+
+tablePoolSolve_ <- function(which, parMat, parIdx, lhsIdx, sensIdx, stateIdx, covIdx, tbs, doDose, keep) {
+    .Call(`_nlmixr2est_tablePoolSolve_`, which, parMat, parIdx, lhsIdx, sensIdx, stateIdx, covIdx, tbs, doDose, keep)
 }
 
 vaeEncoderFwdBwd <- function(dataIn, lengths, covIn, eps, Wih, Whh, bih, bhh, fcW, fcB, zDim, gZ, gLogSigmaDirect) {
