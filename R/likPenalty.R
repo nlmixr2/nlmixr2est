@@ -108,6 +108,48 @@ nlmixr2LikPenaltyAdd <- function(ui, ..., replace = FALSE) {
   .ui
 }
 
+#' Register a likelihood penalty from an rxode2 user-function expansion
+#'
+#' Called from an `rxUdfUi` method while it expands a model term (for
+#' example a smoothing spline) against the data.  The penalty is attached to
+#' the expanded model, so it is active only while that model is estimated.
+#' Outside of an nlmixr2 data expansion the call does nothing.
+#'
+#' @param spec a [nlmixr2LikPenaltySpec()] with a unique `name`; a later
+#'   registration with the same name replaces it
+#' @return `TRUE` when the penalty was registered, invisibly
+#' @author Matthew L. Fidler
+#' @export
+nlmixr2LikPenaltyUdf <- function(spec) {
+  if (!inherits(spec, "nlmixr2LikPenaltySpec")) {
+    stop("'spec' must be a nlmixr2LikPenaltySpec() object", call. = FALSE)
+  }
+  if (is.na(spec$name)) {
+    stop("a user-function likelihood penalty needs a 'name'", call. = FALSE)
+  }
+  .cur <- nlmixr2global$likPenaltyUdf
+  if (!is.list(.cur)) {
+    return(invisible(FALSE))
+  }
+  .cur[[spec$name]] <- spec
+  nlmixr2global$likPenaltyUdf <- .cur
+  invisible(TRUE)
+}
+
+#' Attach the penalties registered while expanding a model
+#' @param ui expanded ui
+#' @param specs named list of specs from nlmixr2LikPenaltyUdf()
+#' @return ui with the specs attached (same-named ones replaced)
+#' @noRd
+.likPenaltyUdfAttach <- function(ui, specs) {
+  if (length(specs) == 0L) {
+    return(ui)
+  }
+  .old <- .likPenaltyAsList(ui$nlmixr2LikPenalty)
+  .keep <- Filter(function(s) !(s$name %in% names(specs)), .old)
+  do.call(nlmixr2LikPenaltyAdd, c(list(ui), .keep, unname(specs), list(replace = TRUE)))
+}
+
 .likPenaltyAsList <- function(x) {
   if (is.null(x)) {
     return(NULL)

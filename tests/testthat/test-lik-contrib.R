@@ -245,3 +245,64 @@ test_that("nlm objective setup carries the model's likelihood penalty", {
   expect_equal(.v1 - .v0, 5, tolerance = 1e-8)
   expect_equal(.likPenaltyInfo()[["n"]], 0L)
 })
+
+test_that("an rxode2 user function registers its penalty while it expands", {
+  skip_on_cran()
+  ## toy model term: penToy(WT) -> toy.WT * (WT - 70), with a ridge on toy.WT
+  .toy <- function(fun) {
+    .var <- as.character(fun[[2]])
+    if (is.null(rxode2::rxUdfUiData())) {
+      return(list(replace = paste0("penToyD(", .var, ")"), uiUseData = TRUE))
+    }
+    .ini <- rxode2::rxUdfUiIniDf()
+    .th <- .ini[!is.na(.ini$ntheta), , drop = FALSE]
+    .new <- .th[1, ]
+    .new$name <- paste0("toy.", .var)
+    .new$est <- 0
+    .new$lower <- -Inf
+    .new$upper <- Inf
+    .new$fix <- FALSE
+    .new$label <- NA_character_
+    .new$ntheta <- max(.th$ntheta) + 1L
+    nlmixr2LikPenaltyUdf(nlmixr2LikPenaltySpec(
+      "thetaL2",
+      thetas = .new$name,
+      par = 1e4,
+      name = paste0("penToy(", .var, ")")
+    ))
+    list(
+      replace = paste0(.new$name, "*(", .var, " - 70)"),
+      iniDf = rbind(.th, .new, .ini[is.na(.ini$ntheta), , drop = FALSE])
+    )
+  }
+  attr(.toy, "nargs") <- 1L
+  .rx <- asNamespace("rxode2")
+  registerS3method("rxUdfUi", "penToy", .toy, envir = .rx)
+  registerS3method("rxUdfUi", "penToyD", .toy, envir = .rx)
+  .tbl <- get(".__S3MethodsTable__.", envir = .rx)
+  on.exit(rm(list = c("rxUdfUi.penToy", "rxUdfUi.penToyD"), envir = .tbl), add = TRUE)
+
+  ## outside an nlmixr2 data expansion the registration is a no-op
+  expect_false(nlmixr2LikPenaltyUdf(nlmixr2LikPenaltySpec("thetaL2", name = "x")))
+
+  one.cmt <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + penToy(WT) + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .f <- .nlmixr(one.cmt, theo_sd, est = "focei", control = foceiControl(print = 0L, calcTables = FALSE))
+  expect_true("toy.WT" %in% names(fixef(.f)))
+  expect_equal(.f$likPenalty$name, "penToy(WT)")
+  ## a 1e4 ridge pins the effect at ~0
+  expect_lt(abs(fixef(.f)[["toy.WT"]]), 0.01)
+  expect_equal(vapply(.f$ui$nlmixr2LikPenalty, `[[`, character(1), "name"), "penToy(WT)")
+  expect_equal(.likPenaltyInfo()[["n"]], 0L)
+})
