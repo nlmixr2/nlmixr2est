@@ -14,6 +14,10 @@
 
 ## New features
 
+- A fit whose IWRES sd shrinkage is below -5% now notes it in `$runInfo`
+  ("IWRES shrinkage is strongly negative; check the residual model"); the
+  raw value in `$shrink` is unchanged (#1376).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the
