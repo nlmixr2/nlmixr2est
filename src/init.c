@@ -34,6 +34,7 @@ extern SEXP _nlmixr2est_llik_neg_binomial(SEXP, SEXP);
 
 // FOCEi
 extern SEXP _nlmixr2est_nlmixr2Parameters(SEXP, SEXP);
+extern SEXP _nlmixr2est_iwresAutocor_(SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeEncoderFwdBwd(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeInnerSetup_(SEXP);
 extern SEXP _nlmixr2est_vaeInnerUpdatePar_(SEXP, SEXP);
@@ -329,6 +330,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"neldermead_wrap",      (DL_FUNC) &neldermead_wrap,      11},
   /* {"n1qn1_wrap",           (DL_FUNC) &n1qn1_wrap,           13}, */
   {"_nlmixr2est_nlmixr2Parameters", (DL_FUNC) &_nlmixr2est_nlmixr2Parameters, 2},
+  {"_nlmixr2est_iwresAutocor_", (DL_FUNC) &_nlmixr2est_iwresAutocor_, 3},
   // FOCEi
   {"_nlmixr2est_foceiInnerLp", (DL_FUNC) &_nlmixr2est_foceiInnerLp, 2},
   {"_nlmixr2est_foceiSubjectRFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectRFR_, 23},

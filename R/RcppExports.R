@@ -722,6 +722,10 @@ nlmixr2Parameters <- function(theta, eta) {
     .Call(`_nlmixr2est_nlmixr2Parameters`, theta, eta)
 }
 
+iwresAutocor_ <- function(iwres, id, grp) {
+    .Call(`_nlmixr2est_iwresAutocor_`, iwres, id, grp)
+}
+
 tablePoolFree_ <- function() {
     .Call(`_nlmixr2est_tablePoolFree_`)
 }

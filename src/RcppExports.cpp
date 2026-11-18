@@ -1651,6 +1651,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// iwresAutocor_
+List iwresAutocor_(NumericVector iwres, IntegerVector id, IntegerVector grp);
+RcppExport SEXP _nlmixr2est_iwresAutocor_(SEXP iwresSEXP, SEXP idSEXP, SEXP grpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type iwres(iwresSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type id(idSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type grp(grpSEXP);
+    rcpp_result_gen = Rcpp::wrap(iwresAutocor_(iwres, id, grp));
+    return rcpp_result_gen;
+END_RCPP
+}
 // tablePoolFree_
 RObject tablePoolFree_();
 RcppExport SEXP _nlmixr2est_tablePoolFree_() {
