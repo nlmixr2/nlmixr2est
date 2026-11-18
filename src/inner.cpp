@@ -24115,6 +24115,40 @@ List vaeElboStepCpp_(List params, List prep, RObject zPopR, RObject omegaR,
 // term and its eta-gradient, and the encoder fwd/bwd + KL around them -- is here.
 // The solve itself is passed in as an R callback (`solveFn`) invoked per attempt.
 
+// External likelihood contributions (cycled in series); zero overhead when
+// none registered.  pxz is the per-subject NEGATIVE log-likelihood and
+// gEta = d(pxz)/d(eta), so the contributor LL adds -llik to pxz and the
+// contributor d(LL)/d(eta) adds -dLL/deta to gEta.  rf = -dLL/df, rR = -dLL/dr
+// (this path assumes the uncensored Gaussian p(x|z), matching vaeDecoderPxz).
+static void vaeDecoderAddContrib(const arma::vec& f, const arma::vec& R, const arma::mat& aMat,
+                                 const arma::vec& y, const arma::vec& rf, const arma::vec& rR,
+                                 double& pxz, arma::vec& gEta, int id, const double* etaPtr) {
+  if (_nlmixrNContrib <= 0 || id < 0) return;
+  const int no = (int)f.n_elem, neta = (int)aMat.n_cols;
+  std::vector<double> cDeta(neta > 0 ? neta : 1, 0.0), cDfdeta(neta > 0 ? neta : 1, 0.0);
+  nlmixrLikContribBeginSubj(id, neta, no, etaPtr);
+  for (int o = 0; o < no; ++o) {
+    for (int k = 0; k < neta; ++k) cDfdeta[k] = aMat(o, k);
+    double llAdd = nlmixrLikContribObs1(id, o, neta, f[o], y[o], R[o],
+                                        -rf[o], -rR[o],
+                                        neta > 0 ? cDfdeta.data() : NULL,
+                                        cDeta.data());
+    pxz -= llAdd;
+    for (int k = 0; k < neta; ++k) gEta[k] -= cDeta[k];
+  }
+  nlmixrLikContribEndSubj(id, neta, no, etaPtr);
+}
+
+// Subject likelihood penalty: its LL and d(LL)/d(eta) enter pxz/gEta negated.
+static void vaeDecoderAddPen(int no, int neta, double& pxz, arma::vec& gEta, int id,
+                             const double* etaPtr) {
+  if (nlmixrPenNSubject() == 0 || id < 0) return;
+  std::vector<double> pDeta(neta > 0 ? neta : 1, 0.0);
+  pxz -= nlmixrPenSubjAll(id, neta, no, etaPtr, (int)op_focei.ntheta,
+                          op_focei.fullTheta, neta > 0 ? pDeta.data() : NULL);
+  for (int k = 0; k < neta; ++k) gEta[k] -= pDeta[k];
+}
+
 // p(x|z) and d(pxz)/deta for one subject from f, R, df/deta (aMat), dR/deta (aRMat).
 // `id` (>= 0) and `etaPtr` thread the calling subject's context to the external
 // likelihood-contribution registry -- the SAME registry likInner0 cycles -- so
@@ -24140,31 +24174,8 @@ static void vaeDecoderPxzCore(const arma::vec& f, const arma::vec& R,
     for (int o = 0; o < no; ++o) s += rf[o] * aMat(o, k) + rR[o] * aRMat(o, k);
     gEta[k] = s;
   }
-  // external likelihood contributions (cycled in series); zero overhead when
-  // none registered.  pxz is the per-subject NEGATIVE log-likelihood and
-  // gEta = d(pxz)/d(eta), so the contributor LL adds -llik to pxz and the
-  // contributor d(LL)/d(eta) adds -dLL/deta to gEta.  rf = -dLL/df, rR = -dLL/dr
-  // (this path assumes the uncensored Gaussian p(x|z), matching vaeDecoderPxz).
-  if (_nlmixrNContrib > 0 && id >= 0) {
-    std::vector<double> cDeta(neta > 0 ? neta : 1, 0.0), cDfdeta(neta > 0 ? neta : 1, 0.0);
-    nlmixrLikContribBeginSubj(id, neta, no, etaPtr);
-    for (int o = 0; o < no; ++o) {
-      for (int k = 0; k < neta; ++k) cDfdeta[k] = aMat(o, k);
-      double llAdd = nlmixrLikContribObs1(id, o, neta, f[o], y[o], R[o],
-                                          -rf[o], -rR[o],
-                                          neta > 0 ? cDfdeta.data() : NULL,
-                                          cDeta.data());
-      pxz -= llAdd;
-      for (int k = 0; k < neta; ++k) gEta[k] -= cDeta[k];
-    }
-    nlmixrLikContribEndSubj(id, neta, no, etaPtr);
-  }
-  if (nlmixrPenNSubject() > 0 && id >= 0) {
-    std::vector<double> pDeta(neta > 0 ? neta : 1, 0.0);
-    pxz -= nlmixrPenSubjAll(id, neta, no, etaPtr, (int)op_focei.ntheta,
-                            op_focei.fullTheta, neta > 0 ? pDeta.data() : NULL);
-    for (int k = 0; k < neta; ++k) gEta[k] -= pDeta[k];
-  }
+  vaeDecoderAddContrib(f, R, aMat, y, rf, rR, pxz, gEta, id, etaPtr);
+  vaeDecoderAddPen(no, neta, pxz, gEta, id, etaPtr);
 }
 
 struct VaeDecSolve { bool ok; arma::vec f, R; arma::mat a, aR; };

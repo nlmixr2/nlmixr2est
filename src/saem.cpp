@@ -5479,14 +5479,8 @@ private:
   // block minimizes b'Ab - 2b'r + P(b) by damped Newton (FD Hessian of P).
   void penMstep(vec &b, const mat &A, const vec &r, const uvec &fixedIx, const uvec &ilam) {
     if (_penMap.empty() || nlmixrPenNPop() == 0 || b.n_elem == 0) return;
-    std::vector<arma::uword> fr;
-    for (arma::uword j = 0; j < b.n_elem; ++j) {
-      if (any(fixedIx == j)) continue;
-      if (_penMap[(size_t)ilam(j)] < 0) continue;
-      fr.push_back(j);
-    }
-    if (fr.empty()) return;
-    uvec f(fr);
+    uvec f = penFreeIx(b.n_elem, fixedIx, ilam);
+    if (f.n_elem == 0) return;
     auto obj = [&](const vec &bb) {
       return as_scalar(bb.t() * A * bb) - 2.0 * dot(bb, r) + penPopAtBlock(bb, ilam, NULL);
     };
@@ -5496,37 +5490,60 @@ private:
       penPopAtBlock(b, ilam, &gp);
       vec g = 2.0 * (A * b - r) + gp;
       vec gf = g(f);
-      mat H = 2.0 * A(f, f);
-      for (arma::uword a = 0; a < f.n_elem; ++a) {
-        double h = 1e-5 * std::max(1.0, std::fabs(b(f(a))));
-        vec bp = b, bm = b, gpp, gpm;
-        bp(f(a)) += h; bm(f(a)) -= h;
-        penPopAtBlock(bp, ilam, &gpp);
-        penPopAtBlock(bm, ilam, &gpm);
-        vec col = (gpp - gpm) / (2.0 * h);
-        for (arma::uword c = 0; c < f.n_elem; ++c) H(c, a) += col(f(c));
-      }
-      H = 0.5 * (H + H.t());
+      mat H = penBlockHessian(b, A, f, ilam);
       vec step;
       if (!solve(step, H, gf) || !step.is_finite()) step = gf / std::max(1.0, norm(gf));
-      double t = 1.0;
-      bool moved = false;
-      for (int ls = 0; ls < 30; ++ls) {
-        vec bn = b;
-        bn(f) -= t * step;
-        double fn = obj(bn);
-        if (R_FINITE(fn) && fn <= fcur) {
-          b = bn; fcur = fn; moved = true;
-          break;
-        }
-        t *= 0.5;
-      }
-      if (!moved || norm(t * step) < 1e-10 * (1.0 + norm(b(f)))) break;
+      double t = penLineSearch(b, f, step, fcur, obj);
+      if (t <= 0.0 || norm(t * step) < 1e-10 * (1.0 + norm(b(f)))) break;
     }
     for (arma::uword j = 0; j < b.n_elem; ++j) {
       int tt = _penMap[(size_t)ilam(j)];
       if (tt >= 0) _penTheta[(size_t)tt] = b(j);
     }
+  }
+
+  // block entries that are estimated and mapped to a theta
+  uvec penFreeIx(arma::uword n, const uvec &fixedIx, const uvec &ilam) {
+    std::vector<arma::uword> fr;
+    for (arma::uword j = 0; j < n; ++j) {
+      if (any(fixedIx == j)) continue;
+      if (_penMap[(size_t)ilam(j)] < 0) continue;
+      fr.push_back(j);
+    }
+    return uvec(fr);
+  }
+
+  // Hessian over the free entries f: 2A plus the FD Hessian of the penalty
+  mat penBlockHessian(const vec &b, const mat &A, const uvec &f, const uvec &ilam) {
+    mat H = 2.0 * A(f, f);
+    for (arma::uword a = 0; a < f.n_elem; ++a) {
+      double h = 1e-5 * std::max(1.0, std::fabs(b(f(a))));
+      vec bp = b, bm = b, gpp, gpm;
+      bp(f(a)) += h; bm(f(a)) -= h;
+      penPopAtBlock(bp, ilam, &gpp);
+      penPopAtBlock(bm, ilam, &gpm);
+      vec col = (gpp - gpm) / (2.0 * h);
+      for (arma::uword c = 0; c < f.n_elem; ++c) H(c, a) += col(f(c));
+    }
+    return 0.5 * (H + H.t());
+  }
+
+  // backtracking along -step on the free entries; returns the accepted step
+  // length (0 when no decrease), updating b and fcur
+  template <class Obj>
+  double penLineSearch(vec &b, const uvec &f, const vec &step, double &fcur, Obj obj) {
+    double t = 1.0;
+    for (int ls = 0; ls < 30; ++ls) {
+      vec bn = b;
+      bn(f) -= t * step;
+      double fn = obj(bn);
+      if (R_FINITE(fn) && fn <= fcur) {
+        b = bn; fcur = fn;
+        return t;
+      }
+      t *= 0.5;
+    }
+    return 0.0;
   }
 
   void do_mcmc(const int method,
