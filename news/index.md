@@ -566,6 +566,16 @@
   both routes
   ([\#1356](https://github.com/nlmixr2/nlmixr2est/issues/1356)).
 
+- With an rxode2 that says which solves
+  [`rxSolve()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
+  refuses, tables of fits solved with any ODE method (not only liblsoda,
+  lsoda and dop853) are solved in the pool; a solve
+  [`rxSolve()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
+  would refuse goes to
+  [`rxSolve()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
+  for its own error
+  ([\#1356](https://github.com/nlmixr2/nlmixr2est/issues/1356)).
+
 - `addDosing = TRUE` tables of a single subject no longer stop with
   “subject code 0 of the solved rows has no row in the eta table”: the
   solve has no id column for one subject, and its `ID` was put back only
