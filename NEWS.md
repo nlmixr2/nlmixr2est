@@ -12,6 +12,10 @@
   (#1131).  `est = "nls"` no longer adds three orders on top (`1e-8` at its
   `sigdig = 4`).  Fits of ODE models are slower and their objectives change.
 
+- Fast FOCEi (`est = "foceif"` or `foceiControl(fast = TRUE)`) now defaults to
+  `outerOpt = "trust"`, which uses the analytical outer Hessian.  A fit that
+  falls back to `fast = FALSE` (e.g. `linCmt()`) still uses `bobyqa`.
+
 ## New features
 
 - `outerOpt="trust"` evaluates the outer gradient and Hessian only at trial
@@ -138,8 +142,8 @@
   Hessian now solves its model under its own dose-event sensitivities, so an eta
   in `f()`, `alag()`, `rate()` or `dur()` gets its second-order dose jumps.  Such
   fits run their subject loops serially.
-- Fast FOCEi defaults to gradient-only `nlminb`; ordinary fits retain `bobyqa`.
-  Explicit outer optimizer choices are preserved.
+- Fast FOCE, FOCE+ and AGQ fits default to gradient-only `nlminb`; ordinary
+  fits retain `bobyqa`.  Explicit outer optimizer choices are preserved.
 - Fast fits default `nlminb`'s `rel.tol` to `10^(-sigdig-2)`; at `10^(-sigdig)`
   relative convergence stopped short of the optimum.
 - `nlminb` curvature is opt-in through `outerTrustHessian="analytic"` or `"fd"`;

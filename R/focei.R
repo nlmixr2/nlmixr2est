@@ -5535,7 +5535,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .control <- do.call(type)
   }
   if (!inherits(.control, type)) {
-    .control <- do.call(type, .control)
+    # a defaulted outer optimizer is re-chosen by the target method's control
+    .control <- do.call(type, .foceiDropDefaultOuterOpt(.control))
   }
   if (exists("est", envir = env)) {
     .control$est <- env$est
