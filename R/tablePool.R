@@ -255,8 +255,10 @@
     return("scale")
   }
   .data <- fit$dataSav
-  if (!all(keep %in% names(.data))) {
-    return("keep")
+  # rxode2's walk takes the keep columns from rxode2, which leaves out (and
+  # warns about) one the data lacks, as the rxSolve() route does
+  if (!all(keep %in% names(.data)) && !.tablePoolRxWalk()) {
+    return("rxode2")
   }
   # rxode2 solves a smaller model in the pool through its ODE route, which a
   # linCmt() model does not have (a mixture's EBE model is linCmt() without
@@ -469,7 +471,7 @@
     if (!is.null(r$keep)) {
       # rxode2's keep columns, in rxode2's order; one rxode2 left out (an lhs
       # or state of the pool's model) goes to the rxSolve() route
-      if (!all(keep %in% names(r$keep))) {
+      if (!all(intersect(keep, names(.data)) %in% names(r$keep))) {
         .tablePoolStop("keep")
       }
       .k <- names(r$keep)[names(r$keep) %in% keep]
