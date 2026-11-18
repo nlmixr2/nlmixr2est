@@ -40,9 +40,9 @@
   .nsub <- length(unique(theo_sd$ID))
   f0 <- .fit()
   f1 <- .fit(likPenalty = list(nlmixr2LikPenaltySpec("etaL2", par = c(0, 1), inObjf = TRUE)))
-  expect_equal(f1$objf - f0$objf, -2 * .nsub, tolerance = tol, scale = 1, label = paste(est, "subject"))
+  expect_lt(abs(f1$objf - f0$objf + 2 * .nsub), tol, label = paste(est, "subject"))
   f2 <- .fit(likPenalty = list(nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = c(0, 0, 100), inObjf = TRUE)))
-  expect_equal(f2$objf - f0$objf, 100, tolerance = tol, scale = 1, label = paste(est, "population"))
+  expect_lt(abs(f2$objf - f0$objf - 100), tol, label = paste(est, "population"))
   if (ridge) {
     f3 <- .fit(likPenalty = list(nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = 1000)))
     expect_lt(abs(fixef(f3)[["tka"]]), 0.1, label = paste(est, "ridge"))
