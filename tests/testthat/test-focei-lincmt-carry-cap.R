@@ -209,6 +209,13 @@ test_that("the uis a fit restores are translated with the model", {
   suppressWarnings(.uiApplyOdeLinCmtCarryCap(.ui, "focei", NULL, NULL))
   expect_true(rxode2::.rxLinNcmt(.env$uiUnfix)["numLin"] == 0L)
   expect_null(.env$nlmixrPureInputUi)
+  # both stashes, as with fix() and a zero omega
+  .env$uiUnfix <- .ui
+  .env$nlmixrPureInputUi <- .ui
+  suppressWarnings(.uiApplyOdeLinCmtCarryCap(.ui, "focei", NULL, NULL))
+  expect_true(rxode2::.rxLinNcmt(.env$uiUnfix)["numLin"] == 0L)
+  expect_true(rxode2::.rxLinNcmt(.env$nlmixrPureInputUi)["numLin"] == 0L)
+  expect_true(is.environment(.env$nlmixrPureInputUi))
   # a stash that cannot be translated keeps the whole model linCmt()
   .env$uiUnfix <- .ui
   local_mocked_bindings(.linCmtCarryOdeRestoreUis = function() NULL)
