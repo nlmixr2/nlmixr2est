@@ -325,6 +325,23 @@ nlmixr2LikPenaltyUdf <- function(spec) {
   .r
 }
 
+#' Apply per-fit spec names to the C penalty table names
+#' @param nm names from the C penalty table
+#' @param specs active per-fit specs
+#' @return names with the specs' names applied
+#' @noRd
+.likPenaltyFitNames <- function(nm, specs) {
+  # per-fit specs follow the session-global penalties in the C table
+  .nSpec <- length(specs)
+  if (.nSpec == 0L || .nSpec > length(nm)) {
+    return(nm)
+  }
+  .nm2 <- vapply(specs, function(s) s$name, character(1))
+  .w <- which(!is.na(.nm2))
+  nm[length(nm) - .nSpec + .w] <- .nm2[.w]
+  nm
+}
+
 #' Evaluate the active penalties at a fit's estimates
 #' @param fit nlmixr2 fit
 #' @return data frame with one row per penalty
@@ -340,11 +357,15 @@ nlmixr2LikPenaltyUdf <- function(spec) {
     .thetaV[.w] <- .theta[.w]
   }
   .eta <- fit$eta
-  .etaNames <- .iniDf$name[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2]
+  .etaDf <- .iniDf[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2, ]
+  .etaNames <- .etaDf$name[order(.etaDf$neta1)]
   .etaM <- matrix(numeric(0), 0, 0)
   .nobs <- integer(0)
   if (is.data.frame(.eta) && nrow(.eta) > 0) {
-    .etaM <- as.matrix(.eta[, intersect(.etaNames, names(.eta)), drop = FALSE])
+    # every ini() eta in neta1 order; an eta missing from fit$eta is 0
+    .etaM <- matrix(0, nrow(.eta), length(.etaNames))
+    .w <- which(.etaNames %in% names(.eta))
+    .etaM[, .w] <- as.matrix(.eta[, .etaNames[.w], drop = FALSE])
     .ids <- .eta$ID
   } else {
     .ids <- unique(fit$ID)
@@ -360,11 +381,7 @@ nlmixr2LikPenaltyUdf <- function(spec) {
   }
   .r <- .Call(`_nlmixr2est_likPenaltyEval`, as.double(.thetaV), .etaM, .om, .nobs)
   .specs <- nlmixr2global$likPenaltySpecs
-  .nm <- .r$name
-  if (length(.specs) == length(.nm)) {
-    .nm2 <- vapply(.specs, function(s) s$name, character(1))
-    .nm[!is.na(.nm2)] <- .nm2[!is.na(.nm2)]
-  }
+  .nm <- .likPenaltyFitNames(.r$name, .specs)
   data.frame(
     name = .nm,
     inObjf = .r$inObjf,

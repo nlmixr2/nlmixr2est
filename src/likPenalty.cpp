@@ -300,6 +300,7 @@ extern "C" SEXP _nlmixr2est_likPenaltyEval(SEXP thetaSxp, SEXP etaSxp, SEXP omeg
   int nsub = Rf_length(nobsSxp);
   int neta = 0;
   if (Rf_isMatrix(etaSxp)) neta = Rf_ncols(etaSxp);
+  if (neta > 0 && Rf_nrows(etaSxp) != nsub) Rf_error("eta rows do not match subjects");
   int nom = Rf_isMatrix(omegaSxp) ? Rf_nrows(omegaSxp) : 0;
   const double *omega = nom > 0 ? REAL(omegaSxp) : NULL;
   int n = (int)_penTable.size();

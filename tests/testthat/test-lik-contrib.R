@@ -280,7 +280,10 @@ test_that("a conditional inner Hessian refuses a subject penalty", {
     })
     model({
       ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
-      linCmt() ~ add(add.sd)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
     })
   }
   expect_error(
@@ -288,7 +291,7 @@ test_that("a conditional inner Hessian refuses a subject penalty", {
       one,
       theo_sd,
       "focei",
-      control = foceiControl(print = 0L, detHessian = "conditional"),
+      control = foceiControl(print = 0L, fast = TRUE, detHessian = "conditional"),
       likPenalty = list(nlmixr2LikPenaltySpec("etaL2", par = c(1, 0)))
     ),
     "likelihood contributions"
@@ -355,4 +358,17 @@ test_that("an rxode2 user function registers its penalty while it expands", {
   expect_lt(abs(fixef(.f)[["toy.WT"]]), 0.01)
   expect_equal(vapply(.f$ui$nlmixr2LikPenalty, `[[`, character(1), "name"), "penToy(WT)")
   expect_equal(.likPenaltyInfo()[["n"]], 0L)
+})
+
+test_that("per-fit penalty names follow the session-global penalties", {
+  .specs <- list(
+    nlmixr2LikPenaltySpec("thetaL2", name = "ridge"),
+    nlmixr2LikPenaltySpec(function() NULL)
+  )
+  expect_equal(
+    .likPenaltyFitNames(c("global", "thetaL2", "cfun"), .specs),
+    c("global", "ridge", "cfun")
+  )
+  expect_equal(.likPenaltyFitNames(c("ridge0", "x"), .specs), c("ridge", "x"))
+  expect_equal(.likPenaltyFitNames("g", list()), "g")
 })
