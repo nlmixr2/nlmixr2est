@@ -204,8 +204,16 @@
   df
 }
 
-# ODE methods the pool solves; any other method takes the rxSolve() route
+# ODE methods the pool solves when rxode2 cannot say which solves rxSolve()
+# refuses (rxDfSolveRefused(), slot 113); with it, every method pools
 .tablePoolMethods <- c("liblsoda", "lsoda", "dop853")
+
+#' Whether the pool may solve with ODE method `method`
+#'
+#' @noRd
+.tablePoolMethodOk <- function(method) {
+  isTRUE(.rxode2Optional()[["dfSolveRefused"]]) || method %in% .tablePoolMethods
+}
 
 .tablePoolEnv <- new.env(parent = emptyenv())
 .tablePoolEnv$declineN <- 0L
@@ -240,7 +248,7 @@
   if (!isFALSE(addDosing) && !.tablePoolRxWalk()) {
     return("rxode2")
   }
-  if (!(.residOdeMethodName(fit$methodOde) %in% .tablePoolMethods)) {
+  if (!.tablePoolMethodOk(.residOdeMethodName(fit$methodOde))) {
     return("method")
   }
   if (!is.null(fit$foceiControl$rxControl$scale)) {
@@ -388,7 +396,7 @@
     if (identical(.st$key, .key)) {
       return(invisible())
     }
-    if (!(method %in% .tablePoolMethods)) {
+    if (!.tablePoolMethodOk(method)) {
       .tablePoolStop("method")
     }
     if (!is.null(.st$key)) {
@@ -430,6 +438,11 @@
         .r <- .tablePoolSolve(model, slot, pars, ..., doDose = .doDose, keep = .rxWalk)
         if (!isTRUE(.r$rowsOk)) {
           .tablePoolStop("rows")
+        }
+        # rxSolve() would stop here rather than return NA rows: let it, with
+        # its own error
+        if (isTRUE(.r$refused > 0L)) {
+          .tablePoolStop("refused")
         }
         .r
       },

@@ -241,7 +241,8 @@ nmTest({
       .poolExpect(.fit)
       expect_gt(.tablePoolInfo()$rebuildN, .i0$rebuildN)
     })
-    # a fit solved with an ODE method outside the pool's takes the rxSolve() route
+    # a cvode fit pools when rxode2 says which solves rxSolve() refuses;
+    # otherwise it takes the rxSolve() route
     skip_if_not("cvode" %in% names(rxode2::odeMethodToInt(NULL)))
     .fit2 <- .poolFit(
       .poolOne(),
@@ -253,8 +254,26 @@ nmTest({
         rxControl = rxode2::rxControl(method = "cvode")
       )
     )
-    .poolExpect(.fit2, pooled = FALSE)
-    expect_equal(.tablePoolInfo()$lastDecline, "method")
+    .refused <- isTRUE(.rxode2Optional()[["dfSolveRefused"]])
+    .poolExpect(.fit2, pooled = .refused)
+    if (!.refused) {
+      expect_equal(.tablePoolInfo()$lastDecline, "method")
+    }
+    # a solve rxSolve() refuses (method = "vv" on states that are not
+    # coordinate-momentum pairs) goes to it, for its own error
+    skip_if_not(.refused)
+    .fit3 <- .poolFit(
+      .poolOne(),
+      .theo,
+      control = foceiControl(
+        print = 0,
+        maxOuterIterations = 0,
+        calcTables = FALSE,
+        rxControl = rxode2::rxControl(method = "vv")
+      )
+    )
+    expect_error(suppressMessages(addTable(.fit3)), "Velocity Verlet")
+    expect_equal(.tablePoolInfo()$lastDecline, "refused")
   })
 
   # infusions, an addl bolus and a modeled duration, for the dosing rows
