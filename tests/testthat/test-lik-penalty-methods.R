@@ -94,3 +94,26 @@ test_that("methods without likelihood penalty support refuse them", {
   ## simulation ignores them
   expect_error(.nlmixr(.likPenEta, theo_sd, est = "rxSolve", likPenalty = .pen), NA)
 })
+
+test_that("saem penalizes a theta without a random effect", {
+  skip_on_cran()
+  .m <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.cl ~ 0.3; eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .f <- .nlmixr(
+    .m,
+    theo_sd,
+    est = "saem",
+    control = saemControl(print = 0L),
+    likPenalty = list(nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = 1000))
+  )
+  expect_lt(abs(fixef(.f)[["tka"]]), 0.1)
+})

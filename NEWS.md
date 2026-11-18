@@ -23,6 +23,10 @@
   whether it is counted in the reported objective, and `fit$likPenalty` reports
   its value.  See `vignette("likelihood-penalties")`.
 
+- `nlmixr2LikPenaltyUdf()` lets an rxode2 model function (an `rxUdfUi`
+  method) register a likelihood penalty while it expands against the data,
+  so a model term like `nlmixr2spline::spline()` brings its own penalty.
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the
@@ -129,6 +133,10 @@
 - `nlmixr2()` on an rxode2 ui or a fit now passes its extra arguments on to
   estimation interceptors in `env$.nlmixr2Dots`; only a model function did
   before.
+
+- Model functions that need the data (`uiUseData = TRUE`, e.g. rxode2's
+  `linMod(..., data = TRUE)`) are expanded against the estimation data again;
+  `nlmixr2()` handed the unexpanded model to the estimator.
 
 - The `linCmt()` FOCEi sensitivity carry matches finite differences again for
   an `alag()` dose with a time-varying covariate.  rxode2 now adds a hidden

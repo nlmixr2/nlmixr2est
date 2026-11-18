@@ -816,7 +816,24 @@ public:
       v = phi0NormalSSR(fMat.col(0));
     }
     if (!std::isfinite(v)) return 1e300;
-    return v;
+    return v + penPhi0(p);
+  }
+
+  // Population likelihood penalty (-LL scale, summed over the chains like the
+  // objective) with the intercept-only phi0 thetas at candidate values p.
+  double penPhi0(const double *p) {
+    if (_penMap.empty() || nlmixrPenNPop() == 0 || nphi0 == 0) return 0.0;
+    std::vector<double> th(_penTheta);
+    const arma::uword nr = MCOV0.n_rows;
+    for (int c = 0; c < nphi0; ++c) {
+      for (arma::uword k = 0; k < jcov0.n_elem; ++k) {
+        if (jcov0(k) != (arma::uword)c * nr) continue;
+        int t = _penMap[(size_t)ilambda0(k)];
+        if (t >= 0) th[(size_t)t] = p[c];
+      }
+    }
+    double pen = nlmixrPenPopAll((int)th.size(), th.data(), 0, NULL, N, NULL, NULL);
+    return 0.5 * (double)nmc * pen;
   }
 
   // Side-effect-free observation -log-likelihood objective for the normal-model
@@ -4914,6 +4931,7 @@ public:
       }
       Plambda(ilambda1) = Plambda1;
       Plambda(ilambda0) = Plambda0;
+      if (!_penMap.empty()) penSyncTheta();
       if (nMix > 1 && mixProbRegress) {
         // Fixed membership: the mixing proportions are just the (constant) hard
         // assignment fractions; no soft-EM SA update.

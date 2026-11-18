@@ -15,9 +15,15 @@ registration with the same name replaces it}
 }
 \description{
 Called from an `rxUdfUi` method while it expands a model term (for
-example a smoothing spline) against the data.  The penalty is attached to
-the expanded model, so it is active only while that model is estimated.
-Outside of an nlmixr2 data expansion the call does nothing.
+example a smoothing spline) against the data.  The method must return
+`uiUseData = TRUE` from its data-free stage, so `nlmixr2()` re-parses the
+model with the estimation data (`rxode2::rxUdfUiData()`); the specs
+registered during that re-parse are attached to the expanded model with
+[nlmixr2LikPenaltyAdd()], so the penalty is active only while that model
+is estimated.  Outside of an nlmixr2 data expansion (for example in
+`rxSolve()`) the call does nothing.  See the "A model term that brings its
+own penalty" section of `vignette("likelihood-penalties")` and the
+'nlmixr2spline' package for a complete example.
 }
 \author{
 Matthew L. Fidler
