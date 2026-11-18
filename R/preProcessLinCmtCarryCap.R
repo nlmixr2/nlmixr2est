@@ -122,6 +122,31 @@
   data
 }
 
+#' Number a fit's `$origData` back for its restored `linCmt()` ui
+#'
+#' With `fix()` or a zero omega the fit's ui goes back to the user's
+#' `linCmt()` model, so `$origData` must use that model's `cmt` numbering
+#' again, or a refit from the fit (`setOfv()`) renumbers it twice.
+#' @param ret the fit
+#' @param env estimation environment holding the per-call restore info
+#' @param ui the ui the fit was estimated with
+#' @return nothing, called for side effects
+#' @noRd
+#' @author Matthew L. Fidler
+.linCmtCarryRestoreCmt <- function(ret, env, ui) {
+  .remap <- if (is.environment(env) && exists("linCmtCarryCmtRemap", envir = env, inherits = FALSE)) {
+    env$linCmtCarryCmtRemap
+  } else {
+    nlmixr2global$nlmixr2EstEnv$linCmtCarryCmtRemap
+  }
+  .final <- ret$env$ui
+  if (!isTRUE(.remap) || identical(.final, ui) || !is.data.frame(ret$env$origData)) {
+    return(invisible())
+  }
+  assign("origData", .linCmtCarryRemapCmt(ret$env$origData, ui, .final), envir = ret$env)
+  invisible()
+}
+
 #' Solve a `linCmt()` model past the carry cap as ODEs
 #'
 #' The eta-gradient carry has `.rxFoceiLinCmtCarryMaxPairs()` columns.  The
@@ -138,6 +163,7 @@
 #' @export
 #' @author Matthew L. Fidler
 .uiApplyOdeLinCmtCarryCap <- function(ui, est, data, control) {
+  nlmixr2global$nlmixr2EstEnv$linCmtCarryCmtRemap <- NULL
   if (!(est %in% .linCmtFoceiEstFamily)) {
     return(NULL)
   }
@@ -167,6 +193,8 @@
     call. = FALSE
   )
   if (is.data.frame(data)) {
+    # .nlmixrEstUpdatesOrigModel() numbers $origData back with a restored ui
+    nlmixr2global$nlmixr2EstEnv$linCmtCarryCmtRemap <- TRUE
     list(ui = .ui, data = .linCmtCarryRemapCmt(data, ui, .ui))
   } else {
     list(ui = .ui)

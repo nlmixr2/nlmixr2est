@@ -194,3 +194,48 @@ test_that("pairs dropped past the cap warn that their gradient is approximate", 
   )
   expect_identical(.kept$etaName, c("eta.cl", paste0("rx.iov.cl.", 1:6)))
 })
+
+test_that("a restored linCmt() ui gets its cmt numbering back in $origData", {
+  .f <- function() {
+    ini({
+      tka <- 0
+      tcl <- 1
+      tv <- 3
+      tq <- 1
+      tvp <- 3
+      tef <- 1
+      add.sd <- 1
+      ef.sd <- 1
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl)
+      v <- exp(tv)
+      q <- exp(tq)
+      vp <- exp(tvp)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+      ef <- tef
+      ef ~ add(ef.sd)
+    })
+  }
+  .ui <- suppressMessages(rxode2::rxode2(.f))
+  .ode <- suppressMessages(rxode2::linToOde(.ui))
+  .d <- data.frame(id = 1, time = 0:3, CMT = c(1, 2, 3, 4))
+  .ret <- list(env = new.env())
+  .ret$env$ui <- .ui
+  .ret$env$origData <- .linCmtCarryRemapCmt(.d, .ui, .ode)
+  # not renumbered by the hook: left alone
+  .env <- new.env()
+  .env$linCmtCarryCmtRemap <- NULL
+  .linCmtCarryRestoreCmt(.ret, .env, .ode)
+  expect_identical(.ret$env$origData$CMT, c(1, 2, 4, 5))
+  .env$linCmtCarryCmtRemap <- TRUE
+  .linCmtCarryRestoreCmt(.ret, .env, .ode)
+  expect_identical(.ret$env$origData$CMT, .d$CMT)
+  # the fit kept the ODE ui: its data keeps the ODE numbering
+  .ret$env$ui <- .ode
+  .ret$env$origData <- .linCmtCarryRemapCmt(.d, .ui, .ode)
+  .linCmtCarryRestoreCmt(.ret, .env, .ode)
+  expect_identical(.ret$env$origData$CMT, c(1, 2, 4, 5))
+})

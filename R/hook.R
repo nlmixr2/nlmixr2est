@@ -241,7 +241,14 @@ preProcessHooks <- function(name = NULL) {
 #' The estimation state the pre-processing hooks record in
 #' `nlmixr2global$nlmixr2EstEnv` (see `.nlmixr2globalReset()`)
 #' @noRd
-.nlmixr2EstEnvFields <- c("uiUnfix", "nlmixrPureInputUi", "vaeNonMuEtas", "saemPseudoTransforms", "zeroThetaScale")
+.nlmixr2EstEnvFields <- c(
+  "uiUnfix",
+  "nlmixrPureInputUi",
+  "vaeNonMuEtas",
+  "saemPseudoTransforms",
+  "zeroThetaScale",
+  "linCmtCarryCmtRemap"
+)
 
 # The nlmixr2Est() methods that only solve a model, those that set
 # attr(, "random") <- TRUE; predict(level = "individual") solves through
@@ -362,5 +369,7 @@ preProcessHooks <- function(name = NULL) {
   env$vaeNonMuEtas <- nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas
   # Per-call copy of saem's temporary-eta transforms (.preProcessSaemModeledResid)
   env$saemPseudoTransforms <- nlmixr2global$nlmixr2EstEnv$saemPseudoTransforms
+  # Per-call record that .uiApplyOdeLinCmtCarryCap() renumbered the data's cmt
+  env$linCmtCarryCmtRemap <- nlmixr2global$nlmixr2EstEnv$linCmtCarryCmtRemap
   .ret[[1]]
 }

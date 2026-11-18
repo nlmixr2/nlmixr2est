@@ -312,6 +312,60 @@ test_that("the objective past the carry cap does not depend on eta order (#1318)
   expect_equal(.fa$objf, .carryIovFit(rxode2::linToOde(.a), .d, maxInner = 0L)$objf, tolerance = 1e-8)
 })
 
+test_that("a fix()ed fit solved as ODEs keeps its cmt numbering for setOfv() (#1318)", {
+  skip_on_cran()
+  skip_if_not(.rxFoceiLinCmtCarryCapable())
+  local_mocked_bindings(
+    .rxFoceiLinCmtCarryMaxPairs = .carryCap8,
+    .rxFoceiLinCmtCarryColumnsNeeded = function(ui, cap, data = NULL) 10L
+  )
+  .f <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      tq <- fix(1)
+      tvp <- 4
+      add.sd <- 0.7
+      tef <- 1
+      ef.sd <- 1
+      eta.cl ~ 0.3
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      q <- exp(tq)
+      vp <- exp(tvp)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+      ef <- tef
+      ef ~ add(ef.sd)
+    })
+  }
+  .d <- nlmixr2data::theo_sd
+  .d <- .d[.d$ID <= 4, ]
+  .d$CMT <- ifelse(.d$EVID == 0, 3, 1)
+  .ef <- .d[.d$EVID == 0, ]
+  .ef$CMT <- 4
+  .ef$DV <- 1 + 0.1 * sin(.ef$TIME)
+  .d <- rbind(.d, .ef)
+  .d <- .d[order(.d$ID, .d$TIME, -.d$EVID), ]
+  .fit <- suppressMessages(nlmixr2(
+    .f,
+    .d,
+    "focei",
+    control = foceiControl(maxOuterIterations = 0L, print = 0L, covMethod = "")
+  ))
+  expect_true(any(.fit$runInfo == "linCmt() solved as ODEs: etas need 10 of 8 carry columns"))
+  # the restored linCmt() ui reads the data as written
+  expect_true(rxode2::.rxLinNcmt(.fit$ui)["numLin"] > 0L)
+  expect_identical(sort(unique(.fit$origData$CMT)), c(1, 3, 4))
+  # additive error: FOCE is FOCEi, unless a refit misreads the endpoints
+  suppressMessages(setOfv(.fit, "foce"))
+  expect_equal(.fit$objDf["FOCE", "OBJF"], .fit$objDf["FOCEi", "OBJF"], tolerance = 1e-6)
+})
+
 test_that("the carry-cap warning names the first eta and fits a runInfo line", {
   .one <- .rxFoceiLinCmtCarryCapMsg("rx.iov.cl.7", 8L)
   expect_identical(.one, "rx.iov.cl.7 has an approximate gradient (8 carry columns)")
