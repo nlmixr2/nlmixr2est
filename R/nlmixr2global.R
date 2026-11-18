@@ -31,7 +31,6 @@ nlmixr2global <- new.env(parent = emptyenv())
   nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas <- character(0)
   nlmixr2global$nlmixr2EstEnv$saemPseudoTransforms <- NULL
   nlmixr2global$nlmixr2EstEnv$zeroThetaScale <- NULL
-  nlmixr2global$nlmixr2EstEnv$linCmtCarryCmtRemap <- NULL
 
   nlmixr2global$nlsEnv <- new.env(parent = emptyenv())
 

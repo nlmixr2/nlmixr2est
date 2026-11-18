@@ -312,7 +312,7 @@ test_that("the objective past the carry cap does not depend on eta order (#1318)
   expect_equal(.fa$objf, .carryIovFit(rxode2::linToOde(.a), .d, maxInner = 0L)$objf, tolerance = 1e-8)
 })
 
-test_that("a fix()ed fit solved as ODEs keeps its cmt numbering for setOfv() (#1318)", {
+test_that("a fix()ed, zero-omega fit solved as ODEs stays ODE for setOfv() (#1318)", {
   skip_on_cran()
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   local_mocked_bindings(
@@ -330,11 +330,12 @@ test_that("a fix()ed fit solved as ODEs keeps its cmt numbering for setOfv() (#1
       tef <- 1
       ef.sd <- 1
       eta.cl ~ 0.3
+      eta.v ~ 0
     })
     model({
       ka <- exp(tka)
       cl <- exp(tcl + eta.cl)
-      v <- exp(tv)
+      v <- exp(tv + eta.v)
       q <- exp(tq)
       vp <- exp(tvp)
       cp <- linCmt()
@@ -358,9 +359,10 @@ test_that("a fix()ed fit solved as ODEs keeps its cmt numbering for setOfv() (#1
     control = foceiControl(maxOuterIterations = 0L, print = 0L, covMethod = "")
   ))
   expect_true(any(.fit$runInfo == "linCmt() solved as ODEs: etas need 10 of 8 carry columns"))
-  # the restored linCmt() ui reads the data as written
-  expect_true(rxode2::.rxLinNcmt(.fit$ui)["numLin"] > 0L)
-  expect_identical(sort(unique(.fit$origData$CMT)), c(1, 3, 4))
+  # the restored ui is the ODE model the data and compiled models are numbered for
+  expect_true(rxode2::.rxLinNcmt(.fit$ui)["numLin"] == 0L)
+  expect_true("tq" %in% .fit$ui$iniDf$name[.fit$ui$iniDf$fix])
+  expect_identical(sort(unique(.fit$origData$CMT)), c(1, 4, 5))
   # additive error: FOCE is FOCEi, unless a refit misreads the endpoints
   suppressMessages(setOfv(.fit, "foce"))
   expect_equal(.fit$objDf["FOCE", "OBJF"], .fit$objDf["FOCEi", "OBJF"], tolerance = 1e-6)

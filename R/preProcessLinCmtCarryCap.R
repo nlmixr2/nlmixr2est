@@ -122,29 +122,30 @@
   data
 }
 
-#' Number a fit's `$origData` back for its restored `linCmt()` ui
+#' Translate the uis a fit restores after estimation to ODEs as well
 #'
-#' With `fix()` or a zero omega the fit's ui goes back to the user's
-#' `linCmt()` model, so `$origData` must use that model's `cmt` numbering
-#' again, or a refit from the fit (`setOfv()`) renumbers it twice.
-#' @param ret the fit
-#' @param env estimation environment holding the per-call restore info
-#' @param ui the ui the fit was estimated with
-#' @return nothing, called for side effects
+#' With `fix()` or a zero omega, `.nlmixrEstUpdatesOrigModel()` puts the
+#' stashed pre-hook ui back on the fit.  It must be the ODE model too, to
+#' match the compiled models and the renumbered `$origData`.
+#' @return the translated stash as a named list, or `NULL` when one cannot
+#'   be translated
 #' @noRd
 #' @author Matthew L. Fidler
-.linCmtCarryRestoreCmt <- function(ret, env, ui) {
-  .remap <- if (is.environment(env) && exists("linCmtCarryCmtRemap", envir = env, inherits = FALSE)) {
-    env$linCmtCarryCmtRemap
-  } else {
-    nlmixr2global$nlmixr2EstEnv$linCmtCarryCmtRemap
+.linCmtCarryOdeRestoreUis <- function() {
+  .env <- nlmixr2global$nlmixr2EstEnv
+  .ret <- list()
+  for (.nm in c("uiUnfix", "nlmixrPureInputUi")) {
+    .u <- .env[[.nm]]
+    if (is.null(.u)) {
+      next
+    }
+    .o <- try(rxode2::linToOde(.u), silent = TRUE)
+    if (inherits(.o, "try-error")) {
+      return(NULL)
+    }
+    .ret[[.nm]] <- rxode2::rxUiDecompress(.o)
   }
-  .final <- ret$env$ui
-  if (!isTRUE(.remap) || identical(.final, ui) || !is.data.frame(ret$env$origData)) {
-    return(invisible())
-  }
-  assign("origData", .linCmtCarryRemapCmt(ret$env$origData, ui, .final), envir = ret$env)
-  invisible()
+  .ret
 }
 
 #' Solve a `linCmt()` model past the carry cap as ODEs
@@ -163,7 +164,6 @@
 #' @export
 #' @author Matthew L. Fidler
 .uiApplyOdeLinCmtCarryCap <- function(ui, est, data, control) {
-  nlmixr2global$nlmixr2EstEnv$linCmtCarryCmtRemap <- NULL
   if (!(est %in% .linCmtFoceiEstFamily)) {
     return(NULL)
   }
@@ -185,16 +185,16 @@
     return(NULL)
   }
   .ui <- try(rxode2::linToOde(ui), silent = TRUE)
-  if (inherits(.ui, "try-error")) {
+  .restore <- .linCmtCarryOdeRestoreUis()
+  if (inherits(.ui, "try-error") || is.null(.restore)) {
     return(NULL)
   }
+  list2env(.restore, envir = nlmixr2global$nlmixr2EstEnv)
   warning(
     sprintf("linCmt() solved as ODEs: etas need %d of %d carry columns", .need, .cap),
     call. = FALSE
   )
   if (is.data.frame(data)) {
-    # .nlmixrEstUpdatesOrigModel() numbers $origData back with a restored ui
-    nlmixr2global$nlmixr2EstEnv$linCmtCarryCmtRemap <- TRUE
     list(ui = .ui, data = .linCmtCarryRemapCmt(data, ui, .ui))
   } else {
     list(ui = .ui)

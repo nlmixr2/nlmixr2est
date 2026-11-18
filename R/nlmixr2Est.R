@@ -264,11 +264,9 @@ nlmixr2Est.default <- function(env, ...) {
       assign("ui", .final, envir = ret$env)
       assign("fixef", .final$theta, envir = ret$env)
     }
-    .linCmtCarryRestoreCmt(ret, env, .ui)
   }
   nlmixr2global$nlmixr2EstEnv$uiUnfix <- NULL
   nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- NULL
-  nlmixr2global$nlmixr2EstEnv$linCmtCarryCmtRemap <- NULL
 }
 
 .tablePassthrough <- c("addDosing", "subsetNonmem", "cores", "keep", "drop")
