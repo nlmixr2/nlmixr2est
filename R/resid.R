@@ -155,6 +155,87 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   rxode2::rxSolve(...)
 }
 
+#' Each subject's mixture assignment for a table solve (`iCov`)
+#'
+#' A mixture fit keeps the assignments in its environment (`mixIcov`); rxode2
+#' reads them into each subject's mixest.  `ID` is the subject index
+#' `fit$dataSav` is solved with: output creation may already have re-leveled it
+#' to a factor labeled with the original IDs, so the factor's codes are taken,
+#' never its labels.
+#'
+#' @param fit focei style fit (or its environment)
+#' @return the iCov data frame, or `NULL` when the fit has none
+#' @noRd
+.residMixIcov <- function(fit) {
+  .env <- fit
+  if (!is.environment(.env) && is.environment(fit$env)) {
+    .env <- fit$env
+  }
+  if (!is.environment(.env) || !exists("mixIcov", envir = .env, inherits = FALSE)) {
+    return(NULL)
+  }
+  .iCov <- get("mixIcov", envir = .env, inherits = FALSE)
+  if (!is.null(.iCov) && !is.null(.iCov$ID)) {
+    .iCov$ID <- as.integer(.iCov$ID)
+    if (anyNA(.iCov$ID)) .iCov <- NULL
+  }
+  .iCov
+}
+
+#' Whether a table solve can pass the mixture assignments
+#'
+#' An rxode2 without nlmixr2/rxode2#1358 does not reject the iCov, it never
+#' reads a mixture out of a model whose mix() symengine expanded away: nothing
+#' errors, so this says so, or mixest/mixnum and everything mix() feeds would
+#' silently read 0.
+#'
+#' @param fit focei style fit
+#' @param models the models the solve uses
+#' @return environment: `iCov` and `ok` (pass it), shared by the solves so a
+#'   rejected iCov is not tried again
+#' @noRd
+.residMixIcovState <- function(fit, models) {
+  .st <- new.env(parent = emptyenv())
+  .st$iCov <- .residMixIcov(fit)
+  .st$ok <- !is.null(.st$iCov)
+  if (.st$ok) {
+    for (.m in models) {
+      .flags <- try(rxode2::rxModelVars(.m)$flags, silent = TRUE)
+      if (!inherits(.flags, "try-error") && !is.null(.flags) && "mix" %in% names(.flags) && .flags[["mix"]] == 0L) {
+        warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
+        .st$ok <- FALSE
+        break
+      }
+    }
+  }
+  .st
+}
+
+#' Run a table solve with the mixture assignments
+#'
+#' An rxode2 that predates per-individual mixest for an expanded mix() rejects
+#' the iCov (an older one overran its covariate list, SET_VECTOR_ELT, when an
+#' iCov mixest came with another covariate); then the solve is repeated without
+#' it, and says so.
+#'
+#' @param state `.residMixIcovState()`
+#' @param solve `function(iCov)` running the solve
+#' @return the solve's value
+#' @noRd
+.residMixIcovSolve <- function(state, solve) {
+  if (!state$ok) {
+    return(solve(NULL))
+  }
+  tryCatch(solve(state$iCov), error = function(e) {
+    if (!grepl("iCov|mixest|mixunif|time.varying|SET_VECTOR_ELT", conditionMessage(e), ignore.case = TRUE)) {
+      stop(e)
+    }
+    state$ok <- FALSE
+    warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
+    solve(NULL)
+  })
+}
+
 #' Solve a table model, loosening tolerances and switching ODE method on failure
 #'
 #' A solve fails when any `rx_pred_` is `NA`; it is then repeated with
@@ -257,109 +338,10 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .tolFactor <- fit$env$tolFactor
   # the table must interpolate covariates the way the fit did (#1137)
   .covsi <- .residCovsInterpolation(fit)
-  # For mixture models, pass per-subject mixture assignments via iCov so
-  # rxode2 sets ind->mixest correctly during the table solve. `fit` is the
-  # nlmixr2FitCore environment, accessed directly.
-  .iCov <- NULL
-  .env <- fit
-  if (!is.environment(.env) && is.environment(fit$env)) {
-    .env <- fit$env
-  }
-  if (is.environment(.env) && exists("mixIcov", envir = .env, inherits = FALSE)) {
-    .iCov <- get("mixIcov", envir = .env, inherits = FALSE)
-    # ID is the subject index fit$dataSav is solved with.  Output creation may
-    # already have re-leveled it to a factor labeled with the original IDs, so
-    # take the factor's codes (the index), never its labels.
-    if (!is.null(.iCov) && !is.null(.iCov$ID)) {
-      .iCov$ID <- as.integer(.iCov$ID)
-      if (anyNA(.iCov$ID)) .iCov <- NULL
-    }
-  }
-  # Fallback flag: an rxode2 that predates per-individual mixest for an
-  # expanded mix() rejects the iCov; retry without it rather than losing the
-  # whole table step.  The retry SAYS SO -- mixest/mixnum and everything
-  # mix() feeds read 0 without it, and that is the silently-wrong table this
-  # whole path exists to stop producing.
-  .iCovState <- new.env(parent = emptyenv())
-  .iCovState$ok <- !is.null(.iCov)
-  if (.iCovState$ok) {
-    # An rxode2 without nlmixr2/rxode2#1358 does not reject the iCov, it just
-    # never reads a mixture out of a model whose mix() symengine expanded away.
-    # Nothing errors, so say so here or the zeros are silent.
-    .predFlags <- try(rxode2::rxModelVars(model)$flags, silent = TRUE)
-    if (
-      !inherits(.predFlags, "try-error") &&
-        !is.null(.predFlags) &&
-        "mix" %in% names(.predFlags) &&
-        .predFlags[["mix"]] == 0L
-    ) {
-      warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
-      .iCovState$ok <- FALSE
-    }
-  }
+  # mixture models solve with each subject's mixture assignment (iCov)
+  .mix <- .residMixIcovState(fit, list(model))
   .solveOnce <- function(method, atol, rtol) {
-    .res <- if (.iCovState$ok) {
-      tryCatch(
-        .foceiSolveWithId(
-          model,
-          pars,
-          fit$dataSav,
-          returnType = returnType,
-          atol = atol,
-          rtol = rtol,
-          maxsteps = fit$maxstepsOde,
-          hmin = fit$hmin,
-          hmax = fit$hmax,
-          hini = fit$hini,
-          maxordn = fit$maxordn,
-          maxords = fit$maxords,
-          method = rxode2::odeMethodToInt(method),
-          tolFactor = .tolFactor,
-          covsInterpolation = .covsi$covsInterpolation,
-          naInterpolation = .covsi$naInterpolation,
-          nonmem = .covsi$nonmem,
-          iCov = .iCov,
-          keep = keep,
-          addDosing = addDosing,
-          subsetNonmem = subsetNonmem,
-          addCov = addCov
-        ),
-        error = function(e) {
-          # SET_VECTOR_ELT: older rxode2 overran its covariate list when an iCov
-          # mixest came with any other covariate
-          if (grepl("iCov|mixest|mixunif|time.varying|SET_VECTOR_ELT", conditionMessage(e), ignore.case = TRUE)) {
-            .iCovState$ok <- FALSE
-            warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
-            .foceiSolveWithId(
-              model,
-              pars,
-              fit$dataSav,
-              returnType = returnType,
-              atol = atol,
-              rtol = rtol,
-              maxsteps = fit$maxstepsOde,
-              hmin = fit$hmin,
-              hmax = fit$hmax,
-              hini = fit$hini,
-              maxordn = fit$maxordn,
-              maxords = fit$maxords,
-              method = rxode2::odeMethodToInt(method),
-              tolFactor = .tolFactor,
-              covsInterpolation = .covsi$covsInterpolation,
-              naInterpolation = .covsi$naInterpolation,
-              nonmem = .covsi$nonmem,
-              iCov = NULL,
-              keep = keep,
-              addDosing = addDosing,
-              subsetNonmem = subsetNonmem,
-              addCov = addCov
-            )
-          } else {
-            stop(e)
-          }
-        }
-      )
-    } else {
+    .res <- .residMixIcovSolve(.mix, function(iCov) {
       .foceiSolveWithId(
         model,
         pars,
@@ -378,13 +360,13 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
         covsInterpolation = .covsi$covsInterpolation,
         naInterpolation = .covsi$naInterpolation,
         nonmem = .covsi$nonmem,
-        iCov = NULL,
+        iCov = iCov,
         keep = keep,
         addDosing = addDosing,
         subsetNonmem = subsetNonmem,
         addCov = addCov
       )
-    }
+    })
     rxode2::rxSolveFree()
     .res
   }

@@ -11,10 +11,11 @@
 #' @param atol,rtol ODE tolerances
 #' @param keep data columns rxode2 keeps for the rows (rxode2's walk only),
 #'   or `NULL`
+#' @param iCov each subject's mixture assignment (`.residMixIcov()`), or `NULL`
 #' @return named logical: whether each model can be solved in the pool
 #' @author Matthew L. Fidler
 #' @noRd
-.tablePoolSetup <- function(fit, inner, predOnly, pars, method, atol, rtol, keep = NULL) {
+.tablePoolSetup <- function(fit, inner, predOnly, pars, method, atol, rtol, keep = NULL, iCov = NULL) {
   # Registering binds entry points by name, so each dll must be loaded: one
   # unloaded with an earlier model object leaves stale entry points behind.
   # Loaded BEFORE the pool is built, since a load rebinds rxode2's model
@@ -48,6 +49,7 @@
     # addCov = TRUE would drop a kept covariate (DV of a count endpoint) from
     # the keep columns, as the rxSolve() route's ipred solve does not
     addCov = FALSE,
+    iCov = iCov,
     warnIdSort = FALSE,
     .setupOnly = 1L
   )
@@ -94,7 +96,8 @@
   .idx <- function(x, from) {
     .i <- match(x, from)
     if (anyNA(.i)) {
-      stop("not in the table model: ", paste(x[is.na(.i)], collapse = ", "), call. = FALSE)
+      # the rxSolve() route then gives its own answer (or error)
+      .tablePoolStop("model")
     }
     as.integer(.i - 1L)
   }
@@ -201,13 +204,6 @@
   if (!isFALSE(addDosing) && !.tablePoolRxWalk()) {
     return("rxode2")
   }
-  .env <- fit
-  if (!is.environment(.env) && is.environment(fit$env)) {
-    .env <- fit$env
-  }
-  if (is.environment(.env) && exists("mixIcov", envir = .env, inherits = FALSE)) {
-    return("mixture")
-  }
   if (!(.residOdeMethodName(fit$methodOde) %in% .tablePoolMethods)) {
     return("method")
   }
@@ -217,6 +213,14 @@
   .data <- fit$dataSav
   if (!all(keep %in% names(.data))) {
     return("keep")
+  }
+  # rxode2 solves a smaller model in the pool through its ODE route, which a
+  # linCmt() model does not have (a mixture's EBE model is linCmt() without
+  # the sensitivities the inner model has)
+  .neq <- vapply(models, function(m) length(rxode2::rxModelVars(m)$state), integer(1))
+  .lin <- vapply(models, function(m) isTRUE(rxode2::rxModelVars(m)$flags[["linCmt"]] > 0L), logical(1))
+  if (any(.lin & .neq < max(.neq))) {
+    return("linCmt")
   }
   .evid <- .data[[which(toupper(names(.data)) == "EVID")[1]]]
   if (is.null(.evid) || any(.evid == 3L | (.evid >= 10L & .evid <= 99L))) {
@@ -324,6 +328,8 @@
   # rxode2 has it; otherwise only observation rows, walked here
   .rxWalk <- .tablePoolRxWalk()
   .doDose <- if (.rxWalk) .tablePoolDoDose(addDosing, subsetNonmem) else NA_integer_
+  # each subject's mixture assignment, as the rxSolve() route passes it
+  .mix <- .residMixIcovState(fit, c(list(po), if (!is.null(inner)) list(inner)))
   .need <- c(inner = !is.null(inner), predOnly = TRUE)
   on.exit(
     {
@@ -349,7 +355,9 @@
     # a set-up-only rxSolve() advances the seed by the cores a full solve
     # takes on top of its subjects
     .s0 <- rxode2::rxGetSeed()
-    .ok <- .tablePoolSetup(fit, inner, po, .ipar, method, atol, rtol, keep = if (.rxWalk) keep)
+    .ok <- .residMixIcovSolve(.mix, function(iCov) {
+      .tablePoolSetup(fit, inner, po, .ipar, method, atol, rtol, keep = if (.rxWalk) keep, iCov = iCov)
+    })
     if (.s0 != -1) {
       .acc$step <- length(.start) + (rxode2::rxGetSeed() - .s0)
     }
