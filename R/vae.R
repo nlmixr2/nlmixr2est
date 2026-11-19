@@ -521,7 +521,8 @@ vaeControl <- function(
   indTolRelax = TRUE,
   eventSens = c("jump", "fd"),
   rxControl = NULL,
-  ...
+  ...,
+  corWarn = 0.95
 ) {
   checkmate::assertIntegerish(seed, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(itersBurnIn, lower = 0, any.missing = FALSE, len = 1)
@@ -676,6 +677,7 @@ vaeControl <- function(
     residRhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-4
   }
   checkmate::assertNumeric(residRhoend, len = 1, lower = 0, finite = TRUE, any.missing = FALSE)
+  .corWarnCheck(corWarn)
   .ret <- list(
     seed = as.integer(seed),
     rhoend = as.numeric(rhoend),
@@ -728,6 +730,7 @@ vaeControl <- function(
     addProp = addProp,
     calcTables = calcTables,
     compress = compress,
+    corWarn = corWarn,
     adjObf = adjObf,
     ci = ci,
     sigdig = sigdig,

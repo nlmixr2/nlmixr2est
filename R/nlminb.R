@@ -134,7 +134,8 @@ nlminbControl <- function(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
-  ...
+  ...,
+  corWarn = 0.95
 ) {
   checkmate::assertIntegerish(eval.max, len = 1, any.missing = FALSE, lower = 1)
   checkmate::assertIntegerish(iter.max, len = 1, any.missing = FALSE, lower = 1)
@@ -241,6 +242,7 @@ nlminbControl <- function(
   checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
+  .corWarnCheck(corWarn)
   .ret <- list(
     eval.max = eval.max,
     iter.max = iter.max,
@@ -291,6 +293,7 @@ nlminbControl <- function(
     sensMethod = match.arg(sensMethod),
     calcTables = calcTables,
     compress = compress,
+    corWarn = corWarn,
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,

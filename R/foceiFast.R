@@ -5,6 +5,23 @@
 # outerOpt downgrade still runs), and the estimator dispatches to the base method
 # (which reports the base `est`).  Method attributes mirror the base family.
 
+#' Drop a defaulted (not user-chosen) outer optimizer from a control
+#'
+#' The control constructor then picks its own default again.
+#' @param l control (list or control object)
+#' @return list without the defaulted outer optimizer
+#' @noRd
+.foceiDropDefaultOuterOpt <- function(l) {
+  l <- if (is.null(l)) list() else unclass(l)
+  if (isTRUE(l$outerOptDefault)) {
+    l$outerOpt <- NULL
+    l$outerOptTxt <- NULL
+    l$outerOptFun <- NULL
+    l$outerOptDefault <- NULL
+  }
+  l
+}
+
 #' Force `fast = TRUE` through a base control constructor (respecting the
 #' derivative-free `outerOpt` downgrade, which runs inside the constructor).
 #' @param control the `getValidNlmixrControl` wrapper list
@@ -12,16 +29,9 @@
 #' @return a base control object with `fast = TRUE`
 #' @noRd
 .foceiFastCtl <- function(control, ctlFun) {
-  .ctl <- control[[1]]
-  .l <- if (is.null(.ctl)) list() else unclass(.ctl)
-  # a defaulted (not user-chosen) outer optimizer re-defaults under fast=TRUE
-  # (bobyqa -> nlminb); an explicit outerOpt is kept as given
-  if (isTRUE(.l$outerOptDefault)) {
-    .l$outerOpt <- NULL
-    .l$outerOptTxt <- NULL
-    .l$outerOptFun <- NULL
-    .l$outerOptDefault <- NULL
-  }
+  # a defaulted outer optimizer re-defaults under fast=TRUE
+  # (bobyqa -> trust or nlminb); an explicit outerOpt is kept as given
+  .l <- .foceiDropDefaultOuterOpt(control[[1]])
   .l$fast <- TRUE
   do.call(ctlFun, .l)
 }

@@ -177,7 +177,8 @@ optimControl <- function(
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
-  ...
+  ...,
+  corWarn = 0.95
 ) {
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
   checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)
@@ -287,6 +288,7 @@ optimControl <- function(
   checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
+  .corWarnCheck(corWarn)
   .ret <- list(
     method = method,
     covMethod = covMethod,
@@ -335,6 +337,7 @@ optimControl <- function(
     sensMethod = match.arg(sensMethod),
     calcTables = calcTables,
     compress = compress,
+    corWarn = corWarn,
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,
