@@ -11771,11 +11771,12 @@ static void foceiZeroThetaOneStep(Environment e) {
   foceiBestEvalReset();
 }
 
-// foceiControl(freezeFlatTheta=TRUE): before optimizing, a forward difference of each
-// theta's objective.  Every evaluation starts from the same inner state, so a theta that
-// cannot change the objective gives exactly 0 rather than warm-start noise.  A theta
-// with |g| <= 1e-8 and <= 1e-6*max|g| goes to e$flatTheta (1-based theta numbers) and
-// the fit restarts with it fixed.  Nothing is frozen when the whole gradient is flat.
+// foceiControl(freezeFlatTheta=TRUE): before optimizing, a forward difference of the
+// objective in each parameter.  Every evaluation starts from the same inner state, so a
+// parameter that cannot change the objective gives exactly 0 rather than warm-start
+// noise.  A theta with |g| <= 1e-8 and <= 1e-6*max|g| on both sides goes to
+// e$flatTheta (1-based theta numbers) and the fit restarts with it fixed.  Nothing is
+// frozen when the whole gradient is flat.
 static double foceiFreezeOfv(int np, double *x) {
   foceiOuterHold_(true);
   const double f = foceiOfvOptim(np, x, NULL);
@@ -11792,31 +11793,38 @@ static void foceiFreezeFlatTheta(Environment e) {
   const int nF = op_focei.nF, nG = op_focei.nG;
   const bool record = op_focei.recordOuter;
   op_focei.recordOuter = false;
-  std::vector<double> g(np, NA_REAL), xk(x.begin(), x.end());
+  std::vector<double> g(np, NA_REAL), h(np, 0.0), xk(x.begin(), x.end());
   const double f0 = foceiFreezeOfv((int)np, x.begin());
-  double mx = 0.0;
-  for (unsigned int k = 0; k < np && std::isfinite(f0); ++k) {
-    if (foceiIsMixPar((int)k) || op_focei.fixedTrans[k] >= (int)op_focei.ntheta) continue;
-    double h = 1e-3 * std::max(1.0, std::fabs(x[k]));
-    if (x[k] + h >= op_focei.upper[k]) h = -h;
-    xk[k] = x[k] + h;
+  // slope of the objective along k at a step of `step`; NA when not finite
+  auto slope = [&](unsigned int k, double step) {
+    xk[k] = x[k] + step;
     const double fk = foceiFreezeOfv((int)np, xk.data());
     xk[k] = x[k];
-    if (!std::isfinite(fk)) continue;
-    g[k] = (fk - f0) / h;
-    mx = std::max(mx, std::fabs(g[k]));
+    return std::isfinite(fk) ? (fk - f0) / step : NA_REAL;
+  };
+  double mx = 0.0;
+  for (unsigned int k = 0; k < np && std::isfinite(f0); ++k) {
+    if (foceiIsMixPar((int)k)) continue;
+    h[k] = 1e-3 * std::max(1.0, std::fabs(x[k]));
+    if (x[k] + h[k] >= op_focei.upper[k]) h[k] = -h[k];
+    g[k] = slope(k, h[k]);
+    if (!ISNA(g[k])) mx = std::max(mx, std::fabs(g[k]));
+  }
+  std::vector<int> flat;
+  for (unsigned int k = 0; k < np && mx > 1e-8; ++k) {
+    if (ISNA(g[k]) || op_focei.fixedTrans[k] >= (int)op_focei.ntheta) continue;
+    auto isFlat = [&](double a) { return !ISNA(a) && std::fabs(a) <= 1e-8 && std::fabs(a) <= 1e-6 * mx; };
+    // a secant can vanish by chance, so the other side must be flat too
+    const double x2 = x[k] - h[k];
+    const bool outside = x2 <= op_focei.lower[k] || x2 >= op_focei.upper[k];
+    if (isFlat(g[k]) && (outside || isFlat(slope(k, -h[k])))) {
+      flat.push_back(op_focei.fixedTrans[k] + 1);
+    }
   }
   op_focei.recordOuter = record;
   op_focei.nF = nF;
   op_focei.nG = nG;
   foceiBestEvalReset();
-  if (!(mx > 1e-8)) return;
-  std::vector<int> flat;
-  for (unsigned int k = 0; k < np; ++k) {
-    if (ISNA(g[k])) continue;
-    const double a = std::fabs(g[k]);
-    if (a <= 1e-8 && a <= 1e-6 * mx) flat.push_back(op_focei.fixedTrans[k] + 1);
-  }
   if (flat.empty()) return;
   e["flatTheta"] = wrap(flat);
   stop("theta freeze");
