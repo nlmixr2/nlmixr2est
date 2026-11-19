@@ -55,7 +55,8 @@ nlsControl(
   sigdig = 4,
   sigdigTable = NULL,
   boundedTransform = TRUE,
-  ...
+  ...,
+  corWarn = 0.95
 )
 }
 \arguments{
@@ -327,6 +328,10 @@ bounds passed to the optimizer. `NA` transforms for optimization but
 skips the final back-transform.}
 
 \item{...}{Additional optional arguments.  None are used at present.}
+
+\item{corWarn}{warn when two estimates' correlation is at least this in
+absolute value after the covariance step; \code{NA} or \code{Inf} turns
+the warning off.}
 }
 \value{
 nls control object
