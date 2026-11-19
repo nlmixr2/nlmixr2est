@@ -105,6 +105,12 @@ test_that("a model is translated only when a dropped pair varies within a subjec
   expect_identical(.rxFoceiLinCmtCarryColumnsNeeded(.ui, 8L, .d), 10L)
   # without data, the covariates may vary
   expect_identical(.rxFoceiLinCmtCarryColumnsNeeded(.ui, 8L, NULL), 10L)
+  # a subject-constant pair (eta.cl's wt) goes first, so at 9 columns no
+  # varying occasion pair is dropped (#1287)
+  .d$occ <- rep(1:3, 2)
+  expect_identical(.rxFoceiLinCmtCarryColumnsNeeded(.ui, 9L, .d), 0L)
+  .d$wt <- c(70, 71, 72, 60, 60, 60)
+  expect_identical(.rxFoceiLinCmtCarryColumnsNeeded(.ui, 9L, .d), 10L)
   # within the cap
   expect_identical(.rxFoceiLinCmtCarryColumnsNeeded(.ui, 10L, NULL), 0L)
   # a parameterization the carry cannot handle is never carried
@@ -112,7 +118,7 @@ test_that("a model is translated only when a dropped pair varies within a subjec
   expect_identical(.rxFoceiLinCmtCarryColumnsNeeded(.ui, 8L, NULL), 0L)
 })
 
-test_that("a model the build cannot fit within the cap is translated whatever the data", {
+test_that("a model the build cannot fit within the cap is translated", {
   local_mocked_bindings(.foceiLinCmtCarryPairs = function(...) {
     .p <- .carryCapPairs()[1:5, ]
     .p$slot <- 1:5
@@ -120,8 +126,11 @@ test_that("a model the build cannot fit within the cap is translated whatever th
     .p
   })
   .ui <- suppressMessages(nlmixr2est::nlmixr2(.carryCapMod))
-  .d <- data.frame(id = rep(1:2, each = 3), wt = 70, occ = 1)
+  .d <- data.frame(id = rep(1:2, each = 3), wt = c(70, 71, 72, 60, 61, 62), occ = 1)
   expect_identical(.rxFoceiLinCmtCarryColumnsNeeded(.ui, 8L, .d), 10L)
+  # unless every pair is constant within each subject (#1287)
+  .d$wt <- 70
+  expect_identical(.rxFoceiLinCmtCarryColumnsNeeded(.ui, 8L, .d), 0L)
 })
 
 test_that("a numeric cmt keeps naming the same compartment after linToOde()", {
@@ -193,6 +202,14 @@ test_that("pairs dropped past the cap warn that their gradient is approximate", 
     fixed = TRUE
   )
   expect_identical(.kept$etaName, c("eta.cl", paste0("rx.iov.cl.", 1:6)))
+  # a subject-constant pair is dropped first and is not named
+  nlmixr2global$carryCapWarnings <- NULL
+  expect_warning(
+    .kept <- .rxFoceiLinCmtCarryCapPairs(.carryCapPairs(), "wt"),
+    "rx.iov.cl.8 has an approximate gradient (8 carry columns)",
+    fixed = TRUE
+  )
+  expect_identical(.kept$etaName, paste0("rx.iov.cl.", 1:7))
 })
 
 test_that("the uis a fit restores are translated with the model", {

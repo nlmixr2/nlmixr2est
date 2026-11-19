@@ -3,10 +3,10 @@
 #' Zero when the model cannot be past `cap` (no `linCmt()`, no covariate, or
 #' too few etas to fill the columns), so only a model that may be past the
 #' cap pays for the symbolic eligibility check.  Past the cap, the build
-#' either stops or drops pairs (`.rxFoceiLinCmtCarryCapKeep()`); a dropped
-#' pair whose covariates are constant within every subject keeps an exact
-#' standard gradient, so only a dropped pair the data shows (or may show)
-#' varying makes the model need the ODE translation.
+#' drops the pairs whose covariates are constant within every subject first
+#' (their standard gradient is exact), then others or stops
+#' (`.rxFoceiLinCmtCarryCapKeep()`); only a dropped pair the data shows (or
+#' may show) varying makes the model need the ODE translation.
 #'
 #' @param ui rxode2 ui
 #' @param cap the carry columns the loaded rxode2 has
@@ -35,17 +35,13 @@
     return(0L)
   }
   .need <- as.integer(.rxFoceiLinCmtCarryColumns(.pairs))
-  .keep <- .rxFoceiLinCmtCarryCapKeep(.pairs, cap)
+  .covs <- unique(unlist(strsplit(.pairs$covs, ",", fixed = TRUE)))
+  .const <- .covs[!vapply(.covs, .linCmtCarryMayVary, logical(1), data = data)]
+  .keep <- .rxFoceiLinCmtCarryCapKeep(.pairs, cap, .const)
   if (is.null(.keep)) {
     return(.need)
   }
-  .vary <- vapply(
-    strsplit(.pairs$covs[!.keep], ",", fixed = TRUE),
-    .linCmtCarryMayVary,
-    logical(1),
-    data = data
-  )
-  if (any(.vary)) .need else 0L
+  if (any(!.keep & !.rxFoceiLinCmtCarryConstPairs(.pairs, .const))) .need else 0L
 }
 
 #' Could any of these covariates vary within a subject in the data?

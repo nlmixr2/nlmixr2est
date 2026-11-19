@@ -121,7 +121,13 @@
   if (is.null(.pairs)) {
     return(NULL)
   }
-  .pairs <- .rxFoceiLinCmtCarryCapPairs(.pairs)
+  .pairs <- .rxFoceiLinCmtCarryCapPairs(
+    .pairs,
+    rxode2::rxGetControl(x[[1]], "foceiConstCovs", NULL)
+  )
+  if (nrow(.pairs) == 0L) {
+    return(NULL)
+  }
   .rxFoceiLinCmtCarryCheckCap(.pairs)
   attr(.pairs, "carryCovInterval") <- .rxFoceiLinCmtCarryCovInterval(
     x[[1]]$allCovs,
@@ -234,37 +240,62 @@
 #'
 #' A fit never gets here past the cap: `.uiApplyOdeLinCmtCarryCap()` solves
 #' such a model as ODEs.  A build that does (a direct `ui$foceiModel`, or a
-#' model `linToOde()` cannot translate) drops the multCov pairs (an IOV
-#' rewrite's occasion etas), last first, and then the other pairs that share
-#' a slot.  The dropped etas keep the standard gradient, which is wrong for a
-#' within-subject covariate and makes the objective depend on eta order
-#' (#1318), so the warning says it is approximate; a model still past the cap
-#' stops in `.rxFoceiLinCmtCarryCheckCap()`.
+#' model `linToOde()` cannot translate) drops the pairs whose covariates are
+#' constant within every subject (their standard gradient is exact), then the
+#' multCov pairs (an IOV rewrite's occasion etas), last first, and then the
+#' other pairs that share a slot.  Those keep the standard gradient, which is
+#' wrong for a within-subject covariate and makes the objective depend on eta
+#' order (#1318), so the warning says it is approximate; a model still past
+#' the cap stops in `.rxFoceiLinCmtCarryCheckCap()`.
 #' @param pairs the eligible pairs
+#' @param constCovs covariates constant within every subject of the data
+#'   (`foceiConstCovs`, part of the focei model cache key), or `NULL`
 #' @return `pairs` without the dropped rows
 #' @noRd
-.rxFoceiLinCmtCarryCapPairs <- function(pairs) {
+.rxFoceiLinCmtCarryCapPairs <- function(pairs, constCovs = NULL) {
   .cap <- .rxFoceiLinCmtCarryMaxPairs()
-  .keep <- .rxFoceiLinCmtCarryCapKeep(pairs, .cap)
-  if (!is.null(.keep) && any(!.keep)) {
-    .rxFoceiLinCmtCarryCapWarn(.rxFoceiLinCmtCarryCapMsg(pairs$etaName[!.keep], .cap))
-    pairs <- pairs[.keep, , drop = FALSE]
+  .keep <- .rxFoceiLinCmtCarryCapKeep(pairs, .cap, constCovs)
+  if (is.null(.keep)) {
+    return(pairs)
   }
-  pairs
+  .warn <- !.keep & !.rxFoceiLinCmtCarryConstPairs(pairs, constCovs)
+  if (any(.warn)) {
+    .rxFoceiLinCmtCarryCapWarn(.rxFoceiLinCmtCarryCapMsg(pairs$etaName[.warn], .cap))
+  }
+  pairs[.keep, , drop = FALSE]
+}
+
+#' Pairs whose covariates are all constant within every subject
+#'
+#' @param pairs the eligible pairs
+#' @param constCovs covariates constant within every subject, or `NULL`
+#' @return logical, one per pair
+#' @noRd
+.rxFoceiLinCmtCarryConstPairs <- function(pairs, constCovs) {
+  if (length(constCovs) == 0L) {
+    return(rep(FALSE, nrow(pairs)))
+  }
+  vapply(
+    strsplit(pairs$covs, ",", fixed = TRUE),
+    function(.c) all(.c %in% constCovs),
+    logical(1)
+  )
 }
 
 #' The pairs a build keeps within the cap
 #'
 #' @param pairs the eligible pairs
 #' @param cap the carry columns the loaded rxode2 has
+#' @param constCovs covariates constant within every subject, or `NULL`
 #' @return logical, one per pair (all `TRUE` within the cap), or NULL when
 #'   dropping every droppable pair still leaves the model past the cap
 #' @noRd
-.rxFoceiLinCmtCarryCapKeep <- function(pairs, cap) {
+.rxFoceiLinCmtCarryCapKeep <- function(pairs, cap, constCovs = NULL) {
   .keep <- rep(TRUE, nrow(pairs))
   if (.rxFoceiLinCmtCarryColumns(pairs) <= cap) {
     return(.keep)
   }
+  .keep <- !.rxFoceiLinCmtCarryConstPairs(pairs, constCovs)
   .shared <- !is.na(pairs$slot) &
     (duplicated(pairs$slot) | duplicated(pairs$slot, fromLast = TRUE))
   .order <- c(

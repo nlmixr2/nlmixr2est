@@ -3028,10 +3028,12 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     .s$..stateInfo["dvid"],
     ""
   ))
+  # Only nlmixr2extra's linearize() reads innerOeta, so it is optimized on
+  # demand by rxUiGet.foceiInnerOeta() rather than on every build (#1321).
+  attr(.s$..innerOeta, "nlmixr2estOptimize") <- c(sumProd = sum.prod, optExpression = optExpression)
   if (sum.prod) {
     .malert("stabilizing round off errors in inner problem...")
     .s$..inner <- rxode2::rxSumProdModel(.s$..inner)
-    .s$..innerOeta <- rxode2::rxSumProdModel(.s$..innerOeta)
     if (!is.null(.s$..innerHess2)) {
       .s$..innerHess2 <- rxode2::rxSumProdModel(.s$..innerHess2)
     }
@@ -3042,13 +3044,6 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
       .s$..inner,
       ifelse(.getRxPredLlikOption(), "inner llik model", "inner model"),
       parallel = cores
-    )
-    suppressMessages(
-      .s$..innerOeta <- rxode2::rxOptExpr(
-        .s$..innerOeta,
-        ifelse(.getRxPredLlikOption(), "inner llik model", "inner model"),
-        parallel = cores
-      )
     )
     if (!is.null(.s$..innerHess2)) {
       suppressMessages(.s$..innerHess2 <- rxode2::rxOptExpr(.s$..innerHess2, "inner Hessian model", parallel = cores))
@@ -3239,7 +3234,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 # attr(rxUiGet.getEBEEnv, "desc") <- "Get the EBE environment"
 attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
 
-.toRx <- function(x, msg, eventSens = "fd", role = NULL) {
+.toRx <- function(x, msg, eventSens = "fd", role = NULL, ui = NULL) {
   if (is.null(x)) {
     return(NULL)
   }
@@ -3258,7 +3253,7 @@ attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
   ## cached as model TEXT, so .nlmixr2estRxode2() tags the model and
   ## .foceiModelCacheInflate() replays the tag.
   .txt <- paste(nlmixr2global$toRxParam, x, nlmixr2global$toRxDvidCmt)
-  .ret <- .nlmixr2estRxode2(.txt, role, eventSens = eventSens)
+  .ret <- .nlmixr2estRxode2(.txt, role, eventSens = eventSens, ui = ui)
   .msuccess("done")
   .ret
 }
@@ -3523,14 +3518,19 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
   ## method.  "jump" enables rxode2's analytic dosing-parameter sensitivities.
-  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .compileEventSens, role = "rxInner")
+  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .compileEventSens, role = "rxInner", ui = ui)
   # fast=TRUE ll(): the separate 2nd-order inner model (exact-Hessian re-solve at eta*).
   innerHess2 <- if (!is.null(s$..innerHess2)) {
-    .toRx(s$..innerHess2, "compiling inner Hessian model...", eventSens = .compileEventSens, role = "rxHess2")
+    .toRx(s$..innerHess2, "compiling inner Hessian model...", eventSens = .compileEventSens, role = "rxHess2", ui = ui)
   } else {
     NULL
   }
   innerOeta <- s$..innerOeta
+  if (!is.null(innerOeta)) {
+    # the inner model's own prologue (param(), cmt(), mtime()) and endpoint
+    # lines, added after rxOptExpr() by rxUiGet.foceiInnerOeta()
+    attr(innerOeta, "nlmixr2estWrap") <- c(nlmixr2global$toRxParam, nlmixr2global$toRxDvidCmt)
+  }
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(ui, "optExpression", TRUE)
   if (isTRUE(s$..matExpNative)) {
@@ -3581,12 +3581,14 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     .toRx(
       .prunedStr,
       role = "rxPredPruned",
+      ui = ui,
       ifelse(.getRxPredLlikOption(), "compiling Llik EBE model (mixture)...", "compiling EBE model (mixture)...")
     )
   } else {
     .toRx(
       s$..pred,
       role = "rxPredOnly",
+      ui = ui,
       ifelse(.getRxPredLlikOption(), "compiling Llik EBE model...", "compiling EBE model...")
     )
   }
@@ -3614,7 +3616,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     # analytic gradient for a whole fit.  Event sensitivities stay ON for every
     # sensitivity (inner/outer) model so only one variant per text is ever built.
     outer = if (is.null(.outerAm)) {
-      .toRx(s$..outer, "compiling outer model...", eventSens = "jump", role = "rxOuterFb")
+      .toRx(s$..outer, "compiling outer model...", eventSens = "jump", role = "rxOuterFb", ui = ui)
     } else {
       .outerAm$augMod
     },
@@ -3666,6 +3668,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     predNoLhs = .toRx(
       pred.opt,
       role = "rxPredNoLhs",
+      ui = ui,
       ifelse(.getRxPredLlikOption(), "compiling events Llik FD model...", "compiling events FD model...")
     ),
     theta = NULL,
@@ -3876,7 +3879,8 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## (attr "carryCapWarnings"), which a v3 entry would never give again.
   ## Version 9: the bundle keeps the compiled model, and the augmented model is
   ## optimized in a single rxOptExpr() pass (unreleased dev bundles used 4-8).
-  .cacheFormat <- 9L
+  ## Version 10: innerOeta is stored unoptimized (#1321).
+  .cacheFormat <- 10L
   .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
@@ -4017,6 +4021,42 @@ rxUiGet.foceiModel <- function(x, ...) {
   .ret
 }
 # attr(rxUiGet.foceiModel, "desc") <- "Get focei model object"
+
+#' @export
+rxUiGet.foceiInnerOeta <- function(x, ...) {
+  .m <- rxUiGet.foceiModel(x, ...)
+  if (!is.null(.m$innerOetaOpt)) {
+    return(.m$innerOetaOpt)
+  }
+  .oeta <- .m$innerOeta
+  if (is.null(.oeta)) {
+    return(NULL)
+  }
+  .opt <- attr(.oeta, "nlmixr2estOptimize")
+  .wrap <- attr(.oeta, "nlmixr2estWrap")
+  if (.opt[["sumProd"]]) {
+    .oeta <- rxode2::rxSumProdModel(.oeta)
+  }
+  if (.opt[["optExpression"]]) {
+    .oeta <- suppressMessages(rxode2::rxOptExpr(
+      .oeta,
+      ifelse(.getRxPredLlikOption(), "inner llik model", "inner model"),
+      parallel = .optExprCores(x[[1]])
+    ))
+  }
+  .oeta <- paste(c(.wrap[1], .oeta, .wrap[2]), collapse = "\n")
+  # stored in its own slot (innerOeta keeps the raw text) so later calls
+  # and sessions skip the pass
+  .cacheFile <- rxUiGet.foceiModelCache(x, ...)
+  if (file.exists(.cacheFile)) {
+    .store <- readRDS(.cacheFile)
+    .store$innerOetaOpt <- .oeta
+    saveRDS(.store, .cacheFile)
+  }
+  .oeta
+}
+# attr(rxUiGet.foceiInnerOeta, "desc") <- "FOCEi inner model with ETA outputs (for linearize())"
+attr(rxUiGet.foceiInnerOeta, "rstudio") <- "innerOeta"
 
 #' @export
 rxUiGet.foceiFixed <- function(x, ...) {
