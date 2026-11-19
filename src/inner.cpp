@@ -11804,8 +11804,12 @@ static void foceiFreezeFlatTheta(Environment e) {
   };
   double mx = 0.0;
   for (unsigned int k = 0; k < np && std::isfinite(f0); ++k) {
-    h[k] = 1e-3 * std::max(1.0, std::fabs(x[k]));
-    if (x[k] + h[k] >= op_focei.upper[k]) h[k] = -h[k];
+    // toward the side with more room, short enough that two steps stay inside
+    const double up = op_focei.upper[k] - x[k], dn = x[k] - op_focei.lower[k];
+    const double room = std::max(up, dn);
+    if (!(room > 0)) continue;
+    h[k] = std::min(1e-3 * std::max(1.0, std::fabs(x[k])), 0.4 * room);
+    if (dn > up) h[k] = -h[k];
     g[k] = slope(k, h[k]);
     if (!ISNA(g[k])) mx = std::max(mx, std::fabs(g[k]));
   }
@@ -11816,7 +11820,7 @@ static void foceiFreezeFlatTheta(Environment e) {
     // a secant can vanish by chance, so a second step must be flat too: the
     // other side, or twice as far when the other side is out of bounds
     const double x2 = x[k] - h[k];
-    const double h2 = (x2 <= op_focei.lower[k] || x2 >= op_focei.upper[k]) ? 2.0 * h[k] : -h[k];
+    const double h2 = (x2 > op_focei.lower[k] && x2 < op_focei.upper[k]) ? -h[k] : 2.0 * h[k];
     if (isFlat(g[k]) && isFlat(slope(k, h2))) {
       flat.push_back(op_focei.fixedTrans[k] + 1);
     }
