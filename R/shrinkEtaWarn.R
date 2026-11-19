@@ -32,8 +32,9 @@
   if (!is.data.frame(shrink) || !("sd shrinkage (%)" %in% row.names(shrink))) {
     return(character(0))
   }
-  # the last column is the residual (IWRES) shrinkage
+  # skip the residual (IWRES) column and the IOV rewrite's per-occasion etas
   .nm <- setdiff(names(shrink), "IWRES")
+  .nm <- .nm[!grepl("^rx[.].+[.][0-9]+$", .nm)]
   .v <- vapply(
     .nm,
     function(n) {

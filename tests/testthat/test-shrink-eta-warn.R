@@ -36,9 +36,11 @@ test_that("non-finite shrinkage is ignored", {
 test_that("IOV shrinkage lists are searched per table", {
   .s <- list(
     id = .shrinkTab(c(eta.cl = 10, eta.v = 50)),
-    occ = .shrinkTab(c(iov.cl = 60, IWRES = 90))
+    occ = .shrinkTab(c(rx.iov.cl.1 = 80, rx.iov.cl.2 = 85, iov.cl = 60, IWRES = 90))
   )
   expect_identical(.shrinkEtaHigh(.s, 30), c("eta.v", "iov.cl"))
+  # the collapsed saem IOV fit keeps only per-occasion etas
+  expect_identical(.shrinkEtaHigh(.shrinkTab(c(rx.eta.cl.1 = 80, eta.ka = 40)), 30), "eta.ka")
 })
 
 test_that("the threshold is read from the fit's control", {
