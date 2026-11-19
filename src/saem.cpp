@@ -5504,6 +5504,7 @@ private:
     cut(mcmcAccColTrace);
     pas = join_cols(vec(pas.head(nStop)), zeros<vec>(nSaCov));
     pash = join_cols(vec(pash.head(nStop)), zeros<vec>(nSaCov));
+    if (pasMix.n_elem >= nStop) pasMix = join_cols(vec(pasMix.head(nStop)), zeros<vec>(nSaCov));
     niter = (int)nStop;
   }
 
