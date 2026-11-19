@@ -1,30 +1,89 @@
 #define STRICT_R_HEADER
 #include "res.h"
 #include "cwres.h"
-static inline void calculateCwresDerr(arma::mat& fppm, arma::mat& fpim,
-                                      arma::Col<int>& ID, arma::mat &etas,
-                                      arma::vec &dErr_dEta_i, arma::vec &dErr_dEta_p,
-                                      int &nid) {
-  int lastId = ID[ID.size()-1], lastCol = nid-1, lastIndex=ID.size()-1;
-  for (unsigned int j = fppm.n_rows; j--; ){
-    if (lastId != ID[j]){
-      // FIXME do it without copy?
-      arma::vec tmp = fppm.rows(j+1, lastIndex) * trans(etas.row(lastCol));
-      std::copy(tmp.begin(),tmp.end(),dErr_dEta_p.begin()+j+1);
-      tmp = fpim.rows(j+1, lastIndex) * trans(etas.row(lastCol));
-      std::copy(tmp.begin(),tmp.end(),dErr_dEta_i.begin()+j+1);
-      lastId=ID[j];
-      lastIndex=j;
-      lastCol--;
-      if (lastCol == 0){
-        // Finalize dErr_dEta
-        arma::vec tmp = fppm.rows(0, lastIndex) * trans(etas.row(lastCol));
-        std::copy(tmp.begin(),tmp.end(),dErr_dEta_p.begin());
-        tmp = fpim.rows(0, lastIndex) * trans(etas.row(lastCol));
-        std::copy(tmp.begin(),tmp.end(),dErr_dEta_i.begin());
-        break;
+// Eta sensitivities of the rows `idx` as a sparse neta x nrow matrix: column r
+// is row r's gradient.  IOV occasion and mixture-owned etas are zero on most
+// rows, and nothing here needs a dense nobs x nobs product.
+// The pooled table solve hands the sensitivities over already sparse, as the
+// frame's `rxSens` triplets (1-based row i, eta k, value x) instead of columns.
+static inline arma::sp_mat cwresSensT(List &L, int first, unsigned int neta,
+                                      const arma::uvec &idx, int ncalc) {
+  std::vector<arma::uword> loc;
+  std::vector<double> val;
+  SEXP sensA = Rf_getAttrib(L, Rf_install("rxSens"));
+  if (!Rf_isNull(sensA)) {
+    List sl(sensA);
+    IntegerVector si = sl["i"], sk = sl["k"];
+    NumericVector sx = sl["x"];
+    std::vector<int> pos((size_t)ncalc, -1);
+    for (arma::uword r = 0; r < idx.n_elem; ++r) pos[idx[r]] = (int)r;
+    for (R_xlen_t q = 0; q < sx.size(); ++q) {
+      int row = si[q] - 1, k = sk[q] - 1;
+      if (row < 0 || row >= ncalc || k < 0 || k >= (int)neta) stop("malformed sparse sensitivities");
+      if (pos[(size_t)row] < 0) continue;
+      loc.push_back((arma::uword)k);
+      loc.push_back((arma::uword)pos[(size_t)row]);
+      val.push_back(sx[q]);
+    }
+    if (val.empty()) return arma::sp_mat(neta, idx.n_elem);
+    arma::umat locations(loc.data(), 2, val.size(), false, true);
+    arma::vec values(val.data(), val.size(), false, true);
+    return arma::sp_mat(locations, values, neta, idx.n_elem, true, false);
+  }
+  for (arma::uword r = 0; r < idx.n_elem; ++r) {
+    for (unsigned int j = 0; j < neta; ++j) {
+      double v = REAL(L[first + j])[idx[r]];
+      if (v != 0.0) {
+        loc.push_back(j);
+        loc.push_back(r);
+        val.push_back(v);
       }
     }
+  }
+  if (val.empty()) return arma::sp_mat(neta, idx.n_elem);
+  arma::umat locations(loc.data(), 2, val.size(), false, true);
+  arma::vec values(val.data(), val.size(), false, true);
+  return arma::sp_mat(locations, values, neta, idx.n_elem, false, false);
+}
+
+// diag(F Omega F') from the sparse transposed sensitivities, row by row
+static inline arma::vec cwresVfoDiag(const arma::sp_mat &Ft, const arma::mat &omega) {
+  arma::vec ret(Ft.n_cols, arma::fill::zeros);
+  std::vector<arma::uword> r;
+  std::vector<double> v;
+  for (arma::uword c = 0; c < Ft.n_cols; ++c) {
+    r.clear();
+    v.clear();
+    for (arma::sp_mat::const_col_iterator it = Ft.begin_col(c); it != Ft.end_col(c); ++it) {
+      r.push_back(it.row());
+      v.push_back(*it);
+    }
+    double acc = 0.0;
+    for (size_t k = 0; k < r.size(); ++k) {
+      double t = 0.0;
+      for (size_t j = 0; j < r.size(); ++j) t += v[j] * omega(r[j], r[k]);
+      acc += t * v[k];
+    }
+    ret[c] = acc;
+  }
+  return ret;
+}
+
+// dErr/dEta of each row at its subject's etas, under the population (fppt)
+// and individual (fpit) models
+static inline void calculateCwresDerr(const arma::sp_mat& fppt, const arma::sp_mat& fpit,
+                                      arma::Col<int>& ID, arma::mat &etas,
+                                      arma::vec &dErr_dEta_i, arma::vec &dErr_dEta_p,
+                                      SEXP etaId) {
+  arma::uvec rows = etaRowsById(ID, etaId);
+  for (unsigned int c = fppt.n_cols; c--; ) {
+    double p = 0.0, i = 0.0;
+    for (arma::sp_mat::const_col_iterator it = fppt.begin_col(c); it != fppt.end_col(c); ++it)
+      p += (*it) * etas(rows[c], it.row());
+    for (arma::sp_mat::const_col_iterator it = fpit.begin_col(c); it != fpit.end_col(c); ++it)
+      i += (*it) * etas(rows[c], it.row());
+    dErr_dEta_p[c] = p;
+    dErr_dEta_i[c] = i;
   }
 }
 
@@ -43,15 +102,20 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   int ncalc = Rf_length(ipredL[0]);
   List etasDf = as<List>(etasDfSEXP);
   int nid = Rf_length(etasDf[0]);
-  int npred = getPredIndex(ipredL);
+  int nidCol = getPredIndex(ipredL);
+  // the eta sensitivities of rx_pred_ follow it, then rx_r_
+  int npred = getDfColIndex(ipredL, "rx_pred_");
+  int npredP = getDfColIndex(predL, "rx_pred_");
 
   arma::vec ipredt(REAL(ipredL[npred]), ncalc, false, true);
   arma::vec ipred(ipredt.size());
 
-  arma::vec predt(REAL(predL[npred]), ncalc, false, true);
+  arma::vec predt(REAL(predL[npredP]), ncalc, false, true);
   arma::vec pred(predt.size());
 
-  arma::vec dv(REAL(dvIn), ncalc, false, true);
+  // a copy: the rows below write NA and imputed values into it, and the
+  // caller's DV is shared (.calcTables() hands the same predictions to NPDE)
+  arma::vec dv(REAL(dvIn), ncalc);
   arma::vec dvt(ncalc);
 
   arma::Col<int> cens;
@@ -81,8 +145,8 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   arma::mat omegaMat = as<arma::mat>(omegaMatSEXP);
   unsigned int neta = omegaMat.n_rows;
 
-  arma::vec rpv(REAL(predL[npred+1+neta]), ncalc, false, true);
-  arma::vec riv(REAL(ipredL[npred+1+neta]), ncalc, false, true);
+  arma::vec rpv(REAL(predL[getDfColIndex(predL, "rx_r_")]), ncalc, false, true);
+  arma::vec riv(REAL(ipredL[getDfColIndex(ipredL, "rx_r_")]), ncalc, false, true);
 
   bool doSim = true;
   List opt = as<List>(cwresOpt);
@@ -111,17 +175,12 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   int ncalc2 = sum(normRelated); // This is the true cwres calculations
   arma::Col<int> ID(INTEGER(predL[0]), ncalc, false, true);
 
-  arma::mat fppm(ncalc,neta);
-  arma::mat fpim(ncalc,neta);
-
   arma::mat etas(nid, neta);
   List etasDfFull(neta);
   //etasDfFull.names()=etasDf1.names();
   CharacterVector etaN1 = etasDf.names();
   CharacterVector etaN2(neta);
   for (unsigned int j = neta; j--;) {
-    fppm.col(j) = arma::vec(REAL(predL[j + 1 + npred]), ncalc, false, true);
-    fpim.col(j) = arma::vec(REAL(ipredL[j + 1 + npred]), ncalc, false, true);
     etas.col(j) = arma::vec(REAL(etasDf[j+1]), nid, false, true);
     etaN2[j] = etaN1[j+1];
     etasDfFull[j] = NumericVector(ncalc);
@@ -147,40 +206,23 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
     arma::vec predtNorm = predt.elem(normIdx);
     arma::Col<int> IDnorm = ID.elem(normIdx);
 
-    arma::mat fppm2 = fppm.rows(normIdx);
-    arma::mat fpim2 = fpim.rows(normIdx);
+    arma::sp_mat fppt = cwresSensT(predL, npredP + 1, neta, normIdx, ncalc);
+    arma::sp_mat fpit = cwresSensT(ipredL, npred + 1, neta, normIdx, ncalc);
 
     arma::vec rpvNorm = rpv.elem(normIdx);
     arma::vec rivNorm = riv.elem(normIdx);
 
-    arma::mat V_fo_p = (fppm2 * omegaMat * fppm2.t()); // From Mentre 2006 p. 352
-    arma::mat V_fo_i = (fpim2 * omegaMat * fpim2.t()); // From Mentre 2006 p. 352
-    // There seems to be a difference between how NONMEM and R/S types
-    // of software calculate WRES.  Mentre 2006 states that the
-    // Variance under the FO condition should only be diag(Vfo_full) + Sigma,
-    // but Hooker 2007 claims there is a
-    // diag(Vfo_full)+diag(dh/deta*Sigma*dh/deta).
-    // h = the additional error from the predicted function.
-    //
-    // In the nlmixr2/FOCEi implemented here, the variance of the err
-    // term is 1, or Sigma is a 1 by 1 matrix with one element (1)
-    //
-    // The dh/deta term would be the sd term, or sqrt(r), which means
-    // sqrt(r)*sqrt(r)=|r|.  Since r is positive, this would be r.
-    //
-    // Also according to Hooker, WRES is calculated under the FO
-    // assumption, where eta=0, eps=0 for this r term and Vfo term.
-    // However, conditional weighted residuals are calculated under
-    // the FOCE condition for the Vfo and the FO conditions for
-    // dh/deta
-    //
-
-    arma::vec Vfop = V_fo_p.diag();
-    arma::vec Vfoi = V_fo_i.diag();
+    // Only the diagonal of V_fo = F Omega F' (Mentre 2006 p. 352) is used.
+    // NONMEM and R/S software differ on WRES: Mentre 2006 uses diag(V_fo) + Sigma,
+    // Hooker 2007 diag(V_fo) + diag(dh/deta Sigma dh/deta).  Here Sigma is 1 and
+    // dh/deta is sqrt(r), giving r; WRES is under FO (eta=0) and CWRES uses the
+    // FOCE V_fo with the FO dh/deta.
+    arma::vec Vfop = cwresVfoDiag(fppt, omegaMat);
+    arma::vec Vfoi = cwresVfoDiag(fpit, omegaMat);
 
     arma::vec dErr_dEta_i(ncalc2);
     arma::vec dErr_dEta_p(ncalc2);
-    calculateCwresDerr(fppm2, fpim2, IDnorm, etas, dErr_dEta_i, dErr_dEta_p, nid);
+    calculateCwresDerr(fppt, fpit, IDnorm, etas, dErr_dEta_i, dErr_dEta_p, etasDf[0]);
     arma::vec rest = dvt.elem(normIdx) - predtNorm;
     arma::vec vsum = abs(Vfop+rpvNorm);
     arma::vec wres = rest;
@@ -224,7 +266,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
     cresFinal.elem(nonNormIdx).fill(NA_REAL);
     cwresFinal.elem(nonNormIdx).fill(NA_REAL);
   }
-  calculateDfFull(ID, etas, etasDfFull, nid, neta);
+  calculateDfFull(ID, etas, etasDfFull, neta, etasDf[0]);
 
 
   for (unsigned int j = dv.size(); j--; ) {
@@ -287,14 +329,13 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   retDF.attr("row.names") = IntegerVector::create(NA_INTEGER,-ncalc);
   retDF.attr("class") = "data.frame";
   calcShrinkFinalize(omegaMat, nid, etaLst, iwresFinal, evid, etaN2, 1);
-  List retC = List::create(retDF, etasDfFull, getDfSubsetVars(ipredL, stateSXP),
-                           getDfSubsetVars(ebeL, relevantLHSSEXP),
-                           getDfSubsetVars(ebeL, covSXP));
+  List retC = dfTableParts(retDF, etasDfFull, ipredL, ebeL,
+                           stateSXP, relevantLHSSEXP, covSXP);
   dfSetStateLhsOps(retC, opt);
   retC = dfCbindList(wrap(retC));
   List ret(4);
   ret[0] = wrap(dv);
-  ret[1] = getDfIdentifierCols(ebeL, npred, stateSXP, IDlabelSEXP);
+  ret[1] = getDfIdentifierCols(ebeL, nidCol, stateSXP, IDlabelSEXP);
   ret[2] = retC;
   ret[3] = etaLst;
   return wrap(ret);

@@ -18,7 +18,8 @@
 test_that("FOCEi finite-differenced (lag-time) eta is estimated -- shi21 step stays bounded", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
-  .old <- rxode2::getRxThreads(); on.exit(rxode2::setRxThreads(.old), add = TRUE)
+  .old <- rxode2::getRxThreads()
+  on.exit(rxode2::setRxThreads(.old), add = TRUE)
   rxode2::setRxThreads(1L)
 
   d <- nlmixr2data::theo_sd
@@ -44,9 +45,13 @@ test_that("FOCEi finite-differenced (lag-time) eta is estimated -- shi21 step st
   }
 
   fit <- suppressWarnings(suppressMessages(
-    nlmixr2(mod, d, "focei",
-            foceiControl(print = 0L, maxOuterIterations = 20L,
-                         maxInnerIterations = 30L, calcTables = FALSE))))
+    nlmixr2(
+      mod,
+      d,
+      "focei",
+      foceiControl(print = 0L, maxOuterIterations = 20L, maxInnerIterations = 30L, calcTables = FALSE)
+    )
+  ))
 
   ## the fit converges to a finite, sane objective
   expect_true(is.finite(fit$objf))

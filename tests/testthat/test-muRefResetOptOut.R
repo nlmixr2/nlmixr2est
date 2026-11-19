@@ -51,18 +51,31 @@ nmTest({
     etaMatDrift[, "eta.v"] <- 0.01
     rownames(etaMatDrift) <- NULL
 
-    # warm="save" (self-init inner Hessian) is pinned so the single inner step
-    # barely moves the etas: the default warm="calc" seeds a full Newton step
-    # that converges each eta from ANY start, erasing the retention signal the
-    # assertions below measure.
+    # warm="none" (n1qn1's own self-init inner Hessian) is pinned so the single
+    # inner step barely moves the etas: the default warm="calc" seeds a full
+    # Newton step that converges each eta from ANY start, erasing the retention
+    # signal the assertions below measure.  (This was warm="save" until #1043 --
+    # that option reused nothing, so it WAS self-init; now that it really
+    # restarts from the previous solve's curvature, "none" is what this test
+    # means.) innerOpt="n1qn1" is pinned too, for the same
+    # reason: the trust inner optimizer ignores warm= entirely (it always
+    # supplies a fresh exact Hessian, see src/inner.cpp's trustInner branch)
+    # and converges eta.cl/eta.ka from either start within one step regardless
+    # of the mu-ref protection state, which would erase this test's signal the
+    # same way an unpinned warm= would.
     runOne <- function(muModel) {
       fit <- .nlmixr(
         f0,
         est = "focei",
         control = foceiControl(
-          maxOuterIterations = 0L, maxInnerIterations = 1L,
-          etaMat = etaMatDrift, resetEtaP = 0.999,
-          muModel = muModel, warm = "save", print = 0
+          maxOuterIterations = 0L,
+          maxInnerIterations = 1L,
+          etaMat = etaMatDrift,
+          resetEtaP = 0.999,
+          muModel = muModel,
+          warm = "none",
+          innerOpt = "n1qn1",
+          print = 0
         )
       )
       fit$eta

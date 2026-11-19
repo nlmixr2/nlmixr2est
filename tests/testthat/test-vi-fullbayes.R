@@ -17,19 +17,26 @@ nmTest({
     test_that(paste0("full-Bayes ADVI (", fam, ") recovers FOCEI with sane uncertainties"), {
       skip_on_cran()
       fF <- suppressMessages(suppressWarnings(
-        nlmixr2(mod, nlmixr2data::theo_sd, est = "focei", control = foceiControl(print = 0L))))
+        nlmixr2(mod, nlmixr2data::theo_sd, est = "focei", control = foceiControl(print = 0L))
+      ))
       fA <- suppressMessages(suppressWarnings(
-        nlmixr2(mod, nlmixr2data::theo_sd, est = "fbvi",
-                control = fbviControl(iters = 500L, print = 0L, returnVi = TRUE,
-                                      viFamily = fam))))
+        nlmixr2(
+          mod,
+          nlmixr2data::theo_sd,
+          est = "fbvi",
+          control = fbviControl(iters = 500L, print = 0L, returnVi = TRUE, viFamily = fam)
+        )
+      ))
       expect_false(fA$pointEstimate)
       ## posterior MEANS agree with FOCEI
       expect_equal(unname(fA$theta), unname(fF$theta), tolerance = 0.15)
       expect_equal(unname(fA$popOmega), unname(diag(fF$omega)), tolerance = 0.3)
       ## population variational covariance: symmetric PSD, sane theta SEs
       cov <- fA$viCov
-      expect_equal(dim(cov), rep(length(fA$prep$theta) + fA$prep$neta -
-                                 sum(fA$prep$thetaFix) - sum(fA$prep$omegaFix), 2L)[c(1, 1)])
+      expect_equal(
+        dim(cov),
+        rep(length(fA$prep$theta) + fA$prep$neta - sum(fA$prep$thetaFix) - sum(fA$prep$omegaFix), 2L)[c(1, 1)]
+      )
       sds <- sqrt(diag(cov))
       expect_true(all(is.finite(sds)) && all(sds > 0))
       ## the typical-value SEs are small (a few percent), NOT the inflated
@@ -43,8 +50,8 @@ nmTest({
     ## the default covMethod is "vi": the population variational covariance is
     ## the fit's SE source
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(mod, nlmixr2data::theo_sd, est = "fbvi",
-              control = fbviControl(iters = 400L, print = 0L))))
+      nlmixr2(mod, nlmixr2data::theo_sd, est = "fbvi", control = fbviControl(iters = 400L, print = 0L))
+    ))
     expect_s3_class(fit, "nlmixr2FitData")
     expect_true(is.finite(fit$objf))
     expect_true(all(c("IPRED", "CWRES") %in% names(fit)))
@@ -61,11 +68,15 @@ nmTest({
     ## full inner model; the full-Bayes path must NOT overwrite it with the
     ## variational covariance
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(mod, nlmixr2data::theo_sd, est = "fbvi",
-              control = fbviControl(iters = 400L, print = 0L,
-                                    covMethod = "analytic"))))
+      nlmixr2(
+        mod,
+        nlmixr2data::theo_sd,
+        est = "fbvi",
+        control = fbviControl(iters = 400L, print = 0L, covMethod = "analytic")
+      )
+    ))
     expect_false(identical(fit$covMethod, "vi"))
-    expect_false(is.null(fit$env$viCov))          # the variational cov is still kept as an artifact
+    expect_false(is.null(fit$env$viCov)) # the variational cov is still kept as an artifact
     expect_true(all(is.finite(fit$parFixedDf$SE)))
     expect_true(all(fit$parFixedDf$SE > 0))
   })

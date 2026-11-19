@@ -9,93 +9,6 @@ getBaseSimModelFit <- function(x) {
   UseMethod("getBaseSimModelFit")
 }
 
-.isAssignExpr <- function(x) {
-  length(x) == 3L &&
-    (identical(x[[1]],quote(`=`)) ||
-       identical(x[[1]],quote(`<-`)))
-}
-
-.replaceThetaEtaWithNamed <- function(x, iniDf) {
-  if (is.call(x)) {
-    if (length(x) == 3L &&
-          is.numeric(x[[3]]) &&
-          identical(x[[1]], quote(`[`))) {
-      if (identical(x[[2]], quote(`THETA`))) {
-        return(str2lang(iniDf[which(iniDf$ntheta== x[[3]]), "name"]))
-      }
-      if (identical(x[[2]], quote(`ETA`))) {
-        return(str2lang(iniDf[which(iniDf$neta1 == x[[3]] & iniDf$neta2 == x[[3]]),
-                              "name"]))
-      }
-    }
-    return(as.call(lapply(x, .replaceThetaEtaWithNamed, iniDf)))
-  }
-  x
-}
-
-#' @rdname getBaseSimModelFit
-#' @export
-getBaseSimModelFit.focei <- function(x) {
-  obj <- x[[1]]
-    getBaseSimModelFit.default(x) # fall back to basic with new method
-  if (all(obj$ui$predDf$distribution == "norm")) {
-    .expr <- eval(parse(text=paste0("quote(rxode2({",
-                                    rxode2::rxNorm(obj$foceiModel$predOnly),
-                                    "}))")))
-    .e2 <- .expr[[2]]
-    .e2 <- lapply(seq_along(.e2), function(i) {
-      .cur <- .e2[[i]]
-      .replaceThetaEtaWithNamed(.cur, obj$ui$iniDf)
-    })
-    .w <- vapply(seq_along(.e2), function(i) {
-      .cur <- .e2[[i]]
-      if (.isAssignExpr(.cur) &&
-            identical(.cur[[2]], .cur[[3]])) {
-        return(FALSE)
-      }
-      return(TRUE)
-    }, logical(1), USE.NAMES=FALSE)
-    .e2 <- .e2[.w]
-    .w <- which(vapply(seq_along(.e2), function(i) {
-      .cur <- .e2[[i]]
-      if (.isAssignExpr(.cur) &&
-            identical(.cur[[2]], quote(`rx_r_`))) return(TRUE)
-      FALSE
-    }, logical(1), USE.NAMES=TRUE))
-    .w <- seq(1, .w)
-    .e21 <- .e2[.w]
-    .e22 <- .e2[-.w]
-    .e2 <- as.call(c(.e21,
-      list(quote(ipredSim <- rxTBSi(rx_pred_, rx_lambda_, rx_yj_, rx_low_, rx_hi_)),
-           eval(parse(text=paste0("quote(sim <- rxTBSi(rx_pred_ + sqrt(rx_r_) *(",
-                                  paste(paste0("error.", obj$predDf$var, "*(CMT==", obj$predDf$cmt, ")"),
-                                        collapse = "+"),
-                                  "), rx_lambda_, rx_yj_, rx_low_, rx_hi_))")))),
-      .e22))
-    .expr[[2]] <- .e2
-  }
-  getBaseSimModelFit.default(x)
-}
-
-#' @rdname getBaseSimModelFit
-#' @export
-getBaseSimModelFit.foce <- getBaseSimModelFit.focei
-
-#' @rdname getBaseSimModelFit
-#' @export
-getBaseSimModelFit.focep <- getBaseSimModelFit.focei
-
-#' @rdname getBaseSimModelFit
-#' @export
-getBaseSimModelFit.fo <- getBaseSimModelFit.focei
-#' @rdname getBaseSimModelFit
-#' @export
-getBaseSimModelFit.foi <- getBaseSimModelFit.focei
-
-#' @rdname getBaseSimModelFit
-#' @export
-getBaseSimModelFit.posthoc <- getBaseSimModelFit.focei
-
 #' @rdname getBaseSimModelFit
 #' @export
 getBaseSimModelFit.default <- function(x) {
@@ -103,6 +16,36 @@ getBaseSimModelFit.default <- function(x) {
   .ui <- .obj$ui
   rxode2::getBaseSimModel(.ui)
 }
+
+## The focei-family methods used to build a `predOnly`-based simulation model
+## and then throw it away, and to call the default method twice -- once with
+## its result discarded.  They were therefore already identical to the default
+## in behavior, at about three times the cost (two extra lowerings of the fit
+## per call, one of them a `rxNorm()` of the focei `predOnly` model).  They are
+## kept as aliases so dispatch, and the exported methods, stay as they were.
+#' @rdname getBaseSimModelFit
+#' @export
+getBaseSimModelFit.focei <- getBaseSimModelFit.default
+
+#' @rdname getBaseSimModelFit
+#' @export
+getBaseSimModelFit.foce <- getBaseSimModelFit.default
+
+#' @rdname getBaseSimModelFit
+#' @export
+getBaseSimModelFit.focep <- getBaseSimModelFit.default
+
+#' @rdname getBaseSimModelFit
+#' @export
+getBaseSimModelFit.fo <- getBaseSimModelFit.default
+
+#' @rdname getBaseSimModelFit
+#' @export
+getBaseSimModelFit.foi <- getBaseSimModelFit.default
+
+#' @rdname getBaseSimModelFit
+#' @export
+getBaseSimModelFit.posthoc <- getBaseSimModelFit.default
 
 getBaseSimModel.nlmixr2FitCoreSilent <- function(obj) {
   .est <- obj$est

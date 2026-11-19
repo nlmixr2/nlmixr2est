@@ -15,9 +15,9 @@ nmTest({
       d/dt(center) <- ka * depot - ke * center
       cp <- center / v; cp ~ add(add.sd) })
   }
-  .ctl <- function(muExpand = TRUE)
-    npagControl(points = 128L, cycles = 30L, gammaOptimize = FALSE, seed = 1L,
-                calcTables = FALSE, muExpand = muExpand)
+  .ctl <- function(muExpand = TRUE) {
+    npagControl(points = 128L, cycles = 30L, gammaOptimize = FALSE, seed = 1L, calcTables = FALSE, muExpand = muExpand)
+  }
 
   test_that("est='npag' mu-expansion recovers a non-mu structural theta as a fixed effect", {
     f <- nlmixr2(.mod, nlmixr2data::theo_sd, est = "npag", control = .ctl(TRUE))
@@ -25,21 +25,25 @@ nmTest({
     # the injected eta's support-mean is folded into the theta and the random effect
     # is collapsed, so the REPORTED theta is the estimate (recovers theo ke from the
     # deliberately-wrong 0.30 start) and there is no BSV on the fixed effect.
-    expect_true(exp(as.numeric(f$theta[["tke"]])) > 0.05 &&
-                exp(as.numeric(f$theta[["tke"]])) < 0.15)
-    expect_lt(f$omega["eta.tke", "eta.tke"], 1e-4)     # collapsed: fixed effect, no BSV
+    expect_true(
+      exp(as.numeric(f$theta[["tke"]])) > 0.05 &&
+        exp(as.numeric(f$theta[["tke"]])) < 0.15
+    )
+    expect_lt(f$omega["eta.tke", "eta.tke"], 1e-4) # collapsed: fixed effect, no BSV
     .sp <- f$env$npagSupport
-    expect_true(all(abs(.sp[, ncol(.sp)]) < 1e-8))     # injected eta support zeroed
+    expect_true(all(abs(.sp[, ncol(.sp)]) < 1e-8)) # injected eta support zeroed
   })
 
   test_that("est='npag' default (regressor) recovers a non-mu structural theta directly", {
     f <- nlmixr2(.mod, nlmixr2data::theo_sd, est = "npag", control = .ctl(FALSE))
-    expect_false("eta.tke" %in% rownames(f$omega))          # no injected eta: a regressor
+    expect_false("eta.tke" %in% rownames(f$omega)) # no injected eta: a regressor
     # optimized directly in the residual step -> the reported theta recovers theo ke
     # from the wrong 0.30 start, without a grid dimension.
-    expect_true(exp(as.numeric(f$theta[["tke"]])) > 0.05 &&
-                exp(as.numeric(f$theta[["tke"]])) < 0.15)
-    expect_false(isTRUE(all.equal(as.numeric(f$theta[["tke"]]), log(0.30))))  # moved
+    expect_true(
+      exp(as.numeric(f$theta[["tke"]])) > 0.05 &&
+        exp(as.numeric(f$theta[["tke"]])) < 0.15
+    )
+    expect_false(isTRUE(all.equal(as.numeric(f$theta[["tke"]]), log(0.30)))) # moved
   })
 
   # fixture 2: a non-mu-referenced eta (enters non-additively, so rxode2 does not
@@ -57,14 +61,18 @@ nmTest({
 
   test_that("est='npag' natively estimates a non-mu-referenced eta as a grid dimension", {
     .ui <- rxode2::rxUiDecompress(rxode2::rxode2(.modEta))
-    expect_false("eta.ke" %in% .ui$muRefDataFrame$eta)   # genuinely non-mu
-    f <- nlmixr2(.modEta, nlmixr2data::theo_sd, est = "npag",
-                 control = npagControl(points = 64L, cycles = 10L, gammaOptimize = FALSE,
-                                       seed = 1L, calcTables = FALSE))
-    expect_true("eta.ke" %in% rownames(f$omega))          # it is a support dimension
-    .sp <- f$env$npagSupport; .wt <- f$env$npagWeights
-    .j <- ncol(.sp)                                        # eta.ke is the last eta
-    expect_true(abs(sum(.wt * .sp[, .j])) < 0.5)           # pure RE: support mean ~ 0
-    expect_gt(f$omega["eta.ke", "eta.ke"], 0)              # a BSV was estimated
+    expect_false("eta.ke" %in% .ui$muRefDataFrame$eta) # genuinely non-mu
+    f <- nlmixr2(
+      .modEta,
+      nlmixr2data::theo_sd,
+      est = "npag",
+      control = npagControl(points = 64L, cycles = 10L, gammaOptimize = FALSE, seed = 1L, calcTables = FALSE)
+    )
+    expect_true("eta.ke" %in% rownames(f$omega)) # it is a support dimension
+    .sp <- f$env$npagSupport
+    .wt <- f$env$npagWeights
+    .j <- ncol(.sp) # eta.ke is the last eta
+    expect_true(abs(sum(.wt * .sp[, .j])) < 0.5) # pure RE: support mean ~ 0
+    expect_gt(f$omega["eta.ke", "eta.ke"], 0) # a BSV was estimated
   })
 })

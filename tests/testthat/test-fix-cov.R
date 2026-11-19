@@ -16,8 +16,8 @@ nmTest({
       ka <- exp(tka + eta.ka)
       cl <- exp(tcl + eta.cl + wt.cl*logWt70 + sexf.cl*sexf)
       v <- exp(tv + eta.v + wt.v2*logWt70)
-      d / dt(depot) <- -ka * depot
-      d / dt(center) <- ka * depot - cl / v * center
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
       ipre <- center / v
       ipre ~ add(add.sd)
     })
@@ -26,15 +26,15 @@ nmTest({
   nid <- 12
 
   dat <- rxode2::rxWithSeed(102478, {
-    cov <- data.frame(id=seq(nid), logWt70=log(rnorm(nid, 70, 10) / 70), sexf=round(runif(nid)))
+    cov <- data.frame(id = seq(nid), logWt70 = log(rnorm(nid, 70, 10) / 70), sexf = round(runif(nid)))
     ev <- et() |>
-      et(amt=320) |>
+      et(amt = 320) |>
       et(c(0.25, 0.5, 1, 2, 4, 6, 8, 10, 12, 24)) |>
-      et(id=1:nid) |>
+      et(id = 1:nid) |>
       merge(cov)
-    rxSolve(mod, ev, addDosing=TRUE, returnType="data.frame") |>
+    rxSolve(mod, ev, addDosing = TRUE, returnType = "data.frame") |>
       dplyr::select(id, evid, cmt, amt, time, sim, logWt70, sexf) |>
-      dplyr::rename(dv=sim)
+      dplyr::rename(dv = sim)
   })
 
   test_that("test mu reference covariate in saem", {
@@ -55,8 +55,8 @@ nmTest({
         ka <- exp(tka + eta.ka)
         cl <- exp(tcl + eta.cl + wt.cl*logWt70 + sexf.cl*sexf)
         v <- exp(tv + eta.v + wt.v2*logWt70)
-        d / dt(depot) <- -ka * depot
-        d / dt(center) <- ka * depot - cl / v * center
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
         ipre <- center / v
         ipre ~ add(add.sd)
       })
@@ -96,8 +96,8 @@ nmTest({
         ka <- exp(tka + eta.ka)
         cl <- exp(tcl + eta.cl + wt.cl*logWt70 + sexf.cl*sexf)
         v <- exp(tv + eta.v + wt.v2*logWt70)
-        d / dt(depot) <- -ka * depot
-        d / dt(center) <- ka * depot - cl / v * center
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
         ipre <- center / v
         ipre ~ add(add.sd)
       })
@@ -109,24 +109,25 @@ nmTest({
 
     expect_equal(f$saemParamsToEstimate, c("tka", "tcl", "wt.cl", "tv", "wt.v2", "sexf.cl"))
 
-    expect_equal(setNames(f$saemParHistThetaKeep, f$saemParamsToEstimate),
-                 c(tka = 1L, tcl = 1L, wt.cl = 1L, tv = 1L, wt.v2 = 1L, sexf.cl = 0L))
+    expect_equal(
+      setNames(f$saemParHistThetaKeep, f$saemParamsToEstimate),
+      c(tka = 1L, tcl = 1L, wt.cl = 1L, tv = 1L, wt.v2 = 1L, sexf.cl = 0L)
+    )
 
     fit1 <- .nlmixr(mod, dat, "saem", control = saemControlFast)
 
-    expect_equal(fit1$theta["sexf.cl"], c(sexf.cl=1.5))
+    expect_equal(fit1$theta["sexf.cl"], c(sexf.cl = 1.5))
 
     # Test literalFix (but it can be fast...)
     currentControl <- saemControlFast
     currentControl$literalFix <- FALSE
-    fit1 <-.nlmixr(mod, dat, "saem", control = currentControl)
+    fit1 <- .nlmixr(mod, dat, "saem", control = currentControl)
 
-    expect_equal(fit1$theta["sexf.cl"], c(sexf.cl=1.5))
+    expect_equal(fit1$theta["sexf.cl"], c(sexf.cl = 1.5))
   })
 
   test_that("all non time-varying covs", {
-    withr::with_options(list(nlmixr2.saemMuRefCov=FALSE), {
-
+    withr::with_options(list(nlmixr2.saemMuRefCov = FALSE), {
       mod <- function() {
         ini({
           tka <- 0.45 ; label("Log Ka")
@@ -144,8 +145,8 @@ nmTest({
           ka <- exp(tka + eta.ka)
           cl <- exp(tcl + eta.cl + wt.cl*logWt70 + sexf.cl*sexf)
           v <- exp(tv + eta.v + wt.v2*logWt70)
-          d / dt(depot) <- -ka * depot
-          d / dt(center) <- ka * depot - cl / v * center
+          d/dt(depot) <- -ka * depot
+          d/dt(center) <- ka * depot - cl / v * center
           ipre <- center / v
           ipre ~ add(add.sd)
         })

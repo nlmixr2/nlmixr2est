@@ -28,6 +28,7 @@ nlmControl(
   shi21maxHess = 20L,
   censOption = c("gauss", "laplace"),
   eventSens = c("jump", "fd"),
+  linCmtSensCarry = c("auto", "none"),
   sensMethod = c("default", "forward"),
   useColor = NULL,
   printNcol = NULL,
@@ -123,7 +124,9 @@ When `FALSE`, all subjects have their tolerances relaxed on
 each retry and tolerances are reset afterward.}
 
 \item{eventType}{Event gradient type for dosing events; Can be
-"central" or "forward"}
+"central" or "forward".  The integer code a control stores is accepted
+too: 2 (central) or 3 (forward) in `foceiControl()`, 2 (central) or 1
+(forward) in the nlm-family controls.}
 
 \item{shiErr}{This represents the epsilon when optimizing the ideal
 step size for numeric differentiation using the Shi2021 method}
@@ -134,7 +137,9 @@ time, modeled duration/rate and bioavailability)}
 
 \item{optimHessType}{Hessian type for numeric-difference individual
 Hessians in generalized log-likelihood estimation: "central" (matches
-R's `optimHess()`, default) or "forward" (faster).}
+R's `optimHess()`, default) or "forward" (faster).  The integer code a
+control stores is accepted too: 1 (central) or 3 (forward) in
+`foceiControl()`, 2 (central) or 1 (forward) in the nlm-family controls.}
 
 \item{hessErr}{This represents the epsilon when optimizing the
 Hessian step size using the Shi2021 method.}
@@ -161,6 +166,11 @@ lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
 doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 -- a common design for estimating `f()` from paired IV+oral data
 (rxode2/rxode2#1237).}
+
+\item{linCmtSensCarry}{use the linCmt() sensitivity carry for a theta on
+a covariate-driven linCmt() parameter ("auto", the default) or keep the
+standard gradient ("none"); see `foceiControl()`'s argument of the same
+name.}
 
 \item{sensMethod}{Method used to compute the ODE parameter sensitivities.
 `"forward"` uses the classic variational (forward) sensitivity ODEs;
@@ -217,7 +227,11 @@ By default this is 1.  When zero or below, no scaling is performed.}
 before optimizing.  This only works with
 scaleType="nlmixr2".}
 
-\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.}
 
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}
@@ -249,8 +263,10 @@ will calculate tables. By default this is \code{TRUE}}
 \item{compress}{Should the object have compressed items}
 
 \item{covMethod}{"r" uses nlmixr2's `nlmixr2Hess()` for the hessian, or
-"nlm" uses the hessian from `stats::nlm(.., hessian=TRUE)`; defaults to
-"nlm" when using nlmixr2's hessian/gradient for solving.}
+"nlm" uses a Hessian built from nlmixr2's analytical gradient (central
+differences over `nlmixr2Gill83()` steps) with `solveType` `"hessian"` or
+`"grad"`, and `stats::nlm(.., hessian=TRUE)`'s with `"fun"`; defaults
+to "nlm" when using nlmixr2's hessian/gradient for solving.}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective
@@ -262,20 +278,17 @@ function.  By default this is \code{TRUE}}
 \item{sigdig}{Optimization significant digits.  One value drives, with a single
 consistent formula, the inner/outer optimizer convergence tolerance
 (\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
-and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
-\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
-\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
-tolerances match the main solve (the outer gradient and covariance are built
-from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
-order looser.
-Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 3}
-this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
+and the ODE solver tolerances \code{rtol = max(10^(-2*sigdig), 1e-12)},
+\code{atol = rtol/100} for every solver.  An objective solved to relative
+error \code{rtol} locates its minimum only to about \code{sqrt(rtol)}, so
+this is the solve a \code{10^-sigdig} optimizer needs.  The sensitivity
+(\code{atolSens}/\code{rtolSens}) tolerances match the main solve; the
+steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+At the default \code{sigdig = 3} this is \code{atol = 1e-8},
+\code{rtol = 1e-6}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed
@@ -292,28 +305,27 @@ nlm control object
 nlmixr2 defaults controls for nlm
 }
 \examples{
-
 \donttest{
 # A logit regression example with emax model
 
-dsn <- data.frame(i=1:1000)
+dsn <- data.frame(i = 1:1000)
 dsn$time <- exp(rnorm(1000))
-dsn$DV=rbinom(1000,1,exp(-1+dsn$time)/(1+exp(-1+dsn$time)))
+dsn$DV <- rbinom(1000, 1, exp(-1 + dsn$time) / (1 + exp(-1 + dsn$time)))
 
 mod <- function() {
- ini({
-   E0 <- 0.5
-   Em <- 0.5
-   E50 <- 2
-   g <- fix(2)
- })
- model({
-   v <- E0+Em*time^g/(E50^g+time^g)
-   ll(bin) ~ DV * v - log(1 + exp(v))
- })
+  ini({
+    E0 <- 0.5
+    Em <- 0.5
+    E50 <- 2
+    g <- fix(2)
+  })
+  model({
+    v <- E0 + Em * time^g / (E50^g + time^g)
+    ll(bin) ~ DV * v - log(1 + exp(v))
+  })
 }
 
-fit2 <- nlmixr(mod, dsn, est="nlm")
+fit2 <- nlmixr(mod, dsn, est = "nlm")
 
 print(fit2)
 

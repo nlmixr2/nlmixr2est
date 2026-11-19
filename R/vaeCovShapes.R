@@ -38,15 +38,25 @@
 #'   `"cat"`
 #' @noRd
 .vaeShapeFamily <- function(shape) {
-  .f <- c(power = "log", log = "log",
-          lin = "lin", identity = "lin", center = "lin",
-          hockey = "hockey", hockeyLow = "hockey", hockeyHi = "hockey",
-          cat = "cat")[shape]
+  .f <- c(
+    power = "log",
+    log = "log",
+    lin = "lin",
+    identity = "lin",
+    center = "lin",
+    hockey = "hockey",
+    hockeyLow = "hockey",
+    hockeyHi = "hockey",
+    cat = "cat"
+  )[shape]
   if (anyNA(.f)) {
-    stop("unknown covariate shape: ",
-         paste(unique(shape[is.na(.f)]), collapse = ", "),
-         "\navailable: ", paste(.vaeAllShapes, collapse = ", "),
-         call. = FALSE)
+    stop(
+      "unknown covariate shape: ",
+      paste(unique(shape[is.na(.f)]), collapse = ", "),
+      "\navailable: ",
+      paste(.vaeAllShapes, collapse = ", "),
+      call. = FALSE
+    )
   }
   unname(.f)
 }
@@ -59,11 +69,17 @@
   checkmate::assertCharacter(shape, min.len = 1, any.missing = FALSE)
   .bad <- setdiff(shape, .vaeContShapes)
   if (length(.bad) > 0L) {
-    stop("unknown covariate shape: ", paste(.bad, collapse = ", "),
-         "\navailable: ", paste(.vaeContShapes, collapse = ", "),
-         call. = FALSE)
+    stop(
+      "unknown covariate shape: ",
+      paste(.bad, collapse = ", "),
+      "\navailable: ",
+      paste(.vaeContShapes, collapse = ", "),
+      call. = FALSE
+    )
   }
-  if (anyDuplicated(shape)) stop("duplicate covariate shape", call. = FALSE)
+  if (anyDuplicated(shape)) {
+    stop("duplicate covariate shape", call. = FALSE)
+  }
   shape
 }
 
@@ -79,23 +95,24 @@
 #'   natural parameterization -- it then enters as the column itself
 #' @return length-one character string
 #' @noRd
-.vaeShapeExpr <- function(shape, col, center = NA_real_, level = NULL,
-                          raw = FALSE) {
+.vaeShapeExpr <- function(shape, col, center = NA_real_, level = NULL, raw = FALSE) {
   .c <- if (is.na(center)) NA_character_ else as.character(signif(center, 12))
-  switch(shape,
-         power = paste0("log(", col, "/", .c, ")"),
-         log = paste0("log(", col, ")"),
-         lin = paste0("(", col, " - ", .c, ")"),
-         identity = col,
-         center = paste0("(", col, "/", .c, ")"),
-         ## the arms are disjoint (`<` against `>=`), so they partition subjects
-         ## and sum to the lin column exactly -- a subject sitting ON the knot
-         ## belongs to the high arm alone.  Both vanish at the knot, so the
-         ## structural theta stays the parameter value AT the center.
-         hockeyLow = paste0("(", col, " < ", .c, ")*(", col, " - ", .c, ")"),
-         hockeyHi = paste0("(", col, " >= ", .c, ")*(", col, " - ", .c, ")"),
-         cat = if (raw) col else paste0("(", col, " == ", .vaeLevelLit(level), ")"),
-         stop("unknown covariate shape: ", shape, call. = FALSE))
+  switch(
+    shape,
+    power = paste0("log(", col, "/", .c, ")"),
+    log = paste0("log(", col, ")"),
+    lin = paste0("(", col, " - ", .c, ")"),
+    identity = col,
+    center = paste0("(", col, "/", .c, ")"),
+    ## the arms are disjoint (`<` against `>=`), so they partition subjects
+    ## and sum to the lin column exactly -- a subject sitting ON the knot
+    ## belongs to the high arm alone.  Both vanish at the knot, so the
+    ## structural theta stays the parameter value AT the center.
+    hockeyLow = paste0("(", col, " < ", .c, ")*(", col, " - ", .c, ")"),
+    hockeyHi = paste0("(", col, " >= ", .c, ")*(", col, " - ", .c, ")"),
+    cat = if (raw) col else paste0("(", col, " == ", .vaeLevelLit(level), ")"),
+    stop("unknown covariate shape: ", shape, call. = FALSE)
+  )
 }
 
 #' Name component a shape contributes to its coefficient name
@@ -122,7 +139,9 @@
 #' @return length-one character string
 #' @noRd
 .vaeLevelLit <- function(level) {
-  if (is.numeric(level)) return(as.character(signif(level, 12)))
+  if (is.numeric(level)) {
+    return(as.character(signif(level, 12)))
+  }
   ## encodeString escapes embedded quotes and backslashes; pasting raw quotes
   ## around a level like `A"B` emits model text that does not even parse
   encodeString(as.character(level), quote = "\"")
@@ -141,18 +160,20 @@
 #'   structural theta)
 #' @noRd
 .vaeShapeBeta <- function(shape, center, beta) {
-  switch(shape,
-         power = list(beta = beta, interceptAdj = 0),
-         log = list(beta = beta, interceptAdj = -beta * log(center)),
-         lin = list(beta = beta, interceptAdj = 0),
-         identity = list(beta = beta, interceptAdj = -beta * center),
-         center = list(beta = beta * center, interceptAdj = -beta * center),
-         ## an arm's written expression IS its design column, and both vanish at
-         ## the knot, so no part of the effect moves into the intercept
-         hockeyLow = list(beta = beta, interceptAdj = 0),
-         hockeyHi = list(beta = beta, interceptAdj = 0),
-         cat = list(beta = beta, interceptAdj = 0),
-         stop("unknown covariate shape: ", shape, call. = FALSE))
+  switch(
+    shape,
+    power = list(beta = beta, interceptAdj = 0),
+    log = list(beta = beta, interceptAdj = -beta * log(center)),
+    lin = list(beta = beta, interceptAdj = 0),
+    identity = list(beta = beta, interceptAdj = -beta * center),
+    center = list(beta = beta * center, interceptAdj = -beta * center),
+    ## an arm's written expression IS its design column, and both vanish at
+    ## the knot, so no part of the effect moves into the intercept
+    hockeyLow = list(beta = beta, interceptAdj = 0),
+    hockeyHi = list(beta = beta, interceptAdj = 0),
+    cat = list(beta = beta, interceptAdj = 0),
+    stop("unknown covariate shape: ", shape, call. = FALSE)
+  )
 }
 
 ## The element name that carries the eligibility flag rather than a rule.  Matched
@@ -185,38 +206,45 @@
 #' @noRd
 .vaeResolveShapes <- function(spec) {
   .mk <- function(var, cov, shapes) {
-    .d <- data.frame(var = as.character(var), cov = as.character(cov),
-                     stringsAsFactors = FALSE)
+    .d <- data.frame(var = as.character(var), cov = as.character(cov), stringsAsFactors = FALSE)
     ## TRUE == "eligible, default shapes"; anything else must name real shapes
-    if (isTRUE(shapes)) shapes <- .vaeDefaultShapes
+    if (isTRUE(shapes)) {
+      shapes <- .vaeDefaultShapes
+    }
     if (is.logical(shapes)) {
-      stop("shapes value must be TRUE or a shape vector, not ",
-           deparse(shapes), call. = FALSE)
+      stop("shapes value must be TRUE or a shape vector, not ", deparse(shapes), call. = FALSE)
     }
     .d$shapes <- list(.vaeAssertContShapes(as.character(shapes)))
     .d
   }
   .ret <- function(rules, fixCov) list(rules = rules, fixCov = fixCov)
-  if (is.null(spec)) spec <- .vaeDefaultShapes
+  if (is.null(spec)) {
+    spec <- .vaeDefaultShapes
+  }
   ## a character vector names no covariate, so there is nothing for fixCov to fix
   if (is.character(spec)) {
     return(.ret(.mk(NA_character_, NA_character_, spec), FALSE))
   }
-  if (!is.list(spec)) stop("shapes must be a character vector or a list", call. = FALSE)
+  if (!is.list(spec)) {
+    stop("shapes must be a character vector or a list", call. = FALSE)
+  }
   if (length(spec) == 0L) {
     return(.ret(.mk(NA_character_, NA_character_, .vaeDefaultShapes), FALSE))
   }
   .nm <- names(spec)
-  if (is.null(.nm)) .nm <- rep("", length(spec))
+  if (is.null(.nm)) {
+    .nm <- rep("", length(spec))
+  }
   ## Pull fixCov out BEFORE any rule parsing.  It is not a rule, and a bare
   ## logical among the elements must not be read as one.
   .fixCov <- TRUE
   .fx <- which(.nm == .vaeFixCovName)
-  if (length(.fx) > 1L) stop("fixCov given more than once in shapes", call. = FALSE)
+  if (length(.fx) > 1L) {
+    stop("fixCov given more than once in shapes", call. = FALSE)
+  }
   if (length(.fx) == 1L) {
     .fixCov <- spec[[.fx]]
-    checkmate::assertLogical(.fixCov, len = 1, any.missing = FALSE,
-                             .var.name = "fixCov")
+    checkmate::assertLogical(.fixCov, len = 1, any.missing = FALSE, .var.name = "fixCov")
     spec <- spec[-.fx]
     .nm <- .nm[-.fx]
   }
@@ -226,9 +254,12 @@
     ## override an explicit flag; silently reading it as TRUE would search
     ## nothing.  Neither is what was meant, so say so.
     if (isTRUE(.fixCov) && length(.fx) == 1L) {
-      stop("shapes: fixCov=TRUE but no covariate is named\n",
-           "  name the covariates to search, or use covariateSelection=FALSE ",
-           "to turn the search off", call. = FALSE)
+      stop(
+        "shapes: fixCov=TRUE but no covariate is named\n",
+        "  name the covariates to search, or use covariateSelection=FALSE ",
+        "to turn the search off",
+        call. = FALSE
+      )
     }
     return(.ret(.mk(NA_character_, NA_character_, .vaeDefaultShapes), FALSE))
   }
@@ -239,18 +270,25 @@
       ## pair rule; `$` partial-matches, so cov/covar and shape/shapes both work
       .cov <- if (is.null(.e$covar)) .e$cov else .e$covar
       .sh <- if (is.null(.e$shapes)) .e$shape else .e$shapes
-      if (is.null(.sh)) .sh <- .vaeDefaultShapes
+      if (is.null(.sh)) {
+        .sh <- .vaeDefaultShapes
+      }
       .out[[.i]] <-
-        .mk(if (is.null(.e$var)) NA_character_ else as.character(.e$var),
-            if (is.null(.cov)) NA_character_ else toupper(as.character(.cov)),
-            .sh)
+        .mk(
+          if (is.null(.e$var)) NA_character_ else as.character(.e$var),
+          if (is.null(.cov)) NA_character_ else toupper(as.character(.cov)),
+          .sh
+        )
     } else if (nzchar(.nm[.i])) {
       ## named element: exactly a covar-only pair rule
       .out[[.i]] <- .mk(NA_character_, toupper(.nm[.i]), .e)
     } else {
-      stop("shapes list element ", .i,
-           " must be named by covariate, or be a list(var=, covar=, shapes=) item",
-           call. = FALSE)
+      stop(
+        "shapes list element ",
+        .i,
+        " must be named by covariate, or be a list(var=, covar=, shapes=) item",
+        call. = FALSE
+      )
     }
   }
   .ret(do.call(rbind, .out), .fixCov)
@@ -278,21 +316,28 @@
 #' @noRd
 .vaeEligible <- function(rules, fixCov, etaNames, thetaForEta, covRaw) {
   .raw <- unique(covRaw)
-  .m <- matrix(TRUE, length(etaNames), length(.raw),
-               dimnames = list(NULL, .raw))
-  if (!isTRUE(fixCov) || length(.raw) == 0L) return(.m)
+  .m <- matrix(TRUE, length(etaNames), length(.raw), dimnames = list(NULL, .raw))
+  if (!isTRUE(fixCov) || length(.raw) == 0L) {
+    return(.m)
+  }
   ## A rule naming neither a parameter nor a covariate makes everything
   ## eligible, which is a direct contradiction of fixCov rather than a
   ## restriction to honor.  Say so instead of silently ignoring one of the two.
   if (any(is.na(rules$var) & is.na(rules$cov))) {
-    stop("shapes: a rule with neither var= nor covar= makes every covariate ",
-         "eligible, which contradicts fixCov=TRUE\n",
-         "  use fixCov=FALSE to restrict shapes without restricting the search",
-         call. = FALSE)
+    stop(
+      "shapes: a rule with neither var= nor covar= makes every covariate ",
+      "eligible, which contradicts fixCov=TRUE\n",
+      "  use fixCov=FALSE to restrict shapes without restricting the search",
+      call. = FALSE
+    )
   }
   if (.vaeFixCovName %in% .raw || toupper(.vaeFixCovName) %in% toupper(.raw)) {
-    stop("shapes: a data covariate is named `", .vaeFixCovName,
-         "`, which collides with the eligibility flag", call. = FALSE)
+    stop(
+      "shapes: a data covariate is named `",
+      .vaeFixCovName,
+      "`, which collides with the eligibility flag",
+      call. = FALSE
+    )
   }
   .m[] <- FALSE
   for (.k in seq_along(etaNames)) {
@@ -300,7 +345,9 @@
     .al <- unique(.al[!is.na(.al)])
     for (.r in seq_len(nrow(rules))) {
       .vOk <- is.na(rules$var[.r]) || rules$var[.r] %in% .al
-      if (!.vOk) next
+      if (!.vOk) {
+        next
+      }
       if (is.na(rules$cov[.r])) {
         ## var-only: every covariate, on this parameter alone
         .m[.k, ] <- TRUE
@@ -329,15 +376,17 @@
 #' @return numeric vector, same length as `v`
 #' @noRd
 .vaeShapeValue <- function(shape, v, center) {
-  switch(shape,
-         power = log(v / center),
-         log = log(v),
-         lin = v - center,
-         identity = v,
-         center = v / center,
-         hockeyLow = (v < center) * (v - center),
-         hockeyHi = (v >= center) * (v - center),
-         stop("unknown covariate shape: ", shape, call. = FALSE))
+  switch(
+    shape,
+    power = log(v / center),
+    log = log(v),
+    lin = v - center,
+    identity = v,
+    center = v / center,
+    hockeyLow = (v < center) * (v - center),
+    hockeyHi = (v >= center) * (v - center),
+    stop("unknown covariate shape: ", shape, call. = FALSE)
+  )
 }
 
 #' The sub-expression a coefficient multiplies
@@ -367,7 +416,9 @@
   .term <- function(x) {
     x <- .unwrap(x)
     if (is.call(x) && identical(x[[1L]], as.name("*")) && length(x) == 3L) {
-      if (is.name(x[[2L]]) && identical(as.character(x[[2L]]), coef)) return(x[[3L]])
+      if (is.name(x[[2L]]) && identical(as.character(x[[2L]]), coef)) {
+        return(x[[3L]])
+      }
       if (is.name(x[[3L]]) && identical(as.character(x[[3L]]), coef)) return(x[[2L]])
     }
     NULL
@@ -378,33 +429,44 @@
   ## sign of the effect.  Those are left unmatched so the coefficient regresses.
   .walk <- function(x) {
     x <- .unwrap(x)
-    if (!is.call(x)) return(NULL)
+    if (!is.call(x)) {
+      return(NULL)
+    }
     .op <- if (is.name(x[[1L]])) as.character(x[[1L]]) else ""
     if (.op == "+") {
-      if (length(x) == 2L) return(.walk(x[[2L]]))          # unary plus
+      if (length(x) == 2L) {
+        return(.walk(x[[2L]]))
+      } # unary plus
       if (length(x) == 3L) {
         .r <- .walk(x[[2L]])
-        if (!is.null(.r)) return(.r)
+        if (!is.null(.r)) {
+          return(.r)
+        }
         return(.walk(x[[3L]]))
       }
     }
-    if (.op == "-" && length(x) == 3L) return(.walk(x[[2L]]))
+    if (.op == "-" && length(x) == 3L) {
+      return(.walk(x[[2L]]))
+    }
     .term(x)
   }
   ## The whole line must mention the coefficient exactly once.  `b*x1 + b*x2`
   ## would otherwise be fitted on x1 alone and then written back to both terms,
   ## and a coefficient reused inside another call would escape the walk entirely.
   .count <- function(x) {
-    if (is.name(x)) return(as.integer(identical(as.character(x), coef)))
+    if (is.name(x)) {
+      return(as.integer(identical(as.character(x), coef)))
+    }
     if (is.call(x)) {
       return(sum(vapply(as.list(x)[-1L], .count, integer(1))))
     }
     0L
   }
-  if (.count(e) != 1L) return(NULL)
+  if (.count(e) != 1L) {
+    return(NULL)
+  }
   .e <- e
-  if (is.call(.e) && is.name(.e[[1L]]) &&
-        as.character(.e[[1L]]) %in% c("<-", "=", "~") && length(.e) == 3L) {
+  if (is.call(.e) && is.name(.e[[1L]]) && as.character(.e[[1L]]) %in% c("<-", "=", "~") && length(.e) == 3L) {
     .e <- .e[[3L]]
   }
   ## A single mu-referencing transform wrapper, e.g. exp(theta + beta*cov + eta).
@@ -413,9 +475,12 @@
   ## single-argument call would demote a perfectly ordinary bounded parameter to
   ## the regress M-step.
   .e <- .unwrap(.e)
-  if (is.call(.e) && is.name(.e[[1L]]) && length(.e) >= 2L &&
-        as.character(.e[[1L]]) %in% c("exp", "log", "logit", "expit",
-                                      "probit", "probitInv")) {
+  if (
+    is.call(.e) &&
+      is.name(.e[[1L]]) &&
+      length(.e) >= 2L &&
+      as.character(.e[[1L]]) %in% c("exp", "log", "logit", "expit", "probit", "probitInv")
+  ) {
     .e <- .e[[2L]]
   }
   .walk(.e)
@@ -438,7 +503,9 @@
 #' @noRd
 .vaeDetectShape <- function(e, cov) {
   .no <- list(shape = NA_character_, center = NA_real_, level = NULL)
-  if (is.null(e)) return(.no)
+  if (is.null(e)) {
+    return(.no)
+  }
   .isCov <- function(x) is.name(x) && identical(as.character(x), cov)
   .num <- function(x) is.numeric(x) && length(x) == 1L && is.finite(x)
   ## strip redundant parentheses -- "(WT - 70)" is a call to `(`
@@ -447,7 +514,9 @@
   }
   if (!is.call(e)) {
     ## a bare covariate multiplied by the coefficient is the identity shape
-    if (.isCov(e)) return(list(shape = "identity", center = 0, level = NULL))
+    if (.isCov(e)) {
+      return(list(shape = "identity", center = 0, level = NULL))
+    }
     return(.no)
   }
   .op <- if (is.name(e[[1L]])) as.character(e[[1L]]) else ""
@@ -456,12 +525,13 @@
     while (is.call(.a) && identical(.a[[1L]], as.name("(")) && length(.a) == 2L) {
       .a <- .a[[2L]]
     }
-    if (.isCov(.a)) return(list(shape = "log", center = 1, level = NULL))
-    if (is.call(.a) && identical(.a[[1L]], as.name("/")) && length(.a) == 3L &&
-          .isCov(.a[[2L]]) && .num(.a[[3L]])) {
+    if (.isCov(.a)) {
+      return(list(shape = "log", center = 1, level = NULL))
+    }
+    if (is.call(.a) && identical(.a[[1L]], as.name("/")) && length(.a) == 3L && .isCov(.a[[2L]]) && .num(.a[[3L]])) {
       return(list(shape = "power", center = as.numeric(.a[[3L]]), level = NULL))
     }
-    return(.no)          # log() of something not transferable
+    return(.no) # log() of something not transferable
   }
   if (.op == "/" && length(e) == 3L && .isCov(e[[2L]]) && .num(e[[3L]])) {
     return(list(shape = "center", center = as.numeric(e[[3L]]), level = NULL))
@@ -486,18 +556,25 @@
 #' @return logical, one per shape
 #' @noRd
 .vaeShapeUsable <- function(shape, center) {
-  vapply(shape, function(.s) {
-    switch(.s,
-           center = is.finite(center) && center != 0,
-           log = is.finite(center) && center > 0,
-           power = is.finite(center) && center > 0,
-           ## the knot is the centering value, so it only has to be finite -- a
-           ## zero or negative knot is a perfectly ordinary place to bend
-           hockey = is.finite(center),
-           hockeyLow = is.finite(center),
-           hockeyHi = is.finite(center),
-           TRUE)
-  }, logical(1), USE.NAMES = FALSE)
+  vapply(
+    shape,
+    function(.s) {
+      switch(
+        .s,
+        center = is.finite(center) && center != 0,
+        log = is.finite(center) && center > 0,
+        power = is.finite(center) && center > 0,
+        ## the knot is the centering value, so it only has to be finite -- a
+        ## zero or negative knot is a perfectly ordinary place to bend
+        hockey = is.finite(center),
+        hockeyLow = is.finite(center),
+        hockeyHi = is.finite(center),
+        TRUE
+      )
+    },
+    logical(1),
+    USE.NAMES = FALSE
+  )
 }
 
 #' Per-(latent dim, column) mask of what the user allows
@@ -528,15 +605,23 @@
 .vaeShapeAllowMask <- function(cov, resolved, etaNames, thetaForEta) {
   .nCov <- length(cov$covNames)
   .m <- matrix(1L, length(etaNames), .nCov)
-  if (.nCov == 0L || is.null(resolved)) return(.m)
-  if (is.data.frame(resolved)) resolved <- list(rules = resolved, fixCov = FALSE)
+  if (.nCov == 0L || is.null(resolved)) {
+    return(.m)
+  }
+  if (is.data.frame(resolved)) {
+    resolved <- list(rules = resolved, fixCov = FALSE)
+  }
   rules <- resolved$rules
-  if (is.null(rules)) return(.m)
+  if (is.null(rules)) {
+    return(.m)
+  }
   for (.k in seq_along(etaNames)) {
     .al <- c(etaNames[.k], thetaForEta[.k], sub("^eta\\.", "", etaNames[.k]))
     .al <- unique(.al[!is.na(.al)])
     for (.j in seq_len(.nCov)) {
-      if (identical(cov$covFamily[.j], "cat")) next
+      if (identical(cov$covFamily[.j], "cat")) {
+        next
+      }
       .ok <- .vaeShapesFor(rules, .al, cov$covRaw[.j])
       .want <- .vaeShapeFamily(.ok)
       ## A covariate whose requested family is unavailable (log shapes on
@@ -545,7 +630,9 @@
       ## and defeat the fallback, so when none of the requested families exist
       ## for this covariate, leave whatever does exist selectable.
       .have <- setdiff(unique(cov$covFamily[cov$covRaw == cov$covRaw[.j]]), "cat")
-      if (length(intersect(.want, .have)) == 0L) next
+      if (length(intersect(.want, .have)) == 0L) {
+        next
+      }
       if (!(cov$covFamily[.j] %in% .want)) .m[.k, .j] <- 0L
     }
   }
@@ -580,7 +667,9 @@
   .anyCov <- is.na(rules$cov)
   .spec <- ifelse(.mCov, 2L, 0L) + ifelse(!is.na(rules$var), 1L, 0L)
   .ok <- .mVar & (.mCov | .anyCov)
-  if (!any(.ok)) return(.vaeDefaultShapes)
+  if (!any(.ok)) {
+    return(.vaeDefaultShapes)
+  }
   .w <- which(.ok)
   .w <- .w[.spec[.w] == max(.spec[.w])]
   rules$shapes[[.w[length(.w)]]]

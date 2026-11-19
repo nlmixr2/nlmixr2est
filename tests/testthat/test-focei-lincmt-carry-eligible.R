@@ -1,0 +1,289 @@
+# Phase 3b.1: carry-eligibility detection -- which (linCmt parameter slot,
+# eta) pairs qualify structurally (shape, slot and eta rules).  The
+# model-level and data-level gates are in
+# test-focei-lincmt-carry-eligible-gates.R.
+
+test_that("multiplicative shape: one eligible pair reported as a candidate", {
+  .mult <- function() {
+    ini({
+      tcl <- log(0.1)
+      tv <- log(2)
+      eta.cl ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+      v <- exp(tv)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  .p <- suppressMessages(.foceiLinCmtCarryPairs(.mult))
+  expect_equal(nrow(.p), 1L)
+  expect_equal(.p$slotName, "p1")
+  expect_equal(.p$eta, "ETA_1_")
+  expect_equal(.p$etaName, "eta.cl")
+  expect_equal(.p$covs, "wt")
+  expect_equal(.p$shape, "mult")
+  expect_true(is.na(.p$varying))
+})
+
+test_that("additive shape is eligible", {
+  .add <- function() {
+    ini({
+      tcl <- 0.1
+      tv <- log(2)
+      eta.cl ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      cl <- tcl * (wt / 70)^0.75 + eta.cl
+      v <- exp(tv)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  .p <- suppressMessages(.foceiLinCmtCarryPairs(.add))
+  expect_equal(nrow(.p), 1L)
+  expect_equal(.p$shape, "add")
+})
+
+test_that("no covariate anywhere: not eligible", {
+  .noCov <- function() {
+    ini({
+      tcl <- log(0.1)
+      tv <- log(2)
+      eta.cl ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * exp(eta.cl)
+      v <- exp(tv)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  expect_equal(nrow(suppressMessages(.foceiLinCmtCarryPairs(.noCov))), 0L)
+})
+
+test_that("eta on a parameter without the covariate: not eligible", {
+  .etaOffCov <- function() {
+    ini({
+      tcl <- log(0.1)
+      tv <- log(2)
+      eta.v ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^0.75
+      v <- exp(tv) * exp(eta.v)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  expect_equal(nrow(suppressMessages(.foceiLinCmtCarryPairs(.etaOffCov))), 0L)
+})
+
+test_that("non-separable (eta inside the exponent) biases to false", {
+  # d(cl)/d(eta) / cl = 0.75 exp(eta) log(wt / 70) still reads the eta
+  .nonSep <- function() {
+    ini({
+      tcl <- log(0.1)
+      tv <- log(2)
+      eta.cl ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^(0.75 * exp(eta.cl))
+      v <- exp(tv)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  expect_equal(nrow(suppressMessages(.foceiLinCmtCarryPairs(.nonSep))), 0L)
+})
+
+test_that("same eta on two linCmt parameters is dropped (multi-slot unvalidated)", {
+  .twoSlot <- function() {
+    ini({
+      tcl <- log(0.1)
+      tv <- log(2)
+      eta.cl ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+      v <- exp(tv) * exp(eta.cl)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  expect_equal(nrow(suppressMessages(.foceiLinCmtCarryPairs(.twoSlot))), 0L)
+})
+
+test_that("two etas in one slot's formula each make a pair", {
+  .twoEta <- function() {
+    ini({
+      tcl <- log(0.1)
+      tv <- log(2)
+      eta.cl ~ 0.1
+      eta.cl2 ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl + eta.cl2)
+      v <- exp(tv)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  # (two etas on one parameter also downgrades mu-referencing with a warning
+  # at UI build; that is rxode2 noise, not the detection's)
+  .p <- suppressWarnings(suppressMessages(.foceiLinCmtCarryPairs(.twoEta)))
+  expect_equal(.p$etaName, c("eta.cl", "eta.cl2"))
+  expect_equal(.p$slot, c(1L, 1L))
+  expect_equal(.p$shape, c("mult", "mult"))
+})
+
+test_that("a second eta on a covariate-free parameter does not block the eligible one", {
+  .mixed <- function() {
+    ini({
+      tcl <- log(0.1)
+      tv <- log(2)
+      eta.cl ~ 0.1
+      eta.v ~ 0.1
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+      v <- exp(tv) * exp(eta.v)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  .p <- suppressMessages(.foceiLinCmtCarryPairs(.mixed))
+  expect_equal(nrow(.p), 1L)
+  expect_equal(.p$etaName, "eta.cl")
+})
+
+test_that("an IOV eta before the rewrite is dropped, and its slot's eta.cl is not", {
+  .iov <- function() {
+    ini({
+      tcl <- log(0.1)
+      tv <- log(2)
+      eta.cl ~ 0.1
+      iov.cl ~ 0.05 | occ
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl + iov.cl)
+      v <- exp(tv)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  .uiIov <- suppressMessages(suppressWarnings(try(rxode2::rxode2(.iov), silent = TRUE)))
+  skip_if(inherits(.uiIov, "try-error"))
+  # iov.cl's condition is occ until the fit rewrites it into id-level
+  # occasion etas; eta.cl in the same slot makes its pair
+  .p <- suppressMessages(suppressWarnings(.foceiLinCmtCarryPairs(.uiIov)))
+  expect_equal(.p$etaName, "eta.cl")
+})
+
+test_that("an id-level same() copy is a between-subject eta, and is eligible", {
+  # eta.v repeats eta.cl's block: its condition is "id:same:eta.cl", whose
+  # base is "id"
+  .same <- function() {
+    ini({
+      tcl <- log(0.1)
+      tv <- log(2)
+      eta.cl ~ 0.1
+      eta.v ~ same()
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+      v <- exp(tv) * (wt / 70) * exp(eta.v)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  .p <- suppressMessages(.foceiLinCmtCarryPairs(.same))
+  expect_identical(.p$etaName, c("eta.cl", "eta.v"))
+  expect_identical(.p$slotName, c("p1", "v1"))
+  expect_identical(.p$shape, c("mult", "mult"))
+})
+
+test_that("an occasion eta alone on its slot is dropped", {
+  .iov <- function() {
+    ini({
+      tcl <- log(0.1)
+      tv <- log(2)
+      eta.cl ~ 0.1
+      iov.v ~ 0.05 | occ
+      add.sd <- 0.5
+    })
+    model({
+      cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl)
+      v <- exp(tv) * (wt / 70) * exp(iov.v)
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  .p <- suppressMessages(suppressWarnings(.foceiLinCmtCarryPairs(.iov)))
+  expect_identical(.p$etaName, "eta.cl")
+})
+
+# cl's slot written as the IOV rewrite leaves it, for the forms that put the
+# occasion etas inside a larger product
+.carryOccSlotMod <- function() {
+  ini({
+    tcl <- 1
+    tv <- 3
+    iovsd <- 0.2
+    add.sd <- 0.5
+    eta.cl ~ 0.1
+    eta.o1 ~ 0.1
+    eta.o2 ~ 0.1
+  })
+  model({
+    cl <- exp(tcl + eta.cl + iovsd * (eta.o1 * (occ == 1) + eta.o2 * (occ == 2)))
+    v <- exp(tv)
+    cp <- linCmt()
+    cp ~ add(add.sd)
+  })
+}
+
+.carryOccSlotForms <- list(
+  quote(cl <- exp(tcl + eta.cl + iovsd * (eta.o1 * (occ == 1) + eta.o2 * (occ == 2))) * (wt / 70)^0.75),
+  quote(cl <- exp(tcl) * (wt / 70)^0.75 * exp(eta.cl + iovsd * (eta.o1 * (occ == 1) + eta.o2 * (occ == 2)))),
+  quote(cl <- exp(tcl + eta.cl + iovsd * (eta.o1 * (occ == 1) + eta.o2 * (occ == 2))) * wt / 70),
+  quote(cl <- tcl * (1 + 0.01 * (wt - 70)) * exp(eta.cl + iovsd * (eta.o1 * (occ == 1) + eta.o2 * (occ == 2)))),
+  quote(cl <- exp(tcl + eta.cl + iovsd * (eta.o1 * (occ == 1) + eta.o2 * (occ == 2))) * 2)
+)
+
+test_that("occasion etas inside a larger product of their slot are multCov pairs", {
+  for (.f in .carryOccSlotForms) {
+    .ui <- suppressWarnings(suppressMessages(do.call(rxode2::model, list(.carryOccSlotMod, .f))))
+    .p <- suppressMessages(suppressWarnings(.foceiLinCmtCarryPairs(.ui)))
+    .lab <- deparse1(.f)
+    expect_identical(.p$etaName, c("eta.cl", "eta.o1", "eta.o2"), label = .lab)
+    expect_identical(.p$shape, c("mult", "multCov", "multCov"), label = .lab)
+  }
+  # an occasion eta whose d(slot)/d(eta) / slot still reads it is dropped
+  .ui <- suppressWarnings(suppressMessages(do.call(
+    rxode2::model,
+    list(
+      .carryOccSlotMod,
+      quote(cl <- exp(tcl + eta.cl + iovsd * (eta.o1^2 * (occ == 1) + eta.o2 * (occ == 2))) * wt / 70)
+    )
+  )))
+  .p <- suppressMessages(suppressWarnings(.foceiLinCmtCarryPairs(.ui)))
+  expect_identical(.p$etaName, c("eta.cl", "eta.o2"))
+})
+
+test_that("an eta added to a covariate's exponent is a multCov pair", {
+  .p <- suppressMessages(.foceiLinCmtCarryPairs(.carryCovExpMod))
+  expect_identical(.p$etaName, "eta.cl")
+  expect_identical(.p$shape, "multCov")
+})

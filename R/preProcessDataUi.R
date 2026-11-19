@@ -20,6 +20,6 @@
     ## rxode2::rxUdfUiControl(control)
     .ui <- rxode2::rxode2(.ui)
   }
-  list(ui=.ui)
+  list(ui = .ui)
 }
 preProcessHooksAdd(".preProcessDataUi", .preProcessDataUi)

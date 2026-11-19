@@ -21,7 +21,7 @@ nmTest({
     })
   }
 
-  fit <- .nlmixr(one.compartment, theo_sd, est="saem", saemControlFast)
+  fit <- .nlmixr(one.compartment, theo_sd, est = "saem", saemControlFast)
 
-  expect_error(.nlmixr(fit, getData(fit), est="rxSolve"), NA)
+  expect_error(.nlmixr(fit, getData(fit), est = "rxSolve"), NA)
 })

@@ -14,18 +14,13 @@
   .checkLiteralFix <- TRUE
   .checkLiteralFixRes <- FALSE
   .ui <- ui
-  if (is.null(control)) {
-  } else {
-    if (checkmate::testLogical(control$literalFix,
-                               any.missing=FALSE, len=1,
-                               null.ok=FALSE)) {
+  if (is.null(control)) {} else {
+    if (checkmate::testLogical(control$literalFix, any.missing = FALSE, len = 1, null.ok = FALSE)) {
       .checkLiteralFix <- control$literalFix
     } else if (is.null(control$literalFix)) {
       .checkLiteralFix <- FALSE
     }
-    if (checkmate::testLogical(control$literalFixRes,
-                               any.missing=FALSE, len=1,
-                               null.ok=FALSE)) {
+    if (checkmate::testLogical(control$literalFixRes, any.missing = FALSE, len = 1, null.ok = FALSE)) {
       .checkLiteralFixRes <- control$literalFixRes
     } else if (is.null(control$literalFixRes)) {
       .checkLiteralFixRes <- FALSE
@@ -34,8 +29,10 @@
   .assignUnfix <- FALSE
   if (.checkLiteralFix || .checkLiteralFixRes) {
     if (.checkLiteralFix) {
-      .ui <- try(rxode2::rxFixPop(ui, returnNull=TRUE))
-      if (inherits(.ui, "try-error")) .ui <- NULL
+      .ui <- try(rxode2::rxFixPop(ui, returnNull = TRUE))
+      if (inherits(.ui, "try-error")) {
+        .ui <- NULL
+      }
       if (!is.null(.ui)) {
         .ui <- rxode2::rxUiDecompress(.ui)
         .assignUnfix <- TRUE
@@ -45,7 +42,9 @@
     }
     if (.checkLiteralFixRes) {
       .ui2 <- .Call(`_rxode2rxFixRes`, .ui, TRUE)
-      if (inherits(.ui2, "try-error")) .ui2 <- NULL
+      if (inherits(.ui2, "try-error")) {
+        .ui2 <- NULL
+      }
       if (!is.null(.ui2)) {
         .ui2 <- rxode2::rxUiDecompress(.ui2)
         .assignUnfix <- TRUE
@@ -58,6 +57,6 @@
   if (.assignUnfix) {
     nlmixr2global$nlmixr2EstEnv$uiUnfix <- ui
   }
-  list(ui=.ui)
+  list(ui = .ui)
 }
 preProcessHooksAdd(".nlmixrPreprocessLiteralFix", .nlmixrPreprocessLiteralFix)

@@ -5,16 +5,23 @@
 #include "censResid.h"
 #include "shrink.h"
 #include "utilc.h"
+arma::uvec etaRowsById(arma::Col<int>& ID, SEXP etaId);
+
 void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
-		     List &etasDfFull, int &nid, unsigned int &neta);
+		     List &etasDfFull, unsigned int &neta, SEXP etaId);
 
 int getPredIndex(List &ipredL);
+
+int getDfColIndex(List &df, const char *name);
 
 void getLimitFromInput(SEXP limitIn, int& ncalc, arma::vec& limit, int &hasLimit);
 
 List getDfIdentifierCols(List &ipred, int &npred, SEXP cmtNames, SEXP IDlabel);
 
 void dfSetStateLhsOps(List& in, List& opt);
+
+List dfTableParts(SEXP resid, SEXP etas, SEXP stateFrom, SEXP lhsFrom,
+                  SEXP stateSXP, SEXP lhsSXP, SEXP covSXP);
 
 extern "C" {
 #endif

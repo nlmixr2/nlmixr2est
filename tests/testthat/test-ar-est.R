@@ -23,13 +23,15 @@ nmTest({
       })
     }
     .ev <- rxode2::et(rxode2::et(amt = 100), seq(0.5, 24, by = 1))
-    .sim <- rxode2::rxWithSeed(2026, rxode2::rxSolve(.m, .ev, nSub = 40,
-                                     returnType = "data.frame", addDosing = TRUE))
+    .sim <- rxode2::rxWithSeed(2026, rxode2::rxSolve(.m, .ev, nSub = 40, returnType = "data.frame", addDosing = TRUE))
     .idc <- if ("sim.id" %in% names(.sim)) "sim.id" else "id"
-    .dat <- data.frame(ID = .sim[[.idc]], TIME = .sim$time,
-                       EVID = ifelse(is.na(.sim$evid), 0, .sim$evid),
-                       AMT = ifelse(is.na(.sim$amt), 0, .sim$amt),
-                       DV = ifelse(is.na(.sim$evid) | .sim$evid == 0, .sim$sim, NA))
+    .dat <- data.frame(
+      ID = .sim[[.idc]],
+      TIME = .sim$time,
+      EVID = ifelse(is.na(.sim$evid), 0, .sim$evid),
+      AMT = ifelse(is.na(.sim$amt), 0, .sim$amt),
+      DV = ifelse(is.na(.sim$evid) | .sim$evid == 0, .sim$sim, NA)
+    )
     .dat$EVID[.dat$AMT > 0] <- 1
 
     # fit with cor started well away from the truth (0.3) to exercise recovery
@@ -54,8 +56,7 @@ nmTest({
     }
 
     # SAEM: whitened-conditional E-step/M-step (grid-search cor update)
-    .fs <- .nlmixr(.mF, .dat, est = "saem",
-                   control = saemControl(nBurn = 150, nEm = 150, print = 0, seed = 42))
+    .fs <- .nlmixr(.mF, .dat, est = "saem", control = saemControl(nBurn = 150, nEm = 150, print = 0, seed = 42))
     .corS <- unname(.fs$parFixedDf["ar1.cor", "Estimate"])
     .sdS <- unname(.fs$parFixedDf["add.sd", "Estimate"])
     expect_equal(.corS, 0.7, tolerance = 0.12)
@@ -65,11 +66,14 @@ nmTest({
     .ff <- .nlmixr(.mF, .dat, est = "focei", control = foceiControl(print = 0))
     .corF <- unname(.ff$parFixedDf["ar1.cor", "Estimate"])
     .sdF <- unname(.ff$parFixedDf["add.sd", "Estimate"])
-    expect_equal(.corF, 0.7, tolerance = 0.15)
-    expect_equal(.sdF, 0.4, tolerance = 0.15)
-    # regression guard: cor must not collapse to the [0,1) boundary (nor the sd)
-    expect_lt(.corF, 0.95)
-    expect_gt(.sdF, 0.2)
+    # Windows converges without a stationarity restart to OFV -1221.95 / cor 0.680 /
+    # sd 0.395 and Linux, after one, to -1222.26 / 0.696 / 0.404; bobyqa once stopped
+    # in a narrow valley at -1132 / 0.44 (#1196).  The bands hold both with margin,
+    # whatever path the optimizer takes; test-focei-bobyqa-stationary-1196.R drives
+    # the restart itself.
+    expect_equal(.ff$objf, -1222.1, tolerance = 5e-4)
+    expect_equal(.corF, 0.69, tolerance = 0.03)
+    expect_equal(.sdF, 0.4, tolerance = 0.05)
   })
 
   test_that("ar() combines with the log-likelihood residuals (+dnorm/+dt/+dcauchy) under focei", {
@@ -91,13 +95,15 @@ nmTest({
       })
     }
     .ev <- rxode2::et(rxode2::et(amt = 100), seq(0.5, 24, by = 1))
-    .sim <- rxode2::rxWithSeed(2026, rxode2::rxSolve(.m, .ev, nSub = 40,
-                                     returnType = "data.frame", addDosing = TRUE))
+    .sim <- rxode2::rxWithSeed(2026, rxode2::rxSolve(.m, .ev, nSub = 40, returnType = "data.frame", addDosing = TRUE))
     .idc <- if ("sim.id" %in% names(.sim)) "sim.id" else "id"
-    .dat <- data.frame(ID = .sim[[.idc]], TIME = .sim$time,
-                       EVID = ifelse(is.na(.sim$evid), 0, .sim$evid),
-                       AMT = ifelse(is.na(.sim$amt), 0, .sim$amt),
-                       DV = ifelse(is.na(.sim$evid) | .sim$evid == 0, .sim$sim, NA))
+    .dat <- data.frame(
+      ID = .sim[[.idc]],
+      TIME = .sim$time,
+      EVID = ifelse(is.na(.sim$evid), 0, .sim$evid),
+      AMT = ifelse(is.na(.sim$amt), 0, .sim$amt),
+      DV = ifelse(is.na(.sim$evid) | .sim$evid == 0, .sim$sim, NA)
+    )
     .dat$EVID[.dat$AMT > 0] <- 1
 
     # +dnorm(): normal via the log-likelihood path -- must match the norm form
@@ -133,8 +139,7 @@ nmTest({
         cp ~ add(add.sd) + ar(ar1.cor) + dt(tdf)
       })
     }
-    .fT <- .nlmixr(.mT, .dat, est = "focei",
-                   control = foceiControl(print = 0, maxOuterIterations = 10L))
+    .fT <- .nlmixr(.mT, .dat, est = "focei", control = foceiControl(print = 0, maxOuterIterations = 10L))
     expect_true(is.finite(.fT$objf))
     expect_lt(unname(.fT$parFixedDf["ar1.cor", "Estimate"]), 0.95)
 
@@ -151,8 +156,7 @@ nmTest({
         cp ~ add(add.sd) + ar(ar1.cor) + dcauchy()
       })
     }
-    .fC <- .nlmixr(.mC, .dat, est = "focei",
-                   control = foceiControl(print = 0, maxOuterIterations = 10L))
+    .fC <- .nlmixr(.mC, .dat, est = "focei", control = foceiControl(print = 0, maxOuterIterations = 10L))
     expect_true(is.finite(.fC$objf))
     expect_lt(unname(.fC$parFixedDf["ar1.cor", "Estimate"]), 0.95)
   })

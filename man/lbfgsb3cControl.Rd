@@ -46,12 +46,13 @@ lbfgsb3cControl(
 )
 }
 \arguments{
-\item{trace}{If positive, print tracing information; higher values give
-more detail (see source for "L-BFGS-B" trace levels).}
+\item{trace}{Ignored: the thread-safe C++ L-BFGS-B prints nothing; use
+`print` for the iteration log.  Kept so existing calls still work.}
 
 \item{factr}{Convergence tolerance factor for "L-BFGS-B"; converges when
-the objective reduction is within this factor of machine tolerance
-(default 1e7, i.e. ~1e-8).}
+the objective reduction is within this factor of machine tolerance.
+`NULL` (default) uses `10^(-sigdig-2) / .Machine$double.eps` (at least
+10), two orders tighter than `sigdig`, as `foceiControl(lbfgsFactr=)` does.}
 
 \item{pgtol}{Tolerance on the projected gradient for "L-BFGS-B"; 0
 (default) suppresses the check.}
@@ -64,7 +65,7 @@ suppresses the check.}
 
 \item{lmm}{Number of BFGS updates retained in "L-BFGS-B" (default 5).}
 
-\item{maxit}{maximum number of iterations.}
+\item{maxit}{maximum number of objective function evaluations.}
 
 \item{returnLbfgsb3c}{return the lbfgsb3c output instead of the nlmixr2
 fit}
@@ -136,7 +137,11 @@ By default this is 1.  When zero or below, no scaling is performed.}
 before optimizing.  This only works with
 scaleType="nlmixr2".}
 
-\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.}
 
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}
@@ -196,20 +201,17 @@ function.  By default this is \code{TRUE}}
 \item{sigdig}{Optimization significant digits.  One value drives, with a single
 consistent formula, the inner/outer optimizer convergence tolerance
 (\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
-and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
-\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
-\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
-tolerances match the main solve (the outer gradient and covariance are built
-from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
-order looser.
-Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 3}
-this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
+and the ODE solver tolerances \code{rtol = max(10^(-2*sigdig), 1e-12)},
+\code{atol = rtol/100} for every solver.  An objective solved to relative
+error \code{rtol} locates its minimum only to about \code{sqrt(rtol)}, so
+this is the solve a \code{10^-sigdig} optimizer needs.  The sensitivity
+(\code{atolSens}/\code{rtolSens}) tolerances match the main solve; the
+steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+At the default \code{sigdig = 3} this is \code{atol = 1e-8},
+\code{rtol = 1e-6}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{...}{Ignored parameters}
 }

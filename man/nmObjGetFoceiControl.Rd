@@ -2,7 +2,7 @@
 % Please edit documentation in R/agq.R, R/foce.R, R/focep.R, R/ifocep.R,
 %   R/imp.R, R/impmap.R, R/laplace.R, R/mfocep.R, R/muRefControl.R, R/nlme.R,
 %   R/nmObjHandle.R, R/npCommon.R, R/npag.R, R/npb.R, R/posthoc.R, R/qrpem.R,
-%   R/saem.R
+%   R/saem.R, R/vaeOutput.R, R/vi.R
 \name{nmObjGetFoceiControl.agq}
 \alias{nmObjGetFoceiControl.agq}
 \alias{nmObjGetFoceiControl.foce}
@@ -32,6 +32,9 @@
 \alias{nmObjGetFoceiControl.posthoc}
 \alias{nmObjGetFoceiControl.qrpem}
 \alias{nmObjGetFoceiControl.saem}
+\alias{nmObjGetFoceiControl.vae}
+\alias{nmObjGetFoceiControl.emvi}
+\alias{nmObjGetFoceiControl.fbvi}
 \title{Method for getting focei compatible control object from nlmixr object}
 \usage{
 \method{nmObjGetFoceiControl}{agq}(x, ...)
@@ -89,6 +92,12 @@ nmObjGetFoceiControl(x, ...)
 \method{nmObjGetFoceiControl}{qrpem}(x, ...)
 
 \method{nmObjGetFoceiControl}{saem}(x, ...)
+
+\method{nmObjGetFoceiControl}{vae}(x, ...)
+
+\method{nmObjGetFoceiControl}{emvi}(x, ...)
+
+\method{nmObjGetFoceiControl}{fbvi}(x, ...)
 }
 \arguments{
 \item{x}{nlmixr composed fit object}

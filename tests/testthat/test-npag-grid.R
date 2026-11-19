@@ -6,11 +6,14 @@
 ## pass against its independence property.
 
 test_that("npSobolGrid is in-box, deterministic, and covers the box", {
-  lo <- c(-2, -1, -3); hi <- c(2, 1, 3)
+  lo <- c(-2, -1, -3)
+  hi <- c(2, 1, 3)
   g <- npSobolGrid_(2028L, lo, hi)
   expect_equal(dim(g), c(2028L, 3L))
-  for (j in 1:3) expect_true(all(g[, j] >= lo[j] & g[, j] <= hi[j]))
-  expect_identical(g, npSobolGrid_(2028L, lo, hi))   # deterministic
+  for (j in 1:3) {
+    expect_true(all(g[, j] >= lo[j] & g[, j] <= hi[j]))
+  }
+  expect_identical(g, npSobolGrid_(2028L, lo, hi)) # deterministic
   # low-discrepancy: coordinate means near the box centre, spread near full range
   expect_true(max(abs(colMeans(g) - (lo + hi) / 2)) < 0.05)
   for (j in 1:3) {
@@ -20,7 +23,8 @@ test_that("npSobolGrid is in-box, deterministic, and covers the box", {
 })
 
 test_that("npCondense weight-threshold matches the in-R reference (Yamada Alg 3)", {
-  .testSeed(1); psi <- matrix(runif(12 * 10, 0.1, 2), 12, 10)
+  .testSeed(1)
+  psi <- matrix(runif(12 * 10, 0.1, 2), 12, 10)
   lam <- c(0.3, 0.25, 0.2, 0.15, 0.05, 1e-5, 1e-6, 0.02, 1e-7, 0.03)
   ratio <- 1e-3
   ref <- which(lam > max(lam) * ratio)
@@ -29,13 +33,14 @@ test_that("npCondense weight-threshold matches the in-R reference (Yamada Alg 3)
 })
 
 test_that("npCondense QR drops linearly dependent support points", {
-  .testSeed(2); base <- matrix(runif(12 * 5, 0.1, 2), 12, 5)
+  .testSeed(2)
+  base <- matrix(runif(12 * 5, 0.1, 2), 12, 5)
   # columns 6,7 are exact duplicates of 1,2 -> rank 5
   psi <- cbind(base, base[, 1:2])
   lam <- rep(1 / 7, 7)
   r <- npCondense_(lam, psi, 1e-3, 1e-8)
   expect_length(r$qrKeep, 5L)
-  expect_equal(qr(psi[, r$qrKeep])$rank, 5L)     # kept set is full rank
+  expect_equal(qr(psi[, r$qrKeep])$rank, 5L) # kept set is full rank
   expect_true(all(r$qrKeep %in% seq_len(7)))
 })
 
@@ -57,6 +62,8 @@ nmTest({
     expect_equal(b$lower, -b$upper, tolerance = 1e-8)
     # grid built over the box is in-box
     g <- npSobolGrid_(200L, b$lower, b$upper)
-    for (j in 1:3) expect_true(all(g[, j] >= b$lower[j] & g[, j] <= b$upper[j]))
+    for (j in 1:3) {
+      expect_true(all(g[, j] >= b$lower[j] & g[, j] <= b$upper[j]))
+    }
   })
 })

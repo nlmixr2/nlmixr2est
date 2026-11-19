@@ -1,0 +1,391 @@
+# Unit tests for the two-level (Panhard & Samson) IOV handling in saem.  No
+# fits here -- the fit-based tests live in test-saem-iov-twolevel-fit.R.
+
+.twoLevelData <- function() {
+  .d <- nlmixr2data::theo_md
+  .d$occ <- 1
+  .d$occ[.d$TIME >= 144] <- 2
+  .d
+}
+
+# nolint start: object_usage_linter. rxode2 ini()/model() are NSE blocks:
+# every assignment here is model specification, consumed by rxode2, not a
+# local variable lintr can see used.
+.twoLevelModel <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    add.sd <- 0.7
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+    iov.cl ~ 0.1 | occ
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl + iov.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+# nolint end
+
+test_that(".saemIovInfo describes the two-level structure", {
+  .ui <- rxode2::rxUiDecompress(.twoLevelModel())
+  .i <- .saemIovInfo(.ui, .twoLevelData())
+  expect_true(is.list(.i))
+  expect_equal(.i$occVar, "occ")
+  expect_equal(.i$levels, c(1, 2))
+  expect_equal(.i$pars$iov, "iov.cl")
+  # the occasion term rides tcl, in the same additive position as eta.cl --
+  # that is what makes it mu + b_i + c_ik
+  expect_equal(.i$pars$theta, "tcl")
+  expect_equal(.i$pars$eta, "eta.cl")
+  expect_equal(.i$etaNames$iov.cl, c("rx.iov.cl.1", "rx.iov.cl.2"))
+
+  # a model with no IOV at all
+  # nolint start: object_usage_linter. rxode2 ini()/model() are NSE blocks:
+  # every assignment here is model specification, consumed by rxode2, not a
+  # local variable lintr can see used.
+  .noIov <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # nolint end
+  expect_null(.saemIovInfo(rxode2::rxUiDecompress(.noIov()), .twoLevelData()))
+})
+
+test_that(".saemIovInfo declines what the two-level handling cannot take", {
+  .d <- .twoLevelData()
+  .d$occ2 <- ifelse(.d$TIME %% 2 < 1, 1, 2)
+  # nolint start: object_usage_linter. rxode2 ini()/model() are NSE blocks:
+  # every assignment here is model specification, consumed by rxode2, not a
+  # local variable lintr can see used.
+  .two <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      iov.cl ~ 0.1 | occ
+      iov.v ~ 0.1 | occ2
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv + eta.v + iov.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # nolint end
+  .why <- .saemIovInfo(rxode2::rxUiDecompress(.two()), .d)
+  expect_true(is.character(.why))
+  # the reason is collected into the fit's $runInfo, so it has to fit on a line
+  expect_lt(nchar(.why), 75L)
+
+  # a decline is what makes the shared rewrite run after all
+  expect_equal(.iovNativeDecline(rxode2::rxUiDecompress(.two()), "saem", .d, saemControl(iovMethod = "twoLevel")), .why)
+  # ... and no method without the attribute ever declines
+  expect_null(.iovNativeDecline(rxode2::rxUiDecompress(.two()), "focei", .d, foceiControl()))
+})
+
+test_that(".saemIovExpandUi writes the occasion term as a variance component", {
+  .ui <- rxode2::rxUiDecompress(.twoLevelModel())
+  .exp <- .saemIovExpandUi(.ui, .saemIovInfo(.ui, .twoLevelData()))
+  .ini <- .exp$iniDf
+
+  # no magnitude theta: the thetas are exactly the user's
+  expect_equal(.ini$name[is.na(.ini$neta1)], c("tka", "tcl", "tv", "add.sd"))
+  # one zero-mean eta per occasion level, carrying the declared variance
+  expect_true(all(c("rx.iov.cl.1", "rx.iov.cl.2") %in% .ini$name))
+  expect_equal(.ini$est[.ini$name == "rx.iov.cl.1"], 0.1)
+  expect_equal(.ini$est[.ini$name == "rx.iov.cl.2"], 0.1)
+  expect_true(all(.ini$condition[.ini$name %in% c("rx.iov.cl.1", "rx.iov.cl.2")] == "id"))
+  expect_false("iov.cl" %in% .ini$name)
+
+  # eta.cl stays mu-referenced to tcl -- the whole point of the additive form
+  expect_true("eta.cl" %in% .exp$muRefDataFrame$eta)
+  expect_equal(.exp$muRefDataFrame$theta[.exp$muRefDataFrame$eta == "eta.cl"], "tcl")
+  # and the occasion etas get their own phi columns with means pinned at 0
+  expect_equal(.exp$nonMuEtas, c("rx.iov.cl.1", "rx.iov.cl.2"))
+  expect_true(all(.exp$saemFixed[c("rx.iov.cl.1", "rx.iov.cl.2")]))
+
+  # the combination is on its own line: rxode2 refuses theta + eta1 + eta2
+  expect_true(any(vapply(
+    .exp$lstExpr,
+    function(l) identical(deparse1(l), "rx.iov.cl <- (occ == 1) * rx.iov.cl.1 + (occ == 2) * rx.iov.cl.2"),
+    logical(1)
+  )))
+})
+
+test_that("saemOmegaPool groups the occasion etas, and only those", {
+  .ui <- rxode2::rxUiDecompress(.twoLevelModel())
+  .exp <- .saemIovExpandUi(.ui, .saemIovInfo(.ui, .twoLevelData()))
+  # saemEtaNames order is Gamma2_phi1 order, which is what the kernel indexes
+  expect_equal(.exp$saemEtaNames, c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
+  expect_equal(rxUiGet.saemOmegaPool(list(.exp)), c(0L, 0L, 0L, 1L, 1L))
+
+  # the shared rewrite pools them too for saem (#1319) ...
+  .legacy <- .uiApplyIov(.ui, "saem", .twoLevelData(), saemControl(iovMethod = "theta"))$ui
+  expect_equal(rxUiGet.saemOmegaPool(list(.legacy)), c(0L, 0L, 0L, 1L, 1L))
+  # ... but its focei line is a PRODUCT (magnitude * sum), never a pool
+  .focei <- suppressMessages(.uiApplyIov(.ui, "focei", .twoLevelData(), foceiControl(iovMethod = "theta")))$ui
+  expect_true(all(rxUiGet.saemOmegaPool(list(.focei)) == 0L))
+})
+
+test_that("saem's shared rewrite pools a model the two-level handling declines (#1319)", {
+  # nolint start: object_usage_linter. rxode2 ini()/model() are NSE blocks.
+  .nonMu <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      iov.cl ~ fix(0.1) | occ
+      iov.v ~ 0.2 | occ2
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- tcl * exp(eta.cl + iov.cl)
+      v <- exp(tv + iov.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # nolint end
+  .d <- .twoLevelData()
+  .d$occ2 <- ifelse(.d$TIME %% 2 < 1, 1, 2)
+  .ui <- rxode2::rxUiDecompress(.nonMu())
+  expect_true(is.character(.saemIovInfo(.ui, .d)))
+  .rw <- suppressWarnings(.uiApplyIov(.ui, "saem", .d, saemControl(iovMethod = "twoLevel")))$ui
+  .ini <- .rw$iniDf
+  # no magnitude theta: the declared variances start the per-occasion etas
+  expect_false(any(c("iov.cl", "iov.v") %in% .ini$name))
+  expect_equal(.ini$est[.ini$name %in% c("rx.iov.cl.1", "rx.iov.cl.2")], c(0.1, 0.1))
+  expect_true(all(.ini$fix[.ini$name %in% c("rx.iov.cl.1", "rx.iov.cl.2")]))
+  expect_equal(.ini$est[.ini$name %in% c("rx.iov.v.1", "rx.iov.v.2")], c(0.2, 0.2))
+  # one pool per occasion parameter, so each gets a closed-form variance
+  .pool <- rxUiGet.saemOmegaPool(list(.rw))
+  .nm <- .rw$saemEtaNames
+  expect_equal(.pool[.nm %in% c("rx.iov.cl.1", "rx.iov.cl.2")], c(1L, 1L))
+  expect_equal(.pool[.nm %in% c("rx.iov.v.1", "rx.iov.v.2")], c(2L, 2L))
+  expect_true(all(.pool[!grepl("^rx[.]iov", .nm)] == 0L))
+  expect_equal(
+    .uiIovEnv$iovTwoLevel,
+    list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2"), iov.v = c("rx.iov.v.1", "rx.iov.v.2"))
+  )
+})
+
+test_that(".saemIovCollapseCov ties the pooled occasion columns", {
+  # the K per-occasion columns estimate ONE variance, so the covariance matrix
+  # carries one row for them: the inverse of the tied information J' I J
+  .nm <- c("tka", "om.eta.ka", "om.rx.iov.cl.1", "om.rx.iov.cl.2")
+  .cv <- matrix(c(4, 1, 2, 3, 1, 5, 6, 7, 2, 6, 10, -4, 3, 7, -4, 8), nrow = 4, byrow = TRUE, dimnames = list(.nm, .nm))
+  .out <- .saemIovCollapseCov(.cv, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2")))
+
+  expect_equal(rownames(.out), c("tka", "om.eta.ka", "om.iov.cl"))
+  expect_equal(colnames(.out), c("tka", "om.eta.ka", "om.iov.cl"))
+  .j <- matrix(c(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1), nrow = 4)
+  .exp <- solve(t(.j) %*% solve(.cv) %*% .j)
+  expect_equal(unname(.out), .exp)
+  expect_equal(.out, t(.out))
+
+  # with no correlation to the rest, tying K equal-information copies divides
+  # their variance by K and leaves the other parameters alone
+  .cv2 <- diag(c(4, 5, 6, 6, 6))
+  .nm2 <- c("tka", "om.eta.ka", "om.rx.iov.cl.1", "om.rx.iov.cl.2", "om.rx.iov.cl.3")
+  dimnames(.cv2) <- list(.nm2, .nm2)
+  .out2 <- .saemIovCollapseCov(.cv2, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2", "rx.iov.cl.3")))
+  expect_equal(diag(.out2), c(tka = 4, om.eta.ka = 5, om.iov.cl = 2))
+
+  # a singular matrix falls back to averaging the copies
+  .cv3 <- .cv
+  .cv3[3:4, ] <- .cv3[c(3, 3), ]
+  .cv3[, 3:4] <- .cv3[, c(3, 3)]
+  .out3 <- .saemIovCollapseCov(.cv3, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2")))
+  expect_equal(.out3["om.iov.cl", "om.iov.cl"], 10)
+  expect_equal(.out3["tka", "om.iov.cl"], 2)
+
+  # an unidentified (NA) theta stays NA and leaves the rest finite
+  .cv4 <- .cv2
+  .cv4[1, ] <- NA_real_
+  .cv4[, 1] <- NA_real_
+  .out4 <- .saemIovCollapseCov(.cv4, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2", "rx.iov.cl.3")))
+  expect_true(all(is.na(.out4["tka", ])))
+  expect_equal(.out4[-1, -1], .out2[-1, -1])
+
+  # a matrix with nothing to pool, and an empty group list, are both untouched
+  expect_identical(.saemIovCollapseCov(.cv, list()), .cv)
+  expect_identical(.saemIovCollapseCov(.cv, list(iov.v = "rx.iov.v.1")), .cv)
+})
+
+test_that(".saemGqNodes keeps the -2LL grid affordable", {
+  # the grid is nnodes^nphi1 whole-population solves, and nphi1 grows by one per
+  # occasion level per IOV parameter
+  expect_equal(.saemGqNodes(3, 3), 3) # 27
+  expect_equal(.saemGqNodes(3, 5), 3) # 243
+  expect_equal(.saemGqNodes(3, 9), 3) # 19683, still inside the budget
+  expect_equal(.saemGqNodes(3, 12), 2) # 531441 -> 4096
+  expect_equal(.saemGqNodes(3, 16), 1) # 43e6 -> Laplace
+  # never raises the requested count, and never returns less than 1
+  expect_equal(.saemGqNodes(8, 3), 8)
+  expect_equal(.saemGqNodes(1, 40), 1)
+  expect_equal(.saemGqNodes(3, 0), 3)
+  expect_true(.saemGqNodes(3, 100) >= 1)
+  # the budget is settable
+  expect_equal(.saemGqNodes(3, 5, maxNodes = 10), 1)
+  expect_equal(.saemGqNodes(3, 2, maxNodes = 10), 3)
+})
+
+test_that("the collapsed expansion writes phi_ik = mu + b_i + c_ik", {
+  .ui <- rxode2::rxUiDecompress(.twoLevelModel())
+  .i <- .saemIovInfo(.ui, .twoLevelData())
+  .exp <- .saemIovExpandUiCollapsed(.ui, .i)
+  .ini <- .exp$iniDf
+
+  # one theta and one eta per occasion, and the user's own pair is gone
+  expect_true(all(c("rx.tcl.1", "rx.tcl.2") %in% .ini$name))
+  expect_true(all(c("rx.eta.cl.1", "rx.eta.cl.2") %in% .ini$name))
+  expect_false("tcl" %in% .ini$name)
+  expect_false("eta.cl" %in% .ini$name)
+  expect_false("iov.cl" %in% .ini$name)
+  # both thetas start from the user's single tcl
+  expect_equal(.ini$est[.ini$name == "rx.tcl.1"], 1)
+  expect_equal(.ini$est[.ini$name == "rx.tcl.2"], 1)
+
+  # one mu-reference per LINE, which is what makes BOTH occasions
+  # mu-referenced -- rxode2 only detects the first additive group in a line
+  expect_equal(nrow(.exp$muRefDataFrame), 4L)
+  expect_true(all(c("rx.tcl.1", "rx.tcl.2") %in% .exp$muRefDataFrame$theta))
+  expect_null(.exp$nonMuEtas)
+
+  # the joint prior over occasions: Omega + Psi on the diagonal, Omega off it
+  expect_equal(.ini$est[.ini$name == "rx.eta.cl.1"], 0.3 + 0.1)
+  expect_equal(.ini$est[.ini$name == "(rx.eta.cl.1,rx.eta.cl.2)"], 0.3)
+  # covstruct must carry that off-diagonal, or the block cannot be CS
+  .om <- .exp$saemModelOmega
+  .w <- which(.exp$saemParamsToEstimate %in% c("rx.tcl.1", "rx.tcl.2"))
+  expect_equal(length(.w), 2L)
+  expect_equal(.om[.w[1], .w[2]], 1)
+
+  # and the pool group is recovered from the model text, as for two-level
+  expect_equal(rxUiGet.saemOmegaPool(list(.exp)), c(0L, 0L, 1L, 1L))
+})
+
+test_that(".saemIovCollapsedParts splits the CS block into Omega and Psi", {
+  .nm <- c("rx.eta.cl.1", "rx.eta.cl.2")
+  .om <- matrix(c(0.4, 0.3, 0.3, 0.4), 2, dimnames = list(.nm, .nm))
+  .th <- c(rx.tcl.1 = 1.2, rx.tcl.2 = 1.2)
+  .info <- list(
+    levels = c(1, 2),
+    pars = data.frame(iov = "iov.cl", theta = "tcl", eta = "eta.cl", stringsAsFactors = FALSE)
+  )
+  .p <- .saemIovCollapsedParts(.om, .th, .info)
+  expect_equal(.p$theta[["iov.cl"]], 1.2)
+  expect_equal(.p$omega[["iov.cl"]], 0.3) # the off-diagonal IS Omega
+  expect_equal(.p$psi[["iov.cl"]], 0.4 - 0.3) # diagonal minus off-diagonal
+})
+
+test_that(".saemIovInfo takes the occasion level from the base condition", {
+  # eta.v repeats eta.cl's block at the id level (condition "id:same:eta.cl")
+  # nolint start: object_usage_linter. rxode2 ini()/model() are NSE blocks:
+  # every assignment here is model specification, consumed by rxode2, not a
+  # local variable lintr can see used.
+  .same <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ same()
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .sameIov <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ same()
+      iov.cl ~ 0.1 | occ
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # nolint end
+  expect_null(.saemIovInfo(rxode2::rxUiDecompress(.same()), .twoLevelData()))
+  .i <- .saemIovInfo(rxode2::rxUiDecompress(.sameIov()), .twoLevelData())
+  expect_identical(.i$occVar, "occ")
+  expect_identical(.i$pars$iov, "iov.cl")
+  expect_identical(.i$etaNames$iov.cl, c("rx.iov.cl.1", "rx.iov.cl.2"))
+})
+
+test_that("saem refuses a prior on an occasion variance before the IOV rewrite drops it (#1319)", {
+  # nolint start: object_usage_linter. rxode2 ini()/model() are NSE blocks.
+  .pr <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      iov.cl ~ 0.1 | occ
+      prior(iov.cl) ~ dcauchy(0, 1)
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # nolint end
+  .h <- preProcessHooks()
+  expect_true(
+    which(.h == ".nlmixr0preProcessAssertNoPriors") < min(which(.h %in% c(".uiApplyIov", ".uiApplyIovTwoLevel")))
+  )
+  .ui <- rxode2::rxUiDecompress(.pr())
+  expect_error(.nlmixr0preProcessAssertNoPriors(.ui, "saem", .twoLevelData(), saemControl()), "iov.cl")
+  # a method that takes theta priors may keep the rewrite's magnitude theta
+  expect_null(.nlmixr0preProcessAssertNoPriors(.ui, "focei", .twoLevelData(), foceiControl()))
+  # simulating a model is not estimating it
+  expect_null(.nlmixr0preProcessAssertNoPriors(.ui, "rxSolve", .twoLevelData(), NULL))
+  for (.m in c("theta", "twoLevel", "collapsed")) {
+    expect_error(
+      suppressWarnings(nlmixr2(.pr(), .twoLevelData(), "saem", saemControl(print = 0, iovMethod = .m))),
+      "prior",
+      label = .m
+    )
+  }
+})

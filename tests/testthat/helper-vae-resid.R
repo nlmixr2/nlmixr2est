@@ -21,13 +21,15 @@
 ## looks attractive rather than forbidden.
 expectResidInterior <- function(fit, prep, tol = 1e-6) {
   nm <- prep$regressNames
-  if (length(nm) == 0L) return(invisible(NULL))
+  if (length(nm) == 0L) {
+    return(invisible(NULL))
+  }
   isErr <- prep$regressErrIdx0 >= 0
   for (i in which(isErr)) {
     v <- unname(fit$theta[[nm[i]]])
-    lo <- prep$regressLower[i]; hi <- prep$regressUpper[i]
-    testthat::expect_true(is.finite(v),
-                          info = paste0(nm[i], " is not finite"))
+    lo <- prep$regressLower[i]
+    hi <- prep$regressUpper[i]
+    testthat::expect_true(is.finite(v), info = paste0(nm[i], " is not finite"))
     if (is.finite(lo)) {
       testthat::expect_gt(v, lo + tol * max(1, abs(lo)))
     }
@@ -45,8 +47,7 @@ expectMovedFromIni <- function(fit, ui, names, tol = 1e-3) {
   idf <- ui$iniDf
   for (n in names) {
     ini <- idf$est[match(n, idf$name)]
-    testthat::expect_gt(abs(unname(fit$theta[[n]]) - ini), tol,
-                        label = paste0(n, " moved off its ini() value"))
+    testthat::expect_gt(abs(unname(fit$theta[[n]]) - ini), tol, label = paste0(n, " moved off its ini() value"))
   }
   invisible(NULL)
 }
@@ -55,10 +56,12 @@ expectMovedFromIni <- function(fit, ui, names, tol = 1e-3) {
 ## is the assertion that has actually caught objective bugs: an objective that
 ## is wrong in shape cannot land on sqrt(SSE/n) by accident.
 expectMatchesClosedForm <- function(fitOpt, fitMoment, name, tolerance = 5e-3) {
-  testthat::expect_equal(unname(fitOpt$theta[[name]]),
-                         unname(fitMoment$theta[[name]]),
-                         tolerance = tolerance,
-                         label = paste0(name, " (optimizer)"),
-                         expected.label = paste0(name, " (closed form)"))
+  testthat::expect_equal(
+    unname(fitOpt$theta[[name]]),
+    unname(fitMoment$theta[[name]]),
+    tolerance = tolerance,
+    label = paste0(name, " (optimizer)"),
+    expected.label = paste0(name, " (closed form)")
+  )
   invisible(NULL)
 }

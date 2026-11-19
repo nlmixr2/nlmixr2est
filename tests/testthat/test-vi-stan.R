@@ -19,19 +19,28 @@ test_that("est='fbvi' population posterior agrees with rstan::vb()", {
 
   ## simulate a linear random-intercept dataset -- must match tools/viGenStanFixture.R
   .testSeed(42)
-  nsub <- 60L; nobs <- 6L
-  thetaTrue <- 5; omegaTrue <- 1; sigmaTrue <- 0.7
+  nsub <- 60L
+  nobs <- 6L
+  thetaTrue <- 5
+  omegaTrue <- 1
+  sigmaTrue <- 0.7
   eta <- stats::rnorm(nsub, 0, omegaTrue)
-  dat <- do.call(rbind, lapply(seq_len(nsub), function(i) {
-    data.frame(ID = i, TIME = seq_len(nobs),
-               DV = thetaTrue + eta[i] + stats::rnorm(nobs, 0, sigmaTrue),
-               EVID = 0, AMT = 0)
-  }))
+  dat <- do.call(
+    rbind,
+    lapply(seq_len(nsub), function(i) {
+      data.frame(
+        ID = i,
+        TIME = seq_len(nobs),
+        DV = thetaTrue + eta[i] + stats::rnorm(nobs, 0, sigmaTrue),
+        EVID = 0,
+        AMT = 0
+      )
+    })
+  )
   ## Fail safe: the reference is only meaningful for the data Stan actually saw.  If the
   ## simulation drifts (RNG change, edited constants), skip rather than assert against a
   ## reference built from different data.
-  skip_if_not(isTRUE(all.equal(dat$DV, .g$dv)),
-              "simulated data no longer matches the Stan reference; regenerate it")
+  skip_if_not(isTRUE(all.equal(dat$DV, .g$dv)), "simulated data no longer matches the Stan reference; regenerate it")
 
   ## est="fbvi" (full-Bayes) on the same model
   linmod <- function() {
@@ -39,11 +48,11 @@ test_that("est='fbvi' population posterior agrees with rstan::vb()", {
     model({ pred <- theta + eta; pred ~ add(add.sd) })
   }
   fA <- suppressMessages(suppressWarnings(
-    nlmixr2(linmod, dat, est = "fbvi",
-            control = fbviControl(iters = 800L, print = 0L, returnVi = TRUE))))
+    nlmixr2(linmod, dat, est = "fbvi", control = fbviControl(iters = 800L, print = 0L, returnVi = TRUE))
+  ))
 
   ## population posterior means agree (theta, residual sd, between-subject sd)
   expect_equal(unname(fA$theta[1]), .g$theta, tolerance = 0.15)
-  expect_equal(unname(fA$theta[2]), .g$sigma, tolerance = 0.2)   # add.sd
+  expect_equal(unname(fA$theta[2]), .g$sigma, tolerance = 0.2) # add.sd
   expect_equal(unname(sqrt(fA$popOmega[1])), .g$omega, tolerance = 0.25)
 })

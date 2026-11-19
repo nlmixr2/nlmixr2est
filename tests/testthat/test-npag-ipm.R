@@ -8,9 +8,12 @@
   .cases <- list()
   for (.ln in .lines) {
     .p <- strsplit(.ln, ",", fixed = TRUE)[[1]]
-    .name <- .p[1]; .kind <- .p[2]
+    .name <- .p[1]
+    .kind <- .p[2]
     .vals <- as.numeric(.p[-(1:3)])
-    if (is.null(.cases[[.name]])) .cases[[.name]] <- list(psi = list(), weights = NULL, objective = NULL)
+    if (is.null(.cases[[.name]])) {
+      .cases[[.name]] <- list(psi = list(), weights = NULL, objective = NULL)
+    }
     if (.kind == "psi") {
       .cases[[.name]]$psi[[length(.cases[[.name]]$psi) + 1L]] <- .vals
     } else if (.kind == "weights") {
@@ -20,7 +23,7 @@
     }
   }
   lapply(.cases, function(.c) {
-    .c$psi <- do.call(rbind, .c$psi)  # subjects x support points
+    .c$psi <- do.call(rbind, .c$psi) # subjects x support points
     .c
   })
 }
@@ -49,9 +52,11 @@ test_that("npIpmBurke recovers uniform weights for symmetric matrices", {
 
 test_that("npIpmBurke handles negatives (abs) and errors on non-finite", {
   # negative entries are coerced to absolute value: |−5| dominates
-  .m <- matrix(1, 2, 3); .m[1, 1] <- -5
+  .m <- matrix(1, 2, 3)
+  .m[1, 1] <- -5
   .w <- npIpmBurke(.m)$weights
   expect_true(.w[1] > .w[2] && .w[1] > .w[3])
-  .bad <- matrix(1, 3, 3); .bad[1, 1] <- NA_real_
+  .bad <- matrix(1, 3, 3)
+  .bad[1, 1] <- NA_real_
   expect_error(npIpmBurke(.bad), "finite")
 })

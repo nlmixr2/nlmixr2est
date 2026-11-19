@@ -347,6 +347,41 @@
 #'   single shape this is a plain candidate count; two shape families of one
 #'   covariate cost `log2(3)`, keeping the exact search's worst-case node budget
 #'   the same either way.  `Inf` forces the exact branch-and-bound everywhere.
+#' @param covSelectColinearCut `abs(cor)` at or above which two covariates are
+#'   treated as near-interchangeable and put in one colinearity cluster (default
+#'   `0.9`).  A cluster never restricts what may be selected.  It does two
+#'   things: the covariate M-step keeps the previous iteration's choice unless a
+#'   cluster mate beats it by a full covariate's L0 cost, which stops the
+#'   selection chattering between columns the design cannot tell apart; and the
+#'   mates that came within that margin are reported in `$covNearTie`.  Clusters
+#'   are built at the mutual-exclusion group level, so two shapes of one
+#'   covariate never cluster together.
+#' @param covSelectPhiCor Which quantity the correlation between latent
+#'   dimensions is computed from when grouping them for the cross-parameter
+#'   covariate refinement: `"suffStat"` (default, the smoothed EMA sufficient
+#'   statistic the selection itself regresses), `"mu"` (the raw posterior means)
+#'   or `"resid"` (the posterior means less the fitted covariate centers).
+#'   `"resid"` runs systematically higher than the other two -- measured one
+#'   bracket higher on the same fit -- so raise `covSelectPhiJoin` if you
+#'   select it.
+#' @param covSelectPhiJoin,covSelectPhiLeave `abs(cor)` at which two latent
+#'   dimensions join a correlated group, and the lower value at which one leaves
+#'   again (defaults `0.9` and `0.8`).  Membership is re-evaluated every
+#'   iteration; the gap between the two stops a pair whose correlation wanders
+#'   around the threshold from joining and leaving repeatedly.
+#'   `covSelectPhiLeave` must not exceed `covSelectPhiJoin`.  The defaults are
+#'   measured rather than conventional: on an ordinary, well-identified
+#'   one-compartment model the clearance and volume dimensions correlate
+#'   between `0.75` and `0.80` under the default `covSelectPhiCor="suffStat"`
+#'   (and between `0.80` and `0.85` under `"resid"`), so a join threshold at
+#'   `0.8` would group a fit that has nothing wrong with it -- see
+#'   `tools/vaeColinearPreflight.R`, which measures this through the shipped
+#'   gate.
+#' @param covSelectPhiMaxDim Largest correlated group the cross-parameter
+#'   refinement will attempt (default `4`).  A larger group is skipped rather
+#'   than split: a latent space that entangled is not something per-covariate
+#'   moves should be arbitrating, and splitting it would need an arbitrary
+#'   tie-break on a near-tied graph.
 #' @param bnbStrategy Frontier discipline for the exact branch-and-bound covariate
 #'   selection: `"lifo"` (default, last-in-first-out depth-first search),
 #'   `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
@@ -370,7 +405,9 @@
 #'   the linearization and importance-sampling -2LL are always computed and
 #'   stored; this selects the default active one.
 #' @param covMethod Method for calculating the covariance at the VAE estimates,
-#'   run through the FOCEi covariance step; the same choices as
+#'   run through the FOCEi covariance step with the interaction of
+#'   \code{likelihood}; its finite-difference legs optimize the ETAs again,
+#'   starting from the encoder's.  The same choices as
 #'   \code{\link{foceiControl}()}: \code{"analytic"} (default), \code{"r,s"},
 #'   \code{"r"}, \code{"s"}, or \code{""} to skip.
 #' @param nIsSample Number of importance-sampling draws for the IS -2LL.
@@ -407,79 +444,85 @@
 #' @return vae control structure (class `vaeControl`)
 #' @export
 #' @author Matthew L. Fidler
-vaeControl <- function(seed = 42L,
-                       itersBurnIn = 100L,
-                       klWarmup = 50L,
-                       gammaIter = 250L,
-                       iters = 300L,
-                       nGradStep = 5L,
-                       hiddenDim = 25L,
-                       learningRate = 5e-3,
-                       burnInLearningRate = 8e-3,
-                       sigma0 = NULL,
-                       covariateSelection = TRUE,
-                       pinCovariates = TRUE,
-                       muRefCovAlg = TRUE,
-                       shapes = c("power", "lin", "log", "identity", "center", "hockey"),
-                       covCenterType = c("median", "mean"),
-                       covCenter = NULL,
-                       catCutoff = 0.05,
-                       covSelectAlpha = 2,
-                       covSelectSmooth = TRUE,
-                       gammaSeries = c("reference", "saem"),
-                       sigma0Interp = c("sd", "reference"),
-                       residOptimize = c("twoStage", "moment", "optimize"),
-                       residRhoend = NULL,
-                       omegaUpdate = c("suffStat", "blend"),
-                       perNoCor = 0.75,
-                       inputScale = c("reference", "observed"),
-                       covSelectMethod = c("auto", "bnb", "l0learn"),
-                       covSelectMaxExact = 17L,
-                       bnbStrategy = c("lifo", "fifo", "lc"),
-                       parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
-                       nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
-                       nonMuEtaOmega = 0.01,
-                       mStepObjective = c("outer", "elbo"),
-                       likelihood = c("focei", "foce", "focep", "laplace"),
-                       objf = c("importanceSampling", "linear"),
-                       nIsSample = 3000L,
-                       returnVae = FALSE,
+vaeControl <- function(
+  seed = 42L,
+  itersBurnIn = 100L,
+  klWarmup = 50L,
+  gammaIter = 250L,
+  iters = 300L,
+  nGradStep = 5L,
+  hiddenDim = 25L,
+  learningRate = 5e-3,
+  burnInLearningRate = 8e-3,
+  sigma0 = NULL,
+  covariateSelection = TRUE,
+  pinCovariates = TRUE,
+  muRefCovAlg = TRUE,
+  shapes = c("power", "lin", "log", "identity", "center", "hockey"),
+  covCenterType = c("median", "mean"),
+  covCenter = NULL,
+  catCutoff = 0.05,
+  covSelectAlpha = 2,
+  covSelectSmooth = TRUE,
+  gammaSeries = c("reference", "saem"),
+  sigma0Interp = c("sd", "reference"),
+  residOptimize = c("twoStage", "moment", "optimize"),
+  residRhoend = NULL,
+  omegaUpdate = c("suffStat", "blend"),
+  perNoCor = 0.75,
+  inputScale = c("reference", "observed"),
+  covSelectMethod = c("auto", "bnb", "l0learn"),
+  covSelectMaxExact = 17L,
+  covSelectColinearCut = .vaeColinearCut,
+  covSelectPhiCor = c("suffStat", "mu", "resid"),
+  covSelectPhiJoin = 0.9,
+  covSelectPhiLeave = 0.8,
+  covSelectPhiMaxDim = 4L,
+  bnbStrategy = c("lifo", "fifo", "lc"),
+  parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
+  nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
+  nonMuEtaOmega = 0.01,
+  mStepObjective = c("outer", "elbo"),
+  likelihood = c("focei", "foce", "focep", "laplace"),
+  objf = c("importanceSampling", "linear"),
+  nIsSample = 3000L,
+  returnVae = FALSE,
 
-                       print = 1L,
-                       useColor = NULL,
-                       printNcol = NULL,
+  print = 1L,
+  useColor = NULL,
+  printNcol = NULL,
 
-                       covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""),
-                       optExpression = TRUE,
-                       sumProd = FALSE,
-                       literalFix = TRUE,
-                       literalFixRes = TRUE,
-                       addProp = c("combined2", "combined1"),
-                       calcTables = TRUE,
-                       compress = FALSE,
-                       adjObf = TRUE,
-                       ci = 0.95,
-                       sigdig = 3,
-                       sigdigTable = NULL,
-                       rhoend = NULL,
+  covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""),
+  optExpression = TRUE,
+  sumProd = FALSE,
+  literalFix = TRUE,
+  literalFixRes = TRUE,
+  addProp = c("combined2", "combined1"),
+  calcTables = TRUE,
+  compress = FALSE,
+  adjObf = TRUE,
+  ci = 0.95,
+  sigdig = 3,
+  sigdigTable = NULL,
+  rhoend = NULL,
 
-                       stickyRecalcN = 4,
-                       maxOdeRecalc = 5,
-                       odeRecalcFactor = 10^(0.5),
-                       outerStickyRecalcN = 4,
-                       fdIndividualStep = TRUE,
-                       fdOutlierZ = 3.5,
-                       fdOutlierScale = TRUE,
-                       fdRefine = c("chartrand", "lanczos", "richardson"),
-                       fdChartrandAll = FALSE,
-                       fdOutlierAny = FALSE,
-                       outerMaxOdeRecalc = 5,
-                       outerOdeRecalcFactor = 10^(0.5),
-                       indTolRelax = TRUE,
-                       eventSens = c("jump", "fd"),
-                       rxControl = NULL,
-                       ...) {
-
+  stickyRecalcN = 4,
+  maxOdeRecalc = 5,
+  odeRecalcFactor = 10^(0.5),
+  outerStickyRecalcN = 4,
+  fdIndividualStep = TRUE,
+  fdOutlierZ = 3.5,
+  fdOutlierScale = TRUE,
+  fdRefine = c("chartrand", "lanczos", "richardson"),
+  fdChartrandAll = FALSE,
+  fdOutlierAny = FALSE,
+  outerMaxOdeRecalc = 5,
+  outerOdeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
+  eventSens = c("jump", "fd"),
+  rxControl = NULL,
+  ...
+) {
   checkmate::assertIntegerish(seed, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(itersBurnIn, lower = 0, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(klWarmup, lower = 0, any.missing = FALSE, len = 1)
@@ -501,11 +544,9 @@ vaeControl <- function(seed = 42L,
   .vaeResolveShapes(shapes)
   covCenterType <- match.arg(covCenterType)
   if (!is.null(covCenter)) {
-    checkmate::assertNumeric(covCenter, finite = TRUE, any.missing = FALSE,
-                             min.len = 1, names = "unique")
+    checkmate::assertNumeric(covCenter, finite = TRUE, any.missing = FALSE, min.len = 1, names = "unique")
   }
-  checkmate::assertNumeric(catCutoff, lower = 0, upper = 1, len = 1,
-                           any.missing = FALSE)
+  checkmate::assertNumeric(catCutoff, lower = 0, upper = 1, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(covSelectAlpha, lower = 1, finite = TRUE, any.missing = FALSE, len = 1)
   checkmate::assertLogical(covSelectSmooth, len = 1, any.missing = FALSE)
   gammaSeries <- match.arg(gammaSeries)
@@ -517,8 +558,13 @@ vaeControl <- function(seed = 42L,
   ## single run -- a fraction of a shorter leg is a different schedule)
   checkmate::assertNumeric(perNoCor, any.missing = FALSE, lower = 0, finite = TRUE, len = 1)
   if (perNoCor > 1) {
-    checkmate::assertIntegerish(perNoCor, lower = 2, len = 1, any.missing = FALSE,
-                                .var.name = "perNoCor (absolute iteration count)")
+    checkmate::assertIntegerish(
+      perNoCor,
+      lower = 2,
+      len = 1,
+      any.missing = FALSE,
+      .var.name = "perNoCor (absolute iteration count)"
+    )
   }
   inputScale <- match.arg(inputScale)
   covSelectMethod <- match.arg(covSelectMethod)
@@ -531,6 +577,17 @@ vaeControl <- function(seed = 42L,
     checkmate::assertIntegerish(covSelectMaxExact, lower = 1, len = 1, any.missing = FALSE)
     covSelectMaxExact <- as.integer(covSelectMaxExact)
   }
+  checkmate::assertNumeric(covSelectColinearCut, lower = 0, upper = 1, len = 1, any.missing = FALSE)
+  covSelectPhiCor <- match.arg(covSelectPhiCor)
+  checkmate::assertNumeric(covSelectPhiJoin, lower = 0, upper = 1, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(covSelectPhiLeave, lower = 0, upper = 1, len = 1, any.missing = FALSE)
+  ## leaving above joining is not a schedule, it is a pair that joins and leaves
+  ## on alternate iterations
+  if (covSelectPhiLeave > covSelectPhiJoin) {
+    stop("'covSelectPhiLeave' must be <= 'covSelectPhiJoin'", call. = FALSE)
+  }
+  checkmate::assertIntegerish(covSelectPhiMaxDim, lower = 2, len = 1, any.missing = FALSE)
+  covSelectPhiMaxDim <- as.integer(covSelectPhiMaxDim)
   bnbStrategy <- match.arg(bnbStrategy)
   checkmate::assertLogical(parEncoderBackward, len = 1, any.missing = FALSE)
   nonMuTheta <- match.arg(nonMuTheta)
@@ -560,12 +617,7 @@ vaeControl <- function(seed = 42L,
   checkmate::assertLogical(indTolRelax, len = 1, any.missing = FALSE)
   likelihood <- match.arg(likelihood)
   objf <- match.arg(objf)
-  # match.arg cannot match ""; treat it (skip covariance) like foceiControl does
-  if (length(covMethod) == 1L && covMethod == "") {
-    covMethod <- ""
-  } else {
-    covMethod <- match.arg(covMethod)
-  }
+  covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
   addProp <- match.arg(addProp)
   eventSens <- match.arg(eventSens)
 
@@ -573,8 +625,7 @@ vaeControl <- function(seed = 42L,
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]
   if (length(.bad) > 0) {
-    stop("unused argument: ", paste(paste0("'", .bad, "'"), collapse = ", "),
-         call. = FALSE)
+    stop("unused argument: ", paste(paste0("'", .bad, "'"), collapse = ", "), call. = FALSE)
   }
 
   .genRxControl <- FALSE
@@ -588,12 +639,10 @@ vaeControl <- function(seed = 42L,
       rxControl <- rxode2::rxControl(atol = 1e-4, rtol = 1e-4)
     }
     .genRxControl <- TRUE
-  } else if (inherits(rxControl, "rxControl")) {
-  } else if (is.list(rxControl)) {
+  } else if (inherits(rxControl, "rxControl")) {} else if (is.list(rxControl)) {
     rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
-    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'",
-         call. = FALSE)
+    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call. = FALSE)
   }
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
@@ -606,15 +655,19 @@ vaeControl <- function(seed = 42L,
   }
   checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
 
-  .iterPrintControl <- .absorbIterPrintControl(print = print,
-                                               printNcol = printNcol,
-                                               useColor = useColor,
-                                               iterPrintControl = .xtra$iterPrintControl)
+  .iterPrintControl <- .absorbIterPrintControl(
+    print = print,
+    printNcol = printNcol,
+    useColor = useColor,
+    iterPrintControl = .xtra$iterPrintControl
+  )
 
   # inner bounded-bobyqa final trust-region radius for the non-mu/covariate
   # regress M-step; FOCEi mechanism from sigdig, else the historic 1e-4
-  if (is.null(rhoend)) rhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-4
-  checkmate::assertNumeric(rhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
+  if (is.null(rhoend)) {
+    rhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-4
+  }
+  checkmate::assertNumeric(rhoend, len = 1, lower = 0, finite = TRUE, any.missing = FALSE)
   ## Convergence tolerance of the RESIDUAL optimizer.  Derived from `sigdig` the
   ## same way every other optimizer tolerance in the package is (10^-sigdig), not
   ## inherited from an explicitly-set `rhoend` -- so `sigdig` remains the single
@@ -622,120 +675,99 @@ vaeControl <- function(seed = 42L,
   if (is.null(residRhoend)) {
     residRhoend <- if (!is.null(sigdig)) .sigdigOptTol(sigdig) else 1e-4
   }
-  checkmate::assertNumeric(residRhoend, len=1, lower=0, finite=TRUE, any.missing=FALSE)
-  .ret <- list(seed = as.integer(seed),
-               rhoend = as.numeric(rhoend),
-               residRhoend = as.numeric(residRhoend),
-               itersBurnIn = as.integer(itersBurnIn),
-               klWarmup = as.integer(klWarmup),
-               gammaIter = as.integer(gammaIter),
-               iters = as.integer(iters),
-               nGradStep = as.integer(nGradStep),
-               hiddenDim = as.integer(hiddenDim),
-               learningRate = learningRate,
-               burnInLearningRate = burnInLearningRate,
-               sigma0 = sigma0,
-               covariateSelection = covariateSelection,
-               pinCovariates = pinCovariates,
-               muRefCovAlg = muRefCovAlg,
-               shapes = shapes,
-               covCenterType = covCenterType,
-               covCenter = covCenter,
-               catCutoff = catCutoff,
-               covSelectAlpha = covSelectAlpha,
-               covSelectSmooth = covSelectSmooth,
-               gammaSeries = gammaSeries,
-               sigma0Interp = sigma0Interp,
-               residOptimize = residOptimize,
-               omegaUpdate = omegaUpdate,
-               perNoCor = perNoCor,
-               inputScale = inputScale,
-               covSelectMethod = covSelectMethod,
-               covSelectMaxExact = covSelectMaxExact,
-               bnbStrategy = bnbStrategy,
-               parEncoderBackward = parEncoderBackward,
-               nonMuTheta = nonMuTheta,
-               nonMuEtaOmega = nonMuEtaOmega,
-               mStepObjective = mStepObjective,
-               likelihood = likelihood,
-               objf = objf,
-               nIsSample = as.integer(nIsSample),
-               returnVae = returnVae,
-               covMethod = covMethod,
-               optExpression = optExpression,
-               sumProd = sumProd,
-               literalFix = literalFix,
-               literalFixRes = literalFixRes,
-               addProp = addProp,
-               calcTables = calcTables,
-               compress = compress,
-               adjObf = adjObf,
-               ci = ci,
-               sigdig = sigdig,
-               sigdigTable = sigdigTable,
-               stickyRecalcN = as.integer(stickyRecalcN),
-               maxOdeRecalc = as.integer(maxOdeRecalc),
-               odeRecalcFactor = odeRecalcFactor,
-               outerStickyRecalcN = as.integer(outerStickyRecalcN),
-               fdIndividualStep = fdIndividualStep,
-               fdOutlierZ = as.double(fdOutlierZ),
-               fdOutlierScale = fdOutlierScale,
-               fdRefine = fdRefine,
-               fdChartrandAll = fdChartrandAll,
-               fdOutlierAny = fdOutlierAny,
-               outerMaxOdeRecalc = as.integer(outerMaxOdeRecalc),
-               outerOdeRecalcFactor = outerOdeRecalcFactor,
-               indTolRelax = indTolRelax,
-               eventSens = eventSens,
-               iterPrintControl = .iterPrintControl,
-               rxControl = rxControl,
-               genRxControl = .genRxControl)
+  checkmate::assertNumeric(residRhoend, len = 1, lower = 0, finite = TRUE, any.missing = FALSE)
+  .ret <- list(
+    seed = as.integer(seed),
+    rhoend = as.numeric(rhoend),
+    residRhoend = as.numeric(residRhoend),
+    itersBurnIn = as.integer(itersBurnIn),
+    klWarmup = as.integer(klWarmup),
+    gammaIter = as.integer(gammaIter),
+    iters = as.integer(iters),
+    nGradStep = as.integer(nGradStep),
+    hiddenDim = as.integer(hiddenDim),
+    learningRate = learningRate,
+    burnInLearningRate = burnInLearningRate,
+    sigma0 = sigma0,
+    covariateSelection = covariateSelection,
+    pinCovariates = pinCovariates,
+    muRefCovAlg = muRefCovAlg,
+    shapes = shapes,
+    covCenterType = covCenterType,
+    covCenter = covCenter,
+    catCutoff = catCutoff,
+    covSelectAlpha = covSelectAlpha,
+    covSelectSmooth = covSelectSmooth,
+    gammaSeries = gammaSeries,
+    sigma0Interp = sigma0Interp,
+    residOptimize = residOptimize,
+    omegaUpdate = omegaUpdate,
+    perNoCor = perNoCor,
+    inputScale = inputScale,
+    covSelectMethod = covSelectMethod,
+    covSelectMaxExact = covSelectMaxExact,
+    covSelectColinearCut = covSelectColinearCut,
+    covSelectPhiCor = covSelectPhiCor,
+    covSelectPhiJoin = covSelectPhiJoin,
+    covSelectPhiLeave = covSelectPhiLeave,
+    covSelectPhiMaxDim = covSelectPhiMaxDim,
+    bnbStrategy = bnbStrategy,
+    parEncoderBackward = parEncoderBackward,
+    nonMuTheta = nonMuTheta,
+    nonMuEtaOmega = nonMuEtaOmega,
+    mStepObjective = mStepObjective,
+    likelihood = likelihood,
+    objf = objf,
+    nIsSample = as.integer(nIsSample),
+    returnVae = returnVae,
+    covMethod = covMethod,
+    optExpression = optExpression,
+    sumProd = sumProd,
+    literalFix = literalFix,
+    literalFixRes = literalFixRes,
+    addProp = addProp,
+    calcTables = calcTables,
+    compress = compress,
+    adjObf = adjObf,
+    ci = ci,
+    sigdig = sigdig,
+    sigdigTable = sigdigTable,
+    stickyRecalcN = as.integer(stickyRecalcN),
+    maxOdeRecalc = as.integer(maxOdeRecalc),
+    odeRecalcFactor = odeRecalcFactor,
+    outerStickyRecalcN = as.integer(outerStickyRecalcN),
+    fdIndividualStep = fdIndividualStep,
+    fdOutlierZ = as.double(fdOutlierZ),
+    fdOutlierScale = fdOutlierScale,
+    fdRefine = fdRefine,
+    fdChartrandAll = fdChartrandAll,
+    fdOutlierAny = fdOutlierAny,
+    outerMaxOdeRecalc = as.integer(outerMaxOdeRecalc),
+    outerOdeRecalcFactor = outerOdeRecalcFactor,
+    indTolRelax = indTolRelax,
+    eventSens = eventSens,
+    iterPrintControl = .iterPrintControl,
+    rxControl = rxControl,
+    genRxControl = .genRxControl
+  )
   class(.ret) <- "vaeControl"
   .ret
 }
 
 #' @export
-rxUiDeparse.vaeControl <- function(object, var) {
-  .default <- vaeControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.vaeControl <- function(object, var) .deparseControl(object, var, vaeControl())
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.vaeControl <- function(control, env) {
-  assign("vaeControl", control, envir = env)
-}
+nmObjHandleControlObject.vaeControl <- function(control, env) assign("vaeControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.vae <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("vaeControl", .env)) {
-    .control <- get("vaeControl", .env)
-    if (inherits(.control, "vaeControl")) return(.control)
-  }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
-    if (inherits(.control, "vaeControl")) return(.control)
-  }
-  stop("cannot find vae related control object", call. = FALSE)
-}
+nmObjGetControl.vae <- function(x, ...) .nmObjGetControlByClass(x, "vaeControl")
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.vae <- function(control) {
-  .ctl <- control[[1]]
-  if (is.null(.ctl)) .ctl <- vaeControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("vaeControl", .ctl)
-  if (!inherits(.ctl, "vaeControl")) {
-    .minfo("invalid control for `est=\"vae\"`, using default")
-    .ctl <- vaeControl()
-  } else {
-    .ctl <- do.call(vaeControl, .ctl)
-  }
-  .ctl
-}
+getValidNlmixrCtl.vae <- function(control) .getValidCtl(control, "vaeControl", "vae")
 
 #' @rdname nlmixr2Est
 #' @export
@@ -762,10 +794,15 @@ nlmixr2Est.vae <- function(env, ...) {
       .ctl$nonMuTheta <- "regress"
       assign("vaeControl", .ctl, envir = env)
       assign("control", .ctl, envir = env)
-      assign("control", .ctl, envir = .ui)   # the ui copy .analyticGradCaller reads
-      warning(if (.elbo) "mStepObjective=\"elbo\": used nonMuTheta=\"regress\""
-              else "analytic gradient out of scope; used nonMuTheta=\"regress\"",
-              call. = FALSE)
+      assign("control", .ctl, envir = .ui) # the ui copy .analyticGradCaller reads
+      warning(
+        if (.elbo) {
+          "mStepObjective=\"elbo\": used nonMuTheta=\"regress\""
+        } else {
+          "analytic gradient out of scope; used nonMuTheta=\"regress\""
+        },
+        call. = FALSE
+      )
     }
   }
   ## Seed the ENTIRE estimation ONCE here (encoder init, Adam, reparam sampling,

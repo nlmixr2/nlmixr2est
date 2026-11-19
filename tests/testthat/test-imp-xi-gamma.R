@@ -11,7 +11,6 @@
 # than the Gaussian proposal.  It is a DIFFERENT statistic from the Kish
 # effective sample size (impNeffFrac) and the two are not comparable.
 nmTest({
-
   .xiModel <- function() {
     ini({
       tka <- 0.45; tcl <- 1; tv <- 3.45
@@ -28,9 +27,12 @@ nmTest({
 
   test_that("xi: per-subject xi and its trace are exposed and well-formed", {
     .d <- nlmixr2data::theo_sd
-    .f <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 5L,
-                                                 isample = 300L, covMethod = "")))
+    .f <- suppressWarnings(nlmixr2(
+      .xiModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 5L, isample = 300L, covMethod = "")
+    ))
     .E <- .f$env
     # one xi per subject, all finite and strictly positive
     expect_false(is.null(.E$impXi))
@@ -52,13 +54,19 @@ nmTest({
     # controller: widening the proposal must lower xi, monotonically.  Compared
     # at iteration 1 across fits so every run sees identical starting parameters.
     .d <- nlmixr2data::theo_sd
-    .xi1 <- vapply(c(1.0, 2.0, 4.0), function(g) {
-      .f <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
-                                     impmapControl(print = 0L, nIter = 1L,
-                                                   isample = 500L, gamma = g,
-                                                   covMethod = "")))
-      .f$env$impXiTrace[1]
-    }, numeric(1))
+    .xi1 <- vapply(
+      c(1.0, 2.0, 4.0),
+      function(g) {
+        .f <- suppressWarnings(nlmixr2(
+          .xiModel,
+          .d,
+          "impmap",
+          impmapControl(print = 0L, nIter = 1L, isample = 500L, gamma = g, covMethod = "")
+        ))
+        .f$env$impXiTrace[1]
+      },
+      numeric(1)
+    )
     expect_true(all(is.finite(.xi1)))
     expect_true(all(diff(.xi1) < 0))
   })
@@ -96,8 +104,13 @@ nmTest({
     # a ui with no usable predDf falls back to the historical behaviour
     expect_equal(.impmapResolveGammaMethod("auto", list()), "global")
     # ... as does an NA distribution (all(NA == "x") is NA, which would error an if)
-    expect_equal(.impmapResolveGammaMethod(
-      "auto", list(predDf = data.frame(distribution = c("norm", NA)))), "global")
+    expect_equal(
+      .impmapResolveGammaMethod(
+        "auto",
+        list(predDf = data.frame(distribution = c("norm", NA)))
+      ),
+      "global"
+    )
     # "norm" and "dnorm" are rxode2 ALIASES for the same Gaussian family, so the
     # exact-likelihood (Laplace) form of a plain normal endpoint must still
     # resolve to "global" -- its posterior is as Gaussian as the add() form
@@ -107,7 +120,7 @@ nmTest({
              linCmt() ~ add(add.sd) + dnorm()})
     }
     .udn <- rxode2::rxode2(.dn)
-    expect_equal(as.character(.udn$predDf$distribution), "dnorm")   # premise
+    expect_equal(as.character(.udn$predDf$distribution), "dnorm") # premise
     expect_equal(.impmapResolveGammaMethod("auto", .udn), "global")
     # lognormal residuals ride predDf$transform with distribution "norm", so
     # they are Gaussian for this purpose too
@@ -147,15 +160,19 @@ nmTest({
     }
     .u2n <- rxode2::rxode2(.m2n)
     .uMix <- rxode2::rxode2(.mMix)
-    expect_equal(nrow(.u2n$predDf), 2L)     # premise: multiple rows
+    expect_equal(nrow(.u2n$predDf), 2L) # premise: multiple rows
     expect_equal(nrow(.uMix$predDf), 2L)
     # all endpoints Gaussian -> global
     expect_equal(.impmapResolveGammaMethod("auto", .u2n), "global")
     # ONE non-Gaussian endpoint is enough to select individual
     expect_equal(.impmapResolveGammaMethod("auto", .uMix), "individual")
     # and the canonicalizer must vectorize across rows rather than collapse
-    expect_equal(unname(rxode2::rxPreferredDistributionName(
-      as.character(.uMix$predDf$distribution))), c("dnorm", "pois"))
+    expect_equal(
+      unname(rxode2::rxPreferredDistributionName(
+        as.character(.uMix$predDf$distribution)
+      )),
+      c("dnorm", "pois")
+    )
   })
 
   test_that("gammaMethod='auto' re-resolves when a control is reused", {
@@ -181,8 +198,7 @@ nmTest({
 
   test_that("gammaMethod='auto' end-to-end: normal stays global, ll goes individual", {
     .d <- nlmixr2data::theo_sd
-    .fn <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 10L, covMethod = "")))
+    .fn <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap", impmapControl(print = 0L, nIter = 10L, covMethod = "")))
     expect_equal(.fn$env$impGammaMethod, "global")
     expect_equal(length(unique(round(.fn$env$impGammaInd, 8))), 1L)
     .ll <- function() {
@@ -190,8 +206,7 @@ nmTest({
       model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv); cp <- linCmt()
              ll(cp) ~ -0.5 * log(2 * pi) - log(sd1) - 0.5 * ((DV - cp) / sd1)^2})
     }
-    .fl <- suppressWarnings(nlmixr2(.ll, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 10L, covMethod = "")))
+    .fl <- suppressWarnings(nlmixr2(.ll, .d, "impmap", impmapControl(print = 0L, nIter = 10L, covMethod = "")))
     expect_equal(.fl$env$impGammaMethod, "individual")
     expect_gt(length(unique(round(.fl$env$impGammaInd, 8))), 1L)
   })
@@ -219,8 +234,7 @@ nmTest({
 
   test_that("$runInfo note reaches the fit on both paths", {
     .d <- nlmixr2data::theo_sd
-    .fn <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 5L, covMethod = "")))
+    .fn <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap", impmapControl(print = 0L, nIter = 5L, covMethod = "")))
     .ri <- .fn$runInfo
     expect_true(any(grepl("gammaMethod=\"global\"", .ri, fixed = TRUE)))
     expect_true(any(grepl("not comparable", .ri, fixed = TRUE)))
@@ -229,8 +243,7 @@ nmTest({
       model({ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv); cp <- linCmt()
              ll(cp) ~ -0.5 * log(2 * pi) - log(sd1) - 0.5 * ((DV - cp) / sd1)^2})
     }
-    .fl <- suppressWarnings(nlmixr2(.ll, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 5L, covMethod = "")))
+    .fl <- suppressWarnings(nlmixr2(.ll, .d, "impmap", impmapControl(print = 0L, nIter = 5L, covMethod = "")))
     .ril <- .fl$runInfo
     expect_true(any(grepl("gammaMethod=\"individual\"", .ril, fixed = TRUE)))
     expect_true(any(grepl("not comparable", .ril, fixed = TRUE)))
@@ -238,10 +251,12 @@ nmTest({
 
   test_that("gammaMethod='global' keeps one shared scale", {
     .d <- nlmixr2data::theo_sd
-    .f <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 10L,
-                                                 covMethod = "",
-                                                 gammaMethod = "global")))
+    .f <- suppressWarnings(nlmixr2(
+      .xiModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 10L, covMethod = "", gammaMethod = "global")
+    ))
     .E <- .f$env
     expect_equal(.E$impGammaMethod, "global")
     # every subject on the same scale, equal to the reported scalar
@@ -251,10 +266,12 @@ nmTest({
 
   test_that("gammaMethod='individual' gives per-subject scales that target iaccept", {
     .d <- nlmixr2data::theo_sd
-    .f <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 30L,
-                                                 covMethod = "",
-                                                 gammaMethod = "individual")))
+    .f <- suppressWarnings(nlmixr2(
+      .xiModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 30L, covMethod = "", gammaMethod = "individual")
+    ))
     .E <- .f$env
     expect_equal(.E$impGammaMethod, "individual")
     # subjects genuinely diverge -- this is the whole point of the mode
@@ -273,12 +290,18 @@ nmTest({
     # The importance weights correct for gamma, so both laws must agree on the
     # parameters even though they sample at very different proposal widths.
     .d <- nlmixr2data::theo_sd
-    .g <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 25L, covMethod = "",
-                                                 gammaMethod = "global")))
-    .i <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 25L, covMethod = "",
-                                                 gammaMethod = "individual")))
+    .g <- suppressWarnings(nlmixr2(
+      .xiModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 25L, covMethod = "", gammaMethod = "global")
+    ))
+    .i <- suppressWarnings(nlmixr2(
+      .xiModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 25L, covMethod = "", gammaMethod = "individual")
+    ))
     # The two laws really did sample at different widths -- but the difference
     # is in the SPREAD across subjects, not in the aggregate.  "global" gives
     # every subject one gamma; "individual" gives each its own (here spanning
@@ -296,10 +319,12 @@ nmTest({
 
   test_that("individual gamma respects a tightened iscaleMax clamp", {
     .d <- nlmixr2data::theo_sd
-    .f <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 20L, covMethod = "",
-                                                 gammaMethod = "individual",
-                                                 iscaleMax = 1.2)))
+    .f <- suppressWarnings(nlmixr2(
+      .xiModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 20L, covMethod = "", gammaMethod = "individual", iscaleMax = 1.2)
+    ))
     # the unclamped controller wants gamma ~ 1.8 here, so 1.2 must bind
     expect_true(all(.f$env$impGammaInd <= 1.2 + 1e-8))
     expect_gt(max(.f$env$impGammaInd), 1.0)
@@ -314,10 +339,12 @@ nmTest({
     # poorly matched, which inflates Monte-Carlo noise in the FD Hessian.  This
     # pins that the covariance is built and stays well-formed on that path.
     .d <- nlmixr2data::theo_sd
-    .f <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 15L,
-                                                 covMethod = "imp",
-                                                 gammaMethod = "individual")))
+    .f <- suppressWarnings(nlmixr2(
+      .xiModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 15L, covMethod = "imp", gammaMethod = "individual")
+    ))
     .E <- .f$env
     # The scales really did move away from the control's initial gamma = 1:
     # mean ~1.17 here, spanning ~1.02-1.39 with sd ~0.11.  Asserted on the MEAN
@@ -328,8 +355,8 @@ nmTest({
     expect_gt(stats::sd(.E$impGammaInd), 0)
     .cv <- as.matrix(.E$cov)
     expect_true(all(is.finite(.cv)))
-    expect_equal(.cv, t(.cv), tolerance = 1e-8)          # symmetric
-    expect_true(all(diag(.cv) > 0))                       # positive diagonal
+    expect_equal(.cv, t(.cv), tolerance = 1e-8) # symmetric
+    expect_true(all(diag(.cv) > 0)) # positive diagonal
     expect_true(all(is.finite(.E$impSeTheta)))
     expect_true(all(.E$impSeTheta > 0))
   })
@@ -343,19 +370,27 @@ nmTest({
     # p = 2/neta gives lambda = 0 for every dimension.  This test fails on the
     # fixed-exponent controller and passes on the dimension-aware one.
     skip_on_cran()
-    .testSeed(7); rxode2::rxSetSeed(7)
+    .testSeed(7)
+    rxode2::rxSetSeed(7)
     .mk <- function() {
       tt <- c(0.25, 1, 2, 4, 8, 16, 24)
-      do.call(rbind, lapply(1:12, function(id) {
-        ka <- exp(0.4 + stats::rnorm(1, 0, .3)); cl <- exp(1 + stats::rnorm(1, 0, .3))
-        v <- exp(3.4 + stats::rnorm(1, 0, .3))
-        cp <- 100 * ka / (v * (ka - cl / v)) * (exp(-cl / v * tt) - exp(-ka * tt))
-        cp <- pmax(cp, 1e-3) * exp(stats::rnorm(length(tt), 0, .1))
-        rbind(data.frame(id = id, time = 0, dv = NA_real_, amt = 100, evid = 1, cmt = "depot"),
-              data.frame(id = id, time = tt, dv = cp, amt = 0, evid = 0, cmt = "cen"))
-      }))
+      do.call(
+        rbind,
+        lapply(1:12, function(id) {
+          ka <- exp(0.4 + stats::rnorm(1, 0, .3))
+          cl <- exp(1 + stats::rnorm(1, 0, .3))
+          v <- exp(3.4 + stats::rnorm(1, 0, .3))
+          cp <- 100 * ka / (v * (ka - cl / v)) * (exp(-cl / v * tt) - exp(-ka * tt))
+          cp <- pmax(cp, 1e-3) * exp(stats::rnorm(length(tt), 0, .1))
+          rbind(
+            data.frame(id = id, time = 0, dv = NA_real_, amt = 100, evid = 1, cmt = "depot"),
+            data.frame(id = id, time = tt, dv = cp, amt = 0, evid = 0, cmt = "cen")
+          )
+        })
+      )
     }
-    .d <- .mk(); .d <- .d[order(.d$id, .d$time, -.d$evid), ]
+    .d <- .mk()
+    .d <- .d[order(.d$id, .d$time, -.d$evid), ]
     m8 <- function() {
       ini({
         tka <- 0.4; tcl <- 1; tv <- 3.4; tq <- 0.8; tv2 <- 3; tf <- 0; tlag <- -2; tke0 <- -1
@@ -374,9 +409,12 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    .f <- suppressWarnings(nlmixr2(m8, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 18L, isample = 200L,
-                                                 covMethod = "", gammaMethod = "individual")))
+    .f <- suppressWarnings(nlmixr2(
+      m8,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 18L, isample = 200L, covMethod = "", gammaMethod = "individual")
+    ))
     expect_equal(nrow(.f$omega), 8L)
     .tail <- tail(.f$env$impXiTrace, 10)
     # a period-2 limit cycle has lag-1 autocorrelation ~ -1; a settled trace
@@ -403,15 +441,16 @@ nmTest({
     # powers of ten, not by tenths.  The settled value here is ~0.39 -- below 1
     # because gamma = 1.0 leaves the proposal over-dispersed for this model,
     # exactly as the statistic's definition says it should be.
-    .f <- suppressWarnings(nlmixr2(.xiModel, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 5L,
-                                                 isample = 500L, gamma = 1.0,
-                                                 covMethod = "")))
+    .f <- suppressWarnings(nlmixr2(
+      .xiModel,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 5L, isample = 500L, gamma = 1.0, covMethod = "")
+    ))
     .xiSettled <- .f$env$impXiTrace[length(.f$env$impXiTrace)]
     expect_gt(.xiSettled, 0.1)
     expect_lt(.xiSettled, 10.0)
   })
-
 
   test_that("gammaRule selects the shared-scale adaptation law", {
     skip_on_cran()
@@ -422,11 +461,10 @@ nmTest({
               linCmt() ~ add(add.sd) })
     }
     .ctl <- function(rule) {
-      impmapControl(print = 0L, nIter = 100L, isample = 300L, nConvWindow = 10L,
-                    covMethod = "", gammaRule = rule)
+      impmapControl(print = 0L, nIter = 100L, isample = 300L, nConvWindow = 10L, covMethod = "", gammaRule = rule)
     }
     # control surface: both levels accepted, "floor" is the default
-    expect_equal(impmapControl()$gammaRule, "target")   # NONMEM's rule is default
+    expect_equal(impmapControl()$gammaRule, "target") # NONMEM's rule is default
     expect_equal(impmapControl(gammaRule = "floor")$gammaRule, "floor")
     # the tuned constants travel WITH the rule
     expect_equal(impmapControl()$nConvWindow, 20L)
@@ -463,5 +501,4 @@ nmTest({
     # the rule moves the VARIANCE of the estimates, not their expectation
     expect_equal(.fl$objf, .tg$objf, tolerance = 0.5)
   })
-
 })

@@ -17,15 +17,18 @@
 # with "target" as the default the df/AUTO tail machinery is a secondary safety
 # net rather than the primary remedy.
 nmTest({
-
   .rgpd <- function(n, k) ((1 - stats::runif(n))^(-k) - 1) / k
 
   test_that("k-hat recovers a known generalized-Pareto tail index", {
     .est <- function(k, seeds = 1:5) {
-      vapply(seeds, function(s) {
-        set.seed(100 + s)
-        .impPsisK(.rgpd(4000, k))
-      }, numeric(1))
+      vapply(
+        seeds,
+        function(s) {
+          set.seed(100 + s)
+          .impPsisK(.rgpd(4000, k))
+        },
+        numeric(1)
+      )
     }
     for (.k in c(0.2, 0.5, 0.8, 1.2)) {
       .m <- mean(.est(.k))
@@ -41,9 +44,17 @@ nmTest({
     # exponential weights: tail index 0
     expect_lt(.impPsisK(stats::rexp(4000)), 0.3)
     # heavy: k = 1 has infinite variance AND infinite mean
-    expect_gt(mean(vapply(1:3, function(s) {
-      set.seed(200 + s); .impPsisK(.rgpd(4000, 1.0))
-    }, numeric(1))), 0.7)
+    expect_gt(
+      mean(vapply(
+        1:3,
+        function(s) {
+          set.seed(200 + s)
+          .impPsisK(.rgpd(4000, 1.0))
+        },
+        numeric(1)
+      )),
+      0.7
+    )
   })
 
   test_that("k-hat is scale invariant and degrades gracefully", {
@@ -67,7 +78,8 @@ nmTest({
       .w <- .rgpd(4000, .k)
       .mine <- .impPsisK(.w)
       .ref <- suppressWarnings(
-        loo::psis(matrix(log(.w), ncol = 1), r_eff = NA)$diagnostics$pareto_k)
+        loo::psis(matrix(log(.w), ncol = 1), r_eff = NA)$diagnostics$pareto_k
+      )
       expect_lt(abs(.mine - .ref), 0.1)
     }
   })
@@ -79,9 +91,12 @@ nmTest({
              linCmt() ~ add(add.sd)})
     }
     .d <- nlmixr2data::theo_sd
-    .f <- suppressWarnings(nlmixr2(.m, .d, "impmap",
-                                   impmapControl(print = 0L, nIter = 6L,
-                                                 isample = 300L, covMethod = "", gammaRule = "floor")))
+    .f <- suppressWarnings(nlmixr2(
+      .m,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 6L, isample = 300L, covMethod = "", gammaRule = "floor")
+    ))
     .E <- .f$env
     expect_equal(length(.E$impPsisK), length(unique(.d$ID)))
     # all three diagnostics are present and per-subject
@@ -113,10 +128,12 @@ nmTest({
       model({ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
              linCmt() ~ add(add.sd)})
     }
-    .f <- suppressWarnings(nlmixr2(.m, nlmixr2data::theo_sd, "impmap",
-                                   impmapControl(print = 0L, nIter = 6L,
-                                                 isample = 300L, covMethod = "",
-                                                 auto = FALSE, gammaRule = "floor")))
+    .f <- suppressWarnings(nlmixr2(
+      .m,
+      nlmixr2data::theo_sd,
+      "impmap",
+      impmapControl(print = 0L, nIter = 6L, isample = 300L, covMethod = "", auto = FALSE, gammaRule = "floor")
+    ))
     .E <- .f$env
     .bad <- which(.E$impPsisK > 0.7)
     # at least one subject is in the unreliable regime
@@ -146,17 +163,20 @@ nmTest({
     # posterior is not identified and the heavy tail is a property of the model,
     # not of the proposal.
     set.seed(42)
-    .sparse <- do.call(rbind, lapply(split(nlmixr2data::theo_sd,
-                                           nlmixr2data::theo_sd$ID), function(d) {
-      .obs <- d[d$EVID == 0, , drop = FALSE]
-      rbind(d[d$EVID != 0, , drop = FALSE],
-            .obs[sort(sample(seq_len(nrow(.obs)), 2L)), , drop = FALSE])
-    }))
+    .sparse <- do.call(
+      rbind,
+      lapply(split(nlmixr2data::theo_sd, nlmixr2data::theo_sd$ID), function(d) {
+        .obs <- d[d$EVID == 0, , drop = FALSE]
+        rbind(d[d$EVID != 0, , drop = FALSE], .obs[sort(sample(seq_len(nrow(.obs)), 2L)), , drop = FALSE])
+      })
+    )
     .maxK <- function(dat, ns) {
-      .f <- suppressWarnings(nlmixr2(.m, dat, "impmap",
-                                     impmapControl(print = 0L, nIter = 5L,
-                                                   isample = ns, covMethod = "",
-                                                   auto = FALSE, gammaRule = "floor")))
+      .f <- suppressWarnings(nlmixr2(
+        .m,
+        dat,
+        "impmap",
+        impmapControl(print = 0L, nIter = 5L, isample = ns, covMethod = "", auto = FALSE, gammaRule = "floor")
+      ))
       max(.f$env$impPsisK)
     }
     # structural: still unreliable at 300 and at 2000 (and the isample = 8000
@@ -169,5 +189,4 @@ nmTest({
     expect_gt(.maxK(nlmixr2data::theo_sd, 300L), 0.7)
     expect_lt(.maxK(nlmixr2data::theo_sd, 2000L), 0.7)
   })
-
 })

@@ -176,3 +176,69 @@ NumericMatrix cholSE_(NumericMatrix A, double tol){
   cholSE0(Ao, E, as<arma::mat>(A), tol);
   return wrap(Ao);
 }
+
+// Whether M0's eigenvalues reach down to rounding level (or cannot be computed)
+static bool covRankDeficient(const arma::mat &M0) {
+  arma::vec ev;
+  if (!arma::eig_sym(ev, arma::symmatu(M0))) return true;
+  ev = arma::abs(ev);
+  return ev.min() <= ev.max() * M0.n_rows * arma::datum::eps;
+}
+
+// The "|.|" rung: U = chol(sqrtm(M0 %*% M0)), and that matrix in *Mabs when given
+static bool covAbsRung(const arma::mat &M0, arma::mat &U, arma::mat *Mabs) {
+  arma::cx_mat H1;
+  arma::mat ch;
+  if (!arma::sqrtmat(H1, M0*M0) || arma::any(arma::any(arma::imag(H1), 0)) ||
+      !arma::chol(ch, arma::real(H1))) return false;
+  U = ch;
+  if (Mabs != nullptr) *Mabs = arma::real(H1);
+  return true;
+}
+
+// Whether an information matrix (R) or score cross-product (S) M0 can be used, after
+// cholSE0 (pd, E, U): 1 as it is; 2 corrected, cholSE0's factor of M0 + diag(E), when
+// every added diagonal is within cholAccept ("+"); 3 chol(sqrtm(M0 %*% M0)) ("|.|", U
+// replaced, and the matrix itself in *Mabs when given); 0 not usable.  The "+" rung also
+// needs a positive largest diagonal (cholSE0 scales E by it) and a finite E and factor.
+// cholSE0 calls every 1x1 matrix positive definite, so a 1x1 M0 is judged by its value.
+// A numerically rank-deficient M0 may be "+" but never "|.|" (sqrtm lifts rounding-level
+// eigenvalues to about sqrt(eps)).
+int covAcceptRule(const arma::mat &M0, bool pd, const arma::vec &E, arma::mat &U,
+                  double cholAccept, arma::mat *Mabs) {
+  // cholSE0 calls a matrix with NaN positive definite
+  if (M0.n_elem == 0 || !M0.is_finite()) return 0;
+  if (pd && (M0.n_elem != 1 || M0(0, 0) > 0)) return 1;
+  if (M0.diag().max() > 0 && E.is_finite() && U.is_finite() && !arma::any(E > cholAccept)) {
+    return 2;
+  }
+  if (covRankDeficient(M0)) return 0;
+  return covAbsRung(M0, U, Mabs) ? 3 : 0;
+}
+
+// covAcceptRule() for R callers: type "" (as it is), "+", "|" or "failed", the factor U
+// and the matrix it factors (sqrtm(A %*% A) for "|", else A).
+//[[Rcpp::export]]
+List covAccept_(NumericMatrix A, double cholSEtol, double cholAccept) {
+  arma::mat M0 = as<arma::mat>(A), U, E, Mabs;
+  if (M0.n_elem == 0 || !M0.is_finite()) {
+    return List::create(_["type"] = "failed", _["U"] = U, _["M"] = M0);
+  }
+  bool pd = cholSE0(U, E, M0, cholSEtol);
+  arma::vec Ev = arma::vectorise(E);
+  int rc = covAcceptRule(M0, pd, Ev, U, cholAccept, &Mabs);
+  static const char *types[4] = {"failed", "", "+", "|"};
+  arma::mat M = (rc == 3) ? Mabs : M0;
+  return List::create(_["type"] = types[rc], _["U"] = U, _["M"] = M);
+}
+
+// cholSE0's factor U (U'U = A + diag(E)), E and whether A was factored without
+// adding anything (pd), for callers that apply foceiCovUsable()'s rules in R.
+//[[Rcpp::export]]
+List cholSEpd_(NumericMatrix A, double tol) {
+  arma::mat Ao, E;
+  bool pd = cholSE0(Ao, E, as<arma::mat>(A), tol);
+  // the objects themselves: create() wraps each once its result is protected
+  return List::create(_["U"] = Ao, _["E"] = arma::vec(arma::vectorise(E)),
+                      _["pd"] = pd);
+}

@@ -95,7 +95,11 @@ appropriate}
 \item{diff.g}{an estimated bound on the relative error in the
 objective function value}
 
-\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.}
 
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}
@@ -140,7 +144,9 @@ When `FALSE`, all subjects have their tolerances relaxed on
 each retry and tolerances are reset afterward.}
 
 \item{eventType}{Event gradient type for dosing events; Can be
-"central" or "forward"}
+"central" or "forward".  The integer code a control stores is accepted
+too: 2 (central) or 3 (forward) in `foceiControl()`, 2 (central) or 1
+(forward) in the nlm-family controls.}
 
 \item{shiErr}{This represents the epsilon when optimizing the ideal
 step size for numeric differentiation using the Shi2021 method}
@@ -151,7 +157,9 @@ time, modeled duration/rate and bioavailability)}
 
 \item{optimHessType}{Hessian type for numeric-difference individual
 Hessians in generalized log-likelihood estimation: "central" (matches
-R's `optimHess()`, default) or "forward" (faster).}
+R's `optimHess()`, default) or "forward" (faster).  The integer code a
+control stores is accepted too: 1 (central) or 3 (forward) in
+`foceiControl()`, 2 (central) or 1 (forward) in the nlm-family controls.}
 
 \item{hessErr}{This represents the epsilon when optimizing the
 Hessian step size using the Shi2021 method.}
@@ -238,9 +246,13 @@ will calculate tables. By default this is \code{TRUE}}
 
 \item{compress}{Should the object have compressed items}
 
-\item{covMethod}{Method for calculating the covariance.  \code{"r"} (the
-default) uses nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"nlminb"} uses
-the optimizer's own Hessian; \code{""} skips the covariance step.}
+\item{covMethod}{Method for calculating the covariance.  \code{"r"} uses
+nlmixr2's \code{nlmixr2Hess()} Hessian; \code{"nlminb"} uses central
+differences of the analytic gradient at the final estimates, as
+\code{nlmControl(covMethod = "nlm")} does; it needs
+\code{solveType = "hessian"} or \code{"grad"}.  The default is
+\code{"nlminb"} with \code{solveType = "hessian"} and \code{"r"}
+otherwise.  \code{""} skips the covariance step.}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective
@@ -252,20 +264,17 @@ function.  By default this is \code{TRUE}}
 \item{sigdig}{Optimization significant digits.  One value drives, with a single
 consistent formula, the inner/outer optimizer convergence tolerance
 (\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
-and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
-\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
-\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
-tolerances match the main solve (the outer gradient and covariance are built
-from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
-order looser.
-Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 3}
-this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
+and the ODE solver tolerances \code{rtol = max(10^(-2*sigdig), 1e-12)},
+\code{atol = rtol/100} for every solver.  An objective solved to relative
+error \code{rtol} locates its minimum only to about \code{sqrt(rtol)}, so
+this is the solve a \code{10^-sigdig} optimizer needs.  The sensitivity
+(\code{atolSens}/\code{rtolSens}) tolerances match the main solve; the
+steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+At the default \code{sigdig = 3} this is \code{atol = 1e-8},
+\code{rtol = 1e-6}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{...}{Further arguments to be supplied to \code{objective}.}
 }

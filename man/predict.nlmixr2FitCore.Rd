@@ -23,42 +23,50 @@ A data frame with predictions
 Generates population- or individual-level predictions from an
 `nlmixr2FitCore` object.
 }
+\details{
+For a fit with inter-occasion variability, individual predictions take
+each record's occasion etas from the fit's estimates, by subject and
+occasion, so `newdata` needs the occasion columns.  A subject or occasion
+the fit did not estimate gets occasion etas of 0, with a warning.  The
+occasion etas step at each occasion's first record, as the fit's occasion
+does, whatever the covariate interpolation.
+}
 \examples{
-
 \donttest{
 
 one.compartment <- function() {
- ini({
-  tka <- log(1)
-  tcl <- log(10)
-  tv <- log(35)
-  eta.ka ~ 0.1
-  eta.cl ~ 0.1
-  eta.v ~ 0.1
-  add.sd <- 0.1
- })
- model({
-  ka <- exp(tka + eta.ka)
-  cl <- exp(tcl + eta.cl)
-  v <- exp(tv + eta.v)
-  d/dt(depot) = -ka * depot
-  d/dt(center) = ka * depot - cl / v * center
-  cp = center / v
-  cp ~ add(add.sd)
- })
+  ini({
+    tka <- log(1)
+    tcl <- log(10)
+    tv <- log(35)
+    eta.ka ~ 0.1
+    eta.cl ~ 0.1
+    eta.v ~ 0.1
+    add.sd <- 0.1
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    d/dt(depot) <- -ka * depot
+    d/dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    cp ~ add(add.sd)
+  })
 }
 
 # The fit is performed by the function nlmixr/nlmix2 specifying
 # the model, data and estimate
-fit <- nlmixr2(one.compartment, theo_sd, est = "focei",
-               foceiControl(maxOuterIterations = 0L))
+fit <- nlmixr2(one.compartment, theo_sd,
+  est = "focei",
+  foceiControl(maxOuterIterations = 0L)
+)
 
 # Population predictions
-ppred <- predict(fit, theo_sd, level="population")
+ppred <- predict(fit, theo_sd, level = "population")
 
 # Individual predictions
-ipred <- predict(fit, theo_sd, level="individual")
-
+ipred <- predict(fit, theo_sd, level = "individual")
 }
 
 }

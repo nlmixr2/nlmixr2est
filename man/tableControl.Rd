@@ -37,14 +37,40 @@ you supply single subject event tables (created with
 
 \item{censMethod}{Handle censoring method:
 
- - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of the model and censoring.
+ - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of
+   the model and censoring.
 
- - `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)
+ - `"cdf"` Impute censored observations with NPDE (below) and use the
+   imputed values as the DV of the other residuals (`cwres` etc).
 
- - `"omit"` omit the residuals for censoring}
+ - `"omit"` omit the residuals for censoring
+
+ - `"ipred"`, `"pred"` and `"epred"` replace a censored DV with the IPRED,
+   PRED or EPRED in the residuals.
+
+  For NPDE, every method but `"omit"` replaces each censored
+  observation by a draw from the subject's simulated predictive
+  distribution (a Gaussian copula of the simulations), conditional on its
+  measured observations and truncated to its censoring interval; `"omit"`
+  gives censored observations no NPDE and leaves them out of the
+  decorrelation.
+
+  The NPDE that `"omit"` keeps are not expected to be N(0,1) under
+  censoring, even for a true model: only the quantified observations are
+  kept, while the simulations they are compared with are not censored.
+  Below a lower limit the kept observations are the high ones, so their
+  mean drifts upward as more is censored (downward above an upper limit).
+  This holds for any NPDE restricted to the uncensored rows; to check a
+  model's fit with censored data, use a method that keeps the censored
+  rows, such as `"truncated-normal"`.}
 
 \item{seed}{an object specifying if and how the random number
-generator should be initialized}
+generator should be initialized; when given, it takes precedence
+over an active \code{\link[rxode2:rxSetSeed]{rxSetSeed()}} stream for this solve, and the
+caller's \code{.Random.seed} is restored afterwards.  \code{\link[rxode2:rxControl]{rxControl()}} only
+stores it; the seed is applied when the control is used by a solve.
+Re-solving a result by assignment (eg \code{s$params <- p}) reapplies its
+seed, while \code{update()} uses only a \code{seed} it is given}
 
 \item{cholSEtol}{The tolerance for the `rxode2::choleSE` function}
 

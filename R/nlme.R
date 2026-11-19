@@ -29,72 +29,99 @@
 #' nlmixr2NlmeControl()
 #' @family Estimation control
 #' @export
-nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100, minScale = 0.001,
-    tolerance = NULL, niterEM = 25, pnlsTol = NULL, msTol = NULL,
-    returnObject = FALSE, msVerbose = FALSE, msWarnNoConv = TRUE,
-    gradHess = TRUE, apVar = TRUE, .relStep = .Machine$double.eps^(1/3),
-    minAbsParApVar = 0.05, opt = c("nlminb", "nlm"), natural = TRUE,
-    sigma = NULL, optExpression=TRUE, literalFix=TRUE, sumProd=FALSE,
-    rxControl=NULL,
-    method=c("ML", "REML"),
-    random=NULL, fixed=NULL, weights=NULL, verbose=TRUE, returnNlme=FALSE,
-    addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
-    adjObf=TRUE, ci=0.95, sigdig=3, sigdigTable=NULL, muRefCovAlg=TRUE,
-    eventSens=c("jump", "fd"), print=NULL,
-    covMethod=c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""), ...) {
+nlmixr2NlmeControl <- function(
+  maxIter = 100,
+  pnlsMaxIter = 100,
+  msMaxIter = 100,
+  minScale = 0.001,
+  tolerance = NULL,
+  niterEM = 25,
+  pnlsTol = NULL,
+  msTol = NULL,
+  returnObject = FALSE,
+  msVerbose = FALSE,
+  msWarnNoConv = TRUE,
+  gradHess = TRUE,
+  apVar = TRUE,
+  .relStep = .Machine$double.eps^(1 / 3),
+  minAbsParApVar = 0.05,
+  opt = c("nlminb", "nlm"),
+  natural = TRUE,
+  sigma = NULL,
+  optExpression = TRUE,
+  literalFix = TRUE,
+  sumProd = FALSE,
+  rxControl = NULL,
+  method = c("ML", "REML"),
+  random = NULL,
+  fixed = NULL,
+  weights = NULL,
+  verbose = TRUE,
+  returnNlme = FALSE,
+  addProp = c("combined2", "combined1"),
+  calcTables = TRUE,
+  compress = TRUE,
+  adjObf = TRUE,
+  ci = 0.95,
+  sigdig = 3,
+  sigdigTable = NULL,
+  muRefCovAlg = TRUE,
+  eventSens = c("jump", "fd"),
+  print = NULL,
+  covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
+  ...
+) {
+  checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(sumProd, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(returnObject, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(msVerbose, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(msWarnNoConv, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(gradHess, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(apVar, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(natural, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(verbose, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(returnNlme, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(compress, len = 1, any.missing = TRUE)
+  checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)
 
-  checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
-  checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
-  checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
-  checkmate::assertLogical(returnObject, len=1, any.missing=FALSE)
-  checkmate::assertLogical(msVerbose, len=1, any.missing=FALSE)
-  checkmate::assertLogical(msWarnNoConv, len=1, any.missing=FALSE)
-  checkmate::assertLogical(gradHess, len=1, any.missing=FALSE)
-  checkmate::assertLogical(apVar, len=1, any.missing=FALSE)
-  checkmate::assertLogical(natural, len=1, any.missing=FALSE)
-  checkmate::assertLogical(verbose, len=1, any.missing=FALSE)
-  checkmate::assertLogical(returnNlme, len=1, any.missing=FALSE)
-  checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
-  checkmate::assertLogical(compress, len=1, any.missing=TRUE)
-  checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
-
-  checkmate::assertIntegerish(pnlsMaxIter, len=1, any.missing=FALSE, lower=1)
-  checkmate::assertIntegerish(msMaxIter, len=1, any.missing=FALSE, lower=1)
-  checkmate::assertIntegerish(niterEM, len=1, any.missing=FALSE, lower=1)
-  checkmate::assertNumeric(minScale, len=1, any.missing=FALSE, lower=0)
+  checkmate::assertIntegerish(pnlsMaxIter, len = 1, any.missing = FALSE, lower = 1)
+  checkmate::assertIntegerish(msMaxIter, len = 1, any.missing = FALSE, lower = 1)
+  checkmate::assertIntegerish(niterEM, len = 1, any.missing = FALSE, lower = 1)
+  checkmate::assertNumeric(minScale, len = 1, any.missing = FALSE, lower = 0)
   # nlme optimizer tolerances from sigdig: reproduce the tuned values at sigdig=4 and
   # tighten one order per significant digit; a user value wins, sigdig=NULL keeps
   # the defaults (sigdig=5 -> tolerance=1e-6, msTol=1e-7, pnlsTol=1e-4).  The
   # anchor is 4 while the default sigdig is 3, so these run one order looser by
   # default than they historically did.
-  if (is.null(tolerance)) tolerance <- if (!is.null(sigdig)) .sigdigScale(1e-5, sigdig) else 1e-05
-  if (is.null(msTol)) msTol <- if (!is.null(sigdig)) .sigdigScale(1e-6, sigdig) else 1e-06
-  if (is.null(pnlsTol)) pnlsTol <- if (!is.null(sigdig)) .sigdigScale(1e-3, sigdig) else 0.001
-  checkmate::assertNumeric(pnlsTol, len=1, any.missing=FALSE, lower=0)
-  checkmate::assertNumeric(msTol, len=1, any.missing=FALSE, lower=0)
-  checkmate::assertNumeric(tolerance, len=1, any.missing=FALSE, lower=0)
-  checkmate::assertNumeric(.relStep, len=1, any.missing=FALSE, lower=0)
-  checkmate::assertNumeric(minAbsParApVar, len=1, any.missing=FALSE, lower=0)
-  checkmate::assertNumeric(ci, lower=0, upper=1, any.missing=FALSE, len=1)
-  checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
+  if (is.null(tolerance)) {
+    tolerance <- if (!is.null(sigdig)) .sigdigScale(1e-5, sigdig) else 1e-05
+  }
+  if (is.null(msTol)) {
+    msTol <- if (!is.null(sigdig)) .sigdigScale(1e-6, sigdig) else 1e-06
+  }
+  if (is.null(pnlsTol)) {
+    pnlsTol <- if (!is.null(sigdig)) .sigdigScale(1e-3, sigdig) else 0.001
+  }
+  checkmate::assertNumeric(pnlsTol, len = 1, any.missing = FALSE, lower = 0)
+  checkmate::assertNumeric(msTol, len = 1, any.missing = FALSE, lower = 0)
+  checkmate::assertNumeric(tolerance, len = 1, any.missing = FALSE, lower = 0)
+  checkmate::assertNumeric(.relStep, len = 1, any.missing = FALSE, lower = 0)
+  checkmate::assertNumeric(minAbsParApVar, len = 1, any.missing = FALSE, lower = 0)
+  checkmate::assertNumeric(ci, lower = 0, upper = 1, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(muRefCovAlg, any.missing = FALSE, len = 1)
 
   method <- match.arg(method)
   addProp <- match.arg(addProp)
   eventSens <- match.arg(eventSens)
-  if (checkmate::testIntegerish(covMethod, len=1, any.missing=FALSE)) {
-    # integer round-trip: 0L means no covariance ("nlme"/"" keep nlme's own)
-    covMethod <- if (identical(as.integer(covMethod), 0L)) "" else "analytic"
-  } else if (length(covMethod) == 1L && !nzchar(covMethod)) {
-    covMethod <- ""
-  } else {
-    covMethod <- match.arg(covMethod)
-  }
+  covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
 
   # 'print' is the common nlmixr control alias; nlme prints through 'verbose',
   # so map it (print=0 means quiet) and let an explicit 'verbose' stand when
   # 'print' is not supplied.
   if (!is.null(print)) {
-    checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
+    checkmate::assertIntegerish(print, len = 1, lower = 0, any.missing = FALSE)
     verbose <- print > 0
   }
 
@@ -102,9 +129,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% "genRxControl")]
   if (length(.bad) > 0) {
-    stop("unused argument: ", paste
-    (paste0("'", .bad, "'", sep=""), collapse=", "),
-    call.=FALSE)
+    stop("unused argument: ", paste(paste0("'", .bad, "'", sep = ""), collapse = ", "), call. = FALSE)
   }
 
   .genRxControl <- FALSE
@@ -113,25 +138,25 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
   }
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
-      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig), sigdig)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig = sigdig), sigdig)
     } else {
-      rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
+      rxControl <- rxode2::rxControl(atol = 1e-4, rtol = 1e-4)
     }
     .genRxControl <- TRUE
-  } else if (inherits(rxControl, "rxControl")) {
-  } else if (is.list(rxControl)) {
+  } else if (inherits(rxControl, "rxControl")) {} else if (is.list(rxControl)) {
     rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
   } else {
-    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
+    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call = FALSE)
   }
 
-  if (is.null(sigma))
+  if (is.null(sigma)) {
     sigma <- 0
-  else if (!is.finite(sigma) || length(sigma) != 1 || sigma < 0)
+  } else if (!is.finite(sigma) || length(sigma) != 1 || sigma < 0) {
     stop("Within-group std. dev. must be a positive numeric value")
+  }
 
   if (!is.null(sigdig)) {
-    checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+    checkmate::assertNumeric(sigdig, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
     if (is.null(sigdigTable)) {
       sigdigTable <- round(sigdig)
     }
@@ -139,31 +164,54 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
   if (is.null(sigdigTable)) {
     sigdigTable <- 3
   }
-  checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
 
-  .ret <- list(maxIter = maxIter, pnlsMaxIter = pnlsMaxIter, msMaxIter = msMaxIter,
-               minScale = minScale, tolerance = tolerance, niterEM = niterEM,
-               pnlsTol = pnlsTol, msTol = msTol, returnObject = returnObject,
-               msVerbose = msVerbose, msWarnNoConv = msWarnNoConv, gradHess = gradHess,
-               apVar = apVar, .relStep = .relStep, minAbsParApVar = minAbsParApVar,
-               opt = match.arg(opt), natural = natural, sigma = sigma,
-               optExpression=optExpression, literalFix=literalFix, sumProd=sumProd,
-               rxControl=rxControl, method=method,verbose=verbose,
-               returnNlme=returnNlme, addProp=addProp, calcTables=calcTables,
-               compress=compress, random=random, fixed=fixed, weights=weights,
-               ci=ci, sigdig=sigdig, sigdigTable=sigdigTable, muRefCovAlg=muRefCovAlg,
-               eventSens=eventSens, covMethod=covMethod,
-               genRxControl=.genRxControl)
+  .ret <- list(
+    maxIter = maxIter,
+    pnlsMaxIter = pnlsMaxIter,
+    msMaxIter = msMaxIter,
+    minScale = minScale,
+    tolerance = tolerance,
+    niterEM = niterEM,
+    pnlsTol = pnlsTol,
+    msTol = msTol,
+    returnObject = returnObject,
+    msVerbose = msVerbose,
+    msWarnNoConv = msWarnNoConv,
+    gradHess = gradHess,
+    apVar = apVar,
+    .relStep = .relStep,
+    minAbsParApVar = minAbsParApVar,
+    opt = match.arg(opt),
+    natural = natural,
+    sigma = sigma,
+    optExpression = optExpression,
+    literalFix = literalFix,
+    sumProd = sumProd,
+    rxControl = rxControl,
+    method = method,
+    verbose = verbose,
+    returnNlme = returnNlme,
+    addProp = addProp,
+    calcTables = calcTables,
+    compress = compress,
+    random = random,
+    fixed = fixed,
+    weights = weights,
+    ci = ci,
+    sigdig = sigdig,
+    sigdigTable = sigdigTable,
+    muRefCovAlg = muRefCovAlg,
+    eventSens = eventSens,
+    covMethod = covMethod,
+    genRxControl = .genRxControl
+  )
   class(.ret) <- "nlmeControl"
   .ret
 }
 
 #' @export
-rxUiDeparse.nlmeControl <- function(object, var) {
-  .default <- nlmeControl()
-  .w <- .deparseDifferent(.default, object, "genRxControl")
-  .deparseFinal(.default, object, .w, var)
-}
+rxUiDeparse.nlmeControl <- function(object, var) .deparseControl(object, var, nlmeControl())
 
 
 #' @rdname nlmixr2NlmeControl
@@ -182,10 +230,10 @@ nlmeControl <- nlmixr2NlmeControl
   if (is.null(.control)) {
     .control <- nlmixr2est::nlmeControl()
   }
-  if (!inherits(.control, "nlmeControl")){
+  if (!inherits(.control, "nlmeControl")) {
     .control <- do.call(nlmixr2est::nlmeControl, .control)
   }
-  assign("control", .control, envir=.ui)
+  assign("control", .control, envir = .ui)
 }
 
 #' A surrogate function for nlme to call for ode solving
@@ -200,18 +248,44 @@ nlmeControl <- nlmixr2NlmeControl
 #' @export
 .nlmixrNlmeFun <- function(pars, id) {
   .ids <- as.character(unique(id))
-  .datF <- do.call(rbind, lapply(seq_along(.ids), function(i){
-    .datF <- nlmixr2global$nlmeFitDataAll[nlmixr2global$nlmeFitDataAll$ID == .ids[i], ]
-    .datF$ID <- i
-    .datF
-  }))
-  .pars <- as.data.frame(c(pars, list(ID=id)))
-  .pars <- .pars[!duplicated(.pars$ID),]
+  .datF <- do.call(
+    rbind,
+    lapply(seq_along(.ids), function(i) {
+      .datF <- nlmixr2global$nlmeFitDataAll[nlmixr2global$nlmeFitDataAll$ID == .ids[i], ]
+      .datF$ID <- i
+      .datF
+    })
+  )
+  .pars <- as.data.frame(c(pars, list(ID = id)))
+  .pars <- .pars[!duplicated(.pars$ID), ]
   .pars$ID <- seq_along(.pars$ID)
   row.names(.pars) <- NULL
-  .retF <- do.call(rxode2::rxSolve, c(list(object=nlmixr2global$nlmeFitRxModel, params=.pars, events=.datF),
-                                      nlmixr2global$nlmeFitRxControl))
+  .args <- c(
+    list(object = nlmixr2global$nlmeFitRxModel, params = .pars, events = .datF),
+    nlmixr2global$nlmeFitRxControl
+  )
+  # mtime() records are model output, not data: the solve adds one row per
+  # subject per mtime, and nlme has no observation to match it to (#919).  Keep
+  # the source row number so those rows can be told apart -- dose rows are not
+  # in the output, so an NA there is an mtime record.
+  .hasMtime <- isTRUE(nlmixr2global$nlmeFitHasMtime)
+  if (.hasMtime) {
+    .args$keep <- unique(c(.args$keep, "nlmixrRowNums"))
+  }
+  .retF <- do.call(rxode2::rxSolve, .args)
   .ret <- .retF$rx_pred_
+  if (.hasMtime) {
+    # Prefer the solve's own EVID when it is there (it is whenever dose rows
+    # are kept); the row-number test alone only tells mtime records apart while
+    # the doses are left out, since an ADDL-expanded dose has no source row either.
+    .evidW <- which(tolower(names(.retF)) == "evid")
+    if (length(.evidW) == 1L) {
+      .ev <- .retF[[.evidW]]
+      .ret <- .ret[!(!is.na(.ev) & .ev >= 10 & .ev <= 99)]
+    } else if (!is.null(.retF$nlmixrRowNums)) {
+      .ret <- .ret[!is.na(.retF$nlmixrRowNums)]
+    }
+  }
   .ret
 }
 
@@ -229,6 +303,9 @@ nlmeControl <- nlmixr2NlmeControl
 .nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates) {
   .nlmeFitDataSetup(dataSav)
   nlmixr2global$nlmeFitRxModel <- .nlmixr2estRxode2(ui$nlmeRxModel, "rxNlme")
+  # read once, not per objective evaluation (see .nlmixrNlmeFun())
+  nlmixr2global$nlmeFitHasMtime <-
+    tryCatch(rxode2::rxModelVars(nlmixr2global$nlmeFitRxModel)$nMtime > 0L, error = function(e) FALSE)
   nlmixr2global$nlmeFitRxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
 
   .ctl <- ui$control
@@ -250,21 +327,26 @@ nlmeControl <- nlmixr2NlmeControl
   .weights <- rxode2::rxGetControl(ui, "weights", NULL)
   if (is.null(.weights)) {
     .weights <- ui$nlmeWeights
+    # sigma, const and prop of varConstProp are not separately identifiable;
+    # as nlme recommends, fix sigma at 1 so const and prop are the sds
+    if (inherits(.weights, "varConstProp") && isTRUE(.ctl$sigma == 0)) {
+      .ctl$sigma <- 1
+    }
   } else {
     rxode2::rxAssignControlValue(ui, "returnNlme", TRUE)
   }
   ret <-
     eval(bquote(nlme::nlme(
-      model=.(ui$nlmeModel),
-      data=nlme::groupedData(DV ~ TIME | ID, dataSav[dataSav$EVID == 0, ]),
-      method=.(.method),
-      fixed=.(.fixed),
-      random=.(.random),
-      start=.(ui$nlmeStart),
-      weights=.(.weights),
-      control=.(.ctl),
-      verbose=.(.verbose),
-      na.action=function(object, ...) {
+      model = .(ui$nlmeModel),
+      data = nlme::groupedData(DV ~ TIME | ID, dataSav[dataSav$EVID == 0, ]),
+      method = .(.method),
+      fixed = .(.fixed),
+      random = .(.random),
+      start = .(ui$nlmeStart),
+      weights = .(.weights),
+      control = .(.ctl),
+      verbose = .(.verbose),
+      na.action = function(object, ...) {
         object
       }
     )))
@@ -303,35 +385,32 @@ nlmeControl <- nlmixr2NlmeControl
   if (.addProp == "default") {
     .addProp <- rxode2::rxGetControl(ui, "addProp", "combined2")
   }
+  # nlme's residual sd is sigma times its variance function, so each
+  # coefficient of that function is scaled by sigma
+  .nlmePars <- coef(nlme$modelStruct$varStruct, unconstrained = FALSE)
+  .w <- which(ui$iniDf$err == "add")
+  .add <- setNames(nlme$sigma * .nlmePars[["const"]], ui$iniDf$name[.w])
   if (.addProp == "combined1") {
+    # varConstPower: sd = sigma * (const + |f|^power)
     if (.errType == "add + prop") {
-       .nlmePars <- coef(nlme$modelStruct$varStruct)
-      .w <- which(ui$iniDf$err == "add")
-      .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "prop")
       .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
       c(.f, .add, .prop)
     } else {
-      .nlmePars <- coef(nlme$modelStruct$varStruct)
-      .w <- which(ui$iniDf$err == "add")
-      .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "pow")
       .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "pow2")
-      .pow <- setNames(.nlmePars["power"], ui$iniDf$name[.w])
+      .pow <- setNames(.nlmePars[["power"]], ui$iniDf$name[.w])
       c(.f, .add, .prop, .pow)
     }
   } else {
+    # varConstProp: sd = sigma * sqrt(const^2 + (prop * f)^2)
     if (.errType == "add + prop") {
-      .nlmePars <- coef(nlme$modelStruct$varStruct)
-      .w <- which(ui$iniDf$err == "add")
-      .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "prop")
-      .prop <- setNames(.nlmePars["prop"], ui$iniDf$name[.w])
+      .prop <- setNames(nlme$sigma * .nlmePars[["prop"]], ui$iniDf$name[.w])
       c(.f, .add, .prop)
     } else {
-      stop("add+prop combined2 does not support nlme power currently",
-           call.=FALSE)
+      stop("add+prop combined2 does not support nlme power currently", call. = FALSE)
     }
   }
 }
@@ -346,11 +425,18 @@ nlmeControl <- nlmixr2NlmeControl
 #' @keywords internal
 .nlmeGetNonMuRefNames <- function(names, ui) {
   .muRef <- ui$muRefDataFrame
-  vapply(names, function(n) {
-    .w <- which(.muRef$theta == n)
-    if (length(.w) == 1) return(.muRef$eta[.w])
-    n
-  }, character(1), USE.NAMES=FALSE)
+  vapply(
+    names,
+    function(n) {
+      .w <- which(.muRef$theta == n)
+      if (length(.w) == 1) {
+        return(.muRef$eta[.w])
+      }
+      n
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
 }
 
 #' Get the nlme eta matrix as expected for focei
@@ -362,113 +448,73 @@ nlmeControl <- nlmixr2NlmeControl
 #' @noRd
 .nlmeGetEtaMat <- function(nlme, ui) {
   .etaMat <- nlme::ranef(nlme)
-  .etaMat <- .etaMat[order(as.numeric(row.names(.etaMat))),, drop = FALSE]
+  .etaMat <- .etaMat[order(as.numeric(row.names(.etaMat))), , drop = FALSE]
   names(.etaMat) <- .nlmeGetNonMuRefNames(names(.etaMat), ui)
   row.names(.etaMat) <- NULL
-  as.matrix(.etaMat)
+  # nlme orders the columns by omega block; the fit maps them by position
+  as.matrix(.etaMat[, dimnames(ui$omega)[[1]], drop = FALSE])
 }
 
 #' Get the covariance from nlme
 #'
+#' nlme's covariance of the fixed effects as is (`varFix`, what `vcov()`
+#' returns).
+#'
 #' @param nlme nlme object
+#' @return named covariance matrix of the fixed effects
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmeGetCov <- function(nlme) {
-  .snt <- summary(nlme)$tTable
-  .se <- .snt[,"Std.Error"]
-  if (length(.se) == 1) {
-    matrix(.se * .se, 1, 1, dimnames=list(rownames(.snt), rownames(.snt)))
-  } else {
-    .cov <- diag(.se * .se)
-    dimnames(.cov) <- list(rownames(.snt), rownames(.snt))
-    .cov
-  }
+  .ret <- as.matrix(nlme$varFix)
+  # a single fixed effect can come back unnamed, so name it from the fixed effects
+  .n <- names(nlme::fixef(nlme))
+  dimnames(.ret) <- list(.n, .n)
+  .ret
 }
 
 #' Get the omega matrix from nlme
 #'
+#' nlme keeps the random-effect covariance relative to the residual variance,
+#' so the estimate is `sigma^2` times its `pdMat`, the same matrix `VarCorr()`
+#' prints (without its rounding).  Its structure is the one `ini()` declares
+#' (`rxUiGet.nlmePdOmega()`).
+#'
 #' @param nlme nlme object
 #' @param ui rxode2 object
-#' @return Named omega matrix
+#' @return omega matrix, named and ordered as `ui$omega`
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmeGetOmega <- function(nlme, ui) {
-  .omega <- ui$omega
-  diag(.omega) <- 0
-  .vc <- nlme::VarCorr(nlme)
-  .var <- as.matrix(.vc[,"Variance", drop = FALSE])
-  .rn <- rownames(.var)
-  .name <- .nlmeGetNonMuRefNames(.rn, ui)
-  .var <- setNames(suppressWarnings(as.numeric(.var)), .name)
-  .var <- .var[names(.var) != "Residual"]
-  if (length(.var) == 1) {
-    .ome <- matrix(.var, 1, 1)
-  } else {
-   .ome <- diag(.var)
-  }
-  .name <- names(.var)
+  .ome <- nlme::pdMatrix(nlme$modelStruct$reStruct[[1]]) * nlme$sigma^2
+  .name <- .nlmeGetNonMuRefNames(rownames(.ome), ui)
   dimnames(.ome) <- list(.name, .name)
-  if (all(.omega == 0)) {
-    return(.ome)
-  }
-  .cor2 <- as.data.frame(.vc[-length(.rn), -(1:2), drop = FALSE])
-  .cor2$extra <- ""
-  names(.cor2) <- rownames(.cor2)
-  .cor2 <- as.matrix(.cor2)
-  diag(.cor2) <- "1"
-  .cor2[upper.tri(.cor2)] <- .cor2[lower.tri(.cor2)]
-  .cor2 <- matrix(suppressMessages(as.numeric(.cor2)), nrow(.cor2), ncol(.cor2), dimnames=dimnames(.ome))
-  diag(.ome) <- sqrt(diag(.ome))
-  .ome <- .ome %*% .cor2 %*% .ome
-  .ome <- as.matrix(Matrix::nearPD(ui$omega)$mat)
-  dimnames(.ome) <- list(.name, .name)
-  .ome
+  .eta <- dimnames(ui$omega)[[1]]
+  .ome[.eta, .eta, drop = FALSE]
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.nlmeControl <- function(control, env) {
-  assign("nlmeControl", control, envir=env)
-}
+nmObjHandleControlObject.nlmeControl <- function(control, env) assign("nlmeControl", control, envir = env)
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.nlme <- function(x, ...) {
-  .env <- x[[1]]
-  if (exists("nlmeControl", .env)) {
-    .control <- get("nlmeControl", .env)
-    if (inherits(.control, "nlmeControl")) return(.control)
-  }
-  if (exists("control", .env)) {
-    .control <- get("control", .env)
-    if (inherits(.control, "nlmeControl")) return(.control)
-  }
-  stop("cannot find nlme related control object", call.=FALSE)
-}
+nmObjGetControl.nlme <- function(x, ...) .nmObjGetControlByClass(x, "nlmeControl")
 
-.nlmeControlToFoceiControl <- function(env, assign=TRUE, covMethod=0L) {
+.nlmeControlToFoceiControl <- function(env, assign = TRUE, covMethod = 0L) {
   .nlmeControl <- env$nlmeControl
-  .ui <- env$ui
-  .foceiControl <- foceiControl(rxControl=env$nlmeControl$rxControl,
-                                maxOuterIterations=0L,
-                                maxInnerIterations=0L,
-                                covMethod=covMethod,
-                                etaMat=env$etaMat,
-                                sumProd=.nlmeControl$sumProd,
-                                optExpression=.nlmeControl$optExpression,
-                                literalFix=.nlmeControl$literalFix,
-                                literalFixRes=FALSE,
-                                scaleTo=0,
-                                calcTables=.nlmeControl$calcTables,
-                                addProp=.nlmeControl$addProp,
-                                skipCov=.ui$foceiSkipCov,
-                                interaction=1L,
-                                compress=.nlmeControl$compress,
-                                ci=.nlmeControl$ci,
-                                sigdigTable=.nlmeControl$sigdigTable,
-                                indTolRelax=TRUE,
-                                eventSens=.nlmeControl$eventSens)
-  if (assign) env$control <- .foceiControl
+  .foceiControl <- .foceiOwnEtaControl(
+    .nlmeControl,
+    env$etaMat,
+    covMethod = covMethod,
+    literalFix = .nlmeControl$literalFix,
+    literalFixRes = FALSE,
+    scaleTo = 0,
+    skipCov = env$ui$foceiSkipCov,
+    indTolRelax = TRUE
+  )
+  if (assign) {
+    env$control <- .foceiControl
+  }
   .foceiControl
 }
 
@@ -479,15 +525,17 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   # the post-fit recompute (.foceiRecomputeMuCov) reads its covMethod from this
   # control; "nlme"/"" keep the legacy nlme covariance/no covariance (0L)
   .cm <- tryCatch(.env$nlmeControl$covMethod, error = function(e) NULL)
-  if (is.null(.cm) || !nzchar(.cm) || identical(.cm, "nlme")) .cm <- 0L
-  .nlmeControlToFoceiControl(.env, covMethod=.cm)
+  if (is.null(.cm) || !nzchar(.cm) || identical(.cm, "nlme")) {
+    .cm <- 0L
+  }
+  .nlmeControlToFoceiControl(.env, covMethod = .cm)
 }
 
 .nlmeFamilyFit <- function(env, ...) {
   .ui <- env$ui
   .control <- .ui$control
   .data <- env$data
-  .ret <- new.env(parent=emptyenv())
+  .ret <- new.env(parent = emptyenv())
   # .ret env fields: table, origData, dataSav, idLvl, covLvl, ui, etaObf, cov,
   # covMethod, adjObf, objective, extra, method, omega, theta, model, message,
   # est, ofvType (a foceiControl object is also needed downstream)
@@ -495,11 +543,11 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   # Just like saem, nlme can use mu-referenced covariates
   .tv <- .nlmixrTimeVaryingCovariates(.ret$dataSav, .ui, .control$rxControl)
-  .nlme <- .collectWarn(.nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv), lst = TRUE)
+  .nlme <- .collectWarn(.nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates = .tv), lst = TRUE)
   .ret$nlme <- .nlme[[1]]
   .ret$message <- NULL
-  lapply(.nlme[[2]], function(x){
-    warning(x, call.=FALSE)
+  lapply(.nlme[[2]], function(x) {
+    warning(x, call. = FALSE)
     if (regexpr("PNLS", x) != -1) {
       .ret$message <- c(.ret$message, paste0(x, " (carefully review results)"))
     }
@@ -507,7 +555,7 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   if (is.null(.ret$message)) {
     .ret$message <- ""
   } else {
-    .ret$message <- paste(.ret$message, collapse="\n")
+    .ret$message <- paste(.ret$message, collapse = "\n")
   }
   if (rxode2::rxGetControl(.ui, "returnNlme", FALSE)) {
     return(.ret$nlme)
@@ -518,9 +566,7 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   .ret$cov <- .nlmeGetCov(.ret$nlme)
   .ret$covMethod <- "nlme"
   .ret$etaMat <- .nlmeGetEtaMat(.ret$nlme, .ui)
-  .ret$etaObf <- data.frame(ID = seq_along(.ret$etaMat[, 1]),
-                           as.data.frame(.ret$etaMat),
-                           OBJI = NA)
+  .ret$etaObf <- data.frame(ID = seq_along(.ret$etaMat[, 1]), as.data.frame(.ret$etaMat), OBJI = NA)
   .ret$omega <- .nlmeGetOmega(.ret$nlme, .ui)
   .ret$control <- .control
   .ret$extra <- paste0(" by ", crayon::bold$yellow(ifelse(.control$method == "REML", "REML", "maximum likelihood")))
@@ -533,13 +579,20 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   # The control must stay on the ui until the EBE model is built; the build reads
   # optExpression/sumProd/eventSens off of it (#864)
   if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
+    rm(list = "control", envir = .ui)
   }
   .ret$est <- "nlme"
   .ret$ofvType <- "nlme"
   .nlmeControlToFoceiControl(.ret)
   .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlme")
+  .ret <- nlmixr2CreateOutputFromUi(
+    .ret$ui,
+    data = .ret$origData,
+    control = .ret$control,
+    table = .ret$table,
+    env = .ret,
+    est = "nlme"
+  )
   .env <- .ret$env
   .env$method <- "nlme"
   .ret
@@ -550,18 +603,32 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
 nlmixr2Est.nlme <- function(env, ...) {
   .ui <- env$ui
   if (length(.ui$mixProbs) > 0) {
-    stop("mix() models are not supported by est=\"nlme\" yet; use est=\"saem\" or est=\"focei\"",
-         call. = FALSE)
+    stop("mix() models are not supported by est=\"nlme\" yet; use est=\"saem\" or est=\"focei\"", call. = FALSE)
   }
-  rxode2::assertRxUiNoAutoregressive(.ui, " for the estimation routine 'nlme', try 'focei'", .var.name=.ui$modelName)
-  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("nlme"), .var.name=.ui$modelName)
-  rxode2::assertRxUiNormal(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
-  rxode2::assertRxUiSingleEndpoint(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
-  rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
+  rxode2::assertRxUiNoAutoregressive(.ui, " for the estimation routine 'nlme', try 'focei'", .var.name = .ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("nlme"), .var.name = .ui$modelName)
+  rxode2::assertRxUiNormal(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
+  rxode2::assertRxUiSingleEndpoint(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
+  rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
+  .fixOme <- .ui$iniDf$name[!is.na(.ui$iniDf$neta1) & .ui$iniDf$fix]
+  if (length(.fixOme) > 0L) {
+    # nlme's pdMat classes have no way to hold one element at its value
+    stop(
+      "fixed omega elements are not supported by est=\"nlme\": ",
+      paste(.fixOme, collapse = ", "),
+      "; use est=\"focei\" or est=\"saem\"",
+      call. = FALSE
+    )
+  }
   .nlmeFamilyControl(env, ...)
-  on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
-  .nlmeFamilyFit(env,  ...)
+  on.exit(
+    {
+      if (exists("control", envir = .ui)) rm("control", envir = .ui)
+    },
+    add = TRUE
+  )
+  .nlmeFamilyFit(env, ...)
 }
 attr(nlmixr2Est.nlme, "covPresent") <- TRUE
 attr(nlmixr2Est.nlme, "unbounded") <- TRUE

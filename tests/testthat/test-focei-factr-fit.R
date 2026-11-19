@@ -30,18 +30,19 @@ nmTest({
   .outerEvals <- function(fit) sum(fit$parHistData$type == "Unscaled")
   .gradTypes <- function(fit) {
     unique(as.character(fit$parHistData$type[
-      grepl("Gradient|Difference|Sensitivity", fit$parHistData$type)]))
+      grepl("Gradient|Difference|Sensitivity", fit$parHistData$type)
+    ]))
   }
 
   test_that("foceif reaches focei's optimum on a 2-cmt oral fit", {
     # sigdig is pinned because the absolute objective below is a numeric literal
     # and sigdig drives both the optimizer tolerances and the ODE rtol/atol
     .focei <- suppressWarnings(suppressMessages(
-      nlmixr2(.twoCmtOral, .dat, est = "focei",
-              control = foceiControl(print = 0, sigdig = 3))))
+      nlmixr2(.twoCmtOral, .dat, est = "focei", control = foceiControl(print = 0, sigdig = 3))
+    ))
     .foceif <- suppressWarnings(suppressMessages(
-      nlmixr2(.twoCmtOral, .dat, est = "foceif",
-              control = foceiControl(print = 0, sigdig = 3))))
+      nlmixr2(.twoCmtOral, .dat, est = "foceif", control = foceiControl(print = 0, sigdig = 3))
+    ))
 
     # the mechanism ran -- OFV agreement alone would not show the analytic
     # gradient was ever used

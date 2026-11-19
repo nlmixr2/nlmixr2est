@@ -32,5 +32,34 @@ extern rxSolveF rxOuterNode;
 extern rxSolveF rxOuterCov;
 extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
 extern void rxClearFuns(rxSolveF *inner);
+
+// #958: count of impEStep per-sample theta-sensitivity reads that reused the
+// E-step's own inner solve (no M-step re-solve).  odeSwapInfo_() exposes it as
+// $impThetaSensHarvestN; tests assert it is > 0 when combSens+harvesting engage.
+extern int impThetaSensHarvestN();
+// Completed pooled post-fit table solves (tablePool.cpp; odeSwapInfo_()$tablePoolSolveN).
+long tablePoolSolveN();
 extern rx_solve *rx;
+
+#include "rxode2Optional.h"
+
+// A model reads `newind` as 1 at a subject's first record and 2 after it.
+// rxode2's own walk over the records for the fit's table (rxode2_df.cpp,
+// addDosing = FALSE) leaves it at 1 until it has passed a record other than an
+// EVID 9 one.  Every lhs walk here calls this
+// before a record's calc_lhs, with the record's index j, so a walk that skips
+// some records gives each the value rxode2's output would.  An rxode2 without
+// setIndNewind() leaves the walks' newind as it was (the NULL check goes with
+// test-dependency-workarounds.R's slot-104 block).
+static inline void lhsWalkNewind(rx_solving_options_ind *ind, int j) {
+  if (nmSetIndNewind == NULL) return;
+  int newind = 1;
+  for (int i = 0; i < j; ++i) {
+    if (getIndEvid(ind, getIndIx(ind, i)) != 9) {
+      newind = 2;
+      break;
+    }
+  }
+  nmSetIndNewind(ind, newind);
+}
 #endif

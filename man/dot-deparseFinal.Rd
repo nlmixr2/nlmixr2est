@@ -11,7 +11,7 @@
 estimation control procedure.  It should have a class matching
 the function that created it.}
 
-\item{object}{The object to be deparsed into a language exression}
+\item{object}{The object to be deparsed into a language expression}
 
 \item{w}{A vector of indices indicating which elements are
 different and need to be deparsed. This likely comes from

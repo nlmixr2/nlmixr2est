@@ -12,10 +12,8 @@ test_that("vpcSimExpand ignores unknown extra columns (#830)", {
 test_that("vpcSimExpand merges only the requested columns (#830)", {
   # vpcNameDataCmts needs a real fit; the merge logic does not
   local_mocked_bindings(vpcNameDataCmts = function(object, data) data)
-  sim <- data.frame(id = c(1, 1, 2), nlmixrRowNums = c(1, 2, 3),
-                    time = c(0, 1, 0), sim = c(1, 2, 3))
-  obs <- data.frame(ID = c(1, 1, 2), time = c(0, 1, 0), DV = c(1, 2, 3),
-                    WT = c(70, 70, 80))
+  sim <- data.frame(id = c(1, 1, 2), nlmixrRowNums = c(1, 2, 3), time = c(0, 1, 0), sim = c(1, 2, 3))
+  obs <- data.frame(ID = c(1, 1, 2), time = c(0, 1, 0), DV = c(1, 2, 3), WT = c(70, 70, 80))
   out <- vpcSimExpand(NULL, sim, "WT", obs)
   expect_true("WT" %in% names(out))
   expect_false("DV" %in% names(out))

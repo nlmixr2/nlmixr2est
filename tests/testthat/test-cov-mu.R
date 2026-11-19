@@ -1,6 +1,5 @@
 nmTest({
   test_that("mu-ref covariates", {
-
     f0 <- function() {
       ini({
         lka      = log(0.9)
@@ -27,14 +26,16 @@ nmTest({
 
     f <- .nlmixr(f0)
 
-    expect_equal(f$saemModel0,
-                 quote(rxModelVars({
+    expect_equal(
+      f$saemModel0,
+      quote(rxModelVars({
                    ka = exp(lka)
                    cl = exp(lcl)
                    v2 = exp(lv2)
                    v3 = exp(lv3)
                    q = exp(lq)
                    rx_pred_ <- linCmt()
-                 })))
+                 }))
+    )
   })
 })

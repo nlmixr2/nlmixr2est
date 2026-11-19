@@ -1,64 +1,51 @@
-#' Push the nlmixr timing stack for a nested nlmixr call
-#'
-#' @return Nothing, called for side effects
-#' @author Matthew L. Fidler
-#' @noRd
-.pushNlmixr2timing <- function() {
-  nlmixr2global$timingStackNlmixr <-
-    c(nlmixr2global$timingStackNlmixr,
-      list(list(nlmixr2global$nlmixr2Time,
-                nlmixr2global$currentTimingEnvironment,
-                nlmixr2global$extraTimingTable,
-                nlmixr2global$timingStack)))
-  nlmixr2global$nlmixr2Time <- NULL
-  nlmixr2global$currentTimingEnvironment <- NULL
-  nlmixr2global$extraTimingTable <- NULL
-  nlmixr2global$timingStack <- NULL
-}
-#' Pop the full nlmixr timing stack (if needed)
+#' Reset the nlmixr timing state
 #'
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @noRd
 .popNlmixr2Timing <- function() {
-  .l <- length(nlmixr2global$timingStackNlmixr)
-  if (.l == 0) {
-    nlmixr2global$nlmixr2Time <- NULL
-    nlmixr2global$currentTimingEnvironment <- NULL
-    nlmixr2global$extraTimingTable <- NULL
-    nlmixr2global$timingStack <- NULL
-  } else {
-    .cur <- nlmixr2global$timingStackNlmixr[[.l]]
-    if (.l == 1) {
-      nlmixr2global$timingStackNlmixr <- NULL
-    } else {
-      nlmixr2global$timingStackNlmixr <- nlmixr2global$timingStackNlmixr[[-.l]]
-    }
-    nlmixr2global$nlmixr2Time <- .cur[[1]]
-    nlmixr2global$currentTimingEnvironment <- .cur[[2]]
-    nlmixr2global$extraTimingTable <- .cur[[3]]
-    nlmixr2global$timingStack <- .cur[[4]]
-  }
+  nlmixr2global$nlmixr2Time <- NULL
+  nlmixr2global$currentTimingEnvironment <- NULL
+  nlmixr2global$extraTimingTable <- NULL
+  nlmixr2global$timingStack <- NULL
+}
+
+#' Whether `envir` is an environment that holds a timing table
+#'
+#' @param envir environment, or anything else
+#' @return `TRUE` when `envir` is an environment with a `time` binding
+#' @noRd
+.nlmixrHasTimeTable <- function(envir) {
+  is.environment(envir) && exists("time", envir = envir, inherits = FALSE)
 }
 
 .finalizeOverallTiming <- function() {
   on.exit({
     .popNlmixr2Timing()
   })
-  if (is.environment(nlmixr2global$currentTimingEnvironment) &
-        inherits(nlmixr2global$nlmixr2Time, "proc_time")) {
-    .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir=nlmixr2global$currentTimingEnvironment))
+  # a fit that fails after its environment is made the timing one, but before
+  # it has a time table, records no overall time; reading one would replace
+  # the fit's error with "object 'time' not found"
+  if (
+    .nlmixrHasTimeTable(nlmixr2global$currentTimingEnvironment) &&
+      inherits(nlmixr2global$nlmixr2Time, "proc_time")
+  ) {
+    .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir = nlmixr2global$currentTimingEnvironment))
     # Keep every recorded stage, even ~0-duration ones, so reported columns
     # stay consistent across platforms/clock resolutions; filter downstream.
-    .sum <- sum(vapply(seq_along(names(.time)),
-                       function(i) {
-                         .time[[i]]
-                       }, numeric(1), USE.NAMES=TRUE))
+    .sum <- sum(vapply(
+      seq_along(names(.time)),
+      function(i) {
+        .time[[i]]
+      },
+      numeric(1),
+      USE.NAMES = TRUE
+    ))
     .other <- (proc.time() - nlmixr2global$nlmixr2Time)["elapsed"] - .sum
     if (.other > 5e-5) {
-      .time <- cbind(.time, data.frame(other=.other, row.names="elapsed"))
+      .time <- cbind(.time, data.frame(other = .other, row.names = "elapsed"))
     }
-    assign("time", .time, envir=nlmixr2global$currentTimingEnvironment)
+    assign("time", .time, envir = nlmixr2global$currentTimingEnvironment)
   }
 }
 
@@ -89,7 +76,7 @@
 .nlmixrFinalizeTimingConstructTable <- function(time, name, preTiming) {
   .w <- which(names(time) == name)
   .time <- time
-  if (length(.w) == 1){
+  if (length(.w) == 1) {
     .amt <- .nlmixrPopTimingStack(preTiming)
     if (length(.amt) == 1) {
       if (!is.na(.amt)) {
@@ -99,7 +86,7 @@
   } else {
     .df <- list(0)
     names(.df) <- name
-    .df <- as.data.frame(.df, check.names=FALSE, row.names="elapsed")
+    .df <- as.data.frame(.df, check.names = FALSE, row.names = "elapsed")
     .amt <- .nlmixrPopTimingStack(preTiming)
     if (length(.amt) == 1) {
       if (!is.na(.amt)) {
@@ -117,8 +104,12 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmixrMergeTimeWithExtraTime <- function(time) {
-  if (!inherits(nlmixr2global$extraTimingTable, "data.frame")) return(time)
-  on.exit({nlmixr2global$extraTimingTable <- NULL})
+  if (!inherits(nlmixr2global$extraTimingTable, "data.frame")) {
+    return(time)
+  }
+  on.exit({
+    nlmixr2global$extraTimingTable <- NULL
+  })
   .time <- time
   .df <- nlmixr2global$extraTimingTable
   .dropNames <- NULL
@@ -140,24 +131,26 @@
 #' @return Nothing called for side effects
 #' @author Matthew L. Fidler
 #' @noRd
-.nlmixrFinalizeTiming <- function(name, preTiming, envir=NULL) {
+.nlmixrFinalizeTiming <- function(name, preTiming, envir = NULL) {
   if (inherits(envir, "nlmixr2FitData")) {
     envir <- envir$env
   }
-  if (is.environment(nlmixr2global$currentTimingEnvironment) & !is.environment(envir)) {
+  if (is.environment(nlmixr2global$currentTimingEnvironment) && !is.environment(envir)) {
     envir <- nlmixr2global$currentTimingEnvironment
   }
-  if (is.environment(envir)) {
-    .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir=envir))
-    assign("time", .nlmixrFinalizeTimingConstructTable(.time, name, preTiming), envir=envir)
+  # an environment with no time table yet keeps this stage in the extra table,
+  # as no environment does
+  if (.nlmixrHasTimeTable(envir)) {
+    .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir = envir))
+    assign("time", .nlmixrFinalizeTimingConstructTable(.time, name, preTiming), envir = envir)
   } else {
     if (inherits(nlmixr2global$extraTimingTable, "data.frame")) {
       nlmixr2global$extraTimingTable <-
-                          .nlmixrFinalizeTimingConstructTable(nlmixr2global$extraTimingTable, name, preTiming)
+        .nlmixrFinalizeTimingConstructTable(nlmixr2global$extraTimingTable, name, preTiming)
     } else {
       .df <- list(0)
       names(.df) <- name
-      .df <- as.data.frame(.df, check.names=FALSE, row.names="elapsed")
+      .df <- as.data.frame(.df, check.names = FALSE, row.names = "elapsed")
       .amt <- .nlmixrPopTimingStack(preTiming)
       if (length(.amt) == 1) {
         if (!is.na(.amt)) {
@@ -218,20 +211,16 @@
 #' }
 #'
 #' @export
-nlmixrWithTiming <- function(name, code, envir=NULL) {
+nlmixrWithTiming <- function(name, code, envir = NULL) {
   .pt <- proc.time()
-  checkmate::assertCharacter(name, len=1, all.missing=FALSE)
+  checkmate::assertCharacter(name, len = 1, all.missing = FALSE)
   force(name)
   force(envir)
-  if (is.null(envir)){
-  } else if (inherits(envir, "nlmixr2FitData")) {
-  } else if (is.environment(envir)) {
-  } else {
-    stop("'envir' must be NULL, a nlmixr2 object or an environment",
-         call.=FALSE)
+  if (is.null(envir)) {} else if (inherits(envir, "nlmixr2FitData")) {} else if (is.environment(envir)) {} else {
+    stop("'envir' must be NULL, a nlmixr2 object or an environment", call. = FALSE)
   }
   .nlmixrPushTimingStack(name)
-  on.exit(.nlmixrFinalizeTiming(name, .pt, envir), add=TRUE)
+  on.exit(.nlmixrFinalizeTiming(name, .pt, envir), add = TRUE)
   force(code)
 }
 #' Manually add time to a nlmixr2 object
@@ -283,7 +272,7 @@ nlmixrAddTiming <- function(object, name, time) {
   if (inherits(object, "nlmixr2FitData")) {
     .env <- object$env
   }
-  .time <- get("time", envir=.env)
+  .time <- get("time", envir = .env)
   .w <- which(names(.time) == name)
   if (length(.w) == 1L) {
     .time[, .w] <- .time[, .w] + time
@@ -291,10 +280,10 @@ nlmixrAddTiming <- function(object, name, time) {
     if (!is.na(time)) {
       .df <- list(time)
       names(.df) <- name
-      .df <- as.data.frame(.df, check.names=FALSE, row.names="elapsed")
+      .df <- as.data.frame(.df, check.names = FALSE, row.names = "elapsed")
       .time <- cbind(.time, .df)
     }
   }
-  assign("time", .time, envir=.env)
+  assign("time", .time, envir = .env)
   invisible()
 }

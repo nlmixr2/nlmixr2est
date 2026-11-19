@@ -1,0 +1,83 @@
+# Test coverage (full tier), called by ci.yaml.  Runs the "light" subset of
+# .github/scripts/ci-shards.R (every test file with a recorded time under
+# 90 s, about the old push-time subset): the instrumented build makes the
+# heavy fit files too slow.
+name: _coverage.yaml
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: git ref to check out ('' = the triggering ref)
+        type: string
+        default: ''
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  test-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      NOT_CRAN: 'true'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      # covr instruments its own build, so ccache would only add misses
+      - uses: ./.github/actions/setup-nlmixr2est
+        with:
+          pandoc: 'false'
+          ccache: 'false'
+          extra-packages: |
+            any::covr
+            any::xml2
+          needs: coverage
+
+      # tests/testthat.R honours NLMIXR2EST_TEST_FILTER
+      - name: Pick the coverage test files
+        shell: bash
+        run: |
+          f=$(Rscript .github/scripts/ci-shards.R light 1 1 90)
+          echo "NLMIXR2EST_TEST_FILTER=$f" >> "$GITHUB_ENV"
+
+      - name: Test coverage
+        run: |
+          cov <- covr::package_coverage(
+            quiet = FALSE,
+            clean = FALSE,
+            install_path = file.path(normalizePath(Sys.getenv("RUNNER_TEMP"), winslash = "/"), "package")
+          )
+          print(cov)
+          covr::to_cobertura(cov)
+        shell: Rscript {0}
+
+      - uses: codecov/codecov-action@v5
+        with:
+          # A run on main must upload; a /cifull run on a PR only fails when a
+          # token is available.
+          fail_ci_if_error: ${{ github.event_name != 'issue_comment' || secrets.CODECOV_TOKEN != '' }}
+          files: ./cobertura.xml
+          plugins: noop
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Show testthat output
+        if: always()
+        run: |
+          ## --------------------------------------------------------------------
+          find '${{ runner.temp }}/package' -name 'testthat.Rout*' -exec cat '{}' \; || true
+        shell: bash
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-test-failures
+          path: ${{ runner.temp }}/package

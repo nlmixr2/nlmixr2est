@@ -47,6 +47,7 @@ nlsControl(
   returnNls = FALSE,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
+  linCmtSensCarry = c("auto", "none"),
   calcTables = TRUE,
   compress = TRUE,
   adjObf = TRUE,
@@ -172,7 +173,9 @@ When `FALSE`, all subjects have their tolerances relaxed on
 each retry and tolerances are reset afterward.}
 
 \item{eventType}{Event gradient type for dosing events; Can be
-"central" or "forward"}
+"central" or "forward".  The integer code a control stores is accepted
+too: 2 (central) or 3 (forward) in `foceiControl()`, 2 (central) or 1
+(forward) in the nlm-family controls.}
 
 \item{shiErr}{This represents the epsilon when optimizing the ideal
 step size for numeric differentiation using the Shi2021 method}
@@ -244,7 +247,11 @@ scaleType="nlmixr2".}
     objective function value printed is half the residual (weighted)
     sum-of-squares.}
 
-\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.}
 
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}
@@ -280,6 +287,12 @@ doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 -- a common design for estimating `f()` from paired IV+oral data
 (rxode2/rxode2#1237).}
 
+\item{linCmtSensCarry}{`"auto"` (default) substitutes the exact
+sensitivity-carry gradient for a `linCmt()` parameter driven by both an
+eta and a time-varying covariate (needs an rxode2 with the carry
+sentinels; silently keeps the standard gradient otherwise); `"none"`
+always keeps the standard gradient.}
+
 \item{calcTables}{This boolean is to determine if the foceiFit
 will calculate tables. By default this is \code{TRUE}}
 
@@ -295,20 +308,17 @@ function.  By default this is \code{TRUE}}
 \item{sigdig}{Optimization significant digits.  One value drives, with a single
 consistent formula, the inner/outer optimizer convergence tolerance
 (\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
-and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
-\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
-\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
-tolerances match the main solve (the outer gradient and covariance are built
-from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
-order looser.
-Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 3}
-this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
+and the ODE solver tolerances \code{rtol = max(10^(-2*sigdig), 1e-12)},
+\code{atol = rtol/100} for every solver.  An objective solved to relative
+error \code{rtol} locates its minimum only to about \code{sqrt(rtol)}, so
+this is the solve a \code{10^-sigdig} optimizer needs.  The sensitivity
+(\code{atolSens}/\code{rtolSens}) tolerances match the main solve; the
+steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+At the default \code{sigdig = 3} this is \code{atol = 1e-8},
+\code{rtol = 1e-6}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed
@@ -324,34 +334,59 @@ nls control object
 \description{
 nlmixr2 defaults controls for nls
 }
+\section{Pooled (population-only) estimation}{
+
+
+`est="nls"` is a *pooled* estimation method.  It estimates population
+parameters only; there is no eta-conditional inner problem, and
+sensitivities are taken with respect to the population parameters alone.
+
+A model carrying any random effect is therefore refused before fitting
+rather than being fit to something other than what it says -- it stops
+with `can only have population estimates for the estimation routine
+'nls', try 'focei'`.
+
+A successful `nls` fit consequently has no `$omega`, no empirical Bayes
+estimates and no shrinkage, and its objective function table carries a
+single `Pop` row.  Use a mixed effects routine -- `est="focei"`,
+`est="saem"` and so on -- for any model with between-subject variability.
+
+Note that this help page inherits its parameter list from
+`foceiControl()`, `saemControl()` and `nlmControl()`, because `nls`
+shares many options with them.  Inherited options that only have meaning
+for random effects do not apply to `nls`.
+}
+
 \examples{
 \donttest{
 
 one.cmt <- function() {
   ini({
-   tka <- 0.45
-   tcl <- log(c(0, 2.7, 100))
-   tv <- 3.45
-   add.sd <- 0.7
- })
- model({
-   ka <- exp(tka)
-   cl <- exp(tcl)
-   v <- exp(tv)
-   linCmt() ~ add(add.sd)
- })
+    tka <- 0.45
+    tcl <- log(c(0, 2.7, 100))
+    tv <- 3.45
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl)
+    v <- exp(tv)
+    linCmt() ~ add(add.sd)
+  })
 }
+
+# Note that `one.cmt` declares no random effects: `nls` is a pooled
+# method and refuses a model that has any.
 
 # Uses nlsLM from minpack.lm if available
 
-fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="LM"))
+fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est = "nls", nlsControl(algorithm = "LM"))
 
 # Uses port and respect parameter boundaries
-fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="port"))
+fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est = "nls", nlsControl(algorithm = "port"))
 
 # You can access the underlying nls object with `$nls`
 fit2$nls
-
 }
 }
 \author{

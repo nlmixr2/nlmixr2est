@@ -10,7 +10,6 @@
 ## Mapping only, no fits, so this file stays in the push/PR subset.
 
 nmTest({
-
   ## both helpers are internal; resolve them explicitly so this works under the
   ## test_check() route and the test_dir() one nlmixr2Validate() uses
   .cmtIdx <- utils::getFromNamespace("npEndpointForCmt_", "nlmixr2est")
@@ -34,8 +33,7 @@ nmTest({
     ## rather than predDf$cmt (3 here) -- there is nothing to match, and every
     ## observation is that one endpoint.  This is why the fallback could not simply
     ## become -1 everywhere.
-    expect_equal(.cmtIdx(c(1L, 3L, NA_integer_), 3L),
-                 c(0L, 0L, 0L))
+    expect_equal(.cmtIdx(c(1L, 3L, NA_integer_), 3L), c(0L, 0L, 0L))
   })
 
   test_that("no endpoints at all drops every observation", {
@@ -44,11 +42,11 @@ nmTest({
 
   test_that("a residual parameter naming no endpoint maps to -1 and warns", {
     .endVar <- c("cp", "eff")
-    expect_equal(.residIdx(c("cp", "eff", "cp"), .endVar),
-                 c(0L, 1L, 0L))
+    expect_equal(.residIdx(c("cp", "eff", "cp"), .endVar), c(0L, 1L, 0L))
     expect_warning(
       .e <- .residIdx(c("cp", "nosuch"), .endVar),
-      "endpoint unknown")
+      "endpoint unknown"
+    )
     expect_equal(.e, c(0L, -1L))
   })
 
@@ -57,7 +55,8 @@ nmTest({
     ## fails, which the old 0L coercion hid by charging them all to endpoint 0
     expect_warning(
       .e <- .residIdx(c("cp", "eff"), character(0)),
-      "endpoint unknown")
+      "endpoint unknown"
+    )
     expect_equal(.e, c(-1L, -1L))
   })
 
@@ -65,5 +64,4 @@ nmTest({
     expect_silent(.e <- .residIdx(character(0), "cp"))
     expect_equal(.e, integer(0))
   })
-
 })

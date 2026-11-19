@@ -15,10 +15,11 @@
 #' @export
 assertNlmixrFit <- function(fit) {
   .object <- as.character(substitute(fit))
-  if (!(inherits(fit, "nlmixr2FitCore") ||
-        inherits(fit, "nlmixr2FitCoreSilent"))) {
-    stop("'", .object, "' needs to be a nlmixr2 fit object",
-         call.=FALSE)
+  if (
+    !(inherits(fit, "nlmixr2FitCore") ||
+      inherits(fit, "nlmixr2FitCoreSilent"))
+  ) {
+    stop("'", .object, "' needs to be a nlmixr2 fit object", call. = FALSE)
   }
 }
 
@@ -40,8 +41,7 @@ assertNlmixrFit <- function(fit) {
 assertNlmixrFitData <- function(fit) {
   .object <- as.character(substitute(fit))
   if (!inherits(fit, "nlmixr2FitData")) {
-    stop("'", .object, "' needs to be a nlmixr2 fit object with data attached",
-         call.=FALSE)
+    stop("'", .object, "' needs to be a nlmixr2 fit object with data attached", call. = FALSE)
   }
 }
 #' Assert a nlmixr2 object data frame row is compatible with what needs to be added
@@ -51,14 +51,17 @@ assertNlmixrFitData <- function(fit) {
 #' @return If successful, a list(data frame, condition number)
 #' @author Matthew L. Fidler
 #' @noRd
-assertNlmixrObjDataFrameRow <- function(df, allowNa=FALSE) {
+assertNlmixrObjDataFrameRow <- function(df, allowNa = FALSE) {
   .name <- names(df)
   .needed <- c("OBJF", "AIC", "BIC", "Log-likelihood")
   .diff <- setdiff(.needed, .name)
   if (length(.diff) > 0) {
-    stop("need additional information for objective function data frame row: '",
-         paste(.diff, collapse="', '"), "'",
-         call.=FALSE)
+    stop(
+      "need additional information for objective function data frame row: '",
+      paste(.diff, collapse = "', '"),
+      "'",
+      call. = FALSE
+    )
   }
   .w <- which(.name == "Condition#(Cov)")
   if (length(.w) == 1) {
@@ -92,14 +95,14 @@ assertNlmixrObjDataFrameRow <- function(df, allowNa=FALSE) {
   }
   .df1 <- df[, .needed]
   if (length(.df1[, 1]) == 0) {
-    stop("missing objective function in objective function data frame", call.=FALSE)
+    stop("missing objective function in objective function data frame", call. = FALSE)
   }
   if (is.na(.df1[, 1])) {
     .df1 <- NA
-    if (!allowNa) stop("missing objective function in objective function data frame", call.=FALSE)
+    if (!allowNa) stop("missing objective function in objective function data frame", call. = FALSE)
   } else {
     lapply(.needed, function(x) {
-      checkmate::assertNumeric(df[[x]], len=1, any.missing=FALSE, .var.name=x)
+      checkmate::assertNumeric(df[[x]], len = 1, any.missing = FALSE, .var.name = x)
     })
   }
   list(.df1, .cn, .cnr)

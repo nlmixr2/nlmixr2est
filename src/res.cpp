@@ -6,51 +6,71 @@
 
 #define _(String) (String)
 
-void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
-                     List &etasDfFull, int &nid, unsigned int &neta) {
-  int idSize = ID.size();
-  int lastId = ID[ID.size()-1], lastCol = nid-1, lastIndex=ID.size()-1;
-  bool singleEta = lastId == ID[0];
-  int etaFulli = nid-1;
-  double curEta=0.0;
-  if (singleEta) {
-    for (unsigned int i = neta; i--;){
-      curEta = etas(0, i);//(as<NumericVector>(etasDf1[i]))[0];
-      NumericVector cur = etasDfFull[i];
-      std::fill_n(cur.begin(),ID.size(),curEta);
-    }
+// The eta table's row of each row's subject.  The eta table's first column
+// holds its subjects' integer codes, the codes the solved rows' ID column
+// uses; a row's subject without an eta row is an error.  Looking the rows up
+// by code, not by position, keeps the subjects right when the rows leave a
+// subject out (CWRES uses only the normally distributed, uncensored rows).
+arma::uvec etaRowsById(arma::Col<int>& ID, SEXP etaId) {
+  int nid = Rf_length(etaId);
+  IntegerVector code;
+  if (TYPEOF(etaId) == INTSXP) {
+    code = IntegerVector(etaId);
   } else {
-    for (unsigned int j = ID.size(); j--; ){
-      if (lastId != ID[j]) {
-        // Fill in full eta data frame
-        for (unsigned int i = neta; i--;){
-          curEta = etas(etaFulli, i);//(as<NumericVector>(etasDf1[i]))[etaFulli];
-          NumericVector cur = etasDfFull[i];
-          std::fill_n(cur.begin()+j+1,lastIndex-j,curEta);
-        }
-        etaFulli--;
-        lastId=ID[j];
-        lastIndex=j;
-        lastCol--;
-        if (lastCol == 0) {
-          // Finalize ETA
-          for (unsigned int i = neta; i--;){
-            curEta = etas(0, i);//(as<NumericVector>(etasDf1[i]))[0];
-            NumericVector cur = etasDfFull[i];
-            std::fill_n(cur.begin(),lastIndex+1,curEta);
-          }
-          break;
-        }
-      }
+    code = as<IntegerVector>(etaId);
+  }
+  int mx = 0;
+  for (int i = 0; i < nid; ++i) {
+    if (code[i] > mx) mx = code[i];
+  }
+  std::vector<int> pos(mx + 1, -1);
+  for (int i = 0; i < nid; ++i) {
+    if (code[i] >= 0) pos[code[i]] = i;
+  }
+  arma::uvec ret(ID.size());
+  for (unsigned int j = 0; j < ID.size(); ++j) {
+    int id = ID[j];
+    if (id < 0 || id > mx || pos[id] < 0) {
+      stop(_("subject code %d of the solved rows has no row in the eta table"), id);
+    }
+    ret[j] = (unsigned int)pos[id];
+  }
+  return ret;
+}
+
+// The etas of each row's subject, one column per eta
+void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
+                     List &etasDfFull, unsigned int &neta, SEXP etaId) {
+  arma::uvec rows = etaRowsById(ID, etaId);
+  for (unsigned int i = neta; i--;) {
+    NumericVector cur = etasDfFull[i];
+    for (unsigned int j = ID.size(); j--;) {
+      cur[j] = etas(rows[j], i);
     }
   }
 }
 
+// The number of identifier columns (ID, time, ...) of a solved data frame: the
+// columns up to and including time.
 int getPredIndex(List &ipredL) {
   CharacterVector names= ipredL.attr("names");
   for (int i = 0; i < names.size(); ++i) {
     if (names[i] == "time") return (i+1);
   }
+  stop(_("'time' not found in the solved data.frame"));
+  return -1;
+}
+
+// The index of the column `name` of a solved data frame.  The prediction
+// (rx_pred_), its variance (rx_r_) and a simulation (sim) are found by name: the
+// variables lag() refers to are output ahead of rx_pred_, so it is not always
+// the column after time.
+int getDfColIndex(List &df, const char *name) {
+  CharacterVector names = df.attr("names");
+  for (int i = 0; i < names.size(); ++i) {
+    if (names[i] == name) return i;
+  }
+  stop(_("'%s' not found in the solved data.frame"), name);
   return -1;
 }
 
@@ -184,6 +204,20 @@ void dfSetStateLhsOps(List& in, List& opt) {
   }
 }
 
+// The five pieces of a table that dfSetStateLhsOps() and dfCbindList() take:
+// the residuals, the per-row etas, and the state, lhs and covariate columns of
+// the solved data.  getDfSubsetVars() returns an unprotected SEXP, so each
+// subset is held in an RObject before the next allocation: a subset left
+// unprotected while a later one (or the list) allocates can be collected,
+// which loses its columns or corrupts R's heap.
+List dfTableParts(SEXP resid, SEXP etas, SEXP stateFrom, SEXP lhsFrom,
+                  SEXP stateSXP, SEXP lhsSXP, SEXP covSXP) {
+  RObject state = getDfSubsetVars(stateFrom, stateSXP);
+  RObject lhs = getDfSubsetVars(lhsFrom, lhsSXP);
+  RObject cov = getDfSubsetVars(lhsFrom, covSXP);
+  return List::create(resid, etas, state, lhs, cov);
+}
+
 extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
                                     SEXP etasDfSEXP, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
                                     SEXP relevantLHSSEXP,  SEXP stateSXP, SEXP covSEXP, SEXP IDlabelSEXP,
@@ -197,22 +231,23 @@ extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   int ncalc = Rf_length(ipredL[0]);
   List etasDf = as<List>(etasDfSEXP);
   int nid = Rf_length(etasDf[0]);
-  int npred = getPredIndex(ipredL);
-  if (npred == -1) {
-    stop(_("malformed dataframes, no time present in ipred data.frame"));
-  }
+  int nidCol = getPredIndex(ipredL);
+  int npred = getDfColIndex(ipredL, "rx_pred_");
+  int nr = getDfColIndex(ipredL, "rx_r_");
 
   arma::vec ipredt(REAL(ipredL[npred]), ncalc, false, true);
   arma::vec ipred(ipredt.size());
 
-  arma::vec predt(REAL(predL[npred]), ncalc, false, true);
+  arma::vec predt(REAL(predL[getDfColIndex(predL, "rx_pred_")]), ncalc, false, true);
   arma::vec pred(predt.size());
 
-  arma::vec dv(REAL(dvIn), ncalc, false, true);
+  // a copy: the rows below write NA and imputed values into it, and the
+  // caller's DV is shared (.calcTables() hands the same predictions to NPDE)
+  arma::vec dv(REAL(dvIn), ncalc);
   arma::vec dvt(ncalc);
 
-  arma::vec rpv(REAL(predL[npred+1]), ncalc, false, true);
-  arma::vec riv(REAL(ipredL[npred+1]), ncalc, false, true);
+  arma::vec rpv(REAL(predL[getDfColIndex(predL, "rx_r_")]), ncalc, false, true);
+  arma::vec riv(REAL(ipredL[nr]), ncalc, false, true);
 
 
   arma::Col<int> cens;
@@ -283,7 +318,7 @@ extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   etasDfFull.attr("row.names")=IntegerVector::create(NA_INTEGER,-ncalc);
   etasDfFull.attr("class") = "data.frame";
 
-  calculateDfFull(ID, etas, etasDfFull, nid, neta);
+  calculateDfFull(ID, etas, etasDfFull, neta, etasDf[0]);
 
   for (unsigned int i = pred.size(); i--;){
     int cyj, dist, yj0 = (int)yj[i];
@@ -345,15 +380,13 @@ extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   retDF.attr("class") = "data.frame";
   calcShrinkFinalize(omegaMat, nid, etaLst, iwres, evid, etaN2, 1);
 
-  List retC = List::create(retDF, etasDfFull,
-                           getDfSubsetVars(ipredL, stateSXP),
-                           getDfSubsetVars(ipredL, relevantLHSSEXP),
-                           getDfSubsetVars(ipredL, covSEXP));
+  List retC = dfTableParts(retDF, etasDfFull, ipredL, ipredL,
+                           stateSXP, relevantLHSSEXP, covSEXP);
   dfSetStateLhsOps(retC, opt);
   retC = dfCbindList(wrap(retC));
   List ret(4);
   ret[0] = wrap(dv);
-  ret[1] = getDfIdentifierCols(ipredL, npred, stateSXP, IDlabelSEXP);
+  ret[1] = getDfIdentifierCols(ipredL, nidCol, stateSXP, IDlabelSEXP);
   ret[2] = retC;
   ret[3] = etaLst;
   return wrap(ret);
@@ -370,10 +403,12 @@ extern "C" SEXP _nlmixr2est_popResFinal(SEXP inList) {
     // Only resid in 1
     List l1 = l[0];
     if (l1.size() != 4) return R_NilValue;
-    List retC = List::create(l1[1],
-                             List::create(_["DV"] = l1[0]),
-                             l1[2]);
-    return(List::create(_["resid"]=dfCbindList(wrap(retC)),
+    // Each freshly allocated piece is held in an Rcpp object (protected) before the
+    // next allocation: List::create() allocates after evaluating its arguments.
+    List dvL = List::create(_["DV"] = l1[0]);
+    List retC = List::create(l1[1], dvL, l1[2]);
+    RObject resid = dfCbindList(wrap(retC));
+    return(List::create(_["resid"]=resid,
                         _["shrink"]=l1[3]));
   }
   List l1 = l[0];
@@ -391,11 +426,10 @@ extern "C" SEXP _nlmixr2est_popResFinal(SEXP inList) {
   } else {
     return R_NilValue;
   }
-  List retC = List::create(l4[1],
-                           List::create(_["DV"] = dv),
-                           l2[1],
-                           l4[2]);
-  return List::create(_["resid"]=dfCbindList(wrap(retC)),
+  List dvL = List::create(_["DV"] = dv);
+  List retC = List::create(l4[1], dvL, l2[1], l4[2]);
+  RObject resid = dfCbindList(wrap(retC));
+  return List::create(_["resid"]=resid,
                       _["shrink"]=l4[3]);
   END_RCPP
     }

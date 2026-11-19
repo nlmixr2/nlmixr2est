@@ -24,15 +24,11 @@ nmTest({
     saemControlFast2 <- saemControlFast
     saemControlFast2$boundedTransform <- FALSE
     f <- .nlmixr(one.cmt, nlmixr2data::theo_sd, "saem", control = saemControlFast2)
-    expect_equal(names(f$eta),
-                 c("ID", "eta.ka", "eta.cl", "eta.v"))
-    expect_equal(names(f$parHist),
-                 c("iter", "tka", "tcl", "tv", "V(eta.cl)", "V(eta.v)", "add.sd"))
+    expect_equal(names(f$eta), c("ID", "eta.ka", "eta.cl", "eta.v"))
+    expect_equal(names(f$parHist), c("iter", "tka", "tcl", "tv", "V(eta.cl)", "V(eta.v)", "add.sd"))
 
     f <- .nlmixr(one.cmt, nlmixr2data::theo_sd, "saem", control = saemControlFast)
-    expect_equal(names(f$eta),
-                 c("ID", "eta.ka", "eta.cl", "eta.v"))
-    expect_equal(names(f$parHist),
-                 c("iter", "tka", "tcl", "tv", "V(eta.v)", "V(eta.cl)", "add.sd"))
+    expect_equal(names(f$eta), c("ID", "eta.ka", "eta.cl", "eta.v"))
+    expect_equal(names(f$parHist), c("iter", "tka", "tcl", "tv", "V(eta.v)", "V(eta.cl)", "add.sd"))
   })
 })

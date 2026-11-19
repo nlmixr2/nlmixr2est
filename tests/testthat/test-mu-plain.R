@@ -28,24 +28,23 @@ nmTest({
 
   test_that("plain mu-ref pairs are classified and grouped (covariate-free model)", {
     ui <- rxode2::rxode2(.ocmt)
-    cls <- nlmixr2est:::.muRefClassify(ui)
+    cls <- .muRefClassify(ui)
     expect_equal(cls$muPlainThetas, c("tka", "tcl", "tv"))
     expect_equal(cls$muPlainEtas, c("eta.ka", "eta.cl", "eta.v"))
     expect_equal(cls$muCovThetas, character(0))
 
     # plain=FALSE (the default, and what the imp family uses) is unchanged:
     # no groups without a covariate relationship
-    expect_length(nlmixr2est:::.muRefGroups(ui), 0L)
-    s0 <- nlmixr2est:::.muRefCppGroupSetup(ui)
+    expect_length(.muRefGroups(ui), 0L)
+    s0 <- .muRefCppGroupSetup(ui)
     expect_equal(s0$muGroupTheta, integer(0))
 
-    g <- nlmixr2est:::.muRefGroups(ui, plain = TRUE)
+    g <- .muRefGroups(ui, plain = TRUE)
     expect_length(g, 3L)
-    expect_equal(vapply(g, function(x) x$theta, character(1)),
-                 c("tka", "tcl", "tv"))
+    expect_equal(vapply(g, function(x) x$theta, character(1)), c("tka", "tcl", "tv"))
     expect_true(all(vapply(g, function(x) nrow(x$covariates) == 0L, logical(1))))
 
-    s <- nlmixr2est:::.muRefCppGroupSetup(ui, plain = TRUE)
+    s <- .muRefCppGroupSetup(ui, plain = TRUE)
     expect_equal(s$muGroupTheta, 0:2)
     expect_equal(s$muGroupEta, 0:2)
     expect_equal(s$muGroupCovCount, c(0L, 0L, 0L))
@@ -79,7 +78,7 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    cls <- nlmixr2est:::.muRefClassify(rxode2::rxode2(shared))
+    cls <- .muRefClassify(rxode2::rxode2(shared))
     # eta.cl enters the model in two positions, so tcl+eta.cl cannot be
     # rewritten by the regression; tka/tv are unaffected
     expect_equal(cls$muPlainThetas, c("tka", "tv"))
@@ -110,18 +109,16 @@ nmTest({
     ui <- rxode2::rxode2(bnd)
     # clamp=TRUE (the mfocei/ifocei family style): bounded tka is
     # regression-updated too (update clamped to [-2, 2])
-    expect_no_warning(g <- suppressMessages(nlmixr2est:::.muRefGroups(ui, plain = TRUE, clamp = TRUE)))
-    expect_equal(vapply(g, function(x) x$theta, character(1)),
-                 c("tka", "tcl", "tv"))
-    s <- nlmixr2est:::.muRefCppGroupSetup(ui, plain = TRUE, clamp = TRUE)
+    expect_no_warning(g <- suppressMessages(.muRefGroups(ui, plain = TRUE, clamp = TRUE)))
+    expect_equal(vapply(g, function(x) x$theta, character(1)), c("tka", "tcl", "tv"))
+    s <- .muRefCppGroupSetup(ui, plain = TRUE, clamp = TRUE)
     expect_equal(s$muGroupThetaLower, c(-2, -Inf, -Inf))
     expect_equal(s$muGroupThetaUpper, c(2, Inf, Inf))
     expect_null(s$muGroupCovBounded)
     # clamp=FALSE (every other method, the default for a bare ui): the
     # bounded plain theta is rejected from the mu-referencing instead
-    expect_no_warning(g0 <- suppressMessages(nlmixr2est:::.muRefGroups(ui, plain = TRUE)))
-    expect_equal(vapply(g0, function(x) x$theta, character(1)),
-                 c("tcl", "tv"))
+    expect_no_warning(g0 <- suppressMessages(.muRefGroups(ui, plain = TRUE)))
+    expect_equal(vapply(g0, function(x) x$theta, character(1)), c("tcl", "tv"))
 
     fx <- function() {
       ini({
@@ -143,7 +140,7 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    g2 <- nlmixr2est:::.muRefGroups(rxode2::rxode2(fx), plain = TRUE)
+    g2 <- .muRefGroups(rxode2::rxode2(fx), plain = TRUE)
     expect_equal(vapply(g2, function(x) x$theta, character(1)), c("tcl", "tv"))
   })
 
@@ -170,7 +167,7 @@ nmTest({
       })
     }
     ui <- rxode2::rxode2(mixed)
-    s <- nlmixr2est:::.muRefCppGroupSetup(ui, plain = TRUE)
+    s <- .muRefCppGroupSetup(ui, plain = TRUE)
     thNames <- ui$iniDf$name[!is.na(ui$iniDf$ntheta)]
     # covariate group (tcl) first, then the plain groups (tka, tv)
     expect_equal(thNames[s$muGroupTheta + 1L], c("tcl", "tka", "tv"))
@@ -204,8 +201,11 @@ nmTest({
       })
     }
     ui <- rxode2::rxode2(mixedBnd)
-    expect_no_warning(s <- suppressMessages(
-      nlmixr2est:::.muRefCppGroupSetup(ui, plain = TRUE, clamp = TRUE)))
+    expect_no_warning(
+      s <- suppressMessages(
+        .muRefCppGroupSetup(ui, plain = TRUE, clamp = TRUE)
+      )
+    )
     thNames <- ui$iniDf$name[!is.na(ui$iniDf$ntheta)]
     expect_equal(thNames[s$muGroupTheta + 1L], c("tcl", "tka", "tv"))
     # bounded tcl group carries its clamp bounds; plain groups are infinite
@@ -243,7 +243,7 @@ nmTest({
         depot ~ add(add.sd)
       })
     }
-    g <- suppressMessages(nlmixr2est:::.muRefGroups(rxode2::rxode2(degen), plain = TRUE))
+    g <- suppressMessages(.muRefGroups(rxode2::rxode2(degen), plain = TRUE))
     expect_length(g, 0L)
   })
 })

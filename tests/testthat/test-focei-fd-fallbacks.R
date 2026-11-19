@@ -31,14 +31,24 @@ nmTest({
     }
     run <- function(...) {
       suppressWarnings(suppressMessages(
-        nlmixr2(ode.cmt, theo_sd, "focei",
-                foceiControl(covMethod = "", calcTables = FALSE, print = 1L,
-                             outerOpt = "nlminb", maxOuterIterations = 8L, ...))))
+        nlmixr2(
+          ode.cmt,
+          theo_sd,
+          "focei",
+          foceiControl(
+            covMethod = "",
+            calcTables = FALSE,
+            print = 1L,
+            outerOpt = "nlminb",
+            maxOuterIterations = 8L,
+            ...
+          )
+        )
+      ))
     }
     gradRows <- function(fit, lvl) {
       ph <- fit$parHistData
-      ph[as.character(ph$type) == lvl, setdiff(names(ph), c("iter", "type", "objf")),
-         drop = FALSE]
+      ph[as.character(ph$type) == lvl, setdiff(names(ph), c("iter", "type", "objf")), drop = FALSE]
     }
 
     base <- run()
@@ -88,16 +98,29 @@ nmTest({
     }
     trim <- 2
     fit <- suppressWarnings(suppressMessages(
-      nlmixr2(one.cmt, theo_sd, "focei",
-              foceiControl(covMethod = "", calcTables = FALSE, print = 1L,
-                           outerOpt = "nlminb", maxOuterIterations = 8L,
-                           gradTrim = trim))))
+      nlmixr2(
+        one.cmt,
+        theo_sd,
+        "focei",
+        foceiControl(
+          covMethod = "",
+          calcTables = FALSE,
+          print = 1L,
+          outerOpt = "nlminb",
+          maxOuterIterations = 8L,
+          gradTrim = trim
+        )
+      )
+    ))
     ph <- fit$parHistData
     # gradTrim only applies to numericGrad(); the Gill83 iteration is a separate
     # path and is not clamped
-    gr <- ph[as.character(ph$type) %in%
-               c("Mixed Gradient", "Forward Difference", "Central Difference"),
-             setdiff(names(ph), c("iter", "type", "objf")), drop = FALSE]
+    gr <- ph[
+      as.character(ph$type) %in%
+        c("Mixed Gradient", "Forward Difference", "Central Difference"),
+      setdiff(names(ph), c("iter", "type", "objf")),
+      drop = FALSE
+    ]
     expect_true(nrow(gr) > 0)
     expect_true(all(abs(unlist(gr)) <= trim + 1e-8))
     # clamping must not collapse the gradient onto one bound: both signs and

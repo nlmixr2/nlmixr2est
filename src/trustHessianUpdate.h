@@ -1,0 +1,116 @@
+#ifndef __TRUSTHESSIANUPDATE_H__
+#define __TRUSTHESSIANUPDATE_H__
+#if defined(__cplusplus)
+#include <stdexcept>
+#include "utilc.h"
+
+// Shared hessianMethod= codes for every RcppTrust-backed Hessian in this
+// package (est="trust"'s outer theta problem, src/nlm.cpp; FOCEi's inner eta
+// problem for non-normal-endpoint models, src/inner.cpp's calcEtaHessian()).
+#define trustHessFd     1
+#define trustHessBfgs   2
+#define trustHessSr1    3
+#define trustHessBofill 4
+
+// Considered and rejected for this Hessian (kept here so neither gets
+// re-proposed without new infrastructure this codebase does not have):
+//  - Curvature Propagation (Martens, Sutskever & Swersky, "Estimating the
+//    Hessian by Back-propagating Curvature", arXiv:1206.6464, ICML 2012):
+//    an unbiased stochastic Hessian estimator built by backward-propagating
+//    injected noise through a general reverse-mode autodiff computational
+//    graph. This codebase's gradients (nlmSolveGrad, lpInner) come from
+//    hand-written ODE sensitivity equations compiled by rxode2, not a
+//    traceable AD graph over arbitrary ops -- CP needs a general AD engine
+//    this package does not have.
+//  - O1NumHess (Zhao et al., "O1NumHess: A Fast and Accurate Seminumerical
+//    Hessian Algorithm Using Only O(1) Gradients", arXiv:2508.07544, JCTC
+//    2025): reduces a molecular Hessian from O(N_atom) gradients to O(1) by
+//    exploiting the off-diagonal low-rank (ODLR) property that Hessian
+//    blocks coupling two SPATIALLY DISTANT groups of atoms are low rank.
+//    That property has no analog in a small (order 2-20) theta/eta vector
+//    with no spatial locality, and the plain O(n) FD-of-gradient cost it is
+//    built to avoid is not expensive at this size.
+//
+// Quasi-Newton Hessian update from two consecutive (point, gradient) pairs --
+// s = x_k - x_{k-1}, y = g_k - g_{k-1} -- avoiding a fresh per-parameter
+// finite-difference step-size derivation every iteration. H is updated in
+// place; left unchanged when the secant pair is unreliable (near-zero
+// denominator -- the same failure mode as an unstable finite-difference
+// step, generalized).
+static inline void trustHessianUpdate(int method, arma::mat &H,
+                                       const arma::vec &s, const arma::vec &y) {
+  if (method == trustHessBfgs) {
+    // Damped BFGS: Nocedal & Wright, Numerical Optimization, 2nd ed.
+    // (2006), Procedure 18.2 / Eq. 18.16. trust does no line search, so the
+    // curvature condition s'y>0 is not guaranteed -- Powell's damping keeps
+    // the update positive-definite regardless.  Shared with the outer trust
+    // region of FOCEi (R's .trustOuterBfgs()), bit for bit.
+    const int n = (int)s.n_elem;
+    if ((int)y.n_elem != n || (int)H.n_rows != n || (int)H.n_cols != n) {
+      throw std::logic_error("trustHessianUpdate: incompatible dimensions");
+    }
+    arma::vec Hs(n), r(n);
+    nmTrustBfgsUpdate(n, H.memptr(), s.memptr(), y.memptr(), Hs.memptr(), r.memptr());
+    return;
+  }
+  arma::vec Hs = H * s;
+  if (method == trustHessSr1) {
+    // Symmetric Rank-1: Nocedal & Wright Eq. 6.24, skip safeguard Eq. 6.26
+    // (originally Murtagh & Sargent, Comput. J. 13, 185-194, 1970). N&W
+    // recommend SR1 specifically for trust-region methods: unlike BFGS it
+    // is not forced positive-definite, so it can represent the indefinite
+    // curvature a trust-region step can legitimately encounter.
+    arma::vec r = y - Hs;
+    double denom = arma::dot(s, r);
+    double rNorm = arma::norm(r), sNorm = arma::norm(s);
+    if (std::fabs(denom) >= 1e-8 * sNorm * rNorm && rNorm > 0)
+      H += (r * r.t()) / denom;
+    // else: unreliable secant pair (e.g. a tiny reject-then-shrink step) --
+    // skip rather than corrupt the running Hessian.
+  } else if (method == trustHessBofill) {
+    // Bofill, J. Comput. Chem. 15, 1-11 (1994): a phi-weighted blend of SR1
+    // (Murtagh-Sargent) and Powell-Symmetric-Broyden (PSB), the standard
+    // Berny/transition-state-search Hessian update -- phi (in [0,1]) is the
+    // squared cosine between s and the SR1 correction r, so the update
+    // smoothly favors whichever of SR1/PSB the data actually supports.
+    arma::vec r = y - Hs;
+    double ss = arma::dot(s, s), rr = arma::dot(r, r), sr = arma::dot(s, r);
+    if (ss <= 0 || rr <= 0) return; // skip
+    double phi = (sr * sr) / (ss * rr);
+    arma::mat Hpsb = H + (r * s.t() + s * r.t()) / ss - (sr * (s * s.t())) / (ss * ss);
+    if (std::fabs(sr) < 1e-8 * std::sqrt(ss) * std::sqrt(rr)) {
+      // SR1 term undefined (sr ~ 0) -- fall back to pure PSB. Computing the
+      // SR1 term's (r*r.t())/sr here would divide by ~0; skip it entirely
+      // rather than compute-then-discard it.
+      H = Hpsb;
+    } else {
+      arma::mat Hms = H + (r * r.t()) / sr;
+      H = phi * Hms + (1.0 - phi) * Hpsb;
+    }
+  }
+}
+
+// The Hessian hessianMethod= asks for at the point x with gradient g.  trustHessFd
+// returns fd(), a finite-difference Hessian, every call.  The quasi-Newton methods
+// seed Hqn from the first fd() and afterwards update it from the secant pair
+// (x - xPrev, g - gPrev); hasPrev, Hqn, xPrev and gPrev carry that state between
+// calls.  fd() must return a symmetric matrix.  x is read after fd() returns.
+template <typename FdHessian>
+static inline arma::mat trustHessian(int method, int &hasPrev, arma::mat &Hqn,
+                                     arma::vec &xPrev, arma::vec &gPrev,
+                                     const arma::vec &x, const arma::vec &g,
+                                     FdHessian fd) {
+  if (method == trustHessFd) return fd();
+  if (hasPrev) {
+    trustHessianUpdate(method, Hqn, x - xPrev, g - gPrev);
+  } else {
+    Hqn = fd();
+    hasPrev = 1;
+  }
+  xPrev = x;
+  gPrev = g;
+  return 0.5*(Hqn + Hqn.t());
+}
+
+#endif
+#endif

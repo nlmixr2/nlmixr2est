@@ -1,9 +1,8 @@
 nmTest({
   test_that("fix parameter saem (#445)", {
-
     theo_sd2 <- nlmixr2data::theo_sd
 
-    theo_sd2$lwt<-log(theo_sd2$WT/70)
+    theo_sd2$lwt <- log(theo_sd2$WT / 70)
 
     # The basic model consists of an ini block that has initial estimates
     one.compartment <- function() {
@@ -28,14 +27,20 @@ nmTest({
       })
     }
 
-    fit0 <- .nlmixr(one.compartment, theo_sd2, est="saem",
-                    saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1,
-                                calcTables = FALSE))
+    fit0 <- .nlmixr(
+      one.compartment,
+      theo_sd2,
+      est = "saem",
+      saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1, calcTables = FALSE)
+    )
 
-    fit1 <- .nlmixr(one.compartment |>
-                      ini(covwt=fix(100)), theo_sd2, est="saem",
-                    saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1,
-                                calcTables = FALSE))
+    fit1 <- .nlmixr(
+      one.compartment |>
+        ini(covwt=fix(100)),
+      theo_sd2,
+      est = "saem",
+      saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1, calcTables = FALSE)
+    )
 
     theta0 <- fit0$theta
     theta0 <- theta0[names(theta0) != "covwt"]

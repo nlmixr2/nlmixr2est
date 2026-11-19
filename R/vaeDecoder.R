@@ -34,16 +34,23 @@
 #'   prediction/variance columns
 #' @return list(f, R, a = df/deta [nObs x neta], aR = dR/deta [nObs x neta]) or NULL
 #' @noRd
-.vaeDecoderSolveSubject <- function(am, th, eta, ev, times, tol = 1e-10,
-                                    maxRecalc = 5L, recalcFactor = 10^(0.5),
-                                    fdFallback = TRUE) {
+.vaeDecoderSolveSubject <- function(
+  am,
+  th,
+  eta,
+  ev,
+  times,
+  tol = 1e-10,
+  maxRecalc = 5L,
+  recalcFactor = 10^(0.5),
+  fdFallback = TRUE
+) {
   ## the augmented model is built + solved in R (.foceiAnalyticSolveFA); the
   ## tolerance-relaxation + FD-fallback loop runs in C++ (vaeDecoderSolveSubject_),
   ## which invokes this per-attempt solve closure.
   .etav <- am$dirs
   .solve <- function(e, t) .foceiAnalyticSolveFA(am, c(th, setNames(e, .etav)), ev, times, tol = t)
-  vaeDecoderSolveSubject_(.solve, as.numeric(eta), tol, as.integer(maxRecalc),
-                          recalcFactor, isTRUE(fdFallback))
+  vaeDecoderSolveSubject_(.solve, as.numeric(eta), tol, as.integer(maxRecalc), recalcFactor, isTRUE(fdFallback))
 }
 
 #' ELBO data term p(x|z) and its eta-gradient for one subject

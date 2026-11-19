@@ -21,9 +21,7 @@
 }
 
 .iniLotriPtr <- function() {
-  .Call(`_nlmixr2est_iniLotriPtr`,
-        lotri::.lotriPointers(),
-        PACKAGE = "nlmixr2est")
+  .Call(`_nlmixr2est_iniLotriPtr`, lotri::.lotriPointers(), PACKAGE = "nlmixr2est")
 }
 
 ## DO NOT re-add an rxode2 API version/name check here.
@@ -48,20 +46,46 @@
 ## matters, by rxode2's own build-time check that no slot is left unset and by the
 ## DESCRIPTION version requirement -- not by string-comparing a snapshot at load.
 .iniRxode2Ptr <- function() {
-  .Call(`_nlmixr2est_iniRxodePtrs`, rxode2::.rxode2ptrs(),
-        PACKAGE = "nlmixr2est")
+  .p <- rxode2::.rxode2ptrs()
+  .Call(`_nlmixr2est_iniRxodePtrs`, .p, PACKAGE = "nlmixr2est")
+  # the entry points newer than the oldest rxode2 nlmixr2est supports, when
+  # this rxode2 has them (src/rxode2Optional.h)
+  .Call(`_nlmixr2est_iniRxode2Optional`, .p, PACKAGE = "nlmixr2est")
+}
+
+# Which rxode2 entry points newer than the oldest supported rxode2 the
+# installed rxode2 provides (src/rxode2Optional.h): a named logical vector
+.rxode2Optional <- function() {
+  .Call(`_nlmixr2est_rxode2Optional`, PACKAGE = "nlmixr2est")
+}
+
+# The installed rxode2's version, which test-dependency-workarounds.R compares
+# with the version each work-around waits for
+.rxode2Version <- function() {
+  utils::packageVersion("rxode2")
+}
+
+# The installed rxode2lincmt's version (it comes with rxode2), for the same
+# comparison
+.rxode2lincmtVersion <- function() {
+  utils::packageVersion("rxode2lincmt")
 }
 
 .iniN1qn1ptr <- function() {
-  .Call(`_nlmixr2est_iniN1qn1cPtrs`,
-        n1qn1::.n1qn1ptr(),
-        PACKAGE = "nlmixr2est")
+  .Call(`_nlmixr2est_iniN1qn1cPtrs`, n1qn1::.n1qn1ptr(), PACKAGE = "nlmixr2est")
 }
 
 .iniLbfgsb3c <- function() {
-  .Call(`_nlmixr2est_iniLbfgsb3ptr`,
-        lbfgsb3c::.lbfgsb3cPtr(),
-        PACKAGE = "nlmixr2est")
+  .Call(`_nlmixr2est_iniLbfgsb3ptr`, lbfgsb3c::.lbfgsb3cPtr(), PACKAGE = "nlmixr2est")
+}
+
+.iniRcppTrustPtr <- function() {
+  .ptr <- RcppTrust::.RcppTrustPtr()
+  # slots 2-6 (bobyqa, newuoa, steihaug) need RcppTrust >= 0.2.0
+  if (length(.ptr) < 7L) {
+    stop("nlmixr2est requires RcppTrust >= 0.2.0", call. = FALSE)
+  }
+  .Call(`_nlmixr2est_iniRcppTrustPtrs`, .ptr, PACKAGE = "nlmixr2est")
 }
 
 .iniPtrs <- function() {
@@ -69,6 +93,7 @@
   .iniRxode2Ptr()
   .iniN1qn1ptr()
   .iniLbfgsb3c()
+  .iniRcppTrustPtr()
 }
 #' Initialize S3 methods
 #'
@@ -116,6 +141,7 @@
   rxode2::.s3register("rxode2::rxUiDeparse", "tableControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "agqControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "laplaceControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "impmapControl")
   rxode2::.s3register("rxode2::rxUiGet", "foceiOuter")
   rxode2::.s3register("rxode2::rxUiGet", "impmapThetaSens")
   .resetCacheIfNeeded()

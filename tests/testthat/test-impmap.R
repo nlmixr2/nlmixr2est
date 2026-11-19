@@ -27,8 +27,7 @@ nmTest({
   })
 
   test_that("impmapControl overrides and focei passthrough", {
-    .ctl <- impmapControl(isample = 50L, gamma = 2, impSeed = 7L,
-                          maxOuterIterations = 3L)
+    .ctl <- impmapControl(isample = 50L, gamma = 2, impSeed = 7L, maxOuterIterations = 3L)
     expect_identical(.ctl$isample, 50L)
     expect_identical(.ctl$gamma, 2.0)
     expect_identical(.ctl$impSeed, 7L)
@@ -39,10 +38,10 @@ nmTest({
   test_that("down-conversion to foceiControl strips IS-only names", {
     .env <- new.env()
     .env$impmapControl <- impmapControl()
-    .fc <- nlmixr2est:::.impmapControlToFoceiControl(.env, assign = FALSE)
+    .fc <- .impmapControlToFoceiControl(.env, assign = FALSE)
     expect_s3_class(.fc, "foceiControl")
     # IS/EM-only names must not leak into the plain foceiControl
-    for (.n in nlmixr2est:::.impmapIsControlNames) {
+    for (.n in .impmapIsControlNames) {
       expect_null(.fc[[.n]])
     }
     # MAP-relevant focei options are preserved
@@ -77,20 +76,91 @@ nmTest({
     .dat <- nlmixr2data::theo_sd
     # One EM iteration is enough to exercise the MAP + per-subject Hessian.
     .imp <- suppressWarnings(
-      nlmixr2(one.cmt, .dat, "impmap", impmapControl(print = 0L, nIter = 1L)))
+      nlmixr2(one.cmt, .dat, "impmap", impmapControl(print = 0L, nIter = 1L))
+    )
 
     expect_true(inherits(.imp, "nlmixr2FitCore"))
     # The MAP pass stashes each subject's mode + eta Hessian; check the Hessian is
     # present, square, symmetric, and positive-definite for subject 1.
     .env <- .imp$env
-    expect_true(is.matrix(.env$impEtaMode) &&
-                  nrow(.env$impEtaMode) == length(unique(.dat$ID)))
+    expect_true(
+      is.matrix(.env$impEtaMode) &&
+        nrow(.env$impEtaMode) == length(unique(.dat$ID))
+    )
     .H <- .env$impEtaHess
     expect_true(is.list(.H) && length(.H) == length(unique(.dat$ID)))
     .H1 <- .H[[1]]
     expect_true(is.matrix(.H1) && all(dim(.H1) == c(2, 2)))
     expect_equal(.H1, t(.H1), tolerance = 1e-6)
     expect_true(all(eigen(.H1, symmetric = TRUE, only.values = TRUE)$values > 0))
+  })
+
+  test_that("nIter=0 is an E-step-only evaluation (#1091)", {
+    expect_identical(impmapControl(nIter = 0L)$nIter, 0L)
+    expect_error(impmapControl(nIter = -1L), "nIter")
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .dat <- nlmixr2data::theo_sd
+    .ini <- c(tka = 0.45, tcl = 1, tv = 3.45, add.sd = 0.7)
+    .fit0 <- suppressWarnings(
+      nlmixr2(one.cmt, .dat, "impmap", impmapControl(print = 0L, nIter = 0L))
+    )
+    .fit1 <- suppressWarnings(
+      nlmixr2(one.cmt, .dat, "impmap", impmapControl(print = 0L, nIter = 1L))
+    )
+    expect_true(isTRUE(.fit0$env$impEonly))
+    expect_false(isTRUE(.fit1$env$impEonly))
+    expect_equal(.fit0$env$impIter, 0L)
+    expect_equal(.fit0$theta[names(.ini)], .ini)
+    expect_equal(unname(diag(.fit0$omega)), c(0.6, 0.3))
+    expect_true(is.finite(.fit0$env$impObj))
+    # the same first E-step, at the same parameters and seed, as a 1-iteration fit
+    expect_equal(.fit0$env$impObj, .fit1$env$impObjTrace[1])
+    expect_true(any(grepl("E-step only (nIter=0): fixed parameters, etas 0", .fit0$runInfo, fixed = TRUE)))
+
+    .fitE <- suppressWarnings(
+      nlmixr2(.fit1, est = "impmap", control = impmapControl(print = 0L, nIter = 0L))
+    )
+    expect_true(any(grepl(
+      "E-step only (nIter=0): fixed parameters, etas from the last fit",
+      .fitE$runInfo,
+      fixed = TRUE
+    )))
+    expect_equal(.fitE$theta, .fit1$theta)
+
+    for (.est in c("imp", "qrpem")) {
+      .f <- suppressWarnings(
+        nlmixr2(one.cmt, .dat, .est, list(print = 0L, nIter = 0L))
+      )
+      expect_equal(.f$env$impIter, 0L)
+      expect_equal(.f$theta[names(.ini)], .ini)
+    }
+
+    # setOfv() adds the same E-step-only objective to a fit
+    .fitF <- suppressWarnings(
+      nlmixr2(one.cmt, .dat, "focei", foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = ""))
+    )
+    .ref <- suppressWarnings(
+      nlmixr2(.fitF, .dat, "imp", impmapControl(print = 0L, nIter = 0L, covMethod = "", calcTables = FALSE))
+    )
+    suppressWarnings(setOfv(.fitF, "imp"))
+    expect_true("IMP" %in% rownames(.fitF$objDf))
+    expect_identical(getOfvType(.fitF), "IMP")
+    expect_equal(.fitF$objf, .ref$env$impObj)
+    expect_equal(.fitF$objDf["IMP", "OBJF"], .ref$env$impObj)
+    # a second call reuses the row
+    expect_error(suppressWarnings(setOfv(.fitF, "imp")), NA)
   })
 
   test_that("M2: threefry proposal sampler matches N(mode, gamma*H^-1)", {
@@ -112,8 +182,8 @@ nmTest({
     .gamma <- 1.5
     rxode2::rxSetSeed(42)
     .f <- suppressWarnings(
-      nlmixr2(one.cmt, .dat, "impmap",
-              impmapControl(print = 0L, nIter = 1L, isample = 4000L, gamma = .gamma)))
+      nlmixr2(one.cmt, .dat, "impmap", impmapControl(print = 0L, nIter = 1L, isample = 4000L, gamma = .gamma))
+    )
     .e <- .f$env
     expect_identical(.e$impNsample, 4000L)
     expect_equal(.e$impGammaUsed, .gamma)
@@ -149,10 +219,11 @@ nmTest({
     # samples must be bit-identical regardless of thread count or ambient state.
     .run <- function(nthr) {
       rxode2::setRxThreads(nthr)
-      rxode2::rxSetSeed(sample.int(9999L, 1L)); stats::runif(sample.int(50L, 1L))
+      rxode2::rxSetSeed(sample.int(9999L, 1L))
+      stats::runif(sample.int(50L, 1L))
       suppressWarnings(
-        nlmixr2(one.cmt, .dat, "impmap",
-                impmapControl(print = 0L, nIter = 1L, isample = 100L)))$env$impSamples
+        nlmixr2(one.cmt, .dat, "impmap", impmapControl(print = 0L, nIter = 1L, isample = 100L))
+      )$env$impSamples
     }
     .s1 <- .run(1L)
     .s4 <- .run(4L)
@@ -179,8 +250,8 @@ nmTest({
     .gamma <- 2
     rxode2::rxSetSeed(42)
     .f <- suppressWarnings(
-      nlmixr2(one.cmt, .dat, "impmap",
-              impmapControl(print = 0L, nIter = 1L, isample = 6000L, gamma = .gamma)))
+      nlmixr2(one.cmt, .dat, "impmap", impmapControl(print = 0L, nIter = 1L, isample = 6000L, gamma = .gamma))
+    )
     .e <- .f$env
     # E-step outputs present and well-formed
     expect_true(is.numeric(.e$impObj) && is.finite(.e$impObj))
@@ -225,8 +296,7 @@ nmTest({
     .d <- nlmixr2data::theo_sd
     .ff <- suppressWarnings(nlmixr2(mfix, .d, "focei", foceiControl(print = 0L, covMethod = "")))
     rxode2::rxSetSeed(42)
-    .fi <- suppressWarnings(nlmixr2(mfix, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 40L, isample = 300L)))
+    .fi <- suppressWarnings(nlmixr2(mfix, .d, "impmap", impmapControl(print = 0L, nIter = 40L, isample = 300L)))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     expect_equal(fixef(.fi)[c("tka", "tcl")], fixef(.ff)[c("tka", "tcl")], tolerance = 0.05)
     expect_equal(unname(diag(.fi$omega)), unname(diag(.ff$omega)), tolerance = 0.1)
@@ -252,8 +322,7 @@ nmTest({
     .d <- nlmixr2data::theo_sd
     .ff <- suppressWarnings(nlmixr2(mcov, .d, "focei", foceiControl(print = 0L, covMethod = "")))
     rxode2::rxSetSeed(42)
-    .fi <- suppressWarnings(nlmixr2(mcov, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 40L, isample = 300L)))
+    .fi <- suppressWarnings(nlmixr2(mcov, .d, "impmap", impmapControl(print = 0L, nIter = 40L, isample = 300L)))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     # a mu covariate group was actually set up and driven
     expect_true(.fi$env$impMuGroupN >= 1L)
@@ -285,8 +354,7 @@ nmTest({
     .d <- nlmixr2data::theo_sd
     .ff <- suppressWarnings(nlmixr2(mstr, .d, "focei", foceiControl(print = 0L, covMethod = "")))
     rxode2::rxSetSeed(42)
-    .fi <- suppressWarnings(nlmixr2(mstr, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 30L, isample = 300L)))
+    .fi <- suppressWarnings(nlmixr2(mstr, .d, "impmap", impmapControl(print = 0L, nIter = 30L, isample = 300L)))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     # the structural theta tv was actually estimated (moved off its start toward FOCEI)
     expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
@@ -318,8 +386,7 @@ nmTest({
     .d <- nlmixr2data::theo_sd
     .ff <- suppressWarnings(nlmixr2(madd, .d, "focei", foceiControl(print = 0L, covMethod = "")))
     rxode2::rxSetSeed(42)
-    .fi <- suppressWarnings(nlmixr2(madd, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 30L, isample = 300L)))
+    .fi <- suppressWarnings(nlmixr2(madd, .d, "impmap", impmapControl(print = 0L, nIter = 30L, isample = 300L)))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.03)
     expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
@@ -348,11 +415,26 @@ nmTest({
     .d <- nlmixr2data::theo_sd
     .ff <- suppressWarnings(nlmixr2(mcomb, .d, "focei", foceiControl(print = 0L, covMethod = "")))
     rxode2::rxSetSeed(42)
-    .fi <- suppressWarnings(nlmixr2(mcomb, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 30L, isample = 300L)))
+    .fi <- suppressWarnings(nlmixr2(mcomb, .d, "impmap", impmapControl(print = 0L, nIter = 30L, isample = 300L)))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
-    expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
-    expect_equal(unname(fixef(.fi)["prop.sd"]), unname(fixef(.ff)["prop.sd"]), tolerance = 0.02)
+    # add.sd and prop.sd trade off against each other, so pinning each one
+    # ACROSS two different algorithms measures where that trade-off happened to
+    # land, not whether the two agree.  Measured 2026-09-12: impmap is
+    # bit-identical before and after the inner-solver rework in #1044
+    # (add.sd 0.258964, prop.sd 0.153970 both times) while the FOCEI REFERENCE
+    # moved -- add.sd 0.2711 -> 0.2762, prop.sd 0.1510 -> 0.1496, in opposite
+    # directions -- which was enough to tip tolerances that had 11% and 1.5% of
+    # themselves to spare.  The bounds below are sized to the measured
+    # algorithm-to-algorithm spread (6.3% and 2.9%) with room, so a legitimate
+    # change to either method does not read as a failure.
+    #
+    # What this test is FOR is that the general sensitivity path moves both
+    # residual thetas at all; ini() starts them at 0.5 and 0.1, so assert that
+    # directly rather than leaning on the cross-method bounds to imply it.
+    expect_lt(unname(fixef(.fi)["add.sd"]), 0.4) # ini 0.5, converges ~0.26
+    expect_gt(unname(fixef(.fi)["prop.sd"]), 0.125) # ini 0.1, converges ~0.154
+    expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.12)
+    expect_equal(unname(fixef(.fi)["prop.sd"]), unname(fixef(.ff)["prop.sd"]), tolerance = 0.06)
   })
 
   test_that("M6b: an estimated transform-both-sides lambda converges to FOCEI (#949)", {
@@ -381,16 +463,13 @@ nmTest({
     .d <- nlmixr2data::theo_sd
     .ff <- suppressWarnings(nlmixr2(mbc, .d, "focei", foceiControl(print = 0L, covMethod = "")))
     rxode2::rxSetSeed(42)
-    .fi <- suppressWarnings(nlmixr2(mbc, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 30L, isample = 300L)))
+    .fi <- suppressWarnings(nlmixr2(mbc, .d, "impmap", impmapControl(print = 0L, nIter = 30L, isample = 300L)))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     # it MOVED (the historical failure was a fit stuck at the initial estimate) ...
     expect_true(abs(unname(fixef(.fi)["lambda"]) - 0.8) > 0.1)
     # ... and it moved to where FOCEI puts it
-    expect_equal(unname(fixef(.fi)["lambda"]), unname(fixef(.ff)["lambda"]),
-                 tolerance = 0.15)
-    expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]),
-                 tolerance = 0.1)
+    expect_equal(unname(fixef(.fi)["lambda"]), unname(fixef(.ff)["lambda"]), tolerance = 0.15)
+    expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.1)
   })
 
   test_that("M7: multiple endpoints with more structural thetas than etas (pool sized for theta-sens)", {
@@ -419,7 +498,8 @@ nmTest({
       })
     }
     # simulate a 2-endpoint dataset from the model
-    .testSeed(1); rxode2::rxSetSeed(1)
+    .testSeed(1)
+    rxode2::rxSetSeed(1)
     .ev <- rxode2::et(amt = 100, cmt = "depot", id = 1:12)
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "center")
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "effect")
@@ -428,22 +508,28 @@ nmTest({
     .dose$dv <- NA_real_
     names(.dose)[names(.dose) == "CMT"] <- "cmt"
     .obs <- .d[.d$evid == 0, c("id", "time", "CMT", "sim")]
-    .obs$amt <- 0; .obs$evid <- 0
+    .obs$amt <- 0
+    .obs$evid <- 0
     names(.obs)[names(.obs) == "CMT"] <- "cmt"
     names(.obs)[names(.obs) == "sim"] <- "dv"
-    .dat <- rbind(.dose[, c("id", "time", "dv", "cmt", "amt", "evid")],
-                  .obs[, c("id", "time", "dv", "cmt", "amt", "evid")])
+    .dat <- rbind(
+      .dose[, c("id", "time", "dv", "cmt", "amt", "evid")],
+      .obs[, c("id", "time", "dv", "cmt", "amt", "evid")]
+    )
     .dat <- .dat[order(.dat$id, .dat$time, -.dat$evid), ]
     # this ill-conditioned 2-endpoint model (more structural thetas than etas) has a
     # residual sigma sensitive to solve accuracy, so pin sigdig=6 on both fits to
     # compare the methods at a converged tolerance (the sigdig=4 default leaves the
     # FOCEI add.sd ~25% off, which is solve noise, not a method difference).
     rxode2::rxSetSeed(42)
-    .ff <- suppressWarnings(nlmixr2(mpkpd, .dat, "focei",
-                                    foceiControl(print = 0L, covMethod = "", sigdig = 6)))
+    .ff <- suppressWarnings(nlmixr2(mpkpd, .dat, "focei", foceiControl(print = 0L, covMethod = "", sigdig = 6)))
     rxode2::rxSetSeed(42)
-    .fi <- suppressWarnings(nlmixr2(mpkpd, .dat, "impmap",
-                                    impmapControl(print = 0L, nIter = 20L, isample = 300L, sigdig = 6)))
+    .fi <- suppressWarnings(nlmixr2(
+      mpkpd,
+      .dat,
+      "impmap",
+      impmapControl(print = 0L, nIter = 20L, isample = 300L, sigdig = 6)
+    ))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     # This fit runs after a prior parallel FOCEI fit.  Two bugs used to degrade it
     # non-deterministically: the within-fit pool-sizing thread race (fixed by forcing
@@ -459,8 +545,7 @@ nmTest({
     # is a sanity floor; pin gammaRule = "floor" if you want the old >0.9.
     expect_true(min(.neffFrac) > 0.4)
     # PD structural thetas (in the higher-state theta-sensitivity model) match FOCEI
-    expect_equal(fixef(.fi)[c("tec50", "tkout", "te0")],
-                 fixef(.ff)[c("tec50", "tkout", "te0")], tolerance = 0.05)
+    expect_equal(fixef(.fi)[c("tec50", "tkout", "te0")], fixef(.ff)[c("tec50", "tkout", "te0")], tolerance = 0.05)
     # both endpoints' residual-error sigmas match FOCEI (the E-step is seeded from
     # impmapControl(impSeed=) so the fit is reproducible and thread-count independent)
     expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
@@ -497,7 +582,8 @@ nmTest({
     }
     # simulate from the estimation model, so each endpoint carries residual error on
     # its OWN (log / additive) scale -- that is what makes the transforms differ
-    .testSeed(1); rxode2::rxSetSeed(1)
+    .testSeed(1)
+    rxode2::rxSetSeed(1)
     .ev <- rxode2::et(amt = 100, cmt = "depot", id = 1:12)
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "center")
     .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "effect")
@@ -506,19 +592,24 @@ nmTest({
     .dose$dv <- NA_real_
     names(.dose)[names(.dose) == "CMT"] <- "cmt"
     .obs <- .d[.d$evid == 0, c("id", "time", "CMT", "sim")]
-    .obs$amt <- 0; .obs$evid <- 0
+    .obs$amt <- 0
+    .obs$evid <- 0
     names(.obs)[names(.obs) == "CMT"] <- "cmt"
     names(.obs)[names(.obs) == "sim"] <- "dv"
-    .dat <- rbind(.dose[, c("id", "time", "dv", "cmt", "amt", "evid")],
-                  .obs[, c("id", "time", "dv", "cmt", "amt", "evid")])
+    .dat <- rbind(
+      .dose[, c("id", "time", "dv", "cmt", "amt", "evid")],
+      .obs[, c("id", "time", "dv", "cmt", "amt", "evid")]
+    )
     .dat <- .dat[order(.dat$id, .dat$time, -.dat$evid), ]
     rxode2::rxSetSeed(42)
-    .ff <- suppressWarnings(nlmixr2(m, .dat, "focei",
-                                    foceiControl(print = 0L, covMethod = "", sigdig = 6)))
+    .ff <- suppressWarnings(nlmixr2(m, .dat, "focei", foceiControl(print = 0L, covMethod = "", sigdig = 6)))
     rxode2::rxSetSeed(42)
-    .fi <- suppressWarnings(nlmixr2(m, .dat, "impmap",
-                                    impmapControl(print = 0L, covMethod = "", nIter = 20L,
-                                                  isample = 300L, sigdig = 6)))
+    .fi <- suppressWarnings(nlmixr2(
+      m,
+      .dat,
+      "impmap",
+      impmapControl(print = 0L, covMethod = "", nIter = 20L, isample = 300L, sigdig = 6)
+    ))
     expect_true(all(is.finite(fixef(.fi))))
     # every non-mu theta goes through the M-step sensitivity Newton step, and both
     # residual sigmas are per-endpoint -- so a transform read off the wrong endpoint
@@ -542,9 +633,12 @@ nmTest({
     }
     .d <- nlmixr2data::theo_sd
     .ff <- suppressWarnings(nlmixr2(one.cmt, .d, "focei", foceiControl(print = 0L, covMethod = "")))
-    .fi <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 100L, isample = 300L,
-                                                  nConvWindow = 10L)))
+    .fi <- suppressWarnings(nlmixr2(
+      one.cmt,
+      .d,
+      "impmap",
+      impmapControl(print = 0L, nIter = 100L, isample = 300L, nConvWindow = 10L)
+    ))
     .E <- .fi$env
     # the windowed criterion should trip well before the nIter cap on this
     # well-behaved (near-Gaussian) problem
@@ -560,8 +654,7 @@ nmTest({
     # this fit runs the default "target" rule, which adjusts gamma both ways until
     # xi approximates iaccept -- so assert THAT instead.  The floor behaviour is
     # covered by the gammaRule test in test-imp-xi-gamma.R.
-    expect_equal(unname(tail(.E$impXiTrace, 1)),
-                 .E$impmapControl$iaccept, tolerance = 0.1)
+    expect_equal(unname(tail(.E$impXiTrace, 1)), .E$impmapControl$iaccept, tolerance = 0.1)
     # and the early-stopped fit still matches FOCEI
     expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
     expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
@@ -583,12 +676,10 @@ nmTest({
     }
     .d <- nlmixr2data::theo_sd
     # covMethod="" turns the covariance step off: no covariance stash
-    .f0 <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 1L, covMethod = "")))
+    .f0 <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap", impmapControl(print = 0L, nIter = 1L, covMethod = "")))
     expect_null(.f0$env$impSe)
     # default covMethod="imp": the full (theta + Omega) MC covariance
-    .fi <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 40L, isample = 500L)))
+    .fi <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap", impmapControl(print = 0L, nIter = 40L, isample = 500L)))
     .se <- as.numeric(.fi$env$impSe)
     .nth <- .fi$env$impCovThetaN
     expect_true(all(is.finite(.se) & .se > 0))
@@ -600,11 +691,12 @@ nmTest({
     expect_false(is.null(.fi$cov))
     expect_true(all(is.finite(.fi$parFixedDf[["SE"]][seq_len(.nth)])))
     # theta and Omega rows/columns of vcov() are both labelled
-    expect_true(all(c("tka", "tcl", "tv", "add.sd", "om.eta.ka", "om.eta.cl") %in%
-                      dimnames(.fi$cov)[[1]]))
+    expect_true(all(
+      c("tka", "tcl", "tv", "add.sd", "om.eta.ka", "om.eta.cl") %in%
+        dimnames(.fi$cov)[[1]]
+    ))
     # theta SEs match the Hessian-based FOCEI covariance (|r|)
-    .ff <- suppressWarnings(nlmixr2(one.cmt, .d, "focei",
-                                    foceiControl(print = 0L, covMethod = "r")))
+    .ff <- suppressWarnings(nlmixr2(one.cmt, .d, "focei", foceiControl(print = 0L, covMethod = "r")))
     skip_if(is.null(.ff$cov), "FOCEI |r| covariance unavailable")
     .fse <- sqrt(diag(.ff$cov))[seq_len(.nth)]
     expect_equal(.se[seq_len(.nth)], unname(.fse), tolerance = 0.1)
@@ -631,8 +723,7 @@ nmTest({
     .d$DV[.blq] <- .loq
     expect_true(sum(.blq) > 5) # the censored branch is actually exercised
     .ff <- suppressWarnings(nlmixr2(m, .d, "focei", foceiControl(print = 0L, covMethod = "")))
-    .fi <- suppressWarnings(nlmixr2(m, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 40L, isample = 500L)))
+    .fi <- suppressWarnings(nlmixr2(m, .d, "impmap", impmapControl(print = 0L, nIter = 40L, isample = 500L)))
     # the residual sigma is the parameter most sensitive to censoring; the non-mu
     # structural theta goes through the same M-step gradient
     expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
@@ -642,17 +733,24 @@ nmTest({
   test_that("Mixture: recovers the sub-population proportion and the two clearance groups", {
     # two well-separated clearance groups (CL ~ 3 and ~ 9) with true proportion 0.6
     .mkg <- function(cl0, ids) {
-      ka <- 1.5; v <- 8
-      do.call(rbind, lapply(ids, function(id) {
-        cli <- cl0 * exp(stats::rnorm(1, 0, 0.25))
-        tt <- seq(0.25, 24, by = 2)
-        cp <- (100 * ka / (v * (ka - cli / v))) * (exp(-cli / v * tt) - exp(-ka * tt))
-        cp <- pmax(cp, 1e-3) * exp(stats::rnorm(length(tt), 0, 0.12))
-        rbind(data.frame(id = id, time = 0, dv = NA_real_, amt = 100, evid = 1, cmt = "depot"),
-              data.frame(id = id, time = tt, dv = cp, amt = 0, evid = 0, cmt = "cen"))
-      }))
+      ka <- 1.5
+      v <- 8
+      do.call(
+        rbind,
+        lapply(ids, function(id) {
+          cli <- cl0 * exp(stats::rnorm(1, 0, 0.25))
+          tt <- seq(0.25, 24, by = 2)
+          cp <- (100 * ka / (v * (ka - cli / v))) * (exp(-cli / v * tt) - exp(-ka * tt))
+          cp <- pmax(cp, 1e-3) * exp(stats::rnorm(length(tt), 0, 0.12))
+          rbind(
+            data.frame(id = id, time = 0, dv = NA_real_, amt = 100, evid = 1, cmt = "depot"),
+            data.frame(id = id, time = tt, dv = cp, amt = 0, evid = 0, cmt = "cen")
+          )
+        })
+      )
     }
-    .testSeed(11); rxode2::rxSetSeed(11)
+    .testSeed(11)
+    rxode2::rxSetSeed(11)
     .d <- rbind(.mkg(3.0, 1:30), .mkg(9.0, 31:50))
     .d <- .d[order(.d$id, .d$time, -.d$evid), ]
     m <- function() {
@@ -672,8 +770,7 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    .fi <- suppressWarnings(nlmixr2(m, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 20L, isample = 200L)))
+    .fi <- suppressWarnings(nlmixr2(m, .d, "impmap", impmapControl(print = 0L, nIter = 20L, isample = 200L)))
     .cl1 <- exp(unname(fixef(.fi)["tcl1"]))
     .cl2 <- exp(unname(fixef(.fi)["tcl2"]))
     .p1 <- unname(fixef(.fi)["p1"])
@@ -709,8 +806,7 @@ nmTest({
     .d <- nlmixr2data::theo_md
     .d$occ <- 1L
     .d$occ[.d$TIME >= 144] <- 2L
-    .fi <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 20L, isample = 200L)))
+    .fi <- suppressWarnings(nlmixr2(one.cmt, .d, "impmap", impmapControl(print = 0L, nIter = 20L, isample = 200L)))
     # the fit completes and reports the per-occasion IOV estimates
     expect_true("iov.cl" %in% names(.fi))
     expect_true(is.finite(.fi$objDf$OBJF[1]))
@@ -752,8 +848,7 @@ nmTest({
     }
     .d <- nlmixr2data::theo_sd
     .ff <- suppressWarnings(nlmixr2(mNorm, .d, "focei", foceiControl(print = 0L, covMethod = "")))
-    .fi <- suppressWarnings(nlmixr2(m, .d, "impmap",
-                                    impmapControl(print = 0L, nIter = 30L, isample = 300L)))
+    .fi <- suppressWarnings(nlmixr2(m, .d, "impmap", impmapControl(print = 0L, nIter = 30L, isample = 300L)))
     expect_true(all(is.finite(fixef(.fi))))
     # the residual sigma and structural non-mu theta go through the M-step gradient
     expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
@@ -774,8 +869,12 @@ nmTest({
         linCmt() ~ add(add.sd) + dnorm()
       })
     }
-    .fi <- suppressWarnings(nlmixr2(m, nlmixr2data::theo_sd, "impmap",
-                                    impmapControl(print = 0L, nIter = 20L, isample = 200L)))
+    .fi <- suppressWarnings(nlmixr2(
+      m,
+      nlmixr2data::theo_sd,
+      "impmap",
+      impmapControl(print = 0L, nIter = 20L, isample = 200L)
+    ))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
     expect_true("CWRES" %in% names(.fi))
     expect_true(all(is.finite(fixef(.fi))))
@@ -794,11 +893,10 @@ nmTest({
     }
     .d <- nlmixr2data::theo_sd
     .ff <- suppressWarnings(nlmixr2(m, .d, "focei", foceiControl(print = 0L, covMethod = "")))
-    .fi <- suppressWarnings(nlmixr2(m, .d, "imp",
-                                    impControl(print = 0L, nIter = 40L, isample = 500L)))
+    .fi <- suppressWarnings(nlmixr2(m, .d, "imp", impControl(print = 0L, nIter = 40L, isample = 500L)))
     expect_true(inherits(.fi, "nlmixr2FitCore"))
-    expect_equal(.fi$env$impmapControl$mapIter, 0L)   # imp == no MAP re-centering
-    expect_equal(.fi$env$method, "imp")               # print header labels the method
+    expect_equal(.fi$env$impmapControl$mapIter, 0L) # imp == no MAP re-centering
+    expect_equal(.fi$env$method, "imp") # print header labels the method
     expect_true(all(is.finite(fixef(.fi))))
     # the non-mu structural theta + residual sigma move off their initial values and
     # match FOCEI (this is the path that needs the theta-sensitivity model built)
@@ -830,8 +928,12 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    .fi <- suppressWarnings(nlmixr2(m, nlmixr2data::theo_sd, "impmap",
-                                    impmapControl(print = 0L, nIter = 20L, isample = 200L)))
+    .fi <- suppressWarnings(nlmixr2(
+      m,
+      nlmixr2data::theo_sd,
+      "impmap",
+      impmapControl(print = 0L, nIter = 20L, isample = 200L)
+    ))
     # the fixed theta is held exactly
     expect_equal(unname(fixef(.fi)["tv"]), 3.45)
     expect_true(.fi$iniDf[.fi$iniDf$name == "tv", "fix"])
@@ -847,8 +949,12 @@ nmTest({
       model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv); linCmt() ~ add(add.sd) })
     }
     .n <- 8L
-    .fi <- suppressWarnings(nlmixr2(one.cmt, nlmixr2data::theo_sd, "impmap",
-                                    impmapControl(print = 0L, nIter = .n, isample = 150L)))
+    .fi <- suppressWarnings(nlmixr2(
+      one.cmt,
+      nlmixr2data::theo_sd,
+      "impmap",
+      impmapControl(print = 0L, nIter = .n, isample = 150L)
+    ))
     .ph <- .fi$parHist
     expect_true(is.data.frame(.ph))
     # one row per EM iteration, standard iter/objf columns + the estimated params
@@ -865,5 +971,37 @@ nmTest({
     # the print header identifies the method (not FOCEi's outer-optimizer label)
     expect_equal(.fi$env$method, "impmap")
     expect_equal(.fi$env$extra, "")
+  })
+
+  test_that("the imp M-step's 1e-6 omega floor is reported (issue 1140)", {
+    .mod <- function() {
+      ini({
+        tka <- log(1.5)
+        tv <- log(31.5)
+        tke <- log(0.08)
+        add.sd <- 0.7
+        eta.ka ~ fix(1e-8)
+        eta.ke ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        v <- exp(tv)
+        ke <- exp(tke + eta.ke)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - ke * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .f <- suppressWarnings(suppressMessages(nlmixr2(
+      .mod,
+      nlmixr2data::theo_sd,
+      "impmap",
+      impmapControl(print = 0L, nIter = 3L, isample = 100L, covMethod = "", calcTables = FALSE)
+    )))
+    # the fixed 1e-8 is installed (and reported) as the floor, which is now said
+    expect_equal(unname(.f$omega["eta.ka", "eta.ka"]), 1e-6)
+    expect_true(any(.f$runInfo == "omega variance floored at 1e-6: eta.ka"))
+    expect_false(any(grepl("eta.ke", .f$runInfo[grepl("1e-6", .f$runInfo, fixed = TRUE)], fixed = TRUE)))
   })
 })

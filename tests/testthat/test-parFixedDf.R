@@ -21,17 +21,13 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    fit <- nlmixr(one.cmt, theo_sd, est="focei",
-                  control=list(print=0))
+    fit <- nlmixr(one.cmt, theo_sd, est = "focei", control = list(print = 0))
 
-
-    expect_equal(fit$parFixedDf[["BSV(CV% or SD)"]][1],
-                 sqrt(fit$omega[1, 1]))
+    expect_equal(fit$parFixedDf[["BSV(CV% or SD)"]][1], sqrt(fit$omega[1, 1]))
 
     # parFixed prints the SD to the foceiControl() default `sigdig`
     # significant figures (now 4); parFixedDf keeps full precision.
-    expect_equal(as.numeric(fit$parFixed[["BSV(CV% or SD)"]][1]),
-                 signif(sqrt(fit$omega[1, 1]), foceiControl()$sigdig))
+    expect_equal(as.numeric(fit$parFixed[["BSV(CV% or SD)"]][1]), signif(sqrt(fit$omega[1, 1]), foceiControl()$sigdig))
   })
 
   test_that(".updateParFixedRefreshSeFromCov updates parFixedDf and the formatted parFixed (#816)", {
@@ -57,14 +53,14 @@ nmTest({
       "CI Lower" = c(exp(1 - qnorm(0.975) * 0.1), NA_real_, NA_real_),
       "CI Upper" = c(exp(1 + qnorm(0.975) * 0.1), NA_real_, NA_real_),
       check.names = FALSE,
-      row.names = c("tcl", "tfix", "add.sd"))
+      row.names = c("tcl", "tfix", "add.sd")
+    )
     env <- new.env(parent = emptyenv())
     env$ui <- rxode2::assertRxUi(.uiMod816)
     env$parFixedDf <- .pf
     env$parFixed <- .updateParFixedApplySig(.pf, 3L, 0.95, "tfix")
     class(env$parFixed) <- c("nlmixr2ParFixed", "data.frame")
-    .cov <- matrix(c(0.04, 0, 0, 0.0025), 2, 2,
-                   dimnames = list(c("tcl", "add.sd"), c("tcl", "add.sd")))
+    .cov <- matrix(c(0.04, 0, 0, 0.0025), 2, 2, dimnames = list(c("tcl", "add.sd"), c("tcl", "add.sd")))
 
     .updateParFixedRefreshSeFromCov(env, .cov, onlyMissing = TRUE)
 
@@ -73,8 +69,7 @@ nmTest({
     expect_equal(unname(env$parFixedDf["add.sd", "%RSE"]), 0.05 / 0.7 * 100)
     expect_equal(unname(env$parFixedDf["tcl", "SE"]), 0.1)
     # CI recomputed on the natural scale (Back-transformed == Estimate)
-    expect_equal(unname(env$parFixedDf["add.sd", "CI Lower"]),
-                 0.7 - qnorm(0.975) * 0.05)
+    expect_equal(unname(env$parFixedDf["add.sd", "CI Lower"]), 0.7 - qnorm(0.975) * 0.05)
     # formatted table regenerated; FIXED decoration preserved
     expect_equal(as.numeric(env$parFixed["add.sd", "SE"]), 0.05)
     expect_equal(env$parFixed["tfix", "SE"], "FIXED")
@@ -84,10 +79,8 @@ nmTest({
     .updateParFixedRefreshSeFromCov(env, .cov)
     expect_equal(unname(env$parFixedDf["tcl", "SE"]), 0.2)
     expect_equal(as.numeric(env$parFixed["tcl", "SE"]), 0.2)
-    expect_equal(unname(env$parFixedDf["tcl", "CI Lower"]),
-                 exp(1 - qnorm(0.975) * 0.2))
-    expect_equal(unname(env$parFixedDf["tcl", "CI Upper"]),
-                 exp(1 + qnorm(0.975) * 0.2))
+    expect_equal(unname(env$parFixedDf["tcl", "CI Lower"]), exp(1 - qnorm(0.975) * 0.2))
+    expect_equal(unname(env$parFixedDf["tcl", "CI Upper"]), exp(1 + qnorm(0.975) * 0.2))
 
     # a denormal (uninitialized-memory signature) counts as missing
     env$parFixedDf["add.sd", "SE"] <- 9.39e-323
@@ -102,10 +95,8 @@ nmTest({
     env$parFixed <- .updateParFixedApplySig(.pf, 3L, 0.8, "tfix")
     class(env$parFixed) <- c("nlmixr2ParFixed", "data.frame")
     .updateParFixedRefreshSeFromCov(env, .cov)
-    expect_equal(unname(env$parFixedDf["tcl", "CI Lower"]),
-                 exp(1 - qnorm(0.9) * 0.2))
-    expect_equal(unname(env$parFixedDf["tcl", "CI Upper"]),
-                 exp(1 + qnorm(0.9) * 0.2))
+    expect_equal(unname(env$parFixedDf["tcl", "CI Lower"]), exp(1 - qnorm(0.9) * 0.2))
+    expect_equal(unname(env$parFixedDf["tcl", "CI Upper"]), exp(1 + qnorm(0.9) * 0.2))
     expect_true("Back-transformed(80%CI)" %in% names(env$parFixed))
 
     # a control without a usable ci falls back to the ui / the 0.95 default
@@ -114,8 +105,7 @@ nmTest({
     env$parFixed <- .updateParFixedApplySig(.pf, 3L, 0.95, "tfix")
     class(env$parFixed) <- c("nlmixr2ParFixed", "data.frame")
     .updateParFixedRefreshSeFromCov(env, .cov)
-    expect_equal(unname(env$parFixedDf["tcl", "CI Lower"]),
-                 exp(1 - qnorm(0.975) * 0.2))
+    expect_equal(unname(env$parFixedDf["tcl", "CI Lower"]), exp(1 - qnorm(0.975) * 0.2))
     expect_true("Back-transformed(95%CI)" %in% names(env$parFixed))
   })
 
@@ -153,8 +143,7 @@ nmTest({
     }
     uiB <- rxode2::assertRxUi(boundMod)
     ## expit() bounded parameter back-transforms with its bounds
-    expect_equal(.updateParFixedBackTransformFixed(uiB, "tf", 0.5),
-                 rxode2::expit(0.5))
+    expect_equal(.updateParFixedBackTransformFixed(uiB, "tf", 0.5), rxode2::expit(0.5))
   })
 
   ## End-to-end: a fixed mu-referenced log parameter reports exp(value), not the
@@ -173,11 +162,13 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    fit <- nlmixr(fixMod, theo_sd, est = "focei",
-                  control = foceiControl(print = 0L, maxOuterIterations = 0L,
-                                         maxInnerIterations = 0L, calcTables = FALSE))
-    expect_equal(fit$parFixedDf["tcl", "Back-transformed"], exp(1),
-                 tolerance = 1e-6)
+    fit <- nlmixr(
+      fixMod,
+      theo_sd,
+      est = "focei",
+      control = foceiControl(print = 0L, maxOuterIterations = 0L, maxInnerIterations = 0L, calcTables = FALSE)
+    )
+    expect_equal(fit$parFixedDf["tcl", "Back-transformed"], exp(1), tolerance = 1e-6)
     expect_equal(fit$parFixedDf["tcl", "Estimate"], 1, tolerance = 1e-6)
   })
 })

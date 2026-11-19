@@ -65,6 +65,7 @@ nlmixr2Est.fsaem <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'fsaem'",
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("fsaem"), .var.name=.ui$modelName)
+  .saemAssertEtaPhi(.ui)
   rxode2::warnRxBounded(.ui, " which are ignored in 'fsaem'", .var.name=.ui$modelName)
   if (length(.ui$mixProbs) > 0) {
     message("mixture SAEM computation scales with the number of sub-populations")

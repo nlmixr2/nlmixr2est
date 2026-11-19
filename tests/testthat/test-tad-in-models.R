@@ -30,15 +30,15 @@ nmTest({
   }
   ## fit the model
   d <- theo_md |>
-    dplyr::mutate(EVID=ifelse(EVID == 0, 0L, 7L))
+    dplyr::mutate(EVID = ifelse(EVID == 0, 0L, 7L))
 
   test_that("tad() in models works with focei", {
     skip_on_ci()
-    expect_error(.nlmixr(my.model.pk, d, est="focei", control=foceiControl(print=0L)), NA)
+    expect_error(.nlmixr(my.model.pk, d, est = "focei", control = foceiControl(print = 0L)), NA)
   })
 
   test_that("tad() in models works with saem", {
     skip_on_ci()
-    expect_error(.nlmixr(my.model.pk, d, est="saem", control=saemControl(print=0L)), NA)
+    expect_error(.nlmixr(my.model.pk, d, est = "saem", control = saemControl(print = 0L)), NA)
   })
 })
