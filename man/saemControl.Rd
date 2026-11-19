@@ -80,7 +80,8 @@ saemControl(
   fastMode = c("map", "chainMean"),
   fastHRefresh = 1L,
   nRetry = 10L,
-  ...
+  ...,
+  corWarn = 0.95
 )
 }
 \arguments{
@@ -694,6 +695,10 @@ f-SAEM IMH proposal is re-drawn when it lands outside the parameter's
 bounds before being clamped to the violated boundary.  Default 10.}
 
 \item{...}{Other arguments to control SAEM.}
+
+\item{corWarn}{warn when two estimates' correlation is at least this in
+absolute value after the covariance step; \code{NA} or \code{Inf} turns
+the warning off.}
 }
 \value{
 List of options to be used in \code{\link{nlmixr2}} fit for

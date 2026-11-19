@@ -2023,6 +2023,11 @@ public:
                                  _["unfroze"] = ueRevisitUnfroze,
                                  _["froze"] = ueRevisitFroze);
   }
+  // 0-based phi columns of the shared-eta component thetas (#1296)
+  uvec get_mixOwnPhi() {
+    return i0(mixOwn0);
+  }
+
   mat get_HaSa() {
     return HaSa;
   }
@@ -2633,6 +2638,10 @@ public:
       priorWeights.zeros(N, nMix);
       mixProbMethod = x.containsElementNamed("mixProbMethod") ? as<int>(x["mixProbMethod"]) : 0;
       pasMix = x.containsElementNamed("pasMix") ? as<vec>(x["pasMix"]) : pas;
+      // zero gain over the SA covariance phase, like pas/pash (#1297)
+      if (pasMix.n_elem < pas.n_elem) {
+        pasMix = join_cols(pasMix, zeros<vec>(pas.n_elem - pasMix.n_elem));
+      }
       mixProbPriorN = x.containsElementNamed("mixProbPriorN") ? as<double>(x["mixProbPriorN"]) : 0.0;
       mixSampleMethod = x.containsElementNamed("mixSampleMethod") ? as<int>(x["mixSampleMethod"]) : 0;
     } else {
@@ -2668,6 +2677,8 @@ public:
     statphi11 = as<mat>(x["statphi11"]);
     statphi12 = as<mat>(x["statphi12"]);
     omegaShareSubpop = x.containsElementNamed("omegaShareSubpop") ? as<uvec>(x["omegaShareSubpop"]) : uvec();
+    mixShiftComp = x.containsElementNamed("mixShiftComp") ? as<ivec>(x["mixShiftComp"]) : ivec();
+    mixShiftEta = x.containsElementNamed("mixShiftEta") ? as<ivec>(x["mixShiftEta"]) : ivec();
     omegaPool = x.containsElementNamed("omegaPool") ? as<uvec>(x["omegaPool"]) : uvec();
     omegaPoolMean = x.containsElementNamed("omegaPoolMean") ? as<int>(x["omegaPoolMean"]) : 0;
     _buildLambdaCol1 = true;
@@ -3111,6 +3122,89 @@ public:
     vecbres = bres(ix_endpnt);
   }
 
+  // Resolve the shared-eta component thetas (#1296) to local indices.  Only the
+  // per-component ("parallel") sampler with an intercept-only phi0 column whose
+  // partner is a phi1 column qualifies; everything else keeps the phi0 search.
+  void mixShiftResolve() {
+    std::vector<unsigned int> own0, comp, eta1, free0, lam0;
+    bool use = nMix > 1 && mixSampleMethod == 0 && (int)mixShiftComp.n_elem == nphi &&
+      (int)mixShiftEta.n_elem == nphi;
+    for (int c0 = 0; c0 < nphi0; c0++) {
+      bool owned = false;
+      if (use) {
+        int p = (int)i0(c0);
+        int j = mixShiftComp(p), e = mixShiftEta(p) - 1;
+        uvec e1 = find(i1 == (unsigned int)std::max(e, 0));
+        uvec l0 = find(LCOV0.col(c0) == 1);
+        // a held (fixed) theta keeps its value, so it keeps the phi0 path
+        bool fixed0 = l0.n_elem == 1 && any(fixedIx0 == l0(0));
+        if (j >= 1 && j <= nMix && e >= 0 && e1.n_elem == 1 &&
+            l0.n_elem == 1 && !fixed0) {
+          owned = true;
+          own0.push_back((unsigned int)c0);
+          comp.push_back((unsigned int)(j - 1));
+          eta1.push_back(e1(0));
+          lam0.push_back(l0(0));
+        }
+      }
+      if (!owned && !any(holdIx0 == (uword)c0)) free0.push_back((unsigned int)c0);
+    }
+    mixOwn0 = conv_to<uvec>::from(own0);
+    mixOwnComp = conv_to<uvec>::from(comp);
+    mixOwnEta1 = conv_to<uvec>::from(eta1);
+    mixFree0 = conv_to<uvec>::from(free0);
+    mixOwnLam0 = conv_to<uvec>::from(lam0);
+    mixOwnTheta.set_size(mixOwn0.n_elem);
+    // the initial phiM draws carry the phi0 search variance; an owned column is
+    // never resampled, so start it at the population value
+    for (unsigned int o = 0; o < mixOwn0.n_elem; o++) {
+      unsigned int c0 = mixOwn0(o);
+      phiM.col(i0(c0)) = repmat(mprior_phi0.col(c0), nmc, 1);
+    }
+  }
+
+  // Shared-eta mixture (#1296): component j's own theta enters as theta_j + eta,
+  // so move gain * the eta's weighted mean in component j's chain into theta_j
+  // and shift those etas back.  Every prediction is unchanged; this is the M-step
+  // mu-referencing gives a split eta, and keeps eta mean-zero per component.
+  // The theta column moves in every chain (only component j reads it), and the
+  // M-step takes the theta from mixOwnTheta, so state and estimate agree.
+  void mixShiftRecenter(double gain) {
+    for (unsigned int o = 0; o < mixOwn0.n_elem; o++) {
+      unsigned int j = mixOwnComp(o);
+      unsigned int col0 = i0(mixOwn0(o)), colE = i1(mixOwnEta1(o));
+      // regress solves every subject in chain 0 under its own component
+      mat &ch = phiM_mix(mixProbRegress ? 0 : j);
+      // the mean shift that maximizes the eta prior, Omega's correlations
+      // included: (Omega^-1 dbar)_e / (Omega^-1)_ee
+      double sw = 0.0;
+      rowvec dbar(nphi1, fill::zeros);
+      for (int row = 0; row < N * nmc; row++) {
+        double w = mixWeights(row % N, j);
+        if (w <= 0.0) continue;
+        sw += w;
+        uvec r1(1); r1(0) = (uword)row;
+        dbar += w * (ch.submat(r1, i1) - mprior_phi1.row(row % N));
+      }
+      unsigned int e = mixOwnEta1(o);
+      double m = (sw > 0.0 && IGamma2_phi1(e, e) > 0.0) ?
+        gain * dot(IGamma2_phi1.row(e), dbar / sw) / IGamma2_phi1(e, e) : 0.0;
+      if (!std::isfinite(m)) m = 0.0;
+      for (unsigned int jj = 0; jj < (unsigned int)nMix; jj++) {
+        mat &cj = phiM_mix(jj);
+        if (mixProbRegress || jj == j) {
+          for (int row = 0; row < N * nmc; row++) {
+            // in regress, only component j's subjects carry theta_j + eta
+            if (mixProbRegress && mixWeights(row % N, j) <= 0.0) continue;
+            cj(row, colE) -= m;
+          }
+        }
+        cj.col(col0) += m;
+      }
+      mixOwnTheta(o) = mprior_phi0(0, mixOwn0(o)) + m;
+    }
+  }
+
   void saem_fit() {
     _seedLayout.nu[0] = (uint64_t)nu(0);
     _seedLayout.nu[1] = (uint64_t)nu(1);
@@ -3127,6 +3221,7 @@ public:
       Rcpp::warning("random draws exceed the seed range; some seeds repeat");
     }
     nmSeqSeedStart(saemSeed, seedReserved);
+    mixShiftResolve();
     double double_xmin = 1.0e-200; //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
     _warnAtolRtol = false;
@@ -3272,11 +3367,12 @@ public:
       //    MCMC
       mcmcphi mphi1, mphi0;
       set_mcmcphi(mphi1, i1, nphi1, Gamma2_phi1, IGamma2_phi1, mprior_phi1);
-      // a fix()ed phi0 theta is a constant: only the free columns are sampled
-      mphi0.nphi = (int)free0.n_elem;
+      // fix()ed phi0 thetas and shared-eta component thetas are not sampled
+      mphi0.nphi = (int)mixFree0.n_elem;
       if (mphi0.nphi > 0) {
-        set_mcmcphi(mphi0, i0(free0), mphi0.nphi, Gamma2_phi0.submat(free0, free0),
-                    IGamma2_phi0.submat(free0, free0), mprior_phi0.cols(free0));
+        set_mcmcphi(mphi0, i0(mixFree0), mphi0.nphi,
+                    Gamma2_phi0.submat(mixFree0, mixFree0),
+                    IGamma2_phi0.submat(mixFree0, mixFree0), mprior_phi0.cols(mixFree0));
       }
       mphi1.block = 0;
       mphi0.block = 1;
@@ -3759,6 +3855,7 @@ public:
         }
         }
 
+        if (mixOwn0.n_elem > 0) mixShiftRecenter(pas(kiter));
         if (DEBUG > 0) Rcout << "mcmc successful (mixture)\n";
 
         mat phiM_weighted(N * nmc, nphi, fill::zeros);
@@ -3859,6 +3956,23 @@ public:
           vec d1_logsigma2(nResidEp);
           fillResidLogSigma2(k, resy, d1_logsigma2, d2logk);
           vec d1logk = join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
+          // a shared-eta component theta is the mean of its eta over the
+          // component's subjects, so its score is the weighted eta score
+          for (unsigned int o = 0; o < mixOwn0.n_elem; o++) {
+            unsigned int j = mixOwnComp(o), e = mixOwnEta1(o);
+            unsigned int l0 = nlambda1 + mixOwnLam0(o);
+            double sc = 0.0, de = 0.0;
+            for (int i = 0; i < N; i++) {
+              double w = mixWeights(i, j);
+              if (w <= 0.0) continue;
+              rowvec d = phi1_mix(j).row(i + k * N) - mprior_phi1.row(i);
+              sc += w * dot(IGamma2_phi1.row(e), d);
+              de += w * d(e);
+            }
+            d1logk(l0) = sc;
+            d2logk(l0, nlambda + e) = -de / gamma2_phi1(e);
+            d2logk(nlambda + e, l0) = -de / gamma2_phi1(e);
+          }
           D1 = D1 + d1logk;
           D11 = D11 + d1logk * d1logk.t();
 
@@ -4218,6 +4332,11 @@ public:
         Plambda0=inv_sympd(CGamma20)*sum((D1Gamma20%(COV0.t()*statphi01)),1);
         if (fixedIx0.n_elem>0) {
           Plambda0(fixedIx0) = MCOV0(jcov0(fixedIx0));
+        }
+        // the shared-eta component thetas follow their recentering exactly
+        for (unsigned int o = 0; o < mixOwn0.n_elem; o++) {
+          Plambda0(mixOwnLam0(o)) = mixOwnTheta(o);
+          statphi01.col(mixOwn0(o)).fill(mixOwnTheta(o));
         }
         MCOV0(jcov0)=Plambda0;
       }
@@ -5065,6 +5184,30 @@ public:
         unsigned int nl1 = CGamma21.n_rows, nl0 = CGamma20.n_rows;
         if (nl1 > 0) DDa.submat(0, 0, nl1 - 1, nl1 - 1) += CGamma21;
         if (nl0 > 0) DDa.submat(nl1, nl1, nl1 + nl0 - 1, nl1 + nl0 - 1) += CGamma20;
+        // a shared-eta component theta's information is its eta's, over the
+        // component's (weighted) subjects, not the phi0 search variance's
+        for (unsigned int o = 0; o < mixOwn0.n_elem; o++) {
+          unsigned int l0 = nl1 + mixOwnLam0(o), e = mixOwnEta1(o);
+          const vec w = mixWeights.col(mixOwnComp(o));
+          DDa(l0, l0) += accu(w) * IGamma2_phi1(e, e) - CGamma20(mixOwnLam0(o), mixOwnLam0(o));
+          // cross-information with the mu-referenced thetas, through Omega's
+          // correlations with the shared eta
+          for (unsigned int l = 0; l < nl1; l++) {
+            uvec c = find(LCOV1.row(l) == 1, 1);
+            if (c.n_elem == 0) continue;
+            double x = IGamma2_phi1(e, c(0)) * dot(w, COV1.col(l));
+            DDa(l0, l) += x;
+            DDa(l, l0) += x;
+          }
+          // ... and with the same component's other shared-eta thetas
+          for (unsigned int o2 = o + 1; o2 < mixOwn0.n_elem; o2++) {
+            if (mixOwnComp(o2) != mixOwnComp(o)) continue;
+            unsigned int l2 = nl1 + mixOwnLam0(o2);
+            double x = accu(w) * IGamma2_phi1(e, mixOwnEta1(o2));
+            DDa(l0, l2) += x;
+            DDa(l2, l0) += x;
+          }
+        }
       }
       L=L+pash(kiter)*(D1/nmc-L);
       Ha=Ha+pash(kiter)*(DDa- Ha);
@@ -5473,6 +5616,13 @@ private:
   field<vec> limit_mix;
   field<vec> cens_mix;
   uvec omegaShareSubpop;
+  // shared-eta mixture (#1296): per phi column, the component (1-based) whose
+  // own theta it is and the phi column (1-based) of the shared eta it sums with
+  ivec mixShiftComp, mixShiftEta;
+  // the same, resolved to local phi0 / phi1 indices; mixFree0 are the phi0
+  // columns the MCMC still samples (also excluding fix()ed holdIx0)
+  uvec mixOwn0, mixOwnComp, mixOwnEta1, mixFree0, mixOwnLam0;
+  vec mixOwnTheta;
   // Two-level (IOV) models: phi1 columns sharing a non-zero group id are one
   // occasion parameter observed at different levels, so they estimate ONE
   // variance (Psi).  0 means the column has its own.  See R/saemIov.R.
@@ -6972,6 +7122,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("mcmcPhiAcf") = saem.get_phiAcfTrace(),
     Named("ueRevisitInfo") = saem.get_ueRevisitInfo(),
     Named("HaSa") = saem.get_HaSa(),
+    Named("mixOwnPhi") = saem.get_mixOwnPhi(),
     Named("res_info") = saem.get_resInfo(),
     Named("tolFactor") = _saemTf,
     Named("mixProb") = saem.get_mixProb(),

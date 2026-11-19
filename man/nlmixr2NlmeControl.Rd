@@ -45,7 +45,8 @@ nlmixr2NlmeControl(
   eventSens = c("jump", "fd"),
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
-  ...
+  ...,
+  corWarn = 0.95
 )
 
 nlmeControl(
@@ -88,7 +89,8 @@ nlmeControl(
   eventSens = c("jump", "fd"),
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
-  ...
+  ...,
+  corWarn = 0.95
 )
 }
 \arguments{
@@ -316,6 +318,10 @@ and keep nlme's own standard errors.  When the recompute fails the
    \code{\link{nlminb}} (apart from \code{trace} and \code{iter.max}
    mentioned above), where used (\code{eval.max} and those from
    \code{abs.tol} down).}
+
+\item{corWarn}{warn when two estimates' correlation is at least this in
+absolute value after the covariance step; \code{NA} or \code{Inf} turns
+the warning off.}
 }
 \value{
 a nlmixr-nlme list

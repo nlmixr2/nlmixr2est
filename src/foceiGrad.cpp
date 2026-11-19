@@ -99,7 +99,7 @@ void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
                          const arma::cube& dOiEst, const arma::vec& tr28,
                          int neta, int nth, int nsg, int nom,
                          const arma::ivec& dirTh, const arma::ivec& sigCol,
-                         arma::vec& g_out, arma::mat& etaP_out) {
+                         arma::vec& g_out, arma::mat& etaP_out, bool innerScore_) {
   const int nobs = (int)a.n_rows;
   const int ndir = (int)a.n_cols;
   const int np = nth + nsg + nom;
@@ -214,10 +214,14 @@ void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
   for (int pp = 0; pp < np; pp++) etaP.col(pp) = -HiM * Mcol(pp);
   // Finite inner tolerances leave a nonzero score: carry the ETA response
   // through the likelihood as well as the determinant. At the mode this vanishes.
-  vec innerScore = Oi * ehat;
-  for (int l = 0; l < neta; l++)
-    for (int o = 0; o < nobs; o++)
-      innerScore[l] += rf[o] * a(o, l) + rR[o] * aR(o, l);
+  // Off by request for an eta that is not an inner mode (the VAE encoder's).
+  vec innerScore(neta, fill::zeros);
+  if (innerScore_) {
+    innerScore = Oi * ehat;
+    for (int l = 0; l < neta; l++)
+      for (int o = 0; o < nobs; o++)
+        innerScore[l] += rf[o] * a(o, l) + rR[o] * aR(o, l);
+  }
   vec g(np, fill::zeros);
   for (int pp = 0; pp < np; pp++) {
     mat dHtStar; double dPhi;
@@ -579,7 +583,7 @@ void foceiGradSubjectFullFR_(const arma::mat& a, const arma::cube& A, const arma
                              const arma::vec& ehat, const arma::mat& Oi,
                              const arma::cube& dOiEst, const arma::vec& tr28,
                              int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP,
-                             arma::vec& g_out, arma::mat& etaP_out) {
+                             arma::vec& g_out, arma::mat& etaP_out, bool innerScore_) {
   const int nobs = (int)a.n_rows;
   const int np = ndirP + nom;
   arma::mat noDv(nobs, 0);
@@ -595,10 +599,13 @@ void foceiGradSubjectFullFR_(const arma::mat& a, const arma::cube& A, const arma
     vec m = (pp < ndirP) ? vec(C.N.col(dirP[pp] - 1)) : vec(dOiEst.slice(pp - ndirP) * ehat);
     etaP.col(pp) = -HiM * m;
   }
-  vec innerScore = Oi * ehat;
-  for (int l = 0; l < neta; l++)
-    for (int o = 0; o < nobs; o++)
-      innerScore[l] += C.rf[o] * a(o, l) + C.rR[o] * aR(o, l);
+  vec innerScore(neta, fill::zeros);
+  if (innerScore_) {
+    innerScore = Oi * ehat;
+    for (int l = 0; l < neta; l++)
+      for (int o = 0; o < nobs; o++)
+        innerScore[l] += C.rf[o] * a(o, l) + C.rR[o] * aR(o, l);
+  }
   vec g(np, fill::zeros);
   for (int pp = 0; pp < np; pp++) {
     mat dHStar; double dPhi;
