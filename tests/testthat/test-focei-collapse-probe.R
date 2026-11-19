@@ -22,6 +22,8 @@ test_that("the probe omega raises collapsed etas and keeps the block", {
   .om0 <- .om
   .om[1, 2] <- .om[2, 1] <- 0
   expect_identical(.foceiCollapseProbeOmega(.om, c(eta.b = 300), "eta.b", .om0) != 0, .om0 != 0)
+  # an unprobed block's zero covariance is left as fitted
+  expect_identical(.foceiCollapseProbeOmega(.om, c(eta.c = 3), "eta.c", .om0) != 0, .om != 0)
 })
 
 test_that("etas in a block with a fixed omega entry are not probed", {
