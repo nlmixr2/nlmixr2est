@@ -116,7 +116,8 @@
 #' @noRd
 .covNewtonCov <- function(fit, env) {
   # the R-only covariance: the fit's own, or the "r" one setCov() keeps
-  for (.r in list(get0("covR", envir = env, inherits = FALSE), .covCacheGet(env)[["r"]])) {
+  .cl <- .covCacheGet(env)
+  for (.r in list(get0("covR", envir = env, inherits = FALSE), .cl[["r"]], .cl[["r (full)"]])) {
     if (is.matrix(.r) && !is.null(rownames(.r))) {
       return(.r)
     }
