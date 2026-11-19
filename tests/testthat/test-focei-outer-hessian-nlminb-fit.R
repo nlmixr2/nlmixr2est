@@ -1,4 +1,4 @@
-test_that("built-in nlminb automatically uses supported outer curvature", {
+test_that("built-in nlminb uses requested outer curvature", {
   skip_on_cran()
   model <- function() {
     ini({ level <- 0.2; error <- fix(0.2); etaLevel ~ 0.2 })
@@ -20,6 +20,8 @@ test_that("built-in nlminb automatically uses supported outer curvature", {
       control <- foceiControl(
         fast = TRUE,
         outerOpt = "nlminb",
+        # nlminb curvature is opt-in; the default leaves it to BFGS
+        outerTrustHessian = "analytic",
         innerOpt = inner,
         epsilon = 1e-10,
         trustFterm = 1e-12,
@@ -58,6 +60,7 @@ test_that("built-in nlminb automatically uses supported outer curvature", {
       fast = TRUE,
       censOption = "laplace",
       outerOpt = "nlminb",
+      outerTrustHessian = "analytic",
       innerOpt = "n1qn1",
       print = 0,
       covMethod = "",
