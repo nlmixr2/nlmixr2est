@@ -352,6 +352,7 @@ nmTest({
           sigdig = 3,
           calcTables = FALSE,
           maxOuterIterations = 3L,
+          outerOpt = "nlminb",
           fdIndividualStep = indiv
         )
       )))
