@@ -83,6 +83,17 @@ test_that("component-owned mixture etas use only their component's subjects", {
   # the component can also come from ranef's own mixnum column
   .r <- .etaNormalityFit(list(ui = .ui, ranef = .ranef))
   expect_identical(.r$n, c(10L, 10L, 20L))
+  # an owned occasion eta is filtered by its subject's component too
+  .iov <- data.frame(ID = rep(1:20, each = 2), occ = rep(1:2, 20), eta.cl2 = c(rep(0, 20), .x, .x))
+  .r <- .etaNormalityFit(list(
+    ui = .ui,
+    ranef = .ranef[, c("ID", "eta.v")],
+    iov = list(occ = .iov),
+    mixNum = data.frame(ID = 1:20, mixnum = .mn)
+  ))
+  expect_identical(.r$eta, c("eta.v", "eta.cl2"))
+  expect_identical(.r$n, c(20L, 20L))
+  expect_equal(.r$mean[2], 0)
   # without any component, the placeholder zeros are counted
   .r <- .etaNormalityFit(list(ui = .ui, ranef = .ranef[, names(.ranef) != "mixnum"]))
   expect_identical(.r$n, c(20L, 20L, 20L))

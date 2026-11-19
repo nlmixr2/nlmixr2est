@@ -133,13 +133,18 @@
     .ui <- rxode2::rxUiDecompress(.ui)
   }
   .skip <- .etaNormalityFixed(.ui$iniDf)
-  .rows <- .etaNormalityMixRows(.ui, .ranef, .get("mixNum"))
+  .mixNum <- .get("mixNum")
+  .rows <- .etaNormalityMixRows(.ui, .ranef, .mixNum)
   .ret <- .etaNormalityDf(.ranef, skip = .skip, rows = .rows)
   # occasion etas, pooled over every subject and occasion
   .iov <- .get("iov")
   if (is.list(.iov) && !is.data.frame(.iov)) {
     for (.occ in names(.iov)) {
-      .ret <- rbind(.ret, .etaNormalityDf(.iov[[.occ]], skip = .skip, drop = .occ))
+      .d <- .iov[[.occ]]
+      .ret <- rbind(
+        .ret,
+        .etaNormalityDf(.d, skip = .skip, drop = .occ, rows = .etaNormalityMixRows(.ui, .d, .mixNum))
+      )
     }
   }
   # zero-variance etas are dropped from the fit's etas, so give them NA rows
