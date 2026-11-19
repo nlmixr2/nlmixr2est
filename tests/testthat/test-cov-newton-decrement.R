@@ -21,6 +21,15 @@ test_that("the decrement is 0.5 g' H^-1 g of a quadratic OFV", {
   expect_identical(.covNewtonDecrement(c(z = 1), .cov), NA_real_)
 })
 
+test_that("an R-only covariance stands in for a sandwich", {
+  .e <- new.env(parent = emptyenv())
+  .rs <- matrix(2, 1, 1, dimnames = list("a", "a"))
+  .fit <- list(cov = .rs)
+  expect_identical(.covNewtonCov(.fit, .e), .rs)
+  .e$covR <- matrix(1, 1, 1, dimnames = list("a", "a"))
+  expect_identical(.covNewtonCov(.fit, .e), .e$covR)
+})
+
 test_that("FOCEi-family methods are not checked", {
   expect_false(.covNewtonEst("focei"))
   expect_false(.covNewtonEst("laplace"))
