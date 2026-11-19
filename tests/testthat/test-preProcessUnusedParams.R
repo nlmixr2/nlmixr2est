@@ -151,6 +151,38 @@ test_that("estimated parameters that cannot reach the objective are found (#1382
     })
   }
   expect_equal(.unused(linJunk), c("tcl", "tv"))
+
+  # nor does it in a model with its own ODE; a linCmt() state endpoint does
+  linOde <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3.45
+      tk <- 0.1
+      add.sd <- 0.7
+    })
+    model({
+      cl <- exp(tcl)
+      v <- exp(tv)
+      junk <- linCmt()
+      d / dt(eff) <- -exp(tk) * eff
+      eff ~ add(add.sd)
+    })
+  }
+  expect_equal(.unused(linOde), c("tcl", "tv"))
+  linCentral <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+    })
+    model({
+      cl <- exp(tcl)
+      v <- exp(tv)
+      junk <- linCmt()
+      central ~ add(add.sd)
+    })
+  }
+  expect_equal(.unused(linCentral), character(0))
 })
 
 test_that("a parameter with a prior affects the objective", {
