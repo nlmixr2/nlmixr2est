@@ -14,6 +14,13 @@
 
 ## New features
 
+- `bic(fit, type=)` returns BIC variants that charge random-effect
+  parameters `log(number of subjects)` instead of `log(number of
+  observations)` (Delattre et al. 2014): `"iiv"` (omega/kappa elements),
+  `"mixed"` (also the thetas of eta-bearing parameters) and `"random"` (also
+  residual-error thetas when an eta sits on the residual error); `"fixed"`
+  equals `BIC(fit)` (#1384).
+
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
   diagnostics are unreliable.  `foceiControl(shrinkEtaWarn=)` sets the
