@@ -55,7 +55,8 @@ nlmControl(
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -302,6 +303,10 @@ skips the final back-transform.}
 \item{corWarn}{warn when two estimates' correlation is at least this in
 absolute value after the covariance step; \code{NA} or \code{Inf} turns
 the warning off.}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 nlm control object
