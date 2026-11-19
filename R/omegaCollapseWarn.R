@@ -108,7 +108,15 @@
   ) {
     return(NULL)
   }
-  .d <- function(m) tryCatch(diag(chol(solve(m))), error = function(e) NULL)
+  # on the correlation scale, so an unrelated tiny variance cannot make
+  # solve() reject the matrix
+  .d <- function(m) {
+    .s <- sqrt(diag(m))
+    if (!all(is.finite(.s) & .s > 0)) {
+      return(NULL)
+    }
+    tryCatch(diag(chol(solve(m / outer(.s, .s)))) / .s, error = function(e) NULL)
+  }
   .d0 <- .d(omega0)
   .d1 <- .d(omega)
   if (is.null(.d0) || is.null(.d1)) {

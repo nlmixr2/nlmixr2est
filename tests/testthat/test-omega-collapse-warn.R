@@ -135,6 +135,12 @@ test_that("a block omega is checked on the parameters FOCEi bounds", {
     list(collapsed = character(0), bound = "eta.a")
   )
   expect_identical(.omegaCollapsed(diag(.om0), diag(.om), 1e-3, 100)$bound, character(0))
+  # an unrelated eta on a very different scale does not change the result
+  .nm3 <- c(.nm, "eta.c")
+  .big0 <- rbind(cbind(.om0, 0), c(0, 0, 1e-18))
+  .big <- rbind(cbind(.om, 0), c(0, 0, 1e-18))
+  dimnames(.big0) <- dimnames(.big) <- list(.nm3, .nm3)
+  expect_identical(.omegaCollapseAtBound(.big0, .big, 100), "eta.a")
   # for a diagonal omega the bounded parameter and the variance ratio agree
   .d0 <- diag(c(eta.a = 300, eta.b = 2))
   dimnames(.d0) <- list(.nm, .nm)
