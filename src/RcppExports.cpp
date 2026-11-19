@@ -1685,9 +1685,30 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// tablePoolLevels_
+List tablePoolLevels_(CharacterVector names);
+RcppExport SEXP _nlmixr2est_tablePoolLevels_(SEXP namesSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< CharacterVector >::type names(namesSEXP);
+    rcpp_result_gen = Rcpp::wrap(tablePoolLevels_(names));
+    return rcpp_result_gen;
+END_RCPP
+}
+// tablePoolHasRxWalk_
+bool tablePoolHasRxWalk_();
+RcppExport SEXP _nlmixr2est_tablePoolHasRxWalk_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(tablePoolHasRxWalk_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // tablePoolSolve_
-List tablePoolSolve_(int which, NumericMatrix parMat, IntegerVector parIdx, IntegerVector lhsIdx, IntegerVector sensIdx, IntegerVector stateIdx, IntegerVector covIdx, bool tbs);
-RcppExport SEXP _nlmixr2est_tablePoolSolve_(SEXP whichSEXP, SEXP parMatSEXP, SEXP parIdxSEXP, SEXP lhsIdxSEXP, SEXP sensIdxSEXP, SEXP stateIdxSEXP, SEXP covIdxSEXP, SEXP tbsSEXP) {
+List tablePoolSolve_(int which, NumericMatrix parMat, IntegerVector parIdx, IntegerVector lhsIdx, IntegerVector sensIdx, IntegerVector stateIdx, IntegerVector covIdx, bool tbs, int doDose, bool keep);
+RcppExport SEXP _nlmixr2est_tablePoolSolve_(SEXP whichSEXP, SEXP parMatSEXP, SEXP parIdxSEXP, SEXP lhsIdxSEXP, SEXP sensIdxSEXP, SEXP stateIdxSEXP, SEXP covIdxSEXP, SEXP tbsSEXP, SEXP doDoseSEXP, SEXP keepSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -1699,7 +1720,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< IntegerVector >::type stateIdx(stateIdxSEXP);
     Rcpp::traits::input_parameter< IntegerVector >::type covIdx(covIdxSEXP);
     Rcpp::traits::input_parameter< bool >::type tbs(tbsSEXP);
-    rcpp_result_gen = Rcpp::wrap(tablePoolSolve_(which, parMat, parIdx, lhsIdx, sensIdx, stateIdx, covIdx, tbs));
+    Rcpp::traits::input_parameter< int >::type doDose(doDoseSEXP);
+    Rcpp::traits::input_parameter< bool >::type keep(keepSEXP);
+    rcpp_result_gen = Rcpp::wrap(tablePoolSolve_(which, parMat, parIdx, lhsIdx, sensIdx, stateIdx, covIdx, tbs, doDose, keep));
     return rcpp_result_gen;
 END_RCPP
 }

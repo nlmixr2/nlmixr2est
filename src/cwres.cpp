@@ -4,10 +4,32 @@
 // Eta sensitivities of the rows `idx` as a sparse neta x nrow matrix: column r
 // is row r's gradient.  IOV occasion and mixture-owned etas are zero on most
 // rows, and nothing here needs a dense nobs x nobs product.
+// The pooled table solve hands the sensitivities over already sparse, as the
+// frame's `rxSens` triplets (1-based row i, eta k, value x) instead of columns.
 static inline arma::sp_mat cwresSensT(List &L, int first, unsigned int neta,
-                                      const arma::uvec &idx) {
+                                      const arma::uvec &idx, int ncalc) {
   std::vector<arma::uword> loc;
   std::vector<double> val;
+  SEXP sensA = Rf_getAttrib(L, Rf_install("rxSens"));
+  if (!Rf_isNull(sensA)) {
+    List sl(sensA);
+    IntegerVector si = sl["i"], sk = sl["k"];
+    NumericVector sx = sl["x"];
+    std::vector<int> pos((size_t)ncalc, -1);
+    for (arma::uword r = 0; r < idx.n_elem; ++r) pos[idx[r]] = (int)r;
+    for (R_xlen_t q = 0; q < sx.size(); ++q) {
+      int row = si[q] - 1, k = sk[q] - 1;
+      if (row < 0 || row >= ncalc || k < 0 || k >= (int)neta) stop("malformed sparse sensitivities");
+      if (pos[(size_t)row] < 0) continue;
+      loc.push_back((arma::uword)k);
+      loc.push_back((arma::uword)pos[(size_t)row]);
+      val.push_back(sx[q]);
+    }
+    if (val.empty()) return arma::sp_mat(neta, idx.n_elem);
+    arma::umat locations(loc.data(), 2, val.size(), false, true);
+    arma::vec values(val.data(), val.size(), false, true);
+    return arma::sp_mat(locations, values, neta, idx.n_elem, true, false);
+  }
   for (arma::uword r = 0; r < idx.n_elem; ++r) {
     for (unsigned int j = 0; j < neta; ++j) {
       double v = REAL(L[first + j])[idx[r]];
@@ -184,8 +206,8 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
     arma::vec predtNorm = predt.elem(normIdx);
     arma::Col<int> IDnorm = ID.elem(normIdx);
 
-    arma::sp_mat fppt = cwresSensT(predL, npredP + 1, neta, normIdx);
-    arma::sp_mat fpit = cwresSensT(ipredL, npred + 1, neta, normIdx);
+    arma::sp_mat fppt = cwresSensT(predL, npredP + 1, neta, normIdx, ncalc);
+    arma::sp_mat fpit = cwresSensT(ipredL, npred + 1, neta, normIdx, ncalc);
 
     arma::vec rpvNorm = rpv.elem(normIdx);
     arma::vec rivNorm = riv.elem(normIdx);

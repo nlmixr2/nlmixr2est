@@ -329,7 +329,8 @@
         omegaPoolMean = as.integer(identical(
           rxode2::rxGetControl(ui, "iovMethod", "twoLevel"),
           "collapsed"
-        ))
+        )),
+        fixedNoEta = rxode2::rxGetControl(ui, "fixedNoEta", "hold")
       )
       .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
       # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
@@ -1530,7 +1531,8 @@
       # finalization needs a structural-theta cov; stash the full matrix and install
       # it after the fit is built (.saemInstallFullCov).  The control covMethod is reset
       # to its default during finalization, so record the intended label separately.
-      # the K per-occasion columns of a pooled IOV variance are one parameter
+      # two-level IOV: tie the per-occasion `om.rx.<iov>.<k>` copies (no-op
+      # otherwise) before the theta block is taken, since tying moves it too
       .cov <- .saemIovCollapseCov(.cov, .uiIovEnv$iovTwoLevel)
       .rn <- rownames(.cov)
       .keep <- !grepl("^om\\.|^cov\\.", .rn) & !(.rn %in% .ui$iniDf$name[!is.na(.ui$iniDf$err)])
