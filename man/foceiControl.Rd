@@ -161,6 +161,7 @@ foceiControl(
   etaNudge2 = qnorm(1 - 0.05/2) * sqrt(3/5),
   etaRestart = 4L,
   finalEtaTol = 1,
+  shrinkEtaWarn = 30,
   nRetries = 3,
   seed = 42,
   resetThetaCheckPer = 0.1,
@@ -1163,6 +1164,9 @@ re-solved from that evaluation's ETAs, keeping per subject whichever
 start gives the lower objective.  Warm-started ETAs can fall into a
 secondary mode during the search and stay there.  Only applies with a
 warm start (`mceta < 0`).  Use `Inf` to disable.}
+
+\item{shrinkEtaWarn}{Warn (in `$runInfo`) when an eta's SD shrinkage is
+at or above this percentage.  Use `NA` or `Inf` to disable.}
 
 \item{nRetries}{If FOCEi doesn't fit with the current parameter
 estimates, randomly sample new parameter estimates and restart
