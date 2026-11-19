@@ -15,14 +15,17 @@
   )
   .taus <- character(0)
   .walk <- function(x) {
-    if (is.call(x)) {
-      if (identical(x[[1]], quote(delay)) && length(x) == 3L) {
-        .taus <<- c(.taus, deparse1(x[[3]]))
-      }
-      for (.i in seq_along(x)[-1L]) {
-        .walk(x[[.i]])
-      }
+    if (!is.call(x)) {
+      return(character(0))
     }
+    .out <- character(0)
+    if (identical(x[[1]], quote(delay)) && length(x) == 3L) {
+      .out <- deparse1(x[[3]])
+    }
+    for (.i in seq_along(x)[-1L]) {
+      .out <- c(.out, .walk(x[[.i]]))
+    }
+    .out
   }
   for (.v in .vars) {
     .e <- get(.v, envir = s) # rxFromSE() captures its argument
@@ -30,7 +33,7 @@
     if (!grepl("delay(", .txt, fixed = TRUE)) {
       next
     }
-    .walk(str2lang(.txt))
+    .taus <- c(.taus, .walk(str2lang(.txt)))
   }
   if (length(.taus) == 0L) {
     return(.ret)
