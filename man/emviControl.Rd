@@ -27,6 +27,7 @@ emviControl(
   useColor = NULL,
   printNcol = NULL,
   covMethod = c("vi", "analytic", "r,s", "r", "s", ""),
+  covNewtonWarn = 1,
   covFallback = list(`r,s` = c("r", "s", "vi"), r = c("s", "vi"), s = "vi", analytic =
     c("r,s", "r", "s", "vi")),
   optExpression = TRUE,
@@ -244,6 +245,11 @@ wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
  no covariance, `1`, `2` and `3` are `"r,s"`, `"r"` and `"s"`.
 
  "" Does not calculate the covariance step.}
+
+\item{covNewtonWarn}{Warn (in `$runInfo`) when the Newton decrement of the
+FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+this value: the standard errors then belong to no optimum.  The value is
+kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.}
 
 \item{covFallback}{what each `covMethod` falls back to when it gives no
 usable covariance: a named list, one element per method, each the ordered
