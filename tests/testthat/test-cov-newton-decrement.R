@@ -164,3 +164,35 @@ nmTest({
     expect_length(grep("^SEs at a non-stationary estimate", .l$runInfo), 1L)
   })
 })
+
+test_that("a rejected probe falls back to a one-sided difference", {
+  .ui <- rxode2::rxUiDecompress(rxode2::rxode2(function() {
+    ini({
+      p1 <- 0.9995
+      tcl <- 1
+      eta.cl ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      cl <- exp(tcl + eta.cl) * p1
+      cl ~ add(add.sd)
+    })
+  }))
+  .fit <- list(finalUi = .ui)
+  .cov <- diag(2)
+  dimnames(.cov) <- list(c("p1", "tcl"), c("p1", "tcl"))
+  # a quadratic OFV in place of the nested FOCEi pass; p1 above 1 is rejected
+  local_mocked_bindings(
+    .covNewtonCtl = function(fit, fast) NULL,
+    .covNewtonFocei = function(ui, fit, ctl) {
+      .e <- stats::setNames(ui$iniDf$est, ui$iniDf$name)
+      if (.e[["p1"]] > 1) {
+        stop("probability above 1")
+      }
+      list(objf = 3 * .e[["p1"]]^2 + 2 * .e[["tcl"]]^2)
+    }
+  )
+  .g <- .covNewtonGradFd(.fit, .cov)
+  expect_equal(.g[["tcl"]], 4, tolerance = 1e-6)
+  expect_equal(.g[["p1"]], 6 * 0.9995, tolerance = 1e-2)
+})
