@@ -160,6 +160,12 @@
       .h <- 1e-3 * max(1, abs(.est[[nm]]))
       .up <- .ofv(nm, .est[[nm]] + .h)
       .dn <- .ofv(nm, .est[[nm]] - .h)
+      if (!is.finite(.up) && !is.finite(.dn)) {
+        # both rejected (a proportion near both of its bounds): a smaller step
+        .h <- .h / 100
+        .up <- .ofv(nm, .est[[nm]] + .h)
+        .dn <- .ofv(nm, .est[[nm]] - .h)
+      }
       if (is.finite(.up) && is.finite(.dn)) {
         return((.up - .dn) / (2 * .h))
       }
