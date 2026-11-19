@@ -108,6 +108,7 @@ lbfgsb3cControl <- function(
   compress = FALSE,
   covMethod = c("r", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
@@ -135,6 +136,7 @@ lbfgsb3cControl <- function(
   checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
   checkmate::assertLogical(compress, len = 1, any.missing = TRUE)
   checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)
+  checkmate::assertNumber(aboveStartTol, lower = 0, na.ok = TRUE)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -194,6 +196,7 @@ lbfgsb3cControl <- function(
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
   .ret <- list(
+    aboveStartTol = as.double(aboveStartTol),
     trace = trace,
     factr = factr,
     pgtol = pgtol,
