@@ -130,6 +130,10 @@
   `MCMC acceptance low (rw 0%); try a smaller rmcmc`).
   `saemControl(mcmcAcceptWarn=)` sets the range; `NA` turns the note off
   (#1385).
+- The note that a FOCEi-family fit ended with an objective above the one at
+  its initial estimates is now one `$runInfo` line, `final objective (...) is
+  above the initial estimates' (...)`, and `foceiControl(aboveStartTol=)` sets
+  its relative band (default `0.01`); `NA` or `Inf` turns it off (#1399).
 
 - A covariance that is rejected as not positive definite now says which
   parameters make it so: those with no information (a zero diagonal), or the
