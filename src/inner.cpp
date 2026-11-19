@@ -253,6 +253,15 @@ extern "C" {
   iniRxode2ptr
 
   nmSetIndNewind_t nmSetIndNewind = NULL;
+  nmDfWalkInit_t nmDfWalkInit = NULL;
+  nmDfWalkStep_t nmDfWalkStep = NULL;
+  nmDfWalkDull_t nmDfWalkDull = NULL;
+  nmDfKeepSetup_t nmDfKeepSetup = NULL;
+  nmDfKeepFirst_t nmDfKeepFirst = NULL;
+  nmDfKeepRow_t nmDfKeepRow = NULL;
+  nmDfKeepCols_t nmDfKeepCols = NULL;
+  nmDfLevels_t nmDfLevels = NULL;
+  nmDfSolveRefused_t nmDfSolveRefused = NULL;
 
   // The entry points of rxode2Optional.h: the label .rxode2Optional() reports
   // it by, its slot in rxode2's pointer table and that slot's name there
@@ -267,6 +276,17 @@ extern "C" {
   static rxode2OptionalSlot rxode2OptionalSlots[] = {
     // remove with test-dependency-workarounds.R's slot-104 block
     {"setIndNewind", 104, "rxode2setIndNewind", (DL_FUNC *) &nmSetIndNewind},
+    // remove with test-dependency-workarounds.R's slot-105 block
+    {"dfWalkInit", 105, "rxode2rxDfWalkInit", (DL_FUNC *) &nmDfWalkInit},
+    {"dfWalkStep", 106, "rxode2rxDfWalkStep", (DL_FUNC *) &nmDfWalkStep},
+    {"dfWalkDull", 107, "rxode2rxDfWalkDull", (DL_FUNC *) &nmDfWalkDull},
+    {"dfKeepSetup", 108, "rxode2rxDfKeepSetup", (DL_FUNC *) &nmDfKeepSetup},
+    {"dfKeepFirst", 109, "rxode2rxDfKeepFirst", (DL_FUNC *) &nmDfKeepFirst},
+    {"dfKeepRow", 110, "rxode2rxDfKeepRow", (DL_FUNC *) &nmDfKeepRow},
+    {"dfKeepCols", 111, "rxode2rxDfKeepCols", (DL_FUNC *) &nmDfKeepCols},
+    {"dfLevels", 112, "rxode2getDfLevels", (DL_FUNC *) &nmDfLevels},
+    // remove with test-dependency-workarounds.R's slot-113 block
+    {"dfSolveRefused", 113, "rxode2rxDfSolveRefused", (DL_FUNC *) &nmDfSolveRefused},
   };
   static const int rxode2OptionalN =
     (int)(sizeof(rxode2OptionalSlots) / sizeof(rxode2OptionalSlots[0]));
