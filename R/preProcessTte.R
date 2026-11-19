@@ -58,11 +58,12 @@
     .pred1 <- .predDf[.i, ]
     .is <- .obs
     if (!is.null(.cmt)) {
-      .is <- .is & !is.na(.cmt) & if (is.character(.cmt) || is.factor(.cmt)) {
+      .match <- if (is.character(.cmt) || is.factor(.cmt)) {
         as.character(.cmt) == .pred1$cond
       } else {
         .cmt == .pred1$cmt
       }
+      .is <- .is & !is.na(.cmt) & .match
     } else if (nrow(.predDf) > 1L) {
       stop("estimating a tte() endpoint beside other endpoints requires a 'cmt' column", call. = FALSE)
     }
@@ -74,9 +75,13 @@
     .o <- order(.id[.is], .time[.is])
     .first <- !duplicated(.id[.is][.o])
     if (any(.v[.o][.first] == 1)) {
-      warning("the first record of tte() endpoint '", .pred1$cond,
-              "' is an event for some subjects; it is the start of observation and is not scored ",
-              "(add a DV=0 start record, or use tte(origin = TRUE))", call. = FALSE)
+      warning(
+        "the first record of tte() endpoint '",
+        .pred1$cond,
+        "' is an event for some subjects; it is the start of observation and is not scored ",
+        "(add a DV=0 start record, or use tte(origin = TRUE))",
+        call. = FALSE
+      )
     }
   }
   list(ui = ui)

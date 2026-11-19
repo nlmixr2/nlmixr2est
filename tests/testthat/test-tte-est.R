@@ -64,15 +64,22 @@ nmTest({
     .ev <- split(.d$time[.d$dv == 1], factor(.d$id[.d$dv == 1], levels = unique(.d$id)))
     .end <- tapply(.d$time, .d$id, max)
     .J <- matrix(0, 40, 40)
-    for (.i in 1:39) .J[.i, .i + 1] <- .J[.i + 1, .i] <- sqrt(.i)
+    for (.i in 1:39) {
+      .J[.i, .i + 1] <- .J[.i + 1, .i] <- sqrt(.i)
+    }
     .e <- eigen(.J, symmetric = TRUE)
     .nll <- function(p) {
-      -sum(vapply(seq_along(.end), function(i) {
-        .t <- .ev[[names(.end)[i]]]
-        .lam <- exp(p[1] + .e$values * exp(p[3] / 2))
-        .l <- vapply(.lam, function(L) sum(log(L) + p[2] * .t) - L / p[2] * (exp(p[2] * .end[i]) - 1), numeric(1))
-        max(.l) + log(sum(.e$vectors[1, ]^2 * exp(.l - max(.l))))
-      }, numeric(1)))
+      .ll <- vapply(
+        seq_along(.end),
+        function(i) {
+          .t <- .ev[[names(.end)[i]]]
+          .lam <- exp(p[1] + .e$values * exp(p[3] / 2))
+          .l <- vapply(.lam, function(L) sum(log(L) + p[2] * .t) - L / p[2] * (exp(p[2] * .end[i]) - 1), numeric(1))
+          max(.l) + log(sum(.e$vectors[1, ]^2 * exp(.l - max(.l))))
+        },
+        numeric(1)
+      )
+      -sum(.ll)
     }
     .o <- stats::optim(c(log(0.05), 0.05, log(0.3)), .nll, method = "BFGS")$par
     .fit <- suppressMessages(.nlmixr(.mod, .d, est = "focei", foceiControl(print = 0)))
