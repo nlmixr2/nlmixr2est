@@ -12,7 +12,19 @@
   (#1131).  `est = "nls"` no longer adds three orders on top (`1e-8` at its
   `sigdig = 4`).  Fits of ODE models are slower and their objectives change.
 
+- Fast FOCEi (`est = "foceif"` or `foceiControl(fast = TRUE)`) now defaults to
+  `outerOpt = "trust"`, which uses the analytical outer Hessian.  A fit that
+  falls back to `fast = FALSE` (e.g. `linCmt()`) still uses `bobyqa`.
+
 ## New features
+
+- FOCEi model builds no longer optimize the `innerOeta` model, which only
+  `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on
+  first use, caches it and adds the inner model's `param()`/`cmt()`/`mtime()`
+  prologue so it can be solved directly (#1321).
+- `outerOpt="trust"` evaluates the outer gradient and Hessian only at trial
+  points the trust region could accept, so a trial that is no improvement gets
+  its value alone (1.1x-2.6x faster with the analytical Hessian).
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
@@ -128,6 +140,21 @@
 
 ### Estimation
 
+- `saem` mixture fits with `saemControl(mixProbMethod = "annealed")` no
+  longer error with "Mat::operator(): index out of bounds" when entering the
+  SA covariance phase (#1297).
+
+- The FOCEi residual-variance floor is now `DBL_MIN^(1/8)` (about 3.5e-39)
+  instead of `sqrt(.Machine$double.eps)`.  A proportional-error prediction
+  below about 6e-4 (at a 0.2 SD) is no longer floored; the floor had biased
+  -2LL upward, more the smaller the prediction, and broken scale invariance
+  (#1285).
+
+- `outerOpt="trust"` now holds a parameter on its bound when its steps keep
+  leaving the box there, and releases it when the gradient pulls it back
+  inside; `$optReturn$activeBounds` lists the held parameters.  Fits with an
+  active bound previously stopped well above the optimum while reporting
+  convergence.
 - The `linCmt()` FOCEi sensitivity carry matches finite differences again for
   an `alag()` dose with a time-varying covariate.  rxode2 now adds a hidden
   record (`EVID` 8) at a lagged dose's data time, so the carry reads that
@@ -155,8 +182,8 @@
   Hessian now solves its model under its own dose-event sensitivities, so an eta
   in `f()`, `alag()`, `rate()` or `dur()` gets its second-order dose jumps.  Such
   fits run their subject loops serially.
-- Fast FOCEi defaults to gradient-only `nlminb`; ordinary fits retain `bobyqa`.
-  Explicit outer optimizer choices are preserved.
+- Fast FOCE, FOCE+ and AGQ fits default to gradient-only `nlminb`; ordinary
+  fits retain `bobyqa`.  Explicit outer optimizer choices are preserved.
 - Fast fits default `nlminb`'s `rel.tol` to `10^(-sigdig-2)`; at `10^(-sigdig)`
   relative convergence stopped short of the optimum.
 - `nlminb` curvature is opt-in through `outerTrustHessian="analytic"` or `"fd"`;
@@ -187,6 +214,20 @@
   re-solved before its MCMC step, so the population reset of fixed-effect-only
   thetas between iterations no longer leaves a stale likelihood that froze the
   chain at a state that no longer fit (#1298).
+- A covariate compared to string literals (`b2 * (tnom == "2")`) no longer
+  gets permuted estimates or `PRED`.  Each generated model (inner, pred,
+  outer, saem, nlm, nlme, ...) numbered the literals in its own order while
+  the data was coded once in the model's order; the generated models now use
+  the data's order, and a mismatch is an error (#1299).
+
+- A model without etas whose covariate is compared to string literals no
+  longer fails the table step ("error calculating tables") (#1299).
+
+- `saem` now estimates the component thetas of an eta shared by several
+  `mix()` components (`mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))`) as
+  that eta's mean within each component.  They used to be fixed-effect-only
+  search parameters, so the components drifted apart while the shared eta's
+  variance absorbed the split; they also get an SA covariance SE now (#1296).
 
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
@@ -262,6 +303,13 @@
   fixed thetas before evaluating the objective.  A `linCmt()` SAEM fit whose
   time-varying covariate entered only through a fixed theta could need more
   sensitivity-carry columns than rxode2 provides and stopped (#1287).
+
+- A FOCEi-family `linCmt()` fit whose (parameter, eta) pairs need more
+  sensitivity-carry columns than rxode2 provides now first drops the pairs
+  whose covariates are constant within every subject of the data (their
+  standard gradient is exact) instead of stopping.  A 2-compartment oral
+  model with allometric weight on four parameters and a time-varying flag on
+  CL and F now fits (#1287).
 
 - A `linCmt()` model with a time-varying covariate on a compartment
   parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,
@@ -492,6 +540,10 @@
   NPDE of the same table without dosing rows and `NA` on dosing rows; the
   NPDE columns were longer than the table and out of row order, and the dosing
   rows changed the simulations.
+
+- Printing a fit with estimated correlations no longer leaves the
+  `broom.mixed.sep1`/`sep2` options set, which renamed later `confint()` and
+  `tidy()` terms to `sd:eta`/`cor:eta.v,eta.cl`.
 
 - `tidy()` and `confint()` now report only the model's thetas.  A
   non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
