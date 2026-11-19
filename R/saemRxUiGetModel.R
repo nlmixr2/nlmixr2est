@@ -863,7 +863,7 @@ rxUiGet.saemModelPred <- function(x, ...) {
     .foceiToCmtLinesAndDvid(x[[1]])
   )
   .ret <- .ret[.ret != ""]
-  .ret <- list(predOnly = .nlmixr2estRxode2(paste(.ret, collapse = "\n"), "rxSaemPred"))
+  .ret <- list(predOnly = .nlmixr2estRxode2(paste(.ret, collapse = "\n"), "rxSaemPred", ui = x[[1]]))
   class(.ret) <- "saemModelList"
   .ret
 }

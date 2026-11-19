@@ -31,3 +31,11 @@ nmTest({
     )
   })
 })
+
+test_that("printing correlations leaves the broom.mixed separators unset (#1299)", {
+  withr::local_options(list(broom.mixed.sep1 = NULL, broom.mixed.sep2 = NULL))
+  .m <- matrix(c(1, 0.5, 0.5, 1), 2, dimnames = list(c("a", "b"), c("a", "b")))
+  utils::capture.output(.getCorPrint(.m))
+  expect_null(getOption("broom.mixed.sep1"))
+  expect_null(getOption("broom.mixed.sep2"))
+})
