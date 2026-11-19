@@ -35,6 +35,19 @@
   omega
 }
 
+#' Keep a probe start strictly inside the first fit's bounds
+#'
+#' @param theta the start
+#' @param lower,upper the bounds (may be infinite)
+#' @return `theta`, with a value on or past a bound moved just inside it (by at
+#'   most a quarter of the interval, so a narrow one stays feasible); values
+#'   already inside are left as they are
+#' @noRd
+.foceiCollapseProbeClamp <- function(theta, lower, upper) {
+  .eps <- pmin((.Machine$double.eps)^(1 / 7), (upper - lower) / 4)
+  ifelse(theta <= lower, lower + .eps, ifelse(theta >= upper, upper - .eps, theta))
+}
+
 #' Re-fit from a collapsed omega raised back to its initial estimate
 #'
 #' With `collapseProbe=TRUE`, a diagonal omega the outer optimizer drove toward
@@ -57,7 +70,9 @@
     .ini,
     setNames(diag(.om), rownames(.om)),
     .omegaCollapseWarnLimit(list(control = control)),
-    .omegaCollapseBoundLower(list(control = control))
+    .omegaCollapseBoundLower(list(control = control)),
+    tryCatch(ui$omega, error = function(e) NULL),
+    .om
   )
   .etas <- c(.bad$collapsed, .bad$bound)
   if (length(.etas) == 0L) {
@@ -85,8 +100,7 @@
   .probe$thetaIni <- setNames(fit$fullTheta[seq_len(.nth)], names(snap$thetaIni))
   # keep the omega start inside the bounds the first fit was given
   .k <- .nth + seq_along(.inv$theta)
-  .eps <- (.Machine$double.eps)^(1 / 7)
-  .inv$theta <- pmin(pmax(.inv$theta, snap$lower[.k] + .eps), snap$upper[.k] - .eps)
+  .inv$theta <- .foceiCollapseProbeClamp(.inv$theta, snap$lower[.k], snap$upper[.k])
   .probe$rxInv <- .inv
   .minfo(paste0("probing collapsed omega: ", paste(.etas, collapse = ", ")))
   .fit2 <- try(.foceiFitInternal(.probe), silent = TRUE)

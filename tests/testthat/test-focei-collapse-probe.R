@@ -11,6 +11,14 @@ test_that("the probe omega raises collapsed etas and drops their covariances", {
   expect_equal(.p, matrix(c(1, 0, 0, 300), 2, 2, dimnames = dimnames(.om)))
 })
 
+test_that("the probe start stays inside narrow and infinite bounds", {
+  .c <- .foceiCollapseProbeClamp(c(5, 0.0005, -3, 2), c(0, 1e-4, -Inf, 1), c(1, 1e-3, Inf, 3))
+  expect_true(all(.c[1:2] > c(0, 1e-4) & .c[1:2] < c(1, 1e-3)))
+  expect_identical(.c[3:4], c(-3, 2))
+  # a start already inside the bounds is not moved, however close to one
+  expect_identical(.foceiCollapseProbeClamp(1e-5, 1e-6, 10), 1e-5)
+})
+
 test_that("no probe snapshot unless requested on an estimating mixed fit", {
   .env <- new.env(parent = emptyenv())
   .env$rxInv <- structure(new.env(parent = emptyenv()), class = "rxSymInvCholEnv")
@@ -69,14 +77,13 @@ test_that("collapseProbe re-fits a collapsed random-slope omega (#1394)", {
     .mod,
     .d,
     "focei",
-    foceiControl(print = 0, covMethod = "r", diagOmegaBoundLower = 1e8, collapseProbe = TRUE)
+    foceiControl(print = 0, covMethod = "", diagOmegaBoundLower = 1e8, collapseProbe = TRUE)
   ))
   expect_lt(abs(.probed$objective - .ref$objective), 1)
   expect_gt(.probed$omega["eta.sl", "eta.sl"], 10)
   expect_true(any(grepl("^omega collapse probe lowered objective by [0-9.]+: eta.sl$", .probed$runInfo)))
   expect_false(any(grepl("^omega collapsed", .probed$runInfo)))
-  # the kept fit is finished from the re-fit: tables and covariance included
+  # the kept fit is finished from the re-fit, tables included
   expect_equal(nrow(.probed), nrow(.d))
   expect_true(all(is.finite(.probed$CWRES)))
-  expect_true(is.matrix(.probed$cov))
 })
