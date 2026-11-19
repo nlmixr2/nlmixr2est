@@ -32,6 +32,7 @@ foceiControl(
     "r", "s")),
   covPrecursor = c("fd", "analytic"),
   covShortcut = FALSE,
+  corWarn = 0.95,
   covFull = TRUE,
   fast = FALSE,
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"),
@@ -368,6 +369,10 @@ the prediction against the objective along four fixed directions, and
 skip measuring the off-diagonals when it agrees to 1\% in each (the record
 says "accepted"); otherwise they are measured as usual ("fell back").
 \code{FALSE} (default) always measures them.}
+
+\item{corWarn}{warn when two estimates' correlation is at least this in
+absolute value after the covariance step; \code{NA} or \code{Inf} turns
+the warning off.}
 
 \item{covFull}{shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 full theta + residual sigma + Omega covariance (assembled analytically for
