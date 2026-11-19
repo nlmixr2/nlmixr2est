@@ -39,7 +39,8 @@ newuoaControl(
   sigdigTable = NULL,
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
-  ...
+  ...,
+  corWarn = 0.95
 )
 }
 \arguments{
@@ -207,6 +208,10 @@ doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
 (rxode2/rxode2#1237).}
 
 \item{...}{Ignored parameters}
+
+\item{corWarn}{warn when two estimates' correlation is at least this in
+absolute value after the covariance step; \code{NA} or \code{Inf} turns
+the warning off.}
 }
 \value{
 newuoa control structure
