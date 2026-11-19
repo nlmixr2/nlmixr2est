@@ -61,3 +61,59 @@ test_that("mixture warnings stay under 75 characters", {
   expect_lt(nchar("mixture class 10 has no subjects (max posterior < 0.01); try new starts"), 75)
   expect_lt(nchar("mixture classes 10 and 11 are indistinguishable at the estimates"), 75)
 })
+
+nmTest({
+  test_that("a focei mixture fit warns on an empty or merged class, not on separated ones", {
+    rxode2::rxWithSeed(42, {
+      clSim <- ifelse(rbinom(20, 1, 0.5) == 1, 1.2, 6.0)
+      times <- c(0.5, 1, 2, 4, 8, 12, 24)
+      d <- do.call(
+        rbind,
+        lapply(seq_along(clSim), function(i) {
+          k <- clSim[i] / 24
+          cp <- 100 * 1.5 / (24 * (1.5 - k)) * (exp(-k * times) - exp(-1.5 * times)) + rnorm(length(times), 0, 0.05)
+          data.frame(
+            ID = i,
+            TIME = c(0, times),
+            AMT = c(100, rep(0, 7)),
+            EVID = c(1, rep(0, 7)),
+            DV = c(0, pmax(cp, 0)),
+            CMT = c(1, rep(2, 7))
+          )
+        })
+      )
+    })
+    mixMod <- function() {
+      ini({
+        tka <- log(1.5)
+        tcl1 <- fix(log(1.2))
+        tcl2 <- fix(log(6))
+        tv <- log(24)
+        p1 <- 0.5
+        eta.cl ~ 0.01
+        eta.v ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .ctl <- foceiControl(print = 0, maxOuterIterations = 0L, covMethod = "", calcTables = FALSE)
+    .mixWarn <- function(fit) grep("^mixture class", fit$runInfo, value = TRUE)
+
+    fit <- suppressMessages(nlmixr2(mixMod, d, "focei", control = .ctl))
+    expect_length(.mixWarn(fit), 0L)
+
+    fit <- suppressMessages(nlmixr2(ini(mixMod, tcl2 = log(1.2)), d, "focei", control = .ctl))
+    expect_equal(.mixWarn(fit), "mixture classes 1 and 2 are indistinguishable at the estimates")
+
+    fit <- suppressMessages(nlmixr2(ini(mixMod, tcl2 = log(500)), d, "focei", control = .ctl))
+    expect_equal(.mixWarn(fit), "mixture class 2 has no subjects (max posterior < 0.01); try new starts")
+  })
+})

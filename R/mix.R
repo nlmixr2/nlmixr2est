@@ -201,10 +201,14 @@
   })
   .empty <- which(is.finite(.maxPost) & .maxPost < emptyTol)
   for (.k in .empty) {
-    warning(sprintf(
-      "mixture class %d has no subjects (max posterior < %s); try new starts",
-      .k, format(emptyTol)
-    ), call. = FALSE)
+    warning(
+      sprintf(
+        "mixture class %d has no subjects (max posterior < %s); try new starts",
+        .k,
+        format(emptyTol)
+      ),
+      call. = FALSE
+    )
   }
   .ret$empty <- .empty
   if (is.matrix(ll) && identical(dim(ll), dim(post))) {
@@ -212,15 +216,21 @@
     for (.j in seq_len(.nMix - 1L)) {
       for (.k in seq.int(.j + 1L, .nMix)) {
         # an empty class is already reported; a pair needs subjects in both
-        if (.j %in% .empty || .k %in% .empty) next
+        if (.j %in% .empty || .k %in% .empty) {
+          next
+        }
         .bf <- abs(ll[, .j] - ll[, .k])
         # both -Inf (the subject belongs to a third class) says nothing here
         .bf <- .bf[!is.nan(.bf) & !is.na(.bf)]
         if (length(.bf) > 0L && max(.bf) < sameTol) {
-          warning(sprintf(
-            "mixture classes %d and %d are indistinguishable at the estimates",
-            .j, .k
-          ), call. = FALSE)
+          warning(
+            sprintf(
+              "mixture classes %d and %d are indistinguishable at the estimates",
+              .j,
+              .k
+            ),
+            call. = FALSE
+          )
           .ret$same <- rbind(.ret$same, c(.j, .k))
         }
       }
@@ -283,12 +293,13 @@
   .etaNames <- names(.ranef)[-1] # eta names from fixed ranef (no ID, no MIXEST)
 
   # Build unnormalised posterior: exp(-OBJI/2) * prior_prob for each subject x mixture
-  .llikMat <- matrix(NA_real_, nrow = .nSub, ncol = .nMix)
+  .llikMat <- .llMat <- matrix(NA_real_, nrow = .nSub, ncol = .nMix)
   for (k in seq_len(.nMix)) {
     .wk <- which(.etaFull$MIXEST == k)
     # Sort by subject ID to align rows correctly
     .wk <- .wk[order(as.integer(.etaFull$ID[.wk]))]
-    .llikMat[, k] <- exp(-0.5 * .etaFull$OBJI[.wk]) * .priorProbs[k]
+    .llMat[, k] <- -0.5 * .etaFull$OBJI[.wk]
+    .llikMat[, k] <- exp(.llMat[, k]) * .priorProbs[k]
   }
   .rowTotals <- rowSums(.llikMat)
   .zeroRows <- which(.rowTotals <= 0 | !is.finite(.rowTotals))
@@ -316,14 +327,7 @@
     .ret
   })
   names(.mixList) <- paste0("mix", seq_len(.nMix))
-  .llMat <- vapply(seq_len(.nMix), function(k) {
-    .wk <- which(.etaFull$MIXEST == k)
-    -0.5 * .etaFull$OBJI[.wk[order(as.integer(.etaFull$ID[.wk]))]]
-  }, numeric(.nSub))
-  .mixCollapseCheck(
-    vapply(.mixList, function(.m) .m$prob, numeric(.nSub)),
-    matrix(.llMat, nrow = .nSub)
-  )
+  .mixCollapseCheck(.llikMat / .rowTotals, .llMat)
 
   # Create mixNum: best mixture assignment per subject (1-indexed)
   # etaObf has columns: "ID", "MIXEST"(1-indexed best mix), eta names..., "OBJI"
@@ -500,7 +504,9 @@
   })
   names(.mixList) <- paste0("mix", seq_len(.nMix))
 
-  # a hard (0/1) membership carries no per-class likelihood to compare
+  # a hard (0/1) membership carries no per-class likelihood to compare, and
+  # soft weights come from one MCMC draw, which overstates the evidence: this
+  # pair check can miss a merge but not invent one
   .w <- as.matrix(.mixWeights)
   .ll <- NULL
   if (!all(.w == 0 | .w == 1)) {

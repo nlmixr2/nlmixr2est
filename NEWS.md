@@ -25,6 +25,11 @@
   `foceiControl(corWarn=)`, `saemControl(corWarn=)`) sets the threshold;
   `NA` turns it off (#1380).
 
+- A mixture fit now notes in `$runInfo` a class no subject belongs to
+  (`mixture class 2 has no subjects (max posterior < 0.01); try new starts`)
+  and, for the FOCEi family, two classes no subject can tell apart
+  (`mixture classes 1 and 2 are indistinguishable at the estimates`) (#1391).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the
