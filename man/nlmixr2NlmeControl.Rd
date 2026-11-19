@@ -47,7 +47,8 @@ nlmixr2NlmeControl(
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 
 nlmeControl(
@@ -92,7 +93,8 @@ nlmeControl(
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -327,6 +329,10 @@ and keep nlme's own standard errors.  When the recompute fails the
 \item{corWarn}{warn when two estimates' correlation is at least this in
 absolute value after the covariance step; \code{NA} or \code{Inf} turns
 the warning off.}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 a nlmixr-nlme list
