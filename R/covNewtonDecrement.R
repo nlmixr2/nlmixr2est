@@ -5,7 +5,8 @@
 #' the squared distance to that minimum in the metric of `cov`.
 #' @param g named OFV gradient
 #' @param cov named covariance of the estimate
-#' @return the decrement over the parameters in both; `NA` when there are none
+#' @return the decrement over the parameters in both (the thetas: the gradient
+#'   has no Omega element on the covariance's scale); `NA` when there are none
 #' @noRd
 .covNewtonDecrement <- function(g, cov) {
   if (!is.numeric(g) || is.null(names(g)) || !is.matrix(cov)) {
@@ -84,6 +85,8 @@
   .ctl$interaction <- TRUE
   .ctl$nAGQ <- 0L
   .ctl$literalFix <- TRUE
+  # mu profiling (the imp family's "lin") would drop thetas from the gradient
+  .ctl$muModel <- "none"
   # a derivative-free outerOpt would clear `fast`; no outer step is taken anyway
   .ctl$fast <- TRUE
   .ctl$outerOpt <- "nlminb"
@@ -152,10 +155,17 @@
   .limit <- .covNewtonWarnLimit(fit)
   .cov <- .covNewtonCov(fit, .env)
   .om <- tryCatch(fit$omega, error = function(e) NULL)
-  if (is.na(.limit) || !is.matrix(.cov) || !is.matrix(.om) || nrow(.om) == 0L) {
+  # an IOV fit's omega is a list of matrices
+  if (is.na(.limit) || !is.matrix(.cov) || length(.om) == 0L) {
     return(invisible(NA_real_))
   }
+  # a nested nlmixr2() resets nlmixr2global, including the outer fit's timing
+  .savedGlobal <- as.list(nlmixr2global, all.names = TRUE)
   .g <- tryCatch(.covNewtonGrad(fit), error = function(e) NULL)
+  rm(list = ls(nlmixr2global, all.names = TRUE), envir = nlmixr2global)
+  for (.gn in names(.savedGlobal)) {
+    assign(.gn, .savedGlobal[[.gn]], envir = nlmixr2global)
+  }
   .d <- .covNewtonDecrement(.g, .cov)
   if (is.na(.d)) {
     return(invisible(NA_real_))
