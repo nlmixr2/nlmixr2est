@@ -140,6 +140,9 @@
 
 ### Estimation
 
+- FOCEi now excludes `EVID = 2` records and inserted `EVID = 9`
+  initialization records from `fit$nobs` (#1342).
+
 - `saem` mixture fits with `saemControl(mixProbMethod = "annealed")` no
   longer error with "Mat::operator(): index out of bounds" when entering the
   SA covariance phase (#1297).
