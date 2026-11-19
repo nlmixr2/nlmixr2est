@@ -12984,7 +12984,8 @@ static int foceiCovSelect(Environment e, int req, int rState, int sState,
   Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
   Function sel = as<Function>(nlmixr2[".covSelectFocei"]);
   CharacterVector fb(fallback.begin(), fallback.end());
-  List r = sel(e, req, rState, sState, rstr, sstr, checkSandwich, sHasZero, op_focei.covSmall, fb);
+  List r = sel(e, req, rState, sState, rstr, sstr, checkSandwich, sHasZero, op_focei.covSmall, fb,
+               getRxNsub(rx));
   return as<int>(r["slot"]);
 }
 
