@@ -133,6 +133,24 @@ test_that("estimated parameters that cannot reach the objective are found (#1382
     })
   }
   expect_equal(.unused(spare), "tdead")
+
+  # an unread linCmt() keeps nothing
+  linJunk <- function() {
+    ini({
+      tcl <- 1
+      tv <- 3.45
+      tb <- 1
+      add.sd <- 0.7
+    })
+    model({
+      cl <- exp(tcl)
+      v <- exp(tv)
+      junk <- linCmt()
+      cp <- tb + 0 * t
+      cp ~ add(add.sd)
+    })
+  }
+  expect_equal(.unused(linJunk), c("tcl", "tv"))
 })
 
 test_that("a parameter with a prior affects the objective", {
@@ -157,6 +175,7 @@ test_that("a parameter with a prior affects the objective", {
   .ui <- rxode2::rxUiDecompress(rxode2::rxode2(pri))
   skip_if_not("prior" %in% names(.ui$iniDf), "this lotri has no prior support")
   expect_equal(.unusedEstimatedParams(.ui), character(0))
+  expect_equal(.unusedEstimatedParams(.ui, list(priorMethod = "none")), "tdead")
 })
 
 test_that("unused parameter hook warns by name", {
