@@ -31,10 +31,30 @@
 #' @noRd
 .covNewtonEst <- function(est) {
   .skip <- c(
-    "focei", "foce", "focep", "foi", "fo", "laplace", "agq", "posthoc",
-    "ifocei", "ifoce", "ifocep", "ilaplace", "iagq",
-    "mfocei", "mfoce", "mfocep", "mlaplace", "magq",
-    "none", "output", "predict", "simulate", "simulation", "rxSolve"
+    "focei",
+    "foce",
+    "focep",
+    "foi",
+    "fo",
+    "laplace",
+    "agq",
+    "posthoc",
+    "ifocei",
+    "ifoce",
+    "ifocep",
+    "ilaplace",
+    "iagq",
+    "mfocei",
+    "mfoce",
+    "mfocep",
+    "mlaplace",
+    "magq",
+    "none",
+    "output",
+    "predict",
+    "simulate",
+    "simulation",
+    "rxSolve"
   )
   length(est) == 1L && is.character(est) && nzchar(est) && !(est %in% .skip)
 }
