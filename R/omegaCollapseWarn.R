@@ -79,12 +79,28 @@
   if (length(boundLower) == 1L && is.finite(boundLower)) {
     .at <- .omegaCollapseAtBound(omega0, omega, boundLower)
     if (is.null(.at)) {
-      # within 1% of start/boundLower: the optimizer stopped on the bound
+      # within 1% of start/boundLower: the optimizer stopped on the bound.
+      # The variance is the bounded parameter only for an eta that started
+      # outside any block.
       .at <- .nm[.ok & .ratio <= 1.01 / boundLower]
+      if (is.matrix(omega0) && !is.null(rownames(omega0))) {
+        .at <- intersect(.at, .omegaCollapseUnblocked(omega0))
+      }
     }
     .bound <- setdiff(intersect(.at, .nm), .collapsed)
   }
   list(collapsed = .collapsed, bound = .bound)
+}
+
+#' Etas with no covariance in an omega
+#'
+#' @param omega a named omega matrix
+#' @return the names of the etas whose off-diagonal omega entries are all 0
+#' @noRd
+.omegaCollapseUnblocked <- function(omega) {
+  .off <- omega
+  diag(.off) <- 0
+  rownames(omega)[rowSums(.off != 0) == 0]
 }
 
 #' Etas whose bounded omega parameter ended at its lower bound

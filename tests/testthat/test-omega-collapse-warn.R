@@ -151,6 +151,23 @@ test_that("a block omega is checked on the parameters FOCEi bounds", {
     .omegaCollapsed(diag(.d0), diag(.d1), 1e-3, 100)$bound,
     .omegaCollapsed(diag(.d0), diag(.d1), 1e-3, 100, .d0, .d1)$bound
   )
+  # when the matrices cannot be compared, only etas outside a block use the
+  # variance ratio
+  .nm3 <- c(.nm, "eta.c")
+  .blk0 <- rbind(cbind(.om0, 0), c(0, 0, 300))
+  dimnames(.blk0) <- list(.nm3, .nm3)
+  expect_identical(
+    .omegaCollapsed(
+      c(eta.a = 1, eta.b = 1, eta.c = 300),
+      c(eta.a = 0.01, eta.b = 1, eta.c = 3),
+      1e-3,
+      100,
+      .blk0,
+      NULL
+    )$bound,
+    "eta.c"
+  )
+  expect_identical(.omegaCollapseUnblocked(.blk0), "eta.c")
   # mismatched or singular matrices fall back to the ratio rule
   expect_null(.omegaCollapseAtBound(.d0, .d1[2:1, 2:1], 100))
   expect_null(.omegaCollapseAtBound(.d0, matrix(0, 2, 2, dimnames = list(.nm, .nm)), 100))
