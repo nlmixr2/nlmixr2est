@@ -153,6 +153,10 @@
   if (isTRUE(est %in% c(.preProcessHooksSimulationEst, "posthoc"))) {
     return(NULL)
   }
+  # a registered likelihood contributor may read any parameter
+  if (.Call("_nlmixr2est_likContribN", PACKAGE = "nlmixr2est") > 0L) {
+    return(NULL)
+  }
   .ui <- rxode2::rxUiDecompress(ui)
   for (.n in .unusedEstimatedParams(.ui, control)) {
     warning(paste0("'", .n, "' does not affect the objective function"), call. = FALSE)
