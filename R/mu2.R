@@ -220,11 +220,23 @@ mu2env$expit <- rxode2::expit
 #' @return a list with list(ui=mu referenced ui, data=mu referenced dataset)
 #' @author Matthew L. Fidler
 #' @noRd
+.mu2CovHasVariable <- function(cov) {
+  .lang <- try(str2lang(cov), silent = TRUE)
+  !inherits(.lang, "try-error") && length(all.vars(.lang)) > 0L
+}
+
 .uiModifyForCovs <- function(ui, data) {
   .datEnv <- .mu2CovEnv(ui, data)
   .df <- ui$mu2RefCovariateReplaceDataFrame
   lapply(seq_along(.df$covariate), function(i) {
     .datEnv$i <- i
+    if (!.mu2CovHasVariable(.df$covariate[i])) {
+      # A constant "covariate" (e.g. -0.75 from `0.75*log(V1/exp(tV1))`, which
+      # older rxode2 reports as a mu2 term) is not a covariate: replacing the
+      # term by `constant*theta` drops its theta-free remainder (here
+      # 0.75*log(V1)), silently changing the model.  Leave the term alone.
+      return(invisible())
+    }
     .r <- .mu2CovValue(.datEnv, .df$covariate[i])
     if (is.null(.r)) {
       .txt <- paste0(

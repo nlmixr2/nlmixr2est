@@ -65,6 +65,14 @@
 
 ## Bug fixes
 
+### mu-referencing
+
+- The mu2 covariate rewrite used by SAEM and the mu-referenced methods
+  now skips a "covariate" that is a constant.  Older rxode2 reported
+  `0.75*log(V1/exp(tV1))` as a mu2 term with covariate `-0.75`; rewriting it
+  to `nlmixrMuDerCov*tV1` dropped `0.75*log(V1)` and silently removed the
+  `V1` (weight, `eta.V1`) dependence of the parameter.
+
 ### Covariance
 
 - The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a
