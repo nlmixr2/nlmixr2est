@@ -192,7 +192,7 @@ test_that("bic() keeps separately assigned parameters out of an eta's product", 
       emax <- exp(temax)
       ec50 <- exp(tec50)
       v <- exp(tv)
-      k <- exp(tcl + eta.cl) / v
+      k <- exp(tcl + eta.cl) / v / exp(tv)
       effect <- e0 + emax * Conc / (ec50 + Conc) - k * t
       effect ~ add(add.sd)
     })
@@ -200,6 +200,26 @@ test_that("bic() keeps separately assigned parameters out of an eta's product", 
   .l <- .bicThetaLink(suppressWarnings(rxode2::rxode2(m)))
   expect_setequal(.l$structural, c("te0", "tcl"))
   expect_length(.l$residual, 0L)
+})
+
+test_that("bic() keeps a mu-referenced residual theta residual", {
+  m <- function() {
+    ini({
+      tcl <- log(2.7)
+      eta.cl ~ 0.3
+      tprop <- log(0.1)
+      eta.rsd ~ 0.1
+    })
+    model({
+      cl <- exp(tcl + eta.cl)
+      cp <- cl * t
+      rsd <- exp(tprop + eta.rsd)
+      cp ~ prop(rsd)
+    })
+  }
+  .c <- .bicParClass(suppressWarnings(rxode2::rxode2(m)))
+  expect_equal(.c$structural, 1L)
+  expect_equal(.c$residual, 1L)
 })
 
 test_that("bic() does not count same() copy rows", {

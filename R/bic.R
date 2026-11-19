@@ -23,7 +23,8 @@
 #' The linkage is read from the expression around each eta: the whole sum it
 #' is added to (`tcl + eta.cl`), or the product it multiplies, where the other
 #' factors are its typical value (`tvcl * exp(eta.cl)`) unless the eta's own
-#' factor already has one (in `exp(tcl + eta.cl) / v`, `v` stays its own
+#' factor already has one; then only covariate effects such as
+#' `(WT / 70)^cwt` join it (in `exp(tcl + eta.cl) / v`, `v` stays its own
 #' parameter).  This is exact for mu-referenced parameters; for other forms
 #' it is an approximation, so write each eta on its own parameter line for an
 #' exact count.  Fixed parameters are not counted.  A theta whose linkage
@@ -140,7 +141,8 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
     }
   )
   .err <- .idf$name[.isTheta & !is.na(.idf$err)]
-  .str <- setdiff(intersect(.thetas, union(.link$structural, ui$muRefDataFrame$theta)), .err)
+  .mu <- setdiff(ui$muRefDataFrame$theta, .link$residual)
+  .str <- setdiff(intersect(.thetas, union(.link$structural, .mu)), .err)
   .res <- setdiff(intersect(.thetas, union(.link$residual, .link$structural)), .str)
   .ret$structural <- length(.str)
   .ret$residual <- length(.res)
@@ -173,15 +175,16 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
 #' otherwise only the terms holding an eta are.  In a product the other
 #' factors are the eta's typical value (`tvcl * exp(eta.cl)`) unless the
 #' eta's own factor already carries one (`exp(tcl + eta.cl) / v`); then only
-#' the factors that use no other model variable join.
+#' covariate effects join.
 #' @param x expression
 #' @param etaLike eta and eta-carrying variable names
 #' @param direct etas and variables built only from etas and covariates
 #' @param typ thetas and eta-carrying variables that hold a theta
 #' @param own assigned variables that carry no eta
+#' @param covs covariate names
 #' @return list of expressions
 #' @noRd
-.bicEtaPart <- function(x, etaLike, direct, typ, own) {
+.bicEtaPart <- function(x, etaLike, direct, typ, own, covs) {
   .has <- function(e) any(all.vars(e) %in% etaLike)
   if (!.has(x)) {
     return(list())
@@ -190,7 +193,7 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
     return(list(x))
   }
   .rec <- function(lst) {
-    do.call(c, lapply(lst, .bicEtaPart, etaLike = etaLike, direct = direct, typ = typ, own = own))
+    do.call(c, lapply(lst, .bicEtaPart, etaLike = etaLike, direct = direct, typ = typ, own = own, covs = covs))
   }
   .f <- as.character(x[[1]])
   if (.f %in% c("*", "/")) {
@@ -199,7 +202,16 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
     .typ <- any(vapply(.o[.eta], function(o) any(all.vars(o) %in% typ), logical(1)))
     .keep <- !.eta
     if (.typ) {
-      .keep <- .keep & !vapply(.o, function(o) any(all.vars(o) %in% own), logical(1))
+      # only a covariate effect joins an eta that has its typical value
+      .keep <- .keep &
+        vapply(
+          .o,
+          function(o) {
+            .v <- all.vars(o)
+            !any(.v %in% own) && (!any(.v %in% typ) || any(.v %in% covs))
+          },
+          logical(1)
+        )
     }
     return(c(.o[.keep], .rec(.o[.eta])))
   }
@@ -339,7 +351,8 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
       .etaLike,
       intersect(.direct, .etaLike),
       c(.thetas, setdiff(.etaVar, .thetaFree)),
-      setdiff(.vars, .etaLike)
+      setdiff(.vars, .etaLike),
+      ui$allCovs
     )
     .t <- .trace(unique(unlist(lapply(.parts, all.vars))))
     if (.resLine) {

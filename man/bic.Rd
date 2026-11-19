@@ -52,7 +52,8 @@ Parameters are classified from the fit's model:
 The linkage is read from the expression around each eta: the whole sum it
 is added to (`tcl + eta.cl`), or the product it multiplies, where the other
 factors are its typical value (`tvcl * exp(eta.cl)`) unless the eta's own
-factor already has one (in `exp(tcl + eta.cl) / v`, `v` stays its own
+factor already has one; then only covariate effects such as
+`(WT / 70)^cwt` join it (in `exp(tcl + eta.cl) / v`, `v` stays its own
 parameter).  This is exact for mu-referenced parameters; for other forms
 it is an approximation, so write each eta on its own parameter line for an
 exact count.  Fixed parameters are not counted.  A theta whose linkage
