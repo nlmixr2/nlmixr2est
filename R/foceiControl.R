@@ -1061,6 +1061,13 @@
 #' @param shrinkEtaWarn Warn (in `$runInfo`) when an eta's SD shrinkage is
 #'   at or above this percentage.  Use `NA` or `Inf` to disable.
 #'
+#' @param odeSettleCheck When `TRUE`, an ODE model's ETAs and objective are
+#'   re-solved at the final estimates with every ODE tolerance 10x tighter,
+#'   and `$runInfo` notes an objective that moves by more than `odeSettleTol`
+#'   or is not finite.  The tighter objective is kept as `fit$odeSettleObjf`.
+#'
+#' @param odeSettleTol The objective change that `odeSettleCheck` reports.
+#'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
 #'     ODE solve.
@@ -1494,6 +1501,8 @@ foceiControl <- function(
   etaRestart = 4L, #
   finalEtaTol = 1, #
   shrinkEtaWarn = 30, #
+  odeSettleCheck = FALSE, #
+  odeSettleTol = 0.1, #
   nRetries = 3, #
   seed = 42, #
   resetThetaCheckPer = 0.1, #
@@ -2159,6 +2168,8 @@ foceiControl <- function(
   checkmate::assertIntegerish(etaRestart, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumber(finalEtaTol, lower = 0)
   checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
+  checkmate::assertFlag(odeSettleCheck)
+  checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2361,6 +2372,8 @@ foceiControl <- function(
     etaRestart = as.integer(etaRestart),
     finalEtaTol = as.double(finalEtaTol),
     shrinkEtaWarn = as.double(shrinkEtaWarn),
+    odeSettleCheck = odeSettleCheck,
+    odeSettleTol = as.double(odeSettleTol),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,

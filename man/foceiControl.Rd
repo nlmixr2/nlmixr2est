@@ -163,6 +163,8 @@ foceiControl(
   etaRestart = 4L,
   finalEtaTol = 1,
   shrinkEtaWarn = 30,
+  odeSettleCheck = FALSE,
+  odeSettleTol = 0.1,
   nRetries = 3,
   seed = 42,
   resetThetaCheckPer = 0.1,
@@ -1173,6 +1175,13 @@ warm start (`mceta < 0`).  Use `Inf` to disable.}
 
 \item{shrinkEtaWarn}{Warn (in `$runInfo`) when an eta's SD shrinkage is
 at or above this percentage.  Use `NA` or `Inf` to disable.}
+
+\item{odeSettleCheck}{When `TRUE`, an ODE model's ETAs and objective are
+re-solved at the final estimates with every ODE tolerance 10x tighter,
+and `$runInfo` notes an objective that moves by more than `odeSettleTol`
+or is not finite.  The tighter objective is kept as `fit$odeSettleObjf`.}
+
+\item{odeSettleTol}{The objective change that `odeSettleCheck` reports.}
 
 \item{nRetries}{If FOCEi doesn't fit with the current parameter
 estimates, randomly sample new parameter estimates and restart
