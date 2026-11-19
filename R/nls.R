@@ -188,9 +188,7 @@ nlsControl <- function(
   }
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
-      # nls's Levenberg-Marquardt step is sensitive to ODE solver noise, so give it
-      # a tighter solve (3 orders below the shared sigdig target) than the optimizer
-      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig = sigdig), sigdig, tighten = 3)
+      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig = sigdig), sigdig)
     } else {
       rxControl <- rxode2::rxControl(atol = 1e-4, rtol = 1e-4)
     }
@@ -199,8 +197,7 @@ nlsControl <- function(
     rxControl <- .rxControlScaleSigdig(
       do.call(rxode2::rxControl, rxControl),
       sigdig,
-      skip = names(rxControl),
-      tighten = 3
+      skip = names(rxControl)
     )
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call = FALSE)

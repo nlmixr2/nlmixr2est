@@ -51,14 +51,27 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' @author Matthew Fidler
 #' @noRd
 .foceiSolveWithId <- function(...) {
-  .ret <- .rxSolveNonmem(..., warnIdSort = FALSE)
-  if (names(.ret)[1] == "time") {
+  .residIdDv(.rxSolveNonmem(..., warnIdSort = FALSE))
+}
+
+#' The ID and dv columns of a table solve
+#'
+#' rxSolve() drops the id column for a single subject; put an `ID` of 1 back
+#' (also under `addDosing = TRUE`, where the frame starts at `evid`, not
+#' `time`), and name the dv column `dv`.  Shared by the rxSolve() and pooled
+#' table routes.
+#'
+#' @param ret solved frame
+#' @return `ret` with those columns
+#' @noRd
+.residIdDv <- function(ret) {
+  if (!any(tolower(names(ret)) == "id")) {
     ## For single subject ID is dropped.
-    .ret <- data.frame(ID = 1L, .ret)
+    ret <- data.frame(ID = 1L, ret)
   }
-  .w <- which(tolower(names(.ret)) == "dv")
-  names(.ret)[.w] <- "dv"
-  return(.ret)
+  .w <- which(tolower(names(ret)) == "dv")
+  names(ret)[.w] <- "dv"
+  ret
 }
 
 
@@ -142,32 +155,153 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   rxode2::rxSolve(...)
 }
 
-#' Solve for pred/ipred types of calculations (including residuals)
+#' Each subject's mixture assignment for a table solve (`iCov`)
+#'
+#' A mixture fit keeps the assignments in its environment (`mixIcov`); rxode2
+#' reads them into each subject's mixest.  `ID` is the subject index
+#' `fit$dataSav` is solved with: output creation may already have re-leveled it
+#' to a factor labeled with the original IDs, so the factor's codes are taken,
+#' never its labels.
+#'
+#' @param fit focei style fit (or its environment)
+#' @return the iCov data frame, or `NULL` when the fit has none
+#' @noRd
+.residMixIcov <- function(fit) {
+  .env <- fit
+  if (!is.environment(.env) && is.environment(fit$env)) {
+    .env <- fit$env
+  }
+  if (!is.environment(.env) || !exists("mixIcov", envir = .env, inherits = FALSE)) {
+    return(NULL)
+  }
+  .iCov <- get("mixIcov", envir = .env, inherits = FALSE)
+  if (!is.null(.iCov) && !is.null(.iCov$ID)) {
+    .iCov$ID <- as.integer(.iCov$ID)
+    if (anyNA(.iCov$ID)) .iCov <- NULL
+  }
+  .iCov
+}
+
+#' Whether a table solve can pass the mixture assignments
+#'
+#' An rxode2 without nlmixr2/rxode2#1358 does not reject the iCov, it never
+#' reads a mixture out of a model whose mix() symengine expanded away: nothing
+#' errors, so this says so, or mixest/mixnum and everything mix() feeds would
+#' silently read 0.
 #'
 #' @param fit focei style fit
-#' @param model rxode2 model
-#' @param pars parameters to solve
-#' @param keep vector of columns to keep
-#' @param what string of what type of calculation is being performed
-#' @inheritParams rxode2::rxSolve
-#' @return Solved rxode2 data
-#' @author Matthew Fidler
+#' @param models the models the solve uses
+#' @return environment: `iCov` and `ok` (pass it), shared by the solves so a
+#'   rejected iCov is not tried again
 #' @noRd
-.foceiSolvePars <- function(
-  fit,
-  model,
-  pars = NULL,
-  returnType = "data.frame",
-  keep = NULL,
-  what = "pred",
-  addDosing = FALSE,
-  subsetNonmem = TRUE,
-  addCov = FALSE
-) {
-  if (is.null(model)) {
-    stop("cannot solve with `model` NULL", call. = FALSE)
+.residMixIcovState <- function(fit, models) {
+  .st <- new.env(parent = emptyenv())
+  .st$iCov <- .residMixIcov(fit)
+  .st$ok <- !is.null(.st$iCov)
+  if (.st$ok) {
+    for (.m in models) {
+      .flags <- try(rxode2::rxModelVars(.m)$flags, silent = TRUE)
+      if (!inherits(.flags, "try-error") && !is.null(.flags) && "mix" %in% names(.flags) && .flags[["mix"]] == 0L) {
+        warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
+        .st$ok <- FALSE
+        break
+      }
+    }
   }
-  keep <- unique(c(keep, "nlmixrRowNums"))
+  .st
+}
+
+#' Run a table solve with the mixture assignments
+#'
+#' An rxode2 that predates per-individual mixest for an expanded mix() rejects
+#' the iCov (an older one overran its covariate list, SET_VECTOR_ELT, when an
+#' iCov mixest came with another covariate); then the solve is repeated without
+#' it, and says so.
+#'
+#' @param state `.residMixIcovState()`
+#' @param solve `function(iCov)` running the solve
+#' @return the solve's value
+#' @noRd
+.residMixIcovSolve <- function(state, solve) {
+  if (!state$ok) {
+    return(solve(NULL))
+  }
+  tryCatch(solve(state$iCov), error = function(e) {
+    if (!grepl("iCov|mixest|mixunif|time.varying|SET_VECTOR_ELT", conditionMessage(e), ignore.case = TRUE)) {
+      stop(e)
+    }
+    state$ok <- FALSE
+    warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
+    solve(NULL)
+  })
+}
+
+#' Which rows of a table solve are mtime() records
+#'
+#' mtime() records are model output, not data (#919): the solve emits one extra
+#' row per subject per mtime, which is not an observation and has no source row
+#' in the input dataset, so it would land in the fit table as a DV=NA row.  Only
+#' looked for when the solved model actually declares an mtime.  Shared by the
+#' rxSolve() and pooled table routes.
+#'
+#' @param res solved frame
+#' @param model the model it was solved with
+#' @return logical, `TRUE` for the rows to drop (`NULL` for none)
+#' @noRd
+.residMtimeRows <- function(res, model) {
+  .hasMtime <- tryCatch(rxode2::rxModelVars(model)$nMtime > 0L, error = function(e) FALSE)
+  if (!isTRUE(.hasMtime)) {
+    return(NULL)
+  }
+  .evidW <- which(tolower(names(res)) == "evid")
+  if (length(.evidW) == 1L) {
+    # addDosing: dose rows are in the output, so the EVID is too -- use it.
+    .ev <- res[[.evidW]]
+    .drop <- !is.na(.ev) & .ev >= 10 & .ev <= 99
+  } else if (!is.null(res$nlmixrRowNums)) {
+    # No EVID column means dose rows were left out, so the only rows with no
+    # source row left are the mtime ones.  Do NOT use this when doses are kept:
+    # an ADDL-expanded dose also has no source row and must stay.
+    .drop <- is.na(res$nlmixrRowNums)
+  } else {
+    return(NULL)
+  }
+  if (!any(.drop)) {
+    return(NULL)
+  }
+  .drop
+}
+
+#' Drop a table solve's mtime() records (`.residMtimeRows()`)
+#'
+#' @inheritParams .residMtimeRows
+#' @return `res` without them
+#' @noRd
+.residDropMtimeRows <- function(res, model) {
+  .drop <- .residMtimeRows(res, model)
+  if (is.null(.drop)) {
+    return(res)
+  }
+  res <- res[!.drop, , drop = FALSE]
+  rownames(res) <- NULL
+  res
+}
+
+#' Solve a table model, loosening tolerances and switching ODE method on failure
+#'
+#' A solve fails when any `rx_pred_` is `NA`; it is then repeated with
+#' atol/rtol multiplied by `odeRecalcFactor` (up to `stickyRecalcN` times,
+#' capped at `maxAtolRtolFactor`), then with the next method of
+#' `.residOdeFallbackMethods()`.  Shared by the rxSolve() and pooled routes.
+#'
+#' @param fit focei style fit
+#' @param what what is solved, for the warning
+#' @param solveOnce `function(method, atol, rtol)` returning the solve
+#' @param predOf `function(res)` returning its `rx_pred_`
+#' @return the solve
+#' @author Matthew L. Fidler
+#' @noRd
+.residSolveWithFallback <- function(fit, what, solveOnce, predOf = function(x) x$rx_pred_) {
   currentOdeMethod <- .residOdeMethodName(fit$methodOde)
   odeMethods <- .residOdeFallbackMethods(currentOdeMethod)
   failedMethods <- character()
@@ -175,148 +309,18 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   recalc <- TRUE
   maxAtolRtol <- fit$foceiControl$rxControl$maxAtolRtolFactor
   recalcFactor <- fit$foceiControl$odeRecalcFactor
-  .tolFactor <- fit$env$tolFactor
-  # the table must interpolate covariates the way the fit did (#1137)
-  .covsi <- .residCovsInterpolation(fit)
-  # For mixture models, pass per-subject mixture assignments via iCov so
-  # rxode2 sets ind->mixest correctly during the table solve. `fit` is the
-  # nlmixr2FitCore environment, accessed directly.
-  .iCov <- NULL
-  .env <- fit
-  if (!is.environment(.env) && is.environment(fit$env)) {
-    .env <- fit$env
-  }
-  if (is.environment(.env) && exists("mixIcov", envir = .env, inherits = FALSE)) {
-    .iCov <- get("mixIcov", envir = .env, inherits = FALSE)
-    # ID is the subject index fit$dataSav is solved with.  Output creation may
-    # already have re-leveled it to a factor labeled with the original IDs, so
-    # take the factor's codes (the index), never its labels.
-    if (!is.null(.iCov) && !is.null(.iCov$ID)) {
-      .iCov$ID <- as.integer(.iCov$ID)
-      if (anyNA(.iCov$ID)) .iCov <- NULL
-    }
-  }
-  # Fallback flag: an rxode2 that predates per-individual mixest for an
-  # expanded mix() rejects the iCov; retry without it rather than losing the
-  # whole table step.  The retry SAYS SO -- mixest/mixnum and everything
-  # mix() feeds read 0 without it, and that is the silently-wrong table this
-  # whole path exists to stop producing.
-  .iCovState <- new.env(parent = emptyenv())
-  .iCovState$ok <- !is.null(.iCov)
-  if (.iCovState$ok) {
-    # An rxode2 without nlmixr2/rxode2#1358 does not reject the iCov, it just
-    # never reads a mixture out of a model whose mix() symengine expanded away.
-    # Nothing errors, so say so here or the zeros are silent.
-    .predFlags <- try(rxode2::rxModelVars(model)$flags, silent = TRUE)
-    if (
-      !inherits(.predFlags, "try-error") &&
-        !is.null(.predFlags) &&
-        "mix" %in% names(.predFlags) &&
-        .predFlags[["mix"]] == 0L
-    ) {
-      warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
-      .iCovState$ok <- FALSE
-    }
-  }
   while (recalc && length(odeMethods) > 0) {
     recalcN <- 0
     currentOdeMethod <- odeMethods[[1]]
     odeMethods <- odeMethods[-1]
     .atol <- fit$atol[1]
     .rtol <- fit$rtol[1]
-    ## message(currentOdeMethod)
     while (recalc && recalcN < fit$foceiControl$stickyRecalcN) {
-      # Iterate up atol/rtol
-      ## message("\t", .atol, " ", .rtol)
-      .res <- if (.iCovState$ok) {
-        tryCatch(
-          .foceiSolveWithId(
-            model,
-            pars,
-            fit$dataSav,
-            returnType = returnType,
-            atol = .atol,
-            rtol = .rtol,
-            maxsteps = fit$maxstepsOde,
-            hmin = fit$hmin,
-            hmax = fit$hmax,
-            hini = fit$hini,
-            maxordn = fit$maxordn,
-            maxords = fit$maxords,
-            method = rxode2::odeMethodToInt(currentOdeMethod),
-            tolFactor = .tolFactor,
-            covsInterpolation = .covsi$covsInterpolation,
-            naInterpolation = .covsi$naInterpolation,
-            nonmem = .covsi$nonmem,
-            iCov = .iCov,
-            keep = keep,
-            addDosing = addDosing,
-            subsetNonmem = subsetNonmem,
-            addCov = addCov
-          ),
-          error = function(e) {
-            # SET_VECTOR_ELT: older rxode2 overran its covariate list when an iCov
-            # mixest came with any other covariate
-            if (grepl("iCov|mixest|mixunif|time.varying|SET_VECTOR_ELT", conditionMessage(e), ignore.case = TRUE)) {
-              .iCovState$ok <- FALSE
-              warning("mixture not passed to table; mixest/mixnum read 0", call. = FALSE)
-              .foceiSolveWithId(
-                model,
-                pars,
-                fit$dataSav,
-                returnType = returnType,
-                atol = .atol,
-                rtol = .rtol,
-                maxsteps = fit$maxstepsOde,
-                hmin = fit$hmin,
-                hmax = fit$hmax,
-                hini = fit$hini,
-                maxordn = fit$maxordn,
-                maxords = fit$maxords,
-                method = rxode2::odeMethodToInt(currentOdeMethod),
-                tolFactor = .tolFactor,
-                covsInterpolation = .covsi$covsInterpolation,
-                naInterpolation = .covsi$naInterpolation,
-                nonmem = .covsi$nonmem,
-                iCov = NULL,
-                keep = keep,
-                addDosing = addDosing,
-                subsetNonmem = subsetNonmem,
-                addCov = addCov
-              )
-            } else {
-              stop(e)
-            }
-          }
-        )
-      } else {
-        .foceiSolveWithId(
-          model,
-          pars,
-          fit$dataSav,
-          returnType = returnType,
-          atol = .atol,
-          rtol = .rtol,
-          maxsteps = fit$maxstepsOde,
-          hmin = fit$hmin,
-          hmax = fit$hmax,
-          hini = fit$hini,
-          maxordn = fit$maxordn,
-          maxords = fit$maxords,
-          method = rxode2::odeMethodToInt(currentOdeMethod),
-          tolFactor = .tolFactor,
-          covsInterpolation = .covsi$covsInterpolation,
-          naInterpolation = .covsi$naInterpolation,
-          nonmem = .covsi$nonmem,
-          iCov = NULL,
-          keep = keep,
-          addDosing = addDosing,
-          subsetNonmem = subsetNonmem,
-          addCov = addCov
-        )
-      }
-      rxode2::rxSolveFree()
-      recalc <- any(is.na(.res$rx_pred_))
+      .res <- solveOnce(currentOdeMethod, .atol, .rtol)
+      # the two options make a solve fail on purpose, to test this loop
+      recalc <- any(is.na(predOf(.res))) ||
+        currentOdeMethod %in% getOption("nlmixr2.tableFailMethods", character(0)) ||
+        .atol <= getOption("nlmixr2.tableFailAtol", -Inf)
       recalcN <- recalcN + 1
       if (recalc) {
         .atol <- min(.atol * recalcFactor, maxAtolRtol)
@@ -353,31 +357,72 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       currentOdeMethod
     )
   }
-  # mtime() records are model output, not data (#919): the solve emits one extra
-  # row per subject per mtime, which is not an observation and has no source row
-  # in the input dataset, so it would land in the fit table as a DV=NA row.  Only
-  # looked for when the solved model actually declares an mtime.
-  .hasMtime <- tryCatch(rxode2::rxModelVars(model)$nMtime > 0L, error = function(e) FALSE)
-  if (isTRUE(.hasMtime)) {
-    .evidW <- which(tolower(names(.res)) == "evid")
-    if (length(.evidW) == 1L) {
-      # addDosing: dose rows are in the output, so the EVID is too -- use it.
-      .ev <- .res[[.evidW]]
-      .drop <- !is.na(.ev) & .ev >= 10 & .ev <= 99
-    } else if (!is.null(.res$nlmixrRowNums)) {
-      # No EVID column means dose rows were left out, so the only rows with no
-      # source row left are the mtime ones.  Do NOT use this when doses are kept:
-      # an ADDL-expanded dose also has no source row and must stay.
-      .drop <- is.na(.res$nlmixrRowNums)
-    } else {
-      .drop <- FALSE
-    }
-    if (any(.drop)) {
-      .res <- .res[!.drop, , drop = FALSE]
-      rownames(.res) <- NULL
-    }
-  }
   .res
+}
+
+#' Solve for pred/ipred types of calculations (including residuals)
+#'
+#' @param fit focei style fit
+#' @param model rxode2 model
+#' @param pars parameters to solve
+#' @param keep vector of columns to keep
+#' @param what string of what type of calculation is being performed
+#' @inheritParams rxode2::rxSolve
+#' @return Solved rxode2 data
+#' @author Matthew Fidler
+#' @noRd
+.foceiSolvePars <- function(
+  fit,
+  model,
+  pars = NULL,
+  returnType = "data.frame",
+  keep = NULL,
+  what = "pred",
+  addDosing = FALSE,
+  subsetNonmem = TRUE,
+  addCov = FALSE
+) {
+  if (is.null(model)) {
+    stop("cannot solve with `model` NULL", call. = FALSE)
+  }
+  keep <- unique(c(keep, "nlmixrRowNums"))
+  .tolFactor <- fit$env$tolFactor
+  # the table must interpolate covariates the way the fit did (#1137)
+  .covsi <- .residCovsInterpolation(fit)
+  # mixture models solve with each subject's mixture assignment (iCov)
+  .mix <- .residMixIcovState(fit, list(model))
+  .solveOnce <- function(method, atol, rtol) {
+    .res <- .residMixIcovSolve(.mix, function(iCov) {
+      .foceiSolveWithId(
+        model,
+        pars,
+        fit$dataSav,
+        returnType = returnType,
+        atol = atol,
+        rtol = rtol,
+        maxsteps = fit$maxstepsOde,
+        hmin = fit$hmin,
+        hmax = fit$hmax,
+        hini = fit$hini,
+        maxordn = fit$maxordn,
+        maxords = fit$maxords,
+        method = rxode2::odeMethodToInt(method),
+        tolFactor = .tolFactor,
+        covsInterpolation = .covsi$covsInterpolation,
+        naInterpolation = .covsi$naInterpolation,
+        nonmem = .covsi$nonmem,
+        iCov = iCov,
+        keep = keep,
+        addDosing = addDosing,
+        subsetNonmem = subsetNonmem,
+        addCov = addCov
+      )
+    })
+    rxode2::rxSolveFree()
+    .res
+  }
+  .res <- .residSolveWithFallback(fit, what, .solveOnce)
+  .residDropMtimeRows(.res, model)
 }
 
 #' Create a ipred/pred list from the focei style model
@@ -414,6 +459,10 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .ipredModel <- fit$innerModel
   if (is.null(.ipredModel)) {
     predOnly <- TRUE
+  }
+  .pooled <- .tablePoolPredIpredList(fit, thetaEtaParameters, .keep, predOnly, addDosing, subsetNonmem)
+  if (!is.null(.pooled)) {
+    return(.pooled)
   }
   if (predOnly) {
     # Use predOnlyModel (which outputs the user-defined lhs like ka/cl/v and
@@ -524,16 +573,20 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   checkmate::assertLogical(subsetNonmem, len = 1, any.missing = FALSE)
   checkmate::assertLogical(npde, len = 1, any.missing = FALSE)
   keep <- unique(c(keep, "nlmixrRowNums"))
-  if (!inherits(dv, "numeric")) {
+  # npde's DV (censored rows imputed) arrives as a one-column matrix
+  if (!is.numeric(dv)) {
     dv <- .prdLst$ipred$dv
     table$doSim <- TRUE
   } else {
+    dv <- as.vector(dv)
     table$doSim <- FALSE
   }
 
   if (npde) {
     .ni <- fit$dataNormInfo
-    .sim <- vpcSim(fit, n = table$nsim, seed = table$seed, addDosing = addDosing, subsetNonmem = subsetNonmem)
+    # the npde compares observations only; addDosing just adds display rows,
+    # so it must not change the simulations
+    .sim <- vpcSim(fit, n = table$nsim, seed = table$seed, addDosing = FALSE, subsetNonmem = subsetNonmem)
     .w <- which(names(.sim) == "ipred")
     if (length(.w) == 1) {
       .sim <- .sim[, -.w]
@@ -543,32 +596,32 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .sim <- .sim[, .n0]
     .ipred <- .prdLst$ipred
     .ipred <- .ipred[.ipred$nlmixrRowNums %in% .ni$nlmixrRowNums, ]
+    if (addDosing && !is.null(.ipred$evid)) {
+      # the rows of the same table without dosing rows, which the simulation has
+      .ipred <- .ipred[.ipred$evid %in% c(0L, 2L), ]
+    }
     .ipred <- .ipred[order(.ipred$nlmixrRowNums), ]
     .sim <- .npdeSimFitSubjects(.sim, fit$idLvl, nrow(.ipred))
-    .ret <- .Call(`_nlmixr2est_npdeCalc`, .sim, .ipred$dv, .ipred$evid, .prdLst$ipred$cens, .prdLst$ipred$limit, table)
-    .df <- data.frame(nlmixrRowNums = .prdLst$ipred$nlmixrRowNums)
-    .ret1 <- .ret[[1]]
-    .ret2 <- .ret[[2]]
-    .ret2$nlmixrRowNums <- .ipred$nlmixrRowNums
-    .ret2 <- merge(.df, .ret2, all.x = TRUE, by = "nlmixrRowNums")
-    .ret2 <- .ret2[, names(.ret2) != "nlmixrRowNums"]
-    .ret1 <- as.data.frame(.ret1)
-    .ret1$nlmixrRowNums <- .ipred$nlmixrRowNums
-    .ret1 <- merge(.df, .ret1, all.x = TRUE, by = "nlmixrRowNums")
-    .ret1 <- .ret1[, names(.ret1) != "nlmixrRowNums"]
-    .ret1 <- as.matrix(.ret1)
+    .ret <- .Call(`_nlmixr2est_npdeCalc`, .sim, .ipred$dv, .ipred$evid, .ipred$cens, .ipred$limit, table)
+    # back onto the table's rows, in their order; a row with no observation
+    # (a dose under addDosing) gets NA.  merge() re-sorted by row number and
+    # multiplied the rows sharing one, so dosing tables came out misaligned.
+    .idx <- match(.prdLst$ipred$nlmixrRowNums, .ipred$nlmixrRowNums)
+    .ret2 <- .ret[[2]][.idx, , drop = FALSE]
+    rownames(.ret2) <- NULL
+    .ret1 <- as.matrix(.ret[[1]])[.idx, , drop = FALSE]
     list(.ret1, .ret2)
   } else {
     if (predOnly) {
       .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$ipred)), .state)
       .params <- setdiff(intersect(names(fit$dataSav), fit$predOnlyModel$params), c("CMT", "cmt", "Cmt", .state, .lhs))
-      .Call(
+      .ret <- .Call(
         `_nlmixr2est_resCalc`,
         .prdLst,
         fit$omega,
         fit$eta,
-        .prdLst$ipred$dv,
+        dv,
         .prdLst$ipred$evid,
         .prdLst$ipred$cens,
         .prdLst$ipred$limit,
@@ -582,12 +635,12 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$predOnly)), .state)
       .params <- setdiff(intersect(names(fit$dataSav), fit$predOnlyModel$params), c("CMT", "cmt", "Cmt", .state, .lhs))
-      .Call(
+      .ret <- .Call(
         `_nlmixr2est_cwresCalc`,
         .prdLst,
         fit$omega,
         fit$eta,
-        .prdLst$ipred$dv,
+        dv,
         .prdLst$ipred$evid,
         .prdLst$ipred$cens,
         .prdLst$ipred$limit,
@@ -598,7 +651,32 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
         table
       )
     }
+    if (!table$doSim) {
+      .ret[[3]] <- .residCensLimits(.ret[[3]], dv, .prdLst$ipred)
+    }
+    .ret
   }
+}
+
+#' Put the censoring limits back to the data's DV
+#'
+#' The residual pass takes a censored row's LOQ limit from the DV it is given,
+#' which is npde's imputed value when one is handed on.
+#'
+#' @param df residual table with `lowerLim`/`upperLim` columns
+#' @param dv DV the residuals were computed from
+#' @param ipred predictions holding the data's `dv` and `cens`
+#' @return `df` with the limits taken from the data's DV
+#' @noRd
+.residCensLimits <- function(df, dv, ipred) {
+  if (is.null(df$upperLim) || is.null(ipred$cens)) {
+    return(df)
+  }
+  .w <- which(ipred$cens == 1 & df$upperLim == dv)
+  df$upperLim[.w] <- ipred$dv[.w]
+  .w <- which(ipred$cens == -1 & df$lowerLim == dv)
+  df$lowerLim[.w] <- ipred$dv[.w]
+  df
 }
 
 .calcCwres <- function(
@@ -1269,14 +1347,15 @@ addTable <- function(
 #'  - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of
 #'    the model and censoring.
 #'
-#'  - `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)
+#'  - `"cdf"` Impute censored observations with NPDE (below) and use the
+#'    imputed values as the DV of the other residuals (`cwres` etc).
 #'
 #'  - `"omit"` omit the residuals for censoring
 #'
 #'  - `"ipred"`, `"pred"` and `"epred"` replace a censored DV with the IPRED,
 #'    PRED or EPRED in the residuals.
 #'
-#'   For NPDE, every method but `"cdf"` and `"omit"` replaces each censored
+#'   For NPDE, every method but `"omit"` replaces each censored
 #'   observation by a draw from the subject's simulated predictive
 #'   distribution (a Gaussian copula of the simulations), conditional on its
 #'   measured observations and truncated to its censoring interval; `"omit"`

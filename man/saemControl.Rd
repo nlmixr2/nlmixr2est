@@ -24,6 +24,7 @@ saemControl(
   nsdGq = 1.6,
   optExpression = TRUE,
   literalFix = FALSE,
+  fixedNoEta = c("hold", "converge"),
   adjObf = TRUE,
   sumProd = FALSE,
   addProp = c("combined2", "combined1"),
@@ -219,6 +220,13 @@ calculation. By default this is turned on.}
 literals and re-adjust ui and parameter estimates after
 optimization; Default is `TRUE`.}
 
+\item{fixedNoEta}{How a `fix()`ed theta without an eta is handled
+when `literalFix = FALSE`: `"hold"` (default) keeps it at its fixed
+value for every subject throughout the fit; `"converge"` samples it
+per subject like the other thetas without an eta, so it moves during
+the fit and only arrives at the fixed value at the end (the earlier
+behavior).}
+
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective
 function.  By default this is \code{TRUE}}
@@ -283,7 +291,11 @@ exploration of the likelihood surface.}
 
 \item{compress}{Should the object have compressed items}
 
-\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.}
 
 \item{sigdig}{Specifies the "significant digits" that the ODE
 solving requests.  This is \code{NULL} by default, and while it is

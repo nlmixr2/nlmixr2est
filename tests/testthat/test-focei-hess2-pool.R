@@ -1,0 +1,248 @@
+nmTest({
+  test_that('conditional inner Hessians use their own event shape in an outer-sized pool', {
+    model <- function() {
+      ini({ level <- log(1.5); logk <- log(.7); error <- .2; eta ~ .3 })
+      model({ k <- exp(logk); central(0) <- exp(level + eta)
+            d/dt(central) <- -k * central; prediction <- central
+            prediction ~ add(error) })
+    }
+    times <- c(.5, 1, 2, 4)
+    base <- 1.5 * exp(-.7 * times)
+    data <- data.frame(ID = rep(1:2, each = 4), TIME = rep(times, 2), DV = c(1.1 * base, .9 * base), AMT = 0, EVID = 0)
+    expected <- vapply(
+      1:2,
+      function(id) {
+        y <- data$DV[data$ID == id]
+        uniroot(
+          function(eta) {
+            pred <- base * exp(eta)
+            sum((pred - y) * pred) / .2^2 + eta / .3
+          },
+          c(-1, 1),
+          tol = 1e-12
+        )$root
+      },
+      numeric(1)
+    )
+    fit <- suppressWarnings(suppressMessages(nlmixr2(
+      model,
+      data,
+      'focei',
+      foceiControl(
+        fast = TRUE,
+        innerOpt = 'trust',
+        innerHessian = 'conditional',
+        maxOuterIterations = 0,
+        maxInnerIterations = 100,
+        sigdig = 6,
+        trustFterm = 1e-12,
+        trustMterm = 1e-12,
+        etaNudge = 0,
+        etaNudge2 = 0,
+        rxControl = rxode2::rxControl(maxsteps = 2000L, atol = 1e-10, rtol = 1e-8),
+        print = 0,
+        covMethod = '',
+        calcTables = FALSE
+      )
+    )))
+    info <- .odeSwapInfo()
+    hess2 <- info$models$neq[match('hess2', info$models$name)]
+    expect_gt(info$poolNeq, hess2)
+    expect_equal(info$overrideNeutralizedN, 0)
+    expect_equal(as.numeric(fit$eta[[2]]), expected, tolerance = 1e-5)
+    expect_gt(fit$env$nConditionalInnerHessian, 0)
+    expect_gt(fit$env$nAnalyticGradDirect, 0)
+    expect_equal(fit$env$nFDGradFast, 0)
+  })
+
+  test_that('conditional Hessians preserve all mixed derivatives with three ETAs', {
+    model <- function() {
+      ini({ logk <- log(.7); error <- .2; eta1 ~ .3; eta2 ~ .2; eta3 ~ .1 })
+      model({ k <- exp(logk); central(0) <- 1.5 * exp(eta1 + 2 * eta2 + 3 * eta3)
+            d/dt(central) <- -k * central; prediction <- central
+            prediction ~ add(error) })
+    }
+    times <- c(.5, 1, 2, 4)
+    base <- 1.5 * exp(-.7 * times)
+    data <- data.frame(ID = rep(1:2, each = 4), TIME = rep(times, 2), DV = c(1.1 * base, .9 * base), AMT = 0, EVID = 0)
+    variance <- c(.3, .2, .1)
+    weights <- 1:3
+    totalVariance <- sum(variance * weights^2)
+    expected <- t(vapply(
+      1:2,
+      function(id) {
+        y <- data$DV[data$ID == id]
+        z <- uniroot(
+          function(z) {
+            pred <- base * exp(z)
+            sum((pred - y) * pred) / .2^2 + z / totalVariance
+          },
+          c(-1, 1),
+          tol = 1e-12
+        )$root
+        variance * weights / totalVariance * z
+      },
+      numeric(3)
+    ))
+    fit <- suppressWarnings(suppressMessages(nlmixr2(
+      model,
+      data,
+      'focei',
+      foceiControl(
+        fast = TRUE,
+        innerOpt = 'trust',
+        innerHessian = 'conditional',
+        maxOuterIterations = 0,
+        maxInnerIterations = 100,
+        sigdig = 6,
+        trustFterm = 1e-12,
+        trustMterm = 1e-12,
+        etaNudge = 0,
+        etaNudge2 = 0,
+        rxControl = rxode2::rxControl(maxsteps = 2000L, atol = 1e-10, rtol = 1e-8),
+        print = 0,
+        covMethod = '',
+        calcTables = FALSE
+      )
+    )))
+    expect_equal(unname(as.matrix(fit$eta[-1])), expected, tolerance = 1e-5)
+    expect_equal(.odeSwapInfo()$overrideNeutralizedN, 0)
+    expect_gt(fit$env$nAnalyticGradDirect, 0)
+    expect_equal(fit$env$nFDGradFast, 0)
+  })
+
+  test_that('generalized inner Hessians share the correct solver role', {
+    model <- function() {
+      ini({ level <- log(4); logk <- log(.7); eta ~ .3 })
+      model({ k <- exp(logk); central(0) <- exp(level + eta)
+            d/dt(central) <- -k * central; effect <- central
+            effect ~ dpois(effect) })
+    }
+    times <- c(.5, 1, 2, 4)
+    base <- 4 * exp(-.7 * times)
+    data <- data.frame(ID = rep(1:2, each = 4), TIME = rep(times, 2), DV = c(3, 2, 1, 0, 1, 1, 1, 0), AMT = 0, EVID = 0)
+    expected <- vapply(
+      1:2,
+      function(id) {
+        y <- data$DV[data$ID == id]
+        uniroot(function(eta) sum(base * exp(eta) - y) + eta / .3, c(-2, 2), tol = 1e-12)$root
+      },
+      numeric(1)
+    )
+    fit <- suppressWarnings(suppressMessages(nlmixr2(
+      model,
+      data,
+      'focei',
+      foceiControl(
+        fast = TRUE,
+        innerOpt = 'n1qn1',
+        warm = 'calc',
+        epsilon = 1e-8,
+        maxOuterIterations = 0,
+        maxInnerIterations = 100,
+        sigdig = 6,
+        etaNudge = 0,
+        etaNudge2 = 0,
+        rxControl = rxode2::rxControl(maxsteps = 2000L, atol = 1e-10, rtol = 1e-8),
+        print = 0,
+        covMethod = '',
+        calcTables = FALSE
+      )
+    )))
+    expect_equal(as.numeric(fit$eta[[2]]), expected, tolerance = 1e-5)
+    expect_equal(.odeSwapInfo()$overrideNeutralizedN, 0)
+    expect_gt(fit$env$nAnalyticGradDirect, 0)
+    expect_equal(fit$env$nFDGradFast, 0)
+  })
+
+  test_that('a swapped-in conditional Hessian model finds the inner mode with dosing sensitivities', {
+    model <- function() {
+      ini({ tka <- log(1); tkel <- log(.2); lf <- 0; error <- .2; eta.f ~ .1 })
+      model({ ka <- exp(tka); kel <- exp(tkel)
+            d/dt(depot) <- -ka * depot; f(depot) <- exp(lf + eta.f)
+            d/dt(central) <- ka * depot - kel * central
+            cp <- central / 10; cp ~ prop(error) })
+    }
+    times <- c(.5, 1, 2, 4, 8)
+    data <- rbind(
+      data.frame(ID = 1:3, TIME = 0, DV = NA, AMT = 100, EVID = 1),
+      data.frame(ID = rep(1:3, each = 5), TIME = rep(times, 3), DV = NA, AMT = 0, EVID = 0)
+    )
+    data <- data[order(data$ID, data$TIME), ]
+    data$DV[data$EVID == 0] <- c(4, 6, 7, 6, 3, 5, 7, 8, 7, 4, 3, 5, 6, 5, 3)
+    fit <- function(innerHessian) {
+      suppressWarnings(suppressMessages(nlmixr2(
+        model,
+        data,
+        'focei',
+        foceiControl(
+          fast = TRUE,
+          innerOpt = 'trust',
+          innerHessian = innerHessian,
+          maxOuterIterations = 0,
+          maxInnerIterations = 200,
+          trustFterm = 1e-12,
+          trustMterm = 1e-12,
+          etaNudge = 0,
+          etaNudge2 = 0,
+          print = 0,
+          covMethod = '',
+          calcTables = FALSE
+        )
+      )))
+    }
+    reference <- fit('focei')
+    conditional <- fit('conditional')
+    expect_gt(conditional$env$nConditionalInnerHessian, 0)
+    expect_equal(as.numeric(conditional$eta[[2]]), as.numeric(reference$eta[[2]]), tolerance = 1e-4)
+    expect_equal(conditional$objf, reference$objf, tolerance = 1e-4)
+  })
+
+  test_that('a conditional Hessian keeps its own second-order dose jumps', {
+    # One dose into a linear model: f(depot) scales the whole profile, so moving it
+    # into the prediction gives the same likelihood with no dose-event sensitivity.
+    dosed <- function() {
+      ini({ tka <- log(1); tkel <- log(.2); lf <- 0; error <- .2; eta.ka ~ .1; eta.f ~ .1 })
+      model({ ka <- exp(tka + eta.ka); kel <- exp(tkel)
+            d/dt(depot) <- -ka * depot; f(depot) <- exp(lf + eta.f)
+            d/dt(central) <- ka * depot - kel * central
+            cp <- central / 10; cp ~ prop(error) })
+    }
+    scaled <- function() {
+      ini({ tka <- log(1); tkel <- log(.2); lf <- 0; error <- .2; eta.ka ~ .1; eta.f ~ .1 })
+      model({ ka <- exp(tka + eta.ka); kel <- exp(tkel)
+            d/dt(depot) <- -ka * depot
+            d/dt(central) <- ka * depot - kel * central
+            cp <- exp(lf + eta.f) * central / 10; cp ~ prop(error) })
+    }
+    times <- c(.5, 1, 2, 4, 8)
+    data <- rbind(
+      data.frame(ID = 1:3, TIME = 0, DV = NA, AMT = 100, EVID = 1),
+      data.frame(ID = rep(1:3, each = 5), TIME = rep(times, 3), DV = NA, AMT = 0, EVID = 0)
+    )
+    data <- data[order(data$ID, data$TIME), ]
+    data$DV[data$EVID == 0] <- c(4, 6, 7, 6, 3, 5, 7, 8, 7, 4, 3, 5, 6, 5, 3)
+    fit <- function(model) {
+      suppressWarnings(suppressMessages(nlmixr2(
+        model,
+        data,
+        'focei',
+        foceiControl(
+          fast = TRUE,
+          innerOpt = 'trust',
+          innerHessian = 'conditional',
+          detHessian = 'conditional',
+          maxOuterIterations = 0,
+          print = 0,
+          covMethod = '',
+          calcTables = FALSE,
+          rxControl = rxode2::rxControl(atol = 1e-12, rtol = 1e-12, maxsteps = 500000L)
+        )
+      )))
+    }
+    fD <- fit(dosed)
+    fS <- fit(scaled)
+    expect_gt(fD$env$nConditionalInnerHessian, 0)
+    expect_equal(fD$objf, fS$objf, tolerance = 1e-6)
+  })
+})

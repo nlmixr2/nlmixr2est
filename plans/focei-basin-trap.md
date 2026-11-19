@@ -72,6 +72,13 @@ flip-flop designs).  If one exists:
 3. Add a `$runInfo` warning (< 75 chars) and `$env` counters so tests can
    assert the mechanism ran.
 
+Update (#1286): a trap after Phase 1 was found (2-cpt oral MM, 120
+subjects): the fit reached 69368.53, then a `bobyqaStationary` restart's
+`rhobeg` steps moved warm ETAs into a secondary mode and the final point, at
+nearly the same theta, scored 69454.46.  The end-of-fit check now re-solves the
+final ETAs from those of the lowest evaluation (`foceiControl(finalEtaTol=)`),
+not from Omega draws; it recovers 69368.52.
+
 ### Phase 3 -- in-trajectory basin re-verification (ferx A2)
 
 Only if Phase 2 is justified.

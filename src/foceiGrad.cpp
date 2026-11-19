@@ -212,6 +212,12 @@ void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
   };
   mat etaP(neta, np, fill::zeros);
   for (int pp = 0; pp < np; pp++) etaP.col(pp) = -HiM * Mcol(pp);
+  // Finite inner tolerances leave a nonzero score: carry the ETA response
+  // through the likelihood as well as the determinant. At the mode this vanishes.
+  vec innerScore = Oi * ehat;
+  for (int l = 0; l < neta; l++)
+    for (int o = 0; o < nobs; o++)
+      innerScore[l] += rf[o] * a(o, l) + rR[o] * aR(o, l);
   vec g(np, fill::zeros);
   for (int pp = 0; pp < np; pp++) {
     mat dHtStar; double dPhi;
@@ -229,7 +235,7 @@ void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
       dPhi = 0.5 * as_scalar(ehat.t() * dOiEst.slice(k) * ehat) - tr28[k];
     }
     for (int l = 0; l < neta; l++) dHtStar += etaP(l, pp) * dHtD[l];
-    g[pp] = 2.0 * dPhi + trace(Hti * dHtStar);
+    g[pp] = 2.0 * (dPhi + dot(innerScore, etaP.col(pp))) + trace(Hti * dHtStar);
   }
   g_out = g; etaP_out = etaP;
 }
@@ -589,6 +595,10 @@ void foceiGradSubjectFullFR_(const arma::mat& a, const arma::cube& A, const arma
     vec m = (pp < ndirP) ? vec(C.N.col(dirP[pp] - 1)) : vec(dOiEst.slice(pp - ndirP) * ehat);
     etaP.col(pp) = -HiM * m;
   }
+  vec innerScore = Oi * ehat;
+  for (int l = 0; l < neta; l++)
+    for (int o = 0; o < nobs; o++)
+      innerScore[l] += C.rf[o] * a(o, l) + C.rR[o] * aR(o, l);
   vec g(np, fill::zeros);
   for (int pp = 0; pp < np; pp++) {
     mat dHStar; double dPhi;
@@ -600,7 +610,7 @@ void foceiGradSubjectFullFR_(const arma::mat& a, const arma::cube& A, const arma
       dPhi = 0.5 * as_scalar(ehat.t() * dOiEst.slice(k) * ehat) - tr28[k];
     }
     for (int l = 0; l < neta; l++) dHStar += etaP(l, pp) * dHD(l);
-    g[pp] = 2.0 * dPhi + trace(HiM * dHStar);
+    g[pp] = 2.0 * (dPhi + dot(innerScore, etaP.col(pp))) + trace(HiM * dHStar);
   }
   g_out = g; etaP_out = etaP;
 }

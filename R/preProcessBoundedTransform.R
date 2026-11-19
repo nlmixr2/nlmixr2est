@@ -528,10 +528,7 @@
     .jdiag[.w] <- .boundedTransformDeriv(.tr, natVals[[.tr$name]])
     .rn[.w] <- .tr$name
   }
-  .J <- diag(.jdiag, nrow = length(.jdiag))
-  cov <- .J %*% cov %*% t(.J)
-  dimnames(cov) <- list(.rn, .rn)
-  cov
+  .covJacobian(cov, diag(.jdiag, nrow = length(.jdiag)), .rn)
 }
 
 #' Back transform cov matrix with Jacobian
@@ -583,8 +580,7 @@
       }
     }
     if (length(.jCov) == .nCov) {
-      .J <- diag(.jCov)
-      env$cov <- .J %*% env$cov %*% t(.J)
+      env$cov <- .covJacobian(env$cov, diag(.jCov, nrow = length(.jCov)), NULL)
     }
   }
   invisible()

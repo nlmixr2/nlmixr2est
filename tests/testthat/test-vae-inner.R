@@ -328,7 +328,14 @@ nmTest({
         cp <- central / V; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(mixmod)
-    ctl <- vaeControl(itersBurnIn = 2L, iters = 2L, covariateSelection = FALSE, seed = 1L)
+    # the central differences below step 1e-6, so solve well below that
+    ctl <- vaeControl(
+      itersBurnIn = 2L,
+      iters = 2L,
+      covariateSelection = FALSE,
+      seed = 1L,
+      rxControl = list(atol = 1e-10, rtol = 1e-10)
+    )
     prep <- .vaeDataPrep(ui, nlmixr2data::theo_sd)
     N <- prep$N
     zDim <- prep$zDim
