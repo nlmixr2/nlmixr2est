@@ -493,6 +493,7 @@ vaeControl <- function(
   printNcol = NULL,
 
   covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""),
+  covNewtonWarn = 1,
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
@@ -725,6 +726,7 @@ vaeControl <- function(
     nIsSample = as.integer(nIsSample),
     returnVae = returnVae,
     covMethod = covMethod,
+    covNewtonWarn = .covNewtonWarnArg(covNewtonWarn),
     optExpression = optExpression,
     sumProd = sumProd,
     literalFix = literalFix,
