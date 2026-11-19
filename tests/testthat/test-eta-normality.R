@@ -94,6 +94,13 @@ test_that("component-owned mixture etas use only their component's subjects", {
   expect_identical(.r$eta, c("eta.v", "eta.cl2"))
   expect_identical(.r$n, c(20L, 20L))
   expect_equal(.r$mean[2], 0)
+  # ... including when the component is only on ranef
+  .r <- .etaNormalityFit(list(
+    ui = .ui,
+    ranef = .ranef[, c("ID", "eta.v", "mixnum")],
+    iov = list(occ = .iov)
+  ))
+  expect_identical(.r$n, c(20L, 20L))
   # without any component, the placeholder zeros are counted
   .r <- .etaNormalityFit(list(ui = .ui, ranef = .ranef[, names(.ranef) != "mixnum"]))
   expect_identical(.r$n, c(20L, 20L, 20L))

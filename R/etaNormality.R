@@ -94,16 +94,12 @@
 #' subjects, so only its own component's subjects are tested.
 #'
 #' @param ui the fit's final ui
-#' @param ranef the fit's `ranef`
-#' @param mixNum the fit's `mixNum` (`ID` and `mixnum` columns); else
-#'   `ranef`'s own `mixnum` column
+#' @param ranef data frame of ETAs with an `ID` column
+#' @param mixNum the subjects' components (`ID` and `mixnum` columns)
 #' @return named list of logical row indices, one per owned ETA
 #' @author Matthew L. Fidler
 #' @noRd
 .etaNormalityMixRows <- function(ui, ranef, mixNum) {
-  if (!is.data.frame(mixNum) && is.data.frame(ranef) && "mixnum" %in% names(ranef)) {
-    mixNum <- ranef[, c("ID", "mixnum"), drop = FALSE]
-  }
   if (is.null(ui) || !is.data.frame(ranef) || !is.data.frame(mixNum)) {
     return(list())
   }
@@ -134,6 +130,9 @@
   }
   .skip <- .etaNormalityFixed(.ui$iniDf)
   .mixNum <- .get("mixNum")
+  if (!is.data.frame(.mixNum) && is.data.frame(.ranef) && "mixnum" %in% names(.ranef)) {
+    .mixNum <- .ranef[, c("ID", "mixnum"), drop = FALSE]
+  }
   .rows <- .etaNormalityMixRows(.ui, .ranef, .mixNum)
   .ret <- .etaNormalityDf(.ranef, skip = .skip, rows = .rows)
   # occasion etas, pooled over every subject and occasion
