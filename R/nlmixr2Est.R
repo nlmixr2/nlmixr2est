@@ -554,5 +554,7 @@ nlmixr2Est0 <- function(env, ...) {
   .odeSettleCheck(ret)
   # name strongly correlated estimates, from the covariance the fit ends with
   try(.covCorWarn(ret), silent = TRUE)
+  # an ill-conditioned final covariance makes the SEs unreliable
+  try(.covCondWarn(ret), silent = TRUE)
   invisible()
 }
