@@ -72,7 +72,8 @@ saemControl(
   ebe = c("mode", "saem"),
   ebeMaxEval = 200L,
   ebeTol = NULL,
-  ...
+  ...,
+  corWarn = 0.95
 )
 }
 \arguments{
@@ -596,6 +597,10 @@ search, in standard-deviation units of each eta.  `NULL` (default) uses
 can resolve a minimum to.}
 
 \item{...}{Other arguments to control SAEM.}
+
+\item{corWarn}{warn when two estimates' correlation is at least this in
+absolute value after the covariance step; \code{NA} or \code{Inf} turns
+the warning off.}
 }
 \value{
 List of options to be used in \code{\link{nlmixr2}} fit for
