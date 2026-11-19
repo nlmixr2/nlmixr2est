@@ -143,6 +143,12 @@
 - `est="agq"` now checks the quadrature grid size (`nAGQ^neta`) before
   building it: it warns above 10,000 nodes and stops above 1,000,000, instead
   of silently exhausting memory with many etas (#1412).
+- A `fast = TRUE` control converted to another FOCEi-family method (for
+  example a `foceControl()` given to `est = "mfoce"`) no longer fails with
+  "Expecting a single value"; its `outerOpt` was left unresolved.
+- `est = "vae"` with `nonMuTheta = "grad"` again takes the gradient at the
+  encoder's etas without the inner-mode score correction, which moved it
+  away from the optimum.
 
 - `saem` mixture fits with `saemControl(mixProbMethod = "annealed")` no
   longer error with "Mat::operator(): index out of bounds" when entering the
