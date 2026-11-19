@@ -47,7 +47,8 @@ nmTest({
     )
     expect_no_warning(expect_null(.covCorWarn(.fit)))
     .fit$iniDf$fix[2] <- FALSE
-    expect_warning(.covCorWarn(.fit), "tcl/om.eta.v \\(0.99\\)")
+    .w <- .covSite(".covCorWarn", capture_warnings(.covCorWarn(.fit)))
+    expect_identical(.w, "highly correlated estimates: tcl/om.eta.v (0.99)")
   })
 
   test_that("a missing covariance gives no warning", {
@@ -63,7 +64,7 @@ nmTest({
     .c <- .c * 0.01
     .m <- .covCorMsg(.covCorPairs(.c, 0.95))
     expect_match(.m, ", \\.\\.\\.$")
-    expect_lt(nchar(.m), 75L)
+    expect_lt(nchar(.covClip(.m)), 75L)
   })
 
   test_that("the warning reaches $runInfo and corWarn = NA suppresses it", {

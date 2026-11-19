@@ -61,7 +61,7 @@
   if (nrow(pairs) > max) {
     .txt <- paste0(.txt, ", ...")
   }
-  .covClip(paste0("highly correlated estimates: ", .txt))
+  paste0("highly correlated estimates: ", .txt)
 }
 
 #' The `corWarn` threshold a fit was estimated with
@@ -82,7 +82,7 @@
 
 #' Warn when the fit's covariance shows highly correlated estimates
 #' @param fit the finalized fit
-#' @return invisibly the warning text, or `NULL` when none was given
+#' @return invisibly the (clipped) warning text, or `NULL` when none was given
 #' @noRd
 .covCorWarn <- function(fit) {
   .env <- if (is.environment(fit)) fit else tryCatch(fit$env, error = function(e) NULL)
@@ -95,8 +95,8 @@
   .skip <- c(.skip, paste0("om.", .skip))
   .pairs <- .covCorPairs(get("cov", envir = .env, inherits = FALSE), .covCorWarnOf(fit, .env), .skip)
   .msg <- .covCorMsg(.pairs)
-  if (!is.null(.msg)) {
-    warning(.msg, call. = FALSE)
+  if (is.null(.msg)) {
+    return(invisible(NULL))
   }
-  invisible(.msg)
+  .covWarn(.msg)
 }
