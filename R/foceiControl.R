@@ -1864,6 +1864,10 @@ foceiControl <- function(
   outerOptFun <- NULL
   if (!is.null(.xtra$outerOptFun)) {
     outerOptFun <- .xtra$outerOptFun
+    # a converted control can carry outerOptFun without outerOpt (both -1L)
+    if (is.character(outerOpt)) {
+      outerOpt <- -1L
+    }
   } else if (rxode2::rxIs(outerOpt, "character")) {
     # Default outer optimizer (when the user did not specify one): trust for
     # fast FOCEi (it uses the analytic outer Hessian), nlminb for the other

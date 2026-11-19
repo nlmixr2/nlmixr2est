@@ -107,3 +107,13 @@ test_that("foce, focep, laplace and agq convert a family control by what its cal
   .fo <- suppressMessages(getValidNlmixrControl(foiControl(posthoc = FALSE), "fo"))
   expect_false(.fo$posthoc)
 })
+
+test_that("a fast control converted to another family method keeps its outer optimizer", {
+  # nlminb and bobyqa share outerOpt = -1L, so only outerOptFun survives the
+  # conversion; foceiControl() used to leave outerOpt as its choice vector
+  .ctl <- suppressMessages(getValidNlmixrControl(foceControl(fast = TRUE), "mfoce"))
+  expect_s3_class(.ctl, "mfoceControl", exact = TRUE)
+  expect_identical(.ctl$outerOpt, -1L)
+  expect_identical(.ctl$outerOptTxt, "nlminb")
+  expect_true(is.function(.ctl$outerOptFun))
+})
