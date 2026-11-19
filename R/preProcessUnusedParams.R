@@ -1,10 +1,11 @@
 #' Variables the objective function depends on
 #'
 #' Walks the normalized model (with `linCmt()` expanded) back from what feeds
-#' the likelihood: the endpoint lines, the `linCmtA()`/`linCmtB()` arguments and
-#' any other assignment to a call (`mtime()`, ...).  A state's ODE and
-#' properties (`f()`, `alag()`, `x(0)`, ...) feed that state, and an assignment
-#' inside `if()`/`while()` also depends on its condition.  The walk
+#' the likelihood: the endpoint lines and any assignment to a call other than a
+#' state's (`mtime()`, ...).  A state's ODE and properties (`f()`, `alag()`,
+#' `x(0)`, ...) feed that state, the `linCmtA()`/`linCmtB()` arguments feed
+#' every state, and an assignment inside `if()`/`while()` also depends on its
+#' condition.  The walk
 #' ignores statement order, so it may keep a variable whose value is later
 #' overwritten (never the reverse).
 #'
@@ -52,7 +53,11 @@
         ) {
           .l <- e[[2]]
           .r <- e[[3]]
-          .acc$seed <- c(.acc$seed, .linVars(.r))
+          .lin <- .linVars(.r)
+          for (.s in .states[length(.lin) > 0L]) {
+            .acc$lhs <- c(.acc$lhs, .s)
+            .acc$rhs[[length(.acc$lhs)]] <- unique(c(cond, .lin))
+          }
           .t <- .lhsTarget(.l, .states)
           if (is.na(.t)) {
             # mtime() and the like
@@ -69,6 +74,7 @@
       for (.l in unique(ui$predDf$line)) {
         .acc$seed <- c(.acc$seed, all.vars(.lst[[.l]]))
       }
+      .acc$seed <- c(.acc$seed, as.character(ui$predDf$var))
       .need <- unique(.acc$seed)
       repeat {
         .new <- setdiff(unique(unlist(.acc$rhs[.acc$lhs %in% .need])), .need)
@@ -110,10 +116,11 @@
 #' Estimated parameters that cannot change the objective function
 #'
 #' @param ui rxode2 ui
+#' @param control estimation control; `priorMethod = "none"` ignores priors
 #' @return names of non-fixed thetas and etas that the objective does not
 #'   depend on
 #' @noRd
-.unusedEstimatedParams <- function(ui) {
+.unusedEstimatedParams <- function(ui, control = NULL) {
   .need <- .objectiveDepends(ui)
   if (is.null(.need)) {
     return(character(0))
@@ -124,7 +131,11 @@
     is.na(.iniDf$err) &
     (!is.na(.iniDf$ntheta) | (!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2))
   # a prior adds its own term to the objective
-  .prior <- tryCatch(rxode2::rxUiPriors(ui)$name, error = function(e) NULL)
+  .prior <- if (identical(control$priorMethod, "none")) {
+    NULL
+  } else {
+    tryCatch(rxode2::rxUiPriors(ui)$name, error = function(e) NULL)
+  }
   setdiff(.iniDf$name[.w], c(.need, .prior))
 }
 
@@ -143,7 +154,7 @@
     return(NULL)
   }
   .ui <- rxode2::rxUiDecompress(ui)
-  for (.n in .unusedEstimatedParams(.ui)) {
+  for (.n in .unusedEstimatedParams(.ui, control)) {
     warning(paste0("'", .n, "' does not affect the objective function"), call. = FALSE)
   }
   NULL
