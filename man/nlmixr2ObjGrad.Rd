@@ -8,7 +8,8 @@ nlmixr2ObjGrad(
   fit,
   theta = NULL,
   omega = NULL,
-  scale = c("untransformed", "transformed")
+  scale = c("untransformed", "transformed"),
+  individual = FALSE
 )
 }
 \arguments{
@@ -29,12 +30,19 @@ covariances themselves, named as in `ini()` (`eta.cl`, `(eta.cl,eta.v)`).
 estimation-scale omega parameters the optimizer uses (`om.chol.<k>`, with
 `foceiControl(diagXform=)` applied to the diagonal).  Thetas are always on
 their `ini()` scale.}
+
+\item{individual}{Also return each subject's contribution to the objective
+and gradient.}
 }
 \value{
 A list with `objective` (the fit's objective at the point),
   `gradient` (the derivative of `objective` for every estimated parameter,
   named), `par` (the parameter values on the same scale as `gradient`) and
-  `scale`.  The attribute `nAnalyticGradDirect` counts the analytic gradient
+  `scale`.  With `individual = TRUE` it also has `individual`, a data frame of
+  each subject's `ID`, objective contribution (`OBJI`) and gradient (one
+  column per parameter), and `population`, the part of the objective and
+  gradient that belongs to no subject (such as an `ini()` prior), so the
+  subjects plus `population` sum to the totals.  The attribute `nAnalyticGradDirect` counts the analytic gradient
   evaluations behind the result.
 }
 \description{
