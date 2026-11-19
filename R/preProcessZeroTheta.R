@@ -102,7 +102,7 @@
     return(.ret)
   }
   .cov <- list()
-  for (.df in list(ui$muRefCovariateDataFrame, ui$mu2RefCovariateReplaceDataFrame)) {
+  for (.df in list(ui$muRefCovariateDataFrame, .mu2CovReplaceDf(ui))) {
     for (.n in setdiff(intersect(names, .df$covariateParameter), names(.cov))) {
       .cov[[.n]] <- str2lang(as.character(.df$covariate[match(.n, .df$covariateParameter)]))
     }

@@ -19,32 +19,37 @@ nmTest({
     }
     ui <- rxode2::rxUiDecompress(rxode2::assertRxUi(f))
     # inject what the older rxode2 produced, independent of the installed version
-    assign("mu2RefCovariateReplaceDataFrame",
-           data.frame(theta = "tCL", covariate = "-0.75", covariateParameter = "tV1",
-                      modelExpression = "0.75 * log(V1/exp(tV1))"),
-           envir = ui)
+    assign(
+      "mu2RefCovariateReplaceDataFrame",
+      data.frame(
+        theta = "tCL",
+        covariate = "-0.75",
+        covariateParameter = "tV1",
+        modelExpression = "0.75 * log(V1/exp(tV1))"
+      ),
+      envir = ui
+    )
     ui
   }
 
   test_that("a constant mu2 'covariate' is never rewritten into the model", {
     ui <- .constantMu2Ui()
-    d <- data.frame(ID = 1, TIME = c(0, 1), AMT = c(100, 0), EVID = c(1, 0),
-                    DV = c(NA, 1), WT = 80)
-    expect_warning(lst <- .uiModifyForCovs(ui, d), "constant covariate")
+    d <- data.frame(ID = 1, TIME = c(0, 1), AMT = c(100, 0), EVID = c(1, 0), DV = c(NA, 1), WT = 80)
+    lst <- .uiModifyForCovs(ui, d)
     expect_false("nlmixrMuDerCov1" %in% names(lst$data))
     .cl <- deparse1(rxode2::as.model(lst$ui)[[2]][[3]])
     expect_true(grepl("log(V1/exp(tV1))", .cl, fixed = TRUE))
     expect_false(grepl("nlmixrMuDerCov", .cl, fixed = TRUE))
+    # rebuilding the ui recomputes the table; readers still never see the row
+    expect_equal(nrow(.mu2CovReplaceDf(lst$ui)), 0L)
   })
 
-  test_that("the pre-processing hook drops constant mu2 rows for every reader", {
+  test_that("the hook warns about constant mu2 rows and every reader drops them", {
     ui <- .constantMu2Ui()
-    expect_warning(ret <- .nlmixr0preProcessMu2ConstantCov(ui, "saem", NULL, NULL),
-                   "0.75 \\* log\\(V1/exp\\(tV1\\)\\)")
-    expect_named(ret, "ui")
-    expect_equal(nrow(ret$ui$mu2RefCovariateReplaceDataFrame), 0L)
-    # the user's ui is not modified
-    expect_equal(nrow(ui$mu2RefCovariateReplaceDataFrame), 1L)
+    expect_warning(ret <- .nlmixr0preProcessMu2ConstantCov(ui, "saem", NULL, NULL), "0.75 \\* log\\(V1/exp\\(tV1\\)\\)")
+    expect_null(ret)
+    expect_equal(nrow(.mu2CovReplaceDf(ui)), 0L)
+    expect_false("tV1" %in% .vaeCovariateCoefThetas(ui))
     # it runs before the mu2 rewrite
     .hooks <- preProcessHooks()
     expect_lt(match(".nlmixr0preProcessMu2ConstantCov", .hooks), match(".uiApplyMu2", .hooks))

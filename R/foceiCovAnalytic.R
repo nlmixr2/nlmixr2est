@@ -2059,7 +2059,7 @@
     rbind,
     list(
       .grab(tryCatch(ui$muRefCovariateDataFrame, error = function(e) NULL), "covariate"),
-      .grab(tryCatch(ui$mu2RefCovariateReplaceDataFrame, error = function(e) NULL), "covariate")
+      .grab(tryCatch(.mu2CovReplaceDf(ui), error = function(e) NULL), "covariate")
     )
   )
   if (is.null(.cov) || nrow(.cov) == 0L) {

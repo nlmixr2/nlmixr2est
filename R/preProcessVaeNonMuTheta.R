@@ -73,7 +73,7 @@
   .alg <- if (is.null(ui$mu2RefCovariateReplaceDataFrame)) {
     character(0)
   } else {
-    as.character(ui$mu2RefCovariateReplaceDataFrame$covariateParameter)
+    as.character(.mu2CovReplaceDf(ui)$covariateParameter)
   }
   intersect(unique(c(.linear, .alg)), .thNames)
 }

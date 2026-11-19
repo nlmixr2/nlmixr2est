@@ -222,42 +222,37 @@ mu2env$expit <- rxode2::expit
   !inherits(.lang, "try-error") && length(all.vars(.lang)) > 0L
 }
 
-#' Drop constant "covariates" from the ui's mu2 table
+#' The ui's mu2 table without constant "covariates"
 #'
 #' rxode2 releases without nlmixr2/rxode2#1756 report a term such as
-#' `0.75*log(V1/exp(tV1))` as a mu2 term with covariate `-0.75`.  A constant is
-#' never a covariate, and every reader of `mu2RefCovariateReplaceDataFrame`
-#' (the mu2 rewrite, the analytic covariance direction map, the VAE and
-#' zero-theta pre-processing) would treat the theta as a covariate coefficient.
+#' `0.75*log(V1/exp(tV1))` as a mu2 term with covariate `-0.75`; a constant is
+#' never a covariate.  Every reader filters here because rebuilding the ui
+#' (`model<-`) recomputes the table and would restore a row dropped earlier.
 #'
 #' @param ui rxode2 ui
-#' @return `NULL` when nothing is dropped, otherwise a copy of `ui` without the
-#'   constant rows (the input ui is not modified)
+#' @return `ui$mu2RefCovariateReplaceDataFrame` without constant rows
 #' @noRd
-.mu2DropConstantCovariates <- function(ui) {
+.mu2CovReplaceDf <- function(ui) {
   .df <- ui$mu2RefCovariateReplaceDataFrame
   if (length(.df$covariate) == 0L) {
-    return(NULL)
+    return(.df)
   }
   .keep <- vapply(.df$covariate, .mu2CovHasVariable, logical(1), USE.NAMES = FALSE)
-  if (all(.keep)) {
-    return(NULL)
-  }
-  .txt <- paste0("ignoring mu-referenced covariate term(s) with a constant covariate: ",
-                 paste(.df$modelExpression[!.keep], collapse = ", "))
-  .minfo(.txt)
-  warning(.txt, call. = FALSE)
-  .ui <- rxode2::rxUiDecompress(rxode2::rxUiCompress(ui))
-  assign("mu2RefCovariateReplaceDataFrame", .df[.keep, , drop = FALSE], envir = .ui)
-  rxode2::rxUiCompress(.ui)
+  .df[.keep, , drop = FALSE]
 }
 
 .nlmixr0preProcessMu2ConstantCov <- function(ui, est, data, control) {
-  .ui <- .mu2DropConstantCovariates(ui)
-  if (is.null(.ui)) {
-    return(NULL)
+  .df <- ui$mu2RefCovariateReplaceDataFrame
+  .const <- !vapply(.df$covariate, .mu2CovHasVariable, logical(1), USE.NAMES = FALSE)
+  if (any(.const)) {
+    .txt <- paste0(
+      "constant mu2 covariate ignored: ",
+      paste(unique(.df$modelExpression[.const]), collapse = ", ")
+    )
+    .minfo(.txt)
+    warning(.txt, call. = FALSE)
   }
-  list(ui = .ui)
+  NULL
 }
 
 #' This function handles mu2 covariates
@@ -272,20 +267,9 @@ mu2env$expit <- rxode2::expit
 #' @noRd
 .uiModifyForCovs <- function(ui, data) {
   .datEnv <- .mu2CovEnv(ui, data)
-  .df <- ui$mu2RefCovariateReplaceDataFrame
+  .df <- .mu2CovReplaceDf(ui)
   lapply(seq_along(.df$covariate), function(i) {
     .datEnv$i <- i
-    if (!.mu2CovHasVariable(.df$covariate[i])) {
-      # Backstop for direct callers; fits drop these rows earlier in
-      # .nlmixr0preProcessMu2ConstantCov().  Replacing the term by
-      # `constant*theta` would drop its theta-free remainder (for
-      # `0.75*log(V1/exp(tV1))` that is 0.75*log(V1)).
-      .txt <- paste0("ignoring mu-referenced covariate term with a constant covariate: ",
-                     .df$modelExpression[i])
-      .minfo(.txt)
-      warning(.txt, call. = FALSE)
-      return(invisible())
-    }
     .r <- .mu2CovValue(.datEnv, .df$covariate[i])
     if (is.null(.r)) {
       .txt <- paste0(
@@ -342,7 +326,7 @@ mu2env$expit <- rxode2::expit
 .uiApplyMu2 <- function(env) {
   if (
     isTRUE(env$control$muRefCovAlg) &&
-      length(env$ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L
+      length(.mu2CovReplaceDf(env$ui)$covariate) > 0L
   ) {
     .lst <- .uiModifyForCovs(env$ui, env$data)
     .model <- rxode2::as.model(env$ui)
@@ -368,7 +352,7 @@ mu2env$expit <- rxode2::expit
   # .uiFinalizeMu2hook / each method's on.exit.
   .tv <- tryCatch(.nlmixrTimeVaryingCovariates(data, ui, control$rxControl), error = function(e) character(0))
   .nlmixrSetMuRefTimeVarying(ui, .tv)
-  if (length(ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
+  if (length(.mu2CovReplaceDf(ui)$covariate) > 0L) {
     .uiModifyForCovs(ui, data)
   } else {
     NULL
