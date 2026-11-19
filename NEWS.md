@@ -63,6 +63,7 @@
 - Estimation of an ODE model now warns (in `$runInfo`) when an uncensored
   observation is within `1e3 * atol` of zero, where the ODE integration error
   can be comparable to the data.  Disable with
+  `foceiControl(atolCheck = FALSE)`, `saemControl(atolCheck = FALSE)` or
   `options(nlmixr2est.atolCheck = FALSE)` (#1392).
 - FOCEi model builds no longer optimize the `innerOeta` model, which only
   `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on

@@ -198,7 +198,8 @@ foceiControl(
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
   zeroThetaStep = 100,
-  boundedTransform = TRUE
+  boundedTransform = TRUE,
+  atolCheck = TRUE
 )
 }
 \arguments{
@@ -1376,6 +1377,9 @@ transformed for unbounded optimization methods and back-transformed
 for final estimates. `FALSE` optimizes on the original scale with
 bounds passed to the optimizer. `NA` transforms for optimization but
 skips the final back-transform.}
+
+\item{atolCheck}{When `TRUE` (default), warn before estimating an ODE
+model when an uncensored observation is within `1e3 * atol` of zero.}
 }
 \value{
 The control object that changes the options for the FOCEi

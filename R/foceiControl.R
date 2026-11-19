@@ -1247,6 +1247,9 @@
 #'   log-likelihood.  By default this is Inf; in the original nlmixr's
 #'   gnlmm was 400.
 #'
+#' @param atolCheck When `TRUE` (default), warn before estimating an ODE
+#'   model when an uncensored observation is within `1e3 * atol` of zero.
+#'
 #' @param boundedTransform When `TRUE` (default), bounded parameters are
 #'   transformed for unbounded optimization methods and back-transformed
 #'   for final estimates. `FALSE` optimizes on the original scale with
@@ -1545,7 +1548,8 @@ foceiControl <- function(
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
   zeroThetaStep = 100,
-  boundedTransform = TRUE
+  boundedTransform = TRUE,
+  atolCheck = TRUE
 ) {
   #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
@@ -2225,6 +2229,7 @@ foceiControl <- function(
   checkmate::assertNumeric(agqHi, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(agqLow, len = 1, any.missing = FALSE)
   checkmate::assertLogical(boundedTransform, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(atolCheck, len = 1, any.missing = FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -2432,6 +2437,7 @@ foceiControl <- function(
     sensMethod = sensMethod,
     linCmtSensCarry = linCmtSensCarry,
     boundedTransform = boundedTransform,
+    atolCheck = atolCheck,
     zeroTheta = zeroTheta,
     zeroThetaStep = as.double(zeroThetaStep)
   )
