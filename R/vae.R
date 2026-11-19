@@ -504,6 +504,7 @@ vaeControl <- function(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   rhoend = NULL,
 
   stickyRecalcN = 4,
@@ -654,6 +655,7 @@ vaeControl <- function(
     sigdigTable <- 3
   }
   checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
+  checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
 
   .iterPrintControl <- .absorbIterPrintControl(
     print = print,
@@ -732,6 +734,7 @@ vaeControl <- function(
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,
+    shrinkEtaWarn = as.double(shrinkEtaWarn),
     stickyRecalcN = as.integer(stickyRecalcN),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = odeRecalcFactor,
