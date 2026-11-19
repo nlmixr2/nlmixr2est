@@ -95,13 +95,13 @@ f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
-#>  
-#>  
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem model...
 #> ✔ done
+#>  
+#>  
 #> ℹ calculate uninformed etas
 #> ℹ done
 #> Calculating covariance matrix
@@ -127,10 +127,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.05020531 2.9644e-05 0.02201123      0.039     0.101 1.926       0.126
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.0695879 4.5935e-05 0.03301226      0.053     0.144 3.059       0.185
 #>         compress     other
-#> elapsed    0.045 0.1087538
+#> elapsed    0.054 0.1483539
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -161,10 +161,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.05020531 2.9644e-05 0.02201123      0.039     0.101 1.926       0.126
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.0695879 4.5935e-05 0.03301226      0.053     0.144 3.059       0.185
 #>         compress     other
-#> elapsed    0.045 0.1087538
+#> elapsed    0.054 0.1483539
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

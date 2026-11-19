@@ -166,6 +166,18 @@
 
 #### Estimation
 
+- `saem` mixture fits with `saemControl(mixProbMethod = "annealed")` no
+  longer error with “Mat::operator(): index out of bounds” when entering
+  the SA covariance phase
+  ([\#1297](https://github.com/nlmixr2/nlmixr2est/issues/1297)).
+
+- The FOCEi residual-variance floor is now `DBL_MIN^(1/8)` (about
+  3.5e-39) instead of `sqrt(.Machine$double.eps)`. A proportional-error
+  prediction below about 6e-4 (at a 0.2 SD) is no longer floored; the
+  floor had biased -2LL upward, more the smaller the prediction, and
+  broken scale invariance
+  ([\#1285](https://github.com/nlmixr2/nlmixr2est/issues/1285)).
+
 - `outerOpt="trust"` now holds a parameter on its bound when its steps
   keep leaving the box there, and releases it when the gradient pulls it
   back inside; `$optReturn$activeBounds` lists the held parameters. Fits
@@ -262,6 +274,17 @@
   fixed-effect-only thetas between iterations no longer leaves a stale
   likelihood that froze the chain at a state that no longer fit
   ([\#1298](https://github.com/nlmixr2/nlmixr2est/issues/1298)).
+
+- A covariate compared to string literals (`b2 * (tnom == "2")`) no
+  longer gets permuted estimates or `PRED`. Each generated model (inner,
+  pred, outer, saem, nlm, nlme, …) numbered the literals in its own
+  order while the data was coded once in the model’s order; the
+  generated models now use the data’s order, and a mismatch is an error
+  ([\#1299](https://github.com/nlmixr2/nlmixr2est/issues/1299)).
+
+- A model without etas whose covariate is compared to string literals no
+  longer fails the table step (“error calculating tables”)
+  ([\#1299](https://github.com/nlmixr2/nlmixr2est/issues/1299)).
 
 - `saem` now estimates the component thetas of an eta shared by several
   `mix()` components (`mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))`)
@@ -637,6 +660,11 @@
   the NPDE of the same table without dosing rows and `NA` on dosing
   rows; the NPDE columns were longer than the table and out of row
   order, and the dosing rows changed the simulations.
+
+- Printing a fit with estimated correlations no longer leaves the
+  `broom.mixed.sep1`/`sep2` options set, which renamed later
+  [`confint()`](https://rdrr.io/r/stats/confint.html) and `tidy()` terms
+  to `sd:eta`/`cor:eta.v,eta.cl`.
 
 - `tidy()` and [`confint()`](https://rdrr.io/r/stats/confint.html) now
   report only the model’s thetas. A non-mu-referenced eta’s row of

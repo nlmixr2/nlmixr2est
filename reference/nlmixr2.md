@@ -766,13 +766,13 @@ fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
-#>  
-#>  
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem model...
 #> ✔ done
+#>  
+#>  
 #> ℹ calculate uninformed etas
 #> ℹ done
 #> Calculating covariance matrix
