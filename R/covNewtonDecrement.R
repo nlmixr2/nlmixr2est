@@ -108,7 +108,8 @@
 
 #' The covariance whose inverse stands in for the OFV Hessian
 #'
-#' A sandwich (`"r,s"`) is not `2 H^-1`, so its R-only covariance is preferred.
+#' A sandwich (`"r,s"`) or S covariance is not `2 H^-1`, so the R-only
+#' covariance is preferred, and an S covariance without one gives `NULL`.
 #' @param fit the finalized fit
 #' @param env the fit environment
 #' @return a named covariance matrix, or `NULL`
@@ -117,6 +118,11 @@
   .r <- get0("covR", envir = env, inherits = FALSE)
   if (is.matrix(.r) && !is.null(rownames(.r))) {
     return(.r)
+  }
+  # an S (score) covariance alone carries no curvature
+  .lab <- tryCatch(as.character(fit$covMethod), error = function(e) "")
+  if (length(.lab) == 1L && grepl("(^|[^a-z])s([^a-z]|$)", .lab)) {
+    return(NULL)
   }
   tryCatch(fit$cov, error = function(e) NULL)
 }

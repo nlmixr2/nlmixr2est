@@ -28,6 +28,11 @@ test_that("an R-only covariance stands in for a sandwich", {
   expect_identical(.covNewtonCov(.fit, .e), .rs)
   .e$covR <- matrix(1, 1, 1, dimnames = list("a", "a"))
   expect_identical(.covNewtonCov(.fit, .e), .e$covR)
+  .s <- new.env(parent = emptyenv())
+  expect_null(.covNewtonCov(list(cov = .rs, covMethod = "s"), .s))
+  expect_null(.covNewtonCov(list(cov = .rs, covMethod = "|s|"), .s))
+  expect_identical(.covNewtonCov(list(cov = .rs, covMethod = "sa"), .s), .rs)
+  expect_identical(.covNewtonCov(list(cov = .rs, covMethod = "linFim"), .s), .rs)
 })
 
 test_that("FOCEi-family methods are not checked", {
