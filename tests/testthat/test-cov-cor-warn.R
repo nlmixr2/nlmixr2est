@@ -93,4 +93,54 @@ nmTest({
     fit2 <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "focei", foceiControl(print = 0, corWarn = NA))
     expect_false(any(grepl("^highly correlated estimates", fit2$runInfo)))
   })
+
+  test_that("every method's control takes corWarn", {
+    .ctls <- c(
+      "saemControl",
+      "nlmeControl",
+      "nlmControl",
+      "nlminbControl",
+      "bobyqaControl",
+      "newuoaControl",
+      "uobyqaControl",
+      "optimControl",
+      "nlsControl",
+      "trustControl",
+      "vaeControl",
+      "emviControl",
+      "impmapControl",
+      "npagControl"
+    )
+    for (.c in .ctls) {
+      .f <- get(.c)
+      expect_equal(.f()$corWarn, 0.95, info = .c)
+      expect_equal(.f(corWarn = 0.9)$corWarn, 0.9, info = .c)
+      expect_error(.f(corWarn = -1), info = .c)
+    }
+  })
+
+  test_that("a non-FOCEi fit takes corWarn from its own control", {
+    skip_on_cran()
+    .pk <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fit <- function(corWarn) {
+      .nlmixr(.pk, nlmixr2data::theo_sd, est = "nlminb", control = nlminbControl(print = 0L, corWarn = corWarn))
+    }
+    fit <- .fit(0)
+    expect_true(is.matrix(fit$cov))
+    expect_true(any(grepl("^highly correlated estimates: ", fit$runInfo)))
+    expect_false(any(grepl("^highly correlated estimates", .fit(NA)$runInfo)))
+  })
 })
