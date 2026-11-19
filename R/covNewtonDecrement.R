@@ -127,6 +127,24 @@
   tryCatch(fit$cov, error = function(e) NULL)
 }
 
+#' `.covNewtonGrad()`, keeping the outer fit's globals
+#'
+#' A nested `nlmixr2()` resets `nlmixr2global`, including the outer fit's
+#' timing; it is restored on any exit, an interrupt included.
+#' @param fit the finalized fit
+#' @return the gradient, or `NULL`
+#' @noRd
+.covNewtonGradKeep <- function(fit) {
+  .savedGlobal <- as.list(nlmixr2global, all.names = TRUE)
+  on.exit({
+    rm(list = ls(nlmixr2global, all.names = TRUE), envir = nlmixr2global)
+    for (.gn in names(.savedGlobal)) {
+      assign(.gn, .savedGlobal[[.gn]], envir = nlmixr2global)
+    }
+  })
+  tryCatch(.covNewtonGrad(fit), error = function(e) NULL)
+}
+
 #' The `covNewtonWarn` threshold of a fit
 #' @param fit the finalized fit
 #' @return the threshold; `NA` when the method has none or it is disabled
@@ -165,13 +183,7 @@
   if (is.na(.limit) || !is.matrix(.cov) || length(.om) == 0L) {
     return(invisible(NA_real_))
   }
-  # a nested nlmixr2() resets nlmixr2global, including the outer fit's timing
-  .savedGlobal <- as.list(nlmixr2global, all.names = TRUE)
-  .g <- tryCatch(.covNewtonGrad(fit), error = function(e) NULL)
-  rm(list = ls(nlmixr2global, all.names = TRUE), envir = nlmixr2global)
-  for (.gn in names(.savedGlobal)) {
-    assign(.gn, .savedGlobal[[.gn]], envir = nlmixr2global)
-  }
+  .g <- .covNewtonGradKeep(fit)
   .d <- .covNewtonDecrement(.g, .cov)
   if (is.na(.d)) {
     return(invisible(NA_real_))
