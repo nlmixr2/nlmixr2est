@@ -457,6 +457,24 @@
   dose columns and kept columns come from rxode2's own walk, so they are the
   rows `rxSolve()` gives (#1356).
 
+- Mixture (`mix()`) fits' tables are solved in the pool as well, each subject
+  with its own mixture assignment; the two routes share the code that passes
+  the assignments to rxode2 (#1356).
+
+- Fits with resets (EVID 3), `mtime()` records or a string assignment solve
+  their tables in the pool too, laid out by rxode2's own record walk; the
+  rxSolve() route's drop of the `mtime()` rows is shared by both routes
+  (#1356).
+
+- With an rxode2 that says which solves `rxSolve()` refuses, tables of fits
+  solved with any ODE method (not only liblsoda, lsoda and dop853) are solved
+  in the pool; a solve `rxSolve()` would refuse goes to `rxSolve()` for its
+  own error (#1356).
+
+- A `keep =` column the fit's data lacks no longer sends the table to the
+  `rxSolve()` route: rxode2 leaves it out, with its own warning, as before
+  (#1356).
+
 - `addDosing = TRUE` tables of a single subject no longer stop with "subject
   code 0 of the solved rows has no row in the eta table": the solve has no id
   column for one subject, and its `ID` was put back only when the frame began

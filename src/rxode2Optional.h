@@ -38,6 +38,11 @@ extern "C" {
   extern nmDfKeepCols_t nmDfKeepCols;
   typedef SEXP (*nmDfLevels_t)(const char *item, rx_solve *rx, R_xlen_t nrow);
   extern nmDfLevels_t nmDfLevels;
+  // rxDfSolveRefused() (slot 113): whether rxSolve() refuses the current solve
+  // instead of returning it.  Remove with test-dependency-workarounds.R's
+  // slot-113 block.
+  typedef int (*nmDfSolveRefused_t)(rx_solve *rx);
+  extern nmDfSolveRefused_t nmDfSolveRefused;
 
 // rxode2.h's RXDF_* codes, for an rxode2 whose headers predate them (the
 // slots above are then NULL and never called)
