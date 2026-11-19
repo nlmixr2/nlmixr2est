@@ -35,7 +35,12 @@
   .cor <- omega / outer(.sd, .sd)
   .cor[!is.finite(.cor)] <- 0
   if (is.matrix(omega0) && identical(dimnames(omega0), dimnames(omega))) {
-    .cor[omega0 != 0 & .cor == 0] <- 1e-6
+    # only in the probed etas' blocks; the others keep their fitted parameters
+    .in <- rownames(omega) %in% etas
+    .b <- unlist(Filter(function(b) any(.in[b]), .omegaBlocks(omega0 != 0)))
+    .keep <- seq_len(nrow(omega)) %in% .b
+    .fix <- omega0 != 0 & .cor == 0 & outer(.keep, .keep)
+    .cor[.fix] <- 1e-6
   }
   diag(.cor) <- 1
   .s <- setNames(rep(1, nrow(omega)), rownames(omega))
