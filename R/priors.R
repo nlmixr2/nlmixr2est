@@ -355,3 +355,32 @@
   }
   .build(ui, method = method)
 }
+
+#' Refuse a prior on a method that uses none, before any rewrite drops it
+#'
+#' The IOV rewrites replace a `prior(iov.x)` row with per-occasion etas that
+#' carry no prior, so the gate in `nlmixr2Est()` would see nothing to refuse
+#' and fit as if the prior were absent (#1319).  Only the "none" level is
+#' checked this early: a method that takes theta priors may still accept the
+#' rewrite's magnitude theta.
+#' @param ui rxode2 ui
+#' @param est estimation method name
+#' @param data,control unused; the hook signature
+#' @return `NULL`, or an error
+#' @noRd
+.nlmixr0preProcessAssertNoPriors <- function(ui, est, data, control) {
+  if (!checkmate::testString(est) || isTRUE(est %in% .preProcessHooksSimulationEst)) {
+    return(NULL)
+  }
+  if (is.null(utils::getS3method("nlmixr2Est", est, optional = TRUE)) || !any(.iovOccRows(ui$iniDf))) {
+    return(NULL)
+  }
+  .env <- new.env(parent = emptyenv())
+  .env$ui <- ui
+  class(.env) <- est
+  if (.nlmixr2PriorSupport(.env) == "none") {
+    .nlmixr2AssertPriors(.env)
+  }
+  NULL
+}
+preProcessHooksAdd(".nlmixr0preProcessAssertNoPriors", .nlmixr0preProcessAssertNoPriors)
