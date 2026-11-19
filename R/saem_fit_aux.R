@@ -158,7 +158,7 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   cond.mean.phi <- apply(phiM, c(1, 4), mean)
   var.all <- lapply(1:N, function(k) {
     x <- phiM[k, , , ]
-    dim(x) <- c(saem.cfg$nmc * saem.cfg$niter, nphi)
+    dim(x) <- c(saem.cfg$nmc * dim(phiM)[3], nphi)
     var(x)
   })
   condsd.eta <- t(sapply(var.all, function(x) sqrt(diag(x))))

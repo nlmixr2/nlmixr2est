@@ -605,6 +605,42 @@ uvec getObsIdx(umat m) {
 }
 
 
+// True when every column of the par_hist window w moved less than tol relative to
+// its magnitude.  Thetas (the first nTh columns) below 1 in magnitude use the
+// absolute change, since most are log-scale; the off-diagonal omegas after the nOm
+// omega diagonals are scaled by offScale (sqrt(w_ii * w_jj)).
+static bool saemPlateauWindow(const mat &w, uword nTh, uword nOm, const vec &offScale, double tol) {
+  if (w.n_rows < 2) return false;
+  for (uword j = 0; j < w.n_cols; ++j) {
+    vec c = w.col(j);
+    if (!c.is_finite()) return false;
+    double scale;
+    if (j < nTh) {
+      scale = std::max(std::fabs(mean(c)), 1.0);
+    } else if (j >= nTh + nOm && j - nTh - nOm < offScale.n_elem) {
+      scale = offScale(j - nTh - nOm);
+    } else {
+      scale = std::fabs(mean(c));
+    }
+    if (!(scale > 0.0) || (c.max() - c.min()) > tol * scale) return false;
+  }
+  return true;
+}
+
+//' Test hook for the SAEM plateau-stop criterion
+//'
+//' @param w window of par_hist rows
+//' @param nTh number of theta columns
+//' @param nOm number of omega-diagonal columns
+//' @param offScale scale of each off-diagonal omega column
+//' @param tol relative tolerance
+//' @return logical
+//' @noRd
+//[[Rcpp::export]]
+bool saemPlateauTest_(arma::mat w, int nTh, int nOm, arma::vec offScale, double tol) {
+  return saemPlateauWindow(w, (uword)nTh, (uword)nOm, offScale, tol);
+}
+
 // phi0 objective for the general-likelihood direct optimization (bounded bobyqa
 // via boundedResidOptC); gPhi0Self is the active SAEM object.  Defined after the
 // class body.
@@ -2491,6 +2527,12 @@ public:
       pas  = join_cols(pas,  zeros<vec>(nSaCov));   // freeze theta during the cov phase
       pash = join_cols(pash, zeros<vec>(nSaCov));
     }
+    // opt-in early stop of the EM phase once par_hist plateaus (#1395)
+    plateauStop = x.containsElementNamed("plateauStop") ? as<int>(x["plateauStop"]) : 0;
+    plateauWindow = x.containsElementNamed("plateauWindow") ? as<int>(x["plateauWindow"]) : 50;
+    plateauTol = x.containsElementNamed("plateauTol") ? as<double>(x["plateauTol"]) : 1e-3;
+    plateauMinFrac = x.containsElementNamed("plateauMinFrac") ? as<double>(x["plateauMinFrac"]) : 0.5;
+    plateauIter = -1;
     minv = as<vec>(x["minv"]);
 
     N = as<int>(x["N"]);
@@ -4962,6 +5004,12 @@ public:
         // One summary line per printed iteration for any ODE-solve warnings
         // accumulated since the last flush (see inner.cpp foceiOfvOptim).
         nmFlushRxSolveWarn(5);
+        if (plateauStop && kiter + 1 < (unsigned int)niter && plateauReached(kiter)) {
+          // continue exactly as a run with nEm = kiter + 1 - nBurn: the SA covariance
+          // phase (if any) starts next, on the same iterations' seeds
+          plateauIter = (int)kiter + 1;
+          truncateHistory((unsigned int)plateauIter);
+        }
       }
       // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
       // above; nothing is recorded to par_hist and no printing happens.
@@ -4983,6 +5031,10 @@ public:
     // disagree with the fit's own per-subject probabilities (#1058).
     if (nMix > 1 && arma::accu(mixWeights) > 0.0) mixProb = mean(mixWeights, 0).t();
     nmRngGuard([&]{ computeEtaMode(); return 0; });
+  }
+
+  int get_plateauIter() {
+    return plateauIter;
   }
 
 
@@ -5254,6 +5306,55 @@ private:
     const uword nr = (uword)N * nmc;
     mat h(phiMHist.begin(), nr * niter, nphi, false, true);
     h.rows(kiter * nr, (kiter + 1) * nr - 1) = m;
+  }
+
+  int plateauStop = 0;
+  int plateauWindow = 50;
+  double plateauTol = 1e-3;
+  double plateauMinFrac = 0.5;
+  int plateauIter = -1;
+
+  // the plateau test on the last plateauWindow EM iterations of par_hist
+  bool plateauReached(unsigned int kiter) const {
+    if (nPhase1 < 0 || plateauWindow < 1) return false;
+    const int nEm = niter - nPhase1;
+    const int minIter = nPhase1 + (int)std::ceil(plateauMinFrac * nEm);
+    if ((int)kiter + 1 < minIter) return false;
+    if ((int)kiter - plateauWindow < nPhase1) return false;
+    const uword nOff = parHistOmegaOffPairs.n_rows;
+    vec offScale(nOff);
+    for (uword p = 0; p < nOff; ++p) {
+      offScale(p) = std::sqrt(std::fabs(Gamma2_phi1(parHistOmegaOffPairs(p, 0), parHistOmegaOffPairs(p, 0)) *
+                                        Gamma2_phi1(parHistOmegaOffPairs(p, 1), parHistOmegaOffPairs(p, 1))));
+    }
+    return saemPlateauWindow(par_hist.rows(kiter - plateauWindow, kiter),
+                             parHistThetaKeep.n_elem, parHistOmegaKeep.n_elem, offScale, plateauTol);
+  }
+
+  // End the EM phase after nStop iterations: drop the rest from every per-iteration
+  // history and gain schedule, so the run continues as one with nEm = nStop - nBurn.
+  void truncateHistory(unsigned int nStop) {
+    if (nStop >= (unsigned int)niter) return;
+    par_hist = par_hist.rows(0, nStop - 1);
+    const uword nr = (uword)N * nmc;
+    mat h(phiMHist.begin(), nr * niter, nphi, false, true);
+    NumericVector out((R_xlen_t)nStop * nr * nphi);
+    mat o(out.begin(), nr * nStop, nphi, false, true);
+    o = h.rows(0, nr * nStop - 1);
+    out.attr("dim") = IntegerVector::create(N, nmc, (int)nStop, nphi);
+    phiMHist = out;
+    // keep the traces sized for the new total so mcmcCloseIter does not reset them
+    auto cut = [&](mat &m) {
+      if (m.n_rows < nStop) return;
+      mat na(nSaCov, m.n_cols);
+      na.fill(NA_REAL);
+      m = join_cols(mat(m.rows(0, nStop - 1)), na);
+    };
+    cut(mcmcAccTrace); cut(mcmcStuckTrace); cut(phiSdTrace); cut(phiAcfTrace);
+    cut(mcmcAccColTrace);
+    pas = join_cols(vec(pas.head(nStop)), zeros<vec>(nSaCov));
+    pash = join_cols(vec(pash.head(nStop)), zeros<vec>(nSaCov));
+    niter = (int)nStop;
   }
 
   // Build fsb (predictions across all nmc chains) and ysb (observations
@@ -6589,7 +6690,8 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("mixProb") = saem.get_mixProb(),
     Named("mixWeights") = saem.get_mixWeights(),
     Named("etaMode") = saem.get_etaMode(),
-    Named("etaModeConv") = saem.get_etaModeConv()
+    Named("etaModeConv") = saem.get_etaModeConv(),
+    Named("plateauIter") = saem.get_plateauIter()
   );
   current_saem_state = nullptr;
   int nModeFail = (int)accu(saem.get_etaModeConv() < 0);

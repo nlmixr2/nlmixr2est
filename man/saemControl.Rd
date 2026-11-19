@@ -8,6 +8,10 @@ saemControl(
   seed = 99,
   nBurn = 200,
   nEm = 300,
+  plateauStop = FALSE,
+  plateauWindow = 50L,
+  plateauTol = 0.001,
+  plateauMinFrac = 0.5,
   nmc = 3,
   nu = c(2, 2, 2),
   print = 1L,
@@ -83,6 +87,19 @@ steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.}
 
 \item{nEm}{Number of iterations in the Expectation-Maximization
 (EM) Step. This is equivalent to Monolix's \code{K_1}.}
+
+\item{plateauStop}{When \code{TRUE}, end the EM phase early once every
+estimated theta, omega and residual parameter has plateaued; the fit's
+run information notes the stop iteration.  Default \code{FALSE}.}
+
+\item{plateauWindow}{Number of EM iterations the plateau must span.}
+
+\item{plateauTol}{Largest relative change (range over the window divided by
+the parameter's magnitude) allowed for every parameter at a plateau.
+Thetas below 1 in magnitude use the absolute change.}
+
+\item{plateauMinFrac}{Fraction of the \code{nEm} iterations that always run
+before a plateau can stop the EM phase.}
 
 \item{nmc}{Number of Markov Chains. By default this is 3.  When
 you increase the number of chains the numerical integration by
@@ -389,12 +406,14 @@ rest of the fit.  Skipped for mixture models and when
 This parameterizes the magnitude theta of the \code{"theta"}
 \code{iovMethod}; it has no effect under \code{"omega"}, where the
 magnitude is fixed at one and the variability is carried by the
-omega block itself.}
+omega block itself, or under saem, which estimates the occasion
+variance directly.}
 
 \item{iovMethod}{How inter-occasion variability (`iov.x ~ v | occ`) is
-estimated.  \code{"theta"} uses the shared pre-processing rewrite, which
-carries the magnitude as a population parameter multiplying per-occasion
-unit-variance etas (the form every other estimation method uses).
+estimated.  \code{"theta"} uses the shared pre-processing rewrite; for
+saem it gives each occasion level its own eta, all sharing one variance
+estimated in closed form, and so covers models \code{"twoLevel"} does not
+(a non-mu-referenced parameter, several occasion variables).
 \code{"twoLevel"} (the default) keeps the occasion term as a second
 variance component and estimates it with the closed-form updates of Panhard
 and Samson (2009), which is what the SAEM kernel is built around for every

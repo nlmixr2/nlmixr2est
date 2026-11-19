@@ -14,6 +14,13 @@
 
 ## New features
 
+- `saemControl(plateauStop = TRUE)` ends SAEM's EM phase early once every
+  estimated theta, omega and residual parameter has changed by less than
+  `plateauTol` (relative) over the last `plateauWindow` iterations, never
+  before `plateauMinFrac` of `nEm` has run.  The stopped fit is the fit a
+  smaller `nEm` would give, and `$runInfo` notes the stop iteration.  Off by
+  default (#1395).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the
