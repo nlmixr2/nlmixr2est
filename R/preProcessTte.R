@@ -65,11 +65,19 @@
       }
       .is <- .is & !is.na(.cmt) & .match
     } else if (nrow(.predDf) > 1L) {
-      stop("estimating a tte() endpoint beside other endpoints requires a 'cmt' column", call. = FALSE)
+      stop(
+        "estimating a tte() endpoint beside other endpoints requires a 'cmt' column",
+        call. = FALSE
+      )
     }
     .v <- .dv[.is]
     if (any(is.na(.v) | !(.v %in% c(0, 1)))) {
-      stop("the 'DV' of tte() endpoint '", .pred1$cond, "' must be 0 or 1", call. = FALSE)
+      stop(
+        "the 'DV' of tte() endpoint '",
+        .pred1$cond,
+        "' must be 0 or 1",
+        call. = FALSE
+      )
     }
     if (isTRUE(.tteOptions(ui, .pred1)$origin)) next
     .o <- order(.id[.is], .time[.is])
