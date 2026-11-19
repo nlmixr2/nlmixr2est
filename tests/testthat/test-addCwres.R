@@ -54,6 +54,13 @@ nmTest({
 
     test_run001 <- .nlmixr(test_model(), data, "saem", control = saemControlFast)
 
+    .ls <- ls(test_run001$env, all.names = TRUE)
+    .shrink <- test_run001$shrink
+    .cw <- expect_error(suppressMessages(addCwres(test_run001, updateObject = FALSE)), NA)
+    expect_true("CWRES" %in% names(.cw))
+    # the original fit is left as it was
+    expect_equal(ls(test_run001$env, all.names = TRUE), .ls)
+    expect_equal(test_run001$shrink, .shrink)
     expect_error(suppressMessages(addCwres(test_run001)), NA)
   })
 
