@@ -45,6 +45,13 @@
   .ctl$compress <- FALSE
   .ctl$odeSettleCheck <- FALSE
   .ctl$print <- 0L
+  # a failed tight solve must not be retried at a looser tolerance
+  .ctl$maxOdeRecalc <- 0L
+  # mu-referenced regression would move the thetas; score the full model instead
+  .ctl$muModel <- "none"
+  for (.mn in grep("^foceiMu", names(.ctl), value = TRUE)) {
+    .ctl[[.mn]] <- NULL
+  }
   .ctl <- do.call(foceiControl, .ctl)
   .newFit <- tryCatch(
     suppressMessages(suppressWarnings(
@@ -79,7 +86,7 @@
 #' Warn when a fit's objective is not settled with respect to the ODE tolerance
 #'
 #' Opt-in with `foceiControl(odeSettleCheck = TRUE)`; skipped for models
-#' without ODEs and for fits with no outer optimization.  The tighter
+#' without ODEs, fits with no outer optimization and a non-finite objective.  The tighter
 #' objective is kept as `odeSettleObjf` on the fit.
 #' @param fit the finalized fit
 #' @return the objective shift, invisibly (`NULL` when not checked)
@@ -92,6 +99,10 @@
   if (identical(as.integer(.ctl[["maxOuterIterations"]]), 0L) || !.odeSettleIsOde(fit)) {
     return(invisible(NULL))
   }
+  .objf0 <- suppressWarnings(as.double(fit$objective))
+  if (length(.objf0) != 1L || !is.finite(.objf0)) {
+    return(invisible(NULL))
+  }
   .tol <- .ctl[["odeSettleTol"]]
   if (!is.numeric(.tol) || length(.tol) != 1L) {
     .tol <- 0.1
@@ -102,7 +113,7 @@
   .env <- if (is.environment(fit)) fit else fit$env
   try(nlmixrAddTiming(.env, "odeSettle", (proc.time() - .pt)[["elapsed"]]), silent = TRUE)
   assign("odeSettleObjf", .objf, envir = .env)
-  .shift <- .objf - as.double(fit$objective)
+  .shift <- .objf - .objf0
   .msg <- .odeSettleMsg(.shift, .tol)
   if (!is.null(.msg)) {
     warning(.msg, call. = FALSE)

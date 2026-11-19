@@ -33,6 +33,11 @@ test_that("no re-solve when the check is off or no outer step ran", {
   expect_null(.odeSettleCheck(list(control = list(maxOuterIterations = 100L))))
   expect_null(.odeSettleCheck(list(control = list(odeSettleCheck = TRUE, maxOuterIterations = 0L))))
   expect_null(.odeSettleCheck(list(control = NULL)))
+  local_mocked_bindings(.odeSettleIsOde = function(fit) TRUE)
+  expect_null(.odeSettleCheck(list(
+    control = list(odeSettleCheck = TRUE, maxOuterIterations = 100L),
+    objective = Inf
+  )))
 })
 
 nmTest({
@@ -66,6 +71,18 @@ nmTest({
       foceiControl(print = 0, covMethod = "", calcTables = FALSE, odeSettleCheck = TRUE)
     ))
     expect_true(is.finite(.f$env$odeSettleObjf))
+    expect_lt(abs(.f$env$odeSettleObjf - .f$objective), 0.1)
+    expect_false(any(grepl("ODE tolerance", .f$runInfo)))
+  })
+
+  test_that("an FO fit is re-scored as FO", {
+    skip_on_cran()
+    .f <- suppressMessages(nlmixr2(
+      .oneCmt,
+      nlmixr2data::theo_sd,
+      "fo",
+      foControl(print = 0, covMethod = "", calcTables = FALSE, odeSettleCheck = TRUE)
+    ))
     expect_lt(abs(.f$env$odeSettleObjf - .f$objective), 0.1)
     expect_false(any(grepl("ODE tolerance", .f$runInfo)))
   })
