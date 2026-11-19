@@ -4,7 +4,7 @@
 #' the likelihood: the endpoint lines and any assignment to a call other than a
 #' state's (`mtime()`, ...).  A state's ODE and properties (`f()`, `alag()`,
 #' `x(0)`, ...) feed that state, the `linCmtA()`/`linCmtB()` arguments feed
-#' every state, and an assignment inside `if()`/`while()` also depends on its
+#' the `linCmt()` states, and an assignment inside `if()`/`while()` also depends on its
 #' condition.  The walk
 #' ignores statement order, so it may keep a variable whose value is later
 #' overwritten (never the reverse).
@@ -20,6 +20,7 @@
       # braces let a normalized `else` start its own line
       .exprs <- str2lang(paste0("{\n", .norm, "\n}"))
       .states <- ui$mv0$state
+      .linStates <- intersect(.states, c("depot", "central", "peripheral1", "peripheral2"))
       .acc <- new.env(parent = emptyenv())
       .acc$lhs <- character(0)
       .acc$rhs <- list()
@@ -54,7 +55,7 @@
           .l <- e[[2]]
           .r <- e[[3]]
           .lin <- .linVars(.r)
-          for (.s in .states[length(.lin) > 0L]) {
+          for (.s in .linStates[length(.lin) > 0L]) {
             .acc$lhs <- c(.acc$lhs, .s)
             .acc$rhs[[length(.acc$lhs)]] <- unique(c(cond, .lin))
           }
