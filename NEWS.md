@@ -137,6 +137,12 @@
   notes in `$runInfo` an objective that moves by more than `odeSettleTol`
   (default 0.1) or is not finite, e.g. `OFV moves 0.28 at 10x tighter ODE
   tolerance`; the tighter objective is kept as `fit$odeSettleObjf` (#1393).
+- `saemControl(nBurn = "auto")` ends SAEM's burn-in once no theta, log omega
+  variance, omega correlation or log residual scale still trends (a slope
+  t-test on 5 batch means of the last 100 iterations), between `nBurnMin`
+  (150) and `nBurnMax` (500).  `$runInfo` notes the burn-in length used and,
+  at `nBurnMax`, the parameters still trending.  An integer `nBurn` is
+  unchanged (#1401).
 - FOCEi model builds no longer optimize the `innerOeta` model, which only
   `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on
   first use, caches it and adds the inner model's `param()`/`cmt()`/`mtime()`

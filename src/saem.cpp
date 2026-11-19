@@ -2030,6 +2030,12 @@ public:
     return par_hist;
   }
 
+  List get_burnInfo() {
+    LogicalVector trending(burnTrending.begin(), burnTrending.end());
+    return List::create(_["nBurn"] = nBurnUsed, _["nBurnPlan"] = nPhase1,
+                        _["trending"] = trending);
+  }
+
   IntegerVector get_ueRevisitInfo() {
     return IntegerVector::create(_["ran"] = ueRevisitRan,
                                  _["unfroze"] = ueRevisitUnfroze,
@@ -2590,6 +2596,18 @@ public:
     // Phase-1 (SA/burn) iteration count for the print's SA/EM row tag; -1
     // (missing, e.g. a saved cfg from an older version) disables the tag.
     nPhase1 = x.containsElementNamed("nPhase1") ? as<int>(x["nPhase1"]) : -1;
+    // nBurn="auto" (#1401): the burn-in may end before nPhase1 once no tracked
+    // parameter still trends; the schedule then jumps to the EM phase
+    nBurnAuto = x.containsElementNamed("nBurnAuto") ? as<int>(x["nBurnAuto"]) : 0;
+    if (nBurnAuto != 0 && nPhase1 > 0) {
+      nBurnMin = as<int>(x["nBurnMin"]);
+      burnWindow = as<int>(x["nBurnWindow"]);
+      burnBatch = as<int>(x["nBurnBatch"]);
+      burnTcrit = R::qt(0.975, (double)(burnBatch - 2), 1, 0);
+    } else {
+      nBurnAuto = 0;
+    }
+    nBurnUsed = nPhase1;
     // uninformative-eta revisit (absent in a cfg saved by an older version -> off)
     ueRevisitIter = x.containsElementNamed("ueRevisitIter") ? as<int>(x["ueRevisitIter"]) : -1;
     if (x.containsElementNamed("ueRevisitCols")) ueRevisitCols = as<uvec>(x["ueRevisitCols"]);
@@ -2814,6 +2832,14 @@ public:
     }
     nres = res_offset.max();
     vcsig2.set_size(nres);
+    // the leading additive/proportional entries of each endpoint are scales,
+    // tested on the log scale by the nBurn="auto" trend test
+    resLogScale = zeros<uvec>(nres);
+    for (int b = 0; b < nendpnt; ++b) {
+      int m = (int)res_mod(b);
+      int nLog = (m == rmAddProp || m == rmAddPow || m == rmAddPropLam || m == rmAddPowLam) ? 2 : 1;
+      for (int k = 0; k < nLog && res_offset(b) + k < (unsigned int)nres; ++k) resLogScale(res_offset(b) + k) = 1;
+    }
     vecares = ares(ix_endpnt);
     vecbres = bres(ix_endpnt);
     veccres = cres(ix_endpnt);
@@ -4161,7 +4187,7 @@ public:
         // Split-ETA columns: separation can still be developing after pas(kiter) decays
         // (same freeze-before-signal issue as mixProb), so give these columns their own
         // extended-flat schedule; non-split columns and "parallel" fits are unaffected.
-        double pasMsaemSplit = (kiter < (unsigned int)(0.8 * niter)) ? 1.0 : pas(kiter);
+        double pasMsaemSplit = (kiter - burnShift < (unsigned int)(0.8 * (niter - burnShift))) ? 1.0 : pas(kiter);
         for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
           double pasUse = (omegaShareSubpop(c) >= 1) ? pasMsaemSplit : pas(kiter);
           statphi11.col(c) = statphi11.col(c) + pasUse * (Statphi11.col(c) / nmc - statphi11.col(c));
@@ -5122,9 +5148,9 @@ public:
           }
         }
       }
-      L=L+pash(kiter)*(D1/nmc-L);
-      Ha=Ha+pash(kiter)*(DDa- Ha);
-      Hb=Hb+pash(kiter)*(DDb- Hb);
+      L=L+pash(kiter - burnShift)*(D1/nmc-L);
+      Ha=Ha+pash(kiter - burnShift)*(DDa- Ha);
+      Hb=Hb+pash(kiter - burnShift)*(DDb- Hb);
       // SA covariance phase (covMethod="sa"): theta is frozen (pas==pash==0 above), so the
       // now-corrected DDa is a Monte-Carlo draw of the observed information at theta_hat.
       // Monte-Carlo average it (after a short burn-in) into HaSa; the covariance is
@@ -5139,8 +5165,8 @@ public:
       cube phi2 = phi%phi;
       mat sphi1 = sum(phi ,2);
       mat sphi2 = sum(phi2,2);
-      mpost_phi=mpost_phi+pash(kiter)*(sphi1/nmc-mpost_phi);
-      cpost_phi=cpost_phi+pash(kiter)*(sphi2/nmc-cpost_phi);
+      mpost_phi=mpost_phi+pash(kiter - burnShift)*(sphi1/nmc-mpost_phi);
+      cpost_phi=cpost_phi+pash(kiter - burnShift)*(sphi2/nmc-cpost_phi);
       mpost_phi.cols(i0)=mprior_phi0;
       // each component's own posterior mean: a component-owned eta is reported
       // conditional on its component, not blended with chains that never apply it
@@ -5148,7 +5174,7 @@ public:
         for (int j = 0; j < nMix; j++) {
           mat sj = zeros<mat>(N, nphi);
           for (int k = 0; k < nmc; k++) sj += phiM_mix(j).rows(k * N, (k + 1) * N - 1);
-          mpost_phi_mix(j) = mpost_phi_mix(j) + pash(kiter) * (sj / nmc - mpost_phi_mix(j));
+          mpost_phi_mix(j) = mpost_phi_mix(j) + pash(kiter - burnShift) * (sj / nmc - mpost_phi_mix(j));
         }
       }
 
@@ -5218,13 +5244,13 @@ public:
           vec mean_aji_reg = (mean_aji * N + mixProbPriorN * mixProbInit) / (N + mixProbPriorN);
           // "msaem" separation develops more slowly than "parallel", so stay at full-replacement
           // step for 80% of the fit to give mixProb time to track the slower signal.
-          double pasMsaem = (mixSampleMethod == 1 && kiter < (unsigned int)(0.8 * niter)) ? 1.0 : pas(kiter);
+          double pasMsaem = (mixSampleMethod == 1 && kiter - burnShift < (unsigned int)(0.8 * (niter - burnShift))) ? 1.0 : pas(kiter);
           mixProb = mixProb + pasMsaem * (mean_aji_reg - mixProb);
         } else {
           // Annealed step-size: mixProb gets its own decaying schedule instead of the shared
           // burn-in pas(kiter)==1, which would let one noisy iteration fully replace it (a
           // runaway feedback loop, since a smaller mixProb(k) shrinks its own responsibility further).
-          mixProb = mixProb + pasMix(kiter) * (mean_aji - mixProb);
+          mixProb = mixProb + pasMix(kiter - burnShift) * (mean_aji - mixProb);
         }
       }
       vec pl = Plambda.elem(parHistThetaKeep);
@@ -5257,6 +5283,9 @@ public:
         // One summary line per printed iteration for any ODE-solve warnings
         // accumulated since the last flush (see inner.cpp foceiOfvOptim).
         nmFlushRxSolveWarn(5);
+        if (nBurnAuto && kiter < (unsigned int)nPhase1) {
+          burnAutoStep(kiter, pl);
+        }
         if (plateauStop && kiter + 1 < (unsigned int)niter && plateauReached(kiter)) {
           // continue exactly as a run with nEm = kiter + 1 - nBurn: the SA covariance
           // phase (if any) starts next, on the same iterations' seeds
@@ -5296,6 +5325,14 @@ private:
 
   uvec nu;
   int niter;
+  // nBurn="auto" burn-in stop (#1401)
+  int nBurnAuto = 0, nBurnMin = 0, burnWindow = 100, burnBatch = 5, nBurnUsed = -1;
+  // burn-in iterations skipped: kiter is the schedule index, kiter - burnShift
+  // the iteration count the running-average gains (pash, pasMix) follow
+  unsigned int burnShift = 0;
+  double burnTcrit = 0.0;
+  mat burnTrace;
+  uvec burnTrending, resLogScale;
   int saemSeed = 99;
   saemSeedLayout _seedLayout;
   int nPhase1;
@@ -5567,6 +5604,34 @@ private:
   int DEBUG;
   // every estimation iteration's phiM, laid out as an N x nmc x niter x nphi array
   NumericVector phiMHist;
+
+  // Record burn-in iteration kiter on the trend test's scale (theta, log omega
+  // variance, omega correlation, log residual scale) and, from nBurnMin on, end
+  // the burn-in once no column trends: kiter then jumps to the EM phase.
+  void burnAutoStep(unsigned int &kiter, const vec &pl) {
+    if (burnTrace.n_rows != (uword)nPhase1 || burnTrace.n_cols != pl.n_elem) {
+      burnTrace.set_size(nPhase1, pl.n_elem);
+    }
+    vec bt = pl;
+    uword j = parHistThetaKeep.n_elem;
+    for (uword k = 0; k < parHistOmegaKeep.n_elem; ++k, ++j) bt(j) = std::log(bt(j));
+    for (uword p = 0; p < parHistOmegaOffPairs.n_rows; ++p, ++j) {
+      double d = Gamma2_phi1(parHistOmegaOffPairs(p, 0), parHistOmegaOffPairs(p, 0)) *
+        Gamma2_phi1(parHistOmegaOffPairs(p, 1), parHistOmegaOffPairs(p, 1));
+      bt(j) = d > 0.0 ? bt(j) / std::sqrt(d) : 0.0;
+    }
+    for (uword k = 0; k < resKeep.n_elem; ++k, ++j) {
+      if (resLogScale(resKeep(k))) bt(j) = std::log(std::fabs(bt(j)));
+    }
+    burnTrace.row(kiter) = bt.t();
+    const unsigned int done = kiter + 1;
+    if (done < (unsigned int)std::max(nBurnMin, burnWindow)) return;
+    burnTrending = saemBurnTrend(burnTrace.rows(done - burnWindow, done - 1), burnBatch, burnTcrit);
+    if (burnTrending.n_elem > 0 && any(burnTrending) && done < (unsigned int)nPhase1) return;
+    nBurnUsed = (int)done;
+    burnShift = (unsigned int)nPhase1 - done;
+    kiter = (unsigned int)nPhase1 - 1;
+  }
 
   void savePhiM(unsigned int kiter, const mat &m) {
     const uword nr = (uword)N * nmc;
@@ -7114,6 +7179,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("eta") = saem.get_eta(),
     Named("etaMix") = saem.get_etaMix(),
     Named("par_hist") = saem.get_par_hist(),
+    Named("burnInfo") = saem.get_burnInfo(),
     // MCMC mixing diagnostics; see the members they come from
     Named("mcmcAccept") = saem.get_mcmcAccTrace(),
     Named("mcmcAcceptCol") = saem.get_mcmcAccColTrace(),

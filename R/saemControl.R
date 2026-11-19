@@ -5,6 +5,18 @@
 #'
 #' @param nBurn Number of iterations in the first phase, ie the  MCMC/Stochastic Approximation
 #'     steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.
+#'     \code{"auto"} ends the burn-in once no parameter still trends (see
+#'     \code{nBurnMin}).
+#'
+#' @param nBurnMin,nBurnMax With \code{nBurn = "auto"}, the shortest and
+#'     longest burn-in.  From \code{nBurnMin} on, the burn-in ends at the first
+#'     iteration where no theta, log omega variance, omega correlation or log
+#'     residual scale trends over the last 100 iterations (a slope t-test on 5
+#'     batch means, two-sided 5\%).  A burn-in that reaches \code{nBurnMax}
+#'     names the parameters still trending in \code{$runInfo}; the burn-in
+#'     length used is noted there too.  The phases set as a fraction of the
+#'     burn-in (\code{perSa}, \code{perNoCor}, \code{perFixOmega},
+#'     \code{perFixResid}) are fractions of \code{nBurnMin}.
 #'
 #' @param nEm Number of iterations in the Expectation-Maximization
 #'     (EM) Step. This is equivalent to Monolix's \code{K_1}.
@@ -438,6 +450,8 @@ saemControl <- function(
   seed = 99,
   nBurn = 200,
   nEm = 300,
+  nBurnMin = 150L,
+  nBurnMax = 500L,
   plateauStop = FALSE,
   plateauWindow = 50L,
   plateauTol = 1e-3,
@@ -529,6 +543,12 @@ saemControl <- function(
     checkmate::assertIntegerish(.xtra$mcmc$niter, len = 2, lower = 0, any.missing = FALSE, .var.name = "mcmc$niter")
     nBurn <- .xtra$mcmc$niter[1]
     nEm <- .xtra$mcmc$niter[2]
+    if (isTRUE(.xtra$mcmc$nBurnAuto)) {
+      # the schedule's burn-in is nBurnMax
+      nBurnMax <- nBurn
+      nBurnMin <- .xtra$mcmc$nBurnMin
+      nBurn <- "auto"
+    }
     checkmate::assertIntegerish(.xtra$mcmc$nmc, len = 1, lower = 1, any.missing = FALSE, .var.name = "mcmc$nmc")
     nmc <- .xtra$mcmc$nmc
     checkmate::assertIntegerish(.xtra$mcmc$nu, len = 3, lower = 1, any.missing = FALSE, .var.name = "mcmc$nu")
@@ -543,6 +563,12 @@ saemControl <- function(
     if (!is.null(.xtra$mcmc$rmcmc)) {
       rmcmc <- .xtra$mcmc$rmcmc
     }
+  }
+  .nBurnAuto <- identical(nBurn, "auto")
+  if (.nBurnAuto) {
+    checkmate::assertIntegerish(nBurnMax, any.missing = FALSE, len = 1, lower = 100)
+    checkmate::assertIntegerish(nBurnMin, any.missing = FALSE, len = 1, lower = 0, upper = nBurnMax)
+    nBurn <- nBurnMax
   }
   checkmate::assertIntegerish(nBurn, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertIntegerish(nEm, any.missing = FALSE, len = 1, lower = 0)
@@ -697,7 +723,10 @@ saemControl <- function(
   }
   .corWarnCheck(corWarn)
   .ret <- list(
-    mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto, rmcmc = rmcmc),
+    mcmc = c(
+      list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto, rmcmc = rmcmc),
+      if (.nBurnAuto) list(nBurnAuto = TRUE, nBurnMin = as.integer(nBurnMin))
+    ),
     plateauStop = plateauStop,
     plateauWindow = as.integer(plateauWindow),
     plateauTol = plateauTol,
@@ -811,7 +840,18 @@ saemControl <- function(
   }
   if (name == "mcmc") {
     .ret <- character(0)
-    if (!identical(default$mcmc$niter, value$niter)) {
+    if (isTRUE(value$nBurnAuto)) {
+      .ret <- c(.ret, 'nBurn="auto"')
+      if (value$nBurnMin != formals(saemControl)$nBurnMin) {
+        .ret <- c(.ret, paste0("nBurnMin=", deparse1(value$nBurnMin)))
+      }
+      if (value$niter[1] != formals(saemControl)$nBurnMax) {
+        .ret <- c(.ret, paste0("nBurnMax=", deparse1(value$niter[1])))
+      }
+      if (default$mcmc$niter[2] != value$niter[2]) {
+        .ret <- c(.ret, paste0("nEm=", deparse1(value$niter[2])))
+      }
+    } else if (!identical(default$mcmc$niter, value$niter)) {
       # both are written when integer, since c(nBurn, nEm) is integer only then
       .both <- !identical(storage.mode(default$mcmc$niter), storage.mode(value$niter)) ||
         !is.null(names(value$niter))
