@@ -35,6 +35,8 @@ test_that("an R-only covariance stands in for a sandwich", {
   expect_identical(.covNewtonCov(list(cov = .rs, covMethod = "linFim"), .s), .rs)
   .s$covList <- list(r = .e$covR)
   expect_identical(.covNewtonCov(list(cov = .rs, covMethod = "r,s"), .s), .e$covR)
+  .s$covList <- list(`r (full)` = .e$covR)
+  expect_identical(.covNewtonCov(list(cov = .rs, covMethod = "r,s (full)"), .s), .e$covR)
 })
 
 test_that("FOCEi-family methods are not checked", {
