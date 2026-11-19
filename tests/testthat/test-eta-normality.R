@@ -80,8 +80,11 @@ test_that("component-owned mixture etas use only their component's subjects", {
   expect_identical(.r$eta, c("eta.cl1", "eta.cl2", "eta.v"))
   expect_identical(.r$n, c(10L, 10L, 20L))
   expect_equal(.r$shapiroP[1], stats::shapiro.test(.x)$p.value)
-  # without the component, the placeholder zeros are counted
+  # the component can also come from ranef's own mixnum column
   .r <- .etaNormalityFit(list(ui = .ui, ranef = .ranef))
+  expect_identical(.r$n, c(10L, 10L, 20L))
+  # without any component, the placeholder zeros are counted
+  .r <- .etaNormalityFit(list(ui = .ui, ranef = .ranef[, names(.ranef) != "mixnum"]))
   expect_identical(.r$n, c(20L, 20L, 20L))
 })
 

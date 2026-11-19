@@ -95,11 +95,15 @@
 #'
 #' @param ui the fit's final ui
 #' @param ranef the fit's `ranef`
-#' @param mixNum the fit's `mixNum` (`ID` and `mixnum` columns)
+#' @param mixNum the fit's `mixNum` (`ID` and `mixnum` columns); else
+#'   `ranef`'s own `mixnum` column
 #' @return named list of logical row indices, one per owned ETA
 #' @author Matthew L. Fidler
 #' @noRd
 .etaNormalityMixRows <- function(ui, ranef, mixNum) {
+  if (!is.data.frame(mixNum) && is.data.frame(ranef) && "mixnum" %in% names(ranef)) {
+    mixNum <- ranef[, c("ID", "mixnum"), drop = FALSE]
+  }
   if (is.null(ui) || !is.data.frame(ranef) || !is.data.frame(mixNum)) {
     return(list())
   }
