@@ -27,7 +27,17 @@ nmTest({
     expect_equal(foceiControl()$outerOpt, -1L)
     expect_equal(foceiControl()$outerOptTxt, "bobyqa")
     expect_equal(foceiControl(fast = TRUE)$outerOpt, -1L)
-    expect_equal(foceiControl(fast = TRUE)$outerOptTxt, "nlminb")
+    expect_equal(foceiControl(fast = TRUE)$outerOptTxt, "trust")
+    # trust is the fast FOCEi default; FOCE and AGQ keep nlminb
+    expect_equal(foceiControl(fast = TRUE, interaction = FALSE)$outerOptTxt, "nlminb")
+    expect_equal(foceiControl(fast = TRUE, nAGQ = 2)$outerOptTxt, "nlminb")
+    # a defaulted trust goes back to bobyqa when the fit is downgraded
+    expect_equal(.foceiDowngradeFast(foceiControl(fast = TRUE))$outerOptTxt, "bobyqa")
+    # a fast foceiControl() given to est="foce" re-defaults for that method
+    .re <- function(ctl, f) do.call(f, .foceiDropDefaultOuterOpt(ctl))
+    expect_equal(.re(foceiControl(fast = TRUE), foceControl)$outerOptTxt, "nlminb")
+    expect_true(.re(foceiControl(fast = TRUE), foceControl)$fast)
+    expect_equal(.re(foceiControl(fast = TRUE, outerOpt = "trust"), foceControl)$outerOptTxt, "trust")
     expect_true(foceiControl(fast = TRUE)$fast)
     expect_false(foceiControl()$fast)
     # an explicit outerOpt still wins under fast
@@ -41,7 +51,7 @@ nmTest({
     expect_equal(.foceiFastCtl(list(foceiControl(rel.tol = 1e-3)), foceiControl)$rel.tol, 1e-3)
     expect_equal(.foceiDowngradeFast(foceiControl(fast = TRUE))$rel.tol, 1e-3)
     # a defaulted optimizer re-defaults under a *f wrapper; an explicit one is kept
-    expect_equal(.foceiFastCtl(list(foceiControl()), foceiControl)$outerOptTxt, "nlminb")
+    expect_equal(.foceiFastCtl(list(foceiControl()), foceiControl)$outerOptTxt, "trust")
     expect_equal(
       .foceiFastCtl(list(foceiControl(outerOpt = "nlminb")), foceiControl)$outerOptTxt,
       "nlminb"
@@ -147,7 +157,8 @@ nmTest({
     .a <- suppressMessages(suppressWarnings(nlmixr2(addFirst, d, "focei", .one)))
     .p <- suppressMessages(suppressWarnings(nlmixr2(propFirst, d, "focei", .one)))
     expect_equal(.p$theta[names(.a$theta)], .a$theta, tolerance = 1e-10)
-    expect_equal(.p$objf, .a$objf, tolerance = 1e-10)
+    # trust's Hessian is assembled in a different order, so allow rounding
+    expect_equal(.p$objf, .a$objf, tolerance = 1e-8)
   })
 
   test_that("estimated boxCox/yeoJohnson lambda: analytic gradient matches central differences", {

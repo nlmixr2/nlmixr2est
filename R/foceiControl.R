@@ -206,6 +206,10 @@
 #'     of a doubtful sandwich (see \code{covSmall}) only picks a listed method.  The
 #'     methods tried and why each was not used are in \code{fit$env$covTried}.
 #'
+#' @param corWarn warn when two estimates' correlation is at least this in
+#'     absolute value after the covariance step; \code{NA} or \code{Inf} turns
+#'     the warning off.
+#'
 #' @param covPrecursor what a finite-difference covariance may start from, in
 #'     order of preference: \code{"fd"}, a full-stage R this fit computed under
 #'     other settings (\code{setCov()} with another \code{rsControl()}), and
@@ -329,7 +333,8 @@
 #'     \code{nAGQ > 1}; those fall back to the finite-difference gradient with
 #'     a message (linCmt() and out-of-scope log-likelihood models downgrade to
 #'     \code{fast=FALSE} up front).  When unspecified,
-#'     the outer optimizer defaults to \code{"nlminb"} (vs \code{"bobyqa"} for
+#'     the outer optimizer defaults to \code{"trust"} for FOCEi and
+#'     \code{"nlminb"} for the other methods (vs \code{"bobyqa"} for
 #'     \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 #'     \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 #'     \code{foceif}) default this to \code{TRUE}.
@@ -610,8 +615,8 @@
 #'   for supported Gaussian FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
 #'   curvature is unavailable.  \code{"trust"} is a trust-region Newton method
 #'   (\pkg{RcppTrust}) built on that same Hessian; see
-#'   \code{outerTrustHessian}.  It is unbounded, so a trial point outside the
-#'   box is reported as an infinite objective and the region shrinks instead.
+#'   \code{outerTrustHessian}; it is the default for fast FOCEi.  A parameter
+#'   whose steps keep leaving the box is held on its bound.
 #'
 #' @param outerTrustHessian Curvature source for \code{outerOpt="trust"} or \code{"nlminb"}.
 #'   For \code{"nlminb"}, \code{"auto"} and \code{"bfgs"} leave curvature to
@@ -1328,6 +1333,7 @@ foceiControl <- function(
   covFallback = list("r,s" = c("r", "s"), r = "s", s = character(0), analytic = c("r,s", "r", "s")),
   covPrecursor = c("fd", "analytic"),
   covShortcut = FALSE,
+  corWarn = 0.95,
   covFull = TRUE, #
   fast = FALSE, #
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"), #
@@ -1835,6 +1841,7 @@ foceiControl <- function(
   covFallback <- .covFallbackCheck(covFallback, targets = c(.covFallbackTargets, "sa", "imp"))
   covPrecursor <- .covPrecursorCheck(covPrecursor)
   checkmate::assertFlag(covShortcut)
+  .corWarnCheck(corWarn)
   checkmate::assertFlag(covFull)
   checkmate::assertFlag(fast)
   priorMethod <- match.arg(priorMethod)
@@ -1861,13 +1868,21 @@ foceiControl <- function(
       outerOpt <- -1L
     }
   } else if (rxode2::rxIs(outerOpt, "character")) {
-    # Default outer optimizer (when the user did not specify one): nlminb for
-    # the analytic-gradient ("fast") methods, bobyqa for the ordinary
-    # methods.  An explicit outerOpt (a single string) skips this;
-    # outerOptDefault records that the default was taken so a *f wrapper
-    # (.foceiFastCtl) can re-default a round-tripped control under fast=TRUE.
+    # Default outer optimizer (when the user did not specify one): trust for
+    # fast FOCEi (it uses the analytic outer Hessian), nlminb for the other
+    # analytic-gradient ("fast") methods, bobyqa for the ordinary methods.
+    # An explicit outerOpt (a single string) skips this; outerOptDefault
+    # records that the default was taken so a *f wrapper (.foceiFastCtl) can
+    # re-default a round-tripped control under fast=TRUE, and a fit downgraded
+    # to fast=FALSE (.foceiDowngradeFast) goes back to bobyqa.
     if (missing(outerOpt)) {
-      outerOpt <- if (isTRUE(fast)) "nlminb" else "bobyqa"
+      outerOpt <- if (!isTRUE(fast)) {
+        "bobyqa"
+      } else if (isTRUE(as.logical(interaction)) && isTRUE(nAGQ == 0)) {
+        "trust"
+      } else {
+        "nlminb"
+      }
       .outerOptDefault <- TRUE
     }
     outerOpt <- match.arg(outerOpt)
@@ -2204,6 +2219,7 @@ foceiControl <- function(
     covFallback = covFallback,
     covPrecursor = covPrecursor,
     covShortcut = covShortcut,
+    corWarn = corWarn,
     covFull = covFull,
     fast = fast,
     priorMethod = priorMethod,
