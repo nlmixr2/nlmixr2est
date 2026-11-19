@@ -21,6 +21,11 @@
   smaller `nEm` would give, and `$runInfo` notes the stop iteration.  Off by
   default (#1395).
 
+- A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
+  (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
+  diagnostics are unreliable.  `foceiControl(shrinkEtaWarn=)` sets the
+  threshold; `NA` or `Inf` turns the note off (#1379).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the
