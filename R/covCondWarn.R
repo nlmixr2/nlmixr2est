@@ -41,11 +41,15 @@
   if (length(cond) != 1L || is.na(cond) || length(condWarn) != 1L || !is.finite(condWarn) || cond <= condWarn) {
     return(NULL)
   }
-  sprintf(
-    "covariance condition number is large (%s > %s)",
-    format(cond, digits = 5L),
-    format(condWarn, digits = 5L)
-  )
+  # enough digits that the printed number still exceeds the printed threshold
+  for (.d in 5:15) {
+    .c <- format(cond, digits = .d)
+    .t <- format(condWarn, digits = .d)
+    if (as.double(.c) > as.double(.t)) {
+      break
+    }
+  }
+  sprintf("covariance condition number is large (%s > %s)", .c, .t)
 }
 
 #' The `condWarn` threshold a fit was estimated with
@@ -66,8 +70,8 @@
 
 #' Warn when the fit's covariance is ill-conditioned
 #'
-#' Uses the `conditionNumberCor` the fit reports, or computes it from the
-#' installed covariance when the fit has none.
+#' The condition number is computed from the installed covariance, so it
+#' cannot be stale.
 #' @param fit the finalized fit (or its environment)
 #' @return invisibly the warning text, or `NULL` when none was given
 #' @noRd
@@ -80,15 +84,7 @@
   if (length(.cw) != 1L || !is.finite(.cw)) {
     return(invisible(NULL))
   }
-  .cond <- if (exists("conditionNumberCor", envir = .env, inherits = FALSE)) {
-    suppressWarnings(as.double(get("conditionNumberCor", envir = .env, inherits = FALSE)))
-  } else {
-    NA_real_
-  }
-  if (length(.cond) != 1L || !is.finite(.cond)) {
-    .cond <- .covCondCor(get("cov", envir = .env, inherits = FALSE))
-  }
-  .msg <- .covCondMsg(.cond, .cw)
+  .msg <- .covCondMsg(.covCondCor(get("cov", envir = .env, inherits = FALSE)), .cw)
   if (is.null(.msg)) {
     return(invisible(NULL))
   }

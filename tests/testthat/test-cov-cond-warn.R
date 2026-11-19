@@ -46,13 +46,21 @@ nmTest({
     expect_no_warning(expect_null(.covCondWarn(new.env(parent = emptyenv()))))
   })
 
-  test_that("the reported condition number is used when present", {
+  test_that("the installed covariance is used, not a stale stored number", {
     .w <- .covSite(
       ".covCondWarn",
-      capture_warnings(.covCondWarn(.condFit(.condCov(0.5), cond = 1397.7)))
+      capture_warnings(.covCondWarn(.condFit(.condCov(0.999), cond = 3)))
     )
-    expect_identical(.w, "covariance condition number is large (1397.7 > 1000)")
-    expect_no_warning(expect_null(.covCondWarn(.condFit(.condCov(0.999), cond = 3))))
+    expect_identical(.w, "covariance condition number is large (1999 > 1000)")
+    expect_no_warning(expect_null(.covCondWarn(.condFit(.condCov(0.5), cond = 1397.7))))
+  })
+
+  test_that("the printed number exceeds the printed threshold", {
+    expect_equal(
+      .covCondMsg(1000.01, 1000),
+      "covariance condition number is large (1000.01 > 1000)"
+    )
+    expect_match(.covCondMsg(1000 + 1e-9, 1000), "\\(1000\\.0+1 > 1000\\)$")
   })
 
   test_that("condWarn is validated by foceiControl", {
