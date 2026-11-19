@@ -77,7 +77,8 @@
   fit's objective and its analytic gradient at user-supplied thetas and
   omega without refitting, for custom optimizers and profiling.  The omega
   gradient is either with respect to the variances/covariances or the
-  Cholesky estimation-scale parameters (#1413).
+  Cholesky estimation-scale parameters.  `individual = TRUE` adds each
+  subject's objective and gradient contribution (#1413).
 
 - `saemControl(rmcmc=)` sets the random-walk proposal scale of the SAEM MCMC
   kernels, previously fixed at 0.5; lower it when `$mcmcAccept` is low (#1385).
