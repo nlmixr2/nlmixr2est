@@ -962,8 +962,8 @@
 
 #' Note in `$runInfo` a random-walk acceptance rate far from its target
 #'
-#' Judges the mean of the last 100 estimation iterations, so an early-bad,
-#' late-good chain passes.  Kernel 1 (proposals from the population
+#' Judges the mean of the last 100 post-burn-in (`nEm`) iterations, so an
+#' early-bad, late-good chain passes; fewer than 20 are too few to judge.  Kernel 1 (proposals from the population
 #' distribution) is skipped: `rmcmc` does not scale it.
 #'
 #' @param env nlmixr2 estimation environment
@@ -976,12 +976,14 @@
     return(invisible())
   }
   .acc <- env$mcmcAccept
-  .n <- min(nrow(.acc), sum(.ctl$mcmc$niter))
+  .niter <- .ctl$mcmc$niter
+  .n <- min(nrow(.acc), sum(.niter))
+  .from <- max(.niter[1] + 1L, .n - 99L)
   .k <- intersect(c("rw", "coord"), colnames(.acc))
-  if (.n < 1L || length(.k) == 0L) {
+  if (.n - .from + 1L < 20L || length(.k) == 0L) {
     return(invisible())
   }
-  .acc <- .acc[seq.int(max(1L, .n - 99L), .n), .k, drop = FALSE]
+  .acc <- .acc[seq.int(.from, .n), .k, drop = FALSE]
   .r <- colMeans(.acc, na.rm = TRUE)
   .r <- .r[is.finite(.r)]
   .fmt <- function(w) {

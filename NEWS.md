@@ -36,7 +36,7 @@
   kernels, previously fixed at 0.5; lower it when `$mcmcAccept` is low (#1385).
 
 - A `saem` fit now notes in `$runInfo` when its random-walk MCMC acceptance
-  over the last 100 estimation iterations is outside 5-80% (e.g.
+  over the last 100 post-burn-in iterations is outside 5-80% (e.g.
   `MCMC acceptance low (rw 0%); try a smaller rmcmc`).
   `saemControl(mcmcAcceptWarn=)` sets the range; `NA` turns the note off
   (#1385).

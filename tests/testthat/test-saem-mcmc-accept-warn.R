@@ -33,6 +33,11 @@ nmTest({
     )
     .env$saemControl <- saemControl(nBurn = 150, nEm = 100, mcmcAcceptWarn = NA)
     expect_silent(.saemMcmcAcceptWarn(.env))
+    # burn-in rows are never judged, and a short nEm is too few to judge
+    .env$saemControl <- saemControl(nBurn = 231, nEm = 19)
+    expect_silent(expect_null(.saemMcmcAcceptWarn(.env)))
+    .env$saemControl <- saemControl(nBurn = 230, nEm = 20)
+    expect_warning(expect_warning(.saemMcmcAcceptWarn(.env), "low"), "high")
   })
 
   test_that("a fit notes a poorly tuned chain in $runInfo", {

@@ -35,7 +35,7 @@
 #'     acceptance rate (see `$mcmcAccept`); larger values lower it.
 #'
 #' @param mcmcAcceptWarn Acceptance-rate range `c(low, high)`; when the mean
-#'     acceptance of the random-walk kernels over the last 100 estimation
+#'     acceptance of the random-walk kernels over the last 100 post-burn-in
 #'     iterations falls outside it, the fit notes it in `$runInfo`.  `NULL` or
 #'     `NA` turns the note off.
 #'
