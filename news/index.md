@@ -899,12 +899,31 @@
   now work on a fit with inter-occasion variability, including one run
   with `calcTables = FALSE`. They stopped with “The following
   parameter(s) are required for solving: occ, …” (the parameters listed
-  depend on the model and the method). They refit with no iterations at
-  the fit’s estimates, as
+  depend on the model and the method). A fit with inter-occasion
+  variability now keeps the model it estimated (the occasion rewrite, or
+  `saem`’s two-level or collapsed model) with its thetas and etas, and
+  they,
   [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md)
-  does, and give the columns the fit gives itself; for an ODE model, to
-  the solver’s tolerance. A `saem` fit with `iovMethod = "collapsed"` is
-  refused with a message: ask for its tables when fitting it.
+  and
+  [`setOfv()`](https://nlmixr2.github.io/nlmixr2est/reference/setOfv.md)
+  evaluate that model, without refitting it. They give the columns and
+  NPDE the fit computes itself, also for `iovMethod = "collapsed"`
+  ([\#1243](https://github.com/nlmixr2/nlmixr2est/issues/1243)).
+
+- [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md)
+  no longer refits the model with no iterations. Its columns come from
+  the fit’s own table step, with the fit’s table settings (such as
+  `addDosing`), and its objective from
+  [`setOfv()`](https://nlmixr2.github.io/nlmixr2est/reference/setOfv.md).
+
+- [`addTable()`](https://nlmixr2.github.io/nlmixr2est/reference/addTable.md)
+  and
+  [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md)
+  now work on a fit with mu-referenced covariates (such as
+  `log(WT/70)`). The fit’s compiled models read the internal
+  `nlmixrMuDerCov#` columns, so they stopped with “The following
+  parameter(s) are required for solving: nlmixrMuDerCov1”; they are now
+  rebuilt from the user’s model when needed.
 
 - A fit with inter-occasion variability is now finished like any other
   when it is run with `tableControl(npde = TRUE)` or has a subject with

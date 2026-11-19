@@ -113,10 +113,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.6949413 4.5288e-05 0.04402232      0.056     0.694 3.054       0.785
+#>             setup   optimize covariance preprocess configure saem postprocess
+#> elapsed 0.6900409 4.9678e-05 0.04602349      0.056     0.712 2.74       0.796
 #>         table compress     other
-#> elapsed 0.278    0.055 0.3349911
+#> elapsed 0.284    0.054 0.3418859
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -150,6 +150,28 @@ if (!inherits(f, "try-error")) {
   f <- try(addCwres(f))
   print(f)
 }
+#> → Calculating residuals/tables
+#> → loading into symengine environment...
+#> → pruning branches (`if`/`else`) of full model...
+#> ✔ done
+#> → calculate ∂(f)/∂(η)
+#> → calculate ∂(R²)/∂(η)
+#> → finding duplicate expressions in inner model...
+#> → finding duplicate expressions in EBE model...
+#> → compiling inner model...
+#>  
+#>  
+#> ✔ done
+#> → finding duplicate expressions in FD model...
+#> → compiling EBE model...
+#>  
+#>  
+#> ✔ done
+#> → compiling events FD model...
+#>  
+#>  
+#> ✔ done
+#> ✔ done
 #>  
 #>  
 #> → loading into symengine environment...
@@ -172,8 +194,6 @@ if (!inherits(f, "try-error")) {
 #>  
 #>  
 #> ✔ done
-#> → Calculating residuals/tables
-#> ✔ done
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
 #> 
 #>           OBJF      AIC     BIC Log-likelihood Condition#(Cov) Condition#(Cor)
@@ -181,10 +201,10 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.6949413 4.5288e-05 0.04402232      0.056     0.694 3.054       0.785
-#>         table compress     other
-#> elapsed 0.278    0.055 0.3349911
+#>             setup   optimize covariance preprocess configure saem postprocess
+#> elapsed 0.6900409 4.9678e-05 0.04602349      0.056     0.712 2.74       0.796
+#>         table compress     other foceiLik
+#> elapsed 2.049    0.054 0.3418859    0.377
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
