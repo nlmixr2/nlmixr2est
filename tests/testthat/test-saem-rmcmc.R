@@ -8,6 +8,11 @@ nmTest({
     expect_error(saemControl(rmcmc = -1))
     expect_error(saemControl(rmcmc = c(1, 2)))
     expect_error(saemControl(rmcmc = Inf))
+    # zero proposals never move the chain
+    expect_error(saemControl(rmcmc = 0), "positive")
+    .d <- rxUiDeparse(saemControl(rmcmc = 0.2, nmc = 5), "ctl")
+    expect_equal(eval(.d[[3]])$mcmc$rmcmc, 0.2)
+    expect_equal(eval(rxUiDeparse(saemControl(), "ctl")[[3]])$mcmc$rmcmc, 0.5)
   })
 
   test_that("rmcmc reaches the sampler", {

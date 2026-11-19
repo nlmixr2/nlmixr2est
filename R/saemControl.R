@@ -518,7 +518,10 @@ saemControl <- function(
   checkmate::assertIntegerish(nEm, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertIntegerish(nmc, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertIntegerish(nu, any.missing = FALSE, len = 3, lower = 1)
-  checkmate::assertNumber(rmcmc, lower = 0, finite = TRUE)
+  checkmate::assertNumber(rmcmc, finite = TRUE)
+  if (rmcmc <= 0) {
+    stop("'rmcmc' must be positive", call. = FALSE)
+  }
   # `print` can be either a scalar print-frequency or a pre-built
   # iterPrintControl object; .absorbIterPrintControl validates either form
   # and returns the canonical iterPrintControl list.  list(...)$iterPrintControl
@@ -770,6 +773,9 @@ saemControl <- function(
     }
     if (!identical(default$mcmc$nmc, value$nmc)) {
       .ret <- c(.ret, paste0("nmc=", deparse1(value$nmc)))
+    }
+    if (!is.null(value$rmcmc) && !identical(default$mcmc$rmcmc, value$rmcmc)) {
+      .ret <- c(.ret, paste0("rmcmc=", deparse1(value$rmcmc)))
     }
     # nu is written only when supplied (nuAuto FALSE), even at its default; an
     # automatic nu may have been raised by the fit (.saemAutoNu) and is redone
