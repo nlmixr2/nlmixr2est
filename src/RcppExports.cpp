@@ -1643,6 +1643,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// saemBurnTrendTest
+SEXP saemBurnTrendTest(SEXP inX, SEXP inNBatch);
+RcppExport SEXP _nlmixr2est_saemBurnTrendTest(SEXP inXSEXP, SEXP inNBatchSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type inX(inXSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type inNBatch(inNBatchSEXP);
+    rcpp_result_gen = Rcpp::wrap(saemBurnTrendTest(inX, inNBatch));
+    return rcpp_result_gen;
+END_RCPP
+}
 // shi21RatioCensorSet
 int shi21RatioCensorSet(int type);
 RcppExport SEXP _nlmixr2est_shi21RatioCensorSet(SEXP typeSEXP) {
