@@ -160,6 +160,7 @@
       # a hundredth of the standard error: the metric the decrement is measured in
       .se <- sqrt(cov[nm, nm])
       .h <- if (is.finite(.se) && .se > 0) 0.01 * .se else 1e-3 * max(1, abs(.est[[nm]]))
+      .h <- max(.h, 1e-8 * abs(.est[[nm]]))
       .up <- .ofv(nm, .est[[nm]] + .h)
       .dn <- .ofv(nm, .est[[nm]] - .h)
       if (!is.finite(.up) && !is.finite(.dn)) {
@@ -179,6 +180,10 @@
     },
     double(1)
   )
+  # a direction that cannot be differenced would leave a partial decrement
+  if (anyNA(.g)) {
+    return(NULL)
+  }
   stats::setNames(.g, .nm)
 }
 
