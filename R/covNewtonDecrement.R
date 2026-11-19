@@ -103,6 +103,21 @@
   .g
 }
 
+#' The covariance whose inverse stands in for the OFV Hessian
+#'
+#' A sandwich (`"r,s"`) is not `2 H^-1`, so its R-only covariance is preferred.
+#' @param fit the finalized fit
+#' @param env the fit environment
+#' @return a named covariance matrix, or `NULL`
+#' @noRd
+.covNewtonCov <- function(fit, env) {
+  .r <- get0("covR", envir = env, inherits = FALSE)
+  if (is.matrix(.r) && !is.null(rownames(.r))) {
+    return(.r)
+  }
+  tryCatch(fit$cov, error = function(e) NULL)
+}
+
 #' The `covNewtonWarn` threshold of a fit
 #' @param fit the finalized fit
 #' @return the threshold; `NA` when the method has none or it is disabled
@@ -135,7 +150,7 @@
     return(invisible(.env$covNewtonDecrement))
   }
   .limit <- .covNewtonWarnLimit(fit)
-  .cov <- tryCatch(fit$cov, error = function(e) NULL)
+  .cov <- .covNewtonCov(fit, .env)
   .om <- tryCatch(fit$omega, error = function(e) NULL)
   if (is.na(.limit) || !is.matrix(.cov) || !is.matrix(.om) || nrow(.om) == 0L) {
     return(invisible(NA_real_))
