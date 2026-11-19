@@ -231,5 +231,5 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
   nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)
   # Role-tagged artifact name so this sensitivity model cannot share a compiled .so
   # with another build of the same text (nlmixr2/rxode2#1171).
-  .toRx(.s$thetaSens, "compiling sensitivity model...", role = "rxThetaSens", eventSens = eventSens)
+  .toRx(.s$thetaSens, "compiling sensitivity model...", role = "rxThetaSens", eventSens = eventSens, ui = ui)
 }
