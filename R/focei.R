@@ -5402,7 +5402,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
           foceiFitCpp_(.ret)
         },
         error = function(e) {
-          if (regexpr("theta freeze", e$message) != -1) {
+          if (.foceiIsFreeze(e, .ret)) {
             assign("err", "theta freeze", this.env)
           } else if (regexpr("theta reset", e$message) != -1) {
             assign("zeroOuter", FALSE, this.env)
@@ -5475,7 +5475,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   } else {
     .ret0 <- tryCatch(foceiFitCpp_(.ret), error = function(e) {
-      if (regexpr("theta freeze", e$message) == -1) {
+      if (!.foceiIsFreeze(e, .ret)) {
         stop(e)
       }
       NULL
@@ -5486,6 +5486,16 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .foceiFreezeFlatTheta(.ret)
     foceiFitCpp_(.ret)
   }
+}
+
+#' Is this error the freezeFlatTheta restart signal?
+#'
+#' @param e condition
+#' @param .ret focei environment
+#' @return logical
+#' @noRd
+.foceiIsFreeze <- function(e, .ret) {
+  identical(conditionMessage(e), "theta freeze") && exists("flatTheta", envir = .ret, inherits = FALSE)
 }
 
 #' Fix the thetas the first outer gradient found flat before a restart

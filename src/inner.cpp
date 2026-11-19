@@ -11627,7 +11627,6 @@ static void foceiFreezeFlatTheta(Environment e) {
   };
   double mx = 0.0;
   for (unsigned int k = 0; k < np && std::isfinite(f0); ++k) {
-    if (foceiIsMixPar((int)k)) continue;
     h[k] = 1e-3 * std::max(1.0, std::fabs(x[k]));
     if (x[k] + h[k] >= op_focei.upper[k]) h[k] = -h[k];
     g[k] = slope(k, h[k]);
@@ -11635,12 +11634,13 @@ static void foceiFreezeFlatTheta(Environment e) {
   }
   std::vector<int> flat;
   for (unsigned int k = 0; k < np && mx > 1e-8; ++k) {
-    if (ISNA(g[k]) || op_focei.fixedTrans[k] >= (int)op_focei.ntheta) continue;
+    if (ISNA(g[k]) || foceiIsMixPar((int)k) || op_focei.fixedTrans[k] >= (int)op_focei.ntheta) continue;
     auto isFlat = [&](double a) { return !ISNA(a) && std::fabs(a) <= 1e-8 && std::fabs(a) <= 1e-6 * mx; };
-    // a secant can vanish by chance, so the other side must be flat too
+    // a secant can vanish by chance, so a second step must be flat too: the
+    // other side, or twice as far when the other side is out of bounds
     const double x2 = x[k] - h[k];
-    const bool outside = x2 <= op_focei.lower[k] || x2 >= op_focei.upper[k];
-    if (isFlat(g[k]) && (outside || isFlat(slope(k, -h[k])))) {
+    const double h2 = (x2 <= op_focei.lower[k] || x2 >= op_focei.upper[k]) ? 2.0 * h[k] : -h[k];
+    if (isFlat(g[k]) && isFlat(slope(k, h2))) {
       flat.push_back(op_focei.fixedTrans[k] + 1);
     }
   }
