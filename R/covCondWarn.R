@@ -41,7 +41,8 @@
   if (length(cond) != 1L || is.na(cond) || length(condWarn) != 1L || !is.finite(condWarn) || cond <= condWarn) {
     return(NULL)
   }
-  # the fewest digits at which the printed number still exceeds the threshold
+  # fewest digits at which the printed number exceeds the threshold; none by
+  # 15 digits means it is at the threshold up to rounding
   .d <- Find(function(d) signif(cond, d) > signif(condWarn, d), 5:15)
   if (is.null(.d)) {
     return(NULL)
