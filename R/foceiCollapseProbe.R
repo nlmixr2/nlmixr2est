@@ -24,15 +24,21 @@
 #' @param ini named initial diagonal omegas
 #' @param etas the collapsed etas
 #' @return `omega` with each collapsed eta's variance raised back to its initial
-#'   estimate and its covariances dropped, so the matrix stays positive definite
+#'   estimate and its correlations halved.  Shrinking (not zeroing) them keeps
+#'   the block structure, so the omega parameters stay the same, and keeps the
+#'   matrix positive definite.
 #' @noRd
 .foceiCollapseProbeOmega <- function(omega, ini, etas) {
-  for (.e in etas) {
-    omega[.e, ] <- 0
-    omega[, .e] <- 0
-    omega[.e, .e] <- ini[[.e]]
-  }
-  omega
+  .sd <- sqrt(diag(omega))
+  .cor <- omega / outer(.sd, .sd)
+  .cor[!is.finite(.cor)] <- 0
+  diag(.cor) <- 1
+  .s <- setNames(rep(1, nrow(omega)), rownames(omega))
+  .s[etas] <- 0.5
+  .cor <- .cor * outer(.s, .s)
+  diag(.cor) <- 1
+  .sd[etas] <- sqrt(ini[etas])
+  .cor * outer(.sd, .sd)
 }
 
 #' Keep a probe start strictly inside the first fit's bounds

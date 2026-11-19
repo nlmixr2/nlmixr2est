@@ -5,10 +5,19 @@ test_that("collapseProbe is validated and off by default", {
   expect_error(foceiControl(collapseProbe = "yes"))
 })
 
-test_that("the probe omega raises collapsed etas and drops their covariances", {
-  .om <- matrix(c(1, 0.01, 0.01, 1e-6), 2, 2, dimnames = list(c("eta.a", "eta.b"), c("eta.a", "eta.b")))
-  .p <- .foceiCollapseProbeOmega(.om, c(eta.a = 2, eta.b = 300), "eta.b")
-  expect_equal(.p, matrix(c(1, 0, 0, 300), 2, 2, dimnames = dimnames(.om)))
+test_that("the probe omega raises collapsed etas and keeps the block", {
+  .nm <- c("eta.a", "eta.b", "eta.c")
+  .om <- matrix(c(1, 0.008, 0, 0.008, 1e-4, 0, 0, 0, 2), 3, 3, dimnames = list(.nm, .nm))
+  .p <- .foceiCollapseProbeOmega(.om, c(eta.a = 2, eta.b = 300, eta.c = 1), "eta.b")
+  expect_equal(diag(.p), c(eta.a = 1, eta.b = 300, eta.c = 2))
+  # the correlation is halved, not dropped, so the omega parameters are kept
+  expect_equal(cov2cor(.p)["eta.a", "eta.b"], cov2cor(.om)["eta.a", "eta.b"] / 2)
+  expect_identical(.p != 0, .om != 0)
+  expect_true(all(eigen(.p, only.values = TRUE)$values > 0))
+  expect_identical(
+    length(rxode2::rxSymInvCholCreate(.p, diag.xform = "sqrt")$theta),
+    length(rxode2::rxSymInvCholCreate(.om, diag.xform = "sqrt")$theta)
+  )
 })
 
 test_that("the probe start stays inside narrow and infinite bounds", {
