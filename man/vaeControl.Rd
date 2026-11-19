@@ -62,6 +62,7 @@ vaeControl(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   rhoend = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
@@ -615,6 +616,9 @@ against a default \code{rtol = 1e-6}.  Raise \code{sigdig}, or set
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified (`NULL`), it defaults to `sigdig`.}
+
+\item{shrinkEtaWarn}{Warn (in `$runInfo`) when an eta's SD shrinkage is
+at or above this percentage.  Use `NA` or `Inf` to disable.}
 
 \item{rhoend}{Final trust-region radius (`rhoend`) of the inner bounded
 `bobyqa` used by the non-mu / covariate regress M-step.  `NULL` (default)

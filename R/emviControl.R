@@ -255,6 +255,7 @@ emviControl <- function(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
 
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
@@ -363,6 +364,7 @@ emviControl <- function(
     sigdigTable <- 3
   }
   checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
+  checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
 
   .iterPrintControl <- .absorbIterPrintControl(
     print = print,
@@ -403,6 +405,7 @@ emviControl <- function(
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,
+    shrinkEtaWarn = as.double(shrinkEtaWarn),
     stickyRecalcN = as.integer(stickyRecalcN),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = odeRecalcFactor,

@@ -44,6 +44,7 @@ saemControl(
   rxControl = NULL,
   sigdig = NULL,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   ci = 0.95,
   muRefCov = TRUE,
   muRefCovAlg = TRUE,
@@ -336,6 +337,9 @@ against a default \code{rtol = 1e-6}.  Raise \code{sigdig}, or set
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified (`NULL`), it defaults to `sigdig`.}
+
+\item{shrinkEtaWarn}{Warn (in `$runInfo`) when an eta's SD shrinkage is
+at or above this percentage.  Use `NA` or `Inf` to disable.}
 
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}

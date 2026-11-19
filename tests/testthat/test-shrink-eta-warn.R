@@ -113,3 +113,16 @@ nmTest({
     expect_false(any(grepl("^high eta shrinkage", .off$runInfo)))
   })
 })
+
+test_that("every eta-estimating control carries shrinkEtaWarn", {
+  for (.ctl in list(saemControl, nlmeControl, vaeControl, emviControl, impmapControl, npagControl, npbControl)) {
+    expect_identical(.ctl()$shrinkEtaWarn, 30)
+    expect_identical(.ctl(shrinkEtaWarn = 50)$shrinkEtaWarn, 50)
+    expect_true(is.na(.ctl(shrinkEtaWarn = NA)$shrinkEtaWarn))
+  }
+  for (.ctl in list(saemControl, nlmeControl, vaeControl, emviControl)) {
+    expect_error(.ctl(shrinkEtaWarn = -1))
+    .c <- .ctl(shrinkEtaWarn = 50)
+    expect_identical(eval(rxUiDeparse(.c, "x")[[3]])$shrinkEtaWarn, 50)
+  }
+})

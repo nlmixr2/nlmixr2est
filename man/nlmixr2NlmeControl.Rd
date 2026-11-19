@@ -41,6 +41,7 @@ nlmixr2NlmeControl(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   muRefCovAlg = TRUE,
   eventSens = c("jump", "fd"),
   print = NULL,
@@ -84,6 +85,7 @@ nlmeControl(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   muRefCovAlg = TRUE,
   eventSens = c("jump", "fd"),
   print = NULL,
@@ -279,6 +281,9 @@ At the default \code{sigdig = 3} this is \code{atol = 1e-8},
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified (`NULL`), it defaults to `sigdig`.}
+
+\item{shrinkEtaWarn}{Warn (in `$runInfo`) when an eta's SD shrinkage is
+at or above this percentage.  Use `NA` or `Inf` to disable.}
 
 \item{muRefCovAlg}{When `TRUE` (default), algebraic expressions that can
 be mu-referenced are internally rewritten as mu-referenced
