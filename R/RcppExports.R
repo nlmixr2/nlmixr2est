@@ -738,6 +738,10 @@ tablePoolRegister_ <- function(inner, predOnly) {
     .Call(`_nlmixr2est_tablePoolRegister_`, inner, predOnly)
 }
 
+tablePoolLevels_ <- function(names) {
+    .Call(`_nlmixr2est_tablePoolLevels_`, names)
+}
+
 tablePoolHasRxWalk_ <- function() {
     .Call(`_nlmixr2est_tablePoolHasRxWalk_`)
 }

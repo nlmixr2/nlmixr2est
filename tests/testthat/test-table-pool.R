@@ -241,7 +241,8 @@ nmTest({
       .poolExpect(.fit)
       expect_gt(.tablePoolInfo()$rebuildN, .i0$rebuildN)
     })
-    # a fit solved with an ODE method outside the pool's takes the rxSolve() route
+    # a cvode fit pools when rxode2 says which solves rxSolve() refuses;
+    # otherwise it takes the rxSolve() route
     skip_if_not("cvode" %in% names(rxode2::odeMethodToInt(NULL)))
     .fit2 <- .poolFit(
       .poolOne(),
@@ -253,8 +254,26 @@ nmTest({
         rxControl = rxode2::rxControl(method = "cvode")
       )
     )
-    .poolExpect(.fit2, pooled = FALSE)
-    expect_equal(.tablePoolInfo()$lastDecline, "method")
+    .refused <- isTRUE(.rxode2Optional()[["dfSolveRefused"]])
+    .poolExpect(.fit2, pooled = .refused)
+    if (!.refused) {
+      expect_equal(.tablePoolInfo()$lastDecline, "method")
+    }
+    # a solve rxSolve() refuses (method = "vv" on states that are not
+    # coordinate-momentum pairs) goes to it, for its own error
+    skip_if_not(.refused)
+    .fit3 <- .poolFit(
+      .poolOne(),
+      .theo,
+      control = foceiControl(
+        print = 0,
+        maxOuterIterations = 0,
+        calcTables = FALSE,
+        rxControl = rxode2::rxControl(method = "vv")
+      )
+    )
+    expect_error(suppressMessages(addTable(.fit3)), "Velocity Verlet")
+    expect_equal(.tablePoolInfo()$lastDecline, "refused")
   })
 
   # infusions, an addl bolus and a modeled duration, for the dosing rows
@@ -323,5 +342,175 @@ nmTest({
     .one <- .poolFit(.doseModel, .d[.d$ID == 1, ])
     .poolExpect(.one, table = tableControl(addDosing = TRUE))
     .poolExpect(.one, table = tableControl(addDosing = TRUE, subsetNonmem = FALSE))
+  })
+
+  test_that("pooled tables: a mixture, each subject in its own component", {
+    .mixMod <- function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(c(0, 2.7, 100))
+        tcl2 <- log(c(0, 0.1, 120))
+        tv <- 3.45
+        p1 <- 0.3
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    # a second group with three times the concentrations: the low clearance
+    .d2 <- .theo
+    .d2$ID <- .d2$ID + 12
+    .d2$DV <- .d2$DV * 3
+    .fit <- withr::with_seed(
+      42,
+      .poolFit(
+        .mixMod,
+        rbind(.theo, .d2),
+        control = foceiControl(print = 0, maxOuterIterations = 5, calcTables = FALSE)
+      )
+    )
+    expect_length(unique(.residMixIcov(.fit)$mixest), 2L)
+    .tab <- .poolExpect(.fit)
+    expect_setequal(unique(.tab$mixest), c(1, 2))
+    .poolExpect(.fit, table = tableControl(npde = TRUE, nsim = 100))
+    if (.tablePoolRxWalk()) {
+      .poolExpect(.fit, table = tableControl(addDosing = TRUE))
+    }
+    # a linCmt() mixture: its EBE model (linCmt() without sensitivities) is
+    # smaller than the inner one and has no ODE route, so the table takes the
+    # rxSolve() route
+    .linMix <- function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(c(0, 2.7, 100))
+        tcl2 <- log(c(0, 0.1, 120))
+        tv <- 3.45
+        p1 <- 0.3
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .fit2 <- withr::with_seed(
+      42,
+      .poolFit(
+        .linMix,
+        .theo,
+        control = foceiControl(print = 0, maxOuterIterations = 5, calcTables = FALSE)
+      )
+    )
+    .poolExpect(.fit2, pooled = FALSE)
+    expect_equal(.tablePoolInfo()$lastDecline, "linCmt")
+  })
+
+  test_that("pooled tables: resets, mtime() records and a string lhs", {
+    skip_if_not(.tablePoolRxWalk(), "this rxode2 has no output-record walk")
+    # a reset (EVID 3) after 12 h, then a new dose
+    .reset <- do.call(
+      rbind,
+      lapply(split(.theo, .theo$ID), function(x) {
+        .rs <- x[1, ]
+        .rs$TIME <- 13
+        .rs$EVID <- 3
+        .rs$AMT <- 0
+        .rs$DV <- NA
+        .ds <- x[x$EVID != 0, ][1, ]
+        .ds$TIME <- 14
+        rbind(x[x$EVID != 0, ][1, ], x[x$EVID == 0 & x$TIME <= 12, ], .rs, .ds, x[x$EVID == 0 & x$TIME > 12, ])
+      })
+    )
+    .fit <- .poolFit(.poolOne(), .reset)
+    .poolExpect(.fit)
+    .poolExpect(.fit, table = tableControl(addDosing = TRUE))
+    # a modeled event time
+    .mt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        tmt <- log(2.5)
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        mtime(t1) <- exp(tmt)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .fit <- .poolFit(.mt, .theo)
+    .tab <- .poolExpect(.fit)
+    expect_equal(nrow(.tab), sum(.theo$EVID == 0))
+    .poolExpect(.fit, table = tableControl(addDosing = TRUE))
+    .poolExpect(.fit, table = tableControl(addDosing = TRUE, subsetNonmem = FALSE))
+    # a string lhs
+    .str <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        grp <- "low"
+        if (cp > 5) grp <- "high"
+        cp ~ add(add.sd)
+      })
+    }
+    .fit <- .poolFit(.str, .theo)
+    .poolExpect(.fit)
+    .poolExpect(.fit, table = tableControl(addDosing = TRUE))
+  })
+
+  test_that("pooled tables: a kept column the data lacks is left out, with rxode2's warning", {
+    skip_if_not(.tablePoolRxWalk(), "this rxode2 has no output-record walk")
+    .fit <- .poolFit(.poolOne(), .theo)
+    # WT is in theo_sd but not in the fit's data (the model does not use it)
+    expect_false("WT" %in% names(.fit$dataSav))
+    .old <- withr::with_options(
+      list(nlmixr2.tablePool = FALSE),
+      suppressMessages(addTable(.fit, keep = "WT"))
+    )
+    .i0 <- .tablePoolInfo()
+    expect_warning(
+      .new <- suppressMessages(addTable(.fit, keep = "WT")),
+      "Cannot keep missing columns"
+    )
+    expect_equal(.tablePoolInfo()$pooledN, .i0$pooledN + 1L)
+    expect_equal(as.data.frame(.new), as.data.frame(.old), tolerance = 0)
+    expect_false("WT" %in% names(.new))
   })
 })
