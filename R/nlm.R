@@ -124,7 +124,8 @@ nlmControl <- function(
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
-  ...
+  ...,
+  corWarn = 0.95
 ) {
   .assertPositiveEps(shiErr)
   .assertPositiveEps(hessErr)
@@ -242,6 +243,7 @@ nlmControl <- function(
   checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
+  .corWarnCheck(corWarn)
   .ret <- list(
     covMethod = covMethod,
     typsize = typsize,
@@ -283,6 +285,7 @@ nlmControl <- function(
     addProp = match.arg(addProp),
     calcTables = calcTables,
     compress = compress,
+    corWarn = corWarn,
     solveType = solveType,
     linCmtSensCarry = match.arg(linCmtSensCarry),
     ci = ci,
