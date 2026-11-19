@@ -122,6 +122,10 @@
 
 ### Estimation
 
+- `est="agq"` now checks the quadrature grid size (`nAGQ^neta`) before
+  building it: it warns above 10,000 nodes and stops above 1,000,000, instead
+  of silently exhausting memory with many etas (#1412).
+
 - The `linCmt()` FOCEi sensitivity carry matches finite differences again for
   an `alag()` dose with a time-varying covariate.  rxode2 now adds a hidden
   record (`EVID` 8) at a lagged dose's data time, so the carry reads that
