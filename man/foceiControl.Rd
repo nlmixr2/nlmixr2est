@@ -166,6 +166,7 @@ foceiControl(
   shrinkEtaWarn = 30,
   odeSettleCheck = FALSE,
   odeSettleTol = 0.1,
+  omegaCollapseWarn = 0.001,
   nRetries = 3,
   seed = 42,
   resetThetaCheckPer = 0.1,
@@ -1191,6 +1192,10 @@ Skipped for models without ODEs (e.g. `linCmt()`), fits with
 `maxOuterIterations = 0` and a non-finite fit objective.}
 
 \item{odeSettleTol}{The objective change that `odeSettleCheck` reports.}
+
+\item{omegaCollapseWarn}{Warn (in `$runInfo`) when a free diagonal omega
+ends below this fraction of its initial estimate, or at its
+`diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.}
 
 \item{nRetries}{If FOCEi doesn't fit with the current parameter
 estimates, randomly sample new parameter estimates and restart

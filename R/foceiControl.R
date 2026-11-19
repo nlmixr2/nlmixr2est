@@ -1076,6 +1076,10 @@
 #'
 #' @param odeSettleTol The objective change that `odeSettleCheck` reports.
 #'
+#' @param omegaCollapseWarn Warn (in `$runInfo`) when a free diagonal omega
+#'   ends below this fraction of its initial estimate, or at its
+#'   `diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.
+#'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
 #'     ODE solve.
@@ -1513,6 +1517,7 @@ foceiControl <- function(
   shrinkEtaWarn = 30, #
   odeSettleCheck = FALSE, #
   odeSettleTol = 0.1, #
+  omegaCollapseWarn = 1e-3, #
   nRetries = 3, #
   seed = 42, #
   resetThetaCheckPer = 0.1, #
@@ -2185,6 +2190,7 @@ foceiControl <- function(
   checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
+  checkmate::assertNumber(omegaCollapseWarn, lower = 0, upper = 1, na.ok = TRUE)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2390,6 +2396,7 @@ foceiControl <- function(
     shrinkEtaWarn = as.double(shrinkEtaWarn),
     odeSettleCheck = odeSettleCheck,
     odeSettleTol = as.double(odeSettleTol),
+    omegaCollapseWarn = as.double(omegaCollapseWarn),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,
