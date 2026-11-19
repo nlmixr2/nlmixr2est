@@ -12,46 +12,36 @@ NULL
 
 #' Observation rows' DV for each endpoint of `predDf`
 #'
-#' @param predDf the ui's `predDf`
+#' Rows are assigned to endpoints by rxode2's own `etTrans()` (DVID/CMT ->
+#' the endpoint's `predDf$cmt`), so each endpoint is judged on its own DV scale.
+#'
+#' @param ui rxode2 ui
 #' @inheritParams nlmixr2
 #' @return a list of numeric DV vectors, one per `predDf` row (`NULL` when the
 #'   rows of that endpoint cannot be identified)
 #' @noRd
-.addErrScaleEndpointDv <- function(predDf, data) {
-  .nms <- tolower(names(data))
-  .col <- function(name) {
-    .w <- which(.nms == name)
-    if (length(.w) == 1L) data[[.w]] else NULL
+.addErrScaleEndpointDv <- function(ui, data) {
+  .predDf <- ui$predDf
+  .none <- vector("list", nrow(.predDf))
+  .et <- tryCatch(
+    suppressWarnings(suppressMessages(as.data.frame(rxode2::etTrans(
+      data,
+      rxode2::rxModelVars(ui$simulationModel),
+      addCmt = TRUE,
+      dropUnits = TRUE,
+      allTimeVar = TRUE
+    )))),
+    error = function(e) NULL
+  )
+  if (is.null(.et) || !all(c("EVID", "DV", "CMT") %in% names(.et))) {
+    return(.none)
   }
-  .dv <- suppressWarnings(as.numeric(.col("dv")))
-  if (length(.dv) == 0L) {
-    return(vector("list", nrow(predDf)))
+  .obs <- .et$EVID == 0 & !is.na(.et$DV)
+  if (nrow(.predDf) == 1L) {
+    return(list(.et$DV[.obs]))
   }
-  .obs <- !is.na(.dv)
-  .evid <- .col("evid")
-  .mdv <- .col("mdv")
-  .amt <- .col("amt")
-  if (!is.null(.evid)) {
-    .obs <- .obs & !is.na(.evid) & .evid == 0
-  } else if (!is.null(.mdv)) {
-    .obs <- .obs & !is.na(.mdv) & .mdv == 0
-  } else if (!is.null(.amt)) {
-    .obs <- .obs & (is.na(.amt) | .amt == 0)
-  }
-  if (nrow(predDf) == 1L) {
-    return(list(.dv[.obs]))
-  }
-  .dvid <- .col("dvid")
-  .cmt <- .col("cmt")
-  lapply(seq_len(nrow(predDf)), function(i) {
-    if (!is.null(.dvid)) {
-      .w <- as.character(.dvid) %in% c(as.character(predDf$dvid[i]), predDf$cond[i])
-    } else if (!is.null(.cmt)) {
-      .w <- as.character(.cmt) %in% c(as.character(predDf$cmt[i]), predDf$cond[i])
-    } else {
-      return(NULL)
-    }
-    .dv[.obs & .w]
+  lapply(seq_len(nrow(.predDf)), function(i) {
+    .et$DV[.obs & .et$CMT == .predDf$cmt[i]]
   })
 }
 
@@ -72,7 +62,7 @@ NULL
     return(list(ui = ui))
   }
   .iniDf <- ui$iniDf
-  .dvs <- .addErrScaleEndpointDv(.predDf, data)
+  .dvs <- .addErrScaleEndpointDv(ui, data)
   for (i in .comb) {
     .w <- which(.iniDf$condition == .predDf$cond[i] & .iniDf$err == "add" & !is.na(.iniDf$ntheta))
     if (length(.w) != 1L || isTRUE(.iniDf$fix[.w])) {
@@ -92,11 +82,13 @@ NULL
     }
     warning(
       paste0(
-        "add sd '",
+        "'",
+        .predDf$cond[i],
+        "' add sd '",
         .iniDf$name[.w],
         "'=",
         signif(.sd, 2),
-        " tiny vs median |DV| ",
+        " < 1% median |DV| ",
         signif(.med, 3),
         "; try ~",
         signif(0.1 * .med, 2)

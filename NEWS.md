@@ -15,7 +15,7 @@
 ## New features
 
 - A combined (`add() + prop()` or `add() + pow()`) error model whose additive
-  SD starts below 1% of the endpoint's median `|DV|` now warns before
+  SD starts below 1% of that endpoint's own median `|DV|` now warns before
   estimation and suggests a start of about 10% of it; the initial estimate is
   not changed (#1383).
 

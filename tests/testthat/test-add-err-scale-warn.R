@@ -51,7 +51,7 @@ nmTest({
   test_that("tiny additive start on a combined model warns", {
     .w <- .warns(.mod(0.01), .big)
     expect_length(.w, 1L)
-    expect_match(.w, "add sd 'add.sd'=0.01 tiny vs median |DV|", fixed = TRUE)
+    expect_match(.w, "'cp' add sd 'add.sd'=0.01 < 1% median |DV|", fixed = TRUE)
     expect_lt(nchar(.w), 75)
   })
 
@@ -73,7 +73,7 @@ nmTest({
     expect_length(.warns(.mod(0.01), .big, "rxSolve"), 0L)
   })
 
-  test_that("multiple endpoints are checked per endpoint", {
+  test_that("each endpoint is judged on its own DV scale", {
     .f <- function() {
       ini({
         tka <- 0.45
@@ -81,31 +81,45 @@ nmTest({
         tv <- 3.45
         add.sd <- 0.5
         prop.sd <- 0.2
-        add.sd2 <- 0.01
+        add.sd2 <- 0.5
         prop.sd2 <- 0.2
       })
       model({
         ka <- exp(tka)
         cl <- exp(tcl)
         v <- exp(tv)
-        cp <- linCmt()
+        d / dt(depot) <- -ka * depot
+        d / dt(central) <- ka * depot - cl / v * central
+        cp <- central / v
         cp2 <- cp
         cp ~ add(add.sd) + prop(prop.sd)
         cp2 ~ add(add.sd2) + prop(prop.sd2)
       })
     }
-    .d1 <- .dat[.dat$EVID == 0, ]
-    .d1$DVID <- 1L
-    .d2 <- .d1
-    .d2$DVID <- 2L
-    .d2$DV <- .d2$DV * 50
+    .ui <- rxode2::rxode2(.f)
     .dose <- .dat[.dat$EVID != 0, ]
-    .dose$DVID <- NA_integer_
-    .d <- rbind(.dose, .d1, .d2)
-    .d <- .d[order(.d$ID, .d$TIME, -.d$EVID), ]
-    .w <- .warns(rxode2::rxode2(.f), .d)
-    expect_length(.w, 1L)
-    expect_match(.w, "'add.sd2'", fixed = TRUE)
+    .d1 <- .dat[.dat$EVID == 0, ]
+    .d2 <- .d1
+    .d2$DV <- .d2$DV * 1000
+    .med1 <- stats::median(abs(.d1$DV))
+    .med2 <- stats::median(abs(.d2$DV))
+    .stack <- function(code1, code2, col) {
+      .dose[[col]] <- if (col == "CMT") "depot" else NA
+      .d1[[col]] <- code1
+      .d2[[col]] <- code2
+      .d <- rbind(.dose, .d1, .d2)
+      .d[order(.d$ID, .d$TIME, -.d$EVID), ]
+    }
+    for (.d in list(.stack(1L, 2L, "DVID"), .stack("cp", "cp2", "CMT"))) {
+      # 0.5 is fine against cp's median but under 1% of cp2's
+      .w <- .warns(.ui, .d)
+      expect_length(.w, 1L)
+      expect_match(.w, paste0("'cp2' add sd 'add.sd2'=0.5 < 1% median |DV| ", signif(.med2, 3)), fixed = TRUE)
+      # the small endpoint warns on its own median, not the pooled one
+      .w <- .warns(rxode2::ini(.ui, add.sd = 0.001, add.sd2 = 0.5 * .med2), .d)
+      expect_length(.w, 1L)
+      expect_match(.w, paste0("'cp' add sd 'add.sd'=0.001 < 1% median |DV| ", signif(.med1, 3)), fixed = TRUE)
+    }
   })
 
   test_that("the warning reaches $runInfo and leaves the initial estimates alone", {
@@ -114,7 +128,7 @@ nmTest({
     fit <- suppressMessages(suppressWarnings(
       nlmixr2(.ui, .big, est = "focei", control = foceiControl(print = 0, maxOuterIterations = 0, covMethod = ""))
     ))
-    expect_true(any(grepl("add sd 'add.sd'=0.01 tiny", fit$runInfo, fixed = TRUE)))
+    expect_true(any(grepl("'cp' add sd 'add.sd'=0.01 <", fit$runInfo, fixed = TRUE)))
     # no outer iterations: the estimate is the (untouched) initial value
     expect_equal(unname(fit$theta["add.sd"]), 0.01)
   })
