@@ -40,7 +40,8 @@ newuoaControl(
   sigdigTable = NULL,
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
-  ...
+  ...,
+  corWarn = 0.95
 )
 ```
 
@@ -273,6 +274,11 @@ newuoaControl(
 
   Ignored parameters
 
+- corWarn:
+
+  warn when two estimates' correlation is at least this in absolute
+  value after the covariance step; `NA` or `Inf` turns the warning off.
+
 ## Value
 
 newuoa control structure
@@ -340,10 +346,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess postprocess table compress
-#> elapsed 0.05618154 0.08059609 1.1257e-05      0.027       0.004 0.014        0
+#>              setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.09880106 0.1202592 1.4811e-05      0.046       0.008 0.023    0.001
 #>              other
-#> elapsed 0.05221112
+#> elapsed 0.07592491
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

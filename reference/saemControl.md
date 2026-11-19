@@ -72,7 +72,8 @@ saemControl(
   ebe = c("mode", "saem"),
   ebeMaxEval = 200L,
   ebeTol = NULL,
-  ...
+  ...,
+  corWarn = 0.95
 )
 ```
 
@@ -723,6 +724,11 @@ saemControl(
 - ...:
 
   Other arguments to control SAEM.
+
+- corWarn:
+
+  warn when two estimates' correlation is at least this in absolute
+  value after the covariance step; `NA` or `Inf` turns the warning off.
 
 ## Value
 

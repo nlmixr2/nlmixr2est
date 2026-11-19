@@ -39,7 +39,8 @@ bobyqaControl(
   sigdig = 3,
   sigdigTable = NULL,
   eventSens = c("jump", "fd"),
-  ...
+  ...,
+  corWarn = 0.95
 )
 ```
 
@@ -264,6 +265,11 @@ bobyqaControl(
 
   Ignored parameters
 
+- corWarn:
+
+  warn when two estimates' correlation is at least this in absolute
+  value after the covariance step; `NA` or `Inf` turns the warning off.
+
 ## Value
 
 bobqya control structure
@@ -331,10 +337,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.5255572  0.52419 1.5463e-05      0.027       0.006 0.018    0.001
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.7434584 0.7424699 2.1791e-05      0.048        0.01 0.027    0.001
 #>              other
-#> elapsed 0.05423727
+#> elapsed 0.08704991
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

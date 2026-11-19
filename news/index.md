@@ -25,6 +25,13 @@
   the threshold; `NA` or `Inf` turns the note off
   ([\#1379](https://github.com/nlmixr2/nlmixr2est/issues/1379)).
 
+- After the covariance step, a fit warns (in `$runInfo`) about pairs of
+  estimates correlated at `|r| >= 0.95`,
+  e.g. `highly correlated estimates: tcl/tv (0.98)`. `corWarn=` in every
+  method’s control (e.g. `foceiControl(corWarn=)`,
+  `saemControl(corWarn=)`) sets the threshold; `NA` turns it off
+  ([\#1380](https://github.com/nlmixr2/nlmixr2est/issues/1380)).
+
 - `saem` now reports each subject’s conditional mode as `fit$eta` (the
   Monolix “EBEs” task), found per subject with NEWUOA after the last
   SAEM iteration, in parallel over subjects. The tables and shrinkage

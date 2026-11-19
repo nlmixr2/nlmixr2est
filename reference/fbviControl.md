@@ -166,6 +166,9 @@ fbviControl()
 #> $compress
 #> [1] FALSE
 #> 
+#> $corWarn
+#> [1] 0.95
+#> 
 #> $adjObf
 #> [1] TRUE
 #> 

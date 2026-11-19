@@ -94,7 +94,8 @@
 <span>  ci <span class="op">=</span> <span class="fl">0.95</span>,</span>
 <span>  sigdig <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  <span class="va">...</span></span>
+<span>  <span class="va">...</span>,</span>
+<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -422,6 +423,12 @@ If not specified (`NULL`), it defaults to `sigdig`.</p></dd>
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Further arguments to be supplied to <code>objective</code>.</p></dd>
 
+
+<dt id="arg-corwarn">corWarn<a class="anchor" aria-label="anchor" href="#arg-corwarn"></a></dt>
+<dd><p>warn when two estimates' correlation is at least this in
+absolute value after the covariance step; <code>NA</code> or <code>Inf</code> turns
+the warning off.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="author">Author<a class="anchor" aria-label="anchor" href="#author"></a></h2>
@@ -490,10 +497,10 @@ If not specified (`NULL`), it defaults to `sigdig`.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              setup   optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.06113693 0.08657422 1.4542e-05      0.028       0.005 0.015    0.007</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.0452743</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1018368 0.1592609 1.9784e-05      0.048       0.008 0.023    0.012</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.07488247</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

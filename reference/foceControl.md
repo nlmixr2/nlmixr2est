@@ -130,6 +130,9 @@ foceControl()
 #> $covShortcut
 #> [1] FALSE
 #> 
+#> $corWarn
+#> [1] 0.95
+#> 
 #> $covFull
 #> [1] TRUE
 #> 
@@ -314,7 +317,7 @@ foceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x607ce01dab88>
+#> <bytecode: 0x61c2a981ea60>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

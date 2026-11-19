@@ -125,7 +125,8 @@ the optimizer itself.</p>
 <span>  sigdig <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  <span class="va">...</span></span>
+<span>  <span class="va">...</span>,</span>
+<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -445,6 +446,12 @@ skips the final back-transform.</p></dd>
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Ignored parameters</p></dd>
 
+
+<dt id="arg-corwarn">corWarn<a class="anchor" aria-label="anchor" href="#arg-corwarn"></a></dt>
+<dd><p>warn when two estimates' correlation is at least this in
+absolute value after the covariance step; <code>NA</code> or <code>Inf</code> turns
+the warning off.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -516,10 +523,10 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             setup   optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.0522087 0.07872286 1.2959e-05      0.028       0.004 0.022    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1138881 0.1521233 1.7409e-05       0.05       0.008 0.023    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.04905548</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.07697116</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

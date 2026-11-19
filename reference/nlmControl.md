@@ -55,7 +55,8 @@ nlmControl(
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
-  ...
+  ...,
+  corWarn = 0.95
 )
 ```
 
@@ -388,6 +389,11 @@ nlmControl(
 
   additional arguments to be passed to `f`.
 
+- corWarn:
+
+  warn when two estimates' correlation is at least this in absolute
+  value after the covariance step; `NA` or `Inf` turns the warning off.
+
 ## Value
 
 nlm control object
@@ -457,10 +463,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess postprocess table compress
-#> elapsed 0.3231895 0.09158089 1.2859e-05      0.028       0.005 0.015    0.001
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.4299351 0.1493102 1.7499e-05      0.046       0.008 0.028    0.001
 #>              other
-#> elapsed 0.05321679
+#> elapsed 0.08273722
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

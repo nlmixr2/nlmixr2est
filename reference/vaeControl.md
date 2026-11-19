@@ -83,7 +83,8 @@ vaeControl(
   indTolRelax = TRUE,
   eventSens = c("jump", "fd"),
   rxControl = NULL,
-  ...
+  ...,
+  corWarn = 0.95
 )
 ```
 
@@ -907,6 +908,11 @@ vaeControl(
 - ...:
 
   Other arguments to control SAEM.
+
+- corWarn:
+
+  warn when two estimates' correlation is at least this in absolute
+  value after the covariance step; `NA` or `Inf` turns the warning off.
 
 ## Value
 

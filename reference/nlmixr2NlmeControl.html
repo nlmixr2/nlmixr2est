@@ -89,7 +89,8 @@ is used as the `control` argument to the `nlme` function.</p>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  print <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"nlme"</span>, <span class="st">"analytic"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">"sa"</span>, <span class="st">"imp"</span>, <span class="st">""</span><span class="op">)</span>,</span>
-<span>  <span class="va">...</span></span>
+<span>  <span class="va">...</span>,</span>
+<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">nlmeControl</span><span class="op">(</span></span>
@@ -132,7 +133,8 @@ is used as the `control` argument to the `nlme` function.</p>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  print <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"nlme"</span>, <span class="st">"analytic"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">"sa"</span>, <span class="st">"imp"</span>, <span class="st">""</span><span class="op">)</span>,</span>
-<span>  <span class="va">...</span></span>
+<span>  <span class="va">...</span>,</span>
+<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -443,6 +445,12 @@ and keep nlme's own standard errors.  When the recompute fails the
    <code><a href="https://rdrr.io/r/stats/nlminb.html" class="external-link">nlminb</a></code> (apart from <code>trace</code> and <code>iter.max</code>
    mentioned above), where used (<code>eval.max</code> and those from
    <code>abs.tol</code> down).</p></dd>
+
+
+<dt id="arg-corwarn">corWarn<a class="anchor" aria-label="anchor" href="#arg-corwarn"></a></dt>
+<dd><p>warn when two estimates' correlation is at least this in
+absolute value after the covariance step; <code>NA</code> or <code>Inf</code> turns
+the warning off.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -990,6 +998,9 @@ and keep nlme's own standard errors.  When the recompute fails the
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $compress</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $corWarn</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.95</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $random</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>
@@ -1555,6 +1566,9 @@ and keep nlme's own standard errors.  When the recompute fails the
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $compress</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $corWarn</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.95</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $random</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>

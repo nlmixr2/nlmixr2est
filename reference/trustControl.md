@@ -61,7 +61,8 @@ trustControl(
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
-  ...
+  ...,
+  corWarn = 0.95
 )
 ```
 
@@ -377,6 +378,11 @@ trustControl(
 
   Ignored parameters
 
+- corWarn:
+
+  warn when two estimates' correlation is at least this in absolute
+  value after the covariance step; `NA` or `Inf` turns the warning off.
+
 ## Value
 
 trust control structure
@@ -447,10 +453,10 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess postprocess table compress
-#> elapsed 0.0522087 0.07872286 1.2959e-05      0.028       0.004 0.022    0.001
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1138881 0.1521233 1.7409e-05       0.05       0.008 0.023    0.001
 #>              other
-#> elapsed 0.04905548
+#> elapsed 0.07697116
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

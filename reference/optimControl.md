@@ -60,7 +60,8 @@ optimControl(
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
-  ...
+  ...,
+  corWarn = 0.95
 )
 ```
 
@@ -409,6 +410,11 @@ optimControl(
 
   Further arguments to be passed to `fn` and `gr`.
 
+- corWarn:
+
+  warn when two estimates' correlation is at least this in absolute
+  value after the covariance step; `NA` or `Inf` turns the warning off.
+
 ## Value
 
 optimControl object for nlmixr2
@@ -477,10 +483,10 @@ fit2
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.06516571 0.0926039 1.2318e-05      0.029       0.005 0.023        0
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1219976 0.1623706 1.7753e-05       0.05        0.01 0.024    0.001
 #>              other
-#> elapsed 0.05121807
+#> elapsed 0.08061411
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 

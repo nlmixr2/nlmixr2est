@@ -71,6 +71,7 @@
 <span>    <span class="st">"r"</span>, <span class="st">"s"</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  covPrecursor <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fd"</span>, <span class="st">"analytic"</span><span class="op">)</span>,</span>
 <span>  covShortcut <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span>,</span>
 <span>  covFull <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  fast <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  priorMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"general"</span>, <span class="st">"nwpri"</span>, <span class="st">"tnpri"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
@@ -462,6 +463,12 @@ the prediction against the objective along four fixed directions, and
 skip measuring the off-diagonals when it agrees to 1% in each (the record
 says "accepted"); otherwise they are measured as usual ("fell back").
 <code>FALSE</code> (default) always measures them.</p></dd>
+
+
+<dt id="arg-corwarn">corWarn<a class="anchor" aria-label="anchor" href="#arg-corwarn"></a></dt>
+<dd><p>warn when two estimates' correlation is at least this in
+absolute value after the covariance step; <code>NA</code> or <code>Inf</code> turns
+the warning off.</p></dd>
 
 
 <dt id="arg-covfull">covFull<a class="anchor" aria-label="anchor" href="#arg-covfull"></a></dt>

@@ -33,6 +33,7 @@ foceiControl(
     "r", "s")),
   covPrecursor = c("fd", "analytic"),
   covShortcut = FALSE,
+  corWarn = 0.95,
   covFull = TRUE,
   fast = FALSE,
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"),
@@ -420,6 +421,11 @@ foceiControl(
   measuring the off-diagonals when it agrees to 1% in each (the record
   says "accepted"); otherwise they are measured as usual ("fell back").
   `FALSE` (default) always measures them.
+
+- corWarn:
+
+  warn when two estimates' correlation is at least this in absolute
+  value after the covariance step; `NA` or `Inf` turns the warning off.
 
 - covFull:
 

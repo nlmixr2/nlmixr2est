@@ -40,7 +40,8 @@ uobyqaControl(
   sigdigTable = NULL,
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
-  ...
+  ...,
+  corWarn = 0.95
 )
 ```
 
@@ -273,6 +274,11 @@ uobyqaControl(
 
   Ignored parameters
 
+- corWarn:
+
+  warn when two estimates' correlation is at least this in absolute
+  value after the covariance step; `NA` or `Inf` turns the warning off.
+
 ## Value
 
 uobyqa control structure
@@ -343,10 +349,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess postprocess table compress
-#> elapsed 0.0571705 0.06961356 1.7016e-05      0.028       0.004 0.013    0.001
+#>            setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.107832 0.1092584  2.522e-05      0.048       0.008 0.024    0.001
 #>              other
-#> elapsed 0.04819892
+#> elapsed 0.08188434
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

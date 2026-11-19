@@ -357,10 +357,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.08653655 0.9917892 1.3951e-05      0.036       0.006 0.019    0.001
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.1272065 1.398101 1.7345e-05      0.054       0.009 0.025    0.001
 #>              other
-#> elapsed 0.05066026
+#> elapsed 0.08467485
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -376,6 +376,8 @@ print(fit2)
 #>     0.486      0.597      0.979  
 #>  
 #> 
+#>   Information about run found ($runInfo):
+#>    • highly correlated estimates: Em/E50 (0.98) 
 #>   Censoring ($censInformation): No censoring
 #>   Minimization message ($message):  
 #>     CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH 

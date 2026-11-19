@@ -47,7 +47,8 @@ nlmixr2NlmeControl(
   eventSens = c("jump", "fd"),
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
-  ...
+  ...,
+  corWarn = 0.95
 )
 
 nlmeControl(
@@ -90,7 +91,8 @@ nlmeControl(
   eventSens = c("jump", "fd"),
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
-  ...
+  ...,
+  corWarn = 0.95
 )
 ```
 
@@ -390,6 +392,11 @@ nlmeControl(
   [`nlminb`](https://rdrr.io/r/stats/nlminb.html) (apart from `trace`
   and `iter.max` mentioned above), where used (`eval.max` and those from
   `abs.tol` down).
+
+- corWarn:
+
+  warn when two estimates' correlation is at least this in absolute
+  value after the covariance step; `NA` or `Inf` turns the warning off.
 
 ## Value
 
@@ -936,6 +943,9 @@ nlmeControl()
 #> 
 #> $compress
 #> [1] TRUE
+#> 
+#> $corWarn
+#> [1] 0.95
 #> 
 #> $random
 #> NULL
@@ -1501,6 +1511,9 @@ nlmixr2NlmeControl()
 #> 
 #> $compress
 #> [1] TRUE
+#> 
+#> $corWarn
+#> [1] 0.95
 #> 
 #> $random
 #> NULL

@@ -56,7 +56,8 @@ nlsControl(
   sigdig = 4,
   sigdigTable = NULL,
   boundedTransform = TRUE,
-  ...
+  ...,
+  corWarn = 0.95
 )
 ```
 
@@ -417,6 +418,11 @@ nlsControl(
 - ...:
 
   Additional optional arguments. None are used at present.
+
+- corWarn:
+
+  warn when two estimates' correlation is at least this in absolute
+  value after the covariance step; `NA` or `Inf` turns the warning off.
 
 ## Value
 

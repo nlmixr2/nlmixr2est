@@ -56,7 +56,8 @@ nlminbControl(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
-  ...
+  ...,
+  corWarn = 0.95
 )
 ```
 
@@ -372,6 +373,11 @@ nlminbControl(
 
   Further arguments to be supplied to `objective`.
 
+- corWarn:
+
+  warn when two estimates' correlation is at least this in absolute
+  value after the covariance step; `NA` or `Inf` turns the warning off.
+
 ## Author
 
 Matthew L. Fidler
@@ -439,10 +445,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess postprocess table compress
-#> elapsed 0.06113693 0.08657422 1.4542e-05      0.028       0.005 0.015    0.007
-#>             other
-#> elapsed 0.0452743
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1018368 0.1592609 1.9784e-05      0.048       0.008 0.023    0.012
+#>              other
+#> elapsed 0.07488247
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
