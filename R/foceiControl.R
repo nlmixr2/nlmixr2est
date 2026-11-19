@@ -570,6 +570,10 @@
 #' @param eigen A boolean indicating if eigenvectors are calculated
 #'     to include a condition number calculation.
 #'
+#' @param condWarn warn when the condition number of the covariance's
+#'     correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+#'     warning off.
+#'
 #' @param noAbort Boolean to indicate if you should abort the FOCEi
 #'     evaluation if it runs into troubles.  (default TRUE)
 #'
@@ -1394,6 +1398,7 @@ foceiControl <- function(
   lbfgsPgtol = 0, #
   lbfgsFactr = NULL, #
   eigen = TRUE, #
+  condWarn = 1000,
   diagXform = c("sqrt", "log", "identity"), #
   iovXform = c("sd", "var", "logsd", "logvar"), #
   iovMethod = c("auto", "theta", "omega"), #
@@ -1774,6 +1779,7 @@ foceiControl <- function(
     checkmate::assertLogical(eigen, any.missing = FALSE, len = 1)
   }
   eigen <- as.integer(eigen)
+  .condWarnCheck(condWarn)
 
   checkmate::assertLogical(sumProd, any.missing = FALSE, len = 1)
   checkmate::assertLogical(optExpression, any.missing = FALSE, len = 1)
@@ -2289,6 +2295,7 @@ foceiControl <- function(
     fdChartrand = as.integer(fdChartrand),
     centralDerivEps = centralDerivEps,
     eigen = eigen,
+    condWarn = condWarn,
     diagXform = match.arg(diagXform),
     iovXform = match.arg(iovXform),
     iovMethod = match.arg(iovMethod),

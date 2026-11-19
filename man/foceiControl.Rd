@@ -61,6 +61,7 @@ foceiControl(
   lbfgsPgtol = 0,
   lbfgsFactr = NULL,
   eigen = TRUE,
+  condWarn = 1000,
   diagXform = c("sqrt", "log", "identity"),
   iovXform = c("sd", "var", "logsd", "logvar"),
   iovMethod = c("auto", "theta", "omega"),
@@ -632,6 +633,10 @@ methods reach the same optimum as the derivative-free default.}
 
 \item{eigen}{A boolean indicating if eigenvectors are calculated
 to include a condition number calculation.}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 
 \item{diagXform}{Transformation used on the diagonal of
 \code{chol(solve(omega))} (the FOCEi-estimated parameters): one of
