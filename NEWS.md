@@ -67,11 +67,14 @@
 
 ### mu-referencing
 
-- The mu2 covariate rewrite used by SAEM and the mu-referenced methods
-  now skips a "covariate" that is a constant.  Older rxode2 reported
-  `0.75*log(V1/exp(tV1))` as a mu2 term with covariate `-0.75`; rewriting it
-  to `nlmixrMuDerCov*tV1` dropped `0.75*log(V1)` and silently removed the
-  `V1` (weight, `eta.V1`) dependence of the parameter.
+- A mu-referenced covariate term whose "covariate" is a constant is now
+  ignored, with a warning, before estimation.  rxode2 releases without
+  nlmixr2/rxode2#1756 report `0.75*log(V1/exp(tV1))` as a mu2 term with
+  covariate `-0.75`; the mu2 rewrite used by SAEM and the mu-referenced
+  methods turned it into `nlmixrMuDerCov*tV1`, dropping `0.75*log(V1)` and
+  silently removing the `V1` (weight, `eta.V1`) dependence of the parameter.
+  The other readers of the mu2 table (analytic covariance, VAE and zero-theta
+  pre-processing) no longer see the row either.
 
 ### Covariance
 

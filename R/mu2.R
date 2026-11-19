@@ -210,6 +210,56 @@ mu2env$expit <- rxode2::expit
   .datEnv
 }
 
+#' Does a mu2 covariate expression reference any variable?
+#'
+#' @param cov covariate expression (character) from
+#'   `ui$mu2RefCovariateReplaceDataFrame$covariate`
+#' @return `FALSE` for a constant such as `"-0.75"` (or an unparseable
+#'   string), `TRUE` otherwise
+#' @noRd
+.mu2CovHasVariable <- function(cov) {
+  .lang <- try(str2lang(cov), silent = TRUE)
+  !inherits(.lang, "try-error") && length(all.vars(.lang)) > 0L
+}
+
+#' Drop constant "covariates" from the ui's mu2 table
+#'
+#' rxode2 releases without nlmixr2/rxode2#1756 report a term such as
+#' `0.75*log(V1/exp(tV1))` as a mu2 term with covariate `-0.75`.  A constant is
+#' never a covariate, and every reader of `mu2RefCovariateReplaceDataFrame`
+#' (the mu2 rewrite, the analytic covariance direction map, the VAE and
+#' zero-theta pre-processing) would treat the theta as a covariate coefficient.
+#'
+#' @param ui rxode2 ui
+#' @return `NULL` when nothing is dropped, otherwise a copy of `ui` without the
+#'   constant rows (the input ui is not modified)
+#' @noRd
+.mu2DropConstantCovariates <- function(ui) {
+  .df <- ui$mu2RefCovariateReplaceDataFrame
+  if (length(.df$covariate) == 0L) {
+    return(NULL)
+  }
+  .keep <- vapply(.df$covariate, .mu2CovHasVariable, logical(1), USE.NAMES = FALSE)
+  if (all(.keep)) {
+    return(NULL)
+  }
+  .txt <- paste0("ignoring mu-referenced covariate term(s) with a constant covariate: ",
+                 paste(.df$modelExpression[!.keep], collapse = ", "))
+  .minfo(.txt)
+  warning(.txt, call. = FALSE)
+  .ui <- rxode2::rxUiDecompress(rxode2::rxUiCompress(ui))
+  assign("mu2RefCovariateReplaceDataFrame", .df[.keep, , drop = FALSE], envir = .ui)
+  rxode2::rxUiCompress(.ui)
+}
+
+.nlmixr0preProcessMu2ConstantCov <- function(ui, est, data, control) {
+  .ui <- .mu2DropConstantCovariates(ui)
+  if (is.null(.ui)) {
+    return(NULL)
+  }
+  list(ui = .ui)
+}
+
 #' This function handles mu2 covariates
 #'
 #' In general the dataset is modified with nlmixrMuDerCov# and the mu2
@@ -220,21 +270,20 @@ mu2env$expit <- rxode2::expit
 #' @return a list with list(ui=mu referenced ui, data=mu referenced dataset)
 #' @author Matthew L. Fidler
 #' @noRd
-.mu2CovHasVariable <- function(cov) {
-  .lang <- try(str2lang(cov), silent = TRUE)
-  !inherits(.lang, "try-error") && length(all.vars(.lang)) > 0L
-}
-
 .uiModifyForCovs <- function(ui, data) {
   .datEnv <- .mu2CovEnv(ui, data)
   .df <- ui$mu2RefCovariateReplaceDataFrame
   lapply(seq_along(.df$covariate), function(i) {
     .datEnv$i <- i
     if (!.mu2CovHasVariable(.df$covariate[i])) {
-      # A constant "covariate" (e.g. -0.75 from `0.75*log(V1/exp(tV1))`, which
-      # older rxode2 reports as a mu2 term) is not a covariate: replacing the
-      # term by `constant*theta` drops its theta-free remainder (here
-      # 0.75*log(V1)), silently changing the model.  Leave the term alone.
+      # Backstop for direct callers; fits drop these rows earlier in
+      # .nlmixr0preProcessMu2ConstantCov().  Replacing the term by
+      # `constant*theta` would drop its theta-free remainder (for
+      # `0.75*log(V1/exp(tV1))` that is 0.75*log(V1)).
+      .txt <- paste0("ignoring mu-referenced covariate term with a constant covariate: ",
+                     .df$modelExpression[i])
+      .minfo(.txt)
+      warning(.txt, call. = FALSE)
       return(invisible())
     }
     .r <- .mu2CovValue(.datEnv, .df$covariate[i])
@@ -384,5 +433,6 @@ mu2env$expit <- rxode2::expit
 # -----------------------------------------------------------------------
 # Register hooks
 # -----------------------------------------------------------------------
+preProcessHooksAdd(".nlmixr0preProcessMu2ConstantCov", .nlmixr0preProcessMu2ConstantCov)
 preProcessHooksAdd(".uiApplyMu2", .uiApplyMu2hook)
 postFinalObjectHooksAdd(".uiFinalizeMu2", .uiFinalizeMu2hook)
