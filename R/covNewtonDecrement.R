@@ -41,8 +41,8 @@
 
 #' The FOCEi objective's analytic gradient at a fit's estimate
 #'
-#' A zero-outer-iteration FOCEi pass at the fit's estimates, starting the inner
-#' problem from the fit's etas, with the analytic outer gradient on.
+#' A zero-outer-iteration FOCEi pass at the fit's estimates, optimizing the
+#' etas from the fit's, with the analytic outer gradient on.
 #' @param fit the finalized fit
 #' @return the OFV gradient named by parameter, or `NULL` when the analytic
 #'   gradient is out of scope for the model
@@ -53,6 +53,8 @@
     return(NULL)
   }
   .ctl$etaMat <- fit$etaMat
+  # a sampler's foceiControl skips the inner problem; the gradient needs the modes
+  .ctl$maxInnerIterations <- .covInnerIterations(.ctl)
   .ctl$maxOuterIterations <- 0L
   .ctl$calcTables <- FALSE
   .ctl$covMethod <- 0L
