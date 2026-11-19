@@ -101,7 +101,7 @@ nmTest({
     fit <- .nlmixr(.bsvCorIovSaemFit, .d, "saem", control = .ctl)
     .cor <- "bsvcorr(tcl,tv)"
     .rn <- rownames(fit$parFixedDf)
-    expect_identical(.rn[.parFixedIsBsvCor(.rn)], .cor)
+    expect_identical(.rn[grepl("^bsvcorr\\(", .rn)], .cor)
     expect_identical(.rn[length(.rn)], .cor)
     expect_identical(rownames(fit$parFixed), .rn)
     .om <- if (is.list(fit$omega)) fit$omega$id else fit$omega

@@ -24,17 +24,17 @@ nmTest({
   }
 
   test_that("fast=TRUE control defaults: outerOpt + derivative-free downgrade", {
-    # default outer optimizer: nlminb for finite differences, lbfgsb3c for the
-    # analytic ("fast") gradient
-    expect_equal(foceiControl()$outerOpt, -1L) # nlminb -> custom (-1)
-    expect_equal(foceiControl(fast = TRUE)$outerOpt, 1L) # lbfgsb3c
-    expect_equal(foceiControl(fast = TRUE)$outerOptTxt, "lbfgsb3c")
+    expect_equal(foceiControl()$outerOpt, -1L)
+    expect_equal(foceiControl()$outerOptTxt, "bobyqa")
+    expect_equal(foceiControl(fast = TRUE)$outerOpt, -1L)
+    expect_equal(foceiControl(fast = TRUE)$outerOptTxt, "nlminb")
     expect_true(foceiControl(fast = TRUE)$fast)
     expect_false(foceiControl()$fast)
     # an explicit outerOpt still wins under fast
     expect_equal(foceiControl(fast = TRUE, outerOpt = "nlminb")$outerOpt, -1L)
+    expect_equal(foceiControl(fast = TRUE, outerOpt = "lbfgsb3c")$outerOpt, 1L)
     # a defaulted optimizer re-defaults under a *f wrapper; an explicit one is kept
-    expect_equal(.foceiFastCtl(list(foceiControl()), foceiControl)$outerOptTxt, "lbfgsb3c")
+    expect_equal(.foceiFastCtl(list(foceiControl()), foceiControl)$outerOptTxt, "nlminb")
     expect_equal(
       .foceiFastCtl(list(foceiControl(outerOpt = "nlminb")), foceiControl)$outerOptTxt,
       "nlminb"

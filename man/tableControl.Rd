@@ -40,7 +40,8 @@ you supply single subject event tables (created with
  - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of
    the model and censoring.
 
- - `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)
+ - `"cdf"` Impute censored observations with NPDE (below) and use the
+   imputed values as the DV of the other residuals (`cwres` etc).
 
  - `"omit"` omit the residuals for censoring
 
@@ -66,7 +67,10 @@ you supply single subject event tables (created with
 \item{seed}{an object specifying if and how the random number
 generator should be initialized; when given, it takes precedence
 over an active \code{\link[rxode2:rxSetSeed]{rxSetSeed()}} stream for this solve, and the
-caller's \code{.Random.seed} is restored afterwards}
+caller's \code{.Random.seed} is restored afterwards.  \code{\link[rxode2:rxControl]{rxControl()}} only
+stores it; the seed is applied when the control is used by a solve.
+Re-solving a result by assignment (eg \code{s$params <- p}) reapplies its
+seed, while \code{update()} uses only a \code{seed} it is given}
 
 \item{cholSEtol}{The tolerance for the `rxode2::choleSE` function}
 

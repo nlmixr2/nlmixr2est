@@ -167,6 +167,13 @@
 #'   where the residual components are unfixed to allow better
 #'   exploration of the likelihood surface.
 #'
+#' @param fixedNoEta How a `fix()`ed theta without an eta is handled
+#'   when `literalFix = FALSE`: `"hold"` (default) keeps it at its fixed
+#'   value for every subject throughout the fit; `"converge"` samples it
+#'   per subject like the other thetas without an eta, so it moves during
+#'   the fit and only arrives at the fixed value at the end (the earlier
+#'   behavior).
+#'
 #' @param muRefCov This controls if mu-referenced covariates in `saem`
 #'   are handled differently than non mu-referenced covariates.  When
 #'   `TRUE`, mu-referenced covariates have special handling.  When
@@ -374,9 +381,10 @@
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams foceiControl
 #' @param iovMethod How inter-occasion variability (`iov.x ~ v | occ`) is
-#'   estimated.  \code{"theta"} uses the shared pre-processing rewrite, which
-#'   carries the magnitude as a population parameter multiplying per-occasion
-#'   unit-variance etas (the form every other estimation method uses).
+#'   estimated.  \code{"theta"} uses the shared pre-processing rewrite; for
+#'   saem it gives each occasion level its own eta, all sharing one variance
+#'   estimated in closed form, and so covers models \code{"twoLevel"} does not
+#'   (a non-mu-referenced parameter, several occasion variables).
 #'   \code{"twoLevel"} (the default) keeps the occasion term as a second
 #'   variance component and estimates it with the closed-form updates of Panhard
 #'   and Samson (2009), which is what the SAEM kernel is built around for every
@@ -418,6 +426,7 @@ saemControl <- function(
   nsdGq = 1.6,
   optExpression = TRUE,
   literalFix = FALSE,
+  fixedNoEta = c("hold", "converge"),
   adjObf = TRUE,
   sumProd = FALSE,
   addProp = c("combined2", "combined1"),
@@ -516,6 +525,7 @@ saemControl <- function(
   checkmate::assertNumeric(nsdGq, any.missing = FALSE, lower = 1, len = 1, finite = TRUE)
   checkmate::assertLogical(optExpression, any.missing = FALSE, len = 1)
   checkmate::assertLogical(literalFix, any.missing = FALSE, len = 1)
+  fixedNoEta <- match.arg(fixedNoEta)
   checkmate::assertLogical(adjObf, any.missing = FALSE, len = 1)
   checkmate::assertLogical(sumProd, any.missing = FALSE, len = 1)
   # `tol` is the rhoend/tolerance of saem's inner residual-regression optimizer
@@ -640,6 +650,7 @@ saemControl <- function(
     DEBUG = trace, # nolint
     optExpression = optExpression,
     literalFix = literalFix,
+    fixedNoEta = fixedNoEta,
     sumProd = sumProd,
     nnodesGq = nnodesGq,
     nsdGq = nsdGq,

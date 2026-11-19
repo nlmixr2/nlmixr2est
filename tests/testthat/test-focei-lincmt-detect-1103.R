@@ -48,7 +48,7 @@ nmTest({
       nlmixr2(.linLhs, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE))
     ))
     expect_false(fT$control$fast)
-    # the downgrade re-defaults the outer optimizer too (lbfgsb3c stalled at 133.57)
+    # the downgrade restores the ordinary outer optimizer too
     expect_equal(fT$control$outerOptTxt, "bobyqa")
     expect_equal(fT$objf, fF$objf, tolerance = 1e-4)
 

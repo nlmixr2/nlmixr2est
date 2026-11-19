@@ -208,7 +208,8 @@ static int _odeEsSlotIdx = -1;
 
 int odeSwapEsModelForSlot(int slot) {
   switch (slot) {
-  case odeSlotPred:      return odeEsPred;
+  case odeSlotPred:
+  case odeSlotTable:     return odeEsPred;
   case odeSlotInner:     return odeEsInner;
   case odeSlotHess2:     return odeEsHess2;
   case odeSlotThetaSens:
@@ -732,8 +733,8 @@ static inline bool probeDeny() {
 // Declining is the safe direction and what every other failure here does: the caller
 // falls back to the rxode2::rxSolve reference path, which is correct, just slower.
 static bool odeSwapProbeFits(int slot, rx_solve *rx, rx_solving_options *op,
-                             int wantLhs) {
-  if (wantLhs <= 0 || getOpNlhs(op) < wantLhs) return false;
+                             int wantLhs, bool allowScratch) {
+  if (wantLhs <= 0 || (!allowScratch && getOpNlhs(op) < wantLhs)) return false;
   // neq == 0 is legitimate, not a failure: an ODE-free model (a pure `ll()` regression)
   // has real lhs outputs and symbolic sensitivities, and pools like any other -- see
   // test-focei-ll-fast-grad-fit.R.  It simply reads no state.
@@ -776,10 +777,11 @@ static bool odeSwapProbeAllWritten(const std::vector<double> &probe, int want, d
   return true;
 }
 
-bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op) {
+bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op,
+                          bool allowScratch) {
   if (fns == NULL || fns->calc_lhs == NULL || rx == NULL || op == NULL) return false;
   int want = odeSwapNlhs(slot);
-  if (!odeSwapProbeFits(slot, rx, op, want)) return false;
+  if (!odeSwapProbeFits(slot, rx, op, want, allowScratch)) return false;
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, 0);   // base subject 0
   if (ind == NULL) return false;
   odeSwapProbeBind(ind, rx, op, fns);
@@ -788,7 +790,7 @@ bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_opti
   // Only WHICH slots get written matters, not the values -- so use a sentinel no
   // model produces.  NaN would compare unequal and so read as "written".
   static const double _sent = -9.87654321e37;
-  std::vector<double> probe((size_t)getOpNlhs(op), _sent);
+  std::vector<double> probe((size_t)std::max(getOpNlhs(op), want), _sent);
   // Probe at this subject's own first time, not t=0: an lhs sitting inside a
   // time-dependent branch would go unassigned at an arbitrary time and look missing.
   fns->calc_lhs(0, getTime(getIndIx(ind, 0), ind), st, probe.data());
@@ -970,20 +972,36 @@ int odeSwapIndSolveSpan(rx_solving_options *op, rx_solving_options_ind *ind) {
   return n * getIndNallTimes(ind);
 }
 
+static inline bool odeSwapNonFinite(double x) {
+  return ISNA(x) || std::isnan(x) || std::isinf(x);
+}
+
+// True when any of the leading `width` values of `nrec` records spaced `stride` apart
+// is non-finite.
+static bool odeSwapBadRecords(const double *solve, size_t nrec, int stride, int width) {
+  for (size_t r = 0; r < nrec; ++r) {
+    const double *rec = solve + r * (size_t)stride;
+    for (int i = 0; i < width; ++i) {
+      if (odeSwapNonFinite(rec[i])) return true;
+    }
+  }
+  return false;
+}
+
 bool odeSwapIndBadSolveSlot(rx_solving_options *op, rx_solving_options_ind *ind,
                             int slot) {
   int n = odeSwapIndSolveSpan(op, ind);
-  int own = odeSwapNeq(slot);
-  // Only clamp DOWN, and only when this model is genuinely narrower than the
-  // span: never widen, or a compacted solve would be under-scanned.
-  if (own > 0 && own < n && getOpNlin(op) <= 0) n = own;
   if (n <= 0) return false;
   double *solve = getIndSolve(ind);
   if (solve == NULL) return false;
-  for (int i = 0; i < n; ++i) {
-    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) return true;
+  int own = odeSwapNeq(slot);
+  int eff = odeSwapEffNeq(ind, op);
+  // A model narrower than the solve stride (a declined scope runs at pool width)
+  // owns only the leading `own` states of each record; scan those in every record.
+  if (own > 0 && own < eff && getOpNlin(op) <= 0) {
+    return odeSwapBadRecords(solve, (size_t)getIndNallTimes(ind), eff, own);
   }
-  return false;
+  return odeSwapBadRecords(solve, 1, n, n);
 }
 
 bool odeSwapIndBadSolve(rx_solving_options *op, rx_solving_options_ind *ind) {
@@ -991,10 +1009,7 @@ bool odeSwapIndBadSolve(rx_solving_options *op, rx_solving_options_ind *ind) {
   if (n <= 0) return false;
   double *solve = getIndSolve(ind);
   if (solve == NULL) return false;
-  for (int i = 0; i < n; ++i) {
-    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) return true;
-  }
-  return false;
+  return odeSwapBadRecords(solve, 1, n, n);
 }
 
 // ---- R introspection ----------------------------------------------------
@@ -1165,5 +1180,6 @@ List odeSwapInfo_() {
     _["esInstallC"] = (double)_odeEsInstallC,
     _["esInstallR"] = (double)_odeEsInstallR,
     _["pinDeny"] = (double)odeSwapPinDeny(),
-    _["impThetaSensHarvestN"] = (double)impThetaSensHarvestN());
+    _["impThetaSensHarvestN"] = (double)impThetaSensHarvestN(),
+    _["tablePoolSolveN"] = (double)tablePoolSolveN());
 }

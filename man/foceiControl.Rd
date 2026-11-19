@@ -200,16 +200,14 @@ foceiControl(
 \item{sigdig}{Optimization significant digits.  One value drives, with a single
 consistent formula, the inner/outer optimizer convergence tolerance
 (\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
-and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
-\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
-\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
-tolerances match the main solve (the outer gradient and covariance are built
-from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
-order looser.
-Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 3}
-this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
+and the ODE solver tolerances \code{rtol = max(10^(-2*sigdig), 1e-12)},
+\code{atol = rtol/100} for every solver.  An objective solved to relative
+error \code{rtol} locates its minimum only to about \code{sqrt(rtol)}, so
+this is the solve a \code{10^-sigdig} optimizer needs.  The sensitivity
+(\code{atolSens}/\code{rtolSens}) tolerances match the main solve; the
+steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+At the default \code{sigdig = 3} this is \code{atol = 1e-8},
+\code{rtol = 1e-6}.}
 
 \item{...}{Ignored parameters}
 
@@ -327,7 +325,7 @@ the stencil centre it is compared against) and the augmented-sensitivity
 solves behind \code{covMethod="analytic"}.  \code{NULL} (default) derives
 them from the fit's own tolerances: the finite-difference solves use
 \code{atol} and \code{rtol} each times 1e-3, capped at 1e-7 (at the default
-\code{sigdig = 3}, \code{rtol = 1e-7} and \code{atol = 1e-9}), and the
+\code{sigdig = 3}, \code{rtol = 1e-9} and \code{atol = 1e-11}), and the
 analytic augmented solves use \code{max(1e-12, min(1e-8, 10^-(sigdig + 6)))}.  The
 inner problems of the finite-difference probes are tightened the same way,
 whichever \code{innerOpt} runs them: \code{trustFterm} and
@@ -405,7 +403,7 @@ and (for the non-Gaussian path) multiple endpoints, censoring or
 \code{nAGQ > 1}; those fall back to the finite-difference gradient with
 a message (linCmt() and out-of-scope log-likelihood models downgrade to
 \code{fast=FALSE} up front).  When unspecified,
-the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"bobyqa"} for
+the outer optimizer defaults to \code{"nlminb"} (vs \code{"bobyqa"} for
 \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 \code{foceif}) default this to \code{TRUE}.}
@@ -761,7 +759,8 @@ cannot be corrected to be non-positive definite try estimating
 the Hessian on the unscaled parameter space.}
 
 \item{outerOpt}{optimization method for the outer problem
-Fast \code{"nlminb"} fits automatically use the analytical outer Hessian
+Fast \code{"nlminb"} fits use gradients only by default. Set
+\code{outerTrustHessian="analytic"} to request the analytical outer Hessian
 for supported Gaussian FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
 curvature is unavailable.  \code{"trust"} is a trust-region Newton method
 (\pkg{RcppTrust}) built on that same Hessian; see
@@ -914,8 +913,10 @@ relative eta-change tolerances, separate from the outer
 `innerOpt="lbfgsb3c"`, `maxInnerIterations` caps the function evaluations
 of each solve.}
 
-\item{outerTrustHessian}{Curvature source for \code{outerOpt="trust"}.
-\code{"auto"} (default) uses the analytical outer Hessian when
+\item{outerTrustHessian}{Curvature source for \code{outerOpt="trust"} or \code{"nlminb"}.
+For \code{"nlminb"}, \code{"auto"} and \code{"bfgs"} leave curvature to
+its BFGS approximation; \code{"analytic"} and \code{"fd"} request a Hessian.
+For \code{"trust"}, \code{"auto"} (default) uses the analytical outer Hessian when
 \code{fast=TRUE} makes it available and the damped-BFGS update otherwise,
 and falls back to that update if the Hessian is refused mid-fit.
 \code{"analytic"} requires \code{fast=TRUE}.  \code{"bfgs"} is the
@@ -958,7 +959,9 @@ a minimum; re-entering restores the initial radius.
 objective; must be in `[n+2, (n+1)(n+2)/2]`. Defaults to `2*n + 1`.
 (bobyqa)}
 
-\item{rel.tol}{Relative tolerance before nlminb stops (nlmimb).}
+\item{rel.tol}{Relative tolerance before nlminb stops (nlmimb).
+`NULL` (default) uses `10^(-sigdig)`, or `10^(-sigdig-2)` with
+`fast=TRUE`, whose analytic gradient can resolve the tighter optimum.}
 
 \item{x.tol}{X tolerance for nlmixr2 optimizer}
 
