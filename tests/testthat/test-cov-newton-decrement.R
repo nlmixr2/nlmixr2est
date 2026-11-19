@@ -157,6 +157,8 @@ nmTest({
     .f <- .saem(.ode, NA)
     .an <- .covNewtonGrad(.f, .f$cov)
     .fd <- .covNewtonGradFd(.f, .f$cov)
+    # only the analytic route has the Omega (Cholesky) elements
+    expect_true(any(grepl("^om[.]chol", names(.an))))
     expect_named(.fd, c("tka", "tcl", "tv", "add.sd"))
     expect_equal(unname(.fd), unname(.an[names(.fd)]), tolerance = 0.02)
     .l <- .saem(.lin)
@@ -199,7 +201,7 @@ test_that("a rejected probe falls back to a one-sided difference", {
   local_mocked_bindings(
     .covNewtonFocei = function(ui, fit, ctl) {
       .e <- stats::setNames(ui$iniDf$est, ui$iniDf$name)
-      if (abs(.e[["p1"]] - 0.9995) > 1e-4) {
+      if (abs(.e[["p1"]] - 0.9995) > 5e-4) {
         stop("out of range")
       }
       list(objf = 3 * .e[["p1"]]^2 + 2 * .e[["tcl"]]^2)
