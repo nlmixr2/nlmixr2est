@@ -20,6 +20,7 @@
 #include "solveWarnHelper.h"
 #include "truncNorm.h"
 #include "minqaC.h"
+#include "saemAutoStop.h"
 
 #define _(String) (String)
 
@@ -1931,6 +1932,15 @@ public:
     return par_hist;
   }
 
+  List get_autoStop() {
+    if (!autoStopOn) return List::create();
+    return List::create(_["iter"] = autoStopIter > 0 ? autoStopIter : NA_INTEGER,
+                        _["niter"] = niter,
+                        _["drift"] = saemAutoStopVec(_autoStop.drift),
+                        _["mcse"] = saemAutoStopVec(_autoStop.mcse),
+                        _["tol"] = saemAutoStopVec(_autoStop.tol));
+  }
+
   IntegerVector get_ueRevisitInfo() {
     return IntegerVector::create(_["ran"] = ueRevisitRan,
                                  _["unfroze"] = ueRevisitUnfroze,
@@ -2487,6 +2497,13 @@ public:
     // information decoupled from the cooling schedule (cf. Monolix "stochastic
     // approximation" standard errors; Kuhn & Lavielle 2005).  nSaCov==0 is a no-op.
     nSaCov = x.containsElementNamed("nSaCov") ? as<int>(x["nSaCov"]) : 0;
+    autoStopOn = x.containsElementNamed("autoStop") && as<int>(x["autoStop"]) != 0;
+    if (autoStopOn) {
+      autoStopWindow = as<int>(x["stopWindow"]);
+      autoStopConsec = as<int>(x["stopConsecutive"]);
+      autoStopRtol = as<double>(x["stopRtol"]);
+      autoStopAtol = as<double>(x["stopAtol"]);
+    }
     if (nSaCov > 0) {
       pas  = join_cols(pas,  zeros<vec>(nSaCov));   // freeze theta during the cov phase
       pash = join_cols(pash, zeros<vec>(nSaCov));
@@ -3042,6 +3059,16 @@ public:
       }
     }
     if (nSaCov > 0) { HaSa = zeros<mat>(nb_param, nb_param); covCount = 0; }
+    // the stop window only sees the EM phase, after the phi0 variance starts
+    // annealing and (msaem) the split-ETA separation phase ends
+    autoStopIter = -1;
+    int autoStopStart = std::max(nPhase1, 0);
+    if (nphi0 > 0) autoStopStart = std::max(autoStopStart, niter_phi0);
+    if (nMix > 1 && mixSampleMethod == 1) autoStopStart = std::max(autoStopStart, (int)(0.8 * niter));
+    if (autoStopOn) {
+      _autoStop.init(autoStopWindow, autoStopConsec, autoStopRtol, autoStopAtol,
+                     (int)par_hist.n_cols);
+    }
     for (unsigned int kiter=0; kiter<(unsigned int)(niter + nSaCov); kiter++) {
       // entering the SA covariance phase: snapshot the converged estimate so it can be
       // restored afterward (the cov-phase iterations fluctuate the parameters).
@@ -4962,10 +4989,18 @@ public:
         // One summary line per printed iteration for any ODE-solve warnings
         // accumulated since the last flush (see inner.cpp foceiOfvOptim).
         nmFlushRxSolveWarn(5);
+        if (autoStopOn && (int)kiter >= autoStopStart && (int)kiter + 1 < niter &&
+            _autoStop.push(pl)) {
+          autoStopIter = (int)kiter + 1;
+          // jump straight to the SA covariance phase (or end the loop)
+          kiter = (unsigned int)niter - 1;
+          if (nSaCov == 0) break;
+        }
       }
       // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
       // above; nothing is recorded to par_hist and no printing happens.
     }//kiter
+    if (autoStopIter > 0) autoStopTrim();
     // restore the converged estimate after the SA covariance phase (the reported fit
     // must be the converged value, not a cov-phase iterate)
     if (nSaCov > 0) {
@@ -5249,6 +5284,31 @@ private:
   int DEBUG;
   // every estimation iteration's phiM, laid out as an N x nmc x niter x nphi array
   NumericVector phiMHist;
+
+  bool autoStopOn = false;
+  int autoStopWindow = 50, autoStopConsec = 4, autoStopIter = -1;
+  double autoStopRtol = 1e-3, autoStopAtol = 1e-4;
+  saemAutoStop _autoStop;
+
+  // drop the estimation iterations an early stop skipped from every per-iteration history
+  void autoStopTrim() {
+    const uword ks = (uword)autoStopIter, ni = (uword)niter;
+    if (par_hist.n_rows > ks) par_hist.shed_rows(ks, par_hist.n_rows - 1);
+    const uword nr = (uword)N * nmc;
+    if (nr > 0 && nphi > 0 && (uword)phiMHist.size() == nr * ni * nphi) {
+      mat h(phiMHist.begin(), nr * ni, nphi, false, true);
+      mat hk = h.rows(0, nr * ks - 1);
+      NumericVector out((R_xlen_t)hk.n_elem);
+      std::copy(hk.begin(), hk.end(), out.begin());
+      out.attr("dim") = IntegerVector::create(N, nmc, (int)ks, nphi);
+      phiMHist = out;
+    }
+    const uword nTot = ni + (uword)nSaCov;
+    mat *tr[] = {&mcmcAccTrace, &mcmcAccColTrace, &mcmcStuckTrace, &phiSdTrace, &phiAcfTrace};
+    for (mat *m : tr) {
+      if (m->n_rows == nTot) m->shed_rows(ks, ni - 1);
+    }
+  }
 
   void savePhiM(unsigned int kiter, const mat &m) {
     const uword nr = (uword)N * nmc;
@@ -6027,6 +6087,22 @@ Rcpp::NumericVector saemSeedLayoutTest_(Rcpp::IntegerVector nu, int nphi1, int n
   return Rcpp::wrap(out);
 }
 
+// Test hook: run the SAEM auto-stop window over a trajectory (one iterate per row).
+//[[Rcpp::export]]
+Rcpp::List saemAutoStopTest_(Rcpp::NumericMatrix trajR, int window, int consec, double rtol, double atol) {
+  arma::mat traj = Rcpp::as<arma::mat>(trajR);
+  saemAutoStop a;
+  a.init(window, consec, rtol, atol, (int)traj.n_cols);
+  int stop = NA_INTEGER;
+  for (unsigned int i = 0; i < traj.n_rows; ++i) {
+    if (a.push(traj.row(i).t())) { stop = (int)i + 1; break; }
+  }
+  return Rcpp::List::create(Rcpp::_["iter"] = stop,
+                            Rcpp::_["drift"] = saemAutoStopVec(a.drift),
+                            Rcpp::_["mcse"] = saemAutoStopVec(a.mcse),
+                            Rcpp::_["tol"] = saemAutoStopVec(a.tol));
+}
+
 // phi0 objective along one coordinate (normal-model coordinate descent)
 // @param x value of coordinate gPhi0Coord
 // @return the phi0 objective
@@ -6576,6 +6652,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("eta") = saem.get_eta(),
     Named("etaMix") = saem.get_etaMix(),
     Named("par_hist") = saem.get_par_hist(),
+    Named("autoStop") = saem.get_autoStop(),
     // MCMC mixing diagnostics; see the members they come from
     Named("mcmcAccept") = saem.get_mcmcAccTrace(),
     Named("mcmcAcceptCol") = saem.get_mcmcAccColTrace(),

@@ -9,6 +9,24 @@
 #' @param nEm Number of iterations in the Expectation-Maximization
 #'     (EM) Step. This is equivalent to Monolix's \code{K_1}.
 #'
+#' @param autoStop Boolean (default `FALSE`); stop the EM phase early once the
+#'   parameter trajectory is stationary.  The window only sees EM iterations
+#'   (after `nBurn`, and after the non-mu variance annealing starts at half of
+#'   `nBurn + nEm`), so `nEm` becomes a maximum.  A `covMethod="sa"` covariance
+#'   phase still runs at the stopped estimate.  The stop is recorded in
+#'   `fit$saemAutoStop`.
+#'
+#' @param stopWindow Number of recent EM iterates `autoStop` compares; the
+#'   older half mean is compared with the newer half mean.
+#'
+#' @param stopConsecutive Number of consecutive stationary windows needed to
+#'   stop.
+#'
+#' @param stopRtol,stopAtol Relative and absolute drift tolerances.  A
+#'   parameter is stationary when its half-mean drift is at most
+#'   `max(stopAtol, stopRtol * max(1, |older mean|), 2 * mcse)`, where `mcse`
+#'   is the Monte-Carlo standard error of the drift estimated from the window.
+#'
 #' @param nmc Number of Markov Chains. By default this is 3.  When
 #'     you increase the number of chains the numerical integration by
 #'     MC method will be more accurate at the cost of more
@@ -411,6 +429,11 @@ saemControl <- function(
   seed = 99,
   nBurn = 200,
   nEm = 300,
+  autoStop = FALSE,
+  stopWindow = 50L,
+  stopConsecutive = 4L,
+  stopRtol = 1e-3,
+  stopAtol = 1e-4,
   nmc = 3,
   nu = c(2, 2, 2),
   print = 1L,
@@ -557,6 +580,11 @@ saemControl <- function(
   mixSampleMethod <- match.arg(mixSampleMethod)
   nonMuTheta <- match.arg(nonMuTheta)
   nonMuThetaOpt <- match.arg(nonMuThetaOpt)
+  checkmate::assertLogical(autoStop, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(stopWindow, any.missing = FALSE, len = 1, lower = 4)
+  checkmate::assertIntegerish(stopConsecutive, any.missing = FALSE, len = 1, lower = 1)
+  checkmate::assertNumeric(stopRtol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
+  checkmate::assertNumeric(stopAtol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
   checkmate::assertIntegerish(nonMuThetaSweeps, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertIntegerish(nonMuThetaMaxEval, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertNumeric(nonMuThetaTol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
@@ -645,6 +673,11 @@ saemControl <- function(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto),
     rxControl = rxControl,
     seed = seed,
+    autoStop = autoStop,
+    stopWindow = as.integer(stopWindow),
+    stopConsecutive = as.integer(stopConsecutive),
+    stopRtol = stopRtol,
+    stopAtol = stopAtol,
     censOption = censOption,
     iterPrintControl = .iterPrintControl,
     DEBUG = trace, # nolint

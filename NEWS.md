@@ -14,6 +14,12 @@
 
 ## New features
 
+- `saemControl(autoStop = TRUE)` stops the SAEM EM phase once every
+  parameter's half-window drift is within `stopRtol`/`stopAtol` or twice its
+  Monte-Carlo error for `stopConsecutive` windows of `stopWindow` iterations;
+  `nEm` becomes a maximum and the stop is recorded in `fit$saemAutoStop`
+  (#1411).
+
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
   diagnostics are unreliable.  `foceiControl(shrinkEtaWarn=)` sets the
