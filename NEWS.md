@@ -14,6 +14,11 @@
 
 ## New features
 
+- A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
+  (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
+  diagnostics are unreliable.  `foceiControl(shrinkEtaWarn=)` sets the
+  threshold; `NA` or `Inf` turns the note off (#1379).
+
 - A fit whose IWRES sd shrinkage is below -5% now notes it in `$runInfo`
   ("IWRES shrinkage is strongly negative; check the residual model"); the
   raw value in `$shrink` is unchanged (#1376).
