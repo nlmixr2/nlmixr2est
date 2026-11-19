@@ -61,6 +61,13 @@ nmTest({
       "covariance condition number is large (1000.01 > 1000)"
     )
     expect_match(.covCondMsg(1000 + 1e-9, 1000), "\\(1000\\.0+1 > 1000\\)$")
+    expect_null(.covCondMsg(1000 + 2^-43, 1000))
+    withr::with_options(list(OutDec = ","), {
+      expect_equal(
+        .covCondMsg(1397.7, 1000),
+        "covariance condition number is large (1397,7 > 1000)"
+      )
+    })
   })
 
   test_that("condWarn is validated by foceiControl", {
