@@ -1,6 +1,5 @@
 nmTest({
   test_that(".muRefClassify buckets theta/eta pairs correctly", {
-
     mod <- function() {
       ini({
         tka <- 0.45
@@ -68,7 +67,6 @@ nmTest({
   })
 
   test_that(".muRefClassify handles a model with no mu-ref covariates at all", {
-
     mod <- function() {
       ini({
         tka <- 0.45
@@ -98,7 +96,6 @@ nmTest({
   })
 
   test_that(".muRefClassify handles a model that is entirely mu-ref covariate", {
-
     mod <- function() {
       ini({
         tcl <- 1

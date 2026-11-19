@@ -86,7 +86,7 @@ Create a gradient function based on gill numerical differences
 
 func0 <- function(x){ sum(sin(x))  }
 
-## This will printout every interation or when print=X
+## This will printout every iteration or when print=X
 gf <- nlmixr2GradFun(func0)
 
 ## x

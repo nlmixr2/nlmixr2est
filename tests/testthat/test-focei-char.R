@@ -26,15 +26,29 @@ nmTest({
     fitdata <- theo_sd
     fitdata$ID <- paste("theo", fitdata$ID)
     fitdata$LowID <- ifelse(as.numeric(theo_sd$ID) < 7, "Yes", "No")
-    fit <- .nlmixr(one_compartment_textcov, fitdata, est="focei", control = foceiControl(print = 0))
+    fit <- .nlmixr(one_compartment_textcov, fitdata, est = "focei", control = foceiControl(print = 0))
 
     .cllow <- fit$theta["cllow"]
 
     expect_true(inherits(fit$ID, "factor"))
 
-    expect_equal(levels(fit$ID),
-                 c("theo 1", "theo 2", "theo 3", "theo 4", "theo 5", "theo 6", "theo 7",
-                   "theo 8", "theo 9", "theo 10", "theo 11", "theo 12"))
+    expect_equal(
+      levels(fit$ID),
+      c(
+        "theo 1",
+        "theo 2",
+        "theo 3",
+        "theo 4",
+        "theo 5",
+        "theo 6",
+        "theo 7",
+        "theo 8",
+        "theo 9",
+        "theo 10",
+        "theo 11",
+        "theo 12"
+      )
+    )
 
     expect_true(inherits(fit$LowID, "factor"))
     expect_equal(levels(fit$LowID), c("Yes", "No"))

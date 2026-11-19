@@ -22,8 +22,12 @@
   repeat {
     .more <- .n - .keep
     .txt <- paste(x[seq_len(.keep)], collapse = ", ")
-    if (.more > 0L) .txt <- paste0(.txt, ", +", .more, " more")
-    if (.keep <= 1L || nchar(.txt) <= .avail) break
+    if (.more > 0L) {
+      .txt <- paste0(.txt, ", +", .more, " more")
+    }
+    if (.keep <= 1L || nchar(.txt) <= .avail) {
+      break
+    }
     .keep <- .keep - 1L
   }
   ## Dropping items bottoms out at one, so a single long name (a wide factor
@@ -55,14 +59,22 @@
 .vaeCovariateCoefThetas <- function(ui) {
   .idf <- ui$iniDf
   .th <- .idf[!is.na(.idf$ntheta) & is.na(.idf$err) & !isTRUE2(.idf$fix), , drop = FALSE]
-  if (nrow(.th) == 0L) return(character(0))
+  if (nrow(.th) == 0L) {
+    return(character(0))
+  }
   .thNames <- .th$name
   ## (a) linear mu-ref covariate coefficients
-  .linear <- if (is.null(ui$muRefCovariateDataFrame)) character(0)
-             else as.character(ui$muRefCovariateDataFrame$covariateParameter)
+  .linear <- if (is.null(ui$muRefCovariateDataFrame)) {
+    character(0)
+  } else {
+    as.character(ui$muRefCovariateDataFrame$covariateParameter)
+  }
   ## (b) algebraic/centered (mu2/mu3/mu4) covariate coefficients
-  .alg <- if (is.null(ui$mu2RefCovariateReplaceDataFrame)) character(0)
-          else as.character(ui$mu2RefCovariateReplaceDataFrame$covariateParameter)
+  .alg <- if (is.null(ui$mu2RefCovariateReplaceDataFrame)) {
+    character(0)
+  } else {
+    as.character(ui$mu2RefCovariateReplaceDataFrame$covariateParameter)
+  }
   intersect(unique(c(.linear, .alg)), .thNames)
 }
 
@@ -85,7 +97,9 @@
 .vaeNonMuThetas <- function(ui) {
   .idf <- ui$iniDf
   .th <- .idf[!is.na(.idf$ntheta) & is.na(.idf$err) & !isTRUE2(.idf$fix), , drop = FALSE]
-  if (nrow(.th) == 0L) return(character(0))
+  if (nrow(.th) == 0L) {
+    return(character(0))
+  }
   .mu <- if (is.null(ui$muRefDataFrame)) character(0) else ui$muRefDataFrame$theta
   .cov <- if (is.null(ui$muRefCovariateDataFrame)) character(0) else ui$muRefCovariateDataFrame$theta
   ## covariate coefficients are estimated by the regress M-step (see .vaeDataPrep),
@@ -101,9 +115,22 @@
   ## empty and every est="vae" IOV fit dying in `.uiFinalizeIov` with
   ## "invalid second argument of length 0".  Estimating it in the M-step is what
   ## the omega-fixed-at-1 parameterization expects.
-  .iov <- if (is.null(.uiIovEnv$iovVars)) character(0) else .uiIovEnv$iovVars
-  .cand <- setdiff(.th$name, setdiff(c(.mu, .cov, .covCoef), .iov))
-  if (length(.cand) == 0L) return(character(0))
+  ## the IOV variables of this ui, before or after the rewrite (the hook runs
+  ## before .uiApplyIov(), so .uiIovEnv would hold the previous fit's)
+  .iov <- .uiIovNames(ui)
+  ## a mixture proportion (ui$mixProbs) is not a candidate: it is estimated on
+  ## the mlogit scale through its own analytic gradient, not injected as an eta
+  ## and not moved by the regress M-step (which would run it unbounded, against
+  ## the (-Inf, Inf) it carries in iniDf, and on the wrong scale).  Mirrors the
+  ## same exclusion in .npMuExpand().
+  .mix <- tryCatch(ui$mixProbs, error = function(e) character(0))
+  if (is.null(.mix)) {
+    .mix <- character(0)
+  }
+  .cand <- setdiff(.th$name, c(setdiff(c(.mu, .cov, .covCoef), .iov), .mix))
+  if (length(.cand) == 0L) {
+    return(character(0))
+  }
   ## keep only thetas that actually appear in a model expression (so an eta can be
   ## attached to a structural line)
   .modelVars <- unique(unlist(lapply(ui$lstExpr, all.vars)))
@@ -132,19 +159,21 @@ isTRUE2 <- function(x) !is.na(x) & x
     .eta <- .vaeUniqueEtaName(.ui, .p)
     .lines <- .ui$lstExpr
     .idx <- which(vapply(.lines, function(e) .p %in% all.vars(e), logical(1)))
-    if (length(.idx) == 0L) next
+    if (length(.idx) == 0L) {
+      next
+    }
     ## rewrite EVERY expression that references the theta, not just the first: the
     ## injected eta is a single per-subject random effect, so replacing each `p`
     ## with `p + eta` uses the same eta realization everywhere and consistently
     ## moves the structural parameter into the latent space (a first-only rewrite
     ## would leave the other uses frozen at the population value).
-    ## inject FLAT (no wrapping parens) so `exp(theta + eta)` stays the additive
-    ## form rxode2 recognizes as a mu-referenced exp() parameter (parens would hide
-    ## the exp() back-transform -- see .vaeUpdateModel)
+    ## substitute in the parse tree, not the deparsed text: `exp(theta)` becomes
+    ## the flat `exp(theta + eta)` rxode2 recognizes as a mu-referenced exp()
+    ## parameter, while `exp(theta * COV)` becomes `exp((theta + eta) * COV)`
+    ## instead of `exp(theta + eta * COV)` (#1234)
     for (.i in .idx) {
-      .newTxt <- gsub(paste0("\\b", .p, "\\b"), paste0(.p, " + ", .eta),
-                      deparse1(.lines[[.i]]))
-      .ui <- do.call(rxode2::model, list(.ui, str2lang(.newTxt)))
+      .new <- .npSubstThetaAddEta(.lines[[.i]], .p, .eta)
+      .ui <- do.call(rxode2::model, list(.ui, .new))
     }
     .ui <- do.call(rxode2::ini, list(.ui, str2lang(paste0(.eta, " ~ ", signif(omega, 12)))))
     .etas <- c(.etas, .eta)
@@ -174,10 +203,15 @@ isTRUE2 <- function(x) !is.na(x) & x
   .used <- ui$iniDf$name
   .base <- if (grepl("^t[A-Z0-9]", p)) sub("^t", "", p) else p
   .cand <- paste0("eta.", .base)
-  if (!(.cand %in% .used)) return(.cand)
+  if (!(.cand %in% .used)) {
+    return(.cand)
+  }
   .cand <- paste0("eta.", p)
   .i <- 1L
-  while (.cand %in% .used) { .cand <- paste0("eta.", p, ".", .i); .i <- .i + 1L }
+  while (.cand %in% .used) {
+    .cand <- paste0("eta.", p, ".", .i)
+    .i <- .i + 1L
+  }
   .cand
 }
 
@@ -189,7 +223,9 @@ isTRUE2 <- function(x) !is.na(x) & x
 #' @export
 #' @author Matthew L. Fidler
 .preProcessVaeNonMuTheta <- function(ui, est, data, control) {
-  if (!inherits(control, "vaeControl")) return(NULL)
+  if (!inherits(control, "vaeControl")) {
+    return(NULL)
+  }
   .mode <- if (is.null(control$nonMuTheta)) "regress" else control$nonMuTheta
   ## reset per-fit record of injected etas (read by the VAE output collapse)
   nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas <- character(0)
@@ -200,9 +236,13 @@ isTRUE2 <- function(x) !is.na(x) & x
     .pre <- "estimating covariate coef(s): "
     warning(.pre, .vaeTruncList(.covCoef, prefix = .pre), call. = FALSE)
   }
-  if (identical(.mode, "none")) return(NULL)
+  if (identical(.mode, "none")) {
+    return(NULL)
+  }
   .thetas <- .vaeNonMuThetas(ui)
-  if (length(.thetas) == 0L) return(NULL)
+  if (length(.thetas) == 0L) {
+    return(NULL)
+  }
   if (.vaeNonMuIsRegress(.mode)) {
     ## "regress"/"grad": no eta is injected -- the thetas stay plain fixed effects
     ## and are estimated in the VAE M-step (bobyqa or the analytic outer gradient;

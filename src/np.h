@@ -30,14 +30,21 @@ void npResidFreezeClear();
 
 // Per-endpoint moment residual sums at fixed per-subject etas: for each 0-based
 // endpoint (obsEndpoint gives the endpoint of each observation in subject-major
-// getIndIx order), the additive sum(err^2), the proportional sum((err/f)^2), and the
-// observation count (nEnd x 3).  The saem-style estimate for warm-starting the
-// residual optimization.
+// getIndIx order), the additive sum(err^2), the proportional sum((err/f)^2), the
+// observation count, and the number of censored (M3/M4) rows dropped from the
+// moment (nEnd x 4).  The saem-style estimate for warm-starting the residual
+// optimization.
 arma::mat npResidMoments(const arma::mat& postEta, const arma::ivec& obsEndpoint, int nEnd);
+
+// 0-based endpoint of one observation's cmt within endpointCmt (per-endpoint cmt
+// values, predDf order), or -1 when it matches none of them.  Always 0 for a
+// single-endpoint model (which carries no CMT covariate to match on).
+int npEndpointForCmt(int cmt, const std::vector<int>& endpointCmt);
 
 // Per-observation 0-based endpoint index (subject-major getIndIx order) from the cached
 // CMT covariate (rxode2 getIndCmt): matches each observation's cmt to endpointCmt (the
-// per-endpoint cmt values, predDf order).  All-zeros for a single-endpoint model.
+// per-endpoint cmt values, predDf order).  All-zeros for a single-endpoint model;
+// -1 for an observation matching no endpoint, which npResidMoments then skips.
 arma::ivec npBuildObsEndpoint(const std::vector<int>& endpointCmt);
 
 // Build the Psi matrix (nSub x nPoint) on the already set-up FOCEi inner solve:
@@ -54,14 +61,6 @@ arma::mat npMaskedOmega(const arma::mat& Omega, const arma::mat& omModel);
 // no per-row offset).  For the D(F) certificate's cross-matrix likelihood ratios.
 void npBuildPsiCoreGamma(const arma::mat& etaPoints, int cores, double gamma,
                          arma::mat& psi);
-
-// ODE-freeze cache for residual-parameter optimization: npFreezeBuild solves and
-// caches each (support point, subject) once; npFreezePsiScaled rebuilds the
-// (normalized) Psi from the cached states without re-integrating; npFreezeClear
-// releases the cache.
-void npFreezeBuild(const arma::mat& etaPoints, int cores);
-void npFreezePsiScaled(const arma::mat& etaPoints, int cores, arma::mat& psi, double* offset);
-void npFreezeClear();
 
 // Build Psi at a residual-error multiplier gamma, reusing likInner0's full
 // conditional likelihood so censoring and transform-both-sides are handled at the

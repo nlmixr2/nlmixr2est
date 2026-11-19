@@ -5,14 +5,11 @@
 #
 # Control-level only, no fits, so this file stays in the push/PR subset.
 nmTest({
-
   test_that("inapplicable importance-sampling controls are rejected", {
     for (.e in c("npag", "npb")) {
       .ctl <- if (.e == "npag") npagControl else npbControl
-      for (.n in c("isample", "df", "auto", "iaccept", "qr", "sir",
-                   "iscaleMin", "autoDfPatience", "mapIter")) {
-        expect_error(do.call(.ctl, setNames(list(1), .n)), regexp = .n,
-                     info = paste(.e, .n))
+      for (.n in c("isample", "df", "auto", "iaccept", "qr", "sir", "iscaleMin", "autoDfPatience", "mapIter")) {
+        expect_error(do.call(.ctl, setNames(list(1), .n)), regexp = .n, info = paste(.e, .n))
       }
     }
   })
@@ -111,7 +108,8 @@ nmTest({
       expect_true(.out$autoNonNormal, info = .e)
     }
     # impmapControl itself round-trips a stamped control now
-    .ic <- impmapControl(); .ic$autoNonNormal <- TRUE
+    .ic <- impmapControl()
+    .ic$autoNonNormal <- TRUE
     expect_true(do.call(impmapControl, .ic)$autoNonNormal)
     # but an explicitly TYPED gammaMethod is still a request, and still rejected
     expect_error(npagControl(gammaMethod = "global"), "gammaMethod")
@@ -123,8 +121,8 @@ nmTest({
     # value happened to equal impmap's default for that control.
     .foo <- function(...) npagControl(...)
     .bar <- function(...) npbControl(...)
-    expect_error(.foo(gamma = 1), "gamma")     # 1 IS impmap's default gamma
-    expect_error(.foo(df = 0), "df")           # 0 IS impmap's default df
+    expect_error(.foo(gamma = 1), "gamma") # 1 IS impmap's default gamma
+    expect_error(.foo(df = 0), "df") # 0 IS impmap's default df
     expect_error(.bar(gamma = 1), "gamma")
     # npag's real controls are untouched -- test-npag-error-models.R relies on
     # passing cycles/gammaOptimize to npagControl
@@ -160,5 +158,4 @@ nmTest({
     expect_true(is.list(.foo(mapIter = 1)))
     expect_error(npagControl(mapIter = 1), "mapIter")
   })
-
 })

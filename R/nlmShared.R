@@ -1,3 +1,18 @@
+# Is `x` a usable Shi (2021) epsilon (a single finite value > 0)?
+.isPositiveErr <- function(x) {
+  checkmate::testNumber(x, finite = TRUE) && x > 0
+}
+
+# Assert a finite-difference epsilon (Shi 2021 `shiErr`/`hessErr`, Gill 1983
+# `hessEps`) is strictly positive; 0 makes the searched step 0.
+.assertPositiveEps <- function(x, .var.name = checkmate::vname(x), null.ok = FALSE) {
+  checkmate::assertNumber(x, finite = TRUE, null.ok = null.ok, .var.name = .var.name)
+  if (!is.null(x) && x <= 0) {
+    stop("'", .var.name, "' must be > 0", call. = FALSE)
+  }
+  invisible(x)
+}
+
 #' Setup a nonlinear system for optimization
 #'
 #' @param par A named vector of initial estimates to setup the
@@ -32,8 +47,8 @@
 #' @keywords internal
 #'
 #' @export
-.nlmSetupEnv <- function(par, ui, data, modelInfo, control,
-                         lower=NULL, upper=NULL) {
+.nlmSetupEnv <- function(par, ui, data, modelInfo, control, lower = NULL, upper = NULL) {
+  .shi21RatioCensor()
   .ctl <- control
   if (!any(names(.ctl) == "gradTo")) {
     .ctl$gradTo <- 0.0
@@ -57,24 +72,26 @@
   if (!any(names(.ctl) == "shi21maxHess")) {
     .ctl$shi21maxHess <- 20L
   }
-  if (!any(names(.ctl) == "shiErr")) {
-    .ctl$shiErr <-   (.Machine$double.eps)^(1/3)
+  # a non-positive Shi (2021) epsilon degenerates the step search to a 0 step
+  if (!.isPositiveErr(.ctl$shiErr)) {
+    .ctl$shiErr <- (.Machine$double.eps)^(1 / 3)
   }
-
-  if (!any(names(.ctl) == "hessErr")) {
-    .ctl$hessErr <-   (.Machine$double.eps)^(1/3)
+  if (!.isPositiveErr(.ctl$hessErr)) {
+    .ctl$hessErr <- (.Machine$double.eps)^(1 / 3)
   }
   # nlmSetup (nlm.cpp) reads control$iterPrintControl; external callers that
   # hand-build a control (e.g. babelmixr2 fmeMcmc) may omit it, so synthesize
   # one from the scalar print args instead of erroring in C.
   if (!inherits(.ctl$iterPrintControl, "iterPrintControl")) {
     .ctl$iterPrintControl <-
-      .absorbIterPrintControl(print = if (is.null(.ctl$print)) 1L else .ctl$print,
-                              printNcol = .ctl$printNcol,
-                              useColor = .ctl$useColor)
+      .absorbIterPrintControl(
+        print = if (is.null(.ctl$print)) 1L else .ctl$print,
+        printNcol = .ctl$printNcol,
+        useColor = .ctl$useColor
+      )
   }
 
-  .env <- new.env(parent=emptyenv())
+  .env <- new.env(parent = emptyenv())
   .env$rxControl <- .ctl$rxControl
   .env$thetaNames <- names(par)
   .f <- modelInfo
@@ -97,6 +114,16 @@
       .env$rxControl$stiff2 <- 0L
     }
   }
+  # matExp-native sensitivities (#860): same reasoning as the hasDelay guard
+  # above -- nlm.cpp calls rxSolve_() directly, bypassing rxSolve.default()'s
+  # S3-dispatched matExp()/indLin() auto-detection that would otherwise force
+  # method="indLin".  Left at the ordinary-ODE default, a matExp model's
+  # dydt() is a no-op stub and every solve silently free-runs a zero
+  # derivative (states frozen at their post-dose values).
+  .mv <- rxode2::rxModelVars(nlmixr2global$nlmEnv$model)
+  if (is.list(.mv$indLin) && length(.mv$indLin) == 4L && !isTRUE(unname(.env$rxControl$method) == 3L)) {
+    .env$rxControl$method <- 3L
+  }
   .env$param <- setNames(par, sprintf("THETA[%d]", seq_along(par)))
   .nlmFitDataSetup(data)
   .env$needFD <- .f$eventTheta
@@ -107,27 +134,29 @@
   .env$data <- nlmixr2global$nlmEnv$data
   .Call(`_nlmixr2est_nlmSetup`, .env)
   ## Activate event-jump sensitivity (if eventSens="jump") now, before the
-  ## scaleC solve -- doing it after would mis-scale dosing params from a jump-less gradient. Deactivated in .nlmFreeEnv; no-op for "fd".
+  ## scaleC solve -- doing it after would mis-scale dosing params from a jump-less gradient.
+  ## Deactivated in .nlmFreeEnv; no-op for "fd".
   .env$esActive <- FALSE
   if (!is.null(.env$thetaGrad)) {
     .env$esActive <- isTRUE(tryCatch(
       rxode2::rxEventSensLoadModel(.env$thetaGrad),
-      error = function(e) FALSE))
+      error = function(e) FALSE
+    ))
   }
-  if (is.null(.ctl$scaleC) && .ctl$scaleType == 2L && .ctl$gradTo > 0) {
-    .tmp <- .Call(`_nlmixr2est_nlmGetScaleC`, par, .ctl$gradTo)
-    if (length(.tmp) == 0L) {
-      .ctl$scaleC <- ui$scaleCtheta
-      .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
-    } else {
-      .ctl$scaleC <- .tmp
-    }
-  } else if (is.null(.ctl$scaleC)) {
+  if (is.null(.ctl$scaleC)) {
     .ctl$scaleC <- ui$scaleCtheta
-    .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
-  } else if (!is.null(.ctl$scaleC)) {
-    .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
+    if (.ctl$scaleType == 2L && .ctl$gradTo > 0) {
+      # the derivative-based |gradTo/gradient_i(par)| blows up for a near-zero
+      # starting gradient (issue #994), so it gets FOCEi's band guard, falling
+      # back to the transform-aware ui$scaleCtheta
+      .gradScaleC <- .Call(`_nlmixr2est_nlmGetScaleC`, par, .ctl$gradTo)
+      if (length(.gradScaleC) > 0L) {
+        .ctl$scaleC <- mapply(.guardScaleC, .gradScaleC, .ctl$scaleC, USE.NAMES = FALSE)
+      }
+    }
   }
+  # also replaces the unguarded values nlmGetScaleC() leaves in the C++ buffer
+  .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
   .env$scaleC <- .ctl$scaleC
   .p <- .Call(`_nlmixr2est_nlmScalePar`, par)
   .env$par.ini <- .p
@@ -156,10 +185,10 @@
 #' @author Matthew L. Fidler
 #' @keywords internal
 .nlmFreeEnv <- function() {
- .Call(`_nlmixr2est_nlmFree`)
- rxode2::rxSolveFree()
- ## Deactivate any event-jump sensitivity injection from .nlmSetupEnv; no-op if never activated.
- tryCatch(rxode2::rxEventSensDeactivate(), error = function(e) NULL)
+  .Call(`_nlmixr2est_nlmFree`)
+  rxode2::rxSolveFree()
+  ## Deactivate any event-jump sensitivity injection from .nlmSetupEnv; no-op if never activated.
+  tryCatch(rxode2::rxEventSensDeactivate(), error = function(e) NULL)
 }
 #' Finalizes output list
 #'
@@ -173,8 +202,7 @@
 #' @export
 #' @author Matthew L. Fidler
 #' @keywords internal
-.nlmFinalizeList <- function(env, lst, par="par", printLine=TRUE,
-                             hessianCov=TRUE) {
+.nlmFinalizeList <- function(env, lst, par = "par", printLine = TRUE, hessianCov = TRUE) {
   .ret <- lst
   .ctl <- env$.ctl
   .ret$scaleC <- env$scaleC
@@ -191,65 +219,68 @@
   if (!any(names(.ctl) == "covMethod")) {
     .ctl$covMethod <- "r"
   }
-  if (inherits(lst, "nls")) {
-    .cov <- summary(lst)$cov.unscaled
-    .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .cov, .parScaled)
+  # the residual degrees of freedom of a least-squares (nls) fit, NA otherwise
+  .rdf <- if (inherits(lst, "nls")) {
+    length(stats::residuals(lst)) - length(.parScaled)
+  } else if (inherits(lst, "nls.lm")) {
+    length(lst$fvec) - length(lst$par)
+  } else {
+    NA_integer_
+  }
+  if (!is.na(.rdf) && .rdf <= 0 && (inherits(lst, "nls") || (hessianCov && .ctl$covMethod != ""))) {
+    # sigma^2 = RSS / (n - p) does not exist
+    .covWarn(sprintf("%d residual degrees of freedom; covariance step failed", as.integer(.rdf)))
+    .ret$covMethod <- "failed"
+  } else if (inherits(lst, "nls")) {
+    # sigma^2 (J'J)^-1, the residual variance times summary()$cov.unscaled
+    .g <- .covGuard(stats::vcov(lst))
+    if (.g$ok) {
+      .ret$cov.scaled <- .g$cov
+      .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .parScaled)
+      .ret$covMethod <- "nls"
+    } else {
+      .covWarn(sprintf("\"nls\" %s; covariance step failed", .g$reason))
+      .ret$covMethod <- "failed"
+    }
   } else if (hessianCov && .ctl$covMethod != "") {
     .malert("calculating covariance")
     if (!any(names(.ret) == "hessian")) {
       .p <- setNames(.parScaled, NULL)
-      .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFunC)
+      # the stencil differences objectives that agree in their last digits, so its
+      # solves run at the covariance probe tolerances, as FOCEi's do
+      .tol <- .Call(`_nlmixr2est_covProbeSolveTolSet_`)
+      .hess <- tryCatch(
+        nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFunC),
+        finally = .Call(`_nlmixr2est_covProbeSolveTolRestore_`, .tol)
+      )
       .ret$hessian <- .hess
     }
     dimnames(.ret$hessian) <- list(.name, .name)
-    .hess <- .ret$hessian
-    if (any(is.na(.hess))) {
+    # r matrix: nlm-family objectives (`.nlmixrNlmFunC`/optim's `fn`) are
+    # built as a plain -1*LL, not the -2*LL scale FOCEI/SAEM/etc use -- so
+    # the Hessian is already the Fisher information (unlike the FOCEI R matrix,
+    # which halves a -2*LL Hessian to get there).  Do not rescale here.
+    .r <- .ret$hessian
+    if (inherits(lst, "nls.lm")) {
+      # minpack.lm's hessian is J'J of the residuals; the information is
+      # J'J / sigma^2, sigma^2 = RSS / (n - p) as in its vcov.nls.lm()
+      .r <- .r / (lst$deviance / (length(lst$fvec) - length(lst$par)))
+    }
+    .rc <- .nlmCovFromHessian(.r)
+    if (!is.null(.rc$warning)) {
+      .covWarn(.rc$warning)
+    }
+    if (is.null(.rc$r)) {
       .ret$covMethod <- "failed"
     } else {
-      # r matrix
-      .r <- 0.5 * .hess
-      .ch <- try(cholSE(.r), silent = TRUE)
-      .covType <- "r"
-      if (inherits(.ch, "try-error")) {
-        .r2 <- .r %*% .r
-        .r2 <- try(sqrtm(.r2), silent=TRUE)
-        .covType <- "|r|"
-        if (!inherits(.r2, "try-error")) {
-          .ch <- try(cholSE(.r), silent=TRUE)
-          if (inherits(.ch, "try-error")) {
-            .r2 <- .ch # switch to nearPD
-          }
-        }
-        if (inherits(.r2, "try-error")) {
-          .covType <- "r+"
-          .r2 <- try(nmNearPD(.r), silent=TRUE)
-          if (!inherits(.r2, "try-error")) {
-            .ch <- try(cholSE(.r), silent=TRUE)
-          }
-        } else {
-          .ch <- try(cholSE(.r), silent=TRUE)
-        }
-      }
-      if (!inherits(.ch, "try-error")) {
-        .rinv <- rxode2::rxInv(.ch)
-        .rinv <- .rinv %*% t(.rinv)
-        .cov <- 2*.rinv
-        dimnames(.cov) <- list(.name, .name)
-        dimnames(.rinv) <- list(.name, .name)
-        .ret$covMethod <- .covType
-        if (.ctl$covMethod != "r") {
-          .ret$covMethod <- paste0(.covType, " (", .ctl$covMethod, ")")
-        } else {
-          .ret$covMethod <- .covType
-        }
-        .ret$cov.scaled <- .cov
-        .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .parScaled)
-      } else {
-        .ret$covMethod <- "failed"
-      }
-      dimnames(.r) <- list(.name, .name)
-      .ret$r <- .r
+      .rinv <- rxode2::rxInv(.rc$u)
+      .cov <- .rinv %*% t(.rinv)
+      dimnames(.cov) <- list(.name, .name)
+      .ret$covMethod <- if (.ctl$covMethod != "r") paste0(.rc$type, " (", .ctl$covMethod, ")") else .rc$type
+      .ret$cov.scaled <- .cov
+      .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .parScaled)
     }
+    .ret$r <- .r
     .msuccess("done")
   }
   .ret$censInformation <- .Call(`_nlmixr2est_nlmCensInfo`)
@@ -257,6 +288,60 @@
   .nlmFreeEnv()
   .ret
 }
+
+#' The nlm-family Hessian from central differences of the analytic gradient
+#'
+#' Column `k` is the central difference of `.nlmixrNlminbGradC()` over the
+#' central step `nlmixr2Gill83()` finds for parameter `k` (the step source
+#' `nlmixr2Hess()` uses), at the covariance probe tolerances.  It needs a loaded
+#' problem with a gradient solve type (`solveType` `"grad"` or `"hessian"`).
+#' @param par scaled parameters at the estimates
+#' @return the symmetric Hessian of the objective
+#' @noRd
+.nlmGradHessian <- function(par) {
+  .tol <- .Call(`_nlmixr2est_covProbeSolveTolSet_`)
+  on.exit(.Call(`_nlmixr2est_covProbeSolveTolRestore_`, .tol))
+  .h <- nlmixr2Gill83(nlmixr2est::.nlmixrNlminbFunC, par)$aEpsC
+  .n <- length(par)
+  .hess <- matrix(0, .n, .n)
+  for (.k in seq_len(.n)) {
+    .e <- replace(numeric(.n), .k, .h[.k])
+    .hess[, .k] <- (nlmixr2est::.nlmixrNlminbGradC(par + .e) -
+      nlmixr2est::.nlmixrNlminbGradC(par - .e)) /
+      (2 * .h[.k])
+  }
+  (.hess + t(.hess)) / 2
+}
+#' The information matrix an nlm-family covariance is inverted from
+#'
+#' The Hessian is factored and, when needed, repaired by the covariance step's one
+#' acceptance rule (`covAccept_()`, `covAcceptRule()` in src/cholse.cpp), under the
+#' FOCEi labels: "r" as it is; "r+" when Schnabel-Eskow's modified Cholesky
+#' factorization adds diagonals within `foceiControl()`'s default `cholAccept`;
+#' "|r|" for `sqrtm(R %*% R)`.  A numerically rank-deficient R may be "r+", as in
+#' FOCEi.
+#' @param hess Hessian of the -LL objective (the R matrix)
+#' @return list(r = the (repaired) R matrix and u = its upper Cholesky factor,
+#'   both `NULL` when none is usable; type = "r", "r+", "|r|" or "failed";
+#'   warning = what was done, `NULL` for "r")
+#' @noRd
+.nlmCovFromHessian <- function(hess) {
+  .g <- .covGuard(hess)
+  if (is.null(.g$cov)) {
+    return(list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .g$reason)))
+  }
+  .r <- .g$cov
+  .a <- covAccept_(.r, (.Machine$double.eps)^(1 / 3), formals(foceiControl)$cholAccept)
+  .reason <- if (.g$ok) "is nearly singular" else .g$reason
+  switch(
+    .a$type,
+    "+" = list(r = .r, u = .a$U, type = "r+", warning = sprintf("R matrix %s; corrected as \"r+\"", .reason)),
+    "|" = list(r = .a$M, u = .a$U, type = "|r|", warning = sprintf("R matrix %s; corrected as \"|r|\"", .reason)),
+    failed = list(type = "failed", warning = sprintf("R matrix %s; covariance step failed", .reason)),
+    list(r = hess, u = .a$U, type = "r")
+  )
+}
+
 #' Adjust nlm and family output environment
 #'
 #' Will take information like `$censInformation`, `$parHistData`,
@@ -272,32 +357,41 @@
 .nlmFamilyAdjustOutput <- function(ret, str) {
   .nlm <- ret[[str]]
   .censInformation <- ret$censInformation
-  if (is.null(.censInformation) &&
-        !is.null(.nlm$censInformation)) {
+  if (
+    is.null(.censInformation) &&
+      !is.null(.nlm$censInformation)
+  ) {
     .censInformation <- .nlm$censInformation
     ret[[str]][["censInformation"]] <- NULL
   }
   ret$censInformation <- .censInformation
 
   .parHistData <- ret$parHistData
-  if (is.null(.parHistData) &&
-        !is.null(.nlm$parHistData)) {
+  if (
+    is.null(.parHistData) &&
+      !is.null(.nlm$parHistData)
+  ) {
     .parHistData <- .nlm$parHistData
     ret[[str]][["parHistData"]] <- NULL
   }
   ret$parHistData <- .parHistData
 
   .cov <- ret$cov
-  if (is.null(.cov) &&
-        !is.null(.nlm$cov)) {
-    .cov <- .nlm$cov
+  # [[ ]], not $: a list holding only covMethod would partially match $cov
+  if (
+    is.null(.cov) &&
+      !is.null(.nlm[["cov"]])
+  ) {
+    .cov <- .nlm[["cov"]]
     ret[[str]][["cov"]] <- NULL
   }
   ret$cov <- .cov
 
   .covMethod <- ret$covMethod
-  if (is.null(.covMethod) &&
-        !is.null(.nlm$covMethod)) {
+  if (
+    is.null(.covMethod) &&
+      !is.null(.nlm$covMethod)
+  ) {
     .covMethod <- .nlm$covMethod
     ret[[str]][["covMethod"]] <- NULL
   }
@@ -326,10 +420,17 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .nmUpcaseNonCov <- function(nms, covNames) {
-  if (is.null(covNames)) covNames <- character(0)
-  vapply(nms, function(.x) {
-    if (.x %in% covNames) .x else toupper(.x)
-  }, character(1), USE.NAMES = FALSE)
+  if (is.null(covNames)) {
+    covNames <- character(0)
+  }
+  vapply(
+    nms,
+    function(.x) {
+      if (.x %in% covNames) .x else toupper(.x)
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
 }
 
 #' Detect the time-varying covariate columns for mu-referenced estimators (SAEM/NLME)
@@ -341,10 +442,14 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmixrTimeVaryingCovariates <- function(dataSav, ui, rxControl) {
-  .et <- rxode2::etTrans(dataSav, ui$mv0, addCmt = TRUE,
-                         addlKeepsCov = rxControl$addlKeepsCov,
-                         addlDropSs = rxControl$addlDropSs,
-                         ssAtDoseTime = rxControl$ssAtDoseTime)
+  .et <- rxode2::etTrans(
+    dataSav,
+    ui$mv0,
+    addCmt = TRUE,
+    addlKeepsCov = rxControl$addlKeepsCov,
+    addlDropSs = rxControl$addlDropSs,
+    ssAtDoseTime = rxControl$ssAtDoseTime
+  )
   .nTv <- attr(class(.et), ".rxode2.lst")$nTv
   # nTv == 0 means no time-varying covariates; otherwise they follow the first 6 columns
   if (!is.null(.nTv) && .nTv == 0L) {
@@ -416,6 +521,44 @@
   invisible(ui)
 }
 
+#' Integer code of an nlm-family control option given as a name or a code
+#'
+#' @param value the option as given: one of the names of `idx` (matched as
+#'   `match.arg()` does, the first being the default) or one of its codes
+#' @param idx the name -> code map, its names in the order of the option's
+#'   choices
+#' @param name the option's name, for the error
+#' @return the integer code
+#' @noRd
+.nlmCtlCode <- function(value, idx, name) {
+  if (!is.numeric(value)) {
+    return(setNames(idx[match.arg(value, names(idx))], NULL))
+  }
+  if (length(value) != 1L || is.na(value) || !(value %in% idx)) {
+    stop(
+      "'",
+      name,
+      "' must be one of ",
+      paste0(sprintf("\"%s\" (%d)", names(idx), idx), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  as.integer(value)
+}
+
+#' The covMethod of an nlm-family control
+#'
+#' `""` (no covariance step) is one of the choices, which `match.arg()` cannot
+#' match.
+#' @param covMethod the argument as given
+#' @param choice `match.arg(covMethod)` in the calling control; it is a promise,
+#'   forced only when `covMethod` is not `""`
+#' @return the name, or `""`
+#' @noRd
+.nlmCtlCovMethod <- function(covMethod, choice) {
+  if (identical(covMethod, "")) "" else choice
+}
+
 #' Shared control setup for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui` and `control`)
@@ -437,23 +580,95 @@
   assign("control", .control, envir = .ui)
 }
 
+#' The foceiControl that finalizes an nlm-family fit
+#'
+#' The optimizer has already run, so the FOCEi pass only builds the tables: no
+#' outer or inner iterations, no covariance step, no interaction and no
+#' scaling.  The settings that shape the model and the tables come from the
+#' method's control; one it does not have (`sensMethod`, say) keeps the
+#' `foceiControl()` default.
+#' @param env fit environment holding the method's control
+#' @param ctl name of the control in `env` (e.g. `"nlmControl"`)
+#' @param assign when `TRUE`, also store the result as `env$control`
+#' @param literalFixRes `literalFixRes` of the finalization (the control's own
+#'   by default)
+#' @return the `foceiControl()` object
+#' @noRd
+.nlmFamilyControlToFoceiControl <- function(env, ctl, assign = TRUE, literalFixRes = env[[ctl]]$literalFixRes) {
+  .ctl <- env[[ctl]]
+  .ret <- foceiControl(
+    rxControl = .ctl$rxControl,
+    maxOuterIterations = 0L,
+    maxInnerIterations = 0L,
+    covMethod = 0L,
+    sumProd = .ctl$sumProd,
+    optExpression = .ctl$optExpression,
+    literalFix = .ctl$literalFix,
+    literalFixRes = literalFixRes,
+    scaleTo = 0,
+    calcTables = .ctl$calcTables,
+    addProp = .ctl$addProp,
+    interaction = 0L,
+    compress = .ctl$compress,
+    ci = .ctl$ci,
+    sigdigTable = .ctl$sigdigTable,
+    indTolRelax = .ctl$indTolRelax,
+    eventSens = .ctl$eventSens,
+    sensMethod = .ctl$sensMethod
+  )
+  if (assign) {
+    env$control <- .ret
+  }
+  .ret
+}
+
+#' The full theta vector of an nlm-family fit
+#'
+#' A fixed theta keeps its `ini()` value; an estimated one comes from the
+#' optimizer's estimates, which are named by theta.
+#' @param fit the optimizer result, as `.nlmFinalizeList()` returns it
+#' @param ui rxode2 ui
+#' @param par name of the estimates in `fit`
+#' @return the thetas named and ordered as `ui$iniDf`
+#' @noRd
+.nlmFamilyGetTheta <- function(fit, ui, par) {
+  .iniDf <- ui$iniDf
+  .est <- fit[[par]]
+  setNames(
+    vapply(
+      seq_along(.iniDf$name),
+      function(i) {
+        if (.iniDf$fix[i]) .iniDf$est[i] else .est[.iniDf$name[i]]
+      },
+      double(1),
+      USE.NAMES = FALSE
+    ),
+    .iniDf$name
+  )
+}
+
 #' Shared fit driver for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui`, `control`, `data`, `table`)
 #' @param method estimation-method string; also the slot the raw fit is stored
 #'   under (e.g. `"nlm"` -> `.ret[["nlm"]]`)
 #' @param fitModel `function(ui, dataSav)` running the optimizer
-#' @param getTheta `function(fit, ui)` returning the full theta vector
+#' @param getTheta `function(fit, ui)` returning the full theta vector, or the
+#'   name of the optimizer's estimates in the fit (e.g. `"par"`), which
+#'   `.nlmFamilyGetTheta()` completes with the fixed thetas
 #' @param controlToFocei `function(env)` translating the control to a
 #'   focei-style control for output assembly
 #' @param returnFlag rxode2 control flag name that short-circuits and returns the
 #'   raw optimizer result (e.g. `"returnNlm"`)
 #' @param message `function(fit)` returning the `$message` (default `fit$message`)
-#' @param emitFitWarnings when TRUE, re-emit the warnings collected from
-#'   `fitModel` via `warning()` (nlm does this; the others do not)
+#' @param emitFitWarnings when TRUE (the default), re-emit the warnings
+#'   collected from `fitModel` (the optimizer, the covariance step and
+#'   `nlmWarnings()`) via `warning()`, so they reach the fit's `$runInfo`;
+#'   `FALSE` drops them
 #' @param extra `$extra` print string, or a `function(control)` returning it
 #' @param adjustOutput when TRUE, run `.nlmFamilyAdjustOutput()`
-#' @param objective optional `function(fit)` returning the raw objective; when
+#' @param objective optional `function(fit)` returning the raw objective, or
+#'   the name of the fit's minimized -log-likelihood, which is doubled; when
 #'   `NULL` the driver does not set `$objective` (a `postSetup` closure did)
 #' @param postSetup optional `function(ret, ui, fitList)` returning a modified
 #'   `ret`, run right after the raw fit is stored and before
@@ -462,14 +677,20 @@
 #' @return the assembled nlmixr2 fit (or the raw optimizer result if `returnFlag`)
 #' @author Matthew L. Fidler
 #' @export
-.nlmFamilyFitGeneric <- function(env, method, fitModel, getTheta,
-                                 controlToFocei, returnFlag,
-                                 objective = NULL,
-                                 message = function(fit) fit$message,
-                                 emitFitWarnings = FALSE,
-                                 extra = "",
-                                 adjustOutput = TRUE,
-                                 postSetup = NULL) {
+.nlmFamilyFitGeneric <- function(
+  env,
+  method,
+  fitModel,
+  getTheta,
+  controlToFocei,
+  returnFlag,
+  objective = NULL,
+  message = function(fit) fit$message,
+  emitFitWarnings = TRUE,
+  extra = "",
+  adjustOutput = TRUE,
+  postSetup = NULL
+) {
   .ui <- env$ui
   .control <- .ui$control
   .data <- env$data
@@ -502,28 +723,41 @@
   .ret$message <- message(.ret[[method]])
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- getTheta(.ret[[method]], .ui)
+  .ret$fullTheta <- if (is.character(getTheta)) {
+    .nlmFamilyGetTheta(.ret[[method]], .ui, getTheta)
+  } else {
+    getTheta(.ret[[method]], .ui)
+  }
   .ret$control <- .control
   .ret$extra <- if (is.function(extra)) extra(.control) else extra
   .nlmixr2FitUpdateParams(.ret)
   nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list = "control", envir = .ui)
-  }
   .ret$est <- method
-  if (!is.null(objective)) {
+  if (is.character(objective)) {
+    .ret$objective <- 2 * as.numeric(.ret[[method]][[objective]])
+  } else if (!is.null(objective)) {
     .ret$objective <- objective(.ret[[method]])
   }
   # building the EBE model is another symengine model build; time it as "setup"
   .ret$model <- nlmixrWithTiming("setup", {
     .ui$ebe
   })
+  # The control must stay on the ui until the EBE model is built; the build reads
+  # optExpression/sumProd/eventSens off of it (#864)
+  if (exists("control", .ui)) {
+    rm(list = "control", envir = .ui)
+  }
   .ret$ofvType <- method
   controlToFocei(.ret)
   .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data = .ret$origData,
-                                    control = .ret$control, table = .ret$table,
-                                    env = .ret, est = method)
+  .ret <- nlmixr2CreateOutputFromUi(
+    .ret$ui,
+    data = .ret$origData,
+    control = .ret$control,
+    table = .ret$table,
+    env = .ret,
+    est = method
+  )
   .env <- .ret$env
   .env$method <- method
   .ret

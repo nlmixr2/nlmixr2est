@@ -26,30 +26,8 @@ nlmixr2AugPredSolve(
 \arguments{
 \item{fit}{Nlmixr2 fit object}
 
-\item{covsInterpolation}{specifies the interpolation method for
-time-varying covariates. When solving ODEs it often samples
-times outside the sampling time specified in \code{events}.
-When this happens, the time varying covariates are
-interpolated.  Currently this can be:
-\itemize{
-\item \code{"linear"} interpolation, which interpolates the covariate
-by solving the line between the observed covariates and extrapolating the new
-covariate value.
-\item \code{"locf"} -- Last observation carried forward (the default).
-\item \code{"nocb"} -- Next Observation Carried Backward.  This is the same method
-that NONMEM uses.
-\item \code{"midpoint"} Last observation carried forward to midpoint; Next observation
-carried backward to midpoint.
-
-For time-varying covariates where a missing value is present, the
-interpolation method will use either "locf" or "nocb" throughout
-if they are the type of covariate interpolation that is selected.
-
-When using the linear or midpoint interpolation, the lower point
-in the interpolation will use locf to interpolate missing
-covariates and the upper point will use the nocb to interpolate
-missing covariates.
-}}
+\item{covsInterpolation}{covariate interpolation; by default the one
+the fit was estimated with}
 
 \item{minimum}{an optional lower limit for the primary
    covariate. Defaults to \code{min(primary)}.}
@@ -78,6 +56,19 @@ Stacked data.frame with observations, individual/population predictions.
 }
 \description{
 Augmented Prediction for nlmixr2 fit
+}
+\details{
+For a fit with inter-occasion variability, each time takes its subject's
+estimate for its occasion, carried from the occasion's first record
+(locf, in the fit's record order where records tie) whatever the covariate
+interpolation, as the fit steps its occasion.
+
+For a `linCmt()` model with time-varying covariates or occasions, the
+curves are approximate with rxode2 5.1.8 or earlier: under the default
+`"locf"` interpolation that rxode2's `linCmt()` took a covariate's value at
+the end of each interval, as `"nocb"` does, so the times `augPred()` adds
+moved where a change takes effect.  Later rxode2 versions solve such a
+model as the equivalent ODE model does.
 }
 \author{
 Matthew L. Fidler

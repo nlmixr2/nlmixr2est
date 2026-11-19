@@ -40,16 +40,15 @@ test_that("saem keeps its other covMethod choices", {
 
 test_that(".foceiRecomputeBaseEst maps the covariance-recompute methods", {
   ## mu/irls families recompute on their own base method
-  expect_identical(nlmixr2est:::.foceiRecomputeBaseEst("mfocei"), "focei")
-  expect_identical(nlmixr2est:::.foceiRecomputeBaseEst("ifoce"), "foce")
-  expect_identical(nlmixr2est:::.foceiRecomputeBaseEst("mfocep"), "focep")
+  expect_identical(.foceiRecomputeBaseEst("mfocei"), "focei")
+  expect_identical(.foceiRecomputeBaseEst("ifoce"), "foce")
+  expect_identical(.foceiRecomputeBaseEst("mfocep"), "focep")
   ## EM / nonparametric / nlme recompute on a zero-iteration focei model
-  for (e in c("imp", "impmap", "qrpem", "nlme",
-              "npag", "npb", "mnpag", "inpag", "mnpb", "inpb")) {
-    expect_identical(nlmixr2est:::.foceiRecomputeBaseEst(e), "focei")
+  for (e in c("imp", "impmap", "qrpem", "nlme", "npag", "npb", "mnpag", "inpag", "mnpb", "inpb")) {
+    expect_identical(.foceiRecomputeBaseEst(e), "focei")
   }
   ## methods with their own covariance (or none) are not recomputed
   for (e in c("focei", "saem", "nlm", "nls")) {
-    expect_null(nlmixr2est:::.foceiRecomputeBaseEst(e))
+    expect_null(.foceiRecomputeBaseEst(e))
   }
 })

@@ -1,6 +1,5 @@
 nmTest({
   test_that("input ui doesn't change", {
-
     one.cmt <- function() {
       ini({
         ## You may label each parameter with a comment
@@ -27,7 +26,7 @@ nmTest({
 
     est0 <- ui$iniDf$est
 
-    fit <- .nlmixr(ui, theo_sd, est="focei", control=list(print=0))
+    fit <- .nlmixr(ui, theo_sd, est = "focei", control = list(print = 0))
 
     expect_equal(est0, ui$iniDf$est)
 

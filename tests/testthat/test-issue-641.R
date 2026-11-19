@@ -48,12 +48,14 @@ nmTest({
     rxode2::setRxThreads(1L)
 
     fit <- nlmixr(
-      mod, data = d_mod, est = "focei",
+      mod,
+      data = d_mod,
+      est = "focei",
       control = foceiControl(print = 0, covMethod = "", calcTables = FALSE)
     )
 
     tvemaxEst <- fit$parFixedDf["tvemax", "Estimate"]
-    let50Est  <- fit$parFixedDf["let50",  "Estimate"]
+    let50Est <- fit$parFixedDf["let50", "Estimate"]
 
     # Before the fix tvemax stayed within ~0.05 of the initial -40; after the
     # fix it moves tens of units away. Thresholds are loose to absorb optimizer
@@ -65,7 +67,6 @@ nmTest({
     # should now resolve to a sensible large positive scaleC.
     ui <- fit$ui
     scaleCs <- ui$scaleCtheta
-    expect_true(any(scaleCs > 10),
-                info = "expected at least one large-magnitude theta to get scaleC > 10")
+    expect_true(any(scaleCs > 10), info = "expected at least one large-magnitude theta to get scaleC > 10")
   })
 })

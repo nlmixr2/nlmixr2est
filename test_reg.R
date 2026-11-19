@@ -1,0 +1,5 @@
+library(rex)
+source("R/focei.R")
+print(rex::re_matches("gauss3_1.6", rex::rex(start, "gauss", capture(.regNum), "_", capture(.regNum), end)))
+print(rex::re_matches("gauss3_5", rex::rex(start, "gauss", capture(.regNum), "_", capture(.regNum), end)))
+print(rex::re_matches("gauss3_1e-1", rex::rex(start, "gauss", capture(.regNum), "_", capture(.regNum), end)))

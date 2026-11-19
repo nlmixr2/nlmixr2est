@@ -1,48 +1,132 @@
-.foceiControlInternal <- c("genRxControl", "resetEtaSize", "foceType",
-                           "resetThetaSize", "resetThetaFinalSize",
-                           "outerOptFun", "outerOptTxt", "skipCov",
-                           "foceiMuRef", "foceiMuCovEta", "predNeq", "nfixed", "nomega",
-                           "neta", "ntheta", "nF", "printTop", "needOptimHess",
-                           "iterPrintControl", "est", "foceiMuModel", "foceiMuGroupTheta",
-                           "foceiMuGroupEta", "foceiMuGroupCovStart", "foceiMuGroupCovCount",
-                           "foceiMuGroupCovTheta", "foceiMuGroupCovUserFixed",
-                           "foceiMuGroupThetaLower", "foceiMuGroupThetaUpper",
-                           "foceiMuGroupCovLower", "foceiMuGroupCovUpper",
-                           "foceiMuGroupCovData", "foceiMuGroupTol",
-                           "foceiMuGroupMaxCycles", "foceiMuGroupClampRetries",
-                           # derived from covMethod ("analytic" vs the finite-difference
-                           # formulas); kept internal so a built control round-trips.
-                           "covType",
-                           # foreign covariance ("sa"/"imp") deferred to a post-fit
-                           # recompute; internal so a built control round-trips.
-                           "covMethodDeferred",
-                           # subject-constant covariates stashed by .foceiFamilyReturn
-                           # for the analytic covariate-coefficient reuse; internal so
-                           # a built control round-trips (e.g. posthoc re-validation).
-                           "foceiConstCovs",
-                           # TRUE when the outer optimizer was defaulted (not user
-                           # specified); lets *f wrappers re-default under fast=TRUE
-                           "outerOptDefault")
+# innerOpt= levels.  "auto" is resolved in C++ (foceiSetup_) once
+# needOptimHess is known: n1qn1 for a generalized-likelihood endpoint, trust
+# otherwise.  See the innerOpt @param below.
+.innerOptFun <- c("n1qn1" = 1L, "lbfgsb3c" = 2L, "trust" = 3L, "auto" = 4L, "newuoa" = 5L, "steihaug" = 6L)
+
+# hessianMethod= levels.  Anything but "fd" is only consulted under
+# innerOpt="trust"/"steihaug" (hessianQNEligible, src/inner.cpp).
+.hessianMethodIdx <- c("fd" = 1L, "bfgs" = 2L, "sr1" = 3L, "bofill" = 4L)
+
+#' Refuse a hessianMethod no inner optimizer would consult.
+#'
+#' `innerOpt` must already be resolved: foceiControl() passes `4L` ("auto")
+#' through untouched because needOptimHess is not known there yet, and
+#' R/focei.R re-checks with the value it resolves to.
+#' @noRd
+.foceiAssertHessianMethod <- function(hessianMethod, innerOpt, note = "") {
+  if (hessianMethod == 1L || innerOpt %in% c(3L, 4L, 6L)) {
+    return(invisible(TRUE))
+  }
+  stop(
+    "hessianMethod = \"",
+    names(.hessianMethodIdx)[hessianMethod],
+    "\" requires innerOpt = \"trust\" or \"steihaug\"",
+    note,
+    call. = FALSE
+  )
+}
+
+#' Whether the installed lbfgsb3c exports the thread-safe `lbfgsb3Cts`.
+#' @noRd
+.lbfgsb3ctsAvailable <- function() {
+  length(lbfgsb3c::.lbfgsb3cPtr()) >= 2L
+}
+
+#' Refuse innerOpt="lbfgsb3c" when lbfgsb3c is too old to run it thread-safely.
+#' @noRd
+.foceiAssertInnerLbfgsb3c <- function(innerOpt, have = .lbfgsb3ctsAvailable()) {
+  if (innerOpt != 2L || have) {
+    return(invisible(TRUE))
+  }
+  stop(
+    "innerOpt=\"lbfgsb3c\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)",
+    call. = FALSE
+  )
+}
+
+.foceiControlInternal <- c(
+  "genRxControl",
+  "resetEtaSize",
+  "foceType",
+  "resetThetaSize",
+  "resetThetaFinalSize",
+  "outerOptFun",
+  "outerOptTxt",
+  "skipCov",
+  "foceiMuRef",
+  "foceiMuCovEta",
+  "predNeq",
+  "nfixed",
+  "nomega",
+  "neta",
+  "ntheta",
+  "nF",
+  "printTop",
+  "needOptimHess",
+  "iterPrintControl",
+  "est",
+  "foceiMuModel",
+  "foceiMuGroupTheta",
+  "foceiMuGroupEta",
+  "foceiMuGroupCovStart",
+  "foceiMuGroupCovCount",
+  "foceiMuGroupCovTheta",
+  "foceiMuGroupCovUserFixed",
+  "foceiMuGroupThetaLower",
+  "foceiMuGroupThetaUpper",
+  "foceiMuGroupCovLower",
+  "foceiMuGroupCovUpper",
+  "foceiMuGroupCovData",
+  "foceiMuGroupTol",
+  "foceiMuGroupMaxCycles",
+  "foceiMuGroupClampRetries",
+  # derived from covMethod ("analytic" vs the finite-difference
+  # formulas); kept internal so a built control round-trips.
+  "covType",
+  # foreign covariance ("sa"/"imp") deferred to a post-fit
+  # recompute; internal so a built control round-trips.
+  "covMethodDeferred",
+  # inner-iteration budget of the covariance step's finite-difference
+  # legs when the fit itself does not optimize its ETAs
+  # (maxInnerIterations = 0): set by the refits that hold the ETAs
+  # only to report them (.covInnerIterations(), R/cov.R)
+  "covMaxInnerIterations",
+  # trust-region inner tolerance (trustFterm and trustMterm) of the
+  # covariance step's inner problems; NULL derives each from the
+  # fit's (the probe-tolerance rule, src/inner.cpp CovInnerTolGuard)
+  "covInnerTol",
+  # subject-constant covariates stashed by .foceiFamilyReturn
+  # for the analytic covariate-coefficient reuse; internal so
+  # a built control round-trips (e.g. posthoc re-validation).
+  "foceiConstCovs",
+  # TRUE when the outer optimizer was defaulted (not user
+  # specified); lets *f wrappers re-default under fast=TRUE
+  "outerOptDefault",
+  # TRUE when rel.tol was defaulted, so it follows fast=TRUE
+  "relTolDefault",
+  # the built rx_prior_spec_t* external pointer
+  # (.nlmixr2BuildPriorSpec(), R/priors.R); not a formal
+  # argument, not deparseable/comparable, and rebuilt fresh
+  # every fit -- internal so a built control round-trips.
+  "priorSpec"
+)
 
 #' Control Options for FOCEi
 #'
 #' @param sigdig Optimization significant digits.  One value drives, with a single
 #'   consistent formula, the inner/outer optimizer convergence tolerance
 #'   (\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
-#'   and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
-#'   \code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
-#'   \code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-#'   auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
-#'   tolerances match the main solve (the outer gradient and covariance are built
-#'   from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
-#'   order looser.
-#'   Keying the optimizer to the same \code{10^-sigdig} means it converges to
-#'   exactly the precision the solve supports.  At the default \code{sigdig = 3}
-#'   this is \code{atol = 1e-6}, \code{rtol = 1e-3}.
+#'   and the ODE solver tolerances \code{rtol = max(10^(-2*sigdig), 1e-12)},
+#'   \code{atol = rtol/100} for every solver.  An objective solved to relative
+#'   error \code{rtol} locates its minimum only to about \code{sqrt(rtol)}, so
+#'   this is the solve a \code{10^-sigdig} optimizer needs.  The sensitivity
+#'   (\code{atolSens}/\code{rtolSens}) tolerances match the main solve; the
+#'   steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one order looser.
+#'   At the default \code{sigdig = 3} this is \code{atol = 1e-8},
+#'   \code{rtol = 1e-6}.
 #'
 #' @param sigdigTable Significant digits in the final output table.
-#'   If not specified, then it matches the significant digits in the
-#'   `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.
+#'   If not specified (`NULL`), it defaults to `sigdig`.
 #'
 #' @param epsilon Precision of estimate for n1qn1 optimization.
 #'
@@ -90,9 +174,53 @@
 #'     recompute engine.
 #'
 #' @param covSolveTol absolute/relative ODE tolerance for the covariance solves --
-#'     the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
-#'     perturbed solves behind the finite-difference methods.  \code{NULL} (default)
-#'     derives a tight tolerance from \code{sigdig}; supply a number to override it.
+#'     the perturbed solves behind the finite-difference methods (every probe and
+#'     the stencil centre it is compared against) and the augmented-sensitivity
+#'     solves behind \code{covMethod="analytic"}.  \code{NULL} (default) derives
+#'     them from the fit's own tolerances: the finite-difference solves use
+#'     \code{atol} and \code{rtol} each times 1e-3, capped at 1e-7 (at the default
+#'     \code{sigdig = 3}, \code{rtol = 1e-9} and \code{atol = 1e-11}), and the
+#'     analytic augmented solves use \code{max(1e-12, min(1e-8, 10^-(sigdig + 6)))}.  The
+#'     inner problems of the finite-difference probes are tightened the same way,
+#'     whichever \code{innerOpt} runs them: \code{trustFterm} and
+#'     \code{trustMterm}, \code{epsilon} (n1qn1), and the \code{innerLbfgs*}
+#'     tolerances (lbfgsb3c) each times 1e-3, capped at 1e-9.  No derived
+#'     tolerance goes below 1e-12 unless the fit's own already is.
+#'     A number sets \code{atol = rtol = covSolveTol} for both kinds of solve.
+#'     Estimation itself always runs at the fit's tolerances.  When the
+#'     finite-difference standard errors look noisy (they change with small
+#'     changes to the steps or the estimates, or disagree with
+#'     \code{covMethod="analytic"}), a tighter value such as \code{1e-10} or
+#'     \code{1e-12} can help: every probe's solve error enters the differences.
+#'
+#' @param covFallback what each \code{covMethod} falls back to when it gives no
+#'     usable covariance: a named list, one element per method, each the ordered
+#'     methods to try instead (the whole list, not followed further).  The default
+#'     is the established behaviour: \code{"r,s"} falls to \code{"r"} then
+#'     \code{"s"} (whichever matrix is usable), \code{"r"} to \code{"s"},
+#'     \code{"analytic"} to the finite-difference \code{"r,s"}, \code{"r"} and
+#'     \code{"s"}, and \code{"s"} to nothing.  A list may also name \code{"sa"} and
+#'     \code{"imp"}, which are computed after the fit when the finite-difference
+#'     methods before them gave no covariance.  A list you give replaces the
+#'     default: a method it does not name has no fallback.  The \code{"r,s"} check
+#'     of a doubtful sandwich (see \code{covSmall}) only picks a listed method.  The
+#'     methods tried and why each was not used are in \code{fit$env$covTried}.
+#'
+#' @param covPrecursor what a finite-difference covariance may start from, in
+#'     order of preference: \code{"fd"}, a full-stage R this fit computed under
+#'     other settings (\code{setCov()} with another \code{rsControl()}), and
+#'     \code{"analytic"}, the analytic covariance the fit holds.  The first one
+#'     the fit holds seeds the full stage's step searches with its diagonal;
+#'     every step still passes the same acceptance test.  A fresh fit holds
+#'     neither, so this matters for \code{setCov()}.  \code{NULL} uses none.  How
+#'     it served is in \code{fit$env$covPrecursorUsed} and the fit print.
+#'
+#' @param covShortcut with a precursor (see \code{covPrecursor}), predict the
+#'     full R from the measured diagonal and the precursor's correlations, check
+#'     the prediction against the objective along four fixed directions, and
+#'     skip measuring the off-diagonals when it agrees to 1\% in each (the record
+#'     says "accepted"); otherwise they are measured as usual ("fell back").
+#'     \code{FALSE} (default) always measures them.
 #'
 #' @param covFull shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 #'     full theta + residual sigma + Omega covariance (assembled analytically for
@@ -101,8 +229,71 @@
 #'     \code{covMethod}: \code{"r,s"} is the full sandwich
 #'     \code{solve(Rfull) \%*\% Sfull \%*\% solve(Rfull)}, \code{"s"} is
 #'     \code{solve(Sfull)}, \code{"r"} is \code{solve(Rfull)}.  \code{FALSE}
-#'     installs only the structural-theta block (the historical shape).
+#'     installs only the structural-theta block (the historical shape).  The
+#'     installed shape is named by \code{fit$covMethod} -- \code{"r,s (full)"}
+#'     versus \code{"r,s"} -- and the other shape is cached, so
+#'     \code{\link{setCov}()} swaps between them without recomputing either.
+#'     Both shapes come from one finite-difference computation over the full
+#'     parameter set (the structural-theta shape is its theta block), at the steps
+#'     \code{gillKcov}, \code{gillStepCov} and \code{gillFtolCov} choose, so
+#'     \code{rmatNorm}, \code{smatNorm} and \code{covGillF} do not apply; the
+#'     theta-only stage runs separately (with them) for a mixture, a mu-referenced
+#'     model, a generalized log-likelihood, \code{gillKcov = 0} or
+#'     \code{covDerivMethod = "forward"}.
 #'
+#' @param fdOutlierZ Cut of the Iglewicz-Hoaglin modified z-score that decides
+#'   whether a finite-differenced subject's slope is an outlier against the exact
+#'   analytic slopes, and so whether `fdChartrand` refines it.  The conventional
+#'   3.5; lower it to make the pass fire more readily (and to exercise it), raise
+#'   it to suppress it without turning `fdChartrand` off.
+#' @param fdOutlierScale Test the outlier criterion on the **per-observation**
+#'   slope (`TRUE`, the default) rather than the raw one.  A per-subject slope
+#'   scales with how much data that subject carries, so raw slopes from a
+#'   3-observation and a 20-observation subject are not draws from one
+#'   distribution -- pooling them makes a legitimately large slope look like an
+#'   outlier on unbalanced or sparse data.  Only the test is scaled; the gradient
+#'   itself is untouched.  On balanced data this changes nothing, since dividing
+#'   every slope by the same count leaves the modified z-score unchanged.
+#' @param fdRefine Estimator used to recompute a finite-differenced slope once
+#'   the outlier pass fires.  On noisy, hard-to-solve likelihood surfaces the
+#'   ordering is roughly `"richardson"` < `"lanczos"` < `"chartrand"`:
+#'
+#'   * `"richardson"` -- Richardson extrapolation of central differences at
+#'     `h, h/v, h/v^2, ...`, cancelling the `h^2, h^4, ...` truncation terms in
+#'     turn.  Cheapest, and right when the surface is smooth and only truncation
+#'     matters.  It extrapolates toward `h -> 0`, which is *into* the noise, so it
+#'     is the wrong instrument when the noise floor is what limits the difference.
+#'   * `"lanczos"` -- the Lanczos generalized derivative, a least-squares slope
+#'     through `2m+1` points.  Same `O(h^2)` truncation as a central difference but
+#'     lower variance, since independent evaluation noise averages down as points
+#'     are added rather than being amplified.  The middle rung.
+#'   * `"chartrand"` (default) -- total-variation regularized differentiation over
+#'     a wide interval, which absorbs curvature through the regularized derivative
+#'     itself instead of assuming a stencil.  Most expensive and most robust to a
+#'     genuinely rough surface.
+#'
+#'   All three apply identically: they are gated by the same outlier test, touch
+#'   only the finite-differenced subjects, and never recompute a subject whose
+#'   analytic gradient is available.
+#' @param fdLanczosM Half-width `m` of the `"lanczos"` estimator (`2m` evaluations).
+#' @param fdRichardsonR Depth of the `"richardson"` extrapolation table.
+#' @param fdRichardsonV Step-shrink ratio `v` of the `"richardson"` estimator.
+#' @param fdChartrandAll When the outlier pass fires for a parameter, refine
+#'   **every** finite-differenced subject with the Chartrand TV derivative rather
+#'   than only the outlying ones.  Subjects whose augmented solve succeeded keep
+#'   their exact analytic gradient either way -- only finite differences are ever
+#'   recomputed.  Default `FALSE` (refine the outliers only).
+#' @param fdOutlierAny Let an outlier among the **exact analytic** slopes fire the
+#'   outlier pass as well, not only an outlier among the finite differences.
+#'   Still only the finite differences are recomputed.  Default `FALSE`.
+#' @param fdIndividualStep For the per-subject finite-difference fallback of the
+#'   analytic outer gradient (`fast=TRUE`), search the shi step size separately
+#'   for every flagged subject (`TRUE`, the default) rather than once on the
+#'   summed objective over them.  The subjects that reach this path are the badly
+#'   conditioned ones, so one shared step cannot suit them all; a per-subject
+#'   search also supplies the population of converged peers a clamped step is
+#'   repaired from.  `FALSE` restores the single shared step, which costs fewer
+#'   evaluations.
 #' @param fdChartrand Refine finite-difference slopes that the robust outlier
 #'     test flags (default \code{TRUE}).  When a subject's per-parameter slope
 #'     sits far outside the modified z-score interval of the others, its central
@@ -138,10 +329,36 @@
 #'     \code{nAGQ > 1}; those fall back to the finite-difference gradient with
 #'     a message (linCmt() and out-of-scope log-likelihood models downgrade to
 #'     \code{fast=FALSE} up front).  When unspecified,
-#'     the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
+#'     the outer optimizer defaults to \code{"nlminb"} (vs \code{"bobyqa"} for
 #'     \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 #'     \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 #'     \code{foceif}) default this to \code{TRUE}.
+#' @param priorMethod Which of the shared prior kernel's three omega
+#'     conventions (nlmixr2/rxode2#1270) to evaluate an \code{ini({})}
+#'     \code{prior()} under -- \code{"general"} (textbook Bayesian),
+#'     \code{"nwpri"} (NONMEM's own \verb{$PRIOR NWPRI}), or \code{"tnpri"}
+#'     (the Monolix/NONMEM-own-estimation joint-normal convention on omega).
+#'     The default, \code{"auto"}, reads the convention off what the model's
+#'     own \code{ini({})} actually wrote (an \code{invWishart()} degrees-of-
+#'     freedom prior on an omega block means \code{"nwpri"}; a normal prior
+#'     directly on an omega element means \code{"tnpri"}; anything else,
+#'     including a \code{dcauchy()} prior, means \code{"general"}) --
+#'     deliberately never a fixed default, since the identical
+#'     \code{invWishart(nu)} syntax means a different number under
+#'     \code{"general"} and \code{"nwpri"}.  Setting this explicitly forces
+#'     that convention regardless of what auto-detection would have picked,
+#'     and errors before any estimation starts if the model's priors are not
+#'     representable under it (e.g. \code{priorMethod="tnpri"} on a model
+#'     with an \code{invWishart()} prior).  Ignored when the model has no
+#'     prior at all.
+#'
+#'     \code{"none"} builds no prior specification: the \code{ini({})}
+#'     priors stay on the model but are not evaluated, so the objective is
+#'     the plain (unpenalized) likelihood.  It exists for callers that
+#'     handled the priors somewhere else and only finalize through this
+#'     control -- a sampler that already drew from the posterior, say --
+#'     where building a specification would at best be unused and at worst
+#'     refuse a prior this kernel cannot evaluate but the caller could.
 #'
 #' @param covTryHarder If the R matrix is non-positive definite and
 #'     cannot be corrected to be non-positive definite try estimating
@@ -154,7 +371,9 @@
 #'     first iteration uses a looser \code{1e-3} so an already-stationary eta is
 #'     returned untouched.  Unlike the solver and optimizer tolerances this is not
 #'     derived from \code{sigdig} -- it is a convergence target on an inner Newton
-#'     rather than a precision request.  Set it explicitly to test whether a fit's
+#'     rather than a precision request.  It also bounds the Newton decrement at
+#'     which a stalled subject is accepted at the ODE solve's noise floor rather
+#'     than finite-differenced on its own.  Set it explicitly to test whether a fit's
 #'     finite-difference fallbacks are tolerance-driven.
 #'
 #' @param hessEps is a double value representing the epsilon for the
@@ -167,11 +386,34 @@
 #'
 #' @param optimHessType Hessian type for numeric-difference individual
 #'   Hessians in generalized log-likelihood estimation: "central" (matches
-#'   R's `optimHess()`, default) or "forward" (faster).
+#'   R's `optimHess()`, default) or "forward" (faster).  The integer code a
+#'   control stores is accepted too: 1 (central) or 3 (forward) in
+#'   `foceiControl()`, 2 (central) or 1 (forward) in the nlm-family controls.
 #'
 #' @param optimHessCovType Hessian type for numeric-difference individual
 #'   Hessians used for the covariance step/final likelihood: "central"
-#'   (more accurate, used here) or "forward".
+#'   (more accurate, used here) or "forward".  The integer code a control
+#'   stores is accepted too: 1 (central) or 3 (forward) in `foceiControl()`.
+#'
+#' @param hessEtaStepMin Floor on the finite-difference step used for the
+#'   individual (eta) Hessian in generalized log-likelihood estimation,
+#'   expressed as a fraction of that random effect's own standard deviation
+#'   (\code{sqrt(diag(Omega))}).  Default \code{0.05}; \code{0} restores the
+#'   plain absolute \code{shi21hMin} floor.
+#'
+#'   The Shi (2021) step search is told the function's noise floor is
+#'   \code{rxControl(atolSens=)}, but the inner gradient it differences comes
+#'   out of a sensitivity solve that \code{rtolSens} governs as well, so the
+#'   noise is understated and the search shrinks the step until the difference
+#'   is taken inside it.  \code{n1qn1} absorbs that -- it uses this Hessian only
+#'   as a warm-start seed and then corrects it by its own quasi-Newton updates
+#'   as it iterates -- but \code{innerOpt="trust"} re-derives it as its
+#'   trust-region model Hessian at every trial point, with nothing to correct
+#'   it, and adds its log-determinant to the reported objective.  Flooring the
+#'   step relative to the eta scale stops the runaway without paying for a
+#'   tighter solve.  It applies to every inner optimizer: the step a finite
+#'   difference needs is a property of the problem, not of who consumes the
+#'   Hessian.
 #'
 #' @param censOption Treatment of the second derivative for censored
 #'   (M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
@@ -226,8 +468,12 @@
 #'
 #' @param lbfgsFactr Convergence factor for "L-BFGS-B": converges when the
 #'     objective reduction is within \code{lbfgsFactr * .Machine$double.eps}.
-#'     Derived from \code{sigdig} as \code{10^-sigdig / .Machine$double.eps}, so
-#'     the objective reduction target IS \code{10^-sigdig}.
+#'     Derived from \code{sigdig} as \code{10^(-sigdig-2) / .Machine$double.eps},
+#'     two orders tighter than the other \code{sigdig}-derived tolerances.  It
+#'     tests the objective reduction of a SINGLE step rather than stationarity,
+#'     so a target of \code{10^-sigdig} stops as soon as one step is small; the
+#'     extra two orders are what make the analytic-gradient (\code{fast=TRUE})
+#'     methods reach the same optimum as the derivative-free default.
 #'
 #' @param diagXform Transformation used on the diagonal of
 #'     \code{chol(solve(omega))} (the FOCEi-estimated parameters): one of
@@ -235,6 +481,51 @@
 #'
 #' @param iovXform Transformation used on the diagonal of the IOV: one of
 #'     \code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.
+#'     This parameterizes the magnitude theta of the \code{"theta"}
+#'     \code{iovMethod}; it has no effect under \code{"omega"}, where the
+#'     magnitude is fixed at one and the variability is carried by the
+#'     omega block itself, or under saem, which estimates the occasion
+#'     variance directly.
+#'
+#' @param iovMethod How inter-occasion variability is expanded before
+#'     estimation: one of \code{"auto"} (default), \code{"theta"} or
+#'     \code{"omega"}.
+#'
+#'     \code{"theta"} is the long-standing expansion: each occasion
+#'     parameter becomes a magnitude theta, with one unit-variance eta per
+#'     occasion fixed to it.  That shape cannot represent a correlation
+#'     between two occasion parameters.
+#'
+#'     \code{"omega"} instead fixes the magnitude theta at one and
+#'     estimates the per-occasion eta blocks directly, occasion one being
+#'     the block and the rest repeating it (NONMEM's
+#'     \code{$OMEGA BLOCK(n) SAME}).  The correlation then lives in the
+#'     estimated block.
+#'
+#'     \code{"auto"} picks \code{"omega"} when the IOV block has any
+#'     off-diagonal element, since \code{"theta"} provably cannot
+#'     represent one, and \code{"theta"} otherwise.  \code{"omega"} may
+#'     be asked for on a diagonal block as well, so the two can be
+#'     compared on the same model.  The choice is made per LEVEL of
+#'     variability, so a correlation on \code{occ} does not change how
+#'     an unrelated diagonal \code{occ2} is expanded.
+#'
+#'     \code{"omega"} is only available for estimation methods that
+#'     honour the repeated block (the FOCEi family).  \code{saem} and
+#'     the variational, nonparametric and importance-sampling methods
+#'     estimate omega elsewhere, so they continue to refuse a
+#'     correlated occasion block rather than silently estimate each
+#'     occasion on its own.
+#'
+#'     The two are the same statistical model -- at an occasion variance
+#'     of one, where the parameterizations coincide, they agree on the
+#'     objective to machine precision, and evaluated at matched random
+#'     effects they agree to ~2e-8 at any variance.  They are not
+#'     interchangeable in practice: \code{"theta"} hands FOCEi's inner
+#'     optimizer unit-scale etas and so converges the inner problem
+#'     better when the occasion variance is far from one.  That is why
+#'     \code{"auto"} keeps \code{"theta"} unless a correlation forces
+#'     \code{"omega"}.
 #'
 #' @param sumProd Is a boolean indicating if the model should change
 #'     multiplication to high precision multiplication and sums to
@@ -287,21 +578,15 @@
 #'     \itemize{
 #'
 #'     \item \code{"nonmem"} freezes R at the \code{eta = 0} population
-#'     prediction and holds it constant across the inner optimization, matching
-#'     NONMEM's FOCE.  Advantage: reproduces NONMEM FOCE objective and standard
-#'     errors, and an ODE model agrees with its closed-form (\code{linCmt})
-#'     equivalent.  Disadvantage: R ignores the individual (conditional)
-#'     heteroscedasticity, so it can be slightly less accurate than
-#'     \code{"foce+"} for proportional/combined error.
+#'     prediction and holds it constant across the inner optimization. This
+#'     follows NONMEM's residual-variance convention for FOCE without interaction.
 #'
 #'     \item \code{"foce+"} evaluates R at the current conditional
 #'     \code{eta} (the live variance), keeping the truncated FOCE
-#'     inner gradient.  Advantage: uses the conditional variance and
-#'     is a bit more accurate than NONMEM's FOCE in some cases.
-#'     Disadvantage: does not match NONMEM FOCE.  This was the FOCE
-#'     behavior in \pkg{nlmixr2est} 6.0.1 and earlier. This does not
-#'     use the gradient of \code{eta} like the full \code{focei}
-#'     method, so it is not as accurate as \code{focei}.
+#'     inner score, which is refined before evaluating the marginal objective.
+#'     It retains the live-variance convention used in \pkg{nlmixr2est} 6.0.1
+#'     and earlier. It differs from NONMEM's FOCE without interaction and
+#'     omits the variance derivatives included in FOCEI.
 #'
 #'     }
 #'
@@ -320,9 +605,202 @@
 #'     Decomposition for a R or S matrix.
 #'
 #' @param outerOpt optimization method for the outer problem
+#'   Fast \code{"nlminb"} fits use gradients only by default. Set
+#'   \code{outerTrustHessian="analytic"} to request the analytical outer Hessian
+#'   for supported Gaussian FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
+#'   curvature is unavailable.  \code{"trust"} is a trust-region Newton method
+#'   (\pkg{RcppTrust}) built on that same Hessian; see
+#'   \code{outerTrustHessian}.  It is unbounded, so a trial point outside the
+#'   box is reported as an infinite objective and the region shrinks instead.
 #'
-#' @param innerOpt optimization method for the inner problem (not
-#'     implemented yet.)
+#' @param outerTrustHessian Curvature source for \code{outerOpt="trust"} or \code{"nlminb"}.
+#'   For \code{"nlminb"}, \code{"auto"} and \code{"bfgs"} leave curvature to
+#'   its BFGS approximation; \code{"analytic"} and \code{"fd"} request a Hessian.
+#'   For \code{"trust"}, \code{"auto"} (default) uses the analytical outer Hessian when
+#'   \code{fast=TRUE} makes it available and the damped-BFGS update otherwise,
+#'   and falls back to that update if the Hessian is refused mid-fit.
+#'   \code{"analytic"} requires \code{fast=TRUE}.  \code{"bfgs"} is the
+#'   damped BFGS update (Nocedal & Wright, Numerical Optimization 2nd ed.,
+#'   Procedure 18.2) built from consecutive gradients, so it adds no
+#'   evaluations.  \code{"fd"} differences the outer gradient, costing one
+#'   extra population gradient per parameter per iteration.
+#'
+#' @param outerTrustRinit,outerTrustRmax Initial and maximum trust-region
+#'   radius for \code{outerOpt="trust"}, in the scaled-parameter space the
+#'   outer problem optimizes in.  \code{NULL} (default) derives
+#'   \code{outerTrustRinit} from \code{RcppTrust::bobyqa()}'s own default-rhobeg
+#'   formula and \code{outerTrustRmax} as \code{8 * outerTrustRinit}.
+#'
+#' @param outerTrustFterm,outerTrustMterm Function-value and predicted-decrease
+#'   convergence tolerances for \code{outerOpt="trust"}.  \code{NULL}
+#'   (default) uses \code{10^(-sigdig-2)}; \code{outerTrustMterm} defaults to
+#'   \code{outerTrustFterm}.
+#'
+#' @param outerTrustRelStep Relative step handed to the analytical outer
+#'   Hessian, and used for the \code{outerTrustHessian="fd"} gradient
+#'   difference.
+#'
+#' @param outerTrustRestarts How many times \code{outerOpt="trust"} may
+#'   re-enter the trust region from its own reported solution when the Newton
+#'   decrement there says the point is not stationary.  A collapsing trust
+#'   region satisfies the solver's own convergence test at a point that is not
+#'   a minimum; re-entering restores the initial radius.
+#'   \code{maxOuterIterations} is the total across restarts, not per restart.
+#'
+#' @details Custom outer optimizers receive \code{control$hessian(par, relStep=1e-3)}.
+#'   It settles the requested point and assembles the reported objective's
+#'   Hessian in the existing C++ sensitivity pool. Third-order terms are obtained
+#'   by differencing second-order sensitivities in ETA directions. The result uses
+#'   optimizer coordinates and objective scaling and retains negative curvature.
+#'   This requires \code{fast=TRUE}. M2/M3/M4 censoring uses the analytical-SE
+#'   \code{censOption="gauss"} convention. Censored \code{"laplace"} curvature,
+#'   priors, clipped AGQ and estimated transformations are unsupported.
+#'   Unsuccessful inner solves and an
+#'   active variance floor also make curvature unavailable.
+#'
+#' @param innerOpt optimization method for the inner (per-subject eta)
+#'     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
+#'     using an exact Gauss-Newton+Omega^-1 Hessian every iteration),
+#'     `"n1qn1"` (quasi-Newton, gets a Hessian only once as a warm-start
+#'     seed), `"lbfgsb3c"` (thread-safe L-BFGS-B from `lbfgsb3c`, controlled
+#'     by the `innerLbfgs*` arguments), `"steihaug"` (RcppTrust truncated
+#'     conjugate-gradient trust region on the same Hessian as `"trust"`, using
+#'     the `trust*` controls) or `"newuoa"` (RcppTrust derivative-free NEWUOA).
+#'     `"auto"` never picks the last three.
+#'
+#'     `"auto"` picks `"n1qn1"` for a generalized-likelihood endpoint
+#'     (`dnorm()`, `ll()`, `dpois()`, ...) and `"trust"` for everything else.
+#'     Such an endpoint has no Gauss-Newton shortcut, so the inner eta Hessian
+#'     is finite-differenced; `"trust"` rebuilds it at every trial point, which
+#'     costs 2*neta inner solves each time, while `"n1qn1"` builds it once as a
+#'     warm-start seed and corrects it with its own quasi-Newton updates.  On
+#'     everything else `"trust"` is typically the faster of the two.
+#'
+#' @param trustConf confidence level defining the `innerOpt="trust"`
+#'     trust-region radius: since eta ~ N(0, Omega), the radius (in
+#'     sqrt(diag(Omega))-scaled units) is `sqrt(qchisq(trustConf, df=neta))`,
+#'     the boundary of the `trustConf`-level eta confidence region. Default
+#'     0.975.
+#'
+#' @param trustRinit initial `innerOpt="trust"` trust-region radius. `NULL`
+#'     (default) derives it from `trustConf`.
+#'
+#' @param trustRmax maximum `innerOpt="trust"` trust-region radius. `NULL`
+#'     (default) derives it from `trustConf`.
+#'
+#' @param trustFterm,trustMterm `innerOpt="trust"`'s own function-value and
+#'     predicted-decrease convergence tolerances for the per-subject Newton
+#'     solve. `NULL` (default) uses `10^(-sigdig-2)`, two orders tighter than
+#'     the plain `10^(-sigdig)` most tolerances here use, for the same reason
+#'     `lbfgsFactr` is: the inner solve is the function the outer problem
+#'     differentiates, so this tolerance sets the objective's noise floor and a
+#'     finite-difference outer gradient cannot resolve a step below it. Left at
+#'     the plain `10^(-sigdig)`, an `nAGQ=2` `theo_sd` fit stopped at an
+#'     objective of 134.46 against 118.52, and took longer doing it -- the
+#'     noisy gradient misleads the outer search as well as lengthening it.
+#'     Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
+#'     "precision of estimate" tolerance) -- tying `"trust"`'s stopping
+#'     criterion to a value picked for a different optimizer is exactly the
+#'     coupling these parameters exist to remove. Has no effect unless
+#'     `innerOpt="trust"`.
+#'
+#' @param innerLbfgsLmm number of BFGS updates retained by the
+#'     `innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.
+#'     Defaults to 5.
+#'
+#' @param innerLbfgsFactr,innerLbfgsPgtol `innerOpt="lbfgsb3c"`'s own L-BFGS-B
+#'     objective-reduction factor and projected-gradient tolerance, separate
+#'     from the outer `lbfgsFactr`/`lbfgsPgtol`. `NULL` (default) derives them
+#'     from `sigdig`: `innerLbfgsFactr` is `10^(-sigdig-2) /
+#'     .Machine$double.eps` (floored at 1) and `innerLbfgsPgtol` is
+#'     `10^(-sigdig-2)`, the same scale as `trustFterm`.
+#'
+#' @param innerLbfgsAbstol,innerLbfgsReltol `innerOpt="lbfgsb3c"`'s absolute and
+#'     relative eta-change tolerances, separate from the outer
+#'     `abstol`/`reltol`. `NULL` (default) uses `10^(-sigdig-2)`. With
+#'     `innerOpt="lbfgsb3c"`, `maxInnerIterations` caps the function evaluations
+#'     of each solve.
+#'
+#' @param trustPolish logical; when `TRUE`, each converged `innerOpt="trust"`
+#'     solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
+#'     This makes the objective less dependent on the warm-start ETAs and can
+#'     help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+#'     outer search then also restarts once from where it stops, which costs
+#'     about twice the outer evaluations.  `FALSE` (default) keeps the plain
+#'     trust solve and a single outer search.
+#'
+#' @param steihaugPolish,newuoaPolish logical; the `trustPolish` Newton
+#'     polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
+#'     solve.  `FALSE` (default) keeps the plain solve.
+#'
+#' @param newuoaRhoend final NEWUOA trust-region radius for
+#'     `innerOpt="newuoa"`, in sqrt(diag(Omega)) units.  `NULL` (default) uses
+#'     `sqrt(rtol)` of the FOCEi ODE solve (`rxControl`), the precision that
+#'     solve can resolve a minimum to.
+#'
+#' @param bobyqaStationary logical; when `TRUE` (default), a normal exit of
+#'     the `"bobyqa"` outer search is checked with a central-difference
+#'     gradient and a downhill probe.  If the probe lowers the objective by
+#'     more than `10^(1-sigdig)`, bobyqa restarts from there (up to 3 times,
+#'     within `maxOuterIterations`).  This catches a search that stops in a
+#'     narrow valley short of the minimum (#1196); `FALSE` skips the check.
+#'
+#' @param innerHessian Inner optimization curvature: `"focei"` (default) or
+#'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
+#'   Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
+#'   Value, gradient and full curvature share one sensitivity solve.
+#'   The marginal objective's FOCEI curvature is unchanged.  It is not
+#'   supported with registered external likelihood contributions.
+#' @param detHessian Curvature entering the objective's Laplace
+#'   log-determinant: `"focei"` (default), the Gauss-Newton expected
+#'   information, or `"conditional"`, the full conditional Hessian (the
+#'   observed information at the conditional mode, as NONMEM's LAPLACE).
+#'   `"conditional"` requires fast Gaussian FOCEI; the analytic outer
+#'   gradient then carries the matching third-order terms, and the
+#'   analytic covariance falls back to finite differences.
+#' @param hessianMethod For a non-normal-endpoint model (any distribution
+#'     other than \code{norm}), the per-subject inner Hessian has no
+#'     Gaussian Gauss-Newton shortcut and falls back to a finite difference
+#'     of the gradient every `innerOpt="trust"` Newton step
+#'     (`calcEtaHessian()`, `src/inner.cpp`). `"fd"` (default) recomputes
+#'     this Hessian from scratch every Newton step via finite difference.
+#'     `"bfgs"` is the damped BFGS update (Nocedal & Wright, *Numerical
+#'     Optimization*, 2nd ed., 2006, Procedure 18.2), always positive
+#'     definite; `"sr1"` is the Symmetric Rank-1 update (Nocedal & Wright;
+#'     Murtagh & Sargent, *Comput. J.* 13, 1970), not forced positive
+#'     definite; `"bofill"` is Bofill's (1994, *J. Comput. Chem.* 15, 1-11)
+#'     SR1/Powell-Symmetric-Broyden blend. All three are built from
+#'     consecutive Newton steps' already-computed gradients (no extra
+#'     evaluations), seeded from one `"fd"`-style Hessian on the first
+#'     Newton step of each inner solve.
+#'
+#'     Unlike `trustControl(hessianMethod=)`'s analogous OUTER-theta option
+#'     (where `"sr1"` is the default), this inner Hessian is not just a
+#'     step-direction aid: `LikInner2()` (`src/inner.cpp`) adds this
+#'     Hessian's log-determinant directly into the reported Laplace
+#'     objective, which the OUTER optimizer then searches over. A
+#'     quasi-Newton estimate built from the handful of Newton steps one
+#'     subject's inner solve takes is accurate enough to guide the step but
+#'     not accurate enough to serve as that objective term -- confirmed on
+#'     a real one-compartment IV model fit as a general \code{ll()}/`dnorm()`
+#'     endpoint: `"bfgs"`/`"sr1"`/`"bofill"` all converged to the same
+#'     wrong `Vc` (about 90 against a simulated 70 and a plain (non-`ll()`)
+#'     `focei` fit's 67, with a *worse* reported objective than `"fd"`'s
+#'     correct answer) -- the biased log-determinant misleads the outer
+#'     search into a worse point it reports as better. `"fd"`'s fresh
+#'     finite difference has no such bias, so it stays the default here even
+#'     though `"bfgs"`/`"sr1"`/`"bofill"` remain available (and are
+#'     genuinely faster, per this package's own small benchmark,
+#'     `inst/benchmarks/benchmark-focei-hessian-method.R`) for a caller who
+#'     has verified their model does not depend on this Hessian's precision.
+#'     Has no effect for normal-endpoint models (the Gauss-Newton inner
+#'     Hessian is used unconditionally there). Only meaningful with
+#'     `innerOpt="trust"`, which the default `innerOpt="auto"` does not pick
+#'     for these models -- so setting this needs `innerOpt="trust"` pinned as
+#'     well. Asking for `"bfgs"`/`"sr1"`/`"bofill"` under any other inner
+#'     optimizer is an error rather than a silent no-op: `foceiControl()`
+#'     refuses a pinned `innerOpt`, and the fit refuses one `"auto"` resolves
+#'     to `"n1qn1"`.
 #'
 #' @param stateTrim Trim state amounts/concentrations to this value.
 #'
@@ -340,7 +818,7 @@
 #' @param resetThetaCheckPer represents objective function
 #'     \% percentage below which resetThetaP is checked.
 #'
-#' @param resetThetaFinalP represents the p-value for reseting the
+#' @param resetThetaFinalP represents the p-value for resetting the
 #'     population mu-referenced THETA parameters based on ETA drift
 #'     during optimization, and resetting the optimization one final time.
 #'     `0` = never reset (the default); see \code{resetThetaP}.
@@ -404,6 +882,8 @@
 #' @param iter.max Maximum number of iterations allowed (nlmimb)
 #'
 #' @param rel.tol Relative tolerance before nlminb stops (nlmimb).
+#'   `NULL` (default) uses `10^(-sigdig)`, or `10^(-sigdig-2)` with
+#'   `fast=TRUE`, whose analytic gradient can resolve the tighter optimum.
 #'
 #' @param x.tol X tolerance for nlmixr2 optimizer
 #'
@@ -446,14 +926,16 @@
 #' @param scaleCmin Minimum value of the scaleC to prevent underflow.
 #'
 #' @param scaleCband Length-2 increasing pair `c(low, high)` (default
-#'   `c(0.1, 10)`).  Each `theta`'s derivative-based scaling constant
-#'   (`1/|init|` for a linear parameter, or the transform-specific
-#'   formula) is kept when it lands inside this band, and otherwise
-#'   replaced by the parameter's native magnitude `|init|`.  This catches
-#'   the singular cases -- `1/|init|` blowing up for a small covariate
-#'   initial estimate, `log()` at init `1`, `logit` at the interval
-#'   midpoint, `factorial`/`gamma` at a digamma zero -- while leaving the
-#'   well-scaled common case (and its results) untouched.
+#'   `c(0.1, 10)`).  The derivative-based scaling constant of a linear
+#'   `theta` (`1/|init|`), or of a transformed one whose transform has no
+#'   band of its own, is kept when it lands inside this band, and otherwise
+#'   replaced by the parameter's native magnitude `|init|`, so a small
+#'   initial estimate (a covariate coefficient, say) does not get a huge
+#'   constant.  Transformed thetas are guarded to bands of their own
+#'   transform, which catch `log()` at init `1`, `logit` at the interval
+#'   midpoint and `factorial`/`gamma` at a digamma zero.  The constants of
+#'   residual-error parameters and those given in `scaleC` are used as
+#'   they are.
 #'
 #' @param normType Parameter normalization/scaling used to get scaled
 #'     initial values for \code{scaleType}, of the form
@@ -495,14 +977,16 @@
 #'   log-likelihood estimation.
 #'
 #' @param rmatNorm A parameter to normalize gradient step size by the
-#'     parameter value during the calculation of the R matrix
+#'     parameter value during the calculation of the R matrix of the
+#'     theta-only stage (see \code{covFull})
 #'
 #' @param rmatNormLlik A parameter to normalize gradient step size by
 #'   the parameter value during the calculation of the R matrix if you
 #'   are using generalized log-likelihood Hessian matrix.
 #'
 #' @param smatNorm A parameter to normalize gradient step size by the
-#'     parameter value during the calculation of the S matrix
+#'     parameter value during the calculation of the S matrix of the
+#'     theta-only stage (see \code{covFull})
 #'
 #' @param smatNormLlik A parameter to normalize gradient step size by
 #'   the parameter value during the calculation of the S matrix if you
@@ -510,7 +994,8 @@
 #'
 #' @param covGillF Use the Gill calculated optimal Forward difference
 #'     step size for the instead of the central difference step size
-#'     during the central difference gradient calculation.
+#'     during the central difference gradient calculation of the
+#'     theta-only stage (see \code{covFull}).
 #'
 #' @param optGillF Use the Gill calculated optimal Forward difference
 #'     step size for the instead of the central difference step size
@@ -545,6 +1030,28 @@
 #' @param etaNudge2 This is the second eta nudge.  By default it is
 #'   qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
 #'   (excluding zero) times by the 0.95\% normal region
+#'
+#' @param etaRestart Number of Omega draws the inner restart cascade tries
+#'   once the `etaNudge`/`etaNudge2` restarts are spent and the ETA solve is
+#'   still not converged.  Every nudge sets EVERY ETA to the same constant,
+#'   which explores poorly when the inner problem has more than one basin; a
+#'   draw from Omega is a starting point from the distribution the ETAs
+#'   actually come from.  The draws are taken once per fit, seeded from
+#'   `seed` (so the objective stays a function of theta alone and the fit
+#'   stays reproducible), and are only read after an inner solve has already
+#'   failed -- a fit whose inner solves converge never pays for them.  Use 0
+#'   to disable.
+#'
+#'   This applies to `innerOpt="trust"` (the default for a normal endpoint),
+#'   which reports a convergence verdict per solve.  `n1qn1` reports none, so
+#'   its own restart cascade is unchanged.
+#'
+#' @param finalEtaTol When the final objective is more than this above the
+#'   lowest objective the outer optimizer evaluated, the final ETAs are
+#'   re-solved from that evaluation's ETAs, keeping per subject whichever
+#'   start gives the lower objective.  Warm-started ETAs can fall into a
+#'   secondary mode during the search and stay there.  Only applies with a
+#'   warm start (`mceta < 0`).  Use `Inf` to disable.
 #'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
@@ -585,7 +1092,9 @@
 #'     the problem.  This is similar to 'PsN' resampling.
 #'
 #' @param eventType Event gradient type for dosing events; Can be
-#'   "central" or "forward"
+#'   "central" or "forward".  The integer code a control stores is accepted
+#'   too: 2 (central) or 3 (forward) in `foceiControl()`, 2 (central) or 1
+#'   (forward) in the nlm-family controls.
 #'
 #' @param eventSens How sensitivities of dosing/event parameters
 #'   (absorption lag time, bioavailability, infusion rate and duration,
@@ -593,7 +1102,12 @@
 #'   differences.  `"jump"` (the default) uses the analytic event ("jump")
 #'   sensitivities provided by `rxode2`, which add accuracy and can speed
 #'   up the gradient/Hessian by avoiding the extra finite-difference
-#'   solves for these parameters.
+#'   solves for these parameters.  Also gates the analytic moving-boundary
+#'   correction for a modeled `alag()`/`f()` on a `linCmt()` compartment; set
+#'   `"fd"` if that model infuses a dose into the lagged/scaled compartment
+#'   (rxode2/rxode2#1236), or if the regimen also doses an *unlagged/unscaled*
+#'   compartment alongside the lagged/scaled one -- a common design for
+#'   estimating `f()` from paired IV+oral data (rxode2/rxode2#1237).
 #'
 #' @param gradProgressOfvTime This is the time for a single objective
 #'     function evaluation (in seconds) to start progress bars on gradient evaluations
@@ -620,7 +1134,11 @@
 #' @param odeRecalcFactor The ODE recalculation factor when ODE
 #'   solving goes bad, this is the factor the rtol/atol is reduced
 #'
-#' @param rxControl `rxode2` ODE solving options during fitting, created with `rxControl()`
+#' @param rxControl `rxode2` ODE solving options during fitting, created with `rxControl()`.
+#'     The solver's adaptive steps set the objective's noise floor, which
+#'     grows with `rtol` and the number of observations.  For a non-stiff
+#'     model, `rxControl(method = "dop853")` gives a much smoother objective
+#'     than the default `"liblsoda"` at the same `rtol`.
 #'
 #' @param fallbackFD Fallback to the finite differences if the
 #'   sensitivity equations do not solve.
@@ -654,9 +1172,27 @@
 #'   out of bound); `-1` jumps between the extrapolated eta and eta=0, keeping
 #'   the better; both `-2` and `-1` fall back to keeping the last eta when no
 #'   analytic `d eta*/d theta` is available (`fast = FALSE`).  `0` uses eta=0
-#'   for each inner optimization; for `n>0`, the last eta, eta=0, and n-1
-#'   etas sampled from omega are each evaluated and the best (by inner
-#'   objective) is used.
+#'   for each inner optimization, as NONMEM does; the default `-2` differs from
+#'   NONMEM here, since it starts from the last (or extrapolated) eta rather
+#'   than eta=0.  For `n>0`, eta=0 and n-1 etas sampled from omega are each
+#'   evaluated and the best (by inner objective) starts the inner
+#'   optimization.  A start that is lowest before optimization need not
+#'   reach the lowest optimum, so a subject can converge to a worse local
+#'   optimum than eta=0 would have reached and the objective can end above that
+#'   of `mceta = 0`; `mcetaOpt = TRUE` avoids this.  The carried last eta is
+#'   deliberately not one of the `n>0` candidates -- it is the previous
+#'   iteration's converged conditional mode, so it would win for every subject
+#'   and `n>0` would reduce to the keep-last behavior of `-1`/`-2`.  The search
+#'   is skipped while the outer
+#'   gradient is being differenced, where the eta is pinned to the central
+#'   evaluation's mode.
+#'
+#' @param mcetaOpt When `TRUE` and `mceta >= 1`, the inner problem is solved
+#'   from every sampled eta and then from eta=0, and the lowest converged
+#'   optimum is kept (compared on the marginal objective the fit reports), so
+#'   the objective never ends above that of `mceta = 0`.  It costs one inner
+#'   optimization per start instead of one per subject, so it is off by
+#'   default; `FALSE` optimizes only the best starting point.
 #'
 #' @param seed Integer seed (default `42`) used to make a FOCEi fit
 #'   reproducible and self-contained.  The fit (including the `mceta`
@@ -669,8 +1205,11 @@
 #'   `"calc"` (default) warm-starts each inner problem with the eta
 #'   Hessian calculated at the starting eta and the current theta;
 #'   since theta moves between outer evaluations it is always
-#'   recalculated, never reused from an earlier round.  `"save"` uses
-#'   the classic self-initialized Hessian.
+#'   recalculated, never reused from an earlier round.  `"save"`
+#'   restarts from the curvature n1qn1 built during the subject's
+#'   previous inner solve.  `"none"` lets n1qn1 initialize its own
+#'   diagonal Hessian.  Ignored by `innerOpt = "trust"`, which always
+#'   supplies its own exact Hessian.
 #'
 #' @param nAGQ Number of Gauss-Hermite adaptive quadrature points. `0`
 #'   disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
@@ -691,26 +1230,44 @@
 #'   bounds passed to the optimizer. `NA` transforms for optimization but
 #'   skips the final back-transform.
 #'
-#' @param zeroTheta Positive magnitude (default `0.001`) used to nudge a
+#' @param zeroTheta Positive magnitude (default `0.001`) used to move a
 #'   population parameter (`theta`) whose initial estimate is exactly `0`
-#'   off zero before estimation.  FOCEi scales a linear parameter by its
-#'   native magnitude `|init|`, which is `0` (no scale) for a zero
-#'   initial estimate, so the parameter is moved to `+zeroTheta` when it
-#'   is within the parameter's bounds, otherwise `-zeroTheta`; if neither
-#'   is within the bounds an error is raised.  Fixed parameters
-#'   (including those fixed at `0`) are left untouched.
+#'   off zero: to `+zeroTheta` when it is within the parameter's bounds,
+#'   otherwise `-zeroTheta`; if neither is within the bounds an error is
+#'   raised.  The move is not used as the parameter's scale: a linear
+#'   theta that starts at `0` is scaled by a typical magnitude instead,
+#'   `1/sd()` of the covariate it multiplies (e.g. `theta*WT`) or 1.
+#'   Fixed parameters (including those fixed at `0`) are left untouched.
+#'
+#' @param zeroThetaStep Largest one-step (Newton) move, in typical
+#'   magnitudes, from the start of a theta that began at `0` (default
+#'   `100`).  Before the outer optimization starts, the objective is
+#'   evaluated on either side of the start and the start moves to the
+#'   one-step estimate `-g/H` when that lowers the objective.  `0`
+#'   disables it.
 #'
 #' @param eventSens Controls how dosing/event-parameter (`alag`, `F`,
 #'   `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 #'   `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-#'   uses the legacy finite-difference behavior.
+#'   uses the legacy finite-difference behavior.  Also gates the analytic
+#'   moving-boundary correction for a modeled `alag()`/`f()` on a `linCmt()`
+#'   compartment; set `"fd"` if that model infuses a dose into the
+#'   lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
+#'   doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
+#'   -- a common design for estimating `f()` from paired IV+oral data
+#'   (rxode2/rxode2#1237).
 #'
 #' @param sensMethod Method used to compute the ODE parameter sensitivities.
 #'   `"forward"` uses the classic variational (forward) sensitivity ODEs;
 #'   `"default"` is the same thing.
 #'
+#' @param linCmtSensCarry `"auto"` (default) substitutes the exact
+#'   sensitivity-carry gradient for a `linCmt()` parameter driven by both an
+#'   eta and a time-varying covariate (needs an rxode2 with the carry
+#'   sentinels; silently keeps the standard gradient otherwise); `"none"`
+#'   always keeps the standard gradient.
+#'
 #' @inheritParams rxode2::rxSolve
-#' @inheritParams minqa::bobyqa
 #'
 #' @details
 #'
@@ -741,177 +1298,237 @@
 #'
 #' @family Estimation control
 #' @export
-foceiControl <- function(sigdig = 3, #
-                         ...,
-                         epsilon = NULL, # 1e-4,
-                         maxInnerIterations = 1000, #
-                         maxOuterIterations = 5000, #
-                         n1qn1nsim = NULL, #
-                         print = 1L, #
-                         printNcol = NULL, #
-                         scaleTo = 1.0, #
-                         scaleObjective = 0, #
-                         normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
-                         scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
-                         scaleCmax = 1e5, #
-                         scaleCmin = 1e-5, #
-                         scaleCband = c(0.1, 10), #
-                         scaleC = NULL, #
-                         scaleC0 = 1e5, #
-                         derivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
-                         derivMethod = c("switch", "forward", "central"), #
-                         derivSwitchTol = NULL, #
-                         covDerivMethod = c("central", "forward"), #
-                         covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""), #
-                         covSolveTol = NULL, #
-                         covFull = TRUE, #
-                         fast = FALSE, #
-                         fdChartrand = TRUE, #
-                         # norm of weights = 1/0.225
-                         #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
-                         foceEbeTol = NULL, #
-                         hessEps =(.Machine$double.eps)^(1/3),
-                         #hessEpsLlik =(1/0.225*.Machine$double.eps)^(1/4),
-                         hessEpsLlik =(.Machine$double.eps)^(1/3),
-                         optimHessType = c("central", "forward"),
-                         optimHessCovType=c("central", "forward"),
-                         censOption = c("gauss", "laplace"),
-                         eventType = c("central", "forward"), #
-                         eventSens = c("jump", "fd"), #
-                         centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
-                         lbfgsLmm = 7L, #
-                         lbfgsPgtol = 0, #
-                         lbfgsFactr = NULL, #
-                         eigen = TRUE, #
-                         diagXform = c("sqrt", "log", "identity"), #
-                         iovXform = c("sd", "var", "logsd", "logvar"), #
-                         sumProd = FALSE, #
-                         optExpression = TRUE,#
-                         literalFix=TRUE,
-                         literalFixRes=TRUE,
-                         ci = 0.95, #
-                         useColor = NULL, #
-                         boundTol = NULL, #
-                         calcTables = TRUE,#
-                         noAbort = TRUE, #
-                         interaction = TRUE, #
-                         foce = c("nonmem", "foce+"), #
-                         cholSEtol = (.Machine$double.eps)^(1 / 3), #
-                         cholAccept = 1e-3, #
-                         resetEtaP = 0.15, #
-                         # Default OFF.  The ETA-drift theta reset re-centers a
-                         # mu-referenced theta by the mean eta and restarts.  When the
-                         # etas cannot re-center -- e.g. every omega fixed, or a model
-                         # whose misfit the etas must absorb -- the shift does not stick,
-                         # the drift returns and the reset repeats until the restart cap
-                         # errors the fit out.  Where it does converge it lands on a worse
-                         # optimum than not resetting at all.  Same failure mode as the
-                         # mu-referenced (lin/irls) families' linear centering.
-                         resetThetaP = 0, #
-                         resetThetaFinalP = 0, #
-                         diagOmegaBoundUpper = 5, # diag(omega) = diag(omega)*diagOmegaBoundUpper; =1 no upper
-                         diagOmegaBoundLower = 100, # diag(omega) = diag(omega)/diagOmegaBoundLower; = 1 no lower
-                         cholSEOpt = FALSE, #
-                         cholSECov = FALSE, #
-                         fo = FALSE, #
-                         covTryHarder = FALSE, #
-                         outerOpt = c("bobyqa",
-                                      "nlminb",
-                                      "lbfgsb3c",
-                                      "L-BFGS-B",
-                                      "mma",
-                                      "lbfgsbLG",
-                                      "slsqp",
-                                      "uobyqa",
-                                      "newuoa"), #
-                         innerOpt = c("n1qn1", "BFGS"), #
-                         ##
-                         rhobeg = .2, #
-                         rhoend = NULL, #
-                         npt = NULL, #
-                         ## nlminb
-                         rel.tol = NULL, #
-                         x.tol = NULL, #
-                         eval.max = 4000, #
-                         iter.max = 2000, #
-                         abstol = NULL, #
-                         reltol = NULL, #
-                         resetHessianAndEta = FALSE, #
-                         muModel = c("none", "irls", "lin"), #
-                         muRefCovAlg = TRUE, #
-                         muModelTol = 1e-5, #
-                         muModelMaxCycles = 20L, #
-                         muModelClampRetries = 10L, #
-                         stateTrim = Inf, #
-                         shi21maxOuter = 0L,
-                         shi21maxInner = 20L,
-                         shi21maxInnerCov =20L,
-                         shi21maxFD=20L,
-                         shi21hMax=2.0,
-                         shi21hMin=1e-4,
-                         gillK = 10L, #
-                         gillStep = 4, #
-                         gillFtol = 0, #
-                         gillRtol = sqrt(.Machine$double.eps), #
-                         gillKcov = 10L, #
-                         #gillKcovLlik = 20L,
-                         gillKcovLlik = 10L,
-                         gillStepCovLlik = 4.5,
-                         #gillStepCovLlik = 2,
-                         gillStepCov = 2, #
-                         gillFtolCov = 0, #
-                         gillFtolCovLlik = 0, #
-                         rmatNorm = TRUE, #
-                         #rmatNormLlik= FALSE, #
-                         rmatNormLlik= TRUE, #
-                         smatNorm = TRUE, #
-                         ## smatNormLlik = FALSE,
-                         smatNormLlik = TRUE,
-                         covGillF = TRUE, #
-                         optGillF = TRUE, #
-                         covSmall = 1e-5, #
-                         adjLik = TRUE, ## Adjust likelihood by 2pi for FOCEi methods
-                         gradTrim = Inf, #
-                         maxOdeRecalc = 5, #
-                         odeRecalcFactor = 10^(0.5), #
-                         gradCalcCentralSmall = 1e-4, #
-                         gradCalcCentralLarge = 1e4, #
-                         etaNudge = qnorm(1-0.05/2)/sqrt(3), #
-                         etaNudge2=qnorm(1-0.05/2) * sqrt(3/5), #
-                         nRetries = 3, #
-                         seed = 42, #
-                         resetThetaCheckPer = 0.1, #
-                         etaMat = NULL, #
-                         repeatGillMax = 1,#
-                         stickyRecalcN = 4, #
-                         outerMaxOdeRecalc = 5, #
-                         outerOdeRecalcFactor = 10^(0.5), #
-                         outerStickyRecalcN = 4, #
-                         indTolRelax = TRUE, #
-                         gradProgressOfvTime = 10, #
-                         addProp = c("combined2", "combined1"),
-                         badSolveObjfAdj=100, #
-                         compress=FALSE, #
-                         rxControl=NULL,
-                         sigdigTable=NULL,
-                         fallbackFD=FALSE,
-                         smatPer=0.6,
-                         sdLowerFact=0.001,
-                         zeroGradFirstReset=TRUE,
-                         zeroGradRunReset=TRUE,
-                         zeroGradBobyqa=TRUE,
-                         mceta=-2L,
-                         warm=c("calc", "save"),
-                         nAGQ=0,
-                         agqLow=-Inf,
-                         agqHi=Inf,
-                         sensMethod = c("default", "forward"),
-                         zeroTheta=0.001,
-                         boundedTransform=TRUE) { #
+foceiControl <- function(
+  sigdig = 3, #
+  ...,
+  epsilon = NULL, # 1e-4,
+  maxInnerIterations = 1000, #
+  maxOuterIterations = 5000, #
+  n1qn1nsim = NULL, #
+  print = 1L, #
+  printNcol = NULL, #
+  scaleTo = 1.0, #
+  scaleObjective = 0, #
+  normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
+  scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
+  scaleCmax = 1e5, #
+  scaleCmin = 1e-5, #
+  scaleCband = c(0.1, 10), #
+  scaleC = NULL, #
+  scaleC0 = 1e5, #
+  derivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
+  derivMethod = c("switch", "forward", "central"), #
+  derivSwitchTol = NULL, #
+  covDerivMethod = c("central", "forward"), #
+  covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""), #
+  covSolveTol = NULL, #
+  covFallback = list("r,s" = c("r", "s"), r = "s", s = character(0), analytic = c("r,s", "r", "s")),
+  covPrecursor = c("fd", "analytic"),
+  covShortcut = FALSE,
+  covFull = TRUE, #
+  fast = FALSE, #
+  priorMethod = c("auto", "general", "nwpri", "tnpri", "none"), #
+  fdOutlierZ = 3.5, #
+  fdOutlierScale = TRUE, #
+  fdRefine = c("chartrand", "lanczos", "richardson"), #
+  fdLanczosM = 2L, #
+  fdRichardsonR = 2L, #
+  fdRichardsonV = 2.0, #
+  fdChartrandAll = FALSE, #
+  fdOutlierAny = FALSE, #
+  fdIndividualStep = TRUE, #
+  fdChartrand = TRUE, #
+  # norm of weights = 1/0.225
+  # hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
+  foceEbeTol = NULL, #
+  hessEps = (.Machine$double.eps)^(1 / 3),
+  # hessEpsLlik =(1/0.225*.Machine$double.eps)^(1/4),
+  hessEpsLlik = (.Machine$double.eps)^(1 / 3),
+  optimHessType = c("central", "forward"),
+  optimHessCovType = c("central", "forward"),
+  hessEtaStepMin = 0.05,
+  censOption = c("gauss", "laplace"),
+  eventType = c("central", "forward"), #
+  eventSens = c("jump", "fd"), #
+  centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
+  lbfgsLmm = 7L, #
+  lbfgsPgtol = 0, #
+  lbfgsFactr = NULL, #
+  eigen = TRUE, #
+  diagXform = c("sqrt", "log", "identity"), #
+  iovXform = c("sd", "var", "logsd", "logvar"), #
+  iovMethod = c("auto", "theta", "omega"), #
+  sumProd = FALSE, #
+  optExpression = TRUE, #
+  literalFix = TRUE,
+  literalFixRes = TRUE,
+  ci = 0.95, #
+  useColor = NULL, #
+  boundTol = NULL, #
+  calcTables = TRUE, #
+  noAbort = TRUE, #
+  interaction = TRUE, #
+  foce = c("nonmem", "foce+"), #
+  cholSEtol = (.Machine$double.eps)^(1 / 3), #
+  cholAccept = 1e-3, #
+  resetEtaP = 0.15, #
+  # Default OFF.  The ETA-drift theta reset re-centers a
+  # mu-referenced theta by the mean eta and restarts.  When the
+  # etas cannot re-center -- e.g. every omega fixed, or a model
+  # whose misfit the etas must absorb -- the shift does not stick,
+  # the drift returns and the reset repeats until the restart cap
+  # errors the fit out.  Where it does converge it lands on a worse
+  # optimum than not resetting at all.  Same failure mode as the
+  # mu-referenced (lin/irls) families' linear centering.
+  resetThetaP = 0, #
+  resetThetaFinalP = 0, #
+  diagOmegaBoundUpper = 5, # diag(omega) = diag(omega)*diagOmegaBoundUpper; =1 no upper
+  diagOmegaBoundLower = 100, # diag(omega) = diag(omega)/diagOmegaBoundLower; = 1 no lower
+  cholSEOpt = FALSE, #
+  cholSECov = FALSE, #
+  fo = FALSE, #
+  covTryHarder = FALSE, #
+  outerOpt = c(
+    "bobyqa",
+    "nlminb",
+    "lbfgsb3c",
+    "L-BFGS-B",
+    "mma",
+    "lbfgsbLG",
+    "slsqp",
+    "uobyqa",
+    "newuoa",
+    "trust"
+  ), #
+  innerOpt = c("auto", "trust", "n1qn1", "lbfgsb3c", "steihaug", "newuoa"), #
+  innerHessian = c("focei", "conditional"), #
+  detHessian = c("focei", "conditional"), #
+  hessianMethod = c("fd", "bfgs", "sr1", "bofill"), #
+  ## trust-region inner optimizer (RcppTrust)
+  trustConf = 0.975, # confidence level defining the trust-region radius
+  trustRinit = NULL, # NULL -> derived from trustConf/neta
+  trustRmax = NULL, # NULL -> derived from trustConf/neta
+  trustFterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
+  trustMterm = NULL, # NULL -> 10^(-sigdig), NOT epsilon
+  trustPolish = FALSE,
+  steihaugPolish = FALSE,
+  newuoaPolish = FALSE,
+  newuoaRhoend = NULL, # NULL -> sqrt(rtol) of the ODE solve
+  bobyqaStationary = TRUE,
+  ## innerOpt="lbfgsb3c" (lbfgsb3c's thread-safe L-BFGS-B)
+  innerLbfgsLmm = 5L,
+  innerLbfgsFactr = NULL, # NULL -> 10^(-sigdig-2)/eps
+  innerLbfgsPgtol = NULL, # NULL -> 10^(-sigdig-2)
+  innerLbfgsAbstol = NULL, # NULL -> 10^(-sigdig-2)
+  innerLbfgsReltol = NULL, # NULL -> 10^(-sigdig-2)
+  ## trust-region OUTER optimizer (outerOpt="trust")
+  outerTrustHessian = c("auto", "analytic", "bfgs", "fd"),
+  outerTrustRinit = NULL, # NULL -> min(0.95, 0.2*max(abs(par)))
+  outerTrustRmax = NULL, # NULL -> 8*outerTrustRinit
+  outerTrustFterm = NULL, # NULL -> 10^(-sigdig-2)
+  outerTrustMterm = NULL, # NULL -> outerTrustFterm
+  outerTrustRelStep = 1e-3,
+  outerTrustRestarts = 3L,
+  ##
+  rhobeg = .2, #
+  rhoend = NULL, #
+  npt = NULL, #
+  ## nlminb
+  rel.tol = NULL, #
+  x.tol = NULL, #
+  eval.max = 4000, #
+  iter.max = 2000, #
+  abstol = NULL, #
+  reltol = NULL, #
+  resetHessianAndEta = FALSE, #
+  muModel = c("none", "irls", "lin"), #
+  muRefCovAlg = TRUE, #
+  muModelTol = 1e-5, #
+  muModelMaxCycles = 20L, #
+  muModelClampRetries = 10L, #
+  stateTrim = Inf, #
+  shi21maxOuter = 0L,
+  shi21maxInner = 20L,
+  shi21maxInnerCov = 20L,
+  shi21maxFD = 20L,
+  shi21hMax = 2.0,
+  shi21hMin = 1e-4,
+  gillK = 10L, #
+  gillStep = 4, #
+  gillFtol = 0, #
+  gillRtol = sqrt(.Machine$double.eps), #
+  gillKcov = 10L, #
+  # gillKcovLlik = 20L,
+  gillKcovLlik = 10L,
+  gillStepCovLlik = 4.5,
+  # gillStepCovLlik = 2,
+  gillStepCov = 2, #
+  gillFtolCov = 0, #
+  gillFtolCovLlik = 0, #
+  rmatNorm = TRUE, #
+  # rmatNormLlik= FALSE, #
+  rmatNormLlik = TRUE, #
+  smatNorm = TRUE, #
+  ## smatNormLlik = FALSE,
+  smatNormLlik = TRUE,
+  covGillF = TRUE, #
+  optGillF = TRUE, #
+  covSmall = 1e-5, #
+  adjLik = TRUE, ## Adjust likelihood by 2pi for FOCEi methods
+  gradTrim = Inf, #
+  maxOdeRecalc = 5, #
+  odeRecalcFactor = 10^(0.5), #
+  gradCalcCentralSmall = 1e-4, #
+  gradCalcCentralLarge = 1e4, #
+  etaNudge = qnorm(1 - 0.05 / 2) / sqrt(3), #
+  etaNudge2 = qnorm(1 - 0.05 / 2) * sqrt(3 / 5), #
+  etaRestart = 4L, #
+  finalEtaTol = 1, #
+  nRetries = 3, #
+  seed = 42, #
+  resetThetaCheckPer = 0.1, #
+  etaMat = NULL, #
+  repeatGillMax = 1, #
+  stickyRecalcN = 4, #
+  outerMaxOdeRecalc = 5, #
+  outerOdeRecalcFactor = 10^(0.5), #
+  outerStickyRecalcN = 4, #
+  indTolRelax = TRUE, #
+  gradProgressOfvTime = 10, #
+  addProp = c("combined2", "combined1"),
+  badSolveObjfAdj = 100, #
+  compress = FALSE, #
+  rxControl = NULL,
+  sigdigTable = NULL,
+  fallbackFD = FALSE,
+  smatPer = 0.6,
+  sdLowerFact = 0.001,
+  zeroGradFirstReset = TRUE,
+  zeroGradRunReset = TRUE,
+  zeroGradBobyqa = TRUE,
+  mceta = -2L,
+  mcetaOpt = FALSE,
+  warm = c("calc", "save", "none"),
+  nAGQ = 0,
+  agqLow = -Inf,
+  agqHi = Inf,
+  sensMethod = c("default", "forward"),
+  linCmtSensCarry = c("auto", "none"),
+  zeroTheta = 0.001,
+  zeroThetaStep = 100,
+  boundedTransform = TRUE
+) {
+  #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
   sensMethod <- match.arg(sensMethod)
+  linCmtSensCarry <- match.arg(linCmtSensCarry)
+  # a defaulted rel.tol is recomputed when a built control is rebuilt (e.g. under fast=TRUE)
+  .relTolDefault <- is.null(rel.tol) || isTRUE(list(...)$relTolDefault)
+  if (.relTolDefault) {
+    rel.tol <- NULL
+  }
   if (!is.null(sigdig)) {
-    checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+    checkmate::assertNumeric(sigdig, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
     if (is.null(boundTol)) {
       boundTol <- 5 * 10^(-sigdig + 1)
     }
@@ -928,10 +1545,50 @@ foceiControl <- function(sigdig = 3, #
       rhoend <- 10^(-sigdig)
     }
     if (is.null(lbfgsFactr)) {
-      lbfgsFactr <- 10^(-sigdig) / .Machine$double.eps
+      # Two orders TIGHTER than the plain 10^-sigdig the other optimizer
+      # tolerances use.  `factr` tests the objective reduction of a SINGLE step,
+      # so at 10^-sigdig L-BFGS-B stops as soon as one step is small rather than
+      # when the gradient is flat -- measured on a 2-cmt oral fit, that left 8.6
+      # OFV units on the table (6 outer evaluations); at 10^-(sigdig+2) the same
+      # fit beats the bobyqa reference in 13.  See plans/foceif-outer-opt-pgtol.md.
+      # Floor at 1: `factr` is a MULTIPLE of machine epsilon, so factr < 1 asks
+      # for a reduction smaller than eps itself.  That is unreachable, and since
+      # lbfgsPgtol is 0 by default it would leave L-BFGS-B with no active
+      # stopping rule at all.  Reached at sigdig >= 14 here (>= 16 before the
+      # two-order tightening).
+      lbfgsFactr <- max(10^(-sigdig - 2) / .Machine$double.eps, 1)
+    }
+    if (is.null(trustFterm)) {
+      # Two orders tighter than the plain 10^-sigdig the other tolerances use,
+      # for the same reason lbfgsFactr above is: the inner solve IS the function
+      # the outer problem differentiates, so its stopping tolerance sets the
+      # objective's noise floor, and a finite-difference outer gradient cannot
+      # resolve a step below it.  At the plain 10^-sigdig an nAGQ=2 theo_sd fit
+      # ended at objf 134.46 against 118.52 here, taking 6.8s against 1.5s --
+      # the noisy gradient both misleads the outer search and lengthens it.
+      # NOT tied to epsilon ("n1qn1"'s own, unrelated tolerance): independence
+      # from it is the point of having these as their own parameters.
+      trustFterm <- 10^(-sigdig - 2)
+    }
+    if (is.null(trustMterm)) {
+      trustMterm <- 10^(-sigdig - 2)
+    }
+    if (is.null(innerLbfgsFactr)) {
+      innerLbfgsFactr <- max(10^(-sigdig - 2) / .Machine$double.eps, 1)
+    }
+    if (is.null(innerLbfgsPgtol)) {
+      innerLbfgsPgtol <- 10^(-sigdig - 2)
+    }
+    if (is.null(innerLbfgsAbstol)) {
+      innerLbfgsAbstol <- 10^(-sigdig - 2)
+    }
+    if (is.null(innerLbfgsReltol)) {
+      innerLbfgsReltol <- 10^(-sigdig - 2)
     }
     if (is.null(rel.tol)) {
-      rel.tol <- 10^(-sigdig)
+      # relative convergence at 10^-sigdig stops an analytic-gradient nlminb
+      # fit ~0.05 OFV short of the optimum; two orders tighter, as lbfgsFactr
+      rel.tol <- if (isTRUE(fast)) 10^(-sigdig - 2) else 10^(-sigdig)
     }
     if (is.null(x.tol)) {
       x.tol <- 10^(-sigdig)
@@ -947,97 +1604,109 @@ foceiControl <- function(sigdig = 3, #
       sigdigTable <- sigdig
     }
   } else {
-    checkmate::assertNumeric(sigdigTable, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+    checkmate::assertNumeric(sigdigTable, lower = 1, finite = TRUE, any.missing = TRUE, len = 1)
   }
 
-  checkmate::assertNumeric(epsilon, lower=0, finite=TRUE, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(maxOuterIterations, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(epsilon, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(maxInnerIterations, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(maxInnerIterations, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(maxOuterIterations, lower = 0, any.missing = FALSE, len = 1)
 
-  checkmate::assertNumeric(sdLowerFact, lower=0, finite=TRUE, upper=0.1, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(sdLowerFact, lower = 0, finite = TRUE, upper = 0.1, any.missing = FALSE, len = 1)
 
   if (is.null(n1qn1nsim)) {
     n1qn1nsim <- 10 * maxInnerIterations + 1
   }
-  checkmate::assertIntegerish(n1qn1nsim, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertIntegerish(n1qn1nsim, len = 1, lower = 1, any.missing = FALSE)
   # Print args are absorbed/validated by iterPrintControl(); `iterPrintControl`
   # picked up from `...` handles the round-trip via do.call(foceiControl, .ctl).
-  .iterPrintControl <- .absorbIterPrintControl(print = print,
-                                               printNcol = printNcol,
-                                               useColor = useColor,
-                                               iterPrintControl = list(...)$iterPrintControl)
-  checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertNumeric(scaleObjective, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(scaleCmin, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(scaleCband, lower=0, finite=TRUE, any.missing=FALSE, len=2)
+  .iterPrintControl <- .absorbIterPrintControl(
+    print = print,
+    printNcol = printNcol,
+    useColor = useColor,
+    iterPrintControl = list(...)$iterPrintControl
+  )
+  checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
+  checkmate::assertNumeric(scaleObjective, len = 1, lower = 0, any.missing = FALSE)
+  # every scaling constant divides the optimizer's coordinates, so it must be a
+  # finite number above 0
+  checkmate::assertNumber(scaleCmax, finite = TRUE)
+  checkmate::assertNumber(scaleCmin, finite = TRUE)
+  if (scaleCmin <= 0 || scaleCmax <= scaleCmin) {
+    stop("'scaleCmin' and 'scaleCmax' must satisfy 0 < scaleCmin < scaleCmax", call. = FALSE)
+  }
+  checkmate::assertNumeric(scaleCband, lower = 0, finite = TRUE, any.missing = FALSE, len = 2)
   if (scaleCband[1] >= scaleCband[2]) {
-    stop("'scaleCband' must be an increasing pair (low, high)", call.=FALSE)
+    stop("'scaleCband' must be an increasing pair (low, high)", call. = FALSE)
   }
   if (!is.null(scaleC)) {
-    checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSE)
+    checkmate::assertNumeric(scaleC, finite = TRUE, any.missing = FALSE)
+    if (any(scaleC <= 0)) {
+      stop("'scaleC' must be above 0", call. = FALSE)
+    }
   }
-  checkmate::assertNumeric(scaleC0, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(derivEps, lower=0, len=2, any.missing=FALSE)
-  checkmate::assertNumeric(derivSwitchTol, lower=0, len=1, any.missing=FALSE)
-  if (checkmate::testIntegerish(covTryHarder, lower=0, upper=1, any.missing=FALSE, len=1)) {
+  checkmate::assertNumber(scaleC0, finite = TRUE)
+  if (scaleC0 <= 0) {
+    stop("'scaleC0' must be above 0", call. = FALSE)
+  }
+  checkmate::assertNumeric(derivEps, lower = 0, len = 2, any.missing = FALSE)
+  checkmate::assertNumeric(derivSwitchTol, lower = 0, len = 1, any.missing = FALSE)
+  if (checkmate::testIntegerish(covTryHarder, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
     covTryHarder <- as.integer(covTryHarder)
   } else {
-    checkmate::assertLogical(covTryHarder, any.missing=FALSE, len=1)
-    checkmate::assertLogical(fdChartrand, any.missing=FALSE, len=1)
+    checkmate::assertLogical(covTryHarder, any.missing = FALSE, len = 1)
+    checkmate::assertNumeric(fdOutlierZ, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+    checkmate::assertLogical(fdOutlierScale, any.missing = FALSE, len = 1)
+    fdRefine <- match.arg(fdRefine)
+    checkmate::assertIntegerish(fdLanczosM, lower = 1, any.missing = FALSE, len = 1)
+    checkmate::assertIntegerish(fdRichardsonR, lower = 1, any.missing = FALSE, len = 1)
+    checkmate::assertNumeric(fdRichardsonV, lower = 1.0000001, finite = TRUE, any.missing = FALSE, len = 1)
+    checkmate::assertNumeric(hessEtaStepMin, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+    checkmate::assertLogical(fdChartrandAll, any.missing = FALSE, len = 1)
+    checkmate::assertLogical(fdOutlierAny, any.missing = FALSE, len = 1)
+    checkmate::assertLogical(fdIndividualStep, any.missing = FALSE, len = 1)
+    checkmate::assertLogical(fdChartrand, any.missing = FALSE, len = 1)
     covTryHarder <- as.integer(covTryHarder)
   }
 
-  checkmate::assertNumeric(rhobeg, lower=0, len=1, finite=TRUE, any.missing=FALSE)
-  checkmate::assertNumeric(rhoend, lower=0, len=1, finite=TRUE, any.missing=FALSE)
+  checkmate::assertNumeric(rhobeg, lower = 0, len = 1, finite = TRUE, any.missing = FALSE)
+  checkmate::assertNumeric(rhoend, lower = 0, len = 1, finite = TRUE, any.missing = FALSE)
   if (rhoend >= rhobeg) {
-    stop("the trust region method needs '0 < rhoend < rhobeg'",
-         call.=FALSE)
+    stop("the trust region method needs '0 < rhoend < rhobeg'", call. = FALSE)
   }
   if (!is.null(npt)) {
-    checkmate::assertIntegerish(npt, lower=1, len=1, any.missing=FALSE)
+    checkmate::assertIntegerish(npt, lower = 1, len = 1, any.missing = FALSE)
   }
-  checkmate::assertIntegerish(eval.max, lower=1, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(iter.max, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(rel.tol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(x.tol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(abstol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(reltol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
+  checkmate::assertIntegerish(eval.max, lower = 1, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(iter.max, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(rel.tol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(x.tol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(abstol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(reltol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
 
-  checkmate::assertIntegerish(gillK, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(gillKcov, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(gillKcovLlik, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillStep, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillStepCov, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillStepCovLlik, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillFtol, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillFtolCov, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillFtolCovLlik, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(gillRtol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
+  checkmate::assertIntegerish(gillK, lower = 0, len = 1, any.missing = FALSE)
+  .covFdOptionsAssert(hessEps, gillKcov, gillStepCov, gillFtolCov, covGillF, covSmall, rmatNorm, smatNorm)
+  checkmate::assertIntegerish(gillKcovLlik, lower = 0, len = 1, any.missing = FALSE)
+  # the Gill search multiplies its step by these factors to grow it and divides to shrink it
+  checkmate::assertNumeric(gillStep, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(gillStepCovLlik, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(gillFtol, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillFtolCovLlik, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gillRtol, lower = 0, len = 1, any.missing = FALSE, finite = TRUE)
   # gillRtolCov is calculated in the `inner.cpp`
-  if (!checkmate::testIntegerish(rmatNorm, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(rmatNorm, any.missing=FALSE, len=1)
-  }
   rmatNorm <- as.integer(rmatNorm)
-  if (!checkmate::testIntegerish(rmatNormLlik, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(rmatNormLlik, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(rmatNormLlik, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(rmatNormLlik, any.missing = FALSE, len = 1)
   }
   rmatNormLlik <- as.integer(rmatNormLlik)
-  if (!checkmate::testIntegerish(smatNorm, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(smatNorm, any.missing=FALSE, len=1)
-  }
   smatNorm <- as.integer(smatNorm)
-  if (!checkmate::testIntegerish(smatNormLlik, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(smatNormLlik, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(smatNormLlik, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(smatNormLlik, any.missing = FALSE, len = 1)
   }
   smatNormLlik <- as.integer(smatNormLlik)
-  if (!checkmate::testIntegerish(covGillF, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(covGillF, any.missing=FALSE, len=1)
-  }
   covGillF <- as.integer(covGillF)
-  if (!checkmate::testIntegerish(optGillF, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(optGillF, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(optGillF, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(optGillF, any.missing = FALSE, len = 1)
   }
   optGillF <- as.integer(optGillF)
 
@@ -1045,37 +1714,38 @@ foceiControl <- function(sigdig = 3, #
   # convergence target on an inner Newton, not a solve precision, and coupling it to
   # sigdig made the analytic FOCE gradient available or not depending on the requested
   # digits.  Fixed at the value the routine shipped with.
-  if (is.null(foceEbeTol)) foceEbeTol <- 1e-9
-  checkmate::assertNumeric(foceEbeTol, lower=0, finite=TRUE, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(hessEps, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(hessEpsLlik, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(centralDerivEps, lower=0, any.missing=FALSE, len=2)
+  if (is.null(foceEbeTol)) {
+    foceEbeTol <- 1e-9
+  }
+  checkmate::assertNumeric(foceEbeTol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  .assertPositiveEps(hessEpsLlik)
+  checkmate::assertNumeric(centralDerivEps, lower = 0, any.missing = FALSE, len = 2)
 
-  checkmate::assertIntegerish(lbfgsLmm, lower=1L, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(lbfgsLmm, lower = 1L, any.missing = FALSE, len = 1)
   lbfgsLmm <- as.integer(lbfgsLmm)
-  checkmate::assertNumeric(lbfgsPgtol, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(lbfgsFactr, lower=0, any.missing=FALSE, len=1)
-  if (!checkmate::testIntegerish(eigen, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(eigen, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(lbfgsPgtol, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(lbfgsFactr, lower = 0, any.missing = FALSE, len = 1)
+  if (!checkmate::testIntegerish(eigen, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(eigen, any.missing = FALSE, len = 1)
   }
   eigen <- as.integer(eigen)
 
-  checkmate::assertLogical(sumProd, any.missing=FALSE, len=1)
-  checkmate::assertLogical(optExpression, any.missing=FALSE, len=1)
-  checkmate::assertLogical(literalFix, any.missing=FALSE, len=1)
-  checkmate::assertLogical(literalFixRes, any.missing=FALSE, len=1)
+  checkmate::assertLogical(sumProd, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(optExpression, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(literalFix, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(literalFixRes, any.missing = FALSE, len = 1)
 
-  checkmate::assertNumeric(ci, any.missing=FALSE, len=1, lower=0, upper=1)
-  checkmate::assertNumeric(boundTol, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(ci, any.missing = FALSE, len = 1, lower = 0, upper = 1)
+  checkmate::assertNumeric(boundTol, lower = 0, any.missing = FALSE, len = 1)
 
-  checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
-  if(!checkmate::testIntegerish(noAbort, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(noAbort, len=1, any.missing=FALSE)
+  checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
+  if (!checkmate::testIntegerish(noAbort, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(noAbort, len = 1, any.missing = FALSE)
   }
   noAbort <- as.integer(noAbort)
 
-  if (!checkmate::testIntegerish(interaction, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(interaction, len=1, any.missing=FALSE)
+  if (!checkmate::testIntegerish(interaction, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(interaction, len = 1, any.missing = FALSE)
   }
   interaction <- as.integer(interaction)
 
@@ -1085,64 +1755,40 @@ foceiControl <- function(sigdig = 3, #
   ## Ignored when interaction=TRUE (FOCEi).
   foceType <- as.integer(foce == "foce+")
 
-  checkmate::assertNumeric(cholSEtol, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(cholAccept, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(cholSEtol, lower = 0, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(cholAccept, lower = 0, any.missing = FALSE, len = 1)
 
   ## .methodIdx <- c("lsoda"=1L, "dop853"=0L, "liblsoda"=2L);
   ## method <- as.integer(.methodIdx[method]);
-  if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
-    scaleType <- as.integer(scaleType)
-  } else {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
-  }
+  scaleType <- .ctlIdx(scaleType, .scaleTypeIdx, match.arg(scaleType))
 
-  if (checkmate::testIntegerish(optimHessType, len=1, lower=1, upper=3, any.missing=FALSE)) {
-    optimHessType <- as.integer(optimHessType)
-  } else {
-    .optimHessTypeIdx <- c("central" = 1L, "forward" = 3L)
-    optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
-  }
-
-  if (checkmate::testIntegerish(optimHessCovType, len=1, lower=1, upper=3, any.missing=FALSE)) {
-    optimHessCovType <- as.integer(optimHessCovType)
-  } else {
-    .optimHessCovTypeIdx <- c("central" = 1L, "forward" = 3L)
-    optimHessCovType <- setNames(.optimHessCovTypeIdx[match.arg(optimHessCovType)], NULL)
-  }
+  # the codes the C++ has a case for; any other integer reached it as a Hessian of zeros
+  optimHessType <- .nlmCtlCode(optimHessType, c("central" = 1L, "forward" = 3L), "optimHessType")
+  optimHessCovType <- .nlmCtlCode(optimHessCovType, c("central" = 1L, "forward" = 3L), "optimHessCovType")
   # censOption: the censored (M2/M3/M4) inner-Hessian / 2nd-derivative treatment.
   # "gauss" (default) keeps the historic uncensored Gauss-Newton curvature; "laplace"
   # uses the exact censored 2nd derivative (a proper Laplace).  Shared with saem/nlm.
-  if (checkmate::testIntegerish(censOption, len=1, lower=0, upper=1, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(censOption, len = 1, lower = 0, upper = 1, any.missing = FALSE)) {
     censOption <- as.integer(censOption)
   } else {
     censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
   }
-  if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
-    eventType <- as.integer(eventType)
-  } else {
-    .eventTypeIdx <- c("central" = 2L, "forward" = 3L)
-    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
-  }
+  # the codes the inner eta finite difference has a case for; 1 left its gradient 0
+  eventType <- .nlmCtlCode(eventType, c("central" = 2L, "forward" = 3L), "eventType")
   ## How dosing/event-parameter (alag, F, rate, dur, ...) sensitivities are
   ## computed: "fd" (legacy finite differences) or "jump" (analytic jump/event
   ## sensitivities from rxode2).  "fd" is the backward-compatible default.
   eventSens <- match.arg(eventSens)
 
-  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-  if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
-    normType <- as.integer(normType)
-  } else {
-    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
-  }
+  normType <- .ctlIdx(normType, .normTypeIdx, match.arg(normType))
   .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
-  if (checkmate::testIntegerish(derivMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(derivMethod, len = 1, lower = 0L, upper = 3L, any.missing = FALSE)) {
     derivMethod <- as.integer(derivMethod)
   } else {
     derivMethod <- match.arg(derivMethod)
     derivMethod <- setNames(.methodIdx[derivMethod], NULL)
   }
-  if (checkmate::testIntegerish(covDerivMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(covDerivMethod, len = 1, lower = 0L, upper = 3L, any.missing = FALSE)) {
     covDerivMethod <- as.integer(covDerivMethod)
   } else {
     covDerivMethod <- match.arg(covDerivMethod)
@@ -1158,42 +1804,41 @@ foceiControl <- function(sigdig = 3, #
   # "sa"/"imp" are foreign to the focei kernel; skip the in-kernel cov step and
   # recompute them post-fit at the converged estimates (see .covRecompute).
   covMethodDeferred <- NA_character_
-  if (checkmate::testIntegerish(covMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
-    covMethod <- as.integer(covMethod)
+  if (checkmate::testIntegerish(covMethod, len = 1, any.missing = FALSE)) {
+    covMethod <- .covMethodSlotArg(covMethod)
     .ct <- list(...)$covType
     if (!is.null(.ct)) covType <- match.arg(.ct, c("analytic", "fd"))
-  } else if (rxode2::rxIs(covMethod, "character")) {
-    if (all(covMethod == "")) {
-      covMethod <- 0L
-    } else {
-      covMethod <- match.arg(covMethod)
-      if (covMethod %in% c("sa", "imp")) {
-        covMethodDeferred <- covMethod
-        covMethod <- 0L
-      } else if (identical(covMethod, "analytic")) {
-        covType <- "analytic"
-        covMethod <- 2L
-      } else {
-        .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-        covMethod <- setNames(.covMethodIdx[covMethod], NULL)
-      }
+  } else if (!rxode2::rxIs(covMethod, "character")) {
+    stop("'covMethod' must be a covariance method name or a foceiControl() slot (0 to 3)", call. = FALSE)
+  } else {
+    covMethod <- .covMethodArg(covMethod, match.arg(covMethod))
+    if (covMethod %in% c("sa", "imp")) {
+      covMethodDeferred <- covMethod
+    } else if (covMethod == "analytic") {
+      covType <- "analytic"
+      covMethod <- "r"
     }
+    # "" and the deferred "sa"/"imp" run no covariance step in the kernel
+    covMethod <- if (covMethod %in% names(.covMethodSlot)) .covMethodSlot[[covMethod]] else 0L
   }
   # round-tripped controls carry the deferred request as a ... field
   if (is.na(covMethodDeferred) && !is.null(list(...)$covMethodDeferred)) {
     covMethodDeferred <- list(...)$covMethodDeferred
   }
-  if (!is.null(covSolveTol)) checkmate::assertNumeric(covSolveTol, len = 1, lower = 0,
-                                                      finite = TRUE, any.missing = FALSE)
+  if (!is.null(covSolveTol)) {
+    checkmate::assertNumeric(covSolveTol, len = 1, lower = 0, finite = TRUE, any.missing = FALSE)
+  }
+  covFallback <- .covFallbackCheck(covFallback, targets = c(.covFallbackTargets, "sa", "imp"))
+  covPrecursor <- .covPrecursorCheck(covPrecursor)
+  checkmate::assertFlag(covShortcut)
   checkmate::assertFlag(covFull)
   checkmate::assertFlag(fast)
+  priorMethod <- match.arg(priorMethod)
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% .foceiControlInternal)]
   if (length(.bad) > 0) {
-    stop("unused argument: ", paste
-    (paste0("'", .bad, "'", sep=""), collapse=", "),
-    call.=FALSE)
+    stop("unused argument: ", paste(paste0("'", .bad, "'", sep = ""), collapse = ", "), call. = FALSE)
   }
   .skipCov <- NULL
   if (!is.null(.xtra$skipCov)) {
@@ -1208,19 +1853,18 @@ foceiControl <- function(sigdig = 3, #
   if (!is.null(.xtra$outerOptFun)) {
     outerOptFun <- .xtra$outerOptFun
   } else if (rxode2::rxIs(outerOpt, "character")) {
-    # Default outer optimizer (when the user did not specify one): lbfgsb3c for
-    # the analytic-gradient ("fast") methods, nlminb for the finite-difference
+    # Default outer optimizer (when the user did not specify one): nlminb for
+    # the analytic-gradient ("fast") methods, bobyqa for the ordinary
     # methods.  An explicit outerOpt (a single string) skips this;
     # outerOptDefault records that the default was taken so a *f wrapper
     # (.foceiFastCtl) can re-default a round-tripped control under fast=TRUE.
     if (missing(outerOpt)) {
-      outerOpt <- if (isTRUE(fast)) "lbfgsb3c" else "bobyqa"
+      outerOpt <- if (isTRUE(fast)) "nlminb" else "bobyqa"
       .outerOptDefault <- TRUE
     }
     outerOpt <- match.arg(outerOpt)
     .outerOptTxt <- outerOpt
     if (outerOpt == "bobyqa") {
-      rxode2::rxReq("minqa")
       outerOptFun <- .bobyqa
       outerOpt <- -1L
     } else if (outerOpt == "nlminb") {
@@ -1236,13 +1880,18 @@ foceiControl <- function(sigdig = 3, #
       outerOptFun <- .lbfgsbLG
       outerOpt <- -1L
     } else if (outerOpt == "uobyqa") {
+      rxode2::rxReq("minqa")
       outerOptFun <- .uobyqa
       outerOpt <- -1L
     } else if (outerOpt == "newuoa") {
       outerOptFun <- .newuoa
       outerOpt <- -1L
+    } else if (outerOpt == "trust") {
+      rxode2::rxReq("RcppTrust")
+      outerOptFun <- .trustOuter
+      outerOpt <- -1L
     } else {
-      if (checkmate::testIntegerish(outerOpt, lower=0, upper=1, len=1)) {
+      if (checkmate::testIntegerish(outerOpt, lower = 0, upper = 1, len = 1)) {
         outerOpt <- as.integer(outerOpt)
       } else {
         .outerOptIdx <- c("L-BFGS-B" = 0L, "lbfgsb3c" = 1L)
@@ -1260,28 +1909,123 @@ foceiControl <- function(sigdig = 3, #
   # A derivative-free outer optimizer never consumes the analytic 'fast' gradient,
   # so computing it is wasted work: downgrade to fast=FALSE with a warning.
   if (isTRUE(fast) && .outerOptTxt %in% c("bobyqa", "uobyqa", "newuoa")) {
-    warning("outerOpt='", .outerOptTxt,
-            "' is derivative-free; the analytic 'fast' gradient is unused -- reverting to fast=FALSE",
-            call.=FALSE)
+    warning(
+      "outerOpt='",
+      .outerOptTxt,
+      "' is derivative-free; the analytic 'fast' gradient is unused -- reverting to fast=FALSE",
+      call. = FALSE
+    )
     fast <- FALSE
   }
-  if (checkmate::testIntegerish(innerOpt, lower=1, upper=2, len=1)) {
+  if (checkmate::testIntegerish(innerOpt, lower = 1, upper = 6, len = 1)) {
     innerOpt <- as.integer(innerOpt)
   } else {
-    .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
   }
-  if (checkmate::testIntegerish(warm, lower=0, upper=1, len=1, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(hessianMethod, len = 1, lower = 1, upper = 4, any.missing = FALSE)) {
+    hessianMethod <- as.integer(hessianMethod)
+  } else {
+    hessianMethod <- setNames(.hessianMethodIdx[match.arg(hessianMethod)], NULL)
+  }
+  .foceiAssertHessianMethod(hessianMethod, innerOpt)
+  innerHessian <- match.arg(innerHessian)
+  detHessian <- match.arg(detHessian)
+  outerTrustHessian <- match.arg(outerTrustHessian)
+  # Same strict-bound handling as the inner trustRinit/trustRmax below:
+  # checkmate's lower= is inclusive, and a zero radius can never step.
+  checkmate::assertNumeric(outerTrustRinit, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
+  checkmate::assertNumeric(outerTrustRmax, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
+  if (!is.null(outerTrustRinit) && outerTrustRinit <= 0) {
+    stop("'outerTrustRinit' must be > 0", call. = FALSE)
+  }
+  if (!is.null(outerTrustRmax) && outerTrustRmax <= 0) {
+    stop("'outerTrustRmax' must be > 0", call. = FALSE)
+  }
+  if (!is.null(outerTrustRinit) && !is.null(outerTrustRmax) && outerTrustRinit > outerTrustRmax) {
+    stop("'outerTrustRinit' cannot be larger than 'outerTrustRmax'", call. = FALSE)
+  }
+  checkmate::assertNumeric(outerTrustFterm, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
+  checkmate::assertNumeric(outerTrustMterm, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
+  checkmate::assertNumeric(outerTrustRelStep, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  if (outerTrustRelStep <= 0) {
+    stop("'outerTrustRelStep' must be > 0", call. = FALSE)
+  }
+  checkmate::assertIntegerish(outerTrustRestarts, lower = 0, any.missing = FALSE, len = 1)
+  if (outerTrustHessian == "analytic" && .outerOptTxt %in% c("trust", "nlminb") && !isTRUE(fast)) {
+    stop("outerTrustHessian=\"analytic\" requires fast=TRUE", call. = FALSE)
+  }
+  # `fast` can still be downgraded AFTER this (a linCmt() model has no 2nd-order
+  # sensitivities); .trustOuterMethod() demotes to BFGS with a warning there.
+  checkmate::assertNumeric(trustConf, lower = 0, upper = 1, finite = TRUE, any.missing = FALSE, len = 1)
+  if (trustConf <= 0 || trustConf >= 1) {
+    # qchisq(0, df)==0 (zero trust-region radius, no step ever taken) and
+    # qchisq(1, df)==Inf (unbounded radius, no trust-region constraint at all)
+    # are both degenerate -- checkmate's lower/upper bounds are inclusive, so
+    # this has to be checked separately.
+    stop("'trustConf' must be strictly between 0 and 1", call. = FALSE)
+  }
+  # lower=0 is inclusive (checkmate has no strict-bound form); trustRinit/
+  # trustRmax==0 is a zero-radius trust region that can never step, the same
+  # degenerate case trustConf==0 is rejected for above.
+  checkmate::assertNumeric(trustRinit, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
+  if (!is.null(trustRinit) && trustRinit <= 0) {
+    stop("'trustRinit' must be > 0", call. = FALSE)
+  }
+  checkmate::assertNumeric(trustRmax, lower = 0, finite = TRUE, null.ok = TRUE, len = 1)
+  if (!is.null(trustRmax) && trustRmax <= 0) {
+    stop("'trustRmax' must be > 0", call. = FALSE)
+  }
+  if (!is.null(trustRinit) && !is.null(trustRmax) && trustRinit > trustRmax) {
+    stop("'trustRinit' cannot be larger than 'trustRmax'", call. = FALSE)
+  }
+  # Resolved above (like epsilon) whenever sigdig is non-NULL; stays NULL (and
+  # errors here, matching epsilon's own strictness) only if the caller also
+  # passed sigdig=NULL without supplying trustFterm/trustMterm directly.
+  checkmate::assertNumeric(trustFterm, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  if (trustFterm <= 0) {
+    stop("'trustFterm' must be > 0", call. = FALSE)
+  }
+  checkmate::assertNumeric(trustMterm, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertFlag(trustPolish)
+  checkmate::assertFlag(steihaugPolish)
+  checkmate::assertFlag(newuoaPolish)
+  bobyqaStationary <- as.logical(bobyqaStationary)
+  checkmate::assertFlag(bobyqaStationary)
+  checkmate::assertIntegerish(innerLbfgsLmm, lower = 1L, any.missing = FALSE, len = 1)
+  innerLbfgsLmm <- as.integer(innerLbfgsLmm)
+  checkmate::assertNumeric(innerLbfgsFactr, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(innerLbfgsPgtol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(innerLbfgsAbstol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(innerLbfgsReltol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  if (trustMterm <= 0) {
+    stop("'trustMterm' must be > 0", call. = FALSE)
+  }
+  if (checkmate::testIntegerish(warm, lower = 0, upper = 2, len = 1, any.missing = FALSE)) {
     warm <- as.integer(warm)
   } else {
-    .warmIdx <- c("calc" = 1L, "save" = 0L)
+    .warmIdx <- c("calc" = 1L, "save" = 0L, "none" = 2L)
     warm <- setNames(.warmIdx[match.arg(warm)], NULL)
+  }
+  # Checked here, AFTER `warm` is normalized to an integer, because n1qn1 reaches the
+  # conditional curvature only through warmZm(), which runs only when warm=="calc".
+  # innerOpt="auto" resolves in C++ (needOptimHess ? n1qn1 : trust) and conditional
+  # curvature already rejects needOptimHess, so auto cannot land on n1qn1 here.
+  if (innerHessian == "conditional") {
+    if (!isTRUE(fast) || !isTRUE(as.logical(interaction)) || !(innerOpt %in% c(1L, 3L, 4L))) {
+      stop("Conditional inner Hessian requires fast FOCEI with trust or n1qn1", call. = FALSE)
+    }
+    if (innerOpt == 1L && warm != 1L) {
+      stop("innerHessian=\"conditional\" with innerOpt=\"n1qn1\" requires warm=\"calc\"", call. = FALSE)
+    }
+  }
+  if (detHessian == "conditional" && (!isTRUE(fast) || !isTRUE(as.logical(interaction)))) {
+    stop("detHessian=\"conditional\" requires fast FOCEI", call. = FALSE)
   }
   if (!is.null(.xtra$resetEtaSize)) {
     .resetEtaSize <- .xtra$resetEtaSize
   } else {
-    checkmate::assertNumeric(resetEtaP, lower=0, upper=1, len=1)
-    if (resetEtaP > 0 & resetEtaP < 1) {
+    checkmate::assertNumeric(resetEtaP, lower = 0, upper = 1, len = 1)
+    if (resetEtaP > 0 && resetEtaP < 1) {
       .resetEtaSize <- qnorm(1 - (resetEtaP / 2))
     } else if (resetEtaP <= 0) {
       .resetEtaSize <- Inf
@@ -1292,40 +2036,45 @@ foceiControl <- function(sigdig = 3, #
   if (!is.null(.xtra$resetThetaSize)) {
     .resetThetaSize <- .xtra$resetThetaSize
   } else {
-    checkmate::assertNumeric(resetThetaP, lower=0, upper=1, len=1)
-    if (resetThetaP > 0 & resetThetaP < 1) {
+    checkmate::assertNumeric(resetThetaP, lower = 0, upper = 1, len = 1)
+    if (resetThetaP > 0 && resetThetaP < 1) {
       .resetThetaSize <- qnorm(1 - (resetThetaP / 2))
     } else if (resetThetaP <= 0) {
       .resetThetaSize <- Inf
     } else {
-      stop("cannot always reset THETAs", call.=FALSE)
+      stop("cannot always reset THETAs", call. = FALSE)
     }
   }
   if (!is.null(.xtra$resetThetaFinalSize)) {
     .resetThetaFinalSize <- .xtra$resetThetaFinalSize
   } else {
-    checkmate::assertNumeric(resetThetaFinalP, lower=0, upper=1, len=1)
-    if (resetThetaFinalP > 0 & resetThetaFinalP < 1) {
+    checkmate::assertNumeric(resetThetaFinalP, lower = 0, upper = 1, len = 1)
+    if (resetThetaFinalP > 0 && resetThetaFinalP < 1) {
       .resetThetaFinalSize <- qnorm(1 - (resetThetaFinalP / 2))
     } else if (resetThetaFinalP <= 0) {
       .resetThetaFinalSize <- Inf
     } else {
-      stop("cannot always reset THETAs", call.=FALSE)
+      stop("cannot always reset THETAs", call. = FALSE)
     }
   }
-  if (checkmate::testIntegerish(addProp, lower=1, upper=1, len=1)) {
+  if (checkmate::testIntegerish(addProp, lower = 1, upper = 1, len = 1)) {
     addProp <- c("combined1", "combined2")[addProp]
   } else {
     addProp <- match.arg(addProp)
   }
-  checkmate::assertLogical(compress, any.missing=FALSE, len=1)
+  checkmate::assertLogical(compress, any.missing = FALSE, len = 1)
   if (!is.null(.xtra$genRxControl)) {
     genRxControl <- .xtra$genRxControl
   } else {
     genRxControl <- FALSE
     if (is.null(rxControl)) {
-      rxControl <- .rxControlScaleSigdig(rxode2::rxControl(sigdig=sigdig,
-                                                           maxsteps=500000L), sigdig)
+      rxControl <- .rxControlScaleSigdig(
+        rxode2::rxControl(
+          sigdig = sigdig,
+          maxsteps = 500000L
+        ),
+        sigdig
+      )
       genRxControl <- TRUE
     } else if (inherits(rxControl, "rxControl")) {
       # a fully-formed rxControl object is the user's explicit solving spec; leave
@@ -1334,89 +2083,98 @@ foceiControl <- function(sigdig = 3, #
       rxControl <- .rxControlScaleSigdig(do.call(rxode2::rxControl, rxControl), sigdig, skip = names(rxControl))
     }
     if (!inherits(rxControl, "rxControl")) {
-      stop("rxControl needs to be ode solving options from rxode2::rxControl()",
-           call.=FALSE)
+      stop("rxControl needs to be ode solving options from rxode2::rxControl()", call. = FALSE)
     }
   }
-  checkmate::assertNumeric(diagOmegaBoundUpper, lower=1, len=1, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(diagOmegaBoundLower, lower=1, len=1, any.missing=FALSE, finite=TRUE)
+  # an objective solved to relative error rtol locates its minimum only to
+  # about sqrt(rtol); a tighter derivative-free inner search chases solver noise
+  if (is.null(newuoaRhoend)) {
+    .rtol <- if (is.list(rxControl) && length(rxControl$rtol) > 0) max(rxControl$rtol) else 1e-6
+    newuoaRhoend <- sqrt(.rtol)
+  }
+  checkmate::assertNumeric(newuoaRhoend, lower = .Machine$double.eps, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(diagOmegaBoundUpper, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(diagOmegaBoundLower, lower = 1, len = 1, any.missing = FALSE, finite = TRUE)
 
-  if (!checkmate::testIntegerish(cholSEOpt, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(cholSEOpt, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(cholSEOpt, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(cholSEOpt, any.missing = FALSE, len = 1)
   }
   cholSEOpt <- as.integer(cholSEOpt)
 
-  if (!checkmate::testIntegerish(cholSECov, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(cholSECov, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(cholSECov, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(cholSECov, any.missing = FALSE, len = 1)
   }
   cholSECov <- as.integer(cholSECov)
 
-  if (!checkmate::testIntegerish(fo, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(fo, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(fo, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(fo, any.missing = FALSE, len = 1)
   }
   fo <- as.integer(fo)
 
-  if (!checkmate::testIntegerish(resetHessianAndEta, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(resetHessianAndEta, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(resetHessianAndEta, lower = 0, upper = 1, any.missing = FALSE, len = 1)) {
+    checkmate::assertLogical(resetHessianAndEta, any.missing = FALSE, len = 1)
   }
   resetHessianAndEta <- as.integer(resetHessianAndEta)
 
   muModel <- match.arg(muModel)
-  checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(muModelTol, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(muModelMaxCycles, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertLogical(muRefCovAlg, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(muModelTol, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(muModelMaxCycles, lower = 1, len = 1, any.missing = FALSE)
   muModelMaxCycles <- as.integer(muModelMaxCycles)
-  checkmate::assertIntegerish(muModelClampRetries, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(muModelClampRetries, lower = 1, len = 1, any.missing = FALSE)
   muModelClampRetries <- as.integer(muModelClampRetries)
 
-  checkmate::assertNumeric(stateTrim, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(covSmall, lower=0, any.missing=FALSE, finite=TRUE)
-  checkmate::assertLogical(adjLik, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(gradTrim, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
-  checkmate::assertNumeric(gradCalcCentralSmall, len=1, lower=0, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(gradCalcCentralLarge, len=1, lower=0, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(etaNudge, len=1, lower=0, any.missing=FALSE, finite=TRUE)
-  checkmate::assertNumeric(etaNudge2, len=1, lower=0, any.missing=FALSE, finite=TRUE)
-  checkmate::assertIntegerish(nRetries, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(stateTrim, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(adjLik, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(gradTrim, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(maxOdeRecalc, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(odeRecalcFactor, len = 1, lower = 1, any.missing = FALSE)
+  checkmate::assertNumeric(gradCalcCentralSmall, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(gradCalcCentralLarge, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(etaNudge, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
+  checkmate::assertNumeric(etaNudge2, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
+  checkmate::assertIntegerish(etaRestart, len = 1, lower = 0, any.missing = FALSE)
+  checkmate::assertNumber(finalEtaTol, lower = 0)
+  checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
-    checkmate::assertIntegerish(seed, any.missing=FALSE, min.len=1)
+    checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
   }
-  checkmate::assertNumeric(resetThetaCheckPer, lower=0, upper=1, any.missing=FALSE, finite=TRUE)
-  checkmate::assertIntegerish(repeatGillMax, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertIntegerish(outerMaxOdeRecalc, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertNumeric(outerOdeRecalcFactor, len=1, lower=1, any.missing=FALSE)
-  checkmate::assertIntegerish(outerStickyRecalcN, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(gradProgressOfvTime, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
-  checkmate::assertLogical(fallbackFD, any.missing=FALSE, len=1)
-  checkmate::assertLogical(zeroGradFirstReset, any.missing=TRUE, len=1)
-  checkmate::assertLogical(zeroGradRunReset, any.missing=FALSE, len=1)
-  checkmate::assertLogical(zeroGradBobyqa, any.missing=TRUE, len=1)
+  checkmate::assertNumeric(resetThetaCheckPer, lower = 0, upper = 1, any.missing = FALSE, finite = TRUE)
+  checkmate::assertIntegerish(repeatGillMax, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertIntegerish(stickyRecalcN, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertIntegerish(outerMaxOdeRecalc, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertNumeric(outerOdeRecalcFactor, len = 1, lower = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(outerStickyRecalcN, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertLogical(indTolRelax, any.missing = FALSE, len = 1)
+  checkmate::assertNumeric(gradProgressOfvTime, any.missing = FALSE, lower = 0, len = 1)
+  checkmate::assertNumeric(badSolveObjfAdj, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(fallbackFD, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(zeroGradFirstReset, any.missing = TRUE, len = 1)
+  checkmate::assertLogical(zeroGradRunReset, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(zeroGradBobyqa, any.missing = TRUE, len = 1)
 
-  checkmate::assertIntegerish(shi21maxOuter, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(shi21maxInnerCov, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(shi21maxFD, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumber(zeroTheta, lower=0, finite=TRUE)
+  checkmate::assertIntegerish(shi21maxOuter, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(shi21maxInner, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(shi21maxInnerCov, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(shi21maxFD, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumber(zeroTheta, lower = 0, finite = TRUE)
   if (zeroTheta <= 0) {
-    stop("'zeroTheta' must be a positive number", call.=FALSE)
+    stop("'zeroTheta' must be a positive number", call. = FALSE)
   }
-  checkmate::assertNumber(shi21hMin, lower=0, finite=TRUE)
-  checkmate::assertNumber(shi21hMax, lower=0, finite=TRUE)
+  checkmate::assertNumber(zeroThetaStep, lower = 0, finite = TRUE)
+  checkmate::assertNumber(shi21hMin, lower = 0, finite = TRUE)
+  checkmate::assertNumber(shi21hMax, lower = 0, finite = TRUE)
   if (shi21hMax <= shi21hMin) {
-    stop("'shi21hMax' must be greater than 'shi21hMin'", call.=FALSE)
+    stop("'shi21hMax' must be greater than 'shi21hMin'", call. = FALSE)
   }
-  checkmate::assertIntegerish(mceta, lower=-2, len=1,any.missing=FALSE)
+  checkmate::assertIntegerish(mceta, lower = -2, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(mcetaOpt, len = 1, any.missing = FALSE)
 
-  checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
-  checkmate::assertIntegerish(nAGQ, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(agqHi, len=1, any.missing=FALSE)
-  checkmate::assertNumeric(agqLow, len=1, any.missing=FALSE)
-  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(smatPer, any.missing = FALSE, lower = 0, upper = 1, len = 1)
+  checkmate::assertIntegerish(nAGQ, lower = 0, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(agqHi, len = 1, any.missing = FALSE)
+  checkmate::assertNumeric(agqLow, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(boundedTransform, len = 1, any.missing = FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1434,21 +2192,40 @@ foceiControl <- function(sigdig = 3, #
     covType = covType,
     covMethodDeferred = covMethodDeferred,
     covSolveTol = covSolveTol,
+    covFallback = covFallback,
+    covPrecursor = covPrecursor,
+    covShortcut = covShortcut,
     covFull = covFull,
     fast = fast,
+    priorMethod = priorMethod,
+    fdOutlierZ = as.double(fdOutlierZ),
+    # Kept as the CHARACTER name, and read as a string in C++.  Storing the integer code
+    # instead does not round-trip: a control is re-passed through foceiControl() (as named
+    # arguments -- every field here must be a formal, which is why there is no companion
+    # "fdRefineMethod" field), and match.arg() on an integer yields NA silently rather than
+    # erroring, so the setting was quietly lost and the default estimator used.
+    fdOutlierScale = as.integer(fdOutlierScale),
+    fdRefine = fdRefine,
+    fdLanczosM = as.integer(fdLanczosM),
+    fdRichardsonR = as.integer(fdRichardsonR),
+    fdRichardsonV = as.double(fdRichardsonV),
+    fdChartrandAll = as.integer(fdChartrandAll),
+    fdOutlierAny = as.integer(fdOutlierAny),
+    fdIndividualStep = as.integer(fdIndividualStep),
     fdChartrand = as.integer(fdChartrand),
     centralDerivEps = centralDerivEps,
     eigen = eigen,
     diagXform = match.arg(diagXform),
     iovXform = match.arg(iovXform),
+    iovMethod = match.arg(iovMethod),
     sumProd = sumProd,
     optExpression = optExpression,
-    literalFix=literalFix,
-    literalFixRes=literalFixRes,
+    literalFix = literalFix,
+    literalFixRes = literalFixRes,
     outerOpt = as.integer(outerOpt),
     ci = as.double(ci),
     sigdig = as.double(sigdig),
-    sigdigTable=sigdigTable,
+    sigdigTable = sigdigTable,
     scaleObjective = as.double(scaleObjective),
     boundTol = as.double(boundTol),
     calcTables = calcTables,
@@ -1460,9 +2237,10 @@ foceiControl <- function(sigdig = 3, #
     foceEbeTol = as.double(foceEbeTol),
     hessEps = as.double(hessEps),
     hessEpsLlik = as.double(hessEpsLlik),
-    optimHessType=optimHessType,
-    optimHessCovType=optimHessCovType,
-    censOption=censOption,
+    optimHessType = optimHessType,
+    optimHessCovType = optimHessCovType,
+    hessEtaStepMin = as.double(hessEtaStepMin),
+    censOption = censOption,
     cholAccept = as.double(cholAccept),
     resetEtaSize = as.double(.resetEtaSize),
     resetThetaSize = as.double(.resetThetaSize),
@@ -1484,6 +2262,33 @@ foceiControl <- function(sigdig = 3, #
     eval.max = eval.max,
     iter.max = iter.max,
     innerOpt = innerOpt,
+    hessianMethod = hessianMethod,
+    innerHessian = innerHessian,
+    detHessian = detHessian,
+    ## trust-region inner optimizer (RcppTrust)
+    trustConf = as.double(trustConf),
+    trustRinit = trustRinit,
+    trustRmax = trustRmax,
+    trustFterm = trustFterm,
+    trustMterm = trustMterm,
+    trustPolish = trustPolish,
+    steihaugPolish = steihaugPolish,
+    newuoaPolish = newuoaPolish,
+    newuoaRhoend = newuoaRhoend,
+    bobyqaStationary = bobyqaStationary,
+    innerLbfgsLmm = innerLbfgsLmm,
+    innerLbfgsFactr = as.double(innerLbfgsFactr),
+    innerLbfgsPgtol = as.double(innerLbfgsPgtol),
+    innerLbfgsAbstol = as.double(innerLbfgsAbstol),
+    innerLbfgsReltol = as.double(innerLbfgsReltol),
+    ## trust-region outer optimizer (outerOpt="trust")
+    outerTrustHessian = outerTrustHessian,
+    outerTrustRinit = outerTrustRinit,
+    outerTrustRmax = outerTrustRmax,
+    outerTrustFterm = outerTrustFterm,
+    outerTrustMterm = outerTrustMterm,
+    outerTrustRelStep = as.double(outerTrustRelStep),
+    outerTrustRestarts = as.integer(outerTrustRestarts),
     ## BFGS
     abstol = abstol,
     reltol = reltol,
@@ -1511,6 +2316,7 @@ foceiControl <- function(sigdig = 3, #
     scaleC0 = as.double(scaleC0),
     outerOptTxt = .outerOptTxt,
     outerOptDefault = .outerOptDefault,
+    relTolDefault = .relTolDefault,
     rmatNorm = rmatNorm,
     rmatNormLlik = rmatNormLlik,
     smatNorm = smatNorm,
@@ -1526,7 +2332,9 @@ foceiControl <- function(sigdig = 3, #
     gradCalcCentralSmall = as.double(gradCalcCentralSmall),
     gradCalcCentralLarge = as.double(gradCalcCentralLarge),
     etaNudge = as.double(etaNudge),
-    etaNudge2=as.double(etaNudge2),
+    etaNudge2 = as.double(etaNudge2),
+    etaRestart = as.integer(etaRestart),
+    finalEtaTol = as.double(finalEtaTol),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,
@@ -1543,34 +2351,47 @@ foceiControl <- function(sigdig = 3, #
     eventSens = eventSens,
     gradProgressOfvTime = gradProgressOfvTime,
     addProp = addProp,
-    badSolveObjfAdj=badSolveObjfAdj,
-    compress=compress,
-    rxControl=rxControl,
-    genRxControl=genRxControl,
-    skipCov=.skipCov,
-    fallbackFD=fallbackFD,
-    shi21maxOuter=shi21maxOuter,
-    shi21maxInner=shi21maxInner,
-    shi21maxInnerCov=shi21maxInnerCov,
-    shi21maxFD=shi21maxFD,
-    shi21hMax=shi21hMax,
-    shi21hMin=shi21hMin,
-    smatPer=smatPer,
-    sdLowerFact=sdLowerFact,
-    zeroGradFirstReset=zeroGradFirstReset,
-    zeroGradRunReset=zeroGradRunReset,
-    zeroGradBobyqa=zeroGradBobyqa,
-    mceta=as.integer(mceta),
-    warm=warm,
-    nAGQ=as.integer(nAGQ),
-    agqHi=as.double(agqHi),
-    agqLow=as.double(agqLow),
-    sensMethod=sensMethod,
-    boundedTransform=boundedTransform,
-    zeroTheta=zeroTheta
+    badSolveObjfAdj = badSolveObjfAdj,
+    compress = compress,
+    rxControl = rxControl,
+    genRxControl = genRxControl,
+    skipCov = .skipCov,
+    fallbackFD = fallbackFD,
+    shi21maxOuter = shi21maxOuter,
+    shi21maxInner = shi21maxInner,
+    shi21maxInnerCov = shi21maxInnerCov,
+    shi21maxFD = shi21maxFD,
+    shi21hMax = shi21hMax,
+    shi21hMin = shi21hMin,
+    smatPer = smatPer,
+    sdLowerFact = sdLowerFact,
+    zeroGradFirstReset = zeroGradFirstReset,
+    zeroGradRunReset = zeroGradRunReset,
+    zeroGradBobyqa = zeroGradBobyqa,
+    mceta = as.integer(mceta),
+    mcetaOpt = mcetaOpt,
+    warm = warm,
+    nAGQ = as.integer(nAGQ),
+    agqHi = as.double(agqHi),
+    agqLow = as.double(agqLow),
+    sensMethod = sensMethod,
+    linCmtSensCarry = linCmtSensCarry,
+    boundedTransform = boundedTransform,
+    zeroTheta = zeroTheta,
+    zeroThetaStep = as.double(zeroThetaStep)
   )
   if (!is.null(.xtra$est)) {
     .ret$est <- .xtra$est
+  }
+  if (!is.null(.xtra$covMaxInnerIterations)) {
+    checkmate::assertCount(.xtra$covMaxInnerIterations, positive = TRUE)
+    .ret$covMaxInnerIterations <- as.integer(.xtra$covMaxInnerIterations)
+  }
+  if (!is.null(.xtra$covInnerTol)) {
+    if (!(checkmate::testNumber(.xtra$covInnerTol, finite = TRUE) && .xtra$covInnerTol > 0)) {
+      stop("'covInnerTol' must be a finite number > 0", call. = FALSE)
+    }
+    .ret$covInnerTol <- as.double(.xtra$covInnerTol)
   }
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA
@@ -1581,40 +2402,120 @@ foceiControl <- function(sigdig = 3, #
       .doWarn <- FALSE
     }
     if (.doWarn && missing(maxInnerIterations)) {
-      warning(sprintf("using 'etaMat' assuming 'maxInnerIterations=%d', set 'maxInnerIterations' explicitly to avoid this warning", maxInnerIterations))
+      warning(sprintf(
+        "using 'etaMat' assuming 'maxInnerIterations=%d', set 'maxInnerIterations' explicitly to avoid this warning",
+        maxInnerIterations
+      ))
     }
-    checkmate::assertMatrix(etaMat, mode="double", any.missing=FALSE, min.rows=1, min.cols=1)
+    checkmate::assertMatrix(etaMat, mode = "double", any.missing = FALSE, min.rows = 1, min.cols = 1)
     .ret$etaMat <- etaMat
   }
   class(.ret) <- "foceiControl"
   .ret
 }
 
-.rxUiDeparseFoceiControl <- function(object, var, type="foceiControl") {
-  .ret <- eval(str2lang(paste0(type, "()")))
+#' covMethod of a `foceiControl()` as the name that rebuilds it
+#'
+#' covMethod folds the analytic-vs-finite-difference R-matrix choice (carried by
+#' the derived internal covType) and a deferred "sa"/"imp" request (carried by
+#' covMethodDeferred, with slot 0) into a single name; neither internal field is
+#' deparsed on its own.
+#' @param o the control
+#' @return "sa", "imp", "analytic", "r,s", "r", "s", or "" for no covariance
+#' @noRd
+.foceiControlCovMethodName <- function(o) {
+  # an impmapControl() runs the importance-sampling covariance in its kernel
+  # (impCov) and keeps the "analytic" slot for the post-fit step
+  if (isTRUE(o$impCov)) {
+    return("imp")
+  }
+  .deferred <- o$covMethodDeferred
+  if (length(.deferred) == 1L && !is.na(.deferred)) {
+    return(.deferred)
+  }
+  .slot <- as.integer(o$covMethod)
+  if (!identical(.slot, 0L) && identical(o$covType, "analytic")) {
+    return("analytic")
+  }
+  .covMethodFromSlot(.slot)
+}
+
+#' `resetEtaP`, `resetThetaP` and `resetThetaFinalP` of a control
+#'
+#' They are kept only as the derived `*Size`; the p-value is written when it
+#' rebuilds that size exactly, otherwise the size itself.
+#' @param object control being deparsed
+#' @param default default control it is compared with
+#' @param type constructor name
+#' @return argument strings
+#' @noRd
+.foceiDeparseResetP <- function(object, default, type) {
+  .p <- c(resetEtaSize = "resetEtaP", resetThetaSize = "resetThetaP", resetThetaFinalSize = "resetThetaFinalP")
+  unlist(lapply(names(.p), function(.s) {
+    .v <- object[[.s]]
+    if (is.null(.v) || identical(.v, default[[.s]])) {
+      return(NULL)
+    }
+    .pv <- if (is.infinite(.v)) {
+      0
+    } else if (.v == 0) {
+      1
+    } else {
+      2 * stats::pnorm(-.v)
+    }
+    .re <- tryCatch(do.call(type, stats::setNames(list(.pv), .p[[.s]]))[[.s]], error = function(e) NULL)
+    if (identical(.re, .v)) {
+      paste0(.p[[.s]], " = ", .deparseValue(.pv))
+    } else {
+      paste0(.s, " = ", .deparseValue(.v))
+    }
+  }))
+}
+
+.rxUiDeparseFoceiControl <- function(
+  object,
+  var,
+  type = "foceiControl",
+  internal = character(0),
+  covName = .foceiControlCovMethodName,
+  fun = NULL,
+  extra = character(0)
+) {
+  .ret0 <- eval(str2lang(paste0(type, "()")))
+  .ret <- .deparseSigdigDefault(.ret0, object, type)
   .outerOpt <- character(0)
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
-    warning("functions for `outerOpt` cannot be deparsed, reset to default",
-            call.=FALSE)
-  } else if (!(object$outerOptTxt %in% c(.ret$outerOptTxt, "stats::optimize"))) {
+    warning("functions for `outerOpt` cannot be deparsed, reset to default", call. = FALSE)
+  } else if (
+    !isTRUE(object$outerOptDefault) &&
+      object$outerOptTxt != "stats::optimize" &&
+      # an optimizer that was asked for, even the default one
+      (object$outerOptTxt != .ret$outerOptTxt || isTRUE(.ret$outerOptDefault))
+  ) {
     .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
-  .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
-  # covMethod folds the analytic-vs-finite-difference R-matrix choice (carried by the
-  # derived internal covType) into a single token; covType is never deparsed on its own.
-  .covMethodStr <- function(o) {
-    if (identical(o$covType, "analytic")) return("analytic")
-    if (identical(as.integer(o$covMethod), 0L)) return("")
-    .idx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-    names(.idx)[match(as.integer(o$covMethod), .idx)]
+  .w <- .deparseDifferent(.ret, object, c(.foceiControlInternal, internal))
+  if (!identical(object[["sigdig"]], .ret0[["sigdig"]])) {
+    .w <- union(.w, which(names(.ret) == "sigdig"))
   }
+  # an rxControl that was supplied, even one equal to the generated one
+  if (!identical(object[["genRxControl"]], .ret[["genRxControl"]])) {
+    .w <- union(.w, which(names(.ret) == "rxControl"))
+  }
+  # a defaulted rel.tol is rebuilt from sigdig and fast
+  if (isTRUE(object$relTolDefault)) {
+    .w <- setdiff(.w, which(names(.ret) == "rel.tol"))
+  }
+  # print is kept only as iterPrintControl, which is otherwise internal
+  if (!identical(object$iterPrintControl, .ret$iterPrintControl)) {
+    .w <- union(.w, which(names(.ret) == "iterPrintControl"))
+  }
+  extra <- c(extra, .foceiDeparseResetP(object, .ret, type))
   .covTok <- character(0)
-  if (!identical(.covMethodStr(object), .covMethodStr(.ret))) {
-    .covTok <- paste0("covMethod = ", deparse1(.covMethodStr(object)))
+  if (!identical(covName(object), covName(.ret))) {
+    .covTok <- paste0("covMethod = ", deparse1(covName(object)))
   }
-  if (length(.w) == 0 && length(.outerOpt) == 0 && length(.covTok) == 0) {
-    return(str2lang(paste0(var, " <- ", type, "()")))
-  }
+  .formals <- c(formals(type), formals(impmapControl), formals(foceiControl))
   .n <- names(.ret)[.w]
   .n <- .n[!(.n %in% c("outerOpt", "covMethod"))]
   if (length(.covTok) > 0) {
@@ -1623,7 +2524,7 @@ foceiControl <- function(sigdig = 3, #
   # preserve the formal-argument declaration order (names(.ret)) so the covMethod
   # token lands in its natural position instead of always first
   .n <- .n[order(match(.n, names(.ret)))]
-  .retD <- c(vapply(.n, function(x) {
+  .tok <- function(x) {
     if (x == "covMethod") {
       return(.covTok)
     }
@@ -1631,11 +2532,20 @@ foceiControl <- function(sigdig = 3, #
     if (!is.na(.val)) {
       return(.val)
     }
+    if (is.function(fun)) {
+      .val <- fun(x, object[[x]])
+      if (!is.na(.val)) {
+        return(.val)
+      }
+    }
+    # a logical argument some controls keep as 0/1
+    if (is.logical(.formals[[x]]) && is.numeric(object[[x]])) {
+      return(paste0(x, " = ", deparse1(as.logical(object[[x]]))))
+    }
     if (x == "innerOpt") {
-      .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
       paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
     } else if (x == "warm") {
-      .warmIdx <- c("calc" = 1L, "save" = 0L)
+      .warmIdx <- c("calc" = 1L, "save" = 0L, "none" = 2L)
       paste0("warm = ", deparse1(names(.warmIdx[which(object[[x]] == .warmIdx)])))
     } else if (x %in% c("optimHessType", "optimHessCovType")) {
       .methodIdx <- c("central" = 1L, "forward" = 3L)
@@ -1643,24 +2553,21 @@ foceiControl <- function(sigdig = 3, #
     } else if (x == "eventType") {
       .methodIdx <- c("central" = 2L, "forward" = 3L)
       paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else if (x == "hessianMethod") {
+      paste0(x, " = ", deparse1(names(.hessianMethodIdx[which(object[[x]] == .hessianMethodIdx)])))
     } else if (x %in% c("derivMethod", "covDerivMethod")) {
       .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
       paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-    } else if (x == "covMethod") {
-      if (object[[x]] == 0L) {
-        paste0(x, " = \"\"")
-      } else {
-        .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-        paste0(x, " = ", deparse1(names(.covMethodIdx[which(object[[x]] == .covMethodIdx)])))
-      }
     } else {
-      paste0(x, " = ", deparse1(object[[x]]))
+      paste0(x, " = ", .deparseValue(object[[x]]))
     }
-  }, character(1)), .outerOpt)
-  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse=", "), ")"))
+  }
+  .retD <- c(vapply(.n, .tok, character(1)), .outerOpt, extra)
+  .retD <- .retD[nzchar(.retD)]
+  .ret <- str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse = ", "), ")"))
+  .allowed <- setdiff(names(.formals), c("...", .foceiControlInternal, internal, "outerOpt", "covMethod", "rxControl"))
+  .deparseFixup(.ret, object, .allowed, .tok)
 }
 
 #' @export
-rxUiDeparse.foceiControl <- function(object, var) {
-  .rxUiDeparseFoceiControl(object, var, type="foceiControl")
-}
+rxUiDeparse.foceiControl <- function(object, var) .rxUiDeparseFoceiControl(object, var, type = "foceiControl")

@@ -31,7 +31,9 @@
   }
   y <- phi - offset
 
-  if (is.null(weights)) weights <- rep(1, length(phi))
+  if (is.null(weights)) {
+    weights <- rep(1, length(phi))
+  }
 
   if (length(freeNames) == 0L) {
     # only a population intercept left to estimate

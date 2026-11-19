@@ -89,7 +89,7 @@ getWang2007OdeModel <- function() {
 # Core Testing Function
 ################################################################################
 
-testWang2007ErrorModel <- function(type, fun, val = rep(NA_real_, 10), addProp = 2, log=FALSE) {
+testWang2007ErrorModel <- function(type, fun, val = rep(NA_real_, 10), addProp = 2, log = FALSE) {
   ## message(type)
   valName <- as.character(substitute(val))
 
@@ -111,63 +111,145 @@ testWang2007ErrorModel <- function(type, fun, val = rep(NA_real_, 10), addProp =
   # objective identical to NONMEM while cutting each fit's time by ~10x.
   .combined <- paste0("combined", addProp)
 
-  fit1 <- .nlmixr(.fo, .dode, "focei",
-                  control = foceiControl(
-                    maxOuterIterations = 0, covMethod = "",
-                    addProp = .combined, calcTables = FALSE))
+  fit1 <- .nlmixr(
+    .fo,
+    .dode,
+    "focei",
+    control = foceiControl(
+      maxOuterIterations = 0,
+      covMethod = "",
+      addProp = .combined,
+      calcTables = FALSE
+    )
+  )
 
-  fit2 <- .nlmixr(.f, .d, "focei",
-                  control = foceiControl(
-                    maxOuterIterations = 0, covMethod = "",
-                    addProp = .combined, calcTables = FALSE))
+  fit2 <- .nlmixr(
+    .f,
+    .d,
+    "focei",
+    control = foceiControl(
+      maxOuterIterations = 0,
+      covMethod = "",
+      addProp = .combined,
+      calcTables = FALSE
+    )
+  )
 
-  fit3 <- .nlmixr(.fo, .dode, "foce",
-                  control = foceiControl(
-                    maxOuterIterations = 0, covMethod = "",
-                    addProp = .combined, calcTables = FALSE))
+  fit3 <- .nlmixr(
+    .fo,
+    .dode,
+    "foce",
+    control = foceiControl(
+      maxOuterIterations = 0,
+      covMethod = "",
+      addProp = .combined,
+      calcTables = FALSE
+    )
+  )
 
-  fit4 <- .nlmixr(.f, .d, "foce",
-                  control = foceiControl(
-                    maxOuterIterations = 0, covMethod = "",
-                    addProp = .combined, calcTables = FALSE))
+  fit4 <- .nlmixr(
+    .f,
+    .d,
+    "foce",
+    control = foceiControl(
+      maxOuterIterations = 0,
+      covMethod = "",
+      addProp = .combined,
+      calcTables = FALSE
+    )
+  )
 
-  fit5 <- .nlmixr(.fo, .dode, "fo",
-                  control = foceiControl(
-                    maxOuterIterations = 0, covMethod = "",
-                    addProp = .combined, calcTables = FALSE))
+  fit5 <- .nlmixr(
+    .fo,
+    .dode,
+    "fo",
+    control = foceiControl(
+      maxOuterIterations = 0,
+      covMethod = "",
+      addProp = .combined,
+      calcTables = FALSE
+    )
+  )
   setOfv(fit5, "fo")
 
-  fit6 <- .nlmixr(.f, .dode, "fo", control = foceiControl(
-    maxOuterIterations = 0, covMethod = "",
-    addProp = .combined, calcTables = FALSE))
+  fit6 <- .nlmixr(
+    .f,
+    .dode,
+    "fo",
+    control = foceiControl(
+      maxOuterIterations = 0,
+      covMethod = "",
+      addProp = .combined,
+      calcTables = FALSE
+    )
+  )
   setOfv(fit6, "fo")
 
-  fit7 <- .nlmixr(.fo, .dode, "agq",
-                  control = agqControl(
-                    maxOuterIterations = 0, covMethod = "",
-                    addProp = .combined, calcTables = FALSE))
+  fit7 <- .nlmixr(
+    .fo,
+    .dode,
+    "agq",
+    control = agqControl(
+      maxOuterIterations = 0,
+      covMethod = "",
+      addProp = .combined,
+      calcTables = FALSE
+    )
+  )
 
-  fit8 <- .nlmixr(.f, .d, "agq",
-                  control = agqControl(
-                    maxOuterIterations = 0, covMethod = "",
-                    addProp = .combined, calcTables = FALSE))
+  fit8 <- .nlmixr(
+    .f,
+    .d,
+    "agq",
+    control = agqControl(
+      maxOuterIterations = 0,
+      covMethod = "",
+      addProp = .combined,
+      calcTables = FALSE
+    )
+  )
 
-  fit9 <- .nlmixr(.fo, .dode, "laplace",
-                  control = laplaceControl(
-                    maxOuterIterations = 0, covMethod = "",
-                    addProp = .combined, calcTables = FALSE))
+  fit9 <- .nlmixr(
+    .fo,
+    .dode,
+    "laplace",
+    control = laplaceControl(
+      maxOuterIterations = 0,
+      covMethod = "",
+      addProp = .combined,
+      calcTables = FALSE
+    )
+  )
 
-  fit10 <- .nlmixr(.f, .d, "laplace",
-                  control = laplaceControl(
-                    maxOuterIterations = 0, covMethod = "",
-                    addProp = .combined, calcTables = FALSE))
+  fit10 <- .nlmixr(
+    .f,
+    .d,
+    "laplace",
+    control = laplaceControl(
+      maxOuterIterations = 0,
+      covMethod = "",
+      addProp = .combined,
+      calcTables = FALSE
+    )
+  )
 
-  .n <- paste(type, c("focei ode", "focei", "foce ode", "foce", "fo ode", "fo",
-                      "agq ode", "agq", "laplace ode", "laplace"),
-              paste0("combined", addProp))
-  ret <- c(fit1$objective, fit2$objective, fit3$objective, fit4$objective,
-           fit5$objective, fit6$objective, fit7$objective, fit8$objective,
-           fit9$objective, fit10$objective)
+  .n <- paste(
+    type,
+    c("focei ode", "focei", "foce ode", "foce", "fo ode", "fo", "agq ode", "agq", "laplace ode", "laplace"),
+    paste0("combined", addProp)
+  )
+  ret <- c(
+    fit1$objective,
+    fit2$objective,
+    fit3$objective,
+    fit4$objective,
+    fit5$objective,
+    fit6$objective,
+    fit7$objective,
+    fit8$objective,
+    fit9$objective,
+    fit10$objective
+  )
   ret <- setNames(ret, .n)
   if (length(val) < length(.n)) {
     val <- c(val, rep(NA_real_, length(.n) - length(val)))
@@ -186,31 +268,33 @@ testWang2007ErrorModel <- function(type, fun, val = rep(NA_real_, 10), addProp =
   ## Now test
   if (!all(is.na(val))) {
     test_that(
-      type,{
-        expect_equal(setNames(ret, NULL), setNames(val, NULL), tolerance=1e-3)
-      })
-    test_that(paste0(type, " print"),{
+      type,
+      {
+        expect_equal(setNames(ret, NULL), setNames(val, NULL), tolerance = 1e-3)
+      }
+    )
+    test_that(paste0(type, " print"), {
       utils::capture.output(suppressMessages({
-        withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit1), NA))
-        withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit1), NA))
-        withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit2), NA))
-        withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit2), NA))
-        withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit3), NA))
-        withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit3), NA))
-        withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit4), NA))
-        withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit4), NA))
-        withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit5), NA))
-        withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit5), NA))
-        withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit6), NA))
-        withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit6), NA))
-        withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit7), NA))
-        withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit7), NA))
-        withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit8), NA))
-        withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit8), NA))
-        withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit9), NA))
-        withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit9), NA))
-        withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit10), NA))
-        withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit10), NA))
+        withr::with_options(list(cli.unicode = TRUE), expect_error(print(fit1), NA))
+        withr::with_options(list(cli.unicode = FALSE), expect_error(print(fit1), NA))
+        withr::with_options(list(cli.unicode = TRUE), expect_error(print(fit2), NA))
+        withr::with_options(list(cli.unicode = FALSE), expect_error(print(fit2), NA))
+        withr::with_options(list(cli.unicode = TRUE), expect_error(print(fit3), NA))
+        withr::with_options(list(cli.unicode = FALSE), expect_error(print(fit3), NA))
+        withr::with_options(list(cli.unicode = TRUE), expect_error(print(fit4), NA))
+        withr::with_options(list(cli.unicode = FALSE), expect_error(print(fit4), NA))
+        withr::with_options(list(cli.unicode = TRUE), expect_error(print(fit5), NA))
+        withr::with_options(list(cli.unicode = FALSE), expect_error(print(fit5), NA))
+        withr::with_options(list(cli.unicode = TRUE), expect_error(print(fit6), NA))
+        withr::with_options(list(cli.unicode = FALSE), expect_error(print(fit6), NA))
+        withr::with_options(list(cli.unicode = TRUE), expect_error(print(fit7), NA))
+        withr::with_options(list(cli.unicode = FALSE), expect_error(print(fit7), NA))
+        withr::with_options(list(cli.unicode = TRUE), expect_error(print(fit8), NA))
+        withr::with_options(list(cli.unicode = FALSE), expect_error(print(fit8), NA))
+        withr::with_options(list(cli.unicode = TRUE), expect_error(print(fit9), NA))
+        withr::with_options(list(cli.unicode = FALSE), expect_error(print(fit9), NA))
+        withr::with_options(list(cli.unicode = TRUE), expect_error(print(fit10), NA))
+        withr::with_options(list(cli.unicode = FALSE), expect_error(print(fit10), NA))
       }))
     })
   }

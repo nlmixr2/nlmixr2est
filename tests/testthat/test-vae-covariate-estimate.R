@@ -46,8 +46,11 @@ nmTest({
 
   test_that("covariateSelection=FALSE regresses the coefficient in every nonMuTheta mode", {
     for (m in c("regress", "none", "fix", "eta")) {
-      p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.tr()), d,
-                                         vaeControl(covariateSelection = FALSE, nonMuTheta = m)))
+      p <- suppressWarnings(.vaeDataPrep(
+        rxode2::assertRxUi(.tr()),
+        d,
+        vaeControl(covariateSelection = FALSE, nonMuTheta = m)
+      ))
       expect_true("cl.wt" %in% p$regressNames, info = m)
       i <- match("cl.wt", p$regressNames)
       expect_true(is.finite(p$regressLower[i]) && is.finite(p$regressUpper[i]), info = m)
@@ -57,8 +60,11 @@ nmTest({
   test_that("covariateSelection=TRUE does NOT force the coefficient into the regress set", {
     ## default nonMuTheta='regress' still picks up genuine non-mu structural thetas
     ## (tka, tv) but the coefficient is left to the selection machinery
-    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.tr()), d,
-                                       vaeControl(covariateSelection = TRUE, nonMuTheta = "none")))
+    p <- suppressWarnings(.vaeDataPrep(
+      rxode2::assertRxUi(.tr()),
+      d,
+      vaeControl(covariateSelection = TRUE, nonMuTheta = "none")
+    ))
     expect_false("cl.wt" %in% p$regressNames)
   })
 
@@ -69,17 +75,26 @@ nmTest({
         d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v; cp ~ add(add.err) })
     }
-    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(fx()), d,
-                                       vaeControl(covariateSelection = FALSE, nonMuTheta = "none")))
+    p <- suppressWarnings(.vaeDataPrep(
+      rxode2::assertRxUi(fx()),
+      d,
+      vaeControl(covariateSelection = FALSE, nonMuTheta = "none")
+    ))
     expect_false("cl.wt" %in% p$regressNames)
   })
 
   test_that("the unbounded fallback bound is scale-aware (tighter for a raw covariate)", {
     ## raw WT (~O(70)) => bound ~ 1/max|WT|, much tighter than the log-scale default
-    pLin <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.lin()), d,
-                                          vaeControl(covariateSelection = FALSE, nonMuTheta = "none")))
-    pTr <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.tr()), d,
-                                         vaeControl(covariateSelection = FALSE, nonMuTheta = "none")))
+    pLin <- suppressWarnings(.vaeDataPrep(
+      rxode2::assertRxUi(.lin()),
+      d,
+      vaeControl(covariateSelection = FALSE, nonMuTheta = "none")
+    ))
+    pTr <- suppressWarnings(.vaeDataPrep(
+      rxode2::assertRxUi(.tr()),
+      d,
+      vaeControl(covariateSelection = FALSE, nonMuTheta = "none")
+    ))
     bLin <- pLin$regressUpper[match("cl.wt", pLin$regressNames)]
     bTr <- pTr$regressUpper[match("cl.wt", pTr$regressNames)]
     expect_lt(bLin, bTr)
@@ -90,9 +105,17 @@ nmTest({
     for (m in c("none", "fix", "eta", "regress")) {
       w <- character(0)
       withCallingHandlers(
-        .preProcessVaeNonMuTheta(rxode2::assertRxUi(.tr()), "vae", d,
-                                 vaeControl(covariateSelection = FALSE, nonMuTheta = m)),
-        warning = function(cnd) { w <<- c(w, conditionMessage(cnd)); invokeRestart("muffleWarning") })
+        .preProcessVaeNonMuTheta(
+          rxode2::assertRxUi(.tr()),
+          "vae",
+          d,
+          vaeControl(covariateSelection = FALSE, nonMuTheta = m)
+        ),
+        warning = function(cnd) {
+          w <<- c(w, conditionMessage(cnd))
+          invokeRestart("muffleWarning")
+        }
+      )
       expect_true(any(grepl("estimating covariate coef", w)), info = m)
     }
   })
@@ -100,8 +123,9 @@ nmTest({
   ## ---- pinCovariates: restrict the search to model-declared covariate pairs ----
 
   test_that(".vaeModelCovariatePairs pairs a transformed continuous covariate", {
-    ui <- rxode2::assertRxUi(.tr())               # cl.wt * log(WT/70) on cl
-    dd <- as.data.frame(d); names(dd) <- toupper(names(dd))
+    ui <- rxode2::assertRxUi(.tr()) # cl.wt * log(WT/70) on cl
+    dd <- as.data.frame(d)
+    names(dd) <- toupper(names(dd))
     cov <- .vaeCovariateSearch(dd, unique(dd$ID))
     pr <- .vaeModelCovariatePairs(ui, cov)
     expect_equal(nrow(pr), 1L)
@@ -109,12 +133,12 @@ nmTest({
     expect_equal(pr$covName, "WT")
     expect_equal(pr$thetaName, "tcl")
     expect_equal(pr$covType, "continuous")
-    expect_equal(pr$userCenter, 70)               # log(WT/70) center read from the model
+    expect_equal(pr$userCenter, 70) # log(WT/70) center read from the model
     expect_true(pr$inPool)
   })
 
   test_that("pinCovariates=TRUE builds a 1-cell mask and zeros the training coef", {
-    ui <- rxode2::assertRxUi(.tr())               # single eta (cl)
+    ui <- rxode2::assertRxUi(.tr()) # single eta (cl)
     p <- suppressWarnings(.vaeDataPrep(ui, d, vaeControl(pinCovariates = TRUE)))
     expect_true(p$pinActive)
     ## WT allowed only on the cl dim; exactly one 1 in the mask
@@ -132,12 +156,12 @@ nmTest({
     ## Previously untransferable (the search only understood log(cov/center)),
     ## so this was routed to the regress M-step.  `beta*WT` is now the identity
     ## shape, so it pins to the linear-family column and IS searched.
-    ui <- rxode2::assertRxUi(.lin())              # cl.wt * WT (linear on continuous WT)
+    ui <- rxode2::assertRxUi(.lin()) # cl.wt * WT (linear on continuous WT)
     p <- suppressWarnings(.vaeDataPrep(ui, d, vaeControl(pinCovariates = TRUE)))
     expect_true(p$pinActive)
     expect_equal(p$pinPairs$shape, "identity")
     expect_true(all(p$pinPairs$inPool))
-    expect_false("cl.wt" %in% p$regressNames)      # searched, not regressed
+    expect_false("cl.wt" %in% p$regressNames) # searched, not regressed
     ## exactly one cell allowed, on the linear-family column
     expect_equal(sum(p$covAllow), 1L)
     .j <- which(colSums(p$covAllow) > 0L)
@@ -160,8 +184,7 @@ nmTest({
         d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v; cp ~ add(add.err) })
     }
-    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(sq()), d,
-                                       vaeControl(pinCovariates = TRUE)))
+    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(sq()), d, vaeControl(pinCovariates = TRUE)))
     expect_false(any(p$pinPairs$inPool))
     expect_true("cl.wt" %in% p$regressNames)
     expect_equal(sum(p$covAllow), 0L)
@@ -172,9 +195,13 @@ nmTest({
     w <- character(0)
     p <- withCallingHandlers(
       .vaeDataPrep(ui, d, vaeControl(pinCovariates = FALSE)),
-      warning = function(cnd) { w <<- c(w, conditionMessage(cnd)); invokeRestart("muffleWarning") })
+      warning = function(cnd) {
+        w <<- c(w, conditionMessage(cnd))
+        invokeRestart("muffleWarning")
+      }
+    )
     expect_false(p$pinActive)
-    expect_equal(ncol(p$covMat), 0L)               # search pool emptied
+    expect_equal(ncol(p$covMat), 0L) # search pool emptied
     expect_true("cl.wt" %in% p$regressNames)
     expect_true(any(grepl("pinCovariates=FALSE", w)))
   })
@@ -191,10 +218,10 @@ nmTest({
         d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v; cp ~ add(add.err) })
     }
-    dd <- as.data.frame(d); names(dd) <- toupper(names(dd))
-    .ageById <- stats::setNames(rep(c(30, 40, 55), length.out = length(unique(dd$ID))),
-                                as.character(unique(dd$ID)))
-    dd$AGE <- .ageById[as.character(dd$ID)]          # subject-constant
+    dd <- as.data.frame(d)
+    names(dd) <- toupper(names(dd))
+    .ageById <- stats::setNames(rep(c(30, 40, 55), length.out = length(unique(dd$ID))), as.character(unique(dd$ID)))
+    dd$AGE <- .ageById[as.character(dd$ID)] # subject-constant
     ui <- rxode2::assertRxUi(multi())
     cov <- .vaeCovariateSearch(dd, unique(dd$ID))
     pr <- .vaeModelCovariatePairs(ui, cov)
@@ -202,7 +229,7 @@ nmTest({
     expect_setequal(pr$coefName, c("wt.cl", "age.cl"))
     expect_equal(pr$covName[pr$coefName == "wt.cl"], "WT")
     expect_equal(pr$covName[pr$coefName == "age.cl"], "AGE")
-    expect_true(all(pr$inPool))                     # both are clean log forms
+    expect_true(all(pr$inPool)) # both are clean log forms
   })
 
   test_that("one covariate pinned on two parameters adjusts its column only once", {
@@ -216,12 +243,14 @@ nmTest({
         d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
         cp <- center / v; cp ~ add(add.err) })
     }
-    p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(two()), d,
-                                       vaeControl(pinCovariates = TRUE,
-                                                  muRefCovAlg = FALSE)))
+    p <- suppressWarnings(.vaeDataPrep(
+      rxode2::assertRxUi(two()),
+      d,
+      vaeControl(pinCovariates = TRUE, muRefCovAlg = FALSE)
+    ))
     jWT <- match("WT", p$covRaw)
-    expect_true(all(is.finite(p$covMat[, jWT])))     # never -Inf
-    expect_equal(p$covPop[jWT], 0)                   # uncentered exactly once
+    expect_true(all(is.finite(p$covMat[, jWT]))) # never -Inf
+    expect_equal(p$covPop[jWT], 0) # uncentered exactly once
     ## column is log(WT/70) -- the model's centering, applied once
     expect_equal(unname(p$covMat[1, jWT]), log(d$WT[1] / 70))
     ## both coefficients pinned (same center, so no conflict/demotion)
@@ -294,8 +323,8 @@ nmTest({
         cp <- center / v; cp ~ add(add.err) })
     }
     ui <- rxode2::assertRxUi(struct())
-    expect_equal(.vaeCovariateCoefThetas(ui), "beta.ka")   # only the real coefficient
-    expect_true(all(c("tka", "tlag") %in% .vaeNonMuThetas(ui)))  # structural thetas kept
+    expect_equal(.vaeCovariateCoefThetas(ui), "beta.ka") # only the real coefficient
+    expect_true(all(c("tka", "tlag") %in% .vaeNonMuThetas(ui))) # structural thetas kept
   })
 
   test_that("exotic covariate transforms are classified via the mu2 derivative check", {
@@ -306,20 +335,26 @@ nmTest({
     ## cases -- confirm exotic forms are detected, and a non-mu form (a multiplier
     ## outside the transform, whose slope cannot transfer) is correctly excluded.
     mk <- function(clexpr) {
-      eval(parse(text = sprintf(
-        "function(){ ini({ tcl<-1; tv<-3.45; b<-0.1; eta.cl~0.1; add.err<-0.7 })\n model({ %s; v<-exp(tv)\n d/dt(depot) <- -cl*depot; cp<-depot/v; cp~add(add.err) }) }",
-        clexpr)))
+      eval(parse(
+        text = sprintf(
+          "function(){ ini({ tcl<-1; tv<-3.45; b<-0.1; eta.cl~0.1; add.err<-0.7 })\n model({ %s; v<-exp(tv)\n d/dt(depot) <- -cl*depot; cp<-depot/v; cp~add(add.err) }) }",
+          clexpr
+        )
+      ))
     }
-    for (e in c("cl <- exp(tcl + b*sqrt(WT) + eta.cl)",
-                "cl <- exp(tcl + b*(WT/70)^2 + eta.cl)",
-                "cl <- exp(tcl + b*exp(WT/100) + eta.cl)",
-                "cl <- exp(tcl + b*(WT - 70) + eta.cl)")) {
+    for (e in c(
+      "cl <- exp(tcl + b*sqrt(WT) + eta.cl)",
+      "cl <- exp(tcl + b*(WT/70)^2 + eta.cl)",
+      "cl <- exp(tcl + b*exp(WT/100) + eta.cl)",
+      "cl <- exp(tcl + b*(WT - 70) + eta.cl)"
+    )) {
       expect_equal(.vaeCovariateCoefThetas(rxode2::assertRxUi(mk(e))), "b", info = e)
     }
     ## multiplier outside the transform: not a mu reference, correctly not a coef
     expect_equal(
       .vaeCovariateCoefThetas(rxode2::assertRxUi(mk("cl <- exp(tcl + eta.cl)*(1 + b*WT)"))),
-      character(0))
+      character(0)
+    )
   })
 
   test_that("an indirect covariate coefficient is estimated in every nonMuTheta mode", {
@@ -327,8 +362,7 @@ nmTest({
     ## of nonMuTheta.  Before the fix it was regressed only under "regress"/"grad",
     ## frozen under "none", and errored under "eta"/"fix".
     for (m in c("regress", "none", "eta", "fix")) {
-      p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.ind()), d,
-                                         vaeControl(nonMuTheta = m)))
+      p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(.ind()), d, vaeControl(nonMuTheta = m)))
       expect_true("cl.wt" %in% p$regressNames, info = m)
     }
   })
@@ -342,12 +376,11 @@ nmTest({
     }
     p <- suppressWarnings(.vaeDataPrep(rxode2::assertRxUi(noCov), d, vaeControl(pinCovariates = TRUE)))
     expect_false(p$pinActive)
-    expect_null(p$covAllow)                         # no mask -> unrestricted search
+    expect_null(p$covAllow) # no mask -> unrestricted search
     ## WT still discovered from data, now as one search column per shape family
     ## (and one per ARM for the hockey family)
     expect_equal(unique(p$covRaw), "WT")
-    expect_equal(p$covNames,
-                 c("WT_power", "WT_lin", "WT_hockeyLow", "WT_hockeyHi"))
+    expect_equal(p$covNames, c("WT_power", "WT_lin", "WT_hockeyLow", "WT_hockeyHi"))
     ## every shape shares an exclusion group, so only one can ever be selected
     expect_equal(length(unique(p$covGroup)), 1L)
     ## and the two hockey arms are one block inside that group

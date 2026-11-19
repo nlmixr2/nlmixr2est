@@ -14,13 +14,12 @@ test_that("emviControl() builds and validates", {
   ## enum + range validation
   expect_error(emviControl(viFamily = "bogus"))
   expect_error(emviControl(iters = 0L))
-  expect_error(emviControl(alpha = 2))          # alpha in (0,1)
+  expect_error(emviControl(alpha = 2)) # alpha in (0,1)
   expect_error(emviControl(nMc = 0L))
-  expect_error(emviControl(bogusArg = 1))       # unused argument
+  expect_error(emviControl(bogusArg = 1)) # unused argument
 
   ## knobs round-trip
-  ctl2 <- emviControl(iters = 50L, nMc = 3L, viFamily = "meanField",
-                      pointEstimate = FALSE, optim = "adam")
+  ctl2 <- emviControl(iters = 50L, nMc = 3L, viFamily = "meanField", pointEstimate = FALSE, optim = "adam")
   expect_identical(ctl2$iters, 50L)
   expect_identical(ctl2$nMc, 3L)
   expect_identical(ctl2$viFamily, "meanField")
@@ -49,11 +48,9 @@ test_that("getValidNlmixrCtl.emvi/.fbvi normalize control and resolve pointEstim
   ## `est` has to win rather than error because the two methods share one control
   ## class, so re-estimating a fit with the other method pipes the completed
   ## fit's control (carrying the old pointEstimate) forward.
-  expect_message(v3 <- getValidNlmixrCtl.emvi(list(emviControl(pointEstimate = FALSE))),
-                 "pointEstimate=TRUE")
+  expect_message(v3 <- getValidNlmixrCtl.emvi(list(emviControl(pointEstimate = FALSE))), "pointEstimate=TRUE")
   expect_true(v3$pointEstimate)
-  expect_message(v4 <- getValidNlmixrCtl.fbvi(list(emviControl(pointEstimate = TRUE))),
-                 "pointEstimate=FALSE")
+  expect_message(v4 <- getValidNlmixrCtl.fbvi(list(emviControl(pointEstimate = TRUE))), "pointEstimate=FALSE")
   expect_false(v4$pointEstimate)
   ## an agreeing value says nothing
   expect_silent(getValidNlmixrCtl.emvi(list(emviControl(pointEstimate = TRUE))))
@@ -113,11 +110,14 @@ test_that("fbviControl() is emviControl() with pointEstimate = FALSE", {
   expect_identical(p$nMc, 1L)
   expect_identical(p$viFamily, "fullRank")
   expect_identical(p$optim, "adam")
-  expect_true(p$adaptEta)                 # NOT "adam"
+  expect_true(p$adaptEta) # NOT "adam"
   expect_false(p$pointEstimate)
 
   ## defaults differ ONLY on that axis
-  .drop <- function(x) { x$pointEstimate <- NULL; x }
+  .drop <- function(x) {
+    x$pointEstimate <- NULL
+    x
+  }
   expect_equal(.drop(fbviControl()), .drop(emviControl()))
 })
 
@@ -130,4 +130,18 @@ test_that("getValidNlmixrCtl.fbvi accepts NULL and a bare list", {
   ## an fbviControl() passed to est="emvi" is overridden by est, with a message
   expect_message(v2 <- getValidNlmixrCtl.emvi(list(fbviControl())), "pointEstimate=TRUE")
   expect_true(v2$pointEstimate)
+})
+
+test_that("emviControl(covFallback=) ends each FOCEI chain with the variational covariance", {
+  expect_identical(
+    emviControl()$covFallback,
+    list("r,s" = c("r", "s", "vi"), r = c("s", "vi"), s = "vi", analytic = c("r,s", "r", "s", "vi"))
+  )
+  expect_error(emviControl(covFallback = list(vi = "r")), "names a method without fallbacks: \"vi\"")
+  expect_error(emviControl(covFallback = list(s = "sa")), "cannot fall back to \"sa\"")
+  # the FOCEI control gets the FOCEI part of the list
+  .f <- .adviFoceiControl(emviControl(covMethod = "r,s", covFallback = list("r,s" = c("s", "vi"))), NULL, TRUE)
+  expect_identical(.f$covFallback, list("r,s" = "s"))
+  .d <- .adviFoceiControl(emviControl(covMethod = "r,s"), NULL, TRUE)
+  expect_identical(.d$covFallback, foceiControl()$covFallback)
 })

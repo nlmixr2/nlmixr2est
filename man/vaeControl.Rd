@@ -33,6 +33,11 @@ vaeControl(
   inputScale = c("reference", "observed"),
   covSelectMethod = c("auto", "bnb", "l0learn"),
   covSelectMaxExact = 17L,
+  covSelectColinearCut = .vaeColinearCut,
+  covSelectPhiCor = c("suffStat", "mu", "resid"),
+  covSelectPhiJoin = 0.9,
+  covSelectPhiLeave = 0.8,
+  covSelectPhiMaxDim = 4L,
   bnbStrategy = c("lifo", "fifo", "lc"),
   parEncoderBackward = !isTRUE(getOption("nlmixr2.identical", FALSE)),
   nonMuTheta = c("regress", "grad", "eta", "fix", "none"),
@@ -62,6 +67,12 @@ vaeControl(
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
   outerStickyRecalcN = 4,
+  fdIndividualStep = TRUE,
+  fdOutlierZ = 3.5,
+  fdOutlierScale = TRUE,
+  fdRefine = c("chartrand", "lanczos", "richardson"),
+  fdChartrandAll = FALSE,
+  fdOutlierAny = FALSE,
   outerMaxOdeRecalc = 5,
   outerOdeRecalcFactor = 10^(0.5),
   indTolRelax = TRUE,
@@ -360,6 +371,45 @@ single shape this is a plain candidate count; two shape families of one
 covariate cost `log2(3)`, keeping the exact search's worst-case node budget
 the same either way.  `Inf` forces the exact branch-and-bound everywhere.}
 
+\item{covSelectColinearCut}{`abs(cor)` at or above which two covariates are
+treated as near-interchangeable and put in one colinearity cluster (default
+`0.9`).  A cluster never restricts what may be selected.  It does two
+things: the covariate M-step keeps the previous iteration's choice unless a
+cluster mate beats it by a full covariate's L0 cost, which stops the
+selection chattering between columns the design cannot tell apart; and the
+mates that came within that margin are reported in `$covNearTie`.  Clusters
+are built at the mutual-exclusion group level, so two shapes of one
+covariate never cluster together.}
+
+\item{covSelectPhiCor}{Which quantity the correlation between latent
+dimensions is computed from when grouping them for the cross-parameter
+covariate refinement: `"suffStat"` (default, the smoothed EMA sufficient
+statistic the selection itself regresses), `"mu"` (the raw posterior means)
+or `"resid"` (the posterior means less the fitted covariate centers).
+`"resid"` runs systematically higher than the other two -- measured one
+bracket higher on the same fit -- so raise `covSelectPhiJoin` if you
+select it.}
+
+\item{covSelectPhiJoin, covSelectPhiLeave}{`abs(cor)` at which two latent
+dimensions join a correlated group, and the lower value at which one leaves
+again (defaults `0.9` and `0.8`).  Membership is re-evaluated every
+iteration; the gap between the two stops a pair whose correlation wanders
+around the threshold from joining and leaving repeatedly.
+`covSelectPhiLeave` must not exceed `covSelectPhiJoin`.  The defaults are
+measured rather than conventional: on an ordinary, well-identified
+one-compartment model the clearance and volume dimensions correlate
+between `0.75` and `0.80` under the default `covSelectPhiCor="suffStat"`
+(and between `0.80` and `0.85` under `"resid"`), so a join threshold at
+`0.8` would group a fit that has nothing wrong with it -- see
+`tools/vaeColinearPreflight.R`, which measures this through the shipped
+gate.}
+
+\item{covSelectPhiMaxDim}{Largest correlated group the cross-parameter
+refinement will attempt (default `4`).  A larger group is skipped rather
+than split: a latent space that entangled is not something per-covariate
+moves should be arbitrating, and splitting it would need an arbitrary
+tie-break on a near-tied graph.}
+
 \item{bnbStrategy}{Frontier discipline for the exact branch-and-bound covariate
 selection: `"lifo"` (default, last-in-first-out depth-first search),
 `"fifo"` (first-in-first-out) or `"lc"` (least cost / best-first).  The
@@ -484,7 +534,9 @@ iteration print. `NULL` (default) defers to [crayon::has_color()].}
 wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
 \item{covMethod}{Method for calculating the covariance at the VAE estimates,
-run through the FOCEi covariance step; the same choices as
+run through the FOCEi covariance step with the interaction of
+\code{likelihood}; its finite-difference legs optimize the ETAs again,
+starting from the encoder's.  The same choices as
 \code{\link{foceiControl}()}: \code{"analytic"} (default), \code{"r,s"},
 \code{"r"}, \code{"s"}, or \code{""} to skip.}
 
@@ -562,8 +614,7 @@ against a default \code{rtol = 1e-6}.  Raise \code{sigdig}, or set
 \code{atol}/\code{rtol} directly, when you want a tighter solve.}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{rhoend}{Final trust-region radius (`rhoend`) of the inner bounded
 `bobyqa` used by the non-mu / covariate regress M-step.  `NULL` (default)
@@ -583,6 +634,62 @@ solving goes bad, this is the factor the rtol/atol is reduced}
 \item{outerStickyRecalcN}{The number of bad analytic outer solves
 for a subject before its loosened tolerance is kept for the rest
 of the problem; the outer counterpart of `stickyRecalcN`.}
+
+\item{fdIndividualStep}{For the per-subject finite-difference fallback of the
+analytic outer gradient (`fast=TRUE`), search the shi step size separately
+for every flagged subject (`TRUE`, the default) rather than once on the
+summed objective over them.  The subjects that reach this path are the badly
+conditioned ones, so one shared step cannot suit them all; a per-subject
+search also supplies the population of converged peers a clamped step is
+repaired from.  `FALSE` restores the single shared step, which costs fewer
+evaluations.}
+
+\item{fdOutlierZ}{Cut of the Iglewicz-Hoaglin modified z-score that decides
+whether a finite-differenced subject's slope is an outlier against the exact
+analytic slopes, and so whether `fdChartrand` refines it.  The conventional
+3.5; lower it to make the pass fire more readily (and to exercise it), raise
+it to suppress it without turning `fdChartrand` off.}
+
+\item{fdOutlierScale}{Test the outlier criterion on the **per-observation**
+slope (`TRUE`, the default) rather than the raw one.  A per-subject slope
+scales with how much data that subject carries, so raw slopes from a
+3-observation and a 20-observation subject are not draws from one
+distribution -- pooling them makes a legitimately large slope look like an
+outlier on unbalanced or sparse data.  Only the test is scaled; the gradient
+itself is untouched.  On balanced data this changes nothing, since dividing
+every slope by the same count leaves the modified z-score unchanged.}
+
+\item{fdRefine}{Estimator used to recompute a finite-differenced slope once
+  the outlier pass fires.  On noisy, hard-to-solve likelihood surfaces the
+  ordering is roughly `"richardson"` < `"lanczos"` < `"chartrand"`:
+
+  * `"richardson"` -- Richardson extrapolation of central differences at
+    `h, h/v, h/v^2, ...`, cancelling the `h^2, h^4, ...` truncation terms in
+    turn.  Cheapest, and right when the surface is smooth and only truncation
+    matters.  It extrapolates toward `h -> 0`, which is *into* the noise, so it
+    is the wrong instrument when the noise floor is what limits the difference.
+  * `"lanczos"` -- the Lanczos generalized derivative, a least-squares slope
+    through `2m+1` points.  Same `O(h^2)` truncation as a central difference but
+    lower variance, since independent evaluation noise averages down as points
+    are added rather than being amplified.  The middle rung.
+  * `"chartrand"` (default) -- total-variation regularized differentiation over
+    a wide interval, which absorbs curvature through the regularized derivative
+    itself instead of assuming a stencil.  Most expensive and most robust to a
+    genuinely rough surface.
+
+  All three apply identically: they are gated by the same outlier test, touch
+  only the finite-differenced subjects, and never recompute a subject whose
+  analytic gradient is available.}
+
+\item{fdChartrandAll}{When the outlier pass fires for a parameter, refine
+**every** finite-differenced subject with the Chartrand TV derivative rather
+than only the outlying ones.  Subjects whose augmented solve succeeded keep
+their exact analytic gradient either way -- only finite differences are ever
+recomputed.  Default `FALSE` (refine the outliers only).}
+
+\item{fdOutlierAny}{Let an outlier among the **exact analytic** slopes fire the
+outlier pass as well, not only an outlier among the finite differences.
+Still only the finite differences are recomputed.  Default `FALSE`.}
 
 \item{outerMaxOdeRecalc}{Maximum number of times to reduce the ODE
 tolerances for a single subject and retry when the analytic
@@ -605,9 +712,19 @@ each retry and tolerances are reset afterward.}
 \item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-uses the legacy finite-difference behavior.}
+uses the legacy finite-difference behavior.  Also gates the analytic
+moving-boundary correction for a modeled `alag()`/`f()` on a `linCmt()`
+compartment; set `"fd"` if that model infuses a dose into the
+lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
+doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
+-- a common design for estimating `f()` from paired IV+oral data
+(rxode2/rxode2#1237).}
 
-\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.}
 
 \item{...}{Other arguments to control SAEM.}
 }

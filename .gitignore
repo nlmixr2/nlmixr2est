@@ -73,6 +73,9 @@ vignettes/ggpmx_GOF/
 docs
 revdep/
 tests/testthat/fixtures/*.rds
+tests/testthat/fixtures/*.tmp
+# testthat writes this on a failing run and deletes it on a passing one
+tests/testthat/testthat-problems.rds
 /.antigravity/
 /.augment/
 /.cache/
@@ -104,3 +107,5 @@ tests/testthat/_problems/
 *.tgz
 inst/tools/*.Rout
 src/Makevars.win
+.habit-hooks/
+compile_commands.json

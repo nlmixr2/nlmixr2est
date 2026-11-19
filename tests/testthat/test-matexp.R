@@ -7,18 +7,18 @@ nmTest({
     # RNG state afterwards, so the data is reproducible without leaking the seed
     # into the fits that follow (or into downstream test files).
     rxode2::rxWithSeed(seed, {
-    .ev <- rxode2::et(amt = 320, cmt = "depot", id = seq_len(nid)) |>
-      rxode2::et(seq(0.5, 24, by = 1.5))
-    .sim <- rxode2::rxSolve(model, .ev, params = params)
-    .dat <- as.data.frame(.sim)[, c("id", "time", "cp")]
-    .dat$cp <- .dat$cp + stats::rnorm(nrow(.dat), 0, sd)
-    names(.dat) <- c("ID", "TIME", "DV")
-    .dat$AMT <- 0
-    .dat$EVID <- 0
-    # dose row deliberately lacks cmt so it defaults to compartment 1
-    .dose <- data.frame(ID = seq_len(nid), TIME = 0, DV = NA, AMT = 320, EVID = 1)
-    .dat <- rbind(.dose, .dat)
-    .dat[order(.dat$ID, .dat$TIME, -.dat$EVID), ]
+      .ev <- rxode2::et(amt = 320, cmt = "depot", id = seq_len(nid)) |>
+        rxode2::et(seq(0.5, 24, by = 1.5))
+      .sim <- rxode2::rxSolve(model, .ev, params = params)
+      .dat <- as.data.frame(.sim)[, c("id", "time", "cp")]
+      .dat$cp <- .dat$cp + stats::rnorm(nrow(.dat), 0, sd)
+      names(.dat) <- c("ID", "TIME", "DV")
+      .dat$AMT <- 0
+      .dat$EVID <- 0
+      # dose row deliberately lacks cmt so it defaults to compartment 1
+      .dose <- data.frame(ID = seq_len(nid), TIME = 0, DV = NA, AMT = 320, EVID = 1)
+      .dat <- rbind(.dose, .dat)
+      .dat[order(.dat$ID, .dat$TIME, -.dat$EVID), ]
     })
   }
 
@@ -44,9 +44,14 @@ nmTest({
       })
     }
     .dat <- .mkData(odeLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
+    # sigdig = 6: matExp() now solves this system natively (#860) and so is EXACT,
+    # while the ODE form still carries its own solver discretization error.  The
+    # sigdig = 4 default leaves enough of that error at the converged optimum to
+    # exceed the 1e-3 tolerance asserted here (see the MM test below, which needed
+    # the same fix before the native path existed).
     for (.met in c("focei", "foce")) {
-      .fO <- .nlmixr(odeLin, .dat, est = .met, control = foceiControl(print = 0))
-      .fM <- .nlmixr(matLin, .dat, est = .met, control = foceiControl(print = 0))
+      .fO <- .nlmixr(odeLin, .dat, est = .met, control = foceiControl(print = 0, sigdig = 6))
+      .fM <- .nlmixr(matLin, .dat, est = .met, control = foceiControl(print = 0, sigdig = 6))
       expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
       expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
     }
@@ -74,8 +79,10 @@ nmTest({
       })
     }
     .dat <- .mkData(odeLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
+    # sigdig = 6: see the focei/foce block above -- matExp() is exact (#860), so
+    # the ODE form needs an accurate solve to match it at 1e-3.
     for (.met in c("agq", "laplace")) {
-      .ctl <- if (.met == "agq") agqControl(print = 0) else laplaceControl(print = 0)
+      .ctl <- if (.met == "agq") agqControl(print = 0, sigdig = 6) else laplaceControl(print = 0, sigdig = 6)
       .fO <- .nlmixr(odeLin, .dat, est = .met, control = .ctl)
       .fM <- .nlmixr(matLin, .dat, est = .met, control = .ctl)
       expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
@@ -112,8 +119,131 @@ nmTest({
     # ~2.7% -- far outside the 1e-3 asserted here.
     .fO <- .nlmixr(odeMM, .dat, est = "focei", control = foceiControl(print = 0, sigdig = 6))
     .fM <- .nlmixr(matMM, .dat, est = "focei", control = foceiControl(print = 0, sigdig = 6))
-    expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
-    expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
+    # tvmax/tkm are near-collinear on this 6-subject data (same as the analytic
+    # gradient/cov test below): the likelihood is nearly flat along their ridge,
+    # so run-to-run floating-point differences between the native matExp path
+    # (#860) and the ODE path's completely different computational route move
+    # the converged point along that ridge more than 1e-3 even though the
+    # objective itself barely changes.  1e-2 comfortably covers the observed
+    # ~3e-3 relative drift while still catching a real divergence.
+    expect_equal(.fM$objf, .fO$objf, tolerance = 1e-2)
+    expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-2)
+  })
+
+  test_that("matExp()-native inner model pins the FOCEi lhs column layout (#860)", {
+    # src/inner.cpp reads sensitivities at FIXED positional offsets from
+    # predOffset (the by-name index of rx_pred_): lhs[predOffset+i+1] is
+    # d(f)/d(eta_i), lhs[predOffset+neta+1] is rx_r_, and
+    # lhs[predOffset+i+neta+2] is d(R)/d(eta_i) -- a contiguous
+    # [pred, HdEta_1..neta, r, REta_1..neta] block.  A future change to
+    # .sensMatExpNative()'s ..ddt assembly that reorders or interleaves
+    # extra output columns into that block would silently corrupt the
+    # inner objective rather than error, so pin the exact compiled column
+    # order here (two etas, so a reordering that only breaks neta > 1
+    # still fails loudly).
+    matLin2 <- function() {
+      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.09; eta.cl ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        k_central_output <- exp(tcl + eta.cl) / exp(tv)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .s <- suppressMessages(rxUiGet.foceiEnv(list(matLin2())))
+    expect_true(isTRUE(.s$..matExpNative))
+    .cmtPre <- rxUiGet.foceiCmtPreModel(list(matLin2()))
+    .paramsPre <- .uiGetThetaEtaParams(matLin2(), TRUE)
+    .mod <- suppressMessages(rxode2::rxode2(paste(.paramsPre, .cmtPre, .s$..inner, sep = "\n")))
+    expect_equal(
+      rxode2::rxModelVars(.mod)$lhs,
+      c(
+        "rx_pred_",
+        "rx__sens_rx_pred__BY_ETA_1___",
+        "rx__sens_rx_pred__BY_ETA_2___",
+        "rx_r_",
+        "rx__sens_rx_r__BY_ETA_1___",
+        "rx__sens_rx_r__BY_ETA_2___"
+      )
+    )
+  })
+
+  test_that(".rxNaturalThetaEtaMap() does not crash on a theta-only or eta-only model", {
+    # Regression: paste0() recycles a zero-length index to "" (R >= 4.0),
+    # fabricating a spurious length-1 "THETA__"/"ETA__" entry when the OTHER
+    # kind is absent -- length-mismatched against the companion natural-name
+    # vector, so stats::setNames() below it errors.  The eta-only branch was
+    # guarded but the theta-only branch was missed (found by antigravity
+    # review of the #860 matExp-native-sensitivities change).
+    .etaOnly <- list(iniDf = data.frame(name = "eta.ka", ntheta = NA_integer_, neta1 = 1L, neta2 = 1L))
+    expect_equal(.rxNaturalThetaEtaMap(.etaOnly), c(ETA_1_ = "eta.ka"))
+    .thetaOnly <- list(iniDf = data.frame(name = "tka", ntheta = 1L, neta1 = NA_integer_, neta2 = NA_integer_))
+    expect_equal(.rxNaturalThetaEtaMap(.thetaOnly), c(THETA_1_ = "tka"))
+  })
+
+  test_that(".rxRenameTokens() does not corrupt an unrelated identifier sharing a natural name as an underscore-delimited prefix/suffix", {
+    # Regression: the renamer's word-boundary regex originally excluded only
+    # alphanumeric/dot from what may border a match (needed so it still
+    # matches rxSensMatExp()'s own "_BY_<name>__" compartment-naming
+    # convention) -- but "_" is a legal identifier character in rxode2/R, so
+    # that let a natural name like "CL" also match inside an unrelated
+    # "CL_int" or "eta_CL" identifier and corrupt it.
+    .renamed <- .rxRenameTokens(
+      c("CL_int <- 2.0", "k_central_output <- exp(CL + eta_CL) / exp(V)"),
+      "CL",
+      "THETA_1_"
+    )
+    expect_equal(.renamed, c("CL_int <- 2.0", "k_central_output <- exp(THETA_1_ + eta_CL) / exp(V)"))
+    # the rxSensMatExp() compartment-naming convention (the reason the
+    # underscore exception exists at all) must still match
+    expect_equal(
+      .rxRenameTokens("cmt(rx__sens_central_BY_eta.ka__)", "eta.ka", "ETA_1_"),
+      "cmt(rx__sens_central_BY_ETA_1___)"
+    )
+  })
+
+  test_that("matExp() linear model fit actually downgrades foceiControl(fast=TRUE)", {
+    # .foceiFamilyControl()'s matExp() fast-downgrade (#860) is exercised
+    # numerically by the analytic-gradient test below via objf/cov matching,
+    # but a regression there could still pass by luck (e.g. if the augmented
+    # ..outer model happened to agree by coincidence) -- assert the flag
+    # directly too.
+    matLin <- function() {
+      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        k_central_output <- exp(tcl) / exp(tv)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .dat <- .mkData(matLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
+    .fM <- .nlmixr(matLin, .dat, est = "focei", control = foceiControl(print = 0, fast = TRUE, maxOuterIterations = 0))
+    expect_false(isTRUE(.fM$env$control$fast))
+  })
+
+  test_that(".sensMatExpNative() reorders cmt() declarations source-first for default (compartment-1) dosing", {
+    # Regression: rxSensMatExp() orders its own cmt() declarations for the
+    # ORIGINAL states however its internal state matrix happens to enumerate
+    # them (e.g. by which one carries the indLin() forcing) -- not source
+    # order.  A mismatch here misassigns default (undeclared cmt -> 1st
+    # declared compartment) dosing to the wrong state.
+    matMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        indLin(central) <- -exp(tvmax) * central / (exp(tkm) + central)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .s <- suppressMessages(rxUiGet.foceEnv(list(matMM())))
+    expect_true(isTRUE(.s$..matExpNative))
+    .cmtLines <- grep("^cmt\\(", strsplit(.s$..inner, "\n")[[1]], value = TRUE)
+    expect_equal(.cmtLines[1:2], c("cmt(depot)", "cmt(central)"))
   })
 
   test_that("matExp() population model estimates identically to the ODE (nlm)", {
@@ -190,7 +320,7 @@ nmTest({
       })
     }
     .datLin <- .mkData(odeLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
-    .datMM  <- .mkData(odeMM,  c(tka = 0.6, tvmax = log(70), tkm = log(45), tv = 3.6))
+    .datMM <- .mkData(odeMM, c(tka = 0.6, tvmax = log(70), tkm = log(45), tv = 3.6))
 
     .cmp <- function(ode, mat, dat, est, ctlFun, seTol = 1e-2) {
       # matExp/indLin are exact for these linear/pseudo-linear systems, so the ODE
@@ -212,12 +342,12 @@ nmTest({
 
     for (.est in c("focei", "foce", "focep")) {
       .ctlFun <- switch(.est, focei = foceiControl, foce = foceControl, focep = focepControl)
-      .cmp(odeLin, matLin, .datLin, .est, .ctlFun)   # pure-linear matExp
+      .cmp(odeLin, matLin, .datLin, .est, .ctlFun) # pure-linear matExp
       # seTol = 0.08: the comment below records that near-collinear tvmax/tkm inflate
       # the ODE-vs-matExp SE difference to ~5-6% on this 6-subject data.  The
       # helper's 1e-2 default asserts 1% against a quantity documented as 5-6%, so
       # the MM case gets the looser ballpark tolerance that comment intends.
-      .cmp(odeMM,  matMM,  .datMM,  .est, .ctlFun, seTol = 0.08)   # indLin() Michaelis-Menten
+      .cmp(odeMM, matMM, .datMM, .est, .ctlFun, seTol = 0.08) # indLin() Michaelis-Menten
     }
     # mu-referenced and IRLS families share the same augmented builder, but the
     # mu-regression re-derives the mu-thetas (tka is regression-updated since plain
@@ -263,5 +393,137 @@ nmTest({
     .fM <- .nlmixr(matS, nlmixr2data::theo_sd, est = "saem", control = .ctl)
     expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
     expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
+    # mechanism check (#859): a pure-linear matExp() model must solve
+    # natively (a literal "matExp()" line, no materialized d/dt()), not via
+    # the ODE-flattening path -- matching numbers alone would not catch a
+    # regression back to flattening.
+    .saemModelTxt <- strsplit(utils::getFromNamespace("rxUiGet.saemModel", "nlmixr2est")(list(matS())), "\n")[[1]]
+    expect_true(any(grepl("^matExp\\(\\)$", .saemModelTxt)))
+    expect_false(any(grepl("d/dt(", .saemModelTxt, fixed = TRUE)))
+  })
+
+  test_that("matExp()/indLin() Michaelis-Menten (saem) falls back to the ODE flatten", {
+    # rxode2's true inductive-linearization iteration (doIndLin 3/4) does not
+    # yet converge reliably under SAEM's per-iteration parameter draws (a
+    # native attempt diverged from the ODE reference: objf -174 vs 321,
+    # unrelated fixed effects; tracked separately as #977), so
+    # .rxKeepMatExpNative() bails on an indLin() forcing term and
+    # rxUiGet.saemModel() keeps materializing d/dt() via
+    # .rxInjectMatExpDdt(), same as before #859.
+    odeMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        ka <- exp(tka + eta.ka); vmax <- exp(tvmax); km <- exp(tkm); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - vmax * central / (km + central)
+        cp <- central / v
+        cp ~ add(add.sd)
+      })
+    }
+    matMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        indLin(central) <- -exp(tvmax) * central / (exp(tkm) + central)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .saemModelTxt <- strsplit(utils::getFromNamespace("rxUiGet.saemModel", "nlmixr2est")(list(matMM())), "\n")[[1]]
+    expect_true(any(grepl("d/dt(", .saemModelTxt, fixed = TRUE)))
+    expect_false(any(grepl("^matExp\\(\\)$", .saemModelTxt)))
+    expect_false(any(grepl("^indLin\\(", .saemModelTxt)))
+
+    .dat <- .mkData(odeMM, c(tka = 0.6, tvmax = log(70), tkm = log(45), tv = 3.6), nid = 8, seed = 4321)
+    .ctl <- saemControl(print = 0, nBurn = 100, nEm = 100, seed = 42)
+    .fO <- .nlmixr(odeMM, .dat, est = "saem", control = .ctl)
+    .fM <- .nlmixr(matMM, .dat, est = "saem", control = .ctl)
+    expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
+    expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
+  })
+
+  test_that("matExp() with a state-free indLin() forcing (saem) falls back to the ODE flatten", {
+    # A forcing that does not reference any state (e.g. indLin(central) <- 5)
+    # leaves wIndLin empty, same as a pure-linear model with no forcing at
+    # all -- so the native-routing decision cannot key on wIndLin alone (it
+    # would silently drop the forcing term, since the native path emits no
+    # indLin() text). .rxKeepMatExpNative() instead bails whenever
+    # indLin$f is non-NULL (any forcing, state-free or not).
+    matSF <- function() {
+      ini({ tka <- 0.45; tv <- 3.45; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka)
+        indLin(central) <- 5
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .saemModelTxt <- strsplit(utils::getFromNamespace("rxUiGet.saemModel", "nlmixr2est")(list(matSF())), "\n")[[1]]
+    expect_true(any(grepl("d/dt(central)=", .saemModelTxt, fixed = TRUE)))
+    expect_true(any(grepl("\\(5\\)", .saemModelTxt)))
+    expect_false(any(grepl("^matExp\\(\\)$", .saemModelTxt)))
+  })
+
+  test_that("matExp() with delay() (saem) falls back to the ODE flatten", {
+    # .saemFitModel() (R/saem.R) forces the dense dop853 solver for a delay
+    # model (hasDelay), which takes precedence over method="indLin" -- so a
+    # native "matExp()" emission (no d/dt() for dop853 to integrate) would
+    # silently solve to all-zero states. .rxKeepMatExpNative() bails on
+    # flags[["hasDelay"]] to keep this combination flattened.
+    matD <- function() {
+      ini({ tka <- 0.45; tv <- 3.45; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka)
+        cp <- delay(central, 5) / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .s <- utils::getFromNamespace("rxUiGet.loadPruneSaem", "nlmixr2est")(list(matD()))
+    expect_false(isTRUE(utils::getFromNamespace(".rxKeepMatExpNative", "nlmixr2est")(.s)))
+  })
+
+  test_that("matExp()/indLin() table and residual generation (#858)", {
+    # General regression check (issue #858's stated test) that table/residual
+    # generation for a matExp()/indLin() fit works. This does NOT exercise the
+    # setdiff() removal in R/resid.R itself -- see
+    # test-resid-ode-fallback.R for that (the default ODE methods used here
+    # never reach the branch the removal changed).
+    matLin <- function() {
+      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        k_central_output <- exp(tcl) / exp(tv)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    matMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        indLin(central) <- -exp(tvmax) * central / (exp(tkm) + central)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .datLin <- .mkData(matLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
+    .datMM <- .mkData(matMM, c(tka = 0.6, tvmax = log(70), tkm = log(45), tv = 3.6))
+
+    .fLin <- .nlmixr(matLin, .datLin, est = "focei", control = foceiControl(print = 0))
+    expect_true(all(c("PRED", "IPRED") %in% names(.fLin)))
+    expect_false(any(is.na(.fLin$IPRED)))
+    suppressMessages(expect_error(addCwres(.fLin), NA))
+    suppressMessages(expect_error(addNpde(.fLin), NA))
+
+    .fMM <- .nlmixr(matMM, .datMM, est = "focei", control = foceiControl(print = 0, sigdig = 6))
+    expect_true(all(c("PRED", "IPRED") %in% names(.fMM)))
+    expect_false(any(is.na(.fMM$IPRED)))
+    suppressMessages(expect_error(addCwres(.fMM), NA))
+    suppressMessages(expect_error(addNpde(.fMM), NA))
   })
 })

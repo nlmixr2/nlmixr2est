@@ -68,12 +68,10 @@
 ##   rxode2::rxUnloadAll()
 ##   gc()
 
-
 ##   expect_error({.env$optim <-.nlmixr(g, dat, "optim")}, NA)
 
 ##   rxode2::rxUnloadAll()
 ##   gc()
-
 
 ##   ## expect_error({.env$nls <-.nlmixr(g, dat, "nls")}, NA)
 
@@ -81,7 +79,6 @@
 
 ##   rxode2::rxUnloadAll()
 ##   gc()
-
 
 ##   expect_error({.env$bobyqa <-.nlmixr(g, dat, "bobyqa")}, NA)
 
@@ -118,7 +115,6 @@
 
 ##   rxode2::rxUnloadAll()
 ##   gc()
-
 
 ##   rxode2::rxRmFun("gg")
 

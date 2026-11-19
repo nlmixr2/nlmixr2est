@@ -9,26 +9,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common commands
 
 ```r
-# Load package for interactive development
-devtools::load_all()
-
-# Run all tests
-devtools::test()
-
-# Run a single test file
-testthat::test_file("tests/testthat/test-focei-1.R")
-
-# Build documentation (regenerates NAMESPACE via roxygen2)
-devtools::document()
-
-# Full R CMD check
-devtools::check()
-
 # Set the number of threads for parallel processing (e.g., SAEM)
 rxode2::setRxThreads(threads = 4)  # Use 4 threads
 ```
 
-The package requires compilation (`NeedsCompilation: yes`). C++17 is required (set in `src/Makevars`). After changing C++ files, `devtools::load_all()` recompiles.
+The standard `devtools` workflow applies (`load_all`, `test`, `document`, `check`).
+After changing C++ files, `devtools::load_all()` recompiles.
 
 ## Architecture
 
@@ -96,6 +82,13 @@ Three rules, each of which has caused a real bug:
 - **Check the lhs width before reading.**  `rxUpdateFuns` resolves symbols by NAME, so the
   same model can re-resolve to a different dll's `calc_lhs` later in a session.
   `odeSwapCheckLhsWidth()` probes it; skipping the check reads columns nobody wrote.
+  The probe answers by CALLING `calc_lhs`, so it must first make that call safe --
+  the pool has to hold the model's states, the model's parameter layout has to match
+  the pool model's (`calc_lhs` reads `par_ptr` BY INDEX, so equal widths in a
+  different order mis-read), and subject 0's per-thread pointers (`ind->on`,
+  `ind->lhs`) have to be bound with `iniSubjectE`.  Those pointers come from a
+  SOLVE, not from building the pool, so a set-up-but-never-solved pool segfaulted
+  inside the probe (#870).  A gate that can crash is worse than no gate.
 - **`OdeSwapScope` is NOT enough on its own -- the pool also rebases COMPARTMENT
   NUMBERS.**  `OdeSwapScope` fixes the neq stride; `OdeSwapCmtScope` puts the CMT basis
   back to the solved model's.  A solve that guards only the stride reads the right
@@ -121,6 +114,53 @@ Diagnostics live in `.odeSwapInfo()`.  `pooledSolveN` counts COMPLETED pooled au
 solves and is incremented in `outerSolveFill` -- the solve itself, deliberately not at any
 R-facing wrapper, because counting the wrapper meant the counter tracked the R fallback
 rather than the pooled route.
+
+### Random draws -- threefry only, never R's own RNG
+
+Every C++-level random draw goes through rxode2's per-thread, seeded threefry engine
+(`rxNormEng(mean, sd)` / `rxUnifEng(low, hi)`, from `rxode2ptr.h`), NEVER through R's own
+RNG (`R::rnorm`, `R::runif`, `R::rbeta`, `R::rgamma`, `unif_rand()`, `norm_rand()`,
+`GetRNGstate()`/`PutRNGstate()`, or an R-level `set.seed()` call to seed a subsequent
+`R::r*` draw). This is what makes a fit reproducible given a control `seed=`, independent
+of OpenMP thread scheduling and of R's own ambient/global RNG state, and safe to draw from
+inside an OpenMP-parallel region -- R's RNG API is not safe to call from a non-main thread.
+
+- Only `rxNormEng`/`rxUnifEng` exist as per-thread draws; a distribution the engine does
+  not cover directly (Beta, Gamma, chi-square, a truncated normal, ...) is built by
+  inverse-CDF -- feed one `rxUnifEng(0.0, 1.0)` draw into the matching DETERMINISTIC `R::q*`
+  quantile function (`R::qbeta`, `R::qgamma`, `R::qnorm`, ...). `R::p*`/`R::q*` (CDF/quantile,
+  no RNG state touched) are fine everywhere, including inside OpenMP regions -- only `R::r*`
+  (draws) and `GetRNGstate()`/`PutRNGstate()` are banned. See `imp.cpp`'s `impChisqQuantile()`
+  and `npb.cpp`'s `npbRbeta()` for the pattern.
+- Seed SEQUENTIALLY with a closed form (`src/nmSeqSeed.h`), the way `par_solve` seeds its
+  subjects (`seed0 + id`): lay a sampler's draws out as a fixed number of seeds per iteration
+  and seed item `i` of a step (a subject, chain row, observation or support point) with
+  `nmSeqSeedSet(seed, offset, i)` immediately before that item's draws, where `offset` is
+  computed from the iteration and step alone (`saem.cpp`'s `saemSeedLayout`, `npb.cpp`'s
+  `seedBase`). Any draw's seed then follows from its position, so a fit stopped and resumed
+  at an iteration draws exactly what it would have. Never take seeds from a running counter
+  (`getRxSeed1()`), and never hash or fold indices into a seed: distinct threefry keys are
+  already independent streams, and a hash only adds birthday collisions (the old folded
+  SAEM seeds gave the phi1 and phi0 MCMC blocks the same stream). After setup, a sampler that
+  owns the seeds `[seed, seed + reserved)` (`reserved` computed exactly from its layout, never
+  guessed) calls `nmSeqSeedStart(seed, reserved)` so rxode2's own solve seeds continue from
+  `seed + reserved`: a solve never shares a sampler's seed and a seeded fit does not depend on
+  the thread count.
+  Seeding each item right before its draws also means no draw depends on what a solve did
+  to the shared engine in between.
+
+**Truncated-normal draws -- `src/truncNorm.h`.** A truncated-normal draw (SAEM's censored-DV
+data augmentation, `saem.cpp`'s `simCensDv()`; CWRES's censored-observation simulation,
+`censResid.h`'s `truncnorm()`) should use `rxTruncNorm(l, u)` (`src/truncNorm.h`), NOT a plain
+inverse-CDF draw (`qnorm(pnorm(l) + u*(pnorm(u)-pnorm(l)))`) -- the inverse-CDF form loses
+precision catastrophically once `l`/`u` are more than a few SDs from 0, which is exactly the
+regime a censored (BQL) observation's bound often sits in. `rxTruncNorm()` ports rxode2's
+`rxRmvn` machinery (`rxthreefry.cpp`'s `ntail`/`tn`/`trandn`, Botev (2015) minimax tilting --
+the same algorithm that backs `censResid.h`'s `truncnorm()` for CWRES) onto this package's own
+`rxNormEng`/`rxUnifEng` engine instead of a raw `sitmo::threefry&` reference this package has
+no access to, so it stays thread-safe and reproducible under a fit's seed without a round-trip
+through R's SEXP/PROTECT machinery (unsafe to call from a non-main thread) that `rxRmvn`'s
+R-facing entry point requires.
 
 ### Analytic outer gradient (`foceiControl(fast=TRUE)`)
 
@@ -174,31 +214,43 @@ shutdown signal"):
 - **rxode2 / data.table within-solve threads**: capped to 2 on CRAN only; on CI
   and locally rxode2 manages its own threads.
 
-### Test batching (quick-core vs weekly)
+### CI tiers (`.github/workflows/ci.yaml`)
 
-Slow, multi-iteration/fit-based test files run WEEKLY, not on every push/PR. Push/PR
-CI runs the "essential" subset: every test file EXCEPT those listed in `.slowBatches`
-in `tests/testthat.R`. The weekly `slow-tests.yaml` workflow runs the batches one at a
-time via `NLMIXR2EST_TEST_BATCH=<n>` (its matrix must match the number of `.slowBatches`
-entries).
+Modelled on rxode2's CI.  Two tiers, chosen by the `gate` job:
 
-When adding tests for an estimation method, split them by cost:
+- **fast** (~15 min; every non-draft PR push to main, every push to main, a `/ci`
+  comment): air format + lint (changed files) + CRAN-mirror `R CMD check --as-cran`
+  on ubuntu release (`NOT_CRAN=false`, so `tests/testthat.R`'s CRAN subset) + the
+  core NOT_CRAN tests listed in `tests/ci-core.txt`, sharded.
+- **full** (nightly when main moved, a `/cifull` comment, or a manual dispatch):
+  fast plus the CRAN-mirror check on macOS/Windows/devel/oldrel, EVERY test file
+  sharded over ubuntu, coverage and pkgdown.  A failure on main opens a
+  `ci-main-failure-<tier>` issue listing the PRs merged since the last green run of
+  that tier (the integration window) and the failing tests; the next green run closes it.
 
-- **Quickest core-functionality tests always run**: leave them OUT of `.slowBatches`
-  (they run in the essential push/PR subset). Keep this set small -- unit tests plus one
-  basic end-to-end fit. Example (advi): `advi-control`, `advi-dataprep`, `advi-inner`,
-  `advi-grad`, `advi-fit` stay essential; the multi-iteration fit files run weekly.
-- **Everything else goes into a weekly batch**: add the file's basename (no `test-`
-  prefix, no `.R`) to a `.slowBatches` batch, sized from measured single-worker times so
-  each batch stays well under an hour.
-- **Do NOT use `skip_on_ci()` in batched files.** The weekly runner also sets `CI=true`,
-  so `skip_on_ci()` would skip the test there too, defeating the batch. Batched files rely
-  on the `.slowBatches` filter (not `skip_on_ci`) to stay out of the essential run; keep
-  `skip_on_cran()` where CRAN must not run it. Likewise, an always-run core file must not
-  call `skip_on_ci()` or it will not actually run on push/PR.
+Test shards run `testthat::test_dir()` directly (not `R CMD check`), assigned by
+`.github/scripts/ci-shards.R` from recorded per-file times in `tests/ci-timings.csv`.
+Refresh that file from a full run's `junit-*` artifacts with
+`.github/scripts/ci-test-timings.R` when the shards drift out of balance.
+
+When adding tests, split them by cost:
+
+- **Core** (`tests/ci-core.txt`): only fast, high-signal files -- unit tests plus one
+  basic end-to-end fit per major feature.  The core list must stay within the fast
+  tier's ~15 min budget; check its total in `tests/ci-timings.csv` before adding.
+- **Everything else** needs no registration: the nightly full tier runs every file.
+- **Do NOT use `skip_on_ci()`** for a slow file: every CI shard sets `CI=true`, so the
+  file would never run anywhere.  Keep `skip_on_cran()` where CRAN must not run it.
 
 ## Key conventions
 
+- **Never use `:::` in a test file.** testthat sources test files inside the package's
+  own namespace, so both exported and non-exported (`.foo`) internal functions are
+  directly callable by name -- `nlmixr2est:::rxUiGet.foceiEnv(...)` should just be
+  `rxUiGet.foceiEnv(...)`, and `nlmixr2est:::.someInternalFn(...)` should just be
+  `.someInternalFn(...)`. `:::` is unnecessary and CodeFactor's
+  `lintr-undesirable_operator_linter` flags it on every PR that introduces one. See
+  `b04d89c78` and PR #998 for prior fixes of this exact pattern.
 - `mu2` referencing (`R/mu2.R`) detects and validates mu-referenced parameters; violations produce warnings, not errors, for SAEM
 - IOV (inter-occasion variability) support is in `R/iov.R` with special handling in the mu-referencing hooks
 - The `sharedControl()` function (`R/sharedControl.R`) defines options common across all estimation methods
@@ -256,4 +308,25 @@ models in `R/focei.R`):
   `param(...)`** so the solve parameter order is fixed and positional (values are
   keyed by name, but pinning order keeps the input layout stable across builds).
   Covariates are supplied from the event data at solve time but must still be
-  declared in `param(...)`.
+  declared in `param(...)`. A general-likelihood formula referencing `DV`
+  (dnorm()/t()/cauchy() sugar, or a literal `ll()` expression) needs `DV` itself
+  declared here too -- and needs the model-BUILDING side (not the solve-consuming
+  side) to actually supply it: `DV` must be listed in `.configsaem`'s `inPars` (see
+  `rxUiGet.saemInParsAndMuRefCovariates`, `R/saemRxUiGet.R`) so its DV-append step
+  fires, and must land in the model's first (and only effective) `param()`
+  statement, not a second one appended later (rxode2 silently ignores a second
+  `param()` statement in one model -- nlmixr2/rxode2#1279).
+
+## CRAN tests: never assert on timing
+
+- Never put a wall-clock timing expectation in a test that can run on CRAN:
+  no `expect_lt()`/`expect_true()` on `Sys.time()` differences,
+  `system.time()`, `proc.time()`, `bench`/`microbenchmark` results, or any
+  other elapsed-time threshold. CRAN check machines are shared and heavily
+  loaded, so elapsed time there is random and a timing assertion fails at
+  random. Example: nlmixr2plot `test-model-diagram.R` asserted a
+  `modelGraph()` call took < 30 s; on CRAN it took 48.4 s and failed.
+- Test the result, not the speed. If a speed regression guard is really
+  needed, put it only in a test that starts with `skip_on_cran()` (or the
+  package's own CRAN skip helper), and never in examples or vignettes.
+- Tests that take more than a few seconds should also skip on CRAN.

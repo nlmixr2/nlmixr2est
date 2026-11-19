@@ -14,6 +14,8 @@ saemControl(
   trace = 0,
   covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
   covMethodDeferred = NA_character_,
+  covFallback = list(sa = c("linFim", "Ha"), fim = c("linFim", "Ha"), analytic =
+    c("linFim", "Ha"), linFim = "Ha"),
   covFull = TRUE,
   nSaCov = 500L,
   calcTables = TRUE,
@@ -22,6 +24,7 @@ saemControl(
   nsdGq = 1.6,
   optExpression = TRUE,
   literalFix = FALSE,
+  fixedNoEta = c("hold", "converge"),
   adjObf = TRUE,
   sumProd = FALSE,
   addProp = c("combined2", "combined1"),
@@ -45,7 +48,9 @@ saemControl(
   muRefCov = TRUE,
   muRefCovAlg = TRUE,
   handleUninformativeEtas = TRUE,
+  revisitUninformativeEtas = FALSE,
   iovXform = c("sd", "var", "logsd", "logvar"),
+  iovMethod = c("twoLevel", "collapsed", "theta"),
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
   mixProbMethod = c("regress", "regularized", "annealed"),
@@ -53,12 +58,19 @@ saemControl(
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
   nonMuTheta = c("regress", "eta"),
+  nonMuThetaOpt = c("newuoa", "optimize", "nelderMead"),
+  nonMuThetaSweeps = 2L,
+  nonMuThetaMaxEval = 25L,
+  nonMuThetaTol = .Machine$double.eps^0.25,
+  nonMuThetaEvery = 1L,
+  phi1ThetaMaxEval = 50L,
+  phi1ThetaEvery = 1L,
+  phi1Hessian = FALSE,
   residWarmStart = TRUE,
   censOption = c("gauss", "laplace"),
-  lbfgsLmm = 5L,
-  lbfgsFactr = NULL,
-  lbfgsPgtol = NULL,
-  lbfgsMaxIter = 20L,
+  ebe = c("mode", "saem"),
+  ebeMaxEval = 200L,
+  ebeTol = NULL,
   ...
 )
 }
@@ -81,7 +93,8 @@ computation.  In Monolix this is equivalent to \code{L}.}
     numbers of transitions of the three different kernels used in
     the Hasting-Metropolis algorithm.  The default value is \code{c(2,2,2)},
     representing 40 for each transition initially (each value is
-    multiplied by 20).
+    multiplied by 20).  When unset, a residual error model that depends on
+    an eta uses \code{c(4,4,4)}, since its chains mix more slowly.
 
     The first value represents the initial number of multi-variate
     Gibbs samples are taken from a normal distribution.
@@ -136,11 +149,24 @@ typical fitting.}
  between-subject variability dominates the residual), so those variance-block standard
  errors are spliced in from the linearized FIM (\code{linFim}).
 
- "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
+ Neither is used for a general log-likelihood endpoint (\code{ll()}), which has
+ no residual error to anchor the complete-data correction; such a model goes
+ straight to \code{linFim} with a message.  This includes a residual error with
+ modeled components (\code{a <- add.sd*exp(eta.sd); cp ~ add(a)}), which saem
+ fits as \code{cp ~ add(a) + dnorm()}.
 
- "\code{r}" Uses the Hessian matrix to calculate the covariance as \eqn{2\times R^-1}
-
- "\code{s}" Uses the crossproduct matrix to calculate the covariance as \eqn{4\times S^-1}
+ "\code{r,s}", "\code{r}" and "\code{s}" compute no R or S matrix in
+ \code{saem}: all three invert the structural-theta block of the
+ estimation-phase information matrix (\code{fit$saem$Ha}, the matrix
+ \code{fim} inverts in full).  The result covers the estimated mu-referenced
+ thetas only, conditional on the \code{Omega} and residual parameters; a
+ theta without a random effect has no row in it and gets no standard error.
+ It is installed as \code{fit$covMethod == "Ha"}, or
+ \code{"|Ha|"} when the block was not positive definite and was
+ replaced by \code{sqrtm(Ha \%*\% Ha)}.  For the finite-difference R and S
+ covariances at the SAEM estimates use \code{setCov(fit, "r,s")}.  An integer
+ \code{covMethod} is a \code{foceiControl()} slot: \code{0} is no covariance,
+ \code{1}, \code{2} and \code{3} are \code{"r,s"}, \code{"r"} and \code{"s"}.
 
  "" Does not calculate the covariance step.}
 
@@ -148,6 +174,15 @@ typical fitting.}
 is requested, it is stashed here and computed post-fit at the converged
 estimates by the decoupled recompute engine (\code{setCov()} uses the same
 path); \code{NA} otherwise.}
+
+\item{covFallback}{what each \code{covMethod} falls back to when it gives no
+usable covariance: a named list, one element per method, each the ordered
+methods to try instead (\code{"sa"}, \code{"fim"}, \code{"linFim"} or
+\code{"Ha"}, the inverse of the information matrix's theta block).  The
+default is the established behaviour: \code{"sa"}, \code{"fim"} and
+\code{"analytic"} fall to \code{"linFim"} then \code{"Ha"}, and
+\code{"linFim"} to \code{"Ha"}.  A list you give replaces the default: a
+method it does not name has no fallback.}
 
 \item{covFull}{Boolean (default \code{TRUE}) indicating the covariance
 should include every estimated population parameter -- the structural and
@@ -157,7 +192,8 @@ structural-theta-only covariance is reported.  Ignored by
 \code{covMethod="sa"}, which is always full.}
 
 \item{nSaCov}{Number of iterations in the dedicated stochastic-approximation
-covariance phase used by \code{covMethod="sa"} (default \code{500}).  These
+covariance phase used by \code{covMethod="sa"}, a whole number of at least 1
+(default \code{500}).  These
 iterations run at the converged estimate (parameters frozen) and only
 resimulate the individual parameters to build the observed Fisher
 information; a larger value gives a less noisy covariance.  Ignored by other
@@ -171,7 +207,7 @@ calculate by Gaussian quadrature.}
 
 \item{nnodesGq}{number of nodes to use for the Gaussian
 quadrature when computing the likelihood with this method
-(defaults to 1, equivalent to the Laplacian likelihood)}
+(defaults to 3; 1 is the Laplacian likelihood; at most 25)}
 
 \item{nsdGq}{span (in SD) over which to integrate when computing
 the likelihood by Gaussian quadrature. Defaults to 3 (eg 3
@@ -183,6 +219,13 @@ calculation. By default this is turned on.}
 \item{literalFix}{boolean, substitute fixed population values as
 literals and re-adjust ui and parameter estimates after
 optimization; Default is `TRUE`.}
+
+\item{fixedNoEta}{How a `fix()`ed theta without an eta is handled
+when `literalFix = FALSE`: `"hold"` (default) keeps it at its fixed
+value for every subject throughout the fit; `"converge"` samples it
+per subject like the other thetas without an eta, so it moves during
+the fit and only arrives at the fixed value at the end (the earlier
+behavior).}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective
@@ -210,9 +253,11 @@ of iterations is itmax*number of parameters}
 
 \item{type}{indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")}
 
-\item{powRange}{This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(-10, 10)}
+\item{powRange}{This indicates the range that powers can take for residual errors;
+By default this is 10 indicating the range is c(-10, 10)}
 
-\item{lambdaRange}{This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range c(-3,3)}
+\item{lambdaRange}{This indicates the range that Box-Cox and Yeo-Johnson parameters are
+constrained to be;  The default is 3 indicating the range c(-3,3)}
 
 \item{odeRecalcFactor}{The ODE recalculation factor when ODE
 solving goes bad, this is the factor the rtol/atol is reduced}
@@ -246,7 +291,11 @@ exploration of the likelihood surface.}
 
 \item{compress}{Should the object have compressed items}
 
-\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.}
 
 \item{sigdig}{Specifies the "significant digits" that the ODE
 solving requests.  This is \code{NULL} by default, and while it is
@@ -286,8 +335,7 @@ against a default \code{rtol = 1e-6}.  Raise \code{sigdig}, or set
 \code{atol}/\code{rtol} directly, when you want a tighter solve.}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
@@ -320,8 +368,42 @@ changes the system to a linear compartment model.  Therefore, by default this is
 calculate uninformative etas and handle them specially (default
 is `TRUE`).}
 
+\item{revisitUninformativeEtas}{boolean (default `FALSE`); when
+`TRUE` the uninformative-eta test is run a second time at the end
+of burn-in and that verdict replaces the first.  The test asks
+whether perturbing an eta moves the subject's prediction, and it is
+otherwise only run at the *initial* estimates -- so those decide,
+for the whole fit, which etas `saem` may sample.  Re-running it
+once `theta` has moved decides on the estimates the data supports
+instead.  It reuses the fit's own model evaluation, so it costs a
+few extra solves at a single iteration and leaves the random number
+stream unchanged; where it changes no verdict the fit is identical.
+It is off by default because the two verdicts only disagree when
+`theta` moved a long way during burn-in, which usually means it has
+not settled -- and the second verdict can freeze an eta for the
+rest of the fit.  Skipped for mixture models and when
+`handleUninformativeEtas=FALSE`.}
+
 \item{iovXform}{Transformation used on the diagonal of the IOV: one of
-\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.}
+\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.
+This parameterizes the magnitude theta of the \code{"theta"}
+\code{iovMethod}; it has no effect under \code{"omega"}, where the
+magnitude is fixed at one and the variability is carried by the
+omega block itself.}
+
+\item{iovMethod}{How inter-occasion variability (`iov.x ~ v | occ`) is
+estimated.  \code{"theta"} uses the shared pre-processing rewrite, which
+carries the magnitude as a population parameter multiplying per-occasion
+unit-variance etas (the form every other estimation method uses).
+\code{"twoLevel"} (the default) keeps the occasion term as a second
+variance component and estimates it with the closed-form updates of Panhard
+and Samson (2009), which is what the SAEM kernel is built around for every
+other variance.  \code{"collapsed"} additionally uses that paper's own
+sampler: one parameter per occasion carrying \code{mu + b_i + c_ik}
+together, with a compound-symmetric prior, instead of sampling \code{b_i}
+and \code{c_ik} separately.  It targets the same estimates and differs only
+in how well the chain mixes.  A model the newer handling does not cover
+falls back to \code{"theta"} on its own.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed
@@ -332,7 +414,13 @@ skips the final back-transform.}
 \item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-uses the legacy finite-difference behavior.}
+uses the legacy finite-difference behavior.  Also gates the analytic
+moving-boundary correction for a modeled `alag()`/`f()` on a `linCmt()`
+compartment; set `"fd"` if that model infuses a dose into the
+lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
+doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
+-- a common design for estimating `f()` from paired IV+oral data
+(rxode2/rxode2#1237).}
 
 \item{mixProbMethod}{For mixture models (`mix()`, more than one
   component), stabilizes the mixing-probability estimate against
@@ -416,6 +504,62 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.}
   * `"eta"`: the historic SAEM treatment (the parameter is carried through
     the stochastic `phi0` block).}
 
+\item{nonMuThetaOpt}{Optimizer for the `nonMuTheta="regress"` refinement.
+`"newuoa"` (default) and `"nelderMead"` each run one clamped multivariate
+optimization over all free `phi0` coordinates under the `nonMuThetaMaxEval`
+evaluation budget; `"optimize"` is the historic coordinate descent with R's
+golden-section `optimize()`.  When the non-mu thetas drive the ODE, every
+objective evaluation is a full re-solve, so this refinement can dominate the
+run time; the multivariate options spend a much smaller fixed budget and
+account for the coupling between coordinates that coordinate descent cannot
+see.}
+
+\item{nonMuThetaSweeps}{Number of coordinate-descent sweeps per refinement
+for `nonMuThetaOpt="optimize"` (default 2).}
+
+\item{nonMuThetaMaxEval}{Objective-evaluation budget of one refinement for
+`nonMuThetaOpt="newuoa"` or `"nelderMead"` (default 25); 0 means ten
+evaluations per free non-mu theta instead.  `"newuoa"` needs `2n+3`
+evaluations to build its first quadratic model, and is raised to that when
+the budget is smaller.}
+
+\item{nonMuThetaTol}{Convergence tolerance of the `nonMuTheta="regress"`
+refinement (`newuoa`'s `rhoend`, the nelder-mead relative objective
+tolerance, or the `optimize()` `tol`).}
+
+\item{nonMuThetaEvery}{Run the `nonMuTheta="regress"` refinement every
+`nonMuThetaEvery` iterations instead of every iteration (default 1).  In
+between, `phi0` keeps its last refined value.}
+
+\item{phi1ThetaMaxEval}{Objective-evaluation budget (bobyqa's `maxfun`) of
+one general-likelihood phi1 (mu-referenced theta) refinement (default
+50). Applies only when the fit has a general-likelihood (`ll()`/`t()`/
+`cauchy()`) endpoint; ignored otherwise. Each evaluation solves the
+FOCEi-style phi1-inner sensitivity model across every chain-replicated
+row, so it is the dominant per-iteration cost while this refinement is
+active -- larger than `nonMuThetaMaxEval`'s default because the
+objective is also more expensive per call.}
+
+\item{phi1ThetaEvery}{Run the general-likelihood phi1 refinement every
+`phi1ThetaEvery` iterations instead of every iteration (default 1).  In
+between, phi1's mu keeps its last refined value (mirrors
+`nonMuThetaEvery`).}
+
+\item{phi1Hessian}{Boolean (default `FALSE`); include the Laplace
+`log|H|` eta-Hessian correction in the general-likelihood phi1
+refinement's objective (`-2*loglik + log|H|` instead of plain
+`-2*loglik`). Opt-in: an ablation check found the correction was not
+what fixed a diverging Gaussian general-likelihood twin -- the direct
+bobyqa optimization of the exact joint log-likelihood was already
+sufficient on its own, replacing the historic noisy Robbins-Monro
+stochastic-approximation recursion over MCMC-sampled phi. For a
+heavy-tailed endpoint (`t()`/`cauchy()`), `log|H|` can instead dominate
+the objective and cause divergence (its own curvature decays far from
+the data, unlike a normal's), so it defaults off. Set `TRUE` only to
+experiment with the Hessian-corrected form; when it builds, the exact
+analytic eta-Hessian is used, else a finite-difference one (e.g. for
+`linCmt()`).}
+
 \item{residWarmStart}{Boolean (default `TRUE`); warm-start the residual-error
 parameters from the observed per-endpoint moments at the initial predictions
 (additive SD from `sqrt(mean(err^2))`, proportional SD from
@@ -432,22 +576,18 @@ proper Laplace inner Hessian and analytic covariance).  Accepted by
 SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
 finite-difference Hessian that already reflects censoring exactly.}
 
-\item{lbfgsLmm}{Integer number of BFGS corrections (the L-BFGS-B `lmm`
-memory) used when refining the fixed-effect-only parameters of a general
-log-likelihood model (`ll(name) ~ <expr>`) by direct L-BFGS-B
-optimization of the observation likelihood.  Default 5.}
+\item{ebe}{Individual estimates reported as `fit$eta`: `"mode"` (default)
+is each subject's conditional mode, found with NEWUOA after the last SAEM
+iteration; `"saem"` is SAEM's approximate conditional mean.  The SAEM
+etas are always available as `fit$etaSaem`.}
 
-\item{lbfgsFactr}{Convergence tolerance on the relative reduction in the
-objective for that L-BFGS-B refinement (the `factr` control, in units of
-machine epsilon).  When `NULL` (default) it is derived from `sigdig` the
-same way as `foceiControl()` (`10^(-sigdig) / .Machine$double.eps`).}
+\item{ebeMaxEval}{Maximum objective evaluations per subject for the
+conditional-mode search (default 200).}
 
-\item{lbfgsPgtol}{Convergence tolerance on the projected gradient for that
-L-BFGS-B refinement (the `pgtol` control).  When `NULL` (default) it is
-derived from `sigdig` (`10^(-sigdig)`).}
-
-\item{lbfgsMaxIter}{Integer maximum number of iterations for that L-BFGS-B
-refinement.  Default 20.}
+\item{ebeTol}{Final NEWUOA trust-region radius of the conditional-mode
+search, in standard-deviation units of each eta.  `NULL` (default) uses
+`sqrt(rtol)` of the SAEM ODE solve (`rxControl`), the precision that solve
+can resolve a minimum to.}
 
 \item{...}{Other arguments to control SAEM.}
 }

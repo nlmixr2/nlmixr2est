@@ -9,15 +9,20 @@ nmTest({
     tf <- tempfile(fileext = ".txt")
     con <- file(tf, "w")
     .unwind <- function() {
-      if (sink.number(type = "message") > 0L) sink(type = "message")
+      if (sink.number(type = "message") > 0L) {
+        sink(type = "message")
+      }
       if (sink.number() > 0L) sink()
     }
     sink(con)
     sink(con, type = "message")
-    on.exit({
-      .unwind()
-      if (isOpen(con)) close(con)
-    }, add = TRUE)
+    on.exit(
+      {
+        .unwind()
+        if (isOpen(con)) close(con)
+      },
+      add = TRUE
+    )
     force(expr)
     .unwind()
     close(con)
@@ -42,7 +47,8 @@ nmTest({
     .d$DV <- .d$Y
     # suppressWarnings (but never suppressMessages) so the trace is preserved.
     .captureIterTrace(
-      suppressWarnings(nlmixr2(.nlmixr(f), .d, est = estName, control = control)))
+      suppressWarnings(nlmixr2(.nlmixr(f), .d, est = estName, control = control))
+    )
   }
 
   test_that("focei shows the Function Val. objective column for every outer optimizer", {
@@ -50,17 +56,26 @@ nmTest({
     for (.opt in c("bobyqa", "lbfgsb3c")) {
       .out <- .wang2007PropFit(
         "focei",
-        foceiControl(outerOpt = .opt,
-                     maxOuterIterations = 15L, maxInnerIterations = 15L,
-                     covMethod = "", calcTables = FALSE,
-                     print = iterPrintControl(every = 1L, headerEvery = 3L)))
+        foceiControl(
+          outerOpt = .opt,
+          maxOuterIterations = 15L,
+          maxInnerIterations = 15L,
+          covMethod = "",
+          calcTables = FALSE,
+          print = iterPrintControl(every = 1L, headerEvery = 3L)
+        )
+      )
       .info <- paste0("outerOpt=", .opt)
       # the objective column header is present ...
-      expect_true(any(grepl("|    #| Function Val. |", .out, fixed = TRUE)),
-                  info = paste0(.info, ": missing 'Function Val.' header"))
+      expect_true(
+        any(grepl("|    #| Function Val. |", .out, fixed = TRUE)),
+        info = paste0(.info, ": missing 'Function Val.' header")
+      )
       # ... and the # rows actually carry an objective value in that slot.
-      expect_true(any(grepl("^\\|\\s*[0-9]+\\|\\s*[0-9.eE+-]+ \\|", .out)),
-                  info = paste0(.info, ": # rows carry no objective value"))
+      expect_true(
+        any(grepl("^\\|\\s*[0-9]+\\|\\s*[0-9.eE+-]+ \\|", .out)),
+        info = paste0(.info, ": # rows carry no objective value")
+      )
     }
   })
 
@@ -68,11 +83,16 @@ nmTest({
     skip_on_cran()
     .out <- .wang2007PropFit(
       "focei",
-      foceiControl(outerOpt = "bobyqa",
-                   maxOuterIterations = 15L, maxInnerIterations = 15L,
-                   covMethod = "", calcTables = FALSE,
-                   print = iterPrintControl(every = 1L, headerEvery = 3L)))
-    .nKey    <- sum(grepl("^Key:", .out))
+      foceiControl(
+        outerOpt = "bobyqa",
+        maxOuterIterations = 15L,
+        maxInnerIterations = 15L,
+        covMethod = "",
+        calcTables = FALSE,
+        print = iterPrintControl(every = 1L, headerEvery = 3L)
+      )
+    )
+    .nKey <- sum(grepl("^Key:", .out))
     .nHeader <- sum(grepl("^\\|\\s*#\\|", .out))
     # the legend is printed exactly once, at fit start ...
     expect_equal(.nKey, 1L)
@@ -96,9 +116,13 @@ nmTest({
       })
     }
     .out <- .captureIterTrace(
-      suppressWarnings(nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "saem",
-        control = saemControl(nBurn = 30L, nEm = 30L, nmc = 2L,
-                              print = iterPrintControl(every = 2L, headerEvery = 3L)))))
+      suppressWarnings(nlmixr2(
+        one.cmt,
+        nlmixr2data::theo_sd,
+        est = "saem",
+        control = saemControl(nBurn = 30L, nEm = 30L, nmc = 2L, print = iterPrintControl(every = 2L, headerEvery = 3L))
+      ))
+    )
     # saem has no per-iteration objective, so the objective column stays off.
     expect_false(any(grepl("Function Val.", .out, fixed = TRUE)))
     # the legend appears at most once (startup) ...

@@ -7,12 +7,16 @@
 #'   covariate
 #' @author Matthew L. Fidler
 #' @noRd
-.saemDropParametersIsMuRefCovariate <- function(expr, muRefCovariateDataFrame, noCovs=FALSE) {
-  if (noCovs) return(FALSE)
+.saemDropParametersIsMuRefCovariate <- function(expr, muRefCovariateDataFrame, noCovs = FALSE) {
+  if (noCovs) {
+    return(FALSE)
+  }
   if (length(expr) == 3) {
     if (identical(expr[[1]], quote(`*`))) {
-      if (length(expr[[2]]) == 1 &&
-            length(expr[[3]]) == 1) {
+      if (
+        length(expr[[2]]) == 1 &&
+          length(expr[[3]]) == 1
+      ) {
         .cov1 <- as.character(expr[[2]])
         .cov2 <- as.character(expr[[3]])
         .w <- which(muRefCovariateDataFrame$covariate == .cov1)
@@ -37,21 +41,22 @@
 #' @return Remove mu-referenced etas and covariates
 #' @author Matthew L. Fidler
 #' @noRd
-.saemDropParameters <- function(line, muRefDataFrame, muRefCovariateDataFrame, noCovs=FALSE,
-                                keepEtas=FALSE) {
+.saemDropParameters <- function(line, muRefDataFrame, muRefCovariateDataFrame, noCovs = FALSE, keepEtas = FALSE) {
   f <- function(x) {
     if (is.name(x) || is.atomic(x)) {
       return(x)
     } else if (is.call(x)) {
-      if (identical(x[[1]], quote(`+`)) &&
-            length(x) == 2) {
+      if (
+        identical(x[[1]], quote(`+`)) &&
+          length(x) == 2
+      ) {
         return(f(x[[2]]))
       }
       if (identical(x[[1]], quote(`+`))) {
-        if (.saemDropParametersIsMuRefCovariate(x[[2]], muRefCovariateDataFrame, noCovs=noCovs)) {
+        if (.saemDropParametersIsMuRefCovariate(x[[2]], muRefCovariateDataFrame, noCovs = noCovs)) {
           return(f(x[[3]]))
         }
-        if (.saemDropParametersIsMuRefCovariate(x[[3]], muRefCovariateDataFrame, noCovs=noCovs)) {
+        if (.saemDropParametersIsMuRefCovariate(x[[3]], muRefCovariateDataFrame, noCovs = noCovs)) {
           return(f(x[[2]]))
         }
         # keepEtas=TRUE (f-SAEM inner): absorb the non-time-varying covariates
@@ -88,11 +93,11 @@
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-.saemDropMuRefFromModel <- function(ui, noCovs=FALSE, keepEtas=FALSE) {
+.saemDropMuRefFromModel <- function(ui, noCovs = FALSE, keepEtas = FALSE) {
   .muRefFinal <- ui$saemMuRefCovariateDataFrame
   .muRefDataFrame <- ui$muRefDataFrame
-  lapply(ui$lstExpr, function(line){
-    .saemDropParameters(line, .muRefDataFrame, .muRefFinal, noCovs=noCovs, keepEtas=keepEtas)
+  lapply(ui$lstExpr, function(line) {
+    .saemDropParameters(line, .muRefDataFrame, .muRefFinal, noCovs = noCovs, keepEtas = keepEtas)
   })
 }
 
@@ -121,8 +126,21 @@ nmGetDistributionSaemLines <- function(line) {
     return(NULL)
   }
   .predLine <- .predDf[line, ]
+  # A "norm" condition MIXED with at least one genuine general-likelihood
+  # condition dispatches as "dnorm" instead -- mirrors FOCEi's own
+  # rxUiGet.predDfFocei() (R/focei.R) promotion.  llikNorm() is the exact same
+  # normal log-density, just expressed as a proper general likelihood, which
+  # is what lets do_mcmc's distribution==4 branch (one scalar for the whole
+  # fit, not per-observation) score every endpoint uniformly instead of
+  # needing per-observation dispatch.  A pure-normal model (every condition
+  # "norm") is untouched -- it still takes the closed-form
+  # nmGetDistributionSaemLines.norm path under distribution=1.
+  .dist <- paste(.predLine$distribution)
+  if (.dist == "norm" && !all(.predDf$distribution == "norm")) {
+    .dist <- "dnorm"
+  }
   .ret <- list(x, .predLine, line)
-  class(.ret) <- c(paste(.predLine$distribution), "nmGetDistributionSaemLines")
+  class(.ret) <- c(.dist, "nmGetDistributionSaemLines")
   .ret
 }
 
@@ -130,7 +148,7 @@ nmGetDistributionSaemLines <- function(line) {
 #' @export
 nmGetDistributionSaemLines.rxUi <- function(line) {
   .predDf <- get("predDf", line)
-  lapply(seq_along(.predDf$cond), function(c){
+  lapply(seq_along(.predDf$cond), function(c) {
     .mod <- .createSaemLineObject(line, c)
     nmGetDistributionSaemLines(.mod)
   })
@@ -139,7 +157,6 @@ nmGetDistributionSaemLines.rxUi <- function(line) {
 #' @rdname nmGetDistributionSaemLines
 #' @export
 nmGetDistributionSaemLines.norm <- function(line) {
-  .rx <- line[[1]]
   .pred1 <- line[[2]]
   if (.pred1[["linCmt"]]) {
     .var <- quote(linCmt())
@@ -150,56 +167,193 @@ nmGetDistributionSaemLines.norm <- function(line) {
 }
 #' @rdname nmGetDistributionSaemLines
 #' @export
-nmGetDistributionSaemLines.t <- function(line) {
-  stop("t isn't supported yet")
+nmGetDistributionSaemLines.LL <- function(line) {
+  # General log-likelihood endpoint (ll(name) ~ expr, or any non-normal
+  # distribution() family -- t(), cauchy(), dnorm(), ordinal(), etc.).  Reuse
+  # the FOCEi inner's line generator so the saem solve model emits
+  # rx_pred_ ~ <ll> (rx_r_ ~ 0) instead of a Gaussian mean.  saem sums the
+  # per-observation loglik the saemix way: the standard RWM kernels (do_mcmc,
+  # distribution=4) use -ll as the observation loss.  This is also the
+  # fallback for every non-"norm" distribution class (see .default below) --
+  # rxGetDistributionFoceiLines() re-dispatches on the actual distribution
+  # internally, so one forwarding body covers all of them.
+  .ui <- line[[1]]
+  .errNum <- line[[3]]
+  .lines <- .saemAddCensLines(rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum)))
+  .saemAddTbsJacobian(.lines, line[[2]])
+}
+
+#' Censoring inputs of a general-likelihood line
+#'
+#' Puts the arguments of a normal, t or Cauchy log-density in `rx_cx_`
+#' (transformed DV), `rx_cmu_` (mean), `rx_csd_` (sd), `rx_cnu_` (degrees of
+#' freedom: 0 normal, 1 Cauchy, -1 no closed form) and `rx_clim_` (the
+#' transformed `LIMIT`), so saem can score a censored observation as FOCEi does.
+#' They are only output when the data are censored (`rxUiGet.saemModel`).
+#'
+#' @param lines generated error lines of one endpoint
+#' @return lines with the capture lines before the log-density line
+#' @noRd
+.saemAddCensLines <- function(lines) {
+  .w <- which(vapply(lines, .saemIsLlikLine, logical(1)))
+  .args <- NULL
+  if (length(.w) == 1L) {
+    .call <- lines[[.w]][[3]]
+    .args <- switch(
+      as.character(.call[[1]]),
+      llikNorm = list(.call[[2]], .call[[3]], .call[[4]], 0),
+      llikT = list(.call[[2]], .call[[4]], .call[[5]], .call[[3]]),
+      llikCauchy = list(.call[[2]], .call[[3]], .call[[4]], 1),
+      NULL
+    )
+  }
+  if (is.null(.args)) {
+    .args <- list(0, 0, 1, -1)
+    .lim <- 0
+  } else {
+    .lim <- eval(call("substitute", .args[[1]], list(DV = quote(LIMIT))))
+  }
+  .cap <- list(
+    bquote(rx_cx_ ~ .(.args[[1]])),
+    bquote(rx_cmu_ ~ .(.args[[2]])),
+    bquote(rx_csd_ ~ .(.args[[3]])),
+    bquote(rx_cnu_ ~ .(.args[[4]])),
+    bquote(rx_clim_ ~ .(.lim))
+  )
+  .at <- if (length(.w) == 1L) .w - 1L else length(lines)
+  append(lines, .cap, after = .at)
+}
+
+#' Is this generated line `rx_pred_ ~ llik*(...)`?
+#'
+#' @param l a model line
+#' @return logical
+#' @noRd
+.saemIsLlikLine <- function(l) {
+  if (!is.call(l) || !identical(l[[1]], as.name("~"))) {
+    return(FALSE)
+  }
+  if (!identical(l[[2]], as.name("rx_pred_")) || !is.call(l[[3]])) {
+    return(FALSE)
+  }
+  is.name(l[[3]][[1]]) && startsWith(as.character(l[[3]][[1]]), "llik")
+}
+
+#' Add the transform's log-Jacobian to a generated likelihood line
+#'
+#' rxode2 scores the transformed DV (`llikNorm(rxTBS(DV, ...), ...)`) and FOCEi adds the
+#' Jacobian afterwards (`tbsLik`).  saem uses the line itself as the observation
+#' log-likelihood, so it has to carry `log|d rxTBS / d DV|`, or a transform parameter
+#' such as a boxCox lambda is estimated from the wrong density.
+#'
+#' @param lines generated error lines
+#' @param pred1 the endpoint's `predDf` row
+#' @return lines with the Jacobian added to the `rx_pred_ ~ llik*()` line
+#' @noRd
+.saemAddTbsJacobian <- function(lines, pred1) {
+  if (paste(pred1$transform) == "untransformed") {
+    return(lines)
+  }
+  if (!(paste(pred1$distribution) %in% c("norm", "dnorm", "t", "cauchy"))) {
+    return(lines)
+  }
+  for (.i in which(vapply(lines, .saemIsLlikLine, logical(1)))) {
+    lines[[.i]][[3]] <- call("+", lines[[.i]][[3]], quote(log(rxTBSd(DV, rx_lambda_, rx_yj_, rx_low_, rx_hi_))))
+  }
+  lines
 }
 
 #' @rdname nmGetDistributionSaemLines
 #' @export
-nmGetDistributionSaemLines.LL <- function(line) {
-  # General log-likelihood endpoint (ll(name) ~ expr).  Reuse the FOCEi inner's
-  # line generator so the saem solve model emits rx_pred_ ~ <ll> (rx_yj_ ~ 152)
-  # instead of a Gaussian mean.  saem sums the per-observation loglik the saemix
-  # way: the standard RWM kernels (do_mcmc, distribution=4) use -ll as the
-  # observation loss.
-  .ui <- line[[1]]
-  .errNum <- line[[3]]
-  rxGetDistributionFoceiLines(.createFoceiLineObject(.ui, .errNum))
-}
-
-#' @export
-nmGetDistributionSaemLines.default  <- function(line) {
-  stop("Distribution not supported")
-}
+nmGetDistributionSaemLines.default <- nmGetDistributionSaemLines.LL
 
 #' TRUE when the fit uses a general log-likelihood endpoint (distribution=4 path)
+#'
+#' Any distribution family other than "norm" reduces, in FOCEi's own line
+#' generator, to `rx_pred_` being an explicit log-density with `rx_r_ ~ 0`
+#' (ll(), t(), cauchy(), dnorm(), ordinal(), ...) -- see
+#' `rxode2::.handleSingleErrTypeNormOrTFoceiBase()`.  SAEM's own quasi-
+#' likelihood Poisson/binomial support (dpois()/dbinom()/dbern()) stays on
+#' `distribution == "norm"` with a variance-formula err type, so it is
+#' unaffected by this check.
+#'
+#' Any number of endpoints qualifies, as long as AT LEAST ONE of them is a
+#' general likelihood -- `do_mcmc`'s `distribution==4` branch (src/saem.cpp)
+#' treats each observation row's `rx_pred_` as `-loglik` directly, regardless
+#' of which endpoint condition produced it, so a model with several general-
+#' likelihood endpoints (e.g. two `ll()` conditions, or a `t()`+`cauchy()`
+#' mix) needs no per-endpoint dispatch to score correctly. A genuinely MIXED
+#' fit (some endpoints "norm", some not) is ALSO covered: `.createSaemLineObject`
+#' (this file) promotes every "norm" condition to "dnorm" whenever it is mixed
+#' with a genuine general-likelihood condition, mirroring FOCEi's own
+#' `rxUiGet.predDfFocei()` (R/focei.R) -- `llikNorm()` is the exact same normal
+#' log-density, just expressed as a proper general likelihood, so the whole
+#' fit can go through `do_mcmc`'s single `distribution` scalar uniformly
+#' instead of needing a per-observation switch.
+#'
 #' @param ui rxode2 ui
 #' @return logical
 #' @noRd
 .saemGeneralLik <- function(ui) {
   .pred <- ui$predDf
-  !is.null(.pred) && length(.pred$cond) == 1L && .pred$distribution == "LL"
+  !is.null(.pred) && length(.pred$cond) >= 1L && any(.pred$distribution != "norm")
+}
+
+#' Which `iniDf` rows are "estimable saem thetas" -- structural thetas, plus
+#' (only for a general-likelihood endpoint) its err-tagged residual-family
+#' theta(s) (e.g. `add.sd`/`nu` from `add(add.sd) + dt(nu)`).
+#'
+#' A normal endpoint's err-tagged thetas (add.sd, prop.sd, ...) are handled by
+#' the closed-form ares/bres residual M-step instead, so they are excluded
+#' there -- but a general-likelihood endpoint has no residual bookkeeping
+#' (`res.mod == 0`); its err-tagged theta(s) are referenced directly inside
+#' the compiled log-density (e.g. `rx_rll_ ~ sqrt((add.sd)^2)`), so they must
+#' be included here or they are silently absent from `params()`, the theta
+#' init vector, and the fixed-parameter mask.
+#'
+#' @param ui rxode2 ui
+#' @param iniDf iniDf to filter (usually `ui$iniDf`; passed separately since
+#'   some callers already have a filtered copy)
+#' @return logical vector, same length as `nrow(iniDf)`
+#' @noRd
+.saemIsEstimableThetaRow <- function(ui, iniDf) {
+  !is.na(iniDf$ntheta) & (is.na(iniDf$err) | .saemGeneralLik(ui))
 }
 
 #' @export
 rxUiGet.saemParamsLine <- function(x, ...) {
   .x <- x[[1]]
-  .names <- .x$iniDf[!is.na(.x$iniDf$ntheta) & is.na(.x$iniDf$err), "name"]
+  .names <- .x$iniDf[.saemIsEstimableThetaRow(.x, .x$iniDf), "name"]
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .names <- .names[!(.names %in% .cov$covariateParameter)]
-  str2lang(paste0("param(", paste(.names, collapse=", "), ")"))
+  str2lang(paste0("param(", paste(.names, collapse = ", "), ")"))
 }
 attr(rxUiGet.saemParamsLine, "rstudio") <- quote(param(tcl))
 
 #' @export
 rxUiGet.saemModel0 <- function(x, ...) {
   .f <- x[[1]]
-  rxode2::rxCombineErrorLines(.f, errLines=nmGetDistributionSaemLines(.f),
-                              paramsLine=NA,
-                              modelVars=TRUE,
-                              cmtLines=FALSE,
-                              dvidLine=FALSE,
-                              lstExpr=.saemDropMuRefFromModel(.f))
+  # t()/cauchy()/dnorm() endpoints only emit their explicit log-density form
+  # (rx_pred_ ~ llikT(...)/llikCauchy(...)/llikNorm(...), rx_r_ ~ 0) when
+  # nlmixr2global$rxPredLlik is TRUE (see rxGetDistributionFoceiLines.t/
+  # .cauchy/.default -> rxode2::.handleSingleErrTypeNormOrTFoceiBase());
+  # otherwise they fall back to the closed-form Gaussian mean/variance shape
+  # FOCEi's inner Newton solve uses.  SAEM's do_mcmc general-likelihood path
+  # has no such inner-Newton shortcut -- it always needs the true log-density
+  # -- so force it on here, mirroring rxUiGet.foceiModel0ll.
+  if (.saemGeneralLik(.f)) {
+    nlmixr2global$rxPredLlik <- TRUE
+    on.exit(nlmixr2global$rxPredLlik <- FALSE, add = TRUE)
+  }
+  rxode2::rxCombineErrorLines(
+    .f,
+    errLines = nmGetDistributionSaemLines(.f),
+    paramsLine = NA,
+    modelVars = TRUE,
+    cmtLines = FALSE,
+    dvidLine = FALSE,
+    lstExpr = .saemDropMuRefFromModel(.f)
+  )
 }
 #attr(rxUiGet.saemModel0, "desc") <- "saem initial model"
 attr(rxUiGet.saemModel0, "rstudio") <- quote(rxModelVars({}))
@@ -207,12 +361,20 @@ attr(rxUiGet.saemModel0, "rstudio") <- quote(rxModelVars({}))
 #'@export
 rxUiGet.saemModelPred0 <- function(x, ...) {
   .f <- x[[1]]
-  rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
-                              paramsLine=NA, #.uiGetThetaEtaParams(.f),
-                              modelVars=TRUE,
-                              cmtLines=FALSE,
-                              dvidLine=FALSE,
-                              lstExpr=.saemDropMuRefFromModel(.f))
+  # The table predOnly keeps the mean/variance form (as rxUiGet.focei's does);
+  # forcing rxPredLlik reported a dnorm()/t()/cauchy() log-density as IPRED (#1084)
+  .oldLlik <- nlmixr2global$rxPredLlik
+  nlmixr2global$rxPredLlik <- FALSE
+  on.exit(nlmixr2global$rxPredLlik <- .oldLlik, add = TRUE)
+  rxode2::rxCombineErrorLines(
+    .f,
+    errLines = rxGetDistributionFoceiLines(.f),
+    paramsLine = NA, #.uiGetThetaEtaParams(.f),
+    modelVars = TRUE,
+    cmtLines = FALSE,
+    dvidLine = FALSE,
+    lstExpr = .saemDropMuRefFromModel(.f)
+  )
 }
 # attr(rxUiGet.saemModel0, "desc") <- "saem predOnly for use in calculating residuals with focei engine"
 attr(rxUiGet.saemModelPred0, "rstudio") <- quote(rxModelVars({}))
@@ -231,8 +393,7 @@ attr(rxUiGet.saemModelPred0, "rstudio") <- quote(rxModelVars({}))
   .env$.if <- NULL
   .env$.def1 <- NULL
   .malert("pruning branches ({.code if}/{.code else}) of saem model...")
-  .ret <- rxode2::.rxPrune(.x, envir = .env,
-                           strAssign=rxode2::rxModelVars(x[[1]])$strAssign)
+  .ret <- rxode2::.rxPrune(.x, envir = .env, strAssign = rxode2::rxModelVars(x[[1]])$strAssign)
   .mv <- rxode2::rxModelVars(.ret)
   ## Need to convert to a function
   if (rxode2::.rxIsLinCmt() == 1L) {
@@ -257,8 +418,7 @@ attr(rxUiGet.saemModelPred0, "rstudio") <- quote(rxModelVars({}))
   .env$.if <- NULL
   .env$.def1 <- NULL
   .malert("pruning branches ({.code if}/{.code else}) of saem model...")
-  .ret <- rxode2::.rxPrune(.x, envir = .env,
-                           strAssign=rxode2::rxModelVars(.ui0)$strAssign)
+  .ret <- rxode2::.rxPrune(.x, envir = .env, strAssign = rxode2::rxModelVars(.ui0)$strAssign)
   .mv <- rxode2::rxModelVars(.ret)
   ## Need to convert to a function
   if (rxode2::.rxIsLinCmt() == 1L) {
@@ -289,7 +449,7 @@ attr(rxUiGet.loadPruneSaemPred, "rstudio") <- emptyenv()
 rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
-  .ret <- c(.iniDf$name[!is.na(.iniDf$ntheta) & is.na(.iniDf$err)])
+  .ret <- c(.iniDf$name[.saemIsEstimableThetaRow(.ui, .iniDf)])
   if (length(.ui$mixProbs) > 0) {
     .ret <- .ret[!(.ret %in% .ui$mixProbs)]
   }
@@ -307,7 +467,7 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
       .curPar <- .cov[.c, "covariateParameter"]
       .m[.curTheta, .curCov] <- .curPar
     }
-    .m <- cbind(matrix(.theta, ncol=1), .m)
+    .m <- cbind(matrix(.theta, ncol = 1), .m)
     .m <- as.vector(t(.m))
     .ret <- .m[!is.na(.m)]
   }
@@ -332,7 +492,7 @@ rxUiGet.saemThetaName <- rxUiGet.saemParamsToEstimate
 rxUiGet.saemParams <- function(x, ...) {
   .ui <- x[[1]]
   .par <- c(rxUiGet.saemParamsToEstimateCov(x, ...), .ui$covariates)
-  paste0("params(", paste(.par, collapse=","), ")")
+  paste0("params(", paste(.par, collapse = ","), ")")
 }
 attr(rxUiGet.saemParams, "desc") <- "Get the params() for a saem model"
 attr(rxUiGet.saemParams, "rstudio") <- "params(tka)"
@@ -341,36 +501,52 @@ attr(rxUiGet.saemParams, "rstudio") <- "params(tka)"
 rxUiGet.saemModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneSaem(x, ...)
 
-  # matExp() has no d/dt(): materialize it from the k_from_to constants and
-  # emit the defining LHS first, suppressed ('~') so it adds no output column
-  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
+  # matExp(): SAEM has no analytic-sensitivity consumer of the state
+  # derivatives (src/saem.cpp has no state-sensitivity machinery), so unlike
+  # focei/nlm/nls a PURE-LINEAR matExp() model solves natively through
+  # rxode2's matrix-exponential driver instead of materializing an
+  # equivalent d/dt() ODE (#859).  .saemFitModel() forces
+  # rxControl(method="indLin") to match.  A model with an indLin() forcing
+  # term still flattens (.rxKeepMatExpNative() bails on those; see its doc).
+  .isMatExp <- isTRUE(.rxKeepMatExpNative(.s))
+  if (!.isMatExp) {
+    .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
+  }
 
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
+  .prd <- c(.prd, .saemCensOutLines(x[[1]], .s))
   ## .lhs0 <- .s$..lhs0
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
-  if (is.null(.ddt)) .ddt <- ""
+  if (is.null(.ddt)) {
+    .ddt <- ""
+  }
   .preLhs <- character(0)
   if (.isMatExp) {
     .lhs <- .s$..lhs
-    if (is.null(.lhs)) .lhs <- character(0)
+    if (is.null(.lhs)) {
+      .lhs <- character(0)
+    }
     .preLhs <- sub("^([^=]+)=", "\\1~", .lhs)
   }
-  .ret <- paste(c(
-    #.s$..stateInfo["state"],
-    #.lhs0,
-    .preLhs,
-    .ddt,
-    ## DDE non-constant delay() pre-history: base past(state,tau)<-expr.  SAEM is
-    ## gradient-free and builds .s without sensitivities, so re-inject the history
-    ## (which the symengine interception dropped) from the stored rx__pastRhs_.
-    rxode2::.rxPastBaseLinesFromEnv(.s),
-    .prd,
-    #.s$..stateInfo["statef"],
-    #.s$..stateInfo["dvid"],
-    ""
-  ), collapse = "\n")
+  .ret <- paste(
+    c(
+      #.s$..stateInfo["state"],
+      #.lhs0,
+      .preLhs,
+      .ddt,
+      ## DDE non-constant delay() pre-history: base past(state,tau)<-expr.  SAEM is
+      ## gradient-free and builds .s without sensitivities, so re-inject the history
+      ## (which the symengine interception dropped) from the stored rx__pastRhs_.
+      rxode2::.rxPastBaseLinesFromEnv(.s),
+      .prd,
+      #.s$..stateInfo["statef"],
+      #.s$..stateInfo["dvid"],
+      ""
+    ),
+    collapse = "\n"
+  )
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   if (.sumProd) {
@@ -380,26 +556,50 @@ rxUiGet.saemModel <- function(x, ...) {
   }
   if (.optExpression) {
     .ret <- rxode2::rxOptExpr(.ret, "saem model", parallel = .optExprCores(x[[1]]))
-     .msuccess("done")
+    .msuccess("done")
   }
-  .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)
-  .interp <- rxUiGet.interpLinesStr(x, ...)
-  if (.interp != "") {
-    .cmt <-paste0(.cmt, "\n", .interp)
-  }
+  .cmt <- rxUiGet.foceiCmtPreModel(x, ...)
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  .cmt <- .addPreModelLines(.cmt, rxUiGet.interpLinesStr(x, ...), .mtimeLinesStr(.s))
   ## no splitBolus() here -- saem solves the pre-split $dataSav, so declaring it
   ## would split the doses twice (see .foceiPreProcessData())
-  paste(c(rxUiGet.saemParams(x, ...), .cmt,
-          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
+  paste(c(rxUiGet.saemParams(x, ...), .cmt, .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse = "\n")
 }
 attr(rxUiGet.saemModel, "rstudio") <- "params(tcl)"
+
+#' Censoring outputs of a general-likelihood saem model
+#'
+#' Emitted only when `.saemFitModel()` staged censored data on the ui
+#' (`.saemCensOut`: 1 censored, 2 censored with a `LIMIT` column).
+#'
+#' @param ui rxode2 ui
+#' @param s symengine environment of the saem model
+#' @return model lines (`rx_cx_=...`, ...), or character(0)
+#' @noRd
+.saemCensOutLines <- function(ui, s) {
+  # a compressed ui (a list) never carries the staged flag
+  .out <- if (is.environment(ui)) get0(".saemCensOut", envir = ui, inherits = FALSE)
+  if (is.null(.out) || !exists("rx_cnu_", envir = s, inherits = FALSE)) {
+    return(character(0))
+  }
+  .v <- c("rx_cx_", "rx_cmu_", "rx_csd_", "rx_cnu_", if (.out == 2L) "rx_clim_")
+  vapply(
+    .v,
+    function(v) {
+      .e <- get(v, envir = s)
+      paste0(v, "=", rxode2::rxFromSE(.e))
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+}
 
 #'@export
 rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .thetaNames <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), ]
-  .etas <- .iniDf[which(.iniDf$neta1 == .iniDf$neta2),"name"]
+  .etas <- .iniDf[which(.iniDf$neta1 == .iniDf$neta2), "name"]
   if (length(.thetaNames$name) == 0L) {
     .thetaValue <- character(0L)
   } else {
@@ -419,6 +619,15 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
   }
   .thetaValue <- c(.thetaValue, .thetaValueErr)
   .etaTrans <- rxUiGet.saemEtaTransPred(x, ...)
+  # .etaTrans indexes the SAEM ESTIMATION parameter vector; .thetaValue is in
+  # iniDf order.  The two differ by every theta saem does not estimate as its
+  # own parameter -- the mixture probabilities and the mu-referenced covariate
+  # parameters -- so the position has to be turned back into a name before it
+  # is used here.  Indexing .thetaValue by the raw position pairs each eta with
+  # whatever theta happens to sit at that spot, shifting every eta declared
+  # after one of those onto the wrong parameter (nlmixr2/nlmixr2est#1041).
+  .etaTransNames <- rxUiGet.saemParamsToEstimateCov(x, ...)
+  .etaTransNames <- .etaTransNames[!(.etaTransNames %in% .ui$nonMuEtas)]
   for (.e in seq_along(.etaTrans)) {
     .eta <- paste0("ETA[", .e, "]")
     .tn <- .etaTrans[.e]
@@ -436,10 +645,23 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
     } else if (.tn < 0) {
       .thetaValue[.etas[-.tn]] <- .eta
     } else {
-      if (.thetaValue[.tn] == "") {
-        .thetaValue[.tn] <- .eta
+      .tnName <- .etaTransNames[.tn]
+      # stop() rather than falling back to the position: the position is what
+      # was wrong in the first place, so a silent fallback would put the eta
+      # back on the wrong parameter in exactly the case this resolves
+      if (is.na(.tnName) || !(.tnName %in% names(.thetaValue))) {
+        stop(
+          "cannot pair '",
+          .etas[.e],
+          "' with a population parameter ",
+          "while building the saem prediction model",
+          call. = FALSE
+        )
+      }
+      if (.thetaValue[.tnName] == "") {
+        .thetaValue[.tnName] <- .eta
       } else {
-        .thetaValue[.tn] <- paste0(.thetaValue[.tn], " + ", .eta)
+        .thetaValue[.tnName] <- paste0(.thetaValue[.tnName], " + ", .eta)
       }
     }
   }
@@ -452,7 +674,7 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
       .tcov <- paste0(.muRefFinal$covariate[.c], " * ", .tcov)
       .cur <- c(.thetaValue[.tv], .tcov)
       .cur <- .cur[.cur != ""]
-      .thetaValue[.tv] <- paste(.cur, collapse=" + ")
+      .thetaValue[.tv] <- paste(.cur, collapse = " + ")
     }
   }
   .nonMuEtas <- .ui$nonMuEtas
@@ -468,7 +690,7 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
   .thetaValue
 }
 #attr(rxUiGet.saemModelPredReplaceLst, "desc") <- "Replace the mu referenced thetas with these values"
-attr(rxUiGet.saemModelPredReplaceLst, "rstudio") <- c(tka="THETA[1] + ETA[1]")
+attr(rxUiGet.saemModelPredReplaceLst, "rstudio") <- c(tka = "THETA[1] + ETA[1]")
 
 .saemModelEnv <- new.env(parent = emptyenv())
 .saemModelEnv$symengine <- NULL
@@ -476,7 +698,6 @@ attr(rxUiGet.saemModelPredReplaceLst, "rstudio") <- c(tka="THETA[1] + ETA[1]")
 
 #' @export
 rxUiGet.interpLinesStr <- function(x, ...) {
-  .ui <- x[[1]]
   .interp <- x[[1]]$interpLines
   if (is.null(.interp)) {
     .interp <- ""
@@ -487,9 +708,45 @@ rxUiGet.interpLinesStr <- function(x, ...) {
 }
 attr(rxUiGet.interpLinesStr, "rstudio") <- ""
 
+#' Normalize `lhs <- rhs` assignment strings for comparison
+#'
+#' @param lines Character vector of assignment lines
+#' @return The lines re-deparsed from their parsed form; a line that does not
+#'   parse as a single expression is returned unchanged
+#' @author Bill Denney
+#' @noRd
+.normAssign <- function(lines) {
+  vapply(
+    lines,
+    function(.s) {
+      .p <- try(str2lang(.s), silent = TRUE)
+      if (inherits(.p, "try-error")) {
+        return(.s)
+      }
+      deparse1(.p)
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+}
+
+#' Which of `names` does this model text assign to?
+#'
+#' @param modelText Character vector of rxode2 model lines
+#' @param names Character vector of variable names to look for
+#' @return Logical, one per `names`: TRUE when the text assigns (`=`, `<-` or
+#'   `~`) to that plain name.  A non-name target such as `d/dt(x)` or `f(x)`
+#'   never counts, and `=(?!=)` keeps a comparison (`x == 1`) from reading as
+#'   an assignment to `x`.
+#' @author Matthew L. Fidler
+#' @noRd
+.lhsAssignedIn <- function(modelText, names) {
+  .lhs <- trimws(sub("[ \t]*(<-|~|=(?!=)).*$", "", modelText, perl = TRUE))
+  names %in% .lhs[grepl("^[A-Za-z._][A-Za-z0-9._]*$", .lhs)]
+}
+
 #' @export
 rxUiGet.saemModelPred <- function(x, ...) {
-  .ui0 <- x[[1]]
   ## No levels() lines are emitted: .foceiPreProcessData() turns the string
   ## covariates into factors with the model's level order, so the solve sees
   ## the numeric codes directly.
@@ -511,35 +768,32 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .low <- paste(get("rx_low_", envir = .s))
   .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
   ## if (is.null(.lhs0)) .lhs0 <- ""
-  .ui <- x[[1]]
-  .lhsIn <- .ui$mv0$lhs
   .ddt <- .s$..ddt
-  if (is.null(.ddt)) .ddt <- ""
+  if (is.null(.ddt)) {
+    .ddt <- ""
+  }
 
-  .ret <- paste(c(
-    .ddt,
-    ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
-    rxode2::.rxPastBaseLinesFromEnv(.s),
-    #.yj,
-    #.lambda,
-    #.hi,
-    #.low,
-    .prd#,
-    #.r,
-    #.s$..lhs,
-    #"tad=tad()",
-    #"dosenum=dosenum()"
-  ), collapse = "\n")
+  .ret <- paste(
+    c(
+      .ddt,
+      ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
+      rxode2::.rxPastBaseLinesFromEnv(.s),
+      #.yj,
+      #.lambda,
+      #.hi,
+      #.low,
+      .prd #,
+      #.r,
+      #.s$..lhs,
+      #"tad=tad()",
+      #"dosenum=dosenum()"
+    ),
+    collapse = "\n"
+  )
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
-  .ret0 <- c(.yj,
-             .lambda,
-             .hi,
-             .low)
-  .ret2 <- c(.r,
-             .s$..lhs,
-             "tad=tad()",
-             "dosenum=dosenum()")
+  .ret0 <- c(.yj, .lambda, .hi, .low)
+  .ret2 <- c(.r, .s$..lhs, "tad=tad()", "dosenum=dosenum()")
 
   if (.sumProd) {
     .malert("stabilizing round off errors in saem predOnly model...")
@@ -550,8 +804,7 @@ rxUiGet.saemModelPred <- function(x, ...) {
   }
   if (.optExpression) {
     .optCores <- .optExprCores(x[[1]])
-    .ret0 <- gsub("rx_expr_", "rx_expr",
-                  rxode2::rxOptExpr(.ret0, "saem predOnly model 0", parallel = .optCores))
+    .ret0 <- gsub("rx_expr_", "rx_expr", rxode2::rxOptExpr(.ret0, "saem predOnly model 0", parallel = .optCores))
     .ret <- rxode2::rxOptExpr(.ret, "saem predOnly model 1", parallel = .optCores)
     ## .ret2 is the residual + lhs (+ tad/dosenum) fragment.  When a delay()
     ## appears in an intermediate lhs (e.g. `ceff <- delay(cen, tau)`) that lhs is
@@ -562,29 +815,55 @@ rxUiGet.saemModelPred <- function(x, ...) {
     if (any(grepl("delay(", .ret2, fixed = TRUE))) {
       .msuccess("done")
     } else {
-      .ret2 <- gsub("rx_expr_", "rx_expr__",
-                    rxode2::rxOptExpr(.ret2, "saem predOnly model 2", parallel = .optCores))
+      .ret2 <- gsub("rx_expr_", "rx_expr__", rxode2::rxOptExpr(.ret2, "saem predOnly model 2", parallel = .optCores))
       .msuccess("done")
     }
   }
-  .ret <- paste(c(
-    .ret0,
-    .ret,
-    .ret2
-  ), collapse = "\n")
+  .ret <- paste(
+    c(
+      .ret0,
+      .ret,
+      .ret2
+    ),
+    collapse = "\n"
+  )
   .interp <- rxUiGet.interpLinesStr(x, ...)
+  ## The mu-reference replacement block and the trailing THETA/ETA alias block
+  ## can emit the same `lhs <- rhs` twice; codegen then repeats it in dydt and
+  ## calc_lhs as a dead store.  Drop an alias line when it is an exact duplicate
+  ## (same lhs AND same rhs, after parse/deparse normalization) of a replacement
+  ## line AND the model body does not assign that lhs.  A mu-referenced
+  ## `lhs <- THETA[k] + ETA[j]` and the split `lhs <- THETA[k]` are not
+  ## duplicates, so both survive.  The body check matters because a model may
+  ## legally write to a parameter's own name (`tv <- tv + 1`): there the trailing
+  ## alias is what puts THETA[k] back into that output column, so it is a live
+  ## store, not a dead one.
+  .replaceLines <- paste(names(.replaceLst), "<-", .replaceLst)
+  .thetaEtaLines <- vapply(.uiGetThetaEta(x[[1]]), deparse1, character(1), USE.NAMES = FALSE)
+  .dupAlias <- .normAssign(.thetaEtaLines) %in% .normAssign(.replaceLines)
+  .aliasLhs <- sub("[ \t]*(<-|=|~).*$", "", .thetaEtaLines)
+  .thetaEtaLines <-
+    .thetaEtaLines[!(.dupAlias & !.lhsAssignedIn(strsplit(.ret, "\n")[[1]], .aliasLhs))]
   ## as in rxUiGet.saemModel(), splitBolus() is left out: the events this model
   ## solves have already been split
-  .ret <- c(rxUiGet.foceiParams(x, ...),
-            rxUiGet.foceiCmtPreModel(x, ...),
-            .interp,
-            "rx_pred_=NA\nrx_r_=NA\n",
-            paste(names(.replaceLst), "<-", .replaceLst),
-            .ret,
-            vapply(.uiGetThetaEta(x[[1]]), deparse1, character(1), USE.NAMES=FALSE),
-            .foceiToCmtLinesAndDvid(x[[1]]))
+  .ret <- c(
+    rxUiGet.foceiParams(x, ...),
+    rxUiGet.foceiCmtPreModel(x, ...),
+    .interp,
+    "rx_pred_=NA\nrx_r_=NA\n",
+    .replaceLines,
+    # mtime() lines are re-emitted here (#919); see .mtimeLinesStr().
+    # AFTER the mu-reference replacement block, not with the other
+    # declarations: this model's body is in the NATURAL names, which
+    # only those lines define, so an mtime right hand side naming a
+    # theta would otherwise read it before it is assigned.
+    .mtimeLinesStr(.s),
+    .ret,
+    .thetaEtaLines,
+    .foceiToCmtLinesAndDvid(x[[1]])
+  )
   .ret <- .ret[.ret != ""]
-  .ret <- list(predOnly=.nlmixr2estRxode2(paste(.ret, collapse="\n"), "rxSaemPred"))
+  .ret <- list(predOnly = .nlmixr2estRxode2(paste(.ret, collapse = "\n"), "rxSaemPred"))
   class(.ret) <- "saemModelList"
   .ret
 }

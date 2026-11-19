@@ -1,3 +1,5 @@
+#ifndef __NLMIXR2EST_RXOMP_H__
+#define __NLMIXR2EST_RXOMP_H__
 #ifndef R_NO_REMAP
 #define R_NO_REMAP
 #endif
@@ -28,3 +30,4 @@ static inline int omp_in_parallel(void) {
 }
 
 #endif
+#endif // __NLMIXR2EST_RXOMP_H__

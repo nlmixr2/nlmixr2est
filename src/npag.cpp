@@ -6,6 +6,7 @@
 #include <RcppArmadillo.h>
 #include "np.h"
 #include "npCommon.h"
+#include "minqaC.h"
 #include "imp.h"   // M-step helpers (impSetEta/impSetOmega/impMapPass/...) reused for finalization
 
 using namespace Rcpp;
@@ -58,14 +59,44 @@ namespace {
     return v;                                                           // lambda etc.
   }
 
+  // Reference objective at the optimizer's starting point, used to scale the
+  // out-of-domain penalty below.  R_PosInf when unset (nothing to scale against yet).
+  double gNpResidRef = R_PosInf;
+
+  // Out-of-domain penalty shape.  The penalty is
+  //     ref + NP_RESID_PENALTY_MULT * (1 + |ref|)
+  // which is strictly worse than `ref` for either sign of ref, and worse than any
+  // objective within a factor of NP_RESID_PENALTY_MULT of the starting point -- the
+  // multiplier is what buys the margin, so it wants to be large relative to how far a
+  // feasible objective can move during one residual step, and small enough not to
+  // wreck bobyqa's quadratic conditioning.  1e4 sits comfortably between: residual
+  // steps move the objective by O(1)-O(100) here.
+  const double NP_RESID_PENALTY_MULT = 1e4;
+  // Unscaled fallback, used only if gNpResidRef were somehow unset.  npOptimizeResid
+  // returns early when the starting objective is non-finite, so this is unreachable;
+  // it is kept so the function is total.  It is deliberately NOT the primary path: an
+  // absolute constant can be SMALLER than a legitimate objective on a large problem,
+  // which would make the infeasible region look attractive.
+  const double NP_RESID_PENALTY_ABS = 1e10;
+
   double npResidObjVal(const double *p) {
     for (size_t j = 0; j < gNpOptIdx.size(); ++j)
       impSetThetaAll(gNpOptIdx[j], npResidVal(p[j], gNpOptKind[j]));
     if (gNpReDerive)
       gNpPostEta = npPosteriorEta(*gNpSupport, *gNpWeights, gNpCores);
-    return npResidELS(gNpPostEta);
+    double v = npResidELS(gNpPostEta);
+    if (std::isfinite(v)) return v;
+    // A candidate the model itself rejects -- e.g. a hand-written ll() taking log() of
+    // a parameter that went negative, which rxode2's safeLog=2 turns into NaN.  bobyqa
+    // builds a quadratic from 2n+1 sampled points, so handing it R_PosInf makes the
+    // interpolation coefficients NaN and the whole step is then garbage rather than a
+    // rejection -- which is how a negative SD still survived the domain check.  Give it
+    // a large FINITE value instead, scaled to the objective so it dominates without
+    // wrecking conditioning.  It is a flat plateau: it stops the infeasible region from
+    // attracting the optimizer, but carries no gradient back toward feasibility.
+    if (!std::isfinite(gNpResidRef)) return NP_RESID_PENALTY_ABS;
+    return gNpResidRef + NP_RESID_PENALTY_MULT * (1.0 + std::fabs(gNpResidRef));
   }
-  double npResidObjR(Rcpp::NumericVector p) { return npResidObjVal(p.begin()); }
 }
 
 // Optimize the residual thetas in idx (kinds in kind) at the posterior-mean etas
@@ -73,7 +104,17 @@ namespace {
 // extended-least-squares objective.  Warm-starts every variance-scale theta from the
 // saem-style per-endpoint moment (additive: sqrt(mean err^2); proportional:
 // sqrt(mean (err/f)^2)); when the optimized set is exactly one such scale per
-// endpoint, the moment IS the ELS optimum, so it is used directly (no bobyqa).
+// endpoint, the moment IS the ELS optimum, so it is used directly (no bobyqa) --
+// EXCEPT when the endpoint actually had a censored (M3/M4) row dropped from its
+// moment (npResidMoments()'s 4th column, issue #978): the variance of a truncated
+// normal is always less than the untruncated one (a standard result -- see e.g. the
+// inverse Mills ratio identity), so a moment built only from the surviving
+// (uncensored) rows is a biased-low estimate of the true residual variance whenever
+// the model is genuinely censored.  That case is now treated the same as a
+// regressor -- disqualified from the fast path and refined against npResidELS,
+// which correctly routes a censored row through doCensNormal1 instead of dropping
+// it.  The (now merely biased, not catastrophic) moment is still used as bobyqa's
+// starting point.
 // optEnd[j]/optProp[j] describe idx[j]: optEnd 0-based endpoint (or -1 if not a
 // variance scale), optProp 1 for proportional else 0.  obsEndpoint gives each
 // observation's endpoint (subject-major getIndIx order) for the moment estimate.
@@ -112,6 +153,9 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
       if (e < 0 || kind[j] != 1 || endCount[e] > 1) { allSimpleScale = false; continue; }
       double nn = mom(e, 2);
       if (nn <= 0.0) { allSimpleScale = false; continue; }
+      // a censored row was dropped from this endpoint's moment -- it is a biased
+      // warm start now, not the ELS optimum, so route through the optimizer (#978)
+      if (mom(e, 3) > 0.0) allSimpleScale = false;
       double v = std::sqrt(mom(e, (optProp[j] == 1) ? 1 : 0) / nn);
       if (j < (int)lower.size() && std::isfinite(lower[j])) v = std::max(v, lower[j]);
       if (j < (int)upper.size() && std::isfinite(upper[j])) v = std::min(v, upper[j]);
@@ -122,7 +166,7 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
   }
 
   std::vector<double> start(n);
-  Rcpp::NumericVector par0(n), lo(n), hi(n);
+  std::vector<double> par0(n), lo(n), hi(n);
   for (int j = 0; j < n; ++j) {
     double v = impGetFullThetaVal(idx[j]);
     if (kind[j] == 1) v = std::fabs(v);
@@ -137,6 +181,22 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
       if (!std::isfinite(hi[j])) hi[j] = v + 6.0;
     }
   }
+  // Scale for the out-of-domain penalty in npResidObjVal: the objective at the START.
+  // Reset per call so a previous cycle (or the other engine -- npb shares this file's
+  // statics) cannot leak its scale in.  If the START itself is infeasible there is
+  // nothing to scale against and no feasible point to improve on, so do not run the
+  // optimizer at all: leave the thetas where they are and report failure.  That also
+  // keeps npResidObjVal's unscaled fallback unreachable, so it cannot ever be smaller
+  // than a legitimate objective.
+  gNpResidRef = R_PosInf;
+  {
+    double f0 = npResidELS(gNpPostEta);
+    if (!std::isfinite(f0)) {
+      for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(start[j], kind[j]));
+      return R_PosInf;
+    }
+    gNpResidRef = f0;
+  }
   // PIN the current solve for a residual-only optimization: the err params do not
   // change f, so cache each subject's (per-component) states at the posterior
   // etas and freeze the ODE -- npResidELS then recomputes only r, no
@@ -144,22 +204,36 @@ double npOptimizeResid(const arma::mat& support, const arma::vec& weights,
   // regressor (reDerive) DOES move f, so it must keep re-solving.
   bool doFreeze = freeze && !reDerive;
   if (doFreeze) npResidFreezeBuild(gNpPostEta);   // also sets op_focei.freezeOde
-  // .boundedResidOpt: bobyqa (>=2 params) / bounded optimize (1 param), honoring
-  // the ini-block bounds so the optimizer stays in the valid region.
-  Rcpp::Environment nlmixr2 = Rcpp::Environment::namespace_env("nlmixr2est");
-  Rcpp::Function boundedOpt = nlmixr2[".boundedResidOpt"];
-  Rcpp::InternalFunction fn(&npResidObjR);
-  Rcpp::List ret = boundedOpt(Rcpp::_["par"] = par0, Rcpp::_["fn"] = fn,
-                              Rcpp::_["lower"] = lo, Rcpp::_["upper"] = hi,
-                              Rcpp::_["control"] = Rcpp::List::create(Rcpp::_["maxfun"] = 200 * n * n,
-                                                                     Rcpp::_["rhoend"] = rhoend));
+  // bobyqa (>=2 params) / bounded Brent (1 param), honoring the ini-block bounds
+  // so the optimizer stays in the valid region.
+  minqaCRes ret = boundedResidOptC(n, par0.data(), lo.data(), hi.data(),
+                                   [](const double *p) { return npResidObjVal(p); },
+                                   rhoend, 200 * n * n);
   if (doFreeze) npResidFreezeClear();   // unfreezes op_focei.freezeOde
-  double f = as<double>(ret["value"]);
+  double f = ret.value;
+  bool didReDerive = gNpReDerive;
   gNpReDerive = false;
   if (!ISNA(f)) {
-    Rcpp::NumericVector x = ret["x"];
+    const std::vector<double> &x = ret.x;
     for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(x[j], kind[j]));
-    return f;
+    // With a regressor, gNpPostEta was re-derived for every candidate bobyqa sampled, so
+    // it currently belongs to the LAST point tried -- which is not the optimum it
+    // returned.  Re-derive at the committed thetas before judging them, or the check
+    // pairs the new thetas with someone else's etas.
+    if (didReDerive) gNpPostEta = npPosteriorEta(*gNpSupport, *gNpWeights, gNpCores);
+    // The optimizer's answer is only usable if the MODEL accepts it.  bobyqa returns the
+    // best point it sampled, and with an out-of-domain penalty that is still a finite
+    // number -- so `f` being non-NA says nothing about feasibility.  Committing an
+    // infeasible x is how a hand-written ll() ended up fit at a NEGATIVE standard
+    // deviation (nlmixr2/nlmixr2est#850): every later Psi was then built at a parameter
+    // the likelihood cannot evaluate.  Re-check the committed point and fall back to the
+    // start, which is feasible by construction, when it does not hold up.
+    double fx = npResidELS(gNpPostEta);
+    if (!std::isfinite(fx)) {
+      for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(start[j], kind[j]));
+      return R_PosInf;
+    }
+    return fx;
   }
   for (int j = 0; j < n; ++j) impSetThetaAll(idx[j], npResidVal(start[j], kind[j]));
   return R_PosInf;
@@ -194,6 +268,7 @@ struct npagCtl {
   std::vector<int> residOptEnd;   // per-idx 0-based endpoint (-1 if not a variance scale)
   std::vector<int> residOptProp;  // per-idx 1 if proportional, else 0 (moment warm start)
   arma::ivec obsEndpoint;         // per-observation endpoint (subject-major getIndIx order)
+  std::vector<int> endpointCmt;   // per-endpoint cmt (inner-model basis, predDf order)
   std::vector<int> regressIdx;    // fullTheta indices of structural regressor thetas
   std::vector<double> regressLower;
   std::vector<double> regressUpper;
@@ -247,6 +322,7 @@ struct npagResult {
 static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
                                const npagCtl& ctl) {
   arma::mat theta = npSobolGrid(ctl.points, lower, upper);
+  arma::ivec obsEndpoint = ctl.obsEndpoint;
   double eps = ctl.epsInit, f0 = -1e30, f1 = 0.0, lastObj = -1e30, objf = R_NegInf;
   // gamma is held at 1: the per-cycle warm-start folds its multiplier straight
   // into the variance-scale thetas, so the main/condensation Psi builds and the
@@ -315,6 +391,9 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
           "model and the observations near a zero prediction.");
       }
     }
+    if (cycle == 1 && obsEndpoint.is_empty() && !ctl.endpointCmt.empty()) {
+      obsEndpoint = npBuildObsEndpoint(ctl.endpointCmt);
+    }
     lam = npBurke(psi, &obj0);
     // condensation: weight threshold, then QR rank-revealing
     arma::uvec wk = npCondenseWeights(lam, ctl.ratio);
@@ -360,7 +439,7 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
     // coordinate ascent), then re-solves the weights at the new thetas.
     if (ctl.residMode == 1 && doResidOpt) {
       npOptimizeResid(theta, lam, optIdx, optKind, ctl.cores, optLo, optHi,
-                      ctl.residFreeze, ctl.obsEndpoint, optEnd, optProp, useRegress, ctl.residRhoend);
+                      ctl.residFreeze, obsEndpoint, optEnd, optProp, useRegress, ctl.residRhoend);
       double off = 0.0, b = 0.0;
       npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
       lam = npBurke(psi, &b); objf = b + off;
@@ -409,7 +488,7 @@ static npagResult npagRunCycle(const arma::vec& lower, const arma::vec& upper,
   // "final" mode: optimize the residual + regressor thetas once at the converged support.
   if (ctl.residMode == 2 && doResidOpt) {
     npOptimizeResid(theta, lam, optIdx, optKind, ctl.cores, optLo, optHi,
-                    ctl.residFreeze, ctl.obsEndpoint, optEnd, optProp, useRegress, ctl.residRhoend);
+                    ctl.residFreeze, obsEndpoint, optEnd, optProp, useRegress, ctl.residRhoend);
     double off = 0.0, b = 0.0;
     npBuildPsiCoreScaled(theta, ctl.cores, 1.0, psi, &off);
     lam = npBurke(psi, &b); objf = b + off;
@@ -518,8 +597,7 @@ void npagOuter(Environment e) {
   // residual from its own moment.  npEndpointCmt gives the per-endpoint cmt (predDf order).
   if (control.containsElementNamed("npEndpointCmt")) {
     IntegerVector ec = control["npEndpointCmt"];
-    std::vector<int> endpointCmt(ec.begin(), ec.end());
-    ctl.obsEndpoint = npBuildObsEndpoint(endpointCmt);
+    ctl.endpointCmt.assign(ec.begin(), ec.end());
   }
   if (control.containsElementNamed("npRegressIdx")) {
     IntegerVector gi = control["npRegressIdx"];
@@ -679,7 +757,13 @@ arma::mat npFinalizeFit(Environment e, arma::mat& support,
   // installed Omega singular and the posthoc MAP's Omega^-1 fail.  Floor the
   // diagonal so the inverse is well-defined; the tiny variance still reads as "no
   // BSV" for that parameter.
-  for (int d = 0; d < neta; ++d) if (omInstall(d, d) < 1e-6) omInstall(d, d) = 1e-6;
+  std::vector<int> floored;
+  for (int d = 0; d < neta; ++d) {
+    if (omInstall(d, d) < 1e-6) {
+      omInstall(d, d) = 1e-6;
+      if (std::find(injEtaIdx.begin(), injEtaIdx.end(), d) == injEtaIdx.end()) floored.push_back(d);
+    }
+  }
   // mu-expanded etas carry a FIXED omega only so they are excluded from the free
   // omega objective (and, in mixtures, do not trip the multi-free-eta omega setup).
   // At finalization they are collapsed to a fixed effect: their support-mean is
@@ -689,6 +773,7 @@ arma::mat npFinalizeFit(Environment e, arma::mat& support,
     int j = injEtaIdx[x];
     if (j >= 0 && j < neta) { omInstall(j, j) = 1e-6; Omega(j, j) = 0.0; }
   }
+  impWarnOmegaFloor(e, floored);
   impSetOmega(omInstall, impDiagXform());
   // fold the fitted assay-error multiplier (gamma) into the variance-scale
   // residual coefficients: r was fit as gamma^2 * r(theta), which equals

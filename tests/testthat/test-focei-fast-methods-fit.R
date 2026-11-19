@@ -38,35 +38,36 @@ nmTest({
     }
     for (est in c("mfocei", "ifocei", "mfoce")) {
       ## cached fast=FALSE reference, per est -- see helper-gradref.R
-      f0 <- .numRef(paste0("fit-fd-methods-", est), function()
-        list(objf = suppressMessages(suppressWarnings(nlmixr2(mc, d, est,
-               foceiControl(print = 0L, covMethod = "", fast = FALSE))))$objf))
-      fF <- suppressMessages(suppressWarnings(nlmixr2(mc, d, est, foceiControl(print = 0L, covMethod = "", fast = TRUE))))
+      f0 <- .numRef(paste0("fit-fd-methods-", est), function() {
+        list(
+          objf = suppressMessages(suppressWarnings(nlmixr2(
+            mc,
+            d,
+            est,
+            foceiControl(print = 0L, covMethod = "", fast = FALSE)
+          )))$objf
+        )
+      })
+      fF <- suppressMessages(suppressWarnings(nlmixr2(
+        mc,
+        d,
+        est,
+        foceiControl(print = 0L, covMethod = "", fast = TRUE)
+      )))
       expect_equal(fF$objf, f0$objf, tolerance = 0.05, info = est)
       # analytic gradient actually consumed on the mu-profiled parameter set
       .gt <- fF$parHistData$type
       expect_gt(sum(.gt == "Analytic Gradient"), 0)
-      .nFd <- sum(.gt %in% c("Gill83 Gradient", "Mixed Gradient",
-                             "Forward Difference", "Central Difference"))
+      .nFd <- sum(.gt %in% c("Gill83 Gradient", "Mixed Gradient", "Forward Difference", "Central Difference"))
       expect_match(fF$extra, "grad: analytic", info = est)
-      if (est == "mfoce") {
-        # FOCE may decline the analytic gradient on some evaluations -- measured 2 of
-        # 7 here, BOTH attributed to the inner Newton solve (nGradDecline["newton"]).
-        # What matters for issue #838 is not that a fallback never happens, but that
-        # it is never SILENT: every decline must be attributed and the fit must say
-        # so.  Assert that contract rather than a zero it does not promise.
-        expect_gt(fF$env$nAnalyticGradDirect, 0, label = est)
-        expect_equal(unname(fF$env$nFDGradFast), .nFd, info = est)
-        expect_equal(sum(fF$env$nGradDecline), unname(fF$env$nFDGradFast), info = est)
-        if (.nFd > 0) expect_match(fF$extra, "grad: analytic\\+fd", info = est)
-        # See nlmixr2est issue on the FOCE Newton decline: if that is fixed this
-        # method should reach a pure analytic gradient and join the branch below.
-      } else {
-        # mfocei / ifocei reach a PURE analytic gradient -- no fallback at all
-        expect_equal(.nFd, 0, info = est)
-        expect_equal(unname(fF$env$nFDGradFast), 0L, info = est)
-        expect_false(grepl("analytic\\+fd", fF$extra), label = est)
-      }
+      # All three reach a PURE analytic gradient -- no fallback at all.  mfoce used to
+      # decline 2 of 7 here (issue #843): its inner Newton reached |S| = 1.5e-9 against
+      # a 1e-9 target, could not cross the ODE solve's noise floor, and threw the whole
+      # gradient away over a Newton decrement of 2e-15.
+      expect_equal(.nFd, 0, info = est)
+      expect_equal(unname(fF$env$nFDGradFast), 0L, info = est)
+      expect_equal(sum(fF$env$nGradDecline), 0L, info = est)
+      expect_false(grepl("analytic\\+fd", fF$extra), label = est)
       expect_match(fF$extra, if (grepl("^i", est)) "mu: irls" else "mu: lin", info = est)
     }
   })
@@ -75,13 +76,13 @@ nmTest({
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     d <- nlmixr2data::theo_sd
-    fF   <- suppressMessages(nlmixr2(.fastm_one_cmt, d, "foceif", foceiControl(print = 0L, covMethod = "")))
+    fF <- suppressMessages(nlmixr2(.fastm_one_cmt, d, "foceif", foceiControl(print = 0L, covMethod = "")))
     fRef <- suppressMessages(nlmixr2(.fastm_one_cmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
     expect_equal(fF$objf, fRef$objf, tolerance = 0.02)
     expect_equal(unname(fixef(fF)), unname(fixef(fRef)), tolerance = 1e-2)
-    # both consumed the analytic gradient and default to lbfgsb3c
-    expect_match(fF$extra, "outer: lbfgsb3c; grad: analytic")
-    expect_match(fRef$extra, "outer: lbfgsb3c; grad: analytic")
+    # both consumed the analytic gradient and default to gradient-only nlminb
+    expect_match(fF$extra, "outer: nlminb; grad: analytic")
+    expect_match(fRef$extra, "outer: nlminb; grad: analytic")
   })
 
   test_that("all-residual-fixed fast fits use the analytic gradient (omega-only outer)", {
@@ -112,9 +113,16 @@ nmTest({
         .ctl <- switch(.e, foceif = foceiControl, ifoceif = ifoceiControl, mfoceif = mfoceiControl)
         fF <- suppressWarnings(suppressMessages(nlmixr2(.m, d, .e, .ctl(print = 0L, covMethod = ""))))
         ## cached fast=FALSE reference -- see helper-gradref.R
-        f0 <- .numRef(paste0("fit-fd-resfix-", .mn, "-", .e), function()
-          list(objf = suppressWarnings(suppressMessages(nlmixr2(.m, d, sub("f$", "", .e),
-                 .ctl(print = 0L, covMethod = "", fast = FALSE))))$objf))
+        f0 <- .numRef(paste0("fit-fd-resfix-", .mn, "-", .e), function() {
+          list(
+            objf = suppressWarnings(suppressMessages(nlmixr2(
+              .m,
+              d,
+              sub("f$", "", .e),
+              .ctl(print = 0L, covMethod = "", fast = FALSE)
+            )))$objf
+          )
+        })
         expect_match(fF$extra, "grad: analytic", info = .e)
         expect_equal(fF$objf, f0$objf, tolerance = 0.2, info = .e)
       }

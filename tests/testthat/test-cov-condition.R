@@ -21,14 +21,13 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "focei",
-                   foceiControl(print = 0))
+    fit <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "focei", foceiControl(print = 0))
     .cmBefore <- fit$covMethod
     .cnBefore <- fit$objDf[["Condition#(Cov)"]][1]
     expect_true(is.finite(.cnBefore))
 
     # converting to a different covariance must refresh the condition numbers
-    invisible(nlmixr2est:::.setCov(fit, covMethod = "s", covType = "fd"))
+    invisible(.setCov(fit, covMethod = "s", covType = "fd"))
     .cnAfter <- fit$objDf[["Condition#(Cov)"]][1]
     expect_true(is.finite(.cnAfter))
     expect_true(abs(.cnAfter - .cnBefore) > 1e-4)
@@ -43,14 +42,12 @@ nmTest({
 
     # quadrature fits label their objDf row by method, not "FOCEi", and
     # ofvType matches the row so broom/setOfv row lookup works
-    fitL <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "laplace",
-                    laplaceControl(print = 0))
+    fitL <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "laplace", laplaceControl(print = 0))
     expect_equal(rownames(fitL$objDf)[1], "Laplace")
     expect_equal(fitL$ofvType, "laplace")
     expect_true(is.finite(fitL$objDf[["Condition#(Cov)"]][1]))
 
-    fitA <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "agq",
-                    agqControl(print = 0, nAGQ = 2))
+    fitA <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "agq", agqControl(print = 0, nAGQ = 2))
     expect_equal(rownames(fitA$objDf)[1], "AGQ2")
     expect_equal(fitA$ofvType, "agq2")
     expect_true(is.finite(fitA$objDf[["Condition#(Cov)"]][1]))

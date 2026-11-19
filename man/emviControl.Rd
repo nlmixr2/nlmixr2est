@@ -27,6 +27,8 @@ emviControl(
   useColor = NULL,
   printNcol = NULL,
   covMethod = c("vi", "analytic", "r,s", "r", "s", ""),
+  covFallback = list(`r,s` = c("r", "s", "vi"), r = c("s", "vi"), s = "vi", analytic =
+    c("r,s", "r", "s", "vi")),
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
@@ -226,48 +228,28 @@ iteration print. `NULL` (default) defers to [crayon::has_color()].}
 \item{printNcol}{Integer (or `NULL`) parameter columns per row before
 wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
-\item{covMethod}{Method for calculating covariance.  In this
-    discussion, R is the Hessian matrix of the objective
-    function. The S matrix is the sum of each individual's
-    gradient cross-product (evaluated at the individual empirical
-    Bayes estimates).
+\item{covMethod}{Covariance of the population estimates.
 
- "\code{sa}" (default) Use the stochastic-approximation Fisher Information
- Matrix.  After estimation, a dedicated covariance phase (\code{nSaCov}
- iterations) holds the parameters at the converged estimate and keeps
- resimulating the individual parameters, Monte-Carlo averaging the Louis
- observed-information integrand into a converged FIM decoupled from the cooling
- schedule (the approach used by Monolix; Kuhn & Lavielle 2005).  Always includes
- every estimated population parameter (theta, the \code{Omega} diagonal
- variances, and residual).
+ "`vi`" (default) For a full-Bayes fit (`fbvi`, `pointEstimate = FALSE`)
+ the population variational covariance; a point-estimate fit (`emvi`) has
+ no population variational block and uses the FOCEI `"r,s"` covariance.
 
- "\code{analytic}" Compute the FOCEI analytic observed-information covariance at
- the converged SAEM estimates.  When the model is out of analytic-covariance
- scope (e.g. \code{linCmt()}, a non-normal likelihood, or a non-SD IOV
- parameterization) or the result is not positive definite, it falls back to the
- linearized Fisher information (\code{linFim}) with a message.
-
- "\code{linFim}" Use the Linearized Fisher Information Matrix to calculate the covariance.
-
- "\code{fim}" Use the Fisher Information Matrix accumulated during SAEM
- estimation to calculate the covariance.  Like \code{sa} it inverts the observed
- information to a full theta + \code{Omega} diagonal + residual covariance, but
- uses the (noisier) estimation-phase matrix rather than a dedicated cov phase.
-
- For both \code{fim} and \code{sa} the simulation-based Fisher information covers the
- structural theta, the \code{Omega} diagonal variances, and additive residual error.
- Off-diagonal \code{Omega} covariances and proportional/combined residual error are not
- estimated reliably by the simulation FIM (the complete-data correction is unstable when
- between-subject variability dominates the residual), so those variance-block standard
- errors are spliced in from the linearized FIM (\code{linFim}).
-
- "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
-
- "\code{r}" Uses the Hessian matrix to calculate the covariance as \eqn{2\times R^-1}
-
- "\code{s}" Uses the crossproduct matrix to calculate the covariance as \eqn{4\times S^-1}
+ "`analytic`", "`r,s`", "`r`" and "`s`" run the FOCEI covariance step (see
+ [foceiControl()]) at the estimates, starting the individual estimates at
+ the variational posterior means.  When it gives no covariance, a
+ full-Bayes fit installs the population variational covariance instead,
+ with a message.  An integer `covMethod` is a `foceiControl()` slot: `0` is
+ no covariance, `1`, `2` and `3` are `"r,s"`, `"r"` and `"s"`.
 
  "" Does not calculate the covariance step.}
+
+\item{covFallback}{what each `covMethod` falls back to when it gives no
+usable covariance: a named list, one element per method, each the ordered
+methods to try instead -- the FOCEI `"r,s"`, `"r"` and `"s"` (see
+[foceiControl()]), and `"vi"`, the population variational covariance of a
+full-Bayes fit.  The default is the established behaviour: each FOCEI method
+keeps its FOCEI fallbacks and ends with `"vi"`.  A list you give replaces the
+default: a method it does not name has no fallback.}
 
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}
@@ -343,8 +325,7 @@ against a default \code{rtol = 1e-6}.  Raise \code{sigdig}, or set
 \code{atol}/\code{rtol} directly, when you want a tighter solve.}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{stickyRecalcN}{The number of bad ODE solves before reducing
 the atol/rtol for the rest of the problem.}
@@ -365,9 +346,19 @@ each retry and tolerances are reset afterward.}
 \item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-uses the legacy finite-difference behavior.}
+uses the legacy finite-difference behavior.  Also gates the analytic
+moving-boundary correction for a modeled `alag()`/`f()` on a `linCmt()`
+compartment; set `"fd"` if that model infuses a dose into the
+lagged/scaled compartment (rxode2/rxode2#1236), or if the regimen also
+doses an *unlagged/unscaled* compartment alongside the lagged/scaled one
+-- a common design for estimating `f()` from paired IV+oral data
+(rxode2/rxode2#1237).}
 
-\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`.
+The solver's adaptive steps set the objective's noise floor, which
+grows with `rtol` and the number of observations.  For a non-stiff
+model, `rxControl(method = "dop853")` gives a much smoother objective
+than the default `"liblsoda"` at the same `rtol`.}
 
 \item{...}{Other arguments to control SAEM.}
 }

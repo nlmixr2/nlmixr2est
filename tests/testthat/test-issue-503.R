@@ -1,6 +1,5 @@
 nmTest({
   test_that("add+prop saem; issue nlmixr#503", {
-
     PKdata <- warfarin[warfarin$dvid == "cp", ]
 
     One.comp.KA.solved <- function() {
@@ -28,15 +27,17 @@ nmTest({
 
     fitOne.comp.KA.solved_S2 <-
       .nlmixr(
-        One.comp.KA.solved,    #the model definition
-        PKdata,                #the data set
-        est = "saem",          #the estimation algorithm (SAEM)
-        control=saemControl(nBurn = 200, #200 SAEM burn-in iterations (the default)
-                            nEm   = 300, #300 EM iterations (the default)
-                            print = 50,
-                            #type="newuoa",
-                            addProp="combined1"),
-        table=tableControl(npde=TRUE, cwres=TRUE)
+        One.comp.KA.solved, #the model definition
+        PKdata, #the data set
+        est = "saem", #the estimation algorithm (SAEM)
+        control = saemControl(
+          nBurn = 200, #200 SAEM burn-in iterations (the default)
+          nEm = 300, #300 EM iterations (the default)
+          print = 50,
+          #type="newuoa",
+          addProp = "combined1"
+        ),
+        table = tableControl(npde = TRUE, cwres = TRUE)
       )
 
     expect_true(fitOne.comp.KA.solved_S2$theta["add.err"] > 0.4)

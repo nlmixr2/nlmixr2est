@@ -1,6 +1,5 @@
 nmTest({
   test_that("funny one-compartment model", {
-
     one.cmt <- function() {
       ini({
         tka <- 0.45 ; label("Ka")

@@ -23,8 +23,8 @@ nmTest({
     ## nlme now keeps its own covariance by default
     expect_identical(nlmeControl()$covMethod, "nlme")
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(mod, nlmixr2data::theo_sd, est = "nlme",
-              control = nlmeControl(print = 0, covMethod = "analytic"))))
+      nlmixr2(mod, nlmixr2data::theo_sd, est = "nlme", control = nlmeControl(print = 0, covMethod = "analytic"))
+    ))
     ## analytic (or its FD fallback), never the legacy nlme label when requested
     expect_false(identical(fit$covMethod, "nlme"))
     expect_true(all(is.finite(fit$parFixedDf$SE)))
@@ -38,8 +38,8 @@ nmTest({
   test_that("covMethod='nlme' keeps nlme's own covariance (no recompute)", {
     skip_on_cran()
     fit <- suppressMessages(suppressWarnings(
-      nlmixr2(mod, nlmixr2data::theo_sd, est = "nlme",
-              control = nlmeControl(print = 0, covMethod = "nlme"))))
+      nlmixr2(mod, nlmixr2data::theo_sd, est = "nlme", control = nlmeControl(print = 0, covMethod = "nlme"))
+    ))
     expect_identical(fit$covMethod, "nlme")
   })
 })

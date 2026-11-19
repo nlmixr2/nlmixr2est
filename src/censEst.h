@@ -16,6 +16,9 @@
 
 #define hasFiniteLimit(lim) (R_FINITE(lim) && !ISNA(lim))
 #define isM2(cens, lim) (cens == 0.0 && hasFiniteLimit(lim))
+// M2 conditions on the side of LIMIT the observation is on: +1 (above, a lower
+// limit) gives log P(y > lim), -1 log P(y < lim)
+#define m2Sign(limDv, lim) ((lim <= limDv)*2.0 - 1.0)
 #define isM3orM4(cens) (cens == 1.0 || cens == -1.0)
 
 #define _safe_zero(a) ((a) == 0 ? DBL_EPSILON : (a))
@@ -78,9 +81,10 @@ static inline double doCensNormal1(double cens, double limDv, double lim, double
     // M2 adds likelihood even when the observation is defined
     // Note the ll is the numerator of equation 1 in Beal 2001, Ways to fit a PK model with some data below the quantification limit
     // So the negative represents the fact this is the denominator
-    // The M2 can also be applied for quantitation above the limit.
+    // The M2 can also be applied for quantitation above the limit.  The side is
+    // the observation's, not the prediction's (which made the objective kink at lim).
     updateCensFlag(censFlagM2);
-    double z = ((lim<f)*2.0 - 1.0)*(lim - f)/sqrt(r);
+    double z = m2Sign(limDv, lim)*(lim - f)/sqrt(r);
     return ll - finite_log_prob(R::pnorm5(z, 0.0, 1.0, 0, 1)) - adj;
   } else if (isM3orM4(cens)) {
     if (hasFiniteLimit(lim)) {
@@ -119,8 +123,8 @@ static inline double dCensNormal1(double cens, double limDv, double lim,
                                   double df, double dr) {
   // M2 has the contribution of the dll as well as the censoring
   if (isM2(cens, lim)) { /*
-  #log(1.0 - PHI(((lim<f)*2.0 - 1.0)*(lim - f)/sqrt(r))) - adj;
-# Case 1 lim < f
+  #log(1.0 - PHI(m2Sign(limDv, lim)*(lim - f)/sqrt(r))) - adj;
+# Case 1 lim <= limDv
 # > rxToSE("log(1.0 - phi((lim - f)/sqrt(r)))")
 # Then changed to 
 # D(S("log(1-0.5*(1+erf(((lim-f(x))/sqrt(r(x)))/sqrt(2))))"),"x")
@@ -130,7 +134,7 @@ ll=-1.0*exp((-1/2)*(lim - f)^2/r)*((-1/2)*sqrt(2)*fpm/sqrt(r) + (-1/4)*sqrt(2)*d
 
 tmp <- rxode2(rxOptExpr("ll=-1.0*exp((-1/2)*(lim - f)^2/r)*((-1/2)*sqrt(2)*fpm/sqrt(r) + (-1/4)*sqrt(2)*dr*(lim - f)/r^(3/2))/(sqrt(pi)*(1 - 0.5*(1 + erf((1/2)*sqrt(2)*(lim - f)/sqrt(r)))))"))
  */
-    if (lim < f) {
+    if (lim <= limDv) {
       double rx_expr_0 =lim-f;
       double rx_expr_1 = M_SQRT2;
       double rx_expr_2 =_safe_sqrt(r);
@@ -233,6 +237,90 @@ rxOptExpr(x)
   return dll;
 }
 
+// M2/M3/M4 censored log-likelihood correction for a location-scale Student-t
+// endpoint (`t(nu)`).  Cauchy is Student-t with nu=1 (armahead.h's
+// rxDistributionT/rxDistributionCauchy both route here; cauchy call sites
+// just pass nu=1.0) -- see #979.  f/r follow doCensNormal1's convention
+// (r is the VARIANCE, sd=sqrt(r) is the scale fed to llikT()/llikCauchy()).
+// `ll` is the full, already-normalized llikT()/llikCauchy() log-density
+// (rxode2ll, Stan-backed autodiff) -- unlike doCensNormal1 there is no
+// adjLik term to remove.
+//
+// @noRd
+static inline double doCensT1(double cens, double limDv, double lim, double ll,
+                              double f, double r, double nu) {
+  double sd = _safe_sqrt(r);
+  if (isM2(cens, lim)) {
+    // M2 adds likelihood even when the observation is defined; see
+    // doCensNormal1 for the derivation this mirrors.
+    updateCensFlag(censFlagM2);
+    double z = m2Sign(limDv, lim)*(lim - f)/sd;
+    return ll - finite_log_prob(R::pt(z, nu, 0, 1));
+  } else if (isM3orM4(cens)) {
+    if (hasFiniteLimit(lim)) {
+      // M4 method
+      double logCum1 = R::pt(cens*(limDv-f)/sd, nu, 1, 1);
+      double logCum2 = R::pt(cens*(lim - f)/sd, nu, 1, 1);
+      double logTail = R::pt(cens*(lim - f)/sd, nu, 0, 1);
+      updateCensFlag(censFlagM4);
+      return finite_log_prob(logspace_sub(logCum1, logCum2)) -
+        finite_log_prob(logTail);
+    } else {
+      // M3 method
+      updateCensFlag(censFlagM3);
+      return finite_log_prob(R::pt(cens*(limDv-f)/sd, nu, 1, 1));
+    }
+  }
+  return ll;
+}
+
+// First derivative (w.r.t. eta, via the df/dr chain rule) of doCensT1's
+// correction.  Like dCensNormal1: M2 ADDS to dll (the observation is still
+// scored by its ordinary density); M3/M4 REPLACE dll entirely (the whole
+// contribution comes from the tail probability).  nu has no derivative
+// term here -- it is a fixed/estimated THETA, not eta-dependent; its outer
+// gradient is handled separately (nlm.cpp forces finite differences for
+// ANY censored observation's theta columns, independent of distribution).
+//
+// @noRd
+static inline double dCensT1(double cens, double limDv, double lim,
+                             double dll, double f, double r, double nu,
+                             double df, double dr) {
+  double sd = _safe_sqrt(r);
+  double dsd = dr/_safe_zero(2.0*sd);
+  double sd2 = _safe_zero(sd*sd);
+  auto dz = [&](double x, double sgn) {
+    return sgn*(-df*sd - (x - f)*dsd)/sd2;
+  };
+  if (isM2(cens, lim)) {
+    double sgn = m2Sign(limDv, lim);
+    double z = sgn*(lim - f)/sd;
+    double dzv = dz(lim, sgn);
+    double upper = R::pt(z, nu, 0, 0);
+    return dll + R::dt(z, nu, 0)*dzv/_safe_zero(upper);
+  } else if (isM3orM4(cens)) {
+    if (hasFiniteLimit(lim)) {
+      double z1 = cens*(limDv - f)/sd;
+      double z2 = cens*(lim - f)/sd;
+      double dz1 = dz(limDv, cens);
+      double dz2 = dz(lim, cens);
+      double t1 = R::pt(z1, nu, 1, 0);
+      double t2 = R::pt(z2, nu, 1, 0);
+      double upper2 = R::pt(z2, nu, 0, 0);
+      double pdf1 = R::dt(z1, nu, 0);
+      double pdf2 = R::dt(z2, nu, 0);
+      return (pdf1*dz1 - pdf2*dz2)/_safe_zero(t1 - t2) +
+        pdf2*dz2/_safe_zero(upper2);
+    } else {
+      double z = cens*(limDv - f)/sd;
+      double dzv = dz(limDv, cens);
+      double tcdf = R::pt(z, nu, 1, 0);
+      return R::dt(z, nu, 0)*dzv/_safe_zero(tcdf);
+    }
+  }
+  return dll;
+}
+
 // Analytic partials of the censored normal objective rho = -logLik-per-obs (kernel
 // orientation, transformed scale) w.r.t. the prediction f and variance r, for M2/M3/M4.
 // out[0..8] = rho_f, rho_r, rho_ff, rho_fr, rho_rr, rho_fff, rho_ffr, rho_frr, rho_rrr
@@ -252,7 +340,7 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
   double dv = limDv;
   int hasFin = (R_FINITE(lim) && !ISNA(lim));
   if (cens == 0.0 && hasFin) {            // M2
-    if (lim < f) {
+    if (lim <= dv) {
       double rx_expr_0 = (dv - f);
       double rx_expr_2 = 1.414213562373095;
       double rx_expr_3 = sqrt(r);
@@ -649,8 +737,55 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
     }
   }
 }
+
+// Partials of the SAME rho = -logLik-per-obs w.r.t. the observed value dv and the
+// LIMIT, given rho_f (censNormalPartials' out[0]).  Needed when the transformed DV
+// itself moves with a parameter -- an estimated transform-both-sides lambda, whose
+// h(y; lambda) shifts dv and limit as well as f (#949).
+//
+// rho depends on (dv, lim, f) only through (dv - f) and (lim - f), so
+// rho_dv + rho_lim = -rho_f; the dv half is closed form per method and the limit
+// half is the remainder:
+//   M2 (cens 0, finite lim): dv enters only the ordinary normal density
+//   M3 (cens +/-1, no lim):  the whole density is Phi(cens (dv-f)/sd), so rho_dv = -rho_f
+//   M4 (cens +/-1, finite lim): dv enters only the upper cumulative of Phi1 - Phi2
+// An uncensored observation returns the plain normal rho_dv (and no limit term).
+static inline void censNormalDvPartials(double cens, double limDv, double lim,
+                                        double f, double r, double rhoF,
+                                        double* rhoDv, double* rhoLim) {
+  double dv = limDv;
+  int hasFin = (R_FINITE(lim) && !ISNA(lim));
+  double rd;
+  if (cens == 0.0) {
+    rd = (dv - f) / _safe_zero(r);
+  } else if (!hasFin) {
+    rd = -rhoF;
+  } else {
+    // ll = log|Phi(z1) - Phi(z2)| - log tail; logspace_sub returns the magnitude, so
+    // restore the sign of the difference (= sign of z1 - z2) before dividing by it.
+    double sd = _safe_sqrt(r);
+    double z1 = cens * (dv - f) / sd;
+    double z2 = cens * (lim - f) / sd;
+    double ld = logspace_sub(Rf_pnorm5(z1, 0.0, 1.0, 1, 1),
+                             Rf_pnorm5(z2, 0.0, 1.0, 1, 1));
+    double sgn = (z1 >= z2) ? 1.0 : -1.0;
+    // z1 is already standardized, so the log density is exact inline (no dnorm call)
+    double ldn = -0.5 * z1 * z1 - M_LN_SQRT_2PI;
+    rd = -sgn * cens * exp(ldn - ld) / sd;
+  }
+  if (!R_FINITE(rd)) rd = 0.0;
+  // With no finite LIMIT (M3, and an uncensored row) there is no limit term at all.
+  // Taking it as -rhoF - rd instead would be 0 only while rhoF is finite: a
+  // non-finite rhoF leaves rhoLim non-finite, and dlim is identically zero on
+  // those rows, so the score picks up Inf*0 = NaN for the whole subject.
+  double rl = hasFin ? (-rhoF - rd) : 0.0;
+  if (!R_FINITE(rl)) rl = 0.0;
+  *rhoDv = rd;
+  *rhoLim = rl;
+}
 #undef hasFiniteLimit
 #undef isM2
+#undef m2Sign
 #undef isM3orM4
 #undef PHI
 #undef _safe_zero

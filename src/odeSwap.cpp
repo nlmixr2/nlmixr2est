@@ -19,15 +19,42 @@ struct OdeModelReg {
   std::vector<std::string> lhsNames;
   int neq = 0;
   int nlhs = 0;
+  // The model's OWN parameter layout, from rxModelVars$params.  Generated calc_lhs
+  // reads par_ptr BY INDEX (`THETA_1_ = _PP[0]` ...), while par_ptr is filled for
+  // whichever model the pool was built from -- so the width alone does not make a
+  // peer safe to read, its parameter ORDER has to be the pool's too.  Recorded
+  // here (declare time, no DLL load) so odeSwapCheckLhsWidth can verify the layout
+  // it is about to index into instead of trusting a count.
+  int npars = 0;
+  std::vector<std::string> parNames;
   // Endpoint (CMT) rebasing -- see odeSwapCmtRebase().  rxode2 compiles each
   // model's endpoint switch against the USER compartment numbering and emits
   //   #define _CMT ((fabs(CMT)<=nPhys) ? CMT : CMT - nSens)
   // so a model normalizes the raw CMT with its OWN sensitivity-compartment
   // count.  Peers sharing one pooled event table therefore need the raw value
-  // rebased by the difference; nSens and the CMT parameter slot are recorded
-  // here so that can be done without going back to R.
+  // rebased by the difference; nSens is recorded here so that can be done
+  // without going back to R.
   int nSens = 0;      // length(rxModelVars(obj)$sens)
-  int cmtPar = -1;    // index of "CMT" in $params, or -1 if the model has none
+  // rxModelVars(obj)$flags["ndiff"]: which linCmtB() structural-parameter
+  // derivatives THIS model's calc_lhs actually calls linCmtB(which1=-2, ...)
+  // for (a bitmask; 0 = none declared).  linCmtB() caches its Jacobian
+  // (J/Jg, see stan::math::linCmtStan) on rx->ndiff, a single field on the
+  // shared rx_solve struct -- NOT swapped per peer the way neq/nlhs/cmt-basis
+  // are.  odeSwapSolveInd() restores it from here before every solve so a
+  // peer whose OWN calc_lhs needs a Jg column does not read a stale Jacobian
+  // left by whichever OTHER registered model last solved (nlmixr2est#1013-ish:
+  // a linCmt() model differentiated by only ONE structural parameter read a
+  // near-zero, iteration-old d(pred)/d(eta) from a sibling peer's cache).
+  int ndiff = 0;
+  bool ndiffSet = false;  // false if $flags carries no "ndiff" element (older rxode2)
+  // The event ("jump") sensitivity SHAPE dims, read back with
+  // rxode2EventSensGetDims() after the slot's FIRST install through R, so every
+  // later swap can install them from C++ (rxode2EventSensLoadFull on the model's
+  // `trans`).  `trans` is kept alongside the model in _odeTrans, so a cleared or
+  // unloaded slot can never install a stale pointer set: rxode2 re-resolves the
+  // model's functions from `trans` by name on every install.
+  bool esDims = false;
+  int esNState = 0, esNParam = 0, esNParam2 = 0, esNParam3 = 0, esUseCalcJac = 0;
   // event-sensitivity shape (see OdeSwapEsBatch); esActive == 0 for a model
   // with no jump sensitivities, e.g. rxPred
   int esActive = 0;   // does this model carry event ("jump") sensitivities?
@@ -42,13 +69,24 @@ static bool _odePlanStale = true;
 // objects cannot be collected while their entry points are live.  Mirrors
 // storeCovSolveArgs_/releaseCovSolveArgs_ in inner.cpp.
 static SEXP _odeModels = R_NilValue;
+// per-slot rxModelVars(obj)$trans, preserved with the model (see esDims)
+static SEXP _odeTrans = R_NilValue;
+// how the batches installed a shape: from the registry (C) or through R
+static long _odeEsInstallC = 0, _odeEsInstallR = 0;
 
 static void odeSwapModelsInit() {
-  if (_odeModels != R_NilValue) return;
-  SEXP v = PROTECT(Rf_allocVector(VECSXP, odeSlotN));
-  R_PreserveObject(v);
-  UNPROTECT(1);
-  _odeModels = v;
+  if (_odeModels == R_NilValue) {
+    SEXP v = PROTECT(Rf_allocVector(VECSXP, odeSlotN));
+    R_PreserveObject(v);
+    UNPROTECT(1);
+    _odeModels = v;
+  }
+  if (_odeTrans == R_NilValue) {
+    SEXP t = PROTECT(Rf_allocVector(VECSXP, odeSlotN));
+    R_PreserveObject(t);
+    UNPROTECT(1);
+    _odeTrans = t;
+  }
 }
 
 static inline bool odeSlotOk(int slot) { return slot >= 0 && slot < odeSlotN; }
@@ -69,16 +107,40 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
   // disabling every compaction.
   m.neq = as<CharacterVector>(mv["state"]).size();
   m.nlhs = lhs.size();
+  m.npars = as<CharacterVector>(mv["params"]).size();
   m.lhsNames.resize((size_t)lhs.size());
   for (int i = 0; i < lhs.size(); ++i) m.lhsNames[(size_t)i] = as<std::string>(lhs[i]);
   // CMT rebasing inputs (see the struct comment and odeSwapCmtRebase)
   m.nSens = mv.containsElementNamed("sens") ?
     as<CharacterVector>(mv["sens"]).size() : 0;
-  m.cmtPar = -1;
+  // linCmtB() Jacobian-cache flag (see the struct comment).  named lookup
+  // ("ndiff", not a positional RxMvFlag_ndiff index) so this tracks whatever
+  // rxode2 calls the element; absent entirely on an older rxode2 or a model
+  // with no linCmtB() calls, in which case odeSwapSolveInd() leaves rx->ndiff
+  // untouched for this slot rather than stomping it to 0.
+  m.ndiff = 0;
+  m.ndiffSet = false;
+  if (mv.containsElementNamed("flags")) {
+    IntegerVector _flags = as<IntegerVector>(mv["flags"]);
+    CharacterVector _fn = _flags.names();
+    if (!_fn.isNULL()) {
+      for (int i = 0; i < _fn.size(); ++i) {
+        if (as<std::string>(_fn[i]) == "ndiff") {
+          m.ndiff = _flags[i];
+          m.ndiffSet = true;
+          break;
+        }
+      }
+    }
+  }
+  m.npars = 0;
+  m.parNames.clear();
   if (mv.containsElementNamed("params")) {
     CharacterVector pars = as<CharacterVector>(mv["params"]);
+    m.npars = pars.size();
+    m.parNames.resize((size_t)pars.size());
     for (int i = 0; i < pars.size(); ++i) {
-      if (as<std::string>(pars[i]) == "CMT") { m.cmtPar = i; break; }
+      m.parNames[(size_t)i] = as<std::string>(pars[i]);
     }
   }
   // Record only WHETHER this model carries event ("jump") sensitivities.  The
@@ -107,9 +169,11 @@ bool odeSwapDeclare(int slot, const char *name, SEXP obj) {
   } catch (...) {
     m.esActive = 0;
   }
+  m.esDims = false;
   m.loaded = true;
   odeSwapModelsInit();
   SET_VECTOR_ELT(_odeModels, slot, obj);
+  SET_VECTOR_ELT(_odeTrans, slot, mv.containsElementNamed("trans") ? as<SEXP>(mv["trans"]) : R_NilValue);
   _odePlanStale = true;
   return true;
 }
@@ -144,7 +208,8 @@ static int _odeEsSlotIdx = -1;
 
 int odeSwapEsModelForSlot(int slot) {
   switch (slot) {
-  case odeSlotPred:      return odeEsPred;
+  case odeSlotPred:
+  case odeSlotTable:     return odeEsPred;
   case odeSlotInner:     return odeEsInner;
   case odeSlotHess2:     return odeEsHess2;
   case odeSlotThetaSens:
@@ -160,25 +225,35 @@ void odeSwapEsNoteInstalled(int esModel) { _odeEsSlot = esModel; _odeEsSlotIdx =
 
 // Install a slot's ES shape.
 //
-// The INSTALL still goes through R: rxode2EventSensLoadFull() wants all six dims and
-// they are derived from model$eventSensInfo, an R-level structure that
-// rxEventSensLoadModel() already knows how to read.  Acceptable because this is a
-// batch boundary -- once per model batch, outside any parallel region.  It must never
-// be called from inside an OpenMP loop (Rcpp::Function is not safe there).
+// A slot's FIRST install goes through R (rxEventSensLoadModel(), which owns the
+// derivation of the six shape dims from model$eventSensInfo); the dims it installed
+// are read back with rxode2EventSensGetDims() and every batch after that installs
+// them with a C call, rxode2EventSensLoadFull() on the model's `trans`.  No R runs
+// at a swap, which is what lets a derivative pass -- the outer gradient, the outer
+// Hessian's probes, the AGQ node solves -- run entirely in C++.
 //
-// The RESTORE is what moved onto the new C API (rxode2 5.1.6, PR #1175): see
-// OdeSwapEsBatch, which snapshots the live shape with rxode2EventSensShapeSave().
+// This is not a cached shape BUFFER (those were tried and removed: a saved shape
+// holds pointers into the model's shared library, and rxUnload() is driven from R
+// without going through odeSwapClear(), so a buffer could outlive the library it
+// points into).  rxode2EventSensLoadFull() re-resolves the model's functions from
+// `trans` by name on every install, exactly as the R entry point does, so it is as
+// safe as the R route and only skips the R call.  The R route stays for a model
+// whose dims cannot be read back (older rxode2, or no `trans`).
 //
-// Per-slot shape buffers were tried and REMOVED.  They would have taken R off this
-// path entirely, but a saved shape holds pointers into the model's shared library and
-// rxUnloadAll()/rxUnload() is driven from R without going through odeSwapClear(), so a
-// cache entry can outlive the library it points into and the next restore would install
-// dangling function pointers.  The short-lived snapshot below cannot: it is taken and
-// consumed inside one batch scope.
+// The RESTORE is on the C API too (rxode2 5.1.6, PR #1175): see OdeSwapEsBatch,
+// which snapshots the live shape with rxode2EventSensShapeSave().
 static bool odeSwapEsInstall(int slot) {
   if (!odeSlotOk(slot) || !_odeReg[slot].loaded) return false;
   SEXP _m = odeSwapModelSEXP(slot);
   if (_m == R_NilValue) return false;
+  OdeModelReg &m = _odeReg[slot];
+  SEXP _t = _odeTrans == R_NilValue ? R_NilValue : VECTOR_ELT(_odeTrans, slot);
+  if (m.esDims && _t != R_NilValue && rxode2EventSensLoadFull != NULL) {
+    rxode2EventSensLoadFull(_t, 1, m.esNState, m.esNParam, m.esNParam2, m.esNParam3, m.esUseCalcJac);
+    _odeEsInstallC++;
+    return true;
+  }
+  _odeEsInstallR++;
   try {
     Environment _rx = Environment::namespace_env("rxode2");
     Function _f = as<Function>(_rx["rxEventSensLoadModel"]);
@@ -187,21 +262,18 @@ static bool odeSwapEsInstall(int slot) {
     // leave the shape as it was; the caller falls back rather than mis-solving
     return false;
   }
+  // record what R installed so the next swap of this slot is the C call above
+  if (!m.esDims && _t != R_NilValue && rxode2EventSensGetDims != NULL) {
+    int active = 0;
+    rxode2EventSensGetDims(&active, &m.esNState, &m.esNParam, &m.esNParam2, &m.esNParam3,
+                           &m.esUseCalcJac);
+    m.esDims = active != 0 && m.esNState > 0 && m.esNParam > 0;
+  }
   return true;
 }
 
 static void odeSwapEsDeactivate() {
-#ifdef NLMIXR2EST_HAS_ESSHAPE
-  if (rxode2EventSensDeactivate != NULL) { rxode2EventSensDeactivate(); return; }
-#endif
-  {
-  try {                                   // COMPATIBILITY (rxode2 5.1.5): via R
-    Environment _rx = Environment::namespace_env("rxode2");
-    Function _f = as<Function>(_rx["rxEventSensDeactivate"]);
-    _f();
-  } catch (...) {
-  }
-  }
+  rxode2EventSensDeactivate();
 }
 
 OdeSwapEsBatch::OdeSwapEsBatch(int slot)
@@ -235,19 +307,11 @@ OdeSwapEsBatch::OdeSwapEsBatch(int slot)
 
 // Capture the live shape into prevShape_ (called before anything is installed).
 bool OdeSwapEsBatch::saveLive() {
-#ifdef NLMIXR2EST_HAS_ESSHAPE
-  if (rxode2EventSensShapeSize == NULL || rxode2EventSensShapeSave == NULL) return false;
   int sz = rxode2EventSensShapeSize();
   if (sz <= 0) return false;
   prevShape_.resize((size_t)sz);
   if (!rxode2EventSensShapeSave(prevShape_.data(), sz)) { prevShape_.clear(); return false; }
   return true;
-#else
-  // rxode2 5.1.5: no way to snapshot the shape, so the destructor falls back to
-  // reconstructing which slot to reinstall (see below).  COMPATIBILITY -- remove with
-  // the follow-up issue.
-  return false;
-#endif
 }
 
 OdeSwapEsBatch::~OdeSwapEsBatch() {
@@ -258,18 +322,11 @@ OdeSwapEsBatch::~OdeSwapEsBatch() {
   // what was there rather than reconstructing who put it there.  Leaving the
   // batch's shape live would mis-specify every inner solve after the first
   // gradient call of an iterating fit.
-  bool restored = false;
-#ifdef NLMIXR2EST_HAS_ESSHAPE
-  restored = rxode2EventSensShapeRestore != NULL && !prevShape_.empty() &&
+  bool restored = !prevShape_.empty() &&
     rxode2EventSensShapeRestore(prevShape_.data(), (int)prevShape_.size());
-#endif
-  if (restored) {
-    // put back verbatim -- covers a shape installed outside the registry
-  } else if (prevSlotIdx_ >= 0) {
-    odeSwapEsInstall(prevSlotIdx_);          // a SLOT, never a role
-  } else if (prevSlot_ == odeEsInner && odeSwapHasEs(odeSlotInner)) {
-    odeSwapEsInstall(odeSlotInner);
-  } else {
+  if (!restored) {
+    // saveLive() is unconditional and rxode2 only rejects a buffer it did not write,
+    // so this does not happen; deactivate rather than leave the batch's shape live.
     odeSwapEsDeactivate();
   }
   _odeEsSlot = prevSlot_;
@@ -281,9 +338,12 @@ void odeSwapClear(int slot) {
   OdeModelReg &m = _odeReg[slot];
   if (m.fns != NULL) rxClearFuns(m.fns);
   m.fns = NULL; m.name = NULL; m.neq = 0; m.nlhs = 0; m.loaded = false;
-  m.nSens = 0; m.cmtPar = -1;
+  m.nSens = 0; m.npars = 0; m.ndiff = 0; m.ndiffSet = false;
+  m.esDims = false; m.esNState = m.esNParam = m.esNParam2 = m.esNParam3 = m.esUseCalcJac = 0;
   m.lhsNames.clear();
+  m.parNames.clear();
   if (_odeModels != R_NilValue) SET_VECTOR_ELT(_odeModels, slot, R_NilValue);
+  if (_odeTrans != R_NilValue) SET_VECTOR_ELT(_odeTrans, slot, R_NilValue);
   _odePlanStale = true;
 }
 
@@ -293,13 +353,57 @@ void odeSwapClearAll() {
     R_ReleaseObject(_odeModels);
     _odeModels = R_NilValue;
   }
+  if (_odeTrans != R_NilValue) {
+    R_ReleaseObject(_odeTrans);
+    _odeTrans = R_NilValue;
+  }
   _odePlan = OdePoolPlan();
   _odePlanStale = true;
 }
 
 bool odeSwapLoaded(int slot) { return odeSlotOk(slot) && _odeReg[slot].loaded; }
 int  odeSwapNSens(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].nSens : 0; }
-int  odeSwapCmtPar(int slot) { return odeSwapLoaded(slot) ? _odeReg[slot].cmtPar : -1; }
+
+// True if ANY registered slot declared an ndiff (i.e. this fit has a linCmt()
+// peer whose cached Jacobian depends on rx->ndiff).  Used to gate the extra
+// cost of imp.cpp's impGetHessian() critical section (see below) so it is
+// zero for the vast majority of models, which never register such a peer.
+//
+// The PRIMARY fix for the concurrent-solve race, though, lives in
+// odeSwapSolveInd() itself: a slot whose own declared ndiff is 0 (e.g.
+// odeSlotPred -- "rxPred implements no sensitivities") now skips the write
+// entirely instead of stomping rx->ndiff with 0. That makes the CONFIRMED
+// exposure -- a subject on the plain inner path (needs a nonzero ndiff)
+// running concurrently, in the same omp loop, with a subject that fell back
+// to doFD/pred (needs nothing) -- benign without any lock: only slots that
+// actually need a derivative ever write here, and they all write their own
+// fixed, slot-intrinsic value, so concurrent writers of the SAME slot agree.
+// This is what makes impEStep's per-sample loop (imp.cpp) safe as-is; it was
+// NOT additionally wrapped in a critical section, because doing so would
+// serialize the E-step's actual ODE-solving work for exactly the model class
+// (linCmt() + non-mu structural theta) combSens exists to speed up.
+//
+// impGetHessian()'s loop (imp.cpp) keeps its odeSwapAnyNdiffSet()-gated
+// critical section anyway, as defense-in-depth: it is comparatively cheap
+// (one Hessian per subject per EM iteration, not per sample), and covers a
+// case the "skip zero writes" fix alone does not -- two DIFFERENT peers that
+// both need a NONZERO but DIFFERING ndiff, running concurrently. That case
+// is not the one this bug's own affected model class (linCmt() with a single
+// non-mu structural theta; odeSlotPred is always 0 there) can trigger, and
+// was not otherwise observed, but was not exhaustively ruled out either.
+//
+// KNOWN GAP: the other odeSwapSolveInd() call sites under a parallel region
+// (the various omp loops in inner.cpp -- shi21ThetaGeneral, the M-step
+// theta-sensitivity collection, nlm.cpp's thetaGrad path) were not audited
+// for the two-different-nonzero-ndiff-peers pattern either. Most look safe
+// by construction (a fixed slot per call, e.g. impThetaSensCollect's tsSlot
+// does not vary within its own loop), but that was not proven exhaustively.
+bool odeSwapAnyNdiffSet() {
+  for (int s = 0; s < odeSlotN; ++s) {
+    if (_odeReg[s].loaded && _odeReg[s].ndiffSet) return true;
+  }
+  return false;
+}
 
 // How much to subtract from the pooled table's raw CMT before `slot`'s calc_lhs
 // reads it.  See the OdeModelReg comment: rxode2 bakes `- nSens` into each
@@ -335,47 +439,21 @@ int odeSwapCmtDelta(int slot) {
 // Only this subject's rows are touched, so it stays safe inside the per-subject
 // parallel regions.  Sign handling mirrors the _CMT macro: a negative CMT offsets
 // the other way.
-// COMPATIBILITY (remove with the follow-up issue): rxode2 5.1.6 added setIndCmt(),
-// the writer half of the accessor pair.  Use it when the header has it; on 5.1.5 fall
-// back to the ABI-linked field access this used to do.  Reading is always through
-// getIndCmt(), which both versions have -- only the WRITE needed the new entry point.
-static inline int odeCmtGet(rx_solving_options *op, rx_solving_options_ind *ind, int kk) {
-  return getIndCmt(op, ind, kk);
-}
-static inline void odeCmtSet(rx_solving_options *op, rx_solving_options_ind *ind,
-                             int kk, int cmt) {
-#ifdef NLMIXR2EST_HAS_SETINDCMT
-  // The #ifdef only says the header DECLARED it -- it does not say the installed
-  // rxode2 FILLED that slot.  nlmixr2est compiled against 5.1.6 can be loaded against
-  // 5.1.5 (DESCRIPTION allows it), where the pointer table is shorter and this stays
-  // NULL from iniRxodePtrs0(); calling it would segfault.  Compile-time decides what
-  // is compilable, runtime decides what is used.
-  if (setIndCmt != NULL) { setIndCmt(op, ind, kk, cmt); return; }
-#endif
-  {
-    if (op == NULL || op->cmtCov < 0 || ind == NULL || ind->cov_ptr == NULL) return;
-    int n = getIndNallTimes(ind);
-    if (kk < 0 || kk >= n) return;
-    ind->cov_ptr[(size_t)n * (size_t)op->cmtCov + (size_t)kk] = (double) cmt;
-  }
-}
-
 void OdeSwapCmtScope::shift(int by) {
   if (by == 0 || _op == NULL || _ind == NULL) return;
   int n = getIndNallTimes(_ind);
   if (n <= 0) return;
   _saved.clear();
   for (int kk = 0; kk < n; ++kk) {
-    int v = odeCmtGet(_op, _ind, kk);
-    // rxode2 >= 5.1.6 reports a missing CMT as NA_INTEGER; 5.1.5 reports it as 1, which
-    // the |v| > _nPhys test below already skips (1 is physical for any real model, which
-    // is why the constructor requires _nPhys >= 1).  Handle the new value explicitly: it
-    // is INT_MIN, so `v < -_nPhys` would otherwise ACCEPT it and write back garbage.
+    int v = getIndCmt(_op, _ind, kk);
+    // A missing CMT reads as NA_INTEGER (rxode2 >= 5.1.6).  It MUST be skipped: it is
+    // INT_MIN, so the `v < -_nPhys` test below would otherwise accept it and write back
+    // INT_MIN +/- by as if it were a real compartment.
     if (v == NA_INTEGER) continue;
     // dose / physical compartments are left alone -- the macro does not offset them
     if (!(v > _nPhys || v < -_nPhys)) continue;
     _saved.push_back(std::make_pair(kk, v));      // remember the pool-basis value
-    odeCmtSet(_op, _ind, kk, (v < 0) ? v - by : v + by);
+    setIndCmt(_op, _ind, kk, (v < 0) ? v - by : v + by);
   }
 }
 
@@ -393,7 +471,7 @@ void OdeSwapCmtScope::shift(int by) {
 void OdeSwapCmtScope::unshift() {
   if (_op == NULL || _ind == NULL) return;
   for (size_t i = 0; i < _saved.size(); ++i) {
-    odeCmtSet(_op, _ind, _saved[i].first, _saved[i].second);
+    setIndCmt(_op, _ind, _saved[i].first, _saved[i].second);
   }
   _saved.clear();
 }
@@ -421,7 +499,62 @@ OdeSwapCmtScope::~OdeSwapCmtScope() {
 
 int  odeSwapNeq(int slot)    { return odeSwapLoaded(slot) ? _odeReg[slot].neq  : 0; }
 int  odeSwapNlhs(int slot)   { return odeSwapLoaded(slot) ? _odeReg[slot].nlhs : 0; }
-const char *odeSwapName(int slot) { return odeSwapLoaded(slot) ? _odeReg[slot].name : NULL; }
+
+// `THETA[k]`/`ETA[k]` and `THETA_k_`/`ETA_k_` name the SAME par_ptr position.  The
+// inner/pred/hess2 models carry rxode2's bracketed spelling; the augmented models are
+// generated with the underscore one because param() cannot declare a bracketed name.
+// Canonicalize so the layout comparison below sees positions rather than spellings --
+// measured: every peer of a fast=TRUE fit differs from the pool model in spelling only.
+static std::string odeSwapCanonPar(const std::string &s) {
+  static const char *pre[2] = {"THETA", "ETA"};
+  for (int i = 0; i < 2; ++i) {
+    std::string p(pre[i]);
+    if (s.size() <= p.size() + 2 || s.compare(0, p.size(), p) != 0) continue;
+    std::string rest = s.substr(p.size());
+    char a = rest[0], b = rest[rest.size() - 1];
+    if (!((a == '[' && b == ']') || (a == '_' && b == '_'))) continue;
+    std::string num = rest.substr(1, rest.size() - 2);
+    if (num.find_first_not_of("0123456789") != std::string::npos) continue;
+    return p + ":" + num;
+  }
+  return s;
+}
+
+// Does `slot`'s parameter layout match the one par_ptr was filled with?
+//
+// par_ptr is a per-subject slice of one gpars block, stride rx->npars, laid out for
+// the model rxSolve_ was given -- the POOL model.  A peer's calc_lhs indexes it with
+// ITS own positions, so the peer is only readable when its parameters are the pool's,
+// name for name, at the same indices.  A wider peer runs off its subject's slice into
+// the next one (past the end entirely for the last subject); an equally wide peer with
+// a different ORDER reads finite garbage, which counting cannot catch.
+//
+// The pool model's own slot always matches itself, so a plain single-model fit and
+// every standalone solve answer true without comparing anything.
+// Pure form, so the comparison is testable without a fit -- as odeSwapPlanFor is for
+// the pool decision.  `m` is the peer's parameter names, `pool` the pool model's.
+bool odeSwapParLayoutMatch(const std::vector<std::string> &m,
+                           const std::vector<std::string> &pool) {
+  // A peer that reads NO parameters cannot mis-read them, whatever the pool holds.
+  if (m.empty()) return true;
+  // ... but a peer that DOES read them and has nothing to be checked against is
+  // unverifiable, and unverifiable must decline.  Answering "true" here would accept
+  // exactly the case this exists to catch.
+  if (pool.empty() || m.size() > pool.size()) return false;
+  for (size_t i = 0; i < m.size(); ++i) {
+    if (odeSwapCanonPar(m[i]) != odeSwapCanonPar(pool[i])) return false;
+  }
+  return true;
+}
+
+static bool odeSwapParLayoutOk(int slot, rx_solve *rx) {
+  if (rx == NULL || !odeSwapLoaded(slot)) return false;
+  const OdeModelReg &m = _odeReg[slot];
+  if (m.npars > getRxNpars(rx)) return false;
+  const OdePoolPlan &p = odeSwapPlan();
+  if (p.poolSlot < 0 || p.poolSlot == slot) return true;
+  return odeSwapParLayoutMatch(m.parNames, _odeReg[p.poolSlot].parNames);
+}
 
 SEXP odeSwapModelSEXP(int slot) {
   if (!odeSwapLoaded(slot) || _odeModels == R_NilValue) return R_NilValue;
@@ -435,7 +568,39 @@ rxSolveF *odeSwapFns(int slot) {
 void odeSwapSolveInd(int slot, int rxId) {
   rxSolveF *f = odeSwapFns(slot);
   if (f == NULL || f->dydt == NULL) return;
-  ind_solve(getRxSolve_(), rxId, f->dydt_liblsoda, f->dydt_lsoda_dum,
+  rx_solve *rxl = getRxSolve_();
+  // rx->ndiff selects which structural-parameter derivative(s) linCmtB()
+  // computes THIS call and, critically, whether it refreshes its cached
+  // Jacobian (J/Jg) at all -- rx->ndiff==0 skips the refresh entirely
+  // (linCmt.cpp's fHCalcJac fast path), leaving J/Jg holding whatever the
+  // PREVIOUSLY-SOLVED registered slot last wrote.  rx->ndiff is a single
+  // field on the shared rx_solve struct (set once, in rxSolve_(), from
+  // whichever model was passed to it), not something the pool's neq/nlhs/
+  // cmt-basis rebasing already restores per peer -- so a slot solved after
+  // a peer with a DIFFERENT (or absent) ndiff need can silently read a
+  // stale, iteration-old d(pred)/d(eta) here.  Restore this slot's own
+  // declared value immediately before every solve; leave rx->ndiff alone
+  // when this slot's flags never reported one (older rxode2, or a model
+  // with no linCmtB() calls at all -- nothing here needs its Jacobian).
+  //
+  // Only write when THIS slot's own need is nonzero.  A slot whose declared
+  // ndiff is 0 (e.g. odeSlotPred -- "rxPred implements no sensitivities")
+  // never reads rx->ndiff itself, so skip the write rather than stomp
+  // whatever a DIFFERENT, concurrently-solving peer that DOES need a
+  // nonzero value (e.g. odeSlotInner, solved by another thread for another
+  // subject in the same omp loop -- impGetHessian's and impEStep's
+  // per-subject loops both mix odeSlotInner/odeSlotPred within one parallel
+  // region via the per-subject doFD fallback) just set it to.  This is what
+  // makes those loops safe without a lock in the common case: every slot
+  // that actually writes here writes its own fixed, slot-intrinsic value,
+  // so concurrent writers of the SAME slot agree, and a slot that needs
+  // nothing never participates.  A genuine mix of two DIFFERENT nonzero-
+  // ndiff peers running concurrently is not covered by this alone -- see
+  // odeSwapAnyNdiffSet()'s KNOWN GAP note.
+  if (odeSwapLoaded(slot) && _odeReg[slot].ndiffSet && _odeReg[slot].ndiff != 0) {
+    rxl->ndiff = _odeReg[slot].ndiff;
+  }
+  ind_solve(rxl, rxId, f->dydt_liblsoda, f->dydt_lsoda_dum,
             f->jdum_lsoda, f->dydt, f->update_inis, f->global_jt);
 }
 
@@ -537,34 +702,99 @@ static std::atomic<long> _odePinnedN(0);
 // a test can tell a working pooled path from a silent fallback to rxode2::rxSolve
 // -- the two are numerically equivalent, which is how a dead path went unnoticed.
 static std::atomic<long> _odePooledSolveN(0);
+static std::atomic<int>  _odePooledSolveCores(NA_INTEGER);
 static std::atomic<long> _odePinCalledN(0);
 static std::atomic<int>  _odePinDeny(0);
+// The probe bound subject 0 (iniSubjectE) before calling calc_lhs on it.
+static std::atomic<long> _odeProbeIniN(0);
+// The probe refused to run at all: the pool cannot hold what this model reads.
+static std::atomic<long> _odeProbeDenyN(0);
 
 long odeSwapOverrideArmedN() { return _odeOverrideArmedN.load(std::memory_order_relaxed); }
 long odeSwapLhsWidthMismatchN() { return _odeLhsWidthMismatchN.load(std::memory_order_relaxed); }
 long odeSwapOverrideNeutralizedN() { return _odeOverrideNeutralizedN.load(std::memory_order_relaxed); }
+long odeSwapProbeIniN()  { return _odeProbeIniN.load(std::memory_order_relaxed); }
+long odeSwapProbeDenyN() { return _odeProbeDenyN.load(std::memory_order_relaxed); }
 
-bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op) {
+static inline bool probeDeny() {
+  _odeProbeDenyN.fetch_add(1, std::memory_order_relaxed);
+  return false;
+}
+
+// Can the probe below safely CALL this slot's calc_lhs at all?
+//
+// Everything that call READS has to fit, not just the lhs vector it writes -- a buffer
+// that is too small, or laid out for someone else, faults before the probe can return an
+// answer, which is the one thing a gate like this must never do.
+//
+//   states:     it reads __zzStateVar__ = ind->solve, sized by the POOL;
+//   parameters: it reads par_ptr by index, filled for the POOL model.
+//
+// Declining is the safe direction and what every other failure here does: the caller
+// falls back to the rxode2::rxSolve reference path, which is correct, just slower.
+static bool odeSwapProbeFits(int slot, rx_solve *rx, rx_solving_options *op,
+                             int wantLhs, bool allowScratch) {
+  if (wantLhs <= 0 || (!allowScratch && getOpNlhs(op) < wantLhs)) return false;
+  // neq == 0 is legitimate, not a failure: an ODE-free model (a pure `ll()` regression)
+  // has real lhs outputs and symbolic sensitivities, and pools like any other -- see
+  // test-focei-ll-fast-grad-fit.R.  It simply reads no state.
+  int wantNeq = odeSwapNeq(slot);
+  if (wantNeq < 0 || getOpNeq(op) < wantNeq) return probeDeny();
+  if (!odeSwapParLayoutOk(slot, rx)) return probeDeny();
+  return true;
+}
+
+// Bind subject 0's PER-THREAD pointers (ind->on, ind->lhs, the tolerance slices).
+//
+// iniSubject binds them; building the pool does NOT -- rx->subjects comes back zeroed
+// from a fresh pool, and generated calc_lhs dereferences ind->on for every state it
+// reports.  That is the crash in #870: the fit paths only ever probed after their inner
+// solve, so the probe had never met a pool that had been set up and not yet solved.
+//
+// Done the way every real read site does it, rather than declining, so the probe still
+// answers.  Unconditionally, NOT only when the pointers read NULL: rx->subjects is freed
+// and re-allocated per pool, so a stale non-NULL pointer into a previous pool's buffers
+// is just as unusable and cannot be told apart by inspection.
+//
+// tolFactor is pinned to 1 across the call because iniSubject MULTIPLIES this
+// individual's tolerance slices by it in place.  Without the pin, probing would loosen
+// subject 0's tolerances one extra step per gradient evaluation -- the probe would be
+// changing the fit it exists to guard.
+static void odeSwapProbeBind(rx_solving_options_ind *ind, rx_solve *rx,
+                             rx_solving_options *op, rxSolveF *fns) {
+  _odeProbeIniN.fetch_add(1, std::memory_order_relaxed);
+  double tf = getIndTolFactor(ind);
+  setIndTolFactor(ind, 1.0);
+  iniSubjectE(0, 1, ind, op, rx, fns->update_inis);
+  setIndTolFactor(ind, tf);
+}
+
+// Did the probe write every lhs slot the slot's model declares?  EVERY declared slot must
+// be written, not merely the last one -- a writer that assigns lhs[0] and lhs[want-1] while
+// skipping the middle would otherwise pass.
+static bool odeSwapProbeAllWritten(const std::vector<double> &probe, int want, double sent) {
+  for (int k = 0; k < want; ++k) if (probe[(size_t)k] == sent) return false;
+  return true;
+}
+
+bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op,
+                          bool allowScratch) {
   if (fns == NULL || fns->calc_lhs == NULL || rx == NULL || op == NULL) return false;
   int want = odeSwapNlhs(slot);
-  int room = getOpNlhs(op);
-  if (want <= 0 || room < want) return false;
+  if (!odeSwapProbeFits(slot, rx, op, want, allowScratch)) return false;
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, 0);   // base subject 0
   if (ind == NULL) return false;
+  odeSwapProbeBind(ind, rx, op, fns);
   double *st = getIndSolve(ind);
-  if (st == NULL) return false;
+  if (getIndLhs(ind) == NULL || st == NULL) return probeDeny();
   // Only WHICH slots get written matters, not the values -- so use a sentinel no
   // model produces.  NaN would compare unequal and so read as "written".
   static const double _sent = -9.87654321e37;
-  std::vector<double> probe((size_t)room, _sent);
+  std::vector<double> probe((size_t)std::max(getOpNlhs(op), want), _sent);
   // Probe at this subject's own first time, not t=0: an lhs sitting inside a
   // time-dependent branch would go unassigned at an arbitrary time and look missing.
   fns->calc_lhs(0, getTime(getIndIx(ind, 0), ind), st, probe.data());
-  // EVERY declared slot must be written, not merely the last one -- a writer that
-  // assigns lhs[0] and lhs[want-1] while skipping the middle would otherwise pass.
-  int missing = 0;
-  for (int k = 0; k < want; ++k) if (probe[(size_t)k] == _sent) missing++;
-  if (missing > 0) {
+  if (!odeSwapProbeAllWritten(probe, want, _sent)) {
     // A model whose lhs are all inside conditional branches could in principle
     // report missing here and lose the pooled route.  That is the safe direction:
     // the caller then takes the rxode2::rxSolve reference path, which is correct,
@@ -581,7 +811,15 @@ long odeSwapScratchUsedN()   { return _odeScratchUsedN.load(std::memory_order_re
 long odeSwapScratchResizeN() { return _odeScratchResizeN.load(std::memory_order_relaxed); }
 long odeSwapPinnedN()        { return _odePinnedN.load(std::memory_order_relaxed); }
 long odeSwapPooledSolveN()   { return _odePooledSolveN.load(std::memory_order_relaxed); }
-void odeSwapNotePooledSolve() { _odePooledSolveN.fetch_add(1, std::memory_order_relaxed); }
+// The thread count the last pooled solve actually ran its subject loop with, AFTER every
+// clamp.  Recorded because the R-side cores it was asked for proves nothing on its own:
+// the request is capped again in C++, and a cap back to 1 is exactly the defect that made
+// this loop serial for the whole covariance step.
+int  odeSwapPooledSolveCores() { return _odePooledSolveCores.load(std::memory_order_relaxed); }
+void odeSwapNotePooledSolve(int cores) {
+  _odePooledSolveN.fetch_add(1, std::memory_order_relaxed);
+  _odePooledSolveCores.store(cores, std::memory_order_relaxed);
+}
 long odeSwapPinCalledN()     { return _odePinCalledN.load(std::memory_order_relaxed); }
 int  odeSwapPinDeny()        { return _odePinDeny.load(std::memory_order_relaxed); }
 
@@ -702,11 +940,6 @@ void odeSwapPinAll(int slot) {
   _odePinnedN.fetch_add(1, std::memory_order_relaxed);
 }
 
-void odeSwapRepin() {
-  if (_odePinnedSlot < 0) return;
-  odeSwapPinWalk(odeSwapNeq(_odePinnedSlot));
-}
-
 void odeSwapUnpinAll() {
   if (_odePinnedSlot < 0) return;
   // Only walk when this is still the solve structure we pinned: after
@@ -739,20 +972,36 @@ int odeSwapIndSolveSpan(rx_solving_options *op, rx_solving_options_ind *ind) {
   return n * getIndNallTimes(ind);
 }
 
+static inline bool odeSwapNonFinite(double x) {
+  return ISNA(x) || std::isnan(x) || std::isinf(x);
+}
+
+// True when any of the leading `width` values of `nrec` records spaced `stride` apart
+// is non-finite.
+static bool odeSwapBadRecords(const double *solve, size_t nrec, int stride, int width) {
+  for (size_t r = 0; r < nrec; ++r) {
+    const double *rec = solve + r * (size_t)stride;
+    for (int i = 0; i < width; ++i) {
+      if (odeSwapNonFinite(rec[i])) return true;
+    }
+  }
+  return false;
+}
+
 bool odeSwapIndBadSolveSlot(rx_solving_options *op, rx_solving_options_ind *ind,
                             int slot) {
   int n = odeSwapIndSolveSpan(op, ind);
-  int own = odeSwapNeq(slot);
-  // Only clamp DOWN, and only when this model is genuinely narrower than the
-  // span: never widen, or a compacted solve would be under-scanned.
-  if (own > 0 && own < n && getOpNlin(op) <= 0) n = own;
   if (n <= 0) return false;
   double *solve = getIndSolve(ind);
   if (solve == NULL) return false;
-  for (int i = 0; i < n; ++i) {
-    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) return true;
+  int own = odeSwapNeq(slot);
+  int eff = odeSwapEffNeq(ind, op);
+  // A model narrower than the solve stride (a declined scope runs at pool width)
+  // owns only the leading `own` states of each record; scan those in every record.
+  if (own > 0 && own < eff && getOpNlin(op) <= 0) {
+    return odeSwapBadRecords(solve, (size_t)getIndNallTimes(ind), eff, own);
   }
-  return false;
+  return odeSwapBadRecords(solve, 1, n, n);
 }
 
 bool odeSwapIndBadSolve(rx_solving_options *op, rx_solving_options_ind *ind) {
@@ -760,10 +1009,7 @@ bool odeSwapIndBadSolve(rx_solving_options *op, rx_solving_options_ind *ind) {
   if (n <= 0) return false;
   double *solve = getIndSolve(ind);
   if (solve == NULL) return false;
-  for (int i = 0; i < n; ++i) {
-    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) return true;
-  }
-  return false;
+  return odeSwapBadRecords(solve, 1, n, n);
 }
 
 // ---- R introspection ----------------------------------------------------
@@ -825,6 +1071,23 @@ List odeSwapPlanFor_(IntegerVector neq, IntegerVector nlhs) {
                       _["overrideNeeded"] = p.overrideNeeded);
 }
 
+//' Would `model`'s parameter layout be readable in a pool built for `pool`?
+//'
+//' The pure form of the lhs probe's parameter check, so both directions -- accept a
+//' peer that only spells the same slots differently, refuse one whose order differs --
+//' are testable without rigging a live registry.
+//' @param model peer model's `rxModelVars$params`
+//' @param pool pool model's `rxModelVars$params`
+//' @return TRUE when the peer may index the pool's parameter vector
+//' @noRd
+//[[Rcpp::export]]
+bool odeSwapParLayoutFor_(CharacterVector model, CharacterVector pool) {
+  std::vector<std::string> m((size_t)model.size()), p((size_t)pool.size());
+  for (int i = 0; i < model.size(); ++i) m[(size_t)i] = as<std::string>(model[i]);
+  for (int i = 0; i < pool.size(); ++i) p[(size_t)i] = as<std::string>(pool[i]);
+  return odeSwapParLayoutMatch(m, p);
+}
+
 //' Record which model role rxode2's event path is bound to (R-side installs).
 //' Roles: -1 unknown, 0 pred, 1 inner, 2 outer, 3 hess2.
 //' @param slot role id
@@ -840,29 +1103,42 @@ RObject odeSwapEsNoteInstalled_(int slot) {
 List odeSwapInfo_() {
   const OdePoolPlan &p = odeSwapPlan();
   CharacterVector nm(odeSlotN);
-  IntegerVector neq(odeSlotN), nlhs(odeSlotN), deny(odeSlotN);
-  LogicalVector loaded(odeSlotN), sizesPool(odeSlotN);
+  IntegerVector neq(odeSlotN), nlhs(odeSlotN), npars(odeSlotN), deny(odeSlotN),
+    esActive(odeSlotN), ndiff(odeSlotN);
+  LogicalVector loaded(odeSlotN), sizesPool(odeSlotN), parLayoutOk(odeSlotN),
+    ndiffSet(odeSlotN);
+  rx_solve *_rxl = getRxSolve_();
   for (int s = 0; s < odeSlotN; ++s) {
     nm[s] = _odeReg[s].name == NULL ? NA_STRING : Rf_mkChar(_odeReg[s].name);
     neq[s] = _odeReg[s].neq;
     nlhs[s] = _odeReg[s].nlhs;
+    npars[s] = _odeReg[s].npars;
     loaded[s] = _odeReg[s].loaded;
     sizesPool[s] = (s == p.poolSlot);
     deny[s] = odeSwapCanPool(s);
+    parLayoutOk[s] = _odeReg[s].loaded ? odeSwapParLayoutOk(s, _rxl) : NA_LOGICAL;
+    esActive[s] = _odeReg[s].esActive;
+    ndiff[s] = _odeReg[s].ndiff;
+    ndiffSet[s] = _odeReg[s].ndiffSet;
   }
   List models = List::create(_["slot"] = seq_len(odeSlotN) - 1, _["name"] = nm,
-                             _["neq"] = neq, _["nlhs"] = nlhs,
+                             _["neq"] = neq, _["nlhs"] = nlhs, _["npars"] = npars,
                              _["loaded"] = loaded, _["sizesPool"] = sizesPool,
-                             _["deny"] = deny);
+                             _["parLayoutOk"] = parLayoutOk,
+                             _["deny"] = deny, _["esActive"] = esActive,
+                             _["ndiff"] = ndiff, _["ndiffSet"] = ndiffSet);
   models.attr("class") = "data.frame";
   models.attr("row.names") = IntegerVector::create(NA_INTEGER, -odeSlotN);
   // op->neq / op->nlhs are only meaningful once a solve pool exists.
-  int opNeq = NA_INTEGER, opNlhs = NA_INTEGER;
-  rx_solve *rxl = getRxSolve_();
+  int opNeq = NA_INTEGER, opNlhs = NA_INTEGER, rxNpars = NA_INTEGER,
+    rxNdiff = NA_INTEGER;
+  rx_solve *rxl = _rxl;
   IntegerVector activeOv(0);
   if (rxl != NULL) {
     rx_solving_options *op = getSolvingOptions(rxl);
     if (op != NULL) { opNeq = getOpNeq(op); opNlhs = getOpNlhs(op); }
+    rxNpars = getRxNpars(rxl);
+    rxNdiff = rxl->ndiff;
     int nsub = (int)getRxNsub(rxl);
     if (nsub > 0) {
       activeOv = IntegerVector(nsub);
@@ -883,7 +1159,8 @@ List odeSwapInfo_() {
     _["needsScratch"] = (p.scratchNlhs > 0),
     _["overrideNeeded"] = p.overrideNeeded,
     _["nLoaded"] = p.nLoaded,
-    _["opNeq"] = opNeq, _["opNlhs"] = opNlhs,
+    _["opNeq"] = opNeq, _["opNlhs"] = opNlhs, _["rxNpars"] = rxNpars,
+    _["rxNdiff"] = rxNdiff,
     _["pinned"] = odeSwapPinned(),
     _["pinnedSlot"] = odeSwapPinnedSlot(),
     // -1 per subject means "no override in force"; a non -1 left behind after a
@@ -892,10 +1169,17 @@ List odeSwapInfo_() {
     _["overrideArmedN"] = (double)odeSwapOverrideArmedN(),
     _["overrideNeutralizedN"] = (double)odeSwapOverrideNeutralizedN(),
     _["lhsWidthMismatchN"] = (double)odeSwapLhsWidthMismatchN(),
+    _["probeIniN"] = (double)odeSwapProbeIniN(),
+    _["probeDenyN"] = (double)odeSwapProbeDenyN(),
     _["scratchUsedN"] = (double)odeSwapScratchUsedN(),
     _["scratchResizeN"] = (double)odeSwapScratchResizeN(),
     _["pinnedN"] = (double)odeSwapPinnedN(),
     _["pooledSolveN"] = (double)odeSwapPooledSolveN(),
+    _["pooledSolveCores"] = odeSwapPooledSolveCores(),
     _["pinCalledN"] = (double)odeSwapPinCalledN(),
-    _["pinDeny"] = (double)odeSwapPinDeny());
+    _["esInstallC"] = (double)_odeEsInstallC,
+    _["esInstallR"] = (double)_odeEsInstallR,
+    _["pinDeny"] = (double)odeSwapPinDeny(),
+    _["impThetaSensHarvestN"] = (double)impThetaSensHarvestN(),
+    _["tablePoolSolveN"] = (double)tablePoolSolveN());
 }

@@ -5,13 +5,13 @@
 ## mode resolution.  Pure linear algebra, no ODE solve: essential.
 
 nmTest({
-
   test_that(".vaeL0Supports proposes well-formed, deduplicated supports", {
     .testSeed(1L)
-    N <- 120L; p <- 12L
+    N <- 120L
+    p <- 12L
     X <- matrix(rnorm(N * p), N, p)
     y <- as.numeric(0.5 + X[, c(3, 7, 10)] %*% c(1.5, -2, 1) + rnorm(N, sd = 0.5))
-    s <- nlmixr2est:::.vaeL0Supports(X, y)
+    s <- .vaeL0Supports(X, y)
 
     expect_type(s, "list")
     expect_gt(length(s), 1L)
@@ -34,25 +34,28 @@ nmTest({
 
   test_that(".vaeL0Supports is deterministic and does not touch the RNG", {
     .testSeed(2L)
-    N <- 90L; p <- 8L
+    N <- 90L
+    p <- 8L
     X <- matrix(rnorm(N * p), N, p)
     y <- as.numeric(X[, 2] * 2 + rnorm(N))
     .seedBefore <- .Random.seed
-    a <- nlmixr2est:::.vaeL0Supports(X, y)
-    expect_identical(.Random.seed, .seedBefore)  # no RNG consumption
-    b <- nlmixr2est:::.vaeL0Supports(X, y)
+    a <- .vaeL0Supports(X, y)
+    expect_identical(.Random.seed, .seedBefore) # no RNG consumption
+    b <- .vaeL0Supports(X, y)
     expect_identical(a, b)
   })
 
   test_that(".vaeL0Supports degrades to the empty support on unusable input", {
     .empty <- list(integer(0))
-    expect_identical(nlmixr2est:::.vaeL0Supports(matrix(0, 10, 0), rnorm(10)), .empty)
-    expect_identical(nlmixr2est:::.vaeL0Supports(matrix(1, 2, 3), rnorm(2)), .empty)
-    X <- matrix(rnorm(60), 20, 3); X[1, 1] <- NA_real_
-    expect_identical(nlmixr2est:::.vaeL0Supports(X, rnorm(20)), .empty)
+    expect_identical(.vaeL0Supports(matrix(0, 10, 0), rnorm(10)), .empty)
+    expect_identical(.vaeL0Supports(matrix(1, 2, 3), rnorm(2)), .empty)
     X <- matrix(rnorm(60), 20, 3)
-    y <- rnorm(20); y[3] <- Inf
-    expect_identical(nlmixr2est:::.vaeL0Supports(X, y), .empty)
+    X[1, 1] <- NA_real_
+    expect_identical(.vaeL0Supports(X, rnorm(20)), .empty)
+    X <- matrix(rnorm(60), 20, 3)
+    y <- rnorm(20)
+    y[3] <- Inf
+    expect_identical(.vaeL0Supports(X, y), .empty)
   })
 
   test_that(".vaeCovSelectModes resolves the per-eta mode", {
@@ -62,35 +65,35 @@ nmTest({
     nCand <- c(30L, 10L, 30L)
 
     ## explicit "bnb": nothing switches, whatever the size
-    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("bnb"))
+    m <- .vaeCovSelectModes(nCand, ctl("bnb"))
     expect_identical(m$mode, c(0L, 0L, 0L))
     expect_identical(m$used, "bnb")
     expect_length(m$msg, 0L)
 
     ## "auto": only the dimensions at/over the threshold switch
-    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto"))
+    m <- .vaeCovSelectModes(nCand, ctl("auto"))
     expect_identical(m$mode, c(1L, 0L, 1L))
     expect_identical(m$used, "mixed")
     expect_match(m$msg, "not the exact search", all = FALSE)
 
     ## "auto" below the threshold everywhere: unchanged, silent
-    m <- nlmixr2est:::.vaeCovSelectModes(c(5L, 10L), ctl("auto"))
+    m <- .vaeCovSelectModes(c(5L, 10L), ctl("auto"))
     expect_identical(m$mode, c(0L, 0L))
     expect_identical(m$used, "bnb")
     expect_length(m$msg, 0L)
 
     ## covSelectMaxExact=Inf forces the exact search even for a wide problem
-    m <- nlmixr2est:::.vaeCovSelectModes(nCand, ctl("auto", Inf))
+    m <- .vaeCovSelectModes(nCand, ctl("auto", Inf))
     expect_identical(m$mode, c(0L, 0L, 0L))
     expect_identical(m$used, "bnb")
 
     ## explicit "l0learn": every dimension with candidates switches
-    m <- nlmixr2est:::.vaeCovSelectModes(c(3L, 0L), ctl("l0learn"))
+    m <- .vaeCovSelectModes(c(3L, 0L), ctl("l0learn"))
     expect_identical(m$mode, c(1L, 0L))
     expect_identical(m$used, "mixed")
 
     ## the threshold is honored
-    m <- nlmixr2est:::.vaeCovSelectModes(c(24L, 25L), ctl("auto"))
+    m <- .vaeCovSelectModes(c(24L, 25L), ctl("auto"))
     expect_identical(m$mode, c(0L, 1L))
   })
 
@@ -110,7 +113,7 @@ nmTest({
   test_that("the run-time message stays inside the runInfo one-line budget", {
     ## $runInfo renders one bullet per warning; CLAUDE.md caps these at 75 chars
     ctl <- list(covSelectMethod = "auto", covSelectMaxExact = 25L)
-    msgs <- nlmixr2est:::.vaeCovSelectModes(30L, ctl)$msg
+    msgs <- .vaeCovSelectModes(30L, ctl)$msg
     expect_gt(length(msgs), 0L)
     expect_true(all(nchar(msgs) <= 75L))
   })
@@ -134,17 +137,17 @@ nmTest({
     ## subsets it looks at -- same OLS, same score, same tie-break
     .testSeed(21L)
     for (rep in 1:6) {
-      N <- 80L; nCov <- sample(4:9, 1L)
+      N <- 80L
+      nCov <- sample(4:9, 1L)
       X <- matrix(rnorm(N * nCov), N, nCov)
       k <- sample(0:3, 1L)
       sel <- if (k > 0) sort(sample.int(nCov, k)) else integer(0)
-      y <- as.numeric(0.7 + (if (k > 0) X[, sel, drop = FALSE] %*% runif(k, 1, 3) else 0) +
-                        rnorm(N, sd = 0.5))
-      omega <- 0.4; penalty <- log(N)
+      y <- as.numeric(0.7 + (if (k > 0) X[, sel, drop = FALSE] %*% runif(k, 1, 3) else 0) + rnorm(N, sd = 0.5))
+      omega <- 0.4
+      penalty <- log(N)
       ref <- vaeBestSubset_(matrix(y, ncol = 1), X, omega, FALSE, penalty)
       got <- vaeScoreSupports_(y, X, omega, penalty, allSupports(nCov), polish = FALSE)
-      expect_identical(as.integer(got$selected), as.integer(ref$selected[1, ]),
-                       info = paste0("rep ", rep))
+      expect_identical(as.integer(got$selected), as.integer(ref$selected[1, ]), info = paste0("rep ", rep))
       expect_equal(got$intercept, as.numeric(ref$intercept[1]), tolerance = 1e-10)
       expect_equal(as.numeric(got$beta), as.numeric(ref$beta[1, ]), tolerance = 1e-10)
     }
@@ -152,14 +155,15 @@ nmTest({
 
   test_that("candidate scoring ignores malformed support indices", {
     .testSeed(22L)
-    N <- 60L; nCov <- 5L
+    N <- 60L
+    nCov <- 5L
     X <- matrix(rnorm(N * nCov), N, nCov)
     y <- as.numeric(X[, 2] * 2 + rnorm(N, sd = 0.3))
-    omega <- 0.5; penalty <- log(N)
+    omega <- 0.5
+    penalty <- log(N)
     clean <- vaeScoreSupports_(y, X, omega, penalty, list(integer(0), 1L), polish = FALSE)
     ## duplicated, out-of-range and negative entries collapse to the same support
-    dirty <- vaeScoreSupports_(y, X, omega, penalty,
-                               list(integer(0), c(1L, 1L, 99L, -3L)), polish = FALSE)
+    dirty <- vaeScoreSupports_(y, X, omega, penalty, list(integer(0), c(1L, 1L, 99L, -3L)), polish = FALSE)
     expect_identical(dirty$selected, clean$selected)
     expect_equal(dirty$beta, clean$beta, tolerance = 1e-12)
   })
@@ -167,12 +171,14 @@ nmTest({
   test_that("the local search never worsens the incumbent and reaches the optimum", {
     .testSeed(23L)
     for (rep in 1:8) {
-      N <- 90L; nCov <- sample(5:10, 1L)
+      N <- 90L
+      nCov <- sample(5:10, 1L)
       X <- matrix(rnorm(N * nCov), N, nCov)
       k <- sample(1:3, 1L)
       sel <- sort(sample.int(nCov, k))
       y <- as.numeric(0.3 + X[, sel, drop = FALSE] %*% runif(k, 1.5, 3) + rnorm(N, sd = 0.4))
-      omega <- 0.5; penalty <- log(N)
+      omega <- 0.5
+      penalty <- log(N)
       ## deliberately useless candidate set: only the intercept-only model
       bare <- list(integer(0))
       noPolish <- vaeScoreSupports_(y, X, omega, penalty, bare, polish = FALSE)
@@ -182,8 +188,7 @@ nmTest({
       expect_lte(sYes, sNo)
       ## and from that bare start it still lands on the exact optimum here
       ref <- vaeBestSubset_(matrix(y, ncol = 1), X, omega, FALSE, penalty)
-      expect_identical(as.integer(polished$selected), as.integer(ref$selected[1, ]),
-                       info = paste0("rep ", rep))
+      expect_identical(as.integer(polished$selected), as.integer(ref$selected[1, ]), info = paste0("rep ", rep))
     }
   })
 
@@ -192,34 +197,40 @@ nmTest({
     N <- 120L
     for (rep in 1:10) {
       nCov <- sample(8:14, 1L)
-      corr <- rep %% 2L == 0L          # half correlated, half independent
+      corr <- rep %% 2L == 0L # half correlated, half independent
       X <- matrix(rnorm(N * nCov), N, nCov)
-      if (corr) {                      # rho ~ 0.7 common factor
+      if (corr) {
+        # rho ~ 0.7 common factor
         f <- rnorm(N)
         X <- sqrt(0.7) * matrix(f, N, nCov) + sqrt(0.3) * X
       }
       k <- sample(1:4, 1L)
       sel <- sort(sample.int(nCov, k))
-      y <- as.numeric(0.5 + X[, sel, drop = FALSE] %*% runif(k, 1.5, 3) *
-                        sample(c(-1, 1), k, TRUE) + rnorm(N, sd = 0.6))
-      omega <- 0.5; penalty <- log(N)
-      cand <- nlmixr2est:::.vaeL0Supports(X, y)
+      y <- as.numeric(
+        0.5 + X[, sel, drop = FALSE] %*% runif(k, 1.5, 3) * sample(c(-1, 1), k, TRUE) + rnorm(N, sd = 0.6)
+      )
+      omega <- 0.5
+      penalty <- log(N)
+      cand <- .vaeL0Supports(X, y)
       got <- vaeScoreSupports_(y, X, omega, penalty, cand, polish = TRUE)
       ref <- vaeBestSubset_(matrix(y, ncol = 1), X, omega, FALSE, penalty)
-      expect_identical(as.integer(got$selected), as.integer(ref$selected[1, ]),
-                       info = paste0("rep ", rep, " nCov ", nCov, " corr ", corr))
+      expect_identical(
+        as.integer(got$selected),
+        as.integer(ref$selected[1, ]),
+        info = paste0("rep ", rep, " nCov ", nCov, " corr ", corr)
+      )
     }
   })
 
   test_that(".vaeL0Candidates proposes per dimension in the reduced design", {
     .testSeed(3L)
-    N <- 100L; p <- 10L
+    N <- 100L
+    p <- 10L
     covMat <- matrix(rnorm(N * p), N, p)
-    y <- cbind(as.numeric(covMat[, 4] * 2 + rnorm(N, sd = 0.3)),
-               as.numeric(covMat[, 9] * -3 + rnorm(N, sd = 0.3)))
+    y <- cbind(as.numeric(covMat[, 4] * 2 + rnorm(N, sd = 0.3)), as.numeric(covMat[, 9] * -3 + rnorm(N, sd = 0.3)))
 
     ## dim 1 uses L0Learn, dim 2 stays on the exact search -> NULL
-    cand <- nlmixr2est:::.vaeL0Candidates(y, covMat, mode = c(1L, 0L))
+    cand <- .vaeL0Candidates(y, covMat, mode = c(1L, 0L))
     expect_length(cand, 2L)
     expect_null(cand[[2]])
     ## no pinning: reduced design == full design, so column 4 is index 3
@@ -228,7 +239,7 @@ nmTest({
     ## pinCovariates: indices are into the REDUCED design, so they stay in
     ## 0..(length(allowed)-1) -- the C++ caller maps them back to global columns
     allowed <- list(c(3L, 8L), integer(0))
-    cand <- nlmixr2est:::.vaeL0Candidates(y, covMat, mode = c(1L, 1L), allowed = allowed)
+    cand <- .vaeL0Candidates(y, covMat, mode = c(1L, 1L), allowed = allowed)
     expect_true(all(unlist(cand[[1]]) %in% c(0L, 1L)))
     expect_identical(cand[[2]], list(integer(0)))
   })

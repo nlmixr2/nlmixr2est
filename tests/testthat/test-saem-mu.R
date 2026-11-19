@@ -2,7 +2,7 @@ nmTest({
   test_that("saem mu reference 1", {
     theo_sd2 <- nlmixr2data::theo_sd
 
-    theo_sd2$lwt<-log(theo_sd2$WT/70)
+    theo_sd2$lwt <- log(theo_sd2$WT / 70)
 
     # The basic model consists of an ini block that has initial estimates
     # Original mu-referencing
@@ -28,9 +28,12 @@ nmTest({
       })
     }
 
-    fit1 <- .nlmixr(one.compartment, theo_sd2, est="saem",
-                    control=saemControl(print = 0,seed = 1234, nBurn = 1, nEm = 1,
-                                        calcTables = FALSE))
+    fit1 <- .nlmixr(
+      one.compartment,
+      theo_sd2,
+      est = "saem",
+      control = saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1, calcTables = FALSE)
+    )
 
     # true mu expression should not have information in $runInfo
     expect_true(is.null(fit1$runInfo))
@@ -59,12 +62,14 @@ nmTest({
       })
     }
 
-
     fit2 <-
-      withr::with_options(list(cli.unicode=FALSE),{
-        .nlmixr(one.compartment, theo_sd2, est="saem",
-                control=saemControl(print = 0,seed = 1234, nBurn = 1, nEm = 1,
-                                    calcTables = FALSE))
+      withr::with_options(list(cli.unicode = FALSE), {
+        .nlmixr(
+          one.compartment,
+          theo_sd2,
+          est = "saem",
+          control = saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1, calcTables = FALSE)
+        )
       })
 
     expect_true(grepl("mu2 item:", fit2$runInfo[1]))
@@ -93,14 +98,16 @@ nmTest({
       })
     }
 
-    fit3 <-   withr::with_options(list(cli.unicode=FALSE), {
-      .nlmixr(one.compartment, theo_sd2, est="saem",
-              control=saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1,
-                                  calcTables = FALSE))
+    fit3 <- withr::with_options(list(cli.unicode = FALSE), {
+      .nlmixr(
+        one.compartment,
+        theo_sd2,
+        est = "saem",
+        control = saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1, calcTables = FALSE)
+      )
     })
 
     expect_true(grepl("mu3 item", fit3$runInfo[1]))
-
 
     # mu4 referencing
     one.compartment <- function() {
@@ -131,10 +138,13 @@ nmTest({
       })
     }
 
-    fit4 <- withr::with_options(list(cli.unicode=FALSE), {
-      .nlmixr(one.compartment, theo_sd2, est="saem",
-              control=saemControl(print=0,seed = 1234, nBurn = 1, nEm = 1,
-                                  calcTables = FALSE))
+    fit4 <- withr::with_options(list(cli.unicode = FALSE), {
+      .nlmixr(
+        one.compartment,
+        theo_sd2,
+        est = "saem",
+        control = saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1, calcTables = FALSE)
+      )
     })
 
     expect_true(grepl("mu4 item", fit4$runInfo[1]))

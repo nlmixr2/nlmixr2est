@@ -10,13 +10,20 @@
 #
 # Only NON-MU thetas get sensitivities: mu-referenced thetas are updated by the EM
 # closed form.  Among those, structural thetas (which enter the ODE states / f)
-# carry a sensitivity ODE; residual-error (sigma) thetas enter only V algebraically
-# and need no state sensitivity, so restricting the sensitivity ODEs to the
-# structural thetas also keeps the state count bounded for the shared solve buffer.
+# carry a sensitivity ODE; residual-error (sigma) thetas reach f and V only
+# algebraically and need no state sensitivity, so restricting the sensitivity ODEs
+# to the structural thetas also keeps the state count bounded for the shared solve
+# buffer.
 #
 # d(f)/d(theta_j) and d(V)/d(theta_j) share the chain rule
 #   d(g)/d(theta_j) = D(g, THETA_j) + sum_state rx__sens_state_BY_THETA_j * D(g, state)
 # where the state-sensitivity term is present only for the structural thetas.
+#
+# An ESTIMATED transform-both-sides lambda is a residual-error theta that DOES
+# reach f (rx_pred_ applies rxTBS()), and it moves the transformed DV as well.
+# The model therefore also outputs rx__sens_rx_lambda__BY_THETA_j___ =
+# d(lambda)/d(theta_j) -- but only when some column is non-zero -- which the
+# M-step multiplies by the analytic d(h(y; lambda))/d(lambda) on the DV side (#949).
 #
 # rx_pred_ / rx_r_ are retrieved with the `$` accessor via an intermediate
 # variable (the sensitivity setup shadows base get/:: and the `$` NSE misbehaves
@@ -46,12 +53,15 @@
 }
 
 #' @noRd
-.impmapChainRule <- function(s, target, j, stateVars, structIdx) {
+.impmapChainRule <- function(s, target, j, stateVars, structIdx, lag = s$..lagEta) {
+  if (!is.null(lag)) {
+    # chained through the lagged variables (#1176)
+    .e <- get(target, envir = s)
+    return(lag$txt(lag$dfe(.e, paste0("THETA_", j, "_")), paste0("THETA_", j, "_")))
+  }
   .terms <- paste0("D(", target, ", THETA_", j, "_)")
   if (j %in% structIdx && length(stateVars) > 0L) {
-    .terms <- c(.terms,
-                paste0("rx__sens_", stateVars, "_BY_THETA_", j, "___*D(", target, ", ",
-                       stateVars, ")"))
+    .terms <- c(.terms, paste0("rx__sens_", stateVars, "_BY_THETA_", j, "___*D(", target, ", ", stateVars, ")"))
   }
   .l <- eval(parse(text = paste0("with(s, ", paste(.terms, collapse = "+"), ")")))
   rxode2::rxFromSE(.l)
@@ -66,15 +76,38 @@
 rxUiGet.impmapThetaSens <- function(x, ...) {
   .ui <- x[[1]]
   .idx <- .impmapEstTheta(.ui)
-  if (length(.idx$all) == 0L) return(NULL)
+  if (length(.idx$all) == 0L) {
+    return(NULL)
+  }
   .s <- rxUiGet.loadPruneSens(x, ...)
-  if (!exists("..maxTheta", .s)) return(NULL)
+  if (!exists("..maxTheta", .s)) {
+    return(NULL)
+  }
   .stateVars <- .rxode2stateOdeNoOutput(.s)
   # State sensitivities only for the structural thetas.
-  .thetaVars <- paste0("THETA_", .idx$struct, "_")
+  # paste0 recycles a zero-length struct index to "" (R >= 4.0), which
+  # would fabricate a malformed "THETA__" sensitivity variable when every
+  # structural theta is mu-referenced and only sigma thetas remain
+  .thetaVars <- if (length(.idx$struct) > 0L) {
+    paste0("THETA_", .idx$struct, "_")
+  } else {
+    character(0)
+  }
+  .foceiLagIntoOde(.s)
   if (length(.thetaVars) > 0L) {
     rxode2::.rxJacobian(.s, c(.stateVars, .thetaVars))
     rxode2::.rxSens(.s, .thetaVars)
+  }
+  .lagLines <- character(0)
+  if (.foceiUsesLagVar(.ui)) {
+    .s$..lagEta <- .foceiLagSens(
+      .s,
+      .stateVars,
+      paste0("THETA_", .idx$all, "_"),
+      c("rx_pred_", "rx_r_", "rx_lambda_"),
+      statePars = .thetaVars
+    )
+    .lagLines <- c(.foceiLagDefs(.s), .s$..lagEta$lines)
   }
   .pred <- .s$`rx_pred_`
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.pred))
@@ -91,32 +124,62 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   .lambda <- .s$`rx_lambda_`
   .hi <- .s$`rx_hi_`
   .low <- .s$`rx_low_`
-  .tbs <- c(paste0("rx_yj_~", rxode2::rxFromSE(.yj)),
-            paste0("rx_lambda_~", rxode2::rxFromSE(.lambda)),
-            paste0("rx_hi_~", rxode2::rxFromSE(.hi)),
-            paste0("rx_low_~", rxode2::rxFromSE(.low)))
+  .tbs <- c(
+    paste0("rx_yj_~", rxode2::rxFromSE(.yj)),
+    paste0("rx_lambda_~", rxode2::rxFromSE(.lambda)),
+    paste0("rx_hi_~", rxode2::rxFromSE(.hi)),
+    paste0("rx_low_~", rxode2::rxFromSE(.low))
+  )
   # Also output the residual variance V so the M-step gradient reads f and V from
   # this one solve (no separate inner solve / context interleave).
   .rvar <- .s$`rx_r_`
   .rr <- paste0("rx_r_=", rxode2::rxFromSE(.rvar))
-  # d(f)/d(theta_j): chain rule for structural thetas, 0 for sigma thetas.
-  .dfOut <- vapply(.idx$all, function(j) {
-    if (j %in% .idx$struct) {
-      paste0("rx__sens_rx_pred__BY_THETA_", j, "___=",
-             .impmapChainRule(.s, "rx_pred_", j, .stateVars, .idx$struct))
-    } else {
-      paste0("rx__sens_rx_pred__BY_THETA_", j, "___=0")
-    }
-  }, character(1))
+  # d(f)/d(theta_j): chain rule (state sensitivities only for the structural
+  # thetas; .impmapChainRule already restricts them).  A residual-error theta
+  # usually drops out of rx_pred_, but an ESTIMATED transform-both-sides lambda
+  # does not -- it enters through rx_pred_'s rxTBS(), so hard-coding 0 here made
+  # its column silently zero (#949).
+  .dfOut <- vapply(
+    .idx$all,
+    function(j) {
+      paste0("rx__sens_rx_pred__BY_THETA_", j, "___=", .impmapChainRule(.s, "rx_pred_", j, .stateVars, .idx$struct))
+    },
+    character(1)
+  )
   # d(V)/d(theta_j): chain rule (structural) or direct partial (sigma).
-  .dvOut <- vapply(.idx$all, function(j) {
-    paste0("rx__sens_rx_r__BY_THETA_", j, "___=",
-           .impmapChainRule(.s, "rx_r_", j, .stateVars, .idx$struct))
-  }, character(1))
-  .ddt <- .s$..ddt; if (is.null(.ddt)) .ddt <- character(0)
-  .sens <- .s$..sens; if (is.null(.sens)) .sens <- character(0)
-  .s$..thetaSens <- paste(c(.ddt, .sens, .tbs, .prd, .rr, .dfOut, .dvOut, ""),
-                          collapse = "\n")
+  .dvOut <- vapply(
+    .idx$all,
+    function(j) {
+      paste0("rx__sens_rx_r__BY_THETA_", j, "___=", .impmapChainRule(.s, "rx_r_", j, .stateVars, .idx$struct))
+    },
+    character(1)
+  )
+  # d(lambda)/d(theta_j), emitted only when some column is non-zero (an estimated
+  # transform-both-sides lambda).  The conditional depends on lambda through the
+  # TRANSFORMED DV as well, err = h(y; lambda) - h(f; lambda), and h(y) is applied
+  # in C++ (it needs the DV), so the M-step multiplies this column by
+  # d(h(y; lambda))/d(lambda) there (#949).
+  # A constant rx_lambda_ is a plain number here, not a symengine expression, and
+  # D() would dispatch to stats::D and error.  Test the CLASS rather than grepping
+  # the rendered string for "THETA": boxCox()/yeoJohnson() accept a model variable,
+  # so lambda can be any expression (exp(theta), or one reaching a state).  The
+  # chain rule, not the direct partial, for the same reason.
+  .dlOut <- character(0)
+  if (inherits(.lambda, "Basic")) {
+    .dl <- vapply(.idx$all, function(j) .impmapChainRule(.s, "rx_lambda_", j, .stateVars, .idx$struct), character(1))
+    if (any(!(.dl %in% c("0", "0.0", "-0")))) {
+      .dlOut <- paste0("rx__sens_rx_lambda__BY_THETA_", .idx$all, "___=", .dl)
+    }
+  }
+  .ddt <- .s$..ddt
+  if (is.null(.ddt)) {
+    .ddt <- character(0)
+  }
+  .sens <- .s$..sens
+  if (is.null(.sens)) {
+    .sens <- character(0)
+  }
+  .s$..thetaSens <- paste(c(.ddt, .sens, .tbs, .lagLines, .prd, .rr, .dfOut, .dvOut, .dlOut, ""), collapse = "\n")
   .s$..thetaSensIdx <- .idx$all
   ## Return ONLY the lightweight result -- NEVER the symengine environment `.s`.
   ##
@@ -132,33 +195,41 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   ## exactly the workflow that leaked, so this was user-facing, not just a test
   ## problem.  Anything registered as an rxUiGet method must return a lightweight
   ## value for the same reason.
-  list(thetaSens = .s$..thetaSens, thetaSensIdx = .s$..thetaSensIdx)
+  ## ..mtime rides along for the same reason: the model builder cannot read it
+  ## off `.s`, which is deliberately not returned (#919).  It is a short
+  ## character vector, so it does not reintroduce the leak above.
+  list(thetaSens = .s$..thetaSens, thetaSensIdx = .s$..thetaSensIdx, ..mtime = .s$..mtime)
 }
 attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 
 #' Compile the impmap sensitivity model.
 #'
 #' @param ui rxode2 ui object
+#' @param eventSens event-sensitivity mode for the compiled model: "jump"
+#'   attaches rxode2's analytic event sensitivities, so a theta entering dose
+#'   handling (alag/f/dur/rate) gets its jump condition at the event and its
+#'   d(f)/d(theta) column is no longer silently zero (#946); "fd" preserves
+#'   the legacy codegen.
 #' @return a compiled rxode2 model outputting rx__sens_rx_pred__BY_THETA_j___ and
-#'   rx__sens_rx_r__BY_THETA_j___ for each estimated non-mu theta j, or NULL if
-#'   there are none.
+#'   rx__sens_rx_r__BY_THETA_j___ for each estimated non-mu theta j (plus
+#'   rx__sens_rx_lambda__BY_THETA_j___ when the transform-both-sides lambda is
+#'   itself estimated), or NULL if there are none.
 #' @noRd
-.impmapThetaSensModel <- function(ui) {
+.impmapThetaSensModel <- function(ui, eventSens = "fd") {
   .s <- rxUiGet.impmapThetaSens(list(ui))
-  if (is.null(.s)) return(NULL)
+  if (is.null(.s)) {
+    return(NULL)
+  }
   ## Interpolation is carried like the inner model does; splitBolus() is not --
   ## this model solves the pre-split events, so declaring it would split the
   ## doses twice (see .foceiPreProcessData())
   .cmt <- ui$foceiCmtPreModel
-  .interp <- ui$interpLinesStr
-  if (.interp != "") .cmt <- paste0(.cmt, "\n", .interp)
+  # mtime() lines are re-emitted here (#919); see .mtimeLinesStr()
+  .cmt <- .addPreModelLines(.cmt, ui$interpLinesStr, .mtimeLinesStr(.s))
   nlmixr2global$toRxParam <-
     paste0(.uiGetThetaEtaParams(ui, TRUE), "\n", .cmt, "\n")
   nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)
   # Role-tagged artifact name so this sensitivity model cannot share a compiled .so
-  # with another build of the same text (nlmixr2/rxode2#1171).  eventSens is left at
-  # the default: switching it to "jump" here changes the impmap thetaSens codegen and
-  # broke 5 assertions in test-impmap.R, so that is a separate question from the
-  # artifact-name collision this fixes.
-  .toRx(.s$thetaSens, "compiling sensitivity model...", role = "rxThetaSens")
+  # with another build of the same text (nlmixr2/rxode2#1171).
+  .toRx(.s$thetaSens, "compiling sensitivity model...", role = "rxThetaSens", eventSens = eventSens)
 }
