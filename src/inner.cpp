@@ -253,6 +253,15 @@ extern "C" {
   iniRxode2ptr
 
   nmSetIndNewind_t nmSetIndNewind = NULL;
+  nmDfWalkInit_t nmDfWalkInit = NULL;
+  nmDfWalkStep_t nmDfWalkStep = NULL;
+  nmDfWalkDull_t nmDfWalkDull = NULL;
+  nmDfKeepSetup_t nmDfKeepSetup = NULL;
+  nmDfKeepFirst_t nmDfKeepFirst = NULL;
+  nmDfKeepRow_t nmDfKeepRow = NULL;
+  nmDfKeepCols_t nmDfKeepCols = NULL;
+  nmDfLevels_t nmDfLevels = NULL;
+  nmDfSolveRefused_t nmDfSolveRefused = NULL;
 
   // The entry points of rxode2Optional.h: the label .rxode2Optional() reports
   // it by, its slot in rxode2's pointer table and that slot's name there
@@ -267,6 +276,17 @@ extern "C" {
   static rxode2OptionalSlot rxode2OptionalSlots[] = {
     // remove with test-dependency-workarounds.R's slot-104 block
     {"setIndNewind", 104, "rxode2setIndNewind", (DL_FUNC *) &nmSetIndNewind},
+    // remove with test-dependency-workarounds.R's slot-105 block
+    {"dfWalkInit", 105, "rxode2rxDfWalkInit", (DL_FUNC *) &nmDfWalkInit},
+    {"dfWalkStep", 106, "rxode2rxDfWalkStep", (DL_FUNC *) &nmDfWalkStep},
+    {"dfWalkDull", 107, "rxode2rxDfWalkDull", (DL_FUNC *) &nmDfWalkDull},
+    {"dfKeepSetup", 108, "rxode2rxDfKeepSetup", (DL_FUNC *) &nmDfKeepSetup},
+    {"dfKeepFirst", 109, "rxode2rxDfKeepFirst", (DL_FUNC *) &nmDfKeepFirst},
+    {"dfKeepRow", 110, "rxode2rxDfKeepRow", (DL_FUNC *) &nmDfKeepRow},
+    {"dfKeepCols", 111, "rxode2rxDfKeepCols", (DL_FUNC *) &nmDfKeepCols},
+    {"dfLevels", 112, "rxode2getDfLevels", (DL_FUNC *) &nmDfLevels},
+    // remove with test-dependency-workarounds.R's slot-113 block
+    {"dfSolveRefused", 113, "rxode2rxDfSolveRefused", (DL_FUNC *) &nmDfSolveRefused},
   };
   static const int rxode2OptionalN =
     (int)(sizeof(rxode2OptionalSlots) / sizeof(rxode2OptionalSlots[0]));
@@ -13220,7 +13240,8 @@ NumericMatrix foceiCalcCov(Environment e){
 // full sandwich Rinv*S*Rinv (not just the Hessian inverse Rinv).  Both are stashed for the
 // R-side install (.foceiInstallFdFullCov).  Split into small helpers below; the orchestrator
 // is foceiCalcRFdFull. ---
-struct FdFullCtx { IntegerVector thPos, omA, omB; arma::mat Om0; int nth = 0, nom = 0; };
+// cpA/cpB: `same()` copies, each moved with Omega parameter cpOf (0-based, of omA/omB)
+struct FdFullCtx { IntegerVector thPos, omA, omB, cpA, cpB, cpOf; arma::mat Om0; int nth = 0, nom = 0; };
 
 // set op_focei Omega state from a variance-covariance Omega; false if it is not PD.
 static bool foceiFdSetOmega(const arma::mat &Om) {
@@ -13239,6 +13260,10 @@ static double foceiFdObjAt(const FdFullCtx &c, const double *x) {
   arma::mat Om = c.Om0;
   for (int q = 0; q < c.nom; ++q) {
     Om(c.omA[q]-1, c.omB[q]-1) = x[c.nth+q]; Om(c.omB[q]-1, c.omA[q]-1) = x[c.nth+q];
+  }
+  for (int k = 0; k < c.cpA.size(); ++k) {
+    double v = x[c.nth + c.cpOf[k]];
+    Om(c.cpA[k]-1, c.cpB[k]-1) = v; Om(c.cpB[k]-1, c.cpA[k]-1) = v;
   }
   if (!foceiFdSetOmega(Om)) return NA_REAL;
   // foceiOfv0() reports a failed evaluation as 5e100, which must not enter a difference
@@ -13361,23 +13386,50 @@ static bool foceiFdSFull(const FdFullCtx &c, const std::vector<double> &x0,
   return true;
 }
 
+static bool foceiFdEtaOk(int a) { return a >= 1 && a <= op_focei.neta; }
+
+// The omega pairs and same() copies index real etas and free omega slots.
+static bool foceiFdEtasOk(const FdFullCtx &c) {
+  for (int q = 0; q < c.nom; ++q) {
+    if (!foceiFdEtaOk(c.omA[q]) || !foceiFdEtaOk(c.omB[q])) return false;
+  }
+  for (int k = 0; k < c.cpA.size(); ++k) {
+    if (c.cpOf[k] < 0 || c.cpOf[k] >= c.nom) return false;
+    if (!foceiFdEtaOk(c.cpA[k]) || !foceiFdEtaOk(c.cpB[k])) return false;
+  }
+  return true;
+}
+
+// Every index .foceiFdFullParams(e) returned is in range for this fit.
+static bool foceiFdParamsOk(const FdFullCtx &c, const CharacterVector &nm) {
+  if (c.omB.size() != c.nom || nm.size() != c.nth + c.nom) return false;
+  if (c.cpB.size() != c.cpA.size() || c.cpOf.size() != c.cpA.size()) return false;
+  for (int i = 0; i < c.nth; ++i) {
+    if (c.thPos[i] < 0 || c.thPos[i] >= (int)op_focei.ntheta) return false;
+  }
+  return foceiFdEtasOk(c);
+}
+
 // enumeration/names from the R helper .foceiFdFullParams(e); false if nothing to do.
 static bool foceiFdParams(Environment e, FdFullCtx &c, CharacterVector &nm) {
   Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
   if (!nlmixr2.exists(".foceiFdFullParams")) return false;
   Function pf = as<Function>(nlmixr2[".foceiFdFullParams"]);
-  List pl;
   try {
     RObject plo = pf(e);
     if (Rf_isNull(plo)) return false;
-    pl = as<List>(plo);
+    List pl = as<List>(plo);
+    c.thPos = pl["thPos"]; c.omA = pl["omA"]; c.omB = pl["omB"]; nm = pl["names"];
+    if (pl.containsElementNamed("cpA")) {
+      c.cpA = pl["cpA"]; c.cpB = pl["cpB"]; c.cpOf = pl["cpOf"];
+    }
   } catch (Rcpp::internal::InterruptedException&) {
     throw;
   } catch (Rcpp::LongjumpException&) {
     throw;
   } catch (...) { return false; }
-  c.thPos = pl["thPos"]; c.omA = pl["omA"]; c.omB = pl["omB"]; nm = pl["names"];
   c.nth = c.thPos.size(); c.nom = c.omA.size();
+  if (!foceiFdParamsOk(c, nm)) return false;
   return (c.nth + c.nom) > 0;
 }
 

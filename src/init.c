@@ -72,7 +72,9 @@ extern SEXP _nlmixr2est_odeSwapInfo_(void);
 extern SEXP _nlmixr2est_tablePoolFree_(void);
 extern SEXP _nlmixr2est_tablePoolDeclare_(SEXP, SEXP);
 extern SEXP _nlmixr2est_tablePoolRegister_(SEXP, SEXP);
-extern SEXP _nlmixr2est_tablePoolSolve_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_tablePoolSolve_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP _nlmixr2est_tablePoolHasRxWalk_(void);
+extern SEXP _nlmixr2est_tablePoolLevels_(SEXP);
 extern SEXP _nlmixr2est_odeSwapEsNoteInstalled_(SEXP);
 extern SEXP _nlmixr2est_odeSwapPlanFor_(SEXP, SEXP);
 extern SEXP _nlmixr2est_odeSwapParLayoutFor_(SEXP, SEXP);
@@ -275,7 +277,9 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_tablePoolFree_", (DL_FUNC) &_nlmixr2est_tablePoolFree_, 0},
   {"_nlmixr2est_tablePoolDeclare_", (DL_FUNC) &_nlmixr2est_tablePoolDeclare_, 2},
   {"_nlmixr2est_tablePoolRegister_", (DL_FUNC) &_nlmixr2est_tablePoolRegister_, 2},
-  {"_nlmixr2est_tablePoolSolve_", (DL_FUNC) &_nlmixr2est_tablePoolSolve_, 8},
+  {"_nlmixr2est_tablePoolSolve_", (DL_FUNC) &_nlmixr2est_tablePoolSolve_, 10},
+  {"_nlmixr2est_tablePoolHasRxWalk_", (DL_FUNC) &_nlmixr2est_tablePoolHasRxWalk_, 0},
+  {"_nlmixr2est_tablePoolLevels_", (DL_FUNC) &_nlmixr2est_tablePoolLevels_, 1},
   {"_nlmixr2est_odeSwapEsNoteInstalled_", (DL_FUNC) &_nlmixr2est_odeSwapEsNoteInstalled_, 1},
   {"_nlmixr2est_odeSwapPlanFor_", (DL_FUNC) &_nlmixr2est_odeSwapPlanFor_, 2},
   {"_nlmixr2est_odeSwapParLayoutFor_", (DL_FUNC) &_nlmixr2est_odeSwapParLayoutFor_, 2},
