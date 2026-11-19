@@ -118,3 +118,34 @@ test_that("a random-slope omega that collapses is reported in runInfo (#1394)", 
   expect_gt(.fit$omega["eta.sl", "eta.sl"], 10)
   expect_false(any(grepl("^omega (collapsed|at lower bound)", .fit$runInfo)))
 })
+
+test_that("a block omega is checked on the parameters FOCEi bounds", {
+  .nm <- c("eta.a", "eta.b")
+  .om0 <- matrix(c(1, 0.5, 0.5, 1), 2, 2, dimnames = list(.nm, .nm))
+  # eta.a's bounded (inverse-Cholesky) parameter on the bound, while its
+  # marginal variance stays well above 1/100 of the start
+  .r <- chol(solve(.om0))
+  .r[1, ] <- .r[1, ] * 10
+  .om <- solve(crossprod(.r))
+  dimnames(.om) <- list(.nm, .nm)
+  expect_gt(.om["eta.a", "eta.a"], 0.2)
+  expect_identical(.omegaCollapseAtBound(.om0, .om, 100), "eta.a")
+  expect_identical(
+    .omegaCollapsed(diag(.om0), diag(.om), 1e-3, 100, .om0, .om),
+    list(collapsed = character(0), bound = "eta.a")
+  )
+  expect_identical(.omegaCollapsed(diag(.om0), diag(.om), 1e-3, 100)$bound, character(0))
+  # for a diagonal omega the bounded parameter and the variance ratio agree
+  .d0 <- diag(c(eta.a = 300, eta.b = 2))
+  dimnames(.d0) <- list(.nm, .nm)
+  .d1 <- diag(c(3, 1.9))
+  dimnames(.d1) <- list(.nm, .nm)
+  expect_identical(.omegaCollapseAtBound(.d0, .d1, 100), "eta.a")
+  expect_identical(
+    .omegaCollapsed(diag(.d0), diag(.d1), 1e-3, 100)$bound,
+    .omegaCollapsed(diag(.d0), diag(.d1), 1e-3, 100, .d0, .d1)$bound
+  )
+  # mismatched or singular matrices fall back to the ratio rule
+  expect_null(.omegaCollapseAtBound(.d0, .d1[2:1, 2:1], 100))
+  expect_null(.omegaCollapseAtBound(.d0, matrix(0, 2, 2, dimnames = list(.nm, .nm)), 100))
+})

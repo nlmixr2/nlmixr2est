@@ -166,7 +166,6 @@ foceiControl(
   shrinkEtaWarn = 30,
   odeSettleCheck = FALSE,
   odeSettleTol = 0.1,
-  omegaCollapseWarn = 0.001,
   nRetries = 3,
   seed = 42,
   resetThetaCheckPer = 0.1,
@@ -199,7 +198,8 @@ foceiControl(
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
   zeroThetaStep = 100,
-  boundedTransform = TRUE
+  boundedTransform = TRUE,
+  omegaCollapseWarn = 0.001
 )
 }
 \arguments{
@@ -1193,10 +1193,6 @@ Skipped for models without ODEs (e.g. `linCmt()`), fits with
 
 \item{odeSettleTol}{The objective change that `odeSettleCheck` reports.}
 
-\item{omegaCollapseWarn}{Warn (in `$runInfo`) when a free diagonal omega
-ends below this fraction of its initial estimate, or at its
-`diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.}
-
 \item{nRetries}{If FOCEi doesn't fit with the current parameter
 estimates, randomly sample new parameter estimates and restart
 the problem.  This is similar to 'PsN' resampling.}
@@ -1381,6 +1377,10 @@ transformed for unbounded optimization methods and back-transformed
 for final estimates. `FALSE` optimizes on the original scale with
 bounds passed to the optimizer. `NA` transforms for optimization but
 skips the final back-transform.}
+
+\item{omegaCollapseWarn}{Warn (in `$runInfo`) when a free diagonal omega
+ends below this fraction of its initial estimate, or at its
+`diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.}
 }
 \value{
 The control object that changes the options for the FOCEi

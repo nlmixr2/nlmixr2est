@@ -58,9 +58,12 @@
 #'   names nothing
 #' @param boundLower the `diagOmegaBoundLower` divisor the optimizer enforced,
 #'   or `NA` when there was none
+#' @param omega0,omega the full initial and final omega matrices; when given,
+#'   the bound is checked on the parameters FOCEi bounds (see
+#'   `.omegaCollapseAtBound()`), otherwise on the variance ratio
 #' @return list with `collapsed` and `bound`, the offending eta names
 #' @noRd
-.omegaCollapsed <- function(ini, final, limit, boundLower = NA_real_) {
+.omegaCollapsed <- function(ini, final, limit, boundLower = NA_real_, omega0 = NULL, omega = NULL) {
   .none <- list(collapsed = character(0), bound = character(0))
   if (length(limit) != 1L || !is.finite(limit)) {
     return(.none)
@@ -74,10 +77,44 @@
   .collapsed <- .nm[.ok & .ratio < limit]
   .bound <- character(0)
   if (length(boundLower) == 1L && is.finite(boundLower)) {
-    # within 1% of start/boundLower: the optimizer stopped on the bound
-    .bound <- setdiff(.nm[.ok & .ratio <= 1.01 / boundLower], .collapsed)
+    .at <- .omegaCollapseAtBound(omega0, omega, boundLower)
+    if (is.null(.at)) {
+      # within 1% of start/boundLower: the optimizer stopped on the bound
+      .at <- .nm[.ok & .ratio <= 1.01 / boundLower]
+    }
+    .bound <- setdiff(intersect(.at, .nm), .collapsed)
   }
   list(collapsed = .collapsed, bound = .bound)
+}
+
+#' Etas whose bounded omega parameter ended at its lower bound
+#'
+#' FOCEi bounds the diagonal of `chol(solve(omega))` (through `diagXform`, a
+#' monotone map), with the lower-variance bound taken from
+#' `omega0/boundLower`.  In a block that is not the marginal variance, so the
+#' ratio rule can miss a pinned eta; for a diagonal omega the two agree.
+#' @param omega0,omega full initial and final omega matrices with matching
+#'   dimnames
+#' @param boundLower the `diagOmegaBoundLower` divisor
+#' @return the eta names within 1% of the bound, or `NULL` when the matrices
+#'   cannot be compared
+#' @noRd
+.omegaCollapseAtBound <- function(omega0, omega, boundLower) {
+  if (
+    !is.matrix(omega0) ||
+      !is.matrix(omega) ||
+      is.null(rownames(omega)) ||
+      !identical(dimnames(omega0), dimnames(omega))
+  ) {
+    return(NULL)
+  }
+  .d <- function(m) tryCatch(diag(chol(solve(m))), error = function(e) NULL)
+  .d0 <- .d(omega0)
+  .d1 <- .d(omega)
+  if (is.null(.d0) || is.null(.d1)) {
+    return(NULL)
+  }
+  rownames(omega)[is.finite(.d1) & 1.01 * .d1^2 >= boundLower * .d0^2]
 }
 
 #' Warn when a fit's diagonal omega collapsed toward zero
@@ -107,7 +144,9 @@
     .ini,
     setNames(diag(.om), rownames(.om)),
     .limit,
-    .omegaCollapseBoundLower(fit)
+    .omegaCollapseBoundLower(fit),
+    tryCatch(.ui$omega, error = function(e) NULL),
+    .om
   )
   if (length(.ret$collapsed) > 0L) {
     warning(.omegaCollapseWarnMsg(.ret$collapsed, .limit), call. = FALSE)

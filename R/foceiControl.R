@@ -1517,7 +1517,6 @@ foceiControl <- function(
   shrinkEtaWarn = 30, #
   odeSettleCheck = FALSE, #
   odeSettleTol = 0.1, #
-  omegaCollapseWarn = 1e-3, #
   nRetries = 3, #
   seed = 42, #
   resetThetaCheckPer = 0.1, #
@@ -1550,7 +1549,8 @@ foceiControl <- function(
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
   zeroThetaStep = 100,
-  boundedTransform = TRUE
+  boundedTransform = TRUE,
+  omegaCollapseWarn = 1e-3
 ) {
   #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
