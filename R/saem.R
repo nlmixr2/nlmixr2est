@@ -411,6 +411,9 @@
       .cfg$plateauWindow <- as.integer(rxode2::rxGetControl(ui, "plateauWindow", 50L))
       .cfg$plateauTol <- as.numeric(rxode2::rxGetControl(ui, "plateauTol", 1e-3))
       .cfg$plateauMinFrac <- as.numeric(rxode2::rxGetControl(ui, "plateauMinFrac", 0.5))
+      .mixShift <- .mixSharedEtaShift(ui, ui$saemParamsToEstimate)
+      .cfg$mixShiftComp <- .mixShift$comp
+      .cfg$mixShiftEta <- .mixShift$eta
       if (isTRUE(rxode2::rxGetControl(ui, "saemHoldPar", FALSE))) {
         .cfg <- .saemHoldCfg(.cfg)
       }
@@ -1045,6 +1048,8 @@
   .nStruct <- length(.i1) + length(.i0)
   if (!is.null(.i1) && .nStruct > 0L && .nStruct == length(.pars)) {
     .ord <- c(.i1, .i0) + 1L
+    # a shared-eta component theta (#1296) has real information, not 1/gamma2_phi0
+    .i0 <- setdiff(.i0, as.integer(env$saem$mixOwnPhi))
     return(list(tn = .pars[.ord], fx = .fixed[.ord], phi0 = .pars[.i0 + 1L]))
   }
   if (isTRUE(.saemCfg$nphi0 > 0L)) {
