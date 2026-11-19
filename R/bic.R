@@ -237,10 +237,11 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
   .thetas <- .idf$name[!is.na(.idf$ntheta)]
   .etas <- .idf$name[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2]
   # each statement as list(lhs = name or NA, x = rhs, err = residual spec?)
-  .lines <- list()
-  .preds <- character(0)
+  .acc <- new.env(parent = emptyenv())
+  .acc$lines <- list()
+  .acc$preds <- character(0)
   .add <- function(lhs, x, err) {
-    .lines[[length(.lines) + 1L]] <<- list(lhs = lhs, x = x, rhs = all.vars(x), err = err)
+    .acc$lines[[length(.acc$lines) + 1L]] <- list(lhs = lhs, x = x, rhs = all.vars(x), err = err)
   }
   .walk <- function(x) {
     if (!is.call(x)) {
@@ -256,7 +257,7 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
       .add(.lhs, x[[3]], FALSE)
     } else if (identical(.f, "~") && length(x) == 3L) {
       if (is.name(x[[2]])) {
-        .preds <<- c(.preds, as.character(x[[2]]))
+        .acc$preds <- c(.acc$preds, as.character(x[[2]]))
       }
       # a likelihood endpoint, ll(err) ~ expr, is structural, not an error spec
       .ll <- is.call(x[[2]]) && identical(as.character(x[[2]][[1]]), "ll")
@@ -265,6 +266,8 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
     invisible()
   }
   lapply(ui$lstExpr, .walk)
+  .lines <- .acc$lines
+  .preds <- .acc$preds
   .lhs <- vapply(.lines, function(l) l$lhs, character(1))
   .rhsOf <- function(v) {
     unique(unlist(lapply(.lines[which(.lhs == v)], function(l) l$rhs)))
