@@ -195,4 +195,16 @@ test_that("a rejected probe falls back to a one-sided difference", {
   .g <- .covNewtonGradFd(.fit, .cov)
   expect_equal(.g[["tcl"]], 4, tolerance = 1e-6)
   expect_equal(.g[["p1"]], 6 * 0.9995, tolerance = 1e-2)
+  # both probes rejected at the default step: a smaller one
+  local_mocked_bindings(
+    .covNewtonFocei = function(ui, fit, ctl) {
+      .e <- stats::setNames(ui$iniDf$est, ui$iniDf$name)
+      if (abs(.e[["p1"]] - 0.9995) > 1e-4) {
+        stop("out of range")
+      }
+      list(objf = 3 * .e[["p1"]]^2 + 2 * .e[["tcl"]]^2)
+    }
+  )
+  .g <- .covNewtonGradFd(.fit, .cov)
+  expect_equal(.g[["p1"]], 6 * 0.9995, tolerance = 1e-6)
 })
