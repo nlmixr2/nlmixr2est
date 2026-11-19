@@ -6104,17 +6104,21 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # a fit is reproducible and never advances/leaks the global seed onto a
   # following fit or estimation method.
   .foceiSeed <- rxode2::rxGetControl(ui, "seed", 42L)
+  .probeSnap <- .foceiCollapseProbeSnapshot(.env, .control)
   .ret0 <- rxode2::rxWithSeed(.foceiSeed, rxseed = .foceiSeed, {
     .fit0 <- if (getOption("nlmixr2.retryFocei", TRUE)) {
       try(.foceiFitInternal(.env))
     } else {
       .foceiFitInternal(.env)
     }
-    .nlmixrFoceiRestartIfNeeded(.fit0, .env, .control)
+    .fit0 <- .nlmixrFoceiRestartIfNeeded(.fit0, .env, .control)
+    .foceiCollapseProbe(.fit0, .probeSnap, ui, .control)
   })
   if (inherits(.ret0, "try-error")) {
     stop("Could not fit data\n  ", attr(.ret0, "condition")$message, call. = FALSE)
   }
+  # the probe's re-fit fills its own environment; finish that one
+  .env <- .ret0
   .ret <- nlmixrWithTiming("postprocess", {
     .ret <- .ret0
     if (!is.null(method)) {
