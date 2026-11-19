@@ -308,3 +308,479 @@ nmTest({
     }
   })
 })
+
+# A cwresCalc() input with known sensitivities, without a fit.  `occ` > 1 makes
+# each eta active on only one block of each subject's rows, like IOV etas.
+.cwresSynth <- function(nid, nper, neta, zeroFrac = 0.5, occ = 1L) {
+  n <- nid * nper
+  id <- rep(seq_len(nid), each = nper)
+  .sens <- function() {
+    m <- matrix(rnorm(n * neta), n, neta)
+    m[runif(n * neta) < zeroFrac] <- 0
+    if (occ > 1L) {
+      .blk <- rep(rep(seq_len(occ), length.out = nper), nid)
+      m[cbind(seq_len(n), 1L)] <- m[cbind(seq_len(n), 1L)] * (.blk == 1L)
+      for (j in seq_len(neta)[-1]) {
+        m[.blk != ((j - 1L) %% occ) + 1L, j] <- 0
+      }
+    }
+    m
+  }
+  fp <- .sens()
+  fi <- .sens()
+  om <- crossprod(matrix(rnorm(neta * neta), neta)) / neta + diag(neta)
+  etas <- matrix(rnorm(nid * neta, sd = 0.3), nid, neta)
+  .mk <- function(f, pr, r) {
+    d <- data.frame(ID = id, time = rep(seq_len(nper), nid), rx_pred_ = pr)
+    for (j in seq_len(neta)) {
+      d[[paste0("rx__sens_rx_pred__BY_ETA_", j, "___")]] <- f[, j]
+    }
+    d$rx_r_ <- r
+    d$rxLambda <- 1
+    d$rxYj <- 0
+    d$rxLow <- 0
+    d$rxHi <- 1
+    d
+  }
+  pr <- rnorm(n, 10)
+  ipr <- pr + rnorm(n, sd = 0.2)
+  rp <- runif(n, 0.5, 1)
+  ri <- runif(n, 0.5, 1)
+  ipred <- .mk(fi, ipr, ri)
+  etasDf <- data.frame(ID = seq_len(nid), etas)
+  names(etasDf) <- c("ID", paste0("eta", seq_len(neta)))
+  list(
+    ipred = ipred,
+    pred = .mk(fp, pr, rp),
+    ebe = ipred[, c("ID", "time")],
+    om = om,
+    etasDf = etasDf,
+    etaLst = lapply(seq_len(neta + 1), function(j) double(10)),
+    dv = ipr + rnorm(n, sd = 0.5),
+    fp = fp,
+    fi = fi,
+    etas = etas,
+    id = id,
+    pr = pr,
+    ipr = ipr,
+    rp = rp,
+    ri = ri
+  )
+}
+
+.cwresSynthCall <- function(s) {
+  .Call(
+    `_nlmixr2est_cwresCalc`,
+    list(s$ipred, s$pred, s$etaLst, s$ebe),
+    s$om,
+    s$etasDf,
+    s$dv,
+    NULL,
+    NULL,
+    NULL,
+    character(0),
+    character(0),
+    character(0),
+    NULL,
+    tableControl()
+  )[[3]]
+}
+
+test_that("cwresCalc() WRES/CWRES equal the dense F Omega F' formula", {
+  set.seed(1356)
+  for (.occ in c(1L, 3L)) {
+    s <- .cwresSynth(30, 9, 3, occ = .occ)
+    r <- .cwresSynthCall(s)
+    # rxLambda = 1, rxYj = 0 is a Box-Cox transform x - 1; predictions are on that scale
+    .vp <- diag(s$fp %*% s$om %*% t(s$fp))
+    .vi <- diag(s$fi %*% s$om %*% t(s$fi))
+    expect_equal(r$WRES, (s$dv - 1 - s$pr) / sqrt(abs(.vp + s$rp)))
+    .cp <- s$ipr - rowSums(s$fi * s$etas[s$id, ])
+    expect_equal(r$CWRES, (s$dv - 1 - .cp) / sqrt(.vi + s$ri))
+    expect_equal(r$CPRED, .cp + 1)
+  }
+})
+
+test_that("cwresCalc() never forms a dense nobs x nobs matrix", {
+  skip_on_cran()
+  set.seed(1356)
+  # 60000 observations: one dense V_fo would need ~29 GB
+  s <- .cwresSynth(6000, 10, 3, zeroFrac = 0.3)
+  r <- .cwresSynthCall(s)
+  expect_equal(nrow(r), 60000L)
+  expect_true(all(is.finite(r$CWRES)))
+})
+
+nmTest({
+  test_that("pooled table solves equal the rxSolve() table solves (#1356)", {
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v + 0.01 * (WT - 70))
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .d <- nlmixr2data::theo_sd
+    .d$WT <- .d$WT + .d$TIME / 10
+    fit <- suppressMessages(suppressWarnings(nlmixr2(
+      one.cmt,
+      .d,
+      "focei",
+      foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE)
+    )))
+    fit$innerModelForce
+    .te <- fit$foceiThetaEtaParameters
+    .refI <- .foceiSolvePars(fit, fit$innerModel, .te$ipred, returnType = "data.frame.TBS", what = "ipred")
+    .refP <- .foceiSolvePars(fit, fit$innerModel, .te$pred, what = "pred")
+    .refE <- .foceiSolvePars(fit, fit$predOnlyModel, .te$ipred, what = "ebe", addCov = TRUE)
+
+    .ok <- .tablePoolSetup(
+      fit,
+      fit$innerModel,
+      fit$predOnlyModel,
+      .te$ipred,
+      .residOdeMethodName(fit$methodOde),
+      fit$atol[1],
+      fit$rtol[1]
+    )
+    on.exit(tablePoolFree_(), add = TRUE)
+    expect_equal(.ok, c(inner = TRUE, predOnly = TRUE))
+    .n0 <- .odeSwapInfo()$tablePoolSolveN
+
+    .mvI <- rxode2::rxModelVars(fit$innerModel)
+    .sens <- grep("^rx__sens_rx_pred__BY_ETA_", .mvI$lhs, value = TRUE)
+    .i <- .tablePoolSolve(
+      fit$innerModel,
+      "inner",
+      .te$ipred,
+      lhs = c("rx_pred_", "rx_r_"),
+      state = .mvI$state,
+      sens = .sens,
+      tbs = TRUE
+    )
+    expect_true(.i$rowsOk)
+    expect_equal(.i$time, .refI$time)
+    for (.n in names(.i$vals)) {
+      expect_equal(.i$vals[[.n]], .refI[[.n]], tolerance = 0, label = .n)
+    }
+    # the eta sensitivities come back sparse, and only their nonzero entries
+    .dense <- matrix(0, nrow(.refI), length(.sens))
+    .dense[cbind(.i$sens$i, .i$sens$k)] <- .i$sens$x
+    expect_equal(.dense, unname(as.matrix(.refI[, .sens])), tolerance = 0)
+    expect_true(all(.i$sens$x != 0))
+
+    .p <- .tablePoolSolve(fit$innerModel, "inner", .te$pred, lhs = c("rx_pred_", "rx_r_"))
+    expect_equal(.p$vals$rx_pred_, .refP$rx_pred_, tolerance = 0)
+    expect_equal(.p$vals$rx_r_, .refP$rx_r_, tolerance = 0)
+
+    .mvE <- rxode2::rxModelVars(fit$predOnlyModel)
+    .e <- .tablePoolSolve(
+      fit$predOnlyModel,
+      "predOnly",
+      .te$ipred,
+      lhs = .mvE$lhs,
+      state = .mvE$state,
+      cov = "WT"
+    )
+    for (.n in names(.e$vals)) {
+      expect_equal(.e$vals[[.n]], .refE[[.n]], tolerance = 0, label = .n)
+    }
+    # the solve's records map back onto the fit's events
+    .rows <- unlist(lapply(split(seq_len(nrow(fit$dataSav)), fit$dataSav$ID), function(.r) .r[1] - 1L))
+    expect_equal(fit$dataSav$nlmixrRowNums[.rows[.e$id] + .e$rec + 1L], .refE$nlmixrRowNums)
+    expect_equal(.odeSwapInfo()$tablePoolSolveN, .n0 + 3)
+
+    tablePoolFree_()
+    expect_equal(.odeSwapInfo()$nLoaded, 0L)
+    # a fit after the table pool is unaffected by it
+    .fit2 <- suppressMessages(suppressWarnings(nlmixr2(
+      one.cmt,
+      .d,
+      "focei",
+      foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE)
+    )))
+    expect_equal(.fit2$objf, fit$objf)
+  })
+})
+
+test_that(".residSolveWithFallback() loosens tolerances, then switches method", {
+  .fit <- list(
+    methodOde = "liblsoda",
+    atol = 1e-6,
+    rtol = 1e-6,
+    foceiControl = list(rxControl = list(maxAtolRtolFactor = 0.1), odeRecalcFactor = 10, stickyRecalcN = 2)
+  )
+  .calls <- list()
+  .solve <- function(okWhen) {
+    function(method, atol, rtol) {
+      .calls[[length(.calls) + 1L]] <<- c(method, atol)
+      list(rx_pred_ = if (okWhen(method, atol)) 1 else NA_real_)
+    }
+  }
+  # recovers after one loosening
+  expect_equal(.residSolveWithFallback(.fit, "ipred", .solve(function(m, a) a > 1e-6))$rx_pred_, 1)
+  expect_equal(.calls, list(c("liblsoda", "1e-06"), c("liblsoda", "1e-05")))
+  # the next method, with a warning naming the failed one
+  .calls <- list()
+  expect_warning(
+    .r <- .residSolveWithFallback(.fit, "pred", .solve(function(m, a) m == "dop853")),
+    "Problems solving pred with liblsoda, returning results from dop853"
+  )
+  expect_equal(.r$rx_pred_, 1)
+  expect_equal(vapply(.calls, `[`, character(1), 1), c("liblsoda", "liblsoda", "dop853"))
+  # every method fails: the first method's result, with a warning
+  expect_warning(
+    .r <- .residSolveWithFallback(.fit, "ebe", .solve(function(m, a) FALSE)),
+    "returning results from the first method"
+  )
+  expect_true(is.na(.r$rx_pred_))
+})
+
+nmTest({
+  .tablePoolModel <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl) * (WT / 70)
+      v <- exp(tv + eta.v)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  .tablePoolData <- function() {
+    .d <- nlmixr2data::theo_sd
+    .d$WT <- .d$WT + .d$TIME / 5
+    .d
+  }
+  .tablePoolFit <- function(model = .tablePoolModel, data = .tablePoolData()) {
+    suppressMessages(suppressWarnings(nlmixr2(
+      model,
+      data,
+      "focei",
+      foceiControl(print = 0, maxOuterIterations = 0, calcTables = FALSE)
+    )))
+  }
+  # the table of the rxSolve() route
+  .tableOld <- function(fit, ...) {
+    withr::with_options(list(nlmixr2.tablePool = FALSE), suppressMessages(addTable(fit, ...)))
+  }
+
+  test_that("addTable() solves in the pool and equals the rxSolve() table (#1356)", {
+    fit <- .tablePoolFit()
+    .ref <- .tableOld(fit)
+    .i0 <- .tablePoolInfo()
+    .tab <- suppressMessages(addTable(fit))
+    .i1 <- .tablePoolInfo()
+    expect_equal(.i1$pooledN, .i0$pooledN + 1L)
+    expect_equal(.i1$declineN, .i0$declineN)
+    expect_equal(as.data.frame(.tab), as.data.frame(.ref), tolerance = 0)
+    # the slots are cleared after the table step
+    expect_equal(.odeSwapInfo()$nLoaded, 0L)
+    # cwres = FALSE solves only the predOnly model
+    .ref2 <- .tableOld(fit, table = tableControl(cwres = FALSE))
+    .tab2 <- suppressMessages(addTable(fit, table = tableControl(cwres = FALSE)))
+    expect_equal(as.data.frame(.tab2), as.data.frame(.ref2), tolerance = 0)
+  })
+
+  test_that("the pooled table switches ODE method like the rxSolve() table", {
+    fit <- .tablePoolFit()
+    .both <- function(...) {
+      .w1 <- character(0)
+      .old <- withCallingHandlers(.tableOld(fit), warning = function(w) {
+        .w1 <<- c(.w1, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      })
+      .w2 <- character(0)
+      .i0 <- .tablePoolInfo()
+      .new <- withCallingHandlers(suppressMessages(addTable(fit)), warning = function(w) {
+        .w2 <<- c(.w2, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      })
+      .i1 <- .tablePoolInfo()
+      expect_equal(.i1$pooledN, .i0$pooledN + 1L)
+      expect_equal(as.data.frame(.new), as.data.frame(.old), tolerance = 0)
+      expect_equal(.w2, .w1)
+      .i1$rebuildN - .i0$rebuildN
+    }
+    # liblsoda "fails" for every solve, so each one is redone with dop853
+    withr::with_options(list(nlmixr2.tableFailMethods = "liblsoda"), {
+      expect_gt(.both(), 0L)
+    })
+    # every method fails: the first method's result, with the warnings
+    withr::with_options(list(nlmixr2.tableFailMethods = c("liblsoda", "dop853")), {
+      expect_gt(.both(), 0L)
+    })
+  })
+
+  test_that("addTable() gets the right table once the fit's pool is gone", {
+    fit <- .tablePoolFit()
+    .ref <- .tableOld(fit)
+    # another model's fit and a plain rxSolve() replace the registry and the solve
+    .other <- function() {
+      ini({
+        tcl <- 1
+        tv <- 3.45
+        eta.cl ~ 0.3
+        prop.sd <- 0.2
+      })
+      model({
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        cp <- linCmt()
+        cp ~ prop(prop.sd)
+      })
+    }
+    .fit2 <- .tablePoolFit(.other, nlmixr2data::theo_sd)
+    invisible(rxode2::rxSolve(.fit2, nlmixr2data::theo_sd))
+    .tab <- suppressMessages(addTable(fit))
+    expect_equal(as.data.frame(.tab), as.data.frame(.ref), tolerance = 0)
+    # twice in a row
+    .tab2 <- suppressMessages(addTable(fit))
+    expect_equal(as.data.frame(.tab2), as.data.frame(.ref), tolerance = 0)
+    expect_equal(.odeSwapInfo()$nLoaded, 0L)
+    # a saved and reloaded fit
+    .f <- tempfile(fileext = ".rds")
+    on.exit(unlink(.f), add = TRUE)
+    saveRDS(fit, .f)
+    .fit3 <- readRDS(.f)
+    .i0 <- .tablePoolInfo()
+    .tab3 <- suppressMessages(addTable(.fit3))
+    expect_equal(.tablePoolInfo()$pooledN, .i0$pooledN + 1L)
+    expect_equal(as.data.frame(.tab3), as.data.frame(.ref), tolerance = 0)
+  })
+
+  test_that("addDosing tables solve in the pool and equal the rxSolve() table (#1356)", {
+    skip_if_not(.tablePoolRxWalk(), "this rxode2 has no output-record walk")
+    fit <- .tablePoolFit()
+    for (.sn in c(TRUE, FALSE)) {
+      .tc <- tableControl(addDosing = TRUE, subsetNonmem = .sn)
+      .ref <- .tableOld(fit, table = .tc)
+      .i0 <- .tablePoolInfo()
+      .tab <- suppressMessages(addTable(fit, table = .tc))
+      expect_equal(.tablePoolInfo()$pooledN, .i0$pooledN + 1L)
+      expect_equal(as.data.frame(.tab), as.data.frame(.ref), tolerance = 0)
+      expect_true(any(.tab$EVID != 0))
+    }
+  })
+
+  test_that("without rxode2's record walk an addDosing table takes the rxSolve() route", {
+    fit <- .tablePoolFit()
+    .tc <- tableControl(addDosing = TRUE)
+    .ref <- .tableOld(fit, table = .tc)
+    local_mocked_bindings(.tablePoolRxWalk = function() FALSE)
+    .i0 <- .tablePoolInfo()
+    .tab <- suppressMessages(addTable(fit, table = .tc))
+    .i1 <- .tablePoolInfo()
+    expect_equal(.i1$pooledN, .i0$pooledN)
+    expect_equal(.i1$lastDecline, "rxode2")
+    expect_equal(as.data.frame(.tab), as.data.frame(.ref), tolerance = 0)
+    # a table without dosing rows still pools, through nlmixr2est's own walk
+    .ref2 <- .tableOld(fit)
+    .tab2 <- suppressMessages(addTable(fit))
+    expect_equal(.tablePoolInfo()$pooledN, .i1$pooledN + 1L)
+    expect_equal(as.data.frame(.tab2), as.data.frame(.ref2), tolerance = 0)
+  })
+
+  test_that("an addDosing npde table has the plain table's npde and NA on dosing rows", {
+    fit <- .tablePoolFit()
+    .plain <- rxode2::rxWithSeed(
+      1356,
+      suppressMessages(addTable(fit, table = tableControl(npde = TRUE, nsim = 100)))
+    )
+    .dose <- rxode2::rxWithSeed(
+      1356,
+      suppressMessages(addTable(fit, table = tableControl(npde = TRUE, nsim = 100, addDosing = TRUE)))
+    )
+    # every column as long as the table (merge() once multiplied rows)
+    expect_true(all(vapply(unclass(.dose), length, integer(1)) == nrow(.dose)))
+    .obs <- .dose[.dose$EVID == 0, ]
+    for (.c in c("NPDE", "NPD", "EPRED", "ERES", "PDE", "PD")) {
+      expect_equal(.obs[[.c]], .plain[[.c]], tolerance = 0, label = .c)
+    }
+    expect_true(all(is.na(.dose$NPDE[.dose$EVID != 0])))
+  })
+})
+
+test_that(".residMixIcov() gives each subject's mixture assignment by subject index", {
+  .env <- new.env()
+  expect_null(.residMixIcov(.env))
+  .env$mixIcov <- data.frame(ID = factor(c("101", "102"), levels = c("101", "102")), mixest = c(2L, 1L))
+  .ic <- .residMixIcov(.env)
+  expect_identical(.ic$ID, 1:2)
+  expect_identical(.ic$mixest, c(2L, 1L))
+})
+
+test_that(".residMixIcovSolve() retries without the iCov rxode2 rejects, and says so", {
+  .st <- new.env()
+  .st$iCov <- data.frame(ID = 1:2, mixest = 1:2)
+  .st$ok <- TRUE
+  .seen <- list()
+  .solve <- function(iCov) {
+    .seen[[length(.seen) + 1L]] <<- list(iCov)
+    if (!is.null(iCov)) {
+      stop("bad iCov column")
+    }
+    "solved"
+  }
+  expect_warning(.r <- .residMixIcovSolve(.st, .solve), "mixture not passed to table")
+  expect_identical(.r, "solved")
+  expect_false(.st$ok)
+  expect_identical(.seen[[1]][[1]], .st$iCov)
+  expect_null(.seen[[2]][[1]])
+  # not tried again
+  expect_identical(.residMixIcovSolve(.st, function(iCov) is.null(iCov)), TRUE)
+  # any other error is the solve's own
+  .st$ok <- TRUE
+  expect_error(.residMixIcovSolve(.st, function(iCov) stop("other failure")), "other failure")
+})
+
+test_that(".tablePoolSensRows() keeps the sensitivities of the kept rows, renumbered", {
+  .s <- list(i = c(1L, 2L, 3L, 3L), k = c(1L, 1L, 1L, 2L), x = c(0.1, 0.2, 0.3, 0.4), nrow = 3L, ncol = 2L)
+  .r <- .tablePoolSensRows(.s, c(TRUE, FALSE, TRUE))
+  expect_identical(.r$i, c(1L, 2L, 2L))
+  expect_identical(.r$k, c(1L, 1L, 2L))
+  expect_identical(.r$x, c(0.1, 0.3, 0.4))
+  expect_identical(.r$nrow, 2L)
+})
+
+test_that(".tablePoolFactor() writes level indices as rxSolve() writes a factor", {
+  .f <- .tablePoolFactor(c(2, 1, NA, 3, 0), c("low", "high"))
+  expect_s3_class(.f, "factor")
+  expect_identical(levels(.f), c("low", "high"))
+  expect_identical(as.character(.f), c("high", "low", NA, NA, NA))
+})
+
+test_that(".residIdDv() adds the ID a single subject's solve lacks, also with dosing rows", {
+  .obs <- .residIdDv(data.frame(time = 1:2, cp = 1:2, DV = 3:4))
+  expect_named(.obs, c("ID", "time", "cp", "dv"))
+  expect_equal(.obs$ID, c(1L, 1L))
+  # addDosing = TRUE starts the frame at evid
+  .dose <- .residIdDv(data.frame(evid = c(1L, 0L), time = 0:1, Dv = c(NA, 2)))
+  expect_named(.dose, c("ID", "evid", "time", "dv"))
+  # several subjects already have one
+  .many <- .residIdDv(data.frame(id = 1:2, time = 0:1))
+  expect_named(.many, c("id", "time"))
+})

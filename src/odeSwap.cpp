@@ -208,7 +208,8 @@ static int _odeEsSlotIdx = -1;
 
 int odeSwapEsModelForSlot(int slot) {
   switch (slot) {
-  case odeSlotPred:      return odeEsPred;
+  case odeSlotPred:
+  case odeSlotTable:     return odeEsPred;
   case odeSlotInner:     return odeEsInner;
   case odeSlotHess2:     return odeEsHess2;
   case odeSlotThetaSens:
@@ -732,8 +733,8 @@ static inline bool probeDeny() {
 // Declining is the safe direction and what every other failure here does: the caller
 // falls back to the rxode2::rxSolve reference path, which is correct, just slower.
 static bool odeSwapProbeFits(int slot, rx_solve *rx, rx_solving_options *op,
-                             int wantLhs) {
-  if (wantLhs <= 0 || getOpNlhs(op) < wantLhs) return false;
+                             int wantLhs, bool allowScratch) {
+  if (wantLhs <= 0 || (!allowScratch && getOpNlhs(op) < wantLhs)) return false;
   // neq == 0 is legitimate, not a failure: an ODE-free model (a pure `ll()` regression)
   // has real lhs outputs and symbolic sensitivities, and pools like any other -- see
   // test-focei-ll-fast-grad-fit.R.  It simply reads no state.
@@ -776,10 +777,11 @@ static bool odeSwapProbeAllWritten(const std::vector<double> &probe, int want, d
   return true;
 }
 
-bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op) {
+bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_options *op,
+                          bool allowScratch) {
   if (fns == NULL || fns->calc_lhs == NULL || rx == NULL || op == NULL) return false;
   int want = odeSwapNlhs(slot);
-  if (!odeSwapProbeFits(slot, rx, op, want)) return false;
+  if (!odeSwapProbeFits(slot, rx, op, want, allowScratch)) return false;
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, 0);   // base subject 0
   if (ind == NULL) return false;
   odeSwapProbeBind(ind, rx, op, fns);
@@ -788,7 +790,7 @@ bool odeSwapCheckLhsWidth(int slot, rxSolveF *fns, rx_solve *rx, rx_solving_opti
   // Only WHICH slots get written matters, not the values -- so use a sentinel no
   // model produces.  NaN would compare unequal and so read as "written".
   static const double _sent = -9.87654321e37;
-  std::vector<double> probe((size_t)getOpNlhs(op), _sent);
+  std::vector<double> probe((size_t)std::max(getOpNlhs(op), want), _sent);
   // Probe at this subject's own first time, not t=0: an lhs sitting inside a
   // time-dependent branch would go unassigned at an arbitrary time and look missing.
   fns->calc_lhs(0, getTime(getIndIx(ind, 0), ind), st, probe.data());
@@ -1178,5 +1180,6 @@ List odeSwapInfo_() {
     _["esInstallC"] = (double)_odeEsInstallC,
     _["esInstallR"] = (double)_odeEsInstallR,
     _["pinDeny"] = (double)odeSwapPinDeny(),
-    _["impThetaSensHarvestN"] = (double)impThetaSensHarvestN());
+    _["impThetaSensHarvestN"] = (double)impThetaSensHarvestN(),
+    _["tablePoolSolveN"] = (double)tablePoolSolveN());
 }

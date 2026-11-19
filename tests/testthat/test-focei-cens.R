@@ -345,7 +345,8 @@ nmTest({
     # rxTruncNorm() (truncNorm.h, Botev 2015 -- the same algorithm censResid.h's
     # truncnorm() uses for CWRES) moves it a fourth time, and seeding every
     # SAEM draw sequentially (one seed per observation and chain row) a fifth,
-    # to the value pinned below -- identical on a repeat run and at 2 threads.
+    # to -4.6970347829.  Holding the fixed tka/tv out of SAEM's phi0 MCMC
+    # (#1287) moves it a sixth time, to the value pinned below.
     .m <- function() {
       ini({
         tka <- log(1.2); tcl <- log(0.2); tv <- log(5)
@@ -395,7 +396,23 @@ nmTest({
       nlmixr(.mFix, datAr, "saem", control = saemControl(nBurn = 50, nEm = 0, print = 0, seed = 42))
     ))
     ct(f.saemAr, "M3 censoring")
-    expect_equal(f.saemAr$objf, -4.6970347829, tolerance = 1e-4)
+    expect_equal(f.saemAr$objf, -4.8120262756, tolerance = 1e-4)
+    # fixedNoEta = "converge" keeps the earlier sampled-then-fixed behavior
+    f.saemArConv <- suppressWarnings(suppressMessages(
+      nlmixr(
+        .mFix,
+        datAr,
+        "saem",
+        control = saemControl(
+          nBurn = 50,
+          nEm = 0,
+          print = 0,
+          seed = 42,
+          fixedNoEta = "converge"
+        )
+      )
+    ))
+    expect_equal(f.saemArConv$objf, -4.6970347829, tolerance = 1e-4)
   })
 })
 
