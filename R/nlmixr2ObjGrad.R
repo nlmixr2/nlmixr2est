@@ -46,7 +46,10 @@
 #'     ka <- exp(tka + eta.ka)
 #'     cl <- exp(tcl + eta.cl)
 #'     v <- exp(tv)
-#'     linCmt() ~ add(add.sd)
+#'     d / dt(depot) <- -ka * depot
+#'     d / dt(center) <- ka * depot - cl / v * center
+#'     cp <- center / v
+#'     cp ~ add(add.sd)
 #'   })
 #' }
 #' fit <- nlmixr2(one.cmt, theo_sd, "focei", control = foceiControl(print = 0))
