@@ -23,15 +23,20 @@
 #' @param omega the fit's final omega
 #' @param ini named initial diagonal omegas
 #' @param etas the collapsed etas
+#' @param omega0 the starting omega, whose block pattern the probe keeps; a
+#'   covariance the fit left at exactly 0 gets a negligible correlation
 #' @return `omega` with each collapsed eta's variance raised back to its initial
 #'   estimate and its correlations halved.  Shrinking (not zeroing) them keeps
 #'   the block structure, so the omega parameters stay the same, and keeps the
 #'   matrix positive definite.
 #' @noRd
-.foceiCollapseProbeOmega <- function(omega, ini, etas) {
+.foceiCollapseProbeOmega <- function(omega, ini, etas, omega0 = NULL) {
   .sd <- sqrt(diag(omega))
   .cor <- omega / outer(.sd, .sd)
   .cor[!is.finite(.cor)] <- 0
+  if (is.matrix(omega0) && identical(dimnames(omega0), dimnames(omega))) {
+    .cor[omega0 != 0 & .cor == 0] <- 1e-6
+  }
   diag(.cor) <- 1
   .s <- setNames(rep(1, nrow(omega)), rownames(omega))
   .s[etas] <- 0.5
@@ -90,7 +95,7 @@
   }
   .inv <- tryCatch(
     .foceiSymInvCholCreate(
-      .foceiCollapseProbeOmega(.om, .ini, .etas),
+      .foceiCollapseProbeOmega(.om, .ini, .etas, tryCatch(ui$omega, error = function(e) NULL)),
       rxode2::rxGetControl(ui, "diagXform", "sqrt"),
       .same,
       warn = FALSE,

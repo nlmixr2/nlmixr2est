@@ -18,6 +18,10 @@ test_that("the probe omega raises collapsed etas and keeps the block", {
     length(rxode2::rxSymInvCholCreate(.p, diag.xform = "sqrt")$theta),
     length(rxode2::rxSymInvCholCreate(.om, diag.xform = "sqrt")$theta)
   )
+  # a covariance the fit left at exactly 0 keeps the starting block
+  .om0 <- .om
+  .om[1, 2] <- .om[2, 1] <- 0
+  expect_identical(.foceiCollapseProbeOmega(.om, c(eta.b = 300), "eta.b", .om0) != 0, .om0 != 0)
 })
 
 test_that("the probe start stays inside narrow and infinite bounds", {
