@@ -44,7 +44,8 @@ trustControl(
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
-  ...
+  ...,
+  corWarn = 0.95
 )
 }
 \arguments{
@@ -284,6 +285,10 @@ bounds passed to the optimizer. `NA` transforms for optimization but
 skips the final back-transform.}
 
 \item{...}{Ignored parameters}
+
+\item{corWarn}{warn when two estimates' correlation is at least this in
+absolute value after the covariance step; \code{NA} or \code{Inf} turns
+the warning off.}
 }
 \value{
 trust control structure
