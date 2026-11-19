@@ -132,14 +132,14 @@ static inline SEXP dfProtectedNames(SEXP inS, std::string what) {
     return R_NilValue;
   }
   CharacterVector nm = as<CharacterVector>(nmS);
-  const char *badNames[29] = {"IPRED", "IRES", "IWRES", "CENS", "LIMIT",
+  const char *badNames[30] = {"IPRED", "IRES", "IWRES", "CENS", "LIMIT",
     "lowerLim", "upperLim","PRED", "RES", "CPRED",
     "CRES", "CWRES", "EPRED", "ERES", "NPDE",
     "ID", "RESETNO", "EVID", "CMT", "SS",
     "RATE", "DUR", "II", "TIME", "rxLambda",
-    "rxYj", "rxLow", "rxHi", "EWRES"};
+    "rxYj", "rxLow", "rxHi", "EWRES", "PWRES"};
   for (unsigned int i = 0; i < nm.size(); ++i) {
-    for (unsigned int j = 0; j < 29; ++j) {
+    for (unsigned int j = 0; j < 30; ++j) {
       if (!strcmp(badNames[j], CHAR(nm[i]))) {
         std::string cur = as<std::string>(nm[i]);
         cur += "." + what;

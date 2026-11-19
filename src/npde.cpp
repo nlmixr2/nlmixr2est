@@ -184,11 +184,13 @@ static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned i
 }
 
 // EWRES: the observed residual whitened by the simulations' own mean and
-// covariance, Sigma^(-1/2) (y - EPRED), with the symmetric inverse square root.
+// covariance, Sigma^(-1/2) (y - EPRED), by the symmetric inverse square root
+// or by the inverse of the lower Cholesky factor.
 // NA for a subject with a censored observation or too few simulations (K <= n).
 static inline void calculateEwres(calcNpdeInfoId *retp,
                                   const arma::Col<int> &cens,
-                                  const arma::Col<int> &evid, unsigned int K) {
+                                  const arma::Col<int> &evid, unsigned int K,
+                                  int ewresMethod) {
   calcNpdeInfoId &ret = *retp;
   ret.ewres = arma::vec(ret.yobst.n_elem);
   ret.ewres.fill(NA_REAL);
@@ -196,11 +198,21 @@ static inline void calculateEwres(calcNpdeInfoId *retp,
   if (n == 0 || K <= n) return;
   if (arma::any(cens.elem(arma::find(evid == 0)) != 0)) return;
   arma::vec r = ret.yobst.elem(ret.obs) - ret.epredt.elem(ret.obs);
-  arma::vec d;
-  arma::mat Q;
-  if (!arma::eig_sym(d, Q, arma::symmatu(ret.varsim), "std")) return;
-  if (!(d.min() > d.max() * n * DBL_EPSILON)) return;
-  arma::vec w = Q * ((Q.t() * r) / arma::sqrt(d));
+  arma::mat V = arma::symmatu(ret.varsim);
+  arma::vec w;
+  if (ewresMethod == EWRES_CHOL) {
+    arma::mat L;
+    if (!arma::chol(L, V, "lower")) return;
+    arma::vec dl = L.diag();
+    if (!(dl.min() * dl.min() > dl.max() * dl.max() * n * DBL_EPSILON)) return;
+    if (!arma::solve(w, arma::trimatl(L), r)) return;
+  } else {
+    arma::vec d;
+    arma::mat Q;
+    if (!arma::eig_sym(d, Q, V, "std")) return;
+    if (!(d.min() > d.max() * n * DBL_EPSILON)) return;
+    w = Q * ((Q.t() * r) / arma::sqrt(d));
+  }
   if (!w.is_finite()) return;
   ret.ewres.elem(ret.obs) = w;
 }
@@ -576,7 +588,7 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
                           unsigned int& K, double &tolChol, bool &ties,
                           arma::vec &ruIn, arma::vec &ru2In,
                           arma::vec &lambda, arma::vec &yj, arma::vec &hi, arma::vec &low,
-                          int seed, int nObs) {
+                          int seed, int nObs, int ewresMethod) {
   calcNpdeInfoId ret;
   ret.matsim = getSimMatById(idLoc, sim, id, K);
   // transformed y observations
@@ -596,7 +608,7 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
     imputeCensNpde(&ret, cens, limit, lambda, yj, low, hi, row0, seed, nObs);
   }
   calculatePD(ret, id, K, tolChol);
-  calculateEwres(&ret, cens, evid, K);
+  calculateEwres(&ret, cens, evid, K, ewresMethod);
   calculateNPDEfromPD(ret, K, ties, ru, ru2);
   ret.epred = arma::vec(ret.yobst.size());
   ret.yobs = arma::vec(ret.yobst.size());
@@ -701,6 +713,14 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   bool ties = npdeOpt1<bool>(opt, "ties", LGLSXP, false);
   int censMethod = npdeOpt1<int>(opt, "censMethod", INTSXP, CENS_TNORM);
 
+  int ewresMethod = EWRES_EIGEN;
+  if (opt.containsElementNamed("ewresMethod")) {
+    RObject tmp = opt["ewresMethod"];
+    if (TYPEOF(tmp) == INTSXP) {
+      ewresMethod = as<int>(tmp);
+    }
+  }
+
   int dvLen = Rf_length(dvIn);
   arma::vec dv  = arma::vec(REAL(dvIn), dvLen, false, true);
   //arma::vec npde(REAL(npdeSEXP), dv.size(), false, true);
@@ -802,7 +822,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
       // is set NA instead.
       try {
         calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, curid, K, tolChol, ties, ru, ru2,
-                                           lambda, yj, hi, low, npdeSeed, nObs);
+                                           lambda, yj, hi, low, npdeSeed, nObs, ewresMethod);
         npde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npde;
         npd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npd;
         pde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd;

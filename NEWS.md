@@ -114,8 +114,10 @@
   mean and covariance, with no extra simulation.  Unlike NPDE it keeps the
   residual's magnitude; it uses only the first two moments, so a skewed
   marginal can show bias even under the true model.  Subjects with a
-  censored observation or no more simulations than observations get `NA`
-  (#1390).
+  censored observation or no more simulations than observations get `NA`.
+  `tableControl(ewresMethod = "cholesky")` decorrelates it by the Cholesky
+  factor instead of the default symmetric inverse square root, and
+  `fit$PWRES` is an alias for the column (#1390).
 
 - `addCondDist(fit)` samples each subject's conditional distribution of the
   etas at the final estimates of a fit from any estimation method and stores

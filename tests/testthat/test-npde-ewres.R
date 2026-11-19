@@ -94,4 +94,33 @@ nmTest({
     .p <- .ewres(.ewresSims(.mu, .S, 1L, 4L), .y)
     expect_false(anyNA(.p))
   })
+
+  test_that("eigen and Cholesky EWRES have the same per-subject sum of squares", {
+    set.seed(5)
+    .sim <- .ewresSims(.mu, .S, 3L, 200L)
+    .dv <- c(.y, .y - 1, .y + 0.5)
+    .e <- .ewres(.sim, .dv)
+    .c <- .ewres(.sim, .dv, opt = list(ewresMethod = 2L))
+    expect_false(isTRUE(all.equal(.e, .c)))
+    .ss <- function(p) tapply(p^2, rep(1:3, each = 3), sum)
+    expect_equal(.ss(.e), .ss(.c), tolerance = 1e-10)
+    # the lower Cholesky factor whitens the first residual by its own SD
+    .m <- matrix(.sim$sim[.sim$id == 1], nrow = 3)
+    expect_equal(.c[1], (.y[1] - mean(.m[1, ])) / sd(.m[1, ]), tolerance = 1e-10)
+    expect_identical(.ewres(.sim, .dv, opt = list(ewresMethod = 1L)), .e)
+  })
+
+  test_that("tableControl(ewresMethod=) maps to the C option", {
+    expect_identical(tableControl()$ewresMethod, 1L)
+    expect_identical(tableControl(ewresMethod = "cholesky")$ewresMethod, 2L)
+    expect_error(tableControl(ewresMethod = "svd"))
+    # a stored control is passed back through tableControl()
+    expect_identical(do.call(tableControl, tableControl(ewresMethod = "cholesky"))$ewresMethod, 2L)
+  })
+
+  test_that("fit$PWRES is the EWRES column", {
+    .fit <- data.frame(EWRES = c(0.1, -0.2))
+    expect_identical(nmObjGetData.PWRES(list(.fit, FALSE)), c(0.1, -0.2))
+    expect_null(nmObjGetData.PWRES(list(data.frame(NPDE = 1), FALSE)))
+  })
 })
