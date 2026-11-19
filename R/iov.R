@@ -1525,12 +1525,7 @@ nlmixr2iovVarSd <- function(val) {
       if (.hasIovTheta) {
         .parFixed[.uiIovEnv$iovVars, .bck2] <- ""
         .parFixed[.uiIovEnv$iovVars, .est2] <- ""
-        .parFixed[.uiIovEnv$iovVars, .bsv2] <- formatC(
-          signif(.valCharPrep, digits = .sigdig),
-          digits = .sigdig,
-          format = "fg",
-          flag = "#"
-        )
+        .parFixed[.uiIovEnv$iovVars, .bsv2] <- .formatBsvChar(.valCharPrep, .sigdig)
       }
       .parFixed <- .parFixed[!grepl("^rx[.]", rownames(.parFixed)), ]
       assign("parFixed", .parFixed, envir = ret$env)
