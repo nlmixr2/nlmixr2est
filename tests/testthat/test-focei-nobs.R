@@ -17,8 +17,12 @@ nmTest({
     }
 
     late <- data.frame(
-      ID = 1L, TIME = c(2, 3, 5, 8), DV = c(NA, 9, 7, 5),
-      AMT = c(100, 0, 0, 0), EVID = c(1L, 0L, 0L, 0L), CMT = 1L
+      ID = 1L,
+      TIME = c(2, 3, 5, 8),
+      DV = c(NA, 9, 7, 5),
+      AMT = c(100, 0, 0, 0),
+      EVID = c(1L, 0L, 0L, 0L),
+      CMT = 1L
     )
     # rxode2 inserts EVID 9 for subject 1. Subject 2 starts with EVID 2.
     other <- rbind(transform(late[1, ], TIME = 0, AMT = 0, EVID = 2L), late)
