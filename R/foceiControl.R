@@ -1080,6 +1080,10 @@
 #'   ends below this fraction of its initial estimate, or at its
 #'   `diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.
 #'
+#' @param collapseProbe When `TRUE`, an omega flagged by `omegaCollapseWarn`
+#'   is raised back to its initial estimate and the problem re-fit from there;
+#'   the fit with the lower objective is kept.
+#'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
 #'     ODE solve.
@@ -1517,6 +1521,7 @@ foceiControl <- function(
   shrinkEtaWarn = 30, #
   odeSettleCheck = FALSE, #
   odeSettleTol = 0.1, #
+  collapseProbe = FALSE, #
   nRetries = 3, #
   seed = 42, #
   resetThetaCheckPer = 0.1, #
@@ -2191,6 +2196,7 @@ foceiControl <- function(
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
   checkmate::assertNumber(omegaCollapseWarn, lower = 0, upper = 1, na.ok = TRUE)
+  checkmate::assertFlag(collapseProbe)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2397,6 +2403,7 @@ foceiControl <- function(
     odeSettleCheck = odeSettleCheck,
     odeSettleTol = as.double(odeSettleTol),
     omegaCollapseWarn = as.double(omegaCollapseWarn),
+    collapseProbe = collapseProbe,
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,

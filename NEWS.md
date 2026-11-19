@@ -96,6 +96,10 @@
   `foceiControl(omegaCollapseWarn=)` sets the fraction; `NA` turns it off
   (#1394).
 
+- `foceiControl(collapseProbe=TRUE)` re-fits a FOCEi-family model from a
+  collapsed omega raised back to its initial estimate, keeping whichever fit
+  has the lower objective and noting the change in `$runInfo` (#1394).
+
 - After the covariance step, a fit warns (in `$runInfo`) about pairs of
   estimates correlated at `|r| >= 0.95`, e.g. `highly correlated estimates:
   tcl/tv (0.98)`.  `corWarn=` in every method's control (e.g.
