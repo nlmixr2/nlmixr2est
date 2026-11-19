@@ -109,3 +109,58 @@ nmTest({
     expect_false(any(grepl(.re, .focei$runInfo)))
   })
 })
+
+nmTest({
+  test_that("models outside the analytic gradient's scope use central differences", {
+    skip_on_cran()
+    .ode <- function() {
+      ini({
+        tka <- 1.2
+        tcl <- 2
+        tv <- 2.5
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .lin <- function() {
+      ini({
+        tka <- 1.2
+        tcl <- 2
+        tv <- 2.5
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .d <- nlmixr2data::theo_sd
+    .saem <- function(mod, warn = 1) {
+      suppressMessages(nlmixr2(mod, .d, "saem", saemControl(print = 0, nBurn = 3, nEm = 2, covNewtonWarn = warn)))
+    }
+    .f <- .saem(.ode, NA)
+    .an <- .covNewtonGrad(.f, .f$cov)
+    .fd <- .covNewtonGradFd(.f, .f$cov)
+    expect_named(.fd, c("tka", "tcl", "tv", "add.sd"))
+    expect_equal(unname(.fd), unname(.an[names(.fd)]), tolerance = 0.02)
+    .l <- .saem(.lin)
+    expect_gt(.l$covNewtonDecrement, 1)
+    expect_length(grep("^SEs at a non-stationary estimate", .l$runInfo), 1L)
+  })
+})
