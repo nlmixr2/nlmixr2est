@@ -18,6 +18,10 @@
 
 ## New features
 
+- FOCEi model builds no longer optimize the `innerOeta` model, which only
+  `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on
+  first use, caches it and adds the inner model's `param()`/`cmt()`/`mtime()`
+  prologue so it can be solved directly (#1321).
 - `outerOpt="trust"` evaluates the outer gradient and Hessian only at trial
   points the trust region could accept, so a trial that is no improvement gets
   its value alone (1.1x-2.6x faster with the analytical Hessian).
