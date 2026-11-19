@@ -77,15 +77,16 @@
   .collapsed <- .nm[.ok & .ratio < limit]
   .bound <- character(0)
   if (length(boundLower) == 1L && is.finite(boundLower)) {
-    .at <- .omegaCollapseAtBound(omega0, omega, boundLower)
-    if (is.null(.at)) {
-      # within 1% of start/boundLower: the optimizer stopped on the bound.
-      # The variance is the bounded parameter only for an eta that started
-      # outside any block.
-      .at <- .nm[.ok & .ratio <= 1.01 / boundLower]
-      if (is.matrix(omega0) && !is.null(rownames(omega0))) {
-        .at <- intersect(.at, .omegaCollapseUnblocked(omega0))
-      }
+    # within 1% of start/boundLower: the optimizer stopped on the bound.  The
+    # variance is the bounded parameter only for an eta outside any block.
+    .ratioAt <- .nm[.ok & .ratio <= 1.01 / boundLower]
+    .cmp <- .omegaCollapseAtBound(omega0, omega, boundLower)
+    .at <- if (!is.null(.cmp)) {
+      c(.cmp$at, intersect(.ratioAt, intersect(.cmp$unknown, .omegaCollapseUnblocked(omega0))))
+    } else if (is.matrix(omega0) && !is.null(rownames(omega0))) {
+      intersect(.ratioAt, .omegaCollapseUnblocked(omega0))
+    } else {
+      .ratioAt
     }
     .bound <- setdiff(intersect(.at, .nm), .collapsed)
   }
@@ -108,12 +109,16 @@
 #' FOCEi bounds the diagonal of `chol(solve(omega))` (through `diagXform`, a
 #' monotone map), with the lower-variance bound taken from
 #' `omega0/boundLower`.  In a block that is not the marginal variance, so the
-#' ratio rule can miss a pinned eta; for a diagonal omega the two agree.
+#' ratio rule can miss a pinned eta; for a diagonal omega the two agree.  Each
+#' independent block is checked on its own (exact, since conditioning on
+#' independent etas changes nothing), so one that cannot be inverted only
+#' leaves its own etas unknown.
 #' @param omega0,omega full initial and final omega matrices with matching
 #'   dimnames
 #' @param boundLower the `diagOmegaBoundLower` divisor
-#' @return the eta names within 1% of the bound, or `NULL` when the matrices
-#'   cannot be compared
+#' @return list with `at`, the etas within 1% of the bound, and `unknown`, the
+#'   etas of blocks that could not be checked; `NULL` when the matrices do not
+#'   match
 #' @noRd
 .omegaCollapseAtBound <- function(omega0, omega, boundLower) {
   if (
@@ -124,8 +129,8 @@
   ) {
     return(NULL)
   }
-  # on the correlation scale, so an unrelated tiny variance cannot make
-  # solve() reject the matrix
+  # on the correlation scale, so a tiny variance cannot make solve() reject
+  # the block
   .d <- function(m) {
     .s <- sqrt(diag(m))
     if (!all(is.finite(.s) & .s > 0)) {
@@ -133,12 +138,36 @@
     }
     tryCatch(diag(chol(solve(m / outer(.s, .s)))) / .s, error = function(e) NULL)
   }
-  .d0 <- .d(omega0)
-  .d1 <- .d(omega)
-  if (is.null(.d0) || is.null(.d1)) {
-    return(NULL)
+  .at <- character(0)
+  .unknown <- character(0)
+  for (.b in .omegaBlocks(omega0 != 0 | omega != 0)) {
+    .d0 <- .d(omega0[.b, .b, drop = FALSE])
+    .d1 <- .d(omega[.b, .b, drop = FALSE])
+    if (is.null(.d0) || is.null(.d1)) {
+      .unknown <- c(.unknown, rownames(omega)[.b])
+    } else {
+      .at <- c(.at, rownames(omega)[.b][is.finite(.d1) & 1.01 * .d1^2 >= boundLower * .d0^2])
+    }
   }
-  rownames(omega)[is.finite(.d1) & 1.01 * .d1^2 >= boundLower * .d0^2]
+  list(at = .at, unknown = .unknown)
+}
+
+#' The independent blocks of an omega pattern
+#'
+#' @param nz logical matrix, `TRUE` where two etas covary
+#' @return list of index vectors, one per connected block, in eta order
+#' @noRd
+.omegaBlocks <- function(nz) {
+  .n <- nrow(nz)
+  .grp <- seq_len(.n)
+  repeat {
+    .new <- vapply(seq_len(.n), function(i) min(.grp[nz[i, ] | seq_len(.n) == i]), integer(1))
+    if (identical(.new, .grp)) {
+      break
+    }
+    .grp <- .new
+  }
+  unname(split(seq_len(.n), .grp))
 }
 
 #' Warn when a fit's diagonal omega collapsed toward zero

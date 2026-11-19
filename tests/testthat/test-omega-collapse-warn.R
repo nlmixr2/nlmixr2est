@@ -129,7 +129,7 @@ test_that("a block omega is checked on the parameters FOCEi bounds", {
   .om <- solve(crossprod(.r))
   dimnames(.om) <- list(.nm, .nm)
   expect_gt(.om["eta.a", "eta.a"], 0.2)
-  expect_identical(.omegaCollapseAtBound(.om0, .om, 100), "eta.a")
+  expect_identical(.omegaCollapseAtBound(.om0, .om, 100)$at, "eta.a")
   expect_identical(
     .omegaCollapsed(diag(.om0), diag(.om), 1e-3, 100, .om0, .om),
     list(collapsed = character(0), bound = "eta.a")
@@ -140,13 +140,13 @@ test_that("a block omega is checked on the parameters FOCEi bounds", {
   .big0 <- rbind(cbind(.om0, 0), c(0, 0, 1e-18))
   .big <- rbind(cbind(.om, 0), c(0, 0, 1e-18))
   dimnames(.big0) <- dimnames(.big) <- list(.nm3, .nm3)
-  expect_identical(.omegaCollapseAtBound(.big0, .big, 100), "eta.a")
+  expect_identical(.omegaCollapseAtBound(.big0, .big, 100)$at, "eta.a")
   # for a diagonal omega the bounded parameter and the variance ratio agree
   .d0 <- diag(c(eta.a = 300, eta.b = 2))
   dimnames(.d0) <- list(.nm, .nm)
   .d1 <- diag(c(3, 1.9))
   dimnames(.d1) <- list(.nm, .nm)
-  expect_identical(.omegaCollapseAtBound(.d0, .d1, 100), "eta.a")
+  expect_identical(.omegaCollapseAtBound(.d0, .d1, 100)$at, "eta.a")
   expect_identical(
     .omegaCollapsed(diag(.d0), diag(.d1), 1e-3, 100)$bound,
     .omegaCollapsed(diag(.d0), diag(.d1), 1e-3, 100, .d0, .d1)$bound
@@ -170,5 +170,22 @@ test_that("a block omega is checked on the parameters FOCEi bounds", {
   expect_identical(.omegaCollapseUnblocked(.blk0), "eta.c")
   # mismatched or singular matrices fall back to the ratio rule
   expect_null(.omegaCollapseAtBound(.d0, .d1[2:1, 2:1], 100))
-  expect_null(.omegaCollapseAtBound(.d0, matrix(0, 2, 2, dimnames = list(.nm, .nm)), 100))
+  expect_identical(
+    .omegaCollapseAtBound(.d0, matrix(0, 2, 2, dimnames = list(.nm, .nm)), 100),
+    list(at = character(0), unknown = .nm)
+  )
+  # a block that cannot be checked leaves an independent pinned block alone
+  .nm4 <- c("eta.a", "eta.b", "eta.c", "eta.d")
+  .sing <- matrix(1, 2, 2)
+  .four0 <- rbind(cbind(.om0, matrix(0, 2, 2)), cbind(matrix(0, 2, 2), .sing))
+  .four <- rbind(cbind(.om, matrix(0, 2, 2)), cbind(matrix(0, 2, 2), .sing))
+  dimnames(.four0) <- dimnames(.four) <- list(.nm4, .nm4)
+  expect_identical(
+    .omegaCollapseAtBound(.four0, .four, 100),
+    list(at = "eta.a", unknown = c("eta.c", "eta.d"))
+  )
+  expect_identical(.omegaBlocks(.four0 != 0), list(1:2, 3:4))
+  .il <- diag(3) != 0
+  .il[1, 3] <- .il[3, 1] <- TRUE
+  expect_identical(.omegaBlocks(.il), list(c(1L, 3L), 2L))
 })
