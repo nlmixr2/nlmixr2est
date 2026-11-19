@@ -115,9 +115,11 @@
 #' @return a named covariance matrix, or `NULL`
 #' @noRd
 .covNewtonCov <- function(fit, env) {
-  .r <- get0("covR", envir = env, inherits = FALSE)
-  if (is.matrix(.r) && !is.null(rownames(.r))) {
-    return(.r)
+  # the R-only covariance: the fit's own, or the "r" one setCov() keeps
+  for (.r in list(get0("covR", envir = env, inherits = FALSE), .covCacheGet(env)[["r"]])) {
+    if (is.matrix(.r) && !is.null(rownames(.r))) {
+      return(.r)
+    }
   }
   # an S (score) covariance alone carries no curvature
   .lab <- tryCatch(as.character(fit$covMethod), error = function(e) "")
