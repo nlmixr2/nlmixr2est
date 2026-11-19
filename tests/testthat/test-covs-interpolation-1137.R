@@ -77,8 +77,9 @@ nmTest({
         data.frame(id = as.integer(.ap$id), time = .ap$time, ap = .ap$values)
       )
       expect_true(nrow(.ma) > 0)
-      # augPred's added grid rows move the midpoints, so midpoint is close only
-      expect_equal(.ma$ap, .ma$IPRED, tolerance = if (.ci == "midpoint") 1e-3 else 1e-4)
+      # the grid rows augPred() adds split rxode2's midpoint intervals, so
+      # midpoint is close only
+      expect_equal(.ma$ap, .ma$IPRED, tolerance = if (.ci == "midpoint") 5e-4 else 1e-4)
 
       # vpcSim() (and so npde) simulates with it unless overridden
       .vDefault <- vpcSim(.fit, n = 2, seed = 42)
@@ -91,6 +92,36 @@ nmTest({
       expect_equal(.vEvents$ipred, .vDefault$ipred)
     }
   })
+  test_that("augPred()'s midpoint grid matches approxfun(method = \"constant\", f = 0.5) (#1283)", {
+    .fit <- .nlmixr(
+      .covsIntModel,
+      .covsIntData,
+      "focei",
+      foceiControl(
+        rxControl = rxode2::rxControl(covsInterpolation = "midpoint"),
+        maxOuterIterations = 0L,
+        print = 0
+      )
+    )
+    .ex <- .augPredExpandData(.fit, "midpoint")
+    .grid <- .ex[.ex$EVID == 2, ]
+    for (.id in unique(.covsIntData$ID)[1:3]) {
+      .d <- .covsIntData[.covsIntData$ID == .id, ]
+      .g <- .grid[.grid$ID == which(unique(.covsIntData$ID) == .id), ]
+      .f <- stats::approxfun(
+        .d$TIME,
+        .d$CRCL,
+        method = "constant",
+        f = 0.5,
+        rule = 2,
+        ties = mean
+      )
+      # rxode2 averages the two neighboring records; a step at the midpoint
+      # would give one of them
+      expect_equal(.g$CRCL, .f(.g$TIME))
+    }
+  })
+
   test_that("the fit's table uses rxControl(naInterpolation=) (#1137)", {
     # naInterpolation fills NA covariates under linear/midpoint interpolation;
     # the table's covariate column shows which side it filled from

@@ -329,7 +329,8 @@
         omegaPoolMean = as.integer(identical(
           rxode2::rxGetControl(ui, "iovMethod", "twoLevel"),
           "collapsed"
-        ))
+        )),
+        fixedNoEta = rxode2::rxGetControl(ui, "fixedNoEta", "hold")
       )
       .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
       # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
@@ -1529,6 +1530,9 @@
       # finalization needs a structural-theta cov; stash the full matrix and install
       # it after the fit is built (.saemInstallFullCov).  The control covMethod is reset
       # to its default during finalization, so record the intended label separately.
+      # two-level IOV: tie the per-occasion `om.rx.<iov>.<k>` copies (no-op
+      # otherwise) before the theta block is taken, since tying moves it too
+      .cov <- .saemIovCollapseCov(.cov, .uiIovEnv$iovTwoLevel)
       .rn <- rownames(.cov)
       .keep <- !grepl("^om\\.|^cov\\.", .rn) & !(.rn %in% .ui$iniDf$name[!is.na(.ui$iniDf$err)])
       env$cov <- .cov[.rn[.keep], .rn[.keep], drop = FALSE]
@@ -2145,6 +2149,27 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .ret
 }
 
+#' Warn about the bounds saem ignores
+#'
+#' The IOV rewrite's magnitude thetas carry a lower bound the user did not
+#' write, so they are left out of the warning (the fit keeps the bound).
+#'
+#' @param ui rxode2 ui
+#' @return nothing, called for the warning
+#' @noRd
+.saemWarnBounded <- function(ui) {
+  .iniDf <- ui$iniDf
+  .iov <- !is.na(.iniDf$ntheta) & !is.na(.iniDf$backTransform) & grepl("^nlmixr2iov", .iniDf$backTransform)
+  .uiW <- ui
+  if (any(.iov)) {
+    .iniDf$lower[.iov] <- -Inf
+    .iniDf$upper[.iov] <- Inf
+    # re-parsing the copy repeats the rewrite's own parse notes
+    suppressWarnings(rxode2::ini(.uiW) <- .iniDf)
+  }
+  rxode2::warnRxBounded(.uiW, " which are ignored in 'saem'", .var.name = ui$modelName)
+}
+
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
@@ -2158,7 +2183,7 @@ nlmixr2Est.saem <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'", .var.name = .ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("saem"), .var.name = .ui$modelName)
   .saemAssertEtaPhi(.ui)
-  rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name = .ui$modelName)
+  .saemWarnBounded(.ui)
   if (length(.ui$mixProbs) > 0) {
     message("mixture SAEM computation scales with the number of sub-populations")
   }
@@ -2185,6 +2210,9 @@ attr(nlmixr2Est.saem, "iov") <- function(control) {
   !(identical(control$iovMethod, "twoLevel") ||
     identical(control$iovMethod, "collapsed"))
 }
+# The shared rewrite gives saem pooled per-occasion etas rather than a magnitude
+# theta, so the occasion variance gets the closed-form M-step (#1319).
+attr(nlmixr2Est.saem, "iovPool") <- TRUE
 # Models the two-level handling cannot take; a reason here sends the model back
 # to the shared rewrite (iovMethod="theta") instead of failing.
 attr(nlmixr2Est.saem, "iovNativeScope") <- function(ui, data, control) {

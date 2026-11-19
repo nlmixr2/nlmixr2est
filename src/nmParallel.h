@@ -45,6 +45,9 @@ inline std::atomic<int> nmRxThreadIdChecked{0};
 inline std::atomic<int> nmRxThreadIdMiss{0};
 // written only outside parallel regions
 inline bool nmRxThreadIdOn = false;
+// Set (outside parallel regions) when a per-subject solve must install a
+// process-global event-sensitivity shape of its own; subject loops then run serially.
+inline bool nmForceSerial = false;
 
 static inline void nmRxThreadIdCheck(bool par) {
 #ifdef _OPENMP
@@ -93,6 +96,7 @@ template <class F>
 static inline void nmForEachSubject(rx_solve *rxIn, int n, int cores, bool par,
                                     nmFlags flags, F&& body) {
   const bool mapIt = !(flags & nmNoMap);
+  par = par && !nmForceSerial;
   nmForEach<nmRxThreadScope>(n, cores, par, flags, [&](int pos) {
     nmRxThreadIdCheck(par);
     body(mapIt ? nmOrdId(rxIn, pos, n) - 1 : pos);
@@ -109,6 +113,7 @@ template <class F, class E>
 static inline void nmForEachSubject(rx_solve *rxIn, int n, int cores, bool par,
                                     nmFlags flags, F&& body, E&& onError) {
   const bool mapIt = !(flags & nmNoMap);
+  par = par && !nmForceSerial;
   nmForEach<nmRxThreadScope>(n, cores, par, flags,
                              [&](int pos) {
                                nmRxThreadIdCheck(par);

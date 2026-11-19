@@ -1344,6 +1344,8 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
 }
 
 void impOuter(Environment e) {
+  // Model registration may leave the theta-sensitivity event callbacks installed.
+  OdeSwapEsBatch innerEvents(odeSlotInner);
   int nIter = impNiter();
   std::string diagXform = impDiagXform();
   int nsub = impNsub();
@@ -1923,6 +1925,7 @@ void impOuter(Environment e) {
     // E-step parameters, and before impSetEta since impThetaScore's re-solves
     // overwrite the etas.  Skipped if the Hessian is not usable (thetas unchanged).
     if (nSens > 0 && !frozen) {
+      OdeSwapEsBatch thetaEvents(impCombSensEnabled() ? odeSlotInner : odeSlotThetaSens);
       arma::vec g(nSens, arma::fill::zeros);
       arma::mat H(nSens, nSens, arma::fill::zeros);
       // Batched gradient pass over the theta-sensitivity model (impThetaScore

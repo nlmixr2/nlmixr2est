@@ -1,5 +1,17 @@
 # nlmixr2est (development version)
 
+## Changed defaults
+
+- `sigdig` now sets the ODE tolerances to `rtol = 10^(-2*sigdig)` and
+  `atol = rtol/100` (floored at `rtol = 1e-12`) instead of
+  `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`.  At the default
+  `sigdig = 3` every `sigdig`-scaled method (FOCEi and its family, the nlm
+  family, vae, emvi, nlme, ...) now solves at rxode2's own `rtol = 1e-6`,
+  `atol = 1e-8` rather than `1e-3`/`1e-6`, which biased the FOCEi objective
+  of an ODE model by up to several units against its `linCmt()` twin
+  (#1131).  `est = "nls"` no longer adds three orders on top (`1e-8` at its
+  `sigdig = 4`).  Fits of ODE models are slower and their objectives change.
+
 ## New features
 
 - Time-to-event endpoints written with rxode2's `ev ~ tte(hazard)` can be
@@ -42,6 +54,17 @@
 ## Bug fixes
 
 ### Covariance
+
+- The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a
+  `same()` block's copies with the block they repeat, so a correlated IOV
+  block contributes one shared occasion Omega (`om.iov.cl`,
+  `cov.iov.v.iov.cl`) rather than one free copy per occasion.  The occasion
+  SEs were about the square root of the number of occasions too large, and
+  `tidy()`/`confint()` now take them from `$cov` (#1316).
+- SAEM's `iovMethod = "twoLevel"` `$cov` now has one `om.<iov>` row per
+  occasion parameter, tying the per-occasion copies through their information
+  (`J' I J`); under the default `sa`/analytic covariance it used to carry one
+  untied `om.rx.<iov>.<k>` row per occasion (#1317).
 
 - A FOCEi covariance that a vae or vi fit could not compute or install is now
   recorded in `fit$env$covTried`, under the method tried and with the condition
@@ -101,14 +124,85 @@
 
 ### Estimation
 
+- The `linCmt()` FOCEi sensitivity carry matches finite differences again for
+  an `alag()` dose with a time-varying covariate.  rxode2 now adds a hidden
+  record (`EVID` 8) at a lagged dose's data time, so the carry reads that
+  covariate knot like any other record (nlmixr2/rxode2#1584).
+
+- `est = "nlm"` and `est = "nls"` with the `linCmt()` sensitivity carry
+  (`linCmtSensCarry = "auto"`, the default) now reach the optimum.  The
+  record walk that builds their gradient started each subject from the carry
+  its solve had already advanced, so the carried theta gradient was wrong
+  (for `tcl`, -49.1 where the objective's derivative is -0.49, in a
+  one-compartment model with a time-varying weight).  nlm stopped near the
+  initial estimates (objective
+  -21.88 against -27.21 for its ODE twin under nocb) and nls short of the
+  optimum (-27.19).  Both now equal the ODE twin.
+
+- Importance-sampling fits install the matching event callbacks for inner and
+  theta-sensitivity solves, preventing heap corruption with separate models.
+- Per-subject FD gradient fallbacks temporarily tighten inner and ODE
+  tolerances to improve derivative accuracy.
+- Analytical FOCEi gradients include the remaining inner score when finite
+  tolerances leave the ETA mode approximate.
+- Pooled inner and second-order models read their solves at the stride and
+  compartment basis they were solved with, fixing failed fast fits (#1115, #1133).
+- A conditional (`innerHessian`/`detHessian = "conditional"`) or fast `ll()`
+  Hessian now solves its model under its own dose-event sensitivities, so an eta
+  in `f()`, `alag()`, `rate()` or `dur()` gets its second-order dose jumps.  Such
+  fits run their subject loops serially.
+- Fast FOCEi defaults to gradient-only `nlminb`; ordinary fits retain `bobyqa`.
+  Explicit outer optimizer choices are preserved.
+- Fast fits default `nlminb`'s `rel.tol` to `10^(-sigdig-2)`; at `10^(-sigdig)`
+  relative convergence stopped short of the optimum.
+- `nlminb` curvature is opt-in through `outerTrustHessian="analytic"` or `"fd"`;
+  `"auto"` and `"bfgs"` retain its BFGS approximation.
+- FD Hessian probes capture the base gradient before moving solver state and
+  restore state after failures; unavailable curvature uses the existing fallback.
+- Analytical gradients reuse the evaluated objective point and preserve valid
+  zero components without resetting parameters or changing optimizers.
+- Fast FOCEi ETA predictions use EBEs from the last gradient evaluation,
+  making repeated line-search trials independent of ETAs left by other trials.
+- A zero-iteration fast fit again reports the same ETAs, objective and
+  covariance as `fast = FALSE`; its diagnostic gradient no longer seeds the final
+  inner problem through the ETA predictor (#1057).
+- The NN outer-training matrix reads the inner solve at the inner model's own
+  stride and compartment basis in a pooled fit.
+- The fast FOCEi augmented sensitivity model is optimized in a single
+  `rxOptExpr()` pass, so its CSE temporaries no longer collide (#1133).
+- FOCEi caches reuse compiled models to reduce setup time and keep rxode2
+  versions/builds separate to prevent bundle collisions (#1133).
+- `saemControl(mixProbMethod = "regress")` now classifies each subject at its
+  own eta mode under every mixture component, with the residual re-estimated
+  from the classified fits, instead of at the initial eta draws.  Under
+  proportional error the old classification put many subjects in whichever
+  component over-predicted.  Split-eta mixtures now keep fixed membership
+  instead of always falling back to `"regularized"` (#1296).
+- A `saem` mixture fit no longer diverges (residual SD near 1e40, omega in
+  the thousands) under some seeds.  Each mixture chain's current state is
+  re-solved before its MCMC step, so the population reset of fixed-effect-only
+  thetas between iterations no longer leaves a stale likelihood that froze the
+  chain at a state that no longer fit (#1298).
+
+- A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
+  (default 1) above the lowest objective its search evaluated now re-solves
+  the final ETAs from that evaluation's ETAs, keeping per subject the lower
+  objective, and reports the lowest point if it is still lower (#1286).
+  Warm-started ETAs could fall into a secondary mode during the search and
+  stay there, so a fit could end tens of points above an earlier iterate at
+  nearly the same estimates.  A remaining gap now warns that the fit did not
+  converge.
+
 - `saem` with `ebe = "mode"` no longer stops with "inv(): matrix is singular"
   when an eta's estimated variance collapses to zero (#1270).
+
 - An error inside `saem`'s Gaussian-quadrature objective or its linearized
   covariance, or while FOCEi or `nlm` builds its sensitivity model, now
   reaches the user as itself.  Each calculation closed its progress bar in
   a way that raised the bar's own message ("Error calculating likelihood",
   "Error calculating covariance via linearization", "Aborted calculation")
   in place of the error that stopped it.
+
 - `foceiControl(fast = TRUE)` now falls back to `fast = FALSE` for an
   `ar()` residual whose correlation is fixed (`ar1.cor <- fix(0.9)`) or
   modeled (`ar(corv)`), as it already did for an estimated one.  Such a fit
@@ -150,6 +244,20 @@
   subject numbered by the state count rather than from the subject walked;
   with enough subjects that read another subject's values, without changing
   the fit.
+
+- SAEM no longer samples a `fix()`ed theta without an eta (such as a fixed
+  allometric exponent or a covariate effect fixed at 0) per subject.  Its
+  starting jitter and MCMC draws made it act as an extra random effect during
+  burn-in, so a covariate term fixed at 0 gave a different fit from the model
+  without it.  Such a model now fits exactly like the model without the term
+  and like `saemControl(literalFix = TRUE)`.  The earlier behavior, where
+  the theta moves during the fit and arrives at its fixed value, is kept as
+  `saemControl(fixedNoEta = "converge")` (#1287).
+
+- `setOfv(fit, "focei")` (and `"foce"`/`"fo"`) now substitutes the fit's
+  fixed thetas before evaluating the objective.  A `linCmt()` SAEM fit whose
+  time-varying covariate entered only through a fixed theta could need more
+  sensitivity-carry columns than rxode2 provides and stopped (#1287).
 
 - A `linCmt()` model with a time-varying covariate on a compartment
   parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,
@@ -308,8 +416,7 @@
 - NPDE of censored observations now draws each censored value from the
   subject's simulated predictive distribution (a Gaussian copula of the
   simulations), conditional on its measured observations and truncated to its
-  censoring interval, for every `tableControl(censMethod =)` but "cdf" and
-  "omit".  The simulations themselves are left untruncated.
+  censoring interval, for every `tableControl(censMethod =)` but "omit".  The simulations themselves are left untruncated.
   Before, NPDE under "truncated-normal", "ipred" and "pred" used whatever the
   residual step had written into the shared DV (a draw around IPRED, or
   IPRED/PRED), and "epred" used the LOQ itself.  The residual columns are
@@ -319,9 +426,93 @@
   leaves them out of the decorrelation.  Before, the residual step's NA
   spread through the decorrelation and the subject's NPDE were meaningless.
 
+- NPDE under `censMethod = "cdf"` now imputes censored observations the same
+  way as the other methods, so it is N(0, 1) when the model is true (#1226).
+  Before, it rescaled a decorrelated pd that had used the LOQ as the
+  observation, ignored censoring limits, and drifted negative as the censored
+  fraction grew.
+
+- `censMethod = "cdf"` and `"epred"` now compute the residuals (RES, CWRES)
+  of censored observations from the DV the NPDE pass imputed, as documented.
+  Before, the NPDE pass's DV was handed on but never used, so those residuals
+  used the LOQ.
+
 - NPDE's back-transformation of EPRED and DV now uses each observation's own
   transform; it used the first subject's rows for every subject.
 ### Tables
+
+- CWRES/WRES no longer build two dense observations x observations matrices
+  (`F Omega F'`) to read their diagonals; the eta sensitivities are kept sparse
+  and only the diagonal is computed, so the table step of a large dataset no
+  longer runs out of memory there (#1354, #1356).
+
+- The table step solves the fit's ipred/pred and display models in one shared
+  ODE pool over the fit's own events instead of three separate `rxSolve()`
+  setups, writing only the columns the tables use.  The tables are unchanged,
+  including the ODE method/tolerance fallback; `options(nlmixr2.tablePool =
+  FALSE)` restores the old route (#1356).
+
+- With an rxode2 that exports its output-record walk, `addDosing = TRUE`
+  tables (with either `subsetNonmem`) are solved in the pool too, and the rows,
+  dose columns and kept columns come from rxode2's own walk, so they are the
+  rows `rxSolve()` gives (#1356).
+
+- Mixture (`mix()`) fits' tables are solved in the pool as well, each subject
+  with its own mixture assignment; the two routes share the code that passes
+  the assignments to rxode2 (#1356).
+
+- Fits with resets (EVID 3), `mtime()` records or a string assignment solve
+  their tables in the pool too, laid out by rxode2's own record walk; the
+  rxSolve() route's drop of the `mtime()` rows is shared by both routes
+  (#1356).
+
+- With an rxode2 that says which solves `rxSolve()` refuses, tables of fits
+  solved with any ODE method (not only liblsoda, lsoda and dop853) are solved
+  in the pool; a solve `rxSolve()` would refuse goes to `rxSolve()` for its
+  own error (#1356).
+
+- A `keep =` column the fit's data lacks no longer sends the table to the
+  `rxSolve()` route: rxode2 leaves it out, with its own warning, as before
+  (#1356).
+
+- `addDosing = TRUE` tables of a single subject no longer stop with "subject
+  code 0 of the solved rows has no row in the eta table": the solve has no id
+  column for one subject, and its `ID` was put back only when the frame began
+  at `time`.
+
+- `addDosing = TRUE` tables with `npde = TRUE` now give each observation the
+  NPDE of the same table without dosing rows and `NA` on dosing rows; the
+  NPDE columns were longer than the table and out of row order, and the dosing
+  rows changed the simulations.
+
+- `tidy()` and `confint()` now report only the model's thetas.  A
+  non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
+  variability row) used to be listed as a fixed effect or interval of `NA`s,
+  and `confint(exponentiate = NA)` and `tidy(exponentiate = NA)` stopped on
+  it ("NAs are not allowed in subscripted assignments").
+
+- `confint()` now lists the subject-level variability after the thetas, as
+  lme4 lists its variance components: one `sd__<eta>` row per eta and one
+  `cor__<eta>.<eta>` row per estimated correlation, with the same values
+  `tidy(effects = "ran_pars")` reports.  Their intervals (`method=` in
+  `confint()`, `conf.method=` in `tidy()`) come from the Omega rows of `$cov`
+  (delta method, Wald on log(SD) and Fisher z) when present, otherwise from
+  the Wishart distribution of Omega over the subjects (`"auto"`, the
+  default; or `"cov"`/`"wishart"`).  A fixed Omega element, or any under
+  `est = "posthoc"`, has no interval.  `tidy(scales = "vcov")` (one value
+  per element of `effects`, as broom.mixed) and `confint(scales = "vcov")`
+  report the same terms as `var__`/`cov__` variances and covariances, as
+  broom.mixed does for lme4.  An IOV fit's occasion variability follows,
+  grouped under its occasion variable (e.g. `occ`); its Wishart interval
+  counts subject-occasions.  The residual-error rows of `tidy()`
+  kept their `conf.int` interval; it was `NA`.  `tidy()` also accepts
+  broom.mixed's `effects = "ran_coefs"`.
+
+- `augPred()` under `covsInterpolation = "midpoint"` now fills its grid
+  covariates with the mean of the two neighboring records, as rxode2 and
+  `approxfun(method = "constant", f = 0.5)` do; it stepped at the midpoint,
+  so its curves disagreed with the fit.  Occasion columns step at the
+  previous record (locf) under midpoint (#1283).
 
 - `tableControl(npde = TRUE)` and `addNpde()` no longer abort R when a
   subject has no observations ("Col::subvec(): indices out of bounds").
@@ -384,6 +575,18 @@
 
 ### Inter-occasion variability
 
+- `saemControl(iovMethod = "theta")`, also the automatic fallback for models
+  `"twoLevel"` does not cover, no longer underestimates the occasion
+  variances 4-6 fold (one collapsed to zero).  For saem, the shared rewrite
+  now gives each occasion level an eta, all sharing one variance with a
+  closed-form update, instead of a magnitude theta moved as a fixed effect
+  (#1319).  The parameter table keeps an `iov.x` row with its CV (or SD),
+  which `"twoLevel"` fits now get too, and `logLik()`, AIC and BIC count a
+  pooled variance once instead of once per occasion.
+
+- saem refuses a `prior()` on an occasion variance again; the IOV rewrite
+  dropped it before the prior check ran, so the fit ignored it (#1319).
+
 - A model whose occasion-level eta name starts with `eta.` (`eta.ka.occ ~ 0.1 | OCC`)
   now fits.  The SAEM temporary-eta cleanup took every `rx.eta.` name, including
   the `rx.eta.ka.occ.<occ>` occasion columns, so every estimator stopped with
@@ -428,14 +631,30 @@
   record (locf, in the fit's record order), and its population curve sets
   every eta, of every level, to zero.
 
+- A model whose only random effects are occasion ones (`iov.cl ~ 0.1 | occ`
+  with no subject-level eta) now fits with `focei`, `foce`, `saem`,
+  `laplace`, `agq`, `imp` and `npag` (`focei` and `foce` in either IOV
+  expansion; `saem`'s `"twoLevel"` and `"collapsed"` IOV methods, which
+  need a subject-level eta on the same parameter, fall back to `"theta"`).
+  It used to stop with "missing value where TRUE/FALSE needed"
+  or "arguments imply differing number of rows": the IOV rewrite copied its
+  template rows from an eta that was not there, and its output step lost the
+  shape of tables left with one column.
+
+- A `saem` IOV fit no longer warns that `iov.cl` "has the following
+  user-defined boundaries": the bound was the IOV rewrite's own, not the
+  user's.
+
 ### Documentation
 
+- `?foceiControl` now says that the ODE solver sets the FOCEi objective's
+  noise floor at fixed parameters, and that `rxControl(method = "dop853")`
+  gives a much smoother objective for a non-stiff model (#1278).
 - `?tableControl` now says that NPDE under `censMethod = "omit"` are not
   expected to be N(0,1) once observations are censored: below a lower limit
   the quantified observations it keeps are the high ones, so their mean
   drifts upward as more is censored.  It points to `"truncated-normal"`,
   which keeps the censored rows (#1227).
-
 - `?augPred` says that its curves for a `linCmt()` model with
   time-varying covariates are approximate with rxode2 5.1.8 or earlier:
   under the default `"locf"` interpolation that rxode2's `linCmt()` took a

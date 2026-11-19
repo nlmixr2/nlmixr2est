@@ -1,0 +1,55 @@
+# Build the pkgdown site and upload it as the "pkgdown-site" artifact.
+# Called by ci.yaml (full tier, build only) and pkgdown.yaml (build + deploy).
+name: _pkgdown.yaml
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: git ref to check out ('' = the triggering ref)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  pkgdown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: ./.github/actions/setup-nlmixr2est
+        with:
+          extra-packages: |
+            any::pkgdown
+            local::.
+          needs: website
+
+      # pkgdown downloads its JS assets (fuse.js, autocomplete.js, headroom, ...)
+      # from cdnjs on every cold run; caching them keeps a slow CDN from failing
+      # the build.
+      - name: Cache pkgdown assets
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/R/pkgdown
+          key: pkgdown-assets-${{ runner.os }}-${{ hashFiles('_pkgdown.yml') }}
+          restore-keys: pkgdown-assets-${{ runner.os }}-
+
+      - name: Build site
+        run: |
+          # R's 60s default download timeout is not enough for a slow cdnjs
+          options(timeout = max(600, getOption("timeout")))
+          pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
+        shell: Rscript {0}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkgdown-site
+          path: docs
+          retention-days: 3

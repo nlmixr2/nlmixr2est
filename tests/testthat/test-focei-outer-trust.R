@@ -1,6 +1,7 @@
 test_that("outerOpt='trust' validates its own control", {
   expect_error(foceiControl(outerOpt = "trust", outerTrustHessian = "analytic"), "requires fast")
   expect_no_error(foceiControl(outerOpt = "trust", fast = TRUE, outerTrustHessian = "analytic"))
+  expect_error(foceiControl(outerOpt = "nlminb", outerTrustHessian = "analytic"), "requires fast")
   expect_error(foceiControl(outerTrustRinit = 0), "must be > 0")
   expect_error(foceiControl(outerTrustRmax = 0), "must be > 0")
   expect_error(foceiControl(outerTrustRinit = 2, outerTrustRmax = 1), "cannot be larger")
@@ -231,6 +232,47 @@ test_that("the finite-difference curvature keeps its probes out of the history",
   expect_equal(.fd(c(1, 1), c(2, 2)), diag(c(2, 2)), tolerance = 1e-6)
   expect_identical(.rec$calls, c("fn:FALSE", "gr:FALSE", "fn:FALSE", "gr:FALSE", "fn:FALSE"))
   expect_true(.rec$on)
+})
+
+test_that('FD failures restore the objective before restoring history recording', {
+  x <- c(1, 1)
+  for (failure in c('base', 'error', 'nonfinite')) {
+    point <- x
+    recording <- TRUE
+    recorded <- logical()
+    record <- function(on) {
+      was <- recording
+      recording <<- on
+      was
+    }
+    fn <- function(z) {
+      point <<- z
+      recorded <<- c(recorded, recording)
+      sum(z^2)
+    }
+    gr <- function(z) {
+      if (failure == 'error') {
+        stop('probe failure')
+      }
+      c(NA_real_, NA_real_)
+    }
+    g0 <- function() {
+      if (failure == 'base') {
+        fn(x + 1e-3)
+        stop('base failure')
+      }
+      2 * x
+    }
+    fd <- .trustOuterFd(fn, gr, 1e-3, c(-Inf, -Inf), c(Inf, Inf), record)
+    if (failure != 'nonfinite') {
+      expect_error(fd(x, g0()), 'failure')
+    } else {
+      expect_null(fd(x, g0()))
+    }
+    expect_identical(point, x)
+    expect_true(recording)
+    expect_false(any(recorded))
+  }
 })
 
 test_that("outerTrustHessian = \"fd\" records the points the optimizer asked for", {

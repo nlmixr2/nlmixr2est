@@ -71,6 +71,7 @@ test_that("the full conditional determinant matches its closed form and its grad
     control = foceiControl(
       fast = TRUE,
       detHessian = "conditional",
+      sigdig = 5,
       print = 0,
       covMethod = "",
       calcTables = FALSE,

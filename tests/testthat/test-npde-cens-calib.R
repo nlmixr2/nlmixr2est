@@ -41,7 +41,7 @@ nmTest({
       .dm$CENS <- ifelse(.dm$EVID == 0 & .dm$DV < 5, 1, 0)
       .dm$DV[.dm$CENS == 1] <- 5
       expect_gt(mean(.dm$CENS[.dm$EVID == 0]), 0.4)
-      for (.cm in c("truncated-normal", "ipred", "pred")) {
+      for (.cm in c("truncated-normal", "cdf", "ipred", "pred")) {
         .fit <- suppressWarnings(suppressMessages(nlmixr2(
           .m,
           .dm,

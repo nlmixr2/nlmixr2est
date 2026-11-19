@@ -1518,6 +1518,20 @@ getVarCov.nlmixr2FitCore <- function(obj, ...) {
 getVarCov.nlmixr2FitCoreSilent <- getVarCov.nlmixr2FitCore
 
 
+#' Covariance of transformed parameters, `J cov J'` (the delta method)
+#'
+#' @param cov covariance of the original parameters
+#' @param jac Jacobian, one row per transformed parameter and one column per
+#'   row of `cov`, in its order
+#' @param names dimnames of the result; `NULL` for none
+#' @return the transformed covariance
+#' @noRd
+.covJacobian <- function(cov, jac, names = rownames(jac)) {
+  .c <- jac %*% cov %*% t(jac)
+  dimnames(.c) <- if (is.null(names)) NULL else list(names, names)
+  .c
+}
+
 .cov2cor <- function(cov) {
   .sd2 <- sqrt(diag(cov))
   .cor <- stats::cov2cor(cov)

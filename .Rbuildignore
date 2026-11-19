@@ -133,3 +133,5 @@ BinaryFiles$
 ^tests/testthat/testthat-problems\.rds$
 ^tests/testthat/_problems$
 ^vignettes/.*\.Rmd\.orig$
+^tests/ci-core\.txt$
+^tests/ci-timings\.csv$

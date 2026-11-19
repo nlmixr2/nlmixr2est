@@ -208,10 +208,9 @@ getValidNlmixrCtl.default <- function(control) {
 
 #' Optimizer convergence tolerance derived from `sigdig`
 #'
-#' `10^(-sigdig)` -- the same exponent `sigdig` sets for the ODE `rtol`, so the
-#' optimizer converges to exactly the precision the solve can support (no chasing
-#' below the solver noise floor).  Shared so every estimation method's optimizer
-#' ties to `sigdig` the same way.
+#' `10^(-sigdig)`, the `sqrt()` of the ODE `rtol` that `sigdig` sets, so the
+#' optimizer converges to the precision the solve can support.  Shared so every
+#' estimation method's optimizer ties to `sigdig` the same way.
 #' @param sigdig optimization significant digits
 #' @return the tolerance
 #' @noRd
@@ -263,33 +262,26 @@ getValidNlmixrCtl.default <- function(control) {
 
 #' Scale ODE solver tolerances from the optimization `sigdig`
 #'
-#' The optimization `sigdig` sets the optimizer tolerances directly (`10^-sigdig`,
-#' see [.sigdigOptTol()]); here it sets the ODE solver tolerances with ONE formula
-#' -- the same for every solver (stiff, non-stiff, auto-switch) so the story is
-#' simple and consistent with the optimizer:
-#'   `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`
-#' The `rtol` exponent IS `sigdig`, and `atol` sits three orders below.  Sensitivity
-#' solves match the main solve (the gradient/covariance are built from them);
-#' steady-state solves run one order looser.  `tighten` shifts every exponent
-#' down by that many orders for a method that needs a tighter solve than the
-#' optimizer target (e.g. `est="nls"`, whose LM step is sensitive to solver noise).
-#' This mirrors the mapping moved into `rxode2::rxControl(sigdig=)` (rxode2 PR
-#' #1150); until that rxode2 release is the minimum dependency, nlmixr2est applies
-#' it to every auto-built `rxControl`.
+#' An objective solved to relative error `rtol` locates its minimum only to about
+#' `sqrt(rtol)`, so an optimizer converging to `10^-sigdig` needs
+#' `rtol = 10^(-2*sigdig)`; `atol` sits two orders below and the result is
+#' floored at `rtol = 1e-12`.  At the default `sigdig = 3` this is rxode2's own
+#' `rtol = 1e-6`, `atol = 1e-8` (issue #1131: the former `rtol = 10^-sigdig`
+#' biased the FOCEi objective by up to ~5 units).  Sensitivity solves match the
+#' main solve; steady-state solves run one order looser.
 #' @param rxControl an `rxode2::rxControl()` object (modified and returned)
 #' @param sigdig optimization significant digits; `NULL` leaves `rxControl` as-is
 #' @param skip character vector of tolerance field names the user set explicitly
 #'   (e.g. from a `rxControl = list(atol = ...)`); these are left untouched so an
 #'   explicit `atol`/`rtol` overrides the `sigdig`-derived value
-#' @param tighten extra orders of magnitude to tighten every tolerance (default 0)
 #' @return `rxControl` with ODE solver tolerances set from `sigdig`
 #' @noRd
-.rxControlScaleSigdig <- function(rxControl, sigdig, skip = character(0), tighten = 0) {
+.rxControlScaleSigdig <- function(rxControl, sigdig, skip = character(0)) {
   if (is.null(sigdig) || is.null(rxControl)) {
     return(rxControl)
   }
-  .rtol <- 10^(-(sigdig + tighten))
-  .atol <- 10^(-(sigdig + 3 + tighten))
+  .rtol <- max(10^(-2 * sigdig), 1e-12)
+  .atol <- 1e-2 * .rtol
   # only set a tolerance the user did not pass explicitly (skip).  Sensitivity
   # solves match the main solve: the outer gradient and covariance are built from
   # them, so a looser sens tolerance degrades analytic gradient/covariance
