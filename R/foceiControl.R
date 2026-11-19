@@ -1054,6 +1054,9 @@
 #'   secondary mode during the search and stay there.  Only applies with a
 #'   warm start (`mceta < 0`).  Use `Inf` to disable.
 #'
+#' @param shrinkEtaWarn Warn (in `$runInfo`) when an eta's SD shrinkage is
+#'   at or above this percentage.  Use `NA` or `Inf` to disable.
+#'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
 #'     ODE solve.
@@ -1485,6 +1488,7 @@ foceiControl <- function(
   etaNudge2 = qnorm(1 - 0.05 / 2) * sqrt(3 / 5), #
   etaRestart = 4L, #
   finalEtaTol = 1, #
+  shrinkEtaWarn = 30, #
   nRetries = 3, #
   seed = 42, #
   resetThetaCheckPer = 0.1, #
@@ -2144,6 +2148,7 @@ foceiControl <- function(
   checkmate::assertNumeric(etaNudge2, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
   checkmate::assertIntegerish(etaRestart, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumber(finalEtaTol, lower = 0)
+  checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2344,6 +2349,7 @@ foceiControl <- function(
     etaNudge2 = as.double(etaNudge2),
     etaRestart = as.integer(etaRestart),
     finalEtaTol = as.double(finalEtaTol),
+    shrinkEtaWarn = as.double(shrinkEtaWarn),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,
