@@ -145,18 +145,29 @@
   .ctl <- .covNewtonCtl(fit, FALSE)
   .est <- stats::setNames(.th$est, .th$name)[.nm]
   .ofv <- function(nm, val) {
-    .u <- suppressMessages(do.call(rxode2::ini, c(list(.ui), stats::setNames(list(val), nm))))
-    .covNewtonFocei(.u, fit, .ctl)$objf
+    tryCatch(
+      {
+        .u <- suppressMessages(do.call(rxode2::ini, c(list(.ui), stats::setNames(list(val), nm))))
+        .covNewtonFocei(.u, fit, .ctl)$objf
+      },
+      error = function(e) NA_real_
+    )
   }
+  .f0 <- NULL
   .g <- vapply(
     .nm,
     function(nm) {
       .h <- 1e-3 * max(1, abs(.est[[nm]]))
-      # a probe ini() rejects (e.g. mixture proportions past 1) leaves out only this theta
-      tryCatch(
-        (.ofv(nm, .est[[nm]] + .h) - .ofv(nm, .est[[nm]] - .h)) / (2 * .h),
-        error = function(e) NA_real_
-      )
+      .up <- .ofv(nm, .est[[nm]] + .h)
+      .dn <- .ofv(nm, .est[[nm]] - .h)
+      if (is.finite(.up) && is.finite(.dn)) {
+        return((.up - .dn) / (2 * .h))
+      }
+      # a probe ini() rejects (a mixture proportion past 1): one-sided difference
+      if (is.null(.f0)) {
+        .f0 <<- .ofv(nm, .est[[nm]])
+      }
+      if (is.finite(.up)) (.up - .f0) / .h else (.f0 - .dn) / .h
     },
     double(1)
   )
