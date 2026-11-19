@@ -35,6 +35,21 @@ nmTest({
     expect_equal(nrow(.covCorPairs(.corCov(), 0.95, skip = "v")), 0L)
   })
 
+  test_that("a fixed omega is skipped under its full-covariance name", {
+    .c <- .corCov()
+    dimnames(.c) <- list(c("tcl", "om.eta.v", "tka"), c("tcl", "om.eta.v", "tka"))
+    .env <- new.env(parent = emptyenv())
+    .env$cov <- .c
+    .fit <- list(
+      env = .env,
+      control = list(corWarn = 0.95),
+      iniDf = data.frame(name = c("tcl", "eta.v"), fix = c(FALSE, TRUE))
+    )
+    expect_no_warning(expect_null(.covCorWarn(.fit)))
+    .fit$iniDf$fix[2] <- FALSE
+    expect_warning(.covCorWarn(.fit), "tcl/om.eta.v \\(0.99\\)")
+  })
+
   test_that("a missing covariance gives no warning", {
     .env <- new.env(parent = emptyenv())
     expect_no_warning(expect_null(.covCorWarn(.env)))

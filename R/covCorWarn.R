@@ -90,7 +90,9 @@
     return(invisible(NULL))
   }
   .ini <- tryCatch(fit$iniDf, error = function(e) NULL)
+  # a full covariance names an omega "om.<eta>"
   .skip <- if (is.data.frame(.ini)) .ini$name[.ini$fix] else character(0)
+  .skip <- c(.skip, paste0("om.", .skip))
   .pairs <- .covCorPairs(get("cov", envir = .env, inherits = FALSE), .covCorWarnOf(fit, .env), .skip)
   .msg <- .covCorMsg(.pairs)
   if (!is.null(.msg)) {
