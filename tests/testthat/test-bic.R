@@ -39,6 +39,102 @@ test_that("bic() links thetas to etas through intermediate assignments", {
   expect_equal(.c$residual, 1L)
 })
 
+test_that("bic() links only the eta's own sub-expression", {
+  m <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- log(2.7)
+      tv <- 3.45
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+      prop.sd <- 0.1
+      eta.r ~ 0.1
+    })
+    model({
+      ka <- exp(tka)
+      v <- exp(tv)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - exp(tcl + eta.cl) * center / v
+      cp <- center / v
+      w <- cp * prop.sd * exp(eta.r)
+      cp ~ add(add.sd) + prop(w)
+    })
+  }
+  .l <- .bicThetaLink(suppressWarnings(rxode2::rxode2(m)))
+  expect_setequal(.l$structural, "tcl")
+  expect_setequal(.l$residual, "prop.sd")
+})
+
+test_that("bic() stops at a linCmt() prediction and follows indirect residual etas", {
+  m <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- log(2.7)
+      tv <- 3.45
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+      prop.sd <- 0.1
+      eta.r ~ 0.1
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      cp <- linCmt()
+      rsd0 <- prop.sd * exp(eta.r)
+      rsd <- sqrt(add.sd^2 + (rsd0 * cp)^2)
+      cp ~ add(rsd)
+    })
+  }
+  .l <- .bicThetaLink(suppressWarnings(rxode2::rxode2(m)))
+  expect_setequal(.l$structural, "tcl")
+  expect_setequal(.l$residual, "prop.sd")
+})
+
+test_that("bic() treats a ll() endpoint as structural", {
+  m <- function() {
+    ini({
+      t1 <- 0.1
+      t2 <- 0.2
+      eta1 ~ 0.1
+    })
+    model({
+      lp <- t1 + eta1
+      ll(err) ~ DV * lp - log(1 + exp(lp)) + t2 * 0
+    })
+  }
+  .l <- .bicThetaLink(suppressWarnings(rxode2::rxode2(m)))
+  expect_setequal(.l$structural, "t1")
+  expect_length(.l$residual, 0L)
+})
+
+test_that("bic() does not count same() copy rows", {
+  m <- function() {
+    ini({
+      tcl <- log(2.7)
+      eta.cl ~ 0.3
+      eta.cl2 ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      cp <- exp(tcl + eta.cl) * exp(eta.cl2) * t
+      cp ~ add(add.sd)
+    })
+  }
+  ui <- suppressWarnings(rxode2::rxode2(m))
+  .idf <- ui$iniDf
+  .idf$condition[.idf$name == "eta.cl2"] <- "id:same:eta.cl"
+  .u <- list(
+    iniDf = .idf,
+    lstExpr = ui$lstExpr,
+    state = ui$state,
+    muRefDataFrame = ui$muRefDataFrame
+  )
+  .c <- .bicParClass(.u)
+  expect_equal(.c$total, 3L)
+  expect_equal(.c$omega, 1L)
+})
+
 test_that("bic() does not count fixed parameters", {
   m <- function() {
     ini({
