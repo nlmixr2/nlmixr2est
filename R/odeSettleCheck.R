@@ -47,6 +47,8 @@
   .ctl$print <- 0L
   # a failed tight solve must not be retried at a looser tolerance
   .ctl$maxOdeRecalc <- 0L
+  # warm start from the fit's ETAs; mceta > 0 would draw new starts instead
+  .ctl$mceta <- -2L
   # mu-referenced regression would move the thetas; score the full model instead
   .ctl$muModel <- "none"
   for (.mn in grep("^foceiMu", names(.ctl), value = TRUE)) {

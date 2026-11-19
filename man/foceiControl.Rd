@@ -1179,7 +1179,9 @@ at or above this percentage.  Use `NA` or `Inf` to disable.}
 \item{odeSettleCheck}{When `TRUE`, an ODE model's ETAs and objective are
 re-solved at the final estimates with every ODE tolerance 10x tighter,
 and `$runInfo` notes an objective that moves by more than `odeSettleTol`
-or is not finite.  The tighter objective is kept as `fit$odeSettleObjf`.}
+or is not finite.  The tighter objective is kept as `fit$odeSettleObjf`.
+Skipped for models without ODEs (e.g. `linCmt()`), fits with
+`maxOuterIterations = 0` and a non-finite fit objective.}
 
 \item{odeSettleTol}{The objective change that `odeSettleCheck` reports.}
 

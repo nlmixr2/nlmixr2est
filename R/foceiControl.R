@@ -1065,6 +1065,8 @@
 #'   re-solved at the final estimates with every ODE tolerance 10x tighter,
 #'   and `$runInfo` notes an objective that moves by more than `odeSettleTol`
 #'   or is not finite.  The tighter objective is kept as `fit$odeSettleObjf`.
+#'   Skipped for models without ODEs (e.g. `linCmt()`), fits with
+#'   `maxOuterIterations = 0` and a non-finite fit objective.
 #'
 #' @param odeSettleTol The objective change that `odeSettleCheck` reports.
 #'
