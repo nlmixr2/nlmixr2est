@@ -496,7 +496,8 @@ saemControl <- function(
   ebe = c("mode", "saem"),
   ebeMaxEval = 200L,
   ebeTol = NULL,
-  ...
+  ...,
+  corWarn = 0.95
 ) {
   # a modeled residual error with an eta raises an unset nu (see .saemAutoNu)
   .nuAuto <- missing(nu)
@@ -669,6 +670,7 @@ saemControl <- function(
   } else {
     censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
   }
+  .corWarnCheck(corWarn)
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto),
     rxControl = rxControl,
@@ -702,6 +704,7 @@ saemControl <- function(
     perFixOmega = perFixOmega,
     perFixResid = perFixResid,
     compress = compress,
+    corWarn = corWarn,
     genRxControl = .genRxControl,
     sigdigTable = sigdigTable,
     ci = ci,
