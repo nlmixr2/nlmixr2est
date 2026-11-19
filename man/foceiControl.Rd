@@ -102,6 +102,7 @@ foceiControl(
   newuoaPolish = FALSE,
   newuoaRhoend = NULL,
   bobyqaStationary = TRUE,
+  scaleAdapt = 0L,
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL,
   innerLbfgsPgtol = NULL,
@@ -912,6 +913,11 @@ gradient and a downhill probe.  If the probe lowers the objective by
 more than `10^(1-sigdig)`, bobyqa restarts from there (up to 3 times,
 within `maxOuterIterations`).  This catches a search that stops in a
 narrow valley short of the minimum (#1196); `FALSE` skips the check.}
+
+\item{scaleAdapt}{maximum number of times the `"bobyqa"` outer search
+restarts on a scale adapted to the curvature where it stopped, one
+unit per marginal standard error.  It restarts while each restart gains
+more than `10^(1-sigdig)`.  `0` (default) turns this off.}
 
 \item{innerLbfgsLmm}{number of BFGS updates retained by the
 `innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.
