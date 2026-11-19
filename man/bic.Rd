@@ -50,11 +50,13 @@ Parameters are classified from the fit's model:
   `rsd <- prop.sd * exp(eta.rsd); cp ~ prop(rsd)`.
 
 The linkage is read from the expression around each eta: the whole sum it
-is added to (`tcl + eta.cl`), or the factors of the product it multiplies
-(an inline `exp(tcl + eta.cl) * center / exp(tv)` ties `tv` too; a
-separately assigned `v` stays its own parameter).  Fixed parameters are not
-counted.  A theta whose linkage cannot be determined is charged
-`log(nobs)`, as in `BIC(fit)`.
+is added to (`tcl + eta.cl`), or the product it multiplies, where the other
+factors are its typical value (`tvcl * exp(eta.cl)`) unless the eta's own
+factor already has one (in `exp(tcl + eta.cl) / v`, `v` stays its own
+parameter).  This is exact for mu-referenced parameters; for other forms
+it is an approximation, so write each eta on its own parameter line for an
+exact count.  Fixed parameters are not counted.  A theta whose linkage
+cannot be determined is charged `log(nobs)`, as in `BIC(fit)`.
 }
 \examples{
 \donttest{

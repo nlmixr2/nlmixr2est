@@ -175,6 +175,33 @@ test_that("bic() follows rescaled etas, sums and algebraic predictions", {
   expect_setequal(.l$residual, "prop.sd")
 })
 
+test_that("bic() keeps separately assigned parameters out of an eta's product", {
+  m <- function() {
+    ini({
+      te0 <- 1
+      temax <- 1
+      tec50 <- 0.5
+      tcl <- log(2.7)
+      tv <- 3.45
+      eta.e0 ~ 0.1
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      e0 <- te0 + eta.e0
+      emax <- exp(temax)
+      ec50 <- exp(tec50)
+      v <- exp(tv)
+      k <- exp(tcl + eta.cl) / v
+      effect <- e0 + emax * Conc / (ec50 + Conc) - k * t
+      effect ~ add(add.sd)
+    })
+  }
+  .l <- .bicThetaLink(suppressWarnings(rxode2::rxode2(m)))
+  expect_setequal(.l$structural, c("te0", "tcl"))
+  expect_length(.l$residual, 0L)
+})
+
 test_that("bic() does not count same() copy rows", {
   m <- function() {
     ini({

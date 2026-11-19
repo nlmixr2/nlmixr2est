@@ -21,11 +21,13 @@
 #'   `rsd <- prop.sd * exp(eta.rsd); cp ~ prop(rsd)`.
 #'
 #' The linkage is read from the expression around each eta: the whole sum it
-#' is added to (`tcl + eta.cl`), or the factors of the product it multiplies
-#' (an inline `exp(tcl + eta.cl) * center / exp(tv)` ties `tv` too; a
-#' separately assigned `v` stays its own parameter).  Fixed parameters are not
-#' counted.  A theta whose linkage cannot be determined is charged
-#' `log(nobs)`, as in `BIC(fit)`.
+#' is added to (`tcl + eta.cl`), or the product it multiplies, where the other
+#' factors are its typical value (`tvcl * exp(eta.cl)`) unless the eta's own
+#' factor already has one (in `exp(tcl + eta.cl) / v`, `v` stays its own
+#' parameter).  This is exact for mu-referenced parameters; for other forms
+#' it is an approximation, so write each eta on its own parameter line for an
+#' exact count.  Fixed parameters are not counted.  A theta whose linkage
+#' cannot be determined is charged `log(nobs)`, as in `BIC(fit)`.
 #'
 #' @param fit nlmixr2 fit
 #' @param type which parameters are charged `log(nsub)`:
@@ -146,32 +148,40 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
 }
 
 #' Flatten a chain of one associative operator family into its operands
+#'
+#' Parentheses and unary signs are transparent.
 #' @param x expression
 #' @param ops operator names of the family
 #' @return list of operand expressions
 #' @noRd
 .bicFlatten <- function(x, ops) {
-  if (is.call(x) && as.character(x[[1]]) %in% ops) {
-    return(do.call(c, lapply(as.list(x)[-1], .bicFlatten, ops = ops)))
-  }
-  if (is.call(x) && identical(as.character(x[[1]]), "(")) {
-    return(.bicFlatten(x[[2]], ops))
+  if (is.call(x)) {
+    .f <- as.character(x[[1]])
+    if (.f == "(" || (.f %in% c("+", "-") && length(x) == 2L)) {
+      return(.bicFlatten(x[[2]], ops))
+    }
+    if (.f %in% ops) {
+      return(do.call(c, lapply(as.list(x)[-1], .bicFlatten, ops = ops)))
+    }
   }
   list(x)
 }
 
 #' The parts of an expression that make up an eta's parameter
 #'
-#' A sum with a bare eta term (`tcl + eta.cl`) is the parameter; otherwise
-#' only the terms holding an eta are.  A product keeps its factors, except a
-#' bare variable in `excl`, so `exp(tcl + eta.cl) * center / v` gives
-#' `exp(tcl + eta.cl)` and `center`.
+#' A sum with a bare direct eta term (`tcl + eta.cl`) is the parameter;
+#' otherwise only the terms holding an eta are.  In a product the other
+#' factors are the eta's typical value (`tvcl * exp(eta.cl)`) unless the
+#' eta's own factor already carries one (`exp(tcl + eta.cl) / v`); then only
+#' the factors that use no other model variable join.
 #' @param x expression
 #' @param etaLike eta and eta-carrying variable names
-#' @param excl variable names a product does not take in as factors
+#' @param direct etas and variables built only from etas and covariates
+#' @param typ thetas and eta-carrying variables that hold a theta
+#' @param own assigned variables that carry no eta
 #' @return list of expressions
 #' @noRd
-.bicEtaPart <- function(x, etaLike, excl) {
+.bicEtaPart <- function(x, etaLike, direct, typ, own) {
   .has <- function(e) any(all.vars(e) %in% etaLike)
   if (!.has(x)) {
     return(list())
@@ -180,32 +190,26 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
     return(list(x))
   }
   .rec <- function(lst) {
-    do.call(c, lapply(lst, .bicEtaPart, etaLike = etaLike, excl = excl))
+    do.call(c, lapply(lst, .bicEtaPart, etaLike = etaLike, direct = direct, typ = typ, own = own))
   }
   .f <- as.character(x[[1]])
   if (.f %in% c("*", "/")) {
     .o <- .bicFlatten(x, c("*", "/"))
     .eta <- vapply(.o, .has, logical(1))
-    .keep <- !.eta & !vapply(.o, function(o) is.name(o) && as.character(o) %in% excl, logical(1))
+    .typ <- any(vapply(.o[.eta], function(o) any(all.vars(o) %in% typ), logical(1)))
+    .keep <- !.eta
+    if (.typ) {
+      .keep <- .keep & !vapply(.o, function(o) any(all.vars(o) %in% own), logical(1))
+    }
     return(c(.o[.keep], .rec(.o[.eta])))
   }
   if (.f %in% c("+", "-", "(")) {
     .o <- .bicFlatten(x, c("+", "-"))
-    .eta <- vapply(.o, .has, logical(1))
-    .etaOnly <- vapply(
-      .o,
-      function(o) {
-        if (is.call(o) && identical(as.character(o[[1]]), "-") && length(o) == 2L) {
-          o <- o[[2]]
-        }
-        is.name(o) && as.character(o) %in% etaLike
-      },
-      logical(1)
-    )
-    if (any(.eta & .etaOnly)) {
+    .bare <- vapply(.o, function(o) is.name(o) && as.character(o) %in% direct, logical(1))
+    if (any(.bare)) {
       return(list(x))
     }
-    return(.rec(.o[.eta]))
+    return(.rec(.o[vapply(.o, .has, logical(1))]))
   }
   .rec(as.list(x)[-1])
 }
@@ -330,10 +334,13 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
     if (!any(.l$rhs %in% .etaLike)) {
       next
     }
-    # a bare variable joins a product only on a state-free line with a direct
-    # eta (cl <- tvcl * exp(eta.cl)), not in k <- cl / v
-    .excl <- if (.dirty || !any(.l$rhs %in% .direct)) setdiff(.vars, .etaLike) else character(0)
-    .parts <- .bicEtaPart(.l$x, .etaLike, .excl)
+    .parts <- .bicEtaPart(
+      .l$x,
+      .etaLike,
+      intersect(.direct, .etaLike),
+      c(.thetas, setdiff(.etaVar, .thetaFree)),
+      setdiff(.vars, .etaLike)
+    )
     .t <- .trace(unique(unlist(lapply(.parts, all.vars))))
     if (.resLine) {
       .res <- union(.res, .t)
