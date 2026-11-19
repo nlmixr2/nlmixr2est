@@ -202,6 +202,12 @@
   `$runInfo`; `tableControl(iwresAutocor = FALSE)` turns the note off
   (#1373).
 
+- A SAEM fit now notes in `$runInfo` when its covariance was computed at an
+  estimate that is not stationary for the FOCEi objective: the Newton
+  decrement `0.5 * g' H^-1 g` (OFV units) of that objective at the estimate
+  exceeds `saemControl(covNewtonWarn = 1)`.  The value is kept as
+  `fit$covNewtonDecrement`; `NA` or `Inf` skips the check (#1389).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the

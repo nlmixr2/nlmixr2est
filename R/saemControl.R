@@ -135,6 +135,11 @@
 #'   structural-theta-only covariance is reported.  Ignored by
 #'   \code{covMethod="sa"}, which is always full.
 #'
+#' @param covNewtonWarn Warn (in `$runInfo`) when the Newton decrement of the
+#'   FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+#'   this value: the standard errors then belong to no optimum.  The value is
+#'   kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.
+#'
 #' @param nSaCov Number of iterations in the dedicated stochastic-approximation
 #'   covariance phase used by \code{covMethod="sa"}, a whole number of at least 1
 #'   (default \code{500}).  These
@@ -447,6 +452,7 @@ saemControl <- function(
   covMethodDeferred = NA_character_,
   covFallback = list(sa = c("linFim", "Ha"), fim = c("linFim", "Ha"), analytic = c("linFim", "Ha"), linFim = "Ha"),
   covFull = TRUE,
+  covNewtonWarn = 1,
   nSaCov = 500L,
   calcTables = TRUE,
   logLik = FALSE,
@@ -680,6 +686,7 @@ saemControl <- function(
     targets = c("sa", "fim", "linFim", "Ha")
   )
   checkmate::assertLogical(covFull, len = 1, any.missing = FALSE)
+  checkmate::assertNumber(covNewtonWarn, lower = 0, na.ok = TRUE)
 
   # censOption: FOCEI-family censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic
   # Gauss-Newton, default) or "laplace" (exact).  Accepted for a uniform interface but INERT for
@@ -732,6 +739,7 @@ saemControl <- function(
     covMethodDeferred = covMethodDeferred,
     covFallback = covFallback,
     covFull = covFull,
+    covNewtonWarn = as.double(covNewtonWarn),
     nSaCov = as.integer(nSaCov),
     logLik = logLik,
     calcTables = calcTables,
