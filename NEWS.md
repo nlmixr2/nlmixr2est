@@ -26,6 +26,12 @@
   diagnostics are unreliable.  `foceiControl(shrinkEtaWarn=)` sets the
   threshold; `NA` or `Inf` turns the note off (#1379).
 
+- After the covariance step, a fit warns (in `$runInfo`) about pairs of
+  estimates correlated at `|r| >= 0.95`, e.g. `highly correlated estimates:
+  tcl/tv (0.98)`.  `corWarn=` in every method's control (e.g.
+  `foceiControl(corWarn=)`, `saemControl(corWarn=)`) sets the threshold;
+  `NA` turns it off (#1380).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the
@@ -188,6 +194,12 @@
   re-solved before its MCMC step, so the population reset of fixed-effect-only
   thetas between iterations no longer leaves a stale likelihood that froze the
   chain at a state that no longer fit (#1298).
+
+- `saem` now estimates the component thetas of an eta shared by several
+  `mix()` components (`mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))`) as
+  that eta's mean within each component.  They used to be fixed-effect-only
+  search parameters, so the components drifted apart while the shared eta's
+  variance absorbed the split; they also get an SA covariance SE now (#1296).
 
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves

@@ -46,7 +46,8 @@ emviControl(
   indTolRelax = TRUE,
   eventSens = c("jump", "fd"),
   rxControl = NULL,
-  ...
+  ...,
+  corWarn = 0.95
 )
 }
 \arguments{
@@ -361,6 +362,10 @@ model, `rxControl(method = "dop853")` gives a much smoother objective
 than the default `"liblsoda"` at the same `rtol`.}
 
 \item{...}{Other arguments to control SAEM.}
+
+\item{corWarn}{warn when two estimates' correlation is at least this in
+absolute value after the covariance step; \code{NA} or \code{Inf} turns
+the warning off.}
 }
 \value{
 variational-inference control structure (class `emviControl`)
