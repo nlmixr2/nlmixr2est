@@ -27,14 +27,19 @@ nmTest({
     expect_equal(foceiControl()$outerOpt, -1L)
     expect_equal(foceiControl()$outerOptTxt, "bobyqa")
     expect_equal(foceiControl(fast = TRUE)$outerOpt, -1L)
-    expect_equal(foceiControl(fast = TRUE)$outerOptTxt, "nlminb")
+    expect_equal(foceiControl(fast = TRUE)$outerOptTxt, "trust")
+    # trust is the fast FOCEi default; FOCE and AGQ keep nlminb
+    expect_equal(foceiControl(fast = TRUE, interaction = FALSE)$outerOptTxt, "nlminb")
+    expect_equal(foceiControl(fast = TRUE, nAGQ = 2)$outerOptTxt, "nlminb")
+    # a defaulted trust goes back to bobyqa when the fit is downgraded
+    expect_equal(.foceiDowngradeFast(foceiControl(fast = TRUE))$outerOptTxt, "bobyqa")
     expect_true(foceiControl(fast = TRUE)$fast)
     expect_false(foceiControl()$fast)
     # an explicit outerOpt still wins under fast
     expect_equal(foceiControl(fast = TRUE, outerOpt = "nlminb")$outerOpt, -1L)
     expect_equal(foceiControl(fast = TRUE, outerOpt = "lbfgsb3c")$outerOpt, 1L)
     # a defaulted optimizer re-defaults under a *f wrapper; an explicit one is kept
-    expect_equal(.foceiFastCtl(list(foceiControl()), foceiControl)$outerOptTxt, "nlminb")
+    expect_equal(.foceiFastCtl(list(foceiControl()), foceiControl)$outerOptTxt, "trust")
     expect_equal(
       .foceiFastCtl(list(foceiControl(outerOpt = "nlminb")), foceiControl)$outerOptTxt,
       "nlminb"
