@@ -5474,8 +5474,16 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       }
     }
   } else {
-    # freezing restarts the fit, which this path does not do
-    .ret$control$freezeFlatTheta <- FALSE
+    .ret0 <- tryCatch(foceiFitCpp_(.ret), error = function(e) {
+      if (regexpr("theta freeze", e$message) == -1) {
+        stop(e)
+      }
+      NULL
+    })
+    if (!is.null(.ret0)) {
+      return(.ret0)
+    }
+    .foceiFreezeFlatTheta(.ret)
     foceiFitCpp_(.ret)
   }
 }

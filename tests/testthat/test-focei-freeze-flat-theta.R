@@ -30,6 +30,17 @@ test_that("freezeFlatTheta fixes a theta that cannot move the objective (#1382)"
   expect_false("tdead" %in% colnames(fit$cov))
   expect_true(abs(fit$theta["tcl"] - (-3)) > 0.5)
   expect_true(abs(fit$theta["tka"] - 0.5) > 0.01)
+
+  withr::with_options(list(nlmixr2.retryFocei = FALSE), {
+    fit2 <- suppressMessages(nlmixr2(
+      dead,
+      nlmixr2data::theo_sd,
+      "focei",
+      control = foceiControl(print = 0, freezeFlatTheta = TRUE, calcTables = FALSE)
+    ))
+  })
+  expect_equal(unname(fit2$theta["tdead"]), 1)
+  expect_true(fit2$iniDf$fix[fit2$iniDf$name == "tdead"])
 })
 
 test_that("freezeFlatTheta leaves a model whose thetas are all used alone", {
