@@ -541,5 +541,6 @@ nlmixr2Est0 <- function(env, ...) {
     },
     silent = TRUE
   )
+  .shrinkEtaWarn(ret)
   invisible()
 }
