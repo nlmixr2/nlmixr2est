@@ -19,6 +19,12 @@
   diagnostics are unreliable.  `foceiControl(shrinkEtaWarn=)` sets the
   threshold; `NA` or `Inf` turns the note off (#1379).
 
+- After the covariance step, a fit warns (in `$runInfo`) about pairs of
+  estimates correlated at `|r| >= 0.95`, e.g. `highly correlated estimates:
+  tcl/tv (0.98)`.  `corWarn=` in every method's control (e.g.
+  `foceiControl(corWarn=)`, `saemControl(corWarn=)`) sets the threshold;
+  `NA` turns it off (#1380).
+
 - A fit whose IWRES sd shrinkage is below -5% now notes it in `$runInfo`
   ("IWRES shrinkage is strongly negative; check the residual model"); the
   raw value in `$shrink` is unchanged (#1376).

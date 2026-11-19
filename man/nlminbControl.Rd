@@ -55,7 +55,8 @@ nlminbControl(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
-  ...
+  ...,
+  corWarn = 0.95
 )
 }
 \arguments{
@@ -277,6 +278,10 @@ At the default \code{sigdig = 3} this is \code{atol = 1e-8},
 If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{...}{Further arguments to be supplied to \code{objective}.}
+
+\item{corWarn}{warn when two estimates' correlation is at least this in
+absolute value after the covariance step; \code{NA} or \code{Inf} turns
+the warning off.}
 }
 \description{
 nlmixr2 nlminb defaults

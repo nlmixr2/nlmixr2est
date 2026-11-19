@@ -69,7 +69,8 @@ nlmixr2NlmeControl <- function(
   eventSens = c("jump", "fd"),
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
-  ...
+  ...,
+  corWarn = 0.95
 ) {
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
   checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)
@@ -166,6 +167,7 @@ nlmixr2NlmeControl <- function(
   }
   checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
 
+  .corWarnCheck(corWarn)
   .ret <- list(
     maxIter = maxIter,
     pnlsMaxIter = pnlsMaxIter,
@@ -195,6 +197,7 @@ nlmixr2NlmeControl <- function(
     addProp = addProp,
     calcTables = calcTables,
     compress = compress,
+    corWarn = corWarn,
     random = random,
     fixed = fixed,
     weights = weights,
