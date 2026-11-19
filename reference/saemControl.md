@@ -478,23 +478,25 @@ saemControl(
   `"var"`, `"logsd"`, or `"logvar"`. This parameterizes the magnitude
   theta of the `"theta"` `iovMethod`; it has no effect under `"omega"`,
   where the magnitude is fixed at one and the variability is carried by
-  the omega block itself.
+  the omega block itself, or under saem, which estimates the occasion
+  variance directly.
 
 - iovMethod:
 
   How inter-occasion variability (\`iov.x ~ v \| occ\`) is estimated.
-  `"theta"` uses the shared pre-processing rewrite, which carries the
-  magnitude as a population parameter multiplying per-occasion
-  unit-variance etas (the form every other estimation method uses).
-  `"twoLevel"` (the default) keeps the occasion term as a second
-  variance component and estimates it with the closed-form updates of
-  Panhard and Samson (2009), which is what the SAEM kernel is built
-  around for every other variance. `"collapsed"` additionally uses that
-  paper's own sampler: one parameter per occasion carrying
-  `mu + b_i + c_ik` together, with a compound-symmetric prior, instead
-  of sampling `b_i` and `c_ik` separately. It targets the same estimates
-  and differs only in how well the chain mixes. A model the newer
-  handling does not cover falls back to `"theta"` on its own.
+  `"theta"` uses the shared pre-processing rewrite; for saem it gives
+  each occasion level its own eta, all sharing one variance estimated in
+  closed form, and so covers models `"twoLevel"` does not (a
+  non-mu-referenced parameter, several occasion variables). `"twoLevel"`
+  (the default) keeps the occasion term as a second variance component
+  and estimates it with the closed-form updates of Panhard and Samson
+  (2009), which is what the SAEM kernel is built around for every other
+  variance. `"collapsed"` additionally uses that paper's own sampler:
+  one parameter per occasion carrying `mu + b_i + c_ik` together, with a
+  compound-symmetric prior, instead of sampling `b_i` and `c_ik`
+  separately. It targets the same estimates and differs only in how well
+  the chain mixes. A model the newer handling does not cover falls back
+  to `"theta"` on its own.
 
 - boundedTransform:
 

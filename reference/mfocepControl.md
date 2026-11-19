@@ -353,7 +353,7 @@ mfocepControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x64c71724f288>
+#> <bytecode: 0x607ce01dab88>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -589,6 +589,9 @@ mfocepControl()
 #> 
 #> $finalEtaTol
 #> [1] 1
+#> 
+#> $shrinkEtaWarn
+#> [1] 30
 #> 
 #> $maxOdeRecalc
 #> [1] 5

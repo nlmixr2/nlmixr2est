@@ -162,6 +162,7 @@ foceiControl(
   etaNudge2 = qnorm(1 - 0.05/2) * sqrt(3/5),
   etaRestart = 4L,
   finalEtaTol = 1,
+  shrinkEtaWarn = 30,
   nRetries = 3,
   seed = 42,
   resetThetaCheckPer = 0.1,
@@ -736,7 +737,8 @@ foceiControl(
   `"var"`, `"logsd"`, or `"logvar"`. This parameterizes the magnitude
   theta of the `"theta"` `iovMethod`; it has no effect under `"omega"`,
   where the magnitude is fixed at one and the variability is carried by
-  the omega block itself.
+  the omega block itself, or under saem, which estimates the occasion
+  variance directly.
 
 - iovMethod:
 
@@ -1437,6 +1439,11 @@ foceiControl(
   objective. Warm-started ETAs can fall into a secondary mode during the
   search and stay there. Only applies with a warm start (\`mceta \<
   0\`). Use \`Inf\` to disable.
+
+- shrinkEtaWarn:
+
+  Warn (in \`\$runInfo\`) when an eta's SD shrinkage is at or above this
+  percentage. Use \`NA\` or \`Inf\` to disable.
 
 - nRetries:
 
