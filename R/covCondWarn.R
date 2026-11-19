@@ -41,14 +41,13 @@
   if (length(cond) != 1L || is.na(cond) || length(condWarn) != 1L || !is.finite(condWarn) || cond <= condWarn) {
     return(NULL)
   }
-  # enough digits that the printed number still exceeds the printed threshold
-  for (.d in 5:15) {
-    .c <- format(cond, digits = .d)
-    .t <- format(condWarn, digits = .d)
-    if (as.double(.c) > as.double(.t)) {
-      break
-    }
+  # the fewest digits at which the printed number still exceeds the threshold
+  .d <- Find(function(d) signif(cond, d) > signif(condWarn, d), 5:15)
+  if (is.null(.d)) {
+    return(NULL)
   }
+  .c <- format(signif(cond, .d), digits = .d)
+  .t <- format(signif(condWarn, .d), digits = .d)
   sprintf("covariance condition number is large (%s > %s)", .c, .t)
 }
 
