@@ -210,6 +210,14 @@
   re-solved before its MCMC step, so the population reset of fixed-effect-only
   thetas between iterations no longer leaves a stale likelihood that froze the
   chain at a state that no longer fit (#1298).
+- A covariate compared to string literals (`b2 * (tnom == "2")`) no longer
+  gets permuted estimates or `PRED`.  Each generated model (inner, pred,
+  outer, saem, nlm, nlme, ...) numbered the literals in its own order while
+  the data was coded once in the model's order; the generated models now use
+  the data's order, and a mismatch is an error (#1299).
+
+- A model without etas whose covariate is compared to string literals no
+  longer fails the table step ("error calculating tables") (#1299).
 
 - `saem` now estimates the component thetas of an eta shared by several
   `mix()` components (`mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))`) as
@@ -524,6 +532,10 @@
   NPDE of the same table without dosing rows and `NA` on dosing rows; the
   NPDE columns were longer than the table and out of row order, and the dosing
   rows changed the simulations.
+
+- Printing a fit with estimated correlations no longer leaves the
+  `broom.mixed.sep1`/`sep2` options set, which renamed later `confint()` and
+  `tidy()` terms to `sd:eta`/`cor:eta.v,eta.cl`.
 
 - `tidy()` and `confint()` now report only the model's thetas.  A
   non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
