@@ -202,4 +202,8 @@ test_that("unused parameter hook warns by name", {
     "'tdead' does not affect the objective function"
   )
   expect_no_warning(.preProcessUnusedParams(.ui, "rxSolve", NULL, NULL))
+  # a registered likelihood contributor may read any parameter
+  .Call("_nlmixr2est_registerTestContrib", PACKAGE = "nlmixr2est")
+  on.exit(.Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est"), add = TRUE)
+  expect_no_warning(.preProcessUnusedParams(.ui, "focei", NULL, foceiControl()))
 })
