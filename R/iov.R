@@ -325,6 +325,52 @@ nlmixr2iovVarSd <- function(val) {
   )
 }
 
+#' Does this estimation method pool the occasion etas' variances itself?
+#'
+#' A method with `attr(nlmixr2Est.<est>, "iovPool")` TRUE estimates one
+#' variance across a `(occ == 1)*eta1 + (occ == 2)*eta2 + ...` line in closed
+#' form (saem's `poolOmegaGroups`), so the rewrite gives it that line instead
+#' of a magnitude theta it would have to move as a fixed effect (#1319).
+#'
+#' @param est estimation method name
+#' @return `TRUE` or `FALSE`
+#' @noRd
+.isIovPoolMethod <- function(est) {
+  if (length(est) != 1L || is.na(est)) {
+    return(FALSE)
+  }
+  .fn <- utils::getS3method("nlmixr2Est", est, optional = TRUE)
+  !is.null(.fn) && isTRUE(attr(.fn, "iovPool"))
+}
+
+#' Per-occasion etas sharing one estimated variance, for a pooling method
+#'
+#' @param v occasion parameter name
+#' @param lvls the observed levels of the occasion variable
+#' @param l1 the occasion variable's name
+#' @param row the user's `v ~ est | l1` row
+#' @param eta1 template eta row
+#' @param env accumulating environment (`etas`, `maxeta`, `drop`,
+#'   `extraEtas`)
+#' @return the model line combining the etas behind occasion indicators
+#' @noRd
+.uiIovPoolEtas <- function(v, lvls, l1, row, eta1, env) {
+  .nm <- paste0("rx.", v, ".", lvls)
+  for (.i in seq_along(lvls)) {
+    .cur <- eta1
+    .cur$name <- .nm[.i]
+    .cur$label <- paste0(v, "(", l1, "==", lvls[.i], ")")
+    .cur$est <- row$est
+    .cur$fix <- row$fix
+    env$drop <- c(env$drop, .cur$name)
+    env$maxeta <- .cur$neta1 <- .cur$neta2 <- env$maxeta + 1L
+    env$etas <- rbind(env$etas, .cur)
+    env$extraEtas <- c(env$extraEtas, .cur)
+  }
+  env$pool[[v]] <- .nm
+  str2lang(paste0("rx.", v, " <- ", paste0("(", l1, " == ", lvls, ")*", .nm, collapse = " + ")))
+}
+
 #' Build the per-occasion eta blocks for `iovMethod="omega"`
 #'
 #' Occasion one IS the estimated block: it takes the variances and
@@ -744,6 +790,8 @@ nlmixr2iovVarSd <- function(val) {
     # changed to etas on id
     .env$extraThetas <- NULL
     .env$extraEtas <- NULL
+    .env$pool <- NULL
+    .pool <- .isIovPoolMethod(est)
     .lines <- lapply(names(.lvls), function(l1) {
       ## this LEVEL's expansion; `iovXform` parameterizes
       ## the "theta" magnitude and means nothing once the
@@ -784,6 +832,12 @@ nlmixr2iovVarSd <- function(val) {
               "declarations; it needs exactly one",
               call. = FALSE
             )
+          }
+          if (.pool && .m1 == "theta") {
+            # a variance the method's M-step pools in closed form; as a
+            # magnitude theta saem moves it as a fixed effect and shrinks it
+            .uiIovEnv$iovVars <- c(.uiIovEnv$iovVars, v)
+            return(.uiIovPoolEtas(v, .lvls[[l1]], l1, .iniDf[.wv, ], .eta1, .env))
           }
           .est <- .iniDf[.wv, "est"]
           if (.xf1 == "var") {
@@ -935,6 +989,8 @@ nlmixr2iovVarSd <- function(val) {
     assign("lstExpr", .lines, envir = .ui)
     .uiIovEnv$ui <- ui
     .uiIovEnv$iovDrop <- .env$drop # extra variables to drop
+    # finalized like saem's two-level handling: the variance is the pooled eta's
+    .uiIovEnv$iovTwoLevel <- .env$pool
     .ret <- list(ui = rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun()))))
     if (.fellBack) {
       .ret$control <- control
@@ -946,6 +1002,55 @@ nlmixr2iovVarSd <- function(val) {
     NULL
   }
 }
+#' Parameters the expanded model counts beyond the pooled variances
+#'
+#' The K per-occasion etas of an estimated pool are one parameter, so the
+#' expanded model's count is K - 1 too high for each.
+#'
+#' @param groups named list, occasion parameter -> its per-occasion eta names
+#' @param iniDf the user's `iniDf`, before the rewrite
+#' @return integer count
+#' @noRd
+.iovPoolExtraDf <- function(groups, iniDf) {
+  .k <- 0L
+  for (.v in names(groups)) {
+    .fix <- iniDf$fix[iniDf$name == .v & !is.na(iniDf$neta1)]
+    if (!isTRUE(any(.fix))) {
+      .k <- .k + length(groups[[.v]]) - 1L
+    }
+  }
+  .k
+}
+
+#' Take pooled-variance duplicates out of a fit's df, AIC and BIC
+#'
+#' @param env fit environment
+#' @param k parameters to remove
+#' @return nothing, called for side effects
+#' @noRd
+.iovPoolAdjustDf <- function(env, k) {
+  .l <- env$logLik
+  if (k <= 0L || is.null(attr(.l, "df"))) {
+    return(invisible())
+  }
+  attr(.l, "df") <- attr(.l, "df") - k
+  assign("logLik", .l, envir = env)
+  .n <- attr(.l, "nobs")
+  if (is.numeric(env$AIC)) {
+    assign("AIC", env$AIC - 2 * k, envir = env)
+  }
+  if (is.numeric(env$BIC)) {
+    assign("BIC", env$BIC - log(.n) * k, envir = env)
+  }
+  .o <- env$objDf
+  if (is.data.frame(.o)) {
+    .o$AIC <- .o$AIC - 2 * k
+    .o$BIC <- .o$BIC - log(.n) * k
+    assign("objDf", .o, envir = env)
+  }
+  invisible()
+}
+
 #' Finalizes IOV model
 #'
 #' @param ret data frame with some iov information dropped
@@ -1327,8 +1432,8 @@ nlmixr2iovVarSd <- function(val) {
       .bsv <- which(grepl("BSV", names(.parFixedDf)))
       .est <- which(grepl("Est", names(.parFixedDf)))
 
-      # the two-level path has no magnitude theta, so give each occasion
-      # parameter the row the shared rewrite's theta would have had
+      # a two-level or pooled occasion variance has no magnitude theta, so give
+      # each occasion parameter the row the shared rewrite's theta would have had
       .parFixed <- ret$env$parFixed
       if (!is.null(.uiIovEnv$iovTwoLevel)) {
         .tl <- .iovTwoLevelParFixed(.parFixedDf, .parFixed, ret$env, .uiIovEnv$iovVars, .uiIovEnv$ui)
@@ -1394,6 +1499,7 @@ nlmixr2iovVarSd <- function(val) {
       .parFixed <- .parFixed[!grepl("^rx[.]", rownames(.parFixed)), ]
       assign("parFixed", .parFixed, envir = ret$env)
       .iovTwoLevelSe(ret$env)
+      .iovPoolAdjustDf(ret$env, .iovPoolExtraDf(.uiIovEnv$iovTwoLevel, .uiIovEnv$ui$iniDf))
     }
     # In this approach the model is simply kept,
     # but the data drops the iovDrop

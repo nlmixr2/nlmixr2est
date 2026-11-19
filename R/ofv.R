@@ -12,6 +12,9 @@
       .foceiControl$covMethod <- 0L
       .foceiControl$compress <- FALSE
       .foceiControl$nAGQ <- 0L # focei/foce/fo objectives, not the fit's quadrature
+      # fixed values are constants here; substituting them also keeps a fixed
+      # covariate term out of the linCmt() sensitivity carry
+      .foceiControl$literalFix <- TRUE
       if (.type == "focei") {
         .foceiControl$interaction <- TRUE
         .rn <- "FOCEi"

@@ -220,3 +220,36 @@ test_that("regress classifies at each subject's own etas under proportional erro
   expect_equal(th[["p1"]], mean(.d$comp == 1), tolerance = 0.1)
   expect_gt(mean(fit$mixNum$mixnum == .d$comp), 0.9)
 })
+
+test_that("a shared-eta mixture does not diverge under another seed (#1298)", {
+  skip_on_cran()
+  .testSeed(2026)
+  .d <- .mix1296Data()
+
+  # shared eta.cl: the phi0 component thetas carry per-subject draws that the
+  # M-step resets to the population value, so a cached chain state went stale
+  # and froze at CL ~ 30, driving prop.sd to ~1e43
+  mixMod <- function() {
+    ini({
+      tka <- log(1); tcl1 <- log(8); tcl2 <- log(2); tv <- log(50); p1 <- 0.6
+      eta.ka ~ 0.1; eta.cl ~ 0.1; eta.v ~ 0.1; prop.sd <- 0.2
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+      v <- exp(tv + eta.v)
+      linCmt() ~ prop(prop.sd)
+    })
+  }
+  fit <- suppressWarnings(nlmixr2(
+    mixMod,
+    .d$data,
+    est = "saem",
+    saemControl(print = 0, seed = 1, calcTables = FALSE, covMethod = "")
+  ))
+  th <- fixef(fit)
+  expect_equal(th[["prop.sd"]], 0.12, tolerance = 0.2)
+  expect_lt(fit$omega["eta.cl", "eta.cl"], 1)
+  expect_true(is.finite(fit$objf))
+  expect_lt(fit$objf, 0)
+})
