@@ -35,6 +35,12 @@
 - `saemControl(rmcmc=)` sets the random-walk proposal scale of the SAEM MCMC
   kernels, previously fixed at 0.5; lower it when `$mcmcAccept` is low (#1385).
 
+- A `saem` fit now notes in `$runInfo` when its random-walk MCMC acceptance
+  over the last 100 estimation iterations is outside 5-80% (e.g.
+  `MCMC acceptance low (rw 0%); try a smaller rmcmc`).
+  `saemControl(mcmcAcceptWarn=)` sets the range; `NA` turns the note off
+  (#1385).
+
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
   diagnostics are unreliable.  `foceiControl(shrinkEtaWarn=)` sets the

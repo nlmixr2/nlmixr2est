@@ -34,6 +34,11 @@
 #'     to the current between-subject SD.  Smaller values raise the MCMC
 #'     acceptance rate (see `$mcmcAccept`); larger values lower it.
 #'
+#' @param mcmcAcceptWarn Acceptance-rate range `c(low, high)`; when the mean
+#'     acceptance of the random-walk kernels over the last 100 estimation
+#'     iterations falls outside it, the fit notes it in `$runInfo`.  `NULL` or
+#'     `NA` turns the note off.
+#'
 #' @inheritParams iterPrintParams
 #'
 #' @param trace An integer indicating if you want to trace(1) the
@@ -418,6 +423,7 @@ saemControl <- function(
   nmc = 3,
   nu = c(2, 2, 2),
   rmcmc = 0.5,
+  mcmcAcceptWarn = c(0.05, 0.8),
   print = 1L,
   trace = 0, # nolint
   covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
@@ -521,6 +527,12 @@ saemControl <- function(
   checkmate::assertNumber(rmcmc, finite = TRUE)
   if (rmcmc <= 0) {
     stop("'rmcmc' must be positive", call. = FALSE)
+  }
+  if (!is.null(mcmcAcceptWarn) && !all(is.na(mcmcAcceptWarn))) {
+    checkmate::assertNumeric(mcmcAcceptWarn, lower = 0, upper = 1, len = 2, any.missing = FALSE, sorted = TRUE)
+  } else {
+    # NA rather than NULL so the off switch survives deparsing
+    mcmcAcceptWarn <- NA
   }
   # `print` can be either a scalar print-frequency or a pre-built
   # iterPrintControl object; .absorbIterPrintControl validates either form
@@ -659,6 +671,7 @@ saemControl <- function(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto, rmcmc = rmcmc),
     rxControl = rxControl,
     seed = seed,
+    mcmcAcceptWarn = mcmcAcceptWarn,
     censOption = censOption,
     iterPrintControl = .iterPrintControl,
     DEBUG = trace, # nolint
