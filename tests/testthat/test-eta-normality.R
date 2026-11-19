@@ -24,6 +24,9 @@ test_that("small, huge, constant and skipped etas give NA statistics", {
   expect_true(all(is.na(.r[, c("shapiroW", "shapiroP")])))
   .r <- .etaNormalityRow("eta.cl", rep(0, 10))
   expect_true(all(is.na(.r[, .na])))
+  # positive sd, but t.test() calls it essentially constant
+  .r <- .etaNormalityRow("eta.cl", c(1, 1, 1 + .Machine$double.eps))
+  expect_true(is.na(.r$meanP))
   .r <- .etaNormalityRow("eta.cl", stats::qnorm(stats::ppoints(20)), skip = TRUE)
   expect_true(all(is.na(.r[, c("mean", "sd", .na)])))
 })
@@ -46,6 +49,42 @@ test_that("fixed and zero-variance etas are found from iniDf", {
   expect_identical(.etaNormalityFixed(NULL), character(0))
 })
 
+test_that("component-owned mixture etas use only their component's subjects", {
+  .ui <- rxode2::rxode2(function() {
+    ini({
+      tcl1 <- 0
+      tcl2 <- 2
+      p1 <- 0.5
+      tv <- 3
+      eta.cl1 ~ 0.1
+      eta.cl2 ~ 0.1
+      eta.v ~ 0.1
+      add.sd <- 0.1
+    })
+    model({
+      cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  })
+  .x <- stats::qnorm(stats::ppoints(10))
+  .mn <- rep(1:2, each = 10)
+  .ranef <- data.frame(
+    ID = 1:20,
+    eta.cl1 = c(.x, rep(0, 10)),
+    eta.cl2 = c(rep(0, 10), .x),
+    eta.v = c(.x, .x),
+    mixnum = .mn
+  )
+  .r <- .etaNormalityFit(list(ui = .ui, ranef = .ranef, mixNum = data.frame(ID = 1:20, mixnum = .mn)))
+  expect_identical(.r$eta, c("eta.cl1", "eta.cl2", "eta.v"))
+  expect_identical(.r$n, c(10L, 10L, 20L))
+  expect_equal(.r$shapiroP[1], stats::shapiro.test(.x)$p.value)
+  # without the component, the placeholder zeros are counted
+  .r <- .etaNormalityFit(list(ui = .ui, ranef = .ranef))
+  expect_identical(.r$n, c(20L, 20L, 20L))
+})
+
 nmTest({
   test_that("fit$etaNormality is available on a cached fit", {
     .fit <- one.compartment.fit.focei
@@ -63,6 +102,16 @@ nmTest({
     expect_identical(.r$eta, c("eta.ka", "eta.cl", "eta.v"))
     expect_true(is.na(.r$shapiroP[1]))
     expect_false(is.na(.r$shapiroP[2]))
+  })
+
+  test_that("a zero-omega eta dropped by the fit still gets an NA row", {
+    .mod <- suppressMessages(rxode2::ini(one.compartment, eta.ka ~ 0))
+    .fit <- suppressWarnings(.nlmixr(.mod, nlmixr2data::theo_sd, est = "focei", control = foceiControlFast))
+    .r <- .fit$etaNormality
+    expect_setequal(.r$eta, c("eta.ka", "eta.cl", "eta.v"))
+    .ka <- .r[.r$eta == "eta.ka", ]
+    expect_true(all(is.na(.ka[, c("mean", "sd", "meanP", "shapiroW", "shapiroP")])))
+    expect_false(anyNA(.r$shapiroP[.r$eta != "eta.ka"]))
   })
 
   test_that("occasion etas get their own row", {

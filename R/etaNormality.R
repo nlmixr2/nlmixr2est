@@ -29,12 +29,15 @@
   if (!is.finite(.ret$sd) || .ret$sd <= 0) {
     return(.ret)
   }
-  .ret$meanP <- stats::t.test(x, mu = 0)$p.value
+  # t.test() errors on essentially constant data
+  .ret$meanP <- tryCatch(stats::t.test(x, mu = 0)$p.value, error = function(e) NA_real_)
   # shapiro.test() only accepts 3 to 5000 values
   if (.n <= 5000L) {
-    .sw <- stats::shapiro.test(x)
-    .ret$shapiroW <- unname(.sw$statistic)
-    .ret$shapiroP <- .sw$p.value
+    .sw <- tryCatch(stats::shapiro.test(x), error = function(e) NULL)
+    if (!is.null(.sw)) {
+      .ret$shapiroW <- unname(.sw$statistic)
+      .ret$shapiroP <- .sw$p.value
+    }
   }
   .ret
 }
@@ -44,10 +47,11 @@
 #' @param eta data frame of ETAs (an `ID`, `mixnum` or occasion column is ignored)
 #' @param skip names of ETAs whose statistics are `NA` (fixed or zero omega)
 #' @param drop names of non-ETA columns to ignore
+#' @param rows named list of the rows to use for an ETA (default every row)
 #' @return data frame, one row per ETA column (see `.etaNormalityRow()`)
 #' @author Matthew L. Fidler
 #' @noRd
-.etaNormalityDf <- function(eta, skip = character(0), drop = character(0)) {
+.etaNormalityDf <- function(eta, skip = character(0), drop = character(0), rows = list()) {
   if (!is.data.frame(eta)) {
     return(NULL)
   }
@@ -60,7 +64,11 @@
   do.call(
     rbind,
     lapply(.cols, function(.c) {
-      .etaNormalityRow(.c, eta[[.c]], skip = .c %in% skip)
+      .x <- eta[[.c]]
+      if (!is.null(rows[[.c]])) {
+        .x <- .x[rows[[.c]]]
+      }
+      .etaNormalityRow(.c, .x, skip = .c %in% skip)
     })
   )
 }
@@ -80,33 +88,73 @@
   iniDf$name[.w]
 }
 
-#' @rdname nmObjGet
-#' @export
-nmObjGet.etaNormality <- function(x, ...) {
-  .env <- x[[1]]
-  .ranef <- NULL
-  if (exists("ranef", envir = .env, inherits = FALSE)) {
-    .ranef <- get("ranef", envir = .env, inherits = FALSE)
+#' Subjects whose estimates a component-owned mixture ETA uses
+#'
+#' An ETA used only in one mixture component is 0 for the other components'
+#' subjects, so only its own component's subjects are tested.
+#'
+#' @param ui the fit's final ui
+#' @param ranef the fit's `ranef`
+#' @param mixNum the fit's `mixNum` (`ID` and `mixnum` columns)
+#' @return named list of logical row indices, one per owned ETA
+#' @author Matthew L. Fidler
+#' @noRd
+.etaNormalityMixRows <- function(ui, ranef, mixNum) {
+  if (is.null(ui) || !is.data.frame(ranef) || !is.data.frame(mixNum)) {
+    return(list())
   }
-  .ui <- NULL
-  if (exists("ui", envir = .env, inherits = FALSE)) {
-    .ui <- rxode2::rxUiDecompress(get("ui", envir = .env, inherits = FALSE))
+  .owner <- .mixEtaOwner(ui)
+  .owner <- .owner[.owner > 0L & names(.owner) %in% names(ranef)]
+  .mn <- mixNum$mixnum[match(ranef$ID, mixNum$ID)]
+  lapply(.owner, function(.k) !is.na(.mn) & .mn == .k)
+}
+
+#' ETA normality table for a fit
+#'
+#' @param fit fit environment, or a list with `ui`, `ranef` and optionally
+#'   `iov` and `mixNum`
+#' @return data frame, one row per ETA (see `.etaNormalityRow()`)
+#' @author Matthew L. Fidler
+#' @noRd
+.etaNormalityFit <- function(fit) {
+  .get <- function(n) {
+    if (is.environment(fit)) {
+      return(get0(n, envir = fit, inherits = FALSE))
+    }
+    fit[[n]]
+  }
+  .ranef <- .get("ranef")
+  .ui <- .get("ui")
+  if (!is.null(.ui)) {
+    .ui <- rxode2::rxUiDecompress(.ui)
   }
   .skip <- .etaNormalityFixed(.ui$iniDf)
-  .ret <- .etaNormalityDf(.ranef, skip = .skip)
+  .rows <- .etaNormalityMixRows(.ui, .ranef, .get("mixNum"))
+  .ret <- .etaNormalityDf(.ranef, skip = .skip, rows = .rows)
   # occasion etas, pooled over every subject and occasion
-  if (exists("iov", envir = .env, inherits = FALSE)) {
-    .iov <- get("iov", envir = .env, inherits = FALSE)
-    if (is.list(.iov) && !is.data.frame(.iov)) {
-      for (.occ in names(.iov)) {
-        .ret <- rbind(.ret, .etaNormalityDf(.iov[[.occ]], skip = .skip, drop = .occ))
-      }
+  .iov <- .get("iov")
+  if (is.list(.iov) && !is.data.frame(.iov)) {
+    for (.occ in names(.iov)) {
+      .ret <- rbind(.ret, .etaNormalityDf(.iov[[.occ]], skip = .skip, drop = .occ))
     }
+  }
+  # zero-variance etas are dropped from the fit's etas, so give them NA rows
+  .miss <- setdiff(.skip, .ret$eta)
+  if (length(.miss) > 0L) {
+    .add <- do.call(rbind, lapply(.miss, .etaNormalityRow, x = numeric(0), skip = TRUE))
+    .add$n <- NA_integer_
+    .ret <- rbind(.ret, .add)
   }
   if (!is.null(.ret)) {
     rownames(.ret) <- NULL
   }
   .ret
+}
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.etaNormality <- function(x, ...) {
+  .etaNormalityFit(x[[1]])
 }
 attr(nmObjGet.etaNormality, "desc") <- "ETA mean (t-test) and normality (Shapiro-Wilk) tests"
 attr(nmObjGet.etaNormality, "rstudio") <- data.frame(
