@@ -18,6 +18,14 @@
 
 ## New features
 
+- `addNpde()` and `tableControl(npde = TRUE)` now also return `PWRES`, the
+  Monte Carlo population-weighted residual (NONMEM's `EWRES`, Monolix's
+  `PWRES`): `Sigma^(-1/2) (y - EPRED)` from the same simulations' mean and
+  covariance, with no extra simulation.  Unlike NPDE it keeps the residual's
+  magnitude; it uses only the first two moments, so a skewed marginal can
+  show bias even under the true model.  Subjects with a censored observation
+  or no more simulations than observations get `NA` (#1390).
+
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and

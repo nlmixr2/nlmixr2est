@@ -183,6 +183,26 @@ static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned i
   ret.pd2.rows(ret.obs) = pdObs2;
 }
 
+// PWRES/EWRES: the observed residual whitened by the simulations' own mean and
+// covariance, Sigma^(-1/2) (y - EPRED), with the symmetric inverse square root.
+// NA for a subject with a censored observation or too few simulations (K <= n).
+static inline void calculatePwres(calcNpdeInfoId &ret, arma::Col<int> &cens,
+                                  arma::Col<int> &evid, unsigned int K) {
+  ret.pwres = arma::vec(ret.yobst.n_elem);
+  ret.pwres.fill(NA_REAL);
+  unsigned int n = ret.obs.n_elem;
+  if (n == 0 || K <= n) return;
+  if (arma::any(cens.elem(arma::find(evid == 0)) != 0)) return;
+  arma::vec r = ret.yobst.elem(ret.obs) - ret.epredt.elem(ret.obs);
+  arma::vec d;
+  arma::mat Q;
+  if (!arma::eig_sym(d, Q, arma::symmatu(ret.varsim), "std")) return;
+  if (!(d.min() > d.max() * n * DBL_EPSILON)) return;
+  arma::vec w = Q * ((Q.t() * r) / arma::sqrt(d));
+  if (!w.is_finite()) return;
+  ret.pwres.elem(ret.obs) = w;
+}
+
 static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, unsigned int &K, bool &ties,
                                        arma::vec &ru, arma::vec &ru2) {
   ret.npde = arma::mat(ret.pd.n_rows, 1);
@@ -466,6 +486,7 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
     imputeCensNpde(ret, cens, limit, lambda, yj, low, hi, row0, seed, nObs);
   }
   calculatePD(ret, id, K, tolChol);
+  calculatePwres(ret, cens, evid, K);
   calculateNPDEfromPD(ret, K, ties, ru, ru2);
   ret.epred = arma::vec(ret.yobst.size());
   ret.yobs = arma::vec(ret.yobst.size());
@@ -600,6 +621,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   SEXP epredSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
   SEXP dvSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
   SEXP eresSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP pwresSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
   arma::vec npde(REAL(npdeSEXP), dvLen, false, true);
   arma::vec npd(REAL(npdSEXP), dvLen, false, true);
   arma::vec pde(REAL(pdeSEXP), dvLen, false, true);
@@ -607,6 +629,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   arma::vec epred(REAL(epredSEXP), dvLen, false, true);
   arma::vec dvf(REAL(dvSEXP), dvLen, false, true);
   arma::vec eres(REAL(eresSEXP), dvLen, false, true);
+  arma::vec pwres(REAL(pwresSEXP), dvLen, false, true);
   arma::Col<int> warn(idLoc.size()-1);
 
   // initialize for CRAN's valgrind
@@ -617,6 +640,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   epred.zeros();
   dvf.zeros();
   eres.zeros();
+  pwres.zeros();
 
   {
     int _nid = (int)(idLoc.size() - 1);
@@ -644,6 +668,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
         epred(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.epred;
         dvf(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.yobs;
         eres(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.eres;
+        pwres(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pwres;
         warn[curid] = idInfo.warn;
       } catch (...) {
         npde(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
@@ -653,6 +678,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
         epred(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
         dvf(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
         eres(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
+        pwres(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
         warn[curid] = NPDE_NPD;
       }
     });
@@ -746,7 +772,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
     Rf_warningcall(R_NilValue, _("npde decorrelation failed (return normalized prediction discrepancies) for %.1f%% id: %s"), rPD*100, sPD.c_str());
   }
 
-  List ret(6);
+  List ret(7);
   // epred, eres, npde, dv
   ret[0] = List::create(_["EPRED"]=epred);
   ret[1] = List::create(_["ERES"]=eres);
@@ -754,6 +780,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   ret[3] = List::create(_["NPD"]=npd);
   ret[4] = List::create(_["PDE"]=pde);
   ret[5] = List::create(_["PD"]=pd);
+  ret[6] = List::create(_["PWRES"]=pwres);
   SEXP ret2 = rx_protect.protect(dfCbindList(wrap(ret)));
   return List::create(dvf, ret2);
   END_RCPP
