@@ -81,6 +81,50 @@ test_that(".covSelectFocei() falls back between R and S and labels what it used"
   expect_false(exists("cov", envir = .e, inherits = FALSE))
 })
 
+test_that("a failed FOCEi covariance step names the parameters its R or S lacks (#1398)", {
+  .nm <- c("tka", "tcl", "tv", "add.sd")
+  .e9 <- function(R0 = NULL, S0 = NULL) {
+    .e <- .covSelectEnv()
+    .e$thetaNames <- .nm
+    # a fixed theta is not in R or S
+    .e$skipCov <- c(FALSE, FALSE, TRUE, FALSE, TRUE, TRUE)
+    if (!is.null(R0)) {
+      .e$R.0 <- R0
+    }
+    if (!is.null(S0)) {
+      .e$S0 <- S0
+    }
+    .e
+  }
+  .fail <- function(.e, nsub = 20L) {
+    .covSelectWarnings(.covSelectFocei(.e, 1L, 2L, 2L, "r", "s", FALSE, FALSE, 1e-5, c("r", "s"), nsub))
+  }
+  # all zero
+  .r <- .fail(.e9(matrix(0, 3, 3), matrix(0, 3, 3)))
+  expect_identical(.r$value, list(slot = 0L, label = "failed"))
+  expect_identical(.r$warnings[2], "covariance step failed: tka, tcl, add.sd uninformed")
+  # some zero: R is named before S
+  .r <- .fail(.e9(diag(c(4, 0, 1)), diag(c(4, 1, 0))))
+  expect_identical(.r$warnings[2], "covariance step failed: tcl uninformed")
+  expect_identical(.e9()$covTried, NULL)
+  # a collinear pair
+  .R <- matrix(c(1, -1, 0, -1, 1, 0, 0, 0, 2), 3)
+  .R[1, 1] <- 1 - 1e-9
+  .r <- .fail(.e9(.R))
+  expect_match(.r$warnings[2], "^covariance step failed: (tka, tcl|tcl, tka) collinear$")
+  # fewer subjects than parameters: S is singular whatever the data
+  .r <- .fail(.e9(NULL, matrix(1, 3, 3)), nsub = 2L)
+  expect_identical(.r$warnings[2], "covariance step failed: 2 subjects < 3 parameters")
+  # the outcomes say so too
+  .e <- .e9(NULL, diag(c(4, 1, 0)))
+  .r <- .covSelectWarnings(.covSelectFocei(.e, 1L, 1L, 2L, "r", "s", FALSE, FALSE, 1e-5))
+  expect_identical(.r$warnings, "\"r,s\" not usable (S not PD: add.sd uninformed); installed \"r\"")
+  expect_identical(.e$covTried$outcome, c("S not PD: add.sd uninformed", "used"))
+  # unnamed or mis-sized matrices keep the old text
+  .r <- .fail(.e9(matrix(0, 2, 2)))
+  expect_identical(.r$warnings[2], "covariance step failed")
+})
+
 test_that(".covSelectFocei() checks a doubtful sandwich against R and S", {
   # a repaired R: S, the one not repaired
   .e <- .covSelectEnv()
