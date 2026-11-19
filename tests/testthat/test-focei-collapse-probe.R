@@ -24,6 +24,23 @@ test_that("the probe omega raises collapsed etas and keeps the block", {
   expect_identical(.foceiCollapseProbeOmega(.om, c(eta.b = 300), "eta.b", .om0) != 0, .om0 != 0)
 })
 
+test_that("etas in a block with a fixed omega entry are not probed", {
+  .nm <- c("eta.a", "eta.b", "eta.c")
+  .om0 <- matrix(c(1, 0.1, 0, 0.1, 1, 0, 0, 0, 1), 3, 3, dimnames = list(.nm, .nm))
+  .iniDf <- data.frame(
+    name = c("eta.a", "(eta.a,eta.b)", "eta.b", "eta.c"),
+    neta1 = c(1, 2, 2, 3),
+    neta2 = c(1, 1, 2, 3),
+    est = c(1, 0.1, 1, 1),
+    fix = c(FALSE, TRUE, FALSE, FALSE)
+  )
+  expect_identical(.foceiCollapseProbeFixedBlocks(.om0, .iniDf), c("eta.a", "eta.b"))
+  .iniDf$fix <- FALSE
+  expect_identical(.foceiCollapseProbeFixedBlocks(.om0, .iniDf), character(0))
+  .iniDf$fix[4] <- TRUE
+  expect_identical(.foceiCollapseProbeFixedBlocks(.om0, .iniDf), "eta.c")
+})
+
 test_that("the probe start stays inside narrow and infinite bounds", {
   .c <- .foceiCollapseProbeClamp(c(5, 0.0005, -3, 2), c(0, 1e-4, -Inf, 1), c(1, 1e-3, Inf, 3))
   expect_true(all(.c[1:2] > c(0, 1e-4) & .c[1:2] < c(1, 1e-3)))

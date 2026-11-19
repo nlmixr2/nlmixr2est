@@ -59,6 +59,29 @@
   ifelse(theta <= lower, lower + .eps, ifelse(theta >= upper, upper - .eps, theta))
 }
 
+#' Etas that share an omega block with a fixed omega entry
+#'
+#' Raising a variance moves every inverse-Cholesky parameter of its block, so
+#' a fixed entry there would be held at a different value and the re-fit would
+#' not be comparable; such etas are not probed.
+#' @param omega0 the starting omega
+#' @param iniDf the model's `iniDf`
+#' @return the eta names to leave alone
+#' @noRd
+.foceiCollapseProbeFixedBlocks <- function(omega0, iniDf) {
+  if (!is.matrix(omega0) || is.null(rownames(omega0)) || !is.data.frame(iniDf)) {
+    return(character(0))
+  }
+  .fx <- iniDf[!is.na(iniDf$neta1) & iniDf$fix, , drop = FALSE]
+  .fx <- unique(c(.fx$neta1, .fx$neta2))
+  .fx <- .fx[.fx >= 1L & .fx <= nrow(omega0)]
+  if (length(.fx) == 0L) {
+    return(character(0))
+  }
+  .blocks <- .omegaBlocks(omega0 != 0)
+  rownames(omega0)[unlist(Filter(function(b) any(b %in% .fx), .blocks))]
+}
+
 #' Re-fit from a collapsed omega raised back to its initial estimate
 #'
 #' With `collapseProbe=TRUE`, a diagonal omega the outer optimizer drove toward
@@ -85,7 +108,8 @@
     tryCatch(ui$omega, error = function(e) NULL),
     .om
   )
-  .etas <- c(.bad$collapsed, .bad$bound)
+  .om0 <- tryCatch(ui$omega, error = function(e) NULL)
+  .etas <- setdiff(c(.bad$collapsed, .bad$bound), .foceiCollapseProbeFixedBlocks(.om0, ui$iniDf))
   if (length(.etas) == 0L) {
     return(fit)
   }
@@ -95,7 +119,7 @@
   }
   .inv <- tryCatch(
     .foceiSymInvCholCreate(
-      .foceiCollapseProbeOmega(.om, .ini, .etas, tryCatch(ui$omega, error = function(e) NULL)),
+      .foceiCollapseProbeOmega(.om, .ini, .etas, .om0),
       rxode2::rxGetControl(ui, "diagXform", "sqrt"),
       .same,
       warn = FALSE,
