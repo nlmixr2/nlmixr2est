@@ -140,6 +140,13 @@
 
 ### Estimation
 
+- A `fast = TRUE` control converted to another FOCEi-family method (for
+  example a `foceControl()` given to `est = "mfoce"`) no longer fails with
+  "Expecting a single value"; its `outerOpt` was left unresolved.
+- `est = "vae"` with `nonMuTheta = "grad"` again takes the gradient at the
+  encoder's etas without the inner-mode score correction, which moved it
+  away from the optimum.
+
 - FOCEi now excludes `EVID = 2` records and inserted `EVID = 9`
   initialization records from `fit$nobs` (#1342).
 
