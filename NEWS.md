@@ -14,6 +14,11 @@
 
 ## New features
 
+- A combined (`add() + prop()` or `add() + pow()`) error model whose additive
+  SD starts below 1% of the endpoint's median `|DV|` now warns before
+  estimation and suggests a start of about 10% of it; the initial estimate is
+  not changed (#1383).
+
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
   diagnostics are unreliable.  `foceiControl(shrinkEtaWarn=)` sets the
