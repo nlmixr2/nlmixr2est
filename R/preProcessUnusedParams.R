@@ -17,9 +17,9 @@
       .norm <- rxode2::rxGetLin(rxode2::rxNorm(ui$mv0))
       # braces let a normalized `else` start its own line
       .exprs <- str2lang(paste0("{\n", .norm, "\n}"))
-      .lhs <- character(0)
-      .rhs <- list()
       .acc <- new.env(parent = emptyenv())
+      .acc$lhs <- character(0)
+      .acc$rhs <- list()
       .acc$seed <- character(0)
       .linVars <- function(e) {
         if (!is.call(e)) {
@@ -52,8 +52,8 @@
           .r <- e[[3]]
           .acc$seed <- c(.acc$seed, .linVars(.r))
           if (is.name(.l)) {
-            .lhs <<- c(.lhs, as.character(.l))
-            .rhs[[length(.lhs)]] <<- unique(c(cond, all.vars(.r)))
+            .acc$lhs <- c(.acc$lhs, as.character(.l))
+            .acc$rhs[[length(.acc$lhs)]] <- unique(c(cond, all.vars(.r)))
           } else {
             # d/dt(), f(), alag(), rate(), dur(), x(0), mtime() ...
             .acc$seed <- c(.acc$seed, cond, all.vars(e))
@@ -68,7 +68,7 @@
       }
       .need <- unique(.acc$seed)
       repeat {
-        .new <- setdiff(unique(unlist(.rhs[.lhs %in% .need])), .need)
+        .new <- setdiff(unique(unlist(.acc$rhs[.acc$lhs %in% .need])), .need)
         if (length(.new) == 0L) {
           break
         }
