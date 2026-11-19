@@ -268,7 +268,7 @@ attr(rxUiGet.transUE, "rstudio") <- c(eta.ka = "tka")
       modelCode <- paste(vapply(replaced, deparse1, character(1)), collapse = "\n")
       modelCode <- gsub("~", "=", modelCode)
 
-      modelPruned <- .nlmixr2estRxode2(modelCode, "rxPruned")
+      modelPruned <- .nlmixr2estRxode2(modelCode, "rxPruned", ui = ui)
 
       # Rename .pars$param columns to THETA/ETA
       pRenamed <- .pars$param
