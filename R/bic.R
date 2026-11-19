@@ -20,8 +20,12 @@
 #'   on the residual error, as with `prop.sd` in
 #'   `rsd <- prop.sd * exp(eta.rsd); cp ~ prop(rsd)`.
 #'
-#' Fixed parameters are not counted.  A theta whose linkage cannot be
-#' determined is charged `log(nobs)`, as in `BIC(fit)`.
+#' The linkage is read from the expression around each eta: the whole sum it
+#' is added to (`tcl + eta.cl`), or the factors of the product it multiplies
+#' (an inline `exp(tcl + eta.cl) * center / exp(tv)` ties `tv` too; a
+#' separately assigned `v` stays its own parameter).  Fixed parameters are not
+#' counted.  A theta whose linkage cannot be determined is charged
+#' `log(nobs)`, as in `BIC(fit)`.
 #'
 #' @param fit nlmixr2 fit
 #' @param type which parameters are charged `log(nsub)`:
@@ -134,9 +138,8 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
     }
   )
   .err <- .idf$name[.isTheta & !is.na(.idf$err)]
-  .res <- intersect(.thetas, union(.link$residual, intersect(.link$structural, .err)))
-  .mu <- ui$muRefDataFrame$theta
-  .str <- setdiff(intersect(.thetas, union(.link$structural, .mu)), .res)
+  .str <- setdiff(intersect(.thetas, union(.link$structural, ui$muRefDataFrame$theta)), .err)
+  .res <- setdiff(intersect(.thetas, union(.link$residual, .link$structural)), .str)
   .ret$structural <- length(.str)
   .ret$residual <- length(.res)
   .ret
@@ -159,43 +162,52 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
 
 #' The parts of an expression that make up an eta's parameter
 #'
-#' The largest sub-expressions that hold an eta and no state-dependent
-#' symbol, with the state-free factors of a product they sit in (other
-#' than separately assigned variables), so
-#' `ka * depot - exp(tcl + eta.cl) * center / v` gives `exp(tcl + eta.cl)`.
+#' A sum with a bare eta term (`tcl + eta.cl`) is the parameter; otherwise
+#' only the terms holding an eta are.  A product keeps its factors, except a
+#' bare variable in `excl`, so `exp(tcl + eta.cl) * center / v` gives
+#' `exp(tcl + eta.cl)` and `center`.
 #' @param x expression
-#' @param etaLike eta (and eta-only variable) names
-#' @param dirty state and state-dependent names
-#' @param own assigned variable names; a bare one is its own parameter
+#' @param etaLike eta and eta-carrying variable names
+#' @param excl variable names a product does not take in as factors
 #' @return list of expressions
 #' @noRd
-.bicEtaPart <- function(x, etaLike, dirty, own) {
-  .v <- all.vars(x)
-  if (!any(.v %in% etaLike)) {
+.bicEtaPart <- function(x, etaLike, excl) {
+  .has <- function(e) any(all.vars(e) %in% etaLike)
+  if (!.has(x)) {
     return(list())
   }
-  if (!any(.v %in% dirty) || !is.call(x)) {
+  if (!is.call(x)) {
     return(list(x))
   }
+  .rec <- function(lst) {
+    do.call(c, lapply(lst, .bicEtaPart, etaLike = etaLike, excl = excl))
+  }
   .f <- as.character(x[[1]])
-  .rec <- function(ops) {
-    lapply(.bicFlatten(x, ops), function(o) {
-      .ov <- all.vars(o)
-      list(clean = !any(.ov %in% dirty), eta = any(.ov %in% etaLike), x = o)
-    })
-  }
-  .sub <- function(lst) {
-    do.call(c, lapply(lst, function(o) .bicEtaPart(o$x, etaLike, dirty, own)))
-  }
   if (.f %in% c("*", "/")) {
-    .o <- .rec(c("*", "/"))
-    .clean <- Filter(function(o) o$clean && !(is.name(o$x) && as.character(o$x) %in% own), .o)
-    return(c(lapply(.clean, function(o) o$x), .sub(Filter(function(o) !o$clean, .o))))
+    .o <- .bicFlatten(x, c("*", "/"))
+    .eta <- vapply(.o, .has, logical(1))
+    .keep <- !.eta & !vapply(.o, function(o) is.name(o) && as.character(o) %in% excl, logical(1))
+    return(c(.o[.keep], .rec(.o[.eta])))
   }
   if (.f %in% c("+", "-", "(")) {
-    return(.sub(.rec(c("+", "-"))))
+    .o <- .bicFlatten(x, c("+", "-"))
+    .eta <- vapply(.o, .has, logical(1))
+    .etaOnly <- vapply(
+      .o,
+      function(o) {
+        if (is.call(o) && identical(as.character(o[[1]]), "-") && length(o) == 2L) {
+          o <- o[[2]]
+        }
+        is.name(o) && as.character(o) %in% etaLike
+      },
+      logical(1)
+    )
+    if (any(.eta & .etaOnly)) {
+      return(list(x))
+    }
+    return(.rec(.o[.eta]))
   }
-  do.call(c, lapply(as.list(x)[-1], .bicEtaPart, etaLike = etaLike, dirty = dirty, own = own))
+  .rec(as.list(x)[-1])
 }
 
 #' Thetas tied to an eta through the model's assignments
@@ -242,42 +254,46 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
     unique(unlist(lapply(.lines[which(.lhs == v)], function(l) l$rhs)))
   }
   .vars <- unique(.lhs[!is.na(.lhs)])
-  # stopping points: predictions and anything depending on a state or
-  # linCmt(), and "random terms" built only from etas and covariates
-  .stateDep <- unique(c(.preds, .lhs[vapply(.lines, function(l) "linCmt" %in% all.names(l$x), logical(1))]))
-  .stateDep <- .stateDep[!is.na(.stateDep)]
-  .randTerm <- character(0)
-  repeat {
-    .n <- length(.stateDep) + length(.randTerm)
-    for (.v in .vars) {
-      .r <- .rhsOf(.v)
-      if (any(.r %in% c(ui$state, .stateDep))) {
-        .stateDep <- union(.stateDep, .v)
+  .grow <- function(set, test) {
+    repeat {
+      .n <- length(set)
+      for (.v in setdiff(.vars, set)) {
+        if (test(.rhsOf(.v), set)) {
+          set <- c(set, .v)
+        }
       }
-      .eta <- intersect(.r, c(.etas, .randTerm))
-      .other <- setdiff(.r, c(.etas, .randTerm))
-      if (length(.eta) > 0L && !any(.other %in% c(.thetas, .vars))) {
-        .randTerm <- union(.randTerm, .v)
+      if (length(set) == .n) {
+        return(set)
       }
     }
-    if (length(.stateDep) + length(.randTerm) == .n) {
-      break
+  }
+  # predictions and what depends on a state or linCmt() stop the tracing
+  .linCmt <- .lhs[vapply(.lines, function(l) "linCmt" %in% all.names(l$x), logical(1))]
+  .stateDep <- .grow(
+    unique(c(.preds, .linCmt[!is.na(.linCmt)])),
+    function(r, set) any(r %in% c(ui$state, set))
+  )
+  .thetaFree <- .grow(character(0), function(r, set) {
+    !any(r %in% .thetas) && all(intersect(r, .vars) %in% set)
+  })
+  .etaVar <- .grow(character(0), function(r, set) any(r %in% c(.etas, set)))
+  .etaVar <- setdiff(.etaVar, .stateDep)
+  .direct <- c(.etas, intersect(.etaVar, .thetaFree))
+  .closure <- function(seed, through) {
+    .out <- seed
+    .todo <- intersect(seed, through)
+    while (length(.todo) > 0L) {
+      .new <- setdiff(unlist(lapply(.todo, .rhsOf)), .out)
+      .out <- c(.out, .new)
+      .todo <- intersect(.new, through)
     }
+    .out
   }
-  .etaLike <- c(.etas, .randTerm)
-  .dirty <- c(ui$state, .stateDep)
-  .isP <- vapply(.lines, function(l) any(l$rhs %in% .etaLike), logical(1)) &
-    !(.lhs %in% .randTerm)
-  .pVars <- unique(.lhs[.isP & !is.na(.lhs)])
-  # variables feeding a residual error spec: the spec's own symbols, then
-  # through state-free assignments
-  .errFeed <- unique(unlist(lapply(Filter(function(l) l$err, .lines), function(l) l$rhs)))
-  .todo <- setdiff(intersect(.errFeed, .vars), .preds)
-  while (length(.todo) > 0L) {
-    .new <- setdiff(unlist(lapply(.todo, .rhsOf)), .errFeed)
-    .errFeed <- c(.errFeed, .new)
-    .todo <- setdiff(intersect(.new, .vars), .stateDep)
-  }
+  .predFeed <- .closure(.preds, .vars)
+  .errSeed <- unique(unlist(lapply(Filter(function(l) l$err, .lines), function(l) l$rhs)))
+  # an error spec's own variables, then state-free assignments feeding them
+  .first <- unlist(lapply(setdiff(intersect(.errSeed, .vars), .preds), .rhsOf))
+  .errFeed <- .closure(unique(c(.errSeed, .first)), setdiff(.vars, c(.preds, .stateDep)))
   .trace <- function(syms) {
     .seen <- character(0)
     .out <- character(0)
@@ -291,7 +307,7 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
       .seen <- c(.seen, .s)
       if (.s %in% .thetas) {
         .out <- c(.out, .s)
-      } else if (.s %in% .vars && !(.s %in% c(.stateDep, .pVars, .randTerm))) {
+      } else if (.s %in% .vars && !(.s %in% c(.stateDep, .etaVar))) {
         .todo <- c(.todo, .rhsOf(.s))
       }
     }
@@ -299,18 +315,27 @@ bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
   }
   .str <- character(0)
   .res <- character(0)
-  for (.i in which(.isP)) {
-    .l <- .lines[[.i]]
-    # an error spec's terms (add(), prop(), ...) are separate parameters
-    .terms <- if (.l$err) .bicFlatten(.l$x, "+") else list(.l$x)
-    .parts <- do.call(
-      c,
-      lapply(.terms, function(t) {
-        if (.l$err && any(all.vars(t) %in% .etaLike)) list(t) else .bicEtaPart(t, .etaLike, .dirty, .vars)
-      })
-    )
+  for (.l in .lines) {
+    if (!is.na(.l$lhs) && .l$lhs %in% .direct) {
+      next
+    }
+    # a state-dependent statement takes only a direct eta, and a residual one
+    # no eta that reaches it through the prediction
+    .dirty <- any(.l$rhs %in% c(ui$state, .stateDep))
+    .etaLike <- if (.dirty) .direct else c(.etas, .etaVar)
+    .resLine <- .l$err || (!is.na(.l$lhs) && .l$lhs %in% setdiff(.errFeed, .predFeed))
+    if (.resLine) {
+      .etaLike <- setdiff(.etaLike, .predFeed)
+    }
+    if (!any(.l$rhs %in% .etaLike)) {
+      next
+    }
+    # a bare variable joins a product only on a state-free line with a direct
+    # eta (cl <- tvcl * exp(eta.cl)), not in k <- cl / v
+    .excl <- if (.dirty || !any(.l$rhs %in% .direct)) setdiff(.vars, .etaLike) else character(0)
+    .parts <- .bicEtaPart(.l$x, .etaLike, .excl)
     .t <- .trace(unique(unlist(lapply(.parts, all.vars))))
-    if (.l$err || (!is.na(.l$lhs) && .l$lhs %in% .errFeed)) {
+    if (.resLine) {
       .res <- union(.res, .t)
     } else {
       .str <- union(.str, .t)

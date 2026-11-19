@@ -108,6 +108,73 @@ test_that("bic() treats a ll() endpoint as structural", {
   expect_length(.l$residual, 0L)
 })
 
+test_that("bic() follows rescaled etas, sums and algebraic predictions", {
+  .link <- function(m) .bicThetaLink(suppressWarnings(rxode2::rxode2(m)))
+  # a theta applied after the eta is part of the same parameter
+  m1 <- function() {
+    ini({
+      tcl <- log(2.7)
+      cwt <- 0.75
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      cl0 <- exp(tcl + eta.cl)
+      cl <- cl0 * (WT / 70)^cwt
+      cp <- cl * t
+      cp ~ add(add.sd)
+    })
+  }
+  .l <- .link(m1)
+  expect_setequal(.l$structural, c("tcl", "cwt"))
+  expect_length(.l$residual, 0L)
+  # an algebraic prediction feeding the error weight stays structural; a
+  # random term may use a derived covariate
+  m2 <- function() {
+    ini({
+      temax <- 1
+      tec50 <- 0.5
+      eta.emax ~ 0.1
+      eta.w ~ 0.1
+      add.sd <- 0.7
+      prop.sd <- 0.1
+    })
+    model({
+      lwt <- log(WT / 70)
+      ew <- eta.w * lwt
+      emax <- temax + eta.emax
+      ec50 <- exp(tec50 + ew)
+      pred <- emax * Conc / (ec50 + Conc)
+      y <- pred
+      rsd <- sqrt(add.sd^2 + (prop.sd * pred)^2)
+      y ~ add(rsd)
+    })
+  }
+  .l <- .link(m2)
+  expect_setequal(.l$structural, c("temax", "tec50"))
+  expect_length(.l$residual, 0L)
+  # only the eta-bearing term of a sum is tied to the eta
+  m3 <- function() {
+    ini({
+      tcl <- log(2.7)
+      tka <- 0.45
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+      prop.sd <- 0.1
+      eta.r ~ 0.1
+    })
+    model({
+      k <- exp(tka) + exp(tcl + eta.cl)
+      cp <- k * t
+      rsd <- add.sd + prop.sd * exp(eta.r)
+      cp ~ prop(rsd)
+    })
+  }
+  .l <- .link(m3)
+  expect_setequal(.l$structural, "tcl")
+  expect_setequal(.l$residual, "prop.sd")
+})
+
 test_that("bic() does not count same() copy rows", {
   m <- function() {
     ini({

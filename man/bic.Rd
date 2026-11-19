@@ -49,8 +49,12 @@ Parameters are classified from the fit's model:
   on the residual error, as with `prop.sd` in
   `rsd <- prop.sd * exp(eta.rsd); cp ~ prop(rsd)`.
 
-Fixed parameters are not counted.  A theta whose linkage cannot be
-determined is charged `log(nobs)`, as in `BIC(fit)`.
+The linkage is read from the expression around each eta: the whole sum it
+is added to (`tcl + eta.cl`), or the factors of the product it multiplies
+(an inline `exp(tcl + eta.cl) * center / exp(tv)` ties `tv` too; a
+separately assigned `v` stays its own parameter).  Fixed parameters are not
+counted.  A theta whose linkage cannot be determined is charged
+`log(nobs)`, as in `BIC(fit)`.
 }
 \examples{
 \donttest{
