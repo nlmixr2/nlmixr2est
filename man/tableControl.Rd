@@ -10,6 +10,7 @@ tableControl(
   nsim = 300,
   ties = TRUE,
   censMethod = c("truncated-normal", "cdf", "ipred", "pred", "epred", "omit"),
+  pwresMethod = c("eigen", "cholesky"),
   seed = 1009,
   cholSEtol = (.Machine$double.eps)^(1/3),
   state = TRUE,
@@ -63,6 +64,12 @@ you supply single subject event tables (created with
   This holds for any NPDE restricted to the uncensored rows; to check a
   model's fit with censored data, use a method that keeps the censored
   rows, such as `"truncated-normal"`.}
+
+\item{pwresMethod}{How `PWRES` (see [addNpde()]) is decorrelated: `"eigen"`
+(default, as NONMEM) uses the symmetric inverse square root of the
+simulated covariance, `"cholesky"` the inverse of its lower Cholesky
+factor.  Both give the same per-subject sum of squares.  It does not change
+the NPDE decorrelation.}
 
 \item{seed}{an object specifying if and how the random number
 generator should be initialized}

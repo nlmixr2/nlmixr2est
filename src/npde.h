@@ -16,6 +16,9 @@
 #define NPDE_CHOLSE_PINV 5
 #define NPDE_NPD 99
 
+#define PWRES_EIGEN 1
+#define PWRES_CHOL 2
+
 struct calcNpdeInfoId {
   arma::mat matsim;
   arma::umat namat;

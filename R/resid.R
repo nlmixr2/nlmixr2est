@@ -1372,6 +1372,12 @@ addTable <- function(
 #'   model's fit with censored data, use a method that keeps the censored
 #'   rows, such as `"truncated-normal"`.
 #'
+#' @param pwresMethod How `PWRES` (see [addNpde()]) is decorrelated: `"eigen"`
+#'   (default, as NONMEM) uses the symmetric inverse square root of the
+#'   simulated covariance, `"cholesky"` the inverse of its lower Cholesky
+#'   factor.  Both give the same per-subject sum of squares.  It does not change
+#'   the NPDE decorrelation.
+#'
 #' @param ties When `TRUE` jitter prediction-discrepancy points to discourage ties in cdf.
 #'
 #' @param cholSEtol The tolerance for the `rxode2::choleSE` function
@@ -1403,6 +1409,7 @@ tableControl <- function(
   nsim = 300,
   ties = TRUE,
   censMethod = c("truncated-normal", "cdf", "ipred", "pred", "epred", "omit"),
+  pwresMethod = c("eigen", "cholesky"),
   seed = 1009,
   cholSEtol = (.Machine$double.eps)^(1 / 3),
   state = TRUE,
@@ -1474,6 +1481,12 @@ tableControl <- function(
     checkmate::assertIntegerish(censMethod)
     .censMethod <- as.integer(censMethod)
   }
+  if (is.character(pwresMethod)) {
+    .pwresMethod <- c("eigen" = 1L, "cholesky" = 2L)[match.arg(pwresMethod)]
+  } else {
+    checkmate::assertIntegerish(pwresMethod, len = 1, lower = 1, upper = 2, any.missing = FALSE)
+    .pwresMethod <- as.integer(pwresMethod)
+  }
   if (is.null(cores)) {
     cores <- rxode2::rxCores()
   } else {
@@ -1486,6 +1499,7 @@ tableControl <- function(
     ties = ties,
     seed = seed,
     censMethod = .censMethod,
+    pwresMethod = setNames(.pwresMethod, NULL),
     cholSEtol = cholSEtol,
     state = state,
     lhs = lhs,

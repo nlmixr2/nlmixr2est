@@ -24,7 +24,10 @@
   covariance, with no extra simulation.  Unlike NPDE it keeps the residual's
   magnitude; it uses only the first two moments, so a skewed marginal can
   show bias even under the true model.  Subjects with a censored observation
-  or no more simulations than observations get `NA` (#1390).
+  or no more simulations than observations get `NA`.
+  `tableControl(pwresMethod = "cholesky")` decorrelates it by the Cholesky
+  factor instead of the default symmetric inverse square root, and
+  `fit$EWRES` is an alias for the column (#1390).
 
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
