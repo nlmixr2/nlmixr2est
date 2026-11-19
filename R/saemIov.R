@@ -5,12 +5,10 @@
 # occasion term to the code here instead.
 #
 # The shared rewrite (.uiApplyIov(), R/iov.R) carries the occasion magnitude as
-# a population parameter multiplying per-occasion unit-variance etas.  That
-# makes the magnitude non-mu-referenced, so saem estimates a VARIANCE through
-# its fixed-effect-only (phi0) path -- a stochastic sampled mean over draws
-# whose pseudo-variance is deliberately annealed, then a bounded direct
-# optimization -- while every other variance component in the algorithm gets a
-# closed-form M-step.  On theo_md that estimate collapses toward zero.
+# a population parameter multiplying per-occasion unit-variance etas.  saem
+# would move that VARIANCE through its fixed-effect-only (phi0) path and shrink
+# it toward zero, so for saem (the "iovPool" attribute) the rewrite emits the
+# same pooled per-occasion etas as below instead (#1319).
 #
 # Panhard X, Samson A (2009), "Extension of the SAEM algorithm for nonlinear
 # mixed effects models with two levels of random effects", Biostatistics 10(1),
@@ -565,11 +563,11 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
 #' `$cov` carries one row/column per phi1 column, so the K per-occasion columns
 #' of a two-level parameter appear K times under their internal `om.rx.<iov>.<k>`
 #' names.  They estimate ONE variance -- the M-step pins them equal
-#' (`poolOmegaGroups`, src/saem.cpp) -- so contract them by averaging, which is
-#' the delta method for `Psi = mean(v_1, ..., v_K)`.  Note this contracts the
-#' LINEARIZED (unconstrained) covariance rather than computing a constrained
-#' Fisher information, so it is an approximation, but a named one: the reported
-#' variance is `Var(mean(v_k))`, not `Var(v_1)`.
+#' (`poolOmegaGroups`, src/saem.cpp) -- so tie them: with `J` mapping the shared
+#' parameters onto the copies, the tied information is `J' I J` (`I` the
+#' inverse of `cv`).  A `cv` that cannot be inverted is contracted by averaging
+#' the copies instead (the delta method for `mean(v_1, ..., v_K)`).  Rows with a
+#' non-finite variance are left out of both and come back NA.
 #'
 #' The collapsed row keeps the position of the group's first member so the rest
 #' of the matrix keeps its order.
@@ -592,11 +590,28 @@ preProcessHooksAdd(".uiApplyIovTwoLevel", .uiApplyIovTwoLevel)
     return(cv)
   }
   .rows <- .saemIovCovRows(.nm, .grp)
-  .a <- matrix(0, nrow = length(.rows), ncol = length(.nm))
+  .j <- matrix(0, nrow = length(.nm), ncol = length(.rows))
   for (.k in seq_along(.rows)) {
-    .a[.k, .rows[[.k]]$idx] <- 1 / length(.rows[[.k]]$idx)
+    .j[.rows[[.k]]$idx, .k] <- 1
   }
-  .out <- .a %*% cv %*% t(.a)
+  # an unidentified (NA) row stays NA without spoiling the rest
+  .ok <- is.finite(diag(cv))
+  .oo <- colSums(.j[!.ok, , drop = FALSE]) == 0
+  .out <- matrix(NA_real_, length(.rows), length(.rows))
+  .cvo <- cv[.ok, .ok, drop = FALSE]
+  .jo <- .j[.ok, .oo, drop = FALSE]
+  .sub <- tryCatch(
+    {
+      .tied <- solve(crossprod(.jo, solve(.cvo, .jo)))
+      (.tied + t(.tied)) / 2
+    },
+    error = function(e) NULL
+  )
+  if (is.null(.sub) || !all(is.finite(.sub))) {
+    .a <- t(.jo) / colSums(.jo)
+    .sub <- .a %*% .cvo %*% t(.a)
+  }
+  .out[.oo, .oo] <- .sub
   .rn <- vapply(.rows, function(r) r$nm, character(1))
   dimnames(.out) <- list(.rn, .rn)
   .out

@@ -58,7 +58,7 @@ nmTest({
     .fit <- suppressWarnings(suppressMessages(
       nlmixr2(.iovOnlyFitMod, .iovOnlyFitData(), "saem", control = list(print = 0, covMethod = ""))
     ))
-    expect_equal(suppressMessages(.fit$objf), 197.913106, tolerance = 1e-6)
+    expect_equal(suppressMessages(.fit$objf), 200.158932, tolerance = 1e-6)
     expect_identical(.fit$ofvType, "gauss3_1.6")
     .iovOnlyFitShape(.fit, "saem")
   })
@@ -73,7 +73,7 @@ nmTest({
         "saem",
         control = list(print = 0, covMethod = "", iovMethod = .m)
       )))
-      expect_equal(suppressMessages(.fit$objf), 197.913106, tolerance = 1e-6, label = .m)
+      expect_equal(suppressMessages(.fit$objf), 200.158932, tolerance = 1e-6, label = .m)
       expect_identical(
         any(grepl("used iovMethod='theta'", .fit$runInfo, fixed = TRUE)),
         .m != "theta",

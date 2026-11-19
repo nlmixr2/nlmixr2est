@@ -48,6 +48,17 @@
 
 ### Covariance
 
+- The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a
+  `same()` block's copies with the block they repeat, so a correlated IOV
+  block contributes one shared occasion Omega (`om.iov.cl`,
+  `cov.iov.v.iov.cl`) rather than one free copy per occasion.  The occasion
+  SEs were about the square root of the number of occasions too large, and
+  `tidy()`/`confint()` now take them from `$cov` (#1316).
+- SAEM's `iovMethod = "twoLevel"` `$cov` now has one `om.<iov>` row per
+  occasion parameter, tying the per-occasion copies through their information
+  (`J' I J`); under the default `sa`/analytic covariance it used to carry one
+  untied `om.rx.<iov>.<k>` row per occasion (#1317).
+
 - A FOCEi covariance that a vae or vi fit could not compute or install is now
   recorded in `fit$env$covTried`, under the method tried and with the condition
   message unclipped on one line (the refit's own error included), also when
@@ -110,6 +121,11 @@
   longer error with "Mat::operator(): index out of bounds" when entering the
   SA covariance phase (#1297).
 
+- The `linCmt()` FOCEi sensitivity carry matches finite differences again for
+  an `alag()` dose with a time-varying covariate.  rxode2 now adds a hidden
+  record (`EVID` 8) at a lagged dose's data time, so the carry reads that
+  covariate knot like any other record (nlmixr2/rxode2#1584).
+
 - `est = "nlm"` and `est = "nls"` with the `linCmt()` sensitivity carry
   (`linCmtSensCarry = "auto"`, the default) now reach the optimum.  The
   record walk that builds their gradient started each subject from the carry
@@ -159,6 +175,11 @@
   proportional error the old classification put many subjects in whichever
   component over-predicted.  Split-eta mixtures now keep fixed membership
   instead of always falling back to `"regularized"` (#1296).
+- A `saem` mixture fit no longer diverges (residual SD near 1e40, omega in
+  the thousands) under some seeds.  Each mixture chain's current state is
+  re-solved before its MCMC step, so the population reset of fixed-effect-only
+  thetas between iterations no longer leaves a stale likelihood that froze the
+  chain at a state that no longer fit (#1298).
 
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
@@ -220,6 +241,20 @@
   subject numbered by the state count rather than from the subject walked;
   with enough subjects that read another subject's values, without changing
   the fit.
+
+- SAEM no longer samples a `fix()`ed theta without an eta (such as a fixed
+  allometric exponent or a covariate effect fixed at 0) per subject.  Its
+  starting jitter and MCMC draws made it act as an extra random effect during
+  burn-in, so a covariate term fixed at 0 gave a different fit from the model
+  without it.  Such a model now fits exactly like the model without the term
+  and like `saemControl(literalFix = TRUE)`.  The earlier behavior, where
+  the theta moves during the fit and arrives at its fixed value, is kept as
+  `saemControl(fixedNoEta = "converge")` (#1287).
+
+- `setOfv(fit, "focei")` (and `"foce"`/`"fo"`) now substitutes the fit's
+  fixed thetas before evaluating the objective.  A `linCmt()` SAEM fit whose
+  time-varying covariate entered only through a fixed theta could need more
+  sensitivity-carry columns than rxode2 provides and stopped (#1287).
 
 - A `linCmt()` model with a time-varying covariate on a compartment
   parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,
@@ -403,6 +438,50 @@
   transform; it used the first subject's rows for every subject.
 ### Tables
 
+- CWRES/WRES no longer build two dense observations x observations matrices
+  (`F Omega F'`) to read their diagonals; the eta sensitivities are kept sparse
+  and only the diagonal is computed, so the table step of a large dataset no
+  longer runs out of memory there (#1354, #1356).
+
+- The table step solves the fit's ipred/pred and display models in one shared
+  ODE pool over the fit's own events instead of three separate `rxSolve()`
+  setups, writing only the columns the tables use.  The tables are unchanged,
+  including the ODE method/tolerance fallback; `options(nlmixr2.tablePool =
+  FALSE)` restores the old route (#1356).
+
+- With an rxode2 that exports its output-record walk, `addDosing = TRUE`
+  tables (with either `subsetNonmem`) are solved in the pool too, and the rows,
+  dose columns and kept columns come from rxode2's own walk, so they are the
+  rows `rxSolve()` gives (#1356).
+
+- Mixture (`mix()`) fits' tables are solved in the pool as well, each subject
+  with its own mixture assignment; the two routes share the code that passes
+  the assignments to rxode2 (#1356).
+
+- Fits with resets (EVID 3), `mtime()` records or a string assignment solve
+  their tables in the pool too, laid out by rxode2's own record walk; the
+  rxSolve() route's drop of the `mtime()` rows is shared by both routes
+  (#1356).
+
+- With an rxode2 that says which solves `rxSolve()` refuses, tables of fits
+  solved with any ODE method (not only liblsoda, lsoda and dop853) are solved
+  in the pool; a solve `rxSolve()` would refuse goes to `rxSolve()` for its
+  own error (#1356).
+
+- A `keep =` column the fit's data lacks no longer sends the table to the
+  `rxSolve()` route: rxode2 leaves it out, with its own warning, as before
+  (#1356).
+
+- `addDosing = TRUE` tables of a single subject no longer stop with "subject
+  code 0 of the solved rows has no row in the eta table": the solve has no id
+  column for one subject, and its `ID` was put back only when the frame began
+  at `time`.
+
+- `addDosing = TRUE` tables with `npde = TRUE` now give each observation the
+  NPDE of the same table without dosing rows and `NA` on dosing rows; the
+  NPDE columns were longer than the table and out of row order, and the dosing
+  rows changed the simulations.
+
 - `tidy()` and `confint()` now report only the model's thetas.  A
   non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
   variability row) used to be listed as a fixed effect or interval of `NA`s,
@@ -492,6 +571,18 @@
   fixed theta; the cell is empty, as it is without one.
 
 ### Inter-occasion variability
+
+- `saemControl(iovMethod = "theta")`, also the automatic fallback for models
+  `"twoLevel"` does not cover, no longer underestimates the occasion
+  variances 4-6 fold (one collapsed to zero).  For saem, the shared rewrite
+  now gives each occasion level an eta, all sharing one variance with a
+  closed-form update, instead of a magnitude theta moved as a fixed effect
+  (#1319).  The parameter table keeps an `iov.x` row with its CV (or SD),
+  which `"twoLevel"` fits now get too, and `logLik()`, AIC and BIC count a
+  pooled variance once instead of once per occasion.
+
+- saem refuses a `prior()` on an occasion variance again; the IOV rewrite
+  dropped it before the prior check ran, so the fit ignored it (#1319).
 
 - A model whose occasion-level eta name starts with `eta.` (`eta.ka.occ ~ 0.1 | OCC`)
   now fits.  The SAEM temporary-eta cleanup took every `rx.eta.` name, including

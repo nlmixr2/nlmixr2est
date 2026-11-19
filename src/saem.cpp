@@ -790,7 +790,6 @@ class SAEM {
   typedef mat (*user_funct) (const mat&, const mat&, const List&);
 
 public:
-
   SAEM() {
     user_fn = NULL;
   }
@@ -2576,6 +2575,15 @@ public:
       statphi02 = as<mat>(x["statphi02"]);
     }
     fixedIx0 = as<uvec>(x["fixed.i0"]);
+    holdIx0 = x.containsElementNamed("hold.i0") ? as<uvec>(x["hold.i0"]) : uvec();
+    {
+      std::vector<uword> fr;
+      for (int c = 0; c < nphi0; ++c) {
+        if (!any(holdIx0 == (uword)c)) fr.push_back((uword)c);
+      }
+      free0 = uvec(fr);
+    }
+    if (nphi0 > 0) holdGamma2_phi0 = Gamma2_phi0.diag();
     fixedIx1 = as<uvec>(x["fixed.i1"]);
     pseudoIx1 = as<uvec>(x["pseudo.i1"]);
 
@@ -2863,7 +2871,6 @@ public:
     // (mixProbMethod="regress" degeneracy fallback is decided in saem_fit AFTER
     // the initial hard classification -- see below.)
     DEBUG=as<int>(x["DEBUG"]);
-
   }
 
   // Warm-start the residual-error parameters (ares/bres) from the observed
@@ -2935,7 +2942,7 @@ public:
     _seedLayout.nu[1] = (uint64_t)nu(1);
     _seedLayout.nu[2] = (uint64_t)nu(2);
     _seedLayout.nphi[0] = (uint64_t)nphi1;
-    _seedLayout.nphi[1] = (uint64_t)nphi0;
+    _seedLayout.nphi[1] = (uint64_t)free0.n_elem;
     _seedLayout.nComp = (uint64_t)std::max(nMix, 1);
     _seedLayout.nM = (uint64_t)nM;
     _seedLayout.nmc = (uint64_t)nmc;
@@ -3077,7 +3084,12 @@ public:
       //    MCMC
       mcmcphi mphi1, mphi0;
       set_mcmcphi(mphi1, i1, nphi1, Gamma2_phi1, IGamma2_phi1, mprior_phi1);
-      set_mcmcphi(mphi0, i0, nphi0, Gamma2_phi0, IGamma2_phi0, mprior_phi0);
+      // a fix()ed phi0 theta is a constant: only the free columns are sampled
+      mphi0.nphi = (int)free0.n_elem;
+      if (mphi0.nphi > 0) {
+        set_mcmcphi(mphi0, i0(free0), mphi0.nphi, Gamma2_phi0.submat(free0, free0),
+                    IGamma2_phi0.submat(free0, free0), mprior_phi0.cols(free0));
+      }
       mphi1.block = 0;
       mphi0.block = 1;
 
@@ -3129,11 +3141,11 @@ public:
           do_mcmc_msaem(2, nu2, mx, mphi1, phiM, U_y, U_phi, (int)kiter);
           do_mcmc_msaem(3, nu3, mx, mphi1, phiM, U_y, U_phi, (int)kiter);
         }
-        if (nphi0 > 0) {
+        if (mphi0.nphi > 0) {
           vec U_phi;
           do_mcmc_msaem(1, nu1, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
-          mat dphi = phiM.cols(i0) - mphi0.mprior_phiM;
-          U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
+          mat dphi = phiM.cols(mphi0.i) - mphi0.mprior_phiM;
+          U_phi = 0.5 * sum(dphi % (dphi * mphi0.IGamma2_phi), 1);
           do_mcmc_msaem(2, nu2, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
           do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi, (int)kiter);
         }
@@ -3360,8 +3372,18 @@ public:
           mat &cur_DYF = DYF_mix(jMix);
           cur_DYF.zeros(mlen, nM);
 
+          // Re-solve the chain's current state: the M-step resets the phi0
+          // columns to the population value (and regress solves each subject
+          // under its own component), so the cached predictions are stale and
+          // a stale U_y can freeze the chain at a state that no longer fits.
+          {
+            mat curMat = user_fn(cur_phiM, mixProbRegress ? mx.evtM : evt,
+                                 mixProbRegress ? mx.optM : optM);
+            cur_fsave = curMat.col(0);
+            cur_cens = curMat.col(1);
+            cur_limit = curMat.col(2);
+          }
           vec f = cur_fsave;
-          cur_fsave = f;
 
           if (distribution == 1) {
             vec yt = hasFixedObsTransform ? yTrans : y;
@@ -3418,11 +3440,11 @@ public:
             do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
             do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
           }
-          if (nphi0 > 0) {
+          if (mphi0.nphi > 0) {
             vec U_phi;
             do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
-            mat dphi = cur_phiM.cols(i0) - mphi0.mprior_phiM;
-            U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
+            mat dphi = cur_phiM.cols(mphi0.i) - mphi0.mprior_phiM;
+            U_phi = 0.5 * sum(dphi % (dphi * mphi0.IGamma2_phi), 1);
             do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
             do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit, (int)kiter, jMix + 1);
           }
@@ -3480,20 +3502,19 @@ public:
                 }
                 for (int i = 0; i < N; i++) joint_nll(i + k * N) += uphi1_k(i);
               }
-              if (nphi0 > 0) {
+              if (mphi0.nphi > 0) {
                 mat block0     = cur_phiM.rows(k * N, (k + 1) * N - 1);
-                mat phi0_k     = block0.cols(i0);
+                mat phi0_k     = block0.cols(mphi0.i);
                 mat prior0_k   = mphi0.mprior_phiM.rows(k * N, (k + 1) * N - 1);
                 mat dphi0_k    = phi0_k - prior0_k;
-                vec uphi0_k    = 0.5 * sum(dphi0_k % (dphi0_k * IGamma2_phi0), 1);
+                vec uphi0_k    = 0.5 * sum(dphi0_k % (dphi0_k * mphi0.IGamma2_phi), 1);
                 for (int i = 0; i < N; i++) joint_nll(i + k * N) += uphi0_k(i);
               }
             }
             U_y_mix(jMix) = joint_nll;
           }
-          if (!mixProbRegress) current_saem_state->_saemMixest = jMix + 1;
-          cur_fsave = user_fn(cur_phiM, mixProbRegress ? mx.evtM : evt,
-                              mixProbRegress ? mx.optM : optM).col(0);
+          // cur_fsave already tracks cur_phiM: do_mcmc() copies each accepted
+          // proposal's predictions, and the state was re-solved above
         }
         current_saem_state->_saemMixest = 0;
 
@@ -3757,11 +3778,11 @@ public:
           do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
           do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
         }
-        if(nphi0>0) {
+        if(mphi0.nphi>0) {
           vec U_phi;
           do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
-          mat dphi = phiM.cols(i0)-mphi0.mprior_phiM;
-          U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi0),1);
+          mat dphi = phiM.cols(mphi0.i)-mphi0.mprior_phiM;
+          U_phi    = 0.5*sum(dphi%(dphi*mphi0.IGamma2_phi),1);
           do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
           do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
         }
@@ -4158,6 +4179,7 @@ public:
         } else {
           dGamma2_phi0=dGamma2_phi0*coef_phi0;
         }
+        if (holdIx0.n_elem > 0) dGamma2_phi0(holdIx0) = holdGamma2_phi0(holdIx0);
         Gamma2_phi0=diagmat(dGamma2_phi0);                         //CHK
       }
       //CHECK the following seg on b & yptr & fptr
@@ -4969,7 +4991,6 @@ public:
 
 
 private:
-
   user_funct user_fn;
 
   uvec nu;
@@ -5013,6 +5034,10 @@ private:
   int nphi0, nphi1, nphi;
   mat covstruct1;
   uvec i1, i0, fixedIx1, fixedIx0, pseudoIx1;
+  // phi0 columns whose every coefficient is fix()ed: never sampled (free0 are
+  // the others); their initial pseudo-variance is kept so the prior stays finite
+  uvec holdIx0, free0;
+  vec holdGamma2_phi0;
   umat Gamma2_phi1fixedIxIn;
   uvec Gamma2_phi1fixedIx;
   int Gamma2_phi1fixed;
