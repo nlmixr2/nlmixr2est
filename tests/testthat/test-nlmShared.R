@@ -146,7 +146,8 @@ nmTest({
     expect_identical(.fit$covMethod, "|r|")
     expect_gt(min(eigen(.fit$cov, symmetric = TRUE, only.values = TRUE)$values), 0)
     expect_equal(unname(.fit$env$bobyqa$cov.scaled), unname(solve(sqrtm(.h %*% .h))), tolerance = 1e-8)
-    expect_true("R matrix is not positive definite; corrected as \"|r|\"" %in% .fit$runInfo)
+    # the warning names the parameters the flipped direction loads on (#1398)
+    expect_true(any(grepl("^R matrix is not PD: .+; corrected as \"\\|r\\|\"$", .fit$runInfo)))
     expect_null(.fit$env$bobyqa$covWarning)
   })
 
