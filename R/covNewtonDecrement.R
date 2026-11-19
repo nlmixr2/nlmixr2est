@@ -181,7 +181,7 @@
     double(1)
   )
   # a direction that cannot be differenced would leave a partial decrement
-  if (anyNA(.g)) {
+  if (!all(is.finite(.g))) {
     return(NULL)
   }
   stats::setNames(.g, .nm)
