@@ -94,6 +94,69 @@ test_that("estimated parameters that cannot reach the objective are found (#1382
     })
   }
   expect_equal(.unused(llMod), character(0))
+
+  # linCmt() as the endpoint itself
+  linEnd <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  expect_equal(.unused(linEnd), character(0))
+
+  # a state nothing reads does not keep its parameters
+  spare <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      tdead <- 0.2
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl)
+      v <- exp(tv)
+      d / dt(depot) <- -ka * depot
+      d / dt(center) <- ka * depot - cl / v * center
+      d / dt(spare) <- tdead
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  expect_equal(.unused(spare), "tdead")
+})
+
+test_that("a parameter with a prior affects the objective", {
+  pri <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      tdead <- 1
+      add.sd <- 0.7
+      prior(tdead) ~ dnorm(2, 1)
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl)
+      v <- exp(tv)
+      junk <- tdead * 2
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  .ui <- rxode2::rxUiDecompress(rxode2::rxode2(pri))
+  skip_if_not("prior" %in% names(.ui$iniDf), "this lotri has no prior support")
+  expect_equal(.unusedEstimatedParams(.ui), character(0))
 })
 
 test_that("unused parameter hook warns by name", {
