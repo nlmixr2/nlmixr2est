@@ -209,4 +209,15 @@ test_that("a rejected probe falls back to a one-sided difference", {
   )
   .g <- .covNewtonGradFd(.fit, .cov)
   expect_equal(.g[["p1"]], 6 * 0.9995, tolerance = 1e-6)
+  # and no partial gradient when a direction cannot be differenced at all
+  local_mocked_bindings(
+    .covNewtonFocei = function(ui, fit, ctl) {
+      .e <- stats::setNames(ui$iniDf$est, ui$iniDf$name)
+      if (.e[["p1"]] != 0.9995) {
+        stop("out of range")
+      }
+      list(objf = 3 * .e[["p1"]]^2 + 2 * .e[["tcl"]]^2)
+    }
+  )
+  expect_null(.covNewtonGradFd(.fit, .cov))
 })
