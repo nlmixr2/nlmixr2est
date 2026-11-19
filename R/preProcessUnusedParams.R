@@ -1,9 +1,10 @@
 #' Variables the objective function depends on
 #'
 #' Walks the normalized model (with `linCmt()` expanded) back from what feeds
-#' the likelihood: the endpoint lines, the ODEs and state properties (`f()`,
-#' `alag()`, `x(0)`, ...), and the `linCmtA()`/`linCmtB()` arguments.  An
-#' assignment inside `if()`/`while()` also depends on its condition.  The walk
+#' the likelihood: the endpoint lines, the `linCmtA()`/`linCmtB()` arguments and
+#' any other assignment to a call (`mtime()`, ...).  A state's ODE and
+#' properties (`f()`, `alag()`, `x(0)`, ...) feed that state, and an assignment
+#' inside `if()`/`while()` also depends on its condition.  The walk
 #' ignores statement order, so it may keep a variable whose value is later
 #' overwritten (never the reverse).
 #'
@@ -17,6 +18,7 @@
       .norm <- rxode2::rxGetLin(rxode2::rxNorm(ui$mv0))
       # braces let a normalized `else` start its own line
       .exprs <- str2lang(paste0("{\n", .norm, "\n}"))
+      .states <- ui$mv0$state
       .acc <- new.env(parent = emptyenv())
       .acc$lhs <- character(0)
       .acc$rhs <- list()
@@ -51,12 +53,13 @@
           .l <- e[[2]]
           .r <- e[[3]]
           .acc$seed <- c(.acc$seed, .linVars(.r))
-          if (is.name(.l)) {
-            .acc$lhs <- c(.acc$lhs, as.character(.l))
-            .acc$rhs[[length(.acc$lhs)]] <- unique(c(cond, all.vars(.r)))
-          } else {
-            # d/dt(), f(), alag(), rate(), dur(), x(0), mtime() ...
+          .t <- .lhsTarget(.l, .states)
+          if (is.na(.t)) {
+            # mtime() and the like
             .acc$seed <- c(.acc$seed, cond, all.vars(e))
+          } else {
+            .acc$lhs <- c(.acc$lhs, .t)
+            .acc$rhs[[length(.acc$lhs)]] <- unique(c(cond, all.vars(.r)))
           }
         }
         invisible()
@@ -80,6 +83,30 @@
   )
 }
 
+#' The variable an assignment defines
+#'
+#' @param l left hand side of an assignment
+#' @param states model states
+#' @return the assigned name, the state for `d/dt(x)`, `f(x)`, `alag(x)`,
+#'   `x(0)` and the like, or `NA` for any other call
+#' @noRd
+.lhsTarget <- function(l, states) {
+  if (is.name(l)) {
+    return(as.character(l))
+  }
+  if (is.call(l) && identical(l[[1]], quote(`/`)) && identical(l[[2]], quote(d))) {
+    l <- l[[3]]
+  }
+  if (is.call(l) && length(l) == 2L) {
+    for (.x in list(l[[2]], l[[1]])) {
+      if (is.name(.x) && as.character(.x) %in% states) {
+        return(as.character(.x))
+      }
+    }
+  }
+  NA_character_
+}
+
 #' Estimated parameters that cannot change the objective function
 #'
 #' @param ui rxode2 ui
@@ -96,7 +123,9 @@
   .w <- !.iniDf$fix &
     is.na(.iniDf$err) &
     (!is.na(.iniDf$ntheta) | (!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2))
-  setdiff(.iniDf$name[.w], .need)
+  # a prior adds its own term to the objective
+  .prior <- tryCatch(rxode2::rxUiPriors(ui)$name, error = function(e) NULL)
+  setdiff(.iniDf$name[.w], c(.need, .prior))
 }
 
 #' Warn about estimated parameters that do not reach the objective
