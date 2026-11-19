@@ -131,6 +131,7 @@ nlminbControl <- function(
   compress = TRUE,
   covMethod = c("r", "nlminb", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
@@ -162,6 +163,7 @@ nlminbControl <- function(
   checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
   checkmate::assertLogical(compress, len = 1, any.missing = TRUE)
   checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)
+  checkmate::assertNumber(aboveStartTol, lower = 0, na.ok = TRUE)
 
   solveType <- .nlmCtlCode(solveType, c("hessian" = 3L, "grad" = 2L, "fun" = 1L), "solveType")
 
@@ -244,6 +246,7 @@ nlminbControl <- function(
 
   .corWarnCheck(corWarn)
   .ret <- list(
+    aboveStartTol = as.double(aboveStartTol),
     eval.max = eval.max,
     iter.max = iter.max,
     trace = trace, # nolint
