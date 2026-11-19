@@ -18,6 +18,10 @@
 
 ## New features
 
+- FOCEi model builds no longer optimize the `innerOeta` model, which only
+  `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on
+  first use, caches it and adds the inner model's `param()`/`cmt()`/`mtime()`
+  prologue so it can be solved directly (#1321).
 - `outerOpt="trust"` evaluates the outer gradient and Hessian only at trial
   points the trust region could accept, so a trial that is no improvement gets
   its value alone (1.1x-2.6x faster with the analytical Hessian).
@@ -147,6 +151,13 @@
 
 ### Estimation
 
+- A `fast = TRUE` control converted to another FOCEi-family method (for
+  example a `foceControl()` given to `est = "mfoce"`) no longer fails with
+  "Expecting a single value"; its `outerOpt` was left unresolved.
+- `est = "vae"` with `nonMuTheta = "grad"` again takes the gradient at the
+  encoder's etas without the inner-mode score correction, which moved it
+  away from the optimum.
+
 - `saem` mixture fits with `saemControl(mixProbMethod = "annealed")` no
   longer error with "Mat::operator(): index out of bounds" when entering the
   SA covariance phase (#1297).
@@ -221,6 +232,14 @@
   re-solved before its MCMC step, so the population reset of fixed-effect-only
   thetas between iterations no longer leaves a stale likelihood that froze the
   chain at a state that no longer fit (#1298).
+- A covariate compared to string literals (`b2 * (tnom == "2")`) no longer
+  gets permuted estimates or `PRED`.  Each generated model (inner, pred,
+  outer, saem, nlm, nlme, ...) numbered the literals in its own order while
+  the data was coded once in the model's order; the generated models now use
+  the data's order, and a mismatch is an error (#1299).
+
+- A model without etas whose covariate is compared to string literals no
+  longer fails the table step ("error calculating tables") (#1299).
 
 - `saem` now estimates the component thetas of an eta shared by several
   `mix()` components (`mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))`) as
@@ -535,6 +554,10 @@
   NPDE of the same table without dosing rows and `NA` on dosing rows; the
   NPDE columns were longer than the table and out of row order, and the dosing
   rows changed the simulations.
+
+- Printing a fit with estimated correlations no longer leaves the
+  `broom.mixed.sep1`/`sep2` options set, which renamed later `confint()` and
+  `tidy()` terms to `sd:eta`/`cor:eta.v,eta.cl`.
 
 - `tidy()` and `confint()` now report only the model's thetas.  A
   non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
