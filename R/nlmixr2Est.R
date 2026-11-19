@@ -559,6 +559,6 @@ nlmixr2Est0 <- function(env, ...) {
   try(.covCorWarn(ret), silent = TRUE)
   # an ill-conditioned final covariance makes the SEs unreliable
   try(.covCondWarn(ret), silent = TRUE)
-  .covNewtonWarn(ret, .estName)
+  try(.covNewtonWarn(ret, .estName), silent = TRUE)
   invisible()
 }
