@@ -17,7 +17,17 @@
   `sigdig = 4`). Fits of ODE models are slower and their objectives
   change.
 
+- Fast FOCEi (`est = "foceif"` or `foceiControl(fast = TRUE)`) now
+  defaults to `outerOpt = "trust"`, which uses the analytical outer
+  Hessian. A fit that falls back to `fast = FALSE` (e.g. `linCmt()`)
+  still uses `bobyqa`.
+
 ### New features
+
+- `outerOpt="trust"` evaluates the outer gradient and Hessian only at
+  trial points the trust region could accept, so a trial that is no
+  improvement gets its value alone (1.1x-2.6x faster with the analytical
+  Hessian).
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or
   more (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their
@@ -156,6 +166,12 @@
 
 #### Estimation
 
+- `outerOpt="trust"` now holds a parameter on its bound when its steps
+  keep leaving the box there, and releases it when the gradient pulls it
+  back inside; `$optReturn$activeBounds` lists the held parameters. Fits
+  with an active bound previously stopped well above the optimum while
+  reporting convergence.
+
 - The `linCmt()` FOCEi sensitivity carry matches finite differences
   again for an `alag()` dose with a time-varying covariate. rxode2 now
   adds a hidden record (`EVID` 8) at a lagged dose’s data time, so the
@@ -193,8 +209,9 @@
   its second-order dose jumps. Such fits run their subject loops
   serially.
 
-- Fast FOCEi defaults to gradient-only `nlminb`; ordinary fits retain
-  `bobyqa`. Explicit outer optimizer choices are preserved.
+- Fast FOCE, FOCE+ and AGQ fits default to gradient-only `nlminb`;
+  ordinary fits retain `bobyqa`. Explicit outer optimizer choices are
+  preserved.
 
 - Fast fits default `nlminb`’s `rel.tol` to `10^(-sigdig-2)`; at
   `10^(-sigdig)` relative convergence stopped short of the optimum.
@@ -341,6 +358,14 @@
   fixed thetas before evaluating the objective. A `linCmt()` SAEM fit
   whose time-varying covariate entered only through a fixed theta could
   need more sensitivity-carry columns than rxode2 provides and stopped
+  ([\#1287](https://github.com/nlmixr2/nlmixr2est/issues/1287)).
+
+- A FOCEi-family `linCmt()` fit whose (parameter, eta) pairs need more
+  sensitivity-carry columns than rxode2 provides now first drops the
+  pairs whose covariates are constant within every subject of the data
+  (their standard gradient is exact) instead of stopping. A
+  2-compartment oral model with allometric weight on four parameters and
+  a time-varying flag on CL and F now fits
   ([\#1287](https://github.com/nlmixr2/nlmixr2est/issues/1287)).
 
 - A `linCmt()` model with a time-varying covariate on a compartment

@@ -465,10 +465,11 @@ foceiControl(
   non-Gaussian path) multiple endpoints, censoring or `nAGQ > 1`; those
   fall back to the finite-difference gradient with a message (linCmt()
   and out-of-scope log-likelihood models downgrade to `fast=FALSE` up
-  front). When unspecified, the outer optimizer defaults to `"nlminb"`
-  (vs `"bobyqa"` for `fast=FALSE`); pairing `fast=TRUE` with a
-  derivative-free `outerOpt` reverts to `fast=FALSE`. The `*f` methods
-  (e.g. `foceif`) default this to `TRUE`.
+  front). When unspecified, the outer optimizer defaults to `"trust"`
+  for FOCEi and `"nlminb"` for the other methods (vs `"bobyqa"` for
+  `fast=FALSE`); pairing `fast=TRUE` with a derivative-free `outerOpt`
+  reverts to `fast=FALSE`. The `*f` methods (e.g. `foceif`) default this
+  to `TRUE`.
 
 - priorMethod:
 
@@ -918,9 +919,9 @@ foceiControl(
   request the analytical outer Hessian for supported Gaussian
   FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
   curvature is unavailable. `"trust"` is a trust-region Newton method
-  (RcppTrust) built on that same Hessian; see `outerTrustHessian`. It is
-  unbounded, so a trial point outside the box is reported as an infinite
-  objective and the region shrinks instead.
+  (RcppTrust) built on that same Hessian; see `outerTrustHessian`; it is
+  the default for fast FOCEi. A parameter whose steps keep leaving the
+  box is held on its bound.
 
 - innerOpt:
 
