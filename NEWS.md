@@ -244,6 +244,20 @@
   with enough subjects that read another subject's values, without changing
   the fit.
 
+- SAEM no longer samples a `fix()`ed theta without an eta (such as a fixed
+  allometric exponent or a covariate effect fixed at 0) per subject.  Its
+  starting jitter and MCMC draws made it act as an extra random effect during
+  burn-in, so a covariate term fixed at 0 gave a different fit from the model
+  without it.  Such a model now fits exactly like the model without the term
+  and like `saemControl(literalFix = TRUE)`.  The earlier behavior, where
+  the theta moves during the fit and arrives at its fixed value, is kept as
+  `saemControl(fixedNoEta = "converge")` (#1287).
+
+- `setOfv(fit, "focei")` (and `"foce"`/`"fo"`) now substitutes the fit's
+  fixed thetas before evaluating the objective.  A `linCmt()` SAEM fit whose
+  time-varying covariate entered only through a fixed theta could need more
+  sensitivity-carry columns than rxode2 provides and stopped (#1287).
+
 - A `linCmt()` model with a time-varying covariate on a compartment
   parameter is now fitted by FOCEi, foce, fo and posthoc as its ODE twin is,
   under `"locf"`, `"midpoint"` and `"nocb"` and a covariate's own declaration
@@ -436,6 +450,39 @@
   setups, writing only the columns the tables use.  The tables are unchanged,
   including the ODE method/tolerance fallback; `options(nlmixr2.tablePool =
   FALSE)` restores the old route (#1356).
+
+- With an rxode2 that exports its output-record walk, `addDosing = TRUE`
+  tables (with either `subsetNonmem`) are solved in the pool too, and the rows,
+  dose columns and kept columns come from rxode2's own walk, so they are the
+  rows `rxSolve()` gives (#1356).
+
+- Mixture (`mix()`) fits' tables are solved in the pool as well, each subject
+  with its own mixture assignment; the two routes share the code that passes
+  the assignments to rxode2 (#1356).
+
+- Fits with resets (EVID 3), `mtime()` records or a string assignment solve
+  their tables in the pool too, laid out by rxode2's own record walk; the
+  rxSolve() route's drop of the `mtime()` rows is shared by both routes
+  (#1356).
+
+- With an rxode2 that says which solves `rxSolve()` refuses, tables of fits
+  solved with any ODE method (not only liblsoda, lsoda and dop853) are solved
+  in the pool; a solve `rxSolve()` would refuse goes to `rxSolve()` for its
+  own error (#1356).
+
+- A `keep =` column the fit's data lacks no longer sends the table to the
+  `rxSolve()` route: rxode2 leaves it out, with its own warning, as before
+  (#1356).
+
+- `addDosing = TRUE` tables of a single subject no longer stop with "subject
+  code 0 of the solved rows has no row in the eta table": the solve has no id
+  column for one subject, and its `ID` was put back only when the frame began
+  at `time`.
+
+- `addDosing = TRUE` tables with `npde = TRUE` now give each observation the
+  NPDE of the same table without dosing rows and `NA` on dosing rows; the
+  NPDE columns were longer than the table and out of row order, and the dosing
+  rows changed the simulations.
 
 - `tidy()` and `confint()` now report only the model's thetas.  A
   non-mu-referenced eta's row of `$parFixedDf` (and an IOV fit's occasion
