@@ -922,6 +922,7 @@ nmObjGet.saem <- function(x, ...) {
 nmObjGet.innerModel <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
+  .mu2FitModels(.env)
   if (exists("foceiModel", envir = .env, inherits = FALSE)) {
     .model <- get("foceiModel", envir = .env, inherits = FALSE)
   } else if (exists("model", envir = .env, inherits = FALSE)) {
@@ -986,6 +987,7 @@ nmObjGetPredOnly <- function(x) {
 #' @export
 nmObjGetPredOnly.saem <- function(x) {
   .env <- x[[1]]
+  .mu2FitModels(.env)
   .model <- NULL
   if (exists("saemModel", envir = .env, inherits = FALSE)) {
     .model <- get("saemModel", envir = .env, inherits = FALSE)
@@ -1001,6 +1003,7 @@ nmObjGetPredOnly.saem <- function(x) {
 #' @export
 nmObjGetPredOnly.default <- function(x) {
   .env <- x[[1]]
+  .mu2FitModels(.env)
   .model <- NULL
   if (exists("foceiModel", envir = .env, inherits = FALSE)) {
     .model <- get("foceiModel", envir = .env, inherits = FALSE)
@@ -1028,6 +1031,7 @@ nmObjGetIpredModel <- function(x) {
 #' @export
 nmObjGetIpredModel.saem <- function(x) {
   .env <- x[[1]]
+  .mu2FitModels(.env)
   .model <- NULL
   if (exists("saemModel", envir = .env, inherits = FALSE)) {
     .model <- get("saemModel", envir = .env, inherits = FALSE)
@@ -1043,6 +1047,7 @@ nmObjGetIpredModel.saem <- function(x) {
 #' @export
 nmObjGetIpredModel.default <- function(x) {
   .env <- x[[1]]
+  .mu2FitModels(.env)
   .model <- NULL
   if (exists("foceiModel", envir = .env, inherits = FALSE)) {
     .model <- get("foceiModel", envir = .env, inherits = FALSE)
@@ -1093,6 +1098,7 @@ nmObjGetEstimationModel.saem <- function(x) {
 #' @export
 nmObjGetEstimationModel.default <- function(x) {
   .env <- x[[1]]
+  .mu2FitModels(.env)
   .model <- NULL
   if (exists("foceiModel", envir = .env, inherits = FALSE)) {
     .model <- get("foceiModel", envir = .env, inherits = FALSE)

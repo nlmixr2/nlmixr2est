@@ -333,21 +333,61 @@ mu2env$expit <- rxode2::expit
   .saemModelEnv$predSymengine <- NULL
   ret
 }
+#' A ui with the user's covariate expressions in place of `nlmixrMuDerCov#`
+#'
+#' @param ui ui estimated with the mu-referenced covariate rewrite
+#' @return ui of the user's model
+#' @noRd
+#' @author Matthew L. Fidler
+.uiMu2Restore <- function(ui) {
+  .model <- rxode2::as.model(ui)
+  for (.cur in .muRefTrans$cur) {
+    .model <- .uiModifyForCovsRep(.model, .cur$new, .cur$old)
+  }
+  .ui2 <- rxode2::rxUiDecompress(ui)
+  if (exists("control", envir = .ui2)) {
+    rm("control", envir = .ui2)
+  }
+  rxode2::model(.ui2) <- .model
+  .ui2
+}
+
+#' Compiled models of a fit, from its ui, that the mu2 finalizer dropped
+#'
+#' @param env fit environment
+#' @return nothing; builds the models `.uiFinalizeMu2hook()` listed in
+#'   `env$mu2Models`
+#' @noRd
+#' @author Matthew L. Fidler
+.mu2FitModels <- function(env) {
+  .models <- get0("mu2Models", envir = env, inherits = FALSE)
+  if (is.null(.models)) {
+    return(invisible())
+  }
+  rm("mu2Models", envir = env)
+  .ui <- rxode2::rxUiDecompress(env$ui)
+  if ("foceiModel" %in% .models) {
+    assign("foceiModel", .ui$focei, envir = env)
+  }
+  if ("saemModel" %in% .models) {
+    assign("saemModel", .ui$saemModelPred, envir = env)
+  }
+  invisible()
+}
+
 .uiFinalizeMu2hook <- function(ret) {
   if (length(.muRefTrans$cur) > 0L) {
     if (is.null(ret$ui)) {
       return(ret)
     }
-    .model <- rxode2::as.model(ret$ui)
-    for (.cur in .muRefTrans$cur) {
-      .model <- .uiModifyForCovsRep(.model, .cur$new, .cur$old)
+    assign("ui", .uiMu2Restore(ret$ui), envir = ret$env)
+    # the compiled models read the nlmixrMuDerCov# columns; .mu2FitModels()
+    # builds them from the user's model when they are needed
+    .models <- intersect(c("foceiModel", "saemModel"), ls(ret$env, all.names = TRUE))
+    if (length(.models) > 0L) {
+      rm(list = .models, envir = ret$env)
+      assign("mu2Models", .models, envir = ret$env)
     }
-    .ui2 <- rxode2::rxUiDecompress(ret$ui)
-    if (exists("control", envir = .ui2)) {
-      rm("control", envir = .ui2)
-    }
-    rxode2::model(.ui2) <- .model
-    assign("ui", .ui2, envir = ret$env)
     if (inherits(ret, "data.frame")) {
       .w <- which(grepl("nlmixrMuDerCov[0-9]+", names(ret)))
       if (length(.w) > 0L) {
