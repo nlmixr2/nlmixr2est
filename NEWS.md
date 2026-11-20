@@ -18,10 +18,11 @@
 
 ## New features
 
-- `fit$etaNormality` reports, for each ETA (and each occasion ETA), the
-  Shapiro-Wilk statistic and p-value of its estimates beside the mean, SD and
-  zero-mean t-test p-value already in `$shrink`; fixed or zero-variance ETAs
-  give `NA` (#1448).
+- `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
+  ETA (computed on access, so older saved fits have them too), and
+  `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
+  Shapiro-Wilk test from `$shrink`; fixed or zero-variance ETAs give `NA`
+  (#1448).
 
 - `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
   objective at the final estimates with every ODE tolerance 10x tighter and
