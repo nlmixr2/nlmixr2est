@@ -18,10 +18,10 @@
 
 ## New features
 
-- `fit$etaNormality` reports, for each ETA (and each occasion ETA), its
-  number of estimates, mean, SD, the t-test p-value of a zero mean and the
-  Shapiro-Wilk statistic and p-value; fixed or zero-variance ETAs give `NA`
-  (#1448).
+- `fit$etaNormality` reports, for each ETA (and each occasion ETA), the
+  Shapiro-Wilk statistic and p-value of its estimates beside the mean, SD and
+  zero-mean t-test p-value already in `$shrink`; fixed or zero-variance ETAs
+  give `NA` (#1448).
 
 - FOCEi model builds no longer optimize the `innerOeta` model, which only
   `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on

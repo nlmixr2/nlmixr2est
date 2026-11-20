@@ -1,34 +1,54 @@
+.etaNormalityShrinkTab <- function(...) {
+  .v <- list(...)
+  .d <- as.data.frame(lapply(.v, function(v) c(v[1], v[2]^2, v[2], 0, 0, 0, 0, 0, v[3])))
+  names(.d) <- names(.v)
+  row.names(.d) <- c(
+    "mean",
+    "var",
+    "sd",
+    "skewness",
+    "kurtosis",
+    "var shrinkage (%)",
+    "sd shrinkage (%)",
+    "t statistic",
+    "p-value"
+  )
+  .d
+}
+
 test_that("normal etas pass and skewed etas fail the shapiro test", {
   .x <- stats::qnorm(stats::ppoints(200))
-  .r <- .etaNormalityRow("eta.cl", .x)
-  expect_identical(names(.r), c("eta", "n", "mean", "sd", "meanP", "shapiroW", "shapiroP"))
-  expect_identical(.r$n, 200L)
-  expect_gt(.r$shapiroP, 0.5)
-  expect_gt(.r$meanP, 0.5)
-  # heavily skewed (log-normal) and shifted away from zero
+  .s <- .etaNormalityShapiro(.x)
+  expect_identical(names(.s), c("shapiroW", "shapiroP"))
+  expect_gt(.s[["shapiroP"]], 0.5)
+  # heavily skewed (log-normal)
   .y <- exp(2 * .x)
-  .r <- .etaNormalityRow("eta.cl", .y)
-  expect_lt(.r$shapiroP, 1e-6)
-  expect_lt(.r$meanP, 1e-3)
-  expect_equal(.r$shapiroW, unname(stats::shapiro.test(.y)$statistic))
-  expect_equal(.r$meanP, stats::t.test(.y)$p.value)
+  .s <- .etaNormalityShapiro(.y)
+  expect_lt(.s[["shapiroP"]], 1e-6)
+  expect_equal(.s[["shapiroW"]], unname(stats::shapiro.test(.y)$statistic))
 })
 
-test_that("small, huge, constant and skipped etas give NA statistics", {
-  .na <- c("meanP", "shapiroW", "shapiroP")
-  .r <- .etaNormalityRow("eta.cl", c(0.1, -0.1))
-  expect_identical(.r$n, 2L)
-  expect_true(all(is.na(.r[, c("mean", "sd", .na)])))
-  .r <- .etaNormalityRow("eta.cl", stats::qnorm(stats::ppoints(5001)))
-  expect_false(is.na(.r$meanP))
-  expect_true(all(is.na(.r[, c("shapiroW", "shapiroP")])))
-  .r <- .etaNormalityRow("eta.cl", rep(0, 10))
-  expect_true(all(is.na(.r[, .na])))
-  # positive sd, but t.test() calls it essentially constant
-  .r <- .etaNormalityRow("eta.cl", c(1, 1, 1 + .Machine$double.eps))
-  expect_true(is.na(.r$meanP))
-  .r <- .etaNormalityRow("eta.cl", stats::qnorm(stats::ppoints(20)), skip = TRUE)
-  expect_true(all(is.na(.r[, c("mean", "sd", .na)])))
+test_that("small, huge and constant etas have no shapiro test", {
+  expect_true(all(is.na(.etaNormalityShapiro(c(0.1, -0.1)))))
+  expect_true(all(is.na(.etaNormalityShapiro(stats::qnorm(stats::ppoints(5001))))))
+  expect_true(all(is.na(.etaNormalityShapiro(rep(0, 10)))))
+})
+
+test_that("mean, sd and meanP come from $shrink", {
+  .s <- .etaNormalityShrinkTab(eta.cl = c(0.1, 0.3, 0.04))
+  expect_equal(.etaNormalityShrink(.s, "eta.cl"), c(mean = 0.1, sd = 0.3, meanP = 0.04))
+  expect_true(all(is.na(.etaNormalityShrink(.s, "eta.v"))))
+  expect_true(all(is.na(.etaNormalityShrink(NULL, "eta.cl"))))
+  # IOV fits keep one table per level
+  .l <- list(id = .s, occ = .etaNormalityShrinkTab(iov.cl = c(-0.2, 0.5, 0.6)))
+  expect_equal(.etaNormalityShrink(.l, "iov.cl"), c(mean = -0.2, sd = 0.5, meanP = 0.6))
+  .r <- .etaNormalityRow("eta.cl", stats::qnorm(stats::ppoints(20)), shrink = .s)
+  expect_identical(names(.r), c("eta", "n", "mean", "sd", "meanP", "shapiroW", "shapiroP"))
+  expect_identical(.r$n, 20L)
+  expect_equal(.r$meanP, 0.04)
+  expect_false(is.na(.r$shapiroP))
+  .r <- .etaNormalityRow("eta.cl", stats::qnorm(stats::ppoints(20)), shrink = .s, skip = TRUE)
+  expect_true(all(is.na(.r[, c("mean", "sd", "meanP", "shapiroW", "shapiroP")])))
 })
 
 test_that("only eta columns of a data frame are tested", {
@@ -93,7 +113,7 @@ test_that("component-owned mixture etas use only their component's subjects", {
   ))
   expect_identical(.r$eta, c("eta.v", "eta.cl2"))
   expect_identical(.r$n, c(20L, 20L))
-  expect_equal(.r$mean[2], 0)
+  expect_equal(.r$shapiroP[2], stats::shapiro.test(c(.x, .x))$p.value)
   # ... including when the component is only on ranef
   .r <- .etaNormalityFit(list(
     ui = .ui,
@@ -113,6 +133,10 @@ nmTest({
     expect_identical(.r$eta, c("eta.ka", "eta.cl", "eta.v"))
     expect_true(all(.r$n == 12L))
     expect_equal(.r$shapiroP[2], stats::shapiro.test(.fit$eta$eta.cl)$p.value)
+    .s <- .fit$shrink
+    expect_equal(.r$mean, unname(unlist(.s["mean", .r$eta])))
+    expect_equal(.r$sd, unname(unlist(.s["sd", .r$eta])))
+    expect_equal(.r$meanP, unname(unlist(.s["p-value", .r$eta])))
     expect_true("etaNormality" %in% names(.nmObjGetSupportedDollars()))
   })
 
@@ -141,5 +165,6 @@ nmTest({
     expect_identical(.r$eta, c("eta.v", "iov.cl"))
     expect_identical(.r$n, c(12L, 24L))
     expect_equal(.r$shapiroP[2], stats::shapiro.test(.fit$iov$occ$iov.cl)$p.value)
+    expect_equal(.r$meanP, c(.fit$shrink$id["p-value", "eta.v"], .fit$shrink$occ["p-value", "iov.cl"]))
   })
 })
