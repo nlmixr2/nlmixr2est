@@ -1245,6 +1245,7 @@ focei_options op_focei;
 enum { mcetaRunZeroCol = 0, mcetaRunDrawCol, mcetaWonZeroCol, mcetaWonDrawCol,
        mcetaRankedCol, mcetaFlippedCol, mcetaNcol };
 static long long _mcetaLast[mcetaNcol + 1];
+static long long _mcetaCarry[mcetaNcol + 1]; // counts from before a theta-reset restart
 static std::vector<int> _mcetaIter;
 static std::vector<long long> _mcetaDelta; // mcetaNcol counts + ns per row
 
@@ -1258,16 +1259,28 @@ static inline void mcetaCounterGet(long long *v) {
   v[mcetaNcol]       = op_focei.mcetaNs.load(std::memory_order_relaxed);
 }
 
-// Called wherever nMcetaZero/nMcetaSample are zeroed, so deltas stay non-negative.
+// Called BEFORE nMcetaZero/nMcetaSample are zeroed.  A theta-reset restart (nF2 > 0)
+// keeps the history, so the counts so far are carried and the baseline shifted.
 static inline void mcetaCounterReset() {
+  long long cur[mcetaNcol + 1];
+  mcetaCounterGet(cur);
+  for (int k = 0; k <= mcetaNcol; ++k) {
+    if (op_focei.nF2 > 0) {
+      _mcetaCarry[k] += cur[k];
+      _mcetaLast[k] -= cur[k];
+    } else {
+      _mcetaCarry[k] = 0;
+      _mcetaLast[k] = 0;
+    }
+  }
   op_focei.nMcetaRunZero.store(0, std::memory_order_relaxed);
   op_focei.nMcetaRunDraw.store(0, std::memory_order_relaxed);
   op_focei.mcetaNs.store(0, std::memory_order_relaxed);
-  std::fill_n(_mcetaLast, mcetaNcol + 1, 0LL);
 }
 
-// Records the counter change since the last recorded outer evaluation; returns the row.
-static inline const long long *mcetaRecord(int iter) {
+// Records the counter change since the last recorded outer evaluation, so a row
+// also holds any unrecorded probes (e.g. trust/bobyqa FD probes) run since then.
+static inline void mcetaRecord(int iter) {
   long long cur[mcetaNcol + 1];
   mcetaCounterGet(cur);
   _mcetaIter.push_back(iter);
@@ -1275,7 +1288,6 @@ static inline const long long *mcetaRecord(int iter) {
     _mcetaDelta.push_back(cur[k] - _mcetaLast[k]);
     _mcetaLast[k] = cur[k];
   }
-  return &_mcetaDelta[_mcetaDelta.size() - (mcetaNcol + 1)];
 }
 
 // Adds the inner-solve time to mcetaNs once start() was called.
@@ -1313,6 +1325,7 @@ static List mcetaInfoList() {
                                        _["flipped"] = fl, _["time"] = sec);
   long long cur[mcetaNcol + 1];
   mcetaCounterGet(cur);
+  for (int k = 0; k <= mcetaNcol; ++k) cur[k] += _mcetaCarry[k];
   NumericVector total = NumericVector::create(
     _["startZero"] = (double)cur[mcetaRunZeroCol],
     _["startDraw"] = (double)cur[mcetaRunDrawCol],
@@ -10134,9 +10147,9 @@ NumericVector foceiSetup_(const RObject &obj,
   // never reach -- otherwise those fits would report the previous fit's counts.
   op_focei.mcetaSamples.reset();
   op_focei.etaRestartSamples.reset();
+  mcetaCounterReset();
   op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
   op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
-  mcetaCounterReset();
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
@@ -11707,9 +11720,9 @@ Environment foceiOuter(Environment e){
   op_focei.curAnalytic=0;
   op_focei.nAnalyticGrad=0;
   op_focei.nAnalyticGradDirect=0;
+  mcetaCounterReset();
   op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
   op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
-  mcetaCounterReset();
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
   op_focei.nInnerReranked.store(0, std::memory_order_relaxed);
   op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);

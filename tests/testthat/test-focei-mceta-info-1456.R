@@ -67,8 +67,8 @@ nmTest({
     expect_equal(.info$mceta, 5L)
     expect_true(.info$mcetaOpt)
     expect_equal(names(.it), c("iter", .cols))
-    # each evaluation either reran every subject's search or none
-    expect_true(all(.it$startZero %in% c(0L, .nsub)))
+    # a row holds whole searches (unrecorded probes fold into the next row)
+    expect_true(all(.it$startZero %% .nsub == 0L))
     expect_true(all(.it$startDraw == 4L * .it$startZero))
     expect_true(all(.it$wonZero + .it$wonDraw == .it$startZero))
     expect_equal(.it$startZero[1], .nsub)
@@ -90,7 +90,7 @@ nmTest({
     skip_on_cran()
     .nsub <- length(unique(theo_sd$ID))
     .it <- .mcetaInfoFit(mceta = 5L)$mcetaInfo$iter
-    expect_true(all(.it$startZero + .it$startDraw %in% c(0L, .nsub)))
+    expect_true(all((.it$startZero + .it$startDraw) %% .nsub == 0L))
     expect_equal(.it$startZero, .it$wonZero)
     expect_equal(.it$startDraw, .it$wonDraw)
   })
