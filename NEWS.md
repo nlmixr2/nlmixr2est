@@ -18,6 +18,12 @@
 
 ## New features
 
+- `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
+  objective at the final estimates with every ODE tolerance 10x tighter and
+  notes in `$runInfo` an objective that moves by more than `odeSettleTol`
+  (default 0.1) or is not finite, e.g. `OFV moves 0.28 at 10x tighter ODE
+  tolerance`; the tighter objective is kept as `fit$odeSettleObjf` (#1393).
+
 - FOCEi model builds no longer optimize the `innerOeta` model, which only
   `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on
   first use, caches it and adds the inner model's `param()`/`cmt()`/`mtime()`
@@ -39,6 +45,10 @@
   tcl/tv (0.98)`.  `corWarn=` in every method's control (e.g.
   `foceiControl(corWarn=)`, `saemControl(corWarn=)`) sets the threshold;
   `NA` turns it off (#1380).
+
+- `foceiControl(scaleLinear = "abs")` scales every linear theta by its
+  `|init|`, as NONMEM does, instead of the default `1/|init|` inside
+  `scaleCband`.  The default `"inverse"` is unchanged (#1320).
 
 - A fit whose IWRES sd shrinkage is below -5% now notes it in `$runInfo`
   ("IWRES shrinkage is strongly negative; check the residual model"); the
@@ -153,6 +163,9 @@
 - `est = "vae"` with `nonMuTheta = "grad"` again takes the gradient at the
   encoder's etas without the inner-mode score correction, which moved it
   away from the optimum.
+
+- FOCEi now excludes `EVID = 2` records and inserted `EVID = 9`
+  initialization records from `fit$nobs` (#1342).
 
 - `saem` mixture fits with `saemControl(mixProbMethod = "annealed")` no
   longer error with "Mat::operator(): index out of bounds" when entering the

@@ -20,6 +20,7 @@ foceiControl(
   scaleCmax = 1e+05,
   scaleCmin = 1e-05,
   scaleCband = c(0.1, 10),
+  scaleLinear = c("inverse", "abs"),
   scaleC = NULL,
   scaleC0 = 1e+05,
   derivEps = rep(20 * sqrt(.Machine$double.eps), 2),
@@ -163,6 +164,8 @@ foceiControl(
   etaRestart = 4L,
   finalEtaTol = 1,
   shrinkEtaWarn = 30,
+  odeSettleCheck = FALSE,
+  odeSettleTol = 0.1,
   nRetries = 3,
   seed = 42,
   resetThetaCheckPer = 0.1,
@@ -274,6 +277,12 @@ transform, which catch `log()` at init `1`, `logit` at the interval
 midpoint and `factorial`/`gamma` at a digamma zero.  The constants of
 residual-error parameters and those given in `scaleC` are used as
 they are.}
+
+\item{scaleLinear}{How a linear (untransformed) `theta` is scaled under
+`scaleType = "nlmixr2"`.  `"inverse"` (default) uses `1/|init|` when it
+lands inside `scaleCband` and `|init|` otherwise; `"abs"` always uses
+`|init|`, as NONMEM does.  A `theta` starting at 0 keeps its zero-theta
+scale either way.}
 
 \item{scaleC}{Scaling constant used with \code{scaleType="nlmixr2"};
 when not specified, chosen by parameter type to keep gradient sizes
@@ -1173,6 +1182,15 @@ warm start (`mceta < 0`).  Use `Inf` to disable.}
 
 \item{shrinkEtaWarn}{Warn (in `$runInfo`) when an eta's SD shrinkage is
 at or above this percentage.  Use `NA` or `Inf` to disable.}
+
+\item{odeSettleCheck}{When `TRUE`, an ODE model's ETAs and objective are
+re-solved at the final estimates with every ODE tolerance 10x tighter,
+and `$runInfo` notes an objective that moves by more than `odeSettleTol`
+or is not finite.  The tighter objective is kept as `fit$odeSettleObjf`.
+Skipped for models without ODEs (e.g. `linCmt()`), fits with
+`maxOuterIterations = 0` and a non-finite fit objective.}
+
+\item{odeSettleTol}{The objective change that `odeSettleCheck` reports.}
 
 \item{nRetries}{If FOCEi doesn't fit with the current parameter
 estimates, randomly sample new parameter estimates and restart
