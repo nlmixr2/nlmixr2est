@@ -35,6 +35,10 @@
   improvement gets its value alone (1.1x-2.6x faster with the analytical
   Hessian).
 
+- `saemControl(rmcmc=)` sets the random-walk proposal scale of the SAEM
+  MCMC kernels, previously fixed at 0.5; lower it when `$mcmcAccept` is
+  low ([\#1385](https://github.com/nlmixr2/nlmixr2est/issues/1385)).
+
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or
   more (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their
   EBE diagnostics are unreliable. `foceiControl(shrinkEtaWarn=)` sets

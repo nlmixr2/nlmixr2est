@@ -11,6 +11,7 @@ saemControl(
   nEm = 300,
   nmc = 3,
   nu = c(2, 2, 2),
+  rmcmc = 0.5,
   print = 1L,
   trace = 0,
   covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
@@ -118,6 +119,12 @@ saemControl(
 
   The third value represents the number of bootstrap/reshuffling or
   uni-dimensional random samples are taken.
+
+- rmcmc:
+
+  Scale of the random-walk proposals (kernels 2 and 3) relative to the
+  current between-subject SD. Smaller values raise the MCMC acceptance
+  rate (see \`\$mcmcAccept\`); larger values lower it.
 
 - print:
 
