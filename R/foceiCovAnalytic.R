@@ -2155,6 +2155,10 @@
     {
       .s <- ui$loadPruneSens
       .st <- rxode2::rxStateOde(.s)
+      .dl <- .foceiDelayLagParams(.s)
+      if (any(c(paste0("THETA_", .dl$theta, "_"), paste0("ETA_", .dl$eta, "_")) %in% dirs)) {
+        return(.foceiAnalyticNote("a delay() duration parameter"))
+      }
       # matExp()/indLin(): the base ODEs are materialized into the pruned env (via
       # .rxJacobian -> .rxInjectMatExpOdes) with correct RHS, but rxStateOde() can return
       # them reversed (an indLin() state parses as compartment 1).  The augmented model

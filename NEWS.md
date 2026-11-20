@@ -26,6 +26,9 @@
   points the trust region could accept, so a trial that is no improvement gets
   its value alone (1.1x-2.6x faster with the analytical Hessian).
 
+- `saemControl(rmcmc=)` sets the random-walk proposal scale of the SAEM MCMC
+  kernels, previously fixed at 0.5; lower it when `$mcmcAccept` is low (#1385).
+
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
   diagnostics are unreliable.  `foceiControl(shrinkEtaWarn=)` sets the
@@ -239,6 +242,14 @@
   that eta's mean within each component.  They used to be fixed-effect-only
   search parameters, so the components drifted apart while the shared eta's
   variance absorbed the split; they also get an SA covariance SE now (#1296).
+
+- A parameter in a `delay()` duration (for example `delay(central, TR)` with
+  `TR <- exp(lTR + eta.TR)`) is now finite-differenced in FOCEi, its family
+  and the nlm family.  Its symbolic sensitivity was zero (the lag's own term
+  and the jump each dose makes at `t + TR` were missing), so the fit left the
+  delay at its initial estimate.  The analytic covariance, the analytic outer
+  gradient and the theta-sensitivity models fall back for such a model
+  (#1300).
 
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
