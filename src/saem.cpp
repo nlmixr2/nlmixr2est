@@ -7120,7 +7120,7 @@ SEXP saemBurnTrendTest(SEXP inX, SEXP inNBatch) {
   mat x = as<mat>(inX);
   int nBatch = as<int>(inNBatch);
   vec t;
-  uvec tr = saemBurnTrend(x, nBatch, R::qt(0.975, (double)(nBatch - 2), 1, 0), &t);
+  uvec tr = saemBurnTrend(x, nBatch, R::qt(0.975, static_cast<double>(nBatch - 2), 1, 0), &t);
   LogicalVector trend(tr.begin(), tr.end());
   NumericVector tv(t.begin(), t.end());
   return List::create(_["trend"] = trend, _["t"] = tv);
