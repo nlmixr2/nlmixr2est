@@ -758,7 +758,7 @@
     niter_phi0 = niter_phi0,
     nmc = nmc,
     coef_phi0 = .9638, # FIXME
-    rmcmc = .5,
+    rmcmc = if (is.null(mcmc$rmcmc)) 0.5 else mcmc$rmcmc,
     coef_sa = .95,
     pas = pas,
     pash = pash,
@@ -1003,7 +1003,7 @@ fixef.saemFit <- function(object, ...) {
   object$Plambda
 }
 
-## FIXME: coef_phi0, rmcmc, coef_sa
+## FIXME: coef_phi0, coef_sa
 ## FIXME: Klog, rho, sa, nmc
 ## FIXME: N.design
 ## FIXME: g = gc = 1
