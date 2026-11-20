@@ -1245,7 +1245,6 @@ focei_options op_focei;
 enum { mcetaRunZeroCol = 0, mcetaRunDrawCol, mcetaWonZeroCol, mcetaWonDrawCol,
        mcetaRankedCol, mcetaFlippedCol, mcetaNcol };
 static long long _mcetaLast[mcetaNcol + 1];
-static long long _mcetaCarry[mcetaNcol + 1]; // counts from before a theta-reset restart
 static std::vector<int> _mcetaIter;
 static std::vector<long long> _mcetaDelta; // mcetaNcol counts + ns per row
 
@@ -1259,23 +1258,20 @@ static inline void mcetaCounterGet(long long *v) {
   v[mcetaNcol]       = op_focei.mcetaNs.load(std::memory_order_relaxed);
 }
 
-// Called BEFORE nMcetaZero/nMcetaSample are zeroed.  A theta-reset restart (nF2 > 0)
-// keeps the history, so the counts so far are carried and the baseline shifted.
+// Called wherever nMcetaZero/nMcetaSample are zeroed, so deltas stay non-negative.
 static inline void mcetaCounterReset() {
-  long long cur[mcetaNcol + 1];
-  mcetaCounterGet(cur);
-  for (int k = 0; k <= mcetaNcol; ++k) {
-    if (op_focei.nF2 > 0) {
-      _mcetaCarry[k] += cur[k];
-      _mcetaLast[k] -= cur[k];
-    } else {
-      _mcetaCarry[k] = 0;
-      _mcetaLast[k] = 0;
-    }
-  }
   op_focei.nMcetaRunZero.store(0, std::memory_order_relaxed);
   op_focei.nMcetaRunDraw.store(0, std::memory_order_relaxed);
   op_focei.mcetaNs.store(0, std::memory_order_relaxed);
+  std::fill_n(_mcetaLast, mcetaNcol + 1, 0LL);
+}
+
+// Like niter/vPar, the history is per foceiSetup_ (a theta-reset restart included),
+// as are the counters op_focei's reset zeroes.
+static inline void mcetaHistoryClear() {
+  _mcetaIter.clear();
+  _mcetaDelta.clear();
+  std::fill_n(_mcetaLast, mcetaNcol + 1, 0LL);
 }
 
 // Records the counter change since the last recorded outer evaluation, so a row
@@ -1303,7 +1299,8 @@ struct McetaTimer {
   }
 };
 
-// Per-iteration mceta history (deltas) as a data frame, for fit$mcetaInfo.
+// fit$mcetaInfo: per-outer-evaluation deltas, and totals that also count the
+// covariance step and final solves.
 static List mcetaInfoList() {
   const int n = (int)_mcetaIter.size();
   IntegerVector iter(n), rz(n), rd(n), wz(n), wd(n), rk(n), fl(n);
@@ -1325,7 +1322,6 @@ static List mcetaInfoList() {
                                        _["flipped"] = fl, _["time"] = sec);
   long long cur[mcetaNcol + 1];
   mcetaCounterGet(cur);
-  for (int k = 0; k <= mcetaNcol; ++k) cur[k] += _mcetaCarry[k];
   NumericVector total = NumericVector::create(
     _["startZero"] = (double)cur[mcetaRunZeroCol],
     _["startDraw"] = (double)cur[mcetaRunDrawCol],
@@ -1816,6 +1812,7 @@ extern "C" void rxOptionsFreeFocei() {
   gradType.clear();
   niter.clear();
   niterGrad.clear();
+  mcetaHistoryClear();
 }
 
 
@@ -10126,8 +10123,6 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.printTop = as<int>(foceiO["printTop"]);
   op_focei.nF2 = as<int>(foceiO["nF"]);
   if (op_focei.nF2 == 0){
-    _mcetaIter.clear();
-    _mcetaDelta.clear();
     vGrad.clear();
     vPar.clear();
     iterType.clear();

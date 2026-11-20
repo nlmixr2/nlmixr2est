@@ -70,7 +70,8 @@ nmTest({
     # a row holds whole searches (unrecorded probes fold into the next row)
     expect_true(all(.it$startZero %% .nsub == 0L))
     expect_true(all(.it$startDraw == 4L * .it$startZero))
-    expect_true(all(.it$wonZero + .it$wonDraw == .it$startZero))
+    # a search with no converged candidate has no winner
+    expect_true(all(.it$wonZero + .it$wonDraw <= .it$startZero))
     expect_equal(.it$startZero[1], .nsub)
     for (.c in .cols) {
       expect_true(all(.it[[.c]] >= 0))
