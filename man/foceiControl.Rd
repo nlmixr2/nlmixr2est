@@ -190,6 +190,7 @@ foceiControl(
   zeroGradBobyqa = TRUE,
   mceta = -2L,
   mcetaOpt = FALSE,
+  mcetaTrace = FALSE,
   warm = c("calc", "save", "none"),
   nAGQ = 0,
   agqLow = -Inf,
@@ -1320,6 +1321,12 @@ optimum is kept (compared on the marginal objective the fit reports), so
 the objective never ends above that of `mceta = 0`.  It costs one inner
 optimization per start instead of one per subject, so it is off by
 default; `FALSE` optimizes only the best starting point.}
+
+\item{mcetaTrace}{When `TRUE` and `mceta >= 1`, each printed outer
+iteration is followed by a line summarizing the `mceta` multistart since
+the last print (starts at eta=0 and at draws, draws that won, marginal
+re-rankings) and its cumulative inner-solve time.  The same counts are
+always kept in `fit$mcetaInfo`.}
 
 \item{warm}{Seeding of the n1qn1 inner-optimization Hessian:
 `"calc"` (default) warm-starts each inner problem with the eta
