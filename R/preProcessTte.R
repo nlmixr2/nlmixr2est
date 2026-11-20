@@ -45,10 +45,16 @@
   .nms <- tolower(names(data))
   .col <- function(.n) {
     .w <- which(.nms == .n)
-    if (length(.w) == 0L) NULL else data[[.w[1]]]
+    if (length(.w) == 0L) {
+      NULL
+    } else {
+      data[[.w[1]]]
+    }
   }
   .id <- .col("id")
-  if (is.null(.id)) .id <- rep(1L, nrow(data))
+  if (is.null(.id)) {
+    .id <- rep(1L, nrow(data))
+  }
   .dv <- .col("dv")
   .time <- .col("time")
   .evid <- .col("evid")
@@ -79,7 +85,9 @@
         call. = FALSE
       )
     }
-    if (isTRUE(.tteOptions(ui, .pred1)$origin)) next
+    if (isTRUE(.tteOptions(ui, .pred1)$origin)) {
+      next
+    }
     .o <- order(.id[.is], .time[.is])
     .first <- !duplicated(.id[.is][.o])
     if (any(.v[.o][.first] == 1)) {
