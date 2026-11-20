@@ -124,7 +124,8 @@ nlmControl <- function(
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
-  ...
+  ...,
+  corWarn = 0.95
 ) {
   .assertPositiveEps(shiErr)
   .assertPositiveEps(hessErr)
@@ -242,6 +243,7 @@ nlmControl <- function(
   checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
+  .corWarnCheck(corWarn)
   .ret <- list(
     covMethod = covMethod,
     typsize = typsize,
@@ -283,6 +285,7 @@ nlmControl <- function(
     addProp = match.arg(addProp),
     calcTables = calcTables,
     compress = compress,
+    corWarn = corWarn,
     solveType = solveType,
     linCmtSensCarry = match.arg(linCmtSensCarry),
     ci = ci,
@@ -573,6 +576,9 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
   } else {
     .eventTheta <- integer(0)
   }
+  ## a delay() duration's thetas are finite-differenced in every mode (#1300)
+  .dl <- .foceiDelayLagParams(s)$theta
+  .eventTheta[.dl[.dl <= length(.eventTheta)]] <- 1L
   if (!flag) {
     return(.eventTheta)
   }
@@ -746,7 +752,8 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   list(
     predOnly = .nlmixr2estRxode2(
       paste(c(.spec$params(x, ...), .cmt, .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse = "\n"),
-      paste0("rx", .spec$role, "PredOnly")
+      paste0("rx", .spec$role, "PredOnly"),
+      ui = x[[1]]
     ),
     eventTheta = .eventTheta
   )
@@ -1087,9 +1094,10 @@ rxUiGet.nlmSensModel <- function(x, ...) {
     thetaGrad = .nlmixr2estRxode2(
       get(paste0("..", type, "S"), envir = .s),
       paste0("rx", .role, "Grad"),
-      eventSens = .eventSens
+      eventSens = .eventSens,
+      ui = x[[1]]
     ),
-    predOnly = .nlmixr2estRxode2(.s$..pred.nolhs, paste0("rx", .role, "Pred")),
+    predOnly = .nlmixr2estRxode2(.s$..pred.nolhs, paste0("rx", .role, "Pred"), ui = x[[1]]),
     eventTheta = .s$.eventTheta
   )
 }

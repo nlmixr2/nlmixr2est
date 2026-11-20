@@ -1035,7 +1035,7 @@
     # assembler reads the floored solve, so the caller reroutes there
     if (!is.null(ef$rvar)) {
       .rv <- ef$ev(ef$rvar, if (.needF0) E0$f else E$f, NA_real_)
-      if (any(.rv < sqrt(.Machine$double.eps))) {
+      if (any(.rv < .foceiRFloor)) {
         return(structure(list(), class = "foceiFlooredR"))
       }
     }
@@ -1078,7 +1078,7 @@
       function(etak) {
         .Ek <- .foceiAnalyticSolveFA(am, c(th, setNames(etak, etav)), s$ev, s$times, tol = solveTol)
         # a node can floor R while eta-hat does not; stop and report it like eta-hat
-        if (!is.null(.Ek) && !is.null(ef$rvar) && any(ef$ev(ef$rvar, .Ek$f, NA_real_) < sqrt(.Machine$double.eps))) {
+        if (!is.null(.Ek) && !is.null(ef$rvar) && any(ef$ev(ef$rvar, .Ek$f, NA_real_) < .foceiRFloor)) {
           .nodeState$floored <- TRUE
           return(NULL)
         }
@@ -2155,6 +2155,10 @@
     {
       .s <- ui$loadPruneSens
       .st <- rxode2::rxStateOde(.s)
+      .dl <- .foceiDelayLagParams(.s)
+      if (any(c(paste0("THETA_", .dl$theta, "_"), paste0("ETA_", .dl$eta, "_")) %in% dirs)) {
+        return(.foceiAnalyticNote("a delay() duration parameter"))
+      }
       # matExp()/indLin(): the base ODEs are materialized into the pruned env (via
       # .rxJacobian -> .rxInjectMatExpOdes) with correct RHS, but rxStateOde() can return
       # them reversed (an indLin() state parses as compartment 1).  The augmented model
@@ -2564,7 +2568,7 @@
       # precomputes solve-output column names/index maps; `cores` carries the fit's rxControl thread
       # count so the batched solves run parallel; `key` seeds the per-fit event-table reuse cache.
       list(
-        augMod = .nlmixr2estRxode2(.modTxt, "rxOuter", eventSens = "jump"),
+        augMod = .nlmixr2estRxode2(.modTxt, "rxOuter", eventSens = "jump", ui = ui),
         dirs = dirs,
         ndir = length(dirs),
         fDirs = .fDirs,

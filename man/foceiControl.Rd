@@ -32,6 +32,7 @@ foceiControl(
     "r", "s")),
   covPrecursor = c("fd", "analytic"),
   covShortcut = FALSE,
+  corWarn = 0.95,
   covFull = TRUE,
   fast = FALSE,
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"),
@@ -162,6 +163,8 @@ foceiControl(
   etaRestart = 4L,
   finalEtaTol = 1,
   shrinkEtaWarn = 30,
+  odeSettleCheck = FALSE,
+  odeSettleTol = 0.1,
   nRetries = 3,
   seed = 42,
   resetThetaCheckPer = 0.1,
@@ -369,6 +372,10 @@ skip measuring the off-diagonals when it agrees to 1\% in each (the record
 says "accepted"); otherwise they are measured as usual ("fell back").
 \code{FALSE} (default) always measures them.}
 
+\item{corWarn}{warn when two estimates' correlation is at least this in
+absolute value after the covariance step; \code{NA} or \code{Inf} turns
+the warning off.}
+
 \item{covFull}{shape of \code{fit$cov}.  \code{TRUE} (default) installs the
 full theta + residual sigma + Omega covariance (assembled analytically for
 \code{covMethod="analytic"}, or by central finite differences over the same
@@ -404,7 +411,8 @@ and (for the non-Gaussian path) multiple endpoints, censoring or
 \code{nAGQ > 1}; those fall back to the finite-difference gradient with
 a message (linCmt() and out-of-scope log-likelihood models downgrade to
 \code{fast=FALSE} up front).  When unspecified,
-the outer optimizer defaults to \code{"nlminb"} (vs \code{"bobyqa"} for
+the outer optimizer defaults to \code{"trust"} for FOCEi and
+\code{"nlminb"} for the other methods (vs \code{"bobyqa"} for
 \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 \code{foceif}) default this to \code{TRUE}.}
@@ -766,8 +774,8 @@ Fast \code{"nlminb"} fits use gradients only by default. Set
 for supported Gaussian FOCE/FOCE+/FOCEI/AGQ models, restarting with gradients only if
 curvature is unavailable.  \code{"trust"} is a trust-region Newton method
 (\pkg{RcppTrust}) built on that same Hessian; see
-\code{outerTrustHessian}.  It is unbounded, so a trial point outside the
-box is reported as an infinite objective and the region shrinks instead.}
+\code{outerTrustHessian}; it is the default for fast FOCEi.  A parameter
+whose steps keep leaving the box is held on its bound.}
 
 \item{innerOpt}{optimization method for the inner (per-subject eta)
     problem: `"auto"` (default), `"trust"` (RcppTrust trust-region Newton,
@@ -1167,6 +1175,15 @@ warm start (`mceta < 0`).  Use `Inf` to disable.}
 
 \item{shrinkEtaWarn}{Warn (in `$runInfo`) when an eta's SD shrinkage is
 at or above this percentage.  Use `NA` or `Inf` to disable.}
+
+\item{odeSettleCheck}{When `TRUE`, an ODE model's ETAs and objective are
+re-solved at the final estimates with every ODE tolerance 10x tighter,
+and `$runInfo` notes an objective that moves by more than `odeSettleTol`
+or is not finite.  The tighter objective is kept as `fit$odeSettleObjf`.
+Skipped for models without ODEs (e.g. `linCmt()`), fits with
+`maxOuterIterations = 0` and a non-finite fit objective.}
+
+\item{odeSettleTol}{The objective change that `odeSettleCheck` reports.}
 
 \item{nRetries}{If FOCEi doesn't fit with the current parameter
 estimates, randomly sample new parameter estimates and restart

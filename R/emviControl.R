@@ -263,7 +263,8 @@ emviControl <- function(
   indTolRelax = TRUE,
   eventSens = c("jump", "fd"),
   rxControl = NULL,
-  ...
+  ...,
+  corWarn = 0.95
 ) {
   checkmate::assertIntegerish(seed, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(iters, lower = 1, any.missing = FALSE, len = 1)
@@ -373,6 +374,7 @@ emviControl <- function(
     iterPrintControl = .xtra$iterPrintControl
   )
 
+  .corWarnCheck(corWarn)
   .ret <- list(
     seed = as.integer(seed),
     iters = as.integer(iters),
@@ -401,6 +403,7 @@ emviControl <- function(
     addProp = addProp,
     calcTables = calcTables,
     compress = compress,
+    corWarn = corWarn,
     adjObf = adjObf,
     ci = ci,
     sigdig = sigdig,

@@ -542,5 +542,8 @@ nlmixr2Est0 <- function(env, ...) {
     silent = TRUE
   )
   .shrinkEtaWarn(ret)
+  .odeSettleCheck(ret)
+  # name strongly correlated estimates, from the covariance the fit ends with
+  try(.covCorWarn(ret), silent = TRUE)
   invisible()
 }

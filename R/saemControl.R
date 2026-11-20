@@ -30,6 +30,10 @@
 #'     The third value represents the number of bootstrap/reshuffling or
 #'     uni-dimensional random samples are taken.
 #'
+#' @param rmcmc Scale of the random-walk proposals (kernels 2 and 3) relative
+#'     to the current between-subject SD.  Smaller values raise the MCMC
+#'     acceptance rate (see `$mcmcAccept`); larger values lower it.
+#'
 #' @inheritParams iterPrintParams
 #'
 #' @param trace An integer indicating if you want to trace(1) the
@@ -413,6 +417,7 @@ saemControl <- function(
   nEm = 300,
   nmc = 3,
   nu = c(2, 2, 2),
+  rmcmc = 0.5,
   print = 1L,
   trace = 0, # nolint
   covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
@@ -474,7 +479,8 @@ saemControl <- function(
   ebe = c("mode", "saem"),
   ebeMaxEval = 200L,
   ebeTol = NULL,
-  ...
+  ...,
+  corWarn = 0.95
 ) {
   # a modeled residual error with an eta raises an unset nu (see .saemAutoNu)
   .nuAuto <- missing(nu)
@@ -505,11 +511,18 @@ saemControl <- function(
     ## default.
     nu <- .xtra$mcmc$nu
     .nuAuto <- isTRUE(.xtra$mcmc$nuAuto)
+    if (!is.null(.xtra$mcmc$rmcmc)) {
+      rmcmc <- .xtra$mcmc$rmcmc
+    }
   }
   checkmate::assertIntegerish(nBurn, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertIntegerish(nEm, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertIntegerish(nmc, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertIntegerish(nu, any.missing = FALSE, len = 3, lower = 1)
+  checkmate::assertNumber(rmcmc, finite = TRUE)
+  if (rmcmc <= 0) {
+    stop("'rmcmc' must be positive", call. = FALSE)
+  }
   # `print` can be either a scalar print-frequency or a pre-built
   # iterPrintControl object; .absorbIterPrintControl validates either form
   # and returns the canonical iterPrintControl list.  list(...)$iterPrintControl
@@ -643,8 +656,9 @@ saemControl <- function(
   } else {
     censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
   }
+  .corWarnCheck(corWarn)
   .ret <- list(
-    mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto),
+    mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto, rmcmc = rmcmc),
     rxControl = rxControl,
     seed = seed,
     censOption = censOption,
@@ -671,6 +685,7 @@ saemControl <- function(
     perFixOmega = perFixOmega,
     perFixResid = perFixResid,
     compress = compress,
+    corWarn = corWarn,
     genRxControl = .genRxControl,
     sigdigTable = sigdigTable,
     shrinkEtaWarn = as.double(shrinkEtaWarn),
@@ -761,6 +776,9 @@ saemControl <- function(
     }
     if (!identical(default$mcmc$nmc, value$nmc)) {
       .ret <- c(.ret, paste0("nmc=", deparse1(value$nmc)))
+    }
+    if (!is.null(value$rmcmc) && !identical(default$mcmc$rmcmc, value$rmcmc)) {
+      .ret <- c(.ret, paste0("rmcmc=", deparse1(value$rmcmc)))
     }
     # nu is written only when supplied (nuAuto FALSE), even at its default; an
     # automatic nu may have been raised by the fit (.saemAutoNu) and is redone

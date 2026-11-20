@@ -70,7 +70,8 @@ nlmixr2NlmeControl <- function(
   eventSens = c("jump", "fd"),
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
-  ...
+  ...,
+  corWarn = 0.95
 ) {
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
   checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)
@@ -168,6 +169,7 @@ nlmixr2NlmeControl <- function(
   checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
 
+  .corWarnCheck(corWarn)
   .ret <- list(
     maxIter = maxIter,
     pnlsMaxIter = pnlsMaxIter,
@@ -197,6 +199,7 @@ nlmixr2NlmeControl <- function(
     addProp = addProp,
     calcTables = calcTables,
     compress = compress,
+    corWarn = corWarn,
     random = random,
     fixed = fixed,
     weights = weights,
@@ -305,7 +308,7 @@ nlmeControl <- nlmixr2NlmeControl
 
 .nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates) {
   .nlmeFitDataSetup(dataSav)
-  nlmixr2global$nlmeFitRxModel <- .nlmixr2estRxode2(ui$nlmeRxModel, "rxNlme")
+  nlmixr2global$nlmeFitRxModel <- .nlmixr2estRxode2(ui$nlmeRxModel, "rxNlme", ui = ui)
   # read once, not per objective evaluation (see .nlmixrNlmeFun())
   nlmixr2global$nlmeFitHasMtime <-
     tryCatch(rxode2::rxModelVars(nlmixr2global$nlmeFitRxModel)$nMtime > 0L, error = function(e) FALSE)
