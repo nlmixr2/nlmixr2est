@@ -302,7 +302,7 @@ impControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5f8876f3a160>
+#> <bytecode: 0x64c1bae6dc68>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -469,6 +469,9 @@ impControl()
 #> 
 #> $scaleCband
 #> [1]  0.1 10.0
+#> 
+#> $scaleLinear
+#> [1] "inverse"
 #> 
 #> $scaleCmax
 #> [1] 1e+05

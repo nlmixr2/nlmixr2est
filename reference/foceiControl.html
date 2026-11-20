@@ -59,6 +59,7 @@
 <span>  scaleCmax <span class="op">=</span> <span class="fl">1e+05</span>,</span>
 <span>  scaleCmin <span class="op">=</span> <span class="fl">1e-05</span>,</span>
 <span>  scaleCband <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.1</span>, <span class="fl">10</span><span class="op">)</span>,</span>
+<span>  scaleLinear <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"inverse"</span>, <span class="st">"abs"</span><span class="op">)</span>,</span>
 <span>  scaleC <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  scaleC0 <span class="op">=</span> <span class="fl">1e+05</span>,</span>
 <span>  derivEps <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">20</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span>,</span>
@@ -348,6 +349,14 @@ transform, which catch `log()` at init `1`, `logit` at the interval
 midpoint and `factorial`/`gamma` at a digamma zero.  The constants of
 residual-error parameters and those given in `scaleC` are used as
 they are.</p></dd>
+
+
+<dt id="arg-scalelinear">scaleLinear<a class="anchor" aria-label="anchor" href="#arg-scalelinear"></a></dt>
+<dd><p>How a linear (untransformed) `theta` is scaled under
+`scaleType = "nlmixr2"`.  `"inverse"` (default) uses `1/|init|` when it
+lands inside `scaleCband` and `|init|` otherwise; `"abs"` always uses
+`|init|`, as NONMEM does.  A `theta` starting at 0 keeps its zero-theta
+scale either way.</p></dd>
 
 
 <dt id="arg-scalec">scaleC<a class="anchor" aria-label="anchor" href="#arg-scalec"></a></dt>
