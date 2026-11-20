@@ -63,7 +63,8 @@
 }
 
 .getUiFunFromIniAndModel <- function(ui, ini, model) {
-  .ls <- ls(ui$meta, all.names = TRUE)
+  # .simModelBase is rxode2's (non-deparsable) simulationModel cache
+  .ls <- setdiff(ls(ui$meta, all.names = TRUE), ".simModelBase")
   .ret <- vector("list", length(.ls) + 3)
   .ret[[1]] <- quote(`{`)
   for (.i in seq_along(.ls)) {

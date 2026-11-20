@@ -132,4 +132,11 @@ nmTest({
     # no outer iterations: the estimate is the (untouched) initial value
     expect_equal(unname(fit$theta["add.sd"]), 0.01)
   })
+
+  test_that("a cached simulationModel does not break rebuilding the ui", {
+    .ui <- rxode2::rxUiDecompress(.mod(0.01))
+    invisible(.ui$simulationModel)
+    .f <- .getUiFunFromIniAndModel(.ui, quote(ini({ a <- 1 })), quote(model({ y <- a })))
+    expect_true(is.function(.f))
+  })
 })
