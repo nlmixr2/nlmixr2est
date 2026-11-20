@@ -32,9 +32,10 @@
 # Each eligible pair therefore consumes one carry column, and each slot one
 # tracker column that the slot's pairs share, plus one shared amounts column
 # when any pair has a jump channel and one shared lag column when any has an
-# alag() channel.  Past the cap, the multCov pairs (IOV occasion etas) and
-# then the pairs sharing a slot keep the standard gradient, with a message;
-# a model still past it fails loudly at model build.  calc_lhs fires exactly
+# alag() channel.  A fit past the cap is solved as ODEs instead
+# (.uiApplyOdeLinCmtCarryCap(), #1318); a direct build drops the pairs past it
+# with an "approximate gradient" warning, or fails when that is not enough
+# (foceiLinCmtCarryGates.R).  calc_lhs fires exactly
 # once per event row in solve order (dose rows included, a lagged dose on
 # its own shifted row, output filtering notwithstanding), which is what
 # makes lhs-driven stepping sound; the -5 advance derives its interval from
