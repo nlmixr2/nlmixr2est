@@ -37,7 +37,7 @@
   if (is.matrix(omega0) && identical(dimnames(omega0), dimnames(omega))) {
     # only in the probed etas' blocks; the others keep their fitted parameters
     .in <- rownames(omega) %in% etas
-    .b <- unlist(Filter(function(b) any(.in[b]), .omegaBlocks(omega0 != 0)))
+    .b <- unlist(Filter(function(b) any(.in[b]), .omegaNzBlocks(omega0 != 0)))
     .keep <- seq_len(nrow(omega)) %in% .b
     .fix <- omega0 != 0 & .cor == 0 & outer(.keep, .keep)
     .cor[.fix] <- 1e-6
@@ -83,7 +83,7 @@
   if (length(.fx) == 0L) {
     return(character(0))
   }
-  .blocks <- .omegaBlocks(omega0 != 0)
+  .blocks <- .omegaNzBlocks(omega0 != 0)
   rownames(omega0)[unlist(Filter(function(b) any(b %in% .fx), .blocks))]
 }
 
