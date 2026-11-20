@@ -18,7 +18,8 @@
 
 - The FOCEi-family `innerOpt = "trust"` (and `"steihaug"`) ETA solve now
   re-enters once from its converged ETAs with the square of
-  `trustFterm`/`trustMterm` (`1e-10` at the default `sigdig = 3`).  Before,
+  `trustFterm`/`trustMterm` (`1e-10` at the default `sigdig = 3`, and its
+  floor; not under a quasi-Newton `hessianMethod`).  Before,
   each ETA could stop far enough from its mode that the `log|H|` term moved the
   objective with the warm-start ETAs, so the outer search stopped short; on
   `pheno_sd` the default fit now reaches the minimum (#1152).  Objectives of

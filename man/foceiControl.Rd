@@ -877,7 +877,7 @@ the boundary of the `trustConf`-level eta confidence region. Default
 `innerOpt="trust"` per-subject solve. `NULL` (default) uses
 `10^(-sigdig-2)`. After the solve (and any restarts) converges, trust
 re-enters once from that eta with the squared tolerances (floored at
-`1e-12`): the FOCEi `log|H|` term moves the objective linearly with the
+`1e-10`): the FOCEi `log|H|` term moves the objective linearly with the
 eta error while the inner objective moves with its square, so this
 holds the objective, not just the inner objective, to these values
 (#1152). `"steihaug"` does the same. Not derived from `epsilon`

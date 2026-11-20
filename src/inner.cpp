@@ -4422,9 +4422,10 @@ static bool innerFillResultAt(int n, const double *x, int id, double value,
 }
 
 // Inner-objective stopping tolerance for an OFV tolerance `tol`: tol^2, floored at
-// 1e-12 (where the objective's own rounding takes over) unless tol is already smaller.
+// 1e-10 (below it the stop sits in the ODE solve's noise and the covariance probes,
+// which tighten tol to 1e-9, scatter) unless tol is already smaller.
 static inline double innerTrustObjTol(double tol) {
-  return std::min(tol, std::max(tol * tol, 1e-12));
+  return std::min(tol, std::max(tol * tol, 1e-10));
 }
 
 // One inner solve for the trust-family innerOpt codes
@@ -5459,7 +5460,9 @@ static inline int innerOpt1(int id, int likId) {
     // the change in the inner objective, quadratic in the eta error, while log|H| moves
     // the OFV linearly with it.  The cascade above keeps the plain tolerances: its gate
     // failures are what send a subject stuck in a spurious basin to the nudges.
-    if (haveBest && op_focei.innerOpt != 5) {
+    // Not under a quasi-Newton inner Hessian: its log|H| is approximate anyway, and a
+    // re-entry would discard the running update it is built from.
+    if (haveBest && op_focei.innerOpt != 5 && op_focei.hessianMethod == trustHessFd) {
       restoreBest();
       std::vector<double> x0(etaBest);
       topts.fterm = innerTrustObjTol(op_focei.trustFterm);

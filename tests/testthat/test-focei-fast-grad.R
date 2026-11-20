@@ -157,8 +157,10 @@ nmTest({
     .a <- suppressMessages(suppressWarnings(nlmixr2(addFirst, d, "focei", .one)))
     .p <- suppressMessages(suppressWarnings(nlmixr2(propFirst, d, "focei", .one)))
     expect_equal(.p$theta[names(.a$theta)], .a$theta, tolerance = 1e-10)
-    # trust's Hessian is assembled in a different order, so allow rounding
-    expect_equal(.p$objf, .a$objf, tolerance = 1e-8)
+    # trust's Hessian is assembled in a different order, so allow rounding; that rounding
+    # moves where the tight inner re-entry (#1152) stops along subject 9's flat eta.ka
+    # direction, and log|H| carries ~4e-4 of it to the objective
+    expect_equal(.p$objf, .a$objf, tolerance = 1e-5)
   })
 
   test_that("estimated boxCox/yeoJohnson lambda: analytic gradient matches central differences", {
@@ -634,7 +636,12 @@ nmTest({
         .fast_one_cmt,
         d,
         "foce",
-        foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L, maxInnerIterations = 300L, ...)
+        # loose trust etas: the tight re-entry (#1152) leaves every eta inside the
+        # Newton's first-iteration stationarity test, so nothing would stall
+        foceiControl(
+          print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L, maxInnerIterations = 300L,
+          trustFterm = 1e-3, trustMterm = 1e-3, ...
+        )
       )))
     }
     # a target the solve reaches (the 1e-9 default can sit at its noise floor)

@@ -203,8 +203,9 @@ nmTest({
     fitDefault <- .r$fit
     expect_false(any(grepl(.worseRegex, .r$w)))
     # 822.9683 before the calcGrad fix; the eta reset now also runs in the
-    # line-search evaluations, which moves this fit by 0.035.
-    expect_equal(fitDefault$objf, 823.0037, tolerance = 1e-5)
+    # line-search evaluations, which moved this fit by 0.035 (823.0037).  The
+    # tight trust re-entry (#1152) brings it to 822.953.
+    expect_equal(fitDefault$objf, 822.953, tolerance = 1e-5)
     .theta <- fitDefault$theta
     expect_equal(unname(.theta[["slope"]]), 0.003713, tolerance = 0.01)
     expect_equal(unname(.theta[["emax_scale"]]), 4.995, tolerance = 0.01)
