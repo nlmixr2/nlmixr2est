@@ -24,6 +24,11 @@
   0 or 1, and an event on a subject's first record is warned about since it
   is the start of observation).  This needs an rxode2 newer than 5.1.8 and
   is inactive otherwise.
+- `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
+  objective at the final estimates with every ODE tolerance 10x tighter and
+  notes in `$runInfo` an objective that moves by more than `odeSettleTol`
+  (default 0.1) or is not finite, e.g. `OFV moves 0.28 at 10x tighter ODE
+  tolerance`; the tighter objective is kept as `fit$odeSettleObjf` (#1393).
 - FOCEi model builds no longer optimize the `innerOeta` model, which only
   `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on
   first use, caches it and adds the inner model's `param()`/`cmt()`/`mtime()`
@@ -31,6 +36,9 @@
 - `outerOpt="trust"` evaluates the outer gradient and Hessian only at trial
   points the trust region could accept, so a trial that is no improvement gets
   its value alone (1.1x-2.6x faster with the analytical Hessian).
+
+- `saemControl(rmcmc=)` sets the random-walk proposal scale of the SAEM MCMC
+  kernels, previously fixed at 0.5; lower it when `$mcmcAccept` is low (#1385).
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
@@ -153,6 +161,9 @@
   encoder's etas without the inner-mode score correction, which moved it
   away from the optimum.
 
+- FOCEi now excludes `EVID = 2` records and inserted `EVID = 9`
+  initialization records from `fit$nobs` (#1342).
+
 - `saem` mixture fits with `saemControl(mixProbMethod = "annealed")` no
   longer error with "Mat::operator(): index out of bounds" when entering the
   SA covariance phase (#1297).
@@ -241,6 +252,14 @@
   that eta's mean within each component.  They used to be fixed-effect-only
   search parameters, so the components drifted apart while the shared eta's
   variance absorbed the split; they also get an SA covariance SE now (#1296).
+
+- A parameter in a `delay()` duration (for example `delay(central, TR)` with
+  `TR <- exp(lTR + eta.TR)`) is now finite-differenced in FOCEi, its family
+  and the nlm family.  Its symbolic sensitivity was zero (the lag's own term
+  and the jump each dose makes at `t + TR` were missing), so the fit left the
+  delay at its initial estimate.  The analytic covariance, the analytic outer
+  gradient and the theta-sensitivity models fall back for such a model
+  (#1300).
 
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
@@ -347,12 +366,19 @@
   `atol = rtol = 1e-10`; 473.1498 against 473.1587 at the defaults), under
   either `iovMethod`.  The carry has as many columns as the loaded rxode2
   provides (8 with rxode2 5.1.8; see `rxode2::linCmtCarryMaxPairs()`).
-  With more occasions than that, the last occasion etas keep the standard
-  gradient, with a warning that names the first of them; a later fit that
-  reuses the cached model gives it again.  Those etas' gradient then ignores
-  the change of occasion, which can shift the objective materially; fewer
-  occasion etas, or an rxode2 with more carry columns
-  (`rxode2::linCmtCarryMaxPairs()`), avoids it.
+  A FOCEi-family fit of a model needing more columns than that is solved
+  as ODEs, with a warning, rather than giving the etas past the cap the
+  standard gradient: that made the objective depend on the order the etas
+  were declared in, and match neither the ODE model nor
+  `linCmtSensCarry = "none"` (#1318).  A model is translated only when,
+  after the subject-constant pairs are dropped (#1287), the pairs still past
+  the cap have a covariate that varies within a subject in the data (or the
+  build would otherwise stop), and a numeric `cmt` in the data
+  keeps naming the same compartment.  Such a fit with `fix()` thetas or zero
+  omegas reports the ODE model as its `$ui`, so its data and refits
+  (`setOfv()`, `addTable()`) agree.  The `agqf`, `fagq`, `flaplace` (and
+  their `m`/`i` variants) and `vae` methods now also get the ODE translation
+  of a mixed `linCmt()`/ODE model that the rest of the FOCEi family gets.
 - `vaeControl(nonMuTheta = "eta")` and `"fix"` now inject the temporary eta
   without changing the model when the theta sits under `*`, `/`, `^` or a unary
   minus: `exp(e_cov_f * COV)` becomes `exp((e_cov_f + eta.e_cov_f) * COV)`, not
@@ -733,11 +759,20 @@
 - `addNpde()` and `addTable()` now work on a fit with inter-occasion
   variability, including one run with `calcTables = FALSE`.  They stopped
   with "The following parameter(s) are required for solving: occ, ..."
-  (the parameters listed depend on the model and the method).  They refit
-  with no iterations at the fit's estimates, as `addCwres()` does, and give
-  the columns the fit gives itself; for an ODE model, to the solver's
-  tolerance.  A `saem` fit with `iovMethod = "collapsed"` is refused with a
-  message: ask for its tables when fitting it.
+  (the parameters listed depend on the model and the method).  A fit with
+  inter-occasion variability now keeps the model it estimated (the occasion
+  rewrite, or `saem`'s two-level or collapsed model) with its thetas and
+  etas, and they, `addCwres()` and `setOfv()` evaluate that model, without
+  refitting it.  They give the columns and NPDE the fit computes itself,
+  also for `iovMethod = "collapsed"` (#1243).
+- `addCwres()` no longer refits the model with no iterations.  Its columns
+  come from the fit's own table step, with the fit's table settings (such as
+  `addDosing`), and its objective from `setOfv()`.
+- `addTable()` and `addCwres()` now work on a fit with mu-referenced
+  covariates (such as `log(WT/70)`).  The fit's compiled models read the
+  internal `nlmixrMuDerCov#` columns, so they stopped with "The following
+  parameter(s) are required for solving: nlmixrMuDerCov1"; they are now
+  rebuilt from the user's model when needed.
 
 - A fit with inter-occasion variability is now finished like any other when
   it is run with `tableControl(npde = TRUE)` or has a subject with no
