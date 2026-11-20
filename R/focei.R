@@ -2297,7 +2297,11 @@ attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
 rxUiGet.foceiEtaS <- function(x, ..., theta = FALSE) {
   .s <- rxUiGet.loadPruneSens(x, ...)
   .extra <- NULL
-  if (isTRUE(rxode2::rxGetControl(x[[1]], "combSens", FALSE))) {
+  .dl <- .foceiDelayLagParams(.s)
+  if (
+    isTRUE(rxode2::rxGetControl(x[[1]], "combSens", FALSE)) &&
+      length(.dl$theta) + length(.dl$eta) == 0L # #1300: no delay() lag sensitivities
+  ) {
     # combined eta+theta sensitivity build (#958): the inner model also
     # carries d/d(theta) forward sensitivities for the estimated non-mu
     # thetas, so one solve serves value + d/d(eta) + d/d(theta)
@@ -3515,6 +3519,10 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     .eventEta[] <- 0L
     .eventTheta[] <- 0L
   }
+  ## A delay() duration's parameters are finite-differenced in every mode (#1300)
+  .delayLag <- .foceiDelayLagParams(s)
+  .eventEta[.delayLag$eta[.delayLag$eta <= length(.eventEta)]] <- 1L
+  .eventTheta[.delayLag$theta[.delayLag$theta <= length(.eventTheta)]] <- 1L
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
   ## method.  "jump" enables rxode2's analytic dosing-parameter sensitivities.
@@ -3880,7 +3888,8 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## Version 9: the bundle keeps the compiled model, and the augmented model is
   ## optimized in a single rxOptExpr() pass (unreleased dev bundles used 4-8).
   ## Version 10: innerOeta is stored unoptimized (#1321).
-  .cacheFormat <- 10L
+  ## Version 11: delay() duration parameters are finite-differenced (#1300).
+  .cacheFormat <- 11L
   .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
