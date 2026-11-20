@@ -1,6 +1,7 @@
-#' Bayesian information criterion variants for mixed-effects fits
+#' Bayesian information criterion for nlmixr2 fits
 #'
-#' `BIC(fit)` charges every estimated parameter `log(nobs)`.  These variants
+#' `BIC(fit)` charges every estimated parameter `log(nobs)`.  The `type`
+#' variants
 #' charge the parameters tied to random effects `log(nsub)` instead (Delattre
 #' et al. 2014), which keeps BIC from favouring over-parameterised
 #' random-effect structures.
@@ -30,7 +31,10 @@
 #' exact count.  Fixed parameters are not counted.  A theta whose linkage
 #' cannot be determined is charged `log(nobs)`, as in `BIC(fit)`.
 #'
-#' @param fit nlmixr2 fit
+#' @param object nlmixr2 fit
+#' @param ... other fitted models to compare, giving a data frame with
+#'   columns `df` and `BIC`, one row per model; a character value here is
+#'   taken as `type`, so `BIC(fit, "mixed")` works
 #' @param type which parameters are charged `log(nsub)`:
 #'
 #' - `"fixed"`: none; equal to `BIC(fit)`.
@@ -44,9 +48,7 @@
 #'   `"mixed"` the residual-error thetas when an eta sits on the residual
 #'   error.
 #'
-#' @return the BIC value.  It carries the attributes `nobs` and `nsub` (the
-#'   counts the penalties use) and `dfObs` and `dfSub` (the number of
-#'   parameters charged `log(nobs)` and `log(nsub)`).
+#' @return the BIC value, or a data frame when several models are given
 #' @references Delattre M, Lavielle M, Poursat MA (2014). A note on BIC in
 #'   mixed-effects models. Electronic Journal of Statistics, 8(1), 456-475.
 #' @author Matthew L. Fidler
@@ -70,12 +72,53 @@
 #' }
 #' fit <- nlmixr2(one.cmt, theo_sd, est = "focei",
 #'                control = foceiControl(print = 0))
-#' bic(fit, "fixed")
-#' bic(fit, "mixed")
+#' BIC(fit)
+#' BIC(fit, type = "mixed")
 #' }
-bic <- function(fit, type = c("fixed", "mixed", "iiv", "random")) {
+BIC.nlmixr2FitCore <- function(object, ..., type = c("fixed", "mixed", "iiv", "random")) {
+  .dots <- list(...)
+  .chr <- vapply(.dots, is.character, logical(1))
+  if (any(.chr) && missing(type)) {
+    type <- .dots[[which(.chr)[1]]]
+  }
+  type <- match.arg(type, c("fixed", "mixed", "iiv", "random"))
+  .objs <- c(list(object), .dots[!.chr])
+  if (length(.objs) == 1L) {
+    return(as.numeric(.bicValue(object, type)))
+  }
+  .val <- lapply(.objs, function(.o) {
+    if (inherits(.o, c("nlmixr2FitCore", "nlmixr2FitCoreSilent"))) {
+      .b <- .bicValue(.o, type)
+      c(attr(.b, "dfObs") + attr(.b, "dfSub"), as.numeric(.b))
+    } else {
+      c(attr(stats::logLik(.o), "df"), stats::BIC(.o))
+    }
+  })
+  .ret <- data.frame(
+    df = vapply(.val, `[`, numeric(1), 1L),
+    BIC = vapply(.val, `[`, numeric(1), 2L)
+  )
+  .call <- match.call(expand.dots = TRUE)
+  .call$type <- NULL
+  .args <- as.list(.call[-1L])
+  .args <- .args[!vapply(.args, is.character, logical(1))]
+  row.names(.ret) <- make.unique(vapply(.args, deparse1, character(1)))
+  .ret
+}
+
+#' @rdname BIC.nlmixr2FitCore
+#' @export
+BIC.nlmixr2FitCoreSilent <- BIC.nlmixr2FitCore
+
+#' BIC with its penalty counts
+#'
+#' @param fit nlmixr2 fit
+#' @param type BIC variant, see `BIC.nlmixr2FitCore()`
+#' @return the BIC value with the attributes `nobs`, `nsub`, `dfObs` and
+#'   `dfSub` (parameters charged `log(nobs)` and `log(nsub)`)
+#' @noRd
+.bicValue <- function(fit, type) {
   assertNlmixrFit(fit)
-  type <- match.arg(type)
   .ll <- fit$logLik
   .df <- attr(.ll, "df")
   .nobs <- attr(.ll, "nobs")

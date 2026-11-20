@@ -1,4 +1,4 @@
-test_that("bic() links thetas to etas through intermediate assignments", {
+test_that("BIC() links thetas to etas through intermediate assignments", {
   m <- function() {
     ini({
       tka <- 0.45
@@ -39,7 +39,7 @@ test_that("bic() links thetas to etas through intermediate assignments", {
   expect_equal(.c$residual, 1L)
 })
 
-test_that("bic() links only the eta's own sub-expression", {
+test_that("BIC() links only the eta's own sub-expression", {
   m <- function() {
     ini({
       tka <- 0.45
@@ -65,7 +65,7 @@ test_that("bic() links only the eta's own sub-expression", {
   expect_setequal(.l$residual, "prop.sd")
 })
 
-test_that("bic() stops at a linCmt() prediction and follows indirect residual etas", {
+test_that("BIC() stops at a linCmt() prediction and follows indirect residual etas", {
   m <- function() {
     ini({
       tka <- 0.45
@@ -91,7 +91,7 @@ test_that("bic() stops at a linCmt() prediction and follows indirect residual et
   expect_setequal(.l$residual, "prop.sd")
 })
 
-test_that("bic() treats a ll() endpoint as structural", {
+test_that("BIC() treats a ll() endpoint as structural", {
   m <- function() {
     ini({
       t1 <- 0.1
@@ -108,7 +108,7 @@ test_that("bic() treats a ll() endpoint as structural", {
   expect_length(.l$residual, 0L)
 })
 
-test_that("bic() follows rescaled etas, sums and algebraic predictions", {
+test_that("BIC() follows rescaled etas, sums and algebraic predictions", {
   .link <- function(m) .bicThetaLink(suppressWarnings(rxode2::rxode2(m)))
   # a theta applied after the eta is part of the same parameter
   m1 <- function() {
@@ -175,7 +175,7 @@ test_that("bic() follows rescaled etas, sums and algebraic predictions", {
   expect_setequal(.l$residual, "prop.sd")
 })
 
-test_that("bic() keeps separately assigned parameters out of an eta's product", {
+test_that("BIC() keeps separately assigned parameters out of an eta's product", {
   m <- function() {
     ini({
       te0 <- 1
@@ -202,7 +202,7 @@ test_that("bic() keeps separately assigned parameters out of an eta's product", 
   expect_length(.l$residual, 0L)
 })
 
-test_that("bic() keeps a mu-referenced residual theta residual", {
+test_that("BIC() keeps a mu-referenced residual theta residual", {
   m <- function() {
     ini({
       tcl <- log(2.7)
@@ -222,7 +222,7 @@ test_that("bic() keeps a mu-referenced residual theta residual", {
   expect_equal(.c$residual, 1L)
 })
 
-test_that("bic() does not count same() copy rows", {
+test_that("BIC() does not count same() copy rows", {
   m <- function() {
     ini({
       tcl <- log(2.7)
@@ -249,7 +249,7 @@ test_that("bic() does not count same() copy rows", {
   expect_equal(.c$omega, 1L)
 })
 
-test_that("bic() does not count fixed parameters", {
+test_that("BIC() does not count fixed parameters", {
   m <- function() {
     ini({
       tka <- 0.45
@@ -275,7 +275,7 @@ test_that("bic() does not count fixed parameters", {
 })
 
 nmTest({
-  test_that("bic() variants match hand-computed values", {
+  test_that("BIC() variants match hand-computed values", {
     one.cmt <- function() {
       ini({
         tka <- 0.45
@@ -296,17 +296,25 @@ nmTest({
     .m2ll <- -2 * as.numeric(logLik(fit))
     .lo <- log(132)
     .ls <- log(12)
-    expect_equal(as.numeric(bic(fit)), BIC(fit))
-    expect_equal(as.numeric(bic(fit, "fixed")), fit$BIC)
-    expect_equal(as.numeric(bic(fit, "fixed")), .m2ll + 6 * .lo)
-    expect_equal(as.numeric(bic(fit, "iiv")), .m2ll + 4 * .lo + 2 * .ls)
-    expect_equal(as.numeric(bic(fit, "mixed")), .m2ll + 2 * .lo + 4 * .ls)
-    expect_equal(as.numeric(bic(fit, "random")), .m2ll + 2 * .lo + 4 * .ls)
-    expect_equal(attr(bic(fit, "mixed"), "dfSub"), 4)
-    expect_error(bic(fit, "bad"))
+    expect_equal(BIC(fit), fit$BIC)
+    expect_equal(BIC(fit, type = "fixed"), fit$BIC)
+    expect_equal(BIC(fit, type = "fixed"), .m2ll + 6 * .lo)
+    expect_equal(BIC(fit, type = "iiv"), .m2ll + 4 * .lo + 2 * .ls)
+    expect_equal(BIC(fit, type = "mixed"), .m2ll + 2 * .lo + 4 * .ls)
+    expect_equal(BIC(fit, type = "random"), .m2ll + 2 * .lo + 4 * .ls)
+    expect_equal(attr(.bicValue(fit, "mixed"), "dfSub"), 4)
+    expect_error(BIC(fit, type = "bad"))
+    expect_equal(BIC(fit, "mixed"), BIC(fit, type = "mixed"))
+    fit2 <- fit
+    .two <- BIC(fit, fit2, type = "mixed")
+    expect_equal(names(.two), c("df", "BIC"))
+    expect_equal(row.names(.two), c("fit", "fit2"))
+    expect_equal(BIC(fit, fit2, "mixed"), .two)
+    expect_equal(.two$BIC, rep(.m2ll + 2 * .lo + 4 * .ls, 2))
+    expect_equal(.two$df, c(6, 6))
   })
 
-  test_that("bic() counts inter-occasion kappas as random-effect parameters", {
+  test_that("BIC() counts inter-occasion kappas as random-effect parameters", {
     one.cmt <- function() {
       ini({
         tka <- 0.45
@@ -331,12 +339,12 @@ nmTest({
     .lo <- log(fit$nobs)
     .ls <- log(12)
     expect_equal(attr(logLik(fit), "df"), 6)
-    expect_equal(as.numeric(bic(fit, "fixed")), BIC(fit))
-    expect_equal(as.numeric(bic(fit, "iiv")), .m2ll + 4 * .lo + 2 * .ls)
-    expect_equal(as.numeric(bic(fit, "mixed")), .m2ll + 3 * .lo + 3 * .ls)
+    expect_equal(BIC(fit, type = "fixed"), BIC(fit))
+    expect_equal(BIC(fit, type = "iiv"), .m2ll + 4 * .lo + 2 * .ls)
+    expect_equal(BIC(fit, type = "mixed"), .m2ll + 3 * .lo + 3 * .ls)
   })
 
-  test_that("bic() charges a residual-error theta log(nsub) only for type='random'", {
+  test_that("BIC() charges a residual-error theta log(nsub) only for type='random'", {
     one.cmt <- function() {
       ini({
         tka <- 0.45
@@ -358,7 +366,7 @@ nmTest({
     .m2ll <- -2 * as.numeric(logLik(fit))
     .lo <- log(132)
     .ls <- log(12)
-    expect_equal(as.numeric(bic(fit, "mixed")), .m2ll + 3 * .lo + 3 * .ls)
-    expect_equal(as.numeric(bic(fit, "random")), .m2ll + 2 * .lo + 4 * .ls)
+    expect_equal(BIC(fit, type = "mixed"), .m2ll + 3 * .lo + 3 * .ls)
+    expect_equal(BIC(fit, type = "random"), .m2ll + 2 * .lo + 4 * .ls)
   })
 })

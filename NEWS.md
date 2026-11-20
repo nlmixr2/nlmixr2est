@@ -18,7 +18,7 @@
 
 ## New features
 
-- `bic(fit, type=)` returns BIC variants that charge random-effect
+- `BIC(fit, type=)` gives BIC variants that charge random-effect
   parameters `log(number of subjects)` instead of `log(number of
   observations)` (Delattre et al. 2014): `"iiv"` (omega/kappa elements),
   `"mixed"` (also the thetas of eta-bearing parameters) and `"random"` (also
