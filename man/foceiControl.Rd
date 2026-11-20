@@ -873,21 +873,14 @@ the boundary of the `trustConf`-level eta confidence region. Default
 \item{trustRmax}{maximum `innerOpt="trust"` trust-region radius. `NULL`
 (default) derives it from `trustConf`.}
 
-\item{trustFterm, trustMterm}{`innerOpt="trust"`'s own function-value and
-predicted-decrease convergence tolerances for the per-subject Newton
-solve. `NULL` (default) uses `10^(-sigdig-2)`, two orders tighter than
-the plain `10^(-sigdig)` most tolerances here use, for the same reason
-`lbfgsFactr` is: the inner solve is the function the outer problem
-differentiates, so this tolerance sets the objective's noise floor and a
-finite-difference outer gradient cannot resolve a step below it. Left at
-the plain `10^(-sigdig)`, an `nAGQ=2` `theo_sd` fit stopped at an
-objective of 134.46 against 118.52, and took longer doing it -- the
-noisy gradient misleads the outer search as well as lengthening it.
-Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
-"precision of estimate" tolerance) -- tying `"trust"`'s stopping
-criterion to a value picked for a different optimizer is exactly the
-coupling these parameters exist to remove. Has no effect unless
-`innerOpt="trust"`.}
+\item{trustFterm, trustMterm}{objective tolerances of the
+`innerOpt="trust"` per-subject solve. `NULL` (default) uses
+`10^(-sigdig-2)`. The FOCEi `log|H|` term moves the objective linearly
+with the eta error while the inner objective moves with its square, so
+trust's own function-value and predicted-decrease stops use the square
+(floored at `1e-12`) and the objective is held to these values (#1152).
+`"steihaug"` uses them the same way. Not derived from `epsilon`
+(`"n1qn1"`'s own tolerance).}
 
 \item{trustPolish}{logical; when `TRUE`, each converged `innerOpt="trust"`
 solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
@@ -1351,7 +1344,8 @@ gnlmm was 400.}
 \item{linCmtSensCarry}{`"auto"` (default) substitutes the exact
 sensitivity-carry gradient for a `linCmt()` parameter driven by both an
 eta and a time-varying covariate (needs an rxode2 with the carry
-sentinels; silently keeps the standard gradient otherwise); `"none"`
+sentinels; silently keeps the standard gradient otherwise).  A model
+needing more carry columns than rxode2 has is solved as ODEs.  `"none"`
 always keeps the standard gradient.}
 
 \item{zeroTheta}{Positive magnitude (default `0.001`) used to move a

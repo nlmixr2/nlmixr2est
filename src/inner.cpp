@@ -4420,6 +4420,12 @@ static bool innerFillResultAt(int n, const double *x, int id, double value,
   return true;
 }
 
+// Inner-objective stopping tolerance for an OFV tolerance `tol`: tol^2, floored at
+// 1e-12 (where the objective's own rounding takes over) unless tol is already smaller.
+static inline double innerTrustObjTol(double tol) {
+  return std::min(tol, std::max(tol * tol, 1e-12));
+}
+
 // One inner solve for the trust-family innerOpt codes
 //
 // Dispatches to RcppTrust's trust, steihaug or newuoa solver and returns a
@@ -4458,7 +4464,8 @@ static void innerTrustFamilySolve(int npar, double *x0, int id,
     so.initial_radius = topts.rinit;
     so.max_radius = topts.rmax;
     so.max_iter = topts.iterlim;
-    so.abs_gradient_tol = topts.mterm;
+    // the gradient is linear in the eta error, so it keeps the unsquared tolerance
+    so.abs_gradient_tol = op_focei.trustMterm;
     so.abs_cost_change_tol = topts.fterm;
     steihaug_result_t sres;
     std::memset(&sres, 0, sizeof(sres));
@@ -5229,8 +5236,11 @@ static inline int innerOpt1(int id, int likId) {
     topts.has_parscale = 1;
     topts.parscale = parscale.data();
     topts.iterlim = maxInnerIterations;
-    topts.fterm = op_focei.trustFterm;
-    topts.mterm = op_focei.trustMterm;
+    // trust stops on the change in the inner objective, which is quadratic in the eta
+    // error, while log|H| carries that error to the OFV linearly: square the tolerances
+    // so the OFV, not the inner objective, is held to trustFterm (#1152).
+    topts.fterm = innerTrustObjTol(op_focei.trustFterm);
+    topts.mterm = innerTrustObjTol(op_focei.trustMterm);
 
     // Stationarity check via the Newton STEP length, not the raw gradient:
     // trust_solve_c() can report converged==true off its own internal

@@ -73,6 +73,36 @@ nmTest({
     expect_lt(max(.ev), 6)
   })
 
+  test_that("the default trust inner solve makes the OFV independent of the warm start (#1152)", {
+    skip_on_cran()
+    .fit <- suppressMessages(suppressWarnings(nlmixr2(
+      .pheno,
+      nlmixr2data::pheno_sd,
+      est = "focei",
+      control = foceiControl(print = 0, calcTables = FALSE, covMethod = "")
+    )))
+    # n1qn1 reaches 730.8946; with trust's own stop at trustFterm the fit ended at 730.9031
+    expect_lt(.fit$objf, 730.897)
+    .eta <- as.matrix(.fit$eta[, -1, drop = FALSE])
+    set.seed(42)
+    .objf <- vapply(1:4, function(i) {
+      .em <- .eta + matrix(rnorm(length(.eta), 0, 0.3), nrow(.eta))
+      suppressMessages(suppressWarnings(nlmixr2(
+        .fit,
+        est = "focei",
+        control = foceiControl(
+          print = 0,
+          calcTables = FALSE,
+          covMethod = "",
+          maxOuterIterations = 0L,
+          etaMat = .em
+        )
+      )))$objf
+    }, numeric(1))
+    # 0.0054 when trust stopped on an inner-objective change of trustFterm
+    expect_lt(diff(range(.objf)), 5e-4)
+  })
+
   test_that("the polish stays off by default", {
     skip_on_cran()
     .fit <- suppressMessages(suppressWarnings(nlmixr2(
