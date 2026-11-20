@@ -545,9 +545,11 @@ nmTest({
     )
     expect_identical(.covFdType(.opt$covMethod), "r")
     expect_false(any(grepl(.msg, .opt$runInfo, fixed = TRUE)))
-    # recomputing it (getVarCov(force = TRUE), as setCov()) gives the marginal one
+    # recomputing it (getVarCov(force = TRUE), as setCov()) gives the marginal one; 1e-3
+    # because .opt re-solves its ETAs, and the tight inner re-entry (#1152) moves an
+    # already converged eta a little along a flat direction (3.6e-4 here)
     .v <- suppressMessages(suppressWarnings(nlme::getVarCov(.fixed, force = TRUE)))
-    expect_equal(sqrt(diag(.v)), sqrt(diag(.opt$cov)), tolerance = 1e-6)
+    expect_equal(sqrt(diag(.v)), sqrt(diag(.opt$cov)), tolerance = 1e-3)
   })
 
   test_that("at the default tolerances the finite-difference R is the analytic information", {
