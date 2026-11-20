@@ -48,6 +48,7 @@ focei-outer-hessian-api
 foceiLik
 foceiCovAnalytic
 foceiCovFdFull
+focei-lincmt-carry-cap
 focei-lincmt-carry-eligible
 focei-lincmt-carry-emit
 focei-lincmt-carry-jump
