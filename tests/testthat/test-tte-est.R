@@ -106,6 +106,38 @@ nmTest({
     # the fit keeps its warnings in $runInfo
     .fit <- suppressMessages(.nlmixr(.mod, .d, est = "bobyqa", bobyqaControl(print = 0)))
     expect_true(any(grepl("start of observation", .fit$runInfo, fixed = TRUE)))
+    # dose rows (no EVID column) are not checked as observations
+    .d <- data.frame(
+      id = 1,
+      time = c(0, 0, 5),
+      amt = c(100, 0, 0),
+      dv = c(NA, 0, 1)
+    )
+    expect_no_error(.preProcessTte(rxode2::rxode2(.mod), "bobyqa", .d, NULL))
+    # a single endpoint checks every observation, even with an NA cmt
+    .d <- data.frame(id = 1, time = c(0, 2), cmt = NA_real_, dv = c(0, 2))
+    expect_error(.preProcessTte(rxode2::rxode2(.mod), "bobyqa", .d, NULL), "must be 0 or 1")
+    # beside another endpoint, rows are matched by dvid when cmt is missing
+    .mod2 <- function() {
+      ini({
+        lam <- 0.1
+        add.sd <- 1
+      })
+      model({
+        d / dt(c) <- -lam * c
+        haz <- lam
+        c ~ add(add.sd)
+        ev ~ tte(haz)
+      })
+    }
+    .d <- data.frame(id = 1, time = c(0, 1, 2), dvid = c(1, 2, 2), dv = c(5, 0, 2))
+    expect_error(.preProcessTte(rxode2::rxode2(.mod2), "bobyqa", .d, NULL), "must be 0 or 1")
+    .d$dv[3] <- 1
+    expect_no_error(.preProcessTte(rxode2::rxode2(.mod2), "bobyqa", .d, NULL))
+    expect_error(
+      .preProcessTte(rxode2::rxode2(.mod2), "bobyqa", .d[, -3], NULL),
+      "'cmt' or 'dvid'"
+    )
   })
 
   test_that("fo cannot estimate a tte() endpoint", {

@@ -1,12 +1,12 @@
 #' Does the installed rxode2 estimate tte() endpoints?
 #'
-#' rxode2 after 5.1.8 adds `tte()` endpoints; with an older rxode2 no tte
-#' endpoint can be parsed, so every tte path stays inactive.
+#' Detected by feature, not version: dev rxode2 5.1.8.9000 builds exist both
+#' with and without `tte()` endpoints.
 #'
 #' @return logical
 #' @noRd
 .nlmixr2estRxode2HasTte <- function() {
-  utils::packageVersion("rxode2") > "5.1.8"
+  exists(".rxTteOptions", envir = asNamespace("rxode2"), inherits = FALSE)
 }
 
 #' Does this ui have a tte() endpoint?
@@ -58,23 +58,47 @@
   .dv <- .col("dv")
   .time <- .col("time")
   .evid <- .col("evid")
-  .obs <- if (is.null(.evid)) rep(TRUE, nrow(data)) else .evid == 0
+  .mdv <- .col("mdv")
+  .amt <- .col("amt")
+  # observation rows, as etTrans() reads them: EVID, else MDV, else AMT
+  .obs <- if (!is.null(.evid)) {
+    .evid %in% 0
+  } else if (!is.null(.mdv)) {
+    .mdv %in% 0
+  } else if (!is.null(.amt)) {
+    is.na(.amt) | .amt == 0
+  } else {
+    rep(TRUE, nrow(data))
+  }
   .cmt <- .col("cmt")
+  .dvid <- .col("dvid")
+  .multi <- nrow(.predDf) > 1L
+  if (.multi && is.null(.cmt) && is.null(.dvid)) {
+    stop(
+      "a tte() endpoint beside other endpoints requires a 'cmt' or 'dvid' column",
+      call. = FALSE
+    )
+  }
+  .match1 <- function(.x, .pred1, .num) {
+    if (is.character(.x) || is.factor(.x)) {
+      !is.na(.x) & as.character(.x) == .pred1$cond
+    } else {
+      !is.na(.x) & .x == .num
+    }
+  }
   for (.i in which(.predDf$distribution == "tte")) {
     .pred1 <- .predDf[.i, ]
     .is <- .obs
-    if (!is.null(.cmt)) {
-      .match <- if (is.character(.cmt) || is.factor(.cmt)) {
-        as.character(.cmt) == .pred1$cond
-      } else {
-        .cmt == .pred1$cmt
+    # a single endpoint scores every observation, whatever its cmt
+    if (.multi) {
+      .m <- rep(FALSE, nrow(data))
+      if (!is.null(.dvid)) {
+        .m <- .match1(.dvid, .pred1, .pred1$dvid)
       }
-      .is <- .is & !is.na(.cmt) & .match
-    } else if (nrow(.predDf) > 1L) {
-      stop(
-        "estimating a tte() endpoint beside other endpoints requires a 'cmt' column",
-        call. = FALSE
-      )
+      if (!is.null(.cmt)) {
+        .m <- .m | .match1(.cmt, .pred1, .pred1$cmt)
+      }
+      .is <- .is & .m
     }
     .v <- .dv[.is]
     if (any(is.na(.v) | !(.v %in% c(0, 1)))) {

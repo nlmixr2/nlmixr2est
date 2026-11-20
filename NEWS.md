@@ -22,7 +22,7 @@
   estimated by the likelihood methods (`focei`, `laplace`, `agq`, `saem`,
   the `nlm` family, ...).  The endpoint data are checked first (`DV` must be
   0 or 1, and an event on a subject's first record is warned about since it
-  is the start of observation).  This needs an rxode2 newer than 5.1.8 and
+  is the start of observation).  This needs an rxode2 with `tte()` support and
   is inactive otherwise.
 - `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
   objective at the final estimates with every ODE tolerance 10x tighter and
