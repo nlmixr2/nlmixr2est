@@ -942,6 +942,12 @@
 #'   residual-error parameters and those given in `scaleC` are used as
 #'   they are.
 #'
+#' @param scaleLinear How a linear (untransformed) `theta` is scaled under
+#'   `scaleType = "nlmixr2"`.  `"inverse"` (default) uses `1/|init|` when it
+#'   lands inside `scaleCband` and `|init|` otherwise; `"abs"` always uses
+#'   `|init|`, as NONMEM does.  A `theta` starting at 0 keeps its zero-theta
+#'   scale either way.
+#'
 #' @param normType Parameter normalization/scaling used to get scaled
 #'     initial values for \code{scaleType}, of the form
 #'     \code{Vscaled = (Vunscaled-C1)/C2} (see
@@ -1332,6 +1338,7 @@ foceiControl <- function(
   scaleCmax = 1e5, #
   scaleCmin = 1e-5, #
   scaleCband = c(0.1, 10), #
+  scaleLinear = c("inverse", "abs"), #
   scaleC = NULL, #
   scaleC0 = 1e5, #
   derivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
@@ -1661,6 +1668,7 @@ foceiControl <- function(
   if (scaleCband[1] >= scaleCband[2]) {
     stop("'scaleCband' must be an increasing pair (low, high)", call. = FALSE)
   }
+  scaleLinear <- match.arg(scaleLinear)
   if (!is.null(scaleC)) {
     checkmate::assertNumeric(scaleC, finite = TRUE, any.missing = FALSE)
     if (any(scaleC <= 0)) {
@@ -2351,6 +2359,7 @@ foceiControl <- function(
     scaleC = scaleC,
     scaleCmin = as.double(scaleCmin),
     scaleCband = as.double(scaleCband),
+    scaleLinear = scaleLinear,
     scaleCmax = as.double(scaleCmax),
     scaleC0 = as.double(scaleC0),
     outerOptTxt = .outerOptTxt,
