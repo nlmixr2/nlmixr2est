@@ -184,8 +184,8 @@ test_that("a block omega is checked on the parameters FOCEi bounds", {
     .omegaCollapseAtBound(.four0, .four, 100),
     list(at = "eta.a", unknown = c("eta.c", "eta.d"))
   )
-  expect_identical(.omegaBlocks(.four0 != 0), list(1:2, 3:4))
+  expect_identical(.omegaNzBlocks(.four0 != 0), list(1:2, 3:4))
   .il <- diag(3) != 0
   .il[1, 3] <- .il[3, 1] <- TRUE
-  expect_identical(.omegaBlocks(.il), list(c(1L, 3L), 2L))
+  expect_identical(.omegaNzBlocks(.il), list(c(1L, 3L), 2L))
 })

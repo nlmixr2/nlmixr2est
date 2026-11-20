@@ -140,7 +140,7 @@
   }
   .at <- character(0)
   .unknown <- character(0)
-  for (.b in .omegaBlocks(omega0 != 0 | omega != 0)) {
+  for (.b in .omegaNzBlocks(omega0 != 0 | omega != 0)) {
     .d0 <- .d(omega0[.b, .b, drop = FALSE])
     .d1 <- .d(omega[.b, .b, drop = FALSE])
     if (is.null(.d0) || is.null(.d1)) {
@@ -157,7 +157,7 @@
 #' @param nz logical matrix, `TRUE` where two etas covary
 #' @return list of index vectors, one per connected block, in eta order
 #' @noRd
-.omegaBlocks <- function(nz) {
+.omegaNzBlocks <- function(nz) {
   .n <- nrow(nz)
   .grp <- seq_len(.n)
   repeat {
