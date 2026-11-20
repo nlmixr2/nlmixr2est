@@ -81,8 +81,9 @@ nmTest({
       est = "focei",
       control = foceiControl(print = 0, calcTables = FALSE, covMethod = "")
     )))
-    # n1qn1 reaches 730.8946; with trust's own stop at trustFterm the fit ended at 730.9031
+    # n1qn1 reaches 730.8946; stopping trust at trustFterm alone ended at 730.9031
     expect_lt(.fit$objf, 730.897)
+    expect_gt(.fit$env$nTrustInner[["tight"]], 0L)
     .eta <- as.matrix(.fit$eta[, -1, drop = FALSE])
     set.seed(42)
     .objf <- vapply(1:4, function(i) {

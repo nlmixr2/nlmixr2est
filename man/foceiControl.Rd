@@ -875,11 +875,12 @@ the boundary of the `trustConf`-level eta confidence region. Default
 
 \item{trustFterm, trustMterm}{objective tolerances of the
 `innerOpt="trust"` per-subject solve. `NULL` (default) uses
-`10^(-sigdig-2)`. The FOCEi `log|H|` term moves the objective linearly
-with the eta error while the inner objective moves with its square, so
-trust's own function-value and predicted-decrease stops use the square
-(floored at `1e-12`) and the objective is held to these values (#1152).
-`"steihaug"` uses them the same way. Not derived from `epsilon`
+`10^(-sigdig-2)`. After the solve (and any restarts) converges, trust
+re-enters once from that eta with the squared tolerances (floored at
+`1e-12`): the FOCEi `log|H|` term moves the objective linearly with the
+eta error while the inner objective moves with its square, so this
+holds the objective, not just the inner objective, to these values
+(#1152). `"steihaug"` does the same. Not derived from `epsilon`
 (`"n1qn1"`'s own tolerance).}
 
 \item{trustPolish}{logical; when `TRUE`, each converged `innerOpt="trust"`
