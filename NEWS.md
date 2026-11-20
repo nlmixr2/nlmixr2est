@@ -132,6 +132,9 @@
   candidates, and the inner-solve time spent in the search; the totals also
   count the covariance step (#1456).
 
+- `foceiControl(mcetaTrace = TRUE)` prints those multistart counts after each
+  printed outer iteration when `mceta >= 1` (#1456).
+
 - `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
   objective at the final estimates with every ODE tolerance 10x tighter and
   notes in `$runInfo` an objective that moves by more than `odeSettleTol`

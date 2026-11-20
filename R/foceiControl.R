@@ -1244,6 +1244,12 @@
 #'   optimization per start instead of one per subject, so it is off by
 #'   default; `FALSE` optimizes only the best starting point.
 #'
+#' @param mcetaTrace When `TRUE` and `mceta >= 1`, each printed outer
+#'   iteration is followed by a line summarizing the `mceta` multistart since
+#'   the last print (starts at eta=0 and at draws, draws that won, marginal
+#'   re-rankings) and its cumulative inner-solve time.  The same counts are
+#'   always kept in `fit$mcetaInfo`.
+#'
 #' @param seed Integer seed (default `42`) used to make a FOCEi fit
 #'   reproducible and self-contained.  The fit (including the `mceta`
 #'   Monte-Carlo initial-ETA draws, which pull from rxode2's threefry engine)
@@ -1567,6 +1573,7 @@ foceiControl <- function(
   zeroGradBobyqa = TRUE,
   mceta = -2L,
   mcetaOpt = FALSE,
+  mcetaTrace = FALSE,
   warm = c("calc", "save", "none"),
   nAGQ = 0,
   agqLow = -Inf,
@@ -2262,6 +2269,7 @@ foceiControl <- function(
   }
   checkmate::assertIntegerish(mceta, lower = -2, len = 1, any.missing = FALSE)
   checkmate::assertLogical(mcetaOpt, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(mcetaTrace, len = 1, any.missing = FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing = FALSE, lower = 0, upper = 1, len = 1)
   checkmate::assertIntegerish(nAGQ, lower = 0, len = 1, any.missing = FALSE)
@@ -2473,6 +2481,7 @@ foceiControl <- function(
     zeroGradBobyqa = zeroGradBobyqa,
     mceta = as.integer(mceta),
     mcetaOpt = mcetaOpt,
+    mcetaTrace = mcetaTrace,
     warm = warm,
     nAGQ = as.integer(nAGQ),
     agqHi = as.double(agqHi),
