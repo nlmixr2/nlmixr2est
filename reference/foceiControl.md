@@ -164,6 +164,8 @@ foceiControl(
   etaRestart = 4L,
   finalEtaTol = 1,
   shrinkEtaWarn = 30,
+  odeSettleCheck = FALSE,
+  odeSettleTol = 0.1,
   nRetries = 3,
   seed = 42,
   resetThetaCheckPer = 0.1,
@@ -1451,6 +1453,20 @@ foceiControl(
 
   Warn (in \`\$runInfo\`) when an eta's SD shrinkage is at or above this
   percentage. Use \`NA\` or \`Inf\` to disable.
+
+- odeSettleCheck:
+
+  When \`TRUE\`, an ODE model's ETAs and objective are re-solved at the
+  final estimates with every ODE tolerance 10x tighter, and
+  \`\$runInfo\` notes an objective that moves by more than
+  \`odeSettleTol\` or is not finite. The tighter objective is kept as
+  \`fit\$odeSettleObjf\`. Skipped for models without ODEs (e.g.
+  \`linCmt()\`), fits with \`maxOuterIterations = 0\` and a non-finite
+  fit objective.
+
+- odeSettleTol:
+
+  The objective change that \`odeSettleCheck\` reports.
 
 - nRetries:
 
