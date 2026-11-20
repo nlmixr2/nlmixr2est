@@ -153,7 +153,8 @@
       error = function(e) NA_real_
     )
   }
-  .f0 <- NULL
+  # the unperturbed OFV, computed once when a one-sided difference needs it
+  .acc <- new.env(parent = emptyenv())
   .g <- vapply(
     .nm,
     function(nm) {
@@ -173,10 +174,10 @@
         return((.up - .dn) / (2 * .h))
       }
       # a probe ini() rejects (a mixture proportion past 1): one-sided difference
-      if (is.null(.f0)) {
-        .f0 <<- .ofv(nm, .est[[nm]])
+      if (is.null(.acc$f0)) {
+        .acc$f0 <- .ofv(nm, .est[[nm]])
       }
-      if (is.finite(.up)) (.up - .f0) / .h else (.f0 - .dn) / .h
+      if (is.finite(.up)) (.up - .acc$f0) / .h else (.acc$f0 - .dn) / .h
     },
     double(1)
   )
