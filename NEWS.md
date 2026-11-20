@@ -25,6 +25,12 @@
   smaller `nEm` would give, and `$runInfo` notes the stop iteration.  Off by
   default (#1395).
 
+- `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
+  objective at the final estimates with every ODE tolerance 10x tighter and
+  notes in `$runInfo` an objective that moves by more than `odeSettleTol`
+  (default 0.1) or is not finite, e.g. `OFV moves 0.28 at 10x tighter ODE
+  tolerance`; the tighter objective is kept as `fit$odeSettleObjf` (#1393).
+
 - FOCEi model builds no longer optimize the `innerOeta` model, which only
   `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on
   first use, caches it and adds the inner model's `param()`/`cmt()`/`mtime()`
@@ -156,6 +162,9 @@
 - `est = "vae"` with `nonMuTheta = "grad"` again takes the gradient at the
   encoder's etas without the inner-mode score correction, which moved it
   away from the optimum.
+
+- FOCEi now excludes `EVID = 2` records and inserted `EVID = 9`
+  initialization records from `fit$nobs` (#1342).
 
 - `saem` mixture fits with `saemControl(mixProbMethod = "annealed")` no
   longer error with "Mat::operator(): index out of bounds" when entering the
