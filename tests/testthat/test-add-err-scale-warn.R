@@ -122,6 +122,61 @@ nmTest({
     }
   })
 
+  test_that("warfarin cp and pca are each checked against their own median", {
+    .f <- function() {
+      ini({
+        tktr <- log(1)
+        tka <- log(1)
+        tcl <- log(0.1)
+        tv <- log(10)
+        prop.err <- 0.1
+        pkadd.err <- 0.001
+        temax <- logit(0.8)
+        tec50 <- log(0.5)
+        tkout <- log(0.05)
+        te0 <- log(100)
+        pdadd.err <- 0.001
+        pdprop.err <- 0.1
+      })
+      model({
+        ktr <- exp(tktr)
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        emax <- expit(temax)
+        ec50 <- exp(tec50)
+        kout <- exp(tkout)
+        e0 <- exp(te0)
+        DCP <- center / v
+        PD <- 1 - emax * DCP / (ec50 + DCP)
+        effect(0) <- e0
+        kin <- e0 * kout
+        d / dt(depot) <- -ktr * depot
+        d / dt(gut) <- ktr * depot - ka * gut
+        d / dt(center) <- ka * gut - cl / v * center
+        d / dt(effect) <- kin * PD - kout * effect
+        cp <- center / v
+        cp ~ prop(prop.err) + add(pkadd.err)
+        effect ~ add(pdadd.err) + prop(pdprop.err) | pca
+      })
+    }
+    .w <- nlmixr2data::warfarin
+    .med <- tapply(.w$dv[.w$evid == 0], .w$dvid[.w$evid == 0], function(x) median(abs(x)))
+    expect_false(isTRUE(all.equal(.med[["cp"]], .med[["pca"]])))
+    .ws <- .warns(rxode2::rxode2(.f), .w)
+    expect_length(.ws, 2L)
+    expect_true(any(grepl(
+      paste0("'cp' add sd 'pkadd.err'=0.001 < 1% median |DV| ", signif(.med[["cp"]], 3), ";"),
+      .ws,
+      fixed = TRUE
+    )))
+    expect_true(any(grepl(
+      paste0("'pca' add sd 'pdadd.err'=0.001 < 1% median |DV| ", signif(.med[["pca"]], 3), ";"),
+      .ws,
+      fixed = TRUE
+    )))
+  })
+
   test_that("the warning reaches $runInfo and leaves the initial estimates alone", {
     skip_on_cran()
     .ui <- .mod(0.01)
