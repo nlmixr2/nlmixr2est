@@ -541,8 +541,8 @@ nmTest({
     expect_gt(.seOf(.foce)[["add.sd"]] / .seOf(.focei)[["add.sd"]], 1.2)
     suppressMessages(suppressWarnings(setCov(.none, "r")))
     expect_identical(.none$covMethod, "r")
-    # measured: 2e-11 apart
-    expect_lt(.maxRel(.seOf(.none), .seOf(.focei)), 1e-6)
+    # measured: 1.4e-6 apart; the tight inner re-entry (#1152) scatters flat-direction etas
+    expect_lt(.maxRel(.seOf(.none), .seOf(.focei)), 1e-4)
   })
 
   test_that("the post-fit mu recompute differentiates the marginal likelihood", {
@@ -565,8 +565,9 @@ nmTest({
     expect_lt(.maxRel(.seOf(.mf), .seOf(.ref)), 1e-6)
     # a FOCEi fit with no outer iterations that optimizes the ETAs itself first starts the
     # covariance legs from slightly different ETAs: the same covariance up to the
-    # finite-difference noise at the covariance step's tolerances (measured 0.2%)
-    expect_lt(.maxRel(.seOf(.mf), .seOf(.zeroOuterRef(.mf, "r,s", covFull = TRUE))), 0.01)
+    # finite-difference noise at the covariance step's tolerances (measured 1.5% with the
+    # tight inner re-entry, #1152)
+    expect_lt(.maxRel(.seOf(.mf), .seOf(.zeroOuterRef(.mf, "r,s", covFull = TRUE))), 0.03)
     # an "analytic" request outside the analytic scope (linCmt) falls back to the
     # finite-difference sandwich, which is marginal too, and says so
     .an <- foceiControl(print = 0, calcTables = FALSE, covMethod = "analytic")

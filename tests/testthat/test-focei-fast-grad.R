@@ -639,8 +639,14 @@ nmTest({
         # loose trust etas: the tight re-entry (#1152) leaves every eta inside the
         # Newton's first-iteration stationarity test, so nothing would stall
         foceiControl(
-          print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L, maxInnerIterations = 300L,
-          trustFterm = 1e-3, trustMterm = 1e-3, ...
+          print = 0L,
+          covMethod = "",
+          sigdig = 4,
+          maxOuterIterations = 0L,
+          maxInnerIterations = 300L,
+          trustFterm = 1e-3,
+          trustMterm = 1e-3,
+          ...
         )
       )))
     }
