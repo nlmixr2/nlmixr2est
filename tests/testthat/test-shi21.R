@@ -418,8 +418,7 @@ nmTest({
       "focei",
       foceiControl(print = 0, eventSens = "fd", covMethod = "", maxOuterIterations = 0, shi21maxFD = 0L)
     ))
-    # 228.486290852 before the tight trust re-entry (#1152)
-    expect_equal(.fit$objective, 228.486304, tolerance = 1e-8)
+    expect_equal(.fit$objective, 228.486290852, tolerance = 1e-8)
     expect_false(any(grepl("^eta finite differences", .fit$runInfo)))
     expect_false(all(.fit$eta$eta.f == 0))
   })
@@ -464,8 +463,7 @@ nmTest({
           hessianMethod = .hm
         )
       ))
-      # 122.310887878 before the tight trust re-entry (#1152)
-      expect_equal(.fit$objective, 122.31088801, tolerance = 1e-9, label = .hm)
+      expect_equal(.fit$objective, 122.310887878, tolerance = 1e-9, label = .hm)
       expect_identical(
         grep("^eta finite", .fit$runInfo, value = TRUE),
         "eta finite differences solved on neither side 595 times; slope 0",

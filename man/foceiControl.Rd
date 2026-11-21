@@ -873,27 +873,36 @@ the boundary of the `trustConf`-level eta confidence region. Default
 \item{trustRmax}{maximum `innerOpt="trust"` trust-region radius. `NULL`
 (default) derives it from `trustConf`.}
 
-\item{trustFterm, trustMterm}{objective tolerances of the
-`innerOpt="trust"` per-subject solve. `NULL` (default) uses
-`10^(-sigdig-2)`. After the solve (and any restarts) converges, trust
-re-enters once from that eta with the squared tolerances (floored at
-`1e-10`): the FOCEi `log|H|` term moves the objective linearly with the
-eta error while the inner objective moves with its square, so this
-holds the objective, not just the inner objective, to these values
-(#1152). `"steihaug"` does the same. Not derived from `epsilon`
-(`"n1qn1"`'s own tolerance).}
+\item{trustFterm, trustMterm}{`innerOpt="trust"`'s own function-value and
+predicted-decrease convergence tolerances for the per-subject Newton
+solve. `NULL` (default) uses `10^(-sigdig-2)`, two orders tighter than
+the plain `10^(-sigdig)` most tolerances here use, for the same reason
+`lbfgsFactr` is: the inner solve is the function the outer problem
+differentiates, so this tolerance sets the objective's noise floor and a
+finite-difference outer gradient cannot resolve a step below it. Left at
+the plain `10^(-sigdig)`, an `nAGQ=2` `theo_sd` fit stopped at an
+objective of 134.46 against 118.52, and took longer doing it -- the
+noisy gradient misleads the outer search as well as lengthening it.
+Deliberately NOT derived from `epsilon` (`"n1qn1"`'s own, unrelated
+"precision of estimate" tolerance) -- tying `"trust"`'s stopping
+criterion to a value picked for a different optimizer is exactly the
+coupling these parameters exist to remove. Has no effect unless
+`innerOpt="trust"`.}
 
 \item{trustPolish}{logical; when `TRUE`, each converged `innerOpt="trust"`
-solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
-This makes the objective less dependent on the warm-start ETAs and can
-help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+solve re-enters once from its ETAs with the squared
+`trustFterm`/`trustMterm` (floored at `1e-10`; not under a quasi-Newton
+`hessianMethod`).  This makes the objective nearly independent of the
+warm-start ETAs and can help a fit that stops short of its minimum
+(#1152).  The `"bobyqa"`
 outer search then also restarts once from where it stops, which costs
 about twice the outer evaluations.  `FALSE` (default) keeps the plain
 trust solve and a single outer search.}
 
-\item{steihaugPolish, newuoaPolish}{logical; the `trustPolish` Newton
-polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
-solve.  `FALSE` (default) keeps the plain solve.}
+\item{steihaugPolish, newuoaPolish}{logical; the `trustPolish` polish for
+a converged `innerOpt="steihaug"` solve (the same re-entry) or
+`innerOpt="newuoa"` solve (up to 4 Newton steps, down to `trustFterm`).
+`FALSE` (default) keeps the plain solve.}
 
 \item{newuoaRhoend}{final NEWUOA trust-region radius for
 `innerOpt="newuoa"`, in sqrt(diag(Omega)) units.  `NULL` (default) uses

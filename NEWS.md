@@ -16,16 +16,13 @@
   `outerOpt = "trust"`, which uses the analytical outer Hessian.  A fit that
   falls back to `fast = FALSE` (e.g. `linCmt()`) still uses `bobyqa`.
 
-- The FOCEi-family `innerOpt = "trust"` (and `"steihaug"`) ETA solve now
-  re-enters once from its converged ETAs with the square of
-  `trustFterm`/`trustMterm` (`1e-10` at the default `sigdig = 3`, and its
-  floor; not under a quasi-Newton `hessianMethod`).  Before,
-  each ETA could stop far enough from its mode that the `log|H|` term moved the
-  objective with the warm-start ETAs, so the outer search stopped short; on
-  `pheno_sd` the default fit now reaches the minimum (#1152).  Objectives of
-  fits using the trust inner solve change slightly.
-
 ## New features
+
+- `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes each
+  converged trust ETA solve by re-entering it at the squared
+  `trustFterm`/`trustMterm` instead of taking Newton steps.  The objective at
+  fixed parameters then varies by about 2e-5 across warm-start ETAs (0.0054
+  before on `pheno_sd`); the default is unchanged (#1152).
 
 - `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
   objective at the final estimates with every ODE tolerance 10x tighter and

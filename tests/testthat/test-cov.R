@@ -627,10 +627,7 @@ nmTest({
       expect_identical(.covFdType(.fit$covMethod), "r", label = .est)
       expect_identical(.fit$covMethod, .ref$covMethod, label = .est)
       expect_setequal(names(.seOf(.fit)), names(.seOf(.ref)))
-      # 1e-3: the refit re-solves its ETAs, and the tight inner re-entry (#1152) moves an
-      # already converged eta a little along a flat direction; the wrong likelihood
-      # (interaction = 0) was far off
-      expect_lt(.maxRel(.seOf(.fit), .seOf(.ref)), 1e-3, label = .est)
+      expect_lt(.maxRel(.seOf(.fit), .seOf(.ref)), 1e-6, label = .est)
       # the method's own parameter table is kept, its SEs taken from the installed matrix
       .pf <- .fit$parFixedDf
       .th <- c("tka", "tcl", "tv", "add.sd")

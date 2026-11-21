@@ -332,8 +332,8 @@ nmTest({
       ))
     )
     expect_gt(.cnt[["calls"]], 0L)
-    # every converged subject is refined once at the squared tolerances (#1152)
-    expect_gt(.cnt[["tight"]], 0L)
+    # the squared-tolerance re-entry is trustPolish's (#1152)
+    expect_equal(.cnt[["tight"]], 0L)
     # This fit converges cleanly, so nothing below "calls" fires.  That is the
     # half of the diagnostic that has to stay quiet or it says nothing.
     expect_equal(.cnt[["failed"]], 0L)

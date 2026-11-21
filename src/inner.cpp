@@ -1257,6 +1257,13 @@ static inline bool innerPolishOn() {
   return false;
 }
 
+// trust and steihaug polish by re-entering at the squared tolerances (#1152); newuoa,
+// which has no such re-entry, keeps the Newton polish.  Not under a quasi-Newton inner
+// Hessian: its log|H| is approximate anyway, and a re-entry would discard its update.
+static inline bool innerTightOn() {
+  return innerPolishOn() && op_focei.innerOpt != 5 && op_focei.hessianMethod == trustHessFd;
+}
+
 // Width of one subject's outer-FD row: the whole full-theta vector, theta block then
 // omega block.  foceiOuterFdInd_ differences both, and the step cache is indexed the
 // same way.
@@ -4538,7 +4545,7 @@ static inline int innerEval(int id){
   return 1;
 }
 
-// The trust arm's Newton-decrement gate leaves eta up to sqrt(trustFterm) short of the
+// newuoaPolish: a converged solve can leave eta up to sqrt(trustFterm) short of the
 // mode, and the FOCEi log|H| term carries that to the objective to FIRST order, so the
 // outer objective depended on the warm start (#1152).  Finish a converged solve with
 // Newton steps down to trustFterm, each kept only if it does not ascend.  The gradient is
@@ -5355,7 +5362,7 @@ static inline int innerOpt1(int id, int likId) {
               if (conv && pushDist > pushTol) {
                 conv = false;
                 op_focei.nTrustPush.fetch_add(1, std::memory_order_relaxed);
-              } else if (innerPolishOn() && conv && pushDist > 0.0 &&
+              } else if (innerPolishOn() && op_focei.innerOpt == 5 && conv && pushDist > 0.0 &&
                          trustPolishEta(id, fInd, npar, parscale, step, pushDist, f)) {
                 keepBest();
               }
@@ -5456,13 +5463,11 @@ static inline int innerOpt1(int id, int likId) {
     // the count #1044 needed: without it a fit whose trust solves all failed
     // is indistinguishable from one where they all converged.
     if (!converged) op_focei.nTrustFail.fetch_add(1, std::memory_order_relaxed);
-    // Re-enter from the accepted eta with the squared tolerances (#1152).  trust stops on
-    // the change in the inner objective, quadratic in the eta error, while log|H| moves
-    // the OFV linearly with it.  The cascade above keeps the plain tolerances: its gate
-    // failures are what send a subject stuck in a spurious basin to the nudges.
-    // Not under a quasi-Newton inner Hessian: its log|H| is approximate anyway, and a
-    // re-entry would discard the running update it is built from.
-    if (haveBest && op_focei.innerOpt != 5 && op_focei.hessianMethod == trustHessFd) {
+    // trustPolish: re-enter from the accepted eta with the squared tolerances (#1152).
+    // trust stops on the change in the inner objective, quadratic in the eta error, while
+    // log|H| moves the OFV linearly with it.  The cascade above keeps the plain
+    // tolerances: its gate failures send a subject stuck in a spurious basin to the nudges.
+    if (haveBest && innerTightOn()) {
       restoreBest();
       std::vector<double> x0(etaBest);
       topts.fterm = innerTrustObjTol(op_focei.trustFterm);
