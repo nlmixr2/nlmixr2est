@@ -3273,8 +3273,24 @@ attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.predDfFocei <- function(x, ...) {
   .ui <- x[[1]]
-  if (exists(".predDfFocei", envir = .ui)) {
+  # est="laplace": every Gaussian endpoint goes through its log-density, so
+  # the inner Hessian is the exact conditional one (.laplaceLlikSet(),
+  # R/laplace.R).  The cached value records which form it is, so a ui reused
+  # across a Laplace and a FOCEi fit never hands one the other's endpoints.
+  .llik <- .laplaceLlikOn(list(
+    laplaceLlik = rxode2::rxGetControl(.ui, "laplaceLlik", FALSE),
+    innerHessian = rxode2::rxGetControl(.ui, "innerHessian", "focei"),
+    detHessian = rxode2::rxGetControl(.ui, "detHessian", "focei")
+  ))
+  if (exists(".predDfFocei", envir = .ui) &&
+    identical(attr(get(".predDfFocei", envir = .ui), "laplaceLlik"), if (.llik) TRUE else NULL)) {
     get(".predDfFocei", envir = .ui)
+  } else if (.llik) {
+    .predDf <- .ui$predDf
+    .predDf$distribution[.predDf$distribution == "norm"] <- "dnorm"
+    attr(.predDf, "laplaceLlik") <- TRUE
+    assign(".predDfFocei", .predDf, envir = .ui)
+    .predDf
   } else {
     .predDf <- .ui$predDf
     if (all(.predDf$distribution == "norm")) {
@@ -3894,6 +3910,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
     if (.conditional) "conditionalInner1",
+    # est="laplace" rewrites Gaussian endpoints to their log-density
+    # (rxUiGet.predDfFocei), which changes every generated model
+    if (isTRUE(attr(.ui$predDfFocei, "laplaceLlik"))) "laplaceLlik1",
     all(is.na(.iniDf$neta1)),
     .combSens,
     .linCmtCarry,
@@ -5626,7 +5645,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .control$outerOptTxt <- "stats::optimize"
   }
   .foceiAssertInnerLbfgsb3c(.control$innerOpt)
-  .optimHess <- any(.ui$predDfFocei$distribution != "norm")
+  # est="laplace" evaluates every Gaussian endpoint by its log-density
+  # (rxUiGet.predDfFocei); the control is not on the ui yet, so ask it here
+  .optimHess <- .laplaceLlikOn(.control) || any(.ui$predDfFocei$distribution != "norm")
   if (length(.optimHess) != 1) {
     .optimHess <- FALSE
   }

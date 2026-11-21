@@ -35,10 +35,16 @@ quadrature for the likelihood.  Note that nAGQ=1 is the same as the
 Laplace method.
 }
 \details{
-This method can be made to more closely matches NONMEM-style Laplace
-estimation by requesting the log-likelihood from STAN as well as
-numerically calculated Hessian matrix. This is done with adding
-`+dnorm()` to the model for any normal end-points.
+The objective is NONMEM's `METHOD=COND LAPLACE INTERACTION` one (Wang
+2007, J Pharmacokinet Pharmacodyn 34:575, Eq. 15).  The inner Hessian
+and the Laplace log-determinant use the exact second derivative of the
+conditional -2 log-likelihood in the ETAs, not the Gauss-Newton FOCEi
+curvature.  Each Gaussian endpoint is evaluated through its log-density,
+exactly as adding `+ dnorm()` to it does, so it works on every model.
+The FOCEi objective is available as `est = "focei"`; `est = "flaplace"`
+computes the same Laplace objective from the analytic conditional
+Hessian (faster, with an analytic outer gradient, but needs `fast = TRUE`
+and second-order sensitivities).
 }
 \examples{
 

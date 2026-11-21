@@ -48,15 +48,19 @@ test_that("a full conditional Laplace/AGQ fit says so", {
   expect_identical(fitA$env$ofvType, tolower(rownames(fitA$objDf)[1]))
   expect_gt(fitA$env$nConditionalInnerHessian, 0L)
 
-  # the base methods are untouched; the full determinant DOES move the marginal
-  # objective (that is what "Full" means), so it must not match plain laplace
+  # plain laplace reaches the same exact Laplace objective by the numeric
+  # (log-density) Hessian instead of the analytic conditional one (#1301);
+  # the full determinant DOES move the objective away from FOCEi
   base <- .nlmixr(model, d, "laplace", do.call(laplaceControl, .ctl()))
   expect_identical(base$method, "AGQ")
   expect_identical(rownames(base$objDf)[1], "Laplace")
   expect_identical(base$env$nConditionalInnerHessian, 0L)
   expect_identical(fitL$control$detHessian, "conditional")
   expect_identical(base$control$detHessian, "focei")
-  expect_false(isTRUE(all.equal(fitL$objf, base$objf)))
+  expect_true(base$control$laplaceLlik)
+  expect_equal(fitL$objf, base$objf, tolerance = 1e-4)
+  focei <- .nlmixr(model, d, "focei", do.call(foceiControl, .ctl()))
+  expect_false(isTRUE(all.equal(fitL$objf, focei$objf)))
 })
 
 test_that("the full conditional inner Hessian refuses a generalized likelihood", {

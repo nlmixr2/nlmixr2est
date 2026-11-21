@@ -4,10 +4,16 @@
 #' quadrature for the likelihood.  Note that nAGQ=1 is the same as the
 #' Laplace method.
 #'
-#' This method can be made to more closely matches NONMEM-style Laplace
-#' estimation by requesting the log-likelihood from STAN as well as
-#' numerically calculated Hessian matrix. This is done with adding
-#' `+dnorm()` to the model for any normal end-points.
+#' The objective is NONMEM's `METHOD=COND LAPLACE INTERACTION` one (Wang
+#' 2007, J Pharmacokinet Pharmacodyn 34:575, Eq. 15).  The inner Hessian
+#' and the Laplace log-determinant use the exact second derivative of the
+#' conditional -2 log-likelihood in the ETAs, not the Gauss-Newton FOCEi
+#' curvature.  Each Gaussian endpoint is evaluated through its log-density,
+#' exactly as adding `+ dnorm()` to it does, so it works on every model.
+#' The FOCEi objective is available as `est = "focei"`; `est = "flaplace"`
+#' computes the same Laplace objective from the analytic conditional
+#' Hessian (faster, with an analytic outer gradient, but needs `fast = TRUE`
+#' and second-order sensitivities).
 #'
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
@@ -83,9 +89,49 @@
 laplaceControl <- function(sigdig = 3, ..., nAGQ = 1) {
   # interaction forces the calculation of the hessian, which is needed
   # for the adaptive Gaussian quadrature
-  .control <- foceiControl(sigdig = sigdig, ..., nAGQ = nAGQ)
+  .control <- .laplaceLlikSet(foceiControl(sigdig = sigdig, ..., nAGQ = nAGQ), list(...))
   class(.control) <- "laplaceControl"
   .control
+}
+
+#' Mark a Laplace-family control to evaluate Gaussian endpoints by log-density
+#'
+#' NONMEM's `METHOD=COND LAPLACE INTERACTION` objective (Wang 2007, J
+#' Pharmacokinet Pharmacodyn 34:575, Eq. 15) uses the exact second
+#' derivative of the conditional -2 log-likelihood in eta at the mode.  The
+#' Gaussian FOCEi inner problem uses the Gauss-Newton curvature instead
+#' (Wang Eq. 16), so a Gaussian endpoint is instead evaluated through its
+#' log-density (`dnorm`, exactly as `+ dnorm()` in the model does), whose
+#' inner Hessian is the exact one.  This needs only first-order
+#' sensitivities, so it applies to every model (`linCmt()`, `lag()`,
+#' censoring, ...).
+#'
+#' The full analytic conditional Hessian (`innerHessian`/`detHessian =
+#' "conditional"`, `est = "flaplace"`) is the same Laplace objective by a
+#' different route, so the flag is off there.
+#'
+#' @param control a `foceiControl()` object
+#' @param xtra the `...` the constructor was called with; an explicit
+#'   `laplaceLlik` there is kept
+#' @return `control` with `laplaceLlik` set
+#' @noRd
+.laplaceLlikSet <- function(control, xtra) {
+  if (is.null(xtra$laplaceLlik)) {
+    control$laplaceLlik <- !(control$innerHessian == "conditional" ||
+      control$detHessian == "conditional")
+  }
+  control
+}
+
+#' Does this control ask for log-density (exact Hessian) Gaussian endpoints?
+#'
+#' @param control a focei-family control (or `NULL`)
+#' @return logical
+#' @noRd
+.laplaceLlikOn <- function(control) {
+  isTRUE(control$laplaceLlik) &&
+    !identical(control$innerHessian, "conditional") &&
+    !identical(control$detHessian, "conditional")
 }
 
 #' @rdname nmObjHandleControlObject

@@ -45,13 +45,15 @@ nmTest({
     # equals the Laplace objective and the outer gradients must agree (the envelope term
     # Phi_eta(etahat)'etaP is zero at a converged EBE).  Both fits fix theta
     # (maxOuterIterations=0), so the two analytic gradients are evaluated at the same point;
-    # this is the identity that guards the duplicated eta-hat block.
+    # this is the identity that guards the duplicated eta-hat block.  AGQ's curvature is
+    # the Gauss-Newton FOCEi one, so the matching Laplace is est="focei" (est="laplace"
+    # uses the exact Hessian, #1301).
     .c0 <- list(maxOuterIterations = 0L, maxInnerIterations = 500L, covMethod = "", calcTables = FALSE, print = 0L)
     .fl <- suppressMessages(nlmixr2(
       .agq_one_cmt,
       nlmixr2data::theo_sd,
-      "laplace",
-      do.call(laplaceControl, c(list(fast = TRUE), .c0))
+      "focei",
+      do.call(foceiControl, c(list(fast = TRUE), .c0))
     ))
     .fa <- suppressMessages(nlmixr2(
       .agq_one_cmt,

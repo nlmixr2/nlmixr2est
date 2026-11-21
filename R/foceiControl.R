@@ -108,7 +108,12 @@
   # (.nlmixr2BuildPriorSpec(), R/priors.R); not a formal
   # argument, not deparseable/comparable, and rebuilt fresh
   # every fit -- internal so a built control round-trips.
-  "priorSpec"
+  "priorSpec",
+  # TRUE when est="laplace" (and its m/i variants) evaluate every Gaussian
+  # endpoint through its exact log-density, so the inner Hessian is the
+  # full conditional one (NONMEM LAPLACE INTERACTION, Wang 2007 Eq. 15);
+  # set by laplaceControl() (.laplaceLlikSet(), R/laplace.R)
+  "laplaceLlik"
 )
 
 #' Control Options for FOCEi
@@ -2433,6 +2438,10 @@ foceiControl <- function(
   )
   if (!is.null(.xtra$est)) {
     .ret$est <- .xtra$est
+  }
+  if (!is.null(.xtra$laplaceLlik)) {
+    checkmate::assertFlag(.xtra$laplaceLlik)
+    .ret$laplaceLlik <- .xtra$laplaceLlik
   }
   if (!is.null(.xtra$covMaxInnerIterations)) {
     checkmate::assertCount(.xtra$covMaxInnerIterations, positive = TRUE)

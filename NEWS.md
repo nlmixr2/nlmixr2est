@@ -2,6 +2,23 @@
 
 ## Changed defaults
 
+- `est = "laplace"` (and `"mlaplace"`, `"ilaplace"`) is now the Laplace
+  approximation NONMEM uses for `METHOD=COND LAPLACE INTERACTION` (Wang 2007,
+  J Pharmacokinet Pharmacodyn 34:575, Eq. 15): the inner Hessian and the
+  objective's log-determinant use the exact second derivative of the
+  conditional -2 log-likelihood in the ETAs.  Previously a Gaussian endpoint
+  used the Gauss-Newton FOCEi curvature, so the objective was identical to
+  `est = "focei"`.  Each Gaussian endpoint is now evaluated through its
+  log-density, as `+ dnorm()` in the model does, which needs only first-order
+  sensitivities and so works on every model (`linCmt()`, `lag()`, M2/M3/M4
+  censoring, ...).  The analytic `fast` outer gradient does not apply, so the
+  outer gradient is a finite difference.  All Gaussian `laplace` objectives
+  and estimates change; the previous results stay available as
+  `est = "focei"`.  `est = "flaplace"` computes the same objective from the
+  analytic conditional Hessian (#1301).  With M2/M3/M4 censoring the
+  reported objective of the two routes still differs by a constant
+  `2 * ncens * log(2 * pi)` (the estimates agree); NONMEM's lies midway.
+
 - `sigdig` now sets the ODE tolerances to `rtol = 10^(-2*sigdig)` and
   `atol = rtol/100` (floored at `rtol = 1e-12`) instead of
   `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`.  At the default
