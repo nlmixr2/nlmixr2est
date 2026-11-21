@@ -85,21 +85,25 @@ nmTest({
     expect_gt(.fit$env$nTrustInner[["tight"]], 0L)
     .eta <- as.matrix(.fit$eta[, -1, drop = FALSE])
     set.seed(42)
-    .objf <- vapply(1:4, function(i) {
-      .em <- .eta + matrix(rnorm(length(.eta), 0, 0.3), nrow(.eta))
-      suppressMessages(suppressWarnings(nlmixr2(
-        .fit,
-        est = "focei",
-        control = foceiControl(
-          print = 0,
-          calcTables = FALSE,
-          covMethod = "",
-          maxOuterIterations = 0L,
-          etaMat = .em,
-          trustPolish = TRUE
-        )
-      )))$objf
-    }, numeric(1))
+    .objf <- vapply(
+      1:4,
+      function(i) {
+        .em <- .eta + matrix(rnorm(length(.eta), 0, 0.3), nrow(.eta))
+        suppressMessages(suppressWarnings(nlmixr2(
+          .fit,
+          est = "focei",
+          control = foceiControl(
+            print = 0,
+            calcTables = FALSE,
+            covMethod = "",
+            maxOuterIterations = 0L,
+            etaMat = .em,
+            trustPolish = TRUE
+          )
+        )))$objf
+      },
+      numeric(1)
+    )
     # 0.0054 without the polish
     expect_lt(diff(range(.objf)), 5e-4)
   })
