@@ -51,6 +51,7 @@ vaeControl(
   useColor = NULL,
   printNcol = NULL,
   covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""),
+  covNewtonWarn = 1,
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
@@ -541,6 +542,11 @@ run through the FOCEi covariance step with the interaction of
 starting from the encoder's.  The same choices as
 \code{\link{foceiControl}()}: \code{"analytic"} (default), \code{"r,s"},
 \code{"r"}, \code{"s"}, or \code{""} to skip.}
+
+\item{covNewtonWarn}{Warn (in `$runInfo`) when the Newton decrement of the
+FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+this value: the standard errors then belong to no optimum.  The value is
+kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.}
 
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}
