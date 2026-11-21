@@ -311,6 +311,7 @@ nlmixr2.rxUi <- function(
     return(.uif)
   }
   .env <- new.env(parent = emptyenv())
+  .env$.nlmixr2Dots <- list(...)
   .env$ui <- .uif
   .missingData <- FALSE
   if (is.null(data)) {
@@ -444,6 +445,7 @@ nlmixr2.nlmixr2FitCore <- function(
     est <- object$est
   }
   .env <- new.env(parent = emptyenv())
+  .env$.nlmixr2Dots <- list(...)
   .env$control <- control
   if (!is.null(est)) {
     .env$missingEst <- FALSE

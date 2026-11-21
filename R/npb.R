@@ -153,6 +153,7 @@ nmObjGetFoceiControl.npb <- function(x, ...) {
 nlmixr2Est.npb <- function(env, ...) {
   .npEstCore(env, "npb", ...)
 }
+attr(nlmixr2Est.npb, "nlmixr2LikPenalty") <- "subject"
 attr(nlmixr2Est.npb, "covPresent") <- TRUE
 attr(nlmixr2Est.npb, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.npb, "iov") <- TRUE
@@ -163,6 +164,7 @@ attr(nlmixr2Est.npb, "mu") <- .npMuAttr
 nlmixr2Est.mnpb <- function(env, ...) {
   .npEstCore(env, "mnpb", muModel = "lin", ...)
 }
+attr(nlmixr2Est.mnpb, "nlmixr2LikPenalty") <- "subject"
 attr(nlmixr2Est.mnpb, "covPresent") <- TRUE
 attr(nlmixr2Est.mnpb, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.mnpb, "iov") <- TRUE
@@ -173,6 +175,7 @@ attr(nlmixr2Est.mnpb, "mu") <- function(control) TRUE
 nlmixr2Est.inpb <- function(env, ...) {
   .npEstCore(env, "inpb", muModel = "irls", ...)
 }
+attr(nlmixr2Est.inpb, "nlmixr2LikPenalty") <- "subject"
 attr(nlmixr2Est.inpb, "covPresent") <- TRUE
 attr(nlmixr2Est.inpb, "unbounded") <- .foUnbounded
 attr(nlmixr2Est.inpb, "iov") <- TRUE

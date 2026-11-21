@@ -129,3 +129,52 @@ BEGIN_RCPP
  return wrap(etaLst);
 END_RCPP
 }
+
+// Pooled within-subject lag-1 correlation and Durbin-Watson statistic of IWRES.
+// Inputs are the valid residuals sorted by id, group, then time; pairs never span
+// a change of id or group, and a run with fewer than 2 residuals is skipped.
+//[[Rcpp::export]]
+List iwresAutocor_(NumericVector iwres, IntegerVector id, IntegerVector grp) {
+  R_xlen_t n = iwres.size();
+  double mx = 0.0, my = 0.0, cxy = 0.0, cxx = 0.0, cyy = 0.0;
+  double dwNum = 0.0, dwDen = 0.0;
+  int nPairs = 0, nSubjects = 0;
+  bool haveLastId = false;
+  int lastId = 0;
+  R_xlen_t start = 0;
+  while (start < n) {
+    R_xlen_t end = start + 1;
+    while (end < n && id[end] == id[start] && grp[end] == grp[start]) end++;
+    if (end - start >= 2) {
+      if (!haveLastId || lastId != id[start]) {
+        nSubjects++;
+        lastId = id[start];
+        haveLastId = true;
+      }
+      for (R_xlen_t i = start; i < end; ++i) {
+        dwDen += iwres[i] * iwres[i];
+        if (i == start) continue;
+        double x = iwres[i - 1], y = iwres[i];
+        double d = y - x;
+        dwNum += d * d;
+        // Welford co-moment update
+        nPairs++;
+        double dx = x - mx;
+        mx += dx / nPairs;
+        double dy = y - my;
+        my += dy / nPairs;
+        cxx += dx * (x - mx);
+        cyy += dy * (y - my);
+        cxy += dx * (y - my);
+      }
+    }
+    start = end;
+  }
+  double r = NA_REAL, dw = NA_REAL;
+  if (nPairs > 0) {
+    if (cxx > 0.0 && cyy > 0.0) r = cxy / sqrt(cxx * cyy);
+    if (dwDen > 0.0) dw = dwNum / dwDen;
+  }
+  return List::create(_["lag1R"] = r, _["durbinWatson"] = dw,
+                      _["nSubjects"] = nSubjects, _["nPairs"] = nPairs);
+}

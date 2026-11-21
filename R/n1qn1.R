@@ -308,5 +308,6 @@ nlmixr2Est.n1qn1 <- function(env, ...) {
   )
   .n1qn1FamilyFit(env, ...)
 }
+attr(nlmixr2Est.n1qn1, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.n1qn1, "covPresent") <- TRUE
 attr(nlmixr2Est.n1qn1, "unbounded") <- TRUE
