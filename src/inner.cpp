@@ -1127,6 +1127,8 @@ struct focei_options {
   int nFinalEtaMoved = 0;
   int finalBestX = 0; // the final estimates were replaced by the best evaluation's
   double finalBestGap = NA_REAL; // final minus best evaluated objective (natural scale)
+  // foceiControl(aboveStartTol=): see foceiFinalOfvWorse()
+  double aboveStartTol = 0.01;
 
   // Almquist Eq-48 warm-start extrapolation (fast=TRUE): per-subject d eta*/d(theta)
   // in the SCALED optimizer parameterization (etaP columns pre-multiplied by
@@ -7226,25 +7228,20 @@ static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma:
   Hp = 0.5 * (Hp + Hp.t());
 }
 
-// Is the final (re-evaluated) objective `finalOfv` worse than the starting
-// objective `initOfv`?  True when the final value is not finite, or exceeds the
-// initial one by more than 1% of its magnitude (with an absolute floor of 0.1
-// objective units so an initial objective near 0 still has a band).  The band
-// absorbs the small drift a final re-evaluation carries (its inner solve runs at
-// the covariance-step tolerances), while any real optimizer or inner-problem
-// failure is orders of magnitude outside it.  A non-finite initOfv cannot happen
-// after foceiOfv0()'s initial-evaluation stop()s, so it is treated as "not worse"
-// rather than raising a second, less specific condition.
-static inline bool foceiFinalOfvWorse(double initOfv, double finalOfv) {
-  if (!R_FINITE(initOfv)) return false;
+// Is the final (re-evaluated) objective `finalOfv` above the starting objective
+// `initOfv` by more than `tol` of its magnitude (with a 0.1 absolute floor so a
+// start near 0 still has a band)?  A non-finite final value is always above;
+// a non-finite `tol` (NA/Inf) disables the check.
+static inline bool foceiFinalOfvWorse(double initOfv, double finalOfv, double tol) {
+  if (!R_FINITE(tol) || !R_FINITE(initOfv)) return false;
   if (!R_FINITE(finalOfv)) return true;
-  double band = max2(0.01 * std::fabs(initOfv), 0.1);
+  double band = max2(tol * std::fabs(initOfv), 0.1);
   return finalOfv > initOfv + band;
 }
 
 //[[Rcpp::export(".foceiFinalOfvWorse")]]
-bool foceiFinalOfvWorseR(double initOfv, double finalOfv) {
-  return foceiFinalOfvWorse(initOfv, finalOfv);
+bool foceiFinalOfvWorseR(double initOfv, double finalOfv, double tol = 0.01) {
+  return foceiFinalOfvWorse(initOfv, finalOfv, tol);
 }
 
 // The "this evaluation is a gradient leg" flag, for tests: it must be 0 whenever no
@@ -10517,6 +10514,8 @@ NumericVector foceiSetup_(const RObject &obj,
     as<int>(foceiO["etaRestart"]) : 0;
   op_focei.finalEtaTol = foceiO.containsElementNamed("finalEtaTol") ?
     as<double>(foceiO["finalEtaTol"]) : R_PosInf;
+  op_focei.aboveStartTol = foceiO.containsElementNamed("aboveStartTol") ?
+    as<double>(foceiO["aboveStartTol"]) : 0.01;
   // The base of the restart draws' threefry stream.  Taken from
   // foceiControl(seed=) rather than rxode2's getRxSeed1(): that is NOT a
   // getter -- it advances rxode2's global rxSeed by its argument on every
@@ -16185,14 +16184,10 @@ Environment foceiFitCpp_(Environment e){
     } else {
       foceiOuter(e);
       if (op_focei.maxOuterIterations > 0 && op_focei.initObj &&
-          foceiFinalOfvWorse(op_focei.initOfv, op_focei.finalOfv)) {
-        // The outer optimizer can only return a point it evaluated, and every
-        // optimizer here keeps its best, so the reported objective should never be
-        // worse than the starting one.  When it is, the fit is not trustworthy:
-        // either the optimizer failed outright or the inner (eta) problem did not
-        // converge when the final estimates were re-evaluated.  Issue 1114 returned
-        // ~2e244 against a starting 824 with every theta untouched and no message.
-        warning(_("the final objective function (%g) is worse than the initial objective function (%g); the estimates are not reliable.\nThe outer optimizer did not improve on the initial estimates or the inner (eta) optimization did not converge at the final estimates; check the initial estimates and the scaling (foceiControl(scaleType=, normType=))"),
+          foceiFinalOfvWorse(op_focei.initOfv, op_focei.finalOfv, op_focei.aboveStartTol)) {
+        // Every optimizer here keeps its best, so this means the optimizer failed or
+        // the inner problem did not converge at the final estimates (#1114, #1399).
+        warning(_("final objective (%g) is above the initial estimates' (%g)"),
                 op_focei.finalOfv, op_focei.initOfv);
       }
     }

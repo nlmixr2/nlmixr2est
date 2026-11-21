@@ -131,7 +131,7 @@
   list(fit = .fit, w = c(as.character(unlist(.runInfo)), .acc$w))
 }
 
-.worseRegex <- "final objective function .* is worse than the initial objective function"
+.worseRegex <- "final objective .* is above the initial estimates"
 
 nmTest({
   test_that("issue 1114: scaleType='norm' with a 2.5e-6 starting omega fits", {
@@ -245,6 +245,25 @@ nmTest({
     # The warning carries both objective values
     .w <- .r$w[grepl(.worseRegex, .r$w)]
     expect_match(.w, "\\(824\\.", fixed = FALSE)
+    # one $runInfo line
+    expect_lt(max(nchar(.w)), 75L)
+
+    # aboveStartTol = Inf turns the check off
+    .rInf <- .fitCollectWarnings(
+      .m1114,
+      .d1114,
+      est = "focei",
+      control = foceiControl(
+        print = 0,
+        outerOpt = .badOuter,
+        covMethod = "",
+        calcTables = FALSE,
+        finalEtaTol = Inf,
+        aboveStartTol = Inf
+      )
+    )
+    expect_gt(.rInf$fit$objf, 824.37)
+    expect_false(any(grepl(.worseRegex, .rInf$w)))
 
     # Negative control: the same custom optimizer returning its starting point
     # is a legitimate (if useless) run and must not warn.
@@ -303,5 +322,10 @@ nmTest({
     # and is not reported as worse
     expect_false(.foceiFinalOfvWorse(NA_real_, 824))
     expect_false(.foceiFinalOfvWorse(Inf, 824))
+    # aboveStartTol: a custom relative band; NA/Inf disable the check
+    expect_false(.foceiFinalOfvWorse(824, 824 + 40, 0.05))
+    expect_true(.foceiFinalOfvWorse(824, 824 + 42, 0.05))
+    expect_false(.foceiFinalOfvWorse(824, Inf, Inf))
+    expect_false(.foceiFinalOfvWorse(824, 2.1e244, NA_real_))
   })
 })
