@@ -2,16 +2,19 @@
 # estimates so builds can be checked for bit-identical results (developer
 # script; not run on CI/CRAN).  See README.md in this folder.
 #
-# Usage: Rscript design/saem-readback/bench.R <label> <cores> [nrep] [nsub] [nBurn] [nEm]
+# Usage: Rscript design/saem-readback/bench.R \
+#   <label> <cores> [nrep] [nsub] [nburn] [nem]
 suppressMessages(library(nlmixr2est))
 args <- commandArgs(TRUE)
 label <- args[1]
 cores <- as.integer(args[2])
 nrep <- if (length(args) > 2) as.integer(args[3]) else 3L
 nsub <- if (length(args) > 3) as.integer(args[4]) else 200L
-nBurn <- if (length(args) > 4) as.integer(args[5]) else 60L
-nEm <- if (length(args) > 5) as.integer(args[6]) else 60L
+nburn <- if (length(args) > 4) as.integer(args[5]) else 60L
+nem <- if (length(args) > 5) as.integer(args[6]) else 60L
 
+# rxode2 model syntax (dotted names, NSE) is not lintr-clean.
+# nolint start
 mod <- function() {
   ini({
     tka <- log(1.1)
@@ -37,6 +40,7 @@ mod <- function() {
     cp ~ prop(prop.sd)
   })
 }
+# nolint end
 
 ev <- rxode2::et(amt = 100, ii = 24, addl = 2)
 ev <- rxode2::et(ev, c(0.25, 0.5, 1, 2, 4, 8, 12, 24, 48, 49, 52, 72))
@@ -51,9 +55,9 @@ sim <- rxode2::rxWithSeed(
     cores = 1L
   )
 )
-idCol <- if ("sim.id" %in% names(sim)) "sim.id" else "id"
+idcol <- if ("sim.id" %in% names(sim)) "sim.id" else "id"
 dat <- data.frame(
-  ID = sim[[idCol]],
+  ID = sim[[idcol]],
   TIME = sim$time,
   EVID = ifelse(is.na(sim$evid), 0, sim$evid),
   AMT = ifelse(is.na(sim$amt), 0, sim$amt),
@@ -79,8 +83,8 @@ for (r in seq_len(nrep)) {
       est = "saem",
       control = saemControl(
         print = 0,
-        nBurn = nBurn,
-        nEm = nEm,
+        nBurn = nburn,
+        nEm = nem,
         calcTables = FALSE,
         covMethod = "",
         logLik = FALSE,
@@ -90,7 +94,8 @@ for (r in seq_len(nrep)) {
     )
   ))
   times[r] <- proc.time()[["elapsed"]] - t0
-  prints[r] <- fingerprint(c(fit$theta, as.vector(fit$omega), unlist(fit$eta[, -1])))
+  est <- c(fit$theta, as.vector(fit$omega), unlist(fit$eta[, -1]))
+  prints[r] <- fingerprint(est)
 }
 cat(sprintf(
   "%s cores=%d: median %.3f s (min %.3f max %.3f) fp %s\n",
