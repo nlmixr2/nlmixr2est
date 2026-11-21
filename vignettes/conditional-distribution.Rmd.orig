@@ -38,9 +38,10 @@ estimation method.
 
 The conditional distribution has three common point summaries:
 
-- the **mode**, the most likely `eta_i`.  It is what FOCEi and its relatives
-  (`"foce"`, `"laplace"`, `"agq"`, the `nlm` family, ...) report as `fit$eta`,
-  because their inner problem maximizes the conditional density.  SAEM
+- the **mode**, the most likely `eta_i`.  It is what FOCEi, `"laplace"` and
+  `"agq"` report as `fit$eta`, because their inner problem maximizes the
+  conditional density.  `"foce"` reports an approximate mode: its inner
+  problem holds the residual variance at its `eta = 0` value.  SAEM
   reports it as `fit$eta` too (`saemControl(ebe = "mode")`, the default),
   searching for it after the last iteration;
 - the **mean**, the average `eta_i`.  SAEM approximates it while it
