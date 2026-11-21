@@ -217,6 +217,9 @@ summary(cdI$SD / cdS$SD)
 - An eta SAEM does not sample for a subject (an uninformative eta) has
   `SD` `NA` and `MEAN` 0, its prior; the shrinkage counts it as fully
   shrunk.  Both are exact when that eta is uncorrelated with the others.
+- A model SAEM fits with temporary etas (a likelihood parameter with no
+  eta) is sampled with `"imp"`: those chains also sampled parameters the
+  reported model holds fixed.
 - Mixture, inter-occasion variability and non-parametric (`"npag"`,
   `"npb"`, ...) fits are not supported yet.  A non-parametric fit's random
   effects follow its discrete support, not `Omega`.
