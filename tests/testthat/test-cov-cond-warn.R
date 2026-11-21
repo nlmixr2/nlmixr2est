@@ -79,6 +79,38 @@ nmTest({
     expect_error(foceiControl(condWarn = "a"))
   })
 
+  test_that("every method's control carries a validated condWarn", {
+    .ctls <- list(
+      bobyqaControl,
+      emviControl,
+      lbfgsb3cControl,
+      n1qn1Control,
+      newuoaControl,
+      nlmControl,
+      nlmixr2NlmeControl,
+      nlminbControl,
+      nlsControl,
+      optimControl,
+      saemControl,
+      trustControl,
+      uobyqaControl,
+      vaeControl
+    )
+    for (.f in .ctls) {
+      expect_equal(.f()$condWarn, 1000)
+      expect_equal(.f(condWarn = NA)$condWarn, NA)
+      expect_error(.f(condWarn = 0.5))
+    }
+  })
+
+  test_that("a method's own condWarn is what the fit is checked against", {
+    .env <- new.env(parent = emptyenv())
+    .env$cov <- .condCov(0.999)
+    .env$foceiControl <- foceiControl(condWarn = 10)
+    expect_equal(.covCondWarnOf(list(control = saemControl(condWarn = NA)), .env), NA)
+    expect_equal(.covCondWarnOf(list(control = NULL), .env), 10)
+  })
+
   test_that("the warning reaches $runInfo and condWarn = NA suppresses it", {
     skip_on_cran()
     one.compartment <- function() {
@@ -105,6 +137,35 @@ nmTest({
     expect_length(.ri, 1L)
     expect_lt(nchar(.ri), 75L)
     fit2 <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "focei", foceiControl(print = 0, condWarn = NA))
+    expect_false(any(grepl("^covariance condition number", fit2$runInfo)))
+  })
+
+  test_that("the method's own control turns the warning on and off", {
+    skip_on_cran()
+    one.compartment <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ctl <- function(condWarn) {
+      saemControl(print = 0, nBurn = 10, nEm = 20, condWarn = condWarn)
+    }
+    fit <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "saem", .ctl(1))
+    expect_true(is.matrix(fit$cov))
+    expect_true(any(grepl("^covariance condition number is large", fit$runInfo)))
+    fit2 <- .nlmixr(one.compartment, nlmixr2data::theo_sd, "saem", .ctl(NA))
     expect_false(any(grepl("^covariance condition number", fit2$runInfo)))
   })
 })
