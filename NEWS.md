@@ -24,6 +24,18 @@
   before `plateauMinFrac` of `nEm` has run.  The stopped fit is the fit a
   smaller `nEm` would give, and `$runInfo` notes the stop iteration.  Off by
   default (#1395).
+- A C interface for likelihood penalties (`inst/include/nlmixr2estLikPenalty.h`)
+  lets compiled code, such as an `rxode2` model extension, add per-subject and
+  population terms to the objective of every estimation method (FOCEi family,
+  imp, saem, vae, the nlm family and its external drivers; npag/npb take the
+  subject term).  `nlmixr2LikPenaltySpec()`/`nlmixr2LikPenaltyAdd()` attach a
+  penalty to a model or pass it to `nlmixr2(..., likPenalty =)`; `inObjf=` sets
+  whether it is counted in the reported objective, and `fit$likPenalty` reports
+  its value.  See `vignette("likelihood-penalties")`.
+
+- `nlmixr2LikPenaltyUdf()` lets an rxode2 model function (an `rxUdfUi`
+  method) register a likelihood penalty while it expands against the data,
+  so a model term like `nlmixr2spline::spline()` brings its own penalty.
 
 - Time-to-event endpoints written with rxode2's `ev ~ tte(hazard)` can be
   estimated by the likelihood methods (`focei`, `laplace`, `agq`, `saem`,
@@ -31,6 +43,7 @@
   0 or 1, and an event on a subject's first record is warned about since it
   is the start of observation).  This needs an rxode2 with `tte()` support and
   is inactive otherwise.
+
 - `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
   objective at the final estimates with every ODE tolerance 10x tighter and
   notes in `$runInfo` an objective that moves by more than `odeSettleTol`
@@ -49,8 +62,9 @@
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
-  diagnostics are unreliable.  `foceiControl(shrinkEtaWarn=)` sets the
-  threshold; `NA` or `Inf` turns the note off (#1379).
+  diagnostics are unreliable.  `shrinkEtaWarn=` in `foceiControl()`,
+  `saemControl()`, `nlmeControl()`, `vaeControl()` and `emviControl()` sets
+  the threshold; `NA` or `Inf` turns the note off (#1379).
 
 - After the covariance step, a fit warns (in `$runInfo`) about pairs of
   estimates correlated at `|r| >= 0.95`, e.g. `highly correlated estimates:
@@ -61,6 +75,11 @@
 - `foceiControl(scaleLinear = "abs")` scales every linear theta by its
   `|init|`, as NONMEM does, instead of the default `1/|init|` inside
   `scaleCband`.  The default `"inverse"` is unchanged (#1320).
+
+- `fit$iwresAutocor` reports the pooled within-subject lag-1 correlation
+  and Durbin-Watson statistic of IWRES, a check for structural
+  misspecification (successive residuals of a subject that move together)
+  (#1373).
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
@@ -106,6 +125,11 @@
   occasion parameter, tying the per-occasion copies through their information
   (`J' I J`); under the default `sa`/analytic covariance it used to carry one
   untied `om.rx.<iov>.<k>` row per occasion (#1317).
+
+- SAEM's `iovMethod = "twoLevel"` `$parFixedDf` now has an `iov.<x>` row per
+  occasion parameter, with the SE of the occasion SD and its CV (an SD when
+  the parameter is not `exp()`-transformed), the way
+  `iovMethod = "theta"` reports it; it used to have no IOV rows (#1317).
 
 - A FOCEi covariance that a vae or vi fit could not compute or install is now
   recorded in `fit$env$covTried`, under the method tried and with the condition
@@ -165,6 +189,19 @@
 
 ### Estimation
 
+- The mu-referenced theta M-step of `mfocei`/`ifocei` (`muModel = "lin"`) and
+  imp/impmap/qrpem now weights the data by the eta's precision when an
+  `ini()` prior or a population likelihood penalty is folded in, so the prior
+  no longer gets omega times its proper weight.
+
+- `nlmixr2()` on an rxode2 ui or a fit now passes its extra arguments on to
+  estimation interceptors in `env$.nlmixr2Dots`; only a model function did
+  before.
+
+- Model functions that need the data (`uiUseData = TRUE`, e.g. rxode2's
+  `linMod(..., data = TRUE)`) are expanded against the estimation data again;
+  `nlmixr2()` handed the unexpanded model to the estimator.
+
 - A `fast = TRUE` control converted to another FOCEi-family method (for
   example a `foceControl()` given to `est = "mfoce"`) no longer fails with
   "Expecting a single value"; its `outerOpt` was left unresolved.
@@ -190,6 +227,7 @@
   inside; `$optReturn$activeBounds` lists the held parameters.  Fits with an
   active bound previously stopped well above the optimum while reporting
   convergence.
+
 - The `linCmt()` FOCEi sensitivity carry matches finite differences again for
   an `alag()` dose with a time-varying covariate.  rxode2 now adds a hidden
   record (`EVID` 8) at a lagged dose's data time, so the carry reads that
@@ -249,6 +287,12 @@
   re-solved before its MCMC step, so the population reset of fixed-effect-only
   thetas between iterations no longer leaves a stale likelihood that froze the
   chain at a state that no longer fit (#1298).
+- A `saem` fit whose estimates diverge (a non-finite value, a theta or omega
+  variance above 1e10 in magnitude, or one inside `exp()` large enough that
+  its back-transform or CV% overflows) now says so in `$runInfo`
+  ("estimates diverged: ...") instead of returning as an ordinary fit with
+  only a covariance failure noted (#1298).
+
 - A covariate compared to string literals (`b2 * (tnom == "2")`) no longer
   gets permuted estimates or `PRED`.  Each generated model (inner, pred,
   outer, saem, nlm, nlme, ...) numbered the literals in its own order while
@@ -264,6 +308,11 @@
   search parameters, so the components drifted apart while the shared eta's
   variance absorbed the split; they also get an SA covariance SE now (#1296).
 
+- `saem`'s soft-EM mixture methods (`mixProbMethod = "regularized"` and
+  `"annealed"`) now weigh each component by the likelihood of the state its
+  chain kept.  They used the last rejected proposal's, so the
+  responsibilities were noise and the components merged into one (#1296).
+
 - A parameter in a `delay()` duration (for example `delay(central, TR)` with
   `TR <- exp(lTR + eta.TR)`) is now finite-differenced in FOCEi, its family
   and the nlm family.  Its symbolic sensitivity was zero (the lag's own term
@@ -271,6 +320,12 @@
   delay at its initial estimate.  The analytic covariance, the analytic outer
   gradient and the theta-sensitivity models fall back for such a model
   (#1300).
+
+- A FOCEi fit whose `delay()` duration is estimated now solves three orders
+  tighter than `sigdig` sets (`rtol = 1e-9` at `sigdig = 3`) unless the
+  tolerance was given.  Doses make the delayed state jump at `t + tau`, which
+  the solver steps over, so the objective was jagged in `tau` and the
+  optimizer stalled (#1300).
 
 - A FOCEi fit whose final objective is more than `foceiControl(finalEtaTol=)`
   (default 1) above the lowest objective its search evaluated now re-solves
@@ -692,6 +747,13 @@
 
 - saem refuses a `prior()` on an occasion variance again; the IOV rewrite
   dropped it before the prior check ran, so the fit ignored it (#1319).
+
+- A saem fit with pooled occasion variances (`iovMethod = "twoLevel"` or
+  `"theta"`) now reports each one once, as `om.iov.x` in `$cov` and
+  `V(iov.x)` in `$parHistData`, under every `covMethod` and with a single
+  occasion level.  Its standard error comes from the information restricted
+  to one shared variance, rather than the average of the per-occasion
+  covariances, which overstated it for unbalanced occasions (#1319).
 
 - A model whose occasion-level eta name starts with `eta.` (`eta.ka.occ ~ 0.1 | OCC`)
   now fits.  The SAEM temporary-eta cleanup took every `rx.eta.` name, including

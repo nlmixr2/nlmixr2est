@@ -710,6 +710,7 @@
   }
 
   nlmixr2global$postEstimationBoundedTransform <- TRUE
+  .likPenaltyThetaTrClear()
 
   .postEstimationBoundedTransformThetaDf(env, .transforms)
 

@@ -1174,6 +1174,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmPenaltySetup_
+RObject nlmPenaltySetup_(IntegerVector map, NumericVector theta);
+RcppExport SEXP _nlmixr2est_nlmPenaltySetup_(SEXP mapSEXP, SEXP thetaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector >::type map(mapSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmPenaltySetup_(map, theta));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmSolveR
 double nlmSolveR(arma::vec& theta);
 RcppExport SEXP _nlmixr2est_nlmSolveR(SEXP thetaSEXP) {
@@ -1663,6 +1675,19 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
     Rcpp::traits::input_parameter< DataFrame >::type eta(etaSEXP);
     rcpp_result_gen = Rcpp::wrap(nlmixr2Parameters(theta, eta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// iwresAutocor_
+List iwresAutocor_(NumericVector iwres, IntegerVector id, IntegerVector grp);
+RcppExport SEXP _nlmixr2est_iwresAutocor_(SEXP iwresSEXP, SEXP idSEXP, SEXP grpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type iwres(iwresSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type id(idSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type grp(grpSEXP);
+    rcpp_result_gen = Rcpp::wrap(iwresAutocor_(iwres, id, grp));
     return rcpp_result_gen;
 END_RCPP
 }

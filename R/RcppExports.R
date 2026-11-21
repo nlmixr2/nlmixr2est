@@ -429,6 +429,10 @@ nlmUnscalePar <- function(p) {
     .Call(`_nlmixr2est_nlmUnscalePar`, p)
 }
 
+nlmPenaltySetup_ <- function(map, theta) {
+    .Call(`_nlmixr2est_nlmPenaltySetup_`, map, theta)
+}
+
 nlmSolveR <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveR`, theta)
 }
@@ -733,6 +737,10 @@ shi21RatioTest <- function(all, type) {
 
 nlmixr2Parameters <- function(theta, eta) {
     .Call(`_nlmixr2est_nlmixr2Parameters`, theta, eta)
+}
+
+iwresAutocor_ <- function(iwres, id, grp) {
+    .Call(`_nlmixr2est_iwresAutocor_`, iwres, id, grp)
 }
 
 tablePoolFree_ <- function() {

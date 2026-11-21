@@ -192,6 +192,25 @@ test_that("saem's shared rewrite pools a model the two-level handling declines (
   )
 })
 
+test_that(".saemIovCollapseCov restricts the information to one pooled variance", {
+  .nm <- c("tka", "om.rx.iov.cl.1", "om.rx.iov.cl.2")
+  # unbalanced occasions: 100 observations' worth of information on one, 10 on
+  # the other.  Pooled, the information adds; averaging the inverse would not.
+  .cv <- diag(c(0.5, 8 / 100, 8 / 10))
+  dimnames(.cv) <- list(.nm, .nm)
+  .out <- .saemIovCollapseCov(.cv, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2")))
+  expect_equal(rownames(.out), c("tka", "om.iov.cl"))
+  expect_equal(.out["om.iov.cl", "om.iov.cl"], 1 / (100 / 8 + 10 / 8))
+  expect_equal(.out["tka", "tka"], 0.5)
+  # balanced, correlated with a theta: the general (B' C^-1 B)^-1
+  .cv <- matrix(c(2, 0.3, 0.3, 0.3, 1, 0.2, 0.3, 0.2, 1), 3, dimnames = list(.nm, .nm))
+  .b <- cbind(c(1, 0, 0), c(0, 1, 1))
+  .want <- solve(t(.b) %*% solve(.cv) %*% .b)
+  .out <- .saemIovCollapseCov(.cv, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2")))
+  expect_equal(unname(.out), unname(.want))
+  expect_equal(.out, t(.out))
+})
+
 test_that(".saemIovCollapseCov ties the pooled occasion columns", {
   # the K per-occasion columns estimate ONE variance, so the covariance matrix
   # carries one row for them: the inverse of the tied information J' I J
@@ -233,6 +252,78 @@ test_that(".saemIovCollapseCov ties the pooled occasion columns", {
   # a matrix with nothing to pool, and an empty group list, are both untouched
   expect_identical(.saemIovCollapseCov(.cv, list()), .cv)
   expect_identical(.saemIovCollapseCov(.cv, list(iov.v = "rx.iov.v.1")), .cv)
+
+  # a single observed level is still renamed off its internal name
+  .one <- .saemIovCollapseCov(.cv[1:3, 1:3], list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2")))
+  expect_equal(rownames(.one), c("tka", "om.eta.ka", "om.iov.cl"))
+  expect_equal(unname(.one), unname(.cv[1:3, 1:3]))
+})
+
+test_that(".saemIovCollapseParHist keeps one column per pooled variance", {
+  .ph <- data.frame(
+    iter = 1:2,
+    tka = c(1, 2),
+    `V(eta.ka)` = c(3, 4),
+    `V(rx.iov.cl.1)` = c(5, 6),
+    `V(rx.iov.cl.2)` = c(5, 6),
+    type = "Unscaled",
+    check.names = FALSE
+  )
+  .out <- .saemIovCollapseParHist(.ph, list(iov.cl = c("rx.iov.cl.1", "rx.iov.cl.2")))
+  expect_equal(names(.out), c("iter", "tka", "V(eta.ka)", "V(iov.cl)", "type"))
+  expect_equal(.out[["V(iov.cl)"]], c(5, 6))
+  # nothing pooled, nothing changed
+  expect_identical(.saemIovCollapseParHist(.ph, NULL), .ph)
+})
+
+test_that("two-level IOV parameter-table rows report a CV or an SD by transform", {
+  .ui <- rxode2::rxode2(function() {
+    ini({
+      tcl <- 1
+      tv <- 3
+      add.sd <- 0.7
+      iov.cl ~ 0.09 | occ
+      iov.v ~ 0.04 | occ
+    })
+    model({
+      cl <- exp(tcl + iov.cl)
+      v <- tv + iov.v
+      linCmt() ~ add(add.sd)
+    })
+  })
+  .env <- new.env(parent = emptyenv())
+  .env$ui <- .ui
+  .df <- data.frame(Estimate = 1, SE = 0.1, "Back-transformed" = 2.7, check.names = FALSE, row.names = "tcl")
+  .chr <- data.frame(
+    Est. = "1",
+    SE = "0.1",
+    "Back-transformed(95%CI)" = "2.7",
+    "BSV(CV% or SD)" = "",
+    check.names = FALSE,
+    row.names = "tcl"
+  )
+  .r <- .iovTwoLevelParFixed(.df, .chr, .env, c("iov.cl", "iov.v"), .ui)
+  expect_equal(rownames(.r$df), c("tcl", "iov.cl", "iov.v"))
+  expect_equal(.r$df["iov.cl", "Back-transformed"], nlmixr2iovSdCv(0.3))
+  expect_equal(.r$df["iov.v", "Back-transformed"], 0.2)
+  expect_true(all(is.na(.r$df[c("iov.cl", "iov.v"), "SE"])))
+
+  # the SE comes from the installed $cov; a non-positive variance gives none
+  .env$parFixedDf <- .r$df
+  .env$parFixed <- .r$chr
+  .env$cov <- diag(c(0.01, 0.0016, -1))
+  dimnames(.env$cov) <- rep(list(c("tcl", "om.iov.cl", "om.iov.v")), 2)
+  .iovTwoLevelSe(.env)
+  expect_equal(.env$parFixedDf["iov.cl", "SE"], 0.04 / (2 * 0.3))
+  expect_true(is.na(.env$parFixedDf["iov.v", "SE"]))
+  expect_equal(.env$parFixed["iov.v", "BSV(CV% or SD)"], "0.200")
+  expect_equal(.env$parFixed["iov.v", "SE"], "")
+
+  # a parameter missing from $cov (e.g. a fixed one) does not hide the others
+  .env$cov <- .env$cov[1:2, 1:2]
+  .iovTwoLevelSe(.env)
+  expect_equal(.env$parFixedDf["iov.cl", "SE"], 0.04 / (2 * 0.3))
+  expect_true(is.na(.env$parFixedDf["iov.v", "SE"]))
 })
 
 test_that(".saemGqNodes keeps the -2LL grid affordable", {

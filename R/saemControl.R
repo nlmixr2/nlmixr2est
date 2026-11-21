@@ -468,6 +468,7 @@ saemControl <- function(
   rxControl = NULL,
   sigdig = NULL,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   ci = 0.95,
   muRefCov = TRUE,
   muRefCovAlg = TRUE,
@@ -629,6 +630,7 @@ saemControl <- function(
     sigdigTable <- 3
   }
   checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
+  checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
   .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
@@ -711,6 +713,7 @@ saemControl <- function(
     corWarn = corWarn,
     genRxControl = .genRxControl,
     sigdigTable = sigdigTable,
+    shrinkEtaWarn = as.double(shrinkEtaWarn),
     ci = ci,
     covMethod = .covMethod,
     covMethodDeferred = covMethodDeferred,
