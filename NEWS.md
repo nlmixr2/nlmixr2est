@@ -18,6 +18,12 @@
 
 ## New features
 
+- `addCondDist(fit)` samples each subject's conditional distribution of the
+  etas at the final estimates of a fit from any estimation method and stores
+  its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
+  By default it importance-samples around each subject's mode with the
+  population parameters held (#1378).
+
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
