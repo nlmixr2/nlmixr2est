@@ -18,6 +18,10 @@
 
 ## New features
 
+- A combined (`add() + prop()` or `add() + pow()`) error model whose additive
+  SD starts below 1% of that endpoint's own median `|DV|` now warns before
+  estimation and suggests a start of about 10% of it; the initial estimate is
+  not changed (#1383).
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
