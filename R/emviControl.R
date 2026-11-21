@@ -523,6 +523,7 @@ getValidNlmixrCtl.emvi <- function(control) .viValidCtl(control, TRUE, "emvi")
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.emvi <- function(env, ...) .viEst(env, TRUE, "emvi")
+attr(nlmixr2Est.emvi, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.emvi, "covPresent") <- TRUE
 ## optimization runs in the unconstrained real coordinate space
 attr(nlmixr2Est.emvi, "unbounded") <- TRUE

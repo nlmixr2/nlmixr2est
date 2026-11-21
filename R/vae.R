@@ -817,6 +817,7 @@ nlmixr2Est.vae <- function(env, ...) {
     if (isTRUE(env$vaeControl$returnVae)) .fit else .vaeToFit(env, .fit)
   })
 }
+attr(nlmixr2Est.vae, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.vae, "covPresent") <- TRUE
 attr(nlmixr2Est.vae, "unbounded") <- FALSE
 ## enable the IOV preprocessing hook (.uiApplyIov): occasion-level random effects

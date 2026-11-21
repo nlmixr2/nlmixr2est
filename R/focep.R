@@ -69,6 +69,7 @@ nlmixr2Est.focep <- function(env, ...) {
   .ui <- env$ui
   .foceiFamilyReturn(env, .ui, ..., est = "focep")
 }
+attr(nlmixr2Est.focep, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.focep, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.focep, "iov") <- TRUE
 attr(nlmixr2Est.focep, "covPresent") <- TRUE

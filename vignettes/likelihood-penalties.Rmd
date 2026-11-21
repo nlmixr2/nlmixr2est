@@ -1,0 +1,404 @@
+---
+title: "Likelihood penalties in nlmixr2est and rxode2 extensions"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Likelihood penalties in nlmixr2est and rxode2 extensions}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+```{r setup}
+library(nlmixr2est)
+```
+
+A *likelihood penalty* is an extra term added to the objective function while a
+model is estimated.  Examples are a ridge (L2) penalty on network weights that an
+`rxode2` model extension adds to the model, a smoothness penalty, or a
+subject-level prior that the model block cannot express.
+
+`nlmixr2est` gives compiled code one C interface for these terms.  Every
+estimation method then honors it.  This vignette is for **package developers**
+who write such an extension.
+
+## Three kinds of terms
+
+| Term | Called | Scale | Typical use |
+|---|---|---|---|
+| per observation | once per observation, inside the subject loop | log-likelihood | read `d(LL)/d(f)`, add a per-observation term |
+| per subject | once per subject (and per ETA trial) | log-likelihood | eta priors, subject-level regularization |
+| population | once per objective evaluation | `-2LL` (objective) | ridge/lasso on thetas, network weight penalties |
+
+The per-observation hook is the older contribution registry
+(`inst/include/nlmixr2estLikContrib.h`).  It is described in
+`vignette("extending-nlmixr2est")`.  This vignette covers the per-subject and
+population terms in `inst/include/nlmixr2estLikPenalty.h`.
+
+The scales differ on purpose:
+
+* A subject term adds log-likelihood. A constant `c` on each of `N` subjects
+  therefore moves the objective by `-2 * N * c`.
+* A population term returns a penalty `P` on the objective scale, so it moves
+  the objective by `P`.
+
+## The C interface
+
+```c
+#include <nlmixr2estLikPenalty.h>
+
+typedef struct {
+  int nsel; const int *sel;       // thetas named in the spec (0-based)
+  int npar; const double *par;    // numeric settings from the spec
+  void *data;                     // opaque pointer from the spec / bundle
+} nlmixrPenCtx;
+
+typedef struct {
+  int id, neta, nobs, ntheta;
+  const double *eta, *theta;      // current etas; natural-scale thetas
+  double *llik;                   // += extra log-likelihood
+  double *dLL_deta;               // [neta] += d(LL)/d(eta), may be NULL
+} nlmixrPenSubj;
+
+typedef struct {
+  int ntheta, neta, nsub;
+  const double *theta, *omega;    // natural thetas; current omega (may be NULL)
+  double *dObj_dtheta;            // [ntheta] += gradient, NULL when not wanted
+} nlmixrPenPop;
+
+typedef struct {
+  int abi;                        // NLMIXR_PEN_ABI
+  int flags;                      // NLMIXR_PEN_IN_OBJF, NLMIXR_PEN_NO_GRAD
+  const char *name;
+  void   (*subject)(nlmixrPenSubj *s, const nlmixrPenCtx *ctx);     // optional
+  double (*population)(nlmixrPenPop *p, const nlmixrPenCtx *ctx);  // optional
+  void *data;
+} nlmixrLikPenalty;
+```
+
+Thetas are always the **natural-scale** model thetas in the order of the
+`ui$iniDf` theta numbers (`ntheta`), including fixed thetas.  The
+estimator-specific scaling and parameter maps are handled for you.
+
+### Rules for the callbacks
+
+* `subject` runs **inside the OpenMP subject loop**.  It must not call the R API
+  or allocate memory.  Any per-subject state must be keyed by `id`.  Allocate
+  buffers from R, on the main thread, before the fit.  `id` is the 0-based
+  subject index; mixture components of the nonparametric methods use ids beyond
+  the subject count.
+* `population` runs on the main thread, once per objective evaluation.
+* Fill `dLL_deta` whenever the subject term depends on the etas.  FOCEi-type inner
+  problems use it to find the conditional mode.
+* Fill `dObj_dtheta` when it is non-NULL, or set `NLMIXR_PEN_NO_GRAD`.  The
+  methods then fall back to finite differences.  Only the population gradient is
+  used analytically.  A subject term that writes a non-zero value switches the
+  FOCEi analytic outer gradient (`fast = TRUE`) to finite differences, because
+  it moves the conditional mode.
+
+## A worked extension
+
+The C side of a small package `myPen` defines an L1-like (smoothed) penalty on
+the selected thetas and a subject-level shrinkage on the etas:
+
+```c
+#include <R.h>
+#include <Rinternals.h>
+#include <math.h>
+#include <nlmixr2estLikContribPtr.h>   // also brings in nlmixr2estLikPenalty.h
+
+iniNlmixr2estLikContribGlobals
+
+// population: lambda * sum(sqrt(theta^2 + eps)), -2LL scale
+static double myPop(nlmixrPenPop *p, const nlmixrPenCtx *ctx) {
+  double lambda = ctx->npar > 0 ? ctx->par[0] : 0.0, eps = 1e-6, ret = 0.0;
+  for (int j = 0; j < ctx->nsel; ++j) {
+    int t = ctx->sel[j];
+    double a = sqrt(p->theta[t] * p->theta[t] + eps);
+    ret += lambda * a;
+    if (p->dObj_dtheta != NULL) p->dObj_dtheta[t] += lambda * p->theta[t] / a;
+  }
+  return ret;
+}
+
+// subject: LL -= 0.5 * kappa * sum(eta^2)
+static void mySubj(nlmixrPenSubj *s, const nlmixrPenCtx *ctx) {
+  double kappa = ctx->npar > 1 ? ctx->par[1] : 0.0;
+  for (int q = 0; q < s->neta; ++q) {
+    *s->llik -= 0.5 * kappa * s->eta[q] * s->eta[q];
+    if (s->dLL_deta != NULL) s->dLL_deta[q] -= kappa * s->eta[q];
+  }
+}
+
+static const nlmixrLikPenalty myPenalty = {
+  NLMIXR_PEN_ABI, 0, "myPen", mySubj, myPop, NULL};
+
+SEXP _myPen_iniPtrs(SEXP p) { return iniNlmixr2estLikContrib(p); }
+
+SEXP _myPen_ptr(void) {
+  return R_MakeExternalPtr((void *) &myPenalty, R_NilValue, R_NilValue);
+}
+```
+
+Add `LinkingTo: nlmixr2est` to the `DESCRIPTION`.
+
+The R side refreshes the pointer table on load.  It is only needed if the
+package also registers session-wide or per-observation bundles:
+
+```r
+.onLoad <- function(libname, pkgname) {
+  .Call(`_myPen_iniPtrs`, nlmixr2est::.nlmixr2estLikContribPtrs())
+}
+```
+
+### Attaching the penalty to a model
+
+A model extension owns the model, so it attaches the penalty to the model.  The
+penalty is then active only while that model is estimated:
+
+```r
+myPenSpec <- function(thetas, lambda = 1, kappa = 0) {
+  nlmixr2est::nlmixr2LikPenaltySpec(
+    ptr = function() .Call(`_myPen_ptr`),  # resolved when the fit starts
+    thetas = thetas, par = c(lambda, kappa), inObjf = FALSE
+  )
+}
+
+# for example from the extension's rxode2 UI handler
+ui <- nlmixr2est::nlmixr2LikPenaltyAdd(ui, myPenSpec(c("w1", "w2"), lambda = 0.1))
+```
+
+Pass `ptr` as a function rather than an external pointer.  Pointers do not
+survive `saveRDS()`, but the function is called again each time a fit starts.
+
+A user can supply the same specs for a single call instead:
+
+```r
+fit <- nlmixr2(model, data, "focei", likPenalty = list(myPenSpec("tka", 10)))
+```
+
+## A model term that brings its own penalty
+
+The most useful form of an extension is a function the user writes inside
+`model({})`.  The function creates its own parameters and registers its own
+penalty, so the user never sees either step.  The `nlmixr2spline` package is a
+complete, tested example of this: `spline(WT)` adds a penalized B-spline
+(P-spline) of a covariate.
+
+```r
+library(nlmixr2spline)
+one.cmt <- function() {
+  ini({
+    tka <- 0.45; tcl <- 1; tv <- 3.45
+    eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + spline(WT, k = 6, lambda = 10) + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+fit <- nlmixr2(one.cmt, nlmixr2data::theo_sd, "focei")
+fit$likPenalty   # the spline's roughness penalty at the estimates
+```
+
+Three pieces make this work.
+
+### 1. Expand the term in two stages
+
+rxode2 calls an `rxUdfUi` S3 method for every call it does not know.  The
+method returns the code that replaces the call (`replace`), extra lines
+(`before`/`after`) and an updated `iniDf` holding any new parameters.  A
+spline needs the data to place its knots, but a model is parsed before the
+data exist.  So the term expands in two stages:
+
+```r
+rxUdfUi.spline <- function(fun) {
+  # validate the arguments, then defer to a placeholder with fixed arity
+  list(replace = "rxSplineData(WT, 6, 10, 2, 3, 0, 0)", uiUseData = TRUE)
+}
+attr(rxUdfUi.spline, "nargs") <- NULL           # spline() takes named arguments
+
+rxUdfUi.rxSplineData <- function(fun) {
+  data <- rxode2::rxUdfUiData()
+  if (is.null(data)) return(list(replace = fun, uiUseData = TRUE))
+  # ... knots from the data, new thetas in iniDf, the penalty (below) ...
+  list(replace = "(spline.WT.1*(rxSplineB(WT, 54.6, 86.4, 6, 3, 2) - 0.175) + ...)",
+       iniDf = newIniDf)
+}
+attr(rxUdfUi.rxSplineData, "nargs") <- 7L      # the placeholder's arity
+```
+
+`uiUseData = TRUE` marks the model as needing its data.  `nlmixr2()` then
+re-parses the model with the estimation data available through
+`rxode2::rxUdfUiData()`, and `rxSolve()` does the same with its event table.
+The placeholder (`rxSplineData()`) keeps the user's settings in the model
+text, so the data-free model stays valid rxode2 code.
+
+### 2. Hide the algebra, not the parameters
+
+nlmixr2nn keeps its network opaque: the model text holds a single compiled
+call, `nn<K>(id, x)`.  Its weights are not nlmixr2 parameters at all.  They sit
+in hidden covariate slots, and nlmixr2nn trains them in its own loop.  That
+works for nlmixr2nn because nlmixr2est never estimates the weights.  It does
+not work for a term whose parameters nlmixr2est *should* estimate.
+rxode2 builds every sensitivity (the FOCEi inner problem, the analytic outer
+gradient, the nlm-family gradients) symbolically from the model text, so a
+parameter read behind its back has a derivative of zero.
+
+The spline therefore hides the *basis* and keeps the coefficients as
+ordinary thetas:
+
+* `rxSplineB(x, lo, hi, k, degree, j)` is a C function registered with rxode2
+  (`R_RegisterCCallable()` plus a row in `rxode2parseAssignTranslation()`).
+  Its x-derivative is registered with `rxode2::rxD()`, so rxode2 can
+  differentiate through it.
+* Each coefficient multiplies one basis call.  The term is linear in its
+  thetas, so every theta derivative is exact and needs nothing special.
+* All the knot information is in the call's arguments.  Nothing has to be
+  rebuilt after `saveRDS()`, and there are no parameter offsets that differ
+  between estimators.
+* rxode2 looks model functions up by name when it builds derivatives, so the
+  package also exports R versions of `rxSplineB()`/`rxSplineBd()`.  For that
+  reason the package must be attached (`library(nlmixr2spline)`).
+
+### 3. Register the penalty while expanding
+
+The expansion knows the new theta names and the penalty matrix, but an
+`rxUdfUi` method can only return code and an `iniDf`.  The method calls
+`nlmixr2LikPenaltyUdf()` instead:
+
+```r
+nlmixr2est::nlmixr2LikPenaltyUdf(nlmixr2est::nlmixr2LikPenaltySpec(
+  ptr = .splinePenaltyPtr,                 # function returning the C bundle
+  thetas = c("spline.WT.1", "spline.WT.2", "spline.WT.3", "spline.WT.4", "spline.WT.5"),
+  par = c(lambda, as.vector(S)),           # lambda, then the penalty matrix
+  inObjf = FALSE,
+  name = "spline(WT)"                      # unique per term; reused names replace
+))
+```
+
+`nlmixr2()` collects the specs registered during its data re-parse and
+attaches them to the expanded model with `nlmixr2LikPenaltyAdd()`.  They then
+behave exactly like any other per-model penalty: active only for this fit,
+saved with the fit's model, and reported in `fit$likPenalty`.  Outside of an
+`nlmixr2()` expansion (for example in `rxSolve()`) the call does nothing.
+
+The C side is a population penalty on the selected thetas, here
+`lambda * b' S b` with its gradient:
+
+```c
+static double splinePop(nlmixrPenPop *p, const nlmixrPenCtx *ctx) {
+  int n = ctx->nsel;
+  if (ctx->npar != 1 + n * n || p->theta == NULL) return 0.0;
+  double lambda = ctx->par[0], ret = 0.0;
+  const double *S = ctx->par + 1;
+  for (int i = 0; i < n; ++i) {
+    double si = 0.0;
+    for (int j = 0; j < n; ++j) si += S[i + j * n] * p->theta[ctx->sel[j]];
+    ret += p->theta[ctx->sel[i]] * si;
+    if (p->dObj_dtheta != NULL) p->dObj_dtheta[ctx->sel[i]] += 2.0 * lambda * si;
+  }
+  return lambda * ret;
+}
+```
+
+A spline's coefficients have no random effect, so each estimator treats them
+as plain population parameters.  The FOCEi family and the nlm family estimate
+them well.  `saem` also applies the penalty, but it estimates thetas without a
+random effect with a short derivative-free search inside a stochastic
+approximation, and that converges slowly for a many-coefficient spline.
+
+## Built-in penalties
+
+Two built-in penalties are useful for testing and teaching:
+
+* `"thetaL2"`: `par[1] * sum((theta - par[2])^2) + par[3]` on the selected thetas.
+* `"etaL2"`: `par[2] - par[1]/2 * sum(eta^2)` added to each subject's
+  log-likelihood.
+
+```{r}
+ridge <- nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = 10)
+ridge
+```
+
+```{r, eval = FALSE}
+one.cmt <- function() {
+  ini({
+    tka <- 0.45; tcl <- 1; tv <- 3.45
+    eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+fit <- nlmixr2(one.cmt, nlmixr2data::theo_sd, "focei",
+               likPenalty = list(ridge))
+fit$likPenalty    # value of each penalty at the estimates
+```
+
+## Is the penalty part of the objective?
+
+By default a penalty only shapes the estimation.  The reported `OBJF`, `AIC`,
+`BIC` and log-likelihood are those of the penalized estimates **without** the
+penalty, so a penalized model stays comparable with an unpenalized one.  Set
+`inObjf = TRUE`, or `NLMIXR_PEN_IN_OBJF` in the bundle's `flags`, to report the
+penalized objective instead.  Either way, `fit$likPenalty` lists each penalty's
+population value, summed subject log-likelihood and objective contribution.
+
+Objective types added after the fit, for example with `setOfv()`, are computed
+without the penalties.
+
+## Method coverage
+
+Every method is tagged with `attr(nlmixr2Est.<est>, "nlmixr2LikPenalty")`:
+
+| Methods | Subject term | Population term |
+|---|---|---|
+| focei, foce, fo, foi, focep, laplace, agq (with their `i`/`m`/`f` variants), posthoc | inner problem, conditional mode and objective | objective and (analytic) outer gradient |
+| imp, impmap, qrpem | E-step through the FOCEi inner likelihood | M-step of the mu-referenced thetas and objective |
+| saem | MCMC acceptance and the quadrature objective | M-step (penalized Newton refinement of the mu-referenced thetas), the direct optimization of thetas without a random effect, and objective |
+| vae, emvi, fbvi | ELBO data term | penalized M-step (vae intercepts, emvi thetas), prior on the population draw (fbvi), and objective |
+| nlm, nlminb, optim, bobyqa, newuoa, uobyqa, n1qn1, lbfgsb3c, trust | once per subject, no etas | objective and gradient |
+| npag, npb | conditional density of every support point | mu-referenced theta update; added to the reported objective after the fit (a warning says so) |
+| nlme, nls | not supported: the fit stops | |
+| simulation / prediction | ignored | |
+
+The nlm family includes external drivers.  `nlmObjectiveSetup()`, `nlmSolveR()`
+and the `nlmixr2NlmEval()` C API evaluate the same objective, so an external
+optimizer or sampler driving them sees the penalty too.
+
+A mu-referenced family (`mfocei` and the other `m*` methods) solves for its
+mu-referenced thetas in closed form.  A population penalty on such a theta
+therefore makes the outer gradient fall back to finite differences.  The
+penalty enters the objective, but the closed-form step itself does not see it.
+Covariate effects added by the `vae` covariate selection are not penalized.
+
+### Adding support to a new method
+
+A method written in another package opts in with
+
+```r
+attr(nlmixr2Est.myMethod, "nlmixr2LikPenalty") <- "full"   # or "subject"
+```
+
+Its objective must then include the active penalties.  A method built on the
+FOCEi inner problem (`likInner0`) or on the nlm objective gets both terms
+automatically.
+
+## Session-wide registration
+
+`nlmixrRegisterLikPenalty()` and `nlmixrRemoveLikPenalty()` (pointer table
+entries 6 and 7 of `.nlmixr2estLikContribPtrs()`) register a bundle for every
+fit in the session.  The bundle's `data` and `flags` are used as given.  Prefer
+per-model specs.  If you do register globally, unregister in `.onUnload()`:
+`nlmixr2est` keeps the raw function pointer and cannot tell that your DLL has
+gone away.

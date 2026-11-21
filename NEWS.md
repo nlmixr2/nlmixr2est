@@ -18,12 +18,26 @@
 
 ## New features
 
+- A C interface for likelihood penalties (`inst/include/nlmixr2estLikPenalty.h`)
+  lets compiled code, such as an `rxode2` model extension, add per-subject and
+  population terms to the objective of every estimation method (FOCEi family,
+  imp, saem, vae, the nlm family and its external drivers; npag/npb take the
+  subject term).  `nlmixr2LikPenaltySpec()`/`nlmixr2LikPenaltyAdd()` attach a
+  penalty to a model or pass it to `nlmixr2(..., likPenalty =)`; `inObjf=` sets
+  whether it is counted in the reported objective, and `fit$likPenalty` reports
+  its value.  See `vignette("likelihood-penalties")`.
+
+- `nlmixr2LikPenaltyUdf()` lets an rxode2 model function (an `rxUdfUi`
+  method) register a likelihood penalty while it expands against the data,
+  so a model term like `nlmixr2spline::spline()` brings its own penalty.
+
 - Time-to-event endpoints written with rxode2's `ev ~ tte(hazard)` can be
   estimated by the likelihood methods (`focei`, `laplace`, `agq`, `saem`,
   the `nlm` family, ...).  The endpoint data are checked first (`DV` must be
   0 or 1, and an event on a subject's first record is warned about since it
   is the start of observation).  This needs an rxode2 with `tte()` support and
   is inactive otherwise.
+
 - `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
   objective at the final estimates with every ODE tolerance 10x tighter and
   notes in `$runInfo` an objective that moves by more than `odeSettleTol`
@@ -163,6 +177,19 @@
 
 ### Estimation
 
+- The mu-referenced theta M-step of `mfocei`/`ifocei` (`muModel = "lin"`) and
+  imp/impmap/qrpem now weights the data by the eta's precision when an
+  `ini()` prior or a population likelihood penalty is folded in, so the prior
+  no longer gets omega times its proper weight.
+
+- `nlmixr2()` on an rxode2 ui or a fit now passes its extra arguments on to
+  estimation interceptors in `env$.nlmixr2Dots`; only a model function did
+  before.
+
+- Model functions that need the data (`uiUseData = TRUE`, e.g. rxode2's
+  `linMod(..., data = TRUE)`) are expanded against the estimation data again;
+  `nlmixr2()` handed the unexpanded model to the estimator.
+
 - A `fast = TRUE` control converted to another FOCEi-family method (for
   example a `foceControl()` given to `est = "mfoce"`) no longer fails with
   "Expecting a single value"; its `outerOpt` was left unresolved.
@@ -188,6 +215,7 @@
   inside; `$optReturn$activeBounds` lists the held parameters.  Fits with an
   active bound previously stopped well above the optimum while reporting
   convergence.
+
 - The `linCmt()` FOCEi sensitivity carry matches finite differences again for
   an `alag()` dose with a time-varying covariate.  rxode2 now adds a hidden
   record (`EVID` 8) at a lagged dose's data time, so the carry reads that
