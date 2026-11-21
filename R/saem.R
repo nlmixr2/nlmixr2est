@@ -907,6 +907,7 @@
     check.names = FALSE
   )
   names(.ph) <- c("iter", .allThetaNames, "type")
+  .ph <- .saemIovCollapseParHist(.ph, .uiIovEnv$iovTwoLevel)
   .cls <- class(.ph)
   attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
   class(.ph) <- .cls
