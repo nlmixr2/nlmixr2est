@@ -17,7 +17,8 @@
 #' where the parameters have nearly settled), so nothing is simulated;
 #' otherwise the kernels run with every population parameter held
 #' at the fit's estimates, continuing a SAEM fit's chains or, for any other
-#' fit, starting cold, and `burn` iterations are discarded.  An eta SAEM does
+#' fit, starting cold, and `burn` iterations are discarded; it needs a model
+#' SAEM can fit (every eta on a population parameter of its own).  An eta SAEM does
 #' not sample for a subject (uninformative) has `SD` `NA` and `MEAN` 0, its
 #' prior, as in `fit$eta`; that is exact when the eta is uncorrelated with the
 #' others.  A model SAEM fits with temporary etas (a likelihood parameter with
