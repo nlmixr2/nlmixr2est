@@ -9,7 +9,8 @@ nlmObjectiveSetup(
   data,
   control = NULL,
   gradient = FALSE,
-  scale = c("control", "natural")
+  scale = c("control", "natural"),
+  likPenalty = NULL
 )
 }
 \arguments{
@@ -19,6 +20,9 @@ nlmObjectiveSetup(
 
 \item{control}{optional nlm-family control; defaults to \code{nlmControl()}
 (or \code{ui$control} if that is an nlm-family control).}
+
+\item{likPenalty}{optional list of [nlmixr2LikPenaltySpec()] objects added
+to those attached to the model; active until \code{.nlmFreeEnv()}.}
 }
 \value{
 (invisibly) the scaled starting parameter vector to hand to

@@ -133,6 +133,7 @@
   .env$control <- .ctl
   .env$data <- nlmixr2global$nlmEnv$data
   .Call(`_nlmixr2est_nlmSetup`, .env)
+  .nlmLikPenaltySetup(ui, names(par))
   ## Activate event-jump sensitivity (if eventSens="jump") now, before the
   ## scaleC solve -- doing it after would mis-scale dosing params from a jump-less gradient.
   ## Deactivated in .nlmFreeEnv; no-op for "fd".
@@ -186,6 +187,10 @@
 #' @keywords internal
 .nlmFreeEnv <- function() {
   .Call(`_nlmixr2est_nlmFree`)
+  if (isTRUE(nlmixr2global$likPenaltyNlmSetup)) {
+    nlmixr2global$likPenaltyNlmSetup <- NULL
+    .likPenaltyDeactivate()
+  }
   rxode2::rxSolveFree()
   ## Deactivate any event-jump sensitivity injection from .nlmSetupEnv; no-op if never activated.
   tryCatch(rxode2::rxEventSensDeactivate(), error = function(e) NULL)
@@ -761,4 +766,23 @@
   .env <- .ret$env
   .env$method <- method
   .ret
+}
+
+#' Hand the nlm problem its likelihood-penalty theta map
+#'
+#' @param ui rxode2 ui
+#' @param parNames names of the nlm parameters
+#' @return nothing, called for side effects
+#' @noRd
+.nlmLikPenaltySetup <- function(ui, parNames) {
+  if (.likPenaltyInfo()[["n"]] == 0L) {
+    return(invisible())
+  }
+  .iniDf <- ui$iniDf
+  .th <- .iniDf[!is.na(.iniDf$ntheta), ]
+  .th <- .th[order(.th$ntheta), ]
+  .map <- match(.th$name, parNames) - 1L
+  .map[is.na(.map)] <- -1L
+  .Call(`_nlmixr2est_nlmPenaltySetup_`, as.integer(.map), as.double(.th$est))
+  invisible()
 }
