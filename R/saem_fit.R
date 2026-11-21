@@ -692,10 +692,22 @@
 
   niter <- sum(mcmc$niter)
   niter_phi0 <- round(niter * .5)
-  nb_sa <- round(mcmc$niter[1] * perSa)
-  nb_correl <- round(mcmc$niter[1] * perNoCor)
-  nb_fixOmega <- round(mcmc$niter[1] * perFixOmega)
-  nb_fixResid <- round(mcmc$niter[1] * perFixResid)
+  # nBurn="auto": the schedule runs nBurnMax burn-in iterations but may skip to
+  # the EM phase from nBurnMin on, so burn-in fractions are of nBurnMin and an
+  # EM-phase niter_phi0 keeps its offset into the EM phase
+  .nBurnAuto <- isTRUE(mcmc$nBurnAuto)
+  .nBurn <- mcmc$niter[1]
+  if (.nBurnAuto) {
+    .nBurn <- min(mcmc$nBurnMin, mcmc$niter[1])
+    niter_phi0 <- round((.nBurn + mcmc$niter[2]) * .5)
+    if (niter_phi0 >= .nBurn) {
+      niter_phi0 <- niter_phi0 + mcmc$niter[1] - .nBurn
+    }
+  }
+  nb_sa <- round(.nBurn * perSa)
+  nb_correl <- round(.nBurn * perNoCor)
+  nb_fixOmega <- round(.nBurn * perFixOmega)
+  nb_fixResid <- round(.nBurn * perFixResid)
   va <- mcmc$stepsize
   vna <- mcmc$niter
   pas <- .saemPas(vna, va)
@@ -751,6 +763,10 @@
     nu = mcmc$nu,
     niter = niter,
     nPhase1 = vna[1],
+    nBurnAuto = as.integer(.nBurnAuto),
+    nBurnMin = as.integer(.nBurn),
+    nBurnWindow = 100L,
+    nBurnBatch = 5L,
     nb_sa = nb_sa,
     nb_correl = nb_correl,
     nb_fixOmega = nb_fixOmega,
