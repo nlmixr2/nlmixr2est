@@ -18,6 +18,12 @@
 
 ## New features
 
+- `BIC(fit, type=)` gives BIC variants that charge random-effect
+  parameters `log(number of subjects)` instead of `log(number of
+  observations)` (Delattre et al. 2014): `"iiv"` (omega/kappa elements),
+  `"mixed"` (also the thetas of eta-bearing parameters) and `"random"` (also
+  residual-error thetas when an eta sits on the residual error); `"fixed"`
+  equals `fit$BIC` (#1384).
 - `saemControl(plateauStop = TRUE)` ends SAEM's EM phase early once every
   estimated theta, omega and residual parameter has changed by less than
   `plateauTol` (relative) over the last `plateauWindow` iterations, never
