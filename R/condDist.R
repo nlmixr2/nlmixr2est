@@ -89,6 +89,11 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
 #'   an `N x neta x nsamp` array of equally weighted draws
 #' @noRd
 .condDistImp <- function(fit, nsamp, seed) {
+  # imp raises an Omega variance below 1e-6 to 1e-6, which would change the prior
+  .om <- tryCatch(diag(as.matrix(fit$omega)), error = function(e) NULL)
+  if (any(.om < 1e-6)) {
+    stop("importance sampling needs every Omega variance >= 1e-6", call. = FALSE)
+  }
   .fc <- .condDistLikControl(fit)
   # mapIter = 1 centers each E-step's proposal at the subject's mode with the
   # Laplace covariance (mapIter = 0 keeps the prior as the proposal); the
@@ -108,11 +113,20 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
   )
   .fit2 <- .nativePinnedRefit(fit, "imp", .ctl, useEtaMat = TRUE)
   if (inherits(.fit2, "try-error")) {
-    stop("importance sampling at the fit's estimates failed", call. = FALSE)
+    stop("importance sampling at the fit's estimates failed: ", .tryErrorMessage(.fit2), call. = FALSE)
   }
   .e <- .fit2$env
   .u <- rxode2::rxWithSeed(seed, rxode2::rxunif(n = length(.e$impSamples)))
   .weightedDraws(.e$impSamples, .e$impWeights, nsamp, .u)
+}
+
+#' The message of a `try-error`
+#' @param x a `try-error`
+#' @return character
+#' @noRd
+.tryErrorMessage <- function(x) {
+  .c <- attr(x, "condition")
+  trimws(if (inherits(.c, "condition")) conditionMessage(.c) else as.character(x))
 }
 
 #' The likelihood settings of a fit that a refit at its estimates must keep

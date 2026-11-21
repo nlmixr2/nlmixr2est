@@ -100,4 +100,7 @@ test_that("addCondDist refuses a fit with no random effects", {
   expect_error(addCondDist(list()), "nlmixr2 fit")
   .np <- list(env = new.env(), eta = data.frame(ID = 1, eta.a = 0), est = "npag")
   expect_error(addCondDist(.np), "non-parametric")
+  .tiny <- list(omega = matrix(1e-8, 1, 1, dimnames = list("eta.a", "eta.a")))
+  expect_error(.condDistImp(.tiny, 10L, 1L), "1e-6")
+  expect_equal(.tryErrorMessage(try(stop("boom\n"), silent = TRUE)), "boom")
 })
