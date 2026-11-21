@@ -86,20 +86,9 @@
 laplaceControl <- function(sigdig = 3, ..., nAGQ = 1) {
   # interaction forces the calculation of the hessian, which is needed
   # for the adaptive Gaussian quadrature
-  .control <- .laplaceLlik(foceiControl(sigdig = sigdig, ..., nAGQ = nAGQ))
+  .control <- foceiControl(sigdig = sigdig, ..., nAGQ = nAGQ)
   class(.control) <- "laplaceControl"
   .control
-}
-
-#' Use the exact Laplace Hessian unless the analytic conditional one is asked for
-#'
-#' @param control a `foceiControl()` object
-#' @return `control` with `laplaceLlik` set
-#' @noRd
-.laplaceLlik <- function(control) {
-  control$laplaceLlik <- control$innerHessian != "conditional" &&
-    control$detHessian != "conditional"
-  control
 }
 
 #' @rdname nmObjHandleControlObject

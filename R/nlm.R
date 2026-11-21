@@ -384,7 +384,8 @@ rxUiGet.nlmModel0 <- function(x, ...) {
   nlmixr2global$rxCensNuFix <- TRUE
   .predDf <- .ui$predDf
   .save <- .predDf
-  assign(".predDfFocei", .predDfDnorm(.predDf), envir = .ui)
+  .predDf[.predDf$distribution == "norm", "distribution"] <- "dnorm"
+  assign(".predDfFocei", .predDf, envir = .ui)
   on.exit(assign("predDf", .save, envir = .ui), add = TRUE)
   # rx_r_/rx_nu_ for the llik-forced norm/dnorm/t/cauchy path are already
   # fixed at the source (.fixCensRNuLine, R/focei.R) -- see #979.

@@ -1,18 +1,4 @@
 nmTest({
-  test_that("laplaceControl() asks for the exact (log-density) Laplace Hessian", {
-    expect_true(laplaceControl()$laplaceLlik)
-    expect_true(mlaplaceControl()$laplaceLlik)
-    expect_true(ilaplaceControl()$laplaceLlik)
-    # the analytic conditional Hessian (flaplace) is the same objective by
-    # another route, so it does not also force the log-density endpoints
-    .c <- getValidNlmixrCtl(structure(list(NULL), class = "flaplace"))
-    expect_false(.c$laplaceLlik)
-    # a laplaceControl() handed to est="focei" keeps FOCEi: the flag is
-    # laplace's own default, not a user setting, so it does not carry over
-    .f <- getValidNlmixrCtl(structure(list(laplaceControl()), class = "focei"))
-    expect_false(isTRUE(.f$laplaceLlik))
-  })
-
   test_that("est='laplace' is NONMEM's LAPLACE INTERACTION objective (Wang 2007 Eq. 15)", {
     skip_on_cran()
     set.seed(42)
@@ -70,6 +56,7 @@ nmTest({
     .ctl <- list(print = 0L, calcTables = FALSE, covMethod = "", maxOuterIterations = 0L)
     fitL <- .nlmixr(model, d, "laplace", do.call(laplaceControl, .ctl))
     fitF <- .nlmixr(model, d, "focei", do.call(foceiControl, .ctl))
+    expect_true(fitL$control$needOptimHess)
     expect_equal(fitL$objf, wang15, tolerance = 1e-4)
     # FOCEi (Wang Eq. 16) is a different objective under proportional error
     expect_gt(abs(fitF$objf - wang15), 0.01)

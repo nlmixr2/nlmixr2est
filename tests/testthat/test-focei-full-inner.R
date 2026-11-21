@@ -57,7 +57,7 @@ test_that("a full conditional Laplace/AGQ fit says so", {
   expect_identical(base$env$nConditionalInnerHessian, 0L)
   expect_identical(fitL$control$detHessian, "conditional")
   expect_identical(base$control$detHessian, "focei")
-  expect_true(base$control$laplaceLlik)
+  expect_true(base$control$needOptimHess)
   expect_equal(fitL$objf, base$objf, tolerance = 1e-4)
   focei <- .nlmixr(model, d, "focei", do.call(foceiControl, .ctl()))
   expect_false(isTRUE(all.equal(fitL$objf, focei$objf)))

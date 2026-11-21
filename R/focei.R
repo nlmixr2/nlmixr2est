@@ -3292,16 +3292,6 @@ rxUiGet.predDfFocei <- function(x, ...) {
 }
 attr(rxUiGet.predDfFocei, "rstudio") <- NA
 
-#' Evaluate every Gaussian endpoint by its log-density
-#'
-#' @param predDf a ui's `predDf`
-#' @return `predDf` with each `norm` distribution changed to `dnorm`
-#' @noRd
-.predDfDnorm <- function(predDf) {
-  predDf$distribution[predDf$distribution == "norm"] <- "dnorm"
-  predDf
-}
-
 
 .rxFinalizePred <- function(.s, sum.prod = FALSE, optExpression = TRUE, cores = 0L) {
   # see .rxFinalizeInner(): do not re-flatten a matExp-native ..ddt (#860)
@@ -3904,7 +3894,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
     if (.conditional) "conditionalInner1",
-    if (isTRUE(rxode2::rxGetControl(.ui, "laplaceLlik", FALSE))) "laplaceLlik1",
+    .ui$predDfFocei$distribution,
     all(is.na(.iniDf$neta1)),
     .combSens,
     .linCmtCarry,
@@ -5607,6 +5597,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (exists("est", envir = env)) {
     .control$est <- env$est
   }
+  # est="laplace": evaluate Gaussian endpoints by their log-density (as
+  # `+ dnorm()` does) for the exact Laplace Hessian, like rxUiGet.nlmModel0
+  if (
+    type %in%
+      c("laplaceControl", "mlaplaceControl", "ilaplaceControl") &&
+      .control$innerHessian != "conditional" &&
+      .control$detHessian != "conditional"
+  ) {
+    .predDf <- .ui$predDf
+    .predDf$distribution[.predDf$distribution == "norm"] <- "dnorm"
+    assign(".predDfFocei", .predDf, envir = .ui)
+  }
   if (
     inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
       is.null(.control[["etaMat"]])
@@ -5637,7 +5639,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .control$outerOptTxt <- "stats::optimize"
   }
   .foceiAssertInnerLbfgsb3c(.control$innerOpt)
-  .optimHess <- isTRUE(.control$laplaceLlik) || any(.ui$predDfFocei$distribution != "norm")
+  .optimHess <- any(.ui$predDfFocei$distribution != "norm")
   if (length(.optimHess) != 1) {
     .optimHess <- FALSE
   }
@@ -5958,10 +5960,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .control <- ui$control
   .control$est <- est
   ui$control <- .control
-  # est="laplace": exact Laplace Hessian through the log-density (laplaceControl())
-  if (isTRUE(.control$laplaceLlik)) {
-    assign(".predDfFocei", .predDfDnorm(ui$predDf), envir = ui)
-  }
   # Analytic covariate-coefficient reuse (fast=TRUE): the eta-scaling of a mu-ref
   # covariate coefficient is exact only for a covariate constant within each subject.
   # The augmented outer model is built inside `ui$foceiOptEnv` (below) BEFORE

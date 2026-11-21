@@ -108,9 +108,7 @@
   # (.nlmixr2BuildPriorSpec(), R/priors.R); not a formal
   # argument, not deparseable/comparable, and rebuilt fresh
   # every fit -- internal so a built control round-trips.
-  "priorSpec",
-  # set by laplaceControl(): Gaussian endpoints by log-density
-  "laplaceLlik"
+  "priorSpec"
 )
 
 #' Control Options for FOCEi
