@@ -24,6 +24,13 @@
 
 ### New features
 
+- Time-to-event endpoints written with rxode2’s `ev ~ tte(hazard)` can
+  be estimated by the likelihood methods (`focei`, `laplace`, `agq`,
+  `saem`, the `nlm` family, …). The endpoint data are checked first
+  (`DV` must be 0 or 1, and an event on a subject’s first record is
+  warned about since it is the start of observation). This needs an
+  rxode2 with `tte()` support and is inactive otherwise.
+
 - `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model’s ETAs
   and objective at the final estimates with every ODE tolerance 10x
   tighter and notes in `$runInfo` an objective that moves by more than

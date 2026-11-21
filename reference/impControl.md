@@ -302,7 +302,7 @@ impControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x64c1bae6dc68>
+#> <bytecode: 0x5ac1d1f98540>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1052,6 +1052,18 @@ impControl()
 #> 
 #> $tieOrder
 #> [1] "evid"
+#> 
+#> $rateAtDoseTime
+#> [1] FALSE
+#> 
+#> $durAtDoseTime
+#> [1] FALSE
+#> 
+#> $resetCancelsPending
+#> [1] TRUE
+#> 
+#> $ssMethod
+#> [1] 1
 #> 
 #> attr(,"class")
 #> [1] "rxControl"
