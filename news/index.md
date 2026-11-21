@@ -24,6 +24,12 @@
 
 ### New features
 
+- `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for
+  each ETA (computed on access, so older saved fits have them too), and
+  `fit$etaNormality` lists each ETA’s mean, SD, zero-mean t-test p-value
+  and Shapiro-Wilk test from `$shrink`; fixed or zero-variance ETAs give
+  `NA` ([\#1448](https://github.com/nlmixr2/nlmixr2est/issues/1448)).
+
 - `BIC(fit, type=)` gives BIC variants that charge random-effect
   parameters `log(number of subjects)` instead of
   `log(number of observations)` (Delattre et al. 2014): `"iiv"`
@@ -118,6 +124,12 @@
   method’s control (e.g. `foceiControl(corWarn=)`,
   `saemControl(corWarn=)`) sets the threshold; `NA` turns it off
   ([\#1380](https://github.com/nlmixr2/nlmixr2est/issues/1380)).
+
+- A mixture fit now notes in `$runInfo` a class no subject belongs to
+  (`mixture class 2 has no subjects (max posterior < 0.01); try new starts`)
+  and, for the FOCEi family, two classes no subject can tell apart
+  (`mixture classes 1 and 2 are indistinguishable at the estimates`)
+  ([\#1391](https://github.com/nlmixr2/nlmixr2est/issues/1391)).
 
 - `foceiControl(scaleLinear = "abs")` scales every linear theta by its
   `|init|`, as NONMEM does, instead of the default `1/|init|` inside
@@ -774,6 +786,11 @@
 - NPDE’s back-transformation of EPRED and DV now uses each observation’s
   own transform; it used the first subject’s rows for every subject.
   \### Tables
+
+- The BSV/IOV CV% in the parameter table switched to scientific notation
+  (e.g. `7.64e+35`) at or above 1e6; it printed every digit of a huge
+  log-normal CV%
+  ([\#1386](https://github.com/nlmixr2/nlmixr2est/issues/1386)).
 
 - CWRES/WRES no longer build two dense observations x observations
   matrices (`F Omega F'`) to read their diagonals; the eta sensitivities

@@ -5,6 +5,12 @@ Get an item from a nlmixr core object
 ## Usage
 
 ``` r
+# S3 method for class 'shrink'
+nmObjGet(x, ...)
+
+# S3 method for class 'etaNormality'
+nmObjGet(x, ...)
+
 nmObjGet(x, ...)
 
 # Default S3 method
