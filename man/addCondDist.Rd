@@ -30,7 +30,9 @@ draws per subject as the `"samples"` attribute of `fit$condDist`, an
 \item{seed}{random seed of the sampler}
 }
 \value{
-the fit, with `fit$condDist`: a data frame `ID`, `ETA`, `MEAN`,
+the fit, with `fit$condDistShrinkage`, the eta shrinkage (%) from
+  the conditional variances, `100 * mean(SD^2) / omega`, and
+  `fit$condDist`: a data frame `ID`, `ETA`, `MEAN`,
   `SD`.  Its `"method"` attribute names the sampler (`"imp"`, `"saem"`
   for a SAEM fit's own chains or `"mcmc"` for a held SAEM run) and, for
   `"imp"`, its `"ess"` attribute holds each subject's effective sample size.
