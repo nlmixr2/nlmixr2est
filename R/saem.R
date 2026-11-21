@@ -996,7 +996,48 @@
     }
     assign(.f, .m, envir = env)
   }
+  .saemMcmcAcceptWarn(env)
   invisible()
+}
+
+#' Note in `$runInfo` a random-walk acceptance rate far from its target
+#'
+#' Judges the mean of the last 100 post-burn-in (`nEm`) iterations, so an
+#' early-bad, late-good chain passes; fewer than 20 are too few to judge.  Kernel 1 (proposals from the population
+#' distribution) is skipped: `rmcmc` does not scale it.
+#'
+#' @param env nlmixr2 estimation environment
+#' @return the tail acceptance of the judged kernels, invisibly
+#' @noRd
+.saemMcmcAcceptWarn <- function(env) {
+  .ctl <- env$saemControl
+  .lim <- .ctl$mcmcAcceptWarn
+  if (length(.lim) != 2L || anyNA(.lim) || isTRUE(.ctl$saemHoldPar)) {
+    return(invisible())
+  }
+  .acc <- env$mcmcAccept
+  .niter <- .ctl$mcmc$niter
+  .n <- min(nrow(.acc), sum(.niter))
+  .from <- max(.niter[1] + 1L, .n - 99L)
+  .k <- intersect(c("rw", "coord"), colnames(.acc))
+  if (.n - .from + 1L < 20L || length(.k) == 0L) {
+    return(invisible())
+  }
+  .acc <- .acc[seq.int(.from, .n), .k, drop = FALSE]
+  .r <- colMeans(.acc, na.rm = TRUE)
+  .r <- .r[is.finite(.r)]
+  .fmt <- function(w) {
+    paste(sprintf("%s %.0f%%", names(.r)[w], 100 * .r[w]), collapse = ", ")
+  }
+  .lo <- .r < .lim[1]
+  .hi <- .r > .lim[2]
+  if (any(.lo)) {
+    warning(sprintf("MCMC acceptance low (%s); try a smaller rmcmc", .fmt(.lo)), call. = FALSE)
+  }
+  if (any(.hi)) {
+    warning(sprintf("MCMC acceptance high (%s); try a larger rmcmc", .fmt(.hi)), call. = FALSE)
+  }
+  invisible(.r)
 }
 #' Stochastic-approximation (Louis) FIM covariance for SAEM
 #'
