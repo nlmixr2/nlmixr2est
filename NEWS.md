@@ -56,6 +56,11 @@
 - `outerOpt="trust"` evaluates the outer gradient and Hessian only at trial
   points the trust region could accept, so a trial that is no improvement gets
   its value alone (1.1x-2.6x faster with the analytical Hessian).
+- `nlmixr2ObjGrad(fit, theta=, omega=, scale=)` returns a FOCEi-family
+  fit's objective and its analytic gradient at user-supplied thetas and
+  omega without refitting, for custom optimizers and profiling.  The omega
+  gradient is either with respect to the variances/covariances or the
+  Cholesky estimation-scale parameters (#1413).
 
 - `saemControl(rmcmc=)` sets the random-walk proposal scale of the SAEM MCMC
   kernels, previously fixed at 0.5; lower it when `$mcmcAccept` is low (#1385).
