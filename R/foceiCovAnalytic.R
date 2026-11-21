@@ -946,7 +946,7 @@
   # AGQ (nAGQ>1) swaps the objective's data half for -log(sum_k a_k); NULL keeps the
   # FOCEI/Laplace path byte-for-byte.
   .nAGQ <- as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L))
-  .ag <- if (.nAGQ > 1L) .agq(neta, .nAGQ) else NULL
+  .ag <- if (.nAGQ > 1L) .agq(neta, .nAGQ, warnNodes = Inf) else NULL
   np <- nth + nsg + omd$nom
   etav <- paste0("ETA_", seq_len(neta), "_")
   # FOCE (interaction=0); the covariance uses the fit's own EBEs -- see .foceiAnalyticAssembleRFR
