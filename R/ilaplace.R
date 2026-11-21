@@ -16,6 +16,7 @@ nlmixr2Est.ilaplace <- function(env, ...) {
   .ui <- env$ui
   .foceiFamilyReturn(env, .ui, ..., est = "ilaplace")
 }
+attr(nlmixr2Est.ilaplace, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.ilaplace, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.ilaplace, "iov") <- TRUE
 attr(nlmixr2Est.ilaplace, "covPresent") <- TRUE
