@@ -39,6 +39,7 @@
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
 <li><a class="dropdown-item" href="../articles/events.html">nlmixr2est events for loggers</a></li>
     <li><a class="dropdown-item" href="../articles/extending-nlmixr2est.html">Extending nlmixr2est: custom estimation methods and behavior hooks</a></li>
+    <li><a class="dropdown-item" href="../articles/likelihood-penalties.html">Likelihood penalties in nlmixr2est and rxode2 extensions</a></li>
   </ul>
 </li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
@@ -84,8 +85,9 @@ method transparently does something extra, without a new
 <code>est</code> name.</li>
 <li>
 <strong>Contribute to the objective function</strong> from compiled
-code (C function-pointer linkage), e.g. to add likelihood terms during a
-FOCEi/SAEM fit.</li>
+code (C function-pointer linkage), e.g. to add likelihood terms or
+penalties during a fit (see also
+<code><a href="../articles/likelihood-penalties.html">vignette("likelihood-penalties")</a></code>).</li>
 </ol>
 <p>The lowest-level solve hooks (injecting parameters or derivative
 forcing into the <code>rxode2</code> solve itself) live in
@@ -235,11 +237,18 @@ ordinary <code>est</code>/<code>control</code>:</p>
 <div class="section level2">
 <h2 id="contributing-to-the-objective-compiled-linkage">3. Contributing to the objective (compiled linkage)<a class="anchor" aria-label="anchor" href="#contributing-to-the-objective-compiled-linkage"></a>
 </h2>
-<p>The deepest hook lets a compiled plugin add terms to the FOCEi/SAEM
+<p>The deepest hook lets a compiled plugin read, and add to, the
 objective during the fit – per observation, inside the parallel subject
 loop, with <strong>no R callback</strong> (R is not thread-safe). This
-is how <code>nlmixr2nn</code> feeds a network’s objective cotangents
-into a running FOCEi fit.</p>
+is how <code>nlmixr2nn</code> captures the error model’s cotangents
+<code>d(LL)/d(f)</code> in a running fit. The per-observation hook fires
+in every method built on the FOCEi inner problem
+(focei/foce/fo/laplace/agq, posthoc, imp/impmap/qrpem, npag/npb, vae)
+and in the nlm family; it does not fire inside SAEM’s MCMC.</p>
+<p>For per-subject and population terms (penalties on thetas, eta
+priors, network weight regularization) that every method – SAEM included
+– honors, use the likelihood penalty interface described in
+<code><a href="../articles/likelihood-penalties.html">vignette("likelihood-penalties")</a></code>.</p>
 <p><code>nlmixr2est</code> exposes a registry of C callables via a
 function-pointer table
 (<code><a href="../reference/dot-nlmixr2estLikContribPtrs.html">nlmixr2est::.nlmixr2estLikContribPtrs()</a></code>), consumed

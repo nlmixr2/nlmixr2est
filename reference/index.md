@@ -142,6 +142,12 @@
   : Calculate Hessian
 - [`nlmixr2Keywords`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Keywords.md)
   : A list and description of the fields in the nlmxir2 object
+- [`nlmixr2LikPenaltyAdd()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2LikPenaltyAdd.md)
+  : Attach likelihood penalties to a model
+- [`nlmixr2LikPenaltySpec()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2LikPenaltySpec.md)
+  : Likelihood penalty specification
+- [`nlmixr2LikPenaltyUdf()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2LikPenaltyUdf.md)
+  : Register a likelihood penalty from an rxode2 user-function expansion
 - [`nlmixr2Logo()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Logo.md)
   : Messages the nlmixr2 logo...
 - [`nlmixr2NlmeControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2NlmeControl.md)

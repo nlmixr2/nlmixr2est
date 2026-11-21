@@ -20,6 +20,7 @@
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/events.html">nlmixr2est events for loggers</a></li>
     <li><a class="dropdown-item" href="../articles/extending-nlmixr2est.html">Extending nlmixr2est: custom estimation methods and behavior hooks</a></li>
+    <li><a class="dropdown-item" href="../articles/likelihood-penalties.html">Likelihood penalties in nlmixr2est and rxode2 extensions</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
@@ -153,10 +154,10 @@ update.  By default this is the global environment.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             setup   optimize covariance preprocess configure  saem postprocess</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.8049571 4.4136e-05  0.0370227       0.06     0.816 2.038        0.67</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            setup   optimize covariance preprocess configure saem postprocess</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 1.073614 6.3606e-05  0.0390264       0.06     1.122 2.02       0.683</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         table compress     other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.063    0.052 0.5999761</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.048    0.048 0.3062959</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -241,10 +242,10 @@ update.  By default this is the global environment.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             setup   optimize covariance preprocess configure  saem postprocess</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.8049571 4.4136e-05  0.0370227       0.06     0.816 2.038        0.67</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            setup   optimize covariance preprocess configure saem postprocess</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 1.073614 6.3606e-05  0.0390264       0.06     1.122 2.02       0.683</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         table compress     other foceiLik</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 1.763    0.052 0.5999761    0.306</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 1.769    0.048 0.3062959    0.333</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

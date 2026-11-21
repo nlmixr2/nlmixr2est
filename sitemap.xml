@@ -5,6 +5,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/articles/events.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/articles/extending-nlmixr2est.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/articles/index.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/articles/likelihood-penalties.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/authors.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/copilot-instructions.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/index.html</loc></url>
@@ -41,6 +42,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr0preProcessCovariatesPresent.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr0preProcessNpMuExpand.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2FitUpdateParams.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2LikPenaltyBuiltin.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2estFoceiPtrs.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2estLastPredSimulationInfo.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2estLikContribPtrs.html</loc></url>
@@ -116,6 +118,9 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2GradFun.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Keywords.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2LikPenaltyAdd.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2LikPenaltySpec.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2LikPenaltyUdf.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Logo.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2NlmeControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Print.html</loc></url>

@@ -24,6 +24,23 @@
 
 ### New features
 
+- A C interface for likelihood penalties
+  (`inst/include/nlmixr2estLikPenalty.h`) lets compiled code, such as an
+  `rxode2` model extension, add per-subject and population terms to the
+  objective of every estimation method (FOCEi family, imp, saem, vae,
+  the nlm family and its external drivers; npag/npb take the subject
+  term).
+  [`nlmixr2LikPenaltySpec()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2LikPenaltySpec.md)/[`nlmixr2LikPenaltyAdd()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2LikPenaltyAdd.md)
+  attach a penalty to a model or pass it to
+  `nlmixr2(..., likPenalty =)`; `inObjf=` sets whether it is counted in
+  the reported objective, and `fit$likPenalty` reports its value. See
+  [`vignette("likelihood-penalties")`](https://nlmixr2.github.io/nlmixr2est/articles/likelihood-penalties.md).
+
+- [`nlmixr2LikPenaltyUdf()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2LikPenaltyUdf.md)
+  lets an rxode2 model function (an `rxUdfUi` method) register a
+  likelihood penalty while it expands against the data, so a model term
+  like `nlmixr2spline::spline()` brings its own penalty.
+
 - Time-to-event endpoints written with rxode2’s `ev ~ tte(hazard)` can
   be estimated by the likelihood methods (`focei`, `laplace`, `agq`,
   `saem`, the `nlm` family, …). The endpoint data are checked first
@@ -71,6 +88,12 @@
   `|init|`, as NONMEM does, instead of the default `1/|init|` inside
   `scaleCband`. The default `"inverse"` is unchanged
   ([\#1320](https://github.com/nlmixr2/nlmixr2est/issues/1320)).
+
+- `fit$iwresAutocor` reports the pooled within-subject lag-1 correlation
+  and Durbin-Watson statistic of IWRES, a check for structural
+  misspecification (successive residuals of a subject that move
+  together)
+  ([\#1373](https://github.com/nlmixr2/nlmixr2est/issues/1373)).
 
 - `saem` now reports each subject’s conditional mode as `fit$eta` (the
   Monolix “EBEs” task), found per subject with NEWUOA after the last
@@ -202,6 +225,24 @@
   `covMethod = "failed"`.
 
 #### Estimation
+
+- The mu-referenced theta M-step of `mfocei`/`ifocei`
+  (`muModel = "lin"`) and imp/impmap/qrpem now weights the data by the
+  eta’s precision when an
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) prior
+  or a population likelihood penalty is folded in, so the prior no
+  longer gets omega times its proper weight.
+
+- [`nlmixr2()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.md)
+  on an rxode2 ui or a fit now passes its extra arguments on to
+  estimation interceptors in `env$.nlmixr2Dots`; only a model function
+  did before.
+
+- Model functions that need the data (`uiUseData = TRUE`, e.g. rxode2’s
+  `linMod(..., data = TRUE)`) are expanded against the estimation data
+  again;
+  [`nlmixr2()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.md)
+  handed the unexpanded model to the estimator.
 
 - A `fast = TRUE` control converted to another FOCEi-family method (for
   example a

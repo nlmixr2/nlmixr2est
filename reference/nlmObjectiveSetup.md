@@ -20,7 +20,8 @@ nlmObjectiveSetup(
   data,
   control = NULL,
   gradient = FALSE,
-  scale = c("control", "natural")
+  scale = c("control", "natural"),
+  likPenalty = NULL
 )
 ```
 
@@ -39,6 +40,12 @@ nlmObjectiveSetup(
   optional nlm-family control; defaults to
   [`nlmControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.md)
   (or `ui$control` if that is an nlm-family control).
+
+- likPenalty:
+
+  optional list of \[nlmixr2LikPenaltySpec()\] objects added to those
+  attached to the model; active until
+  [`.nlmFreeEnv()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFreeEnv.md).
 
 ## Value
 

@@ -10,8 +10,9 @@ points, from highest-level to lowest:
 2.  **Intercept an estimation** so a *standard* method transparently
     does something extra, without a new `est` name.
 3.  **Contribute to the objective function** from compiled code (C
-    function-pointer linkage), e.g. to add likelihood terms during a
-    FOCEi/SAEM fit.
+    function-pointer linkage), e.g. to add likelihood terms or penalties
+    during a fit (see also
+    [`vignette("likelihood-penalties")`](https://nlmixr2.github.io/nlmixr2est/articles/likelihood-penalties.md)).
 
 The lowest-level solve hooks (injecting parameters or derivative forcing
 into the `rxode2` solve itself) live in `rxode2`; see its *“Solve-time
@@ -131,11 +132,18 @@ nlmixr2(model, data, "focei", foceiControl(), nn = nnControl(...))
 
 ## 3. Contributing to the objective (compiled linkage)
 
-The deepest hook lets a compiled plugin add terms to the FOCEi/SAEM
-objective during the fit – per observation, inside the parallel subject
-loop, with **no R callback** (R is not thread-safe). This is how
-`nlmixr2nn` feeds a network’s objective cotangents into a running FOCEi
-fit.
+The deepest hook lets a compiled plugin read, and add to, the objective
+during the fit – per observation, inside the parallel subject loop, with
+**no R callback** (R is not thread-safe). This is how `nlmixr2nn`
+captures the error model’s cotangents `d(LL)/d(f)` in a running fit. The
+per-observation hook fires in every method built on the FOCEi inner
+problem (focei/foce/fo/laplace/agq, posthoc, imp/impmap/qrpem, npag/npb,
+vae) and in the nlm family; it does not fire inside SAEM’s MCMC.
+
+For per-subject and population terms (penalties on thetas, eta priors,
+network weight regularization) that every method – SAEM included –
+honors, use the likelihood penalty interface described in
+[`vignette("likelihood-penalties")`](https://nlmixr2.github.io/nlmixr2est/articles/likelihood-penalties.md).
 
 `nlmixr2est` exposes a registry of C callables via a function-pointer
 table
