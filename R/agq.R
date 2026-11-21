@@ -9,6 +9,10 @@
 #'
 #' @param neta number of eta parameters in the model
 #' @param nAGQ number of adaptive quadrature points to use
+#' @param warnNodes grid size (`nAGQ^neta`) above which a warning is
+#'   issued
+#' @param maxNodes grid size above which the grid is refused (error)
+#'   before it is built
 #' @return A list with the following elements:
 #' \item{x}{A matrix of quadrature points, one row per point.}
 #' \item{w}{A matrix of quadrature weights, one row per point.}
@@ -21,7 +25,33 @@
 #' @keywords internal
 #' @examples
 #' .agq(neta=2, nAGQ=3)
-.agq <- function(neta = 2, nAGQ = 3) {
+.agq <- function(neta = 2, nAGQ = 3, warnNodes = 1e4, maxNodes = 1e6) {
+  # double arithmetic, so the check itself cannot overflow
+  .nodes <- as.double(nAGQ)^as.double(neta)
+  if (.nodes > maxNodes) {
+    stop(
+      sprintf(
+        "AGQ grid of nAGQ^neta = %d^%d = %s nodes exceeds the limit of %s; ",
+        as.integer(nAGQ),
+        as.integer(neta),
+        format(.nodes, big.mark = ",", scientific = FALSE),
+        format(maxNodes, big.mark = ",", scientific = FALSE)
+      ),
+      "use a lower nAGQ, nAGQ=1 (laplace) or est=\"focei\"",
+      call. = FALSE
+    )
+  }
+  if (.nodes > warnNodes) {
+    warning(
+      sprintf(
+        "large AGQ grid: %d^%d = %s nodes; consider a lower nAGQ",
+        as.integer(nAGQ),
+        as.integer(neta),
+        format(.nodes, big.mark = ",", scientific = FALSE)
+      ),
+      call. = FALSE
+    )
+  }
   .n <- .nlmixr2estAgq(NA_integer_)
   if (nAGQ > .n) {
     rxode2::rxReq("fastGHQuad") # conditionally require
@@ -210,6 +240,7 @@ nlmixr2Est.agq <- function(env, ...) {
   .ui <- env$ui
   .foceiFamilyReturn(env, .ui, ..., est = "agq")
 }
+attr(nlmixr2Est.agq, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.agq, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.agq, "iov") <- TRUE
 attr(nlmixr2Est.agq, "covPresent") <- TRUE

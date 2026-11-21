@@ -20,6 +20,7 @@
 #include "solveWarnHelper.h"
 #include "truncNorm.h"
 #include "minqaC.h"
+#include "likPenalty.h"
 
 #define _(String) (String)
 
@@ -605,6 +606,42 @@ uvec getObsIdx(umat m) {
 }
 
 
+// True when every column of the par_hist window w moved less than tol relative to
+// its magnitude.  Thetas (the first nTh columns) below 1 in magnitude use the
+// absolute change, since most are log-scale; the off-diagonal omegas after the nOm
+// omega diagonals are scaled by offScale (sqrt(w_ii * w_jj)).
+static bool saemPlateauWindow(const mat &w, uword nTh, uword nOm, const vec &offScale, double tol) {
+  if (w.n_rows < 2) return false;
+  for (uword j = 0; j < w.n_cols; ++j) {
+    vec c = w.col(j);
+    if (!c.is_finite()) return false;
+    double scale;
+    if (j < nTh) {
+      scale = std::max(std::fabs(mean(c)), 1.0);
+    } else if (j >= nTh + nOm && j - nTh - nOm < offScale.n_elem) {
+      scale = offScale(j - nTh - nOm);
+    } else {
+      scale = std::fabs(mean(c));
+    }
+    if (!(scale > 0.0) || (c.max() - c.min()) > tol * scale) return false;
+  }
+  return true;
+}
+
+//' Test hook for the SAEM plateau-stop criterion
+//'
+//' @param w window of par_hist rows
+//' @param nTh number of theta columns
+//' @param nOm number of omega-diagonal columns
+//' @param offScale scale of each off-diagonal omega column
+//' @param tol relative tolerance
+//' @return logical
+//' @noRd
+//[[Rcpp::export]]
+bool saemPlateauTest_(arma::mat w, int nTh, int nOm, arma::vec offScale, double tol) {
+  return saemPlateauWindow(w, (uword)nTh, (uword)nOm, offScale, tol);
+}
+
 // phi0 objective for the general-likelihood direct optimization (bounded bobyqa
 // via boundedResidOptC); gPhi0Self is the active SAEM object.  Defined after the
 // class body.
@@ -815,7 +852,24 @@ public:
       v = phi0NormalSSR(fMat.col(0));
     }
     if (!std::isfinite(v)) return 1e300;
-    return v;
+    return v + penPhi0(p);
+  }
+
+  // Population likelihood penalty (-LL scale, summed over the chains like the
+  // objective) with the intercept-only phi0 thetas at candidate values p.
+  double penPhi0(const double *p) {
+    if (_penMap.empty() || nlmixrPenNPop() == 0 || nphi0 == 0) return 0.0;
+    std::vector<double> th(_penTheta);
+    const arma::uword nr = MCOV0.n_rows;
+    for (int c = 0; c < nphi0; ++c) {
+      for (arma::uword k = 0; k < jcov0.n_elem; ++k) {
+        if (jcov0(k) != (arma::uword)c * nr) continue;
+        int t = _penMap[(size_t)ilambda0(k)];
+        if (t >= 0) th[(size_t)t] = p[c];
+      }
+    }
+    double pen = nlmixrPenPopAll((int)th.size(), th.data(), 0, NULL, N, NULL, NULL);
+    return 0.5 * (double)nmc * pen;
   }
 
   // Side-effect-free observation -log-likelihood objective for the normal-model
@@ -1519,7 +1573,23 @@ public:
       total += rowScore[i];
     }
     if (!std::isfinite(total)) return 1e300;
-    return total;
+    return total + penPhi1(p);
+  }
+
+  // Population likelihood penalty (-2LL scale, summed over the chains like
+  // phi1Objective) with the intercept-only phi1 thetas at candidate values p.
+  double penPhi1(const double *p) {
+    if (_penMap.empty() || nlmixrPenNPop() == 0 || nphi1 == 0) return 0.0;
+    std::vector<double> th(_penTheta);
+    const arma::uword nr = MCOV1.n_rows;
+    for (int c = 0; c < nphi1; ++c) {
+      for (arma::uword k = 0; k < jcov1.n_elem; ++k) {
+        if (jcov1(k) != (arma::uword)c * nr) continue;
+        int t = _penMap[(size_t)ilambda1(k)];
+        if (t >= 0) th[(size_t)t] = p[c];
+      }
+    }
+    return (double)nmc * nlmixrPenPopAll((int)th.size(), th.data(), 0, NULL, N, NULL, NULL);
   }
 
   // Phase 4: bobyqa-driven refinement of phi1's mu (mirrors refinePhi0Lik's
@@ -2329,6 +2399,10 @@ public:
         vec phi1 = phi.elem(i1);
         rowvec d = phi1.elem(realIx).t() - mu1.cols(realIx);
         v = modeRowLoss(s, f, cens, lim, yt) + 0.5*as_scalar(d*IG*d.t());
+        if (nlmixrPenNSubject() > 0) {
+          vec e1 = phi1 - mu1.t();
+          v -= penSubjLL(i, e1.memptr(), (int)e1.n_elem, (int)(ix_idM(i, 1) - ix_idM(i, 0) + 1));
+        }
         if (!std::isfinite(v)) v = 1.0e300;
       }
       if (v < fBest) {
@@ -2496,6 +2570,12 @@ public:
       pas  = join_cols(pas,  zeros<vec>(nSaCov));   // freeze theta during the cov phase
       pash = join_cols(pash, zeros<vec>(nSaCov));
     }
+    // opt-in early stop of the EM phase once par_hist plateaus (#1395)
+    plateauStop = x.containsElementNamed("plateauStop") ? as<int>(x["plateauStop"]) : 0;
+    plateauWindow = x.containsElementNamed("plateauWindow") ? as<int>(x["plateauWindow"]) : 50;
+    plateauTol = x.containsElementNamed("plateauTol") ? as<double>(x["plateauTol"]) : 1e-3;
+    plateauMinFrac = x.containsElementNamed("plateauMinFrac") ? as<double>(x["plateauMinFrac"]) : 0.5;
+    plateauIter = -1;
     minv = as<vec>(x["minv"]);
 
     N = as<int>(x["N"]);
@@ -2605,6 +2685,22 @@ public:
     // estimation iteration (the "sa" recompute of a SAEM fit) reports these
     Plambda.elem(ilambda1) = MCOV1.elem(jcov1);
     if (nphi0 > 0) Plambda.elem(ilambda0) = MCOV0.elem(jcov0);
+    _penMap.clear();
+    _penTheta.clear();
+    _penEtaOrd.clear();
+    if (x.containsElementNamed("penEtaOrd")) {
+      IntegerVector eo = as<IntegerVector>(x["penEtaOrd"]);
+      _penEtaOrd.assign(eo.begin(), eo.end());
+    }
+    if (x.containsElementNamed("penMap") && x.containsElementNamed("penTheta0")) {
+      IntegerVector pm = as<IntegerVector>(x["penMap"]);
+      NumericVector pt = as<NumericVector>(x["penTheta0"]);
+      if (pm.size() == nlambda) {
+        _penMap.assign(pm.begin(), pm.end());
+        _penTheta.assign(pt.begin(), pt.end());
+        penSyncTheta();
+      }
+    }
 
     DYF = zeros<mat>(mlen, nM);
     phi.set_size(N, nphi, nmc);
@@ -3175,6 +3271,7 @@ public:
       //    MCMC
       mcmcphi mphi1, mphi0;
       set_mcmcphi(mphi1, i1, nphi1, Gamma2_phi1, IGamma2_phi1, mprior_phi1);
+      _penMphi1 = &mphi1;
       // fix()ed phi0 thetas and shared-eta component thetas are not sampled
       mphi0.nphi = (int)mixFree0.n_elem;
       if (mphi0.nphi > 0) {
@@ -3523,6 +3620,7 @@ public:
           }
 
           vec U_y = sum(cur_DYF, 0).t();
+          penAddSubj(cur_phiM, U_y);
 
           if (nphi1 > 0) {
             vec U_phi;
@@ -3567,12 +3665,11 @@ public:
               }
             }
             for (int k = 0; k < nmc; k++) {
-              // Observation loss for this MCMC sample (rows i + k*N for each subject)
+              // Observation loss of this MCMC sample (rows i + k*N for each
+              // subject).  do_mcmc leaves the LAST candidate's loss in cur_DYF
+              // for every row, accepted or not; U_y is the kept state's (#1296).
               for (int i = 0; i < N; i++) {
-                joint_nll(i + k * N) = 0.0;
-                for (int m = 0; m < mlen; m++) {
-                  joint_nll(i + k * N) += cur_DYF(m, i + k * N);
-                }
+                joint_nll(i + k * N) = U_y(i + k * N);
               }
               // mprior_phiM is already restricted to i1/i0 columns (see set_mcmcphi()), so it
               // must not be column-indexed again; slice the k-th row-block via .rows() to avoid
@@ -3879,6 +3976,7 @@ public:
         }
         //U_y is a vec of subject llik; summed over obs for each subject
         vec U_y=sum(DYF, 0).t();
+        penAddSubj(phiM, U_y);
 
         if(nphi1>0) {
           vec U_phi;
@@ -4040,7 +4138,8 @@ public:
 
       // update parameters
       vec Plambda1, Plambda0;
-      Plambda1=inv_sympd(CGamma21)*sum((D1Gamma21%(COV1.t()*statphi11)),1);
+      vec rhs1 = sum((D1Gamma21%(COV1.t()*statphi11)),1);
+      Plambda1=inv_sympd(CGamma21)*rhs1;
       // Split-ETA mixture-owned columns (e.g. eta.cl1/eta.cl2): blended statphi11 dilutes each
       // column with the other component's uninformative draws, coupling tcl1/tcl2 and shrinking
       // apparent BSV. Override these columns' theta via responsibility-weighted regression
@@ -4096,9 +4195,9 @@ public:
       if (fixedIx1.n_elem>0) {
         Plambda1(fixedIx1) = MCOV1(jcov1(fixedIx1));
       }
-      MCOV1(jcov1)=Plambda1;
       if (nphi0>0) {
-        Plambda0=inv_sympd(CGamma20)*sum((D1Gamma20%(COV0.t()*statphi01)),1);
+        vec rhs0 = sum((D1Gamma20%(COV0.t()*statphi01)),1);
+        Plambda0=inv_sympd(CGamma20)*rhs0;
         if (fixedIx0.n_elem>0) {
           Plambda0(fixedIx0) = MCOV0(jcov0(fixedIx0));
         }
@@ -4109,6 +4208,9 @@ public:
         }
         MCOV0(jcov0)=Plambda0;
       }
+      penMstep(Plambda1, CGamma21, fixedIx1, ilambda1);
+      if (omegaPoolMean && nlmixrPenNPop() > 0) poolLambdaGroups(Plambda1);
+      MCOV1(jcov1)=Plambda1;
       // Phase 4 (SAEM general-likelihood theta plan): once the direct phi1
       // Laplace optimizer owns phi1 (kiter>=niter_phi0 -- the same
       // past-burn-in threshold phi0's own regress mode uses), do NOT
@@ -5053,6 +5155,7 @@ public:
       }
       Plambda(ilambda1) = Plambda1;
       Plambda(ilambda0) = Plambda0;
+      if (!_penMap.empty()) penSyncTheta();
       if (nMix > 1 && mixProbRegress) {
         // Fixed membership: the mixing proportions are just the (constant) hard
         // assignment fractions; no soft-EM SA update.
@@ -5105,6 +5208,12 @@ public:
         // One summary line per printed iteration for any ODE-solve warnings
         // accumulated since the last flush (see inner.cpp foceiOfvOptim).
         nmFlushRxSolveWarn(5);
+        if (plateauStop && kiter + 1 < (unsigned int)niter && plateauReached(kiter)) {
+          // continue exactly as a run with nEm = kiter + 1 - nBurn: the SA covariance
+          // phase (if any) starts next, on the same iterations' seeds
+          plateauIter = (int)kiter + 1;
+          truncateHistory((unsigned int)plateauIter);
+        }
       }
       // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
       // above; nothing is recorded to par_hist and no printing happens.
@@ -5126,6 +5235,10 @@ public:
     // disagree with the fit's own per-subject probabilities (#1058).
     if (nMix > 1 && arma::accu(mixWeights) > 0.0) mixProb = mean(mixWeights, 0).t();
     nmRngGuard([&]{ computeEtaMode(); return 0; });
+  }
+
+  int get_plateauIter() {
+    return plateauIter;
   }
 
 
@@ -5213,6 +5326,12 @@ private:
   uvec ind_cov1, ind_cov0, jcov1, jcov0;
   vec dGamma2_phi0;
   vec Plambda;
+  // likelihood penalty (likPenalty.h): Plambda index -> ui theta (or -1), the
+  // natural ui thetas the callbacks see, and the active phi1 MCMC block
+  std::vector<int> _penMap;
+  std::vector<int> _penEtaOrd;
+  std::vector<double> _penTheta;
+  const mcmcphi *_penMphi1 = NULL;
 
   int nlambda1, nlambda0, nlambda, nb_param;
   uvec ilambda1, ilambda0;
@@ -5406,6 +5525,56 @@ private:
     h.rows(kiter * nr, (kiter + 1) * nr - 1) = m;
   }
 
+  int plateauStop = 0;
+  int plateauWindow = 50;
+  double plateauTol = 1e-3;
+  double plateauMinFrac = 0.5;
+  int plateauIter = -1;
+
+  // the plateau test on the last plateauWindow EM iterations of par_hist
+  bool plateauReached(unsigned int kiter) const {
+    if (nPhase1 < 0 || plateauWindow < 1) return false;
+    const int nEm = niter - nPhase1;
+    const int minIter = nPhase1 + (int)std::ceil(plateauMinFrac * nEm);
+    if ((int)kiter + 1 < minIter) return false;
+    if ((int)kiter - plateauWindow < nPhase1) return false;
+    const uword nOff = parHistOmegaOffPairs.n_rows;
+    vec offScale(nOff);
+    for (uword p = 0; p < nOff; ++p) {
+      offScale(p) = std::sqrt(std::fabs(Gamma2_phi1(parHistOmegaOffPairs(p, 0), parHistOmegaOffPairs(p, 0)) *
+                                        Gamma2_phi1(parHistOmegaOffPairs(p, 1), parHistOmegaOffPairs(p, 1))));
+    }
+    return saemPlateauWindow(par_hist.rows(kiter - plateauWindow, kiter),
+                             parHistThetaKeep.n_elem, parHistOmegaKeep.n_elem, offScale, plateauTol);
+  }
+
+  // End the EM phase after nStop iterations: drop the rest from every per-iteration
+  // history and gain schedule, so the run continues as one with nEm = nStop - nBurn.
+  void truncateHistory(unsigned int nStop) {
+    if (nStop >= (unsigned int)niter) return;
+    par_hist = par_hist.rows(0, nStop - 1);
+    const uword nr = (uword)N * nmc;
+    mat h(phiMHist.begin(), nr * niter, nphi, false, true);
+    NumericVector out((R_xlen_t)nStop * nr * nphi);
+    mat o(out.begin(), nr * nStop, nphi, false, true);
+    o = h.rows(0, nr * nStop - 1);
+    out.attr("dim") = IntegerVector::create(N, nmc, (int)nStop, nphi);
+    phiMHist = out;
+    // keep the traces sized for the new total so mcmcCloseIter does not reset them
+    auto cut = [&](mat &m) {
+      if (m.n_rows < nStop) return;
+      mat na(nSaCov, m.n_cols);
+      na.fill(NA_REAL);
+      m = join_cols(mat(m.rows(0, nStop - 1)), na);
+    };
+    cut(mcmcAccTrace); cut(mcmcStuckTrace); cut(phiSdTrace); cut(phiAcfTrace);
+    cut(mcmcAccColTrace);
+    pas = join_cols(vec(pas.head(nStop)), zeros<vec>(nSaCov));
+    pash = join_cols(vec(pash.head(nStop)), zeros<vec>(nSaCov));
+    if (pasMix.n_elem >= nStop) pasMix = join_cols(vec(pasMix.head(nStop)), zeros<vec>(nSaCov));
+    niter = (int)nStop;
+  }
+
   // Build fsb (predictions across all nmc chains) and ysb (observations
   // replicated nmc times) for a single endpoint b, used by the residual
   // parameter estimation switch cases.
@@ -5543,6 +5712,179 @@ private:
     mcmcAccNum.zeros(3); mcmcAccDen.zeros(3);
     if (nphi > 0) { mcmcAccNumCol.zeros(nphi); mcmcAccDenCol.zeros(nphi); }
     if (N > 0) mcmcAccById.zeros(N);
+  }
+
+  // --- likelihood penalty (likPenalty.h) ---------------------------------------
+  void penSyncTheta() {
+    for (size_t p = 0; p < _penMap.size(); ++p) {
+      int t = _penMap[p];
+      if (t >= 0 && t < (int)_penTheta.size()) _penTheta[(size_t)t] = Plambda((arma::uword)p);
+    }
+  }
+
+  // Add the penalties (as a loss, -LL) for each chain row of phiMc: the
+  // subject term, and the population term at the row's phi0 values, spread
+  // over the N subjects (phi0 has no M-step curvature, so the penalty shapes
+  // its sampling target instead).
+  void penAddSubj(const mat &phiMc, vec &U) {
+    if (nlmixrPenNSubject() > 0 && _penMphi1 != NULL) penAddSubjEta(phiMc, U);
+    if (nlmixrPenNPop() > 0 && !_penMap.empty() && nphi0 > 0) penAddPhi0(phiMc, U);
+  }
+
+  // Subject penalty LL for subject id at phi1 deviations e1 (phi1 slot order).
+  // The ABI orders etas as ini() does: phi1 slot q holds eta k when
+  // _penEtaOrd[k] == q.
+  double penSubjLL(int id, const double *e1, int nq, int nobs) {
+    const bool reord = !_penEtaOrd.empty();
+    const int ne = reord ? (int)_penEtaOrd.size() : nq;
+    std::vector<double> eta((size_t)std::max(ne, 1));
+    for (int k = 0; k < ne; ++k) {
+      int q = reord ? _penEtaOrd[(size_t)k] : k;
+      eta[(size_t)k] = (q >= 0 && q < nq) ? e1[q] : 0.0;
+    }
+    const int nt = (int)_penTheta.size();
+    return nlmixrPenSubjAll(id, ne, nobs, eta.data(), nt, nt > 0 ? _penTheta.data() : NULL, NULL);
+  }
+
+  void penAddSubjEta(const mat &phiMc, vec &U) {
+    const int nq = _penMphi1->nphi;
+    std::vector<double> e1((size_t)std::max(nq, 1));
+    for (arma::uword ii = 0; ii < U.n_elem; ++ii) {
+      int id = (int)(ii % (arma::uword)N);
+      for (int q = 0; q < nq; ++q) {
+        e1[(size_t)q] = phiMc(ii, _penMphi1->i((arma::uword)q)) -
+          _penMphi1->mprior_phiM(ii, (arma::uword)q);
+      }
+      int nobs = ii < ix_idM.n_rows ? (int)(ix_idM(ii, 1) - ix_idM(ii, 0) + 1) : 0;
+      U(ii) -= penSubjLL(id, e1.data(), nq, nobs);
+    }
+  }
+
+  void penAddPhi0(const mat &phiMc, vec &U) {
+    std::vector<int> tOf((size_t)nphi0, -1);
+    const arma::uword nr = MCOV0.n_rows;
+    bool any = false;
+    for (int c = 0; c < nphi0; ++c) {
+      for (arma::uword k = 0; k < jcov0.n_elem; ++k) {
+        if (jcov0(k) != (arma::uword)c * nr) continue;
+        tOf[(size_t)c] = _penMap[(size_t)ilambda0(k)];
+        if (tOf[(size_t)c] >= 0) any = true;
+      }
+    }
+    if (!any) return;
+    std::vector<double> th(_penTheta);
+    const int nt = (int)th.size();
+    for (arma::uword ii = 0; ii < U.n_elem; ++ii) {
+      for (int c = 0; c < nphi0; ++c) {
+        int t = tOf[(size_t)c];
+        if (t >= 0 && t < nt) th[(size_t)t] = phiMc(ii, i0((arma::uword)c));
+      }
+      U(ii) += 0.5 * nlmixrPenPopAll(nt, th.data(), 0, NULL, N, NULL, NULL) / (double)N;
+    }
+  }
+
+  // Population penalty at block values b (Plambda positions ilam); g (natural,
+  // per b element) is filled when non-NULL.  Returns -2LL-scale penalty.
+  double penPopAtBlock(const vec &b, const uvec &ilam, vec *g) {
+    std::vector<double> th(_penTheta);
+    for (arma::uword j = 0; j < b.n_elem; ++j) {
+      int t = _penMap[(size_t)ilam(j)];
+      if (t >= 0) th[(size_t)t] = b(j);
+    }
+    const int nt = (int)th.size();
+    std::vector<double> gt((size_t)nt, 0.0);
+    int ok = 1;
+    double v = nlmixrPenPopAll(nt, th.data(), 0, NULL, N, g == NULL ? NULL : gt.data(), &ok);
+    if (g != NULL) {
+      g->zeros(b.n_elem);
+      for (arma::uword j = 0; j < b.n_elem; ++j) {
+        int t = _penMap[(size_t)ilam(j)];
+        if (t < 0) continue;
+        if (ok) {
+          (*g)(j) = gt[(size_t)t];
+        } else {
+          double h = 1e-6 * std::max(1.0, std::fabs(b(j)));
+          vec bp = b, bm = b;
+          bp(j) += h; bm(j) -= h;
+          (*g)(j) = (penPopAtBlock(bp, ilam, NULL) - penPopAtBlock(bm, ilam, NULL)) / (2.0 * h);
+        }
+      }
+    }
+    return v;
+  }
+
+  // Penalized M-step for one block: the update b0 (closed form, plus any
+  // mixture/IOV adjustment) minimizes the -2LL quadratic (b-b0)'A(b-b0); with a
+  // population penalty P the block minimizes that plus P(b) by damped Newton
+  // (FD Hessian of P).  Centering on b0 rather than A^-1 r keeps the adjustments.
+  void penMstep(vec &b, const mat &A, const uvec &fixedIx, const uvec &ilam) {
+    if (_penMap.empty() || nlmixrPenNPop() == 0 || b.n_elem == 0) return;
+    uvec f = penFreeIx(b.n_elem, fixedIx, ilam);
+    if (f.n_elem == 0) return;
+    const vec r = A * b;
+    auto obj = [&](const vec &bb) {
+      return as_scalar(bb.t() * A * bb) - 2.0 * dot(bb, r) + penPopAtBlock(bb, ilam, NULL);
+    };
+    double fcur = obj(b);
+    for (int it = 0; it < 50; ++it) {
+      vec gp;
+      penPopAtBlock(b, ilam, &gp);
+      vec g = 2.0 * (A * b - r) + gp;
+      vec gf = g(f);
+      mat H = penBlockHessian(b, A, f, ilam);
+      vec step;
+      if (!solve(step, H, gf) || !step.is_finite()) step = gf / std::max(1.0, norm(gf));
+      double t = penLineSearch(b, f, step, fcur, obj);
+      if (t <= 0.0 || norm(t * step) < 1e-10 * (1.0 + norm(b(f)))) break;
+    }
+    for (arma::uword j = 0; j < b.n_elem; ++j) {
+      int tt = _penMap[(size_t)ilam(j)];
+      if (tt >= 0) _penTheta[(size_t)tt] = b(j);
+    }
+  }
+
+  // block entries that are estimated and mapped to a theta
+  uvec penFreeIx(arma::uword n, const uvec &fixedIx, const uvec &ilam) {
+    std::vector<arma::uword> fr;
+    for (arma::uword j = 0; j < n; ++j) {
+      if (any(fixedIx == j)) continue;
+      if (_penMap[(size_t)ilam(j)] < 0) continue;
+      fr.push_back(j);
+    }
+    return uvec(fr);
+  }
+
+  // Hessian over the free entries f: 2A plus the FD Hessian of the penalty
+  mat penBlockHessian(const vec &b, const mat &A, const uvec &f, const uvec &ilam) {
+    mat H = 2.0 * A(f, f);
+    for (arma::uword a = 0; a < f.n_elem; ++a) {
+      double h = 1e-5 * std::max(1.0, std::fabs(b(f(a))));
+      vec bp = b, bm = b, gpp, gpm;
+      bp(f(a)) += h; bm(f(a)) -= h;
+      penPopAtBlock(bp, ilam, &gpp);
+      penPopAtBlock(bm, ilam, &gpm);
+      vec col = (gpp - gpm) / (2.0 * h);
+      for (arma::uword c = 0; c < f.n_elem; ++c) H(c, a) += col(f(c));
+    }
+    return 0.5 * (H + H.t());
+  }
+
+  // backtracking along -step on the free entries; returns the accepted step
+  // length (0 when no decrease), updating b and fcur
+  template <class Obj>
+  double penLineSearch(vec &b, const uvec &f, const vec &step, double &fcur, Obj obj) {
+    double t = 1.0;
+    for (int ls = 0; ls < 30; ++ls) {
+      vec bn = b;
+      bn(f) -= t * step;
+      double fn = obj(bn);
+      if (R_FINITE(fn) && fn <= fcur) {
+        b = bn; fcur = fn;
+        return t;
+      }
+      t *= 0.5;
+    }
+    return 0.0;
   }
 
   void do_mcmc(const int method,
@@ -5695,6 +6037,7 @@ private:
         }
 
         Uc_y=sum(DYF,0).t();
+        penAddSubj(phiMc, Uc_y);
         if (method==1) {
           deltu=Uc_y-U_y;
         }
@@ -5822,6 +6165,7 @@ private:
       if (sumExp <= 0.0) sumExp = 1e-300;
       result(row) = minL - log(sumExp);
     }
+    penAddSubj(phiC, result);
     return result;
   }
 
@@ -6740,7 +7084,8 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("mixProb") = saem.get_mixProb(),
     Named("mixWeights") = saem.get_mixWeights(),
     Named("etaMode") = saem.get_etaMode(),
-    Named("etaModeConv") = saem.get_etaModeConv()
+    Named("etaModeConv") = saem.get_etaModeConv(),
+    Named("plateauIter") = saem.get_plateauIter()
   );
   current_saem_state = nullptr;
   int nModeFail = (int)accu(saem.get_etaModeConv() < 0);

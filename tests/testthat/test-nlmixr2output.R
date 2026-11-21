@@ -29,6 +29,27 @@ nmTest({
     expect_false(envPrep$.sdOnly)
   })
 
+  test_that("a huge log-normal BSV CV% prints in scientific notation (#1386)", {
+    .row <- function(v) {
+      .updateParFixedGetEtaRow(
+        .eta = "iivemax",
+        .env = new.env(),
+        .ome = matrix(v, nrow = 1, dimnames = list("iivemax", "iivemax")),
+        .omegaFix = c(iivemax = FALSE),
+        .muRefCurEval = data.frame(parameter = "iivemax", curEval = "exp", low = NA_real_, hi = NA_real_),
+        .sigdig = 3L
+      )
+    }
+    .r <- .row(156.036966)
+    expect_equal(.r$ch, "7.64e+35")
+    expect_equal(.r$v, sqrt(exp(156.036966) - 1) * 100)
+    expect_equal(.row(0.09)$ch, "30.7")
+    expect_equal(.formatBsvChar(999000, 3L), "999000.")
+    expect_equal(.formatBsvChar(999999, 3L), "1.00e+06")
+    expect_equal(.formatBsvChar(1.5e6, 3L), "1.50e+06")
+    expect_equal(.formatBsvChar(c(30.7, 7.64e35, Inf, NA), 3L), c("30.7", "7.64e+35", " Inf", "  NA"))
+  })
+
   test_that(".updateParFixedGetEtaRow returns a numeric `v` when there is no BSV", {
     # The rows are rbound and their `v` column taken as the BSV values, so a
     # row of a different type there turns the whole column character.

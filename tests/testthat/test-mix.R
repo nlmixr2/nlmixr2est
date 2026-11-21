@@ -425,9 +425,13 @@ nmTest({
     assign("ranef", data.frame(ID = c(1L, 2L), `ETA[1]` = c(0.1, 0.2), check.names = FALSE), envir = env)
     assign("fixef", c(p1 = 0), envir = env) # mlogit(0.5) prior when back-transformed
 
+    # identical OBJI in both classes: they are also indistinguishable
     expect_warning(
-      .mixFix(env, ui = NULL),
-      "underflow|zero.*likelihood|posterior"
+      expect_warning(
+        .mixFix(env, ui = NULL),
+        "underflow|zero.*likelihood|posterior"
+      ),
+      "classes 1 and 2 are indistinguishable"
     )
     .mixList <- get("mixList", envir = env)
     expect_false(any(vapply(.mixList, function(m) any(is.nan(m$prob)), logical(1))))

@@ -4,12 +4,18 @@
 \alias{.agq}
 \title{Get the adaptive Gauss-Hermite quadrature points and weights}
 \usage{
-.agq(neta = 2, nAGQ = 3)
+.agq(neta = 2, nAGQ = 3, warnNodes = 10000, maxNodes = 1e+06)
 }
 \arguments{
 \item{neta}{number of eta parameters in the model}
 
 \item{nAGQ}{number of adaptive quadrature points to use}
+
+\item{warnNodes}{grid size (`nAGQ^neta`) above which a warning is
+issued}
+
+\item{maxNodes}{grid size above which the grid is refused (error)
+before it is built}
 }
 \value{
 A list with the following elements:
