@@ -89,6 +89,11 @@
   `foceiControl(corWarn=)`, `saemControl(corWarn=)`) sets the threshold;
   `NA` turns it off (#1380).
 
+- A mixture fit now notes in `$runInfo` a class no subject belongs to
+  (`mixture class 2 has no subjects (max posterior < 0.01); try new starts`)
+  and, for the FOCEi family, two classes no subject can tell apart
+  (`mixture classes 1 and 2 are indistinguishable at the estimates`) (#1391).
+
 - `foceiControl(scaleLinear = "abs")` scales every linear theta by its
   `|init|`, as NONMEM does, instead of the default `1/|init|` inside
   `scaleCband`.  The default `"inverse"` is unchanged (#1320).
