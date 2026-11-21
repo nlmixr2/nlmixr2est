@@ -67,7 +67,14 @@
   .ret <- vector("list", length(.ls) + 3)
   .ret[[1]] <- quote(`{`)
   for (.i in seq_along(.ls)) {
-    .ret[[.i + 1]] <- eval(parse(text = paste("quote(", .ls[.i], "<-", deparse1(ui$meta[[.ls[.i]]]), ")")))
+    .v <- ui$meta[[.ls[.i]]]
+    .e <- try(eval(parse(text = paste("quote(", .ls[.i], "<-", deparse1(.v), ")"))), silent = TRUE)
+    if (inherits(.e, "try-error")) {
+      # a value with no source form (an external pointer, e.g. a compiled
+      # likelihood penalty) is carried as itself
+      .e <- call("<-", as.name(.ls[.i]), .v)
+    }
+    .ret[[.i + 1]] <- .e
   }
   .len <- length(.ls)
   .ret[[.len + 2]] <- ini
