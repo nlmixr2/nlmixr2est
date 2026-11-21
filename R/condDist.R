@@ -154,7 +154,7 @@ addCondDist <- function(
   # imp raises an Omega variance below 1e-6 to 1e-6, which would change the prior
   .om <- tryCatch(diag(as.matrix(fit$omega)), error = function(e) NULL)
   if (any(.om < 1e-6)) {
-    stop("importance sampling needs every Omega variance >= 1e-6", call. = FALSE)
+    stop("importance sampling needs every Omega variance >= 1e-6; try method = \"saem\"", call. = FALSE)
   }
   .fc <- .condDistLikControl(fit)
   # mapIter = 1 centers each E-step's proposal at the subject's mode with the
