@@ -23,13 +23,17 @@
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
   Shapiro-Wilk test from `$shrink`; fixed or zero-variance ETAs give `NA`
   (#1448).
-
+- Time-to-event endpoints written with rxode2's `ev ~ tte(hazard)` can be
+  estimated by the likelihood methods (`focei`, `laplace`, `agq`, `saem`,
+  the `nlm` family, ...).  The endpoint data are checked first (`DV` must be
+  0 or 1, and an event on a subject's first record is warned about since it
+  is the start of observation).  This needs an rxode2 with `tte()` support and
+  is inactive otherwise.
 - `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
   objective at the final estimates with every ODE tolerance 10x tighter and
   notes in `$runInfo` an objective that moves by more than `odeSettleTol`
   (default 0.1) or is not finite, e.g. `OFV moves 0.28 at 10x tighter ODE
   tolerance`; the tighter objective is kept as `fit$odeSettleObjf` (#1393).
-
 - FOCEi model builds no longer optimize the `innerOeta` model, which only
   `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on
   first use, caches it and adds the inner model's `param()`/`cmt()`/`mtime()`
