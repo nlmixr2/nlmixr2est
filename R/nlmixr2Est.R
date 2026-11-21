@@ -299,6 +299,10 @@ nlmixr2Est0 <- function(env, ...) {
   rxode2::rxUnloadAll()
   .ui <- rxode2::rxUiDecompress(get("ui", env))
   assign("ui", .ui, envir = env)
+  # likelihood penalties are on for this (outermost) estimation only
+  if (.likPenaltyActivate(env)) {
+    on.exit(.likPenaltyDeactivate(), add = TRUE)
+  }
   if (!exists("missingTable", envir = env)) {
     assign("missingTable", FALSE, envir = env)
   }
@@ -443,6 +447,11 @@ nlmixr2Est0 <- function(env, ...) {
     })
   }
   .nlmixrEstUpdatesOrigModel(.ret, env)
+  .penWarn <- .collectWarn(.likPenaltyFinalize(.ret), lst = TRUE)[[2]]
+  if (length(.penWarn) > 0L && inherits(.ret, "nlmixr2FitCore")) {
+    .warnings <- c(.warnings, .penWarn)
+    .nlmixr2EstSetRunInfo(.ret, .warnings)
+  }
   if (inherits(.ret, "nlmixr2FitCore")) {
     # the post-fit hooks run after $runInfo is assembled above; collect their
     # warnings into it the same way
