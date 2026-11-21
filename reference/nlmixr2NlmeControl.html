@@ -86,6 +86,7 @@ is used as the `control` argument to the `nlme` function.</p>
 <span>  ci <span class="op">=</span> <span class="fl">0.95</span>,</span>
 <span>  sigdig <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  shrinkEtaWarn <span class="op">=</span> <span class="fl">30</span>,</span>
 <span>  muRefCovAlg <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  print <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -130,6 +131,7 @@ is used as the `control` argument to the `nlme` function.</p>
 <span>  ci <span class="op">=</span> <span class="fl">0.95</span>,</span>
 <span>  sigdig <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  shrinkEtaWarn <span class="op">=</span> <span class="fl">30</span>,</span>
 <span>  muRefCovAlg <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  print <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -399,6 +401,11 @@ At the default <code>sigdig = 3</code> this is <code>atol = 1e-8</code>,
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
 <dd><p>Significant digits in the final output table.
 If not specified (`NULL`), it defaults to `sigdig`.</p></dd>
+
+
+<dt id="arg-shrinketawarn">shrinkEtaWarn<a class="anchor" aria-label="anchor" href="#arg-shrinketawarn"></a></dt>
+<dd><p>Warn (in `$runInfo`) when an eta's SD shrinkage is
+at or above this percentage.  Use `NA` or `Inf` to disable.</p></dd>
 
 
 <dt id="arg-murefcovalg">muRefCovAlg<a class="anchor" aria-label="anchor" href="#arg-murefcovalg"></a></dt>
@@ -1033,6 +1040,9 @@ the warning off.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $sigdigTable</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 3</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $shrinkEtaWarn</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 30</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $muRefCovAlg</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -1612,6 +1622,9 @@ the warning off.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $sigdigTable</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 3</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $shrinkEtaWarn</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 30</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $muRefCovAlg</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>

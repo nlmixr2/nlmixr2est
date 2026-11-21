@@ -9,6 +9,10 @@ saemControl(
   seed = 99,
   nBurn = 200,
   nEm = 300,
+  plateauStop = FALSE,
+  plateauWindow = 50L,
+  plateauTol = 0.001,
+  plateauMinFrac = 0.5,
   nmc = 3,
   nu = c(2, 2, 2),
   rmcmc = 0.5,
@@ -46,6 +50,7 @@ saemControl(
   rxControl = NULL,
   sigdig = NULL,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   ci = 0.95,
   muRefCov = TRUE,
   muRefCovAlg = TRUE,
@@ -94,6 +99,27 @@ saemControl(
 
   Number of iterations in the Expectation-Maximization (EM) Step. This
   is equivalent to Monolix's `K_1`.
+
+- plateauStop:
+
+  When `TRUE`, end the EM phase early once every estimated theta, omega
+  and residual parameter has plateaued; the fit's run information notes
+  the stop iteration. Default `FALSE`.
+
+- plateauWindow:
+
+  Number of EM iterations the plateau must span.
+
+- plateauTol:
+
+  Largest relative change (range over the window divided by the
+  parameter's magnitude) allowed for every parameter at a plateau.
+  Thetas below 1 in magnitude use the absolute change.
+
+- plateauMinFrac:
+
+  Fraction of the `nEm` iterations that always run before a plateau can
+  stop the EM phase.
 
 - nmc:
 
@@ -422,6 +448,11 @@ saemControl(
 
   Significant digits in the final output table. If not specified
   (\`NULL\`), it defaults to \`sigdig\`.
+
+- shrinkEtaWarn:
+
+  Warn (in \`\$runInfo\`) when an eta's SD shrinkage is at or above this
+  percentage. Use \`NA\` or \`Inf\` to disable.
 
 - ci:
 

@@ -111,6 +111,7 @@ simultaneous population-parameter estimation and covariate selection.</p>
 <span>  ci <span class="op">=</span> <span class="fl">0.95</span>,</span>
 <span>  sigdig <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  shrinkEtaWarn <span class="op">=</span> <span class="fl">30</span>,</span>
 <span>  rhoend <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  stickyRecalcN <span class="op">=</span> <span class="fl">4</span>,</span>
 <span>  maxOdeRecalc <span class="op">=</span> <span class="fl">5</span>,</span>
@@ -755,6 +756,11 @@ against a default <code>rtol = 1e-6</code>.  Raise <code>sigdig</code>, or set
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
 <dd><p>Significant digits in the final output table.
 If not specified (`NULL`), it defaults to `sigdig`.</p></dd>
+
+
+<dt id="arg-shrinketawarn">shrinkEtaWarn<a class="anchor" aria-label="anchor" href="#arg-shrinketawarn"></a></dt>
+<dd><p>Warn (in `$runInfo`) when an eta's SD shrinkage is
+at or above this percentage.  Use `NA` or `Inf` to disable.</p></dd>
 
 
 <dt id="arg-rhoend">rhoend<a class="anchor" aria-label="anchor" href="#arg-rhoend"></a></dt>

@@ -24,6 +24,14 @@
 
 ### New features
 
+- `saemControl(plateauStop = TRUE)` ends SAEM’s EM phase early once
+  every estimated theta, omega and residual parameter has changed by
+  less than `plateauTol` (relative) over the last `plateauWindow`
+  iterations, never before `plateauMinFrac` of `nEm` has run. The
+  stopped fit is the fit a smaller `nEm` would give, and `$runInfo`
+  notes the stop iteration. Off by default
+  ([\#1395](https://github.com/nlmixr2/nlmixr2est/issues/1395)).
+
 - A C interface for likelihood penalties
   (`inst/include/nlmixr2estLikPenalty.h`) lets compiled code, such as an
   `rxode2` model extension, add per-subject and population terms to the
@@ -73,8 +81,14 @@
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or
   more (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their
-  EBE diagnostics are unreliable. `foceiControl(shrinkEtaWarn=)` sets
-  the threshold; `NA` or `Inf` turns the note off
+  EBE diagnostics are unreliable. `shrinkEtaWarn=` in
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md),
+  [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md),
+  [`nlmeControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2NlmeControl.md),
+  [`vaeControl()`](https://nlmixr2.github.io/nlmixr2est/reference/vaeControl.md)
+  and
+  [`emviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/emviControl.md)
+  sets the threshold; `NA` or `Inf` turns the note off
   ([\#1379](https://github.com/nlmixr2/nlmixr2est/issues/1379)).
 
 - After the covariance step, a fit warns (in `$runInfo`) about pairs of

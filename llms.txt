@@ -189,6 +189,8 @@ plot(fit)
   : Preprocess the zero omegas
 - [`.preProcessZeroTheta()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessZeroTheta.md)
   : Handle theta initial estimates that are exactly zero
+- [`.uiApplyOdeLinCmtCarryCap()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-uiApplyOdeLinCmtCarryCap.md)
+  : Solve a \`linCmt()\` model past the carry cap as ODEs
 - [`emviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/emviControl.md)
   : Control for the variational inference methods emvi and fbvi in
   nlmixr2

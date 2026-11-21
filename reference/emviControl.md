@@ -45,6 +45,7 @@ emviControl(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -414,6 +415,11 @@ emviControl(
 
   Significant digits in the final output table. If not specified
   (\`NULL\`), it defaults to \`sigdig\`.
+
+- shrinkEtaWarn:
+
+  Warn (in \`\$runInfo\`) when an eta's SD shrinkage is at or above this
+  percentage. Use \`NA\` or \`Inf\` to disable.
 
 - stickyRecalcN:
 

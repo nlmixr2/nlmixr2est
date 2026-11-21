@@ -181,6 +181,9 @@ fbviControl()
 #> $sigdigTable
 #> [1] 3
 #> 
+#> $shrinkEtaWarn
+#> [1] 30
+#> 
 #> $stickyRecalcN
 #> [1] 4
 #> 

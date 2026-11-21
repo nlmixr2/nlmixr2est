@@ -43,6 +43,7 @@ nlmixr2NlmeControl(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   muRefCovAlg = TRUE,
   eventSens = c("jump", "fd"),
   print = NULL,
@@ -87,6 +88,7 @@ nlmeControl(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   muRefCovAlg = TRUE,
   eventSens = c("jump", "fd"),
   print = NULL,
@@ -345,6 +347,11 @@ nlmeControl(
 
   Significant digits in the final output table. If not specified
   (\`NULL\`), it defaults to \`sigdig\`.
+
+- shrinkEtaWarn:
+
+  Warn (in \`\$runInfo\`) when an eta's SD shrinkage is at or above this
+  percentage. Use \`NA\` or \`Inf\` to disable.
 
 - muRefCovAlg:
 
@@ -977,6 +984,9 @@ nlmeControl()
 #> $sigdigTable
 #> [1] 3
 #> 
+#> $shrinkEtaWarn
+#> [1] 30
+#> 
 #> $muRefCovAlg
 #> [1] TRUE
 #> 
@@ -1556,6 +1566,9 @@ nlmixr2NlmeControl()
 #> 
 #> $sigdigTable
 #> [1] 3
+#> 
+#> $shrinkEtaWarn
+#> [1] 30
 #> 
 #> $muRefCovAlg
 #> [1] TRUE
