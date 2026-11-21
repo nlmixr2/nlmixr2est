@@ -39,6 +39,7 @@ struct calcNpdeInfoId {
   arma::mat npde;
   arma::mat npd;
   arma::mat eres;
+  arma::vec pwres;
   unsigned int warn = 0;
 };
 

@@ -8,6 +8,20 @@
 #' @param ... Other ignored parameters.
 #'
 #'
+#' @details
+#'
+#' Besides `EPRED`, `ERES`, `NPDE`, `NPD`, `PDE` and `PD`, the fit gets
+#' `PWRES`, the Monte Carlo population-weighted residual (NONMEM's
+#' `EWRES`): each subject's `Sigma^(-1/2) (y - EPRED)`, with `EPRED` and
+#' `Sigma` the mean and covariance of the same simulations and the symmetric
+#' inverse square root.  It is computed on the scale of the residual error
+#' transformation, as NPDE.  It keeps the residual's magnitude, which the
+#' rank-based NPDE caps near `qnorm(1/nsim)`, but uses only the first two
+#' moments: a skewed marginal (log-normal IIV, proportional error) can show
+#' apparent bias even under the true model, so NPDE remains the primary
+#' simulation diagnostic.  A subject with a censored observation, or with
+#' `nsim` no larger than its number of observations, gets `NA`.
+#'
 #' @return New nlmixr2 fit object
 #' @author Matthew L. Fidler
 #' @examples
@@ -106,7 +120,7 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   table$cwres <- FALSE
   .df <- .calcTables(.iovTablesFit(fit), table = table)$resid
   # the columns _nlmixr2est_npdeCalc() (src/npde.cpp) returns
-  .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD")
+  .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD", "PWRES")
   # a table that asks for doses gives dosing rows too
   .in <- if ("EVID" %in% names(.df)) .df$EVID == 0 else rep(TRUE, nrow(.df))
   .df[.in, .cols, drop = FALSE]
