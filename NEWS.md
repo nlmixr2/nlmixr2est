@@ -18,6 +18,11 @@
 
 ## New features
 
+- `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
+  ETA (computed on access, so older saved fits have them too), and
+  `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
+  Shapiro-Wilk test from `$shrink`; fixed or zero-variance ETAs give `NA`
+  (#1448).
 - `BIC(fit, type=)` gives BIC variants that charge random-effect
   parameters `log(number of subjects)` instead of `log(number of
   observations)` (Delattre et al. 2014): `"iiv"` (omega/kappa elements),

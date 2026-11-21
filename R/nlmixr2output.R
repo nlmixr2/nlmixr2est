@@ -770,7 +770,7 @@
       corIniDf = .updateParFixedBsvCorIni(.ret, .ui)
     )
     popDf <- .bsv$popDf
-    popDf <- .updateParFixedAddShrinkage(popDf, shrink = .ret$shrink, ui = .ui)
+    popDf <- .updateParFixedAddShrinkage(popDf, shrink = get0("shrink", envir = .ret, inherits = FALSE), ui = .ui)
   }
   # a mixture proportion's CI belongs on the logit scale: the generic
   # symmetric interval leaves (0, 1) and is built from the pre-rotation SE

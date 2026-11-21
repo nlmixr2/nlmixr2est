@@ -1287,7 +1287,7 @@ nlmixr2iovVarSd <- function(val) {
         which(grepl(paste0("^rx\\.", gsub(".", "\\.", d, fixed = TRUE), "\\.[^.]+$"), nms))
       }
       # Fix shrinkage, now split out by iov variable
-      .shrink <- ret$env$shrink
+      .shrink <- get0("shrink", envir = ret$env, inherits = FALSE)
       .w <- which(names(.shrink) %in% .uiIovEnv$iovDrop)
       .shrink0 <- .shrink[, -.w, drop = FALSE]
       .shrinkN <- cbind(data.frame(type = row.names(.shrink0)), .shrink)
