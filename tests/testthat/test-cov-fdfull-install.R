@@ -77,7 +77,7 @@ test_that("PD guard rejects an indefinite assembled cov", {
   .e <- .mkFdEnv("r", .Rbad)
   expect_warning(
     .foceiInstallFdFullCov(.e),
-    "\"r (full)\" is not positive definite; none installed",
+    "\"r (full)\" is not PD: om.eta.ka negative; none installed",
     fixed = TRUE
   )
   expect_false(exists("cov", envir = .e, inherits = FALSE))
