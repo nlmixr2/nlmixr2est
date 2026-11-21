@@ -8,6 +8,7 @@
 #' `method = "imp"` draws importance samples from a proposal centered at each
 #' subject's mode, holding every population parameter at the fit's estimate
 #' (the frozen `est = "imp"` E-step), and weights them by the posterior.
+#' Mixture, IOV and non-parametric fits are not supported.
 #'
 #' @param fit nlmixr2 fit with random effects
 #' @param method `"auto"` (default) or `"imp"`: the sampler
@@ -63,6 +64,10 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
   if (isTRUE(tryCatch(.uiHasIov(fit$ui), error = function(e) FALSE))) {
     stop("conditional distribution is not available for IOV models", call. = FALSE)
   }
+  # their eta distribution is the fitted discrete support, not Omega
+  if (tryCatch(fit$est, error = function(e) "") %in% c("npag", "mnpag", "inpag", "npb", "mnpb", "inpb")) {
+    stop("conditional distribution is not available for non-parametric fits", call. = FALSE)
+  }
   .r <- .condDistImp(fit, as.integer(round(nsamp)), as.integer(seed))
   .etaNames <- names(.eta)[-1]
   if (!identical(dim(.r$mean), c(nrow(.eta), length(.etaNames)))) {
@@ -84,6 +89,7 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
 #'   an `N x neta x nsamp` array of equally weighted draws
 #' @noRd
 .condDistImp <- function(fit, nsamp, seed) {
+  .fc <- .condDistLikControl(fit)
   # mapIter = 1 centers each E-step's proposal at the subject's mode with the
   # Laplace covariance (mapIter = 0 keeps the prior as the proposal); the
   # E-steps before the last adapt its scale
@@ -96,6 +102,8 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
     covMethod = "",
     calcTables = FALSE,
     print = 0L,
+    addProp = .fc$addProp,
+    rxControl = .fc$rxControl,
     impFrozen = TRUE
   )
   .fit2 <- .nativePinnedRefit(fit, "imp", .ctl, useEtaMat = TRUE)
@@ -103,26 +111,41 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
     stop("importance sampling at the fit's estimates failed", call. = FALSE)
   }
   .e <- .fit2$env
-  .weightedDraws(.e$impSamples, .e$impWeights, nsamp)
+  .u <- rxode2::rxWithSeed(seed, rxode2::rxunif(n = length(.e$impSamples)))
+  .weightedDraws(.e$impSamples, .e$impWeights, nsamp, .u)
+}
+
+#' The likelihood settings of a fit that a refit at its estimates must keep
+#' @param fit nlmixr2 fit
+#' @return list: `addProp` and `rxControl` (`NULL` for the engine default)
+#' @noRd
+.condDistLikControl <- function(fit) {
+  .fc <- tryCatch(fit$foceiControl, error = function(e) NULL)
+  .addProp <- if (is.list(.fc)) .fc$addProp
+  list(
+    addProp = if (is.character(.addProp) && length(.addProp) == 1L) .addProp else "combined2",
+    rxControl = if (is.list(.fc) && inherits(.fc$rxControl, "rxControl")) .fc$rxControl
+  )
 }
 
 #' Moments and equally weighted draws of per-subject weighted samples
 #'
-#' Resampling is systematic (stratified at fixed offsets), so it uses no random
-#' numbers.
+#' Resampling is systematic: one uniform offset per subject, shared by its
+#' `ndraw` equally spaced strata.
 #' @param samples list, per subject, of `nsample x neta` matrices
 #' @param weights list, per subject, of the samples' weights
 #' @param ndraw equally weighted draws per subject
+#' @param u per-subject offsets in `[0, 1)`
 #' @return list: `mean`, `sd`, `ess` and `draws` (`N x neta x ndraw`)
 #' @noRd
-.weightedDraws <- function(samples, weights, ndraw) {
+.weightedDraws <- function(samples, weights, ndraw, u = rep(0.5, length(samples))) {
   .n <- length(samples)
   .neta <- ncol(samples[[1]])
   .mean <- .sd <- matrix(NA_real_, .n, .neta)
   .ess <- numeric(.n)
   .draws <- array(NA_real_, c(.n, .neta, ndraw))
-  .u <- (seq_len(ndraw) - 0.5) / ndraw
   for (.i in seq_len(.n)) {
+    .u <- (seq_len(ndraw) - 1 + u[.i]) / ndraw
     .s <- samples[[.i]]
     .w <- as.numeric(weights[[.i]])
     .w <- .w / sum(.w)

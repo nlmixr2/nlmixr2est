@@ -40,6 +40,7 @@ fit from any mixed-effects estimation method.
 `method = "imp"` draws importance samples from a proposal centered at each
 subject's mode, holding every population parameter at the fit's estimate
 (the frozen `est = "imp"` E-step), and weights them by the posterior.
+Mixture, IOV and non-parametric fits are not supported.
 }
 \examples{
 \donttest{
