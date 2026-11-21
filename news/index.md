@@ -127,6 +127,13 @@
   used to carry one untied `om.rx.<iov>.<k>` row per occasion
   ([\#1317](https://github.com/nlmixr2/nlmixr2est/issues/1317)).
 
+- SAEM’s `iovMethod = "twoLevel"` `$parFixedDf` now has an `iov.<x>` row
+  per occasion parameter, with the SE of the occasion SD and its CV (an
+  SD when the parameter is not
+  [`exp()`](https://rdrr.io/r/base/Log.html)-transformed), the way
+  `iovMethod = "theta"` reports it; it used to have no IOV rows
+  ([\#1317](https://github.com/nlmixr2/nlmixr2est/issues/1317)).
+
 - A FOCEi covariance that a vae or vi fit could not compute or install
   is now recorded in `fit$env$covTried`, under the method tried and with
   the condition message unclipped on one line (the refit’s own error
@@ -319,6 +326,14 @@
   likelihood that froze the chain at a state that no longer fit
   ([\#1298](https://github.com/nlmixr2/nlmixr2est/issues/1298)).
 
+- A `saem` fit whose estimates diverge (a non-finite value, a theta or
+  omega variance above 1e10 in magnitude, or one inside
+  [`exp()`](https://rdrr.io/r/base/Log.html) large enough that its
+  back-transform or CV% overflows) now says so in `$runInfo` (“estimates
+  diverged: …”) instead of returning as an ordinary fit with only a
+  covariance failure noted
+  ([\#1298](https://github.com/nlmixr2/nlmixr2est/issues/1298)).
+
 - A covariate compared to string literals (`b2 * (tnom == "2")`) no
   longer gets permuted estimates or `PRED`. Each generated model (inner,
   pred, outer, saem, nlm, nlme, …) numbered the literals in its own
@@ -336,6 +351,12 @@
   fixed-effect-only search parameters, so the components drifted apart
   while the shared eta’s variance absorbed the split; they also get an
   SA covariance SE now
+  ([\#1296](https://github.com/nlmixr2/nlmixr2est/issues/1296)).
+
+- `saem`’s soft-EM mixture methods (`mixProbMethod = "regularized"` and
+  `"annealed"`) now weigh each component by the likelihood of the state
+  its chain kept. They used the last rejected proposal’s, so the
+  responsibilities were noise and the components merged into one
   ([\#1296](https://github.com/nlmixr2/nlmixr2est/issues/1296)).
 
 - A parameter in a `delay()` duration (for example `delay(central, TR)`
@@ -855,6 +876,14 @@
 
 - saem refuses a `prior()` on an occasion variance again; the IOV
   rewrite dropped it before the prior check ran, so the fit ignored it
+  ([\#1319](https://github.com/nlmixr2/nlmixr2est/issues/1319)).
+
+- A saem fit with pooled occasion variances (`iovMethod = "twoLevel"` or
+  `"theta"`) now reports each one once, as `om.iov.x` in `$cov` and
+  `V(iov.x)` in `$parHistData`, under every `covMethod` and with a
+  single occasion level. Its standard error comes from the information
+  restricted to one shared variance, rather than the average of the
+  per-occasion covariances, which overstated it for unbalanced occasions
   ([\#1319](https://github.com/nlmixr2/nlmixr2est/issues/1319)).
 
 - A model whose occasion-level eta name starts with `eta.`
