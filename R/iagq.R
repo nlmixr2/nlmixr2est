@@ -16,6 +16,7 @@ nlmixr2Est.iagq <- function(env, ...) {
   .ui <- env$ui
   .foceiFamilyReturn(env, .ui, ..., est = "iagq")
 }
+attr(nlmixr2Est.iagq, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.iagq, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.iagq, "iov") <- TRUE
 attr(nlmixr2Est.iagq, "covPresent") <- TRUE
