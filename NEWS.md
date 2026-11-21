@@ -61,12 +61,17 @@
   `lastTheta`, the inner `THETA` the last fast step was built with (the counts
   show the kernel fired; only `lastTheta` shows what it was fired at).
 
+- Time-to-event endpoints written with rxode2's `ev ~ tte(hazard)` can be
+  estimated by the likelihood methods (`focei`, `laplace`, `agq`, `saem`,
+  the `nlm` family, ...).  The endpoint data are checked first (`DV` must be
+  0 or 1, and an event on a subject's first record is warned about since it
+  is the start of observation).  This needs an rxode2 with `tte()` support and
+  is inactive otherwise.
 - `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
   objective at the final estimates with every ODE tolerance 10x tighter and
   notes in `$runInfo` an objective that moves by more than `odeSettleTol`
   (default 0.1) or is not finite, e.g. `OFV moves 0.28 at 10x tighter ODE
   tolerance`; the tighter objective is kept as `fit$odeSettleObjf` (#1393).
-
 - FOCEi model builds no longer optimize the `innerOeta` model, which only
   `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on
   first use, caches it and adds the inner model's `param()`/`cmt()`/`mtime()`
@@ -88,6 +93,10 @@
   tcl/tv (0.98)`.  `corWarn=` in every method's control (e.g.
   `foceiControl(corWarn=)`, `saemControl(corWarn=)`) sets the threshold;
   `NA` turns it off (#1380).
+
+- `foceiControl(scaleLinear = "abs")` scales every linear theta by its
+  `|init|`, as NONMEM does, instead of the default `1/|init|` inside
+  `scaleCband`.  The default `"inverse"` is unchanged (#1320).
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
