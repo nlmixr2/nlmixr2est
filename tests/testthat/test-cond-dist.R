@@ -15,6 +15,12 @@ test_that(".weightedDraws gives weighted moments and systematic draws", {
   # draws follow the weights: 1, 2, 3, 4 of the 10 draws at 0, 1, 2, 3
   expect_equal(as.vector(table(.r$draws[1, 1, ])), 1:4)
   expect_equal(mean(.r2$draws[2, 2, ]), 0)
+  # a random offset keeps every stratum's mass reachable
+  .alt <- list(matrix(rep(c(-1, 1), 50), ncol = 1))
+  .wAlt <- list(rep(c(0.004, 0.016), 50))
+  expect_equal(unique(as.vector(.weightedDraws(.alt, .wAlt, 100L)$draws)), 1)
+  .p <- vapply(seq(0.05, 0.95, 0.1), function(u) mean(.weightedDraws(.alt, .wAlt, 100L, u)$draws == -1), 1)
+  expect_equal(mean(.p), 0.2)
 })
 
 test_that(".condDistSummary is long by ID then ETA", {
@@ -92,4 +98,6 @@ test_that("addCondDist samples a FOCEi fit's conditional eta distribution", {
 
 test_that("addCondDist refuses a fit with no random effects", {
   expect_error(addCondDist(list()), "nlmixr2 fit")
+  .np <- list(env = new.env(), eta = data.frame(ID = 1, eta.a = 0), est = "npag")
+  expect_error(addCondDist(.np), "non-parametric")
 })
