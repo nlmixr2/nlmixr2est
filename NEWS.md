@@ -27,6 +27,9 @@
   the kernels held at the fit's estimates; it is the default for SAEM fits.
   `fit$condDistShrinkage` is the eta shrinkage from the conditional
   variances, `100 * mean(SD^2) / omega`.
+  The new vignette "Individual random effects and their conditional
+  distribution" describes the mode, SAEM's mean and the conditional
+  distribution of any fit.
 
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
