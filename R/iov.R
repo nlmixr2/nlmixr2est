@@ -1002,34 +1002,6 @@ nlmixr2iovVarSd <- function(val) {
     NULL
   }
 }
-#' The reported variability of pooled occasion variances
-#'
-#' A CV for a parameter that enters exponentially, otherwise the SD, the same
-#' choice the theta expansion makes for its magnitude's back-transform.
-#'
-#' @param vars occasion parameter names
-#' @param iniDf final `iniDf`, with the occasion variances restored
-#' @param ui the user's ui, before the rewrite
-#' @return numeric vector, one per `vars`
-#' @noRd
-.iovPoolBack <- function(vars, iniDf, ui) {
-  .ce <- ui$muRefCurEval
-  vapply(
-    vars,
-    function(.v) {
-      .wv <- which(iniDf$name == .v & !is.na(iniDf$neta1) & iniDf$neta1 == iniDf$neta2)
-      if (length(.wv) != 1L) {
-        return(NA_real_)
-      } # nocov
-      .sd <- sqrt(iniDf$est[.wv])
-      .w <- which(.ce$parameter == .v)
-      if (length(.w) == 1L && identical(.ce$curEval[.w], "exp")) nlmixr2iovSdCv(.sd) else .sd
-    },
-    double(1),
-    USE.NAMES = FALSE
-  )
-}
-
 #' Parameters the expanded model counts beyond the pooled variances
 #'
 #' The K per-occasion etas of an estimated pool are one parameter, so the
@@ -1460,14 +1432,13 @@ nlmixr2iovVarSd <- function(val) {
       .bsv <- which(grepl("BSV", names(.parFixedDf)))
       .est <- which(grepl("Est", names(.parFixedDf)))
 
-      # a pooled variance has no magnitude theta row, so give it one carrying
-      # its CV (or SD), the way the theta expansion's row does
-      .poolVars <- setdiff(names(.uiIovEnv$iovTwoLevel), rownames(.parFixedDf))
-      if (length(.poolVars) > 0L) {
-        .add <- .parFixedDf[rep(NA_integer_, length(.poolVars)), , drop = FALSE]
-        rownames(.add) <- .poolVars
-        .add[, .bck] <- .iovPoolBack(.poolVars, ret$env$ui$iniDf, .uiIovEnv$ui)
-        .parFixedDf <- rbind(.parFixedDf, .add)
+      # a two-level or pooled occasion variance has no magnitude theta, so give
+      # each occasion parameter the row the shared rewrite's theta would have had
+      .parFixed <- ret$env$parFixed
+      if (!is.null(.uiIovEnv$iovTwoLevel)) {
+        .tl <- .iovTwoLevelParFixed(.parFixedDf, .parFixed, ret$env, .uiIovEnv$iovVars, .uiIovEnv$ui)
+        .parFixedDf <- .tl$df
+        .parFixed <- .tl$chr
       }
       .hasIovTheta <- all(.uiIovEnv$iovVars %in% rownames(.parFixedDf))
       .valCharPrep <- NULL
@@ -1510,18 +1481,11 @@ nlmixr2iovVarSd <- function(val) {
       .parFixedDf <- .parFixedDf[!grepl("^rx[.]", rownames(.parFixedDf)), ]
       assign("parFixedDf", .parFixedDf, envir = ret$env)
 
-      .parFixed <- ret$env$parFixed
       .bck2 <- which(grepl("Back", names(.parFixed)))
       .bsv2 <- which(grepl("BSV", names(.parFixed)))
       .est2 <- which(grepl("Est", names(.parFixed)))
 
       .sigdig <- ret$control$sigdig
-      if (length(.poolVars) > 0L) {
-        .addc <- .parFixed[rep(1L, length(.poolVars)), , drop = FALSE]
-        .addc[] <- ""
-        rownames(.addc) <- .poolVars
-        .parFixed <- rbind(.parFixed, .addc)
-      }
       if (.hasIovTheta) {
         .parFixed[.uiIovEnv$iovVars, .bck2] <- ""
         .parFixed[.uiIovEnv$iovVars, .est2] <- ""
@@ -1534,6 +1498,7 @@ nlmixr2iovVarSd <- function(val) {
       }
       .parFixed <- .parFixed[!grepl("^rx[.]", rownames(.parFixed)), ]
       assign("parFixed", .parFixed, envir = ret$env)
+      .iovTwoLevelSe(ret$env)
       .iovPoolAdjustDf(ret$env, .iovPoolExtraDf(.uiIovEnv$iovTwoLevel, .uiIovEnv$ui$iniDf))
     }
     # In this approach the model is simply kept,
@@ -1563,6 +1528,114 @@ nlmixr2iovVarSd <- function(val) {
     .stripFastmatchHash(ret$env)
   }
   ret
+}
+
+#' Add the two-level IOV occasion parameters' rows to the parameter tables
+#'
+#' Mirrors the row `iovMethod = "theta"` reports for its magnitude theta: no
+#' estimate, the occasion CV (an `exp()`-transformed parameter) or SD in
+#' `Back-transformed`, which the caller moves under BSV.  The SE is filled in
+#' by `.iovTwoLevelSe()` once a covariance is installed.
+#'
+#' @param df numeric `$parFixedDf`
+#' @param chr formatted `$parFixed`
+#' @param env fit environment
+#' @param vars occasion parameter names
+#' @param ui the user's ui, before the IOV rewrite
+#' @return list(df, chr) with the rows appended
+#' @noRd
+.iovTwoLevelParFixed <- function(df, chr, env, vars, ui) {
+  vars <- setdiff(vars, rownames(df))
+  if (length(vars) == 0L || !is.data.frame(df) || nrow(df) == 0L) {
+    return(list(df = df, chr = chr))
+  }
+  .ini <- env$ui$iniDf
+  .ce <- ui$muRefCurEval
+  .bt <- vapply(
+    vars,
+    function(.v) {
+      .w <- which(.ini$name == .v & !is.na(.ini$neta1) & .ini$neta1 == .ini$neta2)
+      if (length(.w) != 1L) {
+        return(NA_real_)
+      }
+      .sd <- sqrt(.ini$est[.w])
+      .e <- .ce$curEval[.ce$parameter == .v]
+      if (length(.e) == 1L && .e == "exp") nlmixr2iovSdCv(.sd) else nlmixr2iovSdSd(.sd)
+    },
+    double(1)
+  )
+  .rows <- df[rep(1L, length(vars)), , drop = FALSE]
+  .rows[] <- lapply(.rows, function(x) x[NA_integer_])
+  rownames(.rows) <- vars
+  .bck <- which(grepl("Back", names(.rows)))
+  if (length(.bck) == 1L) {
+    .rows[[.bck]] <- unname(.bt)
+  }
+  df <- rbind(df, .rows)
+  if (is.data.frame(chr) && nrow(chr) > 0L) {
+    .r <- chr[rep(1L, length(vars)), , drop = FALSE]
+    .r[] <- lapply(.r, function(x) rep("", length(x)))
+    rownames(.r) <- vars
+    chr <- rbind(chr, .r)
+  }
+  assign("iovTwoLevelVars", vars, envir = env)
+  list(df = df, chr = chr)
+}
+
+#' Fill the two-level IOV rows of the parameter tables from `$cov`
+#'
+#' The SE of the occasion SD, by the delta method on the `om.<iov>` row of the
+#' installed covariance; NA when it has none.  Also puts the formatted row back
+#' the way `.uiFinalizeIov()` lays it out (CV/SD under BSV), since regenerating
+#' `$parFixed` from `$parFixedDf` loses that.
+#'
+#' @param env fit environment
+#' @return nothing, called for side effects
+#' @noRd
+.iovTwoLevelSe <- function(env) {
+  .vars <- get0("iovTwoLevelVars", envir = env, inherits = FALSE)
+  .pf <- get0("parFixedDf", envir = env, inherits = FALSE)
+  if (length(.vars) == 0L || !is.data.frame(.pf) || !all(.vars %in% rownames(.pf))) {
+    return(invisible())
+  }
+  .cv <- env$cov
+  .omN <- paste0("om.", .vars)
+  .var <- rep(NA_real_, length(.vars))
+  if (is.matrix(.cv) && !is.null(rownames(.cv))) {
+    .w <- match(.omN, rownames(.cv))
+    .var[!is.na(.w)] <- diag(.cv)[.w[!is.na(.w)]]
+  }
+  .ini <- env$ui$iniDf
+  .psi <- vapply(
+    .vars,
+    function(.v) {
+      .w <- which(.ini$name == .v & !is.na(.ini$neta1) & .ini$neta1 == .ini$neta2)
+      if (length(.w) == 1L) .ini$est[.w] else NA_real_
+    },
+    double(1)
+  )
+  .se <- ifelse(
+    is.finite(.var) & .var > 0 & is.finite(.psi) & .psi > 0,
+    sqrt(pmax(.var, 0)) / (2 * sqrt(.psi)),
+    NA_real_
+  )
+  .pf[.vars, "SE"] <- unname(.se)
+  env$parFixedDf <- .pf
+  .chr <- get0("parFixed", envir = env, inherits = FALSE)
+  if (!is.data.frame(.chr) || !all(.vars %in% rownames(.chr))) {
+    return(invisible())
+  }
+  .digits <- .parFixedSigdigTable(env)
+  .bck <- which(startsWith(names(.chr), "Back"))
+  .bsv <- which(startsWith(names(.chr), "BSV("))
+  .bt <- .pf[.vars, which(startsWith(names(.pf), "Back"))[1]]
+  .chr[.vars, "SE"] <- formatMinWidth(unname(.se), digits = .digits, naValue = "")
+  .chr[.vars, .bck] <- ""
+  if (length(.bsv) == 1L) {
+    .chr[.vars, .bsv] <- formatMinWidth(unname(.bt), digits = .digits, naValue = "")
+  }
+  env$parFixed <- .chr
+  invisible()
 }
 
 #' Keep the model an IOV fit estimated, for its tables

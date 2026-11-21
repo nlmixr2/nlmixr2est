@@ -407,6 +407,10 @@
         .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
         .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
       }
+      .cfg$plateauStop <- as.integer(isTRUE(rxode2::rxGetControl(ui, "plateauStop", FALSE)))
+      .cfg$plateauWindow <- as.integer(rxode2::rxGetControl(ui, "plateauWindow", 50L))
+      .cfg$plateauTol <- as.numeric(rxode2::rxGetControl(ui, "plateauTol", 1e-3))
+      .cfg$plateauMinFrac <- as.numeric(rxode2::rxGetControl(ui, "plateauMinFrac", 0.5))
       .mixShift <- .mixSharedEtaShift(ui, ui$saemParamsToEstimate)
       .cfg$mixShiftComp <- .mixShift$comp
       .cfg$mixShiftEta <- .mixShift$eta
@@ -420,6 +424,10 @@
     .saemRes <- nlmixrWithTiming("saem", {
       .model$saem_mod(.cfg)
     })
+    .pi <- .saemRes$plateauIter
+    if (length(.pi) == 1L && .pi > 0L) {
+      warning(sprintf("parameters plateaued; stopped at iteration %d of %d", .pi, .cfg$niter), call. = FALSE)
+    }
     .saemRes
   })
 }
@@ -458,6 +466,8 @@
   cfg$nb_fixResid <- 0L
   cfg$nb_correl <- 0L
   cfg$residWarmStart <- 0L
+  # a held run has nothing to converge
+  cfg$plateauStop <- 0L
   cfg
 }
 
@@ -739,6 +749,35 @@
   invisible()
 }
 
+#' Note diverged final SAEM estimates in the fit's $runInfo
+#'
+#' A diverged fit (a residual SD of 1e38, an exploding omega) otherwise
+#' returns as an ordinary fit with only a covariance failure noted (#1298).
+#'
+#' @param theta final SAEM thetas (named)
+#' @param omega final SAEM omega
+#' @param fixed names of fixed parameters (not checked)
+#' @param expNames thetas and etas inside `exp()`, whose back-transformed
+#'   value (or CV%) overflows above `log(.Machine$double.xmax)`
+#' @param bound magnitude above which any other estimate counts as diverged
+#' @return Nothing, called for the warning side effect
+#' @author Matthew L. Fidler
+#' @noRd
+.saemWarnDiverged <- function(theta, omega, fixed = character(0), expNames = character(0), bound = 1e10) {
+  .x <- theta
+  if (is.matrix(omega) && nrow(omega) > 0L) {
+    .x <- c(.x, setNames(diag(omega), rownames(omega)))
+  }
+  .x <- .x[!(names(.x) %in% fixed)]
+  .lim <- ifelse(names(.x) %in% expNames, log(.Machine$double.xmax), bound)
+  .bad <- names(.x)[!is.finite(.x) | abs(.x) > .lim]
+  if (length(.bad) > 0L) {
+    .pre <- "estimates diverged: "
+    warning(paste0(.pre, .vaeTruncList(.bad, prefix = .pre)), call. = FALSE)
+  }
+  invisible()
+}
+
 #' Random effects that saem has no population parameter for
 #'
 #' saem parameterizes a random effect by the phi (population) parameter it is
@@ -878,6 +917,7 @@
     check.names = FALSE
   )
   names(.ph) <- c("iter", .allThetaNames, "type")
+  .ph <- .saemIovCollapseParHist(.ph, .uiIovEnv$iovTwoLevel)
   .cls <- class(.ph)
   attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
   class(.ph) <- .cls
@@ -2112,6 +2152,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
     .saemFoldPseudoEtas(.ret)
+    .mre <- .ui$muRefCurEval
+    .saemWarnDiverged(
+      .ret$fullTheta,
+      .ret$omega,
+      fixed = .ui$iniDf$name[.ui$iniDf$fix],
+      expNames = .mre$parameter[.mre$curEval == "exp"]
+    )
     # Must run before .saemMixFix(), or ui$theta silently falls back to ini()
     # values for every param.
     .nlmixr2FitUpdateParams(.ret)
@@ -2203,6 +2250,7 @@ nlmixr2Est.saem <- function(env, ...) {
   )
   .saemFamilyFit(env, ...)
 }
+attr(nlmixr2Est.saem, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.saem, "covPresent") <- TRUE
 attr(nlmixr2Est.saem, "unbounded") <- TRUE
 attr(nlmixr2Est.saem, "mu") <- TRUE

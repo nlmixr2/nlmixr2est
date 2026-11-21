@@ -9,6 +9,19 @@
 #' @param nEm Number of iterations in the Expectation-Maximization
 #'     (EM) Step. This is equivalent to Monolix's \code{K_1}.
 #'
+#' @param plateauStop When \code{TRUE}, end the EM phase early once every
+#'   estimated theta, omega and residual parameter has plateaued; the fit's
+#'   run information notes the stop iteration.  Default \code{FALSE}.
+#'
+#' @param plateauWindow Number of EM iterations the plateau must span.
+#'
+#' @param plateauTol Largest relative change (range over the window divided by
+#'   the parameter's magnitude) allowed for every parameter at a plateau.
+#'   Thetas below 1 in magnitude use the absolute change.
+#'
+#' @param plateauMinFrac Fraction of the \code{nEm} iterations that always run
+#'   before a plateau can stop the EM phase.
+#'
 #' @param nmc Number of Markov Chains. By default this is 3.  When
 #'     you increase the number of chains the numerical integration by
 #'     MC method will be more accurate at the cost of more
@@ -415,6 +428,10 @@ saemControl <- function(
   seed = 99,
   nBurn = 200,
   nEm = 300,
+  plateauStop = FALSE,
+  plateauWindow = 50L,
+  plateauTol = 1e-3,
+  plateauMinFrac = 0.5,
   nmc = 3,
   nu = c(2, 2, 2),
   rmcmc = 0.5,
@@ -451,6 +468,7 @@ saemControl <- function(
   rxControl = NULL,
   sigdig = NULL,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   ci = 0.95,
   muRefCov = TRUE,
   muRefCovAlg = TRUE,
@@ -516,6 +534,10 @@ saemControl <- function(
   }
   checkmate::assertIntegerish(nBurn, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertIntegerish(nEm, any.missing = FALSE, len = 1, lower = 0)
+  checkmate::assertLogical(plateauStop, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(plateauWindow, len = 1, lower = 1, any.missing = FALSE)
+  checkmate::assertNumber(plateauTol, lower = 0, finite = TRUE)
+  checkmate::assertNumber(plateauMinFrac, lower = 0, upper = 1)
   checkmate::assertIntegerish(nmc, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertIntegerish(nu, any.missing = FALSE, len = 3, lower = 1)
   checkmate::assertNumber(rmcmc, finite = TRUE)
@@ -608,6 +630,7 @@ saemControl <- function(
     sigdigTable <- 3
   }
   checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
+  checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
   .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
@@ -657,6 +680,10 @@ saemControl <- function(
   .corWarnCheck(corWarn)
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto, rmcmc = rmcmc),
+    plateauStop = plateauStop,
+    plateauWindow = as.integer(plateauWindow),
+    plateauTol = plateauTol,
+    plateauMinFrac = plateauMinFrac,
     rxControl = rxControl,
     seed = seed,
     censOption = censOption,
@@ -686,6 +713,7 @@ saemControl <- function(
     corWarn = corWarn,
     genRxControl = .genRxControl,
     sigdigTable = sigdigTable,
+    shrinkEtaWarn = as.double(shrinkEtaWarn),
     ci = ci,
     covMethod = .covMethod,
     covMethodDeferred = covMethodDeferred,

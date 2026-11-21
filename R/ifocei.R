@@ -15,6 +15,7 @@ nlmixr2Est.ifocei <- function(env, ...) {
   .ui <- env$ui
   .foceiFamilyReturn(env, .ui, ..., est = "ifocei")
 }
+attr(nlmixr2Est.ifocei, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.ifocei, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.ifocei, "covPresent") <- TRUE
 attr(nlmixr2Est.ifocei, "unbounded") <- .foUnbounded
