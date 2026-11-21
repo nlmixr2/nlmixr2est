@@ -347,6 +347,13 @@
   models fall back for such a model
   ([\#1300](https://github.com/nlmixr2/nlmixr2est/issues/1300)).
 
+- A FOCEi fit whose `delay()` duration is estimated now solves three
+  orders tighter than `sigdig` sets (`rtol = 1e-9` at `sigdig = 3`)
+  unless the tolerance was given. Doses make the delayed state jump at
+  `t + tau`, which the solver steps over, so the objective was jagged in
+  `tau` and the optimizer stalled
+  ([\#1300](https://github.com/nlmixr2/nlmixr2est/issues/1300)).
+
 - A FOCEi fit whose final objective is more than
   `foceiControl(finalEtaTol=)` (default 1) above the lowest objective
   its search evaluated now re-solves the final ETAs from that

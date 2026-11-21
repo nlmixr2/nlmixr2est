@@ -328,7 +328,7 @@ laplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5ac1d1f98540>
+#> <bytecode: 0x59f1a799c558>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1093,6 +1093,9 @@ laplaceControl()
 #> 
 #> attr(,"class")
 #> [1] "rxControl"
+#> attr(,"nlmixr2estSigdigTol")
+#> [1] "rtol"       "atol"       "rtolSens"   "atolSens"   "ssRtol"    
+#> [6] "ssAtol"     "ssRtolSens" "ssAtolSens"
 #> 
 #> $genRxControl
 #> [1] TRUE
