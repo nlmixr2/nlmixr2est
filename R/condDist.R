@@ -11,16 +11,33 @@
 #' Mixture, IOV, non-parametric and repeated (`same()`) Omega block fits are
 #' not supported.
 #'
+#' `method = "saem"` uses the SAEM MCMC kernels.  For a SAEM fit, the chains of
+#' its own last iterations are the draws when they are enough (`nsamp` draws
+#' from `nmc` chains, within the last half of the second-phase iterations,
+#' where the parameters have nearly settled), so nothing is simulated;
+#' otherwise the kernels run with every population parameter held
+#' at the fit's estimates, continuing a SAEM fit's chains or, for any other
+#' fit, starting cold, and `burn` iterations are discarded; it needs a model
+#' SAEM can fit (every eta on a population parameter of its own).  An eta SAEM does
+#' not sample for a subject (uninformative) has `SD` `NA` and `MEAN` 0, its
+#' prior, as in `fit$eta`; that is exact when the eta is uncorrelated with the
+#' others.  A model SAEM fits with temporary etas (a likelihood parameter with
+#' no eta) is sampled with `"imp"`, since those chains also sampled parameters
+#' the reported model holds fixed.
+#'
 #' @param fit nlmixr2 fit with random effects
-#' @param method `"auto"` (default) or `"imp"`: the sampler
+#' @param method the sampler: `"auto"` (default) is `"saem"` for a SAEM fit
+#'   and `"imp"` otherwise
 #' @param nsamp number of samples per subject (default 300)
 #' @param keepSamples Boolean (default `FALSE`); keep `nsamp` equally weighted
 #'   draws per subject as the `"samples"` attribute of `fit$condDist`, an
 #'   `ID x eta x draw` array
+#' @param burn MCMC iterations discarded by a held `"saem"` run (default 50)
 #' @param seed random seed of the sampler
 #' @return the fit, with `fit$condDist`: a data frame `ID`, `ETA`, `MEAN`,
-#'   `SD`.  Its `"method"` attribute names the sampler and its `"ess"`
-#'   attribute holds each subject's effective sample size.
+#'   `SD`.  Its `"method"` attribute names the sampler (`"imp"`, `"saem"`
+#'   for a SAEM fit's own chains or `"mcmc"` for a held SAEM run) and, for
+#'   `"imp"`, its `"ess"` attribute holds each subject's effective sample size.
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
@@ -46,9 +63,17 @@
 #' fit <- addCondDist(fit)
 #' head(fit$condDist)
 #' }
-addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSamples = FALSE, seed = 42L) {
+addCondDist <- function(
+  fit,
+  method = c("auto", "imp", "saem"),
+  nsamp = 300L,
+  keepSamples = FALSE,
+  burn = 50L,
+  seed = 42L
+) {
   method <- match.arg(method)
-  checkmate::assertIntegerish(nsamp, lower = 2, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(nsamp, lower = 2, upper = 1e7, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(burn, lower = 0, upper = 1e7, len = 1, any.missing = FALSE)
   checkmate::assertLogical(keepSamples, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(seed, len = 1, any.missing = FALSE)
   .env <- tryCatch(fit$env, error = function(e) NULL)
@@ -73,14 +98,35 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
   if (!is.matrix(.om) || !all(is.finite(.om)) || inherits(try(chol(.om), silent = TRUE), "try-error")) {
     stop("conditional distribution needs a positive-definite Omega", call. = FALSE)
   }
+  # a SAEM fit with temporary etas sampled parameters the reported model holds
+  # fixed, so its chains are not this model's conditional distribution
+  .pseudo <- length(tryCatch(fit$env$saemPseudoEtas, error = function(e) NULL)) > 0L
+  if (method == "auto") {
+    .isSaem <- identical(tryCatch(fit$est, error = function(e) NULL), "saem")
+    method <- if (.isSaem && !.pseudo) "saem" else "imp"
+  }
+  if (method == "saem" && .pseudo) {
+    stop("SAEM sampled temporary etas for this fit; use method = \"imp\"", call. = FALSE)
+  }
   nsamp <- as.integer(round(nsamp))
-  .r <- .condDistImp(fit, nsamp, if (keepSamples) nsamp else 0L, as.integer(seed))
+  if (method == "imp") {
+    .r <- .condDistImp(fit, nsamp, if (keepSamples) nsamp else 0L, as.integer(seed))
+  } else {
+    .r <- .condDistSaem(fit, nsamp, as.integer(round(burn)), as.integer(seed))
+    .r$mean <- apply(.r$draws, c(1L, 2L), mean)
+    .r$sd <- apply(.r$draws, c(1L, 2L), stats::sd)
+    # not sampled: the eta stays at its prior mean, as in fit$eta
+    .r$mean[is.na(.r$mean)] <- 0
+    if (!keepSamples) {
+      .r$draws <- NULL
+    }
+  }
   .etaNames <- names(.eta)[-1]
   if (!identical(dim(.r$mean), c(nrow(.eta), length(.etaNames)))) {
     stop("conditional distribution has an unexpected shape", call. = FALSE)
   }
   .ret <- .condDistSummary(.r$mean, .r$sd, .eta$ID, .etaNames, .r$draws)
-  attr(.ret, "method") <- "imp"
+  attr(.ret, "method") <- if (is.null(.r$method)) method else .r$method
   attr(.ret, "ess") <- .r$ess
   assign("condDist", .ret, envir = .env)
   fit
@@ -99,7 +145,7 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
   # imp raises an Omega variance below 1e-6 to 1e-6, which would change the prior
   .om <- tryCatch(diag(as.matrix(fit$omega)), error = function(e) NULL)
   if (any(.om < 1e-6)) {
-    stop("importance sampling needs every Omega variance >= 1e-6", call. = FALSE)
+    stop("importance sampling needs every Omega variance >= 1e-6; try method = \"saem\"", call. = FALSE)
   }
   .fc <- .condDistLikControl(fit)
   # mapIter = 1 centers each E-step's proposal at the subject's mode with the
