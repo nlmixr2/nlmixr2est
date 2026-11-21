@@ -149,9 +149,10 @@ addCondDist <- function(
 #'
 #' `100 * mean_i(Var(eta_i | y_i)) / omega`, which by the law of total variance
 #' equals the variance shrinkage `1 - Var(E(eta | y)) / omega` without reading
-#' the spread of shrunk point estimates.  Subjects whose eta is not sampled
-#' (`SD` `NA`) are left out; an eta sampled for no one, or with no positive
-#' variance, is `NA`.
+#' the spread of shrunk point estimates.  A subject whose eta is not sampled
+#' (`SD` `NA`) keeps its prior variance, so counts as fully shrunk (exact
+#' when the eta is uncorrelated with the others); an eta with no positive
+#' variance is `NA`.
 #' @param condDist `fit$condDist`
 #' @param omega the fit's Omega
 #' @return named numeric, percent per eta
@@ -161,13 +162,13 @@ addCondDist <- function(
   vapply(
     stats::setNames(.eta, .eta),
     function(e) {
-      .sd <- condDist$SD[condDist$ETA == e]
-      .sd <- .sd[!is.na(.sd)]
       .om <- if (is.matrix(omega) && e %in% rownames(omega)) omega[e, e] else NA_real_
-      if (length(.sd) == 0L || !is.finite(.om) || .om <= 0) {
+      if (!is.finite(.om) || .om <= 0) {
         return(NA_real_)
       }
-      100 * mean(.sd^2) / .om
+      .v <- condDist$SD[condDist$ETA == e]^2
+      .v[is.na(.v)] <- .om
+      100 * mean(.v) / .om
     },
     numeric(1)
   )
