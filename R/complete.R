@@ -17,6 +17,7 @@
   parFixed = "Formatted Parameter Values for Fixed effects",
   parFixedDf = "Parameter Values for Fixed Effects (data frame)",
   parHistData = "Parameter History (including gradients)",
+  saemAutoStop = "SAEM early-stop iteration and drift (saemControl(autoStop=TRUE))",
   scaleInfo = "Scaling Information",
   table = "Table Control Value",
   fixef = "Fixed effects",

@@ -18,6 +18,11 @@
 
 ## New features
 
+- `saemControl(autoStop = TRUE)` stops the SAEM EM phase once every
+  parameter's half-window drift is within `stopRtol`/`stopAtol` or twice its
+  Monte-Carlo error for `stopConsecutive` windows of `stopWindow` iterations;
+  `nEm` becomes a maximum and the stop is recorded in `fit$saemAutoStop`
+  (#1411).
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and

@@ -352,6 +352,12 @@
       .cfg$nonMuThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaMaxEval", 25L))
       .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol", .Machine$double.eps^0.25))
       .cfg$nonMuThetaEvery <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaEvery", 1L))
+      # windowed early stop of the EM phase (src/saemAutoStop.h)
+      .cfg$autoStop <- as.integer(isTRUE(rxode2::rxGetControl(ui, "autoStop", FALSE)))
+      .cfg$stopWindow <- as.integer(rxode2::rxGetControl(ui, "stopWindow", 50L))
+      .cfg$stopConsecutive <- as.integer(rxode2::rxGetControl(ui, "stopConsecutive", 4L))
+      .cfg$stopRtol <- as.numeric(rxode2::rxGetControl(ui, "stopRtol", 1e-3))
+      .cfg$stopAtol <- as.numeric(rxode2::rxGetControl(ui, "stopAtol", 1e-4))
       # conditional-mode EBEs, computed in C++ after the last SAEM iteration
       .cfg$ebeMode <- as.integer(identical(rxode2::rxGetControl(ui, "ebe", "mode"), "mode"))
       .cfg$ebeMaxEval <- as.integer(rxode2::rxGetControl(ui, "ebeMaxEval", 200L))
@@ -922,6 +928,17 @@
   attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
   class(.ph) <- .cls
   assign("parHistData", .ph, envir = env)
+  .as <- .saem$autoStop
+  if (is.list(.as) && length(.as) > 0L) {
+    for (.f in c("drift", "mcse", "tol")) {
+      .v <- as.numeric(.as[[.f]])
+      if (length(.v) >= length(.allThetaNames)) {
+        .v <- setNames(.v[seq_along(.allThetaNames)], .allThetaNames)
+      }
+      .as[[.f]] <- .v
+    }
+    assign("saemAutoStop", .as, envir = env)
+  }
   .saemAddMcmcDiag(env)
 }
 
