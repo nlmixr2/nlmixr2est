@@ -65,6 +65,7 @@ nlmixr2NlmeControl <- function(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   muRefCovAlg = TRUE,
   eventSens = c("jump", "fd"),
   print = NULL,
@@ -166,6 +167,7 @@ nlmixr2NlmeControl <- function(
     sigdigTable <- 3
   }
   checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
+  checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
 
   .corWarnCheck(corWarn)
   .ret <- list(
@@ -204,6 +206,7 @@ nlmixr2NlmeControl <- function(
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,
+    shrinkEtaWarn = as.double(shrinkEtaWarn),
     muRefCovAlg = muRefCovAlg,
     eventSens = eventSens,
     covMethod = covMethod,

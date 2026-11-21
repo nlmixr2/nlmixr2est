@@ -171,7 +171,24 @@ test_that("a two-level fit's covariance carries one row for the occasion varianc
     expect_equal(rownames(.cv), colnames(.cv))
     expect_true(is.finite(.cv["om.iov.cl", "om.iov.cl"]))
     expect_true(.cv["om.iov.cl", "om.iov.cl"] > 0)
+    # the parameter table reports the occasion SD's SE, like iovMethod="theta"
+    .pf <- .f$parFixedDf
+    expect_true("iov.cl" %in% rownames(.pf))
+    .psi <- .f$omega$occ[["iov.cl", "iov.cl"]]
+    expect_equal(unname(.pf["iov.cl", "SE"]), sqrt(.cv["om.iov.cl", "om.iov.cl"]) / (2 * sqrt(.psi)))
+    expect_equal(unname(.pf["iov.cl", "Back-transformed"]), nlmixr2iovSdCv(sqrt(.psi)))
+    expect_true(is.na(.pf["iov.cl", "Estimate"]))
+    expect_false(.f$parFixed["iov.cl", "SE"] == "")
   }
+  # a covariance installed after the fit refreshes the occasion row too, and
+  # keeps its CV under BSV
+  .se <- .f$parFixedDf["iov.cl", "SE"]
+  .bsv <- which(startsWith(names(.f$parFixed), "BSV("))
+  .cvTxt <- .f$parFixed["iov.cl", .bsv]
+  setCov(.f) <- .f$cov * 4
+  expect_equal(unname(.f$parFixedDf["iov.cl", "SE"]), unname(2 * .se))
+  expect_equal(.f$parFixed["iov.cl", .bsv], .cvTxt)
+  expect_false(.cvTxt == "")
 })
 
 test_that("iovMethod='collapsed' imposes both constraints exactly", {
@@ -372,4 +389,23 @@ test_that("a model the two-level handling declines fits with pooled occasion var
     c("eta.ka", "eta.cl", "rx.iov.cl.1", "rx.iov.cl.2", "rx.iov.v.1", "rx.iov.v.2")
   )
   expect_true(all(c("ID", "occ2", "iov.v") %in% names(.f$iov$occ2)))
+})
+
+test_that("the default saem covariance and history name a pooled IOV variance once (#1319)", {
+  skip_on_cran()
+  for (.m in c("twoLevel", "theta")) {
+    .f <- suppressWarnings(nlmixr2(
+      .twoLevelFitModel(),
+      .twoLevelFitData(),
+      est = "saem",
+      control = .twoLevelCtl(covMethod = "sa", iovMethod = .m)
+    ))
+    expect_length(grep("rx[.]iov", names(.f$parHistData)), 0L)
+    expect_true("V(iov.cl)" %in% names(.f$parHistData), label = .m)
+    .cv <- .f$cov
+    if (is.matrix(.cv)) {
+      expect_length(grep("^om[.]rx[.]", rownames(.cv)), 0L)
+      expect_true("om.iov.cl" %in% rownames(.cv), label = .m)
+    }
+  }
 })
