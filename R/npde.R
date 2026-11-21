@@ -12,9 +12,10 @@
 #'
 #' Besides `EPRED`, `ERES`, `NPDE`, `NPD`, `PDE` and `PD`, the fit gets
 #' `PWRES`, the Monte Carlo population-weighted residual (NONMEM's
-#' `EWRES`): each subject's `Sigma^(-1/2) (y - EPRED)`, with `EPRED` and
-#' `Sigma` the mean and covariance of the same simulations and the symmetric
-#' inverse square root.  It is computed on the scale of the residual error
+#' `EWRES`, also available as `fit$EWRES`): each subject's
+#' `Sigma^(-1/2) (y - EPRED)`, with `EPRED` and `Sigma` the mean and
+#' covariance of the same simulations, decorrelated as
+#' `tableControl(pwresMethod=)` asks.  It is computed on the scale of the residual error
 #' transformation, as NPDE.  It keeps the residual's magnitude, which the
 #' rank-based NPDE caps near `qnorm(1/nsim)`, but uses only the first two
 #' moments: a skewed marginal (log-normal IIV, proportional error) can show
@@ -176,3 +177,13 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   }
   .in
 }
+
+#' @export
+nmObjGetData.EWRES <- function(x, ...) {
+  .df <- x[[1]]
+  if (!any(names(.df) == "PWRES")) {
+    return(NULL)
+  }
+  .df[["PWRES"]]
+}
+attr(nmObjGetData.EWRES, "desc") <- "EWRES, the PWRES column (NONMEM's name)"

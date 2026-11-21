@@ -94,4 +94,33 @@ nmTest({
     .p <- .pwres(.pwresSims(.mu, .S, 1L, 4L), .y)
     expect_false(anyNA(.p))
   })
+
+  test_that("eigen and Cholesky PWRES have the same per-subject sum of squares", {
+    set.seed(5)
+    .sim <- .pwresSims(.mu, .S, 3L, 200L)
+    .dv <- c(.y, .y - 1, .y + 0.5)
+    .e <- .pwres(.sim, .dv)
+    .c <- .pwres(.sim, .dv, opt = list(pwresMethod = 2L))
+    expect_false(isTRUE(all.equal(.e, .c)))
+    .ss <- function(p) tapply(p^2, rep(1:3, each = 3), sum)
+    expect_equal(.ss(.e), .ss(.c), tolerance = 1e-10)
+    # the lower Cholesky factor whitens the first residual by its own SD
+    .m <- matrix(.sim$sim[.sim$id == 1], nrow = 3)
+    expect_equal(.c[1], (.y[1] - mean(.m[1, ])) / sd(.m[1, ]), tolerance = 1e-10)
+    expect_identical(.pwres(.sim, .dv, opt = list(pwresMethod = 1L)), .e)
+  })
+
+  test_that("tableControl(pwresMethod=) maps to the C option", {
+    expect_identical(tableControl()$pwresMethod, 1L)
+    expect_identical(tableControl(pwresMethod = "cholesky")$pwresMethod, 2L)
+    expect_error(tableControl(pwresMethod = "svd"))
+    # a stored control is passed back through tableControl()
+    expect_identical(do.call(tableControl, tableControl(pwresMethod = "cholesky"))$pwresMethod, 2L)
+  })
+
+  test_that("fit$EWRES is the PWRES column", {
+    .fit <- data.frame(PWRES = c(0.1, -0.2))
+    expect_identical(nmObjGetData.EWRES(list(.fit, FALSE)), c(0.1, -0.2))
+    expect_null(nmObjGetData.EWRES(list(data.frame(NPDE = 1), FALSE)))
+  })
 })
