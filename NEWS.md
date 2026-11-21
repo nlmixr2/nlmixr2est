@@ -108,6 +108,10 @@
   misspecification (successive residuals of a subject that move together)
   (#1373).
 
+- Estimation now warns by name about an estimated theta or eta that cannot
+  change the objective function, for example one used only through an
+  intermediate that nothing else reads (#1382).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the

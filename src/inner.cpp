@@ -146,6 +146,11 @@ extern "C" void nlmixrLikContribEnd(const nlmixrLikSubj *s) {
 // Expose the registry entry points to contributor packages (e.g. nlmixr2nn) as
 // a small external-pointer table (CRAN-preferred over R_RegisterCCallable); the
 // downstream package installs them via inst/include/nlmixr2estLikContribPtr.h.
+// Number of registered likelihood contributors (their terms are invisible to the model)
+extern "C" SEXP _nlmixr2est_likContribN(void) {
+  return Rf_ScalarInteger(_nlmixrNContrib);
+}
+
 extern "C" SEXP _nlmixr2est_likContribPtrs(void) {
   // Append only: consumers read these by POSITION (nlmixr2estLikContribPtr.h).
   const char *nm[7] = {"registerLikContrib", "removeLikContrib",

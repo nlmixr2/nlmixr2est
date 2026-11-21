@@ -227,6 +227,7 @@ SEXP _nlmixr2est_likPenaltyEval(SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_likPenaltyInfo(void);
 SEXP _nlmixr2est_likPenaltySubjLL(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_likPenaltyPop(SEXP, SEXP);
+SEXP _nlmixr2est_likContribN(void);
 SEXP _nlmixr2est_foceiPtrs(void);
 SEXP _nlmixr2est_nlmPtrs(void);
 SEXP _nlmixr2est_nlmLikDims_(void);
@@ -242,6 +243,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_likPenaltyInfo", (DL_FUNC) &_nlmixr2est_likPenaltyInfo, 0},
   {"_nlmixr2est_likPenaltySubjLL", (DL_FUNC) &_nlmixr2est_likPenaltySubjLL, 3},
   {"_nlmixr2est_likPenaltyPop", (DL_FUNC) &_nlmixr2est_likPenaltyPop, 2},
+  {"_nlmixr2est_likContribN", (DL_FUNC) &_nlmixr2est_likContribN, 0},
   {"_nlmixr2est_foceiPtrs", (DL_FUNC) &_nlmixr2est_foceiPtrs, 0},
   {"_nlmixr2est_nlmPtrs", (DL_FUNC) &_nlmixr2est_nlmPtrs, 0},
   {"_nlmixr2est_nlmLikDims_", (DL_FUNC) &_nlmixr2est_nlmLikDims_, 0},
