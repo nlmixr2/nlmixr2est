@@ -19,7 +19,6 @@
   parHistData = "Parameter History (including gradients)",
   saemAutoStop = "SAEM early-stop iteration and drift (saemControl(autoStop=TRUE))",
   scaleInfo = "Scaling Information",
-  shrink = "Shrinkage data frame",
   table = "Table Control Value",
   fixef = "Fixed effects",
   time = "Timing data frame"

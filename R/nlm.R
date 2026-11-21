@@ -1177,12 +1177,21 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
 #' @param data event data.
 #' @param control optional nlm-family control; defaults to \code{nlmControl()}
 #'   (or \code{ui$control} if that is an nlm-family control).
+#' @param likPenalty optional list of [nlmixr2LikPenaltySpec()] objects added
+#'   to those attached to the model; active until \code{.nlmFreeEnv()}.
 #' @return (invisibly) the scaled starting parameter vector to hand to
 #'   \code{nlmSolveR()}; the C++ problem is left loaded.
 #' @export
 #' @keywords internal
 #' @author Matthew L. Fidler
-nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale = c("control", "natural")) {
+nlmObjectiveSetup <- function(
+  ui,
+  data,
+  control = NULL,
+  gradient = FALSE,
+  scale = c("control", "natural"),
+  likPenalty = NULL
+) {
   scale <- match.arg(scale)
   ## assertRxUi accepts a model function as well as a ui; .copyUi (not
   ## rxUiDecompress) then isolates it, because decompressing an already-
@@ -1214,7 +1223,24 @@ nlmObjectiveSetup <- function(ui, data, control = NULL, gradient = FALSE, scale 
   ## objective solve; the caller gets the weight gradient from its own
   ## augmented-sensitivity solve, so no analytic theta gradient is needed.
   .mi <- if (gradient) .ui$nlmSensModel else .ui$nlmRxModel
+  .penEnv <- new.env(parent = emptyenv())
+  .penEnv$ui <- .ui
+  .penEnv$.nlmixr2Dots <- list(likPenalty = likPenalty)
+  class(.penEnv) <- c("nlm", "nlmixr2Est")
+  .setupOk <- FALSE
+  if (.likPenaltyActivate(.penEnv)) {
+    nlmixr2global$likPenaltyNlmSetup <- TRUE
+    # a failed setup must not leave the penalties on for later fits
+    on.exit(
+      if (!.setupOk) {
+        nlmixr2global$likPenaltyNlmSetup <- NULL
+        .likPenaltyDeactivate()
+      },
+      add = TRUE
+    )
+  }
   .env <- .nlmSetupEnv(.p, .ui, .ret$dataSav, .mi, .ctl)
+  .setupOk <- TRUE
   invisible(.env$par.ini)
 }
 
@@ -1321,5 +1347,6 @@ nlmixr2Est.nlm <- function(env, ...) {
   )
   .nlmFamilyFit(env, ...)
 }
+attr(nlmixr2Est.nlm, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.nlm, "covPresent") <- TRUE
 attr(nlmixr2Est.nlm, "unbounded") <- TRUE

@@ -27,6 +27,19 @@
 #'   `max(stopAtol, stopRtol * max(1, |older mean|), 2 * mcse)`, where `mcse`
 #'   is the Monte-Carlo standard error of the drift estimated from the window.
 #'
+#' @param plateauStop When \code{TRUE}, end the EM phase early once every
+#'   estimated theta, omega and residual parameter has plateaued; the fit's
+#'   run information notes the stop iteration.  Default \code{FALSE}.
+#'
+#' @param plateauWindow Number of EM iterations the plateau must span.
+#'
+#' @param plateauTol Largest relative change (range over the window divided by
+#'   the parameter's magnitude) allowed for every parameter at a plateau.
+#'   Thetas below 1 in magnitude use the absolute change.
+#'
+#' @param plateauMinFrac Fraction of the \code{nEm} iterations that always run
+#'   before a plateau can stop the EM phase.
+#'
 #' @param nmc Number of Markov Chains. By default this is 3.  When
 #'     you increase the number of chains the numerical integration by
 #'     MC method will be more accurate at the cost of more
@@ -51,6 +64,11 @@
 #' @param rmcmc Scale of the random-walk proposals (kernels 2 and 3) relative
 #'     to the current between-subject SD.  Smaller values raise the MCMC
 #'     acceptance rate (see `$mcmcAccept`); larger values lower it.
+#'
+#' @param mcmcAcceptWarn Acceptance-rate range `c(low, high)`; when the mean
+#'     acceptance of the random-walk kernels over the last 100 post-burn-in
+#'     iterations falls outside it, the fit notes it in `$runInfo`.  `NULL` or
+#'     `NA` turns the note off.
 #'
 #' @inheritParams iterPrintParams
 #'
@@ -438,9 +456,14 @@ saemControl <- function(
   stopConsecutive = 4L,
   stopRtol = 1e-3,
   stopAtol = 1e-4,
+  plateauStop = FALSE,
+  plateauWindow = 50L,
+  plateauTol = 1e-3,
+  plateauMinFrac = 0.5,
   nmc = 3,
   nu = c(2, 2, 2),
   rmcmc = 0.5,
+  mcmcAcceptWarn = c(0.05, 0.8),
   print = 1L,
   trace = 0, # nolint
   covMethod = c("sa", "analytic", "linFim", "fim", "r,s", "r", "s", "imp", ""),
@@ -474,6 +497,7 @@ saemControl <- function(
   rxControl = NULL,
   sigdig = NULL,
   sigdigTable = NULL,
+  shrinkEtaWarn = 30,
   ci = 0.95,
   muRefCov = TRUE,
   muRefCovAlg = TRUE,
@@ -539,11 +563,21 @@ saemControl <- function(
   }
   checkmate::assertIntegerish(nBurn, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertIntegerish(nEm, any.missing = FALSE, len = 1, lower = 0)
+  checkmate::assertLogical(plateauStop, len = 1, any.missing = FALSE)
+  checkmate::assertIntegerish(plateauWindow, len = 1, lower = 1, any.missing = FALSE)
+  checkmate::assertNumber(plateauTol, lower = 0, finite = TRUE)
+  checkmate::assertNumber(plateauMinFrac, lower = 0, upper = 1)
   checkmate::assertIntegerish(nmc, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertIntegerish(nu, any.missing = FALSE, len = 3, lower = 1)
   checkmate::assertNumber(rmcmc, finite = TRUE)
   if (rmcmc <= 0) {
     stop("'rmcmc' must be positive", call. = FALSE)
+  }
+  if (!is.null(mcmcAcceptWarn) && !all(is.na(mcmcAcceptWarn))) {
+    checkmate::assertNumeric(mcmcAcceptWarn, lower = 0, upper = 1, len = 2, any.missing = FALSE, sorted = TRUE)
+  } else {
+    # NA rather than NULL so the off switch survives deparsing
+    mcmcAcceptWarn <- NA
   }
   # `print` can be either a scalar print-frequency or a pre-built
   # iterPrintControl object; .absorbIterPrintControl validates either form
@@ -636,6 +670,7 @@ saemControl <- function(
     sigdigTable <- 3
   }
   checkmate::assertIntegerish(sigdigTable, lower = 1, len = 1, any.missing = FALSE)
+  checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
   .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
@@ -685,6 +720,10 @@ saemControl <- function(
   .corWarnCheck(corWarn)
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto, rmcmc = rmcmc),
+    plateauStop = plateauStop,
+    plateauWindow = as.integer(plateauWindow),
+    plateauTol = plateauTol,
+    plateauMinFrac = plateauMinFrac,
     rxControl = rxControl,
     seed = seed,
     autoStop = autoStop,
@@ -692,6 +731,7 @@ saemControl <- function(
     stopConsecutive = as.integer(stopConsecutive),
     stopRtol = stopRtol,
     stopAtol = stopAtol,
+    mcmcAcceptWarn = mcmcAcceptWarn,
     censOption = censOption,
     iterPrintControl = .iterPrintControl,
     DEBUG = trace, # nolint
@@ -719,6 +759,7 @@ saemControl <- function(
     corWarn = corWarn,
     genRxControl = .genRxControl,
     sigdigTable = sigdigTable,
+    shrinkEtaWarn = as.double(shrinkEtaWarn),
     ci = ci,
     covMethod = .covMethod,
     covMethodDeferred = covMethodDeferred,

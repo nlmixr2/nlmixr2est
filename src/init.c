@@ -34,6 +34,7 @@ extern SEXP _nlmixr2est_llik_neg_binomial(SEXP, SEXP);
 
 // FOCEi
 extern SEXP _nlmixr2est_nlmixr2Parameters(SEXP, SEXP);
+extern SEXP _nlmixr2est_iwresAutocor_(SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeEncoderFwdBwd(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP _nlmixr2est_vaeInnerSetup_(SEXP);
 extern SEXP _nlmixr2est_vaeInnerUpdatePar_(SEXP, SEXP);
@@ -128,6 +129,7 @@ SEXP _nlmixr2est_saemPhi1RefineN_(void);
 SEXP _nlmixr2est_saemGainFrozenSkipN_(void);
 SEXP _nlmixr2est_saemSeedLayoutTest_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_saemAutoStopTest_(SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_saemPlateauTest_(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_saemFormGTest(SEXP, SEXP, SEXP, SEXP, SEXP);
 
 SEXP _nlmixr2est_uninformativeEta(SEXP);
@@ -177,6 +179,7 @@ SEXP _nlmixr2est_nlmGetScaleC(SEXP, SEXP);
 
 SEXP _nlmixr2est_nlmAdjustCov(SEXP, SEXP);
 SEXP _nlmixr2est_nlmSetScaleC(SEXP);
+SEXP _nlmixr2est_nlmPenaltySetup_(SEXP, SEXP);
 SEXP _nlmixr2est_nlmPrintHeader(void);
 SEXP _nlmixr2est_nlmGetParHist(SEXP);
 
@@ -217,6 +220,14 @@ SEXP _nlmixr2est_setTestContribAddLLf(SEXP);
 SEXP _nlmixr2est_setTestContribAddDEta(SEXP);
 SEXP _nlmixr2est_setNnOuterFn(SEXP);
 SEXP _nlmixr2est_likContribPtrs(void);
+SEXP _nlmixr2est_likPenaltyBuiltin(SEXP);
+SEXP _nlmixr2est_likPenaltyActivate(SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_likPenaltyDeactivate(void);
+SEXP _nlmixr2est_likPenaltyThetaTr(SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_likPenaltyEval(SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_likPenaltyInfo(void);
+SEXP _nlmixr2est_likPenaltySubjLL(SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_likPenaltyPop(SEXP, SEXP);
 SEXP _nlmixr2est_foceiPtrs(void);
 SEXP _nlmixr2est_nlmPtrs(void);
 SEXP _nlmixr2est_nlmLikDims_(void);
@@ -224,6 +235,14 @@ SEXP _nlmixr2est_nlmLikEvalC_(SEXP);
 
 static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_likContribPtrs", (DL_FUNC) &_nlmixr2est_likContribPtrs, 0},
+  {"_nlmixr2est_likPenaltyBuiltin", (DL_FUNC) &_nlmixr2est_likPenaltyBuiltin, 1},
+  {"_nlmixr2est_likPenaltyActivate", (DL_FUNC) &_nlmixr2est_likPenaltyActivate, 5},
+  {"_nlmixr2est_likPenaltyDeactivate", (DL_FUNC) &_nlmixr2est_likPenaltyDeactivate, 0},
+  {"_nlmixr2est_likPenaltyThetaTr", (DL_FUNC) &_nlmixr2est_likPenaltyThetaTr, 3},
+  {"_nlmixr2est_likPenaltyEval", (DL_FUNC) &_nlmixr2est_likPenaltyEval, 4},
+  {"_nlmixr2est_likPenaltyInfo", (DL_FUNC) &_nlmixr2est_likPenaltyInfo, 0},
+  {"_nlmixr2est_likPenaltySubjLL", (DL_FUNC) &_nlmixr2est_likPenaltySubjLL, 3},
+  {"_nlmixr2est_likPenaltyPop", (DL_FUNC) &_nlmixr2est_likPenaltyPop, 2},
   {"_nlmixr2est_foceiPtrs", (DL_FUNC) &_nlmixr2est_foceiPtrs, 0},
   {"_nlmixr2est_nlmPtrs", (DL_FUNC) &_nlmixr2est_nlmPtrs, 0},
   {"_nlmixr2est_nlmLikDims_", (DL_FUNC) &_nlmixr2est_nlmLikDims_, 0},
@@ -305,6 +324,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_nlmGetParHist", (DL_FUNC) &_nlmixr2est_nlmGetParHist, 1},
   {"_nlmixr2est_nlmPrintHeader", (DL_FUNC) &_nlmixr2est_nlmPrintHeader, 0},
   {"_nlmixr2est_nlmSetScaleC", (DL_FUNC) &_nlmixr2est_nlmSetScaleC, 1},
+  {"_nlmixr2est_nlmPenaltySetup_", (DL_FUNC) &_nlmixr2est_nlmPenaltySetup_, 2},
   {"_nlmixr2est_nlmAdjustCov", (DL_FUNC) &_nlmixr2est_nlmAdjustCov, 2},
   {"_nlmixr2est_nlmGetScaleC", (DL_FUNC) &_nlmixr2est_nlmGetScaleC, 2},
   {"_nlmixr2est_nlmScalePar", (DL_FUNC) &_nlmixr2est_nlmScalePar, 1},
@@ -330,6 +350,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"neldermead_wrap",      (DL_FUNC) &neldermead_wrap,      11},
   /* {"n1qn1_wrap",           (DL_FUNC) &n1qn1_wrap,           13}, */
   {"_nlmixr2est_nlmixr2Parameters", (DL_FUNC) &_nlmixr2est_nlmixr2Parameters, 2},
+  {"_nlmixr2est_iwresAutocor_", (DL_FUNC) &_nlmixr2est_iwresAutocor_, 3},
   // FOCEi
   {"_nlmixr2est_foceiInnerLp", (DL_FUNC) &_nlmixr2est_foceiInnerLp, 2},
   {"_nlmixr2est_foceiSubjectRFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectRFR_, 23},
@@ -371,6 +392,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_saemGainFrozenSkipN_", (DL_FUNC) &_nlmixr2est_saemGainFrozenSkipN_, 0},
   {"_nlmixr2est_saemSeedLayoutTest_", (DL_FUNC) &_nlmixr2est_saemSeedLayoutTest_, 8},
   {"_nlmixr2est_saemAutoStopTest_", (DL_FUNC) &_nlmixr2est_saemAutoStopTest_, 5},
+  {"_nlmixr2est_saemPlateauTest_", (DL_FUNC) &_nlmixr2est_saemPlateauTest_, 5},
   {"_nlmixr2est_saemFormGTest", (DL_FUNC) &_nlmixr2est_saemFormGTest, 5},
   {"_nlmixr2est_powerD", (DL_FUNC) &_nlmixr2est_powerD, 5},
   {"_nlmixr2est_powerDLambda", (DL_FUNC) &_nlmixr2est_powerDLambda, 5},
