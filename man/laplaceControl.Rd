@@ -35,16 +35,13 @@ quadrature for the likelihood.  Note that nAGQ=1 is the same as the
 Laplace method.
 }
 \details{
-The objective is NONMEM's `METHOD=COND LAPLACE INTERACTION` one (Wang
-2007, J Pharmacokinet Pharmacodyn 34:575, Eq. 15).  The inner Hessian
-and the Laplace log-determinant use the exact second derivative of the
-conditional -2 log-likelihood in the ETAs, not the Gauss-Newton FOCEi
-curvature.  Each Gaussian endpoint is evaluated through its log-density,
-exactly as adding `+ dnorm()` to it does, so it works on every model.
-The FOCEi objective is available as `est = "focei"`; `est = "flaplace"`
-computes the same Laplace objective from the analytic conditional
-Hessian (faster, with an analytic outer gradient, but needs `fast = TRUE`
-and second-order sensitivities).
+This is the Laplace objective of NONMEM's `METHOD=COND LAPLACE
+INTERACTION` (Wang 2007, J Pharmacokinet Pharmacodyn 34:575, Eq. 15):
+the exact second derivative of the conditional -2 log-likelihood in the
+ETAs, not the FOCEi Gauss-Newton one.  Normal endpoints are evaluated
+through their log-density, as adding `+ dnorm()` does.  The FOCEi
+objective is `est = "focei"`; `est = "flaplace"` gives this objective
+from the analytic conditional Hessian.
 }
 \examples{
 
