@@ -107,7 +107,7 @@
   .ctl <- .condDistSaemControl(.ctl, burn + .nit, .state)
   .fit2 <- .nativePinnedRefit(fit, "saem", .ctl, useEtaMat = FALSE)
   if (inherits(.fit2, "try-error")) {
-    stop("held SAEM run at the fit's estimates failed; try method = \"imp\"", call. = FALSE)
+    stop("held SAEM run at the fit's estimates failed: ", .tryErrorMessage(.fit2), call. = FALSE)
   }
   if (length(.fit2$env$saemPseudoEtas) > 0L) {
     stop("SAEM needs temporary etas for this model; use method = \"imp\"", call. = FALSE)
