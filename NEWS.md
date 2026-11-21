@@ -25,6 +25,8 @@
   population parameters held (#1378).  `method = "saem"` uses the SAEM MCMC
   instead: a SAEM fit's own last iterations when they are enough, otherwise
   the kernels held at the fit's estimates; it is the default for SAEM fits.
+  `fit$condDistShrinkage` is the eta shrinkage from the conditional
+  variances, `100 * mean(SD^2) / omega`.
 
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and

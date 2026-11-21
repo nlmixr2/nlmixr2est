@@ -3,6 +3,7 @@
 %   R/rxsolve.R, R/saem.R
 \name{nmObjGet.condDist}
 \alias{nmObjGet.condDist}
+\alias{nmObjGet.condDistShrinkage}
 \alias{nmObjGet.shrink}
 \alias{nmObjGet.etaNormality}
 \alias{nmObjGet}
@@ -52,6 +53,8 @@
 \title{Get an item from a nlmixr core object}
 \usage{
 \method{nmObjGet}{condDist}(x, ...)
+
+\method{nmObjGet}{condDistShrinkage}(x, ...)
 
 \method{nmObjGet}{shrink}(x, ...)
 

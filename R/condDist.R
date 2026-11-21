@@ -34,7 +34,10 @@
 #'   `ID x eta x draw` array
 #' @param burn MCMC iterations discarded by a held `"saem"` run (default 50)
 #' @param seed random seed of the sampler
-#' @return the fit, with `fit$condDist`: a data frame `ID`, `ETA`, `MEAN`,
+#' @return the fit, with `fit$condDistShrinkage`, the eta shrinkage (%) from
+#'   the conditional variances, `100 * mean(SD^2) / omega` (an unsampled
+#'   subject's `SD^2` taken as `omega`), and
+#'   `fit$condDist`: a data frame `ID`, `ETA`, `MEAN`,
 #'   `SD`.  Its `"method"` attribute names the sampler (`"imp"`, `"saem"`
 #'   for a SAEM fit's own chains or `"mcmc"` for a held SAEM run) and, for
 #'   `"imp"`, its `"ess"` attribute holds each subject's effective sample size.
@@ -129,7 +132,37 @@ addCondDist <- function(
   attr(.ret, "method") <- if (is.null(.r$method)) method else .r$method
   attr(.ret, "ess") <- .r$ess
   assign("condDist", .ret, envir = .env)
+  assign("condDistShrinkage", .condDistShrinkage(.ret, fit$omega), envir = .env)
   fit
+}
+
+#' Distribution-based eta shrinkage from the conditional SDs
+#'
+#' `100 * mean_i(Var(eta_i | y_i)) / omega`, which by the law of total variance
+#' equals the variance shrinkage `1 - Var(E(eta | y)) / omega` without reading
+#' the spread of shrunk point estimates.  A subject whose eta is not sampled
+#' (`SD` `NA`) keeps its prior variance, so counts as fully shrunk (exact
+#' when the eta is uncorrelated with the others); an eta with no positive
+#' variance is `NA`.
+#' @param condDist `fit$condDist`
+#' @param omega the fit's Omega
+#' @return named numeric, percent per eta
+#' @noRd
+.condDistShrinkage <- function(condDist, omega) {
+  .eta <- levels(condDist$ETA)
+  vapply(
+    stats::setNames(.eta, .eta),
+    function(e) {
+      .om <- if (is.matrix(omega) && e %in% rownames(omega)) omega[e, e] else NA_real_
+      if (!is.finite(.om) || .om <= 0) {
+        return(NA_real_)
+      }
+      .v <- condDist$SD[condDist$ETA == e]^2
+      .v[is.na(.v)] <- .om
+      100 * mean(.v) / .om
+    },
+    numeric(1)
+  )
 }
 
 #' Importance-sampled conditional distribution at a fit's estimates
@@ -263,3 +296,14 @@ nmObjGet.condDist <- function(x, ...) {
   NULL
 }
 attr(nmObjGet.condDist, "desc") <- "per-subject conditional eta mean/SD (addCondDist())"
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.condDistShrinkage <- function(x, ...) {
+  .env <- x[[1]]$env
+  if (exists("condDistShrinkage", envir = .env, inherits = FALSE)) {
+    return(get("condDistShrinkage", envir = .env, inherits = FALSE))
+  }
+  NULL
+}
+attr(nmObjGet.condDistShrinkage, "desc") <- "eta shrinkage (%) from the conditional variances (addCondDist())"
