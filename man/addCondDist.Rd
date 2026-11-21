@@ -6,16 +6,18 @@
 \usage{
 addCondDist(
   fit,
-  method = c("auto", "imp"),
+  method = c("auto", "imp", "saem"),
   nsamp = 300L,
   keepSamples = FALSE,
+  burn = 50L,
   seed = 42L
 )
 }
 \arguments{
 \item{fit}{nlmixr2 fit with random effects}
 
-\item{method}{`"auto"` (default) or `"imp"`: the sampler}
+\item{method}{the sampler: `"auto"` (default) is `"saem"` for a SAEM fit
+and `"imp"` otherwise}
 
 \item{nsamp}{number of samples per subject (default 300)}
 
@@ -23,12 +25,15 @@ addCondDist(
 draws per subject as the `"samples"` attribute of `fit$condDist`, an
 `ID x eta x draw` array}
 
+\item{burn}{MCMC iterations discarded by a held `"saem"` run (default 50)}
+
 \item{seed}{random seed of the sampler}
 }
 \value{
 the fit, with `fit$condDist`: a data frame `ID`, `ETA`, `MEAN`,
-  `SD`.  Its `"method"` attribute names the sampler and its `"ess"`
-  attribute holds each subject's effective sample size.
+  `SD`.  Its `"method"` attribute names the sampler (`"imp"`, `"saem"`
+  for a SAEM fit's own chains or `"mcmc"` for a held SAEM run) and, for
+  `"imp"`, its `"ess"` attribute holds each subject's effective sample size.
 }
 \description{
 Samples each subject's conditional (posterior) distribution of the random
@@ -42,6 +47,19 @@ subject's mode, holding every population parameter at the fit's estimate
 (the frozen `est = "imp"` E-step), and weights them by the posterior.
 Mixture, IOV, non-parametric and repeated (`same()`) Omega block fits are
 not supported.
+
+`method = "saem"` uses the SAEM MCMC kernels.  For a SAEM fit, the chains of
+its own last iterations are the draws when they are enough (`nsamp` draws
+from `nmc` chains, within the last half of the second-phase iterations,
+where the parameters have nearly settled), so nothing is simulated;
+otherwise the kernels run with every population parameter held
+at the fit's estimates, continuing a SAEM fit's chains or, for any other
+fit, starting cold, and `burn` iterations are discarded.  An eta SAEM does
+not sample for a subject (uninformative) has `SD` `NA` and `MEAN` 0, its
+prior, as in `fit$eta`; that is exact when the eta is uncorrelated with the
+others.  A model SAEM fits with temporary etas (a likelihood parameter with
+no eta) is sampled with `"imp"`, since those chains also sampled parameters
+the reported model holds fixed.
 }
 \examples{
 \donttest{
