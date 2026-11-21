@@ -110,6 +110,9 @@
   the kernels held at the fit's estimates; it is the default for SAEM fits.
   `fit$condDistShrinkage` is the eta shrinkage from the conditional
   variances, `100 * mean(SD^2) / omega`.
+  The new vignette "Individual random effects and their conditional
+  distribution" describes the mode, SAEM's mean and the conditional
+  distribution of any fit.
 - `etaSamples(fit, n)` draws each subject's etas from their conditional
   distribution at a fit's estimates, as a long data frame (`ID`, `draw`, one
   column per eta) that `rxSolve(fit, params = , nStud = n)` takes to simulate
