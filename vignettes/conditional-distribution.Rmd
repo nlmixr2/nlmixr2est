@@ -66,7 +66,8 @@ fit's estimates and simulate each subject's `eta_i` from the density above.
   the posterior poorly;
 - `method = "saem"` (the default for SAEM) uses SAEM's MCMC kernels.  A SAEM
   fit already ran them at (nearly) its final estimates, so the draws of its
-  last iterations are used directly and nothing is simulated.  When those
+  last iterations, from the last half of its second phase, are used
+  directly and nothing is simulated.  When those
   are not enough, or for a fit from another method, the kernels are run
   again with every population parameter held at the fit's estimates.
 
@@ -130,18 +131,18 @@ data.frame(
   sd = cd$SD[cd$ETA == "eta.ka"]
 )
 #>    ID        mode        mean      median        sd
-#> 1   1  0.08483290  0.08672434  0.09788379 0.1329077
-#> 2   2  0.19668530  0.19823069  0.18528988 0.1586638
-#> 3   3  0.37074077  0.38222137  0.38616443 0.1835270
-#> 4   4 -0.28326871 -0.29426053 -0.29724176 0.1561942
+#> 1   1  0.08483290  0.08672434  0.08770607 0.1329077
+#> 2   2  0.19668530  0.19823069  0.19838253 0.1586638
+#> 3   3  0.37074077  0.38222137  0.37349500 0.1835270
+#> 4   4 -0.28326871 -0.29426053 -0.29504895 0.1561942
 #> 5   5 -0.04451592 -0.02423361 -0.01101069 0.1229863
-#> 6   6 -0.38629405 -0.36181502 -0.35415824 0.2017724
-#> 7   7 -0.77308932 -0.77026747 -0.76223771 0.1899175
+#> 6   6 -0.38629405 -0.36181502 -0.34906878 0.2017724
+#> 7   7 -0.77308932 -0.77026747 -0.75481550 0.1899175
 #> 8   8 -0.16884271 -0.16554042 -0.18128449 0.1806589
-#> 9   9  1.36248859  1.42805547  1.42482905 0.2460347
-#> 10 10 -0.73460315 -0.74336911 -0.72743737 0.1390726
+#> 9   9  1.36248859  1.42805547  1.42121026 0.2460347
+#> 10 10 -0.73460315 -0.74336911 -0.72809855 0.1390726
 #> 11 11  0.75352200  0.78498173  0.78351873 0.1971994
-#> 12 12 -0.52166457 -0.52220798 -0.52793413 0.1295458
+#> 12 12 -0.52166457 -0.52220798 -0.52943903 0.1295458
 ```
 
 The `SD` column is the uncertainty of each subject's estimate, which a
@@ -151,18 +152,18 @@ single point summary does not show.  A 90% interval comes from the draws:
 ``` r
 t(apply(draws[, "eta.cl", ], 1, quantile, c(0.05, 0.95)))
 #>             5%         95%
-#> 1  -0.65014661 -0.33055125
-#> 2  -0.03004506  0.30746589
-#> 3  -0.14051416  0.16606596
-#> 4  -0.19196781  0.13498575
-#> 5  -0.29275777 -0.01556734
-#> 6   0.14969665  0.56339110
-#> 7  -0.11363205  0.30539892
-#> 8  -0.02952002  0.35192942
-#> 9  -0.13971613  0.21949976
-#> 10 -0.56877817 -0.26044608
-#> 11  0.10857102  0.45644191
-#> 12 -0.28108828  0.01223934
+#> 1  -0.65771769 -0.33075773
+#> 2  -0.01824719  0.28685044
+#> 3  -0.17200425  0.15512269
+#> 4  -0.19597461  0.12645975
+#> 5  -0.29249574 -0.01762039
+#> 6   0.13834034  0.56339110
+#> 7  -0.07237582  0.32263351
+#> 8  -0.04182502  0.34061706
+#> 9  -0.13971613  0.22271590
+#> 10 -0.56880964 -0.24860321
+#> 11  0.11067063  0.46515669
+#> 12 -0.27603296  0.01223934
 ```
 
 ### Shrinkage
@@ -207,7 +208,7 @@ rbind(
 #>          eta.ka     eta.cl      eta.v
 #> omega 0.4031402 0.06963923 0.01933736
 #> modes 0.3886518 0.06389900 0.01547284
-#> draws 0.4091176 0.07049188 0.01900615
+#> draws 0.4063483 0.07017849 0.01916460
 round(cor(fit$eta[, -1]), 2)
 #>        eta.ka eta.cl eta.v
 #> eta.ka   1.00   0.20  0.26
@@ -216,8 +217,8 @@ round(cor(fit$eta[, -1]), 2)
 round(cor(pooled), 2)
 #>        eta.ka eta.cl eta.v
 #> eta.ka   1.00   0.16  0.31
-#> eta.cl   0.16   1.00  0.58
-#> eta.v    0.31   0.58  1.00
+#> eta.cl   0.16   1.00  0.59
+#> eta.v    0.31   0.59  1.00
 ```
 
 With only 12 subjects both are rough, but the modes' variances fall short of
@@ -283,5 +284,8 @@ summary(cdI$SD / cdS$SD)
   error of a conditional mean is about `SD / sqrt(ESS)`.
 - The samplers are seeded (`seed`), so `addCondDist()` is reproducible.
 - An eta SAEM does not sample for a subject (an uninformative eta) has
-  `SD` `NA` and is left out of the shrinkage.
-- Mixture and inter-occasion variability models are not supported yet.
+  `SD` `NA` and `MEAN` 0, its prior; the shrinkage counts it as fully
+  shrunk.  Both are exact when that eta is uncorrelated with the others.
+- Mixture, inter-occasion variability and non-parametric (`"npag"`,
+  `"npb"`, ...) fits are not supported yet.  A non-parametric fit's random
+  effects follow its discrete support, not `Omega`.

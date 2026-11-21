@@ -70,7 +70,8 @@ fit's estimates and simulate each subject's `eta_i` from the density above.
   the posterior poorly;
 - `method = "saem"` (the default for SAEM) uses SAEM's MCMC kernels.  A SAEM
   fit already ran them at (nearly) its final estimates, so the draws of its
-  last iterations are used directly and nothing is simulated.  When those
+  last iterations, from the last half of its second phase, are used
+  directly and nothing is simulated.  When those
   are not enough, or for a fit from another method, the kernels are run
   again with every population parameter held at the fit's estimates.
 
@@ -213,5 +214,8 @@ summary(cdI$SD / cdS$SD)
   error of a conditional mean is about `SD / sqrt(ESS)`.
 - The samplers are seeded (`seed`), so `addCondDist()` is reproducible.
 - An eta SAEM does not sample for a subject (an uninformative eta) has
-  `SD` `NA` and is left out of the shrinkage.
-- Mixture and inter-occasion variability models are not supported yet.
+  `SD` `NA` and `MEAN` 0, its prior; the shrinkage counts it as fully
+  shrunk.  Both are exact when that eta is uncorrelated with the others.
+- Mixture, inter-occasion variability and non-parametric (`"npag"`,
+  `"npb"`, ...) fits are not supported yet.  A non-parametric fit's random
+  effects follow its discrete support, not `Omega`.
