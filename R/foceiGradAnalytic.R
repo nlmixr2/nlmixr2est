@@ -610,80 +610,50 @@
 #' @return named natural-scale gradient (structural thetas, sigmas, om.chol), or `NULL`
 #' @noRd
 .foceiGradDirect <- function(fit) {
+  # `fast` is deliberately NOT forced on: this reports what the analytic gradient does
+  # for THIS fit as configured, so a fast=FALSE fit correctly yields NULL rather than a
+  # gradient it never used.
+  .r <- .foceiObjGradRefit(fit, .uiPinTheta(fit$ui, fit))
+  if (is.null(.r)) NULL else .r$gradient
+}
+
+#' Name a stashed analytic gradient by parameter
+#'
+#' Kernel order is structural thetas, then sigmas, then the estimation-scale omega
+#' (Cholesky) elements; `.g` is in the outer optimizer's order and is named through
+#' `gMap`.  Returns `.g` unnamed when the names cannot be built.
+#' @param .g gradient as stashed in `.gradDirectFirst`
+#' @param ui pinned ui the gradient was evaluated under
+#' @param fit completed fit
+#' @return named (or unnamed) numeric gradient
+#' @noRd
+.foceiGradNames <- function(.g, ui, fit) {
   tryCatch(
     {
-      .env <- if (rxode2::rxIs(fit, "nlmixr2FitData")) fit$env else fit
-      .est <- .env$est
-      if (is.null(.est) || !nzchar(.est)) {
-        return(NULL)
-      }
-      .control <- .env$foceiControl
-      .control$maxInnerIterations <- 0L # evaluate at the fit's EBEs, do not re-optimize
-      .control$maxOuterIterations <- 0L # no outer step: the gradient is at THIS theta
-      .control$calcTables <- FALSE
-      .control$covMethod <- 0L # no covariance step
-      .control$skipCov <- fit$skipCov
-      # `fast` is deliberately NOT forced on: this reports what the analytic gradient does
-      # for THIS fit as configured, so a fast=FALSE fit correctly yields NULL rather than a
-      # gradient it never used.
-      # Re-run under the fit's OWN est, not est="none": the gradient SHAPE is the
-      # estimation method (FOCE freezes the residual variance, AGQ adds quadrature), and
-      # est="none" would silently evaluate every fit as plain FOCEI.
-      .ui <- .uiPinTheta(fit$ui, fit)
-      .etaMat <- .fitEtaMat(fit)
-      if (!is.null(.etaMat)) {
-        .control$etaMat <- .etaMat
-      }
-      # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); restore it
-      .savedMuRef <- .muRefTrans$cur
-      on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
-      .f2 <- suppressMessages(suppressWarnings(
-        nlmixr2(.ui, data = getData(fit), est = .est, control = .control)
-      ))
-      .src <- tryCatch(.f2$env, error = function(.) NULL)
-      if (is.null(.src) || !exists(".gradDirectFirst", .src, inherits = FALSE)) {
-        return(NULL)
-      }
-      .g <- as.numeric(get(".gradDirectFirst", .src))
-      # Name it the way the gradient assembly orders it: structural thetas, then sigmas,
-      # then the estimation-scale omega (Cholesky) elements.
-      .ini <- .ui$iniDf
+      .ini <- ui$iniDf
       .thRows <- .ini[!is.na(.ini$ntheta), , drop = FALSE]
       .thRows <- .thRows[order(.thRows$ntheta), , drop = FALSE]
-      .thv <- fit$theta[.thRows$name]
-      if (anyNA(.thv)) {
-        .thv <- .thRows$est
+      .om <- tryCatch(ui$omega, error = function(e) NULL)
+      if (is.null(.om)) {
+        .om <- fit$omega
       }
-      .st <- .foceiAnalyticGradSetup(.ui, stats::setNames(as.numeric(.thv), .thRows$name), fit$omega)
-      # Everything from here on only NAMES `.g`, so a naming failure must not discard it.
-      # Returning NULL here reported "no analytic gradient" for a gradient that had in fact
-      # been computed -- exactly what a fix()ed theta did, since .foceiAnalyticGradSetup
-      # declines for one.  That made the analytic path untestable on precisely the models
-      # where full-theta and free-parameter indexing differ, which is the indexing the outer
-      # FD fallback's step store gets wrong when it gets it wrong.  Hand back the unnamed
-      # values; the same reasoning already applies to the gMap branch below.
+      .st <- .foceiAnalyticGradSetup(ui, stats::setNames(as.numeric(.thRows$est), .thRows$name), .om)
+      # A naming failure must not discard a computed gradient (a fix()ed theta makes
+      # .foceiAnalyticGradSetup decline), so hand back the unnamed values.
       if (is.null(.st)) {
         return(.g)
       }
-      # These names are in KERNEL space (nth + nsg + nom).  That is not the outer
-      # optimizer's vector whenever a parameter occupies two kernel slots -- an estimated
-      # boxCox/yeoJohnson lambda is both a theta direction and a sigma slot, so the kernel
-      # names come out one longer than the gradient (9 vs 8 on a 1-cmt boxCox model) and
-      # this used to bail to NULL, reporting "no analytic gradient" for a gradient that
-      # had in fact been computed.  gMap is the same kernel -> outer gather the C++ uses
-      # (analyticOuterGradDirect), so reuse it rather than re-deriving the correspondence.
+      # Kernel names can be longer than the gradient (an estimated boxCox lambda is both
+      # a theta direction and a sigma slot), so gather through gMap, as the C++ does.
       .nmKer <- c(.st$dir$thStruct, .st$ef$sgName, .st$omNames)
-      # .g is in the outer optimizer's order, which differs from the kernel's even at the
-      # same length (a residual parameter declared before another in ini()), so it is always
-      # named through gMap
-      .gp <- tryCatch(.foceiGradPooledSetup(.ui), error = function(e) NULL)
+      .gp <- tryCatch(.foceiGradPooledSetup(ui), error = function(e) NULL)
       .map <- if (is.null(.gp)) NULL else .gp$gMap
       if (is.null(.map) || length(.map) != length(.g) || any(.map < 0L) || any(.map >= length(.nmKer))) {
         return(.g)
       }
       stats::setNames(.g, .nmKer[.map + 1L])
     },
-    error = function(e) NULL
+    error = function(e) .g
   )
 }
 

@@ -16,6 +16,7 @@
 //    cannot detect a DLL going away, so a bundle left registered by an unloaded
 //    package is dereferenced on the next objective evaluation.
 #include "nlmixr2estLikContrib.h"
+#include "nlmixr2estLikPenalty.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,12 +27,16 @@ extern "C" {
   typedef void (*nlmixrRegisterEmLik_t)(nlmixrEmLik_fn fn);
   typedef void (*nlmixrRemoveEmLik_t)(nlmixrEmLik_fn fn);
   typedef int  (*nlmixrHasLikContrib_t)(void);
+  typedef void (*nlmixrRegisterLikPenalty_t)(const nlmixrLikPenalty *p);
+  typedef void (*nlmixrRemoveLikPenalty_t)(const nlmixrLikPenalty *p);
 
   extern nlmixrRegisterLikContrib_t nlmixrRegisterLikContribP;
   extern nlmixrRemoveLikContrib_t   nlmixrRemoveLikContribP;
   extern nlmixrRegisterEmLik_t      nlmixrRegisterEmLikP;
   extern nlmixrRemoveEmLik_t        nlmixrRemoveEmLikP;
   extern nlmixrHasLikContrib_t      nlmixrHasLikContribP;
+  extern nlmixrRegisterLikPenalty_t nlmixrRegisterLikPenaltyP;
+  extern nlmixrRemoveLikPenalty_t   nlmixrRemoveLikPenaltyP;
 
   // Always refresh: a reloaded nlmixr2est hands back new addresses, and keeping
   // the first set seen would leave the contributor calling into an unloaded DLL.
@@ -41,6 +46,14 @@ extern "C" {
     nlmixrRegisterEmLikP      = (nlmixrRegisterEmLik_t)      R_ExternalPtrAddrFn(VECTOR_ELT(p, 2));
     nlmixrRemoveEmLikP        = (nlmixrRemoveEmLik_t)        R_ExternalPtrAddrFn(VECTOR_ELT(p, 3));
     nlmixrHasLikContribP      = (nlmixrHasLikContrib_t)      R_ExternalPtrAddrFn(VECTOR_ELT(p, 4));
+    // penalty entry points (positions 5-6) exist only in newer nlmixr2est
+    if (Rf_length(p) >= 7) {
+      nlmixrRegisterLikPenaltyP = (nlmixrRegisterLikPenalty_t) R_ExternalPtrAddrFn(VECTOR_ELT(p, 5));
+      nlmixrRemoveLikPenaltyP   = (nlmixrRemoveLikPenalty_t)   R_ExternalPtrAddrFn(VECTOR_ELT(p, 6));
+    } else {
+      nlmixrRegisterLikPenaltyP = NULL;
+      nlmixrRemoveLikPenaltyP   = NULL;
+    }
     return R_NilValue;
   }
 
@@ -50,6 +63,8 @@ extern "C" {
   nlmixrRegisterEmLik_t      nlmixrRegisterEmLikP      = NULL;  \
   nlmixrRemoveEmLik_t        nlmixrRemoveEmLikP        = NULL;  \
   nlmixrHasLikContrib_t      nlmixrHasLikContribP      = NULL;  \
+  nlmixrRegisterLikPenalty_t nlmixrRegisterLikPenaltyP = NULL;  \
+  nlmixrRemoveLikPenalty_t   nlmixrRemoveLikPenaltyP   = NULL;  \
   SEXP iniNlmixr2estLikContrib(SEXP p) { return iniNlmixr2estLikContrib0(p); }
 
 #ifdef __cplusplus

@@ -12,6 +12,7 @@
 #include "rxomp.h"
 #include "../inst/include/nlmixr2estLikContrib.h"
 #include "likContribUtil.h"
+#include "likPenalty.h"
 #include <atomic>
 #include <exception>
 #include <limits>
@@ -121,8 +122,18 @@ nlmOptions nlmOp;
 // printed by the R-side setup (.nlmSetupEnv -> nlmPrintHeader).
 static long _nlmEvalPrintCn = 0;
 
+// Likelihood penalty (likPenalty.h) for the population nlm objective.  The map
+// sends each ui theta to its nlm parameter (-1 for fixed thetas, which keep
+// their value in _nlmPenTheta).  Set by nlmPenaltySetup_() after nlmSetup().
+static std::vector<int> _nlmPenMap;
+static std::vector<double> _nlmPenTheta;
+static int _nlmPenOn = 0;
+
 //[[Rcpp::export]]
 RObject nlmFree() {
+  _nlmPenOn = 0;
+  _nlmPenMap.clear();
+  _nlmPenTheta.clear();
   if (nlmOp.thetaFD != NULL) R_Free(nlmOp.thetaFD);
   nlmOp.thetaFD = NULL;
   nlmOp.nobs    = NULL;
@@ -583,6 +594,74 @@ arma::vec nlmSolveFid(arma::vec &theta, int id) {
 }
 
 
+// Penalty on the nlm -LL scale at `th` (natural ui thetas): P/2 - sum_i LL_i.
+static double nlmPenValueAt(const double *th) {
+  const int nt = (int)_nlmPenTheta.size();
+  const int nsub = getRxNsub(rx);
+  double v = 0.5 * nlmixrPenPopAll(nt, th, 0, NULL, nsub, NULL, NULL);
+  if (nlmixrPenNSubject() > 0) {
+    for (int id = 0; id < nsub; ++id) {
+      v -= nlmixrPenSubjAll(id, 0, nlmOp.nobs[id], NULL, nt, th, NULL);
+    }
+  }
+  return v;
+}
+
+static inline bool nlmPenActive() {
+  return _nlmPenOn && nlmOp.solveType != solveType_nls &&
+    nlmOp.solveType != solveType_nls_pred &&
+    (nlmixrPenNPop() > 0 || nlmixrPenNSubject() > 0);
+}
+
+static void nlmPenFill(arma::vec &theta) {
+  for (size_t t = 0; t < _nlmPenMap.size(); ++t) {
+    int m = _nlmPenMap[t];
+    if (m >= 0) _nlmPenTheta[t] = scaleUnscalePar(&(nlmOp.scale), &theta[0], m);
+  }
+}
+
+// Penalty value at the (scaled) optimizer point; when g is non-NULL its
+// gradient on the optimizer scale is added to g[0..ntheta).  Subject terms and
+// gradient-less population terms are differenced (no ODE solve involved).
+static double nlmPenAdd(arma::vec &theta, double *g) {
+  nlmPenFill(theta);
+  const int nt = (int)_nlmPenTheta.size();
+  double v = nlmPenValueAt(_nlmPenTheta.data());
+  if (g == NULL) return v;
+  std::vector<double> gn((size_t)nt, 0.0);
+  int ok = 1;
+  nlmixrPenPopAll(nt, _nlmPenTheta.data(), 0, NULL, getRxNsub(rx), gn.data(), &ok);
+  bool fd = !ok || nlmixrPenNSubject() > 0;
+  for (int t = 0; t < nt; ++t) {
+    int m = _nlmPenMap[(size_t)t];
+    if (m < 0) continue;
+    double d;
+    if (fd) {
+      double x = _nlmPenTheta[(size_t)t];
+      double h = 1e-6 * std::max(1.0, std::fabs(x));
+      _nlmPenTheta[(size_t)t] = x + h;
+      double vp = nlmPenValueAt(_nlmPenTheta.data());
+      _nlmPenTheta[(size_t)t] = x - h;
+      double vm = nlmPenValueAt(_nlmPenTheta.data());
+      _nlmPenTheta[(size_t)t] = x;
+      d = (vp - vm) / (2.0 * h);
+    } else {
+      d = 0.5 * gn[(size_t)t];
+    }
+    g[m] += scaleAdjustGradScale(&(nlmOp.scale), d, m);
+  }
+  return v;
+}
+
+//[[Rcpp::export]]
+RObject nlmPenaltySetup_(IntegerVector map, NumericVector theta) {
+  if (map.size() != theta.size()) stop("penalty map/theta size mismatch");
+  _nlmPenMap.assign(map.begin(), map.end());
+  _nlmPenTheta.assign(theta.begin(), theta.end());
+  _nlmPenOn = 1;
+  return R_NilValue;
+}
+
 arma::vec nlmSolveF(arma::vec &theta) {
   arma::vec ret(nlmOp.nobsTot);
   double *retD = ret.memptr();
@@ -591,6 +670,8 @@ arma::vec nlmSolveF(arma::vec &theta) {
   nmForEachSubject(rx, getRxNsub(rx), cores, cores > 1, [&](int id) {
     nlmSolveFid(retD + nlmOp.idS[id], nlmOp.nobs[id], theta, id);
   });
+  // consumers sum this vector, so the penalty rides on the first element
+  if (nlmPenActive() && nlmOp.nobsTot > 0) ret(0) += nlmPenAdd(theta, NULL);
   return ret;
 }
 
@@ -783,6 +864,11 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
   nmForEachSubject(rx, getRxNsub(rx), cores, cores > 1, [&](int id) {
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(theta, id);
   });
+  if (nlmPenActive() && nlmOp.nobsTot > 0) {
+    std::vector<double> g(nlmOp.ntheta, 0.0);
+    ret(0, 0) += nlmPenAdd(theta, g.data());
+    for (unsigned int i = 0; i < nlmOp.ntheta; ++i) ret(0, i + 1) += g[i];
+  }
   return ret;
 }
 
