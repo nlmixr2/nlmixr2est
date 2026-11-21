@@ -8,7 +8,8 @@
 #' `method = "imp"` draws importance samples from a proposal centered at each
 #' subject's mode, holding every population parameter at the fit's estimate
 #' (the frozen `est = "imp"` E-step), and weights them by the posterior.
-#' Mixture, IOV and non-parametric fits are not supported.
+#' Mixture, IOV, non-parametric and repeated (`same()`) Omega block fits are
+#' not supported.
 #'
 #' @param fit nlmixr2 fit with random effects
 #' @param method `"auto"` (default) or `"imp"`: the sampler
@@ -65,11 +66,11 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
     stop("conditional distribution is not available for IOV models", call. = FALSE)
   }
   # their eta distribution is the fitted discrete support, not Omega
-  if (tryCatch(fit$est, error = function(e) "") %in% c("npag", "mnpag", "inpag", "npb", "mnpb", "inpb")) {
+  if (isTRUE(tryCatch(fit$est, error = function(e) "") %in% c("npag", "mnpag", "inpag", "npb", "mnpb", "inpb"))) {
     stop("conditional distribution is not available for non-parametric fits", call. = FALSE)
   }
   .om <- tryCatch(as.matrix(fit$omega), error = function(e) NULL)
-  if (!is.matrix(.om) || inherits(try(chol(.om), silent = TRUE), "try-error")) {
+  if (!is.matrix(.om) || !all(is.finite(.om)) || inherits(try(chol(.om), silent = TRUE), "try-error")) {
     stop("conditional distribution needs a positive-definite Omega", call. = FALSE)
   }
   nsamp <- as.integer(round(nsamp))
