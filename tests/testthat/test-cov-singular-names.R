@@ -2,17 +2,18 @@
 nmTest({
   skip_on_cran()
 
-  test_that("a collinear pair of thetas is named when the covariance step fails", {
+  test_that("a theta the data cannot inform is named when the covariance step fails", {
+    # tz never enters the prediction, so R and S get an exact zero row
     .one <- function() {
       ini({
-        tva <- log(2)
-        tvb <- log(0.5)
+        tcl <- log(2)
+        tz <- log(0.5)
         tv <- log(30)
         eta.v ~ 0.1
         add.sd <- 0.5
       })
       model({
-        cl <- exp(tva) / exp(tvb)
+        cl <- exp(tcl) + (t > 1e9) * exp(tz)
         v <- exp(tv + eta.v)
         ke <- cl / v
         d / dt(center) <- -ke * center
@@ -24,10 +25,10 @@ nmTest({
       .one,
       nlmixr2data::theo_sd,
       "focei",
-      control = foceiControl(print = 0, covMethod = "s", covFull = FALSE, calcTables = FALSE)
+      control = foceiControl(print = 0, covFull = FALSE, calcTables = FALSE)
     )))
     expect_identical(.fit$covMethod, "failed")
-    expect_true(any(grepl("^covariance step failed: (tva, tvb|tvb, tva) collinear$", .fit$runInfo)))
+    expect_true("covariance step failed: tz uninformed" %in% .fit$runInfo)
   })
 
   test_that("too few subjects for the S matrix is said, and a healthy fit is unchanged", {
