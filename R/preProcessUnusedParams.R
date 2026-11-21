@@ -158,6 +158,10 @@
   if (.Call("_nlmixr2est_likContribN", PACKAGE = "nlmixr2est") > 0L) {
     return(NULL)
   }
+  # ... and so may a likelihood penalty
+  if (.hasLikPenalty(ui)) {
+    return(NULL)
+  }
   .ui <- rxode2::rxUiDecompress(ui)
   for (.n in .unusedEstimatedParams(.ui, control)) {
     warning(paste0("'", .n, "' does not affect the objective function"), call. = FALSE)
@@ -165,3 +169,25 @@
   NULL
 }
 preProcessHooksAdd(".preProcessUnusedParams", .preProcessUnusedParams)
+
+#' Will this estimation run under a likelihood penalty?
+#'
+#' Checks the penalties attached to the model, the session-wide ones and the
+#' `likPenalty=` argument stashed on the estimation environment of the
+#' running `.preProcessHooksRun()`.
+#'
+#' @param ui rxode2 ui
+#' @return `TRUE` when any penalty applies
+#' @noRd
+.hasLikPenalty <- function(ui) {
+  if (length(.likPenaltyAsList(tryCatch(ui$nlmixr2LikPenalty, error = function(e) NULL))) > 0L) {
+    return(TRUE)
+  }
+  if (.likPenaltyInfo()[["n"]] > 0L) {
+    return(TRUE)
+  }
+  .env <- dynGet("env", ifnotfound = NULL)
+  is.environment(.env) &&
+    exists(".nlmixr2Dots", envir = .env, inherits = FALSE) &&
+    length(.likPenaltyAsList(.env$.nlmixr2Dots$likPenalty)) > 0L
+}
