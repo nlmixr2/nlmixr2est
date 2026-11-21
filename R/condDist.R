@@ -68,12 +68,17 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
   if (tryCatch(fit$est, error = function(e) "") %in% c("npag", "mnpag", "inpag", "npb", "mnpb", "inpb")) {
     stop("conditional distribution is not available for non-parametric fits", call. = FALSE)
   }
-  .r <- .condDistImp(fit, as.integer(round(nsamp)), as.integer(seed))
+  .om <- tryCatch(as.matrix(fit$omega), error = function(e) NULL)
+  if (!is.matrix(.om) || inherits(try(chol(.om), silent = TRUE), "try-error")) {
+    stop("conditional distribution needs a positive-definite Omega", call. = FALSE)
+  }
+  nsamp <- as.integer(round(nsamp))
+  .r <- .condDistImp(fit, nsamp, if (keepSamples) nsamp else 0L, as.integer(seed))
   .etaNames <- names(.eta)[-1]
   if (!identical(dim(.r$mean), c(nrow(.eta), length(.etaNames)))) {
     stop("conditional distribution has an unexpected shape", call. = FALSE)
   }
-  .ret <- .condDistSummary(.r$mean, .r$sd, .eta$ID, .etaNames, if (keepSamples) .r$draws)
+  .ret <- .condDistSummary(.r$mean, .r$sd, .eta$ID, .etaNames, .r$draws)
   attr(.ret, "method") <- "imp"
   attr(.ret, "ess") <- .r$ess
   assign("condDist", .ret, envir = .env)
@@ -84,11 +89,12 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
 #'
 #' @param fit nlmixr2 fit
 #' @param nsamp samples per subject
+#' @param ndraw equally weighted draws per subject to return (0 for none)
 #' @param seed sampler seed
 #' @return list: `mean`, `sd` (`N x neta`), `ess` (length `N`) and `draws`,
-#'   an `N x neta x nsamp` array of equally weighted draws
+#'   an `N x neta x ndraw` array of equally weighted draws or `NULL`
 #' @noRd
-.condDistImp <- function(fit, nsamp, seed) {
+.condDistImp <- function(fit, nsamp, ndraw, seed) {
   # imp raises an Omega variance below 1e-6 to 1e-6, which would change the prior
   .om <- tryCatch(diag(as.matrix(fit$omega)), error = function(e) NULL)
   if (any(.om < 1e-6)) {
@@ -117,7 +123,7 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
   }
   .e <- .fit2$env
   .u <- rxode2::rxWithSeed(seed, rxode2::rxunif(n = length(.e$impSamples)))
-  .weightedDraws(.e$impSamples, .e$impWeights, nsamp, .u)
+  .weightedDraws(.e$impSamples, .e$impWeights, ndraw, .u)
 }
 
 #' The message of a `try-error`
@@ -148,18 +154,18 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
 #' `ndraw` equally spaced strata.
 #' @param samples list, per subject, of `nsample x neta` matrices
 #' @param weights list, per subject, of the samples' weights
-#' @param ndraw equally weighted draws per subject
+#' @param ndraw equally weighted draws per subject (0 for none)
 #' @param u per-subject offsets in `[0, 1)`
-#' @return list: `mean`, `sd`, `ess` and `draws` (`N x neta x ndraw`)
+#' @return list: `mean`, `sd`, `ess` and `draws` (`N x neta x ndraw`, or
+#'   `NULL` when `ndraw` is 0)
 #' @noRd
 .weightedDraws <- function(samples, weights, ndraw, u = rep(0.5, length(samples))) {
   .n <- length(samples)
   .neta <- ncol(samples[[1]])
   .mean <- .sd <- matrix(NA_real_, .n, .neta)
   .ess <- numeric(.n)
-  .draws <- array(NA_real_, c(.n, .neta, ndraw))
+  .draws <- if (ndraw > 0L) array(NA_real_, c(.n, .neta, ndraw))
   for (.i in seq_len(.n)) {
-    .u <- (seq_len(ndraw) - 1 + u[.i]) / ndraw
     .s <- samples[[.i]]
     .w <- as.numeric(weights[[.i]])
     .w <- .w / sum(.w)
@@ -167,8 +173,11 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
     .mean[.i, ] <- .m
     .sd[.i, ] <- sqrt(colSums(.w * sweep(.s, 2L, .m)^2))
     .ess[.i] <- 1 / sum(.w^2)
-    .idx <- pmin(findInterval(.u, cumsum(.w)) + 1L, nrow(.s))
-    .draws[.i, , ] <- t(.s[.idx, , drop = FALSE])
+    if (ndraw > 0L) {
+      .u <- (seq_len(ndraw) - 1 + u[.i]) / ndraw
+      .idx <- pmin(findInterval(.u, cumsum(.w)) + 1L, nrow(.s))
+      .draws[.i, , ] <- t(.s[.idx, , drop = FALSE])
+    }
   }
   list(mean = .mean, sd = .sd, ess = .ess, draws = .draws)
 }
