@@ -41,8 +41,9 @@
   checkmate::assertNumeric(cfg$odeRecalcFactor, lower = 0, len = 1, .var.name = "saem.cfg$odeRecalcFactor")
   # nmc number of mc interations
   checkmate::assertIntegerish(cfg$nmc, lower = 0, len = 1, .var.name = "saem.cfg$nmc")
-  # nu is the number of selection for each probability type.
-  checkmate::assertIntegerish(cfg$nu, lower = 0, len = 3, .var.name = "saem.cfg$nu")
+  # nu is the number of selection for each probability type; an optional 4th
+  # element is the f-SAEM IMH sweep count (read in R, not by the SAEM C++ loop).
+  checkmate::assertIntegerish(cfg$nu, lower = 0, min.len = 3, max.len = 4, .var.name = "saem.cfg$nu")
   # Overall number of iterations
   checkmate::assertIntegerish(cfg$niter, lower = 0, len = 1, .var.name = "saem.cfg$niter")
   # Number of iterations where the correlation is ignored
@@ -145,6 +146,7 @@
   checkmate::assertIntegerish(cfg$y_offset, .var.name = "saem.cfg$y_offset")
   # The should match the number of endpoints
   checkmate::assertIntegerish(cfg$res.mod, len = .nendpnt, .var.name = "saem.cfg$res.mod")
+  checkmate::assertIntegerish(cfg$distEp, len = .nendpnt, lower = 1, upper = 4, .var.name = "saem.cfg$distEp")
   checkmate::assertNumeric(cfg$ares, len = .nendpnt, .var.name = "saem.cfg$ares")
   checkmate::assertNumeric(cfg$bres, len = .nendpnt, .var.name = "saem.cfg$bres")
   checkmate::assertNumeric(cfg$cres, len = .nendpnt, .var.name = "saem.cfg$cres")
@@ -277,6 +279,9 @@
         inits = .inits,
         mcmc = rxode2::rxGetControl(ui, "mcmc", list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2))),
         rxControl = .rxControl,
+        # The scalar picks the DEFAULT observation loss; a model that mixes a
+        # normal endpoint with an ll() one stays on the normal path and the
+        # kernel overrides the ll() observations from cfg$distEp.
         distribution = if (.saemGeneralLik(ui)) "general" else "normal",
         fixedOmega = ui$saemModelOmegaFixed,
         fixedOmegaValues = ui$saemModelOmegaFixedValues,
@@ -330,7 +335,18 @@
           rxode2::rxGetControl(ui, "iovMethod", "twoLevel"),
           "collapsed"
         )),
-        fixedNoEta = rxode2::rxGetControl(ui, "fixedNoEta", "hold")
+        fixedNoEta = rxode2::rxGetControl(ui, "fixedNoEta", "hold"),
+        fast = rxode2::rxGetControl(ui, "fast", FALSE),
+        fastIter = rxode2::rxGetControl(ui, "fastIter", 20L),
+        # a general log-likelihood endpoint has no normal do_mcmc
+        # fallback, so the fast kernel must run every iteration
+        fastKernel = if (.saemAnyGeneralLik(ui)) {
+          "throughout"
+        } else {
+          rxode2::rxGetControl(ui, "fastKernel", "firstN")
+        },
+        fastCov = rxode2::rxGetControl(ui, "fastCov", "auto"),
+        fastLik = rxode2::rxGetControl(ui, "fastLik", "focei")
       )
       .cfg$nonMuTheta <- rxode2::rxGetControl(ui, "nonMuTheta", "regress")
       # integer gate the SAEM C++ reads: when 1, non-mu (phi0) thetas are
@@ -418,12 +434,27 @@
         .cfg <- .saemHoldCfg(.cfg)
       }
       .cfg <- .saemWarmCfg(.cfg, rxode2::rxGetControl(ui, "saemWarmState", NULL))
+      # Metropolis acceptance counters for THIS fit; snapshotted onto the fit
+      # env in .saemFamilyFit.
+      saemDiagReset_()
+      if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+        fsaemDiagReset_()
+        .cfg <- .fsaemInstallStep(ui, data, .rxControl, .cfg)
+      } else if (length(.cfg$nu) >= 4L) {
+        .minfo("nu[4] sets the f-SAEM sweeps; needs est=\"fsaem\" or fast=TRUE")
+      }
       .saemCheckCfg(.cfg)
       .cfg
     })
     .saemRes <- nlmixrWithTiming("saem", {
       .model$saem_mod(.cfg)
     })
+    # f-SAEM sets up the FOCEi inner (op_focei globals + a shared solve); tear
+    # it down so it does not leak into a later fit's solve state.  The kernel
+    # counters (fsaemDiag_()) survive the teardown.
+    if (isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) {
+      try(vaeInnerFree_(), silent = TRUE)
+    }
     .pi <- .saemRes$plateauIter
     if (length(.pi) == 1L && .pi > 0L) {
       warning(sprintf("parameters plateaued; stopped at iteration %d of %d", .pi, .cfg$niter), call. = FALSE)
@@ -1277,7 +1308,9 @@
   # estimated endpoint has a real slot; any other endpoint's slot was dropped above
   # (all-zero row, or fix()ed) and simply has no surviving column to select here.
   # The base comes from .np, the same way .saemFimFixedResidSlots derives it, so
-  # the row dropped and the row read are always the same one.
+  # the row dropped and the row read are always the same one.  Looping per
+  # endpoint also covers a mixed normal+ll() model: the ll() endpoint has no
+  # slot, so the additive endpoint gets its own wherever it sits (#872, #893).
   .nEp <- length(.predDf$cond)
   if (.nEp > 0L && .np > .nEp) {
     .base <- .np - .nEp
@@ -2171,6 +2204,20 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   })
 
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates = .tv, pseudoEtas = .ret$saemPseudoEtas)
+  # Snapshot THIS fit's kernel counters before anything else can run.  They are
+  # process globals reset at the top of .saemFitModel, so a later fit would
+  # overwrite them; stashing them on the fit env makes them `fit$saemDiag` /
+  # `fit$fsaemDiag` through nmObjGet.default.  Same reasoning as impmap's
+  # odeSwapInfo (R/impmap.R).
+  tryCatch(
+    {
+      assign("saemDiag", saemDiag_(), envir = .ret)
+      if (isTRUE(.control$fast)) {
+        assign("fsaemDiag", fsaemDiag_(), envir = .ret)
+      }
+    },
+    error = function(e) NULL
+  )
   # Re-stage the mu-ref time-varying split for the post-processing: the theta
   # table and parameter history are named from saemParamsToEstimate/
   # saemParHistNames, which only put a time-varying covariate in the correct
@@ -2269,10 +2316,8 @@ nlmixr2Est.saem <- function(env, ...) {
   .ui <- env$ui
   # saem supports a general log-likelihood endpoint (ll() ~ expr) the saemix way
   # (the model returns the per-obs loglik; the RWM kernels use -ll as the
-  # observation loss); only require normality for the ordinary case.
-  if (!.saemGeneralLik(.ui)) {
-    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name = .ui$modelName)
-  }
+  # observation loss), including alongside normal endpoints.
+  .saemAssertEndpointDist(.ui, "saem")
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'", .var.name = .ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("saem"), .var.name = .ui$modelName)
   .saemAssertEtaPhi(.ui)

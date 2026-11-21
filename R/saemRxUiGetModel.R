@@ -320,6 +320,37 @@ nmGetDistributionSaemLines.default <- nmGetDistributionSaemLines.LL
   !is.na(iniDf$ntheta) & (is.na(iniDf$err) | .saemGeneralLik(ui))
 }
 
+#' TRUE when ANY endpoint is a general log-likelihood.
+#'
+#' Same test as `.saemGeneralLik()` (a mixed model is promoted to an all
+#' general-likelihood fit); named separately for the f-SAEM kernel, which must
+#' then run throughout.
+#' @param ui rxode2 ui
+#' @return logical
+#' @noRd
+.saemAnyGeneralLik <- function(ui) {
+  .saemGeneralLik(ui)
+}
+
+#' Assert every endpoint is one saem can score.
+#'
+#' `rxode2::assertRxUiTransformNormal()` is whole-UI, so it would reject a model
+#' with a general-likelihood endpoint; apply it only when there is none.
+#' @param ui rxode2 ui
+#' @param est estimation method name, for the message
+#' @return `ui`, invisibly
+#' @noRd
+.saemAssertEndpointDist <- function(ui, est) {
+  if (!.saemAnyGeneralLik(ui)) {
+    rxode2::assertRxUiTransformNormal(
+      ui,
+      paste0(" for the estimation routine '", est, "'"),
+      .var.name = ui$modelName
+    )
+  }
+  invisible(ui)
+}
+
 #' @export
 rxUiGet.saemParamsLine <- function(x, ...) {
   .x <- x[[1]]

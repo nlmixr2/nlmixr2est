@@ -106,3 +106,72 @@ two.compartment <- function() {
 }
 
 two.compartment <- two.compartment()
+
+#' Two-endpoint PK/PD model (direct inhibitory Emax on a fixed baseline)
+#'
+#' Deliberately well conditioned and well scaled, and the two endpoints have
+#' residual SDs an order of magnitude apart (0.4 vs 4) so that anything which
+#' pairs an endpoint with the wrong residual shows up immediately.  ka and e0 are
+#' fixed so the fit stays small.
+#'
+#' @return A model function suitable for nlmixr2
+pkpd.two.endpoint <- function() {
+  ini({
+    tcl <- -3.2
+    tv <- -1
+    tec50 <- 0.5
+    eta.cl ~ 0.09
+    eta.v ~ 0.09
+    pk.sd <- 0.4
+    pd.sd <- 4
+  })
+  model({
+    ka <- exp(0.5)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    e0 <- 100
+    ec50 <- exp(tec50)
+    d/dt(depot) <- -ka * depot
+    d/dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    eff <- e0 * (1 - cp / (ec50 + cp))
+    cp ~ add(pk.sd) | cp
+    eff ~ add(pd.sd) | eff
+  })
+}
+
+#' Simulate data for [pkpd.two.endpoint()] at its own ini() values.
+#'
+#' @param n number of subjects
+#' @param seed RNG seed (both the etas and the residual noise)
+#' @return a data frame with `cp` and `eff` observations
+mkPkpdTwoEndpointData <- function(n = 20L, seed = 42L) {
+  set.seed(seed)
+  .m <- rxode2::rxode2({
+    ka <- exp(0.5)
+    cl <- exp(-3.2 + eta.cl)
+    v <- exp(-1 + eta.v)
+    e0 <- 100
+    ec50 <- exp(0.5)
+    d/dt(depot) <- -ka * depot
+    d/dt(center) <- ka * depot - cl / v * center
+    cp <- center / v
+    eff <- e0 * (1 - cp / (ec50 + cp))
+  })
+  .ev <- rxode2::et(amt = 100, cmt = "depot") |>
+    rxode2::et(c(0.5, 1, 2, 4, 8, 12, 24)) |>
+    rxode2::et(id = seq_len(n))
+  .s <- rxode2::rxSolve(.m, .ev,
+                        omega = lotri::lotri(eta.cl ~ 0.09, eta.v ~ 0.09),
+                        returnType = "data.frame")
+  .pk <- data.frame(id = .s$id, time = .s$time,
+                    dv = .s$cp + stats::rnorm(nrow(.s), 0, 0.4),
+                    dvid = "cp", amt = 0, evid = 0)
+  .pd <- data.frame(id = .s$id, time = .s$time,
+                    dv = .s$eff + stats::rnorm(nrow(.s), 0, 4),
+                    dvid = "eff", amt = 0, evid = 0)
+  .dose <- data.frame(id = seq_len(n), time = 0, dv = NA_real_,
+                      dvid = "cp", amt = 100, evid = 1)
+  .d <- rbind(.dose, .pk, .pd)
+  .d[order(.d$id, .d$time, -.d$evid), ]
+}
