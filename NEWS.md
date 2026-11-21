@@ -247,6 +247,12 @@
   re-solved before its MCMC step, so the population reset of fixed-effect-only
   thetas between iterations no longer leaves a stale likelihood that froze the
   chain at a state that no longer fit (#1298).
+- A `saem` fit whose estimates diverge (a non-finite value, a theta or omega
+  variance above 1e10 in magnitude, or one inside `exp()` large enough that
+  its back-transform or CV% overflows) now says so in `$runInfo`
+  ("estimates diverged: ...") instead of returning as an ordinary fit with
+  only a covariance failure noted (#1298).
+
 - A covariate compared to string literals (`b2 * (tnom == "2")`) no longer
   gets permuted estimates or `PRED`.  Each generated model (inner, pred,
   outer, saem, nlm, nlme, ...) numbered the literals in its own order while
