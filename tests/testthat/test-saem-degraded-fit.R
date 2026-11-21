@@ -146,6 +146,50 @@ nmTest({
     expect_warning(.saemWarnDegenerateOmega(matrix(numeric(0), 0, 0)), NA)
   })
 
+  test_that(".saemWarnDiverged notes diverged estimates in $runInfo (#1298)", {
+    .th <- c(tka = 0.2, prop.sd = 8.54e38)
+    expect_warning(.saemWarnDiverged(.th, .om(c(0.1, 0, 0, 0.2))), "estimates diverged: prop.sd")
+    expect_warning(.saemWarnDiverged(c(tka = 0.2), .om(c(0.1, 0, 0, Inf))), "estimates diverged: eta.cl")
+    expect_warning(.saemWarnDiverged(c(tka = NaN), .om(c(0.1, 0, 0, 0.2))), "estimates diverged: tka")
+    expect_warning(.saemWarnDiverged(.th, .om(c(0.1, 0, 0, 0.2)), fixed = "prop.sd"), NA)
+    expect_warning(.saemWarnDiverged(c(tka = 0.2), .om(c(0.1, 0, 0, 0.2))), NA)
+    # inside exp() a value past log(.Machine$double.xmax) back-transforms to Inf
+    .big <- .om(c(0.1, 0, 0, 5923))
+    expect_warning(.saemWarnDiverged(c(tka = 0.2), .big, expNames = "eta.cl"), "estimates diverged: eta.cl")
+    expect_warning(.saemWarnDiverged(c(tka = 0.2), .big), NA)
+    expect_warning(.saemWarnDiverged(c(tcl = 1000), .om(0.1), expNames = "tcl"), "estimates diverged: tcl")
+    expect_warning(.saemWarnDiverged(c(tv = 1000), .om(0.1), expNames = "tcl"), NA)
+  })
+
+  test_that("a diverged saem fit says so in $runInfo (#1298)", {
+    skip_on_cran()
+    .orig <- .getSaemTheta
+    local_mocked_bindings(.getSaemTheta = function(env) {
+      .orig(env)
+      env$fullTheta[["add.sd"]] <- 8.54e38
+    })
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    fit <- suppressMessages(suppressWarnings(nlmixr2(
+      one.cmt,
+      theo_sd,
+      "saem",
+      saemControl(print = 0, nBurn = 5, nEm = 5, calcTables = FALSE, covMethod = "")
+    )))
+    expect_true(any(grepl("estimates diverged: add.sd", fit$runInfo, fixed = TRUE)))
+  })
+
   test_that(".saemCreateOutput degrades to a table-free fit", {
     .calls <- new.env(parent = emptyenv())
     .calls$n <- 0L

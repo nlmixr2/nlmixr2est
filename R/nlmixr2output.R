@@ -130,6 +130,26 @@
   popDf
 }
 
+#' Format BSV/IOV CV% or SD values for the parameter table
+#'
+#' Values at or above `bound` (after rounding) switch to scientific notation;
+#' `format = "fg"` never does, so a huge log-normal CV% would print every digit.
+#'
+#' @param x numeric values
+#' @param sigdig number of significant digits
+#' @param bound absolute value from which scientific notation is used
+#' @return character vector
+#' @noRd
+.formatBsvChar <- function(x, sigdig, bound = 1e6) {
+  .x <- signif(x, digits = sigdig)
+  .ret <- formatC(.x, digits = sigdig, format = "fg", flag = "#")
+  .big <- is.finite(.x) & abs(.x) >= bound
+  if (any(.big)) {
+    .ret[.big] <- formatC(.x[.big], digits = sigdig, format = "g", flag = "#")
+  }
+  .ret
+}
+
 #' This gets the CV/SD for a single ETA
 #'
 #' @param .eta Eta Name
@@ -173,13 +193,7 @@
     .charPrefix <- ""
     .charSuffix <- ""
   }
-  .valChar <-
-    formatC(
-      signif(.valCharPrep, digits = .sigdig),
-      digits = .sigdig,
-      format = "fg",
-      flag = "#"
-    )
+  .valChar <- .formatBsvChar(.valCharPrep, .sigdig)
   data.frame(
     ch = paste0(.charPrefix, .valChar, .charSuffix),
     v = .valNumber
@@ -529,6 +543,25 @@
   NULL
 }
 
+#' Significant digits of a fit's formatted parameter table
+#'
+#' @param env fit environment
+#' @return `sigdigTable` from the fit's control, else the ui's, else 3
+#' @noRd
+.parFixedSigdigTable <- function(env) {
+  tryCatch(
+    {
+      .v <- env$control[["sigdigTable"]]
+      if (length(.v) == 1L && is.finite(.v)) {
+        .v
+      } else {
+        rxode2::rxGetControl(env$ui, "sigdigTable", 3L)
+      }
+    },
+    error = function(e) 3L
+  )
+}
+
 #' Refresh a fit's parameter-table SEs from an installed covariance
 #'
 #' Updates the numeric `$parFixedDf` and regenerates the formatted `$parFixed`
@@ -554,6 +587,8 @@
   if (!is.matrix(cov) || is.null(rownames(cov)) || !is.data.frame(.pf) || !("SE" %in% names(.pf))) {
     return(invisible())
   }
+  # a two-level IOV row's SE is not a diagonal of `cov`; refresh it last
+  on.exit(.iovTwoLevelSe(env), add = TRUE)
   .se <- sqrt(diag(cov))
   # Resolve ci the way .updateParFixed does -- the fit's control first, then the
   # ui.  The ui's control slot can still hold the default when the fit ran with
@@ -631,17 +666,7 @@
     } else {
       character()
     }
-    .digits <- tryCatch(
-      {
-        .v <- env$control[["sigdigTable"]]
-        if (length(.v) == 1L && is.finite(.v)) {
-          .v
-        } else {
-          rxode2::rxGetControl(env$ui, "sigdigTable", 3L)
-        }
-      },
-      error = function(e) 3L
-    )
+    .digits <- .parFixedSigdigTable(env)
     .new <- .updateParFixedApplySig(
       .pf,
       digits = .digits,
@@ -745,7 +770,7 @@
       corIniDf = .updateParFixedBsvCorIni(.ret, .ui)
     )
     popDf <- .bsv$popDf
-    popDf <- .updateParFixedAddShrinkage(popDf, shrink = .ret$shrink, ui = .ui)
+    popDf <- .updateParFixedAddShrinkage(popDf, shrink = get0("shrink", envir = .ret, inherits = FALSE), ui = .ui)
   }
   # a mixture proportion's CI belongs on the logit scale: the generic
   # symmetric interval leaves (0, 1) and is built from the pre-rotation SE

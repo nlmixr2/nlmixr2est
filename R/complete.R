@@ -18,7 +18,6 @@
   parFixedDf = "Parameter Values for Fixed Effects (data frame)",
   parHistData = "Parameter History (including gradients)",
   scaleInfo = "Scaling Information",
-  shrink = "Shrinkage data frame",
   table = "Table Control Value",
   fixef = "Fixed effects",
   time = "Timing data frame"
