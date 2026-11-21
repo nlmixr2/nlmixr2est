@@ -103,14 +103,14 @@
   `|init|`, as NONMEM does, instead of the default `1/|init|` inside
   `scaleCband`.  The default `"inverse"` is unchanged (#1320).
 
+- A fit whose IWRES sd shrinkage is below -5% now notes it in `$runInfo`
+  ("IWRES shrinkage is strongly negative; check the residual model"); the
+  raw value in `$shrink` is unchanged (#1376).
+
 - `fit$iwresAutocor` reports the pooled within-subject lag-1 correlation
   and Durbin-Watson statistic of IWRES, a check for structural
   misspecification (successive residuals of a subject that move together)
   (#1373).
-
-- A fit whose IWRES sd shrinkage is below -5% now notes it in `$runInfo`
-  ("IWRES shrinkage is strongly negative; check the residual model"); the
-  raw value in `$shrink` is unchanged (#1376).
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
