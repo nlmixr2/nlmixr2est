@@ -62,6 +62,10 @@
 #' @return logical
 #' @noRd
 .foceiUsesLagVar <- function(ui) {
+  # a tte() endpoint carries its previous record's cumulative hazard by lag0()
+  if (.nlmixr2estUiHasTte(ui)) {
+    return(TRUE)
+  }
   .lhs <- tryCatch(rxode2::rxModelVars(ui)$lhs, error = function(e) character(0))
   .lhs <- .lhs[!grepl("^rx_ar", .lhs)]
   if (length(.lhs) == 0L) {
