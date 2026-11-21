@@ -44,7 +44,7 @@
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">.agq</span><span class="op">(</span>neta <span class="op">=</span> <span class="fl">2</span>, nAGQ <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">.agq</span><span class="op">(</span>neta <span class="op">=</span> <span class="fl">2</span>, nAGQ <span class="op">=</span> <span class="fl">3</span>, warnNodes <span class="op">=</span> <span class="fl">10000</span>, maxNodes <span class="op">=</span> <span class="fl">1e+06</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -57,6 +57,16 @@
 
 <dt id="arg-nagq">nAGQ<a class="anchor" aria-label="anchor" href="#arg-nagq"></a></dt>
 <dd><p>number of adaptive quadrature points to use</p></dd>
+
+
+<dt id="arg-warnnodes">warnNodes<a class="anchor" aria-label="anchor" href="#arg-warnnodes"></a></dt>
+<dd><p>grid size (`nAGQ^neta`) above which a warning is
+issued</p></dd>
+
+
+<dt id="arg-maxnodes">maxNodes<a class="anchor" aria-label="anchor" href="#arg-maxnodes"></a></dt>
+<dd><p>grid size above which the grid is refused (error)
+before it is built</p></dd>
 
 </dl></div>
     <div class="section level2">

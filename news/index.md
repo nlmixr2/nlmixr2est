@@ -240,6 +240,11 @@
 
 #### Estimation
 
+- `est="agq"` now checks the quadrature grid size (`nAGQ^neta`) before
+  building it: it warns above 10,000 nodes and stops above 1,000,000,
+  instead of silently exhausting memory with many etas
+  ([\#1412](https://github.com/nlmixr2/nlmixr2est/issues/1412)).
+
 - The mu-referenced theta M-step of `mfocei`/`ifocei`
   (`muModel = "lin"`) and imp/impmap/qrpem now weights the data by the
   eta’s precision when an

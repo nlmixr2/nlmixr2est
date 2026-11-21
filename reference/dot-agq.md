@@ -5,7 +5,7 @@ Get the adaptive Gauss-Hermite quadrature points and weights
 ## Usage
 
 ``` r
-.agq(neta = 2, nAGQ = 3)
+.agq(neta = 2, nAGQ = 3, warnNodes = 10000, maxNodes = 1e+06)
 ```
 
 ## Arguments
@@ -17,6 +17,14 @@ Get the adaptive Gauss-Hermite quadrature points and weights
 - nAGQ:
 
   number of adaptive quadrature points to use
+
+- warnNodes:
+
+  grid size (\`nAGQ^neta\`) above which a warning is issued
+
+- maxNodes:
+
+  grid size above which the grid is refused (error) before it is built
 
 ## Value
 
