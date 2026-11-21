@@ -22,7 +22,9 @@
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
   By default it importance-samples around each subject's mode with the
-  population parameters held (#1378).
+  population parameters held (#1378).  `method = "saem"` uses the SAEM MCMC
+  instead: a SAEM fit's own last iterations when they are enough, otherwise
+  the kernels held at the fit's estimates; it is the default for SAEM fits.
 
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
