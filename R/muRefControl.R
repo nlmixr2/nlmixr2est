@@ -312,7 +312,7 @@ nmObjGetFoceiControl.iagq <- function(x, ...) {
 #'
 #' mlaplaceControl()
 mlaplaceControl <- function(sigdig = 3, ..., nAGQ = 1, muModel = c("lin", "irls", "none")) {
-  .control <- .laplaceLlikSet(foceiControl(sigdig = sigdig, ..., nAGQ = nAGQ, muModel = "lin"), list(...))
+  .control <- .laplaceLlik(foceiControl(sigdig = sigdig, ..., nAGQ = nAGQ, muModel = "lin"))
   class(.control) <- "mlaplaceControl"
   .control
 }
@@ -352,7 +352,7 @@ nmObjGetFoceiControl.mlaplace <- function(x, ...) {
 #'
 #' ilaplaceControl()
 ilaplaceControl <- function(sigdig = 3, ..., nAGQ = 1, muModel = c("irls", "lin", "none")) {
-  .control <- .laplaceLlikSet(foceiControl(sigdig = sigdig, ..., nAGQ = nAGQ, muModel = "irls"), list(...))
+  .control <- .laplaceLlik(foceiControl(sigdig = sigdig, ..., nAGQ = nAGQ, muModel = "irls"))
   class(.control) <- "ilaplaceControl"
   .control
 }

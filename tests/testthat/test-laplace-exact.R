@@ -17,12 +17,15 @@ nmTest({
     skip_on_cran()
     set.seed(42)
     tt <- c(0.5, 1, 2, 4, 8)
-    d <- do.call(rbind, lapply(1:12, function(i) {
-      a <- 10 * exp(rnorm(1, 0, sqrt(0.1)))
-      k <- 0.3 * exp(rnorm(1, 0, sqrt(0.1)))
-      f <- a * exp(-k * tt)
-      data.frame(ID = i, TIME = tt, DV = f * (1 + 0.15 * rnorm(5)))
-    }))
+    d <- do.call(
+      rbind,
+      lapply(1:12, function(i) {
+        a <- 10 * exp(rnorm(1, 0, sqrt(0.1)))
+        k <- 0.3 * exp(rnorm(1, 0, sqrt(0.1)))
+        f <- a * exp(-k * tt)
+        data.frame(ID = i, TIME = tt, DV = f * (1 + 0.15 * rnorm(5)))
+      })
+    )
     th <- c(9, 0.25)
     om <- c(0.15, 0.2)
     pb <- 0.2
@@ -38,13 +41,15 @@ nmTest({
         sum(log(v) + (di$DV - f)^2 / v)
       }
       oi <- diag(1 / om)
-      o <- optim(c(0, 0), function(e) l(e) + sum(e * (oi %*% e)),
-        method = "BFGS", control = list(reltol = 1e-14, maxit = 1000)
+      o <- optim(
+        c(0, 0),
+        function(e) l(e) + sum(e * (oi %*% e)),
+        method = "BFGS",
+        control = list(reltol = 1e-14, maxit = 1000)
       )
       e <- o$par
       h <- numDeriv::hessian(l, e)
-      wang15 <- wang15 + l(e) + sum(log(om)) + sum(e * (oi %*% e)) +
-        as.numeric(determinant(h / 2 + oi)$modulus)
+      wang15 <- wang15 + l(e) + sum(log(om)) + sum(e * (oi %*% e)) + as.numeric(determinant(h / 2 + oi)$modulus)
     }
 
     model <- function() {
