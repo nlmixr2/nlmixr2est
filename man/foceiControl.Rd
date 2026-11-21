@@ -188,6 +188,7 @@ foceiControl(
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
+  freezeFlatTheta = FALSE,
   mceta = -2L,
   mcetaOpt = FALSE,
   warm = c("calc", "save", "none"),
@@ -1289,6 +1290,11 @@ encountered mid-run to `sqrt(.Machine$double.eps)` instead of erroring.}
 \item{zeroGradBobyqa}{When `TRUE` (default), a zero-gradient reset
 switches to the gradient-free bobyqa method; `NA` only does so for the
 first zero gradient.}
+
+\item{freezeFlatTheta}{When `TRUE`, the outer gradient is evaluated once
+before optimizing; a theta with `|g| <= 1e-8` and `|g| <= 1e-6*max|g|` is
+warned about and fixed at its initial value.  Nothing is fixed when the
+whole gradient is flat.  Default `FALSE`.}
 
 \item{mceta}{Monte Carlo sampling for the best initial ETA estimate
 (based on `omega`): `-2` (default) uses the Almquist (2015) Eq-48

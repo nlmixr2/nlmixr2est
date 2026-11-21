@@ -43,6 +43,7 @@ focei-theta-reset
 focei-final-best-eta
 focei-zero-theta
 preProcessUnusedParams
+focei-freeze-flat-theta
 focei-cens-t
 focei-fast-ar
 focei-mix-grad
