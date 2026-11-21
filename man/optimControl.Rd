@@ -55,6 +55,7 @@ optimControl(
   compress = FALSE,
   covMethod = c("r", "optim", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
@@ -284,6 +285,11 @@ the hessian from `stats::optim(.., hessian=TRUE)`}
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective
 function.  By default this is \code{TRUE}}
+
+\item{aboveStartTol}{Warn (in `$runInfo`) when the final objective is
+above the objective at the initial estimates by more than this fraction
+of its magnitude (at least 0.1 objective units).  Use `NA` or `Inf` to
+disable.}
 
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}

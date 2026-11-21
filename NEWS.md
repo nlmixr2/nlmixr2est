@@ -86,6 +86,11 @@
   above the initial estimates' (...)`, and `foceiControl(aboveStartTol=)` sets
   its relative band (default `0.01`); `NA` or `Inf` turns it off (#1399).
 
+- The nlm-family methods (`nlm`, `nlminb`, `bobyqa`, `n1qn1`, `newuoa`,
+  `optim`, `trust`, `uobyqa`, `lbfgsb3c`) now add the same note to `$runInfo`
+  when their final objective is above the one at the initial estimates; each
+  control takes `aboveStartTol=` (#1399).
+
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
   diagnostics are unreliable.  `shrinkEtaWarn=` in `foceiControl()`,
