@@ -239,3 +239,37 @@ test_that("unused parameter hook warns by name", {
   on.exit(.Call("_nlmixr2est_removeTestContrib", PACKAGE = "nlmixr2est"), add = TRUE)
   expect_no_warning(.preProcessUnusedParams(.ui, "focei", NULL, foceiControl()))
 })
+
+test_that("a likelihood penalty may read any parameter", {
+  dead <- function() {
+    ini({
+      tka <- 0.5
+      tcl <- -3
+      tv <- 3
+      tdead <- 1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl)
+      v <- exp(tv)
+      junk <- tdead * 2
+      cp <- linCmt()
+      cp ~ add(add.sd)
+    })
+  }
+  .pen <- nlmixr2LikPenaltySpec("thetaL2", thetas = "tdead", par = 10)
+  .ui <- nlmixr2LikPenaltyAdd(rxode2::rxode2(dead), .pen)
+  expect_no_warning(.preProcessUnusedParams(.ui, "focei", NULL, foceiControl()))
+  # likPenalty= reaches the hook through the estimation environment
+  .env <- new.env(parent = emptyenv())
+  .env$ui <- rxode2::rxode2(dead)
+  .env$data <- nlmixr2data::theo_sd
+  .env$control <- foceiControl()
+  .env$.nlmixr2Dots <- list(likPenalty = .pen)
+  .preProcessHooksRun(.env, "focei")
+  expect_false(any(grepl("does not affect", nlmixr2global$preProcessHookWarnings)))
+  .env$.nlmixr2Dots <- list()
+  .preProcessHooksRun(.env, "focei")
+  expect_true(any(grepl("'tdead' does not affect", nlmixr2global$preProcessHookWarnings)))
+})
