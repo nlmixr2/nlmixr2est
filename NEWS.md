@@ -56,8 +56,9 @@
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
-  diagnostics are unreliable.  `foceiControl(shrinkEtaWarn=)` sets the
-  threshold; `NA` or `Inf` turns the note off (#1379).
+  diagnostics are unreliable.  `shrinkEtaWarn=` in `foceiControl()`,
+  `saemControl()`, `nlmeControl()`, `vaeControl()` and `emviControl()` sets
+  the threshold; `NA` or `Inf` turns the note off (#1379).
 
 - After the covariance step, a fit warns (in `$runInfo`) about pairs of
   estimates correlated at `|r| >= 0.95`, e.g. `highly correlated estimates:
