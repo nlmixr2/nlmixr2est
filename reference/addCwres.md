@@ -81,13 +81,6 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #>  
 #> ℹ calculate uninformed etas
 #> ℹ done
-#> rxode2 5.1.8.9000 using 2 threads (see ?getRxThreads)
-#>   no cache: create with `rxCreateCache()`
-#> 
-#> Attaching package: ‘rxode2’
-#> The following objects are masked from ‘package:nlmixr2est’:
-#> 
-#>     boxCox, yeoJohnson
 #> Calculating covariance matrix
 #> Calculating covariance matrix
 #> → loading into symengine environment...
@@ -103,7 +96,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 9544
-#> → compress phiM in nlmixr2 object, save 63256
+#> → compress phiM in nlmixr2 object, save 63384
 
 print(f)
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
@@ -114,9 +107,9 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.8172161 3.5573e-05 0.03303504      0.049     0.971 2.085       0.593
+#> elapsed 0.1314458 4.6738e-05  0.0440141      0.062     0.847 3.759       0.893
 #>         table compress     other
-#> elapsed 0.043    0.047 0.2727133
+#> elapsed 0.072    0.071 0.2134934
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -202,9 +195,9 @@ if (!inherits(f, "try-error")) {
 #> ── Time (sec $time): ──
 #> 
 #>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.8172161 3.5573e-05 0.03303504      0.049     0.971 2.085       0.593
+#> elapsed 0.1314458 4.6738e-05  0.0440141      0.062     0.847 3.759       0.893
 #>         table compress     other foceiLik
-#> elapsed 1.642    0.047 0.2727133    0.281
+#> elapsed 2.351    0.071 0.2134934    0.489
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

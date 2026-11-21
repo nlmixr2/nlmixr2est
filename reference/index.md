@@ -2,6 +2,9 @@
 
 ## All functions
 
+- [`BIC(`*`<nlmixr2FitCore>`*`)`](https://nlmixr2.github.io/nlmixr2est/reference/BIC.nlmixr2FitCore.md)
+  [`BIC(`*`<nlmixr2FitCoreSilent>`*`)`](https://nlmixr2.github.io/nlmixr2est/reference/BIC.nlmixr2FitCore.md)
+  : Bayesian information criterion for nlmixr2 fits
 - [`aaaCranNlmixrThreads()`](https://nlmixr2.github.io/nlmixr2est/reference/aaaCranNlmixrThreads.md)
   : This function is to set the number of threads to 2
 - [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md)
@@ -155,6 +158,9 @@
 - [`nlmixr2NlmeControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2NlmeControl.md)
   [`nlmeControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2NlmeControl.md)
   : Control Values for nlme Fit with extra options for nlmixr
+- [`nlmixr2ObjGrad()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2ObjGrad.md)
+  : Objective function and analytic gradient of a FOCEi-family fit at
+  new parameters
 - [`nlmixr2Validate()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Validate.md)
   [`nmTest()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Validate.md)
   : Validate nlmixr2

@@ -24,6 +24,14 @@
 
 ### New features
 
+- `BIC(fit, type=)` gives BIC variants that charge random-effect
+  parameters `log(number of subjects)` instead of
+  `log(number of observations)` (Delattre et al. 2014): `"iiv"`
+  (omega/kappa elements), `"mixed"` (also the thetas of eta-bearing
+  parameters) and `"random"` (also residual-error thetas when an eta
+  sits on the residual error); `"fixed"` equals `fit$BIC`
+  ([\#1384](https://github.com/nlmixr2/nlmixr2est/issues/1384)).
+
 - `saemControl(plateauStop = TRUE)` ends SAEM’s EM phase early once
   every estimated theta, omega and residual parameter has changed by
   less than `plateauTol` (relative) over the last `plateauWindow`
@@ -75,9 +83,22 @@
   improvement gets its value alone (1.1x-2.6x faster with the analytical
   Hessian).
 
+- `nlmixr2ObjGrad(fit, theta=, omega=, scale=)` returns a FOCEi-family
+  fit’s objective and its analytic gradient at user-supplied thetas and
+  omega without refitting, for custom optimizers and profiling. The
+  omega gradient is either with respect to the variances/covariances or
+  the Cholesky estimation-scale parameters
+  ([\#1413](https://github.com/nlmixr2/nlmixr2est/issues/1413)).
+
 - `saemControl(rmcmc=)` sets the random-walk proposal scale of the SAEM
   MCMC kernels, previously fixed at 0.5; lower it when `$mcmcAccept` is
   low ([\#1385](https://github.com/nlmixr2/nlmixr2est/issues/1385)).
+
+- A `saem` fit now notes in `$runInfo` when its random-walk MCMC
+  acceptance over the last 100 post-burn-in iterations is outside 5-80%
+  (e.g. `MCMC acceptance low (rw 0%); try a smaller rmcmc`).
+  `saemControl(mcmcAcceptWarn=)` sets the range; `NA` turns the note off
+  ([\#1385](https://github.com/nlmixr2/nlmixr2est/issues/1385)).
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or
   more (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their

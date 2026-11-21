@@ -332,28 +332,28 @@ fit2 <- nlmixr(mod, dsn, est="bobyqa")
 print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
-#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -728.8943 1114.983 1129.706      -554.4914        252.9432        55.16655
+#>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -708.7671 1135.11 1149.833       -564.555        100.4132        31.34492
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.5252611 0.5033043 1.7376e-05       0.03       0.007 0.018    0.001
+#> elapsed 0.7837628 0.7484672  2.124e-05      0.047       0.012 0.032    0.001
 #>             other
-#> elapsed 0.0634172
+#> elapsed 0.1027487
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>       Est.    SE  %RSE Back-transformed(95%CI)
-#> E0  -0.842 0.130  15.5  -0.842 (-1.10, -0.586)
-#> Em    5.30 0.928  17.5       5.30 (3.48, 7.12)
-#> E50   2.43 0.466  19.2       2.43 (1.51, 3.34)
+#> E0  -0.919 0.131  14.3  -0.919 (-1.18, -0.662)
+#> Em    4.46 0.552  12.4       4.46 (3.38, 5.54)
+#> E50   2.05 0.311  15.2       2.05 (1.44, 2.66)
 #> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Some strong fixed parameter correlations exist ($cor) :
 #>      cor:Em,E0 cor:E50,E0 cor:E50,Em 
-#>     0.327      0.640      0.890  
+#>     0.107       0.604      0.778  
 #>  
 #> 
 #>   Censoring ($censInformation): No censoring
@@ -362,16 +362,16 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0529     0 -0.359 -0.839
-#> 2 1     0.0603     1 -1.20  -0.839
-#> 3 1     0.0632     1 -1.20  -0.838
+#> 1 1     0.0245     0 -0.336 -0.918
+#> 2 1     0.0449     0 -0.336 -0.917
+#> 3 1     0.0596     1 -1.25  -0.915
 #> # ℹ 997 more rows
 
 # you can also get the bobyqa output with
 
 fit2$bobyqa
-#> parameter estimates: -0.842011807790335, 5.30075559675489, 2.42775264852487 
-#> objective: 554.491367351539 
-#> number of function evaluations: 168 
+#> parameter estimates: -0.918902425266644, 4.45633256593552, 2.04737134928181 
+#> objective: 564.554977583988 
+#> number of function evaluations: 122 
 # }
 ```
