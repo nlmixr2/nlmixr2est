@@ -2971,6 +2971,14 @@
   did not verify was the objective below rather than the gradient; against
   central differences of the corrected objective it agrees to 8e-3 relative.
 
+- The analytic outer gradient and `covMethod = "analytic"` covariance now handle
+  a structural parameter that is the mu-reference of **more than one random
+  effect** (one typical value entering two parameters, each with its own eta),
+  which previously fell back to finite differences.  The parameter takes its own
+  sensitivity direction, where the augmented model differentiates it symbolically
+  -- the correct sum over the etas it references.  The gradient matches central
+  differences exactly and the covariance matches the finite-difference R-matrix.
+
 - `saemControl(revisitUninformativeEtas=)` (default `FALSE`) re-runs the
   uninformative-eta test at the end of burn-in and replaces the verdict reached
   at the initial estimates.  The test asks whether perturbing an eta moves that
