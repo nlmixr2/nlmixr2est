@@ -690,6 +690,19 @@ rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }
 
+#' Test hook for the SAEM plateau-stop criterion
+#'
+#' @param w window of par_hist rows
+#' @param nTh number of theta columns
+#' @param nOm number of omega-diagonal columns
+#' @param offScale scale of each off-diagonal omega column
+#' @param tol relative tolerance
+#' @return logical
+#' @noRd
+saemPlateauTest_ <- function(w, nTh, nOm, offScale, tol) {
+    .Call(`_nlmixr2est_saemPlateauTest_`, w, nTh, nOm, offScale, tol)
+}
+
 saemPhi1RefineN_ <- function() {
     .Call(`_nlmixr2est_saemPhi1RefineN_`)
 }

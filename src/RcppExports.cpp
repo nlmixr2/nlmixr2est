@@ -1551,6 +1551,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// saemPlateauTest_
+bool saemPlateauTest_(arma::mat w, int nTh, int nOm, arma::vec offScale, double tol);
+RcppExport SEXP _nlmixr2est_saemPlateauTest_(SEXP wSEXP, SEXP nThSEXP, SEXP nOmSEXP, SEXP offScaleSEXP, SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type w(wSEXP);
+    Rcpp::traits::input_parameter< int >::type nTh(nThSEXP);
+    Rcpp::traits::input_parameter< int >::type nOm(nOmSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type offScale(offScaleSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(saemPlateauTest_(w, nTh, nOm, offScale, tol));
+    return rcpp_result_gen;
+END_RCPP
+}
 // saemPhi1RefineN_
 long saemPhi1RefineN_();
 RcppExport SEXP _nlmixr2est_saemPhi1RefineN_() {

@@ -407,6 +407,10 @@
         .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
         .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
       }
+      .cfg$plateauStop <- as.integer(isTRUE(rxode2::rxGetControl(ui, "plateauStop", FALSE)))
+      .cfg$plateauWindow <- as.integer(rxode2::rxGetControl(ui, "plateauWindow", 50L))
+      .cfg$plateauTol <- as.numeric(rxode2::rxGetControl(ui, "plateauTol", 1e-3))
+      .cfg$plateauMinFrac <- as.numeric(rxode2::rxGetControl(ui, "plateauMinFrac", 0.5))
       .mixShift <- .mixSharedEtaShift(ui, ui$saemParamsToEstimate)
       .cfg$mixShiftComp <- .mixShift$comp
       .cfg$mixShiftEta <- .mixShift$eta
@@ -420,6 +424,10 @@
     .saemRes <- nlmixrWithTiming("saem", {
       .model$saem_mod(.cfg)
     })
+    .pi <- .saemRes$plateauIter
+    if (length(.pi) == 1L && .pi > 0L) {
+      warning(sprintf("parameters plateaued; stopped at iteration %d of %d", .pi, .cfg$niter), call. = FALSE)
+    }
     .saemRes
   })
 }
@@ -458,6 +466,8 @@
   cfg$nb_fixResid <- 0L
   cfg$nb_correl <- 0L
   cfg$residWarmStart <- 0L
+  # a held run has nothing to converge
+  cfg$plateauStop <- 0L
   cfg
 }
 

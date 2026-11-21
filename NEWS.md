@@ -18,6 +18,12 @@
 
 ## New features
 
+- `saemControl(plateauStop = TRUE)` ends SAEM's EM phase early once every
+  estimated theta, omega and residual parameter has changed by less than
+  `plateauTol` (relative) over the last `plateauWindow` iterations, never
+  before `plateauMinFrac` of `nEm` has run.  The stopped fit is the fit a
+  smaller `nEm` would give, and `$runInfo` notes the stop iteration.  Off by
+  default (#1395).
 - A C interface for likelihood penalties (`inst/include/nlmixr2estLikPenalty.h`)
   lets compiled code, such as an `rxode2` model extension, add per-subject and
   population terms to the objective of every estimation method (FOCEi family,

@@ -8,6 +8,10 @@ saemControl(
   seed = 99,
   nBurn = 200,
   nEm = 300,
+  plateauStop = FALSE,
+  plateauWindow = 50L,
+  plateauTol = 0.001,
+  plateauMinFrac = 0.5,
   nmc = 3,
   nu = c(2, 2, 2),
   rmcmc = 0.5,
@@ -86,6 +90,19 @@ steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.}
 
 \item{nEm}{Number of iterations in the Expectation-Maximization
 (EM) Step. This is equivalent to Monolix's \code{K_1}.}
+
+\item{plateauStop}{When \code{TRUE}, end the EM phase early once every
+estimated theta, omega and residual parameter has plateaued; the fit's
+run information notes the stop iteration.  Default \code{FALSE}.}
+
+\item{plateauWindow}{Number of EM iterations the plateau must span.}
+
+\item{plateauTol}{Largest relative change (range over the window divided by
+the parameter's magnitude) allowed for every parameter at a plateau.
+Thetas below 1 in magnitude use the absolute change.}
+
+\item{plateauMinFrac}{Fraction of the \code{nEm} iterations that always run
+before a plateau can stop the EM phase.}
 
 \item{nmc}{Number of Markov Chains. By default this is 3.  When
 you increase the number of chains the numerical integration by
