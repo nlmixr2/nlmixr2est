@@ -53,6 +53,7 @@ nmObjGetControl.fbvi <- function(x, ...) .viGetControl(x)
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.fbvi <- function(env, ...) .viEst(env, FALSE, "fbvi")
+attr(nlmixr2Est.fbvi, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.fbvi, "covPresent") <- TRUE
 ## optimization runs in the unconstrained real coordinate space
 attr(nlmixr2Est.fbvi, "unbounded") <- TRUE

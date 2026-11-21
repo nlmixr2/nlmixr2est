@@ -49,6 +49,7 @@ getValidNlmixrCtl.flaplace <- function(control) .foceiFullCtl(control, laplaceCo
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.flaplace <- function(env, ...) nlmixr2Est.laplace(env, ...)
+attr(nlmixr2Est.flaplace, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.flaplace, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.flaplace, "covPresent") <- TRUE
 attr(nlmixr2Est.flaplace, "unbounded") <- .foUnbounded
@@ -60,6 +61,7 @@ getValidNlmixrCtl.mflaplace <- function(control) .foceiFullCtl(control, mlaplace
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.mflaplace <- function(env, ...) nlmixr2Est.mlaplace(env, ...)
+attr(nlmixr2Est.mflaplace, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.mflaplace, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.mflaplace, "covPresent") <- TRUE
 attr(nlmixr2Est.mflaplace, "unbounded") <- .foUnbounded
@@ -72,6 +74,7 @@ getValidNlmixrCtl.iflaplace <- function(control) .foceiFullCtl(control, ilaplace
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.iflaplace <- function(env, ...) nlmixr2Est.ilaplace(env, ...)
+attr(nlmixr2Est.iflaplace, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.iflaplace, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.iflaplace, "covPresent") <- TRUE
 attr(nlmixr2Est.iflaplace, "unbounded") <- .foUnbounded
@@ -86,6 +89,7 @@ getValidNlmixrCtl.fagq <- function(control) .foceiFullCtl(control, agqControl)
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.fagq <- function(env, ...) nlmixr2Est.agq(env, ...)
+attr(nlmixr2Est.fagq, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.fagq, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.fagq, "covPresent") <- TRUE
 attr(nlmixr2Est.fagq, "unbounded") <- .foUnbounded
@@ -97,6 +101,7 @@ getValidNlmixrCtl.mfagq <- function(control) .foceiFullCtl(control, magqControl)
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.mfagq <- function(env, ...) nlmixr2Est.magq(env, ...)
+attr(nlmixr2Est.mfagq, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.mfagq, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.mfagq, "covPresent") <- TRUE
 attr(nlmixr2Est.mfagq, "unbounded") <- .foUnbounded
@@ -109,6 +114,7 @@ getValidNlmixrCtl.ifagq <- function(control) .foceiFullCtl(control, iagqControl)
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.ifagq <- function(env, ...) nlmixr2Est.iagq(env, ...)
+attr(nlmixr2Est.ifagq, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.ifagq, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.ifagq, "covPresent") <- TRUE
 attr(nlmixr2Est.ifagq, "unbounded") <- .foUnbounded
