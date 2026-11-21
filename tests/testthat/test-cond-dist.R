@@ -50,9 +50,9 @@ test_that(".condDistShrinkage is the mean conditional variance over omega", {
   .s <- .condDistShrinkage(.cd, .om)
   expect_equal(names(.s), c("eta.a", "eta.b", "eta.c"))
   expect_equal(.s[["eta.a"]], 100 * mean(c(0.1, 0.2, 0.3)^2) / 0.5)
-  # unsampled subjects are left out; an eta sampled for no one is NA
-  expect_equal(.s[["eta.b"]], 100 * mean(c(0.3, 0.5)^2) / 0.4)
-  expect_true(is.na(.s[["eta.c"]]))
+  # an unsampled subject keeps its prior variance
+  expect_equal(.s[["eta.b"]], 100 * mean(c(0.4, 0.3^2, 0.5^2)) / 0.4)
+  expect_equal(.s[["eta.c"]], 100)
   .om["eta.a", "eta.a"] <- 0
   expect_true(is.na(.condDistShrinkage(.cd, .om)[["eta.a"]]))
 })
