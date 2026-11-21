@@ -59,6 +59,7 @@ saemControl(
   iovXform = c("sd", "var", "logsd", "logvar"),
   iovMethod = c("twoLevel", "collapsed", "theta"),
   boundedTransform = TRUE,
+  atolCheck = TRUE,
   eventSens = c("jump", "fd"),
   mixProbMethod = c("regress", "regularized", "annealed"),
   mixProbStepExp = 1,
@@ -445,6 +446,9 @@ transformed for unbounded optimization methods and back-transformed
 for final estimates. `FALSE` optimizes on the original scale with
 bounds passed to the optimizer. `NA` transforms for optimization but
 skips the final back-transform.}
+
+\item{atolCheck}{When `TRUE` (default), warn before estimating an ODE
+model when an uncensored observation is within `1e3 * atol` of zero.}
 
 \item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:

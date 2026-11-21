@@ -103,3 +103,22 @@ test_that("the warning reaches $runInfo", {
   ))
   expect_true(any(grepl("DV near ODE atol", .fit$runInfo)))
 })
+
+test_that("atolCheck = FALSE in a control disables the check", {
+  .ode <- rxode2::rxode2(.atolDvOde)
+  .tiny <- .atolDvTiny()
+  expect_no_warning(.preProcessAtolDv(.ode, "focei", .tiny, foceiControl(atolCheck = FALSE)))
+  expect_no_warning(.preProcessAtolDv(.ode, "saem", .tiny, saemControl(atolCheck = FALSE)))
+  expect_warning(.preProcessAtolDv(.ode, "saem", .tiny, saemControl()), "DV near ODE atol")
+  # the focei family forwards it
+  expect_false(laplaceControl(atolCheck = FALSE)$atolCheck)
+  # a non-default value survives deparsing
+  expect_equal(
+    deparse(rxUiDeparse(foceiControl(atolCheck = FALSE), "ctl")),
+    "ctl <- foceiControl(atolCheck = FALSE)"
+  )
+  expect_equal(
+    deparse(rxUiDeparse(saemControl(atolCheck = FALSE), "ctl")),
+    "ctl <- saemControl(atolCheck = FALSE)"
+  )
+})
