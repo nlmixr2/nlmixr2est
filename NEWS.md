@@ -618,6 +618,10 @@
   transform; it used the first subject's rows for every subject.
 ### Tables
 
+- The BSV/IOV CV% in the parameter table switched to scientific notation
+  (e.g. `7.64e+35`) at or above 1e6; it printed every digit of a huge
+  log-normal CV% (#1386).
+
 - CWRES/WRES no longer build two dense observations x observations matrices
   (`F Omega F'`) to read their diagonals; the eta sensitivities are kept sparse
   and only the diagonal is computed, so the table step of a large dataset no

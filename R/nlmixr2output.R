@@ -130,6 +130,26 @@
   popDf
 }
 
+#' Format BSV/IOV CV% or SD values for the parameter table
+#'
+#' Values at or above `bound` (after rounding) switch to scientific notation;
+#' `format = "fg"` never does, so a huge log-normal CV% would print every digit.
+#'
+#' @param x numeric values
+#' @param sigdig number of significant digits
+#' @param bound absolute value from which scientific notation is used
+#' @return character vector
+#' @noRd
+.formatBsvChar <- function(x, sigdig, bound = 1e6) {
+  .x <- signif(x, digits = sigdig)
+  .ret <- formatC(.x, digits = sigdig, format = "fg", flag = "#")
+  .big <- is.finite(.x) & abs(.x) >= bound
+  if (any(.big)) {
+    .ret[.big] <- formatC(.x[.big], digits = sigdig, format = "g", flag = "#")
+  }
+  .ret
+}
+
 #' This gets the CV/SD for a single ETA
 #'
 #' @param .eta Eta Name
@@ -173,13 +193,7 @@
     .charPrefix <- ""
     .charSuffix <- ""
   }
-  .valChar <-
-    formatC(
-      signif(.valCharPrep, digits = .sigdig),
-      digits = .sigdig,
-      format = "fg",
-      flag = "#"
-    )
+  .valChar <- .formatBsvChar(.valCharPrep, .sigdig)
   data.frame(
     ch = paste0(.charPrefix, .valChar, .charSuffix),
     v = .valNumber
