@@ -39,3 +39,30 @@ test_that("SAEM estimates the parameters of an independent gamma ETA", {
   expect_lt(abs(unname(.est["lmean"]) - log(4.8)), 0.3)
   expect_gt(abs(unname(.est["lmean"]) - log(4)), 0.02)
 })
+
+test_that("SAEM expands a declared correlated block with a Gaussian copula", {
+  skip_if_not(exists("rxUiEtaDists", asNamespace("rxode2"), inherits = FALSE))
+  skip_if_not(exists("rxEtaDistExpand", asNamespace("rxode2"), inherits = FALSE))
+  mod <- function() {
+    ini({
+      lcl <- log(4)
+      lv <- log(8)
+      eta.cl + eta.v ~ c(1, 0.35, 1)
+      dist(eta.cl) ~ dgamma(shape = 4, rate = 4/exp(lcl))
+      dist(eta.v) ~ dgamma(shape = 3, rate = 3/exp(lv))
+      add.sd <- 0.1
+    })
+    model({
+      cl <- eta.cl
+      v <- eta.v
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  expanded <- .preProcessSaemEtaDist(rxode2::rxode2(mod), "saem", NULL, saemControl())
+  corRow <- expanded$ui$iniDf[grepl("^rxCor[.]", expanded$ui$iniDf$name), ]
+  expect_equal(nrow(corRow), 1L)
+  expect_equal(tanh(corRow$est), 0.35)
+  expect_equal(unname(as.numeric(expanded$ui$omega)), as.numeric(diag(2L)))
+  expect_identical(expanded$control$nonMuThetaOpt, "bhhh")
+})

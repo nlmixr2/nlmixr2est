@@ -1,6 +1,6 @@
-# Expand independent ETA distributions before the SAEM model and mu-reference
-# hooks run. The sampler operates on fixed unit-normal latents, while the
-# observation model decodes them through each declared marginal's quantile.
+# Expand ETA distributions before the SAEM model and mu-reference hooks run.
+# rxode2 uses fixed unit-normal latents and a Gaussian copula when a declared
+# block has multiple correlated ETAs.
 .preProcessSaemEtaDist <- function(ui, est, data, control) {
   if (is.null(ui)) return(NULL)
   .rx <- asNamespace("rxode2")
@@ -18,9 +18,10 @@
   if (anyNA(.declared)) {
     stop("Could not map the declared ETA distributions to omega.", call. = FALSE)
   }
-  diag(.omega) <- 0
-  if (any(.omega[.declared, , drop = FALSE] != 0)) {
-    stop("Declared ETA distributions must be independent.", call. = FALSE)
+  .undeclared <- setdiff(seq_len(nrow(.omega)), .declared)
+  if (any(.omega[.declared, .undeclared, drop = FALSE] != 0)) {
+    stop("Declare a marginal for every ETA in a correlated non-normal block.",
+         call. = FALSE)
   }
   .expand <- get0("rxEtaDistExpand", envir = .rx, inherits = FALSE)
   if (is.null(.expand)) {
