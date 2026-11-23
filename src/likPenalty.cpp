@@ -351,6 +351,7 @@ extern "C" SEXP _nlmixr2est_likPenaltyEval(SEXP thetaSxp, SEXP etaSxp, SEXP omeg
   if (Rf_isMatrix(etaSxp)) neta = Rf_ncols(etaSxp);
   if (neta > 0 && Rf_nrows(etaSxp) != nsub) Rf_error("eta rows do not match subjects");
   int nom = Rf_isMatrix(omegaSxp) ? Rf_nrows(omegaSxp) : 0;
+  if (nom > 0 && Rf_ncols(omegaSxp) != nom) Rf_error("omega must be a square matrix");
   const double *omega = nom > 0 ? REAL(omegaSxp) : NULL;
   int n = (int)_penTable.size();
   SEXP nm = PROTECT(Rf_allocVector(STRSXP, n));
@@ -419,6 +420,7 @@ extern "C" SEXP _nlmixr2est_likPenaltySubjLL(SEXP thetaSxp, SEXP etaSxp, SEXP no
 extern "C" SEXP _nlmixr2est_likPenaltyPop(SEXP thetaSxp, SEXP omegaSxp, SEXP nsubSxp) {
   int ntheta = Rf_length(thetaSxp);
   int nom = Rf_isMatrix(omegaSxp) ? Rf_nrows(omegaSxp) : 0;
+  if (nom > 0 && Rf_ncols(omegaSxp) != nom) Rf_error("omega must be a square matrix");
   return Rf_ScalarReal(nlmixrPenPopAll(ntheta, ntheta > 0 ? REAL(thetaSxp) : NULL, nom,
                                        nom > 0 ? REAL(omegaSxp) : NULL,
                                        Rf_asInteger(nsubSxp), NULL, NULL));
@@ -428,6 +430,7 @@ extern "C" SEXP _nlmixr2est_likPenaltyPop(SEXP thetaSxp, SEXP omegaSxp, SEXP nsu
 extern "C" SEXP _nlmixr2est_likPenaltyPopOmegaGrad(SEXP thetaSxp, SEXP omegaSxp, SEXP nsubSxp) {
   int ntheta = Rf_length(thetaSxp);
   int nom = Rf_isMatrix(omegaSxp) ? Rf_nrows(omegaSxp) : 0;
+  if (nom > 0 && Rf_ncols(omegaSxp) != nom) Rf_error("omega must be a square matrix");
   SEXP ret = PROTECT(Rf_allocMatrix(REALSXP, nom, nom));
   if (nom > 0) {
     nlmixrPenPopOmegaGrad(ntheta, ntheta > 0 ? REAL(thetaSxp) : NULL, nom, REAL(omegaSxp),

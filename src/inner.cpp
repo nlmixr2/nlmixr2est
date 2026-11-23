@@ -7256,22 +7256,20 @@ static bool foceiPenPopGradAdd(int npars, arma::vec &gp) {
 // d(population penalty)/d(theta_k) for the estimation-scale omega parameters,
 // folded into gp: tr(G * dOmega/dtheta_k) with dOmega = -Omega*dOi_k*Omega,
 // the same chain as foceiPriorOmegaGradAdd(); G is finite-differenced.
-static void foceiPenPopOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &Oi,
+// False when the omega gradient is not finite (decline the analytic gradient).
+static bool foceiPenPopOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &Oi,
                                     const arma::cube &dOiEst) {
-  if (nlmixrPenNPop() == 0) return;
+  if (nlmixrPenNPop() == 0) return true;
   const int omegaDim = (int)Oi.n_rows;
-  if (omegaDim == 0 || (int)dOiEst.n_rows != omegaDim || (int)dOiEst.n_cols != omegaDim) return;
+  if (omegaDim == 0 || (int)dOiEst.n_rows != omegaDim || (int)dOiEst.n_cols != omegaDim) return true;
   arma::mat Omega;
-  try {
-    Omega = arma::inv_sympd(Oi);
-  } catch (...) {
-    return;
-  }
+  if (!arma::inv_sympd(Omega, Oi)) return false;
   arma::mat G(omegaDim, omegaDim, arma::fill::zeros);
   int nsub = rx == NULL ? 0 : (int)getRxNsub(rx);
   nlmixrPenPopOmegaGrad((int)op_focei.ntheta, op_focei.fullTheta, omegaDim, Omega.memptr(),
                         nsub, G.memptr());
-  if (!G.is_finite() || arma::all(arma::vectorise(G) == 0.0)) return;
+  if (!G.is_finite()) return false;
+  if (arma::all(arma::vectorise(G) == 0.0)) return true;
   arma::mat Abar = -(Omega * G * Omega);
   const int ntheta = (int)op_focei.ntheta;
   const int nom = (int)dOiEst.n_slices;
@@ -7279,6 +7277,7 @@ static void foceiPenPopOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &O
     int k = op_focei.fixedTrans[i] - ntheta;
     if (k >= 0 && k < nom) gp[i] += arma::accu(Abar % dOiEst.slice((arma::uword)k));
   }
+  return true;
 }
 
 // ini({}) prior log-density PLUS the population likelihood penalty as a
@@ -21111,7 +21110,7 @@ static bool gradDirectFinalize(int npars, arma::vec &gp, const arma::mat &Oi,
   // gradient -- 0.0 when the prior has no omega-referencing term.
   foceiPriorOmegaGradAdd(npars, gp, Oi, dOiEst);
   if (!foceiPenPopGradAdd(npars, gp)) return declineHere(120);
-  foceiPenPopOmegaGradAdd(npars, gp, Oi, dOiEst);
+  if (!foceiPenPopOmegaGradAdd(npars, gp, Oi, dOiEst)) return declineHere(120);
   if (!op_focei.firstDirectGradSet) {
     op_focei.firstDirectGrad.assign(gp.begin(), gp.end());
     op_focei.firstDirectTheta.assign(&op_focei.fullTheta[0],
