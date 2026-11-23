@@ -24,7 +24,15 @@
   .upd <- rep(if (.general && phi1Pooled) "regress" else "closed-form", length(.pars))
   .i0 <- as.integer(cfg$i0) + 1L
   .upd[.i0] <- .phi0Upd
-  # a shared-eta mixture component theta follows its eta's recentering
+  # a population penalty refines the phi1 closed-form update (penMstep); the
+  # kernel's penalty map covers every estimated theta
+  .pen <- .likPenaltyInfo()
+  if (.pen[["n"]] > 0L && .pen[["population"]] > 0L) {
+    .upd[.upd == "closed-form"] <- "penalized"
+  }
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))
+  # a shared-eta mixture component theta (intercept only, its eta a phi1
+  # column) follows its eta's recentering, as mixShiftResolve() decides
   .comp <- as.integer(cfg$mixShiftComp)
   .eta <- as.integer(cfg$mixShiftEta)
   if (
@@ -33,28 +41,39 @@
       length(.comp) == length(.pars) &&
       length(.eta) == length(.pars)
   ) {
-    .own <- .i0[.comp[.i0] >= 1L & .comp[.i0] <= .nMix & .eta[.i0] >= 1L]
+    .own <- .i0[
+      .comp[.i0] >= 1L &
+        .comp[.i0] <= .nMix &
+        (.eta[.i0] - 1L) %in% as.integer(cfg$i1) &
+        !(.pars[.i0] %in% .cov$theta)
+    ]
     .upd[.own] <- "closed-form"
   }
   # a theta given a temporary eta is sampled like an eta
   .upd[.pars %in% .saemPseudoEtaThetaNames(ui, pseudoEtas)] <- "stochastic"
-  .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))
-  .cp <- as.character(.cov$covariateParameter)
-  .theta <- c(.pars, .cp)
+  .theta <- c(.pars, as.character(.cov$covariateParameter))
   .upd <- c(.upd, .upd[match(as.character(.cov$theta), .pars)])
   .fix <- ui$iniDf$fix[match(.theta, ui$iniDf$name)]
-  # a population penalty refines the closed-form update numerically (penMstep)
-  if (length(cfg$penMap) > 0L && .likPenaltyInfo()[["population"]] > 0L) {
-    .upd[.upd == "closed-form"] <- "penalized"
-  }
   .upd[!is.na(.fix) & .fix] <- "fixed"
+  # free phi0 coordinates of the regress refinement (covariates are not)
+  .nFree0 <- sum(.upd[seq_along(.pars)][.i0] == "regress")
   # an eta without a theta owns a phi column but is no population parameter
   .keep <- !(.theta %in% as.character(ui$nonMuEtas))
-  data.frame(
-    theta = sub("^rxBoundedTr[.]", "", .theta[.keep]),
-    update = .upd[.keep],
-    stringsAsFactors = FALSE
-  )
+  .theta <- sub("^rxBoundedTr[.]", "", .theta[.keep])
+  .upd <- .upd[.keep]
+  # collapsed IOV: per-occasion rx.<theta>.<level> columns are one theta
+  .iov <- .uiIovEnv$iovCollapsed
+  if (!is.null(.iov)) {
+    for (.t in as.character(.iov$pars$theta)) {
+      .theta[.theta %in% paste0("rx.", .t, ".", .iov$levels)] <- .t
+    }
+    .d <- !duplicated(.theta)
+    .theta <- .theta[.d]
+    .upd <- .upd[.d]
+  }
+  .ret <- data.frame(theta = .theta, update = .upd, stringsAsFactors = FALSE)
+  attr(.ret, "nFree0") <- .nFree0
+  .ret
 }
 
 #' One-line note of the SAEM M-step split, or `NULL` when every theta is
@@ -83,7 +102,11 @@
       "bobyqa"
     } else {
       # a single free coordinate always takes the 1-d search
-      .type <- if (length(.reg) == 1L) 0L else as.integer(cfg$nonMuThetaOptType)
+      .nFree <- attr(tbl, "nFree0")
+      if (is.null(.nFree)) {
+        .nFree <- length(.reg)
+      }
+      .type <- if (.nFree <= 1L) 0L else as.integer(cfg$nonMuThetaOptType)
       c("optimize", "nelderMead", "newuoa")[.type + 1L]
     }
     .parts <- c(.parts, list(c(paste0("numerical (", .opt, "): "), .reg)))

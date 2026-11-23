@@ -36,6 +36,9 @@ test_that("saem M-step table classifies each theta", {
   # two free coordinates take the configured optimizer
   tbl2 <- data.frame(theta = c("ta", "tb"), update = "regress")
   expect_equal(.saemMstepNote(tbl2, cfg), "numerical (newuoa): ta, tb")
+  # a covariate coefficient is no extra free coordinate
+  attr(tbl2, "nFree0") <- 1L
+  expect_equal(.saemMstepNote(tbl2, cfg), "numerical (optimize): ta, tb")
   cfg$nonMuTheta <- "eta"
   tbl <- .saemMstepTable(ui, cfg)
   expect_equal(tbl$update[tbl$theta == "tv"], "stochastic")
@@ -46,9 +49,13 @@ test_that("saem M-step table classifies each theta", {
   expect_equal(.saemMstepTable(ui, cfg)$update[3], "stochastic")
   # unless it is a shared-eta component theta, recentered with its eta
   cfg$mixSampleMethod <- 0L
+  cfg$i1 <- c(0L, 1L)
   cfg$mixShiftComp <- c(0L, 0L, 2L)
   cfg$mixShiftEta <- c(0L, 0L, 2L)
   expect_equal(.saemMstepTable(ui, cfg)$update[3], "closed-form")
+  # its eta must be a phi1 column
+  cfg$i1 <- 0L
+  expect_equal(.saemMstepTable(ui, cfg)$update[3], "stochastic")
   cfg$mixShiftComp <- cfg$mixShiftEta <- NULL
   # a fixed theta is held
   ui2 <- rxode2::rxode2(one)
@@ -122,4 +129,15 @@ test_that("saem fit reports its M-step split", {
   fit <- suppressWarnings(nlmixr2(mu, theo_sd, "saem", ctl))
   expect_true(all(fit$saemMstep$update == "closed-form"))
   expect_false(any(grepl("closed form:", fit$runInfo, fixed = TRUE)))
+
+  # a population penalty refines the closed-form update
+  pfit <- suppressWarnings(nlmixr2(
+    mu,
+    theo_sd,
+    "saem",
+    ctl,
+    likPenalty = list(nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = 1))
+  ))
+  expect_true(all(pfit$saemMstep$update == "penalized"))
+  expect_true("closed form+penalty: tka, tcl, tv" %in% pfit$runInfo)
 })
