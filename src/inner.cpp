@@ -7414,7 +7414,7 @@ void impPriorOmegaCorrect(arma::mat &Omega, int nsub) {
 // (the moment average) moves to the penalized complete-data optimum over the
 // entries omMask estimates, holding fix()ed etas.
 void impPenOmegaCorrect(arma::mat &Omega, int nsub, const arma::mat &omMask,
-                        const std::vector<int> &omFixedEta) {
+                        const std::vector<int> &omFixedEta, const arma::mat &Om0) {
   if (nlmixrPenNPop() == 0 || nsub <= 0 || Omega.n_elem == 0) return;
   const arma::uword n = Omega.n_rows;
   std::vector<bool> fixd(n, false);
@@ -7427,9 +7427,14 @@ void impPenOmegaCorrect(arma::mat &Omega, int nsub, const arma::mat &omMask,
       fr.push_back(i); fc.push_back(j);
     }
   const int ntheta = (int)op_focei.ntheta;
-  penOmegaMstepCore(Omega, fr, fc, (double)nsub, [&](const arma::mat &G) {
-    return nlmixrPenPopAll(ntheta, op_focei.fullTheta, (int)G.n_rows, G.memptr(), nsub, NULL, NULL);
-  });
+  arma::mat G0 = Omega % omMask;
+  for (arma::uword k = 0; k < n; ++k) {
+    if (!fixd[k] || Om0.n_rows != n) continue;
+    G0.row(k) = Om0.row(k); G0.col(k) = Om0.col(k);
+  }
+  if (penOmegaMstepCore(G0, Omega, fr, fc, (double)nsub, [&](const arma::mat &G) {
+        return nlmixrPenPopAll(ntheta, op_focei.fullTheta, (int)G.n_rows, G.memptr(), nsub, NULL, NULL);
+      })) Omega = G0;
 }
 
 // One-step MAP (Newton/Fisher-scoring) correction for imp/impmap/qrpem's
@@ -22873,7 +22878,8 @@ static void adviPenOmegaTarget(std::vector<double> &wT, const LogicalVector &ome
     fr.push_back(k);
   }
   std::vector<double> th(theta.begin(), theta.end());
-  if (!penOmegaMstepCore(S, fr, fr, (double)N, [&](const arma::mat &G) {
+  const arma::mat Sm = S;
+  if (!penOmegaMstepCore(S, Sm, fr, fr, (double)N, [&](const arma::mat &G) {
         return nlmixrPenPopAll(ntheta, th.data(), (int)G.n_rows, G.memptr(), N, NULL, NULL);
       })) return;
   for (size_t a = 0; a < fr.size(); ++a) wT[fr[a]] = S(fr[a], fr[a]);
