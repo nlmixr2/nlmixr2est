@@ -31,8 +31,11 @@ test_that("saem M-step table classifies each theta", {
   )
   expect_equal(
     .saemMstepNote(tbl, cfg),
-    "closed form: tka, tcl; numerical (newuoa): tv"
+    "closed form: tka, tcl; numerical (optimize): tv"
   )
+  # two free coordinates take the configured optimizer
+  tbl2 <- data.frame(theta = c("ta", "tb"), update = "regress")
+  expect_equal(.saemMstepNote(tbl2, cfg), "numerical (newuoa): ta, tb")
   cfg$nonMuTheta <- "eta"
   tbl <- .saemMstepTable(ui, cfg)
   expect_equal(tbl$update[tbl$theta == "tv"], "stochastic")
@@ -41,6 +44,12 @@ test_that("saem M-step table classifies each theta", {
   cfg$nonMuTheta <- "regress"
   cfg$nMix <- 2L
   expect_equal(.saemMstepTable(ui, cfg)$update[3], "stochastic")
+  # unless it is a shared-eta component theta, recentered with its eta
+  cfg$mixSampleMethod <- 0L
+  cfg$mixShiftComp <- c(0L, 0L, 2L)
+  cfg$mixShiftEta <- c(0L, 0L, 2L)
+  expect_equal(.saemMstepTable(ui, cfg)$update[3], "closed-form")
+  cfg$mixShiftComp <- cfg$mixShiftEta <- NULL
   # a fixed theta is held
   ui2 <- rxode2::rxode2(one)
   ui2 <- rxode2::ini(ui2, tv = fix(3.45))
@@ -84,7 +93,7 @@ test_that("saem fit reports its M-step split", {
   }
   ctl <- saemControl(print = 0, nBurn = 10, nEm = 10, calcTables = FALSE, covMethod = "")
   fit <- suppressWarnings(nlmixr2(one, theo_sd, "saem", ctl))
-  expect_true("closed form: tka, tcl; numerical (newuoa): tv" %in% fit$runInfo)
+  expect_true("closed form: tka, tcl; numerical (optimize): tv" %in% fit$runInfo)
   expect_equal(
     setNames(fit$saemMstep$update, fit$saemMstep$theta)[c("tka", "tcl", "tv")],
     c(tka = "closed-form", tcl = "closed-form", tv = "regress")

@@ -421,7 +421,12 @@
       .saemCheckCfg(.cfg)
       .cfg
     })
-    .mstep <- .saemMstepTable(ui, .cfg, phi1Pooled = !is.null(.model$saemPhi1Pred))
+    .mstep <- .saemMstepTable(
+      ui,
+      .cfg,
+      phi1Pooled = !is.null(.model$saemPhi1Pred),
+      pseudoEtas = pseudoEtas
+    )
     .mstepNote <- .saemMstepNote(.mstep, .cfg)
     if (!is.null(.mstepNote)) {
       warning(.mstepNote, call. = FALSE)

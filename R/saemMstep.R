@@ -7,10 +7,11 @@
 #' @param ui rxode2 ui
 #' @param cfg `.configsaem()` configuration (0-based `i0`)
 #' @param phi1Pooled `TRUE` when the general-likelihood phi1 refinement is set up
+#' @param pseudoEtas saem's temporary etas (`.saemPseudoEtaRecord()`)
 #' @return data frame with columns `theta` and `update` (`"closed-form"`,
 #'   `"penalized"`, `"regress"`, `"stochastic"` or `"fixed"`)
 #' @noRd
-.saemMstepTable <- function(ui, cfg, phi1Pooled = FALSE) {
+.saemMstepTable <- function(ui, cfg, phi1Pooled = FALSE, pseudoEtas = character(0)) {
   # phi columns in kernel order (covariate coefficients are not columns)
   .pars <- as.character(rxUiGet.saemParamsToEstimateCov(list(ui)))
   .general <- identical(as.integer(cfg$distribution), 4L)
@@ -21,7 +22,22 @@
     "stochastic"
   }
   .upd <- rep(if (.general && phi1Pooled) "regress" else "closed-form", length(.pars))
-  .upd[as.integer(cfg$i0) + 1L] <- .phi0Upd
+  .i0 <- as.integer(cfg$i0) + 1L
+  .upd[.i0] <- .phi0Upd
+  # a shared-eta mixture component theta follows its eta's recentering
+  .comp <- as.integer(cfg$mixShiftComp)
+  .eta <- as.integer(cfg$mixShiftEta)
+  if (
+    .nMix > 1L &&
+      identical(as.integer(cfg$mixSampleMethod), 0L) &&
+      length(.comp) == length(.pars) &&
+      length(.eta) == length(.pars)
+  ) {
+    .own <- .i0[.comp[.i0] >= 1L & .comp[.i0] <= .nMix & .eta[.i0] >= 1L]
+    .upd[.own] <- "closed-form"
+  }
+  # a theta given a temporary eta is sampled like an eta
+  .upd[.pars %in% .saemPseudoEtaThetaNames(ui, pseudoEtas)] <- "stochastic"
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))
   .cp <- as.character(.cov$covariateParameter)
   .theta <- c(.pars, .cp)
@@ -66,7 +82,9 @@
     .opt <- if (identical(as.integer(cfg$distribution), 4L)) {
       "bobyqa"
     } else {
-      c("optimize", "nelderMead", "newuoa")[as.integer(cfg$nonMuThetaOptType) + 1L]
+      # a single free coordinate always takes the 1-d search
+      .type <- if (length(.reg) == 1L) 0L else as.integer(cfg$nonMuThetaOptType)
+      c("optimize", "nelderMead", "newuoa")[.type + 1L]
     }
     .parts <- c(.parts, list(c(paste0("numerical (", .opt, "): "), .reg)))
   }
