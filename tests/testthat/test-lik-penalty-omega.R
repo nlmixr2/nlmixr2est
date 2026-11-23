@@ -94,7 +94,13 @@ test_that("a theta-only penalty leaves saem's omega update unchanged", {
   .ctl <- saemControl(print = 0L, seed = 42)
   .p0 <- list(nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = c(0, 0, 100), inObjf = TRUE))
   .s0 <- suppressWarnings(nlmixr2(.likPenOmegaOde, nlmixr2data::theo_sd, est = "saem", control = .ctl))
-  .s1 <- suppressWarnings(nlmixr2(.likPenOmegaOde, nlmixr2data::theo_sd, est = "saem", control = .ctl, likPenalty = .p0))
+  .s1 <- suppressWarnings(nlmixr2(
+    .likPenOmegaOde,
+    nlmixr2data::theo_sd,
+    est = "saem",
+    control = .ctl,
+    likPenalty = .p0
+  ))
   expect_equal(.s1$omega, .s0$omega)
   expect_equal(.s1$objf - .s0$objf, 100, tolerance = 1e-6)
 })

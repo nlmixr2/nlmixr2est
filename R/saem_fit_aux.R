@@ -274,7 +274,8 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
     .nGauss * log(2 * pi) +
     2 * .Call(`_nlmixr2est_powerL`, ysave[.g], lambda[.g], as.integer(yj[.g]), as.double(low[.g]), as.double(hi[.g]))
   if (!is.null(.pen)) {
-    ll2 <- ll2 - .Call(`_nlmixr2est_likPenaltyPop`, .pen, .saemLikPenaltyOmega(Omega, saem.cfg$penEtaOrd), as.integer(N))
+    ll2 <- ll2 -
+      .Call(`_nlmixr2est_likPenaltyPop`, .pen, .saemLikPenaltyOmega(Omega, saem.cfg$penEtaOrd), as.integer(N))
   }
   # observations divided by a known residual weight (.saemResidWeightData())
   if (!is.null(saem.cfg$residLogW)) {
