@@ -18,6 +18,10 @@
 
 ## New features
 
+- A `saem` fit with a theta that is not updated in closed form now notes which
+  thetas the M-step updates in closed form, numerically (`nonMuTheta =
+  "regress"`) or stochastically (`nonMuTheta = "eta"`); the note is kept in
+  `fit$runInfo`, and `fit$saemMstep` lists the update of every theta (#1480).
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and

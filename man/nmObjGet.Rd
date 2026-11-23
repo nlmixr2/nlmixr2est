@@ -27,6 +27,7 @@
 \alias{nmObjGet.simInfo}
 \alias{nmObjGet.seed}
 \alias{nmObjGet.saemCfg}
+\alias{nmObjGet.saemMstep}
 \alias{nmObjGet.estimationModel}
 \alias{nmObjGet.atol}
 \alias{nmObjGet.rtol}
@@ -99,6 +100,8 @@ nmObjGet(x, ...)
 \method{nmObjGet}{seed}(x, ...)
 
 \method{nmObjGet}{saemCfg}(x, ...)
+
+\method{nmObjGet}{saemMstep}(x, ...)
 
 \method{nmObjGet}{estimationModel}(x, ...)
 
