@@ -6491,6 +6491,9 @@ private:
     for (unsigned int j = 0; j < n; ++j) {
       for (unsigned int i = j; i < n; ++i) {
         if (i != j && (kiter <= (unsigned int)nb_correl || covstruct1(i, j) == 0)) continue;
+        // a mixture-split eta's moments come from its component, not all N subjects
+        if (nMix > 1 && omegaShareSubpop.n_elem == n &&
+            (omegaShareSubpop(i) >= 1 || omegaShareSubpop(j) >= 1)) continue;
         if (Gamma2_phi1fixed == 1 && (any(Gamma2_phi1fixedIx == i + j * n) ||
                                       any(Gamma2_phi1fixedIx == j + i * n))) continue;
         fr.push_back(i); fc.push_back(j);
