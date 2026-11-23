@@ -98,7 +98,8 @@ estimator-specific scaling and parameter maps are handled for you.
   `omega`, its omega derivative is taken by finite differences.
 * `omega` is the current between-subject covariance in `ini()` eta order.
   Every method with random effects passes it, and its omega update (the EM and
-  variational M-steps included) minimizes the penalized objective.  The
+  variational M-steps included) minimizes the penalized objective; emvi, fbvi
+  and vae penalize only the variances, not the covariances.  The
   population-only methods (the nlm family) pass `neta = 0`.  A subject term that writes a non-zero value switches the
   FOCEi analytic outer gradient (`fast = TRUE`) to finite differences, because
   it moves the conditional mode.

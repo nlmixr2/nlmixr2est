@@ -26754,7 +26754,8 @@ static void vaePenOmegaCur(arma::vec &omegaCur, const LogicalVector &omegaFix,
   for (arma::uword k = 0; k < omegaCur.n_elem; ++k)
     if (!omegaFix[k] && omegaCur[k] > 0) fr.push_back(k);
   const int nt = (int)th.n_elem;
-  if (!penOmegaMstepCore(S, fr, fr, (double)N, [&](const arma::mat &G) {
+  const arma::mat Sm = S;
+  if (!penOmegaMstepCore(S, Sm, fr, fr, (double)N, [&](const arma::mat &G) {
         return nlmixrPenPopAll(nt, th.memptr(), (int)G.n_rows, G.memptr(), N, NULL, NULL);
       })) return;
   omegaCur = S.diag();
