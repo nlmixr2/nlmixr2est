@@ -22880,22 +22880,27 @@ static void adviPenLpoGrad(const NumericVector &theta, int ntheta, const Numeric
 // Penalize the emvi variance M-step targets wT (diagonal), fixed etas held.
 static void adviPenOmegaTarget(std::vector<double> &wT, const LogicalVector &omegaFix,
                                const NumericVector &theta, int ntheta,
-                               const NumericVector &lpo, const NumericMatrix &mu, int N) {
+                               const NumericVector &lpo, const NumericMatrix &mu,
+                               const arma::mat &crossL, int N) {
   if (nlmixrPenNPop() == 0) return;
   arma::mat S = adviPenOmega(lpo);
+  if (wT.size() != S.n_rows) return;
   std::vector<arma::uword> fr;
-  for (arma::uword k = 0; k < S.n_rows && k < wT.size(); ++k) {
+  for (arma::uword k = 0; k < S.n_rows; ++k) {
     if (omegaFix[k]) continue;
     S(k, k) = wT[k];
     fr.push_back(k);
   }
   std::vector<double> th(theta.begin(), theta.end());
-  // second moments: wT on the diagonal, the posterior-mean cross moments off it
+  // second moments: wT (every eta) on the diagonal; with modeled covariances the
+  // posterior cross moments (plus the full-rank posterior covariance) off it
   arma::mat Sm = S;
+  Sm.diag() = arma::vec(wT);
   if (_advi.omOff && mu.ncol() == (int)S.n_rows) {
     arma::mat M(const_cast<double *>(&mu[0]), mu.nrow(), mu.ncol(), false, true);
     arma::mat C = M.t() * M / (double)N;
-    C.diag() = S.diag();
+    if (crossL.n_rows == C.n_rows) C += crossL;
+    C.diag() = arma::vec(wT);
     Sm = C;
   }
   if (!penOmegaMstepCore(S, Sm, fr, fr, (double)N, [&](const arma::mat &G) {
@@ -23150,12 +23155,11 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     // settles.  gamma anneals from a small value toward 1.
     std::vector<double> wT((size_t)neta, 0.0);
     for (int k = 0; k < neta; ++k) {
-      if (omegaFix[k]) continue;
       double s = 0.0;
       for (int i = 0; i < N; ++i) s += mu(i, k) * mu(i, k) + std::exp(2.0 * omega(i, k));
       wT[(size_t)k] = s / N;
     }
-    adviPenOmegaTarget(wT, omegaFix, theta, ntheta, logPopOmega, mu, N);
+    adviPenOmegaTarget(wT, omegaFix, theta, ntheta, logPopOmega, mu, arma::mat(), N);
     for (int k = 0; k < neta; ++k) {
       if (omegaFix[k]) continue;
       double wCur = std::exp(logPopOmega[k]);
@@ -23472,7 +23476,6 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     // damped population variance M-step; var_ik = (L_i L_i^T)_kk = sum_{j<=k} L(k,j)^2
     std::vector<double> wT((size_t)neta, 0.0);
     for (int k = 0; k < neta; ++k) {
-      if (omegaFix[k]) continue;
       double sAcc = 0.0;
       for (int i = 0; i < N; ++i) {
         double var = 0.0;
@@ -23481,7 +23484,18 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
       }
       wT[(size_t)k] = sAcc / N;
     }
-    adviPenOmegaTarget(wT, omegaFix, theta, ntheta, logPopOmega, mu, N);
+    arma::mat crossL;
+    if (_advi.omOff && nlmixrPenNPop() > 0) {
+      crossL.zeros(neta, neta);
+      for (int i = 0; i < N; ++i) {
+        arma::mat L(neta, neta, arma::fill::zeros);
+        for (int r = 0; r < neta; ++r)
+          for (int c = 0; c <= r; ++c) L(r, c) = Lpack(i, r * (r + 1) / 2 + c);
+        crossL += L * L.t();
+      }
+      crossL /= (double)N;
+    }
+    adviPenOmegaTarget(wT, omegaFix, theta, ntheta, logPopOmega, mu, crossL, N);
     for (int k = 0; k < neta; ++k) {
       if (omegaFix[k]) continue;
       double wCur = std::exp(logPopOmega[k]);
