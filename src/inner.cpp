@@ -22880,7 +22880,7 @@ static void adviPenLpoGrad(const NumericVector &theta, int ntheta, const Numeric
 // Penalize the emvi variance M-step targets wT (diagonal), fixed etas held.
 static void adviPenOmegaTarget(std::vector<double> &wT, const LogicalVector &omegaFix,
                                const NumericVector &theta, int ntheta,
-                               const NumericVector &lpo, int N) {
+                               const NumericVector &lpo, const NumericMatrix &mu, int N) {
   if (nlmixrPenNPop() == 0) return;
   arma::mat S = adviPenOmega(lpo);
   std::vector<arma::uword> fr;
@@ -22890,7 +22890,14 @@ static void adviPenOmegaTarget(std::vector<double> &wT, const LogicalVector &ome
     fr.push_back(k);
   }
   std::vector<double> th(theta.begin(), theta.end());
-  const arma::mat Sm = S;
+  // second moments: wT on the diagonal, the posterior-mean cross moments off it
+  arma::mat Sm = S;
+  if (_advi.omOff && mu.ncol() == (int)S.n_rows) {
+    arma::mat M(const_cast<double *>(&mu[0]), mu.nrow(), mu.ncol(), false, true);
+    arma::mat C = M.t() * M / (double)N;
+    C.diag() = S.diag();
+    Sm = C;
+  }
   if (!penOmegaMstepCore(S, Sm, fr, fr, (double)N, [&](const arma::mat &G) {
         return nlmixrPenPopAll(ntheta, th.data(), (int)G.n_rows, G.memptr(), N, NULL, NULL);
       })) return;
@@ -23148,7 +23155,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
       for (int i = 0; i < N; ++i) s += mu(i, k) * mu(i, k) + std::exp(2.0 * omega(i, k));
       wT[(size_t)k] = s / N;
     }
-    adviPenOmegaTarget(wT, omegaFix, theta, ntheta, logPopOmega, N);
+    adviPenOmegaTarget(wT, omegaFix, theta, ntheta, logPopOmega, mu, N);
     for (int k = 0; k < neta; ++k) {
       if (omegaFix[k]) continue;
       double wCur = std::exp(logPopOmega[k]);
@@ -23474,7 +23481,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
       }
       wT[(size_t)k] = sAcc / N;
     }
-    adviPenOmegaTarget(wT, omegaFix, theta, ntheta, logPopOmega, N);
+    adviPenOmegaTarget(wT, omegaFix, theta, ntheta, logPopOmega, mu, N);
     for (int k = 0; k < neta; ++k) {
       if (omegaFix[k]) continue;
       double wCur = std::exp(logPopOmega[k]);
