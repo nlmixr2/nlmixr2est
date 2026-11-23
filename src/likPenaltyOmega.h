@@ -6,20 +6,21 @@
 #include <cmath>
 #include <algorithm>
 
-// S is the closed-form M-step update, the minimizer of the complete-data -2LL
-// nsub*(log|G| + tr(G^-1 S)).  With an omega-dependent population penalty
-// pen(G) (-2LL scale) S becomes the minimizer of that plus pen(G) over the
-// lower-triangle entries (fr[a], fc[a]); the rest stay at S.  Damped Newton with
-// an FD Hessian, G kept positive definite.  Returns false (S untouched) when
-// the penalty does not depend on those entries.
+// S holds the complete-data moments: the closed-form update minimizes
+// nsub*(log|G| + tr(G^-1 S)).  With an omega-dependent population penalty pen(G)
+// (-2LL scale) G0 becomes the minimizer of that plus pen(G) over its
+// lower-triangle entries (fr[a], fc[a]), starting from G0's values; every other
+// entry stays at its (constrained: masked or fixed) G0 value.  Damped Newton
+// with an FD Hessian, G kept positive definite.  Returns false (G0 untouched)
+// when the penalty does not depend on the free entries.
 template <class Pen>
-static bool penOmegaMstepCore(arma::mat &S0, const std::vector<arma::uword> &fr,
+static bool penOmegaMstepCore(arma::mat &G0, const arma::mat &S, const std::vector<arma::uword> &fr,
                               const std::vector<arma::uword> &fc, double nsub, Pen pen) {
   const arma::uword nf = fr.size();
-  if (nf == 0 || S0.n_elem == 0) return false;
-  const arma::mat S = S0;
+  if (nf == 0 || G0.n_elem == 0 || S.n_rows != G0.n_rows) return false;
+  const arma::mat Gc = G0;
   auto build = [&](const arma::vec &x) {
-    arma::mat G = S;
+    arma::mat G = Gc;
     for (arma::uword a = 0; a < nf; ++a) { G(fr[a], fc[a]) = x(a); G(fc[a], fr[a]) = x(a); }
     return G;
   };
@@ -32,8 +33,8 @@ static bool penOmegaMstepCore(arma::mat &S0, const std::vector<arma::uword> &fr,
   };
   arma::vec x(nf), hx(nf);
   for (arma::uword a = 0; a < nf; ++a) {
-    x(a) = S(fr[a], fc[a]);
-    hx(a) = 1e-5 * std::max(std::sqrt(std::fabs(S(fr[a], fr[a]) * S(fc[a], fc[a]))), 1e-8);
+    x(a) = Gc(fr[a], fc[a]);
+    hx(a) = 1e-5 * std::max(std::sqrt(std::fabs(Gc(fr[a], fr[a]) * Gc(fc[a], fc[a]))), 1e-8);
   }
   auto penGrad = [&](const arma::vec &xx) {
     arma::vec g(nf);
@@ -84,7 +85,7 @@ static bool penOmegaMstepCore(arma::mat &S0, const std::vector<arma::uword> &fr,
     x = xn; fcur = fn;
     if (dx < 1e-10 * (1.0 + arma::norm(x))) break;
   }
-  S0 = build(x);
+  G0 = build(x);
   return true;
 }
 

@@ -6496,7 +6496,12 @@ private:
         fr.push_back(i); fc.push_back(j);
       }
     }
-    penOmegaMstepCore(G1, fr, fc, (double)N, [this](const mat &G) { return penPopAtOmega(G); });
+    // candidates hold the structure and fixed values the update applies later
+    mat G0 = G1 % covstruct1;
+    if (kiter <= (unsigned int)nb_correl) G0 = diagmat(G0);
+    if (Gamma2_phi1fixed == 1) G0.elem(Gamma2_phi1fixedIx) = Gamma2_phi1fixedValues(Gamma2_phi1fixedIx);
+    if (penOmegaMstepCore(G0, G1, fr, fc, (double)N,
+                          [this](const mat &G) { return penPopAtOmega(G); })) G1 = G0;
   }
 
   // Penalized M-step for one block: the update b0 (closed form, plus any
