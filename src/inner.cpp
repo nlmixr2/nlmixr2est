@@ -71,6 +71,7 @@ static std::atomic<int> _innerParallel{0};
 #include "../inst/include/nlmixr2estLikContrib.h"
 #include "likContribUtil.h"
 #include "likPenalty.h"
+#include "likPenaltyOmega.h"
 #define NLMIXR_MAX_CONTRIB 16
 static const nlmixrLikContrib* _nlmixrContrib[NLMIXR_MAX_CONTRIB] = {NULL};
 static int _nlmixrNContrib = 0;
@@ -7407,6 +7408,28 @@ void impPriorOmegaCorrect(arma::mat &Omega, int nsub) {
     arma::mat Gsym = 0.5 * (gradOmegaRaw + gradOmegaRaw.t());
     Omega += (2.0 / (double)nsub) * (Omega * Gsym * Omega);
   }
+}
+
+// Population likelihood penalty in imp/impmap/qrpem's omega M-step: Omega
+// (the moment average) moves to the penalized complete-data optimum over the
+// entries omMask estimates, holding fix()ed etas.
+void impPenOmegaCorrect(arma::mat &Omega, int nsub, const arma::mat &omMask,
+                        const std::vector<int> &omFixedEta) {
+  if (nlmixrPenNPop() == 0 || nsub <= 0 || Omega.n_elem == 0) return;
+  const arma::uword n = Omega.n_rows;
+  std::vector<bool> fixd(n, false);
+  for (size_t k = 0; k < omFixedEta.size(); ++k)
+    if (omFixedEta[k] >= 0 && omFixedEta[k] < (int)n) fixd[(size_t)omFixedEta[k]] = true;
+  std::vector<arma::uword> fr, fc;
+  for (arma::uword j = 0; j < n; ++j)
+    for (arma::uword i = j; i < n; ++i) {
+      if (fixd[i] || fixd[j] || omMask(i, j) == 0.0) continue;
+      fr.push_back(i); fc.push_back(j);
+    }
+  const int ntheta = (int)op_focei.ntheta;
+  penOmegaMstepCore(Omega, fr, fc, (double)nsub, [&](const arma::mat &G) {
+    return nlmixrPenPopAll(ntheta, op_focei.fullTheta, (int)G.n_rows, G.memptr(), nsub, NULL, NULL);
+  });
 }
 
 // One-step MAP (Newton/Fisher-scoring) correction for imp/impmap/qrpem's
@@ -22803,13 +22826,57 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
   return elbo;
 }
 
-static void adviPenThetaGrad(const NumericVector &theta, int ntheta, NumericVector &gTh, int N);
+static void adviPenThetaGrad(const NumericVector &theta, int ntheta, const NumericVector &lpo,
+                             NumericVector &gTh, int N);
+
+// population omega the advi/emvi/fbvi penalty sees (the reported, untempered one)
+static arma::mat adviPenOmega(const NumericVector &lpo) {
+  const int neta = (int)lpo.size();
+  if (_advi.omOff && (int)_advi.popOm.n_rows == neta)
+    return arma::symmatu(adviPopOmFull(lpo));
+  arma::mat Om(neta, neta, arma::fill::zeros);
+  for (int k = 0; k < neta; ++k) Om(k, k) = std::exp(lpo[k]);
+  return Om;
+}
 
 // population likelihood penalty on the ELBO (log-likelihood) scale: -P/2
-static double adviPenElbo(const NumericVector &theta, int ntheta, int N) {
+static double adviPenElbo(const NumericVector &theta, int ntheta, const NumericVector &lpo,
+                          int N) {
   if (nlmixrPenNPop() == 0) return 0.0;
   std::vector<double> th(theta.begin(), theta.end());
-  return -0.5 * nlmixrPenPopAll(ntheta, th.data(), 0, NULL, N, NULL, NULL);
+  arma::mat Om = adviPenOmega(lpo);
+  return -0.5 * nlmixrPenPopAll(ntheta, th.data(), (int)Om.n_rows,
+                                Om.n_rows > 0 ? Om.memptr() : NULL, N, NULL, NULL);
+}
+
+// += d(-P/2)/d(logPopOmega_k), through the omega diagonal
+static void adviPenLpoGrad(const NumericVector &theta, int ntheta, const NumericVector &lpo,
+                           NumericVector &gLpo, int N) {
+  if (nlmixrPenNPop() == 0) return;
+  arma::mat Om = adviPenOmega(lpo), G(Om.n_rows, Om.n_cols);
+  if (Om.n_rows == 0) return;
+  std::vector<double> th(theta.begin(), theta.end());
+  nlmixrPenPopOmegaGrad(ntheta, th.data(), (int)Om.n_rows, Om.memptr(), N, G.memptr());
+  for (int k = 0; k < (int)Om.n_rows && k < gLpo.size(); ++k) gLpo[k] -= 0.5 * G(k, k) * Om(k, k);
+}
+
+// Penalize the emvi variance M-step targets wT (diagonal), fixed etas held.
+static void adviPenOmegaTarget(std::vector<double> &wT, const LogicalVector &omegaFix,
+                               const NumericVector &theta, int ntheta,
+                               const NumericVector &lpo, int N) {
+  if (nlmixrPenNPop() == 0) return;
+  arma::mat S = adviPenOmega(lpo);
+  std::vector<arma::uword> fr;
+  for (arma::uword k = 0; k < S.n_rows && k < wT.size(); ++k) {
+    if (omegaFix[k]) continue;
+    S(k, k) = wT[k];
+    fr.push_back(k);
+  }
+  std::vector<double> th(theta.begin(), theta.end());
+  if (!penOmegaMstepCore(S, fr, fr, (double)N, [&](const arma::mat &G) {
+        return nlmixrPenPopAll(ntheta, th.data(), (int)G.n_rows, G.memptr(), N, NULL, NULL);
+      })) return;
+  for (size_t a = 0; a < fr.size(); ++a) wT[fr[a]] = S(fr[a], fr[a]);
 }
 
 //[[Rcpp::export]]
@@ -22821,30 +22888,35 @@ List adviElboGrad_(NumericMatrix mu, NumericMatrix omega, NumericVector theta,
   NumericVector gTheta(ntheta), gPopLogOmega(neta);
   double elbo = adviElboGradCore(mu, omega, theta, logPopOmega, eps, muRefThetaIdx,
                                  gMu, gOmega, gTheta, gPopLogOmega, 1);
-  elbo += adviPenElbo(theta, ntheta, N);
-  adviPenThetaGrad(theta, ntheta, gTheta, N);
+  elbo += adviPenElbo(theta, ntheta, logPopOmega, N);
+  adviPenThetaGrad(theta, ntheta, logPopOmega, gTheta, N);
+  adviPenLpoGrad(theta, ntheta, logPopOmega, gPopLogOmega, N);
   return List::create(_["elbo"] = elbo, _["gMu"] = gMu, _["gOmega"] = gOmega,
                       _["gTheta"] = gTheta, _["gPopLogOmega"] = gPopLogOmega);
 }
 
 static void penQuadRefine(arma::vec &z, const arma::vec &w, const std::vector<int> &idx,
-                          std::vector<double> th, int nsub);
+                          std::vector<double> th, int nsub, const arma::mat &om);
 
 // Population likelihood penalty in the advi theta update: the ELBO is on the
 // log-likelihood scale, so the penalty P (-2LL scale) enters as -P/2.
-static void adviPenThetaGrad(const NumericVector &theta, int ntheta, NumericVector &gTh, int N) {
+static void adviPenThetaGrad(const NumericVector &theta, int ntheta, const NumericVector &lpo,
+                             NumericVector &gTh, int N) {
   if (nlmixrPenNPop() == 0) return;
   std::vector<double> th(theta.begin(), theta.end()), g((size_t)ntheta, 0.0);
+  arma::mat Om = adviPenOmega(lpo);
+  const int ne = (int)Om.n_rows;
+  const double *om = ne > 0 ? Om.memptr() : NULL;
   int ok = 1;
-  nlmixrPenPopAll(ntheta, th.data(), 0, NULL, N, g.data(), &ok);
+  nlmixrPenPopAll(ntheta, th.data(), ne, om, N, g.data(), &ok);
   for (int p = 0; p < ntheta; ++p) {
     double d = g[(size_t)p];
     if (!ok) {
       double x = th[(size_t)p], h = 1e-6 * std::max(1.0, std::fabs(x));
       th[(size_t)p] = x + h;
-      double vp = nlmixrPenPopAll(ntheta, th.data(), 0, NULL, N, NULL, NULL);
+      double vp = nlmixrPenPopAll(ntheta, th.data(), ne, om, N, NULL, NULL);
       th[(size_t)p] = x - h;
-      double vm = nlmixrPenPopAll(ntheta, th.data(), 0, NULL, N, NULL, NULL);
+      double vm = nlmixrPenPopAll(ntheta, th.data(), ne, om, N, NULL, NULL);
       th[(size_t)p] = x;
       d = (vp - vm) / (2.0 * h);
     }
@@ -22869,7 +22941,8 @@ static void adviPenRecenter(NumericVector &theta, int ntheta, const IntegerVecto
   }
   if (pIdx.empty()) return;
   arma::vec z(zv), w(wv);
-  penQuadRefine(z, w, pIdx, std::vector<double>(theta.begin(), theta.end()), N);
+  penQuadRefine(z, w, pIdx, std::vector<double>(theta.begin(), theta.end()), N,
+                adviPenOmega(logPopOmega));
   for (size_t a = 0; a < pIdx.size(); ++a) {
     int p = pIdx[a], k = thetaMuRefEta[p];
     double d = z[a] - theta[p];
@@ -22903,7 +22976,7 @@ static void adviPenRecenterFB(NumericVector &mPop, const IntegerVector &phiTheta
   }
   if (js.empty()) return;
   arma::vec z(zv), w(wv);
-  penQuadRefine(z, w, pIdx, th, N);
+  penQuadRefine(z, w, pIdx, th, N, adviPenOmega(NumericVector(lpo.begin(), lpo.end())));
   for (size_t a = 0; a < js.size(); ++a) {
     int j = js[a], k = phiMuRef[j];
     double d = z[a] - mPop[j];
@@ -22992,9 +23065,9 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     elboAcc *= invM;
     for (int j = 0; j < N * neta; ++j) { gMuAcc[j] *= invM; gOmAcc[j] *= invM; }
     for (int p = 0; p < ntheta; ++p) gThAcc[p] *= invM;
-    adviPenThetaGrad(theta, ntheta, gThAcc, N);
+    adviPenThetaGrad(theta, ntheta, logPopOmega, gThAcc, N);
     for (int k = 0; k < neta; ++k) gLpoAcc[k] *= invM;
-    elboTrace[it] = elboAcc + adviPenElbo(theta, ntheta, N);
+    elboTrace[it] = elboAcc + adviPenElbo(theta, ntheta, logPopOmega, N);
 
     // paper adaptive step-size (Eq 10-11); global-iteration decay so resume keeps
     // the same schedule as a fresh longer run.
@@ -23050,12 +23123,18 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     // tighter than the variational scale during transients, preserving the
     // restoring force; it converges to the same fixed point once the E-step
     // settles.  gamma anneals from a small value toward 1.
+    std::vector<double> wT((size_t)neta, 0.0);
     for (int k = 0; k < neta; ++k) {
       if (omegaFix[k]) continue;
       double s = 0.0;
       for (int i = 0; i < N; ++i) s += mu(i, k) * mu(i, k) + std::exp(2.0 * omega(i, k));
-      double wTarget = s / N, wCur = std::exp(logPopOmega[k]);
-      logPopOmega[k] = std::log((1.0 - gam) * wCur + gam * wTarget);
+      wT[(size_t)k] = s / N;
+    }
+    adviPenOmegaTarget(wT, omegaFix, theta, ntheta, logPopOmega, N);
+    for (int k = 0; k < neta; ++k) {
+      if (omegaFix[k]) continue;
+      double wCur = std::exp(logPopOmega[k]);
+      logPopOmega[k] = std::log((1.0 - gam) * wCur + gam * wT[(size_t)k]);
     }
     // modeled off-diagonals, same damped M-step.  The mean-field posterior is
     // independent across etas, so the cross target is mean_i(mu_ik mu_ij) only.
@@ -23246,8 +23325,9 @@ List adviElboGradFR_(NumericMatrix mu, NumericMatrix Lpack, NumericVector theta,
   NumericVector gTheta(ntheta), gPopLogOmega(neta);
   double elbo = adviElboGradCoreFR(mu, Lpack, theta, logPopOmega, eps, muRefThetaIdx,
                                    gMu, gL, gTheta, gPopLogOmega, 1);
-  elbo += adviPenElbo(theta, ntheta, N);
-  adviPenThetaGrad(theta, ntheta, gTheta, N);
+  elbo += adviPenElbo(theta, ntheta, logPopOmega, N);
+  adviPenThetaGrad(theta, ntheta, logPopOmega, gTheta, N);
+  adviPenLpoGrad(theta, ntheta, logPopOmega, gPopLogOmega, N);
   return List::create(_["elbo"] = elbo, _["gMu"] = gMu, _["gL"] = gL,
                       _["gTheta"] = gTheta, _["gPopLogOmega"] = gPopLogOmega);
 }
@@ -23323,9 +23403,9 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     for (int j = 0; j < N * neta; ++j) gMuAcc[j] *= invM;
     for (int j = 0; j < N * nL; ++j) gLAcc[j] *= invM;
     for (int p = 0; p < ntheta; ++p) gThAcc[p] *= invM;
-    adviPenThetaGrad(theta, ntheta, gThAcc, N);
+    adviPenThetaGrad(theta, ntheta, logPopOmega, gThAcc, N);
     for (int k = 0; k < neta; ++k) gLpoAcc[k] *= invM;
-    elboTrace[it] = elboAcc + adviPenElbo(theta, ntheta, N);
+    elboTrace[it] = elboAcc + adviPenElbo(theta, ntheta, logPopOmega, N);
 
     double idecay = std::pow((double)(gi + 1), -0.5 + eeps);
     if (_advi.gn) {
@@ -23365,6 +23445,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     }
     adviPenRecenter(theta, ntheta, thetaMuRefEta, thetaFix, logPopOmega, mu, N);
     // damped population variance M-step; var_ik = (L_i L_i^T)_kk = sum_{j<=k} L(k,j)^2
+    std::vector<double> wT((size_t)neta, 0.0);
     for (int k = 0; k < neta; ++k) {
       if (omegaFix[k]) continue;
       double sAcc = 0.0;
@@ -23373,8 +23454,13 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
         for (int j = 0; j <= k; ++j) { double l = Lpack(i, k * (k + 1) / 2 + j); var += l * l; }
         sAcc += mu(i, k) * mu(i, k) + var;
       }
-      double wTarget = sAcc / N, wCur = std::exp(logPopOmega[k]);
-      logPopOmega[k] = std::log((1.0 - gam) * wCur + gam * wTarget);
+      wT[(size_t)k] = sAcc / N;
+    }
+    adviPenOmegaTarget(wT, omegaFix, theta, ntheta, logPopOmega, N);
+    for (int k = 0; k < neta; ++k) {
+      if (omegaFix[k]) continue;
+      double wCur = std::exp(logPopOmega[k]);
+      logPopOmega[k] = std::log((1.0 - gam) * wCur + gam * wT[(size_t)k]);
     }
     // modeled off-diagonals: the full-rank posterior HAS cross-covariance, so
     // the target carries (L_i L_i')_kj alongside mu_ik mu_ij
@@ -23637,8 +23723,9 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
       e += adviJacLogDet(theta, &gTheta);
       // population likelihood penalty as a prior on the drawn phi
       if (nlmixrPenNPop() > 0) {
-        e -= 0.5 * nlmixrPenPopAll(ntheta, &theta[0], 0, NULL, N, NULL, NULL);
-        adviPenThetaGrad(theta, ntheta, gTheta, N);
+        e += adviPenElbo(theta, ntheta, logPopOmega, N);
+        adviPenThetaGrad(theta, ntheta, logPopOmega, gTheta, N);
+        adviPenLpoGrad(theta, ntheta, logPopOmega, gPopLogOmega, N);
       }
       elboAcc += e;
       for (int j = 0; j < N * neta; ++j) gMuAcc[j] += gMu[j];
@@ -26688,14 +26775,15 @@ static double gVaeThetaObj(const double *r) {
 // the entries minimize that plus P(theta), theta = th with th[idx_a] = z_a
 // (damped Newton, FD Hessian of P).  Used by the vae and advi M-steps.
 static void penQuadRefine(arma::vec &z, const arma::vec &w, const std::vector<int> &idx,
-                          std::vector<double> th, int nsub) {
+                          std::vector<double> th, int nsub, const arma::mat &om) {
   const arma::uword nf = z.n_elem;
   if (nlmixrPenNPop() == 0 || nf == 0) return;
   const arma::vec m = z;
   const int nt = (int)th.size();
   auto pv = [&](const arma::vec &zz) {
     for (arma::uword a = 0; a < nf; ++a) th[(size_t)idx[a]] = zz[a];
-    return nlmixrPenPopAll(nt, th.data(), 0, NULL, nsub, NULL, NULL);
+    return nlmixrPenPopAll(nt, th.data(), (int)om.n_rows, om.n_rows > 0 ? om.memptr() : NULL,
+                           nsub, NULL, NULL);
   };
   auto pg = [&](const arma::vec &zz) {
     arma::vec g(nf);
@@ -26755,7 +26843,7 @@ static void vaePenZPop(arma::vec &zc, const arma::vec &omegaV, int N, const arma
     z[a] = zc[fr[a]];
     w[a] = (double)N / omegaV[fr[a]];
   }
-  penQuadRefine(z, w, ti, std::vector<double>(th.begin(), th.end()), N);
+  penQuadRefine(z, w, ti, std::vector<double>(th.begin(), th.end()), N, arma::mat());
   for (size_t a = 0; a < fr.size(); ++a) zc[fr[a]] = z[a];
 }
 

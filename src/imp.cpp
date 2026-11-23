@@ -2384,6 +2384,7 @@ static void impMStepMuOmega(ImpOuterState& st, bool burnIter) {
   // correction can otherwise leak weight outside the declared structure or
   // a fix()ed row.
   impPriorOmegaCorrect(Omega, nsub);
+  impPenOmegaCorrect(Omega, nsub, st.omMask, st.omFixedEta);
   Omega %= st.omMask;
   // Restore fix()ed Omega rows/columns to their starting values.
   for (size_t k = 0; k < st.omFixedEta.size(); ++k) {

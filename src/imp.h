@@ -149,6 +149,9 @@ void impPriorStructThetaCorrect(int nsub, arma::vec& g, arma::mat& H);
 // Fisher-scoring correction otherwise).  No-op when there is no prior
 // touching omega.  See src/inner.cpp for the derivation.
 void impPriorOmegaCorrect(arma::mat& Omega, int nsub);
+// population likelihood penalty in the omega M-step (inner.cpp)
+void impPenOmegaCorrect(arma::mat &Omega, int nsub, const arma::mat &omMask,
+                        const std::vector<int> &omFixedEta);
 
 // Whether the combined eta+theta sensitivity build (#958) is loaded -- the
 // INNER model carries the theta columns, so impEStep's harvest path applies.

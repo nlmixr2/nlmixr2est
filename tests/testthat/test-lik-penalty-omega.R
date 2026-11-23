@@ -104,3 +104,14 @@ test_that("a theta-only penalty leaves saem's omega update unchanged", {
   expect_equal(.s1$omega, .s0$omega)
   expect_equal(.s1$objf - .s0$objf, 100, tolerance = 1e-6)
 })
+
+test_that("the EM and variational omega M-steps see the omega penalty", {
+  skip_on_cran()
+  .pen <- list(nlmixr2LikPenaltySpec("omegaL2", par = c(1000, 0.05, 1)))
+  for (.est in c("imp", "emvi")) {
+    .f0 <- suppressWarnings(nlmixr2(.likPenOmegaOde, nlmixr2data::theo_sd, est = .est, control = list(print = 0L)))
+    .f1 <- suppressWarnings(nlmixr2(.likPenOmegaOde, nlmixr2data::theo_sd, est = .est, control = list(print = 0L), likPenalty = .pen))
+    expect_lt(.f1$omega[1, 1], .f0$omega[1, 1] - 0.2, label = .est)
+    expect_lt(abs(.f1$omega[1, 1] - 0.05), 0.1, label = .est)
+  }
+})
