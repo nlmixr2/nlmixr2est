@@ -99,9 +99,9 @@ test_that(".saemEtaMatCfg() errors clearly on a mismatched etaMat", {
   expect_error(.saemEtaMatCfg(.cfg, .idEta, .ui, 1:3), "unknown ID.*9")
   expect_error(.saemEtaMatCfg(.cfg, .idEta[1:2, ], .ui, 1:3), "no row for ID.*3")
   expect_error(.saemEtaMatCfg(.cfg, .eta, .saemEtaMatTestUi(0.5), 1:3), "mixture")
-  .old <- .uiIovEnv$iovTwoLevel
-  on.exit(.uiIovEnv$iovTwoLevel <- .old)
-  .uiIovEnv$iovTwoLevel <- list("eta.ka")
+  .old <- .uiIovEnv$iovVars
+  on.exit(.uiIovEnv$iovVars <- .old)
+  .uiIovEnv$iovVars <- "occ"
   expect_error(.saemEtaMatCfg(.cfg, .eta, .ui, 1:3), "IOV")
 })
 

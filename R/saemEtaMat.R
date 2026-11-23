@@ -65,8 +65,8 @@
   if (length(ui$mixProbs) > 0L || isTRUE(cfg$nMix > 1L)) {
     stop("'etaMat' is not supported for mixture models in 'saem'", call. = FALSE)
   }
-  if (!is.null(.uiIovEnv$iovTwoLevel) || !is.null(.uiIovEnv$iovCollapsed)) {
-    stop("'etaMat' needs saemControl(iovMethod=\"theta\") for an IOV model", call. = FALSE)
+  if (length(.uiIovEnv$iovVars) > 0L) {
+    stop("'etaMat' is not supported for IOV models in 'saem'", call. = FALSE)
   }
   .iniDf <- ui$iniDf
   .eta <- .iniDf[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2, ]
