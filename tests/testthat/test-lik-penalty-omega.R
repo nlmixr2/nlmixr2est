@@ -110,7 +110,13 @@ test_that("the EM and variational omega M-steps see the omega penalty", {
   .pen <- list(nlmixr2LikPenaltySpec("omegaL2", par = c(1000, 0.05, 1)))
   for (.est in c("imp", "emvi")) {
     .f0 <- suppressWarnings(nlmixr2(.likPenOmegaOde, nlmixr2data::theo_sd, est = .est, control = list(print = 0L)))
-    .f1 <- suppressWarnings(nlmixr2(.likPenOmegaOde, nlmixr2data::theo_sd, est = .est, control = list(print = 0L), likPenalty = .pen))
+    .f1 <- suppressWarnings(nlmixr2(
+      .likPenOmegaOde,
+      nlmixr2data::theo_sd,
+      est = .est,
+      control = list(print = 0L),
+      likPenalty = .pen
+    ))
     expect_lt(.f1$omega[1, 1], .f0$omega[1, 1] - 0.2, label = .est)
     expect_lt(abs(.f1$omega[1, 1] - 0.05), 0.1, label = .est)
   }
