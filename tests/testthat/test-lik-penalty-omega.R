@@ -126,7 +126,13 @@ test_that("vae's omega M-step sees the omega penalty", {
   skip_on_cran()
   .pen <- list(nlmixr2LikPenaltySpec("omegaL2", par = c(1000, 0.05, 1)))
   .f0 <- suppressWarnings(nlmixr2(.likPenOmegaOde, nlmixr2data::theo_sd, est = "vae", control = list(print = 0L)))
-  .f1 <- suppressWarnings(nlmixr2(.likPenOmegaOde, nlmixr2data::theo_sd, est = "vae", control = list(print = 0L), likPenalty = .pen))
+  .f1 <- suppressWarnings(nlmixr2(
+    .likPenOmegaOde,
+    nlmixr2data::theo_sd,
+    est = "vae",
+    control = list(print = 0L),
+    likPenalty = .pen
+  ))
   expect_lt(.f1$omega[1, 1], .f0$omega[1, 1] - 0.1)
   expect_lt(abs(.f1$omega[1, 1] - 0.05), 0.1)
 })
