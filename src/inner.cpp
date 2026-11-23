@@ -26746,15 +26746,20 @@ static arma::mat vaePenOmegaWith(const arma::vec &omegaV) {
 }
 
 // Penalize the vae variance M-step update omegaCur (fixed dims held).
+// dev: N x zDim posterior means minus their centers (cross moments off the diagonal)
 static void vaePenOmegaCur(arma::vec &omegaCur, const LogicalVector &omegaFix,
-                           const arma::vec &th, int N) {
+                           const arma::vec &th, const arma::mat &dev, int N) {
   if (nlmixrPenNPop() == 0) return;
   arma::mat S = vaePenOmegaWith(omegaCur);
   std::vector<arma::uword> fr;
   for (arma::uword k = 0; k < omegaCur.n_elem; ++k)
     if (!omegaFix[k] && omegaCur[k] > 0) fr.push_back(k);
   const int nt = (int)th.n_elem;
-  const arma::mat Sm = S;
+  arma::mat Sm = S;
+  if (dev.n_cols == S.n_rows && dev.n_rows > 0) {
+    Sm = dev.t() * dev / (double)N;
+    Sm.diag() = omegaCur;
+  }
   if (!penOmegaMstepCore(S, Sm, fr, fr, (double)N, [&](const arma::mat &G) {
         return nlmixrPenPopAll(nt, th.memptr(), (int)G.n_rows, G.memptr(), N, NULL, NULL);
       })) return;
@@ -27379,7 +27384,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (zPopFixR[k]) zPopCur[k] = zPop[k]; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
       if (!zPopCur.is_finite()) zPopCur = zPop;
       if (!omegaCur.is_finite()) omegaCur = omega;
-      vaePenOmegaCur(omegaCur, omegaFixR, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), N);
+      vaePenOmegaCur(omegaCur, omegaFixR, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a),
+                     st.mu.each_row() - zPopCur.t(), N);
       vaePenZPop(zPopCur, omegaCur, N, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), zPopThetaIdx0, isFreeR, zPopFixR);
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
       zPop = zPopCur; omega = omegaCur; a = aCur;  // gamma = 1
@@ -28020,7 +28026,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         }
         for (int k = 0; k < zDim; ++k) if (omegaFixR[k]) omegaCur[k] = omega[k];
         if (!omegaCur.is_finite()) omegaCur = omega;
-        vaePenOmegaCur(omegaCur, omegaFixR, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), N);
+        vaePenOmegaCur(omegaCur, omegaFixR, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a),
+                       arma::mat(last.mu - zPopMat), N);
       };
       omegaAtCenters();
       arma::vec aCur = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper, errCombined1);
@@ -28058,7 +28065,8 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (zPopFixR[k]) zPopCur[k] = zPop[k]; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
       if (!zPopCur.is_finite()) zPopCur = zPop;
       if (!omegaCur.is_finite()) omegaCur = omega;
-      vaePenOmegaCur(omegaCur, omegaFixR, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), N);
+      vaePenOmegaCur(omegaCur, omegaFixR, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a),
+                     last.mu.each_row() - zPopCur.t(), N);
       vaePenZPop(zPopCur, omegaCur, N, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), zPopThetaIdx0, isFreeR, zPopFixR);
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
       zPop = zPop + gamma * (zPopCur - zPop);
