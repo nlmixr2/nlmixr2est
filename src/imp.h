@@ -150,7 +150,7 @@ void impPriorStructThetaCorrect(int nsub, arma::vec& g, arma::mat& H);
 // touching omega.  See src/inner.cpp for the derivation.
 void impPriorOmegaCorrect(arma::mat& Omega, int nsub);
 // population likelihood penalty in the omega M-step (inner.cpp)
-void impPenOmegaCorrect(arma::mat &Omega, int nsub, const arma::mat &omMask,
+bool impPenOmegaCorrect(arma::mat &Omega, int nsub, const arma::mat &omMask,
                         const std::vector<int> &omFixedEta, const arma::mat &Om0);
 
 // Whether the combined eta+theta sensitivity build (#958) is loaded -- the

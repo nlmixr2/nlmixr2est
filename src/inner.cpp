@@ -7413,9 +7413,11 @@ void impPriorOmegaCorrect(arma::mat &Omega, int nsub) {
 // Population likelihood penalty in imp/impmap/qrpem's omega M-step: Omega
 // (the moment average) moves to the penalized complete-data optimum over the
 // entries omMask estimates, holding fix()ed etas.
-void impPenOmegaCorrect(arma::mat &Omega, int nsub, const arma::mat &omMask,
+// Any ini({}) omega prior joins the same objective; returns true when this
+// step ran (the caller then skips impPriorOmegaCorrect()).
+bool impPenOmegaCorrect(arma::mat &Omega, int nsub, const arma::mat &omMask,
                         const std::vector<int> &omFixedEta, const arma::mat &Om0) {
-  if (nlmixrPenNPop() == 0 || nsub <= 0 || Omega.n_elem == 0) return;
+  if (nlmixrPenNPop() == 0 || nsub <= 0 || Omega.n_elem == 0) return false;
   const arma::uword n = Omega.n_rows;
   std::vector<bool> fixd(n, false);
   for (size_t k = 0; k < omFixedEta.size(); ++k)
@@ -7432,9 +7434,19 @@ void impPenOmegaCorrect(arma::mat &Omega, int nsub, const arma::mat &omMask,
     if (!fixd[k] || Om0.n_rows != n) continue;
     G0.row(k) = Om0.row(k); G0.col(k) = Om0.col(k);
   }
-  if (penOmegaMstepCore(G0, Omega, fr, fc, (double)nsub, [&](const arma::mat &G) {
-        return nlmixrPenPopAll(ntheta, op_focei.fullTheta, (int)G.n_rows, G.memptr(), nsub, NULL, NULL);
-      })) Omega = G0;
+  const bool withPrior = op_focei.priorSpec != NULL && op_focei.priorSpecOmegaTerm;
+  std::vector<double> gTh((size_t)ntheta, 0.0), gOm(n * n, 0.0);
+  if (!penOmegaMstepCore(G0, Omega, fr, fc, (double)nsub, [&](const arma::mat &G) {
+        double v = nlmixrPenPopAll(ntheta, op_focei.fullTheta, (int)G.n_rows, G.memptr(), nsub,
+                                   NULL, NULL);
+        if (withPrior) {
+          v -= 2.0 * rxPriorLogDensityEval(op_focei.priorSpec, op_focei.fullTheta, ntheta,
+                                           G.memptr(), (int)G.n_rows, gTh.data(), gOm.data());
+        }
+        return v;
+      })) return false;
+  Omega = G0;
+  return true;
 }
 
 // One-step MAP (Newton/Fisher-scoring) correction for imp/impmap/qrpem's
