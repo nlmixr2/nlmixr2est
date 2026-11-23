@@ -21364,7 +21364,11 @@ RObject foceiGradPooledDirect_(NumericVector thVals, NumericMatrix ebes,
     const int nth = (int)op_focei.ntheta;
     std::vector<double> gpen((size_t)nth, 0.0);
     int penOk = 1;
-    nlmixrPenPopAll(nth, thv.data(), 0, NULL, nsubLive, gpen.data(), &penOk);
+    arma::mat omPen;
+    if (!arma::inv_sympd(omPen, oi)) omPen.reset();
+    const int nePen = (int)omPen.n_rows;
+    nlmixrPenPopAll(nth, thv.data(), nePen, nePen > 0 ? omPen.memptr() : NULL, nsubLive,
+                    gpen.data(), &penOk);
     if (!penOk) return R_NilValue;
     for (int i = 0; i < (int)op_focei.npars; ++i) {
       const int ks = G.gMap[(size_t)i], jf = op_focei.fixedTrans[i];
@@ -26723,10 +26727,37 @@ static inline void vaeRestoreFrozen(int id) {
 // @return the objective, or DBL_MAX when it is not finite
 // @noRd
 // population likelihood penalty on the -LL scale of the vae theta objectives
+// current vae omega (latent dims are the ini() etas, in order)
+static arma::mat _vaePenOm;
 static double vaePenPopLL(const arma::vec &thv) {
   if (nlmixrPenNPop() == 0) return 0.0;
-  return 0.5 * nlmixrPenPopAll((int)thv.n_elem, thv.memptr(), 0, NULL,
+  const int ne = (int)_vaePenOm.n_rows;
+  return 0.5 * nlmixrPenPopAll((int)thv.n_elem, thv.memptr(), ne,
+                               ne > 0 ? _vaePenOm.memptr() : NULL,
                                (int)getRxNsub(getRxSolve_()), NULL, NULL);
+}
+
+// the vae omega with candidate variances omegaV
+static arma::mat vaePenOmegaWith(const arma::vec &omegaV) {
+  if (_vaePenOm.n_rows != omegaV.n_elem) return arma::diagmat(omegaV);
+  arma::mat om = _vaePenOm;
+  om.diag() = omegaV;
+  return om;
+}
+
+// Penalize the vae variance M-step update omegaCur (fixed dims held).
+static void vaePenOmegaCur(arma::vec &omegaCur, const LogicalVector &omegaFix,
+                           const arma::vec &th, int N) {
+  if (nlmixrPenNPop() == 0) return;
+  arma::mat S = vaePenOmegaWith(omegaCur);
+  std::vector<arma::uword> fr;
+  for (arma::uword k = 0; k < omegaCur.n_elem; ++k)
+    if (!omegaFix[k] && omegaCur[k] > 0) fr.push_back(k);
+  const int nt = (int)th.n_elem;
+  if (!penOmegaMstepCore(S, fr, fr, (double)N, [&](const arma::mat &G) {
+        return nlmixrPenPopAll(nt, th.memptr(), (int)G.n_rows, G.memptr(), N, NULL, NULL);
+      })) return;
+  omegaCur = S.diag();
 }
 
 static double gVaeFreezeObj(const double *p) {
@@ -26882,7 +26913,8 @@ static void vaePenZPop(arma::vec &zc, const arma::vec &omegaV, int N, const arma
     z[a] = zc[fr[a]];
     w[a] = (double)N / omegaV[fr[a]];
   }
-  penQuadRefine(z, w, ti, std::vector<double>(th.begin(), th.end()), N, arma::mat());
+  penQuadRefine(z, w, ti, std::vector<double>(th.begin(), th.end()), N,
+                vaePenOmegaWith(omegaV));
   for (size_t a = 0; a < fr.size(); ++a) zc[fr[a]] = z[a];
 }
 
@@ -26890,6 +26922,7 @@ static void vaePenZPop(arma::vec &zc, const arma::vec &omegaV, int N, const arma
 List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector mixProbR,
                   int cores, NumericVector row0, CharacterVector parNames,
                   List iterPrintControl, RObject xform, IntegerVector structIdx0) {
+  _vaePenOm.reset();
   // ---- unpack encoder parameters (mutated in place by Adam) ----
   arma::mat Wih = as<arma::mat>(params["Wih"]);
   arma::mat Whh = as<arma::mat>(params["Whh"]);
@@ -27317,6 +27350,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
 
   // ---- burn-in: encoder-only, tiny fixed KL weight ----
   for (int it = 1; it <= itersBurnIn; ++it) {
+    _vaePenOm = omFull();
     for (int l = 1; l <= Lg; ++l) {
       arma::mat eps(N, zDim);
       vaeDrawEps(eps, (uint32_t)(seed + (it - 1) * Lg + l));
@@ -27344,6 +27378,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (zPopFixR[k]) zPopCur[k] = zPop[k]; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
       if (!zPopCur.is_finite()) zPopCur = zPop;
       if (!omegaCur.is_finite()) omegaCur = omega;
+      vaePenOmegaCur(omegaCur, omegaFixR, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), N);
       vaePenZPop(zPopCur, omegaCur, N, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), zPopThetaIdx0, isFreeR, zPopFixR);
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
       zPop = zPopCur; omega = omegaCur; a = aCur;  // gamma = 1
@@ -27398,6 +27433,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
   //   omega[k] = (s2[k] - 2*sum_i Cz_i[k]*s1_i[k] + sum_i Cz_i[k]^2 + s3[k]) / N
 
   for (int it = 1; it <= iters; ++it) {
+    _vaePenOm = omFull();
     // Smoothing gain: 1 through the EM phase, then a decaying series.
     //   "reference" (default) -- 1/(it - gammaIter), the textbook
     //     Kuhn-Lavielle form the reference implementation uses, so the first
@@ -27983,6 +28019,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
         }
         for (int k = 0; k < zDim; ++k) if (omegaFixR[k]) omegaCur[k] = omega[k];
         if (!omegaCur.is_finite()) omegaCur = omega;
+        vaePenOmegaCur(omegaCur, omegaFixR, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), N);
       };
       omegaAtCenters();
       arma::vec aCur = vaeUpdateErr(last.preds, yList, errTypeCode, a, errLower, errUpper, errCombined1);
@@ -28020,6 +28057,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       for (int k = 0; k < zDim; ++k) { if (isFreeR[k]) zPopCur[k] = 0; if (zPopFixR[k]) zPopCur[k] = zPop[k]; if (omegaFixR[k]) omegaCur[k] = omega[k]; }
       if (!zPopCur.is_finite()) zPopCur = zPop;
       if (!omegaCur.is_finite()) omegaCur = omega;
+      vaePenOmegaCur(omegaCur, omegaFixR, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), N);
       vaePenZPop(zPopCur, omegaCur, N, vaeBuildTh(th, zPopThetaIdx0, zPop, errThetaIdx0, a), zPopThetaIdx0, isFreeR, zPopFixR);
       zPopCur = vaeClampVec(zPopCur, zPopLower, zPopUpper);
       zPop = zPop + gamma * (zPopCur - zPop);
@@ -28035,6 +28073,7 @@ List vaeTrainCpp_(List params, List prep, List control, int nMix, NumericVector 
       isCovStep = false;
       baseline = zPop;
     }
+    _vaePenOm = omFull();
     // nonMuTheta="regress" M-step: re-optimize the non-mu fixed-effect thetas
     // with a bounded bobyqa regression against the FOCEi inner likelihood at the
     // current encoder etas (last.mu centered by baseline), blended with the gain

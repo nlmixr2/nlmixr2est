@@ -47,7 +47,8 @@ extern "C" {
     int neta;              // omega dimension (0 when unavailable)
     int nsub;              // subjects
     const double *theta;   // [ntheta] natural-scale thetas
-    const double *omega;   // [neta*neta] current omega (NULL when neta == 0)
+    const double *omega;   // [neta*neta] current omega, ini() eta order; every
+                           // method with etas passes it (NULL when neta == 0)
     double *dObj_dtheta;   // [ntheta] += d(penalty)/d(theta); NULL if not wanted
                            // (an omega dependence is finite-differenced)
   } nlmixrPenPop;

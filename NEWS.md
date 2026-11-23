@@ -211,8 +211,8 @@
   its value.  See `vignette("likelihood-penalties")`.  A population term
   that depends on omega (the built-in `"omegaL2"`) reaches the FOCEi
   analytic outer gradient through a finite-difference omega gradient, and
-  moves the omega M-steps of SAEM, imp/impmap/qrpem and emvi/fbvi and SAEM's
-  reported objective, which used to see no omega (#1481).
+  moves the omega M-steps of SAEM, imp/impmap/qrpem, emvi/fbvi and vae and
+  SAEM's reported objective, which used to see no omega (#1481).
 
 - `nlmixr2LikPenaltyUdf()` lets an rxode2 model function (an `rxUdfUi`
   method) register a likelihood penalty while it expands against the data,
