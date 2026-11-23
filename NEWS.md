@@ -1,5 +1,9 @@
 # nlmixr2est (development version)
 
+* Experimental SAEM support for independent `dist(eta)` declarations uses
+  rxode2 quantile transforms with fixed unit-normal latents and subject-score
+  BHHH updates for non-mu population parameters.
+
 ## Changed defaults
 
 - `sigdig` now sets the ODE tolerances to `rtol = 10^(-2*sigdig)` and

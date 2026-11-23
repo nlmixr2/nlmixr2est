@@ -343,7 +343,7 @@
       .cfg$nonMuThetaOptType <- as.integer(
         match(
           rxode2::rxGetControl(ui, "nonMuThetaOpt", "newuoa"),
-          c("optimize", "nelderMead", "newuoa"),
+          c("optimize", "nelderMead", "newuoa", "bhhh"),
           nomatch = 1L
         ) -
           1L

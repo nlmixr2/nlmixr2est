@@ -837,22 +837,34 @@ public:
   // holding the current phi1 samples fixed (general-likelihood / distribution==4:
   // the model prediction column is the per-observation log-likelihood).  Summed
   // over all chains, which is the SAEM stochastic-approximation objective.
-  double phi0Objective(double *p) {
+  double phi0Objective(double *p, vec *subjectLoss = nullptr) {
     mat phiCand = phiM;
     for (int c = 0; c < nphi0; c++) {
       phiCand.col(i0(c)).fill(p[c]);
     }
     mat fMat = user_fn(phiCand, evt, optM);
+    if (subjectLoss) {
+      subjectLoss->zeros(N);
+      // user_fn substitutes this sentinel for failed predictions.
+      if (!fMat.col(0).is_finite() || any(fMat.col(0) >= 1e99)) return 1e300;
+    }
     double v;
     if (distribution == 4) {
       // general log-likelihood: the prediction column IS the per-obs loglik
       v = -accu(fMat.col(0));
+      if (subjectLoss) {
+        for (int k = 0; k < nmc; ++k) {
+          for (int j = 0; j < ntotal; ++j) {
+            (*subjectLoss)(obs_subject(j)) -= fMat(k * ntotal + j, 0);
+          }
+        }
+      }
     } else {
       // normal models (nonMuTheta="regress"): residual objective from f
-      v = phi0NormalSSR(fMat.col(0));
+      v = phi0NormalSSR(fMat.col(0), subjectLoss);
     }
-    if (!std::isfinite(v)) return 1e300;
-    return v + penPhi0(p);
+    const double objective = v + penPhi0(p);
+    return std::isfinite(objective) ? objective : 1e300;
   }
 
   // Population likelihood penalty (-LL scale, summed over the chains like the
@@ -882,7 +894,7 @@ public:
   // M-step state (unlike arResk), so it is safe to call inside the optimizer.
   // The TBS data jacobian is omitted: it is constant in phi0, so it does not
   // change the argmin.  AR correlation is left to the M-step.
-  double phi0NormalSSR(const vec &fall) {
+  double phi0NormalSSR(const vec &fall, vec *subjectLoss = nullptr) {
     const double double_xmin = 1.0e-200, xmax = 1e300;
     double v = 0.0;
     for (int k = 0; k < nmc; k++) {
@@ -900,7 +912,9 @@ public:
           else if (g < double_xmin) g = double_xmin;
           else if (g > xmax) g = xmax;
           double e = yt - ft;
-          v += 0.5 * (e / g) * (e / g) + std::log(g);
+          const double loss = 0.5 * (e / g) * (e / g) + std::log(g);
+          v += loss;
+          if (subjectLoss) (*subjectLoss)(obs_subject(ix_sorting(y_offset(b) + i))) += loss;
         }
       }
     }
@@ -1154,6 +1168,59 @@ public:
     }
   }
 
+  // One BHHH direction and a bounded backtracking step. Each column of
+  // scores holds an individual score averaged over that individual's chains.
+  void refinePhi0Bhhh(const Rcpp::NumericVector &current,
+                      const Rcpp::NumericVector &lower,
+                      const Rcpp::NumericVector &upper, double gain) {
+    const auto nFree = gPhi0FreeIx.size();
+    vec start(current.begin(), current.size());
+    vec candidate = start;
+    vec subject;
+    const double initial = phi0Objective(candidate.memptr(), &subject);
+    if (initial >= 1e300) return;
+    mat scores(nFree, N);
+    vec gradient(nFree);
+    for (size_t j = 0; j < nFree; ++j) {
+      const int c = gPhi0FreeIx[j];
+      const double h = std::cbrt(std::numeric_limits<double>::epsilon()) *
+        std::max(1.0, std::fabs(start(c)));
+      const double plus = std::min(start(c) + h, (double)upper[c]);
+      const double minus = std::max(start(c) - h, (double)lower[c]);
+      if (!(plus > minus)) return;
+      vec up, down;
+      candidate(c) = plus;
+      const double fp = phi0Objective(candidate.memptr(), &up);
+      candidate(c) = minus;
+      const double fm = phi0Objective(candidate.memptr(), &down);
+      candidate(c) = start(c);
+      if (fp >= 1e300 || fm >= 1e300) return;
+      const double scale = (plus - minus) * nmc;
+      scores.row(j) = ((up - down) / scale).t();
+      // Include population penalties in the direction, not in subject curvature.
+      gradient(j) = (fp - fm) / scale;
+    }
+    mat curvature = scores * scores.t();
+    if (!gradient.is_finite() || !curvature.is_finite()) return;
+    vec step;
+    if (!solve(step, curvature, -gradient, solve_opts::likely_sympd + solve_opts::no_approx)) {
+      curvature.diag() += 1e-8 * std::max(1.0, curvature.diag().max());
+      if (!solve(step, curvature, -gradient, solve_opts::likely_sympd + solve_opts::no_approx)) return;
+    }
+    if (!step.is_finite()) return;
+    for (int attempt = 0; attempt < 8; ++attempt, gain /= std::sqrt(2.0)) {
+      for (size_t j = 0; j < nFree; ++j) {
+        const int c = gPhi0FreeIx[j];
+        candidate(c) = std::max((double)lower[c],
+          std::min((double)upper[c], start(c) + gain * step(j)));
+      }
+      if (phi0Objective(candidate.memptr(), &subject) < initial) {
+        for (int c : gPhi0FreeIx) mprior_phi0.col(c).fill(candidate(c));
+        return;
+      }
+    }
+  }
+
   void refinePhi0Lik(unsigned int kiter, const vec &pas) {
     if (nphi0 <= 0) return;
     // A user-FIXED phi0 theta must not be touched here.  Once this refinement
@@ -1240,6 +1307,12 @@ public:
     // back-solve and the fixed-entry restore below still run, so every value this
     // function writes is unchanged.
     bool phi0GainFrozen = (pas(kiter) == 0.0);
+    if (nonMuThetaOptType == 3 && !phi0GainFrozen) {
+      refinePhi0Bhhh(par0, lo, hi, pas(kiter));
+      _saemFreezeOde = false;
+      phi0BackSolveMCOV(mcov0Fixed);
+      return;
+    }
     if (phi0GainFrozen) {
       for (int c = 0; c < nphi0; c++) xmin[c] = par0[c];
       _saemSkipPhi0N++;
@@ -4195,7 +4268,11 @@ public:
       if (fixedIx1.n_elem>0) {
         Plambda1(fixedIx1) = MCOV1(jcov1(fixedIx1));
       }
-      if (nphi0>0) {
+      const bool bhhhOwnsPhi0 = nonMuThetaOptType == 3 && nphi0 > 0 &&
+        (distribution == 4 || nonMuThetaRegress) && kiter >= (unsigned int)niter_phi0;
+      if (bhhhOwnsPhi0) {
+        Plambda0 = MCOV0(jcov0);
+      } else if (nphi0>0) {
         vec rhs0 = sum((D1Gamma20%(COV0.t()*statphi01)),1);
         Plambda0=inv_sympd(CGamma20)*rhs0;
         if (fixedIx0.n_elem>0) {
@@ -4234,8 +4311,8 @@ public:
       // (kiter>=niter_phi0), do NOT overwrite mprior_phi0 with the stochastic
       // sampled-mean update -- that fights the optimizer and lets phi0 drift.
       // The optimizer result from the previous iteration persists as the seed.
-      bool skipStochPhi0 = nonMuThetaRegress && (distribution != 4) &&
-        (kiter >= (unsigned int)niter_phi0);
+      const bool skipStochPhi0 = bhhhOwnsPhi0 || (nonMuThetaRegress &&
+        distribution != 4 && kiter >= (unsigned int)niter_phi0);
       if (!skipStochPhi0) {
         mprior_phi0=COV0*MCOV0;
       }

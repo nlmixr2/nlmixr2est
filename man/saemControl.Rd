@@ -65,7 +65,7 @@ saemControl(
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
   nonMuTheta = c("regress", "eta"),
-  nonMuThetaOpt = c("newuoa", "optimize", "nelderMead"),
+  nonMuThetaOpt = c("newuoa", "optimize", "nelderMead", "bhhh"),
   nonMuThetaSweeps = 2L,
   nonMuThetaMaxEval = 25L,
   nonMuThetaTol = .Machine$double.eps^0.25,
@@ -540,6 +540,9 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.}
     the stochastic `phi0` block).}
 
 \item{nonMuThetaOpt}{Optimizer for the `nonMuTheta="regress"` refinement.
+The experimental \code{"bhhh"} option takes a bounded step using the outer
+products of subject scores averaged over SAEM chains. The current model's
+observation objective supplies the scores by finite differences.
 `"newuoa"` (default) and `"nelderMead"` each run one clamped multivariate
 optimization over all free `phi0` coordinates under the `nonMuThetaMaxEval`
 evaluation budget; `"optimize"` is the historic coordinate descent with R's
