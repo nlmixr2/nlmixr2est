@@ -259,8 +259,9 @@ static double penOmegaL2Pop(nlmixrPenPop *p, const nlmixrPenCtx *ctx) {
   double ret = 0.0;
   int nk = ctx->npar > 2 ? ctx->npar - 2 : p->neta;
   for (int j = 0; j < nk; ++j) {
-    int k = ctx->npar > 2 ? (int)ctx->par[j + 2] - 1 : j;
-    if (k < 0 || k >= p->neta) continue;
+    double kd = ctx->npar > 2 ? ctx->par[j + 2] - 1.0 : (double)j;
+    if (!(kd >= 0.0 && kd < (double)p->neta)) continue;
+    int k = (int)kd;
     double d = p->omega[(size_t)k * (p->neta + 1)] - target;
     ret += lambda * d * d;
   }
