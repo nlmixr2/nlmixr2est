@@ -18,6 +18,10 @@
 
 ## New features
 
+- `saemControl(etaMat=)` starts every SAEM MCMC chain at given etas: a prior
+  fit's EBEs (`saemControl(etaMat = fit)`), a data frame with an `ID` column
+  or a subject-by-eta matrix.  The default (`NULL`) keeps the random start
+  (#1482).
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
