@@ -49,6 +49,7 @@ extern "C" {
     const double *theta;   // [ntheta] natural-scale thetas
     const double *omega;   // [neta*neta] current omega (NULL when neta == 0)
     double *dObj_dtheta;   // [ntheta] += d(penalty)/d(theta); NULL if not wanted
+                           // (an omega dependence is finite-differenced)
   } nlmixrPenPop;
 
   typedef struct {

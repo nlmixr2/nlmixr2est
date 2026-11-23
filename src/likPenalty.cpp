@@ -186,6 +186,35 @@ extern "C" double nlmixrPenPopAll(int ntheta, const double *theta, int neta,
   return ret;
 }
 
+// d(population penalty)/d(Omega) at omega [neta*neta] by central differences,
+// each off-diagonal pair moved together; dOmega is symmetric with
+// dP = sum_ij dOmega_ij * d(Omega_ij).  All zero for an omega-free penalty.
+extern "C" void nlmixrPenPopOmegaGrad(int ntheta, const double *theta, int neta,
+                                      const double *omega, int nsub, double *dOmega) {
+  if (neta <= 0 || omega == NULL || dOmega == NULL) return;
+  std::fill(dOmega, dOmega + (size_t)neta * neta, 0.0);
+  if (_penNPop == 0) return;
+  std::vector<double> om(omega, omega + (size_t)neta * neta);
+  for (int i = 0; i < neta; ++i) {
+    for (int j = 0; j <= i; ++j) {
+      size_t ij = (size_t)i + (size_t)j * neta, ji = (size_t)j + (size_t)i * neta;
+      double sc = std::sqrt(std::fabs(omega[(size_t)i * (neta + 1)] * omega[(size_t)j * (neta + 1)]));
+      double h = 1e-5 * std::max(std::max(sc, std::fabs(omega[ij])), 1e-8);
+      om[ij] = omega[ij] + h; om[ji] = om[ij];
+      double vp = nlmixrPenPopAll(ntheta, theta, neta, om.data(), nsub, NULL, NULL);
+      om[ij] = omega[ij] - h; om[ji] = om[ij];
+      double vm = nlmixrPenPopAll(ntheta, theta, neta, om.data(), nsub, NULL, NULL);
+      om[ij] = omega[ij]; om[ji] = omega[ji];
+      double d = (vp - vm) / (2.0 * h);
+      if (i == j) {
+        dOmega[ij] = d;
+      } else {
+        dOmega[ij] = dOmega[ji] = 0.5 * d;
+      }
+    }
+  }
+}
+
 // --- built-in penalties -------------------------------------------------------
 
 // thetaL2: lambda * sum((theta[sel] - center)^2) + offset on the -2LL scale.
@@ -221,6 +250,25 @@ static void penEtaL2Subj(nlmixrPenSubj *s, const nlmixrPenCtx *ctx) {
 static const nlmixrLikPenalty _penEtaL2 = {
   NLMIXR_PEN_ABI, 0, "etaL2", penEtaL2Subj, NULL, NULL};
 
+// omegaL2: lambda * sum((omega[k,k] - target)^2) on the -2LL scale over the
+// 1-based etas par[2], par[3], ... (every eta when none).  par = c(lambda, target, ...).
+static double penOmegaL2Pop(nlmixrPenPop *p, const nlmixrPenCtx *ctx) {
+  if (p->neta <= 0 || p->omega == NULL) return 0.0;
+  double lambda = ctx->npar > 0 ? ctx->par[0] : 0.0;
+  double target = ctx->npar > 1 ? ctx->par[1] : 0.0;
+  double ret = 0.0;
+  int nk = ctx->npar > 2 ? ctx->npar - 2 : p->neta;
+  for (int j = 0; j < nk; ++j) {
+    int k = ctx->npar > 2 ? (int)ctx->par[j + 2] - 1 : j;
+    if (k < 0 || k >= p->neta) continue;
+    double d = p->omega[(size_t)k * (p->neta + 1)] - target;
+    ret += lambda * d * d;
+  }
+  return ret;
+}
+static const nlmixrLikPenalty _penOmegaL2 = {
+  NLMIXR_PEN_ABI, 0, "omegaL2", NULL, penOmegaL2Pop, NULL};
+
 static void penPtrFinalizer(SEXP p) { (void)p; }
 
 extern "C" SEXP _nlmixr2est_likPenaltyBuiltin(SEXP nameSxp) {
@@ -228,6 +276,7 @@ extern "C" SEXP _nlmixr2est_likPenaltyBuiltin(SEXP nameSxp) {
   const nlmixrLikPenalty *p = NULL;
   if (!strcmp(nm, "thetaL2")) p = &_penThetaL2;
   else if (!strcmp(nm, "etaL2")) p = &_penEtaL2;
+  else if (!strcmp(nm, "omegaL2")) p = &_penOmegaL2;
   else Rf_error("unknown built-in likelihood penalty '%s'", nm);
   SEXP ret = PROTECT(R_MakeExternalPtr((void *)p, Rf_install("nlmixrLikPenalty"), R_NilValue));
   R_RegisterCFinalizer(ret, penPtrFinalizer);
@@ -366,9 +415,24 @@ extern "C" SEXP _nlmixr2est_likPenaltySubjLL(SEXP thetaSxp, SEXP etaSxp, SEXP no
   return ret;
 }
 
-// Population penalty at theta (no omega), -2LL scale.
-extern "C" SEXP _nlmixr2est_likPenaltyPop(SEXP thetaSxp, SEXP nsubSxp) {
+// Population penalty at theta and omega (a neta x neta matrix, or NULL), -2LL scale.
+extern "C" SEXP _nlmixr2est_likPenaltyPop(SEXP thetaSxp, SEXP omegaSxp, SEXP nsubSxp) {
   int ntheta = Rf_length(thetaSxp);
-  return Rf_ScalarReal(nlmixrPenPopAll(ntheta, ntheta > 0 ? REAL(thetaSxp) : NULL, 0, NULL,
+  int nom = Rf_isMatrix(omegaSxp) ? Rf_nrows(omegaSxp) : 0;
+  return Rf_ScalarReal(nlmixrPenPopAll(ntheta, ntheta > 0 ? REAL(thetaSxp) : NULL, nom,
+                                       nom > 0 ? REAL(omegaSxp) : NULL,
                                        Rf_asInteger(nsubSxp), NULL, NULL));
+}
+
+// d(penalty)/d(omega) (testing the finite-difference helper)
+extern "C" SEXP _nlmixr2est_likPenaltyPopOmegaGrad(SEXP thetaSxp, SEXP omegaSxp, SEXP nsubSxp) {
+  int ntheta = Rf_length(thetaSxp);
+  int nom = Rf_isMatrix(omegaSxp) ? Rf_nrows(omegaSxp) : 0;
+  SEXP ret = PROTECT(Rf_allocMatrix(REALSXP, nom, nom));
+  if (nom > 0) {
+    nlmixrPenPopOmegaGrad(ntheta, ntheta > 0 ? REAL(thetaSxp) : NULL, nom, REAL(omegaSxp),
+                          Rf_asInteger(nsubSxp), REAL(ret));
+  }
+  UNPROTECT(1);
+  return ret;
 }
