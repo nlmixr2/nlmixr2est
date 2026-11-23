@@ -12,7 +12,7 @@
 // lower-triangle entries (fr[a], fc[a]), starting from G0's values; every other
 // entry stays at its (constrained: masked or fixed) G0 value.  Damped Newton
 // with an FD Hessian, G kept positive definite.  Returns false (G0 untouched)
-// when the penalty does not depend on the free entries.
+// when the penalty does not depend on the free entries or no step was taken.
 template <class Pen>
 static bool penOmegaMstepCore(arma::mat &G0, const arma::mat &S, const std::vector<arma::uword> &fr,
                               const std::vector<arma::uword> &fc, double nsub, Pen pen) {
@@ -45,7 +45,8 @@ static bool penOmegaMstepCore(arma::mat &G0, const arma::mat &S, const std::vect
     }
     return g;
   };
-  if (arma::all(penGrad(x) == 0.0)) return false;
+  arma::vec g0 = penGrad(x);
+  if (!g0.is_finite() || arma::all(g0 == 0.0)) return false;
   auto grad = [&](const arma::vec &xx) {
     arma::mat Gi = arma::inv_sympd(build(xx));
     arma::mat D = nsub * (Gi - Gi * S * Gi);
@@ -55,8 +56,10 @@ static bool penOmegaMstepCore(arma::mat &G0, const arma::mat &S, const std::vect
   };
   double fcur = obj(x);
   if (!R_FINITE(fcur)) return false;
+  bool moved = false;
   for (int it = 0; it < 50; ++it) {
     arma::vec g = grad(x);
+    if (!g.is_finite()) break;
     arma::mat H(nf, nf);
     bool hOk = true;
     for (arma::uword a = 0; a < nf; ++a) {
@@ -82,9 +85,10 @@ static bool penOmegaMstepCore(arma::mat &G0, const arma::mat &S, const std::vect
     }
     if (!(R_FINITE(fn) && fn <= fcur)) break;
     double dx = arma::norm(xn - x);
-    x = xn; fcur = fn;
+    x = xn; fcur = fn; moved = true;
     if (dx < 1e-10 * (1.0 + arma::norm(x))) break;
   }
+  if (!moved) return false;
   G0 = build(x);
   return true;
 }

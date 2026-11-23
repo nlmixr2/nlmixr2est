@@ -6494,6 +6494,8 @@ private:
         // a mixture-split eta's moments come from its component, not all N subjects
         if (nMix > 1 && omegaShareSubpop.n_elem == n &&
             (omegaShareSubpop(i) >= 1 || omegaShareSubpop(j) >= 1)) continue;
+        // pooled (IOV) copies are tied; poolOmegaGroups() owns them
+        if (omegaPool.n_elem == n && (omegaPool(i) >= 1 || omegaPool(j) >= 1)) continue;
         if (Gamma2_phi1fixed == 1 && (any(Gamma2_phi1fixedIx == i + j * n) ||
                                       any(Gamma2_phi1fixedIx == j + i * n))) continue;
         fr.push_back(i); fc.push_back(j);
