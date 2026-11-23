@@ -447,6 +447,7 @@ nlmixr2Est0 <- function(env, ...) {
     })
   }
   .nlmixrEstUpdatesOrigModel(.ret, env)
+  .likPenaltyStoreSpecs(.ret, env)
   .penWarn <- .collectWarn(.likPenaltyFinalize(.ret), lst = TRUE)[[2]]
   if (length(.penWarn) > 0L && inherits(.ret, "nlmixr2FitCore")) {
     .warnings <- c(.warnings, .penWarn)
