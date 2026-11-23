@@ -26,6 +26,7 @@
 #include "saemAutoStop.h"
 #include "likPenalty.h"
 #include "stopFile.h"
+#include "likPenaltyOmega.h"
 
 #define _(String) (String)
 
@@ -881,7 +882,9 @@ public:
         if (t >= 0) th[(size_t)t] = p[c];
       }
     }
-    double pen = nlmixrPenPopAll((int)th.size(), th.data(), 0, NULL, N, NULL, NULL);
+    std::vector<double> om;
+    int ne = penOmega(om);
+    double pen = nlmixrPenPopAll((int)th.size(), th.data(), ne, penOmPtr(om, ne), N, NULL, NULL);
     return 0.5 * (double)nmc * pen;
   }
 
@@ -1794,7 +1797,9 @@ public:
         if (t >= 0) th[(size_t)t] = p[c];
       }
     }
-    return (double)nmc * nlmixrPenPopAll((int)th.size(), th.data(), 0, NULL, N, NULL, NULL);
+    std::vector<double> om;
+    int ne = penOmega(om);
+    return (double)nmc * nlmixrPenPopAll((int)th.size(), th.data(), ne, penOmPtr(om, ne), N, NULL, NULL);
   }
 
   // Phase 4: bobyqa-driven refinement of phi1's mu (mirrors refinePhi0Lik's
@@ -4849,6 +4854,7 @@ public:
       // deviation over the subject-occasions that exist, so this stays a
       // closed-form M-step, not a projection.
       poolOmegaGroups(G1, true);
+      penOmegaMstep(G1, kiter);
 
       if (kiter<=(unsigned int)(nb_sa)) {
         Gamma2_phi1=max(Gamma2_phi1*coef_sa, diagmat(G1));
@@ -6402,14 +6408,15 @@ private:
       }
     }
     if (!any) return;
-    std::vector<double> th(_penTheta);
+    std::vector<double> th(_penTheta), om;
     const int nt = (int)th.size();
+    const int ne = penOmega(om);
     for (arma::uword ii = 0; ii < U.n_elem; ++ii) {
       for (int c = 0; c < nphi0; ++c) {
         int t = tOf[(size_t)c];
         if (t >= 0 && t < nt) th[(size_t)t] = phiMc(ii, i0((arma::uword)c));
       }
-      U(ii) += 0.5 * nlmixrPenPopAll(nt, th.data(), 0, NULL, N, NULL, NULL) / (double)N;
+      U(ii) += 0.5 * nlmixrPenPopAll(nt, th.data(), ne, penOmPtr(om, ne), N, NULL, NULL) / (double)N;
     }
   }
 
@@ -6422,9 +6429,11 @@ private:
       if (t >= 0) th[(size_t)t] = b(j);
     }
     const int nt = (int)th.size();
-    std::vector<double> gt((size_t)nt, 0.0);
+    std::vector<double> gt((size_t)nt, 0.0), om;
+    const int ne = penOmega(om);
     int ok = 1;
-    double v = nlmixrPenPopAll(nt, th.data(), 0, NULL, N, g == NULL ? NULL : gt.data(), &ok);
+    double v = nlmixrPenPopAll(nt, th.data(), ne, penOmPtr(om, ne), N,
+                               g == NULL ? NULL : gt.data(), &ok);
     if (g != NULL) {
       g->zeros(b.n_elem);
       for (arma::uword j = 0; j < b.n_elem; ++j) {
@@ -6441,6 +6450,53 @@ private:
       }
     }
     return v;
+  }
+
+  // Omega (phi1 order) as the ABI sees it: ini() eta order, neta x neta.
+  // Returns neta (0 without etas).
+  int penOmegaFrom(const mat &G, std::vector<double> &om) {
+    const bool reord = !_penEtaOrd.empty();
+    const int ne = reord ? (int)_penEtaOrd.size() : (int)G.n_rows;
+    om.assign((size_t)ne * (size_t)ne, 0.0);
+    for (int k = 0; k < ne; ++k) {
+      int q = reord ? _penEtaOrd[(size_t)k] : k;
+      if (q < 0 || q >= (int)G.n_rows) continue;
+      for (int l = 0; l < ne; ++l) {
+        int r = reord ? _penEtaOrd[(size_t)l] : l;
+        if (r >= 0 && r < (int)G.n_cols) om[(size_t)k + (size_t)l * ne] = G(q, r);
+      }
+    }
+    return ne;
+  }
+  int penOmega(std::vector<double> &om) { return penOmegaFrom(Gamma2_phi1, om); }
+  static const double *penOmPtr(const std::vector<double> &om, int ne) {
+    return ne > 0 ? om.data() : NULL;
+  }
+
+  // population penalty (-2LL) at omega G (phi1 order), thetas at _penTheta
+  double penPopAtOmega(const mat &G) {
+    std::vector<double> om;
+    int ne = penOmegaFrom(G, om);
+    const int nt = (int)_penTheta.size();
+    return nlmixrPenPopAll(nt, nt > 0 ? _penTheta.data() : NULL, ne, penOmPtr(om, ne), N,
+                           NULL, NULL);
+  }
+
+  // Penalized omega M-step (likPenaltyOmega.h) on the estimated, non-fixed
+  // entries of the closed-form update G1.
+  void penOmegaMstep(mat &G1, unsigned int kiter) {
+    if (nlmixrPenNPop() == 0 || G1.n_elem == 0) return;
+    const unsigned int n = G1.n_rows;
+    std::vector<arma::uword> fr, fc;
+    for (unsigned int j = 0; j < n; ++j) {
+      for (unsigned int i = j; i < n; ++i) {
+        if (i != j && (kiter <= (unsigned int)nb_correl || covstruct1(i, j) == 0)) continue;
+        if (Gamma2_phi1fixed == 1 && (any(Gamma2_phi1fixedIx == i + j * n) ||
+                                      any(Gamma2_phi1fixedIx == j + i * n))) continue;
+        fr.push_back(i); fc.push_back(j);
+      }
+    }
+    penOmegaMstepCore(G1, fr, fc, (double)N, [this](const mat &G) { return penPopAtOmega(G); });
   }
 
   // Penalized M-step for one block: the update b0 (closed form, plus any

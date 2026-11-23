@@ -68,3 +68,33 @@ test_that("the focei analytic gradient includes the omega penalty", {
   expect_equal(.d[["eta.ka"]], 20 * (.f0$omega[1, 1] - 0.05), tolerance = 0.01)
   expect_lt(max(abs(.d[c("eta.cl", "eta.v")])), 0.05)
 })
+
+test_that("saem's omega M-step and objective see the omega penalty", {
+  skip_on_cran()
+  .pen <- list(nlmixr2LikPenaltySpec("omegaL2", par = c(1000, 0.05, 1)))
+  .fit <- function(est, ...) {
+    suppressWarnings(nlmixr2(.likPenOmegaOde, nlmixr2data::theo_sd, est = est, control = list(print = 0L), ...))
+  }
+  .s0 <- .fit("saem")
+  .s1 <- .fit("saem", likPenalty = .pen)
+  .f1 <- .fit("focei", likPenalty = .pen)
+  # the penalty pulls omega[1,1] toward its target under both methods, and
+  # they agree within Monte Carlo error
+  expect_lt(.s1$omega[1, 1], .s0$omega[1, 1] - 0.2)
+  expect_lt(abs(.s1$omega[1, 1] - .f1$omega[1, 1]), 0.05)
+  # the stored value is the one in the objective: inObjf = FALSE takes back
+  # exactly the penalty the objective held
+  expect_equal(.s1$likPenalty$population, 1000 * (.s1$omega[1, 1] - 0.05)^2, tolerance = 1e-6)
+  .s2 <- .fit("saem", likPenalty = list(nlmixr2LikPenaltySpec("omegaL2", par = c(1000, 0.05, 1), inObjf = TRUE)))
+  expect_equal(.s2$objf - .s1$objf, .s1$likPenalty$population, tolerance = 1e-4)
+})
+
+test_that("a theta-only penalty leaves saem's omega update unchanged", {
+  skip_on_cran()
+  .ctl <- saemControl(print = 0L, seed = 42)
+  .p0 <- list(nlmixr2LikPenaltySpec("thetaL2", thetas = "tka", par = c(0, 0, 100), inObjf = TRUE))
+  .s0 <- suppressWarnings(nlmixr2(.likPenOmegaOde, nlmixr2data::theo_sd, est = "saem", control = .ctl))
+  .s1 <- suppressWarnings(nlmixr2(.likPenOmegaOde, nlmixr2data::theo_sd, est = "saem", control = .ctl, likPenalty = .p0))
+  expect_equal(.s1$omega, .s0$omega)
+  expect_equal(.s1$objf - .s0$objf, 100, tolerance = 1e-6)
+})

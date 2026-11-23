@@ -274,7 +274,7 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
     .nGauss * log(2 * pi) +
     2 * .Call(`_nlmixr2est_powerL`, ysave[.g], lambda[.g], as.integer(yj[.g]), as.double(low[.g]), as.double(hi[.g]))
   if (!is.null(.pen)) {
-    ll2 <- ll2 - .Call(`_nlmixr2est_likPenaltyPop`, .pen, NULL, as.integer(N))
+    ll2 <- ll2 - .Call(`_nlmixr2est_likPenaltyPop`, .pen, .saemLikPenaltyOmega(Omega, saem.cfg$penEtaOrd), as.integer(N))
   }
   # observations divided by a known residual weight (.saemResidWeightData())
   if (!is.null(saem.cfg$residLogW)) {
@@ -317,6 +317,21 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   .ret <- matrix(0, nrow(eta1), length(ord))
   .w <- which(ord >= 0L & ord < ncol(eta1))
   .ret[, .w] <- eta1[, ord[.w] + 1L]
+  .ret
+}
+
+#' saem omega (phi1 order) in ini() eta order for the likelihood penalty
+#' @param omega phi1-order omega (`fit$Gamma2_phi1`)
+#' @param ord phi1 slot (0-based) of each ini() eta, -1 for none
+#' @return the reordered omega
+#' @noRd
+.saemLikPenaltyOmega <- function(omega, ord) {
+  if (is.null(ord)) {
+    return(omega)
+  }
+  .ret <- matrix(0, length(ord), length(ord))
+  .w <- which(ord >= 0L & ord < ncol(omega))
+  .ret[.w, .w] <- omega[ord[.w] + 1L, ord[.w] + 1L]
   .ret
 }
 
