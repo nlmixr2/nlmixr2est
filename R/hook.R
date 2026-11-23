@@ -164,7 +164,7 @@ preFinalParTableHooks <- function(name = NULL) {
 .preProcessHooks <- new.env(parent = emptyenv())
 
 .orderPreProcessHookNames <- function(names) {
-  .first <- ".preProcessSaemEtaDist"
+  .first <- ".preProcessEtaDist"
   if (.first %in% names) names <- c(.first, names[names != .first])
   .last <- ".preProcessBoundedTransform"
   if (.last %in% names) {

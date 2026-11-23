@@ -1,9 +1,10 @@
 # nlmixr2est (development version)
 
-* Experimental SAEM support for `dist(eta)` declarations uses rxode2 quantile
+* Experimental support for `dist(eta)` declarations uses rxode2 quantile
   transforms and subject-score BHHH updates for non-mu population parameters.
   Correlated blocks with a declared marginal for every ETA use a Gaussian
-  copula.
+  copula. FOCEI, IMP and VAE use the same expanded model with their own
+  population updates.
 
 ## Changed defaults
 

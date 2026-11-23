@@ -1,7 +1,7 @@
-# Expand ETA distributions before the SAEM model and mu-reference hooks run.
+# Expand ETA distributions before the model and mu-reference hooks run.
 # rxode2 uses fixed unit-normal latents and a Gaussian copula when a declared
 # block has multiple correlated ETAs.
-.preProcessSaemEtaDist <- function(ui, est, data, control) {
+.preProcessEtaDist <- function(ui, est, data, control) {
   if (is.null(ui)) return(NULL)
   .rx <- asNamespace("rxode2")
   .decl <- get0("rxUiEtaDists", envir = .rx, inherits = FALSE)
@@ -9,8 +9,8 @@
   .distributions <- .decl(ui)
   if (nrow(.distributions) == 0L) return(NULL)
 
-  if (!identical(est, "saem")) {
-    stop("Declared ETA distributions currently require est = 'saem' on this branch.",
+  if (!isTRUE(est %in% c("saem", "focei", "imp", "impmap", "vae"))) {
+    stop("Declared ETA distributions require SAEM, FOCEI, IMP, or VAE.",
          call. = FALSE)
   }
   .omega <- ui$omega
@@ -28,11 +28,14 @@
     stop("This rxode2 build cannot expand declared ETA distributions.", call. = FALSE)
   }
 
-  # Keep the default SAEM controls for ordinary models. Declared marginal
-  # parameters enter the observation model through the quantile transform.
+  expanded <- .expand(ui, param = "cdf")
+  if (!identical(est, "saem")) return(list(ui = expanded))
+
+  # Declared marginal parameters enter SAEM's observation model through the
+  # quantile transform. Use BHHH to update these non-mu parameters.
   if (is.null(control)) control <- saemControl()
   control$nonMuThetaOpt <- "bhhh"
-  list(ui = .expand(ui, param = "cdf"), control = control)
+  list(ui = expanded, control = control)
 }
 
-preProcessHooksAdd(".preProcessSaemEtaDist", .preProcessSaemEtaDist)
+preProcessHooksAdd(".preProcessEtaDist", .preProcessEtaDist)
