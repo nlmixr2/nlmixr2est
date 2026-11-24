@@ -11395,6 +11395,7 @@ static void foceiEbeCheck(Environment e) {
   const int savReducedTol2 = op_focei.reducedTol2.load(std::memory_order_relaxed);
   const int savStickyTol = op_focei.stickyTol.load(std::memory_order_relaxed);
   const bool savPredSolve = op_focei.didPredSolve.load(std::memory_order_relaxed);
+  const int savEtaFdNoSlope = op_focei.nEtaFdNoSlope.load(std::memory_order_relaxed);
   IntegerVector ids(nsub);
   NumericVector dObjf(nsub, NA_REAL), slope(nsub, NA_REAL);
   LogicalVector stationary(nsub, NA_LOGICAL);
@@ -11406,12 +11407,12 @@ static void foceiEbeCheck(Environment e) {
     ids[id] = getRxId(id) + 1;
     focei_ind *fInd = &(inds_focei[id]);
     if (fInd->saveEta == NULL) continue;
-    bool restored = true;
-    {
+    do {
+      EtaRestoreGuard parGuard(id);
       FdInnerStateGuard guard(id);
       std::copy(fInd->saveEta, fInd->saveEta + neta, eta.begin());
       const double f0 = likInner0(&eta[0], id);
-      if (!R_FINITE(f0)) continue;
+      if (!R_FINITE(f0)) break;
       double fBest = f0, sMax = 0.0;
       bool ok = true;
       for (int k = 0; k < neta; ++k) {
@@ -11432,7 +11433,7 @@ static void foceiEbeCheck(Environment e) {
         sMax = std::max(sMax, std::fabs(fp - fm) / op_focei.ebeCheckStep);
       }
       // leave the subject's solve and sensitivities at its EBE
-      restored = R_FINITE(likInner0(&eta[0], id));
+      likInner0(&eta[0], id);
       dObjf[id] = 2.0 * (f0 - fBest);
       slope[id] = sMax;
       if (ok || dObjf[id] > op_focei.ebeCheckTol) {
@@ -11440,14 +11441,20 @@ static void foceiEbeCheck(Environment e) {
         stationary[id] = st;
         if (!st) nFlag++;
       }
+    } while (0);
+    // the guards put back a state likInner0() answers from its cache, so force the
+    // next evaluation to solve (as CovEtaStart does)
+    fInd->setup = 0;
+    if (!covFitSolveLost_) {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+      if (ind != NULL) setIndSolve(ind, -1);
     }
-    // a failed re-solve leaves a probe's solve behind; force the next use to redo it
-    if (!restored) fInd->oldEta[0] = NA_REAL;
   }
   op_focei.reducedTol.store(savReducedTol, std::memory_order_relaxed);
   op_focei.reducedTol2.store(savReducedTol2, std::memory_order_relaxed);
   op_focei.stickyTol.store(savStickyTol, std::memory_order_relaxed);
   op_focei.didPredSolve.store(savPredSolve, std::memory_order_relaxed);
+  op_focei.nEtaFdNoSlope.store(savEtaFdNoSlope, std::memory_order_relaxed);
   if (e.exists("idLvl")) {
     RObject idl = e["idLvl"];
     if (idl.sexp_type() == STRSXP) {
