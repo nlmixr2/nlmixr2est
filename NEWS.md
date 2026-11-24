@@ -216,6 +216,9 @@
 
 ### Estimation
 
+- `est="saem"` now re-solves its cached predictions after the M-step moves a
+  theta without an eta, so the next E-step no longer scores the current state
+  at the previous theta (non-mixture fits; mixtures already re-solved).
 - `est="agq"` now checks the quadrature grid size (`nAGQ^neta`) before
   building it: it warns above 10,000 nodes and stops above 1,000,000, instead
   of silently exhausting memory with many etas (#1412).

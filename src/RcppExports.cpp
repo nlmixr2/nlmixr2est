@@ -1576,6 +1576,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// saemFsaveRefresh_
+Rcpp::NumericVector saemFsaveRefresh_();
+RcppExport SEXP _nlmixr2est_saemFsaveRefresh_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(saemFsaveRefresh_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // saemGainFrozenSkipN_
 Rcpp::NumericVector saemGainFrozenSkipN_();
 RcppExport SEXP _nlmixr2est_saemGainFrozenSkipN_() {
