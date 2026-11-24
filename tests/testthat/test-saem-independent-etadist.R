@@ -65,7 +65,7 @@ test_that("SAEM expands a declared correlated block with a Gaussian copula", {
   expect_equal(tanh(corRow$est), 0.35)
   expect_equal(unname(as.numeric(expanded$ui$omega)), as.numeric(diag(2L)))
   expect_identical(expanded$control$nonMuThetaOpt, "bhhh")
-  for (method in c("focei", "imp", "impmap", "vae")) {
+  for (method in c("focei", "laplace", "imp", "impmap", "vae")) {
     alt <- .preProcessEtaDist(rxode2::rxode2(mod), method, NULL, NULL)
     expect_null(alt$control)
     expect_equal(nrow(rxode2::rxUiEtaDists(alt$ui)), 0L)

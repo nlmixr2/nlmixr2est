@@ -9,8 +9,8 @@
   .distributions <- .decl(ui)
   if (nrow(.distributions) == 0L) return(NULL)
 
-  if (!isTRUE(est %in% c("saem", "focei", "imp", "impmap", "vae"))) {
-    stop("Declared ETA distributions require SAEM, FOCEI, IMP, or VAE.",
+  if (!isTRUE(est %in% c("saem", "focei", "laplace", "imp", "impmap", "vae"))) {
+    stop("Declared ETA distributions require SAEM, FOCEI, Laplace, IMP, or VAE.",
          call. = FALSE)
   }
   .omega <- ui$omega
