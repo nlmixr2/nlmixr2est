@@ -789,6 +789,10 @@ static std::vector<int> gPhi1FreeIx;
 // the mechanism executed rather than infer it from matching estimates alone
 // (evaluation criterion #2 in the plan).
 static long _saemPhi1RefineN = 0;
+// Diagnostic: cached-prediction refreshes after a phi0 change, and the largest
+// stale-vs-fresh prediction difference they replaced.
+static long _saemFsaveRefreshN = 0;
+static double _saemFsaveDrift = 0.0;
 // Same idea for the declared-distribution M-step: every way it can decline to
 // run is silent, and a fit whose estimates look reasonable is no evidence that
 // it engaged.  Counted so a test can prove the mechanism executed rather than
@@ -5752,11 +5756,24 @@ public:
       }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
       if (nphi0 > 0) {
+        const bool phi0Moved = any(vectorise(phiM.cols(i0) != repmat(mprior_phi0, nmc, 1)));
         phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
         if (nMix > 1) {
           for (int jMix = 0; jMix < nMix; jMix++) {
             phiM_mix(jMix).cols(i0) = repmat(mprior_phi0, nmc, 1);
           }
+        } else if (phi0Moved) {
+          // the next E-step scores the current state from fsave, so it must follow phiM
+          mat fr = user_fn(phiM, evt, optM);
+          const uword n = std::min(fr.n_rows, fsave.n_elem);
+          if (n > 0) {
+            _saemFsaveDrift = std::max(_saemFsaveDrift,
+                                       max(abs(fsave.head(n) - fr.col(0).head(n))));
+          }
+          fsave = fr.col(0);
+          cens = fr.col(1);
+          limit = fr.col(2);
+          _saemFsaveRefreshN++;
         }
       }
 
@@ -10145,6 +10162,12 @@ static double gPhi1ObjR(Rcpp::NumericVector p) {
 
 //[[Rcpp::export]]
 long saemPhi1RefineN_() { return _saemPhi1RefineN; }
+
+//[[Rcpp::export]]
+Rcpp::NumericVector saemFsaveRefresh_() {
+  return Rcpp::NumericVector::create(Rcpp::_["n"] = (double)_saemFsaveRefreshN,
+                                     Rcpp::_["drift"] = _saemFsaveDrift);
+}
 
 // `n` consecutive seed offsets starting at `first`.
 static void seedLayoutPush(uint64_t first, uint64_t n, std::vector<double> &out) {

@@ -3,6 +3,7 @@
 
 #include "../inst/include/nlmixr2est.h"
 #include "../inst/include/nlmixr2est_types.h"
+#include <RcppArmadillo.h>
 #include <RcppEigen.h>
 #include <Rcpp.h>
 #include <string>
@@ -2100,6 +2101,16 @@ BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     rcpp_result_gen = Rcpp::wrap(saemPhi1RefineN_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// saemFsaveRefresh_
+Rcpp::NumericVector saemFsaveRefresh_();
+RcppExport SEXP _nlmixr2est_saemFsaveRefresh_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(saemFsaveRefresh_());
     return rcpp_result_gen;
 END_RCPP
 }
