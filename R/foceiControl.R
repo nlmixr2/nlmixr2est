@@ -1116,6 +1116,11 @@
 #' @param ebeCheckTol The individual objective decrease that `ebeCheck`
 #'   reports.
 #'
+#' @param ebeRestart When `TRUE` (implies `ebeCheck`), each flagged subject's
+#'   EBE moves to a compass-search minimum of its individual objective started
+#'   from its best probe point.  The final objective is taken at those EBEs, so
+#'   it can rise or fall; the thetas are not re-estimated.
+#'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
 #'     ODE solve.
@@ -1592,6 +1597,7 @@ foceiControl <- function(
   ebeCheck = FALSE, #
   ebeCheckStep = 0.1, #
   ebeCheckTol = 0.01, #
+  ebeRestart = FALSE, #
   nRetries = 3, #
   seed = 42, #
   resetThetaCheckPer = 0.1, #
@@ -2285,6 +2291,10 @@ foceiControl <- function(
   checkmate::assertFlag(ebeCheck)
   checkmate::assertNumber(ebeCheckStep, lower = .Machine$double.xmin, finite = TRUE)
   checkmate::assertNumber(ebeCheckTol, lower = 0, finite = TRUE)
+  checkmate::assertFlag(ebeRestart)
+  if (ebeRestart) {
+    ebeCheck <- TRUE
+  }
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2521,6 +2531,7 @@ foceiControl <- function(
     ebeCheck = ebeCheck,
     ebeCheckStep = as.double(ebeCheckStep),
     ebeCheckTol = as.double(ebeCheckTol),
+    ebeRestart = ebeRestart,
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,

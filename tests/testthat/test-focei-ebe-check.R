@@ -89,6 +89,47 @@ nmTest({
     expect_true(any(grepl("non-stationary EBEs", f$runInfo)))
   })
 
+  test_that("ebeRestart moves flagged EBEs to a lower individual objective", {
+    skip_on_cran()
+    f0 <- .fit(kink, ebeCheck = TRUE)
+    f1 <- .fit(kink, ebeRestart = TRUE)
+    es <- f1$ebeStationarity
+    expect_named(
+      es,
+      c("ID", "dObjf", "slope", "stationary", "restarted", "dObjfRestart")
+    )
+    expect_true(any(es$restarted))
+    expect_true(all(es$restarted <= !es$stationary))
+    # thetas are not re-estimated; only the restarted subjects' EBEs move
+    expect_equal(fixef(f1), fixef(f0))
+    expect_equal(f1$eta$eta.th[!es$restarted], f0$eta$eta.th[!es$restarted])
+    obj <- .objI(f1, TRUE)
+    i <- which(es$restarted)
+    drop <- vapply(
+      i,
+      function(j) {
+        obj(f0$eta$eta.th[j], j) - obj(f1$eta$eta.th[j], j)
+      },
+      numeric(1)
+    )
+    expect_equal(es$dObjfRestart[i], drop, tolerance = 1e-4)
+    expect_true(all(drop > 0))
+    # the restarted EBE is at the brute-force grid minimum
+    grid <- seq(-1, 1, length.out = 4001) * sqrt(f1$omega[1, 1])
+    for (j in i) {
+      v <- vapply(f0$eta$eta.th[j] + grid, obj, numeric(1), id = j)
+      expect_lt(obj(f1$eta$eta.th[j], j) - min(v), 1e-3)
+    }
+    # the reported objective is taken at the moved EBEs
+    expect_equal(
+      f1$objf - f0$objf,
+      sum(f1$etaObf$OBJI - f0$etaObf$OBJI),
+      tolerance = 1e-4
+    )
+    expect_true(any(grepl("re-solved from their probe", f1$runInfo)))
+    expect_true(f1$control$ebeCheck)
+  })
+
   test_that("ebeCheck flags no subject of a smooth model", {
     skip_on_cran()
     f <- .fit(smooth, ebeCheck = TRUE)
@@ -109,5 +150,8 @@ nmTest({
     expect_error(foceiControl(ebeCheck = NA))
     expect_error(foceiControl(ebeCheckStep = 0))
     expect_error(foceiControl(ebeCheckTol = -1))
+    expect_false(foceiControl()$ebeRestart)
+    expect_true(foceiControl(ebeRestart = TRUE)$ebeCheck)
+    expect_error(foceiControl(ebeRestart = NA))
   })
 })

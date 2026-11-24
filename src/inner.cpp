@@ -1153,6 +1153,7 @@ struct focei_options {
   int ebeCheck = 0;
   double ebeCheckStep = 0.1;
   double ebeCheckTol = 0.01;
+  int ebeRestart = 0;
 
   // Almquist Eq-48 warm-start extrapolation (fast=TRUE): per-subject d eta*/d(theta)
   // in the SCALED optimizer parameterization (etaP columns pre-multiplied by
@@ -10056,6 +10057,8 @@ static void foceiEbeCheckSetup(List &foceiO) {
     as<double>(foceiO["ebeCheckStep"]) : 0.1;
   op_focei.ebeCheckTol = foceiO.containsElementNamed("ebeCheckTol") ?
     as<double>(foceiO["ebeCheckTol"]) : 0.01;
+  op_focei.ebeRestart = foceiO.containsElementNamed("ebeRestart") ?
+    static_cast<int>(as<bool>(foceiO["ebeRestart"])) : 0;
 }
 
 NumericVector foceiSetup_(const RObject &obj,
@@ -11391,16 +11394,22 @@ static bool foceiEbeCheckOn() {
     !op_focei.isNpag && !op_focei.isNpb;
 }
 
-// Probe one subject; returns its stationary flag (NA_LOGICAL when undecided).
+// Probe one subject; returns its stationary flag (NA_LOGICAL when undecided).  best
+// receives the subject's best probe point and f0 its inner objective at the EBE.
 static int foceiEbeProbe(int id, const arma::mat &om, std::vector<double> &eta,
-                         std::vector<double> &x, double &dObjf, double &slope) {
+                         std::vector<double> &x, double &dObjf, double &slope,
+                         double &f0, double *best) {
   focei_ind *fInd = &(inds_focei[id]);
   const int neta = op_focei.neta;
   EtaRestoreGuard parGuard(id);
   FdInnerStateGuard guard(id);
   std::copy(fInd->saveEta, fInd->saveEta + neta, eta.begin());
-  const double f0 = likInner0(&eta[0], id);
-  if (!R_FINITE(f0)) return NA_LOGICAL;
+  std::copy(eta.begin(), eta.end(), best);
+  f0 = likInner0(&eta[0], id);
+  if (!R_FINITE(f0)) {
+    f0 = NA_REAL;
+    return NA_LOGICAL;
+  }
   double fBest = f0, sMax = 0.0;
   bool ok = true;
   for (int k = 0; k < neta; ++k) {
@@ -11416,7 +11425,12 @@ static int foceiEbeProbe(int id, const arma::mat &om, std::vector<double> &eta,
       ok = false;
       continue;
     }
-    fBest = std::min(fBest, std::min(fp, fm));
+    if (fp < fBest || fm < fBest) {
+      const bool up = fp <= fm;
+      fBest = up ? fp : fm;
+      std::copy(eta.begin(), eta.end(), best);
+      best[k] = eta[k] + (up ? h : -h);
+    }
     // -2LL units per Omega SD
     sMax = std::max(sMax, std::fabs(fp - fm) / op_focei.ebeCheckStep);
   }
@@ -11429,8 +11443,8 @@ static int foceiEbeProbe(int id, const arma::mat &om, std::vector<double> &eta,
   return st ? 1 : 0;
 }
 
-static void foceiEbeCheckSave(Environment e, IntegerVector ids, NumericVector dObjf,
-                              NumericVector slope, LogicalVector stationary) {
+// ids is labelled in place, so it must already be ret's ID column.
+static void foceiEbeCheckSave(Environment e, IntegerVector ids, List ret) {
   if (e.exists("idLvl")) {
     RObject idl = e["idLvl"];
     if (idl.sexp_type() == STRSXP) {
@@ -11438,16 +11452,19 @@ static void foceiEbeCheckSave(Environment e, IntegerVector ids, NumericVector dO
       ids.attr("levels") = idl;
     }
   }
-  List ret = List::create(_["ID"] = ids, _["dObjf"] = dObjf, _["slope"] = slope,
-                          _["stationary"] = stationary);
   ret.attr("class") = "data.frame";
   ret.attr("row.names") = IntegerVector::create(NA_INTEGER, -static_cast<int>(ids.size()));
   e["ebeStationarity"] = ret;
 }
 
-static void foceiEbeCheck(Environment e) {
+// With ebeRestart, flagged subjects re-solve from their best probe; returns the
+// objective at x after that.
+static double foceiEbeRestart(double *x, double fmin, const std::vector<double> &bestEta,
+                              const std::vector<double> &f0, LogicalVector &flag,
+                              LogicalVector &restarted, NumericVector &dObjfRestart);
+static double foceiEbeCheck(Environment e, double *x, double fmin) {
   e["ebeStationarity"] = R_NilValue;
-  if (!foceiEbeCheckOn()) return;
+  if (!foceiEbeCheckOn()) return fmin;
   rx = getRxSolve_();
   const int nsub = static_cast<int>(getRxNsub(rx)), neta = op_focei.neta;
   // the Omega likInner0() scores with (the env copy can lag the fast Omega path)
@@ -11464,17 +11481,22 @@ static void foceiEbeCheck(Environment e) {
   LogicalVector stationary(nsub, NA_LOGICAL);
   // the inner model's event-sensitivity shape; built outside any parallel region
   OdeSwapEsBatch esBatch(odeSlotInner);
-  std::vector<double> eta(neta), x(neta);
+  std::vector<double> eta(neta), xp(neta);
+  // each subject's best probe point and its inner objective at the EBE
+  std::vector<double> bestEta((size_t)nsub * neta), fEbe(nsub, NA_REAL);
+  LogicalVector flag(nsub, false);
   int nFlag = 0;
   for (int id = 0; id < nsub; ++id) {
     ids[id] = getRxId(id) + 1;
     focei_ind *fInd = &(inds_focei[id]);
     if (fInd->saveEta == NULL) continue;
-    double d = NA_REAL, s = NA_REAL;
-    const int st = foceiEbeProbe(id, om, eta, x, d, s);
+    double d = NA_REAL, sl = NA_REAL, f0 = NA_REAL;
+    const int st = foceiEbeProbe(id, om, eta, xp, d, sl, f0, &bestEta[(size_t)id * neta]);
     dObjf[id] = d;
-    slope[id] = s;
+    slope[id] = sl;
     stationary[id] = st;
+    fEbe[id] = f0;
+    flag[id] = st == 0;
     if (st == 0) nFlag++;
     // the guards put back a state likInner0() answers from its cache, so force the
     // next evaluation to solve (as CovEtaStart does)
@@ -11489,10 +11511,125 @@ static void foceiEbeCheck(Environment e) {
   op_focei.stickyTol.store(savStickyTol, std::memory_order_relaxed);
   op_focei.didPredSolve.store(savPredSolve, std::memory_order_relaxed);
   op_focei.nEtaFdNoSlope.store(savEtaFdNoSlope, std::memory_order_relaxed);
-  foceiEbeCheckSave(e, ids, dObjf, slope, stationary);
   if (nFlag > 0) {
     warning(_("%d subjects have non-stationary EBEs; see $ebeStationarity"), nFlag);
   }
+  List ret;
+  if (!op_focei.ebeRestart) {
+    ret = List::create(_["ID"] = ids, _["dObjf"] = dObjf, _["slope"] = slope,
+                       _["stationary"] = stationary);
+  } else {
+    LogicalVector restarted(nsub, false);
+    NumericVector dObjfRestart(nsub, 0.0);
+    if (nFlag > 0) {
+      const double fNat0 = foceiNatOfv(fmin);
+      fmin = foceiEbeRestart(x, fmin, bestEta, fEbe, flag, restarted, dObjfRestart);
+      int nMoved = 0;
+      for (int i = 0; i < nsub; ++i) nMoved += restarted[i] ? 1 : 0;
+      if (nMoved > 0) {
+        warning(_("%d EBEs re-solved from their probe; OFV changed by %.3g"), nMoved,
+                foceiNatOfv(fmin) - fNat0);
+      }
+    }
+    ret = List::create(_["ID"] = ids, _["dObjf"] = dObjf, _["slope"] = slope,
+                       _["stationary"] = stationary, _["restarted"] = restarted,
+                       _["dObjfRestart"] = dObjfRestart);
+  }
+  foceiEbeCheckSave(e, ids, ret);
+  return fmin;
+}
+
+// Re-solve every subject's ETAs, starting flagged subjects from their best probe and
+// the rest from their EBE.  A subject keeps the new ETAs only when its inner objective
+// (the quantity the EBE minimizes) is lower, so the EBE stays the mode even when the
+// FOCEi objective rises.
+// Compass search of subject id's inner objective from eta (updated in place); returns
+// the objective there.  Derivative-free, so a kink does not stop it.
+static double foceiEbeCompass(int id, double *eta, const arma::mat &om) {
+  const int neta = op_focei.neta;
+  EtaRestoreGuard parGuard(id);
+  FdInnerStateGuard guard(id);
+  double f = likInner0(eta, id);
+  if (!R_FINITE(f)) return f;
+  std::vector<double> h(neta), xp(eta, eta + neta);
+  for (int k = 0; k < neta; ++k) h[k] = op_focei.ebeCheckStep * std::sqrt(om(k, k));
+  for (int it = 0; it < 200; ++it) {
+    bool moved = false;
+    for (int k = 0; k < neta; ++k) {
+      if (!R_FINITE(h[k]) || h[k] <= 0) continue;
+      for (int sgn = -1; sgn <= 1; sgn += 2) {
+        std::copy(eta, eta + neta, xp.begin());
+        xp[k] += sgn * h[k];
+        const double fp = likInner0(&xp[0], id);
+        if (R_FINITE(fp) && fp < f) {
+          f = fp;
+          eta[k] = xp[k];
+          moved = true;
+          break;
+        }
+      }
+    }
+    if (!moved) {
+      bool small = true;
+      for (int k = 0; k < neta; ++k) {
+        h[k] *= 0.5;
+        if (h[k] > 1e-4 * std::sqrt(om(k, k))) small = false;
+      }
+      if (small) break;
+    }
+  }
+  return f;
+}
+
+// Move each flagged subject's EBE to the compass-search minimum from its best probe and
+// score the objective at the resulting ETAs without re-optimizing them: the inner
+// optimizer is what stopped at the kink, and restarted there it can fall back over the
+// ridge the probe crossed.  Other subjects keep their EBEs exactly.
+static double foceiEbeRestart(double *x, double fmin, const std::vector<double> &bestEta,
+                              const std::vector<double> &f0, LogicalVector &flag,
+                              LogicalVector &restarted, NumericVector &dObjfRestart) {
+  const int nsub = (int)getRxNsub(rx), neta = op_focei.neta;
+  FinalEtaState W(nsub, neta);
+  W.read();
+  arma::mat om;
+  if (!arma::inv_sympd(om, curOmegaInv())) om = arma::pinv(curOmegaInv());
+  std::vector<double> etaC = W.eta, et(neta);
+  int nMoved = 0;
+  {
+    OdeSwapEsBatch esBatch(odeSlotInner);
+    for (int i = 0; i < nsub; ++i) {
+      if (!flag[i] || !R_FINITE(f0[i])) continue;
+      std::copy(&bestEta[(size_t)i * neta], &bestEta[(size_t)(i + 1) * neta], et.begin());
+      const double fNew = foceiEbeCompass(i, &et[0], om);
+      if (R_FINITE(fNew) && fNew < f0[i]) {
+        std::copy(et.begin(), et.end(), &etaC[(size_t)i * neta]);
+        restarted[i] = true;
+        dObjfRestart[i] = 2.0 * (f0[i] - fNew);
+        nMoved++;
+      }
+      inds_focei[i].setup = 0;
+      if (!covFitSolveLost_) {
+        rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+        if (ind != NULL) setIndSolve(ind, -1);
+      }
+    }
+  }
+  if (nMoved == 0) return fmin;
+  const int maxInner = op_focei.maxInnerIterations;
+  op_focei.maxInnerIterations = 0; // score at these ETAs
+  _finalObfCalc = true;
+  finalEtaSet(&etaC[0], nsub, neta);
+  double ret = NA_REAL;
+  try {
+    ret = foceiOfv0(x);
+  } catch (...) {
+    op_focei.maxInnerIterations = maxInner;
+    _finalObfCalc = false;
+    throw;
+  }
+  _finalObfCalc = false;
+  op_focei.maxInnerIterations = maxInner;
+  return ret;
 }
 
 void foceiOuterFinal(double *x, Environment e){
@@ -11522,7 +11659,7 @@ void foceiOuterFinal(double *x, Environment e){
   double fmin = foceiOfv0(x);
   fmin = foceiFinalBestEta(x, fmin);
   _finalObfCalc = false;
-  foceiEbeCheck(e);
+  fmin = foceiEbeCheck(e, x, fmin);
   // Natural-scale final objective for the worse-than-initial guard; the same
   // un-scaling nlmixr2EnvSetup() applies before reporting.
   op_focei.finalOfv = op_focei.scaleObjective ?
