@@ -689,11 +689,12 @@ static long _saemPhi1RefineN = 0;
 // every component's censored-value draws, one seed per observation.
 struct saemSeedLayout {
   uint64_t nu[3] = {0, 0, 0}, nphi[2] = {0, 0};
+  uint64_t nuMass = 0; // mass-matrix kernel steps, phi1 block only, after kernel 1
   uint64_t nComp = 1, nM = 0, nmc = 0, ntotal = 0;
   // MCMC steps per component; nu is 20x at kiter 0
   uint64_t steps(int kiter) const {
     uint64_t f = kiter == 0 ? 20u : 1u;
-    return f * (2u * (nu[0] + nu[1]) + nu[2] * (nphi[0] + nphi[1]));
+    return f * (2u * (nu[0] + nu[1]) + nu[2] * (nphi[0] + nphi[1]) + nuMass);
   }
   uint64_t stride(int kiter) const {
     return nComp * (steps(kiter) * nM + nmc * ntotal);
@@ -705,10 +706,12 @@ struct saemSeedLayout {
   uint64_t step(int kiter, int comp, int block, int method, int u, int k1) const {
     uint64_t f = kiter == 0 ? 20u : 1u;
     uint64_t s = (uint64_t)comp * steps(kiter);
-    if (block == 1) s += f * (nu[0] + nu[1] + nu[2] * nphi[0]);
+    const uint64_t mb = block == 0 ? nuMass : 0u;
+    if (block == 1) s += f * (nu[0] + nu[1] + nu[2] * nphi[0] + nuMass);
     if (method == 1) s += (uint64_t)u;
-    else if (method == 2) s += f * nu[0] + (uint64_t)u;
-    else s += f * (nu[0] + nu[1]) + (uint64_t)u * nphi[block] + (uint64_t)k1;
+    else if (method == 4) s += f * nu[0] + (uint64_t)u;
+    else if (method == 2) s += f * (nu[0] + mb) + (uint64_t)u;
+    else s += f * (nu[0] + mb + nu[1]) + (uint64_t)u * nphi[block] + (uint64_t)k1;
     return iterBase(kiter) + s * nM;
   }
   // first seed of chain k's observations
@@ -1992,6 +1995,7 @@ public:
   }
 
   mat get_mcmcAccTrace()    { return mcmcAccTrace; }
+  double get_massAccept()   { return massAccD > 0 ? massAccN / massAccD : NA_REAL; }
   mat get_mcmcAccColTrace() { return mcmcAccColTrace; }
   mat get_mcmcStuckTrace()  { return mcmcStuckTrace; }
   mat get_phiSdTrace()      { return phiSdTrace; }
@@ -2522,6 +2526,9 @@ public:
 
     nmc = as<int>(x["nmc"]);
     nu = as<uvec>(x["nu"]);
+    nuMass = x.containsElementNamed("nuMass") ? as<int>(x["nuMass"]) : 0;
+    massStart = x.containsElementNamed("massStart") ? as<int>(x["massStart"]) : 5;
+    massKappa = x.containsElementNamed("massKappa") ? as<double>(x["massKappa"]) : 1.0;
     niter = as<int>(x["niter"]);
     saemSeed = x.containsElementNamed("seed") ? as<int>(x["seed"]) : 99;
     nb_correl = as<int>(x["nb_correl"]);
@@ -3127,6 +3134,7 @@ public:
     _seedLayout.nu[0] = (uint64_t)nu(0);
     _seedLayout.nu[1] = (uint64_t)nu(1);
     _seedLayout.nu[2] = (uint64_t)nu(2);
+    _seedLayout.nuMass = (uint64_t)(nphi1 > 0 && nMix <= 1 ? nuMass : 0);
     _seedLayout.nphi[0] = (uint64_t)nphi1;
     _seedLayout.nphi[1] = (uint64_t)free0.n_elem;
     _seedLayout.nComp = (uint64_t)std::max(nMix, 1);
@@ -3983,6 +3991,10 @@ public:
           do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
           mat dphi = phiM.cols(i1)-mphi1.mprior_phiM;
           U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi1),1);
+          if (nuMass > 0 && massN >= massStart) {
+            do_mcmc(4, kiter == 0 ? 20 * nuMass : nuMass, mx, mphi1, DYF, phiM, U_y, U_phi,
+                    fsave, cens, limit, (int)kiter);
+          }
           do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
           do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
         }
@@ -3999,6 +4011,7 @@ public:
         // block, so they describe the chain the M-step is about to use
         mcmcCloseIter(kiter, (unsigned int)(niter + nSaCov), phiM);
         if (kiter < (unsigned int)niter) savePhiM(kiter, phiM);
+        massUpdate(phiM);
 
         //integration
         for(int k=0; k<nmc; k++) {
@@ -5246,6 +5259,14 @@ private:
   user_funct user_fn;
 
   uvec nu;
+  // mass-matrix kernel (NONMEM's ISAMPLE_M1B): independence proposals from each
+  // subject's running posterior mean/covariance of phi1
+  int nuMass = 0, massStart = 5, massN = 0;
+  double massKappa = 1.0, massAccN = 0.0, massAccD = 0.0;
+  mat massM1;          // N x nphi1 running mean
+  cube massM2;         // nphi1 x nphi1 x N running second moment
+  cube massL;          // lower Cholesky factor of each subject's covariance
+  uvec massOk;         // subject has a usable factor
   int niter;
   int saemSeed = 99;
   saemSeedLayout _seedLayout;
@@ -5901,8 +5922,8 @@ private:
                int kiter,
                int mixIdx = 0) {
     mat fcMat;
-    vec fc, fs, Uc_y, Uc_phi, deltu;
-    uvec ind;
+    vec fc, fs, Uc_y, Uc_phi, deltu, massQ;
+    uvec ind, massOff;
     arma::vec accU(mx.nM);   // per-block threefry acceptance uniforms
 
     uvec i=mphi.i;
@@ -5931,6 +5952,29 @@ private:
           mat noise(mx.nM, 1); _saemDrawRows(saemSeed, seedOff, noise, accU);
           phiMc.col(i(k1))=phiM.col(i(k1))+
             noise.col(0)*mphi.Gdiag_phi(k1,k1) % current_saem_state->_saemUE.col(i(k1));
+          break;
+        }
+        case 4: {
+          // independence proposal N(m_s, L_s L_s'); massQ holds log q(cur) - log q(cand)
+          mat noise(mx.nM, mphi.nphi); _saemDrawRows(saemSeed, seedOff, noise, accU);
+          massQ.zeros(mx.nM);
+          massOff.zeros(mx.nM);
+          for (int r = 0; r < mx.nM; ++r) {
+            const int s = r % N;
+            const uvec rr = {(uword)r};
+            bool masked = !massOk(s);
+            for (uword c = 0; c < i.n_elem && !masked; ++c) {
+              masked = current_saem_state->_saemUE(r, i(c)) == 0.0;
+            }
+            if (masked) { massOff(r) = 1; continue; }
+            const vec z = noise.row(r).t();
+            const mat &L = massL.slice(s);
+            const vec m = massM1.row(s).t();
+            phiMc.submat(rr, i) = (m + L * z).t();
+            const vec cur = phiM.submat(rr, i).t();
+            const vec w = solve(trimatl(L), cur - m);
+            massQ(r) = 0.5 * dot(z, z) - 0.5 * dot(w, w);
+          }
           break;
         }
         }
@@ -6046,8 +6090,16 @@ private:
           Uc_phi=0.5*sum(dphic%(dphic*mphi.IGamma2_phi),1);
           deltu=Uc_y-U_y+Uc_phi-U_phi;
         }
+        if (method == 4) {
+          deltu += massQ;
+          deltu.elem(find(massOff == 1)).fill(datum::inf);
+        }
 
         ind=find( deltu < -log(accU) );
+        if (method == 4) {
+          massAccN += (double)ind.n_elem;
+          massAccD += (double)(mx.nM - (int)accu(massOff));
+        }
         mcmcRecordAccept(method, ind, mx.nM,
                          (method == 3 && (unsigned int)k1 < i.n_elem)
                          ? (int)i(k1) : -1);
@@ -6058,11 +6110,50 @@ private:
         }
         ind = getObsIdx(ix_idM.rows(ind));
         cur_fsave(ind)=fs(ind);
-        if (method<3) {
+        if (method != 3) {
           break;
         }
       }
     setRxThreadId(-1);
+  }
+
+  // Fold this iteration's phi1 chains into each subject's running mean and second
+  // moment (gain n^-massKappa), then refresh the proposal factors.
+  void massUpdate(const mat &phiM) {
+    if (nuMass <= 0 || nphi1 <= 0 || nMix > 1) return;
+    if (massM1.n_rows != (uword)N || massM1.n_cols != (uword)nphi1) {
+      massM1.zeros(N, nphi1);
+      massM2.zeros(nphi1, nphi1, N);
+      massL.zeros(nphi1, nphi1, N);
+      massOk.zeros(N);
+      massN = 0;
+    }
+    ++massN;
+    const double g = std::pow((double)massN, -massKappa);
+    for (int s = 0; s < N; ++s) {
+      vec xbar = zeros<vec>(nphi1);
+      mat xx = zeros<mat>(nphi1, nphi1);
+      for (int k = 0; k < nmc; ++k) {
+        const uvec rr = {(uword)(k * N + s)};
+        const vec x = phiM.submat(rr, i1).t();
+        xbar += x;
+        xx += x * x.t();
+      }
+      xbar /= (double)nmc;
+      xx /= (double)nmc;
+      massM1.row(s) += g * (xbar.t() - massM1.row(s));
+      massM2.slice(s) += g * (xx - massM2.slice(s));
+    }
+    if (massN < massStart) return;
+    for (int s = 0; s < N; ++s) {
+      const vec m = massM1.row(s).t();
+      mat S = symmatu(massM2.slice(s) - m * m.t());
+      const double eps = 1e-8 * std::max(1.0, max(abs(S.diag())));
+      S.diag() += eps;
+      mat L;
+      massOk(s) = S.is_finite() && chol(L, S, "lower") ? 1u : 0u;
+      if (massOk(s)) massL.slice(s) = L;
+    }
   }
 
   // MSAEM (Lavielle & Mbogning 2014): mixture-weighted (log-sum-exp) observation loss for a
@@ -7072,6 +7163,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("par_hist") = saem.get_par_hist(),
     // MCMC mixing diagnostics; see the members they come from
     Named("mcmcAccept") = saem.get_mcmcAccTrace(),
+    Named("massAccept") = saem.get_massAccept(),
     Named("mcmcAcceptCol") = saem.get_mcmcAccColTrace(),
     Named("mcmcStuck") = saem.get_mcmcStuckTrace(),
     Named("mcmcPhiSd") = saem.get_phiSdTrace(),

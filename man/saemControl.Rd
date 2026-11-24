@@ -14,6 +14,9 @@ saemControl(
   plateauMinFrac = 0.5,
   nmc = 3,
   nu = c(2, 2, 2),
+  nuMass = 0L,
+  massStart = 5L,
+  massKappa = 1,
   rmcmc = 0.5,
   mcmcAcceptWarn = c(0.05, 0.8),
   print = 1L,
@@ -125,6 +128,17 @@ computation.  In Monolix this is equivalent to \code{L}.}
 
     The third value represents the number of bootstrap/reshuffling or
     uni-dimensional random samples are taken.}
+
+\item{nuMass}{Number of mass-matrix kernel transitions per iteration
+(NONMEM's `ISAMPLE_M1B`), run after the first kernel.  Each proposes
+from the subject's running posterior mean and covariance of its
+random effects.  `0` (default) turns the kernel off.}
+
+\item{massStart}{Iterations of history accumulated before the
+mass-matrix kernel starts proposing.}
+
+\item{massKappa}{Power of the running-average gain `n^-massKappa` used to
+accumulate the mass matrix (NONMEM's `IKAPPA`); `1` is a simple average.}
 
 \item{rmcmc}{Scale of the random-walk proposals (kernels 2 and 3) relative
 to the current between-subject SD.  Smaller values raise the MCMC

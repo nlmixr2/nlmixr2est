@@ -43,6 +43,17 @@
 #'     The third value represents the number of bootstrap/reshuffling or
 #'     uni-dimensional random samples are taken.
 #'
+#' @param nuMass Number of mass-matrix kernel transitions per iteration
+#'     (NONMEM's `ISAMPLE_M1B`), run after the first kernel.  Each proposes
+#'     from the subject's running posterior mean and covariance of its
+#'     random effects.  `0` (default) turns the kernel off.
+#'
+#' @param massStart Iterations of history accumulated before the
+#'     mass-matrix kernel starts proposing.
+#'
+#' @param massKappa Power of the running-average gain `n^-massKappa` used to
+#'     accumulate the mass matrix (NONMEM's `IKAPPA`); `1` is a simple average.
+#'
 #' @param rmcmc Scale of the random-walk proposals (kernels 2 and 3) relative
 #'     to the current between-subject SD.  Smaller values raise the MCMC
 #'     acceptance rate (see `$mcmcAccept`); larger values lower it.
@@ -439,6 +450,9 @@ saemControl <- function(
   plateauMinFrac = 0.5,
   nmc = 3,
   nu = c(2, 2, 2),
+  nuMass = 0L,
+  massStart = 5L,
+  massKappa = 1,
   rmcmc = 0.5,
   mcmcAcceptWarn = c(0.05, 0.8),
   print = 1L,
@@ -546,6 +560,9 @@ saemControl <- function(
   checkmate::assertNumber(plateauMinFrac, lower = 0, upper = 1)
   checkmate::assertIntegerish(nmc, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertIntegerish(nu, any.missing = FALSE, len = 3, lower = 1)
+  checkmate::assertIntegerish(nuMass, any.missing = FALSE, len = 1, lower = 0)
+  checkmate::assertIntegerish(massStart, any.missing = FALSE, len = 1, lower = 2)
+  checkmate::assertNumeric(massKappa, any.missing = FALSE, len = 1, lower = 0.5, upper = 1)
   checkmate::assertNumber(rmcmc, finite = TRUE)
   if (rmcmc <= 0) {
     stop("'rmcmc' must be positive", call. = FALSE)
@@ -757,6 +774,9 @@ saemControl <- function(
     phi1ThetaEvery = as.integer(phi1ThetaEvery),
     phi1Hessian = isTRUE(phi1Hessian),
     residWarmStart = residWarmStart,
+    nuMass = as.integer(nuMass),
+    massStart = as.integer(massStart),
+    massKappa = massKappa,
     ebe = ebe,
     ebeMaxEval = as.integer(ebeMaxEval),
     ebeTol = ebeTol
