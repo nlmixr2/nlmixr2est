@@ -398,6 +398,15 @@ int  odeSwapNSens(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].nSens 
 // for the two-different-nonzero-ndiff-peers pattern either. Most look safe
 // by construction (a fixed slot per call, e.g. impThetaSensCollect's tsSlot
 // does not vary within its own loop), but that was not proven exhaustively.
+// The linCmt() second-order bit (rxode2lincmt's diffHess) if any loaded slot
+// declares it, else 0 (see odeSwapSolveInd).
+int odeSwapNdiffHess() {
+  for (int s = 0; s < odeSlotN; ++s) {
+    if (_odeReg[s].loaded && _odeReg[s].ndiffSet && (_odeReg[s].ndiff & 128) != 0) return 128;
+  }
+  return 0;
+}
+
 bool odeSwapAnyNdiffSet() {
   for (int s = 0; s < odeSlotN; ++s) {
     if (_odeReg[s].loaded && _odeReg[s].ndiffSet) return true;
@@ -598,7 +607,14 @@ void odeSwapSolveInd(int slot, int rxId) {
   // ndiff peers running concurrently is not covered by this alone -- see
   // odeSwapAnyNdiffSet()'s KNOWN GAP note.
   if (odeSwapLoaded(slot) && _odeReg[slot].ndiffSet && _odeReg[slot].ndiff != 0) {
-    rxl->ndiff = _odeReg[slot].ndiff;
+    // linCmt()'s second-order bit (rxode2lincmt's diffHess, 128) is shared:
+    // the exact inner Hessian's model (hess2) is solved for one subject while
+    // the inner model is solved for another, and a writer without the bit
+    // would switch the second-order steps off mid-solve for the other --
+    // its Hessian history then skips records and reads wrong.  Every writer
+    // carries the bit while any loaded slot needs it, so concurrent writers
+    // agree on it; the direction bits stay per slot.
+    rxl->ndiff = _odeReg[slot].ndiff | odeSwapNdiffHess();
   }
   ind_solve(rxl, rxId, f->dydt_liblsoda, f->dydt_lsoda_dum,
             f->jdum_lsoda, f->dydt, f->update_inis, f->global_jt);

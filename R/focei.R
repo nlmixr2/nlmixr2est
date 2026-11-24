@@ -2676,6 +2676,28 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   isTRUE(.flg != 0L)
 }
 
+#' Can the installed rxode2 / rxode2lincmt differentiate `linCmt()` twice?
+#'
+#' True when rxode2 turns the second derivative of a `linCmt()` sensitivity into
+#' the second-order `linCmtB()` reads and rxode2lincmt evaluates them
+#' (nlmixr2/rxode2lincmt#17); checked by feature, not by version, so an older
+#' install keeps the Shi21 finite-difference inner Hessian.
+#' @return logical
+#' @noRd
+.foceiLinCmtHasSecondOrder <- function() {
+  exists(".rxLinCmtBd2", envir = asNamespace("rxode2"), inherits = FALSE) &&
+    requireNamespace("rxode2lincmt", quietly = TRUE) &&
+    exists("linCmtModelHess", envir = asNamespace("rxode2lincmt"), inherits = FALSE)
+}
+
+#' A `linCmt()` model the installed rxode2 cannot differentiate twice
+#' @param ui rxode2 ui
+#' @return logical
+#' @noRd
+.foceiLinCmtNoSecondOrder <- function(ui) {
+  .foceiUsesLinCmt(ui) && !.foceiLinCmtHasSecondOrder()
+}
+
 #' Does the model have an `ar()` residual?
 #'
 #' The augmented outer-gradient model does not carry the AR(1) lines, whose
@@ -2700,10 +2722,12 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 .foceiMaybeAddHdEta2 <- function(x, .s) {
   .conditional <- identical(rxode2::rxGetControl(x[[1]], "innerHessian", "focei"), "conditional") ||
     identical(rxode2::rxGetControl(x[[1]], "detHessian", "focei"), "conditional")
-  # linCmt() has no 2nd-order sensitivities; rxode2 >= 5.1.8 no longer errors
-  # building them, it silently drops those terms (#1103).  The sensitivity carry
-  # (3b.3) is linCmt()-only, so this also keeps its Shi21 FD inner Hessian.
-  if (.foceiUsesLinCmt(x[[1]])) {
+  # linCmt() second-order sensitivities need rxode2's second-order linCmtB()
+  # reads and rxode2lincmt's kernel for them (nlmixr2/rxode2lincmt#17); without
+  # them rxode2 silently drops those terms (#1103), so the inner Hessian stays
+  # the Shi21 finite difference.  The sensitivity carry (3b.3) has no second
+  # order yet, so a model with carry pairs keeps it either way (below).
+  if (.foceiLinCmtNoSecondOrder(x[[1]])) {
     if (.conditional) {
       stop("full conditional Hessian does not support linCmt(); use laplace or agq", call. = FALSE)
     }
@@ -5686,7 +5710,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # linCmt() has no symbolic state sensitivities, so the augmented `..outer` model
   # cannot be built -- downgrade fast once here (plain focei gradient) instead of
   # re-attempting the symengine build on every outer-gradient call.
-  if (isTRUE(.control$fast) && .foceiUsesLinCmt(.ui)) {
+  if (isTRUE(.control$fast) && .foceiLinCmtNoSecondOrder(.ui)) {
     .minfo("linCmt() model: the analytic 'fast' gradient does not apply -- using fast = FALSE")
     .control <- .foceiDowngradeFast(.control)
   }

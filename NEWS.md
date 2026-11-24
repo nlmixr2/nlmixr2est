@@ -18,6 +18,16 @@
 
 ## New features
 
+- `linCmt()` models get the exact inner Hessian and the analytic `fast`
+  outer gradient when the installed rxode2 and rxode2lincmt differentiate
+  `linCmt()` twice (nlmixr2/rxode2lincmt#17): an `ll()` + `linCmt()` FOCEi
+  fit no longer uses the Shi21 finite-difference inner Hessian, and
+  `innerHessian = "conditional"` (`est = "flaplace"`) works for `linCmt()`.
+  Both match the same model written as ODEs.  With an older rxode2 /
+  rxode2lincmt the previous behavior (finite differences, `fast = FALSE`)
+  is kept.  Models with the `linCmt()` sensitivity carry (time-varying
+  covariates) keep the finite-difference inner Hessian for now (#1498).
+
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
