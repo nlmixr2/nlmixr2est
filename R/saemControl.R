@@ -43,16 +43,16 @@
 #'     The third value represents the number of bootstrap/reshuffling or
 #'     uni-dimensional random samples are taken.
 #'
-#' @param nuMass Number of mass-matrix kernel transitions per iteration
-#'     (NONMEM's `ISAMPLE_M1B`), run after the first kernel.  Each proposes
-#'     from the subject's running posterior mean and covariance of its
-#'     random effects.  `0` (default) turns the kernel off.
+#' @param nu1B Sweeps per iteration of NONMEM's proposal kernel mode 1B
+#'     (`ISAMPLE_M1B`), run after the first kernel: independence proposals
+#'     from each subject's running conditional mean and covariance of its
+#'     random effects.  `0` (default) turns it off.
 #'
-#' @param massStart Iterations of history accumulated before the
-#'     mass-matrix kernel starts proposing.
+#' @param nb1B Iteration at which `nu1B` starts, once the subjects' moments
+#'     have accumulated (NONMEM starts after the 10th iteration).
 #'
-#' @param massKappa Power of the running-average gain `n^-massKappa` used to
-#'     accumulate the mass matrix (NONMEM's `IKAPPA`); `1` is a simple average.
+#' @param kappa1B Power of the gain `n^-kappa1B` that accumulates the mode 1B
+#'     moments (NONMEM's `IKAPPA`); `1` is a simple average over iterations.
 #'
 #' @param rmcmc Scale of the random-walk proposals (kernels 2 and 3) relative
 #'     to the current between-subject SD.  Smaller values raise the MCMC
@@ -450,9 +450,9 @@ saemControl <- function(
   plateauMinFrac = 0.5,
   nmc = 3,
   nu = c(2, 2, 2),
-  nuMass = 0L,
-  massStart = 5L,
-  massKappa = 1,
+  nu1B = 0L,
+  nb1B = 10L,
+  kappa1B = 1,
   rmcmc = 0.5,
   mcmcAcceptWarn = c(0.05, 0.8),
   print = 1L,
@@ -560,9 +560,9 @@ saemControl <- function(
   checkmate::assertNumber(plateauMinFrac, lower = 0, upper = 1)
   checkmate::assertIntegerish(nmc, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertIntegerish(nu, any.missing = FALSE, len = 3, lower = 1)
-  checkmate::assertIntegerish(nuMass, any.missing = FALSE, len = 1, lower = 0)
-  checkmate::assertIntegerish(massStart, any.missing = FALSE, len = 1, lower = 2)
-  checkmate::assertNumber(massKappa, lower = 0.5, upper = 1)
+  checkmate::assertIntegerish(nu1B, any.missing = FALSE, len = 1, lower = 0)
+  checkmate::assertIntegerish(nb1B, any.missing = FALSE, len = 1, lower = 2)
+  checkmate::assertNumber(kappa1B, lower = 0.5, upper = 1)
   checkmate::assertNumber(rmcmc, finite = TRUE)
   if (rmcmc <= 0) {
     stop("'rmcmc' must be positive", call. = FALSE)
@@ -774,9 +774,9 @@ saemControl <- function(
     phi1ThetaEvery = as.integer(phi1ThetaEvery),
     phi1Hessian = isTRUE(phi1Hessian),
     residWarmStart = residWarmStart,
-    nuMass = as.integer(nuMass),
-    massStart = as.integer(massStart),
-    massKappa = massKappa,
+    nu1B = as.integer(nu1B),
+    nb1B = as.integer(nb1B),
+    kappa1B = kappa1B,
     ebe = ebe,
     ebeMaxEval = as.integer(ebeMaxEval),
     ebeTol = ebeTol

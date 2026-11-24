@@ -18,12 +18,12 @@
 
 ## New features
 
-- `saemControl(nuMass=)` adds a mass-matrix MCMC kernel to SAEM's E-step
-  (NONMEM's `ISAMPLE_M1B`): independence proposals from each subject's running
-  posterior mean and covariance of its random effects, which mixes much faster
-  when the posterior is narrow or correlated relative to `omega`.  Off by
-  default; `massStart` and `massKappa` tune the accumulation, and the fit's
-  `$saem$massAccept` reports its acceptance rate.
+- `saemControl(nu1B=)` adds NONMEM's proposal kernel mode 1B (`ISAMPLE_M1B`)
+  to SAEM's E-step: independence proposals from each subject's running
+  conditional mean and covariance of its random effects, which mixes much
+  faster when the posterior is narrow or correlated relative to `omega`.  Off
+  by default; `nb1B` (start iteration, default 10) and `kappa1B` (NONMEM's
+  `IKAPPA`) tune it, and `$saem$accept1B` reports its acceptance rate.
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and

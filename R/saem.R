@@ -364,9 +364,9 @@
       .cfg$phi1Hessian <- as.integer(isTRUE(rxode2::rxGetControl(ui, "phi1Hessian", FALSE)))
       # warm-start residual params from observed per-endpoint moments (npag-style)
       .cfg$residWarmStart <- as.integer(rxode2::rxGetControl(ui, "residWarmStart", TRUE))
-      .cfg$nuMass <- as.integer(rxode2::rxGetControl(ui, "nuMass", 0L))
-      .cfg$massStart <- as.integer(rxode2::rxGetControl(ui, "massStart", 5L))
-      .cfg$massKappa <- as.numeric(rxode2::rxGetControl(ui, "massKappa", 1))
+      .cfg$nu1B <- as.integer(rxode2::rxGetControl(ui, "nu1B", 0L))
+      .cfg$nb1B <- as.integer(rxode2::rxGetControl(ui, "nb1B", 10L))
+      .cfg$kappa1B <- as.numeric(rxode2::rxGetControl(ui, "kappa1B", 1))
       # mixProbMethod="regress": fix per-subject mixture membership (hard classify
       # once) instead of the soft-EM responsibility step.
       .cfg$mixProbRegress <- as.integer(identical(

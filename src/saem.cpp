@@ -1995,7 +1995,7 @@ public:
   }
 
   mat get_mcmcAccTrace()    { return mcmcAccTrace; }
-  double get_massAccept()   { return massAccD > 0 ? massAccN / massAccD : NA_REAL; }
+  double get_accept1B()     { return massAccD > 0 ? massAccN / massAccD : NA_REAL; }
   mat get_mcmcAccColTrace() { return mcmcAccColTrace; }
   mat get_mcmcStuckTrace()  { return mcmcStuckTrace; }
   mat get_phiSdTrace()      { return phiSdTrace; }
@@ -2526,9 +2526,9 @@ public:
 
     nmc = as<int>(x["nmc"]);
     nu = as<uvec>(x["nu"]);
-    nuMass = x.containsElementNamed("nuMass") ? as<int>(x["nuMass"]) : 0;
-    massStart = x.containsElementNamed("massStart") ? as<int>(x["massStart"]) : 5;
-    massKappa = x.containsElementNamed("massKappa") ? as<double>(x["massKappa"]) : 1.0;
+    nuMass = x.containsElementNamed("nu1B") ? as<int>(x["nu1B"]) : 0;
+    massStart = x.containsElementNamed("nb1B") ? as<int>(x["nb1B"]) : 10;
+    massKappa = x.containsElementNamed("kappa1B") ? as<double>(x["kappa1B"]) : 1.0;
     niter = as<int>(x["niter"]);
     saemSeed = x.containsElementNamed("seed") ? as<int>(x["seed"]) : 99;
     nb_correl = as<int>(x["nb_correl"]);
@@ -5259,13 +5259,14 @@ private:
   user_funct user_fn;
 
   uvec nu;
-  // mass-matrix kernel (NONMEM's ISAMPLE_M1B): independence proposals from each
-  // subject's running posterior mean/covariance of phi1
-  int nuMass = 0, massStart = 5, massN = 0;
+  // NONMEM's mode 1B (ISAMPLE_M1B): independence proposals from each subject's
+  // running posterior mean/covariance of phi1
+  int nuMass = 0, massStart = 10, massN = 0;
   double massKappa = 1.0, massAccN = 0.0, massAccD = 0.0;
   mat massM1;          // N x nphi1 running mean
   cube massM2;         // nphi1 x nphi1 x N running second moment
   cube massL;          // lower Cholesky factor of each subject's covariance
+  cube massS;          // each subject's (jittered) covariance, for masked rows
   uvec massOk;         // subject has a usable factor
   int niter;
   int saemSeed = 99;
@@ -6110,21 +6111,40 @@ private:
     for (int r = 0; r < nM; ++r) {
       const int s = r % N;
       const uvec rr = {static_cast<uword>(r)};
-      if (!massOk(s) || any(vectorise(current_saem_state->_saemUE.submat(rr, i)) == 0.0)) {
-        massOff(r) = 1;
-        continue;
+      if (!massOk(s)) { massOff(r) = 1; continue; }
+      // a masked (uninformative) column stays put; the rest are proposed from
+      // their marginal, so one masked eta no longer switches the kernel off
+      std::vector<uword> on;
+      for (uword c = 0; c < i.n_elem; ++c) {
+        if (current_saem_state->_saemUE(r, i(c)) != 0.0) on.push_back(c);
       }
-      const vec z = noise.row(r).t();
-      const mat &L = massL.slice(s);
-      const vec m = massM1.row(s).t();
-      phiMc.submat(rr, i) = (m + L * z).t();
-      const vec w = solve(trimatl(L), phiM.submat(rr, i).t() - m);
+      if (on.empty()) { massOff(r) = 1; continue; }
+      vec z, m;
+      mat L;
+      uvec cols;
+      if (on.size() == i.n_elem) {
+        cols = i;
+        L = massL.slice(s);
+        m = massM1.row(s).t();
+        z = noise.row(r).t();
+      } else {
+        const uvec a = conv_to<uvec>::from(on);
+        cols = i(a);
+        const mat Sa = massS.slice(s).submat(a, a);
+        if (!chol(L, Sa, "lower")) { massOff(r) = 1; continue; }
+        const vec mAll = massM1.row(s).t();
+        m = mAll(a);
+        const vec nz = noise.row(r).t();
+        z = nz(a);
+      }
+      phiMc.submat(rr, cols) = (m + L * z).t();
+      const vec w = solve(trimatl(L), phiM.submat(rr, cols).t() - m);
       massQ(r) = 0.5 * dot(z, z) - 0.5 * dot(w, w);
     }
   }
 
   // Fold this iteration's phi1 chains into each subject's running mean and second
-  // moment (gain n^-massKappa), then refresh the proposal factors.
+  // moment (gain n^-kappa1B), then refresh the proposal factors.
   void massUpdate(const mat &phiM) {
     if (nuMass <= 0 || nphi1 <= 0 || nMix > 1) return;
     if (massM1.n_rows != (uword)N || massM1.n_cols != (uword)nphi1) {
@@ -6151,14 +6171,32 @@ private:
       massM2.slice(s) += g * (xx - massM2.slice(s));
     }
     if (massN < massStart) return;
+    if (massS.n_slices != (uword)N) massS.zeros(nphi1, nphi1, N);
     for (int s = 0; s < N; ++s) {
       const vec m = massM1.row(s).t();
-      mat S = symmatu(massM2.slice(s) - m * m.t());
-      const double eps = 1e-8 * std::max(1.0, max(abs(S.diag())));
-      S.diag() += eps;
-      mat L;
-      massOk(s) = S.is_finite() && chol(L, S, "lower") ? 1u : 0u;
-      if (massOk(s)) massL.slice(s) = L;
+      mat S = massM2.slice(s) - m * m.t();
+      S = 0.5 * (S + S.t());
+      massOk(s) = 0u;
+      if (!S.is_finite()) continue;
+      const double sc = std::max(1e-12, max(abs(S.diag())));
+      mat L, Sj;
+      bool got = false;
+      // escalate the jitter; a subject that still will not factor falls back to
+      // its own diagonal rather than dropping out of the kernel
+      for (double jit = 1e-8; jit <= 1e-2 && !got; jit *= 100.0) {
+        Sj = S;
+        Sj.diag() += jit * sc;
+        got = chol(L, Sj, "lower");
+      }
+      if (!got) {
+        Sj = diagmat(clamp(S.diag(), 1e-8 * sc, datum::inf));
+        got = chol(L, Sj, "lower");
+      }
+      if (got && L.is_finite()) {
+        massL.slice(s) = L;
+        massS.slice(s) = Sj;
+        massOk(s) = 1u;
+      }
     }
   }
 
@@ -7169,7 +7207,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("par_hist") = saem.get_par_hist(),
     // MCMC mixing diagnostics; see the members they come from
     Named("mcmcAccept") = saem.get_mcmcAccTrace(),
-    Named("massAccept") = saem.get_massAccept(),
+    Named("accept1B") = saem.get_accept1B(),
     Named("mcmcAcceptCol") = saem.get_mcmcAccColTrace(),
     Named("mcmcStuck") = saem.get_mcmcStuckTrace(),
     Named("mcmcPhiSd") = saem.get_phiSdTrace(),
