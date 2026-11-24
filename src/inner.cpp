@@ -11387,7 +11387,14 @@ static void foceiEbeCheck(Environment e) {
       op_focei.isNpag || op_focei.isNpb) return;
   rx = getRxSolve_();
   const int nsub = (int)getRxNsub(rx), neta = op_focei.neta;
-  const arma::mat om = getOmegaMat();
+  // the Omega likInner0() scores with (the env copy can lag the fast Omega path)
+  arma::mat om;
+  if (!arma::inv_sympd(om, curOmegaInv())) om = arma::pinv(curOmegaInv());
+  // probe solves must not raise the estimation's ODE-retry warnings
+  const int savReducedTol = op_focei.reducedTol.load(std::memory_order_relaxed);
+  const int savReducedTol2 = op_focei.reducedTol2.load(std::memory_order_relaxed);
+  const int savStickyTol = op_focei.stickyTol.load(std::memory_order_relaxed);
+  const bool savPredSolve = op_focei.didPredSolve.load(std::memory_order_relaxed);
   IntegerVector ids(nsub);
   NumericVector dObjf(nsub, NA_REAL), slope(nsub, NA_REAL);
   LogicalVector stationary(nsub, NA_LOGICAL);
@@ -11399,39 +11406,48 @@ static void foceiEbeCheck(Environment e) {
     ids[id] = getRxId(id) + 1;
     focei_ind *fInd = &(inds_focei[id]);
     if (fInd->saveEta == NULL) continue;
-    FdInnerStateGuard guard(id);
-    std::copy(fInd->saveEta, fInd->saveEta + neta, eta.begin());
-    const double f0 = likInner0(&eta[0], id);
-    if (!R_FINITE(f0)) continue;
-    double fBest = f0, sMax = 0.0;
-    bool ok = true;
-    for (int k = 0; k < neta; ++k) {
-      const double sd = std::sqrt(om(k, k));
-      if (!R_FINITE(sd) || sd <= 0) continue;
-      const double h = op_focei.ebeCheckStep * sd;
-      x = eta;
-      x[k] = eta[k] + h;
-      const double fp = likInner0(&x[0], id);
-      x[k] = eta[k] - h;
-      const double fm = likInner0(&x[0], id);
-      if (!R_FINITE(fp) || !R_FINITE(fm)) {
-        ok = false;
-        continue;
+    bool restored = true;
+    {
+      FdInnerStateGuard guard(id);
+      std::copy(fInd->saveEta, fInd->saveEta + neta, eta.begin());
+      const double f0 = likInner0(&eta[0], id);
+      if (!R_FINITE(f0)) continue;
+      double fBest = f0, sMax = 0.0;
+      bool ok = true;
+      for (int k = 0; k < neta; ++k) {
+        const double sd = std::sqrt(om(k, k));
+        if (!R_FINITE(sd) || sd <= 0) continue;
+        const double h = op_focei.ebeCheckStep * sd;
+        x = eta;
+        x[k] = eta[k] + h;
+        const double fp = likInner0(&x[0], id);
+        x[k] = eta[k] - h;
+        const double fm = likInner0(&x[0], id);
+        if (!R_FINITE(fp) || !R_FINITE(fm)) {
+          ok = false;
+          continue;
+        }
+        fBest = std::min(fBest, std::min(fp, fm));
+        // -2LL units per Omega SD
+        sMax = std::max(sMax, std::fabs(fp - fm) / op_focei.ebeCheckStep);
       }
-      fBest = std::min(fBest, std::min(fp, fm));
-      // -2LL units per Omega SD
-      sMax = std::max(sMax, std::fabs(fp - fm) / op_focei.ebeCheckStep);
+      // leave the subject's solve and sensitivities at its EBE
+      restored = R_FINITE(likInner0(&eta[0], id));
+      dObjf[id] = 2.0 * (f0 - fBest);
+      slope[id] = sMax;
+      if (ok || dObjf[id] > op_focei.ebeCheckTol) {
+        const bool st = dObjf[id] <= op_focei.ebeCheckTol;
+        stationary[id] = st;
+        if (!st) nFlag++;
+      }
     }
-    // leave the subject's solve and sensitivities at its EBE
-    likInner0(&eta[0], id);
-    dObjf[id] = 2.0 * (f0 - fBest);
-    slope[id] = sMax;
-    if (ok || dObjf[id] > op_focei.ebeCheckTol) {
-      const bool st = dObjf[id] <= op_focei.ebeCheckTol;
-      stationary[id] = st;
-      if (!st) nFlag++;
-    }
+    // a failed re-solve leaves a probe's solve behind; force the next use to redo it
+    if (!restored) fInd->oldEta[0] = NA_REAL;
   }
+  op_focei.reducedTol.store(savReducedTol, std::memory_order_relaxed);
+  op_focei.reducedTol2.store(savReducedTol2, std::memory_order_relaxed);
+  op_focei.stickyTol.store(savStickyTol, std::memory_order_relaxed);
+  op_focei.didPredSolve.store(savPredSolve, std::memory_order_relaxed);
   if (e.exists("idLvl")) {
     RObject idl = e["idLvl"];
     if (idl.sexp_type() == STRSXP) {
