@@ -26,7 +26,12 @@
   Both match the same model written as ODEs.  With an older rxode2 /
   rxode2lincmt the previous behavior (finite differences, `fast = FALSE`)
   is kept.  Models with the `linCmt()` sensitivity carry (time-varying
-  covariates) keep the finite-difference inner Hessian for now (#1498).
+  covariates) keep the finite-difference inner Hessian for now.  A subject
+  whose exact inner Hessian is not finite (the second-order `linCmt()` reads
+  do not yet follow a modeled lag, rate or duration, or a replace/multiply
+  record) uses the finite difference instead, with a `$runInfo` note; the
+  full conditional Hessian, which has no such fallback, refuses `linCmt()`
+  with a modeled lag, rate or duration (#1498).
 
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and

@@ -21,6 +21,13 @@ nmTest({
     }))
   }
 
+  .lagged <- function(f) {
+    # the same model with a lag on the depot: the second-order reads are NA
+    # there (nlmixr2/rxode2lincmt#19), so the inner Hessian falls back to the
+    # finite difference for those subjects
+    rxode2::model(rxode2::rxode2(f), alag(depot) <- 0.25, append = TRUE)
+  }
+
   .llLin <- function() {
     ini({
       tka <- log(1.2); tcl <- log(2); tv <- log(20)
@@ -68,8 +75,10 @@ nmTest({
     # crashes on main too, unrelated to linCmt().
     fL0 <- suppressMessages(suppressWarnings(nlmixr2(.llLin, d, "focei", .ctl(2L, 0L))))
     fL <- suppressMessages(suppressWarnings(nlmixr2(.llLin, d, "focei", .ctl(2L))))
+    fLlag <- suppressMessages(suppressWarnings(nlmixr2(.lagged(.llLin), d, "focei", .ctl(2L, 0L))))
     fO0 <- suppressMessages(suppressWarnings(nlmixr2(.llOde, d, "focei", .ctl(1L, 0L))))
     fO <- suppressMessages(suppressWarnings(nlmixr2(.llOde, d, "focei", .ctl(1L))))
+    fOlag <- suppressMessages(suppressWarnings(nlmixr2(.lagged(.llOde), d, "focei", .ctl(1L, 0L))))
     # objective and EBEs at the initial estimates
     expect_true(fL0$control$fast)
     expect_equal(fL0$objf, fO0$objf, tolerance = 1e-5)
@@ -77,5 +86,8 @@ nmTest({
     # the converged fit
     expect_equal(fL$objf, fO$objf, tolerance = 1e-3)
     expect_equal(unname(fL$theta), unname(fO$theta), tolerance = 1e-2)
+    # a lag: the finite-difference fallback, reported, at its own accuracy
+    expect_true(any(grepl("exact eta Hessian not finite", fLlag$runInfo, fixed = TRUE)))
+    expect_lt(abs(fLlag$objf - fOlag$objf), 0.01)
   })
 })

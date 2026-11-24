@@ -986,6 +986,10 @@ struct focei_options {
   // eta gradient and Hessian finite-difference columns that solved on neither side
   // (taken as 0); counted over the whole fit, so reset only in foceiSetup_()
   std::atomic<int> nEtaFdNoSlope{0};
+  // subjects whose exact (model) eta Hessian was not finite -- e.g. linCmt()
+  // second-order reads that a lag, modeled rate/duration or replace/multiply
+  // record leaves NA -- and so use the finite difference
+  std::atomic<int> nEtaHessFallback{0};
   // Inner solves where a failed attempt's candidate was dropped from the
   // selection because a succeeded one was available.  This is the count that
   // shows the rule is doing something, rather than that it merely exists.
@@ -1460,6 +1464,10 @@ struct focei_ind {
   double *etaGradPrevQN; // [neta]
   double *etaPrevQN;     // [neta]
   int etaHasPrevQN;      // 0/1: reset once per trust_solve_c() attempt
+  // 1 once this subject's exact (model) eta Hessian was not finite: which
+  // records a linCmt() second-order read cannot follow is fixed by the data
+  // and the model, so later calls go straight to the finite difference
+  int hess2Fail;
   double *thetaGrad; // Theta gradient; Calculated on the individual level for S matrix calculation
   double thVal[2]; // thVal[0] = lower; thVal[2] = upper
   //
@@ -3887,10 +3895,27 @@ bool calcEtaHessian(double *eta, int likId, int id,
     ((forOptimization && op_focei.conditionalHessianRequested) ||
      (!forOptimization && op_focei.conditionalDetRequested));
   if (conditional) ++op_focei.nConditionalInnerHessian;
-  if (op_focei.predHess2Offset >= 0 || conditional) {
+  bool modelHess = false;
+  if (!conditional && fInd->hess2Fail && op_focei.needOptimHess) {
+    // known not finite for this subject: the finite difference below
+  } else if (op_focei.predHess2Offset >= 0 || conditional) {
     FoceiInnerResult result;
-    if (!calcModelEtaHessian(eta,id,fInd,ind,H,conditional,result)) return false;
-    if (evaluation) *evaluation = std::move(result);
+    if (calcModelEtaHessian(eta,id,fInd,ind,H,conditional,result)) {
+      modelHess = true;
+      if (evaluation) *evaluation = std::move(result);
+    } else if (conditional || !op_focei.needOptimHess) {
+      return false;
+    } else {
+      // The exact Hessian is not finite for this subject (a linCmt() second-
+      // order read the kernel cannot follow reads NA): the finite difference
+      // below, as without the exact Hessian.
+      op_focei.nEtaHessFallback.fetch_add(1, std::memory_order_relaxed);
+      fInd->hess2Fail = 1;
+      H.zeros();
+    }
+  }
+  if (modelHess) {
+    // H is the exact model Hessian
   } else if (op_focei.needOptimHess) {
     arma::vec gr0(op_focei.neta, fill::zeros);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
@@ -10042,6 +10067,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nInnerNoGood.store(0, std::memory_order_relaxed);
   op_focei.nNearPdDiag.store(0, std::memory_order_relaxed);
   op_focei.nEtaFdNoSlope.store(0, std::memory_order_relaxed);
+  op_focei.nEtaHessFallback.store(0, std::memory_order_relaxed);
   op_focei.nInnerDropped.store(0, std::memory_order_relaxed);
   // Fallback 2 ("none") for a control list that predates/omits warm=: 0 ("save")
   // used to BE self-init because updateZm() was a no-op (#1043), so "none" is what
@@ -16346,6 +16372,10 @@ Environment foceiFitCpp_(Environment e){
   if (op_focei.nEtaFdNoSlope.load(std::memory_order_relaxed) > 0) {
     warning(_("eta finite differences solved on neither side %d times; slope 0"),
             op_focei.nEtaFdNoSlope.load(std::memory_order_relaxed));
+  }
+  if (op_focei.nEtaHessFallback.load(std::memory_order_relaxed) > 0) {
+    warning(_("exact eta Hessian not finite for %d subjects; used the finite difference"),
+            op_focei.nEtaHessFallback.load(std::memory_order_relaxed));
   }
   // The covariance step's searches, listed by parameter: foceiCalcCov() keeps
   // them by the index of its own parameter set (the thetas, by default), which

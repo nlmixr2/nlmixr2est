@@ -41,12 +41,13 @@ nmTest({
     expect_gt(fT$env$nAnalyticGradDirect, 0L)
   })
 
-  test_that("ll() with linCmt() falls back gracefully to finite differences", {
+  test_that("ll() with linCmt(): the fast fit matches the finite-difference fit", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
-    # linCmt() has no 2nd-order state sensitivities (solved form), so both the exact-Hessian
-    # objective and the analytic outer gradient are out of scope; fast=TRUE must transparently
-    # fall back to finite differences and still converge to the same MLE (not error).
+    # Without second-order linCmt() reads (nlmixr2/rxode2lincmt#17) the exact-Hessian
+    # objective and the analytic outer gradient are out of scope and fast=TRUE falls back to
+    # finite differences; with them both apply (#1498).  Either way it converges to the same
+    # MLE.
     d <- nlmixr2data::theo_sd
     ## cached fast=FALSE reference -- see helper-gradref.R
     fF <- .numRef("fit-fd-ll-lincmt", function() {
@@ -56,7 +57,7 @@ nmTest({
     fT <- suppressMessages(nlmixr2(.ll_lincmt, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE)))
     expect_equal(as.numeric(fT$objf), as.numeric(fF$objf), tolerance = 1e-2)
     expect_equal(unname(fT$theta), fF$theta, tolerance = 1e-2)
-    expect_false(isTRUE(fT$env$nAnalyticGradDirect > 0)) # out of scope: no analytic gradient
+    expect_identical(isTRUE(fT$env$nAnalyticGradDirect > 0), .foceiLinCmtHasSecondOrder())
   })
 
   test_that("generalized (Poisson) ll() fast fit matches the finite-difference fit", {

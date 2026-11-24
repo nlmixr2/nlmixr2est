@@ -115,5 +115,12 @@ nmTest({
       nlmixr2(.ode, nlmixr2data::theo_sd, est = "flaplace", control = ctl)
     ))
     expect_equal(fL$objf, fO$objf, tolerance = 1e-5)
+    # a modeled lag: its second-order reads are NA and the full conditional
+    # Hessian has no finite-difference fallback, so it refuses
+    .lag <- rxode2::model(rxode2::rxode2(.linLhs), alag(depot) <- 0.3, append = TRUE)
+    expect_error(
+      suppressMessages(nlmixr2(.lag, nlmixr2data::theo_sd, est = "flaplace", control = ctl)),
+      "modeled lag"
+    )
   })
 })

@@ -2698,6 +2698,21 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   .foceiUsesLinCmt(ui) && !.foceiLinCmtHasSecondOrder()
 }
 
+#' Does a `linCmt()` model put a modeled lag, rate or duration on its doses?
+#'
+#' The second-order `linCmt()` reads are `NA` for those doses (the kernel
+#' does not follow them yet, nlmixr2/rxode2lincmt#19), so the full
+#' conditional Hessian, which has no finite-difference fallback, refuses them.
+#' @param ui rxode2 ui
+#' @return logical
+#' @noRd
+.foceiLinCmtModeledDoseTiming <- function(ui) {
+  if (!.foceiUsesLinCmt(ui)) return(FALSE)
+  .txt <- tryCatch(rxode2::rxModelVars(ui)$model[["normModel"]], error = function(e) "")
+  any(grepl("^(alag|lag|rate|dur)[(]", strsplit(.txt, "
+", fixed = FALSE)[[1]]))
+}
+
 #' Does the model have an `ar()` residual?
 #'
 #' The augmented outer-gradient model does not carry the AR(1) lines, whose
@@ -2727,6 +2742,10 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # them rxode2 silently drops those terms (#1103), so the inner Hessian stays
   # the Shi21 finite difference.  The sensitivity carry (3b.3) has no second
   # order yet, so a model with carry pairs keeps it either way (below).
+  if (.conditional && .foceiLinCmtModeledDoseTiming(x[[1]])) {
+    stop("full conditional Hessian does not support linCmt() with a modeled lag, rate or duration; use laplace or agq",
+         call. = FALSE)
+  }
   if (.foceiLinCmtNoSecondOrder(x[[1]])) {
     if (.conditional) {
       stop("full conditional Hessian does not support linCmt(); use laplace or agq", call. = FALSE)
