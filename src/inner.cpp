@@ -11470,12 +11470,12 @@ static double foceiEbeCheck(Environment e, double *x, double fmin) {
   // the Omega likInner0() scores with (the env copy can lag the fast Omega path)
   arma::mat om;
   if (!arma::inv_sympd(om, curOmegaInv())) om = arma::pinv(curOmegaInv());
-  // probe solves must not raise the estimation's ODE-retry warnings
   const int savReducedTol = op_focei.reducedTol.load(std::memory_order_relaxed);
   const int savReducedTol2 = op_focei.reducedTol2.load(std::memory_order_relaxed);
   const int savStickyTol = op_focei.stickyTol.load(std::memory_order_relaxed);
   const bool savPredSolve = op_focei.didPredSolve.load(std::memory_order_relaxed);
   const int savEtaFdNoSlope = op_focei.nEtaFdNoSlope.load(std::memory_order_relaxed);
+  const int savObjfRecalN = op_focei.objfRecalN, savStickyRecalcN1 = op_focei.stickyRecalcN1;
   IntegerVector ids(nsub);
   NumericVector dObjf(nsub, NA_REAL), slope(nsub, NA_REAL);
   LogicalVector stationary(nsub, NA_LOGICAL);
@@ -11506,11 +11506,6 @@ static double foceiEbeCheck(Environment e, double *x, double fmin) {
       if (ind != NULL) setIndSolve(ind, -1);
     }
   }
-  op_focei.reducedTol.store(savReducedTol, std::memory_order_relaxed);
-  op_focei.reducedTol2.store(savReducedTol2, std::memory_order_relaxed);
-  op_focei.stickyTol.store(savStickyTol, std::memory_order_relaxed);
-  op_focei.didPredSolve.store(savPredSolve, std::memory_order_relaxed);
-  op_focei.nEtaFdNoSlope.store(savEtaFdNoSlope, std::memory_order_relaxed);
   if (nFlag > 0) {
     warning(_("%d subjects have non-stationary EBEs; see $ebeStationarity"), nFlag);
   }
@@ -11535,6 +11530,14 @@ static double foceiEbeCheck(Environment e, double *x, double fmin) {
                        _["stationary"] = stationary, _["restarted"] = restarted,
                        _["dObjfRestart"] = dObjfRestart);
   }
+  // probe and restart solves must not raise the estimation's ODE-retry warnings
+  op_focei.reducedTol.store(savReducedTol, std::memory_order_relaxed);
+  op_focei.reducedTol2.store(savReducedTol2, std::memory_order_relaxed);
+  op_focei.stickyTol.store(savStickyTol, std::memory_order_relaxed);
+  op_focei.didPredSolve.store(savPredSolve, std::memory_order_relaxed);
+  op_focei.nEtaFdNoSlope.store(savEtaFdNoSlope, std::memory_order_relaxed);
+  op_focei.objfRecalN = savObjfRecalN;
+  op_focei.stickyRecalcN1 = savStickyRecalcN1;
   foceiEbeCheckSave(e, ids, ret);
   return fmin;
 }
@@ -11618,15 +11621,32 @@ static double foceiEbeRestart(double *x, double fmin, const std::vector<double> 
   const int maxInner = op_focei.maxInnerIterations;
   op_focei.maxInnerIterations = 0; // score at these ETAs
   _finalObfCalc = true;
-  finalEtaSet(&etaC[0], nsub, neta);
-  // the eta step and quasi-Newton caches belong to the old EBEs (as in settle())
-  std::fill_n(op_focei.getahh, op_focei.gEtaGTransN, 0.0);
-  std::fill_n(op_focei.getahf, op_focei.gEtaGTransN, 0.0);
-  std::fill_n(op_focei.getahr, op_focei.gEtaGTransN, 0.0);
-  for (int i = 0; i < nsub; ++i) inds_focei[i].etaHasPrevQN = 0;
   double ret = NA_REAL;
   try {
-    ret = foceiOfv0(x);
+    // a second pass puts back the EBE of any subject the scoring could not take at
+    // its moved ETAs, which LikInner2() leaves reporting the old ones
+    for (int pass = 0; pass < 2; ++pass) {
+      finalEtaSet(&etaC[0], nsub, neta);
+      // the eta step and quasi-Newton caches belong to the old EBEs (as in settle())
+      std::fill_n(op_focei.getahh, op_focei.gEtaGTransN, 0.0);
+      std::fill_n(op_focei.getahf, op_focei.gEtaGTransN, 0.0);
+      std::fill_n(op_focei.getahr, op_focei.gEtaGTransN, 0.0);
+      for (int i = 0; i < nsub; ++i) inds_focei[i].etaHasPrevQN = 0;
+      ret = foceiOfv0(x);
+      bool redo = false;
+      for (int i = 0; i < nsub; ++i) {
+        if (!restarted[i]) continue;
+        if (!std::equal(&etaC[(size_t)i * neta], &etaC[(size_t)(i + 1) * neta],
+                        inds_focei[i].saveEta)) {
+          std::copy(&W.eta[(size_t)i * neta], &W.eta[(size_t)(i + 1) * neta],
+                    &etaC[(size_t)i * neta]);
+          restarted[i] = false;
+          dObjfRestart[i] = 0.0;
+          redo = true;
+        }
+      }
+      if (!redo) break;
+    }
   } catch (...) {
     op_focei.maxInnerIterations = maxInner;
     _finalObfCalc = false;
