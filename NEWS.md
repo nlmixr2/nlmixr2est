@@ -2,6 +2,11 @@
 
 ## Breaking changes
 
+- `est="saem"` now starts additive and proportional residual errors at their
+  `ini()` values instead of fixed placeholders (`10` and `1`), so the first
+  E-step samples under the specified residual error, as the power and lambda
+  parameters already did.
+
 - `saemControl(lbfgsLmm=, lbfgsFactr=, lbfgsPgtol=, lbfgsMaxIter=)` have been
   removed and now error as unused arguments.  They were announced in 7.0.2 as
   controlling a bounded L-BFGS-B refinement of the fixed-effect-only (`phi0`)

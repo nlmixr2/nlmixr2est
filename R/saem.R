@@ -695,6 +695,7 @@
     .cfg$mixProbRegress <- as.integer(identical(
       rxode2::rxGetControl(ui, "mixProbMethod", "regress"), "regress"))
     .cfg$cres <- ui$saemCres
+    .cfg <- .saemResIni(.cfg, ui)
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres
     .cfg$low <- ui$saemLow
@@ -2269,3 +2270,20 @@ nmObjGet.saemDopredPred <- function(x, ...) {
   }
 }
 #attr(nmObjGet.saemDopredIpred, "desc") <- "Get ipred from low level saem"
+
+#' Start the additive/proportional residual at the ini() values
+#'
+#' `.configsaem()` only sets placeholders (`ares = 10`, `bres = 1`), zeroed where
+#' the error model lacks the component; those zeros and general-likelihood
+#' endpoints are left alone.
+#' @param cfg `.configsaem()` configuration
+#' @param ui rxode2 ui
+#' @return `cfg`
+#' @noRd
+.saemResIni <- function(cfg, ui) {
+  .w <- cfg$res.mod > 0L & cfg$ares != 0
+  cfg$ares[.w] <- ui$saemAres[.w]
+  .w <- cfg$res.mod > 0L & cfg$bres != 0
+  cfg$bres[.w] <- ui$saemBres[.w]
+  cfg
+}
