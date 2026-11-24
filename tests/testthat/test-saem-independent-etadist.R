@@ -38,6 +38,14 @@ test_that("SAEM estimates the parameters of an independent gamma ETA", {
   expect_true(all(is.finite(.est)))
   expect_lt(abs(unname(.est["lmean"]) - log(4.8)), 0.3)
   expect_gt(abs(unname(.est["lmean"]) - log(4)), 0.02)
+  # BHHH owns the marginal parameters: every chain holds them at the population
+  # value within an iteration, so they take no draws
+  .i0 <- attr(fit$saem, "saem.cfg")$i0 + 1L
+  expect_true(length(.i0) > 0)
+  .phiM <- fit$phiM
+  for (.k in seq_len(dim(.phiM)[3])) {
+    for (.j in .i0) expect_equal(diff(range(.phiM[, , .k, .j])), 0)
+  }
 })
 
 test_that("SAEM expands a declared correlated block with a Gaussian copula", {

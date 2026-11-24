@@ -2611,6 +2611,7 @@ public:
       resKeep = find(resFixed==0);
     }
     niter_phi0 = as<int>(x["niter_phi0"]);
+    phi0Start = niter_phi0;
     coef_phi0 = as<double>(x["coef_phi0"]);
     // ini-block bounds of the phi0 thetas (i0 column order) for the bounded
     // general-likelihood phi0 optimization.
@@ -3197,6 +3198,16 @@ public:
   }
 
   void saem_fit() {
+    // BHHH updates phi0 between iterations; within each E-step it stays at the
+    // population value (no draws), as NONMEM holds thetas without an eta
+    bhhhHoldsPhi0 = nonMuThetaOptType == 3 && nphi0 > 0 && nMix <= 1 &&
+      (distribution == 4 || nonMuThetaRegress);
+    if (bhhhHoldsPhi0) {
+      holdIx0 = regspace<uvec>(0, nphi0 - 1);
+      free0.reset();
+      phi0Start = 0;
+      phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
+    }
     _seedLayout.nu[0] = (uint64_t)nu(0);
     _seedLayout.nu[1] = (uint64_t)nu(1);
     _seedLayout.nu[2] = (uint64_t)nu(2);
@@ -4269,7 +4280,7 @@ public:
         Plambda1(fixedIx1) = MCOV1(jcov1(fixedIx1));
       }
       const bool bhhhOwnsPhi0 = nonMuThetaOptType == 3 && nphi0 > 0 &&
-        (distribution == 4 || nonMuThetaRegress) && kiter >= (unsigned int)niter_phi0;
+        (distribution == 4 || nonMuThetaRegress) && kiter >= (unsigned int)phi0Start;
       if (bhhhOwnsPhi0) {
         Plambda0 = MCOV0(jcov0);
       } else if (nphi0>0) {
@@ -4312,7 +4323,7 @@ public:
       // sampled-mean update -- that fights the optimizer and lets phi0 drift.
       // The optimizer result from the previous iteration persists as the seed.
       const bool skipStochPhi0 = bhhhOwnsPhi0 || (nonMuThetaRegress &&
-        distribution != 4 && kiter >= (unsigned int)niter_phi0);
+        distribution != 4 && kiter >= (unsigned int)phi0Start);
       if (!skipStochPhi0) {
         mprior_phi0=COV0*MCOV0;
       }
@@ -4340,14 +4351,14 @@ public:
       // last refined value in between (the SA step pas(kiter) moves it a fraction
       // of one optimizer step anyway, so refining every iteration buys little).
       if ((distribution == 4 || nonMuThetaRegress) &&
-          nphi0 > 0 && kiter >= (unsigned int)niter_phi0 &&
-          (kiter - (unsigned int)niter_phi0) % (unsigned int)nonMuThetaEvery == 0) {
+          nphi0 > 0 && kiter >= (unsigned int)phi0Start &&
+          (kiter - (unsigned int)phi0Start) % (unsigned int)nonMuThetaEvery == 0) {
         refinePhi0Lik(kiter, pas);
       }
       // once the refinement owns phi0 the model runs at mprior_phi0, so report
       // that rather than the pre-refinement regression estimate
       if ((distribution == 4 || nonMuThetaRegress) &&
-          nphi0 > 0 && kiter >= (unsigned int)niter_phi0) {
+          nphi0 > 0 && kiter >= (unsigned int)phi0Start) {
         vec mcov0Fixed;
         if (fixedIx0.n_elem > 0) mcov0Fixed = vec(MCOV0(jcov0(fixedIx0)));
         phi0BackSolveMCOV(mcov0Fixed);
@@ -4461,7 +4472,7 @@ public:
       }
 
       if (nphi0>0) {
-        if (kiter<=(unsigned int)(niter_phi0)) {
+        if (kiter<=(unsigned int)(phi0Start)) {
           // omega estimation
           Gamma2_phi0=(statphi02 + mprior_phi0.t()*mprior_phi0 - statphi01.t()*mprior_phi0 - mprior_phi0.t()*statphi01)/N;
           Gmin=minv(i0);
@@ -5342,6 +5353,7 @@ private:
   int nb_fixOmega;
   int nb_fixResid;
   int niter_phi0;
+  int phi0Start = 0; // first iteration the phi0 refinement owns phi0
   double coef_phi0;
   vec phi0Lower;
   vec phi0Upper;
@@ -5366,6 +5378,7 @@ private:
   // phi0 columns whose every coefficient is fix()ed: never sampled (free0 are
   // the others); their initial pseudo-variance is kept so the prior stays finite
   uvec holdIx0, free0;
+  bool bhhhHoldsPhi0 = false; // phi0 held within E-steps, BHHH-updated between
   vec holdGamma2_phi0;
   umat Gamma2_phi1fixedIxIn;
   uvec Gamma2_phi1fixedIx;
