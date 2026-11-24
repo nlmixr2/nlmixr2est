@@ -1241,7 +1241,8 @@ reports.}
 \item{ebeRestart}{When `TRUE` (implies `ebeCheck`), each flagged subject's
 EBE moves to a compass-search minimum of its individual objective started
 from its best probe point.  The final objective is taken at those EBEs, so
-it can rise or fall; the thetas are not re-estimated.}
+it can rise or fall; the thetas are not re-estimated.  The covariance
+step still re-optimizes the ETAs from there.}
 
 \item{nRetries}{If FOCEi doesn't fit with the current parameter
 estimates, randomly sample new parameter estimates and restart

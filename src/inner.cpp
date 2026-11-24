@@ -11619,6 +11619,11 @@ static double foceiEbeRestart(double *x, double fmin, const std::vector<double> 
   op_focei.maxInnerIterations = 0; // score at these ETAs
   _finalObfCalc = true;
   finalEtaSet(&etaC[0], nsub, neta);
+  // the eta step and quasi-Newton caches belong to the old EBEs (as in settle())
+  std::fill_n(op_focei.getahh, op_focei.gEtaGTransN, 0.0);
+  std::fill_n(op_focei.getahf, op_focei.gEtaGTransN, 0.0);
+  std::fill_n(op_focei.getahr, op_focei.gEtaGTransN, 0.0);
+  for (int i = 0; i < nsub; ++i) inds_focei[i].etaHasPrevQN = 0;
   double ret = NA_REAL;
   try {
     ret = foceiOfv0(x);
