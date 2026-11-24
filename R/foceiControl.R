@@ -1104,6 +1104,17 @@
 #'   within this tolerance of a finite `lower`/`upper` bound, relative to the
 #'   bound range (or, for a one-sided bound, to the larger of the bound's size
 #'   and the initial estimate's distance from it).  Use `NA` or `0` to disable.
+#' @param ebeCheck When `TRUE`, each subject's final EBE is probed at
+#'   `+/- ebeCheckStep` Omega standard deviations along every eta, and
+#'   `$runInfo` notes subjects where a probe lowers the individual objective
+#'   (-2LL) by more than `ebeCheckTol`, as at a kink in the prediction.  The
+#'   per-subject results are kept as `fit$ebeStationarity`.
+#'
+#' @param ebeCheckStep The probe step of `ebeCheck`, in Omega standard
+#'   deviations.
+#'
+#' @param ebeCheckTol The individual objective decrease that `ebeCheck`
+#'   reports.
 #'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
@@ -1578,6 +1589,9 @@ foceiControl <- function(
   shrinkEtaWarn = 30, #
   odeSettleCheck = FALSE, #
   odeSettleTol = 0.1, #
+  ebeCheck = FALSE, #
+  ebeCheckStep = 0.1, #
+  ebeCheckTol = 0.01, #
   nRetries = 3, #
   seed = 42, #
   resetThetaCheckPer = 0.1, #
@@ -2268,6 +2282,12 @@ foceiControl <- function(
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
   checkmate::assertNumber(omegaCollapseWarn, lower = 0, upper = 1, na.ok = TRUE)
   checkmate::assertNumber(thetaBoundWarn, lower = 0, upper = 1, na.ok = TRUE)
+  checkmate::assertFlag(ebeCheck)
+  checkmate::assertNumber(ebeCheckStep, lower = 0, finite = TRUE)
+  if (ebeCheckStep <= 0) {
+    stop("'ebeCheckStep' must be positive", call. = FALSE)
+  }
+  checkmate::assertNumber(ebeCheckTol, lower = 0, finite = TRUE)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2501,6 +2521,9 @@ foceiControl <- function(
     odeSettleTol = as.double(odeSettleTol),
     omegaCollapseWarn = as.double(omegaCollapseWarn),
     thetaBoundWarn = as.double(thetaBoundWarn),
+    ebeCheck = ebeCheck,
+    ebeCheckStep = as.double(ebeCheckStep),
+    ebeCheckTol = as.double(ebeCheckTol),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,

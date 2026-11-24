@@ -1149,6 +1149,10 @@ struct focei_options {
   double finalBestGap = NA_REAL; // final minus best evaluated objective (natural scale)
   // foceiControl(aboveStartTol=): see foceiFinalOfvWorse()
   double aboveStartTol = 0.01;
+  // foceiControl(ebeCheck=, ebeCheckStep=, ebeCheckTol=): see foceiEbeCheck()
+  int ebeCheck = 0;
+  double ebeCheckStep = 0.1;
+  double ebeCheckTol = 0.01;
 
   // Almquist Eq-48 warm-start extrapolation (fast=TRUE): per-subject d eta*/d(theta)
   // in the SCALED optimizer parameterization (etaP columns pre-multiplied by
@@ -10759,6 +10763,12 @@ NumericVector foceiSetup_(const RObject &obj,
     as<double>(foceiO["finalEtaTol"]) : R_PosInf;
   op_focei.aboveStartTol = foceiO.containsElementNamed("aboveStartTol") ?
     as<double>(foceiO["aboveStartTol"]) : 0.01;
+  op_focei.ebeCheck = foceiO.containsElementNamed("ebeCheck") ?
+    (int)as<bool>(foceiO["ebeCheck"]) : 0;
+  op_focei.ebeCheckStep = foceiO.containsElementNamed("ebeCheckStep") ?
+    as<double>(foceiO["ebeCheckStep"]) : 0.1;
+  op_focei.ebeCheckTol = foceiO.containsElementNamed("ebeCheckTol") ?
+    as<double>(foceiO["ebeCheckTol"]) : 0.01;
   // The base of the restart draws' threefry stream.  Taken from
   // foceiControl(seed=) rather than rxode2's getRxSeed1(): that is NOT a
   // getter -- it advances rxode2's global rxSeed by its argument on every
@@ -11366,6 +11376,79 @@ static double foceiFinalBestEta(double *x, double fmin) {
   return ret;
 }
 
+// foceiControl(ebeCheck=TRUE): probe each subject's EBE at +/- ebeCheckStep
+// Omega SDs along every eta (#1499).  A kink in the individual objective can stop
+// the inner search where a descent direction remains; coordinate probes see it
+// where the gradient does not.  Each subject's inner state is restored afterwards.
+static void foceiEbeCheck(Environment e) {
+  e["ebeStationarity"] = R_NilValue;
+  if (!op_focei.ebeCheck || op_focei.neta == 0 || op_focei.fo == 1 ||
+      op_focei.mixIdxN != 0 || inds_focei == NULL || op_focei.isImpmap ||
+      op_focei.isNpag || op_focei.isNpb) return;
+  rx = getRxSolve_();
+  const int nsub = (int)getRxNsub(rx), neta = op_focei.neta;
+  const arma::mat om = getOmegaMat();
+  IntegerVector ids(nsub);
+  NumericVector dObjf(nsub, NA_REAL), slope(nsub, NA_REAL);
+  LogicalVector stationary(nsub, NA_LOGICAL);
+  // the inner model's event-sensitivity shape; built outside any parallel region
+  OdeSwapEsBatch esBatch(odeSlotInner);
+  std::vector<double> eta(neta), x(neta);
+  int nFlag = 0;
+  for (int id = 0; id < nsub; ++id) {
+    ids[id] = getRxId(id) + 1;
+    focei_ind *fInd = &(inds_focei[id]);
+    if (fInd->saveEta == NULL) continue;
+    FdInnerStateGuard guard(id);
+    std::copy(fInd->saveEta, fInd->saveEta + neta, eta.begin());
+    const double f0 = likInner0(&eta[0], id);
+    if (!R_FINITE(f0)) continue;
+    double fBest = f0, sMax = 0.0;
+    bool ok = true;
+    for (int k = 0; k < neta; ++k) {
+      const double sd = std::sqrt(om(k, k));
+      if (!R_FINITE(sd) || sd <= 0) continue;
+      const double h = op_focei.ebeCheckStep * sd;
+      x = eta;
+      x[k] = eta[k] + h;
+      const double fp = likInner0(&x[0], id);
+      x[k] = eta[k] - h;
+      const double fm = likInner0(&x[0], id);
+      if (!R_FINITE(fp) || !R_FINITE(fm)) {
+        ok = false;
+        continue;
+      }
+      fBest = std::min(fBest, std::min(fp, fm));
+      // -2LL units per Omega SD
+      sMax = std::max(sMax, std::fabs(fp - fm) / op_focei.ebeCheckStep);
+    }
+    // leave the subject's solve and sensitivities at its EBE
+    likInner0(&eta[0], id);
+    dObjf[id] = 2.0 * (f0 - fBest);
+    slope[id] = sMax;
+    if (ok || dObjf[id] > op_focei.ebeCheckTol) {
+      const bool st = dObjf[id] <= op_focei.ebeCheckTol;
+      stationary[id] = st;
+      if (!st) nFlag++;
+    }
+  }
+  if (e.exists("idLvl")) {
+    RObject idl = e["idLvl"];
+    if (idl.sexp_type() == STRSXP) {
+      ids.attr("class") = "factor";
+      ids.attr("levels") = idl;
+    }
+  }
+  List ret = List::create(_["ID"] = ids, _["dObjf"] = dObjf, _["slope"] = slope,
+                          _["stationary"] = stationary);
+  ret.attr("class") = "data.frame";
+  ret.attr("row.names") = IntegerVector::create(NA_INTEGER, -nsub);
+  e["ebeStationarity"] = ret;
+  if (nFlag > 0) {
+    warning(_("%d subjects have non-stationary EBEs; see $ebeStationarity"), nFlag);
+  }
+}
+
 void foceiOuterFinal(double *x, Environment e){
   // reset the optimal step size to have reproducible likelihoods with
   // generalized log-likelihood focei
@@ -11393,6 +11476,7 @@ void foceiOuterFinal(double *x, Environment e){
   double fmin = foceiOfv0(x);
   fmin = foceiFinalBestEta(x, fmin);
   _finalObfCalc = false;
+  foceiEbeCheck(e);
   // Natural-scale final objective for the worse-than-initial guard; the same
   // un-scaling nlmixr2EnvSetup() applies before reporting.
   op_focei.finalOfv = op_focei.scaleObjective ?

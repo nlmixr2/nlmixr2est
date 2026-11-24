@@ -144,6 +144,11 @@
   faster when the posterior is narrow or correlated relative to `omega`.  Off
   by default; `nb1B` (start iteration, default 10) and `kappa1B` (NONMEM's
   `IKAPPA`) tune it, and `$saem$accept1B` reports its acceptance rate.
+- `foceiControl(ebeCheck = TRUE)` probes each subject's final EBE at
+  `+/- ebeCheckStep` Omega SDs along every eta and notes in `$runInfo` the
+  subjects where the individual objective drops by more than `ebeCheckTol`,
+  as when the inner search stops at a kink of a clipped prediction.  The
+  per-subject results are in `fit$ebeStationarity` (#1499).
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
