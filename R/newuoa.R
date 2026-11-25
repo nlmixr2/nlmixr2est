@@ -55,6 +55,7 @@ newuoaControl <- function(
   maxfun = 100000L,
   returnNewuoa = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -172,9 +173,11 @@ newuoaControl <- function(
   .corWarnCheck(corWarn)
   .condWarnCheck(condWarn)
   checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
+  checkmate::assertNumber(maxTime, lower = 0, finite = TRUE, null.ok = TRUE)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
     stopFile = stopFile,
+    maxTime = maxTime,
     npt = npt,
     rhobeg = rhobeg,
     rhoend = rhoend,

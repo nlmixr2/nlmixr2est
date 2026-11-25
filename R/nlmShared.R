@@ -772,7 +772,7 @@
     return(.ret[[method]])
   }
   .ret$message <- if (isTRUE(.ret[[method]]$nlmStopped)) {
-    "stopped early by user request"
+    .nmStopMessage()
   } else {
     message(.ret[[method]])
   }

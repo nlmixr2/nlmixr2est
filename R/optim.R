@@ -167,6 +167,7 @@ optimControl <- function(
   literalFixRes = TRUE,
   returnOptim = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
   sensMethod = c("default", "forward"),
@@ -295,9 +296,11 @@ optimControl <- function(
   .corWarnCheck(corWarn)
   .condWarnCheck(condWarn)
   checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
+  checkmate::assertNumber(maxTime, lower = 0, finite = TRUE, null.ok = TRUE)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
     stopFile = stopFile,
+    maxTime = maxTime,
     method = method,
     covMethod = covMethod,
     trace = trace, # nolint

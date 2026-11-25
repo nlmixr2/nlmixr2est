@@ -49,6 +49,7 @@ optimControl(
   literalFixRes = TRUE,
   returnOptim = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
   sensMethod = c("default", "forward"),
@@ -256,6 +257,11 @@ list instead of the nlmixr2 fit object}
 gracefully: the run ends at its current state (for FOCEi, the lowest
 objective evaluated so far), removes the file, notes the stop in
 `$runInfo` and returns the fit.  `NULL` (default) does not poll.}
+
+\item{maxTime}{Wall-clock limit in seconds, counted from the start of the
+estimation.  Once it is reached the optimization ends as for `stopFile`
+and the fit is finalized from its current state; the covariance step and
+tables are not limited.  `NULL` (default) sets no limit.}
 
 \item{addProp}{Type of additive-plus-proportional error: `"combined1"`,
 where standard deviations add:

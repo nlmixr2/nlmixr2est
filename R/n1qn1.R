@@ -59,6 +59,7 @@ n1qn1Control <- function(
 
   returnN1qn1 = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -176,9 +177,11 @@ n1qn1Control <- function(
 
   .condWarnCheck(condWarn)
   checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
+  checkmate::assertNumber(maxTime, lower = 0, finite = TRUE, null.ok = TRUE)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
     stopFile = stopFile,
+    maxTime = maxTime,
     epsilon = epsilon,
     max_iterations = max_iterations,
     nsim = nsim,

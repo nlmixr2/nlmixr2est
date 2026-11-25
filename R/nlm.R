@@ -86,6 +86,7 @@ nlmControl <- function(
   check.analyticals = FALSE,
   returnNlm = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   solveType = c("hessian", "grad", "fun"),
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
@@ -250,9 +251,11 @@ nlmControl <- function(
   .corWarnCheck(corWarn)
   .condWarnCheck(condWarn)
   checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
+  checkmate::assertNumber(maxTime, lower = 0, finite = TRUE, null.ok = TRUE)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
     stopFile = stopFile,
+    maxTime = maxTime,
     covMethod = covMethod,
     typsize = typsize,
     fscale = fscale,

@@ -166,3 +166,47 @@ test_that("maxTime ends a SAEM fit at the current iteration", {
   expect_false("stopped at the time limit" %in% .fit2$runInfo)
   expect_equal(nrow(.fit2$parHist), 50L)
 })
+
+.maxTimeModNlm <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- log(c(0, 2.7, 100))
+    tv <- 3.45
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl)
+    v <- exp(tv)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+for (.est in c("nlm", "nlminb", "bobyqa", "uobyqa", "newuoa", "lbfgsb3c", "n1qn1", "optim", "trust")) {
+  test_that(paste0("maxTime ends an est='", .est, "' fit early"), {
+    .ctl <- paste0(.est, "Control")
+    expect_null(do.call(.ctl, list())$maxTime)
+    expect_equal(do.call(.ctl, list(maxTime = 10))$maxTime, 10)
+    expect_error(do.call(.ctl, list(maxTime = -1)))
+    .fit <- suppressMessages(nlmixr(
+      .maxTimeModNlm,
+      nlmixr2data::theo_sd,
+      .est,
+      control = list(print = 0, maxTime = 0)
+    ))
+    expect_equal(.fit$message, "stopped at the time limit")
+    expect_true("stopped at the time limit" %in% .fit$runInfo)
+    expect_equal(.fit$theta[["tka"]], 0.45, tolerance = 1e-6)
+    expect_true(is.finite(.fit$objf))
+    expect_false(.nmStopActive())
+
+    .fit2 <- suppressMessages(nlmixr(
+      .maxTimeModNlm,
+      nlmixr2data::theo_sd,
+      .est,
+      control = list(print = 0, maxTime = 1e6)
+    ))
+    expect_false("stopped at the time limit" %in% .fit2$runInfo)
+    expect_lt(.fit2$objf, .fit$objf)
+  })
+}
