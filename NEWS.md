@@ -31,6 +31,10 @@
 
 ## New features
 
+- A combined (`add() + prop()` or `add() + pow()`) error model whose additive
+  SD starts below 1% of that endpoint's own median `|DV|` now warns before
+  estimation and suggests a start of about 10% of it; the initial estimate is
+  not changed (#1383).
 - `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes each
   converged trust ETA solve by re-entering it at the squared
   `trustFterm`/`trustMterm` instead of taking Newton steps.  The objective at
