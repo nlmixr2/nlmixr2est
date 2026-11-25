@@ -2846,6 +2846,19 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   .foceiUsesLinCmt(ui) && !.foceiLinCmtHasSecondOrder()
 }
 
+#' Can the installed rxode2lincmt switch its second-order steps per thread?
+#'
+#' rxode2lincmt's `linCmtSetHessThread()` C callable lets odeSwapSolveInd()
+#' run the second-order steps only for the models that read them (the
+#' shared `rx->ndiff` bit would otherwise make every concurrently solved
+#' model pay for them).
+#' @return logical
+#' @noRd
+.foceiLinCmtHessThread <- function() {
+  .foceiLinCmtHasSecondOrder() &&
+    exists(".linCmtHessThread", envir = asNamespace("rxode2lincmt"), inherits = FALSE)
+}
+
 #' Does a `linCmt()` model put a modeled lag, rate or duration on its doses?
 #'
 #' The second-order `linCmt()` reads are `NA` for those doses (the kernel
@@ -5628,6 +5641,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       assign("err", "", this.env)
       .ret0 <- tryCatch(
         {
+          .Call(`_nlmixr2est_lcHessThreadInit`, .foceiLinCmtHessThread())
           foceiFitCpp_(.ret)
         },
         error = function(e) {
@@ -5699,6 +5713,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       }
     }
   } else {
+    .Call(`_nlmixr2est_lcHessThreadInit`, .foceiLinCmtHessThread())
     foceiFitCpp_(.ret)
   }
 }

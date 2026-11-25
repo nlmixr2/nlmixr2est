@@ -7,6 +7,7 @@
 #include "odeSwap.h"
 #include <algorithm>
 #include <atomic>
+#include <R_ext/Rdynload.h>
 
 #define _(String) (String)
 
@@ -400,6 +401,19 @@ int  odeSwapNSens(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].nSens 
 // does not vary within its own loop), but that was not proven exhaustively.
 // The linCmt() second-order bit (rxode2lincmt's diffHess) if any loaded slot
 // declares it, else 0 (see odeSwapSolveInd).
+// rxode2lincmt's per-thread switch for the second-order steps (NULL with an
+// rxode2lincmt that does not have it): set per solve to whether the solving
+// slot's own model reads the second-order values, so the inner model solved
+// while the second-order bit is shared does not pay for steps it never reads.
+static void (*_lcSetHessThread)(int) = NULL;
+extern "C" SEXP _nlmixr2est_lcHessThreadInit(SEXP on) {
+  _lcSetHessThread = NULL;
+  if (Rf_asLogical(on) == TRUE) {
+    _lcSetHessThread = (void (*)(int)) R_GetCCallable("rxode2lincmt", "linCmtSetHessThread");
+  }
+  return R_NilValue;
+}
+
 int odeSwapNdiffHess() {
   for (int s = 0; s < odeSlotN; ++s) {
     if (_odeReg[s].loaded && _odeReg[s].ndiffSet && (_odeReg[s].ndiff & 128) != 0) return 128;
@@ -614,7 +628,11 @@ void odeSwapSolveInd(int slot, int rxId) {
     // its Hessian history then skips records and reads wrong.  Every writer
     // carries the bit while any loaded slot needs it, so concurrent writers
     // agree on it; the direction bits stay per slot.
-    rxl->ndiff = _odeReg[slot].ndiff | odeSwapNdiffHess();
+    int hessBit = odeSwapNdiffHess();
+    rxl->ndiff = _odeReg[slot].ndiff | hessBit;
+    if (hessBit != 0 && _lcSetHessThread != NULL) {
+      _lcSetHessThread((_odeReg[slot].ndiff & 128) != 0 ? 1 : 0);
+    }
   }
   ind_solve(rxl, rxId, f->dydt_liblsoda, f->dydt_lsoda_dum,
             f->jdum_lsoda, f->dydt, f->update_inis, f->global_jt);

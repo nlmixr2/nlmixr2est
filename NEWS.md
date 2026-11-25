@@ -33,7 +33,9 @@
   do not yet follow a modeled lag, rate or duration, or a replace/multiply
   record) uses the finite difference instead, with a `$runInfo` note; the
   full conditional Hessian, which has no such fallback, refuses `linCmt()`
-  with a modeled lag, rate or duration (#1498).
+  with a modeled lag, rate or duration.  With an rxode2lincmt that can switch
+  its second-order steps per thread, only the models that read them (the
+  exact inner Hessian and the outer gradient models) take them (#1498).
 
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
