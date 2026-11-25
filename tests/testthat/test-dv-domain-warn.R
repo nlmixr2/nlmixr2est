@@ -73,6 +73,13 @@ nmTest({
     .d$CMT <- NULL
     .d$DVID <- c(1, 1, 2, 2)
     expect_warning(.run(.two, .d), "^1 DV <= 0 on lnorm endpoint 'e2'$")
+    # a usable DVID wins over CMT, as in etTrans()
+    .d$CMT <- 2
+    expect_warning(.run(.two, .d), "^1 DV <= 0 on lnorm endpoint 'e2'$")
+    # DVID beyond the endpoint count is rank-converted, as in etTrans()
+    .d$CMT <- NULL
+    .d$DVID <- c(10, 10, 20, 20)
+    expect_warning(.run(.two, .d), "^1 DV <= 0 on lnorm endpoint 'e2'$")
     .d$DVID <- NULL
     expect_no_warning(.run(.two, .d))
   })

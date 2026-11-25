@@ -40,9 +40,10 @@
 
 #' Observation records of one endpoint
 #'
-#' A single endpoint scores every observation, whatever its cmt; otherwise a
-#' record belongs to the endpoint matched by its `DVID` or `CMT` (number or
-#' name).
+#' A single endpoint scores every observation, whatever its cmt.  Otherwise a
+#' record belongs to the endpoint named by its `DVID` (rank-converted, as
+#' etTrans() does, when it exceeds the endpoint count), or by `CMT` (number or
+#' name) when the record has no usable `DVID`.
 #'
 #' @param data data frame
 #' @param predDf the ui's `predDf`
@@ -55,21 +56,32 @@
     return(obs)
   }
   .pred1 <- predDf[i, ]
-  .match1 <- function(.x, .num) {
-    if (is.character(.x) || is.factor(.x)) {
-      !is.na(.x) & as.character(.x) == .pred1$cond
-    } else {
-      !is.na(.x) & .x == .num
-    }
-  }
-  .m <- rep(FALSE, nrow(data))
+  .n <- nrow(data)
+  .m <- rep(FALSE, .n)
+  .useDvid <- rep(FALSE, .n)
   .dvid <- .nlmixrDataCol(data, "dvid")
   if (!is.null(.dvid)) {
-    .m <- .match1(.dvid, .pred1$dvid)
+    if (is.character(.dvid) || is.factor(.dvid)) {
+      .dvid <- as.character(.dvid)
+      .useDvid <- !is.na(.dvid)
+      .m <- .useDvid & .dvid == .pred1$cond
+    } else {
+      .u <- sort(unique(.dvid[!is.na(.dvid)]))
+      if (length(.u) > 0L && .u[length(.u)] > nrow(predDf)) {
+        .dvid <- match(.dvid, .u)
+      }
+      .useDvid <- !is.na(.dvid) & .dvid > 0
+      .m <- .useDvid & .dvid == .pred1$dvid
+    }
   }
   .cmt <- .nlmixrDataCol(data, "cmt")
   if (!is.null(.cmt)) {
-    .m <- .m | .match1(.cmt, .pred1$cmt)
+    .mc <- if (is.character(.cmt) || is.factor(.cmt)) {
+      !is.na(.cmt) & as.character(.cmt) == .pred1$cond
+    } else {
+      !is.na(.cmt) & .cmt == .pred1$cmt
+    }
+    .m <- .m | (!.useDvid & .mc)
   }
   obs & .m
 }
