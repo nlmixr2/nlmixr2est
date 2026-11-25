@@ -106,6 +106,11 @@
   `saemControl(mcmcAcceptWarn=)` sets the range; `NA` turns the note off
   (#1385).
 
+- A covariance that is rejected as not positive definite now says which
+  parameters make it so: those with no information (a zero diagonal), or the
+  ones the near-singular direction loads on (e.g. `"r,s" is not PD: tva, tvb
+  collinear; none installed`) (#1398).
+
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
   diagnostics are unreliable.  `shrinkEtaWarn=` in `foceiControl()`,

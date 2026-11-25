@@ -23,7 +23,7 @@ test_that("a rejected analytic covariance names the theta block the native step 
   .e <- .anEnv(.anBad)
   expect_warning(
     .foceiInstallAnalyticCov(.e),
-    "\"analytic (full)\" is not positive definite; kept \"r (analytic)\"",
+    "\"analytic (full)\" is not PD: om.eta.cl negative; kept \"r (analytic)\"",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "r (analytic)")
@@ -34,14 +34,14 @@ test_that("a rejected analytic covariance names the theta block the native step 
   .e <- .anEnv(.anBad, "|r|", covFull = FALSE)
   expect_warning(
     .foceiInstallAnalyticCov(.e),
-    "\"analytic\" is not positive definite; kept \"|r| (analytic)\"",
+    "\"analytic\" is not PD: om.eta.cl negative; kept \"|r| (analytic)\"",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "|r| (analytic)")
   # with a long kept label the line still reads the same way
   .e <- .anEnv(.anBad, "|r|")
   .w <- tryCatch(.foceiInstallAnalyticCov(.e), warning = conditionMessage)
-  expect_identical(.w, "\"analytic (full)\" is not positive definite; kept \"|r| (analytic)\"")
+  expect_identical(.w, "\"analytic (full)\" is not PD: om.eta.cl negative; kept \"|r| (analytic)\"")
   expect_lt(cli::ansi_nchar(.w, type = "width"), 75L)
   .e <- .anEnv(.anBad, "s")
   expect_warning(.foceiInstallAnalyticCov(.e), "kept \"s\"", fixed = TRUE)

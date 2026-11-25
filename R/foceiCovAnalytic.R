@@ -4372,14 +4372,34 @@
   # `pd` is the caller's install gate: an observed information with a negative eigenvalue
   # (the outer optimizer stopped at a point that is not a local minimum) inverts to
   # negative variances and NaN SEs.  Report it rather than making each caller re-decide.
+  # The reason names the parameters from the information R, when it fails too.
+  .g <- .covGuard(cov)
+  .gR <- if (!.g$ok) .covGuard(R)
   list(
     cov = cov,
     se = setNames(suppressWarnings(sqrt(diag(cov))), nm), # NaN flags non-PD
     R = R,
     params = nm,
     method = "analytic",
-    pd = .covGuard(cov)$ok
+    pd = .g$ok,
+    reason = if (.g$ok) {
+      ""
+    } else if (!is.null(.gR) && !.gR$ok) {
+      .gR$reason
+    } else {
+      .g$reason
+    }
   )
+}
+
+#' Why an analytic covariance failed its positive-definite gate
+#'
+#' A result cached by an older build carries no `reason`.
+#' @param r a `.foceiCovAnalyticCalc()` result
+#' @return the `.covGuard()`-style reason
+#' @noRd
+.foceiAnalyticPdReason <- function(r) {
+  if (is.character(r$reason) && length(r$reason) == 1L && nzchar(r$reason)) r$reason else "is not positive definite"
 }
 
 #' Full analytic FOCEI covariance (theta + sigma + Omega) for a fitted object, or
@@ -4394,7 +4414,7 @@
 #' the cached path: a second call hands back the same indefinite matrix, and
 #' saying it once would leave that one silent.
 #' @param fit a fitted nlmixr2 focei object
-#' @return list(cov, se, R, params, method, pd) or `NULL`
+#' @return list(cov, se, R, params, method, pd, reason) or `NULL`
 #' @noRd
 foceiCovAnalytic <- function(fit) {
   .env <- .setCovEnv(fit)
@@ -4420,7 +4440,7 @@ foceiCovAnalytic <- function(fit) {
   # PD guard on the FULL matrix, as in .foceiInstallAnalyticCov.  A cached result is never
   # re-installed, so a covariance the caller replaced since (setCov(), a refit) stays.
   if (!isTRUE(.ret$pd)) {
-    .covRejectWarn(.env, .label, "is not positive definite")
+    .covRejectWarn(.env, .label, .foceiAnalyticPdReason(.ret))
   } else if (!.cached && .covInstall(.env, if (.full) .ret$cov else .covT, .label)) {
     .covCacheAdd(.env, "analytic", .covT) # the other shape stays swappable
     .covCacheAdd(.env, .covFullName("analytic"), .ret$cov)
