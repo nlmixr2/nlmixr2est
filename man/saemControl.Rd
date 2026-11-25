@@ -70,6 +70,9 @@ saemControl(
   nonMuThetaMaxEval = 25L,
   nonMuThetaTol = .Machine$double.eps^0.25,
   nonMuThetaEvery = 1L,
+  muNonCentered = FALSE,
+  omegaNonCentered = FALSE,
+  nonCenteredPhase = c("all", "burnin"),
   phi1ThetaMaxEval = 50L,
   phi1ThetaEvery = 1L,
   phi1Hessian = FALSE,
@@ -565,6 +568,25 @@ tolerance, or the `optimize()` `tol`).}
 \item{nonMuThetaEvery}{Run the `nonMuTheta="regress"` refinement every
 `nonMuThetaEvery` iterations instead of every iteration (default 1).  In
 between, `phi0` keeps its last refined value.}
+
+\item{muNonCentered}{Boolean (default `FALSE`); after the M-step, shift each
+free intercept-only mu-referenced mean with every subject's eta held fixed,
+scored on the data likelihood by one BHHH step with NONMEM's step-halving
+rule (an interweaved, non-centered update; Yu and Meng 2011).  The ordinary
+SAEM mean update barely moves a mean whose random effect is small relative
+to the data's information about it; this step does.  It costs a few model
+solves per iteration, and on well-informed random effects it changes
+nothing.  Non-mixture fits only.}
+
+\item{omegaNonCentered}{Boolean (default `FALSE`); the scale counterpart of
+`muNonCentered`: rescale each estimated mu-referenced random effect with
+every subject's standardized deviation held fixed, scored on the data
+likelihood by one BHHH step.  Chains, `Omega` and SAEM's sufficient
+statistics are rescaled together.  Non-mixture fits only.}
+
+\item{nonCenteredPhase}{When `muNonCentered`/`omegaNonCentered` run:
+`"all"` (every iteration) or `"burnin"` (only while the stochastic
+approximation gain is 1, so the estimation phase is plain SAEM).}
 
 \item{phi1ThetaMaxEval}{Objective-evaluation budget (bobyqa's `maxfun`) of
 one general-likelihood phi1 (mu-referenced theta) refinement (default
