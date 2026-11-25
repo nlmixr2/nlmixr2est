@@ -51,8 +51,13 @@ nmTest({
         theo_sd,
         est = "saem",
         control = saemControl(
-          print = 0, nBurn = 30, nEm = 30, seed = 42L, covMethod = "",
-          calcTables = FALSE, rwProposal = p
+          print = 0,
+          nBurn = 30,
+          nEm = 30,
+          seed = 42L,
+          covMethod = "",
+          calcTables = FALSE,
+          rwProposal = p
         )
       )))
     }
