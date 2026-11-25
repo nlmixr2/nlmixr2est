@@ -428,9 +428,24 @@
       .saemCheckCfg(.cfg)
       .cfg
     })
+    .mstep <- .saemMstepTable(
+      ui,
+      .cfg,
+      phi1Pooled = !is.null(.model$saemPhi1Pred),
+      pseudoEtas = pseudoEtas
+    )
+    .mstepNote <- .saemMstepNote(.mstep, .cfg)
+    if (!is.null(.mstepNote)) {
+      warning(.mstepNote, call. = FALSE)
+    }
     .saemRes <- nlmixrWithTiming("saem", {
       .model$saem_mod(.cfg)
     })
+    .resCfg <- attr(.saemRes, "saem.cfg")
+    if (is.list(.resCfg)) {
+      .resCfg$saemMstep <- .mstep
+      attr(.saemRes, "saem.cfg") <- .resCfg
+    }
     .pi <- .saemRes$plateauIter
     if (length(.pi) == 1L && .pi > 0L) {
       warning(sprintf("parameters plateaued; stopped at iteration %d of %d", .pi, .cfg$niter), call. = FALSE)

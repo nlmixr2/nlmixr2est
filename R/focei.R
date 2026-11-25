@@ -4074,6 +4074,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
     if (.conditional) "conditionalInner1",
+    .ui$predDfFocei$distribution,
     all(is.na(.iniDf$neta1)),
     .combSens,
     .linCmtCarry,
@@ -4933,6 +4934,8 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   .thetaIni <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
   .zero <- nlmixr2global$nlmixr2EstEnv$zeroThetaScale
   .zeroIdx <- integer(0)
+  .nLinear <- 0L
+  .mixProbs <- tryCatch(ui$mixProbs, error = function(e) character(0))
   for (.k in seq_len(nrow(.thetaIni))) {
     .nt <- .thetaIni$ntheta[.k]
     if (.nt <= length(.scaleC) && is.na(.scaleC[.nt]) && !.thetaIni$fix[.k]) {
@@ -4943,15 +4946,22 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
         .zeroIdx <- c(.zeroIdx, as.integer(.nt))
         next
       }
+      # a mixture proportion is estimated as a log-odds, not linearly
+      .isMix <- .thetaIni$name[.k] %in% .mixProbs
       if (identical(.scLinear, "abs")) {
-        .scaleC[.nt] <- if (.init == 0) 1 else abs(.init)
+        # log-odds take the exp() thetas' 1
+        .scaleC[.nt] <- if (.isMix || .init == 0) 1 else abs(.init)
+        .nLinear <- .nLinear + !.isMix
         next
       }
       .raw <- if (.init == 0) Inf else 1 / abs(.init)
       .scaleC[.nt] <- .guardScaleC(.raw, .init, .scLo, .scHi)
+      .nLinear <- .nLinear + !.isMix
     }
   }
   env$scaleC <- .scaleC
+  # estimated thetas scaled by the linear rule (not the zero-theta one)
+  env$nLinearTheta <- .nLinear
   # thetas (1-based) whose start the C++ outer setup may move by one Newton step
   env$zeroThetaIdx <- .zeroIdx
 }
@@ -5187,6 +5197,10 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   env$xform <- .iterPrintXParFromUi(ui)
   .foceiSetupSkipCov(ui, env)
   env$control <- get("control", envir = ui)
+  if (length(env$control$scaleAdapt) == 1L && is.na(env$control$scaleAdapt)) {
+    # automatic: rescaled restarts only when a theta is linear (#1320)
+    env$control$scaleAdapt <- if (isTRUE(env$nLinearTheta > 0L)) 3L else 0L
+  }
   env$control$nF <- 0
   env$control$printTop <- TRUE
   env
@@ -5780,6 +5794,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   if (exists("est", envir = env)) {
     .control$est <- env$est
+  }
+  # est="laplace": evaluate Gaussian endpoints by their log-density (as
+  # `+ dnorm()` does) for the exact Laplace Hessian, like rxUiGet.nlmModel0
+  if (
+    type %in%
+      c("laplaceControl", "mlaplaceControl", "ilaplaceControl") &&
+      .control$innerHessian != "conditional" &&
+      .control$detHessian != "conditional"
+  ) {
+    .predDf <- .ui$predDf
+    .predDf$distribution[.predDf$distribution == "norm"] <- "dnorm"
+    assign(".predDfFocei", .predDf, envir = .ui)
   }
   if (
     inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
@@ -6444,7 +6470,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         "evt",
         "penMap",
         "penTheta0",
-        "penEtaOrd"
+        "penEtaOrd",
+        "saemMstep"
       )) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }
