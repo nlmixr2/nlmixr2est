@@ -10,15 +10,23 @@ nmTest({
 
   .exactHessData <- function() {
     set.seed(1498)
-    do.call(rbind, lapply(1:6, function(i) {
-      d <- data.frame(ID = i, TIME = c(0, 0.5, 1, 2, 4, 8, 12, 24),
-                      EVID = c(1, rep(0, 7)), AMT = c(100, rep(0, 7)), CMT = c(1, rep(2, 7)))
-      k <- 2 * exp(rnorm(1, 0, 0.3)) / (20 * exp(rnorm(1, 0, 0.2)))
-      v <- 20 * exp(rnorm(1, 0, 0.2))
-      cp <- 100 / v * 1.2 / (1.2 - k) * (exp(-k * d$TIME) - exp(-1.2 * d$TIME))
-      d$DV <- ifelse(d$EVID == 0, cp * (1 + 0.15 * rnorm(8)), 0)
-      d
-    }))
+    do.call(
+      rbind,
+      lapply(1:6, function(i) {
+        d <- data.frame(
+          ID = i,
+          TIME = c(0, 0.5, 1, 2, 4, 8, 12, 24),
+          EVID = c(1, rep(0, 7)),
+          AMT = c(100, rep(0, 7)),
+          CMT = c(1, rep(2, 7))
+        )
+        k <- 2 * exp(rnorm(1, 0, 0.3)) / (20 * exp(rnorm(1, 0, 0.2)))
+        v <- 20 * exp(rnorm(1, 0, 0.2))
+        cp <- 100 / v * 1.2 / (1.2 - k) * (exp(-k * d$TIME) - exp(-1.2 * d$TIME))
+        d$DV <- ifelse(d$EVID == 0, cp * (1 + 0.15 * rnorm(8)), 0)
+        d
+      })
+    )
   }
 
   .lagged <- function(f) {
@@ -61,9 +69,16 @@ nmTest({
     skip_if_not(.foceiLinCmtHasSecondOrder())
     d <- .exactHessData()
     .ctl <- function(cores, maxOuter = NULL) {
-      args <- list(fast = TRUE, linCmtSensCarry = "none", print = 0L, covMethod = "",
-                   rxControl = rxode2::rxControl(cores = cores))
-      if (!is.null(maxOuter)) args$maxOuterIterations <- maxOuter
+      args <- list(
+        fast = TRUE,
+        linCmtSensCarry = "none",
+        print = 0L,
+        covMethod = "",
+        rxControl = rxode2::rxControl(cores = cores)
+      )
+      if (!is.null(maxOuter)) {
+        args$maxOuterIterations <- maxOuter
+      }
       do.call(foceiControl, args)
     }
     ui <- rxode2::.copyUi(suppressMessages(nlmixr2(.llLin)))
@@ -121,22 +136,41 @@ nmTest({
       })
     }
     set.seed(7)
-    d <- do.call(rbind, lapply(1:6, function(i) {
-      tt <- c(0, 0.5, 1, 2, 4, 6, 8, 12, 12, 14, 16, 20, 24, 36)
-      ev <- c(1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0)
-      w0 <- runif(1, 50, 90)
-      data.frame(ID = i, TIME = tt, EVID = ev, AMT = ifelse(ev == 1, 100, 0),
-                 CMT = ifelse(ev == 1, 1, 2), wt = ifelse(tt < 8, w0, w0 * 1.3),
-                 DV = ifelse(ev == 0, 3 * exp(-0.1 * tt) * exp(rnorm(length(tt), 0, 0.2)), 0))
-    }))
+    d <- do.call(
+      rbind,
+      lapply(1:6, function(i) {
+        tt <- c(0, 0.5, 1, 2, 4, 6, 8, 12, 12, 14, 16, 20, 24, 36)
+        ev <- c(1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0)
+        w0 <- runif(1, 50, 90)
+        data.frame(
+          ID = i,
+          TIME = tt,
+          EVID = ev,
+          AMT = ifelse(ev == 1, 100, 0),
+          CMT = ifelse(ev == 1, 1, 2),
+          wt = ifelse(tt < 8, w0, w0 * 1.3),
+          DV = ifelse(ev == 0, 3 * exp(-0.1 * tt) * exp(rnorm(length(tt), 0, 0.2)), 0)
+        )
+      })
+    )
     for (interp in c("locf", "nocb")) {
       # the ODE twin needs tight tolerances across the covariate step to be
       # a reference at this precision
       .ctl <- function(cores) {
-        foceiControl(fast = TRUE, print = 0L, covMethod = "", maxOuterIterations = 0L,
-                     rxControl = rxode2::rxControl(covsInterpolation = interp, cores = cores,
-                                                   atol = 1e-10, rtol = 1e-10,
-                                                   atolSens = 1e-10, rtolSens = 1e-10))
+        foceiControl(
+          fast = TRUE,
+          print = 0L,
+          covMethod = "",
+          maxOuterIterations = 0L,
+          rxControl = rxode2::rxControl(
+            covsInterpolation = interp,
+            cores = cores,
+            atol = 1e-10,
+            rtol = 1e-10,
+            atolSens = 1e-10,
+            rtolSens = 1e-10
+          )
+        )
       }
       # one core: a multi-threaded fit after the ODE fits above would hit #1502
       fL <- suppressMessages(suppressWarnings(nlmixr2(.tvLin, d, "focei", .ctl(1L))))

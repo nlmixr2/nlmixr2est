@@ -2686,9 +2686,13 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     .g,
     paste0("rx_ecAdv_=", .foceiEcCall(.txt, "-32", 0L)),
     paste0("rx_lcConc_~", .foceiEcCall(.txt, "-1", -1L)),
-    vapply(seq_len(.neta), function(.i) {
-      sprintf("rx_ecC%d_~%s", .i, .foceiEcCall(.txt, "-33", .i - 1L))
-    }, character(1))
+    vapply(
+      seq_len(.neta),
+      function(.i) {
+        sprintf("rx_ecC%d_~%s", .i, .foceiEcCall(.txt, "-33", .i - 1L))
+      },
+      character(1)
+    )
   )
   for (.j in seq_len(.neta)) {
     for (.i in seq_len(.j)) {
@@ -2718,7 +2722,9 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 .foceiEcCall <- function(txt, w1, w2, p2 = NULL) {
   txt[6] <- w1
   txt[7] <- as.character(w2)
-  if (!is.null(p2)) txt[11] <- p2
+  if (!is.null(p2)) {
+    txt[11] <- p2
+  }
   paste0("linCmtB(", paste(txt, collapse = ","), ")")
 }
 
@@ -2735,9 +2741,13 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   for (.k in 1:7) {
     for (.i in seq_len(.neta)) {
       .d <- symengine::D(a[[.k + 8L]], symengine::S(eta[.i]))
-      if (.rxFoceiCarryIsZero(.d)) next
-      .g <- c(.g, sprintf("rx_ecG%d_%d_~%s", .k, .i,
-                          .foceiEcCall(txt, "-30", (.k - 1L) * E + (.i - 1L), .foceiEcSe(.d))))
+      if (.rxFoceiCarryIsZero(.d)) {
+        next
+      }
+      .g <- c(
+        .g,
+        sprintf("rx_ecG%d_%d_~%s", .k, .i, .foceiEcCall(txt, "-30", (.k - 1L) * E + (.i - 1L), .foceiEcSe(.d)))
+      )
       .g <- c(.g, .foceiEcGrad2Lines(.d, txt, eta, E, .k, .i))
     }
   }
@@ -2755,11 +2765,19 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   .g <- character(0)
   for (.j in i:length(eta)) {
     .d2 <- symengine::D(d, symengine::S(eta[.j]))
-    if (.rxFoceiCarryIsZero(.d2)) next
-    .g <- c(.g, sprintf(
-      "rx_ecGG%d_%d_%d_~%s", k, i, .j,
-      .foceiEcCall(txt, "-31", ((k - 1L) * E + (i - 1L)) * E + (.j - 1L), .foceiEcSe(.d2))
-    ))
+    if (.rxFoceiCarryIsZero(.d2)) {
+      next
+    }
+    .g <- c(
+      .g,
+      sprintf(
+        "rx_ecGG%d_%d_%d_~%s",
+        k,
+        i,
+        .j,
+        .foceiEcCall(txt, "-31", ((k - 1L) * E + (i - 1L)) * E + (.j - 1L), .foceiEcSe(.d2))
+      )
+    )
   }
   .g
 }
@@ -2779,7 +2797,10 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   for (.j in seq_len(.neta)) {
     for (.i in seq_len(.j)) {
       .Cij <- symengine::S(sprintf("rx_ecC%d_%d_", .i, .j))
-      .e <- .PCC * .Ca[[.i]] * .Ca[[.j]] + .PC * .Cij +
+      .e <- .PCC *
+        .Ca[[.i]] *
+        .Ca[[.j]] +
+        .PC * .Cij +
         symengine::D(.PC, symengine::S(eta[.i])) * .Ca[[.j]] +
         symengine::D(.PC, symengine::S(eta[.j])) * .Ca[[.i]] +
         symengine::D(symengine::D(P, symengine::S(eta[.i])), symengine::S(eta[.j]))
@@ -2868,10 +2889,19 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' @return logical
 #' @noRd
 .foceiLinCmtModeledDoseTiming <- function(ui) {
-  if (!.foceiUsesLinCmt(ui)) return(FALSE)
+  if (!.foceiUsesLinCmt(ui)) {
+    return(FALSE)
+  }
   .txt <- tryCatch(rxode2::rxModelVars(ui)$model[["normModel"]], error = function(e) "")
-  any(grepl("^(alag|lag|rate|dur)[(]", strsplit(.txt, "
-", fixed = FALSE)[[1]]))
+  any(grepl(
+    "^(alag|lag|rate|dur)[(]",
+    strsplit(
+      .txt,
+      "
+",
+      fixed = FALSE
+    )[[1]]
+  ))
 }
 
 #' Does the model have an `ar()` residual?
@@ -2898,8 +2928,10 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' @noRd
 .foceiLinCmtKeepsFdHessian <- function(ui, conditional) {
   if (conditional && .foceiLinCmtModeledDoseTiming(ui)) {
-    stop("full conditional Hessian does not support linCmt() with a modeled lag, rate or duration; use laplace or agq",
-         call. = FALSE)
+    stop(
+      "full conditional Hessian does not support linCmt() with a modeled lag, rate or duration; use laplace or agq",
+      call. = FALSE
+    )
   }
   if (!.foceiLinCmtNoSecondOrder(ui)) {
     return(FALSE)
@@ -2926,9 +2958,12 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   }
   .pairs <- .s$..linCmtCarryPairs
   .jump <- any(!is.na(.pairs$fD)) || any(!is.na(.pairs$lagD))
-  if (.jump || !.foceiLinCmtHasSecondOrder() ||
-        !isTRUE(as.logical(rxode2::rxGetControl(ui, "fast", FALSE))) ||
-        !.foceiLLGradInScope(ui)) {
+  if (
+    .jump ||
+      !.foceiLinCmtHasSecondOrder() ||
+      !isTRUE(as.logical(rxode2::rxGetControl(ui, "fast", FALSE))) ||
+      !.foceiLLGradInScope(ui)
+  ) {
     return(.s)
   }
   .malert("calculate d2(f)/d(eta) through the linCmt() eta-space carry")
