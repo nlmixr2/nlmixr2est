@@ -1412,6 +1412,27 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmStopOn_
+bool nlmStopOn_(bool on);
+RcppExport SEXP _nlmixr2est_nlmStopOn_(SEXP onSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type on(onSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmStopOn_(on));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nlmStopBest_
+RObject nlmStopBest_();
+RcppExport SEXP _nlmixr2est_nlmStopBest_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nlmStopBest_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // npObjAtGamma_
 double npObjAtGamma_(arma::mat etaPoints, int cores, double gamma);
 RcppExport SEXP _nlmixr2est_npObjAtGamma_(SEXP etaPointsSEXP, SEXP coresSEXP, SEXP gammaSEXP) {
@@ -1778,6 +1799,15 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     rcpp_result_gen = Rcpp::wrap(nmStopFileStopped_());
     return rcpp_result_gen;
+END_RCPP
+}
+// nmStopFileConsume_
+void nmStopFileConsume_();
+RcppExport SEXP _nlmixr2est_nmStopFileConsume_() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    nmStopFileConsume_();
+    return R_NilValue;
 END_RCPP
 }
 // tablePoolFree_

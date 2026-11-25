@@ -564,6 +564,14 @@ nlmLikEvalC_ <- function(theta) {
     .Call(`_nlmixr2est_nlmLikEvalC_`, theta)
 }
 
+.nlmStopOn <- function(on) {
+    .Call(`_nlmixr2est_nlmStopOn_`, on)
+}
+
+.nlmStopBest <- function() {
+    .Call(`_nlmixr2est_nlmStopBest_`)
+}
+
 #' Diagnostic: NPAG objective at a fixed grid and residual multiplier gamma
 #' @param etaPoints support points, one per row
 #' @param cores threads
@@ -773,6 +781,10 @@ iwresAutocor_ <- function(iwres, id, grp) {
 
 .nmStopFileStopped <- function() {
     .Call(`_nlmixr2est_nmStopFileStopped_`)
+}
+
+.nmStopFileConsume <- function() {
+    invisible(.Call(`_nlmixr2est_nmStopFileConsume_`))
 }
 
 tablePoolFree_ <- function() {

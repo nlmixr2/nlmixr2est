@@ -166,6 +166,7 @@ optimControl <- function(
   literalFix = TRUE,
   literalFixRes = TRUE,
   returnOptim = FALSE,
+  stopFile = NULL,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
   sensMethod = c("default", "forward"),
@@ -293,8 +294,10 @@ optimControl <- function(
 
   .corWarnCheck(corWarn)
   .condWarnCheck(condWarn)
+  checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
+    stopFile = stopFile,
     method = method,
     covMethod = covMethod,
     trace = trace, # nolint
@@ -517,7 +520,7 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
       hessian = .(.ctl$covMethod == "optim")
     ))
   }
-  .ret <- eval(.ret)
+  .ret <- .nlmStopOpt(eval(.ret), "par", "value")
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 

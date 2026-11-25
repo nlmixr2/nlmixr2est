@@ -105,6 +105,9 @@ SEXP _nlmixr2est_nmStopFileGet_(void);
 SEXP _nlmixr2est_nmStopFilePoll_(void);
 SEXP _nlmixr2est_nmStopFileRequested_(void);
 SEXP _nlmixr2est_nmStopFileStopped_(void);
+SEXP _nlmixr2est_nmStopFileConsume_(void);
+SEXP _nlmixr2est_nlmStopOn_(SEXP);
+SEXP _nlmixr2est_nlmStopBest_(void);
 SEXP _nlmixr2est_foceiOuterRecord_(SEXP);
 SEXP _nlmixr2est_foceiOuterHold_(SEXP);
 SEXP _nlmixr2est_foceiOuterG(SEXP);
@@ -382,6 +385,9 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_nmStopFilePoll_", (DL_FUNC) &_nlmixr2est_nmStopFilePoll_, 0},
   {"_nlmixr2est_nmStopFileRequested_", (DL_FUNC) &_nlmixr2est_nmStopFileRequested_, 0},
   {"_nlmixr2est_nmStopFileStopped_", (DL_FUNC) &_nlmixr2est_nmStopFileStopped_, 0},
+  {"_nlmixr2est_nmStopFileConsume_", (DL_FUNC) &_nlmixr2est_nmStopFileConsume_, 0},
+  {"_nlmixr2est_nlmStopOn_", (DL_FUNC) &_nlmixr2est_nlmStopOn_, 1},
+  {"_nlmixr2est_nlmStopBest_", (DL_FUNC) &_nlmixr2est_nlmStopBest_, 0},
   {"_nlmixr2est_foceiOuterRecord_", (DL_FUNC) &_nlmixr2est_foceiOuterRecord_, 1},
   {"_nlmixr2est_foceiOuterHold_", (DL_FUNC) &_nlmixr2est_foceiOuterHold_, 1},
   {"_nlmixr2est_foceiOuterG", (DL_FUNC) &_nlmixr2est_foceiOuterG, 1},

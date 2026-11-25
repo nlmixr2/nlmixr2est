@@ -62,3 +62,9 @@ bool nmStopFileRequested_() {
 bool nmStopFileStopped_() {
   return _stopped;
 }
+
+// Marks a stop request as handled by the loop it ended.
+//[[Rcpp::export(".nmStopFileConsume")]]
+void nmStopFileConsume_() {
+  nmStopFileConsume();
+}

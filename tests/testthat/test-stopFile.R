@@ -146,3 +146,60 @@ test_that("a stop file ends a SAEM fit at the current iteration", {
   expect_false("stopped early by user request" %in% .fit2$runInfo)
   expect_equal(nrow(.fit2$parHist), 50L)
 })
+
+test_that(".nlmStopOpt() passes errors through unless a stop was requested", {
+  .sf <- tempfile("stop")
+  on.exit({
+    .nmStopFileSet("")
+    unlink(.sf)
+  })
+  expect_error(.nlmStopOpt(stop("boom")), "boom")
+  expect_equal(.nlmStopOpt(list(par = 1, fval = 2)), list(par = 1, fval = 2))
+  .nmStopFileSet(.sf)
+  file.create(.sf)
+  .ret <- .nlmStopOpt({
+    .nmStopFilePoll()
+    stop("ended by the stop request")
+  })
+  expect_true(.ret$nlmStopped)
+  expect_false(.nmStopFileRequested())
+  expect_true(.nmStopFileStopped())
+})
+
+.stopModNlm <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- log(c(0, 2.7, 100))
+    tv <- 3.45
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl)
+    v <- exp(tv)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+for (.est in c("nlminb", "lbfgsb3c", "trust", "n1qn1")) {
+  test_that(paste0("a stop file ends an est='", .est, "' fit early"), {
+    .sf <- tempfile("stop")
+    on.exit(unlink(.sf))
+    file.create(.sf)
+    .fit <- suppressMessages(nlmixr(.stopModNlm, nlmixr2data::theo_sd, .est, control = list(print = 0, stopFile = .sf)))
+    expect_false(file.exists(.sf))
+    expect_equal(.fit$message, "stopped early by user request")
+    expect_true("stopped early by user request" %in% .fit$runInfo)
+    expect_equal(.fit$theta[["tka"]], 0.45, tolerance = 1e-6)
+    expect_true(is.finite(.fit$objf))
+
+    .fit2 <- suppressMessages(nlmixr(
+      .stopModNlm,
+      nlmixr2data::theo_sd,
+      .est,
+      control = list(print = 0, stopFile = .sf)
+    ))
+    expect_false("stopped early by user request" %in% .fit2$runInfo)
+    expect_lt(.fit2$objf, .fit$objf)
+  })
+}
