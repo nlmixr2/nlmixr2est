@@ -20,7 +20,7 @@ foceiControl(
   scaleCmax = 1e+05,
   scaleCmin = 1e-05,
   scaleCband = c(0.1, 10),
-  scaleLinear = c("inverse", "abs"),
+  scaleLinear = c("abs", "inverse"),
   scaleC = NULL,
   scaleC0 = 1e+05,
   derivEps = rep(20 * sqrt(.Machine$double.eps), 2),
@@ -102,6 +102,7 @@ foceiControl(
   newuoaPolish = FALSE,
   newuoaRhoend = NULL,
   bobyqaStationary = TRUE,
+  scaleAdapt = NULL,
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL,
   innerLbfgsPgtol = NULL,
@@ -198,7 +199,8 @@ foceiControl(
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
   zeroThetaStep = 100,
-  boundedTransform = TRUE
+  boundedTransform = TRUE,
+  omegaCollapseWarn = 0.001
 )
 }
 \arguments{
@@ -279,10 +281,10 @@ residual-error parameters and those given in `scaleC` are used as
 they are.}
 
 \item{scaleLinear}{How a linear (untransformed) `theta` is scaled under
-`scaleType = "nlmixr2"`.  `"inverse"` (default) uses `1/|init|` when it
-lands inside `scaleCband` and `|init|` otherwise; `"abs"` always uses
-`|init|`, as NONMEM does.  A `theta` starting at 0 keeps its zero-theta
-scale either way.}
+`scaleType = "nlmixr2"`.  `"abs"` (default) uses `|init|`, as NONMEM
+does; `"inverse"` uses `1/|init|` when it lands inside `scaleCband` and
+`|init|` otherwise.  A `theta` starting at 0 keeps its zero-theta scale
+either way; under `"abs"` a mixture proportion (a log-odds) uses 1.}
 
 \item{scaleC}{Scaling constant used with \code{scaleType="nlmixr2"};
 when not specified, chosen by parameter type to keep gradient sizes
@@ -890,16 +892,19 @@ coupling these parameters exist to remove. Has no effect unless
 `innerOpt="trust"`.}
 
 \item{trustPolish}{logical; when `TRUE`, each converged `innerOpt="trust"`
-solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
-This makes the objective less dependent on the warm-start ETAs and can
-help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+solve re-enters once from its ETAs with the squared
+`trustFterm`/`trustMterm` (floored at `1e-10`; not under a quasi-Newton
+`hessianMethod`).  This makes the objective nearly independent of the
+warm-start ETAs and can help a fit that stops short of its minimum
+(#1152).  The `"bobyqa"`
 outer search then also restarts once from where it stops, which costs
 about twice the outer evaluations.  `FALSE` (default) keeps the plain
 trust solve and a single outer search.}
 
-\item{steihaugPolish, newuoaPolish}{logical; the `trustPolish` Newton
-polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
-solve.  `FALSE` (default) keeps the plain solve.}
+\item{steihaugPolish, newuoaPolish}{logical; the `trustPolish` polish for
+a converged `innerOpt="steihaug"` solve (the same re-entry) or
+`innerOpt="newuoa"` solve (up to 4 Newton steps, down to `trustFterm`).
+`FALSE` (default) keeps the plain solve.}
 
 \item{newuoaRhoend}{final NEWUOA trust-region radius for
 `innerOpt="newuoa"`, in sqrt(diag(Omega)) units.  `NULL` (default) uses
@@ -912,6 +917,11 @@ gradient and a downhill probe.  If the probe lowers the objective by
 more than `10^(1-sigdig)`, bobyqa restarts from there (up to 3 times,
 within `maxOuterIterations`).  This catches a search that stops in a
 narrow valley short of the minimum (#1196); `FALSE` skips the check.}
+
+\item{scaleAdapt}{maximum number of times the `"bobyqa"` outer search
+restarts on a scale adapted to the curvature where it stopped, one
+unit per marginal standard error.  It restarts while each restart gains
+more than `10^(1-sigdig)`.  `0` (default) turns this off.}
 
 \item{innerLbfgsLmm}{number of BFGS updates retained by the
 `innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.
@@ -1376,6 +1386,10 @@ transformed for unbounded optimization methods and back-transformed
 for final estimates. `FALSE` optimizes on the original scale with
 bounds passed to the optimizer. `NA` transforms for optimization but
 skips the final back-transform.}
+
+\item{omegaCollapseWarn}{Warn (in `$runInfo`) when a free diagonal omega
+ends below this fraction of its initial estimate, or at its
+`diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.}
 }
 \value{
 The control object that changes the options for the FOCEi
