@@ -1644,6 +1644,7 @@ struct focei_ind {
   double curT;
   double *curS;
   int nNonNormal = 0;
+  int nCensLl = 0; // M3/M4-censored nNonNormal rows: no log(2*pi) to drop
   int nObs=0;
   // Mixture options
   int    *mixest;
@@ -3010,10 +3011,11 @@ static inline double likInner0Contrib(int id, int k, int dist, int cens,
 // The scalar log-density in rx_pred_ hides the location/scale the correction
 // needs, so both come from the extra lhs columns .rxFinalizeInner() appends
 // for this path (rx_pred_f_/rx_r_/rx_nu_).  When any of them is missing the
-// endpoint is scored uncensored, exactly as before.
+// endpoint is scored uncensored, exactly as before.  `nCensLl` counts the rows
+// scored as M3/M4, which carry no log(2*pi) constant.
 static inline double focei_tCensLl(bool lhsOk, int dist, int cens, double dv,
                                    double limit, double llVal, double fT,
-                                   double *lhs) {
+                                   double *lhs, int &nCensLl) {
   bool isT = (dist == rxDistributionT || dist == rxDistributionCauchy);
   bool isDnorm = (dist == rxDistributionDnorm);
   if (!lhsOk || (!isT && !isDnorm) ||
@@ -3029,14 +3031,13 @@ static inline double focei_tCensLl(bool lhsOk, int dist, int cens, double dv,
   // so there is no scale to correct against -- score the row uncensored rather
   // than hand doCensT1()/doCensNormal1() a floored variance.
   if (!R_FINITE(r) || r <= 0.0) return llVal;
+  if (cens != 0) nCensLl++;
   if (isT) {
     double nu = lhs[op_focei.predNuOffset];
     return doCensT1((double)cens, dv, limit, llVal, fT, r, nu);
   }
-  // dnorm(): the llik-forced Gaussian.  adjLik is already folded into the
-  // llikNorm() density, so pass 0 (doCensNormal1's adjLik only re-adds the
-  // -log(sqrt(2*pi)) the FOCEi -0.5*(err^2/r + log r) kernel drops).
-  return doCensNormal1((double)cens, dv, limit, llVal, fT, r, 0);
+  // dnorm(): the llik-forced Gaussian
+  return doCensNormal1((double)cens, dv, limit, llVal, fT, r);
 }
 
 // M2/M3/M4 eta-gradient counterpart of focei_tCensLl().  `dll` is the
@@ -3390,6 +3391,7 @@ double likInner0(double *eta, int id) {
       int k = 0, kk=0;//getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind) - 1;
       fInd->llik=0.0;
       fInd->nNonNormal = 0;
+      fInd->nCensLl = 0;
       fInd->nObs = 0;
       fInd->tbsLik=0.0;
       // external likelihood contributions (cycled in series); zero overhead when none
@@ -3566,13 +3568,13 @@ double likInner0(double *eta, int id) {
               double ll = err/r;
               //r = variance
               ll =  -0.5 * ll * err - 0.5*log(r);
-              ll = doCensNormal1((double)cens, dv, limit, ll, f, r,
-                                 (int)op_focei.adjLik);
+              ll = doCensNormal1((double)cens, dv, limit, ll, f, r);
               llikObs[kk] = ll;
               fInd->llik += ll;
               fInd->nObs++;
             } else {
-              double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs);
+              double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs,
+                                           fInd->nCensLl);
               llikObs[kk] = llT;
               fInd->llik += llT;
               fInd->nNonNormal++;
@@ -3676,7 +3678,7 @@ double likInner0(double *eta, int id) {
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
                if (dist == rxDistributionNorm) {
                  double ll = -0.5 * err * err/_safe_zero(r) - 0.5 * lnr;
-                 ll = doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+                 ll = doCensNormal1((double)cens, dv, limit, ll, f, r);
                  // npag/npb sum llikObs directly as the conditional density, so the
                  // transform-both-sides Jacobian (added to fInd->tbsLik -> the FOCEI
                  // marginal lik) must be folded in per observation here.
@@ -3684,7 +3686,8 @@ double likInner0(double *eta, int id) {
                  fInd->llik +=  ll;
                  fInd->nObs++;
                } else {
-                 double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs);
+                 double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs,
+                                           fInd->nCensLl);
                  llikObs[kk] = llT;
                  fInd->llik += llT;
                  fInd->nNonNormal++;
@@ -3711,12 +3714,13 @@ double likInner0(double *eta, int id) {
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
               if (dist == rxDistributionNorm) {
                 double ll = -0.5 * err * err/_safe_zero(r) -0.5 * lnr;
-                ll =doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+                ll =doCensNormal1((double)cens, dv, limit, ll, f, r);
                 llikObs[kk] = ll + ((op_focei.isNpag || op_focei.isNpb) ? tbsJac : 0.0);
                 fInd->llik +=  ll;
                 fInd->nObs++;
               } else {
-                double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs);
+                double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs,
+                                           fInd->nCensLl);
                 llikObs[kk] = llT;
                 fInd->llik += llT;
                 fInd->nNonNormal++;
@@ -3761,7 +3765,7 @@ double likInner0(double *eta, int id) {
       }
       if (op_focei.neta == 0) {
         if (fInd->nNonNormal && op_focei.adjLik) {
-          fInd->llik -= fInd->nNonNormal*M_LN_SQRT_2PI;
+          fInd->llik -= (fInd->nNonNormal - fInd->nCensLl)*M_LN_SQRT_2PI;
         }
       } else if (op_focei.fo == 1) {
         if (anyCens) stop("FO censoring not supported.");
@@ -3798,7 +3802,7 @@ double likInner0(double *eta, int id) {
         // Partially finalize #10
         fInd->llik = -trace(fInd->llik - 0.5*(etam.t() * curOmegaInv() * etam));
         if (fInd->nNonNormal && op_focei.adjLik) {
-          fInd->llik -= fInd->nNonNormal*M_LN_SQRT_2PI;
+          fInd->llik -= (fInd->nNonNormal - fInd->nCensLl)*M_LN_SQRT_2PI;
         }
         std::copy(&eta[0], &eta[0] + op_focei.neta, &fInd->oldEta[0]);
       }
@@ -3870,7 +3874,7 @@ static bool conditionalInnerPartials(rx_solving_options_ind *ind, int kk2,
   int cens = hasRxCens(rx) ? getIndCens(ind, kk2) : 0;
   double err = f-y;
   double ll = -0.5*(std::log(variance)+err*err/variance);
-  value = -doCensNormal1(cens,y,limit,ll,f,variance,op_focei.adjLik);
+  value = -doCensNormal1(cens,y,limit,ll,f,variance);
   cp[0] = err/variance;
   cp[1] = 0.5/variance-0.5*err*err/(variance*variance);
   cp[2] = 1.0/variance;
@@ -11206,6 +11210,20 @@ NumericVector foceiSetup_(const RObject &obj,
   return ret;
 }
 
+// Number of M3/M4-censored observations; they carry no log(2*pi) constant.
+static int foceiNobsCensM34() {
+  if (!hasRxCens(rx)) return 0;
+  int n = 0;
+  for (int id = 0; id < getRxNsub(rx); ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      int kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) == 0 && getIndCens(ind, kk) != 0) n++;
+    }
+  }
+  return n;
+}
+
 LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
   if (e.exists("theta") && rxode2::rxIs(e["theta"], "data.frame") &&
       e.exists("omega") && e.exists("etaObf")) {
@@ -11215,6 +11233,9 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
     } else {
       nobs2 = getRxNobs2(rx);
     }
+    // observations that carry the normal log(2*pi) constant (as NONMEM's N)
+    int nobs2pi = nobs2 - foceiNobsCensM34();
+    e["nobs2pi"] = nobs2pi;
     if (op_focei.scaleObjective) {
       fmin = fmin * op_focei.initObjective / op_focei.scaleObjectiveTo;
     }
@@ -11225,7 +11246,7 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
       if (op_focei.adjLik){
         doAdj = true;
       } else {
-        fmin -= 0.5*(nobs2)*log(M_2PI);
+        fmin -= 0.5*(nobs2pi)*log(M_2PI);
         doAdj=true;
       }
       e["objective"] = fmin;
@@ -11240,7 +11261,7 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
     NumericVector logLik(1);
     double adj= 0;
     if (doAdj){
-      adj=nobs2*log(2*M_PI)/2;
+      adj=nobs2pi*log(2*M_PI)/2;
     }
     e["adj"]=adj;
     logLik[0]=-fmin/2-adj;
@@ -11262,7 +11283,7 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
     e["AIC"] = fmin+2*adj+2*op_focei.npars;
     if (doObf){
       // -2 * object$logLik - object$dim$N * log(2 * pi)
-      adj = -2*as<double>(logLik) - (nobs2)*log(M_2PI);
+      adj = -2*as<double>(logLik) - (nobs2pi)*log(M_2PI);
       e["OBJF"] = adj;
       e["objf"] = adj;
       e["objective"] = adj;

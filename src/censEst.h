@@ -67,15 +67,15 @@ static inline double finite_log_prob(double logp) {
 // @param ll is the log-liklihood if this was not censored
 // @param f is the prediction
 // @param r is the variance estimate
-// @param adjLik is the likelihood adjustment flag, if 1, remove the log(2*pi) to match NONMEM's focei
 //
 // @return the log-likelihood considering any adjustments from censoring for a normal distribution
 //
+// An M3/M4 row carries no log(2*pi) constant (as in NONMEM, where it is not a
+// normally distributed data value); an M2 row keeps whatever constant `ll` has.
+//
 // @noRd
 static inline double doCensNormal1(double cens, double limDv, double lim, double ll,
-                                   double f, double r, int adjLik) {
-  // Subtract log(2*pi)/2 since this is the likelihood instead of the liklihood missing 0.5*log(2*pi)
-  double adj = M_LN_SQRT_2PI*((double)adjLik);
+                                   double f, double r) {
   if (isM2(cens, lim)) {
     // M2 adds likelihood even when the observation is defined
     // Note the ll is the numerator of equation 1 in Beal 2001, Ways to fit a PK model with some data below the quantification limit
@@ -84,7 +84,7 @@ static inline double doCensNormal1(double cens, double limDv, double lim, double
     // the observation's, not the prediction's (which made the objective kink at lim).
     updateCensFlag(censFlagM2);
     double z = m2Sign(limDv, lim)*(lim - f)/sqrt(r);
-    return ll - finite_log_prob(R::pnorm5(z, 0.0, 1.0, 0, 1)) - adj;
+    return ll - finite_log_prob(R::pnorm5(z, 0.0, 1.0, 0, 1));
   } else if (isM3orM4(cens)) {
     if (hasFiniteLimit(lim)) {
       // M4 method
@@ -94,11 +94,11 @@ static inline double doCensNormal1(double cens, double limDv, double lim, double
       double logTail = R::pnorm5(cens*(lim - f)/sd, 0.0, 1.0, 0, 1);
       updateCensFlag(censFlagM4);
       return finite_log_prob(logspace_sub(logCum1, logCum2)) -
-        finite_log_prob(logTail) - adj;
+        finite_log_prob(logTail);
     } else {
       // M3 method
       updateCensFlag(censFlagM3);
-      return finite_log_prob(R::pnorm5(cens*(limDv-f)/sqrt(r), 0.0, 1.0, 1, 1)) - adj;
+      return finite_log_prob(R::pnorm5(cens*(limDv-f)/sqrt(r), 0.0, 1.0, 1, 1));
     }
   }
   return ll;
@@ -242,8 +242,7 @@ rxOptExpr(x)
 // just pass nu=1.0) -- see #979.  f/r follow doCensNormal1's convention
 // (r is the VARIANCE, sd=sqrt(r) is the scale fed to llikT()/llikCauchy()).
 // `ll` is the full, already-normalized llikT()/llikCauchy() log-density
-// (rxode2ll, Stan-backed autodiff) -- unlike doCensNormal1 there is no
-// adjLik term to remove.
+// (rxode2ll, Stan-backed autodiff).
 //
 // @noRd
 static inline double doCensT1(double cens, double limDv, double lim, double ll,

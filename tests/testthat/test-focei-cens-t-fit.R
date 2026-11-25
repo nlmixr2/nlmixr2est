@@ -3,13 +3,15 @@
 # references, because a self-consistent-but-wrong wiring (reading the wrong
 # lhs column, say) would satisfy any one of them alone:
 #
-#  1. population-only (neta == 0): objf is exactly -2*(sum ll - nobs*log(sqrt(2pi))),
+#  1. population-only (neta == 0): objf is exactly -2*(sum ll - n*log(sqrt(2pi))),
+#     with n counting the rows that are not M3/M4-censored (#1478),
 #     so it is compared against the censored t() log-likelihood recomputed in R
 #     from the fit's own IPRED.
 #  2. with etas: the same censored likelihood written out by hand as a general
 #     ll() endpoint (pcauchy via atan) must give the SAME objective -- both go
 #     through the identical FOCEi log-likelihood machinery, so log|H| and the
-#     adjLik bookkeeping cancel exactly.
+#     adjLik bookkeeping cancel, apart from the log(2*pi) the ll() row drops
+#     for each M3/M4 row (the t() row carries none, #1478).
 #  3. the analytic inner eta-gradient must match central differences of the
 #     inner objective (focei_tCensDll vs focei_tCensLl).
 #
@@ -102,8 +104,9 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     .d <- .censTheo()
     .lo <- .censRows(.d)
-    # -2*(sum ll - nObs*log(sqrt(2*pi))) IS the neta == 0 objective, with the
-    # fit's own IPRED standing in for f so no ODE tolerance enters
+    # -2*(sum ll - n*log(sqrt(2*pi))) IS the neta == 0 objective (n excludes
+    # M3/M4 rows), with the fit's own IPRED standing in for f so no ODE
+    # tolerance enters
     .refObjf <- function(fit, dat) {
       .obs <- dat[dat$EVID == 0, ]
       .f <- as.data.frame(fit)$IPRED
@@ -115,7 +118,7 @@ nmTest({
         },
         numeric(1)
       )
-      -2 * (sum(.ll) - length(.ll) * log(sqrt(2 * pi)))
+      -2 * (sum(.ll) - sum(.obs$CENS == 0) * log(sqrt(2 * pi)))
     }
     for (.nm in c("none", "m3", "m4", "m2")) {
       .dat <- .censDat(.d, .nm, limit = 0.25)
@@ -219,8 +222,10 @@ nmTest({
     .d <- .censTheo()
     .ctl <- foceiControl(print = 0L, covMethod = "", calcTables = FALSE, maxOuterIterations = 0L)
     .run <- function(m, dat) as.numeric(.nlmixr(m, dat, est = "focei", .ctl)$objf)
+    # the ll() twin drops a log(2*pi) for each M3/M4 row too; t() does not
+    .c2pi <- length(.censRows(.d)) * log(2 * pi)
 
-    expect_equal(.run(.etaCauchy, .censDat(.d, "m3")), .run(.manM3, .manDat(.d, "m3")), tolerance = 1e-6)
+    expect_equal(.run(.etaCauchy, .censDat(.d, "m3")), .run(.manM3, .manDat(.d, "m3")) + .c2pi, tolerance = 1e-6)
     # est="foce" reaches the same place by a different route -- it is the
     # explicit form of the interaction=0 build .foceiFitInternal picks anyway
     .runFoce <- function(m, dat) {
@@ -238,8 +243,12 @@ nmTest({
         )$objf
       )
     }
-    expect_equal(.runFoce(.etaCauchy, .censDat(.d, "m3")), .runFoce(.manM3, .manDat(.d, "m3")), tolerance = 1e-6)
-    expect_equal(.run(.etaCauchy, .censDat(.d, "m4")), .run(.manM4, .manDat(.d, "m4")), tolerance = 1e-5)
+    expect_equal(
+      .runFoce(.etaCauchy, .censDat(.d, "m3")),
+      .runFoce(.manM3, .manDat(.d, "m3")) + .c2pi,
+      tolerance = 1e-6
+    )
+    expect_equal(.run(.etaCauchy, .censDat(.d, "m4")), .run(.manM4, .manDat(.d, "m4")) + .c2pi, tolerance = 1e-5)
     expect_equal(
       .run(.etaCauchy, .censDat(.d, "m2", limit = 0.25)),
       .run(.manM2, .manDat(.d, "m2", limit = 0.25)),
@@ -317,9 +326,11 @@ nmTest({
     }
     .d <- .censTheo()
     .ctl <- foceiControl(print = 0L, covMethod = "", calcTables = FALSE, maxOuterIterations = 0L)
+    # an M3 row carries no log(2*pi), which the ll() twin still drops (#1478)
     expect_equal(
       as.numeric(.nlmixr(.dn, .censDat(.d, "m3"), est = "focei", .ctl)$objf),
-      as.numeric(.nlmixr(.manDn, .manDat(.d, "m3"), est = "focei", .ctl)$objf),
+      as.numeric(.nlmixr(.manDn, .manDat(.d, "m3"), est = "focei", .ctl)$objf) +
+        length(.censRows(.d)) * log(2 * pi),
       tolerance = 1e-6
     )
   })

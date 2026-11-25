@@ -516,7 +516,7 @@ struct NlmCensObs {
       // already emits rx_nu_ ~ 1 for cauchy, so this always reads a real nu.
       return -doCensT1((double)cens, dv, limit, -val, f, r, lhs[nuOffset]);
     }
-    return -doCensNormal1((double)cens, dv, limit, -val, f, r, 0);
+    return -doCensNormal1((double)cens, dv, limit, -val, f, r);
   }
 };
 

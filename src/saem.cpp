@@ -831,7 +831,7 @@ static inline double saemGenLikCens(const double *lhs, double cens, double lim, 
   double limT = (R_FINITE(lim) && _saemGenCensIx(4) >= 0) ? lhs[_saemGenCensIx(4)] : lim;
   double x = lhs[_saemGenCensIx(0)], mu = lhs[_saemGenCensIx(1)];
   double sd = lhs[_saemGenCensIx(2)];
-  if (nu == 0.0) return doCensNormal1(cens, x, limT, ll, mu, sd*sd, 0);
+  if (nu == 0.0) return doCensNormal1(cens, x, limT, ll, mu, sd*sd);
   return doCensT1(cens, x, limT, ll, mu, sd*sd, nu);
 }
 
@@ -2067,7 +2067,7 @@ public:
                             const vec &g) const {
     for (int j = ntotal; j--;) {
       DYFm(indioK(j)) = -doCensNormal1(censk[j], ytk[j], limT[j],
-                                       -DYFm(indioK(j)), ft[j], g[j]*g[j], 0);
+                                       -DYFm(indioK(j)), ft[j], g[j]*g[j]);
     }
   }
 
@@ -2618,7 +2618,7 @@ public:
       double loss = 0.5*(e/gg)*(e/gg) + std::log(gg);
       if (cens[q] != 0.0 || R_FINITE(lim[q])) {
         double limT = _powerD(lim[q], lambda(cur), yj(cur), low(cur), hi(cur));
-        loss = -doCensNormal1(cens[q], yt(j), limT, -loss, yt(j) - e, gg*gg, 0);
+        loss = -doCensNormal1(cens[q], yt(j), limT, -loss, yt(j) - e, gg*gg);
       }
       sum += loss;
     }

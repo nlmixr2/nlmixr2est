@@ -112,10 +112,24 @@
       )
       # impObj omits the normal constant, like an adjusted objective
       .objf <- .newFit$env$impObj
-      .setOfvRow(fit, .rn, .objf + fit$env$nobs * log(2 * pi), .objf)
+      .setOfvRow(fit, .rn, .objf + .ofvNobs2pi(fit) * log(2 * pi), .objf)
     },
     envir = fit
   )
+}
+
+#' Number of observations carrying the normal log(2*pi) constant
+#'
+#' M3/M4-censored rows carry none, as in NONMEM.
+#' @param fit nlmixr2 fit
+#' @return integer count
+#' @noRd
+.ofvNobs2pi <- function(fit) {
+  .n <- fit$env$nobs2pi
+  if (is.null(.n)) {
+    .n <- fit$env$nobs
+  }
+  .n
 }
 
 #' Add an objective function row computed from a -2 log-likelihood
@@ -128,7 +142,7 @@
 #' @param adjObjf the objective without the normal constant
 #' @return fit, invisibly
 #' @noRd
-.setOfvRow <- function(fit, type, m2ll, adjObjf = m2ll - fit$env$nobs * log(2 * pi)) {
+.setOfvRow <- function(fit, type, m2ll, adjObjf = m2ll - .ofvNobs2pi(fit) * log(2 * pi)) {
   .env <- fit$env
   .df <- attr(get("logLik", .env), "df")
   .adj <- .env$adjObf
