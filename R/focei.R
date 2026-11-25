@@ -2528,7 +2528,7 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 #' endpoint, identity DV transform only; a no-op otherwise.
 #' @noRd
 #' @author Matthew L. Fidler
-.rxFoceiArEtaCorrect <- function(.s, .grd) {
+.rxFoceiArEtaCorrect <- function(.s, .grd, extraF = NULL) {
   .vars <- ls(envir = .s)
   .arEp <- .vars[grepl("^rx_arEp_", .vars)]
   if (length(.arEp) != 1L || !exists("rx_pred_f_", envir = .s)) {
@@ -2559,6 +2559,7 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
       # chained through lagged calculated variables (#1176)
       .snBasic <- .lag$dfe(.s$rx_pred_f_, sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", .snNames[.n]))
     }
+    .snBasic <- .foceiAddExtraF(.snBasic, extraF, .snNames[.n])
     .snText[.n] <- .foceiLagTxt(.lag, .snBasic, .snNames[.n])
   }
   assign("..arEtaSens", paste0(.snNames, "=", .snText), envir = .s)
@@ -2587,7 +2588,7 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 #'   `character(0)` when the model has no `rx_pred_f_`
 #' @noRd
 #' @author Matthew L. Fidler
-.foceiPredFEtaSens <- function(.s, .grd) {
+.foceiPredFEtaSens <- function(.s, .grd, extraF = NULL) {
   # An AR(1) endpoint already emits these exact names (..arEtaSens, real lhs
   # ahead of rx_pred_), so never emit them twice.
   if (!.foceiCensLlikOn(.s) || !is.null(.s$..arEtaSens)) {
@@ -2604,9 +2605,25 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
     } else {
       .basic <- .lag$dfe(get("rx_pred_f_", envir = .s), sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", .nms[.n]))
     }
+    .basic <- .foceiAddExtraF(.basic, extraF, .nms[.n])
     .txt[.n] <- .foceiLagTxt(.lag, .basic, .nms[.n])
   }
   paste0(.nms, "=", .txt)
+}
+
+#' Add the linCmt() alag()/f() correction to a d(rx_pred_f_)/d(eta) row
+#'
+#' @param basic symengine d(rx_pred_f_)/d(eta_n)
+#' @param extraF named list from `.rxFoceiLinCmtEventPredFExtra()`, or NULL
+#' @param nm the row's `rx__sens_rx_pred_f__BY_ETA_n___` name
+#' @return `basic` plus the eta's correction, if any
+#' @noRd
+.foceiAddExtraF <- function(basic, extraF, nm) {
+  if (is.null(extraF)) {
+    return(basic)
+  }
+  .e <- extraF[[sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", nm)]]
+  if (is.null(.e)) basic else basic + .e
 }
 
 #' @export
@@ -2630,13 +2647,19 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   # AR(1) exact eta-gradient: all symbolic work BEFORE the main apply (which
   # poisons later get()/[[ for AR endpoints).  Returns the per-eta correction
   # text (a plain vector) and stores ..arEtaSens on .s.
+  # linCmt() alag()/f() moving-boundary correction (#920), also chained into
+  # the structural d(rx_pred_f_)/d(eta) rows the AR(1) and censored-llik
+  # corrections emit; pure symengine, so before anything renders.
+  .linCmtEtaVars <- paste0("ETA_", seq_len(.s$..maxEta), "_")
+  .linCmtExtraPred <- .rxFoceiLinCmtEventPredExtra(x, .s, .linCmtEtaVars)
+  .linCmtExtraF <- .rxFoceiLinCmtEventPredFExtra(.s, .linCmtExtraPred)
   .arCorr <- NULL
   if (isTRUE(rxode2::rxHasAr(x[[1]]))) {
-    .arCorr <- .rxFoceiArEtaCorrect(.s, .grd)
+    .arCorr <- .rxFoceiArEtaCorrect(.s, .grd, .linCmtExtraF)
   }
   # M2/M3/M4 censoring for a llik-forced endpoint (#992) needs the STRUCTURAL
   # d(f)/d(eta) as well; same pre-apply ordering as the AR(1) correction.
-  .s$..predFEtaSens <- .foceiPredFEtaSens(.s, .grd)
+  .s$..predFEtaSens <- .foceiPredFEtaSens(.s, .grd, .linCmtExtraF)
   rxode2::rxProgress(dim(.grd)[1])
   # The bar is closed on any exit that did not stop it, without the abort's
   # own error, so the caller gets the error that ended the loop or the one
@@ -2652,9 +2675,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   # linCmt() alag()/f() moving-boundary correction (#920): computed once, then
   # folded into each row's assigned value BELOW the zero-check so a model
   # whose ETA drives ONLY the lag/F (no structural p1/v1/ka/... dependency)
-  # is not misreported as "does not depend on ETA".
-  .linCmtEtaVars <- paste0("ETA_", seq_len(.s$..maxEta), "_")
-  .linCmtExtraPred <- .rxFoceiLinCmtEventPredExtra(x, .s, .linCmtEtaVars)
+  # is not misreported as "does not depend on ETA" (computed above).
   # linCmt() sensitivity carry (time-varying covariate on a linCmt()
   # parameter, phase 3b.3): for a carry-eligible (slot, eta) pair the naive
   # symengine line below is replaced wholesale by the carry block; all other

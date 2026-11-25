@@ -212,12 +212,6 @@
 
 ## Bug fixes
 
-- A `linCmt()` model with an `ll()` (or other generalized) endpoint and an
-  eta on `f()` or `alag()` now gets that eta's inner gradient.  The
-  correction that adds it (#920) only ran when the prediction was the
-  `linCmt()` call itself; inside a log-density it was skipped and the
-  gradient was 0, so the EBEs and the objective were wrong (an ODE twin of
-  the same model fit correctly).  It is now chained through the log-density.
 - A multi-threaded fit after a `fast = TRUE` `ll()` fit in the same R session
   no longer stops R on Windows.  Two per-thread buffers were `thread_local`
   `std::vector`s; with the MinGW-w64 toolchain their destructors run at thread
@@ -302,6 +296,10 @@
 
 ### Estimation
 
+- FOCEi: a `linCmt()` model with an `ll()` (or other generalized) endpoint
+  and an eta on `f()` or `alag()` no longer gets a zero inner gradient for
+  that eta, so its EBEs and objective now match the ODE form of the model
+  (#1530).
 - `est="saem"`: when an endpoint's residual error cannot be matched to
   `ini()` parameters, the error now names the endpoint and the error
   argument(s) that are not `ini()` parameters (#1516).

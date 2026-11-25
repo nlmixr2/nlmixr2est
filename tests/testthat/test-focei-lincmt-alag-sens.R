@@ -501,6 +501,79 @@ nmTest({
     expect_true(any(grepl("-9", .lagLine, fixed = TRUE)))
   })
 
+  test_that("the structural d(rx_pred_f_)/d(eta) rows get the alag()/f() correction", {
+    # the AR(1) lagged term and the censored-llik M2/M3/M4 gradient read
+    # rx__sens_rx_pred_f__BY_ETA_n___, which needs the same correction
+    .rows <- function(lines) {
+      list(
+        f = lines[grepl("^rx__sens_rx_pred_f__BY_ETA_2___=", lines)],
+        lag = lines[grepl("^rx__sens_rx_pred_f__BY_ETA_3___=", lines)]
+      )
+    }
+    .check <- function(r) {
+      expect_length(r$f, 1L)
+      expect_length(r$lag, 1L)
+      expect_true(grepl("-10", r$f, fixed = TRUE))
+      expect_true(grepl("-9", r$lag, fixed = TRUE))
+    }
+    .ar <- function() {
+      ini({
+        tka <- log(1.2)
+        tcl <- log(2)
+        tv <- log(20)
+        eta.cl ~ 0.09
+        eta.f ~ 0.05
+        eta.lag ~ 0.1
+        add.sd <- 0.7
+        ar1.cor <- 0.5
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        f(depot) <- 0.8 * exp(eta.f)
+        alag(depot) <- 0.25 * exp(eta.lag)
+        cp <- linCmt()
+        cp ~ add(add.sd) + ar(ar1.cor)
+      })
+    }
+    .oldAr <- nlmixr2global$rxArNorm
+    nlmixr2global$rxArNorm <- TRUE
+    .s <- tryCatch(rxUiGet.foceiEnv(list(rxode2::rxode2(.ar))), finally = nlmixr2global$rxArNorm <- .oldAr)
+    .check(.rows(.s$..arEtaSens))
+
+    .t <- function() {
+      ini({
+        tka <- log(1.2)
+        tcl <- log(2)
+        tv <- log(20)
+        eta.cl ~ 0.09
+        eta.f ~ 0.05
+        eta.lag ~ 0.1
+        add.sd <- 0.7
+        nu <- fix(4)
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        f(depot) <- 0.8 * exp(eta.f)
+        alag(depot) <- 0.25 * exp(eta.lag)
+        cp <- linCmt()
+        cp ~ add(add.sd) + dt(nu)
+      })
+    }
+    .oldNu <- nlmixr2global$rxCensNuFix
+    .oldLlik <- nlmixr2global$rxPredLlik
+    nlmixr2global$rxCensNuFix <- TRUE
+    nlmixr2global$rxPredLlik <- TRUE
+    .s <- tryCatch(rxUiGet.foceiEnv(list(rxode2::rxode2(.t))), finally = {
+      nlmixr2global$rxCensNuFix <- .oldNu
+      nlmixr2global$rxPredLlik <- .oldLlik
+    })
+    .check(.rows(.s$..predFEtaSens))
+  })
+
   test_that("an ll() endpoint with an eta on f() matches its ODE twin", {
     .lin <- function() {
       ini({

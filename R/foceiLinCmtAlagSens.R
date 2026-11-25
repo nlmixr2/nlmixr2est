@@ -230,6 +230,26 @@
   list(call = .pc$call, bare = FALSE)
 }
 
+#' The linCmt() alag()/f() correction chained into `rx_pred_f_`
+#'
+#' An AR(1) or censored-llik endpoint also emits the structural
+#' d(rx_pred_f_)/d(eta), which needs the same terms as `rx_pred_`.
+#' @param s symengine env
+#' @param extraPred result of `.rxFoceiLinCmtEventPredExtra()`
+#' @return named list, param -> addition to d(rx_pred_f_)/d(param), or NULL
+#' @noRd
+.rxFoceiLinCmtEventPredFExtra <- function(s, extraPred) {
+  .call <- attr(extraPred, "call")
+  if (is.null(.call) || !exists("rx_pred_f_", envir = s, inherits = FALSE)) {
+    return(NULL)
+  }
+  .rxFoceiLinCmtEventChain(
+    get("rx_pred_f_", envir = s, inherits = FALSE),
+    .call,
+    attr(extraPred, "callExtra")
+  )
+}
+
 #' Chain the linCmt() alag/f() moving-boundary correction through a
 #' downstream quantity that embeds `rx_pred_`'s linCmtB() call (e.g. `rx_r_`)
 #'
