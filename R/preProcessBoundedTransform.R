@@ -738,6 +738,10 @@
 
   .newUi <- env$ui
   .xform <- .iterPrintXParFromUi(.newUi)
+  # the parameter table's back-transform reads xform, not the *F fields
+  if (exists("xform", envir = env, inherits = FALSE)) {
+    env$xform <- .xform
+  }
   env$logThetasF <- .xform$logNthetas
   env$logitThetasF <- .xform$logitNthetas
   env$logitThetasLowF <- .xform$logitNthetasLow

@@ -266,6 +266,10 @@
 - `est="saem"`: when an endpoint's residual error cannot be matched to
   `ini()` parameters, the error now names the endpoint and the error
   argument(s) that are not `ini()` parameters (#1516).
+- `est="saem"` with a modeled residual error (e.g. `a <- add.sd; cp ~ add(a)`)
+  no longer lists the temporary eta in `$parFixedDf`/`$parFixed`, and reports
+  the residual's back-transformed value and CI on its own scale instead of
+  `exp()` of it (#1516).
 - `est="agq"` now checks the quadrature grid size (`nAGQ^neta`) before
   building it: it warns above 10,000 nodes and stops above 1,000,000, instead
   of silently exhausting memory with many etas (#1412).

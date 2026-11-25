@@ -25,7 +25,7 @@ nmTest({
   .noTemporaryEta <- function(fit) {
     expect_false(any(grepl(
       "^rx[.](eta|l)[.]|^rxBoundedTr",
-      c(names(fit), names(fit$eta), rownames(fit$omega), names(fixef(fit)))
+      c(names(fit), names(fit$eta), rownames(fit$omega), names(fixef(fit)), rownames(fit$parFixedDf))
     )))
     expect_true(any(grepl("temporary eta for eta-less likelihood theta", fit$runInfo, fixed = TRUE)))
   }
@@ -62,6 +62,17 @@ nmTest({
       unname(fixef(.f$focei)[c("tka", "tcl", "tv")]),
       tolerance = 0.05
     )
+    expect_equal(unname(fixef(.f$saem)[["add.sd"]]), unname(fixef(.f$focei)[["add.sd"]]), tolerance = 0.15)
+  })
+
+  test_that("saem fits a residual SD assigned to a variable (#1516)", {
+    mTrue <- .base("add.sd <- 0.5", "a <- add.sd; cp ~ add(a)")
+    .d <- .simModeledResid(mTrue)
+    .f <- .fitBoth(do.call(rxode2::ini, c(list(mTrue), .starts, list(add.sd = 1))), .d)
+    .noTemporaryEta(.f$saem)
+    # the temporary eta's exp() is not the reported back-transform
+    .pf <- .f$saem$parFixedDf
+    expect_equal(unname(.pf["add.sd", "Back-transformed"]), unname(.pf["add.sd", "Estimate"]))
     expect_equal(unname(fixef(.f$saem)[["add.sd"]]), unname(fixef(.f$focei)[["add.sd"]]), tolerance = 0.15)
   })
 
