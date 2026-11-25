@@ -946,6 +946,11 @@
   averages over the subject-occasions in the data instead of counting each
   absent occasion as a zero deviation (#1504).
 
+- `saemControl(iovMethod = "collapsed")` now samples a subject's absent
+  occasions from their conditional prior instead of freezing them at the
+  mean, which pinned the subject's between-subject deviation toward zero on
+  unbalanced occasion designs (#1504).
+
 - `saemControl(iovMethod = "theta")`, also the automatic fallback for models
   `"twoLevel"` does not cover, no longer underestimates the occasion
   variances 4-6 fold (one collapsed to zero).  For saem, the shared rewrite
