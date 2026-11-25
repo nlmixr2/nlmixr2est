@@ -320,13 +320,21 @@ foiControl()
 #>         .ret <- .bobyqaStationary(fn, lower, upper, .ctl, .ret, 
 #>             tol = .tol, record = control$outerRecord, hold = control$outerHold)
 #>     }
+#>     if (isTRUE(control$scaleAdapt > 0L) && !is.null(.ctl$rhobeg)) {
+#>         .tol <- if (is.null(control$sigdig)) 
+#>             0.01
+#>         else 10^(1 - control$sigdig)
+#>         .ret <- .bobyqaAdapt(fn, lower, upper, .ctl, .ret, tol = .tol, 
+#>             maxLeg = control$scaleAdapt, record = control$outerRecord, 
+#>             hold = control$outerHold)
+#>     }
 #>     .ret$x <- .ret$par
 #>     .ret$message <- .ret$msg
 #>     .ret$convergence <- .ret$ierr
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x55b780b204a0>
+#> <bytecode: 0x5e62b003dca0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -391,6 +399,9 @@ foiControl()
 #> 
 #> $bobyqaStationary
 #> [1] TRUE
+#> 
+#> $scaleAdapt
+#> [1] 0
 #> 
 #> $innerLbfgsLmm
 #> [1] 5
