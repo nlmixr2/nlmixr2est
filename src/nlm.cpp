@@ -132,7 +132,8 @@ static inline void nlmPrintFun(double *theta, double f) {
     _nlmStopBestF = f;
     _nlmStopBestX.assign(theta, theta + nlmOp.ntheta);
   }
-  if (nmStopFilePoll()) throw nmStopRequest();
+  // only once there is a finite evaluation to continue from
+  if (!_nlmStopBestX.empty() && nmStopFilePoll()) throw nmStopRequest();
 }
 
 // sampler iteration-print cadence counter for nlmixr2NlmEval (reset at

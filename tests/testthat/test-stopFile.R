@@ -157,11 +157,17 @@ test_that(".nlmStopOpt() passes errors through unless a stop was requested", {
   expect_equal(.nlmStopOpt(list(par = 1, fval = 2)), list(par = 1, fval = 2))
   .nmStopFileSet(.sf)
   file.create(.sf)
-  .ret <- .nlmStopOpt({
-    .nmStopFilePoll()
-    stop("ended by the stop request")
-  })
+  # no evaluation to continue from: the error stands
+  expect_error(
+    .nlmStopOpt({
+      .nmStopFilePoll()
+      stop("ended by the stop request")
+    }),
+    "ended by the stop request"
+  )
+  .ret <- .nlmStopOpt(list(par = 1, fval = 2))
   expect_true(.ret$nlmStopped)
+  expect_equal(.ret$par, 1)
   expect_false(.nmStopFileRequested())
   expect_true(.nmStopFileStopped())
 })

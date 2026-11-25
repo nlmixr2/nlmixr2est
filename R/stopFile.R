@@ -57,7 +57,7 @@
   .nlmStopOn(TRUE)
   on.exit(.nlmStopOn(FALSE))
   .ret <- tryCatch(expr, error = function(e) {
-    if (.nmStopFileRequested()) {
+    if (.nmStopFileRequested() && !is.null(.nlmStopBest())) {
       return(list())
     }
     stop(e)
