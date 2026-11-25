@@ -22,16 +22,19 @@
 .nlmixrDataObsRows <- function(data) {
   .evid <- .nlmixrDataCol(data, "evid")
   .mdv <- .nlmixrDataCol(data, "mdv")
+  .amt <- .nlmixrDataCol(data, "amt")
   if (!is.null(.evid)) {
-    if (is.null(.mdv)) {
-      return(.evid %in% 0)
+    # a missing EVID with no dose is an observation
+    .noDose <- if (is.null(.amt)) TRUE else is.na(.amt) | .amt %in% 0
+    .ret <- .evid %in% 0 | (is.na(.evid) & .noDose)
+    if (!is.null(.mdv)) {
+      .ret <- .ret & !(.mdv %in% 1)
     }
-    return(.evid %in% 0 & !(.mdv %in% 1))
+    return(.ret)
   }
   if (!is.null(.mdv)) {
     return(.mdv %in% 0)
   }
-  .amt <- .nlmixrDataCol(data, "amt")
   if (!is.null(.amt)) {
     return(is.na(.amt) | .amt == 0)
   }
@@ -66,11 +69,12 @@
       .useDvid <- !is.na(.dvid)
       .m <- .useDvid & .dvid == .pred1$cond
     } else {
-      .u <- sort(unique(.dvid[!is.na(.dvid)]))
-      if (length(.u) > 0L && .u[length(.u)] > nrow(predDf)) {
-        .dvid <- match(.dvid, .u)
+      # etTrans() skips the conversion when any DVID is missing
+      if (length(.dvid) > 0L && !anyNA(.dvid) && max(.dvid) > nrow(predDf)) {
+        .dvid <- match(.dvid, sort(unique(.dvid)))
       }
-      .useDvid <- !is.na(.dvid) & .dvid > 0
+      # an out-of-range DVID falls back to CMT
+      .useDvid <- !is.na(.dvid) & .dvid > 0 & .dvid <= nrow(predDf)
       .m <- .useDvid & .dvid == .pred1$dvid
     }
   }

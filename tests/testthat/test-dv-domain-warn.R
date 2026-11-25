@@ -52,6 +52,10 @@ nmTest({
     .d$MDV <- 0L
     .d$MDV[.obs[2:3]] <- 1L
     expect_no_warning(.run(.lnorm, .d))
+    # a missing EVID with no dose is an observation
+    .d <- .dat0
+    .d$EVID[.obs[2]] <- NA
+    expect_warning(.run(.lnorm, .d), "^2 DV <= 0")
   })
 
   test_that("multiple endpoints are matched by CMT or DVID", {
@@ -80,6 +84,11 @@ nmTest({
     .d$CMT <- NULL
     .d$DVID <- c(10, 10, 20, 20)
     expect_warning(.run(.two, .d), "^1 DV <= 0 on lnorm endpoint 'e2'$")
+    # an out-of-range DVID falls back to CMT
+    .d$DVID <- c(1, 1, 2, 3)
+    .d$CMT <- c("e1", "e1", "e2", "e2")
+    expect_warning(.run(.two, .d), "^1 DV <= 0 on lnorm endpoint 'e2'$")
+    .d$CMT <- NULL
     .d$DVID <- NULL
     expect_no_warning(.run(.two, .d))
   })
