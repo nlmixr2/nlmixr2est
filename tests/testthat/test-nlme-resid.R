@@ -100,6 +100,18 @@ nmTest({
     expect_equal(.sd, .sdNlme, tolerance = 1e-6)
   })
 
+  test_that("a fixed pow() exponent stays fixed under nlme (issue 1464)", {
+    skip_on_cran()
+    .dat <- .nlmeResidDat(function(f, t, wt) 0.1 * (1 + t / 12) * f^0.8)
+    .m <- .nlmeResidModel(quote(ipre ~ pow(prop.sd * (1 + time / 12), pw)))
+    .m <- suppressMessages(rxode2::ini(.m, pw = fix(0.8)))
+    .info <- .nlmeResidInfo(.m)
+    expect_equal(.info$pow, list(name = "pw", ini = 0.8, fix = TRUE))
+    fit <- .nlmixr(.m, .dat, "nlme", control = nlmeControl(verbose = FALSE))
+    expect_equal(fit$theta[["pw"]], 0.8)
+    expect_equal(fit$theta[["prop.sd"]], 0.1, tolerance = 0.15)
+  })
+
   test_that("an intermediate variable of the residual SD is resolved (issue 1464)", {
     .m <- .nlmeResidModel(quote(wn <- WT / 70), quote(ipre ~ add(add.sd * wn)))
     .info <- .nlmeResidInfo(.m)
@@ -119,6 +131,9 @@ nmTest({
     .refuse(quote(ipre ~ add(add.sd * exp(k * time))), "more than one estimated parameter")
     .refuse(quote(ipre ~ add(add.sd * exp(tke))), "sharing 'tke' with the structural model")
     .refuse(quote(ipre ~ add(add.sd * WT / 70)), NA)
+    .m <- .nlmeResidModel(quote(ipre ~ pow(prop.sd * (1 + time / 12), pw)))
+    .m <- suppressMessages(rxode2::ini(.m, prop.sd = fix(0.1)))
+    expect_error(.nlmeResidInfo(.m), "without an estimated scale parameter")
   })
 
   test_that("a residual SD that is not proportional to its theta is refused (issue 1464)", {

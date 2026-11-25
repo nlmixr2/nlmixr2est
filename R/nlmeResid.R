@@ -42,7 +42,8 @@
 #' @return the assigned name, or `NULL`
 #' @noRd
 .nlmeSimpleAssign <- function(e) {
-  if (.nlmeIsAssign(e) && is.name(e[[2]])) {
+  # a chained `a <- b <- x` is not simple
+  if (.nlmeIsAssign(e) && is.name(e[[2]]) && !.nlmeIsAssign(e[[3]])) {
     return(as.character(e[[2]]))
   }
   NULL
@@ -152,7 +153,7 @@
   .fix <- .thetaDf$name[.thetaDf$fix]
   .est <- setdiff(.th, .fix)
   if (length(.est) == 0L) {
-    .nlmeResidStop("a residual error without an estimated parameter")
+    .nlmeResidStop("a residual SD without an estimated scale parameter")
   }
   if (length(.est) > 1L) {
     .nlmeResidStop(
@@ -162,6 +163,7 @@
     )
   }
   .fixTh <- intersect(.th, .fix)
+  .pw <- which(.iniDf$err == "pow2")
   list(
     slot = .slot,
     errType = .errType,
@@ -169,7 +171,10 @@
     theta = .est,
     fixed = setNames(.thetaDf$est[match(.fixTh, .thetaDf$name)], .fixTh),
     covs = intersect(all.vars(.expr), .covs),
-    exclude = .th
+    exclude = .th,
+    pow = if (length(.pw) == 1L) {
+      list(name = .iniDf$name[.pw], ini = .iniDf$est[.pw], fix = .iniDf$fix[.pw])
+    }
   )
 }
 
@@ -240,8 +245,20 @@ attr(rxUiGet.nlmeResidInfo, "rstudio") <- list()
     info$errType,
     add = .fixed,
     prop = nlme::varComb(.fixed, nlme::varPower(fixed = list(power = 1))),
-    pow = nlme::varComb(.fixed, nlme::varPower())
+    pow = nlme::varComb(.fixed, .nlmeResidVarPower(info))
   )
+}
+
+#' nlme `varPower()` for the exponent of a `pow()` residual error
+#'
+#' @param info `.nlmeResidInfo()` result
+#' @return nlme `varFunc`, holding a fixed exponent at its value
+#' @noRd
+.nlmeResidVarPower <- function(info) {
+  if (isTRUE(info$pow$fix)) {
+    return(nlme::varPower(fixed = list(power = info$pow$ini)))
+  }
+  nlme::varPower(value = info$pow$ini)
 }
 
 #' Thetas only the residual error uses, kept out of nlme's fixed effects

@@ -385,9 +385,13 @@ nlmeControl <- nlmixr2NlmeControl
   if (!is.null(.info)) {
     .ret <- c(.f, setNames(nlme$sigma, .info$theta), .info$fixed)
     if (.errType == "pow") {
-      .nlmePars <- coef(nlme$modelStruct$varStruct, unconstrained = FALSE)
-      .w <- which(ui$iniDf$err == "pow2")
-      .ret <- c(.ret, setNames(.nlmePars[[length(.nlmePars)]], ui$iniDf$name[.w]))
+      # a fixed exponent has no coefficient in the fit
+      .pw <- .info$pow$ini
+      if (!isTRUE(.info$pow$fix)) {
+        .nlmePars <- coef(nlme$modelStruct$varStruct, unconstrained = FALSE)
+        .pw <- .nlmePars[[length(.nlmePars)]]
+      }
+      .ret <- c(.ret, setNames(.pw, .info$pow$name))
     }
     return(.ret)
   }
