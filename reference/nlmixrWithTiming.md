@@ -107,10 +107,10 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.05735169 4.002e-05 0.02701365       0.05     0.138 2.145        0.17
+#>              setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.07464903 4.3455e-05 0.03101374      0.055     0.147 2.762       0.213
 #>         table compress     other time2 time1
-#> elapsed 0.045    0.049 0.1145946 1.002 1.002
+#> elapsed 0.048    0.055 0.1582938 1.002 1.001
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -127,6 +127,7 @@ print(fit)
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
 #>   Information about run found ($runInfo):
 #>    • IWRES shrinkage is strongly negative; check the residual model 
+#>    • closed form: tka, tv; numerical (optimize): tcl 
 #>    • IWRES positively autocorrelated within subjects: Durbin-Watson 0.28 
 #>   Censoring ($censInformation): No censoring
 #> 

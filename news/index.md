@@ -4,6 +4,26 @@
 
 ### Changed defaults
 
+- `est = "laplace"` (and `"mlaplace"`, `"ilaplace"`) is now the Laplace
+  approximation NONMEM uses for `METHOD=COND LAPLACE INTERACTION` (Wang
+  2007, J Pharmacokinet Pharmacodyn 34:575, Eq. 15): the inner Hessian
+  and the objective’s log-determinant use the exact second derivative of
+  the conditional -2 log-likelihood in the ETAs. Previously a Gaussian
+  endpoint used the Gauss-Newton FOCEi curvature, so the objective was
+  identical to `est = "focei"`. Each Gaussian endpoint is now evaluated
+  through its log-density, as `+ dnorm()` in the model does, which needs
+  only first-order sensitivities and so works on every model
+  (`linCmt()`, [`lag()`](https://rdrr.io/r/stats/lag.html), M2/M3/M4
+  censoring, …). The analytic `fast` outer gradient does not apply, so
+  the outer gradient is a finite difference. All Gaussian `laplace`
+  objectives and estimates change; the previous results stay available
+  as `est = "focei"`. `est = "flaplace"` computes the same objective
+  from the analytic conditional Hessian
+  ([\#1301](https://github.com/nlmixr2/nlmixr2est/issues/1301)). With
+  M2/M3/M4 censoring the reported objective of the two routes still
+  differs by a constant `2 * ncens * log(2 * pi)` (the estimates agree);
+  NONMEM’s lies midway.
+
 - FOCEi-family fits now scale a linear `theta` by its `|init|`
   (`foceiControl(scaleLinear = "abs")`, as NONMEM does) instead of
   `1/|init|` inside `scaleCband`. When a model has such a `theta`, the
@@ -38,6 +58,25 @@
   still uses `bobyqa`.
 
 ### New features
+
+- A `saem` fit with a theta that is not updated in closed form now notes
+  which thetas the M-step updates in closed form, numerically
+  (`nonMuTheta = "regress"`) or stochastically (`nonMuTheta = "eta"`);
+  the note is kept in `fit$runInfo`, and `fit$saemMstep` lists the
+  update of every theta
+  ([\#1480](https://github.com/nlmixr2/nlmixr2est/issues/1480)).
+
+- Estimation now warns before fitting when an `lnorm()` or
+  [`boxCox()`](https://nlmixr2.github.io/nlmixr2est/reference/boxCox.md)
+  endpoint has uncensored observations with `DV <= 0`, which these
+  transforms silently clamp, e.g. `2 DV <= 0 on lnorm endpoint 'cp'`
+  ([\#1510](https://github.com/nlmixr2/nlmixr2est/issues/1510)).
+
+- A combined (`add() + prop()` or `add() + pow()`) error model whose
+  additive SD starts below 1% of that endpoint’s own median `|DV|` now
+  warns before estimation and suggests a start of about 10% of it; the
+  initial estimate is not changed
+  ([\#1383](https://github.com/nlmixr2/nlmixr2est/issues/1383)).
 
 - `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes
   each converged trust ETA solve by re-entering it at the squared
@@ -116,7 +155,8 @@
   fit’s objective and its analytic gradient at user-supplied thetas and
   omega without refitting, for custom optimizers and profiling. The
   omega gradient is either with respect to the variances/covariances or
-  the Cholesky estimation-scale parameters
+  the Cholesky estimation-scale parameters. `individual = TRUE` adds
+  each subject’s objective and gradient contribution
   ([\#1413](https://github.com/nlmixr2/nlmixr2est/issues/1413)).
 
 - `saemControl(rmcmc=)` sets the random-walk proposal scale of the SAEM
@@ -128,6 +168,12 @@
   (e.g. `MCMC acceptance low (rw 0%); try a smaller rmcmc`).
   `saemControl(mcmcAcceptWarn=)` sets the range; `NA` turns the note off
   ([\#1385](https://github.com/nlmixr2/nlmixr2est/issues/1385)).
+
+- A covariance that is rejected as not positive definite now says which
+  parameters make it so: those with no information (a zero diagonal), or
+  the ones the near-singular direction loads on
+  (e.g. `"r,s" is not PD: tva, tvb collinear; none installed`)
+  ([\#1398](https://github.com/nlmixr2/nlmixr2est/issues/1398)).
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or
   more (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their
@@ -317,6 +363,14 @@
   `covMethod = "failed"`.
 
 #### Estimation
+
+- `est="saem"`: when an endpoint’s residual error cannot be matched to
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html)
+  parameters, the error now names the endpoint and the error argument(s)
+  that are not
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html)
+  parameters
+  ([\#1516](https://github.com/nlmixr2/nlmixr2est/issues/1516)).
 
 - `est="agq"` now checks the quadrature grid size (`nAGQ^neta`) before
   building it: it warns above 10,000 nodes and stops above 1,000,000,
@@ -1003,6 +1057,27 @@
   longer prints [`fix()`](https://rdrr.io/r/utils/fix.html) in the BSV
   column of `$parFixed` when the model also has a fixed theta; the cell
   is empty, as it is without one.
+
+#### Predictions
+
+- `predict(fit, newdata, level = "individual")` now gives each subject
+  the fit’s etas for its own ID. They went to the subjects by position:
+  - with the subjects of `newdata` in another order, each took another
+    subject’s etas (up to 5.4 off on theo_sd);
+  - with only some of them, rxode2 repeated those subjects over the rows
+    of etas, as a simulation: two subjects of a 12-subject fit came back
+    as 6 sets, 132 rows;
+  - a subject the fit did not estimate silently took the etas at its
+    position. It now gets etas of 0, with a warning (“1 subject(s) not
+    in the fit get etas of 0”), also when its observation records have
+    no DV, as a prediction grid’s;
+  - a fit with a subject that has no observations stopped with “number
+    of parameters (11) solved by rxode2 for multi-subject data needs to
+    be a multiple of the number of subjects (12)”.
+
+  A numeric ID matches the fit’s by value (`1e5` matches subject
+  100000). `newdata` without an ID column, such as an event table of one
+  subject, is still predicted once for each fitted subject.
 
 #### Inter-occasion variability
 

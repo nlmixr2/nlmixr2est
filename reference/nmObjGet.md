@@ -79,6 +79,9 @@ nmObjGet(x, ...)
 # S3 method for class 'saemCfg'
 nmObjGet(x, ...)
 
+# S3 method for class 'saemMstep'
+nmObjGet(x, ...)
+
 # S3 method for class 'estimationModel'
 nmObjGet(x, ...)
 

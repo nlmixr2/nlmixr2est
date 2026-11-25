@@ -128,9 +128,9 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.06143304 5.7546e-05 0.02601438      0.058     0.136 2.203       0.156
-#>         compress    other
-#> elapsed    0.053 0.143495
+#> elapsed 0.06959266 3.8648e-05 0.03101157      0.062     0.141 2.732       0.194
+#>         compress     other
+#> elapsed    0.064 0.1663571
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -145,6 +145,8 @@ print(f)
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
+#>   Information about run found ($runInfo):
+#>    • closed form: tka, tv; numerical (optimize): tcl 
 #>   Censoring ($censInformation): No censoring
 
 # Now add the tables
@@ -162,9 +164,9 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.06143304 5.7546e-05 0.02601438      0.058     0.136 2.203       0.156
-#>         compress    other
-#> elapsed    0.053 0.143495
+#> elapsed 0.06959266 3.8648e-05 0.03101157      0.062     0.141 2.732       0.194
+#>         compress     other
+#> elapsed    0.064 0.1663571
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -179,6 +181,8 @@ print(f)
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
+#>   Information about run found ($runInfo):
+#>    • closed form: tka, tv; numerical (optimize): tcl 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──

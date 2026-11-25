@@ -106,10 +106,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.09416619 6.1943e-05 0.04201712      0.064     0.982 2.214        0.71
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1113249 5.1437e-05 0.04601302       0.06     0.999 2.733       0.746
 #>         table compress     other
-#> elapsed 0.051    0.055 0.1377548
+#> elapsed 0.065     0.06 0.1566106
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -126,6 +126,7 @@ print(f)
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
 #>   Information about run found ($runInfo):
 #>    • IWRES shrinkage is strongly negative; check the residual model 
+#>    • closed form: tka, tv; numerical (optimize): tcl 
 #>    • IWRES positively autocorrelated within subjects: Durbin-Watson 0.28 
 #>   Censoring ($censInformation): No censoring
 #> 
@@ -197,10 +198,10 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.09416619 6.1943e-05 0.04201712      0.064     0.982 2.214        0.71
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1113249 5.1437e-05 0.04601302       0.06     0.999 2.733       0.746
 #>         table compress     other foceiLik
-#> elapsed 1.925    0.055 0.1377548     0.39
+#> elapsed 1.987     0.06 0.1566106    0.433
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -217,6 +218,7 @@ if (!inherits(f, "try-error")) {
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
 #>   Information about run found ($runInfo):
 #>    • IWRES shrinkage is strongly negative; check the residual model 
+#>    • closed form: tka, tv; numerical (optimize): tcl 
 #>    • IWRES positively autocorrelated within subjects: Durbin-Watson 0.28 
 #>   Censoring ($censInformation): No censoring
 #> 

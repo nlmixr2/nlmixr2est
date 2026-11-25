@@ -60,7 +60,8 @@ determines the objective being differentiated.</p>
 <span>  <span class="va">fit</span>,</span>
 <span>  theta <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  omega <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  scale <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"untransformed"</span>, <span class="st">"transformed"</span><span class="op">)</span></span>
+<span>  scale <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"untransformed"</span>, <span class="st">"transformed"</span><span class="op">)</span>,</span>
+<span>  individual <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -93,13 +94,22 @@ estimation-scale omega parameters the optimizer uses (`om.chol.&lt;k&gt;`, with
 `foceiControl(diagXform=)` applied to the diagonal).  Thetas are always on
 their `ini()` scale.</p></dd>
 
+
+<dt id="arg-individual">individual<a class="anchor" aria-label="anchor" href="#arg-individual"></a></dt>
+<dd><p>Also return each subject's contribution to the objective
+and gradient.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A list with `objective` (the fit's objective at the point),
   `gradient` (the derivative of `objective` for every estimated parameter,
   named), `par` (the parameter values on the same scale as `gradient`) and
-  `scale`.  The attribute `nAnalyticGradDirect` counts the analytic gradient
+  `scale`.  With `individual = TRUE` it also has `individual`, a data frame of
+  each subject's `ID`, objective contribution (`OBJI`) and gradient (one
+  column per parameter), and `population`, the part of the objective and
+  gradient that belongs to no subject (such as an `ini()` prior), so the
+  subjects plus `population` sum to the totals.  The attribute `nAnalyticGradDirect` counts the analytic gradient
   evaluations behind the result.</p>
     </div>
     <div class="section level2">

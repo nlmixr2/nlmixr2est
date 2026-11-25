@@ -41,10 +41,13 @@ laplaceControl object
 
 ## Details
 
-This method can be made to more closely matches NONMEM-style Laplace
-estimation by requesting the log-likelihood from STAN as well as
-numerically calculated Hessian matrix. This is done with adding
-\`+dnorm()\` to the model for any normal end-points.
+This is the Laplace objective of NONMEM's \`METHOD=COND LAPLACE
+INTERACTION\` (Wang 2007, J Pharmacokinet Pharmacodyn 34:575, Eq. 15):
+the exact second derivative of the conditional -2 log-likelihood in the
+ETAs, not the FOCEi Gauss-Newton one. Normal endpoints are evaluated
+through their log-density, as adding \`+ dnorm()\` does. The FOCEi
+objective is \`est = "focei"\`; \`est = "flaplace"\` gives this
+objective from the analytic conditional Hessian.
 
 ## Author
 
@@ -336,7 +339,7 @@ laplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x617b7f8f75f0>
+#> <bytecode: 0x5ea09a493c80>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
