@@ -11380,13 +11380,71 @@ static double foceiFinalBestEta(double *x, double fmin) {
 // Omega SDs along every eta (#1499).  A kink in the individual objective can stop
 // the inner search where a descent direction remains; coordinate probes see it
 // where the gradient does not.  Each subject's inner state is restored afterwards.
+static bool foceiEbeCheckOn() {
+  return op_focei.ebeCheck && op_focei.neta != 0 && op_focei.fo != 1 &&
+    op_focei.mixIdxN == 0 && inds_focei != NULL && !op_focei.isImpmap &&
+    !op_focei.isNpag && !op_focei.isNpb;
+}
+
+// Probe one subject; returns its stationary flag (NA_LOGICAL when undecided).
+static int foceiEbeProbe(int id, const arma::mat &om, std::vector<double> &eta,
+                         std::vector<double> &x, double &dObjf, double &slope) {
+  focei_ind *fInd = &(inds_focei[id]);
+  const int neta = op_focei.neta;
+  EtaRestoreGuard parGuard(id);
+  FdInnerStateGuard guard(id);
+  std::copy(fInd->saveEta, fInd->saveEta + neta, eta.begin());
+  const double f0 = likInner0(&eta[0], id);
+  if (!R_FINITE(f0)) return NA_LOGICAL;
+  double fBest = f0, sMax = 0.0;
+  bool ok = true;
+  for (int k = 0; k < neta; ++k) {
+    const double sd = std::sqrt(om(k, k));
+    if (!R_FINITE(sd) || sd <= 0) continue;
+    const double h = op_focei.ebeCheckStep * sd;
+    x = eta;
+    x[k] = eta[k] + h;
+    const double fp = likInner0(&x[0], id);
+    x[k] = eta[k] - h;
+    const double fm = likInner0(&x[0], id);
+    if (!R_FINITE(fp) || !R_FINITE(fm)) {
+      ok = false;
+      continue;
+    }
+    fBest = std::min(fBest, std::min(fp, fm));
+    // -2LL units per Omega SD
+    sMax = std::max(sMax, std::fabs(fp - fm) / op_focei.ebeCheckStep);
+  }
+  // leave the subject's solve and sensitivities at its EBE
+  likInner0(&eta[0], id);
+  dObjf = 2.0 * (f0 - fBest);
+  slope = sMax;
+  const bool st = dObjf <= op_focei.ebeCheckTol;
+  if (!ok && st) return NA_LOGICAL;
+  return st ? 1 : 0;
+}
+
+static void foceiEbeCheckSave(Environment e, IntegerVector ids, NumericVector dObjf,
+                              NumericVector slope, LogicalVector stationary) {
+  if (e.exists("idLvl")) {
+    RObject idl = e["idLvl"];
+    if (idl.sexp_type() == STRSXP) {
+      ids.attr("class") = "factor";
+      ids.attr("levels") = idl;
+    }
+  }
+  List ret = List::create(_["ID"] = ids, _["dObjf"] = dObjf, _["slope"] = slope,
+                          _["stationary"] = stationary);
+  ret.attr("class") = "data.frame";
+  ret.attr("row.names") = IntegerVector::create(NA_INTEGER, -static_cast<int>(ids.size()));
+  e["ebeStationarity"] = ret;
+}
+
 static void foceiEbeCheck(Environment e) {
   e["ebeStationarity"] = R_NilValue;
-  if (!op_focei.ebeCheck || op_focei.neta == 0 || op_focei.fo == 1 ||
-      op_focei.mixIdxN != 0 || inds_focei == NULL || op_focei.isImpmap ||
-      op_focei.isNpag || op_focei.isNpb) return;
+  if (!foceiEbeCheckOn()) return;
   rx = getRxSolve_();
-  const int nsub = (int)getRxNsub(rx), neta = op_focei.neta;
+  const int nsub = static_cast<int>(getRxNsub(rx)), neta = op_focei.neta;
   // the Omega likInner0() scores with (the env copy can lag the fast Omega path)
   arma::mat om;
   if (!arma::inv_sympd(om, curOmegaInv())) om = arma::pinv(curOmegaInv());
@@ -11407,41 +11465,12 @@ static void foceiEbeCheck(Environment e) {
     ids[id] = getRxId(id) + 1;
     focei_ind *fInd = &(inds_focei[id]);
     if (fInd->saveEta == NULL) continue;
-    do {
-      EtaRestoreGuard parGuard(id);
-      FdInnerStateGuard guard(id);
-      std::copy(fInd->saveEta, fInd->saveEta + neta, eta.begin());
-      const double f0 = likInner0(&eta[0], id);
-      if (!R_FINITE(f0)) break;
-      double fBest = f0, sMax = 0.0;
-      bool ok = true;
-      for (int k = 0; k < neta; ++k) {
-        const double sd = std::sqrt(om(k, k));
-        if (!R_FINITE(sd) || sd <= 0) continue;
-        const double h = op_focei.ebeCheckStep * sd;
-        x = eta;
-        x[k] = eta[k] + h;
-        const double fp = likInner0(&x[0], id);
-        x[k] = eta[k] - h;
-        const double fm = likInner0(&x[0], id);
-        if (!R_FINITE(fp) || !R_FINITE(fm)) {
-          ok = false;
-          continue;
-        }
-        fBest = std::min(fBest, std::min(fp, fm));
-        // -2LL units per Omega SD
-        sMax = std::max(sMax, std::fabs(fp - fm) / op_focei.ebeCheckStep);
-      }
-      // leave the subject's solve and sensitivities at its EBE
-      likInner0(&eta[0], id);
-      dObjf[id] = 2.0 * (f0 - fBest);
-      slope[id] = sMax;
-      if (ok || dObjf[id] > op_focei.ebeCheckTol) {
-        const bool st = dObjf[id] <= op_focei.ebeCheckTol;
-        stationary[id] = st;
-        if (!st) nFlag++;
-      }
-    } while (0);
+    double d = NA_REAL, s = NA_REAL;
+    const int st = foceiEbeProbe(id, om, eta, x, d, s);
+    dObjf[id] = d;
+    slope[id] = s;
+    stationary[id] = st;
+    if (st == 0) nFlag++;
     // the guards put back a state likInner0() answers from its cache, so force the
     // next evaluation to solve (as CovEtaStart does)
     fInd->setup = 0;
@@ -11455,18 +11484,7 @@ static void foceiEbeCheck(Environment e) {
   op_focei.stickyTol.store(savStickyTol, std::memory_order_relaxed);
   op_focei.didPredSolve.store(savPredSolve, std::memory_order_relaxed);
   op_focei.nEtaFdNoSlope.store(savEtaFdNoSlope, std::memory_order_relaxed);
-  if (e.exists("idLvl")) {
-    RObject idl = e["idLvl"];
-    if (idl.sexp_type() == STRSXP) {
-      ids.attr("class") = "factor";
-      ids.attr("levels") = idl;
-    }
-  }
-  List ret = List::create(_["ID"] = ids, _["dObjf"] = dObjf, _["slope"] = slope,
-                          _["stationary"] = stationary);
-  ret.attr("class") = "data.frame";
-  ret.attr("row.names") = IntegerVector::create(NA_INTEGER, -nsub);
-  e["ebeStationarity"] = ret;
+  foceiEbeCheckSave(e, ids, dObjf, slope, stationary);
   if (nFlag > 0) {
     warning(_("%d subjects have non-stationary EBEs; see $ebeStationarity"), nFlag);
   }
