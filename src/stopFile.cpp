@@ -41,6 +41,8 @@ bool nmStopFilePoll() {
   if (stat(_stopFile.c_str(), &st) != 0) return false;
   // removed so a re-run in the same folder is not stopped at once
   std::remove(_stopFile.c_str());
+  // the run is already stopping: a later loop is not stopped by the time limit
+  _timeArmed = false;
   _stopRequested = _stopped = true;
   return true;
 }
