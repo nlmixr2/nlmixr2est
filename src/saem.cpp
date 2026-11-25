@@ -2976,7 +2976,7 @@ public:
     plateauTol = x.containsElementNamed("plateauTol") ? as<double>(x["plateauTol"]) : 1e-3;
     plateauMinFrac = x.containsElementNamed("plateauMinFrac") ? as<double>(x["plateauMinFrac"]) : 0.5;
     plateauIter = -1;
-    // poll saemControl(stopFile=) once per iteration (#1507)
+    // poll saemControl(stopFile=, maxTime=) once per iteration (#1507, #1514)
     stopFilePoll = x.containsElementNamed("stopFile") ? as<int>(x["stopFile"]) : 0;
     stopIter = -1;
     minv = as<vec>(x["minv"]);

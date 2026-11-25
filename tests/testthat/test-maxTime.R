@@ -141,3 +141,28 @@ test_that("a generous maxTime does not stop a FOCEi fit", {
   ))
   expect_false("stopped at the time limit" %in% .fit$runInfo)
 })
+
+test_that("maxTime ends a SAEM fit at the current iteration", {
+  expect_null(saemControl()$maxTime)
+  expect_equal(saemControl(maxTime = 10)$maxTime, 10)
+  expect_error(saemControl(maxTime = -1))
+  .fit <- suppressMessages(nlmixr(
+    .maxTimeMod,
+    nlmixr2data::theo_sd,
+    "saem",
+    control = saemControl(print = 0, maxTime = 0, nBurn = 20, nEm = 30)
+  ))
+  expect_true("stopped at the time limit" %in% .fit$runInfo)
+  expect_equal(nrow(.fit$parHist), 1L)
+  expect_true(is.finite(.fit$objf))
+  expect_false(.nmStopActive())
+
+  .fit2 <- suppressMessages(nlmixr(
+    .maxTimeMod,
+    nlmixr2data::theo_sd,
+    "saem",
+    control = saemControl(print = 0, maxTime = 1e6, nBurn = 20, nEm = 30)
+  ))
+  expect_false("stopped at the time limit" %in% .fit2$runInfo)
+  expect_equal(nrow(.fit2$parHist), 50L)
+})

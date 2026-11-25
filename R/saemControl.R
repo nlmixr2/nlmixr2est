@@ -518,6 +518,7 @@ saemControl <- function(
   plateauTol = 1e-3,
   plateauMinFrac = 0.5,
   stopFile = NULL,
+  maxTime = NULL,
   nmc = 3,
   nu = c(2, 2, 2),
   nu1B = 0L,
@@ -637,6 +638,7 @@ saemControl <- function(
   checkmate::assertNumber(plateauTol, lower = 0, finite = TRUE)
   checkmate::assertNumber(plateauMinFrac, lower = 0, upper = 1)
   checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
+  checkmate::assertNumber(maxTime, lower = 0, finite = TRUE, null.ok = TRUE)
   checkmate::assertIntegerish(nmc, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertIntegerish(nu, any.missing = FALSE, len = 3, lower = 1)
   checkmate::assertIntegerish(nu1B, any.missing = FALSE, len = 1, lower = 0)
@@ -804,6 +806,7 @@ saemControl <- function(
     plateauTol = plateauTol,
     plateauMinFrac = plateauMinFrac,
     stopFile = stopFile,
+    maxTime = maxTime,
     rxControl = rxControl,
     seed = seed,
     autoStop = autoStop,

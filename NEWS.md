@@ -152,8 +152,9 @@
   evaluated so far and SAEM ends at the current iteration; the file is removed
   and "stopped early by user request" is noted in `$runInfo` (#1507).
 
-- `foceiControl(maxTime = 600)` sets a wall-clock limit in seconds: once it is
-  reached the FOCEi-family optimization ends as for `stopFile`, the fit is
+- `foceiControl(maxTime = 600)` and `saemControl(maxTime = 600)` set a
+  wall-clock limit in seconds: once it is reached the FOCEi-family optimization
+  or the SAEM iterations end as for `stopFile`, the fit is
   finalized from its current state and "stopped at the time limit" is noted in
   `$runInfo` (#1514).
 
