@@ -453,6 +453,11 @@
 #'   about; in this parameterization the variance enters only the data term.
 #'   Non-mixture fits only.
 #'
+#' @param nonCenteredPhase When the non-centered mean and scale steps
+#'   (`muNonCentered`, `omegaNonCentered`) run: `"all"` (every iteration) or
+#'   `"burnin"` (only while the stochastic-approximation gain is 1, so the
+#'   estimation phase is plain SAEM).
+#'
 #' @param kappa1B Gain exponent of mode 1B's per-subject proposal moments
 #'   (default `1`): iteration `n` folds its samples in with weight `n^-kappa1B`,
 #'   so `1` is a plain running mean over the whole run (NONMEM's `IKAPPA`) and
@@ -1012,6 +1017,7 @@ saemControl <- function(seed = 99,
                         nonMuThetaBhhh = FALSE,
                         muNonCentered = TRUE,
                         omegaNonCentered = TRUE,
+                        nonCenteredPhase = c("all", "burnin"),
                         kappa1B = 1,
                         etaDistCentered = TRUE,
                         nu1B = NULL,
@@ -1270,6 +1276,7 @@ saemControl <- function(seed = 99,
                            .var.name="muNonCentered")
   checkmate::assertLogical(omegaNonCentered, len=1, any.missing=FALSE,
                            .var.name="omegaNonCentered")
+  nonCenteredPhase <- match.arg(nonCenteredPhase)
   checkmate::assertNumber(kappa1B, lower=0, upper=1, .var.name="kappa1B")
   checkmate::assertLogical(etaDistCentered, len=1, any.missing=FALSE,
                            .var.name="etaDistCentered")
@@ -1332,6 +1339,7 @@ saemControl <- function(seed = 99,
     nonMuThetaBhhh = nonMuThetaBhhh,
     muNonCentered = muNonCentered,
     omegaNonCentered = omegaNonCentered,
+    nonCenteredPhase = nonCenteredPhase,
     kappa1B = kappa1B,
     etaDistCentered = etaDistCentered,
     nu1B = if (is.null(nu1B)) NULL else as.integer(nu1B),

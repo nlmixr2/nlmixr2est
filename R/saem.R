@@ -363,6 +363,7 @@
                         nonMuThetaBhhh=rxode2::rxGetControl(ui, "nonMuThetaBhhh", FALSE),
                         muNonCentered=rxode2::rxGetControl(ui, "muNonCentered", TRUE),
                         omegaNonCentered=rxode2::rxGetControl(ui, "omegaNonCentered", TRUE),
+                        nonCenteredPhase=rxode2::rxGetControl(ui, "nonCenteredPhase", "all"),
                         kappa1B=rxode2::rxGetControl(ui, "kappa1B", 1),
                         nonMuThetaGradEvery=as.integer(
                           rxode2::rxGetControl(ui, "nonMuThetaGradEvery", 1L)),

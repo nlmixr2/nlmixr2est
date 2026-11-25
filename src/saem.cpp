@@ -4069,6 +4069,7 @@ public:
     if (x.containsElementNamed("nonMuThetaBhhh")) nonMuThetaBhhh = as<int>(x["nonMuThetaBhhh"]);
     if (x.containsElementNamed("muNonCentered")) muNonCentered = as<int>(x["muNonCentered"]);
     if (x.containsElementNamed("omegaNonCentered")) omegaNonCentered = as<int>(x["omegaNonCentered"]);
+    if (x.containsElementNamed("nonCenteredPhase")) nonCenteredPhase = as<int>(x["nonCenteredPhase"]);
     if (x.containsElementNamed("etaDistLoglik")) etaDistLoglik = as<int>(x["etaDistLoglik"]);
     if (!std::isfinite(iacceptSingle) || iacceptSingle < 0.0 || iacceptSingle >= 1.0) iacceptSingle = 0.0;
     if (x.containsElementNamed("etaDistOn")) etaDistOn = as<int>(x["etaDistOn"]);
@@ -6035,11 +6036,13 @@ public:
         refinePhi0Lik(kiter, pas);
       }
       if (nMix <= 1 && pas(kiter) > 0.0) etaDistCentered(pas(kiter));
-      if (muNonCentered && nMix <= 1 && pas(kiter) > 0.0 &&
+      // nonCenteredPhase 1: burn-in only (gain 1); the EM phase stays plain SAEM
+      const bool ncPhaseOk = (nonCenteredPhase == 0) || (pas(kiter) >= 1.0);
+      if (muNonCentered && ncPhaseOk && nMix <= 1 && pas(kiter) > 0.0 &&
           (distribution == 1 || distribution == 4)) {
         muNonCenteredStep(pas(kiter));
       }
-      if (omegaNonCentered && nMix <= 1 && pas(kiter) > 0.0 &&
+      if (omegaNonCentered && ncPhaseOk && nMix <= 1 && pas(kiter) > 0.0 &&
           (distribution == 1 || distribution == 4)) {
         omegaNonCenteredStep(pas(kiter));
       }
@@ -7167,6 +7170,7 @@ private:
   int nonMuThetaBhhh = 0;
   int muNonCentered = 0;
   int omegaNonCentered = 0;
+  int nonCenteredPhase = 0;
   // saemControl(etaDistLoglik=): use the general log-likelihood objective for
   // the declared-distribution M-step instead of fitting native parameters and
   // inverting them.  Opt-in while it is measured against the inversion.
