@@ -458,6 +458,13 @@
 #'   `"burnin"` (only while the stochastic-approximation gain is 1, so the
 #'   estimation phase is plain SAEM).
 #'
+#' @param nonCenteredShrink The non-centered steps act only on random effects
+#'   whose ETA shrinkage (`1 - var(E[eta | y]) / omega`, from SAEM's own running
+#'   statistics) is at least this (default `0.3`).  There the data say little
+#'   about each subject and the ordinary update crawls; on a well-informed
+#'   random effect the steps cost model solves and change nothing.  `0` applies
+#'   them to every eligible random effect.
+#'
 #' @param kappa1B Gain exponent of mode 1B's per-subject proposal moments
 #'   (default `1`): iteration `n` folds its samples in with weight `n^-kappa1B`,
 #'   so `1` is a plain running mean over the whole run (NONMEM's `IKAPPA`) and
@@ -1018,6 +1025,7 @@ saemControl <- function(seed = 99,
                         muNonCentered = TRUE,
                         omegaNonCentered = TRUE,
                         nonCenteredPhase = c("all", "burnin"),
+                        nonCenteredShrink = 0.3,
                         kappa1B = 1,
                         etaDistCentered = TRUE,
                         nu1B = NULL,
@@ -1277,6 +1285,7 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(omegaNonCentered, len=1, any.missing=FALSE,
                            .var.name="omegaNonCentered")
   nonCenteredPhase <- match.arg(nonCenteredPhase)
+  checkmate::assertNumber(nonCenteredShrink, lower = 0, upper = 1, .var.name = "nonCenteredShrink")
   checkmate::assertNumber(kappa1B, lower=0, upper=1, .var.name="kappa1B")
   checkmate::assertLogical(etaDistCentered, len=1, any.missing=FALSE,
                            .var.name="etaDistCentered")
@@ -1340,6 +1349,7 @@ saemControl <- function(seed = 99,
     muNonCentered = muNonCentered,
     omegaNonCentered = omegaNonCentered,
     nonCenteredPhase = nonCenteredPhase,
+    nonCenteredShrink = nonCenteredShrink,
     kappa1B = kappa1B,
     etaDistCentered = etaDistCentered,
     nu1B = if (is.null(nu1B)) NULL else as.integer(nu1B),

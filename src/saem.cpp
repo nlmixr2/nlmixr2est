@@ -1642,6 +1642,20 @@ public:
   long _omegaNonCenteredN = 0;
   long get_omegaNonCenteredN() { return _omegaNonCenteredN; }
 
+  // ETA shrinkage of phi1 column c from SAEM's own running statistics:
+  // 1 - var_i(E[eta_i | y]) / omega_c, with E[phi_i | y] = statphi11(i, c).
+  // The non-centered steps only pay off where this is high -- the data say
+  // little about each subject, so the centered update crawls; on a
+  // well-informed random effect they cost solves and change nothing.
+  bool ncShrinkOk(int c) const {
+    if (nonCenteredShrink <= 0.0) return true;
+    const double om = Gamma2_phi1(c, c);
+    if (!(om > 0.0) || statphi11.n_rows != (uword)N || mprior_phi1.n_rows != (uword)N) return true;
+    const vec e = statphi11.col(c) - mprior_phi1.col(c);
+    const double sh = 1.0 - arma::var(e) / om;
+    return !std::isfinite(sh) || sh >= nonCenteredShrink;
+  }
+
   void omegaNonCenteredStep(double gain) {
     std::vector<uword> sel;
     for (int c = 0; c < nphi1; ++c) {
@@ -1650,6 +1664,7 @@ public:
       if (Gamma2_phi1fixed == 1 && any(Gamma2_phi1fixedIx == (uword)(c * nphi1 + c))) continue;
       if (any(saemZeroOmegaPhi1 == (uword)c)) continue;
       if (!(Gamma2_phi1(c, c) > 0.0)) continue;
+      if (!ncShrinkOk(c)) continue;
       sel.push_back((uword)c);
     }
     if (sel.empty()) return;
@@ -1729,6 +1744,7 @@ public:
         if (fixedIx1(j) == li(0)) { isFixed = true; break; }
       }
       if (isFixed) continue;
+      if (!ncShrinkOk(c)) continue;
       sel.push_back((uword)c);
     }
     if (sel.empty()) return;
@@ -4070,6 +4086,7 @@ public:
     if (x.containsElementNamed("muNonCentered")) muNonCentered = as<int>(x["muNonCentered"]);
     if (x.containsElementNamed("omegaNonCentered")) omegaNonCentered = as<int>(x["omegaNonCentered"]);
     if (x.containsElementNamed("nonCenteredPhase")) nonCenteredPhase = as<int>(x["nonCenteredPhase"]);
+    if (x.containsElementNamed("nonCenteredShrink")) nonCenteredShrink = as<double>(x["nonCenteredShrink"]);
     if (x.containsElementNamed("etaDistLoglik")) etaDistLoglik = as<int>(x["etaDistLoglik"]);
     if (!std::isfinite(iacceptSingle) || iacceptSingle < 0.0 || iacceptSingle >= 1.0) iacceptSingle = 0.0;
     if (x.containsElementNamed("etaDistOn")) etaDistOn = as<int>(x["etaDistOn"]);
@@ -7171,6 +7188,7 @@ private:
   int muNonCentered = 0;
   int omegaNonCentered = 0;
   int nonCenteredPhase = 0;
+  double nonCenteredShrink = 0.3;
   // saemControl(etaDistLoglik=): use the general log-likelihood objective for
   // the declared-distribution M-step instead of fitting native parameters and
   // inverting them.  Opt-in while it is measured against the inversion.
