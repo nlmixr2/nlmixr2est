@@ -31,7 +31,7 @@ model = ev
 <PARAMETER>
 lsc_pop = {value=2.302585, method=MLE}
 lsh_pop = {value=0.1823216, method=MLE}
-omega_lsc = {value=0.3162278, method=MLE}
+omega_lsc = {value=0.5477226, method=MLE}
 
 <MONOLIX>
 

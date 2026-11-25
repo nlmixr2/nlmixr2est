@@ -98,3 +98,7 @@ Conventions that differ between the tools are carried as extra columns:
   `OBJF = -2LL - nobs*log(2*pi)`; `-2 * logLik(fit)` is the full -2LL that
   NONMEM's `-2LL` objective and Monolix's OFV report.  Differences between
   nested models fitted to the same data do not depend on the constant.
+- random-effect variance bound: FOCEi bounds each variance to 5 times
+  its initial value (`foceiControl(diagOmegaBoundUpper = 5)`); NONMEM
+  and Monolix have no such bound.  The scenarios start the variances at
+  0.3, which puts the bound above every estimate.
