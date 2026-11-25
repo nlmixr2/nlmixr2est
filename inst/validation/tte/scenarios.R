@@ -4,6 +4,10 @@
 # starting values used by every tool, the simulation design and the columns of
 # its data set.  The data are simulated by simulate.R; the NONMEM control
 # streams and Monolix projects in nonmem/ and monolix/ fit the same models.
+#
+# The random-effect variances start at 0.3 (0.2 for the PK ones): FOCEi bounds
+# a variance to 5 times its initial value (foceiControl(diagOmegaBoundUpper=)),
+# and NONMEM and Monolix have no such bound.
 
 # Weibull hazard in calendar time, with the scale on the log scale
 .tteWeibull <- function() {
@@ -41,7 +45,7 @@
     weibull = list(
       description = "Weibull hazard, random effect on the scale, single event",
       model = .tteWeibull,
-      start = c(lsc = log(8), lsh = log(1.2), eta.sc = 0.1),
+      start = c(lsc = log(8), lsh = log(1.2), eta.sc = 0.3),
       n = 400L,
       seed = 14612L,
       design = function(n) .tteWindow(n, 0, 30)
@@ -58,7 +62,7 @@
           ev ~ tte(haz)
         })
       },
-      start = c(lh = log(0.1), eta.h = 0.1),
+      start = c(lh = log(0.1), eta.h = 0.3),
       n = 150L,
       seed = 14613L,
       design = function(n) .tteWindow(n, 0, 24)
@@ -78,7 +82,7 @@
           ev ~ tte(haz)
         })
       },
-      start = c(lte = log(4), lsh = log(1.5), eta.te = 0.1),
+      start = c(lte = log(4), lsh = log(1.5), eta.te = 0.3),
       n = 150L,
       seed = 14614L,
       design = function(n) .tteWindow(n, 0, 40),
@@ -105,7 +109,7 @@
           ev ~ tte(haz)
         })
       },
-      start = c(llam = log(0.05), lic50 = log(1), eta.lam = 0.1),
+      start = c(llam = log(0.05), lic50 = log(1), eta.lam = 0.3),
       n = 150L,
       seed = 14615L,
       design = function(n) {
@@ -150,7 +154,7 @@
         lic50 = log(1),
         eta.cl = 0.2,
         eta.v = 0.2,
-        eta.lam = 0.1
+        eta.lam = 0.3
       ),
       n = 150L,
       seed = 14616L,
@@ -185,7 +189,7 @@
       reduced = function(model) {
         rxode2::ini(model, bx = rxode2::fix(0))
       },
-      start = c(lh = log(0.2), bx = 0, eta.h = 0.1),
+      start = c(lh = log(0.2), bx = 0, eta.h = 0.3),
       n = 150L,
       seed = 14617L,
       design = function(n) {
@@ -234,7 +238,7 @@
           ev ~ tte(haz, eventType = "intervalCensored", intervalLength = 4, maxEventNumber = 1)
         })
       },
-      start = c(lsc = log(10), lsh = log(1.2), eta.sc = 0.1),
+      start = c(lsc = log(10), lsh = log(1.2), eta.sc = 0.3),
       n = 400L,
       seed = 14618L,
       design = function(n) .tteWindow(n, 0, 40)
@@ -254,7 +258,7 @@
           ev ~ tte(haz, maxEventNumber = 1)
         })
       },
-      start = c(lsc = log(10), lsh = log(1.2), eta.sc = 0.1),
+      start = c(lsc = log(10), lsh = log(1.2), eta.sc = 0.3),
       n = 400L,
       seed = 14619L,
       design = function(n) {
@@ -283,7 +287,7 @@
           drop ~ tte(h2, maxEventNumber = 1, dropout = TRUE)
         })
       },
-      start = c(lh1 = log(0.1), lh2 = log(0.1), eta.h1 = 0.1),
+      start = c(lh1 = log(0.1), lh2 = log(0.1), eta.h1 = 0.3),
       n = 400L,
       seed = 14620L,
       design = function(n) {
