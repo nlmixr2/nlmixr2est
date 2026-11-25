@@ -2674,79 +2674,119 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   }
   .eta <- paste0("ETA_", seq_len(.neta), "_")
   .a <- .pc$args
-  .txt <- vapply(
-    seq_along(.a),
-    function(i) {
-      .r <- paste(.a[[i]])
-      rxode2::rxFromSE(.r)
-    },
-    character(1)
-  )
-  .call <- function(w1, w2, p2 = NULL) {
-    .t <- .txt
-    .t[6] <- w1
-    .t[7] <- as.character(w2)
-    if (!is.null(p2)) .t[11] <- p2
-    paste0("linCmtB(", paste(.t, collapse = ","), ")")
-  }
-  .se <- function(e) {
-    .r <- paste(e)
-    rxode2::rxFromSE(.r)
-  }
-  .zero <- function(e) .rxFoceiCarryIsZero(e)
+  .txt <- vapply(seq_along(.a), function(i) .foceiEcSe(.a[[i]]), character(1))
   # the eta-space carry's advance comes first among this block's outputs so
   # the rx__d2pred_ columns stay contiguous (calcEtaHessian reads them by
   # offset); its row-local parameter model is set by the ~ lines before it
-  .g <- character(0)
-  for (.k in 1:7) {
-    .ex <- .a[[.k + 8L]]
-    for (.i in seq_len(.neta)) {
-      .d <- symengine::D(.ex, symengine::S(.eta[.i]))
-      if (.zero(.d)) next
-      .g <- c(.g, sprintf("rx_ecG%d_%d_~%s", .k, .i, .call("-30", (.k - 1L) * .E + (.i - 1L), .se(.d))))
-      for (.j in .i:.neta) {
-        .d2 <- symengine::D(.d, symengine::S(.eta[.j]))
-        if (.zero(.d2)) next
-        .g <- c(.g, sprintf(
-          "rx_ecGG%d_%d_%d_~%s", .k, .i, .j,
-          .call("-31", ((.k - 1L) * .E + (.i - 1L)) * .E + (.j - 1L), .se(.d2))
-        ))
-      }
-    }
-  }
+  .g <- .foceiEcGradLines(.a, .txt, .eta, .E)
   if (length(.g) == 0L) {
     return(NULL)
   }
   .lines <- c(
     .g,
-    paste0("rx_ecAdv_=", .call("-32", 0L)),
-    paste0("rx_lcConc_~", .call("-1", -1L)),
+    paste0("rx_ecAdv_=", .foceiEcCall(.txt, "-32", 0L)),
+    paste0("rx_lcConc_~", .foceiEcCall(.txt, "-1", -1L)),
     vapply(seq_len(.neta), function(.i) {
-      sprintf("rx_ecC%d_~%s", .i, .call("-33", .i - 1L))
+      sprintf("rx_ecC%d_~%s", .i, .foceiEcCall(.txt, "-33", .i - 1L))
     }, character(1))
   )
   for (.j in seq_len(.neta)) {
     for (.i in seq_len(.j)) {
-      .lines <- c(.lines, sprintf("rx_ecC%d_%d_~%s", .i, .j, .call("-34", (.i - 1L) * .E + (.j - 1L))))
+      .lines <- c(.lines, sprintf("rx_ecC%d_%d_~%s", .i, .j, .foceiEcCall(.txt, "-34", (.i - 1L) * .E + (.j - 1L))))
     }
   }
-  .P <- .pc$predSym
+  .s$..HdEta2 <- c(.lines, .foceiEcD2PredLines(.pc$predSym, .eta))
+  .s
+}
+
+#' rxode2 text of a symengine expression
+#' @param e symengine expression
+#' @return character
+#' @noRd
+.foceiEcSe <- function(e) {
+  .r <- paste(e)
+  rxode2::rxFromSE(.r)
+}
+
+#' A `linCmtB()` call of the eta-space carry
+#' @param txt rxode2 text of the structural call's arguments
+#' @param w1 which1 (carry operation)
+#' @param w2 which2 (slot index)
+#' @param p2 optional replacement of the 11th argument
+#' @return character
+#' @noRd
+.foceiEcCall <- function(txt, w1, w2, p2 = NULL) {
+  txt[6] <- w1
+  txt[7] <- as.character(w2)
+  if (!is.null(p2)) txt[11] <- p2
+  paste0("linCmtB(", paste(txt, collapse = ","), ")")
+}
+
+#' Hand each `linCmt()` parameter slot's eta derivatives to the carry
+#' @param a structural call's symengine arguments
+#' @param txt their rxode2 text
+#' @param eta eta symbol names
+#' @param E rxode2lincmt's RX_LINCMT_ETA_MAX
+#' @return character lines (`~` assignments)
+#' @noRd
+.foceiEcGradLines <- function(a, txt, eta, E) {
+  .neta <- length(eta)
+  .g <- character(0)
+  for (.k in 1:7) {
+    for (.i in seq_len(.neta)) {
+      .d <- symengine::D(a[[.k + 8L]], symengine::S(eta[.i]))
+      if (.rxFoceiCarryIsZero(.d)) next
+      .g <- c(.g, sprintf("rx_ecG%d_%d_~%s", .k, .i,
+                          .foceiEcCall(txt, "-30", (.k - 1L) * E + (.i - 1L), .foceiEcSe(.d))))
+      .g <- c(.g, .foceiEcGrad2Lines(.d, txt, eta, E, .k, .i))
+    }
+  }
+  .g
+}
+
+#' Second-order slot derivatives handed to the carry for one slot/eta
+#' @param d first eta derivative of the slot
+#' @inheritParams .foceiEcGradLines
+#' @param k slot
+#' @param i first eta index
+#' @return character lines
+#' @noRd
+.foceiEcGrad2Lines <- function(d, txt, eta, E, k, i) {
+  .g <- character(0)
+  for (.j in i:length(eta)) {
+    .d2 <- symengine::D(d, symengine::S(eta[.j]))
+    if (.rxFoceiCarryIsZero(.d2)) next
+    .g <- c(.g, sprintf(
+      "rx_ecGG%d_%d_%d_~%s", k, i, .j,
+      .foceiEcCall(txt, "-31", ((k - 1L) * E + (i - 1L)) * E + (.j - 1L), .foceiEcSe(.d2))
+    ))
+  }
+  .g
+}
+
+#' Outer chain rule of the `ll()` expression around the carried concentration
+#' @param P symengine `ll()` expression in `rx_lcConc_`
+#' @param eta eta symbol names
+#' @return character `rx__d2pred_i_j__` lines
+#' @noRd
+.foceiEcD2PredLines <- function(P, eta) {
+  .neta <- length(eta)
   .C <- symengine::S("rx_lcConc_")
-  .PC <- symengine::D(.P, .C)
+  .PC <- symengine::D(P, .C)
   .PCC <- symengine::D(.PC, .C)
   .Ca <- lapply(seq_len(.neta), function(.i) symengine::S(sprintf("rx_ecC%d_", .i)))
+  .lines <- character(0)
   for (.j in seq_len(.neta)) {
     for (.i in seq_len(.j)) {
       .Cij <- symengine::S(sprintf("rx_ecC%d_%d_", .i, .j))
       .e <- .PCC * .Ca[[.i]] * .Ca[[.j]] + .PC * .Cij +
-        symengine::D(.PC, symengine::S(.eta[.i])) * .Ca[[.j]] +
-        symengine::D(.PC, symengine::S(.eta[.j])) * .Ca[[.i]] +
-        symengine::D(symengine::D(.P, symengine::S(.eta[.i])), symengine::S(.eta[.j]))
-      .lines <- c(.lines, paste0("rx__d2pred_", .i, "_", .j, "__=", .se(.e)))
+        symengine::D(.PC, symengine::S(eta[.i])) * .Ca[[.j]] +
+        symengine::D(.PC, symengine::S(eta[.j])) * .Ca[[.i]] +
+        symengine::D(symengine::D(P, symengine::S(eta[.i])), symengine::S(eta[.j]))
+      .lines <- c(.lines, paste0("rx__d2pred_", .i, "_", .j, "__=", .foceiEcSe(.e)))
     }
   }
-  .s$..HdEta2 <- .lines
-  .s
+  .lines
 }
 
 #' Turn off `fast` after the control was built
@@ -2835,6 +2875,54 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   isTRUE(rxode2::rxHasAr(ui))
 }
 
+#' Does a `linCmt()` model keep the finite-difference inner Hessian?
+#'
+#' Errors for the full conditional Hessian when the second-order `linCmt()`
+#' reads are unavailable or cannot follow the doses.
+#' @param ui rxode2 ui
+#' @param conditional logical, full conditional Hessian requested
+#' @return logical
+#' @noRd
+.foceiLinCmtKeepsFdHessian <- function(ui, conditional) {
+  if (conditional && .foceiLinCmtModeledDoseTiming(ui)) {
+    stop("full conditional Hessian does not support linCmt() with a modeled lag, rate or duration; use laplace or agq",
+         call. = FALSE)
+  }
+  if (!.foceiLinCmtNoSecondOrder(ui)) {
+    return(FALSE)
+  }
+  if (conditional) {
+    stop("full conditional Hessian does not support linCmt(); use laplace or agq", call. = FALSE)
+  }
+  TRUE
+}
+
+#' Exact inner Hessian for a model with the `linCmt()` sensitivity carry
+#'
+#' Uses the eta-space second-order carry (#1498 phase 2) when in scope; a
+#' modeled F or lag on a dose (the carry's jump channels) keeps the finite
+#' difference.
+#' @param ui rxode2 ui
+#' @param .s symengine env with `..linCmtCarryPairs`
+#' @param conditional logical, full conditional Hessian requested
+#' @return `.s`, with `..HdEta2` when the carry applies
+#' @noRd
+.foceiMaybeAddHdEta2Carry <- function(ui, .s, conditional) {
+  if (conditional) {
+    stop("Conditional inner Hessian does not support this sensitivity carry", call. = FALSE)
+  }
+  .pairs <- .s$..linCmtCarryPairs
+  .jump <- any(!is.na(.pairs$fD)) || any(!is.na(.pairs$lagD))
+  if (.jump || !.foceiLinCmtHasSecondOrder() ||
+        !isTRUE(as.logical(rxode2::rxGetControl(ui, "fast", FALSE))) ||
+        !.foceiLLGradInScope(ui)) {
+    return(.s)
+  }
+  .malert("calculate d2(f)/d(eta) through the linCmt() eta-space carry")
+  .r <- tryCatch(.foceiAddHdEta2Carry(.s), error = function(e) NULL)
+  if (is.null(.r)) .s else .r
+}
+
 #' Add the second-order eta expansion ([.foceiAddHdEta2]) to an inner-model symengine env
 #' when the fit is a `fast=TRUE` log-likelihood / generalized endpoint, so the inner model
 #' carries `d2(logLik)/deta2` (`rx__d2pred_i_j__`) and `calcEtaHessian` assembles the exact
@@ -2850,34 +2938,11 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # them rxode2 silently drops those terms (#1103), so the inner Hessian stays
   # the Shi21 finite difference.  The sensitivity carry (3b.3) has no second
   # order yet, so a model with carry pairs keeps it either way (below).
-  if (.conditional && .foceiLinCmtModeledDoseTiming(x[[1]])) {
-    stop("full conditional Hessian does not support linCmt() with a modeled lag, rate or duration; use laplace or agq",
-         call. = FALSE)
-  }
-  if (.foceiLinCmtNoSecondOrder(x[[1]])) {
-    if (.conditional) {
-      stop("full conditional Hessian does not support linCmt(); use laplace or agq", call. = FALSE)
-    }
+  if (.foceiLinCmtKeepsFdHessian(x[[1]], .conditional)) {
     return(.s)
   }
   if (!is.null(.s$..linCmtCarryPairs)) {
-    if (.conditional) {
-      stop("Conditional inner Hessian does not support this sensitivity carry", call. = FALSE)
-    }
-    # the eta-space second-order carry (#1498 phase 2); a modeled F or lag
-    # on a dose (the carry's jump channels) keeps the finite difference
-    .pairs <- .s$..linCmtCarryPairs
-    .jump <- any(!is.na(.pairs$fD)) || any(!is.na(.pairs$lagD))
-    if (!.jump && .foceiLinCmtHasSecondOrder() &&
-          isTRUE(as.logical(rxode2::rxGetControl(x[[1]], "fast", FALSE))) &&
-          .foceiLLGradInScope(x[[1]])) {
-      .malert("calculate d2(f)/d(eta) through the linCmt() eta-space carry")
-      .r <- tryCatch(.foceiAddHdEta2Carry(.s), error = function(e) NULL)
-      if (!is.null(.r)) {
-        return(.r)
-      }
-    }
-    return(.s)
+    return(.foceiMaybeAddHdEta2Carry(x[[1]], .s, .conditional))
   }
   # no 2nd-order sensitivities through a lagged variable (#1176)
   if (!is.null(.s$..lagEta)) {
