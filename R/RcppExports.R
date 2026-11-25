@@ -771,6 +771,10 @@ iwresAutocor_ <- function(iwres, id, grp) {
     .Call(`_nlmixr2est_nmStopFileRequested_`)
 }
 
+.nmStopFileStopped <- function() {
+    .Call(`_nlmixr2est_nmStopFileStopped_`)
+}
+
 tablePoolFree_ <- function() {
     .Call(`_nlmixr2est_tablePoolFree_`)
 }

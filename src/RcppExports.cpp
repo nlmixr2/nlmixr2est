@@ -1770,6 +1770,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nmStopFileStopped_
+bool nmStopFileStopped_();
+RcppExport SEXP _nlmixr2est_nmStopFileStopped_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nmStopFileStopped_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // tablePoolFree_
 RObject tablePoolFree_();
 RcppExport SEXP _nlmixr2est_tablePoolFree_() {

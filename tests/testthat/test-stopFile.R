@@ -10,8 +10,10 @@ test_that("the stop-file poll removes the file and stays requested until reset",
   expect_true(.nmStopFilePoll())
   expect_false(file.exists(.sf))
   expect_true(.nmStopFileRequested())
+  expect_true(.nmStopFileStopped())
   .nmStopFileSet("")
   expect_false(.nmStopFileRequested())
+  expect_false(.nmStopFileStopped())
   file.create(.sf)
   expect_false(.nmStopFilePoll())
 })
@@ -72,6 +74,7 @@ for (.oo in c("bobyqa", "nlminb", "L-BFGS-B", "lbfgsb3c")) {
     # stopped at the first evaluation: the initial estimates
     expect_equal(.fit$theta[["tka"]], 0.45, tolerance = 1e-6)
     expect_equal(.nmStopFileGet(), "")
+    expect_false(.nmStopFileRequested())
   })
 }
 

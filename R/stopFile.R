@@ -20,7 +20,7 @@
 #' @return `TRUE` when a stop was requested
 #' @noRd
 .nmStopFileEnd <- function() {
-  .stopped <- .nmStopFileRequested()
+  .stopped <- .nmStopFileStopped()
   .nmStopFileSet("")
   if (.stopped) {
     warning("stopped early by user request", call. = FALSE)

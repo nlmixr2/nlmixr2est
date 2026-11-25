@@ -7,6 +7,7 @@
 static std::string _stopFile;
 static bool _stopFileOn = false;
 static bool _stopRequested = false;
+static bool _stopped = false;
 
 bool nmStopFileRequested() {
   return _stopRequested;
@@ -19,8 +20,12 @@ bool nmStopFilePoll() {
   if (stat(_stopFile.c_str(), &st) != 0) return false;
   // removed so a re-run in the same folder is not stopped at once
   std::remove(_stopFile.c_str());
-  _stopRequested = true;
+  _stopRequested = _stopped = true;
   return true;
+}
+
+void nmStopFileConsume() {
+  _stopRequested = false;
 }
 
 // Sets the stop file polled during estimation ("" turns polling off) and clears
@@ -30,7 +35,7 @@ std::string nmStopFileSet_(std::string file) {
   std::string old = _stopFileOn ? _stopFile : std::string("");
   _stopFile = file;
   _stopFileOn = !file.empty();
-  _stopRequested = false;
+  _stopRequested = _stopped = false;
   return old;
 }
 
@@ -50,4 +55,10 @@ bool nmStopFilePoll_() {
 //[[Rcpp::export(".nmStopFileRequested")]]
 bool nmStopFileRequested_() {
   return nmStopFileRequested();
+}
+
+// Whether a stop request ended a loop since the last .nmStopFileSet().
+//[[Rcpp::export(".nmStopFileStopped")]]
+bool nmStopFileStopped_() {
+  return _stopped;
 }

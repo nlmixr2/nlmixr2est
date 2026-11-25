@@ -5,10 +5,12 @@
 
 // A graceful early stop requested by creating the control's `stopFile` (#1507).
 // nmStopFilePoll() checks for the file (removing it when found) and returns
-// whether a stop has been requested; the request is sticky until the next
-// nmStopFileSet().  Call it only from the main thread.
+// whether a stop has been requested.  The request holds until the loop it ends
+// calls nmStopFileConsume(), so a later fit of the same run is not stopped.
+// Call these only from the main thread.
 bool nmStopFilePoll();
 bool nmStopFileRequested();
+void nmStopFileConsume();
 
 // Thrown out of an optimizer's objective callback to end the search.
 struct nmStopRequest : public std::exception {
