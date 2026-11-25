@@ -7,6 +7,7 @@
 #include "odeSwap.h"
 #include <algorithm>
 #include <atomic>
+#include <mutex>
 
 #define _(String) (String)
 
@@ -838,10 +839,31 @@ bool odeSwapWantsScratch(int slot, rx_solving_options *op) {
   return odeSwapNlhs(slot) > getOpNlhs(op);
 }
 
+static std::mutex _nmTlsMu;
+static std::vector<std::vector<double> *> _nmTlsAll;
+
+std::vector<double> &nmTlsVec(int slot) {
+  static thread_local std::vector<double> *mine[2] = {NULL, NULL};
+  if (mine[slot] == NULL) {
+    mine[slot] = new std::vector<double>();
+    std::lock_guard<std::mutex> lk(_nmTlsMu);
+    _nmTlsAll.push_back(mine[slot]);
+  }
+  return *mine[slot];
+}
+
+extern "C" void nmTlsFreeAllC(void) { nmTlsFreeAll(); }
+
+void nmTlsFreeAll() {
+  std::lock_guard<std::mutex> lk(_nmTlsMu);
+  for (size_t i = 0; i < _nmTlsAll.size(); ++i) delete _nmTlsAll[i];
+  _nmTlsAll.clear();
+}
+
 // One buffer per thread, grown on demand and reused across subjects, replacing
 // the three per-call std::vector allocations.
 static std::vector<double> &odeSwapScratch(int want) {
-  static thread_local std::vector<double> buf;
+  std::vector<double> &buf = nmTlsVec(0);
   if ((int)buf.size() < want) {
     if (!buf.empty()) _odeScratchResizeN.fetch_add(1, std::memory_order_relaxed);
     buf.resize((size_t)want);

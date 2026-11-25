@@ -160,6 +160,14 @@
 
 ## Bug fixes
 
+- A multi-threaded fit after a `fast = TRUE` `ll()` fit in the same R session
+  no longer stops R on Windows.  Two per-thread buffers were `thread_local`
+  `std::vector`s; with the MinGW-w64 toolchain their destructors run at thread
+  exit after the emulated thread-local storage they live in is released, so
+  freeing them corrupted the heap when an OpenMP worker exited at the next
+  fit.  The threads now hold plain pointers to vectors that are freed when
+  the package is unloaded (#1502).
+
 ### Covariance
 
 - The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a

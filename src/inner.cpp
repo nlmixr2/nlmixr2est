@@ -2658,7 +2658,7 @@ static inline int innerOpt1(int id, int likId);   // defined below; used by shi2
 // a theta with no eta; badly wrong for one that has them -- measured on theo_sd, tv and
 // add.sd (no etas) agreed to within the overall factor while tka and tcl (eta-bearing)
 // did not.  Set by foceiOuterFdInd_() per subject, before its loop.
-static thread_local std::vector<double> _fdRefEta;
+static inline std::vector<double> &fdRefEta() { return nmTlsVec(1); }
 
 // Pin one subject to a reference eta and force the next inner evaluation to recompute.
 // Shared by every per-individual difference (theta and omega), because both need the same
@@ -2720,7 +2720,7 @@ arma::vec shi21LikTheta(arma::vec &theta, int id) {
   for (int t = 0; t < (int)op_focei.ntheta && t < (int)theta.size(); ++t) {
     setIndParPtr(ind, op_focei.thetaTrans[t], theta[t]);
   }
-  fdPinRefEtaForce(fInd, ind, _fdRefEta);
+  fdPinRefEtaForce(fInd, ind, fdRefEta());
   if (!innerOpt1(id, 0)) { ret(0) = NA_REAL; return ret; }
   // lik[0] on this path is the individual's log-likelihood; the outer objective (and so
   // the analytic gradient this must match) is -2LL.
@@ -17208,7 +17208,7 @@ static void fdThetaLikAll(const arma::vec &tk, std::vector<double> &out) {
   out.assign((size_t)nid, NA_REAL);
   arma::vec tw = tk;                 // shi21LikTheta takes a non-const reference
   nmForEachSubject(rx, nid, _fdThCores, _fdThParallel, [&](int k) {
-    _fdRefEta = _fdThRefEta[(size_t)k];
+    fdRefEta() = _fdThRefEta[(size_t)k];
     { std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
       out[(size_t)k] = shi21LikTheta(tw, _fdThIds[(size_t)k])(0); }
   });
@@ -17216,7 +17216,7 @@ static void fdThetaLikAll(const arma::vec &tk, std::vector<double> &out) {
   // pick the same inner buffers, so a failure above is not necessarily one here.
   for (int k = 0; k < nid; ++k) {
     if (R_finite(out[(size_t)k])) continue;
-    _fdRefEta = _fdThRefEta[(size_t)k];
+    fdRefEta() = _fdThRefEta[(size_t)k];
     std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
     out[(size_t)k] = shi21LikTheta(tw, _fdThIds[(size_t)k])(0);
   }
@@ -17256,7 +17256,7 @@ static void fdThetaStepPer(const arma::vec &theta, int j,
   const int nid = (int)_fdThIds.size();
   hPerOut.assign((size_t)nid, 0.0);
   nmForEachSubject(rx, nid, _fdThCores, _fdThParallel, [&](int k) {
-    _fdRefEta = _fdThRefEta[(size_t)k];
+    fdRefEta() = _fdThRefEta[(size_t)k];
     arma::vec tw = theta, gr(1), f0(1);
     f0(0) = f0Ind[(size_t)k];
     double hs = 0.0;
@@ -17283,7 +17283,7 @@ static void fdThetaLegPer(const arma::vec &theta, int j,
   out.assign((size_t)nid, NA_REAL);
   nmForEachSubject(rx, nid, _fdThCores, _fdThParallel, [&](int k) {
     if (hPer[(size_t)k] > 0.0) {
-      _fdRefEta = _fdThRefEta[(size_t)k];
+      fdRefEta() = _fdThRefEta[(size_t)k];
       std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
       arma::vec tk = theta;
       if (j >= 0 && j < (int)tk.size()) tk[(unsigned int)j] += sign * hPer[(size_t)k];
@@ -17294,7 +17294,7 @@ static void fdThetaLegPer(const arma::vec &theta, int j,
   // pick the same inner buffers, so a failure above is not necessarily one here.
   for (int k = 0; k < nid; ++k) {
     if (hPer[(size_t)k] <= 0.0 || R_finite(out[(size_t)k])) continue;
-    _fdRefEta = _fdThRefEta[(size_t)k];
+    fdRefEta() = _fdThRefEta[(size_t)k];
     std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
     arma::vec tk = theta;
     if (j >= 0 && j < (int)tk.size()) tk[(unsigned int)j] += sign * hPer[(size_t)k];
@@ -18513,7 +18513,7 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
       op_focei.nFdChartrand++;
     }
   }
-  _fdRefEta.clear();
+  fdRefEta().clear();
   // Release the theta phase's guards HERE, before the omega phase: they restore par_ptr's
   // eta, and the omega phase captures its own reference etas from par_ptr -- inheriting a
   // perturbed one would difference omega about the wrong point.
