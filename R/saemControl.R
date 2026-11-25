@@ -47,7 +47,7 @@
 #'     to the current between-subject SD.  Smaller values raise the MCMC
 #'     acceptance rate (see `$mcmcAccept`); larger values lower it.
 #'
-#' @param mcmcProposal Shape of the joint random-walk proposal (kernel 2):
+#' @param rwProposal Shape of the joint random-walk proposal (kernel 2):
 #'     `"diag"` (default) scales each coordinate by `rmcmc` times its
 #'     between-subject SD; `"omega"` uses `rmcmc^2` times the full omega
 #'     block, so correlated random effects move together.
@@ -445,7 +445,7 @@ saemControl <- function(
   nmc = 3,
   nu = c(2, 2, 2),
   rmcmc = 0.5,
-  mcmcProposal = c("diag", "omega"),
+  rwProposal = c("diag", "omega"), # not "mcmc*": a rebuilt list's `mcmc` would partial-match it
   mcmcAcceptWarn = c(0.05, 0.8),
   print = 1L,
   trace = 0, # nolint
@@ -544,7 +544,7 @@ saemControl <- function(
       rmcmc <- .xtra$mcmc$rmcmc
     }
     if (!is.null(.xtra$mcmc$proposal)) {
-      mcmcProposal <- .xtra$mcmc$proposal
+      rwProposal <- .xtra$mcmc$proposal
     }
   }
   checkmate::assertIntegerish(nBurn, any.missing = FALSE, len = 1, lower = 0)
@@ -559,7 +559,7 @@ saemControl <- function(
   if (rmcmc <= 0) {
     stop("'rmcmc' must be positive", call. = FALSE)
   }
-  mcmcProposal <- match.arg(mcmcProposal)
+  rwProposal <- match.arg(rwProposal)
   if (!is.null(mcmcAcceptWarn) && !all(is.na(mcmcAcceptWarn))) {
     checkmate::assertNumeric(mcmcAcceptWarn, lower = 0, upper = 1, len = 2, any.missing = FALSE, sorted = TRUE)
   } else {
@@ -701,7 +701,7 @@ saemControl <- function(
   }
   .corWarnCheck(corWarn)
   .ret <- list(
-    mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto, rmcmc = rmcmc, proposal = mcmcProposal),
+    mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto, rmcmc = rmcmc, proposal = rwProposal),
     plateauStop = plateauStop,
     plateauWindow = as.integer(plateauWindow),
     plateauTol = plateauTol,
@@ -829,7 +829,7 @@ saemControl <- function(
       .ret <- c(.ret, paste0("rmcmc=", deparse1(value$rmcmc)))
     }
     if (!is.null(value$proposal) && !identical(value$proposal, "diag")) {
-      .ret <- c(.ret, paste0("mcmcProposal=", deparse1(value$proposal)))
+      .ret <- c(.ret, paste0("rwProposal=", deparse1(value$proposal)))
     }
     # nu is written only when supplied (nuAuto FALSE), even at its default; an
     # automatic nu may have been raised by the fit (.saemAutoNu) and is redone
