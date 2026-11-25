@@ -79,10 +79,11 @@
 #' @return logical
 #' @noRd
 .nlmixrEndpointNeedsPositiveDv <- function(ui, pred1) {
-  if (identical(pred1$transform, "lnorm")) {
+  .tr <- as.character(pred1$transform)
+  if (identical(.tr, "lnorm")) {
     return(TRUE)
   }
-  if (!identical(pred1$transform, "boxCox")) {
+  if (!identical(.tr, "boxCox")) {
     return(FALSE)
   }
   .iniDf <- ui$iniDf
@@ -134,7 +135,7 @@
       warning(
         .n,
         " DV <= 0 on ",
-        .pred1$transform,
+        as.character(.pred1$transform),
         " endpoint '",
         .pred1$cond,
         "'",

@@ -1,29 +1,20 @@
 nmTest({
   # non-positive observed DV on a log/Box-Cox endpoint warns before fitting (#1510)
-  .modFun <- function(err) {
-    eval(bquote(function() {
-      ini({
-        tka <- 0.45
-        tcl <- 1
-        tv <- 3.45
-        add.sd <- 0.7
-        lam <- 0.5
-      })
-      model({
-        ka <- exp(tka)
-        cl <- exp(tcl)
-        v <- exp(tv)
-        d/dt(depot) <- -ka * depot
-        d/dt(center) <- ka * depot - cl / v * center
-        cp <- center / v
-        .(err)
-      })
-    }))
+  .mk <- function(err, lam = "lam <- 0.5") {
+    rxode2::rxode2(eval(parse(text = paste0(
+      "function() {ini({tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7;",
+      lam,
+      "}); model({ka <- exp(tka); cl <- exp(tcl); v <- exp(tv);",
+      "d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center;",
+      "cp <- center / v;",
+      err,
+      "})}"
+    ))))
   }
-  .lnorm <- rxode2::rxode2(.modFun(quote(cp ~ lnorm(add.sd))))
-  .boxCox <- rxode2::rxode2(.modFun(quote(cp ~ add(add.sd) + boxCox(lam))))
-  .boxCox1 <- rxode2::rxode2(.modFun(quote(cp ~ add(add.sd) + boxCox(1))))
-  .yj <- rxode2::rxode2(.modFun(quote(cp ~ add(add.sd) + yeoJohnson(lam))))
+  .lnorm <- .mk("cp ~ lnorm(add.sd)", "")
+  .boxCox <- .mk("cp ~ add(add.sd) + boxCox(lam)")
+  .boxCox1 <- .mk("cp ~ add(add.sd) + boxCox(1)", "")
+  .yj <- .mk("cp ~ add(add.sd) + yeoJohnson(lam)")
 
   .dat <- nlmixr2data::theo_sd
   .dat <- .dat[.dat$ID <= 2, ]
