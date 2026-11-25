@@ -567,6 +567,10 @@ struct focei_options {
   // inner model (rxInner) drives the Newton (neqOverride = innerNeq).
   int predHess2Offset = -1;
   int conditionalHess2Offset = -1;
+  // rxHess2 carries linCmt()'s eta-space second-order carry (lhs rx_ecAdv_,
+  // #1498): its advance must see every record, doses included, so the lhs
+  // pass also visits the non-observation rows (their rows add nothing to H)
+  bool hess2AllRows = false;
   bool conditionalHessianRequested = false;
   bool conditionalDetRequested = false;   // detHessian="conditional": full curvature in log|H|
   double outerThirdStep = 1e-3;           // relative eta step of its 3rd-order probes
@@ -3798,10 +3802,12 @@ static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
   for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
     setIndIdx(ind, jj);
     int kk2 = getIndIx(ind, jj);
-    if (getIndEvid(ind, kk2) != 0) continue;              // observations only
+    bool obs2 = getIndEvid(ind, kk2) == 0;
+    if (!obs2 && !op_focei.hess2AllRows) continue;        // observations only
     double curT2 = getTime(kk2, ind);
     lhsWalkNewind(ind, jj);
     rxHess2.calc_lhs(_rxId, curT2, getOpIndSolve(op, ind, jj), lhs);
+    if (!obs2) continue;  // the eta-space carry advanced through the record
     double cp[9] = {};
     if (conditional) {
       double value;
@@ -15958,6 +15964,7 @@ Environment foceiFitCpp_(Environment e){
       op_focei.predHess2Offset = -1;
       op_focei.conditionalHess2Offset = -1;
       op_focei.varianceHess2Offset = -1;
+      op_focei.hess2AllRows = false;
       op_focei.hess2Neq = 0;
       op_focei.hess2Nlhs = 0;
       if (model.containsElementNamed("innerHess2")) {
@@ -15967,6 +15974,7 @@ Environment foceiFitCpp_(Environment e){
           op_focei.hess2Nlhs = odeSwapNlhs(odeSlotHess2);
           op_focei.predHess2Offset = odeSwapLhsIndex(odeSlotHess2, "rx__d2pred_1_1__");
           op_focei.varianceHess2Offset = odeSwapLhsIndex(odeSlotHess2, "rx__d2r_1_1__");
+          op_focei.hess2AllRows = odeSwapLhsIndex(odeSlotHess2, "rx_ecAdv_") >= 0;
           if (op_focei.varianceHess2Offset >= 0) {
             op_focei.conditionalHess2Offset = op_focei.predHess2Offset;
             op_focei.predHess2Offset = -1;
@@ -16528,6 +16536,7 @@ RObject vaeInnerSetup_(Environment e) {
   op_focei.predHess2Offset = -1;
   op_focei.conditionalHess2Offset = -1;
   op_focei.varianceHess2Offset = -1;
+  op_focei.hess2AllRows = false;
   op_focei.hess2Neq = 0;
   op_focei.hess2Nlhs = 0;
   setupAq0_(e);

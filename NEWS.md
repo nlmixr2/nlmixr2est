@@ -26,7 +26,9 @@
   Both match the same model written as ODEs.  With an older rxode2 /
   rxode2lincmt the previous behavior (finite differences, `fast = FALSE`)
   is kept.  Models with the `linCmt()` sensitivity carry (time-varying
-  covariates) keep the finite-difference inner Hessian for now.  A subject
+  covariates) get the exact `ll()` inner Hessian through rxode2lincmt's
+  eta-space carry, under `locf` and `nocb`, except with a modeled
+  bioavailability or lag on the doses (the finite difference stays).  A subject
   whose exact inner Hessian is not finite (the second-order `linCmt()` reads
   do not yet follow a modeled lag, rate or duration, or a replace/multiply
   record) uses the finite difference instead, with a `$runInfo` note; the

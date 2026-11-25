@@ -90,4 +90,59 @@ nmTest({
     expect_true(any(grepl("exact eta Hessian not finite", fLlag$runInfo, fixed = TRUE)))
     expect_lt(abs(fLlag$objf - fOlag$objf), 0.01)
   })
+
+  test_that("ll() + linCmt() with a time-varying covariate: the eta-space carry's exact Hessian (#1498)", {
+    skip_on_cran()
+    skip_if_not(.foceiLinCmtHasSecondOrder())
+    .tvLin <- function() {
+      ini({
+        tka <- log(1.2); tcl <- log(2); tv <- log(20)
+        eta.cl ~ 0.09; eta.v ~ 0.04
+        lsd <- log(0.15)
+      })
+      model({
+        ka <- exp(tka); cl <- exp(tcl + eta.cl) * (wt / 70)^0.75; v <- exp(tv + eta.v); sd <- exp(lsd)
+        cp <- linCmt()
+        ll(err) ~ -0.5 * log(2 * pi) - log(sd * cp) - 0.5 * ((DV - cp) / (sd * cp))^2
+      })
+    }
+    .tvOde <- function() {
+      ini({
+        tka <- log(1.2); tcl <- log(2); tv <- log(20)
+        eta.cl ~ 0.09; eta.v ~ 0.04
+        lsd <- log(0.15)
+      })
+      model({
+        ka <- exp(tka); cl <- exp(tcl + eta.cl) * (wt / 70)^0.75; v <- exp(tv + eta.v); sd <- exp(lsd)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v
+        ll(err) ~ -0.5 * log(2 * pi) - log(sd * cp) - 0.5 * ((DV - cp) / (sd * cp))^2
+      })
+    }
+    set.seed(7)
+    d <- do.call(rbind, lapply(1:6, function(i) {
+      tt <- c(0, 0.5, 1, 2, 4, 6, 8, 12, 12, 14, 16, 20, 24, 36)
+      ev <- c(1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0)
+      w0 <- runif(1, 50, 90)
+      data.frame(ID = i, TIME = tt, EVID = ev, AMT = ifelse(ev == 1, 100, 0),
+                 CMT = ifelse(ev == 1, 1, 2), wt = ifelse(tt < 8, w0, w0 * 1.3),
+                 DV = ifelse(ev == 0, 3 * exp(-0.1 * tt) * exp(rnorm(length(tt), 0, 0.2)), 0))
+    }))
+    for (interp in c("locf", "nocb")) {
+      # the ODE twin needs tight tolerances across the covariate step to be
+      # a reference at this precision
+      .ctl <- function(cores) {
+        foceiControl(fast = TRUE, print = 0L, covMethod = "", maxOuterIterations = 0L,
+                     rxControl = rxode2::rxControl(covsInterpolation = interp, cores = cores,
+                                                   atol = 1e-10, rtol = 1e-10,
+                                                   atolSens = 1e-10, rtolSens = 1e-10))
+      }
+      # one core: a multi-threaded fit after the ODE fits above would hit #1502
+      fL <- suppressMessages(suppressWarnings(nlmixr2(.tvLin, d, "focei", .ctl(1L))))
+      fO <- suppressMessages(suppressWarnings(nlmixr2(.tvOde, d, "focei", .ctl(1L))))
+      expect_false(any(grepl("exact eta Hessian not finite", fL$runInfo, fixed = TRUE)))
+      expect_equal(fL$objf, fO$objf, tolerance = 1e-6)
+    }
+  })
 })
