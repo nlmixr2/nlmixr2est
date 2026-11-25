@@ -22,6 +22,7 @@ nmTest({
         one.cmt, theo_sd, "saem",
         saemControl(nBurn = 20, nEm = 20, seed = 7, print = 0,
                     muNonCentered = on, omegaNonCentered = on, nonCenteredPhase = phase,
+                    nonCenteredShrink = 0,
                     covMethod = "", calcTables = FALSE)
       )))
     }
