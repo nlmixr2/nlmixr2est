@@ -464,6 +464,12 @@
 - `est="imp"`, `"impmap"` and `"qrpem"` now refuse a model without random
   effects with the same clear message as `"saem"`, instead of failing with
   `Could not fit data` (#1467).
+- `saem` now fits an additive residual that is a theta times a known weight
+  of `time` and covariates (e.g. `cp ~ add(add.sd * exp(-time / 8))`) on its
+  closed-form additive path, scaling the observations by the weight, instead
+  of as a `dnorm()` likelihood with a temporary eta.  Such fits are several
+  times faster and no longer let the residual SD vary between subjects
+  (#1463).
 
 - A multiplicative 0/1 covariate effect, `exp(tcl + eta.cl) * (1 + clSex*SEX)`,
   is now fit as the equivalent mu-referenced `log(1 + clSex)*SEX` ("mu5") by

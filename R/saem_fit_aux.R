@@ -273,6 +273,10 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   if (!is.null(.pen)) {
     ll2 <- ll2 - .Call(`_nlmixr2est_likPenaltyPop`, .pen, as.integer(N))
   }
+  # observations divided by a known residual weight (.saemResidWeightData())
+  if (!is.null(saem.cfg$residLogW)) {
+    ll2 <- ll2 - 2 * saem.cfg$residLogW
+  }
   -ll2
 }
 

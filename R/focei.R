@@ -6571,7 +6571,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         "penMap",
         "penTheta0",
         "penEtaOrd",
-        "saemMstep"
+        "saemMstep",
+        "residLogW"
       )) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }
