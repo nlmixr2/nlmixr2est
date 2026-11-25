@@ -36,6 +36,10 @@
   .zcol <- match(paste0("rxz.", .etas), .pn)
   .ncol <- paste0("rxN.", .etas)
   if (anyNA(.zcol) || !all(.ncol %in% .preLhs)) return(NULL)
+  # a copula that also carries an ORDINARY eta (its latent rxz.* has no declared
+  # family here) is outside this step: decline, and the fit keeps the other updates
+  .zUsed <- unique(unlist(lapply(.pre, function(x) grep("^rxz\\.", all.vars(x[[3]]), value = TRUE))))
+  if (!all(.zUsed %in% paste0("rxz.", .etas))) return(NULL)
   .ini <- ui$iniDf
   .th <- !is.na(.ini$ntheta)
   .thetaAll <- stats::setNames(.ini$est[.th], .ini$name[.th])
