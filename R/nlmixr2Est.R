@@ -491,6 +491,7 @@ nlmixr2Est0 <- function(env, ...) {
 #' @return nothing, called for side effects
 #' @noRd
 .nlmixr2EstPostFit <- function(ret, env) {
+  .iwresAutocorNote(ret, get0("table", envir = env, inherits = FALSE))
   # not every method assigns env$est (nlme/saem set it on the fit only), so
   # fall back to the finalized fit's est
   .estName <- tryCatch(as.character(get("est", envir = env)), error = function(e) "")
@@ -552,6 +553,7 @@ nlmixr2Est0 <- function(env, ...) {
   )
   .shrinkEtaWarn(ret)
   .odeSettleCheck(ret)
+  try(.omegaCollapseWarn(ret, env), silent = TRUE)
   # name strongly correlated estimates, from the covariance the fit ends with
   try(.covCorWarn(ret), silent = TRUE)
   invisible()

@@ -35,3 +35,30 @@ nmObjGetData.iwresAutocor <- function(x, ...) {
 }
 attr(nmObjGetData.iwresAutocor, "desc") <- "within-subject IWRES lag-1 correlation and Durbin-Watson statistic"
 attr(nmObjGetData.iwresAutocor, "rstudio") <- list(lag1R = 0, durbinWatson = 2, nSubjects = 1L, nPairs = 1L)
+
+#' Run note for within-subject IWRES autocorrelation
+#'
+#' Warns (so it reaches `$runInfo`) when the pooled Durbin-Watson statistic
+#' is below 1.5 or above 2.5, unless `tableControl(iwresAutocor = FALSE)`.
+#' @param fit the finalized fit
+#' @param table the fit's `tableControl()`
+#' @return the `fit$iwresAutocor` list (invisibly), or `NULL`
+#' @noRd
+.iwresAutocorNote <- function(fit, table) {
+  if (isFALSE(table$iwresAutocor) || !is.data.frame(fit)) {
+    return(invisible(NULL))
+  }
+  .ac <- tryCatch(.iwresAutocor(as.data.frame(fit)), error = function(e) NULL)
+  .dw <- .ac$durbinWatson
+  if (length(.dw) == 1L && is.finite(.dw) && (.dw < 1.5 || .dw > 2.5)) {
+    warning(
+      sprintf(
+        "IWRES %s autocorrelated within subjects: Durbin-Watson %.2f",
+        if (.dw < 1.5) "positively" else "negatively",
+        .dw
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(.ac)
+}
