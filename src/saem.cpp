@@ -2002,6 +2002,15 @@ public:
     return par_hist;
   }
 
+  List get_saCovStop() {
+    if (!saCovStopOn) return List::create();
+    return List::create(_["iter"] = saCovStopIter > 0 ? saCovStopIter : NA_INTEGER,
+                        _["nSaCov"] = nSaCov,
+                        _["drift"] = saemAutoStopVec(_saCovStop.drift),
+                        _["mcse"] = saemAutoStopVec(_saCovStop.mcse),
+                        _["tol"] = saemAutoStopVec(_saCovStop.tol));
+  }
+
   List get_autoStop() {
     if (!autoStopOn) return List::create();
     return List::create(_["iter"] = autoStopIter > 0 ? autoStopIter : NA_INTEGER,
@@ -2577,7 +2586,9 @@ public:
     // approximation" standard errors; Kuhn & Lavielle 2005).  nSaCov==0 is a no-op.
     nSaCov = x.containsElementNamed("nSaCov") ? as<int>(x["nSaCov"]) : 0;
     autoStopOn = x.containsElementNamed("autoStop") && as<int>(x["autoStop"]) != 0;
-    if (autoStopOn) {
+    saCovStopOn = nSaCov > 0 && x.containsElementNamed("saCovAutoStop") &&
+      as<int>(x["saCovAutoStop"]) != 0;
+    if (autoStopOn || saCovStopOn) {
       autoStopWindow = as<int>(x["stopWindow"]);
       autoStopConsec = as<int>(x["stopConsecutive"]);
       autoStopRtol = as<double>(x["stopRtol"]);
@@ -3271,6 +3282,10 @@ public:
           statrese[b] = statreseCov(b);
           double nb = (double)(y_offset(b + 1) - y_offset(b));
           if (nb > 0) sigma2[b] = statrese[b] / nb;
+        }
+        if (saCovStopOn) {
+          _saCovStop.init(autoStopWindow, autoStopConsec, autoStopRtol, autoStopAtol,
+                          (int)nb_param);
         }
         _savPlambda = Plambda; _savGamma2_phi1 = Gamma2_phi1; _savGamma2_phi0 = Gamma2_phi0;
         _savGamma2_phi1Report = Gamma2_phi1Report; _savMprior_phi1 = mprior_phi1;
@@ -5112,6 +5127,11 @@ public:
         if (cc >= (unsigned int)(0.1 * nSaCov)) {
           covCount++;
           HaSa += (DDa - HaSa) / (double)covCount;
+          // the same stop window on the running FIM diagonal ends the phase early
+          if (saCovStopOn && kiter + 1 < (unsigned int)(niter + nSaCov) &&
+              _saCovStop.push(vec(HaSa.diag()))) {
+            saCovStopIter = (int)cc + 1;
+          }
         }
       }
       cube phi2 = phi%phi;
@@ -5250,8 +5270,10 @@ public:
       }
       // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
       // above; nothing is recorded to par_hist and no printing happens.
+      if (saCovStopIter > 0) break;
     }//kiter
     if (autoStopIter > 0) autoStopTrim();
+    if (saCovStopIter > 0) saCovStopTrim();
     // restore the converged estimate after the SA covariance phase (the reported fit
     // must be the converged value, not a cov-phase iterate)
     if (nSaCov > 0) {
@@ -5557,6 +5579,19 @@ private:
   int autoStopWindow = 50, autoStopConsec = 4, autoStopIter = -1;
   double autoStopRtol = 1e-3, autoStopAtol = 1e-4;
   saemAutoStop _autoStop;
+  bool saCovStopOn = false;
+  int saCovStopIter = -1;       // covariance-phase iterations run when it stopped early
+  saemAutoStop _saCovStop;
+
+  // drop the covariance-phase iterations an early stop skipped from the MCMC traces
+  void saCovStopTrim() {
+    const uword est = (uword)(autoStopIter > 0 ? autoStopIter : niter);
+    const uword nTot = est + (uword)nSaCov, keep = est + (uword)saCovStopIter;
+    mat *tr[] = {&mcmcAccTrace, &mcmcAccColTrace, &mcmcStuckTrace, &phiSdTrace, &phiAcfTrace};
+    for (mat *m : tr) {
+      if (m->n_rows == nTot && keep < nTot) m->shed_rows(keep, nTot - 1);
+    }
+  }
 
   // drop the estimation iterations an early stop skipped from every per-iteration history
   void autoStopTrim() {
@@ -7146,6 +7181,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("etaMix") = saem.get_etaMix(),
     Named("par_hist") = saem.get_par_hist(),
     Named("autoStop") = saem.get_autoStop(),
+    Named("saCovStop") = saem.get_saCovStop(),
     // MCMC mixing diagnostics; see the members they come from
     Named("mcmcAccept") = saem.get_mcmcAccTrace(),
     Named("mcmcAcceptCol") = saem.get_mcmcAccColTrace(),

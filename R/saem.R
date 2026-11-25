@@ -358,6 +358,7 @@
       .cfg$stopConsecutive <- as.integer(rxode2::rxGetControl(ui, "stopConsecutive", 4L))
       .cfg$stopRtol <- as.numeric(rxode2::rxGetControl(ui, "stopRtol", 1e-3))
       .cfg$stopAtol <- as.numeric(rxode2::rxGetControl(ui, "stopAtol", 1e-4))
+      .cfg$saCovAutoStop <- as.integer(isTRUE(rxode2::rxGetControl(ui, "saCovAutoStop", TRUE)))
       # conditional-mode EBEs, computed in C++ after the last SAEM iteration
       .cfg$ebeMode <- as.integer(identical(rxode2::rxGetControl(ui, "ebe", "mode"), "mode"))
       .cfg$ebeMaxEval <- as.integer(rxode2::rxGetControl(ui, "ebeMaxEval", 200L))
@@ -938,6 +939,10 @@
       .as[[.f]] <- .v
     }
     assign("saemAutoStop", .as, envir = env)
+  }
+  .sc <- .saem$saCovStop
+  if (is.list(.sc) && length(.sc) > 0L) {
+    assign("saemSaCovStop", .sc, envir = env)
   }
   .saemAddMcmcDiag(env)
 }

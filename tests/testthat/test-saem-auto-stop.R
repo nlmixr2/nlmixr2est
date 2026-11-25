@@ -48,6 +48,9 @@ nmTest({
     .c <- saemControl(autoStop = TRUE, stopWindow = 30)
     expect_true(.c$autoStop)
     expect_identical(.c$stopWindow, 30L)
+    expect_error(saemControl(saCovAutoStop = NA))
+    expect_true(saemControl()$saCovAutoStop)
+    expect_false(saemControl(saCovAutoStop = FALSE)$saCovAutoStop)
   })
 
   .asMod <- function() {
@@ -112,5 +115,36 @@ nmTest({
     expect_equal(.f$covMethod, "sa")
     expect_true(all(is.finite(diag(.f$cov))))
     expect_equal(nrow(.f$parHistData), .f$saemAutoStop$iter)
+    .sc <- .f$saemSaCovStop
+    expect_equal(.sc$nSaCov, 100L)
+    expect_true(is.na(.sc$iter) || .sc$iter <= 100L)
+  })
+
+  test_that("the SA covariance phase stops on the same window and keeps the SEs", {
+    skip_on_cran()
+    .ctl <- function(...) {
+      saemControl(
+        print = 0,
+        nBurn = 100,
+        nEm = 300,
+        seed = 42L,
+        calcTables = FALSE,
+        covMethod = "sa",
+        nSaCov = 500L,
+        ...
+      )
+    }
+    .on <- suppressMessages(nlmixr2(.asMod(), theo_sd, est = "saem", control = .ctl()))
+    .off <- suppressMessages(nlmixr2(.asMod(), theo_sd, est = "saem", control = .ctl(saCovAutoStop = FALSE)))
+    .sc <- .on$saemSaCovStop
+    expect_false(is.na(.sc$iter))
+    expect_lt(.sc$iter, 500L)
+    # a 10% burn-in, then a full window before the first stop
+    expect_gte(.sc$iter, 50L + 50L + 4L - 1L)
+    expect_true(all(.sc$drift <= .sc$tol))
+    expect_equal(.on$covMethod, "sa")
+    expect_equal(sqrt(diag(.on$cov)), sqrt(diag(.off$cov)), tolerance = 0.05)
+    expect_equal(fixef(.on), fixef(.off))
+    expect_null(.off$saemSaCovStop)
   })
 })

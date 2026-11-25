@@ -23,6 +23,10 @@
   Monte-Carlo error for `stopConsecutive` windows of `stopWindow` iterations;
   `nEm` becomes a maximum and the stop is recorded in `fit$saemAutoStop`
   (#1411).
+- The `covMethod = "sa"` covariance phase applies the same window to the
+  diagonal of its running Fisher information and stops once it is stationary
+  (`saemControl(saCovAutoStop = TRUE)`, the default), so `nSaCov` becomes a
+  maximum; the stop is recorded in `fit$saemSaCovStop` (#1411).
 - `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes each
   converged trust ETA solve by re-entering it at the squared
   `trustFterm`/`trustMterm` instead of taking Newton steps.  The objective at

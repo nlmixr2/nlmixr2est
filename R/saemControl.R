@@ -22,6 +22,12 @@
 #' @param stopConsecutive Number of consecutive stationary windows needed to
 #'   stop.
 #'
+#' @param saCovAutoStop Boolean (default `TRUE`); stop the `covMethod="sa"`
+#'   covariance phase early once the diagonal of its running Fisher information
+#'   passes the same window test (`stopWindow`, `stopConsecutive`, `stopRtol`,
+#'   `stopAtol`), so `nSaCov` becomes a maximum.  The stop is recorded in
+#'   `fit$saemSaCovStop`.
+#'
 #' @param stopRtol,stopAtol Relative and absolute drift tolerances.  A
 #'   parameter is stationary when its half-mean drift is at most
 #'   `max(stopAtol, stopRtol * max(1, |older mean|), 2 * mcse)`, where `mcse`
@@ -456,6 +462,7 @@ saemControl <- function(
   stopConsecutive = 4L,
   stopRtol = 1e-3,
   stopAtol = 1e-4,
+  saCovAutoStop = TRUE,
   plateauStop = FALSE,
   plateauWindow = 50L,
   plateauTol = 1e-3,
@@ -628,6 +635,7 @@ saemControl <- function(
   nonMuTheta <- match.arg(nonMuTheta)
   nonMuThetaOpt <- match.arg(nonMuThetaOpt)
   checkmate::assertLogical(autoStop, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(saCovAutoStop, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(stopWindow, any.missing = FALSE, len = 1, lower = 4)
   checkmate::assertIntegerish(stopConsecutive, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertNumeric(stopRtol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
@@ -731,6 +739,7 @@ saemControl <- function(
     stopConsecutive = as.integer(stopConsecutive),
     stopRtol = stopRtol,
     stopAtol = stopAtol,
+    saCovAutoStop = saCovAutoStop,
     mcmcAcceptWarn = mcmcAcceptWarn,
     censOption = censOption,
     iterPrintControl = .iterPrintControl,

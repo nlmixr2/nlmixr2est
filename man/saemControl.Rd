@@ -13,6 +13,7 @@ saemControl(
   stopConsecutive = 4L,
   stopRtol = 0.001,
   stopAtol = 1e-04,
+  saCovAutoStop = TRUE,
   plateauStop = FALSE,
   plateauWindow = 50L,
   plateauTol = 0.001,
@@ -114,6 +115,12 @@ stop.}
 parameter is stationary when its half-mean drift is at most
 `max(stopAtol, stopRtol * max(1, |older mean|), 2 * mcse)`, where `mcse`
 is the Monte-Carlo standard error of the drift estimated from the window.}
+
+\item{saCovAutoStop}{Boolean (default `TRUE`); stop the `covMethod="sa"`
+covariance phase early once the diagonal of its running Fisher information
+passes the same window test (`stopWindow`, `stopConsecutive`, `stopRtol`,
+`stopAtol`), so `nSaCov` becomes a maximum.  The stop is recorded in
+`fit$saemSaCovStop`.}
 
 \item{plateauStop}{When \code{TRUE}, end the EM phase early once every
 estimated theta, omega and residual parameter has plateaued; the fit's
