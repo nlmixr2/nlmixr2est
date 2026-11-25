@@ -427,6 +427,8 @@ void R_init_nlmixr2est(DllInfo *dll)
 }
 
 void rxOptionsFreeFocei(void);
+void nmTlsFreeAllC(void);
 void R_unload_nlmixr2est(DllInfo *info){
   rxOptionsFreeFocei();
+  nmTlsFreeAllC();
 }
