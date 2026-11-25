@@ -278,6 +278,71 @@
   shrink
 }
 
+#' Warn when a mixture fit ends with an empty class or two merged classes
+#'
+#' A class is empty when no subject's posterior probability for it reaches
+#' \code{emptyTol}.  Two classes are indistinguishable when no subject's log
+#' Bayes factor between them (difference of the per-subject class
+#' log-likelihoods) exceeds \code{sameTol}.
+#'
+#' @param post subjects x classes matrix of posterior class probabilities
+#' @param ll subjects x classes matrix of per-subject class log-likelihoods, or
+#'   \code{NULL} to skip the indistinguishable-pair check
+#' @param emptyTol posterior below which a class counts as having no subjects
+#' @param sameTol largest absolute log Bayes factor still taken as no evidence
+#' @return invisibly, a list with \code{empty} (class numbers) and \code{same}
+#'   (two-column matrix of class pairs); called for its warnings
+#' @noRd
+#' @author Matthew L. Fidler
+.mixCollapseCheck <- function(post, ll = NULL, emptyTol = 0.01, sameTol = 0.05) {
+  .ret <- list(empty = integer(0), same = matrix(integer(0), ncol = 2L))
+  if (!is.matrix(post) || ncol(post) < 2L || nrow(post) == 0L) {
+    return(invisible(.ret))
+  }
+  .maxPost <- apply(post, 2L, function(x) {
+    x <- x[is.finite(x)]
+    if (length(x) == 0L) NA_real_ else max(x)
+  })
+  .empty <- which(is.finite(.maxPost) & .maxPost < emptyTol)
+  for (.k in .empty) {
+    warning(
+      sprintf(
+        "mixture class %d has no subjects (max posterior < %s); try new starts",
+        .k,
+        format(emptyTol)
+      ),
+      call. = FALSE
+    )
+  }
+  .ret$empty <- .empty
+  if (is.matrix(ll) && identical(dim(ll), dim(post))) {
+    .nMix <- ncol(ll)
+    for (.j in seq_len(.nMix - 1L)) {
+      for (.k in seq.int(.j + 1L, .nMix)) {
+        # an empty class is already reported; a pair needs subjects in both
+        if (.j %in% .empty || .k %in% .empty) {
+          next
+        }
+        .bf <- abs(ll[, .j] - ll[, .k])
+        # both -Inf (the subject belongs to a third class) says nothing here
+        .bf <- .bf[!is.nan(.bf) & !is.na(.bf)]
+        if (length(.bf) > 0L && max(.bf) < sameTol) {
+          warning(
+            sprintf(
+              "mixture classes %d and %d are indistinguishable at the estimates",
+              .j,
+              .k
+            ),
+            call. = FALSE
+          )
+          .ret$same <- rbind(.ret$same, c(.j, .k))
+        }
+      }
+    }
+  }
+  invisible(.ret)
+}
+
 #' Process mixture model information after a focei fit
 #'
 #' After the C++ focei fit, strips the MIXEST column from ranef, computes
@@ -332,12 +397,13 @@
   .etaNames <- names(.ranef)[-1] # eta names from fixed ranef (no ID, no MIXEST)
 
   # Build unnormalised posterior: exp(-OBJI/2) * prior_prob for each subject x mixture
-  .llikMat <- matrix(NA_real_, nrow = .nSub, ncol = .nMix)
+  .llikMat <- .llMat <- matrix(NA_real_, nrow = .nSub, ncol = .nMix)
   for (k in seq_len(.nMix)) {
     .wk <- which(.etaFull$MIXEST == k)
     # Sort by subject ID to align rows correctly
     .wk <- .wk[order(as.integer(.etaFull$ID[.wk]))]
-    .llikMat[, k] <- exp(-0.5 * .etaFull$OBJI[.wk]) * .priorProbs[k]
+    .llMat[, k] <- -0.5 * .etaFull$OBJI[.wk]
+    .llikMat[, k] <- exp(.llMat[, k]) * .priorProbs[k]
   }
   .rowTotals <- rowSums(.llikMat)
   .zeroRows <- which(.rowTotals <= 0 | !is.finite(.rowTotals))
@@ -365,6 +431,7 @@
     .ret
   })
   names(.mixList) <- paste0("mix", seq_len(.nMix))
+  .mixCollapseCheck(.llikMat / .rowTotals, .llMat)
 
   # Create mixNum: best mixture assignment per subject (1-indexed)
   # etaObf has columns: "ID", "MIXEST"(1-indexed best mix), eta names..., "OBJI"
@@ -540,6 +607,16 @@
     .ret
   })
   names(.mixList) <- paste0("mix", seq_len(.nMix))
+
+  # a hard (0/1) membership carries no per-class likelihood to compare, and
+  # soft weights come from one MCMC draw, which overstates the evidence: this
+  # pair check can miss a merge but not invent one
+  .w <- as.matrix(.mixWeights)
+  .ll <- NULL
+  if (!all(.w == 0 | .w == 1)) {
+    .ll <- suppressWarnings(log(.w) - rep(log(.mixProbabilities), each = .nSub))
+  }
+  .mixCollapseCheck(.w, .ll)
 
   # Create mixNum: best mixture assignment per subject (1-indexed)
   .mixNum <- data.frame(ID = .etaObf$ID, mixnum = as.integer(.bestMix))

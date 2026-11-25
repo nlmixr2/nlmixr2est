@@ -159,6 +159,7 @@ nlmixr2Est.rxSolve <- function(env, ...) {
     )
   )
 }
+attr(nlmixr2Est.rxSolve, "nlmixr2LikPenalty") <- "ignore"
 attr(nlmixr2Est.rxSolve, "covPresent") <- TRUE
 attr(nlmixr2Est.rxSolve, "unbounded") <- FALSE
 attr(nlmixr2Est.rxSolve, "random") <- TRUE
@@ -182,6 +183,7 @@ nlmixr2Est.simulate <- function(env, ...) {
     )
   )
 }
+attr(nlmixr2Est.simulate, "nlmixr2LikPenalty") <- "ignore"
 attr(nlmixr2Est.simulate, "covPresent") <- TRUE
 attr(nlmixr2Est.simulate, "unbounded") <- FALSE
 attr(nlmixr2Est.simulate, "random") <- TRUE
@@ -212,6 +214,7 @@ nlmixr2Est.simulation <- function(env, ...) {
     )
   )
 }
+attr(nlmixr2Est.simulation, "nlmixr2LikPenalty") <- "ignore"
 attr(nlmixr2Est.simulation, "covPresent") <- TRUE
 attr(nlmixr2Est.simulation, "unbounded") <- FALSE
 attr(nlmixr2Est.simulation, "random") <- TRUE
@@ -240,6 +243,7 @@ nlmixr2Est.predict <- function(env, ...) {
     control = .rxControl
   )
 }
+attr(nlmixr2Est.predict, "nlmixr2LikPenalty") <- "ignore"
 attr(nlmixr2Est.predict, "covPresent") <- TRUE
 attr(nlmixr2Est.predict, "unbounded") <- FALSE
 attr(nlmixr2Est.predict, "random") <- TRUE

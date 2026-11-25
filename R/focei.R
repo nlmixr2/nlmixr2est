@@ -3688,7 +3688,9 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     eventTheta = .eventTheta,
     eventEta = .eventEta,
     ## which etas enter a dosing expression, regardless of eventSens mode (#1016)
-    eventEtaAll = .eventEtaAll
+    eventEtaAll = .eventEtaAll,
+    ## an estimated parameter reaches a delay() duration (#1300)
+    delayLag = length(.delayLag$eta) + length(.delayLag$theta) > 0L
     ## ,
     ## cache.file=cache.file
   )
@@ -4133,6 +4135,11 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
       .rxControl2$method <- 0L
       .rxControl2$stiff2 <- 13L
       .rxControl2$dense <- TRUE
+      rxode2::rxAssignControlValue(ui, "rxControl", .rxControl2)
+    }
+    if (isTRUE(env$model$delayLag)) {
+      .rxControl2 <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+      .rxControl2 <- .rxControlDelayLagTol(.rxControl2, rxode2::rxGetControl(ui, "sigdig", NULL))
       rxode2::rxAssignControlValue(ui, "rxControl", .rxControl2)
     }
   }
@@ -6268,7 +6275,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         "Mcovariables",
         "res.mod",
         "omegaShareSubpop",
-        "evt"
+        "evt",
+        "penMap",
+        "penTheta0",
+        "penEtaOrd"
       )) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }
@@ -6381,6 +6391,7 @@ nlmixr2Est.focei <- function(env, ...) {
   .ret <- .foceiFamilyReturn(env, .ui, ..., est = "focei")
   .ret
 }
+attr(nlmixr2Est.focei, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.focei, "nlmixr2Priors") <- "general"
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
 attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
@@ -6476,6 +6487,7 @@ nlmixr2Est.output <- function(env, ...) {
   }
   .foceiFamilyReturn(env, .ui, ..., est = env$est)
 }
+attr(nlmixr2Est.output, "nlmixr2LikPenalty") <- "full"
 # "output" is not an estimation method: it takes a completed environment and
 # builds the tables/objDf for it (nlmixr2CreateOutputFromUi).  The priors were
 # already used (or refused) by whichever method actually ran, so there is
