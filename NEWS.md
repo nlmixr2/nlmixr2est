@@ -41,6 +41,18 @@
   gamma-distributed CL/V1 benchmark it took the intercompartmental clearance
   from 0.86-0.88 to 0.75 (truth 0.74).
 
+- The scale counterpart of the non-centered mean step
+  (`saemControl(omegaNonCentered = TRUE)`): each estimated mu-referenced random
+  effect is rescaled with every subject's standardized deviation held fixed,
+  scored on the data likelihood by one BHHH step; chains, `Omega` and the SAEM
+  sufficient statistics are rescaled together.  `nonCenteredPhase = "burnin"`
+  runs both non-centered steps during burn-in only.
+
+- On the `"cdf"` route a declared family is refit to the decoded etas and the
+  latents are re-encoded so every decoded eta is unchanged
+  (`saemControl(etaDistCentered = TRUE)`).  It replaces the family MLE and the
+  copula closed form there, which moved the etas the data were sampled at.
+
 - Mode 1B builds each subject's proposal from a running average of its
   samples over the whole run (gain `n^-kappa1B`, `saemControl(kappa1B = 1)`,
   NONMEM's `IKAPPA`) instead of the current iteration's samples, falls back to
@@ -1022,6 +1034,15 @@ ini({
   handles this mix -- no `distribution()`-family limitation remains.
 
 ## Bug fixes
+
+- A declared distribution argument with unary minus is now evaluated as R
+  evaluates it.  `-a - b` was read as `-(a - b)`, so
+  `dgamma(rate = exp(-lclrv - lclm))` became a gamma with mean `exp(-lclm)` and
+  the direct route estimated `lclm` as minus its value.
+
+- On the direct route each declared eta now starts as a draw from its declared
+  prior instead of a standard normal value, which started about half the
+  chains of a positive family at an invalid eta.
 
 - `est="saem"` now starts additive and proportional residual errors at their
   `ini()` values instead of fixed placeholders (`10` and `1`), so the first

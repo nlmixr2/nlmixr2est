@@ -17,17 +17,23 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    .fit <- function(on) {
+    .fit <- function(on, phase = "all") {
       suppressMessages(suppressWarnings(nlmixr2(
         one.cmt, theo_sd, "saem",
         saemControl(nBurn = 20, nEm = 20, seed = 7, print = 0,
-                    muNonCentered = on, covMethod = "", calcTables = FALSE)
+                    muNonCentered = on, omegaNonCentered = on, nonCenteredPhase = phase,
+                    covMethod = "", calcTables = FALSE)
       )))
     }
     f1 <- .fit(TRUE)
     f0 <- .fit(FALSE)
     expect_gt(f1$saem$muNonCenteredN, 0)
     expect_equal(f0$saem$muNonCenteredN, 0)
+    expect_gt(f1$saem$omegaNonCenteredN, 0)
+    # burn-in only: the steps stop when the gain drops below 1
+    fb <- .fit(TRUE, "burnin")
+    expect_lte(fb$saem$muNonCenteredN, 20)
+    expect_gt(fb$saem$muNonCenteredN, 0)
     # the step changes the trajectory, not the model: both fits stay finite
     expect_true(all(is.finite(fixef(f1))))
     expect_true(all(is.finite(fixef(f0))))
@@ -39,5 +45,8 @@ nmTest({
     expect_null(saemControl()$nu1B)
     expect_equal(saemControl(nu1B = 3)$nu1B, 3L)
     expect_equal(saemControl(kappa1B = 0)$kappa1B, 0)
+    expect_equal(saemControl()$nonCenteredPhase, "all")
+    expect_equal(saemControl(nonCenteredPhase = "burnin")$nonCenteredPhase, "burnin")
+    expect_error(saemControl(nonCenteredPhase = "sometimes"))
   })
 })
