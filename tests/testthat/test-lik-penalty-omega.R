@@ -19,14 +19,20 @@
 test_that("omegaL2 value and the finite-difference omega gradient", {
   .om <- matrix(c(0.4, 0.1, 0.1, 0.3), 2, 2)
   .ptr <- .nlmixr2LikPenaltyBuiltin("omegaL2")
-  .Call(`_nlmixr2est_likPenaltyActivate`, list(.ptr), list(integer(0)), list(c(10, 0.05, 1)), list(NULL), NA_integer_)
+  .Call(
+    `_nlmixr2est_likPenaltyActivate`,
+    list(.ptr), list(integer(0)), list(c(10, 0.05, 1)), list(NULL), NA_integer_
+  )
   on.exit(.likPenaltyDeactivate())
   expect_equal(.Call(`_nlmixr2est_likPenaltyPop`, c(1, 2), .om, 10L), 10 * 0.35^2)
   expect_equal(.Call(`_nlmixr2est_likPenaltyPop`, c(1, 2), NULL, 10L), 0)
   .g <- .Call(`_nlmixr2est_likPenaltyPopOmegaGrad`, c(1, 2), .om, 10L)
   expect_equal(.g, matrix(c(20 * 0.35, 0, 0, 0), 2, 2), tolerance = 1e-6)
   # every eta when none is selected
-  .Call(`_nlmixr2est_likPenaltyActivate`, list(.ptr), list(integer(0)), list(c(1, 0)), list(NULL), NA_integer_)
+  .Call(
+    `_nlmixr2est_likPenaltyActivate`,
+    list(.ptr), list(integer(0)), list(c(1, 0)), list(NULL), NA_integer_
+  )
   expect_equal(.Call(`_nlmixr2est_likPenaltyPop`, 1, .om, 10L), 0.4^2 + 0.3^2)
   .g <- .Call(`_nlmixr2est_likPenaltyPopOmegaGrad`, 1, .om, 10L)
   expect_equal(.g, diag(c(0.8, 0.6)), tolerance = 1e-6)

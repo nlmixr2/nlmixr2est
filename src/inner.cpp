@@ -7152,6 +7152,22 @@ static void foceiPriorGradAdd(int npars, arma::vec &gp) {
   }
 }
 
+// Oi is a non-empty omega inverse matching dOiEst's slices.
+static bool foceiOmegaDimOk(const arma::mat &Oi, const arma::cube &dOiEst) {
+  return Oi.n_rows > 0 && dOiEst.n_rows == Oi.n_rows && dOiEst.n_cols == Oi.n_rows;
+}
+
+// gp[i] += scale * tr(Abar * dOiEst[k]) for each estimation-scale omega parameter k.
+static void foceiOmegaChainAdd(int npars, arma::vec &gp, const arma::mat &Abar, double scale,
+                               const arma::cube &dOiEst) {
+  const int ntheta = (int)op_focei.ntheta;
+  const int nom = (int)dOiEst.n_slices;
+  for (int i = 0; i < npars; ++i) {
+    int k = op_focei.fixedTrans[i] - ntheta;
+    if (k >= 0 && k < nom) gp[i] += scale * arma::accu(Abar % dOiEst.slice((arma::uword)k));
+  }
+}
+
 // -2*d(log p(theta))/d(theta_k), theta_k the k-th ESTIMATION-SCALE omega
 // parameter (fullTheta[ntheta+k], the same "chol theta" _rxInv's own
 // d.omegaInv/tr.28 are indexed by -- see the getDOmegaInvL()/getTr28V()
@@ -7183,8 +7199,8 @@ static void foceiPriorGradAdd(int npars, arma::vec &gp) {
 static void foceiPriorOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &Oi,
                                    const arma::cube &dOiEst) {
   if (op_focei.priorSpec == NULL || !op_focei.priorSpecOmegaTerm) return;
+  if (!foceiOmegaDimOk(Oi, dOiEst)) return;
   const int omegaDim = (int)Oi.n_rows;
-  if (omegaDim == 0 || (int)dOiEst.n_rows != omegaDim || (int)dOiEst.n_cols != omegaDim) return;
   arma::mat Omega;
   try {
     Omega = arma::inv_sympd(Oi);
@@ -7201,18 +7217,7 @@ static void foceiPriorOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &Oi
   // Gsym(M^T)), so this may read the flat buffer either way.
   arma::mat gradOmegaRaw(gradOmegaFlat.data(), (arma::uword)omegaDim, (arma::uword)omegaDim);
   arma::mat Gsym = 0.5 * (gradOmegaRaw + gradOmegaRaw.t());
-  arma::mat Abar = -(Omega * Gsym * Omega);
-  const int nom = (int)dOiEst.n_slices;
-  std::vector<double> dThetaK((size_t)nom, 0.0);
-  for (int k = 0; k < nom; ++k) {
-    dThetaK[(size_t)k] = arma::accu(Abar % dOiEst.slice((arma::uword)k));
-  }
-  const int ntheta = (int)op_focei.ntheta;
-  for (int i = 0; i < npars; ++i) {
-    int j = op_focei.fixedTrans[i];
-    int k = j - ntheta;
-    if (k >= 0 && k < nom) gp[i] += -2.0 * dThetaK[(size_t)k];
-  }
+  foceiOmegaChainAdd(npars, gp, -(Omega * Gsym * Omega), -2.0, dOiEst);
 }
 
 // Population likelihood penalty (likPenalty.h) at the current fullTheta/Omega,
@@ -7259,9 +7264,8 @@ static bool foceiPenPopGradAdd(int npars, arma::vec &gp) {
 // False when the omega gradient is not finite (decline the analytic gradient).
 static bool foceiPenPopOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &Oi,
                                     const arma::cube &dOiEst) {
-  if (nlmixrPenNPop() == 0) return true;
+  if (nlmixrPenNPop() == 0 || !foceiOmegaDimOk(Oi, dOiEst)) return true;
   const int omegaDim = (int)Oi.n_rows;
-  if (omegaDim == 0 || (int)dOiEst.n_rows != omegaDim || (int)dOiEst.n_cols != omegaDim) return true;
   arma::mat Omega;
   if (!arma::inv_sympd(Omega, Oi)) return false;
   arma::mat G(omegaDim, omegaDim, arma::fill::zeros);
@@ -7270,13 +7274,7 @@ static bool foceiPenPopOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &O
                         nsub, G.memptr());
   if (!G.is_finite()) return false;
   if (arma::all(arma::vectorise(G) == 0.0)) return true;
-  arma::mat Abar = -(Omega * G * Omega);
-  const int ntheta = (int)op_focei.ntheta;
-  const int nom = (int)dOiEst.n_slices;
-  for (int i = 0; i < npars; ++i) {
-    int k = op_focei.fixedTrans[i] - ntheta;
-    if (k >= 0 && k < nom) gp[i] += arma::accu(Abar % dOiEst.slice((arma::uword)k));
-  }
+  foceiOmegaChainAdd(npars, gp, -(Omega * G * Omega), 1.0, dOiEst);
   return true;
 }
 

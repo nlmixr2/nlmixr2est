@@ -186,6 +186,14 @@ extern "C" double nlmixrPenPopAll(int ntheta, const double *theta, int neta,
   return ret;
 }
 
+// Population penalty with om[ij] and om[ji] both set to v.
+static double penPopAtPair(int ntheta, const double *theta, int neta, std::vector<double> &om,
+                           int nsub, size_t ij, size_t ji, double v) {
+  om[ij] = v;
+  om[ji] = v;
+  return nlmixrPenPopAll(ntheta, theta, neta, om.data(), nsub, NULL, NULL);
+}
+
 // d(population penalty)/d(Omega) at omega [neta*neta] by central differences,
 // each off-diagonal pair moved together; dOmega is symmetric with
 // dP = sum_ij dOmega_ij * d(Omega_ij).  All zero for an omega-free penalty.
@@ -197,20 +205,17 @@ extern "C" void nlmixrPenPopOmegaGrad(int ntheta, const double *theta, int neta,
   std::vector<double> om(omega, omega + (size_t)neta * neta);
   for (int i = 0; i < neta; ++i) {
     for (int j = 0; j <= i; ++j) {
-      size_t ij = (size_t)i + (size_t)j * neta, ji = (size_t)j + (size_t)i * neta;
+      size_t ij = (size_t)i + (size_t)j * neta;
+      size_t ji = (size_t)j + (size_t)i * neta;
       double sc = std::sqrt(std::fabs(omega[(size_t)i * (neta + 1)] * omega[(size_t)j * (neta + 1)]));
       double h = 1e-5 * std::max(std::max(sc, std::fabs(omega[ij])), 1e-8);
-      om[ij] = omega[ij] + h; om[ji] = om[ij];
-      double vp = nlmixrPenPopAll(ntheta, theta, neta, om.data(), nsub, NULL, NULL);
-      om[ij] = omega[ij] - h; om[ji] = om[ij];
-      double vm = nlmixrPenPopAll(ntheta, theta, neta, om.data(), nsub, NULL, NULL);
-      om[ij] = omega[ij]; om[ji] = omega[ji];
+      double vp = penPopAtPair(ntheta, theta, neta, om, nsub, ij, ji, omega[ij] + h);
+      double vm = penPopAtPair(ntheta, theta, neta, om, nsub, ij, ji, omega[ij] - h);
+      om[ij] = omega[ij];
+      om[ji] = omega[ji];
       double d = (vp - vm) / (2.0 * h);
-      if (i == j) {
-        dOmega[ij] = d;
-      } else {
-        dOmega[ij] = dOmega[ji] = 0.5 * d;
-      }
+      dOmega[ij] = i == j ? d : 0.5 * d;
+      dOmega[ji] = dOmega[ij];
     }
   }
 }
