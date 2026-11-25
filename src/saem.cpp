@@ -977,30 +977,71 @@ public:
   // each group's diagonal entries by their mean.  A user-FIXED occasion
   // variance needs no special case here: Gamma2_phi1fixedIx is restored after
   // this runs, so the pin wins.
-  void poolOmegaGroups(mat &G) {
+  //
+  // With `byPresent`, G holds moments divided by N (the M-step's G1), and a
+  // subject's occasion that is absent from the data is an uninformative eta,
+  // frozen at its prior mean, so it adds a zero deviation to that sum.  Pool
+  // over the subject-occasions that exist instead (#1504): the sum of the
+  // group's moments over the number of (subject, occasion) cells the
+  // uninformative-eta mask keeps.  On balanced data every count is N and this
+  // is the plain mean.
+  double poolPresentCount(unsigned int a, unsigned int b) {
+    const mat &ue = current_saem_state->_saemUE;
+    if (ue.n_rows < (unsigned int)N || ue.n_cols != (unsigned int)nphi ||
+        i1.n_elem != (unsigned int)nphi1) {
+      return (double)N;
+    }
+    unsigned int ca = i1(a), cb = i1(b);
+    double n = 0.0;
+    for (int i = 0; i < N; ++i) {
+      if (ue(i, ca) != 0.0 && ue(i, cb) != 0.0) n += 1.0;
+    }
+    return n;
+  }
+
+  void poolOmegaGroups(mat &G, bool byPresent = false) {
     if (omegaPool.n_elem != (unsigned int)nphi1) return;
     if (omegaPool.n_elem == 0) return;
     unsigned int maxg = omegaPool.max();
     for (unsigned int g = 1; g <= maxg; ++g) {
       uvec ix = find(omegaPool == g);
       if (ix.n_elem < 2) continue;
-      double m = 0.0;
-      for (unsigned int j = 0; j < ix.n_elem; ++j) m += G(ix(j), ix(j));
-      m /= (double)ix.n_elem;
+      double m = 0.0, wm = 0.0;
+      for (unsigned int j = 0; j < ix.n_elem; ++j) {
+        double w = byPresent ? poolPresentCount(ix(j), ix(j)) : 1.0;
+        m += (byPresent ? (double)N : 1.0) * G(ix(j), ix(j));
+        wm += w;
+      }
+      // nothing observed anywhere in the group: keep the plain mean
+      if (wm <= 0.0) {
+        m = 0.0;
+        for (unsigned int j = 0; j < ix.n_elem; ++j) m += G(ix(j), ix(j));
+        wm = (double)ix.n_elem;
+      }
+      m /= wm;
       for (unsigned int j = 0; j < ix.n_elem; ++j) G(ix(j), ix(j)) = m;
       // and the WITHIN-group off-diagonals, which carry Omega in the collapsed
       // form; equal diagonals plus equal off-diagonals is what makes the block
-      // compound-symmetric
-      double o = 0.0;
+      // compound-symmetric.  A cross moment needs both occasions present.
+      double o = 0.0, wo = 0.0;
       unsigned int no = 0;
       for (unsigned int a = 0; a < ix.n_elem; ++a) {
         for (unsigned int b = a + 1; b < ix.n_elem; ++b) {
-          o += G(ix(a), ix(b));
+          double w = byPresent ? poolPresentCount(ix(a), ix(b)) : 1.0;
+          o += (byPresent ? (double)N : 1.0) * G(ix(a), ix(b));
+          wo += w;
           no++;
         }
       }
       if (no == 0) continue;
-      o /= (double)no;
+      if (wo <= 0.0) {
+        o = 0.0;
+        for (unsigned int a = 0; a < ix.n_elem; ++a) {
+          for (unsigned int b = a + 1; b < ix.n_elem; ++b) o += G(ix(a), ix(b));
+        }
+        wo = (double)no;
+      }
+      o /= wo;
       for (unsigned int a = 0; a < ix.n_elem; ++a) {
         for (unsigned int b = a + 1; b < ix.n_elem; ++b) {
           G(ix(a), ix(b)) = o;
@@ -4336,10 +4377,10 @@ public:
 
       // Two-level (IOV): the per-occasion columns of one occasion parameter
       // estimate a single Psi, so pool their moments.  Under the equality
-      // constraint the maximizer of the complete-data likelihood is the plain
-      // mean of the per-occasion moments -- each column carries the same N
-      // deviations -- so this stays a closed-form M-step, not a projection.
-      poolOmegaGroups(G1);
+      // constraint the maximizer of the complete-data likelihood is the mean
+      // deviation over the subject-occasions that exist, so this stays a
+      // closed-form M-step, not a projection.
+      poolOmegaGroups(G1, true);
 
       if (kiter<=(unsigned int)(nb_sa)) {
         Gamma2_phi1=max(Gamma2_phi1*coef_sa, diagmat(G1));
