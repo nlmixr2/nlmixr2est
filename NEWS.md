@@ -31,6 +31,10 @@
 
 ## New features
 
+- A `saem` fit with a theta that is not updated in closed form now notes which
+  thetas the M-step updates in closed form, numerically (`nonMuTheta =
+  "regress"`) or stochastically (`nonMuTheta = "eta"`); the note is kept in
+  `fit$runInfo`, and `fit$saemMstep` lists the update of every theta (#1480).
 - Estimation now warns before fitting when an `lnorm()` or `boxCox()`
   endpoint has uncensored observations with `DV <= 0`, which these
   transforms silently clamp, e.g. `2 DV <= 0 on lnorm endpoint 'cp'`
