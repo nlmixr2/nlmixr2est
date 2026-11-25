@@ -3011,11 +3011,12 @@ static inline double likInner0Contrib(int id, int k, int dist, int cens,
 // The scalar log-density in rx_pred_ hides the location/scale the correction
 // needs, so both come from the extra lhs columns .rxFinalizeInner() appends
 // for this path (rx_pred_f_/rx_r_/rx_nu_).  When any of them is missing the
-// endpoint is scored uncensored, exactly as before.  `nCensLl` counts the rows
-// scored as M3/M4, which carry no log(2*pi) constant.
+// endpoint is scored uncensored, exactly as before.  `nCensLl` counts the M3/M4
+// rows by their data (as nlmixr2EnvSetup does): they carry no log(2*pi) constant.
 static inline double focei_tCensLl(bool lhsOk, int dist, int cens, double dv,
                                    double limit, double llVal, double fT,
                                    double *lhs, int &nCensLl) {
+  if (cens == 1 || cens == -1) nCensLl++;
   bool isT = (dist == rxDistributionT || dist == rxDistributionCauchy);
   bool isDnorm = (dist == rxDistributionDnorm);
   if (!lhsOk || (!isT && !isDnorm) ||
@@ -3031,7 +3032,6 @@ static inline double focei_tCensLl(bool lhsOk, int dist, int cens, double dv,
   // so there is no scale to correct against -- score the row uncensored rather
   // than hand doCensT1()/doCensNormal1() a floored variance.
   if (!R_FINITE(r) || r <= 0.0) return llVal;
-  if (cens != 0) nCensLl++;
   if (isT) {
     double nu = lhs[op_focei.predNuOffset];
     return doCensT1((double)cens, dv, limit, llVal, fT, r, nu);
@@ -11218,7 +11218,7 @@ static int foceiNobsCensM34() {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
       int kk = getIndIx(ind, j);
-      if (getIndEvid(ind, kk) == 0 && getIndCens(ind, kk) != 0) n++;
+      if (getIndEvid(ind, kk) == 0 && (getIndCens(ind, kk) == 1 || getIndCens(ind, kk) == -1)) n++;
     }
   }
   return n;
