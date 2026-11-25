@@ -158,9 +158,9 @@
   if (length(.est) == 0L) {
     .nlmeResidStop("a residual SD without an estimated scale parameter")
   }
-  if (length(.est) > 1L) {
+  if (length(.est) > 2L) {
     .nlmeResidStop(
-      "a residual SD with more than one estimated parameter (",
+      "a residual SD with more than two estimated parameters (",
       paste0("'", .est, "'", collapse = ", "),
       ")"
     )
@@ -172,6 +172,7 @@
     errType = .errType,
     expr = .expr,
     theta = .est,
+    ini = setNames(.thetaDf$est[match(.est, .thetaDf$name)], .est),
     fixed = setNames(.thetaDf$est[match(.fixTh, .thetaDf$name)], .fixTh),
     covs = intersect(all.vars(.expr), .covs),
     exclude = .th,
@@ -209,47 +210,122 @@ attr(rxUiGet.nlmeResidInfo, "rstudio") <- list()
   rep_len(.ret, nrow(data))
 }
 
-#' nlme variance covariate for a time/covariate scaled residual SD
+#' Is `y` equal to `x` on every observation?
 #'
-#' Checks that the SD is the estimated theta times a data-only factor `g` and
-#' returns `g^2`, the variance covariate of `nlme::varFixed()`.
+#' @param x,y numeric vectors
+#' @return logical
+#' @noRd
+.nlmeResidSame <- function(x, y) {
+  all(is.finite(x)) && all(is.finite(y)) && isTRUE(all.equal(x, y, tolerance = 1e-8))
+}
+
+#' nlme variance covariates for a time/covariate dependent residual SD
+#'
+#' The SD must be `s * g(data) * exp(k * z(data))`: `s` the one estimated
+#' theta it is proportional to and `k` an optional second estimated theta (a
+#' power `h^k` is `exp(k * log(h))`).  `g^2` is the variance covariate of
+#' `nlme::varFixed()` and `z` the covariate of `nlme::varExp()`.
 #'
 #' @param info `.nlmeResidInfo()` result
 #' @param data observation rows of the nlme data
-#' @return numeric vector, one per observation
+#' @return list with the SD theta `s`, the exponent theta `k` (or `NULL`) and
+#'   its initial value `kIni`, and the covariates `v` (`g^2`, `NULL` when 1)
+#'   and `z` (or `NULL`)
 #' @noRd
 .nlmeResidVarCov <- function(info, data) {
-  .g1 <- .nlmeResidEval(info, data, setNames(1, info$theta))
-  .g2 <- .nlmeResidEval(info, data, setNames(2, info$theta))
-  .ok <- all(is.finite(.g1)) &&
-    all(is.finite(.g2)) &&
-    all(.g1 != 0) &&
-    isTRUE(all.equal(.g2, 2 * .g1, tolerance = 1e-8))
-  if (!.ok) {
+  .ev <- function(th) .nlmeResidEval(info, data, th)
+  .bad <- function() {
     .nlmeResidStop(
       "the residual SD '",
       deparse1(info$expr),
-      "' (it must be '",
-      info$theta,
-      "' times a nonzero function of time and covariates)"
+      "' (it must be one estimated parameter times a nonzero function of ",
+      "time and covariates, optionally times exp(k * f(time, covariates)))"
     )
   }
-  .g1^2
+  .ini <- info$ini
+  .lin <- vapply(
+    names(.ini),
+    function(n) {
+      .th2 <- .ini
+      .th2[[n]] <- 2 * .ini[[n]]
+      .nlmeResidSame(.ev(.th2), 2 * .ev(.ini))
+    },
+    logical(1)
+  )
+  if (sum(.lin) != 1L) {
+    .bad()
+  }
+  .s <- names(.ini)[.lin]
+  .k <- setdiff(names(.ini), .s)
+  .th <- .ini
+  .th[[.s]] <- 1
+  if (length(.k) == 0L) {
+    .g <- .ev(.th)
+    if (!all(is.finite(.g)) || any(.g == 0)) {
+      .bad()
+    }
+    return(list(s = .s, k = NULL, kIni = NULL, v = .g^2, z = NULL))
+  }
+  .h <- function(k) {
+    .th[[.k]] <- k
+    suppressWarnings(log(abs(.ev(.th))))
+  }
+  .h0 <- .h(0)
+  .z <- .h(1) - .h0
+  if (!.nlmeResidSame(.h(2) - .h0, 2 * .z) || !.nlmeResidSame(.h(-1) - .h0, -.z)) {
+    .bad()
+  }
+  .v <- exp(2 * .h0)
+  if (.nlmeResidSame(.v, rep(1, length(.v)))) {
+    .v <- NULL
+  }
+  list(s = .s, k = .k, kIni = .ini[[.k]], v = .v, z = .z)
 }
 
-#' nlme weights for a time/covariate scaled residual SD
+#' nlme weights for a time/covariate dependent residual SD
 #'
 #' @param info `.nlmeResidInfo()` result
+#' @param vc `.nlmeResidVarCov()` result
 #' @return nlme `varFunc`
 #' @noRd
-.nlmeResidWeights <- function(info) {
-  .fixed <- nlme::varFixed(~rxNlmeResidV)
-  switch(
-    info$errType,
-    add = .fixed,
-    prop = nlme::varComb(.fixed, nlme::varPower(fixed = list(power = 1))),
-    pow = nlme::varComb(.fixed, .nlmeResidVarPower(info))
+.nlmeResidWeights <- function(info, vc) {
+  .lst <- list()
+  if (!is.null(vc$v)) {
+    .lst <- c(.lst, list(nlme::varFixed(~rxNlmeResidV)))
+  }
+  if (!is.null(vc$z)) {
+    .lst <- c(.lst, list(nlme::varExp(value = vc$kIni, form = ~rxNlmeResidZ)))
+  }
+  .lst <- c(
+    .lst,
+    switch(
+      info$errType,
+      add = list(),
+      prop = list(nlme::varPower(fixed = list(power = 1))),
+      pow = list(.nlmeResidVarPower(info))
+    )
   )
+  if (length(.lst) == 1L) {
+    return(.lst[[1]])
+  }
+  do.call(nlme::varComb, .lst)
+}
+
+#' Coefficient of one variance function of an nlme fit
+#'
+#' @param nlme nlme object
+#' @param cls variance function class, such as `"varExp"`
+#' @return the coefficient (`NULL` when the fit has no such function)
+#' @noRd
+.nlmeVarCoef <- function(nlme, cls) {
+  .vs <- nlme$modelStruct$varStruct
+  .lst <- if (inherits(.vs, "varComb")) unclass(.vs) else list(.vs)
+  for (.v in .lst) {
+    if (inherits(.v, cls)) {
+      return(coef(.v, unconstrained = FALSE)[[1]])
+    }
+  }
+  NULL
 }
 
 #' nlme `varPower()` for the exponent of a `pow()` residual error

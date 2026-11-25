@@ -18,6 +18,7 @@ nmTest({
     prop.sd = quote(prop.sd <- 0.2),
     pw = quote(pw <- 1),
     k = quote(k <- -0.1),
+    k2 = quote(k2 <- 0.1),
     eta.sd = quote(eta.sd ~ 0.1)
   )
 
@@ -112,6 +113,38 @@ nmTest({
     expect_equal(fit$theta[["prop.sd"]], 0.1, tolerance = 0.15)
   })
 
+  test_that("an estimated exponent of time or a covariate fits under nlme with varExp (issue 1464)", {
+    skip_on_cran()
+    .cases <- list(
+      expTime = list(
+        quote(ipre ~ add(add.sd * exp(k * time))),
+        function(f, t, wt) 0.3 * exp(-0.05 * t),
+        function(th, f, t, wt) th[["add.sd"]] * exp(th[["k"]] * t),
+        c(add.sd = 0.3, k = -0.05)
+      ),
+      powWt = list(
+        quote(ipre ~ prop(prop.sd * (WT / 70)^k)),
+        function(f, t, wt) 0.1 * (wt / 70)^1.5 * f,
+        function(th, f, t, wt) th[["prop.sd"]] * (wt / 70)^th[["k"]] * abs(f),
+        c(prop.sd = 0.1, k = 1.5)
+      )
+    )
+    for (.n in names(.cases)) {
+      .c <- .cases[[.n]]
+      .dat <- .nlmeResidDat(.c[[2]], n = 60)
+      fit <- .nlmixr(.nlmeResidModel(.c[[1]]), .dat, "nlme", control = nlmeControl(verbose = FALSE))
+      .th <- fit$theta
+      .truth <- .c[[4]]
+      expect_equal(.th[names(.truth)], .truth, tolerance = 0.15, info = .n)
+      .nl <- fit$nlme
+      expect_true(inherits(.nl$modelStruct$varStruct, c("varExp", "varComb")), info = .n)
+      .sdNlme <- as.numeric(residuals(.nl, type = "response") / residuals(.nl, type = "pearson"))
+      .sd <- .c[[3]](.th, as.numeric(fitted(.nl)), .dat$TIME, .dat$WT)
+      expect_equal(.sd, .sdNlme, tolerance = 1e-6, info = .n)
+      expect_false(any(names(.truth) %in% names(nlme::fixef(.nl))), info = .n)
+    }
+  })
+
   test_that("an intermediate variable of the residual SD is resolved (issue 1464)", {
     .m <- .nlmeResidModel(quote(wn <- WT / 70), quote(ipre ~ add(add.sd * wn)))
     .info <- .nlmeResidInfo(.m)
@@ -130,7 +163,7 @@ nmTest({
     .refuse(quote(ipre ~ add(add.sd * ipre)), "model-calculated 'ipre'")
     .refuse(quote(ipre ~ pow(prop.sd * (WT / 70)^pw, pw)), "sharing 'pw' with the structural model")
     .refuse(quote(ipre ~ add(add.sd * WT / 70) + prop(prop.sd)), "combined residual error")
-    .refuse(quote(ipre ~ add(add.sd * exp(k * time))), "more than one estimated parameter")
+    .refuse(quote(ipre ~ add(add.sd * exp(k * time + k2 * WT))), "more than two estimated parameters")
     .refuse(quote(ipre ~ add(add.sd * exp(tke))), "sharing 'tke' with the structural model")
     .refuse(quote(ipre ~ add(add.sd * WT / 70)), NA)
     .m <- .nlmeResidModel(quote(ipre ~ pow(prop.sd * (1 + time / 12), pw)))
@@ -142,9 +175,19 @@ nmTest({
     .m <- .nlmeResidModel(quote(ipre ~ add(add.sd^2 * WT / 70)))
     .info <- .nlmeResidInfo(.m)
     .dat <- data.frame(TIME = 1:3, WT = c(60, 70, 80))
-    expect_error(.nlmeResidVarCov(.info, .dat), "must be 'add.sd' times")
+    expect_error(.nlmeResidVarCov(.info, .dat), "must be one estimated parameter times")
+    .m <- .nlmeResidModel(quote(ipre ~ add(add.sd * exp(k^2 * time))))
+    expect_error(.nlmeResidVarCov(.nlmeResidInfo(.m), .dat), "must be one estimated parameter times")
     .m <- .nlmeResidModel(quote(ipre ~ add(add.sd * WT / 70)))
-    expect_equal(.nlmeResidVarCov(.nlmeResidInfo(.m), .dat), (.dat$WT / 70)^2)
+    .vc <- .nlmeResidVarCov(.nlmeResidInfo(.m), .dat)
+    expect_equal(.vc$v, (.dat$WT / 70)^2)
+    expect_null(.vc$k)
+    # a power of a covariate is an exponential of its log
+    .m <- .nlmeResidModel(quote(ipre ~ add(add.sd * 2 * (WT / 70)^k)))
+    .vc <- .nlmeResidVarCov(.nlmeResidInfo(.m), .dat)
+    expect_equal(.vc[c("s", "k")], list(s = "add.sd", k = "k"))
+    expect_equal(.vc$v, rep(4, 3))
+    expect_equal(.vc$z, log(.dat$WT / 70))
   })
 
   test_that("the nlme refusal message reaches nlmixr2 (issue 1464)", {

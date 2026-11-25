@@ -335,8 +335,18 @@ nlmeControl <- nlmixr2NlmeControl
   }
   .verbose <- rxode2::rxGetControl(ui, "verbose", TRUE)
   .method <- rxode2::rxGetControl(ui, "method", "ML")
+  .obs <- dataSav[dataSav$EVID == 0, ]
+  .info <- .nlmeResidInfo(ui)
+  .vc <- NULL
+  if (!is.null(.info)) {
+    .vc <- .nlmeResidVarCov(.info, .obs)
+    .obs$rxNlmeResidV <- .vc$v
+    .obs$rxNlmeResidZ <- .vc$z
+  }
   .weights <- rxode2::rxGetControl(ui, "weights", NULL)
-  if (is.null(.weights)) {
+  if (is.null(.weights) && !is.null(.vc)) {
+    .weights <- .nlmeResidWeights(.info, .vc)
+  } else if (is.null(.weights)) {
     .weights <- ui$nlmeWeights
     # sigma, const and prop of varConstProp are not separately identifiable;
     # as nlme recommends, fix sigma at 1 so const and prop are the sds
@@ -345,11 +355,6 @@ nlmeControl <- nlmixr2NlmeControl
     }
   } else {
     rxode2::rxAssignControlValue(ui, "returnNlme", TRUE)
-  }
-  .obs <- dataSav[dataSav$EVID == 0, ]
-  .info <- .nlmeResidInfo(ui)
-  if (!is.null(.info)) {
-    .obs$rxNlmeResidV <- .nlmeResidVarCov(.info, .obs)
   }
   ret <-
     eval(bquote(nlme::nlme(
@@ -366,6 +371,8 @@ nlmeControl <- nlmixr2NlmeControl
         object
       }
     )))
+  # which residual theta nlme's sigma and varExp estimate (.nlmeGetTheta())
+  attr(ret, "nlmixr2ResidVarCov") <- .vc[c("s", "k")]
   ret
 }
 
@@ -383,13 +390,16 @@ nlmeControl <- nlmixr2NlmeControl
   .errType <- .predDf$errType
   .info <- .nlmeResidInfo(ui)
   if (!is.null(.info)) {
-    .ret <- c(.f, setNames(nlme$sigma, .info$theta), .info$fixed)
+    .vc <- attr(nlme, "nlmixr2ResidVarCov")
+    .ret <- c(.f, setNames(nlme$sigma, .vc$s), .info$fixed)
+    if (!is.null(.vc$k)) {
+      .ret <- c(.ret, setNames(.nlmeVarCoef(nlme, "varExp"), .vc$k))
+    }
     if (.errType == "pow") {
       # a fixed exponent has no coefficient in the fit
       .pw <- .info$pow$ini
       if (!isTRUE(.info$pow$fix)) {
-        .nlmePars <- coef(nlme$modelStruct$varStruct, unconstrained = FALSE)
-        .pw <- .nlmePars[[length(.nlmePars)]]
+        .pw <- .nlmeVarCoef(nlme, "varPower")
       }
       .ret <- c(.ret, setNames(.pw, .info$pow$name))
     }

@@ -298,9 +298,8 @@ rxUiGet.nlmeWeights <- function(x, ...) {
   if (.predDf$distribution != "norm") {
     stop("nlme not supported for this unexplained error structure", call. = FALSE)
   }
-  .info <- .nlmeResidInfo(.ui)
-  if (!is.null(.info)) {
-    return(.nlmeResidWeights(.info))
+  if (!is.null(.nlmeResidInfo(.ui))) {
+    stop("the nlme weights of this residual error depend on the data", call. = FALSE)
   }
   .errType <- .predDf$errType
   if (.errType == "prop") {
