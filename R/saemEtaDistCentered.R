@@ -31,6 +31,19 @@
   # arguments, and any bounded-transform back-mapping such as rxCor)
   .pre <- .asg[startsWith(.lhs, "rx")]
   .preLhs <- .lhs[startsWith(.lhs, "rx")]
+  # an ordinary eta correlated with a declared one: rxode2 decodes it as
+  # `<eta> <- exp(rxLsd.<eta>) * rxN.<eta>`, so it joins the copula as a normal
+  # marginal with that scale, refit and re-encoded with the declared members
+  .ini0 <- ui$iniDf
+  .lsd <- grep("^rxLsd[.]", .ini0$name[!is.na(.ini0$ntheta)], value = TRUE)
+  for (.l in .lsd) {
+    .e <- sub("^rxLsd[.]", "", .l)
+    if (.e %in% names(families)) next
+    families[.e] <- "dnorm"
+    .pre <- c(.pre, list(str2lang(paste0("rxEdA.", .e, ".mean <- 0")),
+                         str2lang(paste0("rxEdA.", .e, ".sd <- exp(", .l, ")"))))
+    .preLhs <- c(.preLhs, paste0("rxEdA.", .e, c(".mean", ".sd")))
+  }
   .etas <- names(families)
   .pn <- ui$saemParamsToEstimate
   .zcol <- match(paste0("rxz.", .etas), .pn)
