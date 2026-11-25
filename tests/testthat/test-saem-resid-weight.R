@@ -70,6 +70,33 @@ nmTest({
     expect_true(is.na(.back$iniDf$err[.back$iniDf$name == "add.sd"]))
   })
 
+  test_that("a weight is only used when the whole fit stays normal (#1463)", {
+    nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- NULL
+    on.exit(nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- NULL, add = TRUE)
+    .two <- function(err2) {
+      .txt <- sprintf(
+        "function() {
+        ini({ tcl <- 1; add.sd <- 0.7; add.sd2 <- 0.3; eta.cl ~ 0.3 })
+        model({
+          cl <- exp(tcl + eta.cl); cp <- 100 * exp(-cl * time); eff <- cp / 2
+          cp ~ add(add.sd * exp(-time / 8))
+          %s
+        })
+      }",
+        err2
+      )
+      rxode2::rxode2(eval(parse(text = .txt)))
+    }
+    for (.err2 in c("eff ~ add(add.sd2 * exp(eta.cl))", "eff ~ add(add.sd2) + dnorm()")) {
+      .new <- suppressWarnings(.preProcessSaemModeledResid(.two(.err2), "saem", NULL, NULL))$ui
+      expect_null(nlmixr2global$nlmixr2EstEnv$saemResidWeights)
+      expect_true(.saemGeneralLik(.new))
+    }
+    .new <- suppressWarnings(.preProcessSaemModeledResid(.two("eff ~ add(add.sd2)"), "saem", NULL, NULL))$ui
+    expect_length(nlmixr2global$nlmixr2EstEnv$saemResidWeights, 1L)
+    expect_false(.saemGeneralLik(.new))
+  })
+
   test_that("the weighted endpoint's DV and LIMIT are scaled (#1463)", {
     .d <- data.frame(
       ID = 1,

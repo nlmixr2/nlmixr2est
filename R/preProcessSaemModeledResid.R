@@ -117,6 +117,11 @@
   .conds <- .saemModeledResidualCond(ui)
   # add(theta * w(time, covariates)) stays on the closed-form additive path
   .wSpecs <- .saemResidWeightSpecs(ui, .conds)
+  # only when the whole fit stays normal; a general likelihood scores the
+  # rewritten residual without the weight
+  if (.saemGeneralLik(ui) || length(.wSpecs) < length(.conds)) {
+    .wSpecs <- list()
+  }
   if (length(.wSpecs) > 0L) {
     ui <- .saemResidWeightUi(ui, .wSpecs)
     nlmixr2global$nlmixr2EstEnv$saemResidWeights <- .wSpecs
