@@ -268,6 +268,170 @@ is.latex <- function() {
   ret
 }
 
+#' Probe each optimizer coordinate's curvature
+#'
+#' Fits a quadratic through `x` and two probes per coordinate, `h` either side
+#' or, when a bound is closer than `h/10`, two on the open side.
+#' @param fn objective
+#' @param x point
+#' @param fx objective at `x`
+#' @param h probe step, per coordinate or one for all
+#' @param lower,upper bounds
+#' @return list: `scale`, one marginal standard error per coordinate
+#'   (`sqrt(2/H_ii)` for a -2LL objective, `NA` without positive curvature),
+#'   `dec`, the decrease predicted by a Newton step kept inside the bounds (or,
+#'   without positive curvature, the decrease a probe found), `nEval`, and the
+#'   lowest probe `bestX` (`NULL` when none beat `fx`) with its `bestF`
+#' @noRd
+.bobyqaCurvature <- function(fn, x, fx, h, lower, upper) {
+  .np <- length(x)
+  h <- rep_len(h, .np)
+  lower <- rep_len(lower, .np)
+  upper <- rep_len(upper, .np)
+  .scale <- rep(NA_real_, .np)
+  .dec <- 0
+  .nEval <- 0L
+  .bestF <- fx
+  .bestX <- NULL
+  for (i in seq_len(.np)) {
+    .short <- h[i] / 10
+    .up <- min(h[i], upper[i] - x[i])
+    .dn <- min(h[i], x[i] - lower[i])
+    if (.up >= .short && .dn >= .short) {
+      .off <- c(.up, -.dn)
+    } else if (.up >= .short) {
+      .off <- min(h[i], (upper[i] - x[i]) / 2) * c(1, 2)
+    } else if (.dn >= .short) {
+      .off <- -min(h[i], (x[i] - lower[i]) / 2) * c(1, 2)
+    } else {
+      next
+    }
+    .f <- vapply(.off, function(o) fn(replace(x, i, x[i] + o)), double(1))
+    .nEval <- .nEval + 2L
+    # foceiOfv0() reports a failed evaluation as 5e100
+    .f[.f >= 1e100] <- NA_real_
+    .j <- which.min(.f)
+    if (length(.j) == 1L && .f[.j] < .bestF) {
+      .bestF <- .f[.j]
+      .bestX <- replace(x, i, x[i] + .off[.j])
+    }
+    .d <- .f - fx
+    .a <- .off[1]
+    .b <- .off[2]
+    .h <- 2 * (.d[1] * .b - .d[2] * .a) / (.a * .b * (.a - .b))
+    .g <- (.d[1] - .h * .a^2 / 2) / .a
+    .ok <- is.finite(.d)
+    .seen <- if (any(.ok)) max(0, -min(.d[.ok])) else 0
+    if (is.finite(.h) && .h > 0 && is.finite(.g)) {
+      .scale[i] <- sqrt(2 / .h)
+      .st <- min(max(-.g / .h, lower[i] - x[i]), upper[i] - x[i])
+      .dec <- .dec + max(-(.g * .st + .h * .st^2 / 2), .seen)
+    } else {
+      .dec <- .dec + .seen
+    }
+  }
+  list(scale = .scale, dec = .dec, nEval = .nEval, bestX = .bestX, bestF = .bestF)
+}
+
+#' Restart bobyqa on a scale adapted to the curvature where it stopped
+#'
+#' The starting scale comes from each parameter's initial estimate, and a
+#' poorly scaled parameter can leave bobyqa stopping far from the minimum
+#' (#1320).  After the search stops this measures each coordinate's
+#' curvature, rescales so one unit is one marginal standard error, and
+#' restarts bobyqa from the stopping point.  Restarts repeat until one gains
+#' less than `tol`, the predicted decrease is below `tol`, `maxLeg` is
+#' reached or the budget runs out.
+#' @inheritParams .bobyqaStationary
+#' @param maxLeg maximum number of rescaled restarts
+#' @return a `RcppTrust::bobyqa()`-shaped list with `nScaleAdapt` added
+#' @noRd
+.bobyqaAdapt <- function(fn, lower, upper, ctl, ret, tol, maxLeg, record = NULL, hold = NULL) {
+  .np <- length(ret$par)
+  .lower <- rep_len(lower, .np)
+  .upper <- rep_len(upper, .np)
+  .n <- 0L
+  .sLast <- rep(1, .np)
+  .was <- NULL
+  .release <- function() {
+    if (is.function(hold)) {
+      hold(FALSE)
+    }
+    if (!is.null(.was)) {
+      record(.was)
+    }
+  }
+  on.exit(.release(), add = TRUE)
+  while (.n < maxLeg && is.finite(ret$fval)) {
+    .left <- if (is.null(ctl$maxfun)) Inf else ctl$maxfun - ret$feval
+    if (.left <= 2L * .np + ctl$npt + 3L) {
+      break
+    }
+    if (is.function(record)) {
+      .was <- record(FALSE)
+    }
+    # the probes' centre, evaluated before the hold so the hold puts the
+    # inner state back at the point kept
+    .fx <- fn(ret$par)
+    if (is.function(hold)) {
+      hold(TRUE)
+    }
+    # probe half a trust radius in the scale of the last search
+    .c <- .bobyqaCurvature(fn, ret$par, .fx, .sLast * ctl$rhobeg / 2, .lower, .upper)
+    .release()
+    .c$nEval <- .c$nEval + 1L
+    ret$feval <- ret$feval + .c$nEval
+    if (.c$dec <= tol) {
+      break
+    }
+    .s <- .c$scale
+    .s[!is.finite(.s)] <- .sLast[!is.finite(.s)]
+    .s <- pmin(pmax(.s, 1e-3), 1e3)
+    # keep the box at least bobyqa's 2*rhobeg wide
+    .s <- pmin(.s, (.upper - .lower) / (2 * ctl$rhobeg))
+    .sLast <- .s
+    .x0 <- ret$par
+    .ctl2 <- ctl
+    if (!is.null(.ctl2$maxfun)) {
+      .ctl2$maxfun <- .left - .c$nEval
+    }
+    # what is left of the budget is often below bobyqa's advised 10*np^2
+    .r2 <- withCallingHandlers(
+      RcppTrust::bobyqa(
+        rep(0, .np),
+        function(z) fn(.x0 + .s * z),
+        control = .ctl2,
+        lower = (.lower - .x0) / .s,
+        upper = (.upper - .x0) / .s
+      ),
+      warning = function(w) {
+        if (grepl("maxfun < 10", conditionMessage(w), fixed = TRUE)) {
+          invokeRestart("muffleWarning")
+        }
+      }
+    )
+    .n <- .n + 1L
+    ret$feval <- ret$feval + .r2$feval
+    .gain <- ret$fval - .r2$fval
+    if (!is.null(.c$bestX) && .c$bestF < min(ret$fval, .r2$fval, na.rm = TRUE)) {
+      # a probe beat the restart
+      .gain <- ret$fval - .c$bestF
+      ret$par <- .c$bestX
+      ret$fval <- .c$bestF
+    } else if (is.finite(.r2$fval) && .gain > 0) {
+      ret$par <- pmin(pmax(.x0 + .s * .r2$par, .lower), .upper)
+      ret$fval <- .r2$fval
+      ret$ierr <- .r2$ierr
+      ret$msg <- .r2$msg
+    }
+    if (!isTRUE(.gain > tol)) {
+      break
+    }
+  }
+  ret$nScaleAdapt <- .n
+  ret
+}
+
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) {
@@ -289,6 +453,20 @@ is.latex <- function() {
       .ctl,
       .ret,
       tol = .tol,
+      record = control$outerRecord,
+      hold = control$outerHold
+    )
+  }
+  if (isTRUE(control$scaleAdapt > 0L) && !is.null(.ctl$rhobeg)) {
+    .tol <- if (is.null(control$sigdig)) 0.01 else 10^(1 - control$sigdig)
+    .ret <- .bobyqaAdapt(
+      fn,
+      lower,
+      upper,
+      .ctl,
+      .ret,
+      tol = .tol,
+      maxLeg = control$scaleAdapt,
       record = control$outerRecord,
       hold = control$outerHold
     )
