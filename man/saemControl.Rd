@@ -15,6 +15,7 @@ saemControl(
   nmc = 3,
   nu = c(2, 2, 2),
   rmcmc = 0.5,
+  mcmcProposal = c("diag", "omega"),
   mcmcAcceptWarn = c(0.05, 0.8),
   print = 1L,
   trace = 0,
@@ -129,6 +130,11 @@ computation.  In Monolix this is equivalent to \code{L}.}
 \item{rmcmc}{Scale of the random-walk proposals (kernels 2 and 3) relative
 to the current between-subject SD.  Smaller values raise the MCMC
 acceptance rate (see `$mcmcAccept`); larger values lower it.}
+
+\item{mcmcProposal}{Shape of the joint random-walk proposal (kernel 2):
+`"diag"` (default) scales each coordinate by `rmcmc` times its
+between-subject SD; `"omega"` uses `rmcmc^2` times the full omega
+block, so correlated random effects move together.}
 
 \item{mcmcAcceptWarn}{Acceptance-rate range `c(low, high)`; when the mean
 acceptance of the random-walk kernels over the last 100 post-burn-in
