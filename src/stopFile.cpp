@@ -27,23 +27,21 @@ const char *nmStopMessage() {
 
 bool nmStopFilePoll() {
   if (_stopRequested) return true;
-  if (_timeArmed) {
-    std::chrono::duration<double> el = std::chrono::steady_clock::now() - _startTime;
-    if (el.count() >= _maxTime) {
-      // one-shot: a later loop of the same run is not stopped again
-      _timeArmed = false;
-      _stopRequested = _stopped = _timedOut = true;
-      return true;
-    }
-  }
-  if (!_stopFileOn) return false;
   struct stat st;
-  if (stat(_stopFile.c_str(), &st) != 0) return false;
-  // removed so a re-run in the same folder is not stopped at once
-  std::remove(_stopFile.c_str());
-  // the run is already stopping: a later loop is not stopped by the time limit
+  if (_stopFileOn && stat(_stopFile.c_str(), &st) == 0) {
+    // removed so a re-run in the same folder is not stopped at once
+    std::remove(_stopFile.c_str());
+    // the run is already stopping: a later loop is not stopped by the time limit
+    _timeArmed = false;
+    _stopRequested = _stopped = true;
+    return true;
+  }
+  if (!_timeArmed) return false;
+  std::chrono::duration<double> el = std::chrono::steady_clock::now() - _startTime;
+  if (el.count() < _maxTime) return false;
+  // one-shot: a later loop of the same run is not stopped again
   _timeArmed = false;
-  _stopRequested = _stopped = true;
+  _stopRequested = _stopped = _timedOut = true;
   return true;
 }
 

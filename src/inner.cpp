@@ -12018,7 +12018,7 @@ static inline void foceiStopMessage(Environment e) {
 void foceiLbfgsb3(Environment e){
   void *ex = NULL;
   double Fmin;
-  int fail, fncount=0, grcount=0;
+  int fail = 0, fncount=0, grcount=0;
   NumericVector x(op_focei.npars);
   NumericVector g(op_focei.npars);
   foceiOuterStart(x.begin());
@@ -12050,10 +12050,11 @@ void foceiLbfgsb3(Environment e){
 void foceiLbfgsb(Environment e){
   void *ex = NULL;
   double Fmin;
-  int fail, fncount=0, grcount=0;
+  int fail = 0, fncount=0, grcount=0;
   NumericVector x(op_focei.npars);
   foceiOuterStart(x.begin());
-  char msg[100];
+  // a stop request can end the search before these are written
+  char msg[100] = "";
   try {
     lbfgsbRX(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
              op_focei.upper, op_focei.nbd, &Fmin, foceiOfvOptim,
