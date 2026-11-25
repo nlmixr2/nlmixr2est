@@ -109,7 +109,9 @@
 
 - `fit$iwresAutocor` reports the pooled within-subject lag-1 correlation
   and Durbin-Watson statistic of IWRES, a check for structural
-  misspecification (successive residuals of a subject that move together)
+  misspecification (successive residuals of a subject that move together).
+  A fit whose Durbin-Watson statistic is below 1.5 or above 2.5 says so in
+  `$runInfo`; `tableControl(iwresAutocor = FALSE)` turns the note off
   (#1373).
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the

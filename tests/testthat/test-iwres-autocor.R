@@ -101,3 +101,43 @@ test_that("fit$iwresAutocor is computed from the fit table", {
   expect_equal(.ac$nSubjects, length(unique(.fit$ID)))
   expect_true(.ac$durbinWatson > 0 && .ac$durbinWatson < 4)
 })
+
+test_that("the run note fires only outside 1.5-2.5 and can be turned off", {
+  .mono <- .acDf(rep(1:3, each = 10), rep(seq(-2, 2, length.out = 10), 3))
+  expect_warning(
+    .iwresAutocorNote(.mono, tableControl()),
+    "IWRES positively autocorrelated within subjects: Durbin-Watson 0.11"
+  )
+  expect_warning(
+    .iwresAutocorNote(.acDf(rep(1:4, each = 8), rep(c(1, -1), 16)), tableControl()),
+    "negatively"
+  )
+  expect_silent(.iwresAutocorNote(.mono, tableControl(iwresAutocor = FALSE)))
+  .ok <- .acDf(rep(1, 4), c(1, -1, -1, 1))
+  expect_equal(.iwresAutocor(.ok)$durbinWatson, 2)
+  expect_silent(.iwresAutocorNote(.ok, tableControl()))
+  expect_silent(.iwresAutocorNote(data.frame(ID = 1), tableControl()))
+  expect_error(tableControl(iwresAutocor = NA))
+})
+
+test_that("a structurally misspecified fit reports the note in $runInfo", {
+  skip_on_cran()
+  .flat <- function() {
+    ini({
+      tv <- log(5)
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      cp <- exp(tv + eta.v)
+      cp ~ add(add.sd)
+    })
+  }
+  .ctl <- foceiControl(print = 0, maxOuterIterations = 0L, covMethod = "")
+  .fit <- .nlmixr(.flat, theo_sd, est = "focei", control = .ctl)
+  expect_lt(.fit$iwresAutocor$durbinWatson, 1.5)
+  expect_true(any(grepl("IWRES positively autocorrelated", .fit$runInfo)))
+  expect_lt(nchar(grep("IWRES", .fit$runInfo, value = TRUE)[1]), 75)
+  .fit2 <- .nlmixr(.flat, theo_sd, est = "focei", control = .ctl, table = tableControl(iwresAutocor = FALSE))
+  expect_false(any(grepl("IWRES", .fit2$runInfo)))
+})
