@@ -21723,7 +21723,7 @@ static void adviIterPrintStart(NumericVector initPar, CharacterVector names,
   }
   _vaeScale.keyExtra =
     "Function-Val: negative Monte-Carlo ELBO (lower is better)\n"
-    "srch <eta>: step-size-scale search run; SGA: main run\n";
+    "srch <eta>: step-size-scale search run; SGA / GN: main run (advi / gaussNewton)\n";
   scaleApplyIterPrintControl(&_vaeScale, iterPrintControl);
   _vaeScale.cn = it0;
   scalePrintHeader(&_vaeScale);
@@ -21803,6 +21803,17 @@ struct adviStatics {
   double tolRelObj = 0.0;
   int evalElbo = 0;
   bool tolStopped = false;
+// optim="gaussNewton" (#1462): the per-subject q moves by a damped Gauss-Newton
+// fixed point on the eta Hessian at the draws (etaHess, one slice per subject)
+// and the theta-sensitivity thetas (gnMask, theta order) by a damped
+// Gauss-Newton M-step on thetaInfo, the core's summed information.  The SGA
+// steps fail on a residual score with a heavy tail (prop error): one spike
+// inflates the RMS accumulator and freezes q near the prior.
+  bool gn = false;
+  std::vector<char> gnMask;
+  arma::mat thetaInfo;
+  arma::cube etaHess;
+  double nObs = 1.0;
 };
 
 static adviStatics _advi;
@@ -22055,6 +22066,116 @@ static bool adviDiverged(double elbo, NumericMatrix &parHist, int row, int ncol)
   return false;
 }
 
+// Scatter one subject's sensitivity-ordered information H into an
+// ntheta x ntheta slice (theta order).
+static void adviInfoAdd(arma::mat &out, const arma::mat &H, int ntheta) {
+  const int nSens = op_focei.impThetaSensIdx.size();
+  for (int a = 0; a < nSens; ++a) {
+    int ta = op_focei.impThetaSensIdx[a];
+    if (ta < 0 || ta >= ntheta) continue;
+    for (int b = 0; b < nSens; ++b) {
+      int tb = op_focei.impThetaSensIdx[b];
+      if (tb >= 0 && tb < ntheta) out(ta, tb) += H(a, b);
+    }
+  }
+}
+
+// Damped Gauss-Newton M-step for the theta-sensitivity thetas (_advi.gnMask):
+// theta += gam * H^-1 g, shrunk to at most one per-observation sd,
+// sqrt(nObs / H_jj), in every component -- the residual score can have an
+// unbounded mean under a Gaussian q.  Returns false (theta untouched) when the
+// information is not usable, so the caller falls back to the SGA step.
+static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
+                            const arma::mat &info, const LogicalVector &thetaFix,
+                            double gam) {
+  const int ntheta = theta.size();
+  if ((int)_advi.gnMask.size() != ntheta || (int)info.n_rows != ntheta) return false;
+  std::vector<arma::uword> idx;
+  for (int p = 0; p < ntheta; ++p)
+    if (_advi.gnMask[p] && !thetaFix[p]) idx.push_back((arma::uword)p);
+  if (idx.empty()) return false;
+  arma::uvec ui(idx);
+  arma::mat Hs = info(ui, ui);
+  arma::vec gs(idx.size());
+  for (size_t j = 0; j < idx.size(); ++j) gs[j] = g[idx[j]];
+  arma::mat R;
+  if (!Hs.is_finite() || !gs.is_finite() || !arma::chol(R, arma::symmatu(Hs))) return false;
+  arma::vec step = arma::solve(arma::trimatu(R), arma::solve(arma::trimatl(R.t()), gs));
+  if (!step.is_finite()) return false;
+  double shrink = 1.0;
+  for (size_t j = 0; j < idx.size(); ++j) {
+    double rad = std::sqrt(_advi.nObs / Hs(j, j));
+    if (std::fabs(step[j]) > rad) shrink = std::min(shrink, rad / std::fabs(step[j]));
+  }
+  for (size_t j = 0; j < idx.size(); ++j) theta[idx[j]] += gam * shrink * step[j];
+  return true;
+}
+
+// Gain of every gaussNewton step: a Robbins-Monro sequence (sum diverges, sum of
+// squares converges) slow enough for the coupled E/M fixed point to settle in a
+// few hundred iterations.
+static double adviGnRate(int gi) { return std::pow(1.0 + (double)gi, -0.6); }
+
+// Natural-gradient mean step mu += rho Sigma g for one subject, capped at two
+// posterior sds (Mahalanobis length under the new precision Lam).
+static bool adviGnMuStep(arma::vec &step, const arma::mat &Lam) {
+  double md = std::sqrt(arma::as_scalar(step.t() * Lam * step));
+  if (!R_finite(md)) return false;
+  if (md > 2.0) step *= 2.0 / md;
+  return true;
+}
+
+// Gauss-Newton E-step, full rank: the precision moves toward the mean eta
+// Hessian at the draws, Lam <- (1-rho) Lam + rho E[H] (the Gaussian-VI
+// stationarity condition), and the mean takes the matching natural-gradient
+// step.  A subject whose Hessian is unusable keeps its state.
+static void adviGnStepFR(NumericMatrix &mu, NumericMatrix &Lpack, const NumericMatrix &gMu,
+                         const arma::cube &Hbar, int gi) {
+  const int N = mu.nrow(), neta = mu.ncol();
+  const double rho = adviGnRate(gi);
+  for (int i = 0; i < N; ++i) {
+    arma::mat Hi = Hbar.slice(i);
+    if (!Hi.is_finite()) continue;
+    arma::mat L(neta, neta, arma::fill::zeros);
+    for (int r = 0; r < neta; ++r)
+      for (int c = 0; c <= r; ++c) L(r, c) = Lpack(i, r * (r + 1) / 2 + c);
+    arma::mat Lam0;
+    if (!arma::inv_sympd(Lam0, arma::symmatu(L * L.t()))) continue;
+    arma::mat Lam = arma::symmatu((1.0 - rho) * Lam0 + rho * Hi), Sig, Lnew;
+    if (!arma::inv_sympd(Sig, Lam) || !arma::chol(Lnew, arma::symmatu(Sig), "lower")) continue;
+    arma::vec g(neta);
+    for (int k = 0; k < neta; ++k) g[k] = gMu(i, k);
+    arma::vec step = rho * (Sig * g);
+    if (!adviGnMuStep(step, Lam)) continue;
+    for (int k = 0; k < neta; ++k) mu(i, k) += step[k];
+    for (int r = 0; r < neta; ++r)
+      for (int c = 0; c <= r; ++c) Lpack(i, r * (r + 1) / 2 + c) = Lnew(r, c);
+  }
+}
+
+// Gauss-Newton E-step, mean field: per-eta precision exp(-2 omega) moves toward
+// the Hessian diagonal (the factorized stationarity condition) and the mean
+// takes the diagonal natural-gradient step.
+static void adviGnStepMF(NumericMatrix &mu, NumericMatrix &omega, const NumericMatrix &gMu,
+                         const arma::cube &Hbar, int gi) {
+  const int N = mu.nrow(), neta = mu.ncol();
+  const double rho = adviGnRate(gi);
+  for (int i = 0; i < N; ++i) {
+    arma::vec d = arma::diagvec(Hbar.slice(i));
+    if (!d.is_finite() || arma::any(d <= 0.0)) continue;
+    arma::vec lam(neta), step(neta);
+    for (int k = 0; k < neta; ++k) {
+      lam[k] = (1.0 - rho) * std::exp(-2.0 * omega(i, k)) + rho * d[k];
+      step[k] = rho * gMu(i, k) / lam[k];
+    }
+    if (!adviGnMuStep(step, arma::diagmat(lam))) continue;
+    for (int k = 0; k < neta; ++k) {
+      mu(i, k) += step[k];
+      omega(i, k) = -0.5 * std::log(lam[k]);
+    }
+  }
+}
+
 // Core (mean-field, point-estimate) ELBO + gradient at a fixed eps draw.  Fills
 // the pre-allocated gMu/gOmega/gTheta/gPopLogOmega (zeroed here) and returns the
 // ELBO.  Shared by the R-facing adviElboGrad_ (FD test) and the C++ loop adviLoop_.
@@ -22093,6 +22214,12 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
   std::vector<double> objBuf(N, 0.0);            // -obj + mean-field entropy
   arma::mat gThetaBuf(N, ntheta, arma::fill::zeros);
   arma::mat gLpoBuf(N, neta, arma::fill::zeros);
+  const bool wantInfo = _advi.gn;
+  arma::cube infoBuf;
+  if (wantInfo) infoBuf.zeros(ntheta, ntheta, N);
+  const bool wantHess = _advi.gn;
+  arma::cube etaHessBuf;
+  if (wantHess) etaHessBuf.zeros(neta, neta, N);
   // rxode2 sizes every per-thread solve buffer by op->cores; more external threads
   // than that index past the pools and corrupt the heap (see vaeInnerLikCore).
   cores = min2(cores, getOpCores(op));
@@ -22121,6 +22248,12 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
     focei_ind *fInd = &(inds_focei[i]);
     arma::vec lp(neta);
     for (int k = 0; k < neta; ++k) lp[k] = fInd->lp[k];
+    if (wantHess) {
+      arma::mat Hs(neta, neta, arma::fill::zeros), H0s(neta, neta, arma::fill::zeros);
+      rx_solving_options_ind *indS = getSolvingOptionsInd(rx, getRxId(i));
+      if (R_finite(obj) && calcEtaHessian(&eta[0], 0, i, fInd, indS, Hs, H0s)) etaHessBuf.slice(i) = Hs;
+      else etaHessBuf.slice(i).fill(NA_REAL);
+    }
 
     // ELBO: data+prior term (-obj) + mean-field entropy (sum omega, + const)
     double e = -obj;
@@ -22162,6 +22295,7 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
         int th = op_focei.impThetaSensIdx[s];    // 0-based
         if (th >= 0 && th < ntheta) gThetaBuf(i, th) += g[s];
       }
+      if (wantInfo) adviInfoAdd(infoBuf.slice(i), H, ntheta);
     }
   });
   }
@@ -22171,6 +22305,11 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
     elbo += objBuf[i];
     for (int p = 0; p < ntheta; ++p) gTheta[p] += gThetaBuf(i, p);
     for (int k = 0; k < neta; ++k) gPopLogOmega[k] += gLpoBuf(i, k);
+  }
+  if (wantHess) _advi.etaHess = etaHessBuf;
+  if (wantInfo) {
+    _advi.thetaInfo.zeros(ntheta, ntheta);
+    for (int i = 0; i < N; ++i) _advi.thetaInfo += infoBuf.slice(i);
   }
   // population prior logdet: -0.5 N logdet(Omega) (= -0.5 N sum_k logPopOmega_k
   // when Omega is diagonal)
@@ -22342,6 +22481,9 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     std::fill(gThAcc.begin(), gThAcc.end(), 0.0);
     std::fill(gLpoAcc.begin(), gLpoAcc.end(), 0.0);
     double elboAcc = 0.0;
+    arma::mat infoAcc;
+    arma::cube hessAcc;
+    if (_advi.gn) hessAcc.zeros(neta, neta, N);
     for (int m = 0; m < nMc; ++m) {
       // counter-based standard-normal draw, stream keyed by (seed, gi, m)
       setSeedEng1((uint32_t)seed + (uint32_t)((gi * nMc + m) & 0x7fffffff));
@@ -22350,7 +22492,10 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
       elboAcc += adviElboGradCore(mu, omega, theta, logPopOmega, eps, muRefThetaIdx,
                                   gMu, gOmega, gTheta, gPopLogOmega, cores);
       for (int j = 0; j < N * neta; ++j) { gMuAcc[j] += gMu[j]; gOmAcc[j] += gOmega[j]; }
+      if (_advi.gn) hessAcc += _advi.etaHess;
       for (int p = 0; p < ntheta; ++p) gThAcc[p] += gTheta[p];
+      if (_advi.gn)
+        infoAcc = (m == 0) ? _advi.thetaInfo : arma::mat(infoAcc + _advi.thetaInfo);
       for (int k = 0; k < neta; ++k) gLpoAcc[k] += gPopLogOmega[k];
     }
     elboAcc *= invM;
@@ -22363,19 +22508,26 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     // paper adaptive step-size (Eq 10-11); global-iteration decay so resume keeps
     // the same schedule as a fresh longer run.
     double idecay = std::pow((double)(gi + 1), -0.5 + eeps);
-    for (int j = 0; j < N * neta; ++j) {
-      double g = gMuAcc[j];
-      sMu[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sMu[j];
-      mu[j] += etaScale * idecay / (tau + std::sqrt(sMu[j])) * g;
-      g = gOmAcc[j];
-      sOmega[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sOmega[j];
-      omega[j] += etaScale * idecay / (tau + std::sqrt(sOmega[j])) * g;
+    if (_advi.gn) {
+      adviGnStepMF(mu, omega, gMuAcc, hessAcc * invM, gi);
+    } else {
+      for (int j = 0; j < N * neta; ++j) {
+        double g = gMuAcc[j];
+        sMu[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sMu[j];
+        mu[j] += etaScale * idecay / (tau + std::sqrt(sMu[j])) * g;
+        g = gOmAcc[j];
+        sOmega[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sOmega[j];
+        omega[j] += etaScale * idecay / (tau + std::sqrt(sOmega[j])) * g;
+      }
     }
+    const double gam = _advi.gn ? adviGnRate(gi) : 1.0 / (10.0 + (double)gi);
+    const bool gnTheta = adviGnThetaStep(theta, gThAcc, infoAcc * invM, thetaFix, gam);
     for (int p = 0; p < ntheta; ++p) {
       // mu-referenced intercepts are not gradient-updated: theta and eta share a
       // flat direction (data constrains only theta+eta), which makes joint SGA
       // drift/diverge.  They are updated by the recentering M-step below instead.
       if (thetaFix[p] || thetaMuRefEta[p] >= 0) continue;
+      if (gnTheta && _advi.gnMask[p]) continue;
       double g = gThAcc[p];
       sTheta[p] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sTheta[p];
       theta[p] += etaScale * idecay / (tau + std::sqrt(sTheta[p])) * g;
@@ -22404,7 +22556,6 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     // tighter than the variational scale during transients, preserving the
     // restoring force; it converges to the same fixed point once the E-step
     // settles.  gamma anneals from a small value toward 1.
-    double gam = 1.0 / (10.0 + (double)gi);
     for (int k = 0; k < neta; ++k) {
       if (omegaFix[k]) continue;
       double s = 0.0;
@@ -22498,6 +22649,12 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
   std::vector<double> objBuf(N, 0.0);
   arma::mat gThetaBuf(N, ntheta, arma::fill::zeros);
   arma::mat gLpoBuf(N, neta, arma::fill::zeros);
+  const bool wantInfo = _advi.gn;
+  const bool wantHess = _advi.gn;
+  arma::cube etaHessBuf;
+  if (wantHess) etaHessBuf.zeros(neta, neta, N);
+  arma::cube infoBuf;
+  if (wantInfo) infoBuf.zeros(ntheta, ntheta, N);
   cores = min2(cores, getOpCores(op));
   int nsub = (int)getRxNsub(rx);
   if (nsub != N) { nsub = N; cores = 1; }        // unexpected shape: serial
@@ -22520,6 +22677,12 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
     focei_ind *fInd = &(inds_focei[s]);
     arma::vec lp(neta);
     for (int k = 0; k < neta; ++k) lp[k] = fInd->lp[k];
+    if (wantHess) {
+      arma::mat Hs(neta, neta, arma::fill::zeros), H0s(neta, neta, arma::fill::zeros);
+      rx_solving_options_ind *indS = getSolvingOptionsInd(rx, getRxId(s));
+      if (R_finite(obj) && calcEtaHessian(&eta[0], 0, s, fInd, indS, Hs, H0s)) etaHessBuf.slice(s) = Hs;
+      else etaHessBuf.slice(s).fill(NA_REAL);
+    }
 
     double e = -obj;
     for (int k = 0; k < neta; ++k)
@@ -22555,6 +22718,7 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
         int th = op_focei.impThetaSensIdx[t];
         if (th >= 0 && th < ntheta) gThetaBuf(s, th) += g[t];
       }
+      if (wantInfo) adviInfoAdd(infoBuf.slice(s), H, ntheta);
     }
   });
   }
@@ -22563,6 +22727,11 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
     elbo += objBuf[i];
     for (int p = 0; p < ntheta; ++p) gTheta[p] += gThetaBuf(i, p);
     for (int k = 0; k < neta; ++k) gPopLogOmega[k] += gLpoBuf(i, k);
+  }
+  if (wantHess) _advi.etaHess = etaHessBuf;
+  if (wantInfo) {
+    _advi.thetaInfo.zeros(ntheta, ntheta);
+    for (int i = 0; i < N; ++i) _advi.thetaInfo += infoBuf.slice(i);
   }
   elbo += -0.5 * N * adviPopLogDet(logPopOmega);
   return elbo;
@@ -22629,6 +22798,9 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     std::fill(gThAcc.begin(), gThAcc.end(), 0.0);
     std::fill(gLpoAcc.begin(), gLpoAcc.end(), 0.0);
     double elboAcc = 0.0;
+    arma::mat infoAcc;
+    arma::cube hessAcc;
+    if (_advi.gn) hessAcc.zeros(neta, neta, N);
     for (int m = 0; m < nMc; ++m) {
       setSeedEng1((uint32_t)seed + (uint32_t)((gi * nMc + m) & 0x7fffffff));
       for (int i = 0; i < N; ++i)
@@ -22637,7 +22809,10 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
                                     gMu, gL, gTheta, gPopLogOmega, cores);
       for (int j = 0; j < N * neta; ++j) gMuAcc[j] += gMu[j];
       for (int j = 0; j < N * nL; ++j) gLAcc[j] += gL[j];
+      if (_advi.gn) hessAcc += _advi.etaHess;
       for (int p = 0; p < ntheta; ++p) gThAcc[p] += gTheta[p];
+      if (_advi.gn)
+        infoAcc = (m == 0) ? _advi.thetaInfo : arma::mat(infoAcc + _advi.thetaInfo);
       for (int k = 0; k < neta; ++k) gLpoAcc[k] += gPopLogOmega[k];
     }
     elboAcc *= invM;
@@ -22649,18 +22824,25 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     elboTrace[it] = elboAcc + adviPenElbo(theta, ntheta, N);
 
     double idecay = std::pow((double)(gi + 1), -0.5 + eeps);
-    for (int j = 0; j < N * neta; ++j) {
-      double g = gMuAcc[j];
-      sMu[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sMu[j];
-      mu[j] += etaScale * idecay / (tau + std::sqrt(sMu[j])) * g;
+    if (_advi.gn) {
+      adviGnStepFR(mu, Lpack, gMuAcc, hessAcc * invM, gi);
+    } else {
+      for (int j = 0; j < N * neta; ++j) {
+        double g = gMuAcc[j];
+        sMu[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sMu[j];
+        mu[j] += etaScale * idecay / (tau + std::sqrt(sMu[j])) * g;
+      }
+      for (int j = 0; j < N * nL; ++j) {
+        double g = gLAcc[j];
+        sL[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sL[j];
+        Lpack[j] += etaScale * idecay / (tau + std::sqrt(sL[j])) * g;
+      }
     }
-    for (int j = 0; j < N * nL; ++j) {
-      double g = gLAcc[j];
-      sL[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sL[j];
-      Lpack[j] += etaScale * idecay / (tau + std::sqrt(sL[j])) * g;
-    }
+    const double gam = _advi.gn ? adviGnRate(gi) : 1.0 / (10.0 + (double)gi);
+    const bool gnTheta = adviGnThetaStep(theta, gThAcc, infoAcc * invM, thetaFix, gam);
     for (int p = 0; p < ntheta; ++p) {
       if (thetaFix[p] || thetaMuRefEta[p] >= 0) continue;
+      if (gnTheta && _advi.gnMask[p]) continue;
       double g = gThAcc[p];
       sTheta[p] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sTheta[p];
       theta[p] += etaScale * idecay / (tau + std::sqrt(sTheta[p])) * g;
@@ -22677,7 +22859,6 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     }
     adviPenRecenter(theta, ntheta, thetaMuRefEta, thetaFix, logPopOmega, mu, N);
     // damped population variance M-step; var_ik = (L_i L_i^T)_kk = sum_{j<=k} L(k,j)^2
-    double gam = 1.0 / (10.0 + (double)gi);
     for (int k = 0; k < neta; ++k) {
       if (omegaFix[k]) continue;
       double sAcc = 0.0;
@@ -22977,6 +23158,18 @@ List adviOptimize_(List args) {
   _advi.temper = false;
   _advi.temperScale = 1.0;
   _advi.klWarmup = args.containsElementNamed("klWarmup") ? as<int>(args["klWarmup"]) : 0;
+  // optim="gaussNewton" (point estimate only): Gauss-Newton E-step and an
+  // M-step for the theta-sensitivity thetas (1-based gnIdx)
+  _advi.gn = pe && args.containsElementNamed("gaussNewton") && as<bool>(args["gaussNewton"]);
+  if (_advi.gn) {
+    IntegerVector gIdx = args.containsElementNamed("gnIdx") ? as<IntegerVector>(args["gnIdx"])
+      : IntegerVector(0);
+    _advi.gnMask.assign(thetaIni.size(), 0);
+    for (int j = 0; j < gIdx.size(); ++j)
+      if (gIdx[j] != NA_INTEGER && gIdx[j] >= 1 && gIdx[j] <= thetaIni.size())
+        _advi.gnMask[gIdx[j] - 1] = 1;
+    if (args.containsElementNamed("nObs")) _advi.nObs = std::max(1.0, as<double>(args["nObs"]));
+  }
   _advi.temperInit = args.containsElementNamed("temperInit")
     ? as<double>(args["temperInit"]) : 1.0;
   // constraining-transform Jacobian map (consumed by the full-Bayes loop only)
@@ -23156,6 +23349,9 @@ List adviOptimize_(List args) {
   double eta;
   if (R_finite(etaResume)) {
     eta = etaResume;                          // resumed run keeps its step-size scale
+  } else if (_advi.gn) {
+    // the step-size scale only reaches an SGA fallback step; nothing to search
+    eta = cands.size() > 0 ? cands[0] : 0.1;
   } else if (adapt && cands.size() > 1) {
     double best = R_NegInf, bestEta = cands[0];
     etaScores = NumericVector(cands.size(), R_NegInf);
@@ -23199,7 +23395,7 @@ List adviOptimize_(List args) {
     eta = 0.1;
   }
 
-  List res = run1(eta, iters, it0, 0, "SGA", 1);
+  List res = run1(eta, iters, it0, 0, _advi.gn ? "GN" : "SGA", 1);
   // A run that ENDS INSIDE the warm-up (iters < klWarmup, or an early break)
   // never reaches the gi >= klWarmup iteration that restores the scale, so the
   // inflation would outlive the optimization: it would silently temper a later

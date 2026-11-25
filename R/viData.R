@@ -118,6 +118,7 @@
     zDim = .neta,
     etaNames = .etaNames,
     ids = .ids,
+    nObs = sum(d$EVID == 0L),
     th = .th,
     theta = as.numeric(.th),
     ntheta = length(.th),
