@@ -589,11 +589,12 @@
   tolerance (to 1e-7 at `atol = rtol = 1e-10`; 473.1498 against 473.1587
   at the defaults), under either `iovMethod`. The carry has as many
   columns as the loaded rxode2 provides (8 with rxode2 5.1.8; see
-  `rxode2::linCmtCarryMaxPairs()`). A FOCEi-family fit of a model
-  needing more columns than that is solved as ODEs, with a warning,
-  rather than giving the etas past the cap the standard gradient: that
-  made the objective depend on the order the etas were declared in, and
-  match neither the ODE model nor `linCmtSensCarry = "none"`
+  [`rxode2::linCmtCarryMaxPairs()`](https://nlmixr2.github.io/rxode2/reference/linCmtCarryMaxPairs.html)).
+  A FOCEi-family fit of a model needing more columns than that is solved
+  as ODEs, with a warning, rather than giving the etas past the cap the
+  standard gradient: that made the objective depend on the order the
+  etas were declared in, and match neither the ODE model nor
+  `linCmtSensCarry = "none"`
   ([\#1318](https://github.com/nlmixr2/nlmixr2est/issues/1318)). A model
   is translated only when, after the subject-constant pairs are dropped
   ([\#1287](https://github.com/nlmixr2/nlmixr2est/issues/1287)), the

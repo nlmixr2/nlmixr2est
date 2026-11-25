@@ -678,6 +678,12 @@ fbviControl()
 #> $ssMethod
 #> [1] 1
 #> 
+#> $doseAtRecord
+#> [1] FALSE
+#> 
+#> $addlCovAtTime
+#> [1] TRUE
+#> 
 #> attr(,"class")
 #> [1] "rxControl"
 #> 
