@@ -211,4 +211,81 @@ nmTest({
     fd <- .ogFd(fit, fit$theta, fit$omega)
     expect_equal(og$gradient[names(fd)], fd, tolerance = 2e-3)
   })
+  test_that("nlmixr2ObjGrad(individual=TRUE): subjects plus population sum to the totals", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    fit <- suppressMessages(nlmixr2(
+      .ogModel,
+      nlmixr2data::theo_sd,
+      "focei",
+      .ogCtl(
+        maxOuterIterations = 0L,
+        sigdig = 4,
+        maxInnerIterations = 300L,
+        epsilon = 1e-10,
+        trustFterm = 1e-12,
+        trustMterm = 1e-12
+      )
+    ))
+    for (sc in c("untransformed", "transformed")) {
+      og <- nlmixr2ObjGrad(fit, scale = sc, individual = TRUE)
+      expect_gt(attr(og, "nAnalyticGradDirect"), 0L)
+      ind <- og$individual
+      expect_equal(nrow(ind), length(unique(nlmixr2data::theo_sd$ID)))
+      expect_equal(names(ind), c("ID", "OBJI", names(og$gradient)))
+      gi <- as.matrix(ind[, names(og$gradient)])
+      expect_true(all(is.finite(gi)))
+      # no prior: nothing belongs to the population term
+      expect_equal(colSums(gi) + og$population$gradient, og$gradient)
+      expect_equal(unname(og$population$gradient), rep(0, length(og$gradient)), tolerance = 1e-8)
+      expect_equal(sum(ind$OBJI) + og$population$objective, og$objective)
+    }
+    # one subject's gradient is the derivative of its own OBJI
+    th <- fit$theta
+    h <- 1e-3
+    .obji <- function(t) nlmixr2ObjGrad(fit, theta = t, individual = TRUE)$individual$OBJI
+    og <- nlmixr2ObjGrad(fit, theta = th, individual = TRUE)
+    tp <- th
+    tm <- th
+    tp["tcl"] <- tp["tcl"] + h
+    tm["tcl"] <- tm["tcl"] - h
+    fd <- (.obji(tp) - .obji(tm)) / (2 * h)
+    expect_equal(og$individual$tcl, fd, tolerance = 1e-2)
+    expect_error(nlmixr2ObjGrad(fit, individual = NA))
+  })
+  test_that("nlmixr2ObjGrad(individual=TRUE) splits an ll() endpoint's gradient", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    llMod <- function() {
+      ini({
+        tka <- log(1.5)
+        tcl <- log(2.7)
+        tv <- log(31.5)
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        ll(err) ~ -0.5 * log(2 * pi) - log(add.sd) - 0.5 * ((DV - cp) / add.sd)^2
+      })
+    }
+    fit <- suppressMessages(nlmixr2(
+      llMod,
+      nlmixr2data::theo_sd,
+      "focei",
+      .ogCtl(maxOuterIterations = 0L)
+    ))
+    og <- nlmixr2ObjGrad(fit, individual = TRUE)
+    expect_gt(attr(og, "nAnalyticGradDirect"), 0L)
+    gi <- as.matrix(og$individual[, names(og$gradient)])
+    expect_true(all(is.finite(gi)))
+    expect_equal(colSums(gi), og$gradient, tolerance = 1e-8)
+    expect_equal(sum(og$individual$OBJI), og$objective, tolerance = 1e-8)
+  })
 })

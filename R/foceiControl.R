@@ -727,16 +727,19 @@
 #'     of each solve.
 #'
 #' @param trustPolish logical; when `TRUE`, each converged `innerOpt="trust"`
-#'     solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
-#'     This makes the objective less dependent on the warm-start ETAs and can
-#'     help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+#'     solve re-enters once from its ETAs with the squared
+#'     `trustFterm`/`trustMterm` (floored at `1e-10`; not under a quasi-Newton
+#'     `hessianMethod`).  This makes the objective nearly independent of the
+#'     warm-start ETAs and can help a fit that stops short of its minimum
+#'     (#1152).  The `"bobyqa"`
 #'     outer search then also restarts once from where it stops, which costs
 #'     about twice the outer evaluations.  `FALSE` (default) keeps the plain
 #'     trust solve and a single outer search.
 #'
-#' @param steihaugPolish,newuoaPolish logical; the `trustPolish` Newton
-#'     polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
-#'     solve.  `FALSE` (default) keeps the plain solve.
+#' @param steihaugPolish,newuoaPolish logical; the `trustPolish` polish for
+#'     a converged `innerOpt="steihaug"` solve (the same re-entry) or
+#'     `innerOpt="newuoa"` solve (up to 4 Newton steps, down to `trustFterm`).
+#'     `FALSE` (default) keeps the plain solve.
 #'
 #' @param newuoaRhoend final NEWUOA trust-region radius for
 #'     `innerOpt="newuoa"`, in sqrt(diag(Omega)) units.  `NULL` (default) uses
@@ -749,6 +752,12 @@
 #'     more than `10^(1-sigdig)`, bobyqa restarts from there (up to 3 times,
 #'     within `maxOuterIterations`).  This catches a search that stops in a
 #'     narrow valley short of the minimum (#1196); `FALSE` skips the check.
+#'
+#' @param scaleAdapt maximum number of times the `"bobyqa"` outer search
+#'     restarts on a scale adapted to the curvature where it stopped, one
+#'     unit per marginal standard error.  It restarts while each restart gains
+#'     more than `10^(1-sigdig)`.  `NULL` (default) uses 3 when a `theta` is
+#'     scaled as linear (see `scaleLinear`) and 0 otherwise; `0` turns it off.
 #'
 #' @param innerHessian Inner optimization curvature: `"focei"` (default) or
 #'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
@@ -943,10 +952,10 @@
 #'   they are.
 #'
 #' @param scaleLinear How a linear (untransformed) `theta` is scaled under
-#'   `scaleType = "nlmixr2"`.  `"inverse"` (default) uses `1/|init|` when it
-#'   lands inside `scaleCband` and `|init|` otherwise; `"abs"` always uses
-#'   `|init|`, as NONMEM does.  A `theta` starting at 0 keeps its zero-theta
-#'   scale either way.
+#'   `scaleType = "nlmixr2"`.  `"abs"` (default) uses `|init|`, as NONMEM
+#'   does; `"inverse"` uses `1/|init|` when it lands inside `scaleCband` and
+#'   `|init|` otherwise.  A `theta` starting at 0 keeps its zero-theta scale
+#'   either way; under `"abs"` a mixture proportion (a log-odds) uses 1.
 #'
 #' @param normType Parameter normalization/scaling used to get scaled
 #'     initial values for \code{scaleType}, of the form
@@ -1075,6 +1084,10 @@
 #'   `maxOuterIterations = 0` and a non-finite fit objective.
 #'
 #' @param odeSettleTol The objective change that `odeSettleCheck` reports.
+#'
+#' @param omegaCollapseWarn Warn (in `$runInfo`) when a free diagonal omega
+#'   ends below this fraction of its initial estimate, or at its
+#'   `diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.
 #'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
@@ -1338,7 +1351,7 @@ foceiControl <- function(
   scaleCmax = 1e5, #
   scaleCmin = 1e-5, #
   scaleCband = c(0.1, 10), #
-  scaleLinear = c("inverse", "abs"), #
+  scaleLinear = c("abs", "inverse"), #
   scaleC = NULL, #
   scaleC0 = 1e5, #
   derivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
@@ -1441,6 +1454,7 @@ foceiControl <- function(
   newuoaPolish = FALSE,
   newuoaRhoend = NULL, # NULL -> sqrt(rtol) of the ODE solve
   bobyqaStationary = TRUE,
+  scaleAdapt = NULL,
   ## innerOpt="lbfgsb3c" (lbfgsb3c's thread-safe L-BFGS-B)
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL, # NULL -> 10^(-sigdig-2)/eps
@@ -1545,7 +1559,8 @@ foceiControl <- function(
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
   zeroThetaStep = 100,
-  boundedTransform = TRUE
+  boundedTransform = TRUE,
+  omegaCollapseWarn = 1e-3
 ) {
   #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
@@ -2034,6 +2049,13 @@ foceiControl <- function(
   checkmate::assertFlag(newuoaPolish)
   bobyqaStationary <- as.logical(bobyqaStationary)
   checkmate::assertFlag(bobyqaStationary)
+  if (is.null(scaleAdapt) || (length(scaleAdapt) == 1L && is.na(scaleAdapt))) {
+    # resolved per model in .foceiOptEnvSetup(): on when a theta is linear
+    scaleAdapt <- NA_integer_
+  } else {
+    checkmate::assertIntegerish(scaleAdapt, lower = 0, len = 1, any.missing = FALSE)
+    scaleAdapt <- as.integer(scaleAdapt)
+  }
   checkmate::assertIntegerish(innerLbfgsLmm, lower = 1L, any.missing = FALSE, len = 1)
   innerLbfgsLmm <- as.integer(innerLbfgsLmm)
   checkmate::assertNumeric(innerLbfgsFactr, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
@@ -2185,6 +2207,7 @@ foceiControl <- function(
   checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
+  checkmate::assertNumber(omegaCollapseWarn, lower = 0, upper = 1, na.ok = TRUE)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2327,6 +2350,7 @@ foceiControl <- function(
     newuoaPolish = newuoaPolish,
     newuoaRhoend = newuoaRhoend,
     bobyqaStationary = bobyqaStationary,
+    scaleAdapt = scaleAdapt,
     innerLbfgsLmm = innerLbfgsLmm,
     innerLbfgsFactr = as.double(innerLbfgsFactr),
     innerLbfgsPgtol = as.double(innerLbfgsPgtol),
@@ -2390,6 +2414,7 @@ foceiControl <- function(
     shrinkEtaWarn = as.double(shrinkEtaWarn),
     odeSettleCheck = odeSettleCheck,
     odeSettleTol = as.double(odeSettleTol),
+    omegaCollapseWarn = as.double(omegaCollapseWarn),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,

@@ -323,9 +323,18 @@ nmTest({
     .fit <- nlmixr2(.mk(TRUE), .theo, est = "nlme", control = .ctl)
     expect_true(inherits(.fit, "nlmixr2FitData"))
     expect_equal(nrow(as.data.frame(.fit)), .nObs)
-    # and the modeled time has not moved the answer much off the plain model
-    .ref <- nlmixr2(.mk(FALSE), .theo, est = "nlme", control = .ctl)
-    expect_equal(.fit$objf, .ref$objf, tolerance = 1e-2)
+    # mtime(t5) is a no-op, so the plain model at the fit's estimates gives the
+    # fit's IPRED; the etas come from the fit, so the missing omega is expected
+    .par <- data.frame(id = .fit$ranef$ID, as.list(.fit$fixef), .fit$ranef[, -1])
+    .plain <- withCallingHandlers(
+      rxode2::rxSolve(.mk(FALSE), .par, .theo, returnType = "data.frame"),
+      warning = function(w) {
+        if (grepl("without 'omega'", conditionMessage(w), fixed = TRUE)) {
+          invokeRestart("muffleWarning")
+        }
+      }
+    )
+    expect_equal(.plain$cp, .fit$IPRED, tolerance = 1e-6)
   })
 
   test_that("a moving boundary: mtime() sensitivities match the in-place switch", {

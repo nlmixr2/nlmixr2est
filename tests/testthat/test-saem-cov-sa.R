@@ -570,7 +570,7 @@ nmTest({
     expect_identical(f$covMethod, "fim")
     .H <- f$saem$Ha
     expect_true(is.matrix(.saemFimToCovReason(.H, f$env)))
-    expect_identical(.saemFimToCovReason(-.H, f$env), "the covariance is not positive definite")
+    expect_match(.saemFimToCovReason(-.H, f$env), "^the covariance is not PD: ")
     expect_identical(.saemFimToCovReason(replace(.H, 1L, NA), f$env), "no finite information matrix")
     expect_identical(.saemFimToCovReason(.H[1:2, 1:2], f$env), "the information rows cannot be matched to the thetas")
     .sing <- .H
