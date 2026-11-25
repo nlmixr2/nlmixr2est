@@ -201,6 +201,10 @@ test_that("maxTime ends a SAEM fit at the current iteration", {
 
 for (.est in c("nlm", "nlminb", "bobyqa", "uobyqa", "newuoa", "lbfgsb3c", "n1qn1", "optim", "trust")) {
   test_that(paste0("maxTime ends an est='", .est, "' fit early"), {
+    .pkg <- c(uobyqa = "minqa", n1qn1 = "n1qn1", lbfgsb3c = "lbfgsb3c")[.est]
+    if (!is.na(.pkg)) {
+      skip_if_not_installed(.pkg)
+    }
     .ctl <- paste0(.est, "Control")
     expect_null(do.call(.ctl, list())$maxTime)
     expect_equal(do.call(.ctl, list(maxTime = 10))$maxTime, 10)
