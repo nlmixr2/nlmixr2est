@@ -846,6 +846,13 @@ nmObjGet.saemCfg <- function(x, ...) {
   attr(get("saem", .env, inherits = FALSE), "saem.cfg")
 }
 
+#' @rdname nmObjGet
+#' @export
+nmObjGet.saemMstep <- function(x, ...) {
+  attr(nmObjGet.saem(x, ...), "saem.cfg")$saemMstep
+}
+attr(nmObjGet.saemMstep, "desc") <- "how saem's M-step updates each theta"
+
 #' @export
 nmObjGet.saemNmc <- function(x, ...) {
   .obj <- x[[1]]

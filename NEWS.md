@@ -2,6 +2,22 @@
 
 ## Changed defaults
 
+- `est = "laplace"` (and `"mlaplace"`, `"ilaplace"`) is now the Laplace
+  approximation NONMEM uses for `METHOD=COND LAPLACE INTERACTION` (Wang 2007,
+  J Pharmacokinet Pharmacodyn 34:575, Eq. 15): the inner Hessian and the
+  objective's log-determinant use the exact second derivative of the
+  conditional -2 log-likelihood in the ETAs.  Previously a Gaussian endpoint
+  used the Gauss-Newton FOCEi curvature, so the objective was identical to
+  `est = "focei"`.  Each Gaussian endpoint is now evaluated through its
+  log-density, as `+ dnorm()` in the model does, which needs only first-order
+  sensitivities and so works on every model (`linCmt()`, `lag()`, M2/M3/M4
+  censoring, ...).  The analytic `fast` outer gradient does not apply, so the
+  outer gradient is a finite difference.  All Gaussian `laplace` objectives
+  and estimates change; the previous results stay available as
+  `est = "focei"`.  `est = "flaplace"` computes the same objective from the
+  analytic conditional Hessian (#1301).  With M2/M3/M4 censoring the
+  reported objective of the two routes still differs by a constant
+  `2 * ncens * log(2 * pi)` (the estimates agree); NONMEM's lies midway.
 - FOCEi-family fits now scale a linear `theta` by its `|init|`
   (`foceiControl(scaleLinear = "abs")`, as NONMEM does) instead of
   `1/|init|` inside `scaleCband`.  When a model has such a `theta`, the
@@ -30,6 +46,15 @@
   falls back to `fast = FALSE` (e.g. `linCmt()`) still uses `bobyqa`.
 
 ## New features
+
+- A `saem` fit with a theta that is not updated in closed form now notes which
+  thetas the M-step updates in closed form, numerically (`nonMuTheta =
+  "regress"`) or stochastically (`nonMuTheta = "eta"`); the note is kept in
+  `fit$runInfo`, and `fit$saemMstep` lists the update of every theta (#1480).
+- Estimation now warns before fitting when an `lnorm()` or `boxCox()`
+  endpoint has uncensored observations with `DV <= 0`, which these
+  transforms silently clamp, e.g. `2 DV <= 0 on lnorm endpoint 'cp'`
+  (#1510).
 
 - A combined (`add() + prop()` or `add() + pow()`) error model whose additive
   SD starts below 1% of that endpoint's own median `|DV|` now warns before
@@ -193,6 +218,13 @@
   `linCmt()` call itself; inside a log-density it was skipped and the
   gradient was 0, so the EBEs and the objective were wrong (an ODE twin of
   the same model fit correctly).  It is now chained through the log-density.
+- A multi-threaded fit after a `fast = TRUE` `ll()` fit in the same R session
+  no longer stops R on Windows.  Two per-thread buffers were `thread_local`
+  `std::vector`s; with the MinGW-w64 toolchain their destructors run at thread
+  exit after the emulated thread-local storage they live in is released, so
+  freeing them corrupted the heap when an OpenMP worker exited at the next
+  fit.  The threads now hold plain pointers to vectors that are freed when
+  the package is unloaded (#1502).
 
 ### Covariance
 
