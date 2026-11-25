@@ -516,6 +516,29 @@ attr(rxUiGet.saemModResTotalResiduals, "rstudio") <- c(1, 2)
 .saemGetIniDfLResName <- function(iniDf, cond, column = "name") {
   .saemGetIniDfResNameFromType(iniDf, cond, c("boxCox", "yeoJohnson"), column = column)
 }
+#' Message for an endpoint whose residual errors are not ini() parameters
+#'
+#' rxode2 stores a non-theta error argument by name in the `predDf` argument
+#' columns (`NA` for a theta).
+#'
+#' @param predDf rxode2 `predDf`
+#' @param i row of the endpoint
+#' @return error message naming the endpoint and the offending argument(s)
+#' @noRd
+.saemResItemMsg <- function(predDf, i) {
+  .cond <- predDf$cond[i]
+  .cols <- intersect(c("a", "b", "c", "d", "e", "lambda"), names(predDf))
+  .args <- unique(stats::na.omit(unlist(predDf[i, .cols, drop = TRUE])))
+  if (length(.args) == 0L) {
+    return(sprintf("endpoint '%s': cannot locate residual error parameter(s) in ini()", .cond))
+  }
+  sprintf(
+    "endpoint '%s': error argument(s) %s not in ini(); use a theta name",
+    .cond,
+    paste0("'", .args, "'", collapse = ", ")
+  )
+}
+
 #'  Get saem residual item
 #' @param ui rxode2 UI
 #' @param column column name
@@ -572,7 +595,7 @@ attr(rxUiGet.saemModResTotalResiduals, "rstudio") <- c(1, 2)
         ) # add + pow + lambda = 10
       )
       if (.num != length(.ret)) {
-        stop("endpoint '", .cond, "' for saem cannot locate the residual error(s) correctly", call. = FALSE)
+        stop(.saemResItemMsg(.predDf, i), call. = FALSE)
       }
       .ret
     })

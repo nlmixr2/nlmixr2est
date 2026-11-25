@@ -753,6 +753,12 @@
 #'     within `maxOuterIterations`).  This catches a search that stops in a
 #'     narrow valley short of the minimum (#1196); `FALSE` skips the check.
 #'
+#' @param scaleAdapt maximum number of times the `"bobyqa"` outer search
+#'     restarts on a scale adapted to the curvature where it stopped, one
+#'     unit per marginal standard error.  It restarts while each restart gains
+#'     more than `10^(1-sigdig)`.  `NULL` (default) uses 3 when a `theta` is
+#'     scaled as linear (see `scaleLinear`) and 0 otherwise; `0` turns it off.
+#'
 #' @param innerHessian Inner optimization curvature: `"focei"` (default) or
 #'   `"conditional"`. Full conditional curvature requires fast Gaussian FOCEI.
 #'   Inner trust uses it at each trial; n1qn1 uses it with `warm="calc"`.
@@ -946,10 +952,10 @@
 #'   they are.
 #'
 #' @param scaleLinear How a linear (untransformed) `theta` is scaled under
-#'   `scaleType = "nlmixr2"`.  `"inverse"` (default) uses `1/|init|` when it
-#'   lands inside `scaleCband` and `|init|` otherwise; `"abs"` always uses
-#'   `|init|`, as NONMEM does.  A `theta` starting at 0 keeps its zero-theta
-#'   scale either way.
+#'   `scaleType = "nlmixr2"`.  `"abs"` (default) uses `|init|`, as NONMEM
+#'   does; `"inverse"` uses `1/|init|` when it lands inside `scaleCband` and
+#'   `|init|` otherwise.  A `theta` starting at 0 keeps its zero-theta scale
+#'   either way; under `"abs"` a mixture proportion (a log-odds) uses 1.
 #'
 #' @param normType Parameter normalization/scaling used to get scaled
 #'     initial values for \code{scaleType}, of the form
@@ -1345,7 +1351,7 @@ foceiControl <- function(
   scaleCmax = 1e5, #
   scaleCmin = 1e-5, #
   scaleCband = c(0.1, 10), #
-  scaleLinear = c("inverse", "abs"), #
+  scaleLinear = c("abs", "inverse"), #
   scaleC = NULL, #
   scaleC0 = 1e5, #
   derivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
@@ -1448,6 +1454,7 @@ foceiControl <- function(
   newuoaPolish = FALSE,
   newuoaRhoend = NULL, # NULL -> sqrt(rtol) of the ODE solve
   bobyqaStationary = TRUE,
+  scaleAdapt = NULL,
   ## innerOpt="lbfgsb3c" (lbfgsb3c's thread-safe L-BFGS-B)
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL, # NULL -> 10^(-sigdig-2)/eps
@@ -2042,6 +2049,13 @@ foceiControl <- function(
   checkmate::assertFlag(newuoaPolish)
   bobyqaStationary <- as.logical(bobyqaStationary)
   checkmate::assertFlag(bobyqaStationary)
+  if (is.null(scaleAdapt) || (length(scaleAdapt) == 1L && is.na(scaleAdapt))) {
+    # resolved per model in .foceiOptEnvSetup(): on when a theta is linear
+    scaleAdapt <- NA_integer_
+  } else {
+    checkmate::assertIntegerish(scaleAdapt, lower = 0, len = 1, any.missing = FALSE)
+    scaleAdapt <- as.integer(scaleAdapt)
+  }
   checkmate::assertIntegerish(innerLbfgsLmm, lower = 1L, any.missing = FALSE, len = 1)
   innerLbfgsLmm <- as.integer(innerLbfgsLmm)
   checkmate::assertNumeric(innerLbfgsFactr, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
@@ -2336,6 +2350,7 @@ foceiControl <- function(
     newuoaPolish = newuoaPolish,
     newuoaRhoend = newuoaRhoend,
     bobyqaStationary = bobyqaStationary,
+    scaleAdapt = scaleAdapt,
     innerLbfgsLmm = innerLbfgsLmm,
     innerLbfgsFactr = as.double(innerLbfgsFactr),
     innerLbfgsPgtol = as.double(innerLbfgsPgtol),

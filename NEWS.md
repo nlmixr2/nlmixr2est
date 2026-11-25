@@ -2,6 +2,19 @@
 
 ## Changed defaults
 
+- FOCEi-family fits now scale a linear `theta` by its `|init|`
+  (`foceiControl(scaleLinear = "abs")`, as NONMEM does) instead of
+  `1/|init|` inside `scaleCband`.  When a model has such a `theta`, the
+  `"bobyqa"` outer search also restarts up to 3 times on a curvature-adapted
+  scale (`scaleAdapt = NULL`); models whose thetas are all `exp()`-scaled are
+  unchanged.  On a 36-case simulated PK corpus with linear thetas this
+  ended more than 0.1 below the old default on 87 of 180 fits, more than 0.1
+  above it on 1 (by 0.15), and never above the generating values' objective
+  (the old default did on 2).  A mixture proportion, estimated as a
+  log-odds, is scaled by 1 and does not count as linear.
+  `scaleLinear = "inverse"` and `scaleAdapt = 0` restore the old behavior
+  (#1320).
+
 - `sigdig` now sets the ODE tolerances to `rtol = 10^(-2*sigdig)` and
   `atol = rtol/100` (floored at `rtol = 1e-12`) instead of
   `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`.  At the default
@@ -23,6 +36,10 @@
   transforms silently clamp, e.g. `2 DV <= 0 on lnorm endpoint 'cp'`
   (#1510).
 
+- A combined (`add() + prop()` or `add() + pow()`) error model whose additive
+  SD starts below 1% of that endpoint's own median `|DV|` now warns before
+  estimation and suggests a start of about 10% of it; the initial estimate is
+  not changed (#1383).
 - `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes each
   converged trust ETA solve by re-entering it at the squared
   `trustFterm`/`trustMterm` instead of taking Newton steps.  The objective at
@@ -82,7 +99,8 @@
   fit's objective and its analytic gradient at user-supplied thetas and
   omega without refitting, for custom optimizers and profiling.  The omega
   gradient is either with respect to the variances/covariances or the
-  Cholesky estimation-scale parameters (#1413).
+  Cholesky estimation-scale parameters.  `individual = TRUE` adds each
+  subject's objective and gradient contribution (#1413).
 
 - `saemControl(rmcmc=)` sets the random-walk proposal scale of the SAEM MCMC
   kernels, previously fixed at 0.5; lower it when `$mcmcAccept` is low (#1385).
@@ -92,6 +110,11 @@
   `MCMC acceptance low (rw 0%); try a smaller rmcmc`).
   `saemControl(mcmcAcceptWarn=)` sets the range; `NA` turns the note off
   (#1385).
+
+- A covariance that is rejected as not positive definite now says which
+  parameters make it so: those with no information (a zero diagonal), or the
+  ones the near-singular direction loads on (e.g. `"r,s" is not PD: tva, tvb
+  collinear; none installed`) (#1398).
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
@@ -118,9 +141,13 @@
   and, for the FOCEi family, two classes no subject can tell apart
   (`mixture classes 1 and 2 are indistinguishable at the estimates`) (#1391).
 
-- `foceiControl(scaleLinear = "abs")` scales every linear theta by its
-  `|init|`, as NONMEM does, instead of the default `1/|init|` inside
-  `scaleCband`.  The default `"inverse"` is unchanged (#1320).
+- `foceiControl(scaleLinear = )` chooses between `|init|` (`"abs"`) and the
+  banded `1/|init|` (`"inverse"`) scale for linear thetas (#1320).
+
+- `foceiControl(scaleAdapt = n)` restarts the `"bobyqa"` outer search up to
+  `n` times on a scale adapted to the curvature where it stopped, one unit per
+  marginal standard error.  It recovers fits whose starting scale left bobyqa
+  stopping short of the minimum (#1320).
 
 - A fit whose IWRES sd shrinkage is below -5% now notes it in `$runInfo`
   ("IWRES shrinkage is strongly negative; check the residual model"); the
@@ -241,6 +268,9 @@
 
 ### Estimation
 
+- `est="saem"`: when an endpoint's residual error cannot be matched to
+  `ini()` parameters, the error now names the endpoint and the error
+  argument(s) that are not `ini()` parameters (#1516).
 - `est="agq"` now checks the quadrature grid size (`nAGQ^neta`) before
   building it: it warns above 10,000 nodes and stops above 1,000,000, instead
   of silently exhausting memory with many etas (#1412).
@@ -792,6 +822,27 @@
 - A fixed eta that estimation leaves out, such as `eta.v ~ fix(0)`, no longer
   prints `fix()` in the BSV column of `$parFixed` when the model also has a
   fixed theta; the cell is empty, as it is without one.
+
+### Predictions
+
+- `predict(fit, newdata, level = "individual")` now gives each subject the
+  fit's etas for its own ID.  They went to the subjects by position:
+  - with the subjects of `newdata` in another order, each took another
+    subject's etas (up to 5.4 off on theo_sd);
+  - with only some of them, rxode2 repeated those subjects over the rows of
+    etas, as a simulation: two subjects of a 12-subject fit came back as 6
+    sets, 132 rows;
+  - a subject the fit did not estimate silently took the etas at its
+    position.  It now gets etas of 0, with a warning ("1 subject(s) not in
+    the fit get etas of 0"), also when its observation records have no DV,
+    as a prediction grid's;
+  - a fit with a subject that has no observations stopped with "number of
+    parameters (11) solved by rxode2 for multi-subject data needs to be a
+    multiple of the number of subjects (12)".
+
+  A numeric ID matches the fit's by value (`1e5` matches subject 100000).
+  `newdata` without an ID column, such as an event table of one subject, is
+  still predicted once for each fitted subject.
 
 ### Inter-occasion variability
 

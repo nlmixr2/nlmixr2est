@@ -20,7 +20,7 @@ foceiControl(
   scaleCmax = 1e+05,
   scaleCmin = 1e-05,
   scaleCband = c(0.1, 10),
-  scaleLinear = c("inverse", "abs"),
+  scaleLinear = c("abs", "inverse"),
   scaleC = NULL,
   scaleC0 = 1e+05,
   derivEps = rep(20 * sqrt(.Machine$double.eps), 2),
@@ -102,6 +102,7 @@ foceiControl(
   newuoaPolish = FALSE,
   newuoaRhoend = NULL,
   bobyqaStationary = TRUE,
+  scaleAdapt = NULL,
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL,
   innerLbfgsPgtol = NULL,
@@ -280,10 +281,10 @@ residual-error parameters and those given in `scaleC` are used as
 they are.}
 
 \item{scaleLinear}{How a linear (untransformed) `theta` is scaled under
-`scaleType = "nlmixr2"`.  `"inverse"` (default) uses `1/|init|` when it
-lands inside `scaleCband` and `|init|` otherwise; `"abs"` always uses
-`|init|`, as NONMEM does.  A `theta` starting at 0 keeps its zero-theta
-scale either way.}
+`scaleType = "nlmixr2"`.  `"abs"` (default) uses `|init|`, as NONMEM
+does; `"inverse"` uses `1/|init|` when it lands inside `scaleCband` and
+`|init|` otherwise.  A `theta` starting at 0 keeps its zero-theta scale
+either way; under `"abs"` a mixture proportion (a log-odds) uses 1.}
 
 \item{scaleC}{Scaling constant used with \code{scaleType="nlmixr2"};
 when not specified, chosen by parameter type to keep gradient sizes
@@ -916,6 +917,11 @@ gradient and a downhill probe.  If the probe lowers the objective by
 more than `10^(1-sigdig)`, bobyqa restarts from there (up to 3 times,
 within `maxOuterIterations`).  This catches a search that stops in a
 narrow valley short of the minimum (#1196); `FALSE` skips the check.}
+
+\item{scaleAdapt}{maximum number of times the `"bobyqa"` outer search
+restarts on a scale adapted to the curvature where it stopped, one
+unit per marginal standard error.  It restarts while each restart gains
+more than `10^(1-sigdig)`.  `0` (default) turns this off.}
 
 \item{innerLbfgsLmm}{number of BFGS updates retained by the
 `innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.
