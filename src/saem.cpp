@@ -5957,24 +5957,7 @@ private:
         case 4: {
           // independence proposal N(m_s, L_s L_s'); massQ holds log q(cur) - log q(cand)
           mat noise(mx.nM, mphi.nphi); _saemDrawRows(saemSeed, seedOff, noise, accU);
-          massQ.zeros(mx.nM);
-          massOff.zeros(mx.nM);
-          for (int r = 0; r < mx.nM; ++r) {
-            const int s = r % N;
-            const uvec rr = {(uword)r};
-            bool masked = !massOk(s);
-            for (uword c = 0; c < i.n_elem && !masked; ++c) {
-              masked = current_saem_state->_saemUE(r, i(c)) == 0.0;
-            }
-            if (masked) { massOff(r) = 1; continue; }
-            const vec z = noise.row(r).t();
-            const mat &L = massL.slice(s);
-            const vec m = massM1.row(s).t();
-            phiMc.submat(rr, i) = (m + L * z).t();
-            const vec cur = phiM.submat(rr, i).t();
-            const vec w = solve(trimatl(L), cur - m);
-            massQ(r) = 0.5 * dot(z, z) - 0.5 * dot(w, w);
-          }
+          massPropose(noise, i, phiM, phiMc, massQ, massOff);
           break;
         }
         }
@@ -6115,6 +6098,29 @@ private:
         }
       }
     setRxThreadId(-1);
+  }
+
+  // Mass-matrix candidates for every chain row; a row without a usable factor, or
+  // with a masked phi1 column, is flagged in massOff and left unproposed.
+  void massPropose(const mat &noise, const uvec &i, const mat &phiM, mat &phiMc,
+                   vec &massQ, uvec &massOff) {
+    const int nM = static_cast<int>(noise.n_rows);
+    massQ.zeros(nM);
+    massOff.zeros(nM);
+    for (int r = 0; r < nM; ++r) {
+      const int s = r % N;
+      const uvec rr = {static_cast<uword>(r)};
+      if (!massOk(s) || any(vectorise(current_saem_state->_saemUE.submat(rr, i)) == 0.0)) {
+        massOff(r) = 1;
+        continue;
+      }
+      const vec z = noise.row(r).t();
+      const mat &L = massL.slice(s);
+      const vec m = massM1.row(s).t();
+      phiMc.submat(rr, i) = (m + L * z).t();
+      const vec w = solve(trimatl(L), phiM.submat(rr, i).t() - m);
+      massQ(r) = 0.5 * dot(z, z) - 0.5 * dot(w, w);
+    }
   }
 
   // Fold this iteration's phi1 chains into each subject's running mean and second
