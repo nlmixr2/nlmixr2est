@@ -132,6 +132,9 @@ nmTest({
       saemControl(nBurn = 5, nEm = 5, print = 0, covMethod = "",
                   etaDistParam = "cdf",
                   etaDistMstep = on, etaDistCorMstep = on,
+                  # the centered step replaces the family MLE on the cdf route
+                  # by default; this pins the MLE's own behaviour
+                  etaDistCentered = FALSE,
                   etaDistSdTol = 0)
     }
     .fOn <- suppressWarnings(nlmixr2(.mod, .d, est = "saem", control = .ctl(TRUE)))

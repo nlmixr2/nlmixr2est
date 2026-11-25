@@ -7,7 +7,11 @@ nmTest({
     seed = 42,
     print = 0,
     covMethod = "",
-    calcTables = FALSE
+    calcTables = FALSE,
+    # the non-centered steps move the chains themselves (and re-solve for it);
+    # this file pins the phi0 broadcast alone
+    muNonCentered = FALSE,
+    omegaNonCentered = FALSE
   )
 
   test_that("SAEM refreshes cached predictions when a theta without an eta moves", {
