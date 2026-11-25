@@ -68,12 +68,16 @@ nmTest({
   test_that("saem fits a residual SD assigned to a variable (#1516)", {
     mTrue <- .base("add.sd <- 0.5", "a <- add.sd; cp ~ add(a)")
     .d <- .simModeledResid(mTrue)
-    .f <- .fitBoth(do.call(rxode2::ini, c(list(mTrue), .starts, list(add.sd = 1))), .d)
-    .noTemporaryEta(.f$saem)
-    # the temporary eta's exp() is not the reported back-transform
-    .pf <- .f$saem$parFixedDf
-    expect_equal(unname(.pf["add.sd", "Back-transformed"]), unname(.pf["add.sd", "Estimate"]))
-    expect_equal(unname(fixef(.f$saem)[["add.sd"]]), unname(fixef(.f$focei)[["add.sd"]]), tolerance = 0.15)
+    mFit <- do.call(rxode2::ini, c(list(mTrue), .starts, list(add.sd = 1)))
+    .f <- .nlmixr(mFit, .d, est = "saem", control = saemControl(seed = 42L, print = 0L))
+    .noTemporaryEta(.f)
+    # the temporary eta's exp() is not the reported back-transform or CI
+    .pf <- .f$parFixedDf
+    .x <- unname(unlist(.pf["add.sd", c("Estimate", "SE", "Back-transformed", "CI Lower", "CI Upper")]))
+    expect_true(is.finite(.x[2]))
+    expect_equal(.x[3], .x[1])
+    expect_equal(.x[4:5], .x[1] + c(-1, 1) * stats::qnorm(0.975) * .x[2])
+    expect_equal(unname(fixef(.f)[["add.sd"]]), 0.5, tolerance = 0.15)
   })
 
   test_that("saem recovers a plain + dnorm() residual SD", {
