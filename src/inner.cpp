@@ -805,6 +805,7 @@ struct focei_options {
   std::atomic<int> nTrustRetry{0};   // radius-escalation retries attempted
   std::atomic<int> nTrustWarm{0};    // same-radius re-solves from the point just found
   std::atomic<int> nTrustPolish{0};  // accepted Newton polish steps after a converged solve
+  std::atomic<int> nTrustTight{0};   // accepted tight re-entries after the cascade (#1152)
   std::atomic<int> nTrustNudge{0};   // nudge-cascade attempts
   std::atomic<int> nTrustFail{0};    // inner solves still non-converged after every retry
   // per-fit count of calcEtaHessian() calls that used the hessianMethod=
@@ -942,6 +943,10 @@ struct focei_options {
   // with maxOuterIterations = 0 and takes the gradient this stashes.
   std::vector<double> firstDirectGrad;
   std::vector<double> firstDirectTheta;
+  // the same gradient split by subject (npars x nsub, column-major); empty when the
+  // kernel could not split it.  Population terms (priors) are left out.
+  std::vector<double> firstDirectGradInd;
+  int firstDirectGradIndN = 0;
   int firstDirectGradSet = 0;
   int nFDGradFast = 0;      // # FD fallbacks while fast was requested
   int warnedAnalyticFallback = 0; // one-time FD-fallback warning latch
@@ -1260,6 +1265,13 @@ static inline bool innerPolishOn() {
   case 6: return op_focei.steihaugPolish != 0;
   }
   return false;
+}
+
+// trust and steihaug polish by re-entering at the squared tolerances (#1152); newuoa,
+// which has no such re-entry, keeps the Newton polish.  Not under a quasi-Newton inner
+// Hessian: its log|H| is approximate anyway, and a re-entry would discard its update.
+static inline bool innerTightOn() {
+  return innerPolishOn() && op_focei.innerOpt != 5 && op_focei.hessianMethod == trustHessFd;
 }
 
 // Width of one subject's outer-FD row: the whole full-theta vector, theta block then
@@ -4467,6 +4479,13 @@ static bool innerFillResultAt(int n, const double *x, int id, double value,
   return true;
 }
 
+// Inner-objective stopping tolerance for an OFV tolerance `tol`: tol^2, floored at
+// 1e-10 (below it the stop sits in the ODE solve's noise and the covariance probes,
+// which tighten tol to 1e-9, scatter) unless tol is already smaller.
+static inline double innerTrustObjTol(double tol) {
+  return std::min(tol, std::max(tol * tol, 1e-10));
+}
+
 // One inner solve for the trust-family innerOpt codes
 //
 // Dispatches to RcppTrust's trust, steihaug or newuoa solver and returns a
@@ -4505,7 +4524,8 @@ static void innerTrustFamilySolve(int npar, double *x0, int id,
     so.initial_radius = topts.rinit;
     so.max_radius = topts.rmax;
     so.max_iter = topts.iterlim;
-    so.abs_gradient_tol = topts.mterm;
+    // the gradient is linear in the eta error, so it keeps the unsquared tolerance
+    so.abs_gradient_tol = op_focei.trustMterm;
     so.abs_cost_change_tol = topts.fterm;
     steihaug_result_t sres;
     std::memset(&sres, 0, sizeof(sres));
@@ -4576,7 +4596,7 @@ static inline int innerEval(int id){
   return 1;
 }
 
-// The trust arm's Newton-decrement gate leaves eta up to sqrt(trustFterm) short of the
+// newuoaPolish: a converged solve can leave eta up to sqrt(trustFterm) short of the
 // mode, and the FOCEi log|H| term carries that to the objective to FIRST order, so the
 // outer objective depended on the warm start (#1152).  Finish a converged solve with
 // Newton steps down to trustFterm, each kept only if it does not ascend.  The gradient is
@@ -5393,7 +5413,7 @@ static inline int innerOpt1(int id, int likId) {
               if (conv && pushDist > pushTol) {
                 conv = false;
                 op_focei.nTrustPush.fetch_add(1, std::memory_order_relaxed);
-              } else if (innerPolishOn() && conv && pushDist > 0.0 &&
+              } else if (innerPolishOn() && op_focei.innerOpt == 5 && conv && pushDist > 0.0 &&
                          trustPolishEta(id, fInd, npar, parscale, step, pushDist, f)) {
                 keepBest();
               }
@@ -5494,6 +5514,44 @@ static inline int innerOpt1(int id, int likId) {
     // the count #1044 needed: without it a fit whose trust solves all failed
     // is indistinguishable from one where they all converged.
     if (!converged) op_focei.nTrustFail.fetch_add(1, std::memory_order_relaxed);
+    // trustPolish: re-enter from the accepted eta with the squared tolerances (#1152).
+    // trust stops on the change in the inner objective, quadratic in the eta error, while
+    // log|H| moves the OFV linearly with it.  The cascade above keeps the plain
+    // tolerances: its gate failures send a subject stuck in a spurious basin to the nudges.
+    if (haveBest && innerTightOn()) {
+      restoreBest();
+      std::vector<double> x0(etaBest);
+      topts.fterm = innerTrustObjTol(op_focei.trustFterm);
+      topts.mterm = innerTrustObjTol(op_focei.trustMterm);
+      topts.rmax = curRmax;
+      fInd->badSolve = 0;
+      fInd->etaHasPrevQN = 0;
+      trust_result_t tres = {};
+      TresGuard _tresGuard{&tres};
+      innerTrustFamilySolve(npar, fInd->x, id, parscale, topts, &tres);
+      op_focei.nTrustInner.fetch_add(1, std::memory_order_relaxed);
+      if (tres.error >= 0 && tres.argument != NULL && R_FINITE(tres.value) &&
+          tres.value <= fBest && fInd->badSolve == 0) {
+        std::copy(tres.argument, tres.argument + npar, fInd->x);
+        f = tres.value;
+        if (tres.gradient != NULL) std::copy(tres.gradient, tres.gradient + npar, fInd->g);
+        // the re-entry refines the winning candidate in place, so the marginal
+        // re-rank never weighs it against its own looser copy
+        for (size_t k = candEta.size(); k--;) {
+          if (candEta[k] == x0) {
+            std::copy(fInd->x, fInd->x + npar, candEta[k].begin());
+            candF[k] = f;
+            break;
+          }
+        }
+        fBest = f;
+        std::copy(fInd->x, fInd->x + npar, etaBest.begin());
+        op_focei.nTrustTight.fetch_add(1, std::memory_order_relaxed);
+      } else {
+        fInd->badSolve = 0;
+        restoreBest();
+      }
+    }
     // haveBest is PASS-LOCAL, so "this pass produced nothing" is not "this
     // subject produced nothing": under mceta>=1 an earlier pass may already
     // have a converged candidate, and returning 0 here would throw it away and
@@ -10558,6 +10616,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nTrustRetry.store(0, std::memory_order_relaxed);
   op_focei.nTrustWarm.store(0, std::memory_order_relaxed);
   op_focei.nTrustPolish.store(0, std::memory_order_relaxed);
+  op_focei.nTrustTight.store(0, std::memory_order_relaxed);
   op_focei.nTrustNudge.store(0, std::memory_order_relaxed);
   op_focei.nTrustRestart.store(0, std::memory_order_relaxed);
   op_focei.nTrustFail.store(0, std::memory_order_relaxed);
@@ -11639,6 +11698,8 @@ Environment foceiOuter(Environment e){
   op_focei.nFdChartrand=0;
   op_focei.firstDirectGrad.clear();
   op_focei.firstDirectTheta.clear();
+  op_focei.firstDirectGradInd.clear();
+  op_focei.firstDirectGradIndN=0;
   op_focei.firstDirectGradSet=0;
   op_focei.nFDGradFast=0;
   op_focei.warnedAnalyticFallback=0;
@@ -14501,6 +14562,14 @@ void foceiFinalizeTables(Environment e){
                                                 op_focei.firstDirectGrad.end());
           e[".gradDirectFirstTheta"] = NumericVector(op_focei.firstDirectTheta.begin(),
                                                      op_focei.firstDirectTheta.end());
+          const int _nInd = op_focei.firstDirectGradIndN;
+          if (_nInd > 0 && op_focei.firstDirectGradInd.size() ==
+              (size_t)_nInd * op_focei.firstDirectGrad.size()) {
+            NumericMatrix _gi((int)op_focei.firstDirectGrad.size(), _nInd);
+            std::copy(op_focei.firstDirectGradInd.begin(), op_focei.firstDirectGradInd.end(),
+                      _gi.begin());
+            e[".gradDirectFirstInd"] = _gi;
+          }
         }
         e["nFDGradFast"] = IntegerVector::create(op_focei.nFDGradFast);
         if (op_focei.nAnalyticGrad > 0 && op_focei.nFDGradFast == 0) {
@@ -14553,6 +14622,8 @@ void foceiFinalizeTables(Environment e){
           _["warmRetry"] = op_focei.nTrustWarm.load(std::memory_order_relaxed),
           // Accepted Newton polish steps after a converged solve (#1152).
           _["polish"] = op_focei.nTrustPolish.load(std::memory_order_relaxed),
+          // Accepted re-entries at the squared tolerances after the cascade (#1152).
+          _["tight"] = op_focei.nTrustTight.load(std::memory_order_relaxed),
           _["radiusRetry"] = op_focei.nTrustRetry.load(std::memory_order_relaxed),
           _["nudge"] = op_focei.nTrustNudge.load(std::memory_order_relaxed),
           // Omega-draw restarts taken after the fixed nudges were spent.
@@ -19226,6 +19297,10 @@ static bool llHblockFill(bool useHess2, const FoceiGradPooledSetup &G,
 //
 // `etaPOut` is left EMPTY on purpose: ll() has no Eq-48 warm start, and the caller reads
 // an empty cube as "no etaP" (etaPValid = 0), matching the R route's etaP = NULL.
+// Per-subject kernel-space columns (nKer x nsub) of the last pooled gradient, DV-transform
+// Jacobian included; read by analyticOuterGradDirect for the per-subject split.
+static arma::mat _gradIndKer;
+
 static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
                              const std::vector<double> &thVals, const arma::mat &ebes,
                              const arma::mat &Oi, const arma::cube &dOiEst,
@@ -19249,6 +19324,7 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
   // the log-density augmented model does not carry.  Mirror the R gate.
   if (hasRxCens(rx) || hasRxLimit(rx)) return false;
   const double hFD = 1e-4;
+  _gradIndKer.reset();
 
   // Prefer the eta-only 2nd-order model for the 2*(nth+nom) perturbation solves; fall
   // back to the full augmented model when it is unavailable or cannot pool.
@@ -19260,6 +19336,8 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
   std::vector<arma::mat> Hi((size_t)nsub);
   arma::vec dl((unsigned int)nth, arma::fill::zeros);
   arma::vec dq((unsigned int)(nom > 0 ? nom : 1), arma::fill::zeros);
+  // the same terms per subject, for the per-subject split
+  arma::mat gInd((unsigned int)(nth + nom), (unsigned int)nsub, arma::fill::zeros);
   // Perturbation eta matrices, in the same (+,-) pair order the assembly reads them back.
   std::vector<arma::mat> ebP((size_t)(nth + nom)), ebM((size_t)(nth + nom));
   {
@@ -19287,7 +19365,9 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
       double dlp = 0.0;
       for (int i = 0; i < nsub; ++i) {
         const VaeOuterE &E = Es[(size_t)i];
-        dlp += arma::accu(E.a.col(s));
+        const double dli = arma::accu(E.a.col(s));
+        dlp += dli;
+        gInd(p, i) = -2.0 * dli;
         arma::vec d2((unsigned int)neta);
         for (int l = 0; l < neta; ++l) d2[l] = arma::accu(E.A.slice(s).col(l));
         arma::vec sh = Hi[(size_t)i] * d2;
@@ -19305,7 +19385,9 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
     double dqk = 0.0;
     for (int i = 0; i < nsub; ++i) {
       arma::vec eta = ebes.row(i).t();
-      dqk += arma::as_scalar(eta.t() * dOi * eta);
+      const double dqi = arma::as_scalar(eta.t() * dOi * eta);
+      dqk += dqi;
+      gInd(nth + k, i) = dqi - 2.0 * tr28[k];
       arma::vec etaP = Hi[(size_t)i] * (-(dOi * eta));
       ep.row(i) = ebes.row(i) + hFD * etaP.t();
       em.row(i) = ebes.row(i) - hFD * etaP.t();
@@ -19343,14 +19425,18 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
         arma::mat dH = (Hp[(size_t)i] - Hm[(size_t)i]) / (2.0 * hFD);
         if (p >= nth) dH += dOiEst.slice(p - nth);
         if (!dH.is_finite()) return false;
-        tr += arma::accu(Hi[(size_t)i] % dH);
+        const double tri = arma::accu(Hi[(size_t)i] % dH);
+        tr += tri;
+        gInd(p, i) += tri;
       }
       if (p < nth) gOut[p] = -2.0 * dl[p] + tr;
       else gOut[p] = dq[p - nth] - 2.0 * (double)nsub * tr28[p - nth] + tr;
     }
   }
   etaPOut.reset();                              // ll(): no etaP -> no Eq-48 warm start
-  return gOut.is_finite();
+  if (!gOut.is_finite()) return false;
+  _gradIndKer = gInd;
+  return true;
 }
 
 // The FOCEI (f,R) analytic outer gradient, start to finish, in C++.
@@ -19391,6 +19477,7 @@ struct GradPooledBlocks {
   arma::ivec cens;               // empty unless hasCens
   arma::vec lim;
   arma::mat aRe, aRc, R0sig;     // FOCE only
+  arma::vec jacInd;              // per-subject share of jacSum
   bool hasLam = false, hasCens = false;
   int fp = 1;                    // 1 = foce+/live R, 0 = the nonmem a0-chain
 };
@@ -19516,10 +19603,12 @@ static bool gradPooledStack(const FoceiGradPooledSetup &G,
                             GradPooledBlocks &B, double &jacSum) {
   if (!gradPooledBlocksSize(G, Es, needE0, isFoce, nsub, nd, nsg, B)) return false;
   jacSum = 0.0;
+  B.jacInd.zeros((unsigned int)nsub);
   for (int i = 0; i < nsub; ++i) {
     const VaeOuterE& E = Es[(size_t)i];
     int o0 = B.off[i], n = B.nobs[(size_t)i];
     if (!E.ok) continue;                     // finite-differenced; rows stay zero
+    const double jac0 = jacSum;
     B.a.rows(o0, o0 + n - 1) = E.a;
     B.aR.rows(o0, o0 + n - 1) = E.aR;
     B.A.rows(o0, o0 + n - 1) = E.A;
@@ -19532,6 +19621,7 @@ static bool gradPooledStack(const FoceiGradPooledSetup &G,
     }
     if (isFoce && !gradPooledStackFoce(B, E, E0s, i, o0, n, nsg)) return false;
     if (!gradPooledStackDv(G, B, E, i, o0, n, jacSum)) return false;
+    B.jacInd[i] = jacSum - jac0;
   }
   return true;
 }
@@ -19807,6 +19897,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
                            const arma::mat &Oi, const arma::cube &dOiEst,
                            const arma::vec &tr28, int cores,
                            arma::vec &gOut, arma::cube &etaPOut, double &jacSum) {
+  _gradIndKer.reset();
   if (!G.ok) return declineHere(1);
   // Shape gate.  .foceiGradPooledSetup reports interaction = 0 for an ll() fit as well as
   // for FOCE, so isLL is tested FIRST -- an ll() endpoint has no variance model and its
@@ -20033,6 +20124,13 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     }
   }
   gOut = arma::sum(gmat, 1);
+  _gradIndKer = gmat;
+  if (G.nLam > 0) {                       // per-subject share of the caller's jacSum term
+    for (size_t q = 0; q < G.lamDir.size(); ++q) {
+      int d = G.lamDir[q] - 1;
+      if (d >= 0 && d < (int)gmat.n_rows) _gradIndKer.row(d) -= 2.0 * B.jacInd.t();
+    }
+  }
   // The one `false` here that never named a site.  A subject that failed without being
   // flagged (rxode2 leaves NaN/Inf rather than R's NA) used to land exactly here, so the
   // decline diagnostics showed the CALLER's site with nothing before it and the cause
@@ -20235,7 +20333,7 @@ static NumericMatrix gradDirectFdRef(int npAll) {
 // the scaled gradient the optimizer sees is formed from gp by the caller.  fixedTrans maps
 // an optimizer parameter to its full-theta slot.
 static bool gradDirectFdAdd(NumericMatrix fdg, int nFd, int npAll, int npars,
-                            arma::vec &gp) {
+                            arma::vec &gp, arma::mat &gInd) {
   for (int i = 0; i < npars; ++i) {
     int jf = op_focei.fixedTrans[i];
     if (jf < 0 || jf >= npAll) return declineHere(117);
@@ -20244,6 +20342,8 @@ static bool gradDirectFdAdd(NumericMatrix fdg, int nFd, int npAll, int npars,
       double v = fdg(k, jf);
       if (!R_finite(v)) return declineHere(114);
       acc += v;
+      const int id = op_focei.outerFdIds[(size_t)k];
+      if (!gInd.is_empty() && id >= 0 && id < (int)gInd.n_cols) gInd(i, id) += v;
     }
     gp[i] += acc;
     if (!R_finite(gp[i])) return declineHere(116);
@@ -20251,7 +20351,7 @@ static bool gradDirectFdAdd(NumericMatrix fdg, int nFd, int npAll, int npars,
   return true;
 }
 
-static bool gradDirectFoldFd(int npars, arma::vec &gp) {
+static bool gradDirectFoldFd(int npars, arma::vec &gp, arma::mat &gInd) {
   if (op_focei.outerFdIds.empty()) return true;
   // TEST HOOK (removable): flag the subjects but do NOT add their finite difference, leaving
   // the analytic sum over the REMAINING subjects.  With g_skip in hand and a failure
@@ -20271,7 +20371,7 @@ static bool gradDirectFoldFd(int npars, arma::vec &gp) {
   for (int k = 0; k < nFd; ++k) fids[(R_xlen_t)k] = op_focei.outerFdIds[(size_t)k];
   NumericMatrix fdg = foceiOuterFdInd_(fids, gradDirectFdRef(npAll));
   if (fdg.nrow() != nFd || fdg.ncol() != npAll) return declineHere(115);
-  if (!gradDirectFdAdd(fdg, nFd, npAll, npars, gp)) return false;
+  if (!gradDirectFdAdd(fdg, nFd, npAll, npars, gp, gInd)) return false;
   op_focei.curAnalyticFd = 1;
   op_focei.nOuterFdInd += nFd;
   return true;
@@ -20314,8 +20414,8 @@ static void gradDirectStoreEtaP(const FoceiGradPooledSetup &G, const arma::cube 
 // own step (a pure refactor, CodeFactor complexity) since it is one cohesive
 // "finish assembling gp" phase, run in this fixed order every time.
 static bool gradDirectFinalize(int npars, arma::vec &gp, const arma::mat &Oi,
-                               const arma::cube &dOiEst) {
-  if (!gradDirectFoldFd(npars, gp)) return false;
+                               const arma::cube &dOiEst, arma::mat &gInd) {
+  if (!gradDirectFoldFd(npars, gp, gInd)) return false;
   // ini({}) prior (#929/#931): -2*d(log p(theta))/dtheta[j], folded in before
   // firstDirectGrad is recorded and before the rescale, same as the FD-fold
   // above -- 0.0 when the model has no prior.
@@ -20329,9 +20429,27 @@ static bool gradDirectFinalize(int npars, arma::vec &gp, const arma::mat &Oi,
     op_focei.firstDirectGrad.assign(gp.begin(), gp.end());
     op_focei.firstDirectTheta.assign(&op_focei.fullTheta[0],
                                      &op_focei.fullTheta[0] + op_focei.ntheta);
+    op_focei.firstDirectGradInd.assign(gInd.begin(), gInd.end());
+    op_focei.firstDirectGradIndN = gInd.is_empty() ? 0 : (int)gInd.n_cols;
     op_focei.firstDirectGradSet = 1;
   }
   return true;
+}
+
+// The kernel's per-subject columns gathered into the optimizer's order (npars x nsub), for
+// the first direct gradient only; empty when the kernel did not leave a usable split.
+static arma::mat gradDirectGatherInd(const FoceiGradPooledSetup &G, int nKer, int npars,
+                                     int nsub) {
+  arma::mat gInd;
+  if (op_focei.firstDirectGradSet || (int)_gradIndKer.n_rows != nKer ||
+      (int)_gradIndKer.n_cols != nsub) return gInd;
+  gInd.zeros((unsigned int)npars, (unsigned int)nsub);
+  for (int i = 0; i < npars; ++i) {
+    int k = G.gMap[(size_t)i];
+    if (k < 0 || k >= nKer) return arma::mat();
+    gInd.row(i) = _gradIndKer.row(k);
+  }
+  return gInd;
 }
 
 static bool analyticOuterGradDirect(double *theta, double *g) {
@@ -20366,7 +20484,8 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   if (!gradDirectKernel(G, thv, ebes, Oi, dOiEst, tr28, cores, nKer, gv, etaP)) return false;
   arma::vec gp;
   if (!gradDirectGather(G, gv, nKer, npars, gp)) return false;
-  if (!gradDirectFinalize(npars, gp, Oi, dOiEst)) return false;
+  arma::mat gInd = gradDirectGatherInd(G, nKer, npars, nsub);
+  if (!gradDirectFinalize(npars, gp, Oi, dOiEst, gInd)) return false;
   for (int i = 0; i < npars; ++i) g[i] = gp[i] * scaleAdjustGradScale(&op_focei, 1.0, i);
   gradDirectStoreEtaP(G, etaP, ebes, theta, nsub, neta, npars, nKer);
   return true;

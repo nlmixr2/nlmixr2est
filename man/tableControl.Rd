@@ -20,7 +20,8 @@ tableControl(
   subsetNonmem = TRUE,
   cores = NULL,
   keep = NULL,
-  drop = NULL
+  drop = NULL,
+  iwresAutocor = TRUE
 )
 }
 \arguments{
@@ -115,6 +116,10 @@ is equivalent to calling \code{\link[rxode2:setRxThreads]{setRxThreads()}}}
 \item{keep}{is the keep sent to the table}
 
 \item{drop}{is the dropped variables sent to the table}
+
+\item{iwresAutocor}{When `TRUE` (default), add a run note when the
+within-subject Durbin-Watson statistic of IWRES (`fit$iwresAutocor`) is
+below 1.5 (positive autocorrelation) or above 2.5 (negative).}
 }
 \value{
 A list of table options for nlmixr2
