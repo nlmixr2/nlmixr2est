@@ -236,6 +236,9 @@
 
 ### Estimation
 
+- `est="saem"`: when an endpoint's residual error cannot be matched to
+  `ini()` parameters, the error now names the endpoint and the error
+  argument(s) that are not `ini()` parameters (#1516).
 - `est="agq"` now checks the quadrature grid size (`nAGQ^neta`) before
   building it: it warns above 10,000 nodes and stops above 1,000,000, instead
   of silently exhausting memory with many etas (#1412).
