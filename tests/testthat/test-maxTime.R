@@ -63,6 +63,23 @@ test_that("a stop file after a time-out is reported as a user request", {
   expect_setequal(.w, c("stopped at the time limit", "stopped early by user request"))
 })
 
+test_that("a stop-file request disarms the time limit", {
+  .sf <- tempfile("stop")
+  on.exit({
+    .nmStopFileSet("")
+    .nmStopTimeSet(NA_real_)
+    unlink(.sf)
+  })
+  expect_true(.nmStopFileStart(list(stopFile = .sf, maxTime = 0.5)))
+  file.create(.sf)
+  expect_true(.nmStopFilePoll())
+  expect_false(.nmStopTimedOut())
+  .nmStopFileConsume()
+  Sys.sleep(0.6)
+  expect_false(.nmStopFilePoll())
+  expect_warning(expect_true(.nmStopFileEnd()), "stopped early by user request")
+})
+
 test_that("a nested estimation keeps the outer time limit", {
   on.exit({
     .nmStopFileSet("")
