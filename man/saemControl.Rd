@@ -16,10 +16,17 @@ saemControl(
   iacceptPerId = TRUE,
   rwOmega = FALSE,
   nonMuThetaBhhh = FALSE,
-  nu1B = 0L,
+  muNonCentered = TRUE,
+  omegaNonCentered = TRUE,
+  nonCenteredPhase = c("all", "burnin"),
+  nonCenteredShrink = 0,
+  kappa1B = 1,
+  etaDistCentered = TRUE,
+  nu1B = NULL,
   nb1B = 10L,
   etaDistWarmStart = TRUE,
-  etaDistMstep = TRUE,
+  etaDistMstep = FALSE,
+  etaDistParam = c("auto", "cdf", "direct"),
   etaDistStart = NULL,
   etaDistEvery = 20L,
   etaDistCor = c("observed", "analytic", "optimize", "posterior"),
@@ -262,9 +269,47 @@ see `iaccept`.}
   not stress a diagonal proposal.  A model that does would be worth trying
   it on.}
 
+\item{muNonCentered}{Boolean (default `TRUE`); after the M-step, shift each
+free intercept-only mu-referenced mean with every subject's eta held fixed,
+scored on the data likelihood by one BHHH step (an interweaved,
+non-centered update; Yu and Meng 2011).  The ordinary SAEM mean update
+barely moves a mean whose random effect is small relative to the data's
+information about it; this step does.  Non-mixture fits only.}
+
+\item{omegaNonCentered}{Boolean (default `TRUE`); after the M-step, rescale
+each estimated mu-referenced random effect with every subject's
+standardized deviation held fixed, scored on the data likelihood by one
+BHHH step (the scale counterpart of `muNonCentered`).  The sampled-moment
+variance update shrinks a random effect the individual data say little
+about; in this parameterization the variance enters only the data term.
+Non-mixture fits only.}
+
+\item{nonCenteredPhase}{When the non-centered mean and scale steps
+(`muNonCentered`, `omegaNonCentered`) run: `"all"` (every iteration) or
+`"burnin"` (only while the stochastic-approximation gain is 1, so the
+estimation phase is plain SAEM).}
+
+\item{nonCenteredShrink}{Apply the non-centered steps only to random
+effects whose ETA shrinkage (`1 - var(E[eta | y]) / omega`, from SAEM's own
+running statistics) is at least this.  The default `0` applies them to
+every eligible random effect; on Bauer's gamma data a positive threshold
+switched them off too early and cost accuracy.}
+
+\item{kappa1B}{Gain exponent of mode 1B's per-subject proposal moments
+(default `1`): iteration `n` folds its samples in with weight `n^-kappa1B`,
+so `1` is a plain running mean over the whole run (NONMEM's `IKAPPA`) and
+`0` keeps only the current iteration.}
+
+\item{etaDistCentered}{Boolean (default `TRUE`).  On the `"cdf"` route
+(`etaDistParam`), after the M-step refit each declared family and its
+Gaussian copula to the decoded etas and re-encode the latent normals so
+every decoded eta is unchanged (an interweaved, centered update; Yu and
+Meng 2011).  It replaces `etaDistMstep` and `etaDistCorMstep` there.  No
+effect on the `"direct"` route, whose prior step already does this.}
+
 \item{nu1B}{Number of sweeps of NONMEM's proposal kernel **mode 1B** per
-  iteration.  `0` (the default) disables it, which is the historical
-  behaviour.
+  iteration.  `NULL` (the default) uses `2` when a random effect has a
+  `dist()` declaration and `0` (off, the historical behaviour) otherwise.
 
   saem's three existing kernels propose either from the population prior
   (kernel 1) or by a random walk around the current point (kernels 2 and 3).
@@ -313,9 +358,33 @@ which is the default here.  Ignored when `nu1B = 0`.}
   declared family than the model's own starting values, so a bad surrogate
   leaves the fit where it was rather than moving it somewhere worse.}
 
-\item{etaDistMstep}{Opt-in.  Estimate a `dist()`-declared random effect's
-  distribution parameters by a fit to the sampled etas, rather than through
-  the data likelihood.
+\item{etaDistMstep}{Opt-in, and `FALSE` by default.  Estimate a
+  `dist()`-declared random effect's distribution parameters by a fit to the
+  sampled etas, rather than through the data likelihood.
+
+  It defaulted to `TRUE` while this paragraph already called it opt-in, and
+  the measurement agrees with the paragraph.  On a single declared gamma at
+  relative variance 2 (shape 0.5), 300 subjects, data simulated from the
+  fitted model, the only difference being this argument:
+
+  |             | CL (truth 5.104) | rv (truth 2.0) | V (truth 4.711) |
+  |-------------|------------------|----------------|-----------------|
+  | `TRUE`      | 149.881          | 7.42           | **18370**       |
+  | `FALSE`     | 0.791            | 0.196          | 5.538           |
+
+  `V` is an ordinary theta with no declaration and no eta, so a fit that
+  sends it to 18370 has not merely mis-estimated the declaration -- the
+  M-step destabilizes the whole problem.  The mechanism is visible in the
+  `[fam]` trace: the latent is standard normal BY CONSTRUCTION, it sits at
+  `sd = 2.18`, the spread guard's cap of `[0.20, 5.00]` is far too loose to
+  catch that, and the M-step then fits the family to etas decoded from a
+  latent twice as dispersed as it can legitimately be.
+
+  Neither setting recovers this arm, so `FALSE` is the less wrong default
+  rather than a fix.  It is also what the comparable implementations do:
+  NoLimits.jl has no separate family M-step at all -- the random-effect
+  distribution's parameters are ordinary parameters of the joint
+  optimization.
 
   In the `(y, eta)` augmentation the complete-data likelihood factors as
   `log p(y | eta) + log p(eta | theta)`, and the distribution parameters
@@ -354,6 +423,25 @@ which is the default here.  Ignored when `nu1B = 0`.}
   those diverged just as surely, only slower.  It reaches 1.04 at 30 and
   settles near 0.85, where the step recovers a mean of 4.8 against a
   simulation truth of 5.03 -- the ordinary route lands at 6.4 to 7.5.}
+
+\item{etaDistParam}{How a `dist()`-declared random effect is represented
+  for estimation.
+
+  `"cdf"` (default) is Bauer's construction: a standard normal latent,
+  `phiU()`, the family's inverse CDF, and a Gaussian copula.  The estimator
+  then sees an ordinary model with a fixed identity omega and the
+  non-normality lives in a decoder line.
+
+  `"direct"` leaves the declared random effect alone -- no latent, no
+  decoder -- and carries the declared family as its prior.  A correlated
+  PAIR is carried through the copula density on the eta scale; a block of
+  three or more is refused.
+
+  The two are provided so they can be COMPARED on the same model rather than
+  one being chosen by argument.  They differ in where the inverse CDF runs:
+  `"cdf"` decodes once per OBSERVATION inside the solve, `"direct"` evaluates
+  a CDF once per eta per SUBJECT, which is far fewer calls -- so the routes
+  are expected to differ in speed as well as in what they estimate.}
 
 \item{etaDistEvery}{Run the declared-distribution M-step every `etaDistEvery`
   OUTER objective evaluations, and at most once per evaluation.  The knob
@@ -431,7 +519,13 @@ which is the default here.  Ignored when `nu1B = 0`.}
     better, and on Bauer's `g1` the search walks to the clamp one trust radius
     at a time and sits at 0.995.  On a richer model (four declared etas, two
     correlated pairs) it stays interior and lands near truth.  The trust
-    region bounds the step, not the objective.}
+    region bounds the step, not the objective.
+
+  * `"posterior"`: the normalized sufficient statistic of the latent pair,
+    `rho = (l21 + l22*rz)/sqrt(1 + 2*l21*l22*rz)`, applied every iteration on
+    the same stochastic-approximation series everything else uses.  It cannot
+    be driven by the diagonal the way `"observed"` can, and it is exempt from
+    the spread guard for that reason.}
 
 \item{etaDistSpreadGuard}{Apply the spread guard at all.  `FALSE` skips
   both the settling test (`etaDistSdTol`) and the divergence cap
@@ -766,19 +860,42 @@ exploration of the likelihood surface.}
 
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 
-\item{sigdig}{Optimization significant digits.  One value drives, with a single
-consistent formula, the inner/outer optimizer convergence tolerance
-(\code{10^-sigdig}), the boundary check tolerance (\code{5*10^(-sigdig+1)}),
-and the ODE solver tolerances: the \code{rtol} exponent IS \code{sigdig} and
-\code{atol} sits three orders below, so \code{rtol = 10^-sigdig},
-\code{atol = 10^(-sigdig-3)} for every solver (stiff, non-stiff or
-auto-switching).  The sensitivity (\code{atolSens}/\code{rtolSens})
-tolerances match the main solve (the outer gradient and covariance are built
-from them); the steady-state (\code{ssAtol}/\code{ssRtol}) tolerances run one
-order looser.
-Keying the optimizer to the same \code{10^-sigdig} means it converges to
-exactly the precision the solve supports.  At the default \code{sigdig = 3}
-this is \code{atol = 1e-6}, \code{rtol = 1e-3}.}
+\item{sigdig}{Specifies the "significant digits" that the ODE
+solving requests.  This is \code{NULL} by default, and while it is
+\code{NULL} it has no effect at all: \code{rxSolve()} uses the standard
+\code{atol}/\code{rtol} (and the standard sensitivity and steady-state
+tolerances).  \code{sigdig} only changes a tolerance when you ask for
+it explicitly.
+
+When it is supplied, the tolerances are derived with one
+solver-independent formula -- the same for stiff, non-stiff and
+auto-switching solvers.  The \code{rtol} exponent IS \code{sigdig} and
+\code{atol} sits three orders below it:
+\itemize{
+\item \code{rtol = 10^(-sigdig)}, \code{atol = 10^(-sigdig-3)}
+\item the sensitivity tolerances match the main solve, so
+\code{rtolSens = rtol} and \code{atolSens = atol} (gradients and
+covariances are built from them)
+\item the steady-state tolerances run one order looser than the
+corresponding main tolerance, so \code{ssRtol = ssRtolSens = 10*rtol}
+and \code{ssAtol = ssAtolSens = 10*atol}
+}
+
+Each of these is set only when you did not pass that tolerance
+yourself; a tolerance you supply always wins.  Because they are
+resolved independently, an explicit \code{atol}/\code{rtol} overrides the
+main solve but does \emph{not} propagate to the sensitivity or
+steady-state tolerances -- set those directly if you need them
+changed too.
+
+This mapping matches how \code{nlmixr2est} derives solver tolerances
+from its optimization \code{sigdig}, so a \code{sigdig} used for estimation
+and the same \code{sigdig} used for a plain \code{rxSolve()} mean the same
+thing.  Note it is keyed to \code{sigdig} as a request for that many
+significant digits, and is looser than the \code{atol}/\code{rtol} defaults
+for small \code{sigdig} -- at \code{sigdig = 4} it gives \code{rtol = 1e-4}
+against a default \code{rtol = 1e-6}.  Raise \code{sigdig}, or set
+\code{atol}/\code{rtol} directly, when you want a tighter solve.}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified (`NULL`), it defaults to `sigdig`.}

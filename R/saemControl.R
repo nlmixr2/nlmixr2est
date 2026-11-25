@@ -458,12 +458,11 @@
 #'   `"burnin"` (only while the stochastic-approximation gain is 1, so the
 #'   estimation phase is plain SAEM).
 #'
-#' @param nonCenteredShrink The non-centered steps act only on random effects
-#'   whose ETA shrinkage (`1 - var(E[eta | y]) / omega`, from SAEM's own running
-#'   statistics) is at least this (default `0`: every eligible random effect).  There the data say little
-#'   about each subject and the ordinary update crawls; on a well-informed
-#'   random effect the steps cost model solves and change nothing.  `0` applies
-#'   them to every eligible random effect.
+#' @param nonCenteredShrink Apply the non-centered steps only to random
+#'   effects whose ETA shrinkage (`1 - var(E[eta | y]) / omega`, from SAEM's own
+#'   running statistics) is at least this.  The default `0` applies them to
+#'   every eligible random effect; on Bauer's gamma data a positive threshold
+#'   switched them off too early and cost accuracy.
 #'
 #' @param kappa1B Gain exponent of mode 1B's per-subject proposal moments
 #'   (default `1`): iteration `n` folds its samples in with weight `n^-kappa1B`,
