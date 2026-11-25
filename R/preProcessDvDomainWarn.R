@@ -13,17 +13,21 @@
   }
 }
 
-#' Observation records, as etTrans() reads them: EVID, else MDV, else AMT
+#' Observation records, as etTrans() reads them: EVID (less MDV == 1), else
+#' MDV, else AMT
 #'
 #' @param data data frame
 #' @return logical vector, one per row
 #' @noRd
 .nlmixrDataObsRows <- function(data) {
   .evid <- .nlmixrDataCol(data, "evid")
-  if (!is.null(.evid)) {
-    return(.evid %in% 0)
-  }
   .mdv <- .nlmixrDataCol(data, "mdv")
+  if (!is.null(.evid)) {
+    if (is.null(.mdv)) {
+      return(.evid %in% 0)
+    }
+    return(.evid %in% 0 & !(.mdv %in% 1))
+  }
   if (!is.null(.mdv)) {
     return(.mdv %in% 0)
   }
@@ -84,6 +88,10 @@
     return(TRUE)
   }
   if (!identical(.tr, "boxCox")) {
+    return(FALSE)
+  }
+  .lam <- suppressWarnings(as.numeric(as.character(pred1$lambda)))
+  if (isTRUE(.lam == 1)) {
     return(FALSE)
   }
   .iniDf <- ui$iniDf

@@ -40,13 +40,17 @@ nmTest({
     expect_no_warning(.run(.boxCox1, .dat0))
   })
 
-  test_that("censored rows and dose rows are not counted", {
+  test_that("censored, MDV = 1 and dose rows are not counted", {
     .d <- .dat0
     .d$CENS <- 0L
     .d$CENS[.obs[2:3]] <- 1L
     expect_no_warning(.run(.lnorm, .d))
     .d <- .dat
     .d$DV[.d$EVID != 0] <- 0
+    expect_no_warning(.run(.lnorm, .d))
+    .d <- .dat0
+    .d$MDV <- 0L
+    .d$MDV[.obs[2:3]] <- 1L
     expect_no_warning(.run(.lnorm, .d))
   })
 
