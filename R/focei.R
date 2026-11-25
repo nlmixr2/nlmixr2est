@@ -3265,10 +3265,14 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # SEPARATE rxFromSE() call after the loop (once its rxFromSE() calls have
   # already run) errors on the poisoned env with "user function '[[' requires
   # 0 arguments" when rendering the cached extra terms.
+  # Chained through the linCmt() call itself (which rx_r_ embeds), not
+  # through rx_pred_: for an ll()/generalized endpoint rx_pred_ is a
+  # log-density around that call, which rx_r_ does not contain.
+  .linCmtExtraPredR <- .s$..linCmtExtraPred
   .linCmtExtraR <- .rxFoceiLinCmtEventChain(
     get("rx_r_", envir = .s),
-    get("rx_pred_", envir = .s),
-    .s$..linCmtExtraPred
+    if (is.null(attr(.linCmtExtraPredR, "call"))) get("rx_pred_", envir = .s) else attr(.linCmtExtraPredR, "call"),
+    if (is.null(attr(.linCmtExtraPredR, "callExtra"))) .linCmtExtraPredR else attr(.linCmtExtraPredR, "callExtra")
   )
   # linCmt() sensitivity carry (3b.3): rx_r_ embeds rx_pred_'s linCmtB()
   # call by value, so its naive d(rx_r_)/d(eta) rows inherit the same

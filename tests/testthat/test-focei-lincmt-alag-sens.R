@@ -465,4 +465,111 @@ nmTest({
     )
     expect_true(is.finite(fit$objDf$OBJF))
   })
+
+  test_that("an ll() endpoint gets the alag()/f() correction through its log-density", {
+    # rx_pred_ of an ll() endpoint is a log-density around the linCmt() call,
+    # not the call itself; the correction used to be skipped there, so the
+    # eta driving f() or alag() had a zero inner gradient
+    one.cmt.ll <- function() {
+      ini({
+        tka <- log(1.2)
+        tcl <- log(2)
+        tv <- log(20)
+        eta.cl ~ 0.09
+        eta.v ~ 0.04
+        eta.f ~ 0.05
+        eta.lag ~ 0.1
+        lsd <- log(0.15)
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        sd <- exp(lsd)
+        f(depot) <- 0.8 * exp(eta.f)
+        alag(depot) <- 0.25 * exp(eta.lag)
+        cp <- linCmt()
+        ll(err) ~ -0.5 * log(2 * pi) - log(sd * cp) - 0.5 * ((DV - cp) / (sd * cp))^2
+      })
+    }
+    s <- rxUiGet.foceiEnv(list(one.cmt.ll()))
+    .fLine <- s$..HdEta[grepl("BY_ETA_3___", s$..HdEta, fixed = TRUE)]
+    .lagLine <- s$..HdEta[grepl("BY_ETA_4___", s$..HdEta, fixed = TRUE)]
+    expect_false(any(grepl("^rx__sens_rx_pred__BY_ETA_3___=0$", .fLine)))
+    expect_false(any(grepl("^rx__sens_rx_pred__BY_ETA_4___=0$", .lagLine)))
+    expect_true(any(grepl("-10", .fLine, fixed = TRUE)))
+    expect_true(any(grepl("-9", .lagLine, fixed = TRUE)))
+  })
+
+  test_that("an ll() endpoint with an eta on f() matches its ODE twin", {
+    .lin <- function() {
+      ini({
+        tka <- log(1.2)
+        tcl <- log(2)
+        tv <- log(20)
+        eta.cl ~ 0.09
+        eta.v ~ 0.04
+        eta.f ~ 0.05
+        lsd <- log(0.15)
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        sd <- exp(lsd)
+        f(depot) <- 0.8 * exp(eta.f)
+        cp <- linCmt()
+        ll(err) ~ -0.5 * log(2 * pi) - log(sd * cp) - 0.5 * ((DV - cp) / (sd * cp))^2
+      })
+    }
+    .ode <- function() {
+      ini({
+        tka <- log(1.2)
+        tcl <- log(2)
+        tv <- log(20)
+        eta.cl ~ 0.09
+        eta.v ~ 0.04
+        eta.f ~ 0.05
+        lsd <- log(0.15)
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        sd <- exp(lsd)
+        f(depot) <- 0.8 * exp(eta.f)
+        d / dt(depot) <- -ka * depot
+        d / dt(central) <- ka * depot - cl / v * central
+        cp <- central / v
+        ll(err) ~ -0.5 * log(2 * pi) - log(sd * cp) - 0.5 * ((DV - cp) / (sd * cp))^2
+      })
+    }
+    set.seed(7)
+    d <- do.call(
+      rbind,
+      lapply(1:6, function(i) {
+        tt <- c(0, 0.5, 1, 2, 4, 6, 8, 11.5, 12, 14, 16, 20, 24, 36)
+        ev <- c(1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0)
+        data.frame(
+          ID = i,
+          TIME = tt,
+          EVID = ev,
+          AMT = ifelse(ev == 1, 100, 0),
+          CMT = ifelse(ev == 1, 1, 2),
+          DV = ifelse(ev == 0, 3 * exp(-0.1 * tt) * exp(rnorm(length(tt), 0, 0.2)), 0)
+        )
+      })
+    )
+    .ctl <- foceiControl(
+      print = 0L,
+      covMethod = "",
+      maxOuterIterations = 0L,
+      calcTables = FALSE,
+      rxControl = rxode2::rxControl(cores = 1L)
+    )
+    fL <- suppressMessages(suppressWarnings(.nlmixr(.lin, d, est = "focei", control = .ctl)))
+    fO <- suppressMessages(suppressWarnings(.nlmixr(.ode, d, est = "focei", control = .ctl)))
+    expect_equal(fL$objf, fO$objf, tolerance = 1e-5)
+    expect_equal(as.matrix(fL$eta[, -1]), as.matrix(fO$eta[, -1]), tolerance = 1e-4)
+  })
 })

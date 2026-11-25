@@ -187,6 +187,13 @@
 
 ## Bug fixes
 
+- A `linCmt()` model with an `ll()` (or other generalized) endpoint and an
+  eta on `f()` or `alag()` now gets that eta's inner gradient.  The
+  correction that adds it (#920) only ran when the prediction was the
+  `linCmt()` call itself; inside a log-density it was skipped and the
+  gradient was 0, so the EBEs and the objective were wrong (an ODE twin of
+  the same model fit correctly).  It is now chained through the log-density.
+
 ### Covariance
 
 - The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a
