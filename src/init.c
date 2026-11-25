@@ -105,6 +105,10 @@ SEXP _nlmixr2est_nmStopFileGet_(void);
 SEXP _nlmixr2est_nmStopFilePoll_(void);
 SEXP _nlmixr2est_nmStopFileRequested_(void);
 SEXP _nlmixr2est_nmStopFileStopped_(void);
+SEXP _nlmixr2est_nmStopTimeSet_(SEXP);
+SEXP _nlmixr2est_nmStopActive_(void);
+SEXP _nlmixr2est_nmStopTimedOut_(void);
+SEXP _nlmixr2est_nmStopMessage_(void);
 SEXP _nlmixr2est_nmStopFileConsume_(void);
 SEXP _nlmixr2est_nlmStopOn_(SEXP);
 SEXP _nlmixr2est_nlmStopBest_(void);
@@ -385,6 +389,10 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_nmStopFilePoll_", (DL_FUNC) &_nlmixr2est_nmStopFilePoll_, 0},
   {"_nlmixr2est_nmStopFileRequested_", (DL_FUNC) &_nlmixr2est_nmStopFileRequested_, 0},
   {"_nlmixr2est_nmStopFileStopped_", (DL_FUNC) &_nlmixr2est_nmStopFileStopped_, 0},
+  {"_nlmixr2est_nmStopTimeSet_", (DL_FUNC) &_nlmixr2est_nmStopTimeSet_, 1},
+  {"_nlmixr2est_nmStopActive_", (DL_FUNC) &_nlmixr2est_nmStopActive_, 0},
+  {"_nlmixr2est_nmStopTimedOut_", (DL_FUNC) &_nlmixr2est_nmStopTimedOut_, 0},
+  {"_nlmixr2est_nmStopMessage_", (DL_FUNC) &_nlmixr2est_nmStopMessage_, 0},
   {"_nlmixr2est_nmStopFileConsume_", (DL_FUNC) &_nlmixr2est_nmStopFileConsume_, 0},
   {"_nlmixr2est_nlmStopOn_", (DL_FUNC) &_nlmixr2est_nlmStopOn_, 1},
   {"_nlmixr2est_nlmStopBest_", (DL_FUNC) &_nlmixr2est_nlmStopBest_, 0},

@@ -1761,6 +1761,46 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nmStopTimeSet_
+void nmStopTimeSet_(double maxTime);
+RcppExport SEXP _nlmixr2est_nmStopTimeSet_(SEXP maxTimeSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< double >::type maxTime(maxTimeSEXP);
+    nmStopTimeSet_(maxTime);
+    return R_NilValue;
+END_RCPP
+}
+// nmStopActive_
+bool nmStopActive_();
+RcppExport SEXP _nlmixr2est_nmStopActive_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nmStopActive_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// nmStopTimedOut_
+bool nmStopTimedOut_();
+RcppExport SEXP _nlmixr2est_nmStopTimedOut_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nmStopTimedOut_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// nmStopMessage_
+std::string nmStopMessage_();
+RcppExport SEXP _nlmixr2est_nmStopMessage_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nmStopMessage_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // nmStopFileGet_
 std::string nmStopFileGet_();
 RcppExport SEXP _nlmixr2est_nmStopFileGet_() {

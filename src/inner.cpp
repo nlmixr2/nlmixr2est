@@ -12012,7 +12012,7 @@ static inline void foceiStopMessage(Environment e) {
   if (!nmStopFileRequested()) return;
   nmStopFileConsume();
   e["convergence"] = 1;
-  e["message"] = "stopped early by user request";
+  e["message"] = nmStopMessage();
 }
 
 void foceiLbfgsb3(Environment e){

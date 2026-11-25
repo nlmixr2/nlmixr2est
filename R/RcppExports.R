@@ -767,6 +767,22 @@ iwresAutocor_ <- function(iwres, id, grp) {
     .Call(`_nlmixr2est_nmStopFileSet_`, file)
 }
 
+.nmStopTimeSet <- function(maxTime) {
+    invisible(.Call(`_nlmixr2est_nmStopTimeSet_`, maxTime))
+}
+
+.nmStopActive <- function() {
+    .Call(`_nlmixr2est_nmStopActive_`)
+}
+
+.nmStopTimedOut <- function() {
+    .Call(`_nlmixr2est_nmStopTimedOut_`)
+}
+
+.nmStopMessage <- function() {
+    .Call(`_nlmixr2est_nmStopMessage_`)
+}
+
 .nmStopFileGet <- function() {
     .Call(`_nlmixr2est_nmStopFileGet_`)
 }

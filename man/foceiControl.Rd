@@ -167,6 +167,7 @@ foceiControl(
   finalEtaTol = 1,
   aboveStartTol = 0.01,
   stopFile = NULL,
+  maxTime = NULL,
   shrinkEtaWarn = 30,
   odeSettleCheck = FALSE,
   odeSettleTol = 0.1,
@@ -1219,6 +1220,11 @@ disable.}
 gracefully: the run ends at its current state (for FOCEi, the lowest
 objective evaluated so far), removes the file, notes the stop in
 `$runInfo` and returns the fit.  `NULL` (default) does not poll.}
+
+\item{maxTime}{Wall-clock limit in seconds, counted from the start of the
+estimation.  Once it is reached the optimization ends as for `stopFile`
+and the fit is finalized from its current state; the covariance step and
+tables are not limited.  `NULL` (default) sets no limit.}
 
 \item{shrinkEtaWarn}{Warn (in `$runInfo`) when an eta's SD shrinkage is
 at or above this percentage.  Use `NA` or `Inf` to disable.}
