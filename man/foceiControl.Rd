@@ -198,7 +198,8 @@ foceiControl(
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
   zeroThetaStep = 100,
-  boundedTransform = TRUE
+  boundedTransform = TRUE,
+  omegaCollapseWarn = 0.001
 )
 }
 \arguments{
@@ -1376,6 +1377,10 @@ transformed for unbounded optimization methods and back-transformed
 for final estimates. `FALSE` optimizes on the original scale with
 bounds passed to the optimizer. `NA` transforms for optimization but
 skips the final back-transform.}
+
+\item{omegaCollapseWarn}{Warn (in `$runInfo`) when a free diagonal omega
+ends below this fraction of its initial estimate, or at its
+`diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.}
 }
 \value{
 The control object that changes the options for the FOCEi

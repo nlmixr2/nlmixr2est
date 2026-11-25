@@ -88,6 +88,14 @@
   `saemControl()`, `nlmeControl()`, `vaeControl()` and `emviControl()` sets
   the threshold; `NA` or `Inf` turns the note off (#1379).
 
+- A fit now notes in `$runInfo` a free diagonal omega that ended below 1/1000
+  of its initial estimate (`omega collapsed (<0.001 x initial): eta.sl`) or,
+  for the FOCEi family, at its `diagOmegaBoundLower` bound (`omega at lower
+  bound (initial/100): eta.sl`).  The outer optimizer can stall where the
+  objective is flat in a vanishing variance while a larger omega fits better.
+  `foceiControl(omegaCollapseWarn=)` sets the fraction; `NA` turns it off
+  (#1394).
+
 - After the covariance step, a fit warns (in `$runInfo`) about pairs of
   estimates correlated at `|r| >= 0.95`, e.g. `highly correlated estimates:
   tcl/tv (0.98)`.  `corWarn=` in every method's control (e.g.
