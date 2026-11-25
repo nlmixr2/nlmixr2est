@@ -31,6 +31,11 @@
 
 ## New features
 
+- Estimation now warns before fitting when an `lnorm()` or `boxCox()`
+  endpoint has uncensored observations with `DV <= 0`, which these
+  transforms silently clamp, e.g. `2 DV <= 0 on lnorm endpoint 'cp'`
+  (#1510).
+
 - A combined (`add() + prop()` or `add() + pow()`) error model whose additive
   SD starts below 1% of that endpoint's own median `|DV|` now warns before
   estimation and suggests a start of about 10% of it; the initial estimate is
