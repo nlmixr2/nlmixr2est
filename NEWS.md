@@ -171,8 +171,8 @@
   at a finite `lower`/`upper` bound (`estimate at its bound: "tka"`), with or
   without a covariance step.  `thetaBoundWarn=` in `foceiControl()`,
   `saemControl()`, `nlmeControl()`, `vaeControl()`, `emviControl()` and the
-  nlm-family controls sets the relative tolerance (default `1e-4`); `NA`
-  turns it off (#1505).
+  nlm-family controls (`nlminbControl()`, `lbfgsb3cControl()`, ...) sets
+  the relative tolerance (default `1e-4`); `NA` turns it off (#1505).
 
 - After the covariance step, a fit warns (in `$runInfo`) about pairs of
   estimates correlated at `|r| >= 0.95`, e.g. `highly correlated estimates:

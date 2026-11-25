@@ -111,8 +111,10 @@ lbfgsb3cControl <- function(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
+  thetaBoundWarn = 1e-4,
   ...
 ) {
+  .thetaBoundWarnCheck(thetaBoundWarn)
   checkmate::assertIntegerish(trace, len = 1, any.missing = FALSE, lower = 0)
   # L-BFGS-B factr from sigdig, two orders tighter like foceiControl(lbfgsFactr=):
   # factr tests one step's objective reduction, so 10^-sigdig stopped early
@@ -209,6 +211,7 @@ lbfgsb3cControl <- function(
     sumProd = sumProd,
     rxControl = rxControl,
     returnLbfgsb3c = returnLbfgsb3c,
+    thetaBoundWarn = as.double(thetaBoundWarn),
     gradTo = gradTo,
 
     stickyRecalcN = as.integer(stickyRecalcN),
