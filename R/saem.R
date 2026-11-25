@@ -476,7 +476,8 @@
 #'
 #' `.configsaem()` only sets placeholders (`ares = 10`, `bres = 1`), zeroed where
 #' the error model lacks the component; those zeros and general-likelihood
-#' endpoints are left alone.
+#' endpoints are left alone.  The kernel's residual warm-start clamps to [0.2x, 5x]
+#' of these values.
 #' @param cfg `.configsaem()` configuration
 #' @param ui rxode2 ui
 #' @return `cfg`

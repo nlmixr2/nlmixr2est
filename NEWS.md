@@ -217,9 +217,11 @@
 ### Estimation
 
 - `est="saem"` now starts additive and proportional residual errors at their
-  `ini()` values instead of fixed placeholders (`10` and `1`), so the first
-  E-step samples under the specified residual error, as the power and lambda
-  parameters already did.
+  `ini()` values instead of fixed placeholders (`10` and `1`), as the power and
+  lambda parameters already did.  The residual warm-start
+  (`saemControl(residWarmStart=TRUE)`) is now clamped around the `ini()` values,
+  and with `residWarmStart=FALSE` (or a mixture model) the first E-step samples
+  under the `ini()` residual error.
 - `est="agq"` now checks the quadrature grid size (`nAGQ^neta`) before
   building it: it warns above 10,000 nodes and stops above 1,000,000, instead
   of silently exhausting memory with many etas (#1412).
