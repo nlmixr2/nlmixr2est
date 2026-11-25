@@ -684,6 +684,18 @@ fbviControl()
 #> $addlCovAtTime
 #> [1] TRUE
 #> 
+#> $gpuBackend
+#> [1] "auto"
+#> 
+#> $gpuDevice
+#> NULL
+#> 
+#> $gpuPrecision
+#> [1] "double"
+#> 
+#> $gpuBatch
+#> [1] 16384
+#> 
 #> attr(,"class")
 #> [1] "rxControl"
 #> 

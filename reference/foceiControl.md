@@ -21,7 +21,7 @@ foceiControl(
   scaleCmax = 1e+05,
   scaleCmin = 1e-05,
   scaleCband = c(0.1, 10),
-  scaleLinear = c("inverse", "abs"),
+  scaleLinear = c("abs", "inverse"),
   scaleC = NULL,
   scaleC0 = 1e+05,
   derivEps = rep(20 * sqrt(.Machine$double.eps), 2),
@@ -103,7 +103,7 @@ foceiControl(
   newuoaPolish = FALSE,
   newuoaRhoend = NULL,
   bobyqaStationary = TRUE,
-  scaleAdapt = 0L,
+  scaleAdapt = NULL,
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL,
   innerLbfgsPgtol = NULL,
@@ -310,10 +310,11 @@ foceiControl(
 - scaleLinear:
 
   How a linear (untransformed) \`theta\` is scaled under \`scaleType =
-  "nlmixr2"\`. \`"inverse"\` (default) uses \`1/\|init\|\` when it lands
-  inside \`scaleCband\` and \`\|init\|\` otherwise; \`"abs"\` always
-  uses \`\|init\|\`, as NONMEM does. A \`theta\` starting at 0 keeps its
-  zero-theta scale either way.
+  "nlmixr2"\`. \`"abs"\` (default) uses \`\|init\|\`, as NONMEM does;
+  \`"inverse"\` uses \`1/\|init\|\` when it lands inside \`scaleCband\`
+  and \`\|init\|\` otherwise. A \`theta\` starting at 0 keeps its
+  zero-theta scale either way; under \`"abs"\` a mixture proportion (a
+  log-odds) uses 1.
 
 - scaleC:
 

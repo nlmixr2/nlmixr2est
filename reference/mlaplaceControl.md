@@ -333,7 +333,7 @@ mlaplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5e62b003dca0>
+#> <bytecode: 0x617b7f8f75f0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -400,7 +400,7 @@ mlaplaceControl()
 #> [1] TRUE
 #> 
 #> $scaleAdapt
-#> [1] 0
+#> [1] NA
 #> 
 #> $innerLbfgsLmm
 #> [1] 5
@@ -505,7 +505,7 @@ mlaplaceControl()
 #> [1]  0.1 10.0
 #> 
 #> $scaleLinear
-#> [1] "inverse"
+#> [1] "abs"
 #> 
 #> $scaleCmax
 #> [1] 1e+05
@@ -1107,6 +1107,18 @@ mlaplaceControl()
 #> 
 #> $addlCovAtTime
 #> [1] TRUE
+#> 
+#> $gpuBackend
+#> [1] "auto"
+#> 
+#> $gpuDevice
+#> NULL
+#> 
+#> $gpuPrecision
+#> [1] "double"
+#> 
+#> $gpuBatch
+#> [1] 16384
 #> 
 #> attr(,"class")
 #> [1] "rxControl"

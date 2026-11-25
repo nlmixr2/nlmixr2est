@@ -4,6 +4,21 @@
 
 ### Changed defaults
 
+- FOCEi-family fits now scale a linear `theta` by its `|init|`
+  (`foceiControl(scaleLinear = "abs")`, as NONMEM does) instead of
+  `1/|init|` inside `scaleCband`. When a model has such a `theta`, the
+  `"bobyqa"` outer search also restarts up to 3 times on a
+  curvature-adapted scale (`scaleAdapt = NULL`); models whose thetas are
+  all [`exp()`](https://rdrr.io/r/base/Log.html)-scaled are unchanged.
+  On a 36-case simulated PK corpus with linear thetas this ended more
+  than 0.1 below the old default on 87 of 180 fits, more than 0.1 above
+  it on 1 (by 0.15), and never above the generating values’ objective
+  (the old default did on 2). A mixture proportion, estimated as a
+  log-odds, is scaled by 1 and does not count as linear.
+  `scaleLinear = "inverse"` and `scaleAdapt = 0` restore the old
+  behavior
+  ([\#1320](https://github.com/nlmixr2/nlmixr2est/issues/1320)).
+
 - `sigdig` now sets the ODE tolerances to `rtol = 10^(-2*sigdig)` and
   `atol = rtol/100` (floored at `rtol = 1e-12`) instead of
   `rtol = 10^-sigdig`, `atol = 10^(-sigdig-3)`. At the default
@@ -149,15 +164,14 @@
   (`mixture classes 1 and 2 are indistinguishable at the estimates`)
   ([\#1391](https://github.com/nlmixr2/nlmixr2est/issues/1391)).
 
-- `foceiControl(scaleLinear = "abs")` scales every linear theta by its
-  `|init|`, as NONMEM does, instead of the default `1/|init|` inside
-  `scaleCband`. The default `"inverse"` is unchanged
+- `foceiControl(scaleLinear = )` chooses between `|init|` (`"abs"`) and
+  the banded `1/|init|` (`"inverse"`) scale for linear thetas
   ([\#1320](https://github.com/nlmixr2/nlmixr2est/issues/1320)).
 
 - `foceiControl(scaleAdapt = n)` restarts the `"bobyqa"` outer search up
   to `n` times on a scale adapted to the curvature where it stopped, one
   unit per marginal standard error. It recovers fits whose starting
-  scale left bobyqa stopping short of the minimum. Off by default
+  scale left bobyqa stopping short of the minimum
   ([\#1320](https://github.com/nlmixr2/nlmixr2est/issues/1320)).
 
 - A fit whose IWRES sd shrinkage is below -5% now notes it in `$runInfo`
