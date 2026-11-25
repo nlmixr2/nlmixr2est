@@ -352,6 +352,9 @@
       .cfg$nonMuThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaMaxEval", 25L))
       .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol", .Machine$double.eps^0.25))
       .cfg$nonMuThetaEvery <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaEvery", 1L))
+      .cfg$muNonCentered <- as.integer(isTRUE(rxode2::rxGetControl(ui, "muNonCentered", FALSE)))
+      .cfg$omegaNonCentered <- as.integer(isTRUE(rxode2::rxGetControl(ui, "omegaNonCentered", FALSE)))
+      .cfg$nonCenteredPhase <- as.integer(identical(rxode2::rxGetControl(ui, "nonCenteredPhase", "all"), "burnin"))
       # conditional-mode EBEs, computed in C++ after the last SAEM iteration
       .cfg$ebeMode <- as.integer(identical(rxode2::rxGetControl(ui, "ebe", "mode"), "mode"))
       .cfg$ebeMaxEval <- as.integer(rxode2::rxGetControl(ui, "ebeMaxEval", 200L))

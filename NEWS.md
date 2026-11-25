@@ -47,6 +47,19 @@
 
 ## New features
 
+- `saemControl(muNonCentered = TRUE, omegaNonCentered = TRUE)` interweave
+  non-centered updates of the mu-referenced random effects into SAEM (Yu and
+  Meng 2011): after the M-step each free intercept-only mean is shifted, and
+  each estimated variance rescaled, with every subject's (standardized)
+  deviation held fixed, scored on the data likelihood by one BHHH step with
+  NONMEM's step-halving rule.  The ordinary update barely moves the mean or
+  variance of a random effect the individual data say little about; on
+  Bauer's gamma-distributed CL/V1 benchmark the steps took the
+  intercompartmental clearance from 0.85-0.88 to 0.74 (truth 0.74) and its
+  variance to within 10% of the truth.  Off by default: on well-informed models
+  they change nothing and cost model solves.  `nonCenteredPhase = "burnin"`
+  restricts them to burn-in.
+
 - A `saem` fit with a theta that is not updated in closed form now notes which
   thetas the M-step updates in closed form, numerically (`nonMuTheta =
   "regress"`) or stochastically (`nonMuTheta = "eta"`); the note is kept in
