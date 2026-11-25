@@ -1185,8 +1185,8 @@ public:
       const int c = gPhi0FreeIx[j];
       const double h = std::cbrt(std::numeric_limits<double>::epsilon()) *
         std::max(1.0, std::fabs(start(c)));
-      const double plus = std::min(start(c) + h, (double)upper[c]);
-      const double minus = std::max(start(c) - h, (double)lower[c]);
+      const double plus = std::min(start(c) + h, static_cast<double>(upper[c]));
+      const double minus = std::max(start(c) - h, static_cast<double>(lower[c]));
       if (!(plus > minus)) return;
       vec up, down;
       candidate(c) = plus;
@@ -1211,8 +1211,8 @@ public:
     for (int attempt = 0; attempt < 8; ++attempt, gain /= std::sqrt(2.0)) {
       for (size_t j = 0; j < nFree; ++j) {
         const int c = gPhi0FreeIx[j];
-        candidate(c) = std::max((double)lower[c],
-          std::min((double)upper[c], start(c) + gain * step(j)));
+        candidate(c) = std::max(static_cast<double>(lower[c]),
+          std::min(static_cast<double>(upper[c]), start(c) + gain * step(j)));
       }
       if (phi0Objective(candidate.memptr(), &subject) < initial) {
         for (int c : gPhi0FreeIx) mprior_phi0.col(c).fill(candidate(c));
