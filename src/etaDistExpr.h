@@ -43,11 +43,16 @@ struct etaDistLex {
   char peek() { ws(); return i < s.size() ? s[i] : '\0'; }
 };
 
+// Unary minus ('n') binds tighter than + - * / and looser than ^, as in R
+// (-2^2 is -4).  With it at 0 a following binary operator never popped it, so
+// `-a - b` was read as -(a - b) -- which turned dgamma(rate = exp(-lclrv - lclm))
+// into a gamma with mean exp(-lclm) and sent lclm to minus its value.
 static inline int etaDistPrec(char c) {
   switch (c) {
   case '+': case '-': return 1;
   case '*': case '/': return 2;
-  case '^': return 3;
+  case 'n': return 3;
+  case '^': return 4;
   default: return 0;
   }
 }

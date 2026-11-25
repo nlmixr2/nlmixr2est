@@ -4273,6 +4273,34 @@ public:
     phiM = as<mat>(x["phiM"]);
     indio = as<uvec>(x["indio"]);
     nM = N*nmc;
+    // Direct route: start each declared eta as a draw from its declared prior
+    // at the ini() arguments -- the quantile of the N(0, 1) value R placed in
+    // its column, through the copula for a correlated pair -- rather than at
+    // that normal value itself.  A positive family (gamma, lognormal, ...)
+    // otherwise starts about half its chains at an invalid eta, every one of
+    // those solves fails, and the first M-steps fit the prior to that.
+    if (etaDistDirectOn()) {
+      const mat z0 = phiM;
+      const int na = (int)etaDistArgs.n_cols;
+      std::vector<double> a((size_t)(na > 0 ? na : 1));
+      for (int k = 0; k < etaDistNdist; ++k) {
+        const int ck = etaDistLatent(k);
+        if (ck < 0 || ck >= (int)phiM.n_cols) continue;
+        for (int t = 0; t < na; ++t) a[(size_t)t] = etaDistArgs(k, t);
+        double rho = 0.0;
+        const int j = etaDistPartnerOf(k, &rho);
+        const int cj = (j >= 0 && j < k) ? etaDistLatent(j) : -1;
+        if (!std::isfinite(rho) || std::fabs(rho) >= 1.0) rho = 0.0;
+        for (unsigned int r = 0; r < phiM.n_rows; ++r) {
+          double z = z0(r, (unsigned int)ck);
+          if (cj >= 0 && cj < (int)phiM.n_cols && rho != 0.0) {
+            z = rho * z0(r, (unsigned int)cj) + std::sqrt(1.0 - rho * rho) * z;
+          }
+          const double e = rxEtaDistQ(etaDistFam(k), etaDistNormCdf(z), &a[0]);
+          if (std::isfinite(e)) phiM(r, (unsigned int)ck) = e;
+        }
+      }
+    }
 
     nMix = x.containsElementNamed("nMix") ? as<int>(x["nMix"]) : 1;
     // A MIXTURE plus the direct parameterization is refused rather than run.
