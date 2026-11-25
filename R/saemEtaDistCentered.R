@@ -34,8 +34,10 @@
   # an ordinary eta correlated with a declared one: rxode2 decodes it as
   # `<eta> <- exp(rxLsd.<eta>) * rxN.<eta>`, so it joins the copula as a normal
   # marginal with that scale, refit and re-encoded with the declared members
-  .ini0 <- ui$iniDf
-  .lsd <- grep("^rxLsd[.]", .ini0$name[!is.na(.ini0$ntheta)], value = TRUE)
+  # read from the model text, not the theta names: rxLsd.* is bounded, so a
+  # fit's bounded-parameter transform renames the theta and keeps rxLsd.* as a
+  # back-mapped variable
+  .lsd <- unique(grep("^rxLsd[.]", unlist(lapply(.asg, function(x) all.vars(x))), value = TRUE))
   for (.l in .lsd) {
     .e <- sub("^rxLsd[.]", "", .l)
     if (.e %in% names(families)) next

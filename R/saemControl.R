@@ -460,7 +460,7 @@
 #'
 #' @param nonCenteredShrink The non-centered steps act only on random effects
 #'   whose ETA shrinkage (`1 - var(E[eta | y]) / omega`, from SAEM's own running
-#'   statistics) is at least this (default `0.3`).  There the data say little
+#'   statistics) is at least this (default `0`: every eligible random effect).  There the data say little
 #'   about each subject and the ordinary update crawls; on a well-informed
 #'   random effect the steps cost model solves and change nothing.  `0` applies
 #'   them to every eligible random effect.
@@ -1025,7 +1025,7 @@ saemControl <- function(seed = 99,
                         muNonCentered = TRUE,
                         omegaNonCentered = TRUE,
                         nonCenteredPhase = c("all", "burnin"),
-                        nonCenteredShrink = 0.3,
+                        nonCenteredShrink = 0,
                         kappa1B = 1,
                         etaDistCentered = TRUE,
                         nu1B = NULL,

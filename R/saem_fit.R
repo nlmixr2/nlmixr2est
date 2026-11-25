@@ -186,7 +186,7 @@
                        muNonCentered = TRUE,
                        omegaNonCentered = TRUE,
                        nonCenteredPhase = "all",
-                       nonCenteredShrink = 0.3,
+                       nonCenteredShrink = 0,
                        kappa1B = 1,
                        nu1B = 0L,
                        nb1B = 10L,

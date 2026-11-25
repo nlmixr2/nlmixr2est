@@ -7188,7 +7188,7 @@ private:
   int muNonCentered = 0;
   int omegaNonCentered = 0;
   int nonCenteredPhase = 0;
-  double nonCenteredShrink = 0.3;
+  double nonCenteredShrink = 0.0;
   // saemControl(etaDistLoglik=): use the general log-likelihood objective for
   // the declared-distribution M-step instead of fitting native parameters and
   // inverting them.  Opt-in while it is measured against the inversion.
