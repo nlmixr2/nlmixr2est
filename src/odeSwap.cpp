@@ -7,6 +7,7 @@
 #include "odeSwap.h"
 #include <algorithm>
 #include <atomic>
+#include <memory>
 #include <mutex>
 
 #define _(String) (String)
@@ -841,13 +842,22 @@ bool odeSwapWantsScratch(int slot, rx_solving_options *op) {
 
 static std::mutex _nmTlsMu;
 static std::vector<std::vector<double> *> _nmTlsAll;
+// Bumped by nmTlsFreeAll() so a thread's pointer from before a free (a DLL that
+// stayed mapped across unload/reload) is treated as unset, not dereferenced.
+static std::atomic<unsigned> _nmTlsGen{1};
 
 std::vector<double> &nmTlsVec(int slot) {
   static thread_local std::vector<double> *mine[2] = {NULL, NULL};
-  if (mine[slot] == NULL) {
-    mine[slot] = new std::vector<double>();
-    std::lock_guard<std::mutex> lk(_nmTlsMu);
-    _nmTlsAll.push_back(mine[slot]);
+  static thread_local unsigned mineGen[2] = {0, 0};
+  const unsigned gen = _nmTlsGen.load(std::memory_order_acquire);
+  if (mine[slot] == NULL || mineGen[slot] != gen) {
+    std::unique_ptr<std::vector<double> > v(new std::vector<double>());
+    {
+      std::lock_guard<std::mutex> lk(_nmTlsMu);
+      _nmTlsAll.push_back(v.get());
+    }
+    mine[slot] = v.release();
+    mineGen[slot] = gen;
   }
   return *mine[slot];
 }
@@ -856,6 +866,7 @@ extern "C" void nmTlsFreeAllC(void) { nmTlsFreeAll(); }
 
 void nmTlsFreeAll() {
   std::lock_guard<std::mutex> lk(_nmTlsMu);
+  _nmTlsGen.fetch_add(1, std::memory_order_acq_rel);
   for (size_t i = 0; i < _nmTlsAll.size(); ++i) delete _nmTlsAll[i];
   _nmTlsAll.clear();
 }
