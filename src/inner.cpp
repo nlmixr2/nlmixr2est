@@ -11537,7 +11537,8 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
   // intdy window-misses) accumulated since the last flush; without this a
   // difficult model floods the console with identical lines each iteration.
   nmFlushRxSolveWarn(5);
-  if (foceiOuterActive && nmStopFilePoll()) throw nmStopRequest();
+  // only once there is a finite evaluation to continue from
+  if (foceiOuterActive && !_stopBestX.empty() && nmStopFilePoll()) throw nmStopRequest();
   return ret;
 }
 
@@ -11592,6 +11593,7 @@ double foceiOuterF(NumericVector &theta){
 }
 
 extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
+  if (foceiOuterActive && nmStopFileRequested()) throw nmStopRequest();
   // A gradient before any objective: evaluate it first, so the step search
   // differences about it and the initial-gradient checks apply.
   if (op_focei.nF + op_focei.nF2 == 0) foceiOfvOptim(n, par, ex);
