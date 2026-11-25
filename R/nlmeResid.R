@@ -136,6 +136,8 @@
     }
     .struct <- c(.struct, all.vars(.e))
   }
+  # the endpoint's prediction and pow() exponent belong to the model too
+  .struct <- c(.struct, as.character(.predDf$var), .iniDf$name[which(.iniDf$err == "pow2")])
   for (.v in intersect(.struct, .chain)) {
     if (any(all.vars(.resolve(.defs[[.v]])$expr) %in% c(.thetaDf$name, .etas))) {
       .nlmeResidStop("a residual error that depends on the model-calculated '", .v, "'")

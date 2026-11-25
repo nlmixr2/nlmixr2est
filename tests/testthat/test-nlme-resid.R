@@ -127,6 +127,8 @@ nmTest({
     }
     .refuse(quote(ipre ~ add(add.sd * exp(eta.sd))), "eta on the residual error \\('eta.sd'\\)")
     .refuse(quote(ipre ~ add(add.sd * ke)), "model-calculated 'ke'")
+    .refuse(quote(ipre ~ add(add.sd * ipre)), "model-calculated 'ipre'")
+    .refuse(quote(ipre ~ pow(prop.sd * (WT / 70)^pw, pw)), "sharing 'pw' with the structural model")
     .refuse(quote(ipre ~ add(add.sd * WT / 70) + prop(prop.sd)), "combined residual error")
     .refuse(quote(ipre ~ add(add.sd * exp(k * time))), "more than one estimated parameter")
     .refuse(quote(ipre ~ add(add.sd * exp(tke))), "sharing 'tke' with the structural model")
