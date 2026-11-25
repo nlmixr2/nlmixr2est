@@ -346,10 +346,15 @@ nlmeControl <- nlmixr2NlmeControl
   } else {
     rxode2::rxAssignControlValue(ui, "returnNlme", TRUE)
   }
+  .obs <- dataSav[dataSav$EVID == 0, ]
+  .info <- .nlmeResidInfo(ui)
+  if (!is.null(.info)) {
+    .obs$rxNlmeResidV <- .nlmeResidVarCov(.info, .obs)
+  }
   ret <-
     eval(bquote(nlme::nlme(
       model = .(ui$nlmeModel),
-      data = nlme::groupedData(DV ~ TIME | ID, dataSav[dataSav$EVID == 0, ]),
+      data = nlme::groupedData(DV ~ TIME | ID, .obs),
       method = .(.method),
       fixed = .(.fixed),
       random = .(.random),
@@ -376,6 +381,16 @@ nlmeControl <- nlmixr2NlmeControl
   .predDf <- ui$predDf
   .iniDf <- ui$iniDf
   .errType <- .predDf$errType
+  .info <- .nlmeResidInfo(ui)
+  if (!is.null(.info)) {
+    .ret <- c(.f, setNames(nlme$sigma, .info$theta), .info$fixed)
+    if (.errType == "pow") {
+      .nlmePars <- coef(nlme$modelStruct$varStruct, unconstrained = FALSE)
+      .w <- which(ui$iniDf$err == "pow2")
+      .ret <- c(.ret, setNames(.nlmePars[[length(.nlmePars)]], ui$iniDf$name[.w]))
+    }
+    return(.ret)
+  }
   if (.errType == "prop") {
     .w <- which(ui$iniDf$err == "prop")
     .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
@@ -621,7 +636,7 @@ nlmixr2Est.nlme <- function(env, ...) {
   rxode2::assertRxUiNormal(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
   rxode2::assertRxUiSingleEndpoint(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
-  rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
+  .nlmeResidInfo(.ui)
   .fixOme <- .ui$iniDf$name[!is.na(.ui$iniDf$neta1) & .ui$iniDf$fix]
   if (length(.fixOme) > 0L) {
     # nlme's pdMat classes have no way to hold one element at its value

@@ -339,6 +339,13 @@
   still moves with estimated variances.  Occasion-level correlations are not
   listed, and `tidy()`/`confint()` leave the rows out.
 
+- `est = "nlme"` now fits an `add()`, `prop()` or `pow()` residual SD that is
+  an estimated parameter times a function of time and covariates, such as
+  `add(add.sd * exp(-time / 8))` or `add(add.sd * WT / 70)`, through
+  `nlme::varFixed()`.  Residual errors nlme cannot fit (an eta, a
+  model-calculated variable, a combined error) are refused with a message
+  saying what is unsupported, instead of the old misleading one (#1464).
+
 ## Bug fixes
 
 - A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
