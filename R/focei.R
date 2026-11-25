@@ -4074,6 +4074,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
     if (.conditional) "conditionalInner1",
+    .ui$predDfFocei$distribution,
     all(is.na(.iniDf$neta1)),
     .combSens,
     .linCmtCarry,
@@ -5793,6 +5794,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   if (exists("est", envir = env)) {
     .control$est <- env$est
+  }
+  # est="laplace": evaluate Gaussian endpoints by their log-density (as
+  # `+ dnorm()` does) for the exact Laplace Hessian, like rxUiGet.nlmModel0
+  if (
+    type %in%
+      c("laplaceControl", "mlaplaceControl", "ilaplaceControl") &&
+      .control$innerHessian != "conditional" &&
+      .control$detHessian != "conditional"
+  ) {
+    .predDf <- .ui$predDf
+    .predDf$distribution[.predDf$distribution == "norm"] <- "dnorm"
+    assign(".predDfFocei", .predDf, envir = .ui)
   }
   if (
     inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
