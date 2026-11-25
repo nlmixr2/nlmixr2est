@@ -23,6 +23,12 @@
   Monte-Carlo error for `stopConsecutive` windows of `stopWindow` iterations;
   `nEm` becomes a maximum and the stop is recorded in `fit$saemAutoStop`
   (#1411).
+- `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes each
+  converged trust ETA solve by re-entering it at the squared
+  `trustFterm`/`trustMterm` instead of taking Newton steps.  The objective at
+  fixed parameters then varies by about 2e-5 across warm-start ETAs (0.0054
+  before on `pheno_sd`); the default is unchanged (#1152).
+
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
@@ -93,6 +99,14 @@
   `saemControl()`, `nlmeControl()`, `vaeControl()` and `emviControl()` sets
   the threshold; `NA` or `Inf` turns the note off (#1379).
 
+- A fit now notes in `$runInfo` a free diagonal omega that ended below 1/1000
+  of its initial estimate (`omega collapsed (<0.001 x initial): eta.sl`) or,
+  for the FOCEi family, at its `diagOmegaBoundLower` bound (`omega at lower
+  bound (initial/100): eta.sl`).  The outer optimizer can stall where the
+  objective is flat in a vanishing variance while a larger omega fits better.
+  `foceiControl(omegaCollapseWarn=)` sets the fraction; `NA` turns it off
+  (#1394).
+
 - After the covariance step, a fit warns (in `$runInfo`) about pairs of
   estimates correlated at `|r| >= 0.95`, e.g. `highly correlated estimates:
   tcl/tv (0.98)`.  `corWarn=` in every method's control (e.g.
@@ -108,9 +122,15 @@
   `|init|`, as NONMEM does, instead of the default `1/|init|` inside
   `scaleCband`.  The default `"inverse"` is unchanged (#1320).
 
+- A fit whose IWRES sd shrinkage is below -5% now notes it in `$runInfo`
+  ("IWRES shrinkage is strongly negative; check the residual model"); the
+  raw value in `$shrink` is unchanged (#1376).
+
 - `fit$iwresAutocor` reports the pooled within-subject lag-1 correlation
   and Durbin-Watson statistic of IWRES, a check for structural
-  misspecification (successive residuals of a subject that move together)
+  misspecification (successive residuals of a subject that move together).
+  A fit whose Durbin-Watson statistic is below 1.5 or above 2.5 says so in
+  `$runInfo`; `tableControl(iwresAutocor = FALSE)` turns the note off
   (#1373).
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the

@@ -805,6 +805,7 @@ struct focei_options {
   std::atomic<int> nTrustRetry{0};   // radius-escalation retries attempted
   std::atomic<int> nTrustWarm{0};    // same-radius re-solves from the point just found
   std::atomic<int> nTrustPolish{0};  // accepted Newton polish steps after a converged solve
+  std::atomic<int> nTrustTight{0};   // accepted tight re-entries after the cascade (#1152)
   std::atomic<int> nTrustNudge{0};   // nudge-cascade attempts
   std::atomic<int> nTrustFail{0};    // inner solves still non-converged after every retry
   // per-fit count of calcEtaHessian() calls that used the hessianMethod=
@@ -1260,6 +1261,13 @@ static inline bool innerPolishOn() {
   case 6: return op_focei.steihaugPolish != 0;
   }
   return false;
+}
+
+// trust and steihaug polish by re-entering at the squared tolerances (#1152); newuoa,
+// which has no such re-entry, keeps the Newton polish.  Not under a quasi-Newton inner
+// Hessian: its log|H| is approximate anyway, and a re-entry would discard its update.
+static inline bool innerTightOn() {
+  return innerPolishOn() && op_focei.innerOpt != 5 && op_focei.hessianMethod == trustHessFd;
 }
 
 // Width of one subject's outer-FD row: the whole full-theta vector, theta block then
@@ -4467,6 +4475,13 @@ static bool innerFillResultAt(int n, const double *x, int id, double value,
   return true;
 }
 
+// Inner-objective stopping tolerance for an OFV tolerance `tol`: tol^2, floored at
+// 1e-10 (below it the stop sits in the ODE solve's noise and the covariance probes,
+// which tighten tol to 1e-9, scatter) unless tol is already smaller.
+static inline double innerTrustObjTol(double tol) {
+  return std::min(tol, std::max(tol * tol, 1e-10));
+}
+
 // One inner solve for the trust-family innerOpt codes
 //
 // Dispatches to RcppTrust's trust, steihaug or newuoa solver and returns a
@@ -4505,7 +4520,8 @@ static void innerTrustFamilySolve(int npar, double *x0, int id,
     so.initial_radius = topts.rinit;
     so.max_radius = topts.rmax;
     so.max_iter = topts.iterlim;
-    so.abs_gradient_tol = topts.mterm;
+    // the gradient is linear in the eta error, so it keeps the unsquared tolerance
+    so.abs_gradient_tol = op_focei.trustMterm;
     so.abs_cost_change_tol = topts.fterm;
     steihaug_result_t sres;
     std::memset(&sres, 0, sizeof(sres));
@@ -4576,7 +4592,7 @@ static inline int innerEval(int id){
   return 1;
 }
 
-// The trust arm's Newton-decrement gate leaves eta up to sqrt(trustFterm) short of the
+// newuoaPolish: a converged solve can leave eta up to sqrt(trustFterm) short of the
 // mode, and the FOCEi log|H| term carries that to the objective to FIRST order, so the
 // outer objective depended on the warm start (#1152).  Finish a converged solve with
 // Newton steps down to trustFterm, each kept only if it does not ascend.  The gradient is
@@ -5393,7 +5409,7 @@ static inline int innerOpt1(int id, int likId) {
               if (conv && pushDist > pushTol) {
                 conv = false;
                 op_focei.nTrustPush.fetch_add(1, std::memory_order_relaxed);
-              } else if (innerPolishOn() && conv && pushDist > 0.0 &&
+              } else if (innerPolishOn() && op_focei.innerOpt == 5 && conv && pushDist > 0.0 &&
                          trustPolishEta(id, fInd, npar, parscale, step, pushDist, f)) {
                 keepBest();
               }
@@ -5494,6 +5510,44 @@ static inline int innerOpt1(int id, int likId) {
     // the count #1044 needed: without it a fit whose trust solves all failed
     // is indistinguishable from one where they all converged.
     if (!converged) op_focei.nTrustFail.fetch_add(1, std::memory_order_relaxed);
+    // trustPolish: re-enter from the accepted eta with the squared tolerances (#1152).
+    // trust stops on the change in the inner objective, quadratic in the eta error, while
+    // log|H| moves the OFV linearly with it.  The cascade above keeps the plain
+    // tolerances: its gate failures send a subject stuck in a spurious basin to the nudges.
+    if (haveBest && innerTightOn()) {
+      restoreBest();
+      std::vector<double> x0(etaBest);
+      topts.fterm = innerTrustObjTol(op_focei.trustFterm);
+      topts.mterm = innerTrustObjTol(op_focei.trustMterm);
+      topts.rmax = curRmax;
+      fInd->badSolve = 0;
+      fInd->etaHasPrevQN = 0;
+      trust_result_t tres = {};
+      TresGuard _tresGuard{&tres};
+      innerTrustFamilySolve(npar, fInd->x, id, parscale, topts, &tres);
+      op_focei.nTrustInner.fetch_add(1, std::memory_order_relaxed);
+      if (tres.error >= 0 && tres.argument != NULL && R_FINITE(tres.value) &&
+          tres.value <= fBest && fInd->badSolve == 0) {
+        std::copy(tres.argument, tres.argument + npar, fInd->x);
+        f = tres.value;
+        if (tres.gradient != NULL) std::copy(tres.gradient, tres.gradient + npar, fInd->g);
+        // the re-entry refines the winning candidate in place, so the marginal
+        // re-rank never weighs it against its own looser copy
+        for (size_t k = candEta.size(); k--;) {
+          if (candEta[k] == x0) {
+            std::copy(fInd->x, fInd->x + npar, candEta[k].begin());
+            candF[k] = f;
+            break;
+          }
+        }
+        fBest = f;
+        std::copy(fInd->x, fInd->x + npar, etaBest.begin());
+        op_focei.nTrustTight.fetch_add(1, std::memory_order_relaxed);
+      } else {
+        fInd->badSolve = 0;
+        restoreBest();
+      }
+    }
     // haveBest is PASS-LOCAL, so "this pass produced nothing" is not "this
     // subject produced nothing": under mceta>=1 an earlier pass may already
     // have a converged candidate, and returning 0 here would throw it away and
@@ -10558,6 +10612,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.nTrustRetry.store(0, std::memory_order_relaxed);
   op_focei.nTrustWarm.store(0, std::memory_order_relaxed);
   op_focei.nTrustPolish.store(0, std::memory_order_relaxed);
+  op_focei.nTrustTight.store(0, std::memory_order_relaxed);
   op_focei.nTrustNudge.store(0, std::memory_order_relaxed);
   op_focei.nTrustRestart.store(0, std::memory_order_relaxed);
   op_focei.nTrustFail.store(0, std::memory_order_relaxed);
@@ -14553,6 +14608,8 @@ void foceiFinalizeTables(Environment e){
           _["warmRetry"] = op_focei.nTrustWarm.load(std::memory_order_relaxed),
           // Accepted Newton polish steps after a converged solve (#1152).
           _["polish"] = op_focei.nTrustPolish.load(std::memory_order_relaxed),
+          // Accepted re-entries at the squared tolerances after the cascade (#1152).
+          _["tight"] = op_focei.nTrustTight.load(std::memory_order_relaxed),
           _["radiusRetry"] = op_focei.nTrustRetry.load(std::memory_order_relaxed),
           _["nudge"] = op_focei.nTrustNudge.load(std::memory_order_relaxed),
           // Omega-draw restarts taken after the fixed nudges were spent.

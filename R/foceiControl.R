@@ -727,16 +727,19 @@
 #'     of each solve.
 #'
 #' @param trustPolish logical; when `TRUE`, each converged `innerOpt="trust"`
-#'     solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
-#'     This makes the objective less dependent on the warm-start ETAs and can
-#'     help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+#'     solve re-enters once from its ETAs with the squared
+#'     `trustFterm`/`trustMterm` (floored at `1e-10`; not under a quasi-Newton
+#'     `hessianMethod`).  This makes the objective nearly independent of the
+#'     warm-start ETAs and can help a fit that stops short of its minimum
+#'     (#1152).  The `"bobyqa"`
 #'     outer search then also restarts once from where it stops, which costs
 #'     about twice the outer evaluations.  `FALSE` (default) keeps the plain
 #'     trust solve and a single outer search.
 #'
-#' @param steihaugPolish,newuoaPolish logical; the `trustPolish` Newton
-#'     polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
-#'     solve.  `FALSE` (default) keeps the plain solve.
+#' @param steihaugPolish,newuoaPolish logical; the `trustPolish` polish for
+#'     a converged `innerOpt="steihaug"` solve (the same re-entry) or
+#'     `innerOpt="newuoa"` solve (up to 4 Newton steps, down to `trustFterm`).
+#'     `FALSE` (default) keeps the plain solve.
 #'
 #' @param newuoaRhoend final NEWUOA trust-region radius for
 #'     `innerOpt="newuoa"`, in sqrt(diag(Omega)) units.  `NULL` (default) uses
@@ -1075,6 +1078,10 @@
 #'   `maxOuterIterations = 0` and a non-finite fit objective.
 #'
 #' @param odeSettleTol The objective change that `odeSettleCheck` reports.
+#'
+#' @param omegaCollapseWarn Warn (in `$runInfo`) when a free diagonal omega
+#'   ends below this fraction of its initial estimate, or at its
+#'   `diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.
 #'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
@@ -1545,7 +1552,8 @@ foceiControl <- function(
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
   zeroThetaStep = 100,
-  boundedTransform = TRUE
+  boundedTransform = TRUE,
+  omegaCollapseWarn = 1e-3
 ) {
   #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
@@ -2185,6 +2193,7 @@ foceiControl <- function(
   checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
+  checkmate::assertNumber(omegaCollapseWarn, lower = 0, upper = 1, na.ok = TRUE)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2390,6 +2399,7 @@ foceiControl <- function(
     shrinkEtaWarn = as.double(shrinkEtaWarn),
     odeSettleCheck = odeSettleCheck,
     odeSettleTol = as.double(odeSettleTol),
+    omegaCollapseWarn = as.double(omegaCollapseWarn),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,

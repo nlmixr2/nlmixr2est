@@ -198,7 +198,8 @@ foceiControl(
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
   zeroThetaStep = 100,
-  boundedTransform = TRUE
+  boundedTransform = TRUE,
+  omegaCollapseWarn = 0.001
 )
 }
 \arguments{
@@ -890,16 +891,19 @@ coupling these parameters exist to remove. Has no effect unless
 `innerOpt="trust"`.}
 
 \item{trustPolish}{logical; when `TRUE`, each converged `innerOpt="trust"`
-solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
-This makes the objective less dependent on the warm-start ETAs and can
-help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+solve re-enters once from its ETAs with the squared
+`trustFterm`/`trustMterm` (floored at `1e-10`; not under a quasi-Newton
+`hessianMethod`).  This makes the objective nearly independent of the
+warm-start ETAs and can help a fit that stops short of its minimum
+(#1152).  The `"bobyqa"`
 outer search then also restarts once from where it stops, which costs
 about twice the outer evaluations.  `FALSE` (default) keeps the plain
 trust solve and a single outer search.}
 
-\item{steihaugPolish, newuoaPolish}{logical; the `trustPolish` Newton
-polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
-solve.  `FALSE` (default) keeps the plain solve.}
+\item{steihaugPolish, newuoaPolish}{logical; the `trustPolish` polish for
+a converged `innerOpt="steihaug"` solve (the same re-entry) or
+`innerOpt="newuoa"` solve (up to 4 Newton steps, down to `trustFterm`).
+`FALSE` (default) keeps the plain solve.}
 
 \item{newuoaRhoend}{final NEWUOA trust-region radius for
 `innerOpt="newuoa"`, in sqrt(diag(Omega)) units.  `NULL` (default) uses
@@ -1376,6 +1380,10 @@ transformed for unbounded optimization methods and back-transformed
 for final estimates. `FALSE` optimizes on the original scale with
 bounds passed to the optimizer. `NA` transforms for optimization but
 skips the final back-transform.}
+
+\item{omegaCollapseWarn}{Warn (in `$runInfo`) when a free diagonal omega
+ends below this fraction of its initial estimate, or at its
+`diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.}
 }
 \value{
 The control object that changes the options for the FOCEi

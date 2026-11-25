@@ -6232,6 +6232,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       warning("error calculating tables, returning without table step", call. = FALSE)
     } else {
       .ret <- .tmp
+      .iwresShrinkWarn(.ret$shrink)
     }
   }
   assign("sessioninfo", .sessionInfo(), envir = .env)
