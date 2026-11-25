@@ -3,7 +3,7 @@ nmTest({
   skip_on_cran()
 
   test_that("a theta the data cannot inform is named when the covariance step fails", {
-    # tz never enters the prediction, so R and S get an exact zero row
+    # tz never enters the prediction, so S (built from gradients) has an exact zero row
     .one <- function() {
       ini({
         tcl <- log(2)
@@ -25,7 +25,7 @@ nmTest({
       .one,
       nlmixr2data::theo_sd,
       "focei",
-      control = foceiControl(print = 0, covFull = FALSE, calcTables = FALSE)
+      control = foceiControl(print = 0, covMethod = "s", covFull = FALSE, calcTables = FALSE)
     )))
     expect_identical(.fit$covMethod, "failed")
     expect_true("covariance step failed: tz uninformed" %in% .fit$runInfo)
