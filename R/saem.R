@@ -452,7 +452,10 @@
       # count only the iterations run when an nBurn="auto" burn-in ended early
       .bi <- .saemRes$burnInfo
       .sk <- if (is.list(.bi)) max(0L, .bi$nBurnPlan - .bi$nBurn) else 0L
-      warning(sprintf("parameters plateaued; stopped at iteration %d of %d", .pi - .sk, .cfg$niter - .sk), call. = FALSE)
+      warning(
+        sprintf("parameters plateaued; stopped at iteration %d of %d", .pi - .sk, .cfg$niter - .sk),
+        call. = FALSE
+      )
     }
     .saemBurnAutoFinish(.saemRes)
   })
