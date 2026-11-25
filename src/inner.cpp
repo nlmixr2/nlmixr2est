@@ -3768,8 +3768,9 @@ double likInner0(double *eta, int id) {
         for (int q = 0; q < (int)op_focei.neta; ++q) lp(q, 0) += _pD[q];
       }
       if (op_focei.neta == 0) {
+        // llik is still +log-likelihood here (the eta branch below negates it first)
         if (fInd->nNonNormal && op_focei.adjLik) {
-          fInd->llik -= (fInd->nNonNormal - fInd->nCensLl)*M_LN_SQRT_2PI;
+          fInd->llik += (fInd->nNonNormal - fInd->nCensLl)*M_LN_SQRT_2PI;
         }
       } else if (op_focei.fo == 1) {
         if (anyCens) stop("FO censoring not supported.");

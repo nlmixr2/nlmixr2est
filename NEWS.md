@@ -546,6 +546,10 @@
   moved by `ncens*log(2*pi)` (up for `+ dnorm()`/`t()` endpoints, down
   otherwise), and `logLik()`/AIC/BIC now add `log(2*pi)` only for the
   uncensored rows (#1478).
+- A population-only (no-eta) fit with a log-density endpoint (`ll()`,
+  `+ dnorm()`, `t()`, ...) added `log(2*pi)` per row to the objective instead
+  of dropping it, so it was `2*n*log(2*pi)` above the same Gaussian model;
+  the constant is now dropped as it is with etas (#1478).
 - `est="saem"`: when an endpoint's residual error cannot be matched to
   `ini()` parameters, the error now names the endpoint and the error
   argument(s) that are not `ini()` parameters (#1516).
