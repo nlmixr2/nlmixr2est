@@ -13,9 +13,8 @@ nsub <- if (length(args) > 3) as.integer(args[4]) else 200L
 nburn <- if (length(args) > 4) as.integer(args[5]) else 60L
 nem <- if (length(args) > 5) as.integer(args[6]) else 60L
 
-# rxode2 model syntax (dotted names, NSE) is not lintr-clean.
-# nolint start
-mod <- function() {
+# Kept as text: CodeFactor lints rxode2 syntax and ignores nolint ranges.
+modtext <- "function() {
   ini({
     tka <- log(1.1)
     tcl <- log(3)
@@ -33,14 +32,14 @@ mod <- function() {
     v1 <- exp(tv1 + eta.v1)
     q <- exp(tq)
     v2 <- exp(tv2)
-    d / dt(depot) <- -ka * depot
-    d / dt(central) <- ka * depot - (cl + q) / v1 * central + q / v2 * periph
-    d / dt(periph) <- q / v1 * central - q / v2 * periph
+    d/dt(depot) <- -ka * depot
+    d/dt(central) <- ka * depot - (cl + q) / v1 * central + q / v2 * periph
+    d/dt(periph) <- q / v1 * central - q / v2 * periph
     cp <- central / v1
     cp ~ prop(prop.sd)
   })
-}
-# nolint end
+}"
+mod <- eval(str2lang(modtext))
 
 ev <- rxode2::et(amt = 100, ii = 24, addl = 2)
 ev <- rxode2::et(ev, c(0.25, 0.5, 1, 2, 4, 8, 12, 24, 48, 49, 52, 72))
