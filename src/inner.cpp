@@ -3766,6 +3766,35 @@ static void conditionalInnerScore(FoceiInnerResult &result, double value,
 }
 
 // One second-order solve supplies the conditional value, gradient and Hessian.
+// One observation's terms of the exact eta Hessian H, from the second-order
+// model's lhs at that row (and, for the conditional model, its score in
+// result).  False when the conditional partials are not finite.
+static inline bool hess2ObsAdd(rx_solving_options_ind *ind, int kk2, int ne, double *lhs,
+                               mat &H, bool conditional, FoceiInnerResult &result) {
+  double cp[9] = {};
+  if (conditional) {
+    double value;
+    if (!conditionalInnerPartials(ind,kk2,ne,lhs,cp,value)) return false;
+    conditionalInnerScore(result,value,lhs,cp,ne);
+  }
+  int r = 0;                                            // rx__d2pred_ order: j-outer, i-inner (i<=j)
+  for (int jc = 0; jc < ne; ++jc)
+    for (int ic = 0; ic <= jc; ++ic) {
+      if (conditional) {
+        int p = op_focei.predOffset;
+        double fi = lhs[p+ic+1], fj = lhs[p+jc+1];
+        double ri = lhs[p+ne+ic+2], rj = lhs[p+ne+jc+2];
+        H(ic,jc) += cp[2]*fi*fj+cp[3]*(fi*rj+ri*fj)+cp[4]*ri*rj+
+          cp[0]*lhs[op_focei.conditionalHess2Offset+r]+
+          cp[1]*lhs[op_focei.varianceHess2Offset+r];
+      } else {
+        H(ic, jc) += -lhs[op_focei.predHess2Offset + r];
+      }
+      ++r;
+    }
+  return true;
+}
+
 static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
                                 rx_solving_options_ind *ind, mat &H, bool conditional,
                                 FoceiInnerResult &result) {
@@ -3807,28 +3836,8 @@ static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
     double curT2 = getTime(kk2, ind);
     lhsWalkNewind(ind, jj);
     rxHess2.calc_lhs(_rxId, curT2, getOpIndSolve(op, ind, jj), lhs);
-    if (!obs2) continue;  // the eta-space carry advanced through the record
-    double cp[9] = {};
-    if (conditional) {
-      double value;
-      if (!conditionalInnerPartials(ind,kk2,ne,lhs,cp,value)) return false;
-      conditionalInnerScore(result,value,lhs,cp,ne);
-    }
-    int r = 0;                                            // rx__d2pred_ order: j-outer, i-inner (i<=j)
-    for (int jc = 0; jc < ne; ++jc)
-      for (int ic = 0; ic <= jc; ++ic) {
-        if (conditional) {
-          int p = op_focei.predOffset;
-          double fi = lhs[p+ic+1], fj = lhs[p+jc+1];
-          double ri = lhs[p+ne+ic+2], rj = lhs[p+ne+jc+2];
-          H(ic,jc) += cp[2]*fi*fj+cp[3]*(fi*rj+ri*fj)+cp[4]*ri*rj+
-            cp[0]*lhs[op_focei.conditionalHess2Offset+r]+
-            cp[1]*lhs[op_focei.varianceHess2Offset+r];
-        } else {
-          H(ic, jc) += -lhs[op_focei.predHess2Offset + r];
-        }
-        ++r;
-      }
+    // a dose row: the eta-space carry advanced through the record
+    if (obs2 && !hess2ObsAdd(ind, kk2, ne, lhs, H, conditional, result)) return false;
   }
   for (int jc = 0; jc < ne; ++jc)
     for (int ic = 0; ic <= jc; ++ic) {
@@ -3886,6 +3895,31 @@ static void penEtaHessAdd(arma::mat &H, int id, double *eta, focei_ind *fInd) {
   H = 0.5 * (H + H.t());
 }
 
+// The exact (second-order model) eta Hessian into H: 1 when H is it, 0 when
+// the finite difference is to be used instead (no second-order model, or its
+// Hessian is not finite for this subject and the fit can fall back), -1 when
+// the Hessian fails.
+static int calcEtaHessianModel(double *eta, int id, focei_ind *fInd,
+                               rx_solving_options_ind *ind, mat &H, bool conditional,
+                               FoceiInnerResult *evaluation) {
+  // known not finite for this subject: the finite difference
+  if (!conditional && fInd->hess2Fail && op_focei.needOptimHess) return 0;
+  if (op_focei.predHess2Offset < 0 && !conditional) return 0;
+  FoceiInnerResult result;
+  if (calcModelEtaHessian(eta,id,fInd,ind,H,conditional,result)) {
+    if (evaluation) *evaluation = std::move(result);
+    return 1;
+  }
+  if (conditional || !op_focei.needOptimHess) return -1;
+  // The exact Hessian is not finite for this subject (a linCmt() second-order
+  // read the kernel cannot follow reads NA): the finite difference, as
+  // without the exact Hessian.
+  op_focei.nEtaHessFallback.fetch_add(1, std::memory_order_relaxed);
+  fInd->hess2Fail = 1;
+  H.zeros();
+  return 0;
+}
+
 bool calcEtaHessian(double *eta, int likId, int id,
                     focei_ind *fInd,
                     rx_solving_options_ind *ind,
@@ -3901,26 +3935,9 @@ bool calcEtaHessian(double *eta, int likId, int id,
     ((forOptimization && op_focei.conditionalHessianRequested) ||
      (!forOptimization && op_focei.conditionalDetRequested));
   if (conditional) ++op_focei.nConditionalInnerHessian;
-  bool modelHess = false;
-  if (!conditional && fInd->hess2Fail && op_focei.needOptimHess) {
-    // known not finite for this subject: the finite difference below
-  } else if (op_focei.predHess2Offset >= 0 || conditional) {
-    FoceiInnerResult result;
-    if (calcModelEtaHessian(eta,id,fInd,ind,H,conditional,result)) {
-      modelHess = true;
-      if (evaluation) *evaluation = std::move(result);
-    } else if (conditional || !op_focei.needOptimHess) {
-      return false;
-    } else {
-      // The exact Hessian is not finite for this subject (a linCmt() second-
-      // order read the kernel cannot follow reads NA): the finite difference
-      // below, as without the exact Hessian.
-      op_focei.nEtaHessFallback.fetch_add(1, std::memory_order_relaxed);
-      fInd->hess2Fail = 1;
-      H.zeros();
-    }
-  }
-  if (modelHess) {
+  int modelHess = calcEtaHessianModel(eta, id, fInd, ind, H, conditional, evaluation);
+  if (modelHess < 0) return false;
+  if (modelHess > 0) {
     // H is the exact model Hessian
   } else if (op_focei.needOptimHess) {
     arma::vec gr0(op_focei.neta, fill::zeros);
