@@ -1513,7 +1513,7 @@ public:
   // M-step state (unlike arResk), so it is safe to call inside the optimizer.
   // The TBS data jacobian is omitted: it is constant in phi0, so it does not
   // change the argmin.  AR correlation is left to the M-step.
-  double phi0NormalSSR(const vec &fall) {
+  double phi0NormalSSR(const vec &fall, vec *subjectLoss = nullptr) {
     const double double_xmin = 1.0e-200, xmax = 1e300;
     double v = 0.0;
     for (int k = 0; k < nmc; k++) {
@@ -1531,11 +1531,256 @@ public:
           else if (g < double_xmin) g = double_xmin;
           else if (g > xmax) g = xmax;
           double e = yt - ft;
-          v += 0.5 * (e / g) * (e / g) + std::log(g);
+          const double loss = 0.5 * (e / g) * (e / g) + std::log(g);
+          v += loss;
+          if (subjectLoss) (*subjectLoss)(obs_subject(ix_sorting(y_offset(b) + i))) += loss;
         }
       }
     }
     return v;
+  }
+
+  // Interweaved non-centered step for the mu-referenced (phi1) means: shift a
+  // column's mean with every subject's eta held fixed, scored on the data
+  // likelihood by one BHHH step (Yu and Meng 2011).  The sampled-mean
+  // (centered) update is fast when the individuals are well identified; this
+  // one is fast when they are not (small omega), where the centered update
+  // barely moves the mean.
+  double phi1ShiftObjective(const vec &delta, const uvec &cols, vec *subjectLoss = nullptr) {
+    mat phiCand = phiM;
+    for (uword j = 0; j < cols.n_elem; ++j) phiCand.col(i1(cols(j))) += delta(j);
+    mat fMat = user_fn(phiCand, evt, optM);
+    if (subjectLoss) subjectLoss->zeros(N);
+    if (!fMat.col(0).is_finite() || any(fMat.col(0) >= 1e99)) return 1e300;
+    double v;
+    if (distribution == 4) {
+      v = -accu(fMat.col(0));
+      if (subjectLoss) {
+        for (int k = 0; k < nmc; ++k)
+          for (int j = 0; j < ntotal; ++j) (*subjectLoss)(obs_subject(j)) -= fMat(k * ntotal + j, 0);
+      }
+    } else {
+      v = phi0NormalSSR(fMat.col(0), subjectLoss);
+    }
+    return std::isfinite(v) ? v : 1e300;
+  }
+
+  // Centered (interweaved) update of a declared distribution on the cdf
+  // route: refit the family and its Gaussian copula to the DECODED etas, then
+  // re-encode the latents so every decoded eta -- and so every prediction --
+  // is unchanged (R/saemEtaDistCentered.R).  Fitting the family without the
+  // re-encode moves the etas the data were sampled at, which is what makes a
+  // plain family M-step unstable on this route.
+  SEXP etaDistCenteredFn = R_NilValue;
+  long _etaDistCenteredN = 0;
+  void etaDistCentered(double gain) {
+    if (!Rf_isFunction(etaDistCenteredFn) || nphi0 <= 0) return;
+    Rcpp::Function f(etaDistCenteredFn);
+    Rcpp::NumericVector th(nphi0);
+    for (int c = 0; c < nphi0; ++c) th[c] = mprior_phi0(0, c);
+    SEXP res = f(Rcpp::wrap(phiM), th, gain);
+    if (Rf_isNull(res)) return;
+    Rcpp::List r(res);
+    Rcpp::NumericVector nt = r["theta"];
+    Rcpp::IntegerVector zc = r["zcols"];
+    mat z = Rcpp::as<mat>(r["z"]);
+    if ((int)nt.size() != nphi0 || z.n_rows != phiM.n_rows || (int)z.n_cols != zc.size()) return;
+    if (!z.is_finite()) return;
+    vec mcov0Fixed;
+    if (fixedIx0.n_elem > 0) mcov0Fixed = vec(MCOV0(jcov0(fixedIx0)));
+    for (int c = 0; c < nphi0; ++c) mprior_phi0.col(c).fill(nt[c]);
+    for (int j = 0; j < zc.size(); ++j) phiM.col(zc[j]) = z.col(j);
+    // keep COV0*MCOV0 reproducing the new phi0, column by column (as
+    // refinePhi0Lik does)
+    for (int c = 0; c < nphi0; c++) {
+      uvec li = arma::find(LCOV0.col(c) == 1);
+      if (li.n_elem == 0) continue;
+      mat Xc = COV0.cols(li);
+      vec bc;
+      if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi0.col(c))) {
+        for (unsigned int j = 0; j < li.n_elem; ++j) MCOV0(li(j), c) = bc(j);
+      }
+    }
+    if (fixedIx0.n_elem > 0) MCOV0(jcov0(fixedIx0)) = mcov0Fixed;
+    invalidateCompleteSolve();
+    _etaDistCenteredN++;
+  }
+  long get_etaDistCenteredN() { return _etaDistCenteredN; }
+
+  // Interweaved non-centered step for the SCALE of the mu-referenced random
+  // effects: with every subject's standardized deviation held fixed, move a
+  // log-scale s_c per column, eta' = exp(s_c) * eta, scored on the data
+  // likelihood by one BHHH step.  In that parameterization the variance enters
+  // only the data term, so a variance the centered (sampled-moment) update
+  // keeps shrinking -- a small random effect the individual data say little
+  // about -- is moved by what the data actually say.  Chains, Omega and the
+  // sufficient statistics are rescaled together, so the next M-step starts
+  // from the same state it would have reached by sampling at the new scale.
+  double phi1ScaleObjective(const vec &logScale, const uvec &cols, vec *subjectLoss = nullptr) {
+    mat phiCand = phiM;
+    const mat mu = repmat(mprior_phi1, nmc, 1);
+    for (uword j = 0; j < cols.n_elem; ++j) {
+      const uword c = cols(j);
+      phiCand.col(i1(c)) = mu.col(c) + std::exp(logScale(j)) * (phiM.col(i1(c)) - mu.col(c));
+    }
+    mat fMat = user_fn(phiCand, evt, optM);
+    if (subjectLoss) subjectLoss->zeros(N);
+    if (!fMat.col(0).is_finite() || any(fMat.col(0) >= 1e99)) return 1e300;
+    double v;
+    if (distribution == 4) {
+      v = -accu(fMat.col(0));
+      if (subjectLoss) {
+        for (int k = 0; k < nmc; ++k)
+          for (int j = 0; j < ntotal; ++j) (*subjectLoss)(obs_subject(j)) -= fMat(k * ntotal + j, 0);
+      }
+    } else {
+      v = phi0NormalSSR(fMat.col(0), subjectLoss);
+    }
+    return std::isfinite(v) ? v : 1e300;
+  }
+
+  long _omegaNonCenteredN = 0;
+  long get_omegaNonCenteredN() { return _omegaNonCenteredN; }
+
+  void omegaNonCenteredStep(double gain) {
+    std::vector<uword> sel;
+    for (int c = 0; c < nphi1; ++c) {
+      // a fixed variance (including a declared eta's latent, fixed at 1) and a
+      // zero-omega placeholder are not estimated, so they are not rescaled
+      if (Gamma2_phi1fixed == 1 && any(Gamma2_phi1fixedIx == (uword)(c * nphi1 + c))) continue;
+      if (any(saemZeroOmegaPhi1 == (uword)c)) continue;
+      if (!(Gamma2_phi1(c, c) > 0.0)) continue;
+      sel.push_back((uword)c);
+    }
+    if (sel.empty()) return;
+    const uvec cols = conv_to<uvec>::from(sel);
+    const uword n = cols.n_elem;
+    vec zero(n, fill::zeros), subject;
+    const double initial = phi1ScaleObjective(zero, cols, &subject);
+    if (initial >= 1e300) return;
+    mat scores(n, N);
+    vec gradient(n);
+    const double h = std::cbrt(std::numeric_limits<double>::epsilon());
+    for (uword j = 0; j < n; ++j) {
+      vec d = zero, up, down;
+      d(j) = h;
+      const double fp = phi1ScaleObjective(d, cols, &up);
+      d(j) = -h;
+      const double fm = phi1ScaleObjective(d, cols, &down);
+      if (fp >= 1e300 || fm >= 1e300) return;
+      const double scale = 2.0 * h * nmc;
+      scores.row(j) = ((up - down) / scale).t();
+      gradient(j) = (fp - fm) / scale;
+    }
+    mat curvature = scores * scores.t();
+    vec step;
+    if (!gradient.is_finite() || !curvature.is_finite()) return;
+    if (!solve(step, curvature, -gradient, solve_opts::likely_sympd + solve_opts::no_approx)) {
+      curvature.diag() += 1e-8 * std::max(1.0, curvature.diag().max());
+      if (!solve(step, curvature, -gradient, solve_opts::likely_sympd + solve_opts::no_approx)) return;
+    }
+    if (!step.is_finite()) return;
+    // a log-scale step beyond a factor of e is not a local move
+    const double big = abs(step).max();
+    if (big > 1.0) step *= 1.0 / big;
+    vec ls;
+    bool ok = false;
+    for (int attempt = 0; attempt < 8 && !ok; ++attempt, gain /= std::sqrt(2.0)) {
+      ls = gain * step;
+      ok = phi1ScaleObjective(ls, cols) < initial;
+    }
+    if (!ok) return;
+    vec dg(nphi1, fill::ones);
+    for (uword j = 0; j < n; ++j) dg(cols(j)) = std::exp(ls(j));
+    const mat D = diagmat(dg);
+    // chains: phi' = mu + D (phi - mu)
+    const mat mu = repmat(mprior_phi1, nmc, 1);
+    for (uword j = 0; j < n; ++j) {
+      const uword c = cols(j);
+      phiM.col(i1(c)) = mu.col(c) + dg(c) * (phiM.col(i1(c)) - mu.col(c));
+    }
+    // sufficient statistics under the same map (mu_i = mprior_phi1 row i):
+    //   s_i' = mu_i + D (s_i - mu_i)
+    //   S'   = M + D Q + Q' D + D (S - Q - Q' - M) D
+    // with M = sum mu_i mu_i', Q = sum (s_i - mu_i) mu_i'
+    const mat Mm = mprior_phi1.t() * mprior_phi1;
+    const mat Q = (statphi11 - mprior_phi1).t() * mprior_phi1;
+    statphi12 = Mm + D * Q + Q.t() * D + D * (statphi12 - Q - Q.t() - Mm) * D;
+    statphi11 = mprior_phi1 + (statphi11 - mprior_phi1) * D;
+    Gamma2_phi1 = D * Gamma2_phi1 * D;
+    _phi1Shifted = true;
+    _omegaNonCenteredN++;
+  }
+
+  // true when the non-centered step moved the chains, so the cached
+  // predictions (fsave) must be re-solved before the next E-step
+  bool _phi1Shifted = false;
+  long _muNonCenteredN = 0;
+
+  void muNonCenteredStep(double gain) {
+    std::vector<uword> sel;
+    for (int c = 0; c < nphi1; ++c) {
+      // intercept-only columns: their mu IS the theta
+      uvec li = arma::find(LCOV1.col(c) == 1);
+      if (li.n_elem != 1) continue;
+      // fixedIx1 indexes LAMBDA rows, not phi1 columns (see zeroOmegaDirectStep)
+      bool isFixed = false;
+      for (unsigned int j = 0; j < fixedIx1.n_elem; ++j) {
+        if (fixedIx1(j) == li(0)) { isFixed = true; break; }
+      }
+      if (isFixed) continue;
+      sel.push_back((uword)c);
+    }
+    if (sel.empty()) return;
+    const uvec cols = conv_to<uvec>::from(sel);
+    const uword n = cols.n_elem;
+    vec zero(n, fill::zeros), subject;
+    const double initial = phi1ShiftObjective(zero, cols, &subject);
+    if (initial >= 1e300) return;
+    mat scores(n, N);
+    vec gradient(n);
+    const double h = std::cbrt(std::numeric_limits<double>::epsilon());
+    for (uword j = 0; j < n; ++j) {
+      vec d = zero, up, down;
+      d(j) = h;
+      const double fp = phi1ShiftObjective(d, cols, &up);
+      d(j) = -h;
+      const double fm = phi1ShiftObjective(d, cols, &down);
+      if (fp >= 1e300 || fm >= 1e300) return;
+      const double scale = 2.0 * h * nmc;
+      scores.row(j) = ((up - down) / scale).t();
+      gradient(j) = (fp - fm) / scale;
+    }
+    mat curvature = scores * scores.t();
+    vec step;
+    if (!gradient.is_finite() || !curvature.is_finite()) return;
+    if (!solve(step, curvature, -gradient, solve_opts::likely_sympd + solve_opts::no_approx)) {
+      curvature.diag() += 1e-8 * std::max(1.0, curvature.diag().max());
+      if (!solve(step, curvature, -gradient, solve_opts::likely_sympd + solve_opts::no_approx)) return;
+    }
+    if (!step.is_finite()) return;
+    // NONMEM's alpha rule: full step, shrink by sqrt(2) up to eight times
+    vec delta;
+    bool ok = false;
+    for (int attempt = 0; attempt < 8 && !ok; ++attempt, gain /= std::sqrt(2.0)) {
+      delta = gain * step;
+      ok = phi1ShiftObjective(delta, cols) < initial;
+    }
+    if (!ok) return;
+    // move the chains, the mean and the sufficient statistics together, so
+    // every eta = phi - mu and the omega estimate are unchanged
+    vec D(nphi1, fill::zeros);
+    D(cols) = delta;
+    const vec sumPhi = sum(statphi11, 0).t();
+    for (uword j = 0; j < n; ++j) {
+      phiM.col(i1(cols(j))) += delta(j);
+      mprior_phi1.col(cols(j)) += delta(j);
+      statphi11.col(cols(j)) += delta(j);
+    }
+    statphi12 += D * sumPhi.t() + sumPhi * D.t() + (double)N * D * D.t();
+    phi1BackSolveMCOV();
+    _phi1Shifted = true;
+    _muNonCenteredN++;
   }
 
   // saemix "ind.fix10" step: refine the fixed-effect-only (phi0) parameters of a
@@ -3664,6 +3909,8 @@ public:
     }
   }
 
+  long get_muNonCenteredN() { return _muNonCenteredN; }
+
   mat get_resMat() {
     mat m(nendpnt,4);
     m.col(0) = ares;
@@ -3820,6 +4067,8 @@ public:
     if (x.containsElementNamed("iacceptPerId")) iacceptPerId = as<int>(x["iacceptPerId"]);
     if (x.containsElementNamed("rwOmega")) rwOmega = as<int>(x["rwOmega"]);
     if (x.containsElementNamed("nonMuThetaBhhh")) nonMuThetaBhhh = as<int>(x["nonMuThetaBhhh"]);
+    if (x.containsElementNamed("muNonCentered")) muNonCentered = as<int>(x["muNonCentered"]);
+    if (x.containsElementNamed("omegaNonCentered")) omegaNonCentered = as<int>(x["omegaNonCentered"]);
     if (x.containsElementNamed("etaDistLoglik")) etaDistLoglik = as<int>(x["etaDistLoglik"]);
     if (!std::isfinite(iacceptSingle) || iacceptSingle < 0.0 || iacceptSingle >= 1.0) iacceptSingle = 0.0;
     if (x.containsElementNamed("etaDistOn")) etaDistOn = as<int>(x["etaDistOn"]);
@@ -3995,6 +4244,9 @@ public:
     if (nu1B < 0) nu1B = 0;
     if (x.containsElementNamed("nb1B")) nb1B = as<int>(x["nb1B"]);
     if (nb1B < 1) nb1B = 1;
+    if (x.containsElementNamed("kappa1B")) kappa1B = as<double>(x["kappa1B"]);
+    etaDistCenteredFn = x.containsElementNamed("etaDistCentered") ?
+      (SEXP)x["etaDistCentered"] : R_NilValue;
     if (x.containsElementNamed("stepsizeRw")) stepsizeRw = as<double>(x["stepsizeRw"]);
     if (!std::isfinite(stepsizeRw) || stepsizeRw <= 0.0) stepsizeRw = 0.4;
     pas = as<vec>(x["pas"]);
@@ -5754,6 +6006,15 @@ public:
           (kiter - phi0Start) % (unsigned int)nonMuThetaEvery == 0) {
         refinePhi0Lik(kiter, pas);
       }
+      if (nMix <= 1 && pas(kiter) > 0.0) etaDistCentered(pas(kiter));
+      if (muNonCentered && nMix <= 1 && pas(kiter) > 0.0 &&
+          (distribution == 1 || distribution == 4)) {
+        muNonCenteredStep(pas(kiter));
+      }
+      if (omegaNonCentered && nMix <= 1 && pas(kiter) > 0.0 &&
+          (distribution == 1 || distribution == 4)) {
+        omegaNonCenteredStep(pas(kiter));
+      }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
       if (nphi0 > 0) {
         const bool phi0Moved = any(vectorise(phiM.cols(i0) != repmat(mprior_phi0, nmc, 1)));
@@ -5762,7 +6023,8 @@ public:
           for (int jMix = 0; jMix < nMix; jMix++) {
             phiM_mix(jMix).cols(i0) = repmat(mprior_phi0, nmc, 1);
           }
-        } else if (phi0Moved) {
+        } else if (phi0Moved || _phi1Shifted) {
+          _phi1Shifted = false;
           // the next E-step scores the current state from fsave, so it must follow phiM
           mat fr = user_fn(phiM, evt, optM);
           const uword n = std::min(fr.n_rows, fsave.n_elem);
@@ -5775,6 +6037,15 @@ public:
           limit = fr.col(2);
           _saemFsaveRefreshN++;
         }
+      }
+      // a non-centered shift with no phi0 broadcast still moved the chains
+      if (_phi1Shifted && nMix <= 1) {
+        _phi1Shifted = false;
+        mat fr = user_fn(phiM, evt, optM);
+        fsave = fr.col(0);
+        cens = fr.col(1);
+        limit = fr.col(2);
+        _saemFsaveRefreshN++;
       }
 
       mat G1=(statphi12+mprior_phi1.t()*mprior_phi1- statphi11.t()*mprior_phi1 - mprior_phi1.t()*statphi11)/N;
@@ -6608,6 +6879,17 @@ public:
         if (xpost_phi.n_slices != (unsigned int)N) {
           xpost_phi.zeros(nphi, nphi, N);
         }
+        // mode 1B's own proposal moments: a running average with gain
+        // n^-kappa1B (kappa1B = 1 is NONMEM's IKAPPA, a plain running mean).
+        // pash(kiter) is 1 through burn-in, so moments weighted by it would
+        // describe only the current iteration's nmc samples per subject.
+        if (m1bM1.n_rows != (uword)N || m1bM1.n_cols != (uword)nphi) {
+          m1bM1.zeros(N, nphi);
+          m1bM2.zeros(nphi, nphi, N);
+          m1bCount = 0;
+        }
+        ++m1bCount;
+        const double g1b = std::pow((double)m1bCount, -kappa1B);
         for (int _i = 0; _i < N; ++_i) {
           mat S(nphi, nphi, fill::zeros);
           for (int _k = 0; _k < nmc; ++_k) {
@@ -6616,6 +6898,8 @@ public:
           }
           S /= (double)nmc;
           xpost_phi.slice(_i) += pash(kiter) * (S - xpost_phi.slice(_i));
+          m1bM1.row(_i) += g1b * (sphi1.row(_i) / (double)nmc - m1bM1.row(_i));
+          m1bM2.slice(_i) += g1b * (S - m1bM2.slice(_i));
         }
       }
       mpost_phi.cols(i0)=mprior_phi0;
@@ -6853,6 +7137,8 @@ private:
   // only sets how fast the theta marches there; a step that has to prove it
   // improved the objective cannot.
   int nonMuThetaBhhh = 0;
+  int muNonCentered = 0;
+  int omegaNonCentered = 0;
   // saemControl(etaDistLoglik=): use the general log-likelihood objective for
   // the declared-distribution M-step instead of fitting native parameters and
   // inverting them.  Opt-in while it is measured against the inversion.
@@ -6954,6 +7240,11 @@ private:
   // accumulate first (NONMEM starts after the 10th).
   int nu1B = 0;
   int nb1B = 10;
+  // running mode 1B moments (see the xpost_phi update) and their gain exponent
+  double kappa1B = 1.0;
+  mat m1bM1;
+  cube m1bM2;
+  long m1bCount = 0;
   // Per-(subject x chain) proposal mean and SD, rebuilt each iteration from
   // mpost_phi / cpost_phi.  Empty when mode 1B is off or not yet started.
   mat m1bMean, m1bSd;
@@ -7568,7 +7859,8 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     if (nu1B <= 0 || (int)kiter < nb1B) return false;
     unsigned int nc = cols.n_elem;
     if (nc == 0) return false;
-    mat m = mpost_phi.cols(cols);              // N x nc
+    const bool running = m1bM1.n_rows == (uword)N && m1bM2.n_slices == (uword)N;
+    mat m = running ? mat(m1bM1.cols(cols)) : mat(mpost_phi.cols(cols));  // N x nc
     m1bMean = repmat(m, nmc, 1);
     if (!m1bMean.is_finite()) return false;
 
@@ -7577,11 +7869,12 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
     // Symmetrized, with a jitter escalation so a not-yet-moved or numerically
     // indefinite V_i still factors instead of aborting the kernel.
     m1bFull = false;
-    if (xpost_phi.n_slices == (unsigned int)N) {
+    if (running || xpost_phi.n_slices == (unsigned int)N) {
       field<mat> L(N);
       bool ok = true;
       for (int i = 0; i < N && ok; ++i) {
-        mat Vi = xpost_phi.slice(i).submat(cols, cols);
+        mat Vi = running ? mat(m1bM2.slice(i).submat(cols, cols))
+                         : mat(xpost_phi.slice(i).submat(cols, cols));
         vec mi = m.row(i).t();
         Vi -= mi * mi.t();
         Vi = 0.5 * (Vi + Vi.t());
@@ -7595,6 +7888,12 @@ int nonMuThetaStart = -1;  // first iteration refinePhi0Lik may run; -1 = niter_
           if (jit > 0.0) Vj.diag() += jit * sc;
           if (arma::chol(Li, Vj, "lower") && Li.is_finite()) got = true;
           else jit = (jit == 0.0) ? 1e-8 : jit * 100.0;
+        }
+        if (!got) {
+          // this subject alone falls back to its own diagonal, rather than
+          // every subject losing the correlated proposal
+          mat Vd = diagmat(clamp(Vi.diag(), 1e-8 * sc, datum::inf));
+          if (arma::chol(Li, Vd, "lower") && Li.is_finite()) got = true;
         }
         if (!got) ok = false; else L(i) = Li;
       }
@@ -11216,6 +11515,9 @@ SEXP saem_fit(SEXP xSEXP) {
   }
   List out = List::create(
     Named("resMat") = saem.get_resMat(),
+    Named("muNonCenteredN") = (double)saem.get_muNonCenteredN(),
+    Named("omegaNonCenteredN") = (double)saem.get_omegaNonCenteredN(),
+    Named("etaDistCenteredN") = (double)saem.get_etaDistCenteredN(),
     Named("arCor") = saem.get_arCor(),
     Named("transMat") = saem.get_trans(),
     Named("mprior_phi") = saem.get_mprior_phi(),

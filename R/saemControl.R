@@ -438,9 +438,36 @@
 #'   is what the refinement warm-starts from -- so this narrows the search
 #'   rather than fighting it.
 #'
+#' @param etaDistCentered Boolean (default `TRUE`).  On the `"cdf"` route
+#'   (`etaDistParam`), after the M-step refit each declared family and its
+#'   Gaussian copula to the decoded etas and re-encode the latent normals so
+#'   every decoded eta is unchanged (an interweaved, centered update; Yu and
+#'   Meng 2011).  It replaces `etaDistMstep` and `etaDistCorMstep` there.  No
+#'   effect on the `"direct"` route, whose prior step already does this.
+#'
+#' @param omegaNonCentered Boolean (default `TRUE`); after the M-step, rescale
+#'   each estimated mu-referenced random effect with every subject's
+#'   standardized deviation held fixed, scored on the data likelihood by one
+#'   BHHH step (the scale counterpart of `muNonCentered`).  The sampled-moment
+#'   variance update shrinks a random effect the individual data say little
+#'   about; in this parameterization the variance enters only the data term.
+#'   Non-mixture fits only.
+#'
+#' @param kappa1B Gain exponent of mode 1B's per-subject proposal moments
+#'   (default `1`): iteration `n` folds its samples in with weight `n^-kappa1B`,
+#'   so `1` is a plain running mean over the whole run (NONMEM's `IKAPPA`) and
+#'   `0` keeps only the current iteration.
+#'
+#' @param muNonCentered Boolean (default `TRUE`); after the M-step, shift each
+#'   free intercept-only mu-referenced mean with every subject's eta held fixed,
+#'   scored on the data likelihood by one BHHH step (an interweaved,
+#'   non-centered update; Yu and Meng 2011).  The ordinary SAEM mean update
+#'   barely moves a mean whose random effect is small relative to the data's
+#'   information about it; this step does.  Non-mixture fits only.
+#'
 #' @param nu1B Number of sweeps of NONMEM's proposal kernel **mode 1B** per
-#'   iteration.  `0` (the default) disables it, which is the historical
-#'   behaviour.
+#'   iteration.  `NULL` (the default) uses `2` when a random effect has a
+#'   `dist()` declaration and `0` (off, the historical behaviour) otherwise.
 #'
 #'   saem's three existing kernels propose either from the population prior
 #'   (kernel 1) or by a random walk around the current point (kernels 2 and 3).
@@ -983,7 +1010,11 @@ saemControl <- function(seed = 99,
                         iacceptPerId = TRUE,
                         rwOmega = FALSE,
                         nonMuThetaBhhh = FALSE,
-                        nu1B = 0L,
+                        muNonCentered = TRUE,
+                        omegaNonCentered = TRUE,
+                        kappa1B = 1,
+                        etaDistCentered = TRUE,
+                        nu1B = NULL,
                         nb1B = 10L,
                         etaDistWarmStart = TRUE,
                         etaDistMstep = FALSE,
@@ -1235,6 +1266,13 @@ saemControl <- function(seed = 99,
                            .var.name="iacceptPerId")
   checkmate::assertLogical(nonMuThetaBhhh, len=1, any.missing=FALSE,
                            .var.name="nonMuThetaBhhh")
+  checkmate::assertLogical(muNonCentered, len=1, any.missing=FALSE,
+                           .var.name="muNonCentered")
+  checkmate::assertLogical(omegaNonCentered, len=1, any.missing=FALSE,
+                           .var.name="omegaNonCentered")
+  checkmate::assertNumber(kappa1B, lower=0, upper=1, .var.name="kappa1B")
+  checkmate::assertLogical(etaDistCentered, len=1, any.missing=FALSE,
+                           .var.name="etaDistCentered")
   checkmate::assertLogical(etaDistSpreadGuard, len=1, any.missing=FALSE,
                            .var.name="etaDistSpreadGuard")
   checkmate::assertNumeric(etaDistSdLo, len=1, lower=0, any.missing=FALSE,
@@ -1270,7 +1308,7 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(etaDistLoglik, len=1, .var.name="etaDistLoglik")
   checkmate::assertLogical(etaDistWarmStart, len=1, any.missing=FALSE,
                            .var.name="etaDistWarmStart")
-  checkmate::assertIntegerish(nu1B, len=1, lower=0, any.missing=FALSE, .var.name="nu1B")
+  if (!is.null(nu1B)) checkmate::assertIntegerish(nu1B, len=1, lower=0, any.missing=FALSE, .var.name="nu1B")
   checkmate::assertIntegerish(nb1B, len=1, lower=1, any.missing=FALSE, .var.name="nb1B")
   checkmate::assertLogical(etaDistMstep, len=1, any.missing=FALSE,
                            .var.name="etaDistMstep")
@@ -1292,7 +1330,11 @@ saemControl <- function(seed = 99,
     iacceptSingle = iacceptSingle,
     iacceptPerId = iacceptPerId,
     nonMuThetaBhhh = nonMuThetaBhhh,
-    nu1B = as.integer(nu1B),
+    muNonCentered = muNonCentered,
+    omegaNonCentered = omegaNonCentered,
+    kappa1B = kappa1B,
+    etaDistCentered = etaDistCentered,
+    nu1B = if (is.null(nu1B)) NULL else as.integer(nu1B),
     nb1B = as.integer(nb1B),
     etaDistMstep = etaDistMstep,
     etaDistWarmStart = etaDistWarmStart,

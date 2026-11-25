@@ -32,6 +32,21 @@
 
 ## New features
 
+- `est="saem"` interweaves a non-centered update of each free, intercept-only
+  mu-referenced mean (`saemControl(muNonCentered = TRUE)`, the default): after
+  the M-step the mean is shifted with every subject's eta held fixed, scored on
+  the data likelihood by one BHHH step with NONMEM's step-halving rule (Yu and
+  Meng 2011).  The ordinary SAEM mean update barely moves a mean whose random
+  effect is small relative to the data's information about it; on Bauer's
+  gamma-distributed CL/V1 benchmark it took the intercompartmental clearance
+  from 0.86-0.88 to 0.75 (truth 0.74).
+
+- Mode 1B builds each subject's proposal from a running average of its
+  samples over the whole run (gain `n^-kappa1B`, `saemControl(kappa1B = 1)`,
+  NONMEM's `IKAPPA`) instead of the current iteration's samples, falls back to
+  a diagonal proposal per subject rather than for everyone, and is on by
+  default (`nu1B = 2`) when a random effect has a `dist()` declaration.
+
 - `est="saem"` estimates every theta without an eta that informs a
   general likelihood (`dnorm()`, `t()`, `cauchy()`, the discrete and
   continuous densities, and `ll()`) through a temporary mu-referenced eta on

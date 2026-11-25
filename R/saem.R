@@ -361,6 +361,9 @@
                           if (is.null(.eds)) NULL else as.integer(.eds)
                         },
                         nonMuThetaBhhh=rxode2::rxGetControl(ui, "nonMuThetaBhhh", FALSE),
+                        muNonCentered=rxode2::rxGetControl(ui, "muNonCentered", TRUE),
+                        omegaNonCentered=rxode2::rxGetControl(ui, "omegaNonCentered", TRUE),
+                        kappa1B=rxode2::rxGetControl(ui, "kappa1B", 1),
                         nonMuThetaGradEvery=as.integer(
                           rxode2::rxGetControl(ui, "nonMuThetaGradEvery", 1L)),
                         etaDistInfo={
@@ -436,7 +439,16 @@
                             .edi
                           }
                         },
-                        nu1B=rxode2::rxGetControl(ui, "nu1B", 0L),
+                        ## NULL: mode 1B on (2 sweeps) when a dist() is declared,
+                        ## where NONMEM's mixing comes from it, off otherwise
+                        nu1B={
+                          .nu1B <- rxode2::rxGetControl(ui, "nu1B", NULL)
+                          if (is.null(.nu1B)) {
+                            if (length(.etaDistDeclGet(ui)) > 0L) 2L else 0L
+                          } else {
+                            as.integer(.nu1B)
+                          }
+                        },
                         nb1B=rxode2::rxGetControl(ui, "nb1B", 10L),
                         stepsizeRw=rxode2::rxGetControl(ui, "stepsizeRw", 0.4),
                         coefSa=rxode2::rxGetControl(ui, "coefSa", 0.95),
@@ -639,6 +651,21 @@
         as.integer(isTRUE(rxode2::rxGetControl(ui, "etaDistCorMstep", TRUE)))
     } else {
       .cfg$etaDistCorOn <- 0L
+    }
+    ## cdf route: the centered (interweaved) family update owns the declared
+    ## thetas and the copula correlation -- it refits them to the decoded etas
+    ## and re-encodes the latents (R/saemEtaDistCentered.R) -- so the family
+    ## MLE and the copula closed form, which do not re-encode, step aside.
+    if (!.directQ2 && isTRUE(rxode2::rxGetControl(ui, "etaDistCentered", TRUE))) {
+      .fam <- .saemEtaDistFamilies(ui)
+      .fn <- if (length(.fam) > 0L) {
+        tryCatch(.saemEtaDistCenteredFn(ui, .cfg, .fam), error = function(e) NULL)
+      }
+      if (is.function(.fn)) {
+        .cfg$etaDistCentered <- .fn
+        .cfg$etaDistOn <- 0L
+        .cfg$etaDistCorOn <- 0L
+      }
     }
     .cfg$nonMuThetaSweeps <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaSweeps", 2L))
     .cfg$nonMuThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaMaxEval", 25L))
