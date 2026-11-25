@@ -18,6 +18,12 @@
 
 ## New features
 
+- `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes each
+  converged trust ETA solve by re-entering it at the squared
+  `trustFterm`/`trustMterm` instead of taking Newton steps.  The objective at
+  fixed parameters then varies by about 2e-5 across warm-start ETAs (0.0054
+  before on `pheno_sd`); the default is unchanged (#1152).
+
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
