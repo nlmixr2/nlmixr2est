@@ -562,7 +562,7 @@ saemControl <- function(
   checkmate::assertIntegerish(nu, any.missing = FALSE, len = 3, lower = 1)
   checkmate::assertIntegerish(nuMass, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertIntegerish(massStart, any.missing = FALSE, len = 1, lower = 2)
-  checkmate::assertNumeric(massKappa, any.missing = FALSE, len = 1, lower = 0.5, upper = 1)
+  checkmate::assertNumber(massKappa, lower = 0.5, upper = 1)
   checkmate::assertNumber(rmcmc, finite = TRUE)
   if (rmcmc <= 0) {
     stop("'rmcmc' must be positive", call. = FALSE)

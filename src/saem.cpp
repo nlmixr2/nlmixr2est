@@ -6074,7 +6074,7 @@ private:
           deltu=Uc_y-U_y+Uc_phi-U_phi;
         }
         if (method == 4) {
-          deltu += massQ;
+          deltu -= massQ;
           deltu.elem(find(massOff == 1)).fill(datum::inf);
         }
 

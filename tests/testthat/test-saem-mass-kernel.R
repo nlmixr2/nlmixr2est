@@ -50,5 +50,7 @@ nmTest({
     # the same seed reproduces the fit exactly
     expect_equal(fixef(.fit(2L)), fixef(.f2))
     expect_equal(fixef(.f2), fixef(.f0), tolerance = 0.1)
+    # a wrong-signed proposal correction targets the wrong posterior (+5 OFV)
+    expect_lt(abs(.f2$objf - .f0$objf), 2)
   })
 })
