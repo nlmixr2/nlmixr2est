@@ -132,10 +132,11 @@
   SD starts below 1% of that endpoint's own median `|DV|` now warns before
   estimation and suggests a start of about 10% of it; the initial estimate is
   not changed (#1383).
-- `foceiControl(stopFile = "stop")` ends a running FOCEi-family fit gracefully
-  once that file is created: the fit continues from the lowest objective
-  evaluated so far, removes the file and notes "stopped early by user request"
-  in `$runInfo` (#1507).
+- `foceiControl(stopFile = "stop")` and `saemControl(stopFile = "stop")` end
+  a running FOCEi-family or SAEM fit gracefully once that file is created: a
+  FOCEi fit continues from the lowest objective evaluated so far and SAEM ends
+  at the current iteration; the file is removed and "stopped early by user
+  request" is noted in `$runInfo` (#1507).
 
 - `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes each
   converged trust ETA solve by re-entering it at the squared

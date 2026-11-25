@@ -118,3 +118,31 @@ test_that("a stop part way through keeps the lowest evaluation and a re-run is n
   expect_false(.fit2$message == "stopped early by user request")
   expect_false("stopped early by user request" %in% .fit2$runInfo)
 })
+
+test_that("a stop file ends a SAEM fit at the current iteration", {
+  expect_null(saemControl()$stopFile)
+  expect_error(saemControl(stopFile = ""))
+  .sf <- tempfile("stop")
+  on.exit(unlink(.sf))
+  file.create(.sf)
+  .fit <- suppressMessages(nlmixr(
+    .stopMod,
+    nlmixr2data::theo_sd,
+    "saem",
+    control = saemControl(print = 0, stopFile = .sf, nBurn = 20, nEm = 30)
+  ))
+  expect_false(file.exists(.sf))
+  expect_true("stopped early by user request" %in% .fit$runInfo)
+  expect_equal(nrow(.fit$parHist), 1L)
+  expect_true(is.finite(.fit$objf))
+  expect_equal(.nmStopFileGet(), "")
+
+  .fit2 <- suppressMessages(nlmixr(
+    .stopMod,
+    nlmixr2data::theo_sd,
+    "saem",
+    control = saemControl(print = 0, stopFile = .sf, nBurn = 20, nEm = 30)
+  ))
+  expect_false("stopped early by user request" %in% .fit2$runInfo)
+  expect_equal(nrow(.fit2$parHist), 50L)
+})

@@ -25,6 +25,7 @@
 #include "minqaC.h"
 #include "saemAutoStop.h"
 #include "likPenalty.h"
+#include "stopFile.h"
 
 #define _(String) (String)
 
@@ -2957,6 +2958,9 @@ public:
     plateauTol = x.containsElementNamed("plateauTol") ? as<double>(x["plateauTol"]) : 1e-3;
     plateauMinFrac = x.containsElementNamed("plateauMinFrac") ? as<double>(x["plateauMinFrac"]) : 0.5;
     plateauIter = -1;
+    // poll saemControl(stopFile=) once per iteration (#1507)
+    stopFilePoll = x.containsElementNamed("stopFile") ? as<int>(x["stopFile"]) : 0;
+    stopIter = -1;
     minv = as<vec>(x["minv"]);
 
     N = as<int>(x["N"]);
@@ -5681,6 +5685,11 @@ public:
           // phase (if any) starts next, on the same iterations' seeds
           plateauIter = (int)kiter + 1;
           truncateHistory((unsigned int)plateauIter);
+        } else if (stopFilePoll && kiter + 1 < (unsigned int)niter && nmStopFilePoll()) {
+          // a user stop request ends the iterations here, as the plateau stop does
+          nmStopFileConsume();
+          stopIter = (int)kiter + 1;
+          truncateHistory((unsigned int)stopIter);
         }
       }
       // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
@@ -5710,6 +5719,10 @@ public:
 
   int get_plateauIter() {
     return plateauIter;
+  }
+
+  int get_stopIter() {
+    return stopIter;
   }
 
 
@@ -6053,6 +6066,8 @@ private:
   double plateauTol = 1e-3;
   double plateauMinFrac = 0.5;
   int plateauIter = -1;
+  int stopFilePoll = 0;
+  int stopIter = -1;
 
   // the plateau test on the last plateauWindow EM iterations of par_hist
   bool plateauReached(unsigned int kiter) const {
@@ -7737,7 +7752,8 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("mixWeights") = saem.get_mixWeights(),
     Named("etaMode") = saem.get_etaMode(),
     Named("etaModeConv") = saem.get_etaModeConv(),
-    Named("plateauIter") = saem.get_plateauIter()
+    Named("plateauIter") = saem.get_plateauIter(),
+    Named("stopIter") = saem.get_stopIter()
   );
   current_saem_state = nullptr;
   int nModeFail = (int)accu(saem.get_etaModeConv() < 0);
