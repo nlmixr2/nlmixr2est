@@ -125,7 +125,8 @@ nlmControl <- function(
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  thetaBoundWarn = 1e-4
 ) {
   .assertPositiveEps(shiErr)
   .assertPositiveEps(hessErr)
@@ -244,6 +245,8 @@ nlmControl <- function(
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
   .corWarnCheck(corWarn)
+
+  .thetaBoundWarnCheck(thetaBoundWarn)
   .ret <- list(
     covMethod = covMethod,
     typsize = typsize,
@@ -286,6 +289,7 @@ nlmControl <- function(
     calcTables = calcTables,
     compress = compress,
     corWarn = corWarn,
+    thetaBoundWarn = as.double(thetaBoundWarn),
     solveType = solveType,
     linCmtSensCarry = match.arg(linCmtSensCarry),
     ci = ci,

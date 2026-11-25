@@ -523,7 +523,8 @@ vaeControl <- function(
   eventSens = c("jump", "fd"),
   rxControl = NULL,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  thetaBoundWarn = 1e-4
 ) {
   checkmate::assertIntegerish(seed, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(itersBurnIn, lower = 0, any.missing = FALSE, len = 1)
@@ -680,6 +681,7 @@ vaeControl <- function(
   }
   checkmate::assertNumeric(residRhoend, len = 1, lower = 0, finite = TRUE, any.missing = FALSE)
   .corWarnCheck(corWarn)
+  .thetaBoundWarnCheck(thetaBoundWarn)
   .ret <- list(
     seed = as.integer(seed),
     rhoend = as.numeric(rhoend),
@@ -733,6 +735,7 @@ vaeControl <- function(
     calcTables = calcTables,
     compress = compress,
     corWarn = corWarn,
+    thetaBoundWarn = as.double(thetaBoundWarn),
     adjObf = adjObf,
     ci = ci,
     sigdig = sigdig,

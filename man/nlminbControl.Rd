@@ -56,7 +56,8 @@ nlminbControl(
   sigdig = 3,
   sigdigTable = NULL,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  thetaBoundWarn = 1e-04
 )
 }
 \arguments{
@@ -282,6 +283,11 @@ If not specified (`NULL`), it defaults to `sigdig`.}
 \item{corWarn}{warn when two estimates' correlation is at least this in
 absolute value after the covariance step; \code{NA} or \code{Inf} turns
 the warning off.}
+
+\item{thetaBoundWarn}{Warn (in `$runInfo`) when an estimated theta ends
+within this tolerance of a finite `lower`/`upper` bound, relative to the
+bound range (or, for a one-sided bound, to the larger of the bound's size
+and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
 }
 \description{
 nlmixr2 nlminb defaults

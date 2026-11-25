@@ -121,7 +121,8 @@ nlsControl <- function(
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  thetaBoundWarn = 1e-4
 ) {
   algorithm <- match.arg(algorithm)
   if (algorithm == "LM" && !requireNamespace("minpack.lm", quietly = TRUE)) {
@@ -232,6 +233,8 @@ nlsControl <- function(
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
   .corWarnCheck(corWarn)
+
+  .thetaBoundWarnCheck(thetaBoundWarn)
   .ret <- list(
     algorithm = algorithm,
     maxiter = maxiter,
@@ -277,6 +280,7 @@ nlsControl <- function(
     calcTables = calcTables,
     compress = compress,
     corWarn = corWarn,
+    thetaBoundWarn = as.double(thetaBoundWarn),
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,

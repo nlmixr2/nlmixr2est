@@ -60,7 +60,8 @@ optimControl(
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  thetaBoundWarn = 1e-04
 )
 }
 \arguments{
@@ -314,6 +315,11 @@ skips the final back-transform.}
 \item{corWarn}{warn when two estimates' correlation is at least this in
 absolute value after the covariance step; \code{NA} or \code{Inf} turns
 the warning off.}
+
+\item{thetaBoundWarn}{Warn (in `$runInfo`) when an estimated theta ends
+within this tolerance of a finite `lower`/`upper` bound, relative to the
+bound range (or, for a one-sided bound, to the larger of the bound's size
+and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
 }
 \value{
 optimControl object for nlmixr2

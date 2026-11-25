@@ -1,3 +1,11 @@
+#' Check the `thetaBoundWarn` control option
+#' @param thetaBoundWarn relative tolerance; `NA`/`0` is off
+#' @return invisibly the option
+#' @noRd
+.thetaBoundWarnCheck <- function(thetaBoundWarn) {
+  checkmate::assertNumber(thetaBoundWarn, lower = 0, upper = 1, na.ok = TRUE, .var.name = "thetaBoundWarn")
+}
+
 #' The theta-bound warning tolerance of a fit
 #'
 #' @param fit the finalized fit

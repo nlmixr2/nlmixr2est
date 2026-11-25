@@ -264,7 +264,8 @@ emviControl <- function(
   eventSens = c("jump", "fd"),
   rxControl = NULL,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  thetaBoundWarn = 1e-4
 ) {
   checkmate::assertIntegerish(seed, any.missing = FALSE, len = 1)
   checkmate::assertIntegerish(iters, lower = 1, any.missing = FALSE, len = 1)
@@ -375,6 +376,8 @@ emviControl <- function(
   )
 
   .corWarnCheck(corWarn)
+
+  .thetaBoundWarnCheck(thetaBoundWarn)
   .ret <- list(
     seed = as.integer(seed),
     iters = as.integer(iters),
@@ -404,6 +407,7 @@ emviControl <- function(
     calcTables = calcTables,
     compress = compress,
     corWarn = corWarn,
+    thetaBoundWarn = as.double(thetaBoundWarn),
     adjObf = adjObf,
     ci = ci,
     sigdig = sigdig,

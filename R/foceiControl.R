@@ -2227,7 +2227,7 @@ foceiControl <- function(
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
   checkmate::assertNumber(omegaCollapseWarn, lower = 0, upper = 1, na.ok = TRUE)
-  checkmate::assertNumber(thetaBoundWarn, lower = 0, upper = 1, na.ok = TRUE)
+  .thetaBoundWarnCheck(thetaBoundWarn)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
