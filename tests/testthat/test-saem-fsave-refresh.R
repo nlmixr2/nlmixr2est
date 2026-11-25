@@ -31,7 +31,7 @@ nmTest({
     .fit <- .nlmixr(.mod, nlmixr2data::theo_sd, est = "saem", control = .ctl)
     .n1 <- saemFsaveRefresh_()
     expect_gt(.n1[["n"]], .n0[["n"]])
-    # the cache it replaced was stale
+    # the cache this fit replaced was stale (drift is reset per fit)
     expect_gt(.n1[["drift"]], 0)
     expect_true(is.finite(.fit$objf))
   })
@@ -56,6 +56,9 @@ nmTest({
     }
     .n0 <- saemFsaveRefresh_()
     .fit <- .nlmixr(.mod, nlmixr2data::theo_sd, est = "saem", control = .ctl)
-    expect_equal(saemFsaveRefresh_()[["n"]], .n0[["n"]])
+    .n1 <- saemFsaveRefresh_()
+    expect_equal(.n1[["n"]], .n0[["n"]])
+    # drift is reset per fit, so no earlier fit's refresh leaks in
+    expect_equal(.n1[["drift"]], 0)
   })
 })

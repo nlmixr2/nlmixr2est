@@ -682,8 +682,8 @@ static std::vector<int> gPhi1FreeIx;
 // the mechanism executed rather than infer it from matching estimates alone
 // (evaluation criterion #2 in the plan).
 static long _saemPhi1RefineN = 0;
-// Diagnostic: cached-prediction refreshes after a phi0 change, and the largest
-// stale-vs-fresh prediction difference they replaced.
+// Diagnostic: cached-prediction refreshes after a phi0 change (cumulative), and
+// the largest stale-vs-fresh prediction difference they replaced (last fit).
 static long _saemFsaveRefreshN = 0;
 static double _saemFsaveDrift = 0.0;
 
@@ -7057,6 +7057,7 @@ SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
 SEXP saem_fit(SEXP xSEXP) {
   List x(xSEXP);
   List opt = x["opt"];
+  _saemFsaveDrift = 0.0;
   setupRx(opt, x["evt"], as<int>(x["nmc"]), as<int>(x["N"]));
 
   // if (rxSingleSolve == NULL) rxSingleSolve = (rxSingleSolve_t) R_GetCCallable("rxode2","rxSingleSolve");
