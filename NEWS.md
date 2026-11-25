@@ -18,6 +18,11 @@
 
 ## New features
 
+- Estimation now warns before fitting when an `lnorm()` or `boxCox()`
+  endpoint has uncensored observations with `DV <= 0`, which these
+  transforms silently clamp, e.g. `2 DV <= 0 on lnorm endpoint 'cp'`
+  (#1510).
+
 - `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes each
   converged trust ETA solve by re-entering it at the squared
   `trustFterm`/`trustMterm` instead of taking Newton steps.  The objective at
