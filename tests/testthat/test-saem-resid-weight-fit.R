@@ -69,6 +69,9 @@ nmTest({
     expect_false(any(grepl("dnorm() likelihood", .f$runInfo, fixed = TRUE)))
     expect_equal(fixef(.f)[["prop.sd"]], fixef(.ref)[["prop.sd"]], tolerance = 0.1)
     expect_equal(fixef(.f)[["prop.sd"]], 0.1, tolerance = 0.15)
+    # the linearized FIM carries the weight in dVi/d(prop.sd)
+    .se <- function(fit) fit$parFixedDf["prop.sd", "SE"]
+    expect_equal(.se(.f), .se(.ref), tolerance = 0.3)
     expect_equal(.f$IWRES, .f$IRES / (fixef(.f)[["prop.sd"]] * (1 + .f$TIME / 12) * .f$IPRED), tolerance = 1e-6)
     expect_true(is.finite(.f$objective))
   })

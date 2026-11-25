@@ -1101,6 +1101,8 @@ calc.COV <- function(fit0) {
     .doVar <- FALSE
   }
   .absF0 <- abs(f0s)
+  # a known residual weight multiplies both residual SD components
+  .resW <- if (is.null(saem.cfg$resW)) rep(1, length(f0s)) else saem.cfg$resW
 
   # spectral decom for invVi, idea from saemix; also accumulates the variance FIM (blocB)
   .parts <- lapply(1:N, function(i) {
@@ -1149,14 +1151,15 @@ calc.COV <- function(fit0) {
     if (.doVar) {
       invVi <- crossprod(invVi.5) # Vi^{-1}
       .gix <- g[ix]
-      .fix <- .absF0[ix]
+      .wix <- .resW[ix]
+      .fix <- .absF0[ix] * .wix
       .eix <- ix_endpnt[ix]
       # A_k = Vi^{-1} dVi/d(param_k) for each variance parameter
       .A <- vector("list", .nvar)
       .k <- 0L
       for (r in seq_along(.resNames)) {
         .k <- .k + 1L
-        .dv <- if (.resType[r] == 1L) 2 * .gix else 2 * .gix * .fix # dVi/da = 2 diag(g); dVi/db = 2 diag(g|f|)
+        .dv <- if (.resType[r] == 1L) 2 * .gix * .wix else 2 * .gix * .fix # dVi/da = 2 diag(g w); dVi/db = 2 diag(g|f|w)
         .dv[.eix != .resEndpnt[r]] <- 0 # mask to the owning endpoint (#904)
         .A[[.k]] <- sweep(invVi, 2L, .dv, "*") # Vi^{-1} diag(.dv)
       }
