@@ -100,6 +100,10 @@ SEXP _nlmixr2est_shi21RatioCensorSet(SEXP);
 SEXP _nlmixr2est_shi21RatioTest(SEXP, SEXP);
 
 SEXP _nlmixr2est_foceiOuterF(SEXP);
+SEXP _nlmixr2est_nmStopFileSet_(SEXP);
+SEXP _nlmixr2est_nmStopFileGet_(void);
+SEXP _nlmixr2est_nmStopFilePoll_(void);
+SEXP _nlmixr2est_nmStopFileRequested_(void);
 SEXP _nlmixr2est_foceiOuterRecord_(SEXP);
 SEXP _nlmixr2est_foceiOuterHold_(SEXP);
 SEXP _nlmixr2est_foceiOuterG(SEXP);
@@ -372,6 +376,10 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_shi21RatioTest", (DL_FUNC) &_nlmixr2est_shi21RatioTest, 2},
   {"_nlmixr2est_likInner", (DL_FUNC) &_nlmixr2est_likInner, 2},
   {"_nlmixr2est_foceiOuterF", (DL_FUNC) &_nlmixr2est_foceiOuterF, 1},
+  {"_nlmixr2est_nmStopFileSet_", (DL_FUNC) &_nlmixr2est_nmStopFileSet_, 1},
+  {"_nlmixr2est_nmStopFileGet_", (DL_FUNC) &_nlmixr2est_nmStopFileGet_, 0},
+  {"_nlmixr2est_nmStopFilePoll_", (DL_FUNC) &_nlmixr2est_nmStopFilePoll_, 0},
+  {"_nlmixr2est_nmStopFileRequested_", (DL_FUNC) &_nlmixr2est_nmStopFileRequested_, 0},
   {"_nlmixr2est_foceiOuterRecord_", (DL_FUNC) &_nlmixr2est_foceiOuterRecord_, 1},
   {"_nlmixr2est_foceiOuterHold_", (DL_FUNC) &_nlmixr2est_foceiOuterHold_, 1},
   {"_nlmixr2est_foceiOuterG", (DL_FUNC) &_nlmixr2est_foceiOuterG, 1},

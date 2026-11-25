@@ -1084,6 +1084,11 @@
 #'   of its magnitude (at least 0.1 objective units).  Use `NA` or `Inf` to
 #'   disable.
 #'
+#' @param stopFile Path of a file that, once created, stops the estimation
+#'   gracefully: the run ends at its current state (for FOCEi, the lowest
+#'   objective evaluated so far), removes the file, notes the stop in
+#'   `$runInfo` and returns the fit.  `NULL` (default) does not poll.
+#'
 #' @param shrinkEtaWarn Warn (in `$runInfo`) when an eta's SD shrinkage is
 #'   at or above this percentage.  Use `NA` or `Inf` to disable.
 #'
@@ -1575,6 +1580,7 @@ foceiControl <- function(
   etaRestart = 4L, #
   finalEtaTol = 1, #
   aboveStartTol = 0.01, #
+  stopFile = NULL, #
   shrinkEtaWarn = 30, #
   odeSettleCheck = FALSE, #
   odeSettleTol = 0.1, #
@@ -2263,6 +2269,7 @@ foceiControl <- function(
   checkmate::assertIntegerish(etaRestart, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumber(finalEtaTol, lower = 0)
   checkmate::assertNumber(aboveStartTol, lower = 0, na.ok = TRUE)
+  checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
   checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
@@ -2496,6 +2503,7 @@ foceiControl <- function(
     etaRestart = as.integer(etaRestart),
     finalEtaTol = as.double(finalEtaTol),
     aboveStartTol = as.double(aboveStartTol),
+    stopFile = stopFile,
     shrinkEtaWarn = as.double(shrinkEtaWarn),
     odeSettleCheck = odeSettleCheck,
     odeSettleTol = as.double(odeSettleTol),

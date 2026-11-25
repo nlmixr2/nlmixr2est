@@ -32,6 +32,7 @@
 #include "rxomp.h"
 #include "solveWarnHelper.h"
 #include "vaeEncoder.h"
+#include "stopFile.h"
 
 // scale.h uses `_("...")` for translatable strings; provide the trivial
 // passthrough macro before including it (matches saem.cpp's usage).
@@ -11441,9 +11442,19 @@ void foceiOuterFinal(double *x, Environment e){
 
 ////////////////////////////////////////////////////////////////////////////////
 // Outer l-BFGS-b from R
+// The lowest outer-search evaluation, on the optimizer's scale: where a user stop
+// request (foceiControl(stopFile=)) ends the search.
+static double _stopBestF = R_PosInf;
+static std::vector<double> _stopBestX;
+
 extern "C" double foceiOfvOptim(int n, double *x, void *ex){
+  if (foceiOuterActive && nmStopFileRequested()) throw nmStopRequest();
   double ret = foceiOfv0(x);
   ++op_focei.nF;
+  if (foceiOuterActive && R_FINITE(ret) && ret < _stopBestF) {
+    _stopBestF = ret;
+    _stopBestX.assign(x, x + n);
+  }
   if (!op_focei.recordOuter) return ret;
   niter.push_back(op_focei.nF2+op_focei.nF);
   mcetaRecord(niter.back());
@@ -11526,6 +11537,7 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
   // intdy window-misses) accumulated since the last flush; without this a
   // difficult model floods the console with identical lines each iteration.
   nmFlushRxSolveWarn(5);
+  if (foceiOuterActive && nmStopFilePoll()) throw nmStopRequest();
   return ret;
 }
 
@@ -11691,6 +11703,19 @@ static inline void foceiOuterStart(double *x) {
   }
 }
 
+// A stop request ended the outer search: continue from its lowest evaluation.
+static inline void foceiStopBestX(double *x) {
+  if (_stopBestX.size() == op_focei.npars) {
+    std::copy(_stopBestX.begin(), _stopBestX.end(), x);
+  }
+}
+
+static inline void foceiStopMessage(Environment e) {
+  if (!nmStopFileRequested()) return;
+  e["convergence"] = 1;
+  e["message"] = "stopped early by user request";
+}
+
 void foceiLbfgsb3(Environment e){
   void *ex = NULL;
   double Fmin;
@@ -11702,12 +11727,16 @@ void foceiLbfgsb3(Environment e){
     stop(_("outerOpt=\"lbfgsb3c\" needs lbfgsb3c >= 2024-3.6 (thread-safe lbfgsb3Cts)"));
   }
   // The C++ port: same iterates as the Fortran lbfgsb3C, no R printing.
-  lbfgsb3Cts(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
-             op_focei.upper, op_focei.nbd, &Fmin, foceiOfvOptim,
-             outerGradNumOptim, &fail, ex, op_focei.factr,
-             op_focei.pgtol, &fncount, &grcount,
-             op_focei.maxOuterIterations, NULL, 0, -1,
-             op_focei.abstol, op_focei.reltol, g.begin());
+  try {
+    lbfgsb3Cts(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
+               op_focei.upper, op_focei.nbd, &Fmin, foceiOfvOptim,
+               outerGradNumOptim, &fail, ex, op_focei.factr,
+               op_focei.pgtol, &fncount, &grcount,
+               op_focei.maxOuterIterations, NULL, 0, -1,
+               op_focei.abstol, op_focei.reltol, g.begin());
+  } catch (nmStopRequest&) {
+    foceiStopBestX(x.begin());
+  }
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
   // Otherwise ETAs may be off
   std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
@@ -11716,6 +11745,7 @@ void foceiLbfgsb3(Environment e){
   e["convergence"] = fail;
   e["message"] = lbfgsbTaskName(fail);
   e["lastGrad"] = g;
+  foceiStopMessage(e);
 }
 
 void foceiLbfgsb(Environment e){
@@ -11725,11 +11755,15 @@ void foceiLbfgsb(Environment e){
   NumericVector x(op_focei.npars);
   foceiOuterStart(x.begin());
   char msg[100];
-  lbfgsbRX(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
-           op_focei.upper, op_focei.nbd, &Fmin, foceiOfvOptim,
-           outerGradNumOptim, &fail, ex, op_focei.factr,
-           op_focei.pgtol, &fncount, &grcount,
-           op_focei.maxOuterIterations, msg, 0, op_focei.maxOuterIterations+1);
+  try {
+    lbfgsbRX(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
+             op_focei.upper, op_focei.nbd, &Fmin, foceiOfvOptim,
+             outerGradNumOptim, &fail, ex, op_focei.factr,
+             op_focei.pgtol, &fncount, &grcount,
+             op_focei.maxOuterIterations, msg, 0, op_focei.maxOuterIterations+1);
+  } catch (nmStopRequest&) {
+    foceiStopBestX(x.begin());
+  }
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
   // Otherwise ETAs may be off
   std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
@@ -11737,6 +11771,7 @@ void foceiLbfgsb(Environment e){
   foceiOuterFinal(x.begin(), e);
   e["convergence"] = fail;
   e["message"] = msg;
+  foceiStopMessage(e);
 }
 
 void foceiCustomFun(Environment e){
@@ -11755,20 +11790,30 @@ void foceiCustomFun(Environment e){
   ctl["outerRecord"] = nlmixr2[".foceiOuterRecord"];
   ctl["outerHold"] = nlmixr2[".foceiOuterHold"];
   Function opt = as<Function>(ctl["outerOptFun"]);
+  // .foceiOuterOpt() returns NULL when a stop request ended the search
+  Function optStop = as<Function>(nlmixr2[".foceiOuterOpt"]);
   //.bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...)
-  List ret = as<List>(opt(_["par"]=x, _["fn"]=f, _["gr"]=g, _["lower"]=lower,
-                          _["upper"]=upper,_["control"]=ctl));
+  RObject ret0 = optStop(opt, _["par"]=x, _["fn"]=f, _["gr"]=g, _["lower"]=lower,
+                         _["upper"]=upper,_["control"]=ctl);
   foceiOuterHold_(false);
+  List ret;
+  if (ret0.isNULL()) {
+    ret = List::create(_["x"]=clone(x), _["convergence"]=1);
+  } else {
+    ret = as<List>(ret0);
+  }
   // a copy: the final evaluation may replace x, and optReturn keeps the optimizer's
   x = clone(as<NumericVector>(ret["x"]));
+  if (nmStopFileRequested()) foceiStopBestX(x.begin());
   // Recalculate OFV in case the last calculated OFV isn't at the minimum....
   // Otherwise ETAs may be off
   if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, INNER_ETA_RESET_TO);
   // Finalize environment
   foceiOuterFinal(x.begin(), e);
   e["convergence"] = ret["convergence"];
-  e["message"] = ret["message"];
+  if (ret.containsElementNamed("message")) e["message"] = ret["message"];
   e["optReturn"] = ret;
+  foceiStopMessage(e);
 }
 
 
@@ -11913,6 +11958,8 @@ Environment foceiOuter(Environment e){
   op_focei.nG=0;
   op_focei.recordOuter = true;
   foceiBestEvalReset();
+  _stopBestF = R_PosInf;
+  _stopBestX.clear();
   op_focei.nFinalEtaMoved = 0;
   op_focei.finalBestX = 0;
   op_focei.finalBestGap = NA_REAL;

@@ -755,6 +755,22 @@ iwresAutocor_ <- function(iwres, id, grp) {
     .Call(`_nlmixr2est_iwresAutocor_`, iwres, id, grp)
 }
 
+.nmStopFileSet <- function(file) {
+    .Call(`_nlmixr2est_nmStopFileSet_`, file)
+}
+
+.nmStopFileGet <- function() {
+    .Call(`_nlmixr2est_nmStopFileGet_`)
+}
+
+.nmStopFilePoll <- function() {
+    .Call(`_nlmixr2est_nmStopFilePoll_`)
+}
+
+.nmStopFileRequested <- function() {
+    .Call(`_nlmixr2est_nmStopFileRequested_`)
+}
+
 tablePoolFree_ <- function() {
     .Call(`_nlmixr2est_tablePoolFree_`)
 }
