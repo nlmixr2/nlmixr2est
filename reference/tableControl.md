@@ -21,7 +21,8 @@ tableControl(
   subsetNonmem = TRUE,
   cores = NULL,
   keep = NULL,
-  drop = NULL
+  drop = NULL,
+  iwresAutocor = TRUE
 )
 ```
 
@@ -80,7 +81,16 @@ tableControl(
 - seed:
 
   an object specifying if and how the random number generator should be
-  initialized
+  initialized; when given, it takes precedence over an active
+  [`rxSetSeed()`](https://nlmixr2.github.io/rxode2/reference/rxSetSeed.html)
+  stream for this solve, and the caller's `.Random.seed` is restored
+  afterwards.
+  [`rxControl()`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
+  only stores it; the seed is applied when the control is used by a
+  solve. Re-solving a result by assignment (eg `s$params <- p`)
+  reapplies its seed, while
+  [`update()`](https://rdrr.io/r/stats/update.html) uses only a `seed`
+  it is given
 
 - cholSEtol:
 
@@ -150,6 +160,12 @@ tableControl(
 - drop:
 
   is the dropped variables sent to the table
+
+- iwresAutocor:
+
+  When \`TRUE\` (default), add a run note when the within-subject
+  Durbin-Watson statistic of IWRES (\`fit\$iwresAutocor\`) is below 1.5
+  (positive autocorrelation) or above 2.5 (negative).
 
 ## Value
 

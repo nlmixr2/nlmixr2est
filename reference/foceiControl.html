@@ -238,7 +238,8 @@
 <span>  linCmtSensCarry <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"none"</span><span class="op">)</span>,</span>
 <span>  zeroTheta <span class="op">=</span> <span class="fl">0.001</span>,</span>
 <span>  zeroThetaStep <span class="op">=</span> <span class="fl">100</span>,</span>
-<span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  omegaCollapseWarn <span class="op">=</span> <span class="fl">0.001</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -1095,18 +1096,21 @@ coupling these parameters exist to remove. Has no effect unless
 
 <dt id="arg-trustpolish">trustPolish<a class="anchor" aria-label="anchor" href="#arg-trustpolish"></a></dt>
 <dd><p>logical; when `TRUE`, each converged `innerOpt="trust"`
-solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
-This makes the objective less dependent on the warm-start ETAs and can
-help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+solve re-enters once from its ETAs with the squared
+`trustFterm`/`trustMterm` (floored at `1e-10`; not under a quasi-Newton
+`hessianMethod`).  This makes the objective nearly independent of the
+warm-start ETAs and can help a fit that stops short of its minimum
+(#1152).  The `"bobyqa"`
 outer search then also restarts once from where it stops, which costs
 about twice the outer evaluations.  `FALSE` (default) keeps the plain
 trust solve and a single outer search.</p></dd>
 
 
 <dt id="arg-steihaugpolish-newuoapolish">steihaugPolish, newuoaPolish<a class="anchor" aria-label="anchor" href="#arg-steihaugpolish-newuoapolish"></a></dt>
-<dd><p>logical; the `trustPolish` Newton
-polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
-solve.  `FALSE` (default) keeps the plain solve.</p></dd>
+<dd><p>logical; the `trustPolish` polish for
+a converged `innerOpt="steihaug"` solve (the same re-entry) or
+`innerOpt="newuoa"` solve (up to 4 Newton steps, down to `trustFterm`).
+`FALSE` (default) keeps the plain solve.</p></dd>
 
 
 <dt id="arg-newuoarhoend">newuoaRhoend<a class="anchor" aria-label="anchor" href="#arg-newuoarhoend"></a></dt>
@@ -1772,6 +1776,12 @@ transformed for unbounded optimization methods and back-transformed
 for final estimates. `FALSE` optimizes on the original scale with
 bounds passed to the optimizer. `NA` transforms for optimization but
 skips the final back-transform.</p></dd>
+
+
+<dt id="arg-omegacollapsewarn">omegaCollapseWarn<a class="anchor" aria-label="anchor" href="#arg-omegacollapsewarn"></a></dt>
+<dd><p>Warn (in `$runInfo`) when a free diagonal omega
+ends below this fraction of its initial estimate, or at its
+`diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.</p></dd>
 
 </dl></div>
     <div class="section level2">

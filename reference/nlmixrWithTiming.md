@@ -89,7 +89,7 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 9544
-#> → compress phiM in nlmixr2 object, save 63384
+#> → compress phiM in nlmixr2 object, save 63256
 
 nlmixrWithTiming("time1", {
    Sys.sleep(1)
@@ -108,9 +108,9 @@ print(fit)
 #> ── Time (sec $time): ──
 #> 
 #>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.09292626 4.6978e-05  0.0420126      0.076     0.201 3.626       0.246
-#>         table compress     other time2 time1
-#> elapsed 0.072    0.071 0.1750142 1.002 1.001
+#> elapsed 0.05044151 3.8978e-05 0.02301265      0.038     0.115 1.874        0.15
+#>         table compress      other time2 time1
+#> elapsed 0.033    0.044 0.09750686 1.002 1.001
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -125,6 +125,9 @@ print(fit)
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
+#>   Information about run found ($runInfo):
+#>    • IWRES shrinkage is strongly negative; check the residual model 
+#>    • IWRES positively autocorrelated within subjects: Durbin-Watson 0.28 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──

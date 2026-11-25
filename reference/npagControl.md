@@ -460,7 +460,7 @@ npagControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x5f1b34b9c3a0>
+#> <bytecode: 0x55b780b204a0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -708,6 +708,9 @@ npagControl()
 #> 
 #> $odeSettleTol
 #> [1] 0.1
+#> 
+#> $omegaCollapseWarn
+#> [1] 0.001
 #> 
 #> $maxOdeRecalc
 #> [1] 5

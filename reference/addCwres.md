@@ -96,7 +96,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 9544
-#> → compress phiM in nlmixr2 object, save 63384
+#> → compress phiM in nlmixr2 object, save 63256
 
 print(f)
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
@@ -106,10 +106,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1274868 6.5252e-05 0.04401505      0.079     0.912 3.683       0.929
+#>              setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.08123154 4.2925e-05  0.2520143      0.042     0.616 1.846       0.598
 #>         table compress     other
-#> elapsed  0.08    0.074 0.2324329
+#> elapsed 0.044    0.045 0.1177112
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -124,6 +124,9 @@ print(f)
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
+#>   Information about run found ($runInfo):
+#>    • IWRES shrinkage is strongly negative; check the residual model 
+#>    • IWRES positively autocorrelated within subjects: Durbin-Watson 0.28 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──
@@ -194,10 +197,10 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.1274868 6.5252e-05 0.04401505      0.079     0.912 3.683       0.929
+#>              setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.08123154 4.2925e-05  0.2520143      0.042     0.616 1.846       0.598
 #>         table compress     other foceiLik
-#> elapsed 2.606    0.074 0.2324329    0.514
+#> elapsed 1.557    0.045 0.1177112    0.286
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -212,6 +215,9 @@ if (!inherits(f, "try-error")) {
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
+#>   Information about run found ($runInfo):
+#>    • IWRES shrinkage is strongly negative; check the residual model 
+#>    • IWRES positively autocorrelated within subjects: Durbin-Watson 0.28 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──

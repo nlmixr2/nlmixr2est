@@ -60,7 +60,8 @@
 <span>  subsetNonmem <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  cores <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  keep <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  drop <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  drop <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  iwresAutocor <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -114,7 +115,12 @@ you supply single subject event tables (created with
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
 <dd><p>an object specifying if and how the random number
-generator should be initialized</p></dd>
+generator should be initialized; when given, it takes precedence
+over an active <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSetSeed.html" class="external-link">rxSetSeed()</a></code> stream for this solve, and the
+caller's <code>.Random.seed</code> is restored afterwards.  <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxControl()</a></code> only
+stores it; the seed is applied when the control is used by a solve.
+Re-solving a result by assignment (eg <code>s$params &lt;- p</code>) reapplies its
+seed, while <code><a href="https://rdrr.io/r/stats/update.html" class="external-link">update()</a></code> uses only a <code>seed</code> it is given</p></dd>
 
 
 <dt id="arg-cholsetol">cholSEtol<a class="anchor" aria-label="anchor" href="#arg-cholsetol"></a></dt>
@@ -177,6 +183,12 @@ is equivalent to calling <code><a href="https://nlmixr2.github.io/rxode2/referen
 
 <dt id="arg-drop">drop<a class="anchor" aria-label="anchor" href="#arg-drop"></a></dt>
 <dd><p>is the dropped variables sent to the table</p></dd>
+
+
+<dt id="arg-iwresautocor">iwresAutocor<a class="anchor" aria-label="anchor" href="#arg-iwresautocor"></a></dt>
+<dd><p>When `TRUE` (default), add a run note when the
+within-subject Durbin-Watson statistic of IWRES (`fit$iwresAutocor`) is
+below 1.5 (positive autocorrelation) or above 2.5 (negative).</p></dd>
 
 </dl></div>
     <div class="section level2">
