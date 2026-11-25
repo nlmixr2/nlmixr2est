@@ -86,6 +86,9 @@
       n = 150L,
       seed = 14614L,
       design = function(n) .tteWindow(n, 0, 40),
+      # Monolix has no time since the last event, and a regressor carrying
+      # TLAST forward would give the hazard at an event the clock it resets to
+      monolix = FALSE,
       # NONMEM reads the hazard clock from a data item: the last event before
       # each record (NONMEM data items in $DES come from the record ending the
       # interval)
@@ -158,6 +161,8 @@
       ),
       n = 150L,
       seed = 14616L,
+      # Monolix names the proportional error parameter b
+      monolixNames = list(prop.sd = "b"),
       design = function(n) {
         .d <- rbind(
           .tteWindow(n, 0, 48),

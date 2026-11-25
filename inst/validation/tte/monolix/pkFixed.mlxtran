@@ -1,0 +1,51 @@
+<DATAFILE>
+
+[FILEINFO]
+file = '../data/pkFixed.csv'
+delimiter = comma
+header = {ID, TIME, EVID, AMT, CMT, DV, MDV, DVID, CLI, VI}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+EVID = {use=eventidentifier}
+MDV = {use=missingdependentvariable}
+AMT = {use=amount}
+CMT = {use=administration}
+DV = {use=observation, name=ev, type=event}
+CLI = {use=regressor}
+VI = {use=regressor}
+
+<MODEL>
+
+[INDIVIDUAL]
+input = {llam_pop, omega_llam, lic50_pop}
+
+DEFINITION:
+llam = {distribution=normal, typical=llam_pop, sd=omega_llam}
+lic50 = {distribution=normal, typical=lic50_pop, no-variability}
+
+[LONGITUDINAL]
+file = 'pkFixed_model.txt'
+
+<FIT>
+data = ev
+model = ev
+
+<PARAMETER>
+llam_pop = {value=-2.995732, method=MLE}
+lic50_pop = {value=0, method=MLE}
+omega_llam = {value=0.3162278, method=MLE}
+
+<MONOLIX>
+
+[TASKS]
+populationParameters()
+individualParameters(method = {conditionalMean, conditionalMode })
+fim(method = StochasticApproximation)
+logLikelihood(method = ImportanceSampling)
+
+[SETTINGS]
+GLOBAL:
+seed = 1461
+exportpath = 'pkFixed'

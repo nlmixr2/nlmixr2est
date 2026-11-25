@@ -1,0 +1,16 @@
+DESCRIPTION: tte validation -- Weibull single event with late entry (the first record starts the observation)
+
+[LONGITUDINAL]
+input = {lsc, lsh}
+
+EQUATION:
+sc = exp(lsc)
+sh = exp(lsh)
+tt = max(t, 1e-10)
+haz = sh/sc*(tt/sc)^(sh - 1)
+
+DEFINITION:
+ev = {type=event, maxEventNumber=1, hazard=haz}
+
+OUTPUT:
+output = {ev}

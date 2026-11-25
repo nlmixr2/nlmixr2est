@@ -1,0 +1,13 @@
+DESCRIPTION: tte validation -- constant hazard, single event, right-censored
+
+[LONGITUDINAL]
+input = {lh}
+
+EQUATION:
+haz = exp(lh)
+
+DEFINITION:
+ev = {type=event, maxEventNumber=1, hazard=haz}
+
+OUTPUT:
+output = {ev}

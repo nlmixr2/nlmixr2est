@@ -1,0 +1,20 @@
+DESCRIPTION: tte validation -- hazard inhibited by a one-compartment PK model with known individual PK
+
+[LONGITUDINAL]
+input = {llam, lic50, CLI, VI}
+CLI = {use=regressor}
+VI = {use=regressor}
+
+PK:
+depot(adm=1, target=Ac)
+
+EQUATION:
+ddt_Ac = -CLI/VI*Ac
+cp = Ac/VI
+haz = exp(llam)*(1 - cp/(exp(lic50) + cp))
+
+DEFINITION:
+ev = {type=event, hazard=haz}
+
+OUTPUT:
+output = {ev}

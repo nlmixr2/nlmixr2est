@@ -1,0 +1,48 @@
+<DATAFILE>
+
+[FILEINFO]
+file = '../data/tvCov.csv'
+delimiter = comma
+header = {ID, TIME, EVID, AMT, CMT, DV, MDV, DVID, X, TSW, XNM}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+EVID = {use=eventidentifier}
+MDV = {use=missingdependentvariable}
+DV = {use=observation, name=ev, type=event}
+X = {use=regressor}
+
+<MODEL>
+
+[INDIVIDUAL]
+input = {lh_pop, omega_lh, bx_pop}
+
+DEFINITION:
+lh = {distribution=normal, typical=lh_pop, sd=omega_lh}
+bx = {distribution=normal, typical=bx_pop, no-variability}
+
+[LONGITUDINAL]
+file = 'tvCov_model.txt'
+
+<FIT>
+data = ev
+model = ev
+
+<PARAMETER>
+lh_pop = {value=-1.609438, method=MLE}
+bx_pop = {value=0, method=MLE}
+omega_lh = {value=0.3162278, method=MLE}
+
+<MONOLIX>
+
+[TASKS]
+populationParameters()
+individualParameters(method = {conditionalMean, conditionalMode })
+fim(method = StochasticApproximation)
+logLikelihood(method = ImportanceSampling)
+
+[SETTINGS]
+GLOBAL:
+seed = 1461
+exportpath = 'tvCov'

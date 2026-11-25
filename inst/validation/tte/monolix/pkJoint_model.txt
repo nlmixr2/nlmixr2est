@@ -1,0 +1,20 @@
+DESCRIPTION: tte validation -- PK endpoint estimated jointly with the PK-inhibited hazard
+
+[LONGITUDINAL]
+input = {tcl, tv, llam, lic50}
+
+PK:
+depot(adm=1, target=Ac)
+
+EQUATION:
+cl = exp(tcl)
+v = exp(tv)
+ddt_Ac = -cl/v*Ac
+cp = Ac/v
+haz = exp(llam)*(1 - cp/(exp(lic50) + cp))
+
+DEFINITION:
+ev = {type=event, hazard=haz}
+
+OUTPUT:
+output = {cp, ev}

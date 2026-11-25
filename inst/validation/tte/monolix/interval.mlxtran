@@ -1,0 +1,47 @@
+<DATAFILE>
+
+[FILEINFO]
+file = '../data/interval.csv'
+delimiter = comma
+header = {ID, TIME, EVID, AMT, CMT, DV, MDV, DVID}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+EVID = {use=eventidentifier}
+MDV = {use=missingdependentvariable}
+DV = {use=observation, name=ev, type=event}
+
+<MODEL>
+
+[INDIVIDUAL]
+input = {lsc_pop, omega_lsc, lsh_pop}
+
+DEFINITION:
+lsc = {distribution=normal, typical=lsc_pop, sd=omega_lsc}
+lsh = {distribution=normal, typical=lsh_pop, no-variability}
+
+[LONGITUDINAL]
+file = 'interval_model.txt'
+
+<FIT>
+data = ev
+model = ev
+
+<PARAMETER>
+lsc_pop = {value=2.302585, method=MLE}
+lsh_pop = {value=0.1823216, method=MLE}
+omega_lsc = {value=0.3162278, method=MLE}
+
+<MONOLIX>
+
+[TASKS]
+populationParameters()
+individualParameters(method = {conditionalMean, conditionalMode })
+fim(method = StochasticApproximation)
+logLikelihood(method = ImportanceSampling)
+
+[SETTINGS]
+GLOBAL:
+seed = 1461
+exportpath = 'interval'

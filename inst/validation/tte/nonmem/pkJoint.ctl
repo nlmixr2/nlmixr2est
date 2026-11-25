@@ -1,0 +1,40 @@
+$PROBLEM tte validation: PK endpoint estimated jointly with the PK-inhibited hazard
+; DVID 1 = concentration (proportional error), DVID 2 = event
+$INPUT ID TIME EVID AMT CMT DV MDV DVID
+$DATA pkJoint.csv IGNORE=@
+$SUBROUTINES ADVAN13 TOL=9
+$MODEL COMP=(CENTRAL DEFDOSE) COMP=(CHZ)
+$PK
+  CL = EXP(THETA(1) + ETA(1))
+  V = EXP(THETA(2) + ETA(2))
+  PROPSD = THETA(3)
+  LLAM = THETA(4) + ETA(3)
+  IC50 = EXP(THETA(5))
+$DES
+  CPD = A(1)/V
+  DADT(1) = -CL/V*A(1)
+  DADT(2) = EXP(LLAM)*(1 - CPD/(IC50 + CPD))
+$ERROR
+  IF (NEWIND.NE.2) OLDCHZ = 0
+  CP = A(1)/V
+  IF (DVID.EQ.1) THEN
+    W = PROPSD*CP
+    IF (W.LT.1E-10) W = 1E-10
+    Y = LOG(2*3.14159265358979) + 2*LOG(W) + ((DV - CP)/W)**2
+  ELSE
+    CHZ = A(2) - OLDCHZ
+    IF (MDV.EQ.0) OLDCHZ = A(2)
+    HAZ = EXP(LLAM)*(1 - CP/(IC50 + CP))
+    Y = 2*CHZ
+    IF (DV.EQ.1) Y = 2*CHZ - 2*LOG(HAZ)
+  ENDIF
+$THETA 0.4054651 ; tcl
+$THETA 2.079442 ; tv
+$THETA (0, 0.2) ; prop.sd
+$THETA -2.995732 ; llam
+$THETA 0 ; lic50
+$OMEGA 0.2 ; eta.cl
+$OMEGA 0.2 ; eta.v
+$OMEGA 0.1 ; eta.lam
+$ESTIMATION METHOD=CONDITIONAL LAPLACE -2LL MAXEVAL=9999 PRINT=5 NOABORT
+$COVARIANCE PRINT=E UNCONDITIONAL

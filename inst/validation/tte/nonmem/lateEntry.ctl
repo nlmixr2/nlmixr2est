@@ -1,0 +1,26 @@
+$PROBLEM tte validation: Weibull single event with late entry (first record = start of observation)
+$INPUT ID TIME EVID AMT CMT DV MDV DVID
+$DATA lateEntry.csv IGNORE=@
+$SUBROUTINES ADVAN13 TOL=9
+$MODEL COMP=(CHZ)
+$PK
+  SC = EXP(THETA(1) + ETA(1))
+  SH = EXP(THETA(2))
+$DES
+  TT = T
+  IF (TT.LT.1E-10) TT = 1E-10
+  DADT(1) = SH/SC*(TT/SC)**(SH - 1)
+$ERROR
+  IF (NEWIND.NE.2) OLDCHZ = 0
+  CHZ = A(1) - OLDCHZ
+  IF (MDV.EQ.0) OLDCHZ = A(1)
+  TT = TIME
+  IF (TT.LT.1E-10) TT = 1E-10
+  HAZ = SH/SC*(TT/SC)**(SH - 1)
+  Y = 2*CHZ
+  IF (DV.EQ.1) Y = 2*CHZ - 2*LOG(HAZ)
+$THETA 2.302585 ; lsc
+$THETA 0.1823216 ; lsh
+$OMEGA 0.1 ; eta.sc
+$ESTIMATION METHOD=CONDITIONAL LAPLACE -2LL MAXEVAL=9999 PRINT=5 NOABORT
+$COVARIANCE PRINT=E UNCONDITIONAL
