@@ -4282,19 +4282,21 @@ public:
       }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
       if (nphi0 > 0) {
-        const bool phi0Moved = any(vectorise(phiM.cols(i0) != repmat(mprior_phi0, nmc, 1)));
-        phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
+        const mat phi0New = repmat(mprior_phi0, nmc, 1);
+        const bool phi0Moved = any(vectorise(phiM.cols(i0) != phi0New));
+        phiM.cols(i0) = phi0New;
         if (nMix > 1) {
           for (int jMix = 0; jMix < nMix; jMix++) {
             phiM_mix(jMix).cols(i0) = repmat(mprior_phi0, nmc, 1);
           }
         } else if (phi0Moved) {
-          // the next E-step scores the current state from fsave, so it must follow phiM
+          // the next E-step scores the current state from fsave,
+          // so it must follow phiM
           mat fr = user_fn(phiM, evt, optM);
           const uword n = std::min(fr.n_rows, fsave.n_elem);
           if (n > 0) {
-            _saemFsaveDrift = std::max(_saemFsaveDrift,
-                                       max(abs(fsave.head(n) - fr.col(0).head(n))));
+            const double d = max(abs(fsave.head(n) - fr.col(0).head(n)));
+            _saemFsaveDrift = std::max(_saemFsaveDrift, d);
           }
           fsave = fr.col(0);
           cens = fr.col(1);
@@ -6482,8 +6484,9 @@ long saemPhi1RefineN_() { return _saemPhi1RefineN; }
 
 //[[Rcpp::export]]
 Rcpp::NumericVector saemFsaveRefresh_() {
-  return Rcpp::NumericVector::create(Rcpp::_["n"] = (double)_saemFsaveRefreshN,
-                                     Rcpp::_["drift"] = _saemFsaveDrift);
+  return Rcpp::NumericVector::create(
+    Rcpp::_["n"] = static_cast<double>(_saemFsaveRefreshN),
+    Rcpp::_["drift"] = _saemFsaveDrift);
 }
 
 //[[Rcpp::export]]
