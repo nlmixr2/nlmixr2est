@@ -23,7 +23,9 @@ nmTest({
     .start <- .weib |> rxode2::ini(tlam = log(0.1), tk = 0, eta.lam ~ 0.1)
     .ref <- suppressMessages(.nlmixr(.start, .d, est = "focei", foceiControl(print = 0, calcTables = FALSE)))
     for (.est in c("imp", "impmap", "qrpem")) {
-      .fit <- suppressMessages(.nlmixr(.start, .d, est = .est, impmapControl(print = 0, calcTables = FALSE)))
+      # qrpemControl() keeps qrpem's quasi-random + SIR defaults
+      .ctl <- if (.est == "qrpem") qrpemControl else impmapControl
+      .fit <- suppressMessages(.nlmixr(.start, .d, est = .est, .ctl(print = 0, calcTables = FALSE)))
       expect_equal(
         unname(.fit$theta[c("tlam", "tk")]),
         unname(.ref$theta[c("tlam", "tk")]),
