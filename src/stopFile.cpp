@@ -14,6 +14,7 @@ static bool _stopped = false;
 static bool _timeOn = false;
 static bool _timeArmed = false;
 static bool _timedOut = false;
+static bool _requestTimed = false;
 static double _maxTime = 0.0;
 static std::chrono::steady_clock::time_point _startTime;
 
@@ -22,7 +23,7 @@ bool nmStopFileRequested() {
 }
 
 const char *nmStopMessage() {
-  return _timedOut ? "stopped at the time limit" : "stopped early by user request";
+  return _requestTimed ? "stopped at the time limit" : "stopped early by user request";
 }
 
 bool nmStopFilePoll() {
@@ -32,7 +33,7 @@ bool nmStopFilePoll() {
     // removed so a re-run in the same folder is not stopped at once
     std::remove(_stopFile.c_str());
     // the run is already stopping: a later loop is not stopped by the time limit
-    _timeArmed = false;
+    _timeArmed = _requestTimed = false;
     _stopRequested = _stopped = true;
     return true;
   }
@@ -41,7 +42,7 @@ bool nmStopFilePoll() {
   if (el.count() < _maxTime) return false;
   // one-shot: a later loop of the same run is not stopped again
   _timeArmed = false;
-  _stopRequested = _stopped = _timedOut = true;
+  _stopRequested = _timedOut = _requestTimed = true;
   return true;
 }
 
@@ -66,7 +67,7 @@ std::string nmStopFileSet_(std::string file) {
 void nmStopTimeSet_(double maxTime) {
   _timeOn = _timeArmed = !ISNAN(maxTime);
   _maxTime = _timeOn ? maxTime : 0.0;
-  _timedOut = false;
+  _timedOut = _requestTimed = false;
   _startTime = std::chrono::steady_clock::now();
 }
 
@@ -106,7 +107,7 @@ bool nmStopFileRequested_() {
   return nmStopFileRequested();
 }
 
-// Whether a stop request ended a loop since the last .nmStopFileSet().
+// Whether a stop-file request ended a loop since the last .nmStopFileSet().
 //[[Rcpp::export(".nmStopFileStopped")]]
 bool nmStopFileStopped_() {
   return _stopped;

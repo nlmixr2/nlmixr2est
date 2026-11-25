@@ -16,7 +16,7 @@ test_that("the time limit requests one stop and is reset at the end", {
   .nmStopFileSet("")
   expect_false(.nmStopFilePoll())
   expect_true(.nmStopActive())
-  expect_warning(expect_false(.nmStopFileEnd()), NA)
+  expect_warning(expect_true(.nmStopFileEnd()), "stopped at the time limit")
   expect_false(.nmStopActive())
   expect_false(.nmStopTimedOut())
   expect_equal(.nmStopMessage(), "stopped early by user request")
@@ -35,6 +35,32 @@ test_that("a stop file found with the time up is removed and reported", {
   expect_false(file.exists(.sf))
   expect_false(.nmStopTimedOut())
   expect_warning(expect_true(.nmStopFileEnd()), "stopped early by user request")
+})
+
+test_that("a stop file after a time-out is reported as a user request", {
+  .sf <- tempfile("stop")
+  on.exit({
+    .nmStopFileSet("")
+    .nmStopTimeSet(NA_real_)
+    unlink(.sf)
+  })
+  expect_true(.nmStopFileStart(list(stopFile = .sf, maxTime = 0)))
+  expect_true(.nmStopFilePoll())
+  expect_equal(.nmStopMessage(), "stopped at the time limit")
+  # the time-out was handled; the file is still polled
+  .nmStopFileSet(.sf)
+  file.create(.sf)
+  expect_true(.nmStopFilePoll())
+  expect_equal(.nmStopMessage(), "stopped early by user request")
+  .w <- character(0)
+  withCallingHandlers(
+    .nmStopFileEnd(),
+    warning = function(w) {
+      .w <<- c(.w, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_setequal(.w, c("stopped at the time limit", "stopped early by user request"))
 })
 
 test_that("a nested estimation keeps the outer time limit", {

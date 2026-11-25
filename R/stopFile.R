@@ -33,14 +33,17 @@
 #' @return `TRUE` when a stop was requested
 #' @noRd
 .nmStopFileEnd <- function() {
-  .stopped <- .nmStopFileStopped()
-  .msg <- .nmStopMessage()
+  .file <- .nmStopFileStopped()
+  .timed <- .nmStopTimedOut()
   .nmStopFileSet("")
   .nmStopTimeSet(NA_real_)
-  if (.stopped) {
-    warning(.msg, call. = FALSE)
+  if (.timed) {
+    warning("stopped at the time limit", call. = FALSE)
   }
-  invisible(.stopped)
+  if (.file) {
+    warning("stopped early by user request", call. = FALSE)
+  }
+  invisible(.file || .timed)
 }
 
 #' Run an R outer optimizer, ending it at a stop request
