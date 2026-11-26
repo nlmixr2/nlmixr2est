@@ -2,6 +2,13 @@
 
 ## Changed defaults
 
+- `foceiControl(fast=)` now defaults to `"auto"`, which picks the outer
+  gradient by model (#1223): a closed-form model (no ODEs, no `linCmt()`)
+  fit by `focei`, `foce` or `focep` (or their `m*`/`i*` variants) within the
+  analytic scope uses the analytic outer gradient with `outerOpt="nlminb"`,
+  which takes several times fewer outer iterations than the derivative-free
+  `"bobyqa"`.  All other fits keep `fast=FALSE` and `"bobyqa"`.  Use
+  `fast=FALSE` for the previous behavior.
 - `est = "laplace"` (and `"mlaplace"`, `"ilaplace"`) is now the Laplace
   approximation NONMEM uses for `METHOD=COND LAPLACE INTERACTION` (Wang 2007,
   J Pharmacokinet Pharmacodyn 34:575, Eq. 15): the inner Hessian and the

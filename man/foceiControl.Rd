@@ -35,7 +35,7 @@ foceiControl(
   covShortcut = FALSE,
   corWarn = 0.95,
   covFull = TRUE,
-  fast = FALSE,
+  fast = "auto",
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"),
   fdOutlierZ = 3.5,
   fdOutlierScale = TRUE,
@@ -408,26 +408,33 @@ model, a generalized log-likelihood, \code{gillKcov = 0} or
 \code{covDerivMethod = "forward"}.}
 
 \item{fast}{When \code{TRUE}, compute the outer (population) gradient
-analytically from Almquist (2015) sensitivity equations instead of by
-finite differences, and use the Eq-48 random-effect extrapolation for the
-next inner-problem starting values.  Requires an analytic-scope model.
-Conditionally Gaussian endpoints route through the general (f,R)
-assembler, which covers more than the plain add/prop case -- multiple
-endpoints, combined and power error, both-sides transforms and a single
-estimated boxCox/yeoJohnson lambda.  A single non-Gaussian
-(\code{ll()}/generalized) endpoint instead differentiates the
-log-density directly, giving an exact inner Hessian and analytic outer
-gradient.  Out of scope are \code{linCmt()}, \code{fo}, IOV, more than
-one estimated lambda, a theta mu-referenced by several random effects,
-and (for the non-Gaussian path) multiple endpoints, censoring or
-\code{nAGQ > 1}; those fall back to the finite-difference gradient with
-a message (linCmt() and out-of-scope log-likelihood models downgrade to
-\code{fast=FALSE} up front).  When unspecified,
-the outer optimizer defaults to \code{"trust"} for FOCEi and
-\code{"nlminb"} for the other methods (vs \code{"bobyqa"} for
-\code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
-\code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
-\code{foceif}) default this to \code{TRUE}.}
+    analytically from Almquist (2015) sensitivity equations instead of by
+    finite differences, and use the Eq-48 random-effect extrapolation for the
+    next inner-problem starting values.  Requires an analytic-scope model.
+    Conditionally Gaussian endpoints route through the general (f,R)
+    assembler, which covers more than the plain add/prop case -- multiple
+    endpoints, combined and power error, both-sides transforms and a single
+    estimated boxCox/yeoJohnson lambda.  A single non-Gaussian
+    (\code{ll()}/generalized) endpoint instead differentiates the
+    log-density directly, giving an exact inner Hessian and analytic outer
+    gradient.  Out of scope are \code{linCmt()}, \code{fo}, IOV, more than
+    one estimated lambda, a theta mu-referenced by several random effects,
+    and (for the non-Gaussian path) multiple endpoints, censoring or
+    \code{nAGQ > 1}; those fall back to the finite-difference gradient with
+    a message (linCmt() and out-of-scope log-likelihood models downgrade to
+    \code{fast=FALSE} up front).  When unspecified,
+    the outer optimizer defaults to \code{"trust"} for FOCEi and
+    \code{"nlminb"} for the other methods (vs \code{"bobyqa"} for
+    \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
+    \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
+    \code{foceif}) default this to \code{TRUE}.
+
+    The default, \code{"auto"}, chooses by model: a closed-form model (no
+    ODEs and no \code{linCmt()}) fit by \code{focei}, \code{foce} or
+    \code{focep} (or their mu-referenced variants) that is in the analytic
+    scope above uses \code{fast=TRUE} with \code{outerOpt="nlminb"} (unless
+    another gradient-based \code{outerOpt} is given); every other fit uses
+    \code{fast=FALSE}.}
 
 \item{priorMethod}{Which of the shared prior kernel's three omega
     conventions (nlmixr2/rxode2#1270) to evaluate an \code{ini({})}
