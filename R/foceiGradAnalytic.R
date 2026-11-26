@@ -133,7 +133,13 @@
       .thRows <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
       .thRows <- .thRows[order(.thRows$ntheta), , drop = FALSE]
       .thEst <- .thRows$name[!.thRows$fix]
-      .parNames <- c(setdiff(.thEst, .foceiMuSkipThetaNames(ui, .thAll)), st$omNames)
+      ## C++ leaves fixed omega elements out of npars (the IOV rewrite's unit-variance
+      ## occasion etas), so the map must too; foceiFixed's tail is the omega theta layout.
+      .omFix <- utils::tail(as.logical(ui$foceiFixed), length(st$omNames))
+      if (length(.omFix) != length(st$omNames)) {
+        return(NULL)
+      }
+      .parNames <- c(setdiff(.thEst, .foceiMuSkipThetaNames(ui, .thAll)), st$omNames[!.omFix])
       .gMap <- match(.parNames, .kernelNames)
       if (anyNA(.gMap)) {
         return(NULL)
@@ -180,7 +186,9 @@
         dependsF0 = isTRUE(st$ef$dependsF0),
         canVanish = isTRUE(st$ef$canVanish),
         thPos = .thPos,
-        gMap = .gMap
+        gMap = .gMap,
+        ## the gradient's names, in optimizer order, read off the ui the fit ran on
+        parNames = .kernelNames[.gMap + 1L]
       )
     },
     error = function(e) NULL
@@ -553,9 +561,6 @@
     return(NULL)
   }
   thetaForEta <- .map$thetaForEta
-  if (.uiHasIov(ui)) {
-    return(NULL)
-  } # IOV out of Phase-1 scope
   .valc <- setNames(as.numeric(thVals[ef$sgName]), ef$sgVar)
   ef$ev <- local({
     v <- .valc
@@ -625,11 +630,17 @@
 #' @param .g gradient as stashed in `.gradDirectFirst`
 #' @param ui pinned ui the gradient was evaluated under
 #' @param fit completed fit
+#' @param src environment of the re-entered fit, holding its own gradient setup
 #' @return named (or unnamed) numeric gradient
 #' @noRd
-.foceiGradNames <- function(.g, ui, fit) {
+.foceiGradNames <- function(.g, ui, fit, src = NULL) {
   tryCatch(
     {
+      # the fit's own setup was built from the ui it ran on (after the IOV rewrite)
+      .gs <- if (is.environment(src)) get0(".foceiGradPooledSetup", envir = src, inherits = FALSE)
+      if (length(.gs$parNames) == length(.g)) {
+        return(stats::setNames(.g, .gs$parNames))
+      }
       .ini <- ui$iniDf
       .thRows <- .ini[!is.na(.ini$ntheta), , drop = FALSE]
       .thRows <- .thRows[order(.thRows$ntheta), , drop = FALSE]
@@ -738,7 +749,8 @@
   if (neta == 0L) {
     return(NULL)
   }
-  if (.uiHasIov(ui)) {
+  # the VAE's own M-step does not handle the IOV rewrite's fixed and same() blocks
+  if (identical(caller, "vae") && .uiHasIov(ui)) {
     return(NULL)
   }
   .foceiAnalyticDirections(
@@ -755,12 +767,12 @@
 #' is the per-observation log-density and the gradient is assembled by
 #' the log-density core (differentiating it directly) rather than
 #' the Gaussian (f,R) path.  Scope: at least one non-Gaussian endpoint, no
-#' linCmt/bounded transform/IOV/FO, at least one eta.  (Censoring and nAGQ are
+#' linCmt/bounded transform/FO (IOV for the VAE), at least one eta.  (Censoring and nAGQ are
 #' handled by falling back to the finite-difference gradient.)
 #'
-#' `caller` only reaches the bounded-transform gate, which focei must fail and
-#' the VAE need not -- see `.analyticGradAllowsBoundedTr`.  Defaulted, so the
-#' focei callers keep their exact behavior.
+#' `caller` reaches the bounded-transform gate, which focei must fail and the VAE
+#' need not (see `.analyticGradAllowsBoundedTr`), and the IOV gate, which only the
+#' VAE keeps.  Defaulted, so the focei callers keep their exact behavior.
 #' @noRd
 .foceiLLGradInScope <- function(ui, caller = .analyticGradCaller(ui)) {
   tryCatch(
@@ -800,7 +812,7 @@
       if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) {
         return(FALSE)
       }
-      if (.uiHasIov(ui)) {
+      if (identical(caller, "vae") && .uiHasIov(ui)) {
         return(FALSE)
       }
       length(.foceiEtaThetaMap(ui)$etaNames) > 0L
@@ -931,7 +943,12 @@ attr(rxUiGet.foceiOuterNode, "rstudio") <- emptyenv()
         }
       }
       if (is.null(.rxInv)) {
-        .rxInv <- rxode2::rxSymInvCholCreate(mat = Om, diag.xform = .diagXform)
+        # repeated (`same()`) blocks share their master's parameters, as in env$rxInv
+        .same <- ui$omegaSameMap
+        if (length(.same) != dim(as.matrix(Om))[1]) {
+          .same <- NULL
+        }
+        .rxInv <- rxode2::rxSymInvCholCreate(mat = Om, diag.xform = .diagXform, same = .same)
       }
       # `$.rxSymInvCholEnv` dispatches to the C rxSymInvCholEnvCalculate; d.omegaInv
       # is the list of dOmega^-1/d(chol theta_k), tr.28 = 0.5*tr(dOmega^-1_k Omega).
