@@ -159,6 +159,12 @@
 
 ## Bug fixes
 
+- The analytic `fast` outer gradient of a `linCmt()` model with a time-varying
+  covariate on a `linCmt()` parameter now comes from rxode2lincmt's direction carry
+  (`linCmtB()` `which1 = -30` to `-34`, driven over the outer directions).  Before, the
+  parameter-space second-order reads were `NA` there and every subject fell back to
+  the per-subject finite difference.  It matches the model written as ODEs.
+
 ### Covariance
 
 - The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a

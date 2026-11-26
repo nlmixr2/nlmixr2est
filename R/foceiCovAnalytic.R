@@ -2230,6 +2230,16 @@
       # (matching the inner ODE model's d(R)/d(eta)); the assembly then treats the
       # transformed prediction f and the variance R as independent solved quantities.
       .rvar <- tryCatch(get("rx_r_", .s), error = function(e) NULL)
+      # a time-varying linCmt() slot: the concentration and its direction derivatives
+      # come from rxode2lincmt's direction carry, so f and R see it as a symbol
+      .lcc <- .foceiOuterLinCmtCarry(ui, .s, .mfDirs)
+      if (is.character(.lcc)) {
+        return(.foceiAnalyticNote(.lcc))
+      }
+      if (!is.null(.lcc)) {
+        .pred <- symengine::subs(symengine::S(.pred), .lcc$call, symengine::S(.lcc$conc))
+        if (!is.null(.rvar)) .rvar <- symengine::subs(symengine::S(.rvar), .lcc$call, symengine::S(.lcc$conc))
+      }
       # `symengine::S()` on the differentiand, not just the variable: a state
       # whose initial condition is a plain constant (`center(0) <- 0.03`) comes
       # back from the pruned env as an R numeric, and `D()` refuses one.  That
@@ -2254,6 +2264,7 @@
           for (.j in .st) {
             .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p)
           }
+          if (!is.null(.lcc)) .e <- .e + .Dn(.ex, .lcc$conc) * symengine::S(.lcc$c1[[.p]])
         }
         .e
       }
@@ -2264,11 +2275,13 @@
           for (.k in .st) {
             .e <- .e + .Dn(.gq, .k) * .sn1(.k, .p)
           }
+          if (!is.null(.lcc)) .e <- .e + .Dn(.gq, .lcc$conc) * symengine::S(.lcc$c1[[.p]])
         }
         if (.p %in% .mfDirs && .q %in% .mfDirs) {
           for (.j in .st) {
             .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p, .q)
           }
+          if (!is.null(.lcc)) .e <- .e + .Dn(.ex, .lcc$conc) * symengine::S(.lcc$c2(.p, .q))
         }
         .e
       }
@@ -2507,6 +2520,7 @@
           .s2,
           .icL,
           .pastLines,
+          .lcc$lines,
           paste0("rx_predf_=", .toRx(.pred)),
           .fL1,
           .fL2,
