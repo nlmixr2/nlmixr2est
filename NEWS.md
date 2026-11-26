@@ -126,6 +126,12 @@
   is the start of observation).  This needs an rxode2 with `tte()` support and
   is inactive otherwise.
 
+- FOCEi fits now carry `fit$mcetaInfo`, the `mceta` multistart's counts per
+  outer evaluation and in total: inner solves started at eta=0 or at an Omega
+  draw, which start won, how often the marginal objective re-ranked the
+  candidates, and the inner-solve time spent in the search; the totals also
+  count the covariance step (#1456).
+
 - `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
   objective at the final estimates with every ODE tolerance 10x tighter and
   notes in `$runInfo` an objective that moves by more than `odeSettleTol`
