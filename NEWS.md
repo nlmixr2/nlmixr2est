@@ -234,9 +234,10 @@
 
 ## Bug fixes
 
-- A FOCEi outer optimizer that asks for the gradient before the objective no
-  longer stops R: the gradient's history row read the last objective
-  iteration, which did not exist yet.
+- A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
+  the gradient before the objective no longer stops R: the gradient's history
+  row read the last objective iteration, which did not exist yet.  FOCEi now
+  evaluates the objective first, so that gradient gets the initial step search.
 
 - A multi-threaded fit after a `fast = TRUE` `ll()` fit in the same R session
   no longer stops R on Windows.  Two per-thread buffers were `thread_local`
