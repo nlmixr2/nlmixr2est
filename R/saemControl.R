@@ -398,6 +398,11 @@
 #'   the stochastic step a better starting residual scale.  Set `FALSE` to start
 #'   from the `ini`-block residual values instead.
 #'
+#' @param etaMat Etas to start every MCMC chain at: a prior fit (its EBEs), a
+#'   data frame with an `ID` column, or a matrix with one row per subject in ID
+#'   order (or IDs as row names).  Columns are matched by eta name when named.  `NULL` (default)
+#'   starts the chains from random draws around the population mean.
+#'
 #' @param ... Other arguments to control SAEM.
 #'
 #' @inheritParams rxode2::rxSolve
@@ -502,6 +507,7 @@ saemControl <- function(
   ebe = c("mode", "saem"),
   ebeMaxEval = 200L,
   ebeTol = NULL,
+  etaMat = NULL,
   ...,
   corWarn = 0.95
 ) {
@@ -761,6 +767,10 @@ saemControl <- function(
     ebeMaxEval = as.integer(ebeMaxEval),
     ebeTol = ebeTol
   )
+  etaMat <- .saemEtaMatArg(etaMat)
+  if (!is.null(etaMat)) {
+    .ret$etaMat <- etaMat
+  }
   # internal: the "sa" covariance recompute at a fit's estimates holds every
   # population parameter where it was supplied (.covEngineControl, .saemHoldCfg)
   if (isTRUE(.xtra$saemHoldPar)) {

@@ -47,6 +47,10 @@
 
 ## New features
 
+- `saemControl(etaMat=)` starts every SAEM MCMC chain at given etas: a prior
+  fit's EBEs (`saemControl(etaMat = fit)`), a data frame with an `ID` column
+  or a subject-by-eta matrix.  The default (`NULL`) keeps the random start
+  (#1482).
 - `foceiControl(fast = TRUE)` now uses the analytic outer gradient for models
   with inter-occasion variability, under both `iovMethod = "theta"` and
   `"omega"`, instead of falling back to finite differences (#1377).
