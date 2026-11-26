@@ -94,8 +94,65 @@ test_that("laplace draws match the linear-Gaussian conditional distribution", {
   .a <- etaSamples(.l$fit, n = 50L, method = "laplace", seed = 3L)
   rxode2::setRxThreads(2L)
   expect_identical(etaSamples(.l$fit, n = 50L, method = "laplace", seed = 3L), .a)
-  expect_identical(etaSamples(.l$fit, n = 50L, seed = 3L), .a)
   expect_false(identical(etaSamples(.l$fit, n = 50L, method = "laplace", seed = 4L), .a))
+})
+
+test_that("mcmc draws match the linear-Gaussian conditional distribution", {
+  skip_on_cran()
+  .l <- .etaSamplesLin()
+  .s <- etaSamples(.l$fit, n = 3000L, method = "mcmc", seed = 3L, thin = 2L)
+  expect_equal(attr(.s, "method"), "mcmc")
+  .acc <- attr(.s, "acceptance")
+  expect_length(.acc, 30L)
+  expect_true(all(.acc > 0.15 & .acc < 0.6))
+  .m <- .etaSamplesMoments(.s)
+  .sd <- sqrt(diag(.l$cov))
+  # correlated draws: a looser bound than the independent laplace draws
+  expect_lt(max(abs(sweep(.m$mean - .l$mean, 2, .sd, "/"))), 0.25)
+  .v <- t(vapply(.m$cov, diag, numeric(2)))
+  expect_lt(max(abs(log(sweep(.v, 2, diag(.l$cov), "/")))), 0.35)
+  expect_lt(abs(mean(log(sweep(.v, 2, diag(.l$cov), "/")))), 0.05)
+  # the same seed gives the same chain, whatever the thread count
+  .old <- rxode2::getRxThreads()
+  on.exit(rxode2::setRxThreads(.old), add = TRUE)
+  rxode2::setRxThreads(1L)
+  .a <- etaSamples(.l$fit, n = 30L, method = "mcmc", seed = 3L, nBurn = 20L)
+  rxode2::setRxThreads(2L)
+  expect_identical(etaSamples(.l$fit, n = 30L, method = "mcmc", seed = 3L, nBurn = 20L), .a)
+  expect_identical(etaSamples(.l$fit, n = 30L, seed = 3L, nBurn = 20L), .a)
+})
+
+test_that("mcmc samples a SAEM fit's non-normal conditional distribution", {
+  skip_on_cran()
+  # nolint start: object_usage_linter.
+  .mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # nolint end
+  .fit <- .nlmixr(.mod, nlmixr2data::theo_sd, "saem", control = saemControl(print = 0L, calcTables = FALSE))
+  .s <- etaSamples(.fit, n = 400L)
+  expect_equal(attr(.s, "method"), "mcmc")
+  expect_equal(nrow(.s), 400L * 12L)
+  expect_true(all(is.finite(as.matrix(.s[, -(1:2)]))))
+  expect_true(all(attr(.s, "acceptance") > 0.1))
+  # the chains centre near the modes (the posterior is close to normal here)
+  .m <- as.matrix(aggregate(cbind(eta.ka, eta.cl, eta.v) ~ ID, .s, mean)[, -1])
+  .sd <- as.matrix(aggregate(cbind(eta.ka, eta.cl, eta.v) ~ ID, .s, sd)[, -1])
+  expect_lt(max(abs(.m - as.matrix(.fit$eta[, -1])) / .sd), 1)
 })
 
 test_that("imp draws match the linear-Gaussian conditional distribution", {
@@ -134,8 +191,9 @@ test_that("draws restore the spread a shrunken EBE loses", {
   # the EBEs keep 1 / (1 + 4) of Omega's variance; the draws keep all of it
   expect_lt(stats::var(.fit$eta$eta.v), 0.5)
   expect_equal(stats::var(.s$eta.v), 1, tolerance = 0.15)
-  # within 5 Monte-Carlo SEs of the EBE (conditional variance 0.8)
-  expect_lt(max(abs(as.numeric(tapply(.s$eta.v, .s$ID, mean)) - .fit$eta$eta.v)), 5 * sqrt(0.8 / 500))
+  # near the EBE: 0.3 is ~4 Monte-Carlo SEs of 500 autocorrelated draws
+  # (conditional variance 0.8)
+  expect_lt(max(abs(as.numeric(tapply(.s$eta.v, .s$ID, mean)) - .fit$eta$eta.v)), 0.3)
 })
 
 test_that("a SAEM fit gets its modes from a posthoc step and simulates per draw", {
@@ -160,7 +218,7 @@ test_that("a SAEM fit gets its modes from a posthoc step and simulates per draw"
   }
   # nolint end
   .fit <- .nlmixr(.mod, nlmixr2data::theo_sd, "saem", control = saemControl(print = 0L, calcTables = FALSE))
-  .s <- etaSamples(.fit, n = 20L)
+  .s <- etaSamples(.fit, n = 20L, method = "laplace")
   expect_equal(names(.s), c("ID", "draw", "eta.ka", "eta.cl", "eta.v"))
   expect_equal(nrow(.s), 20L * 12L)
   expect_true(all(is.finite(as.matrix(.s[, -(1:2)]))))

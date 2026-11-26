@@ -4,24 +4,36 @@
 \alias{etaSamples}
 \title{Draw each subject's etas from their conditional distribution}
 \usage{
-etaSamples(fit, n = 500L, method = c("auto", "laplace", "imp"), seed = 42L)
+etaSamples(
+  fit,
+  n = 500L,
+  method = c("auto", "laplace", "mcmc", "imp"),
+  seed = 42L,
+  nBurn = 200L,
+  thin = 1L
+)
 }
 \arguments{
 \item{fit}{nlmixr2 fit with random effects}
 
 \item{n}{number of draws per subject}
 
-\item{method}{sampler: `"auto"`, `"laplace"` or `"imp"`}
+\item{method}{sampler: `"auto"`, `"laplace"`, `"mcmc"` or `"imp"`}
 
 \item{seed}{random seed; the same seed gives the same draws whatever the
 number of cores}
+
+\item{nBurn}{`"mcmc"` burn-in iterations, discarded}
+
+\item{thin}{`"mcmc"` iterations per kept draw}
 }
 \value{
 a data frame with columns `ID`, `draw` and one column per eta,
   ordered by `draw` then `ID`.  Passed as `params` to
   `rxode2::rxSolve(fit, params = draws, nStud = n, simVariability = FALSE)`
   it simulates each subject once per draw (`sim.id` is the draw).  Its
-  `"method"` attribute names the sampler.
+  `"method"` attribute names the sampler; `"mcmc"` adds each subject's
+  acceptance rate as the `"acceptance"` attribute.
 }
 \description{
 Draws `n` samples per subject from the conditional (posterior)
@@ -35,8 +47,12 @@ rather than a new one.
 conditional mode with the inverse of the inner Hessian (`fit$phiC`) as its
 covariance.  A fit whose etas are not conditional modes (for example SAEM
 or emvi) gets both from a posthoc FOCEi step at its estimates.
+`method = "mcmc"` runs a random-walk Metropolis-Hastings chain per subject
+on the exact joint density `log p(y_i, eta_i)` ([foceiLikRun()]), started
+at the mode with the Laplace covariance as its proposal; its scale adapts
+during the `nBurn` burn-in iterations only.  It needs no normal posterior.
 `method = "imp"` resamples the importance samples of [addCondDist()].
-`method = "auto"` is `"laplace"`.
+`method = "auto"` is `"mcmc"`.
 
 Mixture, IOV and non-parametric fits are
 not supported, nor is an Omega that is not positive definite.
