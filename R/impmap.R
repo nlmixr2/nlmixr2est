@@ -836,11 +836,16 @@ rxUiDeparse.impmapControl <- function(object, var) {
     object$gammaMethod <- object$gammaMethodUser
   }
   # defaults that follow other arguments are compared with what those give
-  .derived <- list(
-    sirSample = max(25L, as.integer(ceiling(max(object$isample) / 10))),
-    nConvWindow = if (identical(object$gammaRule, "target")) 20L else 10L,
-    ctol = NULL
-  )
+  .derived <- if (isTRUE(object$its)) {
+    # itsControl() fixes these; ctol is its tol
+    list(sirSample = 1L, nConvWindow = 1L, ctol = 1e-4)
+  } else {
+    list(
+      sirSample = max(25L, as.integer(ceiling(max(object$isample) / 10))),
+      nConvWindow = if (identical(object$gammaRule, "target")) 20L else 10L,
+      ctol = NULL
+    )
+  }
   .extra <- unlist(lapply(names(.derived), function(n) {
     if (!identical(object[[n]], .derived[[n]])) paste0(n, " = ", .deparseValue(object[[n]]))
   }))

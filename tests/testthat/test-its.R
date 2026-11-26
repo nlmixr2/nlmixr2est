@@ -58,7 +58,24 @@ nmTest({
     )
   })
 
+  test_that("an ITS control used by qrpem or the np engines is converted", {
+    .v <- suppressMessages(getValidNlmixrCtl.qrpem(structure(list(itsControl()), class = "qrpem")))
+    expect_true(.v$qr)
+    expect_true(.v$sir)
+    expect_identical(.v$isample, qrpemControl()$isample)
+    for (.e in c("npag", "npb")) {
+      .v <- suppressMessages(getValidNlmixrControl(itsControl(), .e))
+      expect_null(.v$its)
+      expect_identical(.v$est, .e)
+      .ctl <- if (.e == "npag") npagControl(cycles = 3L) else npbControl()
+      .v <- suppressMessages(getValidNlmixrControl(.ctl, "its"))
+      expect_true(.v$its)
+      expect_null(.v$cycles)
+    }
+  })
+
   test_that("itsControl() deparses to itself", {
+    expect_false(grepl("sirSample|nConvWindow|ctol", deparse1(rxUiDeparse(itsControl(), "ctl"))))
     .ctl <- itsControl(maxIter = 7L, tol = 1e-3, interaction = FALSE, maxInnerIterations = 20L)
     .d <- rxUiDeparse(.ctl, "ctl")
     expect_match(deparse1(.d), "itsControl")

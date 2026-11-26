@@ -94,8 +94,10 @@ itsControl <- function(
   if (!isTRUE(ctl$its) || identical(est, "its")) {
     return(ctl)
   }
-  .def <- impmapControl()
+  .def <- if (identical(est, "qrpem")) qrpemControl() else impmapControl()
   for (.n in c(
+    "qr",
+    "sir",
     "nIter",
     "isample",
     "gamma",
@@ -109,7 +111,7 @@ itsControl <- function(
     "ctol",
     "sirSample"
   )) {
-    ctl[.n] <- list(.def[[.n]])
+    ctl[[.n]] <- .def[[.n]]
   }
   ctl$gammaMethodUser <- NULL
   ctl$its <- NULL
@@ -132,8 +134,9 @@ getValidNlmixrCtl.its <- function(control) {
     # every ITS-defining field is forced by itsControl(), so a control from
     # another method (or a completed fit) is adopted for its shared options
     .lst <- unclass(.ctl)
-    if (!isTRUE(.lst[["its"]])) {
-      .lst[c("nIter", "ctol", "covMethod")] <- NULL
+    if (!is.null(attr(.ctl, "class")) && !isTRUE(.lst[["its"]])) {
+      # only the foceiControl options are shared with another method
+      .lst <- .lst[intersect(names(.lst), setdiff(names(formals(foceiControl)), "covMethod"))]
     }
     .lst$est <- NULL
     return(do.call(itsControl, .lst))
