@@ -404,6 +404,11 @@
 
 #### Estimation
 
+- `est="imp"`, `"impmap"` and `"qrpem"` now refuse a model without
+  random effects with the same clear message as `"saem"`, instead of
+  failing with `Could not fit data`
+  ([\#1467](https://github.com/nlmixr2/nlmixr2est/issues/1467)).
+
 - `est="saem"`: when an endpoint’s residual error cannot be matched to
   [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html)
   parameters, the error now names the endpoint and the error argument(s)
