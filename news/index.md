@@ -221,6 +221,13 @@
   fraction; `NA` turns it off
   ([\#1394](https://github.com/nlmixr2/nlmixr2est/issues/1394)).
 
+- A fit of any method now notes in `$runInfo` an estimated theta that
+  ended at a finite `lower`/`upper` bound
+  (`estimate at its bound: "tka"`), with or without a covariance step.
+  `foceiControl(thetaBoundWarn=)` sets the relative tolerance (default
+  `1e-4`); `NA` turns it off
+  ([\#1505](https://github.com/nlmixr2/nlmixr2est/issues/1505)).
+
 - After the covariance step, a fit warns (in `$runInfo`) about pairs of
   estimates correlated at `|r| >= 0.95`,
   e.g. `highly correlated estimates: tcl/tv (0.98)`. `corWarn=` in every

@@ -336,7 +336,7 @@ ilaplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x58fac06e9d88>
+#> <bytecode: 0x595f20015a80>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -593,6 +593,9 @@ ilaplaceControl()
 #> 
 #> $omegaCollapseWarn
 #> [1] 0.001
+#> 
+#> $thetaBoundWarn
+#> [1] 1e-04
 #> 
 #> $maxOdeRecalc
 #> [1] 5

@@ -242,7 +242,8 @@
 <span>  zeroTheta <span class="op">=</span> <span class="fl">0.001</span>,</span>
 <span>  zeroThetaStep <span class="op">=</span> <span class="fl">100</span>,</span>
 <span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  omegaCollapseWarn <span class="op">=</span> <span class="fl">0.001</span></span>
+<span>  omegaCollapseWarn <span class="op">=</span> <span class="fl">0.001</span>,</span>
+<span>  thetaBoundWarn <span class="op">=</span> <span class="fl">1e-04</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -1806,6 +1807,13 @@ skips the final back-transform.</p></dd>
 <dd><p>Warn (in `$runInfo`) when a free diagonal omega
 ends below this fraction of its initial estimate, or at its
 `diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.</p></dd>
+
+
+<dt id="arg-thetaboundwarn">thetaBoundWarn<a class="anchor" aria-label="anchor" href="#arg-thetaboundwarn"></a></dt>
+<dd><p>Warn (in `$runInfo`) when an estimated theta ends
+within this tolerance of a finite `lower`/`upper` bound, relative to the
+bound range (or, for a one-sided bound, to the larger of the bound's size
+and the initial estimate's distance from it).  Use `NA` or `0` to disable.</p></dd>
 
 </dl></div>
     <div class="section level2">

@@ -203,7 +203,8 @@ foceiControl(
   zeroTheta = 0.001,
   zeroThetaStep = 100,
   boundedTransform = TRUE,
-  omegaCollapseWarn = 0.001
+  omegaCollapseWarn = 0.001,
+  thetaBoundWarn = 1e-04
 )
 ```
 
@@ -1755,6 +1756,14 @@ foceiControl(
   Warn (in \`\$runInfo\`) when a free diagonal omega ends below this
   fraction of its initial estimate, or at its \`diagOmegaBoundLower\`
   bound. Use \`NA\` or \`0\` to disable.
+
+- thetaBoundWarn:
+
+  Warn (in \`\$runInfo\`) when an estimated theta ends within this
+  tolerance of a finite \`lower\`/\`upper\` bound, relative to the bound
+  range (or, for a one-sided bound, to the larger of the bound's size
+  and the initial estimate's distance from it). Use \`NA\` or \`0\` to
+  disable.
 
 ## Value
 
