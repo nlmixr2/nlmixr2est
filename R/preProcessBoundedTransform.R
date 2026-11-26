@@ -34,7 +34,7 @@
   # saem keeps a mu-referenced covariate coefficient in its closed-form M-step
   # and holds it inside its bounds there (#1347)
   .saemCov <- if (identical(est, "saem")) {
-    .saemLambda1BoundNames(ui, .saemTimeVaryingCovs(ui, data, control))
+    .saemLambda1BoundNames(ui, .saemTimeVaryingCovs(ui, data, control), control)
   } else {
     character(0)
   }

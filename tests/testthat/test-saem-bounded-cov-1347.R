@@ -54,6 +54,17 @@ nmTest({
     expect_equal(.b$upper, c(Inf, Inf, 5, Inf, 2))
   })
 
+  test_that("a coefficient outside the phi1 M-step keeps the bounded transform", {
+    # tv has no eta: its covariate coefficient is a phi0 coordinate
+    .ui <- .mod(-5, 0.5, 5) |>
+      model(v <- exp(tv + wt.v * WT)) |>
+      ini(wt.v = c(0, 0.1, 2))
+    expect_equal(.saemLambda1BoundNames(.ui), "wt.cl")
+    expect_equal(.saemLambda1BoundNames(.ui, control = saemControl(muRefCov = FALSE)), character(0))
+    .tr <- .getBoundedParams(.ui, "saem", saemControl(muRefCov = FALSE))
+    expect_setequal(vapply(.tr, function(x) x$name, character(1)), c("wt.cl", "wt.v"))
+  })
+
   test_that("a time-varying covariate's coefficient keeps the bounded transform", {
     .dTv <- .d
     .dTv$SW <- as.numeric(.dTv$TIME >= 6)
