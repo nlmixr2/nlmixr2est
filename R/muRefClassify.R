@@ -1,3 +1,39 @@
+#' Mu-referenced covariates that do not vary in time
+#'
+#' The regression uses each subject's baseline covariate value, so the
+#' covariates staged as time-varying (`.nlmixrSetMuRefTimeVarying()`) stay
+#' out of it.
+#'
+#' @param ui rxode2 ui
+#' @return the rows of `ui$muRefCovariateDataFrame` with a covariate that is
+#'   not time-varying
+#' @noRd
+.muRefCovNonTv <- function(ui) {
+  .df <- ui$muRefCovariateDataFrame
+  if (is.null(.df) || !is.environment(ui) || !exists("timeVaryingCovariates", envir = ui, inherits = FALSE)) {
+    return(.df)
+  }
+  .df[!(.df$covariate %in% get("timeVaryingCovariates", envir = ui, inherits = FALSE)), , drop = FALSE]
+}
+
+#' Time-varying covariates of a mu-referenced fit's data
+#'
+#' @param data the fit's data
+#' @param ui rxode2 ui
+#' @return character vector of time-varying covariates (empty when they
+#'   cannot be determined)
+#' @noRd
+.muRefTimeVarying <- function(data, ui) {
+  .rxControl <- rxode2::rxGetControl(ui, "rxControl", NULL)
+  if (is.null(.rxControl)) {
+    .rxControl <- rxode2::rxControl()
+  }
+  tryCatch(
+    .nlmixrTimeVaryingCovariates(data, ui, .rxControl),
+    error = function(e) character(0)
+  )
+}
+
 #' Classify theta/eta pairs for the mu-referenced FOCEI family
 #'
 #' Thetas/etas with a mu-ref covariate relationship
@@ -28,7 +64,7 @@
 #' @noRd
 .muRefClassify <- function(ui) {
   .muRefDf <- ui$muRefDataFrame
-  .muRefCovDf <- ui$muRefCovariateDataFrame
+  .muRefCovDf <- .muRefCovNonTv(ui)
   .nonMuEtas <- ui$nonMuEtas
   .iniDf <- ui$iniDf
 
@@ -173,7 +209,7 @@
 .muRefGroups <- function(ui, plain = FALSE, clamp = !identical(rxode2::rxGetControl(ui, "muModel", "none"), "none")) {
   .cls <- .muRefClassify(ui)
   .muRefDf <- ui$muRefDataFrame
-  .muRefCovDf <- ui$muRefCovariateDataFrame
+  .muRefCovDf <- .muRefCovNonTv(ui)
   .iniDf <- ui$iniDf
   .thetaRows <- .iniDf[!is.na(.iniDf$ntheta), , drop = FALSE]
   .fixedThetas <- .thetaRows$name[which(.thetaRows$fix)]

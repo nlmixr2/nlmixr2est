@@ -6347,6 +6347,12 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # happen -- the bulk of setup cost.  It is timed as "setup" (matching the
   # historical setupTime, which was measured around rxSymPySetupPred) so it is
   # not silently absorbed into the "other" bucket.
+  if (!identical(rxode2::rxGetControl(ui, "muModel", "none"), "none")) {
+    # the mu-referenced regression uses baseline covariates, so time-varying
+    # ones stay with the outer optimizer
+    .nlmixrSetMuRefTimeVarying(ui, .muRefTimeVarying(env$data, ui))
+    on.exit(.nlmixrRmMuRefTimeVarying(ui), add = TRUE)
+  }
   .env <- nlmixrWithTiming("setup", {
     ui$foceiOptEnv
   })
