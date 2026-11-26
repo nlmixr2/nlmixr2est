@@ -217,6 +217,39 @@
   )
 }
 
+#' Natural-scale value of a transformed theta
+#'
+#' @param tr transform specification
+#' @param val internal-scale value(s)
+#' @return natural-scale value(s)
+#' @noRd
+.boundedTransformBack <- function(tr, val) {
+  switch(
+    tr$type,
+    "logit" = rxode2::expit(val, tr$lower, tr$upper),
+    "lower_exp" = tr$lower + exp(val),
+    "upper_exp" = tr$upper - exp(val),
+    "log1p" = expm1(val),
+    val
+  )
+}
+
+#' Bounds to restore on a back-transformed theta
+#'
+#' saem's mu-referenced `log(1+theta)` does not enforce the user's bounds, so
+#' they are widened to hold the estimate.
+#'
+#' @param tr transform specification
+#' @param nat natural-scale estimate
+#' @return `c(lower, upper)`
+#' @noRd
+.boundedTransformBounds <- function(tr, nat) {
+  if (identical(tr$type, "log1p") && is.finite(nat)) {
+    return(c(min(tr$lower, nat), max(tr$upper, nat)))
+  }
+  c(tr$lower, tr$upper)
+}
+
 #' Build the transform expression for a parameter
 #'
 #' Returns a language object for the back-transform line to prepend to the
@@ -306,7 +339,8 @@
   )
 
   # Store transform info and original model for post-estimation hook
-  .newUi$boundedTransforms <- transforms
+  # keep the transforms an earlier hook added (saem's mu-referenced 0/1 covariates)
+  .newUi$boundedTransforms <- c(ui$boundedTransforms, transforms)
   .newUi
 }
 
@@ -411,13 +445,7 @@
       next
     }
     .vals <- parHist[[.col]]
-    parHist[[.col]] <- switch(
-      .tr$type,
-      "logit" = rxode2::expit(.vals, .tr$lower, .tr$upper),
-      "lower_exp" = .tr$lower + exp(.vals),
-      "upper_exp" = .tr$upper - exp(.vals),
-      .vals
-    )
+    parHist[[.col]] <- .boundedTransformBack(.tr, .vals)
     # Rename the column to the original parameter name
     names(parHist)[names(parHist) == .col] <- .tr$name
   }
@@ -446,19 +474,14 @@
       }
       .val <- .thetaDf$theta[.w]
       # Back-transform the estimate
-      .thetaDf$theta[.w] <- switch(
-        .tr$type,
-        "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
-        "lower_exp" = .tr$lower + exp(.val),
-        "upper_exp" = .tr$upper - exp(.val),
-        .val
-      )
+      .thetaDf$theta[.w] <- .boundedTransformBack(.tr, .val)
       if (.byPos && .w <= length(.fullTheta)) {
         .fullTheta[.w] <- .thetaDf$theta[.w]
       }
       # Restore original bounds
-      .thetaDf$lower[.w] <- .tr$lower
-      .thetaDf$upper[.w] <- .tr$upper
+      .b <- .boundedTransformBounds(.tr, .thetaDf$theta[.w])
+      .thetaDf$lower[.w] <- .b[1]
+      .thetaDf$upper[.w] <- .b[2]
       # Restore original parameter name
       .thetaNames[.w] <- .tr$name
     }
@@ -489,6 +512,7 @@
     "logit" = (natVal - tr$lower) * (tr$upper - natVal) / (tr$upper - tr$lower),
     "lower_exp" = natVal - tr$lower,
     "upper_exp" = -(tr$upper - natVal),
+    "log1p" = 1 + natVal,
     1.0
   )
 }
@@ -628,6 +652,15 @@
     ui$lstExpr[[i]]
   })
 
+  # lines a transform rewrote (saem's mu-referenced 0/1 covariates) go back
+  for (.tr in transforms) {
+    if (is.null(.tr$lineNew)) {
+      next
+    }
+    for (.i in seq_along(.lstExpr)) {
+      if (identical(.lstExpr[[.i]], .tr$lineNew)) .lstExpr[[.i]] <- .tr$lineOrig
+    }
+  }
   .model <- rxode2::as.model(.lstExpr)
 
   # now restore the iniDf
@@ -639,16 +672,11 @@
     }
     .val <- .iniDf$est[.w]
     # Back-transform the estimate
-    .iniDf$est[.w] <- switch(
-      .tr$type,
-      "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
-      "lower_exp" = .tr$lower + exp(.val),
-      "upper_exp" = .tr$upper - exp(.val),
-      .val
-    )
+    .iniDf$est[.w] <- .boundedTransformBack(.tr, .val)
     # Restore original bounds
-    .iniDf$lower[.w] <- .tr$lower
-    .iniDf$upper[.w] <- .tr$upper
+    .b <- .boundedTransformBounds(.tr, .iniDf$est[.w])
+    .iniDf$lower[.w] <- .b[1]
+    .iniDf$upper[.w] <- .b[2]
     # Restore original parameter name
     .iniDf$name[.w] <- .tr$name
   }
