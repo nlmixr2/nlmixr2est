@@ -1627,15 +1627,16 @@ public:
     }
   }
 
-  // Hold the bounded Plambda1 coefficients `x` (at Plambda1 indices `li`) inside
-  // their bounds: clamp each one outside, then (`refit`) re-minimize the M-step
-  // quadratic 0.5 x'Cx - rhs'x over the others with the clamped and `held`
-  // (local) entries kept.  Returns true when anything was clamped.
   bool hasLambda1Bounds() const {
     return lambda1Lower.n_elem > 0 && lambda1Lower.n_elem == (arma::uword)nlambda1 &&
       lambda1Upper.n_elem == (arma::uword)nlambda1;
   }
 
+  // Hold the bounded Plambda1 coefficients `x` (at Plambda1 indices `li`) inside
+  // their bounds.  Without `refit` each one outside is clamped; with it the
+  // M-step quadratic 0.5 x'Cx - rhs'x is minimized over the box by an active
+  // set, the `held` (local) entries kept where they are.  Returns true when
+  // anything ends at a bound it was moved to.
   bool lambda1Bound(vec &x, const mat &C, const vec &rhs, const uvec &li,
                     const uvec &held, bool refit) {
     if (!hasLambda1Bounds()) return false;
@@ -1644,30 +1645,68 @@ public:
     for (arma::uword j = 0; j < held.n_elem; ++j) {
       if (held(j) < n) keep[(size_t)held(j)] = true;
     }
-    bool clamped = false;
-    for (arma::uword pass = 0; pass <= n; ++pass) {
-      bool any = false;
+    // 0 free, -1 at its lower bound, 1 at its upper bound
+    std::vector<int> at((size_t)n, 0);
+    auto outside = [&](arma::uword j) {
+      double lo = lambda1Lower(li(j)), hi = lambda1Upper(li(j));
+      return x(j) < lo ? lo - x(j) : (x(j) > hi ? x(j) - hi : 0.0);
+    };
+    auto clampTo = [&](arma::uword j) {
+      bool low = x(j) < lambda1Lower(li(j));
+      x(j) = low ? lambda1Lower(li(j)) : lambda1Upper(li(j));
+      at[(size_t)j] = low ? -1 : 1;
+    };
+    if (!refit) {
+      bool clamped = false;
       for (arma::uword j = 0; j < n; ++j) {
-        if (keep[(size_t)j]) continue;
-        double lo = lambda1Lower(li(j)), hi = lambda1Upper(li(j));
-        if (x(j) < lo) {
-          x(j) = lo;
-        } else if (x(j) > hi) {
-          x(j) = hi;
-        } else {
-          continue;
+        if (!keep[(size_t)j] && outside(j) > 0.0) {
+          clampTo(j);
+          clamped = true;
         }
-        keep[(size_t)j] = true;
-        any = clamped = true;
       }
-      if (!any || !refit) break;
+      return clamped;
+    }
+    for (arma::uword it = 0; it < 4 * n + 4; ++it) {
+      // bind the coefficient furthest outside, one at a time
+      arma::uword worst = n;
+      double worstD = 0.0;
+      for (arma::uword j = 0; j < n; ++j) {
+        if (keep[(size_t)j] || at[(size_t)j] != 0) continue;
+        double d = outside(j);
+        if (d > worstD) { worstD = d; worst = j; }
+      }
+      if (worst < n) {
+        clampTo(worst);
+      } else {
+        // feasible: release the bound whose multiplier has the wrong sign
+        vec g = C * x - rhs;
+        arma::uword rel = n;
+        double relG = 0.0;
+        for (arma::uword j = 0; j < n; ++j) {
+          double m = (at[(size_t)j] == -1) ? -g(j) : (at[(size_t)j] == 1 ? g(j) : 0.0);
+          if (m > relG) { relG = m; rel = j; }
+        }
+        if (rel == n) break;
+        at[(size_t)rel] = 0;
+      }
       std::vector<uword> fr, ac;
-      for (arma::uword j = 0; j < n; ++j) (keep[(size_t)j] ? ac : fr).push_back(j);
-      if (fr.empty()) break;
+      for (arma::uword j = 0; j < n; ++j) {
+        (keep[(size_t)j] || at[(size_t)j] != 0 ? ac : fr).push_back(j);
+      }
+      if (fr.empty()) continue;
       uvec F(fr), A(ac);
       vec xf;
       if (!arma::solve(xf, C(F, F), rhs(F) - C(F, A) * x(A))) break;
       x(F) = xf;
+    }
+    bool clamped = false;
+    for (arma::uword j = 0; j < n; ++j) {
+      if (at[(size_t)j] != 0) clamped = true;
+      // a failed or exhausted search still leaves x inside the box
+      if (!keep[(size_t)j] && outside(j) > 0.0) {
+        clampTo(j);
+        clamped = true;
+      }
     }
     return clamped;
   }

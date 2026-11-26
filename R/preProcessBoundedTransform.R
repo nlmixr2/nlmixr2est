@@ -23,17 +23,18 @@
 #' @param ui rxode2 ui object
 #' @param est estimation routine name
 #' @param control control object
+#' @param data dataset, used to find saem's time-varying covariates
 #' @return list of transform specifications (one element per bounded parameter)
 #' @noRd
 #' @author Hajar Besbassi & Matt Fidler
-.getBoundedParams <- function(ui, est, control) {
+.getBoundedParams <- function(ui, est, control, data = NULL) {
   .iniDf <- ui$iniDf
   .thetaDf <- .iniDf[!is.na(.iniDf$ntheta), ]
 
   # saem keeps a mu-referenced covariate coefficient in its closed-form M-step
   # and holds it inside its bounds there (#1347)
   .saemCov <- if (identical(est, "saem")) {
-    rxUiGet.saemMuRefCovariateDataFrame(list(ui))$covariateParameter
+    .saemLambda1BoundNames(ui, .saemTimeVaryingCovs(ui, data, control))
   } else {
     character(0)
   }
@@ -386,7 +387,7 @@
     return(NULL)
   }
 
-  .transforms <- .getBoundedParams(ui, est, control)
+  .transforms <- .getBoundedParams(ui, est, control, data)
   if (length(.transforms) == 0L) {
     return(NULL)
   }

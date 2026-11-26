@@ -2260,13 +2260,36 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .ret
 }
 
-#' Bounded mu-referenced covariate coefficients of a saem model
+#' Time-varying covariates of a saem fit's data
 #'
 #' @param ui rxode2 ui
+#' @param data nlmixr2 data (`NULL` gives none)
+#' @param control saem control, for its `rxControl` (the default when it has none)
+#' @return names of the time-varying covariates
+#' @noRd
+.saemTimeVaryingCovs <- function(ui, data, control) {
+  if (is.null(data)) {
+    return(character(0))
+  }
+  .rx <- control$rxControl
+  if (is.null(.rx)) {
+    .rx <- rxode2::rxControl()
+  }
+  tryCatch(.nlmixrTimeVaryingCovariates(data, ui, .rx), error = function(e) character(0))
+}
+
+#' Bounded mu-referenced covariate coefficients of a saem model
+#'
+#' saem moves a time-varying covariate out of the closed-form M-step
+#' (`.nlmixrSetMuRefTimeVarying()`), so its coefficient is not one of these.
+#'
+#' @param ui rxode2 ui
+#' @param timeVarying time-varying covariates (`.saemTimeVaryingCovs()`)
 #' @return names of the covariate coefficients with a finite bound
 #' @noRd
-.saemLambda1BoundNames <- function(ui) {
-  .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))$covariateParameter
+.saemLambda1BoundNames <- function(ui, timeVarying = character(0)) {
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))
+  .cov <- .cov$covariateParameter[!(.cov$covariate %in% timeVarying)]
   .iniDf <- ui$iniDf
   .w <- match(.cov, .iniDf$name)
   .cov[is.finite(.iniDf$lower[.w]) | is.finite(.iniDf$upper[.w])]
@@ -2315,13 +2338,14 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' left out of the warning.
 #'
 #' @param ui rxode2 ui
+#' @param timeVarying time-varying covariates (`.saemTimeVaryingCovs()`)
 #' @return nothing, called for the warning
 #' @noRd
-.saemWarnBounded <- function(ui) {
+.saemWarnBounded <- function(ui, timeVarying = character(0)) {
   .iniDf <- ui$iniDf
   .iov <- !is.na(.iniDf$ntheta) & !is.na(.iniDf$backTransform) & grepl("^nlmixr2iov", .iniDf$backTransform)
   # the M-step holds a mu-referenced covariate coefficient inside its bounds
-  .iov <- .iov | .iniDf$name %in% .saemLambda1BoundNames(ui)
+  .iov <- .iov | .iniDf$name %in% .saemLambda1BoundNames(ui, timeVarying)
   .uiW <- ui
   if (any(.iov)) {
     .iniDf$lower[.iov] <- -Inf
@@ -2345,7 +2369,7 @@ nlmixr2Est.saem <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'", .var.name = .ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("saem"), .var.name = .ui$modelName)
   .saemAssertEtaPhi(.ui)
-  .saemWarnBounded(.ui)
+  .saemWarnBounded(.ui, .saemTimeVaryingCovs(.ui, env$data, env$control))
   if (length(.ui$mixProbs) > 0) {
     message("mixture SAEM computation scales with the number of sub-populations")
   }

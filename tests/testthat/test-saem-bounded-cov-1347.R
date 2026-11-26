@@ -54,6 +54,20 @@ nmTest({
     expect_equal(.b$upper, c(Inf, Inf, 5, Inf, 2))
   })
 
+  test_that("a time-varying covariate's coefficient keeps the bounded transform", {
+    .dTv <- .d
+    .dTv$SW <- as.numeric(.dTv$TIME >= 6)
+    .ui <- .mod(-5, 0.5, 5) |>
+      model(v <- exp(tv + b.v * SW + eta.v)) |>
+      ini(b.v = c(-2, 0, 2))
+    .tv <- .saemTimeVaryingCovs(.ui, .dTv, saemControl())
+    expect_true("SW" %in% .tv)
+    expect_false("lwt" %in% .tv)
+    expect_equal(.saemLambda1BoundNames(.ui, .tv), "wt.cl")
+    .tr <- .getBoundedParams(.ui, "saem", saemControl(), .dTv)
+    expect_equal(vapply(.tr, function(x) x$name, character(1)), "b.v")
+  })
+
   test_that("a bounded covariate coefficient is estimated as an unbounded one (#1347)", {
     skip_on_cran()
     .free <- .fit()
