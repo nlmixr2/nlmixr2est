@@ -141,7 +141,8 @@ getValidNlmixrCtl.its <- function(control) {
     .lst$est <- NULL
     return(do.call(itsControl, .lst))
   }
-  stop("invalid control for est=\"its\"; use itsControl()", call. = FALSE)
+  .minfo("invalid control for `est=\"its\"`, using default")
+  itsControl()
 }
 
 #' @rdname nmObjGetControl

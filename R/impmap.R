@@ -836,9 +836,10 @@ rxUiDeparse.impmapControl <- function(object, var) {
     object$gammaMethod <- object$gammaMethodUser
   }
   # defaults that follow other arguments are compared with what those give
-  .derived <- if (isTRUE(object$its)) {
-    # itsControl() fixes these; ctol is its tol
-    list(sirSample = 1L, nConvWindow = 1L, ctol = 1e-4)
+  .its <- isTRUE(object$its)
+  .derived <- if (.its) {
+    # itsControl() fixes these; nIter and ctol are written as maxIter and tol
+    list(sirSample = 1L, nConvWindow = 1L, nIter = 50L, ctol = 1e-4)
   } else {
     list(
       sirSample = max(25L, as.integer(ceiling(max(object$isample) / 10))),
@@ -846,8 +847,12 @@ rxUiDeparse.impmapControl <- function(object, var) {
       ctol = NULL
     )
   }
+  .argName <- c(nIter = "maxIter", ctol = "tol")
   .extra <- unlist(lapply(names(.derived), function(n) {
-    if (!identical(object[[n]], .derived[[n]])) paste0(n, " = ", .deparseValue(object[[n]]))
+    if (!identical(object[[n]], .derived[[n]])) {
+      .a <- if (.its && n %in% names(.argName)) .argName[[n]] else n
+      paste0(.a, " = ", .deparseValue(object[[n]]))
+    }
   }))
   .rxUiDeparseFoceiControl(
     object,
