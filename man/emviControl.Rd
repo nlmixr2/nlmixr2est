@@ -115,8 +115,9 @@ underestimate marginal variances.}
 variational posterior by a damped Gauss-Newton fixed point on the eta
 Hessian at the draws, and the thetas without a mu-referenced eta (structural
 and residual error) by a damped Gauss-Newton M-step; no step size is
-searched.  It applies to point estimates (`est="emvi"`); full Bayes keeps
-`"advi"`.  `"advi"` uses the adaptive step-size sequence from the ADVI
+searched.  Under full Bayes (`est="fbvi"`) the population block takes the
+same Gauss-Newton step, and the SEs of mu-referenced thetas come from their
+information with the etas integrated out.  `"advi"` uses the adaptive step-size sequence from the ADVI
 paper (Eqs 10-11), which a heavy-tailed score (proportional error) can stall
 with the variational scale near the prior; `"adam"` uses Adam.}
 

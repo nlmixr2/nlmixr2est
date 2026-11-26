@@ -36,7 +36,9 @@ nmTest({
       focei = suppressMessages(suppressWarnings(
         nlmixr2(mod, d, est = "focei", control = foceiControl(print = 0L))
       )),
-      emvi = suppressMessages(suppressWarnings(nlmixr2(mod, d, est = "emvi", control = control)))
+      emvi = suppressMessages(suppressWarnings(
+        nlmixr2(mod, d, est = if (isFALSE(control$pointEstimate)) "fbvi" else "emvi", control = control)
+      ))
     )
   }
 
@@ -70,6 +72,38 @@ nmTest({
       nlmixr2(mod, d, est = "emvi", control = emviControl(viFamily = "meanField", print = 0L))
     ))
     expect_equal(fMf$theta[["prop.sd"]], f$focei$theta[["prop.sd"]], tolerance = 0.05)
+  })
+
+  test_that("fbvi recovers a proportional residual error and FOCEi's SEs (#1462)", {
+    skip_on_cran()
+    d <- .viResidData(function(s, e) 0.1 * s$cp)
+    mod <- function() {
+      ini({
+        tka <- log(1.2)
+        tcl <- log(3)
+        tv <- log(30)
+        eta.ka ~ 0.1
+        eta.cl ~ 0.1
+        eta.v ~ 0.1
+        prop.sd <- 0.2
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ prop(prop.sd)
+      })
+    }
+    f <- .viResidFits(mod, d, fbviControl(print = 0L))
+    expect_identical(f$emvi$covMethod, "vi")
+    expect_equal(f$emvi$theta[["prop.sd"]], f$focei$theta[["prop.sd"]], tolerance = 0.05)
+    expect_equal(unname(diag(f$emvi$omega)), unname(diag(f$focei$omega)), tolerance = 0.15)
+    ## mu-referenced SEs integrate the etas out, as FOCEi's do
+    .mu <- c("tka", "tcl", "tv")
+    expect_equal(f$emvi$parFixedDf[.mu, "SE"], f$focei$parFixedDf[.mu, "SE"], tolerance = 0.2)
   })
 
   test_that("emvi recovers a combined add + prop residual error (#1462)", {
