@@ -41,6 +41,65 @@ test_that(".covGuard() accepts a positive-definite matrix and symmetrizes it", {
   expect_equal(.g$ev, eigen(.g$cov, symmetric = TRUE, only.values = TRUE)$values)
 })
 
+test_that(".covGuard() names the parameters that make a matrix singular (#1398)", {
+  .nm <- c("tka", "tcl", "tv")
+  .named <- function(m) {
+    dimnames(m) <- list(.nm, .nm)
+    m
+  }
+  # all zero
+  expect_identical(
+    .covGuard(.named(matrix(0, 3, 3)))$reason,
+    "is not PD: tka, tcl, tv uninformed"
+  )
+  # some zero, to the relative floor
+  .m <- .named(diag(c(0, 4, 9)))
+  .g <- .covGuard(.m)
+  expect_identical(.g$at, list(kind = "zero", names = "tka"))
+  expect_identical(.g$reason, "is not PD: tka uninformed")
+  # a negative diagonal
+  expect_identical(
+    .covGuard(.named(diag(c(1, -2, 3))))$reason,
+    "is not PD: tcl negative"
+  )
+  # a collinear pair, on very different scales: only their combination is informed
+  .m <- .named(diag(c(1e4, 1e-4, 2)))
+  .m[1, 2] <- .m[2, 1] <- 1 + 1e-6
+  .g <- .covGuard(.m)
+  expect_false(.g$ok)
+  expect_identical(.g$at$kind, "collinear")
+  expect_setequal(.g$at$names, c("tka", "tcl"))
+  expect_match(.g$reason, "^is not PD: (tka, tcl|tcl, tka) collinear$")
+  # a direction that loads on one parameter names it alone
+  expect_identical(.covSingularWhy(list(kind = "collinear", names = "tv")), "tv unidentified")
+  expect_identical(.covSingularWhy(NULL), "")
+  # more than three names are counted, not listed
+  .m <- matrix(0, 5, 5, dimnames = list(letters[1:5], letters[1:5]))
+  expect_identical(.covGuard(.m)$reason, "is not PD: a, b, c, +2 uninformed")
+  # an unnamed matrix keeps the old reason
+  expect_identical(.covGuard(matrix(0, 2, 2))$reason, "is not positive definite")
+  # a healthy matrix is unchanged
+  .g <- .covGuard(.pdCov())
+  expect_true(.g$ok)
+  expect_identical(.g$reason, "")
+  expect_null(.g$at)
+})
+
+test_that("a covariance rejection names the parameters within one $runInfo line (#1398)", {
+  .e <- new.env(parent = emptyenv())
+  .m <- matrix(0, 3, 3, dimnames = list(c("tka", "tcl", "tv"), c("tka", "tcl", "tv")))
+  .w <- tryCatch(.covRejectWarn(.e, "r,s", .covGuard(.m)$reason), warning = conditionMessage)
+  expect_identical(.w, "\"r,s\" is not PD: tka, tcl, tv uninformed; none installed")
+  expect_lte(cli::ansi_nchar(.w, type = "width"), 74L)
+  expect_error(
+    .setCovFail("r", .covGuard(.m)$reason),
+    "(the result is not PD: tka, tcl, tv uninformed)",
+    fixed = TRUE
+  )
+  expect_identical(.foceiAnalyticPdReason(list(pd = FALSE)), "is not positive definite")
+  expect_identical(.foceiAnalyticPdReason(list(pd = FALSE, reason = "x")), "x")
+})
+
 test_that(".covMethodFromSlot() inverts the foceiControl() covMethod slot", {
   expect_identical(.covMethodFromSlot(1L), "r,s")
   expect_identical(.covMethodFromSlot(2L), "r")
@@ -197,11 +256,11 @@ test_that(".covInstall() leaves the fit as it was when the matrix is rejected", 
   .bad <- matrix(c(1, 2, 2, 1), 2, dimnames = dimnames(.pdCov()))
   expect_warning(
     .ok <- .covInstall(.e, .bad, "sa", extras = list(parFixedDf = "refit")),
-    "\"sa\" is not positive definite; kept \"r,s\"",
+    "\"sa\" is not PD: tka, tcl collinear; kept \"r,s\"",
     fixed = TRUE
   )
   expect_false(.ok)
-  expect_identical(attr(.ok, "reason"), "is not positive definite")
+  expect_identical(attr(.ok, "reason"), "is not PD: tka, tcl collinear")
   expect_identical(.e$covMethod, "r,s")
   expect_equal(.e$cov, .pdCov())
   expect_false(exists("covList", envir = .e, inherits = FALSE))
@@ -228,7 +287,8 @@ test_that(".covRejectWarn() reads the same for every method and stays under 75 c
   expect_warning(.covRejectWarn(.e, NULL, "is not finite"), "^the covariance is not finite; none installed$")
   .w <- tryCatch(.covRejectWarn(.e, "analytic (full)", strrep("x", 80)), warning = conditionMessage)
   expect_identical(cli::ansi_nchar(.w, type = "width"), 74L)
-  expect_identical(.w, paste0("\"analytic (full)\" ", strrep("x", 53), "..."))
+  # the reason is clipped, not what was kept
+  expect_identical(.w, paste0("\"analytic (full)\" ", strrep("x", 37), "...; none installed"))
 })
 
 test_that("each .covWarn() site clips an 80-character label to 74 columns", {
@@ -285,7 +345,7 @@ test_that("the post-fit mu recompute keeps the fit's covariance when its result 
   })
   expect_warning(
     .foceiInstallMuCov(.e, "nlme"),
-    "\"r,s\" is not positive definite; kept \"nlme\"",
+    "\"r,s\" is not PD: tka, tcl collinear; kept \"nlme\"",
     fixed = TRUE
   )
   expect_identical(.e$covMethod, "nlme")
@@ -362,7 +422,7 @@ nmTest({
     assign("covList", .cl, envir = .fit$env)
     expect_error(
       suppressMessages(setCov(.fit, "imp")),
-      "covMethod=\"imp\" could not be computed for this fit (the result is not positive definite)",
+      "covMethod=\"imp\" could not be computed for this fit (the result is not PD: ",
       fixed = TRUE
     )
     expect_identical(.fit$covMethod, .m0)

@@ -2,6 +2,22 @@
 
 ## Changed defaults
 
+- `est = "laplace"` (and `"mlaplace"`, `"ilaplace"`) is now the Laplace
+  approximation NONMEM uses for `METHOD=COND LAPLACE INTERACTION` (Wang 2007,
+  J Pharmacokinet Pharmacodyn 34:575, Eq. 15): the inner Hessian and the
+  objective's log-determinant use the exact second derivative of the
+  conditional -2 log-likelihood in the ETAs.  Previously a Gaussian endpoint
+  used the Gauss-Newton FOCEi curvature, so the objective was identical to
+  `est = "focei"`.  Each Gaussian endpoint is now evaluated through its
+  log-density, as `+ dnorm()` in the model does, which needs only first-order
+  sensitivities and so works on every model (`linCmt()`, `lag()`, M2/M3/M4
+  censoring, ...).  The analytic `fast` outer gradient does not apply, so the
+  outer gradient is a finite difference.  All Gaussian `laplace` objectives
+  and estimates change; the previous results stay available as
+  `est = "focei"`.  `est = "flaplace"` computes the same objective from the
+  analytic conditional Hessian (#1301).  With M2/M3/M4 censoring the
+  reported objective of the two routes still differs by a constant
+  `2 * ncens * log(2 * pi)` (the estimates agree); NONMEM's lies midway.
 - FOCEi-family fits now scale a linear `theta` by its `|init|`
   (`foceiControl(scaleLinear = "abs")`, as NONMEM does) instead of
   `1/|init|` inside `scaleCband`.  When a model has such a `theta`, the
@@ -35,6 +51,38 @@
   fit's EBEs (`saemControl(etaMat = fit)`), a data frame with an `ID` column
   or a subject-by-eta matrix.  The default (`NULL`) keeps the random start
   (#1482).
+- `foceiControl(fast = TRUE)` now uses the analytic outer gradient for models
+  with inter-occasion variability, under both `iovMethod = "theta"` and
+  `"omega"`, instead of falling back to finite differences (#1377).
+
+- When a fit's tables step fails and the fit is returned without its tables,
+  `nlmixr2()` now raises a `warning()` and sets `fit$tablesDropped` to `TRUE`
+  so a script can test for it; adding the tables later with `addTable()`
+  clears it (#1354).
+- `addCondDist(fit)` samples each subject's conditional distribution of the
+  etas at the final estimates of a fit from any estimation method and stores
+  its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
+  By default it importance-samples around each subject's mode with the
+  population parameters held (#1378).
+- `etaSamples(fit, n)` draws each subject's etas from their conditional
+  distribution at a fit's estimates, as a long data frame (`ID`, `draw`, one
+  column per eta) that `rxSolve(fit, params = , nStud = n)` takes to simulate
+  each subject with its own uncertainty.  `method = "laplace"` draws from the
+  normal at each subject's mode with the inverse inner Hessian;
+  `method = "imp"` resamples `addCondDist()`'s importance samples (#1410).
+- A `saem` fit with a theta that is not updated in closed form now notes which
+  thetas the M-step updates in closed form, numerically (`nonMuTheta =
+  "regress"`) or stochastically (`nonMuTheta = "eta"`); the note is kept in
+  `fit$runInfo`, and `fit$saemMstep` lists the update of every theta (#1480).
+- Estimation now warns before fitting when an `lnorm()` or `boxCox()`
+  endpoint has uncensored observations with `DV <= 0`, which these
+  transforms silently clamp, e.g. `2 DV <= 0 on lnorm endpoint 'cp'`
+  (#1510).
+
+- A combined (`add() + prop()` or `add() + pow()`) error model whose additive
+  SD starts below 1% of that endpoint's own median `|DV|` now warns before
+  estimation and suggests a start of about 10% of it; the initial estimate is
+  not changed (#1383).
 - `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes each
   converged trust ETA solve by re-entering it at the squared
   `trustFterm`/`trustMterm` instead of taking Newton steps.  The objective at
@@ -105,6 +153,23 @@
   `MCMC acceptance low (rw 0%); try a smaller rmcmc`).
   `saemControl(mcmcAcceptWarn=)` sets the range; `NA` turns the note off
   (#1385).
+- The note that a FOCEi-family fit ended with an objective above the one at
+  its initial estimates is now one `$runInfo` line, `final objective (...) is
+  above the initial estimates' (...)`, and `foceiControl(aboveStartTol=)` sets
+  its relative band (default `0.01`); `NA` or `Inf` turns it off (#1399).
+
+- A covariance that is rejected as not positive definite now says which
+  parameters make it so: those with no information (a zero diagonal), or the
+  ones the near-singular direction loads on (e.g. `"r,s" is not PD: tva, tvb
+  collinear; none installed`).  A failed FOCEi covariance step does the same
+  for its R or S matrix (`covariance step failed: tva, tvb collinear`), or
+  says when there are fewer subjects than parameters for S (#1398).
+
+- A fit now notes in `$runInfo` when the condition number of its covariance's
+  correlation matrix exceeds 1000 (e.g. `covariance condition number is large
+  (1397.7 > 1000)`), since its standard errors are then unreliable.
+  `foceiControl(condWarn=)` sets the threshold; `NA` or `Inf` turns the note
+  off (#1400).
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
@@ -119,6 +184,11 @@
   objective is flat in a vanishing variance while a larger omega fits better.
   `foceiControl(omegaCollapseWarn=)` sets the fraction; `NA` turns it off
   (#1394).
+
+- A fit of any method now notes in `$runInfo` an estimated theta that ended
+  at a finite `lower`/`upper` bound (`estimate at its bound: "tka"`), with or
+  without a covariance step.  `foceiControl(thetaBoundWarn=)` sets the
+  relative tolerance (default `1e-4`); `NA` turns it off (#1505).
 
 - After the covariance step, a fit warns (in `$runInfo`) about pairs of
   estimates correlated at `|r| >= 0.95`, e.g. `highly correlated estimates:
@@ -182,8 +252,29 @@
 
 ## Bug fixes
 
+- A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
+  the gradient before the objective no longer stops R: the gradient's history
+  row read the last objective iteration, which did not exist yet.  FOCEi now
+  evaluates the objective first, so that gradient gets the initial step search.
+- An `ll()` fit no longer installs `model$inner`'s event-sensitivity shape for an
+  inner model that solves `innerLlik`, and the fit re-binds the inner shape on the
+  library it loaded.  Either mismatch let a compacted inner solve run another
+  model's right-hand side and overflow the heap ("free(): invalid next size").
+
+- A multi-threaded fit after a `fast = TRUE` `ll()` fit in the same R session
+  no longer stops R on Windows.  Two per-thread buffers were `thread_local`
+  `std::vector`s; with the MinGW-w64 toolchain their destructors run at thread
+  exit after the emulated thread-local storage they live in is released, so
+  freeing them corrupted the heap when an OpenMP worker exited at the next
+  fit.  The threads now hold plain pointers to vectors that are freed when
+  the package is unloaded (#1502).
+
 ### Covariance
 
+- `covType = "analytic"` now declines to the finite-difference covariance
+  when a likelihood penalty is active, so the covariance includes the
+  penalty's curvature instead of describing the unpenalised likelihood
+  (#1479).
 - The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a
   `same()` block's copies with the block they repeat, so a correlated IOV
   block contributes one shared occasion Omega (`om.iov.cl`,
@@ -258,6 +349,18 @@
 
 ### Estimation
 
+- The mu-referenced IRLS M-step (`muModel = "irls"`, e.g. `est = "ifocei"`)
+  now scales the design rows by the per-subject weights instead of forming a
+  dense subjects x subjects weight matrix, so its memory and time grow
+  linearly in the number of subjects (#1355).
+
+- `est="imp"`, `"impmap"` and `"qrpem"` now refuse a model without random
+  effects with the same clear message as `"saem"`, instead of failing with
+  `Could not fit data` (#1467).
+
+- `est="saem"`: when an endpoint's residual error cannot be matched to
+  `ini()` parameters, the error now names the endpoint and the error
+  argument(s) that are not `ini()` parameters (#1516).
 - `est="agq"` now checks the quadrature grid size (`nAGQ^neta`) before
   building it: it warns above 10,000 nodes and stops above 1,000,000, instead
   of silently exhausting memory with many etas (#1412).

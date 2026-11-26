@@ -197,7 +197,7 @@ SEXP _nlmixr2est_iniLbfgsb3ptr(SEXP ptr);
 SEXP _nlmixr2est_iniRcppTrustPtrs(SEXP ptr);
 SEXP _nlmixr2est_nTrustInnerGet(void);
 SEXP _nlmixr2est_nHessianQNGet(void);
-SEXP _nlmixr2est_foceiFinalOfvWorseR(SEXP, SEXP);
+SEXP _nlmixr2est_foceiFinalOfvWorseR(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiCalcGradGet(void);
 
 SEXP _rxode2version4(SEXP);
@@ -311,7 +311,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_iniRcppTrustPtrs", (DL_FUNC) &_nlmixr2est_iniRcppTrustPtrs, 1},
   {"_nlmixr2est_nTrustInnerGet", (DL_FUNC) &_nlmixr2est_nTrustInnerGet, 0},
   {"_nlmixr2est_nHessianQNGet", (DL_FUNC) &_nlmixr2est_nHessianQNGet, 0},
-  {"_nlmixr2est_foceiFinalOfvWorseR", (DL_FUNC) &_nlmixr2est_foceiFinalOfvWorseR, 2},
+  {"_nlmixr2est_foceiFinalOfvWorseR", (DL_FUNC) &_nlmixr2est_foceiFinalOfvWorseR, 3},
   {"_nlmixr2est_foceiCalcGradGet", (DL_FUNC) &_nlmixr2est_foceiCalcGradGet, 0},
   {"_nlmixr2est_iniRxodePtrs", (DL_FUNC) &_nlmixr2est_iniRxodePtrs, 1},
   {"_nlmixr2est_iniRxode2Optional", (DL_FUNC) &_nlmixr2est_iniRxode2Optional, 1},
@@ -425,6 +425,8 @@ void R_init_nlmixr2est(DllInfo *dll)
 }
 
 void rxOptionsFreeFocei(void);
+void nmTlsFreeAllC(void);
 void R_unload_nlmixr2est(DllInfo *info){
   rxOptionsFreeFocei();
+  nmTlsFreeAllC();
 }

@@ -65,6 +65,7 @@ nlmixr2Est.qrpem <- function(env, ...) {
     rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'qrpem'", .var.name = .ui$modelName)
   }
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'qrpem'", .var.name = .ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("qrpem"), .var.name = .ui$modelName)
   .foceiFamilyControl(env, ..., type = "impmapControl")
   .control <- env$control
   on.exit(

@@ -180,6 +180,7 @@ nlmixr2GradFun <- function(
     .nlmixr2GradInfo[["thetaNames"]] <- thetaNames
   }
   .nlmixr2GradInfo[[paste0(.md5, ".n")]] <- 0L
+  .nlmixr2GradInfo[[paste0(.md5, ".h")]] <- FALSE
   .nlmixr2GradInfo[[paste0(.md5, ".f")]] <- what
   .nlmixr2GradInfo[[paste0(.md5, ".e")]] <- envir
   .nlmixr2GradInfo[[paste0(.md5, ".rtol")]] <- gillRtol

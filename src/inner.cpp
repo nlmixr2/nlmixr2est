@@ -1132,6 +1132,8 @@ struct focei_options {
   int nFinalEtaMoved = 0;
   int finalBestX = 0; // the final estimates were replaced by the best evaluation's
   double finalBestGap = NA_REAL; // final minus best evaluated objective (natural scale)
+  // foceiControl(aboveStartTol=): see foceiFinalOfvWorse()
+  double aboveStartTol = 0.01;
 
   // Almquist Eq-48 warm-start extrapolation (fast=TRUE): per-subject d eta*/d(theta)
   // in the SCALED optimizer parameterization (etaP columns pre-multiplied by
@@ -1646,6 +1648,9 @@ std::vector<double> vPar;
 std::vector<double> vGrad;
 std::vector<int> niterGrad;
 std::vector<int> gradType;
+
+// A gradient may come before any objective evaluation (iteration 0).
+static inline int niterLast() { return niter.empty() ? 0 : niter.back(); }
 
 // Printed-column layout for the mu-referenced focei family: printed column p
 // maps to optimizer index _printOptIdx[p] (-1 for regression-updated mu
@@ -2662,7 +2667,7 @@ static inline int innerOpt1(int id, int likId);   // defined below; used by shi2
 // a theta with no eta; badly wrong for one that has them -- measured on theo_sd, tv and
 // add.sd (no etas) agreed to within the overall factor while tka and tcl (eta-bearing)
 // did not.  Set by foceiOuterFdInd_() per subject, before its loop.
-static thread_local std::vector<double> _fdRefEta;
+static inline std::vector<double> &fdRefEta() { return nmTlsVec(1); }
 
 // Pin one subject to a reference eta and force the next inner evaluation to recompute.
 // Shared by every per-individual difference (theta and omega), because both need the same
@@ -2724,7 +2729,7 @@ arma::vec shi21LikTheta(arma::vec &theta, int id) {
   for (int t = 0; t < (int)op_focei.ntheta && t < (int)theta.size(); ++t) {
     setIndParPtr(ind, op_focei.thetaTrans[t], theta[t]);
   }
-  fdPinRefEtaForce(fInd, ind, _fdRefEta);
+  fdPinRefEtaForce(fInd, ind, fdRefEta());
   if (!innerOpt1(id, 0)) { ret(0) = NA_REAL; return ret; }
   // lik[0] on this path is the individual's log-likelihood; the outer objective (and so
   // the analytic gradient this must match) is -2LL.
@@ -6337,9 +6342,10 @@ static inline double updateMuGroups() {
             arma::mat A;
             arma::vec b;
             if (op_focei.muModel == 2) {
-              arma::mat Wd = arma::diagmat(w);
-              A = Xf.t() * Wd * Xf;
-              b = Xf.t() * Wd * yAdj;
+              // scale rows; a dense diagmat(w) is subjects x subjects
+              arma::mat XtW = (Xf.each_col() % w).t();
+              A = XtW * Xf;
+              b = XtW * yAdj;
             } else {
               // eta ~ N(0, omega): the data term is on the same LL scale as
               // the prior/penalty only once weighted by eta's precision
@@ -6381,8 +6387,8 @@ static inline double updateMuGroups() {
             b += grad0 - Hp * beta0;
             bf = arma::solve(A, b);
           } else if (op_focei.muModel == 2) {
-            arma::mat Wd = arma::diagmat(w);
-            bf = arma::solve(Xf.t() * Wd * Xf, Xf.t() * Wd * yAdj);
+            arma::mat XtW = (Xf.each_col() % w).t();
+            bf = arma::solve(XtW * Xf, XtW * yAdj);
           } else {
             bf = arma::solve(Xf, yAdj);
           }
@@ -7284,25 +7290,20 @@ static void priorGradHessFor(const std::vector<int> &idx, arma::vec &grad, arma:
   Hp = 0.5 * (Hp + Hp.t());
 }
 
-// Is the final (re-evaluated) objective `finalOfv` worse than the starting
-// objective `initOfv`?  True when the final value is not finite, or exceeds the
-// initial one by more than 1% of its magnitude (with an absolute floor of 0.1
-// objective units so an initial objective near 0 still has a band).  The band
-// absorbs the small drift a final re-evaluation carries (its inner solve runs at
-// the covariance-step tolerances), while any real optimizer or inner-problem
-// failure is orders of magnitude outside it.  A non-finite initOfv cannot happen
-// after foceiOfv0()'s initial-evaluation stop()s, so it is treated as "not worse"
-// rather than raising a second, less specific condition.
-static inline bool foceiFinalOfvWorse(double initOfv, double finalOfv) {
-  if (!R_FINITE(initOfv)) return false;
+// Is the final (re-evaluated) objective `finalOfv` above the starting objective
+// `initOfv` by more than `tol` of its magnitude (with a 0.1 absolute floor so a
+// start near 0 still has a band)?  A non-finite final value is always above;
+// a non-finite `tol` (NA/Inf) disables the check.
+static inline bool foceiFinalOfvWorse(double initOfv, double finalOfv, double tol) {
+  if (!R_FINITE(tol) || !R_FINITE(initOfv)) return false;
   if (!R_FINITE(finalOfv)) return true;
-  double band = max2(0.01 * std::fabs(initOfv), 0.1);
+  double band = max2(tol * std::fabs(initOfv), 0.1);
   return finalOfv > initOfv + band;
 }
 
 //[[Rcpp::export(".foceiFinalOfvWorse")]]
-bool foceiFinalOfvWorseR(double initOfv, double finalOfv) {
-  return foceiFinalOfvWorse(initOfv, finalOfv);
+bool foceiFinalOfvWorseR(double initOfv, double finalOfv, double tol = 0.01) {
+  return foceiFinalOfvWorse(initOfv, finalOfv, tol);
 }
 
 // The "this evaluation is a gradient leg" flag, for tests: it must be 0 whenever no
@@ -10575,6 +10576,8 @@ NumericVector foceiSetup_(const RObject &obj,
     as<int>(foceiO["etaRestart"]) : 0;
   op_focei.finalEtaTol = foceiO.containsElementNamed("finalEtaTol") ?
     as<double>(foceiO["finalEtaTol"]) : R_PosInf;
+  op_focei.aboveStartTol = foceiO.containsElementNamed("aboveStartTol") ?
+    as<double>(foceiO["aboveStartTol"]) : 0.01;
   // The base of the restart draws' threefry stream.  Taken from
   // foceiControl(seed=) rather than rxode2's getRxSeed1(): that is NOT a
   // getter -- it advances rxode2's global rxSeed by its argument on every
@@ -10993,6 +10996,9 @@ NumericVector foceiSetup_(const RObject &obj,
     scaleNormalize(op_focei.initPar, (int)op_focei.npars, &op_focei.normType,
                    &op_focei.c1, &op_focei.c2);
   }
+  // the pool is built: bind the inner role to the inner slot's shape on the
+  // loaded library (focei.R's install can predate a reload)
+  odeSwapEsRebindInner();
   return ret;
 }
 
@@ -11392,6 +11398,9 @@ double foceiOuterF(NumericVector &theta){
 }
 
 extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
+  // A gradient before any objective: evaluate it first, so the step search
+  // differences about it and the initial-gradient checks apply.
+  if (op_focei.nF + op_focei.nF2 == 0) foceiOfvOptim(n, par, ex);
   numericGrad(par, gr);
   op_focei.nG++;
   int finalize=0, i = 0;
@@ -11420,7 +11429,7 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   // 8=nlm forward sensitivity, 9=analytic outer gradient (fast=TRUE).
   const bool record = op_focei.recordOuter;
   if (record) {
-    niterGrad.push_back(niter.back());
+    niterGrad.push_back(niterLast());
     gradType.push_back(gType);
     double *grp = gr;
     if (muPrintActive()) {
@@ -11925,15 +11934,22 @@ static CharacterVector nlmixr2EvalDefaultNames(int n) {
   return tn;
 }
 
-// First evaluation: reset the recorded history and print the header
-static void nlmixr2EvalStart(Environment &gradInfo, int nEW, int n, int printN,
-                             int printNcol, bool useColor) {
+// First call of either the objective or the gradient: reset the recorded history
+static void nlmixr2HistStart(Environment &gradInfo, const std::string &md5) {
+  std::string hs = md5 + ".h";
+  if (gradInfo.exists(hs) && as<bool>(gradInfo[hs])) return;
   vGrad.clear();
   vPar.clear();
   iterType.clear();
   gradType.clear();
   niter.clear();
   niterGrad.clear();
+  gradInfo[hs] = true;
+}
+
+// First evaluation: print the header
+static void nlmixr2EvalStart(Environment &gradInfo, int nEW, int n, int printN,
+                             int printNcol, bool useColor) {
   if (printN == 0) return;
   scalePrintLine(1, min2(n, printNcol));
   if (!gradInfo.exists("thetaNames") ||
@@ -11997,6 +12013,7 @@ double nlmixr2Eval_(NumericVector theta, std::string md5){
   int printN=as<int>(gradInfo["print"]);
   int n=theta.size();
   bool isRstudio=as<bool>(gradInfo["isRstudio"]);
+  nlmixr2HistStart(gradInfo, md5);
   if (cn == 1) nlmixr2EvalStart(gradInfo, lEW.size(), n, printN, printNcol, useColor);
   std::string unscaledPar = md5 + ".uPar";
   NumericVector thetaU;
@@ -12077,6 +12094,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
   Function loadNamespace("loadNamespace", R_BaseNamespace);
   Environment nlmixr2 = loadNamespace("nlmixr2est");
   Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
+  nlmixr2HistStart(gradInfo, md5);
 
   std::string Egill = md5 + ".g";
   std::string EF = md5 + ".f";
@@ -12121,7 +12139,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
     // the first gradient is the Gill search's own; gillK = 0 runs no search and so
     // gives no derivative, and differences with its starting interval below
     if (as<int>(gradInfo[EK]) != 0) {
-      niterGrad.push_back(niter.back());
+      niterGrad.push_back(niterLast());
       gradType.push_back(1);
       vGrad.push_back(NA_REAL); // Gradient doesn't record objf
       NumericVector gr = as<NumericVector>(Lgill["df"]);
@@ -12131,7 +12149,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
         }
         vGrad.push_back(gr[i]);
       }
-      nlmixr2GradPrint(gr, gradType.back(), niter.back(), useColor,
+      nlmixr2GradPrint(gr, gradType.back(), niterLast(), useColor,
                        printNcol, printN, isRstudio);
       return gr;
     }
@@ -12166,7 +12184,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
   if (reEval){
     f0 = nlmixr2RObjAt(cFun, cEnvir, theta.begin(), theta.size(), theta);
   }
-  niterGrad.push_back(niter.back());
+  niterGrad.push_back(niterLast());
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
   // Forward differences on a copy (theta is the caller's own vector); a non-finite
   // forward leg switches to a backward one.
@@ -12188,7 +12206,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
     vGrad.push_back(g[i]);
   }
   gradType.push_back(isMixed ? 2 : 3);
-  nlmixr2GradPrint(g, gradType.back(), niter.back(), useColor,
+  nlmixr2GradPrint(g, gradType.back(), niterLast(), useColor,
                    printNcol, printN, isRstudio);
   return g;
 }
@@ -12984,7 +13002,8 @@ static int foceiCovSelect(Environment e, int req, int rState, int sState,
   Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
   Function sel = as<Function>(nlmixr2[".covSelectFocei"]);
   CharacterVector fb(fallback.begin(), fallback.end());
-  List r = sel(e, req, rState, sState, rstr, sstr, checkSandwich, sHasZero, op_focei.covSmall, fb);
+  List r = sel(e, req, rState, sState, rstr, sstr, checkSandwich, sHasZero, op_focei.covSmall, fb,
+               getRxNsub(rx));
   return as<int>(r["slot"]);
 }
 
@@ -16256,14 +16275,10 @@ Environment foceiFitCpp_(Environment e){
     } else {
       foceiOuter(e);
       if (op_focei.maxOuterIterations > 0 && op_focei.initObj &&
-          foceiFinalOfvWorse(op_focei.initOfv, op_focei.finalOfv)) {
-        // The outer optimizer can only return a point it evaluated, and every
-        // optimizer here keeps its best, so the reported objective should never be
-        // worse than the starting one.  When it is, the fit is not trustworthy:
-        // either the optimizer failed outright or the inner (eta) problem did not
-        // converge when the final estimates were re-evaluated.  Issue 1114 returned
-        // ~2e244 against a starting 824 with every theta untouched and no message.
-        warning(_("the final objective function (%g) is worse than the initial objective function (%g); the estimates are not reliable.\nThe outer optimizer did not improve on the initial estimates or the inner (eta) optimization did not converge at the final estimates; check the initial estimates and the scaling (foceiControl(scaleType=, normType=))"),
+          foceiFinalOfvWorse(op_focei.initOfv, op_focei.finalOfv, op_focei.aboveStartTol)) {
+        // Every optimizer here keeps its best, so this means the optimizer failed or
+        // the inner problem did not converge at the final estimates (#1114, #1399).
+        warning(_("final objective (%g) is above the initial estimates' (%g)"),
                 op_focei.finalOfv, op_focei.initOfv);
       }
     }
@@ -17222,7 +17237,7 @@ static void fdThetaLikAll(const arma::vec &tk, std::vector<double> &out) {
   out.assign((size_t)nid, NA_REAL);
   arma::vec tw = tk;                 // shi21LikTheta takes a non-const reference
   nmForEachSubject(rx, nid, _fdThCores, _fdThParallel, [&](int k) {
-    _fdRefEta = _fdThRefEta[(size_t)k];
+    fdRefEta() = _fdThRefEta[(size_t)k];
     { std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
       out[(size_t)k] = shi21LikTheta(tw, _fdThIds[(size_t)k])(0); }
   });
@@ -17230,7 +17245,7 @@ static void fdThetaLikAll(const arma::vec &tk, std::vector<double> &out) {
   // pick the same inner buffers, so a failure above is not necessarily one here.
   for (int k = 0; k < nid; ++k) {
     if (R_finite(out[(size_t)k])) continue;
-    _fdRefEta = _fdThRefEta[(size_t)k];
+    fdRefEta() = _fdThRefEta[(size_t)k];
     std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
     out[(size_t)k] = shi21LikTheta(tw, _fdThIds[(size_t)k])(0);
   }
@@ -17270,7 +17285,7 @@ static void fdThetaStepPer(const arma::vec &theta, int j,
   const int nid = (int)_fdThIds.size();
   hPerOut.assign((size_t)nid, 0.0);
   nmForEachSubject(rx, nid, _fdThCores, _fdThParallel, [&](int k) {
-    _fdRefEta = _fdThRefEta[(size_t)k];
+    fdRefEta() = _fdThRefEta[(size_t)k];
     arma::vec tw = theta, gr(1), f0(1);
     f0(0) = f0Ind[(size_t)k];
     double hs = 0.0;
@@ -17297,7 +17312,7 @@ static void fdThetaLegPer(const arma::vec &theta, int j,
   out.assign((size_t)nid, NA_REAL);
   nmForEachSubject(rx, nid, _fdThCores, _fdThParallel, [&](int k) {
     if (hPer[(size_t)k] > 0.0) {
-      _fdRefEta = _fdThRefEta[(size_t)k];
+      fdRefEta() = _fdThRefEta[(size_t)k];
       std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
       arma::vec tk = theta;
       if (j >= 0 && j < (int)tk.size()) tk[(unsigned int)j] += sign * hPer[(size_t)k];
@@ -17308,7 +17323,7 @@ static void fdThetaLegPer(const arma::vec &theta, int j,
   // pick the same inner buffers, so a failure above is not necessarily one here.
   for (int k = 0; k < nid; ++k) {
     if (hPer[(size_t)k] <= 0.0 || R_finite(out[(size_t)k])) continue;
-    _fdRefEta = _fdThRefEta[(size_t)k];
+    fdRefEta() = _fdThRefEta[(size_t)k];
     std::unique_ptr<OmegaScope> _om = fdThOmegaScope();
     arma::vec tk = theta;
     if (j >= 0 && j < (int)tk.size()) tk[(unsigned int)j] += sign * hPer[(size_t)k];
@@ -18527,7 +18542,7 @@ static NumericMatrix foceiOuterFdIndCore(IntegerVector ids0, NumericMatrix analy
       op_focei.nFdChartrand++;
     }
   }
-  _fdRefEta.clear();
+  fdRefEta().clear();
   // Release the theta phase's guards HERE, before the omega phase: they restore par_ptr's
   // eta, and the omega phase captures its own reference etas from par_ptr -- inheriting a
   // perturbed one would difference omega about the wrong point.
