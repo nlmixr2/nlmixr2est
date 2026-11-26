@@ -1098,6 +1098,11 @@
 #'   ends below this fraction of its initial estimate, or at its
 #'   `diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.
 #'
+#' @param thetaBoundWarn Warn (in `$runInfo`) when an estimated theta ends
+#'   within this tolerance of a finite `lower`/`upper` bound, relative to the
+#'   bound range (or, for a one-sided bound, to the larger of the bound's size
+#'   and the initial estimate's distance from it).  Use `NA` or `0` to disable.
+#'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
 #'     ODE solve.
@@ -1571,7 +1576,8 @@ foceiControl <- function(
   zeroTheta = 0.001,
   zeroThetaStep = 100,
   boundedTransform = TRUE,
-  omegaCollapseWarn = 1e-3
+  omegaCollapseWarn = 1e-3,
+  thetaBoundWarn = 1e-4
 ) {
   #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
@@ -2221,6 +2227,7 @@ foceiControl <- function(
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
   checkmate::assertNumber(omegaCollapseWarn, lower = 0, upper = 1, na.ok = TRUE)
+  checkmate::assertNumber(thetaBoundWarn, lower = 0, upper = 1, na.ok = TRUE)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2430,6 +2437,7 @@ foceiControl <- function(
     odeSettleCheck = odeSettleCheck,
     odeSettleTol = as.double(odeSettleTol),
     omegaCollapseWarn = as.double(omegaCollapseWarn),
+    thetaBoundWarn = as.double(thetaBoundWarn),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,
