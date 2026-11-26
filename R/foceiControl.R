@@ -570,6 +570,10 @@
 #' @param eigen A boolean indicating if eigenvectors are calculated
 #'     to include a condition number calculation.
 #'
+#' @param condWarn warn when the condition number of the covariance's
+#'     correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+#'     warning off.
+#'
 #' @param noAbort Boolean to indicate if you should abort the FOCEi
 #'     evaluation if it runs into troubles.  (default TRUE)
 #'
@@ -1073,6 +1077,11 @@
 #'   secondary mode during the search and stay there.  Only applies with a
 #'   warm start (`mceta < 0`).  Use `Inf` to disable.
 #'
+#' @param aboveStartTol Warn (in `$runInfo`) when the final objective is
+#'   above the objective at the initial estimates by more than this fraction
+#'   of its magnitude (at least 0.1 objective units).  Use `NA` or `Inf` to
+#'   disable.
+#'
 #' @param shrinkEtaWarn Warn (in `$runInfo`) when an eta's SD shrinkage is
 #'   at or above this percentage.  Use `NA` or `Inf` to disable.
 #'
@@ -1088,6 +1097,11 @@
 #' @param omegaCollapseWarn Warn (in `$runInfo`) when a free diagonal omega
 #'   ends below this fraction of its initial estimate, or at its
 #'   `diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.
+#'
+#' @param thetaBoundWarn Warn (in `$runInfo`) when an estimated theta ends
+#'   within this tolerance of a finite `lower`/`upper` bound, relative to the
+#'   bound range (or, for a one-sided bound, to the larger of the bound's size
+#'   and the initial estimate's distance from it).  Use `NA` or `0` to disable.
 #'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
@@ -1394,6 +1408,7 @@ foceiControl <- function(
   lbfgsPgtol = 0, #
   lbfgsFactr = NULL, #
   eigen = TRUE, #
+  condWarn = 1000,
   diagXform = c("sqrt", "log", "identity"), #
   iovXform = c("sd", "var", "logsd", "logvar"), #
   iovMethod = c("auto", "theta", "omega"), #
@@ -1524,6 +1539,7 @@ foceiControl <- function(
   etaNudge2 = qnorm(1 - 0.05 / 2) * sqrt(3 / 5), #
   etaRestart = 4L, #
   finalEtaTol = 1, #
+  aboveStartTol = 0.01, #
   shrinkEtaWarn = 30, #
   odeSettleCheck = FALSE, #
   odeSettleTol = 0.1, #
@@ -1560,7 +1576,8 @@ foceiControl <- function(
   zeroTheta = 0.001,
   zeroThetaStep = 100,
   boundedTransform = TRUE,
-  omegaCollapseWarn = 1e-3
+  omegaCollapseWarn = 1e-3,
+  thetaBoundWarn = 1e-4
 ) {
   #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
@@ -1774,6 +1791,7 @@ foceiControl <- function(
     checkmate::assertLogical(eigen, any.missing = FALSE, len = 1)
   }
   eigen <- as.integer(eigen)
+  .condWarnCheck(condWarn)
 
   checkmate::assertLogical(sumProd, any.missing = FALSE, len = 1)
   checkmate::assertLogical(optExpression, any.missing = FALSE, len = 1)
@@ -2204,10 +2222,12 @@ foceiControl <- function(
   checkmate::assertNumeric(etaNudge2, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
   checkmate::assertIntegerish(etaRestart, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumber(finalEtaTol, lower = 0)
+  checkmate::assertNumber(aboveStartTol, lower = 0, na.ok = TRUE)
   checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
   checkmate::assertNumber(omegaCollapseWarn, lower = 0, upper = 1, na.ok = TRUE)
+  checkmate::assertNumber(thetaBoundWarn, lower = 0, upper = 1, na.ok = TRUE)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2289,6 +2309,7 @@ foceiControl <- function(
     fdChartrand = as.integer(fdChartrand),
     centralDerivEps = centralDerivEps,
     eigen = eigen,
+    condWarn = condWarn,
     diagXform = match.arg(diagXform),
     iovXform = match.arg(iovXform),
     iovMethod = match.arg(iovMethod),
@@ -2411,10 +2432,12 @@ foceiControl <- function(
     etaNudge2 = as.double(etaNudge2),
     etaRestart = as.integer(etaRestart),
     finalEtaTol = as.double(finalEtaTol),
+    aboveStartTol = as.double(aboveStartTol),
     shrinkEtaWarn = as.double(shrinkEtaWarn),
     odeSettleCheck = odeSettleCheck,
     odeSettleTol = as.double(odeSettleTol),
     omegaCollapseWarn = as.double(omegaCollapseWarn),
+    thetaBoundWarn = as.double(thetaBoundWarn),
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,

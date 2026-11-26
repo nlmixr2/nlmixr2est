@@ -57,6 +57,11 @@
   (`saemControl(saCovAutoStop = TRUE)`, the default), so `nSaCov` becomes a
   maximum; the stop is recorded in `fit$saemSaCovStop`.  `setCov(fit, "sa")`
   stops the same way (`saControl(saCovAutoStop = TRUE)`) (#1411).
+- `addCondDist(fit)` samples each subject's conditional distribution of the
+  etas at the final estimates of a fit from any estimation method and stores
+  its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
+  By default it importance-samples around each subject's mode with the
+  population parameters held (#1378).
 - A `saem` fit with a theta that is not updated in closed form now notes which
   thetas the M-step updates in closed form, numerically (`nonMuTheta =
   "regress"`) or stochastically (`nonMuTheta = "eta"`); the note is kept in
@@ -140,11 +145,23 @@
   `MCMC acceptance low (rw 0%); try a smaller rmcmc`).
   `saemControl(mcmcAcceptWarn=)` sets the range; `NA` turns the note off
   (#1385).
+- The note that a FOCEi-family fit ended with an objective above the one at
+  its initial estimates is now one `$runInfo` line, `final objective (...) is
+  above the initial estimates' (...)`, and `foceiControl(aboveStartTol=)` sets
+  its relative band (default `0.01`); `NA` or `Inf` turns it off (#1399).
 
 - A covariance that is rejected as not positive definite now says which
   parameters make it so: those with no information (a zero diagonal), or the
   ones the near-singular direction loads on (e.g. `"r,s" is not PD: tva, tvb
-  collinear; none installed`) (#1398).
+  collinear; none installed`).  A failed FOCEi covariance step does the same
+  for its R or S matrix (`covariance step failed: tva, tvb collinear`), or
+  says when there are fewer subjects than parameters for S (#1398).
+
+- A fit now notes in `$runInfo` when the condition number of its covariance's
+  correlation matrix exceeds 1000 (e.g. `covariance condition number is large
+  (1397.7 > 1000)`), since its standard errors are then unreliable.
+  `foceiControl(condWarn=)` sets the threshold; `NA` or `Inf` turns the note
+  off (#1400).
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
@@ -159,6 +176,11 @@
   objective is flat in a vanishing variance while a larger omega fits better.
   `foceiControl(omegaCollapseWarn=)` sets the fraction; `NA` turns it off
   (#1394).
+
+- A fit of any method now notes in `$runInfo` an estimated theta that ended
+  at a finite `lower`/`upper` bound (`estimate at its bound: "tka"`), with or
+  without a covariance step.  `foceiControl(thetaBoundWarn=)` sets the
+  relative tolerance (default `1e-4`); `NA` turns it off (#1505).
 
 - After the covariance step, a fit warns (in `$runInfo`) about pairs of
   estimates correlated at `|r| >= 0.95`, e.g. `highly correlated estimates:
@@ -305,6 +327,10 @@
   the first `$runInfo` line; `$cov` had partially matched `covMethod = "failed"`.
 
 ### Estimation
+
+- `est="imp"`, `"impmap"` and `"qrpem"` now refuse a model without random
+  effects with the same clear message as `"saem"`, instead of failing with
+  `Could not fit data` (#1467).
 
 - `est="saem"`: when an endpoint's residual error cannot be matched to
   `ini()` parameters, the error now names the endpoint and the error
