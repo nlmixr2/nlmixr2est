@@ -477,8 +477,8 @@ foceiControl(
   single estimated boxCox/yeoJohnson lambda. A single non-Gaussian
   (`ll()`/generalized) endpoint instead differentiates the log-density
   directly, giving an exact inner Hessian and analytic outer gradient.
-  Out of scope are `linCmt()`, `fo`, IOV, more than one estimated
-  lambda, a theta mu-referenced by several random effects, and (for the
+  Out of scope are `linCmt()`, `fo`, more than one estimated lambda, a
+  theta mu-referenced by several random effects, and (for the
   non-Gaussian path) multiple endpoints, censoring or `nAGQ > 1`; those
   fall back to the finite-difference gradient with a message (linCmt()
   and out-of-scope log-likelihood models downgrade to `fast=FALSE` up

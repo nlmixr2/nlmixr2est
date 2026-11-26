@@ -199,6 +199,8 @@ plot(fit)
 - [`emviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/emviControl.md)
   : Control for the variational inference methods emvi and fbvi in
   nlmixr2
+- [`etaSamples()`](https://nlmixr2.github.io/nlmixr2est/reference/etaSamples.md)
+  : Draw each subject's etas from their conditional distribution
 - [`fbviControl()`](https://nlmixr2.github.io/nlmixr2est/reference/fbviControl.md)
   : Control for the fbvi (full-Bayes variational inference) method
 - [`foControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foControl.md)

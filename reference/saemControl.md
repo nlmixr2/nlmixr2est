@@ -24,6 +24,7 @@ saemControl(
   covFallback = list(sa = c("linFim", "Ha"), fim = c("linFim", "Ha"), analytic =
     c("linFim", "Ha"), linFim = "Ha"),
   covFull = TRUE,
+  covNewtonWarn = 1,
   nSaCov = 500L,
   calcTables = TRUE,
   logLik = FALSE,
@@ -79,6 +80,7 @@ saemControl(
   ebe = c("mode", "saem"),
   ebeMaxEval = 200L,
   ebeTol = NULL,
+  etaMat = NULL,
   ...,
   corWarn = 0.95
 )
@@ -262,6 +264,14 @@ saemControl(
   `om.<eta>` / `cov.<eta>.<eta>`. When `FALSE` the legacy
   structural-theta-only covariance is reported. Ignored by
   `covMethod="sa"`, which is always full.
+
+- covNewtonWarn:
+
+  Warn (in \`\$runInfo\`) when the Newton decrement of the FOCEi
+  objective at the estimate, \`0.5 \* g' H^-1 g\` in OFV units, exceeds
+  this value: the standard errors then belong to no optimum. The value
+  is kept as \`fit\$covNewtonDecrement\`. Use \`NA\` or \`Inf\` to skip
+  it.
 
 - nSaCov:
 
@@ -766,6 +776,14 @@ saemControl(
   standard-deviation units of each eta. \`NULL\` (default) uses
   \`sqrt(rtol)\` of the SAEM ODE solve (\`rxControl\`), the precision
   that solve can resolve a minimum to.
+
+- etaMat:
+
+  Etas to start every MCMC chain at: a prior fit (its EBEs), a data
+  frame with an \`ID\` column, or a matrix with one row per subject in
+  ID order (or IDs as row names). Columns are matched by eta name when
+  named. \`NULL\` (default) starts the chains from random draws around
+  the population mean.
 
 - ...:
 

@@ -63,6 +63,7 @@
 <span>  covFallback <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>sa <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"linFim"</span>, <span class="st">"Ha"</span><span class="op">)</span>, fim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"linFim"</span>, <span class="st">"Ha"</span><span class="op">)</span>, analytic <span class="op">=</span></span>
 <span>    <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"linFim"</span>, <span class="st">"Ha"</span><span class="op">)</span>, linFim <span class="op">=</span> <span class="st">"Ha"</span><span class="op">)</span>,</span>
 <span>  covFull <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  covNewtonWarn <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  nSaCov <span class="op">=</span> <span class="fl">500L</span>,</span>
 <span>  calcTables <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  logLik <span class="op">=</span> <span class="cn">FALSE</span>,</span>
@@ -118,6 +119,7 @@
 <span>  ebe <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mode"</span>, <span class="st">"saem"</span><span class="op">)</span>,</span>
 <span>  ebeMaxEval <span class="op">=</span> <span class="fl">200L</span>,</span>
 <span>  ebeTol <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  etaMat <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span>,</span>
 <span>  corWarn <span class="op">=</span> <span class="fl">0.95</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -286,6 +288,13 @@ residual thetas plus the <code>Omega</code> variance/covariance elements – nam
 <code>om.&lt;eta&gt;</code> / <code>cov.&lt;eta&gt;.&lt;eta&gt;</code>.  When <code>FALSE</code> the legacy
 structural-theta-only covariance is reported.  Ignored by
 <code>covMethod="sa"</code>, which is always full.</p></dd>
+
+
+<dt id="arg-covnewtonwarn">covNewtonWarn<a class="anchor" aria-label="anchor" href="#arg-covnewtonwarn"></a></dt>
+<dd><p>Warn (in `$runInfo`) when the Newton decrement of the
+FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+this value: the standard errors then belong to no optimum.  The value is
+kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.</p></dd>
 
 
 <dt id="arg-nsacov">nSaCov<a class="anchor" aria-label="anchor" href="#arg-nsacov"></a></dt>
@@ -780,6 +789,13 @@ conditional-mode search (default 200).</p></dd>
 search, in standard-deviation units of each eta.  `NULL` (default) uses
 `sqrt(rtol)` of the SAEM ODE solve (`rxControl`), the precision that solve
 can resolve a minimum to.</p></dd>
+
+
+<dt id="arg-etamat">etaMat<a class="anchor" aria-label="anchor" href="#arg-etamat"></a></dt>
+<dd><p>Etas to start every MCMC chain at: a prior fit (its EBEs), a
+data frame with an `ID` column, or a matrix with one row per subject in ID
+order (or IDs as row names).  Columns are matched by eta name when named.  `NULL` (default)
+starts the chains from random draws around the population mean.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
