@@ -957,7 +957,7 @@
         nAGQ = .nAGQ,
         agqRule = rxode2::rxGetControl(ui, "agqRule", "hermite"),
         agqNsd = rxode2::rxGetControl(ui, "agqNsd", 3),
-        agqGrid = rxode2::rxGetControl(ui, "agqGrid", c(3, 1, 0.6, 0.9))
+        agqGrid = rxode2::rxGetControl(ui, "agqGrid", c(3, 2, 0.6, 0.9))
       ),
       warnNodes = Inf
     )

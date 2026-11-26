@@ -199,7 +199,7 @@ foceiControl(
   agqHi = Inf,
   agqRule = c("hermite", "legendre", "stieltjes"),
   agqNsd = 3,
-  agqGrid = c(nr = 3, ns = 1, r0 = 0.6, r1 = 0.9),
+  agqGrid = c(nr = 3, ns = 2, r0 = 0.6, r1 = 0.9),
   sensMethod = c("default", "forward"),
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
@@ -1384,7 +1384,9 @@ the etas with an eta-independent residual variance.}
 \item{agqGrid}{The `agqRule="stieltjes"` grid `c(nr, ns, r0, r1)`, as in
 NONMEM's `GRID=`: `nr` equal shells over the radial probability interval
 `[r0, r1]` plus a central region `[0, r0]` and, unless `r1 > 0.9999`, a
-tail region; `ns` directions per quadrant of each pair of etas.}
+tail region; `ns` directions per quadrant of each pair of etas.  The
+default `ns = 2` differs from NONMEM's `GRID=(3,1,.6,.9)`: one direction
+per quadrant is too sparse for a grid that does not follow the EBE.}
 
 \item{sensMethod}{Method used to compute the ODE parameter sensitivities.
 `"forward"` uses the classic variational (forward) sensitivity ODEs;

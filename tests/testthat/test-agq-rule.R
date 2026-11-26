@@ -23,9 +23,9 @@ test_that("normal-measure rules integrate constants and second moments", {
 
 test_that("Stieltjes grid size and tail rule", {
   # 5 regions (centre, 3 shells, tail) x 2*ns*neta*(neta-1) directions
-  expect_equal(.agqStieltjes(3)$n, 5 * 12)
+  expect_equal(.agqStieltjes(3)$n, 5 * 24)
   expect_equal(.agqStieltjes(1)$n, 5 * 2)
-  expect_equal(.agqStieltjes(2, c(3, 2, 0.6, 0.9))$n, 5 * 8)
+  expect_equal(.agqStieltjes(2, c(3, 1, 0.6, 0.9))$n, 5 * 4)
   # r1 > 0.9999 drops the tail region
   expect_equal(.agqStieltjes(2, c(3, 1, 0.6, 0.99999))$n, 4 * 4)
   expect_false(.agqStieltjes(2)$first)
@@ -35,7 +35,7 @@ test_that("Stieltjes grid size and tail rule", {
 
 test_that("agqControl validates the rule options", {
   expect_equal(agqControl()$agqRule, "hermite")
-  expect_equal(agqControl(agqRule = "stieltjes")$agqGrid, c(nr = 3, ns = 1, r0 = 0.6, r1 = 0.9))
+  expect_equal(agqControl(agqRule = "stieltjes")$agqGrid, c(nr = 3, ns = 2, r0 = 0.6, r1 = 0.9))
   expect_error(agqControl(agqGrid = c(3, 1, 0.9, 0.6)), "agqGrid")
   expect_error(agqControl(agqGrid = c(0, 1, 0.6, 0.9)), "agqGrid")
   expect_error(agqControl(agqNsd = 0), "agqNsd")

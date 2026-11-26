@@ -149,7 +149,7 @@
 #' @inheritParams .agq
 #' @return same list as [.agq()]
 #' @noRd
-.agqStieltjes <- function(neta = 2, grid = c(3, 1, 0.6, 0.9), warnNodes = 1e4, maxNodes = 1e6) {
+.agqStieltjes <- function(neta = 2, grid = c(3, 2, 0.6, 0.9), warnNodes = 1e4, maxNodes = 1e6) {
   .nr <- as.integer(grid[1])
   .ns <- as.integer(grid[2])
   .r0 <- grid[3]
