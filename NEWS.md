@@ -234,6 +234,11 @@
 
 ## Bug fixes
 
+- An `ll()` fit no longer installs `model$inner`'s event-sensitivity shape for an
+  inner model that solves `innerLlik`, and the fit re-binds the inner shape on the
+  library it loaded.  Either mismatch let a compacted inner solve run another
+  model's right-hand side and overflow the heap ("free(): invalid next size").
+
 - A multi-threaded fit after a `fast = TRUE` `ll()` fit in the same R session
   no longer stops R on Windows.  Two per-thread buffers were `thread_local`
   `std::vector`s; with the MinGW-w64 toolchain their destructors run at thread

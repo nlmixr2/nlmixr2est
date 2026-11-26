@@ -10992,6 +10992,9 @@ NumericVector foceiSetup_(const RObject &obj,
     scaleNormalize(op_focei.initPar, (int)op_focei.npars, &op_focei.normType,
                    &op_focei.c1, &op_focei.c2);
   }
+  // the pool is built: bind the inner role to the inner slot's shape on the
+  // loaded library (focei.R's install can predate a reload)
+  odeSwapEsRebindInner();
   return ret;
 }
 
