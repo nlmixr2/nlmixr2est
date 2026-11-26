@@ -48,7 +48,7 @@ scenarios' starting values (the package tests check this).
 ## Tests
 
 `tests/testthat/test-tte-validation-*.R` fit the scenarios with `focei`,
-`agq` and `saem` and compare them with the exact likelihood (and
+`agq`, `saem` and `imp` and compare them with the exact likelihood (and
 the `exponential` closed form), and with every stored NONMEM or Monolix
 reference: parameters within a fraction of the reference standard
 errors, -2LL with the exact one, and the `tvCov` objective function
@@ -57,7 +57,9 @@ checks that the exact fits recover the simulation truth, which validates
 rxode2's `tte()` simulation independently.  They are long-running and
 skip on CRAN.  `saem` is run only on `rtte` and `lateEntry`: on a tte()
 model whose solve has another input (a data covariate, or the `CMT` of a
-second endpoint) it currently diverges.
+second endpoint) it currently diverges.  `imp` is run on `weibull`, `rtte`, `pkFixed`, `tvCov`
+and `dropout`, and only its estimates are compared: the objective it
+reports is the Laplace one at its estimates.
 
 ## Regenerating the reference fits
 
