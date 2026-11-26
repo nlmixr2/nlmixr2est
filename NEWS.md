@@ -349,6 +349,10 @@
 
 ### Estimation
 
+- FOCEi: a `linCmt()` model with an `ll()` (or other generalized) endpoint
+  and an eta on `f()` or `alag()` no longer gets a zero inner gradient for
+  that eta, so its EBEs and objective now match the ODE form of the model
+  (#1530).
 - The mu-referenced IRLS M-step (`muModel = "irls"`, e.g. `est = "ifocei"`)
   now scales the design rows by the per-subject weights instead of forming a
   dense subjects x subjects weight matrix, so its memory and time grow
