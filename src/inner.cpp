@@ -23101,7 +23101,7 @@ static bool adviGnPopStep(NumericVector &mPop, NumericVector &Lpop, const Numeri
                           const arma::mat &Hbar, const IntegerVector &phiThetaIdx, int gi) {
   const int npop = mPop.size();
   const double rho = adviGnRate(gi);
-  if (npop == 0 || !Hbar.is_finite()) return false;
+  if (npop == 0 || !Hbar.is_finite() || arma::any(arma::diagvec(Hbar) <= 0.0)) return false;
   arma::mat L(npop, npop, arma::fill::zeros);
   for (int r = 0; r < npop; ++r)
     for (int c = 0; c <= r; ++c) L(r, c) = Lpop[r * (r + 1) / 2 + c];
@@ -23178,6 +23178,14 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
   }
 
   arma::cube hessLast;                           // last iteration's mean eta Hessians
+  // the population Gauss-Newton step needs information on every free theta;
+  // a mu-referenced covariate theta has none, so such a fit keeps SGA there
+  bool popGn = _advi.gn;
+  for (int j = 0; popGn && j < npop; ++j) {
+    int t = phiThetaIdx[j];
+    if (t < 0 || adviPhiMuRefEta(t, muRefThetaIdx) >= 0) continue;
+    if (t >= (int)_advi.gnMask.size() || !_advi.gnMask[t]) popGn = false;
+  }
   for (int it = 0; it < iters; ++it) {
     int gi = it0 + it;
     // prior tempering warm-up (no-op when off).  adaptEta candidate runs
@@ -23268,7 +23276,7 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
       }
     }
     if (_advi.gn) hessLast = hessAcc * invM;
-    if (!_advi.gn || !adviGnPopStep(mPop, Lpop, gmPopAcc, hPopAcc * invM, phiThetaIdx, gi)) {
+    if (!popGn || !adviGnPopStep(mPop, Lpop, gmPopAcc, hPopAcc * invM, phiThetaIdx, gi)) {
       for (int j = 0; j < npop; ++j) {
         double g = gmPopAcc[j];
         smPop[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * smPop[j];
