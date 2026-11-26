@@ -727,6 +727,10 @@ saemFormGTest <- function(inA, inB, inFt, inC, inAddProp) {
     .Call(`_nlmixr2est_saemFormGTest`, inA, inB, inFt, inC, inAddProp)
 }
 
+saemBurnTrendTest <- function(inX, inNBatch) {
+    .Call(`_nlmixr2est_saemBurnTrendTest`, inX, inNBatch)
+}
+
 shi21RatioCensorSet <- function(type) {
     .Call(`_nlmixr2est_shi21RatioCensorSet`, type)
 }

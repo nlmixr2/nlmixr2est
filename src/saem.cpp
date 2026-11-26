@@ -19,6 +19,7 @@
 #include <memory>
 #include "solveWarnHelper.h"
 #include "truncNorm.h"
+#include "saemBurnTrend.h"
 #include "minqaC.h"
 #include "likPenalty.h"
 
@@ -7153,4 +7154,17 @@ SEXP saemFormGTest(SEXP inA, SEXP inB, SEXP inFt, SEXP inC, SEXP inAddProp) {
   vec g(a.n_elem);
   saemFormG(g, a, b, ft, c, addPropVec);
   return wrap(g);
+}
+
+// Test-only wrapper for the burn-in trend test (saemBurnTrend.h): which columns
+// of x still trend, and each column's |t|.
+//[[Rcpp::export]]
+SEXP saemBurnTrendTest(SEXP inX, SEXP inNBatch) {
+  mat x = as<mat>(inX);
+  int nBatch = as<int>(inNBatch);
+  vec t;
+  uvec tr = saemBurnTrend(x, nBatch, R::qt(0.975, static_cast<double>(nBatch - 2), 1, 0), &t);
+  LogicalVector trend(tr.begin(), tr.end());
+  NumericVector tv(t.begin(), t.end());
+  return List::create(_["trend"] = trend, _["t"] = tv);
 }
