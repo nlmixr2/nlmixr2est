@@ -337,7 +337,12 @@ etaSamples <- function(
     return(NULL)
   }
   .dim <- dim(.phiM)
-  .i1 <- .cfg$i1 + 1L
+  # phi1 columns follow the model order of the parameters, not the etas'
+  .col <- .saemEtaPhi1Col(fit$ui, length(.cfg$i1))
+  if (is.null(.col)) {
+    return(NULL)
+  }
+  .i1 <- (.cfg$i1 + 1L)[.col]
   if (
     sum(.niter) != .dim[3] ||
       length(.i1) != neta ||

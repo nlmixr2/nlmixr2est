@@ -196,6 +196,38 @@ test_that("auto reuses a SAEM fit's own chains", {
   expect_error(etaSamples(.fit, n = .n, method = "fit"), "holds no")
 })
 
+test_that("SAEM chain draws follow the etas' declared order", {
+  skip_on_cran()
+  # nolint start: object_usage_linter.
+  .mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.v ~ 0.1
+      eta.cl ~ 0.3
+      eta.ka ~ 0.6
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  # nolint end
+  .fit <- .nlmixr(.mod, nlmixr2data::theo_sd, "saem", control = saemControl(print = 0L, calcTables = FALSE))
+  .s <- etaSamples(.fit, n = 300L)
+  expect_equal(attr(.s, "method"), "saem")
+  expect_equal(names(.s), c("ID", "draw", "eta.v", "eta.cl", "eta.ka"))
+  .m <- as.matrix(aggregate(cbind(eta.v, eta.cl, eta.ka) ~ ID, .s, mean)[, -1])
+  .sd <- as.matrix(aggregate(cbind(eta.v, eta.cl, eta.ka) ~ ID, .s, sd)[, -1])
+  expect_lt(max(abs(.m - as.matrix(.fit$eta[, c("eta.v", "eta.cl", "eta.ka")])) / .sd), 1)
+  # eta.ka is the widest conditional distribution, eta.v the narrowest
+  expect_true(all(.sd[, "eta.ka"] > .sd[, "eta.v"]))
+})
+
 test_that("auto reuses an emvi fit's variational posterior", {
   skip_on_cran()
   .fit <- .etaSamplesTheo("emvi")
