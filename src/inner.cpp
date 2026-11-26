@@ -21814,6 +21814,7 @@ struct adviStatics {
   arma::mat thetaInfo;
   arma::cube etaHess;
   double nObs = 1.0;
+  NumericVector thetaLower, thetaUpper;          // ini() bounds, natural scale
 };
 
 static adviStatics _advi;
@@ -22080,11 +22081,25 @@ static void adviInfoAdd(arma::mat &out, const arma::mat &H, int ntheta) {
   }
 }
 
-// Damped Gauss-Newton M-step for the theta-sensitivity thetas (_advi.gnMask):
-// theta += gam * H^-1 g, shrunk to at most one per-observation sd,
-// sqrt(nObs / H_jj), in every component -- the residual score can have an
-// unbounded mean under a Gaussian q.  Returns false (theta untouched) when the
-// information is not usable, so the caller falls back to the SGA step.
+// theta p moved by `step`, stopped halfway to an ini() bound it would cross (an
+// untransformed residual sd keeps its lower bound of 0).
+static double adviGnBounded(int p, double x, double step) {
+  double y = x + step;
+  if (p < _advi.thetaLower.size() && R_finite(_advi.thetaLower[p]) && y <= _advi.thetaLower[p])
+    y = 0.5 * (x + _advi.thetaLower[p]);
+  if (p < _advi.thetaUpper.size() && R_finite(_advi.thetaUpper[p]) && y >= _advi.thetaUpper[p])
+    y = 0.5 * (x + _advi.thetaUpper[p]);
+  return y;
+}
+
+// Damped Gauss-Newton M-step for the theta-sensitivity thetas (_advi.gnMask),
+// theta += gam * H^-1 g.  A theta bounded below by 0 (an untransformed residual
+// sd) steps on the log scale: with combined error the additive sd carries
+// information ~ sd^2, so its natural-scale step grows like 1/sd and overshoots.
+// The step is shrunk to at most 1 on the log scale and one per-observation sd,
+// sqrt(nObs / H_jj), otherwise -- the residual score can have an unbounded mean
+// under a Gaussian q.  Returns false (theta untouched) when the information is
+// not usable, so the caller falls back to the SGA step.
 static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
                             const arma::mat &info, const LogicalVector &thetaFix,
                             double gam) {
@@ -22094,20 +22109,34 @@ static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
   for (int p = 0; p < ntheta; ++p)
     if (_advi.gnMask[p] && !thetaFix[p]) idx.push_back((arma::uword)p);
   if (idx.empty()) return false;
+  const size_t n = idx.size();
   arma::uvec ui(idx);
-  arma::mat Hs = info(ui, ui);
-  arma::vec gs(idx.size());
-  for (size_t j = 0; j < idx.size(); ++j) gs[j] = g[idx[j]];
+  arma::vec jac(n, arma::fill::ones), gs(n);
+  std::vector<char> logScale(n, 0);
+  for (size_t j = 0; j < n; ++j) {
+    int p = (int)idx[j];
+    gs[j] = g[p];
+    if (p < _advi.thetaLower.size() && _advi.thetaLower[p] == 0.0 && theta[p] > 0.0) {
+      logScale[j] = 1;
+      jac[j] = theta[p];                         // d theta / d log(theta)
+    }
+  }
+  arma::mat Hs = info(ui, ui) % (jac * jac.t());
+  gs %= jac;
   arma::mat R;
   if (!Hs.is_finite() || !gs.is_finite() || !arma::chol(R, arma::symmatu(Hs))) return false;
   arma::vec step = arma::solve(arma::trimatu(R), arma::solve(arma::trimatl(R.t()), gs));
   if (!step.is_finite()) return false;
   double shrink = 1.0;
-  for (size_t j = 0; j < idx.size(); ++j) {
-    double rad = std::sqrt(_advi.nObs / Hs(j, j));
+  for (size_t j = 0; j < n; ++j) {
+    double rad = logScale[j] ? 1.0 : std::sqrt(_advi.nObs / Hs(j, j));
     if (std::fabs(step[j]) > rad) shrink = std::min(shrink, rad / std::fabs(step[j]));
   }
-  for (size_t j = 0; j < idx.size(); ++j) theta[idx[j]] += gam * shrink * step[j];
+  for (size_t j = 0; j < n; ++j) {
+    int p = (int)idx[j];
+    double st = gam * shrink * step[j];
+    theta[p] = logScale[j] ? theta[p] * std::exp(st) : adviGnBounded(p, theta[p], st);
+  }
   return true;
 }
 
@@ -23169,6 +23198,8 @@ List adviOptimize_(List args) {
       if (gIdx[j] != NA_INTEGER && gIdx[j] >= 1 && gIdx[j] <= thetaIni.size())
         _advi.gnMask[gIdx[j] - 1] = 1;
     if (args.containsElementNamed("nObs")) _advi.nObs = std::max(1.0, as<double>(args["nObs"]));
+    if (args.containsElementNamed("thetaLower")) _advi.thetaLower = as<NumericVector>(args["thetaLower"]);
+    if (args.containsElementNamed("thetaUpper")) _advi.thetaUpper = as<NumericVector>(args["thetaUpper"]);
   }
   _advi.temperInit = args.containsElementNamed("temperInit")
     ? as<double>(args["temperInit"]) : 1.0;

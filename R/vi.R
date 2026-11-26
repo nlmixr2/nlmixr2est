@@ -147,6 +147,8 @@
     gaussNewton = identical(control$optim, "gaussNewton"),
     gnIdx = as.integer(.prep$thetaSensIdx),
     nObs = as.numeric(.prep$nObs),
+    thetaLower = .prep$thetaLower,
+    thetaUpper = .prep$thetaUpper,
     thetaFix = as.logical(.prep$thetaFix),
     omegaFix = as.logical(.prep$omegaFix),
     iters = as.integer(control$iters),
