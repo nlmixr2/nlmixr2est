@@ -152,4 +152,59 @@ nmTest({
     expect_equal(.m$THETA_5_$etaDir, "ETA_4_")
     .extCompare(.f, .d, constCovs = "WT")
   })
+
+  test_that("reuse is refused for delay(), unmaterialized ODEs and error-model thetas", {
+    # delay() with the default history: no rx__pastRhs_ variable, only the delay() call
+    .ui <- .extUi(eval(parse(text = sub(
+      "d/dt(center) <- ka * depot", "d/dt(center) <- ka * delay(depot, 0.5)",
+      paste(deparse(.extMod(.mat, .matIni)), collapse = "\n"), fixed = TRUE
+    ))))
+    expect_length(.extMap(.ui), 0L)
+    # an ODE right-hand side missing from the pruned env (matExp()/indLin() before .rxJacobian)
+    .ui <- .extUi(.extMod(.mat, .matIni))
+    .s <- .ui$loadPruneSens
+    rm(list = "rx__d_dt_center__", envir = .s)
+    expect_length(.foceiAnalyticMuRefExtDirMap(.ui, .s, rxode2::rxStateOde(.s), .extDirs(.ui), list(), c("PMA", "WT")), 0L)
+    # an error-model theta is never reused, even when offered as a direction
+    .ui <- .extUi(.extMod("cl <- tcl * exp(eta.cl)", tcl = 2.7, err = "prop(prop.sd)"))
+    .s <- .ui$loadPruneSens
+    .sg <- paste0("THETA_", .ui$iniDf$ntheta[.ui$iniDf$name == "prop.sd"], "_")
+    .m <- .foceiAnalyticMuRefExtDirMap(.ui, .s, rxode2::rxStateOde(.s), c(.extDirs(.ui), .sg), list(), character(0))
+    expect_false(.sg %in% names(.m))
+    expect_true("THETA_2_" %in% names(.m))
+  })
+
+  test_that("the analytic outer gradient with extended directions matches central differences", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .d <- nlmixr2data::theo_sd
+    .d$PMA <- 30 + 3 * .d$ID
+    .ctl <- foceiControl(
+      fast = TRUE, maxOuterIterations = 0L, maxInnerIterations = 1000L, epsilon = 1e-10,
+      print = 0, covMethod = "", calcTables = FALSE, compress = FALSE,
+      rxControl = rxode2::rxControl(atol = 1e-11, rtol = 1e-11)
+    )
+    .f <- .extMod(.mat, .matIni)
+    .fit <- .nlmixr(.f, .d, "focei", control = .ctl)
+    expect_gt(.fit$env$nAnalyticGradDirect, 0)
+    .g <- .foceiGradDirect(.fit)
+    # the full build (no reuse) gives the same analytic gradient
+    withr::with_envvar(c(FOCEI_NO_MUREF_EXT = "1"), {
+      .fitOff <- .nlmixr(.f, .d, "focei", control = .ctl)
+      expect_equal(.foceiGradDirect(.fitOff), .g, tolerance = 1e-8)
+    })
+    .ui <- .fit$finalUi
+    .objAt <- function(ui) .nlmixr(ui, .d, "focei", control = .ctl)$objf
+    .h <- 1e-4
+    expect_equal(
+      .g[["ltm50"]],
+      (.objAt(rxode2::ini(.ui, ltm50 = 3.7 + .h)) - .objAt(rxode2::ini(.ui, ltm50 = 3.7 - .h))) / (2 * .h),
+      tolerance = 1e-3
+    )
+    expect_equal(
+      .g[["lhill"]],
+      (.objAt(rxode2::ini(.ui, lhill = 1.1 + .h)) - .objAt(rxode2::ini(.ui, lhill = 1.1 - .h))) / (2 * .h),
+      tolerance = 1e-3
+    )
+  })
 })

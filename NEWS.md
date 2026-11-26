@@ -47,23 +47,12 @@
 
 ## New features
 
-- The analytic FOCEi outer gradient and covariance (`fast = TRUE`) now reuse
-  the eta sensitivities for structural `theta`s that act only through a
-  parameter carrying an eta, whatever the form of the covariate model
-  ("extended mu-referencing").  When `dE/dtheta = c * dE/deta` for every model
-  expression, with `c` free of the etas, the states and time, the theta's
-  sensitivities are `c` times the eta's, so it integrates no sensitivity
-  equations of its own.  This covers maturation (`PMA^hill/(PMA^hill +
-  tm50^hill)`), Emax, natural-scale shifts (`tcl*(1 + b*(WT - 70))`), power
-  exponents outside `exp()` (`(WT/70)^b`) and natural-scale typical values
-  (`tcl*exp(eta.cl)`), which previously each added a full sensitivity
-  direction; on a one-compartment oral model with a maturation function the
-  outer model drops from 62 to 26 ODE states.  `c` may depend on thetas, so
-  the second-order columns carry the extra `(dc_i/dtheta_j) * df/deta` term.
-  The identity is proven symbolically on every model expression (otherwise
-  the theta keeps its own direction); covariates in `c` must be constant
-  within each subject, and models with `delay()` histories are left as they
-  were.  Set `FOCEI_NO_MUREF_EXT=1` to disable.
+- The analytic FOCEi outer gradient and covariance (`fast = TRUE`) reused the
+  eta sensitivities for structural thetas that act only through a parameter
+  carrying an eta, whatever the covariate model (maturation, Emax,
+  natural-scale shifts and typical values, power exponents outside `exp()`),
+  so these no longer integrate their own sensitivity equations ("extended
+  mu-referencing"; `FOCEI_NO_MUREF_EXT=1` disables it).
 - `addCondDist(fit)` samples each subject's conditional distribution of the
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).

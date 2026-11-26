@@ -4096,8 +4096,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
     .agqNodes,
     .constCovs,
     Sys.getenv("FOCEI_NO_SIGMA_SKIP"),
-    # extended mu-referencing on/off changes the augmented outer model text
+    # extended mu-referencing: the toggle and which thetas are fixed decide the reuse
     Sys.getenv("FOCEI_NO_MUREF_EXT"),
+    .iniDf$fix,
     rxode2::rxGetControl(.ui, "addProp", getOption("rxode2.addProp", "combined2")),
     .ui$lstExpr
   ))

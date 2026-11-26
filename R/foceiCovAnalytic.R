@@ -2123,9 +2123,9 @@
   }
   .res
 }
-#' Dosing-modifier variables (bioavailability f(), lag()/alag(), rate(), dur()) in a pruned
-#' sensitivity env: `rx_<mod>_<state>_`.  Shared by the augmented-model emitter and the
-#' extended mu-referencing detector, which must see the same expressions.
+#' Dosing-modifier variables (`rx_<f|lag|alag|rate|dur>_<state>_`) of a pruned sensitivity env.
+#' @param .s pruned sensitivity environment
+#' @return character vector of variable names
 #' @noRd
 .foceiAnalyticDoseVars <- function(.s) {
   grep("^rx_(f|lag|alag|rate|dur)_.+_$", ls(envir = .s, all.names = TRUE), value = TRUE)
@@ -2151,7 +2151,7 @@
       "|cc",
       paste(sort(tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL), error = function(e) NULL)), collapse = ","),
       "|muext",
-      Sys.getenv("FOCEI_NO_MUREF_EXT") # extended mu-referencing on/off -> distinct cached model
+      Sys.getenv("FOCEI_NO_MUREF_EXT")
     ),
     error = function(e) NULL
   )
@@ -2216,10 +2216,7 @@
           logical(1)
         )]
       }
-      # Extended mu-referencing: a theta acting only through an eta-carrying individual parameter
-      # (dE/dtheta = c*dE/deta for every model expression, c = dmu/dtheta free of etas, states and
-      # time) reuses the eta's sensitivities scaled by c, which may depend on thetas.  Detected and
-      # verified symbolically; covariates in c must be subject-constant (same gate as above).
+      # extended mu-referencing: thetas whose sensitivities are c(theta, constant covariates) x an eta's
       .covMap <- c(
         .covMap,
         tryCatch(
@@ -2319,7 +2316,7 @@
         }
         paste0(
           .pre, .i, "_", .j, "=", paste(sprintf("(%s)", c(.si$s, .sj$s)), collapse = "*"), "*", .pre, .a, "_", .b,
-          # theta-dependent (extended mu-referencing) scale: gradient-times-curvature term
+          # a theta-dependent scale adds (dc_i/dtheta_j) * f1
           .foceiMuRefExtCurvTerm(.covMap, .i, .j, sub("2_$", "1_", .pre))
         )
       }
