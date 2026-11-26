@@ -30,7 +30,7 @@ stieltjesControl <- function(
   interaction = TRUE,
   nAGQ = 2,
   agqRule = "stieltjes",
-  agqGrid = c(nr = 3, ns = 1, r0 = 0.6, r1 = 0.9),
+  agqGrid = c(nr = 3, ns = 2, r0 = 0.6, r1 = 0.9),
   agqCenter = c("start", "mode", "prior")
 ) {
   stage1 <- match.arg(stage1)
@@ -58,10 +58,38 @@ nmObjHandleControlObject.stieltjesControl <- function(control, env) {
   assign("stieltjesControl", control, envir = env)
 }
 
+#' Convert a focei-family control to a `stieltjesControl()`
+#'
+#' A plain `foceiControl()` carries its own quadrature defaults (`nAGQ = 0`,
+#' Gauss-Hermite on the mode), which would replace the method's; drop every
+#' field still at its `foceiControl()` default.
+#'
+#' @inheritParams .foceiFamilyControlAs
+#' @return a `stieltjesControl()`
+#' @noRd
+.stieltjesControlAs <- function(ctl, target) {
+  if (!identical(class(ctl)[1], "foceiControl")) {
+    return(.foceiFamilyControlAs(ctl, target))
+  }
+  .l <- unclass(ctl)
+  .src <- unclass(foceiControl())
+  .keep <- vapply(
+    names(.l),
+    function(.n) !(.n %in% names(.src)) || !isTRUE(all.equal(.l[[.n]], .src[[.n]])),
+    logical(1)
+  )
+  do.call(target, .l[.keep])
+}
+
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.stieltjes <- function(control) {
-  .foceiFamilyValidCtl(control, "stieltjesControl")
+  .getValidCtl(
+    control,
+    "stieltjesControl",
+    convert = .foceiFamilyControlConvertible,
+    convertFun = .stieltjesControlAs
+  )
 }
 
 #' @rdname nmObjGetControl

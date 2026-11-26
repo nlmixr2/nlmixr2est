@@ -84,6 +84,13 @@
   the first evaluation, then fixed, as NONMEM's `STIELTJES` integrating
   stage) or `"prior"` (one grid on `N(0, Omega)`) (#1139).
 
+- `est = "stieltjes"` is a two-stage method after NONMEM's
+  `$ESTIMATION STIELTJES`: a conditional first stage (`stieltjesControl(stage1
+  = "focei")`, `"foce"` or `"laplace"`) supplies starting estimates and each
+  subject's EBE and eta Hessian, then the integrated likelihood is minimized
+  on a Stieltjes grid placed at those EBEs and held fixed.  The first stage's
+  objective and estimates are kept in `fit$stieltjesStage1` (#1139).
+
 - `addCondDist(fit)` samples each subject's conditional distribution of the
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).

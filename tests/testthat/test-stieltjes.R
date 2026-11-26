@@ -48,11 +48,14 @@ test_that("stage-1 estimates reach the internal bounded scale", {
 test_that("est='stieltjes' keeps the exact estimates of a model linear in eta", {
   skip_on_cran()
   set.seed(42)
-  d <- do.call(rbind, lapply(1:20, function(i) {
-    e <- rnorm(2, 0, c(0.7, 0.5))
-    t <- c(1, 2, 4, 8)
-    data.frame(id = i, time = t, dv = 1 + e[1] + (0.5 + e[2]) * t + rnorm(4, 0, 0.3))
-  }))
+  d <- do.call(
+    rbind,
+    lapply(1:20, function(i) {
+      e <- rnorm(2, 0, c(0.7, 0.5))
+      t <- c(1, 2, 4, 8)
+      data.frame(id = i, time = t, dv = 1 + e[1] + (0.5 + e[2]) * t + rnorm(4, 0, 0.3))
+    })
+  )
   f <- function() {
     ini({
       ta <- 1
