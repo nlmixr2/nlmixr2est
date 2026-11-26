@@ -206,10 +206,10 @@ etaSamples <- function(
 #'   after burn-in)
 #' @noRd
 .etaSamplesMcmc <- function(fit, n, seed, nBurn, thin) {
-  .lc <- .etaSamplesLaplaceCov(fit)
   if (!is.null(nlmixr2global$foceiLikEnv)) {
     stop("a likelihood is already loaded with foceiLikLoad(); call foceiLikUnload() first", call. = FALSE)
   }
+  .lc <- .etaSamplesLaplaceCov(fit)
   .a <- .covPinnedRefitArgs(fit)
   if (is.null(.a)) {
     stop("'fit' has no model to evaluate", call. = FALSE)
