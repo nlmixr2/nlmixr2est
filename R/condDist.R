@@ -51,6 +51,26 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
   checkmate::assertIntegerish(nsamp, lower = 2, len = 1, any.missing = FALSE)
   checkmate::assertLogical(keepSamples, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(seed, len = 1, any.missing = FALSE)
+  .eta <- .condDistCheckFit(fit)
+  .env <- fit$env
+  nsamp <- as.integer(round(nsamp))
+  .r <- .condDistImp(fit, nsamp, if (keepSamples) nsamp else 0L, as.integer(seed))
+  .etaNames <- names(.eta)[-1]
+  if (!identical(dim(.r$mean), c(nrow(.eta), length(.etaNames)))) {
+    stop("conditional distribution has an unexpected shape", call. = FALSE)
+  }
+  .ret <- .condDistSummary(.r$mean, .r$sd, .eta$ID, .etaNames, .r$draws)
+  attr(.ret, "method") <- "imp"
+  attr(.ret, "ess") <- .r$ess
+  assign("condDist", .ret, envir = .env)
+  fit
+}
+
+#' Refuse fits whose conditional eta distribution cannot be sampled
+#' @param fit nlmixr2 fit
+#' @return the fit's `$eta` data frame
+#' @noRd
+.condDistCheckFit <- function(fit) {
   .env <- tryCatch(fit$env, error = function(e) NULL)
   if (!is.environment(.env)) {
     stop("'fit' needs to be an nlmixr2 fit", call. = FALSE)
@@ -73,17 +93,7 @@ addCondDist <- function(fit, method = c("auto", "imp"), nsamp = 300L, keepSample
   if (!is.matrix(.om) || !all(is.finite(.om)) || inherits(try(chol(.om), silent = TRUE), "try-error")) {
     stop("conditional distribution needs a positive-definite Omega", call. = FALSE)
   }
-  nsamp <- as.integer(round(nsamp))
-  .r <- .condDistImp(fit, nsamp, if (keepSamples) nsamp else 0L, as.integer(seed))
-  .etaNames <- names(.eta)[-1]
-  if (!identical(dim(.r$mean), c(nrow(.eta), length(.etaNames)))) {
-    stop("conditional distribution has an unexpected shape", call. = FALSE)
-  }
-  .ret <- .condDistSummary(.r$mean, .r$sd, .eta$ID, .etaNames, .r$draws)
-  attr(.ret, "method") <- "imp"
-  attr(.ret, "ess") <- .r$ess
-  assign("condDist", .ret, envir = .env)
-  fit
+  .eta
 }
 
 #' Importance-sampled conditional distribution at a fit's estimates
