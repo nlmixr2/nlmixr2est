@@ -1282,6 +1282,15 @@
 #'   scaled by the eta Hessian, so all are exact when the model is linear in
 #'   the etas with an eta-independent residual variance.
 #'
+#' @param agqCenter Where the quadrature grid sits.  `"mode"` (default)
+#'   re-centres it on each subject's EBE and eta Hessian at every evaluation.
+#'   `"start"` centres it on the EBE and Hessian at the first evaluation of
+#'   the run and then keeps it fixed, so the objective no longer moves with
+#'   the conditional etas (the integrating stage of NONMEM's `STIELTJES`).
+#'   `"prior"` uses one grid on `N(0, Omega)` for every subject, which needs
+#'   a fine grid when the data are informative.  Only `"mode"` has an
+#'   analytic gradient and covariance.
+#'
 #' @param agqNsd Half-width, in conditional standard deviations, of the
 #'   `agqRule="legendre"` integration box.
 #'
@@ -1592,6 +1601,7 @@ foceiControl <- function(
   agqRule = c("hermite", "legendre", "stieltjes"),
   agqNsd = 3,
   agqGrid = c(nr = 3, ns = 2, r0 = 0.6, r1 = 0.9),
+  agqCenter = c("mode", "start", "prior"),
   sensMethod = c("default", "forward"),
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
@@ -2289,6 +2299,7 @@ foceiControl <- function(
   checkmate::assertNumeric(agqHi, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(agqLow, len = 1, any.missing = FALSE)
   agqRule <- match.arg(agqRule)
+  agqCenter <- match.arg(agqCenter)
   checkmate::assertNumber(agqNsd, lower = 0, finite = TRUE)
   if (agqNsd <= 0) {
     stop("'agqNsd' must be positive", call. = FALSE)
@@ -2522,6 +2533,7 @@ foceiControl <- function(
     agqRule = agqRule,
     agqNsd = as.double(agqNsd),
     agqGrid = agqGrid,
+    agqCenter = agqCenter,
     sensMethod = sensMethod,
     linCmtSensCarry = linCmtSensCarry,
     boundedTransform = boundedTransform,

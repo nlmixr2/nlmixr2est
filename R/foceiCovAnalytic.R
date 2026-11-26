@@ -1449,6 +1449,8 @@
           "inter-occasion variability (IOV)"
         } else if (isTRUE(is.finite(.agqLo)) || isTRUE(is.finite(.agqHi))) {
           "a finite agqLow/agqHi node clamp"
+        } else if (!identical(rxode2::rxGetControl(ui, "agqCenter", "mode"), "mode")) {
+          "a grid not centred on each EBE"
         } else {
           NULL
         }
@@ -4269,6 +4271,8 @@
       "censored observations"
     } else if (isTRUE(is.finite(.agqLo)) || isTRUE(is.finite(.agqHi))) {
       "a finite agqLow/agqHi node clamp"
+    } else if (!identical(rxode2::rxGetControl(ui, "agqCenter", "mode"), "mode")) {
+      "a grid not centred on each EBE"
     } else {
       NULL
     }

@@ -198,7 +198,8 @@ agqControl <- function(
   agqHi = Inf,
   agqRule = c("hermite", "legendre", "stieltjes"),
   agqNsd = 3,
-  agqGrid = c(nr = 3, ns = 2, r0 = 0.6, r1 = 0.9)
+  agqGrid = c(nr = 3, ns = 2, r0 = 0.6, r1 = 0.9),
+  agqCenter = c("mode", "start", "prior")
 ) {
   # interaction forces the calculation of the hessian, which is needed
   # for the adaptive Gaussian quadrature
@@ -211,7 +212,8 @@ agqControl <- function(
     agqHi = agqHi,
     agqRule = agqRule,
     agqNsd = agqNsd,
-    agqGrid = agqGrid
+    agqGrid = agqGrid,
+    agqCenter = agqCenter
   )
   class(.control) <- "agqControl"
   .control

@@ -79,6 +79,11 @@
   `agqGrid = c(nr, ns, r0, r1)`, NONMEM's `GRID=`).  Every rule is centred on
   the EBE, so all are exact for a model linear in the etas (#1139).
 
+- `agqControl(agqCenter=)` places the quadrature grid: `"mode"` (default,
+  re-centred on each EBE), `"start"` (placed on the EBEs and eta Hessians of
+  the first evaluation, then fixed, as NONMEM's `STIELTJES` integrating
+  stage) or `"prior"` (one grid on `N(0, Omega)`) (#1139).
+
 - `addCondDist(fit)` samples each subject's conditional distribution of the
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).

@@ -13,7 +13,8 @@ agqControl(
   agqHi = Inf,
   agqRule = c("hermite", "legendre", "stieltjes"),
   agqNsd = 3,
-  agqGrid = c(nr = 3, ns = 2, r0 = 0.6, r1 = 0.9)
+  agqGrid = c(nr = 3, ns = 2, r0 = 0.6, r1 = 0.9),
+  agqCenter = c("mode", "start", "prior")
 )
 }
 \arguments{
@@ -66,6 +67,15 @@ NONMEM's `GRID=`: `nr` equal shells over the radial probability interval
 tail region; `ns` directions per quadrant of each pair of etas.  The
 default `ns = 2` differs from NONMEM's `GRID=(3,1,.6,.9)`: one direction
 per quadrant is too sparse for a grid that does not follow the EBE.}
+
+\item{agqCenter}{Where the quadrature grid sits.  `"mode"` (default)
+re-centres it on each subject's EBE and eta Hessian at every evaluation.
+`"start"` centres it on the EBE and Hessian at the first evaluation of
+the run and then keeps it fixed, so the objective no longer moves with
+the conditional etas (the integrating stage of NONMEM's `STIELTJES`).
+`"prior"` uses one grid on `N(0, Omega)` for every subject, which needs
+a fine grid when the data are informative.  Only `"mode"` has an
+analytic gradient and covariance.}
 }
 \value{
 agqControl object

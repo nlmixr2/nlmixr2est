@@ -195,12 +195,16 @@
   )
 }
 
-# Objective label for the quadrature rule
+# Objective label for the quadrature rule; a grid that does not follow the EBE
+# drops the "A"
 .agqRuleLabel <- function(control) {
-  switch(
-    if (is.null(control$agqRule)) "hermite" else control$agqRule,
-    hermite = "",
-    legendre = paste0("AGQ-GL", control$nAGQ),
-    stieltjes = "AGQ-Stieltjes"
+  .adapt <- is.null(control$agqCenter) || identical(control$agqCenter, "mode")
+  .rule <- if (is.null(control$agqRule)) "hermite" else control$agqRule
+  if (.adapt && .rule == "hermite") {
+    return("")
+  }
+  paste0(
+    if (.adapt) "AGQ" else "GQ",
+    switch(.rule, hermite = control$nAGQ, legendre = paste0("-GL", control$nAGQ), stieltjes = "-Stieltjes")
   )
 }
