@@ -52,6 +52,12 @@
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
   By default it importance-samples around each subject's mode with the
   population parameters held (#1378).
+- `etaSamples(fit, n)` draws each subject's etas from their conditional
+  distribution at a fit's estimates, as a long data frame (`ID`, `draw`, one
+  column per eta) that `rxSolve(fit, params = , nStud = n)` takes to simulate
+  each subject with its own uncertainty.  `method = "laplace"` draws from the
+  normal at each subject's mode with the inverse inner Hessian;
+  `method = "imp"` resamples `addCondDist()`'s importance samples (#1410).
 - A `saem` fit with a theta that is not updated in closed form now notes which
   thetas the M-step updates in closed form, numerically (`nonMuTheta =
   "regress"`) or stochastically (`nonMuTheta = "eta"`); the note is kept in
