@@ -5570,13 +5570,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   ## injection is compartment-count guarded, so the smaller pred model solved in
   ## the same loop skips it safely.  Reset on exit.
   .eventSens <- tryCatch(.ret$control$eventSens, error = function(e) "jump")
+  ## the model the C++ core registers as the inner slot: innerLlik when present
+  ## (an ll() fit), else inner.  Installing another model's shape under the inner
+  ## role lets the inner solves compact to a width its dydt overruns.
+  .esInner <- if (exists("model", .ret)) {
+    if (!is.null(.ret$model$innerLlik)) .ret$model$innerLlik else .ret$model$inner
+  }
   if (
     identical(.eventSens, "jump") &&
-      exists("model", .ret) &&
-      !is.null(.ret$model$inner)
+      !is.null(.esInner)
   ) {
     .esLoaded <- tryCatch(
-      rxode2::rxEventSensLoadModel(.ret$model$inner),
+      rxode2::rxEventSensLoadModel(.esInner),
       error = function(e) FALSE
     )
     .foceiEventSensWarn(.esLoaded, .ret$model, .eventSens)
@@ -6458,6 +6463,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       silent = TRUE
     )
     if (inherits(.tmp, "try-error")) {
+      .tablesDroppedSet(.ret, TRUE)
       warning("error calculating tables, returning without table step", call. = FALSE)
     } else {
       .ret <- .tmp

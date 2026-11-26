@@ -55,18 +55,17 @@
   list(ui = .uiPinTheta(.ui, fit), data = getData(fit), etaMat = .fitEtaMat(fit))
 }
 
-#' Run a native engine (saem/imp) at the pinned converged estimates and harvest
-#' its covariance + already-rendered parameter table.
+#' Run a native engine (saem/imp) at a completed fit's pinned converged estimates
 #' @param fit completed nlmixr2 fit
 #' @param est native engine to run ("saem" or "imp")
-#' @param control control object for that engine (zero-iteration + cov request)
+#' @param control control object for that engine, holding the parameters
 #' @param useEtaMat whether the engine accepts an `etaMat` seed
-#' @return list(cov, covMethod, extras) or NULL
+#' @return the nested fit, or the `try-error` it failed with
 #' @noRd
-.covRecomputeNative <- function(fit, est, control, useEtaMat = TRUE) {
+.nativePinnedRefit <- function(fit, est, control, useEtaMat = TRUE) {
   .a <- .covPinnedRefitArgs(fit)
   if (is.null(.a)) {
-    return(NULL)
+    return(structure("no pinned estimates", class = "try-error"))
   }
   if (useEtaMat && !is.null(.a$etaMat)) {
     control$etaMat <- .a$etaMat
@@ -92,6 +91,19 @@
     )),
     silent = TRUE
   )
+  .fit2
+}
+
+#' Run a native engine (saem/imp) at the pinned converged estimates and harvest
+#' its covariance + already-rendered parameter table.
+#' @param fit completed nlmixr2 fit
+#' @param est native engine to run ("saem" or "imp")
+#' @param control control object for that engine (zero-iteration + cov request)
+#' @param useEtaMat whether the engine accepts an `etaMat` seed
+#' @return list(cov, covMethod, extras) or NULL
+#' @noRd
+.covRecomputeNative <- function(fit, est, control, useEtaMat = TRUE) {
+  .fit2 <- .nativePinnedRefit(fit, est, control, useEtaMat = useEtaMat)
   if (inherits(.fit2, "try-error")) {
     return(NULL)
   }

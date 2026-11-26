@@ -55,6 +55,7 @@ nlmixr2Est.imp <- function(env, ...) {
     rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'imp'", .var.name = .ui$modelName)
   }
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'imp'", .var.name = .ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("imp"), .var.name = .ui$modelName)
   .foceiFamilyControl(env, ..., type = "impmapControl")
   # imp = the impmap kernel with no per-iteration MAP re-centering.
   env$control$mapIter <- 0L

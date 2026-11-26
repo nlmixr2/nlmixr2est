@@ -1507,6 +1507,7 @@ nlmixr2Est.impmap <- function(env, ...) {
     rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'impmap'", .var.name = .ui$modelName)
   }
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'impmap'", .var.name = .ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("impmap"), .var.name = .ui$modelName)
   .control <- env$control
   .foceiFamilyControl(env, ..., type = "impmapControl")
   on.exit(
