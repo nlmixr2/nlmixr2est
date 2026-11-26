@@ -187,7 +187,7 @@
       },
       # nested model for the objective function difference
       reduced = function(model) {
-        rxode2::ini(model, bx = rxode2::fix(0))
+        rxode2::ini(model, bx = fix(0))
       },
       start = c(lh = log(0.2), bx = 0, eta.h = 0.3),
       n = 150L,
