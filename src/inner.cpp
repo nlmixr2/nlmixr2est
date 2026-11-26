@@ -1562,6 +1562,9 @@ static std::string agqRuleDetail(Environment e);
 // agq grid frozen at the first evaluation of a run (op_focei.aqCenter == 1)
 static std::vector<double> _aqStartCenter, _aqStartScale, _aqStartLogDet;
 static std::vector<char> _aqStartSet;
+// set while innerOpt1() ranks candidate EBEs: a frozen grid scores every
+// candidate alike, so ranking uses (and never freezes) the EBE-centred grid
+static thread_local bool _aqRanking = false;
 
 struct focei_ind {
   int nInnerF;
@@ -4307,7 +4310,7 @@ double LikInner2(double *eta, int likId, int id) {
     }
     if (_aqn == 0) {
       lik += logH0diag + curLogDetOmegaInv5();
-    } else if (op_focei.aqCenter != 0) {
+    } else if (op_focei.aqCenter == 2 || (op_focei.aqCenter == 1 && !_aqRanking)) {
       // A grid that does not follow the EBE: eta_k = c + sqrt(2)*S*x_k, so the
       // integral is |S| * sum_k w_k exp(-likInner0(eta_k) + x_k'x_k) up to the
       // constants the Gauss-Hermite layout already absorbs.  Log-sum-exp: off
@@ -5899,6 +5902,8 @@ static inline int innerOpt1(int id, int likId) {
         if (fInd->etahf != NULL) std::fill_n(&fInd->etahf[0], fop->neta, 0.0);
         if (fInd->etahr != NULL) std::fill_n(&fInd->etahr[0], fop->neta, 0.0);
         if (fInd->etahh != NULL) std::fill_n(&fInd->etahh[0], fop->neta, 0.0);
+        ScopedRestore<bool> _rank(_aqRanking);
+        _aqRanking = true;
         double m = LikInner2(&candEta[k][0], likId, id);
         // LikInner2 returns the individual log-likelihood and the outer
         // objective is -2 times it, so the best candidate is the LARGEST.

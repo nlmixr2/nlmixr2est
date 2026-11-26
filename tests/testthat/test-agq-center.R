@@ -61,4 +61,26 @@ test_that("grids not centred on the EBE", {
   expect_equal(unname(fixef(.fs)[1:4]), unname(fixef(.fm)[1:4]), tolerance = 0.05)
   expect_true(is.finite(.fs$objective))
   expect_false(is.null(.fs$cov))
+  # ranking several candidate EBEs neither freezes the grid nor ties them
+  .fr <- suppressMessages(suppressWarnings(nlmixr2(
+    .fm,
+    p,
+    est = "agq",
+    control = agqControl(
+      agqRule = "stieltjes",
+      agqCenter = "start",
+      mceta = 3,
+      mcetaOpt = TRUE,
+      maxOuterIterations = 0,
+      covMethod = "",
+      print = 0
+    )
+  )))
+  .f0 <- suppressMessages(suppressWarnings(nlmixr2(
+    .fm,
+    p,
+    est = "agq",
+    control = agqControl(agqRule = "stieltjes", maxOuterIterations = 0, covMethod = "", print = 0)
+  )))
+  expect_equal(.fr$objective, .f0$objective, tolerance = 1e-4)
 })
