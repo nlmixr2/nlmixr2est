@@ -13,15 +13,14 @@
 #'   (`FOCEI_NO_MUREF_EXT=1`) or nothing qualifies
 #' @noRd
 .foceiAnalyticMuRefExtDirMap <- function(ui, .s, .st, fDirs, covMap, constCovs) {
-  if (nzchar(Sys.getenv("FOCEI_NO_MUREF_EXT"))) {
+  # occasion etas (rewritten as subject-level by the IOV expansion) vary within the subject
+  if (nzchar(Sys.getenv("FOCEI_NO_MUREF_EXT")) || .uiHasIov(ui)) {
     return(list())
   }
   .ini <- ui$iniDf
-  # occasion etas vary within the subject; error-model thetas would need an rsig1 curvature term
-  .occEta <- .ini$neta1[!is.na(.ini$neta1) & .ini$neta1 == .ini$neta2 &
-    !is.na(.ini$condition) & .ini$condition != "id"]
+  # error-model thetas would need an rsig1 curvature term
   .errTh <- paste0("THETA_", .ini$ntheta[!is.na(.ini$ntheta) & !is.na(.ini$err)], "_")
-  .etaDirs <- setdiff(grep("^ETA_[0-9]+_$", fDirs, value = TRUE), paste0("ETA_", .occEta, "_"))
+  .etaDirs <- grep("^ETA_[0-9]+_$", fDirs, value = TRUE)
   .thAll <- setdiff(grep("^THETA_[0-9]+_$", fDirs, value = TRUE), .errTh)
   # not already reused, and not the source of a reused covariate direction (chained reuse)
   .covSrc <- vapply(covMap, function(.m) .m$etaDir, character(1))
@@ -45,8 +44,10 @@
     "rx_pred_", "rx_r_",
     "rx_yj_", "rx_lambda_", "rx_low_", "rx_hi_"
   )
-  .E <- Filter(Negate(is.null), lapply(stats::setNames(.exprNames, .exprNames), .get))
-  if (length(.E) == 0L ||
+  .exprNames <- intersect(.exprNames, .vars)
+  .E <- lapply(stats::setNames(.exprNames, .exprNames), .get)
+  # an expression symengine cannot represent must not silently drop out of the proof
+  if (length(.E) == 0L || any(vapply(.E, is.null, logical(1))) ||
     any(vapply(.E, function(.x) grepl("delay(", rxode2::rxFromSE(.x), fixed = TRUE), logical(1)))) {
     return(list())
   }
@@ -75,6 +76,20 @@
     lapply(.E, function(.x) symengine::D(.x, .etS))
   })
   .zEt <- lapply(.dEt, function(.d) vapply(.d, .isZero, logical(1)))
+  # cheap rejection before expand(): a clearly nonzero value at one point disproves the identity
+  .clearlyNonzero <- function(.d, .ref) {
+    tryCatch({
+      .sy <- union(.rxFoceiCarryFreeSyms(.d), .rxFoceiCarryFreeSyms(.ref))
+      for (.k in seq_along(.sy)) {
+        .val <- .S(0.31 + (.k * 0.6180339887) %% 1)
+        .d <- symengine::subs(.d, .S(.sy[.k]), .val)
+        .ref <- symengine::subs(.ref, .S(.sy[.k]), .val)
+      }
+      .vd <- as.double(symengine::evalf(.d))
+      .vr <- as.double(symengine::evalf(.ref))
+      is.finite(.vd) && is.finite(.vr) && abs(.vd) > 1e-6 * (abs(.vr) + 1)
+    }, error = function(e) FALSE)
+  }
   .res <- list()
   for (.th in .thDirs) {
     .thS <- .S(.th)
@@ -88,8 +103,11 @@
         .cw <- tryCatch(.dropInert(.zeroEta(.dTh[[.w]] / .dEt[[.eta]][[.w]])), error = function(e) NULL)
         if (is.null(.cw) || .isZero(.cw) || !all(.rxFoceiCarryFreeSyms(.cw) %in% .okSyms)) next
         # proven on every expression the eta moves
-        .proven <- all(vapply(which(!.zEt[[.eta]]), function(.i) {
-          .d <- tryCatch(symengine::expand(.dTh[[.i]] - .cw * .dEt[[.eta]][[.i]]), error = function(e) NULL)
+        .idx <- which(!.zEt[[.eta]])
+        .diff <- lapply(.idx, function(.i) .dTh[[.i]] - .cw * .dEt[[.eta]][[.i]])
+        if (any(mapply(.clearlyNonzero, .diff, lapply(.idx, function(.i) .dEt[[.eta]][[.i]])))) next
+        .proven <- all(vapply(.diff, function(.d) {
+          .d <- tryCatch(symengine::expand(.d), error = function(e) NULL)
           !is.null(.d) && .isZero(.d)
         }, logical(1)))
         if (.proven) {
