@@ -48,7 +48,7 @@ scenarios' starting values (the package tests check this).
 ## Tests
 
 `tests/testthat/test-tte-validation-*.R` fit the scenarios with `focei`,
-`agq`, `saem` and `imp` and compare them with the exact likelihood (and
+`agq` and `saem` and compare them with the exact likelihood (and
 the `exponential` closed form), and with every stored NONMEM or Monolix
 reference: parameters within a fraction of the reference standard
 errors, -2LL with the exact one, and the `tvCov` objective function
