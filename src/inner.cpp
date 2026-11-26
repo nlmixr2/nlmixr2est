@@ -11419,7 +11419,8 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   // 8=nlm forward sensitivity, 9=analytic outer gradient (fast=TRUE).
   const bool record = op_focei.recordOuter;
   if (record) {
-    niterGrad.push_back(niter.back());
+    // an optimizer may ask for the gradient before any objective (iteration 0)
+    niterGrad.push_back(niter.empty() ? 0 : niter.back());
     gradType.push_back(gType);
     double *grp = gr;
     if (muPrintActive()) {

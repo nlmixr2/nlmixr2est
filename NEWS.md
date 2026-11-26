@@ -234,6 +234,10 @@
 
 ## Bug fixes
 
+- A FOCEi outer optimizer that asks for the gradient before the objective no
+  longer stops R: the gradient's history row read the last objective
+  iteration, which did not exist yet.
+
 - A multi-threaded fit after a `fast = TRUE` `ll()` fit in the same R session
   no longer stops R on Windows.  Two per-thread buffers were `thread_local`
   `std::vector`s; with the MinGW-w64 toolchain their destructors run at thread
