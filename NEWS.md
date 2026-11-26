@@ -47,6 +47,10 @@
 
 ## New features
 
+- `foceiControl(fast = TRUE)` now uses the analytic outer gradient for models
+  with inter-occasion variability, under both `iovMethod = "theta"` and
+  `"omega"`, instead of falling back to finite differences (#1377).
+
 - When a fit's tables step fails and the fit is returned without its tables,
   `nlmixr2()` now raises a `warning()` and sets `fit$tablesDropped` to `TRUE`
   so a script can test for it; adding the tables later with `addTable()`
