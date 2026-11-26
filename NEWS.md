@@ -940,6 +940,12 @@
 
 ### Inter-occasion variability
 
+- saem's two-level IOV (`iovMethod = "twoLevel"`, `"theta"` and
+  `"collapsed"`) no longer shrinks the occasion variance toward zero when
+  subjects have different numbers of occasions.  The pooled variance now
+  averages over the subject-occasions in the data instead of counting each
+  absent occasion as a zero deviation (#1504).
+
 - `saemControl(iovMethod = "theta")`, also the automatic fallback for models
   `"twoLevel"` does not cover, no longer underestimates the occasion
   variances 4-6 fold (one collapsed to zero).  For saem, the shared rewrite
