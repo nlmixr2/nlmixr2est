@@ -166,6 +166,15 @@ rxUiDeparse.stieltjesControl <- function(object, var) {
       next
     }
     .v <- .theta[[.tr$name]]
+    # keep the value inside its bounds, as .getBoundedParams() does
+    if (is.finite(.tr$lower) && is.finite(.tr$upper)) {
+      .eps <- (.tr$upper - .tr$lower) * 1e-6
+      .v <- max(.tr$lower + .eps, min(.tr$upper - .eps, .v))
+    } else if (is.finite(.tr$lower)) {
+      .v <- max(.tr$lower + 1e-6, .v)
+    } else if (is.finite(.tr$upper)) {
+      .v <- min(.tr$upper - 1e-6, .v)
+    }
     .theta[[.tr$internalName]] <- switch(
       .tr$type,
       logit = rxode2::logit(.v, .tr$lower, .tr$upper),

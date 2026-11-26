@@ -44,6 +44,11 @@ test_that("stage-1 estimates reach the internal bounded scale", {
   .fit$omega <- matrix(0.3, 1, 1, dimnames = list("eta.a", "eta.a"))
   .stieltjesStage1Ini(.ui, .fit, .tr)
   expect_equal(.ui$iniDf$est, c(2, qlogis(0.25), log(0.5), 0.3))
+  # a value on its bound stays finite on the internal scale
+  .fit$theta <- c(ta = 2, fr = 1, sd = 0)
+  .stieltjesStage1Ini(.ui, .fit, .tr)
+  expect_true(all(is.finite(.ui$iniDf$est)))
+  .fit$theta <- c(ta = 2, fr = 0.25, sd = 0.5)
   # an eta the stage-1 omega does not list keeps its value
   .ui$iniDf$est[4] <- 0.1
   .fit$omega <- matrix(0.3, 1, 1, dimnames = list("eta.z", "eta.z"))
