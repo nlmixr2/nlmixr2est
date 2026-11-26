@@ -55,7 +55,8 @@
 - The `covMethod = "sa"` covariance phase applies the same window to the
   diagonal of its running Fisher information and stops once it is stationary
   (`saemControl(saCovAutoStop = TRUE)`, the default), so `nSaCov` becomes a
-  maximum; the stop is recorded in `fit$saemSaCovStop` (#1411).
+  maximum; the stop is recorded in `fit$saemSaCovStop`.  `setCov(fit, "sa")`
+  stops the same way (`saControl(saCovAutoStop = TRUE)`) (#1411).
 - A `saem` fit with a theta that is not updated in closed form now notes which
   thetas the M-step updates in closed form, numerically (`nonMuTheta =
   "regress"`) or stochastically (`nonMuTheta = "eta"`); the note is kept in

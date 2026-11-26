@@ -2465,15 +2465,39 @@ public:
   // `ebe="mode"`.
   // @return nothing; fills etaMode and etaModeConv
   // @noRd
+  // Pseudo-eta columns are held at their mean across subjects
+  rowvec modePseudoCenter() {
+    rowvec pseudoMean = mean(etaMode, 0);
+    for (unsigned int k = 0; k < pseudoIx1.n_elem; ++k) {
+      if ((int)pseudoIx1(k) < nphi1) etaMode.col(pseudoIx1(k)).fill(pseudoMean(pseudoIx1(k)));
+    }
+    return pseudoMean;
+  }
+
+  std::vector<int> modeDoParam() {
+    std::vector<int> doParam;
+    if (!_saemPhi1PoolActive) {
+      IntegerVector pu = optM["paramUpdate"];
+      doParam.assign(pu.begin(), pu.end());
+    }
+    return doParam;
+  }
+
+  // 1-based most likely mixture component per subject (0 = no mixture)
+  ivec modeMixComp() {
+    ivec mixComp(N, fill::zeros);
+    if (nMix > 1 && mixWeights.n_rows == (unsigned int)N) {
+      for (int i = 0; i < N; ++i) mixComp(i) = (int)mixWeights.row(i).index_max() + 1;
+    }
+    return mixComp;
+  }
+
   void computeEtaMode() {
     etaMode = get_eta();
     etaModeConv.set_size(N);
     etaModeConv.fill(3);
     if (!ebeMode || nphi1 == 0) return;
-    rowvec pseudoMean = mean(etaMode, 0);
-    for (unsigned int k = 0; k < pseudoIx1.n_elem; ++k) {
-      if ((int)pseudoIx1(k) < nphi1) etaMode.col(pseudoIx1(k)).fill(pseudoMean(pseudoIx1(k)));
-    }
+    rowvec pseudoMean = modePseudoCenter();
     rx_solving_options *op = getSolvingOptions(_rx);
     vec yt = modeResidSetup();
     // the reported Omega (before the variance floor), as the fit's model has
@@ -2482,15 +2506,8 @@ public:
     mat Greal = G.submat(realIx, realIx);
     mat IG = Greal.n_elem == 0 ? Greal : invSympdNearPd(Greal, "Gamma2_phi1 (Omega)");
     vec sd = sqrt(G.diag());
-    std::vector<int> doParam;
-    if (!_saemPhi1PoolActive) {
-      IntegerVector pu = optM["paramUpdate"];
-      doParam.assign(pu.begin(), pu.end());
-    }
-    ivec mixComp(N, fill::zeros);
-    if (nMix > 1 && mixWeights.n_rows == (unsigned int)N) {
-      for (int i = 0; i < N; ++i) mixComp(i) = (int)mixWeights.row(i).index_max() + 1;
-    }
+    std::vector<int> doParam = modeDoParam();
+    ivec mixComp = modeMixComp();
     mat ue = current_saem_state->_saemUE;
     int cores = getOpCores(op);
     bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
@@ -3071,27 +3088,34 @@ public:
   // Resolve the shared-eta component thetas (#1296) to local indices.  Only the
   // per-component ("parallel") sampler with an intercept-only phi0 column whose
   // partner is a phi1 column qualifies; everything else keeps the phi0 search.
+  // Whether phi0 column c0 is owned by a mixture component's shift; if so,
+  // fills its 0-based component, phi1 eta column and theta (LCOV0 row).
+  bool mixShiftOwns(int c0, unsigned int &j0, unsigned int &e1Out, unsigned int &l0Out) {
+    int p = (int)i0(c0);
+    int j = mixShiftComp(p), e = mixShiftEta(p) - 1;
+    if (j < 1 || j > nMix || e < 0) return false;
+    uvec e1 = find(i1 == (unsigned int)e);
+    uvec l0 = find(LCOV0.col(c0) == 1);
+    // a held (fixed) theta keeps its value, so it keeps the phi0 path
+    if (e1.n_elem != 1 || l0.n_elem != 1 || any(fixedIx0 == l0(0))) return false;
+    j0 = (unsigned int)(j - 1);
+    e1Out = e1(0);
+    l0Out = l0(0);
+    return true;
+  }
+
   void mixShiftResolve() {
     std::vector<unsigned int> own0, comp, eta1, free0, lam0;
     bool use = nMix > 1 && mixSampleMethod == 0 && (int)mixShiftComp.n_elem == nphi &&
       (int)mixShiftEta.n_elem == nphi;
     for (int c0 = 0; c0 < nphi0; c0++) {
-      bool owned = false;
-      if (use) {
-        int p = (int)i0(c0);
-        int j = mixShiftComp(p), e = mixShiftEta(p) - 1;
-        uvec e1 = find(i1 == (unsigned int)std::max(e, 0));
-        uvec l0 = find(LCOV0.col(c0) == 1);
-        // a held (fixed) theta keeps its value, so it keeps the phi0 path
-        bool fixed0 = l0.n_elem == 1 && any(fixedIx0 == l0(0));
-        if (j >= 1 && j <= nMix && e >= 0 && e1.n_elem == 1 &&
-            l0.n_elem == 1 && !fixed0) {
-          owned = true;
-          own0.push_back((unsigned int)c0);
-          comp.push_back((unsigned int)(j - 1));
-          eta1.push_back(e1(0));
-          lam0.push_back(l0(0));
-        }
+      unsigned int j0 = 0, e1 = 0, l0 = 0;
+      bool owned = use && mixShiftOwns(c0, j0, e1, l0);
+      if (owned) {
+        own0.push_back((unsigned int)c0);
+        comp.push_back(j0);
+        eta1.push_back(e1);
+        lam0.push_back(l0);
       }
       if (!owned && !any(holdIx0 == (uword)c0)) free0.push_back((unsigned int)c0);
     }
@@ -6838,6 +6862,118 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
   }
 }
 
+// Load each chain row's phi into its subject's parameters and mixture.
+static void saemSetIndPars(const mat &_phi, const List &_opt) {
+  int _Nnlmixr2 = (int)_phi.n_rows;
+  SEXP paramUpdate = _opt["paramUpdate"];
+  int *doParam = INTEGER(paramUpdate);
+  int nPar = Rf_length(paramUpdate);
+  int *indMixest = nullptr;
+  if (_opt.hasAttribute("names") && _opt.containsElementNamed("mixest")) {
+    SEXP indMixestR = _opt["mixest"];
+    if (indMixestR != R_NilValue) indMixest = INTEGER(indMixestR);
+  }
+  // a fit whose phi1 map resolved sets THETA[k]/ETA[k] (saemSetRowsPooled)
+  // instead of SAEM's native paramUpdate positions
+  if (_saemPhi1PoolActive) saemSetRowsPooled(_phi);
+  for (int _i = 0; _i < _Nnlmixr2; ++_i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, _i);
+    setIndSolve(ind, -1);
+    if (current_saem_state != nullptr && current_saem_state->_saemMixest != 0) {
+      setIndMixest(ind, current_saem_state->_saemMixest);
+    } else if (indMixest != nullptr) {
+      setIndMixest(ind, indMixest[_i]);
+    }
+    if (_saemPhi1PoolActive) continue;
+    int k = 0;
+    for (int _j = 0; _j < nPar; _j++) {
+      if (doParam[_j] == 1) setIndParPtr(ind, _j, _phi(_i, k++));
+    }
+  }
+}
+
+static void saemSolveAll(int _Nnlmixr2) {
+  // a general-lik fit whose phi1 map resolved solves through odeSlotPred
+  if (_saemPhi1PoolActive) {
+    saemSolveIndividualsPooled(_Nnlmixr2);
+  } else {
+    par_solve(_rx);
+  }
+}
+
+// Multiply the tolFactor of every subject (or, with selective, only those
+// whose solve has a non-finite state) by the ODE recalc factor.
+static void saemLoosenTol(int _Nnlmixr2, bool selective) {
+  rx_solving_options *op = getSolvingOptions(_rx);
+  if (selective && getOpNeq(op) <= 0) return;
+  const double fac = current_saem_state->_saemOdeRecalcFactor;
+  for (int _i = 0; _i < _Nnlmixr2; _i++) {
+    rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
+    bool bad = !selective;
+    if (selective) {
+      double *_solveI = getIndSolve(_indI);
+      int _nsolveI = getOpNeq(op) * getIndNallTimes(_indI);
+      for (int _ns = 0; _ns < _nsolveI && !bad; _ns++) {
+        bad = ISNA(_solveI[_ns]) || !std::isfinite(_solveI[_ns]);
+      }
+    }
+    if (bad) setIndTolFactor(_indI, getIndTolFactor(_indI) * fac);
+  }
+}
+
+// Solve every subject, retrying bad solves with loosened tolerances.  With
+// indTolRelax the loosened tolFactor is sticky; otherwise it is reset after.
+static void saemSolveWithRetry(int _Nnlmixr2) {
+  resetRxBadSolve(_rx);
+  saemSolveAll(_Nnlmixr2);
+  const bool sticky = current_saem_state->_saemIndTolRelax != 0;
+  int j = 0;
+  while (hasRxBadSolve(_rx) && j < current_saem_state->_saemMaxOdeRecalc) {
+    current_saem_state->_saemIncreaseTol = 1;
+    saemLoosenTol(_Nnlmixr2, sticky);
+    resetRxBadSolve(_rx);
+    saemSolveAll(_Nnlmixr2);
+    j++;
+  }
+  if (!sticky && j != 0) {
+    for (int _i = 0; _i < _Nnlmixr2; _i++) {
+      setIndTolFactor(getSolvingOptionsInd(_rx, _i), 1.0);
+    }
+  }
+}
+
+// Read the (log-likelihood or prediction, cens, limit) rows of the native solve.
+static void saemReadRowsNative(mat &g, int &elt, bool &hasNan, int _Nnlmixr2) {
+  rx_solving_options *op = getSolvingOptions(_rx);
+  const bool hasCens = hasRxCens(_rx), hasLimit = hasRxLimit(_rx);
+  for (int id = 0; id < _Nnlmixr2; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, id);
+    double *lhs = getIndLhs(ind);
+    iniSubjectE(id, 1, ind, op, _rx, saem_inis);
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, getIndIdx(ind));
+      int evid = getIndEvid(ind, kk);
+      // dosing rows are calculated for advan sensitivities; evid=2 is skipped
+      if (!isDose(evid) && evid != 0) continue;
+      lhsWalkNewind(ind, j);
+      saem_lhs((int)id, getTime(kk, ind), getOpIndSolve(op, ind, j), lhs);
+      if (evid != 0) continue;
+      const double cens = hasCens ? getIndCens(ind, kk) : 0.0;
+      const double limit = hasLimit ? getIndLimit(ind, kk) : R_NegInf;
+      double cur = saemGenLikCens(lhs, cens, limit, lhs[0]);
+      if (std::isnan(cur)) {
+        cur = 1.0e99;
+        hasNan = true;
+      }
+      g(elt, 0) = cur;
+      g(elt, 1) = cens;
+      g(elt, 2) = limit;
+      elt++;
+    }
+  }
+}
+
 mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // The solve below re-seeds this thread's threefry engine once per subject
   // (rxode2's par_*() loops do setSeedEng1(getRxSeed1() + id)), so on return the
@@ -6851,150 +6987,20 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   struct _SaemMcmcSeedGuard {
     ~_SaemMcmcSeedGuard() { nmRestoreMcmcSeed(); }
   } _saemMcmcSeedGuard;
-  // yp has all the observations in the dataset
-  rx_solving_options_ind *ind;
   rx_solving_options *op = getSolvingOptions(_rx);
   // _phi has N*nmc rows (all chains); _evt has only N subjects (chain 0 template)
   int _Nnlmixr2 = (int)_phi.n_rows;
-  SEXP paramUpdate = _opt["paramUpdate"];
-  int *doParam = INTEGER(paramUpdate);
-  int nPar = Rf_length(paramUpdate);
-
-  int *indMixest = nullptr;
-  if (_opt.hasAttribute("names")) {
-    if (_opt.containsElementNamed("mixest")) {
-      SEXP indMixestR = _opt["mixest"];
-      if (indMixestR != R_NilValue) {
-        indMixest = INTEGER(indMixestR);
-      }
-    }
-  }
-
-
-  // Fill in subject parameter information.  Phase 4 (SAEM general-lik theta
-  // plan): a fit whose phi1 map resolved sets THETA[k]/ETA[k] instead (see
-  // saemSetRowsPooled), reparameterizing the SAME combined phi value rather
-  // than using SAEM's own native paramUpdate/doParam positions -- every
-  // other fit takes the unchanged path below.
-  if (_saemPhi1PoolActive) saemSetRowsPooled(_phi);
-  for (int _i = 0; _i < _Nnlmixr2; ++_i) {
-    ind = getSolvingOptionsInd(_rx, _i);
-    setIndSolve(ind, -1);
-    if (current_saem_state != nullptr && current_saem_state->_saemMixest != 0) {
-      setIndMixest(ind, current_saem_state->_saemMixest);
-    } else if (indMixest != nullptr) {
-      setIndMixest(ind, indMixest[_i]);
-    }
-    if (!_saemPhi1PoolActive) {
-      int k=0;
-      for (int _j = 0; _j < nPar; _j++){
-        if (doParam[_j] == 1) {
-          setIndParPtr(ind, _j, _phi(_i, k++));
-        }
-      }
-    }
-  }
-  // ODE-freeze: phi0 (general-likelihood fixed effects) do not change the ODE, so
-  // during the phi0 optimization the states are reused and only the log-likelihood
-  // is recomputed below -- skip the (costly) re-integration entirely.
-  if (!_saemFreezeOde) {
-  resetRxBadSolve(_rx);
-  // Phase 4: a general-lik fit whose phi1 map resolved routes SAEM's own
-  // solve through odeSlotPred (see setupRx) instead of the bulk par_solve --
-  // every other fit is byte-identical to before.
-  if (_saemPhi1PoolActive) {
-    saemSolveIndividualsPooled(_Nnlmixr2);
-  } else {
-    par_solve(_rx); // Solve the complete system (possibly in parallel)
-  }
-  int j=0;
-  while (hasRxBadSolve(_rx) && j < current_saem_state->_saemMaxOdeRecalc){
-    current_saem_state->_saemIncreaseTol=1;
-    if (current_saem_state->_saemIndTolRelax) {
-      // Only loosen tolerance for subjects whose ODE solve produced NaN/Inf.
-      // Tolerance is sticky via ind->tolFactor so iniSubject reapplies it on
-      // subsequent SAEM iterations; genuinely stiff subjects stay loosened.
-      if (getOpNeq(op) > 0) {
-        for (int _i = 0; _i < _Nnlmixr2; _i++) {
-          rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
-          double *_solveI = getIndSolve(_indI);
-          int _nsolveI = getOpNeq(op) * getIndNallTimes(_indI);
-          for (int _ns = 0; _ns < _nsolveI; _ns++) {
-            if (ISNA(_solveI[_ns]) || std::isnan(_solveI[_ns]) || std::isinf(_solveI[_ns])) {
-              setIndTolFactor(_indI, getIndTolFactor(_indI) * current_saem_state->_saemOdeRecalcFactor);
-              break;
-            }
-          }
-        }
-      }
-    } else {
-      // Loosen all subjects uniformly; reset after retry.
-      for (int _i = 0; _i < _Nnlmixr2; _i++) {
-        rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
-        setIndTolFactor(_indI, getIndTolFactor(_indI) * current_saem_state->_saemOdeRecalcFactor);
-      }
-    }
-    resetRxBadSolve(_rx);
-    if (_saemPhi1PoolActive) {
-      saemSolveIndividualsPooled(_Nnlmixr2);
-    } else {
-      par_solve(_rx);
-    }
-    j++;
-  }
-  if (!current_saem_state->_saemIndTolRelax && j != 0) {
-    // Reset all subjects' tolFactor after the non-selective retry.
-    for (int _i = 0; _i < _Nnlmixr2; _i++) {
-      setIndTolFactor(getSolvingOptionsInd(_rx, _i), 1.0);
-    }
-  }
-  } // end (!_saemFreezeOde) integration guard
-  // indTolRelax=TRUE: stiff subjects retain their loosened tolFactor across iterations.
+  saemSetIndPars(_phi, _opt);
+  // ODE-freeze: phi0 (general-likelihood fixed effects) do not change the ODE,
+  // so during the phi0 optimization only the log-likelihood is recomputed
+  if (!_saemFreezeOde) saemSolveWithRetry(_Nnlmixr2);
   mat g(getRxNsim(_rx) * getRxNobs2(_rx), 3); // nobs across all chains
-  int elt=0;
+  int elt = 0;
   bool hasNan = false;
   if (_saemPhi1PoolActive) {
     saemReadRowsPooled(g, elt, hasNan, _Nnlmixr2);
   } else {
-  for (int id = 0; id < _Nnlmixr2; ++id) {
-    ind = getSolvingOptionsInd(_rx, id);
-    double *lhs = getIndLhs(ind);
-    iniSubjectE(id, 1, ind, op, _rx, saem_inis);
-    for (int j = 0; j < getIndNallTimes(ind); ++j) {
-      setIndIdx(ind, j);
-      int kk = getIndIx(ind, getIndIdx(ind));
-      double curT = getTime(kk, ind);
-      if (isDose(getIndEvid(ind, kk))) {
-        // Need to calculate for advan sensitivities
-        lhsWalkNewind(ind, j);
-        saem_lhs((int)id, curT,
-                 getOpIndSolve(op, ind, j), lhs);
-      } else if (getIndEvid(ind,kk) == 0) {
-        lhsWalkNewind(ind, j);
-        saem_lhs((int)id, curT,
-                 getOpIndSolve(op, ind, j), lhs);
-        double cur = saemGenLikCens(lhs, hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0,
-                                    hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf,
-                                    lhs[0]);
-        if (std::isnan(cur)) {
-          cur = 1.0e99;
-          hasNan = true;
-        }
-        g(elt, 0) = cur;
-        if (hasRxCens(_rx)) {
-          g(elt, 1) = getIndCens(ind, kk);
-        } else {
-          g(elt, 1) = 0;
-        }
-        if (hasRxLimit(_rx)) {
-          g(elt, 2) = getIndLimit(ind, kk);
-        } else {
-          g(elt, 2) = R_NegInf;
-        }
-        elt++;
-      } // evid=2 does not need to be calculated
-    }
-  }
+    saemReadRowsNative(g, elt, hasNan, _Nnlmixr2);
   }
   if (solveMethodThreadSafe(op)) { // liblsoda
     // Order by the overall solve time
