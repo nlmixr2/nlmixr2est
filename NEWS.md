@@ -47,6 +47,14 @@
 
 ## New features
 
+- `est = "its"` (`itsControl()`) adds the iterative two-stage method: each
+  iteration takes every subject's MAP etas and conditional covariance from
+  the FOCEi inner problem, then updates the mu-referenced thetas and Omega in
+  closed form (with the conditional-covariance correction) and the remaining
+  thetas and residual error on the conditional likelihood.  The reported
+  objective is FOCE(i) at the final estimates, and an ITS fit makes a quick
+  warm start, e.g. `nlmixr2(fitIts, est = "focei")` (#1460).
+
 - `addCondDist(fit)` samples each subject's conditional distribution of the
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).

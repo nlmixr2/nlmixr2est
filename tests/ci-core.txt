@@ -85,6 +85,7 @@ imp-mapiter
 imp-mceta
 qrpem
 qrpem-scramble
+its
 # IOV
 iov-only
 iov-scope

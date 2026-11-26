@@ -124,8 +124,11 @@ getValidNlmixrCtl.its <- function(control) {
   if (is.null(.ctl)) {
     return(itsControl())
   }
-  if (inherits(.ctl, "foceiControl") || inherits(.ctl, "impmapControl") ||
-    (is.null(attr(.ctl, "class")) && is(.ctl, "list"))) {
+  if (
+    inherits(.ctl, "foceiControl") ||
+      inherits(.ctl, "impmapControl") ||
+      (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
+  ) {
     # every ITS-defining field is forced by itsControl(), so a control from
     # another method (or a completed fit) is adopted for its shared options
     .lst <- unclass(.ctl)

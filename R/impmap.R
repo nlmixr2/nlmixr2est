@@ -848,7 +848,15 @@ rxUiDeparse.impmapControl <- function(object, var) {
     object,
     var,
     type = .impmapDeparseType(object),
-    internal = c("impCov", "its", "autoNonNormal", "gammaMethodUser", "npEndpointCmt", .impmapIdxMapNames, names(.derived)),
+    internal = c(
+      "impCov",
+      "its",
+      "autoNonNormal",
+      "gammaMethodUser",
+      "npEndpointCmt",
+      .impmapIdxMapNames,
+      names(.derived)
+    ),
     covName = function(x) if (isTRUE(x$impCov)) "imp" else .foceiControlCovMethodName(x),
     fun = .impmapDeparseExtra,
     extra = as.character(.extra)
