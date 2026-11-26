@@ -22145,6 +22145,19 @@ static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
 // few hundred iterations.
 static double adviGnRate(int gi) { return std::pow(1.0 + (double)gi, -0.6); }
 
+// Mean eta Hessian over the draws where it is finite (NA when none was).
+static void adviHessAdd(arma::cube &acc, arma::vec &cnt, const arma::cube &h) {
+  for (arma::uword i = 0; i < h.n_slices; ++i)
+    if (h.slice(i).is_finite()) { acc.slice(i) += h.slice(i); cnt[i] += 1.0; }
+}
+static arma::cube adviHessMean(const arma::cube &acc, const arma::vec &cnt) {
+  arma::cube out(acc.n_rows, acc.n_cols, acc.n_slices);
+  for (arma::uword i = 0; i < acc.n_slices; ++i)
+    if (cnt[i] > 0.0) out.slice(i) = acc.slice(i) / cnt[i];
+    else out.slice(i).fill(NA_REAL);
+  return out;
+}
+
 // Natural-gradient mean step mu += rho Sigma g for one subject, capped at two
 // posterior sds (Mahalanobis length under the new precision Lam).
 static bool adviGnMuStep(arma::vec &step, const arma::mat &Lam) {
@@ -22512,7 +22525,8 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     double elboAcc = 0.0;
     arma::mat infoAcc;
     arma::cube hessAcc;
-    if (_advi.gn) hessAcc.zeros(neta, neta, N);
+    arma::vec hessN;
+    if (_advi.gn) { hessAcc.zeros(neta, neta, N); hessN.zeros(N); }
     for (int m = 0; m < nMc; ++m) {
       // counter-based standard-normal draw, stream keyed by (seed, gi, m)
       setSeedEng1((uint32_t)seed + (uint32_t)((gi * nMc + m) & 0x7fffffff));
@@ -22521,7 +22535,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
       elboAcc += adviElboGradCore(mu, omega, theta, logPopOmega, eps, muRefThetaIdx,
                                   gMu, gOmega, gTheta, gPopLogOmega, cores);
       for (int j = 0; j < N * neta; ++j) { gMuAcc[j] += gMu[j]; gOmAcc[j] += gOmega[j]; }
-      if (_advi.gn) hessAcc += _advi.etaHess;
+      if (_advi.gn) adviHessAdd(hessAcc, hessN, _advi.etaHess);
       for (int p = 0; p < ntheta; ++p) gThAcc[p] += gTheta[p];
       if (_advi.gn)
         infoAcc = (m == 0) ? _advi.thetaInfo : arma::mat(infoAcc + _advi.thetaInfo);
@@ -22538,7 +22552,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     // the same schedule as a fresh longer run.
     double idecay = std::pow((double)(gi + 1), -0.5 + eeps);
     if (_advi.gn) {
-      adviGnStepMF(mu, omega, gMuAcc, hessAcc * invM, gi);
+      adviGnStepMF(mu, omega, gMuAcc, adviHessMean(hessAcc, hessN), gi);
     } else {
       for (int j = 0; j < N * neta; ++j) {
         double g = gMuAcc[j];
@@ -22829,7 +22843,8 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     double elboAcc = 0.0;
     arma::mat infoAcc;
     arma::cube hessAcc;
-    if (_advi.gn) hessAcc.zeros(neta, neta, N);
+    arma::vec hessN;
+    if (_advi.gn) { hessAcc.zeros(neta, neta, N); hessN.zeros(N); }
     for (int m = 0; m < nMc; ++m) {
       setSeedEng1((uint32_t)seed + (uint32_t)((gi * nMc + m) & 0x7fffffff));
       for (int i = 0; i < N; ++i)
@@ -22838,7 +22853,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
                                     gMu, gL, gTheta, gPopLogOmega, cores);
       for (int j = 0; j < N * neta; ++j) gMuAcc[j] += gMu[j];
       for (int j = 0; j < N * nL; ++j) gLAcc[j] += gL[j];
-      if (_advi.gn) hessAcc += _advi.etaHess;
+      if (_advi.gn) adviHessAdd(hessAcc, hessN, _advi.etaHess);
       for (int p = 0; p < ntheta; ++p) gThAcc[p] += gTheta[p];
       if (_advi.gn)
         infoAcc = (m == 0) ? _advi.thetaInfo : arma::mat(infoAcc + _advi.thetaInfo);
@@ -22854,7 +22869,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
 
     double idecay = std::pow((double)(gi + 1), -0.5 + eeps);
     if (_advi.gn) {
-      adviGnStepFR(mu, Lpack, gMuAcc, hessAcc * invM, gi);
+      adviGnStepFR(mu, Lpack, gMuAcc, adviHessMean(hessAcc, hessN), gi);
     } else {
       for (int j = 0; j < N * neta; ++j) {
         double g = gMuAcc[j];
