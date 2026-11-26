@@ -62,6 +62,7 @@ foceiControl(
   lbfgsPgtol = 0,
   lbfgsFactr = NULL,
   eigen = TRUE,
+  condWarn = 1000,
   diagXform = c("sqrt", "log", "identity"),
   iovXform = c("sd", "var", "logsd", "logvar"),
   iovMethod = c("auto", "theta", "omega"),
@@ -165,6 +166,7 @@ foceiControl(
   etaNudge2 = qnorm(1 - 0.05/2) * sqrt(3/5),
   etaRestart = 4L,
   finalEtaTol = 1,
+  aboveStartTol = 0.01,
   shrinkEtaWarn = 30,
   odeSettleCheck = FALSE,
   odeSettleTol = 0.1,
@@ -745,6 +747,11 @@ foceiControl(
 
   A boolean indicating if eigenvectors are calculated to include a
   condition number calculation.
+
+- condWarn:
+
+  warn when the condition number of the covariance's correlation matrix
+  exceeds this; `NA` or `Inf` turns the warning off.
 
 - diagXform:
 
@@ -1472,6 +1479,13 @@ foceiControl(
   objective. Warm-started ETAs can fall into a secondary mode during the
   search and stay there. Only applies with a warm start (\`mceta \<
   0\`). Use \`Inf\` to disable.
+
+- aboveStartTol:
+
+  Warn (in \`\$runInfo\`) when the final objective is above the
+  objective at the initial estimates by more than this fraction of its
+  magnitude (at least 0.1 objective units). Use \`NA\` or \`Inf\` to
+  disable.
 
 - shrinkEtaWarn:
 

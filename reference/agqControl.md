@@ -205,6 +205,9 @@ agqControl()
 #> $eigen
 #> [1] 1
 #> 
+#> $condWarn
+#> [1] 1000
+#> 
 #> $diagXform
 #> [1] "sqrt"
 #> 
@@ -352,7 +355,7 @@ agqControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x583740994b30>
+#> <bytecode: 0x58fac06e9d88>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -594,6 +597,9 @@ agqControl()
 #> 
 #> $finalEtaTol
 #> [1] 1
+#> 
+#> $aboveStartTol
+#> [1] 0.01
 #> 
 #> $shrinkEtaWarn
 #> [1] 30

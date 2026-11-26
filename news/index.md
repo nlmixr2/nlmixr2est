@@ -176,6 +176,13 @@
   `saemControl(mcmcAcceptWarn=)` sets the range; `NA` turns the note off
   ([\#1385](https://github.com/nlmixr2/nlmixr2est/issues/1385)).
 
+- The note that a FOCEi-family fit ended with an objective above the one
+  at its initial estimates is now one `$runInfo` line,
+  `final objective (...) is above the initial estimates' (...)`, and
+  `foceiControl(aboveStartTol=)` sets its relative band (default
+  `0.01`); `NA` or `Inf` turns it off
+  ([\#1399](https://github.com/nlmixr2/nlmixr2est/issues/1399)).
+
 - A covariance that is rejected as not positive definite now says which
   parameters make it so: those with no information (a zero diagonal), or
   the ones the near-singular direction loads on
@@ -184,6 +191,13 @@
   (`covariance step failed: tva, tvb collinear`), or says when there are
   fewer subjects than parameters for S
   ([\#1398](https://github.com/nlmixr2/nlmixr2est/issues/1398)).
+
+- A fit now notes in `$runInfo` when the condition number of its
+  covariance’s correlation matrix exceeds 1000
+  (e.g. `covariance condition number is large (1397.7 > 1000)`), since
+  its standard errors are then unreliable. `foceiControl(condWarn=)`
+  sets the threshold; `NA` or `Inf` turns the note off
+  ([\#1400](https://github.com/nlmixr2/nlmixr2est/issues/1400)).
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or
   more (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their

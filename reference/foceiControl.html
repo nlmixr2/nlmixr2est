@@ -101,6 +101,7 @@
 <span>  lbfgsPgtol <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  lbfgsFactr <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  eigen <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  condWarn <span class="op">=</span> <span class="fl">1000</span>,</span>
 <span>  diagXform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sqrt"</span>, <span class="st">"log"</span>, <span class="st">"identity"</span><span class="op">)</span>,</span>
 <span>  iovXform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sd"</span>, <span class="st">"var"</span>, <span class="st">"logsd"</span>, <span class="st">"logvar"</span><span class="op">)</span>,</span>
 <span>  iovMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"theta"</span>, <span class="st">"omega"</span><span class="op">)</span>,</span>
@@ -204,6 +205,7 @@
 <span>  etaNudge2 <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">qnorm</a></span><span class="op">(</span><span class="fl">1</span> <span class="op">-</span> <span class="fl">0.05</span><span class="op">/</span><span class="fl">2</span><span class="op">)</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="fl">3</span><span class="op">/</span><span class="fl">5</span><span class="op">)</span>,</span>
 <span>  etaRestart <span class="op">=</span> <span class="fl">4L</span>,</span>
 <span>  finalEtaTol <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  aboveStartTol <span class="op">=</span> <span class="fl">0.01</span>,</span>
 <span>  shrinkEtaWarn <span class="op">=</span> <span class="fl">30</span>,</span>
 <span>  odeSettleCheck <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  odeSettleTol <span class="op">=</span> <span class="fl">0.1</span>,</span>
@@ -779,6 +781,12 @@ methods reach the same optimum as the derivative-free default.</p></dd>
 <dt id="arg-eigen">eigen<a class="anchor" aria-label="anchor" href="#arg-eigen"></a></dt>
 <dd><p>A boolean indicating if eigenvectors are calculated
 to include a condition number calculation.</p></dd>
+
+
+<dt id="arg-condwarn">condWarn<a class="anchor" aria-label="anchor" href="#arg-condwarn"></a></dt>
+<dd><p>warn when the condition number of the covariance's
+correlation matrix exceeds this; <code>NA</code> or <code>Inf</code> turns the
+warning off.</p></dd>
 
 
 <dt id="arg-diagxform">diagXform<a class="anchor" aria-label="anchor" href="#arg-diagxform"></a></dt>
@@ -1516,6 +1524,13 @@ re-solved from that evaluation's ETAs, keeping per subject whichever
 start gives the lower objective.  Warm-started ETAs can fall into a
 secondary mode during the search and stay there.  Only applies with a
 warm start (`mceta &lt; 0`).  Use `Inf` to disable.</p></dd>
+
+
+<dt id="arg-abovestarttol">aboveStartTol<a class="anchor" aria-label="anchor" href="#arg-abovestarttol"></a></dt>
+<dd><p>Warn (in `$runInfo`) when the final objective is
+above the objective at the initial estimates by more than this fraction
+of its magnitude (at least 0.1 objective units).  Use `NA` or `Inf` to
+disable.</p></dd>
 
 
 <dt id="arg-shrinketawarn">shrinkEtaWarn<a class="anchor" aria-label="anchor" href="#arg-shrinketawarn"></a></dt>
