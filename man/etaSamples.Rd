@@ -7,7 +7,7 @@
 etaSamples(
   fit,
   n = 500L,
-  method = c("auto", "laplace", "mcmc", "imp"),
+  method = c("auto", "fit", "laplace", "mcmc", "imp"),
   seed = 42L,
   nBurn = 200L,
   thin = 1L
@@ -18,7 +18,7 @@ etaSamples(
 
 \item{n}{number of draws per subject}
 
-\item{method}{sampler: `"auto"`, `"laplace"`, `"mcmc"` or `"imp"`}
+\item{method}{sampler: `"auto"`, `"fit"`, `"laplace"`, `"mcmc"` or `"imp"`}
 
 \item{seed}{random seed; the same seed gives the same draws whatever the
 number of cores}
@@ -32,7 +32,8 @@ a data frame with columns `ID`, `draw` and one column per eta,
   ordered by `draw` then `ID`.  Passed as `params` to
   `rxode2::rxSolve(fit, params = draws, nStud = n, simVariability = FALSE)`
   it simulates each subject once per draw (`sim.id` is the draw).  Its
-  `"method"` attribute names the sampler; `"mcmc"` adds each subject's
+  `"method"` attribute names the sampler (`"saem"` or `"vi"` for
+  `method = "fit"`); `"mcmc"` adds each subject's
   acceptance rate as the `"acceptance"` attribute.
 }
 \description{
@@ -52,7 +53,10 @@ on the exact joint density `log p(y_i, eta_i)` ([foceiLikRun()]), started
 at the mode with the Laplace covariance as its proposal; its scale adapts
 during the `nBurn` burn-in iterations only.  It needs no normal posterior.
 `method = "imp"` resamples the importance samples of [addCondDist()].
-`method = "auto"` is `"mcmc"`.
+`method = "fit"` reuses the draws the estimation method already holds: a
+SAEM fit's MCMC chains over the last half of its `nEm` iterations, or an
+emvi fit's variational posterior.  `method = "auto"` is `"fit"` when the
+fit holds at least `n` such draws per subject, and `"mcmc"` otherwise.
 
 Mixture, IOV and non-parametric fits are
 not supported, nor is an Omega that is not positive definite.

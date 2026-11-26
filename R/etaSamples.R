@@ -15,14 +15,17 @@
 #' at the mode with the Laplace covariance as its proposal; its scale adapts
 #' during the `nBurn` burn-in iterations only.  It needs no normal posterior.
 #' `method = "imp"` resamples the importance samples of [addCondDist()].
-#' `method = "auto"` is `"mcmc"`.
+#' `method = "fit"` reuses the draws the estimation method already holds: a
+#' SAEM fit's MCMC chains over the last half of its `nEm` iterations, or an
+#' emvi fit's variational posterior.  `method = "auto"` is `"fit"` when the
+#' fit holds at least `n` such draws per subject, and `"mcmc"` otherwise.
 #'
 #' Mixture, IOV and non-parametric fits are
 #' not supported, nor is an Omega that is not positive definite.
 #'
 #' @param fit nlmixr2 fit with random effects
 #' @param n number of draws per subject
-#' @param method sampler: `"auto"`, `"laplace"`, `"mcmc"` or `"imp"`
+#' @param method sampler: `"auto"`, `"fit"`, `"laplace"`, `"mcmc"` or `"imp"`
 #' @param seed random seed; the same seed gives the same draws whatever the
 #'   number of cores
 #' @param nBurn `"mcmc"` burn-in iterations, discarded
@@ -31,7 +34,8 @@
 #'   ordered by `draw` then `ID`.  Passed as `params` to
 #'   `rxode2::rxSolve(fit, params = draws, nStud = n, simVariability = FALSE)`
 #'   it simulates each subject once per draw (`sim.id` is the draw).  Its
-#'   `"method"` attribute names the sampler; `"mcmc"` adds each subject's
+#'   `"method"` attribute names the sampler (`"saem"` or `"vi"` for
+#'   `method = "fit"`); `"mcmc"` adds each subject's
 #'   acceptance rate as the `"acceptance"` attribute.
 #' @seealso [addCondDist()]
 #' @export
@@ -65,7 +69,7 @@
 etaSamples <- function(
   fit,
   n = 500L,
-  method = c("auto", "laplace", "mcmc", "imp"),
+  method = c("auto", "fit", "laplace", "mcmc", "imp"),
   seed = 42L,
   nBurn = 200L,
   thin = 1L
@@ -78,12 +82,23 @@ etaSamples <- function(
   .eta <- .condDistCheckFit(fit)
   n <- as.integer(round(n))
   seed <- as.integer(seed)
-  if (method == "auto") {
-    method <- "mcmc"
-  }
   .acc <- NULL
+  .own <- NULL
+  if (method %in% c("auto", "fit")) {
+    .own <- .etaSamplesFit(fit, n, seed)
+    if (is.null(.own)) {
+      if (method == "fit") {
+        stop(sprintf("'fit' holds no %d conditional eta draws per subject", n), call. = FALSE)
+      }
+      method <- "mcmc"
+    } else {
+      method <- .own$method
+    }
+  }
   .draws <- switch(
     method,
+    saem = ,
+    vi = .own$draws,
     laplace = .etaSamplesLaplace(fit, n, seed),
     mcmc = {
       .r <- .etaSamplesMcmc(fit, n, seed, as.integer(nBurn), as.integer(thin))
@@ -280,4 +295,108 @@ etaSamples <- function(
     }
   }
   list(draws = .draws, acceptance = .nAcc / (n * thin))
+}
+
+#' The conditional eta draws a fit's estimation method already holds
+#' @param fit nlmixr2 fit
+#' @param n draws per subject
+#' @param seed seed (for draws from a variational posterior)
+#' @return `NULL` when the fit holds fewer than `n` draws per subject, else
+#'   list: `method` (`"saem"` or `"vi"`) and `draws` (`N x neta x n` array)
+#' @noRd
+.etaSamplesFit <- function(fit, n, seed) {
+  .est <- tryCatch(fit$est, error = function(e) "")
+  .neta <- ncol(fit$eta) - 1L
+  if (identical(.est, "saem")) {
+    .d <- .etaSamplesSaem(fit, n, .neta)
+    if (!is.null(.d)) {
+      return(list(method = "saem", draws = .d))
+    }
+  } else if (identical(.est, "emvi")) {
+    .d <- .etaSamplesVi(fit, n, seed, .neta)
+    if (!is.null(.d)) {
+      return(list(method = "vi", draws = .d))
+    }
+  }
+  NULL
+}
+
+#' Evenly spaced draws from a SAEM fit's chains over the last half of `nEm`
+#' @param fit SAEM fit
+#' @param n draws per subject
+#' @param neta number of etas
+#' @return `N x neta x n` array, or `NULL`
+#' @noRd
+.etaSamplesSaem <- function(fit, n, neta) {
+  .phiM <- tryCatch(fit$phiM, error = function(e) NULL)
+  .saem <- tryCatch(fit$saem, error = function(e) NULL)
+  .cfg <- attr(.saem, "saem.cfg")
+  .niter <- tryCatch(fit$env$saemControl$mcmc$niter, error = function(e) NULL)
+  .mprior <- .saem$mprior_phi
+  if (!is.array(.phiM) || length(dim(.phiM)) != 4L || !is.list(.cfg) || length(.niter) != 2L || !is.matrix(.mprior)) {
+    return(NULL)
+  }
+  .dim <- dim(.phiM)
+  .i1 <- .cfg$i1 + 1L
+  if (
+    sum(.niter) != .dim[3] ||
+      length(.i1) != neta ||
+      .dim[1] != nrow(fit$eta) ||
+      !identical(dim(.mprior), .dim[c(1L, 4L)])
+  ) {
+    return(NULL)
+  }
+  .iter <- seq(.dim[3] - .niter[2] %/% 2L + 1L, .dim[3])
+  # pool: chain varies fastest, then iteration
+  .pool <- .dim[2] * length(.iter)
+  if (.pool < n) {
+    return(NULL)
+  }
+  .k <- round(seq(1, .pool, length.out = n))
+  .chain <- (.k - 1L) %% .dim[2] + 1L
+  .it <- .iter[(.k - 1L) %/% .dim[2] + 1L]
+  .ret <- array(NA_real_, c(.dim[1], neta, n))
+  for (.j in seq_len(n)) {
+    .ret[,, .j] <- .phiM[, .chain[.j], .it[.j], .i1] - .mprior[, .i1, drop = FALSE]
+  }
+  if (anyNA(.ret)) {
+    return(NULL)
+  }
+  .ret
+}
+
+#' Draws from an emvi fit's per-subject normal variational posterior
+#' @param fit emvi fit
+#' @param n draws per subject
+#' @param seed seed
+#' @param neta number of etas
+#' @return `N x neta x n` array, or `NULL`
+#' @noRd
+.etaSamplesVi <- function(fit, n, seed, neta) {
+  .v <- tryCatch(fit$env$viState, error = function(e) NULL)
+  .nid <- nrow(fit$eta)
+  if (!is.list(.v) || !isTRUE(.v$pointEstimate) || !is.matrix(.v$mu) || !identical(dim(.v$mu), c(.nid, neta))) {
+    return(NULL)
+  }
+  # lower Cholesky factor per subject: packed row-major for "fullRank",
+  # log-SDs for the mean-field family
+  .fr <- identical(.v$family, "fullRank")
+  .s <- if (.fr) .v$Lpack else .v$omega
+  if (!is.matrix(.s) || nrow(.s) != .nid || ncol(.s) != if (.fr) neta * (neta + 1L) / 2L else neta) {
+    return(NULL)
+  }
+  .z <- rxode2::rxWithSeed(seed, rxode2::rxnorm(n = .nid * neta * n))
+  dim(.z) <- c(neta, n, .nid)
+  .ret <- array(NA_real_, c(.nid, neta, n))
+  for (.i in seq_len(.nid)) {
+    .l <- matrix(0, neta, neta)
+    if (.fr) {
+      .l[upper.tri(.l, diag = TRUE)] <- .s[.i, ]
+      .l <- t(.l)
+    } else {
+      diag(.l) <- exp(.s[.i, ])
+    }
+    .ret[.i, , ] <- .v$mu[.i, ] + .l %*% matrix(.z[,, .i], neta, n)
+  }
+  .ret
 }

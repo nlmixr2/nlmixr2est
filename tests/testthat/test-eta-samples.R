@@ -122,29 +122,46 @@ test_that("mcmc draws match the linear-Gaussian conditional distribution", {
   expect_identical(etaSamples(.l$fit, n = 30L, seed = 3L, nBurn = 20L), .a)
 })
 
-test_that("mcmc samples a SAEM fit's non-normal conditional distribution", {
-  skip_on_cran()
-  # nolint start: object_usage_linter.
-  .mod <- function() {
-    ini({
-      tka <- 0.45
-      tcl <- 1
-      tv <- 3.45
-      eta.ka ~ 0.6
-      eta.cl ~ 0.3
-      eta.v ~ 0.1
-      add.sd <- 0.7
-    })
-    model({
-      ka <- exp(tka + eta.ka)
-      cl <- exp(tcl + eta.cl)
-      v <- exp(tv + eta.v)
-      linCmt() ~ add(add.sd)
-    })
+# The theophylline one-compartment fit, cached per estimation method
+.etaSamplesTheo <- local({
+  .cache <- list()
+  function(est) {
+    if (!is.null(.cache[[est]])) {
+      return(.cache[[est]])
+    }
+    # nolint start: object_usage_linter.
+    .mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    # nolint end
+    .ctl <- switch(
+      est,
+      saem = saemControl(print = 0L, calcTables = FALSE),
+      emvi = emviControl(print = 0L, calcTables = FALSE)
+    )
+    .cache[[est]] <<- .nlmixr(.mod, nlmixr2data::theo_sd, est, control = .ctl)
+    .cache[[est]]
   }
-  # nolint end
-  .fit <- .nlmixr(.mod, nlmixr2data::theo_sd, "saem", control = saemControl(print = 0L, calcTables = FALSE))
-  .s <- etaSamples(.fit, n = 400L)
+})
+
+test_that("mcmc samples a SAEM fit's conditional distribution", {
+  skip_on_cran()
+  .fit <- .etaSamplesTheo("saem")
+  .s <- etaSamples(.fit, n = 400L, method = "mcmc")
   expect_equal(attr(.s, "method"), "mcmc")
   expect_equal(nrow(.s), 400L * 12L)
   expect_true(all(is.finite(as.matrix(.s[, -(1:2)]))))
@@ -153,6 +170,61 @@ test_that("mcmc samples a SAEM fit's non-normal conditional distribution", {
   .m <- as.matrix(aggregate(cbind(eta.ka, eta.cl, eta.v) ~ ID, .s, mean)[, -1])
   .sd <- as.matrix(aggregate(cbind(eta.ka, eta.cl, eta.v) ~ ID, .s, sd)[, -1])
   expect_lt(max(abs(.m - as.matrix(.fit$eta[, -1])) / .sd), 1)
+})
+
+test_that("auto reuses a SAEM fit's own chains", {
+  skip_on_cran()
+  .fit <- .etaSamplesTheo("saem")
+  .s <- etaSamples(.fit, n = 300L)
+  expect_equal(attr(.s, "method"), "saem")
+  expect_equal(names(.s), c("ID", "draw", "eta.ka", "eta.cl", "eta.v"))
+  expect_equal(nrow(.s), 300L * 12L)
+  expect_identical(etaSamples(.fit, n = 300L, method = "fit"), .s)
+  # the last draw is the last chain's state at the last iteration
+  .d <- dim(.fit$phiM)
+  expect_equal(
+    unlist(.s[.s$draw == 300L, c("eta.ka", "eta.cl", "eta.v")], use.names = FALSE),
+    as.vector(.fit$phiM[, .d[2], .d[3], ] - .fit$saem$mprior_phi)
+  )
+  # chain draws centre near the EBEs
+  .m <- as.matrix(aggregate(cbind(eta.ka, eta.cl, eta.v) ~ ID, .s, mean)[, -1])
+  .sd <- as.matrix(aggregate(cbind(eta.ka, eta.cl, eta.v) ~ ID, .s, sd)[, -1])
+  expect_lt(max(abs(.m - as.matrix(.fit$eta[, -1])) / .sd), 1)
+  # more draws than the chains hold: auto samples, "fit" refuses
+  .n <- .d[2] * 150L + 1L
+  expect_equal(attr(etaSamples(.fit, n = .n, nBurn = 10L), "method"), "mcmc")
+  expect_error(etaSamples(.fit, n = .n, method = "fit"), "holds no")
+})
+
+test_that("auto reuses an emvi fit's variational posterior", {
+  skip_on_cran()
+  .fit <- .etaSamplesTheo("emvi")
+  .s <- etaSamples(.fit, n = 2000L, seed = 5L)
+  expect_equal(attr(.s, "method"), "vi")
+  expect_equal(nrow(.s), 2000L * 12L)
+  expect_identical(etaSamples(.fit, n = 2000L, seed = 5L), .s)
+  .v <- .fit$env$viState
+  .m <- as.matrix(aggregate(cbind(eta.ka, eta.cl, eta.v) ~ ID, .s, mean)[, -1])
+  .sd <- as.matrix(aggregate(cbind(eta.ka, eta.cl, eta.v) ~ ID, .s, sd)[, -1])
+  expect_lt(max(abs(.m - .v$mu) / .sd), 5 / sqrt(2000))
+  # full-rank family: covariance L L' from the packed lower factor
+  expect_equal(.v$family, "fullRank")
+  .l <- matrix(0, 3, 3)
+  .l[upper.tri(.l, diag = TRUE)] <- .v$Lpack[1, ]
+  .l <- t(.l)
+  expect_equal(
+    stats::cov(.s[.s$ID == .s$ID[1], c("eta.ka", "eta.cl", "eta.v")]),
+    tcrossprod(.l),
+    tolerance = 0.1,
+    ignore_attr = TRUE
+  )
+})
+
+test_that("a fit without its own draws refuses method = 'fit'", {
+  skip_on_cran()
+  .l <- .etaSamplesLin()
+  expect_error(etaSamples(.l$fit, n = 10L, method = "fit"), "holds no")
+  expect_equal(attr(etaSamples(.l$fit, n = 10L, nBurn = 10L), "method"), "mcmc")
 })
 
 test_that("imp draws match the linear-Gaussian conditional distribution", {
@@ -198,26 +270,7 @@ test_that("draws restore the spread a shrunken EBE loses", {
 
 test_that("a SAEM fit gets its modes from a posthoc step and simulates per draw", {
   skip_on_cran()
-  # nolint start: object_usage_linter.
-  .mod <- function() {
-    ini({
-      tka <- 0.45
-      tcl <- 1
-      tv <- 3.45
-      eta.ka ~ 0.6
-      eta.cl ~ 0.3
-      eta.v ~ 0.1
-      add.sd <- 0.7
-    })
-    model({
-      ka <- exp(tka + eta.ka)
-      cl <- exp(tcl + eta.cl)
-      v <- exp(tv + eta.v)
-      linCmt() ~ add(add.sd)
-    })
-  }
-  # nolint end
-  .fit <- .nlmixr(.mod, nlmixr2data::theo_sd, "saem", control = saemControl(print = 0L, calcTables = FALSE))
+  .fit <- .etaSamplesTheo("saem")
   .s <- etaSamples(.fit, n = 20L, method = "laplace")
   expect_equal(names(.s), c("ID", "draw", "eta.ka", "eta.cl", "eta.v"))
   expect_equal(nrow(.s), 20L * 12L)
