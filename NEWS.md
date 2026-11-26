@@ -47,6 +47,10 @@
 
 ## New features
 
+- When a fit's tables step fails and the fit is returned without its tables,
+  `nlmixr2()` now raises a `warning()` and sets `fit$tablesDropped` to `TRUE`
+  so a script can test for it; adding the tables later with `addTable()`
+  clears it (#1354).
 - `addCondDist(fit)` samples each subject's conditional distribution of the
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
