@@ -483,6 +483,9 @@
   if (!.analyticGradAllowsBoundedTr(ui, caller)) {
     return(NULL)
   }
+  if (!.analyticGradAllowsIov(ui, caller)) {
+    return(NULL)
+  }
   # tad/podo/tafd/tlast/tfirst/dosenum are functions of time and the dose record
   # only (no eta/theta dependence), so rxode2 treats them as zero-derivative
   # constants in the sensitivity expansion (.rxToSEDualVarFunction) -- they no
@@ -678,6 +681,20 @@
   NA_character_
 }
 
+#' IOV scope gate.
+#'
+#' focei differentiates the IOV rewrite, whose per-occasion etas are ordinary
+#' subject-level etas; a ui still carrying occasion-level rows has not been
+#' rewritten.  The VAE's own M-step does not handle the rewrite's fixed and
+#' `same()` blocks, so it keeps refusing IOV.
+#' @noRd
+.analyticGradAllowsIov <- function(ui, caller) {
+  if (identical(caller, "vae")) {
+    return(!.uiHasIov(ui))
+  }
+  !any(.iovOccRows(ui$iniDf))
+}
+
 #' Bounded-transform scope gate.
 #'
 #' `preProcessBoundedTransform` records the transforms on the ALREADY-REWRITTEN
@@ -749,8 +766,7 @@
   if (neta == 0L) {
     return(NULL)
   }
-  # the VAE's own M-step does not handle the IOV rewrite's fixed and same() blocks
-  if (identical(caller, "vae") && .uiHasIov(ui)) {
+  if (!.analyticGradAllowsIov(ui, caller)) {
     return(NULL)
   }
   .foceiAnalyticDirections(
@@ -767,12 +783,12 @@
 #' is the per-observation log-density and the gradient is assembled by
 #' the log-density core (differentiating it directly) rather than
 #' the Gaussian (f,R) path.  Scope: at least one non-Gaussian endpoint, no
-#' linCmt/bounded transform/FO (IOV for the VAE), at least one eta.  (Censoring and nAGQ are
+#' linCmt/bounded transform/FO/un-rewritten IOV, at least one eta.  (Censoring and nAGQ are
 #' handled by falling back to the finite-difference gradient.)
 #'
 #' `caller` reaches the bounded-transform gate, which focei must fail and the VAE
-#' need not (see `.analyticGradAllowsBoundedTr`), and the IOV gate, which only the
-#' VAE keeps.  Defaulted, so the focei callers keep their exact behavior.
+#' need not (see `.analyticGradAllowsBoundedTr`), and the IOV gate
+#' (`.analyticGradAllowsIov`).  Defaulted, so the focei callers keep their exact behavior.
 #' @noRd
 .foceiLLGradInScope <- function(ui, caller = .analyticGradCaller(ui)) {
   tryCatch(
@@ -812,7 +828,7 @@
       if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) {
         return(FALSE)
       }
-      if (identical(caller, "vae") && .uiHasIov(ui)) {
+      if (!.analyticGradAllowsIov(ui, caller)) {
         return(FALSE)
       }
       length(.foceiEtaThetaMap(ui)$etaNames) > 0L

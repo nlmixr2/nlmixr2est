@@ -47,6 +47,10 @@
 
 ## New features
 
+- `foceiControl(fast = TRUE)` now uses the analytic outer gradient for models
+  with inter-occasion variability, under both `iovMethod = "theta"` and
+  `"omega"`, instead of falling back to finite differences (#1377).
+
 - `addCondDist(fit)` samples each subject's conditional distribution of the
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
