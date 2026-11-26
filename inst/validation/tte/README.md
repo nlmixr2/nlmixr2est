@@ -55,7 +55,9 @@ errors, -2LL with the exact one, and the `tvCov` objective function
 difference with and without the covariate.  `test-tte-validation-exact.R`
 checks that the exact fits recover the simulation truth, which validates
 rxode2's `tte()` simulation independently.  They are long-running and
-skip on CRAN.
+skip on CRAN.  `saem` is run only on `rtte` and `lateEntry`: on a tte()
+model whose solve has another input (a data covariate, or the `CMT` of a
+second endpoint) it currently diverges.
 
 ## Regenerating the reference fits
 
