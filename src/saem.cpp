@@ -2181,10 +2181,7 @@ public:
       setIndIdx(ind, j);
       int kk = getIndIx(ind, getIndIdx(ind));
       double curT = getTime(kk, ind);
-      if (isDose(getIndEvid(ind, kk))) {
-        lhsWalkNewind(ind, j);
-        saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
-      } else if (getIndEvid(ind, kk) == 0) {
+      if (getIndEvid(ind, kk) == 0) {
         lhsWalkNewind(ind, j);
         saem_lhs(i, curT, getOpIndSolve(op, ind, j), lhs);
         double ll = saemGenLikCens(lhs, hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0,
@@ -6854,12 +6851,8 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       setIndIdx(ind, j);
       int kk = getIndIx(ind, getIndIdx(ind));
       double curT = getTime(kk, ind);
-      if (isDose(getIndEvid(ind, kk))) {
-        // Need to calculate for advan sensitivities
-        lhsWalkNewind(ind, j);
-        saem_lhs((int)id, curT,
-                 getOpIndSolve(op, ind, j), lhs);
-      } else if (getIndEvid(ind,kk) == 0) {
+      // Only observations are read; dose rows feed nothing downstream.
+      if (getIndEvid(ind,kk) == 0) {
         lhsWalkNewind(ind, j);
         saem_lhs((int)id, curT,
                  getOpIndSolve(op, ind, j), lhs);
