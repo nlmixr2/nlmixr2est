@@ -189,10 +189,30 @@
 #'
 #' }
 #'
-agqControl <- function(sigdig = 3, nAGQ = 2, ..., interaction = TRUE, agqLow = -Inf, agqHi = Inf) {
+agqControl <- function(
+  sigdig = 3,
+  nAGQ = 2,
+  ...,
+  interaction = TRUE,
+  agqLow = -Inf,
+  agqHi = Inf,
+  agqRule = c("hermite", "legendre", "stieltjes"),
+  agqNsd = 3,
+  agqGrid = c(nr = 3, ns = 1, r0 = 0.6, r1 = 0.9)
+) {
   # interaction forces the calculation of the hessian, which is needed
   # for the adaptive Gaussian quadrature
-  .control <- foceiControl(sigdig = sigdig, ..., nAGQ = nAGQ, interaction = interaction, agqLow = agqLow, agqHi = agqHi)
+  .control <- foceiControl(
+    sigdig = sigdig,
+    ...,
+    nAGQ = nAGQ,
+    interaction = interaction,
+    agqLow = agqLow,
+    agqHi = agqHi,
+    agqRule = agqRule,
+    agqNsd = agqNsd,
+    agqGrid = agqGrid
+  )
   class(.control) <- "agqControl"
   .control
 }

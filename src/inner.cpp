@@ -18,6 +18,7 @@
 #include "nmMcmcRng.h"
 #include "nmSeqSeed.h"
 #include "nmProgress.h"
+#include <algorithm>
 #include <cfloat>
 #include <cstring>
 #include <cstdint>
@@ -1554,6 +1555,7 @@ static inline int getRxMixFromId(int id) {
 
 unsigned int _aqn = 0;
 int _nagq = 0;
+static std::string agqRuleDetail(Environment e);
 
 struct focei_ind {
   int nInnerF;
@@ -14562,8 +14564,16 @@ void foceiFinalizeTables(Environment e){
       objDf.attr("row.names") = CharacterVector::create(full + "Laplace");
       e["ofvType"] = full.empty() ? "laplace" : "full laplace";
     } else {
-      objDf.attr("row.names") = CharacterVector::create(full + "AGQ" + std::to_string(_nagq));
-      e["ofvType"] = (full.empty() ? "agq" : "full agq") + std::to_string(_nagq);
+      // a non-Hermite rule names itself (e.g. "AGQ-Stieltjes")
+      std::string lab = "AGQ" + std::to_string(_nagq);
+      if (e.exists("agqLabel")) {
+        std::string l0 = as<std::string>(e["agqLabel"]);
+        if (!l0.empty()) lab = l0;
+      }
+      objDf.attr("row.names") = CharacterVector::create(full + lab);
+      std::string low = lab;
+      std::transform(low.begin(), low.end(), low.begin(), ::tolower);
+      e["ofvType"] = (full.empty() ? "" : "full ") + low;
     }
     addLlikObs(e);
   } else if (op_focei.interaction){
@@ -14784,7 +14794,7 @@ void foceiFinalizeTables(Environment e){
       } else {
         e["extra"] = as<std::string>(e["extra"]) +
           " (outer: " + _details +
-          "; nAGQ=" + std::to_string(_nagq)  + ")";
+          "; " + agqRuleDetail(e) + ")";
       }
     }
   }
@@ -14798,6 +14808,14 @@ void foceiFinalizeTables(Environment e){
     e["tolFactor"] = _tf;
   }
   e.attr("class") = "nlmixr2FitCore";
+}
+
+static std::string agqRuleDetail(Environment e) {
+  if (e.exists("agqLabel")) {
+    std::string l0 = as<std::string>(e["agqLabel"]);
+    if (!l0.empty()) return l0;
+  }
+  return "nAGQ=" + std::to_string(_nagq);
 }
 
 void setupAq1_(Environment e) {

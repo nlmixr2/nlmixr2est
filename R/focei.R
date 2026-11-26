@@ -6310,7 +6310,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   .foceiDropMalformedCov(.env)
   if (.control$nAGQ > 0) {
-    .ag <- .agq(length(ui$eta), .control$nAGQ)
+    .ag <- .agqRuleGrid(length(ui$eta), .control)
+    .env$agqLabel <- .agqRuleLabel(.control)
     .env$aqn <- as.integer(.ag$n)
     .env$qx <- .ag$x
     .env$qw <- .ag$w
@@ -6320,6 +6321,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .env$aqHi <- .control$agqHi
   } else {
     .env$aqn <- 0L
+    .env$agqLabel <- ""
     .env$qx <- double(0)
     .env$qw <- double(0)
     .env$qfirst <- FALSE

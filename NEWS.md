@@ -72,6 +72,13 @@
   `nlmixr2()` now raises a `warning()` and sets `fit$tablesDropped` to `TRUE`
   so a script can test for it; adding the tables later with `addTable()`
   clears it (#1354).
+
+- `agqControl(agqRule=)` selects the quadrature rule of the agq family:
+  `"hermite"` (default, unchanged), `"legendre"` (Gauss-Legendre over
+  `agqNsd` conditional SDs) or `"stieltjes"` (radial shells set by
+  `agqGrid = c(nr, ns, r0, r1)`, NONMEM's `GRID=`).  Every rule is centred on
+  the EBE, so all are exact for a model linear in the etas (#1139).
+
 - `addCondDist(fit)` samples each subject's conditional distribution of the
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
