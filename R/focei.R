@@ -5716,6 +5716,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   "mfocepControl",
   "ifocepControl",
   "agqControl",
+  "stieltjesControl",
   "magqControl",
   "iagqControl",
   "laplaceControl",

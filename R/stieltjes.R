@@ -1,0 +1,204 @@
+#' Control options for the two-stage Stieltjes estimation method
+#'
+#' `est="stieltjes"` follows NONMEM's `$ESTIMATION STIELTJES`: a conditional
+#' method (`stage1`) gives tentative estimates and each subject's EBE and eta
+#' Hessian, then the population parameters are re-estimated by minimizing
+#' the integrated likelihood on a radial Stieltjes grid placed at those EBEs
+#' and kept fixed (`agqCenter="start"`), so the second stage does not move
+#' with the conditional etas.
+#'
+#' @inheritParams agqControl
+#' @param stage1 Conditional method of the first stage: `"focei"`, `"foce"`
+#'   or `"laplace"`.
+#' @param agqCenter Grid placement of the second stage (see
+#'   [foceiControl()]); `"start"` keeps the grid at the first-stage EBEs.
+#' @param ... Other [foceiControl()] options, used by both stages.
+#' @return stieltjesControl object
+#' @export
+#' @author Matthew L. Fidler
+#' @examples
+#'
+#' stieltjesControl()
+#'
+#' # NONMEM's GRID=(5,2,.5,.95) with a FOCE first stage
+#' stieltjesControl(stage1 = "foce", agqGrid = c(5, 2, 0.5, 0.95))
+#'
+stieltjesControl <- function(
+  sigdig = 3,
+  ...,
+  stage1 = c("focei", "foce", "laplace"),
+  interaction = TRUE,
+  nAGQ = 2,
+  agqRule = "stieltjes",
+  agqGrid = c(nr = 3, ns = 1, r0 = 0.6, r1 = 0.9),
+  agqCenter = c("start", "mode", "prior")
+) {
+  stage1 <- match.arg(stage1)
+  agqCenter <- match.arg(agqCenter)
+  .control <- foceiControl(
+    sigdig = sigdig,
+    ...,
+    nAGQ = nAGQ,
+    interaction = interaction,
+    agqRule = agqRule,
+    agqGrid = agqGrid,
+    agqCenter = agqCenter
+  )
+  if (.control$nAGQ <= 1L) {
+    stop("'stieltjesControl' needs nAGQ > 1", call. = FALSE)
+  }
+  .control$stage1 <- stage1
+  class(.control) <- "stieltjesControl"
+  .control
+}
+
+#' @rdname nmObjHandleControlObject
+#' @export
+nmObjHandleControlObject.stieltjesControl <- function(control, env) {
+  assign("stieltjesControl", control, envir = env)
+}
+
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.stieltjes <- function(control) {
+  .foceiFamilyValidCtl(control, "stieltjesControl")
+}
+
+#' @rdname nmObjGetControl
+#' @export
+nmObjGetControl.stieltjes <- function(x, ...) .nmObjGetControlByClass(x, "stieltjesControl")
+
+#' @rdname nmObjGetFoceiControl
+#' @export
+nmObjGetFoceiControl.stieltjes <- function(x, ...) {
+  .foceiFamilyControlToFoceiControl(x[[1]], "stieltjesControl", assign = FALSE)
+}
+
+#' @export
+rxUiDeparse.stieltjesControl <- function(object, var) {
+  .rxUiDeparseFoceiControl(object, var, type = "stieltjesControl")
+}
+
+#' The first-stage control of a Stieltjes fit
+#'
+#' @param control a `stieltjesControl()`
+#' @return the `stage1` method's control, without a covariance step
+#' @noRd
+.stieltjesStage1Control <- function(control) {
+  .type <- paste0(control$stage1, "Control")
+  .ctl <- .foceiFamilyControlAs(control, .type)
+  .ctl$covMethod <- 0L
+  .ctl
+}
+
+#' Run the first (conditional) stage on a copy of the estimation environment
+#'
+#' @param env the estimation environment
+#' @param control the `stieltjesControl()`
+#' @return list with the stage-1 fit and the warnings it raised
+#' @noRd
+.stieltjesStage1 <- function(env, control) {
+  .env1 <- new.env(parent = emptyenv())
+  for (.n in ls(env, all.names = TRUE)) {
+    assign(.n, get(.n, envir = env), envir = .env1)
+  }
+  .env1$control <- .stieltjesStage1Control(control)
+  .env1$est <- control$stage1
+  class(.env1) <- c(control$stage1, "nlmixr2Est")
+  .warn <- character(0)
+  .fit <- withCallingHandlers(
+    get(paste0("nlmixr2Est.", control$stage1), mode = "function")(.env1),
+    warning = function(w) {
+      .warn <<- c(.warn, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  list(fit = .fit, warnings = .warn)
+}
+
+#' Put the stage-1 estimates into the model the second stage starts from
+#'
+#' The stage-1 fit reports bounded thetas back-transformed; the model holds
+#' them on the internal (`rxBoundedTr.*`) scale.
+#'
+#' @param ui the estimation model
+#' @param fit the stage-1 fit
+#' @param transforms `ui$boundedTransforms` before stage 1 ran
+#' @return nothing; `ui`'s `iniDf` is updated in place
+#' @noRd
+.stieltjesStage1Ini <- function(ui, fit, transforms = NULL) {
+  .ini <- ui$iniDf
+  .theta <- fit$theta
+  for (.tr in transforms) {
+    if (!(.tr$name %in% names(.theta))) {
+      next
+    }
+    .v <- .theta[[.tr$name]]
+    .theta[[.tr$internalName]] <- switch(
+      .tr$type,
+      logit = rxode2::logit(.v, .tr$lower, .tr$upper),
+      lower_exp = log(.v - .tr$lower),
+      upper_exp = log(.tr$upper - .v),
+      .v
+    )
+  }
+  .w <- which(is.na(.ini$neta1) & .ini$name %in% names(.theta))
+  .ini$est[.w] <- .theta[.ini$name[.w]]
+  .omega <- fit$omega
+  .w <- which(!is.na(.ini$neta1))
+  for (.i in .w) {
+    .ini$est[.i] <- .omega[.ini$neta1[.i], .ini$neta2[.i]]
+  }
+  assign("iniDf", .ini, envir = ui)
+  invisible(NULL)
+}
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.stieltjes <- function(env, ...) {
+  .ui <- env$ui
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'stieltjes'", .var.name = .ui$modelName)
+  .control <- env$control
+  if (!inherits(.control, "stieltjesControl")) {
+    .control <- getValidNlmixrCtl.stieltjes(list(.control))
+    env$control <- .control
+  }
+  # stage 1 finishes a whole fit, which resets the pre-process hooks' state
+  .state <- .preProcessHookState()
+  .tr <- env$ui$boundedTransforms
+  .s1 <- .stieltjesStage1(env, .control)
+  .preProcessHookStateRestore(.state)
+  if (!is.null(.tr)) {
+    env$ui$boundedTransforms <- .tr
+  }
+  .stieltjesStage1Ini(env$ui, .s1$fit, .tr)
+  .foceiFamilyControl(env, ..., type = "stieltjesControl")
+  .foceiFamilyControlToFoceiControl(env, "stieltjesControl")
+  on.exit({
+    if (exists("control", envir = .ui)) {
+      rm("control", envir = .ui)
+    }
+  })
+  env$stieltjesControl <- .control
+  env$est <- "stieltjes"
+  .ui <- env$ui
+  .ret <- .foceiFamilyReturn(env, .ui, ..., est = "stieltjes")
+  if (inherits(.ret, "nlmixr2FitCore")) {
+    assign(
+      "stieltjesStage1",
+      list(
+        est = .control$stage1,
+        objective = .s1$fit$objective,
+        theta = .s1$fit$theta,
+        omega = .s1$fit$omega,
+        warnings = .s1$warnings
+      ),
+      envir = .ret$env
+    )
+  }
+  .ret
+}
+attr(nlmixr2Est.stieltjes, "nlmixr2LikPenalty") <- "full"
+attr(nlmixr2Est.stieltjes, "nlmixr2Priors") <- "general"
+attr(nlmixr2Est.stieltjes, "covPresent") <- TRUE
+attr(nlmixr2Est.stieltjes, "unbounded") <- .foUnbounded
