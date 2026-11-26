@@ -35,12 +35,27 @@ and is fitted by nlmixr2est, NONMEM and Monolix from the same data set.
   store the results under `reference/<tool>/<scenario>.csv`.
 - `reference.R` -- reads NONMEM output (`.ext`, `.lst`) and Monolix
   results (through lixoftConnectors) into reference files, with nlmixr2 parameter names and variances.
+- `exact.R` -- exact marginal maximum likelihood of each scenario with one
+  random effect (closed-form cumulative hazard, Gauss-Hermite quadrature),
+  written independently of rxode2 and nlmixr2est.
 - `checkSyntax.R` -- parses the control streams (nonmem2rx) and projects
   (monolix2rx) without a licence.
 
 babelmixr2 does not translate `tte()` endpoints, so the control streams
 and projects are written by hand.  Their initial values are the
 scenarios' starting values (the package tests check this).
+
+## Tests
+
+`tests/testthat/test-tte-validation-*.R` fit the scenarios with `focei`,
+`agq`, `saem` and `imp` and compare them with the exact likelihood (and
+the `exponential` closed form), and with every stored NONMEM or Monolix
+reference: parameters within a fraction of the reference standard
+errors, -2LL with the exact one, and the `tvCov` objective function
+difference with and without the covariate.  `test-tte-validation-exact.R`
+checks that the exact fits recover the simulation truth, which validates
+rxode2's `tte()` simulation independently.  They are long-running and
+skip on CRAN.
 
 ## Regenerating the reference fits
 
@@ -101,3 +116,8 @@ Conventions that differ between the tools are carried as extra columns:
   its initial value (`foceiControl(diagOmegaBoundUpper = 5)`); NONMEM
   and Monolix have no such bound.  The scenarios start the variances at
   0.3, which puts the bound above every estimate.
+- quadrature: with a single event per subject the frailty is barely
+  determined, and both the Laplace approximation (`focei`) and AGQ's
+  default 3 nodes are several -2LL units off the exact likelihood, enough
+  to move the estimates by about one standard error.  `agqControl(nAGQ = 9)`
+  reproduces the exact fit; repeated events need no more than Laplace.
