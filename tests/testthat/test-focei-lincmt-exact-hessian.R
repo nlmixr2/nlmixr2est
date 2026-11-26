@@ -178,5 +178,37 @@ nmTest({
       expect_false(any(grepl("exact eta Hessian not finite", fL$runInfo, fixed = TRUE)))
       expect_equal(fL$objf, fO$objf, tolerance = 1e-6)
     }
+    # an eta and the time-varying covariate on ka: the carry's ka row is 2 * ncmt, not
+    # the last of the seven slots (a 1-cmt ka derivative read zero there)
+    .kaLin <- function() {
+      ini({
+        tka <- log(1.2); tcl <- log(2); tv <- log(20)
+        eta.ka ~ 0.09; eta.cl ~ 0.09
+        lsd <- log(0.15)
+      })
+      model({
+        ka <- exp(tka + eta.ka) * (wt / 70)^0.5; cl <- exp(tcl + eta.cl); v <- exp(tv); sd <- exp(lsd)
+        cp <- linCmt()
+        ll(err) ~ -0.5 * log(2 * pi) - log(sd * cp) - 0.5 * ((DV - cp) / (sd * cp))^2
+      })
+    }
+    .kaOde <- function() {
+      ini({
+        tka <- log(1.2); tcl <- log(2); tv <- log(20)
+        eta.ka ~ 0.09; eta.cl ~ 0.09
+        lsd <- log(0.15)
+      })
+      model({
+        ka <- exp(tka + eta.ka) * (wt / 70)^0.5; cl <- exp(tcl + eta.cl); v <- exp(tv); sd <- exp(lsd)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v
+        ll(err) ~ -0.5 * log(2 * pi) - log(sd * cp) - 0.5 * ((DV - cp) / (sd * cp))^2
+      })
+    }
+    fL <- suppressMessages(suppressWarnings(nlmixr2(.kaLin, d, "focei", .ctl(1L))))
+    fO <- suppressMessages(suppressWarnings(nlmixr2(.kaOde, d, "focei", .ctl(1L))))
+    expect_false(any(grepl("exact eta Hessian not finite", fL$runInfo, fixed = TRUE)))
+    expect_equal(fL$objf, fO$objf, tolerance = 1e-6)
   })
 })

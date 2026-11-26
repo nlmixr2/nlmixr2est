@@ -2738,7 +2738,10 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 .foceiEcGradLines <- function(a, txt, eta, E) {
   .neta <- length(eta)
   .g <- character(0)
+  # the kernel's slot order is (p1, v1, p2, p3, p4, p5) with ka at 2 * ncmt
+  .ncmt <- as.integer(txt[4])
   for (.k in 1:7) {
+    .kcol <- if (.k == 7L) 2L * .ncmt else .k - 1L
     for (.i in seq_len(.neta)) {
       .d <- symengine::D(a[[.k + 8L]], symengine::S(eta[.i]))
       if (.rxFoceiCarryIsZero(.d)) {
@@ -2746,9 +2749,9 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
       }
       .g <- c(
         .g,
-        sprintf("rx_ecG%d_%d_~%s", .k, .i, .foceiEcCall(txt, "-30", (.k - 1L) * E + (.i - 1L), .foceiEcSe(.d)))
+        sprintf("rx_ecG%d_%d_~%s", .k, .i, .foceiEcCall(txt, "-30", .kcol * E + (.i - 1L), .foceiEcSe(.d)))
       )
-      .g <- c(.g, .foceiEcGrad2Lines(.d, txt, eta, E, .k, .i))
+      .g <- c(.g, .foceiEcGrad2Lines(.d, txt, eta, E, .k, .i, .kcol))
     }
   }
   .g
@@ -2759,9 +2762,10 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' @inheritParams .foceiEcGradLines
 #' @param k slot
 #' @param i first eta index
+#' @param kcol the slot's kernel row (ka at 2 * ncmt)
 #' @return character lines
 #' @noRd
-.foceiEcGrad2Lines <- function(d, txt, eta, E, k, i) {
+.foceiEcGrad2Lines <- function(d, txt, eta, E, k, i, kcol = k - 1L) {
   .g <- character(0)
   for (.j in i:length(eta)) {
     .d2 <- symengine::D(d, symengine::S(eta[.j]))
@@ -2775,7 +2779,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
         k,
         i,
         .j,
-        .foceiEcCall(txt, "-31", ((k - 1L) * E + (i - 1L)) * E + (.j - 1L), .foceiEcSe(.d2))
+        .foceiEcCall(txt, "-31", (kcol * E + (i - 1L)) * E + (.j - 1L), .foceiEcSe(.d2))
       )
     )
   }
