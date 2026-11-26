@@ -25,6 +25,13 @@ nmTest({
     })
   }
 
+  # the joint PK/hazard model has no exact likelihood: the truth and any
+  # stored reference
+  test_that("tte validation: pkJoint (focei)", {
+    .fit <- .tteValidationCheck("pkJoint", "focei", .ctl, tol = 0.35)
+    .tteValidationExpectTruth(.fit, "pkJoint")
+  })
+
   # a single event per subject barely determines the frailty, and the
   # Laplace approximation is several -2LL units off the exact likelihood
   for (.file in c("weibull", "interval", "lateEntry", "dropout")) {
