@@ -1308,6 +1308,7 @@ addTable <- function(
         }
       }
       class(.fit) <- "nlmixr2FitCoreSilent"
+      .tablesDroppedSet(.fit, FALSE)
       attr(.cls, ".foceiEnv") <- .fit
       class(.df) <- .cls
       if (inherits(updateObject, "logical")) {

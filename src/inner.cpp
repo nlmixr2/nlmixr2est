@@ -1649,6 +1649,9 @@ std::vector<double> vGrad;
 std::vector<int> niterGrad;
 std::vector<int> gradType;
 
+// A gradient may come before any objective evaluation (iteration 0).
+static inline int niterLast() { return niter.empty() ? 0 : niter.back(); }
+
 // Printed-column layout for the mu-referenced focei family: printed column p
 // maps to optimizer index _printOptIdx[p] (-1 for regression-updated mu
 // columns, which have no optimizer slot) and fullTheta index _printFullIdx[p];
@@ -6339,9 +6342,10 @@ static inline double updateMuGroups() {
             arma::mat A;
             arma::vec b;
             if (op_focei.muModel == 2) {
-              arma::mat Wd = arma::diagmat(w);
-              A = Xf.t() * Wd * Xf;
-              b = Xf.t() * Wd * yAdj;
+              // scale rows; a dense diagmat(w) is subjects x subjects
+              arma::mat XtW = (Xf.each_col() % w).t();
+              A = XtW * Xf;
+              b = XtW * yAdj;
             } else {
               // eta ~ N(0, omega): the data term is on the same LL scale as
               // the prior/penalty only once weighted by eta's precision
@@ -6383,8 +6387,8 @@ static inline double updateMuGroups() {
             b += grad0 - Hp * beta0;
             bf = arma::solve(A, b);
           } else if (op_focei.muModel == 2) {
-            arma::mat Wd = arma::diagmat(w);
-            bf = arma::solve(Xf.t() * Wd * Xf, Xf.t() * Wd * yAdj);
+            arma::mat XtW = (Xf.each_col() % w).t();
+            bf = arma::solve(XtW * Xf, XtW * yAdj);
           } else {
             bf = arma::solve(Xf, yAdj);
           }
@@ -11394,6 +11398,9 @@ double foceiOuterF(NumericVector &theta){
 }
 
 extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
+  // A gradient before any objective: evaluate it first, so the step search
+  // differences about it and the initial-gradient checks apply.
+  if (op_focei.nF + op_focei.nF2 == 0) foceiOfvOptim(n, par, ex);
   numericGrad(par, gr);
   op_focei.nG++;
   int finalize=0, i = 0;
@@ -11422,7 +11429,7 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   // 8=nlm forward sensitivity, 9=analytic outer gradient (fast=TRUE).
   const bool record = op_focei.recordOuter;
   if (record) {
-    niterGrad.push_back(niter.back());
+    niterGrad.push_back(niterLast());
     gradType.push_back(gType);
     double *grp = gr;
     if (muPrintActive()) {
@@ -11927,15 +11934,22 @@ static CharacterVector nlmixr2EvalDefaultNames(int n) {
   return tn;
 }
 
-// First evaluation: reset the recorded history and print the header
-static void nlmixr2EvalStart(Environment &gradInfo, int nEW, int n, int printN,
-                             int printNcol, bool useColor) {
+// First call of either the objective or the gradient: reset the recorded history
+static void nlmixr2HistStart(Environment &gradInfo, const std::string &md5) {
+  std::string hs = md5 + ".h";
+  if (gradInfo.exists(hs) && as<bool>(gradInfo[hs])) return;
   vGrad.clear();
   vPar.clear();
   iterType.clear();
   gradType.clear();
   niter.clear();
   niterGrad.clear();
+  gradInfo[hs] = true;
+}
+
+// First evaluation: print the header
+static void nlmixr2EvalStart(Environment &gradInfo, int nEW, int n, int printN,
+                             int printNcol, bool useColor) {
   if (printN == 0) return;
   scalePrintLine(1, min2(n, printNcol));
   if (!gradInfo.exists("thetaNames") ||
@@ -11999,6 +12013,7 @@ double nlmixr2Eval_(NumericVector theta, std::string md5){
   int printN=as<int>(gradInfo["print"]);
   int n=theta.size();
   bool isRstudio=as<bool>(gradInfo["isRstudio"]);
+  nlmixr2HistStart(gradInfo, md5);
   if (cn == 1) nlmixr2EvalStart(gradInfo, lEW.size(), n, printN, printNcol, useColor);
   std::string unscaledPar = md5 + ".uPar";
   NumericVector thetaU;
@@ -12079,6 +12094,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
   Function loadNamespace("loadNamespace", R_BaseNamespace);
   Environment nlmixr2 = loadNamespace("nlmixr2est");
   Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
+  nlmixr2HistStart(gradInfo, md5);
 
   std::string Egill = md5 + ".g";
   std::string EF = md5 + ".f";
@@ -12123,7 +12139,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
     // the first gradient is the Gill search's own; gillK = 0 runs no search and so
     // gives no derivative, and differences with its starting interval below
     if (as<int>(gradInfo[EK]) != 0) {
-      niterGrad.push_back(niter.back());
+      niterGrad.push_back(niterLast());
       gradType.push_back(1);
       vGrad.push_back(NA_REAL); // Gradient doesn't record objf
       NumericVector gr = as<NumericVector>(Lgill["df"]);
@@ -12133,7 +12149,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
         }
         vGrad.push_back(gr[i]);
       }
-      nlmixr2GradPrint(gr, gradType.back(), niter.back(), useColor,
+      nlmixr2GradPrint(gr, gradType.back(), niterLast(), useColor,
                        printNcol, printN, isRstudio);
       return gr;
     }
@@ -12168,7 +12184,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
   if (reEval){
     f0 = nlmixr2RObjAt(cFun, cEnvir, theta.begin(), theta.size(), theta);
   }
-  niterGrad.push_back(niter.back());
+  niterGrad.push_back(niterLast());
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
   // Forward differences on a copy (theta is the caller's own vector); a non-finite
   // forward leg switches to a backward one.
@@ -12190,7 +12206,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
     vGrad.push_back(g[i]);
   }
   gradType.push_back(isMixed ? 2 : 3);
-  nlmixr2GradPrint(g, gradType.back(), niter.back(), useColor,
+  nlmixr2GradPrint(g, gradType.back(), niterLast(), useColor,
                    printNcol, printN, isRstudio);
   return g;
 }

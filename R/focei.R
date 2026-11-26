@@ -6438,6 +6438,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       silent = TRUE
     )
     if (inherits(.tmp, "try-error")) {
+      .tablesDroppedSet(.ret, TRUE)
       warning("error calculating tables, returning without table step", call. = FALSE)
     } else {
       .ret <- .tmp

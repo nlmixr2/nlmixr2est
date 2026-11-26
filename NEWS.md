@@ -51,6 +51,10 @@
   with inter-occasion variability, under both `iovMethod = "theta"` and
   `"omega"`, instead of falling back to finite differences (#1377).
 
+- When a fit's tables step fails and the fit is returned without its tables,
+  `nlmixr2()` now raises a `warning()` and sets `fit$tablesDropped` to `TRUE`
+  so a script can test for it; adding the tables later with `addTable()`
+  clears it (#1354).
 - `addCondDist(fit)` samples each subject's conditional distribution of the
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
@@ -238,6 +242,10 @@
 
 ## Bug fixes
 
+- A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
+  the gradient before the objective no longer stops R: the gradient's history
+  row read the last objective iteration, which did not exist yet.  FOCEi now
+  evaluates the objective first, so that gradient gets the initial step search.
 - An `ll()` fit no longer installs `model$inner`'s event-sensitivity shape for an
   inner model that solves `innerLlik`, and the fit re-binds the inner shape on the
   library it loaded.  Either mismatch let a compacted inner solve run another
@@ -326,6 +334,11 @@
   the first `$runInfo` line; `$cov` had partially matched `covMethod = "failed"`.
 
 ### Estimation
+
+- The mu-referenced IRLS M-step (`muModel = "irls"`, e.g. `est = "ifocei"`)
+  now scales the design rows by the per-subject weights instead of forming a
+  dense subjects x subjects weight matrix, so its memory and time grow
+  linearly in the number of subjects (#1355).
 
 - `est="imp"`, `"impmap"` and `"qrpem"` now refuse a model without random
   effects with the same clear message as `"saem"`, instead of failing with

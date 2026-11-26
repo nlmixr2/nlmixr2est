@@ -2160,6 +2160,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   if (inherits(.ret, "try-error")) {
     stop(.msg, call. = FALSE)
   }
+  .tablesDroppedSet(.ret, TRUE)
   .pre <- "fit degraded, no tables: "
   warning(paste0(.pre, .vaeTruncList(gsub("[\r\n]+", " ", .msg), prefix = .pre)), call. = FALSE)
   .ret
