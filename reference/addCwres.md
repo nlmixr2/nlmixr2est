@@ -96,7 +96,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 9544
-#> → compress phiM in nlmixr2 object, save 63256
+#> → compress phiM in nlmixr2 object, save 63384
 
 print(f)
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
@@ -106,10 +106,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.08478542 3.9186e-05 0.03801121       0.05     0.819 2.575       0.648
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1305681 5.4311e-05 0.04901722      0.077     0.873 3.507       0.996
 #>         table compress     other
-#> elapsed 0.053    0.054 0.1321642
+#> elapsed 0.081    0.074 0.2563603
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -171,26 +171,6 @@ if (!inherits(f, "try-error")) {
 #> ✔ done
 #>  
 #>  
-#> → loading into symengine environment...
-#> → pruning branches (`if`/`else`) of full model...
-#> ✔ done
-#> → calculate ∂(f)/∂(η)
-#> → calculate ∂(R²)/∂(η)
-#> → finding duplicate expressions in inner model...
-#> → finding duplicate expressions in EBE model...
-#> → compiling inner model...
-#>  
-#>  
-#> ✔ done
-#> → finding duplicate expressions in FD model...
-#> → compiling EBE model...
-#>  
-#>  
-#> ✔ done
-#> → compiling events FD model...
-#>  
-#>  
-#> ✔ done
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
 #> 
 #>           OBJF      AIC     BIC Log-likelihood Condition#(Cov) Condition#(Cor)
@@ -198,10 +178,10 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.08478542 3.9186e-05 0.03801121       0.05     0.819 2.575       0.648
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.1305681 5.4311e-05 0.04901722      0.077     0.873 3.507       0.996
 #>         table compress     other foceiLik
-#> elapsed 1.712    0.054 0.1321642    0.379
+#> elapsed 0.499    0.074 0.2563603    0.284
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

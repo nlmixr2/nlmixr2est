@@ -7,6 +7,8 @@
   : Bayesian information criterion for nlmixr2 fits
 - [`aaaCranNlmixrThreads()`](https://nlmixr2.github.io/nlmixr2est/reference/aaaCranNlmixrThreads.md)
   : This function is to set the number of threads to 2
+- [`addCondDist()`](https://nlmixr2.github.io/nlmixr2est/reference/addCondDist.md)
+  : Add each subject's conditional distribution of the etas to a fit
 - [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md)
   : Add CWRES
 - [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md)

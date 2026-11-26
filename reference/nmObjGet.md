@@ -5,6 +5,9 @@ Get an item from a nlmixr core object
 ## Usage
 
 ``` r
+# S3 method for class 'condDist'
+nmObjGet(x, ...)
+
 # S3 method for class 'shrink'
 nmObjGet(x, ...)
 

@@ -332,46 +332,48 @@ fit2 <- nlmixr(mod, dsn, est="bobyqa")
 print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
-#>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -708.7671 1135.11 1149.833       -564.555        100.4132        31.34492
+#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -730.9891 1112.888 1127.611       -553.444        1005.964        101.0248
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.5536562 0.5381752 2.7587e-05      0.038       0.008 0.023    0.001
-#>              other
-#> elapsed 0.06514095
+#> elapsed 0.8174035 0.8275159 2.8232e-05      0.059       0.011 0.033    0.002
+#>             other
+#> elapsed 0.1050524
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>       Est.    SE  %RSE Back-transformed(95%CI)
-#> E0  -0.919 0.131  14.3  -0.919 (-1.18, -0.662)
-#> Em    4.46 0.552  12.4       4.46 (3.38, 5.54)
-#> E50   2.05 0.311  15.2       2.05 (1.44, 2.66)
+#> E0  -0.798 0.118  14.8  -0.798 (-1.03, -0.567)
+#> Em    7.21  2.02  28.0       7.21 (3.26, 11.2)
+#> E50   3.30 0.776  23.5       3.30 (1.78, 4.82)
 #> g     2.00 FIXED FIXED                    2.00
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Some strong fixed parameter correlations exist ($cor) :
 #>      cor:Em,E0 cor:E50,E0 cor:E50,Em 
-#>     0.107       0.604      0.778  
+#>     0.389      0.580      0.952  
 #>  
 #> 
+#>   Information about run found ($runInfo):
+#>    • highly correlated estimates: Em/E50 (0.95) 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0245     0 -0.336 -0.918
-#> 2 1     0.0449     0 -0.336 -0.917
-#> 3 1     0.0596     1 -1.25  -0.915
+#> 1 1     0.0529     0 -0.372 -0.796
+#> 2 1     0.0603     1 -1.17  -0.796
+#> 3 1     0.0632     1 -1.17  -0.795
 #> # ℹ 997 more rows
 
 # you can also get the bobyqa output with
 
 fit2$bobyqa
-#> parameter estimates: -0.918902425266644, 4.45633256593552, 2.04737134928181 
-#> objective: 564.554977583988 
-#> number of function evaluations: 122 
+#> parameter estimates: -0.798071907055888, 7.21073628918906, 3.29914541842335 
+#> objective: 553.443982781204 
+#> number of function evaluations: 214 
 # }
 ```

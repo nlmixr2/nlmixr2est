@@ -333,7 +333,7 @@ mlaplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x63c2ce091a98>
+#> <bytecode: 0x647a081b0a00>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

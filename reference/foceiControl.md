@@ -1101,7 +1101,9 @@ foceiControl(
   maximum number of times the \`"bobyqa"\` outer search restarts on a
   scale adapted to the curvature where it stopped, one unit per marginal
   standard error. It restarts while each restart gains more than
-  \`10^(1-sigdig)\`. \`0\` (default) turns this off.
+  \`10^(1-sigdig)\`. \`NULL\` (default) uses 3 when a \`theta\` is
+  scaled as linear (see \`scaleLinear\`) and 0 otherwise; \`0\` turns it
+  off.
 
 - innerLbfgsLmm:
 

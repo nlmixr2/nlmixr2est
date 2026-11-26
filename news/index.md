@@ -59,6 +59,13 @@
 
 ### New features
 
+- `addCondDist(fit)` samples each subject’s conditional distribution of
+  the etas at the final estimates of a fit from any estimation method
+  and stores its mean and SD as `fit$condDist` (`keepSamples = TRUE`
+  keeps the draws). By default it importance-samples around each
+  subject’s mode with the population parameters held
+  ([\#1378](https://github.com/nlmixr2/nlmixr2est/issues/1378)).
+
 - A `saem` fit with a theta that is not updated in closed form now notes
   which thetas the M-step updates in closed form, numerically
   (`nonMuTheta = "regress"`) or stochastically (`nonMuTheta = "eta"`);
