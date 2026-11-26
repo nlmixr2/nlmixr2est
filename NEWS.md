@@ -267,6 +267,10 @@
 
 ### Covariance
 
+- `covType = "analytic"` now declines to the finite-difference covariance
+  when a likelihood penalty is active, so the covariance includes the
+  penalty's curvature instead of describing the unpenalised likelihood
+  (#1479).
 - The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a
   `same()` block's copies with the block they repeat, so a correlated IOV
   block contributes one shared occasion Omega (`om.iov.cl`,
