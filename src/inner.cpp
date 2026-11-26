@@ -23199,9 +23199,11 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
     std::fill(gLpopAcc.begin(), gLpopAcc.end(), 0.0);
     double elboAcc = 0.0;
     arma::cube hessAcc;
+    arma::vec hessN;
     arma::mat hPopAcc;
     if (_advi.gn) {
       hessAcc.zeros(neta, neta, N);
+      hessN.zeros(N);
       hPopAcc.zeros(npop, npop);
     }
     for (int m = 0; m < nMc; ++m) {
@@ -23239,7 +23241,7 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
       for (int j = 0; j < N * neta; ++j) gMuAcc[j] += gMu[j];
       for (int j = 0; j < N * nScale; ++j) gScaleAcc[j] += gScale[j];
       if (_advi.gn) {
-        hessAcc += _advi.etaHess;
+        adviHessAdd(hessAcc, hessN, _advi.etaHess);
         hPopAcc += adviGnPopInfo(phiThetaIdx, phiOmIdx, muRefThetaIdx, N);
       }
       // grad_phi (component j) = gTheta[.] or gPopLogOmega[.]
@@ -23261,8 +23263,9 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
 
     double idecay = std::pow((double)(gi + 1), -0.5 + eeps);
     if (_advi.gn) {
-      if (fr) adviGnStepFR(mu, scale, gMuAcc, hessAcc * invM, gi);
-      else adviGnStepMF(mu, scale, gMuAcc, hessAcc * invM, gi);
+      hessLast = adviHessMean(hessAcc, hessN);
+      if (fr) adviGnStepFR(mu, scale, gMuAcc, hessLast, gi);
+      else adviGnStepMF(mu, scale, gMuAcc, hessLast, gi);
     } else {
       for (int j = 0; j < N * neta; ++j) {
         double g = gMuAcc[j];
@@ -23275,7 +23278,6 @@ List adviLoopFB_(NumericMatrix mu0, NumericMatrix scale0, NumericVector theta0,
         scale[j] += etaScale * idecay / (tau + std::sqrt(sScale[j])) * g;
       }
     }
-    if (_advi.gn) hessLast = hessAcc * invM;
     if (!popGn || !adviGnPopStep(mPop, Lpop, gmPopAcc, hPopAcc * invM, phiThetaIdx, gi)) {
       for (int j = 0; j < npop; ++j) {
         double g = gmPopAcc[j];

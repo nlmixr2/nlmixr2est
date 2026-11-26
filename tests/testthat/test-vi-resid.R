@@ -163,4 +163,34 @@ nmTest({
     expect_equal(f$emvi$theta[["add.sd"]], f$focei$theta[["add.sd"]], tolerance = 0.15)
     expect_equal(f$emvi$omega["eta.add.sd", "eta.add.sd"], f$focei$omega["eta.add.sd", "eta.add.sd"], tolerance = 0.2)
   })
+  test_that("fbvi with a mu-referenced covariate theta stays finite (#1462)", {
+    skip_on_cran()
+    d <- .viResidData(function(s, e) 0.1 * s$cp)
+    d$WT <- 50 + 10 * (d$ID %% 5)
+    mod <- function() {
+      ini({
+        tka <- log(1.2)
+        tcl <- log(3)
+        tv <- log(30)
+        wtCl <- 0.1
+        eta.ka ~ 0.1
+        eta.cl ~ 0.1
+        eta.v ~ 0.1
+        prop.sd <- 0.3
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + wtCl * log(WT / 70) + eta.cl)
+        v <- exp(tv + eta.v)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ prop(prop.sd)
+      })
+    }
+    f <- .viResidFits(mod, d, fbviControl(print = 0L))
+    expect_true(all(is.finite(f$emvi$theta)))
+    expect_equal(f$emvi$theta[["prop.sd"]], f$focei$theta[["prop.sd"]], tolerance = 0.1)
+    expect_true(all(is.finite(f$emvi$parFixedDf$SE[!is.na(f$emvi$parFixedDf$SE)])))
+  })
 })
