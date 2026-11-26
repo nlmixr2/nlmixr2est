@@ -318,6 +318,11 @@
 
 ### Estimation
 
+- The mu-referenced IRLS M-step (`muModel = "irls"`, e.g. `est = "ifocei"`)
+  now scales the design rows by the per-subject weights instead of forming a
+  dense subjects x subjects weight matrix, so its memory and time grow
+  linearly in the number of subjects (#1355).
+
 - `est="imp"`, `"impmap"` and `"qrpem"` now refuse a model without random
   effects with the same clear message as `"saem"`, instead of failing with
   `Could not fit data` (#1467).
