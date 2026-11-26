@@ -5160,7 +5160,7 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   # wants the same model without being an imp/advi estimation.
   if (
     (rxode2::rxGetControl(ui, "est", "") %in%
-      c("impmap", "imp", "qrpem", "advi") ||
+      c("impmap", "imp", "qrpem", "its", "advi") ||
       isTRUE(rxode2::rxGetControl(ui, "thetaSensLoad", FALSE))) &&
       !isTRUE(rxode2::rxGetControl(ui, "combSens", FALSE)) &&
       is.null(env$model$thetaSens)
@@ -5246,6 +5246,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
         "impmap",
         "imp",
         "qrpem",
+        "its",
         "advi",
         "npag",
         "npb",

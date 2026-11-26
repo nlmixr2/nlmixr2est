@@ -46,6 +46,8 @@
   "qrScramble",
   "sir",
   "sirSample",
+  # est="its" marker set by itsControl()
+  "its",
   # internal M-step index maps added in .impmapFamilyFit;
   # not foceiControl() arguments, so they must be dropped
   # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
@@ -701,6 +703,9 @@ impmapControl <- function(
   # only, holding the parameters (.covEngineControl)
   .impFrozen <- isTRUE(.dots$impFrozen)
   .dots$impFrozen <- NULL
+  # itsControl() marker; kept on a round-tripped control
+  .its <- isTRUE(.dots[["its"]])
+  .dots$its <- NULL
   # gammaMethodUser is stamped on the RUNTIME control by .impmapFamilyFit (it
   # records what the user asked for before "auto" was resolved).  A control that
   # has been round-tripped therefore carries it; keep it, but do not forward it
@@ -738,6 +743,9 @@ impmapControl <- function(
   .control$impCov <- .impCov
   if (.impFrozen) {
     .control$impFrozen <- TRUE
+  }
+  if (.its) {
+    .control$its <- TRUE
   }
   if (!is.null(.autoNonNormal)) {
     .control$autoNonNormal <- .autoNonNormal
@@ -793,7 +801,9 @@ impmapControl <- function(
 #' @noRd
 .impmapDeparseType <- function(object) {
   .est <- if (is.character(object$est)) object$est else ""
-  if (grepl("npag$", .est)) {
+  if (isTRUE(object$its)) {
+    "itsControl"
+  } else if (grepl("npag$", .est)) {
     "npagControl"
   } else if (grepl("npb$", .est)) {
     "npbControl"
@@ -838,7 +848,7 @@ rxUiDeparse.impmapControl <- function(object, var) {
     object,
     var,
     type = .impmapDeparseType(object),
-    internal = c("impCov", "autoNonNormal", "gammaMethodUser", "npEndpointCmt", .impmapIdxMapNames, names(.derived)),
+    internal = c("impCov", "its", "autoNonNormal", "gammaMethodUser", "npEndpointCmt", .impmapIdxMapNames, names(.derived)),
     covName = function(x) if (isTRUE(x$impCov)) "imp" else .foceiControlCovMethodName(x),
     fun = .impmapDeparseExtra,
     extra = as.character(.extra)
@@ -876,6 +886,7 @@ getValidNlmixrCtl.impmap <- function(control) {
 #'   est's own value
 #' @noRd
 .impmapEstWins <- function(ctl, est) {
+  ctl <- .itsControlRestoreSampling(ctl, est)
   .src <- ctl$est
   # a freshly built control (no completed fit behind it) is the user's own
   if (is.null(.src) || !is.character(.src) || identical(.src, est)) {
@@ -1116,7 +1127,9 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # always stashed but they are not the same quantity, and only one drives the
   # adaptation -- warning() here is the established route onto $runInfo
   # (collected in nlmixr2Est.R and printed under "Information about run").
-  warning(.impmapGammaRunInfo(.control$gammaMethod, .gmUser, .control$iaccept), call. = FALSE)
+  if (!isTRUE(.control$its)) {
+    warning(.impmapGammaRunInfo(.control$gammaMethod, .gmUser, .control$iaccept), call. = FALSE)
+  }
   if (identical(.control$nIter, 0L)) {
     .etaSrc <- if (
       inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
@@ -1257,6 +1270,12 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
     return(invisible(FALSE))
   }
   .sigdig <- tryCatch(fit$foceiControl$sigdig, error = function(e) NULL)
+  # est="its" reports the FOCE or FOCEi objective it was asked for
+  .inter <- TRUE
+  if (identical(.env$method, "its")) {
+    .inter <- tryCatch(as.logical(fit$foceiControl$interaction), error = function(e) TRUE)
+    if (!isTRUE(.inter) && !isFALSE(.inter)) .inter <- TRUE
+  }
   # A nested nlmixr2() calls .nlmixr2globalReset(), which clears nlmixr2global --
   # including the timing environment (dropping the outer fit's "other" timing
   # row).  Snapshot and restore the whole thing, plus the mu-referencing global.
@@ -1279,6 +1298,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
       maxOuterIterations = 0L,
       calcTables = FALSE,
       compress = FALSE,
+      interaction = .inter,
       sigdig = if (is.null(.sigdig)) 4 else .sigdig
     ),
     silent = TRUE
@@ -1305,6 +1325,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # (correct) Hessian, so $etaObf/$phiH do not disagree with the published number
   for (.n in c(
     "objective",
+    "ofvType",
     "OBJF",
     "objf",
     "logLik",
@@ -1332,6 +1353,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
       for (.c in intersect(names(.newObjDf), names(.oldObjDf))) {
         .oldObjDf[[.c]] <- .newObjDf[[.c]]
       }
+      rownames(.oldObjDf) <- rownames(.newObjDf)
       assign("objDf", .oldObjDf, envir = .env)
     } else {
       assign("objDf", .newObjDf, envir = .env)

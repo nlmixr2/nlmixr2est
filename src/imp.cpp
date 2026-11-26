@@ -690,6 +690,10 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   // reproducible, thread-count-independent stream.
   uint32_t seed0 = (uint32_t)impBaseSeed();
   bool doPar = (cores > 1);
+  // est="its": no sampling.  The moments are the mode and H^-1, the objective is
+  // the Laplace term, and the M-step sees 2*neta equally weighted sigma points
+  // (mode +/- sqrt(neta) L e_j) so the residual update carries H^-1 as well.
+  const bool its = impIsIts();
   // QRPEM: one Sobol base point set per E-step (read-only in the parallel
   // loop); with qrShift=FALSE the N(0,1) points are also fixed and shared.
   bool qr = impQrEnabled();
@@ -728,8 +732,15 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       double gammaId = gammaVec[id];
       const impProp& pr = props[id];   // this subject's proposal family
       int nsId = (int)isampleVec[id];   // this subject's sample count
+      if (its) nsId = 2 * neta;
       arma::mat S(nsId, neta);
-      if (qr) {
+      if (its) {
+        const double sq = std::sqrt((double)neta);
+        for (int jj = 0; jj < neta; ++jj) {
+          S.row(2 * jj) = (modes[id] + sq * cholL[id].col(jj)).t();
+          S.row(2 * jj + 1) = (modes[id] - sq * cholL[id].col(jj)).t();
+        }
+      } else if (qr) {
         // Sobol points -> N(0,I) -> proposal.  With qrShift the shift comes
         // from this subject's seeded stream; qrRefresh=FALSE instead uses the
         // fit-constant qrPinSeed (captured once in impOuter -- seed0 advances
@@ -867,6 +878,11 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       // that leak never carries into a subsequent draw.
       nmRestoreMcmcSeed();
       if (nGood == 0) continue;
+      if (its) {
+        // equal weights (failed points dropped); Laplace objective at the mode
+        if (!R_finite(qCenter)) continue;
+        for (int k = 0; k < nsId; ++k) q[k] = R_finite(q[k]) ? qCenter : R_NegInf;
+      }
       double qmax = q.max();
       arma::vec w = arma::exp(q - qmax);
       double sumw = arma::accu(w);
@@ -874,7 +890,7 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       outS[id] = S;
       outZk[id] = zk;
       okExp[id] = 1;
-      double logMeanExp = qmax + std::log(sumw / (double)nsId);
+      double logMeanExp = its ? qCenter : qmax + std::log(sumw / (double)nsId);
       double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaId) -
         0.5 * logDetH[id] + pr.corr;
       LiExp[id] = -(logMeanExp + Ci);          // per-component negative log-likelihood
@@ -903,6 +919,12 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
       for (int k = 0; k < nsId; ++k) {
         arma::rowvec dr = S.row(k) - pbar;
         B += zk[k] * (dr.t() * dr);
+      }
+      if (its) {
+        // Hs is H itself (gamma = 1) or, after a fallback, Omega^-1
+        cmExp.row(id) = modes[id].t();
+        arma::mat V;
+        if (arma::inv_sympd(V, Hs[id])) B = V;
       }
       cvExp[id] = B;
     }
@@ -2222,6 +2244,12 @@ void impOuter(Environment e) {
       // premature stopping on a systematically-drifting low-leverage parameter,
       // not a precision requirement (the objMetric gate carries the precision).
       double parTol = 0.02;
+      if (impIsIts()) {
+        // deterministic iteration: relative change (floored at 1) below ctol
+        parMetric = arma::max(arma::abs(parNow - parOld) /
+                              arma::clamp(arma::abs(parOld), 1.0, arma::datum::inf));
+        parTol = ctol;
+      }
       double gWin0 = gammaTrace[n - nConvWindow - 1];
       // Under "individual" the traced scalar is a MEAN, so offsetting moves
       // across subjects could look settled while individual scales are still

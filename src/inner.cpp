@@ -1168,6 +1168,7 @@ struct focei_options {
   bool isImp = false;    // est="imp": no per-iteration MAP search (proposal at the conditional mean)
   bool isAdvi = false;   // est="advi": reuses the theta-sensitivity model for the outer ADVI gradient
   bool isQrpem = false;  // est="qrpem": the impmap kernel labeled as QRPEM (qr+sir sugar)
+  bool isIts = false;    // est="its": deterministic EM, E-step = MAP mode + inverse Hessian
   bool isNpag = false;   // est="npag": nonparametric adaptive grid; outer runs npagOuter
   bool isNpb = false;    // est="npb": nonparametric Bayes (stick-breaking DP); outer runs npbOuter
   bool thetaSensLoad = false; // foceiLikLoad(thetaSens=TRUE) (#939): wire the
@@ -9917,10 +9918,12 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isNlm = (estStr == "nlm" || estStr == "nlminb" || estStr == "bobyqa" ||
                       estStr == "newuoa" || estStr == "n1qn1" || estStr == "lbfgsb3c" ||
                       estStr == "optim" || estStr == "uobyqa" || estStr == "nls");
-    op_focei.isImpmap = (estStr == "impmap" || estStr == "imp" || estStr == "qrpem");
+    op_focei.isImpmap = (estStr == "impmap" || estStr == "imp" || estStr == "qrpem" ||
+                         estStr == "its");
     op_focei.isImp = (estStr == "imp");
     op_focei.isAdvi = (estStr == "advi");
     op_focei.isQrpem = (estStr == "qrpem");
+    op_focei.isIts = (estStr == "its");
     // npag + its mu-referenced sugar (mnpag = OLS "lin", inpag = IRLS) share the
     // npagOuter driver; likewise npb + mnpb/inpb.
     op_focei.isNpag = (estStr == "npag" || estStr == "mnpag" || estStr == "inpag");
@@ -9932,6 +9935,7 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isImp = false;
     op_focei.isAdvi = false;
     op_focei.isQrpem = false;
+    op_focei.isIts = false;
     op_focei.isNpag = false;
     op_focei.isNpb = false;
   }
@@ -14460,7 +14464,8 @@ void foceiFinalizeTables(Environment e){
     if (op_focei.isImpmap) {
       // Importance-sampling EM; the objDf row stays "FOCEi" because the final
       // objective is a FOCEi evaluation at the EM estimates.
-      e["method"] = op_focei.isImp ? "imp" : (op_focei.isQrpem ? "qrpem" : "impmap");
+      e["method"] = op_focei.isImp ? "imp" :
+        (op_focei.isQrpem ? "qrpem" : (op_focei.isIts ? "its" : "impmap"));
     } else if (_aqn > 0) {
       e["method"] = op_focei.conditionalHessianRequested ?
         (_nagq == 1 ? "Full Laplace" : "Full AGQ") : "AGQ";
@@ -14948,6 +14953,8 @@ void impGetOmega(arma::mat& Om) {
 // est="imp": no per-iteration MAP search (the E-step proposal is centered at the
 // running conditional mean with covariance gamma * V_i instead of gamma * H_i^-1).
 bool impIsImp() { return op_focei.isImp; }
+// est="its": no importance sampling; the E-step moments are the MAP mode and H^-1
+bool impIsIts() { return op_focei.isIts; }
 
 // Read subject id's current eta (after updateMuGroups this is the recentered residual).
 void impGetEta(int id, arma::vec& eta) {
