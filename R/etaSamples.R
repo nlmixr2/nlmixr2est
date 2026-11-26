@@ -344,14 +344,17 @@ etaSamples <- function(
   }
   .i1 <- (.cfg$i1 + 1L)[.col]
   if (
-    sum(.niter) != .dim[3] ||
+    .dim[3] <= .niter[1] ||
+      .dim[3] > sum(.niter) ||
       length(.i1) != neta ||
       .dim[1] != nrow(fit$eta) ||
       !identical(dim(.mprior), .dim[c(1L, 4L)])
   ) {
     return(NULL)
   }
-  .iter <- seq(.dim[3] - .niter[2] %/% 2L + 1L, .dim[3])
+  # plateauStop can end the EM phase before nEm iterations
+  .nEm <- .dim[3] - .niter[1]
+  .iter <- seq(.dim[3] - .nEm %/% 2L + 1L, .dim[3])
   # pool: chain varies fastest, then iteration
   .pool <- .dim[2] * length(.iter)
   if (.pool < n) {

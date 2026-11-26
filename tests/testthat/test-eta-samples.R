@@ -196,6 +196,30 @@ test_that("auto reuses a SAEM fit's own chains", {
   expect_error(etaSamples(.fit, n = .n, method = "fit"), "holds no")
 })
 
+test_that("SAEM chain reuse follows a plateau-stopped EM phase", {
+  skip_on_cran()
+  .fit <- .etaSamplesTheo("saem")
+  .niter <- .fit$env$saemControl$mcmc$niter
+  # the chains as plateauStop leaves them: EM stopped after 100 iterations
+  .stop <- .niter[1] + 100L
+  .mock <- list(
+    phiM = .fit$phiM[,, seq_len(.stop), , drop = FALSE],
+    saem = .fit$saem,
+    env = list(saemControl = .fit$env$saemControl),
+    eta = .fit$eta,
+    ui = .fit$ui
+  )
+  .d <- .etaSamplesSaem(.mock, 150L, 3L)
+  expect_equal(dim(.d), c(12L, 3L, 150L))
+  # the last draw is the last chain at the stopping iteration
+  expect_equal(.d[,, 150L], .fit$phiM[, 3L, .stop, ] - .fit$saem$mprior_phi, ignore_attr = TRUE)
+  # 50 iterations x 3 chains hold no more than 150 draws
+  expect_null(.etaSamplesSaem(.mock, 151L, 3L))
+  # stopped inside burn-in: no EM draws
+  .mock$phiM <- .fit$phiM[,, seq_len(.niter[1]), , drop = FALSE]
+  expect_null(.etaSamplesSaem(.mock, 1L, 3L))
+})
+
 test_that("SAEM chain draws follow the etas' declared order", {
   skip_on_cran()
   # nolint start: object_usage_linter.
