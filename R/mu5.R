@@ -1,11 +1,10 @@
-# Pre-processing hook: mu-reference multiplicative 0/1 covariate effects for saem
+# mu5: mu-reference a multiplicative 0/1 covariate effect
 #
-# `cl <- exp(tcl + eta.cl) * (1 + clSex * SEX)` puts `clSex` outside the
-# mu-referenced phi, where saem's conditional M-step cannot separate it from
-# `eta.cl` (issue #1315).  For a covariate that only takes the values 0 and 1,
-# `1 + clSex*SEX == exp(log(1 + clSex)*SEX)` exactly, so the line is fit as
-# `exp(tcl + eta.cl + rxBoundedTr.clSex*SEX)` and `clSex` is back-transformed
-# with the bounded-transform machinery (type "log1p").
+# `cl <- exp(tcl + eta.cl) * (1 + clSex * SEX)` keeps `clSex` out of the
+# mu-referenced phi; saem cannot then separate it from `eta.cl` (#1315).  For a
+# covariate that only takes 0 and 1, `1 + clSex*SEX == exp(log(1 + clSex)*SEX)`,
+# so every mu-referenced method fits `exp(tcl + eta.cl + rxBoundedTr.clSex*SEX)`
+# and `clSex` is back-transformed by the bounded-transform machinery ("log1p").
 
 #' Is a data column a 0/1 covariate?
 #'
@@ -13,7 +12,7 @@
 #' @param cov column name
 #' @return `TRUE` when every non-missing value is 0 or 1
 #' @noRd
-.saemCatCovIsBinary <- function(data, cov) {
+.mu5IsBinary <- function(data, cov) {
   if (!is.data.frame(data) || !(cov %in% names(data))) {
     return(FALSE)
   }
@@ -30,16 +29,16 @@
 #' @param e language object
 #' @return list of factors (a bare product inside parentheses is flattened too)
 #' @noRd
-.saemCatCovFactors <- function(e) {
+.mu5Factors <- function(e) {
   if (is.call(e) && identical(e[[1]], quote(`(`))) {
     .in <- e[[2]]
     if (is.call(.in) && identical(.in[[1]], quote(`*`))) {
-      return(.saemCatCovFactors(.in))
+      return(.mu5Factors(.in))
     }
     return(list(e))
   }
   if (is.call(e) && identical(e[[1]], quote(`*`)) && length(e) == 3L) {
-    return(c(.saemCatCovFactors(e[[2]]), .saemCatCovFactors(e[[3]])))
+    return(c(.mu5Factors(e[[2]]), .mu5Factors(e[[3]])))
   }
   list(e)
 }
@@ -51,7 +50,7 @@
 #' @param covs 0/1 covariate names
 #' @return `c(theta=, cov=)` or `NULL`
 #' @noRd
-.saemCatCovMatch <- function(f, thetas, covs) {
+.mu5Match <- function(f, thetas, covs) {
   while (is.call(f) && identical(f[[1]], quote(`(`))) {
     f <- f[[2]]
   }
@@ -94,11 +93,11 @@
 #' @return list of `expr` (rewritten line) and `match` (matrix of theta/cov),
 #'   or `NULL` when the line has no such factor
 #' @noRd
-.saemCatCovLine <- function(expr, thetas, covs, etas) {
+.mu5Line <- function(expr, thetas, covs, etas) {
   if (!is.call(expr) || !(identical(expr[[1]], quote(`<-`)) || identical(expr[[1]], quote(`=`)))) {
     return(NULL)
   }
-  .fac <- .saemCatCovFactors(expr[[3]])
+  .fac <- .mu5Factors(expr[[3]])
   if (length(.fac) < 2L) {
     return(NULL)
   }
@@ -112,7 +111,7 @@
   if (sum(.isExp) != 1L) {
     return(NULL)
   }
-  .m <- lapply(.fac, .saemCatCovMatch, thetas = thetas, covs = covs)
+  .m <- lapply(.fac, .mu5Match, thetas = thetas, covs = covs)
   .cat <- !vapply(.m, is.null, logical(1))
   if (!any(.cat)) {
     return(NULL)
@@ -135,19 +134,19 @@
 #' @param names names to count
 #' @return named integer vector
 #' @noRd
-.saemCatCovCount <- function(lstExpr, names) {
+.mu5Count <- function(lstExpr, names) {
   .all <- unlist(lapply(lstExpr, function(e) all.names(e)))
   vapply(names, function(n) sum(.all == n), integer(1))
 }
 
-#' Build the saem ui with the selected factors mu-referenced
+#' Build the ui with the selected factors mu-referenced
 #'
 #' @param ui rxode2 ui
 #' @param rew list of line rewrites (line index, rewrite)
 #' @param thetas thetas to rewrite
 #' @return rewritten ui carrying `boundedTransforms`
 #' @noRd
-.saemCatCovUi <- function(ui, rew, thetas) {
+.mu5Ui <- function(ui, rew, thetas) {
   .lstExpr <- ui$lstExpr
   .iniDf <- ui$iniDf
   .transforms <- list()
@@ -156,7 +155,7 @@
     if (!any(.keep)) {
       next
     }
-    .line <- .saemCatCovLine(
+    .line <- .mu5Line(
       .lstExpr[[.r$i]],
       .r$match[.keep, "theta"],
       .r$match[.keep, "cov"],
@@ -191,19 +190,23 @@
   .newUi
 }
 
-#' Pre-processing hook: fit `exp(mu + eta) * (1 + theta*COV)` mu-referenced
+#' Pre-processing hook: fit `exp(mu + eta) * (1 + theta*COV)` mu-referenced (mu5)
 #'
-#' Only for `est="saem"` with `muRefCovAlg=TRUE`, a 0/1 data covariate, a
-#' free structural theta used nowhere else and a start above -1.
+#' For a mu-referenced method (`.isMuMethod()`, `muRefCovAlg` not `FALSE`, not
+#' `fast=TRUE`), a
+#' 0/1 data covariate, a free structural theta used nowhere else and a start
+#' above -1.
 #'
 #' @param ui rxode2 ui
 #' @param est estimation method
 #' @param data estimation data
-#' @param control saem control
+#' @param control estimation control
 #' @return list with the rewritten ui, or `NULL` when nothing changes
 #' @noRd
-.preProcessSaemCatCov <- function(ui, est, data, control) {
-  if (!identical(est, "saem") || !isTRUE(control$muRefCovAlg)) {
+.uiApplyMu5 <- function(ui, est, data, control) {
+  # fast=TRUE: the analytic outer gradient declines any bounded transform, and the
+  # FOCEi-family optimum is the same in either form
+  if (!.isMuMethod(est, control) || isFALSE(control$muRefCovAlg) || isTRUE(control$fast)) {
     return(NULL)
   }
   ui <- rxode2::rxUiDecompress(ui)
@@ -212,7 +215,7 @@
   }
   .iniDf <- ui$iniDf
   .covs <- ui$allCovs
-  .covs <- .covs[vapply(.covs, .saemCatCovIsBinary, logical(1), data = data)]
+  .covs <- .covs[vapply(.covs, .mu5IsBinary, logical(1), data = data)]
   if (length(.covs) == 0L) {
     return(NULL)
   }
@@ -225,7 +228,7 @@
   .lstExpr <- ui$lstExpr
   .rew <- list()
   for (.i in seq_along(.lstExpr)) {
-    .r <- .saemCatCovLine(.lstExpr[[.i]], .thetas, .covs, .etas)
+    .r <- .mu5Line(.lstExpr[[.i]], .thetas, .covs, .etas)
     if (!is.null(.r)) {
       .rew[[length(.rew) + 1L]] <- list(i = .i, match = .r$match, etas = .etas)
     }
@@ -235,17 +238,17 @@
   }
   .cand <- unlist(lapply(.rew, function(r) r$match[, "theta"]))
   # a theta used anywhere else cannot move into the mu-referenced phi
-  .cand <- .cand[.saemCatCovCount(.lstExpr, .cand) == 1L]
+  .cand <- .cand[.mu5Count(.lstExpr, .cand) == 1L]
   if (length(.cand) == 0L) {
     return(NULL)
   }
-  .newUi <- .saemCatCovUi(ui, .rew, .cand)
+  .newUi <- .mu5Ui(ui, .rew, .cand)
   .ok <- .cand[paste0("rxBoundedTr.", .cand) %in% .newUi$muRefCovariateDataFrame$covariateParameter]
   if (length(.ok) == 0L) {
     return(NULL)
   }
   if (length(.ok) < length(.cand)) {
-    .newUi <- .saemCatCovUi(ui, .rew, .ok)
+    .newUi <- .mu5Ui(ui, .rew, .ok)
   }
   for (.tr in .newUi$boundedTransforms) {
     if (!identical(.tr$type, "log1p")) {
@@ -253,10 +256,10 @@
     }
     warning(sprintf("'%s' fit as log(1+%s), mu-referenced", .tr$name, .tr$name), call. = FALSE)
     if (.tr$lower > -1 || is.finite(.tr$upper)) {
-      warning(sprintf("bounds of '%s' not enforced by saem", .tr$name), call. = FALSE)
+      warning(sprintf("bounds of '%s' not enforced when mu-referenced", .tr$name), call. = FALSE)
     }
   }
   list(ui = .newUi)
 }
 
-preProcessHooksAdd(".preProcessSaemCatCov", .preProcessSaemCatCov)
+preProcessHooksAdd(".uiApplyMu5", .uiApplyMu5)

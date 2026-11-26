@@ -423,7 +423,8 @@ changes the system to a linear compartment model.  Therefore, by default this is
 
 It also fits a multiplicative 0/1 covariate effect,
 `exp(tcl + eta.cl) * (1 + clSex*SEX)`, as the equivalent mu-referenced
-`exp(tcl + eta.cl + log(1 + clSex)*SEX)` and reports `clSex`.}
+`exp(tcl + eta.cl + log(1 + clSex)*SEX)` and reports `clSex` (mu5; every
+mu-referenced method).}
 
 \item{handleUninformativeEtas}{boolean that tells nlmixr2's saem to
 calculate uninformative etas and handle them specially (default

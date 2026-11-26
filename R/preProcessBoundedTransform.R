@@ -236,7 +236,7 @@
 
 #' Bounds to restore on a back-transformed theta
 #'
-#' saem's mu-referenced `log(1+theta)` does not enforce the user's bounds, so
+#' The mu5 (mu-referenced) `log(1+theta)` does not enforce the user's bounds, so
 #' they are widened to hold the estimate.
 #'
 #' @param tr transform specification
@@ -339,7 +339,7 @@
   )
 
   # Store transform info and original model for post-estimation hook
-  # keep the transforms an earlier hook added (saem's mu-referenced 0/1 covariates)
+  # keep the transforms an earlier hook added (mu5)
   .newUi$boundedTransforms <- c(ui$boundedTransforms, transforms)
   .newUi
 }
@@ -652,7 +652,7 @@
     ui$lstExpr[[i]]
   })
 
-  # lines a transform rewrote (saem's mu-referenced 0/1 covariates) go back
+  # lines a transform rewrote (mu5) go back
   for (.tr in transforms) {
     if (is.null(.tr$lineNew)) {
       next

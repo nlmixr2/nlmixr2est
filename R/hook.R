@@ -164,8 +164,8 @@ preFinalParTableHooks <- function(name = NULL) {
 .preProcessHooks <- new.env(parent = emptyenv())
 
 .orderPreProcessHookNames <- function(names) {
-  # saem's 0/1 covariate rewrite reads the final model; the bounded transform runs last
-  .last <- c(".preProcessSaemCatCov", ".preProcessBoundedTransform")
+  # mu5 (0/1 covariate) rewrite reads the final model; the bounded transform runs last
+  .last <- c(".uiApplyMu5", ".preProcessBoundedTransform")
   c(names[!(names %in% .last)], .last[.last %in% names])
 }
 

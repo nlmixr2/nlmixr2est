@@ -54,11 +54,11 @@
   )
 }
 
-test_that("a 0/1 multiplicative covariate is mu-referenced for saem only", {
+test_that("mu5: a 0/1 multiplicative covariate is mu-referenced by mu methods", {
   .d <- data.frame(ID = 1:4, TIME = 0, DV = 1, SEX = c(0, 1, 0, 1))
   .ctl <- saemControl()
   .mod <- rxode2::rxode2(.catCovMod)
-  .r <- suppressWarnings(.preProcessSaemCatCov(.mod, "saem", .d, .ctl))
+  .r <- suppressWarnings(.uiApplyMu5(.mod, "saem", .d, .ctl))
   expect_type(.r, "list")
   .ui <- .r$ui
   expect_true("rxBoundedTr.clSex" %in% .ui$muRefCovariateDataFrame$covariateParameter)
@@ -68,26 +68,33 @@ test_that("a 0/1 multiplicative covariate is mu-referenced for saem only", {
   expect_identical(.tr[[1]]$type, "log1p")
   expect_identical(.tr[[1]]$lineOrig, "cl <- exp(tcl + eta.cl) * (1 + clSex * SEX)")
   expect_warning(
-    .preProcessSaemCatCov(.mod, "saem", .d, .ctl),
+    .uiApplyMu5(.mod, "saem", .d, .ctl),
     "'clSex' fit as log(1+clSex), mu-referenced",
     fixed = TRUE
   )
+  # every mu-referenced method, not the plain FOCEi family
+  for (.est in c("mfocei", "ifocei", "imp", "vae", "nlme")) {
+    expect_type(suppressWarnings(.uiApplyMu5(.mod, .est, .d, list(muRefCovAlg = TRUE))), "list")
+  }
+  expect_null(.uiApplyMu5(.mod, "mfocei", .d, foceiControl(muModel = "none")))
+  # the analytic outer gradient keeps the written form
+  expect_null(.uiApplyMu5(.mod, "mfoceif", .d, foceiControl(fast = TRUE)))
   # other methods, the control switch, a non-binary covariate
-  expect_null(.preProcessSaemCatCov(.mod, "focei", .d, .ctl))
-  expect_null(.preProcessSaemCatCov(.mod, "saem", .d, saemControl(muRefCovAlg = FALSE)))
+  expect_null(.uiApplyMu5(.mod, "focei", .d, .ctl))
+  expect_null(.uiApplyMu5(.mod, "saem", .d, saemControl(muRefCovAlg = FALSE)))
   .d2 <- .d
   .d2$SEX <- c(0, 1, 2, 1)
-  expect_null(.preProcessSaemCatCov(.mod, "saem", .d2, .ctl))
+  expect_null(.uiApplyMu5(.mod, "saem", .d2, .ctl))
   # a theta used elsewhere cannot move into the mu-referenced phi
   .m2 <- .mod |> model(v <- exp(tv + eta.v) * (1 + clSex))
-  expect_null(.preProcessSaemCatCov(.m2, "saem", .d, .ctl))
+  expect_null(.uiApplyMu5(.m2, "saem", .d, .ctl))
   # factor order and the covariate written first
   .m3 <- .mod |> model(cl <- (1 + SEX * clSex) * exp(tcl + eta.cl))
-  .r3 <- suppressWarnings(.preProcessSaemCatCov(.m3, "saem", .d, .ctl))
+  .r3 <- suppressWarnings(.uiApplyMu5(.m3, "saem", .d, .ctl))
   expect_true("rxBoundedTr.clSex" %in% .r3$ui$muRefCovariateDataFrame$covariateParameter)
   # runs after the other rewrites, just before the bounded transform
   .h <- preProcessHooks()
-  expect_identical(tail(.h, 2L), c(".preProcessSaemCatCov", ".preProcessBoundedTransform"))
+  expect_identical(tail(.h, 2L), c(".uiApplyMu5", ".preProcessBoundedTransform"))
 })
 
 test_that("log1p back-transform and bounds", {
@@ -99,7 +106,7 @@ test_that("log1p back-transform and bounds", {
   expect_equal(.boundedTransformBounds(list(type = "logit", lower = 0, upper = 1), 2), c(0, 1))
 })
 
-test_that("saem recovers the sign of a multiplicative 0/1 covariate (#1315)", {
+test_that("mu5: saem recovers the sign of a multiplicative 0/1 covariate (#1315)", {
   skip_on_cran()
   .d <- .catCovData()
   .ctl <- saemControl(print = 0, nBurn = 150, nEm = 150)
@@ -128,4 +135,29 @@ test_that("saem recovers the sign of a multiplicative 0/1 covariate (#1315)", {
   expect_lt(.fb$theta[["clSex"]], -0.1)
   expect_true(any(grepl("bounds of 'clSex' not enforced", .fb$runInfo, fixed = TRUE)))
   expect_equal(.fb$iniDf$lower[.fb$iniDf$name == "clSex"], -0.99)
+})
+
+test_that("mu5 is reported on the natural scale by the other mu methods", {
+  skip_on_cran()
+  .d <- .catCovData(40)
+  .chk <- function(fit) {
+    expect_equal(fit$theta[["clSex"]], -0.26, tolerance = 0.05)
+    expect_false("rxBoundedTr.clSex" %in% names(fit$theta))
+    expect_true(any(vapply(
+      fit$ui$lstExpr,
+      identical,
+      logical(1),
+      quote(cl <- exp(tcl + eta.cl) * (1 + clSex * SEX))
+    )))
+  }
+  .f <- suppressMessages(nlmixr2(.catCovMod, .d, "mfocei", control = foceiControl(print = 0)))
+  .chk(.f)
+  .f0 <- suppressMessages(suppressWarnings(
+    nlmixr2(.catCovMod, .d, "mfocei", control = foceiControl(print = 0, muRefCovAlg = FALSE))
+  ))
+  # the same model, so the same optimum
+  expect_equal(.f$objf, .f0$objf, tolerance = 1e-3)
+  expect_equal(.f$parFixedDf["clSex", "SE"], .f0$parFixedDf["clSex", "SE"], tolerance = 0.1)
+  # vae assembles its own output
+  .chk(suppressMessages(nlmixr2(.catCovMod, .d, "vae", control = vaeControl(print = 0))))
 })
