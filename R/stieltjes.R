@@ -1,17 +1,21 @@
 #' Control options for the two-stage Stieltjes estimation method
 #'
 #' `est="stieltjes"` follows NONMEM's `$ESTIMATION STIELTJES`: a conditional
-#' method (`stage1`) gives tentative estimates and each subject's EBE and eta
-#' Hessian, then the population parameters are re-estimated by minimizing
-#' the integrated likelihood on a radial Stieltjes grid placed at those EBEs
-#' and kept fixed (`agqCenter="start"`), so the second stage does not move
-#' with the conditional etas.
+#' method (`stage1`) gives tentative estimates, then the population
+#' parameters are re-estimated by minimizing the integrated likelihood on a
+#' radial Stieltjes grid placed at each subject's EBE and eta Hessian at
+#' those estimates and kept fixed (`agqCenter="start"`), so the second stage
+#' does not move with the conditional etas.  The second stage evaluates the
+#' EBEs and Hessians itself (FOCEi-style unless the options say otherwise).
+#' A covariance recomputed later with `setCov()` places the grid at the
+#' final estimates.
 #'
 #' @inheritParams agqControl
 #' @param stage1 Conditional method of the first stage: `"focei"`, `"foce"`
 #'   or `"laplace"`.
 #' @param agqCenter Grid placement of the second stage (see
-#'   [foceiControl()]); `"start"` keeps the grid at the first-stage EBEs.
+#'   [foceiControl()]); `"start"` keeps the grid where the second stage
+#'   starts, at the first-stage estimates.
 #' @param ... Other [foceiControl()] options, used by both stages.
 #' @return stieltjesControl object
 #' @export
@@ -172,10 +176,17 @@ rxUiDeparse.stieltjesControl <- function(object, var) {
   }
   .w <- which(is.na(.ini$neta1) & .ini$name %in% names(.theta))
   .ini$est[.w] <- .theta[.ini$name[.w]]
+  # by eta name: the stage-1 omega need not list every eta of the model
   .omega <- fit$omega
+  .etaNames <- .ini$name[which(!is.na(.ini$neta1) & .ini$neta1 == .ini$neta2)]
+  .etaNames <- .etaNames[order(.ini$neta1[match(.etaNames, .ini$name)])]
   .w <- which(!is.na(.ini$neta1))
   for (.i in .w) {
-    .ini$est[.i] <- .omega[.ini$neta1[.i], .ini$neta2[.i]]
+    .e1 <- .etaNames[.ini$neta1[.i]]
+    .e2 <- .etaNames[.ini$neta2[.i]]
+    if (all(c(.e1, .e2) %in% rownames(.omega))) {
+      .ini$est[.i] <- .omega[.e1, .e2]
+    }
   }
   assign("iniDf", .ini, envir = ui)
   invisible(NULL)

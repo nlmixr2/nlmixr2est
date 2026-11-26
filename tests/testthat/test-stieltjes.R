@@ -41,8 +41,14 @@ test_that("stage-1 estimates reach the internal bounded scale", {
     list(name = "fr", internalName = "rxBoundedTr.fr", type = "logit", lower = 0, upper = 1),
     list(name = "sd", internalName = "rxBoundedTr.sd", type = "lower_exp", lower = 0, upper = Inf)
   )
+  .fit$omega <- matrix(0.3, 1, 1, dimnames = list("eta.a", "eta.a"))
   .stieltjesStage1Ini(.ui, .fit, .tr)
   expect_equal(.ui$iniDf$est, c(2, qlogis(0.25), log(0.5), 0.3))
+  # an eta the stage-1 omega does not list keeps its value
+  .ui$iniDf$est[4] <- 0.1
+  .fit$omega <- matrix(0.3, 1, 1, dimnames = list("eta.z", "eta.z"))
+  .stieltjesStage1Ini(.ui, .fit, .tr)
+  expect_equal(.ui$iniDf$est[4], 0.1)
 })
 
 test_that("est='stieltjes' keeps the exact estimates of a model linear in eta", {
@@ -85,4 +91,13 @@ test_that("est='stieltjes' keeps the exact estimates of a model linear in eta", 
   # FOCEi is exact here, and the second stage's grid is exact where it starts
   expect_equal(.fit$objective, .s1$objective, tolerance = 1e-3)
   expect_equal(unname(.fit$theta[1:3]), unname(.s1$theta[1:3]), tolerance = 1e-2)
+  # a fixed omega is carried through both stages
+  .fx <- suppressMessages(suppressWarnings(nlmixr2(
+    rxode2::ini(f, eta.b = fix(0.2)),
+    d,
+    est = "stieltjes",
+    control = stieltjesControl(print = 0, covMethod = "")
+  )))
+  expect_equal(unname(.fx$omega["eta.b", "eta.b"]), 0.2)
+  expect_true(is.finite(.fx$objective))
 })

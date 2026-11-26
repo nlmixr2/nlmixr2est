@@ -86,9 +86,9 @@
 
 - `est = "stieltjes"` is a two-stage method after NONMEM's
   `$ESTIMATION STIELTJES`: a conditional first stage (`stieltjesControl(stage1
-  = "focei")`, `"foce"` or `"laplace"`) supplies starting estimates and each
-  subject's EBE and eta Hessian, then the integrated likelihood is minimized
-  on a Stieltjes grid placed at those EBEs and held fixed.  The first stage's
+  = "focei")`, `"foce"` or `"laplace"`) supplies starting estimates, then the
+  integrated likelihood is minimized on a Stieltjes grid placed at each
+  subject's EBE and eta Hessian at those estimates and held fixed.  The first stage's
   objective and estimates are kept in `fit$stieltjesStage1` (#1139).
 
 - `addCondDist(fit)` samples each subject's conditional distribution of the

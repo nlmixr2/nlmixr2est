@@ -59,18 +59,22 @@ default `ns = 2` differs from NONMEM's `GRID=(3,1,.6,.9)`: one direction
 per quadrant is too sparse for a grid that does not follow the EBE.}
 
 \item{agqCenter}{Grid placement of the second stage (see
-[foceiControl()]); `"start"` keeps the grid at the first-stage EBEs.}
+[foceiControl()]); `"start"` keeps the grid where the second stage
+starts, at the first-stage estimates.}
 }
 \value{
 stieltjesControl object
 }
 \description{
 `est="stieltjes"` follows NONMEM's `$ESTIMATION STIELTJES`: a conditional
-method (`stage1`) gives tentative estimates and each subject's EBE and eta
-Hessian, then the population parameters are re-estimated by minimizing
-the integrated likelihood on a radial Stieltjes grid placed at those EBEs
-and kept fixed (`agqCenter="start"`), so the second stage does not move
-with the conditional etas.
+method (`stage1`) gives tentative estimates, then the population
+parameters are re-estimated by minimizing the integrated likelihood on a
+radial Stieltjes grid placed at each subject's EBE and eta Hessian at
+those estimates and kept fixed (`agqCenter="start"`), so the second stage
+does not move with the conditional etas.  The second stage evaluates the
+EBEs and Hessians itself (FOCEi-style unless the options say otherwise).
+A covariance recomputed later with `setCov()` places the grid at the
+final estimates.
 }
 \examples{
 
