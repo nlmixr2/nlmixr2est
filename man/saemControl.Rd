@@ -23,6 +23,7 @@ saemControl(
   covFallback = list(sa = c("linFim", "Ha"), fim = c("linFim", "Ha"), analytic =
     c("linFim", "Ha"), linFim = "Ha"),
   covFull = TRUE,
+  covNewtonWarn = 1,
   nSaCov = 500L,
   calcTables = TRUE,
   logLik = FALSE,
@@ -221,6 +222,11 @@ residual thetas plus the \code{Omega} variance/covariance elements -- named
 \code{om.<eta>} / \code{cov.<eta>.<eta>}.  When \code{FALSE} the legacy
 structural-theta-only covariance is reported.  Ignored by
 \code{covMethod="sa"}, which is always full.}
+
+\item{covNewtonWarn}{Warn (in `$runInfo`) when the Newton decrement of the
+FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+this value: the standard errors then belong to no optimum.  The value is
+kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.}
 
 \item{nSaCov}{Number of iterations in the dedicated stochastic-approximation
 covariance phase used by \code{covMethod="sa"}, a whole number of at least 1
