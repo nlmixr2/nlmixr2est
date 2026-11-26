@@ -179,7 +179,10 @@
 - A covariance that is rejected as not positive definite now says which
   parameters make it so: those with no information (a zero diagonal), or
   the ones the near-singular direction loads on
-  (e.g. `"r,s" is not PD: tva, tvb collinear; none installed`)
+  (e.g. `"r,s" is not PD: tva, tvb collinear; none installed`). A failed
+  FOCEi covariance step does the same for its R or S matrix
+  (`covariance step failed: tva, tvb collinear`), or says when there are
+  fewer subjects than parameters for S
   ([\#1398](https://github.com/nlmixr2/nlmixr2est/issues/1398)).
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or

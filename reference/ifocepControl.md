@@ -364,7 +364,7 @@ ifocepControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x647a081b0a00>
+#> <bytecode: 0x583740994b30>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
