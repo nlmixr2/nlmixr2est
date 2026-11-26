@@ -301,6 +301,13 @@
 
 ### Bug fixes
 
+- A FOCEi outer optimizer, or an
+  [`nlmixr2GradFun()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2GradFun.md)
+  gradient, that asks for the gradient before the objective no longer
+  stops R: the gradient’s history row read the last objective iteration,
+  which did not exist yet. FOCEi now evaluates the objective first, so
+  that gradient gets the initial step search.
+
 - An `ll()` fit no longer installs `model$inner`’s event-sensitivity
   shape for an inner model that solves `innerLlik`, and the fit re-binds
   the inner shape on the library it loaded. Either mismatch let a
