@@ -1073,6 +1073,11 @@
 #'   secondary mode during the search and stay there.  Only applies with a
 #'   warm start (`mceta < 0`).  Use `Inf` to disable.
 #'
+#' @param aboveStartTol Warn (in `$runInfo`) when the final objective is
+#'   above the objective at the initial estimates by more than this fraction
+#'   of its magnitude (at least 0.1 objective units).  Use `NA` or `Inf` to
+#'   disable.
+#'
 #' @param shrinkEtaWarn Warn (in `$runInfo`) when an eta's SD shrinkage is
 #'   at or above this percentage.  Use `NA` or `Inf` to disable.
 #'
@@ -1524,6 +1529,7 @@ foceiControl <- function(
   etaNudge2 = qnorm(1 - 0.05 / 2) * sqrt(3 / 5), #
   etaRestart = 4L, #
   finalEtaTol = 1, #
+  aboveStartTol = 0.01, #
   shrinkEtaWarn = 30, #
   odeSettleCheck = FALSE, #
   odeSettleTol = 0.1, #
@@ -2204,6 +2210,7 @@ foceiControl <- function(
   checkmate::assertNumeric(etaNudge2, len = 1, lower = 0, any.missing = FALSE, finite = TRUE)
   checkmate::assertIntegerish(etaRestart, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumber(finalEtaTol, lower = 0)
+  checkmate::assertNumber(aboveStartTol, lower = 0, na.ok = TRUE)
   checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
@@ -2411,6 +2418,7 @@ foceiControl <- function(
     etaNudge2 = as.double(etaNudge2),
     etaRestart = as.integer(etaRestart),
     finalEtaTol = as.double(finalEtaTol),
+    aboveStartTol = as.double(aboveStartTol),
     shrinkEtaWarn = as.double(shrinkEtaWarn),
     odeSettleCheck = odeSettleCheck,
     odeSettleTol = as.double(odeSettleTol),
