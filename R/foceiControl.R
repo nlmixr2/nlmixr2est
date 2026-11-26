@@ -338,6 +338,13 @@
 #'     \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
 #'     \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
 #'     \code{foceif}) default this to \code{TRUE}.
+#'
+#'     The default, \code{"auto"}, chooses by model: a closed-form model (no
+#'     ODEs and no \code{linCmt()}) fit by \code{focei}, \code{foce} or
+#'     \code{focep} (or their mu-referenced variants) that is in the analytic
+#'     scope above uses \code{fast=TRUE} with \code{outerOpt="nlminb"} (unless
+#'     another gradient-based \code{outerOpt} is given); every other fit uses
+#'     \code{fast=FALSE}.
 #' @param priorMethod Which of the shared prior kernel's three omega
 #'     conventions (nlmixr2/rxode2#1270) to evaluate an \code{ini({})}
 #'     \code{prior()} under -- \code{"general"} (textbook Bayesian),
@@ -1379,7 +1386,7 @@ foceiControl <- function(
   covShortcut = FALSE,
   corWarn = 0.95,
   covFull = TRUE, #
-  fast = FALSE, #
+  fast = "auto", #
   priorMethod = c("auto", "general", "nwpri", "tnpri", "none"), #
   fdOutlierZ = 3.5, #
   fdOutlierScale = TRUE, #
@@ -1896,7 +1903,11 @@ foceiControl <- function(
   checkmate::assertFlag(covShortcut)
   .corWarnCheck(corWarn)
   checkmate::assertFlag(covFull)
-  checkmate::assertFlag(fast)
+  if (is.character(fast)) {
+    fast <- match.arg(fast, "auto")
+  } else {
+    checkmate::assertFlag(fast)
+  }
   priorMethod <- match.arg(priorMethod)
   .xtra <- list(...)
   .bad <- names(.xtra)

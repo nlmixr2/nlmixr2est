@@ -2839,6 +2839,83 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   control
 }
 
+#' Methods whose `fast="auto"` can resolve to `fast=TRUE` (by control class)
+#' @noRd
+.foceiFastAutoEst <- c("focei", "foce", "focep", "mfocei", "mfoce", "mfocep", "ifocei", "ifoce", "ifocep")
+
+#' Outer optimizers that use the analytic gradient
+#' @noRd
+.foceiGradOuterOpt <- c("nlminb", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp", "trust")
+
+#' Is the model closed form (no ODEs, no `linCmt()`)?
+#' @param ui rxode2 ui
+#' @return logical
+#' @noRd
+.foceiIsClosedForm <- function(ui) {
+  length(rxode2::rxModelVars(ui)$state) == 0L && !.foceiUsesLinCmt(ui)
+}
+
+#' Is the analytic outer gradient in static scope for a FOCEi fit?
+#' @param ui rxode2 ui
+#' @param data estimation data
+#' @return logical
+#' @noRd
+.foceiFastInScope <- function(ui, data) {
+  if (.nlmixrDataHasCens(data)) {
+    return(FALSE)
+  }
+  if (!is.null(tryCatch(.foceiOuterDirs(ui, "focei"), error = function(e) NULL))) {
+    return(TRUE)
+  }
+  isTRUE(.foceiLLGradInScope(ui, "focei")) &&
+    !is.null(tryCatch(.foceiOuterDirsLL(ui), error = function(e) NULL))
+}
+
+#' Resolve `fast="auto"` from the method and the model
+#'
+#' Closed-form models in analytic scope fit by a FOCEi/FOCE method get the
+#' analytic outer gradient with a gradient-based outer optimizer (#1223); all
+#' other fits keep the derivative-free default.
+#' @param control focei control list
+#' @param ui rxode2 ui
+#' @param env estimation environment (`data`)
+#' @param type control class of the calling method; `""` never resolves to `TRUE`
+#' @return control with a logical `fast`
+#' @noRd
+.foceiResolveFastAuto <- function(control, ui, env, type) {
+  if (!identical(control$fast, "auto")) {
+    return(control)
+  }
+  control$fast <- FALSE
+  # a defaulted outerOpt is bobyqa here; stats::optimize (one parameter) is not defaulted
+  .optOk <- (isTRUE(control$outerOptDefault) && identical(control$outerOptTxt, "bobyqa")) ||
+    isTRUE(control$outerOptTxt %in% .foceiGradOuterOpt)
+  if (
+    !.optOk ||
+      !(type %in% paste0(.foceiFastAutoEst, "Control")) ||
+      isTRUE(control$maxOuterIterations == 0L) ||
+      !.foceiIsClosedForm(ui) ||
+      !.foceiFastInScope(ui, env$data)
+  ) {
+    return(control)
+  }
+  control$fast <- TRUE
+  if (isTRUE(control$relTolDefault) && is.numeric(control$sigdig)) {
+    control$rel.tol <- 10^(-control$sigdig - 2)
+  }
+  if (isTRUE(control$outerOptDefault)) {
+    control$outerOpt <- -1L
+    control$outerOptFun <- .nlminb
+    control$outerOptTxt <- "nlminb"
+  }
+  .minfo(paste0(
+    "closed-form model: analytic outer gradient (fast=TRUE) with outerOpt='",
+    control$outerOptTxt,
+    "'"
+  ))
+  control
+}
+
 #' Does the model use `linCmt()` anywhere?
 #'
 #' `predDf$linCmt` is only `TRUE` when the endpoint itself is `linCmt()`; a
@@ -5779,10 +5856,12 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 #'
 #' @param env Estimation/output environment
 #' @param ... Other arguments
+#' @param type control class to build
+#' @param fastAuto may `fast="auto"` resolve to `TRUE` (not for the output pass)
 #' @return nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @noRd
-.foceiFamilyControl <- function(env, ..., type = "foceiControl") {
+.foceiFamilyControl <- function(env, ..., type = "foceiControl", fastAuto = TRUE) {
   .ui <- get("ui", envir = env)
   .control <- env$control
   if (is.null(.control)) {
@@ -5931,6 +6010,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       }
     }
   }
+  .control <- .foceiResolveFastAuto(.control, .ui, env, if (fastAuto) type else "")
   # Prior spec (nlmixr2/nlmixr2est#929): built once here, from whatever this ui
   # declares in ini({}); a thin no-op (NULL) for a model with none.  Assigned
   # with `[<-`, not `$<-`/`[[<-`, so a NULL spec still occupies the "priorSpec"
@@ -6660,7 +6740,7 @@ nlmixr2Est.output <- function(env, ...) {
     rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'output'", .var.name = .ui$modelName)
   }
 
-  .foceiFamilyControl(env, ...)
+  .foceiFamilyControl(env, ..., fastAuto = FALSE)
   # The pass evaluates the FOCE objective at the ETAs it is given.  A covariance
   # refit (setCov(), getVarCov()) differentiates the fit's own likelihood
   # instead, so it keeps the control's interaction; it is the caller that asks

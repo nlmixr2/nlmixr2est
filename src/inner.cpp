@@ -9862,6 +9862,14 @@ static double covEtaStartF0(double *theta) {
   return foceiOfv0(theta);
 }
 
+// control$fast; an unresolved fast="auto" (a string) means no analytic gradient
+static int foceiFastFlag(List &foceiO) {
+  if (!foceiO.containsElementNamed("fast")) return 0;
+  SEXP f = foceiO["fast"];
+  if (Rf_isString(f) || Rf_length(f) != 1) return 0;
+  return as<int>(f);
+}
+
 NumericVector foceiSetup_(const RObject &obj,
                           const RObject &data,
                           NumericVector theta,
@@ -10440,7 +10448,7 @@ NumericVector foceiSetup_(const RObject &obj,
     bool _needSolveArgs =
       (foceiO.containsElementNamed("covType") &&
        as<std::string>(foceiO["covType"]) == "analytic") ||
-      (foceiO.containsElementNamed("fast") && as<int>(foceiO["fast"]) != 0);
+      foceiFastFlag(foceiO) != 0;
     // est="impmap"/fast ll(): size the shared solve pool for the LARGER model (the
     // theta-sensitivity or 2nd-order Hessian model) when set; the inner MAP then uses
     // ind->neqOverride.  restoreFitSolve_ must re-solve THIS same pool model (not the
@@ -10817,7 +10825,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.noabort=as<int>(foceiO["noAbort"]);
   op_focei.interaction=as<int>(foceiO["interaction"]);
   op_focei.foceType=as<int>(foceiO["foceType"]);
-  op_focei.fast=foceiO.containsElementNamed("fast") ? as<int>(foceiO["fast"]) : 0;
+  op_focei.fast=foceiFastFlag(foceiO);
   op_focei.fdChartrand=foceiO.containsElementNamed("fdChartrand") ?
     as<int>(foceiO["fdChartrand"]) : 1;
   op_focei.fdIndividualStep=foceiO.containsElementNamed("fdIndividualStep") ?
