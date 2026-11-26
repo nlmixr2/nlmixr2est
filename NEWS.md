@@ -147,6 +147,12 @@
   for its R or S matrix (`covariance step failed: tva, tvb collinear`), or
   says when there are fewer subjects than parameters for S (#1398).
 
+- A fit now notes in `$runInfo` when the condition number of its covariance's
+  correlation matrix exceeds 1000 (e.g. `covariance condition number is large
+  (1397.7 > 1000)`), since its standard errors are then unreliable.
+  `foceiControl(condWarn=)` sets the threshold; `NA` or `Inf` turns the note
+  off (#1400).
+
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
   (e.g. `high eta shrinkage (>=30%): eta.cl, eta.v`), since their EBE
   diagnostics are unreliable.  `shrinkEtaWarn=` in `foceiControl()`,
