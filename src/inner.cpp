@@ -6342,9 +6342,10 @@ static inline double updateMuGroups() {
             arma::mat A;
             arma::vec b;
             if (op_focei.muModel == 2) {
-              arma::mat Wd = arma::diagmat(w);
-              A = Xf.t() * Wd * Xf;
-              b = Xf.t() * Wd * yAdj;
+              // scale rows; a dense diagmat(w) is subjects x subjects
+              arma::mat XtW = (Xf.each_col() % w).t();
+              A = XtW * Xf;
+              b = XtW * yAdj;
             } else {
               // eta ~ N(0, omega): the data term is on the same LL scale as
               // the prior/penalty only once weighted by eta's precision
@@ -6386,8 +6387,8 @@ static inline double updateMuGroups() {
             b += grad0 - Hp * beta0;
             bf = arma::solve(A, b);
           } else if (op_focei.muModel == 2) {
-            arma::mat Wd = arma::diagmat(w);
-            bf = arma::solve(Xf.t() * Wd * Xf, Xf.t() * Wd * yAdj);
+            arma::mat XtW = (Xf.each_col() % w).t();
+            bf = arma::solve(XtW * Xf, XtW * yAdj);
           } else {
             bf = arma::solve(Xf, yAdj);
           }
