@@ -658,7 +658,7 @@
       next
     }
     for (.i in seq_along(.lstExpr)) {
-      if (identical(.lstExpr[[.i]], .tr$lineNew)) .lstExpr[[.i]] <- .tr$lineOrig
+      if (identical(deparse1(.lstExpr[[.i]]), .tr$lineNew)) .lstExpr[[.i]] <- str2lang(.tr$lineOrig)
     }
   }
   .model <- rxode2::as.model(.lstExpr)

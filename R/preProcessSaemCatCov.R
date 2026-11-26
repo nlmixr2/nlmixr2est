@@ -59,7 +59,13 @@
     return(NULL)
   }
   .one <- function(x) is.numeric(x) && length(x) == 1L && x == 1
-  .term <- if (.one(f[[2]])) f[[3]] else if (.one(f[[3]])) f[[2]] else NULL
+  .term <- if (.one(f[[2]])) {
+    f[[3]]
+  } else if (.one(f[[3]])) {
+    f[[2]]
+  } else {
+    NULL
+  }
   if (!is.call(.term) || !identical(.term[[1]], quote(`*`)) || length(.term) != 3L) {
     return(NULL)
   }
@@ -166,8 +172,9 @@
         upper = .iniDf$upper[.w],
         initTrans = log1p(.iniDf$est[.w]),
         initOrig = .iniDf$est[.w],
-        lineOrig = .lstExpr[[.r$i]],
-        lineNew = .line$expr
+        # strings: the ui writes its meta into fun(), which would evaluate a call
+        lineOrig = deparse1(.lstExpr[[.r$i]]),
+        lineNew = deparse1(.line$expr)
       )
       .iniDf[.w, c("name", "lower", "upper", "est")] <-
         list(paste0("rxBoundedTr.", .t), -Inf, Inf, log1p(.iniDf$est[.w]))
