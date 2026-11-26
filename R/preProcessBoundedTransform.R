@@ -30,9 +30,19 @@
   .iniDf <- ui$iniDf
   .thetaDf <- .iniDf[!is.na(.iniDf$ntheta), ]
 
+  # saem keeps a mu-referenced covariate coefficient in its closed-form M-step
+  # and holds it inside its bounds there (#1347)
+  .saemCov <- if (identical(est, "saem")) {
+    rxUiGet.saemMuRefCovariateDataFrame(list(ui))$covariateParameter
+  } else {
+    character(0)
+  }
   .transforms <- list()
   for (i in seq_len(nrow(.thetaDf))) {
     .name <- .thetaDf$name[i]
+    if (.name %in% .saemCov) {
+      next
+    }
     .lo <- .thetaDf$lower[i]
     .hi <- .thetaDf$upper[i]
     .est <- .thetaDf$est[i]

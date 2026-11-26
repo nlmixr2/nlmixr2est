@@ -318,6 +318,12 @@
 
 ### Estimation
 
+- `est = "saem"` now keeps a bounded mu-referenced covariate coefficient (for
+  example `clWt <- c(-5, 0.5, 5)` in `exp(lcl + eta.cl + clWt * log(WT / 70))`)
+  in its closed-form M-step and holds it inside its bounds there, instead of
+  transforming it out of the covariate regression.  The coefficient was
+  mis-estimated and reported on its internal scale (#1347).
+
 - `est="imp"`, `"impmap"` and `"qrpem"` now refuse a model without random
   effects with the same clear message as `"saem"`, instead of failing with
   `Could not fit data` (#1467).

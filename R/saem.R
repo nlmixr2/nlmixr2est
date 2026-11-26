@@ -407,6 +407,9 @@
         .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
         .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
       }
+      .bnd <- .saemLambda1Bounds(ui, .cfg)
+      .cfg$lambda1Lower <- .bnd$lower
+      .cfg$lambda1Upper <- .bnd$upper
       .cfg$plateauStop <- as.integer(isTRUE(rxode2::rxGetControl(ui, "plateauStop", FALSE)))
       .cfg$plateauWindow <- as.integer(rxode2::rxGetControl(ui, "plateauWindow", 50L))
       .cfg$plateauTol <- as.numeric(rxode2::rxGetControl(ui, "plateauTol", 1e-3))
@@ -2257,10 +2260,59 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .ret
 }
 
+#' Bounded mu-referenced covariate coefficients of a saem model
+#'
+#' @param ui rxode2 ui
+#' @return names of the covariate coefficients with a finite bound
+#' @noRd
+.saemLambda1BoundNames <- function(ui) {
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))$covariateParameter
+  .iniDf <- ui$iniDf
+  .w <- match(.cov, .iniDf$name)
+  .cov[is.finite(.iniDf$lower[.w]) | is.finite(.iniDf$upper[.w])]
+}
+
+#' Bounds of each phi1 coefficient (`Plambda1`) in kernel order
+#'
+#' `Plambda1` runs over the phi1 columns, each its intercept then its covariate
+#' coefficients in `saemCovars` order (`R/saem_fit.R`).  Only the covariate
+#' coefficients carry bounds: a bounded intercept is transformed instead.
+#'
+#' @param ui rxode2 ui
+#' @param cfg `.configsaem()` configuration (0-based `i1`)
+#' @return list with `lower` and `upper`, empty when nothing is bounded
+#' @noRd
+.saemLambda1Bounds <- function(ui, cfg) {
+  .none <- list(lower = numeric(0), upper = numeric(0))
+  .bnd <- .saemLambda1BoundNames(ui)
+  if (length(.bnd) == 0L) {
+    return(.none)
+  }
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))
+  .phi <- names(rxUiGet.saemLogEta(list(ui)))
+  .covs <- rxUiGet.saemCovars(list(ui))
+  .nm <- matrix(NA_character_, 1L + length(.covs), length(.phi))
+  .nm[1L, ] <- .phi
+  .nm[cbind(1L + match(.cov$covariate, .covs), match(.cov$theta, .phi))] <- .cov$covariateParameter
+  .nm <- .nm[, cfg$i1 + 1L, drop = FALSE]
+  .nm <- .nm[!is.na(.nm)]
+  if (length(.nm) != cfg$nlambda1) {
+    return(.none)
+  }
+  .w <- match(.nm, .bnd)
+  .iniDf <- ui$iniDf
+  .r <- match(.nm, .iniDf$name)
+  list(
+    lower = ifelse(is.na(.w), -Inf, .iniDf$lower[.r]),
+    upper = ifelse(is.na(.w), Inf, .iniDf$upper[.r])
+  )
+}
+
 #' Warn about the bounds saem ignores
 #'
 #' The IOV rewrite's magnitude thetas carry a lower bound the user did not
-#' write, so they are left out of the warning (the fit keeps the bound).
+#' write, and the M-step honors a covariate coefficient's bounds, so both are
+#' left out of the warning.
 #'
 #' @param ui rxode2 ui
 #' @return nothing, called for the warning
@@ -2268,6 +2320,8 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 .saemWarnBounded <- function(ui) {
   .iniDf <- ui$iniDf
   .iov <- !is.na(.iniDf$ntheta) & !is.na(.iniDf$backTransform) & grepl("^nlmixr2iov", .iniDf$backTransform)
+  # the M-step holds a mu-referenced covariate coefficient inside its bounds
+  .iov <- .iov | .iniDf$name %in% .saemLambda1BoundNames(ui)
   .uiW <- ui
   if (any(.iov)) {
     .iniDf$lower[.iov] <- -Inf

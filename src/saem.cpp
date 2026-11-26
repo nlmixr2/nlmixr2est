@@ -1616,10 +1616,60 @@ public:
       if (li.n_elem == 0) continue;
       mat Xc = COV1.cols(li);
       vec bc;
-      if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi1.col(c))) {
+      mat XtX = Xc.t() * Xc;
+      vec Xty = Xc.t() * mprior_phi1.col(c);
+      if (arma::solve(bc, XtX, Xty)) {
+        if (lambda1Bound(bc, XtX, Xty, li, uvec(), true)) {
+          mprior_phi1.col(c) = Xc * bc;
+        }
         for (unsigned int j = 0; j < li.n_elem; ++j) MCOV1(li(j), c) = bc(j);
       }
     }
+  }
+
+  // Hold the bounded Plambda1 coefficients `x` (at Plambda1 indices `li`) inside
+  // their bounds: clamp each one outside, then (`refit`) re-minimize the M-step
+  // quadratic 0.5 x'Cx - rhs'x over the others with the clamped and `held`
+  // (local) entries kept.  Returns true when anything was clamped.
+  bool hasLambda1Bounds() const {
+    return lambda1Lower.n_elem > 0 && lambda1Lower.n_elem == (arma::uword)nlambda1 &&
+      lambda1Upper.n_elem == (arma::uword)nlambda1;
+  }
+
+  bool lambda1Bound(vec &x, const mat &C, const vec &rhs, const uvec &li,
+                    const uvec &held, bool refit) {
+    if (!hasLambda1Bounds()) return false;
+    const arma::uword n = x.n_elem;
+    std::vector<bool> keep((size_t)n, false);
+    for (arma::uword j = 0; j < held.n_elem; ++j) {
+      if (held(j) < n) keep[(size_t)held(j)] = true;
+    }
+    bool clamped = false;
+    for (arma::uword pass = 0; pass <= n; ++pass) {
+      bool any = false;
+      for (arma::uword j = 0; j < n; ++j) {
+        if (keep[(size_t)j]) continue;
+        double lo = lambda1Lower(li(j)), hi = lambda1Upper(li(j));
+        if (x(j) < lo) {
+          x(j) = lo;
+        } else if (x(j) > hi) {
+          x(j) = hi;
+        } else {
+          continue;
+        }
+        keep[(size_t)j] = true;
+        any = clamped = true;
+      }
+      if (!any || !refit) break;
+      std::vector<uword> fr, ac;
+      for (arma::uword j = 0; j < n; ++j) (keep[(size_t)j] ? ac : fr).push_back(j);
+      if (fr.empty()) break;
+      uvec F(fr), A(ac);
+      vec xf;
+      if (!arma::solve(xf, C(F, F), rhs(F) - C(F, A) * x(A))) break;
+      x(F) = xf;
+    }
+    return clamped;
   }
 
   static void phi1MarkIx(std::vector<bool> &mark, const uvec &ix, int n) {
@@ -2673,6 +2723,10 @@ public:
     if (nphi0 > 0) holdGamma2_phi0 = Gamma2_phi0.diag();
     fixedIx1 = as<uvec>(x["fixed.i1"]);
     pseudoIx1 = as<uvec>(x["pseudo.i1"]);
+    if (x.containsElementNamed("lambda1Lower") && x.containsElementNamed("lambda1Upper")) {
+      lambda1Lower = as<vec>(x["lambda1Lower"]);
+      lambda1Upper = as<vec>(x["lambda1Upper"]);
+    }
 
     nlambda1 = as<int>(x["nlambda1"]);
     nlambda0 = as<int>(x["nlambda0"]);
@@ -4195,6 +4249,12 @@ public:
       if (fixedIx1.n_elem>0) {
         Plambda1(fixedIx1) = MCOV1(jcov1(fixedIx1));
       }
+      if (hasLambda1Bounds()) {
+        // a re-fit would undo the mixture and pooled-mean overrides above
+        uvec all1 = arma::regspace<uvec>(0, (arma::uword)nlambda1 - 1);
+        lambda1Bound(Plambda1, CGamma21, rhs1, all1, fixedIx1,
+                     nMix <= 1 && !omegaPoolMean);
+      }
       if (nphi0>0) {
         vec rhs0 = sum((D1Gamma20%(COV0.t()*statphi01)),1);
         Plambda0=inv_sympd(CGamma20)*rhs0;
@@ -4210,6 +4270,10 @@ public:
       }
       penMstep(Plambda1, CGamma21, fixedIx1, ilambda1);
       if (omegaPoolMean && nlmixrPenNPop() > 0) poolLambdaGroups(Plambda1);
+      if (nlmixrPenNPop() > 0 && hasLambda1Bounds()) {
+        uvec all1 = arma::regspace<uvec>(0, (arma::uword)nlambda1 - 1);
+        lambda1Bound(Plambda1, CGamma21, rhs1, all1, fixedIx1, false);
+      }
       MCOV1(jcov1)=Plambda1;
       // Phase 4 (SAEM general-likelihood theta plan): once the direct phi1
       // Laplace optimizer owns phi1 (kiter>=niter_phi0 -- the same
@@ -5286,6 +5350,8 @@ private:
   int nphi0, nphi1, nphi;
   mat covstruct1;
   uvec i1, i0, fixedIx1, fixedIx0, pseudoIx1;
+  // bounds of each Plambda1 coefficient (a bounded covariate coefficient, #1347)
+  vec lambda1Lower, lambda1Upper;
   // phi0 columns whose every coefficient is fix()ed: never sampled (free0 are
   // the others); their initial pseudo-variance is kept so the prior stays finite
   uvec holdIx0, free0;
