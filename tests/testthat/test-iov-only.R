@@ -67,7 +67,7 @@ nmTest({
       nlmixr2(.iovOnlyMod, .iovOnlyData(), "focei", foceiControl(print = 0, covMethod = ""))
     ))
     # moves by ~1e-5 relative between platforms
-    expect_equal(.fit$objf, 193.607959, tolerance = 1e-4)
+    expect_equal(.fit$objf, 193.6082, tolerance = 1e-4)
     # no subject-level eta is left once the occasion columns move out
     expect_s3_class(.fit$eta, "data.frame")
     expect_identical(names(.fit$eta), "ID")

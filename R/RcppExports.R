@@ -79,8 +79,8 @@ likInner <- function(eta, id = 1L) {
     .Call(`_nlmixr2est_nHessianQNGet`)
 }
 
-.foceiFinalOfvWorse <- function(initOfv, finalOfv) {
-    .Call(`_nlmixr2est_foceiFinalOfvWorseR`, initOfv, finalOfv)
+.foceiFinalOfvWorse <- function(initOfv, finalOfv, tol = 0.01) {
+    .Call(`_nlmixr2est_foceiFinalOfvWorseR`, initOfv, finalOfv, tol)
 }
 
 .foceiCalcGrad <- function() {
@@ -747,6 +747,10 @@ saemPhi1RefineN_ <- function() {
     .Call(`_nlmixr2est_saemPhi1RefineN_`)
 }
 
+saemFsaveRefresh_ <- function() {
+    .Call(`_nlmixr2est_saemFsaveRefresh_`)
+}
+
 saemGainFrozenSkipN_ <- function() {
     .Call(`_nlmixr2est_saemGainFrozenSkipN_`)
 }
@@ -765,6 +769,10 @@ saem_fit <- function(xSEXP) {
 
 saemFormGTest <- function(inA, inB, inFt, inC, inAddProp) {
     .Call(`_nlmixr2est_saemFormGTest`, inA, inB, inFt, inC, inAddProp)
+}
+
+saemBurnTrendTest <- function(inX, inNBatch) {
+    .Call(`_nlmixr2est_saemBurnTrendTest`, inX, inNBatch)
 }
 
 shi21RatioCensorSet <- function(type) {

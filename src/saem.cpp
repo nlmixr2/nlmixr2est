@@ -4,6 +4,7 @@
 #include <thread>
 #include <chrono>
 #include <vector>
+#include <functional>
 #include <R_ext/Rdynload.h>
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
@@ -19,6 +20,7 @@
 #include <memory>
 #include "solveWarnHelper.h"
 #include "truncNorm.h"
+#include "saemBurnTrend.h"
 #include "minqaC.h"
 #include "likPenalty.h"
 
@@ -752,6 +754,10 @@ static std::vector<int> gPhi1FreeIx;
 // the mechanism executed rather than infer it from matching estimates alone
 // (evaluation criterion #2 in the plan).
 static long _saemPhi1RefineN = 0;
+// Diagnostic: cached-prediction refreshes after a phi0 change (cumulative), and
+// the largest stale-vs-fresh prediction difference they replaced (last fit).
+static long _saemFsaveRefreshN = 0;
+static double _saemFsaveDrift = 0.0;
 
 // Closed-form sequential seed layout of one SAEM fit (nmSeqSeed.h).  Per
 // iteration: every mixture component's MCMC steps -- phi1 then phi0, methods 1,
@@ -759,11 +765,12 @@ static long _saemPhi1RefineN = 0;
 // every component's censored-value draws, one seed per observation.
 struct saemSeedLayout {
   uint64_t nu[3] = {0, 0, 0}, nphi[2] = {0, 0};
+  uint64_t nuMass = 0; // mass-matrix kernel steps, phi1 block only, after kernel 1
   uint64_t nComp = 1, nM = 0, nmc = 0, ntotal = 0;
   // MCMC steps per component; nu is 20x at kiter 0
   uint64_t steps(int kiter) const {
     uint64_t f = kiter == 0 ? 20u : 1u;
-    return f * (2u * (nu[0] + nu[1]) + nu[2] * (nphi[0] + nphi[1]));
+    return f * (2u * (nu[0] + nu[1]) + nu[2] * (nphi[0] + nphi[1]) + nuMass);
   }
   uint64_t stride(int kiter) const {
     return nComp * (steps(kiter) * nM + nmc * ntotal);
@@ -775,10 +782,12 @@ struct saemSeedLayout {
   uint64_t step(int kiter, int comp, int block, int method, int u, int k1) const {
     uint64_t f = kiter == 0 ? 20u : 1u;
     uint64_t s = (uint64_t)comp * steps(kiter);
-    if (block == 1) s += f * (nu[0] + nu[1] + nu[2] * nphi[0]);
+    const uint64_t mb = block == 0 ? nuMass : 0u;
+    if (block == 1) s += f * (nu[0] + nu[1] + nu[2] * nphi[0] + nuMass);
     if (method == 1) s += (uint64_t)u;
-    else if (method == 2) s += f * nu[0] + (uint64_t)u;
-    else s += f * (nu[0] + nu[1]) + (uint64_t)u * nphi[block] + (uint64_t)k1;
+    else if (method == 4) s += f * nu[0] + (uint64_t)u;
+    else if (method == 2) s += f * (nu[0] + mb) + (uint64_t)u;
+    else s += f * (nu[0] + mb + nu[1]) + (uint64_t)u * nphi[block] + (uint64_t)k1;
     return iterBase(kiter) + s * nM;
   }
   // first seed of chain k's observations
@@ -956,7 +965,169 @@ public:
   // M-step state (unlike arResk), so it is safe to call inside the optimizer.
   // The TBS data jacobian is omitted: it is constant in phi0, so it does not
   // change the argmin.  AR correlation is left to the M-step.
-  double phi0NormalSSR(const vec &fall) {
+
+  // Interweaved non-centered steps (Yu and Meng 2011) for the mu-referenced
+  // (phi1) random effects.  The sampled-moment (centered) M-step is fast when
+  // the data identify each subject well; when a random effect is small
+  // relative to the data's information about it, the sampled etas barely move
+  // and its mean and variance crawl.  These steps update them in the
+  // non-centered parameterization instead -- with every subject's deviation
+  // (mean step) or standardized deviation (scale step) held fixed, so the data
+  // likelihood decides -- by one BHHH step each, with NONMEM's step-halving
+  // rule.  Chains, priors and SAEM's sufficient statistics move together.
+
+  // observation objective with selected phi1 columns shifted by delta
+  double phi1ShiftObjective(const vec &delta, const uvec &cols, vec *subjectLoss = nullptr) {
+    mat phiCand = phiM;
+    for (uword j = 0; j < cols.n_elem; ++j) phiCand.col(i1(cols(j))) += delta(j);
+    return phi1CandObjective(phiCand, subjectLoss);
+  }
+
+  // observation objective with selected phi1 columns' deviations scaled by exp(logScale)
+  double phi1ScaleObjective(const vec &logScale, const uvec &cols, vec *subjectLoss = nullptr) {
+    mat phiCand = phiM;
+    const mat mu = repmat(mprior_phi1, nmc, 1);
+    for (uword j = 0; j < cols.n_elem; ++j) {
+      const uword c = cols(j);
+      phiCand.col(i1(c)) = mu.col(c) + std::exp(logScale(j)) * (phiM.col(i1(c)) - mu.col(c));
+    }
+    return phi1CandObjective(phiCand, subjectLoss);
+  }
+
+  double phi1CandObjective(const mat &phiCand, vec *subjectLoss) {
+    mat fMat = user_fn(phiCand, evt, optM);
+    if (subjectLoss) subjectLoss->zeros(N);
+    if (!fMat.col(0).is_finite() || any(fMat.col(0) >= 1e99)) return 1e300;
+    double v;
+    if (distribution == 4) {
+      v = -accu(fMat.col(0));
+      if (subjectLoss) {
+        for (int k = 0; k < nmc; ++k)
+          for (int j = 0; j < ntotal; ++j) (*subjectLoss)(obs_subject(j)) -= fMat(k * ntotal + j, 0);
+      }
+    } else {
+      v = phi0NormalSSR(fMat.col(0), subjectLoss);
+    }
+    return std::isfinite(v) ? v : 1e300;
+  }
+
+  // one BHHH direction from central-difference per-subject scores; false when
+  // the scores or the curvature are unusable
+  bool ncBhhhStep(const std::function<double(const vec &, vec *)> &obj, uword n,
+                  double &initial, vec &step) {
+    vec zero(n, fill::zeros), subject;
+    initial = obj(zero, &subject);
+    if (initial >= 1e300) return false;
+    mat scores(n, N);
+    vec gradient(n);
+    const double h = std::cbrt(std::numeric_limits<double>::epsilon());
+    for (uword j = 0; j < n; ++j) {
+      vec d = zero, up, down;
+      d(j) = h;
+      const double fp = obj(d, &up);
+      d(j) = -h;
+      const double fm = obj(d, &down);
+      if (fp >= 1e300 || fm >= 1e300) return false;
+      const double scale = 2.0 * h * nmc;
+      scores.row(j) = ((up - down) / scale).t();
+      gradient(j) = (fp - fm) / scale;
+    }
+    mat curvature = scores * scores.t();
+    if (!gradient.is_finite() || !curvature.is_finite()) return false;
+    if (!solve(step, curvature, -gradient, solve_opts::likely_sympd + solve_opts::no_approx)) {
+      curvature.diag() += 1e-8 * std::max(1.0, curvature.diag().max());
+      if (!solve(step, curvature, -gradient, solve_opts::likely_sympd + solve_opts::no_approx)) return false;
+    }
+    return step.is_finite();
+  }
+
+  // a free intercept-only phi1 column: its mu IS the theta
+  bool ncFreeInterceptCol(int c) const {
+    uvec li = arma::find(LCOV1.col(c) == 1);
+    if (li.n_elem != 1) return false;
+    return !any(fixedIx1 == li(0));   // fixedIx1 indexes LAMBDA rows
+  }
+
+  bool _phi1Shifted = false;
+  long _muNonCenteredN = 0, _omegaNonCenteredN = 0;
+  long get_muNonCenteredN() { return _muNonCenteredN; }
+  long get_omegaNonCenteredN() { return _omegaNonCenteredN; }
+
+  void muNonCenteredStep(double gain) {
+    std::vector<uword> sel;
+    for (int c = 0; c < nphi1; ++c) if (ncFreeInterceptCol(c)) sel.push_back((uword)c);
+    if (sel.empty()) return;
+    const uvec cols = conv_to<uvec>::from(sel);
+    double initial;
+    vec step;
+    auto obj = [&](const vec &d, vec *sl) { return phi1ShiftObjective(d, cols, sl); };
+    if (!ncBhhhStep(obj, cols.n_elem, initial, step)) return;
+    vec delta;
+    bool ok = false;
+    for (int attempt = 0; attempt < 8 && !ok; ++attempt, gain /= std::sqrt(2.0)) {
+      delta = gain * step;
+      ok = phi1ShiftObjective(delta, cols) < initial;
+    }
+    if (!ok) return;
+    // eta = phi - mu and the omega estimate are unchanged by the shift
+    vec D(nphi1, fill::zeros);
+    D(cols) = delta;
+    const vec sumPhi = sum(statphi11, 0).t();
+    for (uword j = 0; j < cols.n_elem; ++j) {
+      phiM.col(i1(cols(j))) += delta(j);
+      mprior_phi1.col(cols(j)) += delta(j);
+      statphi11.col(cols(j)) += delta(j);
+    }
+    statphi12 += D * sumPhi.t() + sumPhi * D.t() + (double)N * D * D.t();
+    phi1BackSolveMCOV();
+    _phi1Shifted = true;
+    _muNonCenteredN++;
+  }
+
+  void omegaNonCenteredStep(double gain) {
+    std::vector<uword> sel;
+    for (int c = 0; c < nphi1; ++c) {
+      if (Gamma2_phi1fixed == 1 && any(Gamma2_phi1fixedIx == (uword)(c * nphi1 + c))) continue;
+      if (!(Gamma2_phi1(c, c) > 0.0)) continue;
+      sel.push_back((uword)c);
+    }
+    if (sel.empty()) return;
+    const uvec cols = conv_to<uvec>::from(sel);
+    double initial;
+    vec step;
+    auto obj = [&](const vec &d, vec *sl) { return phi1ScaleObjective(d, cols, sl); };
+    if (!ncBhhhStep(obj, cols.n_elem, initial, step)) return;
+    // a log-scale step beyond a factor of e is not a local move
+    const double big = abs(step).max();
+    if (big > 1.0) step *= 1.0 / big;
+    vec ls;
+    bool ok = false;
+    for (int attempt = 0; attempt < 8 && !ok; ++attempt, gain /= std::sqrt(2.0)) {
+      ls = gain * step;
+      ok = phi1ScaleObjective(ls, cols) < initial;
+    }
+    if (!ok) return;
+    vec dg(nphi1, fill::ones);
+    for (uword j = 0; j < cols.n_elem; ++j) dg(cols(j)) = std::exp(ls(j));
+    const mat D = diagmat(dg);
+    const mat mu = repmat(mprior_phi1, nmc, 1);
+    for (uword j = 0; j < cols.n_elem; ++j) {
+      const uword c = cols(j);
+      phiM.col(i1(c)) = mu.col(c) + dg(c) * (phiM.col(i1(c)) - mu.col(c));
+    }
+    // the same map on the sufficient statistics (mu_i = mprior_phi1 row i):
+    //   s_i' = mu_i + D (s_i - mu_i);  S' = M + D Q + Q' D + D (S - Q - Q' - M) D
+    // with M = sum mu_i mu_i' and Q = sum (s_i - mu_i) mu_i'
+    const mat Mm = mprior_phi1.t() * mprior_phi1;
+    const mat Q = (statphi11 - mprior_phi1).t() * mprior_phi1;
+    statphi12 = Mm + D * Q + Q.t() * D + D * (statphi12 - Q - Q.t() - Mm) * D;
+    statphi11 = mprior_phi1 + (statphi11 - mprior_phi1) * D;
+    Gamma2_phi1 = D * Gamma2_phi1 * D;
+    _phi1Shifted = true;
+    _omegaNonCenteredN++;
+  }
+
+  double phi0NormalSSR(const vec &fall, vec *subjectLoss = nullptr) {
     const double double_xmin = 1.0e-200, xmax = 1e300;
     double v = 0.0;
     for (int k = 0; k < nmc; k++) {
@@ -981,7 +1152,9 @@ public:
           else if (g < double_xmin) g = double_xmin;
           else if (g > xmax) g = xmax;
           double e = yt - ft;
-          v += 0.5 * (e / g) * (e / g) + std::log(g);
+          const double loss = 0.5 * (e / g) * (e / g) + std::log(g);
+          v += loss;
+          if (subjectLoss) (*subjectLoss)(obs_subject(ix_sorting(y_offset(b) + i))) += loss;
         }
       }
     }
@@ -1058,36 +1231,64 @@ public:
   // each group's diagonal entries by their mean.  A user-FIXED occasion
   // variance needs no special case here: Gamma2_phi1fixedIx is restored after
   // this runs, so the pin wins.
-  void poolOmegaGroups(mat &G) {
+  //
+  // With `byPresent`, G holds moments divided by N (the M-step's G1), and a
+  // subject's occasion that is absent from the data is an uninformative eta,
+  // frozen at its prior mean, so it adds a zero deviation to that sum.  Pool
+  // over the subject-occasions that exist instead (#1504): the sum of the
+  // group's moments over the number of (subject, occasion) cells the
+  // uninformative-eta mask keeps.  On balanced data every count is N and this
+  // is the plain mean.
+  double poolPresentCount(unsigned int a, unsigned int b) {
+    const mat &ue = current_saem_state->_saemUE;
+    if (ue.n_rows < (unsigned int)N || ue.n_cols != (unsigned int)nphi ||
+        i1.n_elem != (unsigned int)nphi1) {
+      return (double)N;
+    }
+    unsigned int ca = i1(a), cb = i1(b);
+    double n = 0.0;
+    for (int i = 0; i < N; ++i) {
+      if (ue(i, ca) != 0.0 && ue(i, cb) != 0.0) n += 1.0;
+    }
+    return n;
+  }
+
+  // Set every (a, b) entry in `pairs` (and its transpose) to their pooled
+  // value: the plain mean, or with `byPresent` the moment sum over the present
+  // cells.  Nothing present anywhere keeps the plain mean.
+  void poolPairs(mat &G, const std::vector<std::pair<unsigned int, unsigned int> > &pairs,
+                 bool byPresent) {
+    if (pairs.empty()) return;
+    double s = 0.0, w = 0.0;
+    for (const auto &p : pairs) {
+      s += G(p.first, p.second);
+      if (byPresent) w += poolPresentCount(p.first, p.second);
+    }
+    double m = s / (double)pairs.size();
+    if (byPresent && w > 0.0) m = (double)N * s / w;
+    for (const auto &p : pairs) {
+      G(p.first, p.second) = m;
+      G(p.second, p.first) = m;
+    }
+  }
+
+  void poolOmegaGroups(mat &G, bool byPresent = false) {
     if (omegaPool.n_elem != (unsigned int)nphi1) return;
     if (omegaPool.n_elem == 0) return;
     unsigned int maxg = omegaPool.max();
     for (unsigned int g = 1; g <= maxg; ++g) {
       uvec ix = find(omegaPool == g);
       if (ix.n_elem < 2) continue;
-      double m = 0.0;
-      for (unsigned int j = 0; j < ix.n_elem; ++j) m += G(ix(j), ix(j));
-      m /= (double)ix.n_elem;
-      for (unsigned int j = 0; j < ix.n_elem; ++j) G(ix(j), ix(j)) = m;
+      std::vector<std::pair<unsigned int, unsigned int> > diag, off;
+      for (unsigned int a = 0; a < ix.n_elem; ++a) {
+        diag.emplace_back(ix(a), ix(a));
+        for (unsigned int b = a + 1; b < ix.n_elem; ++b) off.emplace_back(ix(a), ix(b));
+      }
+      poolPairs(G, diag, byPresent);
       // and the WITHIN-group off-diagonals, which carry Omega in the collapsed
       // form; equal diagonals plus equal off-diagonals is what makes the block
-      // compound-symmetric
-      double o = 0.0;
-      unsigned int no = 0;
-      for (unsigned int a = 0; a < ix.n_elem; ++a) {
-        for (unsigned int b = a + 1; b < ix.n_elem; ++b) {
-          o += G(ix(a), ix(b));
-          no++;
-        }
-      }
-      if (no == 0) continue;
-      o /= (double)no;
-      for (unsigned int a = 0; a < ix.n_elem; ++a) {
-        for (unsigned int b = a + 1; b < ix.n_elem; ++b) {
-          G(ix(a), ix(b)) = o;
-          G(ix(b), ix(a)) = o;
-        }
-      }
+      // compound-symmetric.  A cross moment needs both occasions present.
+      poolPairs(G, off, byPresent);
     }
   }
 
@@ -2079,6 +2280,7 @@ public:
   }
 
   mat get_mcmcAccTrace()    { return mcmcAccTrace; }
+  double get_accept1B()     { return massAccD > 0 ? massAccN / massAccD : NA_REAL; }
   mat get_mcmcAccColTrace() { return mcmcAccColTrace; }
   mat get_mcmcStuckTrace()  { return mcmcStuckTrace; }
   mat get_phiSdTrace()      { return phiSdTrace; }
@@ -2117,6 +2319,11 @@ public:
     ue = ue.cols(i1);
     eta = eta % ue;
     return eta;
+  }
+
+  mat get_etaUe() {
+    mat ue = current_saem_state->_saemUE.rows(0, N - 1);
+    return ue.cols(i1);
   }
 
   // Conditional-mode EBEs (saemControl(ebe="mode")), the Monolix "EBEs" task:
@@ -2533,6 +2740,25 @@ public:
   // `ebe="mode"`.
   // @return nothing; fills etaMode and etaModeConv
   // @noRd
+  // native paramUpdate positions; empty when the pooled phi1 map owns them
+  std::vector<int> modeDoParam() {
+    std::vector<int> doParam;
+    if (!_saemPhi1PoolActive) {
+      IntegerVector pu = optM["paramUpdate"];
+      doParam.assign(pu.begin(), pu.end());
+    }
+    return doParam;
+  }
+
+  // each subject's most likely mixture component (1-based); 0 without a mixture
+  ivec modeMixComp() {
+    ivec mixComp(N, fill::zeros);
+    if (nMix > 1 && mixWeights.n_rows == (unsigned int)N) {
+      for (int i = 0; i < N; ++i) mixComp(i) = (int)mixWeights.row(i).index_max() + 1;
+    }
+    return mixComp;
+  }
+
   void computeEtaMode() {
     etaMode = get_eta();
     etaModeConv.set_size(N);
@@ -2550,15 +2776,8 @@ public:
     mat Greal = G.submat(realIx, realIx);
     mat IG = Greal.n_elem == 0 ? Greal : invSympdNearPd(Greal, "Gamma2_phi1 (Omega)");
     vec sd = sqrt(G.diag());
-    std::vector<int> doParam;
-    if (!_saemPhi1PoolActive) {
-      IntegerVector pu = optM["paramUpdate"];
-      doParam.assign(pu.begin(), pu.end());
-    }
-    ivec mixComp(N, fill::zeros);
-    if (nMix > 1 && mixWeights.n_rows == (unsigned int)N) {
-      for (int i = 0; i < N; ++i) mixComp(i) = (int)mixWeights.row(i).index_max() + 1;
-    }
+    std::vector<int> doParam = modeDoParam();
+    ivec mixComp = modeMixComp();
     mat ue = current_saem_state->_saemUE;
     int cores = getOpCores(op);
     bool doParallel = (cores > 1) && solveMethodThreadSafe(op);
@@ -2645,6 +2864,9 @@ public:
         fsaemCores      = as<int>(x["fsaemCores"]);
       }
     }
+    nuMass = x.containsElementNamed("nu1B") ? as<int>(x["nu1B"]) : 0;
+    massStart = x.containsElementNamed("nb1B") ? as<int>(x["nb1B"]) : 10;
+    massKappa = x.containsElementNamed("kappa1B") ? as<double>(x["kappa1B"]) : 1.0;
     niter = as<int>(x["niter"]);
     saemSeed = x.containsElementNamed("seed") ? as<int>(x["seed"]) : 99;
     nb_correl = as<int>(x["nb_correl"]);
@@ -3079,6 +3301,9 @@ public:
     nonMuThetaEvery = x.containsElementNamed("nonMuThetaEvery") ?
       as<int>(x["nonMuThetaEvery"]) : 1;
     if (nonMuThetaEvery < 1) nonMuThetaEvery = 1;
+    muNonCentered = x.containsElementNamed("muNonCentered") ? as<int>(x["muNonCentered"]) : 0;
+    omegaNonCentered = x.containsElementNamed("omegaNonCentered") ? as<int>(x["omegaNonCentered"]) : 0;
+    nonCenteredPhase = x.containsElementNamed("nonCenteredPhase") ? as<int>(x["nonCenteredPhase"]) : 0;
     nonMuThetaTol = x.containsElementNamed("nonMuThetaTol") ?
       as<double>(x["nonMuThetaTol"]) : 1.0e-4;
     phi1ThetaEvery = x.containsElementNamed("phi1ThetaEvery") ?
@@ -3221,29 +3446,37 @@ public:
   // Resolve the shared-eta component thetas (#1296) to local indices.  Only the
   // per-component ("parallel") sampler with an intercept-only phi0 column whose
   // partner is a phi1 column qualifies; everything else keeps the phi0 search.
+  // Does phi0 column c0 belong to a shared-eta component?  Fills its
+  // component (0-based), phi1 eta column and lambda index when it does.
+  bool mixShiftOwns(int c0, unsigned int &comp, unsigned int &eta1, unsigned int &lam0) {
+    int p = (int)i0(c0);
+    int j = mixShiftComp(p), e = mixShiftEta(p) - 1;
+    if (j < 1 || j > nMix || e < 0) return false;
+    uvec e1 = find(i1 == (unsigned int)e);
+    uvec l0 = find(LCOV0.col(c0) == 1);
+    if (e1.n_elem != 1 || l0.n_elem != 1) return false;
+    // a held (fixed) theta keeps its value, so it keeps the phi0 path
+    if (any(fixedIx0 == l0(0))) return false;
+    comp = (unsigned int)(j - 1);
+    eta1 = e1(0);
+    lam0 = l0(0);
+    return true;
+  }
+
   void mixShiftResolve() {
     std::vector<unsigned int> own0, comp, eta1, free0, lam0;
     bool use = nMix > 1 && mixSampleMethod == 0 && (int)mixShiftComp.n_elem == nphi &&
       (int)mixShiftEta.n_elem == nphi;
     for (int c0 = 0; c0 < nphi0; c0++) {
-      bool owned = false;
-      if (use) {
-        int p = (int)i0(c0);
-        int j = mixShiftComp(p), e = mixShiftEta(p) - 1;
-        uvec e1 = find(i1 == (unsigned int)std::max(e, 0));
-        uvec l0 = find(LCOV0.col(c0) == 1);
-        // a held (fixed) theta keeps its value, so it keeps the phi0 path
-        bool fixed0 = l0.n_elem == 1 && any(fixedIx0 == l0(0));
-        if (j >= 1 && j <= nMix && e >= 0 && e1.n_elem == 1 &&
-            l0.n_elem == 1 && !fixed0) {
-          owned = true;
-          own0.push_back((unsigned int)c0);
-          comp.push_back((unsigned int)(j - 1));
-          eta1.push_back(e1(0));
-          lam0.push_back(l0(0));
-        }
+      unsigned int cj = 0, ej = 0, lj = 0;
+      if (use && mixShiftOwns(c0, cj, ej, lj)) {
+        own0.push_back((unsigned int)c0);
+        comp.push_back(cj);
+        eta1.push_back(ej);
+        lam0.push_back(lj);
+      } else if (!any(holdIx0 == (uword)c0)) {
+        free0.push_back((unsigned int)c0);
       }
-      if (!owned && !any(holdIx0 == (uword)c0)) free0.push_back((unsigned int)c0);
     }
     mixOwn0 = conv_to<uvec>::from(own0);
     mixOwnComp = conv_to<uvec>::from(comp);
@@ -3305,6 +3538,7 @@ public:
     _seedLayout.nu[0] = (uint64_t)nu(0);
     _seedLayout.nu[1] = (uint64_t)nu(1);
     _seedLayout.nu[2] = (uint64_t)nu(2);
+    _seedLayout.nuMass = (uint64_t)(nphi1 > 0 && nMix <= 1 ? nuMass : 0);
     _seedLayout.nphi[0] = (uint64_t)nphi1;
     _seedLayout.nphi[1] = (uint64_t)free0.n_elem;
     _seedLayout.nComp = (uint64_t)std::max(nMix, 1);
@@ -4212,6 +4446,10 @@ public:
           do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
           mat dphi = phiM.cols(i1)-mphi1.mprior_phiM;
           U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi1),1);
+          if (nuMass > 0 && massN >= massStart) {
+            do_mcmc(4, kiter == 0 ? 20 * nuMass : nuMass, mx, mphi1, DYF, phiM, U_y, U_phi,
+                    fsave, cens, limit, (int)kiter);
+          }
           do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
           do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit, (int)kiter);
         }
@@ -4228,6 +4466,7 @@ public:
         // block, so they describe the chain the M-step is about to use
         mcmcCloseIter(kiter, (unsigned int)(niter + nSaCov), phiM);
         if (kiter < (unsigned int)niter) savePhiM(kiter, phiM);
+        massUpdate(phiM);
 
         //integration
         for(int k=0; k<nmc; k++) {
@@ -4501,6 +4740,23 @@ public:
           (kiter - (unsigned int)niter_phi0) % (unsigned int)nonMuThetaEvery == 0) {
         refinePhi0Lik(kiter, pas);
       }
+      {
+        // nonCenteredPhase 1: burn-in only (gain 1); the EM phase stays plain SAEM
+        const bool ncPhaseOk = (nonCenteredPhase == 0) || (pas(kiter) >= 1.0);
+        const bool ncOk = ncPhaseOk && nMix <= 1 && pas(kiter) > 0.0 &&
+          (distribution == 1 || distribution == 4);
+        if (muNonCentered && ncOk) muNonCenteredStep(pas(kiter));
+        if (omegaNonCentered && ncOk) omegaNonCenteredStep(pas(kiter));
+        // the steps moved the chains: the next E-step scores the current state
+        // from the cached predictions, so they must follow phiM
+        if (_phi1Shifted) {
+          _phi1Shifted = false;
+          mat fr = user_fn(phiM, evt, optM);
+          fsave = fr.col(0);
+          cens = fr.col(1);
+          limit = fr.col(2);
+        }
+      }
       // once the refinement owns phi0 the model runs at mprior_phi0, so report
       // that rather than the pre-refinement regression estimate
       if ((distribution == 4 || nonMuThetaRegress) &&
@@ -4512,11 +4768,26 @@ public:
       }
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
       if (nphi0 > 0) {
-        phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
+        const mat phi0New = repmat(mprior_phi0, nmc, 1);
+        const bool phi0Moved = any(vectorise(phiM.cols(i0) != phi0New));
+        phiM.cols(i0) = phi0New;
         if (nMix > 1) {
           for (int jMix = 0; jMix < nMix; jMix++) {
             phiM_mix(jMix).cols(i0) = repmat(mprior_phi0, nmc, 1);
           }
+        } else if (phi0Moved) {
+          // the next E-step scores the current state from fsave,
+          // so it must follow phiM
+          mat fr = user_fn(phiM, evt, optM);
+          const uword n = std::min(fr.n_rows, fsave.n_elem);
+          if (n > 0) {
+            const double d = max(abs(fsave.head(n) - fr.col(0).head(n)));
+            _saemFsaveDrift = std::max(_saemFsaveDrift, d);
+          }
+          fsave = fr.col(0);
+          cens = fr.col(1);
+          limit = fr.col(2);
+          _saemFsaveRefreshN++;
         }
       }
 
@@ -4570,10 +4841,10 @@ public:
 
       // Two-level (IOV): the per-occasion columns of one occasion parameter
       // estimate a single Psi, so pool their moments.  Under the equality
-      // constraint the maximizer of the complete-data likelihood is the plain
-      // mean of the per-occasion moments -- each column carries the same N
-      // deviations -- so this stays a closed-form M-step, not a projection.
-      poolOmegaGroups(G1);
+      // constraint the maximizer of the complete-data likelihood is the mean
+      // deviation over the subject-occasions that exist, so this stays a
+      // closed-form M-step, not a projection.
+      poolOmegaGroups(G1, true);
 
       if (kiter<=(unsigned int)(nb_sa)) {
         Gamma2_phi1=max(Gamma2_phi1*coef_sa, diagmat(G1));
@@ -5484,6 +5755,15 @@ private:
   user_funct user_fn;
 
   uvec nu;
+  // NONMEM's mode 1B (ISAMPLE_M1B): independence proposals from each subject's
+  // running posterior mean/covariance of phi1
+  int nuMass = 0, massStart = 10, massN = 0;
+  double massKappa = 1.0, massAccN = 0.0, massAccD = 0.0;
+  mat massM1;          // N x nphi1 running mean
+  cube massM2;         // nphi1 x nphi1 x N running second moment
+  cube massL;          // lower Cholesky factor of each subject's covariance
+  cube massS;          // each subject's (jittered) covariance, for masked rows
+  uvec massOk;         // subject has a usable factor
   int niter;
   int saemSeed = 99;
   saemSeedLayout _seedLayout;
@@ -5681,6 +5961,9 @@ private:
   int nonMuThetaMaxEval;
   int nonMuThetaSweeps;
   int nonMuThetaEvery;
+  int muNonCentered = 0;
+  int omegaNonCentered = 0;
+  int nonCenteredPhase = 0;
   double nonMuThetaTol;
   // Cached: does any phi0 param change the structural prediction f?  -1 unknown,
   // 0 no (residual/likelihood only -> freeze the ODE during the phi0 opt like
@@ -6276,8 +6559,8 @@ private:
                int kiter,
                int mixIdx = 0) {
     mat fcMat;
-    vec fc, fs, Uc_y, Uc_phi, deltu;
-    uvec ind;
+    vec fc, fs, Uc_y, Uc_phi, deltu, massQ;
+    uvec ind, massOff;
     arma::vec accU(mx.nM);   // per-block threefry acceptance uniforms
 
     uvec i=mphi.i;
@@ -6306,6 +6589,12 @@ private:
           mat noise(mx.nM, 1); _saemDrawRows(saemSeed, seedOff, noise, accU);
           phiMc.col(i(k1))=phiM.col(i(k1))+
             noise.col(0)*mphi.Gdiag_phi(k1,k1) % current_saem_state->_saemUE.col(i(k1));
+          break;
+        }
+        case 4: {
+          // independence proposal N(m_s, L_s L_s'); massQ holds log q(cur) - log q(cand)
+          mat noise(mx.nM, mphi.nphi); _saemDrawRows(saemSeed, seedOff, noise, accU);
+          massPropose(noise, i, phiM, phiMc, massQ, massOff);
           break;
         }
         }
@@ -6422,12 +6711,23 @@ private:
           Uc_phi=0.5*sum(dphic%(dphic*mphi.IGamma2_phi),1);
           deltu=Uc_y-U_y+Uc_phi-U_phi;
         }
+        if (method == 4) {
+          deltu -= massQ;
+          deltu.elem(find(massOff == 1)).fill(datum::inf);
+        }
 
         ind=find( deltu < -log(accU) );
         // every subject-by-chain row is proposed in this block, so accU.n_elem is
-        // the denominator; count before ind is reused for the observation index
-        _saemNProp[method-1] += (double)accU.n_elem;
-        _saemNAcc[method-1]  += (double)ind.n_elem;
+        // the denominator; count before ind is reused for the observation index.
+        // Mode 1B (method 4) keeps its own counts below.
+        if (method <= 3) {
+          _saemNProp[method-1] += (double)accU.n_elem;
+          _saemNAcc[method-1]  += (double)ind.n_elem;
+        }
+        if (method == 4) {
+          massAccN += (double)ind.n_elem;
+          massAccD += (double)(mx.nM - (int)accu(massOff));
+        }
         mcmcRecordAccept(method, ind, mx.nM,
                          (method == 3 && (unsigned int)k1 < i.n_elem)
                          ? (int)i(k1) : -1);
@@ -6438,11 +6738,113 @@ private:
         }
         ind = getObsIdx(ix_idM.rows(ind));
         cur_fsave(ind)=fs(ind);
-        if (method<3) {
+        if (method != 3) {
           break;
         }
       }
     setRxThreadId(-1);
+  }
+
+  // Mass-matrix candidates for every chain row; a row without a usable factor, or
+  // with a masked phi1 column, is flagged in massOff and left unproposed.
+  void massPropose(const mat &noise, const uvec &i, const mat &phiM, mat &phiMc,
+                   vec &massQ, uvec &massOff) {
+    const int nM = static_cast<int>(noise.n_rows);
+    massQ.zeros(nM);
+    massOff.zeros(nM);
+    for (int r = 0; r < nM; ++r) {
+      const int s = r % N;
+      const uvec rr = {static_cast<uword>(r)};
+      if (!massOk(s)) { massOff(r) = 1; continue; }
+      // a masked (uninformative) column stays put; the rest are proposed from
+      // their marginal, so one masked eta no longer switches the kernel off
+      std::vector<uword> on;
+      for (uword c = 0; c < i.n_elem; ++c) {
+        if (current_saem_state->_saemUE(r, i(c)) != 0.0) on.push_back(c);
+      }
+      if (on.empty()) { massOff(r) = 1; continue; }
+      vec z, m;
+      mat L;
+      uvec cols;
+      if (on.size() == i.n_elem) {
+        cols = i;
+        L = massL.slice(s);
+        m = massM1.row(s).t();
+        z = noise.row(r).t();
+      } else {
+        const uvec a = conv_to<uvec>::from(on);
+        cols = i(a);
+        const mat Sa = massS.slice(s).submat(a, a);
+        if (!chol(L, Sa, "lower")) { massOff(r) = 1; continue; }
+        const vec mAll = massM1.row(s).t();
+        m = mAll(a);
+        const vec nz = noise.row(r).t();
+        z = nz(a);
+      }
+      phiMc.submat(rr, cols) = (m + L * z).t();
+      const vec w = solve(trimatl(L), phiM.submat(rr, cols).t() - m);
+      massQ(r) = 0.5 * dot(z, z) - 0.5 * dot(w, w);
+    }
+  }
+
+  // Fold this iteration's phi1 chains into each subject's running mean and second
+  // moment (gain n^-kappa1B), then refresh the proposal factors.
+  void massUpdate(const mat &phiM) {
+    if (nuMass <= 0 || nphi1 <= 0 || nMix > 1) return;
+    if (massM1.n_rows != (uword)N || massM1.n_cols != (uword)nphi1) {
+      massM1.zeros(N, nphi1);
+      massM2.zeros(nphi1, nphi1, N);
+      massL.zeros(nphi1, nphi1, N);
+      massOk.zeros(N);
+      massN = 0;
+    }
+    ++massN;
+    const double g = std::pow((double)massN, -massKappa);
+    for (int s = 0; s < N; ++s) {
+      vec xbar = zeros<vec>(nphi1);
+      mat xx = zeros<mat>(nphi1, nphi1);
+      for (int k = 0; k < nmc; ++k) {
+        const uvec rr = {(uword)(k * N + s)};
+        const vec x = phiM.submat(rr, i1).t();
+        xbar += x;
+        xx += x * x.t();
+      }
+      xbar /= (double)nmc;
+      xx /= (double)nmc;
+      massM1.row(s) += g * (xbar.t() - massM1.row(s));
+      massM2.slice(s) += g * (xx - massM2.slice(s));
+    }
+    if (massN < massStart) return;
+    if (massS.n_slices != (uword)N) massS.zeros(nphi1, nphi1, N);
+    for (int s = 0; s < N; ++s) massFactor(s);
+  }
+
+  // Refresh subject s's proposal factor from its running moments.
+  void massFactor(int s) {
+    const vec m = massM1.row(s).t();
+    mat S = massM2.slice(s) - m * m.t();
+    S = 0.5 * (S + S.t());
+    massOk(s) = 0u;
+    if (!S.is_finite()) return;
+    const double sc = std::max(1e-12, max(abs(S.diag())));
+    mat L, Sj;
+    bool got = false;
+    // escalate the jitter; a subject that still will not factor falls back to
+    // its own diagonal rather than dropping out of the kernel
+    for (double jit = 1e-8; jit <= 1e-2 && !got; jit *= 100.0) {
+      Sj = S;
+      Sj.diag() += jit * sc;
+      got = chol(L, Sj, "lower");
+    }
+    if (!got) {
+      Sj = diagmat(clamp(S.diag(), 1e-8 * sc, datum::inf));
+      got = chol(L, Sj, "lower");
+    }
+    if (got && L.is_finite()) {
+      massL.slice(s) = L;
+      massS.slice(s) = Sj;
+      massOk(s) = 1u;
+    }
   }
 
   // MSAEM (Lavielle & Mbogning 2014): mixture-weighted (log-sum-exp) observation loss for a
@@ -6847,6 +7249,13 @@ static double gPhi1Obj(const double *p) {
 long saemPhi1RefineN_() { return _saemPhi1RefineN; }
 
 //[[Rcpp::export]]
+Rcpp::NumericVector saemFsaveRefresh_() {
+  return Rcpp::NumericVector::create(
+    Rcpp::_["n"] = static_cast<double>(_saemFsaveRefreshN),
+    Rcpp::_["drift"] = _saemFsaveDrift);
+}
+
+//[[Rcpp::export]]
 Rcpp::NumericVector saemGainFrozenSkipN_() {
   return Rcpp::NumericVector::create(Rcpp::_["phi0"] = (double)_saemSkipPhi0N,
                                      Rcpp::_["resid"] = (double)_saemSkipResidN);
@@ -7111,6 +7520,106 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
   }
 }
 
+// per-subject mixture assignment from the solve options, or NULL
+static int *saemOptMixest(const List &_opt) {
+  if (!_opt.hasAttribute("names") || !_opt.containsElementNamed("mixest")) return nullptr;
+  SEXP indMixestR = _opt["mixest"];
+  return indMixestR == R_NilValue ? nullptr : INTEGER(indMixestR);
+}
+
+// SAEM's native paramUpdate positions take row i of phi in order
+static void saemSetIndPars(rx_solving_options_ind *ind, const mat &_phi, int _i,
+                           const int *doParam, int nPar) {
+  int k = 0;
+  for (int _j = 0; _j < nPar; _j++) {
+    if (doParam[_j] == 1) setIndParPtr(ind, _j, _phi(_i, k++));
+  }
+}
+
+// Phase 4: a general-lik fit whose phi1 map resolved routes SAEM's own
+// solve through odeSlotPred (see setupRx) instead of the bulk par_solve --
+// every other fit is byte-identical to before.
+static void saemSolveOnce(int nSub) {
+  if (_saemPhi1PoolActive) {
+    saemSolveIndividualsPooled(nSub);
+  } else {
+    par_solve(_rx); // Solve the complete system (possibly in parallel)
+  }
+}
+
+// Did subject i's ODE solve produce NaN/Inf anywhere?
+static bool saemIndSolveBad(rx_solving_options *op, rx_solving_options_ind *ind) {
+  double *s = getIndSolve(ind);
+  int n = getOpNeq(op) * getIndNallTimes(ind);
+  for (int k = 0; k < n; k++) {
+    if (ISNA(s[k]) || std::isnan(s[k]) || std::isinf(s[k])) return true;
+  }
+  return false;
+}
+
+// Loosen the ODE tolerance for one retry: only the subjects whose solve failed
+// (indTolRelax; sticky via ind->tolFactor, so genuinely stiff subjects stay
+// loosened) or every subject (reset after the retries).
+static void saemRelaxTol(rx_solving_options *op, int nSub) {
+  if (current_saem_state->_saemIndTolRelax && getOpNeq(op) <= 0) return;
+  for (int _i = 0; _i < nSub; _i++) {
+    rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
+    if (current_saem_state->_saemIndTolRelax && !saemIndSolveBad(op, _indI)) continue;
+    setIndTolFactor(_indI, getIndTolFactor(_indI) * current_saem_state->_saemOdeRecalcFactor);
+  }
+}
+
+static void saemSolveWithRetry(rx_solving_options *op, int nSub) {
+  resetRxBadSolve(_rx);
+  saemSolveOnce(nSub);
+  int j = 0;
+  while (hasRxBadSolve(_rx) && j < current_saem_state->_saemMaxOdeRecalc) {
+    current_saem_state->_saemIncreaseTol = 1;
+    saemRelaxTol(op, nSub);
+    resetRxBadSolve(_rx);
+    saemSolveOnce(nSub);
+    j++;
+  }
+  if (!current_saem_state->_saemIndTolRelax && j != 0) {
+    // Reset all subjects' tolFactor after the non-selective retry.
+    for (int _i = 0; _i < nSub; _i++) {
+      setIndTolFactor(getSolvingOptionsInd(_rx, _i), 1.0);
+    }
+  }
+}
+
+// Read the native solve's observation rows into g: prediction (or the
+// general-likelihood value), censoring flag and limit.
+static void saemReadRowsNative(mat &g, int &elt, bool &hasNan, int nSub,
+                               rx_solving_options *op) {
+  for (int id = 0; id < nSub; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, id);
+    double *lhs = getIndLhs(ind);
+    iniSubjectE(id, 1, ind, op, _rx, saem_inis);
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      setIndIdx(ind, j);
+      int kk = getIndIx(ind, getIndIdx(ind));
+      int evid = getIndEvid(ind, kk);
+      // doses are calculated for advan sensitivities; evid=2 is not needed
+      if (!isDose(evid) && evid != 0) continue;
+      lhsWalkNewind(ind, j);
+      saem_lhs((int)id, getTime(kk, ind), getOpIndSolve(op, ind, j), lhs);
+      if (evid != 0) continue;
+      double cens = hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0;
+      double limit = hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf;
+      double cur = saemGenLikCens(lhs, cens, limit, lhs[0]);
+      if (std::isnan(cur)) {
+        cur = 1.0e99;
+        hasNan = true;
+      }
+      g(elt, 0) = cur;
+      g(elt, 1) = cens;
+      g(elt, 2) = limit;
+      elt++;
+    }
+  }
+}
+
 mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // The solve below re-seeds this thread's threefry engine once per subject
   // (rxode2's par_*() loops do setSeedEng1(getRxSeed1() + id)), so on return the
@@ -7133,16 +7642,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   int *doParam = INTEGER(paramUpdate);
   int nPar = Rf_length(paramUpdate);
 
-  int *indMixest = nullptr;
-  if (_opt.hasAttribute("names")) {
-    if (_opt.containsElementNamed("mixest")) {
-      SEXP indMixestR = _opt["mixest"];
-      if (indMixestR != R_NilValue) {
-        indMixest = INTEGER(indMixestR);
-      }
-    }
-  }
-
+  int *indMixest = saemOptMixest(_opt);
 
   // Fill in subject parameter information.  Phase 4 (SAEM general-lik theta
   // plan): a fit whose phi1 map resolved sets THETA[k]/ETA[k] instead (see
@@ -7158,70 +7658,12 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     } else if (indMixest != nullptr) {
       setIndMixest(ind, indMixest[_i]);
     }
-    if (!_saemPhi1PoolActive) {
-      int k=0;
-      for (int _j = 0; _j < nPar; _j++){
-        if (doParam[_j] == 1) {
-          setIndParPtr(ind, _j, _phi(_i, k++));
-        }
-      }
-    }
+    if (!_saemPhi1PoolActive) saemSetIndPars(ind, _phi, _i, doParam, nPar);
   }
   // ODE-freeze: phi0 (general-likelihood fixed effects) do not change the ODE, so
   // during the phi0 optimization the states are reused and only the log-likelihood
   // is recomputed below -- skip the (costly) re-integration entirely.
-  if (!_saemFreezeOde) {
-  resetRxBadSolve(_rx);
-  // Phase 4: a general-lik fit whose phi1 map resolved routes SAEM's own
-  // solve through odeSlotPred (see setupRx) instead of the bulk par_solve --
-  // every other fit is byte-identical to before.
-  if (_saemPhi1PoolActive) {
-    saemSolveIndividualsPooled(_Nnlmixr2);
-  } else {
-    par_solve(_rx); // Solve the complete system (possibly in parallel)
-  }
-  int j=0;
-  while (hasRxBadSolve(_rx) && j < current_saem_state->_saemMaxOdeRecalc){
-    current_saem_state->_saemIncreaseTol=1;
-    if (current_saem_state->_saemIndTolRelax) {
-      // Only loosen tolerance for subjects whose ODE solve produced NaN/Inf.
-      // Tolerance is sticky via ind->tolFactor so iniSubject reapplies it on
-      // subsequent SAEM iterations; genuinely stiff subjects stay loosened.
-      if (getOpNeq(op) > 0) {
-        for (int _i = 0; _i < _Nnlmixr2; _i++) {
-          rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
-          double *_solveI = getIndSolve(_indI);
-          int _nsolveI = getOpNeq(op) * getIndNallTimes(_indI);
-          for (int _ns = 0; _ns < _nsolveI; _ns++) {
-            if (ISNA(_solveI[_ns]) || std::isnan(_solveI[_ns]) || std::isinf(_solveI[_ns])) {
-              setIndTolFactor(_indI, getIndTolFactor(_indI) * current_saem_state->_saemOdeRecalcFactor);
-              break;
-            }
-          }
-        }
-      }
-    } else {
-      // Loosen all subjects uniformly; reset after retry.
-      for (int _i = 0; _i < _Nnlmixr2; _i++) {
-        rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
-        setIndTolFactor(_indI, getIndTolFactor(_indI) * current_saem_state->_saemOdeRecalcFactor);
-      }
-    }
-    resetRxBadSolve(_rx);
-    if (_saemPhi1PoolActive) {
-      saemSolveIndividualsPooled(_Nnlmixr2);
-    } else {
-      par_solve(_rx);
-    }
-    j++;
-  }
-  if (!current_saem_state->_saemIndTolRelax && j != 0) {
-    // Reset all subjects' tolFactor after the non-selective retry.
-    for (int _i = 0; _i < _Nnlmixr2; _i++) {
-      setIndTolFactor(getSolvingOptionsInd(_rx, _i), 1.0);
-    }
-  }
-  } // end (!_saemFreezeOde) integration guard
+  if (!_saemFreezeOde) saemSolveWithRetry(op, _Nnlmixr2);
   // indTolRelax=TRUE: stiff subjects retain their loosened tolFactor across iterations.
   mat g(getRxNsim(_rx) * getRxNobs2(_rx), 3); // nobs across all chains
   int elt=0;
@@ -7229,45 +7671,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   if (_saemPhi1PoolActive) {
     saemReadRowsPooled(g, elt, hasNan, _Nnlmixr2);
   } else {
-  for (int id = 0; id < _Nnlmixr2; ++id) {
-    ind = getSolvingOptionsInd(_rx, id);
-    double *lhs = getIndLhs(ind);
-    iniSubjectE(id, 1, ind, op, _rx, saem_inis);
-    for (int j = 0; j < getIndNallTimes(ind); ++j) {
-      setIndIdx(ind, j);
-      int kk = getIndIx(ind, getIndIdx(ind));
-      double curT = getTime(kk, ind);
-      if (isDose(getIndEvid(ind, kk))) {
-        // Need to calculate for advan sensitivities
-        lhsWalkNewind(ind, j);
-        saem_lhs((int)id, curT,
-                 getOpIndSolve(op, ind, j), lhs);
-      } else if (getIndEvid(ind,kk) == 0) {
-        lhsWalkNewind(ind, j);
-        saem_lhs((int)id, curT,
-                 getOpIndSolve(op, ind, j), lhs);
-        double cur = saemGenLikCens(lhs, hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0,
-                                    hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf,
-                                    lhs[0]);
-        if (std::isnan(cur)) {
-          cur = 1.0e99;
-          hasNan = true;
-        }
-        g(elt, 0) = cur;
-        if (hasRxCens(_rx)) {
-          g(elt, 1) = getIndCens(ind, kk);
-        } else {
-          g(elt, 1) = 0;
-        }
-        if (hasRxLimit(_rx)) {
-          g(elt, 2) = getIndLimit(ind, kk);
-        } else {
-          g(elt, 2) = R_NegInf;
-        }
-        elt++;
-      } // evid=2 does not need to be calculated
-    }
-  }
+    saemReadRowsNative(g, elt, hasNan, _Nnlmixr2, op);
   }
   if (solveMethodThreadSafe(op)) { // liblsoda
     // Order by the overall solve time
@@ -7415,6 +7819,7 @@ SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
 SEXP saem_fit(SEXP xSEXP) {
   List x(xSEXP);
   List opt = x["opt"];
+  _saemFsaveDrift = 0.0;
   setupRx(opt, x["evt"], as<int>(x["nmc"]), as<int>(x["N"]));
 
   // if (rxSingleSolve == NULL) rxSingleSolve = (rxSingleSolve_t) R_GetCCallable("rxode2","rxSingleSolve");
@@ -7445,6 +7850,8 @@ SEXP saem_fit(SEXP xSEXP) {
   }
   List out = List::create(
     Named("resMat") = saem.get_resMat(),
+    Named("muNonCenteredN") = (double)saem.get_muNonCenteredN(),
+    Named("omegaNonCenteredN") = (double)saem.get_omegaNonCenteredN(),
     Named("arCor") = saem.get_arCor(),
     Named("transMat") = saem.get_trans(),
     Named("mprior_phi") = saem.get_mprior_phi(),
@@ -7456,10 +7863,13 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("Ha") = saem.get_Ha(),
     Named("sig2") = saem.get_sig2(),
     Named("eta") = saem.get_eta(),
+    // per-subject informative-eta mask that get_eta() applies (1 = sampled)
+    Named("etaUe") = saem.get_etaUe(),
     Named("etaMix") = saem.get_etaMix(),
     Named("par_hist") = saem.get_par_hist(),
     // MCMC mixing diagnostics; see the members they come from
     Named("mcmcAccept") = saem.get_mcmcAccTrace(),
+    Named("accept1B") = saem.get_accept1B(),
     Named("mcmcAcceptCol") = saem.get_mcmcAccColTrace(),
     Named("mcmcStuck") = saem.get_mcmcStuckTrace(),
     Named("mcmcPhiSd") = saem.get_phiSdTrace(),
@@ -7498,4 +7908,17 @@ SEXP saemFormGTest(SEXP inA, SEXP inB, SEXP inFt, SEXP inC, SEXP inAddProp) {
   vec g(a.n_elem);
   saemFormG(g, a, b, ft, c, addPropVec);
   return wrap(g);
+}
+
+// Test-only wrapper for the burn-in trend test (saemBurnTrend.h): which columns
+// of x still trend, and each column's |t|.
+//[[Rcpp::export]]
+SEXP saemBurnTrendTest(SEXP inX, SEXP inNBatch) {
+  mat x = as<mat>(inX);
+  int nBatch = as<int>(inNBatch);
+  vec t;
+  uvec tr = saemBurnTrend(x, nBatch, R::qt(0.975, static_cast<double>(nBatch - 2), 1, 0), &t);
+  LogicalVector trend(tr.begin(), tr.end());
+  NumericVector tv(t.begin(), t.end());
+  return List::create(_["trend"] = trend, _["t"] = tv);
 }
