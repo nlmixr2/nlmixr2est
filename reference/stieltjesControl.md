@@ -383,7 +383,7 @@ stieltjesControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x63696c7af728>
+#> <bytecode: 0x563f46f2e290>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1563,7 +1563,7 @@ stieltjesControl(stage1 = "foce", agqGrid = c(5, 2, 0.5, 0.95))
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x63696c7af728>
+#> <bytecode: 0x563f46f2e290>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

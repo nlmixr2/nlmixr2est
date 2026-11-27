@@ -439,6 +439,19 @@
   `tidy()`/[`confint()`](https://rdrr.io/r/stats/confint.html) leave the
   rows out.
 
+- `est = "nlme"` now fits an `add()`, `prop()` or `pow()` residual SD
+  that is an estimated parameter times a function of time and
+  covariates, such as `add(add.sd * exp(-time / 8))` or
+  `add(add.sd * WT / 70)`, through
+  [`nlme::varFixed()`](https://rdrr.io/pkg/nlme/man/varFixed.html). An
+  estimated exponent, such as `add(add.sd * exp(k * time))` or
+  `prop(prop.sd * (WT / 70)^k)`, is fit with
+  [`nlme::varExp()`](https://rdrr.io/pkg/nlme/man/varExp.html). Residual
+  errors nlme cannot fit (an eta, a model-calculated variable, a
+  combined error) are refused with a message saying what is unsupported,
+  instead of the old misleading one
+  ([\#1464](https://github.com/nlmixr2/nlmixr2est/issues/1464)).
+
 ### Bug fixes
 
 - A FOCEi outer optimizer, or an
@@ -603,6 +616,20 @@
   random effects with the same clear message as `"saem"`, instead of
   failing with `Could not fit data`
   ([\#1467](https://github.com/nlmixr2/nlmixr2est/issues/1467)).
+
+- `saem` now fits an additive residual that is a theta times a known
+  weight of `time` and covariates
+  (e.g. `cp ~ add(add.sd * exp(-time / 8))`) on its closed-form additive
+  path, scaling the observations by the weight, instead of as a
+  [`dnorm()`](https://rdrr.io/r/stats/Normal.html) likelihood with a
+  temporary eta. Such fits are several times faster and no longer let
+  the residual SD vary between subjects
+  ([\#1463](https://github.com/nlmixr2/nlmixr2est/issues/1463)).
+
+- `saem` likewise fits a proportional residual that is a theta times a
+  known weight (e.g. `cp ~ prop(prop.sd * (1 + time / 12))`) in closed
+  form, with the weight as a per-observation multiplier of the residual
+  SD ([\#1463](https://github.com/nlmixr2/nlmixr2est/issues/1463)).
 
 - A multiplicative 0/1 covariate effect,
   `exp(tcl + eta.cl) * (1 + clSex*SEX)`, is now fit as the equivalent
