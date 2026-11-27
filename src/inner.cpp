@@ -22104,17 +22104,18 @@ static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
                             const arma::mat &info, const LogicalVector &thetaFix,
                             double gam) {
   const int ntheta = theta.size();
-  if ((int)_advi.gnMask.size() != ntheta || (int)info.n_rows != ntheta) return false;
+  if (static_cast<int>(_advi.gnMask.size()) != ntheta ||
+      static_cast<int>(info.n_rows) != ntheta) return false;
   std::vector<arma::uword> idx;
   for (int p = 0; p < ntheta; ++p)
-    if (_advi.gnMask[p] && !thetaFix[p]) idx.push_back((arma::uword)p);
+    if (_advi.gnMask[p] && !thetaFix[p]) idx.push_back(static_cast<arma::uword>(p));
   if (idx.empty()) return false;
   const size_t n = idx.size();
   arma::uvec ui(idx);
   arma::vec jac(n, arma::fill::ones), gs(n);
   std::vector<char> logScale(n, 0);
   for (size_t j = 0; j < n; ++j) {
-    int p = (int)idx[j];
+    int p = static_cast<int>(idx[j]);
     gs[j] = g[p];
     if (p < _advi.thetaLower.size() && _advi.thetaLower[p] == 0.0 && theta[p] > 0.0) {
       logScale[j] = 1;
@@ -22133,7 +22134,7 @@ static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
     if (std::fabs(step[j]) > rad) shrink = std::min(shrink, rad / std::fabs(step[j]));
   }
   for (size_t j = 0; j < n; ++j) {
-    int p = (int)idx[j];
+    int p = static_cast<int>(idx[j]);
     double st = gam * shrink * step[j];
     theta[p] = logScale[j] ? theta[p] * std::exp(st) : adviGnBounded(p, theta[p], st);
   }
@@ -22143,12 +22144,15 @@ static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
 // Gain of every gaussNewton step: a Robbins-Monro sequence (sum diverges, sum of
 // squares converges) slow enough for the coupled E/M fixed point to settle in a
 // few hundred iterations.
-static double adviGnRate(int gi) { return std::pow(1.0 + (double)gi, -0.6); }
+static double adviGnRate(int gi) { return std::pow(1.0 + static_cast<double>(gi), -0.6); }
 
 // Mean eta Hessian over the draws where it is finite (NA when none was).
 static void adviHessAdd(arma::cube &acc, arma::vec &cnt, const arma::cube &h) {
   for (arma::uword i = 0; i < h.n_slices; ++i)
-    if (h.slice(i).is_finite()) { acc.slice(i) += h.slice(i); cnt[i] += 1.0; }
+    if (h.slice(i).is_finite()) {
+      acc.slice(i) += h.slice(i);
+      cnt[i] += 1.0;
+    }
 }
 static arma::cube adviHessMean(const arma::cube &acc, const arma::vec &cnt) {
   arma::cube out(acc.n_rows, acc.n_cols, acc.n_slices);
@@ -22526,7 +22530,10 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
     arma::mat infoAcc;
     arma::cube hessAcc;
     arma::vec hessN;
-    if (_advi.gn) { hessAcc.zeros(neta, neta, N); hessN.zeros(N); }
+    if (_advi.gn) {
+      hessAcc.zeros(neta, neta, N);
+      hessN.zeros(N);
+    }
     for (int m = 0; m < nMc; ++m) {
       // counter-based standard-normal draw, stream keyed by (seed, gi, m)
       setSeedEng1((uint32_t)seed + (uint32_t)((gi * nMc + m) & 0x7fffffff));
@@ -22563,7 +22570,7 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
         omega[j] += etaScale * idecay / (tau + std::sqrt(sOmega[j])) * g;
       }
     }
-    const double gam = _advi.gn ? adviGnRate(gi) : 1.0 / (10.0 + (double)gi);
+    const double gam = _advi.gn ? adviGnRate(gi) : 1.0 / (10.0 + static_cast<double>(gi));
     const bool gnTheta = adviGnThetaStep(theta, gThAcc, infoAcc * invM, thetaFix, gam);
     for (int p = 0; p < ntheta; ++p) {
       // mu-referenced intercepts are not gradient-updated: theta and eta share a
@@ -22844,7 +22851,10 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
     arma::mat infoAcc;
     arma::cube hessAcc;
     arma::vec hessN;
-    if (_advi.gn) { hessAcc.zeros(neta, neta, N); hessN.zeros(N); }
+    if (_advi.gn) {
+      hessAcc.zeros(neta, neta, N);
+      hessN.zeros(N);
+    }
     for (int m = 0; m < nMc; ++m) {
       setSeedEng1((uint32_t)seed + (uint32_t)((gi * nMc + m) & 0x7fffffff));
       for (int i = 0; i < N; ++i)
@@ -22882,7 +22892,7 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
         Lpack[j] += etaScale * idecay / (tau + std::sqrt(sL[j])) * g;
       }
     }
-    const double gam = _advi.gn ? adviGnRate(gi) : 1.0 / (10.0 + (double)gi);
+    const double gam = _advi.gn ? adviGnRate(gi) : 1.0 / (10.0 + static_cast<double>(gi));
     const bool gnTheta = adviGnThetaStep(theta, gThAcc, infoAcc * invM, thetaFix, gam);
     for (int p = 0; p < ntheta; ++p) {
       if (thetaFix[p] || thetaMuRefEta[p] >= 0) continue;
