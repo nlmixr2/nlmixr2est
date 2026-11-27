@@ -29,8 +29,15 @@ nmTest({
     }
   }
   .tvCtl <- function(...) {
-    foceiControl(print = 0L, covMethod = "", sigdig = 4, maxOuterIterations = 0L,
-      maxInnerIterations = 300L, fast = TRUE, ...)
+    foceiControl(
+      print = 0L,
+      covMethod = "",
+      sigdig = 4,
+      maxOuterIterations = 0L,
+      maxInnerIterations = 300L,
+      fast = TRUE,
+      ...
+    )
   }
 
   test_that("time-varying linCmt() parameter: carried outer gradient matches the ODE twin", {
@@ -39,8 +46,12 @@ nmTest({
     skip_if_not(.foceiLinCmtHasSecondOrder())
     d <- .tvData()
     fl <- suppressMessages(suppressWarnings(nlmixr2(.tvModel(TRUE), d, "focei", .tvCtl())))
-    fo <- suppressMessages(suppressWarnings(nlmixr2(.tvModel(FALSE), d, "focei",
-      .tvCtl(rxControl = rxode2::rxControl(atol = 1e-10, rtol = 1e-10)))))
+    fo <- suppressMessages(suppressWarnings(nlmixr2(
+      .tvModel(FALSE),
+      d,
+      "focei",
+      .tvCtl(rxControl = rxode2::rxControl(atol = 1e-10, rtol = 1e-10))
+    )))
     expect_equal(fl$objf, fo$objf, tolerance = 1e-6)
     gl <- .foceiGradDirect(fl)
     go <- .foceiGradDirect(fo)

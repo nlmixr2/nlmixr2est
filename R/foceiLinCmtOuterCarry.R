@@ -56,7 +56,10 @@
   }
   .pc <- .rxFoceiCarryPredCall(s)
   list(
-    lines = .lines, call = .pc$call, conc = "rx_lcConc_", c1 = .c1,
+    lines = .lines,
+    call = .pc$call,
+    conc = "rx_lcConc_",
+    c1 = .c1,
     c2 = function(p, q) {
       .i <- sort(match(c(p, q), dirs))
       sprintf("rx_ecC%d_%d_", .i[1], .i[2])
