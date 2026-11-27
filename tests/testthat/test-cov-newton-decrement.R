@@ -109,3 +109,115 @@ nmTest({
     expect_false(any(grepl(.re, .focei$runInfo)))
   })
 })
+
+nmTest({
+  test_that("models outside the analytic gradient's scope use central differences", {
+    skip_on_cran()
+    .ode <- function() {
+      ini({
+        tka <- 1.2
+        tcl <- 2
+        tv <- 2.5
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .lin <- function() {
+      ini({
+        tka <- 1.2
+        tcl <- 2
+        tv <- 2.5
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .d <- nlmixr2data::theo_sd
+    .saem <- function(mod, warn = 1) {
+      suppressMessages(nlmixr2(mod, .d, "saem", saemControl(print = 0, nBurn = 3, nEm = 2, covNewtonWarn = warn)))
+    }
+    .f <- .saem(.ode, NA)
+    .an <- .covNewtonGrad(.f, .f$cov)
+    .fd <- .covNewtonGradFd(.f, .f$cov)
+    # only the analytic route has the Omega (Cholesky) elements
+    expect_true(any(grepl("^om[.]chol", names(.an))))
+    expect_named(.fd, c("tka", "tcl", "tv", "add.sd"))
+    expect_equal(unname(.fd), unname(.an[names(.fd)]), tolerance = 0.02)
+    .l <- .saem(.lin)
+    expect_gt(.l$covNewtonDecrement, 1)
+    expect_length(grep("^SEs at a non-stationary estimate", .l$runInfo), 1L)
+  })
+})
+
+test_that("a rejected probe falls back to a one-sided difference", {
+  .ui <- rxode2::rxUiDecompress(rxode2::rxode2(function() {
+    ini({
+      p1 <- 0.9995
+      tcl <- 1
+      eta.cl ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      cl <- exp(tcl + eta.cl) * p1
+      cl ~ add(add.sd)
+    })
+  }))
+  .fit <- list(finalUi = .ui)
+  .cov <- diag(2)
+  dimnames(.cov) <- list(c("p1", "tcl"), c("p1", "tcl"))
+  # a quadratic OFV in place of the nested FOCEi pass; p1 above 1 is rejected
+  local_mocked_bindings(
+    .covNewtonCtl = function(fit, fast) NULL,
+    .covNewtonFocei = function(ui, fit, ctl) {
+      .e <- stats::setNames(ui$iniDf$est, ui$iniDf$name)
+      if (.e[["p1"]] > 1) {
+        stop("probability above 1")
+      }
+      list(objf = 3 * .e[["p1"]]^2 + 2 * .e[["tcl"]]^2)
+    }
+  )
+  .g <- .covNewtonGradFd(.fit, .cov)
+  expect_equal(.g[["tcl"]], 4, tolerance = 1e-6)
+  expect_equal(.g[["p1"]], 6 * 0.9995, tolerance = 1e-2)
+  # both probes rejected at the default step: a smaller one
+  local_mocked_bindings(
+    .covNewtonFocei = function(ui, fit, ctl) {
+      .e <- stats::setNames(ui$iniDf$est, ui$iniDf$name)
+      if (abs(.e[["p1"]] - 0.9995) > 5e-4) {
+        stop("out of range")
+      }
+      list(objf = 3 * .e[["p1"]]^2 + 2 * .e[["tcl"]]^2)
+    }
+  )
+  .g <- .covNewtonGradFd(.fit, .cov)
+  expect_equal(.g[["p1"]], 6 * 0.9995, tolerance = 1e-6)
+  # and no partial gradient when a direction cannot be differenced at all
+  local_mocked_bindings(
+    .covNewtonFocei = function(ui, fit, ctl) {
+      .e <- stats::setNames(ui$iniDf$est, ui$iniDf$name)
+      if (.e[["p1"]] != 0.9995) {
+        stop("out of range")
+      }
+      list(objf = 3 * .e[["p1"]]^2 + 2 * .e[["tcl"]]^2)
+    }
+  )
+  expect_null(.covNewtonGradFd(.fit, .cov))
+})
