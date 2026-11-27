@@ -59,6 +59,20 @@
 
 ### New features
 
+- `saemControl(muNonCentered = TRUE, omegaNonCentered = TRUE)`
+  interweave non-centered updates of the mu-referenced random effects
+  into SAEM (Yu and Meng 2011): after the M-step each free
+  intercept-only mean is shifted, and each estimated variance rescaled,
+  with every subject’s (standardized) deviation held fixed, scored on
+  the data likelihood by one BHHH step with NONMEM’s step-halving rule.
+  The ordinary update barely moves the mean or variance of a random
+  effect the individual data say little about; on Bauer’s
+  gamma-distributed CL/V1 benchmark the steps took the
+  intercompartmental clearance from 0.85-0.88 to 0.74 (truth 0.74) and
+  its variance to within 10% of the truth. Off by default: on
+  well-informed models they change nothing and cost model solves.
+  `nonCenteredPhase = "burnin"` restricts them to burn-in.
+
 - `saemControl(etaMat=)` starts every SAEM MCMC chain at given etas: a
   prior fit’s EBEs (`saemControl(etaMat = fit)`), a data frame with an
   `ID` column or a subject-by-eta matrix. The default (`NULL`) keeps the
@@ -127,6 +141,14 @@
   warm-start ETAs (0.0054 before on `pheno_sd`); the default is
   unchanged
   ([\#1152](https://github.com/nlmixr2/nlmixr2est/issues/1152)).
+
+- `saemControl(nu1B=)` adds NONMEM’s proposal kernel mode 1B
+  (`ISAMPLE_M1B`) to SAEM’s E-step: independence proposals from each
+  subject’s running conditional mean and covariance of its random
+  effects, which mixes much faster when the posterior is narrow or
+  correlated relative to `omega`. Off by default; `nb1B` (start
+  iteration, default 10) and `kappa1B` (NONMEM’s `IKAPPA`) tune it, and
+  `$saem$accept1B` reports its acceptance rate.
 
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for
   each ETA (computed on access, so older saved fits have them too), and
@@ -316,7 +338,9 @@
   an estimate that is not stationary for the FOCEi objective: the Newton
   decrement `0.5 * g' H^-1 g` (OFV units) of that objective at the
   estimate exceeds `saemControl(covNewtonWarn = 1)`. The value is kept
-  as `fit$covNewtonDecrement`; `NA` or `Inf` skips the check
+  as `fit$covNewtonDecrement`; `NA` or `Inf` skips the check; models
+  outside the analytic gradient’s scope (e.g. `linCmt()`) use central
+  differences
   ([\#1389](https://github.com/nlmixr2/nlmixr2est/issues/1389)).
 
 - `saem` now reports each subject’s conditional mode as `fit$eta` (the
@@ -477,6 +501,22 @@
   `covMethod = "failed"`.
 
 #### Estimation
+
+- `est="saem"` now re-solves its cached predictions after the M-step
+  moves a theta without an eta, so the next E-step no longer scores the
+  current state at the previous theta (non-mixture fits; mixtures
+  already re-solved).
+
+- `est="saem"` now starts additive and proportional residual errors at
+  their [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html)
+  values instead of fixed placeholders (`10` and `1`), as the power and
+  lambda parameters already did. The residual warm-start
+  (`saemControl(residWarmStart=TRUE)`) is now clamped around the
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) values,
+  and with `residWarmStart=FALSE` (or a mixture model) the first E-step
+  samples under the
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html)
+  residual error.
 
 - FOCEi: a `linCmt()` model with an `ll()` (or other generalized)
   endpoint and an eta on `f()` or `alag()` no longer gets a zero inner

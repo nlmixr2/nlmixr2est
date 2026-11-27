@@ -54,6 +54,9 @@
 <span>  plateauMinFrac <span class="op">=</span> <span class="fl">0.5</span>,</span>
 <span>  nmc <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  nu <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span>,</span>
+<span>  nu1B <span class="op">=</span> <span class="fl">0L</span>,</span>
+<span>  nb1B <span class="op">=</span> <span class="fl">10L</span>,</span>
+<span>  kappa1B <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  rmcmc <span class="op">=</span> <span class="fl">0.5</span>,</span>
 <span>  mcmcAcceptWarn <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.05</span>, <span class="fl">0.8</span><span class="op">)</span>,</span>
 <span>  print <span class="op">=</span> <span class="fl">1L</span>,</span>
@@ -111,6 +114,9 @@
 <span>  nonMuThetaMaxEval <span class="op">=</span> <span class="fl">25L</span>,</span>
 <span>  nonMuThetaTol <span class="op">=</span> <span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">^</span><span class="fl">0.25</span>,</span>
 <span>  nonMuThetaEvery <span class="op">=</span> <span class="fl">1L</span>,</span>
+<span>  muNonCentered <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  omegaNonCentered <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  nonCenteredPhase <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"all"</span>, <span class="st">"burnin"</span><span class="op">)</span>,</span>
 <span>  phi1ThetaMaxEval <span class="op">=</span> <span class="fl">50L</span>,</span>
 <span>  phi1ThetaEvery <span class="op">=</span> <span class="fl">1L</span>,</span>
 <span>  phi1Hessian <span class="op">=</span> <span class="cn">FALSE</span>,</span>
@@ -185,6 +191,23 @@ computation.  In Monolix this is equivalent to <code>L</code>.</p></dd>
     dimensional random walk Gibbs samples are taken.</p>
 <p>The third value represents the number of bootstrap/reshuffling or
     uni-dimensional random samples are taken.</p></dd>
+
+
+<dt id="arg-nu-b">nu1B<a class="anchor" aria-label="anchor" href="#arg-nu-b"></a></dt>
+<dd><p>Sweeps per iteration of NONMEM's proposal kernel mode 1B
+(`ISAMPLE_M1B`), run after the first kernel: independence proposals
+from each subject's running conditional mean and covariance of its
+random effects.  `0` (default) turns it off.</p></dd>
+
+
+<dt id="arg-nb-b">nb1B<a class="anchor" aria-label="anchor" href="#arg-nb-b"></a></dt>
+<dd><p>Iteration at which `nu1B` starts, once the subjects' moments
+have accumulated (NONMEM starts after the 10th iteration).</p></dd>
+
+
+<dt id="arg-kappa-b">kappa1B<a class="anchor" aria-label="anchor" href="#arg-kappa-b"></a></dt>
+<dd><p>Power of the gain `n^-kappa1B` that accumulates the mode 1B
+moments (NONMEM's `IKAPPA`); `1` is a simple average over iterations.</p></dd>
 
 
 <dt id="arg-rmcmc">rmcmc<a class="anchor" aria-label="anchor" href="#arg-rmcmc"></a></dt>
@@ -715,6 +738,31 @@ tolerance, or the `optimize()` `tol`).</p></dd>
 <dd><p>Run the `nonMuTheta="regress"` refinement every
 `nonMuThetaEvery` iterations instead of every iteration (default 1).  In
 between, `phi0` keeps its last refined value.</p></dd>
+
+
+<dt id="arg-munoncentered">muNonCentered<a class="anchor" aria-label="anchor" href="#arg-munoncentered"></a></dt>
+<dd><p>Boolean (default `FALSE`); after the M-step, shift each
+free intercept-only mu-referenced mean with every subject's eta held fixed,
+scored on the data likelihood by one BHHH step with NONMEM's step-halving
+rule (an interweaved, non-centered update; Yu and Meng 2011).  The ordinary
+SAEM mean update barely moves a mean whose random effect is small relative
+to the data's information about it; this step does.  It costs a few model
+solves per iteration, and on well-informed random effects it changes
+nothing.  Non-mixture fits only.</p></dd>
+
+
+<dt id="arg-omeganoncentered">omegaNonCentered<a class="anchor" aria-label="anchor" href="#arg-omeganoncentered"></a></dt>
+<dd><p>Boolean (default `FALSE`); the scale counterpart of
+`muNonCentered`: rescale each estimated mu-referenced random effect with
+every subject's standardized deviation held fixed, scored on the data
+likelihood by one BHHH step.  Chains, `Omega` and SAEM's sufficient
+statistics are rescaled together.  Non-mixture fits only.</p></dd>
+
+
+<dt id="arg-noncenteredphase">nonCenteredPhase<a class="anchor" aria-label="anchor" href="#arg-noncenteredphase"></a></dt>
+<dd><p>When `muNonCentered`/`omegaNonCentered` run:
+`"all"` (every iteration) or `"burnin"` (only while the stochastic
+approximation gain is 1, so the estimation phase is plain SAEM).</p></dd>
 
 
 <dt id="arg-phi-thetamaxeval">phi1ThetaMaxEval<a class="anchor" aria-label="anchor" href="#arg-phi-thetamaxeval"></a></dt>

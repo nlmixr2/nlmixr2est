@@ -88,8 +88,8 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 9552
-#> → compress phiM in nlmixr2 object, save 63256
+#> → compress parHistData in nlmixr2 object, save 9560
+#> → compress phiM in nlmixr2 object, save 64160
 
 nlmixrWithTiming("time1", {
    Sys.sleep(1)
@@ -107,18 +107,18 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess configure saem postprocess
-#> elapsed 0.04927967 3.4241e-05 0.02101209      0.039     0.104 1.84       0.162
+#>             setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.0695834 3.6384e-05 0.03001137      0.053     0.466 2.788       0.206
 #>         table compress    other time2 time1
-#> elapsed 0.036    0.053 0.392674 1.001 1.002
+#> elapsed 0.046    0.057 1.930369 1.002 1.002
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0       1.57 
-#> tcl               1.01 0.0843 8.37       2.74 (2.32, 3.23)     27.2       4.23 
-#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.12 
-#> add.sd           0.696 0.0471 6.77    0.696 (0.604, 0.788)                     
+#> tka              0.462  0.188 40.8       1.59 (1.10, 2.30)     70.3       1.89 
+#> tcl              0.983 0.0847 8.62       2.67 (2.26, 3.16)     27.3       4.88 
+#> tv         log V  3.45 0.0427 1.24       31.7 (29.1, 34.4)     13.4       9.35 
+#> add.sd           0.697 0.0474 6.80    0.697 (0.604, 0.790)                     
 #>  
 #>   Covariance Type ($covMethod): sa
 #>   Fixed parameter correlations in $cor
@@ -128,16 +128,16 @@ print(fit)
 #>   Information about run found ($runInfo):
 #>    • IWRES shrinkage is strongly negative; check the residual model 
 #>    • closed form: tka, tv; numerical (optimize): tcl 
-#>    • IWRES positively autocorrelated within subjects: Durbin-Watson 0.28 
+#>    • IWRES positively autocorrelated within subjects: Durbin-Watson 0.25 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 132 × 18
 #>   ID     TIME    DV  PRED    RES IPRED    IRES   IWRES eta.ka eta.cl   eta.v
 #>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>   <dbl>  <dbl>  <dbl>   <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.0925 -0.473 -0.0848
-#> 2 1      0.25  2.84  3.22 -0.377  3.81 -0.966  -1.39   0.0925 -0.473 -0.0848
-#> 3 1      0.57  6.57  5.63  0.944  6.61 -0.0389 -0.0559 0.0925 -0.473 -0.0848
+#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.0911 -0.452 -0.0847
+#> 2 1      0.25  2.84  3.22 -0.377  3.80 -0.961  -1.38   0.0911 -0.452 -0.0847
+#> 3 1      0.57  6.57  5.61  0.963  6.58 -0.0122 -0.0175 0.0911 -0.452 -0.0847
 #> # ℹ 129 more rows
 #> # ℹ 7 more variables: depot <dbl>, central <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
 #> #   tad <dbl>, dosenum <dbl>

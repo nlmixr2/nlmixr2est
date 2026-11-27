@@ -95,8 +95,8 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 9552
-#> → compress phiM in nlmixr2 object, save 63256
+#> → compress parHistData in nlmixr2 object, save 9560
+#> → compress phiM in nlmixr2 object, save 64160
 
 print(f)
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
@@ -107,17 +107,17 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.06561394 3.6425e-05  0.0240155      0.041     0.564 1.875       0.591
-#>         table compress     other
-#> elapsed 0.052    0.048 0.4023341
+#> elapsed 0.09421118 4.5137e-05  0.0330139      0.052     0.708 2.804       0.783
+#>         table compress   other
+#> elapsed 0.063    0.062 2.01273
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0       1.57 
-#> tcl               1.01 0.0843 8.37       2.74 (2.32, 3.23)     27.2       4.23 
-#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.12 
-#> add.sd           0.696 0.0471 6.77    0.696 (0.604, 0.788)                     
+#> tka              0.462  0.188 40.8       1.59 (1.10, 2.30)     70.3       1.89 
+#> tcl              0.983 0.0847 8.62       2.67 (2.26, 3.16)     27.3       4.88 
+#> tv         log V  3.45 0.0427 1.24       31.7 (29.1, 34.4)     13.4       9.35 
+#> add.sd           0.697 0.0474 6.80    0.697 (0.604, 0.790)                     
 #>  
 #>   Covariance Type ($covMethod): sa
 #>   Fixed parameter correlations in $cor
@@ -127,16 +127,16 @@ print(f)
 #>   Information about run found ($runInfo):
 #>    • IWRES shrinkage is strongly negative; check the residual model 
 #>    • closed form: tka, tv; numerical (optimize): tcl 
-#>    • IWRES positively autocorrelated within subjects: Durbin-Watson 0.28 
+#>    • IWRES positively autocorrelated within subjects: Durbin-Watson 0.25 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 132 × 18
 #>   ID     TIME    DV  PRED    RES IPRED    IRES   IWRES eta.ka eta.cl   eta.v
 #>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>   <dbl>  <dbl>  <dbl>   <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.0925 -0.473 -0.0848
-#> 2 1      0.25  2.84  3.22 -0.377  3.81 -0.966  -1.39   0.0925 -0.473 -0.0848
-#> 3 1      0.57  6.57  5.63  0.944  6.61 -0.0389 -0.0559 0.0925 -0.473 -0.0848
+#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.0911 -0.452 -0.0847
+#> 2 1      0.25  2.84  3.22 -0.377  3.80 -0.961  -1.38   0.0911 -0.452 -0.0847
+#> 3 1      0.57  6.57  5.61  0.963  6.58 -0.0122 -0.0175 0.0911 -0.452 -0.0847
 #> # ℹ 129 more rows
 #> # ℹ 7 more variables: depot <dbl>, central <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
 #> #   tad <dbl>, dosenum <dbl>
@@ -173,23 +173,23 @@ if (!inherits(f, "try-error")) {
 #>  
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
 #> 
-#>           OBJF      AIC     BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> FOCEi 116.8447 373.4444 393.624      -179.7222        459.3324        1.454275
+#>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> FOCEi 116.9652 373.565 393.7446      -179.7825        444.1298        1.511128
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.06561394 3.6425e-05  0.0240155      0.041     0.564 1.875       0.591
-#>         table compress     other foceiLik
-#> elapsed 0.262    0.048 0.4023341    0.137
+#> elapsed 0.09421118 4.5137e-05  0.0330139      0.052     0.708 2.804       0.783
+#>         table compress   other foceiLik
+#> elapsed 0.368    0.062 2.01273    0.202
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.188 40.9       1.58 (1.09, 2.29)     70.0       1.57 
-#> tcl               1.01 0.0843 8.37       2.74 (2.32, 3.23)     27.2       4.23 
-#> tv         log V  3.45 0.0422 1.22       31.6 (29.1, 34.4)     13.3       9.12 
-#> add.sd           0.696 0.0471 6.77    0.696 (0.604, 0.788)                     
+#> tka              0.462  0.188 40.8       1.59 (1.10, 2.30)     70.3       1.89 
+#> tcl              0.983 0.0847 8.62       2.67 (2.26, 3.16)     27.3       4.88 
+#> tv         log V  3.45 0.0427 1.24       31.7 (29.1, 34.4)     13.4       9.35 
+#> add.sd           0.697 0.0474 6.80    0.697 (0.604, 0.790)                     
 #>  
 #>   Covariance Type ($covMethod): sa
 #>   Fixed parameter correlations in $cor
@@ -199,16 +199,16 @@ if (!inherits(f, "try-error")) {
 #>   Information about run found ($runInfo):
 #>    • IWRES shrinkage is strongly negative; check the residual model 
 #>    • closed form: tka, tv; numerical (optimize): tcl 
-#>    • IWRES positively autocorrelated within subjects: Durbin-Watson 0.28 
+#>    • IWRES positively autocorrelated within subjects: Durbin-Watson 0.25 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 132 × 22
 #>   ID     TIME    DV  PRED    RES IPRED    IRES   IWRES eta.ka eta.cl   eta.v
 #>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>   <dbl>  <dbl>  <dbl>   <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.0925 -0.473 -0.0848
-#> 2 1      0.25  2.84  3.22 -0.377  3.81 -0.966  -1.39   0.0925 -0.473 -0.0848
-#> 3 1      0.57  6.57  5.63  0.944  6.61 -0.0389 -0.0559 0.0925 -0.473 -0.0848
+#> 1 1      0     0.74  0     0.74   0     0.74    1.06   0.0911 -0.452 -0.0847
+#> 2 1      0.25  2.84  3.22 -0.377  3.80 -0.961  -1.38   0.0911 -0.452 -0.0847
+#> 3 1      0.57  6.57  5.61  0.963  6.58 -0.0122 -0.0175 0.0911 -0.452 -0.0847
 #> # ℹ 129 more rows
 #> # ℹ 11 more variables: depot <dbl>, central <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
 #> #   tad <dbl>, dosenum <dbl>, WRES <dbl>, CPRED <dbl>, CRES <dbl>, CWRES <dbl>
