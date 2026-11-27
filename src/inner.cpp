@@ -976,6 +976,11 @@ struct focei_options {
   // "never explored" (#1040).
   std::atomic<int> nMcetaZero{0};
   std::atomic<int> nMcetaSample{0};
+  // mceta>=1 inner optimizations launched from eta=0 and from a draw, and the
+  // inner-solve time (thread-summed ns) of the solves that ran the search (#1456).
+  std::atomic<int> nMcetaRunZero{0};
+  std::atomic<int> nMcetaRunDraw{0};
+  std::atomic<long long> mcetaNs{0};
   // Inner solves whose restarts produced more than one candidate and so were
   // ranked on the marginal objective, and how many of those the marginal
   // ordered differently from the inner objective -- the second count is the
@@ -1242,6 +1247,99 @@ struct focei_options {
 };
 
 focei_options op_focei;
+
+// mceta multistart counters snapshotted at each recorded outer evaluation (#1456).
+enum { mcetaRunZeroCol = 0, mcetaRunDrawCol, mcetaWonZeroCol, mcetaWonDrawCol,
+       mcetaRankedCol, mcetaFlippedCol, mcetaNcol };
+static long long _mcetaLast[mcetaNcol + 1];
+static std::vector<int> _mcetaIter;
+static std::vector<long long> _mcetaDelta; // mcetaNcol counts + ns per row
+
+static inline void mcetaCounterGet(long long *v) {
+  v[mcetaRunZeroCol] = op_focei.nMcetaRunZero.load(std::memory_order_relaxed);
+  v[mcetaRunDrawCol] = op_focei.nMcetaRunDraw.load(std::memory_order_relaxed);
+  v[mcetaWonZeroCol] = op_focei.nMcetaZero.load(std::memory_order_relaxed);
+  v[mcetaWonDrawCol] = op_focei.nMcetaSample.load(std::memory_order_relaxed);
+  v[mcetaRankedCol]  = op_focei.nInnerRanked.load(std::memory_order_relaxed);
+  v[mcetaFlippedCol] = op_focei.nInnerReranked.load(std::memory_order_relaxed);
+  v[mcetaNcol]       = op_focei.mcetaNs.load(std::memory_order_relaxed);
+}
+
+// Called wherever nMcetaZero/nMcetaSample are zeroed, so deltas stay non-negative.
+static inline void mcetaCounterReset() {
+  op_focei.nMcetaRunZero.store(0, std::memory_order_relaxed);
+  op_focei.nMcetaRunDraw.store(0, std::memory_order_relaxed);
+  op_focei.mcetaNs.store(0, std::memory_order_relaxed);
+  std::fill_n(_mcetaLast, mcetaNcol + 1, 0LL);
+}
+
+// Like niter/vPar, the history is per foceiSetup_ (a theta-reset restart included),
+// as are the counters op_focei's reset zeroes.
+static inline void mcetaHistoryClear() {
+  _mcetaIter.clear();
+  _mcetaDelta.clear();
+  std::fill_n(_mcetaLast, mcetaNcol + 1, 0LL);
+}
+
+// Records the counter change since the last recorded outer evaluation, so a row
+// also holds any unrecorded probes (e.g. trust/bobyqa FD probes) run since then.
+static inline void mcetaRecord(int iter) {
+  long long cur[mcetaNcol + 1];
+  mcetaCounterGet(cur);
+  _mcetaIter.push_back(iter);
+  for (int k = 0; k <= mcetaNcol; ++k) {
+    _mcetaDelta.push_back(cur[k] - _mcetaLast[k]);
+    _mcetaLast[k] = cur[k];
+  }
+}
+
+// Adds the inner-solve time to mcetaNs once start() was called.
+struct McetaTimer {
+  bool on = false;
+  focei_wall_clock::time_point t0;
+  void start() { on = true; t0 = focei_wall_clock::now(); }
+  ~McetaTimer() {
+    if (!on) return;
+    long long ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      focei_wall_clock::now() - t0).count();
+    op_focei.mcetaNs.fetch_add(ns, std::memory_order_relaxed);
+  }
+};
+
+// fit$mcetaInfo: per-outer-evaluation deltas, and totals that also count the
+// covariance step and final solves.
+static List mcetaInfoList() {
+  const int n = (int)_mcetaIter.size();
+  IntegerVector iter(n), rz(n), rd(n), wz(n), wd(n), rk(n), fl(n);
+  NumericVector sec(n);
+  for (int i = 0; i < n; ++i) {
+    const long long *r = &_mcetaDelta[(size_t)i * (mcetaNcol + 1)];
+    iter[i] = _mcetaIter[i];
+    rz[i] = (int)r[mcetaRunZeroCol];
+    rd[i] = (int)r[mcetaRunDrawCol];
+    wz[i] = (int)r[mcetaWonZeroCol];
+    wd[i] = (int)r[mcetaWonDrawCol];
+    rk[i] = (int)r[mcetaRankedCol];
+    fl[i] = (int)r[mcetaFlippedCol];
+    sec[i] = (double)r[mcetaNcol] * 1e-9;
+  }
+  DataFrame iterDf = DataFrame::create(_["iter"] = iter, _["startZero"] = rz,
+                                       _["startDraw"] = rd, _["wonZero"] = wz,
+                                       _["wonDraw"] = wd, _["ranked"] = rk,
+                                       _["flipped"] = fl, _["time"] = sec);
+  long long cur[mcetaNcol + 1];
+  mcetaCounterGet(cur);
+  NumericVector total = NumericVector::create(
+    _["startZero"] = (double)cur[mcetaRunZeroCol],
+    _["startDraw"] = (double)cur[mcetaRunDrawCol],
+    _["wonZero"] = (double)cur[mcetaWonZeroCol],
+    _["wonDraw"] = (double)cur[mcetaWonDrawCol],
+    _["ranked"] = (double)cur[mcetaRankedCol],
+    _["flipped"] = (double)cur[mcetaFlippedCol],
+    _["time"] = (double)cur[mcetaNcol] * 1e-9);
+  return List::create(_["mceta"] = op_focei.mceta, _["mcetaOpt"] = op_focei.mcetaOpt,
+                      _["total"] = total, _["iter"] = iterDf);
+}
 
 // Does an innerOpt code run the trust-region retry cascade?
 //
@@ -1731,6 +1829,7 @@ extern "C" void rxOptionsFreeFocei() {
   gradType.clear();
   niter.clear();
   niterGrad.clear();
+  mcetaHistoryClear();
 }
 
 
@@ -4682,6 +4781,7 @@ static inline int innerOpt1(int id, int likId) {
   int nMcetaDraw = 0;
   bool mcetaSampleStart = false;
   bool mcetaSearch = false;
+  McetaTimer mcetaTimer;
   // Use eta
   // Convert Zm to Hessian, if applicable.
   mat etaMat(fop->neta, 1, fill::zeros);
@@ -4756,6 +4856,7 @@ static inline int innerOpt1(int id, int likId) {
     // behavior of mceta=-1/-2 -- mceta=10 returned an objective bit-identical to
     // mceta=-2 and the extra draws never mattered.
     //
+    mcetaTimer.start();
     std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
     // Subjects with no slice (empty cube) simply have no draws to try.
     bool haveSlice = static_cast<arma::uword>(id) < op_focei.mcetaSamples.n_slices;
@@ -4790,8 +4891,10 @@ static inline int innerOpt1(int id, int likId) {
       }
       if (nMcetaDraw > 0) {
         op_focei.nMcetaSample.fetch_add(1, std::memory_order_relaxed);
+        op_focei.nMcetaRunDraw.fetch_add(1, std::memory_order_relaxed);
       } else {
         op_focei.nMcetaZero.fetch_add(1, std::memory_order_relaxed);
+        op_focei.nMcetaRunZero.fetch_add(1, std::memory_order_relaxed);
       }
     }
     mcetaSampleStart = nMcetaDraw > 0;
@@ -4951,6 +5054,10 @@ static inline int innerOpt1(int id, int likId) {
   // `_lastStart` (see the arms below) rather than returning, so a failed
   // sampled start still gets the passes after it.
   int nInnerStart = (mcetaSampleStart && op_focei.mcetaOpt) ? nMcetaDraw + 1 : 1;
+  if (mcetaSearch) {
+    op_focei.nMcetaRunZero.fetch_add(1, std::memory_order_relaxed);
+    op_focei.nMcetaRunDraw.fetch_add(nInnerStart - 1, std::memory_order_relaxed);
+  }
   for (_innerStart = 0; _innerStart < nInnerStart; _innerStart++) {
   bool _lastStart = (_innerStart + 1 == nInnerStart);
   // The running minimum is PASS-LOCAL.  restoreBest() is the recovery from a
@@ -10094,6 +10201,7 @@ NumericVector foceiSetup_(const RObject &obj,
   // never reach -- otherwise those fits would report the previous fit's counts.
   op_focei.mcetaSamples.reset();
   op_focei.etaRestartSamples.reset();
+  mcetaCounterReset();
   op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
   op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
@@ -11265,6 +11373,7 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
   ++op_focei.nF;
   if (!op_focei.recordOuter) return ret;
   niter.push_back(op_focei.nF2+op_focei.nF);
+  mcetaRecord(niter.back());
   // The mu-family records/prints nparsPrint columns: optimizer values
   // interleaved with the current regression-updated mu thetas (raw estimation
   // scale, fresh from the foceiOfv0 inner/updateMuGroups cycle above);
@@ -11674,6 +11783,7 @@ Environment foceiOuter(Environment e){
   op_focei.curAnalytic=0;
   op_focei.nAnalyticGrad=0;
   op_focei.nAnalyticGradDirect=0;
+  mcetaCounterReset();
   op_focei.nMcetaZero.store(0, std::memory_order_relaxed);
   op_focei.nMcetaSample.store(0, std::memory_order_relaxed);
   op_focei.nInnerRanked.store(0, std::memory_order_relaxed);
@@ -14498,6 +14608,7 @@ void foceiFinalizeTables(Environment e){
   // is invisible to the EM estimators.  This one has to be readable there --
   // imp reaches the same inner MAP, so it is the only evidence that raising
   // mceta did anything for an imp fit rather than being silently ignored.
+  e["mcetaInfo"] = mcetaInfoList();
   if (op_focei.mceta >= 1) {
     e["nMcetaStart"] = IntegerVector::create(
       _["zero"] = op_focei.nMcetaZero.load(std::memory_order_relaxed),

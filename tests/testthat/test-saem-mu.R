@@ -32,7 +32,7 @@ nmTest({
       one.compartment,
       theo_sd2,
       est = "saem",
-      control = saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1, calcTables = FALSE)
+      control = saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1, calcTables = FALSE, covNewtonWarn = NA)
     )
 
     # true mu expression should not have information in $runInfo
