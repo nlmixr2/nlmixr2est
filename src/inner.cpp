@@ -1644,7 +1644,7 @@ struct focei_ind {
   double curT;
   double *curS;
   int nNonNormal = 0;
-  int nCensLl = 0; // M3/M4-censored nNonNormal rows: no log(2*pi) to drop
+  int nCensLl = 0;  // M3/M4-censored nNonNormal rows: no log(2*pi) to drop
   int nObs=0;
   // Mixture options
   int    *mixest;
@@ -3015,8 +3015,8 @@ static inline double likInner0Contrib(int id, int k, int dist, int cens,
 // rows by their data (as nlmixr2EnvSetup does): they carry no log(2*pi) constant.
 static inline double focei_tCensLl(bool lhsOk, int dist, int cens, double dv,
                                    double limit, double llVal, double fT,
-                                   double *lhs, int &nCensLl) {
-  if (cens == 1 || cens == -1) nCensLl++;
+                                   double *lhs, int *nCensLl) {
+  if (cens == 1 || cens == -1) (*nCensLl)++;
   bool isT = (dist == rxDistributionT || dist == rxDistributionCauchy);
   bool isDnorm = (dist == rxDistributionDnorm);
   if (!lhsOk || (!isT && !isDnorm) ||
@@ -3574,7 +3574,7 @@ double likInner0(double *eta, int id) {
               fInd->nObs++;
             } else {
               double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs,
-                                           fInd->nCensLl);
+                                           &fInd->nCensLl);
               llikObs[kk] = llT;
               fInd->llik += llT;
               fInd->nNonNormal++;
@@ -3687,7 +3687,7 @@ double likInner0(double *eta, int id) {
                  fInd->nObs++;
                } else {
                  double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs,
-                                           fInd->nCensLl);
+                                           &fInd->nCensLl);
                  llikObs[kk] = llT;
                  fInd->llik += llT;
                  fInd->nNonNormal++;
@@ -3714,13 +3714,13 @@ double likInner0(double *eta, int id) {
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
               if (dist == rxDistributionNorm) {
                 double ll = -0.5 * err * err/_safe_zero(r) -0.5 * lnr;
-                ll =doCensNormal1((double)cens, dv, limit, ll, f, r);
+                ll = doCensNormal1((double)cens, dv, limit, ll, f, r);
                 llikObs[kk] = ll + ((op_focei.isNpag || op_focei.isNpb) ? tbsJac : 0.0);
                 fInd->llik +=  ll;
                 fInd->nObs++;
               } else {
                 double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs,
-                                           fInd->nCensLl);
+                                           &fInd->nCensLl);
                 llikObs[kk] = llT;
                 fInd->llik += llT;
                 fInd->nNonNormal++;
@@ -3874,7 +3874,7 @@ static bool conditionalInnerPartials(rx_solving_options_ind *ind, int kk2,
   int cens = hasRxCens(rx) ? getIndCens(ind, kk2) : 0;
   double err = f-y;
   double ll = -0.5*(std::log(variance)+err*err/variance);
-  value = -doCensNormal1(cens,y,limit,ll,f,variance);
+  value = -doCensNormal1(cens, y, limit, ll, f, variance);
   cp[0] = err/variance;
   cp[1] = 0.5/variance-0.5*err*err/(variance*variance);
   cp[2] = 1.0/variance;
@@ -11218,7 +11218,8 @@ static int foceiNobsCensM34() {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
       int kk = getIndIx(ind, j);
-      if (getIndEvid(ind, kk) == 0 && (getIndCens(ind, kk) == 1 || getIndCens(ind, kk) == -1)) n++;
+      int c = getIndCens(ind, kk);
+      if (getIndEvid(ind, kk) == 0 && (c == 1 || c == -1)) n++;
     }
   }
   return n;
