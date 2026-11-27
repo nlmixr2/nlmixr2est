@@ -75,10 +75,21 @@
 #' @return the message
 #' @noRd
 .shrinkEtaWarnMsg <- function(etas, limit) {
-  .pre <- sprintf("high eta shrinkage (>=%s%%): ", format(limit))
-  .n <- length(etas)
+  .runInfoNameMsg(sprintf("high eta shrinkage (>=%s%%): ", format(limit)), etas)
+}
+
+#' A `$runInfo` warning naming items, kept under 75 characters
+#'
+#' Drops trailing names (counted as `+N more`) until the line fits; the first
+#' name is always kept.
+#' @param pre the message prefix
+#' @param nms the names to list
+#' @return the message
+#' @noRd
+.runInfoNameMsg <- function(pre, nms) {
+  .n <- length(nms)
   for (.k in rev(seq_len(.n))) {
-    .msg <- paste0(.pre, paste(etas[seq_len(.k)], collapse = ", "))
+    .msg <- paste0(pre, paste(nms[seq_len(.k)], collapse = ", "))
     if (.k < .n) {
       .msg <- paste0(.msg, sprintf(", +%d more", .n - .k))
     }

@@ -128,6 +128,36 @@
   c("not computed", "usable", "not PD", "failed")[st + 1L]
 }
 
+#' Why a FOCEi R or S matrix is not positive definite, naming the parameters
+#'
+#' S is a sum of one outer product per subject, so with fewer subjects than
+#' parameters it is singular whatever the data; that is said instead.
+#' @param env fit environment (`R.0`/`S0`, `thetaNames`, `skipCov`)
+#' @param x "R" or "S"
+#' @param nsub number of subjects
+#' @return the text, or `""` when nothing can be named
+#' @noRd
+.covFoceiMatWhy <- function(env, x, nsub = NA_integer_) {
+  .m <- get0(if (x == "R") "R.0" else "S0", envir = env, inherits = FALSE)
+  if (!is.matrix(.m) || nrow(.m) != ncol(.m) || nrow(.m) == 0L) {
+    return("")
+  }
+  if (x == "S" && isTRUE(nsub < nrow(.m))) {
+    return(sprintf("%d subjects < %d parameters", as.integer(nsub), nrow(.m)))
+  }
+  .tn <- get0("thetaNames", envir = env, inherits = FALSE)
+  .sk <- get0("skipCov", envir = env, inherits = FALSE)
+  if (!is.character(.tn) || !is.logical(.sk) || length(.sk) < length(.tn)) {
+    return("")
+  }
+  .nm <- .tn[!.sk[seq_along(.tn)]]
+  if (length(.nm) != nrow(.m)) {
+    return("")
+  }
+  dimnames(.m) <- list(.nm, .nm)
+  .covSingularWhy(.covSingularAt(0.5 * (.m + t(.m))))
+}
+
 #' The warning that a requested covariance was not used
 #'
 #' The warning stays under 75 characters, the width a `$runInfo` line renders in
@@ -197,6 +227,7 @@
 #' @param sHasZero whether a subject's S score had to be substituted
 #' @param covSmall `foceiControl(covSmall=)`
 #' @param fallback methods the request may fall back to (`foceiControl(covFallback=)`)
+#' @param nsub number of subjects, for why S is singular
 #' @return list(slot = 0 (none), 1, 2 or 3, label)
 #' @noRd
 .covSelectFocei <- function(
@@ -209,7 +240,8 @@
   checkSandwich,
   sHasZero,
   covSmall,
-  fallback = c("r", "s")
+  fallback = c("r", "s"),
+  nsub = NA_integer_
 ) {
   .names <- c("r,s", "r", "s")
   .acc <- new.env(parent = emptyenv())
@@ -223,8 +255,16 @@
   }
   .cur <- req
   .which <- ""
+  .why <- c(
+    R = if (rState == 2L) .covFoceiMatWhy(env, "R", nsub) else "",
+    S = if (sState == 2L) .covFoceiMatWhy(env, "S", nsub) else ""
+  )
+  .state <- function(x, st) {
+    .s <- paste(x, .covMatState(st))
+    if (nzchar(.why[[x]])) paste0(.s, ": ", .why[[x]]) else .s
+  }
   if (req %in% c(1L, 2L) && rState != 1L) {
-    .covTriedAdd(.acc, .names[req], paste("R", .covMatState(rState)))
+    .covTriedAdd(.acc, .names[req], .state("R", rState))
     .cur <- if ("s" %in% fallback) 3L else 0L
   }
   if (.cur == 2L) {
@@ -232,7 +272,7 @@
   }
   if (.cur %in% c(1L, 3L)) {
     if (sState == 2L || sState == 3L) {
-      .covTriedAdd(.acc, .names[.cur], paste("S", .covMatState(sState)))
+      .covTriedAdd(.acc, .names[.cur], .state("S", sState))
       if (.cur == 1L && "r" %in% fallback) {
         .which <- "covR"
         .cur <- 2L
@@ -277,7 +317,8 @@
     if (!is.null(.w)) {
       .covWarn(.w)
     }
-    .covWarn("covariance step failed")
+    .w <- .why[nzchar(.why)]
+    .covWarn(if (length(.w) == 0L) "covariance step failed" else paste0("covariance step failed: ", .w[[1L]]))
     return(list(slot = 0L, label = "failed"))
   }
   if (sHasZero) {

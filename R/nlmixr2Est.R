@@ -461,8 +461,34 @@ nlmixr2Est0 <- function(env, ...) {
     if (length(.post) > 0L) {
       .nlmixr2EstSetRunInfo(.ret, c(.warnings, .post))
     }
+    # $runInfo alone is easy to miss in a script
+    if (.tablesDroppedGet(.ret)) {
+      warning("tables step failed, fit has no tables (see $runInfo)", call. = FALSE)
+    }
   }
   .ret
+}
+
+#' Record whether a fit's tables step was dropped
+#' @param ret the fit (environment or data frame)
+#' @param dropped logical
+#' @return nothing, called for side effects
+#' @noRd
+.tablesDroppedSet <- function(ret, dropped) {
+  .env <- if (is.environment(ret)) ret else attr(class(ret), ".foceiEnv")
+  if (is.environment(.env)) {
+    assign("tablesDropped", dropped, envir = .env)
+  }
+  invisible()
+}
+
+#' Did a fit's tables step fail and get dropped?
+#' @param ret the fit (environment or data frame)
+#' @return logical
+#' @noRd
+.tablesDroppedGet <- function(ret) {
+  .env <- if (is.environment(ret)) ret else attr(class(ret), ".foceiEnv")
+  is.environment(.env) && isTRUE(get0("tablesDropped", envir = .env, inherits = FALSE))
 }
 
 #' Store the warnings of a run as a fit's `$runInfo`
@@ -491,6 +517,7 @@ nlmixr2Est0 <- function(env, ...) {
 #' @return nothing, called for side effects
 #' @noRd
 .nlmixr2EstPostFit <- function(ret, env) {
+  .iwresAutocorNote(ret, get0("table", envir = env, inherits = FALSE))
   # not every method assigns env$est (nlme/saem set it on the fit only), so
   # fall back to the finalized fit's est
   .estName <- tryCatch(as.character(get("est", envir = env)), error = function(e) "")
@@ -552,7 +579,12 @@ nlmixr2Est0 <- function(env, ...) {
   )
   .shrinkEtaWarn(ret)
   .odeSettleCheck(ret)
+  try(.omegaCollapseWarn(ret, env), silent = TRUE)
+  try(.thetaBoundWarn(ret, env), silent = TRUE)
   # name strongly correlated estimates, from the covariance the fit ends with
   try(.covCorWarn(ret), silent = TRUE)
+  # an ill-conditioned final covariance makes the SEs unreliable
+  try(.covCondWarn(ret), silent = TRUE)
+  try(.covNewtonWarn(ret, .estName), silent = TRUE)
   invisible()
 }

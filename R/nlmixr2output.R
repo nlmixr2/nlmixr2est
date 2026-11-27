@@ -1282,3 +1282,28 @@ formatMinWidth <- function(x, digits = 3, naValue = "NA") {
     )
   ret
 }
+
+# IWRES sd shrinkage (%) below which the fit notes a mis-sized residual model
+.iwresShrinkWarnThreshold <- -5
+
+#' Note a strongly negative IWRES shrinkage in the fit's `$runInfo`
+#'
+#' The raw value stays in `$shrink`; this only adds a `warning()`.
+#'
+#' @param shrink the shrinkage data frame (or the IOV list holding it as `id`)
+#' @return `TRUE` when the warning was raised, otherwise `FALSE` (invisibly)
+#' @noRd
+.iwresShrinkWarn <- function(shrink) {
+  if (is.list(shrink) && !is.data.frame(shrink)) {
+    shrink <- shrink$id
+  }
+  if (!is.data.frame(shrink) || !any(names(shrink) == "IWRES") || !any(row.names(shrink) == "sd shrinkage (%)")) {
+    return(invisible(FALSE))
+  }
+  .v <- shrink["sd shrinkage (%)", "IWRES"]
+  if (length(.v) != 1L || is.na(.v) || .v >= .iwresShrinkWarnThreshold) {
+    return(invisible(FALSE))
+  }
+  warning("IWRES shrinkage is strongly negative; check the residual model", call. = FALSE)
+  invisible(TRUE)
+}
