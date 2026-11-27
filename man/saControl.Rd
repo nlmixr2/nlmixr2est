@@ -9,7 +9,8 @@ saControl(
   nEm = 100L,
   nSaCov = 500L,
   seed = 99L,
-  warmStart = TRUE
+  warmStart = TRUE,
+  saCovAutoStop = TRUE
 )
 }
 \arguments{
@@ -27,6 +28,10 @@ covariance phase starts from the fit's last iteration with no new warm-up
 iterations.  This changes the Monte Carlo path, so the covariance differs
 from a cold start by Monte Carlo noise.  Other fits, and SAEM fits that
 kept no chain history, always run \code{nBurn}/\code{nEm}.}
+
+\item{saCovAutoStop}{stop the covariance phase once the Louis information
+is stationary, using \code{\link{saemControl}()}'s window test, so
+\code{nSaCov} becomes a maximum}
 }
 \value{
 \code{saControl} object
