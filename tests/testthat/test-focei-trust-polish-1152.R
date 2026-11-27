@@ -59,7 +59,8 @@ nmTest({
     )))
     .cnt <- .fit$env$nTrustInner
     expect_gt(.cnt[["calls"]], 0L)
-    expect_gt(.cnt[["polish"]], 0L)
+    expect_gt(.cnt[["tight"]], 0L)
+    expect_equal(.cnt[["polish"]], 0L)
     # innerOpt="n1qn1" reaches 730.8946 here, and 730.8948 at rtol = 1e-10 (the
     # 730.866 it gave at the former rtol = 1e-3 was solve bias, #1131)
     expect_lt(.fit$objf, 730.897)
@@ -73,6 +74,40 @@ nmTest({
     expect_lt(max(.ev), 6)
   })
 
+  test_that("trustPolish makes the OFV independent of the warm start (#1152)", {
+    skip_on_cran()
+    .fit <- suppressMessages(suppressWarnings(nlmixr2(
+      .pheno,
+      nlmixr2data::pheno_sd,
+      est = "focei",
+      control = foceiControl(print = 0, calcTables = FALSE, covMethod = "", trustPolish = TRUE)
+    )))
+    expect_gt(.fit$env$nTrustInner[["tight"]], 0L)
+    .eta <- as.matrix(.fit$eta[, -1, drop = FALSE])
+    set.seed(42)
+    .objf <- vapply(
+      1:4,
+      function(i) {
+        .em <- .eta + matrix(rnorm(length(.eta), 0, 0.3), nrow(.eta))
+        suppressMessages(suppressWarnings(nlmixr2(
+          .fit,
+          est = "focei",
+          control = foceiControl(
+            print = 0,
+            calcTables = FALSE,
+            covMethod = "",
+            maxOuterIterations = 0L,
+            etaMat = .em,
+            trustPolish = TRUE
+          )
+        )))$objf
+      },
+      numeric(1)
+    )
+    # 0.0054 without the polish
+    expect_lt(diff(range(.objf)), 5e-4)
+  })
+
   test_that("the polish stays off by default", {
     skip_on_cran()
     .fit <- suppressMessages(suppressWarnings(nlmixr2(
@@ -83,5 +118,6 @@ nmTest({
     )))
     expect_gt(.fit$env$nTrustInner[["calls"]], 0L)
     expect_equal(.fit$env$nTrustInner[["polish"]], 0L)
+    expect_equal(.fit$env$nTrustInner[["tight"]], 0L)
   })
 })

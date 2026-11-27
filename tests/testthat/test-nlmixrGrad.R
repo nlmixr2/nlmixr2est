@@ -272,3 +272,15 @@ test_that("an odd/linear Gill83 search reports the central difference at h0", {
   g <- nlmixr2Gill83(f, 0.5)
   expect_equal(g$df, 1, tolerance = 1e-4)
 })
+
+test_that("nlmixr2GradFun() gradient may come before any objective evaluation", {
+  # the gradient's history row read the last objective iteration (none yet)
+  for (k in c(10L, 0L)) {
+    f <- nlmixr2GradFun(function(x) sum((x - c(1, 2))^2), gillK = k, print = 0)
+    expect_equal(as.numeric(f$grad(c(0, 0))), c(-2, -4), tolerance = 1e-3)
+    expect_equal(f$eval(c(0, 0)), 5)
+    # the first objective keeps the gradient recorded before it
+    h <- f$hist()
+    expect_identical(sum(!(h$type %in% c("Scaled", "Unscaled", "Back-Transformed"))), 1L)
+  }
+})

@@ -237,6 +237,12 @@ nmObjGet.warnings <- function(x, ...) {
 attr(nmObjGet.warnings, "desc") <- "Warnings from the nlmixr2 run"
 attr(nmObjGet.warnings, "rstudio") <- c("warn1", "warn2")
 
+#' @export
+nmObjGet.tablesDropped <- function(x, ...) {
+  .tablesDroppedGet(x[[1]])
+}
+attr(nmObjGet.tablesDropped, "desc") <- "TRUE when the tables step failed and the fit has no tables"
+
 ##' @export
 nmObjGetData.default <- function(x, ...) {
   NULL
@@ -845,6 +851,13 @@ nmObjGet.saemCfg <- function(x, ...) {
   }
   attr(get("saem", .env, inherits = FALSE), "saem.cfg")
 }
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.saemMstep <- function(x, ...) {
+  attr(nmObjGet.saem(x, ...), "saem.cfg")$saemMstep
+}
+attr(nmObjGet.saemMstep, "desc") <- "how saem's M-step updates each theta"
 
 #' @export
 nmObjGet.saemNmc <- function(x, ...) {
