@@ -361,6 +361,25 @@
 #'   refinement (`newuoa`'s `rhoend`, the nelder-mead relative objective
 #'   tolerance, or the `optimize()` `tol`).
 #'
+#' @param muNonCentered Boolean (default `FALSE`); after the M-step, shift each
+#'   free intercept-only mu-referenced mean with every subject's eta held fixed,
+#'   scored on the data likelihood by one BHHH step with NONMEM's step-halving
+#'   rule (an interweaved, non-centered update; Yu and Meng 2011).  The ordinary
+#'   SAEM mean update barely moves a mean whose random effect is small relative
+#'   to the data's information about it; this step does.  It costs a few model
+#'   solves per iteration, and on well-informed random effects it changes
+#'   nothing.  Non-mixture fits only.
+#'
+#' @param omegaNonCentered Boolean (default `FALSE`); the scale counterpart of
+#'   `muNonCentered`: rescale each estimated mu-referenced random effect with
+#'   every subject's standardized deviation held fixed, scored on the data
+#'   likelihood by one BHHH step.  Chains, `Omega` and SAEM's sufficient
+#'   statistics are rescaled together.  Non-mixture fits only.
+#'
+#' @param nonCenteredPhase When `muNonCentered`/`omegaNonCentered` run:
+#'   `"all"` (every iteration) or `"burnin"` (only while the stochastic
+#'   approximation gain is 1, so the estimation phase is plain SAEM).
+#'
 #' @param nonMuThetaEvery Run the `nonMuTheta="regress"` refinement every
 #'   `nonMuThetaEvery` iterations instead of every iteration (default 1).  In
 #'   between, `phi0` keeps its last refined value.
@@ -519,6 +538,9 @@ saemControl <- function(
   nonMuThetaMaxEval = 25L,
   nonMuThetaTol = .Machine$double.eps^0.25,
   nonMuThetaEvery = 1L,
+  muNonCentered = FALSE,
+  omegaNonCentered = FALSE,
+  nonCenteredPhase = c("all", "burnin"),
   phi1ThetaMaxEval = 50L,
   phi1ThetaEvery = 1L,
   phi1Hessian = FALSE,
@@ -637,6 +659,9 @@ saemControl <- function(
   checkmate::assertIntegerish(nonMuThetaMaxEval, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertNumeric(nonMuThetaTol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
   checkmate::assertIntegerish(nonMuThetaEvery, any.missing = FALSE, len = 1, lower = 1)
+  checkmate::assertLogical(muNonCentered, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(omegaNonCentered, any.missing = FALSE, len = 1)
+  nonCenteredPhase <- match.arg(nonCenteredPhase)
   checkmate::assertIntegerish(phi1ThetaMaxEval, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertIntegerish(phi1ThetaEvery, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertLogical(phi1Hessian, any.missing = FALSE, len = 1)
@@ -784,6 +809,9 @@ saemControl <- function(
     nonMuThetaMaxEval = as.integer(nonMuThetaMaxEval),
     nonMuThetaTol = nonMuThetaTol,
     nonMuThetaEvery = as.integer(nonMuThetaEvery),
+    muNonCentered = muNonCentered,
+    omegaNonCentered = omegaNonCentered,
+    nonCenteredPhase = nonCenteredPhase,
     phi1ThetaMaxEval = as.integer(phi1ThetaMaxEval),
     phi1ThetaEvery = as.integer(phi1ThetaEvery),
     phi1Hessian = isTRUE(phi1Hessian),
