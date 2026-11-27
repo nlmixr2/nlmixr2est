@@ -359,6 +359,13 @@
       .cfg$nonMuThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaMaxEval", 25L))
       .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol", .Machine$double.eps^0.25))
       .cfg$nonMuThetaEvery <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaEvery", 1L))
+      # windowed early stop of the EM phase (src/saemAutoStop.h)
+      .cfg$autoStop <- as.integer(isTRUE(rxode2::rxGetControl(ui, "autoStop", FALSE)))
+      .cfg$stopWindow <- as.integer(rxode2::rxGetControl(ui, "stopWindow", 50L))
+      .cfg$stopConsecutive <- as.integer(rxode2::rxGetControl(ui, "stopConsecutive", 4L))
+      .cfg$stopRtol <- as.numeric(rxode2::rxGetControl(ui, "stopRtol", 1e-3))
+      .cfg$stopAtol <- as.numeric(rxode2::rxGetControl(ui, "stopAtol", 1e-4))
+      .cfg$saCovAutoStop <- as.integer(isTRUE(rxode2::rxGetControl(ui, "saCovAutoStop", TRUE)))
       .cfg$muNonCentered <- as.integer(isTRUE(rxode2::rxGetControl(ui, "muNonCentered", FALSE)))
       .cfg$omegaNonCentered <- as.integer(isTRUE(rxode2::rxGetControl(ui, "omegaNonCentered", FALSE)))
       .cfg$nonCenteredPhase <- as.integer(identical(rxode2::rxGetControl(ui, "nonCenteredPhase", "all"), "burnin"))
@@ -970,6 +977,21 @@
   attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
   class(.ph) <- .cls
   assign("parHistData", .ph, envir = env)
+  .as <- .saem$autoStop
+  if (is.list(.as) && length(.as) > 0L) {
+    for (.f in c("drift", "mcse", "tol")) {
+      .v <- as.numeric(.as[[.f]])
+      if (length(.v) >= length(.allThetaNames)) {
+        .v <- setNames(.v[seq_along(.allThetaNames)], .allThetaNames)
+      }
+      .as[[.f]] <- .v
+    }
+    assign("saemAutoStop", .as, envir = env)
+  }
+  .sc <- .saem$saCovStop
+  if (is.list(.sc) && length(.sc) > 0L) {
+    assign("saemSaCovStop", .sc, envir = env)
+  }
   .saemAddMcmcDiag(env)
 }
 

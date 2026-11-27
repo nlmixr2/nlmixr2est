@@ -129,6 +129,7 @@ SEXP _nlmixr2est_saemPhi1RefineN_(void);
 SEXP _nlmixr2est_saemFsaveRefresh_(void);
 SEXP _nlmixr2est_saemGainFrozenSkipN_(void);
 SEXP _nlmixr2est_saemSeedLayoutTest_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_saemAutoStopTest_(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_saemPlateauTest_(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_saemFormGTest(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_saemBurnTrendTest(SEXP, SEXP);
@@ -393,6 +394,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_saemFsaveRefresh_", (DL_FUNC) &_nlmixr2est_saemFsaveRefresh_, 0},
   {"_nlmixr2est_saemGainFrozenSkipN_", (DL_FUNC) &_nlmixr2est_saemGainFrozenSkipN_, 0},
   {"_nlmixr2est_saemSeedLayoutTest_", (DL_FUNC) &_nlmixr2est_saemSeedLayoutTest_, 8},
+  {"_nlmixr2est_saemAutoStopTest_", (DL_FUNC) &_nlmixr2est_saemAutoStopTest_, 5},
   {"_nlmixr2est_saemPlateauTest_", (DL_FUNC) &_nlmixr2est_saemPlateauTest_, 5},
   {"_nlmixr2est_saemFormGTest", (DL_FUNC) &_nlmixr2est_saemFormGTest, 5},
   {"_nlmixr2est_saemBurnTrendTest", (DL_FUNC) &_nlmixr2est_saemBurnTrendTest, 2},

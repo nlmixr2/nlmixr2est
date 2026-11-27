@@ -47,6 +47,16 @@
 
 ## New features
 
+- `saemControl(autoStop = TRUE)` stops the SAEM EM phase once every
+  parameter's half-window drift is within `stopRtol`/`stopAtol` or twice its
+  Monte-Carlo error for `stopConsecutive` windows of `stopWindow` iterations;
+  `nEm` becomes a maximum and the stop is recorded in `fit$saemAutoStop`
+  (#1411).
+- The `covMethod = "sa"` covariance phase applies the same window to the
+  diagonal of its running Fisher information and stops once it is stationary
+  (`saemControl(saCovAutoStop = TRUE)`, the default), so `nSaCov` becomes a
+  maximum; the stop is recorded in `fit$saemSaCovStop`.  `setCov(fit, "sa")`
+  stops the same way (`saControl(saCovAutoStop = TRUE)`) (#1411).
 - `saemControl(muNonCentered = TRUE, omegaNonCentered = TRUE)` interweave
   non-centered updates of the mu-referenced random effects into SAEM (Yu and
   Meng 2011): after the M-step each free intercept-only mean is shifted, and

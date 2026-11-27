@@ -22,6 +22,7 @@
 #include "truncNorm.h"
 #include "saemBurnTrend.h"
 #include "minqaC.h"
+#include "saemAutoStop.h"
 #include "likPenalty.h"
 
 #define _(String) (String)
@@ -2203,6 +2204,24 @@ public:
     return par_hist;
   }
 
+  List get_saCovStop() {
+    if (!saCovStopOn) return List::create();
+    return List::create(_["iter"] = saCovStopIter > 0 ? saCovStopIter : NA_INTEGER,
+                        _["nSaCov"] = nSaCov,
+                        _["drift"] = saemAutoStopVec(_saCovStop.drift),
+                        _["mcse"] = saemAutoStopVec(_saCovStop.mcse),
+                        _["tol"] = saemAutoStopVec(_saCovStop.tol));
+  }
+
+  List get_autoStop() {
+    if (!autoStopOn) return List::create();
+    return List::create(_["iter"] = autoStopIter > 0 ? autoStopIter : NA_INTEGER,
+                        _["niter"] = niter,
+                        _["drift"] = saemAutoStopVec(_autoStop.drift),
+                        _["mcse"] = saemAutoStopVec(_autoStop.mcse),
+                        _["tol"] = saemAutoStopVec(_autoStop.tol));
+  }
+
   IntegerVector get_ueRevisitInfo() {
     return IntegerVector::create(_["ran"] = ueRevisitRan,
                                  _["unfroze"] = ueRevisitUnfroze,
@@ -2653,6 +2672,15 @@ public:
   // `ebe="mode"`.
   // @return nothing; fills etaMode and etaModeConv
   // @noRd
+  // Pseudo-eta columns are held at their mean across subjects
+  rowvec modePseudoCenter() {
+    rowvec pseudoMean = mean(etaMode, 0);
+    for (unsigned int k = 0; k < pseudoIx1.n_elem; ++k) {
+      if ((int)pseudoIx1(k) < nphi1) etaMode.col(pseudoIx1(k)).fill(pseudoMean(pseudoIx1(k)));
+    }
+    return pseudoMean;
+  }
+
   // native paramUpdate positions; empty when the pooled phi1 map owns them
   std::vector<int> modeDoParam() {
     std::vector<int> doParam;
@@ -2663,7 +2691,7 @@ public:
     return doParam;
   }
 
-  // each subject's most likely mixture component (1-based); 0 without a mixture
+  // 1-based most likely mixture component per subject (0 = no mixture)
   ivec modeMixComp() {
     ivec mixComp(N, fill::zeros);
     if (nMix > 1 && mixWeights.n_rows == (unsigned int)N) {
@@ -2677,10 +2705,7 @@ public:
     etaModeConv.set_size(N);
     etaModeConv.fill(3);
     if (!ebeMode || nphi1 == 0) return;
-    rowvec pseudoMean = mean(etaMode, 0);
-    for (unsigned int k = 0; k < pseudoIx1.n_elem; ++k) {
-      if ((int)pseudoIx1(k) < nphi1) etaMode.col(pseudoIx1(k)).fill(pseudoMean(pseudoIx1(k)));
-    }
+    rowvec pseudoMean = modePseudoCenter();
     rx_solving_options *op = getSolvingOptions(_rx);
     vec yt = modeResidSetup();
     // the reported Omega (before the variance floor), as the fit's model has
@@ -2788,6 +2813,15 @@ public:
     // information decoupled from the cooling schedule (cf. Monolix "stochastic
     // approximation" standard errors; Kuhn & Lavielle 2005).  nSaCov==0 is a no-op.
     nSaCov = x.containsElementNamed("nSaCov") ? as<int>(x["nSaCov"]) : 0;
+    autoStopOn = x.containsElementNamed("autoStop") && as<int>(x["autoStop"]) != 0;
+    saCovStopOn = nSaCov > 0 && x.containsElementNamed("saCovAutoStop") &&
+      as<int>(x["saCovAutoStop"]) != 0;
+    if (autoStopOn || saCovStopOn) {
+      autoStopWindow = as<int>(x["stopWindow"]);
+      autoStopConsec = as<int>(x["stopConsecutive"]);
+      autoStopRtol = as<double>(x["stopRtol"]);
+      autoStopAtol = as<double>(x["stopAtol"]);
+    }
     if (nSaCov > 0) {
       pas  = join_cols(pas,  zeros<vec>(nSaCov));   // freeze theta during the cov phase
       pash = join_cols(pash, zeros<vec>(nSaCov));
@@ -3268,20 +3302,19 @@ public:
   // Resolve the shared-eta component thetas (#1296) to local indices.  Only the
   // per-component ("parallel") sampler with an intercept-only phi0 column whose
   // partner is a phi1 column qualifies; everything else keeps the phi0 search.
-  // Does phi0 column c0 belong to a shared-eta component?  Fills its
-  // component (0-based), phi1 eta column and lambda index when it does.
-  bool mixShiftOwns(int c0, unsigned int &comp, unsigned int &eta1, unsigned int &lam0) {
+  // Whether phi0 column c0 is owned by a mixture component's shift; if so,
+  // fills its 0-based component, phi1 eta column and theta (LCOV0 row).
+  bool mixShiftOwns(int c0, unsigned int &j0, unsigned int &e1Out, unsigned int &l0Out) {
     int p = (int)i0(c0);
     int j = mixShiftComp(p), e = mixShiftEta(p) - 1;
     if (j < 1 || j > nMix || e < 0) return false;
     uvec e1 = find(i1 == (unsigned int)e);
     uvec l0 = find(LCOV0.col(c0) == 1);
-    if (e1.n_elem != 1 || l0.n_elem != 1) return false;
     // a held (fixed) theta keeps its value, so it keeps the phi0 path
-    if (any(fixedIx0 == l0(0))) return false;
-    comp = (unsigned int)(j - 1);
-    eta1 = e1(0);
-    lam0 = l0(0);
+    if (e1.n_elem != 1 || l0.n_elem != 1 || any(fixedIx0 == l0(0))) return false;
+    j0 = (unsigned int)(j - 1);
+    e1Out = e1(0);
+    l0Out = l0(0);
     return true;
   }
 
@@ -3467,6 +3500,16 @@ public:
       }
     }
     if (nSaCov > 0) { HaSa = zeros<mat>(nb_param, nb_param); covCount = 0; }
+    // the stop window only sees the EM phase, after the phi0 variance starts
+    // annealing and (msaem) the split-ETA separation phase ends
+    autoStopIter = -1;
+    int autoStopStart = std::max(nPhase1, 0);
+    if (nphi0 > 0) autoStopStart = std::max(autoStopStart, niter_phi0);
+    if (nMix > 1 && mixSampleMethod == 1) autoStopStart = std::max(autoStopStart, (int)(0.8 * niter));
+    if (autoStopOn) {
+      _autoStop.init(autoStopWindow, autoStopConsec, autoStopRtol, autoStopAtol,
+                     (int)par_hist.n_cols);
+    }
     for (unsigned int kiter=0; kiter<(unsigned int)(niter + nSaCov); kiter++) {
       // entering the SA covariance phase: snapshot the converged estimate so it can be
       // restored afterward (the cov-phase iterations fluctuate the parameters).
@@ -3478,6 +3521,10 @@ public:
           statrese[b] = statreseCov(b);
           double nb = (double)(y_offset(b + 1) - y_offset(b));
           if (nb > 0) sigma2[b] = statrese[b] / nb;
+        }
+        if (saCovStopOn) {
+          _saCovStop.init(autoStopWindow, autoStopConsec, autoStopRtol, autoStopAtol,
+                          (int)nb_param);
         }
         _savPlambda = Plambda; _savGamma2_phi1 = Gamma2_phi1; _savGamma2_phi0 = Gamma2_phi0;
         _savGamma2_phi1Report = Gamma2_phi1Report; _savMprior_phi1 = mprior_phi1;
@@ -5356,6 +5403,11 @@ public:
         if (cc >= (unsigned int)(0.1 * nSaCov)) {
           covCount++;
           HaSa += (DDa - HaSa) / (double)covCount;
+          // the same stop window on the running FIM diagonal ends the phase early
+          if (saCovStopOn && kiter + 1 < (unsigned int)(niter + nSaCov) &&
+              _saCovStop.push(vec(HaSa.diag()))) {
+            saCovStopIter = (int)cc + 1;
+          }
         }
       }
       cube phi2 = phi%phi;
@@ -5479,7 +5531,13 @@ public:
         // One summary line per printed iteration for any ODE-solve warnings
         // accumulated since the last flush (see inner.cpp foceiOfvOptim).
         nmFlushRxSolveWarn(5);
-        if (plateauStop && kiter + 1 < (unsigned int)niter && plateauReached(kiter)) {
+        if (autoStopOn && (int)kiter >= autoStopStart && (int)kiter + 1 < niter &&
+            _autoStop.push(pl)) {
+          autoStopIter = (int)kiter + 1;
+          // jump straight to the SA covariance phase (or end the loop)
+          kiter = (unsigned int)niter - 1;
+          if (nSaCov == 0) break;
+        } else if (plateauStop && kiter + 1 < (unsigned int)niter && plateauReached(kiter)) {
           // continue exactly as a run with nEm = kiter + 1 - nBurn: the SA covariance
           // phase (if any) starts next, on the same iterations' seeds
           plateauIter = (int)kiter + 1;
@@ -5488,7 +5546,10 @@ public:
       }
       // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
       // above; nothing is recorded to par_hist and no printing happens.
+      if (saCovStopIter > 0) break;
     }//kiter
+    if (autoStopIter > 0) autoStopTrim();
+    if (saCovStopIter > 0) saCovStopTrim();
     // restore the converged estimate after the SA covariance phase (the reported fit
     // must be the converged value, not a cov-phase iterate)
     if (nSaCov > 0) {
@@ -5801,6 +5862,44 @@ private:
   int DEBUG;
   // every estimation iteration's phiM, laid out as an N x nmc x niter x nphi array
   NumericVector phiMHist;
+
+  bool autoStopOn = false;
+  int autoStopWindow = 50, autoStopConsec = 4, autoStopIter = -1;
+  double autoStopRtol = 1e-3, autoStopAtol = 1e-4;
+  saemAutoStop _autoStop;
+  bool saCovStopOn = false;
+  int saCovStopIter = -1;       // covariance-phase iterations run when it stopped early
+  saemAutoStop _saCovStop;
+
+  // drop the covariance-phase iterations an early stop skipped from the MCMC traces
+  void saCovStopTrim() {
+    const uword est = (uword)(autoStopIter > 0 ? autoStopIter : niter);
+    const uword nTot = est + (uword)nSaCov, keep = est + (uword)saCovStopIter;
+    mat *tr[] = {&mcmcAccTrace, &mcmcAccColTrace, &mcmcStuckTrace, &phiSdTrace, &phiAcfTrace};
+    for (mat *m : tr) {
+      if (m->n_rows == nTot && keep < nTot) m->shed_rows(keep, nTot - 1);
+    }
+  }
+
+  // drop the estimation iterations an early stop skipped from every per-iteration history
+  void autoStopTrim() {
+    const uword ks = (uword)autoStopIter, ni = (uword)niter;
+    if (par_hist.n_rows > ks) par_hist.shed_rows(ks, par_hist.n_rows - 1);
+    const uword nr = (uword)N * nmc;
+    if (nr > 0 && nphi > 0 && (uword)phiMHist.size() == nr * ni * nphi) {
+      mat h(phiMHist.begin(), nr * ni, nphi, false, true);
+      mat hk = h.rows(0, nr * ks - 1);
+      NumericVector out((R_xlen_t)hk.n_elem);
+      std::copy(hk.begin(), hk.end(), out.begin());
+      out.attr("dim") = IntegerVector::create(N, nmc, (int)ks, nphi);
+      phiMHist = out;
+    }
+    const uword nTot = ni + (uword)nSaCov;
+    mat *tr[] = {&mcmcAccTrace, &mcmcAccColTrace, &mcmcStuckTrace, &phiSdTrace, &phiAcfTrace};
+    for (mat *m : tr) {
+      if (m->n_rows == nTot) m->shed_rows(ks, ni - 1);
+    }
+  }
 
   void savePhiM(unsigned int kiter, const mat &m) {
     const uword nr = (uword)N * nmc;
@@ -6927,6 +7026,22 @@ Rcpp::NumericVector saemSeedLayoutTest_(Rcpp::IntegerVector nu, int nphi1, int n
   return Rcpp::wrap(out);
 }
 
+// Test hook: run the SAEM auto-stop window over a trajectory (one iterate per row).
+//[[Rcpp::export]]
+Rcpp::List saemAutoStopTest_(Rcpp::NumericMatrix trajR, int window, int consec, double rtol, double atol) {
+  arma::mat traj = Rcpp::as<arma::mat>(trajR);
+  saemAutoStop a;
+  a.init(window, consec, rtol, atol, (int)traj.n_cols);
+  int stop = NA_INTEGER;
+  for (unsigned int i = 0; i < traj.n_rows; ++i) {
+    if (a.push(traj.row(i).t())) { stop = (int)i + 1; break; }
+  }
+  return Rcpp::List::create(Rcpp::_["iter"] = stop,
+                            Rcpp::_["drift"] = saemAutoStopVec(a.drift),
+                            Rcpp::_["mcse"] = saemAutoStopVec(a.mcse),
+                            Rcpp::_["tol"] = saemAutoStopVec(a.tol));
+}
+
 // phi0 objective along one coordinate (normal-model coordinate descent)
 // @param x value of coordinate gPhi0Coord
 // @return the phi0 objective
@@ -7134,79 +7249,91 @@ static void saemReadRowsPooled(mat &g, int &elt, bool &hasNan, int nInd) {
   }
 }
 
-// per-subject mixture assignment from the solve options, or NULL
-static int *saemOptMixest(const List &_opt) {
-  if (!_opt.hasAttribute("names") || !_opt.containsElementNamed("mixest")) return nullptr;
-  SEXP indMixestR = _opt["mixest"];
-  return indMixestR == R_NilValue ? nullptr : INTEGER(indMixestR);
-}
-
-// SAEM's native paramUpdate positions take row i of phi in order
-static void saemSetIndPars(rx_solving_options_ind *ind, const mat &_phi, int _i,
-                           const int *doParam, int nPar) {
-  int k = 0;
-  for (int _j = 0; _j < nPar; _j++) {
-    if (doParam[_j] == 1) setIndParPtr(ind, _j, _phi(_i, k++));
+// Load each chain row's phi into its subject's parameters and mixture.
+static void saemSetIndPars(const mat &_phi, const List &_opt) {
+  int _Nnlmixr2 = (int)_phi.n_rows;
+  SEXP paramUpdate = _opt["paramUpdate"];
+  int *doParam = INTEGER(paramUpdate);
+  int nPar = Rf_length(paramUpdate);
+  int *indMixest = nullptr;
+  if (_opt.hasAttribute("names") && _opt.containsElementNamed("mixest")) {
+    SEXP indMixestR = _opt["mixest"];
+    if (indMixestR != R_NilValue) indMixest = INTEGER(indMixestR);
+  }
+  // a fit whose phi1 map resolved sets THETA[k]/ETA[k] (saemSetRowsPooled)
+  // instead of SAEM's native paramUpdate positions
+  if (_saemPhi1PoolActive) saemSetRowsPooled(_phi);
+  for (int _i = 0; _i < _Nnlmixr2; ++_i) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, _i);
+    setIndSolve(ind, -1);
+    if (current_saem_state != nullptr && current_saem_state->_saemMixest != 0) {
+      setIndMixest(ind, current_saem_state->_saemMixest);
+    } else if (indMixest != nullptr) {
+      setIndMixest(ind, indMixest[_i]);
+    }
+    if (_saemPhi1PoolActive) continue;
+    int k = 0;
+    for (int _j = 0; _j < nPar; _j++) {
+      if (doParam[_j] == 1) setIndParPtr(ind, _j, _phi(_i, k++));
+    }
   }
 }
 
-// Phase 4: a general-lik fit whose phi1 map resolved routes SAEM's own
-// solve through odeSlotPred (see setupRx) instead of the bulk par_solve --
-// every other fit is byte-identical to before.
-static void saemSolveOnce(int nSub) {
+static void saemSolveAll(int _Nnlmixr2) {
+  // a general-lik fit whose phi1 map resolved solves through odeSlotPred
   if (_saemPhi1PoolActive) {
-    saemSolveIndividualsPooled(nSub);
+    saemSolveIndividualsPooled(_Nnlmixr2);
   } else {
-    par_solve(_rx); // Solve the complete system (possibly in parallel)
+    par_solve(_rx);
   }
 }
 
-// Did subject i's ODE solve produce NaN/Inf anywhere?
-static bool saemIndSolveBad(rx_solving_options *op, rx_solving_options_ind *ind) {
-  double *s = getIndSolve(ind);
-  int n = getOpNeq(op) * getIndNallTimes(ind);
-  for (int k = 0; k < n; k++) {
-    if (ISNA(s[k]) || std::isnan(s[k]) || std::isinf(s[k])) return true;
-  }
-  return false;
-}
-
-// Loosen the ODE tolerance for one retry: only the subjects whose solve failed
-// (indTolRelax; sticky via ind->tolFactor, so genuinely stiff subjects stay
-// loosened) or every subject (reset after the retries).
-static void saemRelaxTol(rx_solving_options *op, int nSub) {
-  if (current_saem_state->_saemIndTolRelax && getOpNeq(op) <= 0) return;
-  for (int _i = 0; _i < nSub; _i++) {
+// Multiply the tolFactor of every subject (or, with selective, only those
+// whose solve has a non-finite state) by the ODE recalc factor.
+static void saemLoosenTol(int _Nnlmixr2, bool selective) {
+  rx_solving_options *op = getSolvingOptions(_rx);
+  if (selective && getOpNeq(op) <= 0) return;
+  const double fac = current_saem_state->_saemOdeRecalcFactor;
+  for (int _i = 0; _i < _Nnlmixr2; _i++) {
     rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
-    if (current_saem_state->_saemIndTolRelax && !saemIndSolveBad(op, _indI)) continue;
-    setIndTolFactor(_indI, getIndTolFactor(_indI) * current_saem_state->_saemOdeRecalcFactor);
+    bool bad = !selective;
+    if (selective) {
+      double *_solveI = getIndSolve(_indI);
+      int _nsolveI = getOpNeq(op) * getIndNallTimes(_indI);
+      for (int _ns = 0; _ns < _nsolveI && !bad; _ns++) {
+        bad = ISNA(_solveI[_ns]) || !std::isfinite(_solveI[_ns]);
+      }
+    }
+    if (bad) setIndTolFactor(_indI, getIndTolFactor(_indI) * fac);
   }
 }
 
-static void saemSolveWithRetry(rx_solving_options *op, int nSub) {
+// Solve every subject, retrying bad solves with loosened tolerances.  With
+// indTolRelax the loosened tolFactor is sticky; otherwise it is reset after.
+static void saemSolveWithRetry(int _Nnlmixr2) {
   resetRxBadSolve(_rx);
-  saemSolveOnce(nSub);
+  saemSolveAll(_Nnlmixr2);
+  const bool sticky = current_saem_state->_saemIndTolRelax != 0;
   int j = 0;
   while (hasRxBadSolve(_rx) && j < current_saem_state->_saemMaxOdeRecalc) {
     current_saem_state->_saemIncreaseTol = 1;
-    saemRelaxTol(op, nSub);
+    saemLoosenTol(_Nnlmixr2, sticky);
     resetRxBadSolve(_rx);
-    saemSolveOnce(nSub);
+    saemSolveAll(_Nnlmixr2);
     j++;
   }
-  if (!current_saem_state->_saemIndTolRelax && j != 0) {
-    // Reset all subjects' tolFactor after the non-selective retry.
-    for (int _i = 0; _i < nSub; _i++) {
+  if (!sticky && j != 0) {
+    for (int _i = 0; _i < _Nnlmixr2; _i++) {
       setIndTolFactor(getSolvingOptionsInd(_rx, _i), 1.0);
     }
   }
 }
 
-// Read the native solve's observation rows into g: prediction (or the
-// general-likelihood value), censoring flag and limit.
-static void saemReadRowsNative(mat &g, int &elt, bool &hasNan, int nSub,
-                               rx_solving_options *op) {
-  for (int id = 0; id < nSub; ++id) {
+// Read the (log-likelihood or prediction, cens, limit) rows of the native solve.
+static void saemReadRowsNative(mat &g, int &elt, bool &hasNan, int _Nnlmixr2) {
+  rx_solving_options *op = getSolvingOptions(_rx);
+  const bool hasCens = hasRxCens(_rx), hasLimit = hasRxLimit(_rx);
+  for (int id = 0; id < _Nnlmixr2; ++id) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(_rx, id);
     double *lhs = getIndLhs(ind);
     iniSubjectE(id, 1, ind, op, _rx, saem_inis);
@@ -7214,13 +7341,13 @@ static void saemReadRowsNative(mat &g, int &elt, bool &hasNan, int nSub,
       setIndIdx(ind, j);
       int kk = getIndIx(ind, getIndIdx(ind));
       int evid = getIndEvid(ind, kk);
-      // doses are calculated for advan sensitivities; evid=2 is not needed
+      // dosing rows are calculated for advan sensitivities; evid=2 is skipped
       if (!isDose(evid) && evid != 0) continue;
       lhsWalkNewind(ind, j);
       saem_lhs((int)id, getTime(kk, ind), getOpIndSolve(op, ind, j), lhs);
       if (evid != 0) continue;
-      double cens = hasRxCens(_rx) ? getIndCens(ind, kk) : 0.0;
-      double limit = hasRxLimit(_rx) ? getIndLimit(ind, kk) : R_NegInf;
+      const double cens = hasCens ? getIndCens(ind, kk) : 0.0;
+      const double limit = hasLimit ? getIndLimit(ind, kk) : R_NegInf;
       double cur = saemGenLikCens(lhs, cens, limit, lhs[0]);
       if (std::isnan(cur)) {
         cur = 1.0e99;
@@ -7247,45 +7374,20 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   struct _SaemMcmcSeedGuard {
     ~_SaemMcmcSeedGuard() { nmRestoreMcmcSeed(); }
   } _saemMcmcSeedGuard;
-  // yp has all the observations in the dataset
-  rx_solving_options_ind *ind;
   rx_solving_options *op = getSolvingOptions(_rx);
   // _phi has N*nmc rows (all chains); _evt has only N subjects (chain 0 template)
   int _Nnlmixr2 = (int)_phi.n_rows;
-  SEXP paramUpdate = _opt["paramUpdate"];
-  int *doParam = INTEGER(paramUpdate);
-  int nPar = Rf_length(paramUpdate);
-
-  int *indMixest = saemOptMixest(_opt);
-
-  // Fill in subject parameter information.  Phase 4 (SAEM general-lik theta
-  // plan): a fit whose phi1 map resolved sets THETA[k]/ETA[k] instead (see
-  // saemSetRowsPooled), reparameterizing the SAME combined phi value rather
-  // than using SAEM's own native paramUpdate/doParam positions -- every
-  // other fit takes the unchanged path below.
-  if (_saemPhi1PoolActive) saemSetRowsPooled(_phi);
-  for (int _i = 0; _i < _Nnlmixr2; ++_i) {
-    ind = getSolvingOptionsInd(_rx, _i);
-    setIndSolve(ind, -1);
-    if (current_saem_state != nullptr && current_saem_state->_saemMixest != 0) {
-      setIndMixest(ind, current_saem_state->_saemMixest);
-    } else if (indMixest != nullptr) {
-      setIndMixest(ind, indMixest[_i]);
-    }
-    if (!_saemPhi1PoolActive) saemSetIndPars(ind, _phi, _i, doParam, nPar);
-  }
-  // ODE-freeze: phi0 (general-likelihood fixed effects) do not change the ODE, so
-  // during the phi0 optimization the states are reused and only the log-likelihood
-  // is recomputed below -- skip the (costly) re-integration entirely.
-  if (!_saemFreezeOde) saemSolveWithRetry(op, _Nnlmixr2);
-  // indTolRelax=TRUE: stiff subjects retain their loosened tolFactor across iterations.
+  saemSetIndPars(_phi, _opt);
+  // ODE-freeze: phi0 (general-likelihood fixed effects) do not change the ODE,
+  // so during the phi0 optimization only the log-likelihood is recomputed
+  if (!_saemFreezeOde) saemSolveWithRetry(_Nnlmixr2);
   mat g(getRxNsim(_rx) * getRxNobs2(_rx), 3); // nobs across all chains
-  int elt=0;
+  int elt = 0;
   bool hasNan = false;
   if (_saemPhi1PoolActive) {
     saemReadRowsPooled(g, elt, hasNan, _Nnlmixr2);
   } else {
-    saemReadRowsNative(g, elt, hasNan, _Nnlmixr2, op);
+    saemReadRowsNative(g, elt, hasNan, _Nnlmixr2);
   }
   if (solveMethodThreadSafe(op)) { // liblsoda
     // Order by the overall solve time
@@ -7476,6 +7578,8 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("etaUe") = saem.get_etaUe(),
     Named("etaMix") = saem.get_etaMix(),
     Named("par_hist") = saem.get_par_hist(),
+    Named("autoStop") = saem.get_autoStop(),
+    Named("saCovStop") = saem.get_saCovStop(),
     // MCMC mixing diagnostics; see the members they come from
     Named("mcmcAccept") = saem.get_mcmcAccTrace(),
     Named("accept1B") = saem.get_accept1B(),

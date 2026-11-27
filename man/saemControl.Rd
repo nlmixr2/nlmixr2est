@@ -8,6 +8,12 @@ saemControl(
   seed = 99,
   nBurn = 200,
   nEm = 300,
+  autoStop = FALSE,
+  stopWindow = 50L,
+  stopConsecutive = 4L,
+  stopRtol = 0.001,
+  stopAtol = 1e-04,
+  saCovAutoStop = TRUE,
   plateauStop = FALSE,
   plateauWindow = 50L,
   plateauTol = 0.001,
@@ -99,6 +105,30 @@ steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.}
 
 \item{nEm}{Number of iterations in the Expectation-Maximization
 (EM) Step. This is equivalent to Monolix's \code{K_1}.}
+
+\item{autoStop}{Boolean (default `FALSE`); stop the EM phase early once the
+parameter trajectory is stationary.  The window only sees EM iterations
+(after `nBurn`, and after the non-mu variance annealing starts at half of
+`nBurn + nEm`), so `nEm` becomes a maximum.  A `covMethod="sa"` covariance
+phase still runs at the stopped estimate.  The stop is recorded in
+`fit$saemAutoStop`.}
+
+\item{stopWindow}{Number of recent EM iterates `autoStop` compares; the
+older half mean is compared with the newer half mean.}
+
+\item{stopConsecutive}{Number of consecutive stationary windows needed to
+stop.}
+
+\item{stopRtol, stopAtol}{Relative and absolute drift tolerances.  A
+parameter is stationary when its half-mean drift is at most
+`max(stopAtol, stopRtol * max(1, |older mean|), 2 * mcse)`, where `mcse`
+is the Monte-Carlo standard error of the drift estimated from the window.}
+
+\item{saCovAutoStop}{Boolean (default `TRUE`); stop the `covMethod="sa"`
+covariance phase early once the diagonal of its running Fisher information
+passes the same window test (`stopWindow`, `stopConsecutive`, `stopRtol`,
+`stopAtol`), so `nSaCov` becomes a maximum.  The stop is recorded in
+`fit$saemSaCovStop`.}
 
 \item{plateauStop}{When \code{TRUE}, end the EM phase early once every
 estimated theta, omega and residual parameter has plateaued; the fit's
