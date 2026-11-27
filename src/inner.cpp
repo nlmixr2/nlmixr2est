@@ -19946,12 +19946,15 @@ static bool llHblockFill(bool useHess2, const FoceiGradPooledSetup &G,
 //   g[theta_p] = -2 sum_i sum_obs a[,s_p] + sum_i tr(Hi_i dH_i/dtheta_p)
 //   g[omega_k] = sum_i eta_i' dOi_k eta_i - 2 nsub tr28_k
 //                + sum_i tr(Hi_i (dOi_k + dH_i/domega_k))
+//                + sum_i 2 s_i' dEta_i/dX        (s_i = Omega^-1 eta_i - sum_obs dll/deta)
 //
-// with H_i = Omega^-1 - sum_obs A[eta,eta].  dH/dp is a DIRECTIONAL central difference of
-// that analytic 2nd-order block -- there is no 3rd-order tensor -- and the direction is
-// the analytic EBE sensitivity (Eq 46), not a coordinate axis.  A mu-referenced theta
-// therefore HOLDS its value and moves only the eta (perturbing an ODE-entering theta goes
-// non-finite); a non-mu theta moves th[thPos[p]].
+// with H_i = Omega^-1 - sum_obs A[eta,eta].  The last term is the Lagrangian's
+// eta-stationarity term: the inner mode is solved to a tolerance, so s_i is small but not
+// zero, and without it the gradient carries the inner tolerance.  dH/dp is a DIRECTIONAL
+// central difference of that analytic 2nd-order block -- there is no 3rd-order tensor --
+// and the direction is the analytic EBE sensitivity (Eq 46), not a coordinate axis.  A
+// mu-referenced theta therefore HOLDS its value and moves only the eta (perturbing an
+// ODE-entering theta goes non-finite); a non-mu theta moves th[thPos[p]].
 //
 // `etaPOut` is left EMPTY on purpose: ll() has no Eq-48 warm start, and the caller reads
 // an empty cube as "no etaP" (etaPValid = 0), matching the R route's etaP = NULL.
@@ -19992,12 +19995,12 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
 
   OdeFitTolGuard _tolGuard;                     // the fit's tolerance, reset for this solve
   std::vector<arma::mat> Hi((size_t)nsub);
-  arma::vec dl((unsigned int)nth, arma::fill::zeros);
-  arma::vec dq((unsigned int)(nom > 0 ? nom : 1), arma::fill::zeros);
   // the same terms per subject, for the per-subject split
   arma::mat gInd((unsigned int)(nth + nom), (unsigned int)nsub, arma::fill::zeros);
   // Perturbation eta matrices, in the same (+,-) pair order the assembly reads them back.
   std::vector<arma::mat> ebP((size_t)(nth + nom)), ebM((size_t)(nth + nom));
+  // s_i of the eta-stationarity term, one column per subject
+  arma::mat Sres((unsigned int)neta, (unsigned int)nsub, arma::fill::zeros);
   {
     OdeSwapEsBatch _esBatch(odeSlotOuter);
     std::vector<VaeOuterE> Es((size_t)nsub);
@@ -20014,43 +20017,40 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
       arma::mat hi;
       if (!arma::inv_sympd(hi, arma::symmatu(H))) return false;
       Hi[(size_t)i] = hi;
+      arma::vec sr = Oi * ebes.row(i).t();
+      for (int l = 0; l < neta; ++l) sr[l] -= arma::accu(E.a.col(l));
+      Sres.col(i) = sr;
     }
     for (int p = 0; p < nth; ++p) {
       const int s = G.dirTh[(size_t)p] - 1;     // 1-based direction index
       if (s < 0 || s >= G.nd) return false;
       const bool isMu = (s < neta);             // directions 1..neta ARE the etas
       arma::mat ep = ebes, em = ebes;
-      double dlp = 0.0;
       for (int i = 0; i < nsub; ++i) {
         const VaeOuterE &E = Es[(size_t)i];
-        const double dli = arma::accu(E.a.col(s));
-        dlp += dli;
-        gInd(p, i) = -2.0 * dli;
+        gInd(p, i) = -2.0 * arma::accu(E.a.col(s));
         arma::vec d2((unsigned int)neta);
         for (int l = 0; l < neta; ++l) d2[l] = arma::accu(E.A.slice(s).col(l));
-        arma::vec sh = Hi[(size_t)i] * d2;
+        arma::vec sh = Hi[(size_t)i] * d2;      // dEta/dX
+        gInd(p, i) += 2.0 * arma::dot(Sres.col(i), sh);
         if (isMu) sh[s] += 1.0;
         ep.row(i) = ebes.row(i) + hFD * sh.t();
         em.row(i) = ebes.row(i) - hFD * sh.t();
       }
-      dl[p] = dlp;
       ebP[(size_t)p] = ep; ebM[(size_t)p] = em;
     }
   }
   for (int k = 0; k < nom; ++k) {
     const arma::mat &dOi = dOiEst.slice(k);
     arma::mat ep = ebes, em = ebes;
-    double dqk = 0.0;
     for (int i = 0; i < nsub; ++i) {
       arma::vec eta = ebes.row(i).t();
-      const double dqi = arma::as_scalar(eta.t() * dOi * eta);
-      dqk += dqi;
-      gInd(nth + k, i) = dqi - 2.0 * tr28[k];
-      arma::vec etaP = Hi[(size_t)i] * (-(dOi * eta));
+      gInd(nth + k, i) = arma::as_scalar(eta.t() * dOi * eta) - 2.0 * tr28[k];
+      arma::vec etaP = Hi[(size_t)i] * (-(dOi * eta));   // dEta/dOmega_k
+      gInd(nth + k, i) += 2.0 * arma::dot(Sres.col(i), etaP);
       ep.row(i) = ebes.row(i) + hFD * etaP.t();
       em.row(i) = ebes.row(i) - hFD * etaP.t();
     }
-    dq[k] = dqk;
     ebP[(size_t)(nth + k)] = ep; ebM[(size_t)(nth + k)] = em;
   }
 
@@ -20058,7 +20058,6 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
   // its own batch -- opened here, outside llHblockFill's OpenMP region, because the shape
   // is a process global (see the AGQ node batch for what solving under the wrong one
   // does).  When falling back to the augmented model the outer batch is what is wanted.
-  gOut.zeros(nth + nom);
   {
     OdeSwapEsBatch _cfgBatch(useHess2 ? odeSlotHess2 : odeSlotOuter);
     std::vector<arma::mat> Hp, Hm;
@@ -20078,19 +20077,15 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
         return false;
       if (!llHblockFill(useHess2, G, thm, ebM[(size_t)p], cores, op, nsub, neta, Hm))
         return false;
-      double tr = 0.0;
       for (int i = 0; i < nsub; ++i) {
         arma::mat dH = (Hp[(size_t)i] - Hm[(size_t)i]) / (2.0 * hFD);
         if (p >= nth) dH += dOiEst.slice(p - nth);
         if (!dH.is_finite()) return false;
-        const double tri = arma::accu(Hi[(size_t)i] % dH);
-        tr += tri;
-        gInd(p, i) += tri;
+        gInd(p, i) += arma::accu(Hi[(size_t)i] % dH);
       }
-      if (p < nth) gOut[p] = -2.0 * dl[p] + tr;
-      else gOut[p] = dq[p - nth] - 2.0 * (double)nsub * tr28[p - nth] + tr;
     }
   }
+  gOut = arma::sum(gInd, 1);
   etaPOut.reset();                              // ll(): no etaP -> no Eq-48 warm start
   if (!gOut.is_finite()) return false;
   _gradIndKer = gInd;
