@@ -107,17 +107,17 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.09421118 4.5137e-05  0.0330139      0.052     0.708 2.804       0.783
-#>         table compress   other
-#> elapsed 0.063    0.062 2.01273
+#> elapsed 0.07280581 5.2319e-05 0.02901497       0.05     0.629 1.567       0.667
+#>         table compress    other
+#> elapsed 0.057    0.052 1.654127
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
 #> tka              0.462  0.188 40.8       1.59 (1.10, 2.30)     70.3       1.89 
 #> tcl              0.983 0.0847 8.62       2.67 (2.26, 3.16)     27.3       4.88 
-#> tv         log V  3.45 0.0427 1.24       31.7 (29.1, 34.4)     13.4       9.35 
-#> add.sd           0.697 0.0474 6.80    0.697 (0.604, 0.790)                     
+#> tv         log V  3.45 0.0430 1.24       31.7 (29.1, 34.4)     13.4       9.35 
+#> add.sd           0.697 0.0468 6.72    0.697 (0.605, 0.789)                     
 #>  
 #>   Covariance Type ($covMethod): sa
 #>   Fixed parameter correlations in $cor
@@ -174,22 +174,22 @@ if (!inherits(f, "try-error")) {
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
 #> 
 #>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> FOCEi 116.9652 373.565 393.7446      -179.7825        444.1298        1.511128
+#> FOCEi 116.9652 373.565 393.7446      -179.7825        432.9067        1.568121
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.09421118 4.5137e-05  0.0330139      0.052     0.708 2.804       0.783
-#>         table compress   other foceiLik
-#> elapsed 0.368    0.062 2.01273    0.202
+#> elapsed 0.07280581 5.2319e-05 0.02901497       0.05     0.629 1.567       0.667
+#>         table compress    other foceiLik
+#> elapsed 0.329    0.052 1.654127    0.181
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
 #> tka              0.462  0.188 40.8       1.59 (1.10, 2.30)     70.3       1.89 
 #> tcl              0.983 0.0847 8.62       2.67 (2.26, 3.16)     27.3       4.88 
-#> tv         log V  3.45 0.0427 1.24       31.7 (29.1, 34.4)     13.4       9.35 
-#> add.sd           0.697 0.0474 6.80    0.697 (0.604, 0.790)                     
+#> tv         log V  3.45 0.0430 1.24       31.7 (29.1, 34.4)     13.4       9.35 
+#> add.sd           0.697 0.0468 6.72    0.697 (0.605, 0.789)                     
 #>  
 #>   Covariance Type ($covMethod): sa
 #>   Fixed parameter correlations in $cor

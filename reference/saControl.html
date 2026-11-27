@@ -61,7 +61,8 @@ covariance is the one at those estimates.</p>
 <span>  nEm <span class="op">=</span> <span class="fl">100L</span>,</span>
 <span>  nSaCov <span class="op">=</span> <span class="fl">500L</span>,</span>
 <span>  seed <span class="op">=</span> <span class="fl">99L</span>,</span>
-<span>  warmStart <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  warmStart <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  saCovAutoStop <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -90,6 +91,12 @@ covariance phase starts from the fit's last iteration with no new warm-up
 iterations.  This changes the Monte Carlo path, so the covariance differs
 from a cold start by Monte Carlo noise.  Other fits, and SAEM fits that
 kept no chain history, always run <code>nBurn</code>/<code>nEm</code>.</p></dd>
+
+
+<dt id="arg-sacovautostop">saCovAutoStop<a class="anchor" aria-label="anchor" href="#arg-sacovautostop"></a></dt>
+<dd><p>stop the covariance phase once the Louis information
+is stationary, using <code><a href="saemControl.html">saemControl()</a></code>'s window test, so
+<code>nSaCov</code> becomes a maximum</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -121,6 +128,9 @@ kept no chain history, always run <code>nBurn</code>/<code>nEm</code>.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 99</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $warmStart</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $saCovAutoStop</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> attr(,"class")</span>

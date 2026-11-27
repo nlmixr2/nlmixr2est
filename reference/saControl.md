@@ -14,7 +14,8 @@ saControl(
   nEm = 100L,
   nSaCov = 500L,
   seed = 99L,
-  warmStart = TRUE
+  warmStart = TRUE,
+  saCovAutoStop = TRUE
 )
 ```
 
@@ -41,6 +42,13 @@ saControl(
   iterations. This changes the Monte Carlo path, so the covariance
   differs from a cold start by Monte Carlo noise. Other fits, and SAEM
   fits that kept no chain history, always run `nBurn`/`nEm`.
+
+- saCovAutoStop:
+
+  stop the covariance phase once the Louis information is stationary,
+  using
+  [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md)'s
+  window test, so `nSaCov` becomes a maximum
 
 ## Value
 
@@ -72,6 +80,9 @@ saControl(nSaCov = 1000)
 #> [1] 99
 #> 
 #> $warmStart
+#> [1] TRUE
+#> 
+#> $saCovAutoStop
 #> [1] TRUE
 #> 
 #> attr(,"class")

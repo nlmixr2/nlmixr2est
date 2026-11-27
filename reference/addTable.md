@@ -128,17 +128,17 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.07157736 3.6965e-05 0.03301169      0.061     0.165 2.786       0.209
+#> elapsed 0.06234065 3.0566e-05 0.02801417       0.06     0.137 1.578       0.171
 #>         compress    other
-#> elapsed    0.057 2.045374
+#> elapsed    0.051 2.036615
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
 #> tka              0.462  0.188 40.8       1.59 (1.10, 2.30)     70.3       1.89 
 #> tcl              0.983 0.0847 8.62       2.67 (2.26, 3.16)     27.3       4.88 
-#> tv         log V  3.45 0.0427 1.24       31.7 (29.1, 34.4)     13.4       9.35 
-#> add.sd           0.697 0.0474 6.80    0.697 (0.604, 0.790)                     
+#> tv         log V  3.45 0.0430 1.24       31.7 (29.1, 34.4)     13.4       9.35 
+#> add.sd           0.697 0.0468 6.72    0.697 (0.605, 0.789)                     
 #>  
 #>   Covariance Type ($covMethod): sa
 #>   Fixed parameter correlations in $cor
@@ -164,17 +164,17 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>              setup   optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.07157736 3.6965e-05 0.03301169      0.061     0.165 2.786       0.209
+#> elapsed 0.06234065 3.0566e-05 0.02801417       0.06     0.137 1.578       0.171
 #>         compress    other
-#> elapsed    0.057 2.045374
+#> elapsed    0.051 2.036615
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
 #> tka              0.462  0.188 40.8       1.59 (1.10, 2.30)     70.3       1.89 
 #> tcl              0.983 0.0847 8.62       2.67 (2.26, 3.16)     27.3       4.88 
-#> tv         log V  3.45 0.0427 1.24       31.7 (29.1, 34.4)     13.4       9.35 
-#> add.sd           0.697 0.0474 6.80    0.697 (0.604, 0.790)                     
+#> tv         log V  3.45 0.0430 1.24       31.7 (29.1, 34.4)     13.4       9.35 
+#> add.sd           0.697 0.0468 6.72    0.697 (0.605, 0.789)                     
 #>  
 #>   Covariance Type ($covMethod): sa
 #>   Fixed parameter correlations in $cor

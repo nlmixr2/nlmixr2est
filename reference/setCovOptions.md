@@ -75,4 +75,7 @@ setCovOptions(saControl(), NULL)
 #> $warmStart
 #> [1] TRUE
 #> 
+#> $saCovAutoStop
+#> [1] TRUE
+#> 
 ```
