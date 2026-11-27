@@ -45,6 +45,8 @@ test_that("FOCEi-family methods are not checked", {
   expect_false(.covNewtonEst("posthoc"))
   expect_true(.covNewtonEst("saem"))
   expect_true(.covNewtonEst("nlme"))
+  expect_false(.covNewtonEst("npag"))
+  expect_false(.covNewtonEst("npb"))
   expect_false(.covNewtonEst(""))
 })
 
@@ -220,4 +222,47 @@ test_that("a rejected probe falls back to a one-sided difference", {
     }
   )
   expect_null(.covNewtonGradFd(.fit, .cov))
+})
+
+test_that("the other sampler controls take covNewtonWarn", {
+  for (.f in list(nlmeControl, vaeControl, emviControl, impmapControl, impControl)) {
+    expect_equal(.f()$covNewtonWarn, 1)
+    expect_true(is.na(.f(covNewtonWarn = NA)$covNewtonWarn))
+    expect_error(.f(covNewtonWarn = -1))
+  }
+})
+
+nmTest({
+  test_that("nlme and imp fits report the decrement", {
+    skip_on_cran()
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .d <- nlmixr2data::theo_sd
+    .nlme <- suppressMessages(nlmixr2(one.cmt, .d, "nlme", nlmeControl()))
+    expect_lt(.nlme$covNewtonDecrement, 1)
+    # the imp family's foceiControl carries the field into the nested FOCEi pass
+    .imp <- suppressMessages(nlmixr2(one.cmt, .d, "imp", impControl(print = 0)))
+    expect_lt(.imp$covNewtonDecrement, 1)
+    # and the field stays out of the FOCEi control other nested fits build
+    expect_null(.imp$foceiControl$covNewtonWarn)
+    expect_true("FOCEi" %in% rownames(setOfv(.imp, "focei")$objDf))
+  })
 })

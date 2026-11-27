@@ -5613,7 +5613,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     if (!is.null(.gpSetup)) assign(".foceiGradPooledSetup", .gpSetup, envir = .ret)
   }
   if (getOption("nlmixr2.retryFocei", TRUE)) {
-    while (this.env$err == "theta reset") {
+    while (this.env$err %in% c("theta reset", "theta freeze")) {
       nResets <- nResets + 1L
       if (nResets > 10L) {
         stop("Maximum number of theta resets (10) exceeded; fit is unstable.", call. = FALSE)
@@ -5624,7 +5624,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
           foceiFitCpp_(.ret)
         },
         error = function(e) {
-          if (regexpr("theta reset", e$message) != -1) {
+          if (.foceiIsFreeze(e, .ret)) {
+            assign("err", "theta freeze", this.env)
+          } else if (regexpr("theta reset", e$message) != -1) {
             assign("zeroOuter", FALSE, this.env)
             assign("zeroGrad", FALSE, this.env)
             if (regexpr("theta reset0", e$message) != -1) {
@@ -5638,7 +5640,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
           }
         }
       )
-      if (this.env$err == "theta reset") {
+      if (this.env$err == "theta freeze") {
+        .foceiFreezeFlatTheta(.ret)
+      } else if (this.env$err == "theta reset") {
         # A restart must recompute its OWN objective.  nlmixr2EnvSetup() (inner.cpp)
         # computes one only when the environment does not already carry it -- otherwise
         # it adopts the existing value verbatim -- and this loop deliberately reuses
@@ -5692,8 +5696,67 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       }
     }
   } else {
+    .ret0 <- tryCatch(foceiFitCpp_(.ret), error = function(e) {
+      if (!.foceiIsFreeze(e, .ret)) {
+        stop(e)
+      }
+      NULL
+    })
+    if (!is.null(.ret0)) {
+      return(.ret0)
+    }
+    .foceiFreezeFlatTheta(.ret)
     foceiFitCpp_(.ret)
   }
+}
+
+#' Is this error the freezeFlatTheta restart signal?
+#'
+#' @param e condition
+#' @param .ret focei environment
+#' @return logical
+#' @noRd
+.foceiIsFreeze <- function(e, .ret) {
+  identical(conditionMessage(e), "theta freeze") && exists("flatTheta", envir = .ret, inherits = FALSE)
+}
+
+#' Fix the thetas the first outer gradient found flat before a restart
+#'
+#' @param .ret focei environment; `flatTheta` holds the 1-based theta numbers
+#' @return nothing; `.ret` is updated in place
+#' @noRd
+.foceiFreezeFlatTheta <- function(.ret) {
+  .flat <- .ret$flatTheta
+  rm(list = "flatTheta", envir = .ret)
+  for (.stale in c("objective", "OBJF", "objf", "AIC", "BIC", "logLik", "adj")) {
+    if (exists(.stale, envir = .ret, inherits = FALSE)) {
+      rm(list = .stale, envir = .ret)
+    }
+  }
+  .fixed <- .ret$thetaFixed
+  if (length(.fixed) < length(.ret$thetaIni)) {
+    .fixed <- c(.fixed, rep(FALSE, length(.ret$thetaIni) - length(.fixed)))
+  }
+  .fixed[.flat] <- TRUE
+  .ret$thetaFixed <- .fixed
+  if (length(.ret$skipCov) > 0L) {
+    .ret$skipCov[.flat] <- TRUE
+  }
+  .ret$control$freezeFlatTheta <- FALSE
+  # reported as fixed in the fit's own model
+  if (exists("ui", envir = .ret, inherits = FALSE)) {
+    .ui <- rxode2::rxUiDecompress(.ret$ui)
+    .iniDf <- .ui$iniDf
+    .iniDf$fix[which(.iniDf$ntheta %in% .flat)] <- TRUE
+    .ui$iniDf <- .iniDf
+    .ret$ui <- .ui
+  }
+  .nm <- .ret$thetaNames[.flat]
+  .ret$frozenTheta <- c(.ret$frozenTheta, .nm)
+  for (.n in .nm) {
+    warning(paste0("'", .n, "' has a flat gradient; fixed at its initial value"), call. = FALSE)
+  }
+  invisible()
 }
 
 # Control classes of the FOCEi family.  Every one is built by foceiControl()
@@ -5716,6 +5779,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   "mfocepControl",
   "ifocepControl",
   "agqControl",
+  "stieltjesControl",
   "magqControl",
   "iagqControl",
   "laplaceControl",
@@ -6310,19 +6374,24 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   .foceiDropMalformedCov(.env)
   if (.control$nAGQ > 0) {
-    .ag <- .agq(length(ui$eta), .control$nAGQ)
+    .ag <- .agqRuleGrid(length(ui$eta), .control)
+    .env$agqLabel <- .agqRuleLabel(.control)
     .env$aqn <- as.integer(.ag$n)
     .env$qx <- .ag$x
     .env$qw <- .ag$w
-    .env$qfirst <- .ag$first
+    .env$qcenter <- match(.control$agqCenter, c("mode", "start", "prior"), 1L) - 1L
+    # the cached first node is the current mode, which only a "mode" grid holds
+    .env$qfirst <- .ag$first && .env$qcenter == 0L
     .env$nAGQ <- .control$nAGQ
     .env$aqLow <- .control$agqLow
     .env$aqHi <- .control$agqHi
   } else {
     .env$aqn <- 0L
+    .env$agqLabel <- ""
     .env$qx <- double(0)
     .env$qw <- double(0)
     .env$qfirst <- FALSE
+    .env$qcenter <- 0L
     .env$nAGQ <- 0L
     .env$aqLow <- -Inf
     .env$aqHi <- Inf
