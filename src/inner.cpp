@@ -3001,6 +3001,13 @@ static inline double likInner0Contrib(int id, int k, int dist, int cens,
   return llAdd;
 }
 
+// True when the lhs carries the columns focei_tCensLl() needs for `dist`.
+static inline bool focei_tCensLhsReady(bool lhsOk, bool isT, bool isDnorm) {
+  if (!lhsOk || (!isT && !isDnorm)) return false;
+  if (op_focei.predFOffset < 0 || op_focei.predROffset < 0) return false;
+  return !isT || op_focei.predNuOffset >= 0;
+}
+
 // M2/M3/M4 censored log-likelihood VALUE for a llik-forced endpoint (#979,
 // #992).  `llVal` is the already-computed llikT()/llikCauchy()/llikNorm()
 // log-density (what every `dist != rxDistributionNorm` branch uses verbatim
@@ -3020,11 +3027,7 @@ static inline double focei_tCensLl(bool lhsOk, int dist, int cens, double dv,
   if (cens == 1 || cens == -1) (*nCensLl)++;
   bool isT = (dist == rxDistributionT || dist == rxDistributionCauchy);
   bool isDnorm = (dist == rxDistributionDnorm);
-  if (!lhsOk || (!isT && !isDnorm) ||
-      op_focei.predFOffset < 0 || op_focei.predROffset < 0 ||
-      (isT && op_focei.predNuOffset < 0)) {
-    return llVal;
-  }
+  if (!focei_tCensLhsReady(lhsOk, isT, isDnorm)) return llVal;
   bool isCensObs = (cens != 0) || (R_FINITE(limit) && !ISNA(limit));
   if (!isCensObs) return llVal;
   double r = lhs[op_focei.predROffset];
