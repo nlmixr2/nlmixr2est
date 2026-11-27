@@ -3011,8 +3011,9 @@ static inline double likInner0Contrib(int id, int k, int dist, int cens,
 // The scalar log-density in rx_pred_ hides the location/scale the correction
 // needs, so both come from the extra lhs columns .rxFinalizeInner() appends
 // for this path (rx_pred_f_/rx_r_/rx_nu_).  When any of them is missing the
-// endpoint is scored uncensored, exactly as before.  `nCensLl` counts the M3/M4
-// rows by their data (as nlmixr2EnvSetup does): they carry no log(2*pi) constant.
+// endpoint is scored uncensored, exactly as before.  `nCensLl` counts the
+// M3/M4 rows by their data (as nlmixr2EnvSetup does): they carry no
+// log(2*pi) constant.
 static inline double focei_tCensLl(bool lhsOk, int dist, int cens, double dv,
                                    double limit, double llVal, double fT,
                                    double *lhs, int *nCensLl) {
@@ -3573,8 +3574,8 @@ double likInner0(double *eta, int id) {
               fInd->llik += ll;
               fInd->nObs++;
             } else {
-              double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs,
-                                           &fInd->nCensLl);
+              double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f,
+                                         fCensT, lhs, &fInd->nCensLl);
               llikObs[kk] = llT;
               fInd->llik += llT;
               fInd->nNonNormal++;
@@ -3686,8 +3687,8 @@ double likInner0(double *eta, int id) {
                  fInd->llik +=  ll;
                  fInd->nObs++;
                } else {
-                 double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs,
-                                           &fInd->nCensLl);
+                 double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit,
+                                            f, fCensT, lhs, &fInd->nCensLl);
                  llikObs[kk] = llT;
                  fInd->llik += llT;
                  fInd->nNonNormal++;
@@ -3719,8 +3720,8 @@ double likInner0(double *eta, int id) {
                 fInd->llik +=  ll;
                 fInd->nObs++;
               } else {
-                double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit, f, fCensT, lhs,
-                                           &fInd->nCensLl);
+                double llT = focei_tCensLl(censLhsOk, dist, cens, dv, limit,
+                                           f, fCensT, lhs, &fInd->nCensLl);
                 llikObs[kk] = llT;
                 fInd->llik += llT;
                 fInd->nNonNormal++;
@@ -11262,7 +11263,7 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
     NumericVector logLik(1);
     double adj= 0;
     if (doAdj){
-      adj=nobs2pi*log(2*M_PI)/2;
+      adj = nobs2pi*log(2*M_PI)/2;
     }
     e["adj"]=adj;
     logLik[0]=-fmin/2-adj;

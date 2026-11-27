@@ -1159,7 +1159,8 @@ void foceiGradSubjectAgqFR_(const arma::mat& a, const arma::cube& A,
   for (int o = 0; o < nobs; o++) {
     double ll = -0.5*(std::log(Rv[o])+res[o]*res[o]/Rv[o]);
     double limit = limv.n_elem == (unsigned)nobs ? limv[o] : R_NegInf;
-    l0 += hasCens ? doCensNormal1(censv[o], yv[o], limit, ll, fv[o], Rv[o]) : ll;
+    l0 += hasCens ?
+      doCensNormal1(censv[o], yv[o], limit, ll, fv[o], Rv[o]) : ll;
   }
   l0 -= 0.5*as_scalar(ehat.t()*Oi*ehat);
   vec lognode(nn, fill::zeros);
@@ -1174,7 +1175,8 @@ void foceiGradSubjectAgqFR_(const arma::mat& a, const arma::cube& A,
       double Rk = RN[b + o], rk = yv[o] - fN[b + o];
       double ll = -0.5*(std::log(Rk)+rk*rk/Rk);
       double limit = limv.n_elem == (unsigned)nobs ? limv[o] : R_NegInf;
-      lk += hasCens ? doCensNormal1(censv[o], yv[o], limit, ll, fN[b + o], Rk) : ll;
+      lk += hasCens ?
+        doCensNormal1(censv[o], yv[o], limit, ll, fN[b + o], Rk) : ll;
       rfk[o] = -rk / Rk;
       rRk[o] = 0.5 * (1.0 / Rk - rk * rk / (Rk * Rk));
       if (hasCens && (censv[o] != 0 || R_FINITE(limit))) {
