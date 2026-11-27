@@ -47,6 +47,19 @@
 
 ## New features
 
+- `saemControl(muNonCentered = TRUE, omegaNonCentered = TRUE)` interweave
+  non-centered updates of the mu-referenced random effects into SAEM (Yu and
+  Meng 2011): after the M-step each free intercept-only mean is shifted, and
+  each estimated variance rescaled, with every subject's (standardized)
+  deviation held fixed, scored on the data likelihood by one BHHH step with
+  NONMEM's step-halving rule.  The ordinary update barely moves the mean or
+  variance of a random effect the individual data say little about; on
+  Bauer's gamma-distributed CL/V1 benchmark the steps took the
+  intercompartmental clearance from 0.85-0.88 to 0.74 (truth 0.74) and its
+  variance to within 10% of the truth.  Off by default: on well-informed models
+  they change nothing and cost model solves.  `nonCenteredPhase = "burnin"`
+  restricts them to burn-in.
+
 - `saemControl(etaMat=)` starts every SAEM MCMC chain at given etas: a prior
   fit's EBEs (`saemControl(etaMat = fit)`), a data frame with an `ID` column
   or a subject-by-eta matrix.  The default (`NULL`) keeps the random start
@@ -91,6 +104,12 @@
   fixed parameters then varies by about 2e-5 across warm-start ETAs (0.0054
   before on `pheno_sd`); the default is unchanged (#1152).
 
+- `saemControl(nu1B=)` adds NONMEM's proposal kernel mode 1B (`ISAMPLE_M1B`)
+  to SAEM's E-step: independence proposals from each subject's running
+  conditional mean and covariance of its random effects, which mixes much
+  faster when the posterior is narrow or correlated relative to `omega`.  Off
+  by default; `nb1B` (start iteration, default 10) and `kappa1B` (NONMEM's
+  `IKAPPA`) tune it, and `$saem$accept1B` reports its acceptance rate.
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
@@ -370,6 +389,15 @@
 
 ### Estimation
 
+- `est="saem"` now re-solves its cached predictions after the M-step moves a
+  theta without an eta, so the next E-step no longer scores the current state
+  at the previous theta (non-mixture fits; mixtures already re-solved).
+- `est="saem"` now starts additive and proportional residual errors at their
+  `ini()` values instead of fixed placeholders (`10` and `1`), as the power and
+  lambda parameters already did.  The residual warm-start
+  (`saemControl(residWarmStart=TRUE)`) is now clamped around the `ini()` values,
+  and with `residWarmStart=FALSE` (or a mixture model) the first E-step samples
+  under the `ini()` residual error.
 - FOCEi: a `linCmt()` model with an `ll()` (or other generalized) endpoint
   and an eta on `f()` or `alag()` no longer gets a zero inner gradient for
   that eta, so its EBEs and objective now match the ODE form of the model
