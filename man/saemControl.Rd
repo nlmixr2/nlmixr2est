@@ -14,6 +14,9 @@ saemControl(
   plateauMinFrac = 0.5,
   nmc = 3,
   nu = c(2, 2, 2),
+  nu1B = 0L,
+  nb1B = 10L,
+  kappa1B = 1,
   rmcmc = 0.5,
   mcmcAcceptWarn = c(0.05, 0.8),
   print = 1L,
@@ -71,6 +74,9 @@ saemControl(
   nonMuThetaMaxEval = 25L,
   nonMuThetaTol = .Machine$double.eps^0.25,
   nonMuThetaEvery = 1L,
+  muNonCentered = FALSE,
+  omegaNonCentered = FALSE,
+  nonCenteredPhase = c("all", "burnin"),
   phi1ThetaMaxEval = 50L,
   phi1ThetaEvery = 1L,
   phi1Hessian = FALSE,
@@ -127,6 +133,17 @@ computation.  In Monolix this is equivalent to \code{L}.}
 
     The third value represents the number of bootstrap/reshuffling or
     uni-dimensional random samples are taken.}
+
+\item{nu1B}{Sweeps per iteration of NONMEM's proposal kernel mode 1B
+(`ISAMPLE_M1B`), run after the first kernel: independence proposals
+from each subject's running conditional mean and covariance of its
+random effects.  `0` (default) turns it off.}
+
+\item{nb1B}{Iteration at which `nu1B` starts, once the subjects' moments
+have accumulated (NONMEM starts after the 10th iteration).}
+
+\item{kappa1B}{Power of the gain `n^-kappa1B` that accumulates the mode 1B
+moments (NONMEM's `IKAPPA`); `1` is a simple average over iterations.}
 
 \item{rmcmc}{Scale of the random-walk proposals (kernels 2 and 3) relative
 to the current between-subject SD.  Smaller values raise the MCMC
@@ -572,6 +589,25 @@ tolerance, or the `optimize()` `tol`).}
 \item{nonMuThetaEvery}{Run the `nonMuTheta="regress"` refinement every
 `nonMuThetaEvery` iterations instead of every iteration (default 1).  In
 between, `phi0` keeps its last refined value.}
+
+\item{muNonCentered}{Boolean (default `FALSE`); after the M-step, shift each
+free intercept-only mu-referenced mean with every subject's eta held fixed,
+scored on the data likelihood by one BHHH step with NONMEM's step-halving
+rule (an interweaved, non-centered update; Yu and Meng 2011).  The ordinary
+SAEM mean update barely moves a mean whose random effect is small relative
+to the data's information about it; this step does.  It costs a few model
+solves per iteration, and on well-informed random effects it changes
+nothing.  Non-mixture fits only.}
+
+\item{omegaNonCentered}{Boolean (default `FALSE`); the scale counterpart of
+`muNonCentered`: rescale each estimated mu-referenced random effect with
+every subject's standardized deviation held fixed, scored on the data
+likelihood by one BHHH step.  Chains, `Omega` and SAEM's sufficient
+statistics are rescaled together.  Non-mixture fits only.}
+
+\item{nonCenteredPhase}{When `muNonCentered`/`omegaNonCentered` run:
+`"all"` (every iteration) or `"burnin"` (only while the stochastic
+approximation gain is 1, so the estimation phase is plain SAEM).}
 
 \item{phi1ThetaMaxEval}{Objective-evaluation budget (bobyqa's `maxfun`) of
 one general-likelihood phi1 (mu-referenced theta) refinement (default
