@@ -43,6 +43,17 @@
 #'     The third value represents the number of bootstrap/reshuffling or
 #'     uni-dimensional random samples are taken.
 #'
+#' @param nu1B Sweeps per iteration of NONMEM's proposal kernel mode 1B
+#'     (`ISAMPLE_M1B`), run after the first kernel: independence proposals
+#'     from each subject's running conditional mean and covariance of its
+#'     random effects.  `0` (default) turns it off.
+#'
+#' @param nb1B Iteration at which `nu1B` starts, once the subjects' moments
+#'     have accumulated (NONMEM starts after the 10th iteration).
+#'
+#' @param kappa1B Power of the gain `n^-kappa1B` that accumulates the mode 1B
+#'     moments (NONMEM's `IKAPPA`); `1` is a simple average over iterations.
+#'
 #' @param rmcmc Scale of the random-walk proposals (kernels 2 and 3) relative
 #'     to the current between-subject SD.  Smaller values raise the MCMC
 #'     acceptance rate (see `$mcmcAccept`); larger values lower it.
@@ -134,6 +145,11 @@
 #'   \code{om.<eta>} / \code{cov.<eta>.<eta>}.  When \code{FALSE} the legacy
 #'   structural-theta-only covariance is reported.  Ignored by
 #'   \code{covMethod="sa"}, which is always full.
+#'
+#' @param covNewtonWarn Warn (in `$runInfo`) when the Newton decrement of the
+#'   FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+#'   this value: the standard errors then belong to no optimum.  The value is
+#'   kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.
 #'
 #' @param nSaCov Number of iterations in the dedicated stochastic-approximation
 #'   covariance phase used by \code{covMethod="sa"}, a whole number of at least 1
@@ -345,6 +361,25 @@
 #'   refinement (`newuoa`'s `rhoend`, the nelder-mead relative objective
 #'   tolerance, or the `optimize()` `tol`).
 #'
+#' @param muNonCentered Boolean (default `FALSE`); after the M-step, shift each
+#'   free intercept-only mu-referenced mean with every subject's eta held fixed,
+#'   scored on the data likelihood by one BHHH step with NONMEM's step-halving
+#'   rule (an interweaved, non-centered update; Yu and Meng 2011).  The ordinary
+#'   SAEM mean update barely moves a mean whose random effect is small relative
+#'   to the data's information about it; this step does.  It costs a few model
+#'   solves per iteration, and on well-informed random effects it changes
+#'   nothing.  Non-mixture fits only.
+#'
+#' @param omegaNonCentered Boolean (default `FALSE`); the scale counterpart of
+#'   `muNonCentered`: rescale each estimated mu-referenced random effect with
+#'   every subject's standardized deviation held fixed, scored on the data
+#'   likelihood by one BHHH step.  Chains, `Omega` and SAEM's sufficient
+#'   statistics are rescaled together.  Non-mixture fits only.
+#'
+#' @param nonCenteredPhase When `muNonCentered`/`omegaNonCentered` run:
+#'   `"all"` (every iteration) or `"burnin"` (only while the stochastic
+#'   approximation gain is 1, so the estimation phase is plain SAEM).
+#'
 #' @param nonMuThetaEvery Run the `nonMuTheta="regress"` refinement every
 #'   `nonMuThetaEvery` iterations instead of every iteration (default 1).  In
 #'   between, `phi0` keeps its last refined value.
@@ -398,6 +433,11 @@
 #'   the stochastic step a better starting residual scale.  Set `FALSE` to start
 #'   from the `ini`-block residual values instead.
 #'
+#' @param etaMat Etas to start every MCMC chain at: a prior fit (its EBEs), a
+#'   data frame with an `ID` column, or a matrix with one row per subject in ID
+#'   order (or IDs as row names).  Columns are matched by eta name when named.  `NULL` (default)
+#'   starts the chains from random draws around the population mean.
+#'
 #' @param ... Other arguments to control SAEM.
 #'
 #' @inheritParams rxode2::rxSolve
@@ -439,6 +479,9 @@ saemControl <- function(
   plateauMinFrac = 0.5,
   nmc = 3,
   nu = c(2, 2, 2),
+  nu1B = 0L,
+  nb1B = 10L,
+  kappa1B = 1,
   rmcmc = 0.5,
   mcmcAcceptWarn = c(0.05, 0.8),
   print = 1L,
@@ -447,6 +490,7 @@ saemControl <- function(
   covMethodDeferred = NA_character_,
   covFallback = list(sa = c("linFim", "Ha"), fim = c("linFim", "Ha"), analytic = c("linFim", "Ha"), linFim = "Ha"),
   covFull = TRUE,
+  covNewtonWarn = 1,
   nSaCov = 500L,
   calcTables = TRUE,
   logLik = FALSE,
@@ -494,6 +538,9 @@ saemControl <- function(
   nonMuThetaMaxEval = 25L,
   nonMuThetaTol = .Machine$double.eps^0.25,
   nonMuThetaEvery = 1L,
+  muNonCentered = FALSE,
+  omegaNonCentered = FALSE,
+  nonCenteredPhase = c("all", "burnin"),
   phi1ThetaMaxEval = 50L,
   phi1ThetaEvery = 1L,
   phi1Hessian = FALSE,
@@ -502,6 +549,7 @@ saemControl <- function(
   ebe = c("mode", "saem"),
   ebeMaxEval = 200L,
   ebeTol = NULL,
+  etaMat = NULL,
   ...,
   corWarn = 0.95,
   condWarn = 1000
@@ -547,6 +595,9 @@ saemControl <- function(
   checkmate::assertNumber(plateauMinFrac, lower = 0, upper = 1)
   checkmate::assertIntegerish(nmc, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertIntegerish(nu, any.missing = FALSE, len = 3, lower = 1)
+  checkmate::assertIntegerish(nu1B, any.missing = FALSE, len = 1, lower = 0)
+  checkmate::assertIntegerish(nb1B, any.missing = FALSE, len = 1, lower = 2)
+  checkmate::assertNumber(kappa1B, lower = 0.5, upper = 1)
   checkmate::assertNumber(rmcmc, finite = TRUE)
   if (rmcmc <= 0) {
     stop("'rmcmc' must be positive", call. = FALSE)
@@ -609,6 +660,9 @@ saemControl <- function(
   checkmate::assertIntegerish(nonMuThetaMaxEval, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertNumeric(nonMuThetaTol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
   checkmate::assertIntegerish(nonMuThetaEvery, any.missing = FALSE, len = 1, lower = 1)
+  checkmate::assertLogical(muNonCentered, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(omegaNonCentered, any.missing = FALSE, len = 1)
+  nonCenteredPhase <- match.arg(nonCenteredPhase)
   checkmate::assertIntegerish(phi1ThetaMaxEval, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertIntegerish(phi1ThetaEvery, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertLogical(phi1Hessian, any.missing = FALSE, len = 1)
@@ -681,6 +735,7 @@ saemControl <- function(
     targets = c("sa", "fim", "linFim", "Ha")
   )
   checkmate::assertLogical(covFull, len = 1, any.missing = FALSE)
+  checkmate::assertNumber(covNewtonWarn, lower = 0, na.ok = TRUE)
 
   # censOption: FOCEI-family censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic
   # Gauss-Newton, default) or "laplace" (exact).  Accepted for a uniform interface but INERT for
@@ -735,6 +790,7 @@ saemControl <- function(
     covMethodDeferred = covMethodDeferred,
     covFallback = covFallback,
     covFull = covFull,
+    covNewtonWarn = as.double(covNewtonWarn),
     nSaCov = as.integer(nSaCov),
     logLik = logLik,
     calcTables = calcTables,
@@ -756,14 +812,24 @@ saemControl <- function(
     nonMuThetaMaxEval = as.integer(nonMuThetaMaxEval),
     nonMuThetaTol = nonMuThetaTol,
     nonMuThetaEvery = as.integer(nonMuThetaEvery),
+    muNonCentered = muNonCentered,
+    omegaNonCentered = omegaNonCentered,
+    nonCenteredPhase = nonCenteredPhase,
     phi1ThetaMaxEval = as.integer(phi1ThetaMaxEval),
     phi1ThetaEvery = as.integer(phi1ThetaEvery),
     phi1Hessian = isTRUE(phi1Hessian),
     residWarmStart = residWarmStart,
+    nu1B = as.integer(nu1B),
+    nb1B = as.integer(nb1B),
+    kappa1B = kappa1B,
     ebe = ebe,
     ebeMaxEval = as.integer(ebeMaxEval),
     ebeTol = ebeTol
   )
+  etaMat <- .saemEtaMatArg(etaMat)
+  if (!is.null(etaMat)) {
+    .ret$etaMat <- etaMat
+  }
   # internal: the "sa" covariance recompute at a fit's estimates holds every
   # population parameter where it was supplied (.covEngineControl, .saemHoldCfg)
   if (isTRUE(.xtra$saemHoldPar)) {
