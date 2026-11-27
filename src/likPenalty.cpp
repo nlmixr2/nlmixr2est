@@ -207,7 +207,9 @@ extern "C" void nlmixrPenPopOmegaGrad(int ntheta, const double *theta, int neta,
     for (int j = 0; j <= i; ++j) {
       size_t ij = (size_t)i + (size_t)j * neta;
       size_t ji = (size_t)j + (size_t)i * neta;
-      double sc = std::sqrt(std::fabs(omega[(size_t)i * (neta + 1)] * omega[(size_t)j * (neta + 1)]));
+      double di = omega[(size_t)i * (neta + 1)];
+      double dj = omega[(size_t)j * (neta + 1)];
+      double sc = std::sqrt(std::fabs(di * dj));
       double h = 1e-5 * std::max(std::max(sc, std::fabs(omega[ij])), 1e-8);
       double vp = penPopAtPair(ntheta, theta, neta, om, nsub, ij, ji, omega[ij] + h);
       double vm = penPopAtPair(ntheta, theta, neta, om, nsub, ij, ji, omega[ij] - h);

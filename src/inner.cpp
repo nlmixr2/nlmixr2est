@@ -7278,6 +7278,12 @@ static bool foceiPenPopOmegaGradAdd(int npars, arma::vec &gp, const arma::mat &O
   return true;
 }
 
+// Theta and omega parts of the population penalty gradient; false declines.
+static bool foceiPenPopAllGradAdd(int npars, arma::vec &gp, const arma::mat &Oi,
+                                  const arma::cube &dOiEst) {
+  return foceiPenPopGradAdd(npars, gp) && foceiPenPopOmegaGradAdd(npars, gp, Oi, dOiEst);
+}
+
 // ini({}) prior log-density PLUS the population likelihood penalty as a
 // log-density (-P/2), with its natural-scale gradient: what the EM M-steps
 // (imp/impmap/qrpem) fold in as a MAP correction.
@@ -21107,8 +21113,7 @@ static bool gradDirectFinalize(int npars, arma::vec &gp, const arma::mat &Oi,
   // gradDirectOmega() already fetched for the ordinary (non-prior) omega
   // gradient -- 0.0 when the prior has no omega-referencing term.
   foceiPriorOmegaGradAdd(npars, gp, Oi, dOiEst);
-  if (!foceiPenPopGradAdd(npars, gp)) return declineHere(120);
-  if (!foceiPenPopOmegaGradAdd(npars, gp, Oi, dOiEst)) return declineHere(120);
+  if (!foceiPenPopAllGradAdd(npars, gp, Oi, dOiEst)) return declineHere(120);
   if (!op_focei.firstDirectGradSet) {
     op_focei.firstDirectGrad.assign(gp.begin(), gp.end());
     op_focei.firstDirectTheta.assign(&op_focei.fullTheta[0],
