@@ -346,6 +346,23 @@ extern "C" SEXP _nlmixr2est_likPenaltyDeactivate(void) {
   return R_NilValue;
 }
 
+// One penalty's subject LL summed over every subject's eta row.
+static double penSubjSum(const nlmixrPenEntry &e, SEXP etaSxp, SEXP nobsSxp, int nsub,
+                         int neta, int ntheta, const double *theta, std::vector<double> &eta,
+                         std::vector<double> &dEta) {
+  if (e.pen->subject == NULL) return 0.0;
+  double ll = 0.0;
+  for (int id = 0; id < nsub; ++id) {
+    for (int q = 0; q < neta; ++q) {
+      eta[q] = REAL(etaSxp)[id + q * nsub];
+      dEta[q] = 0.0;
+    }
+    ll += penSubjOne(e, id, neta, INTEGER(nobsSxp)[id], eta.data(), ntheta, theta,
+                     dEta.data());
+  }
+  return ll;
+}
+
 // Evaluate every active penalty at a point (post-fit reporting).
 // theta: natural-scale thetas; eta: nsub x neta matrix (or 0-col); omega: neta x
 // neta (or NULL); nobs: per-subject observation counts.  Returns a list with the
@@ -373,18 +390,7 @@ extern "C" SEXP _nlmixr2est_likPenaltyEval(SEXP thetaSxp, SEXP etaSxp, SEXP omeg
     LOGICAL(io)[i] = e.inObjf;
     REAL(pop)[i] = e.pen->population == NULL ? 0.0 :
       penPopOne(e, ntheta, theta, nom, omega, nsub, NULL);
-    double ll = 0.0;
-    if (e.pen->subject != NULL) {
-      for (int id = 0; id < nsub; ++id) {
-        for (int q = 0; q < neta; ++q) {
-          eta[q] = REAL(etaSxp)[id + q * nsub];
-          dEta[q] = 0.0;
-        }
-        ll += penSubjOne(e, id, neta, INTEGER(nobsSxp)[id], eta.data(), ntheta, theta,
-                         dEta.data());
-      }
-    }
-    REAL(sub)[i] = ll;
+    REAL(sub)[i] = penSubjSum(e, etaSxp, nobsSxp, nsub, neta, ntheta, theta, eta, dEta);
   }
   SEXP ret = PROTECT(Rf_allocVector(VECSXP, 4));
   SET_VECTOR_ELT(ret, 0, nm); SET_VECTOR_ELT(ret, 1, io);
