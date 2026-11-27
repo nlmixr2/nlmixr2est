@@ -4053,7 +4053,8 @@ bool calcEtaHessian(double *eta, int likId, int id,
   if (conditional) ++op_focei.nConditionalInnerHessian;
   int modelHess = calcEtaHessianModel(eta, id, fInd, ind, H, conditional, evaluation);
   if (modelHess < 0) return false;
-  // modelHess > 0: H is already the exact model Hessian
+  // modelHess > 0: H is already the exact model Hessian, and none of the branches
+  // below may run -- the Gauss-Newton ones ASSIGN H and would replace it.
   if (modelHess == 0 && op_focei.needOptimHess) {
     arma::vec gr0(op_focei.neta, fill::zeros);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
@@ -4146,7 +4147,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
       }
       return Hfd;
     });
-  } else if (op_focei.interaction) {
+  } else if (modelHess == 0 && op_focei.interaction) {
     int nO = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
     arma::mat a(fInd->a, nO, op_focei.neta, false, true);
     arma::mat B(fInd->B, nO, 1, false, true);
@@ -4179,7 +4180,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
         H(l, k) = H(k, l);
       }
     }
-  } else {
+  } else if (modelHess == 0) {
     int nO = getIndNallTimes(ind)-getIndNdoses(ind)-getIndNevid2(ind);
     arma::mat a(fInd->a, nO, op_focei.neta, false, true);
     // FOCE (no interaction): frozen variance -> only the prediction curvature enters
