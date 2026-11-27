@@ -42,6 +42,24 @@ nmTest({
     expect_equal(.saemModeledResidualCond(.ui), "cp")
   })
 
+  test_that("unlocatable residual errors name the endpoint and argument (#1516)", {
+    .ui <- .modeledResidUi(
+      "cp ~ add(addErr) + prop(propErr)",
+      "addErr <- add.sd; propErr <- 0"
+    )
+    expect_error(
+      .ui$saemResNames,
+      "endpoint 'cp': error argument(s) 'addErr', 'propErr' not in ini()",
+      fixed = TRUE
+    )
+    .ui <- .modeledResidUi("cp ~ add(add.sd) + prop(prop.sd)")
+    expect_equal(.ui$saemResNames, c("add.sd", "prop.sd"))
+    expect_equal(
+      .saemResItemMsg(data.frame(cond = "cp", a = NA_character_), 1L),
+      "endpoint 'cp': cannot locate residual error parameter(s) in ini()"
+    )
+  })
+
   test_that("plain theta residual components are not promoted", {
     .ui <- .modeledResidUi("cp ~ add(add.sd) + prop(prop.sd)")
     expect_equal(.saemModeledResidualCond(.ui), character(0))
