@@ -213,6 +213,11 @@
 - `saemControl(rmcmc=)` sets the random-walk proposal scale of the SAEM MCMC
   kernels, previously fixed at 0.5; lower it when `$mcmcAccept` is low (#1385).
 
+- `saemControl(rwProposal = "omega")` makes SAEM's joint random-walk kernel
+  propose from `rmcmc^2` times the full omega block, so correlated random
+  effects move together; the default `"diag"` keeps the per-coordinate walk
+  (#1491).
+
 - A `saem` fit now notes in `$runInfo` when its random-walk MCMC acceptance
   over the last 100 post-burn-in iterations is outside 5-80% (e.g.
   `MCMC acceptance low (rw 0%); try a smaller rmcmc`).

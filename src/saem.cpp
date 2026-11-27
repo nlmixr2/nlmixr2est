@@ -584,6 +584,7 @@ struct mcmcphi {
   uvec i;
   mat Gamma_phi;
   mat Gdiag_phi;
+  mat Gwalk_phi;  // kernel 2 step: Gdiag_phi, or rmcmc*chol(omega) (rwOmega)
   mat IGamma2_phi;
   mat mprior_phiM;
 };
@@ -2944,6 +2945,7 @@ public:
     if (x.containsElementNamed("ueTol")) ueTol = as<double>(x["ueTol"]);
     coef_sa = as<double>(x["coef_sa"]);
     rmcmc = as<double>(x["rmcmc"]);
+    rwOmega = as<int>(x["rwOmega"]);
     pas = as<vec>(x["pas"]);
     pash = as<vec>(x["pash"]);
     // SA (stochastic-approximation) covariance phase: after the niter estimation
@@ -5768,6 +5770,7 @@ private:
   vec phi0Lower;
   vec phi0Upper;
   double rmcmc;
+  int rwOmega = 0;
   double coef_sa;
   vec pas, pash;
   vec minv;
@@ -6173,6 +6176,8 @@ private:
     mphi1.IGamma2_phi = IGamma2_phi1;
     mphi1.Gdiag_phi.zeros(nphi1, nphi1);
     mphi1.Gdiag_phi.diag() = sqrt(Gamma2_phi1.diag())*rmcmc;
+    // upper chol U: noise*U has covariance U'U, so the walk is rmcmc^2*omega
+    mphi1.Gwalk_phi = rwOmega ? mat(mphi1.Gamma_phi*rmcmc) : mphi1.Gdiag_phi;
     mphi1.mprior_phiM = repmat(mprior_phi1,nmc,1);
   }
 
@@ -6469,7 +6474,7 @@ private:
         case 2: {
           mat noise(mx.nM, mphi.nphi); _saemDrawRows(saemSeed, seedOff, noise, accU);
           phiMc.cols(i)=phiM.cols(i) +
-            noise*mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
+            noise*mphi.Gwalk_phi % current_saem_state->_saemUE.cols(i);
           break;
         }
         case 3: {
@@ -7061,7 +7066,7 @@ private:
         case 2: {
           mat noise(mx.nM, mphi.nphi); _saemDrawRows(saemSeed, seedOff, noise, accU);
           phiMc.cols(i) = phiM.cols(i) +
-            noise * mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
+            noise * mphi.Gwalk_phi % current_saem_state->_saemUE.cols(i);
           break;
         }
         case 3: {

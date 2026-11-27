@@ -785,6 +785,7 @@
     nmc = nmc,
     coef_phi0 = .9638, # FIXME
     rmcmc = if (is.null(mcmc$rmcmc)) 0.5 else mcmc$rmcmc,
+    rwOmega = as.integer(identical(mcmc$proposal, "omega")),
     coef_sa = .95,
     pas = pas,
     pash = pash,
