@@ -201,7 +201,8 @@
   data,
   timeVaryingCovariates = character(0),
   pseudoEtas = character(0),
-  idLvl = NULL
+  idLvl = NULL,
+  resW = NULL
 ) {
   # Stage the time-varying/non-time-varying mu-ref covariate split so
   # $saemModel0 collapses to the phi + timeVaryingCovariate*beta model (shared
@@ -443,6 +444,10 @@
       }
       .cfg <- .saemEtaMatCfg(.cfg, rxode2::rxGetControl(ui, "etaMat", NULL), ui, idLvl, pseudoEtas)
       .cfg <- .saemWarmCfg(.cfg, rxode2::rxGetControl(ui, "saemWarmState", NULL))
+      # known per-observation residual SD multiplier (.saemResidWeightData())
+      if (!is.null(resW)) {
+        .cfg$resW <- as.double(resW)
+      }
       .saemCheckCfg(.cfg)
       .cfg
     })
@@ -2252,7 +2257,8 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .wData$data,
     timeVaryingCovariates = .tv,
     pseudoEtas = .ret$saemPseudoEtas,
-    idLvl = .ret$idLvl
+    idLvl = .ret$idLvl,
+    resW = .wData$resW
   )
   if (length(.wSpecs) > 0L) {
     .cfg <- attr(.ret$saem, "saem.cfg")

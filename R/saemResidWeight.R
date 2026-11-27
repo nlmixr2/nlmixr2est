@@ -97,17 +97,19 @@
     identical(e[[2]], as.name(name))
 }
 
-#' Additive residuals that are a theta times a known weight
+#' Additive or proportional residuals that are a theta times a known weight
 #'
-#' Finds normal endpoints written as `add(theta * w)`, where `w` only depends
-#' on `time` and covariates.  saem fits these on its closed-form additive path
-#' by scaling the observations and predictions by `1/w`.
+#' Finds normal endpoints written as `add(theta * w)` or `prop(theta * w)`,
+#' where `w` only depends on `time` and covariates.  saem fits these on its
+#' closed-form residual path: an additive one by scaling the observations and
+#' predictions by `1/w`, a proportional one with `w` as a per-observation
+#' multiplier of the residual SD.
 #'
 #' @param ui rxode2 ui
 #' @param conds endpoint conditions with a modeled residual
 #'   (`.saemModeledResidualCond()`)
-#' @return list of specs (`cond`, `cmt`, `theta`, `w`, `def`, `err`, `defLine`,
-#'   `errLine`), one per qualifying endpoint
+#' @return list of specs (`cond`, `cmt`, `type`, `theta`, `w`, `def`, `err`),
+#'   one per qualifying endpoint
 #' @noRd
 .saemResidWeightSpecs <- function(ui, conds) {
   .pred <- ui$predDf
@@ -122,18 +124,20 @@
       next
     }
     .p <- .pred[.i, , drop = FALSE]
+    .type <- paste(.p$errType)
     if (
       !identical(paste(.p$distribution), "norm") ||
-        !identical(paste(.p$errType), "add") ||
+        !(.type %in% c("add", "prop")) ||
         !identical(paste(.p$transform), "untransformed")
     ) {
       next
     }
-    .others <- intersect(c("b", "c", "d", "e", "f", "lambda"), names(.pred))
+    .col <- if (.type == "add") "a" else "b"
+    .others <- setdiff(intersect(c("a", "b", "c", "d", "e", "f", "lambda"), names(.pred)), .col)
     if (any(!is.na(unlist(.p[, .others, drop = TRUE])))) {
       next
     }
-    .a <- paste(.p$a)
+    .a <- paste(.p[[.col]])
     .errLine <- .p$line
     .def <- which(vapply(.lst, .saemIsAssignTo, logical(1), name = .a))
     if (length(.def) != 1L || .def >= .errLine) {
@@ -157,6 +161,7 @@
     .ret[[length(.ret) + 1L]] <- list(
       cond = .cond,
       cmt = .p$cmt,
+      type = .type,
       theta = .th,
       w = .w,
       def = .lst[[.def]],
@@ -166,13 +171,16 @@
   .ret
 }
 
-#' Name of the scaled prediction saem fits for a weighted residual
+#' Name of the line that holds a weighted residual's place in the fit's model
 #'
-#' @param cond endpoint condition
+#' The scaled prediction saem fits for an additive residual, the (unused)
+#' weight for a proportional one.
+#'
+#' @param spec one `.saemResidWeightSpecs()` element
 #' @return variable name
 #' @noRd
-.saemResidWeightVar <- function(cond) {
-  paste0("rx.", cond, ".wpred")
+.saemResidWeightVar <- function(spec) {
+  paste0("rx.", spec$cond, if (identical(spec$type, "prop")) ".w" else ".wpred")
 }
 
 #' Rebuild a ui from changed model lines, keeping its ini block
@@ -197,12 +205,14 @@
   .newUi
 }
 
-#' Fit a weighted additive residual as a plain additive one
+#' Fit a weighted residual as a plain additive or proportional one
 #'
 #' `cp ~ add(add.sd * w)` becomes `rx.cp.wpred <- cp / (w)` and
 #' `rx.cp.wpred ~ add(add.sd) | cp`; saem divides the endpoint's `DV` and
 #' `LIMIT` by the same `w` (`.saemResidWeightData()`), which leaves the
-#' likelihood unchanged up to a constant.
+#' likelihood unchanged up to a constant.  `cp ~ prop(prop.sd * w)` becomes
+#' `cp ~ prop(prop.sd)`, with `w` passed to saem as a per-observation
+#' multiplier of the residual SD.
 #'
 #' @param ui rxode2 ui
 #' @param specs `.saemResidWeightSpecs()`
@@ -213,9 +223,15 @@
   for (.s in specs) {
     .defI <- which(vapply(.lst, identical, logical(1), y = .s$def))
     .errI <- which(vapply(.lst, identical, logical(1), y = .s$err))
-    .var <- as.name(.saemResidWeightVar(.s$cond))
-    .lst[[.defI]] <- bquote(.(.var) <- .(as.name(.s$cond)) / (.(.s$w)))
-    .lst[[.errI]] <- bquote(.(.var) ~ add(.(as.name(.s$theta))) | .(as.name(.s$cond)))
+    .var <- as.name(.saemResidWeightVar(.s))
+    .theta <- as.name(.s$theta)
+    if (identical(.s$type, "prop")) {
+      .lst[[.defI]] <- bquote(.(.var) <- .(.s$w))
+      .lst[[.errI]] <- bquote(.(as.name(.s$cond)) ~ prop(.(.theta)))
+    } else {
+      .lst[[.defI]] <- bquote(.(.var) <- .(as.name(.s$cond)) / (.(.s$w)))
+      .lst[[.errI]] <- bquote(.(.var) ~ add(.(.theta)) | .(as.name(.s$cond)))
+    }
   }
   .saemResidWeightRebuild(ui, .lst)
 }
@@ -232,7 +248,8 @@
   }
   .lst <- ui$lstExpr
   for (.s in specs) {
-    .var <- .saemResidWeightVar(.s$cond)
+    .var <- .saemResidWeightVar(.s)
+    .errVar <- if (identical(.s$type, "prop")) .s$cond else .var
     .defI <- which(vapply(
       .lst,
       function(e) {
@@ -243,7 +260,7 @@
     .errI <- which(vapply(
       .lst,
       function(e) {
-        is.call(e) && identical(e[[1]], as.name("~")) && identical(e[[2]], as.name(.var))
+        is.call(e) && identical(e[[1]], as.name("~")) && identical(e[[2]], as.name(.errVar))
       },
       logical(1)
     ))
@@ -257,18 +274,24 @@
   .ui
 }
 
-#' Divide a weighted endpoint's observations by its known weight
+#' Apply the known residual weights to saem's data
+#'
+#' An additive endpoint's observations are divided by the weight; a
+#' proportional endpoint's weight becomes a per-observation residual SD
+#' multiplier.
 #'
 #' @param data saem's processed data (`$dataSav`)
 #' @param specs `.saemResidWeightSpecs()`
 #' @param nendpnt number of endpoints in the model
-#' @return list with the scaled `data` and `logW`, the sum of `log(w)` over
-#'   the scaled observations
+#' @return list with the scaled `data`, `logW` (the sum of `log(w)` over the
+#'   scaled observations) and `resW` (the residual SD multiplier of each
+#'   observation, `NULL` without a proportional weight)
 #' @noRd
 .saemResidWeightData <- function(data, specs, nendpnt) {
   .logW <- 0
+  .resW <- NULL
   if (length(specs) == 0L) {
-    return(list(data = data, logW = .logW))
+    return(list(data = data, logW = .logW, resW = .resW))
   }
   .names <- names(data)
   .time <- data[[which(toupper(.names) == "TIME")[1]]]
@@ -287,6 +310,13 @@
     if (any(!is.finite(.w) | .w <= 0)) {
       stop(sprintf("residual weight for '%s' must be positive and finite", .s$cond), call. = FALSE)
     }
+    if (identical(.s$type, "prop")) {
+      if (is.null(.resW)) {
+        .resW <- rep(1, sum(.evid == 0))
+      }
+      .resW[.rows[.evid == 0]] <- .w
+      next
+    }
     data[[.dv]][.rows] <- data[[.dv]][.rows] / .w
     if (length(.lim) == 1L) {
       .l <- data[[.lim]][.rows]
@@ -296,5 +326,5 @@
     }
     .logW <- .logW + sum(log(.w))
   }
-  list(data = data, logW = .logW)
+  list(data = data, logW = .logW, resW = .resW)
 }

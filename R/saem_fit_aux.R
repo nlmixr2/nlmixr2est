@@ -221,6 +221,9 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
       fsave <- as.vector(dopred(phi, saem.cfg$evt, .opt))
       f <- .Call(`_nlmixr2est_powerD`, fsave, lambda, as.integer(yj), as.double(low), as.double(hi))
       g <- ares + bres * abs(fsave)
+      if (!is.null(saem.cfg$resW)) {
+        g <- g * saem.cfg$resW
+      }
       g[g < 1.0e-200] <- 1.0e-200
       .dyf <- -0.5 * ((yobs - f) / g)^2 - log(g)
       # user_function() writes 1e99 where the solve returned NaN.  On a normal row
@@ -1023,6 +1026,9 @@ calc.COV <- function(fit0) {
   f0 <- .Call(`_nlmixr2est_powerD`, f0, lambda, as.integer(yj), as.double(low), as.double(hi))
   DF <- (f1 - f0) / dphi[id, ]
   g <- ares + bres * abs(f0s)
+  if (!is.null(saem.cfg$resW)) {
+    g <- g * saem.cfg$resW
+  }
   # An ll() endpoint has no mean to linearize and no residual variance -- dopred()
   # returns the log-density itself -- so those rows contribute the observed
   # information of their own log-likelihood instead (#871).

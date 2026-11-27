@@ -1068,7 +1068,7 @@ public:
           double ft = _powerD(fi, lambda(b), yj(b), low(b), hi(b));
           double yt = hasFixedObsTransform ? ysTrans(y_offset(b) + i)
             : _powerD(ys(y_offset(b) + i), lambda(b), yj(b), low(b), hi(b));
-          double g = ares(b) + bres(b) * std::fabs(ft);
+          double g = (ares(b) + bres(b) * std::fabs(ft)) * resWAt(ix_sorting(y_offset(b) + i));
           if (g == 0.0) g = 1.0;
           else if (g < double_xmin) g = double_xmin;
           else if (g > xmax) g = xmax;
@@ -2129,6 +2129,7 @@ public:
           if (fa <= double_xmin) fa = 1.0;
           r_ji /= fa;
         }
+        r_ji /= resWAt(idx_orig);
         _arRorig(idx_orig) = r_ji;
       }
       for (int i = 0; i < (int)y_cur.size(); i++) {
@@ -2167,6 +2168,7 @@ public:
           if (fa <= double_xmin) fa = 1.0;
           r_ji /= fa;
         }
+        r_ji /= resWAt(idx_orig);
         double r_ji_sq = r_ji * r_ji;
         if (r_ji_sq > xmax) r_ji_sq = xmax;
         else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
@@ -2213,7 +2215,7 @@ public:
       double fci = f_cur[i];
       double ft = _powerD(fci, lambda(b), yj(b), low(b), hi(b));
       double ftT = handleF(propT(b), ft, fci, false, true);
-      double sd = ares(b) + bres(b) * std::fabs(ftT);
+      double sd = (ares(b) + bres(b) * std::fabs(ftT)) * resWAt(ix_sorting(y_offset(b) + i));
       if (sd == 0.0) sd = 1.0;
       else if (sd < double_xmin) sd = double_xmin;
       else if (sd > xmax) sd = xmax;
@@ -2656,12 +2658,26 @@ public:
     return sum;
   }
 
+  // Residual SD multiplier of observation i (original order)
+  double resWAt(arma::uword i) const {
+    return hasResW ? resW(i) : 1.0;
+  }
+
+  // Per-observation residual SD parameters, including any known weight
+  void setVecRes() {
+    vecares = ares(ix_endpnt);
+    vecbres = bres(ix_endpnt);
+    if (hasResW) {
+      vecares %= resW;
+      vecbres %= resW;
+    }
+  }
+
   // Observation-level residual state at the final estimates
   // @return the transformed observations
   // @noRd
   vec modeResidSetup() {
-    vecares = ares(ix_endpnt);
-    vecbres = bres(ix_endpnt);
+    setVecRes();
     veccres = cres(ix_endpnt);
     vec yt = y;
     if (distribution != 1) return yt;
@@ -3158,8 +3174,12 @@ public:
     }
     nres = res_offset.max();
     vcsig2.set_size(nres);
-    vecares = ares(ix_endpnt);
-    vecbres = bres(ix_endpnt);
+    hasResW = x.containsElementNamed("resW");
+    if (hasResW) {
+      resW = as<vec>(x["resW"]);
+      if ((int)resW.n_elem != ntotal) Rcpp::stop("'resW' must have one value per observation");
+    }
+    setVecRes();
     veccres = cres(ix_endpnt);
     veclres = lres(ix_endpnt);
     vecaddProp = addProp(ix_endpnt);
@@ -3395,7 +3415,7 @@ public:
         double ft = _powerD(fk(i), lambda(b), yj(b), low(b), hi(b));
         double yt = hasFixedObsTransform ? ysTrans(i)
           : _powerD(ys(i), lambda(b), yj(b), low(b), hi(b));
-        double err = ft - yt;
+        double err = (ft - yt) / resWAt(ix_sorting(i));
         if (!std::isfinite(err)) continue;
         sAdd += err * err; n++;
         if (std::fabs(ft) <= fthr) continue;
@@ -3424,8 +3444,7 @@ public:
     }
     // keep the per-observation SD vectors (used in the S-step g = vecares +
     // vecbres*|ft|) consistent with the warm-started scalars.
-    vecares = ares(ix_endpnt);
-    vecbres = bres(ix_endpnt);
+    setVecRes();
   }
 
   // Resolve the shared-eta component thetas (#1296) to local indices.  Only the
@@ -4470,6 +4489,7 @@ public:
                 }
                 resid(i) = resid(i)/fa;
               }
+              resid(i) /= resWAt(ix_sorting(y_offset(b) + i));
             }
 
             if (arActive(b)) {
@@ -5489,8 +5509,7 @@ public:
         if (sigma2[b]>1.0e99) sigma2[b] = 1.0e99;
         if (std::isnan(sigma2[b])) sigma2[b] = 1.0e99;
       }
-      vecares = ares(ix_endpnt);
-      vecbres = bres(ix_endpnt);
+      setVecRes();
       veccres = cres(ix_endpnt);
       if (DEBUG>0) Rcout << "par update successful\n";
 
@@ -5833,6 +5852,9 @@ private:
   double sigma2[MAXENDPNT];
   vec ares, bres, cres, lres, lambda, low, hi;
   vec vecares, vecbres, veccres, veclres;
+  // known per-observation residual SD multiplier, original observation order
+  vec resW;
+  bool hasResW = false;
   uvec res_mod, yj, propT, addProp, vecaddProp;
 
   mat DYF;

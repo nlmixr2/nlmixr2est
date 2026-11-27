@@ -97,6 +97,38 @@ nmTest({
     expect_false(.saemGeneralLik(.new))
   })
 
+  test_that("prop(theta * w) passes w as a residual SD multiplier (#1463)", {
+    nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- NULL
+    on.exit(nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- NULL, add = TRUE)
+    .ui <- .weightUi("cp ~ prop(add.sd * (1 + time / 12))")
+    .s <- .specs(.ui)
+    expect_length(.s, 1L)
+    expect_equal(.s[[1]]$type, "prop")
+    expect_equal(.s[[1]]$w, quote((1 + time / 12)))
+    # a combined error stays on the dnorm() path
+    expect_length(.specs(.weightUi("cp ~ add(add.sd) + prop(b)", "b <- cov.sd * time")), 0L)
+    .new <- suppressWarnings(.preProcessSaemModeledResid(.ui, "saem", NULL, NULL))$ui
+    expect_false(.saemGeneralLik(.new))
+    expect_equal(.new$saemResNames, "add.sd")
+    expect_equal(.new$saemResMod, 2L)
+    .back <- .saemResidWeightRestoreUi(.new, nlmixr2global$nlmixr2EstEnv$saemResidWeights)
+    expect_equal(
+      vapply(.back$lstExpr, deparse1, character(1)),
+      vapply(.ui$lstExpr, deparse1, character(1))
+    )
+    .d <- data.frame(
+      ID = 1,
+      TIME = c(0, 1, 2, 3),
+      EVID = c(1, 0, 0, 0),
+      CMT = c(1, 2, 2, 2),
+      DV = c(NA, 4, 4, 4)
+    )
+    .r <- .saemResidWeightData(.d, .s, 1L)
+    expect_identical(.r$data, .d)
+    expect_equal(.r$resW, 1 + (1:3) / 12)
+    expect_equal(.r$logW, 0)
+  })
+
   test_that("the weighted endpoint's DV and LIMIT are scaled (#1463)", {
     .d <- data.frame(
       ID = 1,
@@ -113,6 +145,7 @@ nmTest({
     expect_equal(.r$data$DV, c(NA, 4 / .w))
     expect_equal(.r$data$LIMIT, c(NA, -Inf, 2 / .w[2:3]))
     expect_equal(.r$logW, sum(log(.w)))
+    expect_null(.r$resW)
     expect_identical(.saemResidWeightData(.d, list(), 1L)$data, .d)
     .s[[1]]$w <- quote(time - 2)
     expect_error(.saemResidWeightData(.d, .s, 1L), "must be positive")

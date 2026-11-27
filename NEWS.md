@@ -470,6 +470,9 @@
   of as a `dnorm()` likelihood with a temporary eta.  Such fits are several
   times faster and no longer let the residual SD vary between subjects
   (#1463).
+- `saem` likewise fits a proportional residual that is a theta times a known
+  weight (e.g. `cp ~ prop(prop.sd * (1 + time / 12))`) in closed form, with
+  the weight as a per-observation multiplier of the residual SD (#1463).
 
 - A multiplicative 0/1 covariate effect, `exp(tcl + eta.cl) * (1 + clSex*SEX)`,
   is now fit as the equivalent mu-referenced `log(1 + clSex)*SEX` ("mu5") by

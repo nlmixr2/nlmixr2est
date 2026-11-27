@@ -19,13 +19,14 @@ nmTest({
     )
     .d[order(.d$ID, .d$TIME, -.d$EVID), ]
   }
-  .base <- function(errLine) {
+  .base <- function(errLine, resIni = "add.sd <- 2") {
     eval(parse(
       text = sprintf(
         "function() {
-      ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(30); add.sd <- 2; eta.ka ~ 0.2; eta.cl ~ 0.1 })
+      ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(30); %s; eta.ka ~ 0.2; eta.cl ~ 0.1 })
       model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv); cp <- 10 * linCmt(); %s })
     }",
+        resIni,
         errLine
       )
     ))
@@ -56,6 +57,20 @@ nmTest({
       control = foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = "")
     )$objective
     expect_equal(.focei, .eval, tolerance = 1e-3)
+  })
+
+  test_that("saem fits a time-weighted proportional residual in closed form (#1463)", {
+    skip_on_cran()
+    mTrue <- .base("cp ~ prop(prop.sd * (1 + time / 12))", "prop.sd <- 0.1")
+    .d <- .simWeighted(mTrue)
+    .start <- rxode2::ini(mTrue, prop.sd = 0.2)
+    .f <- .nlmixr(.start, .d, est = "saem", control = .ctl)
+    .ref <- .nlmixr(.start, .d, est = "focei", control = foceiControl(print = 0L))
+    expect_false(any(grepl("dnorm() likelihood", .f$runInfo, fixed = TRUE)))
+    expect_equal(fixef(.f)[["prop.sd"]], fixef(.ref)[["prop.sd"]], tolerance = 0.1)
+    expect_equal(fixef(.f)[["prop.sd"]], 0.1, tolerance = 0.15)
+    expect_equal(.f$IWRES, .f$IRES / (fixef(.f)[["prop.sd"]] * (1 + .f$TIME / 12) * .f$IPRED), tolerance = 1e-6)
+    expect_true(is.finite(.f$objective))
   })
 
   test_that("a covariate weight on one of two endpoints (#1463)", {
