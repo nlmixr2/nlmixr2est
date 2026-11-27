@@ -6,14 +6,27 @@ nmTest({
 
   .extMod <- function(clLine, extraIni = "", tcl = 1, err = "add(add.sd)", vLine = "v <- exp(tv + eta.v)") {
     .errIni <- if (grepl("^prop", err)) "prop.sd <- 0.1" else "add.sd <- 0.7"
-    eval(parse(text = paste0(
-      "function() { ini({ tka <- 0.45; tcl <- ", tcl, "; tv <- 3.45; ", extraIni,
-      if (nzchar(extraIni)) "; " else "",
-      "eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; ", .errIni, " });",
-      " model({ ka <- exp(tka + eta.ka); ", clLine, "; ", vLine, ";",
-      " d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center;",
-      " cp <- center / v; cp ~ ", err, " }) }"
-    )))
+    eval(parse(
+      text = paste0(
+        "function() { ini({ tka <- 0.45; tcl <- ",
+        tcl,
+        "; tv <- 3.45; ",
+        extraIni,
+        if (nzchar(extraIni)) "; " else "",
+        "eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; ",
+        .errIni,
+        " });",
+        " model({ ka <- exp(tka + eta.ka); ",
+        clLine,
+        "; ",
+        vLine,
+        ";",
+        " d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center;",
+        " cp <- center / v; cp ~ ",
+        err,
+        " }) }"
+      )
+    ))
   }
   .extUi <- function(f, constCovs = c("PMA", "WT")) {
     .ui <- rxode2::rxUiDecompress(f())
@@ -32,8 +45,14 @@ nmTest({
   }
   .extMap <- function(ui) {
     .s <- ui$loadPruneSens
-    .foceiAnalyticMuRefExtDirMap(ui, .s, rxode2::rxStateOde(.s), .extDirs(ui), list(),
-                                 rxode2::rxGetControl(ui, "foceiConstCovs", NULL))
+    .foceiAnalyticMuRefExtDirMap(
+      ui,
+      .s,
+      rxode2::rxStateOde(.s),
+      .extDirs(ui),
+      list(),
+      rxode2::rxGetControl(ui, "foceiConstCovs", NULL)
+    )
   }
   .mat <- "cl <- exp(tcl + eta.cl) * PMA^exp(lhill) / (PMA^exp(lhill) + exp(ltm50)^exp(lhill))"
   .matIni <- "ltm50 <- 3.7; lhill <- 1.1"
@@ -66,7 +85,8 @@ nmTest({
     expect_false(any(c("THETA_4_", "THETA_5_") %in% names(.m)))
     # one exponent on two parameters: d/dwt moves cl and v, d/deta.cl only cl
     .m <- .extMap(.extUi(.extMod(
-      "cl <- exp(tcl + eta.cl) * (WT / 70)^wt", "wt <- 0.75",
+      "cl <- exp(tcl + eta.cl) * (WT / 70)^wt",
+      "wt <- 0.75",
       vLine = "v <- exp(tv + eta.v) * (WT / 70)^wt"
     )))
     expect_length(.m, 0L)
@@ -88,17 +108,20 @@ nmTest({
       .am <- .foceiAnalyticAugModelDirs(.ui, .dirs)
       list(
         n = length(rxode2::rxState(.am$augMod)),
-        s = rxode2::rxSolve(.am$augMod, .par, d[d$ID == 3, ], returnType = "data.frame",
-                            atol = 1e-12, rtol = 1e-12)
+        s = rxode2::rxSolve(.am$augMod, .par, d[d$ID == 3, ], returnType = "data.frame", atol = 1e-12, rtol = 1e-12)
       )
     }
     .on <- .solve("")
     .off <- .solve("1")
-    if (!is.null(nStates)) expect_equal(c(.on$n, .off$n), nStates)
+    if (!is.null(nStates)) {
+      expect_equal(c(.on$n, .off$n), nStates)
+    }
     expect_lt(.on$n, .off$n)
     # the reuse changes how columns are computed, never which columns exist
-    expect_setequal(grep("^rx_(f1|f2|rvar1|rvar2|rsig1)_", names(.on$s), value = TRUE),
-                    grep("^rx_(f1|f2|rvar1|rvar2|rsig1)_", names(.off$s), value = TRUE))
+    expect_setequal(
+      grep("^rx_(f1|f2|rvar1|rvar2|rsig1)_", names(.on$s), value = TRUE),
+      grep("^rx_(f1|f2|rvar1|rvar2|rsig1)_", names(.off$s), value = TRUE)
+    )
     .cols <- grep("^rx_(f1|f2|rvar1|rvar2|rsig1)_.*THETA", names(.on$s), value = TRUE)
     for (.c in .cols) {
       expect_equal(.on$s[[.c]], .off$s[[.c]], tolerance = 1e-8, info = .c)
@@ -120,10 +143,13 @@ nmTest({
     expect_true("rx_f2_THETA_2__THETA_2_" %in% .cols)
     # a mu-referenced covariate coefficient (theta-free scale) next to extended directions on
     # the same eta: mixed scales in the pair columns
-    .cols <- .extCompare(.extMod(
-      "cl <- exp(tcl + eta.cl + wt.cl * log(WT / 70)) * PMA^exp(lhill) / (PMA^exp(lhill) + exp(ltm50)^exp(lhill))",
-      "wt.cl <- 0.75; ltm50 <- 3.7; lhill <- 1.1"
-    ), .d)
+    .cols <- .extCompare(
+      .extMod(
+        "cl <- exp(tcl + eta.cl + wt.cl * log(WT / 70)) * PMA^exp(lhill) / (PMA^exp(lhill) + exp(ltm50)^exp(lhill))",
+        "wt.cl <- 0.75; ltm50 <- 3.7; lhill <- 1.1"
+      ),
+      .d
+    )
     expect_true(all(c("rx_f2_THETA_4__THETA_5_", "rx_f2_THETA_5__THETA_6_") %in% .cols))
   })
 
@@ -155,16 +181,23 @@ nmTest({
 
   test_that("reuse is refused for delay(), unmaterialized ODEs and error-model thetas", {
     # delay() with the default history: no rx__pastRhs_ variable, only the delay() call
-    .ui <- .extUi(eval(parse(text = sub(
-      "d/dt(center) <- ka * depot", "d/dt(center) <- ka * delay(depot, 0.5)",
-      paste(deparse(.extMod(.mat, .matIni)), collapse = "\n"), fixed = TRUE
-    ))))
+    .ui <- .extUi(eval(parse(
+      text = sub(
+        "d/dt(center) <- ka * depot",
+        "d/dt(center) <- ka * delay(depot, 0.5)",
+        paste(deparse(.extMod(.mat, .matIni)), collapse = "\n"),
+        fixed = TRUE
+      )
+    )))
     expect_length(.extMap(.ui), 0L)
     # an ODE right-hand side missing from the pruned env (matExp()/indLin() before .rxJacobian)
     .ui <- .extUi(.extMod(.mat, .matIni))
     .s <- .ui$loadPruneSens
     rm(list = "rx__d_dt_center__", envir = .s)
-    expect_length(.foceiAnalyticMuRefExtDirMap(.ui, .s, rxode2::rxStateOde(.s), .extDirs(.ui), list(), c("PMA", "WT")), 0L)
+    expect_length(
+      .foceiAnalyticMuRefExtDirMap(.ui, .s, rxode2::rxStateOde(.s), .extDirs(.ui), list(), c("PMA", "WT")),
+      0L
+    )
     # an error-model theta is never reused, even when offered as a direction
     .ui <- .extUi(.extMod("cl <- tcl * exp(eta.cl)", tcl = 2.7, err = "prop(prop.sd)"))
     .s <- .ui$loadPruneSens
@@ -180,8 +213,14 @@ nmTest({
     .d <- nlmixr2data::theo_sd
     .d$PMA <- 30 + 3 * .d$ID
     .ctl <- foceiControl(
-      fast = TRUE, maxOuterIterations = 0L, maxInnerIterations = 1000L, epsilon = 1e-10,
-      print = 0, covMethod = "", calcTables = FALSE, compress = FALSE,
+      fast = TRUE,
+      maxOuterIterations = 0L,
+      maxInnerIterations = 1000L,
+      epsilon = 1e-10,
+      print = 0,
+      covMethod = "",
+      calcTables = FALSE,
+      compress = FALSE,
       rxControl = rxode2::rxControl(atol = 1e-11, rtol = 1e-11)
     )
     .f <- .extMod(.mat, .matIni)

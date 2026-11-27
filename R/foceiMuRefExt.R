@@ -41,22 +41,33 @@
     .odeNames,
     paste0("rx_", .st, "_ini_0__"),
     .foceiAnalyticDoseVars(.s),
-    "rx_pred_", "rx_r_",
-    "rx_yj_", "rx_lambda_", "rx_low_", "rx_hi_"
+    "rx_pred_",
+    "rx_r_",
+    "rx_yj_",
+    "rx_lambda_",
+    "rx_low_",
+    "rx_hi_"
   )
   .exprNames <- intersect(.exprNames, .vars)
   .E <- lapply(stats::setNames(.exprNames, .exprNames), .get)
   # an expression symengine cannot represent must not silently drop out of the proof
-  if (length(.E) == 0L || any(vapply(.E, is.null, logical(1))) ||
-    any(vapply(.E, function(.x) grepl("delay(", rxode2::rxFromSE(.x), fixed = TRUE), logical(1)))) {
+  if (
+    length(.E) == 0L ||
+      any(vapply(.E, is.null, logical(1))) ||
+      any(vapply(.E, function(.x) grepl("delay(", rxode2::rxFromSE(.x), fixed = TRUE), logical(1)))
+  ) {
     return(list())
   }
   .isZero <- .rxFoceiCarryIsZero
   .allEta <- unique(unlist(lapply(.E, function(.x) grep("^ETA_[0-9]+_$", .rxFoceiCarryFreeSyms(.x), value = TRUE))))
   # c is free of etas and states when the identity holds, so these substitutions only simplify it
   .zeroEta <- function(.x) {
-    for (.e in .allEta) .x <- symengine::subs(.x, .S(.e), .S(0))
-    for (.k in .st) .x <- symengine::subs(.x, .S(.k), .S(1))
+    for (.e in .allEta) {
+      .x <- symengine::subs(.x, .S(.e), .S(0))
+    }
+    for (.k in .st) {
+      .x <- symengine::subs(.x, .S(.k), .S(1))
+    }
     .x
   }
   .fixedTh <- paste0("THETA_", .ini$ntheta[!is.na(.ini$ntheta) & .ini$fix], "_")
@@ -78,44 +89,61 @@
   .zEt <- lapply(.dEt, function(.d) vapply(.d, .isZero, logical(1)))
   # cheap rejection before expand(): a clearly nonzero value at one point disproves the identity
   .clearlyNonzero <- function(.d, .ref) {
-    tryCatch({
-      .sy <- union(.rxFoceiCarryFreeSyms(.d), .rxFoceiCarryFreeSyms(.ref))
-      for (.k in seq_along(.sy)) {
-        .val <- .S(0.31 + (.k * 0.6180339887) %% 1)
-        .d <- symengine::subs(.d, .S(.sy[.k]), .val)
-        .ref <- symengine::subs(.ref, .S(.sy[.k]), .val)
-      }
-      .vd <- as.double(symengine::evalf(.d))
-      .vr <- as.double(symengine::evalf(.ref))
-      is.finite(.vd) && is.finite(.vr) && abs(.vd) > 1e-6 * (abs(.vr) + 1)
-    }, error = function(e) FALSE)
+    tryCatch(
+      {
+        .sy <- union(.rxFoceiCarryFreeSyms(.d), .rxFoceiCarryFreeSyms(.ref))
+        for (.k in seq_along(.sy)) {
+          .val <- .S(0.31 + (.k * 0.6180339887) %% 1)
+          .d <- symengine::subs(.d, .S(.sy[.k]), .val)
+          .ref <- symengine::subs(.ref, .S(.sy[.k]), .val)
+        }
+        .vd <- as.double(symengine::evalf(.d))
+        .vr <- as.double(symengine::evalf(.ref))
+        is.finite(.vd) && is.finite(.vr) && abs(.vd) > 1e-6 * (abs(.vr) + 1)
+      },
+      error = function(e) FALSE
+    )
   }
   .res <- list()
   for (.th in .thDirs) {
     .thS <- .S(.th)
     .dTh <- lapply(.E, function(.x) symengine::D(.x, .thS))
     .zTh <- vapply(.dTh, .isZero, logical(1))
-    if (all(.zTh)) next
+    if (all(.zTh)) {
+      next
+    }
     for (.eta in .etaDirs) {
-      if (any(!.zTh & .zEt[[.eta]])) next # theta acts where the eta does not
+      if (any(!.zTh & .zEt[[.eta]])) {
+        next
+      } # theta acts where the eta does not
       .c <- NULL
       for (.w in which(!.zTh & !.zEt[[.eta]])) {
         .cw <- tryCatch(.dropInert(.zeroEta(.dTh[[.w]] / .dEt[[.eta]][[.w]])), error = function(e) NULL)
-        if (is.null(.cw) || .isZero(.cw) || !all(.rxFoceiCarryFreeSyms(.cw) %in% .okSyms)) next
+        if (is.null(.cw) || .isZero(.cw) || !all(.rxFoceiCarryFreeSyms(.cw) %in% .okSyms)) {
+          next
+        }
         # proven on every expression the eta moves
         .idx <- which(!.zEt[[.eta]])
         .diff <- lapply(.idx, function(.i) .dTh[[.i]] - .cw * .dEt[[.eta]][[.i]])
-        if (any(mapply(.clearlyNonzero, .diff, lapply(.idx, function(.i) .dEt[[.eta]][[.i]])))) next
-        .proven <- all(vapply(.diff, function(.d) {
-          .d <- tryCatch(symengine::expand(.d), error = function(e) NULL)
-          !is.null(.d) && .isZero(.d)
-        }, logical(1)))
+        if (any(mapply(.clearlyNonzero, .diff, lapply(.idx, function(.i) .dEt[[.eta]][[.i]])))) {
+          next
+        }
+        .proven <- all(vapply(
+          .diff,
+          function(.d) {
+            .d <- tryCatch(symengine::expand(.d), error = function(e) NULL)
+            !is.null(.d) && .isZero(.d)
+          },
+          logical(1)
+        ))
         if (.proven) {
           .c <- .cw
           break
         }
       }
-      if (is.null(.c)) next
+      if (is.null(.c)) {
+        next
+      }
       .res[[.th]] <- list(etaDir = .eta, scale = rxode2::rxFromSE(.c), scaleSE = .c)
       break
     }

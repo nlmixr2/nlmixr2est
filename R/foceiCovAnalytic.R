@@ -2322,7 +2322,17 @@
           .b <- .t
         }
         paste0(
-          .pre, .i, "_", .j, "=", paste(sprintf("(%s)", c(.si$s, .sj$s)), collapse = "*"), "*", .pre, .a, "_", .b,
+          .pre,
+          .i,
+          "_",
+          .j,
+          "=",
+          paste(sprintf("(%s)", c(.si$s, .sj$s)), collapse = "*"),
+          "*",
+          .pre,
+          .a,
+          "_",
+          .b,
           # a theta-dependent scale adds (dc_i/dtheta_j) * f1
           .foceiMuRefExtCurvTerm(.covMap, .i, .j, sub("2_$", "1_", .pre))
         )
