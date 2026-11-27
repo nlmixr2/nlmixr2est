@@ -719,6 +719,10 @@ saemSeedLayoutTest_ <- function(nu, nphi1, nphi0, nMix, nM, nmc, ntotal, niter) 
     .Call(`_nlmixr2est_saemSeedLayoutTest_`, nu, nphi1, nphi0, nMix, nM, nmc, ntotal, niter)
 }
 
+saemAutoStopTest_ <- function(trajR, window, consec, rtol, atol) {
+    .Call(`_nlmixr2est_saemAutoStopTest_`, trajR, window, consec, rtol, atol)
+}
+
 saem_do_pred <- function(in_phi, in_evt, in_opt) {
     .Call(`_nlmixr2est_saem_do_pred`, in_phi, in_evt, in_opt)
 }
