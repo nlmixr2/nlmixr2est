@@ -19,12 +19,14 @@ saemControl(
   plateauWindow = 50L,
   plateauTol = 0.001,
   plateauMinFrac = 0.5,
+  stopFile = NULL,
   nmc = 3,
   nu = c(2, 2, 2),
   nu1B = 0L,
   nb1B = 10L,
   kappa1B = 1,
   rmcmc = 0.5,
+  rwProposal = c("diag", "omega"),
   mcmcAcceptWarn = c(0.05, 0.8),
   print = 1L,
   trace = 0,
@@ -170,6 +172,13 @@ saemControl(
   Fraction of the `nEm` iterations that always run before a plateau can
   stop the EM phase.
 
+- stopFile:
+
+  Path of a file that, once created, stops the estimation gracefully:
+  the run ends at its current state (for FOCEi, the lowest objective
+  evaluated so far), removes the file, notes the stop in \`\$runInfo\`
+  and returns the fit. \`NULL\` (default) does not poll.
+
 - nmc:
 
   Number of Markov Chains. By default this is 3. When you increase the
@@ -217,6 +226,13 @@ saemControl(
   Scale of the random-walk proposals (kernels 2 and 3) relative to the
   current between-subject SD. Smaller values raise the MCMC acceptance
   rate (see \`\$mcmcAccept\`); larger values lower it.
+
+- rwProposal:
+
+  Shape of the joint random-walk proposal (kernel 2): \`"diag"\`
+  (default) scales each coordinate by \`rmcmc\` times its
+  between-subject SD; \`"omega"\` uses \`rmcmc^2\` times the full omega
+  block, so correlated random effects move together.
 
 - mcmcAcceptWarn:
 

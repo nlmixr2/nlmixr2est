@@ -12,6 +12,7 @@ bobyqaControl(
   iprint = 0L,
   maxfun = 100000L,
   returnBobyqa = FALSE,
+  stopFile = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -79,6 +80,13 @@ bobyqaControl(
 - returnBobyqa:
 
   return the bobyqa output instead of the nlmixr2 fit
+
+- stopFile:
+
+  Path of a file that, once created, stops the estimation gracefully:
+  the run ends at its current state (for FOCEi, the lowest objective
+  evaluated so far), removes the file, notes the stop in \`\$runInfo\`
+  and returns the fit. \`NULL\` (default) does not poll.
 
 - stickyRecalcN:
 
@@ -351,10 +359,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.5507013 0.5242849 1.5333e-05      0.038       0.007 0.034    0.001
+#>            setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.695289 0.6825831 1.7564e-05      0.052       0.009 0.036    0.001
 #>             other
-#> elapsed 0.0719984
+#> elapsed 0.1011103
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

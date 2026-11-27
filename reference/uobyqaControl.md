@@ -12,6 +12,7 @@ uobyqaControl(
   iprint = 0L,
   maxfun = 100000L,
   returnUobyqa = FALSE,
+  stopFile = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -80,6 +81,13 @@ uobyqaControl(
 - returnUobyqa:
 
   return the uobyqa output instead of the nlmixr2 fit
+
+- stopFile:
+
+  Path of a file that, once created, stops the estimation gracefully:
+  the run ends at its current state (for FOCEi, the lowest objective
+  evaluated so far), removes the file, notes the stop in \`\$runInfo\`
+  and returns the fit. \`NULL\` (default) does not poll.
 
 - stickyRecalcN:
 
@@ -363,10 +371,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>           setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.07614 0.1105519 1.2058e-05      0.033       0.005 0.013    0.001
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.1256685 0.107197 1.5926e-05      0.054       0.008 0.021    0.001
 #>              other
-#> elapsed 0.04729605
+#> elapsed 0.07411858
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

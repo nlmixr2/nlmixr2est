@@ -16,6 +16,7 @@ nlmControl(
   iterlim = 10000,
   check.analyticals = FALSE,
   returnNlm = FALSE,
+  stopFile = NULL,
   solveType = c("hessian", "grad", "fun"),
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
@@ -121,6 +122,13 @@ nlmControl(
 - returnNlm:
 
   is a logical that allows a return of the \`nlm\` object
+
+- stopFile:
+
+  Path of a file that, once created, stops the estimation gracefully:
+  the run ends at its current state (for FOCEi, the lowest objective
+  evaluated so far), removes the file, notes the stop in \`\$runInfo\`
+  and returns the fit. \`NULL\` (default) does not poll.
 
 - solveType:
 
@@ -477,10 +485,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.08115264 0.1255538  1.343e-05      0.035       0.004 0.014    0.001
-#>              other
-#> elapsed 0.05028014
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1165682 0.1911231 1.2612e-05      0.053       0.006  0.02    0.001
+#>             other
+#> elapsed 0.0722961
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

@@ -383,7 +383,7 @@ stieltjesControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x599766befde0>
+#> <bytecode: 0x6131eb475638>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -628,6 +628,9 @@ stieltjesControl()
 #> 
 #> $aboveStartTol
 #> [1] 0.01
+#> 
+#> $stopFile
+#> NULL
 #> 
 #> $shrinkEtaWarn
 #> [1] 30
@@ -1563,7 +1566,7 @@ stieltjesControl(stage1 = "foce", agqGrid = c(5, 2, 0.5, 0.95))
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x599766befde0>
+#> <bytecode: 0x6131eb475638>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1808,6 +1811,9 @@ stieltjesControl(stage1 = "foce", agqGrid = c(5, 2, 0.5, 0.95))
 #> 
 #> $aboveStartTol
 #> [1] 0.01
+#> 
+#> $stopFile
+#> NULL
 #> 
 #> $shrinkEtaWarn
 #> [1] 30

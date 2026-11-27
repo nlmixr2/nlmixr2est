@@ -176,6 +176,25 @@
   initial estimate is not changed
   ([\#1383](https://github.com/nlmixr2/nlmixr2est/issues/1383)).
 
+- `stopFile = "stop"` in
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md),
+  [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md)
+  and the nlm-family controls
+  ([`nlmControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.md),
+  [`nlminbControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.md),
+  [`bobyqaControl()`](https://nlmixr2.github.io/nlmixr2est/reference/bobyqaControl.md),
+  [`uobyqaControl()`](https://nlmixr2.github.io/nlmixr2est/reference/uobyqaControl.md),
+  [`newuoaControl()`](https://nlmixr2.github.io/nlmixr2est/reference/newuoaControl.md),
+  [`lbfgsb3cControl()`](https://nlmixr2.github.io/nlmixr2est/reference/lbfgsb3cControl.md),
+  [`n1qn1Control()`](https://nlmixr2.github.io/nlmixr2est/reference/n1qn1Control.md),
+  [`optimControl()`](https://nlmixr2.github.io/nlmixr2est/reference/optimControl.md),
+  [`trustControl()`](https://nlmixr2.github.io/nlmixr2est/reference/trustControl.md))
+  ends a running fit gracefully once that file is created: FOCEi and the
+  nlm family continue from the lowest objective evaluated so far and
+  SAEM ends at the current iteration; the file is removed and “stopped
+  early by user request” is noted in `$runInfo`
+  ([\#1507](https://github.com/nlmixr2/nlmixr2est/issues/1507)).
+
 - `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes
   each converged trust ETA solve by re-entering it at the squared
   `trustFterm`/`trustMterm` instead of taking Newton steps. The
@@ -281,6 +300,12 @@
 - `saemControl(rmcmc=)` sets the random-walk proposal scale of the SAEM
   MCMC kernels, previously fixed at 0.5; lower it when `$mcmcAccept` is
   low ([\#1385](https://github.com/nlmixr2/nlmixr2est/issues/1385)).
+
+- `saemControl(rwProposal = "omega")` makes SAEM’s joint random-walk
+  kernel propose from `rmcmc^2` times the full omega block, so
+  correlated random effects move together; the default `"diag"` keeps
+  the per-coordinate walk
+  ([\#1491](https://github.com/nlmixr2/nlmixr2est/issues/1491)).
 
 - A `saem` fit now notes in `$runInfo` when its random-walk MCMC
   acceptance over the last 100 post-burn-in iterations is outside 5-80%
@@ -664,6 +689,13 @@
   that are not
   [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html)
   parameters
+  ([\#1516](https://github.com/nlmixr2/nlmixr2est/issues/1516)).
+
+- `est="saem"` with a modeled residual error
+  (e.g. `a <- add.sd; cp ~ add(a)`) no longer lists the temporary eta in
+  `$parFixedDf`/`$parFixed`, and reports the residual’s back-transformed
+  value and CI on its own scale instead of
+  [`exp()`](https://rdrr.io/r/base/Log.html) of it
   ([\#1516](https://github.com/nlmixr2/nlmixr2est/issues/1516)).
 
 - `est="agq"` now checks the quadrature grid size (`nAGQ^neta`) before
@@ -1380,6 +1412,12 @@
   when subjects have different numbers of occasions. The pooled variance
   now averages over the subject-occasions in the data instead of
   counting each absent occasion as a zero deviation
+  ([\#1504](https://github.com/nlmixr2/nlmixr2est/issues/1504)).
+
+- `saemControl(iovMethod = "collapsed")` now samples a subject’s absent
+  occasions from their conditional prior instead of freezing them at the
+  mean, which pinned the subject’s between-subject deviation toward zero
+  on unbalanced occasion designs
   ([\#1504](https://github.com/nlmixr2/nlmixr2est/issues/1504)).
 
 - `saemControl(iovMethod = "theta")`, also the automatic fallback for

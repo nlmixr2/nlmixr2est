@@ -58,12 +58,14 @@
 <span>  plateauWindow <span class="op">=</span> <span class="fl">50L</span>,</span>
 <span>  plateauTol <span class="op">=</span> <span class="fl">0.001</span>,</span>
 <span>  plateauMinFrac <span class="op">=</span> <span class="fl">0.5</span>,</span>
+<span>  stopFile <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  nmc <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  nu <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span>,</span>
 <span>  nu1B <span class="op">=</span> <span class="fl">0L</span>,</span>
 <span>  nb1B <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  kappa1B <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  rmcmc <span class="op">=</span> <span class="fl">0.5</span>,</span>
+<span>  rwProposal <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"diag"</span>, <span class="st">"omega"</span><span class="op">)</span>,</span>
 <span>  mcmcAcceptWarn <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.05</span>, <span class="fl">0.8</span><span class="op">)</span>,</span>
 <span>  print <span class="op">=</span> <span class="fl">1L</span>,</span>
 <span>  trace <span class="op">=</span> <span class="fl">0</span>,</span>
@@ -212,6 +214,13 @@ Thetas below 1 in magnitude use the absolute change.</p></dd>
 before a plateau can stop the EM phase.</p></dd>
 
 
+<dt id="arg-stopfile">stopFile<a class="anchor" aria-label="anchor" href="#arg-stopfile"></a></dt>
+<dd><p>Path of a file that, once created, stops the estimation
+gracefully: the run ends at its current state (for FOCEi, the lowest
+objective evaluated so far), removes the file, notes the stop in
+`$runInfo` and returns the fit.  `NULL` (default) does not poll.</p></dd>
+
+
 <dt id="arg-nmc">nmc<a class="anchor" aria-label="anchor" href="#arg-nmc"></a></dt>
 <dd><p>Number of Markov Chains. By default this is 3.  When
 you increase the number of chains the numerical integration by
@@ -255,6 +264,13 @@ moments (NONMEM's `IKAPPA`); `1` is a simple average over iterations.</p></dd>
 <dd><p>Scale of the random-walk proposals (kernels 2 and 3) relative
 to the current between-subject SD.  Smaller values raise the MCMC
 acceptance rate (see `$mcmcAccept`); larger values lower it.</p></dd>
+
+
+<dt id="arg-rwproposal">rwProposal<a class="anchor" aria-label="anchor" href="#arg-rwproposal"></a></dt>
+<dd><p>Shape of the joint random-walk proposal (kernel 2):
+`"diag"` (default) scales each coordinate by `rmcmc` times its
+between-subject SD; `"omega"` uses `rmcmc^2` times the full omega
+block, so correlated random effects move together.</p></dd>
 
 
 <dt id="arg-mcmcacceptwarn">mcmcAcceptWarn<a class="anchor" aria-label="anchor" href="#arg-mcmcacceptwarn"></a></dt>

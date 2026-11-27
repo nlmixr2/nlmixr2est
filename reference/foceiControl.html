@@ -206,6 +206,7 @@
 <span>  etaRestart <span class="op">=</span> <span class="fl">4L</span>,</span>
 <span>  finalEtaTol <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  aboveStartTol <span class="op">=</span> <span class="fl">0.01</span>,</span>
+<span>  stopFile <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  shrinkEtaWarn <span class="op">=</span> <span class="fl">30</span>,</span>
 <span>  odeSettleCheck <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  odeSettleTol <span class="op">=</span> <span class="fl">0.1</span>,</span>
@@ -1539,6 +1540,13 @@ warm start (`mceta &lt; 0`).  Use `Inf` to disable.</p></dd>
 above the objective at the initial estimates by more than this fraction
 of its magnitude (at least 0.1 objective units).  Use `NA` or `Inf` to
 disable.</p></dd>
+
+
+<dt id="arg-stopfile">stopFile<a class="anchor" aria-label="anchor" href="#arg-stopfile"></a></dt>
+<dd><p>Path of a file that, once created, stops the estimation
+gracefully: the run ends at its current state (for FOCEi, the lowest
+objective evaluated so far), removes the file, notes the stop in
+`$runInfo` and returns the fit.  `NULL` (default) does not poll.</p></dd>
 
 
 <dt id="arg-shrinketawarn">shrinkEtaWarn<a class="anchor" aria-label="anchor" href="#arg-shrinketawarn"></a></dt>

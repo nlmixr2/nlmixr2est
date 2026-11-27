@@ -25,6 +25,7 @@ nlminbControl(
   literalFix = TRUE,
   literalFixRes = TRUE,
   returnNlminb = FALSE,
+  stopFile = NULL,
   solveType = c("hessian", "grad", "fun"),
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
@@ -158,6 +159,13 @@ nlminbControl(
 
   logical; when TRUE this will return the nlminb result instead of the
   nlmixr2 fit object
+
+- stopFile:
+
+  Path of a file that, once created, stops the estimation gracefully:
+  the run ends at its current state (for FOCEi, the lowest objective
+  evaluated so far), removes the file, notes the stop in \`\$runInfo\`
+  and returns the fit. \`NULL\` (default) does not poll.
 
 - solveType:
 
@@ -459,10 +467,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.07218623 0.1265535 1.4031e-05      0.033       0.005 0.022    0.007
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1105887 0.1891873 1.3658e-05       0.05       0.007  0.02    0.019
 #>              other
-#> elapsed 0.04924625
+#> elapsed 0.07121037
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

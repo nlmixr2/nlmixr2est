@@ -49,6 +49,7 @@ optimControl(
   literalFix = TRUE,
   literalFixRes = TRUE,
   returnOptim = FALSE,
+  stopFile = NULL,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
   sensMethod = c("default", "forward"),
@@ -328,6 +329,13 @@ optimControl(
   logical; when TRUE this will return the optim list instead of the
   nlmixr2 fit object
 
+- stopFile:
+
+  Path of a file that, once created, stops the estimation gracefully:
+  the run ends at its current state (for FOCEi, the lowest objective
+  evaluated so far), removes the file, notes the stop in \`\$runInfo\`
+  and returns the fit. \`NULL\` (default) does not poll.
+
 - addProp:
 
   Type of additive-plus-proportional error: \`"combined1"\`, where
@@ -497,10 +505,10 @@ fit2
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.07923308 0.1217632 2.3896e-05      0.036       0.005 0.014    0.001
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1075988 0.1816234 1.1676e-05      0.052       0.007  0.02    0.001
 #>              other
-#> elapsed 0.05097986
+#> elapsed 0.07476619
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 

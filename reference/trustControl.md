@@ -32,6 +32,7 @@ trustControl(
   hessErr = NULL,
   hessianMethod = c("sr1", "fd", "bfgs", "bofill"),
   returnTrust = FALSE,
+  stopFile = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -176,6 +177,13 @@ trustControl(
 
   return the raw \`nlmTrustFit()\` output list instead of the nlmixr2
   fit.
+
+- stopFile:
+
+  Path of a file that, once created, stops the estimation gracefully:
+  the run ends at its current state (for FOCEi, the lowest objective
+  evaluated so far), removes the file, notes the stop in \`\$runInfo\`
+  and returns the fit. \`NULL\` (default) does not poll.
 
 - stickyRecalcN:
 
@@ -467,10 +475,10 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.06818733 0.1176923 1.5093e-05      0.035       0.005 0.013    0.001
-#>              other
-#> elapsed 0.06810528
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1126396 0.1857074 1.4839e-05      0.054       0.007 0.021    0.001
+#>             other
+#> elapsed 0.0956381
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -517,6 +525,9 @@ fit$trust
 #> 
 #> $message
 #> [1] "converged"
+#> 
+#> $nlmStopped
+#> NULL
 #> 
 #> $scaleC
 #> [1] 2.0 2.0 0.5

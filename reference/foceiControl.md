@@ -167,6 +167,7 @@ foceiControl(
   etaRestart = 4L,
   finalEtaTol = 1,
   aboveStartTol = 0.01,
+  stopFile = NULL,
   shrinkEtaWarn = 30,
   odeSettleCheck = FALSE,
   odeSettleTol = 0.1,
@@ -1495,6 +1496,13 @@ foceiControl(
   objective at the initial estimates by more than this fraction of its
   magnitude (at least 0.1 objective units). Use \`NA\` or \`Inf\` to
   disable.
+
+- stopFile:
+
+  Path of a file that, once created, stops the estimation gracefully:
+  the run ends at its current state (for FOCEi, the lowest objective
+  evaluated so far), removes the file, notes the stop in \`\$runInfo\`
+  and returns the fit. \`NULL\` (default) does not poll.
 
 - shrinkEtaWarn:
 

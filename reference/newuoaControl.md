@@ -12,6 +12,7 @@ newuoaControl(
   iprint = 0L,
   maxfun = 100000L,
   returnNewuoa = FALSE,
+  stopFile = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -80,6 +81,13 @@ newuoaControl(
 - returnNewuoa:
 
   return the newuoa output instead of the nlmixr2 fit
+
+- stopFile:
+
+  Path of a file that, once created, stops the estimation gracefully:
+  the run ends at its current state (for FOCEi, the lowest objective
+  evaluated so far), removes the file, notes the stop in \`\$runInfo\`
+  and returns the fit. \`NULL\` (default) does not poll.
 
 - stickyRecalcN:
 
@@ -360,10 +368,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.101176 0.0736031 1.2729e-05      0.041       0.005 0.014    0.001
-#>              other
-#> elapsed 0.05120817
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1418169 0.1062441   1.38e-05      0.056       0.008  0.02    0.001
+#>             other
+#> elapsed 0.0699252
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

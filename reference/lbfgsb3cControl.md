@@ -14,6 +14,7 @@ lbfgsb3cControl(
   lmm = 5L,
   maxit = 10000L,
   returnLbfgsb3c = FALSE,
+  stopFile = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -90,6 +91,13 @@ lbfgsb3cControl(
 - returnLbfgsb3c:
 
   return the lbfgsb3c output instead of the nlmixr2 fit
+
+- stopFile:
+
+  Path of a file that, once created, stops the estimation gracefully:
+  the run ends at its current state (for FOCEi, the lowest objective
+  evaluated so far), removes the file, notes the stop in \`\$runInfo\`
+  and returns the fit. \`NULL\` (default) does not poll.
 
 - stickyRecalcN:
 
@@ -372,9 +380,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.1084698 1.017755 1.7155e-05      0.034       0.006 0.018    0.001
+#> elapsed 0.1348993 1.291854 1.6465e-05      0.048       0.015 0.022    0.001
 #>              other
-#> elapsed 0.05575793
+#> elapsed 0.07423023
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

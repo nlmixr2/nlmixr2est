@@ -360,7 +360,7 @@ magqControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x599766befde0>
+#> <bytecode: 0x6131eb475638>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -605,6 +605,9 @@ magqControl()
 #> 
 #> $aboveStartTol
 #> [1] 0.01
+#> 
+#> $stopFile
+#> NULL
 #> 
 #> $shrinkEtaWarn
 #> [1] 30

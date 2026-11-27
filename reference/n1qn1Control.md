@@ -12,6 +12,7 @@ n1qn1Control(
   imp = 0,
   print.functions = FALSE,
   returnN1qn1 = FALSE,
+  stopFile = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -74,6 +75,13 @@ n1qn1Control(
 - returnN1qn1:
 
   return the n1qn1 output instead of the nlmixr2 fit
+
+- stopFile:
+
+  Path of a file that, once created, stops the estimation gracefully:
+  the run ends at its current state (for FOCEi, the lowest objective
+  evaluated so far), removes the file, notes the stop in \`\$runInfo\`
+  and returns the fit. \`NULL\` (default) does not poll.
 
 - stickyRecalcN:
 
@@ -366,10 +374,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.07514024 0.1115692  1.347e-05      0.043       0.004 0.015        0
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1125809 0.1698577 1.3883e-05      0.053       0.006 0.019        0
 #>              other
-#> elapsed 0.05027712
+#> elapsed 0.07954753
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
