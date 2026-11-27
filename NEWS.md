@@ -47,11 +47,44 @@
 
 ## New features
 
+- `saemControl(muNonCentered = TRUE, omegaNonCentered = TRUE)` interweave
+  non-centered updates of the mu-referenced random effects into SAEM (Yu and
+  Meng 2011): after the M-step each free intercept-only mean is shifted, and
+  each estimated variance rescaled, with every subject's (standardized)
+  deviation held fixed, scored on the data likelihood by one BHHH step with
+  NONMEM's step-halving rule.  The ordinary update barely moves the mean or
+  variance of a random effect the individual data say little about; on
+  Bauer's gamma-distributed CL/V1 benchmark the steps took the
+  intercompartmental clearance from 0.85-0.88 to 0.74 (truth 0.74) and its
+  variance to within 10% of the truth.  Off by default: on well-informed models
+  they change nothing and cost model solves.  `nonCenteredPhase = "burnin"`
+  restricts them to burn-in.
+
+- `saemControl(etaMat=)` starts every SAEM MCMC chain at given etas: a prior
+  fit's EBEs (`saemControl(etaMat = fit)`), a data frame with an `ID` column
+  or a subject-by-eta matrix.  The default (`NULL`) keeps the random start
+  (#1482).
+- `foceiControl(fast = TRUE)` now uses the analytic outer gradient for models
+  with inter-occasion variability, under both `iovMethod = "theta"` and
+  `"omega"`, instead of falling back to finite differences (#1377).
+
+- When a fit's tables step fails and the fit is returned without its tables,
+  `nlmixr2()` now raises a `warning()` and sets `fit$tablesDropped` to `TRUE`
+  so a script can test for it; adding the tables later with `addTable()`
+  clears it (#1354).
 - `addCondDist(fit)` samples each subject's conditional distribution of the
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
   By default it importance-samples around each subject's mode with the
-  population parameters held (#1378).
+  population parameters held (#1378).  `method = "saem"` uses the SAEM MCMC
+  instead: a SAEM fit's own last iterations when they are enough, otherwise
+  the kernels held at the fit's estimates; it is the default for SAEM fits.
+- `etaSamples(fit, n)` draws each subject's etas from their conditional
+  distribution at a fit's estimates, as a long data frame (`ID`, `draw`, one
+  column per eta) that `rxSolve(fit, params = , nStud = n)` takes to simulate
+  each subject with its own uncertainty.  `method = "laplace"` draws from the
+  normal at each subject's mode with the inverse inner Hessian;
+  `method = "imp"` resamples `addCondDist()`'s importance samples (#1410).
 - A `saem` fit with a theta that is not updated in closed form now notes which
   thetas the M-step updates in closed form, numerically (`nonMuTheta =
   "regress"`) or stochastically (`nonMuTheta = "eta"`); the note is kept in
@@ -71,6 +104,12 @@
   fixed parameters then varies by about 2e-5 across warm-start ETAs (0.0054
   before on `pheno_sd`); the default is unchanged (#1152).
 
+- `saemControl(nu1B=)` adds NONMEM's proposal kernel mode 1B (`ISAMPLE_M1B`)
+  to SAEM's E-step: independence proposals from each subject's running
+  conditional mean and covariance of its random effects, which mixes much
+  faster when the posterior is narrow or correlated relative to `omega`.  Off
+  by default; `nb1B` (start iteration, default 10) and `kappa1B` (NONMEM's
+  `IKAPPA`) tune it, and `$saem$accept1B` reports its acceptance rate.
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
@@ -108,11 +147,21 @@
   is the start of observation).  This needs an rxode2 with `tte()` support and
   is inactive otherwise.
 
+- FOCEi fits now carry `fit$mcetaInfo`, the `mceta` multistart's counts per
+  outer evaluation and in total: inner solves started at eta=0 or at an Omega
+  draw, which start won, how often the marginal objective re-ranked the
+  candidates, and the inner-solve time spent in the search; the totals also
+  count the covariance step (#1456).
+
 - `foceiControl(odeSettleCheck = TRUE)` re-solves an ODE model's ETAs and
   objective at the final estimates with every ODE tolerance 10x tighter and
   notes in `$runInfo` an objective that moves by more than `odeSettleTol`
   (default 0.1) or is not finite, e.g. `OFV moves 0.28 at 10x tighter ODE
   tolerance`; the tighter objective is kept as `fit$odeSettleObjf` (#1393).
+- Estimation of an ODE model now warns (in `$runInfo`) when an uncensored
+  observation is within `1e3 * atol` of zero, where the ODE integration error
+  can be comparable to the data.  Disable with
+  `options(nlmixr2est.atolCheck = FALSE)` (#1392).
 - FOCEi model builds no longer optimize the `innerOeta` model, which only
   `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on
   first use, caches it and adds the inner model's `param()`/`cmt()`/`mtime()`
@@ -202,6 +251,14 @@
   `$runInfo`; `tableControl(iwresAutocor = FALSE)` turns the note off
   (#1373).
 
+- A SAEM fit now notes in `$runInfo` when its covariance was computed at an
+  estimate that is not stationary for the FOCEi objective: the Newton
+  decrement `0.5 * g' H^-1 g` (OFV units) of that objective at the estimate
+  exceeds `saemControl(covNewtonWarn = 1)`.  The value is kept as
+  `fit$covNewtonDecrement`; `NA` or `Inf` skips the check; models outside
+  the analytic gradient's scope (e.g. `linCmt()`) use central differences
+  (#1389).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the
@@ -234,6 +291,15 @@
 
 ## Bug fixes
 
+- A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
+  the gradient before the objective no longer stops R: the gradient's history
+  row read the last objective iteration, which did not exist yet.  FOCEi now
+  evaluates the objective first, so that gradient gets the initial step search.
+- An `ll()` fit no longer installs `model$inner`'s event-sensitivity shape for an
+  inner model that solves `innerLlik`, and the fit re-binds the inner shape on the
+  library it loaded.  Either mismatch let a compacted inner solve run another
+  model's right-hand side and overflow the heap ("free(): invalid next size").
+
 - A multi-threaded fit after a `fast = TRUE` `ll()` fit in the same R session
   no longer stops R on Windows.  Two per-thread buffers were `thread_local`
   `std::vector`s; with the MinGW-w64 toolchain their destructors run at thread
@@ -244,6 +310,10 @@
 
 ### Covariance
 
+- `covType = "analytic"` now declines to the finite-difference covariance
+  when a likelihood penalty is active, so the covariance includes the
+  penalty's curvature instead of describing the unpenalised likelihood
+  (#1479).
 - The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a
   `same()` block's copies with the block they repeat, so a correlated IOV
   block contributes one shared occasion Omega (`om.iov.cl`,
@@ -317,6 +387,24 @@
   the first `$runInfo` line; `$cov` had partially matched `covMethod = "failed"`.
 
 ### Estimation
+
+- `est="saem"` now re-solves its cached predictions after the M-step moves a
+  theta without an eta, so the next E-step no longer scores the current state
+  at the previous theta (non-mixture fits; mixtures already re-solved).
+- `est="saem"` now starts additive and proportional residual errors at their
+  `ini()` values instead of fixed placeholders (`10` and `1`), as the power and
+  lambda parameters already did.  The residual warm-start
+  (`saemControl(residWarmStart=TRUE)`) is now clamped around the `ini()` values,
+  and with `residWarmStart=FALSE` (or a mixture model) the first E-step samples
+  under the `ini()` residual error.
+- FOCEi: a `linCmt()` model with an `ll()` (or other generalized) endpoint
+  and an eta on `f()` or `alag()` no longer gets a zero inner gradient for
+  that eta, so its EBEs and objective now match the ODE form of the model
+  (#1530).
+- The mu-referenced IRLS M-step (`muModel = "irls"`, e.g. `est = "ifocei"`)
+  now scales the design rows by the per-subject weights instead of forming a
+  dense subjects x subjects weight matrix, so its memory and time grow
+  linearly in the number of subjects (#1355).
 
 - `est="imp"`, `"impmap"` and `"qrpem"` now refuse a model without random
   effects with the same clear message as `"saem"`, instead of failing with
@@ -899,6 +987,12 @@
   still predicted once for each fitted subject.
 
 ### Inter-occasion variability
+
+- saem's two-level IOV (`iovMethod = "twoLevel"`, `"theta"` and
+  `"collapsed"`) no longer shrinks the occasion variance toward zero when
+  subjects have different numbers of occasions.  The pooled variance now
+  averages over the subject-occasions in the data instead of counting each
+  absent occasion as a zero deviation (#1504).
 
 - `saemControl(iovMethod = "theta")`, also the automatic fallback for models
   `"twoLevel"` does not cover, no longer underestimates the occasion

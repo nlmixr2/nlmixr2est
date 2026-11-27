@@ -231,7 +231,7 @@ nlmixr2ObjGrad <- function(
         if (is.null(.uiG)) {
           .uiG <- ui
         }
-        .g <- .foceiGradNames(as.numeric(get(".gradDirectFirst", .src)), .uiG, fit)
+        .g <- .foceiGradNames(as.numeric(get(".gradDirectFirst", .src)), .uiG, fit, .src)
       }
       .nDirect <- if (exists("nAnalyticGradDirect", .src, inherits = FALSE)) {
         as.integer(get("nAnalyticGradDirect", .src))

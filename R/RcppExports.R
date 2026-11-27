@@ -707,6 +707,10 @@ saemPhi1RefineN_ <- function() {
     .Call(`_nlmixr2est_saemPhi1RefineN_`)
 }
 
+saemFsaveRefresh_ <- function() {
+    .Call(`_nlmixr2est_saemFsaveRefresh_`)
+}
+
 saemGainFrozenSkipN_ <- function() {
     .Call(`_nlmixr2est_saemGainFrozenSkipN_`)
 }
@@ -725,6 +729,10 @@ saem_fit <- function(xSEXP) {
 
 saemFormGTest <- function(inA, inB, inFt, inC, inAddProp) {
     .Call(`_nlmixr2est_saemFormGTest`, inA, inB, inFt, inC, inAddProp)
+}
+
+saemBurnTrendTest <- function(inX, inNBatch) {
+    .Call(`_nlmixr2est_saemBurnTrendTest`, inX, inNBatch)
 }
 
 shi21RatioCensorSet <- function(type) {

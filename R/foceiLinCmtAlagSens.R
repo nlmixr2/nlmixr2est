@@ -145,13 +145,16 @@
     return(NULL)
   }
   .pred <- get("rx_pred_", envir = s, inherits = FALSE)
-  if (!identical(tryCatch(symengine::get_name(.pred), error = function(e) ""), "linCmtB")) {
+  # The terms are derivatives of the linCmt() call itself.  rx_pred_ is that
+  # call for an add()/prop() endpoint; an ll() or other generalized endpoint
+  # embeds it in a log-density, where it is found by value and the terms are
+  # chained through d(rx_pred_)/d(call) below -- without that they were
+  # silently missing and the eta driving f()/alag() had a zero gradient.
+  .call <- .rxFoceiLinCmtEventCall(s, .pred)
+  if (is.null(.call)) {
     return(NULL)
   }
-  .predArgs <- symengine::get_args(.pred)
-  if (length(.predArgs) != 15L) {
-    return(NULL)
-  }
+  .predArgs <- symengine::get_args(.call$call)
   .lin <- rxode2::.rxLinCmt(.ui)
   .lin <- grep("^rx__sens_", .lin, value = TRUE, invert = TRUE)
   if (length(.lin) == 0L) {
@@ -193,7 +196,58 @@
   if (length(.extra) == 0L) {
     return(NULL)
   }
-  .extra
+  .ret <- if (.call$bare) .extra else .rxFoceiLinCmtEventChain(.pred, .call$call, .extra)
+  if (is.null(.ret) || length(.ret) == 0L) {
+    return(NULL)
+  }
+  # what a quantity embedding the call directly (rx_r_) chains through
+  attr(.ret, "call") <- .call$call
+  attr(.ret, "callExtra") <- .extra
+  .ret
+}
+
+#' The `linCmt()` call the moving-boundary terms differentiate
+#'
+#' `rx_pred_` itself when it is a 15-argument `linCmtB()` call (an
+#' add()/prop() endpoint, any output); otherwise the single structural value
+#' call it embeds (`.rxFoceiCarryPredCall()`: an ll() or other generalized
+#' endpoint).
+#' @param s symengine env
+#' @param pred `rx_pred_`
+#' @return list(call =, bare =) or NULL when there is no such call
+#' @noRd
+.rxFoceiLinCmtEventCall <- function(s, pred) {
+  if (identical(tryCatch(symengine::get_name(pred), error = function(e) ""), "linCmtB")) {
+    if (length(symengine::get_args(pred)) != 15L) {
+      return(NULL)
+    }
+    return(list(call = pred, bare = TRUE))
+  }
+  .pc <- .rxFoceiCarryPredCall(s)
+  if (is.null(.pc)) {
+    return(NULL)
+  }
+  list(call = .pc$call, bare = FALSE)
+}
+
+#' The linCmt() alag()/f() correction chained into `rx_pred_f_`
+#'
+#' An AR(1) or censored-llik endpoint also emits the structural
+#' d(rx_pred_f_)/d(eta), which needs the same terms as `rx_pred_`.
+#' @param s symengine env
+#' @param extraPred result of `.rxFoceiLinCmtEventPredExtra()`
+#' @return named list, param -> addition to d(rx_pred_f_)/d(param), or NULL
+#' @noRd
+.rxFoceiLinCmtEventPredFExtra <- function(s, extraPred) {
+  .call <- attr(extraPred, "call")
+  if (is.null(.call) || !exists("rx_pred_f_", envir = s, inherits = FALSE)) {
+    return(NULL)
+  }
+  .rxFoceiLinCmtEventChain(
+    get("rx_pred_f_", envir = s, inherits = FALSE),
+    .call,
+    attr(extraPred, "callExtra")
+  )
 }
 
 #' Chain the linCmt() alag/f() moving-boundary correction through a
