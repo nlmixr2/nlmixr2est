@@ -63,7 +63,9 @@
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
   By default it importance-samples around each subject's mode with the
-  population parameters held (#1378).
+  population parameters held (#1378).  `method = "saem"` uses the SAEM MCMC
+  instead: a SAEM fit's own last iterations when they are enough, otherwise
+  the kernels held at the fit's estimates; it is the default for SAEM fits.
 - `etaSamples(fit, n)` draws each subject's etas from their conditional
   distribution at a fit's estimates, as a long data frame (`ID`, `draw`, one
   column per eta) that `rxSolve(fit, params = , nStud = n)` takes to simulate
@@ -234,7 +236,9 @@
   estimate that is not stationary for the FOCEi objective: the Newton
   decrement `0.5 * g' H^-1 g` (OFV units) of that objective at the estimate
   exceeds `saemControl(covNewtonWarn = 1)`.  The value is kept as
-  `fit$covNewtonDecrement`; `NA` or `Inf` skips the check (#1389).
+  `fit$covNewtonDecrement`; `NA` or `Inf` skips the check; models outside
+  the analytic gradient's scope (e.g. `linCmt()`) use central differences
+  (#1389).
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
@@ -368,6 +372,12 @@
 - `est="saem"` now re-solves its cached predictions after the M-step moves a
   theta without an eta, so the next E-step no longer scores the current state
   at the previous theta (non-mixture fits; mixtures already re-solved).
+- `est="saem"` now starts additive and proportional residual errors at their
+  `ini()` values instead of fixed placeholders (`10` and `1`), as the power and
+  lambda parameters already did.  The residual warm-start
+  (`saemControl(residWarmStart=TRUE)`) is now clamped around the `ini()` values,
+  and with `residWarmStart=FALSE` (or a mixture model) the first E-step samples
+  under the `ini()` residual error.
 - FOCEi: a `linCmt()` model with an `ll()` (or other generalized) endpoint
   and an eta on `f()` or `alag()` no longer gets a zero inner gradient for
   that eta, so its EBEs and objective now match the ODE form of the model
