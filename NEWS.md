@@ -460,6 +460,12 @@
   effects with the same clear message as `"saem"`, instead of failing with
   `Could not fit data` (#1467).
 
+- A multiplicative 0/1 covariate effect, `exp(tcl + eta.cl) * (1 + clSex*SEX)`,
+  is now fit as the equivalent mu-referenced `log(1 + clSex)*SEX` ("mu5") by
+  every mu-referenced method (`saem`, the `m*`/`i*` FOCEi family, `imp`,
+  `vae`, ...) and `clSex` is reported; `saem` previously estimated `clSex`
+  with the wrong sign (#1315).
+
 - `est="saem"`: when an endpoint's residual error cannot be matched to
   `ini()` parameters, the error now names the endpoint and the error
   argument(s) that are not `ini()` parameters (#1516).

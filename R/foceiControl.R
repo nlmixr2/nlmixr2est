@@ -862,7 +862,9 @@
 #'     covariates and restored after optimization. Mirrors
 #'     \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)};
 #'     for \code{foceiControl()} only takes effect when
-#'     \code{muModel != "none"}.
+#'     \code{muModel != "none"}.  This includes mu5: a multiplicative 0/1
+#'     covariate effect `exp(tcl + eta.cl) * (1 + clSex*SEX)` is fit as
+#'     `exp(tcl + eta.cl + log(1 + clSex)*SEX)` and `clSex` is reported.
 #'
 #' @param muModelTol Convergence tolerance for the mu-referenced-FOCEI-family
 #'     "re-optimize etas, then regress" cycle (\code{muModel != "none"}):
