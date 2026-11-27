@@ -4,6 +4,7 @@
 #include <thread>
 #include <chrono>
 #include <vector>
+#include <algorithm>
 #include <functional>
 #include <R_ext/Rdynload.h>
 #include <RcppArmadillo.h>
@@ -1829,8 +1830,96 @@ public:
   }
 
   bool hasLambda1Bounds() const {
-    return lambda1Lower.n_elem > 0 && lambda1Lower.n_elem == (arma::uword)nlambda1 &&
-      lambda1Upper.n_elem == (arma::uword)nlambda1;
+    const arma::uword n = static_cast<arma::uword>(nlambda1);
+    return lambda1Lower.n_elem > 0 && lambda1Lower.n_elem == n &&
+      lambda1Upper.n_elem == n;
+  }
+
+  // distance of x(j) outside the bounds of Plambda1 coefficient li(j)
+  double lambda1Outside(const vec &x, const uvec &li, arma::uword j) const {
+    const double lo = lambda1Lower(li(j));
+    const double hi = lambda1Upper(li(j));
+    if (x(j) < lo) return lo - x(j);
+    if (x(j) > hi) return x(j) - hi;
+    return 0.0;
+  }
+
+  // move x(j) to the bound it is past; `at` is -1 lower, 1 upper, 0 free
+  void lambda1ClampTo(vec &x, const uvec &li, std::vector<int> &at,
+                      arma::uword j) const {
+    const bool low = x(j) < lambda1Lower(li(j));
+    x(j) = low ? lambda1Lower(li(j)) : lambda1Upper(li(j));
+    at[j] = low ? -1 : 1;
+  }
+
+  // clamp every unheld coefficient outside its bounds; true when any moved
+  bool lambda1ClampAll(vec &x, const uvec &li, const std::vector<bool> &keep,
+                       std::vector<int> &at) const {
+    bool clamped = false;
+    for (arma::uword j = 0; j < x.n_elem; ++j) {
+      if (!keep[j] && lambda1Outside(x, li, j) > 0.0) {
+        lambda1ClampTo(x, li, at, j);
+        clamped = true;
+      }
+    }
+    return clamped;
+  }
+
+  // one active-set change: bind the coefficient furthest outside, or (when
+  // feasible) release the bound whose multiplier has the wrong sign; false
+  // when nothing changed
+  bool lambda1ActiveStep(vec &x, const mat &C, const vec &rhs, const uvec &li,
+                         const std::vector<bool> &keep,
+                         std::vector<int> &at) const {
+    const arma::uword n = x.n_elem;
+    arma::uword worst = n;
+    double worstD = 0.0;
+    for (arma::uword j = 0; j < n; ++j) {
+      if (keep[j] || at[j] != 0) continue;
+      const double d = lambda1Outside(x, li, j);
+      if (d > worstD) {
+        worstD = d;
+        worst = j;
+      }
+    }
+    if (worst < n) {
+      lambda1ClampTo(x, li, at, worst);
+      return true;
+    }
+    const vec g = C * x - rhs;
+    arma::uword rel = n;
+    double relG = 0.0;
+    for (arma::uword j = 0; j < n; ++j) {
+      const double m = at[j] * g(j);
+      if (m > relG) {
+        relG = m;
+        rel = j;
+      }
+    }
+    if (rel == n) return false;
+    at[rel] = 0;
+    return true;
+  }
+
+  // minimize the quadratic over the free coefficients, the rest held; false
+  // when the system is singular
+  static bool lambda1SolveFree(vec &x, const mat &C, const vec &rhs,
+                               const std::vector<bool> &keep,
+                               const std::vector<int> &at) {
+    std::vector<uword> fr, ac;
+    for (arma::uword j = 0; j < x.n_elem; ++j) {
+      if (keep[j] || at[j] != 0) {
+        ac.push_back(j);
+      } else {
+        fr.push_back(j);
+      }
+    }
+    if (fr.empty()) return true;
+    uvec F(fr), A(ac);
+    vec xf;
+    if (!arma::solve(xf, C(F, F), rhs(F) - C(F, A) * x(A))) return false;
+    x(F) = xf;
+    return true;
   }
 
   // Hold the bounded Plambda1 coefficients `x` (at Plambda1 indices `li`) inside
@@ -1842,74 +1931,21 @@ public:
                     const uvec &held, bool refit) {
     if (!hasLambda1Bounds()) return false;
     const arma::uword n = x.n_elem;
-    std::vector<bool> keep((size_t)n, false);
+    std::vector<bool> keep(n, false);
     for (arma::uword j = 0; j < held.n_elem; ++j) {
-      if (held(j) < n) keep[(size_t)held(j)] = true;
+      if (held(j) < n) keep[held(j)] = true;
     }
-    // 0 free, -1 at its lower bound, 1 at its upper bound
-    std::vector<int> at((size_t)n, 0);
-    auto outside = [&](arma::uword j) {
-      double lo = lambda1Lower(li(j)), hi = lambda1Upper(li(j));
-      return x(j) < lo ? lo - x(j) : (x(j) > hi ? x(j) - hi : 0.0);
-    };
-    auto clampTo = [&](arma::uword j) {
-      bool low = x(j) < lambda1Lower(li(j));
-      x(j) = low ? lambda1Lower(li(j)) : lambda1Upper(li(j));
-      at[(size_t)j] = low ? -1 : 1;
-    };
-    if (!refit) {
-      bool clamped = false;
-      for (arma::uword j = 0; j < n; ++j) {
-        if (!keep[(size_t)j] && outside(j) > 0.0) {
-          clampTo(j);
-          clamped = true;
-        }
-      }
-      return clamped;
-    }
+    std::vector<int> at(n, 0);
+    if (!refit) return lambda1ClampAll(x, li, keep, at);
     for (arma::uword it = 0; it < 4 * n + 4; ++it) {
-      // bind the coefficient furthest outside, one at a time
-      arma::uword worst = n;
-      double worstD = 0.0;
-      for (arma::uword j = 0; j < n; ++j) {
-        if (keep[(size_t)j] || at[(size_t)j] != 0) continue;
-        double d = outside(j);
-        if (d > worstD) { worstD = d; worst = j; }
-      }
-      if (worst < n) {
-        clampTo(worst);
-      } else {
-        // feasible: release the bound whose multiplier has the wrong sign
-        vec g = C * x - rhs;
-        arma::uword rel = n;
-        double relG = 0.0;
-        for (arma::uword j = 0; j < n; ++j) {
-          double m = (at[(size_t)j] == -1) ? -g(j) : (at[(size_t)j] == 1 ? g(j) : 0.0);
-          if (m > relG) { relG = m; rel = j; }
-        }
-        if (rel == n) break;
-        at[(size_t)rel] = 0;
-      }
-      std::vector<uword> fr, ac;
-      for (arma::uword j = 0; j < n; ++j) {
-        (keep[(size_t)j] || at[(size_t)j] != 0 ? ac : fr).push_back(j);
-      }
-      if (fr.empty()) continue;
-      uvec F(fr), A(ac);
-      vec xf;
-      if (!arma::solve(xf, C(F, F), rhs(F) - C(F, A) * x(A))) break;
-      x(F) = xf;
+      if (!lambda1ActiveStep(x, C, rhs, li, keep, at)) break;
+      if (!lambda1SolveFree(x, C, rhs, keep, at)) break;
     }
-    bool clamped = false;
-    for (arma::uword j = 0; j < n; ++j) {
-      if (at[(size_t)j] != 0) clamped = true;
-      // a failed or exhausted search still leaves x inside the box
-      if (!keep[(size_t)j] && outside(j) > 0.0) {
-        clampTo(j);
-        clamped = true;
-      }
-    }
-    return clamped;
+    const bool atBound = std::any_of(at.begin(), at.end(),
+                                     [](int a) { return a != 0; });
+    // a failed or exhausted search still leaves x inside the box
+    const bool moved = lambda1ClampAll(x, li, keep, at);
+    return atBound || moved;
   }
 
   static void phi1MarkIx(std::vector<bool> &mark, const uvec &ix, int n) {
@@ -4529,7 +4565,7 @@ public:
       }
       if (hasLambda1Bounds()) {
         // a re-fit would undo the mixture and pooled-mean overrides above
-        uvec all1 = arma::regspace<uvec>(0, (arma::uword)nlambda1 - 1);
+        uvec all1 = arma::regspace<uvec>(0, static_cast<arma::uword>(nlambda1) - 1);
         lambda1Bound(Plambda1, CGamma21, rhs1, all1, fixedIx1,
                      nMix <= 1 && !omegaPoolMean);
       }
@@ -4549,7 +4585,7 @@ public:
       penMstep(Plambda1, CGamma21, fixedIx1, ilambda1);
       if (omegaPoolMean && nlmixrPenNPop() > 0) poolLambdaGroups(Plambda1);
       if (nlmixrPenNPop() > 0 && hasLambda1Bounds()) {
-        uvec all1 = arma::regspace<uvec>(0, (arma::uword)nlambda1 - 1);
+        uvec all1 = arma::regspace<uvec>(0, static_cast<arma::uword>(nlambda1) - 1);
         lambda1Bound(Plambda1, CGamma21, rhs1, all1, fixedIx1, false);
       }
       MCOV1(jcov1)=Plambda1;
