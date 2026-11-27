@@ -21,7 +21,11 @@ test_that("omegaL2 value and the finite-difference omega gradient", {
   .ptr <- .nlmixr2LikPenaltyBuiltin("omegaL2")
   .Call(
     `_nlmixr2est_likPenaltyActivate`,
-    list(.ptr), list(integer(0)), list(c(10, 0.05, 1)), list(NULL), NA_integer_
+    list(.ptr),
+    list(integer(0)),
+    list(c(10, 0.05, 1)),
+    list(NULL),
+    NA_integer_
   )
   on.exit(.likPenaltyDeactivate())
   expect_equal(.Call(`_nlmixr2est_likPenaltyPop`, c(1, 2), .om, 10L), 10 * 0.35^2)
@@ -31,7 +35,11 @@ test_that("omegaL2 value and the finite-difference omega gradient", {
   # every eta when none is selected
   .Call(
     `_nlmixr2est_likPenaltyActivate`,
-    list(.ptr), list(integer(0)), list(c(1, 0)), list(NULL), NA_integer_
+    list(.ptr),
+    list(integer(0)),
+    list(c(1, 0)),
+    list(NULL),
+    NA_integer_
   )
   expect_equal(.Call(`_nlmixr2est_likPenaltyPop`, 1, .om, 10L), 0.4^2 + 0.3^2)
   .g <- .Call(`_nlmixr2est_likPenaltyPopOmegaGrad`, 1, .om, 10L)
