@@ -192,10 +192,17 @@
 #' @param data nlmixr data
 #' @param timeVaryingCovariates Time varying covarites in the data
 #' @param pseudoEtas saem's temporary etas (`.saemPseudoEtaRecord()`)
+#' @param idLvl ID labels of `data`, matching `saemControl(etaMat=)` IDs
 #' @return lower level saem fit
 #' @author Matthew L. Fidler
 #' @noRd
-.saemFitModel <- function(ui, data, timeVaryingCovariates = character(0), pseudoEtas = character(0)) {
+.saemFitModel <- function(
+  ui,
+  data,
+  timeVaryingCovariates = character(0),
+  pseudoEtas = character(0),
+  idLvl = NULL
+) {
   # Stage the time-varying/non-time-varying mu-ref covariate split so
   # $saemModel0 collapses to the phi + timeVaryingCovariate*beta model (shared
   # with the mu-referenced focei family, see .nlmixrSetMuRefTimeVarying).
@@ -417,13 +424,29 @@
       if (isTRUE(rxode2::rxGetControl(ui, "saemHoldPar", FALSE))) {
         .cfg <- .saemHoldCfg(.cfg)
       }
+      .cfg <- .saemEtaMatCfg(.cfg, rxode2::rxGetControl(ui, "etaMat", NULL), ui, idLvl, pseudoEtas)
       .cfg <- .saemWarmCfg(.cfg, rxode2::rxGetControl(ui, "saemWarmState", NULL))
       .saemCheckCfg(.cfg)
       .cfg
     })
+    .mstep <- .saemMstepTable(
+      ui,
+      .cfg,
+      phi1Pooled = !is.null(.model$saemPhi1Pred),
+      pseudoEtas = pseudoEtas
+    )
+    .mstepNote <- .saemMstepNote(.mstep, .cfg)
+    if (!is.null(.mstepNote)) {
+      warning(.mstepNote, call. = FALSE)
+    }
     .saemRes <- nlmixrWithTiming("saem", {
       .model$saem_mod(.cfg)
     })
+    .resCfg <- attr(.saemRes, "saem.cfg")
+    if (is.list(.resCfg)) {
+      .resCfg$saemMstep <- .mstep
+      attr(.saemRes, "saem.cfg") <- .resCfg
+    }
     .pi <- .saemRes$plateauIter
     if (length(.pi) == 1L && .pi > 0L) {
       warning(sprintf("parameters plateaued; stopped at iteration %d of %d", .pi, .cfg$niter), call. = FALSE)
@@ -2145,6 +2168,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   if (inherits(.ret, "try-error")) {
     stop(.msg, call. = FALSE)
   }
+  .tablesDroppedSet(.ret, TRUE)
   .pre <- "fit degraded, no tables: "
   warning(paste0(.pre, .vaeTruncList(gsub("[\r\n]+", " ", .msg), prefix = .pre)), call. = FALSE)
   .ret
@@ -2170,7 +2194,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .tv <- .nlmixrTimeVaryingCovariates(.ret$dataSav, .ui, .control$rxControl)
   })
 
-  .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates = .tv, pseudoEtas = .ret$saemPseudoEtas)
+  .ret$saem <- .saemFitModel(
+    .ui,
+    .ret$dataSav,
+    timeVaryingCovariates = .tv,
+    pseudoEtas = .ret$saemPseudoEtas,
+    idLvl = .ret$idLvl
+  )
   # Re-stage the mu-ref time-varying split for the post-processing: the theta
   # table and parameter history are named from saemParamsToEstimate/
   # saemParHistNames, which only put a time-varying covariate in the correct

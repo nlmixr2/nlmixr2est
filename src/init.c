@@ -131,6 +131,7 @@ SEXP _nlmixr2est_saemGainFrozenSkipN_(void);
 SEXP _nlmixr2est_saemSeedLayoutTest_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_saemPlateauTest_(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_saemFormGTest(SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_saemBurnTrendTest(SEXP, SEXP);
 
 SEXP _nlmixr2est_uninformativeEta(SEXP);
 
@@ -198,7 +199,7 @@ SEXP _nlmixr2est_iniLbfgsb3ptr(SEXP ptr);
 SEXP _nlmixr2est_iniRcppTrustPtrs(SEXP ptr);
 SEXP _nlmixr2est_nTrustInnerGet(void);
 SEXP _nlmixr2est_nHessianQNGet(void);
-SEXP _nlmixr2est_foceiFinalOfvWorseR(SEXP, SEXP);
+SEXP _nlmixr2est_foceiFinalOfvWorseR(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiCalcGradGet(void);
 
 SEXP _rxode2version4(SEXP);
@@ -312,7 +313,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_iniRcppTrustPtrs", (DL_FUNC) &_nlmixr2est_iniRcppTrustPtrs, 1},
   {"_nlmixr2est_nTrustInnerGet", (DL_FUNC) &_nlmixr2est_nTrustInnerGet, 0},
   {"_nlmixr2est_nHessianQNGet", (DL_FUNC) &_nlmixr2est_nHessianQNGet, 0},
-  {"_nlmixr2est_foceiFinalOfvWorseR", (DL_FUNC) &_nlmixr2est_foceiFinalOfvWorseR, 2},
+  {"_nlmixr2est_foceiFinalOfvWorseR", (DL_FUNC) &_nlmixr2est_foceiFinalOfvWorseR, 3},
   {"_nlmixr2est_foceiCalcGradGet", (DL_FUNC) &_nlmixr2est_foceiCalcGradGet, 0},
   {"_nlmixr2est_iniRxodePtrs", (DL_FUNC) &_nlmixr2est_iniRxodePtrs, 1},
   {"_nlmixr2est_iniRxode2Optional", (DL_FUNC) &_nlmixr2est_iniRxode2Optional, 1},
@@ -394,6 +395,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_saemSeedLayoutTest_", (DL_FUNC) &_nlmixr2est_saemSeedLayoutTest_, 8},
   {"_nlmixr2est_saemPlateauTest_", (DL_FUNC) &_nlmixr2est_saemPlateauTest_, 5},
   {"_nlmixr2est_saemFormGTest", (DL_FUNC) &_nlmixr2est_saemFormGTest, 5},
+  {"_nlmixr2est_saemBurnTrendTest", (DL_FUNC) &_nlmixr2est_saemBurnTrendTest, 2},
   {"_nlmixr2est_powerD", (DL_FUNC) &_nlmixr2est_powerD, 5},
   {"_nlmixr2est_powerDLambda", (DL_FUNC) &_nlmixr2est_powerDLambda, 5},
   {"_nlmixr2est_powerDLambda2", (DL_FUNC) &_nlmixr2est_powerDLambda2, 5},
@@ -427,6 +429,8 @@ void R_init_nlmixr2est(DllInfo *dll)
 }
 
 void rxOptionsFreeFocei(void);
+void nmTlsFreeAllC(void);
 void R_unload_nlmixr2est(DllInfo *info){
   rxOptionsFreeFocei();
+  nmTlsFreeAllC();
 }

@@ -324,14 +324,15 @@ BEGIN_RCPP
 END_RCPP
 }
 // foceiFinalOfvWorseR
-bool foceiFinalOfvWorseR(double initOfv, double finalOfv);
-RcppExport SEXP _nlmixr2est_foceiFinalOfvWorseR(SEXP initOfvSEXP, SEXP finalOfvSEXP) {
+bool foceiFinalOfvWorseR(double initOfv, double finalOfv, double tol);
+RcppExport SEXP _nlmixr2est_foceiFinalOfvWorseR(SEXP initOfvSEXP, SEXP finalOfvSEXP, SEXP tolSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type initOfv(initOfvSEXP);
     Rcpp::traits::input_parameter< double >::type finalOfv(finalOfvSEXP);
-    rcpp_result_gen = Rcpp::wrap(foceiFinalOfvWorseR(initOfv, finalOfv));
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiFinalOfvWorseR(initOfv, finalOfv, tol));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -1650,6 +1651,18 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type inC(inCSEXP);
     Rcpp::traits::input_parameter< SEXP >::type inAddProp(inAddPropSEXP);
     rcpp_result_gen = Rcpp::wrap(saemFormGTest(inA, inB, inFt, inC, inAddProp));
+    return rcpp_result_gen;
+END_RCPP
+}
+// saemBurnTrendTest
+SEXP saemBurnTrendTest(SEXP inX, SEXP inNBatch);
+RcppExport SEXP _nlmixr2est_saemBurnTrendTest(SEXP inXSEXP, SEXP inNBatchSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type inX(inXSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type inNBatch(inNBatchSEXP);
+    rcpp_result_gen = Rcpp::wrap(saemBurnTrendTest(inX, inNBatch));
     return rcpp_result_gen;
 END_RCPP
 }
