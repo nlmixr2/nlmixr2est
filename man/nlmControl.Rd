@@ -50,12 +50,14 @@ nlmControl(
   compress = FALSE,
   covMethod = c("r", "nlm", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -273,6 +275,11 @@ to "nlm" when using nlmixr2's hessian/gradient for solving.}
 should be adjusted to be closer to NONMEM's default objective
 function.  By default this is \code{TRUE}}
 
+\item{aboveStartTol}{Warn (in `$runInfo`) when the final objective is
+above the objective at the initial estimates by more than this fraction
+of its magnitude (at least 0.1 objective units).  Use `NA` or `Inf` to
+disable.}
+
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
@@ -302,6 +309,10 @@ skips the final back-transform.}
 \item{corWarn}{warn when two estimates' correlation is at least this in
 absolute value after the covariance step; \code{NA} or \code{Inf} turns
 the warning off.}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 nlm control object

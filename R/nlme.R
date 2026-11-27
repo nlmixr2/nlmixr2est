@@ -70,8 +70,10 @@ nlmixr2NlmeControl <- function(
   eventSens = c("jump", "fd"),
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
+  covNewtonWarn = 1,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 ) {
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
   checkmate::assertLogical(literalFix, len = 1, any.missing = FALSE)
@@ -170,6 +172,7 @@ nlmixr2NlmeControl <- function(
   checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
 
   .corWarnCheck(corWarn)
+  .condWarnCheck(condWarn)
   .ret <- list(
     maxIter = maxIter,
     pnlsMaxIter = pnlsMaxIter,
@@ -200,6 +203,7 @@ nlmixr2NlmeControl <- function(
     calcTables = calcTables,
     compress = compress,
     corWarn = corWarn,
+    condWarn = condWarn,
     random = random,
     fixed = fixed,
     weights = weights,
@@ -210,6 +214,7 @@ nlmixr2NlmeControl <- function(
     muRefCovAlg = muRefCovAlg,
     eventSens = eventSens,
     covMethod = covMethod,
+    covNewtonWarn = .covNewtonWarnArg(covNewtonWarn),
     genRxControl = .genRxControl
   )
   class(.ret) <- "nlmeControl"

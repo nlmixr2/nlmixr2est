@@ -56,6 +56,7 @@ NULL
     "focep",
     "laplace",
     "agq",
+    "stieltjes",
     "posthoc",
     "ifocei",
     "ifoce",

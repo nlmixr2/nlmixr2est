@@ -10,6 +10,12 @@ saemControl(
   nEm = 300,
   nBurnMin = 150L,
   nBurnMax = 500L,
+  autoStop = FALSE,
+  stopWindow = 50L,
+  stopConsecutive = 4L,
+  stopRtol = 0.001,
+  stopAtol = 1e-04,
+  saCovAutoStop = TRUE,
   plateauStop = FALSE,
   plateauWindow = 50L,
   plateauTol = 0.001,
@@ -89,7 +95,8 @@ saemControl(
   ebeTol = NULL,
   etaMat = NULL,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -113,6 +120,30 @@ names the parameters still trending in \code{$runInfo}; the burn-in
 length used is noted there too.  The phases set as a fraction of the
 burn-in (\code{perSa}, \code{perNoCor}, \code{perFixOmega},
 \code{perFixResid}) are fractions of \code{nBurnMin}.}
+
+\item{autoStop}{Boolean (default `FALSE`); stop the EM phase early once the
+parameter trajectory is stationary.  The window only sees EM iterations
+(after `nBurn`, and after the non-mu variance annealing starts at half of
+`nBurn + nEm`), so `nEm` becomes a maximum.  A `covMethod="sa"` covariance
+phase still runs at the stopped estimate.  The stop is recorded in
+`fit$saemAutoStop`.}
+
+\item{stopWindow}{Number of recent EM iterates `autoStop` compares; the
+older half mean is compared with the newer half mean.}
+
+\item{stopConsecutive}{Number of consecutive stationary windows needed to
+stop.}
+
+\item{stopRtol, stopAtol}{Relative and absolute drift tolerances.  A
+parameter is stationary when its half-mean drift is at most
+`max(stopAtol, stopRtol * max(1, |older mean|), 2 * mcse)`, where `mcse`
+is the Monte-Carlo standard error of the drift estimated from the window.}
+
+\item{saCovAutoStop}{Boolean (default `TRUE`); stop the `covMethod="sa"`
+covariance phase early once the diagonal of its running Fisher information
+passes the same window test (`stopWindow`, `stopConsecutive`, `stopRtol`,
+`stopAtol`), so `nSaCov` becomes a maximum.  The stop is recorded in
+`fit$saemSaCovStop`.}
 
 \item{plateauStop}{When \code{TRUE}, end the EM phase early once every
 estimated theta, omega and residual parameter has plateaued; the fit's
@@ -433,7 +464,12 @@ other input parameter.}
   5. Remove `nlmixrMuDerCov#` from nlmix2 output
 
 In general, these covariates should be more accurate since it
-changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.}
+changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.
+
+It also fits a multiplicative 0/1 covariate effect,
+`exp(tcl + eta.cl) * (1 + clSex*SEX)`, as the equivalent mu-referenced
+`exp(tcl + eta.cl + log(1 + clSex)*SEX)` and reports `clSex` (mu5; every
+mu-referenced method).}
 
 \item{handleUninformativeEtas}{boolean that tells nlmixr2's saem to
 calculate uninformative etas and handle them specially (default
@@ -691,6 +727,10 @@ starts the chains from random draws around the population mean.}
 \item{corWarn}{warn when two estimates' correlation is at least this in
 absolute value after the covariance step; \code{NA} or \code{Inf} turns
 the warning off.}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 List of options to be used in \code{\link{nlmixr2}} fit for
