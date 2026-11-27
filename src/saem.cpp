@@ -6221,31 +6221,34 @@ private:
     }
     if (massN < massStart) return;
     if (massS.n_slices != (uword)N) massS.zeros(nphi1, nphi1, N);
-    for (int s = 0; s < N; ++s) {
-      const vec m = massM1.row(s).t();
-      mat S = massM2.slice(s) - m * m.t();
-      S = 0.5 * (S + S.t());
-      massOk(s) = 0u;
-      if (!S.is_finite()) continue;
-      const double sc = std::max(1e-12, max(abs(S.diag())));
-      mat L, Sj;
-      bool got = false;
-      // escalate the jitter; a subject that still will not factor falls back to
-      // its own diagonal rather than dropping out of the kernel
-      for (double jit = 1e-8; jit <= 1e-2 && !got; jit *= 100.0) {
-        Sj = S;
-        Sj.diag() += jit * sc;
-        got = chol(L, Sj, "lower");
-      }
-      if (!got) {
-        Sj = diagmat(clamp(S.diag(), 1e-8 * sc, datum::inf));
-        got = chol(L, Sj, "lower");
-      }
-      if (got && L.is_finite()) {
-        massL.slice(s) = L;
-        massS.slice(s) = Sj;
-        massOk(s) = 1u;
-      }
+    for (int s = 0; s < N; ++s) massFactor(s);
+  }
+
+  // Refresh subject s's proposal factor from its running moments.
+  void massFactor(int s) {
+    const vec m = massM1.row(s).t();
+    mat S = massM2.slice(s) - m * m.t();
+    S = 0.5 * (S + S.t());
+    massOk(s) = 0u;
+    if (!S.is_finite()) return;
+    const double sc = std::max(1e-12, max(abs(S.diag())));
+    mat L, Sj;
+    bool got = false;
+    // escalate the jitter; a subject that still will not factor falls back to
+    // its own diagonal rather than dropping out of the kernel
+    for (double jit = 1e-8; jit <= 1e-2 && !got; jit *= 100.0) {
+      Sj = S;
+      Sj.diag() += jit * sc;
+      got = chol(L, Sj, "lower");
+    }
+    if (!got) {
+      Sj = diagmat(clamp(S.diag(), 1e-8 * sc, datum::inf));
+      got = chol(L, Sj, "lower");
+    }
+    if (got && L.is_finite()) {
+      massL.slice(s) = L;
+      massS.slice(s) = Sj;
+      massOk(s) = 1u;
     }
   }
 
