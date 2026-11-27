@@ -160,26 +160,7 @@ nmObjGetFoceiControl.its <- function(x, ...) {
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.its <- function(env, ...) {
-  .ui <- env$ui
-  if (!rxode2hasLlik()) {
-    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'its'", .var.name = .ui$modelName)
-  }
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'its'", .var.name = .ui$modelName)
-  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("its"), .var.name = .ui$modelName)
-  .foceiFamilyControl(env, ..., type = "impmapControl")
-  .control <- env$control
-  on.exit(
-    {
-      if (is.environment(.ui) && exists("control", envir = .ui, inherits = FALSE)) {
-        rm("control", envir = .ui)
-      }
-    },
-    add = TRUE
-  )
-  env$impmapControl <- .control
-  env$est <- "its"
-  .ui <- env$ui
-  .impmapFamilyFit(env, .ui, ...)
+  .impmapFamilyEst(env, "its", ...)
 }
 attr(nlmixr2Est.its, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.its, "covPresent") <- TRUE

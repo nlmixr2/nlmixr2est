@@ -1536,6 +1536,36 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   .e$vectors %*% (t(.e$vectors) / .a)
 }
 
+#' Validate the model and run an impmap-kernel method (qrpem, its)
+#'
+#' @param env nlmixr2Est environment
+#' @param est estimation method name
+#' @param ... passed to the control and fit
+#' @return the fit
+#' @noRd
+.impmapFamilyEst <- function(env, est, ...) {
+  .ui <- env$ui
+  # general (dnorm/ll) likelihoods flow through the shared FOCEI inner problem
+  if (!rxode2hasLlik()) {
+    rxode2::assertRxUiTransformNormal(.ui, paste0(" for the estimation routine '", est, "'"), .var.name = .ui$modelName)
+  }
+  rxode2::assertRxUiIovNoCor(.ui, paste0(" for the estimation routine '", est, "'"), .var.name = .ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg(est), .var.name = .ui$modelName)
+  .foceiFamilyControl(env, ..., type = "impmapControl")
+  .control <- env$control
+  on.exit(
+    {
+      if (is.environment(.ui) && exists("control", envir = .ui, inherits = FALSE)) {
+        rm("control", envir = .ui)
+      }
+    },
+    add = TRUE
+  )
+  env$impmapControl <- .control
+  env$est <- est
+  .impmapFamilyFit(env, env$ui, ...)
+}
+
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.impmap <- function(env, ...) {
