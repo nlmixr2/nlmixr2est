@@ -25,10 +25,16 @@
 #'   estimation-scale omega parameters the optimizer uses (`om.chol.<k>`, with
 #'   `foceiControl(diagXform=)` applied to the diagonal).  Thetas are always on
 #'   their `ini()` scale.
+#' @param individual Also return each subject's contribution to the objective
+#'   and gradient.
 #' @return A list with `objective` (the fit's objective at the point),
 #'   `gradient` (the derivative of `objective` for every estimated parameter,
 #'   named), `par` (the parameter values on the same scale as `gradient`) and
-#'   `scale`.  The attribute `nAnalyticGradDirect` counts the analytic gradient
+#'   `scale`.  With `individual = TRUE` it also has `individual`, a data frame of
+#'   each subject's `ID`, objective contribution (`OBJI`) and gradient (one
+#'   column per parameter), and `population`, the part of the objective and
+#'   gradient that belongs to no subject (such as an `ini()` prior), so the
+#'   subjects plus `population` sum to the totals.  The attribute `nAnalyticGradDirect` counts the analytic gradient
 #'   evaluations behind the result.
 #' @export
 #' @examples
@@ -56,7 +62,14 @@
 #' nlmixr2ObjGrad(fit)
 #' nlmixr2ObjGrad(fit, theta = c(tka = 0.5))
 #' }
-nlmixr2ObjGrad <- function(fit, theta = NULL, omega = NULL, scale = c("untransformed", "transformed")) {
+nlmixr2ObjGrad <- function(
+  fit,
+  theta = NULL,
+  omega = NULL,
+  scale = c("untransformed", "transformed"),
+  individual = FALSE
+) {
+  checkmate::assertLogical(individual, len = 1, any.missing = FALSE)
   scale <- match.arg(scale)
   if (!inherits(fit, "nlmixr2FitCore")) {
     stop("'fit' must be an nlmixr2 fit", call. = FALSE)
@@ -83,15 +96,19 @@ nlmixr2ObjGrad <- function(fit, theta = NULL, omega = NULL, scale = c("untransfo
   if (is.null(names(.r$gradient))) {
     stop("could not name the analytic gradient for this fit", call. = FALSE)
   }
-  .tr <- .objGradOmegaScale(.r$gradient, .ui, .om, scale)
+  .tr <- .objGradOmegaScale(.r$gradient, .ui, .om, scale, .r$gradInd)
   .par <- c(.th[intersect(names(.tr$gradient), names(.th))], .tr$par)
+  .ret <- list(
+    objective = .r$objective,
+    gradient = .tr$gradient,
+    par = .par[names(.tr$gradient)],
+    scale = scale
+  )
+  if (individual) {
+    .ret <- c(.ret, .objGradIndividual(.r, .tr))
+  }
   structure(
-    list(
-      objective = .r$objective,
-      gradient = .tr$gradient,
-      par = .par[names(.tr$gradient)],
-      scale = scale
-    ),
+    .ret,
     nAnalyticGradDirect = .r$nAnalyticGradDirect
   )
 }
@@ -214,14 +231,30 @@ nlmixr2ObjGrad <- function(fit, theta = NULL, omega = NULL, scale = c("untransfo
         if (is.null(.uiG)) {
           .uiG <- ui
         }
-        .g <- .foceiGradNames(as.numeric(get(".gradDirectFirst", .src)), .uiG, fit)
+        .g <- .foceiGradNames(as.numeric(get(".gradDirectFirst", .src)), .uiG, fit, .src)
       }
       .nDirect <- if (exists("nAnalyticGradDirect", .src, inherits = FALSE)) {
         as.integer(get("nAnalyticGradDirect", .src))
       } else {
         0L
       }
-      list(objective = .f2$objective, gradient = .g, nAnalyticGradDirect = .nDirect)
+      .gInd <- NULL
+      if (!is.null(.g) && exists(".gradDirectFirstInd", .src, inherits = FALSE)) {
+        .gInd <- t(get(".gradDirectFirstInd", .src))
+        if (ncol(.gInd) == length(.g)) {
+          colnames(.gInd) <- names(.g)
+        } else {
+          .gInd <- NULL
+        }
+      }
+      .etaObf <- tryCatch(.f2$etaObf, error = function(e) NULL)
+      list(
+        objective = .f2$objective,
+        gradient = .g,
+        nAnalyticGradDirect = .nDirect,
+        gradInd = .gInd,
+        etaObf = .etaObf
+      )
     },
     error = function(e) NULL
   )
@@ -230,10 +263,10 @@ nlmixr2ObjGrad <- function(fit, theta = NULL, omega = NULL, scale = c("untransfo
 #' Map the estimation-scale omega part of a named gradient to the requested scale
 #' @return list(gradient, par) where `par` holds the omega values on that scale
 #' @noRd
-.objGradOmegaScale <- function(g, ui, omega, scale) {
+.objGradOmegaScale <- function(g, ui, omega, scale, gInd = NULL) {
   .isOm <- grepl("^om[.]chol[.][0-9]+$", names(g))
   if (!any(.isOm)) {
-    return(list(gradient = g, par = numeric(0)))
+    return(list(gradient = g, par = numeric(0), individual = gInd))
   }
   .k <- as.integer(sub("^om[.]chol[.]", "", names(g)[.isOm]))
   .oe <- .foceiEstOmegaDeriv(ui, omega)
@@ -245,7 +278,11 @@ nlmixr2ObjGrad <- function(fit, theta = NULL, omega = NULL, scale = c("untransfo
     stop("could not map the omega gradient to the estimation scale", call. = FALSE)
   }
   if (scale == "transformed") {
-    return(list(gradient = g, par = stats::setNames(.rxInv$theta[.k], names(g)[.isOm])))
+    return(list(
+      gradient = g,
+      par = stats::setNames(.rxInv$theta[.k], names(g)[.isOm]),
+      individual = gInd
+    ))
   }
   # the estimated (not fixed) omega elements, as written in ini()
   .ini <- ui$iniDf
@@ -268,8 +305,38 @@ nlmixr2ObjGrad <- function(fit, theta = NULL, omega = NULL, scale = c("untransfo
     stop("singular omega Jacobian; use scale=\"transformed\"", call. = FALSE)
   }
   .gn <- stats::setNames(.gn, .ini$name)
+  if (!is.null(gInd)) {
+    .gi <- t(solve(t(.jac), t(gInd[, .isOm, drop = FALSE])))
+    colnames(.gi) <- .ini$name
+    gInd <- cbind(gInd[, !.isOm, drop = FALSE], .gi)
+  }
   list(
     gradient = c(g[!.isOm], .gn),
-    par = stats::setNames(omega[cbind(.ini$neta1, .ini$neta2)], .ini$name)
+    par = stats::setNames(omega[cbind(.ini$neta1, .ini$neta2)], .ini$name),
+    individual = gInd
+  )
+}
+
+#' Per-subject objective and gradient, and the population remainder
+#' @param r result of `.foceiObjGradRefit()`
+#' @param tr result of `.objGradOmegaScale()`
+#' @return list(individual, population)
+#' @noRd
+.objGradIndividual <- function(r, tr) {
+  .gi <- tr$individual
+  .eo <- r$etaObf
+  if (is.null(.gi) || is.null(.eo) || nrow(.eo) != nrow(.gi) || !("OBJI" %in% names(.eo))) {
+    stop("per-subject contributions are not available for this fit", call. = FALSE)
+  }
+  .gi <- .gi[, names(tr$gradient), drop = FALSE]
+  .ind <- data.frame(ID = .eo$ID, OBJI = .eo$OBJI, check.names = FALSE)
+  .ind <- cbind(.ind, as.data.frame(.gi, optional = TRUE))
+  names(.ind) <- c("ID", "OBJI", colnames(.gi))
+  list(
+    individual = .ind,
+    population = list(
+      objective = r$objective - sum(.eo$OBJI),
+      gradient = tr$gradient - colSums(.gi)
+    )
   )
 }
