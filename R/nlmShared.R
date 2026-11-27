@@ -652,6 +652,52 @@
   )
 }
 
+#' The first finite objective an nlm-family fit evaluated
+#'
+#' @param parHistData the fit's parameter history
+#' @return the objective at the initial estimates, in the optimizer's units;
+#'   `NA` when none was recorded
+#' @noRd
+.nlmStartObjective <- function(parHistData) {
+  if (!is.data.frame(parHistData) || !all(c("iter", "objf") %in% names(parHistData))) {
+    return(NA_real_)
+  }
+  .f <- suppressWarnings(as.double(parHistData$objf))
+  .ok <- is.finite(.f)
+  if (!any(.ok)) {
+    return(NA_real_)
+  }
+  .f[.ok][which.min(parHistData$iter[.ok])]
+}
+
+#' Warn when an nlm-family fit ends above its starting objective
+#'
+#' Both values are the optimizer's minimized -log-likelihood; they are doubled
+#' so the band applies on the objective (-2LL) scale, as for FOCEi.
+#' @param start the objective at the initial estimates
+#' @param final the optimizer's final objective
+#' @param tol the control's `aboveStartTol`; `NULL` uses the default
+#' @return `TRUE` when it warned, invisibly
+#' @noRd
+.nlmAboveStartWarn <- function(start, final, tol) {
+  if (is.null(tol)) {
+    tol <- 0.01
+  }
+  .start <- 2 * suppressWarnings(as.double(start))
+  .final <- 2 * suppressWarnings(as.double(final))
+  if (length(.start) != 1L || length(.final) != 1L) {
+    return(invisible(FALSE))
+  }
+  .worse <- .foceiFinalOfvWorse(.start, .final, as.double(tol))
+  if (.worse) {
+    warning(
+      sprintf("final objective (%g) is above the initial estimates' (%g)", .final, .start),
+      call. = FALSE
+    )
+  }
+  invisible(.worse)
+}
+
 #' Shared fit driver for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui`, `control`, `data`, `table`)
@@ -740,6 +786,13 @@
   .ret$est <- method
   if (is.character(objective)) {
     .ret$objective <- 2 * as.numeric(.ret[[method]][[objective]])
+    .nlmAboveStartWarn(
+      .nlmStartObjective(
+        if (is.null(.ret$parHistData)) .ret[[method]]$parHistData else .ret$parHistData
+      ),
+      .ret[[method]][[objective]],
+      .control$aboveStartTol
+    )
   } else if (!is.null(objective)) {
     .ret$objective <- objective(.ret[[method]])
   }

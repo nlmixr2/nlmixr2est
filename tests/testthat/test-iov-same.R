@@ -260,6 +260,7 @@ test_that("every method that would drop a same() tie refuses the model", {
       "nls",
       "optim",
       "sann",
+      "stieltjes",
       "trust",
       "uobyqa"
     ))

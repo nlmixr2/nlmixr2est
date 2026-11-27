@@ -263,9 +263,9 @@ nmTest({
     .stash <- .new$boundedTransforms
     .bt <- suppressWarnings(.preProcessBoundedTransform(.new, "saem", NULL, saemControl())$ui)
     .names <- function(ui) vapply(ui$boundedTransforms, function(tr) tr$name, character(1))
-    # the bounded-transform hook keeps only the user's bounded theta ...
-    expect_false("add.sd" %in% .names(.bt))
-    # ... so saem adds its own back without losing the user's
+    # the bounded-transform hook keeps the earlier transforms with the user's
+    expect_setequal(.names(.bt), c("t1", "add.sd"))
+    # ... and saem's restore adds nothing twice
     .bt <- .saemRestorePseudoTransforms(.bt, .stash)
     expect_setequal(.names(.bt), c("t1", "add.sd"))
     .bt <- .saemRestorePseudoTransforms(.bt, .stash)

@@ -536,6 +536,10 @@
   if (nAGQ > 1L && interaction != 1L) {
     return(NULL)
   }
+  # the node terms are differentiated around the EBE; a fixed grid is not placed there
+  if (nAGQ > 1L && !identical(rxode2::rxGetControl(ui, "agqCenter", "mode"), "mode")) {
+    return(NULL)
+  }
   # the aqLow/aqHi clamp (inner.cpp) kinks the objective; both default to +/-Inf
   if (
     nAGQ > 1L &&
