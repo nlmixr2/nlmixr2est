@@ -237,6 +237,10 @@
 .foceiCholSECovReason <- "cholSECov=TRUE (the covariance step re-factors the eta Hessian)"
 .foceiCholSECovActive <- function(ui) isTRUE(rxode2::rxGetControl(ui, "cholSECov", FALSE))
 
+# The analytic R is the unpenalised observed information; a likelihood penalty's
+# curvature reaches only the FD Hessian of the (penalised) objective.
+.foceiLikPenaltyReason <- "a likelihood penalty"
+
 #' Transform the observed DV onto the rx_pred_ (transformed) scale for a both-sides
 #' transform, using the solved per-observation transform parameters `trans`
 #' (lambda/yj/low/hi, each length nobs).  Runs the SAME C++ transform the inner problem
@@ -1197,6 +1201,9 @@
       }
       if (.foceiCholSECovActive(ui)) {
         return(.foceiAnalyticFallback(.foceiCholSECovReason))
+      }
+      if (.likPenaltyInfo()[["n"]] > 0L) {
+        return(.foceiAnalyticFallback(.foceiLikPenaltyReason))
       }
       interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L)) # 1 FOCEI / 0 FOCE
       # foceType picks the FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R);
@@ -4222,6 +4229,9 @@
   }
   if (.foceiCholSECovActive(ui)) {
     return(.foceiAnalyticFallback(.foceiCholSECovReason))
+  }
+  if (.likPenaltyInfo()[["n"]] > 0L || is.data.frame(fit$env$likPenalty)) {
+    return(.foceiAnalyticFallback(.foceiLikPenaltyReason))
   }
   interaction <- .foceiFitInteraction(fit, ui) # 1 FOCEI / 0 FOCE
   # FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R); FOCEI ignores it
