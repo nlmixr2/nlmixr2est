@@ -90,7 +90,7 @@ fbviControl()
 #> [1] FALSE
 #> 
 #> $optim
-#> [1] "advi"
+#> [1] "gaussNewton"
 #> 
 #> $adaptEta
 #> [1] TRUE

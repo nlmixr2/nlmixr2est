@@ -59,7 +59,7 @@ is maximized by stochastic gradient ascent using the reparameterization trick.</
 <span>  nMc <span class="op">=</span> <span class="fl">1L</span>,</span>
 <span>  viFamily <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"fullRank"</span>, <span class="st">"meanField"</span><span class="op">)</span>,</span>
 <span>  pointEstimate <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  optim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"advi"</span>, <span class="st">"adam"</span><span class="op">)</span>,</span>
+<span>  optim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"gaussNewton"</span>, <span class="st">"advi"</span>, <span class="st">"adam"</span><span class="op">)</span>,</span>
 <span>  adaptEta <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  perNoCor <span class="op">=</span> <span class="fl">0.75</span>,</span>
 <span>  etaCandidates <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.01</span>, <span class="fl">0.025</span>, <span class="fl">0.05</span>, <span class="fl">0.1</span>, <span class="fl">0.25</span><span class="op">)</span>,</span>
@@ -173,10 +173,15 @@ underestimate marginal variances.</p></dd>
 
 
 <dt id="arg-optim">optim<a class="anchor" aria-label="anchor" href="#arg-optim"></a></dt>
-<dd><p>Stochastic optimizer.  `"advi"` (default) uses the adaptive
-step-size sequence from the ADVI paper (Eqs 10-11) – the value keeps that
-name because the step-size rule really is the published one, even though
-the surrounding method is not; `"adam"` uses Adam.</p></dd>
+<dd><p>Optimizer.  `"gaussNewton"` (default) moves each subject's
+variational posterior by a damped Gauss-Newton fixed point on the eta
+Hessian at the draws, and the thetas without a mu-referenced eta (structural
+and residual error) by a damped Gauss-Newton M-step; no step size is
+searched.  Under full Bayes (`est="fbvi"`) the population block takes the
+same Gauss-Newton step, and the SEs of mu-referenced thetas come from their
+information with the etas integrated out.  `"advi"` uses the adaptive step-size sequence from the ADVI
+paper (Eqs 10-11), which a heavy-tailed score (proportional error) can stall
+with the variational scale near the prior; `"adam"` uses Adam.</p></dd>
 
 
 <dt id="arg-adapteta">adaptEta<a class="anchor" aria-label="anchor" href="#arg-adapteta"></a></dt>

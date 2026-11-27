@@ -15,7 +15,7 @@ emviControl(
   nMc = 1L,
   viFamily = c("fullRank", "meanField"),
   pointEstimate = NULL,
-  optim = c("advi", "adam"),
+  optim = c("gaussNewton", "advi", "adam"),
   adaptEta = TRUE,
   perNoCor = 0.75,
   etaCandidates = c(0.01, 0.025, 0.05, 0.1, 0.25),
@@ -133,10 +133,17 @@ emviControl(
 
 - optim:
 
-  Stochastic optimizer. \`"advi"\` (default) uses the adaptive step-size
-  sequence from the ADVI paper (Eqs 10-11) – the value keeps that name
-  because the step-size rule really is the published one, even though
-  the surrounding method is not; \`"adam"\` uses Adam.
+  Optimizer. \`"gaussNewton"\` (default) moves each subject's
+  variational posterior by a damped Gauss-Newton fixed point on the eta
+  Hessian at the draws, and the thetas without a mu-referenced eta
+  (structural and residual error) by a damped Gauss-Newton M-step; no
+  step size is searched. Under full Bayes (\`est="fbvi"\`) the
+  population block takes the same Gauss-Newton step, and the SEs of
+  mu-referenced thetas come from their information with the etas
+  integrated out. \`"advi"\` uses the adaptive step-size sequence from
+  the ADVI paper (Eqs 10-11), which a heavy-tailed score (proportional
+  error) can stall with the variational scale near the prior; \`"adam"\`
+  uses Adam.
 
 - adaptEta:
 
