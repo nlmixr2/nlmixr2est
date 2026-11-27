@@ -327,7 +327,7 @@
 #'     estimated boxCox/yeoJohnson lambda.  A single non-Gaussian
 #'     (\code{ll()}/generalized) endpoint instead differentiates the
 #'     log-density directly, giving an exact inner Hessian and analytic outer
-#'     gradient.  Out of scope are \code{linCmt()}, \code{fo}, IOV, more than
+#'     gradient.  Out of scope are \code{linCmt()}, \code{fo}, more than
 #'     one estimated lambda, a theta mu-referenced by several random effects,
 #'     and (for the non-Gaussian path) multiple endpoints, censoring or
 #'     \code{nAGQ > 1}; those fall back to the finite-difference gradient with

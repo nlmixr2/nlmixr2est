@@ -231,11 +231,14 @@ nmTest({
       expect_false(.foceiLLGradInScope(rxode2::assertRxUi(.isLlModel(TRUE)), "vae"), label = .state)
       # no eta: nothing to differentiate
       expect_identical(.isProbes(.isNoEta), list(dirs = NULL, ll = FALSE, setup = FALSE), label = .state)
-      # the rewritten ui a fit passes them: its occasion etas are at the id level and
-      # mu-referenced, so only the IOV gates refuse it
+      # the rewritten ui a fit passes them: its occasion etas are at the id level, so
+      # focei differentiates it (#1377); only the VAE's IOV gate refuses it
       for (.m in c("theta", "omega")) {
         .rw <- .uiApplyIov(rxode2::assertRxUi(.isIov), "focei", .isData, foceiControl(iovMethod = .m))$ui
-        expect_identical(.isProbes(.rw), list(dirs = NULL, ll = FALSE, setup = FALSE), label = paste(.state, .m))
+        .p <- .isProbes(.rw)
+        expect_false(is.null(.p$dirs), label = paste(.state, .m))
+        expect_identical(.p[c("ll", "setup")], list(ll = FALSE, setup = TRUE), label = paste(.state, .m))
+        expect_identical(.isProbes(.rw, "vae"), list(dirs = NULL, ll = FALSE, setup = FALSE), label = paste(.state, .m))
       }
     }
   })
