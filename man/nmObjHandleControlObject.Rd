@@ -3,7 +3,7 @@
 %   R/foce.R, R/focep.R, R/foi.R, R/fsaem.R, R/ifocep.R, R/impmap.R,
 %   R/laplace.R, R/lbfgsb3c.R, R/mfocep.R, R/muRefControl.R, R/n1qn1.R,
 %   R/newuoa.R, R/nlm.R, R/nlme.R, R/nlminb.R, R/nls.R, R/nmObjHandle.R,
-%   R/optim.R, R/posthoc.R, R/trust.R, R/uobyqa.R, R/vae.R
+%   R/optim.R, R/posthoc.R, R/stieltjes.R, R/trust.R, R/uobyqa.R, R/vae.R
 \name{nmObjHandleControlObject.agqControl}
 \alias{nmObjHandleControlObject.agqControl}
 \alias{nmObjHandleControlObject.bobyqaControl}
@@ -38,6 +38,7 @@
 \alias{nmObjHandleControlObject.default}
 \alias{nmObjHandleControlObject.optimControl}
 \alias{nmObjHandleControlObject.posthocControl}
+\alias{nmObjHandleControlObject.stieltjesControl}
 \alias{nmObjHandleControlObject.trustControl}
 \alias{nmObjHandleControlObject.uobyqaControl}
 \alias{nmObjHandleControlObject.vaeControl}
@@ -108,6 +109,8 @@ nmObjHandleControlObject(control, env)
 \method{nmObjHandleControlObject}{optimControl}(control, env)
 
 \method{nmObjHandleControlObject}{posthocControl}(control, env)
+
+\method{nmObjHandleControlObject}{stieltjesControl}(control, env)
 
 \method{nmObjHandleControlObject}{trustControl}(control, env)
 

@@ -375,6 +375,13 @@
       .cfg$nonMuThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaMaxEval", 25L))
       .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol", .Machine$double.eps^0.25))
       .cfg$nonMuThetaEvery <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaEvery", 1L))
+      # windowed early stop of the EM phase (src/saemAutoStop.h)
+      .cfg$autoStop <- as.integer(isTRUE(rxode2::rxGetControl(ui, "autoStop", FALSE)))
+      .cfg$stopWindow <- as.integer(rxode2::rxGetControl(ui, "stopWindow", 50L))
+      .cfg$stopConsecutive <- as.integer(rxode2::rxGetControl(ui, "stopConsecutive", 4L))
+      .cfg$stopRtol <- as.numeric(rxode2::rxGetControl(ui, "stopRtol", 1e-3))
+      .cfg$stopAtol <- as.numeric(rxode2::rxGetControl(ui, "stopAtol", 1e-4))
+      .cfg$saCovAutoStop <- as.integer(isTRUE(rxode2::rxGetControl(ui, "saCovAutoStop", TRUE)))
       .cfg$muNonCentered <- as.integer(isTRUE(rxode2::rxGetControl(ui, "muNonCentered", FALSE)))
       .cfg$omegaNonCentered <- as.integer(isTRUE(rxode2::rxGetControl(ui, "omegaNonCentered", FALSE)))
       .cfg$nonCenteredPhase <- as.integer(identical(rxode2::rxGetControl(ui, "nonCenteredPhase", "all"), "burnin"))
@@ -437,6 +444,9 @@
         .cfg$phi0Lower <- ifelse(is.na(.lo), -Inf, .lo)
         .cfg$phi0Upper <- ifelse(is.na(.hi), Inf, .hi)
       }
+      .bnd <- .saemLambda1Bounds(ui, .cfg)
+      .cfg$lambda1Lower <- .bnd$lower
+      .cfg$lambda1Upper <- .bnd$upper
       .cfg$plateauStop <- as.integer(isTRUE(rxode2::rxGetControl(ui, "plateauStop", FALSE)))
       .cfg$plateauWindow <- as.integer(rxode2::rxGetControl(ui, "plateauWindow", 50L))
       .cfg$plateauTol <- as.numeric(rxode2::rxGetControl(ui, "plateauTol", 1e-3))
@@ -1001,6 +1011,21 @@
   attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
   class(.ph) <- .cls
   assign("parHistData", .ph, envir = env)
+  .as <- .saem$autoStop
+  if (is.list(.as) && length(.as) > 0L) {
+    for (.f in c("drift", "mcse", "tol")) {
+      .v <- as.numeric(.as[[.f]])
+      if (length(.v) >= length(.allThetaNames)) {
+        .v <- setNames(.v[seq_along(.allThetaNames)], .allThetaNames)
+      }
+      .as[[.f]] <- .v
+    }
+    assign("saemAutoStop", .as, envir = env)
+  }
+  .sc <- .saem$saCovStop
+  if (is.list(.sc) && length(.sc) > 0L) {
+    assign("saemSaCovStop", .sc, envir = env)
+  }
   .saemAddMcmcDiag(env)
 }
 
@@ -2344,17 +2369,99 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .ret
 }
 
+#' Time-varying covariates of a saem fit's data
+#'
+#' @param ui rxode2 ui
+#' @param data nlmixr2 data (`NULL` gives none)
+#' @param control saem control, for its `rxControl` (the default when it has none)
+#' @return names of the time-varying covariates
+#' @noRd
+.saemTimeVaryingCovs <- function(ui, data, control) {
+  if (is.null(data)) {
+    return(character(0))
+  }
+  .rx <- control$rxControl
+  if (is.null(.rx)) {
+    .rx <- rxode2::rxControl()
+  }
+  tryCatch(.nlmixrTimeVaryingCovariates(data, ui, .rx), error = function(e) character(0))
+}
+
+#' Bounded mu-referenced covariate coefficients of a saem model
+#'
+#' Only a coefficient in the closed-form (phi1) M-step: its theta has an eta,
+#' its covariate is not time-varying (`.nlmixrSetMuRefTimeVarying()`) and
+#' mu-referenced covariates are on (`muRefCov`).
+#'
+#' @param ui rxode2 ui
+#' @param timeVarying time-varying covariates (`.saemTimeVaryingCovs()`)
+#' @param control saem control; needed before it is attached to `ui`
+#' @return names of the covariate coefficients with a finite bound
+#' @noRd
+.saemLambda1BoundNames <- function(ui, timeVarying = character(0), control = NULL) {
+  if (isFALSE(control$muRefCov)) {
+    return(character(0))
+  }
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))
+  .keep <- !(.cov$covariate %in% timeVarying) & .cov$theta %in% ui$muRefDataFrame$theta
+  .cov <- .cov$covariateParameter[.keep]
+  .iniDf <- ui$iniDf
+  .w <- match(.cov, .iniDf$name)
+  .cov[is.finite(.iniDf$lower[.w]) | is.finite(.iniDf$upper[.w])]
+}
+
+#' Bounds of each phi1 coefficient (`Plambda1`) in kernel order
+#'
+#' `Plambda1` runs over the phi1 columns, each its intercept then its covariate
+#' coefficients in `saemCovars` order (`R/saem_fit.R`).  Only the covariate
+#' coefficients carry bounds: a bounded intercept is transformed instead.
+#'
+#' @param ui rxode2 ui
+#' @param cfg `.configsaem()` configuration (0-based `i1`)
+#' @return list with `lower` and `upper`, empty when nothing is bounded
+#' @noRd
+.saemLambda1Bounds <- function(ui, cfg) {
+  .none <- list(lower = numeric(0), upper = numeric(0))
+  .bnd <- .saemLambda1BoundNames(ui)
+  if (length(.bnd) == 0L) {
+    return(.none)
+  }
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(list(ui))
+  .phi <- names(rxUiGet.saemLogEta(list(ui)))
+  .covs <- rxUiGet.saemCovars(list(ui))
+  .nm <- matrix(NA_character_, 1L + length(.covs), length(.phi))
+  .nm[1L, ] <- .phi
+  .nm[cbind(1L + match(.cov$covariate, .covs), match(.cov$theta, .phi))] <- .cov$covariateParameter
+  .nm <- .nm[, cfg$i1 + 1L, drop = FALSE]
+  .nm <- .nm[!is.na(.nm)]
+  if (length(.nm) != cfg$nlambda1) {
+    return(.none)
+  }
+  .w <- match(.nm, .bnd)
+  .iniDf <- ui$iniDf
+  .r <- match(.nm, .iniDf$name)
+  list(
+    lower = ifelse(is.na(.w), -Inf, .iniDf$lower[.r]),
+    upper = ifelse(is.na(.w), Inf, .iniDf$upper[.r])
+  )
+}
+
 #' Warn about the bounds saem ignores
 #'
 #' The IOV rewrite's magnitude thetas carry a lower bound the user did not
-#' write, so they are left out of the warning (the fit keeps the bound).
+#' write, and the M-step honors a covariate coefficient's bounds, so both are
+#' left out of the warning.
 #'
 #' @param ui rxode2 ui
+#' @param timeVarying time-varying covariates (`.saemTimeVaryingCovs()`)
+#' @param control saem control
 #' @return nothing, called for the warning
 #' @noRd
-.saemWarnBounded <- function(ui) {
+.saemWarnBounded <- function(ui, timeVarying = character(0), control = NULL) {
   .iniDf <- ui$iniDf
   .iov <- !is.na(.iniDf$ntheta) & !is.na(.iniDf$backTransform) & grepl("^nlmixr2iov", .iniDf$backTransform)
+  # the M-step holds a mu-referenced covariate coefficient inside its bounds
+  .iov <- .iov | .iniDf$name %in% .saemLambda1BoundNames(ui, timeVarying, control)
   .uiW <- ui
   if (any(.iov)) {
     .iniDf$lower[.iov] <- -Inf
@@ -2376,7 +2483,7 @@ nlmixr2Est.saem <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'", .var.name = .ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("saem"), .var.name = .ui$modelName)
   .saemAssertEtaPhi(.ui)
-  .saemWarnBounded(.ui)
+  .saemWarnBounded(.ui, .saemTimeVaryingCovs(.ui, env$data, env$control), env$control)
   if (length(.ui$mixProbs) > 0) {
     message("mixture SAEM computation scales with the number of sub-populations")
   }

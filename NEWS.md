@@ -90,6 +90,16 @@
   `lastTheta`, the inner `THETA` the last fast step was built with (the counts
   show the kernel fired; only `lastTheta` shows what it was fired at).
 
+- `saemControl(autoStop = TRUE)` stops the SAEM EM phase once every
+  parameter's half-window drift is within `stopRtol`/`stopAtol` or twice its
+  Monte-Carlo error for `stopConsecutive` windows of `stopWindow` iterations;
+  `nEm` becomes a maximum and the stop is recorded in `fit$saemAutoStop`
+  (#1411).
+- The `covMethod = "sa"` covariance phase applies the same window to the
+  diagonal of its running Fisher information and stops once it is stationary
+  (`saemControl(saCovAutoStop = TRUE)`, the default), so `nSaCov` becomes a
+  maximum; the stop is recorded in `fit$saemSaCovStop`.  `setCov(fit, "sa")`
+  stops the same way (`saControl(saCovAutoStop = TRUE)`) (#1411).
 - `saemControl(muNonCentered = TRUE, omegaNonCentered = TRUE)` interweave
   non-centered updates of the mu-referenced random effects into SAEM (Yu and
   Meng 2011): after the M-step each free intercept-only mean is shifted, and
@@ -115,6 +125,25 @@
   `nlmixr2()` now raises a `warning()` and sets `fit$tablesDropped` to `TRUE`
   so a script can test for it; adding the tables later with `addTable()`
   clears it (#1354).
+
+- `agqControl(agqRule=)` selects the quadrature rule of the agq family:
+  `"hermite"` (default, unchanged), `"legendre"` (Gauss-Legendre over
+  `agqNsd` conditional SDs) or `"stieltjes"` (radial shells set by
+  `agqGrid = c(nr, ns, r0, r1)`, NONMEM's `GRID=`).  Every rule is centred on
+  the EBE, so all are exact for a model linear in the etas (#1139).
+
+- `agqControl(agqCenter=)` places the quadrature grid: `"mode"` (default,
+  re-centred on each EBE), `"start"` (placed on the EBEs and eta Hessians of
+  the first evaluation, then fixed, as NONMEM's `STIELTJES` integrating
+  stage) or `"prior"` (one grid on `N(0, Omega)`) (#1139).
+
+- `est = "stieltjes"` is a two-stage method after NONMEM's
+  `$ESTIMATION STIELTJES`: a conditional first stage (`stieltjesControl(stage1
+  = "focei")`, `"foce"` or `"laplace"`) supplies starting estimates, then the
+  integrated likelihood is minimized on a Stieltjes grid placed at each
+  subject's EBE and eta Hessian at those estimates and held fixed.  The first stage's
+  objective and estimates are kept in `fit$stieltjesStage1` (#1139).
+
 - `addCondDist(fit)` samples each subject's conditional distribution of the
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
@@ -127,7 +156,12 @@
   column per eta) that `rxSolve(fit, params = , nStud = n)` takes to simulate
   each subject with its own uncertainty.  `method = "laplace"` draws from the
   normal at each subject's mode with the inverse inner Hessian;
-  `method = "imp"` resamples `addCondDist()`'s importance samples (#1410).
+  `method = "mcmc"` runs a Metropolis-Hastings chain per subject on the
+  exact joint density, with that normal as its proposal; `method = "imp"`
+  resamples `addCondDist()`'s importance samples; `method = "fit"` reuses a
+  SAEM fit's chains or an emvi fit's variational posterior.  The default
+  `method = "auto"` reuses the fit's own draws when it holds enough, and
+  otherwise runs `"mcmc"` (#1410).
 - A `saem` fit with a theta that is not updated in closed form now notes which
   thetas the M-step updates in closed form, numerically (`nonMuTheta =
   "regress"`) or stochastically (`nonMuTheta = "eta"`); the note is kept in
@@ -232,6 +266,11 @@
   above the initial estimates' (...)`, and `foceiControl(aboveStartTol=)` sets
   its relative band (default `0.01`); `NA` or `Inf` turns it off (#1399).
 
+- The nlm-family methods (`nlm`, `nlminb`, `bobyqa`, `n1qn1`, `newuoa`,
+  `optim`, `trust`, `uobyqa`, `lbfgsb3c`) now add the same note to `$runInfo`
+  when their final objective is above the one at the initial estimates; each
+  control takes `aboveStartTol=` (#1399).
+
 - A covariance that is rejected as not positive definite now says which
   parameters make it so: those with no information (a zero diagonal), or the
   ones the near-singular direction loads on (e.g. `"r,s" is not PD: tva, tvb
@@ -242,7 +281,8 @@
 - A fit now notes in `$runInfo` when the condition number of its covariance's
   correlation matrix exceeds 1000 (e.g. `covariance condition number is large
   (1397.7 > 1000)`), since its standard errors are then unreliable.
-  `foceiControl(condWarn=)` sets the threshold; `NA` or `Inf` turns the note
+  `condWarn=` in every method's control (e.g. `foceiControl(condWarn=)`,
+  `saemControl(condWarn=)`) sets the threshold; `NA` or `Inf` turns the note
   off (#1400).
 
 - A fit now notes in `$runInfo` the etas whose SD shrinkage is 30% or more
@@ -294,13 +334,23 @@
   `$runInfo`; `tableControl(iwresAutocor = FALSE)` turns the note off
   (#1373).
 
-- A SAEM fit now notes in `$runInfo` when its covariance was computed at an
-  estimate that is not stationary for the FOCEi objective: the Newton
-  decrement `0.5 * g' H^-1 g` (OFV units) of that objective at the estimate
-  exceeds `saemControl(covNewtonWarn = 1)`.  The value is kept as
+- A SAEM, nlme, imp-family, vae or emvi fit now notes in `$runInfo` when its
+  covariance was computed at an estimate that is not stationary for the
+  FOCEi objective: the Newton decrement `0.5 * g' H^-1 g` (OFV units) of
+  that objective at the estimate exceeds the control's `covNewtonWarn`
+  (default `1`).  The value is kept as
   `fit$covNewtonDecrement`; `NA` or `Inf` skips the check; models outside
   the analytic gradient's scope (e.g. `linCmt()`) use central differences
   (#1389).
+
+- Estimation now warns by name about an estimated theta or eta that cannot
+  change the objective function, for example one used only through an
+  intermediate that nothing else reads (#1382).
+
+- `foceiControl(freezeFlatTheta = TRUE)` evaluates the outer gradient once
+  before optimizing and fixes, with a warning, any theta whose gradient is
+  flat at its initial value, so the other parameters optimize normally
+  (#1382).
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
@@ -498,6 +548,11 @@
   is gated on `fast`, which the inner's control reports as `FALSE`, so the FOCEi
   inner state was left standing after every fast fit instead of being freed.
 
+- `est = "saem"` now keeps a bounded mu-referenced covariate coefficient (for
+  example `clWt <- c(-5, 0.5, 5)` in `exp(lcl + eta.cl + clWt * log(WT / 70))`)
+  in its closed-form M-step and holds it inside its bounds there, instead of
+  transforming it out of the covariate regression.  The coefficient was
+  mis-estimated and reported on its internal scale (#1347).
 - `est="saem"` now re-solves its cached predictions after the M-step moves a
   theta without an eta, so the next E-step no longer scores the current state
   at the previous theta (non-mixture fits; mixtures already re-solved).
@@ -519,6 +574,12 @@
 - `est="imp"`, `"impmap"` and `"qrpem"` now refuse a model without random
   effects with the same clear message as `"saem"`, instead of failing with
   `Could not fit data` (#1467).
+
+- A multiplicative 0/1 covariate effect, `exp(tcl + eta.cl) * (1 + clSex*SEX)`,
+  is now fit as the equivalent mu-referenced `log(1 + clSex)*SEX` ("mu5") by
+  every mu-referenced method (`saem`, the `m*`/`i*` FOCEi family, `imp`,
+  `vae`, ...) and `clSex` is reported; `saem` previously estimated `clSex`
+  with the wrong sign (#1315).
 
 - `est="saem"`: when an endpoint's residual error cannot be matched to
   `ini()` parameters, the error now names the endpoint and the error

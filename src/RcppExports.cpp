@@ -1743,6 +1743,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// saemAutoStopTest_
+Rcpp::List saemAutoStopTest_(Rcpp::NumericMatrix trajR, int window, int consec, double rtol, double atol);
+RcppExport SEXP _nlmixr2est_saemAutoStopTest_(SEXP trajRSEXP, SEXP windowSEXP, SEXP consecSEXP, SEXP rtolSEXP, SEXP atolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type trajR(trajRSEXP);
+    Rcpp::traits::input_parameter< int >::type window(windowSEXP);
+    Rcpp::traits::input_parameter< int >::type consec(consecSEXP);
+    Rcpp::traits::input_parameter< double >::type rtol(rtolSEXP);
+    Rcpp::traits::input_parameter< double >::type atol(atolSEXP);
+    rcpp_result_gen = Rcpp::wrap(saemAutoStopTest_(trajR, window, consec, rtol, atol));
+    return rcpp_result_gen;
+END_RCPP
+}
 // saem_do_pred
 SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt);
 RcppExport SEXP _nlmixr2est_saem_do_pred(SEXP in_phiSEXP, SEXP in_evtSEXP, SEXP in_optSEXP) {
