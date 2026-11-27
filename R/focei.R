@@ -3096,15 +3096,7 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     return(FALSE)
   }
   .txt <- tryCatch(rxode2::rxModelVars(ui)$model[["normModel"]], error = function(e) "")
-  any(grepl(
-    "^(alag|lag|rate|dur)[(]",
-    strsplit(
-      .txt,
-      "
-",
-      fixed = FALSE
-    )[[1]]
-  ))
+  any(grepl("^(alag|lag|rate|dur)[(]", strsplit(.txt, "\n", fixed = TRUE)[[1]]))
 }
 
 #' Does the model have an `ar()` residual?

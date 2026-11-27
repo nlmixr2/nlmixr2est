@@ -383,6 +383,30 @@ void odeSwapClearAll() {
 bool odeSwapLoaded(int slot) { return odeSlotOk(slot) && _odeReg[slot].loaded; }
 int  odeSwapNSens(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].nSens : 0; }
 
+// rxode2lincmt's per-thread switch for the second-order steps (NULL with an
+// rxode2lincmt that does not have it): set per solve to whether the solving
+// slot's own model reads the second-order values, so the inner model solved
+// while the second-order bit is shared does not pay for steps it never reads.
+typedef void (*t_lcSetHessThread)(int);
+static t_lcSetHessThread _lcSetHessThread = NULL;
+extern "C" SEXP _nlmixr2est_lcHessThreadInit(SEXP on) {
+  _lcSetHessThread = NULL;
+  if (Rf_asLogical(on) == TRUE) {
+    _lcSetHessThread = reinterpret_cast<t_lcSetHessThread>(
+      R_GetCCallable("rxode2lincmt", "linCmtSetHessThread"));
+  }
+  return R_NilValue;
+}
+
+// The linCmt() second-order bit (rxode2lincmt's diffHess) if any loaded slot
+// declares it, else 0 (see odeSwapSolveInd).
+int odeSwapNdiffHess() {
+  for (int s = 0; s < odeSlotN; ++s) {
+    if (_odeReg[s].loaded && _odeReg[s].ndiffSet && (_odeReg[s].ndiff & 128) != 0) return 128;
+  }
+  return 0;
+}
+
 // True if ANY registered slot declared an ndiff (i.e. this fit has a linCmt()
 // peer whose cached Jacobian depends on rx->ndiff).  Used to gate the extra
 // cost of imp.cpp's impGetHessian() critical section (see below) so it is
@@ -417,28 +441,6 @@ int  odeSwapNSens(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].nSens 
 // for the two-different-nonzero-ndiff-peers pattern either. Most look safe
 // by construction (a fixed slot per call, e.g. impThetaSensCollect's tsSlot
 // does not vary within its own loop), but that was not proven exhaustively.
-// The linCmt() second-order bit (rxode2lincmt's diffHess) if any loaded slot
-// declares it, else 0 (see odeSwapSolveInd).
-// rxode2lincmt's per-thread switch for the second-order steps (NULL with an
-// rxode2lincmt that does not have it): set per solve to whether the solving
-// slot's own model reads the second-order values, so the inner model solved
-// while the second-order bit is shared does not pay for steps it never reads.
-static void (*_lcSetHessThread)(int) = NULL;
-extern "C" SEXP _nlmixr2est_lcHessThreadInit(SEXP on) {
-  _lcSetHessThread = NULL;
-  if (Rf_asLogical(on) == TRUE) {
-    _lcSetHessThread = (void (*)(int)) R_GetCCallable("rxode2lincmt", "linCmtSetHessThread");
-  }
-  return R_NilValue;
-}
-
-int odeSwapNdiffHess() {
-  for (int s = 0; s < odeSlotN; ++s) {
-    if (_odeReg[s].loaded && _odeReg[s].ndiffSet && (_odeReg[s].ndiff & 128) != 0) return 128;
-  }
-  return 0;
-}
-
 bool odeSwapAnyNdiffSet() {
   for (int s = 0; s < odeSlotN; ++s) {
     if (_odeReg[s].loaded && _odeReg[s].ndiffSet) return true;

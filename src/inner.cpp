@@ -3881,7 +3881,6 @@ static void conditionalInnerScore(FoceiInnerResult &result, double value,
   }
 }
 
-// One second-order solve supplies the conditional value, gradient and Hessian.
 // One observation's terms of the exact eta Hessian H, from the second-order
 // model's lhs at that row (and, for the conditional model, its score in
 // result).  False when the conditional partials are not finite.
@@ -3911,6 +3910,7 @@ static inline bool hess2ObsAdd(rx_solving_options_ind *ind, int kk2, int ne, dou
   return true;
 }
 
+// One second-order solve supplies the conditional value, gradient and Hessian.
 static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
                                 rx_solving_options_ind *ind, mat &H, bool conditional,
                                 FoceiInnerResult &result) {
@@ -4053,9 +4053,8 @@ bool calcEtaHessian(double *eta, int likId, int id,
   if (conditional) ++op_focei.nConditionalInnerHessian;
   int modelHess = calcEtaHessianModel(eta, id, fInd, ind, H, conditional, evaluation);
   if (modelHess < 0) return false;
-  if (modelHess > 0) {
-    // H is the exact model Hessian
-  } else if (op_focei.needOptimHess) {
+  // modelHess > 0: H is already the exact model Hessian
+  if (modelHess == 0 && op_focei.needOptimHess) {
     arma::vec gr0(op_focei.neta, fill::zeros);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
 
