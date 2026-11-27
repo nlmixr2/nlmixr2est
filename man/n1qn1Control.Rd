@@ -42,7 +42,8 @@ n1qn1Control(
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
-  ...
+  ...,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -218,6 +219,10 @@ bounds passed to the optimizer. `NA` transforms for optimization but
 skips the final back-transform.}
 
 \item{...}{Ignored parameters}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 bobqya control structure

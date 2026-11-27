@@ -48,7 +48,8 @@ emviControl(
   eventSens = c("jump", "fd"),
   rxControl = NULL,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -370,6 +371,10 @@ than the default `"liblsoda"` at the same `rtol`.}
 \item{corWarn}{warn when two estimates' correlation is at least this in
 absolute value after the covariance step; \code{NA} or \code{Inf} turns
 the warning off.}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 variational-inference control structure (class `emviControl`)

@@ -92,7 +92,8 @@ n1qn1Control <- function(
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
-  ...
+  ...,
+  condWarn = 1000
 ) {
   # n1qn1 stopping tolerance from sigdig (FOCEi mechanism, matches foceiControl
   # epsilon); a user-supplied value wins, sigdig=NULL keeps the historic default
@@ -172,6 +173,7 @@ n1qn1Control <- function(
   checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
+  .condWarnCheck(condWarn)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
     epsilon = epsilon,
@@ -207,6 +209,7 @@ n1qn1Control <- function(
     sensMethod = match.arg(sensMethod),
     calcTables = calcTables,
     compress = compress,
+    condWarn = condWarn,
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,

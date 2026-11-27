@@ -43,7 +43,8 @@ lbfgsb3cControl(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
-  ...
+  ...,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -220,6 +221,10 @@ At the default \code{sigdig = 3} this is \code{atol = 1e-8},
 If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{...}{Ignored parameters}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 bobqya control structure

@@ -112,7 +112,8 @@ lbfgsb3cControl <- function(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
-  ...
+  ...,
+  condWarn = 1000
 ) {
   checkmate::assertIntegerish(trace, len = 1, any.missing = FALSE, lower = 0)
   # L-BFGS-B factr from sigdig, two orders tighter like foceiControl(lbfgsFactr=):
@@ -195,6 +196,7 @@ lbfgsb3cControl <- function(
   checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
+  .condWarnCheck(condWarn)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
     trace = trace,
@@ -233,6 +235,7 @@ lbfgsb3cControl <- function(
     sensMethod = match.arg(sensMethod),
     calcTables = calcTables,
     compress = compress,
+    condWarn = condWarn,
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,

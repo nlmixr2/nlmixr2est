@@ -184,7 +184,8 @@ trustControl <- function(
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 ) {
   # trust_solve_c()'s fterm/mterm from sigdig, two orders tighter than the
   # plain .sigdigOptTol() every other nlm-family method uses here -- matching
@@ -304,6 +305,7 @@ trustControl <- function(
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
   .corWarnCheck(corWarn)
+  .condWarnCheck(condWarn)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
     rinit = rinit,
@@ -344,6 +346,7 @@ trustControl <- function(
     calcTables = calcTables,
     compress = compress,
     corWarn = corWarn,
+    condWarn = condWarn,
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,
