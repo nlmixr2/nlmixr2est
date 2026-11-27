@@ -388,6 +388,9 @@
 
 ### Estimation
 
+- `est="saem"` now re-solves its cached predictions after the M-step moves a
+  theta without an eta, so the next E-step no longer scores the current state
+  at the previous theta (non-mixture fits; mixtures already re-solved).
 - `est="saem"` now starts additive and proportional residual errors at their
   `ini()` values instead of fixed placeholders (`10` and `1`), as the power and
   lambda parameters already did.  The residual warm-start
