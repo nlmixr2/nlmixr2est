@@ -388,6 +388,7 @@ nmObjGetFoceiControl.ilaplace <- function(x, ...) {
     "foceControl",
     "focepControl",
     "agqControl",
+    "stieltjesControl",
     "laplaceControl",
     "mfoceiControl",
     "ifoceiControl",
@@ -434,6 +435,9 @@ nmObjGetFoceiControl.ilaplace <- function(x, ...) {
 .foceiFamilyControlAs <- function(ctl, target) {
   .cls <- class(ctl)[1]
   .ctl <- unclass(ctl)
+  if (!identical(target, "stieltjesControl")) {
+    .ctl$stage1 <- NULL
+  }
   if (!(target %in% c("foControl", "foiControl"))) {
     if (isFALSE(.ctl$posthoc)) {
       .ctl$maxInnerIterations <- 0L

@@ -126,6 +126,15 @@ test_that("a SAEM fit's \"sa\" recompute continues its chains with no warm-up it
   expect_error(saemControl(saemWarmState = list(phiM = .st$phiM, mpostPhi = matrix(NA_real_, 2, 3))), "mpostPhi")
 })
 
+test_that("saControl(saCovAutoStop=) reaches the \"sa\" recompute's saemControl()", {
+  expect_true(.covEngineControl("sa", saControl())$saCovAutoStop)
+  expect_false(.covEngineControl("sa", saControl(saCovAutoStop = FALSE))$saCovAutoStop)
+  .old <- saControl()
+  .old$saCovAutoStop <- NULL
+  expect_true(.covEngineControl("sa", .old)$saCovAutoStop)
+  expect_error(saControl(saCovAutoStop = NA), "saCovAutoStop")
+})
+
 test_that(".saemWarmCfg() installs a chain state of the right shape, its statistics and the residual statistic", {
   # 2 subjects x 3 chains, phi columns 1:2 mu-referenced (i1) and 3 not (i0);
   # endpoints: additive (4 obs), proportional (3 obs), combined (5 obs)

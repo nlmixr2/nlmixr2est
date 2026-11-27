@@ -27,6 +27,7 @@ emviControl(
   useColor = NULL,
   printNcol = NULL,
   covMethod = c("vi", "analytic", "r,s", "r", "s", ""),
+  covNewtonWarn = 1,
   covFallback = list(`r,s` = c("r", "s", "vi"), r = c("s", "vi"), s = "vi", analytic =
     c("r,s", "r", "s", "vi")),
   optExpression = TRUE,
@@ -48,7 +49,8 @@ emviControl(
   eventSens = c("jump", "fd"),
   rxControl = NULL,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -245,6 +247,11 @@ wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
  "" Does not calculate the covariance step.}
 
+\item{covNewtonWarn}{Warn (in `$runInfo`) when the Newton decrement of the
+FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+this value: the standard errors then belong to no optimum.  The value is
+kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.}
+
 \item{covFallback}{what each `covMethod` falls back to when it gives no
 usable covariance: a named list, one element per method, each the ordered
 methods to try instead -- the FOCEI `"r,s"`, `"r"` and `"s"` (see
@@ -370,6 +377,10 @@ than the default `"liblsoda"` at the same `rtol`.}
 \item{corWarn}{warn when two estimates' correlation is at least this in
 absolute value after the covariance step; \code{NA} or \code{Inf} turns
 the warning off.}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 variational-inference control structure (class `emviControl`)
