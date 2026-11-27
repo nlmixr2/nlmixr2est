@@ -2061,6 +2061,11 @@ public:
     return eta;
   }
 
+  mat get_etaUe() {
+    mat ue = current_saem_state->_saemUE.rows(0, N - 1);
+    return ue.cols(i1);
+  }
+
   // Conditional-mode EBEs (saemControl(ebe="mode")), the Monolix "EBEs" task:
   // per subject, minimize the data -loglik plus the Omega prior over the
   // informative phi1 columns, starting from the SAEM conditional mean.
@@ -7112,6 +7117,8 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("Ha") = saem.get_Ha(),
     Named("sig2") = saem.get_sig2(),
     Named("eta") = saem.get_eta(),
+    // per-subject informative-eta mask that get_eta() applies (1 = sampled)
+    Named("etaUe") = saem.get_etaUe(),
     Named("etaMix") = saem.get_etaMix(),
     Named("par_hist") = saem.get_par_hist(),
     // MCMC mixing diagnostics; see the members they come from
