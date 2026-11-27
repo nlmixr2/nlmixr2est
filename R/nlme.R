@@ -70,6 +70,7 @@ nlmixr2NlmeControl <- function(
   eventSens = c("jump", "fd"),
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
+  covNewtonWarn = 1,
   ...,
   corWarn = 0.95,
   condWarn = 1000
@@ -213,6 +214,7 @@ nlmixr2NlmeControl <- function(
     muRefCovAlg = muRefCovAlg,
     eventSens = eventSens,
     covMethod = covMethod,
+    covNewtonWarn = .covNewtonWarnArg(covNewtonWarn),
     genRxControl = .genRxControl
   )
   class(.ret) <- "nlmeControl"

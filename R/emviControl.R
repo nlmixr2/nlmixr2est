@@ -238,6 +238,7 @@ emviControl <- function(
   printNcol = NULL,
 
   covMethod = c("vi", "analytic", "r,s", "r", "s", ""),
+  covNewtonWarn = 1,
   covFallback = list(
     "r,s" = c("r", "s", "vi"),
     r = c("s", "vi"),
@@ -397,6 +398,7 @@ emviControl <- function(
     returnVi = returnVi,
     resume = resume,
     covMethod = covMethod,
+    covNewtonWarn = .covNewtonWarnArg(covNewtonWarn),
     covFallback = covFallback,
     optExpression = optExpression,
     sumProd = sumProd,

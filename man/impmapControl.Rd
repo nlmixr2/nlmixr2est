@@ -29,6 +29,7 @@ impmapControl(
   nConvWindow = 10L,
   impSeed = 42L,
   covMethod = c("imp", "analytic", "r,s", "r", "s", "sa", ""),
+  covNewtonWarn = 1,
   qr = FALSE,
   qrShift = TRUE,
   qrRefresh = TRUE,
@@ -479,6 +480,11 @@ over-estimated because the fixed samples barely span its prior variation.
 `"analytic"`, `"r,s"`, `"r"`, `"s"` instead compute the FOCEI covariance
 post-fit at the converged estimates (see [foceiControl()]); `""` skips the
 covariance step.}
+
+\item{covNewtonWarn}{Warn (in `$runInfo`) when the Newton decrement of the
+FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+this value: the standard errors then belong to no optimum.  The value is
+kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.}
 
 \item{qr}{When `TRUE`, draw quasi-random (Sobol low-discrepancy) importance
 samples instead of pseudo-random Gaussian samples (QRPEM, Leary &

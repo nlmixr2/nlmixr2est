@@ -267,10 +267,11 @@
   `$runInfo`; `tableControl(iwresAutocor = FALSE)` turns the note off
   (#1373).
 
-- A SAEM fit now notes in `$runInfo` when its covariance was computed at an
-  estimate that is not stationary for the FOCEi objective: the Newton
-  decrement `0.5 * g' H^-1 g` (OFV units) of that objective at the estimate
-  exceeds `saemControl(covNewtonWarn = 1)`.  The value is kept as
+- A SAEM, nlme, imp-family, vae or emvi fit now notes in `$runInfo` when its
+  covariance was computed at an estimate that is not stationary for the
+  FOCEi objective: the Newton decrement `0.5 * g' H^-1 g` (OFV units) of
+  that objective at the estimate exceeds the control's `covNewtonWarn`
+  (default `1`).  The value is kept as
   `fit$covNewtonDecrement`; `NA` or `Inf` skips the check; models outside
   the analytic gradient's scope (e.g. `linCmt()`) use central differences
   (#1389).

@@ -771,7 +771,6 @@ saemControl <- function(
     targets = c("sa", "fim", "linFim", "Ha")
   )
   checkmate::assertLogical(covFull, len = 1, any.missing = FALSE)
-  checkmate::assertNumber(covNewtonWarn, lower = 0, na.ok = TRUE)
 
   # censOption: FOCEI-family censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic
   # Gauss-Newton, default) or "laplace" (exact).  Accepted for a uniform interface but INERT for
@@ -832,7 +831,7 @@ saemControl <- function(
     covMethodDeferred = covMethodDeferred,
     covFallback = covFallback,
     covFull = covFull,
-    covNewtonWarn = as.double(covNewtonWarn),
+    covNewtonWarn = .covNewtonWarnArg(covNewtonWarn),
     nSaCov = as.integer(nSaCov),
     logLik = logLik,
     calcTables = calcTables,
