@@ -111,23 +111,27 @@ nmTest({
     expect_equal(unique(.r$version), "7.5.1")
 
     .s <- suppressMessages(.env$tteValidationScenarios("pkJoint")[[1]])
-    dir.create(file.path(.tmp, "LogLikelihood"))
-    utils::write.csv(
-      data.frame(
-        parameter = c("tcl_pop", "tv_pop", "b", "llam_pop", "lic50_pop", "omega_tcl", "omega_tv", "omega_llam"),
-        value = c(0.01, 2.3, 0.1, -2.2, 0.6, 0.3, 0.4, 0.5),
-        se_sa = c(0.03, 0.03, 0.003, 0.08, 0.2, 0.02, 0.03, 0.05),
-        rse_sa = 1
-      ),
-      file.path(.tmp, "populationParameters.txt"),
-      row.names = FALSE,
-      quote = FALSE
+    # lixoftConnectors returns data frames in newer versions, named vectors in older
+    .se <- data.frame(
+      parameter = c("tcl_pop", "tv_pop", "b", "llam_pop", "lic50_pop", "omega_tcl", "omega_tv", "omega_llam"),
+      se = c(0.03, 0.03, 0.003, 0.08, 0.2, 0.02, 0.03, 0.05),
+      rse = 1
     )
-    writeLines(
-      c("criteria,importanceSampling", "OFV,4000.5", "AIC,4016.5"),
-      file.path(.tmp, "LogLikelihood", "logLikelihood.txt")
+    .se <- .env$.tteMlxVector(.se, "se")
+    expect_equal(.env$.tteMlxVector(as.list(.se)), .se)
+    .pop <- c(
+      tcl_pop = 0.01,
+      tv_pop = 2.3,
+      b = 0.1,
+      llam_pop = -2.2,
+      lic50_pop = 0.6,
+      omega_tcl = 0.3,
+      omega_tv = 0.4,
+      omega_llam = 0.5
     )
-    .r <- suppressMessages(.env$tteMonolixRead(.tmp, .s, "2024R1"))
+    .ll <- .env$.tteMlxVector(data.frame(criteria = c("OFV", "AIC"), importanceSampling = c(4000.5, 4016.5)))
+    expect_equal(.ll, c(OFV = 4000.5, AIC = 4016.5))
+    .r <- suppressMessages(.env$tteMonolixReference(.pop, .se, .ll[["OFV"]], .s, "2024R1"))
     expect_equal(.r$parameter, c("tcl", "tv", "prop.sd", "llam", "lic50", "eta.cl", "eta.v", "eta.lam", "OFV"))
     expect_equal(.r$estimate, c(0.01, 2.3, 0.1, -2.2, 0.6, 0.09, 0.16, 0.25, 4000.5))
     # the SE of a variance from the SE of its SD

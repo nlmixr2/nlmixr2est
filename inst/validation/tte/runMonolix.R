@@ -4,8 +4,8 @@
 #
 # Needs a licensed Monolix and its lixoftConnectors R package (the Monolix
 # install directory can be given in $MONOLIX_PATH).  Each project is run in a
-# scratch copy of monolix/ and data/; results go to
-# reference/monolix/<name>.csv.
+# scratch copy of monolix/ and data/, and its estimates, standard errors and
+# -2LL are read through lixoftConnectors into reference/monolix/<name>.csv.
 .args <- commandArgs(trailingOnly = TRUE)
 .dir <- if (length(.args) > 0 && dir.exists(.args[1])) {
   normalizePath(.args[1])
@@ -36,11 +36,10 @@ for (.name in .prj) {
   message("Monolix: ", .name, " in ", .run)
   lixoftConnectors::loadProject(file.path(.run, "monolix", paste0(.name, ".mlxtran")))
   .ok <- lixoftConnectors::runScenario()
-  .export <- file.path(.run, "monolix", .name)
-  if (isFALSE(.ok) || !file.exists(file.path(.export, "populationParameters.txt"))) {
+  .ref <- if (isFALSE(.ok)) NULL else try(tteMonolixRead(.tteRefScenario(.name), .version))
+  if (!is.data.frame(.ref) || anyNA(.ref$estimate)) {
     warning("Monolix run failed: ", .name, call. = FALSE)
     next
   }
-  .ref <- tteMonolixRead(.export, .tteRefScenario(.name), .version)
   utils::write.csv(.ref, file.path(.out, paste0(.name, ".csv")), row.names = FALSE)
 }

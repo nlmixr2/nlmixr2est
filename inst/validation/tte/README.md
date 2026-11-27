@@ -33,9 +33,8 @@ and is fitted by nlmixr2est, NONMEM and Monolix from the same data set.
   (`bx` fixed to 0), for the objective function difference.
 - `runNonmem.R`, `runMonolix.R` -- run every control stream / project and
   store the results under `reference/<tool>/<scenario>.csv`.
-- `reference.R` -- reads NONMEM (`.ext`, `.lst`) and Monolix
-  (`populationParameters.txt`, `LogLikelihood/logLikelihood.txt`) output
-  into reference files, with nlmixr2 parameter names and variances.
+- `reference.R` -- reads NONMEM output (`.ext`, `.lst`) and Monolix
+  results (through lixoftConnectors) into reference files, with nlmixr2 parameter names and variances.
 - `checkSyntax.R` -- parses the control streams (nonmem2rx) and projects
   (monolix2rx) without a licence.
 

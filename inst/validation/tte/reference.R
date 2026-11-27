@@ -66,23 +66,41 @@ tteNonmemRead <- function(ext, lst, scenario) {
   )
 }
 
-#' Read a Monolix run of a scenario
+# a lixoftConnectors result as a named numeric vector: older versions return
+# named vectors, newer ones data frames with a parameter (or criteria) column
+# and the values in `col` (by default the first numeric column)
+.tteMlxVector <- function(x, col = NULL) {
+  if (is.data.frame(x)) {
+    .key <- intersect(c("parameter", "criteria"), names(x))[1]
+    if (is.null(col) || !col %in% names(x)) {
+      col <- names(x)[vapply(x, is.numeric, logical(1))][1]
+    }
+    return(stats::setNames(as.numeric(x[[col]]), x[[.key]]))
+  }
+  unlist(x)
+}
+
+#' Reference rows of a Monolix fit of a scenario
 #'
-#' @param dir the run's export directory
+#' @param pop estimated population parameters, named by Monolix parameter
+#' @param se their standard errors, named the same way
+#' @param ofv -2 log-likelihood
 #' @param scenario the scenario the run fitted
 #' @param version Monolix version
+#' @param date run date
 #' @return reference data frame
 #' @noRd
-tteMonolixRead <- function(dir, scenario, version = NA_character_) {
-  .p <- utils::read.csv(file.path(dir, "populationParameters.txt"))
-  .ll <- utils::read.csv(file.path(dir, "LogLikelihood", "logLikelihood.txt"))
+tteMonolixReference <- function(
+  pop,
+  se,
+  ofv,
+  scenario,
+  version = NA_character_,
+  date = format(Sys.Date(), "%Y-%m-%d")
+) {
   .nm <- .tteParNames(scenario)
   .mu <- rxode2::rxode2(scenario$model)$muRefDataFrame
-  .seCol <- grep("^se_", names(.p), value = TRUE)[1]
-  .get <- function(x, col) {
-    .w <- match(x, .p$parameter)
-    if (is.na(.w) || is.na(col)) NA_real_ else as.numeric(.p[[col]][.w])
-  }
+  .get <- function(x, v) if (x %in% names(v)) as.numeric(v[[x]]) else NA_real_
   # residual-error parameters keep their nlmixr2 name; Monolix names them b
   .mlx <- vapply(
     .nm$theta,
@@ -91,22 +109,36 @@ tteMonolixRead <- function(dir, scenario, version = NA_character_) {
     },
     character(1)
   )
-  .est <- vapply(.mlx, .get, numeric(1), col = "value")
-  .se <- vapply(.mlx, .get, numeric(1), col = .seCol)
+  .est <- vapply(.mlx, .get, numeric(1), v = pop)
+  .se <- vapply(.mlx, .get, numeric(1), v = se)
   # omega_<theta> is the SD of the eta on <theta>: report the variance
   .om <- paste0("omega_", .mu$theta[match(.nm$eta, .mu$eta)])
-  .sd <- vapply(.om, .get, numeric(1), col = "value")
-  .sdSe <- vapply(.om, .get, numeric(1), col = .seCol)
-  .ofv <- .ll[[2]][match("OFV", .ll[[1]])]
+  .sd <- vapply(.om, .get, numeric(1), v = pop)
+  .sdSe <- vapply(.om, .get, numeric(1), v = se)
   data.frame(
     tool = "monolix",
     version = version,
-    date = format(file.mtime(file.path(dir, "populationParameters.txt")), "%Y-%m-%d"),
+    date = date,
     parameter = c(.nm$theta, .nm$eta, "OFV"),
-    estimate = c(.est, .sd^2, .ofv),
+    estimate = c(.est, .sd^2, as.numeric(ofv)),
     se = c(.se, 2 * .sd * .sdSe, NA_real_),
     row.names = NULL
   )
+}
+
+#' Read the Monolix fit of a scenario from the lixoftConnectors session
+#'
+#' The project must have been loaded and run in this session.
+#'
+#' @param scenario the scenario the run fitted
+#' @param version Monolix version
+#' @return reference data frame
+#' @noRd
+tteMonolixRead <- function(scenario, version = NA_character_) {
+  .pop <- .tteMlxVector(lixoftConnectors::getEstimatedPopulationParameters(), "value")
+  .se <- .tteMlxVector(lixoftConnectors::getEstimatedStandardErrors()$stochasticApproximation, "se")
+  .ll <- .tteMlxVector(lixoftConnectors::getEstimatedLogLikelihood()$importanceSampling)
+  tteMonolixReference(.pop, .se, .ll[["OFV"]], scenario, version)
 }
 
 #' Read a stored reference fit
