@@ -19,7 +19,7 @@ nmTest({
   }
 
   test_that("methods that require random effects give an actionable error", {
-    for (.est in c("fo", "foi", "saem")) {
+    for (.est in c("fo", "foi", "saem", "imp", "impmap", "qrpem")) {
       .err <- tryCatch(.nlmixr(one.cmt, nlmixr2data::theo_sd, .est, list(print = 0)), error = function(e) {
         conditionMessage(e)
       })

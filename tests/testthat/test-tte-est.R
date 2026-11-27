@@ -90,6 +90,47 @@ nmTest({
     expect_equal(unname(.fit$omega[1, 1]), exp(.o[3]), tolerance = 0.1)
   })
 
+  test_that("saem fits a repeated-event tte() frailty model (#1466)", {
+    skip_on_cran()
+    # every theta is mu-referenced, so no phi1 step
+    .mod <- function() {
+      ini({
+        tlam <- log(0.3)
+        eta.lam ~ 0.2
+      })
+      model({
+        haz <- exp(tlam + eta.lam)
+        ev ~ tte(haz)
+      })
+    }
+    .s <- withr::with_seed(7, rxode2::rxSolve(.mod(), rxode2::et(c(0, 20)) |> rxode2::et(id = 1:150)))
+    .d <- as.data.frame(.s)
+    .d <- data.frame(ID = .d$id, TIME = .d$time, DV = .d$sim, EVID = 0)
+    # exact marginal maximum likelihood (Gauss-Hermite over the eta)
+    .n <- tapply(.d$DV, .d$ID, sum)
+    .end <- tapply(.d$TIME, .d$ID, max)
+    .J <- matrix(0, 40, 40)
+    for (.i in 1:39) {
+      .J[.i, .i + 1] <- .J[.i + 1, .i] <- sqrt(.i)
+    }
+    .e <- eigen(.J, symmetric = TRUE)
+    .nll <- function(p) {
+      -sum(vapply(
+        seq_along(.n),
+        function(i) {
+          .l <- .n[i] * (p[1] + .e$values * exp(p[2] / 2)) - exp(p[1] + .e$values * exp(p[2] / 2)) * .end[i]
+          max(.l) + log(sum(.e$vectors[1, ]^2 * exp(.l - max(.l))))
+        },
+        numeric(1)
+      ))
+    }
+    .o <- stats::optim(c(log(0.5), log(0.1)), .nll, method = "BFGS")$par
+    .fit <- .mod |> ini(tlam = log(0.5), eta.lam ~ 0.1)
+    .fit <- suppressMessages(.nlmixr(.fit, .d, est = "saem", saemControl(print = 0, seed = 1)))
+    expect_equal(unname(.fit$theta[["tlam"]]), .o[1], tolerance = 0.05)
+    expect_equal(unname(.fit$omega[1, 1]), exp(.o[2]), tolerance = 0.25)
+  })
+
   test_that("tte() endpoint data are checked", {
     .mod <- function() {
       ini({
