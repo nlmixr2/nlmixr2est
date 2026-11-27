@@ -87,9 +87,10 @@
   .lst <- ui$lstExpr
   .lst <- .lst[-.predDf$line]
   .defs <- list()
-  .cnt <- integer(0)
+  .acc <- new.env(parent = emptyenv())
+  .acc$cnt <- integer(0)
   .add <- function(v, n) {
-    .cnt[v] <<- ifelse(is.na(.cnt[v]), 0L, .cnt[v]) + n
+    .acc$cnt[v] <- ifelse(is.na(.acc$cnt[v]), 0L, .acc$cnt[v]) + n
   }
   for (.e in .lst) {
     .v <- .nlmeSimpleAssign(.e)
@@ -109,7 +110,7 @@
         if (.v %in% c(.thetaDf$name, .etas, .covs, "time", "t", "pi")) {
           next
         }
-        if (.v %in% names(.defs) && !(.v %in% .states) && isTRUE(.cnt[.v] == 1L)) {
+        if (.v %in% names(.defs) && !(.v %in% .states) && isTRUE(.acc$cnt[.v] == 1L)) {
           .sub[[.v]] <- call("(", .defs[[.v]])
           chain <- c(chain, .v)
         } else {
