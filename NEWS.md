@@ -113,7 +113,12 @@
   column per eta) that `rxSolve(fit, params = , nStud = n)` takes to simulate
   each subject with its own uncertainty.  `method = "laplace"` draws from the
   normal at each subject's mode with the inverse inner Hessian;
-  `method = "imp"` resamples `addCondDist()`'s importance samples (#1410).
+  `method = "mcmc"` runs a Metropolis-Hastings chain per subject on the
+  exact joint density, with that normal as its proposal; `method = "imp"`
+  resamples `addCondDist()`'s importance samples; `method = "fit"` reuses a
+  SAEM fit's chains or an emvi fit's variational posterior.  The default
+  `method = "auto"` reuses the fit's own draws when it holds enough, and
+  otherwise runs `"mcmc"` (#1410).
 - A `saem` fit with a theta that is not updated in closed form now notes which
   thetas the M-step updates in closed form, numerically (`nonMuTheta =
   "regress"`) or stochastically (`nonMuTheta = "eta"`); the note is kept in
