@@ -359,6 +359,9 @@
       .cfg$nonMuThetaMaxEval <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaMaxEval", 25L))
       .cfg$nonMuThetaTol <- as.numeric(rxode2::rxGetControl(ui, "nonMuThetaTol", .Machine$double.eps^0.25))
       .cfg$nonMuThetaEvery <- as.integer(rxode2::rxGetControl(ui, "nonMuThetaEvery", 1L))
+      .cfg$muNonCentered <- as.integer(isTRUE(rxode2::rxGetControl(ui, "muNonCentered", FALSE)))
+      .cfg$omegaNonCentered <- as.integer(isTRUE(rxode2::rxGetControl(ui, "omegaNonCentered", FALSE)))
+      .cfg$nonCenteredPhase <- as.integer(identical(rxode2::rxGetControl(ui, "nonCenteredPhase", "all"), "burnin"))
       # conditional-mode EBEs, computed in C++ after the last SAEM iteration
       .cfg$ebeMode <- as.integer(identical(rxode2::rxGetControl(ui, "ebe", "mode"), "mode"))
       .cfg$ebeMaxEval <- as.integer(rxode2::rxGetControl(ui, "ebeMaxEval", 200L))
@@ -371,6 +374,9 @@
       .cfg$phi1Hessian <- as.integer(isTRUE(rxode2::rxGetControl(ui, "phi1Hessian", FALSE)))
       # warm-start residual params from observed per-endpoint moments (npag-style)
       .cfg$residWarmStart <- as.integer(rxode2::rxGetControl(ui, "residWarmStart", TRUE))
+      .cfg$nu1B <- as.integer(rxode2::rxGetControl(ui, "nu1B", 0L))
+      .cfg$nb1B <- as.integer(rxode2::rxGetControl(ui, "nb1B", 10L))
+      .cfg$kappa1B <- as.numeric(rxode2::rxGetControl(ui, "kappa1B", 1))
       # mixProbMethod="regress": fix per-subject mixture membership (hard classify
       # once) instead of the soft-EM responsibility step.
       .cfg$mixProbRegress <- as.integer(identical(
@@ -378,6 +384,7 @@
         "regress"
       ))
       .cfg$cres <- ui$saemCres
+      .cfg <- .saemResIni(.cfg, ui)
       .cfg$yj <- ui$saemYj
       .cfg$lres <- ui$saemLres
       .cfg$low <- ui$saemLow
@@ -537,6 +544,24 @@
   cfg$residWarmStart <- 0L
   # a held run has nothing to converge
   cfg$plateauStop <- 0L
+  cfg
+}
+
+#' Start the additive/proportional residual at the ini() values
+#'
+#' `.configsaem()` only sets placeholders (`ares = 10`, `bres = 1`), zeroed where
+#' the error model lacks the component; those zeros and general-likelihood
+#' endpoints are left alone.  The kernel's residual warm-start clamps to [0.2x, 5x]
+#' of these values.
+#' @param cfg `.configsaem()` configuration
+#' @param ui rxode2 ui
+#' @return `cfg`
+#' @noRd
+.saemResIni <- function(cfg, ui) {
+  .w <- cfg$res.mod > 0L & cfg$ares != 0
+  cfg$ares[.w] <- ui$saemAres[.w]
+  .w <- cfg$res.mod > 0L & cfg$bres != 0
+  cfg$bres[.w] <- ui$saemBres[.w]
   cfg
 }
 

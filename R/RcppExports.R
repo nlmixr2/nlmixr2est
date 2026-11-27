@@ -707,6 +707,10 @@ saemPhi1RefineN_ <- function() {
     .Call(`_nlmixr2est_saemPhi1RefineN_`)
 }
 
+saemFsaveRefresh_ <- function() {
+    .Call(`_nlmixr2est_saemFsaveRefresh_`)
+}
+
 saemGainFrozenSkipN_ <- function() {
     .Call(`_nlmixr2est_saemGainFrozenSkipN_`)
 }

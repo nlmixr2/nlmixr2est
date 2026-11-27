@@ -47,6 +47,19 @@
 
 ## New features
 
+- `saemControl(muNonCentered = TRUE, omegaNonCentered = TRUE)` interweave
+  non-centered updates of the mu-referenced random effects into SAEM (Yu and
+  Meng 2011): after the M-step each free intercept-only mean is shifted, and
+  each estimated variance rescaled, with every subject's (standardized)
+  deviation held fixed, scored on the data likelihood by one BHHH step with
+  NONMEM's step-halving rule.  The ordinary update barely moves the mean or
+  variance of a random effect the individual data say little about; on
+  Bauer's gamma-distributed CL/V1 benchmark the steps took the
+  intercompartmental clearance from 0.85-0.88 to 0.74 (truth 0.74) and its
+  variance to within 10% of the truth.  Off by default: on well-informed models
+  they change nothing and cost model solves.  `nonCenteredPhase = "burnin"`
+  restricts them to burn-in.
+
 - `saemControl(etaMat=)` starts every SAEM MCMC chain at given etas: a prior
   fit's EBEs (`saemControl(etaMat = fit)`), a data frame with an `ID` column
   or a subject-by-eta matrix.  The default (`NULL`) keeps the random start
@@ -63,7 +76,9 @@
   etas at the final estimates of a fit from any estimation method and stores
   its mean and SD as `fit$condDist` (`keepSamples = TRUE` keeps the draws).
   By default it importance-samples around each subject's mode with the
-  population parameters held (#1378).
+  population parameters held (#1378).  `method = "saem"` uses the SAEM MCMC
+  instead: a SAEM fit's own last iterations when they are enough, otherwise
+  the kernels held at the fit's estimates; it is the default for SAEM fits.
 - `etaSamples(fit, n)` draws each subject's etas from their conditional
   distribution at a fit's estimates, as a long data frame (`ID`, `draw`, one
   column per eta) that `rxSolve(fit, params = , nStud = n)` takes to simulate
@@ -89,6 +104,12 @@
   fixed parameters then varies by about 2e-5 across warm-start ETAs (0.0054
   before on `pheno_sd`); the default is unchanged (#1152).
 
+- `saemControl(nu1B=)` adds NONMEM's proposal kernel mode 1B (`ISAMPLE_M1B`)
+  to SAEM's E-step: independence proposals from each subject's running
+  conditional mean and covariance of its random effects, which mixes much
+  faster when the posterior is narrow or correlated relative to `omega`.  Off
+  by default; `nb1B` (start iteration, default 10) and `kappa1B` (NONMEM's
+  `IKAPPA`) tune it, and `$saem$accept1B` reports its acceptance rate.
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
@@ -143,6 +164,10 @@
   (150) and `nBurnMax` (500).  `$runInfo` notes the burn-in length used and,
   at `nBurnMax`, the parameters still trending.  An integer `nBurn` is
   unchanged (#1401).
+- Estimation of an ODE model now warns (in `$runInfo`) when an uncensored
+  observation is within `1e3 * atol` of zero, where the ODE integration error
+  can be comparable to the data.  Disable with
+  `options(nlmixr2est.atolCheck = FALSE)` (#1392).
 - FOCEi model builds no longer optimize the `innerOeta` model, which only
   `nlmixr2extra::linearize()` reads; `ui$foceiInnerOeta` optimizes it on
   first use, caches it and adds the inner model's `param()`/`cmt()`/`mtime()`
@@ -231,6 +256,14 @@
   A fit whose Durbin-Watson statistic is below 1.5 or above 2.5 says so in
   `$runInfo`; `tableControl(iwresAutocor = FALSE)` turns the note off
   (#1373).
+
+- A SAEM fit now notes in `$runInfo` when its covariance was computed at an
+  estimate that is not stationary for the FOCEi objective: the Newton
+  decrement `0.5 * g' H^-1 g` (OFV units) of that objective at the estimate
+  exceeds `saemControl(covNewtonWarn = 1)`.  The value is kept as
+  `fit$covNewtonDecrement`; `NA` or `Inf` skips the check; models outside
+  the analytic gradient's scope (e.g. `linCmt()`) use central differences
+  (#1389).
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
@@ -361,6 +394,15 @@
 
 ### Estimation
 
+- `est="saem"` now re-solves its cached predictions after the M-step moves a
+  theta without an eta, so the next E-step no longer scores the current state
+  at the previous theta (non-mixture fits; mixtures already re-solved).
+- `est="saem"` now starts additive and proportional residual errors at their
+  `ini()` values instead of fixed placeholders (`10` and `1`), as the power and
+  lambda parameters already did.  The residual warm-start
+  (`saemControl(residWarmStart=TRUE)`) is now clamped around the `ini()` values,
+  and with `residWarmStart=FALSE` (or a mixture model) the first E-step samples
+  under the `ini()` residual error.
 - FOCEi: a `linCmt()` model with an `ll()` (or other generalized) endpoint
   and an eta on `f()` or `alag()` no longer gets a zero inner gradient for
   that eta, so its EBEs and objective now match the ODE form of the model
