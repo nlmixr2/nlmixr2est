@@ -522,6 +522,52 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
   return ret;
 }
 
+// The ids of the subjects whose decorrelation ended in `code`, comma
+// separated; returns their share of all subjects.
+static inline double npdeWarnIds(const arma::Col<int> &warn, int code,
+                                 std::string *ids) {
+  int n = 0;
+  for (unsigned int curid = 0; curid < warn.size(); ++curid) {
+    if (warn[curid] != code) continue;
+    if (n++ > 0) *ids += ", ";
+    *ids += rxGetId(curid);
+  }
+  return (double)n / (double)warn.size();
+}
+
+static void npdeReportWarnings(const arma::Col<int> &warn) {
+  std::string s;
+  double r = npdeWarnIds(warn, NPDE_CHOL_PINV, &s);
+  if (s != "") {
+    Rf_warningcall(R_NilValue, _("npde decorrelation used Cholesky pseudo-inverse for %.1f%%, id: %s"), r*100, s.c_str());
+  }
+  s.clear();
+  r = npdeWarnIds(warn, NPDE_DECORRELATE_EIGEN, &s);
+  if (s != "") {
+    Rf_warningcall(R_NilValue, _("npde decorrelation used Eigen-values for %.1f%%, id: %s"), r*100, s.c_str());
+  }
+  s.clear();
+  r = npdeWarnIds(warn, NPDE_DECORRELATE_EIGEN_PINV, &s);
+  if (s != "") {
+    Rf_warningcall(R_NilValue, _("npde decorrelation used Eigen-value pseudo-inverse for %.1f%%, id: %s"), r*100, s.c_str());
+  }
+  s.clear();
+  r = npdeWarnIds(warn, NPDE_CHOLSE, &s);
+  if (s != "") {
+    Rf_warningcall(R_NilValue, _("npde decorrelation used generalized Cholesky for %.1f%%, id: %s"), r*100, s.c_str());
+  }
+  s.clear();
+  r = npdeWarnIds(warn, NPDE_CHOLSE_PINV, &s);
+  if (s != "") {
+    Rf_warningcall(R_NilValue, _("npde decorrelation used generalized Cholesky pseudo inverse for %.1f%%, id: %s"), r*100, s.c_str());
+  }
+  s.clear();
+  r = npdeWarnIds(warn, NPDE_NPD, &s);
+  if (s != "") {
+    Rf_warningcall(R_NilValue, _("npde decorrelation failed (return normalized prediction discrepancies) for %.1f%% id: %s"), r*100, s.c_str());
+  }
+}
+
 extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt) {
   BEGIN_RCPP
   rxProtect rx_protect;
@@ -685,94 +731,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
       }
     });
   }
-  std::string sCholPinv = "";
-  int nCholPinv = 0;
-  std::string sEigen = "";
-  int nEigen = 0;
-  std::string sEigenPinv = "";
-  int nEigenPinv = 0;
-  std::string sCholSE = "";
-  int nCholSE = 0;
-  std::string sCholSEPinv = "";
-  int nCholSEPinv = 0;
-  std::string sPD = "";
-  int nPD = 0;
-  for (unsigned int curid = 0; curid < warn.size(); ++curid) {
-    switch(warn[curid]) {
-    case NPDE_CHOL_PINV:
-      if (sCholPinv == "") sCholPinv = rxGetId(curid);
-      else {
-        sCholPinv += ", ";
-        sCholPinv += rxGetId(curid);
-      }
-      nCholPinv++;
-      break;
-    case NPDE_DECORRELATE_EIGEN:
-      if (sEigen == "") sEigen = rxGetId(curid);
-      else {
-        sEigen += ", ";
-        sEigen += rxGetId(curid);
-      }
-      nEigen++;
-      break;
-    case NPDE_DECORRELATE_EIGEN_PINV:
-      if (sEigenPinv == "")  sEigenPinv =  rxGetId(curid);
-      else {
-        sEigenPinv += ", ";
-        sEigenPinv += rxGetId(curid);
-      }
-      nEigenPinv++;
-      break;
-    case NPDE_CHOLSE:
-      if (sCholSE == "") sCholSE = rxGetId(curid);
-      else {
-        sCholSE += ", ";
-        sCholSE += rxGetId(curid);
-      }
-      nCholSE++;
-      break;
-    case NPDE_CHOLSE_PINV:
-      if (sCholSEPinv == "") sCholSEPinv = rxGetId(curid);
-      else {
-        sCholSEPinv += ", ";
-        sCholSEPinv += rxGetId(curid);
-      }
-      nCholSEPinv++;
-      break;
-    case NPDE_NPD:
-      if (sPD == "") sPD = rxGetId(curid);
-      else {
-        sPD += ", ";
-        sPD += rxGetId(curid);
-      }
-      nPD++;
-      break;
-    }
-  }
-  double rCholPinv = (double)nCholPinv / (double)warn.size(),
-    rEigen = (double)nEigen / (double)warn.size(),
-    rEigenPinv = (double)nEigenPinv / (double)warn.size(),
-    rCholSE = (double)nCholSE / (double)warn.size(),
-    rCholSEPinv = (double)nCholSEPinv / (double)warn.size(),
-    rPD = (double)nPD / (double)warn.size();
-  if (sCholPinv != "") {
-    Rf_warningcall(R_NilValue, _("npde decorrelation used Cholesky pseudo-inverse for %.1f%%, id: %s"), rCholPinv*100, sCholPinv.c_str());
-  }
-  if (sEigen != "") {
-    Rf_warningcall(R_NilValue, _("npde decorrelation used Eigen-values for %.1f%%, id: %s"), rEigen*100, sEigen.c_str());
-  }
-  if (sEigenPinv != "") {
-    Rf_warningcall(R_NilValue, _("npde decorrelation used Eigen-value pseudo-inverse for %.1f%%, id: %s"), rEigenPinv*100, sEigenPinv.c_str());
-  }
-  if (sCholSE != "") {
-    Rf_warningcall(R_NilValue, _("npde decorrelation used generalized Cholesky for %.1f%%, id: %s"), rCholSE*100, sCholSE.c_str());
-  }
-  if (sCholSEPinv != "") {
-    Rf_warningcall(R_NilValue, _("npde decorrelation used generalized Cholesky pseudo inverse for %.1f%%, id: %s"), rCholSEPinv*100, sCholSEPinv.c_str());
-  }
-  if (sPD != "") {
-    Rf_warningcall(R_NilValue, _("npde decorrelation failed (return normalized prediction discrepancies) for %.1f%% id: %s"), rPD*100, sPD.c_str());
-  }
+  npdeReportWarnings(warn);
 
   List ret(7);
   // epred, eres, npde, dv
