@@ -91,12 +91,14 @@ bobyqaControl <- function(
   compress = FALSE,
   covMethod = c("r", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
   eventSens = c("jump", "fd"),
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 ) {
   checkmate::assertIntegerish(npt, null.ok = TRUE, any.missing = FALSE, lower = 2, len = 1)
   # bobyqa final trust-region radius from sigdig (FOCEi mechanism, matches
@@ -117,6 +119,7 @@ bobyqaControl <- function(
   checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
   checkmate::assertLogical(compress, len = 1, any.missing = TRUE)
   checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)
+  checkmate::assertNumber(aboveStartTol, lower = 0, na.ok = TRUE)
   eventSens <- match.arg(eventSens)
 
   .xtra <- list(...)
@@ -175,7 +178,9 @@ bobyqaControl <- function(
   checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
 
   .corWarnCheck(corWarn)
+  .condWarnCheck(condWarn)
   .ret <- list(
+    aboveStartTol = as.double(aboveStartTol),
     npt = npt,
     rhobeg = rhobeg,
     rhoend = rhoend,
@@ -207,6 +212,7 @@ bobyqaControl <- function(
     calcTables = calcTables,
     compress = compress,
     corWarn = corWarn,
+    condWarn = condWarn,
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,
