@@ -268,6 +268,170 @@ is.latex <- function() {
   ret
 }
 
+#' Probe each optimizer coordinate's curvature
+#'
+#' Fits a quadratic through `x` and two probes per coordinate, `h` either side
+#' or, when a bound is closer than `h/10`, two on the open side.
+#' @param fn objective
+#' @param x point
+#' @param fx objective at `x`
+#' @param h probe step, per coordinate or one for all
+#' @param lower,upper bounds
+#' @return list: `scale`, one marginal standard error per coordinate
+#'   (`sqrt(2/H_ii)` for a -2LL objective, `NA` without positive curvature),
+#'   `dec`, the decrease predicted by a Newton step kept inside the bounds (or,
+#'   without positive curvature, the decrease a probe found), `nEval`, and the
+#'   lowest probe `bestX` (`NULL` when none beat `fx`) with its `bestF`
+#' @noRd
+.bobyqaCurvature <- function(fn, x, fx, h, lower, upper) {
+  .np <- length(x)
+  h <- rep_len(h, .np)
+  lower <- rep_len(lower, .np)
+  upper <- rep_len(upper, .np)
+  .scale <- rep(NA_real_, .np)
+  .dec <- 0
+  .nEval <- 0L
+  .bestF <- fx
+  .bestX <- NULL
+  for (i in seq_len(.np)) {
+    .short <- h[i] / 10
+    .up <- min(h[i], upper[i] - x[i])
+    .dn <- min(h[i], x[i] - lower[i])
+    if (.up >= .short && .dn >= .short) {
+      .off <- c(.up, -.dn)
+    } else if (.up >= .short) {
+      .off <- min(h[i], (upper[i] - x[i]) / 2) * c(1, 2)
+    } else if (.dn >= .short) {
+      .off <- -min(h[i], (x[i] - lower[i]) / 2) * c(1, 2)
+    } else {
+      next
+    }
+    .f <- vapply(.off, function(o) fn(replace(x, i, x[i] + o)), double(1))
+    .nEval <- .nEval + 2L
+    # foceiOfv0() reports a failed evaluation as 5e100
+    .f[.f >= 1e100] <- NA_real_
+    .j <- which.min(.f)
+    if (length(.j) == 1L && .f[.j] < .bestF) {
+      .bestF <- .f[.j]
+      .bestX <- replace(x, i, x[i] + .off[.j])
+    }
+    .d <- .f - fx
+    .a <- .off[1]
+    .b <- .off[2]
+    .h <- 2 * (.d[1] * .b - .d[2] * .a) / (.a * .b * (.a - .b))
+    .g <- (.d[1] - .h * .a^2 / 2) / .a
+    .ok <- is.finite(.d)
+    .seen <- if (any(.ok)) max(0, -min(.d[.ok])) else 0
+    if (is.finite(.h) && .h > 0 && is.finite(.g)) {
+      .scale[i] <- sqrt(2 / .h)
+      .st <- min(max(-.g / .h, lower[i] - x[i]), upper[i] - x[i])
+      .dec <- .dec + max(-(.g * .st + .h * .st^2 / 2), .seen)
+    } else {
+      .dec <- .dec + .seen
+    }
+  }
+  list(scale = .scale, dec = .dec, nEval = .nEval, bestX = .bestX, bestF = .bestF)
+}
+
+#' Restart bobyqa on a scale adapted to the curvature where it stopped
+#'
+#' The starting scale comes from each parameter's initial estimate, and a
+#' poorly scaled parameter can leave bobyqa stopping far from the minimum
+#' (#1320).  After the search stops this measures each coordinate's
+#' curvature, rescales so one unit is one marginal standard error, and
+#' restarts bobyqa from the stopping point.  Restarts repeat until one gains
+#' less than `tol`, the predicted decrease is below `tol`, `maxLeg` is
+#' reached or the budget runs out.
+#' @inheritParams .bobyqaStationary
+#' @param maxLeg maximum number of rescaled restarts
+#' @return a `RcppTrust::bobyqa()`-shaped list with `nScaleAdapt` added
+#' @noRd
+.bobyqaAdapt <- function(fn, lower, upper, ctl, ret, tol, maxLeg, record = NULL, hold = NULL) {
+  .np <- length(ret$par)
+  .lower <- rep_len(lower, .np)
+  .upper <- rep_len(upper, .np)
+  .n <- 0L
+  .sLast <- rep(1, .np)
+  .was <- NULL
+  .release <- function() {
+    if (is.function(hold)) {
+      hold(FALSE)
+    }
+    if (!is.null(.was)) {
+      record(.was)
+    }
+  }
+  on.exit(.release(), add = TRUE)
+  while (.n < maxLeg && is.finite(ret$fval)) {
+    .left <- if (is.null(ctl$maxfun)) Inf else ctl$maxfun - ret$feval
+    if (.left <= 2L * .np + ctl$npt + 3L) {
+      break
+    }
+    if (is.function(record)) {
+      .was <- record(FALSE)
+    }
+    # the probes' centre, evaluated before the hold so the hold puts the
+    # inner state back at the point kept
+    .fx <- fn(ret$par)
+    if (is.function(hold)) {
+      hold(TRUE)
+    }
+    # probe half a trust radius in the scale of the last search
+    .c <- .bobyqaCurvature(fn, ret$par, .fx, .sLast * ctl$rhobeg / 2, .lower, .upper)
+    .release()
+    .c$nEval <- .c$nEval + 1L
+    ret$feval <- ret$feval + .c$nEval
+    if (.c$dec <= tol) {
+      break
+    }
+    .s <- .c$scale
+    .s[!is.finite(.s)] <- .sLast[!is.finite(.s)]
+    .s <- pmin(pmax(.s, 1e-3), 1e3)
+    # keep the box at least bobyqa's 2*rhobeg wide
+    .s <- pmin(.s, (.upper - .lower) / (2 * ctl$rhobeg))
+    .sLast <- .s
+    .x0 <- ret$par
+    .ctl2 <- ctl
+    if (!is.null(.ctl2$maxfun)) {
+      .ctl2$maxfun <- .left - .c$nEval
+    }
+    # what is left of the budget is often below bobyqa's advised 10*np^2
+    .r2 <- withCallingHandlers(
+      RcppTrust::bobyqa(
+        rep(0, .np),
+        function(z) fn(.x0 + .s * z),
+        control = .ctl2,
+        lower = (.lower - .x0) / .s,
+        upper = (.upper - .x0) / .s
+      ),
+      warning = function(w) {
+        if (grepl("maxfun < 10", conditionMessage(w), fixed = TRUE)) {
+          invokeRestart("muffleWarning")
+        }
+      }
+    )
+    .n <- .n + 1L
+    ret$feval <- ret$feval + .r2$feval
+    .gain <- ret$fval - .r2$fval
+    if (!is.null(.c$bestX) && .c$bestF < min(ret$fval, .r2$fval, na.rm = TRUE)) {
+      # a probe beat the restart
+      .gain <- ret$fval - .c$bestF
+      ret$par <- .c$bestX
+      ret$fval <- .c$bestF
+    } else if (is.finite(.r2$fval) && .gain > 0) {
+      ret$par <- pmin(pmax(.x0 + .s * .r2$par, .lower), .upper)
+      ret$fval <- .r2$fval
+      ret$ierr <- .r2$ierr
+      ret$msg <- .r2$msg
+    }
+    if (!isTRUE(.gain > tol)) {
+      break
+    }
+  }
+  ret$nScaleAdapt <- .n
+  ret
+}
+
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) {
@@ -289,6 +453,20 @@ is.latex <- function() {
       .ctl,
       .ret,
       tol = .tol,
+      record = control$outerRecord,
+      hold = control$outerHold
+    )
+  }
+  if (isTRUE(control$scaleAdapt > 0L) && !is.null(.ctl$rhobeg)) {
+    .tol <- if (is.null(control$sigdig)) 0.01 else 10^(1 - control$sigdig)
+    .ret <- .bobyqaAdapt(
+      fn,
+      lower,
+      upper,
+      .ctl,
+      .ret,
+      tol = .tol,
+      maxLeg = control$scaleAdapt,
       record = control$outerRecord,
       hold = control$outerHold
     )
@@ -2350,7 +2528,7 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 #' endpoint, identity DV transform only; a no-op otherwise.
 #' @noRd
 #' @author Matthew L. Fidler
-.rxFoceiArEtaCorrect <- function(.s, .grd) {
+.rxFoceiArEtaCorrect <- function(.s, .grd, extraF = NULL) {
   .vars <- ls(envir = .s)
   .arEp <- .vars[grepl("^rx_arEp_", .vars)]
   if (length(.arEp) != 1L || !exists("rx_pred_f_", envir = .s)) {
@@ -2381,6 +2559,7 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
       # chained through lagged calculated variables (#1176)
       .snBasic <- .lag$dfe(.s$rx_pred_f_, sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", .snNames[.n]))
     }
+    .snBasic <- .foceiAddExtraF(.snBasic, extraF, .snNames[.n])
     .snText[.n] <- .foceiLagTxt(.lag, .snBasic, .snNames[.n])
   }
   assign("..arEtaSens", paste0(.snNames, "=", .snText), envir = .s)
@@ -2409,7 +2588,7 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 #'   `character(0)` when the model has no `rx_pred_f_`
 #' @noRd
 #' @author Matthew L. Fidler
-.foceiPredFEtaSens <- function(.s, .grd) {
+.foceiPredFEtaSens <- function(.s, .grd, extraF = NULL) {
   # An AR(1) endpoint already emits these exact names (..arEtaSens, real lhs
   # ahead of rx_pred_), so never emit them twice.
   if (!.foceiCensLlikOn(.s) || !is.null(.s$..arEtaSens)) {
@@ -2426,9 +2605,25 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
     } else {
       .basic <- .lag$dfe(get("rx_pred_f_", envir = .s), sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", .nms[.n]))
     }
+    .basic <- .foceiAddExtraF(.basic, extraF, .nms[.n])
     .txt[.n] <- .foceiLagTxt(.lag, .basic, .nms[.n])
   }
   paste0(.nms, "=", .txt)
+}
+
+#' Add the linCmt() alag()/f() correction to a d(rx_pred_f_)/d(eta) row
+#'
+#' @param basic symengine d(rx_pred_f_)/d(eta_n)
+#' @param extraF named list from `.rxFoceiLinCmtEventPredFExtra()`, or NULL
+#' @param nm the row's `rx__sens_rx_pred_f__BY_ETA_n___` name
+#' @return `basic` plus the eta's correction, if any
+#' @noRd
+.foceiAddExtraF <- function(basic, extraF, nm) {
+  if (is.null(extraF)) {
+    return(basic)
+  }
+  .e <- extraF[[sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", nm)]]
+  if (is.null(.e)) basic else basic + .e
 }
 
 #' @export
@@ -2452,13 +2647,19 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   # AR(1) exact eta-gradient: all symbolic work BEFORE the main apply (which
   # poisons later get()/[[ for AR endpoints).  Returns the per-eta correction
   # text (a plain vector) and stores ..arEtaSens on .s.
+  # linCmt() alag()/f() moving-boundary correction (#920), also chained into
+  # the structural d(rx_pred_f_)/d(eta) rows the AR(1) and censored-llik
+  # corrections emit; pure symengine, so before anything renders.
+  .linCmtEtaVars <- paste0("ETA_", seq_len(.s$..maxEta), "_")
+  .linCmtExtraPred <- .rxFoceiLinCmtEventPredExtra(x, .s, .linCmtEtaVars)
+  .linCmtExtraF <- .rxFoceiLinCmtEventPredFExtra(.s, .linCmtExtraPred)
   .arCorr <- NULL
   if (isTRUE(rxode2::rxHasAr(x[[1]]))) {
-    .arCorr <- .rxFoceiArEtaCorrect(.s, .grd)
+    .arCorr <- .rxFoceiArEtaCorrect(.s, .grd, .linCmtExtraF)
   }
   # M2/M3/M4 censoring for a llik-forced endpoint (#992) needs the STRUCTURAL
   # d(f)/d(eta) as well; same pre-apply ordering as the AR(1) correction.
-  .s$..predFEtaSens <- .foceiPredFEtaSens(.s, .grd)
+  .s$..predFEtaSens <- .foceiPredFEtaSens(.s, .grd, .linCmtExtraF)
   rxode2::rxProgress(dim(.grd)[1])
   # The bar is closed on any exit that did not stop it, without the abort's
   # own error, so the caller gets the error that ended the loop or the one
@@ -2474,9 +2675,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   # linCmt() alag()/f() moving-boundary correction (#920): computed once, then
   # folded into each row's assigned value BELOW the zero-check so a model
   # whose ETA drives ONLY the lag/F (no structural p1/v1/ka/... dependency)
-  # is not misreported as "does not depend on ETA".
-  .linCmtEtaVars <- paste0("ETA_", seq_len(.s$..maxEta), "_")
-  .linCmtExtraPred <- .rxFoceiLinCmtEventPredExtra(x, .s, .linCmtEtaVars)
+  # is not misreported as "does not depend on ETA" (computed above).
   # linCmt() sensitivity carry (time-varying covariate on a linCmt()
   # parameter, phase 3b.3): for a carry-eligible (slot, eta) pair the naive
   # symengine line below is replaced wholesale by the carry block; all other
@@ -3368,10 +3567,14 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # SEPARATE rxFromSE() call after the loop (once its rxFromSE() calls have
   # already run) errors on the poisoned env with "user function '[[' requires
   # 0 arguments" when rendering the cached extra terms.
+  # Chained through the linCmt() call itself (which rx_r_ embeds), not
+  # through rx_pred_: for an ll()/generalized endpoint rx_pred_ is a
+  # log-density around that call, which rx_r_ does not contain.
+  .linCmtExtraPredR <- .s$..linCmtExtraPred
   .linCmtExtraR <- .rxFoceiLinCmtEventChain(
     get("rx_r_", envir = .s),
-    get("rx_pred_", envir = .s),
-    .s$..linCmtExtraPred
+    if (is.null(attr(.linCmtExtraPredR, "call"))) get("rx_pred_", envir = .s) else attr(.linCmtExtraPredR, "call"),
+    if (is.null(attr(.linCmtExtraPredR, "callExtra"))) .linCmtExtraPredR else attr(.linCmtExtraPredR, "callExtra")
   )
   # linCmt() sensitivity carry (3b.3): rx_r_ embeds rx_pred_'s linCmtB()
   # call by value, so its naive d(rx_r_)/d(eta) rows inherit the same
@@ -4177,6 +4380,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
     if (.conditional) "conditionalInner1",
+    .ui$predDfFocei$distribution,
     all(is.na(.iniDf$neta1)),
     .combSens,
     .linCmtCarry,
@@ -5036,6 +5240,8 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   .thetaIni <- ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
   .zero <- nlmixr2global$nlmixr2EstEnv$zeroThetaScale
   .zeroIdx <- integer(0)
+  .nLinear <- 0L
+  .mixProbs <- tryCatch(ui$mixProbs, error = function(e) character(0))
   for (.k in seq_len(nrow(.thetaIni))) {
     .nt <- .thetaIni$ntheta[.k]
     if (.nt <= length(.scaleC) && is.na(.scaleC[.nt]) && !.thetaIni$fix[.k]) {
@@ -5046,15 +5252,22 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
         .zeroIdx <- c(.zeroIdx, as.integer(.nt))
         next
       }
+      # a mixture proportion is estimated as a log-odds, not linearly
+      .isMix <- .thetaIni$name[.k] %in% .mixProbs
       if (identical(.scLinear, "abs")) {
-        .scaleC[.nt] <- if (.init == 0) 1 else abs(.init)
+        # log-odds take the exp() thetas' 1
+        .scaleC[.nt] <- if (.isMix || .init == 0) 1 else abs(.init)
+        .nLinear <- .nLinear + !.isMix
         next
       }
       .raw <- if (.init == 0) Inf else 1 / abs(.init)
       .scaleC[.nt] <- .guardScaleC(.raw, .init, .scLo, .scHi)
+      .nLinear <- .nLinear + !.isMix
     }
   }
   env$scaleC <- .scaleC
+  # estimated thetas scaled by the linear rule (not the zero-theta one)
+  env$nLinearTheta <- .nLinear
   # thetas (1-based) whose start the C++ outer setup may move by one Newton step
   env$zeroThetaIdx <- .zeroIdx
 }
@@ -5290,6 +5503,10 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   env$xform <- .iterPrintXParFromUi(ui)
   .foceiSetupSkipCov(ui, env)
   env$control <- get("control", envir = ui)
+  if (length(env$control$scaleAdapt) == 1L && is.na(env$control$scaleAdapt)) {
+    # automatic: rescaled restarts only when a theta is linear (#1320)
+    env$control$scaleAdapt <- if (isTRUE(env$nLinearTheta > 0L)) 3L else 0L
+  }
   env$control$nF <- 0
   env$control$printTop <- TRUE
   env
@@ -5634,13 +5851,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   ## injection is compartment-count guarded, so the smaller pred model solved in
   ## the same loop skips it safely.  Reset on exit.
   .eventSens <- tryCatch(.ret$control$eventSens, error = function(e) "jump")
+  ## the model the C++ core registers as the inner slot: innerLlik when present
+  ## (an ll() fit), else inner.  Installing another model's shape under the inner
+  ## role lets the inner solves compact to a width its dydt overruns.
+  .esInner <- if (exists("model", .ret)) {
+    if (!is.null(.ret$model$innerLlik)) .ret$model$innerLlik else .ret$model$inner
+  }
   if (
     identical(.eventSens, "jump") &&
-      exists("model", .ret) &&
-      !is.null(.ret$model$inner)
+      !is.null(.esInner)
   ) {
     .esLoaded <- tryCatch(
-      rxode2::rxEventSensLoadModel(.ret$model$inner),
+      rxode2::rxEventSensLoadModel(.esInner),
       error = function(e) FALSE
     )
     .foceiEventSensWarn(.esLoaded, .ret$model, .eventSens)
@@ -5885,6 +6107,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   if (exists("est", envir = env)) {
     .control$est <- env$est
+  }
+  # est="laplace": evaluate Gaussian endpoints by their log-density (as
+  # `+ dnorm()` does) for the exact Laplace Hessian, like rxUiGet.nlmModel0
+  if (
+    type %in%
+      c("laplaceControl", "mlaplaceControl", "ilaplaceControl") &&
+      .control$innerHessian != "conditional" &&
+      .control$detHessian != "conditional"
+  ) {
+    .predDf <- .ui$predDf
+    .predDf$distribution[.predDf$distribution == "norm"] <- "dnorm"
+    assign(".predDfFocei", .predDf, envir = .ui)
   }
   if (
     inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
@@ -6512,9 +6746,11 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       silent = TRUE
     )
     if (inherits(.tmp, "try-error")) {
+      .tablesDroppedSet(.ret, TRUE)
       warning("error calculating tables, returning without table step", call. = FALSE)
     } else {
       .ret <- .tmp
+      .iwresShrinkWarn(.ret$shrink)
     }
   }
   assign("sessioninfo", .sessionInfo(), envir = .env)
@@ -6548,7 +6784,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         "evt",
         "penMap",
         "penTheta0",
-        "penEtaOrd"
+        "penEtaOrd",
+        "saemMstep"
       )) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }
