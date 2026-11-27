@@ -1253,6 +1253,19 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   .fit
 }
 
+#' Interaction for the recomputed objective (est="its" reports the one it was asked for)
+#'
+#' @param fit completed impmap-family fit
+#' @param env the fit's environment
+#' @return TRUE or FALSE
+#' @noRd
+.impmapRecomputeInteraction <- function(fit, env) {
+  if (!identical(env$method, "its")) {
+    return(TRUE)
+  }
+  !isFALSE(tryCatch(as.logical(fit$foceiControl$interaction), error = function(e) TRUE))
+}
+
 #' Publish the objective as a FOCEi evaluation at the converged estimates.
 #'
 #' The in-C++ finalize (`impMapPass` -> `foceiOuterFinal`) computes the individual
@@ -1288,12 +1301,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
     return(invisible(FALSE))
   }
   .sigdig <- tryCatch(fit$foceiControl$sigdig, error = function(e) NULL)
-  # est="its" reports the FOCE or FOCEi objective it was asked for
-  .inter <- TRUE
-  if (identical(.env$method, "its")) {
-    .inter <- tryCatch(as.logical(fit$foceiControl$interaction), error = function(e) TRUE)
-    if (!isTRUE(.inter) && !isFALSE(.inter)) .inter <- TRUE
-  }
+  .inter <- .impmapRecomputeInteraction(fit, .env)
   # A nested nlmixr2() calls .nlmixr2globalReset(), which clears nlmixr2global --
   # including the timing environment (dropping the outer fit's "other" timing
   # row).  Snapshot and restore the whole thing, plus the mu-referencing global.
