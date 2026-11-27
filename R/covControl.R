@@ -128,24 +128,36 @@ rxUiDeparse.rsControl <- function(object, var) {
 #'   iterations.  This changes the Monte Carlo path, so the covariance differs
 #'   from a cold start by Monte Carlo noise.  Other fits, and SAEM fits that
 #'   kept no chain history, always run \code{nBurn}/\code{nEm}.
+#' @param saCovAutoStop stop the covariance phase once the Louis information
+#'   is stationary, using \code{\link{saemControl}()}'s window test, so
+#'   \code{nSaCov} becomes a maximum
 #' @return \code{saControl} object
 #' @author Matt Fidler
 #' @seealso \code{\link{setCov}()}, \code{\link{saemControl}()}
 #' @examples
 #' saControl(nSaCov = 1000)
 #' @export
-saControl <- function(nBurn = 100L, nEm = 100L, nSaCov = 500L, seed = 99L, warmStart = TRUE) {
+saControl <- function(
+  nBurn = 100L,
+  nEm = 100L,
+  nSaCov = 500L,
+  seed = 99L,
+  warmStart = TRUE,
+  saCovAutoStop = TRUE
+) {
   checkmate::assertIntegerish(nBurn, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(nEm, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(nSaCov, lower = 1, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(seed, len = 1, any.missing = FALSE)
   checkmate::assertLogical(warmStart, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(saCovAutoStop, len = 1, any.missing = FALSE)
   .ret <- list(
     nBurn = as.integer(nBurn),
     nEm = as.integer(nEm),
     nSaCov = as.integer(nSaCov),
     seed = as.integer(seed),
-    warmStart = warmStart
+    warmStart = warmStart,
+    saCovAutoStop = saCovAutoStop
   )
   class(.ret) <- "saControl"
   .ret

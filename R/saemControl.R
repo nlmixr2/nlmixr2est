@@ -9,6 +9,30 @@
 #' @param nEm Number of iterations in the Expectation-Maximization
 #'     (EM) Step. This is equivalent to Monolix's \code{K_1}.
 #'
+#' @param autoStop Boolean (default `FALSE`); stop the EM phase early once the
+#'   parameter trajectory is stationary.  The window only sees EM iterations
+#'   (after `nBurn`, and after the non-mu variance annealing starts at half of
+#'   `nBurn + nEm`), so `nEm` becomes a maximum.  A `covMethod="sa"` covariance
+#'   phase still runs at the stopped estimate.  The stop is recorded in
+#'   `fit$saemAutoStop`.
+#'
+#' @param stopWindow Number of recent EM iterates `autoStop` compares; the
+#'   older half mean is compared with the newer half mean.
+#'
+#' @param stopConsecutive Number of consecutive stationary windows needed to
+#'   stop.
+#'
+#' @param saCovAutoStop Boolean (default `TRUE`); stop the `covMethod="sa"`
+#'   covariance phase early once the diagonal of its running Fisher information
+#'   passes the same window test (`stopWindow`, `stopConsecutive`, `stopRtol`,
+#'   `stopAtol`), so `nSaCov` becomes a maximum.  The stop is recorded in
+#'   `fit$saemSaCovStop`.
+#'
+#' @param stopRtol,stopAtol Relative and absolute drift tolerances.  A
+#'   parameter is stationary when its half-mean drift is at most
+#'   `max(stopAtol, stopRtol * max(1, |older mean|), 2 * mcse)`, where `mcse`
+#'   is the Monte-Carlo standard error of the drift estimated from the window.
+#'
 #' @param plateauStop When \code{TRUE}, end the EM phase early once every
 #'   estimated theta, omega and residual parameter has plateaued; the fit's
 #'   run information notes the stop iteration.  Default \code{FALSE}.
@@ -235,6 +259,11 @@
 #'
 #' In general, these covariates should be more accurate since it
 #' changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.
+#'
+#' It also fits a multiplicative 0/1 covariate effect,
+#' `exp(tcl + eta.cl) * (1 + clSex*SEX)`, as the equivalent mu-referenced
+#' `exp(tcl + eta.cl + log(1 + clSex)*SEX)` and reports `clSex` (mu5; every
+#' mu-referenced method).
 #'
 #' @param handleUninformativeEtas boolean that tells nlmixr2's saem to
 #'   calculate uninformative etas and handle them specially (default
@@ -473,6 +502,12 @@ saemControl <- function(
   seed = 99,
   nBurn = 200,
   nEm = 300,
+  autoStop = FALSE,
+  stopWindow = 50L,
+  stopConsecutive = 4L,
+  stopRtol = 1e-3,
+  stopAtol = 1e-4,
+  saCovAutoStop = TRUE,
   plateauStop = FALSE,
   plateauWindow = 50L,
   plateauTol = 1e-3,
@@ -552,7 +587,8 @@ saemControl <- function(
   ebeTol = NULL,
   etaMat = NULL,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 ) {
   # a modeled residual error with an eta raises an unset nu (see .saemAutoNu)
   .nuAuto <- missing(nu)
@@ -657,6 +693,12 @@ saemControl <- function(
   mixSampleMethod <- match.arg(mixSampleMethod)
   nonMuTheta <- match.arg(nonMuTheta)
   nonMuThetaOpt <- match.arg(nonMuThetaOpt)
+  checkmate::assertLogical(autoStop, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(saCovAutoStop, any.missing = FALSE, len = 1)
+  checkmate::assertIntegerish(stopWindow, any.missing = FALSE, len = 1, lower = 4)
+  checkmate::assertIntegerish(stopConsecutive, any.missing = FALSE, len = 1, lower = 1)
+  checkmate::assertNumeric(stopRtol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
+  checkmate::assertNumeric(stopAtol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
   checkmate::assertIntegerish(nonMuThetaSweeps, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertIntegerish(nonMuThetaMaxEval, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertNumeric(nonMuThetaTol, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
@@ -736,7 +778,6 @@ saemControl <- function(
     targets = c("sa", "fim", "linFim", "Ha")
   )
   checkmate::assertLogical(covFull, len = 1, any.missing = FALSE)
-  checkmate::assertNumber(covNewtonWarn, lower = 0, na.ok = TRUE)
 
   # censOption: FOCEI-family censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic
   # Gauss-Newton, default) or "laplace" (exact).  Accepted for a uniform interface but INERT for
@@ -747,6 +788,7 @@ saemControl <- function(
     censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
   }
   .corWarnCheck(corWarn)
+  .condWarnCheck(condWarn)
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto, rmcmc = rmcmc),
     plateauStop = plateauStop,
@@ -755,6 +797,12 @@ saemControl <- function(
     plateauMinFrac = plateauMinFrac,
     rxControl = rxControl,
     seed = seed,
+    autoStop = autoStop,
+    stopWindow = as.integer(stopWindow),
+    stopConsecutive = as.integer(stopConsecutive),
+    stopRtol = stopRtol,
+    stopAtol = stopAtol,
+    saCovAutoStop = saCovAutoStop,
     mcmcAcceptWarn = mcmcAcceptWarn,
     censOption = censOption,
     iterPrintControl = .iterPrintControl,
@@ -781,6 +829,7 @@ saemControl <- function(
     perFixResid = perFixResid,
     compress = compress,
     corWarn = corWarn,
+    condWarn = condWarn,
     genRxControl = .genRxControl,
     sigdigTable = sigdigTable,
     shrinkEtaWarn = as.double(shrinkEtaWarn),
@@ -789,7 +838,7 @@ saemControl <- function(
     covMethodDeferred = covMethodDeferred,
     covFallback = covFallback,
     covFull = covFull,
-    covNewtonWarn = as.double(covNewtonWarn),
+    covNewtonWarn = .covNewtonWarnArg(covNewtonWarn),
     nSaCov = as.integer(nSaCov),
     logLik = logLik,
     calcTables = calcTables,
