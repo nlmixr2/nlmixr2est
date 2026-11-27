@@ -87,6 +87,9 @@
   keeps the draws). By default it importance-samples around each
   subject’s mode with the population parameters held
   ([\#1378](https://github.com/nlmixr2/nlmixr2est/issues/1378)).
+  `method = "saem"` uses the SAEM MCMC instead: a SAEM fit’s own last
+  iterations when they are enough, otherwise the kernels held at the
+  fit’s estimates; it is the default for SAEM fits.
 
 - `etaSamples(fit, n)` draws each subject’s etas from their conditional
   distribution at a fit’s estimates, as a long data frame (`ID`, `draw`,

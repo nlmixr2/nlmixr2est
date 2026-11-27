@@ -55,9 +55,10 @@ fit from any mixed-effects estimation method.</p>
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">addCondDist</span><span class="op">(</span></span>
 <span>  <span class="va">fit</span>,</span>
-<span>  method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"imp"</span><span class="op">)</span>,</span>
+<span>  method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"imp"</span>, <span class="st">"saem"</span><span class="op">)</span>,</span>
 <span>  nsamp <span class="op">=</span> <span class="fl">300L</span>,</span>
 <span>  keepSamples <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  burn <span class="op">=</span> <span class="fl">50L</span>,</span>
 <span>  seed <span class="op">=</span> <span class="fl">42L</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -71,7 +72,8 @@ fit from any mixed-effects estimation method.</p>
 
 
 <dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
-<dd><p>`"auto"` (default) or `"imp"`: the sampler</p></dd>
+<dd><p>the sampler: `"auto"` (default) is `"saem"` for a SAEM fit
+and `"imp"` otherwise</p></dd>
 
 
 <dt id="arg-nsamp">nsamp<a class="anchor" aria-label="anchor" href="#arg-nsamp"></a></dt>
@@ -84,6 +86,10 @@ draws per subject as the `"samples"` attribute of `fit$condDist`, an
 `ID x eta x draw` array</p></dd>
 
 
+<dt id="arg-burn">burn<a class="anchor" aria-label="anchor" href="#arg-burn"></a></dt>
+<dd><p>MCMC iterations discarded by a held `"saem"` run (default 50)</p></dd>
+
+
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
 <dd><p>random seed of the sampler</p></dd>
 
@@ -91,8 +97,9 @@ draws per subject as the `"samples"` attribute of `fit$condDist`, an
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>the fit, with `fit$condDist`: a data frame `ID`, `ETA`, `MEAN`,
-  `SD`.  Its `"method"` attribute names the sampler and its `"ess"`
-  attribute holds each subject's effective sample size.</p>
+  `SD`.  Its `"method"` attribute names the sampler (`"imp"`, `"saem"`
+  for a SAEM fit's own chains or `"mcmc"` for a held SAEM run) and, for
+  `"imp"`, its `"ess"` attribute holds each subject's effective sample size.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
@@ -101,6 +108,19 @@ subject's mode, holding every population parameter at the fit's estimate
 (the frozen `est = "imp"` E-step), and weights them by the posterior.
 Mixture, IOV, non-parametric and repeated (`same()`) Omega block fits are
 not supported.</p>
+<p>`method = "saem"` uses the SAEM MCMC kernels.  For a SAEM fit, the chains of
+its own last iterations are the draws when they are enough (`nsamp` draws
+from `nmc` chains, within the last half of the second-phase iterations,
+where the parameters have nearly settled), so nothing is simulated;
+otherwise the kernels run with every population parameter held
+at the fit's estimates, continuing a SAEM fit's chains or, for any other
+fit, starting cold, and `burn` iterations are discarded; it needs a model
+SAEM can fit (every eta on a population parameter of its own).  An eta SAEM does
+not sample for a subject (uninformative) has `SD` `NA` and `MEAN` 0, its
+prior, as in `fit$eta`; that is exact when the eta is uncorrelated with the
+others.  A model SAEM fits with temporary etas (a likelihood parameter with
+no eta) is sampled with `"imp"`, since those chains also sampled parameters
+the reported model holds fixed.</p>
     </div>
     <div class="section level2">
     <h2 id="author">Author<a class="anchor" aria-label="anchor" href="#author"></a></h2>
