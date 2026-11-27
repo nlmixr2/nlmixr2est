@@ -19,10 +19,20 @@ nmTest({
     }
     .fit <- function(on, phase = "all") {
       suppressMessages(suppressWarnings(nlmixr2(
-        one.cmt, theo_sd, "saem",
-        saemControl(nBurn = 20, nEm = 20, seed = 7, print = 0,
-                    muNonCentered = on, omegaNonCentered = on, nonCenteredPhase = phase,
-                    covMethod = "", calcTables = FALSE)
+        one.cmt,
+        theo_sd,
+        "saem",
+        saemControl(
+          nBurn = 20,
+          nEm = 20,
+          seed = 7,
+          print = 0,
+          muNonCentered = on,
+          omegaNonCentered = on,
+          nonCenteredPhase = phase,
+          covMethod = "",
+          calcTables = FALSE
+        )
       )))
     }
     f1 <- .fit(TRUE)
