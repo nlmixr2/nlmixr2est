@@ -56,7 +56,14 @@ rather than a new one.</p>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">etaSamples</span><span class="op">(</span><span class="va">fit</span>, n <span class="op">=</span> <span class="fl">500L</span>, method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"laplace"</span>, <span class="st">"imp"</span><span class="op">)</span>, seed <span class="op">=</span> <span class="fl">42L</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">etaSamples</span><span class="op">(</span></span>
+<span>  <span class="va">fit</span>,</span>
+<span>  n <span class="op">=</span> <span class="fl">500L</span>,</span>
+<span>  method <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"fit"</span>, <span class="st">"laplace"</span>, <span class="st">"mcmc"</span>, <span class="st">"imp"</span><span class="op">)</span>,</span>
+<span>  seed <span class="op">=</span> <span class="fl">42L</span>,</span>
+<span>  nBurn <span class="op">=</span> <span class="fl">200L</span>,</span>
+<span>  thin <span class="op">=</span> <span class="fl">1L</span></span>
+<span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -72,12 +79,20 @@ rather than a new one.</p>
 
 
 <dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
-<dd><p>sampler: `"auto"`, `"laplace"` or `"imp"`</p></dd>
+<dd><p>sampler: `"auto"`, `"fit"`, `"laplace"`, `"mcmc"` or `"imp"`</p></dd>
 
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
 <dd><p>random seed; the same seed gives the same draws whatever the
 number of cores</p></dd>
+
+
+<dt id="arg-nburn">nBurn<a class="anchor" aria-label="anchor" href="#arg-nburn"></a></dt>
+<dd><p>`"mcmc"` burn-in iterations, discarded</p></dd>
+
+
+<dt id="arg-thin">thin<a class="anchor" aria-label="anchor" href="#arg-thin"></a></dt>
+<dd><p>`"mcmc"` iterations per kept draw</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -86,7 +101,9 @@ number of cores</p></dd>
   ordered by `draw` then `ID`.  Passed as `params` to
   `rxode2::rxSolve(fit, params = draws, nStud = n, simVariability = FALSE)`
   it simulates each subject once per draw (`sim.id` is the draw).  Its
-  `"method"` attribute names the sampler.</p>
+  `"method"` attribute names the sampler (`"saem"` or `"vi"` for
+  `method = "fit"`); `"mcmc"` adds each subject's
+  acceptance rate as the `"acceptance"` attribute.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
@@ -94,8 +111,15 @@ number of cores</p></dd>
 conditional mode with the inverse of the inner Hessian (`fit$phiC`) as its
 covariance.  A fit whose etas are not conditional modes (for example SAEM
 or emvi) gets both from a posthoc FOCEi step at its estimates.
+`method = "mcmc"` runs a random-walk Metropolis-Hastings chain per subject
+on the exact joint density `log p(y_i, eta_i)` ([foceiLikRun()]), started
+at the mode with the Laplace covariance as its proposal; its scale adapts
+during the `nBurn` burn-in iterations only.  It needs no normal posterior.
 `method = "imp"` resamples the importance samples of [addCondDist()].
-`method = "auto"` is `"laplace"`.</p>
+`method = "fit"` reuses the draws the estimation method already holds: a
+SAEM fit's MCMC chains over the last half of its `nEm` iterations, or an
+emvi fit's variational posterior.  `method = "auto"` is `"fit"` when the
+fit holds at least `n` such draws per subject, and `"mcmc"` otherwise.</p>
 <p>Mixture, IOV and non-parametric fits are
 not supported, nor is an Omega that is not positive definite.</p>
     </div>
@@ -141,18 +165,18 @@ not supported, nor is an Omega that is not positive definite.</p>
 <span class="r-in"><span><span class="co"># each subject's conditional SD of eta.cl</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/stats/aggregate.html" class="external-link">aggregate</a></span><span class="op">(</span><span class="va">eta.cl</span> <span class="op">~</span> <span class="va">ID</span>, <span class="va">smp</span>, <span class="va">sd</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>    ID     eta.cl</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1   1 0.10299118</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2   2 0.10098505</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 3   3 0.10004002</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 4   4 0.10274447</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 5   5 0.09410539</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 6   6 0.11230115</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 7   7 0.10968900</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 8   8 0.08755851</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 9   9 0.09963759</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 10 10 0.11082492</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 11 11 0.10010616</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 12 12 0.09257853</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1   1 0.08786912</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2   2 0.09161151</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3   3 0.07748157</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 4   4 0.09238542</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5   5 0.06008278</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 6   6 0.10742071</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 7   7 0.08781753</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 8   8 0.09971051</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 9   9 0.10386666</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 10 10 0.05661190</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 11 11 0.10793120</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 12 12 0.09394971</span>
 <span class="r-in"><span><span class="co"># simulate each subject with its own uncertainty</span></span></span>
 <span class="r-in"><span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu">rxode2</span><span class="fu">::</span><span class="fu"><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxSolve</a></span><span class="op">(</span><span class="va">fit</span>, params <span class="op">=</span> <span class="va">smp</span>, nStud <span class="op">=</span> <span class="fl">100</span>, simVariability <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>

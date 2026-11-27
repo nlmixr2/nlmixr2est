@@ -9,7 +9,14 @@ that subject rather than a new one.
 ## Usage
 
 ``` r
-etaSamples(fit, n = 500L, method = c("auto", "laplace", "imp"), seed = 42L)
+etaSamples(
+  fit,
+  n = 500L,
+  method = c("auto", "fit", "laplace", "mcmc", "imp"),
+  seed = 42L,
+  nBurn = 200L,
+  thin = 1L
+)
 ```
 
 ## Arguments
@@ -24,12 +31,20 @@ etaSamples(fit, n = 500L, method = c("auto", "laplace", "imp"), seed = 42L)
 
 - method:
 
-  sampler: \`"auto"\`, \`"laplace"\` or \`"imp"\`
+  sampler: \`"auto"\`, \`"fit"\`, \`"laplace"\`, \`"mcmc"\` or \`"imp"\`
 
 - seed:
 
   random seed; the same seed gives the same draws whatever the number of
   cores
+
+- nBurn:
+
+  \`"mcmc"\` burn-in iterations, discarded
+
+- thin:
+
+  \`"mcmc"\` iterations per kept draw
 
 ## Value
 
@@ -37,7 +52,9 @@ a data frame with columns \`ID\`, \`draw\` and one column per eta,
 ordered by \`draw\` then \`ID\`. Passed as \`params\` to
 \`rxode2::rxSolve(fit, params = draws, nStud = n, simVariability =
 FALSE)\` it simulates each subject once per draw (\`sim.id\` is the
-draw). Its \`"method"\` attribute names the sampler.
+draw). Its \`"method"\` attribute names the sampler (\`"saem"\` or
+\`"vi"\` for \`method = "fit"\`); \`"mcmc"\` adds each subject's
+acceptance rate as the \`"acceptance"\` attribute.
 
 ## Details
 
@@ -45,8 +62,16 @@ draw). Its \`"method"\` attribute names the sampler.
 conditional mode with the inverse of the inner Hessian (\`fit\$phiC\`)
 as its covariance. A fit whose etas are not conditional modes (for
 example SAEM or emvi) gets both from a posthoc FOCEi step at its
-estimates. \`method = "imp"\` resamples the importance samples of
-\[addCondDist()\]. \`method = "auto"\` is \`"laplace"\`.
+estimates. \`method = "mcmc"\` runs a random-walk Metropolis-Hastings
+chain per subject on the exact joint density \`log p(y_i, eta_i)\`
+(\[foceiLikRun()\]), started at the mode with the Laplace covariance as
+its proposal; its scale adapts during the \`nBurn\` burn-in iterations
+only. It needs no normal posterior. \`method = "imp"\` resamples the
+importance samples of \[addCondDist()\]. \`method = "fit"\` reuses the
+draws the estimation method already holds: a SAEM fit's MCMC chains over
+the last half of its \`nEm\` iterations, or an emvi fit's variational
+posterior. \`method = "auto"\` is \`"fit"\` when the fit holds at least
+\`n\` such draws per subject, and \`"mcmc"\` otherwise.
 
 Mixture, IOV and non-parametric fits are not supported, nor is an Omega
 that is not positive definite.
@@ -93,18 +118,18 @@ smp <- etaSamples(fit, n = 100)
 # each subject's conditional SD of eta.cl
 aggregate(eta.cl ~ ID, smp, sd)
 #>    ID     eta.cl
-#> 1   1 0.10299118
-#> 2   2 0.10098505
-#> 3   3 0.10004002
-#> 4   4 0.10274447
-#> 5   5 0.09410539
-#> 6   6 0.11230115
-#> 7   7 0.10968900
-#> 8   8 0.08755851
-#> 9   9 0.09963759
-#> 10 10 0.11082492
-#> 11 11 0.10010616
-#> 12 12 0.09257853
+#> 1   1 0.08786912
+#> 2   2 0.09161151
+#> 3   3 0.07748157
+#> 4   4 0.09238542
+#> 5   5 0.06008278
+#> 6   6 0.10742071
+#> 7   7 0.08781753
+#> 8   8 0.09971051
+#> 9   9 0.10386666
+#> 10 10 0.05661190
+#> 11 11 0.10793120
+#> 12 12 0.09394971
 # simulate each subject with its own uncertainty
 s <- rxode2::rxSolve(fit, params = smp, nStud = 100, simVariability = FALSE)
 #>  
