@@ -42,64 +42,22 @@
   }
   .predDf <- ui$predDf
   .tteOptions <- utils::getFromNamespace(".rxTteOptions", "rxode2")
-  .nms <- tolower(names(data))
-  .col <- function(.n) {
-    .w <- which(.nms == .n)
-    if (length(.w) == 0L) {
-      NULL
-    } else {
-      data[[.w[1]]]
-    }
-  }
-  .id <- .col("id")
+  .id <- .nlmixrDataCol(data, "id")
   if (is.null(.id)) {
     .id <- rep(1L, nrow(data))
   }
-  .dv <- .col("dv")
-  .time <- .col("time")
-  .evid <- .col("evid")
-  .mdv <- .col("mdv")
-  .amt <- .col("amt")
-  # observation rows, as etTrans() reads them: EVID, else MDV, else AMT
-  .obs <- if (!is.null(.evid)) {
-    .evid %in% 0
-  } else if (!is.null(.mdv)) {
-    .mdv %in% 0
-  } else if (!is.null(.amt)) {
-    is.na(.amt) | .amt == 0
-  } else {
-    rep(TRUE, nrow(data))
-  }
-  .cmt <- .col("cmt")
-  .dvid <- .col("dvid")
-  .multi <- nrow(.predDf) > 1L
-  if (.multi && is.null(.cmt) && is.null(.dvid)) {
+  .dv <- .nlmixrDataCol(data, "dv")
+  .time <- .nlmixrDataCol(data, "time")
+  if (nrow(.predDf) > 1L && is.null(.nlmixrDataCol(data, "cmt")) && is.null(.nlmixrDataCol(data, "dvid"))) {
     stop(
       "a tte() endpoint beside other endpoints requires a 'cmt' or 'dvid' column",
       call. = FALSE
     )
   }
-  .match1 <- function(.x, .pred1, .num) {
-    if (is.character(.x) || is.factor(.x)) {
-      !is.na(.x) & as.character(.x) == .pred1$cond
-    } else {
-      !is.na(.x) & .x == .num
-    }
-  }
+  .obs <- .nlmixrDataObsRows(data)
   for (.i in which(.predDf$distribution == "tte")) {
     .pred1 <- .predDf[.i, ]
-    .is <- .obs
-    # a single endpoint scores every observation, whatever its cmt
-    if (.multi) {
-      .m <- rep(FALSE, nrow(data))
-      if (!is.null(.dvid)) {
-        .m <- .match1(.dvid, .pred1, .pred1$dvid)
-      }
-      if (!is.null(.cmt)) {
-        .m <- .m | .match1(.cmt, .pred1, .pred1$cmt)
-      }
-      .is <- .is & .m
-    }
+    .is <- .nlmixrDataEndpointRows(data, .predDf, .i, .obs)
     .v <- .dv[.is]
     if (any(is.na(.v) | !(.v %in% c(0, 1)))) {
       stop(

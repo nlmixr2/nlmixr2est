@@ -2528,7 +2528,7 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 #' endpoint, identity DV transform only; a no-op otherwise.
 #' @noRd
 #' @author Matthew L. Fidler
-.rxFoceiArEtaCorrect <- function(.s, .grd) {
+.rxFoceiArEtaCorrect <- function(.s, .grd, extraF = NULL) {
   .vars <- ls(envir = .s)
   .arEp <- .vars[grepl("^rx_arEp_", .vars)]
   if (length(.arEp) != 1L || !exists("rx_pred_f_", envir = .s)) {
@@ -2559,6 +2559,7 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
       # chained through lagged calculated variables (#1176)
       .snBasic <- .lag$dfe(.s$rx_pred_f_, sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", .snNames[.n]))
     }
+    .snBasic <- .foceiAddExtraF(.snBasic, extraF, .snNames[.n])
     .snText[.n] <- .foceiLagTxt(.lag, .snBasic, .snNames[.n])
   }
   assign("..arEtaSens", paste0(.snNames, "=", .snText), envir = .s)
@@ -2587,7 +2588,7 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 #'   `character(0)` when the model has no `rx_pred_f_`
 #' @noRd
 #' @author Matthew L. Fidler
-.foceiPredFEtaSens <- function(.s, .grd) {
+.foceiPredFEtaSens <- function(.s, .grd, extraF = NULL) {
   # An AR(1) endpoint already emits these exact names (..arEtaSens, real lhs
   # ahead of rx_pred_), so never emit them twice.
   if (!.foceiCensLlikOn(.s) || !is.null(.s$..arEtaSens)) {
@@ -2604,9 +2605,25 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
     } else {
       .basic <- .lag$dfe(get("rx_pred_f_", envir = .s), sub("^.*_BY_(ETA_[0-9]+_)__$", "\\1", .nms[.n]))
     }
+    .basic <- .foceiAddExtraF(.basic, extraF, .nms[.n])
     .txt[.n] <- .foceiLagTxt(.lag, .basic, .nms[.n])
   }
   paste0(.nms, "=", .txt)
+}
+
+#' Add the linCmt() alag()/f() correction to a d(rx_pred_f_)/d(eta) row
+#'
+#' @param basic symengine d(rx_pred_f_)/d(eta_n)
+#' @param extraF named list from `.rxFoceiLinCmtEventPredFExtra()`, or NULL
+#' @param nm the row's `rx__sens_rx_pred_f__BY_ETA_n___` name
+#' @return `basic` plus the eta's correction, if any
+#' @noRd
+.foceiAddExtraF <- function(basic, extraF, nm) {
+  if (is.null(extraF)) {
+    return(basic)
+  }
+  .e <- extraF[[sub("^.*_BY_(ETA_[0-9]+)___$", "\\1_", nm)]]
+  if (is.null(.e)) basic else basic + .e
 }
 
 #' @export
@@ -2630,13 +2647,19 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   # AR(1) exact eta-gradient: all symbolic work BEFORE the main apply (which
   # poisons later get()/[[ for AR endpoints).  Returns the per-eta correction
   # text (a plain vector) and stores ..arEtaSens on .s.
+  # linCmt() alag()/f() moving-boundary correction (#920), also chained into
+  # the structural d(rx_pred_f_)/d(eta) rows the AR(1) and censored-llik
+  # corrections emit; pure symengine, so before anything renders.
+  .linCmtEtaVars <- paste0("ETA_", seq_len(.s$..maxEta), "_")
+  .linCmtExtraPred <- .rxFoceiLinCmtEventPredExtra(x, .s, .linCmtEtaVars)
+  .linCmtExtraF <- .rxFoceiLinCmtEventPredFExtra(.s, .linCmtExtraPred)
   .arCorr <- NULL
   if (isTRUE(rxode2::rxHasAr(x[[1]]))) {
-    .arCorr <- .rxFoceiArEtaCorrect(.s, .grd)
+    .arCorr <- .rxFoceiArEtaCorrect(.s, .grd, .linCmtExtraF)
   }
   # M2/M3/M4 censoring for a llik-forced endpoint (#992) needs the STRUCTURAL
   # d(f)/d(eta) as well; same pre-apply ordering as the AR(1) correction.
-  .s$..predFEtaSens <- .foceiPredFEtaSens(.s, .grd)
+  .s$..predFEtaSens <- .foceiPredFEtaSens(.s, .grd, .linCmtExtraF)
   rxode2::rxProgress(dim(.grd)[1])
   # The bar is closed on any exit that did not stop it, without the abort's
   # own error, so the caller gets the error that ended the loop or the one
@@ -2652,9 +2675,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   # linCmt() alag()/f() moving-boundary correction (#920): computed once, then
   # folded into each row's assigned value BELOW the zero-check so a model
   # whose ETA drives ONLY the lag/F (no structural p1/v1/ka/... dependency)
-  # is not misreported as "does not depend on ETA".
-  .linCmtEtaVars <- paste0("ETA_", seq_len(.s$..maxEta), "_")
-  .linCmtExtraPred <- .rxFoceiLinCmtEventPredExtra(x, .s, .linCmtEtaVars)
+  # is not misreported as "does not depend on ETA" (computed above).
   # linCmt() sensitivity carry (time-varying covariate on a linCmt()
   # parameter, phase 3b.3): for a carry-eligible (slot, eta) pair the naive
   # symengine line below is replaced wholesale by the carry block; all other
@@ -3265,10 +3286,14 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   # SEPARATE rxFromSE() call after the loop (once its rxFromSE() calls have
   # already run) errors on the poisoned env with "user function '[[' requires
   # 0 arguments" when rendering the cached extra terms.
+  # Chained through the linCmt() call itself (which rx_r_ embeds), not
+  # through rx_pred_: for an ll()/generalized endpoint rx_pred_ is a
+  # log-density around that call, which rx_r_ does not contain.
+  .linCmtExtraPredR <- .s$..linCmtExtraPred
   .linCmtExtraR <- .rxFoceiLinCmtEventChain(
     get("rx_r_", envir = .s),
-    get("rx_pred_", envir = .s),
-    .s$..linCmtExtraPred
+    if (is.null(attr(.linCmtExtraPredR, "call"))) get("rx_pred_", envir = .s) else attr(.linCmtExtraPredR, "call"),
+    if (is.null(attr(.linCmtExtraPredR, "callExtra"))) .linCmtExtraPredR else attr(.linCmtExtraPredR, "callExtra")
   )
   # linCmt() sensitivity carry (3b.3): rx_r_ embeds rx_pred_'s linCmtB()
   # call by value, so its naive d(rx_r_)/d(eta) rows inherit the same
@@ -4074,6 +4099,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
     if (.conditional) "conditionalInner1",
+    .ui$predDfFocei$distribution,
     all(is.na(.iniDf$neta1)),
     .combSens,
     .linCmtCarry,
@@ -5544,13 +5570,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   ## injection is compartment-count guarded, so the smaller pred model solved in
   ## the same loop skips it safely.  Reset on exit.
   .eventSens <- tryCatch(.ret$control$eventSens, error = function(e) "jump")
+  ## the model the C++ core registers as the inner slot: innerLlik when present
+  ## (an ll() fit), else inner.  Installing another model's shape under the inner
+  ## role lets the inner solves compact to a width its dydt overruns.
+  .esInner <- if (exists("model", .ret)) {
+    if (!is.null(.ret$model$innerLlik)) .ret$model$innerLlik else .ret$model$inner
+  }
   if (
     identical(.eventSens, "jump") &&
-      exists("model", .ret) &&
-      !is.null(.ret$model$inner)
+      !is.null(.esInner)
   ) {
     .esLoaded <- tryCatch(
-      rxode2::rxEventSensLoadModel(.ret$model$inner),
+      rxode2::rxEventSensLoadModel(.esInner),
       error = function(e) FALSE
     )
     .foceiEventSensWarn(.esLoaded, .ret$model, .eventSens)
@@ -5793,6 +5824,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   if (exists("est", envir = env)) {
     .control$est <- env$est
+  }
+  # est="laplace": evaluate Gaussian endpoints by their log-density (as
+  # `+ dnorm()` does) for the exact Laplace Hessian, like rxUiGet.nlmModel0
+  if (
+    type %in%
+      c("laplaceControl", "mlaplaceControl", "ilaplaceControl") &&
+      .control$innerHessian != "conditional" &&
+      .control$detHessian != "conditional"
+  ) {
+    .predDf <- .ui$predDf
+    .predDf$distribution[.predDf$distribution == "norm"] <- "dnorm"
+    assign(".predDfFocei", .predDf, envir = .ui)
   }
   if (
     inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
@@ -6420,6 +6463,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       silent = TRUE
     )
     if (inherits(.tmp, "try-error")) {
+      .tablesDroppedSet(.ret, TRUE)
       warning("error calculating tables, returning without table step", call. = FALSE)
     } else {
       .ret <- .tmp
@@ -6457,7 +6501,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         "evt",
         "penMap",
         "penTheta0",
-        "penEtaOrd"
+        "penEtaOrd",
+        "saemMstep"
       )) {
         .saemCfg2[[.v]] <- .saemCfg[[.v]]
       }
