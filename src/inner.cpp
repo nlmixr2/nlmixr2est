@@ -146,6 +146,11 @@ extern "C" void nlmixrLikContribEnd(const nlmixrLikSubj *s) {
 // Expose the registry entry points to contributor packages (e.g. nlmixr2nn) as
 // a small external-pointer table (CRAN-preferred over R_RegisterCCallable); the
 // downstream package installs them via inst/include/nlmixr2estLikContribPtr.h.
+// Number of registered likelihood contributors (their terms are invisible to the model)
+extern "C" SEXP _nlmixr2est_likContribN(void) {
+  return Rf_ScalarInteger(_nlmixrNContrib);
+}
+
 extern "C" SEXP _nlmixr2est_likContribPtrs(void) {
   // Append only: consumers read these by POSITION (nlmixr2estLikContribPtr.h).
   const char *nm[7] = {"registerLikContrib", "removeLikContrib",
@@ -1122,6 +1127,7 @@ struct focei_options {
   std::atomic<bool> didLikCalc{false};
   bool zeroGradFirstReset= false;
   bool zeroGradRunReset=false;
+  bool freezeFlatTheta=false;
   bool zeroGradBobyqa=false;
   bool zeroGradBobyqaRun=false;
   int nEstOmega=0;
@@ -10258,6 +10264,8 @@ NumericVector foceiSetup_(const RObject &obj,
     }
   }
   op_focei.zeroGradRunReset = as<bool>(foceiO["zeroGradRunReset"]);
+  op_focei.freezeFlatTheta = foceiO.containsElementNamed("freezeFlatTheta") &&
+    as<bool>(foceiO["freezeFlatTheta"]);
   if (op_focei.neta != 0) {
     if (!rxode2::rxIs(rxInv, "rxSymInvCholEnv")){
       stop(_("Omega isn't in the proper format"));
@@ -11763,6 +11771,69 @@ static void foceiZeroThetaOneStep(Environment e) {
   foceiBestEvalReset();
 }
 
+// foceiControl(freezeFlatTheta=TRUE): before optimizing, a forward difference of the
+// objective in each parameter.  Every evaluation starts from the same inner state, so a
+// parameter that cannot change the objective gives exactly 0 rather than warm-start
+// noise.  A theta with |g| <= 1e-8 and <= 1e-6*max|g| on both sides goes to
+// e$flatTheta (1-based theta numbers) and the fit restarts with it fixed.  Nothing is
+// frozen when the whole gradient is flat.
+static double foceiFreezeOfv(int np, double *x) {
+  foceiOuterHold_(true);
+  const double f = foceiOfvOptim(np, x, NULL);
+  foceiOuterHold_(false);
+  return f;
+}
+
+static void foceiFreezeFlatTheta(Environment e) {
+  const unsigned int np = op_focei.npars;
+  if (np < 2) return;
+  NumericVector x(np);
+  foceiOuterStart(x.begin());
+  // diagnostic: leave the counters and the history as they were
+  const int nF = op_focei.nF, nG = op_focei.nG;
+  const bool record = op_focei.recordOuter;
+  op_focei.recordOuter = false;
+  std::vector<double> g(np, NA_REAL), h(np, 0.0), xk(x.begin(), x.end());
+  const double f0 = foceiFreezeOfv((int)np, x.begin());
+  // slope of the objective along k at a step of `step`; NA when not finite
+  auto slope = [&](unsigned int k, double step) {
+    xk[k] = x[k] + step;
+    const double fk = foceiFreezeOfv((int)np, xk.data());
+    xk[k] = x[k];
+    return std::isfinite(fk) ? (fk - f0) / step : NA_REAL;
+  };
+  double mx = 0.0;
+  for (unsigned int k = 0; k < np && std::isfinite(f0); ++k) {
+    // toward the side with more room, short enough that two steps stay inside
+    const double up = op_focei.upper[k] - x[k], dn = x[k] - op_focei.lower[k];
+    const double room = std::max(up, dn);
+    if (!(room > 0)) continue;
+    h[k] = std::min(1e-3 * std::max(1.0, std::fabs(x[k])), 0.4 * room);
+    if (dn > up) h[k] = -h[k];
+    g[k] = slope(k, h[k]);
+    if (!ISNA(g[k])) mx = std::max(mx, std::fabs(g[k]));
+  }
+  std::vector<int> flat;
+  for (unsigned int k = 0; k < np && mx > 1e-8; ++k) {
+    if (ISNA(g[k]) || foceiIsMixPar((int)k) || op_focei.fixedTrans[k] >= (int)op_focei.ntheta) continue;
+    auto isFlat = [&](double a) { return !ISNA(a) && std::fabs(a) <= 1e-8 && std::fabs(a) <= 1e-6 * mx; };
+    // a secant can vanish by chance, so a second step must be flat too: the
+    // other side, or twice as far when the other side is out of bounds
+    const double x2 = x[k] - h[k];
+    const double h2 = (x2 > op_focei.lower[k] && x2 < op_focei.upper[k]) ? -h[k] : 2.0 * h[k];
+    if (isFlat(g[k]) && isFlat(slope(k, h2))) {
+      flat.push_back(op_focei.fixedTrans[k] + 1);
+    }
+  }
+  op_focei.recordOuter = record;
+  op_focei.nF = nF;
+  op_focei.nG = nG;
+  foceiBestEvalReset();
+  if (flat.empty()) return;
+  e["flatTheta"] = wrap(flat);
+  stop("theta freeze");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Overall Outer Problem
 
@@ -11850,6 +11921,7 @@ Environment foceiOuter(Environment e){
     // Per-fit constants for the all-C++ gradient, read out of R exactly once.  After
     // this every gradient evaluation runs without touching R.
     loadGradPooledSetup(e);
+    if (op_focei.freezeFlatTheta) foceiFreezeFlatTheta(e);
     switch(op_focei.outerOpt){
     case 0:
       foceiLbfgsb(e);

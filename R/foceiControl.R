@@ -1213,6 +1213,11 @@
 #'   switches to the gradient-free bobyqa method; `NA` only does so for the
 #'   first zero gradient.
 #'
+#' @param freezeFlatTheta When `TRUE`, the outer gradient is evaluated once
+#'   before optimizing; a theta with `|g| <= 1e-8` and `|g| <= 1e-6*max|g|` is
+#'   warned about and fixed at its initial value.  Nothing is fixed when the
+#'   whole gradient is flat.  Default `FALSE`.
+#'
 #' @param mceta Monte Carlo sampling for the best initial ETA estimate
 #'   (based on `omega`): `-2` (default) uses the Almquist (2015) Eq-48
 #'   extrapolation `eta^0 = eta* + (d eta*/d theta)(theta_new - theta_old)`
@@ -1565,6 +1570,7 @@ foceiControl <- function(
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
+  freezeFlatTheta = FALSE,
   mceta = -2L,
   mcetaOpt = FALSE,
   warm = c("calc", "save", "none"),
@@ -2245,6 +2251,7 @@ foceiControl <- function(
   checkmate::assertLogical(zeroGradFirstReset, any.missing = TRUE, len = 1)
   checkmate::assertLogical(zeroGradRunReset, any.missing = FALSE, len = 1)
   checkmate::assertLogical(zeroGradBobyqa, any.missing = TRUE, len = 1)
+  checkmate::assertLogical(freezeFlatTheta, any.missing = FALSE, len = 1)
 
   checkmate::assertIntegerish(shi21maxOuter, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(shi21maxInner, lower = 0, len = 1, any.missing = FALSE)
@@ -2471,6 +2478,7 @@ foceiControl <- function(
     zeroGradFirstReset = zeroGradFirstReset,
     zeroGradRunReset = zeroGradRunReset,
     zeroGradBobyqa = zeroGradBobyqa,
+    freezeFlatTheta = freezeFlatTheta,
     mceta = as.integer(mceta),
     mcetaOpt = mcetaOpt,
     warm = warm,

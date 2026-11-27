@@ -269,6 +269,15 @@
   the analytic gradient's scope (e.g. `linCmt()`) use central differences
   (#1389).
 
+- Estimation now warns by name about an estimated theta or eta that cannot
+  change the objective function, for example one used only through an
+  intermediate that nothing else reads (#1382).
+
+- `foceiControl(freezeFlatTheta = TRUE)` evaluates the outer gradient once
+  before optimizing and fixes, with a warning, any theta whose gradient is
+  flat at its initial value, so the other parameters optimize normally
+  (#1382).
+
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
   iteration, in parallel over subjects.  The tables and shrinkage use the
