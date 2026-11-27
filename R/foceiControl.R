@@ -862,7 +862,9 @@
 #'     covariates and restored after optimization. Mirrors
 #'     \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)};
 #'     for \code{foceiControl()} only takes effect when
-#'     \code{muModel != "none"}.
+#'     \code{muModel != "none"}.  This includes mu5: a multiplicative 0/1
+#'     covariate effect `exp(tcl + eta.cl) * (1 + clSex*SEX)` is fit as
+#'     `exp(tcl + eta.cl + log(1 + clSex)*SEX)` and `clSex` is reported.
 #'
 #' @param muModelTol Convergence tolerance for the mu-referenced-FOCEI-family
 #'     "re-optimize etas, then regress" cycle (\code{muModel != "none"}):
@@ -1213,6 +1215,11 @@
 #'   switches to the gradient-free bobyqa method; `NA` only does so for the
 #'   first zero gradient.
 #'
+#' @param freezeFlatTheta When `TRUE`, the outer gradient is evaluated once
+#'   before optimizing; a theta with `|g| <= 1e-8` and `|g| <= 1e-6*max|g|` is
+#'   warned about and fixed at its initial value.  Nothing is fixed when the
+#'   whole gradient is flat.  Default `FALSE`.
+#'
 #' @param mceta Monte Carlo sampling for the best initial ETA estimate
 #'   (based on `omega`): `-2` (default) uses the Almquist (2015) Eq-48
 #'   extrapolation `eta^0 = eta* + (d eta*/d theta)(theta_new - theta_old)`
@@ -1273,6 +1280,34 @@
 #' @param agqHi The upper bound for adaptive quadrature
 #'   log-likelihood.  By default this is Inf; in the original nlmixr's
 #'   gnlmm was 400.
+#'
+#' @param agqRule Quadrature rule used when `nAGQ > 1`: `"hermite"`
+#'   (adaptive Gauss-Hermite, `nAGQ` nodes per eta), `"legendre"`
+#'   (Gauss-Legendre, `nAGQ` nodes per eta over `agqNsd` conditional
+#'   standard deviations) or `"stieltjes"` (radial shells set by `agqGrid`;
+#'   `nAGQ` is then only the switch).  Every rule is centred on the EBE and
+#'   scaled by the eta Hessian, so all are exact when the model is linear in
+#'   the etas with an eta-independent residual variance.
+#'
+#' @param agqCenter Where the quadrature grid sits.  `"mode"` (default)
+#'   re-centres it on each subject's EBE and eta Hessian at every evaluation.
+#'   `"start"` centres it on the EBE and Hessian at the first evaluation of
+#'   the run (again after a theta-reset restart) and then keeps it fixed, so
+#'   the objective no longer moves with the conditional etas (the integrating
+#'   stage of NONMEM's `STIELTJES`).
+#'   `"prior"` uses one grid on `N(0, Omega)` for every subject, which needs
+#'   a fine grid when the data are informative.  Only `"mode"` has an
+#'   analytic gradient and covariance.
+#'
+#' @param agqNsd Half-width, in conditional standard deviations, of the
+#'   `agqRule="legendre"` integration box.
+#'
+#' @param agqGrid The `agqRule="stieltjes"` grid `c(nr, ns, r0, r1)`, as in
+#'   NONMEM's `GRID=`: `nr` equal shells over the radial probability interval
+#'   `[r0, r1]` plus a central region `[0, r0]` and, unless `r1 > 0.9999`, a
+#'   tail region; `ns` directions per quadrant of each pair of etas.  The
+#'   default `ns = 2` differs from NONMEM's `GRID=(3,1,.6,.9)`: one direction
+#'   per quadrant is too sparse for a grid that does not follow the EBE.
 #'
 #' @param boundedTransform When `TRUE` (default), bounded parameters are
 #'   transformed for unbounded optimization methods and back-transformed
@@ -1565,12 +1600,17 @@ foceiControl <- function(
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
+  freezeFlatTheta = FALSE,
   mceta = -2L,
   mcetaOpt = FALSE,
   warm = c("calc", "save", "none"),
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
+  agqRule = c("hermite", "legendre", "stieltjes"),
+  agqNsd = 3,
+  agqGrid = c(nr = 3, ns = 2, r0 = 0.6, r1 = 0.9),
+  agqCenter = c("mode", "start", "prior"),
   sensMethod = c("default", "forward"),
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
@@ -2245,6 +2285,7 @@ foceiControl <- function(
   checkmate::assertLogical(zeroGradFirstReset, any.missing = TRUE, len = 1)
   checkmate::assertLogical(zeroGradRunReset, any.missing = FALSE, len = 1)
   checkmate::assertLogical(zeroGradBobyqa, any.missing = TRUE, len = 1)
+  checkmate::assertLogical(freezeFlatTheta, any.missing = FALSE, len = 1)
 
   checkmate::assertIntegerish(shi21maxOuter, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertIntegerish(shi21maxInner, lower = 0, len = 1, any.missing = FALSE)
@@ -2267,6 +2308,28 @@ foceiControl <- function(
   checkmate::assertIntegerish(nAGQ, lower = 0, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(agqHi, len = 1, any.missing = FALSE)
   checkmate::assertNumeric(agqLow, len = 1, any.missing = FALSE)
+  agqRule <- match.arg(agqRule)
+  agqCenter <- match.arg(agqCenter)
+  checkmate::assertNumber(agqNsd, lower = 0, finite = TRUE)
+  if (agqNsd <= 0) {
+    stop("'agqNsd' must be positive", call. = FALSE)
+  }
+  checkmate::assertNumeric(agqGrid, len = 4, any.missing = FALSE)
+  agqGrid <- stats::setNames(as.double(agqGrid), c("nr", "ns", "r0", "r1"))
+  if (
+    agqGrid[1] < 1 ||
+      agqGrid[1] > 100 ||
+      agqGrid[1] != round(agqGrid[1]) ||
+      agqGrid[2] < 1 ||
+      agqGrid[2] > 9999 ||
+      agqGrid[2] != round(agqGrid[2]) ||
+      !(0 < agqGrid[3] && agqGrid[3] < agqGrid[4] && agqGrid[4] < 1)
+  ) {
+    stop("'agqGrid' needs integer 1<=nr<=100, 1<=ns<=9999 and 0<r0<r1<1", call. = FALSE)
+  }
+  if (agqRule != "hermite" && nAGQ <= 1) {
+    stop("agqRule=\"", agqRule, "\" needs nAGQ > 1", call. = FALSE)
+  }
   checkmate::assertLogical(boundedTransform, len = 1, any.missing = FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
@@ -2471,12 +2534,17 @@ foceiControl <- function(
     zeroGradFirstReset = zeroGradFirstReset,
     zeroGradRunReset = zeroGradRunReset,
     zeroGradBobyqa = zeroGradBobyqa,
+    freezeFlatTheta = freezeFlatTheta,
     mceta = as.integer(mceta),
     mcetaOpt = mcetaOpt,
     warm = warm,
     nAGQ = as.integer(nAGQ),
     agqHi = as.double(agqHi),
     agqLow = as.double(agqLow),
+    agqRule = agqRule,
+    agqNsd = as.double(agqNsd),
+    agqGrid = agqGrid,
+    agqCenter = agqCenter,
     sensMethod = sensMethod,
     linCmtSensCarry = linCmtSensCarry,
     boundedTransform = boundedTransform,
