@@ -170,6 +170,10 @@ foceiControl(
   shrinkEtaWarn = 30,
   odeSettleCheck = FALSE,
   odeSettleTol = 0.1,
+  ebeCheck = FALSE,
+  ebeCheckStep = 0.1,
+  ebeCheckTol = 0.01,
+  ebeRestart = FALSE,
   nRetries = 3,
   seed = 42,
   resetThetaCheckPer = 0.1,
@@ -1227,6 +1231,24 @@ Skipped for models without ODEs (e.g. `linCmt()`), fits with
 `maxOuterIterations = 0` and a non-finite fit objective.}
 
 \item{odeSettleTol}{The objective change that `odeSettleCheck` reports.}
+
+\item{ebeCheck}{When `TRUE`, each subject's final EBE is probed at
+`+/- ebeCheckStep` Omega standard deviations along every eta, and
+`$runInfo` notes subjects where a probe lowers the individual objective
+(-2LL) by more than `ebeCheckTol`, as at a kink in the prediction.  The
+per-subject results are kept as `fit$ebeStationarity`.}
+
+\item{ebeCheckStep}{The probe step of `ebeCheck`, in Omega standard
+deviations.}
+
+\item{ebeCheckTol}{The individual objective decrease that `ebeCheck`
+reports.}
+
+\item{ebeRestart}{When `TRUE` (implies `ebeCheck`), each flagged subject's
+EBE moves to a compass-search minimum of its individual objective started
+from its best probe point.  The final objective is taken at those EBEs, so
+it can rise or fall; the thetas are not re-estimated.  The covariance
+step still re-optimizes the ETAs from there.}
 
 \item{nRetries}{If FOCEi doesn't fit with the current parameter
 estimates, randomly sample new parameter estimates and restart
