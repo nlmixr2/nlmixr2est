@@ -55,7 +55,14 @@
     "predict",
     "simulate",
     "simulation",
-    "rxSolve"
+    "rxSolve",
+    # nonparametric: the FOCEi objective assumes normal etas
+    "npag",
+    "npb",
+    "mnpag",
+    "mnpb",
+    "inpag",
+    "inpb"
   )
   length(est) == 1L && is.character(est) && nzchar(est) && !(est %in% .skip)
 }
@@ -72,6 +79,8 @@
   if (!is.list(.ctl)) {
     return(NULL)
   }
+  # the imp family builds its control on foceiControl's, carrying this field
+  .ctl$covNewtonWarn <- NULL
   .ctl$etaMat <- fit$etaMat
   # a sampler's foceiControl skips the inner problem; the gradient needs the modes
   .ctl$maxInnerIterations <- .covInnerIterations(.ctl)
@@ -229,6 +238,15 @@
     }
   })
   tryCatch(.covNewtonGrad(fit, cov), error = function(e) NULL)
+}
+
+#' Validate a control's `covNewtonWarn`
+#' @param x the argument
+#' @return `x` as a double
+#' @noRd
+.covNewtonWarnArg <- function(x) {
+  checkmate::assertNumber(x, lower = 0, na.ok = TRUE, .var.name = "covNewtonWarn")
+  as.double(x)
 }
 
 #' The `covNewtonWarn` threshold of a fit

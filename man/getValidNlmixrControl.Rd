@@ -4,7 +4,7 @@
 %   R/ifocep.R, R/imp.R, R/impmap.R, R/laplace.R, R/lbfgsb3c.R, R/mfocep.R,
 %   R/muRefControl.R, R/n1qn1.R, R/newuoa.R, R/nlm.R, R/nlminb.R, R/nls.R,
 %   R/npCommon.R, R/npag.R, R/npb.R, R/optim.R, R/posthoc.R, R/qrpem.R,
-%   R/sharedControl.R, R/trust.R, R/uobyqa.R, R/vae.R
+%   R/sharedControl.R, R/stieltjes.R, R/trust.R, R/uobyqa.R, R/vae.R
 \name{getValidNlmixrCtl.agq}
 \alias{getValidNlmixrCtl.agq}
 \alias{getValidNlmixrCtl.bobyqa}
@@ -77,6 +77,7 @@
 \alias{getValidNlmixrCtl.predict}
 \alias{getValidNlmixrCtl.tableControl}
 \alias{getValidNlmixrCtl.default}
+\alias{getValidNlmixrCtl.stieltjes}
 \alias{getValidNlmixrCtl.trust}
 \alias{getValidNlmixrCtl.uobyqa}
 \alias{getValidNlmixrCtl.vae}
@@ -223,6 +224,8 @@ getValidNlmixrCtl(control)
 \method{getValidNlmixrCtl}{tableControl}(control)
 
 \method{getValidNlmixrCtl}{default}(control)
+
+\method{getValidNlmixrCtl}{stieltjes}(control)
 
 \method{getValidNlmixrCtl}{trust}(control)
 

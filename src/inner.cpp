@@ -18,6 +18,7 @@
 #include "nmMcmcRng.h"
 #include "nmSeqSeed.h"
 #include "nmProgress.h"
+#include <algorithm>
 #include <cfloat>
 #include <cstring>
 #include <cstdint>
@@ -146,6 +147,11 @@ extern "C" void nlmixrLikContribEnd(const nlmixrLikSubj *s) {
 // Expose the registry entry points to contributor packages (e.g. nlmixr2nn) as
 // a small external-pointer table (CRAN-preferred over R_RegisterCCallable); the
 // downstream package installs them via inst/include/nlmixr2estLikContribPtr.h.
+// Number of registered likelihood contributors (their terms are invisible to the model)
+extern "C" SEXP _nlmixr2est_likContribN(void) {
+  return Rf_ScalarInteger(_nlmixrNContrib);
+}
+
 extern "C" SEXP _nlmixr2est_likContribPtrs(void) {
   // Append only: consumers read these by POSITION (nlmixr2estLikContribPtr.h).
   const char *nm[7] = {"registerLikContrib", "removeLikContrib",
@@ -633,6 +639,9 @@ struct focei_options {
   double aqLow;
   double aqHi;
   bool aqfirst = false;
+  // grid centre: 0 = each EBE/Hessian, 1 = the EBE/Hessian at the first
+  // evaluation of the run (then frozen), 2 = the prior N(0, Omega)
+  int aqCenter = 0;
   double scaleC0;
   // one-step start for thetas that began at 0 (#1228): largest move in typical
   // magnitudes (0 = off) and their optimizer indices
@@ -1122,6 +1131,7 @@ struct focei_options {
   std::atomic<bool> didLikCalc{false};
   bool zeroGradFirstReset= false;
   bool zeroGradRunReset=false;
+  bool freezeFlatTheta=false;
   bool zeroGradBobyqa=false;
   bool zeroGradBobyqaRun=false;
   int nEstOmega=0;
@@ -1572,6 +1582,13 @@ static inline int getRxMixFromId(int id) {
 
 unsigned int _aqn = 0;
 int _nagq = 0;
+static std::string agqRuleDetail(Environment e);
+// agq grid frozen at the first evaluation of a run (op_focei.aqCenter == 1)
+static std::vector<double> _aqStartCenter, _aqStartScale, _aqStartLogDet;
+static std::vector<char> _aqStartSet;
+// set while innerOpt1() ranks candidate EBEs: a frozen grid scores every
+// candidate alike, so ranking uses (and never freezes) the EBE-centred grid
+static thread_local bool _aqRanking = false;
 
 struct focei_ind {
   int nInnerF;
@@ -4317,6 +4334,58 @@ double LikInner2(double *eta, int likId, int id) {
     }
     if (_aqn == 0) {
       lik += logH0diag + curLogDetOmegaInv5();
+    } else if (op_focei.aqCenter == 2 || (op_focei.aqCenter == 1 && !_aqRanking)) {
+      // A grid that does not follow the EBE: eta_k = c + sqrt(2)*S*x_k, so the
+      // integral is |S| * sum_k w_k exp(-likInner0(eta_k) + x_k'x_k) up to the
+      // constants the Gauss-Hermite layout already absorbs.  Log-sum-exp: off
+      // the mode a node's likelihood can underflow.
+      arma::mat aqx(op_focei.aqx, _aqn, op_focei.neta, false, true);
+      arma::mat aqw(op_focei.aqw, _aqn, op_focei.neta, false, true);
+      const unsigned int ne = op_focei.neta;
+      arma::vec c(ne, fill::zeros);
+      arma::mat S;
+      double logDetS;
+      if (op_focei.aqCenter == 2) {
+        // prior N(0, Omega): S*S' = Omega, so log|S| cancels 0.5*log|Omega^-1|
+        arma::mat U;
+        if (!arma::chol(U, curOmegaInv())) return NA_REAL;
+        S = arma::inv(arma::trimatu(U));
+        logDetS = -curLogDetOmegaInv5();
+      } else {
+        if (id >= (int)_aqStartSet.size()) return NA_REAL;
+        double *cs = &_aqStartCenter[(size_t)id*ne];
+        double *ss = &_aqStartScale[(size_t)id*ne*ne];
+        if (!_aqStartSet[id]) {
+          arma::mat G;
+          bool ok = false;
+          try {
+            ok = arma::inv(G, trimatu(H0)) || arma::inv(G, H0);
+          } catch (...) {
+            ok = false;
+          }
+          if (!ok) return NA_REAL;
+          std::copy(eta, eta + ne, cs);
+          std::copy(G.begin(), G.end(), ss);
+          _aqStartLogDet[id] = logH0diag;
+          _aqStartSet[id] = 1;
+        }
+        c = arma::vec(cs, ne);
+        S = arma::mat(ss, ne, ne);
+        logDetS = _aqStartLogDet[id];
+      }
+      LikInner0OutputGuard _outputs(fInd, ind);
+      std::vector<double> lnode(_aqn);
+      for (unsigned int k = 0; k < _aqn; k++) {
+        arma::vec x = aqx.row(k).t();
+        arma::vec w = aqw.row(k).t();
+        arma::vec etaCur = c + M_SQRT2 * S * x;
+        double lk = -likInner0(etaCur.memptr(), id);
+        lk += sum(log(w) + x % x);
+        lk = max2(lk, op_focei.aqLow);
+        lnode[k] = min2(lk, op_focei.aqHi);
+      }
+      lik = rxLogSumExpW(lnode.data(), NULL, (int)_aqn, NULL, false) +
+        logDetS + curLogDetOmegaInv5();
     } else {
       // Adaptive Gaussian Hermite Quadrature expansion around the EBE mode;
       // the SE of the EBE estimate (inverse cholesky of the Hessian) drives
@@ -5857,6 +5926,8 @@ static inline int innerOpt1(int id, int likId) {
         if (fInd->etahf != NULL) std::fill_n(&fInd->etahf[0], fop->neta, 0.0);
         if (fInd->etahr != NULL) std::fill_n(&fInd->etahr[0], fop->neta, 0.0);
         if (fInd->etahh != NULL) std::fill_n(&fInd->etahh[0], fop->neta, 0.0);
+        ScopedRestore<bool> _rank(_aqRanking);
+        _aqRanking = true;
         double m = LikInner2(&candEta[k][0], likId, id);
         // LikInner2 returns the individual log-likelihood and the outer
         // objective is -2 times it, so the best candidate is the LARGEST.
@@ -10278,6 +10349,8 @@ NumericVector foceiSetup_(const RObject &obj,
     }
   }
   op_focei.zeroGradRunReset = as<bool>(foceiO["zeroGradRunReset"]);
+  op_focei.freezeFlatTheta = foceiO.containsElementNamed("freezeFlatTheta") &&
+    as<bool>(foceiO["freezeFlatTheta"]);
   if (op_focei.neta != 0) {
     if (!rxode2::rxIs(rxInv, "rxSymInvCholEnv")){
       stop(_("Omega isn't in the proper format"));
@@ -11787,6 +11860,69 @@ static void foceiZeroThetaOneStep(Environment e) {
   foceiBestEvalReset();
 }
 
+// foceiControl(freezeFlatTheta=TRUE): before optimizing, a forward difference of the
+// objective in each parameter.  Every evaluation starts from the same inner state, so a
+// parameter that cannot change the objective gives exactly 0 rather than warm-start
+// noise.  A theta with |g| <= 1e-8 and <= 1e-6*max|g| on both sides goes to
+// e$flatTheta (1-based theta numbers) and the fit restarts with it fixed.  Nothing is
+// frozen when the whole gradient is flat.
+static double foceiFreezeOfv(int np, double *x) {
+  foceiOuterHold_(true);
+  const double f = foceiOfvOptim(np, x, NULL);
+  foceiOuterHold_(false);
+  return f;
+}
+
+static void foceiFreezeFlatTheta(Environment e) {
+  const unsigned int np = op_focei.npars;
+  if (np < 2) return;
+  NumericVector x(np);
+  foceiOuterStart(x.begin());
+  // diagnostic: leave the counters and the history as they were
+  const int nF = op_focei.nF, nG = op_focei.nG;
+  const bool record = op_focei.recordOuter;
+  op_focei.recordOuter = false;
+  std::vector<double> g(np, NA_REAL), h(np, 0.0), xk(x.begin(), x.end());
+  const double f0 = foceiFreezeOfv((int)np, x.begin());
+  // slope of the objective along k at a step of `step`; NA when not finite
+  auto slope = [&](unsigned int k, double step) {
+    xk[k] = x[k] + step;
+    const double fk = foceiFreezeOfv((int)np, xk.data());
+    xk[k] = x[k];
+    return std::isfinite(fk) ? (fk - f0) / step : NA_REAL;
+  };
+  double mx = 0.0;
+  for (unsigned int k = 0; k < np && std::isfinite(f0); ++k) {
+    // toward the side with more room, short enough that two steps stay inside
+    const double up = op_focei.upper[k] - x[k], dn = x[k] - op_focei.lower[k];
+    const double room = std::max(up, dn);
+    if (!(room > 0)) continue;
+    h[k] = std::min(1e-3 * std::max(1.0, std::fabs(x[k])), 0.4 * room);
+    if (dn > up) h[k] = -h[k];
+    g[k] = slope(k, h[k]);
+    if (!ISNA(g[k])) mx = std::max(mx, std::fabs(g[k]));
+  }
+  std::vector<int> flat;
+  for (unsigned int k = 0; k < np && mx > 1e-8; ++k) {
+    if (ISNA(g[k]) || foceiIsMixPar((int)k) || op_focei.fixedTrans[k] >= (int)op_focei.ntheta) continue;
+    auto isFlat = [&](double a) { return !ISNA(a) && std::fabs(a) <= 1e-8 && std::fabs(a) <= 1e-6 * mx; };
+    // a secant can vanish by chance, so a second step must be flat too: the
+    // other side, or twice as far when the other side is out of bounds
+    const double x2 = x[k] - h[k];
+    const double h2 = (x2 > op_focei.lower[k] && x2 < op_focei.upper[k]) ? -h[k] : 2.0 * h[k];
+    if (isFlat(g[k]) && isFlat(slope(k, h2))) {
+      flat.push_back(op_focei.fixedTrans[k] + 1);
+    }
+  }
+  op_focei.recordOuter = record;
+  op_focei.nF = nF;
+  op_focei.nG = nG;
+  foceiBestEvalReset();
+  if (flat.empty()) return;
+  e["flatTheta"] = wrap(flat);
+  stop("theta freeze");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Overall Outer Problem
 
@@ -11874,6 +12010,7 @@ Environment foceiOuter(Environment e){
     // Per-fit constants for the all-C++ gradient, read out of R exactly once.  After
     // this every gradient evaluation runs without touching R.
     loadGradPooledSetup(e);
+    if (op_focei.freezeFlatTheta) foceiFreezeFlatTheta(e);
     switch(op_focei.outerOpt){
     case 0:
       foceiLbfgsb(e);
@@ -14586,8 +14723,16 @@ void foceiFinalizeTables(Environment e){
       objDf.attr("row.names") = CharacterVector::create(full + "Laplace");
       e["ofvType"] = full.empty() ? "laplace" : "full laplace";
     } else {
-      objDf.attr("row.names") = CharacterVector::create(full + "AGQ" + std::to_string(_nagq));
-      e["ofvType"] = (full.empty() ? "agq" : "full agq") + std::to_string(_nagq);
+      // a non-Hermite rule names itself (e.g. "AGQ-Stieltjes")
+      std::string lab = "AGQ" + std::to_string(_nagq);
+      if (e.exists("agqLabel")) {
+        std::string l0 = as<std::string>(e["agqLabel"]);
+        if (!l0.empty()) lab = l0;
+      }
+      objDf.attr("row.names") = CharacterVector::create(full + lab);
+      std::string low = lab;
+      std::transform(low.begin(), low.end(), low.begin(), ::tolower);
+      e["ofvType"] = (full.empty() ? "" : "full ") + low;
     }
     addLlikObs(e);
   } else if (op_focei.interaction){
@@ -14808,7 +14953,7 @@ void foceiFinalizeTables(Environment e){
       } else {
         e["extra"] = as<std::string>(e["extra"]) +
           " (outer: " + _details +
-          "; nAGQ=" + std::to_string(_nagq)  + ")";
+          "; " + agqRuleDetail(e) + ")";
       }
     }
   }
@@ -14824,6 +14969,14 @@ void foceiFinalizeTables(Environment e){
   e.attr("class") = "nlmixr2FitCore";
 }
 
+static std::string agqRuleDetail(Environment e) {
+  if (e.exists("agqLabel")) {
+    std::string l0 = as<std::string>(e["agqLabel"]);
+    if (!l0.empty()) return l0;
+  }
+  return "nAGQ=" + std::to_string(_nagq);
+}
+
 void setupAq1_(Environment e) {
   if (_aqn >= 1) {
     double *tmp = REAL(e["qx"]);
@@ -14831,10 +14984,17 @@ void setupAq1_(Environment e) {
     tmp = REAL(e["qw"]);
     std::copy(tmp, tmp + _aqn*op_focei.neta, op_focei.aqw);
     op_focei.aqfirst = as<bool>(e["qfirst"]);
+    op_focei.aqCenter = e.exists("qcenter") ? as<int>(e["qcenter"]) : 0;
+    _aqStartSet.assign(op_focei.aqCenter == 1 ? (size_t)getRxNsubAndMix(getRxSolve_()) : 0, 0);
+    _aqStartCenter.assign(_aqStartSet.size()*op_focei.neta, 0.0);
+    _aqStartScale.assign(_aqStartSet.size()*op_focei.neta*op_focei.neta, 0.0);
+    _aqStartLogDet.assign(_aqStartSet.size(), 0.0);
     op_focei.aqLow = as<double>(e["aqLow"]);
     op_focei.aqHi = as<double>(e["aqHi"]);
   } else {
     op_focei.aqfirst = false;
+    op_focei.aqCenter = 0;
+    _aqStartSet.clear();
   }
 }
 

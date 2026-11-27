@@ -437,6 +437,12 @@ nmObjGetFoceiControl.vae <- function(x, ...) {
   .savedMuRef <- .muRefTrans$cur
   on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
   .ui2 <- if (isTRUE(fit$prep$pinActive)) .vaeUpdateModelPinned(.ui, fit) else .vaeUpdateModel(.ui, fit)
+  ## mu5 transforms are back-transformed by the output's pre-final-table hook
+  .bt <- tryCatch(.ui$boundedTransforms, error = function(e) NULL)
+  if (length(.bt) > 0L) {
+    .ui2 <- rxode2::rxUiDecompress(.ui2)
+    assign("boundedTransforms", .bt, envir = .ui2)
+  }
   ## Collapse any etas injected for non-mu-referenced thetas (nonMuTheta="eta"/
   ## "fix"): .vaeUpdateModel has already written the population estimate (zPop =
   ## theta+mean(eta)) into the theta, so drop the temporary eta from the reported
