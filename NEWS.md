@@ -369,6 +369,12 @@
 
 ### Estimation
 
+- `est="saem"` now starts additive and proportional residual errors at their
+  `ini()` values instead of fixed placeholders (`10` and `1`), as the power and
+  lambda parameters already did.  The residual warm-start
+  (`saemControl(residWarmStart=TRUE)`) is now clamped around the `ini()` values,
+  and with `residWarmStart=FALSE` (or a mixture model) the first E-step samples
+  under the `ini()` residual error.
 - FOCEi: a `linCmt()` model with an `ll()` (or other generalized) endpoint
   and an eta on `f()` or `alag()` no longer gets a zero inner gradient for
   that eta, so its EBEs and objective now match the ODE form of the model
