@@ -116,6 +116,7 @@ enum OdeEsModel {
 int  odeSwapEsModelForSlot(int slot);
 // Which ROLE is installed right now (odeEsUnknown when we have not recorded it).
 int  odeSwapEsInstalledModel();
+void odeSwapEsRebindInner();
 // Record a role installed outside the registry (focei.R's fit-wide load).
 void odeSwapEsNoteInstalled(int esModel);
 

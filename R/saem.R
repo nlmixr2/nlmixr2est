@@ -192,10 +192,17 @@
 #' @param data nlmixr data
 #' @param timeVaryingCovariates Time varying covarites in the data
 #' @param pseudoEtas saem's temporary etas (`.saemPseudoEtaRecord()`)
+#' @param idLvl ID labels of `data`, matching `saemControl(etaMat=)` IDs
 #' @return lower level saem fit
 #' @author Matthew L. Fidler
 #' @noRd
-.saemFitModel <- function(ui, data, timeVaryingCovariates = character(0), pseudoEtas = character(0)) {
+.saemFitModel <- function(
+  ui,
+  data,
+  timeVaryingCovariates = character(0),
+  pseudoEtas = character(0),
+  idLvl = NULL
+) {
   # Stage the time-varying/non-time-varying mu-ref covariate split so
   # $saemModel0 collapses to the phi + timeVaryingCovariate*beta model (shared
   # with the mu-referenced focei family, see .nlmixrSetMuRefTimeVarying).
@@ -359,6 +366,9 @@
       .cfg$stopRtol <- as.numeric(rxode2::rxGetControl(ui, "stopRtol", 1e-3))
       .cfg$stopAtol <- as.numeric(rxode2::rxGetControl(ui, "stopAtol", 1e-4))
       .cfg$saCovAutoStop <- as.integer(isTRUE(rxode2::rxGetControl(ui, "saCovAutoStop", TRUE)))
+      .cfg$muNonCentered <- as.integer(isTRUE(rxode2::rxGetControl(ui, "muNonCentered", FALSE)))
+      .cfg$omegaNonCentered <- as.integer(isTRUE(rxode2::rxGetControl(ui, "omegaNonCentered", FALSE)))
+      .cfg$nonCenteredPhase <- as.integer(identical(rxode2::rxGetControl(ui, "nonCenteredPhase", "all"), "burnin"))
       # conditional-mode EBEs, computed in C++ after the last SAEM iteration
       .cfg$ebeMode <- as.integer(identical(rxode2::rxGetControl(ui, "ebe", "mode"), "mode"))
       .cfg$ebeMaxEval <- as.integer(rxode2::rxGetControl(ui, "ebeMaxEval", 200L))
@@ -371,6 +381,9 @@
       .cfg$phi1Hessian <- as.integer(isTRUE(rxode2::rxGetControl(ui, "phi1Hessian", FALSE)))
       # warm-start residual params from observed per-endpoint moments (npag-style)
       .cfg$residWarmStart <- as.integer(rxode2::rxGetControl(ui, "residWarmStart", TRUE))
+      .cfg$nu1B <- as.integer(rxode2::rxGetControl(ui, "nu1B", 0L))
+      .cfg$nb1B <- as.integer(rxode2::rxGetControl(ui, "nb1B", 10L))
+      .cfg$kappa1B <- as.numeric(rxode2::rxGetControl(ui, "kappa1B", 1))
       # mixProbMethod="regress": fix per-subject mixture membership (hard classify
       # once) instead of the soft-EM responsibility step.
       .cfg$mixProbRegress <- as.integer(identical(
@@ -378,6 +391,7 @@
         "regress"
       ))
       .cfg$cres <- ui$saemCres
+      .cfg <- .saemResIni(.cfg, ui)
       .cfg$yj <- ui$saemYj
       .cfg$lres <- ui$saemLres
       .cfg$low <- ui$saemLow
@@ -424,6 +438,7 @@
       if (isTRUE(rxode2::rxGetControl(ui, "saemHoldPar", FALSE))) {
         .cfg <- .saemHoldCfg(.cfg)
       }
+      .cfg <- .saemEtaMatCfg(.cfg, rxode2::rxGetControl(ui, "etaMat", NULL), ui, idLvl, pseudoEtas)
       .cfg <- .saemWarmCfg(.cfg, rxode2::rxGetControl(ui, "saemWarmState", NULL))
       .saemCheckCfg(.cfg)
       .cfg
@@ -490,6 +505,24 @@
   cfg$residWarmStart <- 0L
   # a held run has nothing to converge
   cfg$plateauStop <- 0L
+  cfg
+}
+
+#' Start the additive/proportional residual at the ini() values
+#'
+#' `.configsaem()` only sets placeholders (`ares = 10`, `bres = 1`), zeroed where
+#' the error model lacks the component; those zeros and general-likelihood
+#' endpoints are left alone.  The kernel's residual warm-start clamps to [0.2x, 5x]
+#' of these values.
+#' @param cfg `.configsaem()` configuration
+#' @param ui rxode2 ui
+#' @return `cfg`
+#' @noRd
+.saemResIni <- function(cfg, ui) {
+  .w <- cfg$res.mod > 0L & cfg$ares != 0
+  cfg$ares[.w] <- ui$saemAres[.w]
+  .w <- cfg$res.mod > 0L & cfg$bres != 0
+  cfg$bres[.w] <- ui$saemBres[.w]
   cfg
 }
 
@@ -2182,6 +2215,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   if (inherits(.ret, "try-error")) {
     stop(.msg, call. = FALSE)
   }
+  .tablesDroppedSet(.ret, TRUE)
   .pre <- "fit degraded, no tables: "
   warning(paste0(.pre, .vaeTruncList(gsub("[\r\n]+", " ", .msg), prefix = .pre)), call. = FALSE)
   .ret
@@ -2207,7 +2241,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .tv <- .nlmixrTimeVaryingCovariates(.ret$dataSav, .ui, .control$rxControl)
   })
 
-  .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates = .tv, pseudoEtas = .ret$saemPseudoEtas)
+  .ret$saem <- .saemFitModel(
+    .ui,
+    .ret$dataSav,
+    timeVaryingCovariates = .tv,
+    pseudoEtas = .ret$saemPseudoEtas,
+    idLvl = .ret$idLvl
+  )
   # Re-stage the mu-ref time-varying split for the post-processing: the theta
   # table and parameter history are named from saemParamsToEstimate/
   # saemParHistNames, which only put a time-varying covariate in the correct
