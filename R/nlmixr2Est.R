@@ -120,6 +120,9 @@ nlmixr2Est <- function(env, ...) {
   if (!is.null(.intercepted)) {
     return(.intercepted)
   }
+  if (.nmStopFileStart(get("control", envir = env))) {
+    on.exit(.nmStopFileEnd(), add = TRUE)
+  }
   UseMethod("nlmixr2Est")
 }
 

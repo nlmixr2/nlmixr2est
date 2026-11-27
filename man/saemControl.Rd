@@ -18,6 +18,7 @@ saemControl(
   plateauWindow = 50L,
   plateauTol = 0.001,
   plateauMinFrac = 0.5,
+  stopFile = NULL,
   nmc = 3,
   nu = c(2, 2, 2),
   nu1B = 0L,
@@ -144,6 +145,11 @@ Thetas below 1 in magnitude use the absolute change.}
 
 \item{plateauMinFrac}{Fraction of the \code{nEm} iterations that always run
 before a plateau can stop the EM phase.}
+
+\item{stopFile}{Path of a file that, once created, stops the estimation
+gracefully: the run ends at its current state (for FOCEi, the lowest
+objective evaluated so far), removes the file, notes the stop in
+`$runInfo` and returns the fit.  `NULL` (default) does not poll.}
 
 \item{nmc}{Number of Markov Chains. By default this is 3.  When
 you increase the number of chains the numerical integration by

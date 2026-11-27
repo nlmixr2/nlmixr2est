@@ -166,6 +166,7 @@ foceiControl(
   etaRestart = 4L,
   finalEtaTol = 1,
   aboveStartTol = 0.01,
+  stopFile = NULL,
   shrinkEtaWarn = 30,
   odeSettleCheck = FALSE,
   odeSettleTol = 0.1,
@@ -1209,6 +1210,11 @@ warm start (`mceta < 0`).  Use `Inf` to disable.}
 above the objective at the initial estimates by more than this fraction
 of its magnitude (at least 0.1 objective units).  Use `NA` or `Inf` to
 disable.}
+
+\item{stopFile}{Path of a file that, once created, stops the estimation
+gracefully: the run ends at its current state (for FOCEi, the lowest
+objective evaluated so far), removes the file, notes the stop in
+`$runInfo` and returns the fit.  `NULL` (default) does not poll.}
 
 \item{shrinkEtaWarn}{Warn (in `$runInfo`) when an eta's SD shrinkage is
 at or above this percentage.  Use `NA` or `Inf` to disable.}

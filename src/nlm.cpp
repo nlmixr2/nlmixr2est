@@ -13,6 +13,7 @@
 #include "../inst/include/nlmixr2estLikContrib.h"
 #include "likContribUtil.h"
 #include "likPenalty.h"
+#include "stopFile.h"
 #include <atomic>
 #include <exception>
 #include <limits>
@@ -20,6 +21,7 @@
 #define _(String) (String)
 
 #include "scale.h"
+
 // trust_solve_c_ptr/trust_result_free_ptr are extern-declared here and DEFINED
 // exactly once, via the iniRcppTrust macro expansion already sitting in
 // inner.cpp -- do not redefine iniRcppTrustPtrs here, just link against the
@@ -116,6 +118,23 @@ struct nlmOptions {
 };
 
 nlmOptions nlmOp;
+
+// stopFile= (#1507): while an optimizer runs under .nlmStopOpt(), every printed
+// objective evaluation keeps the lowest point and polls the stop file.
+static bool _nlmStopOn = false;
+static double _nlmStopBestF = R_PosInf;
+static std::vector<double> _nlmStopBestX;
+
+static inline void nlmPrintFun(double *theta, double f) {
+  scalePrintFun(&(nlmOp.scale), theta, f);
+  if (!_nlmStopOn) return;
+  if (R_FINITE(f) && f < _nlmStopBestF) {
+    _nlmStopBestF = f;
+    _nlmStopBestX.assign(theta, theta + nlmOp.ntheta);
+  }
+  // only once there is a finite evaluation to continue from
+  if (!_nlmStopBestX.empty() && nmStopFilePoll()) throw nmStopRequest();
+}
 
 // sampler iteration-print cadence counter for nlmixr2NlmEval (reset at
 // nlmSetup); see the print block in nlmixr2NlmEval.  The header itself is
@@ -988,7 +1007,7 @@ RObject nlmSolveGradR(arma::vec &theta) {
   ret[0] = cs[0];
   grad = wrap(cs(span(1, ntheta)));
   ret.attr("gradient") = grad;
-  scalePrintFun(&(nlmOp.scale), &theta[0], cs[0]);
+  nlmPrintFun(&theta[0], cs[0]);
   return ret;
 }
 
@@ -1005,7 +1024,7 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
     arma::vec resid = nlmSolveF(theta);
     arma::vec r2 = resid % resid;
     double rss = arma::sum(r2);
-    scalePrintFun(&(nlmOp.scale), &theta[0], rss);
+    nlmPrintFun(&theta[0], rss);
     return wrap(resid);
   }
   if (nlmOp.solveType != solveType_nls) {
@@ -1021,7 +1040,7 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
     arma::vec resid =ret0.col(0);
     resid = resid % resid;
     double rss = arma::sum(resid);
-    scalePrintFun(&(nlmOp.scale), &theta[0], rss);
+    nlmPrintFun(&theta[0], rss);
     nlmOp.saveType = solveType_grad;
     saveTheta(theta);
   }
@@ -1072,7 +1091,7 @@ RObject nlmSolveGradHess(arma::vec &theta) {
   NumericVector grad = wrap(gr0(span(0, nlmOp.ntheta-1)));
   ret.attr("gradient") = grad;
   ret.attr("hessian") = wrap(H);
-  scalePrintFun(&(nlmOp.scale), &theta[0], ll);
+  nlmPrintFun(&theta[0], ll);
   scalePrintGrad(&(nlmOp.scale), &grad[0], iterTypeSens);
   return ret;
 }
@@ -1159,7 +1178,7 @@ extern "C" int nlmTrustObjfun(int n, const double *par, double *value,
     // optimization fit has few enough iterations that no such gate belongs
     // here.
     NumericVector gradR = wrap(gr0);
-    scalePrintFun(&(nlmOp.scale), &theta[0], ll);
+    nlmPrintFun(&theta[0], ll);
     scalePrintGrad(&(nlmOp.scale), &gradR[0], iterTypeSens);
     return 0;
   } catch (...) {
@@ -1229,7 +1248,7 @@ static bool nlmLbfgsFill(int n, double *x) {
         arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
         saveVec = (arma::sum(ret0, 0)).t();
         saveTheta(theta);
-        scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
+        nlmPrintFun(&theta[0], nlmOp.valSave[0]);
         scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
       });
       arma::vec saved(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
@@ -1391,7 +1410,7 @@ RObject nlmSolveSwitch(arma::vec &theta) {
   switch(nlmOp.solveType) {
   case solveType_pred:
     ret = wrap(nlmSolveR(theta));
-    scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
+    nlmPrintFun(&theta[0], ret[0]);
     return ret;
   case solveType_grad:
     return nlmSolveGradR(theta);
@@ -1421,11 +1440,11 @@ NumericVector optimFunC(arma::vec &theta, bool grad=false) {
     if (grad) stop(_("incorrect solve type"));
     NumericVector ret(1);
     ret[0] = nlmSolveR(theta);
-    scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
+    nlmPrintFun(&theta[0], ret[0]);
     return ret;
   }
   if (nlmSolveGradSaved(theta)) {
-    scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
+    nlmPrintFun(&theta[0], nlmOp.valSave[0]);
     scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
   }
   if (grad) return NumericVector(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta);
@@ -1441,7 +1460,7 @@ NumericVector nlminbFunC(arma::vec &theta, int type) {
       nlmOp.valSave[0] = nlmSolveR(theta);
       nlmOp.saveType = solveType_pred;
       saveTheta(theta);
-      scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
+      nlmPrintFun(&theta[0], nlmOp.valSave[0]);
     }
     return NumericVector::create(nlmOp.valSave[0]);
   case solveType_grad:
@@ -1679,4 +1698,24 @@ List nlmLikEvalC_(NumericVector theta) {
   if (rc < 0) stop("nlmixr2NlmEval failed with status %d", rc);
   return List::create(_["value"] = value, _["grad"] = g,
                       _["nBad"] = rc);
+}
+
+// Starts (on=TRUE) or ends tracking the lowest evaluation and polling the stop file.
+//[[Rcpp::export(".nlmStopOn")]]
+bool nlmStopOn_(bool on) {
+  bool was = _nlmStopOn;
+  _nlmStopOn = on;
+  if (on) {
+    _nlmStopBestF = R_PosInf;
+    _nlmStopBestX.clear();
+  }
+  return was;
+}
+
+// The lowest evaluation since .nlmStopOn(TRUE), on the optimizer's scale; NULL if none.
+//[[Rcpp::export(".nlmStopBest")]]
+RObject nlmStopBest_() {
+  if (_nlmStopBestX.empty()) return R_NilValue;
+  return List::create(_["par"] = NumericVector(_nlmStopBestX.begin(), _nlmStopBestX.end()),
+                      _["f"] = _nlmStopBestF);
 }
