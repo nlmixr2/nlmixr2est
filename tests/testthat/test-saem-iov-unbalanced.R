@@ -104,3 +104,22 @@ test_that("an unbalanced occasion design does not shrink the two-level IOV varia
   expect_gt(.iov, 0.06)
   expect_lt(.iov, 0.16)
 })
+
+test_that("the collapsed form samples absent occasions instead of freezing them (#1504)", {
+  # phi columns: tka (not pooled), then three collapsed occasion columns
+  .ue <- cbind(a = c(1, 1), b = c(1, 0), c = c(0, 1), d = c(1, 1))
+  .i1 <- 1:4
+  .pool <- c(0L, 1L, 1L, 1L)
+  .r <- .saemUeCollapsedPool(.ue, c(1L, 2L), .i1, .pool, 1L)
+  expect_true(all(.r$ue[, 2:4] == 1))
+  expect_equal(.r$revisitCols, integer(0))
+  # the two-level form keeps the mask: its occasion columns are independent
+  .r <- .saemUeCollapsedPool(.ue, c(1L, 2L), .i1, .pool, 0L)
+  expect_equal(.r$ue, .ue)
+  expect_equal(.r$revisitCols, c(1L, 2L))
+  # a non-pooled column keeps its own verdict
+  .ue[1, 1] <- 0
+  .r <- .saemUeCollapsedPool(.ue, 0L, .i1, .pool, 1L)
+  expect_equal(unname(.r$ue[1, 1]), 0)
+  expect_equal(.r$revisitCols, 0L)
+})
