@@ -21723,7 +21723,8 @@ static void adviIterPrintStart(NumericVector initPar, CharacterVector names,
   }
   _vaeScale.keyExtra =
     "Function-Val: negative Monte-Carlo ELBO (lower is better)\n"
-    "srch <eta>: step-size-scale search run; SGA / GN: main run (advi / gaussNewton)\n";
+    "srch <eta>: step-size-scale search run; "
+    "SGA / GN: main run (advi / gaussNewton)\n";
   scaleApplyIterPrintControl(&_vaeScale, iterPrintControl);
   _vaeScale.cn = it0;
   scalePrintHeader(&_vaeScale);
@@ -22085,9 +22086,11 @@ static void adviInfoAdd(arma::mat &out, const arma::mat &H, int ntheta) {
 // untransformed residual sd keeps its lower bound of 0).
 static double adviGnBounded(int p, double x, double step) {
   double y = x + step;
-  if (p < _advi.thetaLower.size() && R_finite(_advi.thetaLower[p]) && y <= _advi.thetaLower[p])
+  if (p < _advi.thetaLower.size() && R_finite(_advi.thetaLower[p]) &&
+      y <= _advi.thetaLower[p])
     y = 0.5 * (x + _advi.thetaLower[p]);
-  if (p < _advi.thetaUpper.size() && R_finite(_advi.thetaUpper[p]) && y >= _advi.thetaUpper[p])
+  if (p < _advi.thetaUpper.size() && R_finite(_advi.thetaUpper[p]) &&
+      y >= _advi.thetaUpper[p])
     y = 0.5 * (x + _advi.thetaUpper[p]);
   return y;
 }
@@ -22108,7 +22111,8 @@ static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
       static_cast<int>(info.n_rows) != ntheta) return false;
   std::vector<arma::uword> idx;
   for (int p = 0; p < ntheta; ++p)
-    if (_advi.gnMask[p] && !thetaFix[p]) idx.push_back(static_cast<arma::uword>(p));
+    if (_advi.gnMask[p] && !thetaFix[p])
+      idx.push_back(static_cast<arma::uword>(p));
   if (idx.empty()) return false;
   const size_t n = idx.size();
   arma::uvec ui(idx);
@@ -22117,7 +22121,8 @@ static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
   for (size_t j = 0; j < n; ++j) {
     int p = static_cast<int>(idx[j]);
     gs[j] = g[p];
-    if (p < _advi.thetaLower.size() && _advi.thetaLower[p] == 0.0 && theta[p] > 0.0) {
+    if (p < _advi.thetaLower.size() && _advi.thetaLower[p] == 0.0 &&
+        theta[p] > 0.0) {
       logScale[j] = 1;
       jac[j] = theta[p];                         // d theta / d log(theta)
     }
@@ -22125,18 +22130,22 @@ static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
   arma::mat Hs = info(ui, ui) % (jac * jac.t());
   gs %= jac;
   arma::mat R;
-  if (!Hs.is_finite() || !gs.is_finite() || !arma::chol(R, arma::symmatu(Hs))) return false;
-  arma::vec step = arma::solve(arma::trimatu(R), arma::solve(arma::trimatl(R.t()), gs));
+  if (!Hs.is_finite() || !gs.is_finite() ||
+      !arma::chol(R, arma::symmatu(Hs))) return false;
+  arma::vec step = arma::solve(arma::trimatu(R),
+                               arma::solve(arma::trimatl(R.t()), gs));
   if (!step.is_finite()) return false;
   double shrink = 1.0;
   for (size_t j = 0; j < n; ++j) {
     double rad = logScale[j] ? 1.0 : std::sqrt(_advi.nObs / Hs(j, j));
-    if (std::fabs(step[j]) > rad) shrink = std::min(shrink, rad / std::fabs(step[j]));
+    if (std::fabs(step[j]) > rad)
+      shrink = std::min(shrink, rad / std::fabs(step[j]));
   }
   for (size_t j = 0; j < n; ++j) {
     int p = static_cast<int>(idx[j]);
     double st = gam * shrink * step[j];
-    theta[p] = logScale[j] ? theta[p] * std::exp(st) : adviGnBounded(p, theta[p], st);
+    theta[p] = logScale[j] ? theta[p] * std::exp(st)
+                           : adviGnBounded(p, theta[p], st);
   }
   return true;
 }
@@ -22144,7 +22153,9 @@ static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
 // Gain of every gaussNewton step: a Robbins-Monro sequence (sum diverges, sum of
 // squares converges) slow enough for the coupled E/M fixed point to settle in a
 // few hundred iterations.
-static double adviGnRate(int gi) { return std::pow(1.0 + static_cast<double>(gi), -0.6); }
+static double adviGnRate(int gi) {
+  return std::pow(1.0 + static_cast<double>(gi), -0.6);
+}
 
 // Mean eta Hessian over the draws where it is finite (NA when none was).
 static void adviHessAdd(arma::cube &acc, arma::vec &cnt, const arma::cube &h) {
@@ -22156,9 +22167,13 @@ static void adviHessAdd(arma::cube &acc, arma::vec &cnt, const arma::cube &h) {
 }
 static arma::cube adviHessMean(const arma::cube &acc, const arma::vec &cnt) {
   arma::cube out(acc.n_rows, acc.n_cols, acc.n_slices);
-  for (arma::uword i = 0; i < acc.n_slices; ++i)
-    if (cnt[i] > 0.0) out.slice(i) = acc.slice(i) / cnt[i];
-    else out.slice(i).fill(NA_REAL);
+  for (arma::uword i = 0; i < acc.n_slices; ++i) {
+    if (cnt[i] > 0.0) {
+      out.slice(i) = acc.slice(i) / cnt[i];
+    } else {
+      out.slice(i).fill(NA_REAL);
+    }
+  }
   return out;
 }
 
@@ -22175,8 +22190,9 @@ static bool adviGnMuStep(arma::vec &step, const arma::mat &Lam) {
 // Hessian at the draws, Lam <- (1-rho) Lam + rho E[H] (the Gaussian-VI
 // stationarity condition), and the mean takes the matching natural-gradient
 // step.  A subject whose Hessian is unusable keeps its state.
-static void adviGnStepFR(NumericMatrix &mu, NumericMatrix &Lpack, const NumericMatrix &gMu,
-                         const arma::cube &Hbar, int gi) {
+static void adviGnStepFR(NumericMatrix &mu, NumericMatrix &Lpack,
+                         const NumericMatrix &gMu, const arma::cube &Hbar,
+                         int gi) {
   const int N = mu.nrow(), neta = mu.ncol();
   const double rho = adviGnRate(gi);
   for (int i = 0; i < N; ++i) {
@@ -22188,7 +22204,8 @@ static void adviGnStepFR(NumericMatrix &mu, NumericMatrix &Lpack, const NumericM
     arma::mat Lam0;
     if (!arma::inv_sympd(Lam0, arma::symmatu(L * L.t()))) continue;
     arma::mat Lam = arma::symmatu((1.0 - rho) * Lam0 + rho * Hi), Sig, Lnew;
-    if (!arma::inv_sympd(Sig, Lam) || !arma::chol(Lnew, arma::symmatu(Sig), "lower")) continue;
+    if (!arma::inv_sympd(Sig, Lam) ||
+        !arma::chol(Lnew, arma::symmatu(Sig), "lower")) continue;
     arma::vec g(neta);
     for (int k = 0; k < neta; ++k) g[k] = gMu(i, k);
     arma::vec step = rho * (Sig * g);
@@ -22202,8 +22219,9 @@ static void adviGnStepFR(NumericMatrix &mu, NumericMatrix &Lpack, const NumericM
 // Gauss-Newton E-step, mean field: per-eta precision exp(-2 omega) moves toward
 // the Hessian diagonal (the factorized stationarity condition) and the mean
 // takes the diagonal natural-gradient step.
-static void adviGnStepMF(NumericMatrix &mu, NumericMatrix &omega, const NumericMatrix &gMu,
-                         const arma::cube &Hbar, int gi) {
+static void adviGnStepMF(NumericMatrix &mu, NumericMatrix &omega,
+                         const NumericMatrix &gMu, const arma::cube &Hbar,
+                         int gi) {
   const int N = mu.nrow(), neta = mu.ncol();
   const double rho = adviGnRate(gi);
   for (int i = 0; i < N; ++i) {
@@ -22295,10 +22313,15 @@ static double adviElboGradCore(NumericMatrix mu, NumericMatrix omega, NumericVec
     arma::vec lp(neta);
     for (int k = 0; k < neta; ++k) lp[k] = fInd->lp[k];
     if (wantHess) {
-      arma::mat Hs(neta, neta, arma::fill::zeros), H0s(neta, neta, arma::fill::zeros);
+      arma::mat Hs(neta, neta, arma::fill::zeros);
+      arma::mat H0s(neta, neta, arma::fill::zeros);
       rx_solving_options_ind *indS = getSolvingOptionsInd(rx, getRxId(i));
-      if (R_finite(obj) && calcEtaHessian(&eta[0], 0, i, fInd, indS, Hs, H0s)) etaHessBuf.slice(i) = Hs;
-      else etaHessBuf.slice(i).fill(NA_REAL);
+      if (R_finite(obj) &&
+          calcEtaHessian(&eta[0], 0, i, fInd, indS, Hs, H0s)) {
+        etaHessBuf.slice(i) = Hs;
+      } else {
+        etaHessBuf.slice(i).fill(NA_REAL);
+      }
     }
 
     // ELBO: data+prior term (-obj) + mean-field entropy (sum omega, + const)
@@ -22545,7 +22568,8 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
       if (_advi.gn) adviHessAdd(hessAcc, hessN, _advi.etaHess);
       for (int p = 0; p < ntheta; ++p) gThAcc[p] += gTheta[p];
       if (_advi.gn)
-        infoAcc = (m == 0) ? _advi.thetaInfo : arma::mat(infoAcc + _advi.thetaInfo);
+        infoAcc = (m == 0) ? _advi.thetaInfo
+                           : arma::mat(infoAcc + _advi.thetaInfo);
       for (int k = 0; k < neta; ++k) gLpoAcc[k] += gPopLogOmega[k];
     }
     elboAcc *= invM;
@@ -22566,12 +22590,15 @@ List adviLoop_(NumericMatrix mu0, NumericMatrix omega0, NumericVector theta0,
         sMu[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sMu[j];
         mu[j] += etaScale * idecay / (tau + std::sqrt(sMu[j])) * g;
         g = gOmAcc[j];
-        sOmega[j] = (gi == 0) ? g * g : alpha * g * g + (1.0 - alpha) * sOmega[j];
+        sOmega[j] = (gi == 0) ? g * g
+                              : alpha * g * g + (1.0 - alpha) * sOmega[j];
         omega[j] += etaScale * idecay / (tau + std::sqrt(sOmega[j])) * g;
       }
     }
-    const double gam = _advi.gn ? adviGnRate(gi) : 1.0 / (10.0 + static_cast<double>(gi));
-    const bool gnTheta = adviGnThetaStep(theta, gThAcc, infoAcc * invM, thetaFix, gam);
+    const double gam = _advi.gn ? adviGnRate(gi)
+                                : 1.0 / (10.0 + static_cast<double>(gi));
+    const bool gnTheta =
+      adviGnThetaStep(theta, gThAcc, infoAcc * invM, thetaFix, gam);
     for (int p = 0; p < ntheta; ++p) {
       // mu-referenced intercepts are not gradient-updated: theta and eta share a
       // flat direction (data constrains only theta+eta), which makes joint SGA
@@ -22728,10 +22755,15 @@ static double adviElboGradCoreFR(NumericMatrix mu, NumericMatrix Lpack, NumericV
     arma::vec lp(neta);
     for (int k = 0; k < neta; ++k) lp[k] = fInd->lp[k];
     if (wantHess) {
-      arma::mat Hs(neta, neta, arma::fill::zeros), H0s(neta, neta, arma::fill::zeros);
+      arma::mat Hs(neta, neta, arma::fill::zeros);
+      arma::mat H0s(neta, neta, arma::fill::zeros);
       rx_solving_options_ind *indS = getSolvingOptionsInd(rx, getRxId(s));
-      if (R_finite(obj) && calcEtaHessian(&eta[0], 0, s, fInd, indS, Hs, H0s)) etaHessBuf.slice(s) = Hs;
-      else etaHessBuf.slice(s).fill(NA_REAL);
+      if (R_finite(obj) &&
+          calcEtaHessian(&eta[0], 0, s, fInd, indS, Hs, H0s)) {
+        etaHessBuf.slice(s) = Hs;
+      } else {
+        etaHessBuf.slice(s).fill(NA_REAL);
+      }
     }
 
     double e = -obj;
@@ -22866,7 +22898,8 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
       if (_advi.gn) adviHessAdd(hessAcc, hessN, _advi.etaHess);
       for (int p = 0; p < ntheta; ++p) gThAcc[p] += gTheta[p];
       if (_advi.gn)
-        infoAcc = (m == 0) ? _advi.thetaInfo : arma::mat(infoAcc + _advi.thetaInfo);
+        infoAcc = (m == 0) ? _advi.thetaInfo
+                           : arma::mat(infoAcc + _advi.thetaInfo);
       for (int k = 0; k < neta; ++k) gLpoAcc[k] += gPopLogOmega[k];
     }
     elboAcc *= invM;
@@ -22892,8 +22925,10 @@ List adviLoopFR_(NumericMatrix mu0, NumericMatrix Lpack0, NumericVector theta0,
         Lpack[j] += etaScale * idecay / (tau + std::sqrt(sL[j])) * g;
       }
     }
-    const double gam = _advi.gn ? adviGnRate(gi) : 1.0 / (10.0 + static_cast<double>(gi));
-    const bool gnTheta = adviGnThetaStep(theta, gThAcc, infoAcc * invM, thetaFix, gam);
+    const double gam = _advi.gn ? adviGnRate(gi)
+                                : 1.0 / (10.0 + static_cast<double>(gi));
+    const bool gnTheta =
+      adviGnThetaStep(theta, gThAcc, infoAcc * invM, thetaFix, gam);
     for (int p = 0; p < ntheta; ++p) {
       if (thetaFix[p] || thetaMuRefEta[p] >= 0) continue;
       if (gnTheta && _advi.gnMask[p]) continue;
@@ -23214,17 +23249,21 @@ List adviOptimize_(List args) {
   _advi.klWarmup = args.containsElementNamed("klWarmup") ? as<int>(args["klWarmup"]) : 0;
   // optim="gaussNewton" (point estimate only): Gauss-Newton E-step and an
   // M-step for the theta-sensitivity thetas (1-based gnIdx)
-  _advi.gn = pe && args.containsElementNamed("gaussNewton") && as<bool>(args["gaussNewton"]);
+  _advi.gn = pe && args.containsElementNamed("gaussNewton") &&
+    as<bool>(args["gaussNewton"]);
   if (_advi.gn) {
-    IntegerVector gIdx = args.containsElementNamed("gnIdx") ? as<IntegerVector>(args["gnIdx"])
-      : IntegerVector(0);
+    IntegerVector gIdx = args.containsElementNamed("gnIdx")
+      ? as<IntegerVector>(args["gnIdx"]) : IntegerVector(0);
     _advi.gnMask.assign(thetaIni.size(), 0);
     for (int j = 0; j < gIdx.size(); ++j)
       if (gIdx[j] != NA_INTEGER && gIdx[j] >= 1 && gIdx[j] <= thetaIni.size())
         _advi.gnMask[gIdx[j] - 1] = 1;
-    if (args.containsElementNamed("nObs")) _advi.nObs = std::max(1.0, as<double>(args["nObs"]));
-    if (args.containsElementNamed("thetaLower")) _advi.thetaLower = as<NumericVector>(args["thetaLower"]);
-    if (args.containsElementNamed("thetaUpper")) _advi.thetaUpper = as<NumericVector>(args["thetaUpper"]);
+    if (args.containsElementNamed("nObs"))
+      _advi.nObs = std::max(1.0, as<double>(args["nObs"]));
+    if (args.containsElementNamed("thetaLower"))
+      _advi.thetaLower = as<NumericVector>(args["thetaLower"]);
+    if (args.containsElementNamed("thetaUpper"))
+      _advi.thetaUpper = as<NumericVector>(args["thetaUpper"]);
   }
   _advi.temperInit = args.containsElementNamed("temperInit")
     ? as<double>(args["temperInit"]) : 1.0;
