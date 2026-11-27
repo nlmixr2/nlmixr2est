@@ -18,6 +18,7 @@
 #include "nmMcmcRng.h"
 #include "nmSeqSeed.h"
 #include "nmProgress.h"
+#include <algorithm>
 #include <cfloat>
 #include <cstring>
 #include <cstdint>
@@ -638,6 +639,9 @@ struct focei_options {
   double aqLow;
   double aqHi;
   bool aqfirst = false;
+  // grid centre: 0 = each EBE/Hessian, 1 = the EBE/Hessian at the first
+  // evaluation of the run (then frozen), 2 = the prior N(0, Omega)
+  int aqCenter = 0;
   double scaleC0;
   // one-step start for thetas that began at 0 (#1228): largest move in typical
   // magnitudes (0 = off) and their optimizer indices
@@ -1560,6 +1564,13 @@ static inline int getRxMixFromId(int id) {
 
 unsigned int _aqn = 0;
 int _nagq = 0;
+static std::string agqRuleDetail(Environment e);
+// agq grid frozen at the first evaluation of a run (op_focei.aqCenter == 1)
+static std::vector<double> _aqStartCenter, _aqStartScale, _aqStartLogDet;
+static std::vector<char> _aqStartSet;
+// set while innerOpt1() ranks candidate EBEs: a frozen grid scores every
+// candidate alike, so ranking uses (and never freezes) the EBE-centred grid
+static thread_local bool _aqRanking = false;
 
 struct focei_ind {
   int nInnerF;
@@ -4305,6 +4316,58 @@ double LikInner2(double *eta, int likId, int id) {
     }
     if (_aqn == 0) {
       lik += logH0diag + curLogDetOmegaInv5();
+    } else if (op_focei.aqCenter == 2 || (op_focei.aqCenter == 1 && !_aqRanking)) {
+      // A grid that does not follow the EBE: eta_k = c + sqrt(2)*S*x_k, so the
+      // integral is |S| * sum_k w_k exp(-likInner0(eta_k) + x_k'x_k) up to the
+      // constants the Gauss-Hermite layout already absorbs.  Log-sum-exp: off
+      // the mode a node's likelihood can underflow.
+      arma::mat aqx(op_focei.aqx, _aqn, op_focei.neta, false, true);
+      arma::mat aqw(op_focei.aqw, _aqn, op_focei.neta, false, true);
+      const unsigned int ne = op_focei.neta;
+      arma::vec c(ne, fill::zeros);
+      arma::mat S;
+      double logDetS;
+      if (op_focei.aqCenter == 2) {
+        // prior N(0, Omega): S*S' = Omega, so log|S| cancels 0.5*log|Omega^-1|
+        arma::mat U;
+        if (!arma::chol(U, curOmegaInv())) return NA_REAL;
+        S = arma::inv(arma::trimatu(U));
+        logDetS = -curLogDetOmegaInv5();
+      } else {
+        if (id >= (int)_aqStartSet.size()) return NA_REAL;
+        double *cs = &_aqStartCenter[(size_t)id*ne];
+        double *ss = &_aqStartScale[(size_t)id*ne*ne];
+        if (!_aqStartSet[id]) {
+          arma::mat G;
+          bool ok = false;
+          try {
+            ok = arma::inv(G, trimatu(H0)) || arma::inv(G, H0);
+          } catch (...) {
+            ok = false;
+          }
+          if (!ok) return NA_REAL;
+          std::copy(eta, eta + ne, cs);
+          std::copy(G.begin(), G.end(), ss);
+          _aqStartLogDet[id] = logH0diag;
+          _aqStartSet[id] = 1;
+        }
+        c = arma::vec(cs, ne);
+        S = arma::mat(ss, ne, ne);
+        logDetS = _aqStartLogDet[id];
+      }
+      LikInner0OutputGuard _outputs(fInd, ind);
+      std::vector<double> lnode(_aqn);
+      for (unsigned int k = 0; k < _aqn; k++) {
+        arma::vec x = aqx.row(k).t();
+        arma::vec w = aqw.row(k).t();
+        arma::vec etaCur = c + M_SQRT2 * S * x;
+        double lk = -likInner0(etaCur.memptr(), id);
+        lk += sum(log(w) + x % x);
+        lk = max2(lk, op_focei.aqLow);
+        lnode[k] = min2(lk, op_focei.aqHi);
+      }
+      lik = rxLogSumExpW(lnode.data(), NULL, (int)_aqn, NULL, false) +
+        logDetS + curLogDetOmegaInv5();
     } else {
       // Adaptive Gaussian Hermite Quadrature expansion around the EBE mode;
       // the SE of the EBE estimate (inverse cholesky of the Hessian) drives
@@ -5845,6 +5908,8 @@ static inline int innerOpt1(int id, int likId) {
         if (fInd->etahf != NULL) std::fill_n(&fInd->etahf[0], fop->neta, 0.0);
         if (fInd->etahr != NULL) std::fill_n(&fInd->etahr[0], fop->neta, 0.0);
         if (fInd->etahh != NULL) std::fill_n(&fInd->etahh[0], fop->neta, 0.0);
+        ScopedRestore<bool> _rank(_aqRanking);
+        _aqRanking = true;
         double m = LikInner2(&candEta[k][0], likId, id);
         // LikInner2 returns the individual log-likelihood and the outer
         // objective is -2 times it, so the best candidate is the LARGEST.
@@ -14634,8 +14699,16 @@ void foceiFinalizeTables(Environment e){
       objDf.attr("row.names") = CharacterVector::create(full + "Laplace");
       e["ofvType"] = full.empty() ? "laplace" : "full laplace";
     } else {
-      objDf.attr("row.names") = CharacterVector::create(full + "AGQ" + std::to_string(_nagq));
-      e["ofvType"] = (full.empty() ? "agq" : "full agq") + std::to_string(_nagq);
+      // a non-Hermite rule names itself (e.g. "AGQ-Stieltjes")
+      std::string lab = "AGQ" + std::to_string(_nagq);
+      if (e.exists("agqLabel")) {
+        std::string l0 = as<std::string>(e["agqLabel"]);
+        if (!l0.empty()) lab = l0;
+      }
+      objDf.attr("row.names") = CharacterVector::create(full + lab);
+      std::string low = lab;
+      std::transform(low.begin(), low.end(), low.begin(), ::tolower);
+      e["ofvType"] = (full.empty() ? "" : "full ") + low;
     }
     addLlikObs(e);
   } else if (op_focei.interaction){
@@ -14856,7 +14929,7 @@ void foceiFinalizeTables(Environment e){
       } else {
         e["extra"] = as<std::string>(e["extra"]) +
           " (outer: " + _details +
-          "; nAGQ=" + std::to_string(_nagq)  + ")";
+          "; " + agqRuleDetail(e) + ")";
       }
     }
   }
@@ -14872,6 +14945,14 @@ void foceiFinalizeTables(Environment e){
   e.attr("class") = "nlmixr2FitCore";
 }
 
+static std::string agqRuleDetail(Environment e) {
+  if (e.exists("agqLabel")) {
+    std::string l0 = as<std::string>(e["agqLabel"]);
+    if (!l0.empty()) return l0;
+  }
+  return "nAGQ=" + std::to_string(_nagq);
+}
+
 void setupAq1_(Environment e) {
   if (_aqn >= 1) {
     double *tmp = REAL(e["qx"]);
@@ -14879,10 +14960,17 @@ void setupAq1_(Environment e) {
     tmp = REAL(e["qw"]);
     std::copy(tmp, tmp + _aqn*op_focei.neta, op_focei.aqw);
     op_focei.aqfirst = as<bool>(e["qfirst"]);
+    op_focei.aqCenter = e.exists("qcenter") ? as<int>(e["qcenter"]) : 0;
+    _aqStartSet.assign(op_focei.aqCenter == 1 ? (size_t)getRxNsubAndMix(getRxSolve_()) : 0, 0);
+    _aqStartCenter.assign(_aqStartSet.size()*op_focei.neta, 0.0);
+    _aqStartScale.assign(_aqStartSet.size()*op_focei.neta*op_focei.neta, 0.0);
+    _aqStartLogDet.assign(_aqStartSet.size(), 0.0);
     op_focei.aqLow = as<double>(e["aqLow"]);
     op_focei.aqHi = as<double>(e["aqHi"]);
   } else {
     op_focei.aqfirst = false;
+    op_focei.aqCenter = 0;
+    _aqStartSet.clear();
   }
 }
 

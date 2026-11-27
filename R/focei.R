@@ -5779,6 +5779,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   "mfocepControl",
   "ifocepControl",
   "agqControl",
+  "stieltjesControl",
   "magqControl",
   "iagqControl",
   "laplaceControl",
@@ -6373,19 +6374,24 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   .foceiDropMalformedCov(.env)
   if (.control$nAGQ > 0) {
-    .ag <- .agq(length(ui$eta), .control$nAGQ)
+    .ag <- .agqRuleGrid(length(ui$eta), .control)
+    .env$agqLabel <- .agqRuleLabel(.control)
     .env$aqn <- as.integer(.ag$n)
     .env$qx <- .ag$x
     .env$qw <- .ag$w
-    .env$qfirst <- .ag$first
+    .env$qcenter <- match(.control$agqCenter, c("mode", "start", "prior"), 1L) - 1L
+    # the cached first node is the current mode, which only a "mode" grid holds
+    .env$qfirst <- .ag$first && .env$qcenter == 0L
     .env$nAGQ <- .control$nAGQ
     .env$aqLow <- .control$agqLow
     .env$aqHi <- .control$agqHi
   } else {
     .env$aqn <- 0L
+    .env$agqLabel <- ""
     .env$qx <- double(0)
     .env$qw <- double(0)
     .env$qfirst <- FALSE
+    .env$qcenter <- 0L
     .env$nAGQ <- 0L
     .env$aqLow <- -Inf
     .env$aqHi <- Inf
