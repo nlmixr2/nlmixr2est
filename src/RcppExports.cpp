@@ -1577,6 +1577,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// saemFsaveRefresh_
+Rcpp::NumericVector saemFsaveRefresh_();
+RcppExport SEXP _nlmixr2est_saemFsaveRefresh_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(saemFsaveRefresh_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // saemGainFrozenSkipN_
 Rcpp::NumericVector saemGainFrozenSkipN_();
 RcppExport SEXP _nlmixr2est_saemGainFrozenSkipN_() {
@@ -1641,6 +1651,18 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< SEXP >::type inC(inCSEXP);
     Rcpp::traits::input_parameter< SEXP >::type inAddProp(inAddPropSEXP);
     rcpp_result_gen = Rcpp::wrap(saemFormGTest(inA, inB, inFt, inC, inAddProp));
+    return rcpp_result_gen;
+END_RCPP
+}
+// saemBurnTrendTest
+SEXP saemBurnTrendTest(SEXP inX, SEXP inNBatch);
+RcppExport SEXP _nlmixr2est_saemBurnTrendTest(SEXP inXSEXP, SEXP inNBatchSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type inX(inXSEXP);
+    Rcpp::traits::input_parameter< SEXP >::type inNBatch(inNBatchSEXP);
+    rcpp_result_gen = Rcpp::wrap(saemBurnTrendTest(inX, inNBatch));
     return rcpp_result_gen;
 END_RCPP
 }
