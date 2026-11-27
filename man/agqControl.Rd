@@ -10,7 +10,11 @@ agqControl(
   ...,
   interaction = TRUE,
   agqLow = -Inf,
-  agqHi = Inf
+  agqHi = Inf,
+  agqRule = c("hermite", "legendre", "stieltjes"),
+  agqNsd = 3,
+  agqGrid = c(nr = 3, ns = 2, r0 = 0.6, r1 = 0.9),
+  agqCenter = c("mode", "start", "prior")
 )
 }
 \arguments{
@@ -45,6 +49,34 @@ gnlmm it was -700.}
 \item{agqHi}{The upper bound for adaptive quadrature
 log-likelihood.  By default this is Inf; in the original nlmixr's
 gnlmm was 400.}
+
+\item{agqRule}{Quadrature rule used when `nAGQ > 1`: `"hermite"`
+(adaptive Gauss-Hermite, `nAGQ` nodes per eta), `"legendre"`
+(Gauss-Legendre, `nAGQ` nodes per eta over `agqNsd` conditional
+standard deviations) or `"stieltjes"` (radial shells set by `agqGrid`;
+`nAGQ` is then only the switch).  Every rule is centred on the EBE and
+scaled by the eta Hessian, so all are exact when the model is linear in
+the etas with an eta-independent residual variance.}
+
+\item{agqNsd}{Half-width, in conditional standard deviations, of the
+`agqRule="legendre"` integration box.}
+
+\item{agqGrid}{The `agqRule="stieltjes"` grid `c(nr, ns, r0, r1)`, as in
+NONMEM's `GRID=`: `nr` equal shells over the radial probability interval
+`[r0, r1]` plus a central region `[0, r0]` and, unless `r1 > 0.9999`, a
+tail region; `ns` directions per quadrant of each pair of etas.  The
+default `ns = 2` differs from NONMEM's `GRID=(3,1,.6,.9)`: one direction
+per quadrant is too sparse for a grid that does not follow the EBE.}
+
+\item{agqCenter}{Where the quadrature grid sits.  `"mode"` (default)
+re-centres it on each subject's EBE and eta Hessian at every evaluation.
+`"start"` centres it on the EBE and Hessian at the first evaluation of
+the run (again after a theta-reset restart) and then keeps it fixed, so
+the objective no longer moves with the conditional etas (the integrating
+stage of NONMEM's `STIELTJES`).
+`"prior"` uses one grid on `N(0, Omega)` for every subject, which needs
+a fine grid when the data are informative.  Only `"mode"` has an
+analytic gradient and covariance.}
 }
 \value{
 agqControl object
