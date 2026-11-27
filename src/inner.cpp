@@ -4053,6 +4053,8 @@ static int calcEtaHessianModel(double *eta, int id, focei_ind *fInd,
   return 0;
 }
 
+static bool calcEtaHessianGN(focei_ind *fInd, rx_solving_options_ind *ind, mat &H);
+
 bool calcEtaHessian(double *eta, int likId, int id,
                     focei_ind *fInd,
                     rx_solving_options_ind *ind,
@@ -4164,7 +4166,42 @@ bool calcEtaHessian(double *eta, int likId, int id,
       }
       return Hfd;
     });
-  } else if (modelHess == 0 && op_focei.interaction) {
+  } else if (modelHess == 0 && !calcEtaHessianGN(fInd, ind, H)) {
+    return false;
+  }
+  // the Gauss-Newton and model Hessians cover the observations only; a FD
+  // (needOptimHess) Hessian already differentiates the penalized gradient
+  if (!op_focei.needOptimHess) penEtaHessAdd(H, id, eta, fInd);
+  k=0;
+  if (conditional && forOptimization && innerOptTrustFamily(op_focei.innerOpt)) return H.is_finite();
+  if (!H.is_sympd()) {
+    arma::mat H2;
+    int how = nmNearPDKeepDiag(H2, H);
+    if (how > 0) {
+      H=H2;
+      // reported after the fit; this can run on any thread
+      if (how == 2) op_focei.nNearPdDiag.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
+  if (fInd->doChol) {
+    arma::mat Hout, Hin = H;
+    bool success = chol_sym(Hout, Hin);
+    if (!success) {
+      return false;
+    }
+    H0 = Hout;
+  } else {
+    H0=cholSE__(H, op_focei.cholSEtol);
+  }
+  H = H0.t() * H0;
+  return true;
+}
+
+// The Gauss-Newton eta Hessian into H (FOCEI with interaction, else FOCE);
+// false when it is not finite.
+static bool calcEtaHessianGN(focei_ind *fInd, rx_solving_options_ind *ind, mat &H) {
+  int k, l;
+  if (op_focei.interaction) {
     int nO = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
     arma::mat a(fInd->a, nO, op_focei.neta, false, true);
     arma::mat B(fInd->B, nO, 1, false, true);
@@ -4197,7 +4234,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
         H(l, k) = H(k, l);
       }
     }
-  } else if (modelHess == 0) {
+  } else {
     int nO = getIndNallTimes(ind)-getIndNdoses(ind)-getIndNevid2(ind);
     arma::mat a(fInd->a, nO, op_focei.neta, false, true);
     // FOCE (no interaction): frozen variance -> only the prediction curvature enters
@@ -4214,31 +4251,6 @@ bool calcEtaHessian(double *eta, int likId, int id,
       }
     }
   }
-  // the Gauss-Newton and model Hessians cover the observations only; a FD
-  // (needOptimHess) Hessian already differentiates the penalized gradient
-  if (!op_focei.needOptimHess) penEtaHessAdd(H, id, eta, fInd);
-  k=0;
-  if (conditional && forOptimization && innerOptTrustFamily(op_focei.innerOpt)) return H.is_finite();
-  if (!H.is_sympd()) {
-    arma::mat H2;
-    int how = nmNearPDKeepDiag(H2, H);
-    if (how > 0) {
-      H=H2;
-      // reported after the fit; this can run on any thread
-      if (how == 2) op_focei.nNearPdDiag.fetch_add(1, std::memory_order_relaxed);
-    }
-  }
-  if (fInd->doChol) {
-    arma::mat Hout, Hin = H;
-    bool success = chol_sym(Hout, Hin);
-    if (!success) {
-      return false;
-    }
-    H0 = Hout;
-  } else {
-    H0=cholSE__(H, op_focei.cholSEtol);
-  }
-  H = H0.t() * H0;
   return true;
 }
 
