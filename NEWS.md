@@ -433,6 +433,11 @@
 
 ### Estimation
 
+- `est = "saem"` now keeps a bounded mu-referenced covariate coefficient (for
+  example `clWt <- c(-5, 0.5, 5)` in `exp(lcl + eta.cl + clWt * log(WT / 70))`)
+  in its closed-form M-step and holds it inside its bounds there, instead of
+  transforming it out of the covariate regression.  The coefficient was
+  mis-estimated and reported on its internal scale (#1347).
 - `est="saem"` now re-solves its cached predictions after the M-step moves a
   theta without an eta, so the next E-step no longer scores the current state
   at the previous theta (non-mixture fits; mixtures already re-solved).

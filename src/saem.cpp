@@ -4,6 +4,7 @@
 #include <thread>
 #include <chrono>
 #include <vector>
+#include <algorithm>
 #include <functional>
 #include <R_ext/Rdynload.h>
 #include <RcppArmadillo.h>
@@ -1818,10 +1819,134 @@ public:
       if (li.n_elem == 0) continue;
       mat Xc = COV1.cols(li);
       vec bc;
-      if (arma::solve(bc, Xc.t() * Xc, Xc.t() * mprior_phi1.col(c))) {
+      mat XtX = Xc.t() * Xc;
+      vec Xty = Xc.t() * mprior_phi1.col(c);
+      if (arma::solve(bc, XtX, Xty)) {
+        if (lambda1Bound(bc, XtX, Xty, li, uvec(), true)) {
+          mprior_phi1.col(c) = Xc * bc;
+        }
         for (unsigned int j = 0; j < li.n_elem; ++j) MCOV1(li(j), c) = bc(j);
       }
     }
+  }
+
+  bool hasLambda1Bounds() const {
+    const arma::uword n = static_cast<arma::uword>(nlambda1);
+    return lambda1Lower.n_elem > 0 && lambda1Lower.n_elem == n &&
+      lambda1Upper.n_elem == n;
+  }
+
+  // distance of x(j) outside the bounds of Plambda1 coefficient li(j)
+  double lambda1Outside(const vec &x, const uvec &li, arma::uword j) const {
+    const double lo = lambda1Lower(li(j));
+    const double hi = lambda1Upper(li(j));
+    if (x(j) < lo) return lo - x(j);
+    if (x(j) > hi) return x(j) - hi;
+    return 0.0;
+  }
+
+  // move x(j) to the bound it is past; `at` is -1 lower, 1 upper, 0 free
+  void lambda1ClampTo(vec &x, const uvec &li, std::vector<int> &at,
+                      arma::uword j) const {
+    const bool low = x(j) < lambda1Lower(li(j));
+    x(j) = low ? lambda1Lower(li(j)) : lambda1Upper(li(j));
+    at[j] = low ? -1 : 1;
+  }
+
+  // clamp every unheld coefficient outside its bounds; true when any moved
+  bool lambda1ClampAll(vec &x, const uvec &li, const std::vector<bool> &keep,
+                       std::vector<int> &at) const {
+    bool clamped = false;
+    for (arma::uword j = 0; j < x.n_elem; ++j) {
+      if (!keep[j] && lambda1Outside(x, li, j) > 0.0) {
+        lambda1ClampTo(x, li, at, j);
+        clamped = true;
+      }
+    }
+    return clamped;
+  }
+
+  // one active-set change: bind the coefficient furthest outside, or (when
+  // feasible) release the bound whose multiplier has the wrong sign; false
+  // when nothing changed
+  bool lambda1ActiveStep(vec &x, const mat &C, const vec &rhs, const uvec &li,
+                         const std::vector<bool> &keep,
+                         std::vector<int> &at) const {
+    const arma::uword n = x.n_elem;
+    arma::uword worst = n;
+    double worstD = 0.0;
+    for (arma::uword j = 0; j < n; ++j) {
+      if (keep[j] || at[j] != 0) continue;
+      const double d = lambda1Outside(x, li, j);
+      if (d > worstD) {
+        worstD = d;
+        worst = j;
+      }
+    }
+    if (worst < n) {
+      lambda1ClampTo(x, li, at, worst);
+      return true;
+    }
+    const vec g = C * x - rhs;
+    arma::uword rel = n;
+    double relG = 0.0;
+    for (arma::uword j = 0; j < n; ++j) {
+      const double m = at[j] * g(j);
+      if (m > relG) {
+        relG = m;
+        rel = j;
+      }
+    }
+    if (rel == n) return false;
+    at[rel] = 0;
+    return true;
+  }
+
+  // minimize the quadratic over the free coefficients, the rest held; false
+  // when the system is singular
+  static bool lambda1SolveFree(vec &x, const mat &C, const vec &rhs,
+                               const std::vector<bool> &keep,
+                               const std::vector<int> &at) {
+    std::vector<uword> fr, ac;
+    for (arma::uword j = 0; j < x.n_elem; ++j) {
+      if (keep[j] || at[j] != 0) {
+        ac.push_back(j);
+      } else {
+        fr.push_back(j);
+      }
+    }
+    if (fr.empty()) return true;
+    uvec F(fr), A(ac);
+    vec xf;
+    if (!arma::solve(xf, C(F, F), rhs(F) - C(F, A) * x(A))) return false;
+    x(F) = xf;
+    return true;
+  }
+
+  // Hold the bounded Plambda1 coefficients `x` (at Plambda1 indices `li`) inside
+  // their bounds.  Without `refit` each one outside is clamped; with it the
+  // M-step quadratic 0.5 x'Cx - rhs'x is minimized over the box by an active
+  // set, the `held` (local) entries kept where they are.  Returns true when
+  // anything ends at a bound it was moved to.
+  bool lambda1Bound(vec &x, const mat &C, const vec &rhs, const uvec &li,
+                    const uvec &held, bool refit) {
+    if (!hasLambda1Bounds()) return false;
+    const arma::uword n = x.n_elem;
+    std::vector<bool> keep(n, false);
+    for (arma::uword j = 0; j < held.n_elem; ++j) {
+      if (held(j) < n) keep[held(j)] = true;
+    }
+    std::vector<int> at(n, 0);
+    if (!refit) return lambda1ClampAll(x, li, keep, at);
+    for (arma::uword it = 0; it < 4 * n + 4; ++it) {
+      if (!lambda1ActiveStep(x, C, rhs, li, keep, at)) break;
+      if (!lambda1SolveFree(x, C, rhs, keep, at)) break;
+    }
+    const bool atBound = std::any_of(at.begin(), at.end(),
+                                     [](int a) { return a != 0; });
+    // a failed or exhausted search still leaves x inside the box
+    const bool moved = lambda1ClampAll(x, li, keep, at);
+    return atBound || moved;
   }
 
   static void phi1MarkIx(std::vector<bool> &mark, const uvec &ix, int n) {
@@ -2929,6 +3054,10 @@ public:
     if (nphi0 > 0) holdGamma2_phi0 = Gamma2_phi0.diag();
     fixedIx1 = as<uvec>(x["fixed.i1"]);
     pseudoIx1 = as<uvec>(x["pseudo.i1"]);
+    if (x.containsElementNamed("lambda1Lower") && x.containsElementNamed("lambda1Upper")) {
+      lambda1Lower = as<vec>(x["lambda1Lower"]);
+      lambda1Upper = as<vec>(x["lambda1Upper"]);
+    }
 
     nlambda1 = as<int>(x["nlambda1"]);
     nlambda0 = as<int>(x["nlambda0"]);
@@ -4481,6 +4610,12 @@ public:
       if (fixedIx1.n_elem>0) {
         Plambda1(fixedIx1) = MCOV1(jcov1(fixedIx1));
       }
+      if (hasLambda1Bounds()) {
+        // a re-fit would undo the mixture and pooled-mean overrides above
+        uvec all1 = arma::regspace<uvec>(0, static_cast<arma::uword>(nlambda1) - 1);
+        lambda1Bound(Plambda1, CGamma21, rhs1, all1, fixedIx1,
+                     nMix <= 1 && !omegaPoolMean);
+      }
       if (nphi0>0) {
         vec rhs0 = sum((D1Gamma20%(COV0.t()*statphi01)),1);
         Plambda0=inv_sympd(CGamma20)*rhs0;
@@ -4496,6 +4631,10 @@ public:
       }
       penMstep(Plambda1, CGamma21, fixedIx1, ilambda1);
       if (omegaPoolMean && nlmixrPenNPop() > 0) poolLambdaGroups(Plambda1);
+      if (nlmixrPenNPop() > 0 && hasLambda1Bounds()) {
+        uvec all1 = arma::regspace<uvec>(0, static_cast<arma::uword>(nlambda1) - 1);
+        lambda1Bound(Plambda1, CGamma21, rhs1, all1, fixedIx1, false);
+      }
       MCOV1(jcov1)=Plambda1;
       // Phase 4 (SAEM general-likelihood theta plan): once the direct phi1
       // Laplace optimizer owns phi1 (kiter>=niter_phi0 -- the same
@@ -5627,6 +5766,8 @@ private:
   int nphi0, nphi1, nphi;
   mat covstruct1;
   uvec i1, i0, fixedIx1, fixedIx0, pseudoIx1;
+  // bounds of each Plambda1 coefficient (a bounded covariate coefficient, #1347)
+  vec lambda1Lower, lambda1Upper;
   // phi0 columns whose every coefficient is fix()ed: never sampled (free0 are
   // the others); their initial pseudo-variance is kept so the prior stays finite
   uvec holdIx0, free0;
