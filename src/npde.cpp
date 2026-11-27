@@ -186,7 +186,8 @@ static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned i
 // PWRES/EWRES: the observed residual whitened by the simulations' own mean and
 // covariance, Sigma^(-1/2) (y - EPRED), with the symmetric inverse square root.
 // NA for a subject with a censored observation or too few simulations (K <= n).
-static inline void calculatePwres(calcNpdeInfoId *retp, const arma::Col<int> &cens,
+static inline void calculatePwres(calcNpdeInfoId *retp,
+                                  const arma::Col<int> &cens,
                                   const arma::Col<int> &evid, unsigned int K) {
   calcNpdeInfoId &ret = *retp;
   ret.pwres = arma::vec(ret.yobst.n_elem);
