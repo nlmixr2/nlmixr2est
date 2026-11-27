@@ -86,7 +86,13 @@
   .fit2 <- try(
     suppressMessages(suppressWarnings(
       .nlmixr2PriorGateBypass(
-        nlmixr2(.a$ui, data = .a$data, est = est, control = control)
+        nlmixr2(
+          .a$ui,
+          data = .a$data,
+          est = est,
+          control = control,
+          likPenalty = .likPenaltyRefitSpecs(fit)
+        )
       )
     )),
     silent = TRUE

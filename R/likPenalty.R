@@ -391,6 +391,33 @@ nlmixr2LikPenaltyUdf <- function(spec) {
   )
 }
 
+#' Keep the `likPenalty=` specs of an estimation on its fit
+#'
+#' Penalties attached to the model travel with the fit's ui; those given as
+#' `nlmixr2(..., likPenalty=)` are kept here so a re-fit (`setCov()`) runs under them.
+#' @param fit nlmixr2 fit
+#' @param env estimation environment
+#' @return nothing, called for side effects
+#' @noRd
+.likPenaltyStoreSpecs <- function(fit, env) {
+  if (!inherits(fit, "nlmixr2FitCore") || !exists(".nlmixr2Dots", envir = env, inherits = FALSE)) {
+    return(invisible())
+  }
+  .specs <- .likPenaltyAsList(env$.nlmixr2Dots$likPenalty)
+  if (length(.specs) > 0L) {
+    assign("likPenaltySpecs", .specs, envir = fit$env)
+  }
+  invisible()
+}
+
+#' The `likPenalty=` specs a re-fit of `fit` needs
+#' @param fit nlmixr2 fit
+#' @return list of specs, or `NULL`
+#' @noRd
+.likPenaltyRefitSpecs <- function(fit) {
+  get0("likPenaltySpecs", envir = fit$env, inherits = FALSE)
+}
+
 #' Record the penalties on a fit and remove optimization-only ones from its
 #' reported objective
 #' @param fit nlmixr2 fit

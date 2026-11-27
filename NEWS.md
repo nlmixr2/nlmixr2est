@@ -395,6 +395,10 @@
   when a likelihood penalty is active, so the covariance includes the
   penalty's curvature instead of describing the unpenalised likelihood
   (#1479).
+- `setCov()` re-fits (`"sa"`, `"imp"` and the full-model FOCEi
+  recompute) now run under the penalties given as `nlmixr2(...,
+  likPenalty=)`, which the fit keeps; before, only penalties attached to the
+  model reached them (#1479).
 - The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a
   `same()` block's copies with the block they repeat, so a correlated IOV
   block contributes one shared occasion Omega (`om.iov.cl`,
