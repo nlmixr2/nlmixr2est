@@ -223,6 +223,17 @@ int odeSwapEsModelForSlot(int slot) {
 }
 
 int  odeSwapEsInstalledModel()          { return _odeEsSlot; }
+
+// focei.R installs the inner model's shape from R before the fit; the library it
+// resolved can be reloaded when the fit loads its models (rxDynLoad), leaving that
+// shape's function pointers stale.  Once the pool is built, reinstall the inner
+// slot's shape through the registry (by name, on the loaded library) and record
+// the slot, so a batch puts back this shape and not the stale one.
+static bool odeSwapEsInstall(int slot);
+void odeSwapEsRebindInner() {
+  if (_odeEsSlot != odeEsInner || !odeSwapHasEs(odeSlotInner)) return;
+  if (odeSwapEsInstall(odeSlotInner)) _odeEsSlotIdx = odeSlotInner;
+}
 void odeSwapEsNoteInstalled(int esModel) { _odeEsSlot = esModel; _odeEsSlotIdx = -1; }
 
 // Install a slot's ES shape.
@@ -324,8 +335,13 @@ OdeSwapEsBatch::~OdeSwapEsBatch() {
   // what was there rather than reconstructing who put it there.  Leaving the
   // batch's shape live would mis-specify every inner solve after the first
   // gradient call of an iterating fit.
-  bool restored = !prevShape_.empty() &&
-    rxode2EventSensShapeRestore(prevShape_.data(), (int)prevShape_.size());
+  // A shape the registry installed is put back by reinstalling its slot, which
+  // re-resolves the model's functions by name: a model's library can be reloaded
+  // while the batch runs, and a snapshot would put back its old addresses.
+  bool restored = (prevSlotIdx_ >= 0 && odeSwapHasEs(prevSlotIdx_) &&
+                   odeSwapEsInstall(prevSlotIdx_)) ||
+    (!prevShape_.empty() &&
+     rxode2EventSensShapeRestore(prevShape_.data(), (int)prevShape_.size()));
   if (!restored) {
     // saveLive() is unconditional and rxode2 only rejects a buffer it did not write,
     // so this does not happen; deactivate rather than leave the batch's shape live.
