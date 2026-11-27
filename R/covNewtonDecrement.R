@@ -60,15 +60,14 @@
   length(est) == 1L && is.character(est) && nzchar(est) && !(est %in% .skip)
 }
 
-#' The FOCEi objective's analytic gradient at a fit's estimate
+#' The control of a zero-outer-iteration FOCEi pass at a fit's estimates
 #'
-#' A zero-outer-iteration FOCEi pass at the fit's estimates, optimizing the
-#' etas from the fit's, with the analytic outer gradient on.
+#' The etas are optimized starting from the fit's.
 #' @param fit the finalized fit
-#' @return the OFV gradient named by parameter, or `NULL` when the analytic
-#'   gradient is out of scope for the model
+#' @param fast turn the analytic outer gradient on
+#' @return a `foceiControl()`, or `NULL`
 #' @noRd
-.covNewtonGrad <- function(fit) {
+.covNewtonCtl <- function(fit, fast) {
   .ctl <- fit$foceiControl
   if (!is.list(.ctl)) {
     return(NULL)
@@ -88,22 +87,105 @@
   # mu profiling (the imp family's "lin") would drop thetas from the gradient
   .ctl$muModel <- "none"
   # a derivative-free outerOpt would clear `fast`; no outer step is taken anyway
-  .ctl$fast <- TRUE
+  .ctl$fast <- fast
   .ctl$outerOpt <- "nlminb"
   .ctl$outerOptTxt <- NULL
   .ctl$outerOptFun <- NULL
+  suppressWarnings(do.call(foceiControl, .ctl))
+}
+
+#' Run a nested FOCEi pass quietly
+#' @param ui the model (or fit) to evaluate
+#' @param fit the finalized fit, for its data
+#' @param ctl a `.covNewtonCtl()` control
+#' @return the nested fit
+#' @noRd
+.covNewtonFocei <- function(ui, fit, ctl) {
+  suppressMessages(suppressWarnings(.nlmixr2PriorGateBypass(
+    nlmixr2(ui, nlme::getData(fit), "focei", control = ctl)
+  )))
+}
+
+#' The FOCEi objective's gradient at a fit's estimate
+#'
+#' The analytic outer gradient when the model is in its scope, otherwise
+#' central differences in the free thetas of `cov`.
+#' @param fit the finalized fit
+#' @param cov the fit's covariance
+#' @return the OFV gradient named by parameter, or `NULL`
+#' @noRd
+.covNewtonGrad <- function(fit, cov) {
   # the nested fits reset the mu-referencing global state
   .savedMuRef <- .muRefTrans$cur
   on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
-  .ctl <- suppressWarnings(do.call(foceiControl, .ctl))
-  .f2 <- suppressMessages(suppressWarnings(.nlmixr2PriorGateBypass(
-    nlmixr2(fit, nlme::getData(fit), "focei", control = .ctl)
-  )))
-  .g <- .foceiGradDirect(.f2)
-  if (is.null(names(.g))) {
+  .ctl <- .covNewtonCtl(fit, TRUE)
+  if (is.null(.ctl)) {
     return(NULL)
   }
-  .g
+  .g <- tryCatch(.foceiGradDirect(.covNewtonFocei(fit, fit, .ctl)), error = function(e) NULL)
+  if (!is.null(names(.g))) {
+    return(.g)
+  }
+  .covNewtonGradFd(fit, cov)
+}
+
+#' Central-difference FOCEi gradient in the free thetas of a covariance
+#' @param fit the finalized fit
+#' @param cov the fit's covariance
+#' @return the named OFV gradient, or `NULL`
+#' @noRd
+.covNewtonGradFd <- function(fit, cov) {
+  .ui <- fit$finalUi
+  .ini <- .ui$iniDf
+  .th <- .ini[!is.na(.ini$ntheta) & !.ini$fix, , drop = FALSE]
+  .nm <- intersect(.th$name, rownames(cov))
+  if (length(.nm) == 0L) {
+    return(NULL)
+  }
+  .ctl <- .covNewtonCtl(fit, FALSE)
+  .est <- stats::setNames(.th$est, .th$name)[.nm]
+  .ofv <- function(nm, val) {
+    tryCatch(
+      {
+        .u <- suppressMessages(do.call(rxode2::ini, c(list(.ui), stats::setNames(list(val), nm))))
+        .covNewtonFocei(.u, fit, .ctl)$objf
+      },
+      error = function(e) NA_real_
+    )
+  }
+  # the unperturbed OFV, computed once when a one-sided difference needs it
+  .acc <- new.env(parent = emptyenv())
+  .g <- vapply(
+    .nm,
+    function(nm) {
+      # a hundredth of the standard error: the metric the decrement is measured in
+      .se <- sqrt(cov[nm, nm])
+      .h <- if (is.finite(.se) && .se > 0) 0.01 * .se else 1e-3 * max(1, abs(.est[[nm]]))
+      .h <- max(.h, 1e-8 * abs(.est[[nm]]))
+      .up <- .ofv(nm, .est[[nm]] + .h)
+      .dn <- .ofv(nm, .est[[nm]] - .h)
+      if (!is.finite(.up) && !is.finite(.dn)) {
+        # both rejected (a proportion near both of its bounds): a smaller step
+        .h <- .h / 100
+        .up <- .ofv(nm, .est[[nm]] + .h)
+        .dn <- .ofv(nm, .est[[nm]] - .h)
+      }
+      if (is.finite(.up) && is.finite(.dn)) {
+        return((.up - .dn) / (2 * .h))
+      }
+      # a probe ini() rejects (a mixture proportion past 1): one-sided difference
+      if (is.null(.acc$f0)) {
+        .acc$f0 <- .ofv(nm, .est[[nm]])
+      }
+      if (is.finite(.up)) (.up - .acc$f0) / .h else (.acc$f0 - .dn) / .h
+    },
+    double(1)
+  )
+  # a direction that cannot be differenced would leave a partial decrement
+  if (!all(is.finite(.g))) {
+    return(NULL)
+  }
+  stats::setNames(.g, .nm)
 }
 
 #' The covariance whose inverse stands in for the OFV Hessian
@@ -135,9 +217,10 @@
 #' A nested `nlmixr2()` resets `nlmixr2global`, including the outer fit's
 #' timing; it is restored on any exit, an interrupt included.
 #' @param fit the finalized fit
+#' @param cov the fit's covariance
 #' @return the gradient, or `NULL`
 #' @noRd
-.covNewtonGradKeep <- function(fit) {
+.covNewtonGradKeep <- function(fit, cov) {
   .savedGlobal <- as.list(nlmixr2global, all.names = TRUE)
   on.exit({
     rm(list = ls(nlmixr2global, all.names = TRUE), envir = nlmixr2global)
@@ -145,7 +228,7 @@
       assign(.gn, .savedGlobal[[.gn]], envir = nlmixr2global)
     }
   })
-  tryCatch(.covNewtonGrad(fit), error = function(e) NULL)
+  tryCatch(.covNewtonGrad(fit, cov), error = function(e) NULL)
 }
 
 #' The `covNewtonWarn` threshold of a fit
@@ -186,7 +269,7 @@
   if (is.na(.limit) || !is.matrix(.cov) || length(.om) == 0L) {
     return(invisible(NA_real_))
   }
-  .g <- .covNewtonGradKeep(fit)
+  .g <- .covNewtonGradKeep(fit, .cov)
   .d <- .covNewtonDecrement(.g, .cov)
   if (is.na(.d)) {
     return(invisible(NA_real_))
