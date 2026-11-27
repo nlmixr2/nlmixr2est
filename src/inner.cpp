@@ -22095,6 +22095,28 @@ static double adviGnBounded(int p, double x, double step) {
   return y;
 }
 
+// Free Gauss-Newton thetas: in _advi.gnMask and not fixed.
+static std::vector<arma::uword> adviGnThetaIdx(int ntheta,
+                                               const LogicalVector &thetaFix) {
+  std::vector<arma::uword> idx;
+  for (int p = 0; p < ntheta; ++p)
+    if (_advi.gnMask[p] && !thetaFix[p])
+      idx.push_back(static_cast<arma::uword>(p));
+  return idx;
+}
+
+// Largest factor <= 1 keeping each |step[j]| within its trust radius.
+static double adviGnShrink(const arma::vec &step, const arma::mat &Hs,
+                           const std::vector<char> &logScale) {
+  double shrink = 1.0;
+  for (size_t j = 0; j < logScale.size(); ++j) {
+    double rad = logScale[j] ? 1.0 : std::sqrt(_advi.nObs / Hs(j, j));
+    if (std::fabs(step[j]) > rad)
+      shrink = std::min(shrink, rad / std::fabs(step[j]));
+  }
+  return shrink;
+}
+
 // Damped Gauss-Newton M-step for the theta-sensitivity thetas (_advi.gnMask),
 // theta += gam * H^-1 g.  A theta bounded below by 0 (an untransformed residual
 // sd) steps on the log scale: with combined error the additive sd carries
@@ -22109,10 +22131,7 @@ static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
   const int ntheta = theta.size();
   if (static_cast<int>(_advi.gnMask.size()) != ntheta ||
       static_cast<int>(info.n_rows) != ntheta) return false;
-  std::vector<arma::uword> idx;
-  for (int p = 0; p < ntheta; ++p)
-    if (_advi.gnMask[p] && !thetaFix[p])
-      idx.push_back(static_cast<arma::uword>(p));
+  std::vector<arma::uword> idx = adviGnThetaIdx(ntheta, thetaFix);
   if (idx.empty()) return false;
   const size_t n = idx.size();
   arma::uvec ui(idx);
@@ -22135,12 +22154,7 @@ static bool adviGnThetaStep(NumericVector &theta, const NumericVector &g,
   arma::vec step = arma::solve(arma::trimatu(R),
                                arma::solve(arma::trimatl(R.t()), gs));
   if (!step.is_finite()) return false;
-  double shrink = 1.0;
-  for (size_t j = 0; j < n; ++j) {
-    double rad = logScale[j] ? 1.0 : std::sqrt(_advi.nObs / Hs(j, j));
-    if (std::fabs(step[j]) > rad)
-      shrink = std::min(shrink, rad / std::fabs(step[j]));
-  }
+  const double shrink = adviGnShrink(step, Hs, logScale);
   for (size_t j = 0; j < n; ++j) {
     int p = static_cast<int>(idx[j]);
     double st = gam * shrink * step[j];
