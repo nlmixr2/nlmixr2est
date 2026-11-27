@@ -51,12 +51,14 @@ nlmControl(
   compress = FALSE,
   covMethod = c("r", "nlm", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 ```
 
@@ -354,6 +356,13 @@ nlmControl(
   to be closer to NONMEM's default objective function. By default this
   is `TRUE`
 
+- aboveStartTol:
+
+  Warn (in \`\$runInfo\`) when the final objective is above the
+  objective at the initial estimates by more than this fraction of its
+  magnitude (at least 0.1 objective units). Use \`NA\` or \`Inf\` to
+  disable.
+
 - ci:
 
   Confidence level for some tables. By default this is 0.95 or 95%
@@ -393,6 +402,11 @@ nlmControl(
 
   warn when two estimates' correlation is at least this in absolute
   value after the covariance step; `NA` or `Inf` turns the warning off.
+
+- condWarn:
+
+  warn when the condition number of the covariance's correlation matrix
+  exceeds this; `NA` or `Inf` turns the warning off.
 
 ## Value
 
@@ -463,10 +477,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.07935964 0.140616 1.5654e-05      0.031       0.005 0.015    0.001
+#>              setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.09448093 0.1696535 1.2599e-05      0.044       0.007 0.018        0
 #>              other
-#> elapsed 0.05700866
+#> elapsed 0.06785296
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

@@ -214,6 +214,9 @@ nlmixr2Est(env, ...)
 # S3 method for class 'saem'
 nlmixr2Est(env, ...)
 
+# S3 method for class 'stieltjes'
+nlmixr2Est(env, ...)
+
 # S3 method for class 'trust'
 nlmixr2Est(env, ...)
 

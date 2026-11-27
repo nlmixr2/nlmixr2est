@@ -131,6 +131,9 @@ fbviControl()
 #> $covMethod
 #> [1] "vi"
 #> 
+#> $covNewtonWarn
+#> [1] 1
+#> 
 #> $covFallback
 #> $covFallback$`r,s`
 #> [1] "r"  "s"  "vi"
@@ -168,6 +171,9 @@ fbviControl()
 #> 
 #> $corWarn
 #> [1] 0.95
+#> 
+#> $condWarn
+#> [1] 1000
 #> 
 #> $adjObf
 #> [1] TRUE

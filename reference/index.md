@@ -249,6 +249,8 @@
   : Set/get Objective function type for a nlmixr2 object
 - [`sqrtm()`](https://nlmixr2.github.io/nlmixr2est/reference/sqrtm.md) :
   Return the square root of general square matrix A
+- [`stieltjesControl()`](https://nlmixr2.github.io/nlmixr2est/reference/stieltjesControl.md)
+  : Control options for the two-stage Stieltjes estimation method
 - [`summary(`*`<saemFit>`*`)`](https://nlmixr2.github.io/nlmixr2est/reference/summary.saemFit.md)
   : Print an SAEM model fit summary
 - [`tableControl()`](https://nlmixr2.github.io/nlmixr2est/reference/tableControl.md)

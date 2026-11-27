@@ -56,12 +56,14 @@ optimControl(
   compress = FALSE,
   covMethod = c("r", "optim", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 ```
 
@@ -375,6 +377,13 @@ optimControl(
   to be closer to NONMEM's default objective function. By default this
   is `TRUE`
 
+- aboveStartTol:
+
+  Warn (in \`\$runInfo\`) when the final objective is above the
+  objective at the initial estimates by more than this fraction of its
+  magnitude (at least 0.1 objective units). Use \`NA\` or \`Inf\` to
+  disable.
+
 - ci:
 
   Confidence level for some tables. By default this is 0.95 or 95%
@@ -414,6 +423,11 @@ optimControl(
 
   warn when two estimates' correlation is at least this in absolute
   value after the covariance step; `NA` or `Inf` turns the warning off.
+
+- condWarn:
+
+  warn when the condition number of the covariance's correlation matrix
+  exceeds this; `NA` or `Inf` turns the warning off.
 
 ## Value
 
@@ -483,10 +497,10 @@ fit2
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.08020794 0.1327624 1.6475e-05       0.03       0.005 0.015    0.001
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.1035479 0.150174  1.332e-05      0.047       0.007 0.019    0.001
 #>              other
-#> elapsed 0.05701323
+#> elapsed 0.07626486
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 

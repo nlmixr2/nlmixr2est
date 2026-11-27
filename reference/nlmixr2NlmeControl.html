@@ -91,8 +91,10 @@ is used as the `control` argument to the `nlme` function.</p>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  print <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"nlme"</span>, <span class="st">"analytic"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">"sa"</span>, <span class="st">"imp"</span>, <span class="st">""</span><span class="op">)</span>,</span>
+<span>  covNewtonWarn <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  <span class="va">...</span>,</span>
-<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span></span>
+<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span>,</span>
+<span>  condWarn <span class="op">=</span> <span class="fl">1000</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">nlmeControl</span><span class="op">(</span></span>
@@ -136,8 +138,10 @@ is used as the `control` argument to the `nlme` function.</p>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  print <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"nlme"</span>, <span class="st">"analytic"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">"sa"</span>, <span class="st">"imp"</span>, <span class="st">""</span><span class="op">)</span>,</span>
+<span>  covNewtonWarn <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  <span class="va">...</span>,</span>
-<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span></span>
+<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span>,</span>
+<span>  condWarn <span class="op">=</span> <span class="fl">1000</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -414,7 +418,9 @@ be mu-referenced are internally rewritten as mu-referenced
 covariates and restored after optimization. Mirrors
 <code>saemControl(muRefCovAlg=)</code>/<code>nlmeControl(muRefCovAlg=)</code>;
 for <code><a href="foceiControl.html">foceiControl()</a></code> only takes effect when
-<code>muModel != "none"</code>.</p></dd>
+<code>muModel != "none"</code>.  This includes mu5: a multiplicative 0/1
+covariate effect `exp(tcl + eta.cl) * (1 + clSex*SEX)` is fit as
+`exp(tcl + eta.cl + log(1 + clSex)*SEX)` and `clSex` is reported.</p></dd>
 
 
 <dt id="arg-eventsens">eventSens<a class="anchor" aria-label="anchor" href="#arg-eventsens"></a></dt>
@@ -448,6 +454,13 @@ and keep nlme's own standard errors.  When the recompute fails the
 `"nlme"` covariance is kept.</p></dd>
 
 
+<dt id="arg-covnewtonwarn">covNewtonWarn<a class="anchor" aria-label="anchor" href="#arg-covnewtonwarn"></a></dt>
+<dd><p>Warn (in `$runInfo`) when the Newton decrement of the
+FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+this value: the standard errors then belong to no optimum.  The value is
+kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.</p></dd>
+
+
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Further, named control arguments to be passed to
    <code><a href="https://rdrr.io/r/stats/nlminb.html" class="external-link">nlminb</a></code> (apart from <code>trace</code> and <code>iter.max</code>
@@ -459,6 +472,12 @@ and keep nlme's own standard errors.  When the recompute fails the
 <dd><p>warn when two estimates' correlation is at least this in
 absolute value after the covariance step; <code>NA</code> or <code>Inf</code> turns
 the warning off.</p></dd>
+
+
+<dt id="arg-condwarn">condWarn<a class="anchor" aria-label="anchor" href="#arg-condwarn"></a></dt>
+<dd><p>warn when the condition number of the covariance's
+correlation matrix exceeds this; <code>NA</code> or <code>Inf</code> turns the
+warning off.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -1040,6 +1059,9 @@ the warning off.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $corWarn</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.95</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $condWarn</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1000</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $random</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -1069,6 +1091,9 @@ the warning off.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $covMethod</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "nlme"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $covNewtonWarn</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $genRxControl</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
@@ -1641,6 +1666,9 @@ the warning off.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $corWarn</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.95</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $condWarn</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1000</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $random</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -1670,6 +1698,9 @@ the warning off.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $covMethod</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "nlme"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $covNewtonWarn</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $genRxControl</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>

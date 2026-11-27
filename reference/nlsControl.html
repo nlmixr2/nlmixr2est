@@ -96,7 +96,8 @@
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  <span class="va">...</span>,</span>
-<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span></span>
+<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span>,</span>
+<span>  condWarn <span class="op">=</span> <span class="fl">1000</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -480,6 +481,12 @@ skips the final back-transform.</p></dd>
 <dd><p>warn when two estimates' correlation is at least this in
 absolute value after the covariance step; <code>NA</code> or <code>Inf</code> turns
 the warning off.</p></dd>
+
+
+<dt id="arg-condwarn">condWarn<a class="anchor" aria-label="anchor" href="#arg-condwarn"></a></dt>
+<dd><p>warn when the condition number of the covariance's
+correlation matrix exceeds this; <code>NA</code> or <code>Inf</code> turns the
+warning off.</p></dd>
 
 </dl></div>
     <div class="section level2">

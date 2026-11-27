@@ -48,8 +48,10 @@ nlmixr2NlmeControl(
   eventSens = c("jump", "fd"),
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
+  covNewtonWarn = 1,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 
 nlmeControl(
@@ -93,8 +95,10 @@ nlmeControl(
   eventSens = c("jump", "fd"),
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
+  covNewtonWarn = 1,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 ```
 
@@ -360,7 +364,10 @@ nlmeControl(
   restored after optimization. Mirrors
   `saemControl(muRefCovAlg=)`/`nlmeControl(muRefCovAlg=)`; for
   [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
-  only takes effect when `muModel != "none"`.
+  only takes effect when `muModel != "none"`. This includes mu5: a
+  multiplicative 0/1 covariate effect \`exp(tcl + eta.cl) \* (1 +
+  clSex\*SEX)\` is fit as \`exp(tcl + eta.cl + log(1 + clSex)\*SEX)\`
+  and \`clSex\` is reported.
 
 - eventSens:
 
@@ -393,6 +400,14 @@ nlmeControl(
   \`""\` skip the recompute and keep nlme's own standard errors. When
   the recompute fails the \`"nlme"\` covariance is kept.
 
+- covNewtonWarn:
+
+  Warn (in \`\$runInfo\`) when the Newton decrement of the FOCEi
+  objective at the estimate, \`0.5 \* g' H^-1 g\` in OFV units, exceeds
+  this value: the standard errors then belong to no optimum. The value
+  is kept as \`fit\$covNewtonDecrement\`. Use \`NA\` or \`Inf\` to skip
+  it.
+
 - ...:
 
   Further, named control arguments to be passed to
@@ -404,6 +419,11 @@ nlmeControl(
 
   warn when two estimates' correlation is at least this in absolute
   value after the covariance step; `NA` or `Inf` turns the warning off.
+
+- condWarn:
+
+  warn when the condition number of the covariance's correlation matrix
+  exceeds this; `NA` or `Inf` turns the warning off.
 
 ## Value
 
@@ -984,6 +1004,9 @@ nlmeControl()
 #> $corWarn
 #> [1] 0.95
 #> 
+#> $condWarn
+#> [1] 1000
+#> 
 #> $random
 #> NULL
 #> 
@@ -1013,6 +1036,9 @@ nlmeControl()
 #> 
 #> $covMethod
 #> [1] "nlme"
+#> 
+#> $covNewtonWarn
+#> [1] 1
 #> 
 #> $genRxControl
 #> [1] TRUE
@@ -1585,6 +1611,9 @@ nlmixr2NlmeControl()
 #> $corWarn
 #> [1] 0.95
 #> 
+#> $condWarn
+#> [1] 1000
+#> 
 #> $random
 #> NULL
 #> 
@@ -1614,6 +1643,9 @@ nlmixr2NlmeControl()
 #> 
 #> $covMethod
 #> [1] "nlme"
+#> 
+#> $covNewtonWarn
+#> [1] 1
 #> 
 #> $genRxControl
 #> [1] TRUE

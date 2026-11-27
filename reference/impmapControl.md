@@ -37,6 +37,7 @@ impmapControl(
   nConvWindow = 10L,
   impSeed = 42L,
   covMethod = c("imp", "analytic", "r,s", "r", "s", "sa", ""),
+  covNewtonWarn = 1,
   qr = FALSE,
   qrShift = TRUE,
   qrRefresh = TRUE,
@@ -560,6 +561,14 @@ impmapControl(
   the FOCEI covariance post-fit at the converged estimates (see
   \[foceiControl()\]); \`""\` skips the covariance step.
 
+- covNewtonWarn:
+
+  Warn (in \`\$runInfo\`) when the Newton decrement of the FOCEi
+  objective at the estimate, \`0.5 \* g' H^-1 g\` in OFV units, exceeds
+  this value: the standard errors then belong to no optimum. The value
+  is kept as \`fit\$covNewtonDecrement\`. Use \`NA\` or \`Inf\` to skip
+  it.
+
 - qr:
 
   When \`TRUE\`, draw quasi-random (Sobol low-discrepancy) importance
@@ -964,7 +973,7 @@ impmapControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x59d9653f6ac0>
+#> <bytecode: 0x5f2f0bf9d2c8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1805,6 +1814,9 @@ impmapControl()
 #> $zeroGradBobyqa
 #> [1] TRUE
 #> 
+#> $freezeFlatTheta
+#> [1] FALSE
+#> 
 #> $mceta
 #> [1] -2
 #> 
@@ -1822,6 +1834,19 @@ impmapControl()
 #> 
 #> $agqLow
 #> [1] -Inf
+#> 
+#> $agqRule
+#> [1] "hermite"
+#> 
+#> $agqNsd
+#> [1] 3
+#> 
+#> $agqGrid
+#>  nr  ns  r0  r1 
+#> 3.0 2.0 0.6 0.9 
+#> 
+#> $agqCenter
+#> [1] "mode"
 #> 
 #> $sensMethod
 #> [1] "default"
@@ -1921,6 +1946,9 @@ impmapControl()
 #> 
 #> $combSens
 #> [1] TRUE
+#> 
+#> $covNewtonWarn
+#> [1] 1
 #> 
 #> attr(,"class")
 #> [1] "impmapControl"

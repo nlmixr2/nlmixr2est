@@ -29,5 +29,6 @@ nlmixr2AllEst()
 #> [51] "neldermead" "newuoa"     "nlm"        "nlme"       "nlminb"    
 #> [56] "nls"        "npag"       "npb"        "optim"      "posthoc"   
 #> [61] "predict"    "qrpem"      "rxSolve"    "saem"       "sann"      
-#> [66] "simulate"   "simulation" "trust"      "uobyqa"     "vae"       
+#> [66] "simulate"   "simulation" "stieltjes"  "trust"      "uobyqa"    
+#> [71] "vae"       
 ```

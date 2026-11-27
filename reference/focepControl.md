@@ -337,7 +337,7 @@ focepControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x59d9653f6ac0>
+#> <bytecode: 0x5f2f0bf9d2c8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1178,6 +1178,9 @@ focepControl()
 #> $zeroGradBobyqa
 #> [1] TRUE
 #> 
+#> $freezeFlatTheta
+#> [1] FALSE
+#> 
 #> $mceta
 #> [1] -2
 #> 
@@ -1195,6 +1198,19 @@ focepControl()
 #> 
 #> $agqLow
 #> [1] -Inf
+#> 
+#> $agqRule
+#> [1] "hermite"
+#> 
+#> $agqNsd
+#> [1] 3
+#> 
+#> $agqGrid
+#>  nr  ns  r0  r1 
+#> 3.0 2.0 0.6 0.9 
+#> 
+#> $agqCenter
+#> [1] "mode"
 #> 
 #> $sensMethod
 #> [1] "default"

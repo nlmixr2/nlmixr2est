@@ -87,6 +87,7 @@ score and Gauss-Newton information built from the analytic `d(f)/d(theta)` and
 <span>  nConvWindow <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  impSeed <span class="op">=</span> <span class="fl">42L</span>,</span>
 <span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"imp"</span>, <span class="st">"analytic"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">"sa"</span>, <span class="st">""</span><span class="op">)</span>,</span>
+<span>  covNewtonWarn <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  qr <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  qrShift <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  qrRefresh <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -536,6 +537,13 @@ post-fit at the converged estimates (see [foceiControl()]); `""` skips the
 covariance step.</p></dd>
 
 
+<dt id="arg-covnewtonwarn">covNewtonWarn<a class="anchor" aria-label="anchor" href="#arg-covnewtonwarn"></a></dt>
+<dd><p>Warn (in `$runInfo`) when the Newton decrement of the
+FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+this value: the standard errors then belong to no optimum.  The value is
+kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.</p></dd>
+
+
 <dt id="arg-qr">qr<a class="anchor" aria-label="anchor" href="#arg-qr"></a></dt>
 <dd><p>When `TRUE`, draw quasi-random (Sobol low-discrepancy) importance
 samples instead of pseudo-random Gaussian samples (QRPEM, Leary &amp;
@@ -925,7 +933,7 @@ two now agree on every fixture measured, so `TRUE` is the default.)</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$value &lt;- .ret$fval</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x59d9653f6ac0&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x5f2f0bf9d2c8&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
@@ -1766,6 +1774,9 @@ two now agree on every fixture measured, so `TRUE` is the default.)</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $zeroGradBobyqa</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $freezeFlatTheta</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $mceta</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] -2</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -1783,6 +1794,19 @@ two now agree on every fixture measured, so `TRUE` is the default.)</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $agqLow</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] -Inf</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $agqRule</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "hermite"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $agqNsd</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 3</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $agqGrid</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  nr  ns  r0  r1 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3.0 2.0 0.6 0.9 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $agqCenter</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "mode"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $sensMethod</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "default"</span>
@@ -1882,6 +1906,9 @@ two now agree on every fixture measured, so `TRUE` is the default.)</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $combSens</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $covNewtonWarn</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> attr(,"class")</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "impmapControl"</span>

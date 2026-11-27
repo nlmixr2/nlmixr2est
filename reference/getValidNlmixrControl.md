@@ -216,6 +216,9 @@ getValidNlmixrCtl(control)
 # Default S3 method
 getValidNlmixrCtl(control)
 
+# S3 method for class 'stieltjes'
+getValidNlmixrCtl(control)
+
 # S3 method for class 'trust'
 getValidNlmixrCtl(control)
 

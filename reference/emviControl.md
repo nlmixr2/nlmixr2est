@@ -32,6 +32,7 @@ emviControl(
   useColor = NULL,
   printNcol = NULL,
   covMethod = c("vi", "analytic", "r,s", "r", "s", ""),
+  covNewtonWarn = 1,
   covFallback = list(`r,s` = c("r", "s", "vi"), r = c("s", "vi"), s = "vi", analytic =
     c("r,s", "r", "s", "vi")),
   optExpression = TRUE,
@@ -53,7 +54,8 @@ emviControl(
   eventSens = c("jump", "fd"),
   rxControl = NULL,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 ```
 
@@ -310,6 +312,14 @@ emviControl(
 
   "" Does not calculate the covariance step.
 
+- covNewtonWarn:
+
+  Warn (in \`\$runInfo\`) when the Newton decrement of the FOCEi
+  objective at the estimate, \`0.5 \* g' H^-1 g\` in OFV units, exceeds
+  this value: the standard errors then belong to no optimum. The value
+  is kept as \`fit\$covNewtonDecrement\`. Use \`NA\` or \`Inf\` to skip
+  it.
+
 - covFallback:
 
   what each \`covMethod\` falls back to when it gives no usable
@@ -474,6 +484,11 @@ emviControl(
 
   warn when two estimates' correlation is at least this in absolute
   value after the covariance step; `NA` or `Inf` turns the warning off.
+
+- condWarn:
+
+  warn when the condition number of the covariance's correlation matrix
+  exceeds this; `NA` or `Inf` turns the warning off.
 
 ## Value
 

@@ -1,0 +1,2461 @@
+# Control options for the two-stage Stieltjes estimation method
+
+\`est="stieltjes"\` follows NONMEM's \`\$ESTIMATION STIELTJES\`: a
+conditional method (\`stage1\`) gives tentative estimates, then the
+population parameters are re-estimated by minimizing the integrated
+likelihood on a radial Stieltjes grid placed at each subject's EBE and
+eta Hessian at those estimates and kept fixed (\`agqCenter="start"\`),
+so the second stage does not move with the conditional etas. The second
+stage evaluates the EBEs and Hessians itself (FOCEi-style unless the
+options say otherwise). A covariance recomputed later with \`setCov()\`
+places the grid at the final estimates.
+
+## Usage
+
+``` r
+stieltjesControl(
+  sigdig = 3,
+  ...,
+  stage1 = c("focei", "foce", "laplace"),
+  interaction = TRUE,
+  nAGQ = 2,
+  agqRule = "stieltjes",
+  agqGrid = c(nr = 3, ns = 2, r0 = 0.6, r1 = 0.9),
+  agqCenter = c("start", "mode", "prior")
+)
+```
+
+## Arguments
+
+- sigdig:
+
+  Optimization significant digits. One value drives, with a single
+  consistent formula, the inner/outer optimizer convergence tolerance
+  (`10^-sigdig`), the boundary check tolerance (`5*10^(-sigdig+1)`), and
+  the ODE solver tolerances `rtol = max(10^(-2*sigdig), 1e-12)`,
+  `atol = rtol/100` for every solver. An objective solved to relative
+  error `rtol` locates its minimum only to about `sqrt(rtol)`, so this
+  is the solve a `10^-sigdig` optimizer needs. The sensitivity
+  (`atolSens`/`rtolSens`) tolerances match the main solve; the
+  steady-state (`ssAtol`/`ssRtol`) tolerances run one order looser. At
+  the default `sigdig = 3` this is `atol = 1e-8`, `rtol = 1e-6`.
+
+- ...:
+
+  Other \[foceiControl()\] options, used by both stages.
+
+- stage1:
+
+  Conditional method of the first stage: \`"focei"\`, \`"foce"\` or
+  \`"laplace"\`.
+
+- interaction:
+
+  boolean, Interaction term for the model, in this case the default is
+  \`TRUE\`; For adaptive quadrature, with normal distribution the
+  Hessian is calculated with the foce(i) approximation
+
+- nAGQ:
+
+  Number of Gauss-Hermite adaptive quadrature points. \`0\` disables
+  AGQ; \`1\` is equivalent to Laplace. Cost grows quickly with ETAs:
+  once the EBE is found, expect \`nAGQ^neta\` (even \`nAGQ\`) or
+  \`(nAGQ^neta)-1\` (odd \`nAGQ\`) additional evaluations per subject.
+
+- agqRule:
+
+  Quadrature rule used when \`nAGQ \> 1\`: \`"hermite"\` (adaptive
+  Gauss-Hermite, \`nAGQ\` nodes per eta), \`"legendre"\`
+  (Gauss-Legendre, \`nAGQ\` nodes per eta over \`agqNsd\` conditional
+  standard deviations) or \`"stieltjes"\` (radial shells set by
+  \`agqGrid\`; \`nAGQ\` is then only the switch). Every rule is centred
+  on the EBE and scaled by the eta Hessian, so all are exact when the
+  model is linear in the etas with an eta-independent residual variance.
+
+- agqGrid:
+
+  The \`agqRule="stieltjes"\` grid \`c(nr, ns, r0, r1)\`, as in NONMEM's
+  \`GRID=\`: \`nr\` equal shells over the radial probability interval
+  \`\[r0, r1\]\` plus a central region \`\[0, r0\]\` and, unless \`r1 \>
+  0.9999\`, a tail region; \`ns\` directions per quadrant of each pair
+  of etas. The default \`ns = 2\` differs from NONMEM's
+  \`GRID=(3,1,.6,.9)\`: one direction per quadrant is too sparse for a
+  grid that does not follow the EBE.
+
+- agqCenter:
+
+  Grid placement of the second stage (see \[foceiControl()\]);
+  \`"start"\` keeps the grid where the second stage starts, at the
+  first-stage estimates.
+
+## Value
+
+stieltjesControl object
+
+## Author
+
+Matthew L. Fidler
+
+## Examples
+
+``` r
+
+stieltjesControl()
+#> $maxOuterIterations
+#> [1] 5000
+#> 
+#> $maxInnerIterations
+#> [1] 1000
+#> 
+#> $n1qn1nsim
+#> [1] 10001
+#> 
+#> $iterPrintControl
+#> $every
+#> [1] 1
+#> 
+#> $ncol
+#> [1] 4
+#> 
+#> $headerEvery
+#> [1] 10
+#> 
+#> $useColor
+#> [1] TRUE
+#> 
+#> $simple
+#> [1] FALSE
+#> 
+#> attr(,"class")
+#> [1] "iterPrintControl" "list"            
+#> 
+#> $lbfgsLmm
+#> [1] 7
+#> 
+#> $lbfgsPgtol
+#> [1] 0
+#> 
+#> $lbfgsFactr
+#> [1] 4.5036e+10
+#> 
+#> $scaleTo
+#> [1] 1
+#> 
+#> $epsilon
+#> [1] 0.001
+#> 
+#> $derivEps
+#> [1] 2.980232e-07 2.980232e-07
+#> 
+#> $derivMethod
+#> [1] 3
+#> 
+#> $covDerivMethod
+#> [1] 1
+#> 
+#> $covMethod
+#> [1] 1
+#> 
+#> $covType
+#> [1] "fd"
+#> 
+#> $covMethodDeferred
+#> [1] NA
+#> 
+#> $covSolveTol
+#> NULL
+#> 
+#> $covFallback
+#> $covFallback$`r,s`
+#> [1] "r" "s"
+#> 
+#> $covFallback$r
+#> [1] "s"
+#> 
+#> $covFallback$s
+#> character(0)
+#> 
+#> $covFallback$analytic
+#> [1] "r,s" "r"   "s"  
+#> 
+#> 
+#> $covPrecursor
+#> [1] "fd"       "analytic"
+#> 
+#> $covShortcut
+#> [1] FALSE
+#> 
+#> $corWarn
+#> [1] 0.95
+#> 
+#> $covFull
+#> [1] TRUE
+#> 
+#> $fast
+#> [1] FALSE
+#> 
+#> $priorMethod
+#> [1] "auto"
+#> 
+#> $fdOutlierZ
+#> [1] 3.5
+#> 
+#> $fdOutlierScale
+#> [1] 1
+#> 
+#> $fdRefine
+#> [1] "chartrand"
+#> 
+#> $fdLanczosM
+#> [1] 2
+#> 
+#> $fdRichardsonR
+#> [1] 2
+#> 
+#> $fdRichardsonV
+#> [1] 2
+#> 
+#> $fdChartrandAll
+#> [1] 0
+#> 
+#> $fdOutlierAny
+#> [1] 0
+#> 
+#> $fdIndividualStep
+#> [1] 1
+#> 
+#> $fdChartrand
+#> [1] 1
+#> 
+#> $centralDerivEps
+#> [1] 2.980232e-07 2.980232e-07
+#> 
+#> $eigen
+#> [1] 1
+#> 
+#> $condWarn
+#> [1] 1000
+#> 
+#> $diagXform
+#> [1] "sqrt"
+#> 
+#> $iovXform
+#> [1] "sd"
+#> 
+#> $iovMethod
+#> [1] "auto"
+#> 
+#> $sumProd
+#> [1] FALSE
+#> 
+#> $optExpression
+#> [1] TRUE
+#> 
+#> $literalFix
+#> [1] TRUE
+#> 
+#> $literalFixRes
+#> [1] TRUE
+#> 
+#> $outerOpt
+#> [1] -1
+#> 
+#> $ci
+#> [1] 0.95
+#> 
+#> $sigdig
+#> [1] 3
+#> 
+#> $sigdigTable
+#> [1] 3
+#> 
+#> $scaleObjective
+#> [1] 0
+#> 
+#> $boundTol
+#> [1] 0.05
+#> 
+#> $calcTables
+#> [1] TRUE
+#> 
+#> $noAbort
+#> [1] 1
+#> 
+#> $interaction
+#> [1] 1
+#> 
+#> $foce
+#> [1] "nonmem"
+#> 
+#> $foceType
+#> [1] 0
+#> 
+#> $cholSEtol
+#> [1] 6.055454e-06
+#> 
+#> $foceEbeTol
+#> [1] 1e-09
+#> 
+#> $hessEps
+#> [1] 6.055454e-06
+#> 
+#> $hessEpsLlik
+#> [1] 6.055454e-06
+#> 
+#> $optimHessType
+#> [1] 1
+#> 
+#> $optimHessCovType
+#> [1] 1
+#> 
+#> $hessEtaStepMin
+#> [1] 0.05
+#> 
+#> $censOption
+#> [1] 0
+#> 
+#> $cholAccept
+#> [1] 0.001
+#> 
+#> $resetEtaSize
+#> [1] 1.439531
+#> 
+#> $resetThetaSize
+#> [1] Inf
+#> 
+#> $resetThetaFinalSize
+#> [1] Inf
+#> 
+#> $diagOmegaBoundUpper
+#> [1] 5
+#> 
+#> $diagOmegaBoundLower
+#> [1] 100
+#> 
+#> $cholSEOpt
+#> [1] 0
+#> 
+#> $cholSECov
+#> [1] 0
+#> 
+#> $fo
+#> [1] 0
+#> 
+#> $covTryHarder
+#> [1] 0
+#> 
+#> $outerOptFun
+#> function (par, fn, gr, lower = -Inf, upper = Inf, control = list(), 
+#>     ...) 
+#> {
+#>     .ctl <- .controlMaxfun(control)
+#>     if (is.null(.ctl$npt)) {
+#>         .ctl$npt <- length(par) * 2 + 1
+#>     }
+#>     .ctl$iprint <- 0L
+#>     .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", 
+#>         "iprint", "maxfun")]
+#>     .ret <- RcppTrust::bobyqa(par, fn, control = .ctl, lower = lower, 
+#>         upper = upper)
+#>     .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, 
+#>         .ret)
+#>     if (isTRUE(control$trustPolish)) {
+#>         .ret <- .bobyqaRestart(fn, lower, upper, .ctl, .ret)
+#>     }
+#>     if (isTRUE(control$bobyqaStationary) && !is.null(.ctl$rhobeg)) {
+#>         .tol <- if (is.null(control$sigdig)) 
+#>             0.01
+#>         else 10^(1 - control$sigdig)
+#>         .ret <- .bobyqaStationary(fn, lower, upper, .ctl, .ret, 
+#>             tol = .tol, record = control$outerRecord, hold = control$outerHold)
+#>     }
+#>     if (isTRUE(control$scaleAdapt > 0L) && !is.null(.ctl$rhobeg)) {
+#>         .tol <- if (is.null(control$sigdig)) 
+#>             0.01
+#>         else 10^(1 - control$sigdig)
+#>         .ret <- .bobyqaAdapt(fn, lower, upper, .ctl, .ret, tol = .tol, 
+#>             maxLeg = control$scaleAdapt, record = control$outerRecord, 
+#>             hold = control$outerHold)
+#>     }
+#>     .ret$x <- .ret$par
+#>     .ret$message <- .ret$msg
+#>     .ret$convergence <- .ret$ierr
+#>     .ret$value <- .ret$fval
+#>     .ret
+#> }
+#> <bytecode: 0x5f2f0bf9d2c8>
+#> <environment: namespace:nlmixr2est>
+#> 
+#> $rhobeg
+#> [1] 0.2
+#> 
+#> $rhoend
+#> [1] 0.001
+#> 
+#> $npt
+#> NULL
+#> 
+#> $rel.tol
+#> [1] 0.001
+#> 
+#> $x.tol
+#> [1] 0.001
+#> 
+#> $eval.max
+#> [1] 4000
+#> 
+#> $iter.max
+#> [1] 2000
+#> 
+#> $innerOpt
+#> [1] 4
+#> 
+#> $hessianMethod
+#> [1] 1
+#> 
+#> $innerHessian
+#> [1] "focei"
+#> 
+#> $detHessian
+#> [1] "focei"
+#> 
+#> $trustConf
+#> [1] 0.975
+#> 
+#> $trustRinit
+#> NULL
+#> 
+#> $trustRmax
+#> NULL
+#> 
+#> $trustFterm
+#> [1] 1e-05
+#> 
+#> $trustMterm
+#> [1] 1e-05
+#> 
+#> $trustPolish
+#> [1] FALSE
+#> 
+#> $steihaugPolish
+#> [1] FALSE
+#> 
+#> $newuoaPolish
+#> [1] FALSE
+#> 
+#> $newuoaRhoend
+#> [1] 0.001
+#> 
+#> $bobyqaStationary
+#> [1] TRUE
+#> 
+#> $scaleAdapt
+#> [1] NA
+#> 
+#> $innerLbfgsLmm
+#> [1] 5
+#> 
+#> $innerLbfgsFactr
+#> [1] 4.5036e+10
+#> 
+#> $innerLbfgsPgtol
+#> [1] 1e-05
+#> 
+#> $innerLbfgsAbstol
+#> [1] 1e-05
+#> 
+#> $innerLbfgsReltol
+#> [1] 1e-05
+#> 
+#> $outerTrustHessian
+#> [1] "auto"
+#> 
+#> $outerTrustRinit
+#> NULL
+#> 
+#> $outerTrustRmax
+#> NULL
+#> 
+#> $outerTrustFterm
+#> NULL
+#> 
+#> $outerTrustMterm
+#> NULL
+#> 
+#> $outerTrustRelStep
+#> [1] 0.001
+#> 
+#> $outerTrustRestarts
+#> [1] 3
+#> 
+#> $abstol
+#> [1] 0.001
+#> 
+#> $reltol
+#> [1] 0.001
+#> 
+#> $derivSwitchTol
+#> [1] 0.002
+#> 
+#> $resetHessianAndEta
+#> [1] 0
+#> 
+#> $muModel
+#> [1] "none"
+#> 
+#> $muRefCovAlg
+#> [1] TRUE
+#> 
+#> $muModelTol
+#> [1] 1e-05
+#> 
+#> $muModelMaxCycles
+#> [1] 20
+#> 
+#> $muModelClampRetries
+#> [1] 10
+#> 
+#> $stateTrim
+#> [1] Inf
+#> 
+#> $gillK
+#> [1] 10
+#> 
+#> $gillKcov
+#> [1] 10
+#> 
+#> $gillKcovLlik
+#> [1] 10
+#> 
+#> $gillRtol
+#> [1] 1.490116e-08
+#> 
+#> $gillStep
+#> [1] 4
+#> 
+#> $gillStepCov
+#> [1] 2
+#> 
+#> $gillStepCovLlik
+#> [1] 4.5
+#> 
+#> $scaleType
+#> [1] 2
+#> 
+#> $normType
+#> [1] 1
+#> 
+#> $scaleC
+#> NULL
+#> 
+#> $scaleCmin
+#> [1] 1e-05
+#> 
+#> $scaleCband
+#> [1]  0.1 10.0
+#> 
+#> $scaleLinear
+#> [1] "abs"
+#> 
+#> $scaleCmax
+#> [1] 1e+05
+#> 
+#> $scaleC0
+#> [1] 1e+05
+#> 
+#> $outerOptTxt
+#> [1] "bobyqa"
+#> 
+#> $outerOptDefault
+#> [1] TRUE
+#> 
+#> $relTolDefault
+#> [1] TRUE
+#> 
+#> $rmatNorm
+#> [1] 1
+#> 
+#> $rmatNormLlik
+#> [1] 1
+#> 
+#> $smatNorm
+#> [1] 1
+#> 
+#> $smatNormLlik
+#> [1] 1
+#> 
+#> $covGillF
+#> [1] 1
+#> 
+#> $optGillF
+#> [1] 1
+#> 
+#> $gillFtol
+#> [1] 0
+#> 
+#> $gillFtolCov
+#> [1] 0
+#> 
+#> $gillFtolCovLlik
+#> [1] 0
+#> 
+#> $covSmall
+#> [1] 1e-05
+#> 
+#> $adjLik
+#> [1] TRUE
+#> 
+#> $gradTrim
+#> [1] Inf
+#> 
+#> $gradCalcCentralSmall
+#> [1] 1e-04
+#> 
+#> $gradCalcCentralLarge
+#> [1] 10000
+#> 
+#> $etaNudge
+#> [1] 1.131586
+#> 
+#> $etaNudge2
+#> [1] 1.518182
+#> 
+#> $etaRestart
+#> [1] 4
+#> 
+#> $finalEtaTol
+#> [1] 1
+#> 
+#> $aboveStartTol
+#> [1] 0.01
+#> 
+#> $shrinkEtaWarn
+#> [1] 30
+#> 
+#> $odeSettleCheck
+#> [1] FALSE
+#> 
+#> $odeSettleTol
+#> [1] 0.1
+#> 
+#> $omegaCollapseWarn
+#> [1] 0.001
+#> 
+#> $thetaBoundWarn
+#> [1] 1e-04
+#> 
+#> $maxOdeRecalc
+#> [1] 5
+#> 
+#> $odeRecalcFactor
+#> [1] 3.162278
+#> 
+#> $nRetries
+#> [1] 3
+#> 
+#> $seed
+#> [1] 42
+#> 
+#> $resetThetaCheckPer
+#> [1] 0.1
+#> 
+#> $etaMat
+#> NULL
+#> 
+#> $repeatGillMax
+#> [1] 1
+#> 
+#> $stickyRecalcN
+#> [1] 4
+#> 
+#> $outerMaxOdeRecalc
+#> [1] 5
+#> 
+#> $outerOdeRecalcFactor
+#> [1] 3.162278
+#> 
+#> $outerStickyRecalcN
+#> [1] 4
+#> 
+#> $indTolRelax
+#> [1] TRUE
+#> 
+#> $eventType
+#> [1] 2
+#> 
+#> $eventSens
+#> [1] "jump"
+#> 
+#> $gradProgressOfvTime
+#> [1] 10
+#> 
+#> $addProp
+#> [1] "combined2"
+#> 
+#> $badSolveObjfAdj
+#> [1] 100
+#> 
+#> $compress
+#> [1] FALSE
+#> 
+#> $rxControl
+#> $scale
+#> NULL
+#> 
+#> $method
+#> liblsoda 
+#>        2 
+#> 
+#> $atol
+#> [1] 1e-08
+#> 
+#> $rtol
+#> [1] 1e-06
+#> 
+#> $maxsteps
+#> [1] 500000
+#> 
+#> $hmin
+#> [1] 0
+#> 
+#> $hmax
+#> [1] NA
+#> 
+#> $hini
+#> [1] 0
+#> 
+#> $maxordn
+#> [1] 12
+#> 
+#> $maxords
+#> [1] 5
+#> 
+#> $covsInterpolation
+#> locf 
+#>    1 
+#> 
+#> $addCov
+#> [1] TRUE
+#> 
+#> $returnType
+#> rxSolve 
+#>       0 
+#> 
+#> $sigma
+#> NULL
+#> 
+#> $sigmaDf
+#> NULL
+#> 
+#> $nCoresRV
+#> [1] 1
+#> 
+#> $sigmaIsChol
+#> [1] FALSE
+#> 
+#> $sigmaSeparation
+#> [1] "auto"
+#> 
+#> $sigmaXform
+#> identity 
+#>        4 
+#> 
+#> $nDisplayProgress
+#> [1] 10000
+#> 
+#> $amountUnits
+#> [1] NA
+#> 
+#> $timeUnits
+#> [1] "hours"
+#> 
+#> $addDosing
+#> [1] FALSE
+#> 
+#> $stateTrim
+#> [1] Inf
+#> 
+#> $updateObject
+#> [1] FALSE
+#> 
+#> $omega
+#> NULL
+#> 
+#> $omegaDf
+#> NULL
+#> 
+#> $omegaIsChol
+#> [1] FALSE
+#> 
+#> $omegaSeparation
+#> [1] "auto"
+#> 
+#> $omegaXform
+#> variance 
+#>        6 
+#> 
+#> $nSub
+#> [1] 1
+#> 
+#> $thetaMat
+#> NULL
+#> 
+#> $thetaDf
+#> NULL
+#> 
+#> $thetaIsChol
+#> [1] FALSE
+#> 
+#> $nStud
+#> [1] 1
+#> 
+#> $dfSub
+#> [1] 0
+#> 
+#> $dfObs
+#> [1] 0
+#> 
+#> $seed
+#> NULL
+#> 
+#> $nsim
+#> NULL
+#> 
+#> $minSS
+#> [1] 10
+#> 
+#> $maxSS
+#> [1] 10000
+#> 
+#> $strictSS
+#> [1] 1
+#> 
+#> $infSSstep
+#> [1] 12
+#> 
+#> $istateReset
+#> [1] TRUE
+#> 
+#> $subsetNonmem
+#> [1] TRUE
+#> 
+#> $hmaxSd
+#> [1] 0
+#> 
+#> $maxAtolRtolFactor
+#> [1] 0.1
+#> 
+#> $from
+#> NULL
+#> 
+#> $to
+#> NULL
+#> 
+#> $by
+#> NULL
+#> 
+#> $length.out
+#> NULL
+#> 
+#> $iCov
+#> NULL
+#> 
+#> $keep
+#> NULL
+#> 
+#> $keepF
+#> character(0)
+#> 
+#> $drop
+#> NULL
+#> 
+#> $warnDrop
+#> [1] TRUE
+#> 
+#> $omegaLower
+#> [1] -Inf
+#> 
+#> $omegaUpper
+#> [1] Inf
+#> 
+#> $sigmaLower
+#> [1] -Inf
+#> 
+#> $sigmaUpper
+#> [1] Inf
+#> 
+#> $thetaLower
+#> [1] -Inf
+#> 
+#> $thetaUpper
+#> [1] Inf
+#> 
+#> $indLinPhiM
+#> [1] 0
+#> 
+#> $indLinPhiTol
+#> [1] 1e-07
+#> 
+#> $indLinMatExpType
+#> Al-Mohy 
+#>       3 
+#> 
+#> $indLinMatExpOrder
+#> [1] 6
+#> 
+#> $idFactor
+#> [1] TRUE
+#> 
+#> $mxhnil
+#> [1] 0
+#> 
+#> $hmxi
+#> [1] 0
+#> 
+#> $warnIdSort
+#> [1] TRUE
+#> 
+#> $ssAtol
+#> [1] 1e-07
+#> 
+#> $ssRtol
+#> [1] 1e-05
+#> 
+#> $safeZero
+#> [1] 1
+#> 
+#> $sumType
+#> pairwise 
+#>        1 
+#> 
+#> $prodType
+#> long double 
+#>           1 
+#> 
+#> $resample
+#> NULL
+#> 
+#> $resampleID
+#> [1] TRUE
+#> 
+#> $maxwhile
+#> [1] 100000
+#> 
+#> $cores
+#> [1] 0
+#> 
+#> $atolSens
+#> [1] 1e-08
+#> 
+#> $rtolSens
+#> [1] 1e-06
+#> 
+#> $ssAtolSens
+#> [1] 1e-07
+#> 
+#> $ssRtolSens
+#> [1] 1e-05
+#> 
+#> $simVariability
+#> [1] NA
+#> 
+#> $nLlikAlloc
+#> NULL
+#> 
+#> $useStdPow
+#> [1] 0
+#> 
+#> $naTimeHandle
+#> ignore 
+#>      1 
+#> 
+#> $addlKeepsCov
+#> [1] FALSE
+#> 
+#> $addlDropSs
+#> [1] TRUE
+#> 
+#> $ssAtDoseTime
+#> [1] TRUE
+#> 
+#> $ss2cancelAllPending
+#> [1] FALSE
+#> 
+#> $naInterpolation
+#> locf 
+#>    1 
+#> 
+#> $keepInterpolation
+#> na 
+#>  2 
+#> 
+#> $safeLog
+#> [1] 1
+#> 
+#> $safePow
+#> [1] 1
+#> 
+#> $ssSolved
+#> [1] TRUE
+#> 
+#> $linCmtSensType
+#> auto 
+#>  100 
+#> 
+#> $linCmtSensH
+#> [1] 1e-04
+#> 
+#> $linCmtGillFtol
+#> [1] 0
+#> 
+#> $linCmtGillK
+#> [1] 20
+#> 
+#> $linCmtGillStep
+#> [1] 4
+#> 
+#> $linCmtGillRtol
+#> [1] 1.490116e-08
+#> 
+#> $linCmtShiErr
+#> [1] 1.490116e-08
+#> 
+#> $linCmtShiMax
+#> [1] 20
+#> 
+#> $linCmtScale
+#> [1] 0 0 0 0 0 0 0
+#> 
+#> $linCmtHcmt
+#> [1] 1
+#> 
+#> $linCmtHmeanI
+#> geometric 
+#>         2 
+#> 
+#> $linCmtHmeanO
+#> geometric 
+#>         2 
+#> 
+#> $linCmtSuspect
+#> [1] 1e-06
+#> 
+#> $linCmtForwardMax
+#> [1] 2
+#> 
+#> $indOwnAlloc
+#> [1] -1
+#> 
+#> $maxExtra
+#> [1] 1000
+#> 
+#> $tolFactor
+#> NULL
+#> 
+#> $serializeFile
+#> NULL
+#> 
+#> $dense
+#> [1] FALSE
+#> 
+#> $cvodeLinSolver
+#> dense 
+#>     1 
+#> 
+#> $stiff2
+#> [1] 0
+#> 
+#> $autoSwitchMaxStiff
+#> [1] 10
+#> 
+#> $autoSwitchMaxNonstiff
+#> [1] 3
+#> 
+#> $autoSwitchStiffFirst
+#> [1] 0
+#> 
+#> $autoSwitchNonstifftol
+#> [1] 0.9
+#> 
+#> $autoSwitchStifftol
+#> [1] 0.9
+#> 
+#> $autoSwitchDtfac
+#> [1] 2
+#> 
+#> $autoSwitchSwitchMax
+#> [1] 5
+#> 
+#> $useLinCmt
+#> [1] FALSE
+#> 
+#> $file
+#> NULL
+#> 
+#> $chunkSize
+#> NULL
+#> 
+#> $parallel
+#> [1] 0
+#> 
+#> $.zeros
+#> NULL
+#> 
+#> $zeroVarParamHandle
+#> [1] "warn"
+#> 
+#> $indLinStepSearch
+#> [1] 1
+#> 
+#> $indLinMaxIter
+#> [1] 20
+#> 
+#> $indLinRichardson
+#> [1] 2
+#> 
+#> $indLinIteration
+#> [1] 3
+#> 
+#> $indLinJac
+#> [1] 0
+#> 
+#> $indLinForcing
+#> [1] 1
+#> 
+#> $usePrior
+#> [1] NA
+#> 
+#> $priorPdRetry
+#> [1] 10
+#> 
+#> $priorOmega
+#> NULL
+#> 
+#> $priorOmegaEl
+#> NULL
+#> 
+#> $priorSigmaEl
+#> NULL
+#> 
+#> $linCmtSensPhi
+#> [1] 2
+#> 
+#> $nonmem
+#> [1] FALSE
+#> 
+#> $tieOrder
+#> [1] "evid"
+#> 
+#> $rateAtDoseTime
+#> [1] FALSE
+#> 
+#> $durAtDoseTime
+#> [1] FALSE
+#> 
+#> $resetCancelsPending
+#> [1] TRUE
+#> 
+#> $ssMethod
+#> [1] 1
+#> 
+#> $doseAtRecord
+#> [1] FALSE
+#> 
+#> $addlCovAtTime
+#> [1] TRUE
+#> 
+#> $gpuBackend
+#> [1] "auto"
+#> 
+#> $gpuDevice
+#> NULL
+#> 
+#> $gpuPrecision
+#> [1] "double"
+#> 
+#> $gpuBatch
+#> [1] 16384
+#> 
+#> attr(,"class")
+#> [1] "rxControl"
+#> attr(,"nlmixr2estSigdigTol")
+#> [1] "rtol"       "atol"       "rtolSens"   "atolSens"   "ssRtol"    
+#> [6] "ssAtol"     "ssRtolSens" "ssAtolSens"
+#> 
+#> $genRxControl
+#> [1] TRUE
+#> 
+#> $skipCov
+#> NULL
+#> 
+#> $fallbackFD
+#> [1] FALSE
+#> 
+#> $shi21maxOuter
+#> [1] 0
+#> 
+#> $shi21maxInner
+#> [1] 20
+#> 
+#> $shi21maxInnerCov
+#> [1] 20
+#> 
+#> $shi21maxFD
+#> [1] 20
+#> 
+#> $shi21hMax
+#> [1] 2
+#> 
+#> $shi21hMin
+#> [1] 1e-04
+#> 
+#> $smatPer
+#> [1] 0.6
+#> 
+#> $sdLowerFact
+#> [1] 0.001
+#> 
+#> $zeroGradFirstReset
+#> [1] TRUE
+#> 
+#> $zeroGradRunReset
+#> [1] TRUE
+#> 
+#> $zeroGradBobyqa
+#> [1] TRUE
+#> 
+#> $freezeFlatTheta
+#> [1] FALSE
+#> 
+#> $mceta
+#> [1] -2
+#> 
+#> $mcetaOpt
+#> [1] FALSE
+#> 
+#> $warm
+#> [1] 1
+#> 
+#> $nAGQ
+#> [1] 2
+#> 
+#> $agqHi
+#> [1] Inf
+#> 
+#> $agqLow
+#> [1] -Inf
+#> 
+#> $agqRule
+#> [1] "stieltjes"
+#> 
+#> $agqNsd
+#> [1] 3
+#> 
+#> $agqGrid
+#>  nr  ns  r0  r1 
+#> 3.0 2.0 0.6 0.9 
+#> 
+#> $agqCenter
+#> [1] "start"
+#> 
+#> $sensMethod
+#> [1] "default"
+#> 
+#> $linCmtSensCarry
+#> [1] "auto"
+#> 
+#> $boundedTransform
+#> [1] TRUE
+#> 
+#> $zeroTheta
+#> [1] 0.001
+#> 
+#> $zeroThetaStep
+#> [1] 100
+#> 
+#> $stage1
+#> [1] "focei"
+#> 
+#> attr(,"class")
+#> [1] "stieltjesControl"
+
+# NONMEM's GRID=(5,2,.5,.95) with a FOCE first stage
+stieltjesControl(stage1 = "foce", agqGrid = c(5, 2, 0.5, 0.95))
+#> $maxOuterIterations
+#> [1] 5000
+#> 
+#> $maxInnerIterations
+#> [1] 1000
+#> 
+#> $n1qn1nsim
+#> [1] 10001
+#> 
+#> $iterPrintControl
+#> $every
+#> [1] 1
+#> 
+#> $ncol
+#> [1] 4
+#> 
+#> $headerEvery
+#> [1] 10
+#> 
+#> $useColor
+#> [1] TRUE
+#> 
+#> $simple
+#> [1] FALSE
+#> 
+#> attr(,"class")
+#> [1] "iterPrintControl" "list"            
+#> 
+#> $lbfgsLmm
+#> [1] 7
+#> 
+#> $lbfgsPgtol
+#> [1] 0
+#> 
+#> $lbfgsFactr
+#> [1] 4.5036e+10
+#> 
+#> $scaleTo
+#> [1] 1
+#> 
+#> $epsilon
+#> [1] 0.001
+#> 
+#> $derivEps
+#> [1] 2.980232e-07 2.980232e-07
+#> 
+#> $derivMethod
+#> [1] 3
+#> 
+#> $covDerivMethod
+#> [1] 1
+#> 
+#> $covMethod
+#> [1] 1
+#> 
+#> $covType
+#> [1] "fd"
+#> 
+#> $covMethodDeferred
+#> [1] NA
+#> 
+#> $covSolveTol
+#> NULL
+#> 
+#> $covFallback
+#> $covFallback$`r,s`
+#> [1] "r" "s"
+#> 
+#> $covFallback$r
+#> [1] "s"
+#> 
+#> $covFallback$s
+#> character(0)
+#> 
+#> $covFallback$analytic
+#> [1] "r,s" "r"   "s"  
+#> 
+#> 
+#> $covPrecursor
+#> [1] "fd"       "analytic"
+#> 
+#> $covShortcut
+#> [1] FALSE
+#> 
+#> $corWarn
+#> [1] 0.95
+#> 
+#> $covFull
+#> [1] TRUE
+#> 
+#> $fast
+#> [1] FALSE
+#> 
+#> $priorMethod
+#> [1] "auto"
+#> 
+#> $fdOutlierZ
+#> [1] 3.5
+#> 
+#> $fdOutlierScale
+#> [1] 1
+#> 
+#> $fdRefine
+#> [1] "chartrand"
+#> 
+#> $fdLanczosM
+#> [1] 2
+#> 
+#> $fdRichardsonR
+#> [1] 2
+#> 
+#> $fdRichardsonV
+#> [1] 2
+#> 
+#> $fdChartrandAll
+#> [1] 0
+#> 
+#> $fdOutlierAny
+#> [1] 0
+#> 
+#> $fdIndividualStep
+#> [1] 1
+#> 
+#> $fdChartrand
+#> [1] 1
+#> 
+#> $centralDerivEps
+#> [1] 2.980232e-07 2.980232e-07
+#> 
+#> $eigen
+#> [1] 1
+#> 
+#> $condWarn
+#> [1] 1000
+#> 
+#> $diagXform
+#> [1] "sqrt"
+#> 
+#> $iovXform
+#> [1] "sd"
+#> 
+#> $iovMethod
+#> [1] "auto"
+#> 
+#> $sumProd
+#> [1] FALSE
+#> 
+#> $optExpression
+#> [1] TRUE
+#> 
+#> $literalFix
+#> [1] TRUE
+#> 
+#> $literalFixRes
+#> [1] TRUE
+#> 
+#> $outerOpt
+#> [1] -1
+#> 
+#> $ci
+#> [1] 0.95
+#> 
+#> $sigdig
+#> [1] 3
+#> 
+#> $sigdigTable
+#> [1] 3
+#> 
+#> $scaleObjective
+#> [1] 0
+#> 
+#> $boundTol
+#> [1] 0.05
+#> 
+#> $calcTables
+#> [1] TRUE
+#> 
+#> $noAbort
+#> [1] 1
+#> 
+#> $interaction
+#> [1] 1
+#> 
+#> $foce
+#> [1] "nonmem"
+#> 
+#> $foceType
+#> [1] 0
+#> 
+#> $cholSEtol
+#> [1] 6.055454e-06
+#> 
+#> $foceEbeTol
+#> [1] 1e-09
+#> 
+#> $hessEps
+#> [1] 6.055454e-06
+#> 
+#> $hessEpsLlik
+#> [1] 6.055454e-06
+#> 
+#> $optimHessType
+#> [1] 1
+#> 
+#> $optimHessCovType
+#> [1] 1
+#> 
+#> $hessEtaStepMin
+#> [1] 0.05
+#> 
+#> $censOption
+#> [1] 0
+#> 
+#> $cholAccept
+#> [1] 0.001
+#> 
+#> $resetEtaSize
+#> [1] 1.439531
+#> 
+#> $resetThetaSize
+#> [1] Inf
+#> 
+#> $resetThetaFinalSize
+#> [1] Inf
+#> 
+#> $diagOmegaBoundUpper
+#> [1] 5
+#> 
+#> $diagOmegaBoundLower
+#> [1] 100
+#> 
+#> $cholSEOpt
+#> [1] 0
+#> 
+#> $cholSECov
+#> [1] 0
+#> 
+#> $fo
+#> [1] 0
+#> 
+#> $covTryHarder
+#> [1] 0
+#> 
+#> $outerOptFun
+#> function (par, fn, gr, lower = -Inf, upper = Inf, control = list(), 
+#>     ...) 
+#> {
+#>     .ctl <- .controlMaxfun(control)
+#>     if (is.null(.ctl$npt)) {
+#>         .ctl$npt <- length(par) * 2 + 1
+#>     }
+#>     .ctl$iprint <- 0L
+#>     .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", 
+#>         "iprint", "maxfun")]
+#>     .ret <- RcppTrust::bobyqa(par, fn, control = .ctl, lower = lower, 
+#>         upper = upper)
+#>     .ret <- .bobyqaRetryIfStuck(par, fn, lower, upper, .ctl, 
+#>         .ret)
+#>     if (isTRUE(control$trustPolish)) {
+#>         .ret <- .bobyqaRestart(fn, lower, upper, .ctl, .ret)
+#>     }
+#>     if (isTRUE(control$bobyqaStationary) && !is.null(.ctl$rhobeg)) {
+#>         .tol <- if (is.null(control$sigdig)) 
+#>             0.01
+#>         else 10^(1 - control$sigdig)
+#>         .ret <- .bobyqaStationary(fn, lower, upper, .ctl, .ret, 
+#>             tol = .tol, record = control$outerRecord, hold = control$outerHold)
+#>     }
+#>     if (isTRUE(control$scaleAdapt > 0L) && !is.null(.ctl$rhobeg)) {
+#>         .tol <- if (is.null(control$sigdig)) 
+#>             0.01
+#>         else 10^(1 - control$sigdig)
+#>         .ret <- .bobyqaAdapt(fn, lower, upper, .ctl, .ret, tol = .tol, 
+#>             maxLeg = control$scaleAdapt, record = control$outerRecord, 
+#>             hold = control$outerHold)
+#>     }
+#>     .ret$x <- .ret$par
+#>     .ret$message <- .ret$msg
+#>     .ret$convergence <- .ret$ierr
+#>     .ret$value <- .ret$fval
+#>     .ret
+#> }
+#> <bytecode: 0x5f2f0bf9d2c8>
+#> <environment: namespace:nlmixr2est>
+#> 
+#> $rhobeg
+#> [1] 0.2
+#> 
+#> $rhoend
+#> [1] 0.001
+#> 
+#> $npt
+#> NULL
+#> 
+#> $rel.tol
+#> [1] 0.001
+#> 
+#> $x.tol
+#> [1] 0.001
+#> 
+#> $eval.max
+#> [1] 4000
+#> 
+#> $iter.max
+#> [1] 2000
+#> 
+#> $innerOpt
+#> [1] 4
+#> 
+#> $hessianMethod
+#> [1] 1
+#> 
+#> $innerHessian
+#> [1] "focei"
+#> 
+#> $detHessian
+#> [1] "focei"
+#> 
+#> $trustConf
+#> [1] 0.975
+#> 
+#> $trustRinit
+#> NULL
+#> 
+#> $trustRmax
+#> NULL
+#> 
+#> $trustFterm
+#> [1] 1e-05
+#> 
+#> $trustMterm
+#> [1] 1e-05
+#> 
+#> $trustPolish
+#> [1] FALSE
+#> 
+#> $steihaugPolish
+#> [1] FALSE
+#> 
+#> $newuoaPolish
+#> [1] FALSE
+#> 
+#> $newuoaRhoend
+#> [1] 0.001
+#> 
+#> $bobyqaStationary
+#> [1] TRUE
+#> 
+#> $scaleAdapt
+#> [1] NA
+#> 
+#> $innerLbfgsLmm
+#> [1] 5
+#> 
+#> $innerLbfgsFactr
+#> [1] 4.5036e+10
+#> 
+#> $innerLbfgsPgtol
+#> [1] 1e-05
+#> 
+#> $innerLbfgsAbstol
+#> [1] 1e-05
+#> 
+#> $innerLbfgsReltol
+#> [1] 1e-05
+#> 
+#> $outerTrustHessian
+#> [1] "auto"
+#> 
+#> $outerTrustRinit
+#> NULL
+#> 
+#> $outerTrustRmax
+#> NULL
+#> 
+#> $outerTrustFterm
+#> NULL
+#> 
+#> $outerTrustMterm
+#> NULL
+#> 
+#> $outerTrustRelStep
+#> [1] 0.001
+#> 
+#> $outerTrustRestarts
+#> [1] 3
+#> 
+#> $abstol
+#> [1] 0.001
+#> 
+#> $reltol
+#> [1] 0.001
+#> 
+#> $derivSwitchTol
+#> [1] 0.002
+#> 
+#> $resetHessianAndEta
+#> [1] 0
+#> 
+#> $muModel
+#> [1] "none"
+#> 
+#> $muRefCovAlg
+#> [1] TRUE
+#> 
+#> $muModelTol
+#> [1] 1e-05
+#> 
+#> $muModelMaxCycles
+#> [1] 20
+#> 
+#> $muModelClampRetries
+#> [1] 10
+#> 
+#> $stateTrim
+#> [1] Inf
+#> 
+#> $gillK
+#> [1] 10
+#> 
+#> $gillKcov
+#> [1] 10
+#> 
+#> $gillKcovLlik
+#> [1] 10
+#> 
+#> $gillRtol
+#> [1] 1.490116e-08
+#> 
+#> $gillStep
+#> [1] 4
+#> 
+#> $gillStepCov
+#> [1] 2
+#> 
+#> $gillStepCovLlik
+#> [1] 4.5
+#> 
+#> $scaleType
+#> [1] 2
+#> 
+#> $normType
+#> [1] 1
+#> 
+#> $scaleC
+#> NULL
+#> 
+#> $scaleCmin
+#> [1] 1e-05
+#> 
+#> $scaleCband
+#> [1]  0.1 10.0
+#> 
+#> $scaleLinear
+#> [1] "abs"
+#> 
+#> $scaleCmax
+#> [1] 1e+05
+#> 
+#> $scaleC0
+#> [1] 1e+05
+#> 
+#> $outerOptTxt
+#> [1] "bobyqa"
+#> 
+#> $outerOptDefault
+#> [1] TRUE
+#> 
+#> $relTolDefault
+#> [1] TRUE
+#> 
+#> $rmatNorm
+#> [1] 1
+#> 
+#> $rmatNormLlik
+#> [1] 1
+#> 
+#> $smatNorm
+#> [1] 1
+#> 
+#> $smatNormLlik
+#> [1] 1
+#> 
+#> $covGillF
+#> [1] 1
+#> 
+#> $optGillF
+#> [1] 1
+#> 
+#> $gillFtol
+#> [1] 0
+#> 
+#> $gillFtolCov
+#> [1] 0
+#> 
+#> $gillFtolCovLlik
+#> [1] 0
+#> 
+#> $covSmall
+#> [1] 1e-05
+#> 
+#> $adjLik
+#> [1] TRUE
+#> 
+#> $gradTrim
+#> [1] Inf
+#> 
+#> $gradCalcCentralSmall
+#> [1] 1e-04
+#> 
+#> $gradCalcCentralLarge
+#> [1] 10000
+#> 
+#> $etaNudge
+#> [1] 1.131586
+#> 
+#> $etaNudge2
+#> [1] 1.518182
+#> 
+#> $etaRestart
+#> [1] 4
+#> 
+#> $finalEtaTol
+#> [1] 1
+#> 
+#> $aboveStartTol
+#> [1] 0.01
+#> 
+#> $shrinkEtaWarn
+#> [1] 30
+#> 
+#> $odeSettleCheck
+#> [1] FALSE
+#> 
+#> $odeSettleTol
+#> [1] 0.1
+#> 
+#> $omegaCollapseWarn
+#> [1] 0.001
+#> 
+#> $thetaBoundWarn
+#> [1] 1e-04
+#> 
+#> $maxOdeRecalc
+#> [1] 5
+#> 
+#> $odeRecalcFactor
+#> [1] 3.162278
+#> 
+#> $nRetries
+#> [1] 3
+#> 
+#> $seed
+#> [1] 42
+#> 
+#> $resetThetaCheckPer
+#> [1] 0.1
+#> 
+#> $etaMat
+#> NULL
+#> 
+#> $repeatGillMax
+#> [1] 1
+#> 
+#> $stickyRecalcN
+#> [1] 4
+#> 
+#> $outerMaxOdeRecalc
+#> [1] 5
+#> 
+#> $outerOdeRecalcFactor
+#> [1] 3.162278
+#> 
+#> $outerStickyRecalcN
+#> [1] 4
+#> 
+#> $indTolRelax
+#> [1] TRUE
+#> 
+#> $eventType
+#> [1] 2
+#> 
+#> $eventSens
+#> [1] "jump"
+#> 
+#> $gradProgressOfvTime
+#> [1] 10
+#> 
+#> $addProp
+#> [1] "combined2"
+#> 
+#> $badSolveObjfAdj
+#> [1] 100
+#> 
+#> $compress
+#> [1] FALSE
+#> 
+#> $rxControl
+#> $scale
+#> NULL
+#> 
+#> $method
+#> liblsoda 
+#>        2 
+#> 
+#> $atol
+#> [1] 1e-08
+#> 
+#> $rtol
+#> [1] 1e-06
+#> 
+#> $maxsteps
+#> [1] 500000
+#> 
+#> $hmin
+#> [1] 0
+#> 
+#> $hmax
+#> [1] NA
+#> 
+#> $hini
+#> [1] 0
+#> 
+#> $maxordn
+#> [1] 12
+#> 
+#> $maxords
+#> [1] 5
+#> 
+#> $covsInterpolation
+#> locf 
+#>    1 
+#> 
+#> $addCov
+#> [1] TRUE
+#> 
+#> $returnType
+#> rxSolve 
+#>       0 
+#> 
+#> $sigma
+#> NULL
+#> 
+#> $sigmaDf
+#> NULL
+#> 
+#> $nCoresRV
+#> [1] 1
+#> 
+#> $sigmaIsChol
+#> [1] FALSE
+#> 
+#> $sigmaSeparation
+#> [1] "auto"
+#> 
+#> $sigmaXform
+#> identity 
+#>        4 
+#> 
+#> $nDisplayProgress
+#> [1] 10000
+#> 
+#> $amountUnits
+#> [1] NA
+#> 
+#> $timeUnits
+#> [1] "hours"
+#> 
+#> $addDosing
+#> [1] FALSE
+#> 
+#> $stateTrim
+#> [1] Inf
+#> 
+#> $updateObject
+#> [1] FALSE
+#> 
+#> $omega
+#> NULL
+#> 
+#> $omegaDf
+#> NULL
+#> 
+#> $omegaIsChol
+#> [1] FALSE
+#> 
+#> $omegaSeparation
+#> [1] "auto"
+#> 
+#> $omegaXform
+#> variance 
+#>        6 
+#> 
+#> $nSub
+#> [1] 1
+#> 
+#> $thetaMat
+#> NULL
+#> 
+#> $thetaDf
+#> NULL
+#> 
+#> $thetaIsChol
+#> [1] FALSE
+#> 
+#> $nStud
+#> [1] 1
+#> 
+#> $dfSub
+#> [1] 0
+#> 
+#> $dfObs
+#> [1] 0
+#> 
+#> $seed
+#> NULL
+#> 
+#> $nsim
+#> NULL
+#> 
+#> $minSS
+#> [1] 10
+#> 
+#> $maxSS
+#> [1] 10000
+#> 
+#> $strictSS
+#> [1] 1
+#> 
+#> $infSSstep
+#> [1] 12
+#> 
+#> $istateReset
+#> [1] TRUE
+#> 
+#> $subsetNonmem
+#> [1] TRUE
+#> 
+#> $hmaxSd
+#> [1] 0
+#> 
+#> $maxAtolRtolFactor
+#> [1] 0.1
+#> 
+#> $from
+#> NULL
+#> 
+#> $to
+#> NULL
+#> 
+#> $by
+#> NULL
+#> 
+#> $length.out
+#> NULL
+#> 
+#> $iCov
+#> NULL
+#> 
+#> $keep
+#> NULL
+#> 
+#> $keepF
+#> character(0)
+#> 
+#> $drop
+#> NULL
+#> 
+#> $warnDrop
+#> [1] TRUE
+#> 
+#> $omegaLower
+#> [1] -Inf
+#> 
+#> $omegaUpper
+#> [1] Inf
+#> 
+#> $sigmaLower
+#> [1] -Inf
+#> 
+#> $sigmaUpper
+#> [1] Inf
+#> 
+#> $thetaLower
+#> [1] -Inf
+#> 
+#> $thetaUpper
+#> [1] Inf
+#> 
+#> $indLinPhiM
+#> [1] 0
+#> 
+#> $indLinPhiTol
+#> [1] 1e-07
+#> 
+#> $indLinMatExpType
+#> Al-Mohy 
+#>       3 
+#> 
+#> $indLinMatExpOrder
+#> [1] 6
+#> 
+#> $idFactor
+#> [1] TRUE
+#> 
+#> $mxhnil
+#> [1] 0
+#> 
+#> $hmxi
+#> [1] 0
+#> 
+#> $warnIdSort
+#> [1] TRUE
+#> 
+#> $ssAtol
+#> [1] 1e-07
+#> 
+#> $ssRtol
+#> [1] 1e-05
+#> 
+#> $safeZero
+#> [1] 1
+#> 
+#> $sumType
+#> pairwise 
+#>        1 
+#> 
+#> $prodType
+#> long double 
+#>           1 
+#> 
+#> $resample
+#> NULL
+#> 
+#> $resampleID
+#> [1] TRUE
+#> 
+#> $maxwhile
+#> [1] 100000
+#> 
+#> $cores
+#> [1] 0
+#> 
+#> $atolSens
+#> [1] 1e-08
+#> 
+#> $rtolSens
+#> [1] 1e-06
+#> 
+#> $ssAtolSens
+#> [1] 1e-07
+#> 
+#> $ssRtolSens
+#> [1] 1e-05
+#> 
+#> $simVariability
+#> [1] NA
+#> 
+#> $nLlikAlloc
+#> NULL
+#> 
+#> $useStdPow
+#> [1] 0
+#> 
+#> $naTimeHandle
+#> ignore 
+#>      1 
+#> 
+#> $addlKeepsCov
+#> [1] FALSE
+#> 
+#> $addlDropSs
+#> [1] TRUE
+#> 
+#> $ssAtDoseTime
+#> [1] TRUE
+#> 
+#> $ss2cancelAllPending
+#> [1] FALSE
+#> 
+#> $naInterpolation
+#> locf 
+#>    1 
+#> 
+#> $keepInterpolation
+#> na 
+#>  2 
+#> 
+#> $safeLog
+#> [1] 1
+#> 
+#> $safePow
+#> [1] 1
+#> 
+#> $ssSolved
+#> [1] TRUE
+#> 
+#> $linCmtSensType
+#> auto 
+#>  100 
+#> 
+#> $linCmtSensH
+#> [1] 1e-04
+#> 
+#> $linCmtGillFtol
+#> [1] 0
+#> 
+#> $linCmtGillK
+#> [1] 20
+#> 
+#> $linCmtGillStep
+#> [1] 4
+#> 
+#> $linCmtGillRtol
+#> [1] 1.490116e-08
+#> 
+#> $linCmtShiErr
+#> [1] 1.490116e-08
+#> 
+#> $linCmtShiMax
+#> [1] 20
+#> 
+#> $linCmtScale
+#> [1] 0 0 0 0 0 0 0
+#> 
+#> $linCmtHcmt
+#> [1] 1
+#> 
+#> $linCmtHmeanI
+#> geometric 
+#>         2 
+#> 
+#> $linCmtHmeanO
+#> geometric 
+#>         2 
+#> 
+#> $linCmtSuspect
+#> [1] 1e-06
+#> 
+#> $linCmtForwardMax
+#> [1] 2
+#> 
+#> $indOwnAlloc
+#> [1] -1
+#> 
+#> $maxExtra
+#> [1] 1000
+#> 
+#> $tolFactor
+#> NULL
+#> 
+#> $serializeFile
+#> NULL
+#> 
+#> $dense
+#> [1] FALSE
+#> 
+#> $cvodeLinSolver
+#> dense 
+#>     1 
+#> 
+#> $stiff2
+#> [1] 0
+#> 
+#> $autoSwitchMaxStiff
+#> [1] 10
+#> 
+#> $autoSwitchMaxNonstiff
+#> [1] 3
+#> 
+#> $autoSwitchStiffFirst
+#> [1] 0
+#> 
+#> $autoSwitchNonstifftol
+#> [1] 0.9
+#> 
+#> $autoSwitchStifftol
+#> [1] 0.9
+#> 
+#> $autoSwitchDtfac
+#> [1] 2
+#> 
+#> $autoSwitchSwitchMax
+#> [1] 5
+#> 
+#> $useLinCmt
+#> [1] FALSE
+#> 
+#> $file
+#> NULL
+#> 
+#> $chunkSize
+#> NULL
+#> 
+#> $parallel
+#> [1] 0
+#> 
+#> $.zeros
+#> NULL
+#> 
+#> $zeroVarParamHandle
+#> [1] "warn"
+#> 
+#> $indLinStepSearch
+#> [1] 1
+#> 
+#> $indLinMaxIter
+#> [1] 20
+#> 
+#> $indLinRichardson
+#> [1] 2
+#> 
+#> $indLinIteration
+#> [1] 3
+#> 
+#> $indLinJac
+#> [1] 0
+#> 
+#> $indLinForcing
+#> [1] 1
+#> 
+#> $usePrior
+#> [1] NA
+#> 
+#> $priorPdRetry
+#> [1] 10
+#> 
+#> $priorOmega
+#> NULL
+#> 
+#> $priorOmegaEl
+#> NULL
+#> 
+#> $priorSigmaEl
+#> NULL
+#> 
+#> $linCmtSensPhi
+#> [1] 2
+#> 
+#> $nonmem
+#> [1] FALSE
+#> 
+#> $tieOrder
+#> [1] "evid"
+#> 
+#> $rateAtDoseTime
+#> [1] FALSE
+#> 
+#> $durAtDoseTime
+#> [1] FALSE
+#> 
+#> $resetCancelsPending
+#> [1] TRUE
+#> 
+#> $ssMethod
+#> [1] 1
+#> 
+#> $doseAtRecord
+#> [1] FALSE
+#> 
+#> $addlCovAtTime
+#> [1] TRUE
+#> 
+#> $gpuBackend
+#> [1] "auto"
+#> 
+#> $gpuDevice
+#> NULL
+#> 
+#> $gpuPrecision
+#> [1] "double"
+#> 
+#> $gpuBatch
+#> [1] 16384
+#> 
+#> attr(,"class")
+#> [1] "rxControl"
+#> attr(,"nlmixr2estSigdigTol")
+#> [1] "rtol"       "atol"       "rtolSens"   "atolSens"   "ssRtol"    
+#> [6] "ssAtol"     "ssRtolSens" "ssAtolSens"
+#> 
+#> $genRxControl
+#> [1] TRUE
+#> 
+#> $skipCov
+#> NULL
+#> 
+#> $fallbackFD
+#> [1] FALSE
+#> 
+#> $shi21maxOuter
+#> [1] 0
+#> 
+#> $shi21maxInner
+#> [1] 20
+#> 
+#> $shi21maxInnerCov
+#> [1] 20
+#> 
+#> $shi21maxFD
+#> [1] 20
+#> 
+#> $shi21hMax
+#> [1] 2
+#> 
+#> $shi21hMin
+#> [1] 1e-04
+#> 
+#> $smatPer
+#> [1] 0.6
+#> 
+#> $sdLowerFact
+#> [1] 0.001
+#> 
+#> $zeroGradFirstReset
+#> [1] TRUE
+#> 
+#> $zeroGradRunReset
+#> [1] TRUE
+#> 
+#> $zeroGradBobyqa
+#> [1] TRUE
+#> 
+#> $freezeFlatTheta
+#> [1] FALSE
+#> 
+#> $mceta
+#> [1] -2
+#> 
+#> $mcetaOpt
+#> [1] FALSE
+#> 
+#> $warm
+#> [1] 1
+#> 
+#> $nAGQ
+#> [1] 2
+#> 
+#> $agqHi
+#> [1] Inf
+#> 
+#> $agqLow
+#> [1] -Inf
+#> 
+#> $agqRule
+#> [1] "stieltjes"
+#> 
+#> $agqNsd
+#> [1] 3
+#> 
+#> $agqGrid
+#>   nr   ns   r0   r1 
+#> 5.00 2.00 0.50 0.95 
+#> 
+#> $agqCenter
+#> [1] "start"
+#> 
+#> $sensMethod
+#> [1] "default"
+#> 
+#> $linCmtSensCarry
+#> [1] "auto"
+#> 
+#> $boundedTransform
+#> [1] TRUE
+#> 
+#> $zeroTheta
+#> [1] 0.001
+#> 
+#> $zeroThetaStep
+#> [1] 100
+#> 
+#> $stage1
+#> [1] "foce"
+#> 
+#> attr(,"class")
+#> [1] "stieltjesControl"
+```

@@ -100,6 +100,7 @@ simultaneous population-parameter estimation and covariate selection.</p>
 <span>  useColor <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  printNcol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"r,s"</span>, <span class="st">"analytic"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">"sa"</span>, <span class="st">"imp"</span>, <span class="st">""</span><span class="op">)</span>,</span>
+<span>  covNewtonWarn <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  optExpression <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  sumProd <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  literalFix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -129,7 +130,8 @@ simultaneous population-parameter estimation and covariate selection.</p>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  rxControl <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span>,</span>
-<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span></span>
+<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span>,</span>
+<span>  condWarn <span class="op">=</span> <span class="fl">1000</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -666,6 +668,13 @@ starting from the encoder's.  The same choices as
 <code>"r"</code>, <code>"s"</code>, or <code>""</code> to skip.</p></dd>
 
 
+<dt id="arg-covnewtonwarn">covNewtonWarn<a class="anchor" aria-label="anchor" href="#arg-covnewtonwarn"></a></dt>
+<dd><p>Warn (in `$runInfo`) when the Newton decrement of the
+FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+this value: the standard errors then belong to no optimum.  The value is
+kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.</p></dd>
+
+
 <dt id="arg-optexpression">optExpression<a class="anchor" aria-label="anchor" href="#arg-optexpression"></a></dt>
 <dd><p>Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.</p></dd>
@@ -911,6 +920,12 @@ than the default `"liblsoda"` at the same `rtol`.</p></dd>
 <dd><p>warn when two estimates' correlation is at least this in
 absolute value after the covariance step; <code>NA</code> or <code>Inf</code> turns
 the warning off.</p></dd>
+
+
+<dt id="arg-condwarn">condWarn<a class="anchor" aria-label="anchor" href="#arg-condwarn"></a></dt>
+<dd><p>warn when the condition number of the covariance's
+correlation matrix exceeds this; <code>NA</code> or <code>Inf</code> turns the
+warning off.</p></dd>
 
 </dl></div>
     <div class="section level2">

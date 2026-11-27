@@ -40,10 +40,12 @@ lbfgsb3cControl(
   compress = FALSE,
   covMethod = c("r", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
-  ...
+  ...,
+  condWarn = 1000
 )
 ```
 
@@ -260,6 +262,13 @@ lbfgsb3cControl(
   to be closer to NONMEM's default objective function. By default this
   is `TRUE`
 
+- aboveStartTol:
+
+  Warn (in \`\$runInfo\`) when the final objective is above the
+  objective at the initial estimates by more than this fraction of its
+  magnitude (at least 0.1 objective units). Use \`NA\` or \`Inf\` to
+  disable.
+
 - ci:
 
   Confidence level for some tables. By default this is 0.95 or 95%
@@ -286,6 +295,11 @@ lbfgsb3cControl(
 - ...:
 
   Ignored parameters
+
+- condWarn:
+
+  warn when the condition number of the covariance's correlation matrix
+  exceeds this; `NA` or `Inf` turns the warning off.
 
 ## Value
 
@@ -357,10 +371,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.1136275 1.157951 1.6885e-05      0.051       0.006 0.019    0.001
+#>            setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.135899 1.224405 1.5373e-05      0.044       0.009 0.025    0.001
 #>              other
-#> elapsed 0.06540424
+#> elapsed 0.07968058
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

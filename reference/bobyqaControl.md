@@ -35,12 +35,14 @@ bobyqaControl(
   compress = FALSE,
   covMethod = c("r", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
   eventSens = c("jump", "fd"),
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 ```
 
@@ -225,6 +227,13 @@ bobyqaControl(
   to be closer to NONMEM's default objective function. By default this
   is `TRUE`
 
+- aboveStartTol:
+
+  Warn (in \`\$runInfo\`) when the final objective is above the
+  objective at the initial estimates by more than this fraction of its
+  magnitude (at least 0.1 objective units). Use \`NA\` or \`Inf\` to
+  disable.
+
 - ci:
 
   Confidence level for some tables. By default this is 0.95 or 95%
@@ -269,6 +278,11 @@ bobyqaControl(
 
   warn when two estimates' correlation is at least this in absolute
   value after the covariance step; `NA` or `Inf` turns the warning off.
+
+- condWarn:
+
+  warn when the condition number of the covariance's correlation matrix
+  exceeds this; `NA` or `Inf` turns the warning off.
 
 ## Value
 
@@ -338,9 +352,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.5907649 0.5805613  3.983e-05      0.036       0.007 0.024    0.001
+#> elapsed 0.6533162 0.6569739  1.988e-05      0.047       0.009 0.026     0.01
 #>              other
-#> elapsed 0.06863398
+#> elapsed 0.09569004
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

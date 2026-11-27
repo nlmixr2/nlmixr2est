@@ -110,6 +110,29 @@
   clears it
   ([\#1354](https://github.com/nlmixr2/nlmixr2est/issues/1354)).
 
+- `agqControl(agqRule=)` selects the quadrature rule of the agq family:
+  `"hermite"` (default, unchanged), `"legendre"` (Gauss-Legendre over
+  `agqNsd` conditional SDs) or `"stieltjes"` (radial shells set by
+  `agqGrid = c(nr, ns, r0, r1)`, NONMEM’s `GRID=`). Every rule is
+  centred on the EBE, so all are exact for a model linear in the etas
+  ([\#1139](https://github.com/nlmixr2/nlmixr2est/issues/1139)).
+
+- `agqControl(agqCenter=)` places the quadrature grid: `"mode"`
+  (default, re-centred on each EBE), `"start"` (placed on the EBEs and
+  eta Hessians of the first evaluation, then fixed, as NONMEM’s
+  `STIELTJES` integrating stage) or `"prior"` (one grid on
+  `N(0, Omega)`)
+  ([\#1139](https://github.com/nlmixr2/nlmixr2est/issues/1139)).
+
+- `est = "stieltjes"` is a two-stage method after NONMEM’s
+  `$ESTIMATION STIELTJES`: a conditional first stage
+  (`stieltjesControl(stage1 = "focei")`, `"foce"` or `"laplace"`)
+  supplies starting estimates, then the integrated likelihood is
+  minimized on a Stieltjes grid placed at each subject’s EBE and eta
+  Hessian at those estimates and held fixed. The first stage’s objective
+  and estimates are kept in `fit$stieltjesStage1`
+  ([\#1139](https://github.com/nlmixr2/nlmixr2est/issues/1139)).
+
 - `addCondDist(fit)` samples each subject’s conditional distribution of
   the etas at the final estimates of a fit from any estimation method
   and stores its mean and SD as `fit$condDist` (`keepSamples = TRUE`
@@ -268,6 +291,12 @@
   `0.01`); `NA` or `Inf` turns it off
   ([\#1399](https://github.com/nlmixr2/nlmixr2est/issues/1399)).
 
+- The nlm-family methods (`nlm`, `nlminb`, `bobyqa`, `n1qn1`, `newuoa`,
+  `optim`, `trust`, `uobyqa`, `lbfgsb3c`) now add the same note to
+  `$runInfo` when their final objective is above the one at the initial
+  estimates; each control takes `aboveStartTol=`
+  ([\#1399](https://github.com/nlmixr2/nlmixr2est/issues/1399)).
+
 - A covariance that is rejected as not positive definite now says which
   parameters make it so: those with no information (a zero diagonal), or
   the ones the near-singular direction loads on
@@ -280,7 +309,8 @@
 - A fit now notes in `$runInfo` when the condition number of its
   covariance’s correlation matrix exceeds 1000
   (e.g. `covariance condition number is large (1397.7 > 1000)`), since
-  its standard errors are then unreliable. `foceiControl(condWarn=)`
+  its standard errors are then unreliable. `condWarn=` in every method’s
+  control (e.g. `foceiControl(condWarn=)`, `saemControl(condWarn=)`)
   sets the threshold; `NA` or `Inf` turns the note off
   ([\#1400](https://github.com/nlmixr2/nlmixr2est/issues/1400)).
 
@@ -349,14 +379,26 @@
   the note off
   ([\#1373](https://github.com/nlmixr2/nlmixr2est/issues/1373)).
 
-- A SAEM fit now notes in `$runInfo` when its covariance was computed at
-  an estimate that is not stationary for the FOCEi objective: the Newton
-  decrement `0.5 * g' H^-1 g` (OFV units) of that objective at the
-  estimate exceeds `saemControl(covNewtonWarn = 1)`. The value is kept
-  as `fit$covNewtonDecrement`; `NA` or `Inf` skips the check; models
+- A SAEM, nlme, imp-family, vae or emvi fit now notes in `$runInfo` when
+  its covariance was computed at an estimate that is not stationary for
+  the FOCEi objective: the Newton decrement `0.5 * g' H^-1 g` (OFV
+  units) of that objective at the estimate exceeds the control’s
+  `covNewtonWarn` (default `1`). The value is kept as
+  `fit$covNewtonDecrement`; `NA` or `Inf` skips the check; models
   outside the analytic gradient’s scope (e.g. `linCmt()`) use central
   differences
   ([\#1389](https://github.com/nlmixr2/nlmixr2est/issues/1389)).
+
+- Estimation now warns by name about an estimated theta or eta that
+  cannot change the objective function, for example one used only
+  through an intermediate that nothing else reads
+  ([\#1382](https://github.com/nlmixr2/nlmixr2est/issues/1382)).
+
+- `foceiControl(freezeFlatTheta = TRUE)` evaluates the outer gradient
+  once before optimizing and fixes, with a warning, any theta whose
+  gradient is flat at its initial value, so the other parameters
+  optimize normally
+  ([\#1382](https://github.com/nlmixr2/nlmixr2est/issues/1382)).
 
 - `saem` now reports each subject’s conditional mode as `fit$eta` (the
   Monolix “EBEs” task), found per subject with NEWUOA after the last
@@ -517,6 +559,14 @@
 
 #### Estimation
 
+- `est = "saem"` now keeps a bounded mu-referenced covariate coefficient
+  (for example `clWt <- c(-5, 0.5, 5)` in
+  `exp(lcl + eta.cl + clWt * log(WT / 70))`) in its closed-form M-step
+  and holds it inside its bounds there, instead of transforming it out
+  of the covariate regression. The coefficient was mis-estimated and
+  reported on its internal scale
+  ([\#1347](https://github.com/nlmixr2/nlmixr2est/issues/1347)).
+
 - `est="saem"` now re-solves its cached predictions after the M-step
   moves a theta without an eta, so the next E-step no longer scores the
   current state at the previous theta (non-mixture fits; mixtures
@@ -549,6 +599,14 @@
   random effects with the same clear message as `"saem"`, instead of
   failing with `Could not fit data`
   ([\#1467](https://github.com/nlmixr2/nlmixr2est/issues/1467)).
+
+- A multiplicative 0/1 covariate effect,
+  `exp(tcl + eta.cl) * (1 + clSex*SEX)`, is now fit as the equivalent
+  mu-referenced `log(1 + clSex)*SEX` (“mu5”) by every mu-referenced
+  method (`saem`, the `m*`/`i*` FOCEi family, `imp`, `vae`, …) and
+  `clSex` is reported; `saem` previously estimated `clSex` with the
+  wrong sign
+  ([\#1315](https://github.com/nlmixr2/nlmixr2est/issues/1315)).
 
 - `est="saem"`: when an endpoint’s residual error cannot be matched to
   [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html)

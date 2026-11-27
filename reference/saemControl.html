@@ -133,7 +133,8 @@
 <span>  ebeTol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  etaMat <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span>,</span>
-<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span></span>
+<span>  corWarn <span class="op">=</span> <span class="fl">0.95</span>,</span>
+<span>  condWarn <span class="op">=</span> <span class="fl">1000</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -583,7 +584,11 @@ other input parameter.</p></dd>
   `model()` expression</p>
 <p>5. Remove `nlmixrMuDerCov#` from nlmix2 output</p>
 <p>In general, these covariates should be more accurate since it
-changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.</p></dd>
+changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.</p>
+<p>It also fits a multiplicative 0/1 covariate effect,
+`exp(tcl + eta.cl) * (1 + clSex*SEX)`, as the equivalent mu-referenced
+`exp(tcl + eta.cl + log(1 + clSex)*SEX)` and reports `clSex` (mu5; every
+mu-referenced method).</p></dd>
 
 
 <dt id="arg-handleuninformativeetas">handleUninformativeEtas<a class="anchor" aria-label="anchor" href="#arg-handleuninformativeetas"></a></dt>
@@ -894,6 +899,12 @@ starts the chains from random draws around the population mean.</p></dd>
 <dd><p>warn when two estimates' correlation is at least this in
 absolute value after the covariance step; <code>NA</code> or <code>Inf</code> turns
 the warning off.</p></dd>
+
+
+<dt id="arg-condwarn">condWarn<a class="anchor" aria-label="anchor" href="#arg-condwarn"></a></dt>
+<dd><p>warn when the condition number of the covariance's
+correlation matrix exceeds this; <code>NA</code> or <code>Inf</code> turns the
+warning off.</p></dd>
 
 </dl></div>
     <div class="section level2">

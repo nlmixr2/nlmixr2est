@@ -94,7 +94,8 @@ saemControl(
   ebeTol = NULL,
   etaMat = NULL,
   ...,
-  corWarn = 0.95
+  corWarn = 0.95,
+  condWarn = 1000
 )
 ```
 
@@ -569,6 +570,11 @@ saemControl(
   the system to a linear compartment model. Therefore, by default this
   is \`TRUE\`.
 
+  It also fits a multiplicative 0/1 covariate effect, \`exp(tcl +
+  eta.cl) \* (1 + clSex\*SEX)\`, as the equivalent mu-referenced
+  \`exp(tcl + eta.cl + log(1 + clSex)\*SEX)\` and reports \`clSex\`
+  (mu5; every mu-referenced method).
+
 - handleUninformativeEtas:
 
   boolean that tells nlmixr2's saem to calculate uninformative etas and
@@ -880,6 +886,11 @@ saemControl(
 
   warn when two estimates' correlation is at least this in absolute
   value after the covariance step; `NA` or `Inf` turns the warning off.
+
+- condWarn:
+
+  warn when the condition number of the covariance's correlation matrix
+  exceeds this; `NA` or `Inf` turns the warning off.
 
 ## Value
 

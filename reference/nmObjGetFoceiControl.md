@@ -88,6 +88,9 @@ nmObjGetFoceiControl(x, ...)
 # S3 method for class 'saem'
 nmObjGetFoceiControl(x, ...)
 
+# S3 method for class 'stieltjes'
+nmObjGetFoceiControl(x, ...)
+
 # S3 method for class 'vae'
 nmObjGetFoceiControl(x, ...)
 

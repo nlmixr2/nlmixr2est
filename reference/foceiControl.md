@@ -192,12 +192,17 @@ foceiControl(
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
+  freezeFlatTheta = FALSE,
   mceta = -2L,
   mcetaOpt = FALSE,
   warm = c("calc", "save", "none"),
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
+  agqRule = c("hermite", "legendre", "stieltjes"),
+  agqNsd = 3,
+  agqGrid = c(nr = 3, ns = 2, r0 = 0.6, r1 = 0.9),
+  agqCenter = c("mode", "start", "prior"),
   sensMethod = c("default", "forward"),
   linCmtSensCarry = c("auto", "none"),
   zeroTheta = 0.001,
@@ -1244,7 +1249,10 @@ foceiControl(
   mu-referenced are internally rewritten as mu-referenced covariates and
   restored after optimization. Mirrors
   `saemControl(muRefCovAlg=)`/`nlmeControl(muRefCovAlg=)`; for
-  `foceiControl()` only takes effect when `muModel != "none"`.
+  `foceiControl()` only takes effect when `muModel != "none"`. This
+  includes mu5: a multiplicative 0/1 covariate effect \`exp(tcl +
+  eta.cl) \* (1 + clSex\*SEX)\` is fit as \`exp(tcl + eta.cl + log(1 +
+  clSex)\*SEX)\` and \`clSex\` is reported.
 
 - muModelTol:
 
@@ -1645,6 +1653,13 @@ foceiControl(
   gradient-free bobyqa method; \`NA\` only does so for the first zero
   gradient.
 
+- freezeFlatTheta:
+
+  When \`TRUE\`, the outer gradient is evaluated once before optimizing;
+  a theta with \`\|g\| \<= 1e-8\` and \`\|g\| \<= 1e-6\*max\|g\|\` is
+  warned about and fixed at its initial value. Nothing is fixed when the
+  whole gradient is flat. Default \`FALSE\`.
+
 - mceta:
 
   Monte Carlo sampling for the best initial ETA estimate (based on
@@ -1708,6 +1723,42 @@ foceiControl(
 
   The upper bound for adaptive quadrature log-likelihood. By default
   this is Inf; in the original nlmixr's gnlmm was 400.
+
+- agqRule:
+
+  Quadrature rule used when \`nAGQ \> 1\`: \`"hermite"\` (adaptive
+  Gauss-Hermite, \`nAGQ\` nodes per eta), \`"legendre"\`
+  (Gauss-Legendre, \`nAGQ\` nodes per eta over \`agqNsd\` conditional
+  standard deviations) or \`"stieltjes"\` (radial shells set by
+  \`agqGrid\`; \`nAGQ\` is then only the switch). Every rule is centred
+  on the EBE and scaled by the eta Hessian, so all are exact when the
+  model is linear in the etas with an eta-independent residual variance.
+
+- agqNsd:
+
+  Half-width, in conditional standard deviations, of the
+  \`agqRule="legendre"\` integration box.
+
+- agqGrid:
+
+  The \`agqRule="stieltjes"\` grid \`c(nr, ns, r0, r1)\`, as in NONMEM's
+  \`GRID=\`: \`nr\` equal shells over the radial probability interval
+  \`\[r0, r1\]\` plus a central region \`\[0, r0\]\` and, unless \`r1 \>
+  0.9999\`, a tail region; \`ns\` directions per quadrant of each pair
+  of etas. The default \`ns = 2\` differs from NONMEM's
+  \`GRID=(3,1,.6,.9)\`: one direction per quadrant is too sparse for a
+  grid that does not follow the EBE.
+
+- agqCenter:
+
+  Where the quadrature grid sits. \`"mode"\` (default) re-centres it on
+  each subject's EBE and eta Hessian at every evaluation. \`"start"\`
+  centres it on the EBE and Hessian at the first evaluation of the run
+  (again after a theta-reset restart) and then keeps it fixed, so the
+  objective no longer moves with the conditional etas (the integrating
+  stage of NONMEM's \`STIELTJES\`). \`"prior"\` uses one grid on \`N(0,
+  Omega)\` for every subject, which needs a fine grid when the data are
+  informative. Only \`"mode"\` has an analytic gradient and covariance.
 
 - sensMethod:
 
