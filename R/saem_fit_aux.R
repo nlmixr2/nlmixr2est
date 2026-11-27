@@ -1159,7 +1159,8 @@ calc.COV <- function(fit0) {
       .k <- 0L
       for (r in seq_along(.resNames)) {
         .k <- .k + 1L
-        .dv <- if (.resType[r] == 1L) 2 * .gix * .wix else 2 * .gix * .fix # dVi/da = 2 diag(g w); dVi/db = 2 diag(g|f|w)
+        # dVi/da = 2 diag(g w); dVi/db = 2 diag(g|f|w)
+        .dv <- if (.resType[r] == 1L) 2 * .gix * .wix else 2 * .gix * .fix
         .dv[.eix != .resEndpnt[r]] <- 0 # mask to the owning endpoint (#904)
         .A[[.k]] <- sweep(invVi, 2L, .dv, "*") # Vi^{-1} diag(.dv)
       }
