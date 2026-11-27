@@ -3,9 +3,40 @@
 # parameter (nlmixr2 names; random-effect variances, not SDs) and an `OFV`
 # row holding -2 log-likelihood, with the tool version and run date.
 
+# a scenario's model without its tte() endpoints (tteTime() read as 0): the
+# parameter names do not depend on them, and an rxode2 without tte() support
+# can still parse it
+.tteRefUi <- function(model) {
+  if (!is.function(model)) {
+    return(rxode2::rxode2(model))
+  }
+  .sub <- function(x) {
+    if (!is.call(x)) {
+      return(x)
+    }
+    if (identical(x[[1]], quote(tteTime))) {
+      return(0)
+    }
+    as.call(lapply(as.list(x), .sub))
+  }
+  .isTte <- function(x) {
+    is.call(x) && identical(x[[1]], quote(`~`)) && is.call(x[[3]]) && identical(x[[3]][[1]], quote(tte))
+  }
+  .b <- body(model)
+  for (.i in seq_along(.b)[-1]) {
+    if (is.call(.b[[.i]]) && identical(.b[[.i]][[1]], quote(model))) {
+      .m <- as.list(.b[[.i]][[2]])
+      .m <- .m[!vapply(.m, .isTte, logical(1))]
+      .b[[.i]][[2]] <- .sub(as.call(.m))
+    }
+  }
+  body(model) <- .b
+  rxode2::rxode2(model)
+}
+
 # theta names (in ini() order) and eta names of a scenario's model
 .tteParNames <- function(scenario) {
-  .ini <- rxode2::rxode2(scenario$model)$iniDf
+  .ini <- .tteRefUi(scenario$model)$iniDf
   list(
     theta = .ini$name[!is.na(.ini$ntheta)][order(.ini$ntheta[!is.na(.ini$ntheta)])],
     eta = .ini$name[is.na(.ini$ntheta) & .ini$neta1 == .ini$neta2]
@@ -17,7 +48,7 @@
   .name <- sub("-reduced$", "", file)
   .s <- tteValidationScenarios(.name)[[1]]
   if (grepl("-reduced$", file)) {
-    .s$model <- .s$reduced(rxode2::rxode2(.s$model))
+    .s$model <- .s$reduced(.tteRefUi(.s$model))
   }
   .s
 }
@@ -99,7 +130,7 @@ tteMonolixReference <- function(
   date = format(Sys.Date(), "%Y-%m-%d")
 ) {
   .nm <- .tteParNames(scenario)
-  .mu <- rxode2::rxode2(scenario$model)$muRefDataFrame
+  .mu <- .tteRefUi(scenario$model)$muRefDataFrame
   .get <- function(x, v) if (x %in% names(v)) as.numeric(v[[x]]) else NA_real_
   # residual-error parameters keep their nlmixr2 name; Monolix names them b
   .mlx <- vapply(

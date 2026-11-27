@@ -17,17 +17,15 @@ $DES
 $ERROR
   IF (NEWIND.NE.2) OLDCHZ = 0
   CP = A(1)/V
-  IF (DVID.EQ.1) THEN
-    W = PROPSD*CP
-    IF (W.LT.1E-10) W = 1E-10
-    Y = LOG(2*3.14159265358979) + 2*LOG(W) + ((DV - CP)/W)**2
-  ELSE
-    CHZ = A(2) - OLDCHZ
-    IF (MDV.EQ.0) OLDCHZ = A(2)
-    HAZ = EXP(LLAM)*(1 - CP/(IC50 + CP))
-    Y = 2*CHZ
-    IF (DV.EQ.1) Y = 2*CHZ - 2*LOG(HAZ)
-  ENDIF
+  W = PROPSD*CP
+  IF (W.LT.1E-10) W = 1E-10
+  CHZ = A(2) - OLDCHZ
+  HAZ = EXP(LLAM)*(1 - CP/(IC50 + CP))
+  YTTE = 2*CHZ
+  IF (DV.EQ.1) YTTE = 2*CHZ - 2*LOG(HAZ)
+  Y = LOG(2*3.14159265358979) + 2*LOG(W) + ((DV - CP)/W)**2
+  IF (DVID.EQ.2) Y = YTTE
+  IF (MDV.EQ.0.AND.DVID.EQ.2) OLDCHZ = A(2)
 $THETA 0.4054651 ; tcl
 $THETA 2.079442 ; tv
 $THETA (0, 0.2) ; prop.sd

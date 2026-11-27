@@ -37,6 +37,10 @@ for (.name in .ctl) {
     warning("NONMEM run failed: ", .name, call. = FALSE)
     next
   }
-  .ref <- tteNonmemRead(.ext, file.path(.run, paste0(.name, ".lst")), .tteRefScenario(.name))
+  .ref <- try(tteNonmemRead(.ext, file.path(.run, paste0(.name, ".lst")), .tteRefScenario(.name)))
+  if (!is.data.frame(.ref)) {
+    warning("could not read the NONMEM results: ", .name, call. = FALSE)
+    next
+  }
   utils::write.csv(.ref, file.path(.out, paste0(.name, ".csv")), row.names = FALSE)
 }

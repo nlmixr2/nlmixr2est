@@ -15,15 +15,12 @@ $ERROR
     OLD1 = 0
     OLD2 = 0
   ENDIF
-  IF (DVID.EQ.1) THEN
-    CHZ = A(1) - OLD1
-    IF (MDV.EQ.0) OLD1 = A(1)
-    HAZ = EXP(LH1)
-  ELSE
-    CHZ = A(2) - OLD2
-    IF (MDV.EQ.0) OLD2 = A(2)
-    HAZ = EXP(LH2)
-  ENDIF
+  CHZ = A(1) - OLD1
+  HAZ = EXP(LH1)
+  IF (DVID.EQ.2) CHZ = A(2) - OLD2
+  IF (DVID.EQ.2) HAZ = EXP(LH2)
+  IF (MDV.EQ.0.AND.DVID.EQ.1) OLD1 = A(1)
+  IF (MDV.EQ.0.AND.DVID.EQ.2) OLD2 = A(2)
   Y = 2*CHZ
   IF (DV.EQ.1) Y = 2*CHZ - 2*LOG(HAZ)
 $THETA -2.302585 ; lh1
