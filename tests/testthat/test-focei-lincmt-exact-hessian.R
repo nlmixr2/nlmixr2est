@@ -36,19 +36,6 @@ nmTest({
     rxode2::model(rxode2::rxode2(f), alag(depot) <- 0.25, append = TRUE)
   }
 
-  .llLin <- function() {
-    ini({
-      tka <- log(1.2); tcl <- log(2); tv <- log(20)
-      eta.cl ~ 0.09; eta.v ~ 0.04
-      lsd <- log(0.15)
-    })
-    model({
-      ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v); sd <- exp(lsd)
-      cp <- linCmt()
-      ll(err) ~ -0.5 * log(2 * pi) - log(sd * cp) - 0.5 * ((DV - cp) / (sd * cp))^2
-    })
-  }
-
   .llOde <- function() {
     ini({
       tka <- log(1.2); tcl <- log(2); tv <- log(20)
@@ -64,9 +51,15 @@ nmTest({
     })
   }
 
+  # the linCmt() twin of an ODE model
+  .linOf <- function(f) {
+    suppressMessages(rxode2::model(f, -d/dt(depot), -d/dt(central), cp <- linCmt()))
+  }
+
   test_that("ll() + linCmt(): exact inner Hessian and fast fit match the ODE twin (#1498)", {
     skip_on_cran()
     skip_if_not(.foceiLinCmtHasSecondOrder())
+    .llLin <- .linOf(.llOde)
     d <- .exactHessData()
     .ctl <- function(cores, maxOuter = NULL) {
       args <- list(
@@ -109,32 +102,8 @@ nmTest({
   test_that("ll() + linCmt() with a time-varying covariate: the eta-space carry's exact Hessian (#1498)", {
     skip_on_cran()
     skip_if_not(.foceiLinCmtHasSecondOrder())
-    .tvLin <- function() {
-      ini({
-        tka <- log(1.2); tcl <- log(2); tv <- log(20)
-        eta.cl ~ 0.09; eta.v ~ 0.04
-        lsd <- log(0.15)
-      })
-      model({
-        ka <- exp(tka); cl <- exp(tcl + eta.cl) * (wt / 70)^0.75; v <- exp(tv + eta.v); sd <- exp(lsd)
-        cp <- linCmt()
-        ll(err) ~ -0.5 * log(2 * pi) - log(sd * cp) - 0.5 * ((DV - cp) / (sd * cp))^2
-      })
-    }
-    .tvOde <- function() {
-      ini({
-        tka <- log(1.2); tcl <- log(2); tv <- log(20)
-        eta.cl ~ 0.09; eta.v ~ 0.04
-        lsd <- log(0.15)
-      })
-      model({
-        ka <- exp(tka); cl <- exp(tcl + eta.cl) * (wt / 70)^0.75; v <- exp(tv + eta.v); sd <- exp(lsd)
-        d/dt(depot) <- -ka * depot
-        d/dt(central) <- ka * depot - cl / v * central
-        cp <- central / v
-        ll(err) ~ -0.5 * log(2 * pi) - log(sd * cp) - 0.5 * ((DV - cp) / (sd * cp))^2
-      })
-    }
+    .tvOde <- suppressMessages(rxode2::model(.llOde, cl <- exp(tcl + eta.cl) * (wt / 70)^0.75))
+    .tvLin <- .linOf(.tvOde)
     set.seed(7)
     d <- do.call(
       rbind,
@@ -180,32 +149,11 @@ nmTest({
     }
     # an eta and the time-varying covariate on ka: the carry's ka row is 2 * ncmt, not
     # the last of the seven slots (a 1-cmt ka derivative read zero there)
-    .kaLin <- function() {
-      ini({
-        tka <- log(1.2); tcl <- log(2); tv <- log(20)
-        eta.ka ~ 0.09; eta.cl ~ 0.09
-        lsd <- log(0.15)
-      })
-      model({
-        ka <- exp(tka + eta.ka) * (wt / 70)^0.5; cl <- exp(tcl + eta.cl); v <- exp(tv); sd <- exp(lsd)
-        cp <- linCmt()
-        ll(err) ~ -0.5 * log(2 * pi) - log(sd * cp) - 0.5 * ((DV - cp) / (sd * cp))^2
-      })
-    }
-    .kaOde <- function() {
-      ini({
-        tka <- log(1.2); tcl <- log(2); tv <- log(20)
-        eta.ka ~ 0.09; eta.cl ~ 0.09
-        lsd <- log(0.15)
-      })
-      model({
-        ka <- exp(tka + eta.ka) * (wt / 70)^0.5; cl <- exp(tcl + eta.cl); v <- exp(tv); sd <- exp(lsd)
-        d/dt(depot) <- -ka * depot
-        d/dt(central) <- ka * depot - cl / v * central
-        cp <- central / v
-        ll(err) ~ -0.5 * log(2 * pi) - log(sd * cp) - 0.5 * ((DV - cp) / (sd * cp))^2
-      })
-    }
+    .kaOde <- suppressMessages(rxode2::ini(
+      rxode2::model(.llOde, ka <- exp(tka + eta.ka) * (wt / 70)^0.5, v <- exp(tv)),
+      eta.ka ~ 0.09
+    ))
+    .kaLin <- .linOf(.kaOde)
     fL <- suppressMessages(suppressWarnings(nlmixr2(.kaLin, d, "focei", .ctl(1L))))
     fO <- suppressMessages(suppressWarnings(nlmixr2(.kaOde, d, "focei", .ctl(1L))))
     expect_false(any(grepl("exact eta Hessian not finite", fL$runInfo, fixed = TRUE)))

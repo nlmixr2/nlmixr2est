@@ -9,24 +9,18 @@ nmTest({
     d
   }
   .tvModel <- function(lin) {
-    if (lin) {
-      function() {
-        ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; wka <- 0.3; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
-        model({
-          ka <- exp(tka) * (WT / 70)^wka; cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
-          cp <- linCmt(); cp ~ add(add.sd)
-        })
-      }
-    } else {
-      function() {
-        ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; wka <- 0.3; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
-        model({
-          ka <- exp(tka) * (WT / 70)^wka; cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
-          d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
-          cp <- center / v; cp ~ add(add.sd)
-        })
-      }
+    f <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; wka <- 0.3; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
+      model({
+        ka <- exp(tka) * (WT / 70)^wka; cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v; cp ~ add(add.sd)
+      })
     }
+    if (!lin) {
+      return(f)
+    }
+    suppressMessages(rxode2::model(f, -d/dt(depot), -d/dt(center), cp <- linCmt()))
   }
   .tvCtl <- function(...) {
     foceiControl(
