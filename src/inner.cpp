@@ -3889,8 +3889,8 @@ static inline bool hess2ObsAdd(rx_solving_options_ind *ind, int kk2, int ne, dou
   double cp[9] = {};
   if (conditional) {
     double value;
-    if (!conditionalInnerPartials(ind,kk2,ne,lhs,cp,value)) return false;
-    conditionalInnerScore(result,value,lhs,cp,ne);
+    if (!conditionalInnerPartials(ind, kk2, ne, lhs, cp, value)) return false;
+    conditionalInnerScore(result, value, lhs, cp, ne);
   }
   int r = 0;                                            // rx__d2pred_ order: j-outer, i-inner (i<=j)
   for (int jc = 0; jc < ne; ++jc)
@@ -3899,7 +3899,7 @@ static inline bool hess2ObsAdd(rx_solving_options_ind *ind, int kk2, int ne, dou
         int p = op_focei.predOffset;
         double fi = lhs[p+ic+1], fj = lhs[p+jc+1];
         double ri = lhs[p+ne+ic+2], rj = lhs[p+ne+jc+2];
-        H(ic,jc) += cp[2]*fi*fj+cp[3]*(fi*rj+ri*fj)+cp[4]*ri*rj+
+        H(ic, jc) += cp[2]*fi*fj+cp[3]*(fi*rj+ri*fj)+cp[4]*ri*rj+
           cp[0]*lhs[op_focei.conditionalHess2Offset+r]+
           cp[1]*lhs[op_focei.varianceHess2Offset+r];
       } else {
