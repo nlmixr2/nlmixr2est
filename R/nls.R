@@ -122,7 +122,8 @@ nlsControl <- function(
   boundedTransform = TRUE,
   ...,
   corWarn = 0.95,
-  thetaBoundWarn = 1e-4
+  thetaBoundWarn = 1e-4,
+  condWarn = 1000
 ) {
   algorithm <- match.arg(algorithm)
   if (algorithm == "LM" && !requireNamespace("minpack.lm", quietly = TRUE)) {
@@ -235,6 +236,7 @@ nlsControl <- function(
   .corWarnCheck(corWarn)
 
   .thetaBoundWarnCheck(thetaBoundWarn)
+  .condWarnCheck(condWarn)
   .ret <- list(
     algorithm = algorithm,
     maxiter = maxiter,
@@ -281,6 +283,7 @@ nlsControl <- function(
     compress = compress,
     corWarn = corWarn,
     thetaBoundWarn = as.double(thetaBoundWarn),
+    condWarn = condWarn,
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,

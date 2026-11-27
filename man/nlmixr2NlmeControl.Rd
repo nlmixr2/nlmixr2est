@@ -46,9 +46,11 @@ nlmixr2NlmeControl(
   eventSens = c("jump", "fd"),
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
+  covNewtonWarn = 1,
   ...,
   corWarn = 0.95,
-  thetaBoundWarn = 1e-04
+  thetaBoundWarn = 1e-04,
+  condWarn = 1000
 )
 
 nlmeControl(
@@ -92,9 +94,11 @@ nlmeControl(
   eventSens = c("jump", "fd"),
   print = NULL,
   covMethod = c("nlme", "analytic", "r,s", "r", "s", "sa", "imp", ""),
+  covNewtonWarn = 1,
   ...,
   corWarn = 0.95,
-  thetaBoundWarn = 1e-04
+  thetaBoundWarn = 1e-04,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -294,7 +298,9 @@ be mu-referenced are internally rewritten as mu-referenced
 covariates and restored after optimization. Mirrors
 \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)};
 for \code{foceiControl()} only takes effect when
-\code{muModel != "none"}.}
+\code{muModel != "none"}.  This includes mu5: a multiplicative 0/1
+covariate effect `exp(tcl + eta.cl) * (1 + clSex*SEX)` is fit as
+`exp(tcl + eta.cl + log(1 + clSex)*SEX)` and `clSex` is reported.}
 
 \item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
@@ -321,6 +327,11 @@ finite-difference forms directly; `"nlme"` and `""` skip the recompute
 and keep nlme's own standard errors.  When the recompute fails the
 `"nlme"` covariance is kept.}
 
+\item{covNewtonWarn}{Warn (in `$runInfo`) when the Newton decrement of the
+FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+this value: the standard errors then belong to no optimum.  The value is
+kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.}
+
 \item{...}{Further, named control arguments to be passed to
    \code{\link{nlminb}} (apart from \code{trace} and \code{iter.max}
    mentioned above), where used (\code{eval.max} and those from
@@ -334,6 +345,10 @@ the warning off.}
 within this tolerance of a finite `lower`/`upper` bound, relative to the
 bound range (or, for a one-sided bound, to the larger of the bound's size
 and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 a nlmixr-nlme list

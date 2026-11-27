@@ -40,13 +40,15 @@ trustControl(
   compress = FALSE,
   covMethod = c("r", "trust", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...,
   corWarn = 0.95,
-  thetaBoundWarn = 1e-04
+  thetaBoundWarn = 1e-04,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -261,6 +263,11 @@ quasi-Newton one by default); `""` skips the covariance step.}
 should be adjusted to be closer to NONMEM's default objective
 function.  By default this is \code{TRUE}}
 
+\item{aboveStartTol}{Warn (in `$runInfo`) when the final objective is
+above the objective at the initial estimates by more than this fraction
+of its magnitude (at least 0.1 objective units).  Use `NA` or `Inf` to
+disable.}
+
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
@@ -295,6 +302,10 @@ the warning off.}
 within this tolerance of a finite `lower`/`upper` bound, relative to the
 bound range (or, for a one-sided bound, to the larger of the bound's size
 and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 trust control structure

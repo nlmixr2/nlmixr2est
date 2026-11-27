@@ -57,7 +57,8 @@ nlsControl(
   boundedTransform = TRUE,
   ...,
   corWarn = 0.95,
-  thetaBoundWarn = 1e-04
+  thetaBoundWarn = 1e-04,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -339,6 +340,10 @@ the warning off.}
 within this tolerance of a finite `lower`/`upper` bound, relative to the
 bound range (or, for a one-sided bound, to the larger of the bound's size
 and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 nls control object

@@ -39,11 +39,13 @@ lbfgsb3cControl(
   compress = FALSE,
   covMethod = c("r", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
   thetaBoundWarn = 1e-04,
-  ...
+  ...,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -196,6 +198,11 @@ covariance step.}
 should be adjusted to be closer to NONMEM's default objective
 function.  By default this is \code{TRUE}}
 
+\item{aboveStartTol}{Warn (in `$runInfo`) when the final objective is
+above the objective at the initial estimates by more than this fraction
+of its magnitude (at least 0.1 objective units).  Use `NA` or `Inf` to
+disable.}
+
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
@@ -220,6 +227,10 @@ bound range (or, for a one-sided bound, to the larger of the bound's size
 and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
 
 \item{...}{Ignored parameters}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 bobqya control structure

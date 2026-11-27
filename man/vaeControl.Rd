@@ -51,6 +51,7 @@ vaeControl(
   useColor = NULL,
   printNcol = NULL,
   covMethod = c("r,s", "analytic", "r", "s", "sa", "imp", ""),
+  covNewtonWarn = 1,
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
@@ -81,7 +82,8 @@ vaeControl(
   rxControl = NULL,
   ...,
   corWarn = 0.95,
-  thetaBoundWarn = 1e-04
+  thetaBoundWarn = 1e-04,
+  condWarn = 1000
 )
 }
 \arguments{
@@ -543,6 +545,11 @@ starting from the encoder's.  The same choices as
 \code{\link{foceiControl}()}: \code{"analytic"} (default), \code{"r,s"},
 \code{"r"}, \code{"s"}, or \code{""} to skip.}
 
+\item{covNewtonWarn}{Warn (in `$runInfo`) when the Newton decrement of the
+FOCEi objective at the estimate, `0.5 * g' H^-1 g` in OFV units, exceeds
+this value: the standard errors then belong to no optimum.  The value is
+kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.}
+
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}
 
@@ -742,6 +749,10 @@ the warning off.}
 within this tolerance of a finite `lower`/`upper` bound, relative to the
 bound range (or, for a one-sided bound, to the larger of the bound's size
 and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 }
 \value{
 vae control structure (class `vaeControl`)

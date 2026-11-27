@@ -120,13 +120,15 @@ nlmControl <- function(
   compress = FALSE,
   covMethod = c("r", "nlm", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
   ...,
   corWarn = 0.95,
-  thetaBoundWarn = 1e-4
+  thetaBoundWarn = 1e-4,
+  condWarn = 1000
 ) {
   .assertPositiveEps(shiErr)
   .assertPositiveEps(hessErr)
@@ -157,6 +159,7 @@ nlmControl <- function(
   checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
   checkmate::assertLogical(compress, len = 1, any.missing = TRUE)
   checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)
+  checkmate::assertNumber(aboveStartTol, lower = 0, na.ok = TRUE)
   checkmate::assertLogical(boundedTransform, len = 1, any.missing = FALSE)
 
   .xtra <- list(...)
@@ -247,7 +250,9 @@ nlmControl <- function(
   .corWarnCheck(corWarn)
 
   .thetaBoundWarnCheck(thetaBoundWarn)
+  .condWarnCheck(condWarn)
   .ret <- list(
+    aboveStartTol = as.double(aboveStartTol),
     covMethod = covMethod,
     typsize = typsize,
     fscale = fscale,
@@ -290,6 +295,7 @@ nlmControl <- function(
     compress = compress,
     corWarn = corWarn,
     thetaBoundWarn = as.double(thetaBoundWarn),
+    condWarn = condWarn,
     solveType = solveType,
     linCmtSensCarry = match.arg(linCmtSensCarry),
     ci = ci,

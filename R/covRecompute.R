@@ -205,6 +205,8 @@
       nSaCov = control$nSaCov,
       seed = control$seed,
       covMethod = "sa",
+      # a saControl() saved before saCovAutoStop existed takes its default
+      saCovAutoStop = !isFALSE(control$saCovAutoStop),
       calcTables = FALSE,
       saemHoldPar = TRUE,
       saemWarmState = state

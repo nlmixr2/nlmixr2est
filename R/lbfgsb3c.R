@@ -108,11 +108,13 @@ lbfgsb3cControl <- function(
   compress = FALSE,
   covMethod = c("r", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
   thetaBoundWarn = 1e-4,
-  ...
+  ...,
+  condWarn = 1000
 ) {
   .thetaBoundWarnCheck(thetaBoundWarn)
   checkmate::assertIntegerish(trace, len = 1, any.missing = FALSE, lower = 0)
@@ -137,6 +139,7 @@ lbfgsb3cControl <- function(
   checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
   checkmate::assertLogical(compress, len = 1, any.missing = TRUE)
   checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)
+  checkmate::assertNumber(aboveStartTol, lower = 0, na.ok = TRUE)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -195,7 +198,9 @@ lbfgsb3cControl <- function(
   checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
+  .condWarnCheck(condWarn)
   .ret <- list(
+    aboveStartTol = as.double(aboveStartTol),
     trace = trace,
     factr = factr,
     pgtol = pgtol,
@@ -233,6 +238,7 @@ lbfgsb3cControl <- function(
     sensMethod = match.arg(sensMethod),
     calcTables = calcTables,
     compress = compress,
+    condWarn = condWarn,
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,

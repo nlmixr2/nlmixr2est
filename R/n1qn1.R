@@ -87,12 +87,14 @@ n1qn1Control <- function(
   compress = FALSE,
   covMethod = c("r", "n1qn1", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
   thetaBoundWarn = 1e-4,
-  ...
+  ...,
+  condWarn = 1000
 ) {
   .thetaBoundWarnCheck(thetaBoundWarn)
   # n1qn1 stopping tolerance from sigdig (FOCEi mechanism, matches foceiControl
@@ -114,6 +116,7 @@ n1qn1Control <- function(
   checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
   checkmate::assertLogical(compress, len = 1, any.missing = TRUE)
   checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)
+  checkmate::assertNumber(aboveStartTol, lower = 0, na.ok = TRUE)
   checkmate::assertLogical(boundedTransform, len = 1, any.missing = FALSE)
 
   .xtra <- list(...)
@@ -172,7 +175,9 @@ n1qn1Control <- function(
   checkmate::assertNumeric(scaleTo, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
+  .condWarnCheck(condWarn)
   .ret <- list(
+    aboveStartTol = as.double(aboveStartTol),
     epsilon = epsilon,
     max_iterations = max_iterations,
     nsim = nsim,
@@ -207,6 +212,7 @@ n1qn1Control <- function(
     sensMethod = match.arg(sensMethod),
     calcTables = calcTables,
     compress = compress,
+    condWarn = condWarn,
     ci = ci,
     sigdig = sigdig,
     sigdigTable = sigdigTable,
