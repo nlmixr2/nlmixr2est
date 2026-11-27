@@ -137,15 +137,16 @@ rxUiDeparse.stieltjesControl <- function(object, var) {
   .env1$control <- .stieltjesStage1Control(control)
   .env1$est <- control$stage1
   class(.env1) <- c(control$stage1, "nlmixr2Est")
-  .warn <- character(0)
+  .acc <- new.env(parent = emptyenv())
+  .acc$warn <- character(0)
   .fit <- withCallingHandlers(
     get(paste0("nlmixr2Est.", control$stage1), mode = "function")(.env1),
     warning = function(w) {
-      .warn <<- c(.warn, conditionMessage(w))
+      .acc$warn <- c(.acc$warn, conditionMessage(w))
       invokeRestart("muffleWarning")
     }
   )
-  list(fit = .fit, warnings = .warn)
+  list(fit = .fit, warnings = .acc$warn)
 }
 
 #' Put the stage-1 estimates into the model the second stage starts from
