@@ -10048,6 +10048,16 @@ static double covEtaStartF0(double *theta) {
   return foceiOfv0(theta);
 }
 
+// foceiControl(ebeCheck=, ebeCheckStep=, ebeCheckTol=); see foceiEbeCheck()
+static void foceiEbeCheckSetup(List &foceiO) {
+  op_focei.ebeCheck = foceiO.containsElementNamed("ebeCheck") ?
+    static_cast<int>(as<bool>(foceiO["ebeCheck"])) : 0;
+  op_focei.ebeCheckStep = foceiO.containsElementNamed("ebeCheckStep") ?
+    as<double>(foceiO["ebeCheckStep"]) : 0.1;
+  op_focei.ebeCheckTol = foceiO.containsElementNamed("ebeCheckTol") ?
+    as<double>(foceiO["ebeCheckTol"]) : 0.01;
+}
+
 NumericVector foceiSetup_(const RObject &obj,
                           const RObject &data,
                           NumericVector theta,
@@ -10763,12 +10773,7 @@ NumericVector foceiSetup_(const RObject &obj,
     as<double>(foceiO["finalEtaTol"]) : R_PosInf;
   op_focei.aboveStartTol = foceiO.containsElementNamed("aboveStartTol") ?
     as<double>(foceiO["aboveStartTol"]) : 0.01;
-  op_focei.ebeCheck = foceiO.containsElementNamed("ebeCheck") ?
-    (int)as<bool>(foceiO["ebeCheck"]) : 0;
-  op_focei.ebeCheckStep = foceiO.containsElementNamed("ebeCheckStep") ?
-    as<double>(foceiO["ebeCheckStep"]) : 0.1;
-  op_focei.ebeCheckTol = foceiO.containsElementNamed("ebeCheckTol") ?
-    as<double>(foceiO["ebeCheckTol"]) : 0.01;
+  foceiEbeCheckSetup(foceiO);
   // The base of the restart draws' threefry stream.  Taken from
   // foceiControl(seed=) rather than rxode2's getRxSeed1(): that is NOT a
   // getter -- it advances rxode2's global rxSeed by its argument on every

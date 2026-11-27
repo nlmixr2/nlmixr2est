@@ -2283,10 +2283,7 @@ foceiControl <- function(
   checkmate::assertNumber(omegaCollapseWarn, lower = 0, upper = 1, na.ok = TRUE)
   checkmate::assertNumber(thetaBoundWarn, lower = 0, upper = 1, na.ok = TRUE)
   checkmate::assertFlag(ebeCheck)
-  checkmate::assertNumber(ebeCheckStep, lower = 0, finite = TRUE)
-  if (ebeCheckStep <= 0) {
-    stop("'ebeCheckStep' must be positive", call. = FALSE)
-  }
+  checkmate::assertNumber(ebeCheckStep, lower = .Machine$double.xmin, finite = TRUE)
   checkmate::assertNumber(ebeCheckTol, lower = 0, finite = TRUE)
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
