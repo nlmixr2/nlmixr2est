@@ -79,6 +79,7 @@ uobyqaControl <- function(
   compress = FALSE,
   covMethod = c("r", ""),
   adjObf = TRUE,
+  aboveStartTol = 0.01,
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
@@ -106,6 +107,7 @@ uobyqaControl <- function(
   checkmate::assertLogical(calcTables, len = 1, any.missing = FALSE)
   checkmate::assertLogical(compress, len = 1, any.missing = TRUE)
   checkmate::assertLogical(adjObf, len = 1, any.missing = TRUE)
+  checkmate::assertNumber(aboveStartTol, lower = 0, na.ok = TRUE)
   checkmate::assertLogical(boundedTransform, len = 1, any.missing = FALSE)
   eventSens <- match.arg(eventSens)
 
@@ -166,6 +168,7 @@ uobyqaControl <- function(
 
   .corWarnCheck(corWarn)
   .ret <- list(
+    aboveStartTol = as.double(aboveStartTol),
     npt = npt,
     rhobeg = rhobeg,
     rhoend = rhoend,

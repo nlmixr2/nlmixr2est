@@ -199,6 +199,11 @@
   above the initial estimates' (...)`, and `foceiControl(aboveStartTol=)` sets
   its relative band (default `0.01`); `NA` or `Inf` turns it off (#1399).
 
+- The nlm-family methods (`nlm`, `nlminb`, `bobyqa`, `n1qn1`, `newuoa`,
+  `optim`, `trust`, `uobyqa`, `lbfgsb3c`) now add the same note to `$runInfo`
+  when their final objective is above the one at the initial estimates; each
+  control takes `aboveStartTol=` (#1399).
+
 - A covariance that is rejected as not positive definite now says which
   parameters make it so: those with no information (a zero diagonal), or the
   ones the near-singular direction loads on (e.g. `"r,s" is not PD: tva, tvb
