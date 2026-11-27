@@ -186,8 +186,9 @@ static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned i
 // PWRES/EWRES: the observed residual whitened by the simulations' own mean and
 // covariance, Sigma^(-1/2) (y - EPRED), with the symmetric inverse square root.
 // NA for a subject with a censored observation or too few simulations (K <= n).
-static inline void calculatePwres(calcNpdeInfoId &ret, arma::Col<int> &cens,
-                                  arma::Col<int> &evid, unsigned int K) {
+static inline void calculatePwres(calcNpdeInfoId *retp, const arma::Col<int> &cens,
+                                  const arma::Col<int> &evid, unsigned int K) {
+  calcNpdeInfoId &ret = *retp;
   ret.pwres = arma::vec(ret.yobst.n_elem);
   ret.pwres.fill(NA_REAL);
   unsigned int n = ret.obs.n_elem;
@@ -486,7 +487,7 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
     imputeCensNpde(ret, cens, limit, lambda, yj, low, hi, row0, seed, nObs);
   }
   calculatePD(ret, id, K, tolChol);
-  calculatePwres(ret, cens, evid, K);
+  calculatePwres(&ret, cens, evid, K);
   calculateNPDEfromPD(ret, K, ties, ru, ru2);
   ret.epred = arma::vec(ret.yobst.size());
   ret.yobs = arma::vec(ret.yobst.size());
@@ -780,7 +781,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   ret[3] = List::create(_["NPD"]=npd);
   ret[4] = List::create(_["PDE"]=pde);
   ret[5] = List::create(_["PD"]=pd);
-  ret[6] = List::create(_["PWRES"]=pwres);
+  ret[6] = List::create(_["PWRES"] = pwres);
   SEXP ret2 = rx_protect.protect(dfCbindList(wrap(ret)));
   return List::create(dvf, ret2);
   END_RCPP
