@@ -2,7 +2,7 @@
 % Please edit documentation in R/agq.R, R/foce.R, R/focep.R, R/ifocep.R,
 %   R/imp.R, R/impmap.R, R/its.R, R/laplace.R, R/mfocep.R, R/muRefControl.R,
 %   R/nlme.R, R/nmObjHandle.R, R/npCommon.R, R/npag.R, R/npb.R, R/posthoc.R,
-%   R/qrpem.R, R/saem.R, R/vaeOutput.R, R/vi.R
+%   R/qrpem.R, R/saem.R, R/stieltjes.R, R/vaeOutput.R, R/vi.R
 \name{nmObjGetFoceiControl.agq}
 \alias{nmObjGetFoceiControl.agq}
 \alias{nmObjGetFoceiControl.foce}
@@ -33,6 +33,7 @@
 \alias{nmObjGetFoceiControl.posthoc}
 \alias{nmObjGetFoceiControl.qrpem}
 \alias{nmObjGetFoceiControl.saem}
+\alias{nmObjGetFoceiControl.stieltjes}
 \alias{nmObjGetFoceiControl.vae}
 \alias{nmObjGetFoceiControl.emvi}
 \alias{nmObjGetFoceiControl.fbvi}
@@ -95,6 +96,8 @@ nmObjGetFoceiControl(x, ...)
 \method{nmObjGetFoceiControl}{qrpem}(x, ...)
 
 \method{nmObjGetFoceiControl}{saem}(x, ...)
+
+\method{nmObjGetFoceiControl}{stieltjes}(x, ...)
 
 \method{nmObjGetFoceiControl}{vae}(x, ...)
 

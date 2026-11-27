@@ -29,6 +29,7 @@
   nlme = list(type = "Linearized", description = "Lindstrom-Bates alternating (nlme)"),
   laplace = list(type = "Integral approximation", description = "Laplace approximation"),
   agq = list(type = "Integral approximation", description = "Adaptive Gaussian Quadrature"),
+  stieltjes = list(type = "Integral approximation", description = "Two-stage Stieltjes quadrature"),
   imp = list(type = "Integral approximation", description = "Importance sampling (no MAP search)"),
   impmap = list(type = "Integral approximation", description = "Importance sampling (MAP)"),
   saem = list(type = "Stochastic EM", description = "Stochastic Approximation EM"),

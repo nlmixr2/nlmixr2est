@@ -8,6 +8,7 @@
   "foi",
   "laplace",
   "agq",
+  "stieltjes",
   "posthoc",
   "impmap",
   "imp",

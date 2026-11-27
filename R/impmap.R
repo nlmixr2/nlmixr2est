@@ -16,6 +16,7 @@
 # plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c(
   "isample",
+  "covNewtonWarn",
   "nIter",
   "mapIter",
   "gamma",
@@ -602,6 +603,7 @@
 #'   not `combSens` moving the answer, but an unrelated pre-existing bug in
 #'   how the shared solve pool swapped between peer models, since fixed. The
 #'   two now agree on every fixture measured, so `TRUE` is the default.)
+#' @inheritParams saemControl
 #' @return impmapControl object
 #' @export
 #' @author Matthew L. Fidler
@@ -633,6 +635,7 @@ impmapControl <- function(
   nConvWindow = 10L,
   impSeed = 42L,
   covMethod = c("imp", "analytic", "r,s", "r", "s", "sa", ""),
+  covNewtonWarn = 1,
   qr = FALSE,
   qrShift = TRUE,
   qrRefresh = TRUE,
@@ -791,6 +794,7 @@ impmapControl <- function(
   .control$sir <- sir
   .control$sirSample <- .sirSample
   .control$combSens <- combSens
+  .control$covNewtonWarn <- .covNewtonWarnArg(covNewtonWarn)
   class(.control) <- "impmapControl"
   .control
 }
