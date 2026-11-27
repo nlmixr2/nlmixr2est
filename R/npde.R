@@ -11,8 +11,8 @@
 #' @details
 #'
 #' Besides `EPRED`, `ERES`, `NPDE`, `NPD`, `PDE` and `PD`, the fit gets
-#' `PWRES`, the Monte Carlo population-weighted residual (NONMEM's
-#' `EWRES`): each subject's `Sigma^(-1/2) (y - EPRED)`, with `EPRED` and
+#' `EWRES`, the Monte Carlo weighted residual from `EPRED` (as NONMEM's
+#' `EWRES`; Monolix calls it `PWRES`): each subject's `Sigma^(-1/2) (y - EPRED)`, with `EPRED` and
 #' `Sigma` the mean and covariance of the same simulations and the symmetric
 #' inverse square root.  It is computed on the scale of the residual error
 #' transformation, as NPDE.  It keeps the residual's magnitude, which the
@@ -120,7 +120,7 @@ addNpde <- function(object, updateObject = TRUE, table = tableControl(), ..., en
   table$cwres <- FALSE
   .df <- .calcTables(.iovTablesFit(fit), table = table)$resid
   # the columns _nlmixr2est_npdeCalc() (src/npde.cpp) returns
-  .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD", "PWRES")
+  .cols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD", "EWRES")
   # a table that asks for doses gives dosing rows too
   .in <- if ("EVID" %in% names(.df)) .df$EVID == 0 else rep(TRUE, nrow(.df))
   .df[.in, .cols, drop = FALSE]

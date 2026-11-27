@@ -137,7 +137,7 @@ static inline SEXP dfProtectedNames(SEXP inS, std::string what) {
     "CRES", "CWRES", "EPRED", "ERES", "NPDE",
     "ID", "RESETNO", "EVID", "CMT", "SS",
     "RATE", "DUR", "II", "TIME", "rxLambda",
-    "rxYj", "rxLow", "rxHi", "PWRES"};
+    "rxYj", "rxLow", "rxHi", "EWRES"};
   for (unsigned int i = 0; i < nm.size(); ++i) {
     for (unsigned int j = 0; j < 29; ++j) {
       if (!strcmp(badNames[j], CHAR(nm[i]))) {

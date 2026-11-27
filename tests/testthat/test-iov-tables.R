@@ -15,7 +15,7 @@
 }
 
 # The columns _nlmixr2est_npdeCalc() (src/npde.cpp) returns
-.iovTablesNpdeCols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD", "PWRES")
+.iovTablesNpdeCols <- c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD", "EWRES")
 
 nmTest({
   test_that("addNpde() on a fit with IOV gives the NPDE the fit computes itself", {

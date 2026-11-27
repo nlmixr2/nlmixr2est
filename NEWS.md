@@ -108,13 +108,14 @@
   subject's EBE and eta Hessian at those estimates and held fixed.  The first stage's
   objective and estimates are kept in `fit$stieltjesStage1` (#1139).
 
-- `addNpde()` and `tableControl(npde = TRUE)` now also return `PWRES`, the
-  Monte Carlo population-weighted residual (NONMEM's `EWRES`, Monolix's
-  `PWRES`): `Sigma^(-1/2) (y - EPRED)` from the same simulations' mean and
-  covariance, with no extra simulation.  Unlike NPDE it keeps the residual's
-  magnitude; it uses only the first two moments, so a skewed marginal can
-  show bias even under the true model.  Subjects with a censored observation
-  or no more simulations than observations get `NA` (#1390).
+- `addNpde()` and `tableControl(npde = TRUE)` now also return `EWRES`, the
+  Monte Carlo weighted residual from `EPRED` (as NONMEM's `EWRES`; Monolix
+  calls it `PWRES`): `Sigma^(-1/2) (y - EPRED)` from the same simulations'
+  mean and covariance, with no extra simulation.  Unlike NPDE it keeps the
+  residual's magnitude; it uses only the first two moments, so a skewed
+  marginal can show bias even under the true model.  Subjects with a
+  censored observation or no more simulations than observations get `NA`
+  (#1390).
 
 - `addCondDist(fit)` samples each subject's conditional distribution of the
   etas at the final estimates of a fit from any estimation method and stores

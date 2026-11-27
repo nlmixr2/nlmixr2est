@@ -32,8 +32,8 @@ NPDE calculation for nlmixr2
 }
 \details{
 Besides `EPRED`, `ERES`, `NPDE`, `NPD`, `PDE` and `PD`, the fit gets
-`PWRES`, the Monte Carlo population-weighted residual (NONMEM's
-`EWRES`): each subject's `Sigma^(-1/2) (y - EPRED)`, with `EPRED` and
+`EWRES`, the Monte Carlo weighted residual from `EPRED` (as NONMEM's
+`EWRES`; Monolix calls it `PWRES`): each subject's `Sigma^(-1/2) (y - EPRED)`, with `EPRED` and
 `Sigma` the mean and covariance of the same simulations and the symmetric
 inverse square root.  It is computed on the scale of the residual error
 transformation, as NPDE.  It keeps the residual's magnitude, which the
