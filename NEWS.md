@@ -471,6 +471,20 @@
   `vae`, ...) and `clSex` is reported; `saem` previously estimated `clSex`
   with the wrong sign (#1315).
 
+- `est="emvi"` no longer overestimates a proportional or eta-dependent
+  residual error (about 2x on `prop()`) or shrinks the between-subject
+  variances with it.  A single heavy-tailed draw of the residual score
+  inflated the step-size accumulator and left each subject's variational
+  posterior near the prior.  The new default `emviControl(optim =
+  "gaussNewton")` updates that posterior by a damped Gauss-Newton fixed point
+  on the eta Hessian, and the thetas without a mu-referenced eta by a damped
+  Gauss-Newton M-step; it searches no step size, so it is also faster.
+  `optim = "advi"` restores the previous optimizer (#1462).
+- `est="fbvi"` uses the same `optim = "gaussNewton"` default, with a
+  Gauss-Newton step for its population block, and so recovers proportional
+  residual error too.  The SEs of mu-referenced thetas now come from their
+  information with the etas integrated out and match FOCEi's; they used to
+  depend on where the step-size sequence stalled (#1462).
 - `est="saem"`: when an endpoint's residual error cannot be matched to
   `ini()` parameters, the error now names the endpoint and the error
   argument(s) that are not `ini()` parameters (#1516).
