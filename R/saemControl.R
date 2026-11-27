@@ -591,9 +591,7 @@ saemControl <- function(
     if (!is.null(.xtra$mcmc$rmcmc)) {
       rmcmc <- .xtra$mcmc$rmcmc
     }
-    if (!is.null(.xtra$mcmc$proposal)) {
-      rwProposal <- .xtra$mcmc$proposal
-    }
+    rwProposal <- c(.xtra$mcmc$proposal, rwProposal)[1] # a NULL proposal keeps the argument
   }
   checkmate::assertIntegerish(nBurn, any.missing = FALSE, len = 1, lower = 0)
   checkmate::assertIntegerish(nEm, any.missing = FALSE, len = 1, lower = 0)
@@ -871,6 +869,13 @@ saemControl <- function(
   .ret
 }
 
+.saemDeparseProposal <- function(proposal) {
+  if (identical(proposal, "omega")) {
+    return(paste0("rwProposal=", deparse1(proposal)))
+  }
+  character(0)
+}
+
 .saemDeparseExtra <- function(default, name, value) {
   if (name == "DEBUG") {
     return(paste0("trace=", deparse1(value)))
@@ -894,9 +899,7 @@ saemControl <- function(
     if (!is.null(value$rmcmc) && !identical(default$mcmc$rmcmc, value$rmcmc)) {
       .ret <- c(.ret, paste0("rmcmc=", deparse1(value$rmcmc)))
     }
-    if (!is.null(value$proposal) && !identical(value$proposal, "diag")) {
-      .ret <- c(.ret, paste0("rwProposal=", deparse1(value$proposal)))
-    }
+    .ret <- c(.ret, .saemDeparseProposal(value$proposal))
     # nu is written only when supplied (nuAuto FALSE), even at its default; an
     # automatic nu may have been raised by the fit (.saemAutoNu) and is redone
     if (!isTRUE(value$nuAuto) && (!identical(default$mcmc$nu, value$nu) || isTRUE(default$mcmc$nuAuto))) {

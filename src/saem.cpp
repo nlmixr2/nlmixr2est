@@ -2779,7 +2779,7 @@ public:
     if (x.containsElementNamed("ueTol")) ueTol = as<double>(x["ueTol"]);
     coef_sa = as<double>(x["coef_sa"]);
     rmcmc = as<double>(x["rmcmc"]);
-    rwOmega = x.containsElementNamed("rwOmega") ? as<int>(x["rwOmega"]) : 0;
+    rwOmega = as<int>(x["rwOmega"]);
     pas = as<vec>(x["pas"]);
     pash = as<vec>(x["pash"]);
     // SA (stochastic-approximation) covariance phase: after the niter estimation
