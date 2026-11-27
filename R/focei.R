@@ -2881,25 +2881,37 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
   if (length(.g) == 0L) {
     return(NULL)
   }
+  .lines <- .foceiEcCarryLines(.g, .txt, .neta, .E)
+  .s$..HdEta2 <- c(.lines, .foceiEcD2PredLines(.pc$predSym, .eta))
+  .s
+}
+
+#' Advance the eta/direction carry and read the concentration and its derivatives
+#' @param g slot derivative lines from [.foceiEcGradLines()]
+#' @param txt rxode2 text of the structural call's arguments
+#' @param n number of directions
+#' @param E rxode2lincmt's RX_LINCMT_ETA_MAX
+#' @return character lines: `rx_ecAdv_`, `rx_lcConc_`, `rx_ecC<i>_`, `rx_ecC<i>_<j>_`
+#' @noRd
+.foceiEcCarryLines <- function(g, txt, n, E) {
   .lines <- c(
-    .g,
-    paste0("rx_ecAdv_=", .foceiEcCall(.txt, "-32", 0L)),
-    paste0("rx_lcConc_~", .foceiEcCall(.txt, "-1", -1L)),
+    g,
+    paste0("rx_ecAdv_=", .foceiEcCall(txt, "-32", 0L)),
+    paste0("rx_lcConc_~", .foceiEcCall(txt, "-1", -1L)),
     vapply(
-      seq_len(.neta),
+      seq_len(n),
       function(.i) {
-        sprintf("rx_ecC%d_~%s", .i, .foceiEcCall(.txt, "-33", .i - 1L))
+        sprintf("rx_ecC%d_~%s", .i, .foceiEcCall(txt, "-33", .i - 1L))
       },
       character(1)
     )
   )
-  for (.j in seq_len(.neta)) {
+  for (.j in seq_len(n)) {
     for (.i in seq_len(.j)) {
-      .lines <- c(.lines, sprintf("rx_ecC%d_%d_~%s", .i, .j, .foceiEcCall(.txt, "-34", (.i - 1L) * .E + (.j - 1L))))
+      .lines <- c(.lines, sprintf("rx_ecC%d_%d_~%s", .i, .j, .foceiEcCall(txt, "-34", (.i - 1L) * E + (.j - 1L))))
     }
   }
-  .s$..HdEta2 <- c(.lines, .foceiEcD2PredLines(.pc$predSym, .eta))
-  .s
+  .lines
 }
 
 #' rxode2 text of a symengine expression

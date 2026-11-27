@@ -43,17 +43,7 @@
   }
   .n <- length(dirs)
   .c1 <- setNames(sprintf("rx_ecC%d_", seq_len(.n)), dirs)
-  .lines <- c(
-    .g,
-    paste0("rx_ecAdv_=", .foceiEcCall(.txt, "-32", 0L)),
-    paste0("rx_lcConc_~", .foceiEcCall(.txt, "-1", -1L)),
-    sprintf("%s~%s", .c1, vapply(seq_len(.n), function(.i) .foceiEcCall(.txt, "-33", .i - 1L), character(1)))
-  )
-  for (.j in seq_len(.n)) {
-    for (.i in seq_len(.j)) {
-      .lines <- c(.lines, sprintf("rx_ecC%d_%d_~%s", .i, .j, .foceiEcCall(.txt, "-34", (.i - 1L) * .E + (.j - 1L))))
-    }
-  }
+  .lines <- .foceiEcCarryLines(.g, .txt, .n, .E)
   .pc <- .rxFoceiCarryPredCall(s)
   list(
     lines = .lines,
