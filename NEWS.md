@@ -236,7 +236,9 @@
   estimate that is not stationary for the FOCEi objective: the Newton
   decrement `0.5 * g' H^-1 g` (OFV units) of that objective at the estimate
   exceeds `saemControl(covNewtonWarn = 1)`.  The value is kept as
-  `fit$covNewtonDecrement`; `NA` or `Inf` skips the check (#1389).
+  `fit$covNewtonDecrement`; `NA` or `Inf` skips the check; models outside
+  the analytic gradient's scope (e.g. `linCmt()`) use central differences
+  (#1389).
 
 - `saem` now reports each subject's conditional mode as `fit$eta` (the
   Monolix "EBEs" task), found per subject with NEWUOA after the last SAEM
