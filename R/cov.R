@@ -317,7 +317,83 @@
   .ret$ev <- eigen(.ret$cov, symmetric = TRUE, only.values = TRUE)$values
   .ret$ok <- all(diag(.ret$cov) > 0) && min(.ret$ev) > 0
   .ret$reason <- if (.ret$ok) "" else "is not positive definite"
+  if (!.ret$ok) {
+    .ret$at <- .covSingularAt(.ret$cov)
+    .why <- .covSingularWhy(.ret$at)
+    if (nzchar(.why)) .ret$reason <- paste0("is not PD: ", .why)
+  }
   .ret
+}
+
+# Relative floors below which an eigenvalue of the unit-free matrix, or a
+# diagonal entry of the matrix as given (whose scale spans the parameters' own),
+# counts as zero
+.covSingularTol <- sqrt(.Machine$double.eps)
+.covSingularDiagTol <- 100 * .Machine$double.eps
+
+#' The parameters that make a symmetric matrix singular or indefinite
+#'
+#' Diagonal entries within `dtol` (relative) of zero are named first ("zero"),
+#' then negative ones ("negative").
+#' Otherwise the matrix is scaled to unit diagonal and the eigenvectors whose
+#' eigenvalues fall below the floor (at least the smallest one) name the
+#' parameters loading at least half as much as the largest ("collinear").
+#' @param m symmetric matrix, dimnamed by parameter
+#' @param tol the relative eigenvalue floor
+#' @param dtol the relative diagonal floor
+#' @return list(kind = "zero", "negative" or "collinear", names), or `NULL` when the matrix
+#'   is unnamed or not finite
+#' @noRd
+.covSingularAt <- function(m, tol = .covSingularTol, dtol = .covSingularDiagTol) {
+  .nm <- rownames(m)
+  if (!is.matrix(m) || is.null(.nm) || nrow(m) != ncol(m) || !all(is.finite(m))) {
+    return(NULL)
+  }
+  .d <- diag(m)
+  .scale <- max(abs(.d))
+  .zero <- if (.scale > 0) abs(.d) <= dtol * .scale else rep(TRUE, length(.d))
+  if (any(.zero)) {
+    return(list(kind = "zero", names = .nm[.zero]))
+  }
+  if (any(.d < 0)) {
+    return(list(kind = "negative", names = .nm[.d < 0]))
+  }
+  .s <- 1 / sqrt(.d)
+  .e <- eigen(m * outer(.s, .s), symmetric = TRUE)
+  .ev <- .e$values
+  .low <- which(.ev <= max(tol * max(.ev), min(.ev)))
+  .load <- apply(abs(.e$vectors[, .low, drop = FALSE]), 2, function(v) v / max(v))
+  .load <- apply(matrix(.load, nrow = nrow(m)), 1, max)
+  .keep <- which(.load >= 0.5)
+  list(kind = "collinear", names = .nm[.keep[order(-.load[.keep])]])
+}
+
+#' Say which parameters a `.covSingularAt()` result names, briefly
+#'
+#' At most three names are listed, so the warning that carries it stays on one
+#' `$runInfo` line.
+#' @param at a `.covSingularAt()` result, or `NULL`
+#' @param n the most names listed
+#' @return the text, or `""` when `at` names no parameter
+#' @noRd
+.covSingularWhy <- function(at, n = 3L) {
+  .nm <- at$names
+  if (length(.nm) == 0L) {
+    return("")
+  }
+  .s <- paste(utils::head(.nm, n), collapse = ", ")
+  if (length(.nm) > n) {
+    .s <- paste0(.s, ", +", length(.nm) - n)
+  }
+  if (at$kind == "zero") {
+    sprintf("%s uninformed", .s)
+  } else if (at$kind == "negative") {
+    sprintf("%s negative", .s)
+  } else if (length(.nm) == 1L) {
+    sprintf("%s unidentified", .s)
+  } else {
+    sprintf("%s collinear", .s)
+  }
 }
 
 #' Warn that a covariance was not installed, naming the one the fit kept
@@ -335,13 +411,11 @@
     "kept the previous one"
   }
   # a quoted method name stands for its covariance; only a bare "the" needs the noun
-  .covWarn(
-    if (.covIsName(what)) {
-      sprintf("\"%s\" %s; %s", what, reason, .kept)
-    } else {
-      sprintf("the covariance %s; %s", reason, .kept)
-    }
-  )
+  .head <- if (.covIsName(what)) sprintf("\"%s\" ", what) else "the covariance "
+  .tail <- paste0("; ", .kept)
+  # the reason is clipped first, so the parameters it names never push out what was kept
+  .fixed <- cli::ansi_nchar(paste0(.head, .tail), type = "width")
+  .covWarn(paste0(.head, .covClip(reason, max(10L, .covWarnWidth - .fixed)), .tail))
 }
 
 # The most display columns a covariance warning keeps: a `$runInfo` line renders
@@ -1412,7 +1486,7 @@ setCov.imp <- function(fit, method, control = impCovControl(), ...) {
   # submatrix of the inverse of an indefinite information can look positive
   # definite on its own (#1055)
   if (!isTRUE(.r$pd)) {
-    .setCovFail(method, "is not positive definite")
+    .setCovFail(method, .foceiAnalyticPdReason(.r))
   }
   .cov <- .covAnalyticScope(env, .r$cov, .full)
   if (is.null(.cov)) {

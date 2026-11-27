@@ -20,7 +20,7 @@ foceiControl(
   scaleCmax = 1e+05,
   scaleCmin = 1e-05,
   scaleCband = c(0.1, 10),
-  scaleLinear = c("inverse", "abs"),
+  scaleLinear = c("abs", "inverse"),
   scaleC = NULL,
   scaleC0 = 1e+05,
   derivEps = rep(20 * sqrt(.Machine$double.eps), 2),
@@ -61,6 +61,7 @@ foceiControl(
   lbfgsPgtol = 0,
   lbfgsFactr = NULL,
   eigen = TRUE,
+  condWarn = 1000,
   diagXform = c("sqrt", "log", "identity"),
   iovXform = c("sd", "var", "logsd", "logvar"),
   iovMethod = c("auto", "theta", "omega"),
@@ -102,6 +103,7 @@ foceiControl(
   newuoaPolish = FALSE,
   newuoaRhoend = NULL,
   bobyqaStationary = TRUE,
+  scaleAdapt = NULL,
   innerLbfgsLmm = 5L,
   innerLbfgsFactr = NULL,
   innerLbfgsPgtol = NULL,
@@ -163,6 +165,7 @@ foceiControl(
   etaNudge2 = qnorm(1 - 0.05/2) * sqrt(3/5),
   etaRestart = 4L,
   finalEtaTol = 1,
+  aboveStartTol = 0.01,
   shrinkEtaWarn = 30,
   odeSettleCheck = FALSE,
   odeSettleTol = 0.1,
@@ -199,6 +202,8 @@ foceiControl(
   zeroTheta = 0.001,
   zeroThetaStep = 100,
   boundedTransform = TRUE,
+  omegaCollapseWarn = 0.001,
+  thetaBoundWarn = 1e-04,
   atolCheck = TRUE
 )
 }
@@ -280,10 +285,10 @@ residual-error parameters and those given in `scaleC` are used as
 they are.}
 
 \item{scaleLinear}{How a linear (untransformed) `theta` is scaled under
-`scaleType = "nlmixr2"`.  `"inverse"` (default) uses `1/|init|` when it
-lands inside `scaleCband` and `|init|` otherwise; `"abs"` always uses
-`|init|`, as NONMEM does.  A `theta` starting at 0 keeps its zero-theta
-scale either way.}
+`scaleType = "nlmixr2"`.  `"abs"` (default) uses `|init|`, as NONMEM
+does; `"inverse"` uses `1/|init|` when it lands inside `scaleCband` and
+`|init|` otherwise.  A `theta` starting at 0 keeps its zero-theta scale
+either way; under `"abs"` a mixture proportion (a log-odds) uses 1.}
 
 \item{scaleC}{Scaling constant used with \code{scaleType="nlmixr2"};
 when not specified, chosen by parameter type to keep gradient sizes
@@ -413,7 +418,7 @@ endpoints, combined and power error, both-sides transforms and a single
 estimated boxCox/yeoJohnson lambda.  A single non-Gaussian
 (\code{ll()}/generalized) endpoint instead differentiates the
 log-density directly, giving an exact inner Hessian and analytic outer
-gradient.  Out of scope are \code{linCmt()}, \code{fo}, IOV, more than
+gradient.  Out of scope are \code{linCmt()}, \code{fo}, more than
 one estimated lambda, a theta mu-referenced by several random effects,
 and (for the non-Gaussian path) multiple endpoints, censoring or
 \code{nAGQ > 1}; those fall back to the finite-difference gradient with
@@ -631,6 +636,10 @@ methods reach the same optimum as the derivative-free default.}
 
 \item{eigen}{A boolean indicating if eigenvectors are calculated
 to include a condition number calculation.}
+
+\item{condWarn}{warn when the condition number of the covariance's
+correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
+warning off.}
 
 \item{diagXform}{Transformation used on the diagonal of
 \code{chol(solve(omega))} (the FOCEi-estimated parameters): one of
@@ -891,16 +900,19 @@ coupling these parameters exist to remove. Has no effect unless
 `innerOpt="trust"`.}
 
 \item{trustPolish}{logical; when `TRUE`, each converged `innerOpt="trust"`
-solve takes up to 4 more Newton steps on the ETAs, down to `trustFterm`.
-This makes the objective less dependent on the warm-start ETAs and can
-help a fit that stops short of its minimum (#1152).  The `"bobyqa"`
+solve re-enters once from its ETAs with the squared
+`trustFterm`/`trustMterm` (floored at `1e-10`; not under a quasi-Newton
+`hessianMethod`).  This makes the objective nearly independent of the
+warm-start ETAs and can help a fit that stops short of its minimum
+(#1152).  The `"bobyqa"`
 outer search then also restarts once from where it stops, which costs
 about twice the outer evaluations.  `FALSE` (default) keeps the plain
 trust solve and a single outer search.}
 
-\item{steihaugPolish, newuoaPolish}{logical; the `trustPolish` Newton
-polish for a converged `innerOpt="steihaug"` or `innerOpt="newuoa"`
-solve.  `FALSE` (default) keeps the plain solve.}
+\item{steihaugPolish, newuoaPolish}{logical; the `trustPolish` polish for
+a converged `innerOpt="steihaug"` solve (the same re-entry) or
+`innerOpt="newuoa"` solve (up to 4 Newton steps, down to `trustFterm`).
+`FALSE` (default) keeps the plain solve.}
 
 \item{newuoaRhoend}{final NEWUOA trust-region radius for
 `innerOpt="newuoa"`, in sqrt(diag(Omega)) units.  `NULL` (default) uses
@@ -913,6 +925,12 @@ gradient and a downhill probe.  If the probe lowers the objective by
 more than `10^(1-sigdig)`, bobyqa restarts from there (up to 3 times,
 within `maxOuterIterations`).  This catches a search that stops in a
 narrow valley short of the minimum (#1196); `FALSE` skips the check.}
+
+\item{scaleAdapt}{maximum number of times the `"bobyqa"` outer search
+restarts on a scale adapted to the curvature where it stopped, one
+unit per marginal standard error.  It restarts while each restart gains
+more than `10^(1-sigdig)`.  `NULL` (default) uses 3 when a `theta` is
+scaled as linear (see `scaleLinear`) and 0 otherwise; `0` turns it off.}
 
 \item{innerLbfgsLmm}{number of BFGS updates retained by the
 `innerOpt="lbfgsb3c"` L-BFGS-B solve; a whole number of at least 1.
@@ -1181,6 +1199,11 @@ start gives the lower objective.  Warm-started ETAs can fall into a
 secondary mode during the search and stay there.  Only applies with a
 warm start (`mceta < 0`).  Use `Inf` to disable.}
 
+\item{aboveStartTol}{Warn (in `$runInfo`) when the final objective is
+above the objective at the initial estimates by more than this fraction
+of its magnitude (at least 0.1 objective units).  Use `NA` or `Inf` to
+disable.}
+
 \item{shrinkEtaWarn}{Warn (in `$runInfo`) when an eta's SD shrinkage is
 at or above this percentage.  Use `NA` or `Inf` to disable.}
 
@@ -1377,6 +1400,15 @@ transformed for unbounded optimization methods and back-transformed
 for final estimates. `FALSE` optimizes on the original scale with
 bounds passed to the optimizer. `NA` transforms for optimization but
 skips the final back-transform.}
+
+\item{omegaCollapseWarn}{Warn (in `$runInfo`) when a free diagonal omega
+ends below this fraction of its initial estimate, or at its
+`diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.}
+
+\item{thetaBoundWarn}{Warn (in `$runInfo`) when an estimated theta ends
+within this tolerance of a finite `lower`/`upper` bound, relative to the
+bound range (or, for a one-sided bound, to the larger of the bound's size
+and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
 
 \item{atolCheck}{When `TRUE` (default), warn before estimating an ODE
 model when an uncensored observation is within `1e3 * atol` of zero.}

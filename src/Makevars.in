@@ -36,7 +36,7 @@ $(SHLIB): $(OBJECTS)
 HEADERS = armahead.h censEst.h censResid.h covShortcut.h cwres.h evaluate.h fdHess.h foceiGrad.h rxode2Optional.h \
           imp.h impQrng.h inner.h ires.h likContribUtil.h likPenalty.h logSumExp.h \
           nearPD.h nmMcmcRng.h nmParallel.h nmParallelCore.h nmSeqSeed.h \
-          np.h npCommon.h npde.h odeSwap.h res.h rxProtect.h rxomp.h scale.h \
+          np.h npCommon.h npde.h odeSwap.h res.h rxProtect.h rxomp.h saemBurnTrend.h scale.h \
           shi21.h shrink.h solveWarnHelper.h truncNorm.h \
           trustHessianUpdate.h utilc.h vaeEncoder.h \
           ../inst/include/lin_cmt.hpp ../inst/include/nlmixr2est.h \

@@ -1308,6 +1308,7 @@ addTable <- function(
         }
       }
       class(.fit) <- "nlmixr2FitCoreSilent"
+      .tablesDroppedSet(.fit, FALSE)
       attr(.cls, ".foceiEnv") <- .fit
       class(.df) <- .cls
       if (inherits(updateObject, "logical")) {
@@ -1386,6 +1387,10 @@ addTable <- function(
 #'
 #' @param keep is the keep sent to the table
 #'
+#' @param iwresAutocor When `TRUE` (default), add a run note when the
+#'   within-subject Durbin-Watson statistic of IWRES (`fit$iwresAutocor`) is
+#'   below 1.5 (positive autocorrelation) or above 2.5 (negative).
+#'
 #' @param drop is the dropped variables sent to the table
 #'
 #' @inheritParams addNpde
@@ -1413,8 +1418,10 @@ tableControl <- function(
   subsetNonmem = TRUE,
   cores = NULL,
   keep = NULL,
-  drop = NULL
+  drop = NULL,
+  iwresAutocor = TRUE
 ) {
+  checkmate::assertLogical(iwresAutocor, any.missing = FALSE, len = 1)
   checkmate::assertLogical(npde, any.missing = FALSE, len = 1, null.ok = TRUE)
   checkmate::assertLogical(cwres, any.missing = FALSE, len = 1, null.ok = TRUE)
   checkmate::assertLogical(ties, any.missing = FALSE, len = 1, null.ok = FALSE)
@@ -1495,7 +1502,8 @@ tableControl <- function(
     subsetNonmem = subsetNonmem,
     cores = cores,
     keep = keep,
-    drop = drop
+    drop = drop,
+    iwresAutocor = iwresAutocor
   )
   class(.ret) <- "tableControl"
   .ret

@@ -116,6 +116,7 @@ enum OdeEsModel {
 int  odeSwapEsModelForSlot(int slot);
 // Which ROLE is installed right now (odeEsUnknown when we have not recorded it).
 int  odeSwapEsInstalledModel();
+void odeSwapEsRebindInner();
 // Record a role installed outside the registry (focei.R's fit-wide load).
 void odeSwapEsNoteInstalled(int esModel);
 
@@ -262,6 +263,16 @@ bool odeSwapWantsScratch(int slot, rx_solving_options *op);
 // at the CALLING thread's slice, and callers construct the scope well before
 // they call it.  Caching the pointer in the constructor would hand back another
 // thread's slice under the parallel inner loop.
+// A per-thread heap vector (slot 0: OdeSwapScope's scratch lhs, 1: the
+// finite-difference reference eta).  Not a thread_local std::vector: with
+// MinGW-w64 a thread_local object's destructor in this DLL runs at thread exit
+// after the emulated thread-local block it lives in is gone, so freeing it
+// corrupted the heap and stopped R when an OpenMP worker exited at the next
+// fit (#1502).  The thread holds a plain pointer; nmTlsFreeAll() (at unload)
+// frees every vector made.
+std::vector<double> &nmTlsVec(int slot);
+void nmTlsFreeAll();
+
 struct OdeSwapScope {
   OdeSwapScope(int slot, rx_solving_options_ind *ind, rx_solving_options *op);
   ~OdeSwapScope();
