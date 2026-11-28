@@ -47,6 +47,12 @@
 
 ## New features
 
+- The analytic FOCEi outer gradient and covariance (`fast = TRUE`) now reuse the
+  eta sensitivities for structural thetas that act only through a parameter
+  carrying an eta, whatever the covariate model (maturation, Emax,
+  natural-scale shifts and typical values, power exponents outside `exp()`),
+  so these no longer integrate their own sensitivity equations ("extended
+  mu-referencing"; any non-empty `FOCEI_NO_MUREF_EXT` disables it).
 - `est = "its"` (`itsControl()`) adds the iterative two-stage method: each
   iteration takes every subject's MAP etas and conditional covariance from
   the FOCEi inner problem, then updates the mu-referenced thetas and Omega in

@@ -4094,7 +4094,8 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## optimized in a single rxOptExpr() pass (unreleased dev bundles used 4-8).
   ## Version 10: innerOeta is stored unoptimized (#1321).
   ## Version 11: delay() duration parameters are finite-differenced (#1300).
-  .cacheFormat <- 11L
+  ## Version 12: extended mu-referencing changes the augmented outer model.
+  .cacheFormat <- 12L
   .conditional <- rxode2::rxGetControl(.ui, "innerHessian", "focei") == "conditional" ||
     rxode2::rxGetControl(.ui, "detHessian", "focei") == "conditional"
   digest::digest(c(
@@ -4120,6 +4121,9 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
     .agqNodes,
     .constCovs,
     Sys.getenv("FOCEI_NO_SIGMA_SKIP"),
+    # extended mu-referencing: the toggle and which thetas are fixed decide the reuse
+    Sys.getenv("FOCEI_NO_MUREF_EXT"),
+    .iniDf$ntheta[!is.na(.iniDf$ntheta) & .iniDf$fix],
     rxode2::rxGetControl(.ui, "addProp", getOption("rxode2.addProp", "combined2")),
     .ui$lstExpr
   ))

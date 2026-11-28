@@ -2145,6 +2145,13 @@
   }
   .res
 }
+#' Dosing-modifier variables (`rx_<f|lag|alag|rate|dur>_<state>_`) of a pruned sensitivity env.
+#' @param .s pruned sensitivity environment
+#' @return character vector of variable names
+#' @noRd
+.foceiAnalyticDoseVars <- function(.s) {
+  grep("^rx_(f|lag|alag|rate|dur)_.+_$", ls(envir = .s, all.names = TRUE), value = TRUE)
+}
 #' @param order sensitivity tier: 2 (default) emits the 1st and 2nd-order chains; 1 emits
 #'   the 1st-order chain only, for a consumer needing just a/aR (the AGQ quadrature nodes
 #'   never read A/AR/RsigDir).  With `order = 1` the reader zero-fills A/AR naturally:
@@ -2164,7 +2171,9 @@
       Sys.getenv("FOCEI_NO_SIGMA_SKIP"), # skip flag -> distinct cached model
       # subject-constant covariate set -> which covariate directions get eta-scaling reuse
       "|cc",
-      paste(sort(tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL), error = function(e) NULL)), collapse = ",")
+      paste(sort(tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL), error = function(e) NULL)), collapse = ","),
+      "|muext",
+      Sys.getenv("FOCEI_NO_MUREF_EXT")
     ),
     error = function(e) NULL
   )
@@ -2218,8 +2227,8 @@
       # constant-covariate set is computed from the data and stashed on the control by the fit setup;
       # reuse only a covariate whose scale expression uses exclusively constant covariates (and drop
       # all reuse when the set is unavailable, e.g. standalone use -- the full build is always correct).
+      .constCovs <- tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL), error = function(e) NULL)
       if (length(.covMap)) {
-        .constCovs <- tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL), error = function(e) NULL)
         .covMap <- .covMap[vapply(
           .covMap,
           function(.m) {
@@ -2229,6 +2238,14 @@
           logical(1)
         )]
       }
+      # extended mu-referencing: thetas whose sensitivities are c(theta, constant covariates) x an eta's
+      .covMap <- c(
+        .covMap,
+        tryCatch(
+          .foceiAnalyticMuRefExtDirMap(ui, .s, .st, .fDirs, .covMap, .constCovs),
+          error = function(e) list()
+        )
+      )
       .covDirs <- names(.covMap)
       .mfDirs <- .fDirs[!(.fDirs %in% .covDirs)] # directions that get integrated state sensitivities
       rxode2::.rxJacobian(.s, c(.st, .mfDirs))
@@ -2319,7 +2336,21 @@
           .a <- .b
           .b <- .t
         }
-        paste0(.pre, .i, "_", .j, "=", paste(sprintf("(%s)", c(.si$s, .sj$s)), collapse = "*"), "*", .pre, .a, "_", .b)
+        paste0(
+          .pre,
+          .i,
+          "_",
+          .j,
+          "=",
+          paste(sprintf("(%s)", c(.si$s, .sj$s)), collapse = "*"),
+          "*",
+          .pre,
+          .a,
+          "_",
+          .b,
+          # a theta-dependent scale adds (dc_i/dtheta_j) * f1
+          .foceiMuRefExtCurvTerm(.covMap, .i, .j, sub("2_$", "1_", .pre))
+        )
       }
       # f2_i_j == f2_j_i, so only the i<=j triangle is differentiated/compiled (~2x off
       # the dominant model-build cost); the reader mirrors A[,i,j]=A[,j,i].
@@ -2500,7 +2531,7 @@
       # augmented model doses correctly AND so eventSens="jump" (below) fills the analytic
       # dose-parameter ("jump") sensitivities for the rx__sens_* compartments -- otherwise
       # a modeled dosing parameter's sensitivity is silently zero.
-      .dosVars <- grep("^rx_(f|lag|alag|rate|dur)_.+_$", ls(envir = .s, all.names = TRUE), value = TRUE)
+      .dosVars <- .foceiAnalyticDoseVars(.s)
       .dose <- vapply(
         .dosVars,
         function(.v) {
