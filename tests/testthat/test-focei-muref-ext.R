@@ -123,7 +123,8 @@ nmTest({
       grep("^rx_(f1|f2|rvar1|rvar2|rsig1)_", names(.off$s), value = TRUE)
     )
     .cols <- grep("^rx_(f1|f2|rvar1|rvar2|rsig1)_.*THETA", names(.on$s), value = TRUE)
-    for (.c in .cols) {
+    # eta-only columns too: the reuse must leave them untouched
+    for (.c in grep("^rx_(f1|f2|rvar1|rvar2|rsig1)_", names(.on$s), value = TRUE)) {
       expect_equal(.on$s[[.c]], .off$s[[.c]], tolerance = 1e-8, info = .c)
     }
     .cols
@@ -194,6 +195,17 @@ nmTest({
     .ui <- .extUi(.extMod(.mat, .matIni))
     .s <- .ui$loadPruneSens
     rm(list = "rx__d_dt_center__", envir = .s)
+    expect_length(
+      .foceiAnalyticMuRefExtDirMap(.ui, .s, rxode2::rxStateOde(.s), .extDirs(.ui), list(), c("PMA", "WT")),
+      0L
+    )
+    # mtime() right-hand sides are outside the proof
+    .ui <- .extUi(.extMod(.mat, .matIni))
+    .s <- .ui$loadPruneSens
+    expect_true(
+      length(.foceiAnalyticMuRefExtDirMap(.ui, .s, rxode2::rxStateOde(.s), .extDirs(.ui), list(), c("PMA", "WT"))) > 0L
+    )
+    assign("..mtime", "mtime(rx_t1_) <- exp(ltm50)", envir = .s)
     expect_length(
       .foceiAnalyticMuRefExtDirMap(.ui, .s, rxode2::rxStateOde(.s), .extDirs(.ui), list(), c("PMA", "WT")),
       0L

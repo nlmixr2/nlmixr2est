@@ -10,7 +10,7 @@
 #' @param covMap covariate-coefficient reuse map (`.foceiAnalyticCovDirMap()`)
 #' @param constCovs subject-constant covariates
 #' @return named list `THETA_j_ -> list(etaDir, scale, scaleSE)`; empty when disabled
-#'   (`FOCEI_NO_MUREF_EXT=1`) or nothing qualifies
+#'   (any non-empty `FOCEI_NO_MUREF_EXT`) or nothing qualifies
 #' @noRd
 .foceiAnalyticMuRefExtDirMap <- function(ui, .s, .st, fDirs, covMap, constCovs) {
   # occasion etas (rewritten as subject-level by the IOV expansion) vary within the subject
@@ -22,7 +22,8 @@
   .errTh <- paste0("THETA_", .ini$ntheta[!is.na(.ini$ntheta) & !is.na(.ini$err)], "_")
   .etaDirs <- grep("^ETA_[0-9]+_$", fDirs, value = TRUE)
   .thAll <- setdiff(grep("^THETA_[0-9]+_$", fDirs, value = TRUE), .errTh)
-  # not already reused, and not the source of a reused covariate direction (chained reuse)
+  # not already reused, and not the source theta of an eta-less covariate entry: that entry's
+  # column reads the source's, which a reused source would only emit later
   .covSrc <- vapply(covMap, function(.m) .m$etaDir, character(1))
   .thDirs <- setdiff(.thAll, c(names(covMap), .covSrc))
   if (length(.etaDirs) == 0L || length(.thDirs) == 0L) {
@@ -31,8 +32,8 @@
   .vars <- ls(envir = .s, all.names = TRUE)
   .odeNames <- paste0("rx__d_dt_", .st, "__")
   # matExp()/indLin() ODEs are only materialized later (.rxJacobian); delay() histories carry
-  # their own per-direction sensitivities
-  if (!all(.odeNames %in% .vars) || any(startsWith(.vars, "rx__pastRhs_"))) {
+  # their own per-direction sensitivities; mtime() right-hand sides are not part of the proof
+  if (!all(.odeNames %in% .vars) || any(startsWith(.vars, "rx__pastRhs_")) || nzchar(.mtimeLinesStr(.s))) {
     return(list())
   }
   .S <- symengine::S
@@ -117,11 +118,18 @@
         next
       } # theta acts where the eta does not
       .c <- NULL
+      .tried <- character(0)
       for (.w in which(!.zTh & !.zEt[[.eta]])) {
         .cw <- tryCatch(.dropInert(.zeroEta(.dTh[[.w]] / .dEt[[.eta]][[.w]])), error = function(e) NULL)
         if (is.null(.cw) || .isZero(.cw) || !all(.rxFoceiCarryFreeSyms(.cw) %in% .okSyms)) {
           next
         }
+        # the same candidate from another expression would repeat the same proof
+        .key <- as.character(.cw)
+        if (.key %in% .tried) {
+          next
+        }
+        .tried <- c(.tried, .key)
         # proven on every expression the eta moves
         .idx <- which(!.zEt[[.eta]])
         .diff <- lapply(.idx, function(.i) .dTh[[.i]] - .cw * .dEt[[.eta]][[.i]])
