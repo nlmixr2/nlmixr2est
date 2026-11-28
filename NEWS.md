@@ -384,6 +384,12 @@
 
 ## Bug fixes
 
+- A fit with an adjoint solving method (`rxControl(method = "dop853s")`,
+  `"rk4s"`, `"ros43s"`, `"radauiia5s"`, ...) solves with the forward method
+  of the same scheme (`"dop853"`, `"rk4"`, `"ros43"`, ...) and says so; rxode2
+  refuses the adjoint methods on the inner model (forward sensitivities
+  without the adjoint expansion), so these fits failed.
+
 - A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
   the gradient before the objective no longer stops R: the gradient's history
   row read the last objective iteration, which did not exist yet.  FOCEi now
