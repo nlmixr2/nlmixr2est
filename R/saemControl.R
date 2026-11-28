@@ -949,13 +949,13 @@ saemControl <- function(
       .ret <- c(.ret, paste0("nmc=", deparse1(value$nmc)))
     }
     if (!is.null(value$rmcmc) && !identical(default$mcmc$rmcmc, value$rmcmc)) {
-      .ret <- c(.ret, paste0("rmcmc=", deparse1(value$rmcmc)))
+      .ret <- c(.ret, paste0("rmcmc=", .deparseValue(value$rmcmc)))
     }
     .ret <- c(.ret, .saemDeparseProposal(value$proposal))
     # nu is written only when supplied (nuAuto FALSE), even at its default; an
     # automatic nu may have been raised by the fit (.saemAutoNu) and is redone
     if (!isTRUE(value$nuAuto) && (!identical(default$mcmc$nu, value$nu) || isTRUE(default$mcmc$nuAuto))) {
-      .ret <- c(.ret, paste0("nu=", deparse1(value$nu)))
+      .ret <- c(.ret, paste0("nu=", .deparseValue(value$nu)))
     }
     return(paste0(.ret, collapse = ","))
   }

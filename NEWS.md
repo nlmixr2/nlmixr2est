@@ -384,6 +384,8 @@
 
 ## Bug fixes
 
+- `rxUiDeparse()` of a `saemControl()` writes `rmcmc` and `nu` with enough digits to
+  read back the same value (a non-terminating `rmcmc` such as `1/3` was cut at 15 digits).
 - A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
   the gradient before the objective no longer stops R: the gradient's history
   row read the last objective iteration, which did not exist yet.  FOCEi now
