@@ -25,6 +25,8 @@
     if (!is.data.frame(.d)) {
       next
     }
+    # the table is built while the omega still holds the temporary etas
+    .d <- .d[!(rownames(.d) %in% paste0("rx.eta.", thetas)), , drop = FALSE]
     .rows <- rownames(.d) %in% thetas
     .cols <- names(.d)[startsWith(names(.d), "BSV(") | names(.d) == "Shrink(SD)%"]
     .d[.rows, .cols] <- lapply(.d[.cols], function(x) if (is.numeric(x)) NA else "")

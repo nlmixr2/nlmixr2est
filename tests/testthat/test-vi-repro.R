@@ -31,9 +31,9 @@ nmTest({
     ## depends on the solve history: fresh reached iteration 100 via 100 solves,
     ## resume via a cold set-up.  The continued trajectory tracks the fresh one to
     ## solver-tolerance precision.
-    r100 <- runAdvi(emviControl(iters = 100L, seed = 3L, print = 0L, returnVi = TRUE))
-    rResume <- runAdvi(emviControl(iters = 100L, seed = 3L, print = 0L, returnVi = TRUE, resume = r100))
-    rFresh <- runAdvi(emviControl(iters = 200L, seed = 3L, print = 0L, returnVi = TRUE))
+    r100 <- runAdvi(emviControl(iters = 100L, seed = 3L, print = 0L, returnVi = TRUE, tol = 0))
+    rResume <- runAdvi(emviControl(iters = 100L, seed = 3L, print = 0L, returnVi = TRUE, tol = 0, resume = r100))
+    rFresh <- runAdvi(emviControl(iters = 200L, seed = 3L, print = 0L, returnVi = TRUE, tol = 0))
     expect_equal(rResume$it0, 200L)
     expect_equal(rResume$theta, rFresh$theta, tolerance = 5e-2)
     expect_equal(rResume$logPopOmega, rFresh$logPopOmega, tolerance = 5e-2)

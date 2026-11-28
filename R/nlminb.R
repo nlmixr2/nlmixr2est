@@ -98,6 +98,7 @@ nlminbControl <- function(
   literalFix = TRUE,
   literalFixRes = TRUE,
   returnNlminb = FALSE,
+  stopFile = NULL,
   solveType = c("hessian", "grad", "fun"),
 
   stickyRecalcN = 4,
@@ -247,8 +248,10 @@ nlminbControl <- function(
 
   .corWarnCheck(corWarn)
   .condWarnCheck(condWarn)
+  checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
+    stopFile = stopFile,
     eval.max = eval.max,
     iter.max = iter.max,
     trace = trace, # nolint
@@ -444,7 +447,7 @@ getValidNlmixrCtl.nlminb <- function(control) .getValidCtl(control, "nlminbContr
       ))
     }
   }
-  .ret <- eval(.ret)
+  .ret <- .nlmStopOpt(eval(.ret), "par", "objective")
   if (.ctl$covMethod == "nlminb") {
     .ret$hessian <- .nlmGradHessian(.ret$par)
   }
