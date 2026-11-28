@@ -150,6 +150,7 @@ trustControl <- function(
   hessianMethod = c("sr1", "fd", "bfgs", "bofill"),
 
   returnTrust = FALSE,
+  stopFile = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -309,8 +310,10 @@ trustControl <- function(
 
   .thetaBoundWarnCheck(thetaBoundWarn)
   .condWarnCheck(condWarn)
+  checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
+    stopFile = stopFile,
     rinit = rinit,
     rmax = rmax,
     iterlim = as.integer(iterlim),
@@ -444,8 +447,10 @@ getValidNlmixrCtl.trust <- function(control) .getValidCtl(control, "trustControl
     mterm = .ctl$mterm,
     hessianMethod = .ctl$hessianMethod
   )
-  .tres <- nlmTrustFit(.env$par.ini, .tctl)
-  .trustWarnUnderConverged(.tres)
+  .tres <- .nlmStopOpt(nlmTrustFit(.env$par.ini, .tctl), "par", "value")
+  if (!isTRUE(.tres$nlmStopped)) {
+    .trustWarnUnderConverged(.tres)
+  }
   if (isTRUE(.ctl$returnTrust)) {
     return(.tres)
   }
@@ -455,14 +460,15 @@ getValidNlmixrCtl.trust <- function(control) .getValidCtl(control, "trustControl
     fval = .tres$value,
     convergence = if (isTRUE(.tres$converged)) 0L else 1L,
     iterations = .tres$iterations,
-    message = if (isTRUE(.tres$converged)) "converged" else "did not fully converge"
+    message = if (isTRUE(.tres$converged)) "converged" else "did not fully converge",
+    nlmStopped = .tres$nlmStopped
   )
   # "r" with hessianMethod = "fd" differences the gradient at the estimates
   # (.nlmGradHessian()): the last iteration's Hessian searches its steps afresh
   # at every iteration.  Otherwise "r" is nlmixr2Hess()'s (.nlmFinalizeList())
   if (.ctl$covMethod == "r" && .ctl$hessianMethod == 1L) {
     .ret$hessian <- .nlmGradHessian(.ret$par)
-  } else if (.ctl$covMethod == "trust") {
+  } else if (.ctl$covMethod == "trust" && !isTRUE(.tres$nlmStopped)) {
     # a solver error leaves the Hessian zero-filled, not computed
     .ret$hessian <- matrix(
       if (isTRUE(.tres$error < 0)) NA_real_ else .tres$hessian,

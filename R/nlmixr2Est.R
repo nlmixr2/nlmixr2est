@@ -120,6 +120,9 @@ nlmixr2Est <- function(env, ...) {
   if (!is.null(.intercepted)) {
     return(.intercepted)
   }
+  if (.nmStopFileStart(get("control", envir = env))) {
+    on.exit(.nmStopFileEnd(), add = TRUE)
+  }
   UseMethod("nlmixr2Est")
 }
 
@@ -447,6 +450,7 @@ nlmixr2Est0 <- function(env, ...) {
     })
   }
   .nlmixrEstUpdatesOrigModel(.ret, env)
+  .likPenaltyStoreSpecs(.ret, env)
   .penWarn <- .collectWarn(.likPenaltyFinalize(.ret), lst = TRUE)[[2]]
   if (length(.penWarn) > 0L && inherits(.ret, "nlmixr2FitCore")) {
     .warnings <- c(.warnings, .penWarn)

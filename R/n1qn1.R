@@ -58,6 +58,7 @@ n1qn1Control <- function(
   print.functions = FALSE,
 
   returnN1qn1 = FALSE,
+  stopFile = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -176,8 +177,10 @@ n1qn1Control <- function(
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
   .condWarnCheck(condWarn)
+  checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
+    stopFile = stopFile,
     epsilon = epsilon,
     max_iterations = max_iterations,
     nsim = nsim,
@@ -278,8 +281,8 @@ getValidNlmixrCtl.n1qn1 <- function(control) .getValidCtl(control, "n1qn1Control
     nsim = .(.ctl$nsim),
     imp = .(.ctl$imp)
   ))
-  .ret <- eval(.ret)
-  if (.ctl$covMethod == "n1qn1") {
+  .ret <- .nlmStopOpt(eval(.ret), "par", "value")
+  if (.ctl$covMethod == "n1qn1" && !isTRUE(.ret$nlmStopped)) {
     # n1qn1's quasi-Newton Hessian, on the scale it estimated
     .n <- length(.ret$par)
     if (!is.matrix(.ret$H) || !identical(dim(.ret$H), c(.n, .n))) {

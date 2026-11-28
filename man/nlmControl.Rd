@@ -15,6 +15,7 @@ nlmControl(
   iterlim = 10000,
   check.analyticals = FALSE,
   returnNlm = FALSE,
+  stopFile = NULL,
   solveType = c("hessian", "grad", "fun"),
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
@@ -103,6 +104,11 @@ nlmControl(
 
 \item{returnNlm}{is a logical that allows a return of the `nlm`
 object}
+
+\item{stopFile}{Path of a file that, once created, stops the estimation
+gracefully: the run ends at its current state (for FOCEi, the lowest
+objective evaluated so far), removes the file, notes the stop in
+`$runInfo` and returns the fit.  `NULL` (default) does not poll.}
 
 \item{solveType}{controls whether `nlm` uses nlmixr2's analytical
 gradients (event-related parameters like lag time/duration/rate/F use

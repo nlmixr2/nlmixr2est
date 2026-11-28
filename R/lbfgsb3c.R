@@ -79,6 +79,7 @@ lbfgsb3cControl <- function(
   lmm = 5L,
   maxit = 10000L,
   returnLbfgsb3c = FALSE,
+  stopFile = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -199,8 +200,10 @@ lbfgsb3cControl <- function(
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
   .condWarnCheck(condWarn)
+  checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
+    stopFile = stopFile,
     trace = trace,
     factr = factr,
     pgtol = pgtol,
@@ -297,8 +300,10 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) .getValidCtl(control, "lbfgsb3cC
     .nlmFreeEnv()
   })
   # lbfgsb3c's thread-safe L-BFGS-B, driven from C++ with no R callbacks
-  .ret <- nlmLbfgsb3cFit(.env$par.ini, .env$lower, .env$upper, .oCtl)
-  names(.ret$grad) <- .env$thetaNames
+  .ret <- .nlmStopOpt(nlmLbfgsb3cFit(.env$par.ini, .env$lower, .env$upper, .oCtl), "par", "value")
+  if (!is.null(.ret$grad)) {
+    names(.ret$grad) <- .env$thetaNames
+  }
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 .lbfgsb3cFamilyFit <- function(env, ...) {

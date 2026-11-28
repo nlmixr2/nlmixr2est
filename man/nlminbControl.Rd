@@ -24,6 +24,7 @@ nlminbControl(
   literalFix = TRUE,
   literalFixRes = TRUE,
   returnNlminb = FALSE,
+  stopFile = NULL,
   solveType = c("hessian", "grad", "fun"),
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
@@ -123,6 +124,11 @@ optimization; Default is `TRUE`.}
 
 \item{returnNlminb}{logical; when TRUE this will return the nlminb
 result instead of the nlmixr2 fit object}
+
+\item{stopFile}{Path of a file that, once created, stops the estimation
+gracefully: the run ends at its current state (for FOCEi, the lowest
+objective evaluated so far), removes the file, notes the stop in
+`$runInfo` and returns the fit.  `NULL` (default) does not poll.}
 
 \item{solveType}{controls whether `nlm` uses nlmixr2's analytical
 gradients (event-related parameters like lag time/duration/rate/F use

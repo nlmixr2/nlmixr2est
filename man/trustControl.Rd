@@ -15,6 +15,7 @@ trustControl(
   hessErr = NULL,
   hessianMethod = c("sr1", "fd", "bfgs", "bofill"),
   returnTrust = FALSE,
+  stopFile = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -138,6 +139,11 @@ applies for every nlm-family method.}
 
 \item{returnTrust}{return the raw `nlmTrustFit()` output list instead of
 the nlmixr2 fit.}
+
+\item{stopFile}{Path of a file that, once created, stops the estimation
+gracefully: the run ends at its current state (for FOCEi, the lowest
+objective evaluated so far), removes the file, notes the stop in
+`$runInfo` and returns the fit.  `NULL` (default) does not poll.}
 
 \item{stickyRecalcN}{The number of bad ODE solves before reducing
 the atol/rtol for the rest of the problem.}

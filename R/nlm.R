@@ -85,6 +85,7 @@ nlmControl <- function(
   iterlim = 10000,
   check.analyticals = FALSE,
   returnNlm = FALSE,
+  stopFile = NULL,
   solveType = c("hessian", "grad", "fun"),
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
@@ -251,8 +252,10 @@ nlmControl <- function(
 
   .thetaBoundWarnCheck(thetaBoundWarn)
   .condWarnCheck(condWarn)
+  checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
+    stopFile = stopFile,
     covMethod = covMethod,
     typsize = typsize,
     fscale = fscale,
@@ -1284,20 +1287,24 @@ nlmObjectiveSetup <- function(
   on.exit({
     .nlmFreeEnv()
   })
-  .ret <- eval(bquote(stats::nlm(
-    f = .(.nlmixrNlmFunC),
-    p = .(.env$par.ini),
-    hessian = .(.hessian),
-    typsize = .(.typsize),
-    fscale = .(.ctl$fscale),
-    print.level = .(.ctl$print.level),
-    ndigit = .(.ctl$ndigit),
-    gradtol = .(.ctl$gradtol),
-    stepmax = .(.stepmax),
-    steptol = .(.ctl$steptol),
-    iterlim = .(.ctl$iterlim),
-    check.analyticals = .(.ctl$check.analyticals)
-  )))
+  .ret <- .nlmStopOpt(
+    eval(bquote(stats::nlm(
+      f = .(.nlmixrNlmFunC),
+      p = .(.env$par.ini),
+      hessian = .(.hessian),
+      typsize = .(.typsize),
+      fscale = .(.ctl$fscale),
+      print.level = .(.ctl$print.level),
+      ndigit = .(.ctl$ndigit),
+      gradtol = .(.ctl$gradtol),
+      stepmax = .(.stepmax),
+      steptol = .(.ctl$steptol),
+      iterlim = .(.ctl$iterlim),
+      check.analyticals = .(.ctl$check.analyticals)
+    ))),
+    "estimate",
+    "minimum"
+  )
   if (.ctl$covMethod == "nlm" && .ctl$solveType != 1L) {
     .ret$hessian <- .nlmGradHessian(.ret$estimate)
   }

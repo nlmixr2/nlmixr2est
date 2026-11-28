@@ -48,6 +48,7 @@ optimControl(
   literalFix = TRUE,
   literalFixRes = TRUE,
   returnOptim = FALSE,
+  stopFile = NULL,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
   sensMethod = c("default", "forward"),
@@ -251,6 +252,11 @@ optimization; Default is `TRUE`.}
 
 \item{returnOptim}{logical; when TRUE this will return the optim
 list instead of the nlmixr2 fit object}
+
+\item{stopFile}{Path of a file that, once created, stops the estimation
+gracefully: the run ends at its current state (for FOCEi, the lowest
+objective evaluated so far), removes the file, notes the stop in
+`$runInfo` and returns the fit.  `NULL` (default) does not poll.}
 
 \item{addProp}{Type of additive-plus-proportional error: `"combined1"`,
 where standard deviations add:

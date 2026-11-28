@@ -51,3 +51,48 @@ nmTest({
     expect_equal(.likPenaltyInfo()[["n"]], 0L)
   })
 })
+
+nmTest({
+  test_that("setCov() re-fits keep the likPenalty= penalties", {
+    skip_on_cran()
+    .mod <- function() {
+      ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+      model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+    }
+    # a subject penalty: the imp covariance only sees subject terms
+    .pen <- nlmixr2LikPenaltySpec("etaL2", par = c(5, 0))
+    .fit <- function(mod, ...) {
+      suppressMessages(suppressWarnings(nlmixr2(
+        mod,
+        nlmixr2data::theo_sd,
+        "focei",
+        foceiControl(print = 0L, maxOuterIterations = 0L),
+        table = tableControl(cwres = FALSE, npde = FALSE),
+        ...
+      )))
+    }
+    .fDots <- .fit(.mod, likPenalty = list(.pen))
+    .fUi <- .fit(nlmixr2LikPenaltyAdd(.mod, .pen))
+    expect_length(.likPenaltyRefitSpecs(.fDots), 1L)
+    expect_null(.likPenaltyRefitSpecs(.fUi))
+    .ctl <- impCovControl(nIter = 3L, isample = 200L, impSeed = 42L)
+    suppressMessages(suppressWarnings(setCov(.fDots, "imp", control = .ctl)))
+    suppressMessages(suppressWarnings(setCov(.fUi, "imp", control = .ctl)))
+    expect_true(grepl("imp", .fDots$covMethod, fixed = TRUE))
+    expect_equal(.fDots$cov, .fUi$cov, tolerance = 1e-8)
+    expect_equal(.likPenaltyInfo()[["n"]], 0L)
+  })
+})
