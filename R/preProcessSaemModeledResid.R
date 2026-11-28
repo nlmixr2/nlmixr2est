@@ -109,11 +109,24 @@
 #' @noRd
 .preProcessSaemModeledResid <- function(ui, est, data, control) {
   nlmixr2global$nlmixr2EstEnv$saemPseudoTransforms <- NULL
+  nlmixr2global$nlmixr2EstEnv$saemResidWeights <- NULL
   if (!identical(est, "saem")) {
     return(NULL)
   }
   .orig <- ui
   .conds <- .saemModeledResidualCond(ui)
+  # add(theta * w(time, covariates)) stays on the closed-form additive path
+  .wSpecs <- .saemResidWeightSpecs(ui, .conds)
+  # only when the whole fit stays normal; a general likelihood scores the
+  # rewritten residual without the weight
+  if (.saemGeneralLik(ui) || length(.wSpecs) < length(.conds)) {
+    .wSpecs <- list()
+  }
+  if (length(.wSpecs) > 0L) {
+    ui <- .saemResidWeightUi(ui, .wSpecs)
+    nlmixr2global$nlmixr2EstEnv$saemResidWeights <- .wSpecs
+    .conds <- setdiff(.conds, vapply(.wSpecs, function(s) s$cond, character(1)))
+  }
   .pred <- ui$predDf
   for (.cond in .conds) {
     .new <- .saemAddDnormToErrLine(ui$lstExpr[[.pred$line[.pred$cond == .cond]]])
@@ -130,7 +143,7 @@
     }
   }
   .spec <- .saemPseudoEtaThetas(ui)
-  if (length(.conds) == 0L && nrow(.spec) == 0L) {
+  if (length(.conds) == 0L && nrow(.spec) == 0L && length(.wSpecs) == 0L) {
     if (is.null(.ctl)) {
       return(NULL)
     }

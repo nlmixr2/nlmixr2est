@@ -335,8 +335,18 @@ nlmeControl <- nlmixr2NlmeControl
   }
   .verbose <- rxode2::rxGetControl(ui, "verbose", TRUE)
   .method <- rxode2::rxGetControl(ui, "method", "ML")
+  .obs <- dataSav[dataSav$EVID == 0, ]
+  .info <- .nlmeResidInfo(ui)
+  .vc <- NULL
+  if (!is.null(.info)) {
+    .vc <- .nlmeResidVarCov(.info, .obs)
+    .obs$rxNlmeResidV <- .vc$v
+    .obs$rxNlmeResidZ <- .vc$z
+  }
   .weights <- rxode2::rxGetControl(ui, "weights", NULL)
-  if (is.null(.weights)) {
+  if (is.null(.weights) && !is.null(.vc)) {
+    .weights <- .nlmeResidWeights(.info, .vc)
+  } else if (is.null(.weights)) {
     .weights <- ui$nlmeWeights
     # sigma, const and prop of varConstProp are not separately identifiable;
     # as nlme recommends, fix sigma at 1 so const and prop are the sds
@@ -349,7 +359,7 @@ nlmeControl <- nlmixr2NlmeControl
   ret <-
     eval(bquote(nlme::nlme(
       model = .(ui$nlmeModel),
-      data = nlme::groupedData(DV ~ TIME | ID, dataSav[dataSav$EVID == 0, ]),
+      data = nlme::groupedData(DV ~ TIME | ID, .obs),
       method = .(.method),
       fixed = .(.fixed),
       random = .(.random),
@@ -361,6 +371,8 @@ nlmeControl <- nlmixr2NlmeControl
         object
       }
     )))
+  # which residual theta nlme's sigma and varExp estimate (.nlmeGetTheta())
+  attr(ret, "nlmixr2ResidVarCov") <- .vc[c("s", "k")]
   ret
 }
 
@@ -376,6 +388,23 @@ nlmeControl <- nlmixr2NlmeControl
   .predDf <- ui$predDf
   .iniDf <- ui$iniDf
   .errType <- .predDf$errType
+  .info <- .nlmeResidInfo(ui)
+  if (!is.null(.info)) {
+    .vc <- attr(nlme, "nlmixr2ResidVarCov")
+    .ret <- c(.f, setNames(nlme$sigma, .vc$s), .info$fixed)
+    if (!is.null(.vc$k)) {
+      .ret <- c(.ret, setNames(.nlmeVarCoef(nlme, "varExp"), .vc$k))
+    }
+    if (.errType == "pow") {
+      # a fixed exponent has no coefficient in the fit
+      .pw <- .info$pow$ini
+      if (!isTRUE(.info$pow$fix)) {
+        .pw <- .nlmeVarCoef(nlme, "varPower")
+      }
+      .ret <- c(.ret, setNames(.pw, .info$pow$name))
+    }
+    return(.ret)
+  }
   if (.errType == "prop") {
     .w <- which(ui$iniDf$err == "prop")
     .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
@@ -621,7 +650,7 @@ nlmixr2Est.nlme <- function(env, ...) {
   rxode2::assertRxUiNormal(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
   rxode2::assertRxUiSingleEndpoint(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
-  rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nlme'", .var.name = .ui$modelName)
+  .nlmeResidInfo(.ui)
   .fixOme <- .ui$iniDf$name[!is.na(.ui$iniDf$neta1) & .ui$iniDf$fix]
   if (length(.fixOme) > 0L) {
     # nlme's pdMat classes have no way to hold one element at its value

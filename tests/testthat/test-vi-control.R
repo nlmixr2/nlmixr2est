@@ -8,7 +8,7 @@ test_that("emviControl() builds and validates", {
   expect_identical(ctl$viFamily, "fullRank")
   ## pointEstimate is resolved from `est`, not defaulted in the control
   expect_null(ctl$pointEstimate)
-  expect_identical(ctl$optim, "advi")
+  expect_identical(ctl$optim, "gaussNewton")
   expect_identical(ctl$seed, 42L)
 
   ## enum + range validation
