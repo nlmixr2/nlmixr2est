@@ -541,6 +541,11 @@
   residual error too.  The SEs of mu-referenced thetas now come from their
   information with the etas integrated out and match FOCEi's; they used to
   depend on where the step-size sequence stalled (#1462).
+- M3/M4-censored rows no longer carry a `log(2*pi)` constant in the
+  objective, matching NONMEM.  The reported objective of a censored fit
+  moved by `ncens*log(2*pi)` (up for `+ dnorm()`/`t()` endpoints, down
+  otherwise), and `logLik()`/AIC/BIC now add `log(2*pi)` only for the
+  uncensored rows (#1478).
 - `est="saem"`: when an endpoint's residual error cannot be matched to
   `ini()` parameters, the error now names the endpoint and the error
   argument(s) that are not `ini()` parameters (#1516).

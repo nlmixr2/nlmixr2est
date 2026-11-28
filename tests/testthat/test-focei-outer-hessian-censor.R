@@ -55,7 +55,8 @@ test_that("M2/M3/M4 outer curvature follows the censored fit objective", {
             reference[, j] <- (gp - gm) / 4e-4
           }
           direction <- seq_along(par) / sqrt(sum(seq_along(par)^2))
-          step <- 2e-3
+          # 2e-3 sits in the AGQ objective's ~1e-9 noise floor for prop M3/M4
+          step <- 4e-3
           f0 <- fn(par)
           fp <- fn(par + step * direction)
           fm <- fn(par - step * direction)
