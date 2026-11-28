@@ -36,12 +36,35 @@ and is fitted by nlmixr2est, NONMEM and Monolix from the same data set.
 - `reference.R` -- reads NONMEM output (`.ext`, `.lst`) and Monolix
   results (through lixoftConnectors) into reference files, with nlmixr2
   parameter names and variances.
+- `exact.R` -- exact marginal maximum likelihood of each scenario with one
+  random effect (closed-form cumulative hazard, Gauss-Hermite quadrature),
+  written independently of rxode2 and nlmixr2est.
 - `checkSyntax.R` -- parses the control streams (nonmem2rx) and projects
   (monolix2rx) without a licence.
 
 babelmixr2 does not translate `tte()` endpoints, so the control streams
 and projects are written by hand.  Their initial values are the
 scenarios' starting values (the package tests check this).
+
+## Tests
+
+`tests/testthat/test-tte-validation-*.R` fit the scenarios with `focei`,
+`agq` and `saem` and compare them with the exact likelihood (and the
+`exponential` closed form): parameters within a fraction of the exact
+fit's standard errors, -2LL, and the `tvCov` objective function difference
+with and without the covariate.  Each method is also compared with the
+reference fit that makes the same approximation: `focei` with NONMEM's
+Laplace, `agq` and `saem` with Monolix (SAEM, -2LL by importance
+sampling).  Differences are in the exact fit's standard errors where there
+is one (otherwise the larger of the fit's and the reference's own), and a
+fit whose -2LL is more than 0.5 below the reference's has found the better
+optimum and passes.
+`test-tte-validation-exact.R` checks that the exact fits recover the
+simulation truth, which validates rxode2's `tte()` simulation
+independently.  They are long-running and skip on CRAN.  `saem` is run
+only on `rtte` and `lateEntry`: on a tte() model whose solve has another
+input (a data covariate, or the `CMT` of a second endpoint) it currently
+diverges (nlmixr2/nlmixr2est#1586).
 
 ## Regenerating the reference fits
 
@@ -114,3 +137,8 @@ Conventions that differ between the tools are carried as extra columns:
   its initial value (`foceiControl(diagOmegaBoundUpper = 5)`); NONMEM
   and Monolix have no such bound.  The scenarios start the variances at
   0.3, which puts the bound above every estimate.
+- quadrature: with a single event per subject the frailty is barely
+  determined, and both the Laplace approximation (`focei`) and AGQ's
+  default 3 nodes are several -2LL units off the exact likelihood, enough
+  to move the estimates by about one standard error.  `agqControl(nAGQ = 9)`
+  reproduces the exact fit; repeated events need no more than Laplace.
