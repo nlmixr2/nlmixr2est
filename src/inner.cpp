@@ -12415,8 +12415,15 @@ Environment foceiOuter(Environment e){
         for (int _i = 0; _i < _nsGuarded; ++_i) {
           _inGuards.push_back(std::unique_ptr<FdInnerStateGuard>(new FdInnerStateGuard(_i)));
         }
+        // and the per-subject restart state FdInnerStateGuard does not keep: the pass spends
+        // each subject's one eta nudge cascade (doEtaNudge), so foceiOuterFinal's solve of a
+        // subject whose first trust/n1qn1 run stops in a spurious basin could no longer
+        // escape it and the posthoc objective differed from fast=FALSE (warfarin q=3, -2LL +2.1)
+        std::vector<CovInnerExtra> _inExtra((size_t)_nsGuarded);
+        for (int _i = 0; _i < _nsGuarded; ++_i) _inExtra[(size_t)_i].save(&inds_focei[_i], op_focei.neta);
         rx_solve *_rxSave = rx;
         analyticOuterGrad(x.begin(), _g.data());   // stashes firstDirectGrad on success
+        for (int _i = 0; _i < _nsGuarded; ++_i) _inExtra[(size_t)_i].restore(&inds_focei[_i]);
         // analyticOuterGradDirect() assigns the GLOBAL rx, and declines (declineHere(102))
         // if getRxSolve_() hands back nothing -- which would leave every later
         // getRxId(cid) (cid % getRxNsub(rx)) dereferencing NULL, ~FdInnerStateGuard's

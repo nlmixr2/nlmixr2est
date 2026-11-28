@@ -384,6 +384,10 @@
 
 ## Bug fixes
 
+- A posthoc (`maxOuterIterations = 0`) `foceiControl(fast = TRUE)` fit no longer
+  spends the per-subject eta nudge in its diagnostic gradient pass, so its
+  objective and etas match `fast = FALSE` when a subject's first inner solve
+  stops in a spurious basin.
 - A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
   the gradient before the objective no longer stops R: the gradient's history
   row read the last objective iteration, which did not exist yet.  FOCEi now
