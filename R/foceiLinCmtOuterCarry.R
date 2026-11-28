@@ -24,11 +24,17 @@
     return(NULL)
   }
   .txt <- vapply(seq_along(.a), function(i) .foceiEcSe(.a[[i]]), character(1))
-  .slotVars <- unique(unlist(lapply(9:15, function(k) all.vars(str2lang(.txt[k])))))
+  .slotVars <- lapply(9:15, function(k) all.vars(str2lang(.txt[k])))
   .const <- tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL), error = function(e) NULL)
-  .tv <- intersect(.slotVars, c(setdiff(ui$allCovs, .const), "t", "time"))
-  if (length(.tv) == 0L) {
+  .tvSyms <- c(setdiff(ui$allCovs, .const), "t", "time")
+  .tvSlot <- vapply(.slotVars, function(.v) any(.v %in% .tvSyms), logical(1))
+  if (!any(.tvSlot)) {
     return(NULL)
+  }
+  # the inner model then carries the slot's eta sensitivities, a layout the pooled outer
+  # solve does not follow (#1583)
+  if (any(vapply(.slotVars[.tvSlot], function(.v) any(grepl("^ETA_[0-9]+_$", .v)), logical(1)))) {
+    return("an eta on a time-varying linCmt() parameter")
   }
   if (any(grepl("^rx_(f|lag|alag|rate|dur)_.+_$", ls(envir = s, all.names = TRUE)))) {
     return("a modeled dose with a time-varying linCmt() parameter")
