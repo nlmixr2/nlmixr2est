@@ -1138,6 +1138,7 @@ struct focei_options {
   int nEstOmega=0;
   int mceta= -1; // number of mc samples of ETA
   bool mcetaOpt = false; // mceta>=1: optimize every draw, not the best start
+  bool mcetaTrace = false; // mceta>=1: print the multistart counts with each iteration
   // Omega draws the inner restart cascade tries once the fixed nudges are
   // spent (0 = the historical nudges-only cascade), and foceiControl(seed=)
   // as the base of their threefry stream.
@@ -1269,6 +1270,7 @@ focei_options op_focei;
 enum { mcetaRunZeroCol = 0, mcetaRunDrawCol, mcetaWonZeroCol, mcetaWonDrawCol,
        mcetaRankedCol, mcetaFlippedCol, mcetaNcol };
 static long long _mcetaLast[mcetaNcol + 1];
+static long long _mcetaPrinted[mcetaNcol + 1]; // counters at the last trace line
 static std::vector<int> _mcetaIter;
 static std::vector<long long> _mcetaDelta; // mcetaNcol counts + ns per row
 
@@ -1288,6 +1290,30 @@ static inline void mcetaCounterReset() {
   op_focei.nMcetaRunDraw.store(0, std::memory_order_relaxed);
   op_focei.mcetaNs.store(0, std::memory_order_relaxed);
   std::fill_n(_mcetaLast, mcetaNcol + 1, 0LL);
+  std::fill_n(_mcetaPrinted, mcetaNcol + 1, 0LL);
+}
+
+// mcetaTrace: one line per printed iteration with the counts since the last line.
+static inline void mcetaTracePrint() {
+  long long cur[mcetaNcol + 1];
+  mcetaCounterGet(cur);
+  long long d[mcetaNcol];
+  for (int k = 0; k < mcetaNcol; ++k) d[k] = cur[k] - _mcetaPrinted[k];
+  RSprintf("mceta: starts %lld zero + %lld draw; draw won %lld/%lld; "
+           "reranked %lld/%lld; total %lld starts, %.3g s\n",
+           d[mcetaRunZeroCol], d[mcetaRunDrawCol], d[mcetaWonDrawCol],
+           d[mcetaWonDrawCol] + d[mcetaWonZeroCol], d[mcetaFlippedCol],
+           d[mcetaRankedCol], cur[mcetaRunZeroCol] + cur[mcetaRunDrawCol],
+           (double)cur[mcetaNcol] * 1e-9);
+  std::copy(cur, cur + mcetaNcol + 1, _mcetaPrinted);
+}
+
+// Trace only on the iterations scalePrintFun() prints.
+static inline void mcetaTraceMaybePrint() {
+  if (op_focei.mcetaTrace && op_focei.mceta >= 1 && op_focei.scale.every != 0 &&
+      op_focei.scale.cn % op_focei.scale.every == 0) {
+    mcetaTracePrint();
+  }
 }
 
 // Like niter/vPar, the history is per foceiSetup_ (a theta-reset restart included),
@@ -10288,6 +10314,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.mceta = as<int>(foceiO["mceta"]);
   op_focei.mcetaOpt = foceiO.containsElementNamed("mcetaOpt") &&
     as<bool>(foceiO["mcetaOpt"]);
+  op_focei.mcetaTrace = foceiO.containsElementNamed("mcetaTrace") &&
+    as<bool>(foceiO["mcetaTrace"]);
   // The mceta>=1 draws are per-fit (innerOpt() fills the cube once); clear them so a
   // new fit does not inherit the previous fit's starting etas.  The start counters
   // are cleared here as well as in foceiOuter(), which the EM/nonparametric methods
@@ -11829,6 +11857,7 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
     ? op_focei.initObjective * ret / op_focei.scaleObjectiveTo
     : ret;
   scalePrintFun(&op_focei.scale, xp, displayedOfv);
+  mcetaTraceMaybePrint();
   // One summary line per printed iteration for any ODE-solve warnings (e.g.
   // intdy window-misses) accumulated since the last flush; without this a
   // difficult model floods the console with identical lines each iteration.
