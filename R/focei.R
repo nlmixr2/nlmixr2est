@@ -4313,7 +4313,40 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 #' @return Called for side effects
 #' @author Matthew L. Fidler
 #' @noRd
+#' Solve an adjoint (`s`) method with its forward method
+#'
+#' The adjoint methods (`rk4s`, `dop853s`, `ros43s`, ..., code = forward code
+#' + 200) refuse a model without the adjoint expansion, such as the inner
+#' model with its forward sensitivities, so a fit asking for one failed.
+#'
+#' @param rxControl rxControl list
+#' @return rxControl, with the forward method when `method` was an adjoint one
+#' @noRd
+.rxControlAdjointForward <- function(rxControl) {
+  .m <- unname(rxControl$method)
+  if (length(.m) != 1L || !is.numeric(.m) || is.na(.m) || .m < 200L) {
+    return(rxControl)
+  }
+  .idx <- rxode2::odeMethodToInt(NULL)
+  .w <- match(c(.m, .m - 200L), .idx)
+  if (anyNA(.w)) {
+    return(rxControl)
+  }
+  .minfo(sprintf(
+    "method='%s' is an adjoint method; this fit solves forward sensitivities with method='%s'",
+    names(.idx)[.w[1]],
+    names(.idx)[.w[2]]
+  ))
+  rxControl$method <- as.integer(.m - 200L)
+  rxControl
+}
+
 .foceiOptEnvAssignTol <- function(ui, env) {
+  .rxControl0 <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+  .rxControl1 <- .rxControlAdjointForward(.rxControl0)
+  if (!identical(.rxControl1$method, .rxControl0$method)) {
+    rxode2::rxAssignControlValue(ui, "rxControl", .rxControl1)
+  }
   .len <- length(env$model$predNoLhs$state)
   rxode2::rxAssignControlValue(ui, "predNeq", .len)
   if (!is.null(env$model$inner)) {

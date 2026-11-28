@@ -107,6 +107,7 @@
   ## rxSolve()'s hasDelay enforcement, so replicate it here: dense dop853 (which
   ## needs no analytic Jacobian) unless an in-engine sensitivity method (>=200)
   ## is already selected -- those record their own dense history.
+  .env$rxControl <- .rxControlAdjointForward(.env$rxControl)
   if (isTRUE(rxode2::rxModelVars(nlmixr2global$nlmEnv$model)$flags[["hasDelay"]] == 1L)) {
     .env$rxControl$dense <- TRUE
     if (is.null(.env$rxControl$method) || .env$rxControl$method < 200L) {
