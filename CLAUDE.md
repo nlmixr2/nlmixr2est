@@ -255,6 +255,12 @@ When adding tests, split them by cost:
 - IOV (inter-occasion variability) support is in `R/iov.R` with special handling in the mu-referencing hooks
 - The `sharedControl()` function (`R/sharedControl.R`) defines options common across all estimation methods
 - `R/nlmixr2Est.R` contains the central S3 dispatch table -- look here to understand what methods exist
+- **Estimation switches are control options, never environment variables.** A toggle
+  that changes how a fit is computed (e.g. `foceiControl(sigmaSkip=, muRefExt=)`, which
+  replaced `FOCEI_NO_SIGMA_SKIP`/`FOCEI_NO_MUREF_EXT`) belongs in the method's
+  `*Control()` function: read it with `rxode2::rxGetControl(ui, "<name>", <default>)`,
+  and key any model cache on that value.  An env var is invisible in the fit's
+  `$control`, so the fit cannot be reproduced from its own object.
 - Any `warning()` raised during an estimation run is collected into the fit's `$runInfo`
   (that is how run-time notes reach the user). Warnings emitted by the estimation routines
   must therefore be concise -- keep each under 75 characters so it renders on one line

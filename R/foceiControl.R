@@ -1375,6 +1375,15 @@
 #'   needing more carry columns than rxode2 has is solved as ODEs.  `"none"`
 #'   always keeps the standard gradient.
 #'
+#' @param sigmaSkip When `TRUE` (default), the analytic (`fast = TRUE`)
+#'   gradient and covariance skip the zero prediction sensitivities of the
+#'   residual-error parameters; `FALSE` builds them anyway.
+#'
+#' @param muRefExt When `TRUE` (default), the analytic (`fast = TRUE`)
+#'   gradient and covariance reuse the eta sensitivities for structural
+#'   thetas acting only through an eta-carrying parameter (extended
+#'   mu-referencing); `FALSE` integrates their own sensitivity equations.
+#'
 #' @inheritParams rxode2::rxSolve
 #'
 #' @details
@@ -1644,7 +1653,9 @@ foceiControl <- function(
   zeroThetaStep = 100,
   boundedTransform = TRUE,
   omegaCollapseWarn = 1e-3,
-  thetaBoundWarn = 1e-4
+  thetaBoundWarn = 1e-4,
+  sigmaSkip = TRUE,
+  muRefExt = TRUE
 ) {
   #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
@@ -2366,6 +2377,8 @@ foceiControl <- function(
     stop("agqRule=\"", agqRule, "\" needs nAGQ > 1", call. = FALSE)
   }
   checkmate::assertLogical(boundedTransform, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(sigmaSkip, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(muRefExt, len = 1, any.missing = FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -2588,6 +2601,8 @@ foceiControl <- function(
     sensMethod = sensMethod,
     linCmtSensCarry = linCmtSensCarry,
     boundedTransform = boundedTransform,
+    sigmaSkip = sigmaSkip,
+    muRefExt = muRefExt,
     zeroTheta = zeroTheta,
     zeroThetaStep = as.double(zeroThetaStep)
   )

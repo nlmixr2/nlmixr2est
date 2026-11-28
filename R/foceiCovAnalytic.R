@@ -2168,12 +2168,12 @@
       "|o",
       order, # sensitivity tier -> distinct cached model
       "|sk",
-      Sys.getenv("FOCEI_NO_SIGMA_SKIP"), # skip flag -> distinct cached model
+      .foceiSigmaSkip(ui), # skip flag -> distinct cached model
       # subject-constant covariate set -> which covariate directions get eta-scaling reuse
       "|cc",
       paste(sort(tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL), error = function(e) NULL)), collapse = ","),
       "|muext",
-      Sys.getenv("FOCEI_NO_MUREF_EXT")
+      .foceiMuRefExt(ui)
     ),
     error = function(e) NULL
   )
@@ -2201,7 +2201,7 @@
       if (is.list(.mvS$indLin) && length(.mvS$indLin) == 4L) {
         .st <- .rxMatExpStateOrder(.st, ls(envir = .s, all.names = TRUE))
       }
-      # Sigma-skip (default ON; set FOCEI_NO_SIGMA_SKIP=1 to opt out): the residual-error (sigma) directions have
+      # Sigma-skip (default ON; foceiControl(sigmaSkip = FALSE) opts out): the residual-error (sigma) directions have
       # df/dsigma=0, so their f-sensitivity columns (f1/f2) and state-sensitivities are all
       # ZERO -- pure wasted compile (each sigma direction costs a full structural parameter's
       # worth of gcc + states).  Build the prediction chain f1/f2 + state sensitivities over
@@ -2209,7 +2209,7 @@
       # direction (sigma R-derivatives are algebraic, no state chain).  The reader zero-fills
       # the sigma a/A slots (the assembly already treats a=A=Ath=0 for a sigma direction).
       .erN <- ui$iniDf$ntheta[!is.na(ui$iniDf$err) & !(ui$iniDf$err %in% c("boxCox", "yeoJohnson"))]
-      .sigDirs <- if (!nzchar(Sys.getenv("FOCEI_NO_SIGMA_SKIP"))) {
+      .sigDirs <- if (.foceiSigmaSkip(ui)) {
         intersect(dirs, paste0("THETA_", .erN, "_"))
       } else {
         character(0)

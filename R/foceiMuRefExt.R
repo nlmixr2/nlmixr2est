@@ -10,11 +10,11 @@
 #' @param covMap covariate-coefficient reuse map (`.foceiAnalyticCovDirMap()`)
 #' @param constCovs subject-constant covariates
 #' @return named list `THETA_j_ -> list(etaDir, scale, scaleSE)`; empty when disabled
-#'   (any non-empty `FOCEI_NO_MUREF_EXT`) or nothing qualifies
+#'   (`foceiControl(muRefExt = FALSE)`) or nothing qualifies
 #' @noRd
 .foceiAnalyticMuRefExtDirMap <- function(ui, .s, .st, fDirs, covMap, constCovs) {
   # occasion etas (rewritten as subject-level by the IOV expansion) vary within the subject
-  if (nzchar(Sys.getenv("FOCEI_NO_MUREF_EXT")) || .uiHasIov(ui)) {
+  if (!.foceiMuRefExt(ui) || .uiHasIov(ui)) {
     return(list())
   }
   .ini <- ui$iniDf
@@ -188,4 +188,20 @@
   }
   .t <- .one(i, j)
   if (nzchar(.t)) .t else .one(j, i)
+}
+
+#' `foceiControl(sigmaSkip=)` of a ui (default `TRUE` without a control)
+#' @param ui rxode2 ui
+#' @return logical scalar
+#' @noRd
+.foceiSigmaSkip <- function(ui) {
+  !isFALSE(tryCatch(rxode2::rxGetControl(ui, "sigmaSkip", TRUE), error = function(e) TRUE))
+}
+
+#' `foceiControl(muRefExt=)` of a ui (default `TRUE` without a control)
+#' @param ui rxode2 ui
+#' @return logical scalar
+#' @noRd
+.foceiMuRefExt <- function(ui) {
+  !isFALSE(tryCatch(rxode2::rxGetControl(ui, "muRefExt", TRUE), error = function(e) TRUE))
 }

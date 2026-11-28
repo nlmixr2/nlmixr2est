@@ -213,7 +213,9 @@ foceiControl(
   zeroThetaStep = 100,
   boundedTransform = TRUE,
   omegaCollapseWarn = 0.001,
-  thetaBoundWarn = 1e-04
+  thetaBoundWarn = 1e-04,
+  sigmaSkip = TRUE,
+  muRefExt = TRUE
 )
 }
 \arguments{
@@ -1476,6 +1478,15 @@ ends below this fraction of its initial estimate, or at its
 within this tolerance of a finite `lower`/`upper` bound, relative to the
 bound range (or, for a one-sided bound, to the larger of the bound's size
 and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
+
+\item{sigmaSkip}{When `TRUE` (default), the analytic (`fast = TRUE`)
+gradient and covariance skip the zero prediction sensitivities of the
+residual-error parameters; `FALSE` builds them anyway.}
+
+\item{muRefExt}{When `TRUE` (default), the analytic (`fast = TRUE`)
+gradient and covariance reuse the eta sensitivities for structural
+thetas acting only through an eta-carrying parameter (extended
+mu-referencing); `FALSE` integrates their own sensitivity equations.}
 }
 \value{
 The control object that changes the options for the FOCEi

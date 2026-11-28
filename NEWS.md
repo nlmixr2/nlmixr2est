@@ -52,7 +52,10 @@
   carrying an eta, whatever the covariate model (maturation, Emax,
   natural-scale shifts and typical values, power exponents outside `exp()`),
   so these no longer integrate their own sensitivity equations ("extended
-  mu-referencing"; any non-empty `FOCEI_NO_MUREF_EXT` disables it).
+  mu-referencing"; `foceiControl(muRefExt = FALSE)` disables it).
+- `foceiControl(sigmaSkip = FALSE)` replaced the `FOCEI_NO_SIGMA_SKIP`
+  environment variable for building the residual-error parameters' zero
+  prediction sensitivities in the analytic gradient and covariance.
 - `est = "its"` (`itsControl()`) adds the iterative two-stage method: each
   iteration takes every subject's MAP etas and conditional covariance from
   the FOCEi inner problem, then updates the mu-referenced thetas and Omega in

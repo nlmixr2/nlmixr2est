@@ -70,6 +70,10 @@ nmTest({
     .m <- .extMap(.extUi(.extMod("cl <- tcl * exp(eta.cl)", tcl = 2.7)))
     expect_named(.m, "THETA_2_")
     expect_equal(.m$THETA_2_$etaDir, "ETA_2_")
+    # foceiControl(muRefExt = FALSE) turns the detection off
+    .ui <- .extUi(.extMod(.mat, .matIni))
+    rxode2::rxAssignControlValue(.ui, "muRefExt", FALSE)
+    expect_length(.extMap(.ui), 0L)
     # a fixed theta may appear in the scale
     .m <- .extMap(.extUi(.extMod(.mat, "ltm50 <- 3.7; lhill <- fix(1.1)")))
     expect_named(.m, "THETA_4_")
@@ -104,15 +108,15 @@ nmTest({
       stats::setNames(0.1 * (-1)^seq_len(nrow(.eta)) * seq_len(nrow(.eta)), paste0("ETA_", .eta$neta1, "_"))
     )
     .solve <- function(flag) {
-      withr::local_envvar(FOCEI_NO_MUREF_EXT = flag)
+      rxode2::rxAssignControlValue(.ui, "muRefExt", flag)
       .am <- .foceiAnalyticAugModelDirs(.ui, .dirs)
       list(
         n = length(rxode2::rxState(.am$augMod)),
         s = rxode2::rxSolve(.am$augMod, .par, d[d$ID == 3, ], returnType = "data.frame", atol = 1e-12, rtol = 1e-12)
       )
     }
-    .on <- .solve("")
-    .off <- .solve("1")
+    .on <- .solve(TRUE)
+    .off <- .solve(FALSE)
     if (!is.null(nStates)) {
       expect_equal(c(.on$n, .off$n), nStates)
     }
@@ -244,10 +248,11 @@ nmTest({
     expect_gt(length(.extMap(.extUi(.f, constCovs = .cc))), 0L)
     .g <- .foceiGradDirect(.fit)
     # the full build (no reuse) gives the same analytic gradient
-    withr::with_envvar(c(FOCEI_NO_MUREF_EXT = "1"), {
-      .fitOff <- .nlmixr(.f, .d, "focei", control = .ctl)
-      expect_equal(.foceiGradDirect(.fitOff), .g, tolerance = 1e-8)
-    })
+    .ctlOff <- .ctl
+    .ctlOff$muRefExt <- FALSE
+    .fitOff <- .nlmixr(.f, .d, "focei", control = .ctlOff)
+    expect_false(.fitOff$control$muRefExt)
+    expect_equal(.foceiGradDirect(.fitOff), .g, tolerance = 1e-8)
     .ui <- .fit$finalUi
     .objAt <- function(ui) .nlmixr(ui, .d, "focei", control = .ctl)$objf
     .h <- 1e-4
