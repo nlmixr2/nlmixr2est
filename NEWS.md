@@ -579,6 +579,11 @@
   residual error too.  The SEs of mu-referenced thetas now come from their
   information with the etas integrated out and match FOCEi's; they used to
   depend on where the step-size sequence stalled (#1462).
+- The mu-referenced FOCEi family (`mfocei`, ...) and `imp`/`impmap`/`qrpem`
+  no longer regress a time-varying mu-referenced covariate on its baseline
+  value; its coefficient is estimated by the outer optimizer / M-step (it was
+  left at its initial value, or at 0 when the baseline was 0 for everyone)
+  (#1461).
 - `est="saem"`: when an endpoint's residual error cannot be matched to
   `ini()` parameters, the error now names the endpoint and the error
   argument(s) that are not `ini()` parameters (#1516).

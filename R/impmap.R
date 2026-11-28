@@ -1117,6 +1117,10 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 .impmapFamilyFit <- function(env, ui, ...) {
+  # the mu-referenced regression uses baseline covariates, so time-varying
+  # ones stay with the M-step's Newton update
+  .nlmixrSetMuRefTimeVarying(ui, .muRefTimeVarying(env$data, ui))
+  on.exit(.nlmixrRmMuRefTimeVarying(ui), add = TRUE)
   # With est="impmap", foceiFitCpp_ runs impOuter() (src/imp.cpp) in place of
   # foceiOuter().  The FOCEI outer optimizer is turned off (maxOuterIterations=0)
   # because impOuter drives its own EM iteration; the in-fit covariance is off
