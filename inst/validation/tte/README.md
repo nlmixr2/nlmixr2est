@@ -69,7 +69,8 @@ single-event scenarios) is the Laplace error.  NONMEM's `pkJoint` run did
 not converge (its estimates are far from the truth and it has no
 standard errors), so it has no NONMEM reference.  Some NONMEM standard
 errors from the numerical covariance step are much too small (e.g.
-`lateEntry`, `pkFixed`); the tests do not use them (see below).
+`lateEntry`, `pkFixed`), so the validation tests measure differences
+from a reference in the exact fit's standard errors where there is one.
 
 ## Data sets
 
