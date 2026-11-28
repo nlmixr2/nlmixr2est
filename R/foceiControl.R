@@ -381,6 +381,23 @@
 #'     than finite-differenced on its own.  Set it explicitly to test whether a fit's
 #'     finite-difference fallbacks are tolerance-driven.
 #'
+#' @param etaPolish How the etas are finished for the analytic outer gradient
+#'     (\code{fast=TRUE}).  The inner optimizer stops at its own tolerance, but the
+#'     analytic gradient is the exact derivative of the objective only at the eta
+#'     mode, so by default the reported objective and its gradient carry an error of
+#'     the order of that tolerance.  \code{"none"} (default, from
+#'     \code{getOption("nlmixr2est.etaPolish", "none")}) keeps the etas where the inner
+#'     optimizer stopped: nothing changes.  \code{"newton1"} takes one exact-Hessian
+#'     Newton step per subject after the inner optimizer (step capped at 1, Hessian
+#'     must be positive definite; for FOCEI and AGQ a subject whose objective would
+#'     rise keeps its eta) and evaluates the objective and the gradient at
+#'     the new eta.  \code{"newton"} takes exact-Hessian Newton steps to round-off
+#'     (to \code{foceEbeTol} or the ODE solve's noise floor), so the objective and the
+#'     gradient are taken at the same eta mode.  The Hessian is the exact second-order
+#'     one (no Gauss-Newton, no finite differences), so the modes apply to the
+#'     forward-sensitivity route of \code{fast=TRUE}; other fits are not changed.
+#'     Passed on by \code{agqControl()} and \code{laplaceControl()}.
+#'
 #' @param hessEps is a double value representing the epsilon for the
 #'   Hessian calculation. This is used for the R matrix calculation.
 #'
@@ -1451,6 +1468,7 @@ foceiControl <- function(
   # norm of weights = 1/0.225
   # hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
   foceEbeTol = NULL, #
+  etaPolish = getOption("nlmixr2est.etaPolish", "none"),
   hessEps = (.Machine$double.eps)^(1 / 3),
   # hessEpsLlik =(1/0.225*.Machine$double.eps)^(1/4),
   hessEpsLlik = (.Machine$double.eps)^(1 / 3),
@@ -1847,6 +1865,7 @@ foceiControl <- function(
     foceEbeTol <- 1e-9
   }
   checkmate::assertNumeric(foceEbeTol, lower = 0, finite = TRUE, any.missing = FALSE, len = 1)
+  etaPolish <- match.arg(etaPolish, c("none", "newton1", "newton"))
   .assertPositiveEps(hessEpsLlik)
   checkmate::assertNumeric(centralDerivEps, lower = 0, any.missing = FALSE, len = 2)
 
@@ -2428,6 +2447,7 @@ foceiControl <- function(
     foceType = foceType,
     cholSEtol = as.double(cholSEtol),
     foceEbeTol = as.double(foceEbeTol),
+    etaPolish = etaPolish,
     hessEps = as.double(hessEps),
     hessEpsLlik = as.double(hessEpsLlik),
     optimHessType = optimHessType,
