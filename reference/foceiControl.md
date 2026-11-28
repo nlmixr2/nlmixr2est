@@ -168,9 +168,11 @@ foceiControl(
   finalEtaTol = 1,
   aboveStartTol = 0.01,
   stopFile = NULL,
+  maxTime = NULL,
   shrinkEtaWarn = 30,
   odeSettleCheck = FALSE,
   odeSettleTol = 0.1,
+  collapseProbe = FALSE,
   ebeCheck = FALSE,
   ebeCheckStep = 0.1,
   ebeCheckTol = 0.01,
@@ -214,7 +216,8 @@ foceiControl(
   zeroThetaStep = 100,
   boundedTransform = TRUE,
   omegaCollapseWarn = 0.001,
-  thetaBoundWarn = 1e-04
+  thetaBoundWarn = 1e-04,
+  atolCheck = TRUE
 )
 ```
 
@@ -1508,6 +1511,13 @@ foceiControl(
   evaluated so far), removes the file, notes the stop in \`\$runInfo\`
   and returns the fit. \`NULL\` (default) does not poll.
 
+- maxTime:
+
+  Wall-clock limit in seconds, counted from the start of the estimation.
+  Once it is reached the optimization ends as for \`stopFile\` and the
+  fit is finalized from its current state; the covariance step and
+  tables are not limited. \`NULL\` (default) sets no limit.
+
 - shrinkEtaWarn:
 
   Warn (in \`\$runInfo\`) when an eta's SD shrinkage is at or above this
@@ -1526,6 +1536,12 @@ foceiControl(
 - odeSettleTol:
 
   The objective change that \`odeSettleCheck\` reports.
+
+- collapseProbe:
+
+  When \`TRUE\`, an omega flagged by \`omegaCollapseWarn\` is raised
+  back to its initial estimate and the problem re-fit from there; the
+  fit with the lower objective is kept.
 
 - ebeCheck:
 
@@ -1852,6 +1868,11 @@ foceiControl(
   range (or, for a one-sided bound, to the larger of the bound's size
   and the initial estimate's distance from it). Use \`NA\` or \`0\` to
   disable.
+
+- atolCheck:
+
+  When \`TRUE\` (default), warn before estimating an ODE model when an
+  uncensored observation is within \`1e3 \* atol\` of zero.
 
 ## Value
 

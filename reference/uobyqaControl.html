@@ -53,6 +53,7 @@
 <span>  maxfun <span class="op">=</span> <span class="fl">100000L</span>,</span>
 <span>  returnUobyqa <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  stopFile <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  maxTime <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  stickyRecalcN <span class="op">=</span> <span class="fl">4</span>,</span>
 <span>  maxOdeRecalc <span class="op">=</span> <span class="fl">5</span>,</span>
 <span>  odeRecalcFactor <span class="op">=</span> <span class="fl">10</span><span class="op">^</span><span class="op">(</span><span class="fl">0.5</span><span class="op">)</span>,</span>
@@ -131,6 +132,13 @@ fit</p></dd>
 gracefully: the run ends at its current state (for FOCEi, the lowest
 objective evaluated so far), removes the file, notes the stop in
 `$runInfo` and returns the fit.  `NULL` (default) does not poll.</p></dd>
+
+
+<dt id="arg-maxtime">maxTime<a class="anchor" aria-label="anchor" href="#arg-maxtime"></a></dt>
+<dd><p>Wall-clock limit in seconds, counted from the start of the
+estimation.  Once it is reached the optimization ends as for `stopFile`
+and the fit is finalized from its current state; the covariance step and
+tables are not limited.  `NULL` (default) sets no limit.</p></dd>
 
 
 <dt id="arg-stickyrecalcn">stickyRecalcN<a class="anchor" aria-label="anchor" href="#arg-stickyrecalcn"></a></dt>
@@ -423,10 +431,10 @@ warning off.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.0943033 0.0853544 1.0546e-05      0.045       0.006 0.023    0.001</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.06333175</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             setup optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1524603 0.135353 2.0044e-05      0.078        0.01 0.028    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.0981667</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

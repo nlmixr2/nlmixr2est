@@ -13,6 +13,7 @@ uobyqaControl(
   maxfun = 100000L,
   returnUobyqa = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -88,6 +89,13 @@ uobyqaControl(
   the run ends at its current state (for FOCEi, the lowest objective
   evaluated so far), removes the file, notes the stop in \`\$runInfo\`
   and returns the fit. \`NULL\` (default) does not poll.
+
+- maxTime:
+
+  Wall-clock limit in seconds, counted from the start of the estimation.
+  Once it is reached the optimization ends as for \`stopFile\` and the
+  fit is finalized from its current state; the covariance step and
+  tables are not limited. \`NULL\` (default) sets no limit.
 
 - stickyRecalcN:
 
@@ -371,10 +379,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.0943033 0.0853544 1.0546e-05      0.045       0.006 0.023    0.001
-#>              other
-#> elapsed 0.06333175
+#>             setup optimize covariance preprocess postprocess table compress
+#> elapsed 0.1524603 0.135353 2.0044e-05      0.078        0.01 0.028    0.001
+#>             other
+#> elapsed 0.0981667
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

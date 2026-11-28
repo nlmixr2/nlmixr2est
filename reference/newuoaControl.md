@@ -13,6 +13,7 @@ newuoaControl(
   maxfun = 100000L,
   returnNewuoa = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -88,6 +89,13 @@ newuoaControl(
   the run ends at its current state (for FOCEi, the lowest objective
   evaluated so far), removes the file, notes the stop in \`\$runInfo\`
   and returns the fit. \`NULL\` (default) does not poll.
+
+- maxTime:
+
+  Wall-clock limit in seconds, counted from the start of the estimation.
+  Once it is reached the optimization ends as for \`stopFile\` and the
+  fit is finalized from its current state; the covariance step and
+  tables are not limited. \`NULL\` (default) sets no limit.
 
 - stickyRecalcN:
 
@@ -368,10 +376,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup   optimize covariance preprocess postprocess table compress
-#> elapsed 0.09436183 0.08812822 1.1408e-05       0.05       0.011 0.017    0.001
+#>            setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.148896 0.1313551 1.5739e-05      0.073       0.009 0.024    0.001
 #>              other
-#> elapsed 0.05849854
+#> elapsed 0.08273319
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

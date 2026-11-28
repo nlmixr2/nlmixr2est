@@ -33,6 +33,7 @@ trustControl(
   hessianMethod = c("sr1", "fd", "bfgs", "bofill"),
   returnTrust = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -184,6 +185,13 @@ trustControl(
   the run ends at its current state (for FOCEi, the lowest objective
   evaluated so far), removes the file, notes the stop in \`\$runInfo\`
   and returns the fit. \`NULL\` (default) does not poll.
+
+- maxTime:
+
+  Wall-clock limit in seconds, counted from the start of the estimation.
+  Once it is reached the optimization ends as for \`stopFile\` and the
+  fit is finalized from its current state; the covariance step and
+  tables are not limited. \`NULL\` (default) sets no limit.
 
 - stickyRecalcN:
 
@@ -476,9 +484,9 @@ print(fit)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.0904726 0.1638941 1.0975e-05      0.046       0.011 0.017        0
-#>              other
-#> elapsed 0.06362231
+#> elapsed 0.1550707 0.2467359 1.7665e-05      0.083       0.009 0.027    0.002
+#>             other
+#> elapsed 0.1021757
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

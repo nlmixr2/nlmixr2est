@@ -90,6 +90,7 @@
 <span>  literalFixRes <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  returnOptim <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  stopFile <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  maxTime <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  addProp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"combined2"</span>, <span class="st">"combined1"</span><span class="op">)</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  sensMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"default"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
@@ -390,6 +391,13 @@ objective evaluated so far), removes the file, notes the stop in
 `$runInfo` and returns the fit.  `NULL` (default) does not poll.</p></dd>
 
 
+<dt id="arg-maxtime">maxTime<a class="anchor" aria-label="anchor" href="#arg-maxtime"></a></dt>
+<dd><p>Wall-clock limit in seconds, counted from the start of the
+estimation.  Once it is reached the optimization ends as for `stopFile`
+and the fit is finalized from its current state; the covariance step and
+tables are not limited.  `NULL` (default) sets no limit.</p></dd>
+
+
 <dt id="arg-addprop">addProp<a class="anchor" aria-label="anchor" href="#arg-addprop"></a></dt>
 <dd><p>Type of additive-plus-proportional error: `"combined1"`,
 where standard deviations add:
@@ -563,10 +571,10 @@ warning off.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #BBBB00; font-weight: bold;">value</span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              setup  optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09129215 0.1541639 1.1811e-05      0.048       0.005 0.017        0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             setup  optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1489872 0.2273357 1.6528e-05      0.063       0.009 0.037    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.08153217</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09766054</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #BBBB00; font-weight: bold;">value</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #BBBB00; font-weight: bold;">value</span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

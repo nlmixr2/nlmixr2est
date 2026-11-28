@@ -337,7 +337,7 @@ focepControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x62baf0f6cee8>
+#> <bytecode: 0x5bbb397743c0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -586,6 +586,9 @@ focepControl()
 #> $stopFile
 #> NULL
 #> 
+#> $maxTime
+#> NULL
+#> 
 #> $shrinkEtaWarn
 #> [1] 30
 #> 
@@ -597,6 +600,9 @@ focepControl()
 #> 
 #> $omegaCollapseWarn
 #> [1] 0.001
+#> 
+#> $collapseProbe
+#> [1] FALSE
 #> 
 #> $thetaBoundWarn
 #> [1] 1e-04
@@ -1242,6 +1248,9 @@ focepControl()
 #> [1] "auto"
 #> 
 #> $boundedTransform
+#> [1] TRUE
+#> 
+#> $atolCheck
 #> [1] TRUE
 #> 
 #> $zeroTheta

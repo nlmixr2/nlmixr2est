@@ -144,6 +144,19 @@
   and estimates are kept in `fit$stieltjesStage1`
   ([\#1139](https://github.com/nlmixr2/nlmixr2est/issues/1139)).
 
+- [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md)
+  and `tableControl(npde = TRUE)` now also return `EWRES`, the Monte
+  Carlo weighted residual from `EPRED` (as NONMEM’s `EWRES`; Monolix
+  calls it `PWRES`): `Sigma^(-1/2) (y - EPRED)` from the same
+  simulations’ mean and covariance, with no extra simulation. Unlike
+  NPDE it keeps the residual’s magnitude; it uses only the first two
+  moments, so a skewed marginal can show bias even under the true model.
+  Subjects with a censored observation or no more simulations than
+  observations get `NA`. `tableControl(ewresMethod = "cholesky")`
+  decorrelates it by the Cholesky factor instead of the default
+  symmetric inverse square root, and `fit$PWRES` is an alias for the
+  column ([\#1390](https://github.com/nlmixr2/nlmixr2est/issues/1390)).
+
 - `addCondDist(fit)` samples each subject’s conditional distribution of
   the etas at the final estimates of a fit from any estimation method
   and stores its mean and SD as `fit$condDist` (`keepSamples = TRUE`
@@ -210,6 +223,15 @@
   early by user request” is noted in `$runInfo`
   ([\#1507](https://github.com/nlmixr2/nlmixr2est/issues/1507)).
 
+- `maxTime = 600` in
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md),
+  [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md)
+  and the nlm-family controls sets a wall-clock limit in seconds: once
+  it is reached the optimization or the SAEM iterations end as for
+  `stopFile`, the fit is finalized from its current state and “stopped
+  at the time limit” is noted in `$runInfo`
+  ([\#1514](https://github.com/nlmixr2/nlmixr2est/issues/1514)).
+
 - `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes
   each converged trust ETA solve by re-entering it at the squared
   `trustFterm`/`trustMterm` instead of taking Newton steps. The
@@ -272,6 +294,11 @@
   `nlmixr2(..., likPenalty =)`; `inObjf=` sets whether it is counted in
   the reported objective, and `fit$likPenalty` reports its value. See
   [`vignette("likelihood-penalties")`](https://nlmixr2.github.io/nlmixr2est/articles/likelihood-penalties.md).
+  A population term that depends on omega (the built-in `"omegaL2"`)
+  reaches the FOCEi analytic outer gradient through a finite-difference
+  omega gradient, and moves the omega M-steps of SAEM, imp/impmap/qrpem,
+  emvi/fbvi and vae and SAEM’s reported objective, which used to see no
+  omega ([\#1481](https://github.com/nlmixr2/nlmixr2est/issues/1481)).
 
 - [`nlmixr2LikPenaltyUdf()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2LikPenaltyUdf.md)
   lets an rxode2 model function (an `rxUdfUi` method) register a
@@ -300,9 +327,20 @@
   objective is kept as `fit$odeSettleObjf`
   ([\#1393](https://github.com/nlmixr2/nlmixr2est/issues/1393)).
 
+- `saemControl(nBurn = "auto")` ends SAEM’s burn-in once no theta, log
+  omega variance, omega correlation or log residual scale still trends
+  (a slope t-test on 5 batch means of the last 100 iterations), between
+  `nBurnMin`
+
+  150. and `nBurnMax` (500). `$runInfo` notes the burn-in length used
+       and, at `nBurnMax`, the parameters still trending. An integer
+       `nBurn` is unchanged
+       ([\#1401](https://github.com/nlmixr2/nlmixr2est/issues/1401)).
+
 - Estimation of an ODE model now warns (in `$runInfo`) when an
   uncensored observation is within `1e3 * atol` of zero, where the ODE
   integration error can be comparable to the data. Disable with
+  `foceiControl(atolCheck = FALSE)`, `saemControl(atolCheck = FALSE)` or
   `options(nlmixr2est.atolCheck = FALSE)`
   ([\#1392](https://github.com/nlmixr2/nlmixr2est/issues/1392)).
 
@@ -391,6 +429,11 @@
   can stall where the objective is flat in a vanishing variance while a
   larger omega fits better. `foceiControl(omegaCollapseWarn=)` sets the
   fraction; `NA` turns it off
+  ([\#1394](https://github.com/nlmixr2/nlmixr2est/issues/1394)).
+
+- `foceiControl(collapseProbe=TRUE)` re-fits a FOCEi-family model from a
+  collapsed omega raised back to its initial estimate, keeping whichever
+  fit has the lower objective and noting the change in `$runInfo`
   ([\#1394](https://github.com/nlmixr2/nlmixr2est/issues/1394)).
 
 - A fit of any method now notes in `$runInfo` an estimated theta that

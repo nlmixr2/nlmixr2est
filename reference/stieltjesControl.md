@@ -383,7 +383,7 @@ stieltjesControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x62baf0f6cee8>
+#> <bytecode: 0x5bbb397743c0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -632,6 +632,9 @@ stieltjesControl()
 #> $stopFile
 #> NULL
 #> 
+#> $maxTime
+#> NULL
+#> 
 #> $shrinkEtaWarn
 #> [1] 30
 #> 
@@ -643,6 +646,9 @@ stieltjesControl()
 #> 
 #> $omegaCollapseWarn
 #> [1] 0.001
+#> 
+#> $collapseProbe
+#> [1] FALSE
 #> 
 #> $thetaBoundWarn
 #> [1] 1e-04
@@ -1290,6 +1296,9 @@ stieltjesControl()
 #> $boundedTransform
 #> [1] TRUE
 #> 
+#> $atolCheck
+#> [1] TRUE
+#> 
 #> $zeroTheta
 #> [1] 0.001
 #> 
@@ -1586,7 +1595,7 @@ stieltjesControl(stage1 = "foce", agqGrid = c(5, 2, 0.5, 0.95))
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x62baf0f6cee8>
+#> <bytecode: 0x5bbb397743c0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1835,6 +1844,9 @@ stieltjesControl(stage1 = "foce", agqGrid = c(5, 2, 0.5, 0.95))
 #> $stopFile
 #> NULL
 #> 
+#> $maxTime
+#> NULL
+#> 
 #> $shrinkEtaWarn
 #> [1] 30
 #> 
@@ -1846,6 +1858,9 @@ stieltjesControl(stage1 = "foce", agqGrid = c(5, 2, 0.5, 0.95))
 #> 
 #> $omegaCollapseWarn
 #> [1] 0.001
+#> 
+#> $collapseProbe
+#> [1] FALSE
 #> 
 #> $thetaBoundWarn
 #> [1] 1e-04
@@ -2491,6 +2506,9 @@ stieltjesControl(stage1 = "foce", agqGrid = c(5, 2, 0.5, 0.95))
 #> [1] "auto"
 #> 
 #> $boundedTransform
+#> [1] TRUE
+#> 
+#> $atolCheck
 #> [1] TRUE
 #> 
 #> $zeroTheta

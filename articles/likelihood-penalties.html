@@ -189,10 +189,20 @@ etas. FOCEi-type inner problems use it to find the conditional
 mode.</li>
 <li>Fill <code>dObj_dtheta</code> when it is non-NULL, or set
 <code>NLMIXR_PEN_NO_GRAD</code>. The methods then fall back to finite
-differences. Only the population gradient is used analytically. A
-subject term that writes a non-zero value switches the FOCEi analytic
-outer gradient (<code>fast = TRUE</code>) to finite differences, because
-it moves the conditional mode.</li>
+differences. Only the population gradient is used analytically. There is
+no omega gradient slot: when the term reads <code>omega</code>, its
+omega derivative is taken by finite differences.</li>
+<li>
+<code>omega</code> is the current between-subject covariance in
+<code><a href="https://nlmixr2.github.io/rxode2/reference/ini.html" class="external-link">ini()</a></code> eta order. Every method with random effects passes
+it, and its omega update (the EM and variational M-steps included)
+minimizes the penalized objective; emvi, fbvi and vae penalize only the
+variances, not the covariances, and saem leaves the variances of
+mixture-split and pooled (IOV) etas unpenalized. The population-only
+methods (the nlm family) pass <code>neta = 0</code>. A subject term that
+writes a non-zero value switches the FOCEi analytic outer gradient
+(<code>fast = TRUE</code>) to finite differences, because it moves the
+conditional mode.</li>
 </ul>
 </div>
 </div>

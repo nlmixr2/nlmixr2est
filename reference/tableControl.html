@@ -51,6 +51,7 @@
 <span>  nsim <span class="op">=</span> <span class="fl">300</span>,</span>
 <span>  ties <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  censMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"truncated-normal"</span>, <span class="st">"cdf"</span>, <span class="st">"ipred"</span>, <span class="st">"pred"</span>, <span class="st">"epred"</span>, <span class="st">"omit"</span><span class="op">)</span>,</span>
+<span>  ewresMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"eigen"</span>, <span class="st">"cholesky"</span><span class="op">)</span>,</span>
 <span>  seed <span class="op">=</span> <span class="fl">1009</span>,</span>
 <span>  cholSEtol <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="op">(</span><span class="fl">1</span><span class="op">/</span><span class="fl">3</span><span class="op">)</span>,</span>
 <span>  state <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -112,6 +113,14 @@ you supply single subject event tables (created with
   This holds for any NPDE restricted to the uncensored rows; to check a
   model's fit with censored data, use a method that keeps the censored
   rows, such as `"truncated-normal"`.</p></dd>
+
+
+<dt id="arg-ewresmethod">ewresMethod<a class="anchor" aria-label="anchor" href="#arg-ewresmethod"></a></dt>
+<dd><p>How `EWRES` (see [addNpde()]) is decorrelated: `"eigen"`
+(default, as NONMEM) uses the symmetric inverse square root of the
+simulated covariance, `"cholesky"` the inverse of its lower Cholesky
+factor.  Both give the same per-subject sum of squares.  It does not change
+the NPDE decorrelation.</p></dd>
 
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>

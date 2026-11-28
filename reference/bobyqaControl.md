@@ -13,6 +13,7 @@ bobyqaControl(
   maxfun = 100000L,
   returnBobyqa = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -87,6 +88,13 @@ bobyqaControl(
   the run ends at its current state (for FOCEi, the lowest objective
   evaluated so far), removes the file, notes the stop in \`\$runInfo\`
   and returns the fit. \`NULL\` (default) does not poll.
+
+- maxTime:
+
+  Wall-clock limit in seconds, counted from the start of the estimation.
+  Once it is reached the optimization ends as for \`stopFile\` and the
+  fit is finalized from its current state; the covariance step and
+  tables are not limited. \`NULL\` (default) sets no limit.
 
 - stickyRecalcN:
 
@@ -360,9 +368,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.5958252 0.5690109   1.57e-05      0.049       0.009 0.023    0.001
-#>              other
-#> elapsed 0.08214822
+#> elapsed 0.7954247 0.7976811 2.0168e-05      0.063        0.01 0.061    0.001
+#>            other
+#> elapsed 0.100874
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

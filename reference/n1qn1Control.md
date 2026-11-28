@@ -13,6 +13,7 @@ n1qn1Control(
   print.functions = FALSE,
   returnN1qn1 = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -82,6 +83,13 @@ n1qn1Control(
   the run ends at its current state (for FOCEi, the lowest objective
   evaluated so far), removes the file, notes the stop in \`\$runInfo\`
   and returns the fit. \`NULL\` (default) does not poll.
+
+- maxTime:
+
+  Wall-clock limit in seconds, counted from the start of the estimation.
+  Once it is reached the optimization ends as for \`stopFile\` and the
+  fit is finalized from its current state; the covariance step and
+  tables are not limited. \`NULL\` (default) sets no limit.
 
 - stickyRecalcN:
 
@@ -374,10 +382,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.09037089 0.1561345  1.239e-05      0.045       0.007  0.02        0
-#>             other
-#> elapsed 0.0594822
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1319413 0.2172817 1.5506e-05      0.061       0.009 0.026    0.001
+#>              other
+#> elapsed 0.08276144
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

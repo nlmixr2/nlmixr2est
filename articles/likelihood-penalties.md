@@ -86,7 +86,17 @@ estimator-specific scaling and parameter maps are handled for you.
   FOCEi-type inner problems use it to find the conditional mode.
 - Fill `dObj_dtheta` when it is non-NULL, or set `NLMIXR_PEN_NO_GRAD`.
   The methods then fall back to finite differences. Only the population
-  gradient is used analytically. A subject term that writes a non-zero
+  gradient is used analytically. There is no omega gradient slot: when
+  the term reads `omega`, its omega derivative is taken by finite
+  differences.
+- `omega` is the current between-subject covariance in
+  [`ini()`](https://nlmixr2.github.io/rxode2/reference/ini.html) eta
+  order. Every method with random effects passes it, and its omega
+  update (the EM and variational M-steps included) minimizes the
+  penalized objective; emvi, fbvi and vae penalize only the variances,
+  not the covariances, and saem leaves the variances of mixture-split
+  and pooled (IOV) etas unpenalized. The population-only methods (the
+  nlm family) pass `neta = 0`. A subject term that writes a non-zero
   value switches the FOCEi analytic outer gradient (`fast = TRUE`) to
   finite differences, because it moves the conditional mode.
 

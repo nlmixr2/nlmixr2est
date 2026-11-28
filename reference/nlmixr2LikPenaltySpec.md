@@ -26,7 +26,7 @@ nlmixr2LikPenaltySpec(
   the penalty: an external pointer to a C \`nlmixrLikPenalty\`, a
   function returning one (resolved when the fit starts, so the spec
   survives \`saveRDS()\`), or the name of a built-in penalty
-  (\`"thetaL2"\`, \`"etaL2"\`).
+  (\`"thetaL2"\`, \`"etaL2"\`, \`"omegaL2"\`).
 
 - thetas:
 

@@ -17,6 +17,7 @@ nlmControl(
   check.analyticals = FALSE,
   returnNlm = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   solveType = c("hessian", "grad", "fun"),
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
@@ -129,6 +130,13 @@ nlmControl(
   the run ends at its current state (for FOCEi, the lowest objective
   evaluated so far), removes the file, notes the stop in \`\$runInfo\`
   and returns the fit. \`NULL\` (default) does not poll.
+
+- maxTime:
+
+  Wall-clock limit in seconds, counted from the start of the estimation.
+  Once it is reached the optimization ends as for \`stopFile\` and the
+  fit is finalized from its current state; the covariance step and
+  tables are not limited. \`NULL\` (default) sets no limit.
 
 - solveType:
 
@@ -485,10 +493,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.08839085 0.1569224 1.1253e-05      0.044       0.007 0.021        0
-#>              other
-#> elapsed 0.05967554
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1330288 0.2232858 1.5483e-05      0.059        0.01 0.024    0.001
+#>             other
+#> elapsed 0.0826699
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

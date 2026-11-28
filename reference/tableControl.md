@@ -11,6 +11,7 @@ tableControl(
   nsim = 300,
   ties = TRUE,
   censMethod = c("truncated-normal", "cdf", "ipred", "pred", "epred", "omit"),
+  ewresMethod = c("eigen", "cholesky"),
   seed = 1009,
   cholSEtol = (.Machine$double.eps)^(1/3),
   state = TRUE,
@@ -77,6 +78,14 @@ tableControl(
   limit). This holds for any NPDE restricted to the uncensored rows; to
   check a model's fit with censored data, use a method that keeps the
   censored rows, such as \`"truncated-normal"\`.
+
+- ewresMethod:
+
+  How \`EWRES\` (see \[addNpde()\]) is decorrelated: \`"eigen"\`
+  (default, as NONMEM) uses the symmetric inverse square root of the
+  simulated covariance, \`"cholesky"\` the inverse of its lower Cholesky
+  factor. Both give the same per-subject sum of squares. It does not
+  change the NPDE decorrelation.
 
 - seed:
 

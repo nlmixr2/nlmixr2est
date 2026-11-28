@@ -9,6 +9,8 @@ saemControl(
   seed = 99,
   nBurn = 200,
   nEm = 300,
+  nBurnMin = 150L,
+  nBurnMax = 500L,
   autoStop = FALSE,
   stopWindow = 50L,
   stopConsecutive = 4L,
@@ -20,6 +22,7 @@ saemControl(
   plateauTol = 0.001,
   plateauMinFrac = 0.5,
   stopFile = NULL,
+  maxTime = NULL,
   nmc = 3,
   nu = c(2, 2, 2),
   nu1B = 0L,
@@ -72,6 +75,7 @@ saemControl(
   iovXform = c("sd", "var", "logsd", "logvar"),
   iovMethod = c("twoLevel", "collapsed", "theta"),
   boundedTransform = TRUE,
+  atolCheck = TRUE,
   eventSens = c("jump", "fd"),
   mixProbMethod = c("regress", "regularized", "annealed"),
   mixProbStepExp = 1,
@@ -112,11 +116,24 @@ saemControl(
 
   Number of iterations in the first phase, ie the MCMC/Stochastic
   Approximation steps. This is equivalent to Monolix's `K_0` or `K_b`.
+  `"auto"` ends the burn-in once no parameter still trends (see
+  `nBurnMin`).
 
 - nEm:
 
   Number of iterations in the Expectation-Maximization (EM) Step. This
   is equivalent to Monolix's `K_1`.
+
+- nBurnMin, nBurnMax:
+
+  With `nBurn = "auto"`, the shortest and longest burn-in. From
+  `nBurnMin` on, the burn-in ends at the first iteration where no theta,
+  log omega variance, omega correlation or log residual scale trends
+  over the last 100 iterations (a slope t-test on 5 batch means,
+  two-sided 5%). A burn-in that reaches `nBurnMax` names the parameters
+  still trending in `$runInfo`; the burn-in length used is noted there
+  too. The phases set as a fraction of the burn-in (`perSa`, `perNoCor`,
+  `perFixOmega`, `perFixResid`) are fractions of `nBurnMin`.
 
 - autoStop:
 
@@ -178,6 +195,13 @@ saemControl(
   the run ends at its current state (for FOCEi, the lowest objective
   evaluated so far), removes the file, notes the stop in \`\$runInfo\`
   and returns the fit. \`NULL\` (default) does not poll.
+
+- maxTime:
+
+  Wall-clock limit in seconds, counted from the start of the estimation.
+  Once it is reached the optimization ends as for \`stopFile\` and the
+  fit is finalized from its current state; the covariance step and
+  tables are not limited. \`NULL\` (default) sets no limit.
 
 - nmc:
 
@@ -646,6 +670,11 @@ saemControl(
   estimates. \`FALSE\` optimizes on the original scale with bounds
   passed to the optimizer. \`NA\` transforms for optimization but skips
   the final back-transform.
+
+- atolCheck:
+
+  When \`TRUE\` (default), warn before estimating an ODE model when an
+  uncensored observation is within \`1e3 \* atol\` of zero.
 
 - eventSens:
 

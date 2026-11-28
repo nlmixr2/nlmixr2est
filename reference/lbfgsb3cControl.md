@@ -15,6 +15,7 @@ lbfgsb3cControl(
   maxit = 10000L,
   returnLbfgsb3c = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -98,6 +99,13 @@ lbfgsb3cControl(
   the run ends at its current state (for FOCEi, the lowest objective
   evaluated so far), removes the file, notes the stop in \`\$runInfo\`
   and returns the fit. \`NULL\` (default) does not poll.
+
+- maxTime:
+
+  Wall-clock limit in seconds, counted from the start of the estimation.
+  Once it is reached the optimization ends as for \`stopFile\` and the
+  fit is finalized from its current state; the covariance step and
+  tables are not limited. \`NULL\` (default) sets no limit.
 
 - stickyRecalcN:
 
@@ -380,9 +388,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>             setup optimize covariance preprocess postprocess table compress
-#> elapsed 0.1236146 1.075854 1.6327e-05      0.043       0.006  0.02    0.001
-#>              other
-#> elapsed 0.06651516
+#> elapsed 0.1592299 1.480194 1.8581e-05       0.06       0.011 0.027    0.001
+#>             other
+#> elapsed 0.1405575
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

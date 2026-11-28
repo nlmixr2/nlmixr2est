@@ -54,8 +54,10 @@
 
 <dl><dt id="arg-name">name<a class="anchor" aria-label="anchor" href="#arg-name"></a></dt>
 <dd><p>`"thetaL2"` (population: `par[1] * sum((theta - par[2])^2)`
-on the -2LL scale) or `"etaL2"` (subject: `par[2] - par[1]/2 *
-sum(eta^2)` added to each subject's log-likelihood)</p></dd>
+on the -2LL scale), `"etaL2"` (subject: `par[2] - par[1]/2 *
+sum(eta^2)` added to each subject's log-likelihood) or `"omegaL2"`
+(population: `par[1] * sum((diag(omega)[k] - par[2])^2)` over the 1-based
+etas `k = par[-(1:2)]`, every eta when none)</p></dd>
 
 </dl></div>
     <div class="section level2">

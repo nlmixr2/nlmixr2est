@@ -50,6 +50,7 @@ optimControl(
   literalFixRes = TRUE,
   returnOptim = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
   sensMethod = c("default", "forward"),
@@ -336,6 +337,13 @@ optimControl(
   evaluated so far), removes the file, notes the stop in \`\$runInfo\`
   and returns the fit. \`NULL\` (default) does not poll.
 
+- maxTime:
+
+  Wall-clock limit in seconds, counted from the start of the estimation.
+  Once it is reached the optimization ends as for \`stopFile\` and the
+  fit is finalized from its current state; the covariance step and
+  tables are not limited. \`NULL\` (default) sets no limit.
+
 - addProp:
 
   Type of additive-plus-proportional error: \`"combined1"\`, where
@@ -505,10 +513,10 @@ fit2
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>              setup  optimize covariance preprocess postprocess table compress
-#> elapsed 0.09129215 0.1541639 1.1811e-05      0.048       0.005 0.017        0
+#>             setup  optimize covariance preprocess postprocess table compress
+#> elapsed 0.1489872 0.2273357 1.6528e-05      0.063       0.009 0.037    0.001
 #>              other
-#> elapsed 0.08153217
+#> elapsed 0.09766054
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 
