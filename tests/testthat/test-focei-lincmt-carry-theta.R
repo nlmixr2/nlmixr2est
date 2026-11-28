@@ -47,7 +47,7 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   # mechanism: the covariate theta's line is substituted, and only then
   txtC <- buildTxt(modTheta, "auto")
   txtN <- buildTxt(modTheta, "none")
-  # rxOptExpr() may share the call under a CSE name once linCmtB() reads are pure (nlmixr2/rxode2#1787)
+  # rxOptExpr() may share the call under a CSE name with the second-order linCmt() stack
   expect_true(any(grepl("(rx_lcConc_|rx_expr_cse_[0-9]+)~linCmtB", strsplit(txtC, "\n")[[1]])))
   expect_true(any(grepl("rx_lcCarryS0r0_", strsplit(txtC, "\n")[[1]])))
   expect_false(any(grepl("rx_lcCarry|rx_lcConc_", strsplit(txtN, "\n")[[1]])))
