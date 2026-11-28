@@ -92,6 +92,9 @@ getValidNlmixrCtl(control)
 # S3 method for class 'impmap'
 getValidNlmixrCtl(control)
 
+# S3 method for class 'its'
+getValidNlmixrCtl(control)
+
 # S3 method for class 'laplace'
 getValidNlmixrCtl(control)
 

@@ -108,6 +108,8 @@
   method
 - [`iterPrintControl()`](https://nlmixr2.github.io/nlmixr2est/reference/iterPrintControl.md)
   : Control iteration-time print formatting
+- [`itsControl()`](https://nlmixr2.github.io/nlmixr2est/reference/itsControl.md)
+  : Control for the iterative two-stage (ITS) estimation method
 - [`laplaceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/laplaceControl.md)
   : Control options for the Laplace estimation method
 - [`lbfgsb3cControl()`](https://nlmixr2.github.io/nlmixr2est/reference/lbfgsb3cControl.md)

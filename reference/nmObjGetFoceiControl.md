@@ -23,6 +23,9 @@ nmObjGetFoceiControl(x, ...)
 # S3 method for class 'impmap'
 nmObjGetFoceiControl(x, ...)
 
+# S3 method for class 'its'
+nmObjGetFoceiControl(x, ...)
+
 # S3 method for class 'laplace'
 nmObjGetFoceiControl(x, ...)
 

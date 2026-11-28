@@ -38,6 +38,9 @@ nmObjGetControl(x, ...)
 # S3 method for class 'impmap'
 nmObjGetControl(x, ...)
 
+# S3 method for class 'its'
+nmObjGetControl(x, ...)
+
 # S3 method for class 'laplace'
 nmObjGetControl(x, ...)
 

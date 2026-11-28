@@ -110,6 +110,9 @@ nlmixr2Est(env, ...)
 # S3 method for class 'impmap'
 nlmixr2Est(env, ...)
 
+# S3 method for class 'its'
+nlmixr2Est(env, ...)
+
 # S3 method for class 'laplace'
 nlmixr2Est(env, ...)
 
