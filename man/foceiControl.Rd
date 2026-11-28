@@ -213,7 +213,8 @@ foceiControl(
   zeroThetaStep = 100,
   boundedTransform = TRUE,
   omegaCollapseWarn = 0.001,
-  thetaBoundWarn = 1e-04
+  thetaBoundWarn = 1e-04,
+  atolCheck = TRUE
 )
 }
 \arguments{
@@ -1476,6 +1477,9 @@ ends below this fraction of its initial estimate, or at its
 within this tolerance of a finite `lower`/`upper` bound, relative to the
 bound range (or, for a one-sided bound, to the larger of the bound's size
 and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
+
+\item{atolCheck}{When `TRUE` (default), warn before estimating an ODE
+model when an uncensored observation is within `1e3 * atol` of zero.}
 }
 \value{
 The control object that changes the options for the FOCEi

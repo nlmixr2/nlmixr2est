@@ -1303,6 +1303,9 @@
 #'   log-likelihood.  By default this is Inf; in the original nlmixr's
 #'   gnlmm was 400.
 #'
+#' @param atolCheck When `TRUE` (default), warn before estimating an ODE
+#'   model when an uncensored observation is within `1e3 * atol` of zero.
+#'
 #' @param agqRule Quadrature rule used when `nAGQ > 1`: `"hermite"`
 #'   (adaptive Gauss-Hermite, `nAGQ` nodes per eta), `"legendre"`
 #'   (Gauss-Legendre, `nAGQ` nodes per eta over `agqNsd` conditional
@@ -1644,7 +1647,8 @@ foceiControl <- function(
   zeroThetaStep = 100,
   boundedTransform = TRUE,
   omegaCollapseWarn = 1e-3,
-  thetaBoundWarn = 1e-4
+  thetaBoundWarn = 1e-4,
+  atolCheck = TRUE
 ) {
   #
   ## sensMethod: forward (variational) ODE parameter sensitivities.
@@ -2366,6 +2370,7 @@ foceiControl <- function(
     stop("agqRule=\"", agqRule, "\" needs nAGQ > 1", call. = FALSE)
   }
   checkmate::assertLogical(boundedTransform, len = 1, any.missing = FALSE)
+  checkmate::assertLogical(atolCheck, len = 1, any.missing = FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -2588,6 +2593,7 @@ foceiControl <- function(
     sensMethod = sensMethod,
     linCmtSensCarry = linCmtSensCarry,
     boundedTransform = boundedTransform,
+    atolCheck = atolCheck,
     zeroTheta = zeroTheta,
     zeroThetaStep = as.double(zeroThetaStep)
   )

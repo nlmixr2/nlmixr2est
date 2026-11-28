@@ -3,7 +3,7 @@
 #' The ODE `atol` is in the units of the states, so observations within
 #' `1e3 * atol` of zero can carry integration error comparable to the data.
 #' Disable with `options(nlmixr2est.atolCheck = FALSE)` or a control's
-#' `atolCheck = FALSE`.
+#' `atolCheck = FALSE` (`foceiControl()`, `saemControl()`).
 #'
 #' @param ui rxode2 ui
 #' @inheritParams nlmixr2

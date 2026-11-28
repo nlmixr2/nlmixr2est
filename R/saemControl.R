@@ -569,6 +569,7 @@ saemControl <- function(
   iovXform = c("sd", "var", "logsd", "logvar"),
   iovMethod = c("twoLevel", "collapsed", "theta"),
   boundedTransform = TRUE,
+  atolCheck = TRUE,
   eventSens = c("jump", "fd"),
   mixProbMethod = c("regress", "regularized", "annealed"),
   mixProbStepExp = 1,
@@ -694,6 +695,7 @@ saemControl <- function(
   checkmate::assertLogical(handleUninformativeEtas, any.missing = FALSE, len = 1)
   checkmate::assertLogical(revisitUninformativeEtas, any.missing = FALSE, len = 1)
   checkmate::assertLogical(boundedTransform, any.missing = FALSE, len = 1)
+  checkmate::assertLogical(atolCheck, any.missing = FALSE, len = 1)
   eventSens <- match.arg(eventSens)
   mixProbMethod <- match.arg(mixProbMethod)
   checkmate::assertNumeric(mixProbStepExp, any.missing = FALSE, len = 1, lower = 0, finite = TRUE)
@@ -858,6 +860,7 @@ saemControl <- function(
     iovXform = iovXform,
     iovMethod = iovMethod,
     boundedTransform = boundedTransform,
+    atolCheck = atolCheck,
     eventSens = eventSens,
     mixProbMethod = mixProbMethod,
     mixProbStepExp = mixProbStepExp,
