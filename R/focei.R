@@ -1678,8 +1678,7 @@ rxGetDistributionFoceiLines <- function(line) {
     return(lines)
   }
   lapply(lines, function(.l) {
-    if (!(is.call(.l) && identical(.l[[1]], quote(`~`)) && identical(.l[[2]], quote(rx_pred_)) &&
-      is.call(.l[[3]]))) {
+    if (!(is.call(.l) && identical(.l[[1]], quote(`~`)) && identical(.l[[2]], quote(rx_pred_)) && is.call(.l[[3]]))) {
       return(.l)
     }
     .fn <- sub("^llikX", "llik", as.character(.l[[3]][[1]]))
@@ -1687,16 +1686,24 @@ rxGetDistributionFoceiLines <- function(line) {
     if (!(.fn %in% c("llikNorm", "llikT", "llikCauchy"))) {
       return(.l)
     }
-    if (.fn != as.character(.l[[3]][[1]])) .a <- .a[-1] # llikX*(i, ...)
+    if (.fn != as.character(.l[[3]][[1]])) {
+      .a <- .a[-1] # llikX*(i, ...)
+    }
     if (.fn == "llikT") {
       .nu <- .a[[2]]
       .a <- .a[-2]
     }
     .z2 <- bquote(((.(.a[[1]]) - .(.a[[2]])) / .(.a[[3]]))^2)
-    .r <- switch(.fn,
+    .r <- switch(
+      .fn,
       llikNorm = bquote(-0.5 * log(2 * pi) - log(.(.a[[3]])) - 0.5 * .(.z2)),
-      llikT = bquote(lgamma((.(.nu) + 1) / 2) - lgamma(.(.nu) / 2) - 0.5 * log(.(.nu) * pi) -
-        log(.(.a[[3]])) - (.(.nu) + 1) / 2 * log(1 + .(.z2) / .(.nu))),
+      llikT = bquote(
+        lgamma((.(.nu) + 1) / 2) -
+          lgamma(.(.nu) / 2) -
+          0.5 * log(.(.nu) * pi) -
+          log(.(.a[[3]])) -
+          (.(.nu) + 1) / 2 * log(1 + .(.z2) / .(.nu))
+      ),
       llikCauchy = bquote(-log(pi) - log(.(.a[[3]])) - log(1 + .(.z2)))
     )
     bquote(rx_pred_ ~ .(.r))
@@ -3009,9 +3016,12 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     # erroring the fit.
     # a dnorm/t/cauchy endpoint: rx_pred_ here is f; take the closed-form log-density
     .s <- tryCatch(
-      .foceiAddHdEta2(.s, pred = if (!.getRxPredLlikOption() && .foceiOuterLlik(x[[1]])) {
-        get("rx_pred_", .foceiWithLlik(rxUiGet.loadPruneSens(x)))
-      }),
+      .foceiAddHdEta2(
+        .s,
+        pred = if (!.getRxPredLlikOption() && .foceiOuterLlik(x[[1]])) {
+          get("rx_pred_", .foceiWithLlik(rxUiGet.loadPruneSens(x)))
+        }
+      ),
       error = function(e) .s
     )
   }

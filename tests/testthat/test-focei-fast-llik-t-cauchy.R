@@ -28,8 +28,12 @@ nmTest({
   }
   .fit <- function(m, est, fast, ...) {
     ctl <- if (est == "laplace") laplaceControl else foceiControl
-    suppressMessages(suppressWarnings(nlmixr2(m, nlmixr2data::theo_sd, est,
-      ctl(print = 0L, covMethod = "", calcTables = FALSE, fast = fast, ...))))
+    suppressMessages(suppressWarnings(nlmixr2(
+      m,
+      nlmixr2data::theo_sd,
+      est,
+      ctl(print = 0L, covMethod = "", calcTables = FALSE, fast = fast, ...)
+    )))
   }
   .errs <- list(
     t = quote(cp ~ add(add.sd) + dt(5)),
