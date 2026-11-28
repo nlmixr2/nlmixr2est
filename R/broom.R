@@ -117,7 +117,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     .df$estimate <- .df$model.est
   }
   .df$statistic <- .df$estimate / .df$std.error
-  .df$p.value <- stats::pt(.df$statistic, nobs(x) - attr(logLik(x), "df"), lower.tail = FALSE)
+  .df$p.value <- 2 * stats::pt(-abs(.df$statistic), nobs(x) - attr(logLik(x), "df"))
   if (.conf.int) {
     .ci <- confint.nlmixr2FitCore(
       x,
