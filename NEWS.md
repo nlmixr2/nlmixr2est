@@ -384,6 +384,15 @@
 
 ## Bug fixes
 
+- `foceiControl(fast=TRUE)` / `laplaceControl(fast=TRUE)` with a `+ dt()` or
+  `+ dcauchy()` endpoint (also mixed with Gaussian endpoints) reported a wrong
+  objective: the analytic-gradient outer model and `innerHess2` were built from
+  the prediction instead of the log-density.  They now use the closed-form
+  log-density, so the objective equals `fast=FALSE` run with tight inner tolerances
+  (the default `fast=FALSE` eta-hat stops slightly early, by ~2e-3 for `dt(5)`
+  on `theo_sd`, so `fast=TRUE` is the more accurate); an estimated
+  `boxCox`/`yeoJohnson` lambda or `t` df uses the finite-difference path.
+
 - A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
   the gradient before the objective no longer stops R: the gradient's history
   row read the last objective iteration, which did not exist yet.  FOCEi now
