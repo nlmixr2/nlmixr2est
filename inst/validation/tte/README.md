@@ -62,6 +62,15 @@ event, and a regressor carrying the last event time forward would reset
 the clock at the event record itself, where the hazard must be the one
 just before the event.
 
+The stored fits are NONMEM 7.4.3 and Monolix 2024R1.  NONMEM's objective
+equals an independent Laplace approximation of the same likelihood at its
+estimates, so its gap to the exact -2LL (up to about 7 for the
+single-event scenarios) is the Laplace error.  NONMEM's `pkJoint` run did
+not converge (its estimates are far from the truth and it has no
+standard errors), so it has no NONMEM reference.  Some NONMEM standard
+errors from the numerical covariance step are much too small (e.g.
+`lateEntry`, `pkFixed`); the tests do not use them (see below).
+
 ## Data sets
 
 Every data set has NONMEM-style columns, so all tools read the same file:
