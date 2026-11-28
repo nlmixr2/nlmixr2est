@@ -223,6 +223,7 @@ int odeSwapEsModelForSlot(int slot) {
 }
 
 int  odeSwapEsInstalledModel()          { return _odeEsSlot; }
+int  odeSwapEsInstalledSlot()           { return _odeEsSlotIdx; }
 
 // focei.R installs the inner model's shape from R before the fit; the library it
 // resolved can be reloaded when the fit loads its models (rxDynLoad), leaving that
@@ -287,6 +288,36 @@ static bool odeSwapEsInstall(int slot) {
 
 static void odeSwapEsDeactivate() {
   rxode2EventSensDeactivate();
+}
+
+// Is a jump shape live right now, and with what dims?  rxode2EventSensShapeSize()
+// is the SAVE BUFFER's size (a constant), not a liveness signal -- the active flag
+// out of rxode2EventSensGetDims() is.  Reported through odeSwapInfo_() so a test
+// can assert the invariant directly instead of inferring it from a fit's estimates.
+static int odeSwapEsLiveDims(int *nState, int *nParam) {
+  int active = 0, ns = 0, np = 0, np2 = 0, np3 = 0, jac = 0;
+  rxode2EventSensGetDims(&active, &ns, &np, &np2, &np3, &jac);
+  if (nState != NULL) *nState = ns;
+  if (nParam != NULL) *nParam = np;
+  return active;
+}
+
+// odeSwapEsOff() call counters.  esDroppedN is the one with teeth: it counts the
+// calls that actually took a live shape down, i.e. where the guard was
+// load-bearing.  Only a model with modeled dosing (lag/f/rate) can make it
+// non-zero, which is exactly the case the fsaem tests used to miss.
+static std::atomic<long> _odeEsOffN(0);
+static std::atomic<long> _odeEsDroppedN(0);
+
+long odeSwapEsOffN()     { return _odeEsOffN.load(); }
+long odeSwapEsDroppedN() { return _odeEsDroppedN.load(); }
+
+void odeSwapEsOff() {
+  ++_odeEsOffN;
+  if (odeSwapEsLiveDims(NULL, NULL) != 0) ++_odeEsDroppedN;
+  odeSwapEsDeactivate();
+  _odeEsSlot = odeEsUnknown;
+  _odeEsSlotIdx = -1;
 }
 
 OdeSwapEsBatch::OdeSwapEsBatch(int slot)
@@ -1165,6 +1196,7 @@ List odeSwapInfo_() {
     loaded[s] = _odeReg[s].loaded;
     sizesPool[s] = (s == p.poolSlot);
     deny[s] = odeSwapCanPool(s);
+    esActive[s] = _odeReg[s].esActive;
     parLayoutOk[s] = _odeReg[s].loaded ? odeSwapParLayoutOk(s, _rxl) : NA_LOGICAL;
     esActive[s] = _odeReg[s].esActive;
     ndiff[s] = _odeReg[s].ndiff;
@@ -1197,6 +1229,8 @@ List odeSwapInfo_() {
       }
     }
   }
+  int esNstate = 0, esNparam = 0;
+  int esLive = odeSwapEsLiveDims(&esNstate, &esNparam);
   return List::create(
     _["models"] = models,
     _["poolSlot"] = p.poolSlot,
@@ -1230,5 +1264,16 @@ List odeSwapInfo_() {
     _["esInstallR"] = (double)_odeEsInstallR,
     _["pinDeny"] = (double)odeSwapPinDeny(),
     _["impThetaSensHarvestN"] = (double)impThetaSensHarvestN(),
-    _["tablePoolSolveN"] = (double)tablePoolSolveN());
+    _["tablePoolSolveN"] = (double)tablePoolSolveN(),
+    // The live event-sensitivity ("jump") shape.  esLive is rxode2's own active
+    // flag, so it is the ground truth for "is a shape installed"; esSlotIdx /
+    // esSlot are what the registry believes.  esDroppedN counts the odeSwapEsOff()
+    // calls that really took a shape down.
+    _["esLive"] = esLive,
+    _["esLiveNstate"] = esNstate,
+    _["esLiveNparam"] = esNparam,
+    _["esSlot"] = odeSwapEsInstalledModel(),
+    _["esSlotIdx"] = odeSwapEsInstalledSlot(),
+    _["esOffN"] = (double)odeSwapEsOffN(),
+    _["esDroppedN"] = (double)odeSwapEsDroppedN());
 }

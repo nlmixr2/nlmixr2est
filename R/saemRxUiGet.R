@@ -392,6 +392,18 @@ rxUiGet.saemResMod <- function(x, ...) {
 attr(rxUiGet.saemResMod, "rstudio") <- c(1L, 2L)
 
 #' @export
+rxUiGet.saemDistEp <- function(x, ...) {
+  # Per-endpoint distribution id, matching the C++ `distribution` codes: 1 normal,
+  # 4 general log-likelihood.  A "norm" endpoint mixed with a general-likelihood
+  # one is promoted to "dnorm" (.createSaemLineObject), so it is 4 too, matching
+  # rxUiGet.saemResMod.
+  .ui <- x[[1]]
+  .genLik <- .saemGeneralLik(.ui)
+  ifelse(.genLik | .ui$predDf$distribution != "norm", 4L, 1L)
+}
+attr(rxUiGet.saemDistEp, "rstudio") <- c(1L, 4L)
+
+#' @export
 rxUiGet.saemArActive <- function(x, ...) {
   .ui <- x[[1]]
   .predDf <- .ui$predDf
@@ -937,6 +949,7 @@ rxUiGet.saemModelList <- function(x, ...) {
     .mod$covars <- .covars
   }
   .mod$res.mod <- rxUiGet.saemResMod(x, ...)
+  .mod$distEp <- rxUiGet.saemDistEp(x, ...)
   .mod$arActive <- rxUiGet.saemArActive(x, ...)
   .mod$arCor <- rxUiGet.saemArCor(x, ...)
   .mod$log.eta <- rxUiGet.saemLogEta(x, ...)

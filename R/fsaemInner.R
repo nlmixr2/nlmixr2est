@@ -1,0 +1,436 @@
+# fsaemInner.R -- f-SAEM (Karimi, Lavielle & Moulines 2020) proposal builder.
+# Reuses the FOCEi inner problem (foceiSetup_ via vaeInnerSetup_) to optimize the
+# per-subject conditional MAP of the random effects and read back the FOCEi inner
+# information matrix H = Gamma_i^-1 (the IMH proposal precision).  Unlike the VAE
+# path (which only evaluates the inner at supplied etas, maxInnerIterations=0),
+# this sets a real inner optimizer so innerOpt1() finds the MAP.
+
+#' foceiControl for the f-SAEM inner MAP + proposal covariance.
+#'
+#' `fastCov` picks the form of the proposal information matrix:
+#'   - "jacobian": interaction=0 -- H = J' Sigma^-1 J + Omega^-1 (paper Eq 17/19)
+#'   - "hessian":  interaction=1 -- Gauss-Newton/Laplace Hessian (paper Eq 13);
+#'                 non-normal endpoints force the exact finite-diff inner Hessian.
+#'
+#' `fastLik` picks the likelihood family, and the FOCE members of it necessarily
+#' mean interaction=0, so they override `fastCov="hessian"`.  Without that,
+#' `fastLik` was silently a no-op on the hessian path: `foceiControl(foce=)` is
+#' IGNORED when interaction is on, so "focei" and "foce" produced an identical
+#' inner and only "focep" ever differed (and only on the jacobian path).
+#' @noRd
+.fsaemInnerFoceiControl <- function(control) {
+  .cov <- control$fastCov
+  .lik <- control$fastLik
+  .interaction <- if (identical(.cov, "jacobian")) 0L else 1L
+  if (identical(.lik, "foce") || identical(.lik, "focep")) .interaction <- 0L
+  .foce <- if (identical(.lik, "focep")) "foce+" else "nonmem"
+  .maxInner <- control$fastInnerIt
+  if (is.null(.maxInner) || is.na(.maxInner) || .maxInner < 1L) .maxInner <- 100L
+  foceiControl(rxControl = control$rxControl, maxOuterIterations = 0L,
+               maxInnerIterations = as.integer(.maxInner), covMethod = "",
+               interaction = .interaction, foce = .foce,
+               sumProd = control$sumProd, optExpression = control$optExpression,
+               literalFix = control$literalFix,
+               addProp = control$addProp, calcTables = FALSE, compress = FALSE,
+               eventSens = control$eventSens, indTolRelax = control$indTolRelax,
+               maxOdeRecalc = control$maxOdeRecalc, odeRecalcFactor = control$odeRecalcFactor,
+               print = 0L)
+}
+
+#' Set up the FOCEi inner problem for the f-SAEM proposal at `ui`'s current
+#' ini() estimates.  Mirrors `.vaeInnerSetup` but keeps a live inner optimizer.
+#' Returns the setup env (keep alive until `.fsaemInnerFree()`).
+#'
+#' `copyUi=FALSE` says the caller's `ui` is already private to the inner.
+#' @noRd
+.fsaemInnerSetup <- function(ui, data, etaMat, control, copyUi = TRUE) {
+  # The inner replaces $control with its own foceiControl, and rxUiDecompress
+  # hands back the SAME environment for an already-decompressed ui -- so on the
+  # fit's ui that control would BE the fit's for the rest of the run, and
+  # everything read from it after the fast kernel is installed (addProp
+  # included, which the inner now deliberately sets differently) would come from
+  # the inner instead.  The covariate path opts out: its ui is its own, and it
+  # re-enters here every iteration.
+  .ui <- rxode2::rxUiDecompress(ui)
+  if (copyUi) .ui <- rxode2::.copyUi(.ui)
+  .fc <- .fsaemInnerFoceiControl(control)
+  .fc$est <- "focei"
+  .ui$control <- .fc
+  .env <- .ui$foceiOptEnv
+  .env$ui <- .ui
+  .env$est <- "focei"
+  .env$table <- NULL
+  .foceiPreProcessData(data, .env, .ui, .fc$rxControl)
+  .env$control$est <- "focei"
+  .env$control$printTop <- FALSE
+  if (is.null(.env$control$nF)) .env$control$nF <- 0L
+  # non-normal endpoints require the exact (finite-diff) inner Hessian; a Hessian
+  # proposal also wants it even for normal data
+  .env$control$needOptimHess <-
+    isTRUE(any(.ui$predDfFocei$distribution != "norm")) ||
+    identical(control$fastCov, "hessian")
+  # A non-normal endpoint has no Gaussian add/prop error machinery, so focei.R
+  # turns interaction off whenever needOptimHess is set.  The fast inner has to
+  # agree or it asks for an interaction Hessian a general likelihood cannot give.
+  if (isTRUE(any(.ui$predDfFocei$distribution != "norm"))) {
+    .env$control$interaction <- 0L
+  }
+  .env$aqn <- 0L; .env$qx <- double(0); .env$qw <- double(0); .env$qfirst <- FALSE
+  .env$nAGQ <- 0L; .env$aqLow <- -Inf; .env$aqHi <- Inf; .env$nEstOmega <- 0L
+  .env$etaMat <- etaMat
+  vaeInnerSetup_(.env)
+  .env
+}
+
+#' Re-set up the inner problem at new population parameters (theta + omega)
+#' without recompiling.  Same mechanism as `.vaeInnerUpdate`.
+#' @noRd
+.fsaemInnerUpdate <- function(env, theta, omega, etaMat, diagXform = "sqrt") {
+  env$thetaIni <- setNames(as.numeric(theta), paste0("THETA[", seq_along(theta), "]"))
+  .om <- diag(omega, length(omega))
+  .nm <- env$etaNames
+  if (!is.null(.nm) && length(.nm) == nrow(.om)) dimnames(.om) <- list(.nm, .nm)
+  env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om, diag.xform = diagXform)
+  env$etaMat <- etaMat
+  vaeInnerSetup_(env)
+  invisible(env)
+}
+
+#' Free the f-SAEM inner-problem state.
+#' @noRd
+.fsaemInnerFree <- function() invisible(vaeInnerFree_())
+
+#' Optimize the per-subject MAP and return the proposal (mean + covariance).
+#'
+#' @return list with `eta` (nsub x neta MAP), `gamma` (nsub-list of neta x neta
+#'   proposal covariance = solve(H)), `hess` (nsub-list of H = Gamma^-1), and
+#'   `ok` (per-subject convergence flag).
+#' @noRd
+.fsaemInnerMap <- function(control, neta) {
+  .cores <- tryCatch({
+    .c <- control$rxControl$cores
+    if (is.null(.c) || is.na(.c) || .c < 1L) as.integer(rxode2::getRxThreads()) else as.integer(.c)
+  }, error = function(e) 1L)
+  .r <- fsaemInnerMap_(.cores)
+  .nsub <- nrow(.r$eta)
+  .hess <- lapply(seq_len(.nsub), function(i) matrix(.r$hess[i, ], neta, neta))
+  .gamma <- lapply(seq_len(.nsub), function(i) {
+    if (.r$ok[i] == 0L) return(matrix(NA_real_, neta, neta))
+    .H <- .hess[[i]]
+    .g <- try(solve(.H), silent = TRUE)
+    if (inherits(.g, "try-error")) matrix(NA_real_, neta, neta) else .g
+  })
+  list(eta = .r$eta, gamma = .gamma, hess = .hess, ok = .r$ok)
+}
+
+#' Which endpoints really carry BOTH an additive and a proportional residual?
+#'
+#' combined1 and combined2 coincide unless both are present, so only these
+#' endpoints care which of the two the inner is built with.
+#' @return logical, one per `predDf` row
+#' @noRd
+.fsaemCombinedEndpoint <- function(ui) {
+  .pred <- ui$predDf
+  if (is.null(.pred) || length(.pred$cond) < 1L) return(logical(0))
+  vapply(.pred$cond, function(.cnd) {
+    .e <- ui$iniDf$err[which(ui$iniDf$condition == .cnd)]
+    any(.e %in% "add") && any(.e %in% "prop")
+  }, logical(1), USE.NAMES = FALSE)
+}
+
+#' Is `ui` within the current f-SAEM fast-kernel support envelope?
+#'
+#' The C++ side reconstructs the inner's theta as [population phi (constant across
+#' subjects), single additive residual]; models outside that envelope would get a
+#' wrong parameterization, so they degrade to standard SAEM instead.
+#' @noRd
+.fsaemSupported <- function(ui) {
+  .pred <- ui$predDf
+  if (is.null(.pred) || length(.pred$cond) < 1L) return(FALSE)
+  if (length(ui$mixProbs) > 0L) return(FALSE)                   # no mixtures yet
+  # Per-endpoint quantities (ares/bres/yj/lambda/...) are built in predDf ROW
+  # order, but the kernel indexes them with ix_endpnt = as.factor(CMT) - 1.  The
+  # two agree only when predDf is already in compartment order; degrade rather
+  # than score an endpoint against another endpoint's residual.
+  if (!is.null(.pred$cmt) && is.unsorted(.pred$cmt)) return(FALSE)
+  # The inner rebuilds Omega from the DIAGONAL of Gamma2_phi1, so a declared
+  # off-diagonal block would leave the IMH scoring against a different prior than
+  # the SAEM chain -- i.e. the composed kernel would not target the chain's
+  # distribution.  Degrade rather than silently mis-target.
+  .om <- ui$iniDf[!is.na(ui$iniDf$neta1), ]
+  if (nrow(.om) > 0L && any(.om$neta1 != .om$neta2)) return(FALSE)
+  # General log-likelihood endpoints (ll() ~ expr, distribution=="LL") are
+  # supported alone, together, or alongside normal ones: the model emits the
+  # per-observation log-likelihood as that endpoint's prediction and the kernel
+  # uses -ll as its observation loss.  The fast kernel must then run throughout
+  # (forced from .saemAnyGeneralLik in the control).
+  if (!all(.pred$distribution %in% c("norm", "LL"))) return(FALSE)
+  # Residual thetas belong to the normal endpoints only (an LL endpoint has
+  # none), so this stays a whole-model check.
+  .err <- ui$iniDf$err
+  .err <- .err[!is.na(.err)]
+  if (!all(.err %in% c("add", "prop"))) return(FALSE)           # additive/proportional/combined residual
+  # The inner is built combined1 to match the E-step's residual SD, which the
+  # control can only impose on an endpoint that leaves addProp at "default".  An
+  # endpoint that DECLARES combined2 keeps it (the declaration wins over the
+  # control), so the proposal would score a variance the chain never uses --
+  # degrade rather than mis-target.  Only a real add+prop endpoint cares: with
+  # one of the two the two forms coincide.
+  .ap <- as.character(.pred$addProp)
+  if (any(.fsaemCombinedEndpoint(ui) & !is.na(.ap) &
+          !(.ap %in% c("default", "combined1")))) return(FALSE)
+  # mu-ref covariates are supported: non-time-varying ones are absorbed into the
+  # per-subject mprior data, time-varying ones are kept as inner regressor betas
+  # refreshed from the live Plambda each iteration.
+  #
+  # M2/M3/M4 censoring is supported and deliberately NOT gated (#876): the chain
+  # and the IMH acceptance both score a censored row with doCensNormal1 on the
+  # same f and variance, so the composed kernel still targets the chain's
+  # distribution.  test-fsaem-inner.R pins the inner's censored term against an
+  # independent evaluation and test-focei-cens.R pins fsaem to saem on M3 data.
+  TRUE
+}
+
+#' Build the f-SAEM fast-simulation step for a SAEM fit and attach it to `cfg`.
+#'
+#' Sets up the FOCEi inner once so the C++ SAEM loop can re-parameterize it each
+#' fast iteration (theta = [structural fixed effects, residual] in THETA order;
+#' omega = current diagonal), optimize the per-subject MAP + proposal
+#' covariance, and run the independent Metropolis-Hastings kernel over the
+#' chains.  The covariate path additionally needs an R closure (`$fsaemStep`)
+#' because its inner is rebuilt from data each iteration.
+#' @return `cfg` with the fast-kernel fields and `$fsaemInnerEnv` (keep-alive).
+#' @noRd
+#' Phi1 (random-effect) parameter bounds in inner-eta order, from the mu-ref
+#' theta iniDf bounds (the same bounds L-BFGS-B uses for phi0).  Used to keep the
+#' IMH proposals for a general log-likelihood inside plausible values.
+#' @return list(lower, upper, nbd) with L-BFGS-B nbd codes (0 none/1 lo/2 both/3 hi)
+#' @noRd
+.fsaemPhi1Bounds <- function(ui) {
+  .iniDf <- ui$iniDf
+  .etaRows <- .iniDf[which(.iniDf$neta1 == .iniDf$neta2), ]
+  .etaRows <- .etaRows[order(.etaRows$neta1), ]
+  .mr <- ui$muRefDataFrame
+  .th <- .mr$theta[match(.etaRows$name, .mr$eta)]
+  .lo <- .iniDf$lower[match(.th, .iniDf$name)]
+  .hi <- .iniDf$upper[match(.th, .iniDf$name)]
+  list(lower = ifelse(is.finite(.lo), .lo, 0),
+       upper = ifelse(is.finite(.hi), .hi, 0),
+       nbd = as.integer(ifelse(is.finite(.lo) & is.finite(.hi), 2L,
+                        ifelse(is.finite(.lo), 1L,
+                        ifelse(is.finite(.hi), 3L, 0L)))))
+}
+
+#' IMH sweeps per iteration for the fast kernel.
+#'
+#' `saemControl(nu=)` may carry a 4th element; it is the sweep count and nothing
+#' else (the kernel is switched on by `fast=TRUE` / `est="fsaem"`).  Falls back to
+#' 5, which is what the kernel always used before the option existed.
+#' @noRd
+.fsaemNsweep <- function(ui) {
+  .nu <- rxode2::rxGetControl(ui, "mcmc", list())$nu
+  if (length(.nu) >= 4L && !is.na(.nu[4L]) && .nu[4L] >= 1L) return(as.integer(.nu[4L]))
+  5L
+}
+
+.fsaemInstallStep <- function(ui, data, rxControl, cfg) {
+  if (!.fsaemSupported(ui)) {
+    .minfo(paste0("fast kernel needs add/prop endpoints (or one ll()) ",
+                  "and no mixture; running standard SAEM"))
+    return(cfg)
+  }
+  .iniDf <- ui$iniDf
+  .neta <- sum(.iniDf$neta1 == .iniDf$neta2, na.rm = TRUE)
+  .N <- length(unique(data[[if ("ID" %in% names(data)) "ID" else "id"]]))
+  # The SAEM E-step's residual SD is unconditionally combined1
+  # (g = ares + bres*|f|, src/saem.cpp), so the inner asks for combined1 rather
+  # than the fit's addProp; a combined2 inner would precondition the IMH kernel
+  # against a variance the chain it guides never uses.  Left at the fit's value
+  # when no endpoint is really add+prop: the two forms coincide there, and
+  # diverging from it would only cost the focei model cache a duplicate build.
+  .addProp <- if (any(.fsaemCombinedEndpoint(ui))) {
+    "combined1"
+  } else {
+    rxode2::rxGetControl(ui, "addProp", "combined2")
+  }
+  .fc <- list(rxControl = rxControl,
+              fastCov = rxode2::rxGetControl(ui, "fastCov", "auto"),
+              fastLik = rxode2::rxGetControl(ui, "fastLik", "focei"),
+              fastInnerIt = 100L,
+              sumProd = rxode2::rxGetControl(ui, "sumProd", FALSE),
+              optExpression = rxode2::rxGetControl(ui, "optExpression", TRUE),
+              literalFix = rxode2::rxGetControl(ui, "literalFix", FALSE),
+              addProp = .addProp,
+              eventSens = rxode2::rxGetControl(ui, "eventSens", "jump"),
+              indTolRelax = rxode2::rxGetControl(ui, "indTolRelax", TRUE),
+              maxOdeRecalc = rxode2::rxGetControl(ui, "maxOdeRecalc", 5L),
+              odeRecalcFactor = rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5))
+  # "auto": Jacobian for continuous single-endpoint normal data, else Hessian
+  if (identical(.fc$fastCov, "auto")) {
+    .fc$fastCov <- if (all(ui$predDf$distribution == "norm")) "jacobian" else "hessian"
+  }
+  # Reproducible IMH proposals (threefry seeded by the SAEM seed), optionally
+  # bounded.  In practice the bound vectors come back all-zero (nbd = 0): fsaem
+  # is an "unbounded" method, so preProcessBoundedTransform has already rewritten
+  # every finite structural-theta bound into an unconstrained internal parameter
+  # by the time the kernel is installed, and the bound is then enforced by the
+  # back-transform rather than by the proposal.  Kept for the general-likelihood
+  # family, whose thetas the kernel scores directly; the kernel's own clamping is
+  # covered in test-fsaem-imh.R.
+  .bounds <- if (.saemAnyGeneralLik(ui)) .fsaemPhi1Bounds(ui) else NULL
+  .seed <- as.integer(rxode2::rxGetControl(ui, "seed", 99))
+  .nRetry <- as.integer(rxode2::rxGetControl(ui, "nRetry", 10L))
+  # IMH sweeps per iteration: saemControl(nu=) 4th element, else 5
+  .nsweep <- .fsaemNsweep(ui)
+  fsaemSetOpts_(list(
+    nsweep = .nsweep,
+    fallback = as.integer(identical(rxode2::rxGetControl(ui, "fastFallback", "skip"),
+                                    "prior")),
+    mode = as.integer(identical(rxode2::rxGetControl(ui, "fastMode", "map"),
+                                "chainMean")),
+    hRefresh = as.integer(rxode2::rxGetControl(ui, "fastHRefresh", 1L))))
+  .hasCov <- !is.null(ui$muRefCovariateDataFrame) && nrow(ui$muRefCovariateDataFrame) > 0L
+  if (.hasCov && nrow(ui$muRefDataFrame) != .neta) {
+    # The covariate inner absorbs each mu-ref intercept into a per-subject data
+    # column, so it is sized by muRefDataFrame -- an eta with no mu-ref row (a
+    # nonMuEta; every IOV eta is one) leaves the inner short of etas and the
+    # setup dies on "etaMat must have the same number of ETAs".  Degrade.
+    .minfo("fast kernel needs mu-ref etas with covariates; running standard SAEM")
+    return(cfg)
+  }
+  if (.hasCov) {
+    # Covariate path: the time-invariant covariate effect is absorbed into the
+    # per-subject prior mean, so the inner is built on the mprior-as-data model
+    # (each mu-ref intercept is a per-subject nlmixrMprior* data column, etas
+    # kept).  The C++ loop passes the full per-subject mprior_phi1 each iteration.
+    .iniPhi <- vapply(ui$muRefDataFrame$theta, function(th)
+      ui$iniDf$est[match(th, ui$iniDf$name)], numeric(1))
+    .mpri0 <- matrix(.iniPhi, .N, .neta, byrow = TRUE)
+    .setup <- .fsaemInnerSetupCov(ui, data, .mpri0, .fc)
+    cfg$fsaemInnerEnv <- .setup$env
+    .lo <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$lower)
+    .up <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$upper)
+    .nb <- if (is.null(.bounds)) integer(0) else as.integer(.bounds$nbd)
+    cfg$fsaemStep <- function(mpriorMat, ares, bres, omega, plambda, etaCur, nchain, kiter, nsweep = .nsweep) {
+      # R re-parameterizes the mprior-as-data inner (data rebuild + setup); the
+      # numeric MAP + IMH orchestration then runs in C++ (fsaemMapImhCpp_).
+      .fsaemInnerUpdateCov(.setup, mpriorMat, ares, bres, plambda, omega, kiter)
+      .cores <- as.integer(rxode2::getRxThreads())
+      if (is.na(.cores) || .cores < 1L) .cores <- 1L
+      fsaemMapImhCpp_(mpriorMat, etaCur, as.integer(nchain), as.integer(nsweep), .cores,
+                      .lo, .up, .nb, as.double(.seed), as.integer(.nRetry), as.integer(kiter))
+    }
+    return(cfg)
+  }
+  # No-covariate path: the inner uses the ui model directly with a constant
+  # population phi (mprior is the same for every subject).
+  .env <- .fsaemInnerSetup(ui, data, matrix(0, .N, .neta), .fc)
+  cfg$fsaemInnerEnv <- .env
+  # Inner THETA is in UI ntheta order: structural (mu-referenced) positions take
+  # the current population phi (mprior row 1); residual positions take the
+  # current additive (ares) / proportional (bres) estimate for their endpoint.
+  .thetaDf <- ui$iniDf[!is.na(ui$iniDf$ntheta),
+                       c("ntheta", "name", "est", "fix", "err", "condition")]
+  .thetaDf <- .thetaDf[order(.thetaDf$ntheta), ]
+  .nTheta <- nrow(.thetaDf)
+  # A fix()ed theta keeps its own value, which is why the inner theta is seeded
+  # from the ini estimates rather than from zeros.
+  .structPos <- which(is.na(.thetaDf$err) & !.thetaDf$fix)
+  # Which SAEM phi column holds each of those thetas' population value.  Matched
+  # BY NAME against the phi vector, because position does not survive: a
+  # nonMuEta (every IOV eta is one) appends phi columns that have no theta, a
+  # fix()ed theta keeps its phi column but leaves .structPos, and a phi0 shifts
+  # the phi1 indices.  All three made the inner read some other parameter's
+  # population value -- IOV handed the inner iov sd = 0 (#875).  Matching the
+  # phi NAMES is not the muRefDataFrame route: this is the phi vector itself,
+  # which follows ini (ntheta) order, so a mu-ref model maps to the identity.
+  .structPhi <- match(.thetaDf$name[.structPos], ui$saemParamsToEstimateCov)
+  if (anyNA(.structPhi)) {
+    # nothing reaching here should hit this (mixtures and the covariate path are
+    # already handled), but leaving such a theta at its ini value silently would
+    # be the very failure #875 was
+    .minfo("fast kernel: a structural theta has no phi; running standard SAEM")
+    return(cfg)
+  }
+  .residPos <- which(!is.na(.thetaDf$err))
+  .residIsAdd <- .thetaDf$err[.residPos] == "add"
+  .residEp <- match(.thetaDf$condition[.residPos], ui$predDf$cond) # 1-based endpoint
+  # bound vectors for the C++ orchestration (empty = unbounded)
+  .lower <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$lower)
+  .upper <- if (is.null(.bounds)) numeric(0) else as.numeric(.bounds$upper)
+  .nbd   <- if (is.null(.bounds)) integer(0) else as.integer(.bounds$nbd)
+  # C++-native direct-call fields: the SAEM C++ loop builds the inner theta and
+  # calls fsaemStepCpp_ itself (no per-iteration Rcpp::Function round-trip),
+  # which is what makes a dynamic iteration count safe.  There is deliberately
+  # no R closure on this path -- a second copy of the phi -> theta map is a
+  # second place to get it wrong, and it carried the pre-#875 positional read.
+  cfg$fsaemNoCov      <- 1L
+  cfg$fsaemStructPos  <- as.integer(.structPos - 1L)
+  cfg$fsaemStructPhi  <- as.integer(.structPhi - 1L)
+  cfg$fsaemThetaIni   <- as.numeric(.thetaDf$est)
+  cfg$fsaemResidPos   <- as.integer(.residPos - 1L)
+  cfg$fsaemResidIsAdd <- as.integer(.residIsAdd)
+  cfg$fsaemResidEp    <- as.integer(.residEp - 1L)
+  cfg$fsaemNTheta     <- as.integer(.nTheta)
+  cfg$fsaemLower      <- .lower
+  cfg$fsaemUpper      <- .upper
+  cfg$fsaemNbd        <- .nbd
+  cfg$fsaemNsweep     <- .nsweep
+  cfg$fsaemNRetry     <- as.integer(.nRetry)
+  cfg$fsaemCores      <- {
+    .c <- as.integer(rxode2::getRxThreads()); if (is.na(.c) || .c < 1L) 1L else .c
+  }
+  cfg
+}
+
+#' Run `nchain` independent Metropolis-Hastings sweeps of the f-SAEM kernel.
+#'
+#' @param map result of `.fsaemInnerMap()` (proposal mean + covariance)
+#' @param etaCur chain-major current state, ((nchain*nsub) x neta), row = c*nsub + id
+#' @param nchain number of chains
+#' @param nsweep number of IMH sweeps to run (each sweep = one proposal per
+#'   subject per chain); the SAEM simulation step uses a small number
+#' @return list with updated `eta` and per-subject acceptance count `nAcc`
+#'   (summed over sweeps and chains)
+#' @noRd
+.fsaemImh <- function(map, etaCur, nchain, nsweep = 1L, cores = 1L,
+                      mprior = NULL, bounds = NULL, seed = 0L, nRetry = 10L,
+                      kiter = 0L) {
+  .neta <- ncol(map$eta)
+  .nsub <- nrow(map$eta)
+  # lower-triangular L with Gamma_i = L L' (NA-filled where the proposal failed),
+  # one subject per ROW.  vapply returns a (neta^2 x nsub) matrix only when
+  # neta^2 > 1 -- for a single eta it returns a plain vector, and t() then gives
+  # 1 x nsub, the transpose of what the kernel documents.  That happened to index
+  # identically for one column, so it went unnoticed; build the shape explicitly.
+  .cg <- vapply(seq_len(.nsub), function(i) {
+    .g <- map$gamma[[i]]
+    .L <- tryCatch(t(chol(.g)), error = function(e) matrix(NA_real_, .neta, .neta))
+    as.numeric(.L)
+  }, numeric(.neta*.neta))
+  .cholGamma <- matrix(.cg, nrow = .nsub, ncol = .neta*.neta, byrow = TRUE)
+  .mp <- if (is.null(mprior)) matrix(0, .nsub, .neta) else mprior
+  .lower <- if (is.null(bounds)) numeric(0) else as.numeric(bounds$lower)
+  .upper <- if (is.null(bounds)) numeric(0) else as.numeric(bounds$upper)
+  .nbd <- if (is.null(bounds)) integer(0) else as.integer(bounds$nbd)
+  .nAcc <- integer(.nsub)
+  .eta <- etaCur
+  # the kernel is serial but must size the threefry engine array for the full
+  # thread count so a later fit's parallel solves see a correctly-sized array
+  .cores <- as.integer(rxode2::getRxThreads())
+  if (is.na(.cores) || .cores < 1L) .cores <- 1L
+  for (.s in seq_len(nsweep)) {
+    # Iteration-indexed threefry stream base = f(kiter, sweep), mirroring
+    # est="imp" (seed0 + iter*nExp); the kernel adds c*nsub + id per chain/
+    # subject.  Being a pure function of (kiter, sweep, chain, subject) -- not a
+    # running counter -- makes every iteration independently reproducible, so the
+    # number of steps in a phase can be changed dynamically and still reproduced.
+    .streamBase <- as.double(seed) +
+      (as.double(kiter) * nsweep + (.s - 1)) * (as.double(nchain) * .nsub)
+    .r <- fsaemImhKernel_(.eta, map$eta, .cholGamma, as.integer(nchain), .cores,
+                          .mp, .lower, .upper, .nbd, .streamBase, as.integer(nRetry))
+    .eta <- .r$eta
+    .nAcc <- .nAcc + .r$nAcc
+  }
+  list(eta = .eta, nAcc = .nAcc)
+}
