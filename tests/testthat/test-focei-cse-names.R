@@ -41,6 +41,13 @@ nmTest({
     track <- function(key, fun) {
       force(fun)
       function(x, ...) {
+        # rxOptExpr() calls itself for its chunks and extra passes; only the
+        # calls nlmixr2est makes count
+        if (isTRUE(seen$busy)) {
+          return(fun(x, ...))
+        }
+        seen$busy <- TRUE
+        on.exit(seen$busy <- FALSE)
         txt <- paste(x, collapse = "\n")
         rec <- seen[[key]]
         # no model text is processed twice, and no processed output is fed back
