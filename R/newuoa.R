@@ -54,6 +54,7 @@ newuoaControl <- function(
   iprint = 0L,
   maxfun = 100000L,
   returnNewuoa = FALSE,
+  stopFile = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -170,8 +171,10 @@ newuoaControl <- function(
 
   .corWarnCheck(corWarn)
   .condWarnCheck(condWarn)
+  checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
+    stopFile = stopFile,
     npt = npt,
     rhobeg = rhobeg,
     rhoend = rhoend,
@@ -277,7 +280,7 @@ getValidNlmixrCtl.newuoa <- function(control) .getValidCtl(control, "newuoaContr
     fn = .(nlmixr2est::.nlmixrOptimFunC),
     control = .(.oCtl)
   ))
-  .ret <- eval(.ret)
+  .ret <- .nlmStopOpt(eval(.ret), "par", "fval")
   .nlmFinalizeList(.env, .ret, par = "par", printLine = TRUE, hessianCov = TRUE)
 }
 

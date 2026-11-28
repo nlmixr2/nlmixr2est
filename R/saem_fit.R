@@ -197,6 +197,29 @@
   .pas
 }
 
+#' Let the sampler draw the collapsed IOV columns
+#'
+#' Under the collapsed form's compound-symmetric prior an absent occasion's
+#' column is correlated with the present ones, so freezing it as an
+#' uninformative eta pins `b_i + c_ik` to zero and shrinks Omega.  Drawing it
+#' from its conditional prior is the exact data augmentation (#1504).
+#'
+#' @param ue uninformative-eta mask, one column per phi column
+#' @param revisitCols 0-based phi columns the in-loop revisit re-decides
+#' @param i1 1-based phi1 columns
+#' @param omegaPool pool-group id per phi1 column (0 = not pooled)
+#' @param omegaPoolMean 1 for the collapsed form
+#' @return list of the updated `ue` and `revisitCols`
+#' @noRd
+.saemUeCollapsedPool <- function(ue, revisitCols, i1, omegaPool, omegaPoolMean) {
+  if (!identical(as.integer(omegaPoolMean), 1L) || length(omegaPool) != length(i1)) {
+    return(list(ue = ue, revisitCols = revisitCols))
+  }
+  .cols <- i1[omegaPool > 0L]
+  ue[, .cols] <- 1L
+  list(ue = ue, revisitCols = setdiff(revisitCols, .cols - 1L))
+}
+
 .configsaem <- function(
   model,
   data,
@@ -654,6 +677,9 @@
   # Mixture models are excluded: their initial test runs through a separate pruned
   # model (R/uninformativeEtas.R) that the in-loop probe does not reproduce.
   .ueRevisitCols <- which(names(model$log.eta) %in% .dim) - 1L
+  .uePool <- .saemUeCollapsedPool(.ue, .ueRevisitCols, i1, omegaPool, omegaPoolMean)
+  .ue <- .uePool$ue
+  .ueRevisitCols <- .uePool$revisitCols
   # the same probe half-width the first test used: qnorm(1-alpha/2) * sd * q, from the
   # INITIAL omega, so the revisit differs from the first test only in theta
   .ueDelta <- qnorm(1 - ueAlpha / 2) * sqrt(inits$omega[.ueRevisitCols + 1L]) * ueQ
@@ -759,6 +785,7 @@
     nmc = nmc,
     coef_phi0 = .9638, # FIXME
     rmcmc = if (is.null(mcmc$rmcmc)) 0.5 else mcmc$rmcmc,
+    rwOmega = as.integer(identical(mcmc$proposal, "omega")),
     coef_sa = .95,
     pas = pas,
     pash = pash,

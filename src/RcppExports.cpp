@@ -1412,6 +1412,27 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmStopOn_
+bool nlmStopOn_(bool on);
+RcppExport SEXP _nlmixr2est_nlmStopOn_(SEXP onSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type on(onSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmStopOn_(on));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nlmStopBest_
+RObject nlmStopBest_();
+RcppExport SEXP _nlmixr2est_nlmStopBest_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nlmStopBest_());
+    return rcpp_result_gen;
+END_RCPP
+}
 // npObjAtGamma_
 double npObjAtGamma_(arma::mat etaPoints, int cores, double gamma);
 RcppExport SEXP _nlmixr2est_npObjAtGamma_(SEXP etaPointsSEXP, SEXP coresSEXP, SEXP gammaSEXP) {
@@ -1727,6 +1748,66 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< IntegerVector >::type grp(grpSEXP);
     rcpp_result_gen = Rcpp::wrap(iwresAutocor_(iwres, id, grp));
     return rcpp_result_gen;
+END_RCPP
+}
+// nmStopFileSet_
+std::string nmStopFileSet_(std::string file);
+RcppExport SEXP _nlmixr2est_nmStopFileSet_(SEXP fileSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type file(fileSEXP);
+    rcpp_result_gen = Rcpp::wrap(nmStopFileSet_(file));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nmStopFileGet_
+std::string nmStopFileGet_();
+RcppExport SEXP _nlmixr2est_nmStopFileGet_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nmStopFileGet_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// nmStopFilePoll_
+bool nmStopFilePoll_();
+RcppExport SEXP _nlmixr2est_nmStopFilePoll_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nmStopFilePoll_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// nmStopFileRequested_
+bool nmStopFileRequested_();
+RcppExport SEXP _nlmixr2est_nmStopFileRequested_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nmStopFileRequested_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// nmStopFileStopped_
+bool nmStopFileStopped_();
+RcppExport SEXP _nlmixr2est_nmStopFileStopped_() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nmStopFileStopped_());
+    return rcpp_result_gen;
+END_RCPP
+}
+// nmStopFileConsume_
+void nmStopFileConsume_();
+RcppExport SEXP _nlmixr2est_nmStopFileConsume_() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    nmStopFileConsume_();
+    return R_NilValue;
 END_RCPP
 }
 // tablePoolFree_
