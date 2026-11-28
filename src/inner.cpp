@@ -1308,6 +1308,14 @@ static inline void mcetaTracePrint() {
   std::copy(cur, cur + mcetaNcol + 1, _mcetaPrinted);
 }
 
+// Trace only on the iterations scalePrintFun() prints.
+static inline void mcetaTraceMaybePrint() {
+  if (op_focei.mcetaTrace && op_focei.mceta >= 1 && op_focei.scale.every != 0 &&
+      op_focei.scale.cn % op_focei.scale.every == 0) {
+    mcetaTracePrint();
+  }
+}
+
 // Like niter/vPar, the history is per foceiSetup_ (a theta-reset restart included),
 // as are the counters op_focei's reset zeroes.
 static inline void mcetaHistoryClear() {
@@ -11849,10 +11857,7 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
     ? op_focei.initObjective * ret / op_focei.scaleObjectiveTo
     : ret;
   scalePrintFun(&op_focei.scale, xp, displayedOfv);
-  if (op_focei.mcetaTrace && op_focei.mceta >= 1 && op_focei.scale.every != 0 &&
-      op_focei.scale.cn % op_focei.scale.every == 0) {
-    mcetaTracePrint();
-  }
+  mcetaTraceMaybePrint();
   // One summary line per printed iteration for any ODE-solve warnings (e.g.
   // intdy window-misses) accumulated since the last flush; without this a
   // difficult model floods the console with identical lines each iteration.
