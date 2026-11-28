@@ -34,7 +34,8 @@ and is fitted by nlmixr2est, NONMEM and Monolix from the same data set.
 - `runNonmem.R`, `runMonolix.R` -- run every control stream / project and
   store the results under `reference/<tool>/<scenario>.csv`.
 - `reference.R` -- reads NONMEM output (`.ext`, `.lst`) and Monolix
-  results (through lixoftConnectors) into reference files, with nlmixr2 parameter names and variances.
+  results (through lixoftConnectors) into reference files, with nlmixr2
+  parameter names and variances.
 - `exact.R` -- exact marginal maximum likelihood of each scenario with one
   random effect (closed-form cumulative hazard, Gauss-Hermite quadrature),
   written independently of rxode2 and nlmixr2est.
@@ -49,17 +50,22 @@ scenarios' starting values (the package tests check this).
 
 `tests/testthat/test-tte-validation-*.R` fit the scenarios with `focei`,
 `agq`, `saem` and `imp` and compare them with the exact likelihood (and
-the `exponential` closed form), and with every stored NONMEM or Monolix
-reference: parameters within a fraction of the reference standard
-errors, -2LL with the exact one, and the `tvCov` objective function
-difference with and without the covariate.  `test-tte-validation-exact.R`
-checks that the exact fits recover the simulation truth, which validates
-rxode2's `tte()` simulation independently.  They are long-running and
-skip on CRAN.  `saem` is run only on `rtte` and `lateEntry`: on a tte()
-model whose solve has another input (a data covariate, or the `CMT` of a
-second endpoint) it currently diverges.  `imp` is run on `weibull`, `rtte`, `pkFixed`, `tvCov`
-and `dropout`, and only its estimates are compared: the objective it
-reports is the Laplace one at its estimates.
+the `exponential` closed form): parameters within a fraction of the exact
+fit's standard errors, -2LL, and the `tvCov` objective function difference
+with and without the covariate.  Each method is also compared with the
+reference fit that makes the same approximation: `focei` with NONMEM's
+Laplace, `agq`, `saem` and `imp` with Monolix (SAEM, -2LL by importance
+sampling).  Differences are in the exact fit's standard errors where there
+is one (otherwise the larger of the fit's and the reference's own), and a fit whose -2LL is more than
+0.5 below the reference's has found the better optimum and passes.
+`test-tte-validation-exact.R` checks that the exact fits recover the
+simulation truth, which validates rxode2's `tte()` simulation
+independently.  They are long-running and skip on CRAN.  `saem` is run
+only on `rtte` and `lateEntry`: on a tte() model whose solve has another
+input (a data covariate, or the `CMT` of a second endpoint) it currently
+diverges (nlmixr2/nlmixr2est#1586).  `imp` is run on `weibull`, `rtte`,
+`pkFixed`, `tvCov` and `dropout`, and only its estimates are compared:
+the objective it reports is the Laplace one at its estimates.
 
 ## Regenerating the reference fits
 
@@ -72,7 +78,9 @@ NMFE=nmfe75 Rscript runNonmem.R  # or name scenarios: Rscript runNonmem.R . rtte
 MONOLIX_PATH=/path/to/MonolixSuite Rscript runMonolix.R
 ```
 
-Each reference file records the tool version and run date; commit the
+Each run's NONMEM or Monolix output is kept under `runs/` (set
+`TTE_RUN_DIR` to put it elsewhere), which git and the package build
+ignore.  Each reference file records the tool version and run date; commit the
 `reference/` files with the versions noted in the pull request.  The
 nlmixr2est tests compare against whichever reference files exist.
 
@@ -80,6 +88,16 @@ nlmixr2est tests compare against whichever reference files exist.
 event, and a regressor carrying the last event time forward would reset
 the clock at the event record itself, where the hazard must be the one
 just before the event.
+
+The stored fits are NONMEM 7.4.3 and Monolix 2024R1.  NONMEM's objective
+equals an independent Laplace approximation of the same likelihood at its
+estimates, so its gap to the exact -2LL (up to about 7 for the
+single-event scenarios) is the Laplace error.  NONMEM's `pkJoint` run did
+not converge (its estimates are far from the truth and it has no
+standard errors), so it has no NONMEM reference.  Some NONMEM standard
+errors from the numerical covariance step are much too small (e.g.
+`lateEntry`, `pkFixed`), so the validation tests measure differences
+from a reference in the exact fit's standard errors where there is one.
 
 ## Data sets
 
