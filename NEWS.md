@@ -47,12 +47,12 @@
 
 ## New features
 
-- The analytic FOCEi outer gradient and covariance (`fast = TRUE`) reused the
+- The analytic FOCEi outer gradient and covariance (`fast = TRUE`) now reuse the
   eta sensitivities for structural thetas that act only through a parameter
   carrying an eta, whatever the covariate model (maturation, Emax,
   natural-scale shifts and typical values, power exponents outside `exp()`),
   so these no longer integrate their own sensitivity equations ("extended
-  mu-referencing"; `FOCEI_NO_MUREF_EXT=1` disables it).
+  mu-referencing"; any non-empty `FOCEI_NO_MUREF_EXT` disables it).
 - `saemControl(autoStop = TRUE)` stops the SAEM EM phase once every
   parameter's half-window drift is within `stopRtol`/`stopAtol` or twice its
   Monte-Carlo error for `stopConsecutive` windows of `stopWindow` iterations;

@@ -238,6 +238,10 @@ nmTest({
     .f <- .extMod(.mat, .matIni)
     .fit <- .nlmixr(.f, .d, "focei", control = .ctl)
     expect_gt(.fit$env$nAnalyticGradDirect, 0)
+    # the fit saw PMA as subject-constant, so the maturation thetas were reused
+    .cc <- .fit$control$foceiConstCovs
+    expect_true("PMA" %in% .cc)
+    expect_gt(length(.extMap(.extUi(.f, constCovs = .cc))), 0L)
     .g <- .foceiGradDirect(.fit)
     # the full build (no reuse) gives the same analytic gradient
     withr::with_envvar(c(FOCEI_NO_MUREF_EXT = "1"), {

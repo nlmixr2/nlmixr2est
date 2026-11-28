@@ -121,7 +121,13 @@
       .tried <- character(0)
       for (.w in which(!.zTh & !.zEt[[.eta]])) {
         .cw <- tryCatch(.dropInert(.zeroEta(.dTh[[.w]] / .dEt[[.eta]][[.w]])), error = function(e) NULL)
-        if (is.null(.cw) || .isZero(.cw) || !all(.rxFoceiCarryFreeSyms(.cw) %in% .okSyms)) {
+        # a scale whose symbols cannot be listed is refused, not assumed constant
+        .fs <- if (is.null(.cw)) {
+          NULL
+        } else {
+          tryCatch(vapply(symengine::free_symbols(.cw), as.character, ""), error = function(e) NULL)
+        }
+        if (is.null(.fs) || .isZero(.cw) || !all(.fs %in% .okSyms)) {
           next
         }
         # the same candidate from another expression would repeat the same proof
