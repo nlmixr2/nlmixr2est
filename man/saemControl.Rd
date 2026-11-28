@@ -21,6 +21,7 @@ saemControl(
   plateauTol = 0.001,
   plateauMinFrac = 0.5,
   stopFile = NULL,
+  maxTime = NULL,
   nmc = 3,
   nu = c(2, 2, 2),
   nu1B = 0L,
@@ -165,6 +166,11 @@ before a plateau can stop the EM phase.}
 gracefully: the run ends at its current state (for FOCEi, the lowest
 objective evaluated so far), removes the file, notes the stop in
 `$runInfo` and returns the fit.  `NULL` (default) does not poll.}
+
+\item{maxTime}{Wall-clock limit in seconds, counted from the start of the
+estimation.  Once it is reached the optimization ends as for `stopFile`
+and the fit is finalized from its current state; the covariance step and
+tables are not limited.  `NULL` (default) sets no limit.}
 
 \item{nmc}{Number of Markov Chains. By default this is 3.  When
 you increase the number of chains the numerical integration by

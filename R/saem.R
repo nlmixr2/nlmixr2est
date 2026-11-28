@@ -436,7 +436,10 @@
       .cfg$plateauWindow <- as.integer(rxode2::rxGetControl(ui, "plateauWindow", 50L))
       .cfg$plateauTol <- as.numeric(rxode2::rxGetControl(ui, "plateauTol", 1e-3))
       .cfg$plateauMinFrac <- as.numeric(rxode2::rxGetControl(ui, "plateauMinFrac", 0.5))
-      .cfg$stopFile <- as.integer(!is.null(rxode2::rxGetControl(ui, "stopFile", NULL)))
+      .cfg$stopFile <- as.integer(
+        !is.null(rxode2::rxGetControl(ui, "stopFile", NULL)) ||
+          !is.null(rxode2::rxGetControl(ui, "maxTime", NULL))
+      )
       .mixShift <- .mixSharedEtaShift(ui, ui$saemParamsToEstimate)
       .cfg$mixShiftComp <- .mixShift$comp
       .cfg$mixShiftEta <- .mixShift$eta

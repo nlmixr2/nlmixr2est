@@ -1089,6 +1089,11 @@
 #'   objective evaluated so far), removes the file, notes the stop in
 #'   `$runInfo` and returns the fit.  `NULL` (default) does not poll.
 #'
+#' @param maxTime Wall-clock limit in seconds, counted from the start of the
+#'   estimation.  Once it is reached the optimization ends as for `stopFile`
+#'   and the fit is finalized from its current state; the covariance step and
+#'   tables are not limited.  `NULL` (default) sets no limit.
+#'
 #' @param shrinkEtaWarn Warn (in `$runInfo`) when an eta's SD shrinkage is
 #'   at or above this percentage.  Use `NA` or `Inf` to disable.
 #'
@@ -1605,6 +1610,7 @@ foceiControl <- function(
   finalEtaTol = 1, #
   aboveStartTol = 0.01, #
   stopFile = NULL, #
+  maxTime = NULL, #
   shrinkEtaWarn = 30, #
   odeSettleCheck = FALSE, #
   odeSettleTol = 0.1, #
@@ -2300,6 +2306,7 @@ foceiControl <- function(
   checkmate::assertNumber(finalEtaTol, lower = 0)
   checkmate::assertNumber(aboveStartTol, lower = 0, na.ok = TRUE)
   checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
+  checkmate::assertNumber(maxTime, lower = 0, finite = TRUE, null.ok = TRUE)
   checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
@@ -2543,6 +2550,7 @@ foceiControl <- function(
     finalEtaTol = as.double(finalEtaTol),
     aboveStartTol = as.double(aboveStartTol),
     stopFile = stopFile,
+    maxTime = maxTime,
     shrinkEtaWarn = as.double(shrinkEtaWarn),
     odeSettleCheck = odeSettleCheck,
     odeSettleTol = as.double(odeSettleTol),

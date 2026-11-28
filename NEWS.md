@@ -163,6 +163,12 @@
   evaluated so far and SAEM ends at the current iteration; the file is removed
   and "stopped early by user request" is noted in `$runInfo` (#1507).
 
+- `maxTime = 600` in `foceiControl()`, `saemControl()` and the nlm-family
+  controls sets a wall-clock limit in seconds: once it is reached the
+  optimization or the SAEM iterations end as for `stopFile`, the fit is
+  finalized from its current state and "stopped at the time limit" is noted in
+  `$runInfo` (#1514).
+
 - `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes each
   converged trust ETA solve by re-entering it at the squared
   `trustFterm`/`trustMterm` instead of taking Newton steps.  The objective at

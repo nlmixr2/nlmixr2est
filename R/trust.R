@@ -151,6 +151,7 @@ trustControl <- function(
 
   returnTrust = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
@@ -308,9 +309,11 @@ trustControl <- function(
   .corWarnCheck(corWarn)
   .condWarnCheck(condWarn)
   checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
+  checkmate::assertNumber(maxTime, lower = 0, finite = TRUE, null.ok = TRUE)
   .ret <- list(
     aboveStartTol = as.double(aboveStartTol),
     stopFile = stopFile,
+    maxTime = maxTime,
     rinit = rinit,
     rmax = rmax,
     iterlim = as.integer(iterlim),

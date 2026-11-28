@@ -16,6 +16,7 @@ nlmControl(
   check.analyticals = FALSE,
   returnNlm = FALSE,
   stopFile = NULL,
+  maxTime = NULL,
   solveType = c("hessian", "grad", "fun"),
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
@@ -108,6 +109,11 @@ object}
 gracefully: the run ends at its current state (for FOCEi, the lowest
 objective evaluated so far), removes the file, notes the stop in
 `$runInfo` and returns the fit.  `NULL` (default) does not poll.}
+
+\item{maxTime}{Wall-clock limit in seconds, counted from the start of the
+estimation.  Once it is reached the optimization ends as for `stopFile`
+and the fit is finalized from its current state; the covariance step and
+tables are not limited.  `NULL` (default) sets no limit.}
 
 \item{solveType}{controls whether `nlm` uses nlmixr2's analytical
 gradients (event-related parameters like lag time/duration/rate/F use

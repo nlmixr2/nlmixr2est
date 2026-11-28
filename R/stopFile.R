@@ -1,31 +1,49 @@
-#' Start polling the control's stop file
+#' Start polling the control's stop file and time limit
 #'
-#' Only the outermost estimation polls; a nested one keeps its file.
+#' Only the outermost estimation polls; a nested one keeps its file and
+#' time limit.
 #' @param control the estimation's control
 #' @return `TRUE` when this call started polling
 #' @noRd
 .nmStopFileStart <- function(control) {
-  if (!is.list(control)) {
+  if (!is.list(control) || .nmStopActive()) {
     return(FALSE)
   }
   .file <- control$stopFile
-  if (!checkmate::testString(.file, min.chars = 1L) || .nmStopFileGet() != "") {
+  .file <- if (checkmate::testString(.file, min.chars = 1L)) {
+    normalizePath(.file, mustWork = FALSE)
+  } else {
+    ""
+  }
+  .maxTime <- control$maxTime
+  .maxTime <- if (checkmate::testNumber(.maxTime, lower = 0, finite = TRUE)) {
+    as.double(.maxTime)
+  } else {
+    NA_real_
+  }
+  if (.file == "" && is.na(.maxTime)) {
     return(FALSE)
   }
-  .nmStopFileSet(normalizePath(.file, mustWork = FALSE))
+  .nmStopFileSet(.file)
+  .nmStopTimeSet(.maxTime)
   TRUE
 }
 
-#' Stop polling the stop file, noting a stop request in `$runInfo`
+#' Stop polling the stop file and time limit, noting a stop in `$runInfo`
 #' @return `TRUE` when a stop was requested
 #' @noRd
 .nmStopFileEnd <- function() {
-  .stopped <- .nmStopFileStopped()
+  .file <- .nmStopFileStopped()
+  .timed <- .nmStopTimedOut()
   .nmStopFileSet("")
-  if (.stopped) {
+  .nmStopTimeSet(NA_real_)
+  if (.timed) {
+    warning("stopped at the time limit", call. = FALSE)
+  }
+  if (.file) {
     warning("stopped early by user request", call. = FALSE)
   }
-  invisible(.stopped)
+  invisible(.file || .timed)
 }
 
 #' Run an R outer optimizer, ending it at a stop request
