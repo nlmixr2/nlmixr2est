@@ -723,7 +723,7 @@
   # methods whose estimation pass cannot produce a covariance (EM table pass,
   # nonparametric engines, or an external engine) recompute on a
   # zero-iteration focei model
-  if (est %in% c("imp", "impmap", "qrpem", "nlme") || grepl("^(m|i)?(npag|npb)$", est)) {
+  if (est %in% c("imp", "impmap", "qrpem", "its", "nlme") || grepl("^(m|i)?(npag|npb)$", est)) {
     return("focei")
   }
   NULL
@@ -823,7 +823,13 @@
   .fit2 <- try(
     suppressMessages(suppressWarnings(
       .nlmixr2PriorGateBypass(
-        nlmixr2(.ui, data = getData(fit), est = .baseEst, control = .control)
+        nlmixr2(
+          .ui,
+          data = getData(fit),
+          est = .baseEst,
+          control = .control,
+          likPenalty = .likPenaltyRefitSpecs(fit)
+        )
       )
     )),
     silent = TRUE
