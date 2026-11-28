@@ -50,8 +50,8 @@ scenarios' starting values (the package tests check this).
 `tests/testthat/test-tte-validation-*.R` fit the scenarios with `focei`,
 `agq` and `saem` and compare them with the exact likelihood (and
 the `exponential` closed form), and with every stored NONMEM or Monolix
-reference: parameters within a fraction of the reference standard
-errors, -2LL with the exact one, and the `tvCov` objective function
+reference: parameters within a fraction of a standard error (the exact
+fit's where there is one, otherwise the reference's own), -2LL with the exact one, and the `tvCov` objective function
 difference with and without the covariate.  `test-tte-validation-exact.R`
 checks that the exact fits recover the simulation truth, which validates
 rxode2's `tte()` simulation independently.  They are long-running and

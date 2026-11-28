@@ -53,8 +53,7 @@
   stats::setNames(.ini$est, .ini$name)
 }
 
-# compare a fit with a reference (est, se) within `tol` reference standard
-# errors; fixed parameters and parameters without a standard error are skipped
+# compare a fit with a reference (est, se) within `tol` standard errors; fixed parameters and parameters without a standard error are skipped
 .tteValidationExpectClose <- function(fit, est, se, tol, info) {
   .f <- .tteValidationEst(fit)
   .p <- intersect(names(est), names(.f))
@@ -85,10 +84,17 @@
       next
     }
     .ref <- .ref[.ref$parameter != "OFV", ]
+    .se <- stats::setNames(.ref$se, .ref$parameter)
+    # in the exact fit's standard errors where there is one: a tool's own
+    # can be far too small (NONMEM's numerical covariance step)
+    if (!is.null(.ex)) {
+      .w <- intersect(names(.se), names(.ex$se)[!is.na(.ex$se)])
+      .se[.w] <- .ex$se[.w]
+    }
     .tteValidationExpectClose(
       fit,
       stats::setNames(.ref$estimate, .ref$parameter),
-      stats::setNames(.ref$se, .ref$parameter),
+      .se,
       tol,
       paste(.info, "vs", .tool)
     )
