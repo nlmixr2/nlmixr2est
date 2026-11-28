@@ -124,6 +124,7 @@
   if (is.list(.mv$indLin) && length(.mv$indLin) == 4L && !isTRUE(unname(.env$rxControl$method) == 3L)) {
     .env$rxControl$method <- 3L
   }
+  .indLinOdeCheck(.mv, .env$rxControl$method)
   .env$param <- setNames(par, sprintf("THETA[%d]", seq_along(par)))
   .nlmFitDataSetup(data)
   .env$needFD <- .f$eventTheta
