@@ -8,6 +8,8 @@ saemControl(
   seed = 99,
   nBurn = 200,
   nEm = 300,
+  nBurnMin = 150L,
+  nBurnMax = 500L,
   autoStop = FALSE,
   stopWindow = 50L,
   stopConsecutive = 4L,
@@ -105,10 +107,22 @@ saemControl(
 reproducibility.)  By default this is 99.}
 
 \item{nBurn}{Number of iterations in the first phase, ie the  MCMC/Stochastic Approximation
-steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.}
+steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.
+\code{"auto"} ends the burn-in once no parameter still trends (see
+\code{nBurnMin}).}
 
 \item{nEm}{Number of iterations in the Expectation-Maximization
 (EM) Step. This is equivalent to Monolix's \code{K_1}.}
+
+\item{nBurnMin, nBurnMax}{With \code{nBurn = "auto"}, the shortest and
+longest burn-in.  From \code{nBurnMin} on, the burn-in ends at the first
+iteration where no theta, log omega variance, omega correlation or log
+residual scale trends over the last 100 iterations (a slope t-test on 5
+batch means, two-sided 5\%).  A burn-in that reaches \code{nBurnMax}
+names the parameters still trending in \code{$runInfo}; the burn-in
+length used is noted there too.  The phases set as a fraction of the
+burn-in (\code{perSa}, \code{perNoCor}, \code{perFixOmega},
+\code{perFixResid}) are fractions of \code{nBurnMin}.}
 
 \item{autoStop}{Boolean (default `FALSE`); stop the EM phase early once the
 parameter trajectory is stationary.  The window only sees EM iterations

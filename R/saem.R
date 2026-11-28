@@ -472,10 +472,56 @@
     }
     .pi <- .saemRes$plateauIter
     if (length(.pi) == 1L && .pi > 0L) {
-      warning(sprintf("parameters plateaued; stopped at iteration %d of %d", .pi, .cfg$niter), call. = FALSE)
+      # count only the iterations run when an nBurn="auto" burn-in ended early
+      .bi <- .saemRes$burnInfo
+      .sk <- if (is.list(.bi)) max(0L, .bi$nBurnPlan - .bi$nBurn) else 0L
+      warning(
+        sprintf("parameters plateaued; stopped at iteration %d of %d", .pi - .sk, .cfg$niter - .sk),
+        call. = FALSE
+      )
     }
-    .saemRes
+    .saemBurnAutoFinish(.saemRes)
   })
+}
+
+#' Drop the burn-in iterations an `nBurn = "auto"` fit skipped
+#'
+#' The kernel keeps the schedule's iteration index, so the rows between the
+#' burn-in it used and `nBurnMax` were never run.  They are removed from every
+#' per-iteration record, and the burn-in used (and, at `nBurnMax`, what still
+#' trended) is noted in `$runInfo`.
+#' @param res the saem kernel's result
+#' @return `res`, trimmed
+#' @noRd
+.saemBurnAutoFinish <- function(res) {
+  .cfg <- attr(res, "saem.cfg")
+  .info <- res$burnInfo
+  if (!isTRUE(.cfg$nBurnAuto == 1L) || !is.list(.info)) {
+    return(res)
+  }
+  .used <- .info$nBurn
+  .skip <- seq_len(.info$nBurnPlan - .used) + .used
+  if (length(.skip) > 0L) {
+    res$par_hist <- res$par_hist[-.skip, , drop = FALSE]
+    for (.f in c("mcmcAccept", "mcmcAcceptCol", "mcmcStuck", "mcmcPhiSd", "mcmcPhiAcf")) {
+      if (is.matrix(res[[.f]]) && nrow(res[[.f]]) >= .info$nBurnPlan) {
+        res[[.f]] <- res[[.f]][-.skip, , drop = FALSE]
+      }
+    }
+    if (is.array(res$phiM) && length(dim(res$phiM)) == 4L) {
+      res$phiM <- res$phiM[,, -.skip, , drop = FALSE]
+    }
+    .cfg$niter <- .cfg$niter - length(.skip)
+  }
+  .cfg$nPhase1 <- .used
+  attr(res, "saem.cfg") <- .cfg
+  warning(sprintf("auto burn-in used %d iterations", .used), call. = FALSE)
+  .trend <- as.logical(.info$trending)
+  if (any(.trend)) {
+    .pre <- "burn-in hit nBurnMax, still trending: "
+    warning(paste0(.pre, .vaeTruncList(.cfg$parHistNames[.trend], prefix = .pre)), call. = FALSE)
+  }
+  res
 }
 
 #' Hold every population parameter of a SAEM run where it was supplied
@@ -984,7 +1030,9 @@
   names(.ph) <- c("iter", .allThetaNames, "type")
   .ph <- .saemIovCollapseParHist(.ph, .uiIovEnv$iovTwoLevel)
   .cls <- class(.ph)
-  attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
+  # an nBurn="auto" fit records the burn-in it used
+  .nBurn <- attr(.saem, "saem.cfg")$nPhase1
+  attr(.cls, "niter") <- if (is.null(.nBurn)) env$saemControl$mcmc$niter[1] else .nBurn
   class(.ph) <- .cls
   assign("parHistData", .ph, envir = env)
   .as <- .saem$autoStop
