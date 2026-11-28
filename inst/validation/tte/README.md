@@ -25,7 +25,7 @@ and is fitted by nlmixr2est, NONMEM and Monolix from the same data set.
 - `simulate.R` -- regenerates `data/` (`Rscript simulate.R`).
 - `data/<scenario>.csv` -- the data sets.
 - `nonmem/<scenario>.ctl` -- NONMEM control streams (cumulative hazard in
-  `$DES`, -2 log-likelihood in `$ERROR`, `$EST METHOD=COND LAPLACE -2LL`).
+  `$DES`, -2 log-likelihood in `$ERROR`, `$EST METHOD=COND LAPLACE NUMERICAL SLOW -2LL`).
 - `monolix/<scenario>.mlxtran`, `monolix/<scenario>_model.txt` -- Monolix
   projects (`{type=event}` outputs; SAEM, s.e. by stochastic
   approximation, -2LL by importance sampling).
