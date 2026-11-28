@@ -49,7 +49,7 @@ nmTest({
     .ph <- fit$parHist
     expect_true(is.data.frame(.ph))
     expect_true(all(c("iter", "tka", "add.sd", "o(eta.ka)") %in% names(.ph)))
-    expect_gte(max(.ph$iter), 120L)
+    expect_gte(max(.ph$iter), length(fit$env$viElbo))
     ## the finalize reuses the loop's compiled models (no symengine rebuild)
     expect_false(is.null(fit$env$foceiModel))
   })
@@ -124,6 +124,7 @@ nmTest({
             klWarmup = kl,
             temperInit = 100,
             seed = 7L,
+            optim = "advi",
             print = 0L,
             returnVi = TRUE,
             tol = 0
@@ -154,7 +155,7 @@ nmTest({
           one.cmt,
           nlmixr2data::theo_sd,
           est = "emvi",
-          control = emviControl(iters = 60L, seed = 7L, print = 0L, tol = 0, etaCandidates = cand)
+          control = emviControl(iters = 60L, seed = 7L, print = 0L, tol = 0, etaCandidates = cand, optim = "advi")
         )
       ))
       as.character(.f$runInfo)

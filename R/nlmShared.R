@@ -771,7 +771,11 @@
   if (rxode2::rxGetControl(.ui, returnFlag, FALSE)) {
     return(.ret[[method]])
   }
-  .ret$message <- message(.ret[[method]])
+  .ret$message <- if (isTRUE(.ret[[method]]$nlmStopped)) {
+    "stopped early by user request"
+  } else {
+    message(.ret[[method]])
+  }
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- if (is.character(getTheta)) {
