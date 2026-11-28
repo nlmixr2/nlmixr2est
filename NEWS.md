@@ -384,6 +384,12 @@
 
 ## Bug fixes
 
+- `focei` and related methods stop with an error when the ODE solve fails
+  for every subject at the initial estimates (for example a fixed-step
+  explicit method on a stiff model).  The fit returned the failed-solve
+  penalty as its objective (`badSolveObjfAdj` per subject) and stopped
+  with no warning.
+
 - A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
   the gradient before the objective no longer stops R: the gradient's history
   row read the last objective iteration, which did not exist yet.  FOCEi now
