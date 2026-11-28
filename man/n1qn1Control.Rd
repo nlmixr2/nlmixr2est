@@ -43,6 +43,7 @@ n1qn1Control(
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
+  thetaBoundWarn = 1e-04,
   ...,
   condWarn = 1000
 )
@@ -223,6 +224,11 @@ transformed for unbounded optimization methods and back-transformed
 for final estimates. `FALSE` optimizes on the original scale with
 bounds passed to the optimizer. `NA` transforms for optimization but
 skips the final back-transform.}
+
+\item{thetaBoundWarn}{Warn (in `$runInfo`) when an estimated theta ends
+within this tolerance of a finite `lower`/`upper` bound, relative to the
+bound range (or, for a one-sided bound, to the larger of the bound's size
+and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
 
 \item{...}{Ignored parameters}
 

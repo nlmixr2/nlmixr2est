@@ -73,6 +73,7 @@ nlmixr2NlmeControl <- function(
   covNewtonWarn = 1,
   ...,
   corWarn = 0.95,
+  thetaBoundWarn = 1e-4,
   condWarn = 1000
 ) {
   checkmate::assertLogical(optExpression, len = 1, any.missing = FALSE)
@@ -172,6 +173,8 @@ nlmixr2NlmeControl <- function(
   checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
 
   .corWarnCheck(corWarn)
+
+  .thetaBoundWarnCheck(thetaBoundWarn)
   .condWarnCheck(condWarn)
   .ret <- list(
     maxIter = maxIter,
@@ -203,6 +206,7 @@ nlmixr2NlmeControl <- function(
     calcTables = calcTables,
     compress = compress,
     corWarn = corWarn,
+    thetaBoundWarn = as.double(thetaBoundWarn),
     condWarn = condWarn,
     random = random,
     fixed = fixed,

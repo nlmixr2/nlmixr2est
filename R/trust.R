@@ -186,6 +186,7 @@ trustControl <- function(
   boundedTransform = TRUE,
   ...,
   corWarn = 0.95,
+  thetaBoundWarn = 1e-4,
   condWarn = 1000
 ) {
   # trust_solve_c()'s fterm/mterm from sigdig, two orders tighter than the
@@ -306,6 +307,8 @@ trustControl <- function(
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
   .corWarnCheck(corWarn)
+
+  .thetaBoundWarnCheck(thetaBoundWarn)
   .condWarnCheck(condWarn)
   checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
   .ret <- list(
@@ -349,6 +352,7 @@ trustControl <- function(
     calcTables = calcTables,
     compress = compress,
     corWarn = corWarn,
+    thetaBoundWarn = as.double(thetaBoundWarn),
     condWarn = condWarn,
     ci = ci,
     sigdig = sigdig,

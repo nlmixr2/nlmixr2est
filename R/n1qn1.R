@@ -93,9 +93,11 @@ n1qn1Control <- function(
   sigdig = 3,
   sigdigTable = NULL,
   boundedTransform = TRUE,
+  thetaBoundWarn = 1e-4,
   ...,
   condWarn = 1000
 ) {
+  .thetaBoundWarnCheck(thetaBoundWarn)
   # n1qn1 stopping tolerance from sigdig (FOCEi mechanism, matches foceiControl
   # epsilon); a user-supplied value wins, sigdig=NULL keeps the historic default
   if (is.null(epsilon)) {
@@ -191,6 +193,7 @@ n1qn1Control <- function(
     sumProd = sumProd,
     rxControl = rxControl,
     returnN1qn1 = returnN1qn1,
+    thetaBoundWarn = as.double(thetaBoundWarn),
     gradTo = gradTo,
 
     stickyRecalcN = as.integer(stickyRecalcN),

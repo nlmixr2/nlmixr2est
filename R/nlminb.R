@@ -138,6 +138,7 @@ nlminbControl <- function(
   sigdigTable = NULL,
   ...,
   corWarn = 0.95,
+  thetaBoundWarn = 1e-4,
   condWarn = 1000
 ) {
   checkmate::assertIntegerish(eval.max, len = 1, any.missing = FALSE, lower = 1)
@@ -247,6 +248,8 @@ nlminbControl <- function(
   checkmate::assertNumeric(gradTo, len = 1, lower = 0, any.missing = FALSE)
 
   .corWarnCheck(corWarn)
+
+  .thetaBoundWarnCheck(thetaBoundWarn)
   .condWarnCheck(condWarn)
   checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
   .ret <- list(
@@ -302,6 +305,7 @@ nlminbControl <- function(
     calcTables = calcTables,
     compress = compress,
     corWarn = corWarn,
+    thetaBoundWarn = as.double(thetaBoundWarn),
     condWarn = condWarn,
     ci = ci,
     sigdig = sigdig,

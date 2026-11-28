@@ -82,3 +82,50 @@ test_that("a theta pinned to its bound is reported in runInfo (#1505)", {
   .fit <- suppressMessages(nlmixr2(.mod |> ini(tka = c(-1, 0.45, 2)), theo_sd, "focei", .ctl))
   expect_false(any(grepl("^estimate at its bound", .fit$runInfo)))
 })
+
+test_that("every method's control carries thetaBoundWarn", {
+  for (.ctl in c(
+    "saemControl",
+    "nlmeControl",
+    "vaeControl",
+    "emviControl",
+    "nlminbControl",
+    "nlmControl",
+    "bobyqaControl",
+    "newuoaControl",
+    "uobyqaControl",
+    "optimControl",
+    "nlsControl",
+    "trustControl"
+  )) {
+    .f <- get(.ctl, mode = "function")
+    expect_identical(.f()$thetaBoundWarn, 1e-4, label = .ctl)
+    expect_true(is.na(.f(thetaBoundWarn = NA)$thetaBoundWarn), label = .ctl)
+    expect_error(.f(thetaBoundWarn = -1), "thetaBoundWarn", label = .ctl)
+  }
+})
+
+test_that("a population-only fit notes a theta at its bound (#1505)", {
+  skip_on_cran()
+  .mod <- function() {
+    ini({
+      tka <- c(-1, 0.1, 0.2)
+      tcl <- log(2.7)
+      tv <- 3.45
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .fit <- suppressMessages(nlmixr2(.mod, theo_sd, "nlminb", nlminbControl(print = 0, covMethod = "")))
+  expect_equal(.fit$theta[["tka"]], 0.2, tolerance = 1e-4)
+  expect_true(any(.fit$runInfo == "estimate at its bound: \"tka\""))
+  .fit <- suppressMessages(
+    nlmixr2(.mod, theo_sd, "nlminb", nlminbControl(print = 0, covMethod = "", thetaBoundWarn = NA))
+  )
+  expect_false(any(grepl("^estimate at its bound", .fit$runInfo)))
+})

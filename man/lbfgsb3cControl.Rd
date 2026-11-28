@@ -44,6 +44,7 @@ lbfgsb3cControl(
   ci = 0.95,
   sigdig = 3,
   sigdigTable = NULL,
+  thetaBoundWarn = 1e-04,
   ...,
   condWarn = 1000
 )
@@ -225,6 +226,11 @@ At the default \code{sigdig = 3} this is \code{atol = 1e-8},
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified (`NULL`), it defaults to `sigdig`.}
+
+\item{thetaBoundWarn}{Warn (in `$runInfo`) when an estimated theta ends
+within this tolerance of a finite `lower`/`upper` bound, relative to the
+bound range (or, for a one-sided bound, to the larger of the bound's size
+and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
 
 \item{...}{Ignored parameters}
 

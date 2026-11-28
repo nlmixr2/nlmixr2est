@@ -2295,7 +2295,7 @@ foceiControl <- function(
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
   checkmate::assertNumber(omegaCollapseWarn, lower = 0, upper = 1, na.ok = TRUE)
-  checkmate::assertNumber(thetaBoundWarn, lower = 0, upper = 1, na.ok = TRUE)
+  .thetaBoundWarnCheck(thetaBoundWarn)
   checkmate::assertFlag(ebeCheck)
   checkmate::assertNumber(ebeCheckStep, lower = .Machine$double.xmin, finite = TRUE)
   checkmate::assertNumber(ebeCheckTol, lower = 0, finite = TRUE)

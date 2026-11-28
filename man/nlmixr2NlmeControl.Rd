@@ -49,6 +49,7 @@ nlmixr2NlmeControl(
   covNewtonWarn = 1,
   ...,
   corWarn = 0.95,
+  thetaBoundWarn = 1e-04,
   condWarn = 1000
 )
 
@@ -96,6 +97,7 @@ nlmeControl(
   covNewtonWarn = 1,
   ...,
   corWarn = 0.95,
+  thetaBoundWarn = 1e-04,
   condWarn = 1000
 )
 }
@@ -338,6 +340,11 @@ kept as `fit$covNewtonDecrement`.  Use `NA` or `Inf` to skip it.}
 \item{corWarn}{warn when two estimates' correlation is at least this in
 absolute value after the covariance step; \code{NA} or \code{Inf} turns
 the warning off.}
+
+\item{thetaBoundWarn}{Warn (in `$runInfo`) when an estimated theta ends
+within this tolerance of a finite `lower`/`upper` bound, relative to the
+bound range (or, for a one-sided bound, to the larger of the bound's size
+and the initial estimate's distance from it).  Use `NA` or `0` to disable.}
 
 \item{condWarn}{warn when the condition number of the covariance's
 correlation matrix exceeds this; \code{NA} or \code{Inf} turns the
