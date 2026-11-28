@@ -16,6 +16,9 @@
 #define NPDE_CHOLSE_PINV 5
 #define NPDE_NPD 99
 
+#define EWRES_EIGEN 1
+#define EWRES_CHOL 2
+
 struct calcNpdeInfoId {
   arma::mat matsim;
   arma::umat namat;
@@ -39,6 +42,7 @@ struct calcNpdeInfoId {
   arma::mat npde;
   arma::mat npd;
   arma::mat eres;
+  arma::vec ewres;
   unsigned int warn = 0;
 };
 

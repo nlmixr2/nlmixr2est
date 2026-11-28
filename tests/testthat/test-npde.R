@@ -176,7 +176,10 @@ nmTest({
     rxode2::setRxThreads(.old)
     expect_identical(.t1, .t2)
     suppressMessages(expect_error(addNpde(fit), NA))
-    expect_true(all(c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD") %in% names(fit)))
+    expect_true(all(c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD", "EWRES") %in% names(fit)))
+    # EWRES keeps the residual's magnitude on the decorrelated scale
+    expect_true(all(is.finite(fit$EWRES)))
+    expect_lt(abs(mean(fit$EWRES)), 0.5)
     .range1 <- range(fit$PDE)
     .range2 <- range(fit$PD)
     expect_true(.range1[1] > 0)
@@ -208,7 +211,8 @@ nmTest({
 
     fit <- .nlmixr(one.cmt, theo_sd, est = "saem", control = saemControlFast, table = tableControl(npde = TRUE))
 
-    expect_true(all(c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD") %in% names(fit)))
+    expect_true(all(c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD", "EWRES") %in% names(fit)))
+    expect_true(all(is.finite(fit$EWRES)))
   })
 
   test_that("pheno", {
