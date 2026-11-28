@@ -308,6 +308,10 @@
   `foceiControl(omegaCollapseWarn=)` sets the fraction; `NA` turns it off
   (#1394).
 
+- `foceiControl(collapseProbe=TRUE)` re-fits a FOCEi-family model from a
+  collapsed omega raised back to its initial estimate, keeping whichever fit
+  has the lower objective and noting the change in `$runInfo` (#1394).
+
 - A fit of any method now notes in `$runInfo` an estimated theta that ended
   at a finite `lower`/`upper` bound (`estimate at its bound: "tka"`), with or
   without a covariance step.  `foceiControl(thetaBoundWarn=)` sets the

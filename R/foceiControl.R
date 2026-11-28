@@ -1105,6 +1105,10 @@
 #'   ends below this fraction of its initial estimate, or at its
 #'   `diagOmegaBoundLower` bound.  Use `NA` or `0` to disable.
 #'
+#' @param collapseProbe When `TRUE`, an omega flagged by `omegaCollapseWarn`
+#'   is raised back to its initial estimate and the problem re-fit from there;
+#'   the fit with the lower objective is kept.
+#'
 #' @param thetaBoundWarn Warn (in `$runInfo`) when an estimated theta ends
 #'   within this tolerance of a finite `lower`/`upper` bound, relative to the
 #'   bound range (or, for a one-sided bound, to the larger of the bound's size
@@ -1604,6 +1608,7 @@ foceiControl <- function(
   shrinkEtaWarn = 30, #
   odeSettleCheck = FALSE, #
   odeSettleTol = 0.1, #
+  collapseProbe = FALSE, #
   ebeCheck = FALSE, #
   ebeCheckStep = 0.1, #
   ebeCheckTol = 0.01, #
@@ -2299,6 +2304,7 @@ foceiControl <- function(
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
   checkmate::assertNumber(omegaCollapseWarn, lower = 0, upper = 1, na.ok = TRUE)
+  checkmate::assertFlag(collapseProbe)
   checkmate::assertNumber(thetaBoundWarn, lower = 0, upper = 1, na.ok = TRUE)
   checkmate::assertFlag(ebeCheck)
   checkmate::assertNumber(ebeCheckStep, lower = .Machine$double.xmin, finite = TRUE)
@@ -2541,6 +2547,7 @@ foceiControl <- function(
     odeSettleCheck = odeSettleCheck,
     odeSettleTol = as.double(odeSettleTol),
     omegaCollapseWarn = as.double(omegaCollapseWarn),
+    collapseProbe = collapseProbe,
     thetaBoundWarn = as.double(thetaBoundWarn),
     ebeCheck = ebeCheck,
     ebeCheckStep = as.double(ebeCheckStep),
