@@ -64,8 +64,21 @@
 }
 
 # check one scenario fitted by `est` against the exact likelihood and the
-# NONMEM / Monolix references stored with it
-.tteValidationCheck <- function(file, est, control, tol, llTol = NA, fit = NULL) {
+# stored reference fit `ref` ("nonmem" or "monolix") that makes the same
+# approximation: estimates within `refTol` (exact-fit) standard errors.  When
+# `refLl` is TRUE the fit's -2LL is the same likelihood as the reference's
+# OFV, and a fit more than 0.5 below it has found the better optimum.
+.tteValidationCheck <- function(
+  file,
+  est,
+  control,
+  tol,
+  llTol = NA,
+  fit = NULL,
+  ref = NULL,
+  refTol = tol,
+  refLl = FALSE
+) {
   if (is.null(fit)) {
     fit <- .tteValidationFit(file, est, control)
   }
@@ -78,45 +91,46 @@
     }
   }
   .v <- .tteValidation()
-  for (.tool in c("nonmem", "monolix")) {
-    .ref <- .v$env$tteValidationReference(.v$dir, file, .tool)
-    if (is.null(.ref)) {
-      next
-    }
-    .ref <- .ref[.ref$parameter != "OFV", ]
-    .se <- stats::setNames(.ref$se, .ref$parameter)
-    # in the exact fit's standard errors where there is one: a tool's own
-    # can be far too small (NONMEM's numerical covariance step)
-    if (!is.null(.ex)) {
-      .w <- intersect(names(.se), names(.ex$se)[!is.na(.ex$se)])
-      .se[.w] <- .ex$se[.w]
-    }
-    .tteValidationExpectClose(
-      fit,
-      stats::setNames(.ref$estimate, .ref$parameter),
-      .se,
-      tol,
-      paste(.info, "vs", .tool)
-    )
+  .ref <- if (is.null(ref)) NULL else .v$env$tteValidationReference(.v$dir, file, ref)
+  if (is.null(.ref)) {
+    return(invisible(fit))
   }
+  .info <- paste(.info, "vs", ref)
+  .ofv <- .ref$estimate[.ref$parameter == "OFV"]
+  if (refLl) {
+    .m2ll <- -2 * as.numeric(logLik(fit))
+    expect_lt(.m2ll - .ofv, 0.5, label = paste(.info, "-2LL - OFV"))
+    if (.m2ll < .ofv - 0.5) {
+      return(invisible(fit))
+    }
+  }
+  .ref <- .ref[.ref$parameter != "OFV", ]
+  .se <- stats::setNames(.ref$se, .ref$parameter)
+  # in the exact fit's standard errors where there is one: a tool's own
+  # can be far too small (NONMEM's numerical covariance step)
+  if (!is.null(.ex)) {
+    .w <- intersect(names(.se), names(.ex$se)[!is.na(.ex$se)])
+    .se[.w] <- .ex$se[.w]
+  }
+  .tteValidationExpectClose(fit, stats::setNames(.ref$estimate, .ref$parameter), .se, refTol, .info)
   invisible(fit)
 }
 
 # the objective function difference between the full and reduced tvCov
-# models, against the exact one and each stored reference
-.tteValidationCheckDofv <- function(full, reduced, est, tol) {
+# models, against the exact one and the paired reference `ref`
+.tteValidationCheckDofv <- function(full, reduced, est, tol, ref = NULL) {
   .d <- as.numeric(reduced$objf - full$objf)
   .ex <- .tteValidationExactFit("tvCov-reduced")$m2ll - .tteValidationExactFit("tvCov")$m2ll
   expect_lt(abs(.d - .ex), tol, label = paste("tvCov dOFV (", est, ") vs exact"))
+  if (is.null(ref)) {
+    return(invisible())
+  }
   .v <- .tteValidation()
-  for (.tool in c("nonmem", "monolix")) {
-    .f <- .v$env$tteValidationReference(.v$dir, "tvCov", .tool)
-    .r <- .v$env$tteValidationReference(.v$dir, "tvCov-reduced", .tool)
-    if (is.null(.f) || is.null(.r)) {
-      next
-    }
+  .f <- .v$env$tteValidationReference(.v$dir, "tvCov", ref)
+  .r <- .v$env$tteValidationReference(.v$dir, "tvCov-reduced", ref)
+  if (!is.null(.f) && !is.null(.r)) {
     .ref <- .r$estimate[.r$parameter == "OFV"] - .f$estimate[.f$parameter == "OFV"]
-    expect_lt(abs(.d - .ref), tol, label = paste("tvCov dOFV (", est, ") vs", .tool))
+    expect_lt(abs(.d - .ref), tol, label = paste("tvCov dOFV (", est, ") vs", ref))
   }
 }
 
