@@ -47,6 +47,15 @@
 
 ## New features
 
+- New `foceiControl(etaPolish = getOption("nlmixr2est.etaPolish", "none"))`
+  for `fast = TRUE` fits.  The analytic outer gradient is exact only at the eta
+  mode, but the inner optimizer stops at its own tolerance, so the reported
+  objective and the gradient carried an error of about that tolerance (FOCE
+  `"nonmem"` up to 1e-4 relative).  `"newton1"` takes one exact-Hessian Newton
+  step per subject after the inner optimizer (FOCEI and AGQ: kept only if the
+  subject's objective does not rise); `"newton"` iterates to round-off.
+  Objective and gradient are then evaluated at the same eta.  The default
+  `"none"` leaves every fit unchanged.
 - `est = "its"` (`itsControl()`) adds the iterative two-stage method: each
   iteration takes every subject's MAP etas and conditional covariance from
   the FOCEi inner problem, then updates the mu-referenced thetas and Omega in

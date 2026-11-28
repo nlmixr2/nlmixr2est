@@ -6988,9 +6988,15 @@ static double foceiMixObjSlot(int gid, int slot) {
   return R_FINITE(lse) ? -2.0*lse : NA_REAL;
 }
 
+// foceiControl(etaPolish=): 0 "none" (the inner optimizer's etas as they are), 1 "newton"
+// (exact-Hessian Newton to the mode after the inner), 2 "newton1" (one capped exact step).
+static int _etaPolish = 0;
+static int _etaPolishRevert = 0;   // newton1 steps rejected by the objective check (per fit)
+static void innerEtaPolish();   // the eta-mode polish, defined with the gradient
 static inline double foceiLik0(double *theta) {
   updateTheta(theta);
   innerOpt();
+  innerEtaPolish();
   double lik = 0.0;
   double cur;
 
@@ -8380,7 +8386,9 @@ struct FoceiGradPooledSetup : OuterCols {
   // frozen here: a constant would describe a precision the user did not ask for.  At the
   // default sigdig = 3 these are the historic 1e-9 / 1e-3.
   double ebeTol = 1e-9;       // score convergence (fixed; foceiControl(foceEbeTol=) overrides)
-  double ebeSkipTol = 1e-3;   // looser first-iteration test: already stationary?
+  // Looser first-iteration test (already stationary?) and the band a stalled Newton must be
+  // inside to be accepted.  With etaPolish != "none" the first iteration tests ebeTol too.
+  double ebeSkipTol = 1e-3;
   bool canVanish = false; // f can pass through zero -- guard the solve before using it
 
   // ll() perturbs a non-mu theta by hFD, which needs that theta's ntheta position
@@ -12329,6 +12337,14 @@ Environment foceiOuter(Environment e){
   op_focei.warnedAnalyticFallback=0;
   op_focei.warnedResetNoProgress=0;
   op_focei.warnedContribFallback=0;
+  // The analytic-gradient setup from the start: the in-inner eta polish (innerEtaPolish)
+  // then acts on every objective of this fit -- the start, the optimizer's, the final one --
+  // not only on the evaluations inside gradient callbacks.
+  if (_etaPolish != 0) {
+    op_foceiFitEnv = e;
+    op_foceiFitEnvSet = true;
+    loadGradPooledSetup(e);
+  }
   if (op_focei.maxOuterIterations > 0){
     // before the bounds are put on the optimizer's scale; a theta-reset restart
     // keeps the first attempt's start
@@ -15188,6 +15204,7 @@ void foceiFinalizeTables(Environment e){
         // Subjects the Newton accepted at the solve's noise floor rather than declining
         // the gradient over an unreachable score tolerance -- see foceEbeNewton.
         e["nNewtonStall"] = IntegerVector::create(op_focei.nNewtonStall);
+        if (_etaPolish == 2) e["nEtaPolishRevert"] = IntegerVector::create(_etaPolishRevert);
         e["newtonStallS"] = NumericVector::create(op_focei.newtonStallS);
         e["nFdOutlier"] = IntegerVector::create(
           _["params"] = op_focei.nFdOutlierParam,
@@ -16451,6 +16468,17 @@ static void foceiFitSetupScale(const CharacterVector &thetaNames,
 Environment foceiFitCpp_(Environment e){
   focei_wall_clock::time_point wallT0 = focei_wall_clock::now();
   _foceiProgInPlace = nmProgressInPlace();
+  _etaPolish = 0;
+  _etaPolishRevert = 0;
+  if (e.exists("control")) {
+    List ctl = as<List>(e["control"]);
+    if (ctl.containsElementNamed("etaPolish")) {
+      const std::string m = as<std::string>(ctl["etaPolish"]);
+      _etaPolish = m == "newton" ? 1 : m == "newton1" ? 2 : 0;
+    }
+  }
+  // no analytic-gradient setup (and so no in-inner eta polish) carried over from another fit
+  if (_etaPolish != 0) _gradPooled.clear();
   // The registry is a global that outlives a fit, so start every fit from empty:
   // otherwise a fit with no theta-sensitivity model of its own would size its
   // pool from the PREVIOUS fit's, which is exactly what resetting _impPoolModel
@@ -19685,7 +19713,9 @@ static void obsFromInd(rx_solving_options_ind *ind, const VaeOuterE &E,
 // One pooled solve per iteration over ALL subjects, as in R.  Iteration 1 tests
 // stationarity at the incoming eta with a LOOSE tolerance (skipTol) so an eta that is
 // already stationary -- the FOCEI/additive case -- returns untouched; later iterations
-// use convTol.  These are the FIXED values the routine shipped with (1e-3 / 1e-9), not
+// use convTol.  With etaPolish != "none" the first iteration tests convTol too (the eta
+// is then polished to the mode), and "newton1" stops after one capped step.  These are the
+// FIXED values the routine shipped with (1e-3 / 1e-9), not
 // sigdig-derived: a score convergence target on an inner Newton is not a solve precision,
 // and tying it to sigdig made the analytic FOCE gradient available or not depending on
 // the requested digits.  foceiControl(foceEbeTol=) overrides convTol.  A subject whose
@@ -19713,6 +19743,10 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
   const int maxit = 100;        // total iterations; backtracks consume them too
   const int maxBack = 8;        // halvings per step, i.e. down to alpha = 1/256
   const double skipTol = G.ebeSkipTol, convTol = G.ebeTol;
+  // etaPolish "none": the first iteration's looser test, no noise-floor stop
+  const bool pol = _etaPolish != 0;
+  const double tol0 = pol ? convTol : skipTol;
+  const bool one = _etaPolish == 2;   // newton1: one capped step, no confirming solve
   const bool fp = (G.foceType == 1) || (E0all == NULL);
   const bool hasCens = hasRxCens(rx), hasLimit = hasRxLimit(rx);
   etaOut = ebes;
@@ -19784,7 +19818,7 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
       }
       if (!S.is_finite() || !Hf.is_finite()) { op_focei.nNewtonSingular++; skipSub(i); continue; }
       double sMax = arma::abs(S).max();
-      if (sMax < (it == 0 ? skipTol : convTol)) { active[(size_t)i] = 0; continue; }
+      if (sMax < (it == 0 ? tol0 : convTol)) { active[(size_t)i] = 0; continue; }
       // The Newton decrement lam2 = S' Hf^-1 S is how much of the objective this point
       // still has left to give -- the frozen-variance objective is on the -LL scale, so
       // lam2 is the remaining -2LL decrease.  Unlike |S| it is invariant to how eta and
@@ -19816,7 +19850,15 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
       // the loose stationarity band the first iteration already trusts, and decline only
       // when the mode genuinely was not reached.  The gradient error an off-mode eta
       // causes is S'(deta/dtheta), which sqrt(lam2) bounds in the Hf metric.
-      const bool stalled = (it == maxit) || (backtracking && nback[(size_t)i] >= maxBack);
+      // Polish modes: Newton converges quadratically near the mode, so once the best
+      // iterate's decrement is below convTol a full step that cuts |S| by less than 4x has
+      // hit the solve's noise floor: halving it cannot help, and each halving costs a
+      // population solve.  Judge it as a stall now (the acceptance below then holds).
+      const bool noiseFloor = pol && haveStep[(size_t)i] && nback[(size_t)i] == 0 &&
+        sMax > 0.25 * prevS[(size_t)i] && bestS[(size_t)i] < skipTol &&
+        bestLam2[(size_t)i] >= 0 && bestLam2[(size_t)i] <= convTol;
+      const bool stalled = (it == maxit) || (backtracking && nback[(size_t)i] >= maxBack) ||
+        noiseFloor;
       if (stalled) {
         if (bestS[(size_t)i] < skipTol && bestLam2[(size_t)i] >= 0 &&
             bestLam2[(size_t)i] <= convTol) {
@@ -19843,6 +19885,14 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
         continue;                                  // re-solve and re-judge the same step
       }
       if (!haveSolve) { op_focei.nNewtonSingular++; skipSub(i); continue; }
+      if (one) {   // newton1: one step of a PD Hf, capped at |step|_inf <= 1; the subject is done
+        arma::mat Lc;
+        const double sm = arma::abs(step).max();
+        if (sm > 0.0 && arma::chol(Lc, arma::mat(0.5 * (Hf + Hf.t()))))
+          etaOut.row(i) -= (sm > 1.0 ? step / sm : step).t();
+        active[(size_t)i] = 0;
+        continue;
+      }
       prevS[(size_t)i] = sMax;                     // reference for judging this new step
       lastStep[(size_t)i] = step;
       alpha[(size_t)i] = 1.0;
@@ -19857,6 +19907,264 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
   for (int i = 0; i < nsub; ++i) if (!skip[(size_t)i]) return true;
   return false;
 }
+
+// FALSE while foceiGradPooledDirect_ evaluates at caller etas that are not inner modes
+static bool gradInnerScore = true;
+// The etas the last gradPooledCore/gradPooledCoreLL kernel ran at: the polished mode
+// (or the incoming EBEs where a subject could not be polished).  The Eq-48 warm start
+// extrapolates from these, not from the inner optimizer's stopping point.
+static arma::mat _gradEtaHat;
+// Eta-mode polish (#1496): FOCEI and AGQ (the FOCEI inner mode) and ll() (the Laplace mode).
+// The inner optimizer stops at its own tolerance, so its EBEs are only near the root of the
+// inner score S.  Exact Newton on S puts them at the mode to convTol (G.ebeTol) or to the
+// solve's noise floor:
+//   FOCEI: S = Oi eta + sum (rho_f a + rho_R aR),
+//          H = Oi + sum (rho_ff a a' + rho_fR (a aR' + aR a') + rho_RR aR aR' + rho_f A + rho_R AR)
+//   ll():  S = Oi eta - sum a,  H = Oi - sum A   (a, A: log-density eta derivatives)
+// with the exact censored partials on censored rows; H is the exact eta Hessian (A, AR).
+// Run INSIDE the inner (innerEtaPolish), so the objective and the gradient are both taken at
+// the polished eta.  Only a step from a positive definite H with a small Newton decrement
+// that then lowers |S| is kept; a subject whose solve fails or that cannot be improved keeps
+// its best eta (at worst the incoming one).
+static void etaModePolish(const FoceiGradPooledSetup &G, const std::vector<double> &thVals,
+                          const arma::mat &ebes, const arma::mat &Oi, int cores,
+                          rx_solving_options *op, int nsub, int neta, bool isLL,
+                          arma::mat &etaOut) {
+  etaOut = ebes;
+  const double convTol = G.ebeTol;
+  // exact H only: the model must carry the eta x eta second-order block (f2, and rvar2 when
+  // R has eta derivatives)
+  if (G.f2.empty() || (!G.rvar1.empty() && G.rvar2.empty())) return;
+  const bool hasCens = hasRxCens(rx), hasLimit = hasRxLimit(rx);
+  // score and exact Hessian of one subject at its solve E
+  auto score = [&](int i, const VaeOuterE &E, const arma::vec &eta, arma::vec &S, arma::mat &H) -> bool {
+    if (!E.ok || E.nobs <= 0 || (int)E.a.n_cols < neta) return false;
+    const int nobs = E.nobs;
+    S = Oi * eta;
+    H = Oi;
+    if (isLL) {
+      for (int l = 0; l < neta; ++l) {
+        S[l] -= arma::accu(E.a.col(l));
+        for (int m = 0; m < neta; ++m) H(l, m) -= arma::accu(E.A.slice(m).col(l));
+      }
+      return S.is_finite() && H.is_finite();
+    }
+    if ((int)E.R.n_elem != nobs || (int)E.aR.n_cols < neta) return false;
+    if ((int)E.A.n_slices < neta || (int)E.AR.n_slices < neta) return false;
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+    arma::vec yt, limt; arma::ivec cens;
+    obsFromInd(ind, E, G.hasT, hasCens, hasLimit, yt, cens, limt);
+    arma::vec res = yt - E.f;
+    arma::vec rf = -res / E.R, rR = 0.5 * (1.0 / E.R - arma::square(res) / arma::square(E.R));
+    arma::vec rff = 1.0 / E.R, rfR = res / arma::square(E.R);
+    arma::vec rRR = 0.5 * (-1.0 / arma::square(E.R) + 2.0 * arma::square(res) / arma::pow(E.R, 3));
+    if (hasCens || hasLimit) {
+      for (int o = 0; o < nobs; ++o) {
+        double lim = limt[o];
+        if (cens[o] == 0 && (ISNA(lim) || !R_FINITE(lim))) continue;
+        double cp[9];
+        censNormalPartials((double)cens[o], yt[o], lim, E.f[o], E.R[o], 2, cp);
+        rf[o] = cp[0]; rR[o] = cp[1]; rff[o] = cp[2]; rfR[o] = cp[3]; rRR[o] = cp[4];
+      }
+    }
+    for (int l = 0; l < neta; ++l) {
+      for (int o = 0; o < nobs; ++o) S[l] += rf[o] * E.a(o, l) + rR[o] * E.aR(o, l);
+      for (int m = 0; m < neta; ++m) {
+        double h = 0.0;
+        for (int o = 0; o < nobs; ++o)
+          h += rff[o] * E.a(o, l) * E.a(o, m) + rfR[o] * (E.a(o, l) * E.aR(o, m) + E.aR(o, l) * E.a(o, m)) +
+            rRR[o] * E.aR(o, l) * E.aR(o, m) +
+            rf[o] * E.A(o, l, m) + rR[o] * E.AR(o, l, m);
+        H(l, m) += h;
+      }
+    }
+    return S.is_finite() && H.is_finite();
+  };
+  std::vector<char> active((size_t)nsub, 1);
+  std::vector<double> bestS((size_t)nsub, R_PosInf);
+  arma::mat bestEta = ebes;
+  std::vector<VaeOuterE> Es((size_t)nsub);
+  const int maxit = 6;
+  const bool one = _etaPolish == 2;
+  const double polishLam2 = 1e-2;
+  for (int it = 0; it <= maxit; ++it) {
+    outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, etaOut, G, cores, op, nsub, neta, Es);
+    std::vector<arma::vec> Sv((size_t)nsub);
+    std::vector<arma::mat> Hv((size_t)nsub);
+    bool any = false;
+    for (int i = 0; i < nsub; ++i) {
+      if (!active[(size_t)i]) continue;
+      arma::vec S; arma::mat H;
+      double sMax = R_PosInf;
+      if (score(i, Es[(size_t)i], etaOut.row(i).t(), S, H)) sMax = arma::abs(S).max();
+      if (!(sMax < bestS[(size_t)i])) {          // failed or not improved: keep the best
+        etaOut.row(i) = bestEta.row(i); active[(size_t)i] = 0; continue;
+      }
+      // a step that contracts |S| less than Newton (4x) has reached the solve's noise
+      // floor: further steps only cost solves
+      const bool atFloor = it > 0 && sMax > 0.25 * bestS[(size_t)i];
+      bestS[(size_t)i] = sMax; bestEta.row(i) = etaOut.row(i);
+      if (sMax < convTol || it == maxit || atFloor) { active[(size_t)i] = 0; continue; }
+      Sv[(size_t)i] = S; Hv[(size_t)i] = H; any = true;
+    }
+    if (!any) break;
+    for (int i = 0; i < nsub; ++i) {
+      if (!active[(size_t)i]) continue;
+      // A polish, not a search: H must be positive definite (a minimum) and the Newton
+      // decrement S' H^-1 S -- the -2LL the step still expects to gain -- small.  Anything
+      // else is an eta the inner optimizer did not leave near this mode (a kink of a lag
+      // time, another basin), and that subject keeps its incoming eta.
+      arma::mat Hs = 0.5 * (Hv[(size_t)i] + Hv[(size_t)i].t()), Lc;
+      arma::vec step;
+      if (!arma::chol(Lc, Hs) || !arma::solve(step, Hs, Sv[(size_t)i]) || !step.is_finite()) {
+        active[(size_t)i] = 0; continue;
+      }
+      if (one) {   // newton1: one step of the PD H, capped at |step|_inf <= 1; no confirming solve
+        const double sm = arma::abs(step).max();
+        if (sm > 0.0) etaOut.row(i) -= (sm > 1.0 ? step / sm : step).t();
+        bestEta.row(i) = etaOut.row(i);
+        continue;
+      }
+      const double lam2 = arma::dot(Sv[(size_t)i], step);
+      if (!(lam2 >= 0.0 && lam2 <= polishLam2)) { active[(size_t)i] = 0; continue; }
+      etaOut.row(i) -= step.t();
+    }
+    if (one) break;
+  }
+  for (int i = 0; i < nsub; ++i) etaOut.row(i) = bestEta.row(i);
+}
+
+// What the in-inner polish left for the gradient at the same point: the polished etas (what
+// the inner then evaluated the objective at), and for FOCE "nonmem" the eta = 0 solve and
+// the subjects whose frozen-variance mode was not found.  The gradient takes these as they
+// are -- no second Newton -- whenever thetas, Omega^-1 and the etas match bitwise.
+struct InnerPolishState {
+  bool valid = false, foce = false;
+  std::vector<double> th;
+  arma::mat Oi, eta;
+  std::vector<char> foceSkip;
+  std::vector<VaeOuterE> E0s;
+};
+static InnerPolishState _innerPolish;
+static bool innerPolishMatches(const std::vector<double> &thVals, const arma::mat &Oi,
+                               const arma::mat &ebes) {
+  const InnerPolishState &P = _innerPolish;
+  return P.valid && P.th == thVals && P.Oi.n_rows == Oi.n_rows && P.Oi.n_cols == Oi.n_cols &&
+    arma::all(arma::vectorise(P.Oi == Oi)) && P.eta.n_rows == ebes.n_rows &&
+    P.eta.n_cols == ebes.n_cols && arma::all(arma::vectorise(P.eta == ebes));
+}
+
+// The eta-mode polish INSIDE the inner (#1496), once per objective evaluation, after the
+// per-subject inner optimizations: exact Newton on the inner score (FOCEI / AGQ / forward
+// ll(): etaModePolish; FOCE "nonmem": the frozen-variance Newton foceEbeNewton), then each
+// moved subject's objective is re-evaluated at its polished eta (innerEval).  The reported
+// objective and the analytic gradient are then both taken at the same eta-hat, which is the
+// mode to ebeTol or to the solve's noise floor -- no gradient-side polish remains.  Only for
+// fits whose analytic gradient can use it; other routes keep the inner's etas.
+static void innerEtaPolish() {
+  _innerPolish.valid = false;
+  if (_etaPolish == 0 || op_focei.fast == 0 || !op_foceiFitEnvSet || !gradInnerScore) return;
+  // an external likelihood contribution or subject penalty moves the inner score in a way
+  // the augmented model does not see (#1051): the analytic gradient declines, and so does this
+  if (nlmixrContribBreaksAnalyticGrad()) return;
+  const FoceiGradPooledSetup &G = _gradPooled;
+  if (!G.ok || inds_focei == NULL) return;
+  if (op_focei.neta <= 0 || G.neta != op_focei.neta || op_focei.fo || op_focei.mixIdxN != 0 ||
+      op_focei.maxInnerIterations <= 0 || op_focei.freezeOde) return;
+  const bool isFoce = !G.isLL && G.interaction == 0;
+  if (isFoce && G.foceType == 1) return;        // foce+: the inner's own exact refinement
+  if (odeSwapCanPool(odeSlotOuter) != odeDenyNone) return;
+  if (op_focei.vaeOuterNlhs <= 0 || rxVaeOuter.calc_lhs == NULL) return;
+  rx = getRxSolve_();
+  if (rx == NULL) return;
+  rx_solving_options *op = getSolvingOptions(rx);
+  if (!odeSwapCheckLhsWidth(odeSlotOuter, &rxVaeOuter, rx, op)) return;
+  if (!outerColsWithin(G, odeSwapNlhs(odeSlotOuter))) return;
+  if (G.isLL && (hasRxCens(rx) || hasRxLimit(rx))) return;
+  const int nsub = (int)getRxNsub(rx), neta = G.neta;
+  const int cores = getOpCores(op);
+  std::vector<double> thVals((size_t)op_focei.ntheta);
+  for (int t = 0; t < (int)op_focei.ntheta; ++t) thVals[(size_t)t] = op_focei.fullTheta[t];
+  const arma::mat Oi = curOmegaInv();
+  arma::mat ebes((unsigned int)nsub, (unsigned int)neta);
+  for (int i = 0; i < nsub; ++i) {
+    focei_ind *fInd = &(inds_focei[i]);
+    if (fInd->saveEta == NULL || fInd->eta == NULL) return;
+    for (int j = 0; j < neta; ++j) ebes(i, j) = fInd->saveEta[j];
+  }
+  InnerPolishState P;
+  P.foce = isFoce;
+  arma::mat etaHat = ebes;
+  {
+    std::unique_ptr<OdeSwapEsBatch> _pb(new OdeSwapEsBatch(odeSlotOuter));
+    OdeFitTolGuard _pt;
+    if (isFoce) {
+      const bool needE0 = G.dependsF0;
+      P.foceSkip.assign((size_t)nsub, 0);
+      if (needE0) {
+        const arma::mat zeroEta((unsigned int)nsub, (unsigned int)neta, arma::fill::zeros);
+        P.E0s.resize((size_t)nsub);
+        outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, zeroEta, G, cores, op, nsub, neta, P.E0s);
+        for (int i = 0; i < nsub; ++i)
+          if (!P.E0s[(size_t)i].ok) { op_focei.nDeclineE0++; P.foceSkip[(size_t)i] = 1; }
+      }
+      foceEbeNewton(G, thVals, ebes, Oi, needE0 ? &P.E0s : NULL, cores, op, nsub, neta, etaHat,
+                    P.foceSkip);
+    } else {
+      etaModePolish(G, thVals, ebes, Oi, cores, op, nsub, neta, G.isLL, etaHat);
+    }
+  }
+  // the objective at the polished etas: re-evaluate the subjects that moved
+  std::vector<int> moved;
+  for (int i = 0; i < nsub; ++i)
+    if (arma::any(etaHat.row(i) != ebes.row(i))) moved.push_back(i);
+  if (!moved.empty()) {
+    OdeSwapEsBatch esBatch(odeSlotInner);
+    const bool doParallel = (cores > 1) && solveMethodThreadSafe(op) && moved.size() > 1;
+    std::vector<char> bad(moved.size(), 0);
+    if (doParallel) { sortIds(rx, 2); _innerParallel.store(1, std::memory_order_release); }
+    nmForEachSubject(rx, (int)moved.size(), cores, doParallel, [&](int k) {
+      const int id = moved[(size_t)k];
+      focei_ind *fInd = &(inds_focei[id]);
+      // newton1 takes a single step with no confirming iteration: keep it only if the
+      // subject's joint objective did not rise (one extra solve, at the inner's own eta).
+      // Not for FOCE "nonmem": its step goes to the frozen-variance mode, which is not the
+      // minimum of the inner objective, so that objective may legitimately rise.
+      const bool guard = _etaPolish == 2 && !isFoce;
+      double l0 = 0.0;
+      if (guard) {
+        for (int j = 0; j < neta; ++j) fInd->eta[j] = ebes(id, j);
+        l0 = likInner0(fInd->eta, id);
+      }
+      for (int j = 0; j < neta; ++j) fInd->eta[j] = etaHat(id, j);
+      if (guard) {
+        const double l1 = likInner0(fInd->eta, id);
+        if (!(l1 <= l0 + 1e-7 * (1.0 + std::fabs(l0)))) { bad[(size_t)k] = 2; return; }
+      }
+      if (!innerEval(id)) bad[(size_t)k] = 1;
+    });
+    _innerParallel.store(0, std::memory_order_release);
+    if (doParallel) sortIds(rx, 0);
+    // a subject whose objective does not evaluate at the polished eta goes back to its own
+    for (size_t k = 0; k < moved.size(); ++k) {
+      if (!bad[k]) continue;
+      if (bad[k] == 2) _etaPolishRevert++;
+      const int id = moved[k];
+      focei_ind *fInd = &(inds_focei[id]);
+      for (int j = 0; j < neta; ++j) fInd->eta[j] = ebes(id, j);
+      innerEval(id);
+      etaHat.row(id) = ebes.row(id);
+      if (isFoce) P.foceSkip[(size_t)id] = 1;
+    }
+  }
+  for (int i = 0; i < nsub; ++i) {
+    focei_ind *fInd = &(inds_focei[i]);
+    for (int j = 0; j < neta; ++j) etaHat(i, j) = fInd->saveEta[j];
+  }
+  P.th = thVals; P.Oi = Oi; P.eta = etaHat; P.valid = true;
+  _innerPolish = std::move(P);
+}
+
 
 // ---- ll() / generalized likelihood -------------------------------------------------
 //
@@ -19960,7 +20268,7 @@ static bool llHblockFill(bool useHess2, const FoceiGradPooledSetup &G,
 static arma::mat _gradIndKer;
 
 static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
-                             const std::vector<double> &thVals, const arma::mat &ebes,
+                             const std::vector<double> &thVals, const arma::mat &ebesIn,
                              const arma::mat &Oi, const arma::cube &dOiEst,
                              const arma::vec &tr28, int cores,
                              arma::vec &gOut, arma::cube &etaPOut) {
@@ -19977,10 +20285,14 @@ static bool gradPooledCoreLL(const FoceiGradPooledSetup &G,
   // ... and the installed column map must name columns that model actually has
   if (!outerColsWithin(G, odeSwapNlhs(odeSlotOuter))) return false;
   const int nsub = (int)getRxNsub(rx);
-  if ((int)ebes.n_rows != nsub || (int)ebes.n_cols != neta) return false;
+  if ((int)ebesIn.n_rows != nsub || (int)ebesIn.n_cols != neta) return false;
   // Censored (M2/M3/M4) observations enter an ll() objective as -logPhi, a contribution
   // the log-density augmented model does not carry.  Mirror the R gate.
   if (hasRxCens(rx) || hasRxLimit(rx)) return false;
+  // the Laplace mode: polished inside the inner (innerEtaPolish), so the objective was
+  // evaluated at these same etas
+  const arma::mat &ebes = ebesIn;
+  _gradEtaHat = ebes;
   const double hFD = 1e-4;
   _gradIndKer.reset();
 
@@ -20547,8 +20859,6 @@ static arma::ivec foceiHessianDirs(const FoceiGradPooledSetup &g) {
   return dirs;
 }
 
-// FALSE while foceiGradPooledDirect_ evaluates at caller etas that are not inner modes
-static bool gradInnerScore = true;
 
 static bool gradPooledCore(const FoceiGradPooledSetup &G,
                            const std::vector<double> &thVals, const arma::mat &ebes,
@@ -20600,19 +20910,37 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
   // finite-differenced below like a subject whose augmented solve failed
   std::vector<char> foceSkip((size_t)nsub, 0);
   const bool needE0 = isFoce && (G.foceType == 0) && G.dependsF0;
-  if (needE0) {
-    E0s.resize((size_t)nsub);
-    arma::mat zeroEta((unsigned int)nsub, (unsigned int)neta, arma::fill::zeros);
-    outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, zeroEta, G, cores, op, nsub, neta, E0s);
-    for (int i = 0; i < nsub; ++i)
-      if (!E0s[(size_t)i].ok) { op_focei.nDeclineE0++; foceSkip[(size_t)i] = 1; }
+  // The inner already polished these etas at this point (innerEtaPolish: FOCE "nonmem"'s
+  // frozen-variance Newton, the eta = 0 solve and the subjects it could not solve), and the
+  // objective was evaluated there: take them as they are.
+  const bool foceDone = _etaPolish != 0 && isFoce && G.foceType == 0 && _innerPolish.foce &&
+    innerPolishMatches(thVals, Oi, ebes);
+  if (foceDone) {
+    foceEta = ebes;
+    foceSkip = _innerPolish.foceSkip;
+    if (needE0) E0s = _innerPolish.E0s;
+    bool anyOk = false;
+    for (int i = 0; i < nsub; ++i) if (!foceSkip[(size_t)i]) anyOk = true;
+    if (!anyOk) { op_focei.nDeclineNewton++; return declineHere(10); }
+  } else {
+    if (needE0) {
+      E0s.resize((size_t)nsub);
+      arma::mat zeroEta((unsigned int)nsub, (unsigned int)neta, arma::fill::zeros);
+      outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, zeroEta, G, cores, op, nsub, neta, E0s);
+      for (int i = 0; i < nsub; ++i)
+        if (!E0s[(size_t)i].ok) { op_focei.nDeclineE0++; foceSkip[(size_t)i] = 1; }
+    }
+    if (isFoce && !foceEbeNewton(G, thVals, ebes, Oi, needE0 ? &E0s : NULL,
+                                 cores, op, nsub, neta, foceEta, foceSkip)) {
+      op_focei.nDeclineNewton++;
+      return declineHere(10);
+    }
   }
-  if (isFoce && !foceEbeNewton(G, thVals, ebes, Oi, needE0 ? &E0s : NULL,
-                               cores, op, nsub, neta, foceEta, foceSkip)) {
-    op_focei.nDeclineNewton++;
-    return declineHere(10);
-  }
+  // FOCEI / AGQ: the inner mode, polished inside the inner (innerEtaPolish)
   const arma::mat &ebesUse = isFoce ? foceEta : ebes;
+  // the kernels take the polished etas; "none" keeps the incoming ones, as before
+  const arma::mat &ebesKer = _etaPolish != 0 ? ebesUse : ebes;
+  _gradEtaHat = ebesUse;
 
   std::vector<VaeOuterE> Es((size_t)nsub);
   outerSolveFill(odeSlotOuter, &rxVaeOuter, thVals, ebesUse, G, cores, op, nsub, neta, Es);
@@ -20661,7 +20989,7 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
     FoceiHessianProbes probes;
     FoceiHessianModel model{probes, G, thVals, false, cores};
     auto solve = [&](const arma::mat &eta, std::vector<VaeOuterE> &e) { return model.solve(eta, e); };
-    if (!foceiHessianThird(op_focei.outerThirdStep, ebes, G, Es, false, solve, Ath, AthR, 2)) {
+    if (!foceiHessianThird(op_focei.outerThirdStep, ebesKer, G, Es, false, solve, Ath, AthR, 2)) {
       op_focei.nDeclineThird++;
       return declineHere(29);
     }
@@ -20732,12 +21060,12 @@ static bool gradPooledCore(const FoceiGradPooledSetup &G,
         const VaeOuterE &E = Es[(size_t)i];
         foceiGradSubjectFullFR_(E.a, E.A, Ath[(size_t)i], E.aR, E.AR, AthR[(size_t)i],
                                 censi, limi, B.f.subvec(o0, o1), B.y.subvec(o0, o1), B.R.subvec(o0, o1),
-                                ebes.row(i).t(), Oi, dOiEst, tr28,
+                                ebesKer.row(i).t(), Oi, dOiEst, tr28,
                                 neta, nd + nsg, nth + nsg, nom, dirP, gi, etaPi, gradInnerScore);
       } else {
         foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, censi, limi, G.censOpt,
                             B.f.subvec(o0, o1), B.y.subvec(o0, o1), B.R.subvec(o0, o1),
-                            ebes.row(i).t(), Oi, dOiEst, tr28,
+                            ebesKer.row(i).t(), Oi, dOiEst, tr28,
                             neta, nth, nsg, nom, dirThV, sigColV, gi, etaPi, gradInnerScore);
       }
       gmat.col(i) = gi; etaPOut.slice(i) = etaPi;
@@ -21139,13 +21467,16 @@ static bool analyticOuterGradDirect(double *theta, double *g) {
   const int nKer = G.nth + G.nsg + G.nom;
   const int cores = getOpCores(getSolvingOptions(rx));
   arma::vec gv; arma::cube etaP;
+  _gradEtaHat.reset();
   if (!gradDirectKernel(G, thv, ebes, Oi, dOiEst, tr28, cores, nKer, gv, etaP)) return false;
   arma::vec gp;
   if (!gradDirectGather(G, gv, nKer, npars, gp)) return false;
   arma::mat gInd = gradDirectGatherInd(G, nKer, npars, nsub);
   if (!gradDirectFinalize(npars, gp, Oi, dOiEst, gInd)) return false;
   for (int i = 0; i < npars; ++i) g[i] = gp[i] * scaleAdjustGradScale(&op_focei, 1.0, i);
-  gradDirectStoreEtaP(G, etaP, ebes, theta, nsub, neta, npars, nKer);
+  // the warm start extrapolates from the etas the kernel ran at (the polished mode)
+  const bool haveHat = _etaPolish != 0 && _gradEtaHat.n_rows == ebes.n_rows && _gradEtaHat.n_cols == ebes.n_cols;
+  gradDirectStoreEtaP(G, etaP, haveHat ? _gradEtaHat : ebes, theta, nsub, neta, npars, nKer);
   return true;
 }
 
