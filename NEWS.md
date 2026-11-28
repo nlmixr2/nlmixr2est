@@ -384,6 +384,11 @@
 
 ## Bug fixes
 
+- The forward-sensitivity `fast = TRUE` gradient of `ll()` endpoints now includes
+  the eta-stationarity term `2 s' dEta/dX` for the theta and omega rows.  The
+  inner `n1qn1` solve stops at `epsilon` (1e-3), so `s` is not exactly zero and
+  the gradient used to carry that tolerance (about 2e-3 on mu-referenced thetas).
+
 - A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
   the gradient before the objective no longer stops R: the gradient's history
   row read the last objective iteration, which did not exist yet.  FOCEi now
