@@ -55,7 +55,7 @@ with and without the covariate.  Each method is also compared with the
 reference fit that makes the same approximation: `focei` with NONMEM's
 Laplace, `agq` and `saem` with Monolix (SAEM, -2LL by importance
 sampling).  Differences are in the exact fit's standard errors where there
-is one (otherwise the reference's own), and a fit whose -2LL is more than
+is one (otherwise the larger of the fit's and the reference's own), and a fit whose -2LL is more than
 0.5 below the reference's has found the better optimum and passes.
 `test-tte-validation-exact.R` checks that the exact fits recover the
 simulation truth, which validates rxode2's `tte()` simulation

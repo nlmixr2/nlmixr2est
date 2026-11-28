@@ -111,6 +111,11 @@
   if (!is.null(.ex)) {
     .w <- intersect(names(.se), names(.ex$se)[!is.na(.ex$se)])
     .se[.w] <- .ex$se[.w]
+  } else {
+    # without one, the larger of the fit's and the reference's
+    .fse <- stats::setNames(fit$parFixedDf$SE, rownames(fit$parFixedDf))
+    .w <- intersect(names(.se), names(.fse)[!is.na(.fse)])
+    .se[.w] <- pmax(.se[.w], .fse[.w], na.rm = TRUE)
   }
   .tteValidationExpectClose(fit, stats::setNames(.ref$estimate, .ref$parameter), .se, refTol, .info)
   invisible(fit)
