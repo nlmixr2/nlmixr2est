@@ -136,5 +136,11 @@ nmTest({
     expect_equal(.r$estimate, c(0.01, 2.3, 0.1, -2.2, 0.6, 0.09, 0.16, 0.25, 4000.5))
     # the SE of a variance from the SE of its SD
     expect_equal(.r$se[6:8], 2 * c(0.3, 0.4, 0.5) * c(0.02, 0.03, 0.05))
+
+    # no random effects
+    .s <- suppressMessages(.env$tteValidationScenarios("exponential")[[1]])
+    .r <- suppressMessages(.env$tteMonolixReference(c(lh_pop = -2.97), c(lh_pop = 0.09), 1001.5, .s, "2024R1"))
+    expect_equal(.r$parameter, c("lh", "OFV"))
+    expect_equal(.r$estimate, c(-2.97, 1001.5))
   })
 })

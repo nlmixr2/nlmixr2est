@@ -143,7 +143,7 @@ tteMonolixReference <- function(
   .est <- vapply(.mlx, .get, numeric(1), v = pop)
   .se <- vapply(.mlx, .get, numeric(1), v = se)
   # omega_<theta> is the SD of the eta on <theta>: report the variance
-  .om <- paste0("omega_", .mu$theta[match(.nm$eta, .mu$eta)])
+  .om <- if (length(.nm$eta) == 0) character(0) else paste0("omega_", .mu$theta[match(.nm$eta, .mu$eta)])
   .sd <- vapply(.om, .get, numeric(1), v = pop)
   .sdSe <- vapply(.om, .get, numeric(1), v = se)
   data.frame(
