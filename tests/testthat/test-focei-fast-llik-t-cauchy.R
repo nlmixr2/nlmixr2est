@@ -2,7 +2,7 @@ nmTest({
   # fast = TRUE built the outer model and innerHess2 with rx_pred_ = f for a t()/cauchy()
   # endpoint, while the ll() machinery reads rx_pred_ as the log-density: the objective
   # was wrong (and the gradient with it).  The fast objective must equal the fast = FALSE one.
-  .m <- function(err) {
+  .m <- function(err, sd = quote(add.sd <- 0.7)) {
     f <- function() {
       ini({
         tka <- 0.45
@@ -11,7 +11,7 @@ nmTest({
         eta.ka ~ 0.6
         eta.cl ~ 0.3
         eta.v ~ 0.1
-        add.sd <- 0.7
+        .sd
       })
       model({
         ka <- exp(tka + eta.ka)
@@ -23,7 +23,7 @@ nmTest({
         .err
       })
     }
-    body(f) <- eval(substitute(substitute(b, list(.err = err)), list(b = body(f))))
+    body(f) <- eval(substitute(substitute(b, list(.err = err, .sd = sd)), list(b = body(f))))
     f
   }
   .fit <- function(m, est, fast, ...) {
@@ -56,25 +56,43 @@ nmTest({
       })
     }
   }
-  test_that("t endpoint: analytic gradient (incl. sigma) matches central differences", {
-    skip_on_cran()
-    skip_if_not_installed("nlmixr2data")
-    .f <- .fit(.m(.errs$t), "focei", TRUE, maxOuterIterations = 0L)
-    .th <- .f$theta
+  # an analytic gradient that declines (nAnalyticGradDirect == 0) must fail the test
+  .gradCheck <- function(err, extra = NULL, ...) {
+    .m1 <- if (is.null(extra)) .m(err) else .m(err, extra)
+    .f <- .fit(.m1, "focei", TRUE, maxOuterIterations = 0L, ...)
+    .th <- .f$theta[c("tka", "tcl", "tv", "add.sd")]
     .th["tcl"] <- .th["tcl"] + 0.05
     .th["add.sd"] <- .th["add.sd"] * 1.1
     .om <- .f$omega * 1.1
-    .g <- nlmixr2ObjGrad(.f, theta = .th, omega = .om)
-    if (attr(.g, "nAnalyticGradDirect") > 0L) {
-      .obj <- function(th) nlmixr2ObjGrad(.f, theta = th, omega = .om)$objective
-      for (.p in c("tka", "tcl", "tv", "add.sd")) {
-        .h <- 1e-3
-        .tp <- .th
-        .tm <- .th
-        .tp[.p] <- .tp[.p] + .h
-        .tm[.p] <- .tm[.p] - .h
-        expect_equal(.g$gradient[[.p]], (.obj(.tp) - .obj(.tm)) / (2 * .h), tolerance = 5e-3)
-      }
+    .g <- suppressWarnings(nlmixr2ObjGrad(.f, theta = .th, omega = .om))
+    expect_gt(attr(.g, "nAnalyticGradDirect"), 0L)
+    .obj <- function(th) suppressWarnings(nlmixr2ObjGrad(.f, theta = th, omega = .om))$objective
+    for (.p in names(.th)) {
+      .h <- 1e-3
+      .tp <- .th
+      .tm <- .th
+      .tp[.p] <- .tp[.p] + .h
+      .tm[.p] <- .tm[.p] - .h
+      expect_equal(.g$gradient[[.p]], (.obj(.tp) - .obj(.tm)) / (2 * .h), tolerance = 5e-3)
     }
+  }
+  test_that("t endpoint: analytic gradient (incl. sigma) matches central differences", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .gradCheck(.errs$t)
+  })
+  # a fixed transform: the closed form carries it, so the outer model must not announce
+  # one (rx_predf_ is a log-density); sigdig = 8 keeps the central-difference noise down
+  test_that("t endpoint with a fixed boxCox: analytic gradient matches central differences", {
+    skip_on_cran()
+    skip_if_not_installed("nlmixr2data")
+    .gradCheck(
+      quote(cp ~ add(add.sd) + boxCox(lam) + dt(5)),
+      quote({
+      add.sd <- 0.7
+      lam <- fix(0.5)
+    }),
+      sigdig = 8
+    )
   })
 })

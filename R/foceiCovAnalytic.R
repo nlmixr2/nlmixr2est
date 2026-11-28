@@ -2437,7 +2437,9 @@
       # so the DV can be transformed in R (y = tbs(DV)) the same way the inner model does.
       .tvarL <- character(0)
       .hasTrans <- FALSE
-      for (.tv in c("yj", "lambda", "low", "hi")) {
+      # none for a closed-form log-density: it transforms DV and f itself, and rx_predf_
+      # is not a prediction the C++ clamp check could invert
+      for (.tv in if (isTRUE(llik)) character(0) else c("yj", "lambda", "low", "hi")) {
         .tval <- tryCatch(get(paste0("rx_", .tv, "_"), .s), error = function(e) NULL)
         if (!is.null(.tval)) .tvarL <- c(.tvarL, paste0("rx_t", .tv, "_=", .toRx(.tval)))
       }
