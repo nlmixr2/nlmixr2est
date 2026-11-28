@@ -100,8 +100,13 @@ nmTest({
     # the exact Hessian is the objective's Hessian: the objective matches the
     # finite-difference one (fast = FALSE) at its accuracy.  linCmt() and the ODE
     # twin share the Hessian assembly, so their agreement does not show this.
-    .fd <- foceiControl(fast = FALSE, print = 0L, covMethod = "", maxOuterIterations = 0L,
-                        rxControl = rxode2::rxControl(cores = 1L))
+    .fd <- foceiControl(
+      fast = FALSE,
+      print = 0L,
+      covMethod = "",
+      maxOuterIterations = 0L,
+      rxControl = rxode2::rxControl(cores = 1L)
+    )
     fOfd0 <- suppressMessages(suppressWarnings(nlmixr2(.llOde, d, "focei", .fd)))
     expect_lt(abs(fO0$objf - fOfd0$objf), 0.01)
     expect_lt(abs(fL0$objf - fOfd0$objf), 0.01)
