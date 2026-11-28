@@ -1,0 +1,13 @@
+DESCRIPTION: tte validation -- repeated events, constant hazard with a subject frailty
+
+[LONGITUDINAL]
+input = {lh}
+
+EQUATION:
+haz = exp(lh)
+
+DEFINITION:
+ev = {type=event, hazard=haz}
+
+OUTPUT:
+output = {ev}

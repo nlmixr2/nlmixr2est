@@ -1,0 +1,15 @@
+DESCRIPTION: tte validation -- single event with dropout as a competing process
+
+[LONGITUDINAL]
+input = {lh1, lh2}
+
+EQUATION:
+h1 = exp(lh1)
+h2 = exp(lh2)
+
+DEFINITION:
+ev = {type=event, maxEventNumber=1, hazard=h1}
+drop = {type=event, maxEventNumber=1, hazard=h2}
+
+OUTPUT:
+output = {ev, drop}

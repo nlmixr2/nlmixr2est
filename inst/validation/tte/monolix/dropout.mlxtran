@@ -1,0 +1,48 @@
+<DATAFILE>
+
+[FILEINFO]
+file = '../data/dropout.csv'
+delimiter = comma
+header = {ID, TIME, EVID, AMT, CMT, DV, MDV, DVID}
+
+[CONTENT]
+ID = {use=identifier}
+TIME = {use=time}
+EVID = {use=eventidentifier}
+MDV = {use=missingdependentvariable}
+DV = {use=observation, name={ev, drop}, yname={'1', '2'}, type={event, event}}
+DVID = {use=observationtype}
+
+<MODEL>
+
+[INDIVIDUAL]
+input = {lh1_pop, omega_lh1, lh2_pop}
+
+DEFINITION:
+lh1 = {distribution=normal, typical=lh1_pop, sd=omega_lh1}
+lh2 = {distribution=normal, typical=lh2_pop, no-variability}
+
+[LONGITUDINAL]
+file = 'dropout_model.txt'
+
+<FIT>
+data = {ev, drop}
+model = {ev, drop}
+
+<PARAMETER>
+lh1_pop = {value=-2.302585, method=MLE}
+lh2_pop = {value=-2.302585, method=MLE}
+omega_lh1 = {value=0.5477226, method=MLE}
+
+<MONOLIX>
+
+[TASKS]
+populationParameters()
+individualParameters(method = {conditionalMean, conditionalMode })
+fim(method = StochasticApproximation)
+logLikelihood(method = ImportanceSampling)
+
+[SETTINGS]
+GLOBAL:
+seed = 1461
+exportpath = 'dropout'

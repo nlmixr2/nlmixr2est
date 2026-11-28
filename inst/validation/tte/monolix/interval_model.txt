@@ -1,0 +1,16 @@
+DESCRIPTION: tte validation -- interval-censored single event (inspections every 4 time units)
+
+[LONGITUDINAL]
+input = {lsc, lsh}
+
+EQUATION:
+sc = exp(lsc)
+sh = exp(lsh)
+tt = max(t, 1e-10)
+haz = sh/sc*(tt/sc)^(sh - 1)
+
+DEFINITION:
+ev = {type=event, eventType=intervalCensored, intervalLength=4, maxEventNumber=1, hazard=haz}
+
+OUTPUT:
+output = {ev}

@@ -1,0 +1,26 @@
+$PROBLEM tte validation: interval-censored single event
+$INPUT ID TIME EVID AMT CMT DV MDV DVID
+$DATA interval.csv IGNORE=@
+$SUBROUTINES ADVAN13 TOL=9
+$MODEL COMP=(CHZ)
+$PK
+  SCL = EXP(THETA(1) + ETA(1))
+  SH = EXP(THETA(2))
+$DES
+  TSD = T
+  IF (TSD.LT.1E-10) TSD = 1E-10
+  DADT(1) = SH/SCL*(TSD/SCL)**(SH - 1)
+$ERROR
+  ; DV = 1: the event happened in the interval since the previous record
+  IF (NEWIND.NE.2) OLDCHZ = 0
+  CHZ = A(1) - OLDCHZ
+  IF (MDV.EQ.0) OLDCHZ = A(1)
+  PEV = 1 - EXP(-CHZ)
+  IF (PEV.LT.1E-300) PEV = 1E-300
+  Y = 2*CHZ
+  IF (DV.EQ.1) Y = -2*LOG(PEV)
+$THETA 2.302585 ; lsc
+$THETA 0.1823216 ; lsh
+$OMEGA 0.3 ; eta.sc
+$ESTIMATION METHOD=CONDITIONAL LAPLACE NUMERICAL SLOW -2LL MAXEVAL=9999 PRINT=5 NOABORT
+$COVARIANCE PRINT=E UNCONDITIONAL

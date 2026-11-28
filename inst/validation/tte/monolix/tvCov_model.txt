@@ -1,0 +1,15 @@
+DESCRIPTION: tte validation -- repeated events with a covariate that switches on during follow-up
+X is a regressor: the value on the last record at or before t holds (LOCF).
+
+[LONGITUDINAL]
+input = {lh, bx, X}
+X = {use=regressor}
+
+EQUATION:
+haz = exp(lh + bx*X)
+
+DEFINITION:
+ev = {type=event, hazard=haz}
+
+OUTPUT:
+output = {ev}

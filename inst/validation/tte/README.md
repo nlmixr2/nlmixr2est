@@ -24,6 +24,56 @@ and is fitted by nlmixr2est, NONMEM and Monolix from the same data set.
   design.  `tteValidationData(name, dir)` reads a data set for nlmixr2.
 - `simulate.R` -- regenerates `data/` (`Rscript simulate.R`).
 - `data/<scenario>.csv` -- the data sets.
+- `nonmem/<scenario>.ctl` -- NONMEM control streams (cumulative hazard in
+  `$DES`, -2 log-likelihood in `$ERROR`, `$EST METHOD=COND LAPLACE NUMERICAL SLOW -2LL`).
+- `monolix/<scenario>.mlxtran`, `monolix/<scenario>_model.txt` -- Monolix
+  projects (`{type=event}` outputs; SAEM, s.e. by stochastic
+  approximation, -2LL by importance sampling).
+- `tvCov-reduced` -- the nested `tvCov` model without the covariate
+  (`bx` fixed to 0), for the objective function difference.
+- `runNonmem.R`, `runMonolix.R` -- run every control stream / project and
+  store the results under `reference/<tool>/<scenario>.csv`.
+- `reference.R` -- reads NONMEM output (`.ext`, `.lst`) and Monolix
+  results (through lixoftConnectors) into reference files, with nlmixr2
+  parameter names and variances.
+- `checkSyntax.R` -- parses the control streams (nonmem2rx) and projects
+  (monolix2rx) without a licence.
+
+babelmixr2 does not translate `tte()` endpoints, so the control streams
+and projects are written by hand.  Their initial values are the
+scenarios' starting values (the package tests check this).
+
+## Regenerating the reference fits
+
+NONMEM and Monolix need licences, so they are not run in CI.  With them:
+
+```sh
+cd inst/validation/tte
+Rscript checkSyntax.R            # optional, needs nonmem2rx and monolix2rx
+NMFE=nmfe75 Rscript runNonmem.R  # or name scenarios: Rscript runNonmem.R . rtte tvCov
+MONOLIX_PATH=/path/to/MonolixSuite Rscript runMonolix.R
+```
+
+Each run's NONMEM or Monolix output is kept under `runs/` (set
+`TTE_RUN_DIR` to put it elsewhere), which git and the package build
+ignore.  Each reference file records the tool version and run date; commit the
+`reference/` files with the versions noted in the pull request.  The
+nlmixr2est tests compare against whichever reference files exist.
+
+`gapTime` has no Monolix project: Monolix has no time since the last
+event, and a regressor carrying the last event time forward would reset
+the clock at the event record itself, where the hazard must be the one
+just before the event.
+
+The stored fits are NONMEM 7.4.3 and Monolix 2024R1.  NONMEM's objective
+equals an independent Laplace approximation of the same likelihood at its
+estimates, so its gap to the exact -2LL (up to about 7 for the
+single-event scenarios) is the Laplace error.  NONMEM's `pkJoint` run did
+not converge (its estimates are far from the truth and it has no
+standard errors), so it has no NONMEM reference.  Some NONMEM standard
+errors from the numerical covariance step are much too small (e.g.
+`lateEntry`, `pkFixed`), so the validation tests measure differences
+from a reference in the exact fit's standard errors where there is one.
 
 ## Data sets
 
@@ -55,3 +105,12 @@ Conventions that differ between the tools are carried as extra columns:
   rxode2's simulation leaves no record of the other endpoint there.  The
   data set adds a right-censoring `DV = 0` record for `ev` at each
   dropout, without which `ev`'s hazard would be over-estimated.
+- objective function: nlmixr2's `OBJF` drops `log(2*pi)` for every
+  likelihood record, as it does for a Gaussian one, so for a tte fit
+  `OBJF = -2LL - nobs*log(2*pi)`; `-2 * logLik(fit)` is the full -2LL that
+  NONMEM's `-2LL` objective and Monolix's OFV report.  Differences between
+  nested models fitted to the same data do not depend on the constant.
+- random-effect variance bound: FOCEi bounds each variance to 5 times
+  its initial value (`foceiControl(diagOmegaBoundUpper = 5)`); NONMEM
+  and Monolix have no such bound.  The scenarios start the variances at
+  0.3, which puts the bound above every estimate.
