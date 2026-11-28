@@ -53,7 +53,9 @@ NMFE=nmfe75 Rscript runNonmem.R  # or name scenarios: Rscript runNonmem.R . rtte
 MONOLIX_PATH=/path/to/MonolixSuite Rscript runMonolix.R
 ```
 
-Each reference file records the tool version and run date; commit the
+Each run's NONMEM or Monolix output is kept under `runs/` (set
+`TTE_RUN_DIR` to put it elsewhere), which git and the package build
+ignore.  Each reference file records the tool version and run date; commit the
 `reference/` files with the versions noted in the pull request.  The
 nlmixr2est tests compare against whichever reference files exist.
 

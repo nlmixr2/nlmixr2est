@@ -3,8 +3,9 @@
 #   Rscript runNonmem.R [validation-dir] [scenario ...]
 #
 # Needs a licensed NONMEM: the command is $NMFE (default "nmfe75"), called as
-# `<nmfe> <name>.ctl <name>.lst` in a scratch directory holding the control
-# stream and its data set.  Results go to reference/nonmem/<name>.csv.
+# `<nmfe> <name>.ctl <name>.lst` in runs/nonmem/<name>/ (or under
+# $TTE_RUN_DIR), which holds the control stream, its data set and NONMEM's
+# output.  Results go to reference/nonmem/<name>.csv.
 .args <- commandArgs(trailingOnly = TRUE)
 .dir <- if (length(.args) > 0 && dir.exists(.args[1])) {
   normalizePath(.args[1])
@@ -20,11 +21,13 @@ source(file.path(.dir, "scenarios.R"))
 if (length(.which) > 0) {
   .ctl <- .ctl[sub("-reduced$", "", .ctl) %in% .which]
 }
+.root <- Sys.getenv("TTE_RUN_DIR", file.path(.dir, "runs"))
 .out <- file.path(.dir, "reference", "nonmem")
 dir.create(.out, recursive = TRUE, showWarnings = FALSE)
 for (.name in .ctl) {
-  .run <- tempfile(paste0("nm-", .name, "-"))
-  dir.create(.run)
+  .run <- file.path(.root, "nonmem", .name)
+  unlink(.run, recursive = TRUE)
+  dir.create(.run, recursive = TRUE)
   .data <- paste0(sub("-reduced$", "", .name), ".csv")
   file.copy(file.path(.dir, "nonmem", paste0(.name, ".ctl")), .run)
   file.copy(file.path(.dir, "data", .data), .run)

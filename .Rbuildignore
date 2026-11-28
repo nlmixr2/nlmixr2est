@@ -135,3 +135,4 @@ BinaryFiles$
 ^vignettes/.*\.Rmd\.orig$
 ^tests/ci-core\.txt$
 ^tests/ci-timings\.csv$
+^inst/validation/tte/runs$
