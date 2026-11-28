@@ -16,7 +16,7 @@
 .vaeDecoderModel <- function(ui) {
   .neta <- length(ui$iniDf$name[!is.na(ui$iniDf$neta1) & ui$iniDf$neta1 == ui$iniDf$neta2])
   .dirs <- paste0("ETA_", seq_len(.neta), "_")
-  .foceiAnalyticAugModelDirs(ui, .dirs)
+  .foceiAnalyticAugModelDirs(ui, .dirs, llik = FALSE)
 }
 
 #' Solve one subject's decoder model, returning f, R, df/deta, dR/deta per obs

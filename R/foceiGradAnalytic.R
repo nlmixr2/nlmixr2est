@@ -815,9 +815,18 @@
       ## objective fixed the analytic gradient matches central differences to 8e-3 relative
       ## on the 2-endpoint warfarin ll() model, the residual being the reference's own
       ## step noise.
-      if (all(as.character(.pd$distribution) %in% c("norm", "dnorm"))) {
+      .dist <- as.character(.pd$distribution)
+      if (all(.dist %in% c("norm", "dnorm"))) {
         return(FALSE)
       } # Gaussian -> (f,R) path
+      # dnorm/t/cauchy (est = "laplace" too): the outer model carries the closed-form
+      # log-density (.foceiOuterLlik); an estimated lambda or t df is not differentiated
+      if (any(.dist %in% c("dnorm", "t", "cauchy"))) {
+        .ie <- ui$iniDf
+        if (any(!.ie$fix & .ie$err %in% c("boxCox", "yeoJohnson", "t"), na.rm = TRUE)) {
+          return(FALSE)
+        }
+      }
       # linCmt() anywhere (not only as the endpoint): no 2nd-order sensitivities, and
       # rxode2 >= 5.1.8 drops those terms silently instead of failing the build (#1103).
       if (.foceiUsesLinCmt(ui) || .foceiUsesLagVar(ui) || .foceiUsesAr(ui)) {
@@ -885,11 +894,10 @@ rxUiGet.foceiOuter <- function(x, ...) {
   # quadrature nodes are extra eta points on the same sensitivity solve, so the
   # direction set and the symbolic expansion are unchanged.  (The nodes themselves solve
   # a cheaper 1st-order model -- see rxUiGet.foceiOuterNode.)
+  # ll()/generalized endpoint (needOptimHess, interaction=0; est = "laplace" too):
+  # rx_pred_ is the log-density and the same augmented model supplies its 1st/2nd-order
+  # eta/theta derivatives -- build over the ll() direction set
   .dir <- .foceiOuterDirs(.ui, .caller)
-  # ll()/generalized endpoint (needOptimHess, interaction=0): the Gaussian (f,R)
-  # direction builder declines (ErrFull is norm-only), but rx_pred_ is the
-  # log-density and the same augmented model supplies its 1st/2nd-order eta/theta
-  # derivatives -- build over the ll() direction set instead.
   if (is.null(.dir) && .foceiLLGradInScope(.ui, .caller)) {
     .dir <- .foceiOuterDirsLL(.ui)
   }

@@ -501,7 +501,7 @@
   if (!is.null(startedEnv)) {
     assign(".analyticStarted", TRUE, startedEnv)
   }
-  am <- .foceiAnalyticAugModelDirs(ui, if (.rsigA) .dirsF else dirsCov)
+  am <- .foceiAnalyticAugModelDirs(ui, if (.rsigA) .dirsF else dirsCov, llik = FALSE)
   # Which rsig columns correspond to the directions Route A dropped?  am$sigTh is the
   # model's sigma-theta list (sorted) and fixes the rx_rsig_ column order; .sigDirs is
   # what we removed.  Any dropped direction the model does not emit rsig for is an
@@ -937,7 +937,7 @@
   if (!is.null(startedEnv)) {
     assign(".analyticStarted", TRUE, startedEnv)
   }
-  am <- .foceiAnalyticAugModelDirs(ui, dirs)
+  am <- .foceiAnalyticAugModelDirs(ui, dirs, llik = FALSE)
   if (is.null(am)) {
     return(.foceiAnalyticFallback("an augmented model that would not build", scope = FALSE))
   }
@@ -2151,7 +2151,7 @@
 #'   `P2`/`P2r` are empty, so `cols$f2`/`cols$rvar2` are `character(0)` and the A/AR fill
 #'   loops never execute.
 #' @noRd
-.foceiAnalyticAugModelDirs <- function(ui, dirs, order = 2L) {
+.foceiAnalyticAugModelDirs <- function(ui, dirs, order = 2L, llik = .foceiOuterLlik(ui)) {
   order <- as.integer(order)
   .key <- tryCatch(
     paste0(
@@ -2164,7 +2164,8 @@
       Sys.getenv("FOCEI_NO_SIGMA_SKIP"), # skip flag -> distinct cached model
       # subject-constant covariate set -> which covariate directions get eta-scaling reuse
       "|cc",
-      paste(sort(tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL), error = function(e) NULL)), collapse = ",")
+      paste(sort(tryCatch(rxode2::rxGetControl(ui, "foceiConstCovs", NULL), error = function(e) NULL)), collapse = ","),
+      if (isTRUE(llik)) "|llk"
     ),
     error = function(e) NULL
   )
@@ -2175,7 +2176,8 @@
   .foceiAnalyticNote(NULL)
   .res <- tryCatch(
     {
-      .s <- ui$loadPruneSens
+      # dnorm/t/cauchy on the ll() route: rx_pred_ is the closed-form log-density
+      .s <- if (isTRUE(llik)) .foceiWithLlik(ui$loadPruneSens) else ui$loadPruneSens
       .st <- rxode2::rxStateOde(.s)
       .dl <- .foceiDelayLagParams(.s)
       if (any(c(paste0("THETA_", .dl$theta, "_"), paste0("ETA_", .dl$eta, "_")) %in% dirs)) {
@@ -2200,7 +2202,8 @@
       # direction (sigma R-derivatives are algebraic, no state chain).  The reader zero-fills
       # the sigma a/A slots (the assembly already treats a=A=Ath=0 for a sigma direction).
       .erN <- ui$iniDf$ntheta[!is.na(ui$iniDf$err) & !(ui$iniDf$err %in% c("boxCox", "yeoJohnson"))]
-      .sigDirs <- if (!nzchar(Sys.getenv("FOCEI_NO_SIGMA_SKIP"))) {
+      # (not for a closed-form log-density: there rx_pred_ moves with sigma)
+      .sigDirs <- if (!isTRUE(llik) && !nzchar(Sys.getenv("FOCEI_NO_SIGMA_SKIP"))) {
         intersect(dirs, paste0("THETA_", .erN, "_"))
       } else {
         character(0)

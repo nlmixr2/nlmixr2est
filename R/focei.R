@@ -1665,6 +1665,77 @@ rxGetDistributionFoceiLines <- function(line) {
   .out
 }
 
+#' Closed-form log-density for a llik-forced dnorm/t/cauchy endpoint (#1496)
+#'
+#' Active only under `.foceiWithLlik()`: `rx_pred_ ~ llikNorm(y, m, s)` (also llikT,
+#' llikCauchy and the llikX* forms) becomes its closed form, which symengine
+#' differentiates to any order (llikNormDmean et al. have no derivative rules).
+#' @param lines one endpoint's quoted lines
+#' @return the lines, rewritten
+#' @noRd
+.foceiLlikExplicit <- function(lines) {
+  if (!isTRUE(nlmixr2global$rxLlikExplicit) || !is.list(lines)) {
+    return(lines)
+  }
+  lapply(lines, function(.l) {
+    if (!(is.call(.l) && identical(.l[[1]], quote(`~`)) && identical(.l[[2]], quote(rx_pred_)) &&
+      is.call(.l[[3]]))) {
+      return(.l)
+    }
+    .fn <- sub("^llikX", "llik", as.character(.l[[3]][[1]]))
+    .a <- as.list(.l[[3]])[-1]
+    if (!(.fn %in% c("llikNorm", "llikT", "llikCauchy"))) {
+      return(.l)
+    }
+    if (.fn != as.character(.l[[3]][[1]])) .a <- .a[-1] # llikX*(i, ...)
+    if (.fn == "llikT") {
+      .nu <- .a[[2]]
+      .a <- .a[-2]
+    }
+    .z2 <- bquote(((.(.a[[1]]) - .(.a[[2]])) / .(.a[[3]]))^2)
+    .r <- switch(.fn,
+      llikNorm = bquote(-0.5 * log(2 * pi) - log(.(.a[[3]])) - 0.5 * .(.z2)),
+      llikT = bquote(lgamma((.(.nu) + 1) / 2) - lgamma(.(.nu) / 2) - 0.5 * log(.(.nu) * pi) -
+        log(.(.a[[3]])) - (.(.nu) + 1) / 2 * log(1 + .(.z2) / .(.nu))),
+      llikCauchy = bquote(-log(pi) - log(.(.a[[3]])) - log(1 + .(.z2)))
+    )
+    bquote(rx_pred_ ~ .(.r))
+  })
+}
+
+#' Evaluate `expr` with dnorm/t/cauchy endpoints emitted as closed-form log-densities
+#' @param expr expression (lazily evaluated)
+#' @return value of `expr`
+#' @noRd
+.foceiWithLlik <- function(expr) {
+  .o <- list(nlmixr2global$rxPredLlik, nlmixr2global$rxLlikExplicit, nlmixr2global$rxArNorm)
+  nlmixr2global$rxPredLlik <- TRUE
+  nlmixr2global$rxLlikExplicit <- TRUE
+  nlmixr2global$rxArNorm <- FALSE
+  on.exit({
+    nlmixr2global$rxPredLlik <- .o[[1]]
+    nlmixr2global$rxLlikExplicit <- .o[[2]]
+    nlmixr2global$rxArNorm <- .o[[3]]
+  })
+  expr
+}
+
+#' Does the ll() analytic route need the closed-form log-density? (#1496)
+#'
+#' A dnorm (est = "laplace", mixed models), t or cauchy endpoint gets `rx_pred_ = f` in
+#' the plain build (its density is evaluated in C), so the outer model and innerHess2
+#' are built under `.foceiWithLlik()`.
+#' @param ui model UI
+#' @return logical
+#' @noRd
+.foceiOuterLlik <- function(ui) {
+  isTRUE(tryCatch(
+    any(as.character(ui$predDfFocei$distribution) %in% c("dnorm", "t", "cauchy")) &&
+      .foceiLLGradInScope(ui),
+    error = function(e) FALSE
+  ))
+}
+
 #' @export
 rxGetDistributionFoceiLines.norm <- function(line) {
   env <- line[[1]]
@@ -1689,9 +1760,9 @@ rxGetDistributionFoceiLines.t <- function(line) {
     env <- line[[1]]
     pred1 <- line[[2]]
     .errNum <- line[[3]]
-    .fixCensRNuLine(
+    .foceiLlikExplicit(.fixCensRNuLine(
       rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum, rxPredLlik = .getRxPredLlikOption())
-    )
+    ))
   } else {
     stop("t is not supported", call. = FALSE)
   }
@@ -1703,9 +1774,9 @@ rxGetDistributionFoceiLines.cauchy <- function(line) {
     env <- line[[1]]
     pred1 <- line[[2]]
     .errNum <- line[[3]]
-    .fixCensRNuLine(
+    .foceiLlikExplicit(.fixCensRNuLine(
       rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum, rxPredLlik = .getRxPredLlikOption())
-    )
+    ))
   } else {
     stop("t is not supported", call. = FALSE)
   }
@@ -1717,9 +1788,9 @@ rxGetDistributionFoceiLines.default <- function(line) {
     env <- line[[1]]
     pred1 <- line[[2]]
     .errNum <- line[[3]]
-    .fixCensRNuLine(
+    .foceiLlikExplicit(.fixCensRNuLine(
       rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum, rxPredLlik = .getRxPredLlikOption())
-    )
+    ))
   } else {
     stop("unknown distribution", call. = FALSE)
   }
@@ -2790,12 +2861,12 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
 #' Add `..HdEta2`/`..sens2` to a symengine env that already carries the first-order
 #' eta sensitivities (i.e. the output of [rxUiGet.foceiHdEta]/[rxUiGet.foceiEtaS]).
 #' @noRd
-.foceiAddHdEta2 <- function(.s, conditional = FALSE) {
+.foceiAddHdEta2 <- function(.s, conditional = FALSE, pred = NULL) {
   .neta <- .s$..maxEta
   .etaVars <- paste0("ETA_", seq_len(.neta), "_")
   .st <- rxode2::rxStateOde(.s)
   .s2 <- rxode2::.rxSens(.s, .etaVars, .etaVars) # 2nd-order state-sensitivity ODEs (rx__sens_<st>_BY_ETA_i__BY_ETA_j__)
-  .pred <- get("rx_pred_", .s)
+  .pred <- if (is.null(pred)) get("rx_pred_", .s) else pred
   .Dn <- function(.e, .v) symengine::D(.e, symengine::S(.v))
   .sn1 <- function(.j, ...) symengine::S(paste0("rx__sens_", .j, "_BY_", paste(c(...), collapse = "_BY_"), "__"))
   .toRx <- function(.l) rxode2::rxFromSE(.l)
@@ -2936,7 +3007,13 @@ attr(rxUiGet.foceiHdEta2, "rstudio") <- emptyenv()
     # special-function forms) leaves ..HdEta2/..sens2 unset -> no innerHess2 is built and
     # the objective's log|H| falls back to the Shi21 finite-difference Hessian, rather than
     # erroring the fit.
-    .s <- tryCatch(.foceiAddHdEta2(.s), error = function(e) .s)
+    # a dnorm/t/cauchy endpoint: rx_pred_ here is f; take the closed-form log-density
+    .s <- tryCatch(
+      .foceiAddHdEta2(.s, pred = if (!.getRxPredLlikOption() && .foceiOuterLlik(x[[1]])) {
+        get("rx_pred_", .foceiWithLlik(rxUiGet.loadPruneSens(x)))
+      }),
+      error = function(e) .s
+    )
   }
   .s
 }
