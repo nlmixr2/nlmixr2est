@@ -396,10 +396,11 @@
 ## Bug fixes
 
 - The analytic `fast` outer gradient of a `linCmt()` model with a time-varying
-  covariate on a `linCmt()` parameter now comes from rxode2lincmt's direction carry
-  (`linCmtB()` `which1 = -30` to `-34`, driven over the outer directions).  Before, the
-  parameter-space second-order reads were `NA` there and every subject fell back to
-  the per-subject finite difference.  It matches the model written as ODEs.
+  covariate on a `linCmt()` parameter without an eta now comes from rxode2lincmt's
+  direction carry (`linCmtB()` `which1 = -30` to `-34`, driven over the outer directions).
+  Before, the parameter-space second-order reads were `NA` there and every subject fell
+  back to the per-subject finite difference.  It matches the model written as ODEs.  A
+  parameter with an eta still uses the finite difference (#1583).
 - A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
   the gradient before the objective no longer stops R: the gradient's history
   row read the last objective iteration, which did not exist yet.  FOCEi now

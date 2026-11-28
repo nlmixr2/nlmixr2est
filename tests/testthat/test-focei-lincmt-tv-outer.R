@@ -87,6 +87,26 @@ nmTest({
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     skip_if_not(.foceiLinCmtHasSecondOrder())
-    .tvCompare(.tvData(), kaLine = "ka <- exp(tka + eta.ka) * (WT / 70)^wka")
+    .ka <- "ka <- exp(tka + eta.ka) * (WT / 70)^wka"
+    .ui <- rxode2::rxUiDecompress(.tvModel(TRUE, kaLine = .ka)())
+    rxode2::rxAssignControlValue(.ui, "foceiConstCovs", character(0))
+    .s <- .ui$loadPruneSens
+    expect_equal(
+      .foceiOuterLinCmtCarry(.ui, .s, c("ETA_1_", "ETA_2_", "ETA_3_", "THETA_4_")),
+      "an eta on a time-varying linCmt() parameter"
+    )
+    # the same slot without its eta is carried
+    .ui <- rxode2::rxUiDecompress(.tvModel(TRUE)())
+    rxode2::rxAssignControlValue(.ui, "foceiConstCovs", character(0))
+    expect_true(is.list(.foceiOuterLinCmtCarry(.ui, .ui$loadPruneSens, c("ETA_1_", "ETA_2_", "THETA_4_"))))
+    d <- .tvData()
+    fl <- suppressMessages(suppressWarnings(nlmixr2(.tvModel(TRUE, kaLine = .ka), d, "focei", .tvCtl())))
+    fo <- suppressMessages(suppressWarnings(nlmixr2(
+      .tvModel(FALSE, kaLine = .ka),
+      d,
+      "focei",
+      .tvCtl(rxControl = rxode2::rxControl(atol = 1e-10, rtol = 1e-10))
+    )))
+    expect_equal(fl$objf, fo$objf, tolerance = 1e-6)
   })
 })

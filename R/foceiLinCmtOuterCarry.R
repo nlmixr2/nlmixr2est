@@ -33,7 +33,9 @@
   }
   # the inner model then carries the slot's eta sensitivities, a layout the pooled outer
   # solve does not follow (#1583)
-  if (any(vapply(.slotVars[.tvSlot], function(.v) any(grepl("^ETA_[0-9]+_$", .v)), logical(1)))) {
+  # on the symengine side: rxFromSE() writes an eta as ETA[n]
+  .etaIn <- function(k) any(grepl("^ETA_[0-9]+_$", .rxFoceiCarryFreeSyms(.a[[k]])))
+  if (any(vapply((9:15)[.tvSlot], .etaIn, logical(1)))) {
     return("an eta on a time-varying linCmt() parameter")
   }
   if (any(grepl("^rx_(f|lag|alag|rate|dur)_.+_$", ls(envir = s, all.names = TRUE)))) {
