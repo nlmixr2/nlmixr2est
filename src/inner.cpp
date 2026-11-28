@@ -3904,7 +3904,6 @@ static void conditionalInnerScore(FoceiInnerResult &result, double value,
   }
 }
 
-// One second-order solve supplies the conditional value, gradient and Hessian.
 // One observation's terms of the exact eta Hessian H, from the second-order
 // model's lhs at that row (and, for the conditional model, its score in
 // result).  False when the conditional partials are not finite.
@@ -3913,8 +3912,8 @@ static inline bool hess2ObsAdd(rx_solving_options_ind *ind, int kk2, int ne, dou
   double cp[9] = {};
   if (conditional) {
     double value;
-    if (!conditionalInnerPartials(ind,kk2,ne,lhs,cp,value)) return false;
-    conditionalInnerScore(result,value,lhs,cp,ne);
+    if (!conditionalInnerPartials(ind, kk2, ne, lhs, cp, value)) return false;
+    conditionalInnerScore(result, value, lhs, cp, ne);
   }
   int r = 0;                                            // rx__d2pred_ order: j-outer, i-inner (i<=j)
   for (int jc = 0; jc < ne; ++jc)
@@ -3923,7 +3922,7 @@ static inline bool hess2ObsAdd(rx_solving_options_ind *ind, int kk2, int ne, dou
         int p = op_focei.predOffset;
         double fi = lhs[p+ic+1], fj = lhs[p+jc+1];
         double ri = lhs[p+ne+ic+2], rj = lhs[p+ne+jc+2];
-        H(ic,jc) += cp[2]*fi*fj+cp[3]*(fi*rj+ri*fj)+cp[4]*ri*rj+
+        H(ic, jc) += cp[2]*fi*fj+cp[3]*(fi*rj+ri*fj)+cp[4]*ri*rj+
           cp[0]*lhs[op_focei.conditionalHess2Offset+r]+
           cp[1]*lhs[op_focei.varianceHess2Offset+r];
       } else {
@@ -3934,6 +3933,7 @@ static inline bool hess2ObsAdd(rx_solving_options_ind *ind, int kk2, int ne, dou
   return true;
 }
 
+// One second-order solve supplies the conditional value, gradient and Hessian.
 static bool calcModelEtaHessian(double *eta, int id, focei_ind *fInd,
                                 rx_solving_options_ind *ind, mat &H, bool conditional,
                                 FoceiInnerResult &result) {
@@ -4059,6 +4059,8 @@ static int calcEtaHessianModel(double *eta, int id, focei_ind *fInd,
   return 0;
 }
 
+static bool calcEtaHessianGN(focei_ind *fInd, rx_solving_options_ind *ind, mat &H);
+
 bool calcEtaHessian(double *eta, int likId, int id,
                     focei_ind *fInd,
                     rx_solving_options_ind *ind,
@@ -4076,9 +4078,9 @@ bool calcEtaHessian(double *eta, int likId, int id,
   if (conditional) ++op_focei.nConditionalInnerHessian;
   int modelHess = calcEtaHessianModel(eta, id, fInd, ind, H, conditional, evaluation);
   if (modelHess < 0) return false;
-  if (modelHess > 0) {
-    // H is the exact model Hessian
-  } else if (op_focei.needOptimHess) {
+  // modelHess > 0: H is already the exact model Hessian, and none of the branches
+  // below may run -- the Gauss-Newton ones ASSIGN H and would replace it.
+  if (modelHess == 0 && op_focei.needOptimHess) {
     arma::vec gr0(op_focei.neta, fill::zeros);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
 
@@ -4170,7 +4172,42 @@ bool calcEtaHessian(double *eta, int likId, int id,
       }
       return Hfd;
     });
-  } else if (op_focei.interaction) {
+  } else if (modelHess == 0 && !calcEtaHessianGN(fInd, ind, H)) {
+    return false;
+  }
+  // the Gauss-Newton and model Hessians cover the observations only; a FD
+  // (needOptimHess) Hessian already differentiates the penalized gradient
+  if (!op_focei.needOptimHess) penEtaHessAdd(H, id, eta, fInd);
+  k=0;
+  if (conditional && forOptimization && innerOptTrustFamily(op_focei.innerOpt)) return H.is_finite();
+  if (!H.is_sympd()) {
+    arma::mat H2;
+    int how = nmNearPDKeepDiag(H2, H);
+    if (how > 0) {
+      H=H2;
+      // reported after the fit; this can run on any thread
+      if (how == 2) op_focei.nNearPdDiag.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
+  if (fInd->doChol) {
+    arma::mat Hout, Hin = H;
+    bool success = chol_sym(Hout, Hin);
+    if (!success) {
+      return false;
+    }
+    H0 = Hout;
+  } else {
+    H0=cholSE__(H, op_focei.cholSEtol);
+  }
+  H = H0.t() * H0;
+  return true;
+}
+
+// The Gauss-Newton eta Hessian into H (FOCEI with interaction, else FOCE);
+// false when it is not finite.
+static bool calcEtaHessianGN(focei_ind *fInd, rx_solving_options_ind *ind, mat &H) {
+  int k, l;
+  if (op_focei.interaction) {
     int nO = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
     arma::mat a(fInd->a, nO, op_focei.neta, false, true);
     arma::mat B(fInd->B, nO, 1, false, true);
@@ -4220,31 +4257,6 @@ bool calcEtaHessian(double *eta, int likId, int id,
       }
     }
   }
-  // the Gauss-Newton and model Hessians cover the observations only; a FD
-  // (needOptimHess) Hessian already differentiates the penalized gradient
-  if (!op_focei.needOptimHess) penEtaHessAdd(H, id, eta, fInd);
-  k=0;
-  if (conditional && forOptimization && innerOptTrustFamily(op_focei.innerOpt)) return H.is_finite();
-  if (!H.is_sympd()) {
-    arma::mat H2;
-    int how = nmNearPDKeepDiag(H2, H);
-    if (how > 0) {
-      H=H2;
-      // reported after the fit; this can run on any thread
-      if (how == 2) op_focei.nNearPdDiag.fetch_add(1, std::memory_order_relaxed);
-    }
-  }
-  if (fInd->doChol) {
-    arma::mat Hout, Hin = H;
-    bool success = chol_sym(Hout, Hin);
-    if (!success) {
-      return false;
-    }
-    H0 = Hout;
-  } else {
-    H0=cholSE__(H, op_focei.cholSEtol);
-  }
-  H = H0.t() * H0;
   return true;
 }
 
