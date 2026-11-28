@@ -4365,6 +4365,35 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
       .rxControl3$method <- 3L
       rxode2::rxAssignControlValue(ui, "rxControl", .rxControl3)
     }
+  } else if (!is.null(env$model$inner)) {
+    .indLinOdeCheck(
+      rxode2::rxModelVars(env$model$inner),
+      rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())$method
+    )
+  }
+}
+
+#' Refuse method="indLin" for an ordinary ODE model
+#'
+#' rxSolve_() (used directly by the estimation routines) does not convert an
+#' ODE model to matExp() form as rxSolve() does, so with method="indLin" every
+#' solve fails and the fit returns the failed-solve penalty as its objective.
+#'
+#' @param mv model variables of the model the estimation solves
+#' @param method rxControl method (integer code)
+#' @return nothing; errors for an ODE model without matExp()/indLin()
+#' @noRd
+.indLinOdeCheck <- function(mv, method) {
+  if (
+    isTRUE(unname(method) == 3L) &&
+      !(is.list(mv$indLin) && length(mv$indLin) == 4L) &&
+      length(.rxode2stateOdeNoOutput(mv)) > 0L
+  ) {
+    stop(
+      "method='indLin' needs a model written with matExp()/indLin(); ",
+      "for an ordinary ODE model use an ODE method (e.g. 'liblsoda')",
+      call. = FALSE
+    )
   }
 }
 #' Assign the number of log likelihood items that need to be allocated

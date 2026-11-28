@@ -384,6 +384,12 @@
 
 ## Bug fixes
 
+- A fit with `rxControl(method = "indLin")` on an ordinary ODE model now
+  stops with an error at the start.  The estimation routines solve through
+  `rxSolve_()`, which does not convert an ODE model to `matExp()` form, so
+  every solve failed and the fit returned the failed-solve penalty as its
+  objective (2400 for the theophylline data).
+
 - A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
   the gradient before the objective no longer stops R: the gradient's history
   row read the last objective iteration, which did not exist yet.  FOCEi now
