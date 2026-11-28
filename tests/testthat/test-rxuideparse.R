@@ -402,3 +402,11 @@ test_that("every focei-family control deparses as a call that names its settings
   expect_equal(rxUiDeparse(rsControl(), "ctl"), quote(ctl <- rsControl()))
   expect_equal(rxUiDeparse(impmapControl(), "ctl"), quote(ctl <- impmapControl()))
 })
+
+nmTest({
+  test_that("saemControl rmcmc and nu deparse to the same double", {
+    .x <- saemControl(rmcmc = 1 / 3, nu = c(3, 3, 3))
+    .e <- rxode2::rxUiDeparse(.x, "ctl")
+    expect_identical(eval(.e[[3]])$mcmc$rmcmc, 1 / 3)
+  })
+})
