@@ -63,6 +63,7 @@ void impSetEta(int id, const arma::vec& eta);      // overwrite subject id's eta
 void impGetEta(int id, arma::vec& eta);            // read subject id's eta
 void impGetOmega(arma::mat& Om);                   // current Omega (for its zero pattern)
 bool impIsImp();                                   // est="imp": no MAP search, proposal at conditional mean
+bool impIsIts();                                   // est="its": E-step = MAP mode + inverse Hessian
 double impUpdateMuThetas();                        // mu-referenced covariate regression (updateMuGroups)
 void impMuInterceptStep();                         // simple mu intercept EM update (no covariates)
 void impReMap();                                   // re-optimize all conditional modes (innerOpt)

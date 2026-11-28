@@ -25,6 +25,7 @@
 #include "minqaC.h"
 #include "saemAutoStop.h"
 #include "likPenalty.h"
+#include "stopFile.h"
 
 #define _(String) (String)
 
@@ -584,6 +585,7 @@ struct mcmcphi {
   uvec i;
   mat Gamma_phi;
   mat Gdiag_phi;
+  mat Gwalk_phi;  // kernel 2 step: Gdiag_phi, or rmcmc*chol(omega) (rwOmega)
   mat IGamma2_phi;
   mat mprior_phiM;
 };
@@ -1068,7 +1070,7 @@ public:
           double ft = _powerD(fi, lambda(b), yj(b), low(b), hi(b));
           double yt = hasFixedObsTransform ? ysTrans(y_offset(b) + i)
             : _powerD(ys(y_offset(b) + i), lambda(b), yj(b), low(b), hi(b));
-          double g = ares(b) + bres(b) * std::fabs(ft);
+          double g = (ares(b) + bres(b) * std::fabs(ft)) * resWAt(ix_sorting(y_offset(b) + i));
           if (g == 0.0) g = 1.0;
           else if (g < double_xmin) g = double_xmin;
           else if (g > xmax) g = xmax;
@@ -2129,6 +2131,7 @@ public:
           if (fa <= double_xmin) fa = 1.0;
           r_ji /= fa;
         }
+        r_ji /= resWAt(idx_orig);
         _arRorig(idx_orig) = r_ji;
       }
       for (int i = 0; i < (int)y_cur.size(); i++) {
@@ -2167,6 +2170,7 @@ public:
           if (fa <= double_xmin) fa = 1.0;
           r_ji /= fa;
         }
+        r_ji /= resWAt(idx_orig);
         double r_ji_sq = r_ji * r_ji;
         if (r_ji_sq > xmax) r_ji_sq = xmax;
         else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
@@ -2213,7 +2217,7 @@ public:
       double fci = f_cur[i];
       double ft = _powerD(fci, lambda(b), yj(b), low(b), hi(b));
       double ftT = handleF(propT(b), ft, fci, false, true);
-      double sd = ares(b) + bres(b) * std::fabs(ftT);
+      double sd = (ares(b) + bres(b) * std::fabs(ftT)) * resWAt(ix_sorting(y_offset(b) + i));
       if (sd == 0.0) sd = 1.0;
       else if (sd < double_xmin) sd = double_xmin;
       else if (sd > xmax) sd = xmax;
@@ -2662,12 +2666,26 @@ public:
     return sum;
   }
 
+  // Residual SD multiplier of observation i (original order)
+  double resWAt(arma::uword i) const {
+    return hasResW ? resW(i) : 1.0;
+  }
+
+  // Per-observation residual SD parameters, including any known weight
+  void setVecRes() {
+    vecares = ares(ix_endpnt);
+    vecbres = bres(ix_endpnt);
+    if (hasResW) {
+      vecares %= resW;
+      vecbres %= resW;
+    }
+  }
+
   // Observation-level residual state at the final estimates
   // @return the transformed observations
   // @noRd
   vec modeResidSetup() {
-    vecares = ares(ix_endpnt);
-    vecbres = bres(ix_endpnt);
+    setVecRes();
     veccres = cres(ix_endpnt);
     vec yt = y;
     if (distribution != 1) return yt;
@@ -2946,6 +2964,7 @@ public:
     if (x.containsElementNamed("ueTol")) ueTol = as<double>(x["ueTol"]);
     coef_sa = as<double>(x["coef_sa"]);
     rmcmc = as<double>(x["rmcmc"]);
+    rwOmega = as<int>(x["rwOmega"]);
     pas = as<vec>(x["pas"]);
     pash = as<vec>(x["pash"]);
     // SA (stochastic-approximation) covariance phase: after the niter estimation
@@ -2975,6 +2994,9 @@ public:
     plateauTol = x.containsElementNamed("plateauTol") ? as<double>(x["plateauTol"]) : 1e-3;
     plateauMinFrac = x.containsElementNamed("plateauMinFrac") ? as<double>(x["plateauMinFrac"]) : 0.5;
     plateauIter = -1;
+    // poll saemControl(stopFile=) once per iteration (#1507)
+    stopFilePoll = x.containsElementNamed("stopFile") ? as<int>(x["stopFile"]) : 0;
+    stopIter = -1;
     minv = as<vec>(x["minv"]);
 
     N = as<int>(x["N"]);
@@ -3184,8 +3206,12 @@ public:
       int nLog = (m == rmAddProp || m == rmAddPow || m == rmAddPropLam || m == rmAddPowLam) ? 2 : 1;
       for (int k = 0; k < nLog && res_offset(b) + k < (unsigned int)nres; ++k) resLogScale(res_offset(b) + k) = 1;
     }
-    vecares = ares(ix_endpnt);
-    vecbres = bres(ix_endpnt);
+    hasResW = x.containsElementNamed("resW");
+    if (hasResW) {
+      resW = as<vec>(x["resW"]);
+      if ((int)resW.n_elem != ntotal) Rcpp::stop("'resW' must have one value per observation");
+    }
+    setVecRes();
     veccres = cres(ix_endpnt);
     veclres = lres(ix_endpnt);
     vecaddProp = addProp(ix_endpnt);
@@ -3421,7 +3447,7 @@ public:
         double ft = _powerD(fk(i), lambda(b), yj(b), low(b), hi(b));
         double yt = hasFixedObsTransform ? ysTrans(i)
           : _powerD(ys(i), lambda(b), yj(b), low(b), hi(b));
-        double err = ft - yt;
+        double err = (ft - yt) / resWAt(ix_sorting(i));
         if (!std::isfinite(err)) continue;
         sAdd += err * err; n++;
         if (std::fabs(ft) <= fthr) continue;
@@ -3450,8 +3476,7 @@ public:
     }
     // keep the per-observation SD vectors (used in the S-step g = vecares +
     // vecbres*|ft|) consistent with the warm-started scalars.
-    vecares = ares(ix_endpnt);
-    vecbres = bres(ix_endpnt);
+    setVecRes();
   }
 
   // Resolve the shared-eta component thetas (#1296) to local indices.  Only the
@@ -4496,6 +4521,7 @@ public:
                 }
                 resid(i) = resid(i)/fa;
               }
+              resid(i) /= resWAt(ix_sorting(y_offset(b) + i));
             }
 
             if (arActive(b)) {
@@ -5515,8 +5541,7 @@ public:
         if (sigma2[b]>1.0e99) sigma2[b] = 1.0e99;
         if (std::isnan(sigma2[b])) sigma2[b] = 1.0e99;
       }
-      vecares = ares(ix_endpnt);
-      vecbres = bres(ix_endpnt);
+      setVecRes();
       veccres = cres(ix_endpnt);
       if (DEBUG>0) Rcout << "par update successful\n";
 
@@ -5710,6 +5735,11 @@ public:
           // phase (if any) starts next, on the same iterations' seeds
           plateauIter = (int)kiter + 1;
           truncateHistory((unsigned int)plateauIter);
+        } else if (stopFilePoll && kiter + 1 < (unsigned int)niter && nmStopFilePoll()) {
+          // a user stop request ends the iterations here, as the plateau stop does
+          nmStopFileConsume();
+          stopIter = (int)kiter + 1;
+          truncateHistory((unsigned int)stopIter);
         }
       }
       // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
@@ -5739,6 +5769,10 @@ public:
 
   int get_plateauIter() {
     return plateauIter;
+  }
+
+  int get_stopIter() {
+    return stopIter;
   }
 
 
@@ -5786,6 +5820,7 @@ private:
   vec phi0Lower;
   vec phi0Upper;
   double rmcmc;
+  int rwOmega = 0;
   double coef_sa;
   vec pas, pash;
   vec minv;
@@ -5870,6 +5905,9 @@ private:
   double sigma2[MAXENDPNT];
   vec ares, bres, cres, lres, lambda, low, hi;
   vec vecares, vecbres, veccres, veclres;
+  // known per-observation residual SD multiplier, original observation order
+  vec resW;
+  bool hasResW = false;
   uvec res_mod, yj, propT, addProp, vecaddProp;
 
   mat DYF;
@@ -6118,6 +6156,8 @@ private:
   double plateauTol = 1e-3;
   double plateauMinFrac = 0.5;
   int plateauIter = -1;
+  int stopFilePoll = 0;
+  int stopIter = -1;
 
   // the plateau test on the last plateauWindow EM iterations of par_hist
   bool plateauReached(unsigned int kiter) const {
@@ -6216,6 +6256,8 @@ private:
     mphi1.IGamma2_phi = IGamma2_phi1;
     mphi1.Gdiag_phi.zeros(nphi1, nphi1);
     mphi1.Gdiag_phi.diag() = sqrt(Gamma2_phi1.diag())*rmcmc;
+    // upper chol U: noise*U has covariance U'U, so the walk is rmcmc^2*omega
+    mphi1.Gwalk_phi = rwOmega ? mat(mphi1.Gamma_phi*rmcmc) : mphi1.Gdiag_phi;
     mphi1.mprior_phiM = repmat(mprior_phi1,nmc,1);
   }
 
@@ -6512,7 +6554,7 @@ private:
         case 2: {
           mat noise(mx.nM, mphi.nphi); _saemDrawRows(saemSeed, seedOff, noise, accU);
           phiMc.cols(i)=phiM.cols(i) +
-            noise*mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
+            noise*mphi.Gwalk_phi % current_saem_state->_saemUE.cols(i);
           break;
         }
         case 3: {
@@ -7104,7 +7146,7 @@ private:
         case 2: {
           mat noise(mx.nM, mphi.nphi); _saemDrawRows(saemSeed, seedOff, noise, accU);
           phiMc.cols(i) = phiM.cols(i) +
-            noise * mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
+            noise * mphi.Gwalk_phi % current_saem_state->_saemUE.cols(i);
           break;
         }
         case 3: {
@@ -7803,7 +7845,8 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("mixWeights") = saem.get_mixWeights(),
     Named("etaMode") = saem.get_etaMode(),
     Named("etaModeConv") = saem.get_etaModeConv(),
-    Named("plateauIter") = saem.get_plateauIter()
+    Named("plateauIter") = saem.get_plateauIter(),
+    Named("stopIter") = saem.get_stopIter()
   );
   current_saem_state = nullptr;
   int nModeFail = (int)accu(saem.get_etaModeConv() < 0);

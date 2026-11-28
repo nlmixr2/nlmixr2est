@@ -201,7 +201,8 @@
   data,
   timeVaryingCovariates = character(0),
   pseudoEtas = character(0),
-  idLvl = NULL
+  idLvl = NULL,
+  resW = NULL
 ) {
   # Stage the time-varying/non-time-varying mu-ref covariate split so
   # $saemModel0 collapses to the phi + timeVaryingCovariate*beta model (shared
@@ -435,6 +436,7 @@
       .cfg$plateauWindow <- as.integer(rxode2::rxGetControl(ui, "plateauWindow", 50L))
       .cfg$plateauTol <- as.numeric(rxode2::rxGetControl(ui, "plateauTol", 1e-3))
       .cfg$plateauMinFrac <- as.numeric(rxode2::rxGetControl(ui, "plateauMinFrac", 0.5))
+      .cfg$stopFile <- as.integer(!is.null(rxode2::rxGetControl(ui, "stopFile", NULL)))
       .mixShift <- .mixSharedEtaShift(ui, ui$saemParamsToEstimate)
       .cfg$mixShiftComp <- .mixShift$comp
       .cfg$mixShiftEta <- .mixShift$eta
@@ -443,6 +445,10 @@
       }
       .cfg <- .saemEtaMatCfg(.cfg, rxode2::rxGetControl(ui, "etaMat", NULL), ui, idLvl, pseudoEtas)
       .cfg <- .saemWarmCfg(.cfg, rxode2::rxGetControl(ui, "saemWarmState", NULL))
+      # known per-observation residual SD multiplier (.saemResidWeightData())
+      if (!is.null(resW)) {
+        .cfg$resW <- as.double(resW)
+      }
       .saemCheckCfg(.cfg)
       .cfg
     })
@@ -554,6 +560,7 @@
   cfg$residWarmStart <- 0L
   # a held run has nothing to converge
   cfg$plateauStop <- 0L
+  cfg$stopFile <- 0L
   cfg
 }
 
@@ -2292,13 +2299,22 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .tv <- .nlmixrTimeVaryingCovariates(.ret$dataSav, .ui, .control$rxControl)
   })
 
+  # a known residual weight scales the endpoint's observations (.saemResidWeightUi())
+  .wSpecs <- env$saemResidWeights
+  .wData <- .saemResidWeightData(.ret$dataSav, .wSpecs, nrow(.ui$predDf))
   .ret$saem <- .saemFitModel(
     .ui,
-    .ret$dataSav,
+    .wData$data,
     timeVaryingCovariates = .tv,
     pseudoEtas = .ret$saemPseudoEtas,
-    idLvl = .ret$idLvl
+    idLvl = .ret$idLvl,
+    resW = .wData$resW
   )
+  if (length(.wSpecs) > 0L) {
+    .cfg <- attr(.ret$saem, "saem.cfg")
+    .cfg$residLogW <- .wData$logW
+    attr(.ret$saem, "saem.cfg") <- .cfg
+  }
   # Re-stage the mu-ref time-varying split for the post-processing: the theta
   # table and parameter history are named from saemParamsToEstimate/
   # saemParHistNames, which only put a time-varying covariate in the correct
@@ -2337,6 +2353,9 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .saemAddParHist(.ret)
     .saemCalcLikelihood(.ret)
     .ret$theta <- .ui$saemThetaDataFrame
+    # tables and the objective use the residual as the model wrote it
+    .ui <- .saemResidWeightRestoreUi(.ui, .wSpecs)
+    .ret$ui <- .ui
     .ret$model <- .ui$saemModelPred
     # The control must stay on the ui until the predOnly model is built; the build
     # reads optExpression/sumProd off of it (#864)

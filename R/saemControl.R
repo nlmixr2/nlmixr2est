@@ -94,6 +94,11 @@
 #'     to the current between-subject SD.  Smaller values raise the MCMC
 #'     acceptance rate (see `$mcmcAccept`); larger values lower it.
 #'
+#' @param rwProposal Shape of the joint random-walk proposal (kernel 2):
+#'     `"diag"` (default) scales each coordinate by `rmcmc` times its
+#'     between-subject SD; `"omega"` uses `rmcmc^2` times the full omega
+#'     block, so correlated random effects move together.
+#'
 #' @param mcmcAcceptWarn Acceptance-rate range `c(low, high)`; when the mean
 #'     acceptance of the random-walk kernels over the last 100 post-burn-in
 #'     iterations falls outside it, the fit notes it in `$runInfo`.  `NULL` or
@@ -526,12 +531,14 @@ saemControl <- function(
   plateauWindow = 50L,
   plateauTol = 1e-3,
   plateauMinFrac = 0.5,
+  stopFile = NULL,
   nmc = 3,
   nu = c(2, 2, 2),
   nu1B = 0L,
   nb1B = 10L,
   kappa1B = 1,
   rmcmc = 0.5,
+  rwProposal = c("diag", "omega"), # not "mcmc*": a rebuilt list's `mcmc` would partial-match it
   mcmcAcceptWarn = c(0.05, 0.8),
   print = 1L,
   trace = 0, # nolint
@@ -641,6 +648,7 @@ saemControl <- function(
     if (!is.null(.xtra$mcmc$rmcmc)) {
       rmcmc <- .xtra$mcmc$rmcmc
     }
+    rwProposal <- c(.xtra$mcmc$proposal, rwProposal)[1] # a NULL proposal keeps the argument
   }
   .nBurnAuto <- identical(nBurn, "auto")
   if (.nBurnAuto) {
@@ -654,6 +662,7 @@ saemControl <- function(
   checkmate::assertIntegerish(plateauWindow, len = 1, lower = 1, any.missing = FALSE)
   checkmate::assertNumber(plateauTol, lower = 0, finite = TRUE)
   checkmate::assertNumber(plateauMinFrac, lower = 0, upper = 1)
+  checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
   checkmate::assertIntegerish(nmc, any.missing = FALSE, len = 1, lower = 1)
   checkmate::assertIntegerish(nu, any.missing = FALSE, len = 3, lower = 1)
   checkmate::assertIntegerish(nu1B, any.missing = FALSE, len = 1, lower = 0)
@@ -663,6 +672,7 @@ saemControl <- function(
   if (rmcmc <= 0) {
     stop("'rmcmc' must be positive", call. = FALSE)
   }
+  rwProposal <- match.arg(rwProposal)
   if (!is.null(mcmcAcceptWarn) && !all(is.na(mcmcAcceptWarn))) {
     checkmate::assertNumeric(mcmcAcceptWarn, lower = 0, upper = 1, len = 2, any.missing = FALSE, sorted = TRUE)
   } else {
@@ -815,13 +825,14 @@ saemControl <- function(
   .condWarnCheck(condWarn)
   .ret <- list(
     mcmc = c(
-      list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto, rmcmc = rmcmc),
+      list(niter = c(nBurn, nEm), nmc = nmc, nu = nu, nuAuto = .nuAuto, rmcmc = rmcmc, proposal = rwProposal),
       if (.nBurnAuto) list(nBurnAuto = TRUE, nBurnMin = as.integer(nBurnMin))
     ),
     plateauStop = plateauStop,
     plateauWindow = as.integer(plateauWindow),
     plateauTol = plateauTol,
     plateauMinFrac = plateauMinFrac,
+    stopFile = stopFile,
     rxControl = rxControl,
     seed = seed,
     autoStop = autoStop,
@@ -939,6 +950,13 @@ saemControl <- function(
   .ret
 }
 
+.saemDeparseProposal <- function(proposal) {
+  if (identical(proposal, "omega")) {
+    return(paste0("rwProposal=", deparse1(proposal)))
+  }
+  character(0)
+}
+
 .saemDeparseExtra <- function(default, name, value) {
   if (name == "DEBUG") {
     return(paste0("trace=", deparse1(value)))
@@ -973,6 +991,7 @@ saemControl <- function(
     if (!is.null(value$rmcmc) && !identical(default$mcmc$rmcmc, value$rmcmc)) {
       .ret <- c(.ret, paste0("rmcmc=", deparse1(value$rmcmc)))
     }
+    .ret <- c(.ret, .saemDeparseProposal(value$proposal))
     # nu is written only when supplied (nuAuto FALSE), even at its default; an
     # automatic nu may have been raised by the fit (.saemAutoNu) and is redone
     if (!isTRUE(value$nuAuto) && (!identical(default$mcmc$nu, value$nu) || isTRUE(default$mcmc$nuAuto))) {
