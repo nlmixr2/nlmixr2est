@@ -3,7 +3,7 @@
 # references, because a self-consistent-but-wrong wiring (reading the wrong
 # lhs column, say) would satisfy any one of them alone:
 #
-#  1. population-only (neta == 0): objf is exactly -2*(sum ll - n*log(sqrt(2pi))),
+#  1. population-only (neta == 0): objf is exactly -2*(sum ll + n*log(sqrt(2pi))),
 #     with n counting the rows that are not M3/M4-censored (#1478),
 #     so it is compared against the censored t() log-likelihood recomputed in R
 #     from the fit's own IPRED.
@@ -104,7 +104,7 @@ nmTest({
     skip_if_not_installed("nlmixr2data")
     .d <- .censTheo()
     .lo <- .censRows(.d)
-    # -2*(sum ll - n*log(sqrt(2*pi))) IS the neta == 0 objective (n excludes
+    # -2*(sum ll + n*log(sqrt(2*pi))) IS the neta == 0 objective (n excludes
     # M3/M4 rows), with the fit's own IPRED standing in for f so no ODE
     # tolerance enters
     .refObjf <- function(fit, dat) {
@@ -118,7 +118,7 @@ nmTest({
         },
         numeric(1)
       )
-      -2 * (sum(.ll) - sum(.obs$CENS == 0) * log(sqrt(2 * pi)))
+      -2 * (sum(.ll) + sum(.obs$CENS == 0) * log(sqrt(2 * pi)))
     }
     for (.nm in c("none", "m3", "m4", "m2")) {
       .dat <- .censDat(.d, .nm, limit = 0.25)
