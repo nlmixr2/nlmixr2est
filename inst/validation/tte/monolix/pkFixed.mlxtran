@@ -34,7 +34,7 @@ model = ev
 
 <PARAMETER>
 llam_pop = {value=-2.995732, method=MLE}
-lic50_pop = {value=0, method=MLE}
+lic50_pop = {value=0.4054651, method=MLE}
 omega_llam = {value=0.5477226, method=MLE}
 
 <MONOLIX>

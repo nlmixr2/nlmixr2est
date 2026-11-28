@@ -43,7 +43,7 @@ tcl_pop = {value=0.4054651, method=MLE}
 tv_pop = {value=2.079442, method=MLE}
 b = {value=0.2, method=MLE}
 llam_pop = {value=-2.995732, method=MLE}
-lic50_pop = {value=0, method=MLE}
+lic50_pop = {value=0.4054651, method=MLE}
 omega_tcl = {value=0.4472136, method=MLE}
 omega_tv = {value=0.4472136, method=MLE}
 omega_llam = {value=0.5477226, method=MLE}

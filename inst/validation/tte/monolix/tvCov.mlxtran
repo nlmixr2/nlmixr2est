@@ -31,7 +31,7 @@ model = ev
 
 <PARAMETER>
 lh_pop = {value=-1.609438, method=MLE}
-bx_pop = {value=0, method=MLE}
+bx_pop = {value=-0.1, method=MLE}
 omega_lh = {value=0.5477226, method=MLE}
 
 <MONOLIX>

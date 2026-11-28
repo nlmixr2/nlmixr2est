@@ -9,16 +9,16 @@ $PK
   TE = EXP(THETA(1) + ETA(1))
   SH = EXP(THETA(2))
 $DES
-  TT = T - TLAST
-  IF (TT.LT.1E-10) TT = 1E-10
-  DADT(1) = SH/TE*(TT/TE)**(SH - 1)
+  TSD = T - TLAST
+  IF (TSD.LT.1E-10) TSD = 1E-10
+  DADT(1) = SH/TE*(TSD/TE)**(SH - 1)
 $ERROR
   IF (NEWIND.NE.2) OLDCHZ = 0
   CHZ = A(1) - OLDCHZ
   IF (MDV.EQ.0) OLDCHZ = A(1)
-  TT = TIME - TLAST
-  IF (TT.LT.1E-10) TT = 1E-10
-  HAZ = SH/TE*(TT/TE)**(SH - 1)
+  TSE = TIME - TLAST
+  IF (TSE.LT.1E-10) TSE = 1E-10
+  HAZ = SH/TE*(TSE/TE)**(SH - 1)
   Y = 2*CHZ
   IF (DV.EQ.1) Y = 2*CHZ - 2*LOG(HAZ)
 $THETA 1.386294 ; lte

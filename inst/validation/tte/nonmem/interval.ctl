@@ -4,12 +4,12 @@ $DATA interval.csv IGNORE=@
 $SUBROUTINES ADVAN13 TOL=9
 $MODEL COMP=(CHZ)
 $PK
-  SC = EXP(THETA(1) + ETA(1))
+  SCL = EXP(THETA(1) + ETA(1))
   SH = EXP(THETA(2))
 $DES
-  TT = T
-  IF (TT.LT.1E-10) TT = 1E-10
-  DADT(1) = SH/SC*(TT/SC)**(SH - 1)
+  TSD = T
+  IF (TSD.LT.1E-10) TSD = 1E-10
+  DADT(1) = SH/SCL*(TSD/SCL)**(SH - 1)
 $ERROR
   ; DV = 1: the event happened in the interval since the previous record
   IF (NEWIND.NE.2) OLDCHZ = 0

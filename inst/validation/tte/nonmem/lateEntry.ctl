@@ -4,19 +4,19 @@ $DATA lateEntry.csv IGNORE=@
 $SUBROUTINES ADVAN13 TOL=9
 $MODEL COMP=(CHZ)
 $PK
-  SC = EXP(THETA(1) + ETA(1))
+  SCL = EXP(THETA(1) + ETA(1))
   SH = EXP(THETA(2))
 $DES
-  TT = T
-  IF (TT.LT.1E-10) TT = 1E-10
-  DADT(1) = SH/SC*(TT/SC)**(SH - 1)
+  TSD = T
+  IF (TSD.LT.1E-10) TSD = 1E-10
+  DADT(1) = SH/SCL*(TSD/SCL)**(SH - 1)
 $ERROR
   IF (NEWIND.NE.2) OLDCHZ = 0
   CHZ = A(1) - OLDCHZ
   IF (MDV.EQ.0) OLDCHZ = A(1)
-  TT = TIME
-  IF (TT.LT.1E-10) TT = 1E-10
-  HAZ = SH/SC*(TT/SC)**(SH - 1)
+  TSE = TIME
+  IF (TSE.LT.1E-10) TSE = 1E-10
+  HAZ = SH/SCL*(TSE/SCL)**(SH - 1)
   Y = 2*CHZ
   IF (DV.EQ.1) Y = 2*CHZ - 2*LOG(HAZ)
 $THETA 2.302585 ; lsc

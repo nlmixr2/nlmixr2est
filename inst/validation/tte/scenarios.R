@@ -112,7 +112,7 @@
           ev ~ tte(haz)
         })
       },
-      start = c(llam = log(0.05), lic50 = log(1), eta.lam = 0.3),
+      start = c(llam = log(0.05), lic50 = log(1.5), eta.lam = 0.3),
       n = 150L,
       seed = 14615L,
       design = function(n) {
@@ -154,7 +154,7 @@
         tv = log(8),
         prop.sd = 0.2,
         llam = log(0.05),
-        lic50 = log(1),
+        lic50 = log(1.5),
         eta.cl = 0.2,
         eta.v = 0.2,
         eta.lam = 0.3
@@ -194,7 +194,7 @@
       reduced = function(model) {
         rxode2::ini(model, bx = fix(0))
       },
-      start = c(lh = log(0.2), bx = 0, eta.h = 0.3),
+      start = c(lh = log(0.2), bx = -0.1, eta.h = 0.3),
       n = 150L,
       seed = 14617L,
       design = function(n) {

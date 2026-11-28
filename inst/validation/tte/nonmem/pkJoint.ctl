@@ -30,7 +30,7 @@ $THETA 0.4054651 ; tcl
 $THETA 2.079442 ; tv
 $THETA (0, 0.2) ; prop.sd
 $THETA -2.995732 ; llam
-$THETA 0 ; lic50
+$THETA 0.4054651 ; lic50
 $OMEGA 0.2 ; eta.cl
 $OMEGA 0.2 ; eta.v
 $OMEGA 0.3 ; eta.lam
