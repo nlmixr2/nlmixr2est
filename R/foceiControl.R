@@ -1084,6 +1084,11 @@
 #'   of its magnitude (at least 0.1 objective units).  Use `NA` or `Inf` to
 #'   disable.
 #'
+#' @param stopFile Path of a file that, once created, stops the estimation
+#'   gracefully: the run ends at its current state (for FOCEi, the lowest
+#'   objective evaluated so far), removes the file, notes the stop in
+#'   `$runInfo` and returns the fit.  `NULL` (default) does not poll.
+#'
 #' @param shrinkEtaWarn Warn (in `$runInfo`) when an eta's SD shrinkage is
 #'   at or above this percentage.  Use `NA` or `Inf` to disable.
 #'
@@ -1104,6 +1109,23 @@
 #'   within this tolerance of a finite `lower`/`upper` bound, relative to the
 #'   bound range (or, for a one-sided bound, to the larger of the bound's size
 #'   and the initial estimate's distance from it).  Use `NA` or `0` to disable.
+#' @param ebeCheck When `TRUE`, each subject's final EBE is probed at
+#'   `+/- ebeCheckStep` Omega standard deviations along every eta, and
+#'   `$runInfo` notes subjects where a probe lowers the individual objective
+#'   (-2LL) by more than `ebeCheckTol`, as at a kink in the prediction.  The
+#'   per-subject results are kept as `fit$ebeStationarity`.
+#'
+#' @param ebeCheckStep The probe step of `ebeCheck`, in Omega standard
+#'   deviations.
+#'
+#' @param ebeCheckTol The individual objective decrease that `ebeCheck`
+#'   reports.
+#'
+#' @param ebeRestart When `TRUE` (implies `ebeCheck`), each flagged subject's
+#'   EBE moves to a compass-search minimum of its individual objective started
+#'   from its best probe point.  The final objective is taken at those EBEs, so
+#'   it can rise or fall; the thetas are not re-estimated.  The covariance
+#'   step still re-optimizes the ETAs from there.
 #'
 #' @param maxOdeRecalc Maximum number of times to reduce the ODE
 #'     tolerances and try to resolve the system if there was a bad
@@ -1575,9 +1597,14 @@ foceiControl <- function(
   etaRestart = 4L, #
   finalEtaTol = 1, #
   aboveStartTol = 0.01, #
+  stopFile = NULL, #
   shrinkEtaWarn = 30, #
   odeSettleCheck = FALSE, #
   odeSettleTol = 0.1, #
+  ebeCheck = FALSE, #
+  ebeCheckStep = 0.1, #
+  ebeCheckTol = 0.01, #
+  ebeRestart = FALSE, #
   nRetries = 3, #
   seed = 42, #
   resetThetaCheckPer = 0.1, #
@@ -2263,11 +2290,19 @@ foceiControl <- function(
   checkmate::assertIntegerish(etaRestart, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertNumber(finalEtaTol, lower = 0)
   checkmate::assertNumber(aboveStartTol, lower = 0, na.ok = TRUE)
+  checkmate::assertString(stopFile, min.chars = 1, null.ok = TRUE)
   checkmate::assertNumber(shrinkEtaWarn, lower = 0, na.ok = TRUE)
   checkmate::assertFlag(odeSettleCheck)
   checkmate::assertNumber(odeSettleTol, lower = 0, finite = TRUE)
   checkmate::assertNumber(omegaCollapseWarn, lower = 0, upper = 1, na.ok = TRUE)
   checkmate::assertNumber(thetaBoundWarn, lower = 0, upper = 1, na.ok = TRUE)
+  checkmate::assertFlag(ebeCheck)
+  checkmate::assertNumber(ebeCheckStep, lower = .Machine$double.xmin, finite = TRUE)
+  checkmate::assertNumber(ebeCheckTol, lower = 0, finite = TRUE)
+  checkmate::assertFlag(ebeRestart)
+  if (ebeRestart) {
+    ebeCheck <- TRUE
+  }
   checkmate::assertIntegerish(nRetries, lower = 0, any.missing = FALSE)
   if (!is.null(seed)) {
     checkmate::assertIntegerish(seed, any.missing = FALSE, min.len = 1)
@@ -2496,11 +2531,16 @@ foceiControl <- function(
     etaRestart = as.integer(etaRestart),
     finalEtaTol = as.double(finalEtaTol),
     aboveStartTol = as.double(aboveStartTol),
+    stopFile = stopFile,
     shrinkEtaWarn = as.double(shrinkEtaWarn),
     odeSettleCheck = odeSettleCheck,
     odeSettleTol = as.double(odeSettleTol),
     omegaCollapseWarn = as.double(omegaCollapseWarn),
     thetaBoundWarn = as.double(thetaBoundWarn),
+    ebeCheck = ebeCheck,
+    ebeCheckStep = as.double(ebeCheckStep),
+    ebeCheckTol = as.double(ebeCheckTol),
+    ebeRestart = ebeRestart,
     maxOdeRecalc = as.integer(maxOdeRecalc),
     odeRecalcFactor = as.double(odeRecalcFactor),
     nRetries = nRetries,

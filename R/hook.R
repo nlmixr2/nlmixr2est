@@ -238,7 +238,14 @@ preProcessHooks <- function(name = NULL) {
 #' The estimation state the pre-processing hooks record in
 #' `nlmixr2global$nlmixr2EstEnv` (see `.nlmixr2globalReset()`)
 #' @noRd
-.nlmixr2EstEnvFields <- c("uiUnfix", "nlmixrPureInputUi", "vaeNonMuEtas", "saemPseudoTransforms", "zeroThetaScale")
+.nlmixr2EstEnvFields <- c(
+  "uiUnfix",
+  "nlmixrPureInputUi",
+  "vaeNonMuEtas",
+  "saemPseudoTransforms",
+  "saemResidWeights",
+  "zeroThetaScale"
+)
 
 # The nlmixr2Est() methods that only solve a model, those that set
 # attr(, "random") <- TRUE; predict(level = "individual") solves through
@@ -359,5 +366,6 @@ preProcessHooks <- function(name = NULL) {
   env$vaeNonMuEtas <- nlmixr2global$nlmixr2EstEnv$vaeNonMuEtas
   # Per-call copy of saem's temporary-eta transforms (.preProcessSaemModeledResid)
   env$saemPseudoTransforms <- nlmixr2global$nlmixr2EstEnv$saemPseudoTransforms
+  env$saemResidWeights <- nlmixr2global$nlmixr2EstEnv$saemResidWeights
   .ret[[1]]
 }
