@@ -70,7 +70,9 @@ NMFE=nmfe75 Rscript runNonmem.R  # or name scenarios: Rscript runNonmem.R . rtte
 MONOLIX_PATH=/path/to/MonolixSuite Rscript runMonolix.R
 ```
 
-Each reference file records the tool version and run date; commit the
+Each run's NONMEM or Monolix output is kept under `runs/` (set
+`TTE_RUN_DIR` to put it elsewhere), which git and the package build
+ignore.  Each reference file records the tool version and run date; commit the
 `reference/` files with the versions noted in the pull request.  The
 nlmixr2est tests compare against whichever reference files exist.
 
@@ -78,6 +80,16 @@ nlmixr2est tests compare against whichever reference files exist.
 event, and a regressor carrying the last event time forward would reset
 the clock at the event record itself, where the hazard must be the one
 just before the event.
+
+The stored fits are NONMEM 7.4.3 and Monolix 2024R1.  NONMEM's objective
+equals an independent Laplace approximation of the same likelihood at its
+estimates, so its gap to the exact -2LL (up to about 7 for the
+single-event scenarios) is the Laplace error.  NONMEM's `pkJoint` run did
+not converge (its estimates are far from the truth and it has no
+standard errors), so it has no NONMEM reference.  Some NONMEM standard
+errors from the numerical covariance step are much too small (e.g.
+`lateEntry`, `pkFixed`), so the validation tests measure differences
+from a reference in the exact fit's standard errors where there is one.
 
 ## Data sets
 

@@ -4,7 +4,8 @@
 #
 # Needs a licensed Monolix and its lixoftConnectors R package (the Monolix
 # install directory can be given in $MONOLIX_PATH).  Each project is run in a
-# scratch copy of monolix/ and data/, and its estimates, standard errors and
+# copy of monolix/ and data/ in runs/monolix/ (or under $TTE_RUN_DIR), which
+# keeps Monolix's output, and its estimates, standard errors and
 # -2LL are read through lixoftConnectors into reference/monolix/<name>.csv.
 .args <- commandArgs(trailingOnly = TRUE)
 .dir <- if (length(.args) > 0 && dir.exists(.args[1])) {
@@ -29,8 +30,9 @@ if (length(.which) > 0) {
 }
 .out <- file.path(.dir, "reference", "monolix")
 dir.create(.out, recursive = TRUE, showWarnings = FALSE)
-.run <- tempfile("mlx-")
-dir.create(.run)
+.run <- file.path(Sys.getenv("TTE_RUN_DIR", file.path(.dir, "runs")), "monolix")
+unlink(.run, recursive = TRUE)
+dir.create(.run, recursive = TRUE)
 file.copy(file.path(.dir, c("monolix", "data")), .run, recursive = TRUE)
 for (.name in .prj) {
   message("Monolix: ", .name, " in ", .run)
