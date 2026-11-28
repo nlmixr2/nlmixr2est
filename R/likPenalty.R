@@ -9,7 +9,7 @@
 #' @param ptr the penalty: an external pointer to a C `nlmixrLikPenalty`, a
 #'   function returning one (resolved when the fit starts, so the spec
 #'   survives `saveRDS()`), or the name of a built-in penalty (`"thetaL2"`,
-#'   `"etaL2"`).
+#'   `"etaL2"`, `"omegaL2"`).
 #' @param thetas names of the population parameters the penalty acts on;
 #'   handed to the C callbacks as 0-based theta indices (`ctx->sel`).
 #' @param par numeric settings handed to the C callbacks (`ctx->par`).
@@ -489,8 +489,10 @@ nlmixr2LikPenaltyUdf <- function(spec) {
 #' Built-in likelihood penalty pointer
 #'
 #' @param name `"thetaL2"` (population: `par[1] * sum((theta - par[2])^2)`
-#'   on the -2LL scale) or `"etaL2"` (subject: `par[2] - par[1]/2 *
-#'   sum(eta^2)` added to each subject's log-likelihood)
+#'   on the -2LL scale), `"etaL2"` (subject: `par[2] - par[1]/2 *
+#'   sum(eta^2)` added to each subject's log-likelihood) or `"omegaL2"`
+#'   (population: `par[1] * sum((diag(omega)[k] - par[2])^2)` over the 1-based
+#'   etas `k = par[-(1:2)]`, every eta when none)
 #' @return external pointer to the C `nlmixrLikPenalty`
 #' @export
 #' @keywords internal

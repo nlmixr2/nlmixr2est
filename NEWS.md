@@ -208,7 +208,9 @@
   subject term).  `nlmixr2LikPenaltySpec()`/`nlmixr2LikPenaltyAdd()` attach a
   penalty to a model or pass it to `nlmixr2(..., likPenalty =)`; `inObjf=` sets
   whether it is counted in the reported objective, and `fit$likPenalty` reports
-  its value.  See `vignette("likelihood-penalties")`.
+  its value.  See `vignette("likelihood-penalties")`.  A population term
+  that depends on omega (the built-in `"omegaL2"`) reaches the FOCEi
+  analytic outer gradient through a finite-difference omega gradient (#1481).
 
 - `nlmixr2LikPenaltyUdf()` lets an rxode2 model function (an `rxUdfUi`
   method) register a likelihood penalty while it expands against the data,

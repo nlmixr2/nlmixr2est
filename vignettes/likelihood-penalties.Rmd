@@ -94,7 +94,8 @@ estimator-specific scaling and parameter maps are handled for you.
   problems use it to find the conditional mode.
 * Fill `dObj_dtheta` when it is non-NULL, or set `NLMIXR_PEN_NO_GRAD`.  The
   methods then fall back to finite differences.  Only the population gradient is
-  used analytically.  A subject term that writes a non-zero value switches the
+  used analytically.  There is no omega gradient slot: when the term reads
+  `omega`, its omega derivative is taken by finite differences.  A subject term that writes a non-zero value switches the
   FOCEi analytic outer gradient (`fast = TRUE`) to finite differences, because
   it moves the conditional mode.
 

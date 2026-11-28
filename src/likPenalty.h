@@ -22,6 +22,11 @@ extern "C" {
   double nlmixrPenPopAll(int ntheta, const double *theta, int neta,
                          const double *omega, int nsub, double *grad, int *gradOk);
 
+  // d(population terms)/d(omega) by central differences; dOmega [neta*neta] is
+  // overwritten (symmetric, zero for omega-free penalties).
+  void nlmixrPenPopOmegaGrad(int ntheta, const double *theta, int neta,
+                             const double *omega, int nsub, double *dOmega);
+
   // 1 when a subject term has written a non-zero value since activation: such a
   // term moves eta* off the base problem, so the analytic outer gradient declines.
   int nlmixrPenSubjChanged(void);
