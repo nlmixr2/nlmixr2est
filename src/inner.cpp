@@ -11853,46 +11853,69 @@ static double foceiFreezeOfv(int np, double *x) {
   return f;
 }
 
+// One-sided slopes of the objective at x along every parameter, toward the side
+// with more room
+struct FoceiFreezeSlopes {
+  NumericVector x;
+  std::vector<double> g, h, xk;
+  double f0 = NA_REAL;
+  double mx = 0.0;
+  // slope of the objective along k at a step of `step`; NA when not finite
+  double slope(unsigned int k, double step) {
+    const int np = (int)x.size();
+    xk[k] = x[k] + step;
+    const double fk = foceiFreezeOfv(np, xk.data());
+    xk[k] = x[k];
+    return std::isfinite(fk) ? (fk - f0) / step : NA_REAL;
+  }
+  void init(unsigned int np) {
+    x = NumericVector(np);
+    foceiOuterStart(x.begin());
+    g.assign(np, NA_REAL);
+    h.assign(np, 0.0);
+    xk.assign(x.begin(), x.end());
+    f0 = foceiFreezeOfv((int)np, x.begin());
+  }
+  void scan(unsigned int np) {
+    for (unsigned int k = 0; k < np && std::isfinite(f0); ++k) {
+      // short enough that two steps stay inside the bounds
+      const double up = op_focei.upper[k] - x[k], dn = x[k] - op_focei.lower[k];
+      const double room = std::max(up, dn);
+      if (!(room > 0)) continue;
+      h[k] = std::min(1e-3 * std::max(1.0, std::fabs(x[k])), 0.4 * room);
+      if (dn > up) h[k] = -h[k];
+      g[k] = slope(k, h[k]);
+      if (!ISNA(g[k])) mx = std::max(mx, std::fabs(g[k]));
+    }
+  }
+  bool isFlat(double a) const {
+    return !ISNA(a) && std::fabs(a) <= 1e-8 && std::fabs(a) <= 1e-6 * mx;
+  }
+  // a secant can vanish by chance, so a second step must be flat too: the
+  // other side, or twice as far when the other side is out of bounds
+  bool flatTheta(unsigned int k) {
+    if (ISNA(g[k]) || foceiIsMixPar((int)k) || op_focei.fixedTrans[k] >= (int)op_focei.ntheta) {
+      return false;
+    }
+    const double x2 = x[k] - h[k];
+    const double h2 = (x2 > op_focei.lower[k] && x2 < op_focei.upper[k]) ? -h[k] : 2.0 * h[k];
+    return isFlat(g[k]) && isFlat(slope(k, h2));
+  }
+};
+
 static void foceiFreezeFlatTheta(Environment e) {
   const unsigned int np = op_focei.npars;
   if (np < 2) return;
-  NumericVector x(np);
-  foceiOuterStart(x.begin());
   // diagnostic: leave the counters and the history as they were
   const int nF = op_focei.nF, nG = op_focei.nG;
   const bool record = op_focei.recordOuter;
   op_focei.recordOuter = false;
-  std::vector<double> g(np, NA_REAL), h(np, 0.0), xk(x.begin(), x.end());
-  const double f0 = foceiFreezeOfv((int)np, x.begin());
-  // slope of the objective along k at a step of `step`; NA when not finite
-  auto slope = [&](unsigned int k, double step) {
-    xk[k] = x[k] + step;
-    const double fk = foceiFreezeOfv((int)np, xk.data());
-    xk[k] = x[k];
-    return std::isfinite(fk) ? (fk - f0) / step : NA_REAL;
-  };
-  double mx = 0.0;
-  for (unsigned int k = 0; k < np && std::isfinite(f0); ++k) {
-    // toward the side with more room, short enough that two steps stay inside
-    const double up = op_focei.upper[k] - x[k], dn = x[k] - op_focei.lower[k];
-    const double room = std::max(up, dn);
-    if (!(room > 0)) continue;
-    h[k] = std::min(1e-3 * std::max(1.0, std::fabs(x[k])), 0.4 * room);
-    if (dn > up) h[k] = -h[k];
-    g[k] = slope(k, h[k]);
-    if (!ISNA(g[k])) mx = std::max(mx, std::fabs(g[k]));
-  }
+  FoceiFreezeSlopes sl;
+  sl.init(np);
+  sl.scan(np);
   std::vector<int> flat;
-  for (unsigned int k = 0; k < np && mx > 1e-8; ++k) {
-    if (ISNA(g[k]) || foceiIsMixPar((int)k) || op_focei.fixedTrans[k] >= (int)op_focei.ntheta) continue;
-    auto isFlat = [&](double a) { return !ISNA(a) && std::fabs(a) <= 1e-8 && std::fabs(a) <= 1e-6 * mx; };
-    // a secant can vanish by chance, so a second step must be flat too: the
-    // other side, or twice as far when the other side is out of bounds
-    const double x2 = x[k] - h[k];
-    const double h2 = (x2 > op_focei.lower[k] && x2 < op_focei.upper[k]) ? -h[k] : 2.0 * h[k];
-    if (isFlat(g[k]) && isFlat(slope(k, h2))) {
-      flat.push_back(op_focei.fixedTrans[k] + 1);
-    }
+  for (unsigned int k = 0; k < np && sl.mx > 1e-8; ++k) {
+    if (sl.flatTheta(k)) flat.push_back(op_focei.fixedTrans[k] + 1);
   }
   op_focei.recordOuter = record;
   op_focei.nF = nF;

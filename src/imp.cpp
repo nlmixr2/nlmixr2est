@@ -540,6 +540,576 @@ static bool impGetHessianNdiffSafe(int id, arma::mat& H) {
   return gotH;
 }
 
+// Per-expanded-subject proposal (mode, information H_i, log|H_i|, lower Cholesky
+// of gamma * H_i^-1) for one E-step.
+struct ImpEProp {
+  std::vector<arma::vec> modes;
+  std::vector<arma::mat> Hs;
+  std::vector<double> logDetH;
+  std::vector<arma::mat> cholL;
+  std::vector<char> haveL;
+  explicit ImpEProp(int n) : modes(n), Hs(n), logDetH(n, 0.0), cholL(n), haveL(n, 0) {}
+};
+
+// Proposal from a covariance Sig (information Sig^-1); true when id's slot is filled
+static bool impPropFromSigma(ImpEProp& P, int id, const arma::mat& Sig, double gammaId) {
+  arma::mat Hi;
+  double ldv, lds;
+  if (!(arma::inv_sympd(Hi, Sig) && arma::log_det(ldv, lds, Hi) && lds > 0)) return false;
+  arma::mat L;
+  if (!arma::chol(L, gammaId * Sig, "lower")) return false;
+  P.Hs[id] = Hi; P.logDetH[id] = ldv; P.cholL[id] = L; P.haveL[id] = 1;
+  return true;
+}
+
+// Proposal from the MAP information H (the curvature is kept even if chol fails)
+static void impPropFromHessian(ImpEProp& P, int id, const arma::mat& H, double gammaId) {
+  arma::mat Sigma;
+  double ldv, lds;
+  if (!(arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0)) return;
+  P.Hs[id] = H;
+  P.logDetH[id] = ldv;
+  Sigma *= gammaId;
+  arma::mat L;
+  if (arma::chol(L, Sigma, "lower")) { P.cholL[id] = L; P.haveL[id] = 1; }
+}
+
+// est="imp": no MAP search.  The proposal is centered at each subject's running
+// conditional mean (the current eta) with covariance gamma * V_i, where V_i is
+// that subject's conditional variance from the PREVIOUS E-step (passed in via
+// condVar, before it is overwritten).  On the first iteration -- or a
+// pseudo-subject / degenerate V_i -- fall back to the population Omega, which is
+// over-dispersed and always available.
+static void impPropImp(ImpEProp& P, int id, int neta, const std::vector<arma::mat>& condVar,
+                       const arma::mat& impOmega, double gammaId) {
+  arma::vec eta(neta);
+  impGetEta(id, eta);
+  P.modes[id] = eta;
+  const bool useCv = (size_t)id < condVar.size() && condVar[id].n_rows == (arma::uword)neta &&
+    arma::any(arma::vectorise(condVar[id]) != 0.0);
+  impPropFromSigma(P, id, useCv ? condVar[id] : impOmega, gammaId);
+}
+
+// est="impmap": the proposal is the MAP mode and Hessian.
+static void impPropMap(ImpEProp& P, int id, int neta, const arma::mat& impOmega,
+                       double gammaId, std::atomic<int>& nOmegaFallback) {
+  arma::vec mode(neta);
+  arma::mat H(neta, neta, arma::fill::zeros);
+  impGetMode(id, mode);
+  P.modes[id] = mode;
+  if (impGetHessianNdiffSafe(id, H)) impPropFromHessian(P, id, H, gammaId);
+  if (P.haveL[id]) return;
+  // The MAP Hessian did not yield a proposal for this subject.  The
+  // Hessian is the curvature AT the mode, so it is only guaranteed
+  // positive definite at a converged one -- and the inner solve is not
+  // required to have converged (a pass that exhausted maxInnerIterations
+  // still returns a finite objective and can be the eta reported).  At
+  // such a point inv_sympd()/chol() legitimately fail.
+  //
+  // Dropping the subject here is the wrong answer to that: it silently
+  // removes an individual from the E-step, and if it happens widely the
+  // whole fit collapses to the failure objective with nothing said.
+  // est="imp" already meets its own version of this by centering on the
+  // population Omega, which is over-dispersed and always available; do
+  // the same.  An over-dispersed proposal costs effective sample size --
+  // the importance weights correct for it -- where a missing subject
+  // costs correctness.
+  if (impPropFromSigma(P, id, impOmega, gammaId)) {
+    nOmegaFallback.fetch_add(1, std::memory_order_relaxed);
+  }
+}
+
+// Every expanded subject's proposal from the per-component MAP modes.  Each
+// subject fills only its own slot (no reduction, no RNG), so this is parallelized
+// over subjects; the per-subject inner Hessian (impGetHessian) is the impmap
+// serial cost.  cores already carries the mixture / pool-sizing serial guard.
+static void impEStepProposals(ImpEProp& P, int nExp, int neta, const arma::vec& gammaVec,
+                              int cores, bool isImp, const std::vector<arma::mat>& condVar) {
+  // Subjects whose MAP Hessian gave no proposal and fell back to the population
+  // Omega.  Atomic because the fill loop below is parallel over subjects.
+  std::atomic<int> nOmegaFallback(0);
+  // Needed by BOTH branches: est="imp" centers on it when a subject has no
+  // usable conditional variance yet, and est="impmap" falls back to it when the
+  // MAP Hessian will not give a proposal.
+  arma::mat impOmega;
+  impGetOmega(impOmega);
+  bool doParProp = (cores > 1);
+  nmForEachSubject(rx, nExp, cores, doParProp, [&](int id) {
+    if (isImp) {
+      impPropImp(P, id, neta, condVar, impOmega, gammaVec[id]);
+    } else {
+      impPropMap(P, id, neta, impOmega, gammaVec[id], nOmegaFallback);
+    }
+  });
+  // Say so.  A proposal built on the population Omega rather than on the
+  // subject's own curvature is a weaker proposal, and the reason it happened
+  // (an unconverged MAP) is worth knowing about; silently substituting it is
+  // how a fit ends up quietly worse than it looks.
+  if (nOmegaFallback.load(std::memory_order_relaxed) > 0) {
+    RSprintf("impmap: %d of %d subject proposals fell back to the population omega (MAP Hessian not usable)\n",
+             nOmegaFallback.load(std::memory_order_relaxed), nExp);
+  }
+}
+
+// QRPEM: one Sobol base point set per E-step (read-only in the parallel loop);
+// with qrShift=FALSE the N(0,1) points are also fixed and shared.
+struct ImpQrSet {
+  bool on = false;
+  int scramble = impQrScrambleNone;
+  bool shift = false;
+  bool refresh = true;
+  int nrow = 0;
+  arma::mat U0, Z0;
+  std::vector<uint64_t> bits;
+};
+
+static ImpQrSet impQrSetup(int nrow, int neta) {
+  ImpQrSet q;
+  q.on = impQrEnabled();
+  q.scramble = impQrScramble();
+  // Scrambling IS the randomization, so it replaces the Cranley-Patterson
+  // shift rather than composing with it; qrRefresh still says whether the
+  // randomization is redrawn each iteration.
+  q.shift = (q.scramble == impQrScrambleNone) && impQrShiftEnabled();
+  q.refresh = impQrRefreshEnabled();
+  if (!q.on) return q;
+  q.nrow = nrow;
+  if (q.scramble == impQrScrambleNone) {
+    q.U0 = impSobolU0(nrow, neta);
+    if (!q.shift) q.Z0 = impQrZ(q.U0, nullptr);
+  } else {
+    q.bits = impSobolBits(nrow, neta);
+  }
+  return q;
+}
+
+// Sobol points -> N(0,I) for one subject's E-step.  With qrShift the shift comes
+// from this subject's seeded stream; qrRefresh=FALSE instead uses the
+// fit-constant qrPinSeed (captured once in impOuter -- seed0 advances every
+// E-step) so the whole fit reuses one shift per subject.
+static arma::mat impQrZSubject(const ImpQrSet& q, int nsId, int neta, uint32_t qrPinSeed,
+                               int id, int iter) {
+  if (q.scramble != impQrScrambleNone) {
+    // qrRefresh=FALSE pins the scramble to the subject, so every
+    // iteration sees the same scrambled set (a deterministic EM map).
+    arma::mat Z = impQrZScrambled(q.bits, q.nrow, neta, q.scramble, qrPinSeed, id,
+                                  q.refresh ? iter : 0);
+    if (nsId < q.nrow) Z = Z.rows(0, nsId - 1);
+    return Z;
+  }
+  if (!q.shift) return q.Z0;
+  if (!q.refresh) nmSetSeedEng1(qrPinSeed + (uint32_t)(id * 2));
+  arma::vec sh(neta);
+  for (int jj = 0; jj < neta; ++jj) sh[jj] = rxUnifEng(0.0, 1.0);
+  return impQrZ(q.U0, &sh);
+}
+
+// est="its": 2*neta equally weighted sigma points, mode +/- sqrt(neta) L e_j
+static void impSigmaPoints(arma::mat& S, const arma::vec& mode, const arma::mat& L, int neta) {
+  const double sq = std::sqrt((double)neta);
+  for (int jj = 0; jj < neta; ++jj) {
+    S.row(2 * jj) = (mode + sq * L.col(jj)).t();
+    S.row(2 * jj + 1) = (mode - sq * L.col(jj)).t();
+  }
+}
+
+// Quasi-random samples from the N(0,I) points Z
+static void impQrSamples(arma::mat& S, const arma::mat& Z, const arma::vec& mode,
+                         const arma::mat& L, const impProp& pr, int nsId) {
+  // The MVN/MVT branch is kept TEXTUALLY as it was: the two forms should
+  // compile to the same gemv, but "should" is not the bit-identity
+  // contract this path holds to.
+  if (pr.type <= impPropMvt) {
+    for (int k = 0; k < nsId; ++k) {
+      // Quasi-random t: the Sobol point supplies the Gaussian direction and
+      // a fresh uniform supplies the chi-square scale.  (A fully
+      // quasi-random t would need an extra Sobol coordinate; this keeps the
+      // low-discrepancy structure where it does the most good.)
+      double ts = impTScale(pr.df);
+      S.row(k) = (mode + L * (Z.row(k).t() * ts)).t();
+    }
+  } else {
+    for (int k = 0; k < nsId; ++k) {
+      arma::vec z = Z.row(k).t();
+      double ts = impPropScale(pr, z);
+      S.row(k) = (mode + L * (z * ts)).t();
+    }
+  }
+}
+
+// Pseudo-random samples from this subject's seeded stream
+static void impRngSamples(arma::mat& S, const arma::vec& mode, const arma::mat& L,
+                          const impProp& pr, int nsId, int neta) {
+  for (int k = 0; k < nsId; ++k) {
+    arma::vec z(neta);
+    for (int jj = 0; jj < neta; ++jj) z[jj] = rxNormEng(0.0, 1.0);
+    // evaluated AFTER the z fill, so the draw order (and therefore the
+    // stream position) is unchanged for MVN/MVT
+    double ts = impPropScale(pr, z);
+    S.row(k) = (mode + L * (z * ts)).t();
+  }
+}
+
+// #958 combined build: impEvalJointLik() just solved this subject's
+// INNER model at this exact (theta, eta) -- when combSens is loaded,
+// that solve already carries the M-step's d(f)/d(theta)/d(V)/d(theta)
+// columns, so harvest them here (impThetaSensCollect's reuseSolve path,
+// a pure read -- no ODE solve, no R API call, safe under the E-step's
+// own parallel region) instead of letting the M-step re-solve every
+// sample from scratch.  Skipped whenever the caller disabled harvesting
+// (SIR resampling only needs a subset of the E-step's samples, so eagerly
+// harvesting all of them there would be wasted work -- see impOuter's
+// harvestSens gate).  A sample whose solve fell back to the pred-model FD
+// path (impLastInnerSolveUsable == false) leaves ind->solve holding the
+// PRED model's trajectory, not the inner model's, so it is left
+// unharvested (sampleOk=0) rather than triggering impThetaSensCollect's
+// own solve-with-retry path -- that path is R-API-unsafe from a bare
+// OpenMP region (it is only ever run under the M-step's explicit
+// impInnerParallelOn() guard), which this loop does not set.  doFD alone
+// is not enough: it is a STICKY per-subject flag (only flips permanently,
+// inside the inner Newton optimizer's own convergence handling) and does
+// not track whether THIS ARBITRARY sampled eta's solve produced a usable
+// result, so a bad solve at doFD==0 (e.g. an extreme early-EM proposal
+// draw) would otherwise still reach impThetaSensCollect, which falls back
+// to impThetaSensFD()'s finite-difference re-solves -- the same
+// R-API-unsafe path.  qk is -impEvalJointLik(eta, id) + <finite kernel
+// term>, so its own finiteness is direct evidence this exact eta's inner
+// solve succeeded (impEvalJointLik/likInner0 return a non-finite value on
+// a bad solve); require both.
+static void impHarvestSample(impThetaSensData& acc, int id, const arma::vec& eta, double qk,
+                             int neta) {
+  // Every sample appends exactly one slot; an unharvested one appends an
+  // empty placeholder with sampleOk=0 so the per-sample indexing lines up.
+  impThetaSensData c;
+  bool ok = false;
+  if (impLastInnerSolveUsable(id) && R_finite(qk)) {
+    arma::mat srow(1, neta);
+    srow.row(0) = eta.t();
+    impThetaSensCollect(id, srow, c, /*reuseSolve=*/true);
+    if (c.nobs > 0) {
+      acc.nobs = c.nobs;
+      acc.dvv = c.dvv; acc.limv = c.limv;
+      acc.censv = c.censv; acc.distv = c.distv;
+      acc.ddvmat = c.ddvmat; acc.dlimmat = c.dlimmat;
+    }
+    ok = c.nobs > 0 && !c.sampleOk.empty() && c.sampleOk[0] != 0;
+  }
+  acc.fvec.push_back(ok ? c.fvec[0] : arma::vec());
+  acc.Vvec.push_back(ok ? c.Vvec[0] : arma::vec());
+  acc.dfmat.push_back(ok ? c.dfmat[0] : arma::mat());
+  acc.dVmat.push_back(ok ? c.dVmat[0] : arma::mat());
+  acc.sampleOk.push_back(ok ? 1 : 0);
+  if (ok) impThetaSensHarvestTick();
+}
+
+// Per-expanded-subject E-step results (combined per base subject afterwards).
+struct ImpEOut {
+  arma::mat cm;
+  std::vector<arma::mat> cv;
+  arma::vec Li, Neff, Xi, Khat;
+  std::vector<char> ok;
+  ImpEOut(int nExp, int neta)
+    : cm(nExp, neta, arma::fill::zeros),
+      cv(nExp, arma::mat(neta, neta, arma::fill::zeros)),
+      Li(nExp), Neff(nExp), Xi(nExp), Khat(nExp), ok(nExp, 0) {
+    Li.fill(NA_REAL); Neff.fill(NA_REAL); Xi.fill(NA_REAL); Khat.fill(NA_REAL);
+  }
+};
+
+// Everything one subject's E-step reads or writes.
+struct ImpECtx {
+  int neta, nExp, iter;
+  const arma::ivec& isampleVec;
+  const arma::vec& gammaVec;
+  const std::vector<impProp>& props;
+  double negHalfLogDetOmega;
+  bool its, harvestSens;
+  uint32_t seed0, qrPinSeed;
+  const ImpEProp& P;
+  const ImpQrSet& qr;
+  ImpEOut& O;
+  std::vector<arma::mat>& outS;
+  std::vector<arma::vec>& outZk;
+  std::vector<impThetaSensData>& outSens;
+};
+
+// Fill the subject's sample matrix S
+static void impEStepDraw(const ImpECtx& c, int id, arma::mat& S, int nsId) {
+  const impProp& pr = c.props[id];
+  if (c.its) {
+    impSigmaPoints(S, c.P.modes[id], c.P.cholL[id], c.neta);
+  } else if (c.qr.on) {
+    arma::mat Z = impQrZSubject(c.qr, nsId, c.neta, c.qrPinSeed, id, c.iter);
+    impQrSamples(S, Z, c.P.modes[id], c.P.cholL[id], pr, nsId);
+  } else {
+    impRngSamples(S, c.P.modes[id], c.P.cholL[id], pr, nsId, c.neta);
+  }
+}
+
+// log importance weights; returns the number of usable samples.
+// impEvalJointLik returns the NEGATIVE log joint density (minimized by the
+// inner optimizer), so it enters with a minus; the proposal density is
+// subtracted, contributing +(1/(2 gamma)) d'H d.
+static int impEStepLogWeights(const ImpECtx& c, int id, const arma::mat& S, arma::vec& q) {
+  const impProp& pr = c.props[id];
+  const int nsId = (int)S.n_rows;
+  int nGood = 0;
+  for (int k = 0; k < nsId; ++k) {
+    arma::vec eta = S.row(k).t();
+    arma::vec d = eta - c.P.modes[id];
+    double qk = -impEvalJointLik(eta, id) +
+      impPropLogKernelRecip(pr, arma::as_scalar(d.t() * c.P.Hs[id] * d), c.gammaVec[id], c.neta);
+    if (c.harvestSens) impHarvestSample(c.outSens[id], id, eta, qk, c.neta);
+    // A proposal sample whose inner solve fails (NA/NaN, even after the
+    // FOCEI tolerance-relaxation retry) is dropped from the weighted mean by
+    // giving it -Inf log-weight (weight 0).
+    if (R_finite(qk)) { q[k] = qk; ++nGood; } else { q[k] = R_NegInf; }
+  }
+  return nGood;
+}
+
+// Weights, objective contribution, diagnostics and conditional moments of one
+// subject from its log weights q.
+static void impEStepMoments(const ImpECtx& c, int id, const arma::mat& S, const arma::vec& q,
+                            double qCenter) {
+  const impProp& pr = c.props[id];
+  const int nsId = (int)S.n_rows;
+  const int neta = c.neta;
+  double gammaId = c.gammaVec[id];
+  double qmax = q.max();
+  arma::vec w = arma::exp(q - qmax);
+  double sumw = arma::accu(w);
+  arma::vec zk = w / sumw;
+  c.outS[id] = S;
+  c.outZk[id] = zk;
+  c.O.ok[id] = 1;
+  double logMeanExp = c.its ? qCenter : qmax + std::log(sumw / (double)nsId);
+  double Ci = c.negHalfLogDetOmega + 0.5 * neta * std::log(gammaId) -
+    0.5 * c.P.logDetH[id] + pr.corr;
+  c.O.Li[id] = -(logMeanExp + Ci);          // per-component negative log-likelihood
+  c.O.Neff[id] = 1.0 / arma::accu(arma::square(zk));
+  // NONMEM xi: mean weight normalized to the proposal center (see impEStepSubject).
+  // xi is NOT family-invariant: against a Gaussian target it comes out as
+  // gamma^(-p/2) * exp(-corr), so a family with corr != 0 would drive the
+  // controller (which inverts xi = gamma^(-neta/2) analytically) to
+  // a DIFFERENT gamma -- for covariance-matched MVL at p=3 that is ~3x too
+  // wide, or pinned at iscaleMax, with gammaStable still reporting
+  // converged.  Adding corr back puts every family on gamma^(-p/2), so
+  // iaccept / iscaleMin / iscaleMax / pExp keep their tuning verbatim.
+  //
+  // Gated off for MVN and MVT.  MVN's corr is exactly 0.0 so it is a no-op
+  // there either way; MVT's is not (2.5% at df=30), and moving xi moves
+  // gamma and therefore the whole fit -- the AUTO ladder's df 30/20
+  // constants were tuned with this term absent.  By the same token MVT is
+  // not covariance-matched either (Cov = df/(df-2) Sigma); both are
+  // deliberate, not oversights.
+  double xiCorr = (pr.type <= impPropMvt) ? 0.0 : pr.corr;
+  if (R_finite(qCenter)) c.O.Xi[id] = std::exp(logMeanExp - qCenter + xiCorr);
+  c.O.Khat[id] = impPsisKhat(zk);   // tail index of this subject's weights
+  arma::rowvec pbar = zk.t() * S;
+  c.O.cm.row(id) = pbar;
+  arma::mat B(neta, neta, arma::fill::zeros);
+  for (int k = 0; k < nsId; ++k) {
+    arma::rowvec dr = S.row(k) - pbar;
+    B += zk[k] * (dr.t() * dr);
+  }
+  if (c.its) {
+    // Hs is H itself (gamma = 1) or, after a fallback, Omega^-1
+    c.O.cm.row(id) = c.P.modes[id].t();
+    arma::mat V;
+    if (arma::inv_sympd(V, c.P.Hs[id])) B = V;
+  }
+  c.O.cv[id] = B;
+}
+
+// One expanded subject's E-step.
+static void impEStepSubject(const ImpECtx& c, int id) {
+  // fresh per-(iter, expanded-subject) stream, independent of thread count
+  nmSetSeedEng1(c.seed0 + (uint32_t)((c.iter * c.nExp + id) * 2));
+  c.O.cm.row(id) = c.P.modes[id].t();
+  if (!c.P.haveL[id]) return;
+  // est="its": no sampling.  The moments are the mode and H^-1, the objective is
+  // the Laplace term, and the M-step sees 2*neta equally weighted sigma points
+  // (mode +/- sqrt(neta) L e_j) so the residual update carries H^-1 as well.
+  int nsId = c.its ? 2 * c.neta : (int)c.isampleVec[id];   // this subject's sample count
+  arma::mat S(nsId, c.neta);
+  impEStepDraw(c, id, S, nsId);
+  // NONMEM-style xi (NM7 eq. 1.73/1.75): the mean importance weight
+  // normalized so the proposal kernel is 1 at its center.  q at the center
+  // is just the log joint density there (the kernel term vanishes at d=0),
+  // so xi = exp(logMeanExp - qCenter) once logMeanExp is formed.
+  //
+  // xi == 1 exactly when the proposal matches the posterior shape, < 1 when
+  // the proposal is over-dispersed, and > 1 when the posterior has heavier
+  // tails than the Gaussian proposal -- xi is NOT bounded above.  That
+  // heavy-tail signal is what the per-subject gamma controller
+  // targets, and it is a different statistic from the Kish
+  // effective sample size (they are not comparable).
+  //
+  // Evaluated HERE -- after the draws are complete but before the weight
+  // loop -- deliberately: the sample matrix S is already filled, so this
+  // cannot perturb the sampling stream, and the weight loop still leaves
+  // the subject's eta at S.row(isample-1) exactly as before, preserving
+  // bit-identity with the pre-xi kernel.
+  double qCenter = -impEvalJointLik(c.P.modes[id], id);
+  arma::vec q(nsId);
+  int nGood = impEStepLogWeights(c, id, S, q);
+  // the inner solves above re-seed the engine per subject
+  // (setSeedEng1(getRxSeed1()+id)); restore this block's sampling seed so
+  // that leak never carries into a subsequent draw.
+  nmRestoreMcmcSeed();
+  if (nGood == 0) return;
+  if (c.its) {
+    // equal weights (failed points dropped); Laplace objective at the mode
+    if (!R_finite(qCenter)) return;
+    for (int k = 0; k < nsId; ++k) q[k] = R_finite(q[k]) ? qCenter : R_NegInf;
+  }
+  impEStepMoments(c, id, S, q, qCenter);
+}
+
+// Combined (per base subject) E-step results.
+struct ImpEDest {
+  arma::mat& condMean;
+  std::vector<arma::mat>& condVar;
+  arma::vec& Li;
+  arma::vec& Neff;
+  arma::vec& Xi;
+  arma::mat& aMat;
+};
+
+// Smallest usable component objective of base subject i (+Inf when none)
+static double impMixMinL(const ImpEOut& O, int i, int nsub, int Nm) {
+  double minL = R_PosInf;
+  for (int j = 0; j < Nm; ++j) {
+    int eid = i + j * nsub;
+    if (O.ok[eid] && R_finite(O.Li[eid]) && O.Li[eid] < minL) minL = O.Li[eid];
+  }
+  return minL;
+}
+
+// Unnormalized posterior mixture weights a_j exp(minL - L_ij); returns their sum
+static double impMixWeights(const ImpEOut& O, int i, int nsub, int Nm, double minL,
+                            arma::vec& wj) {
+  double sumW = 0.0;
+  for (int j = 0; j < Nm; ++j) {
+    int eid = i + j * nsub;
+    if (O.ok[eid] && R_finite(O.Li[eid])) {
+      wj[j] = impMixProb(j) * std::exp(minL - O.Li[eid]);
+      sumW += wj[j];
+    }
+  }
+  return sumW;
+}
+
+// Responsibility-weighted Neff and xi of base subject i
+static void impMixDiag(const ImpEOut& O, int i, int nsub, int Nm, ImpEDest& D) {
+  double nf = 0.0;
+  for (int j = 0; j < Nm; ++j) {
+    double a = D.aMat(i, j);
+    if (a > 0 && R_finite(O.Neff[i + j * nsub])) nf += a * O.Neff[i + j * nsub];
+  }
+  if (nf > 0) D.Neff[i] = nf;
+  // Responsibility-weighted xi, matching how Neff is combined above.
+  double xf = 0.0; bool anyXi = false;
+  for (int j = 0; j < Nm; ++j) {
+    double a = D.aMat(i, j);
+    if (a > 0 && R_finite(O.Xi[i + j * nsub])) { xf += a * O.Xi[i + j * nsub]; anyXi = true; }
+  }
+  if (anyXi) D.Xi[i] = xf;
+}
+
+// Responsibility-combined moments of base subject i from its components
+static void impMixMoments(const ImpEOut& O, int i, int nsub, int Nm, int neta,
+                          const arma::vec& wj, double sumW, ImpEDest& D) {
+  arma::rowvec cm(neta, arma::fill::zeros);
+  for (int j = 0; j < Nm; ++j) {
+    double a = wj[j] / sumW; D.aMat(i, j) = a;
+    if (a > 0) cm += a * O.cm.row(i + j * nsub);
+  }
+  D.condMean.row(i) = cm;
+  // Component-weighted conditional variance: sum_j a_ij (B_ij + m_ij m_ij') - m_i m_i'.
+  arma::mat cv(neta, neta, arma::fill::zeros);
+  for (int j = 0; j < Nm; ++j) {
+    double a = D.aMat(i, j); if (a <= 0) continue;
+    arma::rowvec mj = O.cm.row(i + j * nsub);
+    cv += a * (O.cv[i + j * nsub] + mj.t() * mj);
+  }
+  cv -= cm.t() * cm;
+  D.condVar[i] = cv;
+}
+
+// Combine base subject i over its mixture components.  Posterior mixture weights
+// a_ij = a_j exp(-L_ij) / sum_k a_k exp(-L_ik), with the min-L shift for
+// numerical stability (as saem does).
+static void impMixCombine(const ImpEOut& O, int i, int nsub, int Nm, int neta,
+                          std::vector<arma::vec>& outZk, ImpEDest& D) {
+  double minL = impMixMinL(O, i, nsub, Nm);
+  if (!R_finite(minL)) { D.condMean.row(i) = O.cm.row(i); D.aMat(i, 0) = 1.0; return; }
+  arma::vec wj(Nm, arma::fill::zeros);
+  double sumW = impMixWeights(O, i, nsub, Nm, minL, wj);
+  if (sumW <= 0.0) { D.condMean.row(i) = O.cm.row(i); D.aMat(i, 0) = 1.0; return; }
+  impMixMoments(O, i, nsub, Nm, neta, wj, sumW, D);
+  D.Li[i] = minL - std::log(sumW);           // marginal (mixture) negative log-likelihood
+  impMixDiag(O, i, nsub, Nm, D);
+  // Fold the responsibility a_ij into each component's importance weights so the
+  // M-step, iterating the expanded subjects, forms the component-weighted score.
+  for (int j = 0; j < Nm; ++j) {
+    int eid = i + j * nsub;
+    if (outZk[eid].n_elem > 0) outZk[eid] *= D.aMat(i, j);
+  }
+}
+
+// Combine over mixture components per base subject.  For a single component
+// (Nm == 1) this is bit-identical to the non-mixture E-step.
+static void impEStepCombine(const ImpEOut& O, int nsub, int Nm, int neta,
+                            std::vector<arma::vec>& outZk, ImpEDest& D) {
+  D.condMean.set_size(nsub, neta);
+  D.condVar.assign(nsub, arma::mat(neta, neta, arma::fill::zeros));
+  D.Li.set_size(nsub); D.Li.fill(NA_REAL);
+  D.Neff.set_size(nsub); D.Neff.fill(NA_REAL);
+  D.Xi.set_size(nsub); D.Xi.fill(NA_REAL);
+  D.aMat.set_size(nsub, Nm); D.aMat.zeros();
+  for (int i = 0; i < nsub; ++i) {
+    if (Nm != 1) {
+      impMixCombine(O, i, nsub, Nm, neta, outZk, D);
+      continue;
+    }
+    D.condMean.row(i) = O.cm.row(i);
+    D.condVar[i] = O.cv[i];
+    D.Li[i] = O.Li[i];
+    D.Neff[i] = O.Neff[i];
+    D.Xi[i] = O.Xi[i];
+    D.aMat(i, 0) = 1.0;
+  }
+}
+
+// On the last iteration, stash the per-subject sampler diagnostics (first
+// component for a mixture).
+static void impEStepStash(Environment& eStash, const ImpEProp& P, int nsub, int neta,
+                          const std::vector<arma::mat>& outS,
+                          const std::vector<arma::vec>& outZk) {
+  arma::mat modeMat(nsub, neta);
+  List hessList(nsub), samplesList(nsub), weightList(nsub);
+  for (int id = 0; id < nsub; ++id) {
+    modeMat.row(id) = P.modes[id].t();
+    hessList[id] = P.haveL[id] ? wrap(P.Hs[id]) : R_NilValue;
+    samplesList[id] = wrap(outS[id]);
+    // Normalized importance weights, kept so a TAIL-sensitive diagnostic
+    // (Pareto k-hat) can be computed post-fit.  xi and the Kish ESS are both
+    // means over samples drawn FROM the proposal, so both are structurally
+    // blind to tails the proposal never visits -- which is the failure mode a
+    // heavier-tailed (t) proposal exists to prevent.  k-hat estimates the
+    // tail index of the weight distribution and does see it.  Pareto k-hat is
+    // scale-invariant, so the mixture responsibility folded into these
+    // weights does not affect it.
+    weightList[id] = wrap(outZk[id]);
+  }
+  eStash["impEtaMode"] = wrap(modeMat);
+  eStash["impEtaHess"] = hessList;
+  eStash["impSamples"] = samplesList;
+  eStash["impWeights"] = weightList;
+}
+
 // One importance-sampling E-step at the current conditional modes: draw
 // proposal samples, form importance weights, and return each subject's
 // conditional mean, variance, objective contribution, and effective sample
@@ -568,115 +1138,10 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
                      std::vector<impThetaSensData>& outSens) {
   int Nm = impNmix();
   int nExp = nsub * Nm; // expanded pseudo-subjects: component j (1-based) is i + (j-1)*nsub
+  ImpEProp P(nExp);
+  impEStepProposals(P, nExp, neta, gammaVec, cores, isImp, condVar);
 
-  // Per-expanded-subject proposal (mode, information H_i, log|H_i|, lower Cholesky
-  // of gamma * H_i^-1) -- from the per-component MAP modes.  Each subject fills only
-  // its own slot (no reduction, no RNG), so this is parallelized over subjects; the
-  // per-subject inner Hessian (impGetHessian) is the impmap serial cost.  cores
-  // already carries the mixture / pool-sizing serial guard.
-  std::vector<arma::vec> modes(nExp);
-  std::vector<arma::mat> Hs(nExp);
-  std::vector<double> logDetH(nExp, 0.0);
-  std::vector<arma::mat> cholL(nExp);
-  std::vector<char> haveL(nExp, 0);
-  // Subjects whose MAP Hessian gave no proposal and fell back to the population
-  // Omega.  Atomic because the fill loop below is parallel over subjects.
-  std::atomic<int> nOmegaFallback(0);
-  // est="imp": no MAP search.  The proposal is centered at each subject's running
-  // conditional mean (the current eta) with covariance gamma * V_i, where V_i is
-  // that subject's conditional variance from the PREVIOUS E-step (passed in via
-  // condVar, before it is overwritten below).  On the first iteration -- or a
-  // pseudo-subject / degenerate V_i -- fall back to the population Omega, which is
-  // over-dispersed and always available.
-  // Needed by BOTH branches: est="imp" centers on it when a subject has no
-  // usable conditional variance yet, and est="impmap" falls back to it when the
-  // MAP Hessian will not give a proposal (see the impmap branch below).
-  arma::mat impOmega;
-  impGetOmega(impOmega);
-  bool doParProp = (cores > 1);
-  nmForEachSubject(rx, nExp, cores, doParProp, [&](int id) {
-    double gammaId = gammaVec[id];
-    if (isImp) {
-      arma::vec eta(neta);
-      impGetEta(id, eta);
-      modes[id] = eta;
-      arma::mat Sig;
-      if ((size_t)id < condVar.size() && condVar[id].n_rows == (arma::uword)neta &&
-          arma::any(arma::vectorise(condVar[id]) != 0.0)) {
-        Sig = condVar[id];
-      } else {
-        Sig = impOmega;
-      }
-      arma::mat Hi;
-      double ldv, lds;
-      if (arma::inv_sympd(Hi, Sig) && arma::log_det(ldv, lds, Hi) && lds > 0) {
-        arma::mat L;
-        if (arma::chol(L, gammaId * Sig, "lower")) {
-          Hs[id] = Hi; logDetH[id] = ldv; cholL[id] = L; haveL[id] = 1;
-        }
-      }
-    } else {
-      arma::vec mode(neta);
-      arma::mat H(neta, neta, arma::fill::zeros);
-      impGetMode(id, mode);
-      modes[id] = mode;
-      bool gotH = impGetHessianNdiffSafe(id, H);
-      if (gotH) {
-        arma::mat Sigma;
-        double ldv, lds;
-        if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {
-          Hs[id] = H;
-          logDetH[id] = ldv;
-          Sigma *= gammaId;
-          arma::mat L;
-          if (arma::chol(L, Sigma, "lower")) { cholL[id] = L; haveL[id] = 1; }
-        }
-      }
-      if (!haveL[id]) {
-        // The MAP Hessian did not yield a proposal for this subject.  The
-        // Hessian is the curvature AT the mode, so it is only guaranteed
-        // positive definite at a converged one -- and the inner solve is not
-        // required to have converged (a pass that exhausted maxInnerIterations
-        // still returns a finite objective and can be the eta reported).  At
-        // such a point inv_sympd()/chol() legitimately fail.
-        //
-        // Dropping the subject here is the wrong answer to that: it silently
-        // removes an individual from the E-step, and if it happens widely the
-        // whole fit collapses to the failure objective with nothing said.
-        // est="imp" already meets its own version of this by centering on the
-        // population Omega, which is over-dispersed and always available; do
-        // the same.  An over-dispersed proposal costs effective sample size --
-        // the importance weights correct for it -- where a missing subject
-        // costs correctness.
-        arma::mat Hi;
-        double ldv, lds;
-        if (arma::inv_sympd(Hi, impOmega) && arma::log_det(ldv, lds, Hi) && lds > 0) {
-          arma::mat L;
-          if (arma::chol(L, gammaId * impOmega, "lower")) {
-            Hs[id] = Hi; logDetH[id] = ldv; cholL[id] = L; haveL[id] = 1;
-            nOmegaFallback.fetch_add(1, std::memory_order_relaxed);
-          }
-        }
-      }
-    }
-  });
-  // Say so.  A proposal built on the population Omega rather than on the
-  // subject's own curvature is a weaker proposal, and the reason it happened
-  // (an unconverged MAP) is worth knowing about; silently substituting it is
-  // how a fit ends up quietly worse than it looks.
-  if (nOmegaFallback.load(std::memory_order_relaxed) > 0) {
-    RSprintf("impmap: %d of %d subject proposals fell back to the population omega (MAP Hessian not usable)\n",
-             nOmegaFallback.load(std::memory_order_relaxed), nExp);
-  }
-
-  // Per-expanded-subject E-step results (combined per base subject below).
-  arma::mat cmExp(nExp, neta, arma::fill::zeros);
-  std::vector<arma::mat> cvExp(nExp, arma::mat(neta, neta, arma::fill::zeros));
-  arma::vec LiExp(nExp); LiExp.fill(NA_REAL);
-  arma::vec NeffExp(nExp); NeffExp.fill(NA_REAL);
-  arma::vec XiExp(nExp); XiExp.fill(NA_REAL);
-  arma::vec KhatExp(nExp); KhatExp.fill(NA_REAL);
-  std::vector<char> okExp(nExp, 0);
+  ImpEOut O(nExp, neta);
   outS.assign(nExp, arma::mat());
   outZk.assign(nExp, arma::vec());
   if (harvestSens) outSens.assign(nExp, impThetaSensData());
@@ -690,31 +1155,9 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   // reproducible, thread-count-independent stream.
   uint32_t seed0 = (uint32_t)impBaseSeed();
   bool doPar = (cores > 1);
-  // est="its": no sampling.  The moments are the mode and H^-1, the objective is
-  // the Laplace term, and the M-step sees 2*neta equally weighted sigma points
-  // (mode +/- sqrt(neta) L e_j) so the residual update carries H^-1 as well.
-  const bool its = impIsIts();
-  // QRPEM: one Sobol base point set per E-step (read-only in the parallel
-  // loop); with qrShift=FALSE the N(0,1) points are also fixed and shared.
-  bool qr = impQrEnabled();
-  int qrScramble = impQrScramble();
-  // Scrambling IS the randomization, so it replaces the Cranley-Patterson
-  // shift rather than composing with it; qrRefresh still says whether the
-  // randomization is redrawn each iteration.
-  bool qrShift = (qrScramble == impQrScrambleNone) && impQrShiftEnabled();
-  bool qrRefresh = impQrRefreshEnabled();
-  arma::mat qrU0, qrZ0;
-  std::vector<uint64_t> qrBits;
-  int qrNrow = 0;
-  if (qr) {
-    qrNrow = (int)isampleVec.max();
-    if (qrScramble == impQrScrambleNone) {
-      qrU0 = impSobolU0(qrNrow, neta);
-      if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
-    } else {
-      qrBits = impSobolBits(qrNrow, neta);
-    }
-  }
+  ImpQrSet qr = impQrSetup((int)isampleVec.max(), neta);
+  ImpECtx c{neta, nExp, iter, isampleVec, gammaVec, props, negHalfLogDetOmega,
+            impIsIts(), harvestSens, seed0, qrPinSeed, P, qr, O, outS, outZk, outSens};
   // Parallelize over base subjects, iterating a subject's mixture components
   // serially within one thread.  A base subject's expanded pseudo-subjects (id =
   // i + j*nsub) share the same underlying rxode2 solve rows, so evaluating two of
@@ -722,319 +1165,21 @@ static void impEStep(int nsub, int neta, const arma::ivec& isampleVec,
   // one thread avoids the race while preserving nsub-way parallelism.  For Nm == 1
   // this is the same nsub-iteration loop as before (bit-identical, same seeds).
   nmForEachSubject(rx, nsub, cores, doPar, [&](int i) {
-    for (int j = 0; j < Nm; ++j) {
-      int id = i + j * nsub;
-      // fresh per-(iter, expanded-subject) stream, independent of thread count
-      nmSetSeedEng1(seed0 + (uint32_t)((iter * nExp + id) * 2));
-      cmExp.row(id) = modes[id].t();
-      if (!haveL[id]) continue;
-      // This subject's own proposal scale (all equal under gammaMethod="global").
-      double gammaId = gammaVec[id];
-      const impProp& pr = props[id];   // this subject's proposal family
-      int nsId = (int)isampleVec[id];   // this subject's sample count
-      if (its) nsId = 2 * neta;
-      arma::mat S(nsId, neta);
-      if (its) {
-        const double sq = std::sqrt((double)neta);
-        for (int jj = 0; jj < neta; ++jj) {
-          S.row(2 * jj) = (modes[id] + sq * cholL[id].col(jj)).t();
-          S.row(2 * jj + 1) = (modes[id] - sq * cholL[id].col(jj)).t();
-        }
-      } else if (qr) {
-        // Sobol points -> N(0,I) -> proposal.  With qrShift the shift comes
-        // from this subject's seeded stream; qrRefresh=FALSE instead uses the
-        // fit-constant qrPinSeed (captured once in impOuter -- seed0 advances
-        // every E-step) so the whole fit reuses one shift per subject.
-        arma::mat Z;
-        if (qrScramble != impQrScrambleNone) {
-          // qrRefresh=FALSE pins the scramble to the subject, so every
-          // iteration sees the same scrambled set (a deterministic EM map).
-          Z = impQrZScrambled(qrBits, qrNrow, neta, qrScramble, qrPinSeed, id,
-                              qrRefresh ? iter : 0);
-          if (nsId < qrNrow) Z = Z.rows(0, nsId - 1);
-        } else if (qrShift) {
-          if (!qrRefresh) nmSetSeedEng1(qrPinSeed + (uint32_t)(id * 2));
-          arma::vec sh(neta);
-          for (int jj = 0; jj < neta; ++jj) sh[jj] = rxUnifEng(0.0, 1.0);
-          Z = impQrZ(qrU0, &sh);
-        } else {
-          Z = qrZ0;
-        }
-        // The MVN/MVT branch is kept TEXTUALLY as it was: the two forms should
-        // compile to the same gemv, but "should" is not the bit-identity
-        // contract this path holds to.
-        if (pr.type <= impPropMvt) {
-          for (int k = 0; k < nsId; ++k) {
-            // Quasi-random t: the Sobol point supplies the Gaussian direction and
-            // a fresh uniform supplies the chi-square scale.  (A fully
-            // quasi-random t would need an extra Sobol coordinate; this keeps the
-            // low-discrepancy structure where it does the most good.)
-            double ts = impTScale(pr.df);
-            S.row(k) = (modes[id] + cholL[id] * (Z.row(k).t() * ts)).t();
-          }
-        } else {
-          for (int k = 0; k < nsId; ++k) {
-            arma::vec z = Z.row(k).t();
-            double ts = impPropScale(pr, z);
-            S.row(k) = (modes[id] + cholL[id] * (z * ts)).t();
-          }
-        }
-      } else {
-        for (int k = 0; k < nsId; ++k) {
-          arma::vec z(neta);
-          for (int jj = 0; jj < neta; ++jj) z[jj] = rxNormEng(0.0, 1.0);
-          // evaluated AFTER the z fill, so the draw order (and therefore the
-          // stream position) is unchanged for MVN/MVT
-          double ts = impPropScale(pr, z);
-          S.row(k) = (modes[id] + cholL[id] * (z * ts)).t();
-        }
-      }
-      // NONMEM-style xi (NM7 eq. 1.73/1.75): the mean importance weight
-      // normalized so the proposal kernel is 1 at its center.  q at the center
-      // is just the log joint density there (the kernel term vanishes at d=0),
-      // so xi = exp(logMeanExp - qCenter) once logMeanExp is formed below.
-      //
-      // xi == 1 exactly when the proposal matches the posterior shape, < 1 when
-      // the proposal is over-dispersed, and > 1 when the posterior has heavier
-      // tails than the Gaussian proposal -- xi is NOT bounded above.  That
-      // heavy-tail signal is what the per-subject gamma controller
-      // targets, and it is a different statistic from the Kish
-      // effective sample size below (they are not comparable).
-      //
-      // Evaluated HERE -- after the draws are complete but before the weight
-      // loop -- deliberately: the sample matrix S is already filled, so this
-      // cannot perturb the sampling stream, and the weight loop still leaves
-      // the subject's eta at S.row(isample-1) exactly as before, preserving
-      // bit-identity with the pre-xi kernel.
-      double qCenter = -impEvalJointLik(modes[id], id);
-      // log importance weights.  impEvalJointLik returns the NEGATIVE log joint
-      // density (minimized by the inner optimizer), so it enters with a minus;
-      // the proposal density is subtracted, contributing +(1/(2 gamma)) d'H d.
-      arma::vec q(nsId);
-      int nGood = 0;
-      for (int k = 0; k < nsId; ++k) {
-        arma::vec eta = S.row(k).t();
-        arma::vec d = eta - modes[id];
-        double qk = -impEvalJointLik(eta, id) +
-          impPropLogKernelRecip(pr, arma::as_scalar(d.t() * Hs[id] * d), gammaId, neta);
-        // #958 combined build: impEvalJointLik() just solved this subject's
-        // INNER model at this exact (theta, eta) -- when combSens is loaded,
-        // that solve already carries the M-step's d(f)/d(theta)/d(V)/d(theta)
-        // columns, so harvest them here (impThetaSensCollect's reuseSolve path,
-        // a pure read -- no ODE solve, no R API call, safe under this
-        // function's own parallel E-step region) instead of letting the
-        // M-step re-solve every sample from scratch.  Skipped whenever the
-        // caller disabled harvesting (SIR resampling only needs a subset of
-        // the E-step's samples, so eagerly harvesting all of them there would
-        // be wasted work -- see impOuter's harvestSens gate).  A sample whose
-        // solve fell back to the pred-model FD path (impLastInnerSolveUsable
-        // == false) leaves ind->solve holding the PRED model's trajectory, not
-        // the inner model's, so it is left unharvested (sampleOk=0) rather
-        // than triggering impThetaSensCollect's own solve-with-retry path --
-        // that path is R-API-unsafe from a bare OpenMP region (it is only
-        // ever run under the M-step's explicit impInnerParallelOn() guard),
-        // which this loop does not set.  doFD alone is not enough: it is a
-        // STICKY per-subject flag (only flips permanently, inside the inner
-        // Newton optimizer's own convergence handling) and does not track
-        // whether THIS ARBITRARY sampled eta's solve produced a usable
-        // result, so a bad solve at doFD==0 (e.g. an extreme early-EM
-        // proposal draw) would otherwise still reach impThetaSensCollect,
-        // which falls back to impThetaSensFD()'s finite-difference re-solves
-        // -- the same R-API-unsafe path.  qk is -impEvalJointLik(eta, id) +
-        // <finite kernel term>, so its own finiteness is direct evidence this
-        // exact eta's inner solve succeeded (impEvalJointLik/likInner0 return
-        // a non-finite value on a bad solve); require both.
-        if (harvestSens) {
-          impThetaSensData &_acc = outSens[id];
-          // Every sample appends exactly one slot; an unharvested one appends an
-          // empty placeholder with sampleOk=0 so the per-sample indexing lines up.
-          impThetaSensData _c;
-          bool _ok = false;
-          if (impLastInnerSolveUsable(id) && R_finite(qk)) {
-            arma::mat _srow(1, neta); _srow.row(0) = eta.t();
-            impThetaSensCollect(id, _srow, _c, /*reuseSolve=*/true);
-            if (_c.nobs > 0) {
-              _acc.nobs = _c.nobs;
-              _acc.dvv = _c.dvv; _acc.limv = _c.limv;
-              _acc.censv = _c.censv; _acc.distv = _c.distv;
-              _acc.ddvmat = _c.ddvmat; _acc.dlimmat = _c.dlimmat;
-            }
-            _ok = _c.nobs > 0 && !_c.sampleOk.empty() && _c.sampleOk[0] != 0;
-          }
-          _acc.fvec.push_back(_ok ? _c.fvec[0] : arma::vec());
-          _acc.Vvec.push_back(_ok ? _c.Vvec[0] : arma::vec());
-          _acc.dfmat.push_back(_ok ? _c.dfmat[0] : arma::mat());
-          _acc.dVmat.push_back(_ok ? _c.dVmat[0] : arma::mat());
-          _acc.sampleOk.push_back(_ok ? 1 : 0);
-          if (_ok) impThetaSensHarvestTick();
-        }
-        // A proposal sample whose inner solve fails (NA/NaN, even after the
-        // FOCEI tolerance-relaxation retry) is dropped from the weighted mean by
-        // giving it -Inf log-weight (weight 0).
-        if (R_finite(qk)) { q[k] = qk; ++nGood; } else { q[k] = R_NegInf; }
-      }
-      // the inner solves above re-seed the engine per subject
-      // (setSeedEng1(getRxSeed1()+id)); restore this block's sampling seed so
-      // that leak never carries into a subsequent draw.
-      nmRestoreMcmcSeed();
-      if (nGood == 0) continue;
-      if (its) {
-        // equal weights (failed points dropped); Laplace objective at the mode
-        if (!R_finite(qCenter)) continue;
-        for (int k = 0; k < nsId; ++k) q[k] = R_finite(q[k]) ? qCenter : R_NegInf;
-      }
-      double qmax = q.max();
-      arma::vec w = arma::exp(q - qmax);
-      double sumw = arma::accu(w);
-      arma::vec zk = w / sumw;
-      outS[id] = S;
-      outZk[id] = zk;
-      okExp[id] = 1;
-      double logMeanExp = its ? qCenter : qmax + std::log(sumw / (double)nsId);
-      double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaId) -
-        0.5 * logDetH[id] + pr.corr;
-      LiExp[id] = -(logMeanExp + Ci);          // per-component negative log-likelihood
-      NeffExp[id] = 1.0 / arma::accu(arma::square(zk));
-      // NONMEM xi: mean weight normalized to the proposal center (see above).
-      // xi is NOT family-invariant: against a Gaussian target it comes out as
-      // gamma^(-p/2) * exp(-corr), so a family with corr != 0 would drive the
-      // controller (which inverts xi = gamma^(-neta/2) analytically, below) to
-      // a DIFFERENT gamma -- for covariance-matched MVL at p=3 that is ~3x too
-      // wide, or pinned at iscaleMax, with gammaStable still reporting
-      // converged.  Adding corr back puts every family on gamma^(-p/2), so
-      // iaccept / iscaleMin / iscaleMax / pExp keep their tuning verbatim.
-      //
-      // Gated off for MVN and MVT.  MVN's corr is exactly 0.0 so it is a no-op
-      // there either way; MVT's is not (2.5% at df=30), and moving xi moves
-      // gamma and therefore the whole fit -- the AUTO ladder's df 30/20
-      // constants were tuned with this term absent.  By the same token MVT is
-      // not covariance-matched either (Cov = df/(df-2) Sigma); both are
-      // deliberate, not oversights.
-      double xiCorr = (pr.type <= impPropMvt) ? 0.0 : pr.corr;
-      if (R_finite(qCenter)) XiExp[id] = std::exp(logMeanExp - qCenter + xiCorr);
-      KhatExp[id] = impPsisKhat(zk);   // tail index of this subject's weights
-      arma::rowvec pbar = zk.t() * S;
-      cmExp.row(id) = pbar;
-      arma::mat B(neta, neta, arma::fill::zeros);
-      for (int k = 0; k < nsId; ++k) {
-        arma::rowvec dr = S.row(k) - pbar;
-        B += zk[k] * (dr.t() * dr);
-      }
-      if (its) {
-        // Hs is H itself (gamma = 1) or, after a fallback, Omega^-1
-        cmExp.row(id) = modes[id].t();
-        arma::mat V;
-        if (arma::inv_sympd(V, Hs[id])) B = V;
-      }
-      cvExp[id] = B;
-    }
+    for (int j = 0; j < Nm; ++j) impEStepSubject(c, i + j * nsub);
   });
 
-  // Combine over mixture components per base subject.  For a single component
-  // (Nm == 1) this is bit-identical to the non-mixture E-step.
-  condMean.set_size(nsub, neta);
-  condVar.assign(nsub, arma::mat(neta, neta, arma::fill::zeros));
-  Li.set_size(nsub); Li.fill(NA_REAL);
-  Neff.set_size(nsub); Neff.fill(NA_REAL);
-  Xi.set_size(nsub); Xi.fill(NA_REAL);
-  aMat.set_size(nsub, Nm); aMat.zeros();
-  for (int i = 0; i < nsub; ++i) {
-    if (Nm == 1) {
-      condMean.row(i) = cmExp.row(i);
-      condVar[i] = cvExp[i];
-      Li[i] = LiExp[i];
-      Neff[i] = NeffExp[i];
-      Xi[i] = XiExp[i];
-      aMat(i, 0) = 1.0;
-      continue;
-    }
-    // Posterior mixture weights a_ij = a_j exp(-L_ij) / sum_k a_k exp(-L_ik),
-    // with the min-L shift for numerical stability (as saem does).
-    double minL = R_PosInf;
-    for (int j = 0; j < Nm; ++j) {
-      int eid = i + j * nsub;
-      if (okExp[eid] && R_finite(LiExp[eid]) && LiExp[eid] < minL) minL = LiExp[eid];
-    }
-    if (!R_finite(minL)) { condMean.row(i) = cmExp.row(i); aMat(i, 0) = 1.0; continue; }
-    arma::vec wj(Nm, arma::fill::zeros); double sumW = 0.0;
-    for (int j = 0; j < Nm; ++j) {
-      int eid = i + j * nsub;
-      if (okExp[eid] && R_finite(LiExp[eid])) {
-        wj[j] = impMixProb(j) * std::exp(minL - LiExp[eid]);
-        sumW += wj[j];
-      }
-    }
-    if (sumW <= 0.0) { condMean.row(i) = cmExp.row(i); aMat(i, 0) = 1.0; continue; }
-    arma::rowvec cm(neta, arma::fill::zeros);
-    for (int j = 0; j < Nm; ++j) {
-      double a = wj[j] / sumW; aMat(i, j) = a;
-      if (a > 0) cm += a * cmExp.row(i + j * nsub);
-    }
-    condMean.row(i) = cm;
-    // Component-weighted conditional variance: sum_j a_ij (B_ij + m_ij m_ij') - m_i m_i'.
-    arma::mat cv(neta, neta, arma::fill::zeros);
-    for (int j = 0; j < Nm; ++j) {
-      double a = aMat(i, j); if (a <= 0) continue;
-      arma::rowvec mj = cmExp.row(i + j * nsub);
-      cv += a * (cvExp[i + j * nsub] + mj.t() * mj);
-    }
-    cv -= cm.t() * cm;
-    condVar[i] = cv;
-    Li[i] = minL - std::log(sumW);           // marginal (mixture) negative log-likelihood
-    double nf = 0.0;
-    for (int j = 0; j < Nm; ++j) {
-      double a = aMat(i, j);
-      if (a > 0 && R_finite(NeffExp[i + j * nsub])) nf += a * NeffExp[i + j * nsub];
-    }
-    if (nf > 0) Neff[i] = nf;
-    // Responsibility-weighted xi, matching how Neff is combined above.
-    double xf = 0.0; bool anyXi = false;
-    for (int j = 0; j < Nm; ++j) {
-      double a = aMat(i, j);
-      if (a > 0 && R_finite(XiExp[i + j * nsub])) { xf += a * XiExp[i + j * nsub]; anyXi = true; }
-    }
-    if (anyXi) Xi[i] = xf;
-    // Fold the responsibility a_ij into each component's importance weights so the
-    // M-step, iterating the expanded subjects, forms the component-weighted score.
-    for (int j = 0; j < Nm; ++j) {
-      int eid = i + j * nsub;
-      if (outZk[eid].n_elem > 0) outZk[eid] *= aMat(i, j);
-    }
-  }
+  ImpEDest D{condMean, condVar, Li, Neff, Xi, aMat};
+  impEStepCombine(O, nsub, Nm, neta, outZk, D);
 
   // Per-EXPANDED-subject xi, which is what the individual-gamma controller
   // drives (one gamma_i per expanded subject).  `Xi` above is the
   // responsibility-combined per-base-subject value used for reporting.  The
   // same holds for the effective sample size: AUTO reallocates samples per
   // expanded subject, so it needs NeffExp, not the per-base-subject `Neff`.
-  NeffExpOut = NeffExp;
-  XiExpOut = XiExp;
-  KhatExpOut = KhatExp;
-
-  // On the last iteration, stash the per-subject sampler diagnostics (first
-  // component for a mixture).
-  if (eStash != nullptr) {
-    arma::mat modeMat(nsub, neta);
-    List hessList(nsub), samplesList(nsub), weightList(nsub);
-    for (int id = 0; id < nsub; ++id) {
-      modeMat.row(id) = modes[id].t();
-      hessList[id] = haveL[id] ? wrap(Hs[id]) : R_NilValue;
-      samplesList[id] = wrap(outS[id]);
-      // Normalized importance weights, kept so a TAIL-sensitive diagnostic
-      // (Pareto k-hat) can be computed post-fit.  xi and the Kish ESS are both
-      // means over samples drawn FROM the proposal, so both are structurally
-      // blind to tails the proposal never visits -- which is the failure mode a
-      // heavier-tailed (t) proposal exists to prevent.  k-hat estimates the
-      // tail index of the weight distribution and does see it.  Pareto k-hat is
-      // scale-invariant, so the mixture responsibility folded into these
-      // weights above does not affect it.
-      weightList[id] = wrap(outZk[id]);
-    }
-    (*eStash)["impEtaMode"] = wrap(modeMat);
-    (*eStash)["impEtaHess"] = hessList;
-    (*eStash)["impSamples"] = samplesList;
-    (*eStash)["impWeights"] = weightList;
-  }
+  NeffExpOut = O.Neff;
+  XiExpOut = O.Xi;
+  KhatExpOut = O.Khat;
+  if (eStash != nullptr) impEStepStash(*eStash, P, nsub, neta, outS, outZk);
 }
 
 // Monte-Carlo observed-information covariance for the estimated thetas and Omega.
@@ -1096,161 +1241,193 @@ struct ImpCovSolveTolScope {
   ~ImpCovSolveTolScope() { covProbeSolveTolPop(sav); }
 };
 
-static void impComputeCov(Environment e, const arma::vec& gammaVec,
-                          const std::vector<impProp>& props, int covIter) {
-  // The proposal Hessians below and every objective evaluation re-score each
-  // subject away from its mode, at perturbed parameters; the fit reports the
-  // log-likelihoods the final MAP pass left at the estimates.
-  CovLlikObsGuard _llikObsGuard;
-  int nsub = impNsub();
-  int neta = impNeta();
-  int isample = impNsample();
-  int Nm = impNmix();
-  int nExp = nsub * Nm;   // expanded pseudo-subjects: component j is i + j*nsub
-  // Parallelize the reweighted-objective subject loop (each subject contributes an
-  // independent scalar to the -2LL) when the inner solves are thread-safe: no
-  // mixture (expanded pseudo-subjects share solve rows) and no multi-endpoint
-  // pool-sizing (neqOverride against the larger theta-sens pool) -- the same
-  // contract as the E-step.  The one-time fixed-sample draw below stays serial.
-  int cores = impCores();
-  if (cores < 1) cores = 1;
-  bool doParCov = (cores > 1) && (impNmix() == 1) && !impPoolSizing();
-
-  // Free parameters in the optimizer's (fixedTrans) order -- the same order the
-  // fit's covariance uses.  pl[j] is a theta fullTheta index when < ntheta, else
-  // the Omega parameter (pl[j] - ntheta).
-  std::vector<int> pl;
-  impGetCovParList(pl);
-  int np = (int)pl.size();
-  if (np == 0) return;
-  int ntheta = impNtheta();
-  int nTh = 0;
-  for (int j = 0; j < np; ++j) if (pl[j] < ntheta) ++nTh;
-
-  // Per-pseudo-subject proposal: mode, information H, lower Cholesky of
-  // gamma*H^-1, and one fixed sample matrix.  For a mixture these run over the
-  // EXPANDED subjects (component j is i + j*nsub), exactly as the E-step does:
-  // the objective differenced below is the mixture MARGINAL, so every component
-  // needs its own proposal.  Component 0 alone left the proportions' directions
-  // exactly flat and their SEs at 0.
-  std::vector<arma::vec> modes(nExp);
-  std::vector<arma::mat> Hs(nExp), Ls(nExp), Ss(nExp);
-  std::vector<double> logDetH(nExp, 0.0);
-  std::vector<char> ok(nExp, 0);
+// Per-pseudo-subject proposal at the converged estimate: mode, information H,
+// lower Cholesky of gamma*H^-1.  For a mixture these run over the EXPANDED
+// subjects (component j is i + j*nsub), exactly as the E-step does: the objective
+// differenced is the mixture MARGINAL, so every component needs its own proposal.
+// Component 0 alone left the proportions' directions exactly flat and their SEs at 0.
+static void impCovProposals(ImpEProp& P, int nExp, int neta, const arma::vec& gammaVec) {
   arma::vec mode(neta);
   arma::mat H(neta, neta, arma::fill::zeros);
   for (int id = 0; id < nExp; ++id) {
     impGetMode(id, mode);
-    modes[id] = mode;
-    if (impGetHessian(id, H)) {
-      H = 0.5 * (H + H.t()); // guard against tiny numerical asymmetry
-      arma::mat Sigma; double ldv, lds;
-      if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {
-        Sigma *= gammaVec[id];
-        arma::mat L;
-        if (arma::chol(L, Sigma, "lower")) {
-          Hs[id] = H; Ls[id] = L; logDetH[id] = ldv; ok[id] = 1;
-        }
-      }
+    P.modes[id] = mode;
+    if (!impGetHessian(id, H)) continue;
+    H = 0.5 * (H + H.t()); // guard against tiny numerical asymmetry
+    arma::mat Sigma; double ldv, lds;
+    if (!(arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0)) continue;
+    Sigma *= gammaVec[id];
+    arma::mat L;
+    if (arma::chol(L, Sigma, "lower")) {
+      P.Hs[id] = H; P.cholL[id] = L; P.logDetH[id] = ldv; P.haveL[id] = 1;
     }
   }
-  // Draw one fixed sample set per subject (serial, deterministic seed).  The
-  // engine is already allocated + seeded by rxWithSeed() at the fit start.
-  // With qr=TRUE the fixed set is the Sobol point set (per-subject shifted
-  // when qrShift; qrRefresh is irrelevant here -- the set never refreshes).
-  bool qr = impQrEnabled();
-  int qrScramble = impQrScramble();
-  bool qrShift = (qrScramble == impQrScrambleNone) && impQrShiftEnabled();
-  arma::mat qrU0, qrZ0;
-  std::vector<uint64_t> qrBits;
-  if (qr) {
-    if (qrScramble == impQrScrambleNone) {
-      qrU0 = impSobolU0(isample, neta);
-      if (!qrShift) qrZ0 = impQrZ(qrU0, nullptr);
-    } else {
-      qrBits = impSobolBits(isample, neta);
-    }
+}
+
+// The covariance step's fixed N(0,I) points for one subject
+static arma::mat impCovQrZ(const ImpQrSet& q, int isample, int neta, int id, int covIter) {
+  if (q.scramble != impQrScrambleNone) {
+    // A fixed sample set with common random numbers across the FD
+    // perturbations is what this step needs, and any valid randomization
+    // gives one.  Use the LAST iteration the EM actually ran (covIter) so
+    // it is the converged fit's randomization rather than its first
+    // iteration's; under qrRefresh=FALSE the key is iteration-independent
+    // anyway and this is the same set the whole fit used.
+    return impQrZScrambled(q.bits, isample, neta, q.scramble,
+                           (uint32_t)impBaseSeed() + 0x9E3779B1u, id, covIter);
   }
+  if (!q.shift) return q.Z0;
+  arma::vec sh(neta);
+  for (int j = 0; j < neta; ++j) sh[j] = rxUnifEng(0.0, 1.0);
+  return impQrZ(q.U0, &sh);
+}
+
+// Draw one fixed sample set per subject (serial, deterministic seed).  The
+// engine is already allocated + seeded by rxWithSeed() at the fit start.
+// With qr=TRUE the fixed set is the Sobol point set (per-subject shifted
+// when qrShift; qrRefresh is irrelevant here -- the set never refreshes).
+static void impCovDraw(std::vector<arma::mat>& Ss, const ImpEProp& P,
+                       const std::vector<impProp>& props, int nExp, int isample, int neta,
+                       int covIter) {
+  ImpQrSet q = impQrSetup(isample, neta);
   uint32_t seed0 = (uint32_t)impBaseSeed() + 0x2545F491u;
   setRxThreadId(0);
   for (int id = 0; id < nExp; ++id) {
-    if (!ok[id]) continue;
+    if (!P.haveL[id]) continue;
     setSeedEng1(seed0 + (uint32_t)(id * 2 + 1));
     arma::mat S(isample, neta);
-    if (qr) {
-      arma::mat Z;
-      if (qrScramble != impQrScrambleNone) {
-        // A fixed sample set with common random numbers across the FD
-        // perturbations is what this step needs, and any valid randomization
-        // gives one.  Use the LAST iteration the EM actually ran (covIter) so
-        // it is the converged fit's randomization rather than its first
-        // iteration's; under qrRefresh=FALSE the key is iteration-independent
-        // anyway and this is the same set the whole fit used.
-        Z = impQrZScrambled(qrBits, isample, neta, qrScramble,
-                            (uint32_t)impBaseSeed() + 0x9E3779B1u, id, covIter);
-      } else if (qrShift) {
-        arma::vec sh(neta);
-        for (int j = 0; j < neta; ++j) sh[j] = rxUnifEng(0.0, 1.0);
-        Z = impQrZ(qrU0, &sh);
-      } else {
-        Z = qrZ0;
-      }
+    if (q.on) {
+      arma::mat Z = impCovQrZ(q, isample, neta, id, covIter);
       for (int k = 0; k < isample; ++k) {
         arma::vec z = Z.row(k).t();
-        S.row(k) = (modes[id] + Ls[id] * (z * impPropScale(props[id], z))).t();
+        S.row(k) = (P.modes[id] + P.cholL[id] * (z * impPropScale(props[id], z))).t();
       }
     } else {
-      for (int k = 0; k < isample; ++k) {
-        arma::vec z(neta);
-        for (int j = 0; j < neta; ++j) z[j] = rxNormEng(0.0, 1.0);
-        S.row(k) = (modes[id] + Ls[id] * (z * impPropScale(props[id], z))).t();
-      }
+      impRngSamples(S, P.modes[id], P.cholL[id], props[id], isample, neta);
     }
     Ss[id] = S;
   }
   setRxThreadId(-1);
+}
 
-  // Perturb parameter j: a theta on the subjects' parameter pointers, or an
-  // Omega free parameter (which also rebuilds omegaInv / logDetOmegaInv5).
-  auto setPar = [&](int j, double val) {
-    if (pl[j] < ntheta) impSetThetaAll(pl[j], val);
-    else impSetOmegaThetaAll(pl[j] - ntheta, val);
-  };
-
-  // Importance-sampling -2LL at a parameter vector, reusing the fixed samples.
-  // Each subject's contribution is an independent scalar; accumulate them into a
-  // per-subject buffer under the parallel loop, then reduce in id order so the sum
-  // is bit-identical to the serial `obj += ...` accumulation.  objBuf is allocated
-  // once here and refilled per call (the FD Hessian calls evalObj O(np^2) times).
-  std::vector<double> objBuf(nExp, 0.0);
-  std::vector<char> objGood(nExp, 0);
-  std::vector<double> mixLl((size_t)Nm);
-  arma::vec par0(np);
-  for (int j = 0; j < np; ++j)
-    par0[j] = (pl[j] < ntheta) ? impGetFullThetaVal(pl[j])
-                               : impGetOmegaThetaVal(pl[j] - ntheta);
+// Importance-sampling -2LL at a parameter vector, reusing the fixed samples.
+// Each subject's contribution is an independent scalar; accumulate them into a
+// per-subject buffer under the parallel loop, then reduce in id order so the sum
+// is bit-identical to the serial `obj += ...` accumulation.  objBuf is allocated
+// once and refilled per call (the FD Hessian calls it O(np^2) times).
+struct ImpCovObj {
+  const ImpEProp& P;
+  const std::vector<arma::mat>& Ss;
+  const std::vector<impProp>& props;
+  const arma::vec& gammaVec;
+  const std::vector<int>& pl;
+  int nsub, neta, isample, Nm, nExp, ntheta, np, cores;
+  bool doParCov;
+  arma::vec par0;
+  std::vector<double> objBuf;
+  std::vector<char> objGood;
+  std::vector<double> mixLl;
   // Each fixed sample's data part of the -log joint (impEvalJointLik() less its eta
   // prior), kept from the evaluation at the estimates: a point that moves only Omega
   // parameters changes only the prior, so it needs no solve.
-  const bool omReuse = impCovReuseOn() && Nm == 1 && !impIsFo();
-  std::vector<arma::vec> dataPart(nExp);
+  bool omReuse = false;
+  std::vector<arma::vec> dataPart;
   bool haveData = false;
   int nReused = 0;
   // Progress bar over the finite-difference covariance evaluations, like the
-  // focei covariance step.  evalObj is called f0 (1) + 2*np (diagonal) +
+  // focei covariance step.  The objective is called f0 (1) + 2*np (diagonal) +
   // 2*np*(np-1) (off-diagonal) = 1 + 2*np*np times; tick once per call.
-  bool covProg = impCovProgress();
-  clock_t covT0 = clock();
-  int covTot = 1 + 2 * np * np, covCur = 0, covTick = 0;
-  bool covInPlace = covProg && nmProgressInPlace();
-  if (covProg) RSprintf("calculating covariance matrix\n");
-  auto evalObj = [&](const arma::vec& par) -> double {
-    for (int j = 0; j < np; ++j) setPar(j, par[j]);
-    bool thetasAtCentre = true;
-    for (int j = 0; thetasAtCentre && j < np; ++j) {
-      if (pl[j] < ntheta && par[j] != par0[j]) thetasAtCentre = false;
+  bool covProg = false;
+  clock_t covT0 = 0;
+  int covTot = 0, covCur = 0, covTick = 0;
+
+  // Perturb parameter j: a theta on the subjects' parameter pointers, or an
+  // Omega free parameter (which also rebuilds omegaInv / logDetOmegaInv5).
+  void setPar(int j, double val) const {
+    if (pl[j] < ntheta) impSetThetaAll(pl[j], val);
+    else impSetOmegaThetaAll(pl[j] - ntheta, val);
+  }
+
+  bool thetasAtCentre(const arma::vec& par) const {
+    for (int j = 0; j < np; ++j) {
+      if (pl[j] < ntheta && par[j] != par0[j]) return false;
     }
-    const bool reuse = omReuse && haveData && thetasAtCentre;
+    return true;
+  }
+
+  // -log joint at sample k of subject id
+  double negLogJoint(int id, int k, const arma::vec& eta, bool reuse, bool record) {
+    if (reuse) return dataPart[id][k] + impEtaPriorHalf(eta);
+    double v = impEvalJointLik(eta, id);
+    if (record) dataPart[id][k] = v - impEtaPriorHalf(eta);
+    return v;
+  }
+
+  void subject(int id, double negHalfLogDetOmega, bool reuse, bool record) {
+    if (!P.haveL[id]) return;
+    if (!reuse) impForceResolve(id);
+    if (record) dataPart[id].set_size(isample);
+    // This subject's converged proposal scale (all equal under "global").
+    // Must use the SAME proposal FAMILY and parameters as the E-step or the
+    // reweighted objective is not the one the fit converged on.
+    const impProp& pr = props[id];
+    arma::vec q(isample); int nGood = 0;
+    for (int k = 0; k < isample; ++k) {
+      arma::vec eta = Ss[id].row(k).t();
+      arma::vec d = eta - P.modes[id];
+      double qk = -negLogJoint(id, k, eta, reuse, record) +
+        impPropLogKernelRecip(pr, arma::as_scalar(d.t() * P.Hs[id] * d), gammaVec[id], neta);
+      if (R_finite(qk)) { q[k] = qk; ++nGood; } else q[k] = R_NegInf;
+    }
+    if (nGood == 0) return;
+    double qmax = q.max();
+    double sumw = arma::accu(arma::exp(q - qmax));
+    double logMeanExp = qmax + std::log(sumw / (double)isample);
+    double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaVec[id]) - 0.5 * P.logDetH[id]
+      + pr.corr;
+    objBuf[id] = logMeanExp + Ci;   // log-likelihood; combined below
+    objGood[id] = 1;
+  }
+
+  // Reduce in id order so the sum is bit-identical to a serial accumulation.
+  // For a mixture each physical subject's contribution is the marginal
+  // log(sum_m p_m L_im) over its components, which is what makes the mixture
+  // proportions enter the objective at all.  A subject with no usable
+  // component contributes 0, as the single-component path always did.
+  double reduce() {
+    double obj = 0.0;
+    if (Nm == 1) {
+      for (int id = 0; id < nsub; ++id) obj += objGood[id] ? -2.0 * objBuf[id] : 0.0;
+      return obj;
+    }
+    for (int i = 0; i < nsub; ++i) {
+      for (int m = 0; m < Nm; ++m) {
+        mixLl[(size_t)m] = objGood[i + m*nsub] ? objBuf[i + m*nsub] : NA_REAL;
+      }
+      double lse = impMixLogSumExp(mixLl);
+      if (R_FINITE(lse)) obj += -2.0 * lse;
+    }
+    return obj;
+  }
+
+  void init() {
+    objBuf.assign(nExp, 0.0);
+    objGood.assign(nExp, 0);
+    mixLl.resize((size_t)Nm);
+    par0.set_size(np);
+    for (int j = 0; j < np; ++j)
+      par0[j] = (pl[j] < ntheta) ? impGetFullThetaVal(pl[j])
+                                 : impGetOmegaThetaVal(pl[j] - ntheta);
+    omReuse = impCovReuseOn() && Nm == 1 && !impIsFo();
+    dataPart.resize(nExp);
+    covProg = impCovProgress();
+    covT0 = clock();
+    covTot = 1 + 2 * np * np;
+  }
+
+  double operator()(const arma::vec& par) {
+    for (int j = 0; j < np; ++j) setPar(j, par[j]);
+    const bool reuse = omReuse && haveData && thetasAtCentre(par);
     const bool record = omReuse && !haveData;
     if (reuse) ++nReused;
     // Re-read after setting: an Omega perturbation changes -0.5 log|Omega|.
@@ -1258,78 +1435,22 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
     std::fill(objBuf.begin(), objBuf.end(), 0.0);
     std::fill(objGood.begin(), objGood.end(), 0);
     nmForEachSubject(rx, nExp, cores, doParCov, [&](int id) {
-      if (ok[id]) {
-        if (!reuse) impForceResolve(id);
-        if (record) dataPart[id].set_size(isample);
-        // This subject's converged proposal scale (all equal under "global").
-        // Must use the SAME proposal FAMILY and parameters as the E-step or the
-        // reweighted objective is not the one the fit converged on.
-        const impProp& pr = props[id];
-        arma::vec q(isample); int nGood = 0;
-        for (int k = 0; k < isample; ++k) {
-          arma::vec eta = Ss[id].row(k).t();
-          arma::vec d = eta - modes[id];
-          double negLogJoint;
-          if (reuse) {
-            negLogJoint = dataPart[id][k] + impEtaPriorHalf(eta);
-          } else {
-            negLogJoint = impEvalJointLik(eta, id);
-            if (record) dataPart[id][k] = negLogJoint - impEtaPriorHalf(eta);
-          }
-          double qk = -negLogJoint +
-            impPropLogKernelRecip(pr, arma::as_scalar(d.t() * Hs[id] * d), gammaVec[id], neta);
-          if (R_finite(qk)) { q[k] = qk; ++nGood; } else q[k] = R_NegInf;
-        }
-        if (nGood != 0) {
-          double qmax = q.max();
-          double sumw = arma::accu(arma::exp(q - qmax));
-          double logMeanExp = qmax + std::log(sumw / (double)isample);
-          double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gammaVec[id]) - 0.5 * logDetH[id]
-            + pr.corr;
-          objBuf[id] = logMeanExp + Ci;   // log-likelihood; combined below
-          objGood[id] = 1;
-        }
-      }
+      subject(id, negHalfLogDetOmega, reuse, record);
     });
-    // Reduce in id order so the sum is bit-identical to a serial accumulation.
-    // For a mixture each physical subject's contribution is the marginal
-    // log(sum_m p_m L_im) over its components, which is what makes the mixture
-    // proportions enter the objective at all.  A subject with no usable
-    // component contributes 0, as the single-component path always did.
-    double obj = 0.0;
-    if (Nm == 1) {
-      for (int id = 0; id < nsub; ++id) obj += objGood[id] ? -2.0 * objBuf[id] : 0.0;
-    } else {
-      for (int i = 0; i < nsub; ++i) {
-        for (int m = 0; m < Nm; ++m) {
-          mixLl[(size_t)m] = objGood[i + m*nsub] ? objBuf[i + m*nsub] : NA_REAL;
-        }
-        double lse = impMixLogSumExp(mixLl);
-        if (R_FINITE(lse)) obj += -2.0 * lse;
-      }
-    }
+    double obj = reduce();
     if (covProg) covTick = par_progress(covCur++, covTot, covTick, 1, covT0, 0);
     if (record) haveData = true;
     return obj;
-  };
-
-  arma::mat Hess = impFdHessian(par0, evalObj);
-  // objective evaluations that needed no solve
-  e["impCovReused"] = nReused;
-  if (covProg) nmProgressEnd(covTot, covTick, covT0, covInPlace);
-  // Restore the converged estimates.
-  for (int j = 0; j < np; ++j) setPar(j, par0[j]);
-  // every pseudo-subject, not just component 0: the perturbed solves above ran
-  // over nExp, so stopping at nsub leaves the other components' cached solves
-  // sitting at the LAST perturbation rather than the converged estimates
-  for (int id = 0; id < nExp; ++id) impForceResolve(id);
-
-  // Observed information = 0.5 * Hess(-2LL) (symmetrized); covariance = inverse.
-  arma::mat info = 0.25 * (Hess + Hess.t());
-  arma::mat cov;
-  if (!arma::inv_sympd(cov, info)) {
-    if (!arma::pinv(cov, info)) { cov = arma::mat(np, np, arma::fill::zeros); cov.fill(NA_REAL); }
   }
+};
+
+// Publish the covariance: the theta block on e, then the full matrix through
+// .impCovInstall().
+static void impCovPublish(Environment& e, const arma::mat& cov, const arma::mat& info,
+                          const std::vector<int>& pl, int ntheta, const arma::vec& par0) {
+  int np = (int)pl.size();
+  int nTh = 0;
+  for (int j = 0; j < np; ++j) if (pl[j] < ntheta) ++nTh;
   arma::vec se(np);
   for (int j = 0; j < np; ++j) se[j] = (cov(j, j) > 0) ? std::sqrt(cov(j, j)) : NA_REAL;
   // Full covariance in the free-parameter (estimation) order: the thetas, then the
@@ -1365,49 +1486,76 @@ static void impComputeCov(Environment e, const arma::vec& gammaVec,
   covInstall(e, covR, thIdxR, dOmCov, omR, omPar, infoR);
 }
 
-void impOuter(Environment e) {
-  // Model registration may leave the theta-sensitivity event callbacks installed.
-  OdeSwapEsBatch innerEvents(odeSlotInner);
-  int nIter = impNiter();
-  std::string diagXform = impDiagXform();
+static void impComputeCov(Environment e, const arma::vec& gammaVec,
+                          const std::vector<impProp>& props, int covIter) {
+  // The proposal Hessians below and every objective evaluation re-score each
+  // subject away from its mode, at perturbed parameters; the fit reports the
+  // log-likelihoods the final MAP pass left at the estimates.
+  CovLlikObsGuard _llikObsGuard;
   int nsub = impNsub();
   int neta = impNeta();
   int isample = impNsample();
-  double gamma = impGammaProp();
-  int cores = impCores();
-  if (cores < 1) cores = 1;
+  int Nm = impNmix();
+  int nExp = nsub * Nm;   // expanded pseudo-subjects: component j is i + j*nsub
+  // Parallelize the reweighted-objective subject loop (each subject contributes an
+  // independent scalar to the -2LL) when the inner solves are thread-safe: no
+  // mixture (expanded pseudo-subjects share solve rows) and no multi-endpoint
+  // pool-sizing (neqOverride against the larger theta-sens pool) -- the same
+  // contract as the E-step.  The one-time fixed-sample draw stays serial.
+  int cores = std::max(1, impCores());
+  bool doParCov = (cores > 1) && (impNmix() == 1) && !impPoolSizing();
 
+  // Free parameters in the optimizer's (fixedTrans) order -- the same order the
+  // fit's covariance uses.  pl[j] is a theta fullTheta index when < ntheta, else
+  // the Omega parameter (pl[j] - ntheta).
+  std::vector<int> pl;
+  impGetCovParList(pl);
+  int np = (int)pl.size();
+  if (np == 0) return;
+  int ntheta = impNtheta();
+
+  ImpEProp P(nExp);
+  impCovProposals(P, nExp, neta, gammaVec);
+  std::vector<arma::mat> Ss(nExp);
+  impCovDraw(Ss, P, props, nExp, isample, neta, covIter);
+
+  ImpCovObj f{P, Ss, props, gammaVec, pl, nsub, neta, isample, Nm, nExp, ntheta, np, cores,
+              doParCov};
+  f.init();
+  bool covInPlace = f.covProg && nmProgressInPlace();
+  if (f.covProg) RSprintf("calculating covariance matrix\n");
+
+  arma::mat Hess = impFdHessian(f.par0, std::ref(f));
+  // objective evaluations that needed no solve
+  e["impCovReused"] = f.nReused;
+  if (f.covProg) nmProgressEnd(f.covTot, f.covTick, f.covT0, covInPlace);
+  // Restore the converged estimates.
+  for (int j = 0; j < np; ++j) f.setPar(j, f.par0[j]);
+  // every pseudo-subject, not just component 0: the perturbed solves above ran
+  // over nExp, so stopping at nsub leaves the other components' cached solves
+  // sitting at the LAST perturbation rather than the converged estimates
+  for (int id = 0; id < nExp; ++id) impForceResolve(id);
+
+  // Observed information = 0.5 * Hess(-2LL) (symmetrized); covariance = inverse.
+  arma::mat info = 0.25 * (Hess + Hess.t());
+  arma::mat cov;
+  if (!arma::inv_sympd(cov, info) && !arma::pinv(cov, info)) {
+    cov = arma::mat(np, np, arma::fill::zeros); cov.fill(NA_REAL);
+  }
+  impCovPublish(e, cov, info, pl, ntheta, f.par0);
+}
+
+// State of one importance-sampling EM run (impOuter).
+struct ImpOuterState {
+  explicit ImpOuterState(Environment& env) : e(env) {}
+  Environment& e;
+  int nIter = 0, nsub = 0, neta = 0, isample = 0, cores = 1;
+  std::string diagXform;
+  double gamma = 1.0;
   // Convergence controller + proposal-scale adaptation (NONMEM ISCALE/IACCEPT/CTYPE).
-  double iaccept = impIaccept();
-  // Drift tolerance on the gamma window mean for gammaRule="target".  Looser than
-  // the floor rule's 1e-3 because that rule's gamma is exactly constant once
-  // coverage is healthy, while a target-tracking gamma carries the Monte-Carlo
-  // noise of xi.  PROVISIONAL -- a constant tuned for this rule, to be re-measured
-  // with the rest of the target-rule set.
-  const double gammaTargetTol = 1e-2;
-  double iscaleMin = impIscaleMin();
-  double iscaleMax = impIscaleMax();
-  int nConvWindow = impNconvWindow();
-  double ctol = impCtol();
-  int mapIter = impMapIter();
-  if (mapIter < 0) mapIter = 0;
-  // Burn-in iterations run BEFORE the nIter budget rather than out of it, so
-  // nBurn never silently shortens the fit.  They exist to let the gamma / AUTO
-  // controllers settle, so those run normally; only the Omega M-step (when
-  // burnFreezeOmega) and the convergence test are held back.
-  int nBurn = impNburn();
-  if (nBurn < 0) nBurn = 0;
-  const bool burnFreezeOmega = impBurnFreezeOmega();
-  // nIter = 0 is an E-step-only evaluation at the supplied parameters (NONMEM
-  // EONLY=1): one E-step, no M-step, and no burn-in (it would move the parameters).
-  const bool eOnly = (nIter <= 0);
-  // A frozen run (the post-fit "imp" covariance at a fit's estimates) keeps the
-  // parameters where they were supplied for all nIter iterations: E-steps only,
-  // with the proposal controllers adapting between them, no M-step, no burn-in
-  // and no convergence test.
-  const bool frozen = impFrozen();
-  if (eOnly || frozen) nBurn = 0;
-  const int nIterTotal = eOnly ? 1 : nBurn + nIter;
+  double iaccept = 0.0, iscaleMin = 0.0, iscaleMax = 0.0, ctol = 0.0;
+  int nConvWindow = 0, mapIter = 0, nBurn = 0, nIterTotal = 0;
+  bool burnFreezeOmega = false, eOnly = false, frozen = false;
 
   arma::mat condMean;
   std::vector<arma::mat> condVar;
@@ -1415,43 +1563,42 @@ void impOuter(Environment e) {
   std::vector<arma::vec> sampZk;
   arma::vec Li, Neff, Xi, NeffExp, XiExp, KhatExp;
   arma::mat aMat;                 // posterior mixture responsibilities (nsub x Nmix)
-  int Nmix = impNmix();
-  int nExp = nsub * Nmix;         // expanded pseudo-subjects for the mixture E/M-step
+  int Nmix = 1;
+  int nExp = 0;                   // expanded pseudo-subjects for the mixture E/M-step
   double obj = R_PosInf;
-  int nSens = impThetaSensN();
+  int nSens = 0;
   // est="imp": skip the per-iteration MAP search; the E-step proposal is centered
   // at the running conditional mean with covariance gamma*Omega.
-  bool isImp = impIsImp();
+  bool isImp = false;
   // Per-expanded-subject proposal scale.  Under the current (global) rule every
   // element tracks the scalar `gamma`, so the E-step arithmetic is unchanged;
   // holding it as a vector is what lets a per-subject controller drive the
   // elements apart without touching the E-step again.
-  arma::vec gammaVec(nExp); gammaVec.fill(gamma);
+  arma::vec gammaVec;
   // Per-expanded-subject sample count.  Uniform unless AUTO raises it for a
   // badly covered subject; holding it as a vector is what lets that happen
   // without charging every other subject for the extra samples.
-  arma::ivec isampleVec(nExp); isampleVec.fill(isample);
+  arma::ivec isampleVec;
   // Counts actually USED by the last E-step.  isampleVec is reallocated after
   // the E-step, so reporting it directly pairs next iteration's counts with
   // this iteration's Neff and can show an effective-sample FRACTION above 1,
   // which is impossible.
-  arma::ivec isampleUsed(nExp); isampleUsed.fill(isample);
-  arma::vec dfUsed(nExp); dfUsed.fill(impDf());   // df actually used last E-step
+  arma::ivec isampleUsed;
+  arma::vec dfUsed;               // df actually used last E-step
   // Same for gamma.  The controllers all mutate their vectors AFTER the E-step,
   // for the next iteration, so anything consuming "the converged proposal" must
   // read the snapshot rather than the live vector -- including impComputeCov.
-  arma::vec gammaUsed(nExp); gammaUsed.fill(gamma);
-  double gammaScalarUsed = gamma;   // scalar counterpart of gammaUsed
+  arma::vec gammaUsed;
+  double gammaScalarUsed = 1.0;   // scalar counterpart of gammaUsed
   // Per-expanded-subject proposal df and acceptance target.  Uniform unless
   // AUTO differentiates them.
-  arma::vec dfVec(nExp); dfVec.fill(impDf());
+  arma::vec dfVec;
   // Proposal FAMILY, per expanded subject, mirroring dfVec/dfFloor.  Kept as a
   // separate vector rather than folding df into a struct: AUTO mutates dfVec in
   // place at five sites and its tuned comparisons are arithmetic on it.
-  impPropSpec propSpec = impPropSpecFromControl(impDf());
-  arma::ivec typeVec(nExp); typeVec.fill(propSpec.type);
-  arma::ivec typeFloor(nExp); typeFloor.fill(propSpec.type);
-  std::vector<impProp> props(nExp), propsUsed(nExp);
+  impPropSpec propSpec;
+  arma::ivec typeVec, typeFloor;
+  std::vector<impProp> props, propsUsed;
   // Improvability state for the AUTO df escalation (see AUTO step 3).  noImp
   // counts consecutive iterations in which the current rung has failed to
   // improve on what the subject manages without any escalation.
@@ -1459,34 +1606,18 @@ void impOuter(Environment e) {
   // ESCALATION, never the df that step 1 assigned: a non-normal endpoint needs a
   // heavy-tailed proposal by construction, so dropping it to a Gaussian because
   // k-hat did not improve would break the model, not repair it.
-  arma::vec dfFloor(nExp); dfFloor.fill(impDf());
+  arma::vec dfFloor;
   // What this subject's k-hat looks like WITHOUT any escalation -- the
   // counterfactual withdrawal has to judge a rung against.  Refreshed on every
   // iteration the subject spends at its floor, and frozen while it is escalated.
-  arma::vec kAtFloor(nExp); kAtFloor.fill(NA_REAL);
-  arma::ivec noImp(nExp, arma::fill::zeros);
-  arma::ivec escDead(nExp, arma::fill::zeros);   // 1 = escalation withdrawn, do not retry
-  arma::vec iacceptVec(nExp); iacceptVec.fill(iaccept);
-  bool autoOn = impAutoEnabled();
-  int isampleBudget = isample * nExp;   // AUTO reallocates within this total
-  {
-    // A per-subject isample= vector is given per BASE subject; tile it across
-    // the mixture's expanded pseudo-subjects so component j of subject i gets
-    // subject i's count.
-    std::vector<int> isv;
-    impNsampleVecGet(isv);
-    if ((int)isv.size() > 1 && (int)isv.size() != nsub) {
-      Rf_error("'isample' has length %d but there are %d subjects; a per-subject "
-               "isample vector must have one entry per subject",
-               (int)isv.size(), nsub);
-    }
-    if ((int)isv.size() == nsub) {
-      for (int i = 0; i < nsub; ++i) {
-        int v = isv[i] < 1 ? 1 : isv[i];
-        for (int j = 0; j < Nmix; ++j) isampleVec[i + j * nsub] = v;
-      }
-    }
-  }
+  arma::vec kAtFloor;
+  arma::ivec noImp;
+  arma::ivec escDead;             // 1 = escalation withdrawn, do not retry
+  arma::vec iacceptVec;
+  bool autoOn = false;
+  int isampleBudget = 0;          // AUTO reallocates within this total
+  bool nonmemSparse = false;
+  int dfPatience = 0;             // <= 0 disables withdrawal entirely
   // gammaMethod="individual": each subject's gamma_i is adapted two-sided so
   // that its own xi_i approaches iaccept.  Otherwise the legacy global rule
   // drives one shared scale off the MEAN Kish effective-sample fraction.
@@ -1498,145 +1629,231 @@ void impOuter(Environment e) {
   // and the [ISCALE_MIN, ISCALE_MAX] bounds -- and nothing further.  The
   // functional form below (multiplicative, exponent 2/neta, symmetric cap) is
   // ours; the guide publishes no formula to copy.
-  bool gammaInd = impGammaIndividual();
+  bool gammaInd = false;
   // Largest relative per-step change the controller applied last iteration;
   // starts large so convergence cannot trip before the controller has run.
   double gammaStepPrev = R_PosInf;
-
-  // Force the EM serial when the per-subject inner solves are not thread-safe:
-  //  (a) mixtures -- the expanded pseudo-subjects' per-component solves race and
-  //      the proportions/Omega drift and collapse;
-  //  (b) multi-endpoint pool-sizing -- the inner MAP runs with ind->neqOverride
-  //      against a pool sized for the larger theta-sensitivity model, whose
-  //      per-thread work arrays are not safe under the override, so the parallel
-  //      E-step non-deterministically rejects a subject's samples (neff collapse).
-  // The plain single-endpoint path keeps full parallelism; restored before return.
   int savedCores = -1;
-  if ((Nmix > 1 || impPoolSizing()) && cores > 1) { savedCores = impSetSolveCores(1); cores = 1; }
 
-  // Initial MAP at the starting parameters.
-  impMapPass(e);
+  uint32_t qrPinSeed = 0;
+  bool sir = false;
+  int sirN = 0;
+  uint32_t sirSeed = 0;
+  bool harvestSens = false;
+  std::vector<impThetaSensData> outSens;
 
-  // NB placed AFTER the initial MAP pass on purpose: fInd->nObs is only filled
-  // in during a solve, so reading it before impMapPass() returns 0 for every
-  // subject and makes the whole dataset look sparse (which silently gave every
-  // subject df = 4).
-  // ---- AUTO step 1: proposal df from each subject's data sparsity ----------
-  // Decided once, up front, from nobs/neta: a subject with few observations
-  // relative to the number of random effects has a poorly-determined, often
-  // heavy-tailed conditional density that a normal proposal cannot cover, and
-  // no sample count repairs that (measured: boosting a failing subject 10x
-  // moved its k-hat 0.76 -> 3.28, because extra draws reach further into the
-  // tail the proposal misses).  Heavier tails do repair it, cheaply.
-  //
-  // The trigger is the tutorial's, verbatim: "When there are fewer data points
-  // than there are ETAs to be estimated (sparse data) or data are categorical,
-  // then DF should be set to a nonzero number to use the t-distribution sampler
-  // and/or decrease the acceptance rate IACCEPT from the default value of 0.4
-  // to about 0.2" (Bauer, NONMEM Tutorial Part II, 2019).  So the test is
-  // nobs < neta -- NOT a wider sparsity band -- and categorical/non-normal data
-  // qualifies regardless of how much of it there is.
-  //
-  // On the VALUES: IACCEPT ~ 0.2 is the tutorial's own number.  DF = 4 is NOT
-  // -- the tutorial says only "DF should be set to a nonzero number".  NONMEM
-  // does not publish what AUTO=1 actually picks, so 4 is nlmixr2's choice,
-  // informed by the measurement that even df = 20 cleared every failing
-  // subject on theophylline (max k-hat 1.61 -> -0.58) for 0.25% of the
-  // effective sample size, so a heavier default is safe and cheap.  Any
-  // comparison against NONMEM should treat these numbers as nlmixr2's, not as
-  // a reproduction of NONMEM's internals.
-  // The nobs<neta half of that trigger is GATED by default, and this is a
-  // deliberate divergence from the tutorial.  Measured on a fixture built to the
-  // tutorial's own definition of sparse (2 observations, 3 etas), 8 seeds vs an
-  // isample=8000 reference, applying it makes every number worse:
-  //
-  //                     objRMSE   OmegaRMSE   max k-hat   subjects k>0.7
-  //   no adaptation      0.1517     0.02379      1.065         3.88
-  //   global df 30       0.1666     0.02695      1.075         5.00
-  //   AUTO (this rule)   0.2059     0.03163      1.088         4.88
-  //
-  // The reason is visible in the reference, which itself reads max k-hat 0.794:
-  // with fewer observations than random effects the individual posterior is not
-  // identified, so the heavy tail is STRUCTURAL and no proposal shape repairs
-  // it.  Escalating there spends accuracy on a problem the proposal does not
-  // own.  So sparsity alone no longer assigns a t proposal; k-hat has to ask for
-  // it, and the improvability check below withdraws it if it does not help.
-  //
-  // The categorical/non-normal half is NOT gated -- measured on a sparse Poisson
-  // fixture AUTO is the best of the three methods (objRMSE 0.00341 vs 0.00525
-  // for no adaptation), even though its k-hat never fails.
-  //
-  // impmapControl(autoNonmemSparse=TRUE) restores the unconditional tutorial
-  // behavior.  It is a real option, not a courtesy: NONMEM's own testing is not
-  // published, the models it was tuned on are not ours, and someone who measures
-  // the reverse on their own problem should be able to have the documented rule.
-  const bool nonmemSparse = impAutoNonmemSparse();
-  const int dfPatience = impAutoDfPatience();  // <= 0 disables withdrawal entirely
-  if (autoOn) {
-    bool nonNormal = impAutoNonNormal();
-    for (int i = 0; i < nsub; ++i) {
-      bool sparse = nonmemSparse && (impNobs(i) < neta);
-      // TUNED: start at a MILD t (df 20) rather than the heaviest.  df 20 was
-      // measured to clear every failing subject on theophylline for 0.25% of
-      // the effective sample size, whereas df 4 costs far more Monte-Carlo
-      // noise for no extra tail benefit.  The k-hat escalation below drops it
-      // further only on evidence.
-      // TUNED (df sweep, theophylline, 12 seeds, RMSE vs an isample=20000
-      // reference): df 30 clears the tail failure completely (max k-hat
-      // 2.58 -> -0.02, bad subjects 2.08 -> 0.08) for a 7% RMSE cost
-      // (0.0240 -> 0.0257).  Entering at 20 costs 33% and at 8 costs 3x for no
-      // extra tail benefit, so the earlier ladder was simply mistuned.
-      // impDf() rather than 0 for the untriggered case: a global df= is an
-      // explicit request and must survive auto=TRUE.  At the default df = 0
-      // this is identical to the old expression.
-      // The df ladder is defined only for the MVN/MVT axis -- it encodes
-      // "Gaussian" as df <= 0, and its constants (30/20, the k-hat 0.7/1.0
-      // thresholds, autoDfPatience) were all swept against a Gaussian
-      // baseline.  A subject already on an exponential-tailed MVL or on a
-      // mixture has a different baseline and no measurement behind it, so
-      // AUTO leaves its family alone.  The sample-budget reallocation below
-      // is family-agnostic and still applies to every subject.
-      const bool dfAxis = (propSpec.type == impPropMvn || propSpec.type == impPropMvt);
-      double dfI = (dfAxis && (sparse || nonNormal)) ? 30.0 : impDf();
-      // TUNED: iaccept is left alone here.  Lowering it to 0.2 forces gamma
-      // wide, and widening a Gaussian is the lever measured NOT to fix tails
-      // while costing a lot of ESS -- on a Poisson fixture whose k-hat was
-      // already -1.33 (no failure at all) it cut ESS 0.549 -> 0.412 and
-      // doubled the objective noise for nothing.  It is now applied only where
-      // k-hat says the proposal is genuinely struggling (below).
-      double iaI = iaccept;
-      int typeI = dfAxis ? (dfI > 0.0 ? impPropMvt : impPropMvn) : propSpec.type;
-      for (int j = 0; j < Nmix; ++j) {
-        dfVec[i + j * nsub] = dfI;
-        dfFloor[i + j * nsub] = dfI;   // withdrawal may not go below this
-        typeVec[i + j * nsub] = typeI;
-        typeFloor[i + j * nsub] = typeI;
-        iacceptVec[i + j * nsub] = iaI;
-      }
+  arma::mat Om0, omMask;
+  std::vector<int> omFloored;     // etas the installed omega has at the 1e-6 floor
+  // Eta indices whose Omega diagonal is fix()ed: their rows/columns are held at
+  // the starting Omega through every EM update.
+  std::vector<int> omFixedEta;
+
+  std::vector<double> objTrace, gammaTrace, neffTrace, xiTrace;
+  std::vector<arma::vec> parHist;
+  bool converged = false;
+  int iterRun = 0;
+  // this iteration's mean effective-sample fraction and mean xi
+  double accFrac = 0.0, xiMean = NA_REAL;
+};
+
+// Drift tolerance on the gamma window mean for gammaRule="target".  Looser than
+// the floor rule's 1e-3 because that rule's gamma is exactly constant once
+// coverage is healthy, while a target-tracking gamma carries the Monte-Carlo
+// noise of xi.  PROVISIONAL -- a constant tuned for this rule, to be re-measured
+// with the rest of the target-rule set.
+static const double impGammaTargetTol = 1e-2;
+
+static void impOuterReadControls(ImpOuterState& st) {
+  st.nIter = impNiter();
+  st.diagXform = impDiagXform();
+  st.nsub = impNsub();
+  st.neta = impNeta();
+  st.isample = impNsample();
+  st.gamma = impGammaProp();
+  st.cores = std::max(1, impCores());
+  st.iaccept = impIaccept();
+  st.iscaleMin = impIscaleMin();
+  st.iscaleMax = impIscaleMax();
+  st.nConvWindow = impNconvWindow();
+  st.ctol = impCtol();
+  st.mapIter = std::max(0, impMapIter());
+  // Burn-in iterations run BEFORE the nIter budget rather than out of it, so
+  // nBurn never silently shortens the fit.  They exist to let the gamma / AUTO
+  // controllers settle, so those run normally; only the Omega M-step (when
+  // burnFreezeOmega) and the convergence test are held back.
+  st.nBurn = std::max(0, impNburn());
+  st.burnFreezeOmega = impBurnFreezeOmega();
+  // nIter = 0 is an E-step-only evaluation at the supplied parameters (NONMEM
+  // EONLY=1): one E-step, no M-step, and no burn-in (it would move the parameters).
+  st.eOnly = (st.nIter <= 0);
+  // A frozen run (the post-fit "imp" covariance at a fit's estimates) keeps the
+  // parameters where they were supplied for all nIter iterations: E-steps only,
+  // with the proposal controllers adapting between them, no M-step, no burn-in
+  // and no convergence test.
+  st.frozen = impFrozen();
+  if (st.eOnly || st.frozen) st.nBurn = 0;
+  st.nIterTotal = st.eOnly ? 1 : st.nBurn + st.nIter;
+  st.Nmix = impNmix();
+  st.nExp = st.nsub * st.Nmix;
+  st.nSens = impThetaSensN();
+  st.isImp = impIsImp();
+}
+
+static void impOuterInitVectors(ImpOuterState& st) {
+  const int nExp = st.nExp;
+  st.gammaVec.set_size(nExp); st.gammaVec.fill(st.gamma);
+  st.isampleVec.set_size(nExp); st.isampleVec.fill(st.isample);
+  st.isampleUsed.set_size(nExp); st.isampleUsed.fill(st.isample);
+  st.dfUsed.set_size(nExp); st.dfUsed.fill(impDf());
+  st.gammaUsed.set_size(nExp); st.gammaUsed.fill(st.gamma);
+  st.gammaScalarUsed = st.gamma;
+  st.dfVec.set_size(nExp); st.dfVec.fill(impDf());
+  st.propSpec = impPropSpecFromControl(impDf());
+  st.typeVec.set_size(nExp); st.typeVec.fill(st.propSpec.type);
+  st.typeFloor.set_size(nExp); st.typeFloor.fill(st.propSpec.type);
+  st.props.resize(nExp);
+  st.propsUsed.resize(nExp);
+  st.dfFloor.set_size(nExp); st.dfFloor.fill(impDf());
+  st.kAtFloor.set_size(nExp); st.kAtFloor.fill(NA_REAL);
+  st.noImp.zeros(nExp);
+  st.escDead.zeros(nExp);
+  st.iacceptVec.set_size(nExp); st.iacceptVec.fill(st.iaccept);
+  st.autoOn = impAutoEnabled();
+  st.isampleBudget = st.isample * nExp;
+}
+
+// A per-subject isample= vector is given per BASE subject; tile it across
+// the mixture's expanded pseudo-subjects so component j of subject i gets
+// subject i's count.
+static void impOuterTileIsample(ImpOuterState& st) {
+  std::vector<int> isv;
+  impNsampleVecGet(isv);
+  if ((int)isv.size() > 1 && (int)isv.size() != st.nsub) {
+    Rf_error("'isample' has length %d but there are %d subjects; a per-subject "
+             "isample vector must have one entry per subject",
+             (int)isv.size(), st.nsub);
+  }
+  if ((int)isv.size() != st.nsub) return;
+  for (int i = 0; i < st.nsub; ++i) {
+    int v = isv[i] < 1 ? 1 : isv[i];
+    for (int j = 0; j < st.Nmix; ++j) st.isampleVec[i + j * st.nsub] = v;
+  }
+}
+
+// ---- AUTO step 1: proposal df from each subject's data sparsity ----------
+// Decided once, up front, from nobs/neta: a subject with few observations
+// relative to the number of random effects has a poorly-determined, often
+// heavy-tailed conditional density that a normal proposal cannot cover, and
+// no sample count repairs that (measured: boosting a failing subject 10x
+// moved its k-hat 0.76 -> 3.28, because extra draws reach further into the
+// tail the proposal misses).  Heavier tails do repair it, cheaply.
+//
+// The trigger is the tutorial's, verbatim: "When there are fewer data points
+// than there are ETAs to be estimated (sparse data) or data are categorical,
+// then DF should be set to a nonzero number to use the t-distribution sampler
+// and/or decrease the acceptance rate IACCEPT from the default value of 0.4
+// to about 0.2" (Bauer, NONMEM Tutorial Part II, 2019).  So the test is
+// nobs < neta -- NOT a wider sparsity band -- and categorical/non-normal data
+// qualifies regardless of how much of it there is.
+//
+// On the VALUES: IACCEPT ~ 0.2 is the tutorial's own number.  DF = 4 is NOT
+// -- the tutorial says only "DF should be set to a nonzero number".  NONMEM
+// does not publish what AUTO=1 actually picks, so 4 is nlmixr2's choice,
+// informed by the measurement that even df = 20 cleared every failing
+// subject on theophylline (max k-hat 1.61 -> -0.58) for 0.25% of the
+// effective sample size, so a heavier default is safe and cheap.  Any
+// comparison against NONMEM should treat these numbers as nlmixr2's, not as
+// a reproduction of NONMEM's internals.
+// The nobs<neta half of that trigger is GATED by default, and this is a
+// deliberate divergence from the tutorial.  Measured on a fixture built to the
+// tutorial's own definition of sparse (2 observations, 3 etas), 8 seeds vs an
+// isample=8000 reference, applying it makes every number worse:
+//
+//                     objRMSE   OmegaRMSE   max k-hat   subjects k>0.7
+//   no adaptation      0.1517     0.02379      1.065         3.88
+//   global df 30       0.1666     0.02695      1.075         5.00
+//   AUTO (this rule)   0.2059     0.03163      1.088         4.88
+//
+// The reason is visible in the reference, which itself reads max k-hat 0.794:
+// with fewer observations than random effects the individual posterior is not
+// identified, so the heavy tail is STRUCTURAL and no proposal shape repairs
+// it.  Escalating there spends accuracy on a problem the proposal does not
+// own.  So sparsity alone no longer assigns a t proposal; k-hat has to ask for
+// it, and the improvability check below withdraws it if it does not help.
+//
+// The categorical/non-normal half is NOT gated -- measured on a sparse Poisson
+// fixture AUTO is the best of the three methods (objRMSE 0.00341 vs 0.00525
+// for no adaptation), even though its k-hat never fails.
+//
+// impmapControl(autoNonmemSparse=TRUE) restores the unconditional tutorial
+// behavior.  It is a real option, not a courtesy: NONMEM's own testing is not
+// published, the models it was tuned on are not ours, and someone who measures
+// the reverse on their own problem should be able to have the documented rule.
+static void impAutoStep1(ImpOuterState& st) {
+  bool nonNormal = impAutoNonNormal();
+  // The df ladder is defined only for the MVN/MVT axis -- it encodes
+  // "Gaussian" as df <= 0, and its constants (30/20, the k-hat 0.7/1.0
+  // thresholds, autoDfPatience) were all swept against a Gaussian
+  // baseline.  A subject already on an exponential-tailed MVL or on a
+  // mixture has a different baseline and no measurement behind it, so
+  // AUTO leaves its family alone.  The sample-budget reallocation below
+  // is family-agnostic and still applies to every subject.
+  const bool dfAxis = (st.propSpec.type == impPropMvn || st.propSpec.type == impPropMvt);
+  for (int i = 0; i < st.nsub; ++i) {
+    bool sparse = st.nonmemSparse && (impNobs(i) < st.neta);
+    // TUNED: start at a MILD t (df 20) rather than the heaviest.  df 20 was
+    // measured to clear every failing subject on theophylline for 0.25% of
+    // the effective sample size, whereas df 4 costs far more Monte-Carlo
+    // noise for no extra tail benefit.  The k-hat escalation below drops it
+    // further only on evidence.
+    // TUNED (df sweep, theophylline, 12 seeds, RMSE vs an isample=20000
+    // reference): df 30 clears the tail failure completely (max k-hat
+    // 2.58 -> -0.02, bad subjects 2.08 -> 0.08) for a 7% RMSE cost
+    // (0.0240 -> 0.0257).  Entering at 20 costs 33% and at 8 costs 3x for no
+    // extra tail benefit, so the earlier ladder was simply mistuned.
+    // impDf() rather than 0 for the untriggered case: a global df= is an
+    // explicit request and must survive auto=TRUE.  At the default df = 0
+    // this is identical to the old expression.
+    double dfI = (dfAxis && (sparse || nonNormal)) ? 30.0 : impDf();
+    // TUNED: iaccept is left alone here.  Lowering it to 0.2 forces gamma
+    // wide, and widening a Gaussian is the lever measured NOT to fix tails
+    // while costing a lot of ESS -- on a Poisson fixture whose k-hat was
+    // already -1.33 (no failure at all) it cut ESS 0.549 -> 0.412 and
+    // doubled the objective noise for nothing.  It is now applied only where
+    // k-hat says the proposal is genuinely struggling (below).
+    double iaI = st.iaccept;
+    int typeI = st.propSpec.type;
+    if (dfAxis) typeI = dfI > 0.0 ? impPropMvt : impPropMvn;
+    for (int j = 0; j < st.Nmix; ++j) {
+      st.dfVec[i + j * st.nsub] = dfI;
+      st.dfFloor[i + j * st.nsub] = dfI;   // withdrawal may not go below this
+      st.typeVec[i + j * st.nsub] = typeI;
+      st.typeFloor[i + j * st.nsub] = typeI;
+      st.iacceptVec[i + j * st.nsub] = iaI;
     }
   }
+}
 
-
-  // Fit-constant base seed for the pinned (qrRefresh=FALSE) Cranley-Patterson
+// Seeds, SIR and the #958 sensitivity harvest
+static void impOuterSetupSampling(ImpOuterState& st) {
+  // Fit-constant salted base for the pinned (qrRefresh=FALSE) Cranley-Patterson
   // shift streams; only consumed in that mode so every other path's draw
   // stream is unchanged.
-  // Fit-constant salted base for the pinned (qrRefresh=FALSE) shift streams.
-  uint32_t qrPinSeed = (uint32_t)impBaseSeed() + 0x9E3779B1u;
-  // Salted base for the SIR stratified offsets; SIR only engages when it can
-  // shrink the sample (sirN < isample) so every other path is unchanged.
-  // SIR only engages where it actually shrinks that subject's sample.
-  bool sir = impSirEnabled();
-  int sirN = impSirN();
-  uint32_t sirSeed = (uint32_t)impBaseSeed() + 0x7F4A7C15u;
+  st.qrPinSeed = (uint32_t)impBaseSeed() + 0x9E3779B1u;
+  // Salted base for the SIR stratified offsets; SIR only engages where it
+  // actually shrinks that subject's sample (sirN < isample).
+  st.sir = impSirEnabled();
+  st.sirN = impSirN();
+  st.sirSeed = (uint32_t)impBaseSeed() + 0x7F4A7C15u;
   // #958 combined build: harvest the M-step's theta-sensitivity columns
   // straight off the E-step's own per-sample inner solve (impEStep) instead
-  // of the M-step re-solving every sample -- see impEStep's harvest block.
+  // of the M-step re-solving every sample -- see impHarvestSample.
   // Off under SIR: the M-step there only needs a resampled SUBSET of the
   // E-step's samples (sirN < isample), so eagerly harvesting every sample in
   // the E-step would do MORE solving, not less; that case keeps the existing
   // (unfused) M-step path unchanged.
   //
-  // This loop is `#pragma omp parallel for` over subjects, and a subject
+  // The E-step loop is parallel over subjects, and a subject
   // whose inner solve fell back to doFD/pred solves a DIFFERENT registered
   // slot than a subject still on the plain inner path -- concurrently, in
   // the same loop.  That used to be able to race on rx->ndiff (a field on
@@ -1647,782 +1864,838 @@ void impOuter(Environment e) {
   // field), leaving only same-value writes from concurrent inner solves,
   // which is benign.  See odeSwap.cpp's odeSwapSolveInd for the fix and its
   // KNOWN GAP note.
-  bool harvestSens = impCombSensEnabled() && (nSens > 0) && !sir;
-  std::vector<impThetaSensData> outSens;
+  st.harvestSens = impCombSensEnabled() && (st.nSens > 0) && !st.sir;
+}
 
-  // Omega structure mask: only the elements estimated in the model (nonzero in
-  // the starting Omega) are updated; the rest stay zero so the parameterization
-  // keeps the same number of Omega thetas.
-  arma::mat Om0;
-  impGetOmega(Om0);
-  arma::mat omMask = arma::conv_to<arma::mat>::from(Om0 != 0.0);
-  std::vector<int> omFloored; // etas the installed omega has at the 1e-6 floor
-  // Eta indices whose Omega diagonal is fix()ed: their rows/columns are held at
-  // the starting Omega through every EM update.
-  std::vector<int> omFixedEta;
-  impGetOmegaFixedEta(omFixedEta);
+// Omega structure mask: only the elements estimated in the model (nonzero in
+// the starting Omega) are updated; the rest stay zero so the parameterization
+// keeps the same number of Omega thetas.
+static void impOuterSetupOmega(ImpOuterState& st) {
+  impGetOmega(st.Om0);
+  st.omMask = arma::conv_to<arma::mat>::from(st.Om0 != 0.0);
+  impGetOmegaFixedEta(st.omFixedEta);
+}
 
-  std::vector<double> objTrace, gammaTrace, neffTrace, xiTrace;
-  std::vector<arma::vec> parHist;
-  bool converged = false;
-  int iterRun = 0;
-  nMStepDamped = 0;
-  nMStepSkipped = 0;
+// Before the E-step: re-MAP, flatten the global gamma and build the proposals.
+static void impOuterPreEStep(ImpOuterState& st, int iter) {
+  // MAP-assist period: impReMap() is the mu-referenced FOCEI inner problem,
+  // so re-centering every iteration is the dominant cost of est="impmap".
+  // mapIter = 0 keeps the startup MAP and never re-centers.
+  if (iter > 0 && !st.isImp && st.mapIter > 0 && (iter % st.mapIter) == 0) impReMap();
+  // Global rule: every expanded subject shares the scalar scale.  Under
+  // "individual" gammaVec already carries the per-subject scales the
+  // controller set at the end of the previous iteration (and the constructor
+  // fill for iteration 0), so it must NOT be flattened here.
+  if (!st.gammaInd) st.gammaVec.fill(st.gamma);
+  st.isampleUsed = st.isampleVec;
+  st.dfUsed = st.dfVec;
+  // Materialize this iteration's proposals from (family, df, spec).  Built
+  // BEFORE the E-step so the parallel loop only ever reads them, and
+  // snapshotted in the same breath as dfUsed because the controllers below
+  // advance the live vectors for an iteration that never ran.
+  for (int id = 0; id < st.nExp; ++id) {
+    st.props[id] = impPropBuild(st.typeVec[id], st.dfVec[id], st.propSpec.nmix,
+                                st.propSpec.c, st.propSpec.w, st.neta);
+  }
+  st.propsUsed = st.props;
+  st.gammaUsed = st.gammaVec;
+  st.gammaScalarUsed = st.gamma;
+}
 
-  // Iteration print + parameter-history capture (shared scale.h machinery).
-  impIterPrintStart();
+// The E-step's objective, mean effective-sample fraction and mean xi
+static void impOuterSummarize(ImpOuterState& st) {
+  st.obj = 0.0;
+  for (int id = 0; id < st.nsub; ++id) if (R_finite(st.Li[id])) st.obj += 2.0 * st.Li[id];
+  // Mean effective-sample fraction (importance-sampling "acceptance ratio").
+  double accFrac = 0.0; int nAcc = 0;
+  for (int id = 0; id < st.nsub; ++id)
+    if (R_finite(st.Neff[id])) { accFrac += st.Neff[id] / (double)st.isampleUsed[id]; ++nAcc; }
+  if (nAcc > 0) accFrac /= (double)nAcc;
+  st.accFrac = accFrac;
+  // Mean NONMEM-style xi (a DIFFERENT statistic from accFrac -- see impEStep).
+  double xiMean = 0.0; int nXi = 0;
+  for (int id = 0; id < st.nsub; ++id)
+    if (R_finite(st.Xi[id])) { xiMean += st.Xi[id]; ++nXi; }
+  if (nXi > 0) xiMean /= (double)nXi; else xiMean = NA_REAL;
+  st.xiMean = xiMean;
+  // `gamma` is the scalar summary of the scale actually used this iteration:
+  // itself under "global", the mean of the per-subject scales under
+  // "individual".  It is what gets traced and reported as impGammaUsed.
+  if (st.gammaInd) st.gamma = arma::mean(st.gammaVec);
+}
 
-  arma::vec r(neta);
-  for (int iter = 0; iter < nIterTotal; ++iter) {
-    const bool burnIter = (iter < nBurn);
-    // MAP-assist period: impReMap() is the mu-referenced FOCEI inner problem,
-    // so re-centering every iteration is the dominant cost of est="impmap".
-    // mapIter = 0 keeps the startup MAP and never re-centers.
-    if (iter > 0 && !isImp && mapIter > 0 && (iter % mapIter) == 0) impReMap();
-    // Stash the E-step diagnostics on every iteration so the fit environment
-    // reflects the last iteration actually run (the loop may stop early).
-    // Global rule: every expanded subject shares the scalar scale.  Under
-    // "individual" gammaVec already carries the per-subject scales the
-    // controller set at the end of the previous iteration (and the constructor
-    // fill for iteration 0), so it must NOT be flattened here.
-    if (!gammaInd) gammaVec.fill(gamma);
-    isampleUsed = isampleVec;
-    dfUsed = dfVec;
-    // Materialize this iteration's proposals from (family, df, spec).  Built
-    // BEFORE the E-step so the parallel loop only ever reads them, and
-    // snapshotted in the same breath as dfUsed because the controllers below
-    // advance the live vectors for an iteration that never ran.
-    for (int id = 0; id < nExp; ++id) {
-      props[id] = impPropBuild(typeVec[id], dfVec[id], propSpec.nmix,
-                               propSpec.c, propSpec.w, neta);
-    }
-    propsUsed = props;
-    gammaUsed = gammaVec;
-    gammaScalarUsed = gamma;
-    impEStep(nsub, neta, isampleVec, gammaVec, props, cores, iter, impLogDetOmegaInv5(), isImp,
-             condMean, condVar, Li, Neff, Xi, NeffExp, XiExp, KhatExp, sampS, sampZk, aMat, &e, qrPinSeed,
-             harvestSens, outSens);
-    obj = 0.0;
-    for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
-    // Mean effective-sample fraction (importance-sampling "acceptance ratio").
-    double accFrac = 0.0; int nAcc = 0;
-    for (int id = 0; id < nsub; ++id)
-      if (R_finite(Neff[id])) { accFrac += Neff[id] / (double)isampleUsed[id]; ++nAcc; }
-    if (nAcc > 0) accFrac /= (double)nAcc;
-    // Mean NONMEM-style xi (a DIFFERENT statistic from accFrac -- see impEStep).
-    double xiMean = 0.0; int nXi = 0;
-    for (int id = 0; id < nsub; ++id)
-      if (R_finite(Xi[id])) { xiMean += Xi[id]; ++nXi; }
-    if (nXi > 0) xiMean /= (double)nXi; else xiMean = NA_REAL;
-    // `gamma` is the scalar summary of the scale actually used this iteration:
-    // itself under "global", the mean of the per-subject scales under
-    // "individual".  It is what gets traced and reported as impGammaUsed.
-    if (gammaInd) gamma = arma::mean(gammaVec);
-    // ---- AUTO step 3: escalate df when k-hat reports tail failure ----------
-    // The tutorial's df trigger (nobs < neta, or categorical) is necessary but
-    // NOT sufficient: measured on plain theophylline -- 11 observations against
-    // 1 eta, transformably normal, so neither condition fires -- four of twelve
-    // subjects still have infinite-variance weights (max k-hat 2.36), which a
-    // t proposal clears completely.  NONMEM has no tail diagnostic to notice
-    // this; we do, so AUTO uses it.
-    //
-    // This is nlmixr2 going BEYOND the documented NONMEM rule, not reproducing
-    // it.  Escalation is one-way and stepwise (Gaussian -> 8 -> 4) so a noisy
-    // k-hat cannot oscillate the proposal shape from iteration to iteration.
-    if (autoOn) {
-      // Severity-driven, and two-way.  The earlier version walked a fixed
-      // ladder one rung per iteration regardless of HOW bad k-hat was, and
-      // never came back -- so a subject with k-hat 0.75 took the same path as
-      // one at 3.0, and any subject that did not need a t proposal kept paying
-      // for it.  Both waste accuracy, which is what the gate was failing on.
-      //
-      // Mapping re-derived after the imp/impmap/focei pooling fixes, which removed
-      // the tail failures the ORIGINAL sweep was calibrated on -- see
-      // plans/imp-auto-reinstrument.md and the appendix in the nlmixr2 imp article.
-      // Sweep: theophylline + 3 etas, 8 seeds, RMSE vs an isample=8000 reference.
-      //
-      //   df   objRMSE   omegaRMSE   max k-hat   subjects k>0.7
-      //    0    0.0113     0.00406      0.941        2.38
-      //   30    0.0095     0.00281      0.593        0.25
-      //   20    0.0097     0.00255      0.484        0.12
-      //   12    0.0105     0.00224      0.405        0.00
-      //    8    0.0116     0.00223      0.273        0.00
-      //
-      // The objective RMSE is MINIMIZED at df 30 and degrades past it -- df 8 is
-      // worse than no t proposal at all -- while the tail and Omega keep improving.
-      // 30/20 is that trade-off's sweet spot; heavier rungs buy Omega at a real
-      // objective cost.
-      //
-      // The old k>2 -> df 12 rung is gone.  Post-fix nothing in the sweep exceeds
-      // k-hat ~1.1 (theophylline 3-eta peaks at 0.94, a deliberately sparse
-      // nobs<neta fixture at 1.07), so it was unreachable, and where df 12 could be
-      // measured it was worse than 20 on the objective.  An unreachable rung
-      // calibrated on a regime that no longer occurs is not a safety margin.
-      for (int id = 0; id < nExp; ++id) {
-        // the ladder walks the MVN/MVT axis only -- see AUTO step 1 above
-        if (typeVec[id] != impPropMvn && typeVec[id] != impPropMvt) continue;
-        double kh = KhatExp[id];
-        if (!R_finite(kh)) continue;              // no usable k-hat: leave alone
-        if (escDead[id]) continue;                // measured not to help here
-        // IMPROVABILITY.  A t proposal repairs a tail the proposal shape is
-        // missing; it cannot repair one the DATA creates.  With fewer
-        // observations than random effects the individual posterior is not
-        // identified and k-hat stays high however heavy the proposal gets
-        // (measured: 1.065 under a Gaussian, 1.075 at df 30, 1.088 under AUTO --
-        // and the isample=8000 reference itself reads 0.794).  Escalating there
-        // costs accuracy for nothing, so withdraw it once the evidence is in.
-        //
-        // This is NOT the circular relaxation the note below rejects.  That one
-        // backs off because k-hat became GOOD, which is evidence the remedy is
-        // working.  This backs off because k-hat stayed BAD after escalating,
-        // which is evidence the remedy does not apply.  Withdrawal is final so
-        // the pair cannot oscillate.
-        //
-        // Both halves are load bearing, and gating the trigger alone is NOT
-        // enough.  On the sparse fixture, objective RMSE by method: 0.206 with
-        // the tutorial rule applied, 0.181 gating it but never withdrawing,
-        // 0.152 with AUTO off entirely, 0.102 gating AND withdrawing.  Gating on
-        // its own is still worse than not adapting at all; the withdrawal is
-        // what turns it into a win.
-        //
-        // autoDfPatience TUNED to 2 (sweep over 0,1,2,3,5; 8 seeds):
-        //
-        //   patience   sparse objRMSE   theo3 objRMSE   theo3 OmegaRMSE
-        //   patience   sparse obj   theo3 obj   sparse k>0.7   theo3 k>0.7
-        //     0 (off)     0.18065      0.01654        5.12          0.25
-        //     1           0.18740      0.01418        4.50          0.50
-        //     2           0.10198      0.01588        4.62          0.38
-        //     3           0.12873      0.01654        5.00          0.25
-        //     5           0.18267      0.01654        5.12          0.25
-        //
-        // 2 is the sparse optimum, and the curve rises either side of it.  It is
-        // not the best objective on theo3 (1 is), but 1 has the worst tail on
-        // every fixture, and tail behaviour is weighted higher: infinite-variance
-        // weights are a correctness problem with unbounded error while
-        // Monte-Carlo noise is bounded.  Same reasoning that puts auto on at all.
-        //
-        // Measured BEFORE the monotone-baseline fix, 1 looked best on sparse
-        // (0.097 against 0.142).  That was the easy-baseline bug withdrawing at
-        // roughly the right moment by accident; with the bar correct the ordering
-        // inverts.  A reminder that a constant tuned against unverified code is
-        // only as good as the code under it.
-        //
-        // Patience also interacts with nIter: at 3 and 5 the counter cannot
-        // accumulate inside a 12-iteration fit on a fixture whose k-hat does
-        // improve, which is why those rows match switching withdrawal off.
-        // Establish the baseline for a df that step 1 pre-assigned (the
-        // Decide the rung this k-hat asks for FIRST, because withdrawal must not
-        // pre-empt an escalation that is still available.  Running the withdrawal
-        // check first retired a subject at df 30 carrying its last strike the
-        // moment its k-hat crossed 1.0 -- it went to the floor and escDead
-        // without ever trying df 20, which is precisely the rung that k-hat was
-        // asking for.
-        double want = 0.0;
-        bool wantEsc = false;
-        if (kh > 0.7) {
-          // lightest tail plausibly heavy enough for this severity
-          want = (kh > 1.0) ? 20.0 : 30.0;
-          // one-way: only ever go heavier, so the shape cannot oscillate
-          wantEsc = (typeVec[id] == impPropMvn || want < dfVec[id]);
-        }
+// Withdrawal.  Only for a subject actually moved off its floor -- testing
+// dfVec > 0 instead stranded subjects that were never escalated at all --
+// and only once the ladder is EXHAUSTED (!wantEsc), so "this is not
+// helping" means the heaviest applicable rung is not helping.  Note
+// "escalated" is dfVec != dfFloor, not an inequality: escalating a
+// Gaussian floor RAISES df (0 -> 30) while escalating a t floor LOWERS it
+// (30 -> 20).  Returns true when the escalation was withdrawn.
+static bool impAutoWithdraw(ImpOuterState& st, int id, double kh, bool wantEsc) {
+  if (st.nonmemSparse || st.dfPatience <= 0 || wantEsc ||
+      st.dfVec[id] == st.dfFloor[id] || !R_finite(st.kAtFloor[id])) {
+    return false;
+  }
+  // Non-strict on the margin: a rung that buys exactly the 0.1 it is
+  // asked for has earned its place.  Strict `<` withdrew a proposal that
+  // took k-hat 1.25 -> 0.75 against a floor of 0.85.
+  bool improved = (kh <= 0.7) || (kh <= st.kAtFloor[id] - 0.1);
+  if (improved) {
+    st.noImp[id] = 0;
+    return false;
+  }
+  if (++st.noImp[id] < st.dfPatience) return false;
+  // back to the step-1 floor, NOT to 0: for a non-normal endpoint that
+  // floor is the t proposal the model requires, and withdrawal is
+  // permanent (escDead), so dropping below it could never be undone.
+  st.dfVec[id] = st.dfFloor[id];
+  st.typeVec[id] = st.typeFloor[id];
+  st.escDead[id] = 1;
+  return true;
+}
 
-        // The counterfactual, kept FRESH.  Three separate review findings all
-        // reduce to getting this value wrong:
-        //   * frozen at a pre-deterioration reading, a rung that genuinely
-        //     repairs a since-degraded subject scores as failing and is
-        //     withdrawn;
-        //   * taken from the k-hat at the moment of escalation, a noise spike
-        //     sets an easy bar and a subject stalls at a proposal achieving
-        //     nothing;
-        //   * taken as the running minimum, an old good value is pinned and a
-        //     working rung is withdrawn again.
-        // Recording it while the subject sits at its floor solves all three: it
-        // tracks deterioration that happens BEFORE any escalation, and it stops
-        // tracking the moment an escalation could be responsible for the value.
-        if (dfVec[id] == dfFloor[id]) kAtFloor[id] = kh;
+// AUTO step 3 for one expanded subject
+static void impAutoEscalateOne(ImpOuterState& st, int id) {
+  // the ladder walks the MVN/MVT axis only -- see AUTO step 1 above
+  if (st.typeVec[id] != impPropMvn && st.typeVec[id] != impPropMvt) return;
+  double kh = st.KhatExp[id];
+  if (!R_finite(kh)) return;              // no usable k-hat: leave alone
+  if (st.escDead[id]) return;             // measured not to help here
+  // IMPROVABILITY.  A t proposal repairs a tail the proposal shape is
+  // missing; it cannot repair one the DATA creates.  With fewer
+  // observations than random effects the individual posterior is not
+  // identified and k-hat stays high however heavy the proposal gets
+  // (measured: 1.065 under a Gaussian, 1.075 at df 30, 1.088 under AUTO --
+  // and the isample=8000 reference itself reads 0.794).  Escalating there
+  // costs accuracy for nothing, so withdraw it once the evidence is in.
+  //
+  // This is NOT the circular relaxation the note below rejects.  That one
+  // backs off because k-hat became GOOD, which is evidence the remedy is
+  // working.  This backs off because k-hat stayed BAD after escalating,
+  // which is evidence the remedy does not apply.  Withdrawal is final so
+  // the pair cannot oscillate.
+  //
+  // Both halves are load bearing, and gating the trigger alone is NOT
+  // enough.  On the sparse fixture, objective RMSE by method: 0.206 with
+  // the tutorial rule applied, 0.181 gating it but never withdrawing,
+  // 0.152 with AUTO off entirely, 0.102 gating AND withdrawing.  Gating on
+  // its own is still worse than not adapting at all; the withdrawal is
+  // what turns it into a win.
+  //
+  // autoDfPatience TUNED to 2 (sweep over 0,1,2,3,5; 8 seeds):
+  //
+  //   patience   sparse obj   theo3 obj   sparse k>0.7   theo3 k>0.7
+  //     0 (off)     0.18065      0.01654        5.12          0.25
+  //     1           0.18740      0.01418        4.50          0.50
+  //     2           0.10198      0.01588        4.62          0.38
+  //     3           0.12873      0.01654        5.00          0.25
+  //     5           0.18267      0.01654        5.12          0.25
+  //
+  // 2 is the sparse optimum, and the curve rises either side of it.  It is
+  // not the best objective on theo3 (1 is), but 1 has the worst tail on
+  // every fixture, and tail behaviour is weighted higher: infinite-variance
+  // weights are a correctness problem with unbounded error while
+  // Monte-Carlo noise is bounded.  Same reasoning that puts auto on at all.
+  //
+  // Measured BEFORE the monotone-baseline fix, 1 looked best on sparse
+  // (0.097 against 0.142).  That was the easy-baseline bug withdrawing at
+  // roughly the right moment by accident; with the bar correct the ordering
+  // inverts.  A reminder that a constant tuned against unverified code is
+  // only as good as the code under it.
+  //
+  // Patience also interacts with nIter: at 3 and 5 the counter cannot
+  // accumulate inside a 12-iteration fit on a fixture whose k-hat does
+  // improve, which is why those rows match switching withdrawal off.
+  //
+  // Decide the rung this k-hat asks for FIRST, because withdrawal must not
+  // pre-empt an escalation that is still available.  Running the withdrawal
+  // check first retired a subject at df 30 carrying its last strike the
+  // moment its k-hat crossed 1.0 -- it went to the floor and escDead
+  // without ever trying df 20, which is precisely the rung that k-hat was
+  // asking for.
+  double want = 0.0;
+  bool wantEsc = false;
+  if (kh > 0.7) {
+    // lightest tail plausibly heavy enough for this severity
+    want = (kh > 1.0) ? 20.0 : 30.0;
+    // one-way: only ever go heavier, so the shape cannot oscillate
+    wantEsc = (st.typeVec[id] == impPropMvn || want < st.dfVec[id]);
+  }
+  // The counterfactual, kept FRESH.  Three separate review findings all
+  // reduce to getting this value wrong:
+  //   * frozen at a pre-deterioration reading, a rung that genuinely
+  //     repairs a since-degraded subject scores as failing and is
+  //     withdrawn;
+  //   * taken from the k-hat at the moment of escalation, a noise spike
+  //     sets an easy bar and a subject stalls at a proposal achieving
+  //     nothing;
+  //   * taken as the running minimum, an old good value is pinned and a
+  //     working rung is withdrawn again.
+  // Recording it while the subject sits at its floor solves all three: it
+  // tracks deterioration that happens BEFORE any escalation, and it stops
+  // tracking the moment an escalation could be responsible for the value.
+  if (st.dfVec[id] == st.dfFloor[id]) st.kAtFloor[id] = kh;
+  if (impAutoWithdraw(st, id, kh, wantEsc)) return;
+  if (wantEsc) {
+    // Each rung gets a full patience window; inheriting strikes withdrew a
+    // heavier rung after a single iteration for want of an improvement it
+    // had not had time to deliver.
+    st.noImp[id] = 0;
+    st.dfVec[id] = want;
+    st.typeVec[id] = impPropMvt;
+  }
+  // NOTE deliberately one-way on SUCCESS.  Relaxing on a low k-hat is
+  // circular: once a t proposal is in place k-hat drops precisely BECAUSE
+  // it is working (measured -1.3 to -1.9 on subjects that read 2.03 under a
+  // Gaussian), so "safe now" is evidence the fix is needed, not that it is
+  // not.  Relaxing on it walks straight back into the failure and
+  // oscillates.  Efficiency comes from picking the right rung immediately
+  // -- the severity mapping above -- not from backing off afterwards.
+}
 
-        // Withdrawal.  Only for a subject actually moved off its floor -- testing
-        // dfVec > 0 instead stranded subjects that were never escalated at all --
-        // and only once the ladder is EXHAUSTED (!wantEsc), so "this is not
-        // helping" means the heaviest applicable rung is not helping.  Note
-        // "escalated" is dfVec != dfFloor, not an inequality: escalating a
-        // Gaussian floor RAISES df (0 -> 30) while escalating a t floor LOWERS it
-        // (30 -> 20).
-        if (!nonmemSparse && dfPatience > 0 && !wantEsc &&
-            dfVec[id] != dfFloor[id] && R_finite(kAtFloor[id])) {
-          // Non-strict on the margin: a rung that buys exactly the 0.1 it is
-          // asked for has earned its place.  Strict `<` withdrew a proposal that
-          // took k-hat 1.25 -> 0.75 against a floor of 0.85.
-          bool improved = (kh <= 0.7) || (kh <= kAtFloor[id] - 0.1);
-          if (improved) {
-            noImp[id] = 0;
-          } else if (++noImp[id] >= dfPatience) {
-            // back to the step-1 floor, NOT to 0: for a non-normal endpoint that
-            // floor is the t proposal the model requires, and withdrawal is
-            // permanent (escDead), so dropping below it could never be undone.
-            dfVec[id] = dfFloor[id];
-            typeVec[id] = typeFloor[id];
-            escDead[id] = 1;
-            continue;
-          }
-        }
+// ---- AUTO step 3: escalate df when k-hat reports tail failure ----------
+// The tutorial's df trigger (nobs < neta, or categorical) is necessary but
+// NOT sufficient: measured on plain theophylline -- 11 observations against
+// 1 eta, transformably normal, so neither condition fires -- four of twelve
+// subjects still have infinite-variance weights (max k-hat 2.36), which a
+// t proposal clears completely.  NONMEM has no tail diagnostic to notice
+// this; we do, so AUTO uses it.
+//
+// This is nlmixr2 going BEYOND the documented NONMEM rule, not reproducing
+// it.  Escalation is one-way and stepwise (Gaussian -> 8 -> 4) so a noisy
+// k-hat cannot oscillate the proposal shape from iteration to iteration.
+//
+// Severity-driven, and two-way.  The earlier version walked a fixed
+// ladder one rung per iteration regardless of HOW bad k-hat was, and
+// never came back -- so a subject with k-hat 0.75 took the same path as
+// one at 3.0, and any subject that did not need a t proposal kept paying
+// for it.  Both waste accuracy, which is what the gate was failing on.
+//
+// Mapping re-derived after the imp/impmap/focei pooling fixes, which removed
+// the tail failures the ORIGINAL sweep was calibrated on -- see
+// plans/imp-auto-reinstrument.md and the appendix in the nlmixr2 imp article.
+// Sweep: theophylline + 3 etas, 8 seeds, RMSE vs an isample=8000 reference.
+//
+//   df   objRMSE   omegaRMSE   max k-hat   subjects k>0.7
+//    0    0.0113     0.00406      0.941        2.38
+//   30    0.0095     0.00281      0.593        0.25
+//   20    0.0097     0.00255      0.484        0.12
+//   12    0.0105     0.00224      0.405        0.00
+//    8    0.0116     0.00223      0.273        0.00
+//
+// The objective RMSE is MINIMIZED at df 30 and degrades past it -- df 8 is
+// worse than no t proposal at all -- while the tail and Omega keep improving.
+// 30/20 is that trade-off's sweet spot; heavier rungs buy Omega at a real
+// objective cost.
+//
+// The old k>2 -> df 12 rung is gone.  Post-fix nothing in the sweep exceeds
+// k-hat ~1.1 (theophylline 3-eta peaks at 0.94, a deliberately sparse
+// nobs<neta fixture at 1.07), so it was unreachable, and where df 12 could be
+// measured it was worse than 20 on the objective.  An unreachable rung
+// calibrated on a regime that no longer occurs is not a safety margin.
+static void impAutoEscalate(ImpOuterState& st) {
+  for (int id = 0; id < st.nExp; ++id) impAutoEscalateOne(st, id);
+}
 
-        if (wantEsc) {
-          // Each rung gets a full patience window; inheriting strikes withdrew a
-          // heavier rung after a single iteration for want of an improvement it
-          // had not had time to deliver.
-          noImp[id] = 0;
-          dfVec[id] = want;
-          typeVec[id] = impPropMvt;
-        }
-        // NOTE deliberately one-way on SUCCESS.  Relaxing on a low k-hat is
-        // circular: once a t proposal is in place k-hat drops precisely BECAUSE
-        // it is working (measured -1.3 to -1.9 on subjects that read 2.03 under a
-        // Gaussian), so "safe now" is evidence the fix is needed, not that it is
-        // not.  Relaxing on it walks straight back into the failure and
-        // oscillates.  Efficiency comes from picking the right rung immediately
-        // -- the severity mapping above -- not from backing off afterwards.
-      }
-    }
+// ---- AUTO step 2: reallocate the sample budget across subjects --------
+// The tutorial's trigger is "many ETAs or the objective function has large
+// stochastic fluctuations".  Both show up as a low effective-sample
+// FRACTION for that subject, so the budget is shifted toward the subjects
+// whose weights are least effective and away from the ones that are
+// already cheap to resolve.  The total is held at isample*nExp, so this is
+// load-balancing rather than a cost increase.
+//
+// Deliberately NOT driven by k-hat: a bad tail is not fixable by more
+// samples (measured: 10x on a failing subject moved k-hat 0.76 -> 3.28),
+// that is what the df assignment above is for.  Sample count is the right
+// lever only for ordinary Monte-Carlo noise.
+static void impAutoRealloc(ImpOuterState& st) {
+  const int nExp = st.nExp;
+  arma::vec need(nExp, arma::fill::ones);
+  for (int id = 0; id < nExp; ++id) {
+    // NeffExp, not Neff: id runs over the EXPANDED subjects, and Neff has
+    // one (responsibility-combined) entry per base subject.
+    double fr = R_finite(st.NeffExp[id]) ? st.NeffExp[id] / (double)st.isampleUsed[id] : 1.0;
+    if (!(fr > 0.0) || !R_finite(fr)) fr = 1.0;
+    // Only deviate from uniform where the effective-sample fraction is
+    // genuinely deficient.  Reallocating on small differences just adds
+    // per-subject sampling noise for no gain; a subject already above the
+    // acceptance target does not need more draws.
+    // NONMEM's stated behaviour is two-sided: more budget to subjects with
+    // noisy likelihoods or many active random effects, and LESS to
+    // data-rich subjects whose conditional mode is easy to resolve.  A
+    // threshold rule ("boost only below iaccept") captures only the first
+    // half and is completely inert when every subject is above the target,
+    // which is the common case -- so allocate PROPORTIONALLY to inverse
+    // effective-sample fraction instead, normalized to the fixed budget.
+    // Easy subjects then automatically fund the hard ones.
+    double w = 1.0 / std::max(0.02, std::min(1.0, fr));
+    need[id] = std::min(6.0, w);
+  }
+  double tot = arma::accu(need);
+  if (!(tot > 0.0 && R_finite(tot))) return;
+  for (int id = 0; id < nExp; ++id) {
+    int v = (int)std::lround((double)st.isampleBudget * need[id] / tot);
+    if (v < 25) v = 25;                             // floor: keep PSIS usable
+    if (v > 20 * st.isample) v = 20 * st.isample;   // ceiling: bound the cost
+    st.isampleVec[id] = v;
+  }
+}
 
-    // ---- AUTO step 2: reallocate the sample budget across subjects --------
-    // The tutorial's trigger is "many ETAs or the objective function has large
-    // stochastic fluctuations".  Both show up as a low effective-sample
-    // FRACTION for that subject, so the budget is shifted toward the subjects
-    // whose weights are least effective and away from the ones that are
-    // already cheap to resolve.  The total is held at isample*nExp, so this is
-    // load-balancing rather than a cost increase.
-    //
-    // Deliberately NOT driven by k-hat: a bad tail is not fixable by more
-    // samples (measured: 10x on a failing subject moved k-hat 0.76 -> 3.28),
-    // that is what the df assignment above is for.  Sample count is the right
-    // lever only for ordinary Monte-Carlo noise.
-    if (autoOn && nExp > 1) {
-      arma::vec need(nExp, arma::fill::ones);
-      for (int id = 0; id < nExp; ++id) {
-        // NeffExp, not Neff: id runs over the EXPANDED subjects, and Neff has
-        // one (responsibility-combined) entry per base subject.
-        double fr = R_finite(NeffExp[id]) ? NeffExp[id] / (double)isampleUsed[id] : 1.0;
-        if (!(fr > 0.0) || !R_finite(fr)) fr = 1.0;
-        // Only deviate from uniform where the effective-sample fraction is
-        // genuinely deficient.  Reallocating on small differences just adds
-        // per-subject sampling noise for no gain; a subject already above the
-        // acceptance target does not need more draws.
-        // NONMEM's stated behaviour is two-sided: more budget to subjects with
-        // noisy likelihoods or many active random effects, and LESS to
-        // data-rich subjects whose conditional mode is easy to resolve.  A
-        // threshold rule ("boost only below iaccept") captures only the first
-        // half and is completely inert when every subject is above the target,
-        // which is the common case -- so allocate PROPORTIONALLY to inverse
-        // effective-sample fraction instead, normalized to the fixed budget.
-        // Easy subjects then automatically fund the hard ones.
-        double w = 1.0 / std::max(0.02, std::min(1.0, fr));
-        need[id] = std::min(6.0, w);
-      }
-      double tot = arma::accu(need);
-      if (tot > 0.0 && R_finite(tot)) {
-        for (int id = 0; id < nExp; ++id) {
-          int v = (int)std::lround((double)isampleBudget * need[id] / tot);
-          if (v < 25) v = 25;                       // floor: keep PSIS usable
-          if (v > 20 * isample) v = 20 * isample;   // ceiling: bound the cost
-          isampleVec[id] = v;
-        }
-      }
-    }
-    objTrace.push_back(obj);
-    gammaTrace.push_back(gamma);
-    neffTrace.push_back(accFrac);
-    xiTrace.push_back(xiMean);
-    iterRun = iter + 1;
-
-    if (eOnly) {
-      arma::vec parNow; impGetEstPar(parNow);
-      impIterPrintRow(parNow, obj);
-      break;
-    }
-
-    // M-step.  First a Newton step on the non-mu structural thetas from the
-    // IS-weighted score and Gauss-Newton Hessian accumulated over subjects/samples
-    // -- done before the mu updates (which shift thetas/etas) so it sees the
-    // E-step parameters, and before impSetEta since impThetaScore's re-solves
-    // overwrite the etas.  Skipped if the Hessian is not usable (thetas unchanged).
-    if (nSens > 0 && !frozen) {
-      OdeSwapEsBatch thetaEvents(impCombSensEnabled() ? odeSlotInner : odeSlotThetaSens);
-      arma::vec g(nSens, arma::fill::zeros);
-      arma::mat H(nSens, nSens, arma::fill::zeros);
-      // Batched gradient pass over the theta-sensitivity model (impThetaScore
-      // switches ind->neqOverride to thetaSensNeq); single shared pool, no swap.
-      // For a mixture the loop runs over the expanded pseudo-subjects and the
-      // component weight a_ij is already folded into sampZk, so this forms the
-      // component-weighted score directly.
-      //
-      // The score/Hessian accumulation is one long sequential floating-point sum
-      // threaded across subjects, so it is kept serial (in eid order) for bit-
-      // identity; only the solve-heavy half (impThetaSensCollect) is parallelized.
-      // Each subject's samples (SIR-resampled if enabled) and collected sensitivity
-      // outputs are stashed per subject, then accumulated in eid order below.  cores
-      // already carries the mixture / pool-sizing serial guard (forced to 1 above).
-      if (harvestSens) {
-        // #958 fused build: outSens[eid] was already filled sample-by-sample
-        // during THIS iteration's E-step (impEStep), off the same inner solve
-        // impEvalJointLik used for the importance weights -- no M-step solve
-        // at all for a subject that harvested cleanly.  A subject every one of
-        // whose samples fell back to the pred-model FD path in the E-step
-        // (outSens[eid].nobs == 0, impEStep leaves it unharvested rather than
-        // re-solving from an OpenMP region -- see impEStep) falls back here to
-        // the ordinary (serial-safe) solve-based read, so no subject's M-step
-        // contribution is silently dropped.
-        for (int eid = 0; eid < nExp; ++eid) {
-          if (sampS[eid].n_rows == 0) continue;
-          if (outSens[eid].nobs > 0) {
-            impThetaAccumOne(outSens[eid], sampZk[eid], g, H);
-          } else {
-            impThetaSensData c;
-            impThetaSensCollect(eid, sampS[eid], c);
-            impThetaAccumOne(c, sampZk[eid], g, H);
-          }
-        }
-      } else {
-        std::vector<impThetaSensData> coll(nExp);
-        // Only zksub is retained per subject (the serial accumulation needs it); the
-        // sample matrix is passed straight into impThetaSensCollect (sampS[eid] as-is,
-        // or a local SIR resample), so there is no per-subject copy of the full sample.
-        std::vector<arma::vec> zksub(nExp);
-        std::vector<char> useSub(nExp, 0);
-        // Parallelize the theta-sensitivity solves over subjects; each subject writes
-        // only its own slot (coll[eid]) and the score/Hessian accumulation below stays
-        // serial in eid order, so the result is bit-identical to the serial M-step.
-        // Only engage when the solve method is thread-safe (liblsoda); the
-        // inner-parallel flag (impInnerParallelOn/Off) defers worker-thread R-API
-        // warnings.  impThetaSensCollect reads calc_lhs into a thread-local buffer and
-        // loosens tolerance per-subject, so no shared solve state is touched.  cores
-        // already carries the mixture / pool-sizing serial guard (forced to 1).
-        bool doParM = (cores > 1) && impMStepParallelOk();
-        if (doParM) impInnerParallelOn();
-        nmForEachSubject(rx, nExp, cores, doParM, nmStatic, [&](int eid) {
-          if (sampS[eid].n_rows != 0) {
-            if (sir && sirN < (int)sampS[eid].n_rows) {
-              // SIR acceleration: an equal-weight systematic resample stands in
-              // for the full weighted sample, cutting the theta-sens solves from
-              // isample to sirN per subject.  For a mixture, zk sums to the
-              // component responsibility a_ij (folded in by impEStep), so the
-              // equal weights carry a_ij/sirN to preserve the component mass.
-              double aij = arma::accu(sampZk[eid]);
-              if (aij > 0.0 && R_finite(aij)) {
-                // Seed this subject's stream on the current thread; the drawn u0 is
-                // a pure function of the (iter, eid) seed, so it is thread-count
-                // invariant.
-                nmSetSeedEng1(sirSeed + (uint32_t)((iter * nExp + eid) * 2));
-                double u0 = rxUnifEng(0.0, 1.0);
-                arma::uvec ridx = impSirIndex(sampZk[eid], sirN, u0);
-                arma::mat Ssir = sampS[eid].rows(ridx);
-                zksub[eid].set_size(sirN); zksub[eid].fill(aij / (double)sirN);
-                impThetaSensCollect(eid, Ssir, coll[eid]);
-                useSub[eid] = 1;
-              }
-            } else {
-              zksub[eid] = sampZk[eid];
-              impThetaSensCollect(eid, sampS[eid], coll[eid]);
-              useSub[eid] = 1;
-            }
-          }
-        });
-        if (doParM) impInnerParallelOff();
-        // Serial accumulation in eid order -- bit-identical to the serial theta score.
-        for (int eid = 0; eid < nExp; ++eid) {
-          if (useSub[eid]) impThetaAccumOne(coll[eid], zksub[eid], g, H);
-        }
-      }
-      g /= (double)nsub;
-      H /= (double)nsub;
-      // MAP correction: fold in the ini({}) prior's score/curvature for these
-      // thetas, if any (no-op otherwise) -- see impPriorStructThetaCorrect().
-      impPriorStructThetaCorrect(nsub, g, H);
-      // The Newton step on the non-mu structural thetas is only as trustworthy
-      // as the IS-weighted Gauss-Newton Hessian behind it.  When the importance
-      // weights degenerate -- a badly covered subject, or a MAP that moved
-      // because mceta= changed which mode the inner search starts from -- H goes
-      // near-singular.  arma::solve still SUCCEEDS on such an H and still returns
-      // a FINITE step; it is just astronomically large, so a bare
-      // `solve() && is_finite()` guard lets one EM iteration throw the whole
-      // parameter vector off the map.  Measured on Bauer's gamma model at
-      // mceta=10: a single iteration moved log(relative variance) from -2.46 to
-      // +60.3 (a relative variance of 1.6e26) and the run reported a garbage
-      // objective, while the same fit at mceta=0 was fine.
-      //
-      // So the step is damped rather than merely finite-checked:
-      //   * Levenberg-Marquardt on the diagonal, escalated until the step lands
-      //     inside the trust region.  H is Gauss-Newton, hence positive
-      //     semi-definite, so adding lambda*diag-scale only ever improves its
-      //     conditioning and rotates the step toward a scaled gradient step.
-      //   * The trust region is relative to each theta's own magnitude (floored
-      //     at 1) so it means the same thing for a theta of 0.1 and one of 1e5.
-      // The undamped Newton step is taken whenever the Hessian behind it is
-      // actually trustworthy, so a healthy iteration is bit-identical to the
-      // unguarded code.  "Trustworthy" is measured directly, by conditioning --
-      // NOT by how big the step is, since a large step off a well-determined
-      // Hessian is a legitimate move and damping it would slow every ordinary
-      // fit.  The sanity bound alongside it is deliberately loose: it exists to
-      // catch a step no honest M-step would ever propose, not to shape normal
-      // ones.
-      arma::vec step;
-      bool stepOk = false;
-      double lambda = 0.0;
-      double rc = 0.0;
-      if (H.is_finite()) rc = arma::rcond(H);
-      bool wellCond = R_finite(rc) && rc > 1e-10;
-      if (wellCond && arma::solve(step, H, g) && step.is_finite() &&
-          impStructStepRel(step) <= IMP_MSTEP_SANE) {
-        impUpdateStructThetas(step);
-      } else {
-        // Not trustworthy.  arma::solve() SUCCEEDS on a near-singular H and
-        // still returns a FINITE step -- just an astronomically large one -- so
-        // "solved and finite" is not a guard, and one such step throws the
-        // whole parameter vector off the map (measured on Bauer's gamma model:
-        // one iteration took a log relative variance from -2.46 to +60.3).
-        //
-        // Levenberg-Marquardt instead, escalated until the step lands inside a
-        // trust region relative to each theta's own magnitude.  H is
-        // Gauss-Newton and hence positive semi-definite, so the damping only
-        // improves its conditioning and rotates the step toward a scaled
-        // gradient step.
-        double hscale = H.is_finite() ? arma::abs(H.diag()).max() : 0.0;
-        if (!R_finite(hscale) || hscale <= 0.0) hscale = 1.0;
-        // Start AT lambda = 1e-8, not at 0.  Reaching here means H already
-        // failed the conditioning test, so an undamped try is not a cheap first
-        // guess: arma::solve() answers a singular system with an APPROXIMATE
-        // solution (and prints "system is singular; rcond: ...; attempting
-        // approx solution" to the user's console), and that approximate step is
-        // then accepted whenever it happens to land inside the trust region.
-        // The trust region bounds a step's SIZE; it says nothing about whether
-        // the Hessian behind it determined its direction.
-        lambda = 1e-8;
-        for (int tryK = 0; tryK < 12; ++tryK) {
-          arma::mat Hd = H;
-          Hd.diag() += lambda * hscale;
-          arma::vec cand;
-          // no_approx: a singular system must FAIL so the ridge escalates,
-          // rather than silently returning a least-squares answer.
-          if (arma::solve(cand, Hd, g, arma::solve_opts::no_approx) &&
-              cand.is_finite() &&
-              impStructStepRel(cand) <= IMP_MSTEP_TRUST) {
-            step = cand;
-            stepOk = true;
-            break;
-          }
-          lambda *= 100.0;
-        }
-        if (stepOk) {
-          nMStepDamped++;
-          impUpdateStructThetas(step);
-        } else {
-          // Even heavily damped the step will not come inside the trust region
-          // (or will not solve at all).  Leaving the thetas alone is the safe
-          // move -- this iteration's E-step simply does not inform them -- and
-          // it is reported rather than silent, since a run that spends every
-          // iteration here is not estimating those thetas at all.
-          nMStepSkipped++;
-        }
-      }
-    }
-
-    // Mixture: mean-posterior EM update of the $MIX proportions (the stable M-step
-    // SAEM uses).  For constant proportions the fixed point of the NONMEM
-    // Gauss-Newton score d_ij = a_{Nm,i}/a_Nm - a_ji/a_j is exactly a_j = mean_i
-    // a_ij, and this update stays in the simplex (a full Newton step overshoots to
-    // the boundary and collapses a component).  Install the target proportions as
-    // absolute $MIX thetas via the multinomial logit theta_m = log(a_m / a_Nm),
-    // floored away from 0 so a transiently-empty component can recover.  Uses
-    // impmap's own responsibilities a_ij, separate from FOCEI's Laplace mixProb.
-    if (Nmix > 1 && !frozen) {
-      arma::vec aStar(Nmix, arma::fill::zeros);
-      for (int i = 0; i < nsub; ++i)
-        for (int j = 0; j < Nmix; ++j) aStar[j] += aMat(i, j);
-      aStar /= (double)nsub;
-      double aFloor = 1e-3;
-      for (int j = 0; j < Nmix; ++j) if (aStar[j] < aFloor) aStar[j] = aFloor;
-      aStar /= arma::accu(aStar);
-      arma::vec thetaM(Nmix - 1);
-      for (int m = 0; m < Nmix - 1; ++m) thetaM[m] = std::log(aStar[m] / aStar[Nmix - 1]);
-      if (thetaM.is_finite()) impSetMixThetas(thetaM);
-    }
-
-    if (!frozen) {
-      // Seed each subject's eta with its conditional mean, then update the mu-
-      // referenced population parameters -- covariate groups by regression
-      // (updateMuGroups) and simple intercepts by the mean-shift (impMuInterceptStep)
-      // -- both of which recenter the etas to mean-zero residuals.  Omega is then the
-      // average recentered conditional moment, masked to the estimated structure.
-      for (int id = 0; id < nsub; ++id) {
-        arma::vec cm = condMean.row(id).t();
-        impSetEta(id, cm);
-      }
-      impUpdateMuThetas();
-      impMuInterceptStep();
-
-      arma::mat Omega(neta, neta, arma::fill::zeros);
-      for (int id = 0; id < nsub; ++id) {
-        impGetEta(id, r);
-        Omega += r * r.t() + condVar[id];
-      }
-      Omega /= (double)nsub;
-      // MAP correction: fold in the ini({}) prior's omega term(s), if any (no-op
-      // otherwise) -- see impPriorOmegaCorrect().  Runs BEFORE the structure
-      // mask/fixed-restore below, since a generic (non-invWishart) term's
-      // correction can otherwise leak weight outside the declared structure or
-      // a fix()ed row.
-      impPriorOmegaCorrect(Omega, nsub);
-      Omega %= omMask;
-      // Restore fix()ed Omega rows/columns to their starting values.
-      for (size_t k = 0; k < omFixedEta.size(); ++k) {
-        int fi = omFixedEta[k];
-        if (fi >= 0 && fi < neta) { Omega.row(fi) = Om0.row(fi); Omega.col(fi) = Om0.col(fi); }
-      }
-      // burnFreezeOmega: install nothing, so Omega (and every quantity
-      // impSetOmega rebuilds from it -- omegaInv, cholOmegaInv, logDetOmegaInv5,
-      // the Omega thetas in fullTheta) stays at its starting value.  The thetas
-      // still move; the whole M-step above ran.
-      if (!(burnIter && burnFreezeOmega)) omFloored = impSetOmega(Omega, diagXform);
-    }
-
-    // Record the current estimates for the parameter-stability half of the test.
-    arma::vec parNow; impGetEstPar(parNow);
-    parHist.push_back(parNow);
-    // Print this iteration + record it into the parameter-history walk.
-    impIterPrintRow(parNow, obj);
-
-    // Windowed convergence check (NONMEM-style CTYPE).  Requires all of:
-    //  (a) the mean absolute objective change over the trailing nConvWindow
-    //      iterations, relative to the current objective, is below ctol
-    //      (window-averaging suppresses the per-iteration Monte-Carlo noise);
-    //  (b) the estimates have stopped drifting -- the max relative net change of
-    //      any parameter across the window is below ctol -- so a low-leverage
-    //      parameter (e.g. a small-endpoint sigma barely moving the objective)
-    //      still converging does not trip an objective-only test;
-    //  (c) the proposal scale gamma has settled, so objective drift while gamma
-    //      is still adapting is not mistaken for convergence.
-    //  (d) the whole trailing window lies AFTER the burn-in.  Not just "do not
-    //      converge while burning in": a window straddling the boundary would
-    //      average burn-in iterations, whose Omega is frozen under
-    //      burnFreezeOmega, so the parameter-drift half (b) would read a drift
-    //      that no M-step was allowed to produce.  objTrace gets exactly one
-    //      push per iteration, so at nBurn = 0 this is identical to the size
-    //      test it sits beside and the default path is unchanged.
-    if (!frozen && nConvWindow > 0 && R_finite(obj) &&
-        iter >= nBurn + nConvWindow &&
-        (int)objTrace.size() >= nConvWindow + 1) {
-      int n = (int)objTrace.size();
-      double objMetric;
-      if (impGammaRuleTarget() && nConvWindow >= 2) {
-        // TARGET rule: mean|delta obj| is a NOISE measure, not a drift measure --
-        // it has a floor at the Monte-Carlo noise level and never reaches ctol no
-        // matter how settled the fit is.  The target rule deliberately widens the
-        // proposal to put xi on iaccept, which costs effective sample size and so
-        // RAISES that floor: measured on the 3-eta theophylline fixture,
-        // mean|delta| is 0.00055-0.00093 under "floor" (ESS 0.95-0.96, all below
-        // a ctol of 1e-3) against 0.00181-0.00264 under "target" (ESS 0.69-0.71,
-        // all above it), so the fit could never converge however long it ran.
-        // Use the drift of the window MEAN instead -- the same noise-robust form
-        // the gamma gate below uses.  Scoped to this rule so the floor rule's
-        // tuned behaviour is bit-identical.
-        int hw = nConvWindow / 2;
-        double mNew = 0.0, mOld = 0.0;
-        for (int k = n - hw; k < n; ++k) mNew += objTrace[k];
-        for (int k = n - nConvWindow; k < n - hw; ++k) mOld += objTrace[k];
-        mNew /= (double)hw;
-        mOld /= (double)(nConvWindow - hw);
-        objMetric = std::fabs(mNew - mOld) / std::max(1.0, std::fabs(obj));
-      } else {
-        double s = 0.0;
-        for (int k = n - nConvWindow; k < n; ++k) s += std::fabs(objTrace[k] - objTrace[k - 1]);
-        objMetric = (s / (double)nConvWindow) / std::max(1.0, std::fabs(obj));
-      }
-      const arma::vec& parOld = parHist[n - nConvWindow - 1];
-      double parMetric = arma::max(arma::abs(parNow - parOld) / (arma::abs(parOld) + 1e-8));
-      // A settled parameter still has ~1-2% Monte-Carlo net drift across the
-      // window, so this gate sits above that floor: it is a safety against
-      // premature stopping on a systematically-drifting low-leverage parameter,
-      // not a precision requirement (the objMetric gate carries the precision).
-      double parTol = 0.02;
-      if (impIsIts()) {
-        // deterministic iteration: relative change (floored at 1) below ctol
-        parMetric = arma::max(arma::abs(parNow - parOld) /
-                              arma::clamp(arma::abs(parOld), 1.0, arma::datum::inf));
-        parTol = ctol;
-      }
-      double gWin0 = gammaTrace[n - nConvWindow - 1];
-      // Under "individual" the traced scalar is a MEAN, so offsetting moves
-      // across subjects could look settled while individual scales are still
-      // swinging.  Gate on the largest per-subject step the controller actually
-      // applied instead, which cannot be masked that way.
-      // gammaRule="target" tracks a MONTE-CARLO statistic, so gamma keeps jittering
-      // around its fixed point and never stops moving the way the one-sided floor
-      // rule's gamma does (which is literally constant on a healthy model, making
-      // the window test below vacuous).  Gate it on the drift of the window MEAN
-      // instead: noise averages out over nConvWindow, a genuine trend does not.
-      bool gammaStable;
-      if (gammaInd) {
-        gammaStable = (gammaStepPrev <= 1e-3);
-      } else if (impGammaRuleTarget() && nConvWindow >= 2) {
-        // Split the window in half and compare the two means.  BOTH halves must be
-        // non-empty: at nConvWindow=1 the older half has no elements, mOld stays 0,
-        // and the test degenerates to gamma <= gammaTargetTol -- unsatisfiable,
-        // since gamma is bounded below by iscaleMin (0.1 by default), so the fit
-        // could never converge.  Hence the nConvWindow >= 2 guard here and the
-        // fall-through to the instantaneous test below.
-        int hw = nConvWindow / 2;              // >= 1, and nConvWindow - hw >= 1
-        double mNew = 0.0, mOld = 0.0;
-        for (int k = n - hw; k < n; ++k) mNew += gammaTrace[k];
-        for (int k = n - nConvWindow; k < n - hw; ++k) mOld += gammaTrace[k];
-        mNew /= (double)hw;
-        mOld /= (double)(nConvWindow - hw);
-        gammaStable = (std::fabs(mNew - mOld) <= gammaTargetTol * std::max(1.0, mOld));
-      } else {
-        // Instantaneous test.  The floor rule's gamma is exactly constant once
-        // coverage is healthy so 1e-3 is ample; a target-tracking gamma carries
-        // xi's Monte-Carlo noise, so it gets the same looser tolerance the
-        // window-mean test uses (without it, nConvWindow=1 could never converge).
-        double tol = impGammaRuleTarget() ? gammaTargetTol : 1e-3;
-        gammaStable = (std::fabs(gamma - gWin0) <= tol * std::max(1.0, gWin0));
-      }
-      if (gammaStable && objMetric < ctol && parMetric < parTol) { converged = true; break; }
-    }
-
-    // Adapt the proposal scale gamma (NONMEM ISCALE) treating iaccept as an
-    // effective-sample-fraction FLOOR, not a rigid target: the effective sample
-    // size is maximized near gamma = 1 (the Laplace proposal matches a Gaussian
-    // posterior), so deliberately forcing accFrac down to iaccept would only add
-    // Monte-Carlo noise.  gamma is left at the efficient starting value while
-    // coverage is healthy (accFrac >= iaccept) and inflated only when coverage
-    // drops below the floor (heavy-tailed/skewed posterior), with a gentle
-    // per-step cap and clamped to [iscaleMin, iscaleMax].  The importance weights
-    // correct for gamma, so this changes only the variance, not the estimates.
-    //
-    // Iteration 0 does not adapt.  Its weights are normalized against the STARTING
-    // mode/Hessian at the initial estimates, which is not yet a meaningful
-    // reference, so both statistics the controller reads are transients: measured
-    // on theophylline, xi = 4.1e6 against a settled ~0.39 and accFrac = 0.257
-    // against a settled ~0.53.  Adapting off that inflated gamma to 1.248
-    // (sqrt(0.4/0.257), just under the 1.25 cap) on a problem whose proposal is
-    // healthy from iteration 1 onward -- and the "global" branch below is
-    // one-sided, so it could never come back down.
-    if (iter == 0) {
-      // nothing to adapt from yet
-    } else if (gammaInd) {
-      // xi_i falls monotonically as the proposal
-      // widens, so xi_i ABOVE the target means subject i's proposal is too
-      // narrow for its posterior (the heavy-tail case) and gamma_i must grow;
-      // xi_i below target means it is needlessly over-dispersed and gamma_i
-      // shrinks.  Two-sided, so a bad early iteration is not paid for forever.
-      //
-      // The damping exponent MUST scale with the number of random effects.
-      // For a Gaussian posterior matched by H_i the statistic is
-      // xi = gamma^(-neta/2), so the update gamma' = gamma * (xi/iaccept)^p
-      // linearizes (in log gamma) to an error multiplier
-      //
-      //   lambda = 1 - p * neta / 2
-      //
-      // A FIXED p (e.g. the natural-looking sqrt, p = 1/2) is therefore only
-      // stable for neta < 8: at neta = 8 lambda = -1 and the controller enters
-      // a period-2 limit cycle that never settles, so the fit can never meet
-      // the gamma-stability gate.  That is not a hypothetical -- an 8-eta model
-      // oscillates gamma 1.32/1.24/1.30/1.23... and xi 0.36/0.45/0.37/0.46...
-      // indefinitely.  Models with 8+ random effects are ordinary here.
-      //
-      // p = 2/neta gives lambda = 0 at every dimension.  This is not tuned
-      // damping: xi = gamma^(-neta/2) inverts exactly, so
-      // gamma * (xi/target)^(2/neta) IS the analytic solve for the gamma that
-      // hits the target -- a FIXED exponent is the thing that needs justifying.
-      // The symmetric 1.25x cap still bounds a single noisy iteration.  Weights
-      // correct for gamma, so this moves variance, not the estimates.
-      const double pExp = 2.0 / std::max(1.0, (double)neta);
-      const double capUp = 1.25, capDn = 1.0 / 1.25;
-      double maxStep = 0.0;
-      for (int id = 0; id < nExp; ++id) {
-        double xiId = XiExp[id];
-        if (ISNAN(xiId)) continue;      // no usable xi (dead subject): leave alone
-        double fac;
-        if (!R_finite(xiId)) {
-          fac = capUp;                  // xi = +Inf: as under-dispersed as it gets
-        } else if (xiId <= 0.0) {
-          fac = capDn;                  // xi = 0: proposal far too wide
-        } else {
-          fac = std::pow(xiId / iacceptVec[id], pExp);
-          if (fac > capUp) fac = capUp;
-          else if (fac < capDn) fac = capDn;
-        }
-        double g = gammaVec[id] * fac;
-        if (g < iscaleMin) g = iscaleMin;
-        if (g > iscaleMax) g = iscaleMax;
-        // Measure the step actually taken (after clamping) so a subject pinned
-        // at a bound reads as settled rather than as perpetually moving.
-        double applied = (gammaVec[id] > 0.0) ? std::fabs(g / gammaVec[id] - 1.0) : 0.0;
-        if (applied > maxStep) maxStep = applied;
-        gammaVec[id] = g;
-      }
-      gammaStepPrev = maxStep;
-    } else if (impGammaRuleTarget()) {
-      // gammaRule="target" -- NONMEM's rule for the SHARED scale.  The NM7
-      // Technical Guide (note after eq. 1.76) says gamma is "continually adjusted
-      // so that xi_i approximates IACCEPT", i.e. two-sided on xi, not one-sided on
-      // the Kish fraction.  Reuse the per-subject branch's analytic inversion:
-      // xi = gamma^(-neta/2) inverts exactly, so pExp = 2/neta gives an error
-      // multiplier of 0 at every dimension.  A FIXED exponent (the sqrt the
-      // "floor" branch below uses) is the form measured to enter a period-2 limit
-      // cycle at neta >= 8, which one-sidedness is currently the only thing
-      // suppressing -- so the two-sided rule must NOT reuse it.
-      //
-      // xiMean is NA when no subject had a usable xi, and a single non-finite
-      // subject would otherwise poison gamma for the rest of the fit through
-      // pow(NaN, .), so guard before applying.
-      //
-      // LIMIT OF THE SHARED FORM.  The exponent 2/neta inverts xi = gamma^(-neta/2)
-      // exactly for ONE posterior.  Over heterogeneous subjects sharing one gamma
-      // the mean responds with an effective exponent sum(w_i d_i); if a
-      // heavy-tailed subject with d_i > neta/2 dominates the mean enough that
-      // sum(w_i d_i) > neta, the linearized map has eigenvalue < -1 and gamma
-      // oscillates between the caps instead of settling.  The 1.25x caps bound it
-      // (it cannot diverge) and the window-mean gate below will simply not report
-      // convergence.  gammaMethod="individual" has no such exposure -- each
-      // subject inverts its own xi -- so that is the remedy when it bites.
-      if (iaccept > 0 && R_finite(xiMean) && xiMean > 0.0) {
-        const double pExp = 2.0 / std::max(1.0, (double)neta);
-        double fac = std::pow(xiMean / iaccept, pExp);
-        if (fac > 1.25) fac = 1.25;
-        else if (fac < 1.0 / 1.25) fac = 1.0 / 1.25;
-        double g = gamma * fac;
-        if (g < iscaleMin) g = iscaleMin;
-        if (g > iscaleMax) g = iscaleMax;
-        // measure the step AFTER clamping, so a gamma pinned at a bound reads as
-        // settled rather than as perpetually moving (mirrors gammaStepPrev in the
-        // per-subject branch); the convergence gate compares gamma across the
-        // window, which a clamped gamma satisfies for free.
-        gamma = g;
-      }
-    } else if (iaccept > 0 && accFrac > 0 && accFrac < iaccept) {
-      // gammaRule="floor" (default) -- iaccept is a one-sided FLOOR on the mean
-      // Kish effective-sample fraction: gamma is left at its efficient starting
-      // value while coverage is healthy and inflated only when it drops below.
-      double fac = std::sqrt(iaccept / accFrac);
-      if (fac > 1.25) fac = 1.25;
-      gamma *= fac;
-      if (gamma < iscaleMin) gamma = iscaleMin;
-      if (gamma > iscaleMax) gamma = iscaleMax;
+// #958 fused build: outSens[eid] was already filled sample-by-sample
+// during THIS iteration's E-step (impEStep), off the same inner solve
+// impEvalJointLik used for the importance weights -- no M-step solve
+// at all for a subject that harvested cleanly.  A subject every one of
+// whose samples fell back to the pred-model FD path in the E-step
+// (outSens[eid].nobs == 0, impEStep leaves it unharvested rather than
+// re-solving from an OpenMP region -- see impHarvestSample) falls back here to
+// the ordinary (serial-safe) solve-based read, so no subject's M-step
+// contribution is silently dropped.
+static void impMStepThetaHarvested(ImpOuterState& st, arma::vec& g, arma::mat& H) {
+  for (int eid = 0; eid < st.nExp; ++eid) {
+    if (st.sampS[eid].n_rows == 0) continue;
+    if (st.outSens[eid].nobs > 0) {
+      impThetaAccumOne(st.outSens[eid], st.sampZk[eid], g, H);
+    } else {
+      impThetaSensData c;
+      impThetaSensCollect(eid, st.sampS[eid], c);
+      impThetaAccumOne(c, st.sampZk[eid], g, H);
     }
   }
+}
 
+// One subject's theta-sensitivity solves (SIR-resampled if enabled); true when used
+static bool impMStepCollectOne(ImpOuterState& st, int iter, int eid, impThetaSensData& coll,
+                               arma::vec& zksub) {
+  if (st.sampS[eid].n_rows == 0) return false;
+  if (!(st.sir && st.sirN < (int)st.sampS[eid].n_rows)) {
+    zksub = st.sampZk[eid];
+    impThetaSensCollect(eid, st.sampS[eid], coll);
+    return true;
+  }
+  // SIR acceleration: an equal-weight systematic resample stands in
+  // for the full weighted sample, cutting the theta-sens solves from
+  // isample to sirN per subject.  For a mixture, zk sums to the
+  // component responsibility a_ij (folded in by impEStep), so the
+  // equal weights carry a_ij/sirN to preserve the component mass.
+  double aij = arma::accu(st.sampZk[eid]);
+  if (!(aij > 0.0 && R_finite(aij))) return false;
+  // Seed this subject's stream on the current thread; the drawn u0 is
+  // a pure function of the (iter, eid) seed, so it is thread-count
+  // invariant.
+  nmSetSeedEng1(st.sirSeed + (uint32_t)((iter * st.nExp + eid) * 2));
+  double u0 = rxUnifEng(0.0, 1.0);
+  arma::uvec ridx = impSirIndex(st.sampZk[eid], st.sirN, u0);
+  arma::mat Ssir = st.sampS[eid].rows(ridx);
+  zksub.set_size(st.sirN); zksub.fill(aij / (double)st.sirN);
+  impThetaSensCollect(eid, Ssir, coll);
+  return true;
+}
+
+static void impMStepThetaCollect(ImpOuterState& st, int iter, arma::vec& g, arma::mat& H) {
+  const int nExp = st.nExp;
+  std::vector<impThetaSensData> coll(nExp);
+  // Only zksub is retained per subject (the serial accumulation needs it); the
+  // sample matrix is passed straight into impThetaSensCollect (sampS[eid] as-is,
+  // or a local SIR resample), so there is no per-subject copy of the full sample.
+  std::vector<arma::vec> zksub(nExp);
+  std::vector<char> useSub(nExp, 0);
+  // Parallelize the theta-sensitivity solves over subjects; each subject writes
+  // only its own slot (coll[eid]) and the score/Hessian accumulation below stays
+  // serial in eid order, so the result is bit-identical to the serial M-step.
+  // Only engage when the solve method is thread-safe (liblsoda); the
+  // inner-parallel flag (impInnerParallelOn/Off) defers worker-thread R-API
+  // warnings.  impThetaSensCollect reads calc_lhs into a thread-local buffer and
+  // loosens tolerance per-subject, so no shared solve state is touched.  cores
+  // already carries the mixture / pool-sizing serial guard (forced to 1).
+  bool doParM = (st.cores > 1) && impMStepParallelOk();
+  if (doParM) impInnerParallelOn();
+  nmForEachSubject(rx, nExp, st.cores, doParM, nmStatic, [&](int eid) {
+    if (impMStepCollectOne(st, iter, eid, coll[eid], zksub[eid])) useSub[eid] = 1;
+  });
+  if (doParM) impInnerParallelOff();
+  // Serial accumulation in eid order -- bit-identical to the serial theta score.
+  for (int eid = 0; eid < nExp; ++eid) {
+    if (useSub[eid]) impThetaAccumOne(coll[eid], zksub[eid], g, H);
+  }
+}
+
+// Levenberg-Marquardt, escalated until the step lands inside a trust region
+// relative to each theta's own magnitude.  H is Gauss-Newton and hence positive
+// semi-definite, so the damping only improves its conditioning and rotates the
+// step toward a scaled gradient step.
+static bool impMStepDampedStep(const arma::vec& g, const arma::mat& H, arma::vec& step) {
+  double hscale = H.is_finite() ? arma::abs(H.diag()).max() : 0.0;
+  if (!R_finite(hscale) || hscale <= 0.0) hscale = 1.0;
+  // Start AT lambda = 1e-8, not at 0.  Reaching here means H already
+  // failed the conditioning test, so an undamped try is not a cheap first
+  // guess: arma::solve() answers a singular system with an APPROXIMATE
+  // solution (and prints "system is singular; rcond: ...; attempting
+  // approx solution" to the user's console), and that approximate step is
+  // then accepted whenever it happens to land inside the trust region.
+  // The trust region bounds a step's SIZE; it says nothing about whether
+  // the Hessian behind it determined its direction.
+  double lambda = 1e-8;
+  for (int tryK = 0; tryK < 12; ++tryK) {
+    arma::mat Hd = H;
+    Hd.diag() += lambda * hscale;
+    arma::vec cand;
+    // no_approx: a singular system must FAIL so the ridge escalates,
+    // rather than silently returning a least-squares answer.
+    if (arma::solve(cand, Hd, g, arma::solve_opts::no_approx) &&
+        cand.is_finite() &&
+        impStructStepRel(cand) <= IMP_MSTEP_TRUST) {
+      step = cand;
+      return true;
+    }
+    lambda *= 100.0;
+  }
+  return false;
+}
+
+// The Newton step on the non-mu structural thetas is only as trustworthy
+// as the IS-weighted Gauss-Newton Hessian behind it.  When the importance
+// weights degenerate -- a badly covered subject, or a MAP that moved
+// because mceta= changed which mode the inner search starts from -- H goes
+// near-singular.  arma::solve still SUCCEEDS on such an H and still returns
+// a FINITE step; it is just astronomically large, so a bare
+// `solve() && is_finite()` guard lets one EM iteration throw the whole
+// parameter vector off the map.  Measured on Bauer's gamma model at
+// mceta=10: a single iteration moved log(relative variance) from -2.46 to
+// +60.3 (a relative variance of 1.6e26) and the run reported a garbage
+// objective, while the same fit at mceta=0 was fine.
+//
+// So the step is damped rather than merely finite-checked:
+//   * Levenberg-Marquardt on the diagonal, escalated until the step lands
+//     inside the trust region.  H is Gauss-Newton, hence positive
+//     semi-definite, so adding lambda*diag-scale only ever improves its
+//     conditioning and rotates the step toward a scaled gradient step.
+//   * The trust region is relative to each theta's own magnitude (floored
+//     at 1) so it means the same thing for a theta of 0.1 and one of 1e5.
+// The undamped Newton step is taken whenever the Hessian behind it is
+// actually trustworthy, so a healthy iteration is bit-identical to the
+// unguarded code.  "Trustworthy" is measured directly, by conditioning --
+// NOT by how big the step is, since a large step off a well-determined
+// Hessian is a legitimate move and damping it would slow every ordinary
+// fit.  The sanity bound alongside it is deliberately loose: it exists to
+// catch a step no honest M-step would ever propose, not to shape normal
+// ones.
+static void impMStepThetaStep(const arma::vec& g, const arma::mat& H) {
+  arma::vec step;
+  double rc = 0.0;
+  if (H.is_finite()) rc = arma::rcond(H);
+  bool wellCond = R_finite(rc) && rc > 1e-10;
+  if (wellCond && arma::solve(step, H, g) && step.is_finite() &&
+      impStructStepRel(step) <= IMP_MSTEP_SANE) {
+    impUpdateStructThetas(step);
+  } else if (impMStepDampedStep(g, H, step)) {
+    nMStepDamped++;
+    impUpdateStructThetas(step);
+  } else {
+    // Even heavily damped the step will not come inside the trust region
+    // (or will not solve at all).  Leaving the thetas alone is the safe
+    // move -- this iteration's E-step simply does not inform them -- and
+    // it is reported rather than silent, since a run that spends every
+    // iteration here is not estimating those thetas at all.
+    nMStepSkipped++;
+  }
+}
+
+// M-step.  First a Newton step on the non-mu structural thetas from the
+// IS-weighted score and Gauss-Newton Hessian accumulated over subjects/samples
+// -- done before the mu updates (which shift thetas/etas) so it sees the
+// E-step parameters, and before impSetEta since impThetaScore's re-solves
+// overwrite the etas.  Skipped if the Hessian is not usable (thetas unchanged).
+static void impMStepTheta(ImpOuterState& st, int iter) {
+  OdeSwapEsBatch thetaEvents(impCombSensEnabled() ? odeSlotInner : odeSlotThetaSens);
+  arma::vec g(st.nSens, arma::fill::zeros);
+  arma::mat H(st.nSens, st.nSens, arma::fill::zeros);
+  // Batched gradient pass over the theta-sensitivity model (impThetaScore
+  // switches ind->neqOverride to thetaSensNeq); single shared pool, no swap.
+  // For a mixture the loop runs over the expanded pseudo-subjects and the
+  // component weight a_ij is already folded into sampZk, so this forms the
+  // component-weighted score directly.
+  //
+  // The score/Hessian accumulation is one long sequential floating-point sum
+  // threaded across subjects, so it is kept serial (in eid order) for bit-
+  // identity; only the solve-heavy half (impThetaSensCollect) is parallelized.
+  // Each subject's samples (SIR-resampled if enabled) and collected sensitivity
+  // outputs are stashed per subject, then accumulated in eid order.  cores
+  // already carries the mixture / pool-sizing serial guard (forced to 1).
+  if (st.harvestSens) {
+    impMStepThetaHarvested(st, g, H);
+  } else {
+    impMStepThetaCollect(st, iter, g, H);
+  }
+  g /= (double)st.nsub;
+  H /= (double)st.nsub;
+  // MAP correction: fold in the ini({}) prior's score/curvature for these
+  // thetas, if any (no-op otherwise) -- see impPriorStructThetaCorrect().
+  impPriorStructThetaCorrect(st.nsub, g, H);
+  impMStepThetaStep(g, H);
+}
+
+// Mixture: mean-posterior EM update of the $MIX proportions (the stable M-step
+// SAEM uses).  For constant proportions the fixed point of the NONMEM
+// Gauss-Newton score d_ij = a_{Nm,i}/a_Nm - a_ji/a_j is exactly a_j = mean_i
+// a_ij, and this update stays in the simplex (a full Newton step overshoots to
+// the boundary and collapses a component).  Install the target proportions as
+// absolute $MIX thetas via the multinomial logit theta_m = log(a_m / a_Nm),
+// floored away from 0 so a transiently-empty component can recover.  Uses
+// impmap's own responsibilities a_ij, separate from FOCEI's Laplace mixProb.
+static void impMStepMix(ImpOuterState& st) {
+  const int Nmix = st.Nmix;
+  arma::vec aStar(Nmix, arma::fill::zeros);
+  for (int i = 0; i < st.nsub; ++i)
+    for (int j = 0; j < Nmix; ++j) aStar[j] += st.aMat(i, j);
+  aStar /= (double)st.nsub;
+  double aFloor = 1e-3;
+  for (int j = 0; j < Nmix; ++j) if (aStar[j] < aFloor) aStar[j] = aFloor;
+  aStar /= arma::accu(aStar);
+  arma::vec thetaM(Nmix - 1);
+  for (int m = 0; m < Nmix - 1; ++m) thetaM[m] = std::log(aStar[m] / aStar[Nmix - 1]);
+  if (thetaM.is_finite()) impSetMixThetas(thetaM);
+}
+
+// Seed each subject's eta with its conditional mean, then update the mu-
+// referenced population parameters -- covariate groups by regression
+// (updateMuGroups) and simple intercepts by the mean-shift (impMuInterceptStep)
+// -- both of which recenter the etas to mean-zero residuals.  Omega is then the
+// average recentered conditional moment, masked to the estimated structure.
+static void impMStepMuOmega(ImpOuterState& st, bool burnIter) {
+  const int nsub = st.nsub, neta = st.neta;
+  for (int id = 0; id < nsub; ++id) {
+    arma::vec cm = st.condMean.row(id).t();
+    impSetEta(id, cm);
+  }
+  impUpdateMuThetas();
+  impMuInterceptStep();
+
+  arma::vec r(neta);
+  arma::mat Omega(neta, neta, arma::fill::zeros);
+  for (int id = 0; id < nsub; ++id) {
+    impGetEta(id, r);
+    Omega += r * r.t() + st.condVar[id];
+  }
+  Omega /= (double)nsub;
+  // MAP correction: fold in the ini({}) prior's omega term(s), if any (no-op
+  // otherwise) -- see impPriorOmegaCorrect().  Runs BEFORE the structure
+  // mask/fixed-restore below, since a generic (non-invWishart) term's
+  // correction can otherwise leak weight outside the declared structure or
+  // a fix()ed row.
+  impPriorOmegaCorrect(Omega, nsub);
+  Omega %= st.omMask;
+  // Restore fix()ed Omega rows/columns to their starting values.
+  for (size_t k = 0; k < st.omFixedEta.size(); ++k) {
+    int fi = st.omFixedEta[k];
+    if (fi >= 0 && fi < neta) { Omega.row(fi) = st.Om0.row(fi); Omega.col(fi) = st.Om0.col(fi); }
+  }
+  // burnFreezeOmega: install nothing, so Omega (and every quantity
+  // impSetOmega rebuilds from it -- omegaInv, cholOmegaInv, logDetOmegaInv5,
+  // the Omega thetas in fullTheta) stays at its starting value.  The thetas
+  // still move; the whole M-step above ran.
+  if (!(burnIter && st.burnFreezeOmega)) st.omFloored = impSetOmega(Omega, st.diagXform);
+}
+
+// Mean of trace[lo, mid) and trace[mid, hi): the drift of the window mean
+static double impWindowMeanDrift(const std::vector<double>& tr, int n, int nConvWindow,
+                                 double& mOld) {
+  int hw = nConvWindow / 2;              // >= 1, and nConvWindow - hw >= 1
+  double mNew = 0.0;
+  mOld = 0.0;
+  for (int k = n - hw; k < n; ++k) mNew += tr[k];
+  for (int k = n - nConvWindow; k < n - hw; ++k) mOld += tr[k];
+  mNew /= (double)hw;
+  mOld /= (double)(nConvWindow - hw);
+  return std::fabs(mNew - mOld);
+}
+
+// Objective half of the convergence test
+static double impConvObjMetric(const ImpOuterState& st, int n) {
+  if (impGammaRuleTarget() && st.nConvWindow >= 2) {
+    // TARGET rule: mean|delta obj| is a NOISE measure, not a drift measure --
+    // it has a floor at the Monte-Carlo noise level and never reaches ctol no
+    // matter how settled the fit is.  The target rule deliberately widens the
+    // proposal to put xi on iaccept, which costs effective sample size and so
+    // RAISES that floor: measured on the 3-eta theophylline fixture,
+    // mean|delta| is 0.00055-0.00093 under "floor" (ESS 0.95-0.96, all below
+    // a ctol of 1e-3) against 0.00181-0.00264 under "target" (ESS 0.69-0.71,
+    // all above it), so the fit could never converge however long it ran.
+    // Use the drift of the window MEAN instead -- the same noise-robust form
+    // the gamma gate uses.  Scoped to this rule so the floor rule's
+    // tuned behaviour is bit-identical.
+    double mOld;
+    return impWindowMeanDrift(st.objTrace, n, st.nConvWindow, mOld) /
+      std::max(1.0, std::fabs(st.obj));
+  }
+  double s = 0.0;
+  for (int k = n - st.nConvWindow; k < n; ++k) s += std::fabs(st.objTrace[k] - st.objTrace[k - 1]);
+  return (s / (double)st.nConvWindow) / std::max(1.0, std::fabs(st.obj));
+}
+
+// Proposal-scale half of the convergence test.  Under "individual" the traced
+// scalar is a MEAN, so offsetting moves across subjects could look settled while
+// individual scales are still swinging.  Gate on the largest per-subject step the
+// controller actually applied instead, which cannot be masked that way.
+// gammaRule="target" tracks a MONTE-CARLO statistic, so gamma keeps jittering
+// around its fixed point and never stops moving the way the one-sided floor
+// rule's gamma does (which is literally constant on a healthy model, making
+// the window test vacuous).  Gate it on the drift of the window MEAN
+// instead: noise averages out over nConvWindow, a genuine trend does not.
+static bool impConvGammaStable(const ImpOuterState& st, int n) {
+  if (st.gammaInd) return st.gammaStepPrev <= 1e-3;
+  if (impGammaRuleTarget() && st.nConvWindow >= 2) {
+    // Split the window in half and compare the two means.  BOTH halves must be
+    // non-empty: at nConvWindow=1 the older half has no elements, mOld stays 0,
+    // and the test degenerates to gamma <= gammaTargetTol -- unsatisfiable,
+    // since gamma is bounded below by iscaleMin (0.1 by default), so the fit
+    // could never converge.  Hence the nConvWindow >= 2 guard here and the
+    // fall-through to the instantaneous test below.
+    double mOld;
+    double d = impWindowMeanDrift(st.gammaTrace, n, st.nConvWindow, mOld);
+    return d <= impGammaTargetTol * std::max(1.0, mOld);
+  }
+  // Instantaneous test.  The floor rule's gamma is exactly constant once
+  // coverage is healthy so 1e-3 is ample; a target-tracking gamma carries
+  // xi's Monte-Carlo noise, so it gets the same looser tolerance the
+  // window-mean test uses (without it, nConvWindow=1 could never converge).
+  double gWin0 = st.gammaTrace[n - st.nConvWindow - 1];
+  double tol = impGammaRuleTarget() ? impGammaTargetTol : 1e-3;
+  return std::fabs(st.gamma - gWin0) <= tol * std::max(1.0, gWin0);
+}
+
+// Windowed convergence check (NONMEM-style CTYPE).  Requires all of:
+//  (a) the mean absolute objective change over the trailing nConvWindow
+//      iterations, relative to the current objective, is below ctol
+//      (window-averaging suppresses the per-iteration Monte-Carlo noise);
+//  (b) the estimates have stopped drifting -- the max relative net change of
+//      any parameter across the window is below ctol -- so a low-leverage
+//      parameter (e.g. a small-endpoint sigma barely moving the objective)
+//      still converging does not trip an objective-only test;
+//  (c) the proposal scale gamma has settled, so objective drift while gamma
+//      is still adapting is not mistaken for convergence.
+//  (d) the whole trailing window lies AFTER the burn-in.  Not just "do not
+//      converge while burning in": a window straddling the boundary would
+//      average burn-in iterations, whose Omega is frozen under
+//      burnFreezeOmega, so the parameter-drift half (b) would read a drift
+//      that no M-step was allowed to produce.  objTrace gets exactly one
+//      push per iteration, so at nBurn = 0 this is identical to the size
+//      test it sits beside and the default path is unchanged.
+static bool impOuterConverged(const ImpOuterState& st, int iter, const arma::vec& parNow) {
+  if (st.frozen || st.nConvWindow <= 0 || !R_finite(st.obj) ||
+      iter < st.nBurn + st.nConvWindow ||
+      (int)st.objTrace.size() < st.nConvWindow + 1) {
+    return false;
+  }
+  int n = (int)st.objTrace.size();
+  double objMetric = impConvObjMetric(st, n);
+  const arma::vec& parOld = st.parHist[n - st.nConvWindow - 1];
+  double parMetric = arma::max(arma::abs(parNow - parOld) / (arma::abs(parOld) + 1e-8));
+  // A settled parameter still has ~1-2% Monte-Carlo net drift across the
+  // window, so this gate sits above that floor: it is a safety against
+  // premature stopping on a systematically-drifting low-leverage parameter,
+  // not a precision requirement (the objMetric gate carries the precision).
+  double parTol = 0.02;
+  if (impIsIts()) {
+    // deterministic iteration: relative change (floored at 1) below ctol
+    parMetric = arma::max(arma::abs(parNow - parOld) /
+                          arma::clamp(arma::abs(parOld), 1.0, arma::datum::inf));
+    parTol = st.ctol;
+  }
+  bool gammaStable = impConvGammaStable(st, n);
+  return gammaStable && objMetric < st.ctol && parMetric < parTol;
+}
+
+// gammaMethod="individual": xi_i falls monotonically as the proposal
+// widens, so xi_i ABOVE the target means subject i's proposal is too
+// narrow for its posterior (the heavy-tail case) and gamma_i must grow;
+// xi_i below target means it is needlessly over-dispersed and gamma_i
+// shrinks.  Two-sided, so a bad early iteration is not paid for forever.
+//
+// The damping exponent MUST scale with the number of random effects.
+// For a Gaussian posterior matched by H_i the statistic is
+// xi = gamma^(-neta/2), so the update gamma' = gamma * (xi/iaccept)^p
+// linearizes (in log gamma) to an error multiplier
+//
+//   lambda = 1 - p * neta / 2
+//
+// A FIXED p (e.g. the natural-looking sqrt, p = 1/2) is therefore only
+// stable for neta < 8: at neta = 8 lambda = -1 and the controller enters
+// a period-2 limit cycle that never settles, so the fit can never meet
+// the gamma-stability gate.  That is not a hypothetical -- an 8-eta model
+// oscillates gamma 1.32/1.24/1.30/1.23... and xi 0.36/0.45/0.37/0.46...
+// indefinitely.  Models with 8+ random effects are ordinary here.
+//
+// p = 2/neta gives lambda = 0 at every dimension.  This is not tuned
+// damping: xi = gamma^(-neta/2) inverts exactly, so
+// gamma * (xi/target)^(2/neta) IS the analytic solve for the gamma that
+// hits the target -- a FIXED exponent is the thing that needs justifying.
+// The symmetric 1.25x cap still bounds a single noisy iteration.  Weights
+// correct for gamma, so this moves variance, not the estimates.
+static double impGammaIndFactor(double xiId, double target, double pExp) {
+  const double capUp = 1.25, capDn = 1.0 / 1.25;
+  if (!R_finite(xiId)) return capUp;      // xi = +Inf: as under-dispersed as it gets
+  if (xiId <= 0.0) return capDn;          // xi = 0: proposal far too wide
+  double fac = std::pow(xiId / target, pExp);
+  if (fac > capUp) fac = capUp;
+  else if (fac < capDn) fac = capDn;
+  return fac;
+}
+
+static void impAdaptGammaInd(ImpOuterState& st) {
+  const double pExp = 2.0 / std::max(1.0, (double)st.neta);
+  double maxStep = 0.0;
+  for (int id = 0; id < st.nExp; ++id) {
+    double xiId = st.XiExp[id];
+    if (ISNAN(xiId)) continue;      // no usable xi (dead subject): leave alone
+    double fac = impGammaIndFactor(xiId, st.iacceptVec[id], pExp);
+    double g = st.gammaVec[id] * fac;
+    if (g < st.iscaleMin) g = st.iscaleMin;
+    if (g > st.iscaleMax) g = st.iscaleMax;
+    // Measure the step actually taken (after clamping) so a subject pinned
+    // at a bound reads as settled rather than as perpetually moving.
+    double applied = (st.gammaVec[id] > 0.0) ? std::fabs(g / st.gammaVec[id] - 1.0) : 0.0;
+    if (applied > maxStep) maxStep = applied;
+    st.gammaVec[id] = g;
+  }
+  st.gammaStepPrev = maxStep;
+}
+
+// gammaRule="target" -- NONMEM's rule for the SHARED scale.  The NM7
+// Technical Guide (note after eq. 1.76) says gamma is "continually adjusted
+// so that xi_i approximates IACCEPT", i.e. two-sided on xi, not one-sided on
+// the Kish fraction.  Reuse the per-subject branch's analytic inversion:
+// xi = gamma^(-neta/2) inverts exactly, so pExp = 2/neta gives an error
+// multiplier of 0 at every dimension.  A FIXED exponent (the sqrt the
+// "floor" branch uses) is the form measured to enter a period-2 limit
+// cycle at neta >= 8, which one-sidedness is currently the only thing
+// suppressing -- so the two-sided rule must NOT reuse it.
+//
+// xiMean is NA when no subject had a usable xi, and a single non-finite
+// subject would otherwise poison gamma for the rest of the fit through
+// pow(NaN, .), so guard before applying.
+//
+// LIMIT OF THE SHARED FORM.  The exponent 2/neta inverts xi = gamma^(-neta/2)
+// exactly for ONE posterior.  Over heterogeneous subjects sharing one gamma
+// the mean responds with an effective exponent sum(w_i d_i); if a
+// heavy-tailed subject with d_i > neta/2 dominates the mean enough that
+// sum(w_i d_i) > neta, the linearized map has eigenvalue < -1 and gamma
+// oscillates between the caps instead of settling.  The 1.25x caps bound it
+// (it cannot diverge) and the window-mean gate will simply not report
+// convergence.  gammaMethod="individual" has no such exposure -- each
+// subject inverts its own xi -- so that is the remedy when it bites.
+static void impAdaptGammaTarget(ImpOuterState& st) {
+  if (!(st.iaccept > 0 && R_finite(st.xiMean) && st.xiMean > 0.0)) return;
+  const double pExp = 2.0 / std::max(1.0, (double)st.neta);
+  double fac = std::pow(st.xiMean / st.iaccept, pExp);
+  if (fac > 1.25) fac = 1.25;
+  else if (fac < 1.0 / 1.25) fac = 1.0 / 1.25;
+  double g = st.gamma * fac;
+  if (g < st.iscaleMin) g = st.iscaleMin;
+  if (g > st.iscaleMax) g = st.iscaleMax;
+  // measure the step AFTER clamping, so a gamma pinned at a bound reads as
+  // settled rather than as perpetually moving (mirrors gammaStepPrev in the
+  // per-subject branch); the convergence gate compares gamma across the
+  // window, which a clamped gamma satisfies for free.
+  st.gamma = g;
+}
+
+// gammaRule="floor" (default) -- iaccept is a one-sided FLOOR on the mean
+// Kish effective-sample fraction: gamma is left at its efficient starting
+// value while coverage is healthy and inflated only when it drops below.
+static void impAdaptGammaFloor(ImpOuterState& st) {
+  if (!(st.iaccept > 0 && st.accFrac > 0 && st.accFrac < st.iaccept)) return;
+  double fac = std::sqrt(st.iaccept / st.accFrac);
+  if (fac > 1.25) fac = 1.25;
+  st.gamma *= fac;
+  if (st.gamma < st.iscaleMin) st.gamma = st.iscaleMin;
+  if (st.gamma > st.iscaleMax) st.gamma = st.iscaleMax;
+}
+
+// Adapt the proposal scale gamma (NONMEM ISCALE) treating iaccept as an
+// effective-sample-fraction FLOOR, not a rigid target: the effective sample
+// size is maximized near gamma = 1 (the Laplace proposal matches a Gaussian
+// posterior), so deliberately forcing accFrac down to iaccept would only add
+// Monte-Carlo noise.  gamma is left at the efficient starting value while
+// coverage is healthy (accFrac >= iaccept) and inflated only when coverage
+// drops below the floor (heavy-tailed/skewed posterior), with a gentle
+// per-step cap and clamped to [iscaleMin, iscaleMax].  The importance weights
+// correct for gamma, so this changes only the variance, not the estimates.
+//
+// Iteration 0 does not adapt.  Its weights are normalized against the STARTING
+// mode/Hessian at the initial estimates, which is not yet a meaningful
+// reference, so both statistics the controller reads are transients: measured
+// on theophylline, xi = 4.1e6 against a settled ~0.39 and accFrac = 0.257
+// against a settled ~0.53.  Adapting off that inflated gamma to 1.248
+// (sqrt(0.4/0.257), just under the 1.25 cap) on a problem whose proposal is
+// healthy from iteration 1 onward -- and the "global" branch is
+// one-sided, so it could never come back down.
+static void impAdaptGamma(ImpOuterState& st, int iter) {
+  if (iter == 0) return;   // nothing to adapt from yet
+  if (st.gammaInd) {
+    impAdaptGammaInd(st);
+  } else if (impGammaRuleTarget()) {
+    impAdaptGammaTarget(st);
+  } else {
+    impAdaptGammaFloor(st);
+  }
+}
+
+// One EM iteration; true when the loop stops here.
+static bool impOuterIter(ImpOuterState& st, int iter) {
+  const bool burnIter = (iter < st.nBurn);
+  impOuterPreEStep(st, iter);
+  // Stash the E-step diagnostics on every iteration so the fit environment
+  // reflects the last iteration actually run (the loop may stop early).
+  impEStep(st.nsub, st.neta, st.isampleVec, st.gammaVec, st.props, st.cores, iter,
+           impLogDetOmegaInv5(), st.isImp,
+           st.condMean, st.condVar, st.Li, st.Neff, st.Xi, st.NeffExp, st.XiExp, st.KhatExp,
+           st.sampS, st.sampZk, st.aMat, &st.e, st.qrPinSeed,
+           st.harvestSens, st.outSens);
+  impOuterSummarize(st);
+  if (st.autoOn) impAutoEscalate(st);
+  if (st.autoOn && st.nExp > 1) impAutoRealloc(st);
+  st.objTrace.push_back(st.obj);
+  st.gammaTrace.push_back(st.gamma);
+  st.neffTrace.push_back(st.accFrac);
+  st.xiTrace.push_back(st.xiMean);
+  st.iterRun = iter + 1;
+
+  if (st.eOnly) {
+    arma::vec parNow; impGetEstPar(parNow);
+    impIterPrintRow(parNow, st.obj);
+    return true;
+  }
+  if (st.nSens > 0 && !st.frozen) impMStepTheta(st, iter);
+  if (st.Nmix > 1 && !st.frozen) impMStepMix(st);
+  if (!st.frozen) impMStepMuOmega(st, burnIter);
+
+  // Record the current estimates for the parameter-stability half of the test.
+  arma::vec parNow; impGetEstPar(parNow);
+  st.parHist.push_back(parNow);
+  // Print this iteration + record it into the parameter-history walk.
+  impIterPrintRow(parNow, st.obj);
+  if (impOuterConverged(st, iter, parNow)) {
+    st.converged = true;
+    return true;
+  }
+  impAdaptGamma(st, iter);
+  return false;
+}
+
+// Finalize the fit at the converged estimates.
+static void impOuterFinalize(ImpOuterState& st) {
   // Close the iteration print and stash the parameter-history walk (e$parHistData).
-  impIterPrintGet(e);
-
-  // Finalize the fit at the converged estimates.  Drop the objective stashed by
-  // the initial MAP pass first: the finalize path keeps an existing e$objective
-  // (re-adjusting it as if it were an unadjusted -2LL), which would publish the
-  // initial-parameter objective instead of the converged FOCEi evaluation.
-  if (e.exists("objective")) e.remove("objective");
+  impIterPrintGet(st.e);
+  // Drop the objective stashed by the initial MAP pass first: the finalize path
+  // keeps an existing e$objective (re-adjusting it as if it were an unadjusted
+  // -2LL), which would publish the initial-parameter objective instead of the
+  // converged FOCEi evaluation.
+  if (st.e.exists("objective")) st.e.remove("objective");
   // the omega the last M-step installed is the one reported
-  impWarnOmegaFloor(e, omFloored);
+  impWarnOmegaFloor(st.e, st.omFloored);
   impSyncInitParToFullTheta();
-  impMapPass(e);
+  impMapPass(st.e);
 
   // Monte-Carlo observed-information covariance (theta block) at the converged
   // estimate, before the inner neqOverride is cleared (the inner solves use it).
@@ -2435,89 +2708,158 @@ void impOuter(Environment e) {
     // the finite differences of the objective run at the covariance probe
     // tolerances, as FOCEi's covariance step does
     ImpCovSolveTolScope _tol;
-    impComputeCov(e, gammaUsed, propsUsed, impQrRefreshEnabled() ? iterRun - 1 : 0);
+    impComputeCov(st.e, st.gammaUsed, st.propsUsed, impQrRefreshEnabled() ? st.iterRun - 1 : 0);
   }
 
   // Clear the multi-endpoint inner neqOverride so it does not leak into a later fit.
   impClearInnerNeqOverride();
+}
 
-  // Stash the last-iteration E-step diagnostics.
-  List condVarList(nsub);
-  for (int id = 0; id < nsub; ++id) condVarList[id] = wrap(condVar[id]);
-  e["impCondMean"] = wrap(condMean);
+// Stash the last-iteration E-step diagnostics.
+static void impOuterStashEStep(ImpOuterState& st) {
+  Environment& e = st.e;
+  List condVarList(st.nsub);
+  for (int id = 0; id < st.nsub; ++id) condVarList[id] = wrap(st.condVar[id]);
+  e["impCondMean"] = wrap(st.condMean);
   e["impCondVar"]  = condVarList;
-  e["impLi"]       = wrap(Li);
-  e["impNeff"]     = wrap(Neff);
-  e["impXi"]       = wrap(Xi);
+  e["impLi"]       = wrap(st.Li);
+  e["impNeff"]     = wrap(st.Neff);
+  e["impXi"]       = wrap(st.Xi);
   // Per-expanded-subject proposal scales actually used, and which controller
   // produced them.  Under "global" every element equals impGammaUsed.
-  e["impGammaInd"] = wrap(gammaUsed);
-  e["impGammaMethod"] = gammaInd ? "individual" : "global";
-  e["impObj"]      = obj;
+  e["impGammaInd"] = wrap(st.gammaUsed);
+  e["impGammaMethod"] = st.gammaInd ? "individual" : "global";
+  e["impObj"]      = st.obj;
   // Snapshot, so the scalar cannot disagree with the impGammaInd vector: under
   // gammaMethod="global" the scalar gamma is adapted at the END of the loop for
   // an iteration that never runs, which would report gamma_start*fac here
   // against gamma_start in the vector.
-  e["impGammaUsed"] = gammaScalarUsed;
-  e["impNsample"]  = isample;
-  e["impNsampleInd"] = wrap(isampleUsed);  // counts USED by the last E-step
-  e["impDfInd"]    = wrap(dfUsed);          // df USED by the last E-step
-  e["impIacceptInd"] = wrap(iacceptVec);    // per-expanded-subject acceptance target
-  e["impKhatIter"] = wrap(KhatExp);         // last-iteration in-kernel k-hat
-  e["impAuto"]     = autoOn;
+  e["impGammaUsed"] = st.gammaScalarUsed;
+  e["impNsample"]  = st.isample;
+  e["impNsampleInd"] = wrap(st.isampleUsed);  // counts USED by the last E-step
+  e["impDfInd"]    = wrap(st.dfUsed);          // df USED by the last E-step
+  e["impIacceptInd"] = wrap(st.iacceptVec);    // per-expanded-subject acceptance target
+  e["impKhatIter"] = wrap(st.KhatExp);         // last-iteration in-kernel k-hat
+  e["impAuto"]     = st.autoOn;
   e["impQr"]       = impQrEnabled();
-  {
-    // Resolved proposal family, and the per-expanded-subject families actually
-    // used by the last E-step (so an AUTO ladder that moved a subject
-    // normal -> t is visible).
-    const char* pn[4] = {"normal", "t", "laplace", "mixture"};
-    e["impProposal"] = std::string(pn[propSpec.type]);
-    CharacterVector pind(nExp);
-    for (int id = 0; id < nExp; ++id) pind[id] = pn[propsUsed[id].type];
-    e["impPropInd"] = pind;
-    if (propSpec.type == impPropMix) {
-      NumericVector cs(propSpec.nmix), ws(propSpec.nmix);
-      for (int k = 0; k < propSpec.nmix; ++k) { cs[k] = propSpec.c[k]; ws[k] = propSpec.w[k]; }
-      e["impPropMixScale"] = cs;      // as given: see impPropSpecFromControl
-      e["impPropMixWeight"] = ws;
+}
+
+// Resolved proposal family, and the per-expanded-subject families actually
+// used by the last E-step (so an AUTO ladder that moved a subject
+// normal -> t is visible).
+static void impOuterStashProposal(ImpOuterState& st) {
+  Environment& e = st.e;
+  const char* pn[4] = {"normal", "t", "laplace", "mixture"};
+  e["impProposal"] = std::string(pn[st.propSpec.type]);
+  CharacterVector pind(st.nExp);
+  for (int id = 0; id < st.nExp; ++id) pind[id] = pn[st.propsUsed[id].type];
+  e["impPropInd"] = pind;
+  if (st.propSpec.type == impPropMix) {
+    NumericVector cs(st.propSpec.nmix), ws(st.propSpec.nmix);
+    for (int k = 0; k < st.propSpec.nmix; ++k) {
+      cs[k] = st.propSpec.c[k];
+      ws[k] = st.propSpec.w[k];
     }
+    e["impPropMixScale"] = cs;      // as given: see impPropSpecFromControl
+    e["impPropMixWeight"] = ws;
   }
-  e["impQrScramble"] = (impQrScramble() == impQrScrambleOwen) ? "owen" :
-    ((impQrScramble() == impQrScrambleLms) ? "lms" : "none");
+  int scr = impQrScramble();
+  const char* scrName = "none";
+  if (scr == impQrScrambleOwen) scrName = "owen";
+  else if (scr == impQrScrambleLms) scrName = "lms";
+  e["impQrScramble"] = scrName;
   e["impSir"]      = impSirEnabled();
   e["impSirSample"] = impSirN();
-  e["impNiter"]    = eOnly ? 0 : nIterTotal;   // includes nBurn: the budget impIter is measured against
-  e["impEonly"]    = eOnly;
-  e["impMapIter"]  = isImp ? 0 : mapIter;   // 0 under est="imp": no re-centering at all
+}
+
+// An M-step that needed damping (or had to be skipped) on most iterations
+// means the theta-sensitivity Hessian is ill-conditioned under the current
+// importance weights, and the structural thetas are being driven by a
+// regularized step rather than a Newton step.  That is far better than the
+// blow-up it replaces, but it is not something to leave unsaid.
+static void impOuterMStepNote(int iterRun) {
+  int nd = nMStepDamped.load(std::memory_order_relaxed);
+  int ns = nMStepSkipped.load(std::memory_order_relaxed);
+  if (ns > 0) {
+    RSprintf("imp: %d of %d M-step iterations could not update the structural thetas (ill-conditioned theta Hessian)\n",
+             ns, iterRun);
+  } else if (nd > 0 && iterRun > 0 && nd * 2 > iterRun) {
+    RSprintf("imp: %d of %d M-step Newton steps needed damping (ill-conditioned theta Hessian)\n",
+             nd, iterRun);
+  }
+}
+
+static void impOuterStashRun(ImpOuterState& st) {
+  Environment& e = st.e;
+  const int nIterRep = st.eOnly ? 0 : st.nIterTotal;
+  const int iterRep = st.eOnly ? 0 : st.iterRun;
+  e["impNiter"]    = nIterRep;                    // includes nBurn: the budget impIter is measured against
+  e["impEonly"]    = st.eOnly;
+  e["impMapIter"]  = st.isImp ? 0 : st.mapIter;   // 0 under est="imp": no re-centering at all
   // Burn-in iterations are the FIRST nBurn rows of every trace and of $parHist.
-  e["impNburn"]    = nBurn;
-  e["impBurnFreezeOmega"] = burnFreezeOmega;
-  e["impIter"]     = eOnly ? 0 : iterRun;
+  e["impNburn"]    = st.nBurn;
+  e["impBurnFreezeOmega"] = st.burnFreezeOmega;
+  e["impIter"]     = iterRep;
   e["impMStepDamped"]  = nMStepDamped.load(std::memory_order_relaxed);
   e["impMStepSkipped"] = nMStepSkipped.load(std::memory_order_relaxed);
-  {
-    // An M-step that needed damping (or had to be skipped) on most iterations
-    // means the theta-sensitivity Hessian is ill-conditioned under the current
-    // importance weights, and the structural thetas are being driven by a
-    // regularized step rather than a Newton step.  That is far better than the
-    // blow-up it replaces, but it is not something to leave unsaid.
-    int nd = nMStepDamped.load(std::memory_order_relaxed);
-    int ns = nMStepSkipped.load(std::memory_order_relaxed);
-    if (ns > 0) {
-      RSprintf("imp: %d of %d M-step iterations could not update the structural thetas (ill-conditioned theta Hessian)\n",
-               ns, iterRun);
-    } else if (nd > 0 && iterRun > 0 && nd * 2 > iterRun) {
-      RSprintf("imp: %d of %d M-step Newton steps needed damping (ill-conditioned theta Hessian)\n",
-               nd, iterRun);
-    }
-  }
-  e["impConverged"] = converged;
-  e["impObjTrace"] = wrap(objTrace);
-  e["impGammaTrace"] = wrap(gammaTrace);
-  e["impNeffFrac"] = wrap(neffTrace);
-  e["impXiTrace"]  = wrap(xiTrace);
+  impOuterMStepNote(st.iterRun);
+  e["impConverged"] = st.converged;
+  e["impObjTrace"] = wrap(st.objTrace);
+  e["impGammaTrace"] = wrap(st.gammaTrace);
+  e["impNeffFrac"] = wrap(st.neffTrace);
+  e["impXiTrace"]  = wrap(st.xiTrace);
   e["impMuGroupN"] = impMuGroupN();
+}
+
+void impOuter(Environment e) {
+  // Model registration may leave the theta-sensitivity event callbacks installed.
+  OdeSwapEsBatch innerEvents(odeSlotInner);
+  ImpOuterState st(e);
+  impOuterReadControls(st);
+  impOuterInitVectors(st);
+  impOuterTileIsample(st);
+  st.gammaInd = impGammaIndividual();
+
+  // Force the EM serial when the per-subject inner solves are not thread-safe:
+  //  (a) mixtures -- the expanded pseudo-subjects' per-component solves race and
+  //      the proportions/Omega drift and collapse;
+  //  (b) multi-endpoint pool-sizing -- the inner MAP runs with ind->neqOverride
+  //      against a pool sized for the larger theta-sensitivity model, whose
+  //      per-thread work arrays are not safe under the override, so the parallel
+  //      E-step non-deterministically rejects a subject's samples (neff collapse).
+  // The plain single-endpoint path keeps full parallelism; restored before return.
+  if ((st.Nmix > 1 || impPoolSizing()) && st.cores > 1) {
+    st.savedCores = impSetSolveCores(1);
+    st.cores = 1;
+  }
+
+  // Initial MAP at the starting parameters.
+  impMapPass(e);
+
+  // NB placed AFTER the initial MAP pass on purpose: fInd->nObs is only filled
+  // in during a solve, so reading it before impMapPass() returns 0 for every
+  // subject and makes the whole dataset look sparse (which silently gave every
+  // subject df = 4).
+  st.nonmemSparse = impAutoNonmemSparse();
+  st.dfPatience = impAutoDfPatience();
+  if (st.autoOn) impAutoStep1(st);
+
+  impOuterSetupSampling(st);
+  impOuterSetupOmega(st);
+  nMStepDamped = 0;
+  nMStepSkipped = 0;
+
+  // Iteration print + parameter-history capture (shared scale.h machinery).
+  impIterPrintStart();
+  for (int iter = 0; iter < st.nIterTotal; ++iter) {
+    if (impOuterIter(st, iter)) break;
+  }
+
+  impOuterFinalize(st);
+  impOuterStashEStep(st);
+  impOuterStashProposal(st);
+  impOuterStashRun(st);
 
   // Restore the solve core count if it was forced serial for the mixture EM.
-  if (savedCores > 0) impSetSolveCores(savedCores);
+  if (st.savedCores > 0) impSetSolveCores(st.savedCores);
 }
