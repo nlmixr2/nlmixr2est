@@ -723,7 +723,7 @@
   # methods whose estimation pass cannot produce a covariance (EM table pass,
   # nonparametric engines, or an external engine) recompute on a
   # zero-iteration focei model
-  if (est %in% c("imp", "impmap", "qrpem", "nlme") || grepl("^(m|i)?(npag|npb)$", est)) {
+  if (est %in% c("imp", "impmap", "qrpem", "its", "nlme") || grepl("^(m|i)?(npag|npb)$", est)) {
     return("focei")
   }
   NULL
