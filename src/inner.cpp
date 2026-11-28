@@ -6987,18 +6987,24 @@ static double foceiMixObjSlot(int gid, int slot) {
   return R_FINITE(lse) ? -2.0*lse : NA_REAL;
 }
 
+// subjects whose likelihood failed in the last foceiLik0() (-1: not counted)
+static int foceiLik0NBad = -1;
+
 static inline double foceiLik0(double *theta) {
   updateTheta(theta);
   innerOpt();
   double lik = 0.0;
   double cur;
 
+  foceiLik0NBad = -1;
   if (op_focei.mixIdxN == 0) {
+    foceiLik0NBad = 0;
     for (int id=getRxNsub(rx); id--;){
       focei_ind *fInd = &(inds_focei[id]);
       cur = fInd->lik[0];
       if (ISNA(cur) || std::isinf(cur) || std::isnan(cur)) {
         cur = -op_focei.badSolveObjfAdj;
+        foceiLik0NBad++;
       }
       lik += cur;
     }
@@ -7623,6 +7629,12 @@ static inline double foceiOfv0(double *theta){
       stop(_("NaN while evaluating initial objective function"));
     } else if (std::isinf(ret)) {
       stop(_("infinite while evaluating initial objective function"));
+    }
+    // every subject at the penalty: the objective carries no information
+    int _nsub0 = (int)getRxNsub(rx);
+    if (_nsub0 > 0 && foceiLik0NBad == _nsub0) {
+      stop(_("the ODE solve failed for every subject at the initial estimates; "
+             "try another solving method (rxControl(method=)) or other initial estimates"));
     }
     if (op_focei.scaleObjective == 1) op_focei.scaleObjective=2;
   } else {
