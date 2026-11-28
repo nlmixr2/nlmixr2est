@@ -58,28 +58,7 @@ nmObjGetFoceiControl.qrpem <- function(x, ...) {
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.qrpem <- function(env, ...) {
-  .ui <- env$ui
-  # General (dnorm/ll) likelihoods flow through the shared FOCEI inner problem,
-  # so only require transformable normality when rxode2 has no llik support.
-  if (!rxode2hasLlik()) {
-    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'qrpem'", .var.name = .ui$modelName)
-  }
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'qrpem'", .var.name = .ui$modelName)
-  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg("qrpem"), .var.name = .ui$modelName)
-  .foceiFamilyControl(env, ..., type = "impmapControl")
-  .control <- env$control
-  on.exit(
-    {
-      if (is.environment(.ui) && exists("control", envir = .ui, inherits = FALSE)) {
-        rm("control", envir = .ui)
-      }
-    },
-    add = TRUE
-  )
-  env$impmapControl <- .control
-  env$est <- "qrpem"
-  .ui <- env$ui
-  .impmapFamilyFit(env, .ui, ...)
+  .impmapFamilyEst(env, "qrpem", ...)
 }
 attr(nlmixr2Est.qrpem, "nlmixr2LikPenalty") <- "full"
 attr(nlmixr2Est.qrpem, "covPresent") <- TRUE
