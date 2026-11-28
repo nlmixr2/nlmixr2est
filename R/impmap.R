@@ -47,6 +47,8 @@
   "qrScramble",
   "sir",
   "sirSample",
+  # est="its" marker set by itsControl()
+  "its",
   # internal M-step index maps added in .impmapFamilyFit;
   # not foceiControl() arguments, so they must be dropped
   # when down-converting (e.g. .setOfvFo's do.call(foceiControl))
@@ -704,6 +706,9 @@ impmapControl <- function(
   # only, holding the parameters (.covEngineControl)
   .impFrozen <- isTRUE(.dots$impFrozen)
   .dots$impFrozen <- NULL
+  # itsControl() marker; kept on a round-tripped control
+  .its <- isTRUE(.dots[["its"]])
+  .dots$its <- NULL
   # gammaMethodUser is stamped on the RUNTIME control by .impmapFamilyFit (it
   # records what the user asked for before "auto" was resolved).  A control that
   # has been round-tripped therefore carries it; keep it, but do not forward it
@@ -741,6 +746,9 @@ impmapControl <- function(
   .control$impCov <- .impCov
   if (.impFrozen) {
     .control$impFrozen <- TRUE
+  }
+  if (.its) {
+    .control$its <- TRUE
   }
   if (!is.null(.autoNonNormal)) {
     .control$autoNonNormal <- .autoNonNormal
@@ -797,7 +805,9 @@ impmapControl <- function(
 #' @noRd
 .impmapDeparseType <- function(object) {
   .est <- if (is.character(object$est)) object$est else ""
-  if (grepl("npag$", .est)) {
+  if (isTRUE(object$its)) {
+    "itsControl"
+  } else if (grepl("npag$", .est)) {
     "npagControl"
   } else if (grepl("npb$", .est)) {
     "npbControl"
@@ -830,19 +840,37 @@ rxUiDeparse.impmapControl <- function(object, var) {
     object$gammaMethod <- object$gammaMethodUser
   }
   # defaults that follow other arguments are compared with what those give
-  .derived <- list(
-    sirSample = max(25L, as.integer(ceiling(max(object$isample) / 10))),
-    nConvWindow = if (identical(object$gammaRule, "target")) 20L else 10L,
-    ctol = NULL
-  )
+  .its <- isTRUE(object$its)
+  .derived <- if (.its) {
+    # itsControl() fixes these; nIter and ctol are written as maxIter and tol
+    list(sirSample = 1L, nConvWindow = 1L, nIter = 50L, ctol = 1e-4)
+  } else {
+    list(
+      sirSample = max(25L, as.integer(ceiling(max(object$isample) / 10))),
+      nConvWindow = if (identical(object$gammaRule, "target")) 20L else 10L,
+      ctol = NULL
+    )
+  }
+  .argName <- c(nIter = "maxIter", ctol = "tol")
   .extra <- unlist(lapply(names(.derived), function(n) {
-    if (!identical(object[[n]], .derived[[n]])) paste0(n, " = ", .deparseValue(object[[n]]))
+    if (!identical(object[[n]], .derived[[n]])) {
+      .a <- if (.its && n %in% names(.argName)) .argName[[n]] else n
+      paste0(.a, " = ", .deparseValue(object[[n]]))
+    }
   }))
   .rxUiDeparseFoceiControl(
     object,
     var,
     type = .impmapDeparseType(object),
-    internal = c("impCov", "autoNonNormal", "gammaMethodUser", "npEndpointCmt", .impmapIdxMapNames, names(.derived)),
+    internal = c(
+      "impCov",
+      "its",
+      "autoNonNormal",
+      "gammaMethodUser",
+      "npEndpointCmt",
+      .impmapIdxMapNames,
+      names(.derived)
+    ),
     covName = function(x) if (isTRUE(x$impCov)) "imp" else .foceiControlCovMethodName(x),
     fun = .impmapDeparseExtra,
     extra = as.character(.extra)
@@ -880,6 +908,7 @@ getValidNlmixrCtl.impmap <- function(control) {
 #'   est's own value
 #' @noRd
 .impmapEstWins <- function(ctl, est) {
+  ctl <- .itsControlRestoreSampling(ctl, est)
   .src <- ctl$est
   # a freshly built control (no completed fit behind it) is the user's own
   if (is.null(.src) || !is.character(.src) || identical(.src, est)) {
@@ -1120,7 +1149,9 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # always stashed but they are not the same quantity, and only one drives the
   # adaptation -- warning() here is the established route onto $runInfo
   # (collected in nlmixr2Est.R and printed under "Information about run").
-  warning(.impmapGammaRunInfo(.control$gammaMethod, .gmUser, .control$iaccept), call. = FALSE)
+  if (!isTRUE(.control$its)) {
+    warning(.impmapGammaRunInfo(.control$gammaMethod, .gmUser, .control$iaccept), call. = FALSE)
+  }
   if (identical(.control$nIter, 0L)) {
     .etaSrc <- if (
       inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
@@ -1226,6 +1257,19 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   .fit
 }
 
+#' Interaction for the recomputed objective (est="its" reports the one it was asked for)
+#'
+#' @param fit completed impmap-family fit
+#' @param env the fit's environment
+#' @return TRUE or FALSE
+#' @noRd
+.impmapRecomputeInteraction <- function(fit, env) {
+  if (!identical(env$method, "its")) {
+    return(TRUE)
+  }
+  !isFALSE(tryCatch(as.logical(fit$foceiControl$interaction), error = function(e) TRUE))
+}
+
 #' Publish the objective as a FOCEi evaluation at the converged estimates.
 #'
 #' The in-C++ finalize (`impMapPass` -> `foceiOuterFinal`) computes the individual
@@ -1261,6 +1305,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
     return(invisible(FALSE))
   }
   .sigdig <- tryCatch(fit$foceiControl$sigdig, error = function(e) NULL)
+  .inter <- .impmapRecomputeInteraction(fit, .env)
   # A nested nlmixr2() calls .nlmixr2globalReset(), which clears nlmixr2global --
   # including the timing environment (dropping the outer fit's "other" timing
   # row).  Snapshot and restore the whole thing, plus the mu-referencing global.
@@ -1283,6 +1328,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
       maxOuterIterations = 0L,
       calcTables = FALSE,
       compress = FALSE,
+      interaction = .inter,
       sigdig = if (is.null(.sigdig)) 4 else .sigdig
     ),
     silent = TRUE
@@ -1309,6 +1355,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # (correct) Hessian, so $etaObf/$phiH do not disagree with the published number
   for (.n in c(
     "objective",
+    "ofvType",
     "OBJF",
     "objf",
     "logLik",
@@ -1336,6 +1383,7 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
       for (.c in intersect(names(.newObjDf), names(.oldObjDf))) {
         .oldObjDf[[.c]] <- .newObjDf[[.c]]
       }
+      rownames(.oldObjDf) <- rownames(.newObjDf)
       assign("objDf", .oldObjDf, envir = .env)
     } else {
       assign("objDf", .newObjDf, envir = .env)
@@ -1498,6 +1546,36 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
     return(NULL)
   }
   .e$vectors %*% (t(.e$vectors) / .a)
+}
+
+#' Validate the model and run an impmap-kernel method (qrpem, its)
+#'
+#' @param env nlmixr2Est environment
+#' @param est estimation method name
+#' @param ... passed to the control and fit
+#' @return the fit
+#' @noRd
+.impmapFamilyEst <- function(env, est, ...) {
+  .ui <- env$ui
+  # general (dnorm/ll) likelihoods flow through the shared FOCEI inner problem
+  if (!rxode2hasLlik()) {
+    rxode2::assertRxUiTransformNormal(.ui, paste0(" for the estimation routine '", est, "'"), .var.name = .ui$modelName)
+  }
+  rxode2::assertRxUiIovNoCor(.ui, paste0(" for the estimation routine '", est, "'"), .var.name = .ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, .noRandomEffectMsg(est), .var.name = .ui$modelName)
+  .foceiFamilyControl(env, ..., type = "impmapControl")
+  .control <- env$control
+  on.exit(
+    {
+      if (is.environment(.ui) && exists("control", envir = .ui, inherits = FALSE)) {
+        rm("control", envir = .ui)
+      }
+    },
+    add = TRUE
+  )
+  env$impmapControl <- .control
+  env$est <- est
+  .impmapFamilyFit(env, env$ui, ...)
 }
 
 #' @rdname nlmixr2Est

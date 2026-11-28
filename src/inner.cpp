@@ -1189,6 +1189,7 @@ struct focei_options {
   bool isImp = false;    // est="imp": no per-iteration MAP search (proposal at the conditional mean)
   bool isAdvi = false;   // est="advi": reuses the theta-sensitivity model for the outer ADVI gradient
   bool isQrpem = false;  // est="qrpem": the impmap kernel labeled as QRPEM (qr+sir sugar)
+  bool isIts = false;    // est="its": deterministic EM, E-step = MAP mode + inverse Hessian
   bool isNpag = false;   // est="npag": nonparametric adaptive grid; outer runs npagOuter
   bool isNpb = false;    // est="npb": nonparametric Bayes (stick-breaking DP); outer runs npbOuter
   bool thetaSensLoad = false; // foceiLikLoad(thetaSens=TRUE) (#939): wire the
@@ -10117,10 +10118,12 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isNlm = (estStr == "nlm" || estStr == "nlminb" || estStr == "bobyqa" ||
                       estStr == "newuoa" || estStr == "n1qn1" || estStr == "lbfgsb3c" ||
                       estStr == "optim" || estStr == "uobyqa" || estStr == "nls");
-    op_focei.isImpmap = (estStr == "impmap" || estStr == "imp" || estStr == "qrpem");
+    op_focei.isImpmap = (estStr == "impmap" || estStr == "imp" || estStr == "qrpem" ||
+                         estStr == "its");
     op_focei.isImp = (estStr == "imp");
     op_focei.isAdvi = (estStr == "advi");
     op_focei.isQrpem = (estStr == "qrpem");
+    op_focei.isIts = (estStr == "its");
     // npag + its mu-referenced sugar (mnpag = OLS "lin", inpag = IRLS) share the
     // npagOuter driver; likewise npb + mnpb/inpb.
     op_focei.isNpag = (estStr == "npag" || estStr == "mnpag" || estStr == "inpag");
@@ -10132,6 +10135,7 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isImp = false;
     op_focei.isAdvi = false;
     op_focei.isQrpem = false;
+    op_focei.isIts = false;
     op_focei.isNpag = false;
     op_focei.isNpb = false;
   }
@@ -12189,46 +12193,69 @@ static double foceiFreezeOfv(int np, double *x) {
   return f;
 }
 
+// One-sided slopes of the objective at x along every parameter, toward the side
+// with more room
+struct FoceiFreezeSlopes {
+  NumericVector x;
+  std::vector<double> g, h, xk;
+  double f0 = NA_REAL;
+  double mx = 0.0;
+  // slope of the objective along k at a step of `step`; NA when not finite
+  double slope(unsigned int k, double step) {
+    const int np = (int)x.size();
+    xk[k] = x[k] + step;
+    const double fk = foceiFreezeOfv(np, xk.data());
+    xk[k] = x[k];
+    return std::isfinite(fk) ? (fk - f0) / step : NA_REAL;
+  }
+  void init(unsigned int np) {
+    x = NumericVector(np);
+    foceiOuterStart(x.begin());
+    g.assign(np, NA_REAL);
+    h.assign(np, 0.0);
+    xk.assign(x.begin(), x.end());
+    f0 = foceiFreezeOfv((int)np, x.begin());
+  }
+  void scan(unsigned int np) {
+    for (unsigned int k = 0; k < np && std::isfinite(f0); ++k) {
+      // short enough that two steps stay inside the bounds
+      const double up = op_focei.upper[k] - x[k], dn = x[k] - op_focei.lower[k];
+      const double room = std::max(up, dn);
+      if (!(room > 0)) continue;
+      h[k] = std::min(1e-3 * std::max(1.0, std::fabs(x[k])), 0.4 * room);
+      if (dn > up) h[k] = -h[k];
+      g[k] = slope(k, h[k]);
+      if (!ISNA(g[k])) mx = std::max(mx, std::fabs(g[k]));
+    }
+  }
+  bool isFlat(double a) const {
+    return !ISNA(a) && std::fabs(a) <= 1e-8 && std::fabs(a) <= 1e-6 * mx;
+  }
+  // a secant can vanish by chance, so a second step must be flat too: the
+  // other side, or twice as far when the other side is out of bounds
+  bool flatTheta(unsigned int k) {
+    if (ISNA(g[k]) || foceiIsMixPar((int)k) || op_focei.fixedTrans[k] >= (int)op_focei.ntheta) {
+      return false;
+    }
+    const double x2 = x[k] - h[k];
+    const double h2 = (x2 > op_focei.lower[k] && x2 < op_focei.upper[k]) ? -h[k] : 2.0 * h[k];
+    return isFlat(g[k]) && isFlat(slope(k, h2));
+  }
+};
+
 static void foceiFreezeFlatTheta(Environment e) {
   const unsigned int np = op_focei.npars;
   if (np < 2) return;
-  NumericVector x(np);
-  foceiOuterStart(x.begin());
   // diagnostic: leave the counters and the history as they were
   const int nF = op_focei.nF, nG = op_focei.nG;
   const bool record = op_focei.recordOuter;
   op_focei.recordOuter = false;
-  std::vector<double> g(np, NA_REAL), h(np, 0.0), xk(x.begin(), x.end());
-  const double f0 = foceiFreezeOfv((int)np, x.begin());
-  // slope of the objective along k at a step of `step`; NA when not finite
-  auto slope = [&](unsigned int k, double step) {
-    xk[k] = x[k] + step;
-    const double fk = foceiFreezeOfv((int)np, xk.data());
-    xk[k] = x[k];
-    return std::isfinite(fk) ? (fk - f0) / step : NA_REAL;
-  };
-  double mx = 0.0;
-  for (unsigned int k = 0; k < np && std::isfinite(f0); ++k) {
-    // toward the side with more room, short enough that two steps stay inside
-    const double up = op_focei.upper[k] - x[k], dn = x[k] - op_focei.lower[k];
-    const double room = std::max(up, dn);
-    if (!(room > 0)) continue;
-    h[k] = std::min(1e-3 * std::max(1.0, std::fabs(x[k])), 0.4 * room);
-    if (dn > up) h[k] = -h[k];
-    g[k] = slope(k, h[k]);
-    if (!ISNA(g[k])) mx = std::max(mx, std::fabs(g[k]));
-  }
+  FoceiFreezeSlopes sl;
+  sl.init(np);
+  sl.scan(np);
   std::vector<int> flat;
-  for (unsigned int k = 0; k < np && mx > 1e-8; ++k) {
-    if (ISNA(g[k]) || foceiIsMixPar((int)k) || op_focei.fixedTrans[k] >= (int)op_focei.ntheta) continue;
-    auto isFlat = [&](double a) { return !ISNA(a) && std::fabs(a) <= 1e-8 && std::fabs(a) <= 1e-6 * mx; };
-    // a secant can vanish by chance, so a second step must be flat too: the
-    // other side, or twice as far when the other side is out of bounds
-    const double x2 = x[k] - h[k];
-    const double h2 = (x2 > op_focei.lower[k] && x2 < op_focei.upper[k]) ? -h[k] : 2.0 * h[k];
-    if (isFlat(g[k]) && isFlat(slope(k, h2))) {
-      flat.push_back(op_focei.fixedTrans[k] + 1);
-    }
+  for (unsigned int k = 0; k < np && sl.mx > 1e-8; ++k) {
+    if (sl.flatTheta(k)) flat.push_back(op_focei.fixedTrans[k] + 1);
   }
   op_focei.recordOuter = record;
   op_focei.nF = nF;
@@ -15076,7 +15103,8 @@ void foceiFinalizeTables(Environment e){
     if (op_focei.isImpmap) {
       // Importance-sampling EM; the objDf row stays "FOCEi" because the final
       // objective is a FOCEi evaluation at the EM estimates.
-      e["method"] = op_focei.isImp ? "imp" : (op_focei.isQrpem ? "qrpem" : "impmap");
+      e["method"] = op_focei.isImp ? "imp" :
+        (op_focei.isQrpem ? "qrpem" : (op_focei.isIts ? "its" : "impmap"));
     } else if (_aqn > 0) {
       e["method"] = op_focei.conditionalHessianRequested ?
         (_nagq == 1 ? "Full Laplace" : "Full AGQ") : "AGQ";
@@ -15580,6 +15608,8 @@ void impGetOmega(arma::mat& Om) {
 // est="imp": no per-iteration MAP search (the E-step proposal is centered at the
 // running conditional mean with covariance gamma * V_i instead of gamma * H_i^-1).
 bool impIsImp() { return op_focei.isImp; }
+// est="its": no importance sampling; the E-step moments are the MAP mode and H^-1
+bool impIsIts() { return op_focei.isIts; }
 
 // Read subject id's current eta (after updateMuGroups this is the recentered residual).
 void impGetEta(int id, arma::vec& eta) {

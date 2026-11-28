@@ -47,6 +47,13 @@
 
 ## New features
 
+- `est = "its"` (`itsControl()`) adds the iterative two-stage method: each
+  iteration takes every subject's MAP etas and conditional covariance from
+  the FOCEi inner problem, then updates the mu-referenced thetas and Omega in
+  closed form (with the conditional-covariance correction) and the remaining
+  thetas and residual error on the conditional likelihood.  The reported
+  objective is FOCE(i) at the final estimates, and an ITS fit makes a quick
+  warm start, e.g. `nlmixr2(fitIts, est = "focei")` (#1460).
 - `saemControl(autoStop = TRUE)` stops the SAEM EM phase once every
   parameter's half-window drift is within `stopRtol`/`stopAtol` or twice its
   Monte-Carlo error for `stopConsecutive` windows of `stopWindow` iterations;
