@@ -47,6 +47,24 @@
 
 ## New features
 
+- `linCmt()` models get the exact inner Hessian and the analytic `fast`
+  outer gradient when the installed rxode2 and rxode2lincmt differentiate
+  `linCmt()` twice (nlmixr2/rxode2lincmt#17): an `ll()` + `linCmt()` FOCEi
+  fit no longer uses the Shi21 finite-difference inner Hessian, and
+  `innerHessian = "conditional"` (`est = "flaplace"`) works for `linCmt()`.
+  Both match the same model written as ODEs.  With an older rxode2 /
+  rxode2lincmt the previous behavior (finite differences, `fast = FALSE`)
+  is kept.  Models with the `linCmt()` sensitivity carry (time-varying
+  covariates) get the exact `ll()` inner Hessian through rxode2lincmt's
+  eta-space carry, under `locf` and `nocb`, except with a modeled
+  bioavailability or lag on the doses (the finite difference stays).  A subject
+  whose exact inner Hessian is not finite (the second-order `linCmt()` reads
+  do not yet follow a modeled lag, rate or duration, or a replace/multiply
+  record) uses the finite difference instead, with a `$runInfo` note; the
+  full conditional Hessian, which has no such fallback, refuses `linCmt()`
+  with a modeled lag, rate or duration.  With an rxode2lincmt that can switch
+  its second-order steps per thread, only the models that read them (the
+  exact inner Hessian and the outer gradient models) take them (#1498).
 - `est = "its"` (`itsControl()`) adds the iterative two-stage method: each
   iteration takes every subject's MAP etas and conditional covariance from
   the FOCEi inner problem, then updates the mu-referenced thetas and Omega in

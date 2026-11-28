@@ -471,9 +471,9 @@
   if (.foceiAnalyticIsMixture(ui)) {
     return(NULL)
   } # mixtures: weighted sum, no treatment yet
-  if (.foceiUsesLinCmt(ui)) {
+  if (.foceiLinCmtNoSecondOrder(ui)) {
     return(NULL)
-  } # linCmt(): no symbolic state sensitivities
+  } # linCmt() without its second-order reads (nlmixr2/rxode2lincmt#17)
   if (.foceiUsesLagVar(ui)) {
     return(NULL)
   } # lag() of a variable: the augmented model does not chain through it
@@ -746,9 +746,9 @@
   if (.foceiAnalyticIsMixture(ui)) {
     return(NULL)
   } # mixtures: weighted sum, no treatment yet
-  if (.foceiUsesLinCmt(ui)) {
+  if (.foceiLinCmtNoSecondOrder(ui)) {
     return(NULL)
-  } # linCmt(): no symbolic state sensitivities
+  } # linCmt() without its second-order reads (nlmixr2/rxode2lincmt#17)
   if (.foceiUsesLagVar(ui)) {
     return(NULL)
   } # lag() of a variable: the augmented model does not chain through it
@@ -820,7 +820,7 @@
       } # Gaussian -> (f,R) path
       # linCmt() anywhere (not only as the endpoint): no 2nd-order sensitivities, and
       # rxode2 >= 5.1.8 drops those terms silently instead of failing the build (#1103).
-      if (.foceiUsesLinCmt(ui) || .foceiUsesLagVar(ui) || .foceiUsesAr(ui)) {
+      if (.foceiLinCmtNoSecondOrder(ui) || .foceiUsesLagVar(ui) || .foceiUsesAr(ui)) {
         return(FALSE)
       }
       if (!.analyticGradAllowsBoundedTr(ui, caller)) {

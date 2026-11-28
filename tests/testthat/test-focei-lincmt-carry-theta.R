@@ -47,7 +47,8 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
   # mechanism: the covariate theta's line is substituted, and only then
   txtC <- buildTxt(modTheta, "auto")
   txtN <- buildTxt(modTheta, "none")
-  expect_true(any(grepl("rx_lcConc_~linCmtB", strsplit(txtC, "\n")[[1]])))
+  # rxOptExpr() may share the call under a CSE name with the second-order linCmt() stack
+  expect_true(any(grepl("(rx_lcConc_|rx_expr_cse_[0-9]+)~linCmtB", strsplit(txtC, "\n")[[1]])))
   expect_true(any(grepl("rx_lcCarryS0r0_", strsplit(txtC, "\n")[[1]])))
   expect_false(any(grepl("rx_lcCarry|rx_lcConc_", strsplit(txtN, "\n")[[1]])))
 
@@ -93,7 +94,7 @@ test_that("theta-side carry: eligibility, emission and FD (#1003)", {
 
   # nls: same substitution and FD for the covariate theta
   txtCnls <- buildTxt(modTheta, "auto", "nls")
-  expect_true(any(grepl("rx_lcConc_~linCmtB", strsplit(txtCnls, "\n")[[1]])))
+  expect_true(any(grepl("(rx_lcConc_|rx_expr_cse_[0-9]+)~linCmtB", strsplit(txtCnls, "\n")[[1]])))
   errCnls <- fdErr(txtCnls)
   expect_true(all(errCnls[1:2] < 1e-6))
 

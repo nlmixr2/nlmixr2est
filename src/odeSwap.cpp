@@ -7,6 +7,7 @@
 #include "odeSwap.h"
 #include <algorithm>
 #include <atomic>
+#include <R_ext/Rdynload.h>
 #include <memory>
 #include <mutex>
 
@@ -382,6 +383,30 @@ void odeSwapClearAll() {
 bool odeSwapLoaded(int slot) { return odeSlotOk(slot) && _odeReg[slot].loaded; }
 int  odeSwapNSens(int slot)  { return odeSwapLoaded(slot) ? _odeReg[slot].nSens : 0; }
 
+// rxode2lincmt's per-thread switch for the second-order steps (NULL with an
+// rxode2lincmt that does not have it): set per solve to whether the solving
+// slot's own model reads the second-order values, so the inner model solved
+// while the second-order bit is shared does not pay for steps it never reads.
+typedef void (*t_lcSetHessThread)(int);
+static t_lcSetHessThread _lcSetHessThread = NULL;
+extern "C" SEXP _nlmixr2est_lcHessThreadInit(SEXP on) {
+  _lcSetHessThread = NULL;
+  if (Rf_asLogical(on) == TRUE) {
+    _lcSetHessThread = reinterpret_cast<t_lcSetHessThread>(
+      R_GetCCallable("rxode2lincmt", "linCmtSetHessThread"));
+  }
+  return R_NilValue;
+}
+
+// The linCmt() second-order bit (rxode2lincmt's diffHess) if any loaded slot
+// declares it, else 0 (see odeSwapSolveInd).
+int odeSwapNdiffHess() {
+  for (int s = 0; s < odeSlotN; ++s) {
+    if (_odeReg[s].loaded && _odeReg[s].ndiffSet && (_odeReg[s].ndiff & 128) != 0) return 128;
+  }
+  return 0;
+}
+
 // True if ANY registered slot declared an ndiff (i.e. this fit has a linCmt()
 // peer whose cached Jacobian depends on rx->ndiff).  Used to gate the extra
 // cost of imp.cpp's impGetHessian() critical section (see below) so it is
@@ -616,7 +641,18 @@ void odeSwapSolveInd(int slot, int rxId) {
   // ndiff peers running concurrently is not covered by this alone -- see
   // odeSwapAnyNdiffSet()'s KNOWN GAP note.
   if (odeSwapLoaded(slot) && _odeReg[slot].ndiffSet && _odeReg[slot].ndiff != 0) {
-    rxl->ndiff = _odeReg[slot].ndiff;
+    // linCmt()'s second-order bit (rxode2lincmt's diffHess, 128) is shared:
+    // the exact inner Hessian's model (hess2) is solved for one subject while
+    // the inner model is solved for another, and a writer without the bit
+    // would switch the second-order steps off mid-solve for the other --
+    // its Hessian history then skips records and reads wrong.  Every writer
+    // carries the bit while any loaded slot needs it, so concurrent writers
+    // agree on it; the direction bits stay per slot.
+    int hessBit = odeSwapNdiffHess();
+    rxl->ndiff = _odeReg[slot].ndiff | hessBit;
+    if (hessBit != 0 && _lcSetHessThread != NULL) {
+      _lcSetHessThread((_odeReg[slot].ndiff & 128) != 0 ? 1 : 0);
+    }
   }
   ind_solve(rxl, rxId, f->dydt_liblsoda, f->dydt_lsoda_dum,
             f->jdum_lsoda, f->dydt, f->update_inis, f->global_jt);
