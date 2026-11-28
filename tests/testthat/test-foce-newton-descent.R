@@ -28,9 +28,15 @@ test_that("FOCE nonmem Newton reaches the frozen-variance mode in a non-convex v
       cp ~ add(add.sd) + prop(prop.sd)
     })
   }
-  ctl <- foceiControl(print = 0L, covMethod = "", calcTables = FALSE, interaction = FALSE,
-                      maxOuterIterations = 1L, fast = TRUE,
-                      rxControl = rxode2::rxControl(method = "liblsoda", cores = 1L))
+  ctl <- foceiControl(
+    print = 0L,
+    covMethod = "",
+    calcTables = FALSE,
+    interaction = FALSE,
+    maxOuterIterations = 1L,
+    fast = TRUE,
+    rxControl = rxode2::rxControl(method = "liblsoda", cores = 1L)
+  )
   f <- suppressMessages(suppressWarnings(nlmixr2(m, d, "focei", ctl)))
   expect_equal(f$env$nOuterFdInd, 0L)
   expect_equal(f$env$nNewtonFail[["maxit"]], 0L)
