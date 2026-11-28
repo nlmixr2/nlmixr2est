@@ -47,6 +47,13 @@
 
 ## New features
 
+- `est = "its"` (`itsControl()`) adds the iterative two-stage method: each
+  iteration takes every subject's MAP etas and conditional covariance from
+  the FOCEi inner problem, then updates the mu-referenced thetas and Omega in
+  closed form (with the conditional-covariance correction) and the remaining
+  thetas and residual error on the conditional likelihood.  The reported
+  objective is FOCE(i) at the final estimates, and an ITS fit makes a quick
+  warm start, e.g. `nlmixr2(fitIts, est = "focei")` (#1460).
 - `saemControl(autoStop = TRUE)` stops the SAEM EM phase once every
   parameter's half-window drift is within `stopRtol`/`stopAtol` or twice its
   Monte-Carlo error for `stopConsecutive` windows of `stopWindow` iterations;
@@ -108,6 +115,11 @@
   population parameters held (#1378).  `method = "saem"` uses the SAEM MCMC
   instead: a SAEM fit's own last iterations when they are enough, otherwise
   the kernels held at the fit's estimates; it is the default for SAEM fits.
+  `fit$condDistShrinkage` is the eta shrinkage from the conditional
+  variances, `100 * mean(SD^2) / omega`.
+  The new vignette "Individual random effects and their conditional
+  distribution" describes the mode, SAEM's mean and the conditional
+  distribution of any fit.
 - `etaSamples(fit, n)` draws each subject's etas from their conditional
   distribution at a fit's estimates, as a long data frame (`ID`, `draw`, one
   column per eta) that `rxSolve(fit, params = , nStud = n)` takes to simulate
@@ -132,6 +144,14 @@
   SD starts below 1% of that endpoint's own median `|DV|` now warns before
   estimation and suggests a start of about 10% of it; the initial estimate is
   not changed (#1383).
+- `stopFile = "stop"` in `foceiControl()`, `saemControl()` and the nlm-family
+  controls (`nlmControl()`, `nlminbControl()`, `bobyqaControl()`,
+  `uobyqaControl()`, `newuoaControl()`, `lbfgsb3cControl()`, `n1qn1Control()`,
+  `optimControl()`, `trustControl()`) ends a running fit gracefully once that
+  file is created: FOCEi and the nlm family continue from the lowest objective
+  evaluated so far and SAEM ends at the current iteration; the file is removed
+  and "stopped early by user request" is noted in `$runInfo` (#1507).
+
 - `foceiControl(trustPolish = TRUE)` (and `steihaugPolish`) now polishes each
   converged trust ETA solve by re-entering it at the squared
   `trustFterm`/`trustMterm` instead of taking Newton steps.  The objective at
@@ -144,6 +164,15 @@
   faster when the posterior is narrow or correlated relative to `omega`.  Off
   by default; `nb1B` (start iteration, default 10) and `kappa1B` (NONMEM's
   `IKAPPA`) tune it, and `$saem$accept1B` reports its acceptance rate.
+- `foceiControl(ebeCheck = TRUE)` probes each subject's final EBE at
+  `+/- ebeCheckStep` Omega SDs along every eta and notes in `$runInfo` the
+  subjects where the individual objective drops by more than `ebeCheckTol`,
+  as when the inner search stops at a kink of a clipped prediction.  The
+  per-subject results are in `fit$ebeStationarity` (#1499).
+- `foceiControl(ebeRestart = TRUE)` (implies `ebeCheck`) moves each flagged
+  subject's EBE to a compass-search minimum of its individual objective,
+  started from its best probe, and reports the objective at the moved EBEs;
+  the thetas are not re-estimated (#1499).
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for each
   ETA (computed on access, so older saved fits have them too), and
   `fit$etaNormality` lists each ETA's mean, SD, zero-mean t-test p-value and
@@ -213,6 +242,11 @@
 
 - `saemControl(rmcmc=)` sets the random-walk proposal scale of the SAEM MCMC
   kernels, previously fixed at 0.5; lower it when `$mcmcAccept` is low (#1385).
+
+- `saemControl(rwProposal = "omega")` makes SAEM's joint random-walk kernel
+  propose from `rmcmc^2` times the full omega block, so correlated random
+  effects move together; the default `"diag"` keeps the per-coordinate walk
+  (#1491).
 
 - A `saem` fit now notes in `$runInfo` when its random-walk MCMC acceptance
   over the last 100 post-burn-in iterations is outside 5-80% (e.g.
@@ -340,6 +374,15 @@
   still moves with estimated variances.  Occasion-level correlations are not
   listed, and `tidy()`/`confint()` leave the rows out.
 
+- `est = "nlme"` now fits an `add()`, `prop()` or `pow()` residual SD that is
+  an estimated parameter times a function of time and covariates, such as
+  `add(add.sd * exp(-time / 8))` or `add(add.sd * WT / 70)`, through
+  `nlme::varFixed()`.  An estimated exponent, such as
+  `add(add.sd * exp(k * time))` or `prop(prop.sd * (WT / 70)^k)`, is fit with
+  `nlme::varExp()`.  Residual errors nlme cannot fit (an eta, a
+  model-calculated variable, a combined error) are refused with a message
+  saying what is unsupported, instead of the old misleading one (#1464).
+
 ## Bug fixes
 
 - A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
@@ -365,6 +408,10 @@
   when a likelihood penalty is active, so the covariance includes the
   penalty's curvature instead of describing the unpenalised likelihood
   (#1479).
+- `setCov()` re-fits (`"sa"`, `"imp"` and the full-model FOCEi
+  recompute) now run under the penalties given as `nlmixr2(...,
+  likPenalty=)`, which the fit keeps; before, only penalties attached to the
+  model reached them (#1479).
 - The FOCEi full finite-difference covariance (`covFull = TRUE`) now moves a
   `same()` block's copies with the block they repeat, so a correlated IOV
   block contributes one shared occasion Omega (`om.iov.cl`,
@@ -465,6 +512,15 @@
 - `est="imp"`, `"impmap"` and `"qrpem"` now refuse a model without random
   effects with the same clear message as `"saem"`, instead of failing with
   `Could not fit data` (#1467).
+- `saem` now fits an additive residual that is a theta times a known weight
+  of `time` and covariates (e.g. `cp ~ add(add.sd * exp(-time / 8))`) on its
+  closed-form additive path, scaling the observations by the weight, instead
+  of as a `dnorm()` likelihood with a temporary eta.  Such fits are several
+  times faster and no longer let the residual SD vary between subjects
+  (#1463).
+- `saem` likewise fits a proportional residual that is a theta times a known
+  weight (e.g. `cp ~ prop(prop.sd * (1 + time / 12))`) in closed form, with
+  the weight as a per-observation multiplier of the residual SD (#1463).
 
 - A multiplicative 0/1 covariate effect, `exp(tcl + eta.cl) * (1 + clSex*SEX)`,
   is now fit as the equivalent mu-referenced `log(1 + clSex)*SEX` ("mu5") by
@@ -472,9 +528,27 @@
   `vae`, ...) and `clSex` is reported; `saem` previously estimated `clSex`
   with the wrong sign (#1315).
 
+- `est="emvi"` no longer overestimates a proportional or eta-dependent
+  residual error (about 2x on `prop()`) or shrinks the between-subject
+  variances with it.  A single heavy-tailed draw of the residual score
+  inflated the step-size accumulator and left each subject's variational
+  posterior near the prior.  The new default `emviControl(optim =
+  "gaussNewton")` updates that posterior by a damped Gauss-Newton fixed point
+  on the eta Hessian, and the thetas without a mu-referenced eta by a damped
+  Gauss-Newton M-step; it searches no step size, so it is also faster.
+  `optim = "advi"` restores the previous optimizer (#1462).
+- `est="fbvi"` uses the same `optim = "gaussNewton"` default, with a
+  Gauss-Newton step for its population block, and so recovers proportional
+  residual error too.  The SEs of mu-referenced thetas now come from their
+  information with the etas integrated out and match FOCEi's; they used to
+  depend on where the step-size sequence stalled (#1462).
 - `est="saem"`: when an endpoint's residual error cannot be matched to
   `ini()` parameters, the error now names the endpoint and the error
   argument(s) that are not `ini()` parameters (#1516).
+- `est="saem"` with a modeled residual error (e.g. `a <- add.sd; cp ~ add(a)`)
+  no longer lists the temporary eta in `$parFixedDf`/`$parFixed`, and reports
+  the residual's back-transformed value and CI on its own scale instead of
+  `exp()` of it (#1516).
 - `est="agq"` now checks the quadrature grid size (`nAGQ^neta`) before
   building it: it warns above 10,000 nodes and stops above 1,000,000, instead
   of silently exhausting memory with many etas (#1412).
@@ -887,6 +961,10 @@
   transform; it used the first subject's rows for every subject.
 ### Tables
 
+- `tidy()` fixed-effect `p.value`s are now two-sided t-test p-values; they
+  were the one-sided upper tail, so a negative estimate reported a p-value
+  near 1 (#1593).
+
 - The BSV/IOV CV% in the parameter table switched to scientific notation
   (e.g. `7.64e+35`) at or above 1e6; it printed every digit of a huge
   log-normal CV% (#1386).
@@ -1055,6 +1133,11 @@
   subjects have different numbers of occasions.  The pooled variance now
   averages over the subject-occasions in the data instead of counting each
   absent occasion as a zero deviation (#1504).
+
+- `saemControl(iovMethod = "collapsed")` now samples a subject's absent
+  occasions from their conditional prior instead of freezing them at the
+  mean, which pinned the subject's between-subject deviation toward zero on
+  unbalanced occasion designs (#1504).
 
 - `saemControl(iovMethod = "theta")`, also the automatic fallback for models
   `"twoLevel"` does not cover, no longer underestimates the occasion

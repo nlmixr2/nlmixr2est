@@ -115,7 +115,7 @@ attr(rxUiGet.nlmeFD, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.nlmeFunction <- function(x, ...) {
   .ui <- x[[1]]
-  .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
+  .estPar <- .nlmeParamsToEstimate(x, ...)
   #.par <- c(.estPar, .ui$covariates)
   .par <- .estPar
   eval(parse(
@@ -168,7 +168,9 @@ rxUiGet.nlmeRxModelFD <- function(x, ...) {
   .cmt <- .addPreModelLines(.cmt, rxUiGet.interpLinesStr(x, ...), .mtimeLinesStr(.s))
   ## no splitBolus() here -- the doses were already split when the data was
   ## translated (see .foceiPreProcessData())
-  paste(c(rxUiGet.saemParams(x, ...), .cmt, .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse = "\n")
+  .par <- c(setdiff(rxUiGet.saemParamsToEstimateCov(x, ...), .nlmeResidExclude(x[[1]])), x[[1]]$covariates)
+  .par <- paste0("params(", paste(.par, collapse = ","), ")")
+  paste(c(.par, .cmt, .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse = "\n")
 }
 attr(rxUiGet.nlmeRxModelFD, "rstudio") <- "params()"
 
@@ -185,7 +187,7 @@ attr(rxUiGet.nlmeRxModel, "rstudio") <- "params()"
 rxUiGet.nlmeModel <- function(x, ...) {
   .ui <- x[[1]]
   # This includes both fixed effects and non-mu-referenced random effects
-  saem.par <- rxUiGet.saemParamsToEstimate(x, ...)
+  saem.par <- .nlmeParamsToEstimate(x, ...)
   muRef.par <-
     setNames(
       paste(x[[1]]$muRefDataFrame$theta, x[[1]]$muRefDataFrame$eta, sep = "+"),
@@ -206,7 +208,7 @@ attr(rxUiGet.nlmeModel, "rstudio") <- DV ~ nlmixr2est::nlmixrNlmeFun(pars = list
 
 #' @export
 rxUiGet.nlmeGradDimnames <- function(x, ...) {
-  .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
+  .estPar <- .nlmeParamsToEstimate(x, ...)
   eval(parse(text = paste0("list(NULL, list(", paste(paste0(.estPar, "=quote(", .estPar, ")"), collapse = ","), "))")))
 }
 
@@ -271,7 +273,7 @@ rxUiGet.nlmePdOmega <- function(x, ...) {
 rxUiGet.nlmeStart <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
-  .w <- which(!is.na(.iniDf$ntheta) & is.na(.iniDf$err))
+  .w <- which(!is.na(.iniDf$ntheta) & is.na(.iniDf$err) & !(.iniDf$name %in% .nlmeResidExclude(.ui)))
   setNames(.iniDf$est[.w], .iniDf$name[.w])
 }
 #attr(rxUiGet.nlmeStart, "desc") <- "nlme starting estimates for fixed effects"
@@ -295,6 +297,9 @@ rxUiGet.nlmeWeights <- function(x, ...) {
   }
   if (.predDf$distribution != "norm") {
     stop("nlme not supported for this unexplained error structure", call. = FALSE)
+  }
+  if (!is.null(.nlmeResidInfo(.ui))) {
+    stop("the nlme weights of this residual error depend on the data", call. = FALSE)
   }
   .errType <- .predDf$errType
   if (.errType == "prop") {
