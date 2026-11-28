@@ -101,11 +101,17 @@ test_that("the structural call must be unique and in value form", {
   expect_null(.rxFoceiCarryPredCall(mk("a + b")))
 })
 
-test_that("a carried ll() model keeps the finite-difference inner Hessian under fast=TRUE", {
+test_that("a carried ll() model's exact inner Hessian goes through the eta-space carry", {
   skip_if_not(.rxFoceiLinCmtCarryCapable())
   ui <- rxode2::.copyUi(suppressMessages(nlmixr2est::nlmixr2(.carryModLlNorm)))
   assign("control", nlmixr2est::foceiControl(fast = TRUE, linCmtSensCarry = "auto"), envir = ui)
   s <- suppressWarnings(suppressMessages(ui$foceEnv))
   expect_false(is.null(s$..linCmtCarryPairs))
-  expect_null(s$..HdEta2)
+  if (.foceiLinCmtHasSecondOrder()) {
+    # rxode2lincmt's eta-space second-order carry (#1498)
+    expect_true(any(grepl("rx_ecAdv_", s$..HdEta2, fixed = TRUE)))
+  } else {
+    # without it: the finite-difference inner Hessian
+    expect_null(s$..HdEta2)
+  }
 })

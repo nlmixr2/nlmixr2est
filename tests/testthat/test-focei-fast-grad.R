@@ -519,7 +519,7 @@ nmTest({
     expect_true(is.finite(f$objf))
   })
 
-  test_that("out-of-scope model (linCmt) downgrades fast=TRUE to the plain focei gradient", {
+  test_that("linCmt() keeps fast=TRUE with second-order reads, else downgrades it", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     lin <- function() {
@@ -535,9 +535,15 @@ nmTest({
         invokeRestart("muffleMessage")
       }
     )
-    # downgraded once, up front (not a per-iteration symengine rebuild + FD fallback)
-    expect_true(any(grepl("using fast = FALSE", .msgs)))
-    expect_false(isTRUE(fF$foceiControl$fast))
+    if (.foceiLinCmtHasSecondOrder()) {
+      # second-order linCmt() reads (#1498): the analytic gradient stays on
+      expect_false(any(grepl("using fast = FALSE", .msgs)))
+      expect_true(isTRUE(fF$foceiControl$fast))
+    } else {
+      # downgraded once, up front (not a per-iteration symengine rebuild + FD fallback)
+      expect_true(any(grepl("using fast = FALSE", .msgs)))
+      expect_false(isTRUE(fF$foceiControl$fast))
+    }
     expect_true(is.finite(fF$objf))
   })
 

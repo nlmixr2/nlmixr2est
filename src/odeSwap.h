@@ -213,6 +213,7 @@ rxSolveF *odeSwapFns(int slot);
 // Integrate ONE individual with `slot`'s entry points, in the shared pool.
 // Generalizes the per-model `#define <x>Ode(id) ind_solve(...)` macros.
 void odeSwapSolveInd(int slot, int rxId);
+int odeSwapNdiffHess();
 
 
 // ---- the pool decision --------------------------------------------------

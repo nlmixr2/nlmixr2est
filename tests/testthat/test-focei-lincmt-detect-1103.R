@@ -35,7 +35,7 @@ nmTest({
     expect_false(.foceiUsesLinCmt(rxode2::rxode2(.ode)))
   })
 
-  test_that("cp <- linCmt(): no analytic covariance, fast=TRUE falls back to the fast=FALSE fit", {
+  test_that("cp <- linCmt(): no analytic covariance; fast=TRUE matches the fast=FALSE fit", {
     skip_on_cran()
     skip_if_not_installed("nlmixr2data")
     d <- nlmixr2data::theo_sd
@@ -47,9 +47,15 @@ nmTest({
     fT <- suppressMessages(suppressWarnings(
       nlmixr2(.linLhs, d, "focei", foceiControl(print = 0L, covMethod = "", fast = TRUE))
     ))
-    expect_false(fT$control$fast)
-    # the downgrade restores the ordinary outer optimizer too
-    expect_equal(fT$control$outerOptTxt, "bobyqa")
+    if (.foceiLinCmtHasSecondOrder()) {
+      # second-order linCmt() reads (nlmixr2/rxode2lincmt#17): the analytic
+      # 'fast' gradient applies (#1498)
+      expect_true(fT$control$fast)
+    } else {
+      expect_false(fT$control$fast)
+      # the downgrade restores the ordinary outer optimizer too
+      expect_equal(fT$control$outerOptTxt, "bobyqa")
+    }
     expect_equal(fT$objf, fF$objf, tolerance = 1e-4)
 
     # ground truth: the ODE twin's covariance, same estimator, at the same estimates
@@ -83,12 +89,38 @@ nmTest({
     expect_equal(sqrt(diag(fF$cov)), sqrt(diag(fO$cov)), tolerance = 0.02)
   })
 
-  test_that("full conditional Hessian refuses linCmt() with a clear error", {
+  test_that("full conditional Hessian: linCmt() matches its ODE twin, or refuses without second order", {
     skip_if_not_installed("nlmixr2data")
     ctl <- list(maxOuterIterations = 0L, covMethod = "", calcTables = FALSE, print = 0L)
+    if (!.foceiLinCmtHasSecondOrder()) {
+      expect_error(
+        suppressMessages(nlmixr2(.linLhs, nlmixr2data::theo_sd, est = "flaplace", control = ctl)),
+        "linCmt"
+      )
+      return(invisible())
+    }
+    .ode <- function() {
+      ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+              d/dt(depot) <- -ka * depot
+              d/dt(center) <- ka * depot - cl / v * center
+              cp <- center / v
+              cp ~ add(add.sd) })
+    }
+    fL <- suppressMessages(suppressWarnings(
+      nlmixr2(.linLhs, nlmixr2data::theo_sd, est = "flaplace", control = ctl)
+    ))
+    fO <- suppressMessages(suppressWarnings(
+      nlmixr2(.ode, nlmixr2data::theo_sd, est = "flaplace", control = ctl)
+    ))
+    expect_equal(fL$objf, fO$objf, tolerance = 1e-5)
+    # a modeled lag: its second-order reads are NA and the full conditional
+    # Hessian has no finite-difference fallback, so it refuses
+    .lag <- rxode2::model(rxode2::rxode2(.linLhs), alag(depot) <- 0.3, append = TRUE)
     expect_error(
-      suppressMessages(nlmixr2(.linLhs, nlmixr2data::theo_sd, est = "flaplace", control = ctl)),
-      "linCmt"
+      suppressMessages(nlmixr2(.lag, nlmixr2data::theo_sd, est = "flaplace", control = ctl)),
+      "modeled lag"
     )
   })
 })

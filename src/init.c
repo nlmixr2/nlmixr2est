@@ -115,6 +115,7 @@ SEXP _nlmixr2est_foceiOuterH(SEXP, SEXP);
 SEXP _nlmixr2est_foceiOuter(SEXP);
 SEXP _nlmixr2est_sqrtm(SEXP);
 SEXP _nlmixr2est_foceiFitCpp_(SEXP);
+SEXP _nlmixr2est_lcHessThreadInit(SEXP);
 SEXP _nlmixr2est_foceiCheckIndCounts_(SEXP);
 SEXP _nlmixr2est_foceiIndEventCounts_(void);
 SEXP _nlmixr2est_boxCox_(SEXP, SEXP, SEXP);
@@ -395,6 +396,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiOuter", (DL_FUNC) &_nlmixr2est_foceiOuter, 1},
   {"_nlmixr2est_sqrtm", (DL_FUNC) &_nlmixr2est_sqrtm, 1},
   {"_nlmixr2est_foceiFitCpp_", (DL_FUNC) &_nlmixr2est_foceiFitCpp_, 1},
+  {"_nlmixr2est_lcHessThreadInit", (DL_FUNC) &_nlmixr2est_lcHessThreadInit, 1},
   {"_nlmixr2est_foceiCheckIndCounts_", (DL_FUNC) &_nlmixr2est_foceiCheckIndCounts_, 1},
   {"_nlmixr2est_foceiIndEventCounts_", (DL_FUNC) &_nlmixr2est_foceiIndEventCounts_, 0},
   {"_nlmixr2est_boxCox_", (DL_FUNC) &_nlmixr2est_boxCox_, 3},

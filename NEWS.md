@@ -47,6 +47,24 @@
 
 ## New features
 
+- `linCmt()` models get the exact inner Hessian and the analytic `fast`
+  outer gradient when the installed rxode2 and rxode2lincmt differentiate
+  `linCmt()` twice (nlmixr2/rxode2lincmt#17): an `ll()` + `linCmt()` FOCEi
+  fit no longer uses the Shi21 finite-difference inner Hessian, and
+  `innerHessian = "conditional"` (`est = "flaplace"`) works for `linCmt()`.
+  Both match the same model written as ODEs.  With an older rxode2 /
+  rxode2lincmt the previous behavior (finite differences, `fast = FALSE`)
+  is kept.  Models with the `linCmt()` sensitivity carry (time-varying
+  covariates) get the exact `ll()` inner Hessian through rxode2lincmt's
+  eta-space carry, under `locf` and `nocb`, except with a modeled
+  bioavailability or lag on the doses (the finite difference stays).  A subject
+  whose exact inner Hessian is not finite (the second-order `linCmt()` reads
+  do not yet follow a modeled lag, rate or duration, or a replace/multiply
+  record) uses the finite difference instead, with a `$runInfo` note; the
+  full conditional Hessian, which has no such fallback, refuses `linCmt()`
+  with a modeled lag, rate or duration.  With an rxode2lincmt that can switch
+  its second-order steps per thread, only the models that read them (the
+  exact inner Hessian and the outer gradient models) take them (#1498).
 - `est = "its"` (`itsControl()`) adds the iterative two-stage method: each
   iteration takes every subject's MAP etas and conditional covariance from
   the FOCEi inner problem, then updates the mu-referenced thetas and Omega in
@@ -384,6 +402,12 @@
 
 ## Bug fixes
 
+- The analytic `fast` outer gradient of a `linCmt()` model with a time-varying
+  covariate on a `linCmt()` parameter without an eta now comes from rxode2lincmt's
+  direction carry (`linCmtB()` `which1 = -30` to `-34`, driven over the outer directions).
+  Before, the parameter-space second-order reads were `NA` there and every subject fell
+  back to the per-subject finite difference.  It matches the model written as ODEs.  A
+  parameter with an eta still uses the finite difference (#1583).
 - A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
   the gradient before the objective no longer stops R: the gradient's history
   row read the last objective iteration, which did not exist yet.  FOCEi now
