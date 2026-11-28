@@ -666,6 +666,9 @@
 #' @noRd
 .npValidCtl <- function(control, est) {
   .in <- control[[1]]
+  if (is.list(.in)) {
+    .in <- .itsControlRestoreSampling(.in, est)
+  }
   # raw lists reach here without passing through npagControl()/npbControl(), so
   # this is the path a bare list(isample = 500) would otherwise slip through
   if (is.list(.in)) {
