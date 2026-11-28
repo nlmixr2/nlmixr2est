@@ -384,6 +384,17 @@
 
 ## Bug fixes
 
+- The analytic FOCE (`interaction = FALSE`, `foce = "nonmem"`) gradient finds
+  each subject's frozen-variance mode in a flat, non-convex eta valley.  Its
+  Newton judged steps by the score norm only, so a step that lowered the
+  objective but first raised the score was halved away, and on an indefinite
+  Hessian the step headed for a saddle; the subject then fell back to the
+  per-subject finite difference, which is slow (minutes per gradient on an
+  8-subject warfarin model) and inaccurate there.  Steps are now also accepted
+  on an Armijo decrease of the frozen-variance objective, a non-descent step
+  uses the absolute-eigenvalue Hessian (capped), and a converged step no longer
+  re-solves at the ODE noise floor.
+
 - A FOCEi outer optimizer, or an `nlmixr2GradFun()` gradient, that asks for
   the gradient before the objective no longer stops R: the gradient's history
   row read the last objective iteration, which did not exist yet.  FOCEi now

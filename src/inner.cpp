@@ -19692,6 +19692,23 @@ static void obsFromInd(rx_solving_options_ind *ind, const VaeOuterE &E,
 // solve fails or whose mode is not reached is marked in `skip` (which may arrive with
 // subjects already marked) and left at its incoming eta; the caller finite-differences
 // it as FOCEI does a flagged subject.  Returns false only when every subject is skipped.
+// The frozen-variance objective S is the gradient of ("nonmem": R0 fixed), up to a constant:
+// 0.5 eta' Oi eta + sum rho_o(f), rho = (y - f)^2 / (2 R0) on normal rows and the censored
+// -logLik on censored ones (rho_f = q0).  NaN when not finite.
+static double foceFrozenObj(const VaeOuterE &E, const arma::vec &R0v, const arma::vec &yt,
+                            const arma::ivec &cens, const arma::vec &limt, bool censAny,
+                            const arma::vec &eta, const arma::mat &Oi) {
+  double o = 0.5 * arma::dot(eta, Oi * eta);
+  for (int k = 0; k < E.nobs; ++k) {
+    const double res = yt[k] - E.f[k], rn = 0.5 * res * res / R0v[k];
+    const double lim = censAny ? limt[k] : NA_REAL;
+    if (censAny && !(cens[k] == 0 && (ISNA(lim) || !R_FINITE(lim))))
+      o -= doCensNormal1((double)cens[k], yt[k], lim, -rn - 0.5 * log(R0v[k]), E.f[k], R0v[k], 0);
+    else
+      o += rn;
+  }
+  return R_FINITE(o) ? o : NA_REAL;
+}
 static bool foceEbeNewton(const FoceiGradPooledSetup &G,
                           const std::vector<double> &thVals, const arma::mat &ebes,
                           const arma::mat &Oi, const std::vector<VaeOuterE> *E0all,
@@ -19733,6 +19750,17 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
   std::vector<double> alpha((size_t)nsub, 1.0);
   std::vector<int> nback((size_t)nsub, 0);
   std::vector<char> haveStep((size_t)nsub, 0);
+  // "nonmem" (frozen R0): S is the gradient of foceFrozenObj, so a step that misses the |S|
+  // test is still kept when it gives the Armijo decrease of that objective along the Newton
+  // direction (prevO, prevLam2 at the reference point).  |S| alone is not a merit function
+  // for a minimum: in a flat, curving valley (warfarin eta.ka, Hf eigenvalue 0.06) the
+  // Newton step lowers the objective while |S| first rises, and halving never gets back
+  // below the reference -- the subject was then finite-differenced.
+  std::vector<double> prevO((size_t)nsub, NA_REAL), prevLam2((size_t)nsub, NA_REAL);
+  auto armijo = [&](int i) {
+    return (!fp && haveStep[(size_t)i] && R_FINITE(prevO[(size_t)i]) && prevLam2[(size_t)i] > 0.0)
+      ? prevO[(size_t)i] - 1e-4 * alpha[(size_t)i] * prevLam2[(size_t)i] : R_NegInf;
+  };
   // Best (lowest |S|) iterate seen, with its Newton decrement.  A stalled subject returns
   // this rather than wherever the exhausted line search happened to stop -- that point is
   // by construction WORSE than the reference it failed to beat.
@@ -19796,14 +19824,40 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
       // improved on it), so such a point never wins the comparison below -- solving there
       // would be work thrown away, and arma::solve warns to stderr on a singular system,
       // which is exactly the region an overshot step lands in.
-      const bool backtracking = haveStep[(size_t)i] && sMax >= prevS[(size_t)i];
+      const double oNow = fp ? NA_REAL
+        : foceFrozenObj(E, R0v, yt, cens, limt, hasCens || hasLimit, etaOut.row(i).t(), Oi);
+      const bool backtracking = haveStep[(size_t)i] && sMax >= prevS[(size_t)i] &&
+        !(R_FINITE(oNow) && oNow < armijo(i));
       arma::vec step;
       bool haveSolve = false;
+      bool modified = false;
       if (!backtracking) {
         haveSolve = arma::solve(step, Hf, S);
+        // "nonmem": a Newton step that is not a descent direction of the frozen objective
+        // (Hf indefinite: the same warfarin valley has an eigenvalue -0.005..-0.08 between
+        // the inner's eta and the mode) heads for a saddle, not the minimum.  Take the
+        // absolute-eigenvalue Newton step instead, |step|_inf <= 1; Armijo above judges it.
+        // A positive definite Hf (every subject near its mode) keeps the exact Newton step.
+        if (!fp && !(haveSolve && arma::dot(S, step) > 0.0)) {
+          arma::vec ev; arma::mat V;
+          haveSolve = false;
+          if (arma::eig_sym(ev, V, arma::mat(0.5 * (Hf + Hf.t()))) && ev.is_finite()) {
+            arma::vec ae = arma::abs(ev);
+            const double fl = 1e-8 * ae.max();
+            if (fl > 0.0) {
+              ae.elem(arma::find(ae < fl)).fill(fl);
+              step = V * ((V.t() * S) / ae);
+              const double sm = arma::abs(step).max();
+              if (sm > 1.0) step /= sm;
+              haveSolve = step.is_finite();
+              modified = true;
+            }
+          }
+        }
         if (haveSolve && sMax < bestS[(size_t)i]) {
           bestS[(size_t)i] = sMax;
-          bestLam2[(size_t)i] = arma::dot(S, step);
+          // not a minimum: never accepted by the stall rule below
+          bestLam2[(size_t)i] = modified ? R_PosInf : arma::dot(S, step);
           bestEta.row(i) = etaOut.row(i);
         }
       }
@@ -19844,11 +19898,21 @@ static bool foceEbeNewton(const FoceiGradPooledSetup &G,
       }
       if (!haveSolve) { op_focei.nNewtonSingular++; skipSub(i); continue; }
       prevS[(size_t)i] = sMax;                     // reference for judging this new step
+      prevO[(size_t)i] = oNow;
+      prevLam2[(size_t)i] = arma::dot(S, step);
       lastStep[(size_t)i] = step;
       alpha[(size_t)i] = 1.0;
       nback[(size_t)i] = 0;
       haveStep[(size_t)i] = 1;
       etaOut.row(i) -= step.t();
+      // "nonmem": a descent Newton step whose decrement is 1e-5 x convTol lands |S| far
+      // below convTol (quadratic convergence), so its confirming solve is skipped: it could
+      // only find the solve's noise floor (forward liblsoda: |S| 1e-7..5e-6 at a fixed eta)
+      // and spend the halvings and maxit on it.
+      if (!fp && !modified && prevLam2[(size_t)i] > 0.0 && prevLam2[(size_t)i] <= 1e-5 * convTol) {
+        active[(size_t)i] = 0;
+        continue;
+      }
       any = true;
     }
     if (!any) break;
