@@ -34,7 +34,8 @@ and is fitted by nlmixr2est, NONMEM and Monolix from the same data set.
 - `runNonmem.R`, `runMonolix.R` -- run every control stream / project and
   store the results under `reference/<tool>/<scenario>.csv`.
 - `reference.R` -- reads NONMEM output (`.ext`, `.lst`) and Monolix
-  results (through lixoftConnectors) into reference files, with nlmixr2 parameter names and variances.
+  results (through lixoftConnectors) into reference files, with nlmixr2
+  parameter names and variances.
 - `exact.R` -- exact marginal maximum likelihood of each scenario with one
   random effect (closed-form cumulative hazard, Gauss-Hermite quadrature),
   written independently of rxode2 and nlmixr2est.
