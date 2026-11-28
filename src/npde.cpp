@@ -712,14 +712,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   double tolChol = npdeOpt1<double>(opt, "tolChol", REALSXP, 6.055454e-06);
   bool ties = npdeOpt1<bool>(opt, "ties", LGLSXP, false);
   int censMethod = npdeOpt1<int>(opt, "censMethod", INTSXP, CENS_TNORM);
-
-  int ewresMethod = EWRES_EIGEN;
-  if (opt.containsElementNamed("ewresMethod")) {
-    RObject tmp = opt["ewresMethod"];
-    if (TYPEOF(tmp) == INTSXP) {
-      ewresMethod = as<int>(tmp);
-    }
-  }
+  int ewresMethod = npdeOpt1<int>(opt, "ewresMethod", INTSXP, EWRES_EIGEN);
 
   int dvLen = Rf_length(dvIn);
   arma::vec dv  = arma::vec(REAL(dvIn), dvLen, false, true);
