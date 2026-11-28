@@ -1236,6 +1236,11 @@
   own transform; it used the first subject’s rows for every subject.
   \### Tables
 
+- `tidy()` fixed-effect `p.value`s are now two-sided t-test p-values;
+  they were the one-sided upper tail, so a negative estimate reported a
+  p-value near 1
+  ([\#1593](https://github.com/nlmixr2/nlmixr2est/issues/1593)).
+
 - The BSV/IOV CV% in the parameter table switched to scientific notation
   (e.g. `7.64e+35`) at or above 1e6; it printed every digit of a huge
   log-normal CV%

@@ -313,7 +313,7 @@ impControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x62c13eb14c20>
+#> <bytecode: 0x583ecaab75f0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -1120,6 +1120,14 @@ impControl()
 #> 
 #> $gpuBatch
 #> [1] 16384
+#> 
+#> $.simNames
+#> $.simNames[[1]]
+#> NULL
+#> 
+#> $.simNames[[2]]
+#> NULL
+#> 
 #> 
 #> attr(,"class")
 #> [1] "rxControl"

@@ -702,6 +702,14 @@ fbviControl()
 #> $gpuBatch
 #> [1] 16384
 #> 
+#> $.simNames
+#> $.simNames[[1]]
+#> NULL
+#> 
+#> $.simNames[[2]]
+#> NULL
+#> 
+#> 
 #> attr(,"class")
 #> [1] "rxControl"
 #> 
