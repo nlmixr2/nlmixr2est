@@ -35,6 +35,7 @@
   saem = list(type = "Stochastic EM", description = "Stochastic Approximation EM"),
   fsaem = list(type = "Stochastic EM", description = "Fast SAEM (Karimi-Lavielle)"),
   qrpem = list(type = "Stochastic EM", description = "Quasi-Random Parametric EM"),
+  its = list(type = "Linearized", description = "Iterative Two-Stage"),
   npag = list(type = "Nonparametric", description = "NonParametric Adaptive Grid"),
   npb = list(type = "Nonparametric", description = "Nonparametric Bayes"),
   emvi = list(type = "Machine learning", description = "Variational EM"),

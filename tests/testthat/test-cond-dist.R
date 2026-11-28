@@ -38,6 +38,25 @@ test_that(".condDistSummary is long by ID then ETA", {
   expect_equal(dimnames(attr(.s, "samples")), list(c("10", "20"), c("eta.a", "eta.b"), NULL))
 })
 
+test_that(".condDistShrinkage is the mean conditional variance over omega", {
+  .cd <- data.frame(
+    ID = rep(1:3, each = 3),
+    ETA = factor(rep(c("eta.a", "eta.b", "eta.c"), 3), levels = c("eta.a", "eta.b", "eta.c")),
+    MEAN = 0,
+    SD = c(0.1, NA, NA, 0.2, 0.3, NA, 0.3, 0.5, NA)
+  )
+  .om <- diag(c(0.5, 0.4, 0.2))
+  dimnames(.om) <- list(c("eta.a", "eta.b", "eta.c"), c("eta.a", "eta.b", "eta.c"))
+  .s <- .condDistShrinkage(.cd, .om)
+  expect_equal(names(.s), c("eta.a", "eta.b", "eta.c"))
+  expect_equal(.s[["eta.a"]], 100 * mean(c(0.1, 0.2, 0.3)^2) / 0.5)
+  # an unsampled subject keeps its prior variance
+  expect_equal(.s[["eta.b"]], 100 * mean(c(0.4, 0.3^2, 0.5^2)) / 0.4)
+  expect_equal(.s[["eta.c"]], 100)
+  .om["eta.a", "eta.a"] <- 0
+  expect_true(is.na(.condDistShrinkage(.cd, .om)[["eta.a"]]))
+})
+
 test_that("addCondDist samples a FOCEi fit's conditional eta distribution", {
   skip_on_cran()
 
@@ -87,6 +106,15 @@ test_that("addCondDist samples a FOCEi fit's conditional eta distribution", {
   # the draws carry the same moments
   .draws <- attr(.cd, "samples")
   expect_equal(as.vector(t(apply(.draws, c(1, 2), mean))), .cd$MEAN, tolerance = 0.05)
+
+  # distribution-based shrinkage: E(Var(eta|y)) + Var(E(eta|y)) is omega
+  .shr <- fit$condDistShrinkage
+  expect_equal(names(.shr), .etaNames)
+  expect_true(all(.shr > 0 & .shr < 100))
+  for (.e in .etaNames) {
+    .tot <- mean(.cd$SD[.cd$ETA == .e]^2) + var(.cd$MEAN[.cd$ETA == .e])
+    expect_equal(.tot, fit$omega[.e, .e], tolerance = 0.35)
+  }
 
   # reproducible under a seed; another seed agrees within Monte-Carlo error
   expect_equal(addCondDist(fit, keepSamples = TRUE)$condDist, .cd)

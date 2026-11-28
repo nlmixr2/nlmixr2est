@@ -2,11 +2,11 @@
 % Please edit documentation in R/agq.R, R/bobyqa.R, R/emviControl.R, R/fbvi.R,
 %   R/fo.R, R/foce.R, R/focei.R, R/foceiFast.R, R/foceiFull.R, R/focep.R,
 %   R/foi.R, R/fsaem.R, R/iagq.R, R/ifoce.R, R/ifocei.R, R/ifocep.R,
-%   R/ilaplace.R, R/imp.R, R/impmap.R, R/laplace.R, R/lbfgsb3c.R, R/magq.R,
-%   R/mfoce.R, R/mfocei.R, R/mfocep.R, R/mlaplace.R, R/n1qn1.R, R/newuoa.R,
-%   R/nlm.R, R/nlme.R, R/nlminb.R, R/nlmixr2Est.R, R/nls.R, R/npag.R, R/npb.R,
-%   R/optim.R, R/posthoc.R, R/qrpem.R, R/rxsolve.R, R/saem.R, R/stieltjes.R,
-%   R/trust.R, R/uobyqa.R, R/vae.R
+%   R/ilaplace.R, R/imp.R, R/impmap.R, R/its.R, R/laplace.R, R/lbfgsb3c.R,
+%   R/magq.R, R/mfoce.R, R/mfocei.R, R/mfocep.R, R/mlaplace.R, R/n1qn1.R,
+%   R/newuoa.R, R/nlm.R, R/nlme.R, R/nlminb.R, R/nlmixr2Est.R, R/nls.R,
+%   R/npag.R, R/npb.R, R/optim.R, R/posthoc.R, R/qrpem.R, R/rxsolve.R,
+%   R/saem.R, R/stieltjes.R, R/trust.R, R/uobyqa.R, R/vae.R
 \name{nlmixr2Est.agq}
 \alias{nlmixr2Est.agq}
 \alias{nlmixr2Est.bobyqa}
@@ -44,6 +44,7 @@
 \alias{nlmixr2Est.ilaplace}
 \alias{nlmixr2Est.imp}
 \alias{nlmixr2Est.impmap}
+\alias{nlmixr2Est.its}
 \alias{nlmixr2Est.laplace}
 \alias{nlmixr2Est.lbfgsb3c}
 \alias{nlmixr2Est.magq}
@@ -156,6 +157,8 @@
 \method{nlmixr2Est}{imp}(env, ...)
 
 \method{nlmixr2Est}{impmap}(env, ...)
+
+\method{nlmixr2Est}{its}(env, ...)
 
 \method{nlmixr2Est}{laplace}(env, ...)
 
