@@ -18,7 +18,8 @@
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/events.html">nlmixr2est events for loggers</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/conditional-distribution.html">Individual random effects and their conditional distribution</a></li>
+    <li><a class="dropdown-item" href="../articles/events.html">nlmixr2est events for loggers</a></li>
     <li><a class="dropdown-item" href="../articles/extending-nlmixr2est.html">Extending nlmixr2est: custom estimation methods and behavior hooks</a></li>
     <li><a class="dropdown-item" href="../articles/likelihood-penalties.html">Likelihood penalties in nlmixr2est and rxode2 extensions</a></li>
   </ul></li>
@@ -131,7 +132,7 @@ already exists</p></dd>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 6584</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 9560</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress phiM in nlmixr2 object, save 64160</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress phiM in nlmixr2 object, save 64384</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu">nlmixrWithTiming</span><span class="op">(</span><span class="st">"time1"</span>, <span class="op">{</span></span></span>
 <span class="r-in"><span>   <span class="fu"><a href="https://rdrr.io/r/base/Sys.sleep.html" class="external-link">Sys.sleep</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span></span>
@@ -149,10 +150,10 @@ already exists</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              setup   optimize covariance preprocess configure  saem postprocess</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.07763164 2.7859e-05 0.04201093      0.072     0.159 2.361       0.214</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         table compress   other time2 time1</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.054    0.072 2.06033 1.001 1.003</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             setup   optimize covariance preprocess configure saem postprocess</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.1008782 2.4747e-05 0.04201353      0.079     0.196 2.78        0.26</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>         table compress    other time2 time1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed  0.06    0.078 2.652083 1.002 1.002</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

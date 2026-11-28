@@ -24,7 +24,8 @@ fit from any mixed-effects estimation method."><meta property="og:image" content
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/events.html">nlmixr2est events for loggers</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/conditional-distribution.html">Individual random effects and their conditional distribution</a></li>
+    <li><a class="dropdown-item" href="../articles/events.html">nlmixr2est events for loggers</a></li>
     <li><a class="dropdown-item" href="../articles/extending-nlmixr2est.html">Extending nlmixr2est: custom estimation methods and behavior hooks</a></li>
     <li><a class="dropdown-item" href="../articles/likelihood-penalties.html">Likelihood penalties in nlmixr2est and rxode2 extensions</a></li>
   </ul></li>
@@ -96,7 +97,10 @@ draws per subject as the `"samples"` attribute of `fit$condDist`, an
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>the fit, with `fit$condDist`: a data frame `ID`, `ETA`, `MEAN`,
+    <p>the fit, with `fit$condDistShrinkage`, the eta shrinkage (<!-- %) from -->
+  the conditional variances, `100 * mean(SD^2) / omega` (an unsampled
+  subject's `SD^2` taken as `omega`), and
+  `fit$condDist`: a data frame `ID`, `ETA`, `MEAN`,
   `SD`.  Its `"method"` attribute names the sampler (`"imp"`, `"saem"`
   for a SAEM fit's own chains or `"mcmc"` for a held SAEM run) and, for
   `"imp"`, its `"ess"` attribute holds each subject's effective sample size.</p>

@@ -8,6 +8,9 @@ Get an item from a nlmixr core object
 # S3 method for class 'condDist'
 nmObjGet(x, ...)
 
+# S3 method for class 'condDistShrinkage'
+nmObjGet(x, ...)
+
 # S3 method for class 'shrink'
 nmObjGet(x, ...)
 

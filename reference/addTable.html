@@ -18,7 +18,8 @@
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/events.html">nlmixr2est events for loggers</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/conditional-distribution.html">Individual random effects and their conditional distribution</a></li>
+    <li><a class="dropdown-item" href="../articles/events.html">nlmixr2est events for loggers</a></li>
     <li><a class="dropdown-item" href="../articles/extending-nlmixr2est.html">Extending nlmixr2est: custom estimation methods and behavior hooks</a></li>
     <li><a class="dropdown-item" href="../articles/likelihood-penalties.html">Likelihood penalties in nlmixr2est and rxode2 extensions</a></li>
   </ul></li>
@@ -158,7 +159,7 @@
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 6584</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 9560</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress phiM in nlmixr2 object, save 64160</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress phiM in nlmixr2 object, save 64384</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">f</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> </span><span style="color: #BBBB00; font-weight: bold;">SAEM </span><span style="color: #555555; font-weight: bold; font-style: italic;">OBJF by FOCEi approximation</span><span style="font-weight: bold;"> ──</span></span>
@@ -168,10 +169,10 @@
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              setup  optimize covariance preprocess configure  saem postprocess</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.08560943 2.793e-05  0.0420113      0.076     0.167 2.426       0.224</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              setup   optimize covariance preprocess configure  saem postprocess</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09693367 3.0728e-05 0.04201349      0.092     0.227 2.792       0.287</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         compress    other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed    0.066 2.234351</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed    0.072 2.813022</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -204,10 +205,10 @@
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              setup  optimize covariance preprocess configure  saem postprocess</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.08560943 2.793e-05  0.0420113      0.076     0.167 2.426       0.224</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              setup   optimize covariance preprocess configure  saem postprocess</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.09693367 3.0728e-05 0.04201349      0.092     0.227 2.792       0.287</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         compress    other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed    0.066 2.234351</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed    0.072 2.813022</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

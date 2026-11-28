@@ -142,6 +142,10 @@
   `method = "saem"` uses the SAEM MCMC instead: a SAEM fit’s own last
   iterations when they are enough, otherwise the kernels held at the
   fit’s estimates; it is the default for SAEM fits.
+  `fit$condDistShrinkage` is the eta shrinkage from the conditional
+  variances, `100 * mean(SD^2) / omega`. The new vignette “Individual
+  random effects and their conditional distribution” describes the mode,
+  SAEM’s mean and the conditional distribution of any fit.
 
 - `etaSamples(fit, n)` draws each subject’s etas from their conditional
   distribution at a fit’s estimates, as a long data frame (`ID`, `draw`,
@@ -210,6 +214,19 @@
   correlated relative to `omega`. Off by default; `nb1B` (start
   iteration, default 10) and `kappa1B` (NONMEM’s `IKAPPA`) tune it, and
   `$saem$accept1B` reports its acceptance rate.
+
+- `foceiControl(ebeCheck = TRUE)` probes each subject’s final EBE at
+  `+/- ebeCheckStep` Omega SDs along every eta and notes in `$runInfo`
+  the subjects where the individual objective drops by more than
+  `ebeCheckTol`, as when the inner search stops at a kink of a clipped
+  prediction. The per-subject results are in `fit$ebeStationarity`
+  ([\#1499](https://github.com/nlmixr2/nlmixr2est/issues/1499)).
+
+- `foceiControl(ebeRestart = TRUE)` (implies `ebeCheck`) moves each
+  flagged subject’s EBE to a compass-search minimum of its individual
+  objective, started from its best probe, and reports the objective at
+  the moved EBEs; the thetas are not re-estimated
+  ([\#1499](https://github.com/nlmixr2/nlmixr2est/issues/1499)).
 
 - `$shrink` gains `Shapiro-Wilk W` and `Shapiro-Wilk p-value` rows for
   each ETA (computed on access, so older saved fits have them too), and
@@ -507,6 +524,12 @@
   covariance when a likelihood penalty is active, so the covariance
   includes the penalty’s curvature instead of describing the unpenalised
   likelihood
+  ([\#1479](https://github.com/nlmixr2/nlmixr2est/issues/1479)).
+
+- [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)
+  re-fits (`"sa"`, `"imp"` and the full-model FOCEi recompute) now run
+  under the penalties given as `nlmixr2(..., likPenalty=)`, which the
+  fit keeps; before, only penalties attached to the model reached them
   ([\#1479](https://github.com/nlmixr2/nlmixr2est/issues/1479)).
 
 - The FOCEi full finite-difference covariance (`covFull = TRUE`) now

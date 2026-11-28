@@ -18,7 +18,8 @@
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/events.html">nlmixr2est events for loggers</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/conditional-distribution.html">Individual random effects and their conditional distribution</a></li>
+    <li><a class="dropdown-item" href="../articles/events.html">nlmixr2est events for loggers</a></li>
     <li><a class="dropdown-item" href="../articles/extending-nlmixr2est.html">Extending nlmixr2est: custom estimation methods and behavior hooks</a></li>
     <li><a class="dropdown-item" href="../articles/likelihood-penalties.html">Likelihood penalties in nlmixr2est and rxode2 extensions</a></li>
   </ul></li>
@@ -210,6 +211,10 @@
 <span>  shrinkEtaWarn <span class="op">=</span> <span class="fl">30</span>,</span>
 <span>  odeSettleCheck <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  odeSettleTol <span class="op">=</span> <span class="fl">0.1</span>,</span>
+<span>  ebeCheck <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  ebeCheckStep <span class="op">=</span> <span class="fl">0.1</span>,</span>
+<span>  ebeCheckTol <span class="op">=</span> <span class="fl">0.01</span>,</span>
+<span>  ebeRestart <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  nRetries <span class="op">=</span> <span class="fl">3</span>,</span>
 <span>  seed <span class="op">=</span> <span class="fl">42</span>,</span>
 <span>  resetThetaCheckPer <span class="op">=</span> <span class="fl">0.1</span>,</span>
@@ -1565,6 +1570,32 @@ Skipped for models without ODEs (e.g. `linCmt()`), fits with
 
 <dt id="arg-odesettletol">odeSettleTol<a class="anchor" aria-label="anchor" href="#arg-odesettletol"></a></dt>
 <dd><p>The objective change that `odeSettleCheck` reports.</p></dd>
+
+
+<dt id="arg-ebecheck">ebeCheck<a class="anchor" aria-label="anchor" href="#arg-ebecheck"></a></dt>
+<dd><p>When `TRUE`, each subject's final EBE is probed at
+`+/- ebeCheckStep` Omega standard deviations along every eta, and
+`$runInfo` notes subjects where a probe lowers the individual objective
+(-2LL) by more than `ebeCheckTol`, as at a kink in the prediction.  The
+per-subject results are kept as `fit$ebeStationarity`.</p></dd>
+
+
+<dt id="arg-ebecheckstep">ebeCheckStep<a class="anchor" aria-label="anchor" href="#arg-ebecheckstep"></a></dt>
+<dd><p>The probe step of `ebeCheck`, in Omega standard
+deviations.</p></dd>
+
+
+<dt id="arg-ebechecktol">ebeCheckTol<a class="anchor" aria-label="anchor" href="#arg-ebechecktol"></a></dt>
+<dd><p>The individual objective decrease that `ebeCheck`
+reports.</p></dd>
+
+
+<dt id="arg-eberestart">ebeRestart<a class="anchor" aria-label="anchor" href="#arg-eberestart"></a></dt>
+<dd><p>When `TRUE` (implies `ebeCheck`), each flagged subject's
+EBE moves to a compass-search minimum of its individual objective started
+from its best probe point.  The final objective is taken at those EBEs, so
+it can rise or fall; the thetas are not re-estimated.  The covariance
+step still re-optimizes the ETAs from there.</p></dd>
 
 
 <dt id="arg-nretries">nRetries<a class="anchor" aria-label="anchor" href="#arg-nretries"></a></dt>

@@ -336,7 +336,7 @@ ilaplaceControl()
 #>     .ret$value <- .ret$fval
 #>     .ret
 #> }
-#> <bytecode: 0x6131eb475638>
+#> <bytecode: 0x62c13eb14c20>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -599,6 +599,18 @@ ilaplaceControl()
 #> 
 #> $thetaBoundWarn
 #> [1] 1e-04
+#> 
+#> $ebeCheck
+#> [1] FALSE
+#> 
+#> $ebeCheckStep
+#> [1] 0.1
+#> 
+#> $ebeCheckTol
+#> [1] 0.01
+#> 
+#> $ebeRestart
+#> [1] FALSE
 #> 
 #> $maxOdeRecalc
 #> [1] 5

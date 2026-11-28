@@ -1,0 +1,290 @@
+# Individual random effects and their conditional distribution
+
+A mixed-effects fit estimates population parameters: the fixed effects
+`theta`, the between-subject variances `Omega` and the residual error
+`sigma`. Each subject’s random effects `eta` are not parameters of the
+model. Given the data `y_i` of subject `i`, they have a whole
+distribution, the *conditional* (posterior) distribution
+
+    p(eta_i | y_i, theta, Omega, sigma)  proportional to  p(y_i | eta_i, theta, sigma) p(eta_i | Omega)
+
+The first factor is the subject’s likelihood and the second is the
+population (prior) distribution of the random effects. Every number
+reported for an individual, the “individual estimates” or EBEs,
+summarizes this one distribution. This vignette shows the summaries
+`nlmixr2est` reports, and how
+[`addCondDist()`](https://nlmixr2.github.io/nlmixr2est/reference/addCondDist.md)
+gives the distribution itself for a fit from any estimation method.
+
+## Point summaries: mode, mean and median
+
+The conditional distribution has three common point summaries:
+
+- the **mode**, the most likely `eta_i`. It is what FOCEi, `"laplace"`
+  and `"agq"` report as `fit$eta`, because their inner problem maximizes
+  the conditional density. `"foce"` reports an approximate mode: its
+  inner problem holds the residual variance at its `eta = 0` value. SAEM
+  reports it as `fit$eta` too (`saemControl(ebe = "mode")`, the
+  default), searching for it after the last iteration;
+- the **mean**, the average `eta_i`. SAEM approximates it while it
+  estimates: its MCMC chains sample the conditional distribution, and
+  their stochastic-approximation average is kept as `fit$etaSaem`
+  (`saemControl(ebe = "saem")` reports it as `fit$eta` instead);
+- the **median**, which
+  [`addCondDist()`](https://nlmixr2.github.io/nlmixr2est/reference/addCondDist.md)
+  gives from the sampled draws.
+
+When the model is close to linear in `eta` and the data are informative,
+the conditional distribution is nearly normal and all three agree. They
+diverge for sparse data or a strongly non-linear model.
+
+## The conditional distribution of any fit
+
+The conditional distribution depends only on the model and the final
+`theta`, `Omega` and `sigma`, not on how they were estimated. So it can
+be sampled for a fit from any method: hold the population parameters at
+the fit’s estimates and simulate each subject’s `eta_i` from the density
+above.
+[`addCondDist()`](https://nlmixr2.github.io/nlmixr2est/reference/addCondDist.md)
+has two samplers:
+
+- `method = "imp"` (the default except for SAEM) draws importance
+  samples from a normal proposal centered at each subject’s mode, with
+  the Laplace (inverse Hessian) covariance, and weights each one by its
+  posterior density. It is the frozen E-step of `est = "imp"` and works
+  for any model the FOCEi inner problem handles. The `"ess"` attribute
+  is each subject’s effective sample size: a value far below `nsamp`
+  means the proposal fits the posterior poorly;
+- `method = "saem"` (the default for SAEM) uses SAEM’s MCMC kernels. A
+  SAEM fit already ran them at (nearly) its final estimates, so the
+  draws of its last iterations, from the last half of its second phase,
+  are used directly and nothing is simulated. When those are not enough,
+  or for a fit from another method, the kernels are run again with every
+  population parameter held at the fit’s estimates.
+
+`fit$condDist` holds each subject’s conditional mean (`MEAN`) and SD
+(`SD`); `keepSamples = TRUE` keeps equally weighted draws as its
+`"samples"` attribute.
+
+### A FOCEi fit
+
+``` r
+
+library(nlmixr2est)
+
+one.cmt <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- 1
+    tv <- 3.45
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+
+fit <- nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "focei",
+               control = foceiControl(print = 0))
+fit <- addCondDist(fit, keepSamples = TRUE)
+head(fit$condDist)
+#>   ID    ETA         MEAN         SD
+#> 1  1 eta.ka  0.086724343 0.13290765
+#> 2  1 eta.cl -0.485157088 0.09737933
+#> 3  1  eta.v -0.089112392 0.04531539
+#> 4  2 eta.ka  0.198230689 0.15866379
+#> 5  2 eta.cl  0.144418922 0.09494652
+#> 6  2  eta.v  0.005335317 0.06765941
+attr(fit$condDist, "method")
+#> [1] "imp"
+round(attr(fit$condDist, "ess"))
+#>  [1] 215 192 206 213 199 205 209 208 213 205 204 207
+```
+
+The mode (`fit$eta`), the conditional mean and the conditional median of
+`eta.ka` side by side:
+
+``` r
+
+cd <- fit$condDist
+draws <- attr(cd, "samples")
+data.frame(
+  ID = fit$eta$ID,
+  mode = fit$eta$eta.ka,
+  mean = cd$MEAN[cd$ETA == "eta.ka"],
+  median = apply(draws[, "eta.ka", ], 1, median),
+  sd = cd$SD[cd$ETA == "eta.ka"]
+)
+#>    ID        mode        mean      median        sd
+#> 1   1  0.08483290  0.08672434  0.08770607 0.1329077
+#> 2   2  0.19668530  0.19823069  0.19838253 0.1586638
+#> 3   3  0.37074077  0.38222137  0.37349500 0.1835270
+#> 4   4 -0.28326871 -0.29426053 -0.29504895 0.1561942
+#> 5   5 -0.04451592 -0.02423361 -0.01101069 0.1229863
+#> 6   6 -0.38629405 -0.36181502 -0.34906878 0.2017724
+#> 7   7 -0.77308932 -0.77026747 -0.75481550 0.1899175
+#> 8   8 -0.16884271 -0.16554042 -0.18128449 0.1806589
+#> 9   9  1.36248859  1.42805547  1.42121026 0.2460347
+#> 10 10 -0.73460315 -0.74336911 -0.72809855 0.1390726
+#> 11 11  0.75352200  0.78498173  0.78351873 0.1971994
+#> 12 12 -0.52166457 -0.52220798 -0.52943903 0.1295458
+```
+
+The `SD` column is the uncertainty of each subject’s estimate, which a
+single point summary does not show. A 90% interval comes from the draws:
+
+``` r
+
+t(apply(draws[, "eta.cl", ], 1, quantile, c(0.05, 0.95)))
+#>             5%         95%
+#> 1  -0.65771769 -0.33075773
+#> 2  -0.01824719  0.28685044
+#> 3  -0.17200425  0.15512269
+#> 4  -0.19597461  0.12645975
+#> 5  -0.29249574 -0.01762039
+#> 6   0.13834034  0.56339110
+#> 7  -0.07237582  0.32263351
+#> 8  -0.04182502  0.34061706
+#> 9  -0.13971613  0.22271590
+#> 10 -0.56880964 -0.24860321
+#> 11  0.11067063  0.46515669
+#> 12 -0.27603296  0.01223934
+```
+
+### Shrinkage
+
+When a subject’s data say little about an eta, its conditional
+distribution stays close to the prior and its point estimate is pulled
+toward 0. The usual eta shrinkage, `fit$shrink`, measures this from the
+spread of the point estimates, `1 - SD(eta_i) / sqrt(omega)` (in %). The
+conditional distribution gives it directly: by the law of total
+variance,
+
+    omega = E(Var(eta_i | y_i)) + Var(E(eta_i | y_i))
+
+so the share of `omega` the data do not explain is the average
+conditional variance over `omega`. `fit$condDistShrinkage` is that
+share, `100 * mean(SD^2) / omega`, a variance shrinkage that does not
+depend on the spread of shrunk point estimates:
+
+``` r
+
+fit$condDistShrinkage
+#>    eta.ka    eta.cl     eta.v 
+#>  7.462363 15.386708 23.814288
+```
+
+### Diagnostics from shrunk estimates
+
+Point estimates are a poor basis for diagnostics on `Omega`. Shrinkage
+pulls them toward 0, so their spread understates the between-subject
+variability, and because each subject’s etas are shrunk by the same
+data, their correlations can be distorted too. Draws from the
+conditional distribution, pooled over subjects, are not shrunk: by the
+same law of total variance their covariance estimates `Omega` itself.
+
+``` r
+
+pooled <- apply(draws, 2, as.vector)
+rbind(
+  omega = diag(fit$omega),
+  modes = apply(fit$eta[, -1], 2, var),
+  draws = apply(pooled, 2, var)
+)
+#>          eta.ka     eta.cl      eta.v
+#> omega 0.4031402 0.06963923 0.01933736
+#> modes 0.3886518 0.06389900 0.01547284
+#> draws 0.4063483 0.07017849 0.01916460
+round(cor(fit$eta[, -1]), 2)
+#>        eta.ka eta.cl eta.v
+#> eta.ka   1.00   0.20  0.26
+#> eta.cl   0.20   1.00  0.85
+#> eta.v    0.26   0.85  1.00
+round(cor(pooled), 2)
+#>        eta.ka eta.cl eta.v
+#> eta.ka   1.00   0.16  0.31
+#> eta.cl   0.16   1.00  0.59
+#> eta.v    0.31   0.59  1.00
+```
+
+With only 12 subjects both are rough, but the modes’ variances fall
+short of `Omega`, most for the most shrunk `eta.v`, while the draws’ do
+not. The modes also suggest a strong `eta.cl`-`eta.v` correlation that
+the draws, which carry each subject’s uncertainty as well, show to be
+weaker.
+
+## A SAEM fit
+
+SAEM reports two point summaries: the conditional mode as `fit$eta` and
+its approximate conditional mean as `fit$etaSaem`.
+[`addCondDist()`](https://nlmixr2.github.io/nlmixr2est/reference/addCondDist.md)
+reads the conditional distribution from the fit’s own chains:
+
+``` r
+
+fitS <- nlmixr2(one.cmt, nlmixr2data::theo_sd, est = "saem",
+                control = saemControl(print = 0))
+fitS <- addCondDist(fitS)
+attr(fitS$condDist, "method")
+#> [1] "saem"
+cdS <- fitS$condDist
+data.frame(
+  ID = fitS$eta$ID,
+  mode = fitS$eta$eta.cl,
+  etaSaem = fitS$etaSaem$eta.cl,
+  mean = cdS$MEAN[cdS$ETA == "eta.cl"],
+  sd = cdS$SD[cdS$ETA == "eta.cl"]
+)
+#>    ID        mode     etaSaem        mean         sd
+#> 1   1 -0.47434190 -0.47574170 -0.47469337 0.09570751
+#> 2   2  0.14458822  0.13286293  0.13908906 0.10184931
+#> 3   3  0.02863249  0.02409061  0.01619569 0.09929586
+#> 4   4 -0.01759252 -0.01655285 -0.02135252 0.10073345
+#> 5   5 -0.15037205 -0.15614017 -0.15636640 0.08536285
+#> 6   6  0.37505251  0.36097884  0.36117667 0.13588735
+#> 7   7  0.14822171  0.13547018  0.14809598 0.12004372
+#> 8   8  0.16612395  0.16077843  0.16232261 0.11544291
+#> 9   9  0.04538024  0.04501904  0.04294496 0.09518125
+#> 10 10 -0.38188484 -0.39258109 -0.39777296 0.09819460
+#> 11 11  0.28857341  0.27669803  0.28217101 0.10672826
+#> 12 12 -0.12555411 -0.12945705 -0.11804624 0.09094826
+```
+
+`fit$etaSaem` averages the chains over iterations whose population
+parameters were still moving, so it can be noisier than the conditional
+mean at the final estimates. The importance sampler gives the same
+distribution for the SAEM fit:
+
+``` r
+
+cdI <- addCondDist(fitS, method = "imp")$condDist
+summary(abs(cdI$MEAN - cdS$MEAN) / cdS$SD)
+#>     Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+#> 0.008031 0.040827 0.057627 0.089992 0.125410 0.233920
+summary(cdI$SD / cdS$SD)
+#>    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#>  0.8791  0.9709  0.9999  0.9995  1.0289  1.1406
+```
+
+## Notes
+
+- `nsamp` (default 300) is the number of draws per subject; the
+  Monte-Carlo error of a conditional mean is about `SD / sqrt(ESS)`.
+- The samplers are seeded (`seed`), so
+  [`addCondDist()`](https://nlmixr2.github.io/nlmixr2est/reference/addCondDist.md)
+  is reproducible.
+- An eta SAEM does not sample for a subject (an uninformative eta) has
+  `SD` `NA` and `MEAN` 0, its prior; the shrinkage counts it as fully
+  shrunk. Both are exact when that eta is uncorrelated with the others.
+- A model SAEM fits with temporary etas (a likelihood parameter with no
+  eta) is sampled with `"imp"`: those chains also sampled parameters the
+  reported model holds fixed.
+- Mixture, inter-occasion variability and non-parametric (`"npag"`,
+  `"npb"`, …) fits are not supported yet. A non-parametric fit’s random
+  effects follow its discrete support, not `Omega`.

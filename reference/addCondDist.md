@@ -49,11 +49,13 @@ addCondDist(
 
 ## Value
 
-the fit, with \`fit\$condDist\`: a data frame \`ID\`, \`ETA\`, \`MEAN\`,
-\`SD\`. Its \`"method"\` attribute names the sampler (\`"imp"\`,
-\`"saem"\` for a SAEM fit's own chains or \`"mcmc"\` for a held SAEM
-run) and, for \`"imp"\`, its \`"ess"\` attribute holds each subject's
-effective sample size.
+the fit, with \`fit\$condDistShrinkage\`, the eta shrinkage ( the
+conditional variances, \`100 \* mean(SD^2) / omega\` (an unsampled
+subject's \`SD^2\` taken as \`omega\`), and \`fit\$condDist\`: a data
+frame \`ID\`, \`ETA\`, \`MEAN\`, \`SD\`. Its \`"method"\` attribute
+names the sampler (\`"imp"\`, \`"saem"\` for a SAEM fit's own chains or
+\`"mcmc"\` for a held SAEM run) and, for \`"imp"\`, its \`"ess"\`
+attribute holds each subject's effective sample size.
 
 ## Details
 

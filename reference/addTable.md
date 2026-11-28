@@ -117,7 +117,7 @@ f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #>  
 #> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 9560
-#> → compress phiM in nlmixr2 object, save 64160
+#> → compress phiM in nlmixr2 object, save 64384
 
 print(f)
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
@@ -127,10 +127,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.08560943 2.793e-05  0.0420113      0.076     0.167 2.426       0.224
+#>              setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.09693367 3.0728e-05 0.04201349      0.092     0.227 2.792       0.287
 #>         compress    other
-#> elapsed    0.066 2.234351
+#> elapsed    0.072 2.813022
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -163,10 +163,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  optimize covariance preprocess configure  saem postprocess
-#> elapsed 0.08560943 2.793e-05  0.0420113      0.076     0.167 2.426       0.224
+#>              setup   optimize covariance preprocess configure  saem postprocess
+#> elapsed 0.09693367 3.0728e-05 0.04201349      0.092     0.227 2.792       0.287
 #>         compress    other
-#> elapsed    0.066 2.234351
+#> elapsed    0.072 2.813022
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
