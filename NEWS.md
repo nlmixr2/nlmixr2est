@@ -47,6 +47,13 @@
 
 ## New features
 
+- `est = "its"` (`itsControl()`) adds the iterative two-stage method: each
+  iteration takes every subject's MAP etas and conditional covariance from
+  the FOCEi inner problem, then updates the mu-referenced thetas and Omega in
+  closed form (with the conditional-covariance correction) and the remaining
+  thetas and residual error on the conditional likelihood.  The reported
+  objective is FOCE(i) at the final estimates, and an ITS fit makes a quick
+  warm start, e.g. `nlmixr2(fitIts, est = "focei")` (#1460).
 - `saemControl(autoStop = TRUE)` stops the SAEM EM phase once every
   parameter's half-window drift is within `stopRtol`/`stopAtol` or twice its
   Monte-Carlo error for `stopConsecutive` windows of `stopWindow` iterations;
@@ -956,6 +963,10 @@
 - NPDE's back-transformation of EPRED and DV now uses each observation's own
   transform; it used the first subject's rows for every subject.
 ### Tables
+
+- `tidy()` fixed-effect `p.value`s are now two-sided t-test p-values; they
+  were the one-sided upper tail, so a negative estimate reported a p-value
+  near 1 (#1593).
 
 - The BSV/IOV CV% in the parameter table switched to scientific notation
   (e.g. `7.64e+35`) at or above 1e6; it printed every digit of a huge
