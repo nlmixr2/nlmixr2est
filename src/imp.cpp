@@ -2383,7 +2383,7 @@ static void impMStepMuOmega(ImpOuterState& st, bool burnIter) {
   // mask/fixed-restore below, since a generic (non-invWishart) term's
   // correction can otherwise leak weight outside the declared structure or
   // a fix()ed row.
-  impPriorOmegaCorrect(Omega, nsub);
+  if (!impPenOmegaCorrect(Omega, nsub, st.omMask, st.omFixedEta, st.Om0)) impPriorOmegaCorrect(Omega, nsub);
   Omega %= st.omMask;
   // Restore fix()ed Omega rows/columns to their starting values.
   for (size_t k = 0; k < st.omFixedEta.size(); ++k) {

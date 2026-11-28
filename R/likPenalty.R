@@ -375,7 +375,11 @@ nlmixr2LikPenaltyUdf <- function(spec) {
   if (nrow(.etaM) == 0L) {
     .etaM <- matrix(numeric(0), length(.nobs), 0)
   }
-  .om <- fit$omega
+  # one matrix in ini() eta order (an IOV fit's omega is a per-level list)
+  .om <- tryCatch(.omegaMatrix(fit$omega), error = function(e) NULL)
+  if (is.matrix(.om) && all(.etaNames %in% colnames(.om))) {
+    .om <- .om[.etaNames, .etaNames, drop = FALSE]
+  }
   if (!is.matrix(.om)) {
     .om <- matrix(numeric(0), 0, 0)
   }
